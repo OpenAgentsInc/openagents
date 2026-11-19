@@ -436,6 +436,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             guard cd_open_id(page, &out, Int32(out.count)) > 0 else { return }
             open(String(cString: out))
         case 8: editBudget()
+        case 9: editGoal()
         default: break
         }
     }
@@ -500,6 +501,61 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let micros = Int64((dollars * 1_000_000.0).rounded())
             guard micros > 0 else { return }
             _ = cd_set_budget_usd_micros(self.page, micros)
+            self.wake()
+        }
+    }
+    /// Opens the thread goal editor (/goal or /goal edit) to create, edit, pause/resume, or clear a thread goal.
+    func editGoal() {
+        let status = cd_goal_status(page)
+        let elapsed = cd_goal_time(page)
+        var buf = [CChar](repeating: 0, count: 4097)
+        let n = cd_goal_objective(page, &buf, Int32(buf.count))
+        let current = n > 0 ? String(cString: buf) : ""
+        let alert = NSAlert()
+        alert.messageText = status == 0 ? "Set Thread Goal" : "Edit Thread Goal"
+        if status == 0 {
+            alert.informativeText = "Describe a long-running objective. Coder will work autonomously across turns until it is complete, paused, or hits the chat budget."
+        } else {
+            let label: String
+            switch status {
+            case 1: label = "Active"
+            case 2: label = "Paused"
+            case 3: label = "Complete"
+            case 4: label = "Blocked"
+            case 5: label = "Budget limit"
+            default: label = "None"
+            }
+            let timeStr = elapsed < 60 ? "\(elapsed)s" : "\(elapsed / 60)m"
+            alert.informativeText = "Status: \(label) · Elapsed: \(timeStr). Update the objective below or change the goal state."
+        }
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 420, height: 110))
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 110))
+        tv.isRichText = false
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.font = NSFont.systemFont(ofSize: 13)
+        tv.string = current
+        scroll.documentView = tv
+        alert.accessoryView = scroll
+        alert.addButton(withTitle: status == 0 ? "Start Goal" : "Save Goal")
+        if status != 0 {
+            alert.addButton(withTitle: status == 1 ? "Pause" : "Resume")
+            alert.addButton(withTitle: "Clear")
+        }
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = tv
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            defer { self.window.makeFirstResponder(self.editor) }
+            if answer == .alertFirstButtonReturn {
+                let text = tv.string.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { _ = cd_goal_set(self.page, text) }
+            } else if status != 0 && answer == .alertSecondButtonReturn {
+                _ = cd_goal_set_status(self.page, status == 1 ? 2 : 1)
+            } else if status != 0 && answer == .alertThirdButtonReturn {
+                _ = cd_goal_clear(self.page)
+            }
             self.wake()
         }
     }
@@ -625,6 +681,18 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let now = CACurrentMediaTime(), dt = Float(now - last); last = now
         for (id, back) in runs {
             cd_tick(back.page, dt)
+            let bgAct = cd_action(back.page)
+            if bgAct == 1 {
+                var out = [CChar](repeating: 0, count: 262144)
+                if back.worker.start() {
+                    let n = cd_task(back.page, back.session, back.folder.path, &out, Int32(out.count))
+                    back.worker.write(out, count: Int(n))
+                } else {
+                    cd_failed(back.page, "Microcoder could not start.")
+                }
+            } else if bgAct == 3 {
+                stopRun(back)
+            }
             if cd_save_due(back.page) != 0 { keep(back) }
             if cd_running(back.page) == 0 { finish(id) }
         }

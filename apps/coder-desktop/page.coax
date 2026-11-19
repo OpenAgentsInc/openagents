@@ -30,7 +30,7 @@ CP_SKILLS :: 4000;          // bytes of the note on installed skills that goes a
 CP_CMD :: 400;              // bytes of a command or a tool call shown
 CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
 CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
-CP_LONG_POOL :: 2097152;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
+CP_LONG_POOL :: 2080768;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
 CP_ARENA :: 131072;         // a worker line's strings
 CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
@@ -76,10 +76,16 @@ CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
 
 // Default per-chat-thread max budget in microdollars ($50.00).
 CP_BUDGET_DEFAULT :: 50000000;
+// Thread goal (/goal) limits and states (ported from openai/codex).
+CP_GOAL_TEXT :: 2048;
+CP_GOAL_NOTICE :: 256;
+CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE :: 3; CP_GOAL_BLOCKED :: 4; CP_GOAL_BUDGET_LIMITED :: 5;
+CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 2; CP_GOAL_PROMPT_UPDATED :: 3; CP_GOAL_PROMPT_BUDGET :: 4;
+CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
 CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
@@ -156,9 +162,17 @@ CoderPage :: struct {
   open: int;                  // the row a press asked to open
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
+  kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
   cost_usd_micros: int;                                     // running total cost of this chat in microdollars (1e-6 USD)
   budget_usd_micros: int;                                   // per-chat max budget in microdollars (default CP_BUDGET_DEFAULT)
   budget_override: bool;                                    // user manually approved continuing above budget_usd_micros
+  goal_objective: [CP_GOAL_TEXT] u8; goal_objective_n: int; // active thread goal objective (/goal)
+  goal_status: int;                                         // CP_GOAL_*
+  goal_time_seconds: int;                                   // elapsed active seconds spent on the goal
+  goal_turns: int;                                          // turns executed toward this goal
+  goal_prompt_kind: int;                                    // CP_GOAL_PROMPT_* for the running turn
+  goal_turn_began: f32;                                     // clock when the running goal turn began
+  goal_notice: [CP_GOAL_NOTICE] u8; goal_notice_n: int;     // feedback/usage notice from /goal commands
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
@@ -180,6 +194,7 @@ CoderPage :: struct {
   scroll: f32; content: f32; view: f32; stick: bool;
   box: ComposerBox;
   ask: int; refused: int; moving: bool;
+  live_ask: int; live_reply: int; live_call: int; live_pane: int;   // >= 0: newly arrived live item to animate in once
   copied_turn: int; copied_block: int; copied_kind: int;
   copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
   dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
@@ -194,8 +209,10 @@ cp_init :: (s: [] CoderPage) {
     Sheet.{under = g[1].under[..], over = g[1].over[..], lines = g[1].lines[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
   s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
   s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
+  s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
@@ -245,6 +262,9 @@ cp_skin :: () -> UiSkin {
   k.tr.bubble_pad_x = 16.0f32 / u;
   k.tr.bubble_pad_y = 10.0f32 / u;
   k.tr.bubble_radius = 16.0f32 / u;
+  // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
+  k.motion.enter = 0.12f32;
+  k.app.rise = 3.0f32 / u;
   // Composer: Claude Desktop card proportions (16pt radius, 21pt input line, 32pt send button, 28pt chip).
   k.cmp.radius = 16.0f32 / u;
   k.cmp.line = 21.0f32 / u;
@@ -313,26 +333,251 @@ cp_add_cost :: (s: [] CoderPage, delta: int) {
   if delta <= 0 { return; }
   s[0].cost_usd_micros += delta;
   if cp_budget_exceeded(s) && cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+    if s[0].goal_status == CP_GOAL_ACTIVE { s[0].goal_status = CP_GOAL_BUDGET_LIMITED; }
     s[0].turns[s[0].nturns - 1].stopping = true;
     s[0].ask = CP_ASK_STOP;
   }
 }
-cp_send :: (s: [] CoderPage) -> bool {
-  text := eb_text(s[0].draft[..]);
-  if text.count == 0 || cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
+// ---- Thread Goals (/goal), ported from openai/codex ----
+cp_is_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
+cp_trim :: (text: string) -> string {
+  a := 0; b := text.count;
+  while a < b && cp_is_space(text[a]) { a += 1; }
+  while b > a && cp_is_space(text[b - 1]) { b -= 1; }
+  return cast(string) text[a..<b];
+}
+cp_eq_ci :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    ca := a[i]; cb := b[i];
+    if ca >= 65 && ca <= 90 { ca += 32; }
+    if cb >= 65 && cb <= 90 { cb += 32; }
+    if ca != cb { return false; }
+  }
+  return true;
+}
+cp_contains :: (text: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > text.count { return false; }
+  i := 0;
+  while i + needle.count <= text.count {
+    if cast(string) text[i..<i + needle.count] == needle { return true; }
+    i += 1;
+  }
+  return false;
+}
+cp_goal_reset :: (s: [] CoderPage) {
+  s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0;
+  s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_turn_began = 0;
+  s[0].goal_notice_n = 0;
+}
+cp_goal_set_notice :: (s: [] CoderPage, text: string) {
+  s[0].goal_notice_n = cp_out(s[0].goal_notice[..], text);
+}
+cp_goal_status_label :: (st: int) -> string {
+  if st == CP_GOAL_ACTIVE { return "Active"; }
+  if st == CP_GOAL_PAUSED { return "Paused"; }
+  if st == CP_GOAL_COMPLETE { return "Complete"; }
+  if st == CP_GOAL_BLOCKED { return "Blocked"; }
+  if st == CP_GOAL_BUDGET_LIMITED { return "Budget limit"; }
+  return "None";
+}
+cp_goal_elapsed :: (out: [] u8, secs: int) -> string {
+  if secs <= 0 { n := el_put(out, 0, "<1m"); return cast(string) out[0..<n]; }
+  if secs < 60 { n := el_put_i(out, 0, secs); n = el_put(out, n, "s"); return cast(string) out[0..<n]; }
+  mins := secs / 60;
+  if mins < 60 { n := el_put_i(out, 0, mins); n = el_put(out, n, "m"); return cast(string) out[0..<n]; }
+  hrs := mins / 60; rem := mins % 60;
+  n := el_put_i(out, 0, hrs); n = el_put(out, n, "h");
+  if rem > 0 { n = el_put_i(out, n, rem); n = el_put(out, n, "m"); }
+  return cast(string) out[0..<n];
+}
+cp_goal_account_turn :: (s: [] CoderPage) {
+  if s[0].goal_status == CP_GOAL_NONE || s[0].goal_turn_began <= 0 { return; }
+  dt := cast(int) (s[0].clock - s[0].goal_turn_began);
+  if dt > 0 { s[0].goal_time_seconds += dt; }
+  s[0].goal_turn_began = 0;
+}
+cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
+  if ask_text.count == 0 || cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
   i := s[0].nturns;
-  s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
+  s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], ask_text);
   s[0].turns[i].reply_n = 0; s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].early_cmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
   s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
-  s[0].nturns += 1;
-  eb_set(s[0].draft[..], "");
+  s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1;
+  s[0].goal_prompt_kind = prompt_kind;
+  if s[0].goal_status == CP_GOAL_ACTIVE {
+    s[0].goal_turns += 1;
+    s[0].goal_turn_began = ifx s[0].clock > 0 then s[0].clock else 0.001f32;
+  }
   s[0].stick = true; s[0].ask = CP_ASK_SEND;
   return true;
 }
+cp_goal_start_or_update :: (s: [] CoderPage, objective: string) -> bool {
+  obj := cp_trim(objective);
+  if obj.count == 0 { cp_goal_set_notice(s, CP_GOAL_USAGE); return false; }
+  had := s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0;
+  s[0].goal_objective_n = cp_out(s[0].goal_objective[..], obj);
+  s[0].goal_status = CP_GOAL_ACTIVE;
+  if !had { s[0].goal_time_seconds = 0; s[0].goal_turns = 0; }
+  s[0].goal_notice_n = 0;
+  if cp_budget_exceeded(s) {
+    s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+    cp_goal_set_notice(s, "Goal saved, but chat budget is reached. Approve or increase budget, then run /goal resume.");
+    return true;
+  }
+  if cp_full(s) {
+    cp_goal_set_notice(s, "Goal saved, but this chat reached its 24-message limit. Start a new chat to run it.");
+    return true;
+  }
+  if !cp_running(s) {
+    ask_buf: [CP_GOAL_TEXT + 32] u8;
+    an := el_put(ask_buf[..], 0, ifx had then "/goal (updated) " else "/goal ");
+    an += cp_out(ask_buf[an..<ask_buf.count], obj);
+    _ := cp_start_turn(s, cast(string) ask_buf[0..<an], ifx had then CP_GOAL_PROMPT_UPDATED else CP_GOAL_PROMPT_START);
+  }
+  return true;
+}
+cp_goal_set_status :: (s: [] CoderPage, st: int) -> bool {
+  if s[0].goal_status == CP_GOAL_NONE || s[0].goal_objective_n == 0 {
+    cp_goal_set_notice(s, "No active goal. Use /goal <objective> to set one.");
+    return false;
+  }
+  s[0].goal_status = st;
+  s[0].goal_notice_n = 0;
+  if st == CP_GOAL_PAUSED {
+    cp_goal_account_turn(s);
+    if cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+      s[0].turns[s[0].nturns - 1].stopping = true;
+      s[0].ask = CP_ASK_STOP;
+    }
+    cp_goal_set_notice(s, "Goal paused. Use /goal resume to continue.");
+    return true;
+  }
+  if st == CP_GOAL_COMPLETE {
+    cp_goal_account_turn(s);
+    if cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+      s[0].turns[s[0].nturns - 1].stopping = true;
+      s[0].ask = CP_ASK_STOP;
+    }
+    cp_goal_set_notice(s, "Goal marked complete.");
+    return true;
+  }
+  if st == CP_GOAL_ACTIVE {
+    if cp_budget_exceeded(s) {
+      s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_notice(s, "Chat budget is reached. Approve continuing above budget or increase the limit first.");
+      return true;
+    }
+    if !cp_running(s) && !cp_full(s) {
+      _ := cp_start_turn(s, "Continue working toward the active thread goal.", CP_GOAL_PROMPT_CONTINUE);
+    }
+    return true;
+  }
+  return true;
+}
+cp_goal_clear :: (s: [] CoderPage) -> bool {
+  had := s[0].goal_status != CP_GOAL_NONE;
+  cp_goal_reset(s);
+  if cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+    s[0].turns[s[0].nturns - 1].stopping = true;
+    s[0].ask = CP_ASK_STOP;
+  }
+  cp_goal_set_notice(s, ifx had then "Goal cleared." else "No active goal to clear.");
+  return true;
+}
+cp_goal_on_turn_end :: (s: [] CoderPage, i: int, ending: string, text: string) {
+  cp_goal_account_turn(s);
+  if s[0].goal_status != CP_GOAL_ACTIVE || s[0].goal_objective_n == 0 { return; }
+  if s[0].turns[i].stopping {
+    if cp_budget_exceeded(s) {
+      s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_notice(s, "Goal reached the chat budget. Approve or increase budget, then run /goal resume.");
+    } else {
+      s[0].goal_status = CP_GOAL_PAUSED;
+    }
+    return;
+  }
+  if ending == "asked" {
+    s[0].goal_status = CP_GOAL_BLOCKED;
+    cp_goal_set_notice(s, "Goal waiting for your input. Reply or run /goal resume.");
+    return;
+  }
+  if ending != "finished" {
+    s[0].goal_status = CP_GOAL_BLOCKED;
+    cp_goal_set_notice(s, "Goal blocked because the turn failed. Run /goal resume to retry.");
+    return;
+  }
+  reply := ifx text.count > 0 then text else cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n];
+  if cp_contains(reply, "[GOAL_COMPLETE]") {
+    s[0].goal_status = CP_GOAL_COMPLETE;
+    cp_goal_set_notice(s, "Goal completed.");
+    return;
+  }
+  if cp_contains(reply, "[GOAL_BLOCKED]") {
+    s[0].goal_status = CP_GOAL_BLOCKED;
+    cp_goal_set_notice(s, "Goal blocked: needs user input. Reply or run /goal resume.");
+    return;
+  }
+  if cp_budget_exceeded(s) {
+    s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+    cp_goal_set_notice(s, "Goal reached the chat budget. Approve or increase budget, then run /goal resume.");
+    return;
+  }
+  if cp_full(s) {
+    s[0].goal_status = CP_GOAL_PAUSED;
+    cp_goal_set_notice(s, "Goal paused: this chat reached its 24-message limit.");
+    return;
+  }
+  _ := cp_start_turn(s, "Continue working toward the active thread goal.", CP_GOAL_PROMPT_CONTINUE);
+}
+// Handles /goal slash commands entered in the composer. Returns true if the input was a /goal command.
+cp_goal_slash :: (s: [] CoderPage, raw: string) -> bool {
+  trimmed := cp_trim(raw);
+  if trimmed.count < 5 { return false; }
+  if !cp_eq_ci(cast(string) trimmed[0..<5], "/goal") { return false; }
+  if trimmed.count > 5 && !cp_is_space(trimmed[5]) { return false; }
+  eb_set(s[0].draft[..], "");
+  rest := ifx trimmed.count > 5 then cp_trim(cast(string) trimmed[5..<trimmed.count]) else "";
+  if rest.count == 0 {
+    s[0].goal_notice_n = 0;
+    s[0].ask = CP_ASK_GOAL;
+    return true;
+  }
+  // split first token for subcommands
+  sp := 0;
+  while sp < rest.count && !cp_is_space(rest[sp]) { sp += 1; }
+  cmd := cast(string) rest[0..<sp];
+  tail := ifx sp < rest.count then cp_trim(cast(string) rest[sp..<rest.count]) else "";
+  if tail.count == 0 {
+    if cp_eq_ci(cmd, "edit") {
+      s[0].goal_notice_n = 0;
+      s[0].ask = CP_ASK_GOAL;
+      return true;
+    }
+    if cp_eq_ci(cmd, "pause") { _ := cp_goal_set_status(s, CP_GOAL_PAUSED); return true; }
+    if cp_eq_ci(cmd, "resume") { _ := cp_goal_set_status(s, CP_GOAL_ACTIVE); return true; }
+    if cp_eq_ci(cmd, "complete") || cp_eq_ci(cmd, "done") { _ := cp_goal_set_status(s, CP_GOAL_COMPLETE); return true; }
+    if cp_eq_ci(cmd, "clear") { _ := cp_goal_clear(s); return true; }
+    if cp_eq_ci(cmd, "help") { cp_goal_set_notice(s, CP_GOAL_USAGE); return true; }
+  }
+  _ := cp_goal_start_or_update(s, rest);
+  return true;
+}
+cp_send :: (s: [] CoderPage) -> bool {
+  text := eb_text(s[0].draft[..]);
+  if text.count == 0 { return false; }
+  if cp_goal_slash(s, text) { return true; }
+  if cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
+  if !cp_start_turn(s, text, CP_GOAL_PROMPT_NONE) { return false; }
+  eb_set(s[0].draft[..], "");
+  return true;
+}
 cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
-  n := ifx more then s[0].turns[i].reply_n else 0;
+  was := s[0].turns[i].reply_n;
+  n := ifx more then was else 0;
+  if was == 0 && text.count > 0 { s[0].live_reply = i; }
   for c: text { if n >= CP_REPLY { s[0].turns[i].cut = true; break; } s[0].turns[i].reply[n] = c; n += 1; }
   s[0].turns[i].reply_n = n; s[0].turns[i].h = 0;
   // md_parse appends: the document starts empty for each whole reply
@@ -423,7 +668,7 @@ cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, r
   s[0].calls[q].long_at = 0; s[0].calls[q].long_n = 0;
   cp_call_out(s, q, output);
   s[0].calls[q].read = read; s[0].calls[q].failed = failed; s[0].calls[q].running = running; s[0].calls[q].thought = false; s[0].calls[q].said = false;
-  s[0].calls[q].began = s[0].clock; s[0].calls[q].took = -1; s[0].calls[q].next = 0; s[0].calls[q].h = 0;
+  s[0].calls[q].began = s[0].clock; s[0].calls[q].took = -1; s[0].calls[q].next = 0; s[0].calls[q].h = 0; s[0].live_call = q;
   s[0].calls_order += 1; s[0].calls[q].order = s[0].calls_order;
   if j < 0 {
     if s[0].turns[i].tail > 0 { s[0].calls[s[0].turns[i].tail - 1].next = q + 1; } else { s[0].turns[i].head = q + 1; }
@@ -587,7 +832,7 @@ cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
   cp_calls_end(s, i, j, state != CP_DONE);
   n := cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], text);
   if n < text.count { n += cp_out(s[0].turns[i].agents[j].reply[n..<CP_AGENT_REPLY], "\n[The reply is cut at 8,000 bytes.]"); }
-  s[0].turns[i].agents[j].reply_n = n; s[0].turns[i].h = 0;
+  s[0].turns[i].agents[j].reply_n = n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
   cp_round_check(s, i);
 }
 // The next sub-agent the host is to start a worker for (once each), -1 for none.
@@ -848,14 +1093,38 @@ coder_page_set_budget_usd_micros :: (s: [] CoderPage, micros: int) -> bool #expo
   return true;
 }
 coder_page_budget_exceeded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_budget_exceeded(s); }
-coder_page_budget_approve :: (s: [] CoderPage) -> bool #export_c #effects(all) { if s.count < 1 { return false; } s[0].budget_override = true; return true; }
+coder_page_budget_approve :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  s[0].budget_override = true;
+  if s[0].goal_status == CP_GOAL_BUDGET_LIMITED { s[0].goal_status = CP_GOAL_ACTIVE; }
+  return true;
+}
+coder_page_goal_status :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_status else CP_GOAL_NONE; }
+coder_page_goal_time :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].goal_time_seconds else 0; }
+coder_page_goal_objective :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].goal_objective_n == 0 { return 0; }
+  return cp_out(out, cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+}
+coder_page_goal_set :: (s: [] CoderPage, objective: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_goal_start_or_update(s, objective);
+}
+coder_page_goal_set_status :: (s: [] CoderPage, status: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || status < CP_GOAL_ACTIVE || status > CP_GOAL_BUDGET_LIMITED { return false; }
+  return cp_goal_set_status(s, status);
+}
+coder_page_goal_clear :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_goal_clear(s);
+}
 coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   r := cp_running(s);
   b := cp_budget(s);
-  if s[0].nturns == 0 { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; return false; }
-  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override { return false; }
+  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time { return false; }
   s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
   return true;
 }
 cp_whole :: (seconds: f32) -> int { return ifx seconds < 0 then -1 else cast(int) seconds; }
@@ -883,6 +1152,12 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
   n = json_raw(out, n, ",\"budget_usd_micros\":");
   n = json_write_int(out, n, cp_budget(s));
   if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
+  if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
+    n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
+    n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
+    n = json_raw(out, n, ",\"goal_turns\":"); n = json_write_int(out, n, s[0].goal_turns);
+    n = json_raw(out, n, ",\"goal_objective\":"); n = json_write_string(out, n, cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+  }
   n = json_raw(out, n, ",\"turns\":[");
   for i: 0..<s[0].nturns {
     n = json_raw(out, n, ifx i > 0 then ",{\"ask\":" else "{\"ask\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
@@ -924,7 +1199,7 @@ cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
   if (thought.ok && thought.value) || (said.ok && said.value) { cp_long_set(s, q, output); }
   else { s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output); }
   s[0].calls[q].thought = thought.ok && thought.value; s[0].calls[q].said = said.ok && said.value;
-  s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32;
+  s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32; s[0].live_call = -1;
 }
 // A kept chat (coder_page_save's text) becomes the chat that is shown. A message that was still
 // running when it was kept shows as stopped. False while a run is going or when the text is not a chat.
@@ -992,8 +1267,22 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   s[0].budget_usd_micros = ifx budget.ok && budget.value > 0 then budget.value else CP_BUDGET_DEFAULT;
   ov := cl_bool(text, "budget_override");
   s[0].budget_override = ov.ok && ov.value;
+  cp_goal_reset(s);
+  gs := cl_int(text, "goal_status");
+  if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_BUDGET_LIMITED {
+    gar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+    go := cl_str(gar[..], text, "goal_objective");
+    if go.count > 0 {
+      s[0].goal_status = gs.value;
+      s[0].goal_objective_n = cp_out(s[0].goal_objective[..], go);
+      gt := cl_int(text, "goal_time"); s[0].goal_time_seconds = ifx gt.ok && gt.value > 0 then gt.value else 0;
+      gturns := cl_int(text, "goal_turns"); s[0].goal_turns = ifx gturns.ok && gturns.value > 0 then gturns.value else 0;
+    }
+  }
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
-  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].pane_open = false;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
+  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false;
   return true;
 }
 // The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
@@ -1019,6 +1308,8 @@ cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
   s[0].nturns = 0; cp_calls_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
+  cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
+  s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
@@ -1043,12 +1334,20 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override;
+  to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
   to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override;
+  to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
+  to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);
+  to[0].goal_notice_n = cp_out(to[0].goal_notice[..], cast(string) from[0].goal_notice[0..<from[0].goal_notice_n]);
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
+  to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1;
+  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
   from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
+  cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
+  from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   from[0].pane_open = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
   from[0].scroll = 0; from[0].stick = true;
   return true;
@@ -1069,6 +1368,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if turn < 0 || turn >= s[0].nturns || j < 0 || j >= s[0].turns[turn].nagents { return false; }
     // its transcript opens on the window's right; a press on the one that is open closes it
     if s[0].pane_open && s[0].pane_turn == turn && s[0].pane_agent == j { s[0].pane_open = false; return true; }
+    s[0].live_pane = -1; s[0].live_call = -1;
     s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
     s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
     return true;
@@ -1123,7 +1423,19 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
   }
   if act == CP_BUDGET_EDIT { s[0].ask = CP_ASK_BUDGET; return true; }
-  if act == CP_BUDGET_APPROVE { s[0].budget_override = true; return true; }
+  if act == CP_BUDGET_APPROVE {
+    s[0].budget_override = true;
+    if s[0].goal_status == CP_GOAL_BUDGET_LIMITED { s[0].goal_status = CP_GOAL_ACTIVE; }
+    return true;
+  }
+  if act == CP_GOAL_OPEN { s[0].ask = CP_ASK_GOAL; return true; }
+  if act == CP_GOAL_TOGGLE {
+    if s[0].goal_status == CP_GOAL_ACTIVE { return cp_goal_set_status(s, CP_GOAL_PAUSED); }
+    if s[0].goal_status != CP_GOAL_NONE { return cp_goal_set_status(s, CP_GOAL_ACTIVE); }
+    return false;
+  }
+  if act == CP_GOAL_COMPLETE_ACT { return cp_goal_set_status(s, CP_GOAL_COMPLETE); }
+  if act == CP_GOAL_CLEAR_ACT { return cp_goal_clear(s); }
   return false;
 }
 
@@ -1134,6 +1446,7 @@ coder_page_pane :: (s: [] CoderPage, n: int) -> bool #export_c #effects(all) {
   for back: 0..<s[0].nturns {
     i := s[0].nturns - 1 - back;
     if s[0].turns[i].nagents < n { continue; }
+    s[0].live_pane = -1; s[0].live_call = -1;
     s[0].pane_open = true; s[0].pane_turn = i; s[0].pane_agent = n - 1; s[0].pane_parsed = -1;
     s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[i].agents[n - 1].state == CP_RUNNING;
     return true;
@@ -1157,8 +1470,12 @@ cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w
     at := s[0].think_at; b0 := s[0].think[at].nb;
     blocks := md_parse(s[0].think[at..<at + 1], output, 0);
     if blocks > 0 {
-      return app_message_agent_part(f, id, x, y, w, s[0].think[at..<at + 1], b0, blocks,
-                                    ifx s[0].copied_kind == CP_COPIED_SAID && s[0].copied_row == q then s[0].copied_block else -1, CP_SAID_COPY);
+      enter := f[0].skin.motion.enter;
+      if s[0].live_call != q { f[0].skin.motion.enter = 0; }
+      rh := app_message_agent_part(f, id, x, y, w, s[0].think[at..<at + 1], b0, blocks,
+                                   ifx s[0].copied_kind == CP_COPIED_SAID && s[0].copied_row == q then s[0].copied_block else -1, CP_SAID_COPY);
+      f[0].skin.motion.enter = enter; if s[0].live_call == q { s[0].live_call = -1; }
+      return rh;
     }
     // the document is full: its words as they are, wrapped, a line each
     wb := s[0].scratch[..];
@@ -1216,7 +1533,10 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
   uiframe_clip(f, px, stop, px + pw, h);
   x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].pane_scroll + a.gap;
+  enter := f[0].skin.motion.enter;
+  f[0].skin.motion.enter = 0;
   y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + a.gap;
+  f[0].skin.motion.enter = enter;
   nrows := s[0].turns[i].agents[j].nrows; early := s[0].turns[i].agents[j].early_rows;
   if early > 0 {
     eb: [96] u8; en := el_put_i(eb[..], 0, early); en = el_put(eb[..], en, ifx early == 1 then " earlier row is not shown. A chat keeps 6,000 tool calls and thoughts." else " earlier rows are not shown. A chat keeps 6,000 tool calls and thoughts.");
@@ -1249,10 +1569,16 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       s[0].pane_doc[0].n = 0; s[0].pane_doc[0].nb = 0; s[0].pane_doc[0].nr = 0; s[0].pane_doc[0].ni = 0; s[0].pane_doc[0].nlink = 0;
       s[0].pane_blocks = md_parse(s[0].pane_doc[..], reply, 0); s[0].pane_parsed = reply.count;
     }
+    if s[0].live_pane != i * CP_AGENTS + j { f[0].skin.motion.enter = 0; }
     y += app_message_agent(f, cp_pane_id(ib[..], s, ".a", -1), x, y, cw, s[0].pane_doc[..], s[0].pane_blocks,
                            ifx s[0].copied_kind == CP_COPIED_PANE then s[0].copied_block else -1, CP_PANE_COPY) + a.gap;
+    f[0].skin.motion.enter = enter; if s[0].live_pane == i * CP_AGENTS + j { s[0].live_pane = -1; }
   }
-  else if state == CP_FAILED { y += app_notice(f, cp_pane_id(ib[..], s, ".n", -1), x, y, cw, ifx reply.count > 0 then sheet_pool(sh, reply) else "The sub-agent ended before a reply.", APP_NOTICE_ERROR) + a.gap; }
+  else if state == CP_FAILED {
+    if s[0].live_pane != i * CP_AGENTS + j { f[0].skin.motion.enter = 0; }
+    y += app_notice(f, cp_pane_id(ib[..], s, ".n", -1), x, y, cw, ifx reply.count > 0 then sheet_pool(sh, reply) else "The sub-agent ended before a reply.", APP_NOTICE_ERROR) + a.gap;
+    f[0].skin.motion.enter = enter; if s[0].live_pane == i * CP_AGENTS + j { s[0].live_pane = -1; }
+  }
   else if state == CP_STOPPED { y += app_meta(f, cp_pane_id(ib[..], s, ".s", -1), x, y, cw, "Stopped", false) + a.gap; }
   uiframe_unclip(f);
   s[0].pane_content = y + s[0].pane_scroll - stop;
@@ -1321,7 +1647,10 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     if th > 0 && s[0].turns[i].hw == cw && (y + th < top || y > bottom) { y += th; s[0].turns[i].ah = 0; }
     else {
       y0 := y;
+      enter := f[0].skin.motion.enter;
+      if s[0].live_ask != i { f[0].skin.motion.enter = 0; }
       y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
+      f[0].skin.motion.enter = enter; if s[0].live_ask == i { s[0].live_ask = -1; }
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
       y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK) + a.gap_small;
       tb: [EL_ID] u8; xb: [EL_ID] u8; kb: [24] u8;
@@ -1354,8 +1683,10 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       if s[0].turns[i].ncmds > 0 { y += a.gap - a.gap_small; }
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
+        if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
         y += app_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], s[0].turns[i].blocks,
                                ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY);
+        f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
@@ -1364,23 +1695,68 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
           y += app_icon_button(f, cp_id(ib[..], i, ".ac"), x - edge, y, ifx did then k.icon_check else k.icon_copy, ifx did then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else { s[0].turns[i].ah = 0; }
-      if s[0].turns[i].cut { y += app_notice(f, cp_id(ib[..], i, ".c"), x, y, cw, "This reply is longer than 60,000 bytes. The rest is not shown.", APP_NOTICE_INFO) + a.gap; }
+      if s[0].turns[i].cut {
+        f[0].skin.motion.enter = 0;
+        y += app_notice(f, cp_id(ib[..], i, ".c"), x, y, cw, "This reply is longer than 60,000 bytes. The rest is not shown.", APP_NOTICE_INFO) + a.gap;
+        f[0].skin.motion.enter = enter;
+      }
       st := s[0].turns[i].state;
       if st == CP_RUNNING { y += app_typing(f, cp_id(ib[..], i, ".t"), x, y, ifx s[0].turns[i].stopping then "Stopping" else ifx s[0].turns[i].waiting then "Waiting for sub-agents" else ifx s[0].turns[i].reply_n > 0 then "Writing a reply" else "Working") + a.gap; }
-      else if st == CP_FAILED { y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap; }
+      else if st == CP_FAILED {
+        if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
+        y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap;
+        f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
+      }
       else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
       if i + 1 < s[0].nturns { y += a.gap; }
       s[0].turns[i].h = ifx st == CP_RUNNING then 0.0f32 else y - y0; s[0].turns[i].hw = cw;
     }
   }
-  if full && !running { y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap; }
+  enter0 := f[0].skin.motion.enter;
+  if full && !running {
+    f[0].skin.motion.enter = 0;
+    y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap;
+    f[0].skin.motion.enter = enter0;
+  }
+  if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
+    gb: [640] u8; tb_el: [32] u8;
+    gn := el_put(gb[..], 0, "Goal ("); gn = el_put(gb[..], gn, cp_goal_status_label(s[0].goal_status));
+    gn = el_put(gb[..], gn, " · "); gn = el_put(gb[..], gn, cp_goal_elapsed(tb_el[..], s[0].goal_time_seconds));
+    gn = el_put(gb[..], gn, "): ");
+    obj_cut := ifx s[0].goal_objective_n > 280 then 280 else s[0].goal_objective_n;
+    gn += cp_out(gb[gn..<gb.count], cast(string) s[0].goal_objective[0..<obj_cut]);
+    if s[0].goal_objective_n > 280 { gn = el_put(gb[..], gn, "..."); }
+    f[0].skin.motion.enter = 0;
+    gkind := ifx s[0].goal_status == CP_GOAL_BLOCKED || s[0].goal_status == CP_GOAL_BUDGET_LIMITED then APP_NOTICE_ERROR else APP_NOTICE_INFO;
+    y += app_notice(f, "coder.goal.banner", x, y, cw, sheet_pool(f[0].sheet, cast(string) gb[0..<gn]), gkind) + a.gap_small;
+    f[0].skin.motion.enter = enter0;
+    tlabel := ifx s[0].goal_status == CP_GOAL_ACTIVE then "Pause goal" else "Resume goal";
+    tw := app_button_width(f, -1, tlabel);
+    ew := app_button_width(f, -1, "Edit goal");
+    cw_btn := app_button_width(f, -1, "Complete");
+    xw := app_button_width(f, -1, "Clear");
+    bx := x;
+    bh := app_button(f, "coder.goal.toggle", bx, y, tw, -1, tlabel, APP_BUTTON_DEFAULT, 0, CP_GOAL_TOGGLE);
+    bx += tw + a.gap_small;
+    if bx + ew <= x + cw { _ := app_button(f, "coder.goal.edit", bx, y, ew, -1, "Edit goal", APP_BUTTON_DEFAULT, 0, CP_GOAL_OPEN); bx += ew + a.gap_small; }
+    if s[0].goal_status != CP_GOAL_COMPLETE && bx + cw_btn <= x + cw { _ := app_button(f, "coder.goal.complete", bx, y, cw_btn, -1, "Complete", APP_BUTTON_DEFAULT, 0, CP_GOAL_COMPLETE_ACT); bx += cw_btn + a.gap_small; }
+    if bx + xw <= x + cw { _ := app_button(f, "coder.goal.clear", bx, y, xw, -1, "Clear", APP_BUTTON_DEFAULT, 0, CP_GOAL_CLEAR_ACT); }
+    y += bh + a.gap;
+  }
+  if s[0].goal_notice_n > 0 {
+    f[0].skin.motion.enter = 0;
+    y += app_notice(f, "coder.goal.notice", x, y, cw, sheet_pool(f[0].sheet, cast(string) s[0].goal_notice[0..<s[0].goal_notice_n]), APP_NOTICE_INFO) + a.gap;
+    f[0].skin.motion.enter = enter0;
+  }
   if exceeded {
     cb1: [32] u8; bb1: [32] u8; nb: [160] u8;
     c_str := ifx s[0].cost_usd_micros > 0 then cp_cost(cb1[..], s[0].cost_usd_micros) else "$0.00";
     b_str := cp_cost(bb1[..], cp_budget(s));
     nn := el_put(nb[..], 0, "Chat budget reached ("); nn = el_put(nb[..], nn, c_str); nn = el_put(nb[..], nn, " / "); nn = el_put(nb[..], nn, b_str);
     nn = el_put(nb[..], nn, "). Approve continuing above budget or increase the limit.");
+    f[0].skin.motion.enter = 0;
     y += app_notice(f, "coder.budget.notice", x, y, cw, sheet_pool(f[0].sheet, cast(string) nb[0..<nn]), APP_NOTICE_ERROR) + a.gap_small;
+    f[0].skin.motion.enter = enter0;
     aw := app_button_width(f, -1, "Continue above budget");
     ew := app_button_width(f, -1, "Edit budget");
     if aw + a.gap_small + ew <= cw {
@@ -1407,6 +1783,21 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     cx := copy_x - a.gap_small - cw_cost;
     if cx > left + CP_CORNER {
       _ := app_chip(f, "coder.cost", cx, CP_CORNER + (side - k.cmp.chip_h) / 2, 0, -1, "Chat budget", label, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT);
+    }
+    if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
+      glb: [64] u8; gtb: [32] u8;
+      gln := el_put(glb[..], 0, "Goal · ");
+      gln = el_put(glb[..], gln, cp_goal_status_label(s[0].goal_status));
+      if s[0].goal_time_seconds > 0 {
+        gln = el_put(glb[..], gln, " · ");
+        gln = el_put(glb[..], gln, cp_goal_elapsed(gtb[..], s[0].goal_time_seconds));
+      }
+      glabel := sheet_pool(f[0].sheet, cast(string) glb[0..<gln]);
+      gw := app_chip_width(f, -1, glabel, 0);
+      gx := cx - a.gap_small - gw;
+      if gx > left + CP_CORNER {
+        _ := app_chip(f, "coder.goal", gx, CP_CORNER + (side - k.cmp.chip_h) / 2, 0, -1, "Thread goal", glabel, ifx s[0].goal_status == CP_GOAL_ACTIVE then EL_S_CURRENT else 0, CP_GOAL_OPEN);
+      }
     }
   }
   _ := app_icon_button(f, "coder.copy", copy_x, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
@@ -1669,10 +2060,22 @@ coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
 coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
   i := s[0].nturns - 1;
-  // the note on installed skills, then the message
-  whole: [CP_SKILLS + EB_TEXT] u8;
+  // the note on installed skills, optional active thread goal context, then the message
+  whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + 2048] u8;
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
-  for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { whole[n] = c; n += 1; }
+  if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
+    n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
+    n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
+    n += cp_out(whole[n..<whole.count], "\n</goal_objective>\n");
+    if s[0].goal_prompt_kind == CP_GOAL_PROMPT_CONTINUE {
+      n += cp_out(whole[n..<whole.count], "Continue working toward the active thread goal above. Make concrete, verified progress without stopping early. Do not ask the user for permission to continue. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED] and explain what is needed.\n\n");
+    } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_UPDATED {
+      n += cp_out(whole[n..<whole.count], "The user updated the active thread goal above. Realign your work to the updated objective. When the updated goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If blocked on user input, include [GOAL_BLOCKED].\n\n");
+    } else {
+      n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED].\n\n");
+    }
+  }
+  for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
                ceiling = 3, gated = true, edits = true, unlimited = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
@@ -1730,9 +2133,11 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
     else {
       s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], ifx l[0].text.count > 0 then l[0].text else "The run ended before a reply.");
       s[0].turns[i].state = CP_FAILED;
+      s[0].live_reply = i;
     }
     cp_cmds_end(s, i);
     s[0].turns[i].h = 0;
+    cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
   }
   return kind;
 }
@@ -1740,7 +2145,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
 coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return; }
   i := s[0].nturns - 1;
-  s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].turns[i].h = 0;
+  s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
   cp_cmds_end(s, i);
 }
 // What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
@@ -2421,7 +2826,9 @@ cp_find :: (text: string, needle: string) -> int {
   cp_init(s); cp_init(b);
   #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_approve(s);
   #assert coder_page_set_text(s, "run") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert s[0].live_ask == 0;
   #assert coder_page_take(b, s);
+  #assert b[0].live_ask == -1 && b[0].live_reply == -1;
   #assert coder_page_budget_usd_micros(b) == 100000 && b[0].budget_override;
   #assert coder_page_budget_usd_micros(s) == 50000000 && !s[0].budget_override;
 }
@@ -2473,4 +2880,56 @@ cp_find :: (text: string, needle: string) -> int {
   #assert u_row.action == 0 && p_row.action == 0;
   #assert p_row.y > u_row.y;
   #assert u_row.y > h - footer_h && p_row.y + p_row.h < h;
+}
+
+#test "/goal slash commands manage lifecycle, prompt injection, continuation, and persistence" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  // Bare /goal with no active goal opens the goal editor.
+  #assert coder_page_set_text(s, "/goal") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_GOAL;
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  // Setting a goal with /goal <objective> starts an active goal turn with goal prompt context.
+  #assert coder_page_set_text(s, "/goal ship the goal feature with full tests") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  obj: [256] u8; on := coder_page_goal_objective(s, obj[..]);
+  #assert cast(string) obj[0..<on] == "ship the goal feature with full tests";
+  task_buf: [8192] u8;
+  tn1 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  #assert tn1 > 0;
+  task1 := cast(string) task_buf[0..<tn1];
+  #assert cp_contains(task1, "<goal_objective>") && cp_contains(task1, "ship the goal feature with full tests");
+  // When a turn ends without [GOAL_COMPLETE]/[GOAL_BLOCKED], autonomous continuation starts the next turn.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"First milestone complete, moving to tests.\"}") == MWW_ENDED;
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_running(s);
+  tn2 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  #assert tn2 > 0 && cp_contains(cast(string) task_buf[0..<tn2], "Continue working toward the active thread goal.");
+  // Pausing stops the active turn and sets status to paused.
+  #assert coder_page_set_text(s, "/goal pause") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_PAUSED;
+  #assert coder_page_action(s) == CP_ASK_STOP;
+  // Resuming starts a continuation turn.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"stopped\"}") == MWW_ENDED;
+  #assert coder_page_set_text(s, "/goal resume") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  // Marking [GOAL_COMPLETE] ends the autonomous loop.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All tests pass.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
+  #assert !coder_page_running(s);
+  // Goal state round-trips through save and load.
+  #assert coder_page_save_due(s);
+  kept: [4096] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && !coder_page_save_due(s);
+  #assert coder_page_new(s) && coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
+  on2 := coder_page_goal_objective(s, obj[..]);
+  #assert cast(string) obj[0..<on2] == "ship the goal feature with full tests";
+  // /goal clear removes the goal.
+  #assert coder_page_set_text(s, "/goal clear") && coder_page_submit(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_NONE;
+  #assert coder_page_goal_objective(s, obj[..]) == 0;
 }

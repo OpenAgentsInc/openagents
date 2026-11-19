@@ -84,6 +84,13 @@ int64_t cd_budget_usd_micros(void *page);
 int cd_set_budget_usd_micros(void *page, int64_t micros);
 int cd_budget_exceeded(void *page);
 int cd_budget_approve(void *page);
+// Active thread goal (/goal): status (0=none, 1=active, 2=paused, 3=complete, 4=blocked, 5=budget_limited).
+int cd_goal_status(void *page);
+int cd_goal_time(void *page);
+int cd_goal_objective(void *page, char *out, int cap);
+int cd_goal_set(void *page, const char *objective);
+int cd_goal_set_status(void *page, int status);
+int cd_goal_clear(void *page);
 int cd_copied(void *page, char *out, int cap);
 // The text's committed box (x, y, w, h, the first line's inset, a line's height), or 0 before the
 // first frame; the editor's style from the skin (14 floats, as apps/shared/composer/host.h's gc_style).

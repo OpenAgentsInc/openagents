@@ -137,6 +137,18 @@ int64_t cd_budget_usd_micros(void *page) { CoderHost *c = page; return c ? coder
 int cd_set_budget_usd_micros(void *page, int64_t micros) { CoderHost *c = page; return c ? (int)coder_page_set_budget_usd_micros(cd_state(c), micros) : 0; }
 int cd_budget_exceeded(void *page) { CoderHost *c = page; return c ? (int)coder_page_budget_exceeded(cd_state(c)) : 0; }
 int cd_budget_approve(void *page) { CoderHost *c = page; return c ? (int)coder_page_budget_approve(cd_state(c)) : 0; }
+int cd_goal_status(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_status(cd_state(c)) : 0; }
+int cd_goal_time(void *page) { CoderHost *c = page; return c ? (int)coder_page_goal_time(cd_state(c)) : 0; }
+int cd_goal_objective(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || cap < 1) return 0;
+  int n = (int)coder_page_goal_objective(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_goal_set(void *page, const char *objective) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_set(cd_state(c), cd_string(objective)); cd_changed(c); return ok; }
+int cd_goal_set_status(void *page, int status) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_set_status(cd_state(c), status); cd_changed(c); return ok; }
+int cd_goal_clear(void *page) { CoderHost *c = page; if (!c) return 0; int ok = (int)coder_page_goal_clear(cd_state(c)); cd_changed(c); return ok; }
 int cd_copied(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || cap < 1) return 0;
