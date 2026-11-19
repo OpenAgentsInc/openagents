@@ -5,7 +5,7 @@
 #ifndef OPENAGENTS_CORE_HOST_H
 #define OPENAGENTS_CORE_HOST_H
 #include <stdint.h>
-// The core on the heap (about 37 MiB) with its device lane attached, initialised. NULL when there is no memory.
+// The core on the heap (bounded footprint, ~1.6 MiB) with its device lane attached, initialised. NULL when there is no memory.
 void *oa_core_open(void);
 void oa_core_close(void *core);
 int64_t oa_core_launch(void *core, int64_t mono_ms, int64_t wall_ms, const char *rejoin);
@@ -28,6 +28,10 @@ int64_t oa_core_busy(void *core);
 int64_t oa_core_dirty_take(void *core, int64_t mask);
 // The conversation to rejoin at the next launch: its byte count (0 for none).
 int64_t oa_core_keep(void *core, uint8_t *out, int64_t cap);
+// Sets the client resource profile (0 = desktop, 1 = mobile).
+int oa_core_set_profile(void *core, int64_t profile);
+// Delivers an OS memory-pressure warning to evict cached window payloads.
+int64_t oa_core_memory_warning(void *core, int64_t mono_ms, int64_t wall_ms);
 // The installed HTTP policy (url-policy.coax up_http): method 1 GET, 2 POST.
 // A dispatch that answers APP_GUEST hands the done event's text to this page hook (the environment
 // picker's reads); with none set, the root lets the guest go.

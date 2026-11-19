@@ -36,7 +36,7 @@ enum AppCoreKind: Int64 { case http = 1, authState = 2, authEmail = 3, authVerif
 /// host.coax APP_HOST_ fields, in order.
 enum AppCoreField: Int { case kind = 0, generation, method, limit, timeout, owner; static let count = 6 }
 /// url-policy.coax UP_ methods and dispatch.coax LIFE_ codes.
-enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foreground: Int32 = 1, background: Int32 = 2 }
+enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foreground: Int32 = 1, background: Int32 = 2, memoryWarning: Int32 = 3; static let profileDesktop: Int64 = 0, profileMobile: Int64 = 1 }
 
 @MainActor final class AppCoreBridge: AppOutbox {
     private let core: AppCoreABI
@@ -143,6 +143,12 @@ enum AppCoreCode { static let get: Int64 = 1, post: Int64 = 2; static let foregr
     /// The app came to the front or left it.
     func lifecycle(foreground: Bool) {
         core.lifecycle(foreground ? AppCoreCode.foreground : AppCoreCode.background)
+        heard()
+    }
+
+    /// OS memory-pressure warning: evict cached window payloads while keeping cursors and active session.
+    func memoryWarning() {
+        core.lifecycle(AppCoreCode.memoryWarning)
         heard()
     }
 

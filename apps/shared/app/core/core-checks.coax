@@ -216,3 +216,28 @@ ckt_login :: (c: [] AppCore) -> bool {
  c:[1]AppCore;app_init(c[..]);c[0].auth=AUTH_IN;op:=app_provider_ids(c[..]);#assert op>0;
  r:=c[0].out[0].slots[fx_find(c[0].out[..],op)];#assert r.owner==OWN_USAGE && r.kind==FX_IDS && r.purpose==3 && r.method==0 && r.limit==0 && r.timeout_ms==0 && r.path_n==0 && r.text_n==0 && r.body_n==0;
 }
+
+#test "Phase 2: mobile profile, bounded task buffers, and memory-warning eviction preserve cursors" {
+  a: [1] AppCore; c := a[..]; app_init(c);
+  #assert APP_TASK_BUF_MAX == 262144;
+  #assert c[0].windows[0].profile == APP_PROFILE_DESKTOP;
+  #assert app_host_set_profile(c, APP_PROFILE_MOBILE) && c[0].windows[0].profile == APP_PROFILE_MOBILE;
+  #assert app_win_byte_limit(c[0].windows[..], WIN_DIFF) == APP_BUDGET_MOBILE_PREVIEW;
+  #assert app_win_byte_limit(c[0].windows[..], WIN_FILE_PREVIEW) == APP_BUDGET_MOBILE_PREVIEW;
+  #assert app_win_byte_limit(c[0].windows[..], WIN_MESSAGES) == APP_BUDGET_MOBILE_PAYLOAD;
+  slot := app_win_open(c[0].windows[..], WIN_MESSAGES, "sess_mobile_1", true);
+  #assert slot >= 0;
+  p: [1] AppWindowPage;
+  p[0].kind = WIN_MESSAGES; p[0].seq_from = 1; p[0].seq_to = 25;
+  p[0].item_count = 25; p[0].has_more = true; p[0].cursor_n = js_copy(p[0].cursor[..], "cur_25");
+  #assert app_win_apply(c[0].windows[..], slot, p[0], "delta-payload-bytes") == WIN_APPLY_OK;
+  #assert c[0].windows[0].slots[slot].payload_n > 0;
+  // Background marks suspended and evicts non-active windows; memory warning aggressively evicts payloads while keeping cursors.
+  #assert app_host_lifecycle(c, 100, 1000, LIFE_BACKGROUND) == APP_OK && !c[0].foreground && c[0].suspended;
+  #assert app_host_memory_warning(c, 150, 1050) == APP_OK && c[0].low_memory_count == 1;
+  #assert c[0].windows[0].slots[slot].payload_n == 0;
+  #assert app_win_cursor(c[0].windows[0].slots[slot..<slot + 1]) == "cur_25";
+  #assert c[0].windows[0].slots[slot].seq == 25;
+  // Foreground clears suspended flag and resumes cleanly.
+  #assert app_host_lifecycle(c, 200, 1100, LIFE_FOREGROUND) == APP_OK && c[0].foreground && !c[0].suspended;
+}

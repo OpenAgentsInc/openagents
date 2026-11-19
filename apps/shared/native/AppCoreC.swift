@@ -31,6 +31,8 @@ import Foundation
     func wake() -> Int64 { oa_core_wake(raw) }
     func clock() { _ = oa_core_clock(raw, mono, wall); after?() }
     func lifecycle(_ code: Int32) { _ = oa_core_lifecycle(raw, mono, wall, Int64(code)); after?() }
+    @discardableResult func setProfile(_ profile: Int64) -> Bool { oa_core_set_profile(raw, profile) != 0 }
+    func memoryWarning() { _ = oa_core_memory_warning(raw, mono, wall); after?() }
     func launch(rejoin: String) { _ = oa_core_launch(raw, mono, wall, rejoin); after?() }
     /// A person's action the platform owns (the editor's text, a hardware Return).
     @discardableResult func action(_ code: Int64, flag: Bool = false, text: String = "", more: String = "") -> Int64 {

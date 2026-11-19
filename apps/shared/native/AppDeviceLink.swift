@@ -14,6 +14,7 @@
 // relay's AUTH challenge with the event dv_auth signs. The key is passed to each call and never
 // enters the core, its outbox or a log.
 import Foundation
+import Network
 import Security
 
 /// One computer this phone is paired with. The grant works only with this phone's key.
@@ -33,6 +34,9 @@ struct AppPaired: Codable, Equatable {
     private let pairStore = FileDeviceKeyStore(url: AppDeviceLink.folder.appendingPathComponent("own-computer-paired-v1"))
     #endif
     private var sockets: [String: AppRelaySocket] = [:]
+    private var suspended = false
+    private var pathMonitor: NWPathMonitor?
+    private var lastPathSignature: String?
     /// Pairing links opened before the core could take them.
     private var waiting: [String] = []
     /// The core's entry for a pairing link (AppServices sets it once the core is up).
@@ -41,6 +45,44 @@ struct AppPaired: Codable, Equatable {
     /// A link the system opened in the app (OpenAgentsApp's URL handler).
     func opened(_ link: String) {
         if let onLink { onLink(link) } else if waiting.count < 4 { waiting.append(link) }
+    }
+
+    /// Cleanly tears down relay WebSockets before iOS suspends the process so no stale sockets
+    /// hang on resume and no background socket crashes occur.
+    func suspendForBackground() {
+        suspended = true
+        for (_, socket) in sockets { socket.suspend() }
+    }
+
+    /// Resumes relay connectivity on foreground return, re-arming network path monitoring and
+    /// dropping any socket whose transport went stale while suspended.
+    func resumeFromBackground() {
+        suspended = false
+        startPathMonitorIfNeeded()
+        for (_, socket) in sockets { socket.resume() }
+    }
+
+    private func startPathMonitorIfNeeded() {
+        guard pathMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let interfaces = path.availableInterfaces.map { $0.name }.sorted().joined(separator: ",")
+            let sig = "\(path.status)|\(interfaces)|\(path.isExpensive)|\(path.isConstrained)"
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let prev = self.lastPathSignature
+                    self.lastPathSignature = sig
+                    // When switching between Wi-Fi and cellular or recovering from unsatisfied,
+                    // proactively recycle open relay sockets so the next request reconnects cleanly.
+                    if let prev, prev != sig, !self.suspended {
+                        for (_, socket) in self.sockets { socket.resetForNetworkChange() }
+                    }
+                }
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.openagents.devicelink.netpath", qos: .utility))
+        pathMonitor = monitor
     }
 
     // ---------------------------------------------------------------- the key and the pairings
@@ -139,6 +181,8 @@ struct AppPaired: Codable, Equatable {
         var filter = [UInt8](repeating: 0, count: 512), id = [UInt8](repeating: 0, count: 64)
         let fn = oa_device_filter(work, &filter, Int64(filter.count))
         guard n > 0, fn > 0, oa_device_event_id(work, &id) == 64 else { oa_device_work_close(work); done(nil, false); return }
+        startPathMonitorIfNeeded()
+        if suspended { oa_device_work_close(work); done(nil, false); return }
         let socket = sockets[relay] ?? AppRelaySocket(url: relay, sign: { challenge in
             guard let sk = self.secret(), let aux = AppDeviceLink.random(32) else { return nil }
             var out = [UInt8](repeating: 0, count: 4096); let c = [UInt8](challenge.utf8)
@@ -175,10 +219,33 @@ struct AppPaired: Codable, Equatable {
     private struct Ask { var reply: (String) -> Bool; var ended: (Bool) -> Void; var sent: Bool; var eventID: String }
     private var asks: [String: Ask] = [:]
     private var serial = 0
+    private var suspended = false
+    private var pingTimer: DispatchSourceTimer?
 
     init(url: String, sign: @escaping (String) -> String?) { self.url = url; self.sign = sign }
 
+    /// Suspends the relay socket cleanly for iOS backgrounding: cancels timers and closes the
+    /// WebSocket so in-flight callers get a clean ended(sent) callback instead of hanging.
+    func suspend() {
+        suspended = true
+        stopPing()
+        drop()
+    }
+
+    /// Allows new requests to reconnect cleanly when returning to the foreground.
+    func resume() {
+        suspended = false
+        if task != nil && !ready { drop() }
+    }
+
+    /// Drops any existing socket after a Wi-Fi/cellular transition so the next request dials fresh.
+    func resetForNetworkChange() {
+        guard task != nil else { return }
+        drop()
+    }
+
     func ask(filter: String, event: String, eventID: String, timeout: TimeInterval, reply: @escaping (String) -> Bool, ended: @escaping (Bool) -> Void) {
+        if suspended { ended(false); return }
         serial += 1
         let sub = "oa\(serial)"
         asks[sub] = Ask(reply: reply, ended: ended, sent: false, eventID: eventID)
@@ -207,8 +274,34 @@ struct AppPaired: Codable, Equatable {
     private func open() {
         guard !ready else { return }
         ready = true
+        startPing()
         let go = queued; queued = []
         for g in go { g() }
+    }
+    private func startPing() {
+        stopPing()
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .seconds(25), repeating: .seconds(25), leeway: .seconds(5))
+        timer.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let t = self.task, self.ready, !self.suspended else { return }
+                t.sendPing { [weak self] error in
+                    guard error != nil else { return }
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            guard let self, self.task === t else { return }
+                            self.drop()
+                        }
+                    }
+                }
+            }
+        }
+        pingTimer = timer
+        timer.resume()
+    }
+    private func stopPing() {
+        pingTimer?.cancel()
+        pingTimer = nil
     }
     private func send(_ text: String) { task?.send(.string(text)) { _ in } }
     private func receive(_ t: URLSessionWebSocketTask) {
@@ -249,6 +342,7 @@ struct AppPaired: Codable, Equatable {
     }
     /// The connection ended: every request on it ends (unknown once the relay took it), and the next one connects again.
     private func drop() {
+        stopPing()
         task?.cancel(with: .goingAway, reason: nil); task = nil; ready = false; authID = ""
         let waiting = asks; asks = [:]; queued = []
         for (_, a) in waiting { a.ended(a.sent) }
