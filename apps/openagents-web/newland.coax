@@ -2221,7 +2221,9 @@ coaxial_land_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   #assert s[0].plots == rows(land_projects(s[..])) && s[0].plots > 3;
   for k: 0..<s[0].plots {
     #assert s[0].plot[k].tasks >= s[0].plot[k].done;
-    #assert s[0].plot[k].commits > 0 && s[0].plot[k].commits <= MAX_COMMITS;
+    // A quiet project can have none: the capture reads the repo's recent history only, and
+    // nothing in the drawing divides by the count (planetary-villa had 0 on 2026-11-18).
+    #assert s[0].plot[k].commits >= 0 && s[0].plot[k].commits <= MAX_COMMITS;
   }
   #assert s[0].agents > 0;
   #assert rows(LAND_PEOPLE)==0; // production has no simulated people
