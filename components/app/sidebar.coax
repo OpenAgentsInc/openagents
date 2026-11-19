@@ -73,8 +73,8 @@ app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w
     scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", edge, oy, rest, h, 0, close);
     sheet_hit(sh, UIFRAME_HIT, scrim, 0, edge, oy, rest, h);
   }
-  // the panel: pure black, square, flush with the left edge
-  sheet_fill(sh, x, oy, pw, h, 0, black);
+  // the panel: square, flush with the left edge; pure black, or the skin's sidebar when it is opaque (Coder Noir's #050505)
+  sheet_fill(sh, x, oy, pw, h, 0, ifx s.sidebar.a == 1 then s.sidebar else black);
   panel := uiframe_semantic(f, id, EL_REGION, label, x, oy, pw, h, 0, 0);
   sheet_hit(sh, UIFRAME_HIT, panel, 0, x, oy, pw, h);
   uiframe_open(f, panel);

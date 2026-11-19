@@ -23,8 +23,8 @@
 //    siblings, SPIR-V and Metal, with the compiler in this checkout.
 // 5. No colours in Coder Desktop's page (GitHub #13738, as zgx's
 //    tests/design_lint.rs). A colour made in apps/coder-desktop/page/
-//    (rgba( or hex(, outside a comment) fails: the page reads Zeron Dark
-//    from its skin and zeron_dark() (components/skin/zeron.coax).
+//    (rgba( or hex(, outside a comment) fails: the page reads Coder Noir
+//    from its skin and cp_theme() (components/skin/noir.coax).
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";

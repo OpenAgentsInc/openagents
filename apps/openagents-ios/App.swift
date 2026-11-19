@@ -43,7 +43,7 @@ import UIKit
     private lazy var editor:ComposerEditor=ComposerEditor(style:style())
 
     override func viewDidLoad() {
-        super.viewDidLoad();view.backgroundColor = .black;view.accessibilityIdentifier="chat.screen"
+        super.viewDidLoad();view.backgroundColor = UIColor(white:10.0/255.0,alpha:1);view.accessibilityIdentifier="chat.screen"   // Coder Noir's background, #0a0a0a (components/skin/noir.coax), under the page before its first frame
         guard let resources=Bundle.main.path(forResource:"Components",ofType:nil),let owner=resources.withCString({oc_open($0)}),let raw=oc_view(owner) else {
             let label=UILabel();label.text="OpenAgents could not start. Restart the app.";label.numberOfLines=0;label.textAlignment = .center;label.textColor = .label
             label.translatesAutoresizingMaskIntoConstraints=false;view.addSubview(label)

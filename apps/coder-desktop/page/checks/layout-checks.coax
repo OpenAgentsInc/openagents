@@ -34,7 +34,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   // the composer's 14/22, and settings' own faces at Zeron's 11, 12 and 20 with no correction for a scale
   #assert coder_page_font_size(CP_COMPOSER_FACE) == 14 && k.cmp.line == 22;
   #assert coder_page_font_size(FONT_SET_HEAD) == 11 && coder_page_font_size(FONT_SET_DESC) == 12 && coder_page_font_size(FONT_SET_TITLE) == 20;
-  #assert k.set.title_line == zeron_settings().title_line && k.set.row == zeron_settings().row;
+  #assert k.set.title_line == coder_noir_settings().title_line && k.set.row == coder_noir_settings().row;
   // each size the face's weight is: Medium for md and the chips, SemiBold for bold, Mono for code
   w := FONT_WEIGHTS;
   #assert w[k.body.face] == 0 && w[k.strong.face] == 2 && w[k.label.face] == 1 && w[k.code.face] == 3 && w[k.mono.face] == 3;
@@ -50,12 +50,13 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert k.cmp.send == 28 && k.cmp.action_inset == 6 && k.cmp.chip_h == 28;
 }
 
-#test "Coder's skin is Zeron Dark as zgx ships it, with no colour of its own" {
-  k := cp_skin(); z := zeron_skin(); th := zeron_dark();
-  #assert k.canvas.r == th.shell.r && k.sidebar.a == z.sidebar.a && k.sidebar.r == z.sidebar.r;
-  #assert k.ink.r == th.text.r && k.muted.a == 0.6 && k.faint.a == 0.42 && k.accent.b == th.accent.b && k.warning.g == th.warning.g;   // zeron.coax checks these against zeron-dark.json
-  #assert k.raised.a == z.raised.a && k.hover.a == z.hover.a && k.hairline.a == z.hairline.a && k.surface.r == th.surface.r;
-  #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r;
+#test "Coder's skin is Coder Noir on Zeron's measures, with no colour of its own" {
+  k := cp_skin(); z := coder_noir_skin(); th := cp_theme(); n := coder_noir();
+  #assert th.shell.r == n.shell.r && th.sidebar.r == n.sidebar.r && th.surface.r == n.surface.r;   // noir.coax checks these against builtins.rs coder(dark)
+  #assert k.canvas.r == th.shell.r && k.sidebar.a == 1 && k.sidebar.r == th.sidebar.r && k.sidebar.r < k.canvas.r;   // the sidebar darker than the main area
+  #assert k.ink.r == th.text.r && k.muted.r == th.muted.r && k.faint.r == th.faint.r && k.accent.r == th.text.r && k.warning.g == th.warning.g;
+  #assert k.raised.r == z.raised.r && k.hover.a == z.hover.a && k.hairline.r == z.hairline.r && k.surface.r == th.surface.r;
+  #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r && k.bubble.r == th.secondary.r && k.syntax[1].r == z.syntax[1].r;
   // Zeron's radii: the composer's 26, code blocks' 12
   #assert k.cmp.radius == 26 && k.md.block_radius == 12 && k.app.code_radius == 12;
 }

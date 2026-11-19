@@ -1,0 +1,55 @@
+// Coder Noir on a phone: the conversation skin's geometry (conversation.coax, the Claude iOS
+// capture's measures) on Coder Noir's colours (noir.coax). The iPhone app wears it; the shared
+// conversation skin stays as it is for its other consumers.
+//   coax/bin/coax test components/skin/noir-phone.coax
+
+#load "conversation.coax";
+#load "noir.coax";
+
+// Coder Noir's colours on a skin's measures: every colour role the conversation and Arcade phone
+// skins set, from coder_noir_skin(). The geometry, faces and motion stay the given skin's.
+noir_colours :: (skin: UiSkin) -> UiSkin {
+  s := skin; n := coder_noir_skin(); th := coder_noir();
+  // the grounds: the main area, the input (the composer, a field, a bubble), raised, a card set in
+  s.canvas = n.canvas; s.surface = n.surface; s.raised = n.raised; s.sunk = n.sunk;
+  s.hairline = n.hairline; s.field_edge = th.line; s.hover = n.hover;
+  s.ink = n.ink; s.muted = n.muted; s.faint = n.faint;
+  s.accent = n.accent; s.on_accent = n.on_accent; s.selection = n.selection;
+  s.danger = n.danger; s.warning = n.warning; s.success = n.success;
+  s.danger_muted = n.danger_muted; s.warning_muted = n.warning_muted;
+  s.quote_wash = n.quote_wash; s.quote_rail = n.quote_rail; s.trim = n.trim;
+  s.hunk_wash = n.hunk_wash; s.add_wash = n.add_wash; s.add_bar = n.add_bar; s.del_wash = n.del_wash; s.del_bar = n.del_bar;
+  s.file_tint = n.file_tint; s.doc_tint = n.doc_tint;
+  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = n.syntax[k]; }
+  for k: 0..<3 { s.spinner[k] = n.spinner[k]; }
+  s.sidebar = n.sidebar;                       // the sidebar is Noir's shell, darker than the page
+  s.menu_selected = n.menu_selected;
+  s.set.text = n.set.text; s.set.secondary = n.set.secondary; s.set.tertiary = n.set.tertiary;
+  s.set.selected = n.set.selected; s.set.tint = n.set.tint; s.set.subtle = n.set.subtle; s.set.strong = n.set.strong;
+  s.set.hover = n.set.hover; s.set.pressed = n.set.pressed; s.set.well = n.set.well; s.set.well_hover = n.set.well_hover;
+  s.set.field = n.set.field; s.set.field_edge = n.set.field_edge;
+  s.set.primary = n.set.primary; s.set.primary_hover = n.set.primary_hover; s.set.on_primary = n.set.on_primary; s.set.danger = n.set.danger;
+  return s;
+}
+
+noir_phone_skin :: () -> UiSkin {
+  s := noir_colours(conversation_skin());
+  s.name = "Coder Noir phone";
+  // as the conversation skin does: inline code on the raised ground, a code block's header on the surface
+  s.code_wash = s.raised; s.header_wash = s.surface;
+  return s;
+}
+
+#test "Noir's colours on the Arcade phone skin keep its measures" {
+  a := arcade_phone_skin(); s := noir_colours(a);
+  #assert s.ink.r == hex(0xededed, 1).r && s.canvas.r == hex(0x0a0a0a, 1).r && s.accent.r == s.ink.r;
+  #assert s.cmp.line == a.cmp.line && s.control_h == a.control_h && s.name == a.name && s.set.row == a.set.row && s.set.text.r == s.ink.r;
+}
+#test "the phone wears Coder Noir's colours on the conversation skin's measures" {
+  s := noir_phone_skin(); c := conversation_skin(); th := coder_noir();
+  #assert s.canvas.r == hex(0x0a0a0a, 1).r && s.surface.r == hex(0x1e1e1e, 1).r && s.sidebar.r == hex(0x050505, 1).r;
+  #assert s.ink.r == hex(0xededed, 1).r && s.muted.r == hex(0x818181, 1).r && s.faint.r == hex(0x656565, 1).r;
+  #assert s.accent.r == s.ink.r && s.on_accent.r == th.bg.r && s.selection.a == 0.35 && s.syntax[1].r == hex(0xd093d0, 1).r;
+  #assert s.code_wash.r == s.raised.r && s.header_wash.r == s.surface.r && s.canvas.r < s.surface.r;
+  #assert s.chat.enabled && s.app.nav == c.app.nav && s.cmp.send == c.cmp.send && s.control_h == c.control_h && s.border == c.border;
+}

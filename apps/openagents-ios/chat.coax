@@ -28,7 +28,7 @@
 #load "../shared/app/view/page.coax";
 #load "../../components/app/nav.coax";
 #load "../../components/app/sidebar.coax";
-#load "../../components/skin/conversation.coax";
+#load "../../components/skin/noir-phone.coax";   // the conversation skin on Coder Noir's colours
 #load "../shared/app/login/card.coax";
 #load "../shared/app/login/bridge.coax";
 #load "../shared/app/environment/bridge.coax";
@@ -646,7 +646,7 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
   a[0].frame += 1;
-  k := conversation_skin();
+  k := noir_phone_skin();
   // the sidebar's open share for this frame first: the ground, the push and the dim all draw from it
   s[0].share = app_sidebar_ease(s[0].share, s[0].drawer, t, s[0].reduced);
   // the page's ground lightens while the sidebar pushes it, so it reads apart from the black panel
@@ -784,7 +784,7 @@ chat_field_box :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) 
 // The content rectangle in points, from the same skin and committed row as
 // the painter. SDK adapters add only their editor's own native text insets.
 chat_field_text_box :: (s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) {
- if !chat_field_box(s,out) {return false;}k:=conversation_skin();u:=ch_u(s);pad:=k.chrome.field_pad*u;
+ if !chat_field_box(s,out) {return false;}k:=noir_phone_skin();u:=ch_u(s);pad:=k.chrome.field_pad*u;
  out[0]+=pad;out[2]-=2*pad;
  if chat_field_kind(s)==4 {out[1]+=pad;out[3]-=2*pad;}
  else {height:=k.body.line*u;out[1]+=(out[3]-height)/2;out[3]=height;}
@@ -892,7 +892,7 @@ chat_editor :: (s: [] ChatPage, out: [] f32) -> bool #export_c #effects(all) {
 // the placeholder's ink and the caret's, each straight RGBA.
 chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
   if out.count < 14 { return false; }
-  k := conversation_skin();
+  k := noir_phone_skin();
   out[0] = k.body.size * ARCADE_PHONE_SCALE; out[1] = 23;
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
@@ -1025,7 +1025,7 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
  _=chat_frame(s[..],o[0].v[..],960,1704,3,0);#assert ch_scroll_max(s[..])>0 && s[0].menu_viewport>0;
  chat_scroll_to(s[..],ch_scroll_max(s[..]));_=chat_frame(s[..],o[0].v[..],960,1704,3,0);
  #assert ch_test_tap(s[..],"thread.feedback");_=chat_frame(s[..],o[0].v[..],960,1704,3,0);#assert chat_activate(s[..],"chat.options");_=chat_frame(s[..],o[0].v[..],960,1704,3,0);
- chat_scroll_to(s[..],3*conversation_skin().control_h);_=chat_frame(s[..],o[0].v[..],960,1704,3,0);
+ chat_scroll_to(s[..],3*noir_phone_skin().control_h);_=chat_frame(s[..],o[0].v[..],960,1704,3,0);
  #assert ch_test_tap(s[..],"thread.rename.open") && s[0].rename && chat_refused(s[..])==0;
 }
 

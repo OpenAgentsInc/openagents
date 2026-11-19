@@ -406,8 +406,9 @@ zeron_syntax :: (role: int, plain: Rgba) -> Rgba {
 }
 
 // Zeron's settings screen, dark (ds/settings.luau, ds/account_row.luau, ds/tokens.luau, themes/zeron-dark.json), in points.
-zeron_settings :: () -> UiSettings {
-  th := zeron_dark();
+zeron_settings :: () -> UiSettings { return zeron_settings_from(zeron_dark()); }
+// The settings screen on any theme of Zeron's shape (Coder Noir's, noir.coax): Zeron's measures, the theme's colours.
+zeron_settings_from :: (th: Theme) -> UiSettings {
   return UiSettings.{
     title_face = FONT_SET_TITLE, title_line = 26,
     text_face = FONT_MENU, text_line = 18, page_line = 20,   // (the atlas has no Geist 13 regular: a 1x skin reads it in the medium)
@@ -439,8 +440,11 @@ zeron_settings :: () -> UiSettings {
     danger = th.danger};
 }
 
-zeron_skin :: () -> UiSkin {
-  th := zeron_dark();
+zeron_skin :: () -> UiSkin { return zeron_skin_from(zeron_dark()); }
+// Zeron's skin on any theme of Zeron's shape: its faces and measures, the theme's colours (Coder
+// Noir wears it, noir.coax). Zeron Dark's own Markdown inks (diff washes, muted tiers, syntax,
+// spinner) stay Zeron's here; a theme with its own sets them after.
+zeron_skin_from :: (th: Theme) -> UiSkin {
   s := UiSkin.{id = UISKIN_ZERON, name = "zeron",
     canvas = th.shell, surface = th.surface, raised = th.raised, sunk = th.base, hairline = th.line, hover = th.hover,
     ink = th.text, muted = th.muted, faint = th.faint,
@@ -464,8 +468,8 @@ zeron_skin :: () -> UiSkin {
     search = UiType.{face = FONT_SEARCH, size = 14, line = 14 * PHI},
     chip = ink(0.06), well = rgba(0, 0, 0, 0.16), rail = ink(0.12),
     hunk_wash = byte_alpha(th.accent, 0.08),
-    add_wash = byte_alpha(hex(SUCCESS, 1), 0.055), add_bar = byte_alpha(hex(SUCCESS, 1), 0.55),
-    del_wash = byte_alpha(hex(DANGER, 1), 0.055), del_bar = byte_alpha(hex(DANGER, 1), 0.55),
+    add_wash = byte_alpha(th.success, 0.055), add_bar = byte_alpha(th.success, 0.55),
+    del_wash = byte_alpha(th.danger, 0.055), del_bar = byte_alpha(th.danger, 0.55),
     danger_muted = hex(DANGER_MUTED, 1), warning_muted = hex(WARNING_MUTED, 1),
     file_tint = hex(0xfb923c, 1),
     space = 8, pad = 16, radius = 12, radius_control = 8, border = 1, control_h = 32, control_pad = 12,
@@ -503,7 +507,7 @@ zeron_skin :: () -> UiSkin {
   s.switch_shade = rgba(0, 0, 0, 0.14); s.switch_wash = ink(0.18); s.switch_rim = ink(0.12);
   s.switch_mark = ink(0.96); s.switch_ring = ink(0.92); s.switch_knob = ink(0.96); s.switch_knob_rim = rgba(0, 0, 0, 0.10);
   s.hud = zeron_hud();
-  s.set = zeron_settings();
+  s.set = zeron_settings_from(th);
   return s;
 }
 

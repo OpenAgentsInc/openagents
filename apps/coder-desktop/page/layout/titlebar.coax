@@ -51,7 +51,7 @@ cp_title_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, toggle: bool) {
   if left == 0 {
     i := cp_island(s, toggle);
     if i.w > 0 {
-      th := zeron_dark();
+      th := cp_theme();
       sheet_under(sh, uiskin_shadow(sh[0].under, sh[0].nu, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, k.shadows.sm));
       sheet_fill(sh, i.x, i.y, i.w, i.h, CP_ISLAND_RADIUS, th.menu);
     }

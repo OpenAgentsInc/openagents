@@ -416,7 +416,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   // Zeron bottom toolbar inside the composer pill: working folder chip on the left,
   // compact model selector chip beside the circular 28pt send/stop pill on the right,
   // and Zeron-styled model picker popover above it.
-  th := zeron_dark();
+  th := cp_theme();
   z_ink := th.text; z_sec := th.muted; z_ter := th.faint;   // text.primary, .secondary, .tertiary
   z_hov := th.hover; z_prs := th.pressed;
   glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
@@ -569,9 +569,9 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f3
   box_y := bottom - box_h;
   row_y := box_h - inset - control;
   send_x := w - inset - control;
-  // Zeron Dark (zeron-dark.json through zeron_dark()): the pill, its edge (firmer with the keyboard),
+  // The page's theme (cp_theme(), Coder Noir): the pill, its edge (firmer with the keyboard),
   // the text and its tiers, and the primary button.
-  th := zeron_dark();
+  th := cp_theme();
   z_solid := th.surface; z_edge := th.border; z_edge_focus := th.line_strong;
   z_pri_bg := th.primary; z_pri_hov := th.primary_hover; z_pri_prs := th.primary_active; z_pri_ink := th.bg;
   z_dis_bg := th.secondary; z_dis_ink := th.disabled;

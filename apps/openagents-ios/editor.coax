@@ -62,7 +62,7 @@ che_sync :: (e:[]ChEditor,s:[]ChatPage)->bool #export_c #effects(all) {
   e[0].edit[0].body[0].no_wrap=id!=VIEW_COMPOSER_ID && chat_field_kind(s)!=4;e[0].nk=el_copy(e[0].key[..],id);
   e[0].edit[0].body[0].placeholder=ifx id==VIEW_COMPOSER_ID then VIEW_PLACEHOLDER else lf_placeholder(ch_login_field(id));
  }
- u:=ch_u(s);k:=arcade_phone_skin();box:[6]f32;
+ u:=ch_u(s);k:=noir_colours(arcade_phone_skin());box:[6]f32;
  if id==VIEW_COMPOSER_ID {if !chat_editor(s,box[..]) {return false;}e[0].box[0]=box[0]/u;e[0].box[1]=(box[1]+box[4])/u;e[0].box[2]=box[2]/u;e[0].box[3]=(box[3]-2*box[4])/u;}
  else {if !chat_field_text_box(s,box[..]) {return false;}for i:0..<4 {e[0].box[i]=box[i]/u;}}
  return true;
@@ -131,6 +131,6 @@ che_ring :: (e:[]ChEditor,s:[]ChatPage,out:[]f32)->bool #export_c #effects(all) 
 }
 che_paint :: (e:[]ChEditor,s:[]ChatPage,out:[]f32,at:int,dt:f32)->int #export_c #effects(all) {
  if e.count<1 || s.count<1 {return at;}v:=at;
- if che_sync(e,s) {v=ue_paint(e[0].edit[..],s[0].atlas[..],out,v,s[0].d,e[0].box[..],arcade_phone_skin(),dt);}
+ if che_sync(e,s) {v=ue_paint(e[0].edit[..],s[0].atlas[..],out,v,s[0].d,e[0].box[..],noir_colours(arcade_phone_skin()),dt);}
  return v;
 }

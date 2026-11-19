@@ -1,0 +1,129 @@
+// Coder Noir: the monochrome dark theme Coder Desktop and the phone wore before the Nuke
+// (git show a5e14b7645:apps/openagents/crates/theme/src/builtins.rs, fn coder(dark), with
+// AccentRoles::derive from that crate's lib.rs; the TUI's port is 3a676bebc6). It fills the same
+// Theme Zeron Dark does (zeron.coax), so a page that reads its colours from a Theme wears either,
+// and its skin is Zeron's skin on these colours: Zeron's faces and measures, Noir's colours.
+// Every role Noir had is copied as it was; a role Zeron has and Noir hadn't is derived from Noir's,
+// and says how. Not in the skin registry (all.coax): Coder Desktop and the iPhone app load it.
+//   coax/bin/coax test components/skin/noir.coax
+
+#load "zeron.coax";
+
+// Coder Noir's palette (builtins.rs coder(dark)).
+NOIR_BACKGROUND :: 0x0a0a0a;   // the main area
+NOIR_SHELL :: 0x050505;        // the sidebar, darker than the main area (#11964)
+NOIR_RAISED :: 0x191919;       // raised surfaces; dialogs and overlays are raised too
+NOIR_CARD :: 0x0e0e0e;         // cards; the terminal's ground
+NOIR_INPUT :: 0x1e1e1e;        // a text input's ground
+NOIR_TEXT :: 0xededed; NOIR_MUTED :: 0x818181; NOIR_FAINT :: 0x656565;
+NOIR_BORDER :: 0x2c2c2c; NOIR_BORDER_STRONG :: 0x404040;
+NOIR_SOLID :: 0xededed;        // the accent: monochrome, the primary control's ground
+NOIR_ON_SOLID :: 0x0a0a0a;     // what is drawn on it
+NOIR_DANGER :: 0xff4d42; NOIR_WARNING :: 0xe6c15c; NOIR_SUCCESS :: 0x9fd08a;
+// The terminal palette's blue, cyan, magenta and bright yellow (coder()'s TerminalPalette): the
+// states Noir had no role for take these.
+NOIR_BLUE :: 0x7fb2e8; NOIR_CYAN :: 0x74cfd1; NOIR_MAGENTA :: 0xd093d0; NOIR_BRIGHT_YELLOW :: 0xf2d47c;
+NOIR_PUNCTUATION :: 0xc9c9c9;
+// Its code colours by role (components/core/syntax.coax SYN_*): comment, keyword, string, number,
+// type, function, property, variable, punctuation, tag, attribute, invalid.
+NOIR_SYNTAX :: [12] int.[NOIR_MUTED, NOIR_MAGENTA, NOIR_SUCCESS, NOIR_WARNING, NOIR_CYAN, NOIR_BLUE,
+                         NOIR_MAGENTA, NOIR_TEXT, NOIR_PUNCTUATION, NOIR_MAGENTA, NOIR_CYAN, NOIR_DANGER];
+
+// AccentRoles::derive on a dark appearance: the accent mixed toward white by 0.28 (glyph light,
+// the hovered primary) and toward black by 0.18 (glyph deep, the pressed one).
+noir_mix :: (c: Rgba, to: f32, t: f32) -> Rgba {
+  return Rgba.{r = c.r + (to - c.r) * t, g = c.g + (to - c.g) * t, b = c.b + (to - c.b) * t, a = c.a};
+}
+
+coder_noir :: () -> Theme {
+  text := hex(NOIR_TEXT, 1); solid := hex(NOIR_SOLID, 1);
+  wash := opacity(solid, 0.22);         // AccentRoles wash (dark): ThemeColors.active, diff_hunk
+  return Theme.{
+    shell = hex(NOIR_BACKGROUND, 1),    // Zeron's window is the main area's ground: Noir's background
+    surface = hex(NOIR_INPUT, 1),       // the composer's pill is the text input: Noir's input
+    border = hex(NOIR_BORDER, 1),
+    text = text, muted = hex(NOIR_MUTED, 1), faint = hex(NOIR_FAINT, 1),
+    disabled = opacity(text, 0.28),     // Noir had no disabled tier: Zeron's (the text at 0.28)
+    accent = solid,                     // AccentRoles primary and caret: the solid, no violet
+    accent_hover = noir_mix(solid, 1, 0.28), accent_active = noir_mix(solid, 0, 0.18),
+    selection = opacity(solid, 0.35),   // AccentRoles selection (dark)
+    focus_ring = opacity(solid, 0.6),   // Noir had none: Zeron's (the accent at 0.6)
+    bg = hex(NOIR_ON_SOLID, 1),
+    claude = hex(0xd97757, 1),          // the Claude mark is the brand's, not the theme's
+    line = hex(NOIR_BORDER, 1),
+    line_subtle = noir_mix(hex(NOIR_BORDER, 1), hex(NOIR_BACKGROUND, 1).r, 0.5),   // halfway from the border to the ground
+    line_strong = hex(NOIR_BORDER_STRONG, 1),
+    hover = opacity(text, 0.08),        // ThemeColors.hover (dark)
+    pressed = wash, selected = wash,    // ThemeColors.active
+    raised = hex(NOIR_RAISED, 1), base = hex(NOIR_CARD, 1),
+    sidebar = hex(NOIR_SHELL, 1),       // opaque: the sidebar is Noir's shell
+    row_selected = wash,                // a selected row is active
+    primary = solid, primary_hover = noir_mix(solid, 1, 0.28), primary_active = noir_mix(solid, 0, 0.18),
+    secondary = hex(NOIR_RAISED, 1),    // a bubble, a quiet button: raised
+    secondary_hover = hex(NOIR_INPUT, 1),
+    menu = hex(NOIR_RAISED, 1),         // dialog and overlay are raised
+    menu_selected = opacity(text, 0.08),
+    popover = hex(NOIR_RAISED, 1),
+    composer_tint = hex(NOIR_INPUT, 1), // Noir's surfaces are opaque (SurfaceTreatment::Opaque): no frost
+    // shadows are black at Zeron's strengths: Noir drew none of its own
+    shadow_sm = rgba(0, 0, 0, 0x59 / 255.0), shadow_md = rgba(0, 0, 0, 0x66 / 255.0), shadow_lg = rgba(0, 0, 0, 0x80 / 255.0),
+    composer_shadow = rgba(0, 0, 0, 0x66 / 255.0), menu_shadow = rgba(0, 0, 0, 0x52 / 255.0), dialog_shadow = rgba(0, 0, 0, 0x80 / 255.0),
+    danger = hex(NOIR_DANGER, 1), warning = hex(NOIR_WARNING, 1), success = hex(NOIR_SUCCESS, 1),
+    info = hex(NOIR_BLUE, 1),
+    // an agent's state: Noir's status colours, and the terminal palette's for those it had none for
+    connecting = hex(NOIR_BLUE, 1), input = hex(NOIR_CYAN, 1), approval = hex(NOIR_WARNING, 1),
+    plan = hex(NOIR_MAGENTA, 1), done = hex(NOIR_SUCCESS, 1), failed = hex(NOIR_DANGER, 1),
+    limited = hex(NOIR_BRIGHT_YELLOW, 1)};
+}
+
+// Coder Noir's settings screen: Zeron's measures, Noir's colours. Its tint is a card, its fields the input.
+coder_noir_settings :: () -> UiSettings {
+  th := coder_noir();
+  t := zeron_settings_from(th);
+  t.tint = th.base; t.field = th.surface; t.field_edge = th.border;
+  return t;
+}
+
+// Zeron's skin on Coder Noir: the theme's roles through zeron_skin_from, then Noir's own inks.
+coder_noir_skin :: () -> UiSkin {
+  th := coder_noir();
+  s := zeron_skin_from(th);
+  s.name = "coder-noir";
+  s.danger_muted = th.danger; s.warning_muted = th.warning;   // coder(): the muted tiers are the colours
+  s.hunk_wash = opacity(th.accent, 0.22);                      // ThemeColors.diff_hunk, the accent's wash
+  s.file_tint = th.warning;
+  s.doc_tint = th.muted;
+  palette := NOIR_SYNTAX;
+  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
+  s.spinner[0] = th.text; s.spinner[1] = hex(NOIR_PUNCTUATION, 1); s.spinner[2] = th.muted;   // monochrome
+  s.set = coder_noir_settings();
+  return s;
+}
+
+#test "Coder Noir is builtins.rs coder(dark): its palette, its derived accent, and its code colours" {
+  th := coder_noir();
+  #assert th.shell.r == hex(0x0a0a0a, 1).r && th.sidebar.r == hex(0x050505, 1).r && th.sidebar.a == 1;
+  #assert th.raised.r == hex(0x191919, 1).r && th.base.r == hex(0x0e0e0e, 1).r && th.surface.r == hex(0x1e1e1e, 1).r;
+  #assert th.text.r == hex(0xededed, 1).r && th.muted.r == hex(0x818181, 1).r && th.faint.r == hex(0x656565, 1).r && th.muted.a == 1;
+  #assert th.line.r == hex(0x2c2c2c, 1).r && th.line_strong.r == hex(0x404040, 1).r;
+  #assert th.danger.r == hex(0xff4d42, 1).r && th.warning.g == hex(0xe6c15c, 1).g && th.success.g == hex(0x9fd08a, 1).g;
+  #assert th.menu.r == th.raised.r && th.popover.r == th.raised.r;
+  // monochrome accent: the solid, its wash 0.22, selection 0.35, hover the text at 0.08
+  #assert th.accent.r == th.accent.g && th.accent.g == th.accent.b && th.accent.r == th.text.r;
+  #assert th.pressed.a == 0.22 && th.row_selected.a == 0.22 && th.selection.a == 0.35 && th.hover.a == 0.08;
+  #assert th.bg.r == hex(0x0a0a0a, 1).r && th.primary.r == th.accent.r;
+  #assert th.primary_hover.r > th.primary.r && th.primary_active.r < th.primary.r && th.line_subtle.r > th.shell.r && th.line_subtle.r < th.line.r;
+  s := coder_noir_skin();
+  #assert s.canvas.r == th.shell.r && s.sidebar.r == th.sidebar.r && s.ink.r == th.text.r && s.accent.r == th.text.r;
+  #assert s.syntax[0].r == hex(0x818181, 1).r && s.syntax[1].r == hex(0xd093d0, 1).r && s.syntax[4].g == hex(0x74cfd1, 1).g;
+  #assert s.syntax[5].b == hex(0x7fb2e8, 1).b && s.syntax[8].r == hex(0xc9c9c9, 1).r && s.syntax[11].r == hex(0xff4d42, 1).r && s.syntax[0].a == 1;
+  #assert s.danger_muted.r == s.danger.r && s.add_bar.g == th.success.g && s.set.text.r == th.text.r && s.set.primary.r == th.primary.r;
+  // the measures are Zeron's
+  z := zeron_skin();
+  #assert s.md.line == z.md.line && s.cmp.radius == z.cmp.radius && s.body.face == z.body.face && s.desk.row == z.desk.row;
+}
+#test "Zeron's skin through zeron_skin_from is Zeron Dark as before" {
+  z := zeron_skin(); th := zeron_dark();
+  #assert z.add_wash.g == byte_alpha(hex(SUCCESS, 1), 0.055).g && z.del_bar.a == byte_alpha(hex(DANGER, 1), 0.55).a;
+  #assert z.set.text.r == th.text.r && z.set.tint.r == hex(0xebebeb, 1).r;
+}

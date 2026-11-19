@@ -1,4 +1,5 @@
 // Coder Desktop page (../page.coax): the layout scale and the page's skin.
+#load "../../../components/skin/noir.coax";
 
 // Points to a unit of the page's layout: the page lays out in points (Zeron's), so this is the text size alone (#13737).
 cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
@@ -8,12 +9,15 @@ cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].
 // 14 (the composer's draft, as the platform editor sets it; the menus' search), then the library's display faces.
 CP_FONT_SIZES :: [16] f32.[15, 12, 12, 15, 13.5, 13, 12, 11, 14, 13, 11, 14, 24, 11, 12, 20];
 CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placeholder when the platform editor is not showing
-// Coder Desktop's skin: Zeron Dark, typography, transcript rhythm (user bubbles,
-// markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
+// Coder Desktop's colours: Coder Noir (components/skin/noir.coax), the Theme the page reads a
+// colour from when the skin has no role for it. Every colour on the page is the skin's or this;
+// none is written out in the page (#13738).
+cp_theme :: () -> Theme { return coder_noir(); }
+// Coder Desktop's skin: Zeron's measures in points on Coder Noir's colours, typography, transcript
+// rhythm (user bubbles, markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
 cp_skin :: () -> UiSkin {
-  // Zeron Dark as it is (components/skin/zeron.coax, from zgx's zeron-dark.json): every colour
-  // here is the skin's or the theme's (zeron_dark()); none is written out in the page (#13738).
-  k := zeron_skin();
+  // Zeron's skin on Coder Noir (coder_noir_skin): the sidebar Noir's shell, darker than the main area.
+  k := coder_noir_skin();
   k.chat.enabled = true;
   // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
   k.app.side_row = 32.0f32;
@@ -57,8 +61,8 @@ cp_skin :: () -> UiSkin {
   k.app.bubble_pad_y = 10.0f32;
   k.app.bubble_radius = 16.0f32;
   k.app.bubble_share = 0.80f32;
-  k.bubble = zeron_dark().secondary;   // Zeron's bubble ground, #ffffff14 (zeron.prose.bubble.bg)
-  k.float_ground = zeron_dark().menu;  // Jump to latest on the menus' solid ground (zeron.menu.solid)
+  k.bubble = cp_theme().secondary;   // the bubble's ground (zeron.prose.bubble.bg): Noir's raised
+  k.float_ground = cp_theme().menu;  // Jump to latest on the menus' solid ground (zeron.menu.solid)
   k.app.code_head = 32.0f32;
   k.app.code_pad = 14.0f32;
   k.app.code_radius = 12.0f32;
@@ -95,6 +99,6 @@ cp_skin :: () -> UiSkin {
   k.cmp.chip_gap = 6.0f32;
   // The transcript's activity groups (#13731) and settings (settings.coax): Zeron's measures, in points as the page is.
   k.act = UiActivity.{};
-  k.set = zeron_settings();
+  k.set = coder_noir_settings();
   return k;
 }
