@@ -1662,6 +1662,29 @@ the camera, the walker, the drawing and the cards follow the turned hull.
   moment).
 
 
+### Built detail on the deck (#13687)
+
+Measured on November 18, 2026, from the checks in
+`apps/openagents-web/slab-content-city.coax` and from pictures with
+`?style=photoreal` at 1440 × 900 and 390 × 844. Issue 13687 asked for the
+deck to read as a built place from walking height. `docs/metaverse/photoreal.md`
+("The detail set") says what each rule places.
+
+| Quantity | Measured |
+|---|---|
+| Records placed | 4,567 on the prime layout: the edge 466, the dock 29, streets 1,269, blocks 1,160, works 791, temples 852. None on the dome and cluster layouts or in the construction view |
+| How they are placed | by rule from the plan's records as they are each rebuild: the deck's bounds, height and dock basin come from the hull's own records, and nothing is placed where a building stands, so a resized hull keeps its detail |
+| The pass's budget | 41 of 128 parts, 18,132 of 40,000 fixed vertices, 6,552 of 16,384 still records, 31 of 62 materials (with the materials set) |
+| Phone tier | 1,745 records drawn of 6,552: rails, lamps, signs, ladders, fins, louvres and other small parts are left out |
+| Distance | small parts shrink away with distance (`pr_near`): rails at 140 m, bollards at 130 m, benches and signs at 200 m, lamps at 330 m, kerbs at 460 m, steel at 420 m, fins at 560 m, markings at 800 m, plant at 1.5 km |
+| GPU frame time, ms p50 | orbit 1440 × 900 3.81 (3.28 before); orbit phone 0.73 (0.58); walk 1440 × 900 3.28 (2.39); walk phone 0.61 (0.49). The Mac was at a load of 30 to 60 with other agents on its GPU, so the numbers move run to run |
+| Picking | clicking a tower, a temple and a tank opens its card as before: picking reads the plan's records, not the detail |
+
+Not done: window bays are the facade materials' (no window geometry on the
+glass towers); the street signs are blank panels, because the engine's stroke
+font has capitals only; the lamps' night glow is the night-lights set's; the
+temples' columns stay the materials set's fluted drums.
+
 ### The construction, simulated
 
 Measured on November 18, 2026, from the checks in
