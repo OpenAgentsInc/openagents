@@ -179,6 +179,13 @@ rung (0), the mode (1), the pixel budget in thousands (2), contact (3), the
 phone content (4), whether Look says it is lowered (5), the steps (6) and the
 long average in tenths of a millisecond (7).
 
+The background triangle (`slab_bg_fs`) stops at once on a pixel the clipmap
+sea will cover (photoreal meshes on, the eye above the water, no traced
+walker, no dry casting cells, the ray down onto the sea within half the
+skirt's reach): the sea's opaque surface draws over it, so the sky, the smoke
+and the air there were wasted work. It saves about a third of the main pass
+(results in `docs/research/ocean/slab-world-spec.md`, section 12).
+
 ## Materials
 
 A material names a pattern (`PR_PATTERN_*`, `photoreal-layout.coax`). The

@@ -1993,3 +1993,96 @@ percentile, against 1.36 ms and 4.54 ms for the old timelapse at the same
 link. Explore costs the same before and after (2.5 to 2.8 ms median over two
 runs each). The view reuses the panel's run of the simulation, so it adds no
 second copy of it; slab.wasm went from 607,046 to 666,684 bytes (809,254 on main with the life on the deck that landed alongside it).
+
+### What a frame costs, and the picture's detail on a slow device (#13687)
+
+Measured headless on the M-series Mac (Apple, Metal 3) on 2026-11-18 with
+`coax/web/frametime.ts` at `?t=20&hud=0`, the machine shared with other
+agents' builds, so each number is the range of three runs. **Read the frame
+from its frame rate, not the sum of the passes.** The post pass reads the
+main pass's targets, so its timestamps include waiting for it: the "GPU time"
+the tool sums (6.2 ms at 1,440 × 900) counts the main pass about twice. The
+frames' spacing, unthrottled, is the honest number.
+
+Where the opening view's time goes, at 1,440 × 900 (main pass median, ms;
+a part's cost is the base less the run with that part's draws skipped):
+
+| Part | Main pass, ms | Cost, ms |
+| --- | --- | --- |
+| All of it (ms a frame: 5.0 to 5.7) | 4.3 to 4.9 | |
+| The background triangle: sky, smoke and air on every pixel | 2.6 to 2.8 without it | 1.6 to 2.1 |
+| The clipmap sea | 2.5 to 2.8 without it | 1.6 to 2.1 |
+| The meshes (platform, detail, gardens, people, vehicles, ships) | 3.3 to 3.6 without them | 0.8 to 1.4 |
+| Spray and foam quads | 3.8 to 4.3 without them | under 0.5 |
+| The shadow map's pass | 0.3 (its own pass) | 0.3 |
+| The post pass with contact | | 0.2 to 0.8 a frame by frame rate; contact alone under 0.3 |
+| The phone tier's content and sky (rung 1, 0.85 px) | 2.3 to 2.7 | |
+| Night (`&hour=21`) | 3.9 to 4.2 | no more than day |
+| Hurricane | 4.6 to 5.1 | about 0.3 more |
+| `&style=painterly` | 3.7 to 3.8 | |
+
+People, vehicles, gardens and the night's lamps are draws inside the meshes'
+share; none of them costs on its own as much as a millisecond here.
+
+**What cost more than it showed: the background.** The background triangle
+ran the sky, the stacks' smoke and the air on every pixel, and the sea's
+opaque surface then drew over nearly all of them. It now stops early where
+the sea will cover the pixel (the ray down onto the sea well inside the
+skirt's reach, above the water, no walker, no dry casting cells). Pictures of
+the opening, night, the hurricane, walking, flying, the dome, a level view
+and the phone are identical to the pixel before and after. Frame rate,
+three runs each, before → after:
+
+| View | ms a frame before | after | Main pass before | after |
+| --- | --- | --- | --- | --- |
+| Opening, 1,440 × 900 | 3.8 to 4.8 | 2.8 to 3.5 | 3.2 to 4.1 | 2.1 to 2.7 |
+| Opening, 2,880 × 1,800 (a retina laptop's pixels) | 11.7 to 14.1 | 8.6 to 10.0 | 10.9 to 13.9 | 7.2 to 8.6 |
+| Hurricane, 1,440 × 900 | 4.6 to 5.4 | 3.5 to 3.9 | 3.9 to 4.6 | 2.9 to 3.2 |
+| Phone, 585 × 1,266 (390 × 844 at 1.5 px) | 2.0 to 2.4 | 1.4 to 1.6 | 1.6 to 2.0 | 1.1 to 1.2 |
+
+**Headless pixels are not a phone's.** In headless Chrome the canvas stays at
+the page's CSS size whatever the emulated pixel ratio, so a "390 × 844 at
+3×" run draws 390 × 844 pixels. A phone draws 1.5 CSS pixels a pixel (585 ×
+1,266) and a retina laptop 2 (2,880 × 1,800); the rows above measure those
+sizes directly.
+
+**The fallback.** SLAB runs the engine's governor (docs/metaverse/photoreal.md,
+"The picture's detail on a slow device"): fewer pixels, then contact off,
+then the phone tier's content. Checked headless with `?slowgpu=6` (every frame
+counted six times longer): the page fell to rung 0 (1,080 × 675 at
+1,440 × 900, contact off, phone content) and Look said so; with the factor set
+back to 1 it climbed a rung every 5 seconds to rung 5, a rung that failed
+waiting longer. Rung 0 at 2,880 × 1,800 runs at 7.5 to 8.7 ms a frame against
+15 to 17 at full, before the background fix.
+
+**What we infer and did not measure.** A laptop's built-in GPU is five to ten
+times slower than this Mac's. At 2,880 × 1,800 the opening now needs about
+9 ms here, so 45 to 90 ms there at full: the governor's measured start drops it
+to 1.5 or 1 CSS pixels in its first 1.5 seconds (about 2.8 ms here, 14 to
+28 ms there). At 1,440 × 900 and one pixel a CSS pixel it needs about 3 ms
+here, 15 to 30 ms there: smooth on the faster of those, rung 2 or lower on
+the slower. A phone starts at 1.5 CSS pixels (1.4 ms here) and steps down from
+its own frames. No phone or slow laptop was run.
+
+**The first visit's download** (the static build, measured in headless Chrome,
+compressed here with brotli 11 and gzip 9; production serves gzip):
+
+| What | Raw | Brotli | Gzip |
+| --- | --- | --- | --- |
+| `slab.wasm` | 850 KB | 296 KB | 357 KB |
+| `host.js` and 29 small host modules (with the viewer check and the icon) | 344 KB + 268 KB | 89 KB + 80 KB | 108 KB + 93 KB |
+| `slab.wgsl`, `slab-fx.wgsl` | 332 KB, 36 KB | 52 KB, 7 KB | 66 KB, 8 KB |
+| Luckey's picture for the tour's first stop (`concept.jpg`, 1,280 × 861) | 282 KB | 282 KB | 280 KB |
+| Three Geist fonts as TTF | 382 KB | 156 KB | 180 KB |
+| The pane (`scene-pane.wasm`, `dom-host.js`), `host-layers.wasm`, `frame-plan.wasm` | 240 KB | 76 KB | 88 KB |
+| The page | 6 KB | 2 KB | 2 KB |
+| **All 53 requests** | **2.82 MB** | **1.06 MB** | **1.21 MB** |
+
+On this Mac, served locally, the first frame of the scene draws 457 ms after
+the page starts: the shaders take 154 ms of that. Over a phone's network add
+the transfer (1.2 MB is about a second at 10 Mbit/s); a phone compiles the
+332 KB shader more slowly (not measured). Nothing large is fetched that the
+first view doesn't use: the tour's first stop shows the picture, and the fonts
+are the HUD's. Two savings left for their owners: the fonts as WOFF2 (about
+100 KB less, shared by every kit page), and the tour's picture at the size the
+plate draws it.
