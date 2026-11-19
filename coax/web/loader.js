@@ -13,8 +13,12 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").repl
 
 // Identity of bytes actually handed to WebAssembly/WebGPU, never a second fetch.
 // No headers, request bodies, auth URLs or mutable engine state enter this receipt.
-const loadedAssets = new Map();
-Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
+// A page can load this module under two URLs (a release's prefixed copy and the plain one), and
+// each copy runs: they share one map, and the receipts are defined once, or the second run throws.
+const loadedAssets = globalThis.__coaxialLoadedAssets ??= new Map();
+if (!Object.getOwnPropertyDescriptor(globalThis, "coaxialAssetReceipts")) {
+  Object.defineProperty(globalThis, "coaxialAssetReceipts", { get: () => Object.freeze(Object.fromEntries(loadedAssets)) });
+}
 export async function rememberAsset(url, data) {
   // A page keeps receipts; a host with no page (pack-host.js in bun, the host-core and pack-cells checks) has none.
   if (typeof location === "undefined") return;
