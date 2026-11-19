@@ -1036,16 +1036,24 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         else if CoderOpenRouter.hasKey { about += "\n\nNo key is set here: Coder uses ~/work/.secrets/openrouter.env." }
         else { about += "\n\nNo key is set. Paste one from openrouter.ai/settings/keys." }
         alert.informativeText = about
-        func field(_ secure: Bool, _ value: String, _ hint: String) -> NSTextField {
-            let f = secure ? NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24)) : NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
-            f.stringValue = value; f.placeholderString = hint; return f
+        // Three labeled rows at fixed frames: an alert's accessory view gets no Auto Layout width,
+        // so a stack view there shrinks its fields to slivers.
+        let width: CGFloat = 340, rowH: CGFloat = 46
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: width, height: rowH * 3))
+        func field(_ row: Int, _ title: String, _ secure: Bool, _ value: String, _ hint: String) -> NSTextField {
+            let top = rowH * CGFloat(2 - row)
+            let label = NSTextField(labelWithString: title)
+            label.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+            label.frame = NSRect(x: 0, y: top + 26, width: width, height: 16)
+            let f = secure ? NSSecureTextField(frame: NSRect(x: 0, y: top + 2, width: width, height: 22)) : NSTextField(frame: NSRect(x: 0, y: top + 2, width: width, height: 22))
+            f.stringValue = value; f.placeholderString = hint
+            box.addSubview(label); box.addSubview(f)
+            return f
         }
-        let key = field(true, "", "OpenRouter key (sk-or-…)")
-        let main = field(false, CoderOpenRouter.main, "Model for Microcoder (empty: none)")
-        let sub = field(false, CoderOpenRouter.sub, "Model for sub-agents (empty: none)")
-        let stack = NSStackView(views: [key, main, sub])
-        stack.orientation = .vertical; stack.spacing = 8; stack.frame = NSRect(x: 0, y: 0, width: 340, height: 88)
-        alert.accessoryView = stack
+        let key = field(0, "Key", true, "", CoderOpenRouter.saved != nil ? "Leave empty to keep the key set now" : "sk-or-…")
+        let main = field(1, "Model for Microcoder", false, CoderOpenRouter.main, "deepseek/deepseek-v4.1-flash-1017 (empty: none)")
+        let sub = field(2, "Model for sub-agents", false, CoderOpenRouter.sub, "deepseek/deepseek-v4.1-flash-1017 (empty: none)")
+        alert.accessoryView = box
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
         let hadKey = CoderOpenRouter.saved != nil
