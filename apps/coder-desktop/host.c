@@ -30,6 +30,7 @@ static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr,
   return n < 0 ? 0 : n;
 }
 static float cd_icon_size(int i) { return coder_page_icon_size(i); }
+static float cd_font_size(int k) { return coder_page_font_size(k); }
 static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   CoderHost *c = user;
@@ -49,7 +50,7 @@ void *cd_open(const char *resources) {
   char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
-  a->icon_size = cd_icon_size;
+  a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel};
@@ -196,3 +197,12 @@ void cd_close(void *page) {
   if (!c->headless) gallery_free(&c->app);
   free(c->s); free(c);
 }
+// Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
+// it shows (-1 closed); what its pages show; the tier a press chose; the search field's box and text.
+void cd_settings_open(void *page, int which, const char *row) { CoderHost *c = page; if (c) { coder_page_settings_open(cd_state(c), which, cd_string(row)); cd_woke(c); } }
+int cd_settings_page(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_page(cd_state(c)) : -1; }
+void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version), titlebar); cd_changed(c); } }
+int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_tier(cd_state(c)) : 0; }
+int cd_search_box(void *page, float out[4]) { CoderHost *c = page; return c && coder_page_search_box(cd_state(c), (coax_v_f32){out, 4}); }
+void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
+int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_submit(cd_state(c)); cd_woke(c); return ok; }

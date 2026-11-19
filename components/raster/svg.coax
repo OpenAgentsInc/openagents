@@ -2,7 +2,7 @@
 // SVG renderer of its own (Linux, Android) draws the same icons from the same
 // files (components/spec.md, GitHub #13153). It reads what the bundled icons
 // use and no more: <svg> with a viewBox, <g>, <path> (M L H V C S Q A Z, both
-// cases), <rect> with rx and <circle>, with fill, stroke, stroke-width
+// cases), <rect> with rx, <circle> and <ellipse>, with fill, stroke, stroke-width
 // inherited from the element's parents. Colours are not read: the result is
 // the alpha a host tints, as the atlas keeps icons. A fill is each pixel's
 // exact area under the non-zero rule (coax/lib/text/ttf.coax's rasterizer);
@@ -248,10 +248,11 @@ svg_rect :: (p: [] SvgPath, x: f64, y: f64, w: f64, h: f64, r0: f64) {
   if r > 0.0 { svg_arc(p, r, r, 0.0, false, true, x + r, y); }
   svg_close(p);
 }
-svg_circle :: (p: [] SvgPath, cx: f64, cy: f64, r: f64) {
-  svg_move(p, cx + r, cy);
-  svg_arc(p, r, r, 0.0, false, true, cx - r, cy);
-  svg_arc(p, r, r, 0.0, false, true, cx + r, cy);
+svg_circle :: (p: [] SvgPath, cx: f64, cy: f64, r: f64) { svg_ellipse(p, cx, cy, r, r); }
+svg_ellipse :: (p: [] SvgPath, cx: f64, cy: f64, rx: f64, ry: f64) {
+  svg_move(p, cx + rx, cy);
+  svg_arc(p, rx, ry, 0.0, false, true, cx - rx, cy);
+  svg_arc(p, rx, ry, 0.0, false, true, cx + rx, cy);
   svg_close(p);
 }
 
@@ -354,14 +355,15 @@ svg_draw :: (svg: string, p: [] SvgPath, r: [] TtfRaster, out: [] u8, stride: in
       styles[0] = svg_style(tag, styles[0]);
     } else if name == "g" {
       if depth + 1 < SVG_DEPTH { styles[depth + 1] = svg_style(tag, styles[depth]); depth += 1; }
-    } else if name == "path" || name == "rect" || name == "circle" {
+    } else if name == "path" || name == "rect" || name == "circle" || name == "ellipse" {
       s := svg_style(tag, styles[depth]);
       svg_begin(p);
       if name == "path" { svg_path(p, svg_attr(tag, "d")); }
       else if name == "rect" {
         rr := svg_attr(tag, "rx");
         svg_rect(p, svg_value(tag, "x", 0.0), svg_value(tag, "y", 0.0), svg_value(tag, "width", 0.0), svg_value(tag, "height", 0.0), ifx rr.count > 0 then svg_value(tag, "rx", 0.0) else svg_value(tag, "ry", 0.0));
-      } else { svg_circle(p, svg_value(tag, "cx", 0.0), svg_value(tag, "cy", 0.0), svg_value(tag, "r", 0.0)); }
+      } else if name == "ellipse" { svg_ellipse(p, svg_value(tag, "cx", 0.0), svg_value(tag, "cy", 0.0), svg_value(tag, "rx", 0.0), svg_value(tag, "ry", 0.0)); }
+      else { svg_circle(p, svg_value(tag, "cx", 0.0), svg_value(tag, "cy", 0.0), svg_value(tag, "r", 0.0)); }
       if s.fill { svg_fill(p, r, out, stride, ox, oy, size); }
       if s.stroke && s.width > 0.0 { svg_stroke(p, s.width * sqrt(p[0].sx * p[0].sy), out, stride, ox, oy, size); }
     }
@@ -420,6 +422,13 @@ svg_test_at :: (out: [] u8, size: int, x: int, y: int) -> int { return cast(int)
   // radius 8 of 24 in 40 pixels: 13.33 pixels from the centre at (20, 20)
   #assert svg_test_at(out[..], 40, 33, 19) > 200 && svg_test_at(out[..], 40, 6, 19) > 200 && svg_test_at(out[..], 40, 19, 33) > 200 && svg_test_at(out[..], 40, 19, 6) > 200;
   #assert svg_test_at(out[..], 40, 29, 29) > 150 && svg_test_at(out[..], 40, 20, 20) == 0 && svg_test_at(out[..], 40, 36, 20) == 0;
+}
+#test "an ellipse is drawn by its two radii (user-rounded's body)" #steps 60000000 {
+  w: [1] SvgWork; out: [1600] u8;
+  #assert svg_draw("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><ellipse cx=\"12\" cy=\"12\" rx=\"9\" ry=\"4\"/></svg>", w[0].path[..], w[0].raster[..], out[..], 40, 0, 0, 40);
+  // rx 9 and ry 4 of 24 in 40 pixels: 15 across and 6.67 down from the centre at (20, 20)
+  #assert svg_test_at(out[..], 40, 35, 19) > 150 && svg_test_at(out[..], 40, 4, 19) > 150 && svg_test_at(out[..], 40, 19, 26) > 150 && svg_test_at(out[..], 40, 19, 13) > 150;
+  #assert svg_test_at(out[..], 40, 19, 6) == 0 && svg_test_at(out[..], 40, 20, 20) == 0;
 }
 #test "a group's style reaches its paths, and a path's own wins" #steps 40000000 {
   w: [1] SvgWork; out: [400] u8;

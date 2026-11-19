@@ -27,8 +27,12 @@ FONT_MENU_SMALL :: 10;      // Geist Medium 11: a menu row's description
 FONT_SEARCH :: 11;          // Geist Medium 14: the model search (a ComposerInput)
 // The display faces (layout/font.coax GP_BODY_FONTS): ASCII only, the rest from the largest body face.
 FONT_DISPLAY :: 12;         // Geist SemiBold 24: a large title (the phone sidebar's)
-FONT_SIZES :: [13] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24];
-FONT_WEIGHTS :: [13] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1, 2];
+// The settings screen's (components/app/settings.coax), display faces too: its words are ASCII.
+FONT_SET_HEAD :: 13;        // Geist Medium 11: a list heading, a section's title
+FONT_SET_DESC :: 14;        // Geist 12: a row's description, a caption, a small button
+FONT_SET_TITLE :: 15;       // Geist SemiBold 20: a page's title
+FONT_SIZES :: [16] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24, 11, 12, 20];
+FONT_WEIGHTS :: [16] int.[0, 1, 0, 2, 3, 3, 3, 3, 0, 1, 1, 1, 2, 1, 0, 2];
 
 ICON_PAPERCLIP :: 0; ICON_ARROW_UP :: 1; ICON_CLAUDE :: 2;
 ICON_CHEVRON :: 3; ICON_TERMINAL :: 4; ICON_DOCUMENT :: 5; ICON_PEN :: 6; ICON_MAGNIFER :: 7;
@@ -50,15 +54,23 @@ ICON_COMPOSE :: 33; ICON_CHATS :: 34; ICON_IMAGES :: 35; ICON_PIN :: 36;
 ICON_ARCHIVE :: 37; ICON_SHARE :: 38; ICON_FLAG :: 39;
 // what closes a pane (Coder's sub-agent transcript): Apps SDK UI's x
 ICON_CLOSE :: 40;
-ICON_COUNT :: 41;
-ICON_NAMES :: [41] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+// the settings screen's (components/app/settings.coax): its list's pages, Back and the search,
+// the gear that opens it, a row's chevron and the Account page's lead tiles (Zeron's Solar set)
+ICON_SET_GENERAL :: 41; ICON_SET_MODELS :: 42; ICON_SET_FOREMAN :: 43; ICON_SET_ACCOUNT :: 44; ICON_SET_ABOUT :: 45;
+ICON_SET_BACK :: 46; ICON_SET_SEARCH :: 47; ICON_SETTINGS :: 48; ICON_SET_CHEVRON :: 49; ICON_SET_TAG :: 50; ICON_SET_PHONE :: 51;
+ICON_SET_COMMAND :: 52;   // the Command key's sign on a key cap (a display face has no ⌘)
+ICON_COUNT :: 53;
+ICON_NAMES :: [53] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
                            "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark", "sidebar-left",
-                           "compose-edit-square", "chats", "image-square", "pin", "archive", "share", "flag", "x"];
-ICON_SIZES :: [41] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18];
+                           "compose-edit-square", "chats", "image-square", "pin", "archive", "share", "flag", "x",
+                           "settings-minimalistic", "widget", "bot", "user-rounded", "info-square",
+                           "arrow-left", "magnifer", "settings", "alt-arrow-right", "tag", "smartphone", "command"];
+ICON_SIZES :: [53] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
+                        16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11];
 
 // Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
 Theme :: struct {
@@ -334,6 +346,40 @@ zeron_syntax :: (role: int, plain: Rgba) -> Rgba {
   return hex(palette[role], 1);
 }
 
+// Zeron's settings screen, dark (ds/settings.luau, ds/account_row.luau, ds/tokens.luau, themes/zeron-dark.json), in points.
+zeron_settings :: () -> UiSettings {
+  text := hex(0xededef, 1);
+  return UiSettings.{
+    title_face = FONT_SET_TITLE, title_line = 26,
+    text_face = FONT_MENU, text_line = 18, page_line = 20,   // (the atlas has no Geist 13 regular: a 1x skin reads it in the medium)
+    name_face = FONT_MENU, name_line = 18,
+    desc_face = FONT_SET_DESC, desc_line = 16,
+    head_face = FONT_SET_HEAD, head_line = 14,
+    strip = TITLEBAR_HEIGHT, list_pad = 8, list_gap = 2,          // zeron.list.gap
+    heading = 24, heading_pad = 8,                                // zeron.menu.heading, space.2
+    row = 28, row_pad = 8, row_gap = 8, row_radius = 6,           // zeron.menu.row, space.2, radius.md
+    icon = 16, icon_dy = -0.5, edge = 1, handle = 6,
+    search_h = 28, search_radius = 6, search_icon = 14, search_pad = 8, search_gap = 8,   // control sm
+    key_h = 18, key_icon = 11, key_pad = 4, key_radius = 4, key_gap = 4,         // Kbd sm, a cap's space.1
+    account = 30, avatar = 20, account_top = 4, toggle_radius = 8,
+    measure = 640, page_pad = 32, page_top = 16, page_bottom = 64,   // zeron.settings.measure, space.6, space.4, space.8
+    block_gap = 32, title_gap = 4, text_inset = 17, min_text = 180,
+    aside_w = 180, aside_h = 252, aside_zoom = 0.6, aside_narrow = 620, caption_gap = 12,
+    fade = 16,
+    section_gap = 8, head_gap = 4, card_radius = 12, card_edge = 1,
+    row_px = 16, row_py = 12, text_gap = 16, desc_gap = 2, control = 240,   // zeron.settings.control
+    lead = 28, lead_radius = 8, lead_gap = 12, lead_icon = 16, chevron = 14, chevron_gap = 4,
+    button_h = 32, button_pad = 12, button_radius = 8, small_h = 28, small_pad = 10, small_radius = 6, button_top = 8,
+    text = text, secondary = opacity(text, 0.6), tertiary = opacity(text, 0.42),
+    selected = hex(0xebebeb, 0x24 / 255.0), tint = hex(0xebebeb, 0x0b / 255.0),
+    subtle = rgba(1, 1, 1, 0x0a / 255.0), strong = rgba(1, 1, 1, 0x2e / 255.0),
+    hover = rgba(1, 1, 1, 0x0d / 255.0), pressed = rgba(1, 1, 1, 0x17 / 255.0),
+    well = rgba(1, 1, 1, 0x14 / 255.0), well_hover = rgba(1, 1, 1, 0x1f / 255.0),
+    field = rgba(0, 0, 0, 0x38 / 255.0), field_edge = rgba(1, 1, 1, 0x14 / 255.0),
+    primary = hex(0xececee, 1), primary_hover = hex(0xffffff, 1), on_primary = hex(0x0b0b0c, 1),
+    danger = hex(DANGER, 1)};
+}
+
 zeron_skin :: () -> UiSkin {
   th := zeron_dark();
   s := UiSkin.{id = UISKIN_ZERON, name = "zeron",
@@ -398,6 +444,7 @@ zeron_skin :: () -> UiSkin {
   s.switch_shade = rgba(0, 0, 0, 0.14); s.switch_wash = ink(0.18); s.switch_rim = ink(0.12);
   s.switch_mark = ink(0.96); s.switch_ring = ink(0.92); s.switch_knob = ink(0.96); s.switch_knob_rim = rgba(0, 0, 0, 0.10);
   s.hud = zeron_hud();
+  s.set = zeron_settings();
   return s;
 }
 

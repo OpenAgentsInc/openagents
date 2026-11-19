@@ -17,6 +17,7 @@ never changes app state: a press reaches the app as the row's action.
 | `account.coax` | `app_logged_out_card`; the login card is the login flow's `lf_card` (`apps/shared/app/login/card.coax`), and the gallery shows it |
 | `identity.coax` | Public identity, copy, backup/rotate/restore confirmations, native private-field slot, unresolved-change retry/discard; no private bytes or account effects |
 | `nav.coax` | `app_nav_button`, `app_side_head`, `app_side_row`, `app_side_list`, `app_side_window` (virtualized, single-line history) |
+| `settings.coax` | Zeron's desktop settings screen parts in the skin's `UiSettings` measures (`skin.set`): `set_nav_head`, `set_nav_row`, `set_search`, `set_account_row`, `set_nav_edge`, `set_column`, `set_page_head`, `set_section_head`, `set_row` (plain, link, button, stepper, choice), `set_group`, `set_button`, `set_member_card` |
 | `ioshost-sidebar.coax` | the phone sidebar that pushes the page: `app_sidebar`, `app_sidebar_shift`, `app_sidebar_ease`, `app_sidebar_head`, `app_sidebar_item`, `app_sidebar_rule`, `app_sidebar_new`, `app_sidebar_avatar`, `app_initials` |
 | `gallery/gallery.coax` | every component above on one scrolling page, with example data; the iOS dev menu opens it |
 
@@ -45,7 +46,7 @@ Another area that needs a component the set lacks adds it as a new file
 here with its area's prefix (`view-*.coax`, `login-*.coax`, `env-*.coax`).
 
 Checks: `coax/bin/coax test components/app/task.coax` (it loads chat and
-base), `account.coax`, `nav.coax`, `gallery/gallery.coax`, `together-check.coax` (the set loads beside the shared app core, `apps/shared/app/core/core.coax`: no top-level name may clash with one there); and
+base), `account.coax`, `nav.coax`, `settings.coax`, `gallery/gallery.coax`, `together-check.coax` (the set loads beside the shared app core, `apps/shared/app/core/core.coax`: no top-level name may clash with one there); and
 `coax/web/tool.sh components-check`. Run them on a build host
 (`coax/remote/remote.sh run -- ...`). How a host shows the gallery is in
 [INTEGRATION.md](INTEGRATION.md).

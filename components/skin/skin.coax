@@ -188,6 +188,75 @@ UiChrome :: struct {
   field_h: f32; field_radius: f32; field_pad: f32; field_caret: f32; field_focus: f32;   // a one-line field; the accent's alpha on its edge when focused
 }
 
+// The settings screen's measures, type and colours (components/app/settings.coax):
+// Zeron's settings (apps/zgx/ui/ds/settings.luau, ds/account_row.luau,
+// screens/shell/settings.luau and ds/tokens.luau's zeron.settings block), in
+// points. A skin that draws its units larger than points divides them
+// (uisettings_scaled). Based on Zeron by Wing, MIT.
+UiSettings :: struct {
+  // faces (slots in the target's fonts) and their lines
+  title_face: int; title_line: f32;        // a page's title (20/26 semibold)
+  text_face: int; text_line: f32;          // a list row's label, a page's description, a value (13 regular)
+  page_line: f32;                          // a page's description's line (20)
+  name_face: int; name_line: f32;          // a row's name, the account's name, a primary button (13 medium)
+  desc_face: int; desc_line: f32;          // a row's description, a caption, a small button (12)
+  head_face: int; head_line: f32;          // a list heading, a section's title (11 medium)
+  // the list (Settings.Nav)
+  strip: f32;               // the title bar's strip over the rows
+  list_pad: f32; list_gap: f32;            // its inset; between rows
+  heading: f32; heading_pad: f32;          // a heading's height and its top padding
+  row: f32; row_pad: f32; row_gap: f32; row_radius: f32;   // a page's row: height, side padding, icon to label, corner
+  icon: f32; icon_dy: f32;                 // a row's icon and its nudge
+  edge: f32; handle: f32;                  // the hairline down its right; the drag handle
+  search_h: f32; search_radius: f32; search_icon: f32; search_pad: f32; search_gap: f32;   // the search field (size sm)
+  key_h: f32; key_icon: f32; key_pad: f32; key_radius: f32; key_gap: f32; // its quiet ⌘ F key chip
+  account: f32; avatar: f32; account_top: f32; toggle_radius: f32;   // the account row: its slot, the avatar, the gap above it, the toggle's corner
+  // a page (Settings.Page)
+  measure: f32; page_pad: f32; page_top: f32; page_bottom: f32;    // its column at most; side, top and bottom padding
+  block_gap: f32; title_gap: f32; text_inset: f32; min_text: f32;  // between blocks; title to description; the rows' text edge; the least words beside a control
+  aside_w: f32; aside_h: f32; aside_zoom: f32; aside_narrow: f32; caption_gap: f32;   // the aside: its width, the card's height at its zoom, below what it moves over the rows, caption gap
+  fade: f32;                // the page's scroll fade
+  // a section, a group (card) and a row
+  section_gap: f32; head_gap: f32;         // a section's parts; its title to its hint
+  card_radius: f32; card_edge: f32;
+  row_px: f32; row_py: f32; text_gap: f32; desc_gap: f32; control: f32;   // a row's padding, words to control, name to description, the control at most
+  lead: f32; lead_radius: f32; lead_gap: f32; lead_icon: f32;   // a row's lead tile
+  chevron: f32; chevron_gap: f32;          // a row that leads somewhere
+  button_h: f32; button_pad: f32; button_radius: f32;          // a button (md)
+  small_h: f32; small_pad: f32; small_radius: f32;             // a small button (sm)
+  button_top: f32;          // a page's button under its card
+  // colours
+  text: Rgba; secondary: Rgba; tertiary: Rgba;   // text.primary and its 0.6 and 0.42
+  selected: Rgba;           // the chosen list row (zeron.selected.flat.bg)
+  tint: Rgba;               // a card's fill (zeron.settings.tint)
+  subtle: Rgba; strong: Rgba;              // border.subtle (a card's edge, its rules, the list's hairline); border.strong (the hairline under the pointer)
+  hover: Rgba; pressed: Rgba;              // a row that leads somewhere, under the pointer and held
+  well: Rgba; well_hover: Rgba;            // a lead tile's ground and a secondary button's (zeron.secondary.bg); hovered
+  field: Rgba; field_edge: Rgba;           // the search field's ground and edge
+  primary: Rgba; primary_hover: Rgba; on_primary: Rgba;   // a primary button: its ground and ink
+  danger: Rgba;
+}
+
+// The settings measures for a skin that draws a unit `by` points: every length divided by it, the faces and colours kept.
+uisettings_scaled :: (t: UiSettings, by: f32) -> UiSettings {
+  if !(by > 0) || by == 1 { return t; }
+  s := t; d := 1 / by;
+  s.title_line *= d; s.text_line *= d; s.page_line *= d; s.name_line *= d; s.desc_line *= d; s.head_line *= d;
+  s.strip *= d; s.list_pad *= d; s.list_gap *= d; s.heading *= d; s.heading_pad *= d;
+  s.row *= d; s.row_pad *= d; s.row_gap *= d; s.row_radius *= d; s.icon *= d; s.icon_dy *= d; s.edge *= d; s.handle *= d;
+  s.search_h *= d; s.search_radius *= d; s.search_icon *= d; s.search_pad *= d; s.search_gap *= d;
+  s.key_h *= d; s.key_icon *= d; s.key_pad *= d; s.key_radius *= d; s.key_gap *= d;
+  s.account *= d; s.avatar *= d; s.account_top *= d; s.toggle_radius *= d;
+  s.measure *= d; s.page_pad *= d; s.page_top *= d; s.page_bottom *= d;
+  s.block_gap *= d; s.title_gap *= d; s.text_inset *= d; s.min_text *= d;
+  s.aside_w *= d; s.aside_h *= d; s.aside_narrow *= d; s.caption_gap *= d; s.fade *= d;
+  s.section_gap *= d; s.head_gap *= d; s.card_radius *= d; s.card_edge *= d;
+  s.row_px *= d; s.row_py *= d; s.text_gap *= d; s.desc_gap *= d; s.control *= d;
+  s.lead *= d; s.lead_radius *= d; s.lead_gap *= d; s.lead_icon *= d; s.chevron *= d; s.chevron_gap *= d;
+  s.button_h *= d; s.button_pad *= d; s.button_radius *= d; s.small_h *= d; s.small_pad *= d; s.small_radius *= d; s.button_top *= d;
+  return s;
+}
+
 // A floating surface's shadow (Tailwind's shadow-lg: two soft layers of the skin's lift).
 UiFloat :: struct { dy: [2] f32; blur: [2] f32; spread: [2] f32; }
 
@@ -325,6 +394,7 @@ UiSkin :: struct {
   menus: UiMenus;
   desk: UiDesk;
   chrome: UiChrome;
+  set: UiSettings;          // the settings screen (components/app/settings.coax)
   lifted: UiFloat;          // a floating card's shadow: the composer's pill, a menu
 }
 

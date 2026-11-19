@@ -43,6 +43,8 @@ typedef struct {
   // how many, each one's size and its file's name. All NULL: the component library's icons.
   const char *icons_dir;
   int (*icon_count)(void); float (*icon_size)(int i); int (*icon_name)(int i, char *out, int cap);
+  // A page that draws its units larger than points may size a font slot to its own scale (NULL: the library's sizes).
+  float (*font_size)(int k);
   char resources[PATH_MAX];
   coax_t_RaFonts fonts;
   uint8_t *font_bytes[4];
@@ -114,7 +116,7 @@ static int atlas_setup(App *a) {
   }
   a->nfonts = (int)coaxial_components_font_count(); a->nicons = a->icon_count ? a->icon_count() : (int)coaxial_components_icon_count();
   if (a->nfonts > 16 || a->nicons > 64) return 0;
-  for (int k = 0; k < a->nfonts; k++) { a->sizes[k] = coaxial_components_font_size(k); a->weights[k] = coaxial_components_font_weight(k); }
+  for (int k = 0; k < a->nfonts; k++) { a->sizes[k] = a->font_size ? a->font_size(k) : coaxial_components_font_size(k); a->weights[k] = coaxial_components_font_weight(k); }
   for (int i = 0; i < a->nicons; i++) {
     char name[65]; int n = a->icon_name ? a->icon_name(i, name, 64) : (int)coaxial_components_icon_text(i, (coax_v_u8){(uint8_t *)name, 64});
     name[n] = 0;

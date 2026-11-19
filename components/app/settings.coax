@@ -1,0 +1,377 @@
+// The app set's settings screen (GitHub #13726): Zeron's desktop settings on
+// the GPU. The list of pages that stands where the chats' sidebar is (Back
+// to chats, the search field, the grouped pages, the account row at its
+// foot), and a page beside it: its title, its sections and their cards of
+// rows. The measures, type and colours are the skin's (skin.set, UiSettings;
+// skin/zeron.coax zeron_settings), ported from Zeron's ds/settings.luau,
+// ds/account_row.luau and screens/shell/settings.luau. Based on Zeron by
+// Wing, MIT.
+//
+// Each part is one procedure on the frame context like the rest of the app
+// set: a stable id, plain inputs, a position and width; it paints, records
+// its semantic row and its hit under its id, and returns its height. A press
+// reaches the app as the row's action; a control with more than one part
+// (a stepper's two buttons, a choice's options) names each part's id after
+// the row's: ".a" and ".b", ".0", ".1", ...
+//   coax/bin/coax test components/app/settings.coax
+
+#load "base.coax";
+
+// ---------------------------------------------------------------- shared
+
+// A line of text in a face, at (x, y) its line box, cut to w.
+set_line :: (f: [] UiFrame, x: f32, y: f32, w: f32, face: int, line: f32, ink: Rgba, text: string) -> f32 {
+  if text.count == 0 || w <= 0 { return 0; }
+  return sheet_text(f[0].sheet, f[0].m, -1, x, y, line, face, ink, app_fit(f, face, text, w));
+}
+// How tall text wraps to in a face at w: its lines times the line.
+set_wrap_h :: (f: [] UiFrame, face: int, line: f32, text: string, w: f32) -> f32 {
+  if text.count == 0 { return 0; }
+  lines: [16] TextLine; runs: [1] MdRun; faces := TextFaces.{plain = face, bold = face, code = face};
+  n := text_wrap(f[0].m, faces, text, runs[0..<0], ifx w > 1 then w else 1.0f32, lines[..]);
+  return cast(f32) n * line;
+}
+set_wrap :: (f: [] UiFrame, x: f32, y: f32, w: f32, face: int, line: f32, ink: Rgba, text: string) -> f32 {
+  return control_copy(f[0].sheet, f[0].m, UiType.{face = face, size = line, line = line}, ink, x, y, w, text);
+}
+set_width :: (f: [] UiFrame, face: int, text: string) -> f32 { return ceil(measure_width(f[0].m, face, text)); }
+
+// ---------------------------------------------------------------- the list (Settings.Nav)
+
+// A heading over a group of pages ("Personal"): 24 high, its words 11 medium, tertiary, 8 in and under 8 of padding.
+set_nav_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string) -> f32 {
+  t := f[0].skin.set;
+  _ := set_line(f, x + t.row_pad, y + t.heading_pad + (t.heading - t.heading_pad - t.head_line) / 2, w - 2 * t.row_pad, t.head_face, t.head_line, t.tertiary, title);
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, t.heading, 0, 0);
+  return t.heading;
+}
+// A row of the list at (x, y), w wide: its icon (-1: none) and its label. A page's row is a tab,
+// the open one `chosen` (the flat selected wash, the primary ink); a `lead` row (Back to chats)
+// is a button. No wash under the pointer: the ink goes primary. Returns its height (28).
+set_nav_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, chosen: bool, lead: bool, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  h := t.row;
+  hovered := uiframe_hovered(f, id);
+  if chosen { sheet_fill(sh, x, y, w, h, t.row_radius, t.selected); }
+  row := uiframe_semantic(f, id, ifx lead then EL_BUTTON else EL_TAB, label, x, y, w, h, ifx chosen then EL_S_CURRENT else 0, action);
+  ink := ifx chosen || hovered then t.text else t.secondary;
+  tx := x + t.row_pad;
+  if icon >= 0 {
+    sheet_icon(sh, icon, tx, y + (h - t.icon) / 2 + t.icon_dy, t.icon, ink);
+    tx += t.icon + t.row_gap;
+  }
+  _ := set_line(f, tx, y + (h - t.text_line) / 2, x + w - t.row_pad - tx, t.text_face, t.text_line, ink, label);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  return h;
+}
+// Where the search field's words go: the platform editor lies over this box while it types.
+SetBox :: struct { x: f32; y: f32; w: f32; h: f32; }
+// The search field (Zeron's SearchField, size sm) at (x, y), w wide: 28 high, a well with its
+// edge, the search glyph, the placeholder while it is empty, and the quiet key chips of its
+// shortcut at its end ("⌘", "F"). The words themselves are the platform editor's, laid over
+// set_search_box. Returns its height.
+set_search :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, placeholder: string, empty: bool, keys: [] string, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  h := t.search_h;
+  _ := sheet_box(sh, x, y, w, h, t.search_radius, t.edge, t.field, t.field_edge);
+  row := uiframe_semantic(f, id, EL_FIELD, placeholder, x, y, w, h, 0, action);
+  sheet_icon(sh, ICON_SET_SEARCH, x + t.search_pad, y + (h - t.search_icon) / 2, t.search_icon, t.tertiary);
+  right := x + w - (h - 20) / 2 + t.edge - t.key_pad;   // the trailing room even with a 20 button's top and foot, less the edge, then a cap's space.1
+  if empty {
+    // the key chips, right to left
+    cx := right;
+    i := keys.count - 1;
+    while i >= 0 {
+      // the Command key's sign is an icon the size of the cap's words (the faces hold ASCII only)
+      sign := keys[i] == "⌘";
+      tw := ifx sign then t.key_icon else set_width(f, t.head_face, keys[i]);
+      kw := tw + 2 * t.key_pad;
+      if kw < t.key_h { kw = t.key_h; }
+      cx -= kw;
+      sheet_fill(sh, cx, y + (h - t.key_h) / 2, kw, t.key_h, t.key_radius, t.well);
+      if sign { sheet_icon(sh, ICON_SET_COMMAND, cx + (kw - tw) / 2, y + (h - tw) / 2, tw, t.tertiary); }
+      else { _ := set_line(f, cx + (kw - tw) / 2, y + (h - t.head_line) / 2, kw, t.head_face, t.head_line, t.tertiary, keys[i]); }
+      cx -= t.key_gap; i -= 1;
+    }
+    tx := x + t.search_pad + t.search_icon + t.search_gap;
+    _ := set_line(f, tx, y + (h - t.desc_line) / 2, cx - tx, t.desc_face, t.desc_line, t.tertiary, placeholder);
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  return h;
+}
+set_search_box :: (t: UiSettings, x: f32, y: f32, w: f32) -> SetBox {
+  tx := x + t.search_pad + t.search_icon + t.search_gap;
+  return SetBox.{x = tx, y = y + (t.search_h - t.desc_line) / 2, w = x + w - t.search_pad - tx, h = t.desc_line};
+}
+// The account row at the list's foot (ds/account_row.luau) at (x, y), w wide: a flat surface
+// with a 20 avatar centred in a 30 slot and the name (13 medium), selected while `user_open`;
+// then a 30 by 30 quiet toggle with the settings glyph, on while `settings_open`. The surface's
+// id is `id`, the toggle's `id` + ".settings". Returns its height (30).
+set_account_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, name: string, initial: string, user_open: bool, settings_open: bool, user_action: int, toggle_action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  slot := t.account;
+  sw := w - t.list_gap - slot;
+  hov := uiframe_hovered(f, id);
+  if user_open { sheet_fill(sh, x, y, sw, slot, t.row_radius, t.selected); }
+  else if hov { sheet_fill(sh, x, y, sw, slot, t.row_radius, t.hover); }
+  row := uiframe_semantic(f, id, EL_BUTTON, name, x, y, sw, slot, ifx user_open then EL_S_CURRENT else 0, user_action);
+  ax := x + (slot - t.avatar) / 2; ay := y + (slot - t.avatar) / 2;
+  sheet_fill(sh, ax, ay, t.avatar, t.avatar, t.avatar / 2, t.well);
+  _ := set_line(f, ax + (t.avatar - set_width(f, t.head_face, initial)) / 2, ay + (t.avatar - t.head_line) / 2, t.avatar, t.head_face, t.head_line, t.text, initial);
+  _ := set_line(f, x + slot, y + (slot - t.name_line) / 2, sw - slot - t.row_pad, t.name_face, t.name_line, t.text, name);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, sw, slot);
+  // the toggle
+  ib: [EL_ID] u8; tid := app_id(ib[..], id, ".settings");
+  gx := x + w - slot;
+  ghov := uiframe_hovered(f, tid);
+  if settings_open { sheet_fill(sh, gx, y, slot, slot, t.toggle_radius, t.well); }
+  else if ghov { sheet_fill(sh, gx, y, slot, slot, t.toggle_radius, t.hover); }
+  grow := uiframe_semantic(f, tid, EL_BUTTON, "Settings", gx, y, slot, slot, EL_S_TOGGLES | (ifx settings_open then EL_S_PRESSED else 0), toggle_action);
+  sheet_icon(sh, ICON_SETTINGS, gx + (slot - t.icon) / 2, y + (slot - t.icon) / 2, t.icon, ifx settings_open || ghov then t.text else t.secondary);
+  sheet_hit(sh, UIFRAME_HIT, grow, 0, gx, y, slot, slot);
+  return slot;
+}
+// The list's right edge at x: a hairline over the edge (border.subtle), border.strong under the pointer or while dragged.
+set_nav_edge :: (f: [] UiFrame, x: f32, y: f32, h: f32, strong: bool) {
+  t := f[0].skin.set;
+  sheet_fill(f[0].sheet, x - t.edge, y, t.edge, h, 0, ifx strong then t.strong else t.subtle);
+}
+
+// ---------------------------------------------------------------- a page (Settings.Page)
+
+// Where a page's column stands in a room from x, w wide: at most the measure, its side padding
+// inside the room, centred.
+set_column :: (t: UiSettings, x: f32, w: f32) -> SetBox {
+  cw := w - 2 * t.page_pad;
+  if cw > t.measure { cw = t.measure; }
+  if cw < 0 { cw = 0; }
+  return SetBox.{x = x + (w - cw) / 2, y = 0, w = cw, h = 0};
+}
+// A page's title block at (x, y), the column w wide: the title (20/26 semibold) and its
+// description (13/20, secondary) 4 under it, both on the rows' text edge (17 in). Returns its height.
+set_page_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, desc: string) -> f32 {
+  t := f[0].skin.set;
+  tx := x + t.text_inset; tw := w - 2 * t.text_inset;
+  _ := set_line(f, tx, y, tw, t.title_face, t.title_line, t.text, title);
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, t.title_line, 0, 0);
+  h := t.title_line;
+  if desc.count > 0 { h += t.title_gap + set_wrap(f, tx, y + t.title_line + t.title_gap, tw, t.text_face, t.page_line, t.secondary, desc); }
+  return h;
+}
+// A section's head at (x, y), w wide: its title (11/14 medium, tertiary) and a hint under it,
+// 4 apart, on the text edge. Returns its height (0 when it has neither).
+set_section_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, hint: string) -> f32 {
+  t := f[0].skin.set;
+  tx := x + t.text_inset; tw := w - 2 * t.text_inset;
+  h: f32 = 0;
+  if title.count > 0 {
+    _ := set_line(f, tx, y, tw, t.head_face, t.head_line, t.tertiary, title);
+    _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, w, t.head_line, 0, 0);
+    h += t.head_line;
+  }
+  if hint.count > 0 {
+    if h > 0 { h += t.head_gap; }
+    h += set_wrap(f, tx, y + h, tw, t.desc_face, t.desc_line, t.tertiary, hint);
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- a group and its rows
+
+SET_ROW_PLAIN :: 0;     // words only (a value at its end when it has one)
+SET_ROW_LINK :: 1;      // the whole row leads somewhere: the value, then a chevron
+SET_ROW_BUTTON :: 2;    // a small secondary button at its end (the value before it)
+SET_ROW_STEPPER :: 3;   // two small buttons with the value between them (".a" and ".b")
+SET_ROW_CHOICE :: 4;    // one of a few options (".0", ".1", ...)
+SET_OPTIONS :: 4;
+SetRow :: struct {
+  id: string;
+  icon: int = -1;            // a lead tile's glyph (-1: none)
+  name: string; desc: string; value: string;
+  kind: int;
+  button: string; button2: string;   // a button's words; a stepper's two
+  options: [SET_OPTIONS] string; noptions: int; chosen: int;
+  action: int; action2: int;
+  state: int;                // EL_S_DISABLED: it can't be used now
+  danger: bool;              // its name in the danger ink (a step that can't be taken back)
+}
+set_small_w :: (f: [] UiFrame, label: string) -> f32 { t := f[0].skin.set; return set_width(f, t.desc_face, label) + 2 * t.small_pad; }
+// How wide a row's control is (0: none).
+set_control_w :: (f: [] UiFrame, r: SetRow) -> f32 {
+  t := f[0].skin.set; v := ifx r.value.count > 0 then set_width(f, t.text_face, r.value) else 0.0f32;
+  w: f32 = 0;
+  if r.kind == SET_ROW_PLAIN { w = v; }
+  else if r.kind == SET_ROW_LINK { w = (ifx v > 0 then v + t.chevron_gap else 0.0f32) + t.chevron * 15 / 24; }   // the chevron's ink ends on the edge
+  else if r.kind == SET_ROW_BUTTON { w = (ifx v > 0 then v + t.row_gap else 0.0f32) + set_small_w(f, r.button); }
+  else if r.kind == SET_ROW_STEPPER { w = 2 * t.small_h + 2 * t.row_gap + v; }
+  else if r.kind == SET_ROW_CHOICE {
+    w = 2 * t.list_gap;
+    for k: 0..<r.noptions { w += set_small_w(f, r.options[k]) + (ifx k > 0 then t.list_gap else 0.0f32); }
+  }
+  return ifx w > t.control then t.control else w;
+}
+SetRowFit :: struct { h: f32; text_h: f32; text_w: f32; control_w: f32; stacked: bool; }
+// A row's layout at w: its words' room, whether its control drops under them (when they would
+// keep less than 180), and its height (12 above and under, the lead's 28 at least).
+set_row_fit :: (f: [] UiFrame, r: SetRow, w: f32) -> SetRowFit {
+  t := f[0].skin.set;
+  cw := set_control_w(f, r);
+  lead := ifx r.icon >= 0 then t.lead + t.lead_gap else 0.0f32;
+  room := w - 2 * t.row_px - lead - (ifx cw > 0 then cw + t.text_gap else 0.0f32);
+  stacked := cw > 0 && room < t.min_text;
+  if stacked { room = w - 2 * t.row_px - lead; }
+  th := t.name_line + (ifx r.desc.count > 0 then t.desc_gap + set_wrap_h(f, t.desc_face, t.desc_line, r.desc, room) else 0.0f32);
+  body := ifx r.icon >= 0 && t.lead > th then t.lead else th;
+  if stacked { body += t.lead_gap + t.small_h; }   // the control under the words, 12 apart (space.3, as the lead's gap)
+  return SetRowFit.{h = 2 * t.row_py + body, text_h = th, text_w = room, control_w = cw, stacked = stacked};
+}
+// A small button (sm: 28 high, 10 in, radius 6, 12) in the secondary tone at (x, y). Returns its width.
+set_small_button :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, state: int, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet; off := (state & EL_S_DISABLED) != 0;
+  w := set_small_w(f, label); h := t.small_h;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  hov := !off && uiframe_hovered(f, id);
+  sheet_fill(sh, x, y, w, h, t.small_radius, ifx hov || p > 0 then t.well_hover else t.well);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, state, ifx off then 0 else action);
+  _ := set_line(f, x + t.small_pad, y + (h - t.desc_line) / 2, w, t.desc_face, t.desc_line, ifx off then t.tertiary else t.text, label);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return w;
+}
+// A button (md: 32 high, 12 in, radius 8, 13 medium) at (x, y): primary, the text's colour with the
+// ground's ink, or secondary. Returns its width.
+set_button_w :: (f: [] UiFrame, label: string) -> f32 { t := f[0].skin.set; return set_width(f, t.name_face, label) + 2 * t.button_pad; }
+set_button :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, primary: bool, state: int, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet; off := (state & EL_S_DISABLED) != 0;
+  w := set_button_w(f, label); h := t.button_h;
+  hov := !off && uiframe_hovered(f, id);
+  fill := ifx primary then (ifx hov then t.primary_hover else t.primary) else (ifx hov then t.well_hover else t.well);
+  sheet_fill(sh, x, y, w, h, t.button_radius, ifx off then t.well else fill);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, state, ifx off then 0 else action);
+  _ := set_line(f, x + t.button_pad, y + (h - t.name_line) / 2, w, t.name_face, t.name_line, ifx off then t.tertiary else ifx primary then t.on_primary else t.text, label);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return w;
+}
+// One row at (x, y), the card's inner width w (its edges excluded). Returns its height.
+set_row :: (f: [] UiFrame, r: SetRow, x: f32, y: f32, w: f32) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  fit := set_row_fit(f, r, w);
+  h := fit.h; off := (r.state & EL_S_DISABLED) != 0;
+  ib: [EL_ID] u8;
+  if r.kind == SET_ROW_LINK {
+    k := uiframe_key(f, r.id);
+    p := ifx off then 0.0f32 else uiframe_press(f, k, r.id);
+    if !off && uiframe_hovered(f, r.id) { sheet_fill(sh, x, y, w, h, 0, t.hover); }
+    if p > 0 { sheet_fill(sh, x, y, w, h, 0, opacity(t.pressed, p)); }
+    row := uiframe_semantic(f, r.id, EL_BUTTON, r.name, x, y, w, h, r.state, ifx off then 0 else r.action);
+    elt_value(f[0].rows, row, r.value);
+    if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  } else {
+    row := uiframe_semantic(f, r.id, EL_ROW, r.name, x, y, w, h, r.state, 0);
+    elt_value(f[0].rows, row, ifx r.kind == SET_ROW_CHOICE && r.chosen >= 0 && r.chosen < r.noptions then r.options[r.chosen] else r.value);
+  }
+  body := h - 2 * t.row_py;
+  top := ifx fit.stacked then y + t.row_py else y + (h - (ifx r.icon >= 0 && t.lead > fit.text_h then t.lead else fit.text_h)) / 2;
+  tx := x + t.row_px;
+  if r.icon >= 0 {
+    ly := ifx fit.stacked then top else y + (h - t.lead) / 2;
+    sheet_fill(sh, tx, ly, t.lead, t.lead, t.lead_radius, t.well);
+    sheet_icon(sh, r.icon, tx + (t.lead - t.lead_icon) / 2, ly + (t.lead - t.lead_icon) / 2, t.lead_icon, t.secondary);
+    tx += t.lead + t.lead_gap;
+  }
+  ty := ifx r.icon >= 0 && t.lead > fit.text_h then top + (t.lead - fit.text_h) / 2 else top;
+  _ := set_line(f, tx, ty, fit.text_w, t.name_face, t.name_line, ifx off then t.tertiary else ifx r.danger then t.danger else t.text, r.name);
+  if r.desc.count > 0 { _ := set_wrap(f, tx, ty + t.name_line + t.desc_gap, fit.text_w, t.desc_face, t.desc_line, t.tertiary, r.desc); }
+  // the control: right-aligned at the row's end, or under the words
+  cw := fit.control_w;
+  if cw <= 0 { return h; }
+  cx := ifx fit.stacked then tx else x + w - t.row_px - cw;
+  cy := ifx fit.stacked then y + h - t.row_py - t.small_h else y + (h - t.small_h) / 2;
+  vy := cy + (t.small_h - t.text_line) / 2;
+  if r.kind == SET_ROW_PLAIN {
+    _ := set_line(f, cx, vy, cw, t.text_face, t.text_line, t.secondary, r.value);
+  } else if r.kind == SET_ROW_LINK {
+    room := cw - t.chevron * 15 / 24 - (ifx r.value.count > 0 then t.chevron_gap else 0.0f32);
+    if r.value.count > 0 { _ := set_line(f, cx, vy, room, t.text_face, t.text_line, t.secondary, r.value); }
+    // Zeron moves the 24-unit glyph out by 9/24 of it, so its ink (15 of the 24) ends on the edge
+    sheet_icon(sh, ICON_SET_CHEVRON, x + w - t.row_px - t.chevron + t.chevron * (1 - 15.0f32 / 24), cy + (t.small_h - t.chevron) / 2 + t.icon_dy, t.chevron, t.tertiary);
+  } else if r.kind == SET_ROW_BUTTON {
+    bw := set_small_w(f, r.button);
+    if r.value.count > 0 { _ := set_line(f, cx, vy, cw - bw - t.row_gap, t.text_face, t.text_line, t.secondary, r.value); }
+    _ := set_small_button(f, app_id(ib[..], r.id, ".a"), cx + cw - bw, cy, r.button, r.state, r.action);
+  } else if r.kind == SET_ROW_STEPPER {
+    _ := set_square(f, app_id(ib[..], r.id, ".a"), cx, cy, r.button, r.state, r.action);
+    vw := cw - 2 * t.small_h - 2 * t.row_gap;
+    _ := set_line(f, cx + t.small_h + t.row_gap + (vw - set_width(f, t.text_face, r.value)) / 2, vy, vw, t.text_face, t.text_line, t.secondary, r.value);
+    _ := set_square(f, app_id(ib[..], r.id, ".b"), cx + cw - t.small_h, cy, r.button2, r.state, r.action2);
+  } else if r.kind == SET_ROW_CHOICE {
+    // a segmented control: a well, the chosen option's thumb the flat selected wash
+    sheet_fill(sh, cx, cy, cw, t.small_h, t.small_radius + t.list_gap, t.well);
+    ox := cx + t.list_gap;
+    for k: 0..<r.noptions {
+      ow := set_small_w(f, r.options[k]);
+      if ox + ow > cx + cw - t.list_gap { ow = cx + cw - t.list_gap - ox; }
+      if ow <= 0 { break; }
+      kb: [8] u8; kb[0] = '.'; kn := text_put_int(kb[..], 1, k);
+      oid := sheet_pool(sh, app_id(ib[..], r.id, cast(string) kb[0..<kn]));
+      on := k == r.chosen; hov := !off && uiframe_hovered(f, oid);
+      if on { sheet_fill(sh, ox, cy + t.list_gap, ow, t.small_h - 2 * t.list_gap, t.small_radius, t.selected); }
+      else if hov { sheet_fill(sh, ox, cy + t.list_gap, ow, t.small_h - 2 * t.list_gap, t.small_radius, t.hover); }
+      orow := uiframe_semantic(f, oid, EL_TAB, r.options[k], ox, cy, ow, t.small_h, (ifx on then EL_S_CURRENT else 0) | (r.state & EL_S_DISABLED), ifx off then 0 else r.action);
+      _ := set_line(f, ox + (ow - set_width(f, t.desc_face, r.options[k])) / 2, cy + (t.small_h - t.desc_line) / 2, ow, t.desc_face, t.desc_line, ifx on || hov then t.text else t.secondary, r.options[k]);
+      if !off { sheet_hit(sh, UIFRAME_HIT, orow, 0, ox, cy, ow, t.small_h); }
+      ox += ow + t.list_gap;
+    }
+  }
+  return h;
+}
+// A square small button (a stepper's − and +).
+set_square :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, state: int, action: int) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet; off := (state & EL_S_DISABLED) != 0;
+  s := t.small_h;
+  hov := !off && uiframe_hovered(f, id);
+  sheet_fill(sh, x, y, s, s, t.small_radius, ifx hov then t.well_hover else t.well);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, s, s, state, ifx off then 0 else action);
+  _ := set_line(f, x + (s - set_width(f, t.text_face, label)) / 2, y + (s - t.text_line) / 2, s, t.text_face, t.text_line, ifx off then t.tertiary else t.text, label);
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, s, s); }
+  return s;
+}
+// How tall a group's card is at w.
+set_group_h :: (f: [] UiFrame, w: f32, rows: [] SetRow) -> f32 {
+  t := f[0].skin.set; h := 2 * t.card_edge;
+  for r, i: rows { h += set_row_fit(f, r, w - 2 * t.card_edge).h + (ifx i > 0 then t.card_edge else 0.0f32); }
+  return h;
+}
+// A group (a card) at (x, y), w wide: radius 12, the settings tint, a 1 edge, and its rows with a
+// hairline between each, edge to edge. Returns its height.
+set_group :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, rows: [] SetRow) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  h := set_group_h(f, w, rows);
+  _ := sheet_box(sh, x, y, w, h, t.card_radius, t.card_edge, t.tint, t.subtle);
+  _ := uiframe_semantic(f, id, EL_REGION, "", x, y, w, h, 0, 0);
+  ry := y + t.card_edge;
+  for r, i: rows {
+    if i > 0 { sheet_fill(sh, x + t.card_edge, ry, w - 2 * t.card_edge, t.card_edge, 0, t.subtle); ry += t.card_edge; }
+    ry += set_row(f, r, x + t.card_edge, ry, w - 2 * t.card_edge);
+  }
+  return h;
+}
+
+// ---------------------------------------------------------------- the account page's aside
+
+// A member card at (x, y), w by h (Zeron's 300 by 420 at 0.6): a frosted card with the name and
+// what it is, and the caption under it (12/16, tertiary, 12 below). Returns the aside's height.
+set_member_card :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, h: f32, name: string, detail: string, caption: string) -> f32 {
+  t := f[0].skin.set; sh := f[0].sheet;
+  r := t.card_radius;
+  _ := sheet_box(sh, x, y, w, h, r, t.card_edge, t.tint, t.subtle);
+  sheet_icon(sh, ICON_SET_ACCOUNT, x + t.row_px, y + t.row_px, t.icon, t.secondary);
+  _ := set_line(f, x + t.row_px, y + h - t.row_px - t.desc_line - t.title_line, w - 2 * t.row_px, t.title_face, t.title_line, t.text, name);
+  _ := set_line(f, x + t.row_px, y + h - t.row_px - t.desc_line, w - 2 * t.row_px, t.desc_face, t.desc_line, t.tertiary, detail);
+  _ := uiframe_semantic(f, id, EL_IMAGE, name, x, y, w, h, 0, 0);
+  cw := set_width(f, t.desc_face, caption);
+  _ := set_line(f, x + (w - cw) / 2, y + h + t.caption_gap, w, t.desc_face, t.desc_line, t.tertiary, caption);
+  return h + t.caption_gap + t.desc_line;
+}
+
+#load "settings-checks.coax" #test;

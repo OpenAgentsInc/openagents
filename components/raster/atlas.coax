@@ -288,7 +288,7 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
 
 #test "the plan stacks the fonts, then the icons, then the glyph cache, none over another; a display face holds one offset and does not size the cache" {
   p: [1] RaPlan;
-  sizes := [13] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24];
+  sizes := [16] f32.[14, 12, 12, 14, 14, 12.5, 12, 11, 11, 13, 11, 14, 24, 11, 12, 20];   // skin/zeron.coax FONT_SIZES
   icons := [3] f32.[18, 14, 16];
   #assert ra_plan(p[..], 1, sizes[..], icons[..]);
   #assert p[0].width == 4096 && p[0].slots[0].cell == 28 && p[0].slots[5].cell == 25 && p[0].slots[0].cols == 146;
@@ -298,8 +298,9 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
     rows := ((ifx gp_display(k - 1) then GP_GLYPHS else GP_GLYPHS * GP_SUBPIXEL) + prev.cols - 1) / prev.cols;
     #assert p[0].slots[k].y0 == prev.y0 + rows * prev.cell;
   }
-  last := p[0].slots[GP_FONTS - 1];
-  #assert gp_display(GP_FONTS - 1) && last.cell == 27 && last.pen_x == 1 && last.pen_y == 22;
+  big := p[0].slots[12]; last := p[0].slots[GP_FONTS - 1];
+  #assert gp_display(12) && big.cell == 27 && big.pen_x == 1 && big.pen_y == 22;
+  #assert gp_display(GP_FONTS - 1) && last.cell == ra_ceil(20 * RA_DISPLAY_EM) && last.pen_x == 1;   // the settings title, 20
   #assert p[0].tiles[0].y >= last.y0 + ((GP_GLYPHS + last.cols - 1) / last.cols) * last.cell;
   #assert p[0].tiles[0].size == 36 && p[0].tiles[1].x == 38 && p[0].tiles[1].size == 28 && p[0].tiles[2].x == 68;
   #assert p[0].dyn_cell == 28 && p[0].dyn_y0 > p[0].tiles[0].y + 36 && p[0].height == p[0].dyn_y0 + ((GP_DYN_MONO + 145) / 146) * 28;

@@ -25,13 +25,13 @@
 GP_SUBPIXEL :: 4;           // gpui text_system.rs SUBPIXEL_VARIANTS_X
 GP_DILATIONS :: 5;          // gpui_macos glyph_dilation_for_color: levels 0..4
 GP_SVG_SCALE :: 2.0;        // gpui svg_renderer.rs SMOOTH_SVG_SCALE_FACTOR
-GP_FONTS :: 13;
+GP_FONTS :: 16;
 // The fonts before GP_BODY_FONTS are body faces; the ones from it on are display faces (a large
 // title). A display face's own area holds its ASCII glyphs at one subpixel offset and one weight,
 // and the glyph cache is sized from the body faces, so a large face costs the atlas little. A glyph
 // a display face does not hold draws from the cache in the largest body face, so text never breaks.
 GP_BODY_FONTS :: 12;
-GP_ICONS :: 48;             // icons the atlas holds; the component library names 41 (ICON_COUNT)
+GP_ICONS :: 64;             // icons the atlas holds (the hosts' most); the component library names 52 (ICON_COUNT)
 
 // The glyphs the atlas holds, in order: ASCII 32..126, then these.
 GP_EXTRA :: [3] u32.[0x2026, 0x2022, 0x00A0];   // … • no-break space

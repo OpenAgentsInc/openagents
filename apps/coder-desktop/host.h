@@ -121,4 +121,22 @@ void *cd_headless(void);
 int cd_take(void *to, void *from);
 void cd_tick(void *page, float dt);
 void cd_close(void *page);
+// Settings (settings.coax). cd_settings_open: open it on a page (0 General, 1 Models, 2 Foreman,
+// 3 Account, 4 About & updates; -1 the last one shown), scrolled to a row id ("" the top); a page
+// below -1 closes it. cd_settings_page: the page it shows, -1 while closed. cd_settings_info: the
+// Claude key's and the OpenRouter key's state as shown ("" not set), the app's version, and the
+// window's title bar over the page in points.
+// cd_settings_tier: the tier a press on Foreman's page chose (cd_action 18). cd_search_box: where
+// the search editor goes, in points (0 while settings is closed). cd_search_set: its text after an
+// edit. cd_search_submit: Return in it; 0 when it found nothing.
+// cd_action asks: 13 settings opened or closed (move the keyboard), 14/15 text size up/down,
+// 16 the Claude key, 17 OpenRouter, 18 Foreman's tier, 19 its audit log, 20 clear its history,
+// 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard.
+void cd_settings_open(void *page, int which, const char *row);
+int cd_settings_page(void *page);
+void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar);
+int cd_settings_tier(void *page);
+int cd_search_box(void *page, float out[4]);
+void cd_search_set(void *page, const char *text);
+int cd_search_submit(void *page);
 #endif

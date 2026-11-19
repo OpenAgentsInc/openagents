@@ -8,6 +8,7 @@
 #load "task.coax";
 #load "account.coax";
 #load "nav.coax";
+#load "settings.coax";
 #load "gallery/gallery.coax";
 
 #test "app set: every file of the set loads with the shared app core, and the renamed parts are the set's" {

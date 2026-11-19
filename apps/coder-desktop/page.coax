@@ -21,6 +21,7 @@
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "settings.coax";
 
 CP_MAX_VERTICES :: 200000;
 // A generation's declared capacity: primitives, selectable lines, hits, pooled bytes, semantic rows; then keyed ids.
@@ -100,8 +101,11 @@ CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 
 CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11; CP_ASK_UPDATE :: 12;
+// settings (settings.coax): it opened or closed (the host moves the keyboard), the text size, the keys, Foreman's tier, its log and history, log in, an update check, the search field
+CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUDE_KEY :: 16; CP_ASK_OPENROUTER :: 17; CP_ASK_TIER :: 18; CP_ASK_AUDIT :: 19; CP_ASK_CLEAR_FOREMAN :: 20; CP_ASK_LOGIN :: 21; CP_ASK_CHECK_UPDATES :: 22; CP_ASK_SEARCH :: 23;
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
+CP_SET_BACK :: 29; CP_SET_PAGE :: 30; CP_SET_SEARCH :: 31; CP_SET_HIT :: 32; CP_SET_ACCOUNT :: 33; CP_SET_TOGGLE :: 34; CP_SET_ACT :: 35;   // settings.coax
 // Desktop auto-updater pill states shown in the sidebar footer.
 CP_UPD_HIDDEN :: 0; CP_UPD_AVAILABLE :: 1; CP_UPD_DOWNLOADING :: 2; CP_UPD_READY :: 3; CP_UPD_ERROR :: 4;
 // Foreman permission tiers shown in the sidebar.
@@ -231,6 +235,17 @@ CoderPage :: struct {
   update_label: [64] u8; update_label_n: int;
   update_detail: [48] u8; update_detail_n: int;
   dx: f32; dy: f32; col_x: f32; col_w: f32;   // where the pointer went down; the column as last drawn
+  // settings (settings.coax): open, its page, the page's and the list's scroll, the search and the
+  // row it asked for, the search field's box, and what the host told it
+  set_open: bool; set_page: int; set_tier: int;
+  set_scroll: f32; set_content: f32; set_view: f32; set_target_y: f32;
+  set_list_scroll: f32; set_list_content: f32; set_list_view: f32;
+  set_query: [64] u8; set_query_n: int;
+  set_target: [EL_ID] u8; set_target_n: int;
+  set_box: [4] f32; set_due: bool; set_bar: f32;   // set_due: the page scrolled to a row, one more frame; set_bar: the window's title bar, in points
+  set_claude: [48] u8; set_claude_n: int;
+  set_orkey: [48] u8; set_orkey_n: int;
+  set_version: [48] u8; set_version_n: int;
   arena: [CP_ARENA] u8;
 }
 
@@ -390,6 +405,10 @@ cp_skin :: () -> UiSkin {
   k.cmp.chip_pad = 8.0f32 / u;
   k.cmp.chip_icon = 14.0f32 / u;
   k.cmp.chip_gap = 6.0f32 / u;
+  // Settings (settings.coax): Zeron's measures in points, in the page's units. Its 13pt faces are
+  // Coder's 11-unit ones (13.2pt); its 11pt, 12pt and 20pt faces are slots the host sizes in points.
+  k.set = uisettings_scaled(zeron_settings(), u);
+  k.set.text_face = FONT_SMALL; k.set.name_face = FONT_MENU_SMALL;
   return k;
 }
 cp_out :: (out: [] u8, text: string) -> int {
@@ -1669,6 +1688,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
 }
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
+  if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
   if act == CP_TOOL {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); k := cp_number(id, ".x");
@@ -1949,6 +1969,7 @@ cp_agent_row :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int, x: f32, y0: f32
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   k := f[0].skin; a := k.app;
   s[0].win_w = window_w;
+  if s[0].set_open { cp_settings(s, f, window_w, h); return; }
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
@@ -2283,9 +2304,13 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         nrows += 1;
       }
     }
+    // the foot: the update pill when there is one, then the account row and its gear (settings)
+    st := k.set;
+    me_h := st.account_top + st.account + st.list_pad;
     footer_h := cp_side_footer_h(s, k);
-    if stop + footer_h > h { footer_h = 0; }
-    s[0].side_view = h - stop - footer_h;
+    if stop + footer_h + me_h > h { footer_h = 0; }
+    if stop + me_h > h { me_h = 0; }
+    s[0].side_view = h - stop - footer_h - me_h;
     bottom_pad := 16.0f32 / u;
     tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
     s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, tail, CP_CHAT);
@@ -2315,7 +2340,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
       if my + k.small.line > stop && my < stop + s[0].side_view { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
     }
-    if footer_h > 0 { cp_side_footer(s, f, 0, h - footer_h, sw); }
+    if footer_h > 0 { cp_side_footer(s, f, 0, h - me_h - footer_h, sw); }
+    if me_h > 0 { _ := set_account_row(f, "coder.me", st.list_pad, h - st.list_pad - st.account, sw - 2 * st.list_pad, "Local", "L", false, false, CP_SET_ACCOUNT, CP_SET_TOGGLE); }
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx (full || exceeded) then APP_COMPOSER_OFF else APP_COMPOSER_READY,
@@ -2500,7 +2526,8 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
-  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due;
+  s[0].set_due = false;
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
@@ -2634,6 +2661,12 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
 // The wheel, in device pixels, down positive. Scrolling up lets go of the newest message.
 coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return; }
+  // in settings the wheel moves the list of pages or the page
+  if s[0].set_open {
+    if s[0].px < s[0].side { s[0].set_list_scroll = scroll_clamp(s[0].set_list_scroll + dy / s[0].d, s[0].set_list_content, s[0].set_list_view); }
+    else { s[0].set_scroll = scroll_clamp(s[0].set_scroll + dy / s[0].d, s[0].set_content, s[0].set_view); }
+    return;
+  }
   // over the sidebar the wheel moves the list of chats
   if s[0].side > 0 && s[0].px < s[0].side {
     s[0].side_scroll = scroll_clamp(s[0].side_scroll + dy / s[0].d, s[0].side_content, s[0].side_view);
@@ -2657,7 +2690,17 @@ CP_ICON :: 18;
 coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
   if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
   sizes := ICON_SIZES;
+  // settings' icons are Zeron's, in points
+  if i >= ICON_SET_GENERAL && i <= ICON_SET_COMMAND { return sizes[i] / ARCADE_PHONE_SCALE; }
   return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
+}
+// A font's size in the atlas: the settings' faces are Zeron's, in points; the rest keep the
+// component library's.
+coder_page_font_size :: (k: int) -> f32 #export_c #effects(all) {
+  sizes := FONT_SIZES;
+  if k < 0 || k >= sizes.count { return 12.0f32; }
+  if k == FONT_SET_HEAD || k == FONT_SET_DESC || k == FONT_SET_TITLE { return sizes[k] / ARCADE_PHONE_SCALE; }
+  return sizes[k];
 }
 // What the page asks of the host (CP_ASK_*), once.
 coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {

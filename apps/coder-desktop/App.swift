@@ -378,6 +378,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var lastForegroundRunning = false
     var foremanTier: ForemanTier = ForemanTier.load()
     private let updater = CoderUpdater()
+    /// Settings' search field (settings.coax draws its box and placeholder; this holds the typing).
+    private let search: KitMacEditor
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -390,6 +392,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_sides_set(page, UserDefaults.standard.float(forKey: "sideWidth"), UserDefaults.standard.float(forKey: "paneWidth"))
         var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
         editor = KitMacEditor(style: style); line = CGFloat(style[1])
+        var searchStyle = style; searchStyle[0] = 12 * style[0] / 14.4; searchStyle[1] = 16 * style[0] / 14.4
+        search = KitMacEditor(style: searchStyle)
         // Most of the screen, up to 1500 by 1000 points.
         let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
@@ -433,6 +437,23 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         editor.setAccessibilityIdentifier("coder.composer"); editor.setAccessibilityLabel("Message")
         canvas.addSubview(editor)
+        // Settings' search: each edit filters the list; Return opens the best match.
+        search.committed = { [weak self] text in guard let self else { return }; cd_search_set(self.page, text) }
+        search.command = { [weak self] selector in
+            guard let self else { return false }
+            if selector == #selector(NSResponder.insertNewline(_:)) { _ = cd_search_submit(self.page); return true }
+            if selector == #selector(NSResponder.cancelOperation(_:)) { self.escape(); return true }
+            return selector == #selector(NSResponder.insertTab(_:))
+        }
+        search.textContainer?.widthTracksTextView = false; search.textContainer?.size = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        search.isHorizontallyResizable = false; search.isHidden = true
+        search.setAccessibilityIdentifier("set.search.field"); search.setAccessibilityLabel("Search settings")
+        canvas.addSubview(search)
+        syncSettingsInfo()
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == 53, event.window === self.window, self.window.attachedSheet == nil, cd_settings_page(self.page) >= 0 else { return event }
+            self.escape(); return nil
+        }
         wire(run)
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
@@ -442,6 +463,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
+        // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about).
+        if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
+           let which = ["general", "models", "foreman", "account", "about"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -835,7 +859,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
             self.choosingFolder = false
-            defer { self.window.makeFirstResponder(self.editor) }
+            defer { self.refocus() }
             guard answer == .alertFirstButtonReturn else { return }
             let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !raw.isEmpty else { return }
@@ -864,7 +888,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 guard let self else { return }
                 self.choosingFolder = false
                 if answer == .OK, let url = panel.url { self.setFolder(url, keep: true) }
-                self.window.makeFirstResponder(self.editor)
+                self.refocus()
             }
         }
     }
@@ -917,8 +941,79 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             cd_chats(page, chatLines)
         case 11: openForeman()
         case 12: handleUpdatePillClick()
+        case 13: settingsMoved()
+        case 14: zoom(1)
+        case 15: zoom(-1)
+        case 16: chooseKey()
+        case 17: chooseOpenRouter()
+        case 18: if let tier = ForemanTier(rawValue: Int(cd_settings_tier(page))) { setForemanTier(tier) }
+        case 19: openForemanAuditLog()
+        case 20: clearForemanHistory()
+        case 21: if let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
+        case 22: checkForUpdates()
+        case 23: window.makeFirstResponder(search)
         default: break
         }
+    }
+
+    // MARK: - Settings (settings.coax)
+    /// Coder > Settings… (Command-comma), and the menu items that open one of its pages: 0 General,
+    /// 1 Models, 2 Foreman, 3 Account, 4 About & updates (-1 the last one shown), at a row ("" the top).
+    func openSettings(_ which: Int32 = -1, row: String = "") {
+        syncSettingsInfo()
+        cd_settings_open(page, which, row)
+        act(cd_action(page)); wake()
+    }
+    /// View > Back to Chats (Command-[), Esc and the gear: the chat as it was.
+    func closeSettings() { cd_settings_open(page, -2, ""); act(cd_action(page)); wake() }
+    var settingsOpen: Bool { cd_settings_page(page) >= 0 }
+    /// Edit > Find (Command-F) in settings: the search field takes the keyboard.
+    func findInSettings() { if settingsOpen { window.makeFirstResponder(search); wake() } }
+    /// Esc in settings: a search is emptied first, then settings closes.
+    private func escape() {
+        if !search.string.isEmpty { search.synchronize { search.string = "" }; cd_search_set(page, ""); window.makeFirstResponder(search); wake(); return }
+        closeSettings()
+    }
+    /// Settings opened or closed: the keyboard goes to the page or back to the composer.
+    private func settingsMoved() {
+        if settingsOpen {
+            syncSettingsInfo()
+            if window.firstResponder === editor { window.makeFirstResponder(nil) }
+        } else {
+            search.synchronize { search.string = "" }; search.isHidden = true
+            window.makeFirstResponder(editor)
+        }
+    }
+    /// After a sheet: the composer takes the keyboard back, unless settings is open.
+    func refocus() { if !settingsOpen { window.makeFirstResponder(editor) } else { syncSettingsInfo(); wake() } }
+    /// What settings' pages show that only the app knows: the keys' ends and the version.
+    func syncSettingsInfo() {
+        func ends(_ key: String) -> String { "Ends " + String(key.suffix(4)) }
+        var claude = ""
+        if let launch = CoderKey.fromLaunch { claude = ends(launch) + " (this launch)" } else if let kept = CoderKey.saved { claude = ends(kept) }
+        var openrouter = ""
+        if let kept = CoderOpenRouter.saved { openrouter = ends(kept) } else if CoderOpenRouter.hasKey { openrouter = "From openrouter.env" }
+        let info = Bundle.main.infoDictionary
+        var version = info?["CFBundleShortVersionString"] as? String ?? ""
+        if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
+        cd_settings_info(page, claude, openrouter, version, Float(window.frame.height - window.contentLayoutRect.height))
+    }
+    /// The search field over the box the page drew for it, at the page's text size.
+    private func placeSearch() {
+        var box = [Float](repeating: 0, count: 4)
+        guard cd_search_box(page, &box) != 0 else {
+            if !search.isHidden { if window.firstResponder === search { window.makeFirstResponder(nil) }; search.isHidden = true }
+            return
+        }
+        search.isHidden = false
+        let size = CGFloat(box[3]) * 12 / 16
+        if let font = search.font, abs(font.pointSize - size) > 0.01 {
+            search.font = NSFont(descriptor: font.fontDescriptor, size: size)
+            let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = CGFloat(box[3]); paragraph.maximumLineHeight = CGFloat(box[3])
+            search.defaultParagraphStyle = paragraph; search.typingAttributes[.paragraphStyle] = paragraph
+        }
+        let frame = NSRect(x: CGFloat(box[0]), y: canvas.bounds.height - CGFloat(box[1] + box[3]), width: CGFloat(box[2]), height: CGFloat(box[3]))
+        if search.frame != frame { search.frame = frame; wake() }
     }
 
     /// Opens the Nth chat from the top of the sidebar list (1 is the first).
@@ -987,7 +1082,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            defer { self.window.makeFirstResponder(self.editor) }
+            defer { self.refocus() }
             guard answer == .alertFirstButtonReturn else { return }
             let cleaned = field.stringValue
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1043,7 +1138,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.window.initialFirstResponder = tv
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            defer { self.window.makeFirstResponder(self.editor) }
+            defer { self.refocus() }
             if answer == .alertFirstButtonReturn {
                 let text = tv.string.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !text.isEmpty { _ = cd_goal_set(self.page, text) }
@@ -1070,7 +1165,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            defer { self.window.makeFirstResponder(self.editor) }
+            defer { self.refocus() }
             guard answer == .alertFirstButtonReturn else { return }
             let title = CoderStore.cleanTitle(field.stringValue)
             guard !title.isEmpty else { return }
@@ -1099,7 +1194,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
             cd_chats(self.page, self.chatLines)
-            self.window.makeFirstResponder(self.editor); self.wake()
+            self.refocus(); self.wake()
         }
     }
     /// Coder > Claude Key: sets, replaces or removes the key Claude sub-agents use. It applies to the
@@ -1122,7 +1217,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.window.initialFirstResponder = field
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            defer { self.window.makeFirstResponder(self.editor) }
+            defer { self.refocus() }
             let key: String
             switch answer {
             case .alertFirstButtonReturn:
@@ -1174,8 +1269,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.window.initialFirstResponder = hadKey ? main : key
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            if answer == .alertThirdButtonReturn && hadKey { _ = CoderOpenRouter.save(""); self.window.makeFirstResponder(self.editor); return }
-            guard answer == .alertFirstButtonReturn else { self.window.makeFirstResponder(self.editor); return }
+            if answer == .alertThirdButtonReturn && hadKey { _ = CoderOpenRouter.save(""); self.refocus(); return }
+            guard answer == .alertFirstButtonReturn else { self.refocus(); return }
             let k = key.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let m = main.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), s = sub.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             if !k.isEmpty && !CoderOpenRouter.save(k) {
@@ -1191,7 +1286,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 }
                 CoderOpenRouter.setModels(main: m, sub: s)
                 self.applyOpenRouter()
-                self.window.makeFirstResponder(self.editor)
+                self.refocus()
             }
         }
     }
@@ -1269,6 +1364,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         return true
     }
     private var monitor: Any?
+    private var keyMonitor: Any?   // Esc in settings
 
     /// Keeps a chat: its file, and its entry in the list (at the top when new, in place when updated).
     /// The shown one, or one whose reply runs out of view.
@@ -1332,9 +1428,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         cd_env(page, focused && !editor.string.isEmpty ? 1 : 0, Float(used), NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
         if cd_moving(page) != 0 || owed > 0 { cd_frame(page); if owed > 0 { owed -= 1 } }
+        placeSearch()
         var box = [Float](repeating: 0, count: 6)
         guard cd_editor(page, &box) != 0 else {
             if focused { restoreEditorFocus = true }
+            // in settings the hidden composer gives the keyboard up
+            if focused && cd_settings_page(page) >= 0 { window.makeFirstResponder(nil) }
             editor.isHidden = true
             return
         }
@@ -2228,6 +2327,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
         runs = [:]
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
         run.stop(); cd_on_change(page, nil, nil); cd_close(page)
     }
 }
@@ -2296,9 +2396,13 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func stopAllChats(_ sender: Any?) { main?.stopAllChats() }
     @objc func viewForemanAuditLog(_ sender: Any?) { main?.openForemanAuditLog() }
     @objc func clearForemanHistory(_ sender: Any?) { main?.clearForemanHistory() }
-    @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
-    @objc func openRouterModels(_ sender: Any?) { main?.chooseOpenRouter() }
-    @objc func checkForUpdates(_ sender: Any?) { main?.checkForUpdates() }
+    // The old dialogs' items open their settings pages, at their rows.
+    @objc func claudeKey(_ sender: Any?) { main?.openSettings(1, row: "set.claude") }
+    @objc func openRouterModels(_ sender: Any?) { main?.openSettings(1, row: "set.or") }
+    @objc func checkForUpdates(_ sender: Any?) { main?.openSettings(4, row: "set.update"); main?.checkForUpdates() }
+    @objc func openSettings(_ sender: Any?) { main?.openSettings() }
+    @objc func backToChats(_ sender: Any?) { main?.closeSettings() }
+    @objc func findInSettings(_ sender: Any?) { main?.findInSettings() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -2317,6 +2421,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             return true
         }
         if item.action == #selector(stopAllChats(_:)) { return (main?.runningCount ?? 0) > 0 }
+        if item.action == #selector(backToChats(_:)) || item.action == #selector(findInSettings(_:)) { return main?.settingsOpen == true }
         return true
     }
 }
@@ -2348,7 +2453,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             item.target = delegate; item.tag = k; item.keyEquivalentModifierMask = [.command]
             item.isHidden = true; item.allowsKeyEquivalentWhenHidden = true
         }
+        view.addItem(.separator())
+        view.addItem(withTitle: "Back to Chats", action: #selector(CoderDelegate.backToChats(_:)), keyEquivalent: "[").target = delegate
         viewItem.submenu = view
+        appMenu.addItem(withTitle: "Settings…", action: #selector(CoderDelegate.openSettings(_:)), keyEquivalent: ",").target = delegate
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
@@ -2363,6 +2472,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Find in Settings", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
         let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "0")
         openForemanItem.target = delegate; openForemanItem.keyEquivalentModifierMask = [.command]

@@ -1,0 +1,112 @@
+// Checks for the settings screen's parts (settings.coax): Zeron's measures.
+#load "checks-kit.coax";
+
+// the first committed primitive of a kind at or after index `from` (under the text, or the text itself)
+set_test_prim :: (t: [] AppTest, over: bool, kind: int, text: string) -> Prim {
+  sh := surface_sheet(t[0].sf[..]); none: Prim;
+  if over { for i: 0..<sh.no { if sh.over[i].kind == kind && sh.over[i].text == text { return sh.over[i]; } } return none; }
+  for i: 0..<sh.nu { if sh.under[i].kind == kind { return sh.under[i]; } }
+  return none;
+}
+
+#test "settings: Zeron's tokens, and a skin drawn larger divides every length" {
+  z := zeron_settings();
+  #assert z.measure == 640 && z.control == 240 && z.text_inset == 17 && z.row == 28 && z.heading == 24 && z.list_gap == 2 && z.min_text == 180;
+  #assert z.selected.a == 0x24 / 255.0 && z.tint.a == 0x0b / 255.0 && z.subtle.a == 0x0a / 255.0 && z.strong.a == 0x2e / 255.0;
+  #assert abs(z.secondary.a - 0.6) < 0.001 && abs(z.tertiary.a - 0.42) < 0.001 && z.text.r == hex(0xededef, 1).r;
+  #assert z.title_face == FONT_SET_TITLE && z.head_face == FONT_SET_HEAD && z.desc_face == FONT_SET_DESC;
+  sizes := FONT_SIZES; weights := FONT_WEIGHTS;
+  #assert sizes[FONT_SET_TITLE] == 20 && weights[FONT_SET_TITLE] == 2 && sizes[FONT_SET_HEAD] == 11 && weights[FONT_SET_HEAD] == 1 && sizes[FONT_SET_DESC] == 12 && weights[FONT_SET_DESC] == 0;
+  #assert gp_display(FONT_SET_HEAD) && GP_FONTS == 16 && ICON_COUNT <= GP_ICONS;
+  c := uisettings_scaled(z, 1.25);
+  #assert c.row == 28 / 1.25 && c.measure == 640 / 1.25 && c.text_inset == 17 / 1.25 && c.title_face == z.title_face && c.selected.a == z.selected.a;
+  #assert uisettings_scaled(z, 1).row == 28 && arcade_phone_skin().set.row == 28;
+}
+
+#test "settings list: a heading is 24 high, a row 28 with its icon 8 in and its label 8 past it; the chosen row is washed, Back is a button" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; z := zeron_settings();
+  app_test_begin(t[..], "", "", true);
+  y: f32 = 10;
+  hh := set_nav_head(f, "set.h", 0, y, 200, "Personal");
+  rh := set_nav_row(f, "set.back", 0, y + hh, 200, ICON_SET_BACK, "Back to chats", false, true, 5);
+  ch := set_nav_row(f, "set.general", 0, y + hh + rh + z.list_gap, 200, ICON_SET_GENERAL, "General", true, false, 6);
+  #assert app_test_end(t[..]) && hh == 24 && rh == 28 && ch == 28;
+  #assert app_test_row(t[..], "set.h").role == EL_HEADING && app_test_row(t[..], "set.back").role == EL_BUTTON && app_test_row(t[..], "set.general").role == EL_TAB;
+  #assert app_test_has(t[..], "set.general", EL_S_CURRENT) && !app_test_has(t[..], "set.back", EL_S_CURRENT) && app_test_pressable(t[..], "set.general");
+  head := set_test_prim(t[..], true, PRIM_TEXT, "Personal");
+  #assert head.x == 8 && head.y == y + 8 + 1 && head.h == 14;
+  label := set_test_prim(t[..], true, PRIM_TEXT, "General");
+  #assert label.x == 8 + 16 + 8 && label.y == y + 24 + 28 + 2 + 5;
+  wash := set_test_prim(t[..], false, PRIM_BOX, "");
+  #assert wash.y == y + 24 + 28 + 2 && wash.h == 28 && wash.radius == 6 && wash.fill.a == z.selected.a;
+}
+
+#test "settings list: the search field is 28 with its key chips; the account row is a 30 slot and a 30 toggle" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  keys := [2] string.["⌘", "F"];
+  app_test_begin(t[..], "", "", true);
+  sh := set_search(f, "set.search", 8, 0, 200, "Search settings", true, keys[..], 7);
+  ah := set_account_row(f, "set.me", 8, 40, 200, "Local", "L", false, true, 8, 9);
+  #assert app_test_end(t[..]) && sh == 28 && ah == 30;
+  #assert app_test_texts(t[..], "Search settings") == 1 && app_test_texts(t[..], "F") == 1 && app_test_row(t[..], "set.search").role == EL_FIELD;
+  b := set_search_box(zeron_settings(), 8, 0, 200);
+  #assert b.x == 8 + 8 + 14 + 8 && b.h == 16;
+  #assert app_test_row(t[..], "set.me").w == 200 - 2 - 30 && app_test_row(t[..], "set.me.settings").x == 8 + 200 - 30 && app_test_has(t[..], "set.me.settings", EL_S_PRESSED);
+  #assert app_test_pressable(t[..], "set.me") && app_test_pressable(t[..], "set.me.settings") && app_test_texts(t[..], "Local") == 1;
+}
+
+#test "settings page: the column is at most 640, the title 26 on the 17 text edge, a one-line row 42 in a card with 1 edges and rules" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; z := zeron_settings();
+  c := set_column(z, 100, 1000);
+  #assert c.w == 640 && c.x == 100 + 180 && set_column(z, 0, 500).w == 500 - 64;
+  rows := [2] SetRow.[SetRow.{id = "r.a", name = "Alpha"}, SetRow.{id = "r.b", name = "Beta", kind = SET_ROW_LINK, value = "On", action = 3}];
+  app_test_begin(t[..], "", "", true);
+  ph := set_page_head(f, "p", 0, 0, 640, "General", "");
+  gh := set_group(f, "g", 0, 100, 640, rows[..]);
+  #assert app_test_end(t[..]) && ph == 26 && gh == 1 + 42 + 1 + 42 + 1;
+  title := set_test_prim(t[..], true, PRIM_TEXT, "General");
+  #assert title.x == 17 && title.h == 26;
+  name := set_test_prim(t[..], true, PRIM_TEXT, "Alpha");
+  #assert name.x == 17 && name.y == 100 + 1 + 12;
+  card := set_test_prim(t[..], false, PRIM_BOX, "");
+  #assert card.radius == 12 && card.border == 1 && card.fill.a == z.tint.a && card.edge.a == z.subtle.a && card.h == gh;
+  #assert app_test_row(t[..], "r.b").h == 42 && app_test_row(t[..], "r.b").y == 100 + 1 + 42 + 1 && app_test_pressable(t[..], "r.b") && app_test_value(t[..], "r.b") == "On";
+  #assert app_test_row(t[..], "r.a").action == 0;
+}
+
+#test "settings row: a control keeps the words at least 180; under that it drops under them, 12 apart; a description is 2 under the name" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; z := zeron_settings();
+  r := SetRow.{id = "r", name = "Working folder", desc = "Where commands start", kind = SET_ROW_BUTTON, button = "Choose", action = 4};
+  app_test_begin(t[..], "", "", true);
+  wide := set_row_fit(f, r, 600);
+  #assert !wide.stacked && wide.h == 12 + 18 + 2 + 16 + 12 && wide.control_w == 6 + 20;
+  // words' room: w - 32 - 26 - 16; at 180 it holds, under it drops
+  #assert !set_row_fit(f, r, 180 + 32 + 26 + 16).stacked && set_row_fit(f, r, 179 + 32 + 26 + 16).stacked;
+  narrow := set_row_fit(f, r, 200);
+  #assert narrow.stacked && narrow.h == 12 + narrow.text_h + 12 + 28 + 12;
+  lead := set_row_fit(f, SetRow.{id = "l", icon = ICON_SET_TAG, name = "Card"}, 400);
+  #assert lead.h == 12 + 28 + 12 && lead.text_w == 400 - 32 - 28 - 12;
+  _ := set_row(f, r, 0, 0, 600);
+  #assert app_test_end(t[..]) && app_test_pressable(t[..], "r.a") && app_test_row(t[..], "r.a").x == 600 - 16 - 26 && app_test_row(t[..], "r.a").h == 28;
+  d := set_test_prim(t[..], true, PRIM_TEXT, "Where commands start");
+  #assert d.y == 12 + 18 + 2 && d.h == 16;
+  choice := SetRow.{id = "c", name = "Tier", kind = SET_ROW_CHOICE, noptions = 3, chosen = 1, action = 5};
+  choice.options[0] = "Observe"; choice.options[1] = "Managed"; choice.options[2] = "Auto";
+  app_test_begin(t[..], "", "", true);
+  _ := set_row(f, choice, 0, 0, 600);
+  #assert app_test_end(t[..]);
+  #assert app_test_has(t[..], "c.1", EL_S_CURRENT);
+  #assert app_test_pressable(t[..], "c.0");
+  #assert app_test_pressable(t[..], "c.2");
+  #assert app_test_value(t[..], "c") == "Managed";
+}
+
+#test "settings: a primary button is 32 with 12 in; the member card's caption is 12 under it" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  w := set_button(f, "login", 0, 0, "Log in", true, 0, 9);
+  ah := set_member_card(f, "card", 0, 50, 180, 252, "You", "Local", "Yours when you log in");
+  #assert app_test_end(t[..]) && w == 6 + 24 && app_test_row(t[..], "login").h == 32 && app_test_pressable(t[..], "login") && ah == 252 + 12 + 16;
+  cap := set_test_prim(t[..], true, PRIM_TEXT, "Yours when you log in");
+  #assert cap.y == 50 + 252 + 12;
+}
