@@ -5,7 +5,8 @@
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
 #load "slab-sea.coax";
-#load "slab-foam.coax";   // the open sea's foam, from the frame store (slab-foam.coax beside the page)
+#load "slab-foam.coax";
+#load "slab-rain.coax";   // rain's rings and roughness on the sea   // the open sea's foam, from the frame store (slab-foam.coax beside the page)
 #load "slab-water.coax";
 #load "slab-ship-wake.coax";   // the ships' wakes (slab-content-life.coax)
 #load "../../../metaverse/hull.coax";

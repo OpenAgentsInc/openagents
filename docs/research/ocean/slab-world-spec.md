@@ -1502,10 +1502,10 @@ by its optics") has the method and its sources.
   frame's own light and film response.
 - Foam was drawn from noise at first; it now comes from the engine's foam
   field (see "The open sea's foam, from the simulation" below).
-- Rain does not flatten the sea or ring its surface, and the cloud deck is a
-  texture with no shadow of its own on the water.
-- Under the sea the hull casts its shadow on the bed, not in the water: the
-  sun's shafts do not stop under the hull.
+- Rain rings the sea near the eye and roughens its sheen farther off (see
+  "Rain, lightning and the hull's shadow under the sea" below), but it does
+  not flatten the short waves, and the cloud deck is a texture with no
+  shadow of its own on the water.
 
 ### White water at the walls the visitor sees
 
@@ -1636,6 +1636,57 @@ Issue 13687 asked for these. `docs/metaverse/photoreal.md` has the method.
   so the moon is often thin or down.
 - The construction view has no lamp field; `night_work_light` is there for
   a construction set to call.
+
+### Rain, lightning and the hull's shadow under the sea
+
+Measured on November 18, 2026, in headless pictures at 1440×900 and 390×844.
+
+- **Rain on the sea.** In Rain and Storm (`?weather=rain`, `?weather=storm`)
+  each drop near the eye rings the surface: a short wave train runs out from
+  where it fell at 0.35 m/s and dies in 0.6 s, two layers of drops on 0.45 m
+  cells, about 2.5 drops a cell a second in heavy rain
+  (`gpu/slab-rain.coax`). Where a pixel is wider than about 0.1 m the rings
+  are gone and the rain adds 0.006 to the mean square slope, so the sheen
+  goes matte and the mirrored sky blurs. These numbers are ours, not
+  measured. The drops are on the world's clock: a fixed `?t=` draws the same
+  rings.
+- **Lightning.** A flash (`weather_flash`, deterministic per 6 s window)
+  now lights the photoreal frame too: the sky light from above grows by about
+  twice a storm's own, bluish, for the flash's quarter second
+  (`sea_look_flash`), and the sea mirrors the lit cloud base. With
+  `?weather=storm&t=38.2` a flash is on screen.
+- **The hull's shadow in the water.** Under the sea the sun's shafts now stop
+  where the ray toward the sun passes through the hull's box, so the water
+  under the hull is dark and shafts show beyond it (`slab_sea_hull_shades`,
+  in the prime layout).
+- **A phone's whitecaps.** A phone's field breaks on cascade 0's Jacobian,
+  tens of metres a sample, so a hurricane drew round white patches the size
+  of the samples. Now the patch edges are bent by a texel or two, and inside
+  a patch the white lies on wavering crest lines across the wind about 14 m
+  apart, broken along their length. The share of white is unchanged (a
+  triangle wave's rank is even).
+- **The sea's look in the photoreal opening.** A rough sea lifts the mirrored
+  ray by `0.35 σ` now, not `1.2 σ`, so the far sea mirrors the bright sky near
+  the horizon rather than the dimmer sky above it. The effect is small in the
+  opening: that camera looks down at 20 to 40°, so the sea near the eye is
+  mostly the water's own colour. At 06:12 the sun is behind the camera, so no
+  glitter path can show in the opening view; it shows looking east.
+
+Frame time, GPU p50 (p95), headless Chrome on an Apple M-series GPU,
+alternating the foam build before this and this one on a busy machine:
+
+| View | Before | After |
+|---|---|---|
+| Opening, 1440×900 | 9.27 (15.33) ms | 8.03 (12.54) ms |
+| Opening, 390×844 | 1.88 (5.44) ms | 1.74 (1.96) ms |
+| Hurricane, 1440×900 | 7.29 (9.00) ms | 7.24 (9.09) ms |
+| Hurricane, 390×844 | 1.72 (1.87) ms | 1.79 (1.97) ms |
+| Rain, 1440×900 | 7.24 (9.27) ms | 7.03 (9.29) ms |
+| Rain, 390×844 | 1.75 (2.22) ms | 1.77 (1.97) ms |
+| Storm, 1440×900 | 7.38 (9.56) ms | 7.09 (9.09) ms |
+| Storm, 390×844 | 1.71 (1.88) ms | 1.78 (2.00) ms |
+
+`slab.wasm` grew from 763,828 to 766,707 bytes before the merge with the gardens and night work; after it, 854,763 bytes (main had 854,150; budget 930,000).
 
 ### The hull on its moorings
 

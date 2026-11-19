@@ -76,7 +76,16 @@ slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f
   o:V2=v2(p.x-frame[2],p.y-frame[3]);
   wa:f32=(o.x*wind.x)+(o.y*wind.y);
   wc:f32=(o.y*wind.x)-(o.x*wind.y);
-  fa:V2=slab_foam_at(p,frame);
+  // a phone's field: its samples are wider than a whitecap, so its patches' edges are bent by a
+  // texel or two, not drawn as the samples' smooth outline (where, not how much)
+  fa:V2=v2(0.0f32,0.0f32);
+  if (frame[0]<200.0f32) {
+    wq:V2=wg_div_f2f(o,3.0f32*tex);
+    wp:V2=v2(p.x+((slab_noise(wq)-0.5f32)*(3.0f32*tex)),p.y+((slab_noise(v2(wq.x+9.2f32,wq.y+4.1f32))-0.5f32)*(3.0f32*tex)));
+    fa=slab_foam_at(wp,frame);
+  } else {
+    fa=slab_foam_at(p,frame);
+  }
   mean:V2=slab_foam_mean(frame);
   // a pixel wider than a texel: the field's own mean, so the far sea neither sparkles nor goes bald
   far:f32=smoothstep(0.6f32*tex,3.0f32*tex,fp);
@@ -86,6 +95,16 @@ slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f
   // the far sea) still sees crest bands and holes, not round blobs
   zoom:f32=clampf(2.0f32/fmax(fp,1e-3f32),fmin(1.0f32,(0.5f32*tex)/12.0f32),1.0f32);
   rank:f32=slab_foam_rank(wa*zoom,wc*zoom);
+  // a phone's field breaks on cascade 0's Jacobian alone, a few tens of metres a sample, so one
+  // break whitens a patch far wider than a whitecap: there the white goes on crest lines across
+  // the wind (about 14 m apart, wavering), broken along their length, so a broken patch draws as
+  // several breaking crests. A triangle wave's rank is even, so the share of white is the field's.
+  if (frame[0]<200.0f32) {
+    bend:f32=slab_noise(v2(wa*0.03f32,wc*0.04f32));
+    tri:f32=abs(fract((wa/14.0f32)+(1.5f32*bend))-0.5f32)*2.0f32;
+    gap:f32=slab_noise(v2((wa*0.1f32)+5.0f32,wc*0.14f32));
+    rank=(0.6f32*tri)+(0.4f32*gap);
+  }
   soft:f32=0.05f32+(0.1f32*(1.0f32-fa.x));
   // and it is brightest fresh: a thinning patch is a film the water shows through
   cap:f32=slab_foam_show(fa.x,rank,soft,fp,1.5f32/zoom)*(0.35f32+(0.65f32*smoothstep(0.15f32,0.7f32,fa.x)));

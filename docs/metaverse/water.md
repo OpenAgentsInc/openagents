@@ -737,8 +737,16 @@ switch "Show the water as it is" under See inside (key X, or `?water=real`)
 draws the water as it is. Where the site's water is shallower than 250 m the
 bed is drawn, with the platform's shadow on it (one shadow ray toward the
 refracted sun) and a caustic net that fades with depth as `1 / (1 + depth /
-25 m)`. The hull's shadow in the water itself (the shafts under the hull) is
-not drawn.
+25 m)`. The sun's shafts in the water stop where the ray toward the sun
+passes through the hull (`slab_sea_hull_shades`), so the water under the hull
+is dark and the shafts show beyond it.
+
+**Rain and lightning on the sea.** In rain and storm each drop near the eye
+rings the surface for 0.6 s (`gpu/slab-rain.coax`); where a pixel is wider
+than the rings the rain adds to the mean square slope instead, so the sheen
+goes matte. The drops are on the world's clock, so a fixed `?t=` draws the
+same rings. A lightning flash lights the photoreal frame's sky light as well
+as the painted sky (`sea_look_flash`), and the sea mirrors the lit cloud.
 
 **Cost.** Headless Chrome on an Apple M-series GPU, GPU time p50 (p95), on a
 machine busy with other builds: the opening view at 1440×900 went from 2.06

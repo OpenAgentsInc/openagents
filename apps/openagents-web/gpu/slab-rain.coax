@@ -1,0 +1,42 @@
+// Rain on SLAB's sea (gpu/slab.coax loads this; gpu/slab-sea.coax slab_sea calls it). The rain
+// rate is the weather's (the sea block's float 17, 0 to 1: water-sea.coax sea_weather).
+//
+// Near the eye each drop rings the surface: a ring wave runs out from where it fell and dies in a
+// fraction of a second. Farther off the rings are under a pixel and the rain is a roughening of
+// the surface: more slope variance, so the sea's sheen goes matte and its mirror of the sky
+// blurs. Everything is on the world's clock (u[2]), so a fixed moment draws the same drops.
+// Numbers that are ours: a drop lands in each 0.45 m cell about 2.5 times a second in heavy
+// rain, its ring runs out at 0.35 m/s (short capillary-gravity waves) and lives 0.6 s, and heavy
+// rain adds 0.006 to the mean square slope.
+SLAB_RAIN_CELL :: 0.45f32;
+SLAB_RAIN_MSS :: 0.006f32;
+
+// The slope one layer of drops gives at rest point p, at time t.
+slab_rain_layer :: (p:V2,t:f32,rate:f32,seed:f32)->V2 {
+  q:V2=wg_div_f2f(p,SLAB_RAIN_CELL);
+  cell:V2=wg_floor_f2(q);
+  h:f32=slab_hash2(wg_add_f2f2(cell,v2(seed,seed*1.7f32)));
+  // where in its cell the drop fell, and how long ago (each cell's drops on their own beat)
+  at:V2=v2(0.25f32+(0.5f32*slab_hash2(wg_add_f2f2(cell,v2(seed+3.1f32,5.3f32)))),0.25f32+(0.5f32*slab_hash2(wg_add_f2f2(cell,v2(7.7f32,seed+1.9f32)))));
+  age:f32=fract((t*rate)+h)/rate;
+  life:f32=0.6f32;
+  if (age>life) { return v2(0.0f32,0.0f32); }
+  rel:V2=wg_mul_f2f(wg_sub_f2f2(wg_sub_f2f2(q,cell),at),SLAB_RAIN_CELL);
+  r:f32=wg_length2(rel);
+  front:f32=0.35f32*age;
+  // a short wave train behind the front, a few centimetres long, fading as it spreads
+  x:f32=(r-front)/0.03f32;
+  wave:f32=cos(x*3.14159f32)*exp(-(x*x)*0.5f32)*(1.0f32-(age/life));
+  return wg_mul_f2f(wg_div_f2f(rel,fmax(r,1e-3f32)),wave*0.35f32);
+}
+// The rings' slope at rest point p for a pixel `fp` metres wide: two layers of drops, gone where
+// a pixel is wider than a ring.
+slab_rain_rings :: (p:V2,t:f32,rain:f32,fp:f32)->V2 {
+  near:f32=1.0f32-smoothstep(0.03f32,0.12f32,fp);
+  if ((rain<=0.01f32)||(near<=0.0f32)) { return v2(0.0f32,0.0f32); }
+  rate:f32=2.5f32*rain;
+  s:V2=wg_add_f2f2(slab_rain_layer(p,t,rate,0.0f32),slab_rain_layer(wg_add_f2f2(p,v2(0.21f32,0.13f32)),t,rate,17.0f32));
+  return wg_mul_f2f(s,near);
+}
+// The mean square slope the rain adds where its rings are under a pixel.
+slab_rain_mss :: (rain:f32)->f32 {return SLAB_RAIN_MSS*clampf(rain,0.0f32,1.0f32);}

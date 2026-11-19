@@ -191,6 +191,20 @@ sea_look_weather :: (s: [] Slab, u: [] f32, step: f32, snap: bool) {
   u[P + P_SUNHULL + 3] *= 1 - cover;
 }
 
+// A lightning flash lights the photoreal frame too (after slab_photo_frame): the cloud base glows
+// over everything, so the sky's light from above (its first two terms, pr_sky_light) grows by
+// about twice a storm's own, bluish, while the flash lasts (water-weather.coax
+// weather_flash: two pulses in a quarter of a second). The painterly style's sky takes it in
+// sea_look_weather.
+sea_look_flash :: (s: [] Slab, u: [] f32) {
+  flash := f32(s[0].look.now.lightning);
+  if flash <= 0.001 || u[U_PHOTO_ON] < 0.5 { return; }
+  b := U_PHOTO + PR_SH;
+  grey := (u[b] + u[b + 1] + u[b + 2]) / 3;
+  tint := [3] f32.[0.85, 0.92, 1.1];
+  for i: 0..<3 { u[b + i] += 2.0f32 * flash * grey * tint[i]; u[b + 4 + i] += 1.6f32 * flash * grey * tint[i]; }
+}
+
 // The two presses (keys C and X, and the HUD's weather and water controls): the weather (the sea's
 // own, or one held), and under the sea the water (the survey view, or the water as it is).
 BTN_WEATHER :: 29; BTN_WATER :: 30;

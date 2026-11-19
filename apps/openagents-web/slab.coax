@@ -1014,6 +1014,7 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   sb_say(s);   // the HUD as words, for its pane
   s[0].photo[0].latitude = f32(site.latitude);   // for the moon (slab-photoreal.coax)
   slab_photo_frame(s, u, sun, phone);
+  sea_look_flash(s, u);   // lightning lights the photoreal frame (slab-sea.coax)
   if !s[0].hud || s[0].golden { return 0; }
   return chart_draw(s, out, place_lines(s, out, sb_lines(s, out)));   // the HUD itself is the pane's (slab-hud.coax)
 }

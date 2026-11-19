@@ -16,7 +16,7 @@
 //   4   the deep water's reflectance under the surface, rgb; the particles' scatter (1/m)
 //   8   mean square slope: cascade 0's, the fine tile's, the finest tile's, and what no tile holds
 //   12  the long-wave crest gate's on (the fine foam is there), streaks, spindrift, the finest patch (m, 0: none)
-//   16  cloud cover, rain, fog, lightning (all 0 to 1)
+//   16  cloud cover, rain, fog, lightning (all 0 to 1; rain's rings: gpu/slab-rain.coax)
 //   20  the sun's share through the cloud, the sky's, the finest slopes' scale, the bed's depth (m, 0: too deep to draw)
 //   24  the survey's fill light, the whitecaps' share of the sea, 0, 0
 #load "../../../metaverse-engine/render/shade/water-optics.coax";
@@ -142,6 +142,10 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32,frame:[]f32)->V4 {
   lee:V2=sw_short(p,u);
   slope=wg_add_f2f2(wg_mul_f2f(v2(c.z,c.w),keep0),wg_mul_f2f(wg_sub_f2f2(slope,wg_mul_f2f(v2(c.z,c.w),keep0)),lee.x));
   sigma2=sigma2*(lee.x*lee.x);
+  // rain: its drops ring the surface near the eye, and roughen its sheen farther off (gpu/slab-rain.coax)
+  rain:f32=u[SLAB_SEA+17];
+  slope=wg_add_f2f2(slope,slab_rain_rings(p,t,rain,footprint));
+  sigma2=sigma2+slab_rain_mss(rain);
   n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
   v:V3=sb_mul(d,-1.0f32);
   sun:V3=v3(u[24],u[25],u[26]);
@@ -152,8 +156,10 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32,frame:[]f32)->V4 {
   // the sky in it: the mirror's direction, lifted as a rough sea's facets lift it, the sun's disc
   // left to the glint
   r:V3=wg_reflect3(d,n);
-  r=wg_normalize3(v3(r.x,abs(r.y)+(1.2f32*sqrt(sigma2)),r.z));
+  r=wg_normalize3(v3(r.x,abs(r.y)+(0.35f32*sqrt(sigma2)),r.z));
   col:V3=sb_mul(slab_sea_top_sky(r,1.25f32,u),fres);
+  // a lightning flash lights the cloud the sea mirrors
+  col=sb_add(col,sb_mul(v3(0.75f32,0.8f32,1.0f32),(fres*u[SLAB_SEA+19])*0.35f32));
   // the water's own colour: the light that went in and was scattered back up
   ndl:f32=fmax(wg_dot3(n,sun),0.0f32);
   into:f32=1.0f32-wo_fresnel(fmax(sun.y,0.02f32));
@@ -274,8 +280,18 @@ slab_sea_sunray :: (u:[]f32)->V3 {
   sh:f32=sqrt(fmax(1.0f32-(sy*sy),0.0f32))/fmax(sqrt((sun.x*sun.x)+(sun.z*sun.z)),1e-4f32);
   return v3(sun.x*sh,sy,sun.z*sh);
 }
+// Whether the monolith's hull stands between a point in the water and the sun: its box, in the
+// hull's frame, along the refracted ray (one slab test, so the shafts stop under it and show at
+// its edges). Domes and the build view cast none here.
+slab_sea_hull_shades :: (q:V3,ray:V3,u:[]f32)->bool {
+  if ((u[SLAB_WW]<0.5f32)||(u[SLAB_WW]>1.5f32)) { return false; }
+  o:V3=sb_to_hull(q,u);
+  d:V3=sb_dir_to_hull(ray,u);
+  span:V2=slab_span(o,d,v3(-u[36],u[39],-u[37]),v3(u[36],u[38],u[37]));
+  return (span.y>fmax(span.x,0.0f32));
+}
 // The sun's shafts along a ray from o (world, under the sea): the caustic net carried down the
-// sun's direction, summed at a few distances.
+// sun's refracted direction, summed at a few distances, none where the hull shades the point.
 slab_sea_shafts :: (o:V3,d:V3,limit:f32,u:[]f32)->f32 {
   sun:V3=v3(u[24],u[25],u[26]);
   if (sun.y<0.08f32) { return 0.0f32; }
@@ -287,7 +303,7 @@ slab_sea_shafts :: (o:V3,d:V3,limit:f32,u:[]f32)->f32 {
   while i<steps {
     if (at<limit) {
       q:V3=sb_add(o,sb_mul(d,at));
-      if (q.y<0.0f32) {
+      if ((q.y<0.0f32)&&!slab_sea_hull_shades(q,ray,u)) {
         rise:f32=(-q.y)/ray.y;
         top:V2=v2(q.x+(ray.x*rise),q.z+(ray.z*rise));
         acc=acc+((wo_caustic(wg_mul_f2f(top,0.11f32),u[2]*0.6f32)*exp(q.y/(45.0f32*sqrt(slab_sea_clear(u)))))*exp((-at)/(70.0f32*sqrt(slab_sea_clear(u)))));
