@@ -74,7 +74,7 @@ in the 2026-11-15 rewrite.
 | [7. History and the sidebar](ch007-history-and-the-sidebar.md) | II | new | 4 (routes), part of 10 (the side) | 6 |
 | [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | II | new | new | 7 |
 | [9. Settings](ch009-settings.md) | II | new | part of 10 (settings) | 7 |
-| [10. Desktop and Android](ch010-desktop-and-android.md) | II | 2 | 1 (one app, every surface) | 6, 7, 8, 9 |
+| [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | II | 2 | 1 (one app, every surface) | 6, 7, 8, 9 |
 | [11. The web](ch011-the-web.md) | II | new | 7 (the public website), part of 3 (DOM) | 6, 7, 9 |
 | [12. The simplest agent](ch012-the-simplest-agent.md) | III | 1 | 12 | 6 |
 | [13. Members](ch013-members.md) | III | 3 | 13 | 12 |
@@ -356,7 +356,7 @@ There are 83 of them.
 | [5](ch005-logging-in-when-a-send-needs-it.md) | Do a member's grant (chapter 17) and an agent's grant become one record, or stay two? |
 | [5](ch005-logging-in-when-a-send-needs-it.md) | Which scopes come after `profile:read` and `wallet:spend`? |
 | [8](ch008-environment-and-repository-chips.md) | Which environments does the first build list: this account's hosted computer, your enrolled computers, or both? |
-| [10](ch010-desktop-and-android.md) | The [sync spec](../../docs/sync/README.md) recommends syncing a conversation through our service, readable by the server at first (chapter 35). Confirm that, and say which collections get end-to-end encryption first. |
+| [10](ch010-mobile-and-other-native-hosts.md) | The [sync spec](../../docs/sync/README.md) recommends syncing a conversation through our service, readable by the server at first (chapter 35). Confirm that, and say which collections get end-to-end encryption first. |
 | [13](ch013-members.md) | What does the product call these? The essays say "members"; Episode 289 says tools, subagents and plugins. |
 | [14](ch014-a-typed-plan.md) | The audit's plan carries a budget. Our rule is that we impose no limits on a run and show any limit the user sets. Should a plan carry only limits the user set? |
 | [15](ch015-decide-before-you-generate.md) | Which of our own decision models backs up Gemini Decision 1 for the front at 1.0, and what result would move our own model to the first door? |

@@ -1,19 +1,24 @@
 # 1. A text input on the GPU
 
-> **Status: partly implemented.** The Coax screen module
-> (`apps/openagents-ios/composer_screen.coax`) and its `#test` checks for the
-> `tree` / `type composer.input hello` / `state draft` / `counts` trace and
-> duplicate-ID refusal run on `cpu`, beside
-> `openagents/examples/cases/composer-type.ops`. Remaining for `ios-simulator`
-> and `ios-device`: wiring the standalone `composer.input` screen into the
-> iOS host and running the independent XCUITest through the system keyboard.
+> **Status: partly implemented.** The shared Coax chat screen module
+> (`apps/shared/chat/screen.coax`), the primary desktop consumer
+> (`apps/openagents-desktop/chat_screen.coax`), and the mobile consumer
+> (`apps/openagents-ios/composer_screen.coax`) pass their `#test` checks for
+> the `tree` / `type composer.input hello` / `state draft` / `counts` trace
+> and duplicate-ID refusal on `cpu`, beside
+> `openagents/examples/cases/composer-type.ops`. Remaining for native hosts
+> (`macos-arm64`, `linux-x86_64`, `ios-simulator`, `ios-device`): wiring the
+> standalone `composer.input` screen into the desktop and iOS host shells and
+> running their native accessibility UI tests.
 
 ## Premise
 
 This is the first chapter, so there is nothing before it. You build the
-smallest OpenAgents app that runs: one screen on the iPhone with one text
+smallest OpenAgents app that runs: one screen grounded in the primary
+desktop app (`apps/openagents-desktop`)—and consumed by mobile
+(`apps/openagents-ios`) from the same shared Coax module—with one text
 input, the chat page's composer, drawn on the GPU by the shared component
-kit. You can type into it with the keyboard, VoiceOver can find it, and
+kit. You can type into it with the keyboard, accessibility can find it, and
 `coax drive` can type into it. Nothing else is in the app yet.
 
 ## Draft
@@ -23,11 +28,11 @@ The book is written first and the app is built to it
 as a chapter can make it, and each chapter adds one thing you can see.
 Chapter 1 adds a text input.
 
-The app is compiled Coax, linked into the iOS binary. There is no
-JavaScript, no JavaScriptCore, no Wasm and no over-the-air update. A change
-ships in a TestFlight or store build. The bundle ID stays
-`com.openagents.app`, so the new app replaces the old one in place; the old
-app's code is deleted, and git history keeps it.
+The app is compiled Coax, linked into the native desktop binary (and the
+mobile binary from the same shared module). There is no JavaScript, no
+JavaScriptCore, no Wasm and no over-the-air update. Desktop is the primary
+host from chapter 1 onward, with [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax)
+keeping the screen logic shared across desktop and mobile.
 
 The screen is one Metal view. The shared display-list kit in
 [`components/`](../../components) draws every component on it
@@ -82,10 +87,10 @@ and nothing is submitted to the GPU.
 
 ## What we build
 
-A plan for what this chapter ships once the draft is approved:
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), consumed by the primary desktop app ([`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax)) and the mobile app ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
 
-- The lean iOS app: one compiled Coax screen with one Metal view and the
-  composer field, and nothing from the old app.
+- The shared compiled Coax chat screen with a GPU composer surface, consumed
+  by desktop as the primary host and by mobile as a second native host.
 - The composer as a frame-context component with ID `composer.input`, its
   row and its hit region.
 - The platform editor overlay on the focused field, shared with the login
@@ -105,26 +110,32 @@ It builds on what exists today:
 - [`apps/shared/login/screen.coax`](../../apps/shared/login/screen.coax)
 - [`apps/shared/native/NativeLogin.swift`](../../apps/shared/native/NativeLogin.swift)
 - [`apps/shared/host/apple/ui-scene.m`](../../apps/shared/host/apple/ui-scene.m)
+- [`apps/openagents-desktop`](../../apps/openagents-desktop)
 - [`apps/openagents-ios`](../../apps/openagents-ios)
 
 ### The chapter's check
 
-- **Source:** the chat page's screen module in the lean app, with its
-  `#test` checks beside it, and
-  `openagents/examples/cases/composer-type.ops`.
-- **Trace:** `tree` prints one row, `composer.input field "Message"`, with
-  its bounds; `type composer.input hello` answers `typed`; `state draft`
-  prints `hello`; `counts` prints `refused 0`.
+- **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+  [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+  [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  and [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops).
+- **Trace:** `tree` prints `composer.input field "Message"`, with its bounds;
+  `type composer.input hello` answers `typed`; `state draft` prints `hello`;
+  `counts` prints `refused 0`.
 - **Refusal:** a frame that records two rows with the ID `composer.input`
   is refused: the surface keeps its last committed frame and `counts`
   prints the refusal.
-- **Independent check:** an XCUITest that finds the field through the
-  accessibility tree and types into it with the system keyboard, with no
-  `coax drive`, and reads back the same value.
+- **Independent check:** native accessibility UI tests on desktop and iOS
+  that find the field through the accessibility tree and type into it with
+  the system keyboard, with no `coax drive`, and read back the same value.
+- **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
+  `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
+  `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
-Implemented paths: [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The app is
-[`apps/openagents-ios`](../../apps/openagents-ios), and components extend
-[`components/`](../../components).
+Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
+[`apps/openagents-desktop`](../../apps/openagents-desktop), mobile consumes the
+same shared logic in [`apps/openagents-ios`](../../apps/openagents-ios), and
+components extend [`components/`](../../components).
 
 ## Sources
 

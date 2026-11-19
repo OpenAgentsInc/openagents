@@ -1,0 +1,8 @@
+case transcript
+surface desktop 1280x800
+step 1 type composer.input "hello" -> accepted dirty_composer=1 dirty_transcript=0
+step 2 tap composer.send -> accepted dirty_composer=1 dirty_transcript=1 messages=1 pinned=1
+step 3 append assistant -> accepted dirty_composer=0 dirty_transcript=1 messages=2 pinned=1
+step 4 scroll transcript.list -120 -> accepted dirty_composer=0 dirty_transcript=1 pinned=0 jump_bottom=1
+step 5 append assistant -> accepted dirty_composer=0 dirty_transcript=1 messages=3 pinned=0 jump_bottom=1
+step 6 tap transcript.jump_bottom -> accepted dirty_composer=0 dirty_transcript=1 pinned=1 jump_bottom=0

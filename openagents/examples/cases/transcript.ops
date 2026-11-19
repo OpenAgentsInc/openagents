@@ -1,0 +1,8 @@
+// Chapter 3: A transcript — rendered messages, scrolling, pin-to-bottom.
+// Desktop primary app (1280x800) and mobile consumer share the same state and actions.
+type composer.input "hello"
+tap composer.send
+append assistant "# Reply\n\nHere is **markdown** with `code`."
+scroll transcript.list -120
+append assistant "Another reply while scrolled up"
+tap transcript.jump_bottom

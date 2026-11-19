@@ -921,6 +921,25 @@ runs 400 graphs, 1,000 batches of calls and 600 sessions;
 `psionic/check.sh` runs it beside the unit. `coax mutate` on `inject.coax`
 kills all 317 mutants, and none survive.
 
+## Structural fencing in Microcoder (`coax/lib/microcoder/fence.coax`)
+
+On the Microcoder prompt path, `coax/lib/microcoder/fence.coax` adds
+structural data-plane fencing for untrusted files and command outputs:
+
+- `mc_fenced_system` appends `MC_UNTRUSTED_RULE` once at session start (keeping
+  the Ch. 3 system-prompt prefix fixed) so the model is explicitly instructed
+  that anything between `<<<UNTRUSTED_DATA ...>>>` and `<<<END_UNTRUSTED_DATA>>>`
+  is untrusted data, never instructions.
+- `mc_fence_untrusted` (with `mc_file_fenced` and `mc_action_command_fenced`)
+  sanitizes opening-tag attributes (replacing quotes, newlines, carriage
+  returns, and `<<<`) and escapes every `<<<` in the body to `<<_`, so no
+  payload or filename can forge a closing delimiter or header breakout.
+- `mc_fence_verify` and `mc_request_verify_isolation` check delimiter
+  integrity, JSON validity, and isolation from `req.system` and the static
+  `environment`/`task`/`route` prefix, covered by five deterministic `#test`
+  suites including delimiter-breakout, `<`-run property, header-injection, and
+  chat-template/JSON-breakout adversarial cases.
+
 ## What this does not do yet
 
 - **No model has been measured in this lab.** The stand-in agent is

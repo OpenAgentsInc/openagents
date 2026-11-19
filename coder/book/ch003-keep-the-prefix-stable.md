@@ -589,6 +589,24 @@ order; the clock at the top loses everything.
 
 Mutation of `harness/prefix.coax` leaves no survivors.
 
+## In Microcoder (`coax/lib/microcoder/prefix.coax`)
+
+Microcoder's rendered request (`mc_request` over `mc_state_json`) enforces the
+same prefix-stability invariants on the real agent loop:
+
+- `system` and `schema` stay byte-identical across every turn of a session.
+- `environment`, `task`, and `route` come first in `mc_state_json` in a fixed
+  order, with `mc_env_has_volatile_key` flagging per-turn volatile keys such as
+  `timestamp`, `time`, `now`, `clock`, `epoch`, `date`, or `request_id`.
+- Between compactions, `actions` only grows at its end while `memory` and
+  `notes` sit after `actions`, so updating notes or working memory never
+  invalidates the prefix through `actions`.
+- Across compactions (while `left_out == 0`), `environment`, `task`, `route`,
+  and prior `earlier` entries stay byte-identical.
+- `mc_prefix_check` and `McPrefixWatch` verify consecutive requests and report
+  the exact failure kind and byte offset on any regression, covered by five
+  deterministic `#test` suites in `coax/lib/microcoder/prefix.coax`.
+
 ## What remains
 
 - Time to first token measured on a named host and model, with P50 and P95

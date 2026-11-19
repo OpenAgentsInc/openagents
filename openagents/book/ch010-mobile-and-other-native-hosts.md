@@ -1,14 +1,19 @@
-# 10. Desktop and Android
+# 10. Mobile and other native hosts
 
 > **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> owner to edit. Chapters 1–3 already share `apps/shared/chat/screen.coax`
+> between desktop (`apps/openagents-desktop`, primary) and iOS
+> (`apps/openagents-ios`); this chapter finishes full host parity across iOS,
+> Linux desktop, and Android.
 
 ## Premise
 
-Chapters 1 to 9 built the chat page, history, chips and settings on the
-iPhone. This chapter takes the same app to the Mac and Linux desktops, then
-to Android. It adds no feature. It adds hosts, and it states the rule that
-keeps them one app.
+Chapters 1 to 9 built the chat page, history, chips and settings grounded
+in the primary desktop app (`apps/openagents-desktop`) on shared Coax logic
+that iOS already consumes. This chapter completes full native host parity
+across iOS, Linux desktop, and Android. It adds no feature. It qualifies
+every native host against the same acceptance case, and it states the rule
+that keeps them one app.
 
 ## Draft
 
@@ -40,24 +45,28 @@ target reuses what the first one built.
   calls, model requests or payments. Chapter 37 builds the rule.
 
 The native hosts already exist and draw the same display-list kit: AppKit
-with Metal on the Mac, Wayland with Vulkan on Linux, and the Vulkan host on
-Android ([GPU components, stages G6 and G7](../../components/gpu-components.md#stages)).
-Each supplies the same three things iOS supplies: the focused field's
-editor (`NSTextInputClient` on the Mac, the Wayland text-input protocol on
-Linux, `InputConnection` on Android), an accessibility bridge built from
-the committed rows (`NSAccessibilityElement`, AT-SPI, virtual nodes), and
-system sheets. A wide window shows the sidebar beside the chat page; the
-layout reads the window's width, not the platform's name.
+with Metal on the Mac (the primary desktop host from chapter 1), UIKit with
+Metal on iOS, Wayland with Vulkan on Linux, and the Vulkan host on Android
+([GPU components, stages G6 and G7](../../components/gpu-components.md#stages)).
+Each supplies the same three things: the focused field's editor
+(`NSTextInputClient` on the Mac, `UITextField` on iOS, the Wayland
+text-input protocol on Linux, `InputConnection` on Android), an
+accessibility bridge built from the committed rows (`NSAccessibilityElement`,
+`UIAccessibilityElement`, AT-SPI, virtual nodes), and system sheets. A wide
+window shows the sidebar beside the chat page; the layout reads the window's
+width, not the platform's name.
 
-The desktop comes first, Mac and Linux together, and replaces the current
-desktop shell. The desktop app also configures the computer it runs on as
-an environment (chapter 8): a resident environment service, runnable
-without the window, owns the agent's turns, so closing the app never stops
-them. The [desktop and environment plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
+The desktop app already owns the primary chat workflow and configures the
+computer it runs on as an environment (chapter 8): a resident environment
+service, runnable without the window, owns the agent's turns, so closing
+the app never stops them. The
+[desktop and environment plan](../../docs/protocol/environments-claude-and-world-editing.md#31-one-desktop-product-two-independent-lifetimes)
 owns that service.
 
-Android follows on the same pieces. It claims nothing until chapter 6's
-case passes there with a real input method and TalkBack.
+This chapter qualifies the remaining native hosts—iOS, Linux desktop, and
+Android—against the same shared modules and chapter 6's acceptance case.
+Each host claims nothing until chapter 6's case passes there with a real
+input method and native accessibility (VoiceOver, AT-SPI, or TalkBack).
 
 Each host qualifies on its own evidence. A host runs chapter 6's case
 through the same `coax drive` operations and must give the same trace. A
@@ -68,11 +77,11 @@ presentation and has its own chapter (chapter 11).
 
 A plan for what this chapter ships once the draft is approved:
 
-- The chat page, history, chips and settings on the Mac and Linux hosts,
-  replacing the current desktop shell.
-- The same on the Android host.
-- Chapter 6's case and its device checks on each host, with the targets
-  recorded as they pass.
+- Full native host parity for the chat page, history, chips and settings on
+  iOS (`apps/openagents-ios`), Linux desktop, and Android, consuming the
+  same shared Coax modules as the primary macOS desktop app.
+- Chapter 6's case and its device checks on each native host, with the
+  targets recorded as they pass.
 
 It builds on what exists today:
 

@@ -9,7 +9,7 @@
 
 - [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) — partly implemented
 - [2. State and actions](ch002-state-and-actions.md) — partly implemented
-- [3. A transcript](ch003-a-transcript.md) — design draft
+- [3. A transcript](ch003-a-transcript.md) — partly implemented
 - [4. A reply from the service](ch004-a-reply-from-the-service.md) — design draft
 - [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) — design draft
 - [6. One case, every step](ch006-one-case-every-step.md) — design draft
@@ -19,7 +19,7 @@
 - [7. History and the sidebar](ch007-history-and-the-sidebar.md) — design draft
 - [8. Environment and repository chips](ch008-environment-and-repository-chips.md) — design draft
 - [9. Settings](ch009-settings.md) — design draft
-- [10. Desktop and Android](ch010-desktop-and-android.md) — design draft
+- [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) — design draft
 - [11. The web](ch011-the-web.md) — design draft
 
 ## III. One general agent

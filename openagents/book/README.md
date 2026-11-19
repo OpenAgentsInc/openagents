@@ -4,18 +4,16 @@ Building the OpenAgents apps, and the general agent behind them, in
 [Coax](../../coax/book/README.md) on [Coax Native](../../coax/native.md),
 one small step at a time.
 
-> **Status: design drafts, for the owner to edit.** 75 chapters are design
-> drafts and three are planned outlines. No chapter is implemented on the
-> new iOS app yet. The opening was rewritten on 2026-11-15
-> ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)): the
-> iOS app is rebuilt as compiled Coax drawn on the GPU, starting from one
-> text input. The first milestone recorded on 2026-11-13
-> ([#13516](https://github.com/OpenAgentsInc/openagents/issues/13516)) ran on
-> the old app, which is being removed; chapter 6 earns it again.
-> Where a piece already runs in the repository, such as the login service
-> and the GPU login screen, the chapter says so and builds on it.
-> [CONTRACT.md](CONTRACT.md) says what moves a chapter forward. The book
-> gives no dates.
+> **Status: chapters 1–3 partly implemented on CPU; remaining chapters are design drafts and planned outlines.**
+> Chapters 1–3 now run on CPU against the shared chat logic in
+> [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+> grounded primarily in the desktop app ([`apps/openagents-desktop`](../../apps/openagents-desktop))
+> and consumed by the mobile app ([`apps/openagents-ios`](../../apps/openagents-ios))
+> as a second native host.
+> Where a piece already runs in the repository, such as the desktop shell,
+> the login service, and the GPU login screen, the chapter says so and
+> builds on it. [CONTRACT.md](CONTRACT.md) says what moves a chapter
+> forward. The book gives no dates.
 
 OpenAgents builds open agents that people can own, inspect, improve and earn
 from, on open protocols and Bitcoin. Since November 2023 we have worked on
@@ -27,23 +25,29 @@ engines, grows by plugins that anyone can write, and pays their authors in
 Bitcoin.
 
 This book builds that, and it builds the app you use it through first. You
-start with an iPhone app that has one screen, the chat page, and on it one
-text input. Each chapter adds one visible thing: Send, a transcript, a reply
-from our service, the login card when a send needs an account. Chapter 6
-runs one case through every step on the simulator and a physical phone.
-Chapters 7 to 11 add history, the environment and repository chips,
-settings, the desktop and Android, and the web. Chapter 12 puts the first
-agent of our own behind the chat page, and every later chapter adds one
-capability to an app that already runs.
+start with the desktop app ([`apps/openagents-desktop`](../../apps/openagents-desktop))
+as the primary host, backed by shared Coax logic in
+[`apps/shared/chat/`](../../apps/shared/chat) that mobile
+([`apps/openagents-ios`](../../apps/openagents-ios)) consumes from the same
+codebase. Each chapter adds one visible thing to the chat page: a GPU text
+input, Send and serialized actions, a scrollable markdown transcript, a reply
+from our service, and the login card when a send needs an account. Chapter 6
+runs one acceptance case through every step on the primary desktop host and
+on mobile. Chapters 7 to 11 add history, the environment and repository
+chips, settings, full mobile and other native hosts (iOS and Android), and
+the web. Chapter 12 puts the first agent of our own behind the chat page,
+and every later chapter adds one capability to an app that already runs.
 
-The iOS app is compiled Coax linked into the binary: no JavaScript, no
-JavaScriptCore, no Wasm and no over-the-air updates. Every change ships in a
-TestFlight or store build. The shared display-list kit in
-[`components/`](../../components) draws every component on the GPU
-([GPU components on native](../../components/gpu-components.md)); the
-platform supplies only the focused text field's editor, accessibility and
-system sheets. The desktop (Mac and Linux) and Android follow and reuse the
-same pieces. The web keeps DOM for text surfaces (chapter 11).
+Both the desktop and mobile apps are compiled Coax linked into native
+binaries: no JavaScript, no JavaScriptCore, no Wasm, and no over-the-air
+updates. The shared display-list kit in [`components/`](../../components)
+draws every component on the GPU
+([GPU components on native](../../components/gpu-components.md)); each host
+platform supplies only the focused text field's native editor, accessibility,
+and system sheets. Desktop (macOS and Linux) is the primary host from
+chapter 1 onward, with mobile (iOS and Android) consuming the same shared
+screens, state, actions, and service. The web keeps DOM for text surfaces
+(chapter 11).
 
 Each chapter cites the episodes where an idea was first tried, the old
 crates that implemented it in the Rust tree that ended at `coder-v1.0.0`,
@@ -71,9 +75,9 @@ The book leads and the app follows:
 ## How to read it
 
 - **To build the app,** read Parts I and II in order. Chapter 6 is the
-  first milestone: the iPhone app types a message, logs in when the send
-  needs it, receives a reply and stops a pending one, checked by one case on
-  the simulator and a physical phone.
+  first milestone: the primary desktop app (and the mobile consumer sharing
+  the same logic) types a message, logs in when the send needs it, receives
+  a reply, and stops a pending one, checked by one end-to-end case.
 - **For the argument,** read chapters 10, 12, 13, 15, 37, 43, 53, 63 and 78.
   They give the one app, the loop, the composition, the typed front,
   execution ownership, the evidence rule, the market, the protocol and what
@@ -108,8 +112,8 @@ Each part ends with something that runs.
 
 | Part | Chapters | What runs at the end |
 | --- | --- | --- |
-| I. The chat page, one step at a time | 1–6 | The iPhone app's chat page on the GPU kit: a text input, Send, a transcript, a streamed reply with Stop, and the login card, with one acceptance case passing in the simulator and on a phone. |
-| II. What the app adds next | 7–11 | History and the sidebar, the environment and repository chips, settings, the same app on the desktop and Android, and the web's DOM presentation. |
+| I. The chat page, one step at a time | 1–6 | The primary desktop app's chat page (with mobile consuming the same shared logic) on the GPU kit: a text input, Send, a transcript, a streamed reply with Stop, and the login card, with one acceptance case passing end to end. |
+| II. What the app adds next | 7–11 | History and the sidebar, the environment and repository chips, settings, full mobile and other native host parity (iOS and Android), and the web's DOM presentation. |
 | III. One general agent | 12–23 | The loop, members, typed plans, routing, approvals, streaming and the record, with knowledge and memory, answering the chat page. |
 | IV. Capabilities on your devices | 24–33 | Coder and other engines, remote work, files, voice, and the wallet with payment review, from one conversation. |
 | V. Continuity across devices | 34–37 | State that survives, reconnects, sync, background and resume, and one execution owner per task. |
@@ -177,7 +181,7 @@ NIPs, old crates and protocol packages.
 | --- | --- |
 | [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) | Partly implemented: cpu |
 | [2. State and actions](ch002-state-and-actions.md) | Partly implemented: cpu |
-| [3. A transcript](ch003-a-transcript.md) | Unimplemented: design draft |
+| [3. A transcript](ch003-a-transcript.md) | Partly implemented: cpu |
 | [4. A reply from the service](ch004-a-reply-from-the-service.md) | Unimplemented: design draft |
 | [5. Logging in when a send needs it](ch005-logging-in-when-a-send-needs-it.md) | Unimplemented: design draft |
 | [6. One case, every step](ch006-one-case-every-step.md) | Unimplemented: design draft |
@@ -189,7 +193,7 @@ NIPs, old crates and protocol packages.
 | [7. History and the sidebar](ch007-history-and-the-sidebar.md) | Unimplemented: design draft |
 | [8. Environment and repository chips](ch008-environment-and-repository-chips.md) | Unimplemented: design draft |
 | [9. Settings](ch009-settings.md) | Unimplemented: design draft |
-| [10. Desktop and Android](ch010-desktop-and-android.md) | Unimplemented: design draft |
+| [10. Mobile and other native hosts](ch010-mobile-and-other-native-hosts.md) | Unimplemented: design draft |
 | [11. The web](ch011-the-web.md) | Unimplemented: design draft |
 
 ### III. One general agent

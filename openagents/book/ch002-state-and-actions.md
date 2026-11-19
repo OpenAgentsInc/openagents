@@ -1,12 +1,14 @@
 # 2. State and actions
 
-> **Status: partly implemented.** The compiled Coax state record,
+> **Status: partly implemented.** The shared compiled Coax state record,
 > serialized action dispatcher (`composer.edit`, `composer.send`), all-or-nothing
 > refusal on empty draft, per-surface dirty marks (`transcript` and `composer`),
 > frame redraw gating, `composer.send` button (`ctx_button`), driver ops
 > (`openagents/examples/cases/send.ops`), and unit/`#forall` checks pass on
-> `cpu` (`coax/bin/coax test apps/openagents-ios/composer_screen.coax`). The
-> iOS simulator/device host wiring and XCUITest remain pending.
+> `cpu` across [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+> [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+> and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax).
+> Native desktop/iOS host wiring and accessibility UI tests remain pending.
 
 ## Premise
 
@@ -62,11 +64,11 @@ an ID made from its role and its domain key, such as `composer.send` or
 `message.1`. An ID never comes from a list index or a pixel position.
 
 There are no effects yet. Send adds your message to the state and nothing
-leaves the phone. Chapter 4 sends it.
+leaves the machine. Chapter 4 sends it.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) and consumed by [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax) (primary) and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) (mobile):
 
 - The chat page's state record (`ChatState`): the draft (`EditBuf`), the sent
   messages (`ChatMessage` with stable domain keys `message.<id>`), and
@@ -92,7 +94,10 @@ It builds on:
 
 ### The chapter's check
 
-- **Source:** [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) and [`openagents/examples/cases/send.ops`](../examples/cases/send.ops).
+- **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
+  [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+  [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
+  and [`openagents/examples/cases/send.ops`](../examples/cases/send.ops).
 - **Trace:** `type composer.input hello`, `tap composer.send`, `state
   messages` prints `you: hello`, `state draft` prints an empty line, and
   `tree` shows `message.1`.
@@ -101,7 +106,9 @@ It builds on:
 - **Independent check:** a `#forall` check that any sequence of refused
   actions leaves the state equal to its start, and a check that an
   incremental frame and a full rebuild commit the same rows.
-- **Command:** `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
+- **Commands:** `coax/bin/coax test apps/shared/chat/screen.coax`,
+  `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
+  `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
 Generic dispatch code goes in the proposed `coax/lib/app/` that
 [Coax Native](../../coax/native.md#architecture) describes, not in this book.
