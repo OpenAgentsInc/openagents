@@ -246,9 +246,27 @@ cp_nth :: (s: [] CoderPage, i: int, j: int, n: int) -> int {
 // A chat's calls are all let go, as the chat is.
 cp_calls_reset :: (s: [] CoderPage) { s[0].calls_n = 0; s[0].calls_free = 0; s[0].calls_order = 0; s[0].long_n = 0; }
 cp_call_out :: (s: [] CoderPage, q: int, output: string) {
+  // an edit's diff is kept whole (up to 64 KB), so its row and the review show every line
+  if output.count > CP_CMD_OUT && cp_edit_at(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]) > 0 && app_is_diff(output) { cp_long_set(s, q, output); return; }
+  s[0].calls[q].long_n = 0;
   n := cp_out(s[0].calls[q].out[0..<CP_CMD_OUT], output);
   if n < output.count { n += cp_out(s[0].calls[q].out[n..<CP_CMD_OUT + 64], "\n[The output is cut at 2,000 bytes.]"); }
   s[0].calls[q].out_n = n;
+}
+// An edit's row is named "edit PATH" or "write PATH" (Microcoder's edits, Claude Code's Edit and
+// Write): where its path starts, 0 for any other row.
+cp_edit_at :: (text: string) -> int {
+  if text.count > 5 && cast(string) text[0..<5] == "edit " { return 5; }
+  if text.count > 6 && cast(string) text[0..<6] == "write " { return 6; }
+  return 0;
+}
+// Where row q's path starts when it is an edit that changed a file and its output is the diff; 0 otherwise.
+cp_edit_diff :: (s: [] CoderPage, q: int) -> int {
+  c := s[0].calls[q];
+  if c.read || c.thought || c.said || c.failed || c.running { return 0; }
+  at := cp_edit_at(cast(string) c.text[0..<c.text_n]);
+  if at == 0 || !app_is_diff(cp_call_text(s, q)) { return 0; }
+  return at;
 }
 // A sub-agent's tool call ended: its running row takes the output. False when no row is running with that text.
 cp_call_done :: (s: [] CoderPage, i: int, j: int, text: string, output: string, failed: bool) -> bool {
@@ -276,7 +294,7 @@ cp_calls_end :: (s: [] CoderPage, i: int, j: int, failed: bool) {
   }
 }
 cp_pane_open :: (s: [] CoderPage, turn: int, j: int) {
-  s[0].live_pane = -1; s[0].live_call = -1;
+  s[0].live_pane = -1; s[0].live_call = -1; s[0].pane_tab = CP_TAB_AGENT;
   s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
   s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
 }

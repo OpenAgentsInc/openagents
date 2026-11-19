@@ -1,0 +1,372 @@
+// The app set's diffs (GitHub #13696): a unified diff read into its files and hunks, and drawn as
+// Zeron draws an edit's diff and a change's files (apps/zgx/ui/ds/tool_detail.luau diff_line and
+// diff_view, git.luau's lines, git_changes.luau's file rows and card head; Zeron by Wing, MIT,
+// ported here, not copied).
+//
+//   ▾ page/transcript.coax  apps/coder-desktop     +12 −3     a file's row: it opens and folds its hunks
+//   ┌──────────────────────────────────────────┐
+//   │ @@ -40,6 +40,9 @@ cp_send                  │       a hunk's header, in the faint ink
+//   │  40  40    text := eb_text(…)             │       context: both numbers, no sign
+//   │  41      − if text.count == 0 {…}         │       removed: the old number, on the danger's wash
+//   │      41  + if cp_blank(text) {…}          │       added: the new number, on the success's wash
+//   └──────────────────────────────────────────┘
+//
+// Measures are Zeron's points (a line 20 tall, a hunk's header 24, each number 36 wide, the sign 16,
+// a file's row 30, a card's head 40) at the skin's size: they scale with the small mono face's line
+// as Zeron's do with its xs line (16), so a page drawn at another size keeps the proportions. A
+// diff is read where it lies: a file's body is a slice of the text, and nothing is copied.
+//
+// A caller draws one diff (app_diff_view: a file's row over each file's hunks when it has more than
+// one), or its own list of files (app_diff_head, app_diff_file_row, app_diff_hunks). What is open
+// is keyed state under the file row's id, changed by app_diff_press. Rows out of view between top
+// and bottom keep their place and are not drawn, so a long diff costs what shows.
+//   coax/bin/coax test components/app/diff.coax
+
+#load "base.coax";
+
+// A line's kind in a diff.
+APP_DIFF_CONTEXT :: 0; APP_DIFF_ADD :: 1; APP_DIFF_DEL :: 2; APP_DIFF_HUNK :: 3;
+APP_DIFF_META :: 4;         // a file's header: diff --git, index, ---, +++, mode lines (its row says these)
+APP_DIFF_NOTE :: 5;         // "\ No newline at end of file", or a note in a hunk that is not a line ("[The output is cut…]")
+// A file's change.
+APP_DIFF_MODIFIED :: 0; APP_DIFF_ADDED :: 1; APP_DIFF_DELETED :: 2;
+APP_DIFF_OPEN :: 0;         // not a size: the keyed slot a file's row keeps (1 open, 0 folded)
+APP_DIFF_FILES :: 32;       // files one view reads; a diff with more shows these
+APP_DIFF_TAB :: 4;
+APP_DIFF_KEEP :: 400;       // rows a file's hunks show, as Zeron's tool detail keeps; past them, how many more          // a tab's stops in a line, as Zeron's git pages
+
+// One file of a diff: its path (from its header, else what the caller named), its body (its header
+// and hunks, a slice of the text) and its lines added and removed.
+AppDiffFile :: struct { path: string; body: string; added: int; removed: int; status: int; }
+
+// The measures, in the skin's units.
+AppDiffLook :: struct { line: f32; hunk: f32; num: f32; sign: f32; pad: f32; file: f32; head: f32; chevron: f32; gap: f32; }
+app_diff_look :: (s: UiSkin) -> AppDiffLook {
+  u := s.mono_small.line / 16;
+  return AppDiffLook.{line = 20 * u, hunk = 24 * u, num = 36 * u, sign = 16 * u, pad = 12 * u, file = 30 * u, head = 40 * u, chevron = 12 * u, gap = 8 * u};
+}
+
+// ---------------------------------------------------------------- reading
+
+// Where the line that starts at `at` ends (its newline, or the text's end).
+app_diff_eol :: (text: string, at: int) -> int { e := at; while e < text.count && text[e] != 10 { e += 1; } return e; }
+app_diff_starts :: (ln: string, with: string) -> bool { return ln.count >= with.count && cast(string) ln[0..<with.count] == with; }
+// A hunk's header "@@ -a[,b] +c[,d] @@": where its old and new lines start and how many each has
+// (a count left out is 1). False for any other line.
+app_diff_int :: (ln: string, i: [] int) -> int {
+  v := 0; while i[0] < ln.count && ln[i[0]] >= '0' && ln[i[0]] <= '9' { v = v * 10 + cast(int) (ln[i[0]] - '0'); i[0] += 1; }
+  return v;
+}
+app_diff_hunk_of :: (ln: string, old_at: [] int, old_n: [] int, new_at: [] int, new_n: [] int) -> bool {
+  if !app_diff_starts(ln, "@@ -") { return false; }
+  i := [1] int.[4];
+  old_at[0] = app_diff_int(ln, i[..]); old_n[0] = 1;
+  if i[0] < ln.count && ln[i[0]] == ',' { i[0] += 1; old_n[0] = app_diff_int(ln, i[..]); }
+  if i[0] + 1 >= ln.count || ln[i[0]] != ' ' || ln[i[0] + 1] != '+' { return false; }
+  i[0] += 2;
+  new_at[0] = app_diff_int(ln, i[..]); new_n[0] = 1;
+  if i[0] < ln.count && ln[i[0]] == ',' { i[0] += 1; new_n[0] = app_diff_int(ln, i[..]); }
+  return true;
+}
+// Reads a diff a line at a time: each line's kind, and its old and new numbers (0: none). A hunk
+// runs while its counts last; outside one, a line is a file's header.
+AppDiffWalk :: struct { at: int; old: int; next: int; old_left: int; new_left: int; hunks: int; }
+app_diff_step :: (text: string, w: [] AppDiffWalk, ln: [] string, old: [] int, nw: [] int) -> int {
+  if w[0].at > text.count { return -1; }
+  e := app_diff_eol(text, w[0].at); line := cast(string) text[w[0].at..<e];
+  if e >= text.count && line.count == 0 { w[0].at = e + 1; return -1; }   // a last newline ends the text
+  w[0].at = e + 1; ln[0] = line; old[0] = 0; nw[0] = 0;
+  oa: [1] int; on: [1] int; na: [1] int; nn: [1] int;
+  if app_diff_hunk_of(line, oa[..], on[..], na[..], nn[..]) {
+    w[0].old = oa[0]; w[0].next = na[0]; w[0].old_left = on[0]; w[0].new_left = nn[0]; w[0].hunks += 1;
+    if w[0].old == 0 && on[0] > 0 { w[0].old = 1; }
+    if w[0].next == 0 && nn[0] > 0 { w[0].next = 1; }
+    return APP_DIFF_HUNK;
+  }
+  if w[0].old_left <= 0 && w[0].new_left <= 0 { return ifx line.count > 0 && line[0] == '\\' then APP_DIFF_NOTE else APP_DIFF_META; }
+  c: u8 = ifx line.count > 0 then line[0] else ' ';
+  if c == '+' && w[0].new_left > 0 { nw[0] = w[0].next; w[0].next += 1; w[0].new_left -= 1; return APP_DIFF_ADD; }
+  if c == '-' && w[0].old_left > 0 { old[0] = w[0].old; w[0].old += 1; w[0].old_left -= 1; return APP_DIFF_DEL; }
+  if c == ' ' && w[0].old_left > 0 && w[0].new_left > 0 {
+    old[0] = w[0].old; nw[0] = w[0].next; w[0].old += 1; w[0].next += 1; w[0].old_left -= 1; w[0].new_left -= 1;
+    return APP_DIFF_CONTEXT;
+  }
+  return APP_DIFF_NOTE;
+}
+
+// Whether text is a unified diff: a hunk's header (or a git file header) in its first 12 lines.
+app_is_diff :: (text: string) -> bool {
+  at := 0;
+  for i: 0..<12 {
+    if at >= text.count { return false; }
+    e := app_diff_eol(text, at); ln := cast(string) text[at..<e];
+    if app_diff_starts(ln, "@@ -") || app_diff_starts(ln, "diff --git ") { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+// A unified diff's lines added and removed, its file headers left out.
+app_diff_stats :: (text: string, added: [] int, removed: [] int) {
+  w := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  added[0] = 0; removed[0] = 0;
+  while true {
+    kind := app_diff_step(text, w[..], ln[..], o[..], n[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_ADD { added[0] += 1; } else if kind == APP_DIFF_DEL { removed[0] += 1; }
+  }
+}
+// A hunk's header "@@ -old[,c] +new[,c] @@" into where its old and new lines start (at least 1).
+app_diff_parse_hunk :: (ln: string, old_ln: [] int, new_ln: [] int) -> bool {
+  oa: [1] int; on: [1] int; na: [1] int; nn: [1] int;
+  if !app_diff_hunk_of(ln, oa[..], on[..], na[..], nn[..]) { return false; }
+  old_ln[0] = ifx oa[0] > 0 then oa[0] else 1; new_ln[0] = ifx na[0] > 0 then na[0] else 1;
+  return true;
+}
+// A path from a header's name: "b/x" and "a/x" lose their side, a tab's tail (a date) goes.
+app_diff_name :: (s: string) -> string {
+  e := 0; while e < s.count && s[e] != 9 { e += 1; }
+  t := cast(string) s[0..<e];
+  if app_diff_starts(t, "a/") || app_diff_starts(t, "b/") { return cast(string) t[2..<t.count]; }
+  return t;
+}
+// The diff's files into out, in order: a file starts at a "diff --git" line, or at a "---" line
+// once the file before has its hunks. `path` names a file whose header names none (an edit's
+// diff is its hunks alone). Returns how many; 0 when text has no hunk.
+app_diff_files :: (text: string, out: [] AppDiffFile, path: string) -> int {
+  n := 0; w := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; nw: [1] int;
+  from: [APP_DIFF_FILES] int; hunks_at := 0;
+  while true {
+    at := w[0].at; before := w[0].hunks;
+    kind := app_diff_step(text, w[..], ln[..], o[..], nw[..]);
+    if kind < 0 { break; }
+    l := ln[0];
+    starts := n == 0 || kind == APP_DIFF_META && (app_diff_starts(l, "diff --git ") || app_diff_starts(l, "--- ") && before > hunks_at);
+    if starts {
+      if n >= out.count || n >= from.count { break; }
+      from[n] = at; out[n] = AppDiffFile.{path = path}; n += 1; hunks_at = before;
+    }
+    cur := n - 1;
+    if kind == APP_DIFF_META {
+      if app_diff_starts(l, "diff --git ") {
+        b := 0; i := 11; while i + 3 <= l.count { if cast(string) l[i..<i + 3] == " b/" { b = i + 1; } i += 1; }
+        if b > 0 { out[cur].path = app_diff_name(cast(string) l[b..<l.count]); }
+      }
+      else if app_diff_starts(l, "+++ ") { nm := cast(string) l[4..<l.count]; if app_diff_starts(nm, "/dev/null") { out[cur].status = APP_DIFF_DELETED; } else { out[cur].path = app_diff_name(nm); } }
+      else if app_diff_starts(l, "--- ") { nm := cast(string) l[4..<l.count]; if app_diff_starts(nm, "/dev/null") { out[cur].status = APP_DIFF_ADDED; } else { out[cur].path = app_diff_name(nm); } }
+      else if app_diff_starts(l, "new file mode") { out[cur].status = APP_DIFF_ADDED; }
+      else if app_diff_starts(l, "deleted file mode") { out[cur].status = APP_DIFF_DELETED; }
+    }
+    if kind == APP_DIFF_ADD { out[cur].added += 1; } else if kind == APP_DIFF_DEL { out[cur].removed += 1; }
+  }
+  if w[0].hunks == 0 { return 0; }
+  for i: 0..<n { out[i].body = cast(string) text[from[i]..<(ifx i + 1 < n then from[i + 1] else text.count)]; }
+  return n;
+}
+// A path's own name and the folder it is in ("" at the top).
+app_diff_base :: (path: string) -> string {
+  b := 0; for c, i: path { if c == '/' && i + 1 < path.count { b = i + 1; } }
+  return cast(string) path[b..<path.count];
+}
+app_diff_dir :: (path: string) -> string {
+  b := 0; for c, i: path { if c == '/' && i + 1 < path.count { b = i; } }
+  return cast(string) path[0..<b];
+}
+
+// ---------------------------------------------------------------- paint
+
+// How tall a file's hunks draw: its lines and hunk headers on the card, the card's pad over and under.
+// Past APP_DIFF_KEEP rows the rest are one line that says how many more there are.
+app_diff_hunks_h :: (f: [] UiFrame, body: string) -> f32 {
+  d := app_diff_look(f[0].skin); h := d.gap; rows := 0;
+  w := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  while true {
+    kind := app_diff_step(body, w[..], ln[..], o[..], n[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    if rows == APP_DIFF_KEEP { h += d.line; break; }
+    rows += 1; h += ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
+  }
+  return h;
+}
+// How many rows a body has past APP_DIFF_KEEP.
+app_diff_more :: (body: string) -> int {
+  rows := 0; w := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  while true { kind := app_diff_step(body, w[..], ln[..], o[..], n[..]); if kind < 0 { break; } if kind != APP_DIFF_META { rows += 1; } }
+  return ifx rows > APP_DIFF_KEEP then rows - APP_DIFF_KEEP else 0;
+}
+// "+12" and "−3" ending at `right` on a line at y, lh tall, in the small mono face: what was added
+// in the success's ink, removed in the danger's; a count of 0 is left out. Returns the width.
+app_diff_counts :: (f: [] UiFrame, right: f32, y: f32, lh: f32, added: int, removed: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; face := s.mono_small.face; gap := s.mono_small.line / 4;
+  x := right; ab: [24] u8; rb: [24] u8;
+  if removed > 0 {
+    rn := el_put_i(rb[..], el_put(rb[..], 0, "−"), removed); r := sheet_pool(sh, cast(string) rb[0..<rn]);
+    x -= measure_width(m, face, r); _ := sheet_text(sh, m, -1, x, y, lh, face, s.danger, r);
+  }
+  if added > 0 {
+    if removed > 0 { x -= gap; }
+    an := el_put_i(ab[..], el_put(ab[..], 0, "+"), added); a := sheet_pool(sh, cast(string) ab[0..<an]);
+    x -= measure_width(m, face, a); _ := sheet_text(sh, m, -1, x, y, lh, face, s.success, a);
+  }
+  return right - x;
+}
+// How wide app_diff_counts draws.
+app_diff_counts_w :: (f: [] UiFrame, added: int, removed: int) -> f32 {
+  s := f[0].skin; m := f[0].m; face := s.mono_small.face; w: f32 = 0; b: [24] u8;
+  if removed > 0 { w += measure_width(m, face, cast(string) b[0..<el_put_i(b[..], el_put(b[..], 0, "−"), removed)]); }
+  if added > 0 { w += measure_width(m, face, cast(string) b[0..<el_put_i(b[..], el_put(b[..], 0, "+"), added)]); if removed > 0 { w += s.mono_small.line / 4; } }
+  return w;
+}
+// A line's words with its tabs to their stops, pooled when it has any.
+app_diff_detab :: (sh: [] Sheet, text: string) -> string {
+  tabs := false; for c: text { if c == 9 { tabs = true; } }
+  if !tabs { return text; }
+  b: [1024] u8; n := 0; col := 0;
+  for c: text {
+    if n >= b.count - APP_DIFF_TAB { break; }
+    if c == 9 { pad := APP_DIFF_TAB - col % APP_DIFF_TAB; for p: 0..<pad { b[n] = ' '; n += 1; } col += pad; continue; }
+    b[n] = c; n += 1; if (c & 0xC0) != 0x80 { col += 1; }   // not a size: a UTF-8 continuation byte
+  }
+  return sheet_pool(sh, cast(string) b[0..<n]);
+}
+// A number, right-aligned in its column ending at `right`.
+app_diff_num :: (f: [] UiFrame, right: f32, y: f32, lh: f32, v: int) {
+  if v <= 0 { return; }
+  s := f[0].skin; sh := f[0].sheet; nb: [16] u8; nn := el_put_i(nb[..], 0, v);
+  t := sheet_pool(sh, cast(string) nb[0..<nn]);
+  _ := sheet_text(sh, f[0].m, -1, right - measure_width(f[0].m, s.mono_small.face, t), y, lh, s.mono_small.face, s.faint, t);
+}
+// A file's hunks at (x, y), w wide, on the code's ground, as Zeron's diff_view: each hunk's header
+// in the faint ink, each line its old and new numbers, its sign and its words, added lines on the
+// success's wash and removed on the danger's. A line past the card's edge ends in an ellipsis.
+// Lines out of view between top and bottom are not drawn. Its row (id + ".diff") reads the body.
+// Returns its height.
+app_diff_hunks :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, body: string, top: f32, bottom: f32) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(s);
+  face := s.mono_small.face; tl := s.mono_small.line;
+  h := app_diff_hunks_h(f, body);
+  if y + h < top || y > bottom { return h; }
+  sheet_fill(sh, x, y, w, h, s.app.tool_radius, s.code_wash);
+  ib: [EL_ID] u8;
+  row := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Diff", x, y, w, h, 0, 0);
+  elt_value(f[0].rows, row, body);
+  wk := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  ry := y + d.gap / 2; drawn := 0;
+  code_x := x + 2 * d.num + d.sign; code_w := x + w - d.pad - code_x;
+  while true {
+    kind := app_diff_step(body, wk[..], ln[..], o[..], n[..]);
+    if kind < 0 { break; }
+    if kind == APP_DIFF_META { continue; }
+    if drawn == APP_DIFF_KEEP {
+      mb: [48] u8; mn := el_put_i(mb[..], el_put(mb[..], 0, "… "), app_diff_more(body)); mn = el_put(mb[..], mn, " more lines");
+      if ry + d.line >= top && ry <= bottom { _ := sheet_text(sh, m, -1, x + d.pad, ry + (d.line - tl) / 2, tl, face, s.faint, sheet_pool(sh, cast(string) mb[0..<mn])); }
+      break;
+    }
+    drawn += 1;
+    rh := ifx kind == APP_DIFF_HUNK then d.hunk else d.line;
+    if ry + rh < top || ry > bottom { ry += rh; continue; }
+    ty := ry + (rh - tl) / 2; l := ln[0];
+    if kind == APP_DIFF_HUNK {
+      _ := sheet_text(sh, m, -1, x + d.pad, ty, tl, face, s.faint, app_fit(f, face, l, w - 2 * d.pad));
+      ry += rh; continue;
+    }
+    if kind == APP_DIFF_ADD { sheet_fill(sh, x, ry, w, rh, 0, opacity(s.success, 0.12)); }
+    else if kind == APP_DIFF_DEL { sheet_fill(sh, x, ry, w, rh, 0, opacity(s.danger, 0.12)); }
+    app_diff_num(f, x + d.num - d.gap / 2, ty, tl, o[0]);
+    app_diff_num(f, x + 2 * d.num - d.gap / 2, ty, tl, n[0]);
+    if kind == APP_DIFF_NOTE {
+      _ := sheet_text(sh, m, -1, code_x, ty, tl, face, s.faint, app_fit(f, face, l, code_w));
+      ry += rh; continue;
+    }
+    sign := ifx kind == APP_DIFF_ADD then "+" else ifx kind == APP_DIFF_DEL then "−" else "";
+    if sign.count > 0 {
+      ink := ifx kind == APP_DIFF_ADD then s.success else s.danger;
+      _ := sheet_text(sh, m, -1, code_x - d.sign + (d.sign - measure_width(m, face, sign)) / 2, ty, tl, face, ink, sign);
+    }
+    words := ifx l.count > 0 then cast(string) l[1..<l.count] else "";
+    _ := sheet_plain(sh, m, code_x, ty, tl, face, s.ink, app_fit(f, face, app_diff_detab(sh, words), code_w), true);
+    ry += rh;
+  }
+  return h;
+}
+// A file's row at (x, y), w wide, as Zeron's Changes list draws one: a chevron (down while open;
+// none with no action, when the row is only the file's heading),
+// its name in the ink and its folder after it in the faint ink, its lines added and removed at its
+// end; the row's wash under the pointer. A press dispatches `action` under id (app_diff_press).
+// Returns its height.
+app_diff_file_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, file: AppDiffFile, open: bool, action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(s); h := d.file;
+  if uiframe_hovered(f, id) { sheet_fill(sh, x, y, w, h, s.app.tool_radius, s.row_hover); }
+  // with no action it neither opens nor folds, and has no chevron
+  folds := action != 0;
+  if folds { sheet_icon(sh, ifx open then ICON_CHEVRON else ICON_CHEVRON_RIGHT, x + d.gap, y + (h - d.chevron) / 2, d.chevron, s.muted); }
+  ly := y + (h - s.mono_small.line) / 2; tl := s.mono_small.line; face := s.mono_small.face;
+  right := x + w - d.gap;
+  right -= app_diff_counts(f, right, ly, tl, file.added, file.removed) + d.gap;
+  tx := x + 2 * d.gap + d.chevron;
+  name := app_diff_base(file.path); dir := app_diff_dir(file.path);
+  nm := app_fit(f, face, ifx name.count > 0 then name else "(unnamed)", right - tx);
+  tx += sheet_text(sh, m, -1, tx, ly, tl, face, s.ink, nm);
+  if dir.count > 0 && right - tx - d.gap > measure_width(m, face, "…") * 2 {
+    _ := sheet_text(sh, m, -1, tx + d.gap, ly, tl, face, s.faint, app_fit(f, face, dir, right - tx - d.gap));
+  }
+  vb: [48] u8; vn := el_put(vb[..], 0, "+"); vn = el_put_i(vb[..], vn, file.added); vn = el_put(vb[..], vn, " −"); vn = el_put_i(vb[..], vn, file.removed);
+  if file.status == APP_DIFF_ADDED { vn = el_put(vb[..], vn, ", added"); } else if file.status == APP_DIFF_DELETED { vn = el_put(vb[..], vn, ", deleted"); }
+  row := uiframe_semantic(f, id, ifx folds then EL_BUTTON else EL_HEADING, ifx file.path.count > 0 then file.path else "File", x, y, w, h,
+                          ifx folds then EL_S_EXPANDS | (ifx open then EL_S_EXPANDED else 0) else 0, action);
+  elt_value(f[0].rows, row, sheet_pool(sh, cast(string) vb[0..<vn]));
+  if folds { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+// The head of a list of changed files at (x, y), w wide, as Zeron's card head: how many files in
+// the ink, the lines added and removed after it. Returns its height.
+app_diff_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, files: int, added: int, removed: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := app_diff_look(s); h := d.head;
+  hb: [48] u8; hn := el_put_i(hb[..], 0, files); hn = el_put(hb[..], hn, ifx files == 1 then " file changed" else " files changed");
+  words := sheet_pool(sh, cast(string) hb[0..<hn]);
+  ly := y + (h - s.tool.line) / 2;
+  tw := sheet_text(sh, m, -1, x, ly, s.tool.line, s.tool.face, s.ink, words);
+  cy := y + (h - s.mono_small.line) / 2;
+  _ := app_diff_counts(f, x + tw + d.gap + app_diff_counts_w(f, added, removed), cy, s.mono_small.line, added, removed);
+  row := uiframe_semantic(f, id, EL_TEXT, words, x, y, w, h, 0, 0);
+  vb: [48] u8; vn := el_put(vb[..], 0, "+"); vn = el_put_i(vb[..], vn, added); vn = el_put(vb[..], vn, " −"); vn = el_put_i(vb[..], vn, removed);
+  elt_value(f[0].rows, row, sheet_pool(sh, cast(string) vb[0..<vn]));
+  return h;
+}
+// Whether file row `id` is open: what the person chose, else `initial` (a fresh row takes it).
+app_diff_is_open :: (f: [] UiFrame, id: string, initial: bool) -> bool {
+  k := uiframe_key(f, id);
+  if !keyed_ok(f[0].keyed, k) { return initial; }
+  if keyed_fresh(f[0].keyed, k) { keyed_slot_set(f[0].keyed, k, APP_DIFF_OPEN, ifx initial then 1.0f32 else 0.0f32); }
+  return keyed_slot(f[0].keyed, k, APP_DIFF_OPEN) > 0;
+}
+// A file row's id: "id.f3".
+app_diff_file_id :: (out: [] u8, id: string, i: int) -> string { n := el_put(out, el_put(out, 0, id), ".f"); n = el_put_i(out, n, i); return cast(string) out[0..<n]; }
+// A diff at (x, y), w wide: one file's hunks alone, or with more than one file each file's row
+// over its hunks while it is open (open at first; always, with no action). `path` names a file whose header names none.
+// Rows out of view between top and bottom are not drawn. Returns its height, 0 when text has no hunk.
+app_diff_view :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string, path: string, top: f32, bottom: f32, action: int) -> f32 {
+  files: [APP_DIFF_FILES] AppDiffFile; n := app_diff_files(text, files[..], path);
+  if n == 0 { return 0; }
+  if n == 1 { return app_diff_hunks(f, id, x, y, w, files[0].body, top, bottom); }
+  d := app_diff_look(f[0].skin); h: f32 = 0; fb: [EL_ID] u8;
+  for i: 0..<n {
+    fid := app_diff_file_id(fb[..], id, i);
+    open := action == 0 || app_diff_is_open(f, fid, true);
+    h += app_diff_file_row(f, fid, x, y + h, w, files[i], open, action);
+    if open { h += app_diff_hunks(f, fid, x, y + h, w, files[i].body, top, bottom) + d.gap; }
+  }
+  return h;
+}
+// A press reached the app as a diff's action: `id` is the view, `pressed` the id pressed. A file's
+// row (id + ".fN") opens or folds. Returns whether the press was one.
+app_diff_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
+  if pressed.count < id.count + 3 || cast(string) pressed[0..<id.count] != id || cast(string) pressed[id.count..<id.count + 2] != ".f" { return false; }
+  for c: cast(string) pressed[id.count + 2..<pressed.count] { if c < '0' || c > '9' { return false; } }
+  k := keyed_find(keyed, pressed);
+  if k < 0 { return false; }
+  keyed_slot_set(keyed, k, APP_DIFF_OPEN, ifx keyed_slot(keyed, k, APP_DIFF_OPEN) > 0 then 0.0f32 else 1.0f32);
+  return true;
+}
+
+#load "diff-checks.coax" #test;

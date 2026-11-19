@@ -61,3 +61,25 @@
   t := surface_find(sf[..], "pane.close.tab");
   #assert t >= 0 && surface_say(sf[..], t) == "Neon" && surface_find(sf[..], "pane.took") >= 0;
 }
+
+#test "app_pane_tabs draws a chip each, marks the chosen one current with Close and makes the others pressable (#13696)" {
+  u0: [256] Prim; o0: [64] Prim; l0: [32] SheetLine; h0: [32] SheetHit; p0: [1024] u8; r0: [32] El;
+  u1: [256] Prim; o1: [64] Prim; l1: [32] SheetLine; h1: [32] SheetHit; p1: [1024] u8; r1: [32] El;
+  sf: [1] UiSurface; sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), zeron_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  tabs := [2] string.["Carbon", "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
+  shell := app_pane_tab_shell(f[..], 700, 0, 500, 800, ICON_BOT, "Neon", "pane.took", "", "pane.close", 99, 12, 1.0f32);
+  top := app_pane_tabs(f[..], 700, 0, 500, 800, icons[..], tabs[..], 1, "pane.tab.", 98, "pane.meta2", "4s", "pane.close2", 97, 12, 1.0f32);
+  #assert top == shell;
+  #assert uiframe_end(f[..], sf[..]);
+  rows := surface_rows(sf[..]);
+  a := surface_find(sf[..], "pane.tab.0"); b := surface_find(sf[..], "pane.tab.1");
+  #assert a >= 0 && b >= 0 && rows.rows[a].role == EL_TAB && rows.rows[a].action == 98 && (rows.rows[a].state & EL_S_CURRENT) == 0;
+  #assert (rows.rows[b].state & EL_S_CURRENT) != 0 && rows.rows[b].action == 0 && rows.rows[b].x > rows.rows[a].x;
+  c := surface_find(sf[..], "pane.close2");
+  #assert c >= 0 && surface_action(sf[..], c) == 97 && surface_find(sf[..], "pane.meta2") >= 0;
+}

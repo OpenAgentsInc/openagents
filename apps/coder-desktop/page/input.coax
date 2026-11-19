@@ -10,7 +10,7 @@ cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
 }
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
-  if q >= 0 && q < s[0].calls_n { return cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; }
+  if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
   if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(s[0].turns[i].doc[..], 0, s[0].turns[i].blocks, s[0].open_file); }
   return "";
 }
@@ -68,6 +68,19 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
+  if act == CP_REVIEW {
+    // the code review opens in the pane, its tab in front; a press while it shows closes it
+    if s[0].review && cp_review_shown(s) { s[0].review = false; return true; }
+    s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES;
+    return true;
+  }
+  if act == CP_PANE_TAB {
+    tab := cp_number(surface_id(s[0].surface[..], row), "coder.pane.tab.");
+    if tab < 0 || !s[0].review || !s[0].pane_open { return false; }
+    s[0].pane_tab = ifx tab == 0 then CP_TAB_AGENT else CP_TAB_CHANGES;
+    return true;
+  }
+  if act == CP_REVIEW_FILE { return app_diff_press(s[0].keyed[..], "coder.review", surface_id(s[0].surface[..], row)); }
   if act == CP_PANE_TOOL {
     // a row of the open sub-agent's activity group (#13744): it opens, or its file opens
     id := surface_id(s[0].surface[..], row);
@@ -167,7 +180,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if s[0].pane_open && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  if (s[0].pane_open || s[0].review) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -304,11 +317,12 @@ coder_page_scroll :: (s: [] CoderPage, dy: f32, precise: bool, phase: int, momen
   cp_scroll_at(s, s[0].scr_at, delta, kind, time);
 }
 CP_WHEEL_LINE :: 22.75f32;   // GPUI's line, in points: a mouse's notch
-CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3;
+CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3; CP_SCR_REVIEW :: 4;
 // The view under the pointer.
 cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if cp_review_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_REVIEW; }
   if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_PANE; }
   return CP_SCR_TALK;
 }
@@ -323,6 +337,8 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
     return;
   }
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
+  // the code review moves as the deltas come, the platform's own coast included
+  if view == CP_SCR_REVIEW { s[0].review_scroll = scroll_clamp(s[0].review_scroll + delta, s[0].review_content, s[0].pane_view); return; }
   if view == CP_SCR_PANE {
     if !s[0].pane_open { return; }
     s[0].pane_scroll = ui_scroll_by(s[0].pane_scr[..], s[0].pane_scroll, delta, s[0].pane_content, s[0].pane_view, kind, time, r);

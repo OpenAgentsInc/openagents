@@ -1,0 +1,80 @@
+// Checks for the app set's diffs (diff.coax).
+#load "checks-kit.coax";
+
+APP_DIFF_T_EDIT :: "@@ -4,2 +4,3 @@\n context\n-old\n+new1\n+new2\n";
+APP_DIFF_T_GIT :: "diff --git a/src/a.coax b/src/a.coax\nindex 1..2 100644\n--- a/src/a.coax\n+++ b/src/a.coax\n@@ -1,3 +1,3 @@\n keep\n--- not a header: a removed line\n+++ not a header: an added line\n keep\ndiff --git a/new.txt b/new.txt\nnew file mode 100644\n--- /dev/null\n+++ b/new.txt\n@@ -0,0 +1,2 @@\n+one\n+two\n";
+
+#test "app diff: an edit's hunks read as one file named by the caller, each line its kind and numbers" {
+  files: [4] AppDiffFile;
+  #assert app_diff_files(APP_DIFF_T_EDIT, files[..], "src/foo.coax") == 1;
+  #assert files[0].path == "src/foo.coax" && files[0].added == 2 && files[0].removed == 1 && files[0].body == APP_DIFF_T_EDIT;
+  w := [1] AppDiffWalk.[AppDiffWalk.{}]; ln: [1] string; o: [1] int; n: [1] int;
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) == APP_DIFF_HUNK;
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) == APP_DIFF_CONTEXT && o[0] == 4 && n[0] == 4 && ln[0] == " context";
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) == APP_DIFF_DEL && o[0] == 5 && n[0] == 0;
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) == APP_DIFF_ADD && o[0] == 0 && n[0] == 5;
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) == APP_DIFF_ADD && n[0] == 6;
+  #assert app_diff_step(APP_DIFF_T_EDIT, w[..], ln[..], o[..], n[..]) < 0;
+  // not a diff: no files
+  #assert app_diff_files("applied", files[..], "x") == 0 && !app_is_diff("applied") && app_is_diff(APP_DIFF_T_EDIT) && app_is_diff(APP_DIFF_T_GIT);
+  // a cut diff: the page's note past the kept bytes is a note, not a line
+  cut := "@@ -1,9 +1,9 @@\n a\n-b\n[The output is cut at 2,000 bytes.]";
+  w2 := [1] AppDiffWalk.[AppDiffWalk.{}];
+  _ = app_diff_step(cut, w2[..], ln[..], o[..], n[..]); _ = app_diff_step(cut, w2[..], ln[..], o[..], n[..]); _ = app_diff_step(cut, w2[..], ln[..], o[..], n[..]);
+  #assert app_diff_step(cut, w2[..], ln[..], o[..], n[..]) == APP_DIFF_NOTE && o[0] == 0 && n[0] == 0;
+  a: [1] int; r: [1] int; app_diff_stats(cut, a[..], r[..]);
+  #assert a[0] == 0 && r[0] == 1;
+}
+
+#test "app diff: a git diff splits at each file's header, its paths and states from it; lines inside a hunk that look like headers stay lines" {
+  files: [4] AppDiffFile;
+  #assert app_diff_files(APP_DIFF_T_GIT, files[..], "") == 2;
+  #assert files[0].path == "src/a.coax" && files[0].status == APP_DIFF_MODIFIED && files[0].added == 1 && files[0].removed == 1;
+  #assert files[1].path == "new.txt" && files[1].status == APP_DIFF_ADDED && files[1].added == 2 && files[1].removed == 0;
+  #assert app_diff_starts(files[1].body, "diff --git a/new.txt") && files[0].body.count + files[1].body.count == APP_DIFF_T_GIT.count;
+  a: [1] int; r: [1] int; app_diff_stats(APP_DIFF_T_GIT, a[..], r[..]);
+  #assert a[0] == 3 && r[0] == 1;
+  // plain ---/+++ headers with no git line split too, once the file before has its hunks
+  two := "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n--- a/y\n+++ b/y\n@@ -2 +2 @@\n-c\n+d\n";
+  #assert app_diff_files(two, files[..], "") == 2 && files[0].path == "x" && files[1].path == "y";
+  ol: [1] int; nl: [1] int;
+  #assert app_diff_parse_hunk("@@ -10,2 +12,3 @@ fn", ol[..], nl[..]) && ol[0] == 10 && nl[0] == 12 && !app_diff_parse_hunk("@@ nope", ol[..], nl[..]);
+  #assert app_diff_base("apps/coder/page.coax") == "page.coax" && app_diff_dir("apps/coder/page.coax") == "apps/coder" && app_diff_dir("page.coax") == "";
+}
+
+#test "app diff: one file draws its hunks on Zeron's measures; more files each get a row that folds its hunks" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; d := app_diff_look(arcade_phone_skin());
+  #assert abs(d.line * 24 - d.hunk * 20) < 0.01 && abs(d.num * 20 - d.line * 36) < 0.01 && abs(d.file * 20 - d.line * 30) < 0.01;
+  app_test_begin(t[..], "", "", true);
+  h := app_diff_view(f, "e", 0, 0, 400, APP_DIFF_T_EDIT, "src/foo.coax", -1000, 1000, 7);
+  #assert app_test_end(t[..]) && h == d.gap + d.hunk + 4 * d.line;
+  #assert app_test_find(t[..], "e.diff") >= 0 && app_diff_starts(app_test_value(t[..], "e.diff"), "@@ -4,2 +4,3 @@ ") && app_test_find(t[..], "e.f0") < 0;
+  #assert app_test_texts(t[..], "new1") == 1 && app_test_texts(t[..], "+") == 2 && app_test_texts(t[..], "−") == 1;
+  app_test_begin(t[..], "", "", true);
+  open := app_diff_view(f, "g", 0, 0, 400, APP_DIFF_T_GIT, "", -1000, 1000, 7);
+  #assert app_test_end(t[..]);
+  #assert app_test_label(t[..], "g.f0") == "src/a.coax" && app_test_has(t[..], "g.f0", EL_S_EXPANDS | EL_S_EXPANDED) && app_test_pressable(t[..], "g.f0");
+  #assert app_test_value(t[..], "g.f1") == "+2 −0, added" && app_test_find(t[..], "g.f1.diff") >= 0;
+  #assert app_diff_press(t[0].ks[..], "g", "g.f1") && !app_diff_press(t[0].ks[..], "g", "g.f1x") && !app_diff_press(t[0].ks[..], "g", "h.f1");
+  app_test_begin(t[..], "", "", true);
+  folded := app_diff_view(f, "g", 0, 0, 400, APP_DIFF_T_GIT, "", -1000, 1000, 7);
+  #assert app_test_end(t[..]) && folded < open && !app_test_has(t[..], "g.f1", EL_S_EXPANDED) && app_test_find(t[..], "g.f1.diff") < 0;
+  // out of view: its place kept, nothing drawn
+  app_test_begin(t[..], "", "", true);
+  far := app_diff_hunks(f, "z", 0, 5000, 400, APP_DIFF_T_EDIT, 0, 800);
+  #assert app_test_end(t[..]) && far == h && app_test_find(t[..], "z.diff") < 0;
+  // the card head: the files and their lines
+  app_test_begin(t[..], "", "", true);
+  hh := app_diff_head(f, "c", 0, 0, 400, 2, 3, 1);
+  #assert app_test_end(t[..]) && hh == d.head && app_test_label(t[..], "c") == "2 files changed" && app_test_value(t[..], "c") == "+3 −1";
+  #assert app_test_texts(t[..], "+3") == 1 && app_test_texts(t[..], "−1") == 1;
+}
+
+#test "app diff: with no action a file's row is a heading with no chevron, and its hunks always show" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  _ = app_diff_view(f, "w", 0, 0, 400, APP_DIFF_T_GIT, "", -1000, 1000, 0);
+  #assert app_test_end(t[..]);
+  #assert app_test_row(t[..], "w.f0").role == EL_HEADING && !app_test_has(t[..], "w.f0", EL_S_EXPANDS) && !app_test_pressable(t[..], "w.f0");
+  #assert app_test_find(t[..], "w.f0.diff") >= 0 && app_test_find(t[..], "w.f1.diff") >= 0 && app_test_prims(t[..], PRIM_ICON) == 0;
+}

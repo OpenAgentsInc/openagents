@@ -8,18 +8,22 @@ cp_sidebar_spec :: () -> AppSidebarSpec {
 cp_pane_spec :: () -> AppPaneSpec {
   return AppPaneSpec.{ default_w = cast(f32) CP_PANE, min_w = cast(f32) CP_PANE_LEAST, max_w = cast(f32) CP_PANE_MOST, main_min = cast(f32) CP_PANE_MAIN };
 }
+// The pane on the window's right: the code review when its tab shows (#13696), else a sub-agent's transcript.
+cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  if cp_review_shown(s) { cp_review(s, f, px, pw, h); } else { cp_pane(s, f, px, pw, h); }
+}
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
   if s[0].set_open { cp_settings(s, f, window_w, h); return; }
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   left := ifx shell.side.persistent then shell.side.width else 0.0f32;
   right := shell.pane.w;
   s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
-  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_pane(s, f, 0, window_w, h); return; }
-  if shell.pane.open && right > 0 { cp_pane(s, f, shell.pane.x, right, h); }
+  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); return; }
+  if shell.pane.open && right > 0 { cp_side_pane(s, f, shell.pane.x, right, h); }
   w := window_w - right;   // from here w is where the conversation's side ends
   cw := shell.col_w; x := shell.col_x;
   s[0].col_x = x; s[0].col_w = cw;

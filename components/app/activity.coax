@@ -49,7 +49,7 @@ AppActRow :: struct {
   calls: int;                 // a sub-agent's: the calls its agent has made, said at the row's end before that ("3 tool calls")
   opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
   path: string;               // the file it names, when its target is one: the target is a link that dispatches the row's action under id + ".path"
-  diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones; diff_cut: it was longer
+  diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones, or a unified diff's hunks (diff.coax) with its lines added and removed at the row's end; diff_cut: it was longer
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
 
@@ -123,6 +123,7 @@ app_act_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
   k := keyed_find(keyed, id);
   if k < 0 || pressed.count < id.count || cast(string) pressed[0..<id.count] != id { return false; }
   part := cast(string) pressed[id.count..<pressed.count];
+  if app_diff_press(keyed, id, pressed) { return true; }   // a file's row in an opened diff
   slot := ifx part == "" then APP_TOOL_OPEN else ifx part == ".out" then APP_ACT_OUTPUT_OPEN else -1;
   if slot < 0 { return false; }
   keyed_slot_set(keyed, k, slot, ifx keyed_slot(keyed, k, slot) > 0 then 0.0f32 else 1.0f32);
@@ -251,7 +252,10 @@ app_act_detail :: (f: [] UiFrame, id: string, k: int, tx: f32, y: f32, tw: f32, 
     elt_value(f[0].rows, row, r.call);
     h += bh + a.detail_gap;
   }
-  if r.diff.count > 0 {
+  if r.diff.count > 0 && app_is_diff(r.diff) && !r.failed {
+    // a unified diff: its hunks with both numbers and the sign, as Zeron's tool detail draws one (diff.coax)
+    h += app_diff_view(f, id, tx, y + h, tw, r.diff, r.path, -PRIM_OPEN, PRIM_OPEN, action) + a.detail_gap;
+  } else if r.diff.count > 0 {
     // the change: removed lines in the danger's tone, added ones in the success's, at most APP_ACT_DIFF_LINES
     total := app_lines(r.diff); shown := ifx total > APP_ACT_DIFF_LINES then APP_ACT_DIFF_LINES else total;
     more := total - shown; foot := ifx more > 0 || r.diff_cut then 1 else 0;
@@ -379,6 +383,11 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   tx := x + a.gutter; ly := y + (rh - s.tool.line) / 2;
   // a timed call says how long it has run, or took, at the row's end, the target fading before it
   right := x + w; took := "";
+  if r.diff.count > 0 && !r.failed && app_is_diff(r.diff) {
+    // an edit's lines added and removed, at the row's end
+    da: [1] int; dr: [1] int; app_diff_stats(r.diff, da[..], dr[..]);
+    if da[0] + dr[0] > 0 { right -= app_diff_counts(f, right, y + (rh - s.mono_small.line) / 2, s.mono_small.line, da[0], dr[0]) + a.verb_gap; }
+  }
   if r.calls > 0 || r.timed {
     eb: [EL_LABEL] u8; en := 0;
     if r.calls > 0 { en = app_act_put_n(eb[..], 0, "", r.calls, "tool call", "tool calls"); }

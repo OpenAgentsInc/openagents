@@ -169,3 +169,22 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   app_test_begin(t[..], "", "", true); _ = app_act_row(f, "w.0", 0, 0, 400, w, false, 9); #assert app_test_end(t[..]);
   #assert app_test_has(t[..], "w.0", EL_S_EXPANDS);
 }
+
+#test "app activity: an edit's row says its lines added and removed and opens onto its diff (#13696)" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  r := AppActRow.{kind = APP_ACT_EDIT, verb = "Edited", target = "foo.coax", path = "src/foo.coax", diff = "@@ -4,2 +4,3 @@\n context\n-old\n+new1\n+new2\n"};
+  app_test_begin(t[..], "", "", true);
+  closed := app_act_row(f, "e.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && app_test_has(t[..], "e.0", EL_S_EXPANDS) && app_test_find(t[..], "e.0.diff") < 0;
+  #assert app_test_texts(t[..], "+2") == 1 && app_test_texts(t[..], "−1") == 1;
+  #assert app_act_press(t[0].ks[..], "e.0", "e.0");
+  app_test_begin(t[..], "", "", true);
+  opened := app_act_row(f, "e.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && opened > closed && app_test_has(t[..], "e.0", EL_S_EXPANDED) && app_test_find(t[..], "e.0.diff") >= 0 && app_test_find(t[..], "e.0.output") < 0;
+  #assert app_test_texts(t[..], "new2") == 1;
+  // a failed edit opens onto why, as any output
+  r.failed = true; r.diff = ""; r.output = "old_string not found";
+  app_test_begin(t[..], "", "", true);
+  _ = app_act_row(f, "e.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "e.0.diff") < 0 && app_test_find(t[..], "e.0.output") >= 0;
+}

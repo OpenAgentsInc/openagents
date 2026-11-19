@@ -1,0 +1,86 @@
+// Coder Desktop page (../../page.coax): the code review in the pane (GitHub #13696). The files the
+// chat's edits changed, as Zeron's Changes card lists them: how many and their lines at the top,
+// then each file's row (its lines added and removed) over the hunks of each of its edits in the
+// order they came, all drawn by the app set's diffs (components/app/diff.coax). It shares the pane
+// with a sub-agent's transcript: with both open, the pane's tabs choose (app_pane_tabs).
+
+// Whether the pane shows the review: it is open, and its tab is in front or the only one.
+cp_review_shown :: (s: [] CoderPage) -> bool { return s[0].review && (s[0].pane_tab == CP_TAB_CHANGES || !s[0].pane_open); }
+// Whether the chat has an edit that changed a file: the corner's Review button shows then.
+cp_has_edits :: (s: [] CoderPage) -> bool {
+  for q: 0..<s[0].calls_n { if cp_edit_diff(s, q) > 0 { return true; } }
+  return false;
+}
+// The chat's edits that changed a file into out, in the order they came (the newest when there
+// are more than out holds). Returns how many.
+cp_review_edits :: (s: [] CoderPage, out: [] int) -> int {
+  n := 0;
+  for q: 0..<s[0].calls_n {
+    if cp_edit_diff(s, q) == 0 { continue; }
+    // in order: an insertion by when each was added; the oldest goes when out is full
+    at := n;
+    if n == out.count {
+      if s[0].calls[q].order < s[0].calls[out[0]].order { continue; }
+      for k: 1..<n { out[k - 1] = out[k]; }
+      n -= 1; at = n;
+    }
+    while at > 0 && s[0].calls[out[at - 1]].order > s[0].calls[q].order { out[at] = out[at - 1]; at -= 1; }
+    out[at] = q; n += 1;
+  }
+  return n;
+}
+// The pane's header: a sub-agent's model or "Changes", or both as tabs when both are open; meta
+// (how long the sub-agent ran) after the title, Close for what shows. Returns where its body starts.
+cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32, meta: string) -> f32 {
+  changes := cp_review_shown(s);
+  agent := ifx s[0].pane_open then CP_LEVEL_NAME[s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].level] else "";
+  if s[0].review && s[0].pane_open {
+    tabs := [2] string.[agent, "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
+    return app_pane_tabs(f, px, 0, pw, h, icons[..], tabs[..], ifx changes then 1 else 0, "coder.pane.tab.", CP_PANE_TAB, "coder.pane.took", ifx changes then "" else meta,
+                         "coder.pane.close", ifx changes then CP_REVIEW else CP_PANE_CLOSE, CP_CORNER, ARCADE_PHONE_SCALE);
+  }
+  if changes { return app_pane_tab_shell(f, px, 0, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, ARCADE_PHONE_SCALE); }
+  return app_pane_tab_shell(f, px, 0, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, ARCADE_PHONE_SCALE);
+}
+// The review from px, pw wide, the window's height: the header, then, scrolling, the card's head
+// and each changed file's row over its edits' hunks while it is open. Rows out of view are not drawn.
+cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; d := app_diff_look(k);
+  stop := cp_pane_head(s, f, px, pw, h, "");
+  s[0].pane_view = h - stop;
+  s[0].review_scroll = scroll_clamp(s[0].review_scroll, s[0].review_content, s[0].pane_view);
+  edits: [CP_REVIEW_EDITS] int; ne := cp_review_edits(s, edits[..]);
+  // the files, each once, in the order they were first changed, and each edit's file
+  files: [CP_REVIEW_FILES] AppDiffFile; nf := 0; which: [CP_REVIEW_EDITS] int;
+  added := 0; removed := 0;
+  for e: 0..<ne {
+    q := edits[e]; t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; path := cast(string) t[cp_edit_at(t)..<t.count];
+    at := -1; for i: 0..<nf { if files[i].path == path { at = i; break; } }
+    if at < 0 && nf < files.count { at = nf; files[nf] = AppDiffFile.{path = path}; nf += 1; }
+    which[e] = at;
+    if at < 0 { continue; }
+    da: [1] int; dr: [1] int; app_diff_stats(cp_call_text(s, q), da[..], dr[..]);
+    files[at].added += da[0]; files[at].removed += dr[0]; added += da[0]; removed += dr[0];
+  }
+  uiframe_clip(f, px, stop, px + pw, h);
+  x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].review_scroll;
+  if nf == 0 { y += app_meta(f, "coder.review.none", x, y + a.gap, cw, "No file has changed in this chat yet.", false) + 2 * a.gap; }
+  else {
+    y += app_diff_head(f, "coder.review.head", x, y, cw, nf, added, removed);
+    fb: [EL_ID] u8; eb: [EL_ID] u8;
+    for i: 0..<nf {
+      fid := app_diff_file_id(fb[..], "coder.review", i);
+      open := app_diff_is_open(f, fid, true);
+      y += app_diff_file_row(f, fid, x, y, cw, files[i], open, CP_REVIEW_FILE);
+      if !open { continue; }
+      for e: 0..<ne {
+        if which[e] != i { continue; }
+        n := el_put_i(eb[..], el_put(eb[..], el_put(eb[..], 0, fid), ".e"), e); eid := cast(string) eb[0..<n];   // "coder.review.f0.e3"
+        y += app_diff_hunks(f, eid, x, y, cw, cp_call_text(s, edits[e]), stop, h) + d.gap;
+      }
+    }
+    y += a.gap;
+  }
+  uiframe_unclip(f);
+  s[0].review_content = y + s[0].review_scroll - stop;
+}

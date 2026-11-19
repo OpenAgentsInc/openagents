@@ -85,7 +85,7 @@ cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
   read := cl_bool(c, "read"); failed := cl_bool(c, "failed"); took := cl_int(c, "took"); thought := cl_bool(c, "thought"); said := cl_bool(c, "said");
   q := cp_call_add(s, i, j, what, "", read.ok && read.value, failed.ok && failed.value, false);
   if q < 0 { return; }
-  if (thought.ok && thought.value) || (said.ok && said.value) { cp_long_set(s, q, output); }
+  if (thought.ok && thought.value) || (said.ok && said.value) || cp_edit_at(what) > 0 && app_is_diff(output) { cp_long_set(s, q, output); }
   else { s[0].calls[q].out_n = cp_out(s[0].calls[q].out[..], output); }
   s[0].calls[q].thought = thought.ok && thought.value; s[0].calls[q].said = said.ok && said.value;
   s[0].calls[q].began = 0; s[0].calls[q].took = ifx took.ok then cast(f32) took.value else -1.0f32; s[0].live_call = -1;

@@ -1,6 +1,7 @@
 #load "flow.coax";
 #load "../../../../components/app/base.coax";
 #load "../../../../components/app/reader.coax";
+#load "../../../../components/app/diff.coax";
 WSC_ACTION :: 570; WSC_FIELD :: 571;
 wsc_id :: (prefix:string,index:int,out:[]u8)->string {n:=js_copy(out,prefix);if index>=100 {out[n]=cast(u8)('0'+index/100);n+=1;}if index>=10 {out[n]=cast(u8)('0'+index/10%10);n+=1;}out[n]=cast(u8)('0'+index%10);return cast(string)out[0..<n+1];}
 wsc_view :: (s:[]WorkspaceScreen,f:[]UiFrame,x:f32,origin:f32,w:f32,top:f32,bottom:f32,focus:string)->f32 {
@@ -31,7 +32,11 @@ wsc_view :: (s:[]WorkspaceScreen,f:[]UiFrame,x:f32,origin:f32,w:f32,top:f32,bott
  if s[0].tab==0 {
   y+=app_read_text(f,"workspace.status",x,y,w,top,bottom,ifx v[0].ns==0 then "No changes" else cast(string)v[0].status[0..<v[0].ns])+gap;
   if v[0].diff_cut {y+=app_text(f,"workspace.diff.cut",x,y,w,APP_TEXT_CAPTION,"Diff shortened")+gap;}
-  if v[0].nd>0 {y+=app_read_text(f,"workspace.diff",x,y,w,top,bottom,cast(string)v[0].diff[0..<v[0].nd])+gap;}
+  if v[0].nd>0 {
+   // a unified diff as the app set draws one (diff.coax, #13696): each file's heading over its hunks; any other text as it is
+   diff:=cast(string)v[0].diff[0..<v[0].nd];dh:=app_diff_view(f,"workspace.diff",x,y,w,diff,"",top,bottom,0);
+   y+=(ifx dh>0 then dh else app_read_text(f,"workspace.diff",x,y,w,top,bottom,diff))+gap;
+  }
   y+=app_button(f,"workspace.push",x,y,w,-1,"Push branch",APP_BUTTON_DEFAULT,off,WSC_ACTION)+gap;
  } else if s[0].tab==1 {
   y+=app_button(f,"workspace.newbranch",x,y,w,-1,"New branch",APP_BUTTON_DEFAULT,off,WSC_ACTION)+gap;

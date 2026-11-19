@@ -21,7 +21,8 @@ cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
   return cast(string) out[0..<n];
 }
 // A sub-agent's transcript (GitHub #13666) from px, pw wide, the window's height: its tab at the
-// top as Zeron's panel draws one (its model, how long it ran, Close); under it, scrolling, its
+// top as Zeron's panel draws one (its model, how long it ran, Close; beside the review's when both
+// are open, cp_pane_head); under it, scrolling, its
 // task as a message, its work as one activity group as the conversation draws a message's
 // (#13744: the summary, the tree, rows that open onto their call and output), and its reply.
 cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
@@ -31,7 +32,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   kb: [24] u8; ib: [EL_ID] u8;
   took := cp_took(kb[..], ifx state == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took);
   took_s := ifx took.count > 0 then sheet_pool(sh, took) else "";
-  stop := app_pane_tab_shell(f, px, 0, pw, h, ICON_BOT, CP_LEVEL_NAME[s[0].turns[i].agents[j].level], "coder.pane.took", took_s, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, ARCADE_PHONE_SCALE);
+  stop := cp_pane_head(s, f, px, pw, h, took_s);
   s[0].pane_view = h - stop;
   if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
   s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
