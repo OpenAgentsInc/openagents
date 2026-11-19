@@ -27,3 +27,10 @@
  s[0].workspaces[0].form=1;#assert wsc_edit(s[0].workspaces[..],"workspace.branch","feature/native") && wsc_edit(s[0].workspaces[..],"workspace.base","main");
  #assert ch_draft(s[..])=="Kept draft" && fx_held(c[0].out[..])==0;
 }
+#test "the drawer opens Foreman on the paired computer and Back returns to the chat with its draft" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=true;ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");_=chat_set_text(s[..],"Kept draft");
+ _=ch_test_frame(s[..],o[..]);#assert chat_activate(s[..],"nav.menu");_=ch_test_frame(s[..],o[..]);#assert ch_test_tap(s[..],"drawer.foreman");_=ch_test_frame(s[..],o[..]);
+ // nothing paired: the page says so and asks no computer
+ #assert s[0].foreman[0].open && !s[0].drawer && ch_test_has(s[..],"foreman.none") && c[0].guest_due[OWN_FOREMAN]==0;
+ #assert ch_test_tap(s[..],"foreman.back");_=ch_test_frame(s[..],o[..]);#assert !s[0].foreman[0].open && ch_test_has(s[..],VIEW_COMPOSER_ID) && ch_draft(s[..])=="Kept draft";
+}

@@ -1,0 +1,42 @@
+// Foreman's page on the phone (GitHub #13713): Coder Desktop's Foreman HUD
+// (components/kit/foreman_hud.coax) over the paired computer's daemon state, then the tier
+// buttons, a Confirm step before any change, and a note with Try again when something failed.
+//   coax/bin/coax test apps/shared/app/foreman/view.coax --run-steps 200000000
+#load "flow.coax";
+#load "../../../../components/app/base.coax";
+#load "../../../../components/kit/foreman_hud.coax";
+
+fmv_id :: (index: int, out: [] u8) -> string { n := js_copy(out, "foreman.tier."); out[n] = cast(u8) ('0' + index); return cast(string) out[0..<n + 1]; }
+
+// The page under its title; returns its height.
+fmv_view :: (s: [] ForemanScreen, f: [] UiFrame, x: f32, origin: f32, w: f32) -> f32 {
+  k := f[0].skin; y := origin; gap := k.app.gap;
+  if s[0].host[0] == 0 { return app_text(f, "foreman.none", x, y, w, APP_TEXT_BODY, "Pair a computer to see Foreman"); }
+  if s[0].nn > 0 { y += app_text(f, "foreman.computer", x, y, w, APP_TEXT_CAPTION, cast(string) s[0].name[0..<s[0].nn]) + gap; }
+  if s[0].nnote > 0 {
+    y += app_notice(f, "foreman.note", x, y, w, cast(string) s[0].note[0..<s[0].nnote], APP_NOTICE_ERROR) + gap;
+    if s[0].unknown || !s[0].pending { y += app_button(f, "foreman.retry", x, y, w, -1, "Try again", APP_BUTTON_PRIMARY, ifx s[0].op > 0 then EL_S_DISABLED else 0, FM_ACTION) + gap; }
+  }
+  if !s[0].loaded { return y - origin + app_text(f, "foreman.loading", x, y, w, APP_TEXT_BODY, "Connecting…"); }
+  fm := s[0].foreman[0];
+  d: [1] FhudData; d[0].tier_label = fm_tier_label(fm.tier); d[0].tier_status = ifx fm.tier > 0 then FHUD_RUNNING else FHUD_IDLE;
+  d[0].foreman_busy = fm.active_runs > 0; d[0].managed_busy = fm.active_runs; d[0].managed_total = fm.total_sessions; d[0].budget_ratio = -1.0f32;
+  y += fhud_hud(f, x, y, w, d[..]) + gap;
+  if s[0].asking {
+    y += app_text(f, "foreman.confirm.title", x, y, w, APP_TEXT_TITLE, fm_tier_label(s[0].tier)) + gap;
+    y += app_button(f, "foreman.confirm", x, y, w, -1, "Confirm", APP_BUTTON_PRIMARY, 0, FM_ACTION) + gap;
+    y += app_button(f, "foreman.cancel", x, y, w, -1, "Cancel", APP_BUTTON_QUIET, 0, FM_ACTION) + gap;
+    return y - origin;
+  }
+  off := ifx s[0].pending then EL_S_DISABLED else 0; cw := (w - 2 * gap) / cast(f32) FM_TIERS;
+  current := ifx fm.tier >= FM_TIERS then FM_TIERS - 1 else fm.tier;
+  for i: 0..<FM_TIERS {
+    id: [32] u8; on := i == current;
+    _ = app_button(f, fmv_id(i, id[..]), x + cast(f32) i * (cw + gap), y, cw, -1, FM_TIER_LABELS[i], ifx on then APP_BUTTON_PRIMARY else APP_BUTTON_QUIET, ifx on then EL_S_CURRENT | off else off, FM_ACTION);
+  }
+  y += k.control_h + gap;
+  if s[0].pending && !s[0].unknown { y += app_text(f, "foreman.pending", x, y, w, APP_TEXT_CAPTION, "Changing the tier…") + gap; }
+  return y - origin;
+}
+
+#load "view-checks.coax" #test;

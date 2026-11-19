@@ -1,0 +1,82 @@
+// Checks for Foreman on the phone (flow.coax).
+
+FM_T_HOST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+// A core with one paired computer, in the foreground, its clocks set.
+fm_t_core :: (c: [] AppCore, lane: [] DeviceLane) {
+  app_init(c); #assert app_device_attach(c, lane); c[0].foreground = true; c[0].wall_ms = 1700000000000; c[0].mono_ms = 1000;
+  lane[0].np = 1; _ := ea_copy(lane[0].paired[0].host[..], FM_T_HOST); lane[0].paired[0].nn = ea_copy(lane[0].paired[0].name[..], "Mac");
+}
+// The computer's answer to the request in flight: its body for `op` under the page's owner.
+fm_t_answer :: (s: [] ForemanScreen, c: [] AppCore, outcome: int, raw: string) -> bool {
+  op := s[0].op; #assert op > 0 && fx_take(c[0].out[..], op);
+  c[0].guest = AppGuest.{waiting = true, owner = OWN_FOREMAN, op = op, outcome = outcome};
+  return fm_guest(s, c, raw);
+}
+fm_t_view :: (method: string, tier: int, command: string, error: string, out: [] u8) -> string {
+  v: [1] DmView; v[0].ok = error.count == 0; v[0].nh = ea_copy(v[0].host[..], FM_T_HOST); v[0].nm = ea_copy(v[0].method[..], method);
+  v[0].foreman[0].tier = tier; v[0].foreman[0].active_runs = 2; v[0].foreman[0].total_sessions = 3; v[0].foreman[0].nw = ea_copy(v[0].foreman[0].workspace[..], "/w");
+  v[0].nq = ea_copy(v[0].command[..], command); v[0].ne = ea_copy(v[0].error[..], error);
+  n := dm_view_write(v[..], out); #assert n > 0; return cast(string) out[0..<n];
+}
+
+#test "Foreman reads the paired computer's daemon while its page shows, and never a worker run" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; fm_t_core(c[..], lane[..]); s: [1] ForemanScreen;
+  #assert fm_open(s[..], c[..]) && cast(string) s[0].host[..] == FM_T_HOST && cast(string) s[0].name[0..<s[0].nn] == "Mac";
+  fm_sync(s[..], c[..], false); #assert s[0].op == 0 && c[0].guest_due[OWN_FOREMAN] == 0;
+  fm_sync(s[..], c[..], true); #assert s[0].op > 0 && s[0].purpose == FM_READ;
+  at := fx_find(c[0].out[..], s[0].op); #assert c[0].out[0].slots[at].kind == FX_DEVICE_CALL;
+  q: [1] DmRequest; #assert dm_read(fx_body(c[0].out[..], at), q[..]) && cast(string) q[0].method[0..<q[0].nm] == "ReadForeman";
+  b: [4096] u8; #assert fm_t_answer(s[..], c[..], FXO_DONE, fm_t_view("ReadForeman", 1, "", "", b[..]));
+  #assert s[0].loaded && s[0].foreman[0].tier == 1 && s[0].foreman[0].active_runs == 2 && s[0].nnote == 0 && s[0].due == 1000 + FM_INTERVAL;
+  // a read before its time sends nothing; at its time it reads again
+  fm_sync(s[..], c[..], true); #assert s[0].op == 0 && c[0].guest_due[OWN_FOREMAN] == 1000 + FM_INTERVAL;
+  c[0].mono_ms = 1000 + FM_INTERVAL; fm_sync(s[..], c[..], true); #assert s[0].op > 0;
+  // a lost read says so and keeps what it had
+  #assert fm_t_answer(s[..], c[..], FXO_UNKNOWN, "") && s[0].loaded && s[0].nnote > 0;
+  // worker runs never go over the relay, and a computer that is not paired is never asked
+  r: [1] DmRequest; r[0].nm = ea_copy(r[0].method[..], "ListRuns"); raw: [256] u8; n := dm_write(r[..], raw[..]);
+  #assert fm_call(c[..], FM_READ, FM_T_HOST, cast(string) raw[0..<n]) == 0;
+  r[0].nm = ea_copy(r[0].method[..], "ReadForeman"); n = dm_write(r[..], raw[..]);
+  #assert fm_call(c[..], FM_READ, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", cast(string) raw[0..<n]) == 0;
+  #assert fm_call(c[..], FM_READ, FM_T_HOST, "{\"method\":\"ReadSession\"}") == 0;
+}
+
+#test "a tier changes only after Confirm, with one command identity kept across a lost reply" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; fm_t_core(c[..], lane[..]); s: [1] ForemanScreen; b: [4096] u8;
+  #assert fm_open(s[..], c[..]); fm_sync(s[..], c[..], true); #assert fm_t_answer(s[..], c[..], FXO_DONE, fm_t_view("ReadForeman", 0, "", "", b[..]));
+  // the current tier, an unknown one or a press before the first read does nothing
+  #assert !fm_press(s[..], "foreman.tier.0") && !fm_press(s[..], "foreman.tier.7") && !fm_press(s[..], "foreman.confirm");
+  #assert fm_press(s[..], "foreman.tier.2") && s[0].asking && s[0].tier == 2;
+  #assert fm_press(s[..], "foreman.cancel") && !s[0].asking && !s[0].pending;
+  fm_sync(s[..], c[..], true); #assert s[0].op == 0;   // nothing was sent
+  #assert fm_press(s[..], "foreman.tier.2") && fm_press(s[..], "foreman.confirm") && s[0].pending && !s[0].asking;
+  fm_sync(s[..], c[..], true); #assert s[0].purpose == FM_IDS;
+  #assert fm_t_answer(s[..], c[..], FXO_DONE, "0123456789abcdef0123456789abcdef") && s[0].ready;
+  fm_sync(s[..], c[..], true); #assert s[0].purpose == FM_WRITE;
+  at := fx_find(c[0].out[..], s[0].op); q: [1] DmRequest;
+  #assert dm_read(fx_body(c[0].out[..], at), q[..]) && cast(string) q[0].method[0..<q[0].nm] == "UpdateForeman" && q[0].has_tier && q[0].tier == 2;
+  #assert cast(string) q[0].command[0..<q[0].nc] == "0123456789abcdef0123456789abcdef" && q[0].issued == 1700000000000 && q[0].expires == 1700000060000;
+  // the reply is lost: the change is kept, never sent again by itself
+  #assert fm_t_answer(s[..], c[..], FXO_UNKNOWN, "") && s[0].pending && s[0].unknown && s[0].nnote > 0;
+  fm_sync(s[..], c[..], true); #assert s[0].op == 0;
+  // Try again sends the same request
+  #assert fm_press(s[..], "foreman.retry") && !s[0].unknown; fm_sync(s[..], c[..], true); #assert s[0].purpose == FM_WRITE;
+  at = fx_find(c[0].out[..], s[0].op); #assert dm_read(fx_body(c[0].out[..], at), q[..]) && cast(string) q[0].command[0..<q[0].nc] == "0123456789abcdef0123456789abcdef";
+  // an answer for another command is not this change's
+  #assert fm_t_answer(s[..], c[..], FXO_DONE, fm_t_view("UpdateForeman", 2, "ffffffffffffffffffffffffffffffff", "", b[..])) && s[0].unknown;
+  #assert fm_press(s[..], "foreman.retry"); fm_sync(s[..], c[..], true);
+  #assert fm_t_answer(s[..], c[..], FXO_DONE, fm_t_view("UpdateForeman", 2, "0123456789abcdef0123456789abcdef", "", b[..]));
+  #assert !s[0].pending && !s[0].unknown && s[0].foreman[0].tier == 2 && fm_tier_label(s[0].foreman[0].tier) == "Auto" && s[0].nnote == 0;
+  // a refusal ends the change and says so
+  #assert fm_press(s[..], "foreman.tier.1") && fm_press(s[..], "foreman.confirm"); fm_sync(s[..], c[..], true);
+  #assert fm_t_answer(s[..], c[..], FXO_DONE, "11111111111111111111111111111111"); fm_sync(s[..], c[..], true);
+  #assert fm_t_answer(s[..], c[..], FXO_DONE, fm_t_view("UpdateForeman", 2, "11111111111111111111111111111111", "forbidden", b[..]));
+  #assert !s[0].pending && s[0].foreman[0].tier == 2 && s[0].nnote > 0;
+}
+
+#test "with no paired computer the page opens on nothing and asks nothing" #steps 2000000000 {
+  c: [1] AppCore; app_init(c[..]); c[0].foreground = true; s: [1] ForemanScreen;
+  #assert !fm_open(s[..], c[..]) && s[0].open && s[0].host[0] == 0;
+  fm_sync(s[..], c[..], true); #assert s[0].op == 0 && c[0].guest_due[OWN_FOREMAN] == 0;
+  #assert fm_tier_label(0) == "Observe" && fm_tier_label(1) == "Managed" && fm_tier_label(3) == "Auto";
+}

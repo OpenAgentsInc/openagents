@@ -1,0 +1,36 @@
+// Checks for view.coax: what Foreman's page shows in each state, and that its presses carry the ids fm_press takes.
+//   coax/bin/coax test apps/shared/app/foreman/view.coax --run-steps 200000000
+#load "../../../../components/skin/arcade.coax";
+
+FmvStore :: struct { under_a: [4096] Prim; over_a: [2048] Prim; hits_a: [128] SheetHit; under_b: [4096] Prim; over_b: [2048] Prim; hits_b: [128] SheetHit; rows_a: [128] El; rows_b: [128] El; keys: [16] Keyed; pool_a: [1024] u8; pool_b: [1024] u8; }
+
+fmv_frame :: (st: [] FmvStore, s: [] ForemanScreen) -> ElTable #effects(all) {
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..], pool = st[0].pool_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..], pool = st[0].pool_b[..]}, st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}]; f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  #assert fmv_view(s, f[..], 16, 0, 340) > 0;
+  #assert uiframe_end(f[..], sf[..]);
+  return surface_rows(sf[..]);
+}
+fmv_has :: (t: ElTable, id: string) -> bool { tt := [1] ElTable.[t]; return elt_find(tt[..], id) >= 0; }
+fmv_state :: (t: ElTable, id: string) -> int { tt := [1] ElTable.[t]; i := elt_find(tt[..], id); #assert i >= 0; return tt[0].rows[i].state; }
+
+#test "Foreman's page: nothing paired, connecting, the HUD with the tiers, Confirm, and Try again" #steps 2000000000 {
+  st: [1] FmvStore; s: [1] ForemanScreen; s[0].open = true;
+  t := fmv_frame(st[..], s[..]); #assert fmv_has(t, "foreman.none") && !fmv_has(t, "foreman.tier.0");
+  _ := ea_copy(s[0].host[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); s[0].nn = ea_copy(s[0].name[..], "Mac");
+  t = fmv_frame(st[..], s[..]); #assert fmv_has(t, "foreman.loading") && fmv_has(t, "foreman.computer") && !fmv_has(t, "foreman.tier.0");
+  s[0].loaded = true; s[0].foreman[0].tier = 1; s[0].foreman[0].active_runs = 2; s[0].foreman[0].total_sessions = 3;
+  t = fmv_frame(st[..], s[..]);
+  #assert fmv_has(t, "foreman.tier.0") && fmv_has(t, "foreman.tier.1") && fmv_has(t, "foreman.tier.2") && (fmv_state(t, "foreman.tier.1") & EL_S_CURRENT) != 0;
+  #assert fm_press(s[..], "foreman.tier.2");
+  t = fmv_frame(st[..], s[..]); #assert fmv_has(t, "foreman.confirm") && fmv_has(t, "foreman.cancel") && !fmv_has(t, "foreman.tier.0");
+  #assert fm_press(s[..], "foreman.confirm");
+  t = fmv_frame(st[..], s[..]); #assert fmv_has(t, "foreman.pending") && (fmv_state(t, "foreman.tier.0") & EL_S_DISABLED) != 0;
+  s[0].unknown = true; fm_note(s[..], "We could not confirm the change.");
+  t = fmv_frame(st[..], s[..]); #assert fmv_has(t, "foreman.note") && fmv_has(t, "foreman.retry") && !fmv_has(t, "foreman.pending");
+  // the daemon's fourth tier shows as Auto
+  s[0] = ForemanScreen.{}; s[0].open = true; _ = ea_copy(s[0].host[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); s[0].loaded = true; s[0].foreman[0].tier = 3;
+  t = fmv_frame(st[..], s[..]); #assert (fmv_state(t, "foreman.tier.2") & EL_S_CURRENT) != 0;
+}

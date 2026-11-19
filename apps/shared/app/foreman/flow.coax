@@ -1,0 +1,113 @@
+// Foreman on the phone (GitHub #13713). The paired computer's daemon keeps Foreman's tier and
+// counts (coax/lib/agent/environment/daemon-wire.coax: ReadForeman and UpdateForeman, which
+// coder/tui/host-daemon.coax serves over the relay to a paired device). This page reads them
+// while it shows, every FM_INTERVAL, and changes the tier only after the person confirms. A
+// change whose reply was lost is kept and never sent again by itself: Try again sends the same
+// request (same command identity and tier).
+//   coax/bin/coax test apps/shared/app/foreman/flow.coax --run-steps 200000000
+#load "../core/core.coax";
+#load "../../../../coax/lib/agent/environment/daemon-wire.coax";
+
+FM_READ :: 1; FM_IDS :: 2; FM_WRITE :: 3;
+FM_INTERVAL :: 5000;          // ms between reads while the page shows
+FM_ACTION :: 480;             // the page's presses (fm_press by id)
+FM_TIERS :: 3;                // the tiers the phone offers: Observe, Managed, Auto (Coder Desktop's)
+FM_TIER_LABELS :: [FM_TIERS] string.["Observe", "Managed", "Auto"];
+
+ForemanScreen :: struct {
+  open: bool; host: [64] u8; name: [80] u8; nn: int;
+  op: int; purpose: int; generation: int; due: int;
+  loaded: bool; foreman: [1] DmForeman;
+  asking: bool; tier: int;                  // the tier the person picked, waiting for Confirm
+  pending: bool; ready: bool; unknown: bool; intent: [1] DmRequest;
+  note: [160] u8; nnote: int;
+}
+
+fm_note :: (s: [] ForemanScreen, words: string) { s[0].nnote = ea_copy(s[0].note[..], words); if s[0].nnote < 0 { s[0].nnote = 0; } }
+// A tier's name as the phone says it; the daemon's fourth tier reads as Auto.
+fm_tier_label :: (tier: int) -> string { return ifx tier <= 0 then FM_TIER_LABELS[0] else ifx tier == 1 then FM_TIER_LABELS[1] else FM_TIER_LABELS[2]; }
+
+// The computer Foreman runs on: the one the conversation runs on, else the first paired one.
+// Returns false (nothing changes) with no paired computer, or while a change waits on another.
+fm_open :: (s: [] ForemanScreen, c: [] AppCore) -> bool {
+  host := ""; name := "";
+  if app_device_on(c) { host = cast(string) c[0].device[0].host[..]; k := dl_find(c, host); name = app_device_name(c, k); }
+  else if app_device_count(c) > 0 { host = app_device_host(c, 0); name = app_device_name(c, 0); }
+  if !ea_id(host, 64) { s[0].open = true; s[0].host[0] = 0; return false; }
+  if s[0].pending && cast(string) s[0].host[..] != host { return false; }
+  if cast(string) s[0].host[..] != host { s[0] = ForemanScreen.{}; _ := ea_copy(s[0].host[..], host); }
+  s[0].nn = ea_copy(s[0].name[..], name); if s[0].nn < 0 { s[0].nn = 0; }
+  s[0].open = true; s[0].due = 0; return true;
+}
+
+// One daemon request to the paired computer, under this page's owner. Worker runs are the
+// computer's own and never go over the relay; anything but a daemon request is refused.
+fm_call :: (c: [] AppCore, purpose: int, host: string, body: string) -> int {
+  q: [1] DmRequest;
+  if !dm_read(body, q[..]) || dm_is_run(cast(string) q[0].method[0..<q[0].nm]) || dl_find(c, host) < 0 { return 0; }
+  return fx_request(c[0].out[..], OWN_FOREMAN, FX_DEVICE_CALL, purpose, 0, "", host, body, 0, TC_HTTP_TIMEOUT_MS);
+}
+
+fm_sync :: (s: [] ForemanScreen, c: [] AppCore, visible: bool) {
+  if s[0].op > 0 && s[0].generation != fx_generation(c[0].out[..], OWN_FOREMAN) { s[0].op = 0; if s[0].pending && s[0].ready { s[0].unknown = true; } }
+  if !visible || !s[0].open || !c[0].foreground || s[0].host[0] == 0 { _ := app_guest_due(c, OWN_FOREMAN, -1); return; }
+  if s[0].op > 0 { return; }
+  host := cast(string) s[0].host[..];
+  if s[0].pending && !s[0].unknown {
+    if !s[0].ready { s[0].op = fx_request(c[0].out[..], OWN_FOREMAN, FX_IDS, FM_IDS, 0, "", "", "", 0, 0); s[0].purpose = FM_IDS; }
+    else { raw: [8192] u8; n := dm_write(s[0].intent[..], raw[..]); if n > 0 { s[0].op = fm_call(c, FM_WRITE, host, cast(string) raw[0..<n]); s[0].purpose = FM_WRITE; } }
+  } else if !s[0].pending && c[0].mono_ms >= s[0].due {
+    q: [1] DmRequest; q[0].nm = ea_copy(q[0].method[..], "ReadForeman"); raw: [512] u8; n := dm_write(q[..], raw[..]);
+    if n > 0 { s[0].op = fm_call(c, FM_READ, host, cast(string) raw[0..<n]); s[0].purpose = FM_READ; }
+  }
+  if s[0].op > 0 { s[0].generation = fx_generation(c[0].out[..], OWN_FOREMAN); _ := app_guest_due(c, OWN_FOREMAN, -1); }
+  else { _ := app_guest_due(c, OWN_FOREMAN, ifx s[0].pending then -1 else ifx s[0].due > c[0].mono_ms then s[0].due else c[0].mono_ms + FM_INTERVAL); }
+}
+
+// A guest result that is this page's. Returns false when it belongs to another owner.
+fm_guest :: (s: [] ForemanScreen, c: [] AppCore, raw: string) -> bool {
+  g := c[0].guest; if !g.waiting || g.owner != OWN_FOREMAN { return false; }
+  if g.op != s[0].op { app_guest_done(c); return true; }
+  what := s[0].purpose; s[0].op = 0; s[0].purpose = 0; done := g.outcome == FXO_DONE;
+  if what == FM_IDS {
+    if done && ea_id(raw, 32) && c[0].wall_ms > 0 {
+      q := s[0].intent[..]; q[0].nc = ea_copy(q[0].command[..], raw); q[0].issued = c[0].wall_ms; q[0].expires = q[0].issued + 60000; s[0].ready = true;
+    } else { s[0].pending = false; fm_note(s, "We could not change the tier. Try again."); }
+  } else {
+    v: [1] DmView; ok := done && dm_view_read(raw, v[..]) && cast(string) v[0].host[0..<v[0].nh] == cast(string) s[0].host[..];
+    if what == FM_WRITE { ok = ok && cast(string) v[0].command[0..<v[0].nq] == cast(string) s[0].intent[0].command[0..<s[0].intent[0].nc]; }
+    if ok && v[0].ne > 0 {
+      if what == FM_WRITE { s[0].pending = false; s[0].ready = false; s[0].unknown = false; fm_note(s, "Your computer did not change the tier."); }
+      else { fm_note(s, "Your computer did not share Foreman."); }
+    } else if ok {
+      s[0].foreman[0] = v[0].foreman[0]; s[0].loaded = true; s[0].nnote = 0;
+      if what == FM_WRITE { s[0].pending = false; s[0].ready = false; s[0].unknown = false; }
+    } else if what == FM_WRITE { s[0].unknown = true; fm_note(s, "We could not confirm the change."); }
+    else { fm_note(s, "Your computer did not answer."); }
+    s[0].due = c[0].mono_ms + FM_INTERVAL;
+  }
+  app_guest_done(c); return true;
+}
+
+// A press on the page, by its element's id. Returns whether it did something.
+fm_press :: (s: [] ForemanScreen, id: string) -> bool {
+  if id.count == 14 && cast(string) id[0..<13] == "foreman.tier." {
+    tier := cast(int) (id[13] - '0');
+    if tier < 0 || tier >= FM_TIERS || !s[0].loaded || s[0].pending || tier == s[0].foreman[0].tier { return false; }
+    s[0].asking = true; s[0].tier = tier; s[0].nnote = 0; return true;
+  }
+  if id == "foreman.cancel" { if !s[0].asking { return false; } s[0].asking = false; return true; }
+  if id == "foreman.confirm" {
+    if !s[0].asking || s[0].pending { return false; }
+    q := s[0].intent[..]; q[0] = DmRequest.{}; q[0].nm = ea_copy(q[0].method[..], "UpdateForeman"); q[0].tier = s[0].tier; q[0].has_tier = true;
+    s[0].asking = false; s[0].pending = true; s[0].ready = false; s[0].unknown = false; s[0].nnote = 0; return true;
+  }
+  if id == "foreman.retry" {
+    if s[0].unknown { s[0].unknown = false; s[0].nnote = 0; return true; }
+    if s[0].nnote > 0 && !s[0].pending { s[0].due = 0; s[0].nnote = 0; return true; }
+    return false;
+  }
+  return false;
+}
+
+#load "flow-checks.coax" #test;

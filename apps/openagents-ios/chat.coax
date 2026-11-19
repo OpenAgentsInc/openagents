@@ -41,6 +41,7 @@
 #load "../../coax/lib/agent/chat-library.coax";
 #load "../shared/app/projects/view.coax";
 #load "../shared/app/usage/view.coax";
+#load "../shared/app/foreman/view.coax";
 #load "../shared/app/fields.coax";
 #load "../../components/app/identity.coax";
 #load "../../components/core/edit.coax";
@@ -58,7 +59,7 @@ CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111; CH_HIT_FOREMAN :: 412; CH_HIT_FOREMAN_BACK :: 413;
 CH_ZOOM_MAX :: 2.5;  // the largest text size the page draws, against the default (the host's Dynamic Type)
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
@@ -96,7 +97,7 @@ ChatPage :: struct {
   env: [1] EnvSelect; eb: [1] EsBridge; picker: EsPickerSize;
   // the shared app core the host attaches, and the login flow over it
   core: [] AppCore; lb: [1] LoginBridge; lf: [1] LoginFlow;
-  identity: [1] IdentitySettings;usage:[1]UsageScreen;
+  identity: [1] IdentitySettings;usage:[1]UsageScreen;foreman:[1]ForemanScreen;
   history:[1]ChatIndex;history_content:f32;history_viewport:f32;
   devices:[1]DeviceHistory;
   section:int;projects:[1]ProjectScreen;section_content:f32;section_viewport:f32;
@@ -148,6 +149,7 @@ ch_step :: (s: [] ChatPage) {
   dh_sync(s[0].devices[..],s[0].core,s[0].drawer || s[0].section==2);
   wsc_sync(s[0].workspaces[..],s[0].core,s[0].workspaces[0].open && !s[0].drawer && !s[0].lf[0].open);
   us_sync(s[0].usage[..],s[0].core,s[0].usage[0].open && !s[0].drawer && !s[0].lf[0].open);
+  fm_sync(s[0].foreman[..],s[0].core,s[0].foreman[0].open && !s[0].drawer && !s[0].lf[0].open);
   ps_sync(s[0].projects[..],s[0].core,s[0].section==1 && !s[0].drawer && !s[0].lf[0].open && !s[0].identity[0].open);
 }
 // One scroll window for computer groups and account chats; each title is one
@@ -272,6 +274,14 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     tw:=measure_width(f[0].m,k.title.face,"Workspace");_=app_text(f,"workspace.title.heading",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Workspace");
     area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
     uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=wsc_view(s[0].workspaces[..],f,16/u,area_top-offset,w-32/u,area_top,bottom,ch_focus(s));
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
+  }
+  if s[0].foreman[0].open {
+    s[0].menu_side=0;nav:=k.app.icon_button;
+    _:=app_icon_button(f,"foreman.back",16/u,nav_y,ICON_BACK,"Back to chat",APP_BUTTON_QUIET,0,CH_HIT_FOREMAN_BACK);
+    tw:=measure_width(f[0].m,k.title.face,"Foreman");_=app_text(f,"foreman.title",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Foreman");
+    area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=fmv_view(s[0].foreman[..],f,16/u,area_top-offset,w-32/u);
     ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
   }
   if s[0].usage[0].open {
@@ -435,6 +445,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     iy := in.y + 4 / u + a.icon_button + a.gap * 2;
     iy+=app_sidebar_item(f,"drawer.chat",in.x,iy,in.w,-1,"Chat",ifx s[0].section==0 then EL_S_CURRENT else 0,410);
     iy+=app_sidebar_item(f,"drawer.projects",in.x,iy,in.w,ICON_FOLDER,"Projects",ifx s[0].section==1 then EL_S_CURRENT else 0,411);
+    iy+=app_sidebar_item(f,"drawer.foreman",in.x,iy,in.w,-1,"Foreman",ifx s[0].foreman[0].open then EL_S_CURRENT else 0,CH_HIT_FOREMAN);
     _:=app_button(f,"drawer.settings",in.x,by-2*(k.control_h+a.gap),in.w,-1,"Settings",APP_BUTTON_QUIET,0,211);
     ch_history(s,f,in.x,iy,in.w,by-2*(k.control_h+a.gap)-a.gap);
     if lf_logged_in(l) {
@@ -479,12 +490,15 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 }
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
-ch_main :: (s:[]ChatPage) {s[0].workspaces[0].open=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
+ch_main :: (s:[]ChatPage) {s[0].workspaces[0].open=false;s[0].foreman[0].open=false;s[0].foreman[0].asking=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
 // A press on a committed row; platform effects go through the shared core.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
   if act==WSC_ACTION {ok:=wsc_press(s[0].workspaces[..],s[0].core,surface_id(sf,row));ch_set_focus(s,"");ch_step(s);return ok;}
   if act==WSC_FIELD {ch_set_focus(s,surface_id(sf,row));return true;}
+  if act==FM_ACTION {ok:=fm_press(s[0].foreman[..],surface_id(sf,row));ch_step(s);return ok;}
+  if act==CH_HIT_FOREMAN {ch_main(s);s[0].drawer=false;_=fm_open(s[0].foreman[..],s[0].core);ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;}
+  if act==CH_HIT_FOREMAN_BACK {ch_main(s);ch_set_focus(s,"");ch_step(s);return true;}
   if act==450 || act==451 {s[0].rename=false;s[0].workspace=false;s[0].library_note=false;s[0].thread_menu=act==450;s[0].thread_details=act==451;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),0);ch_set_focus(s,"");return true;}
   if act==452 {s[0].filter_menu=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;ch_set_focus(s,"");return true;}
   if act==455 {ch_main(s);s[0].drawer=false;s[0].section=2;ch_set_focus(s,"");ch_step(s);return true;}
@@ -721,7 +735,7 @@ chat_step :: (s: [] ChatPage) #export_c #effects(all) { if s.count > 0 && s[0].r
 // the guest is let go. Then the flow and the chips follow.
 chat_guest :: (s: [] ChatPage, body: string) #export_c #effects(all) {
   if s.count < 1 || s[0].core.count < 1 { return; }
-  if !wsc_guest(s[0].workspaces[..],s[0].core,body) && !us_guest(s[0].usage[..],s[0].core,body) && !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
+  if !wsc_guest(s[0].workspaces[..],s[0].core,body) && !us_guest(s[0].usage[..],s[0].core,body) && !fm_guest(s[0].foreman[..],s[0].core,body) && !ps_guest(s[0].projects[..],s[0].core,body) && !iks_guest(s[0].identity[..],s[0].core,body) && !hi_guest(s[0].history[..],s[0].core,body) && !dh_guest(s[0].devices[..],s[0].core,body) && !es_bridge_guest(s[0].core, s[0].eb[..], s[0].env[..], body, ch_now(s)) { app_guest_done(s[0].core); }
   if s[0].history[0].changed {s[0].history[0].changed=false;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),0);}
   ch_step(s);
 }
@@ -809,7 +823,7 @@ ch_scroll_offset :: (s:[]ChatPage)->f32 {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"));}
  if s[0].drawer {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"));}
  if s[0].lf[0].open {return keyed_scroll(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"));}
- if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
+ if s[0].workspaces[0].open || s[0].foreman[0].open || s[0].usage[0].open || s[0].renderer {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
  if s[0].identity[0].open {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"));}
  if s[0].section==2 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"));}
  if s[0].section>0 {return keyed_scroll(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"));}
@@ -819,7 +833,7 @@ ch_scroll_max :: (s:[]ChatPage)->f32 {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {return scroll_max(s[0].menu_content,s[0].menu_viewport);}
  if s[0].drawer {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].lf[0].open {return scroll_max(s[0].login_content,s[0].login_viewport);}
- if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
+ if s[0].workspaces[0].open || s[0].foreman[0].open || s[0].usage[0].open || s[0].renderer {return scroll_max(s[0].section_content,s[0].section_viewport);}
  if s[0].identity[0].open {return scroll_max(s[0].settings_content,s[0].settings_viewport);}
  if s[0].section==2 {return scroll_max(s[0].history_content,s[0].history_viewport);}
  if s[0].section>0 {return scroll_max(s[0].section_content,s[0].section_viewport);}
@@ -831,7 +845,7 @@ chat_scroll_to :: (s:[]ChatPage,offset:f32) #export_c #effects(all) {
  if s[0].thread_menu || s[0].thread_details || s[0].filter_menu {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),value);}
  else if s[0].drawer {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"history.viewport"),value);}
  else if s[0].lf[0].open {keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"login.viewport"),value);}
- else if s[0].workspaces[0].open || s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
+ else if s[0].workspaces[0].open || s[0].foreman[0].open || s[0].usage[0].open || s[0].renderer {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}
  else if s[0].identity[0].open {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"settings.viewport"),value);}
  else if s[0].section==2 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"history.viewport"),value);}
  else if s[0].section>0 {keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),value);}

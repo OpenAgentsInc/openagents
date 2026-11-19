@@ -66,7 +66,7 @@ FXC_NONE :: 0;         // no such pending operation (a duplicate, or never issue
 FXC_DELIVER :: 1;      // live: hand the result to the owner
 FXC_DROPPED :: 2;      // fenced: the owner was cancelled or retired; the reservation is released
 
-FX_MAX :: 8; FX_OWNERS :: 11; FX_RECENT :: 16;
+FX_MAX :: 8; FX_OWNERS :: 12; FX_RECENT :: 16;
 FX_TEXT :: 512; FX_PAYLOAD :: 270336;
 FX_OP_MAX :: 2147483647; FX_GENERATION_MAX :: 2147483647;
 
