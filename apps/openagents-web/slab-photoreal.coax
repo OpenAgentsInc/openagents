@@ -24,7 +24,7 @@
 #load "slab-photo-rows.coax";
 
 U_PHOTO :: U_WORDS + WORDS + SEAS_FLOATS;   // the photoreal frame's block, after the sea's (gpu/slab-photoreal.coax SLAB_PHOTO)
-U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame
+U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame; 1: contact; 1: the lamp field is the build view's, in the drawing's frame
 PHOTO_FLOATS :: PR_FLOATS + 4;
 PHOTO_EXPOSURE :: 1.3f32;
 PHOTO_BALANCE :: 0.85f32;             // how much of twilight's blue cast the camera balances out (photoreal-frame.coax pr_balance)
@@ -64,6 +64,9 @@ SlabPhoto :: struct {
   eye: [3] f32; look: [3] f32;   // the eye and its view in the hull's frame, for content sets
   tops: [PHOTO_NX * PHOTO_NZ] f32;
   field_on: bool;
+  build_field: bool;       // the field holds the build view's lamps (photo_build_field), in the drawing's frame
+  build_key: u32;          // what it was baked from
+  build_x0: f32; build_z0: f32; build_cell: f32; build_ground: f32;
   key: u32;                // what the still list was made from
   keyed: bool;
   versions: [PHOTO_STORES] u32;
@@ -423,6 +426,38 @@ photo_field :: (ph: [] SlabPhoto, rec: [] f32, n: int) {
   pr_lamp_field(ls[..], -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, PHOTO_NX, PHOTO_NZ, ph[0].field[..]);
   ph[0].versions[3] += 1;
 }
+// The build view's lamp field (slab-build-draw.coax lists its lamps every frame, at night): the
+// work lights' pools baked over the ground they light, in the drawing's frame, made again only
+// when a lamp moves by a metre, comes or goes (its height is not looked at: the hull heaves). The
+// grid is the prime deck's, its cell as large as the lamps' reach needs, 4 m at least; the field's
+// sky half says the sky is open everywhere. Answers whether the field holds the lamps now.
+photo_build_field :: (ph: [] SlabPhoto) -> bool {
+  n := ph[0].light_count;
+  if n == 0 { return false; }
+  h: u64 = 2166136261;
+  for k: 0..<n {
+    o := k * PR_LIGHT_FLOATS;
+    for a: 0..<4 { if a != 1 { h = ((h ^ cast(u64) f32_bits(floor(ph[0].lights[o + a] + 0.5f32))) * 16777619) & 0xFFFFFFFF; } }
+  }
+  h = ((h ^ cast(u64) n) * 16777619) & 0xFFFFFFFF;
+  if ph[0].build_field && cast(u32) h == ph[0].build_key { return true; }
+  x0 := 1.0e9f32; x1 := -1.0e9f32; z0 := 1.0e9f32; z1 := -1.0e9f32; ground := 1.0e9f32;
+  for k: 0..<n {
+    o := k * PR_LIGHT_FLOATS; x := ph[0].lights[o]; z := ph[0].lights[o + 2]; high := ph[0].lights[o + 3];
+    reach := high * 5;   // where a pool has fallen under a hundredth (pr_lamp_field)
+    x0 = photo_min(x0, x - reach); x1 = photo_max(x1, x + reach); z0 = photo_min(z0, z - reach); z1 = photo_max(z1, z + reach);
+    ground = photo_min(ground, ph[0].lights[o + 1] - high);
+  }
+  cell := photo_max(PHOTO_CELL, photo_max((x1 - x0) / cast(f32) (PHOTO_NX - 1), (z1 - z0) / cast(f32) (PHOTO_NZ - 1)));
+  for i: 0..<PHOTO_NX * PHOTO_NZ { ph[0].field[i * PR_FIELD_FLOATS] = 1; for a: 1..<PR_FIELD_FLOATS { ph[0].field[i * PR_FIELD_FLOATS + a] = 0; } }
+  ls: [1] PrLights; pr_lights(ls[..], ph[0].lights[..]); ls[0].n = n;
+  pr_lamp_field(ls[..], x0, z0, cell, PHOTO_NX, PHOTO_NZ, ph[0].field[..]);
+  // the field's ground under the lowest lamp's, with room for the casting cells' floors under the apron
+  ph[0].build_x0 = x0; ph[0].build_z0 = z0; ph[0].build_cell = cell; ph[0].build_ground = ground - 20;
+  ph[0].build_field = true; ph[0].build_key = cast(u32) h;
+  ph[0].versions[3] += 1;
+  return true;
+}
 // What a content set reads of the world.
 photo_world :: (s: [] Slab, rec: [] f32, n: int, reduced: bool) -> SlabWorld {
   return SlabWorld.{records = rec, count = n, layout = s[0].layout, build = s[0].build.on, build_day = s[0].bdraw[0].day, bd = s[0].bdraw[..],
@@ -484,9 +519,11 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone_tier: bool) {
   ph := s[0].photo[..];
   b := U_PHOTO; P := U_PARAMS;
   ph[0].draw_count = 0;
-  u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0; u[U_PHOTO_ON + 2] = 0;
+  u[U_PHOTO_ON] = 0; u[U_PHOTO_ON + 1] = 0; u[U_PHOTO_ON + 2] = 0; u[U_PHOTO_ON + 3] = 0;
   if !ph[0].on && !s[0].build.on { return; }   // the build view always draws its meshes (slab-build-draw.coax)
   if !ph[0].made { photo_make(ph); }
+  // out of the build view, the deck's own field is made again over the build view's
+  if !s[0].build.on && ph[0].build_field { ph[0].build_field = false; ph[0].keyed = false; }
   u[U_PHOTO_ON] = 1;
   pr_frame_view(u, b, PrView.{eye = s[0].eye, forward = s[0].fwd, right = s[0].right, up = s[0].up, tangent = s[0].tanh, aspect = s[0].aspect, near = 0.5, time = u[U_SIZE + 2]});
   pose: [12] f32;
@@ -541,15 +578,20 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone_tier: bool) {
   slab_life_frame(s, photo_world(s, rec, n, phone));   // where what moves is now (slab-content-life.coax)
   for i: 0..<LIFE_WAKE_FLOATS { u[U_SHIPS + i] = s[0].photo[0].content.life[0].wakes[i]; }   // and its ships' wakes
   photo_movers(s, rec, n, phone, u[P + P_PICK + 3]);
+  // the build view's lamps, listed by its movers, lie in the drawing's frame, not the platform's
+  built := s[0].build.on && ph[0].lamps > 0 && photo_build_field(ph);
   // the lamps nearest the view shine on smooth things (a desktop only); the rest are the lamp field's
   near: PrNear;
   if !phone && ph[0].lamps > 0 && ph[0].light_count > 0 {
     ls: [1] PrLights; pr_lights(ls[..], ph[0].lights[..]); ls[0].n = ph[0].light_count;
-    near = pr_lights_near(ls[..], ph[0].eye, ph[0].look, 30, PR_NEAR_LIGHTS, ph[0].materials[..]);
+    near = pr_lights_near(ls[..], ifx s[0].build.on then s[0].eye else ph[0].eye, ifx s[0].build.on then s[0].fwd else ph[0].look, 30, PR_NEAR_LIGHTS, ph[0].materials[..]);
     if near.changed { ph[0].versions[2] += 1; }
   }
-  pr_frame_lamps(u, b, ph[0].lamps, u[b + PR_ROOMS], near.count, ph[0].field_on && ph[0].light_count > 0);
-  if ph[0].field_on { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); } else { pr_frame_no_field(u, b); }
+  deck := ph[0].field_on && !s[0].build.on;   // (a still list made before the build view opened says on)
+  pr_frame_lamps(u, b, ph[0].lamps, u[b + PR_ROOMS], near.count, (deck || built) && ph[0].light_count > 0);
+  if deck { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); }
+  else if built { pr_frame_field(u, b, ph[0].build_x0, ph[0].build_z0, ph[0].build_cell, ph[0].build_ground, PHOTO_NX, PHOTO_NZ, 8); u[U_PHOTO_ON + 3] = 1; }
+  else { pr_frame_no_field(u, b); }
   // the view from under the sea stays traced; the section's meshes leave out what the cut takes away
   meshes := u[P + P_UNDER] < 0.5;
   if meshes { u[U_PHOTO_ON + 1] = 1; } else { ph[0].draw_count = 0; }

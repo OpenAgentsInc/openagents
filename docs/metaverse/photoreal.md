@@ -440,7 +440,7 @@ only, and nothing in the construction view.
 | Rule | What it places | Records |
 | --- | --- | --- |
 | The edge | A parapet and handrail round the wall's top and the basin, a drain channel, lamps every 36 m, benches, lift and stair heads | 466 |
-| The dock | Four gantry cranes on the basin's rims, a landing stage, a gangway and a door, a lift shaft, bollards, fenders | 29 |
+| The dock | Four gantry cranes on the basin's rims (their work lights' glows at night), a landing stage, a gangway and a door, a lift shaft, bollards, fenders | 37 |
 | Streets | On the deck paint's 100 m grid, where nothing stands: kerbs and gutters, centre dashes, drain covers, lamps on both sides, benches, zebra crossings, bollards and blank sign posts at the corners | 1,269 |
 | Blocks | Towers: a roof parapet, roof plant round a lift overrun, masts on the tallest, a plinth, piers and a fascia at the foot, canopies over doors that open onto clear deck, and fins, belts or stone corners by a seeded style. The medical and civic blocks: a surround round each painted window, a door, roof plant. Data halls: fans in cowls over the roof's painted ones, louvres and doors, and a cooling yard of chillers and headers on the clearest side | 1,160 |
 | Works | Process halls (turbine halls, heat exchangers, industry, desalination): a pipe rack down the clearest long side with drops into the wall and valve stations, louvres and doors, a stair tower, roof plant. Stacks and tall columns: ring walks, a caged ladder, a flue duct to the nearest hall. Tanks: a railed rim walk, a ladder, a valve station and pipes between neighbours. Moonpools: a rim walk and a gantry. The cooling plant: fans in cowls and louvres. The mining yard: a fan bank and an intake louvre on each container, a cable duct and switchgear. The desalination plant: reverse-osmosis trains and its sea pipes over the promenade and down the wall | 791 |
@@ -472,6 +472,7 @@ over the plan:
 | The fountain | Four lamps in the basin, and the jet lit from below |
 | Works | Cold-white work lights on 16 m masts over the plant and the yards (`night_work_light`, for a construction set too) |
 | Aviation | Red beacons on the stacks' rims and on the corners of towers over 60 m, white flashing beacons at the hull's corners |
+| The dock | Each gantry crane's work lights under its girder and boom (`night_lamps` with the kit's `arch_lamps_dock_crane`) |
 
 `night_lamp(ph, l, x, y, z, high, r, g, b, climb)` puts a light and its glow
 ball at a post another set stood. `NIGHT_STREETS` true makes the set stand
@@ -492,6 +493,22 @@ plan's own records as each module lands. The drawing keeps a floating
 origin, fixed for each shot of the film at its subject, so the yard 87 km
 from the berth draws at full float precision. The build view draws meshes
 whatever the realm's style.
+
+By night (`?view=build&hour=22`: `?hour=` holds the build view's hour,
+which the film sets otherwise) the work goes on under lights. Each part's
+lamps come from the engine's lights kit (`metaverse-engine/arch/lights.coax`):
+the yard's floodlight masts and batching plant and every tower crane's top
+throw pools; the cranes carry red obstacle lights where they stand over
+45 m; the buoys flash green and red; tugs show their masthead, side, stern
+and towing lights (three mastheads for a tow over 200 m), and towed or
+anchored caissons, pieces and barges theirs. `night_lamps` turns a part's
+lamps into glows and pools. A lamp of one power lights a quarter as much
+from twice as high, so the cranes' 60 m pools are dimmer and wider than a
+30 m mast's. The pools go into a lamp field of their own in the drawing's
+frame (`photo_build_field`: `U_PHOTO_ON + 3`), sized to the lamps' spread
+and baked again only when a lamp moves or comes and goes; the shader then
+lights free parts from it too. By day no lamp is listed and the field is
+off.
 
 ### Things that move
 

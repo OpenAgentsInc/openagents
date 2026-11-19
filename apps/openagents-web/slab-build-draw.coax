@@ -31,6 +31,7 @@ BD_CRANES :: 14;           // tower cranes drawn on the hull at once (the neares
 BD_LINE_SEGS :: 14;        // pieces a line is drawn with
 BD_CELL_L :: 104.0; BD_CELL_B :: 54.0;   // a casting cell's inside (gpu/slab.coax slab_dry_cells has the same)
 BD_GROUND :: 3.0;          // the yard's apron over the still sea, m
+BD_GANTRY_GAUGE :: 40.0f32; BD_GANTRY_TALL :: 60.0f32; BD_GANTRY_REACH :: 45.0f32;   // the hull's gantry cranes (works.coax arch_dock_crane)
 BD_SPEEDS :: [3] f64.[0.5, 1.0, 2.0];
 BD_SPEED_NAMES :: [3] string.["Half speed", "Normal", "Twice as fast"];
 BD_DOCS :: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/slab-construction-method.md";
@@ -45,6 +46,7 @@ BuildView :: struct {
   mode: int; yaw: f32; pitch: f32; dist: f32; x: f32; z: f32; intro: f32;
   own: bool;                 // the visitor has taken the camera
   picked: int = -1;          // a body's kind * 1000 + its id (-1: none)
+  hour: f64 = -1;            // the hour the address holds (?hour=), or -1: the film's own (bf_hour)
 }
 BdParts :: struct {
   made: bool;
@@ -252,7 +254,8 @@ bd_mod :: (x: f64, m: f64) -> f64 { return x - floor(x / m) * m; }
 bd_sun :: (s: [] Slab) -> SimSun {
   d := s[0].bdraw[..];
   month := bd_mod(f64(d[0].run[0].p.start_month) + d[0].day / 30.44, 12.0);
-  return sim_sun(27.8, month, bf_hour(d[0].film[0].shots[d[0].shot], d[0].day));
+  hour := ifx s[0].build.hour >= 0 then s[0].build.hour else bf_hour(d[0].film[0].shots[d[0].shot], d[0].day);
+  return sim_sun(27.8, month, hour);
 }
 // The drawn sea's wind: from the simulation's sea where the camera is (the yard's channel is
 // sheltered), in bands so a montage does not make the sea again every frame.
@@ -370,7 +373,7 @@ bd_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   b.buoy = photo_part(ph, arch_site_buoy(p, look));
   b.mound = photo_part(ph, arch_site_mound(p, look));
   b.plant = photo_part(ph, arch_site_plant(p, look));
-  b.gantry = photo_part(ph, arch_dock_crane(p, look, 40, 60, 45));
+  b.gantry = photo_part(ph, arch_dock_crane(p, look, BD_GANTRY_GAUGE, BD_GANTRY_TALL, BD_GANTRY_REACH));
   b.made = !p[0].full;
   ph[0].content.build = b;
 }
@@ -407,24 +410,35 @@ bd_cure :: (l: [] PrList, r: int, cured: f64, id: int) {
   pr_tint(l, r, k, k, k * 0.985f32);
 }
 
-// Everything the build view draws, every frame (slab-content.coax slab_content_move, twice).
+// Everything the build view draws, every frame (slab-content.coax slab_content_move, twice). At
+// night the lamps too (bd_lamps): each pass lists them again, and slab-photoreal.coax bakes the
+// work lights' pools into the build view's lamp field when they change (photo_build_field).
 bd_place :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, reduced: bool, night: f32) {
   b := ph[0].content.build;
+  ph[0].light_count = 0; ph[0].content.night.lamps = 0;
   if !b.made || !d[0].ready { return; }
   photo_glow(ph, b.lamp, 6.0f32 * night);
-  bd_yard_place(l, d, b, night);
-  bd_bodies(l, d, b);
-  bd_upper(l, d, b);
+  bd_yard_place(ph, l, d, b, night);
+  bd_bodies(ph, l, d, b);
+  bd_upper(ph, l, d, b);
   bd_lines(l, d, b);
+}
+// A kit part's lamps (metaverse-engine/arch/lights.coax) where bd_put stood the part, at night
+// only: glows, and the work lights' pools when `pools` (what stands still: a moving pool would make
+// the lamp field again every frame). slab-content-night.coax night_lamps draws them.
+bd_lamps :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, lamps: [] ArchLamps, x: f64, y: f64, z: f64, yaw: f64, sx: f32, sy: f32, sz: f32, pools: bool) {
+  if ph[0].lamps <= 0.001 { return; }
+  night_lamps(ph, l, lamps, f32(x - d[0].ox), f32(y), f32(z - d[0].oz), f32(-yaw), sx, sy, sz, pools, true);
 }
 
 // The yard: the apron, the casting cells with their gates and cranes, the basin's far bank, the
 // batching plant, trucks and lights. Schematic land round the simulation's own places.
-bd_yard_place :: (l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
+bd_yard_place :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
   mid := bd_yard(d, 800, 600);
   if bd_far(d, mid[0], mid[1], 2500) { return; }
   run := d[0].run; v := d[0].view[..]; yaw := d[0].yard_yaw;
   cells := d[0].cells; pitch := CSV_CELL_PITCH; first := 250.0;
+  lamps: [1] ArchLamps;
   lo := first - BD_CELL_L * 0.5; hi := first + pitch * f64(cells - 1) + BD_CELL_L * 0.5;
   cs0 := CSV_CELLS - BD_CELL_B * 0.5; cs1 := CSV_CELLS + BD_CELL_B * 0.5;
   deep := -CS_CELL_FLOOR - 2.0; tall := BD_GROUND - deep;
@@ -443,12 +457,14 @@ bd_yard_place :: (l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
     k := bd_yard(d, a + 30, cs1 + 18);
     busy := v[0].proc.cell_stage[c] > CS_IDLE && v[0].proc.cell_stage[c] < CS_CURE;
     slew := yaw + PI_D * 0.5 + (ifx busy then 0.55 * sin(d[0].time * 0.25 + f64(c) * 1.7) else 0.2);
-    bd_crane(l, d, b, k[0], BD_GROUND, k[1], 66, slew);
-    // floodlights on its corners
+    bd_crane(ph, l, d, b, k[0], BD_GROUND, k[1], 66, slew);
+    // floodlights on its corners, lighting the cell and the apron
+    arch_lamps_site_light(lamps[..]);
     for e: 0..<2 {
       p := bd_yard(d, a + (ifx e == 0 then -BD_CELL_L * 0.5 - 6 else BD_CELL_L * 0.5 + 6), cs1 + 6);
       r := bd_put(l, d, b.light, p[0], BD_GROUND, p[1], yaw + PI_D * 0.5);
       pr_near(l, r, 1800);
+      bd_lamps(ph, l, d, lamps[..], p[0], BD_GROUND, p[1], yaw + PI_D * 0.5, 1, 1, 1, true);
     }
   }
   // the quay's face, the far bank across the channel and the ends of the basin
@@ -459,6 +475,7 @@ bd_yard_place :: (l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
   // the batching plant and the road behind the cells, with mixer trucks on it
   pp := bd_yard(d, lo - 90, cs1 + 70);
   _ = bd_put(l, d, b.plant, pp[0], BD_GROUND, pp[1], yaw);
+  arch_lamps_site_plant(lamps[..]); bd_lamps(ph, l, d, lamps[..], pp[0], BD_GROUND, pp[1], yaw, 1, 1, 1, true);
   pr_fine(l, true);
   for t: 0..<10 {
     a := lo - 60 + bd_mod(d[0].time * 9.0 + f64(t) * 157.0, hi - lo + 120);
@@ -478,6 +495,8 @@ bd_yard_place :: (l: [] PrList, d: [] BuildDraw, b: BdParts, night: f32) {
       r := bd_put(l, d, b.buoy, x, 0, z, 0);
       if side == 0 { bd_paint(l, r, 0.1, 0.55, 0.2); } else { bd_paint(l, r, 0.75, 0.1, 0.08); }
       pr_near(l, r, 2500);
+      // its light, flashing its own colour on its top mark (IALA's lateral marks)
+      if ph[0].lamps > 0.001 { night_glow_at(ph, l, f32(x - d[0].ox), 4.6, f32(z - d[0].oz), 0.7, ifx side == 0 then 0.1f32 else 1.0f32, ifx side == 0 then 1.0f32 else 0.08f32, ifx side == 0 then 0.4f32 else 0.04f32, true, true); }
     }
   }
 }
@@ -486,8 +505,9 @@ bd_land :: (l: [] PrList, d: [] BuildDraw, b: BdParts, a0: f64, a1: f64, s0: f64
   c := bd_yard(d, (a0 + a1) * 0.5, (s0 + s1) * 0.5);
   _ = bd_block(l, d, b, c[0], y0, c[1], d[0].yard_yaw + PI_D, a1 - a0, h, s1 - s0, m);
 }
-// A tower crane standing on y0 with its jib `tall` up, slewed to `slew`.
-bd_crane :: (l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y0: f64, z: f64, tall: f64, slew: f64) {
+// A tower crane standing on y0 with its jib `tall` up, slewed to `slew`; at night its work light
+// under the cab and, tall as it is, its red lights.
+bd_crane :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y0: f64, z: f64, tall: f64, slew: f64) {
   n := cast(int) floor(tall / f64(SITE_MAST_BAY));
   bays := ifx n > 4 then 4 else n;
   each := tall / f64(bays);
@@ -496,29 +516,39 @@ bd_crane :: (l: [] PrList, d: [] BuildDraw, b: BdParts, x: f64, y0: f64, z: f64,
     pr_stretch(l, r, 1, f32(each / f64(SITE_MAST_BAY)), 1);
   }
   _ = bd_put(l, d, b.top, x, y0 + tall, z, slew);
+  lamps: [1] ArchLamps; arch_lamps_crane_top(lamps[..], f32(tall));
+  bd_lamps(ph, l, d, lamps[..], x, y0 + tall, z, slew, 1, 1, 1, true);
 }
 
 // The bodies: caissons in their cells and afloat, pieces as their caissons, tugs, barges, gantries.
-bd_bodies :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
+bd_bodies :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, b: BdParts) {
   run := d[0].run; v := d[0].view[..]; sh := run[0].sh; u := run[0].unit;
+  lamps: [1] ArchLamps;
   for i: 0..<v[0].bodies {
     o := v[0].body[i];
     if bd_far(d, o.x, o.z, o.l) { continue; }
     if o.kind == CSV_CAISSON {
       if o.state == CSV_BASIN { bd_caisson_whole(l, d, b, o.x, o.y, o.z, o.yaw, o.l, o.b, o.h, o.id, 1.0); }
       else { bd_casting(l, d, b, o); }
+      if o.state == CSV_TOW { arch_lamps_towed(lamps[..], f32(o.l), f32(o.b), f32(o.h)); bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw, 1, 1, 1, false); }
     } else if o.kind == CSV_PIECE {
       a := run[0].pc[o.id];
       for c: 0..<o.nc { for r: 0..<o.nr {
         p := bd_at(o.x, o.z, o.yaw, (f64(c) - f64(o.nc - 1) * 0.5) * u.l, (f64(r) - f64(o.nr - 1) * 0.5) * u.b);
         bd_caisson_whole(l, d, b, p[0], o.y, p[1], o.yaw, u.l, u.b, o.h, a.first + c * o.nr + r, 1.0);
       } }
+      // under tow: a towed hull's lights; held off the hull or at its berth: at anchor
+      if o.state == CSV_TOW { arch_lamps_towed(lamps[..], f32(o.l), f32(o.b), f32(o.h)); bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw, 1, 1, 1, false); }
+      else if o.state == CSV_STANDBY || o.state == CSV_READY { arch_lamps_anchored(lamps[..], f32(o.l), f32(o.h)); bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw, 1, 1, 1, false); }
     } else if o.kind == CSV_TUG {
       // the kit's tug is 32 m at its waterline; the simulation's has its own size and draft
       g := traffic_ship_of(TRAFFIC_TUG);
       r := bd_put(l, d, b.tug, o.x, o.y + o.draft, o.z, o.yaw);
-      pr_stretch(l, r, f32(o.l) / g.length, f32(fmax(o.draft, 1.0)) / g.draft, f32(o.b) / g.beam);
+      sx := f32(o.l) / g.length; sy := f32(fmax(o.draft, 1.0)) / g.draft; sz := f32(o.b) / g.beam;
+      pr_stretch(l, r, sx, sy, sz);
       pr_tint(l, r, 0.78, 0.2, 0.12);
+      arch_lamps_tug(lamps[..], f32(bd_tow(d, i)));
+      bd_lamps(ph, l, d, lamps[..], o.x, o.y + o.draft, o.z, o.yaw, sx, sy, sz, false);
     } else if o.kind == CSV_BARGE {
       r := bd_put(l, d, b.barge, o.x, o.y, o.z, o.yaw);
       pr_stretch(l, r, f32(o.l / 120.0), f32(fmax(o.h, 1.0) / 8.0), f32(o.b / 32.0));
@@ -528,8 +558,13 @@ bd_bodies :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
         rr := bd_block(l, d, b, o.x, o.y + o.h, o.z, o.yaw, o.l * 0.7, 2.0 + 6.0 * load, o.b * 0.7, b.metal);
         bd_paint(l, rr, 0.75, 0.42, 0.12);
       }
+      // on passage or running home, a towed barge's lights; waiting off the hull, at anchor
+      if o.state == CSV_PASSAGE || o.state == CSV_RETURN { arch_lamps_towed(lamps[..], f32(o.l), f32(o.b), f32(o.h)); bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw, 1, 1, 1, false); }
+      else if o.state == CSV_QUEUE { arch_lamps_anchored(lamps[..], f32(o.l), f32(o.h)); bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw, 1, 1, 1, false); }
     } else if o.kind == CSV_GANTRY {
       _ = bd_put(l, d, b.gantry, o.x, o.y, o.z, o.yaw + PI_D * 0.5);
+      arch_lamps_dock_crane(lamps[..], BD_GANTRY_GAUGE, BD_GANTRY_TALL, BD_GANTRY_REACH);
+      bd_lamps(ph, l, d, lamps[..], o.x, o.y, o.z, o.yaw + PI_D * 0.5, 1, 1, 1, false);
     }
   }
 }
@@ -623,7 +658,7 @@ bd_casting :: (l: [] PrList, d: [] BuildDraw, b: BdParts, o: CsvBody) {
 
 // The upper structure over each caisson of the hull: its columns climbing in jump forms, the outer
 // wall on the edge bays, the girders and the deck slab, and tower cranes on the bays at work.
-bd_upper :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
+bd_upper :: (ph: [] SlabPhoto, l: [] PrList, d: [] BuildDraw, b: BdParts) {
   run := d[0].run; v := d[0].view[..]; sh := run[0].sh; h := v[0].hull; bp := run[0].bay;
   if h.units < 1 || bd_far(d, h.x + h.ox, h.z + h.oz, fmax(h.lx, h.lz)) { return; }
   hl := sh.l * 0.5; hb := sh.b * 0.5; ul := run[0].unit.l; ub := run[0].unit.b;
@@ -669,9 +704,22 @@ bd_upper :: (l: [] PrList, d: [] BuildDraw, b: BdParts) {
     // a tower crane while the bay is at work, until there are enough
     if bay.stage != CS_BAY_DONE && cranes < BD_CRANES {
       cranes += 1;
-      bd_crane(l, d, b, ux + ul * 0.25, base, uz + ub * 0.25, sh.deck - sh.hull + 24, f64(i) * 0.9 + 0.3 * sin(d[0].time * 0.2 + f64(i)));
+      bd_crane(ph, l, d, b, ux + ul * 0.25, base, uz + ub * 0.25, sh.deck - sh.hull + 24, f64(i) * 0.9 + 0.3 * sin(d[0].time * 0.2 + f64(i)));
     }
   }
+}
+
+// How long body i's tow is (m): from the tug to the far end of the piece its towline holds, or 0.
+bd_tow :: (d: [] BuildDraw, i: int) -> f64 {
+  v := d[0].view[..];
+  for k: 0..<v[0].lines {
+    w := v[0].line[k];
+    if w.kind != CSV_TOWLINE || (w.a != i && w.b != i) { continue; }
+    j := ifx w.a == i then w.b else w.a;
+    span := sqrt((w.bx - w.ax) * (w.bx - w.ax) + (w.bz - w.az) * (w.bz - w.az));
+    return span + (ifx j >= 0 && j < v[0].bodies then v[0].body[j].l else 0.0);
+  }
+  return 0.0;
 }
 
 // The lines: each towline from its tug to its piece with its sag, the moorings and the storm legs
@@ -995,6 +1043,38 @@ bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
   }
   // at the end the city stands: the plan's records are all up
   #assert cast(int) u[U_MODE + 2] >= d[0].plan_n - SLAB_HULL_PIECES - 2;
+}
+#test "Build view at night: the yard, the cranes and the craft show their lights, and the work lights' pools are baked once" #steps 20000000000 #traversal 800000000 {
+  s: [1] Slab; u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  slab_reset(s[..]);
+  build_toggle(s[..]); bd_ready(s[..]);
+  s[0].build.hour = 22;
+  ph := s[0].photo[..]; d := s[0].bdraw[..];
+  // the yard: floodlight masts and cranes light the cells; the field is in the drawing's frame
+  bd_seek_day(s[..], 45.0);
+  _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert ph[0].lamps > 0.9 && u[U_PHOTO_ON + 3] == 1 && u[U_PHOTO + PR_LAMPS + 3] == 1 && !ph[0].full;
+  #assert ph[0].light_count >= 3 * d[0].cells && ph[0].build_field && ph[0].build_cell >= PHOTO_CELL;
+  #assert ph[0].still + ph[0].moving < PHOTO_RECORDS;
+  // a second frame with nothing moved bakes nothing again
+  version := ph[0].versions[3];
+  _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert ph[0].versions[3] == version && u[U_PHOTO_ON + 3] == 1;
+  // every pool lies under its lamp, over the field's ground
+  for k: 0..<ph[0].light_count { o := k * PR_LIGHT_FLOATS; #assert ph[0].lights[o + 1] - ph[0].lights[o + 3] > ph[0].build_ground && ph[0].lights[o + 3] > 1; }
+  // on the tow and at the berth, by night the lights are on; by day none are listed and the field is off
+  for k: 0..<2 {
+    bd_seek_day(s[..], ifx k == 0 then 330.0 else 700.0);
+    _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+    #assert !ph[0].full && ph[0].still + ph[0].moving < PHOTO_RECORDS && ph[0].content.night.lamps > 0;
+  }
+  s[0].build.hour = 12;
+  _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert ph[0].lamps == 0 && ph[0].light_count == 0 && u[U_PHOTO_ON + 3] == 0;
+  // leaving the build view, the deck's own field is made again (in the photoreal style; the painterly draws no meshes)
+  build_toggle(s[..]); s[0].hour = 22; ph[0].on = true;
+  _ = slab_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert !ph[0].build_field && u[U_PHOTO_ON + 3] == 0;
 }
 #test "Build view: the HUD has its play button, its day slider, its chapters and the three numbers" #steps 4000000000 #traversal 200000000 {
   s: [1] Slab;

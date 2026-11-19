@@ -30,6 +30,7 @@ CITY_NEAR_FIN :: 560.0f32; CITY_NEAR_FRAME :: 260.0f32; CITY_NEAR_STEEL :: 420.0
 CITY_FLOOR :: 3.9f32;      // a tower's storey and its mullions' module: the glass's pattern
 CITY_MODULE :: 4.5f32;
 CITY_GRID :: 100.0f32;     // the streets' grid: the deck's paint (gpu/slab.coax slab_paint)
+CITY_CRANE_GAUGE :: 5.0f32; CITY_CRANE_TALL :: 22.0f32; CITY_CRANE_REACH :: 30.0f32;   // the dock's cranes (works.coax arch_dock_crane)
 // What the last list placed, by rule (the report's and the checks' counts).
 CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_BLOCKS :: 3; CITY_WORKS :: 4; CITY_TEMPLES :: 5; CITY_RULES :: 6;
 
@@ -64,7 +65,7 @@ slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   c.bollard = photo_part(ph, arch_bollard(p, k, 0.9, 0.12));
   c.lift = photo_part(ph, arch_kiosk(p, k, 3, 3, 3.6));
   c.stair_head = photo_part(ph, arch_kiosk(p, k, 3.2, 5, 3.1));
-  c.crane = photo_part(ph, arch_dock_crane(p, k, 5, 22, 30));
+  c.crane = photo_part(ph, arch_dock_crane(p, k, CITY_CRANE_GAUGE, CITY_CRANE_TALL, CITY_CRANE_REACH));
   c.ramp = photo_part(ph, arch_gangway(p, k, 18, 6, 1.6));
   c.sign = photo_part(ph, arch_sign_post(p, k, 3.0, 0.9, 0.6, 0.1, 0.28, 0.55));
   c.dashes = photo_part(ph, arch_dashes(p, k, 20, 4, 6, 0.16));
@@ -298,12 +299,15 @@ city_dock :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
   c := ph[0].content.city; k := c.look;
   mid := (d.bx0 + d.bx1) * 0.5; deep := d.bz - d.z0;
   pr_fine(l, false);
-  // cranes on the rims, their booms over the basin
+  // cranes on the rims, their booms over the basin, and their work lights at night (slab-content-night.coax)
+  lamps: [1] ArchLamps; arch_lamps_dock_crane(lamps[..], CITY_CRANE_GAUGE, CITY_CRANE_TALL, CITY_CRANE_REACH);
   for side: 0..<2 {
     for j: 0..<2 {
       z := d.z0 + deep * (0.28 + 0.44 * cast(f32) j);
       x := ifx side == 0 then d.bx0 - 3.4 else d.bx1 + 3.4;
-      _ = city_put(l, c.crane, x, d.y, z, city_facing(ifx side == 0 then -1.0f32 else 1.0f32, 0), 0);
+      yaw := city_facing(ifx side == 0 then -1.0f32 else 1.0f32, 0);
+      _ = city_put(l, c.crane, x, d.y, z, yaw, 0);
+      night_lamps(ph, l, lamps[..], x, d.y, z, yaw, 1, 1, 1, true, false);
     }
   }
   // a landing stage afloat under the basin's head wall, bollards along it, a lift up the wall
@@ -1057,7 +1061,7 @@ city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{record
   // the page's deck has the dock cut (slab-change.coax): the basin's rims get cranes and a stage
   d := city_deck(photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false));
   #assert d.ok && d.dock;
-  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160 && c.placed[CITY_WORKS] == 791 && c.placed[CITY_TEMPLES] == 852;
+  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 37 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160 && c.placed[CITY_WORKS] == 791 && c.placed[CITY_TEMPLES] == 852;
   // every record stands on or over the deck's plan, or down the wall or in the basin beside it
   for r: 0..<ph[0].still {
     o := r * PR_RECORD_FLOATS;

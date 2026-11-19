@@ -24,6 +24,7 @@
 // orbit), ?mode=orbit|fly|walk, ?ex=, ?ey=, ?ez= (metres) and ?eyaw=, ?epitch= (radians: where the
 // fly-through or the view under the sea starts and looks), ?view=section|under, ?hole=1 (cell A1
 // holed), ?lose=N (N mooring lines already broken), ?plant=demo10,
+// ?view=build (the construction view; with ?day=, ?film= and ?hour=, which holds its hour),
 // ?fly=T,EX,EY,EZ,LX,LY,LZ~... and &flyat=SECONDS (a flythrough's path: slab-tour.coax),
 // ?flow=1 (the flow overlay), ?hud=0, ?tier=phone, ?weather=clear|overcast|fog|rain|storm (else
 // the sea's own weather), ?water=real (under the sea: the water as it is, not the survey view),
@@ -1908,6 +1909,7 @@ slab_message :: (s: [] Slab, kind: int, text: string) #export_c #effects(all) {
   layout_records(s);
   if query_word(url,"view=build") {
     build_toggle(s);
+    if query_number(url, "hour", -1) >= 0 { s[0].build.hour = s[0].hour; }   // ?hour= holds the build view's hour (its night lights: slab-build-draw.coax)
     day := query_number(url,"day", -1);
     at := query_number(url,"film", -1);
     if day >= 0 { bd_seek_day(s, day); } else if at >= 0 { bd_seek(s, at); }

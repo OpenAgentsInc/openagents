@@ -756,7 +756,18 @@ fn coax_p_scene_fs(p_v: coax_t16) -> coax_t21 {
     l_r = coax_p_reflect3(l_rd, l_n);
     l_mirrored = coax_p_slab_photo_mirror(coax_p_sb_add(l_wh, coax_p_sb_mul(l_nh, 0x1.333334p-3f)), coax_p_sb_dir_to_hull(l_r), l_mirrored);
   }
-  l_lamp = select(coax_p_pr_lamps(l_wh, l_nh, coax_p_sb_dir_to_hull(l_toward), l_s, l_b), coax_p_v3(0.0f, 0.0f, 0.0f), l_free);
+  l_lamp = coax_p_v3(0.0f, 0.0f, 0.0f);
+  if ((coax_at_u(i32(15991i)) > 0x1.000000p-1f))
+  {
+    l_lamp = coax_p_pr_lamps(l_v.y, l_n, l_toward, l_s, l_b);
+  }
+  else
+  {
+    if ((!l_free))
+    {
+      l_lamp = coax_p_pr_lamps(l_wh, l_nh, coax_p_sb_dir_to_hull(l_toward), l_s, l_b);
+    }
+  }
   l_c = coax_p_pr_out(coax_p_pr_air(coax_p_add3(coax_p_pr_lit(l_s, l_toward, l_reach, l_open, l_mirrored, l_b), l_lamp), l_v.y, l_b), l_b);
   l_sm = coax_p_slab_smoke(coax_p_sb_to_hull(l_eye), coax_p_sb_dir_to_hull(l_rd), l_dist);
   l_c = coax_p_mix3(l_c, coax_p_v3(l_sm.x, l_sm.y, l_sm.z), l_sm.w);

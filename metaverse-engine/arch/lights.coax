@@ -1,0 +1,191 @@
+// The Metaverse Engine's architecture kit, its lights at night: where the lamps of a kit part hang,
+// in the part's own frame, from the same numbers the part is drawn with. A realm stands the part,
+// turns each lamp with arch_lamp_turn as the record turns the part, and gives it to its renderer:
+// in the photoreal style a work light is a pool (pr_light_add) and a glow, and an obstacle or a
+// navigation light only a glow (a PR_LAMP or PR_BEACON record) (docs/metaverse/photoreal.md, "Lamps").
+// Nothing here draws. SLAB's night set is the first user (apps/openagents-web/slab-content-night.coax).
+//
+//   arch_lamps_site_light  a floodlight mast's bank (site.coax arch_site_light)
+//   arch_lamps_site_plant  a batching plant (site.coax arch_site_plant): a work light on its mixing tower
+//   arch_lamps_crane_top   a tower crane's top (site.coax arch_site_crane_top): a work light under its
+//                          cab, and red obstacle lights on its apex and both jibs' ends when it stands
+//                          high enough to be an obstacle to aircraft
+//   arch_lamps_dock_crane  a gantry crane (works.coax arch_dock_crane): work lights under its girder
+//                          and its boom, and a red light on its mast's head when it is tall
+//   arch_lamps_tug         a tug (traffic.coax TRAFFIC_TUG) under way: masthead, sidelights and stern
+//                          light; towing, a second masthead light (a third for a tow over 200 m) and
+//                          the yellow towing light over the stern light (COLREGs rules 23 and 24)
+//   arch_lamps_towed       a towed hull or barge: sidelights at its bow and a stern light (rule 24(e))
+//   arch_lamps_anchored    an all-round white light forward (rule 30)
+//   arch_lamp_turn         a lamp's place once its part is stood, turned and stretched
+//
+// The rules' ranges and arcs are not modelled: every light is seen from every side.
+//   coax/bin/coax test --library metaverse-engine/arch/lights.coax
+#module "metaverse.engine.arch.lights";
+#load "site.coax";
+#load "works.coax";
+#load "traffic.coax";
+
+ARCH_LAMP_WORK :: 0;       // lights what is under it
+ARCH_LAMP_OBSTACLE :: 1;   // red, flashing: marks a tall thing for aircraft; lights nothing
+ARCH_LAMP_NAV :: 2;        // a navigation light: seen from afar, lights nothing
+ARCH_LAMPS_MOST :: 12;     // lamps one part answers
+ARCH_OBSTACLE_H :: 45.0f32;   // ICAO Annex 14 marks an obstacle over 45 m above the ground round it with lights
+ARCH_TOW_LONG :: 200.0f32;    // a tow longer than this shows three masthead lights, not two (COLREGs 24(a))
+
+// A lamp: its place in the part's frame, its colour (its brightest channel 1), what it is, whether
+// it flashes, and for a work light how far over the ground it lights it hangs.
+ArchLamp :: struct { x: f32; y: f32; z: f32; r: f32; g: f32; b: f32; kind: int; flash: bool; high: f32; }
+ArchLamps :: struct { lamp: [ARCH_LAMPS_MOST] ArchLamp; n: int; }
+
+arch_lamps_clear :: (l: [] ArchLamps) { l[0].n = 0; }
+arch_lamp_add :: (l: [] ArchLamps, x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, kind: int, flash: bool, high: f32) {
+  if l[0].n >= ARCH_LAMPS_MOST { return; }
+  l[0].lamp[l[0].n] = ArchLamp.{x = x, y = y, z = z, r = r, g = g, b = b, kind = kind, flash = flash, high = high};
+  l[0].n += 1;
+}
+// The colours: a work light's cold white, a lamp's warm white, the rules' red, green and yellow.
+arch_lamp_work :: (l: [] ArchLamps, x: f32, y: f32, z: f32, high: f32) { arch_lamp_add(l, x, y, z, 0.9, 0.95, 1, ARCH_LAMP_WORK, false, high); }
+arch_lamp_red :: (l: [] ArchLamps, x: f32, y: f32, z: f32) { arch_lamp_add(l, x, y, z, 1, 0.08, 0.04, ARCH_LAMP_OBSTACLE, true, 0); }
+arch_lamp_white :: (l: [] ArchLamps, x: f32, y: f32, z: f32) { arch_lamp_add(l, x, y, z, 1, 0.97, 0.88, ARCH_LAMP_NAV, false, 0); }
+arch_lamp_port :: (l: [] ArchLamps, x: f32, y: f32, z: f32) { arch_lamp_add(l, x, y, z, 1, 0.06, 0.04, ARCH_LAMP_NAV, false, 0); }
+arch_lamp_starboard :: (l: [] ArchLamps, x: f32, y: f32, z: f32) { arch_lamp_add(l, x, y, z, 0.1, 1, 0.4, ARCH_LAMP_NAV, false, 0); }
+arch_lamp_towing :: (l: [] ArchLamps, x: f32, y: f32, z: f32) { arch_lamp_add(l, x, y, z, 1, 0.72, 0.15, ARCH_LAMP_NAV, false, 0); }
+
+// A floodlight mast (arch_site_light): its bank SITE_LIGHT_H up, a little toward +x, lighting the ground.
+arch_lamps_site_light :: (l: [] ArchLamps) {
+  arch_lamps_clear(l);
+  arch_lamp_work(l, 0.6, SITE_LIGHT_H, 0, SITE_LIGHT_H);
+}
+// A batching plant (arch_site_plant): a work light on its mixing tower's roof, 14 m up.
+arch_lamps_site_plant :: (l: [] ArchLamps) {
+  arch_lamps_clear(l);
+  arch_lamp_work(l, 6, 14.3, 0, 14);
+}
+// A tower crane's top (arch_site_crane_top), y 0 its slewing ring, which stands `tall` over the
+// ground: the work light under the cab lights the ground under the crane; red lights on the apex
+// and both jibs' ends when the apex stands ARCH_OBSTACLE_H or more over the ground.
+arch_lamps_crane_top :: (l: [] ArchLamps, tall: f32) {
+  arch_lamps_clear(l);
+  arch_lamp_work(l, 0, -0.3, 0, tall);
+  if tall + 11.3f32 < ARCH_OBSTACLE_H { return; }
+  arch_lamp_red(l, 0, 11.4, 0);
+  arch_lamp_red(l, SITE_JIB - 1.2f32, 3.3, 0);
+  arch_lamp_red(l, -SITE_COUNTER + 0.6f32, 1.8, 0);
+}
+// A gantry crane (arch_dock_crane, the same gauge, height and reach), the water on its -z side:
+// work lights under its girder over the quay and under its boom over the water, each lighting the
+// ground `tall` under it; a red light on the mast's head when it stands ARCH_OBSTACLE_H or more.
+arch_lamps_dock_crane :: (l: [] ArchLamps, gauge: f32, tall: f32, reach: f32) {
+  arch_lamps_clear(l);
+  hg := gauge * 0.5f32;
+  arch_lamp_work(l, 0, tall - 0.4f32, 0, tall);
+  arch_lamp_work(l, 0, tall + 0.6f32, -hg - reach * 0.75f32, tall);
+  head := tall + reach * 0.55f32;
+  if head >= ARCH_OBSTACLE_H { arch_lamp_red(l, 0, head + 0.4f32, -hg); }
+}
+// A tug (traffic.coax traffic_tug) under way, on the lenses its part draws: the masthead light on
+// its mast, the sidelights on the wheelhouse's wings, the stern light. `tow` is the tow's length
+// (from the tug's stern to the end of what it tows, m; 0 when it tows nothing): towing, it shows a
+// second masthead light under the first, a third for a tow over ARCH_TOW_LONG, and the yellow towing
+// light over its stern light.
+arch_lamps_tug :: (l: [] ArchLamps, tow: f32) {
+  arch_lamps_clear(l);
+  s := traffic_ship_of(TRAFFIC_TUG);
+  top := 12.7f32;   // traffic_mast's head and its light, over the mast at x 2.7
+  arch_lamp_white(l, 2.7, top, 0);
+  if tow > 0 {
+    arch_lamp_white(l, 2.7, top - 1.6f32, 0);
+    if tow > ARCH_TOW_LONG { arch_lamp_white(l, 2.7, top - 3.2f32, 0); }
+  }
+  arch_lamp_port(l, 5, 7, -3); arch_lamp_starboard(l, 5, 7, 3);
+  stern := -s.length * 0.5f32 + 1;
+  arch_lamp_white(l, stern, s.deck + 1.6f32, 0);
+  if tow > 0 { arch_lamp_towing(l, stern, s.deck + 2.6f32, 0); }
+}
+// A towed hull or barge, `length` by `beam`, its deck `top` over its waterline, bow toward +x:
+// the sidelights at its bow's two corners and the stern light, a metre over the deck.
+arch_lamps_towed :: (l: [] ArchLamps, length: f32, beam: f32, top: f32) {
+  arch_lamps_clear(l);
+  x := length * 0.5f32 - 1; z := beam * 0.5f32 - 1; y := top + 1;
+  arch_lamp_port(l, x, y, -z); arch_lamp_starboard(l, x, y, z);
+  arch_lamp_white(l, -x, y, 0);
+}
+// A hull or barge at anchor: one all-round white light forward, three metres over its deck.
+arch_lamps_anchored :: (l: [] ArchLamps, length: f32, top: f32) {
+  arch_lamps_clear(l);
+  arch_lamp_white(l, length * 0.5f32 - 2, top + 3, 0);
+}
+
+// A lamp's place once its part is stood at (x, y, z), turned `yaw` about y as a photoreal record
+// turns it (its +x along (cos yaw, 0, -sin yaw): photoreal-layout.coax PR_R_YAW) and stretched
+// (sx, sy, sz) along its own axes.
+arch_lamp_turn :: (a: ArchLamp, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy: f32, sz: f32) -> [3] f32 {
+  px := a.x * sx; pz := a.z * sz; c := cos(yaw); s := sin(yaw);
+  return [3] f32.[x + px * c + pz * s, y + a.y * sy, z - px * s + pz * c];
+}
+
+// ---------------------------------------------------------------- checks
+// The white navigation lights at x along the part (the masthead lights stand in a line on the mast).
+arch_lamps_whites_at :: (l: [] ArchLamps, x: f32) -> int {
+  n := 0;
+  for i: 0..<l[0].n { a := l[0].lamp[i]; if a.kind == ARCH_LAMP_NAV && a.b > 0.8 && a.r == 1 && a.x == x { n += 1; } }
+  return n;
+}
+#test "a floodlight mast lights the ground from its bank; a crane is marked for aircraft only when tall" {
+  l: [1] ArchLamps;
+  arch_lamps_site_light(l[..]);
+  #assert l[0].n == 1 && l[0].lamp[0].kind == ARCH_LAMP_WORK && l[0].lamp[0].y == SITE_LIGHT_H && l[0].lamp[0].high == SITE_LIGHT_H;
+  arch_lamps_site_plant(l[..]);
+  #assert l[0].n == 1 && l[0].lamp[0].kind == ARCH_LAMP_WORK && l[0].lamp[0].y > 14;
+  arch_lamps_crane_top(l[..], 66);
+  #assert l[0].n == 4 && l[0].lamp[0].kind == ARCH_LAMP_WORK && l[0].lamp[0].high == 66;
+  reds := 0;
+  for i: 1..<l[0].n { a := l[0].lamp[i]; if a.kind == ARCH_LAMP_OBSTACLE && a.flash && a.r == 1 && a.g < 0.1 { reds += 1; } }
+  #assert reds == 3;
+  // the jib's light at its end, the apex's over the apex (arch_site_crane_top: jib SITE_JIB long, apex 11 m up)
+  #assert l[0].lamp[2].x > SITE_JIB - 2 && l[0].lamp[2].x < SITE_JIB && l[0].lamp[1].y > 11;
+  arch_lamps_crane_top(l[..], 20);
+  #assert l[0].n == 1;
+}
+#test "a gantry crane lights the quay and the water under its boom, and its mast's head is red when tall" {
+  l: [1] ArchLamps;
+  arch_lamps_dock_crane(l[..], 40, 60, 45);
+  #assert l[0].n == 3 && l[0].lamp[0].kind == ARCH_LAMP_WORK && l[0].lamp[1].kind == ARCH_LAMP_WORK;
+  // the boom's light stands over the water, beyond the water-side leg (at -20)
+  #assert l[0].lamp[1].z < -20 - 30 && l[0].lamp[2].kind == ARCH_LAMP_OBSTACLE && l[0].lamp[2].y > 60 + 45 * 0.55f32;
+  arch_lamps_dock_crane(l[..], 5, 22, 30);
+  #assert l[0].n == 2;
+}
+#test "a tug shows the rules' lights: two masthead lights towing, three on a long tow, the towing light over the stern light" {
+  l: [1] ArchLamps;
+  arch_lamps_tug(l[..], 0);
+  #assert l[0].n == 4 && arch_lamps_whites_at(l[..], 2.7) == 1;
+  // red to port (-z), green to starboard (+z), at the same place along
+  port := l[0].lamp[1]; star := l[0].lamp[2];
+  #assert port.r == 1 && port.g < 0.1 && port.z < 0 && star.g == 1 && star.r < 0.2 && star.z > 0 && port.x == star.x;
+  arch_lamps_tug(l[..], 150);
+  #assert l[0].n == 6 && arch_lamps_whites_at(l[..], 2.7) == 2;
+  arch_lamps_tug(l[..], 600);
+  #assert l[0].n == 7 && arch_lamps_whites_at(l[..], 2.7) == 3;
+  // the towing light: yellow, straight over the stern light
+  stern := l[0].lamp[5]; tow := l[0].lamp[6];
+  #assert tow.r == 1 && tow.g > 0.5 && tow.b < 0.3 && tow.x == stern.x && tow.y > stern.y && stern.x < -14;
+}
+#test "a towed hull shows sidelights at its bow and a stern light; at anchor, one white light forward" {
+  l: [1] ArchLamps;
+  arch_lamps_towed(l[..], 300, 100, 30);
+  #assert l[0].n == 3 && l[0].lamp[0].x > 140 && l[0].lamp[0].z < -40 && l[0].lamp[1].z > 40 && l[0].lamp[2].x < -140 && l[0].lamp[2].y == 31;
+  arch_lamps_anchored(l[..], 120, 8);
+  #assert l[0].n == 1 && l[0].lamp[0].x == 58 && l[0].lamp[0].y == 11;
+}
+#test "a lamp turns and stretches as its record turns and stretches the part" {
+  a := ArchLamp.{x = 10, y = 2, z = 0};
+  p := arch_lamp_turn(a, 100, 5, 50, 0, 1, 1, 1);
+  #assert p[0] == 110 && p[1] == 7 && p[2] == 50;
+  // a quarter turn: +x runs along -z (PR_R_YAW), +z along +x
+  q := arch_lamp_turn(a, 0, 0, 0, 1.5707963f32, 2, 3, 1);
+  #assert abs(q[0]) < 0.001 && abs(q[2] + 20) < 0.001 && q[1] == 6;
+  r := arch_lamp_turn(ArchLamp.{z = 4}, 0, 0, 0, 1.5707963f32, 1, 1, 1);
+  #assert abs(r[0] - 4) < 0.001 && abs(r[2]) < 0.001;
+}

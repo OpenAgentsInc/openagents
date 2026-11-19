@@ -24,7 +24,11 @@
 // For the other content sets:
 //   night_lamp        one lamp at a post another set placed (content-city's street lamps): a
 //                     pool and a glow, no post
-//   night_work_light  a work light on its own mast (the construction view's yards)
+//   night_work_light  a work light on its own mast
+//   night_lamps       a kit part's own lamps (metaverse-engine/arch/lights.coax: a crane's work light
+//                     and red obstacle lights, a ship's navigation lights), where the part stands:
+//                     the dock's cranes here, and the construction view's yards, cranes and craft
+//                     (slab-build-draw.coax)
 //   night_post        the light of one of content-city's street lamps (arch_street_lamp, 8.5 m, its
 //                     arm 2.2 m), from the post's foot and its turn
 //   NIGHT_STREETS     true: this file stands its own street lamps on a 25 m grid of the open deck
@@ -32,6 +36,7 @@
 //   coax/bin/coax test apps/openagents-web/slab.coax --only night
 
 #load "../../metaverse-engine/arch/city.coax";
+#load "../../metaverse-engine/arch/lights.coax";
 
 NIGHT_STREETS :: false;     // the street lamps' posts are content-city's (slab-content-city.coax calls night_post at each)
 NIGHT_GRID :: 25.0f32;      // street lamps: one each way every 25 m
@@ -57,10 +62,39 @@ night_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
 
 // A lamp's glow: a ball `size` across at (x, y, z), coloured (r, g, b); a beacon flashes.
 night_glow :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y: f32, z: f32, size: f32, r: f32, g: f32, b: f32, beacon: bool) {
+  night_glow_at(ph, l, x, y, z, size, r, g, b, beacon, false);
+}
+// The same, for a glow that does not ride the platform (`free`: a ship's, the construction view's).
+night_glow_at :: (ph: [] SlabPhoto, l: [] PrList, x: f32, y: f32, z: f32, size: f32, r: f32, g: f32, b: f32, beacon: bool, free: bool) {
   k := pr_put(l, ph[0].content.night.ball, x, y, z, 0, size);
   pr_made_of(l, k, ph[0].content.night.glow);
   pr_tint(l, k, r, g, b);
   pr_motion(l, k, ifx beacon then PR_BEACON else PR_LAMP, slab_hash(x * 0.37f32, z * 0.41f32) * 6.2831853f32);
+  if free { pr_free(l, k); }
+}
+// A kit part's lamps (metaverse-engine/arch/lights.coax), the part stood at (x, y, z), turned `yaw`
+// (its record's turn) and stretched (sx, sy, sz): a glow for every lamp, red ones flashing, and for
+// a work light its pool too when `pools` (a cold white; a lamp of one power, so under a higher one
+// its pool is dimmer by the square of the height and as much wider; climbing walls to its height).
+// `free`: the part does not ride the platform.
+NIGHT_WORK_POOL :: 0.055f32;   // a work light's pool right under it, in whites over pi (our assumption: a lit yard, a little under a well lit street's 0.07)
+NIGHT_WORK_HIGH :: 30.0f32;    // ... from a lamp this high (a floodlight mast); a crane's top lights, twice as high, give a quarter
+night_lamps :: (ph: [] SlabPhoto, l: [] PrList, lamps: [] ArchLamps, x: f32, y: f32, z: f32, yaw: f32, sx: f32, sy: f32, sz: f32, pools: bool, free: bool) {
+  for i: 0..<lamps[0].n {
+    a := lamps[0].lamp[i];
+    p := arch_lamp_turn(a, x, y, z, yaw, sx, sy, sz);
+    if a.kind == ARCH_LAMP_WORK {
+      if pools {
+        high := a.high * sy;
+        q := green_min(1, NIGHT_WORK_HIGH / green_max(high, 1)); e := NIGHT_WORK_POOL * q * q;
+        photo_light(ph, p[0], p[1], p[2], high, e * a.r * 0.9f32, e * a.g, e * a.b * 1.1f32, high);
+      }
+      night_glow_at(ph, l, p[0], p[1], p[2], 1.1, a.r, a.g, a.b, false, free);
+    } else {
+      night_glow_at(ph, l, p[0], p[1], p[2], ifx a.kind == ARCH_LAMP_OBSTACLE then 1.2f32 else 0.8f32, a.r, a.g, a.b, a.flash, free);
+    }
+    ph[0].content.night.lamps += 1;
+  }
 }
 // One lamp at a post that stands already: its pool `high` metres over the ground at (x, z), up
 // to the height `climb` on walls near it, in (r, g, b) (0.07 a well lit street), and its glow.
@@ -194,7 +228,7 @@ night_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   photo_glow(ph, slab_city_lamp(ph), on);
 }
 
-#test "SLAB at night: lamps on the open deck and none inside a building, floodlit temples, work lights, all off at noon" #steps 4000000000 {
+#test "SLAB at night: lamps on the open deck and none inside a building, floodlit temples, work lights, the dock's cranes, all off at noon" #steps 4000000000 {
   s: [1] Slab;
   u: [UNIFORM_FLOATS] f32;
   slab_reset(s[..]); slab_build(s[..], false);
@@ -208,16 +242,18 @@ night_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   ph := s[0].photo[..];
   #assert !ph[0].full && ph[0].light_count > 150 && ph[0].light_count < PHOTO_LIGHTS && ph[0].content.night.lamps > 150;
   w := photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false);
-  temples := 0; works := 0; streets := 0;
+  temples := 0; works := 0; streets := 0; cranes := 0;
   for k: 0..<ph[0].light_count {
     o := k * PR_LIGHT_FLOATS; x := ph[0].lights[o]; y := ph[0].lights[o + 1]; z := ph[0].lights[o + 2];
-    #assert abs(x) < SLAB_LENGTH * 0.5f32 + 8 && abs(z) < SLAB_BEAM * 0.5f32 + 8 && y > SLAB_DECK && y < SLAB_DECK + NIGHT_MAST + 1;
+    #assert abs(x) < SLAB_LENGTH * 0.5f32 + 8 && abs(z) < SLAB_BEAM * 0.5f32 + 8 && y > SLAB_DECK && y < SLAB_DECK + CITY_CRANE_TALL + 1;
     if abs(y - SLAB_DECK - 0.6f32) < 0.01 { temples += 1; }
+    if abs(y - SLAB_DECK - CITY_CRANE_TALL + 0.4f32) < 0.01 { cranes += 1; }
     if abs(y - SLAB_DECK - NIGHT_MAST) < 0.01 { works += 1; }
     // a street lamp's head stands over open deck
     if abs(y - SLAB_DECK - NIGHT_CITY_HEIGHT - 0.1f32) < 0.01 { streets += 1; }
   }
-  #assert temples >= 8 && works >= 8 && streets > 100;
+  // the dock's four cranes light the quay under their girders (metaverse-engine/arch/lights.coax)
+  #assert temples >= 8 && works >= 8 && streets > 100 && cranes == 4;
   // at night they are on; at noon off
   #assert u[U_PHOTO + PR_LAMPS] > 0.9 && u[U_PHOTO + PR_LAMPS + 3] > 0.5;
   slab_photo_frame(s[..], u[..], sim_sun(27.8, 5.5, 12), false);

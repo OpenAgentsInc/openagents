@@ -19,6 +19,7 @@ SLAB_PHOTO :: 15872;   // the photoreal frame's block in the uniforms (slab.coax
 SLAB_PHOTO_ON :: SLAB_PHOTO + PR_FLOATS;          // 1: the realm draws photoreal
 SLAB_PHOTO_MESHES :: SLAB_PHOTO + PR_FLOATS + 1;  // 1: the meshes draw the platform this frame (0 under the sea)
 SLAB_PHOTO_CONTACT :: SLAB_PHOTO + PR_FLOATS + 2; // 1: the post pass draws contact (photoreal.coax pr_post)
+SLAB_PHOTO_WORLD_LAMPS :: SLAB_PHOTO + PR_FLOATS + 3; // 1: the lamp field lies in the drawing's frame and lights every part (the build view's)
 SLAB_PAINT :: 63.0f32;   // the material row that means: the plan's own paint for the record's kind (slab_paint)
 
 slab_photo :: (u:[]f32)->bool {return u[SLAB_PHOTO_ON]>0.5f32;}
@@ -425,8 +426,11 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     r:V3=reflect3(rd,n);
     mirrored=slab_photo_mirror(sb_add(wh,sb_mul(nh,0.15f32)),sb_dir_to_hull(r,u),mirrored,u,field,materials);
   }
-  // the lamps: their pools baked in the field, and the near ones' highlights (hull frame)
-  lamp:V3=ifx free then v3(0.0f32,0.0f32,0.0f32) else pr_lamps(wh,nh,sb_dir_to_hull(toward,u),s,u,b,field,materials);
+  // the lamps: their pools baked in the field, and the near ones' highlights (hull frame); the
+  // build view's field is in the drawing's frame and lights its free parts too
+  lamp:V3=v3(0.0f32,0.0f32,0.0f32);
+  if (u[SLAB_PHOTO_WORLD_LAMPS]>0.5f32) {lamp=pr_lamps(v.world,n,toward,s,u,b,field,materials);}
+  else if (!free) {lamp=pr_lamps(wh,nh,sb_dir_to_hull(toward,u),s,u,b,field,materials);}
   c:V3=pr_out(pr_air(add3(pr_lit(s,toward,reach,open,mirrored,u,b),lamp),v.world,u,b),u,b);
   // SLAB's own, over the display's colour: the stacks' smoke between the eye and the surface,
   // and a warm pulse on what is selected
