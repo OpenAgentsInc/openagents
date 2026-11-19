@@ -46,7 +46,7 @@ Two design rules keep the Foreman legible rather than magical:
 
 ### 1. Commanding Other Chats
 
-The Foreman can inspect every chat in `CoderStore` and every live `CoderRun` in `apps/coder-desktop/App.swift`:
+The Foreman can inspect every chat in `CoderStore` and every live `CoderRun` in `apps/coder-desktop/` (`Store.swift`, `Window.swift`):
 
 - Read the status of all chats (idle, running, blocked on a gated `ask`, hit budget, or errored) and read bounded turn ranges from any chat's transcript.
 - Send follow-up instructions to an existing chat—waking it headlessly via `cd_headless` if it is not the currently focused window chat.

@@ -251,7 +251,7 @@ So with the GameBuilder skill and command line installed
 ## How a message runs
 
 The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts
-it on the first message. `App.swift` carries bytes between the worker and the
+it on the first message. `Worker.swift` carries bytes between the worker and the
 page. The page (`page.coax`) writes the task line and reads every reply line
 with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
 Each sub-agent is one more worker process, which the app starts (through the daemon, see [Runs outlive Coder](#runs-outlive-coder)) when
@@ -379,7 +379,17 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `app.coax` | The compiled unit: the page and the atlas tables |
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |
-| `App.swift` | The AppKit lifecycle, the window, the editor's placement, the workers (the daemon's runs, or child processes) and the kept chats' files |
+| `Worker.swift` | The worker (the daemon's run, or a child process), the Claude key, the OpenRouter models and the skills note |
+| `Store.swift` | The kept chats' list and files |
+| `Window.swift` | A chat's run and its kept turn, the window's state, the page and editor, the clock, what the page asks for, and quitting |
+| `Window+Runs.swift` | Workers wired to pages, the daemon's runs reattached after a relaunch, replies out of view, and syncing with the daemon |
+| `Window+Chats.swift` | Opening, keeping, renaming and deleting chats, the working folder and text size |
+| `Window+Settings.swift`, `Window+Dialogs.swift` | The settings screen's wiring, and the budget, goal, Claude key and OpenRouter dialogs |
+| `Window+Menus.swift` | Right-click menus |
+| `Window+Update.swift` | Checking for updates, the update pill, install and relaunch |
+| `Window+Foreman.swift` | The Foreman chat: its tier, history, audit log, and opening it |
+| `Window+ForemanAPI.swift`, `Window+ForemanChats.swift` | The Foreman control API's routes |
+| `AppDelegate.swift` | The app delegate, the status item, the main menu and `main` |
 | `DaemonClient.swift` | The unified daemon's local socket: health, Foreman policy, session metadata, and the worker runs |
 | `ForemanOperator.swift` | The Foreman control API's two credentials, route policy and control file, for programs outside the Foreman chat |
 | `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |

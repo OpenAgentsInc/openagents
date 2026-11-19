@@ -20,7 +20,8 @@ cflags=(-mmacosx-version-min=14.0 -O2 -ffp-contract=off -fno-fast-math -w -I"$wo
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gallery.c" -o "$work/c/gallery.o"
 /usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 -import-objc-header "$here/Bridge.h" \
-  "$here/App.swift" "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$repo/apps/shared/native/KitEditorMac.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
+  "$here/Worker.swift" "$here/Store.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/AppDelegate.swift" \
+  "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$repo/apps/shared/native/KitEditorMac.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \
   -o "$app/Contents/MacOS/Coder.new"
 mv "$app/Contents/MacOS/Coder.new" "$app/Contents/MacOS/Coder"
