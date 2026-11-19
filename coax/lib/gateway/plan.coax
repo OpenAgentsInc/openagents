@@ -170,7 +170,14 @@ GwPlan :: struct {
 
 GwPlanBuffers :: struct {
   call: [1] GwCallBuffers;
-  body: [524288] u8;             // the request: Microcoder's state reaches 448 KB
+  body: [1572864] u8;            // the request: Microcoder's state (448 KB) plus multimodal image attachments
+}
+
+gw_req_has_images :: (req: GwRequest) -> bool {
+  for i: 0..<req.messages.count {
+    if req.messages[i].images.count > 0 { return true; }
+  }
+  return false;
 }
 
 gw_plan_init :: (p: [] GwPlan, b: [] GwPlanBuffers) {
@@ -232,7 +239,8 @@ gw_plan_launch :: (p: [] GwPlan, bench: [] GwBench) -> bool {
       m=json_raw(metadata[..],m,",\"endpoint_sha256\":[");
       for byte,j:identity {if j>0 {m=json_raw(metadata[..],m,",");}m=json_write_int(metadata[..],m,cast(int)byte);}
       m=json_raw(metadata[..],m,"]}");
-      if m<0 || !jf_request(p[0].journal,body,cast(string)metadata[0..<m]) || !jf_begin(p[0].journal,AjKind.model_intent) {
+      jbody := ifx body.count > AF_REQUEST && gw_req_has_images(req) then cast(string) body[0..<AF_REQUEST] else body;
+      if m<0 || !jf_request(p[0].journal,jbody,cast(string)metadata[0..<m]) || !jf_begin(p[0].journal,AjKind.model_intent) {
         p[0].why="durable request journal failed; no request started";p[0].at=p[0].n;return false;
       }
       p[0].journal_live=true;

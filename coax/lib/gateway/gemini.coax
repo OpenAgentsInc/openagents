@@ -29,15 +29,31 @@ gw_gemini_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
   last := "";
   for m: req.messages {
     role := ifx m.role == "assistant" then "model" else "user";
-    if m.text.count == 0 && role == "model" { continue; }
-    if role == last { n = json_raw(out, n, ",{\"text\":"); }
-    else {
+    if m.text.count == 0 && m.images.count == 0 && role == "model" { continue; }
+    first_part := false;
+    if role != last {
       if last.count > 0 { n = json_raw(out, n, "]},"); }
-      n = json_raw(out, n, "{\"role\":\""); n = json_raw(out, n, role); n = json_raw(out, n, "\",\"parts\":[{\"text\":");
+      n = json_raw(out, n, "{\"role\":\""); n = json_raw(out, n, role); n = json_raw(out, n, "\",\"parts\":[");
       last = role;
+      first_part = true;
     }
-    n = json_write_string(out, n, m.text);
-    n = json_raw(out, n, "}");
+    if m.text.count > 0 || m.images.count == 0 {
+      if !first_part { n = json_raw(out, n, ","); }
+      n = json_raw(out, n, "{\"text\":");
+      n = json_write_string(out, n, m.text);
+      n = json_raw(out, n, "}");
+      first_part = false;
+    }
+    for img: m.images {
+      if img.media_type.count == 0 || img.data.count == 0 { continue; }
+      if !first_part { n = json_raw(out, n, ","); }
+      n = json_raw(out, n, "{\"inlineData\":{\"mimeType\":");
+      n = json_write_string(out, n, img.media_type);
+      n = json_raw(out, n, ",\"data\":");
+      n = json_write_string(out, n, img.data);
+      n = json_raw(out, n, "}}");
+      first_part = false;
+    }
   }
   if last.count > 0 { n = json_raw(out, n, "]}"); }
   n = json_raw(out, n, "]");

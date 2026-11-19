@@ -13,6 +13,7 @@
 // Checks: coax test coax/lib/microcoder/run.coax --library (no main of its own).
 
 #load "tools.coax";
+#load "image.coax";
 #load "aware.coax";
 #load "../gateway/plan.coax";
 
@@ -167,6 +168,8 @@ McRun :: struct {
   // The compiler's answers and the working memory (aware.coax; GitHub #13444, #13445): the owner's
   // storage, set up with mc_aw_start after mc_init. Empty: the run has neither, and is as it was.
   aw: [] McAware;
+  // Multimodal image attachments (from user message paths and image `view` calls).
+  img: [1] McImageStore;
 }
 
 // The step a result recorded now belongs to: the open one, or the one about to open.
@@ -174,9 +177,35 @@ mc_run_step :: (r: [] McRun) -> int { return ifx r[0].l[0].st[0].open >= 0 then 
 // What is left of the run's time, for a compiler question.
 mc_run_left :: (r: [] McRun) -> int { return r[0].deadline - cxproc_now_ms(); }
 
-// A view for this run: the tools' (mc_view_lines), or, with a mode on, aware.coax's, which
-// tells the memory and adds the file's hash.
+// Scans the user task for image file paths (including macOS screenshot paths with spaces
+// and U+202F) and attaches any readable images to the run's multimodal prompt.
+mc_run_attach_task_images :: (r: [] McRun) {
+  mc_image_store_reset(r[0].img[..]);
+  r[0].l[0].images = r[0].img[0].images[0..<0];
+  scan: [1] McImageScan;
+  mc_image_scan(r[0].l[0].st[0].task, scan[..]);
+  for i: 0..<scan[0].n {
+    // Paths explicitly referenced/pasted by the user are allowed even outside cwd.
+    res := mc_image_attach(r[0].img[..], r[0].cwd, scan[0].paths[i], "danger-full-access");
+    if res.ok {
+      r[0].l[0].images = r[0].img[0].images[0..<r[0].img[0].n];
+    }
+  }
+}
+
+// A view for this run: image files are attached as multimodal parts; text files use
+// mc_view_lines, or, with a mode on, aware.coax's mc_aw_view.
 mc_run_view :: (r: [] McRun, entry: string, room: int) -> McViewResult {
+  spec := mc_view_spec(entry);
+  if mc_is_image_path(spec.path) {
+    res := mc_image_attach(r[0].img[..], r[0].cwd, spec.path, r[0].profile);
+    if res.ok {
+      r[0].l[0].images = r[0].img[0].images[0..<r[0].img[0].n];
+      note := mc_image_view_note(spec.path, res, r[0].shaped[..]);
+      return McViewResult.{found = true, content = note};
+    }
+    return McViewResult.{found = false, content = res.why};
+  }
   if r[0].aw.count == 0 { return mc_view_lines(r[0].cwd, entry, r[0].profile, r[0].spill_dir, room, r[0].tb[..]); }
   return mc_aw_view(r[0].aw, entry, r[0].spill_dir, room, mc_run_step(r), r[0].tb[..]);
 }
@@ -216,6 +245,7 @@ mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effo
   r[0].nstart = 0;
   r[0].runs += 1;
   if r[0].journal.count > 0 { r[0].nstart = mc_git_head(cwd, r[0].profile, r[0].tb[0].out[..], r[0].start[..]).count; }
+  mc_run_attach_task_images(r);
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
 }
 
@@ -510,9 +540,19 @@ mc_run_intent :: (r:[]McRun,kind:AjKind,target:string)->bool {
     r[0].refused=mc_run_limit(ifx view then MC_LIMIT_READ else MC_LIMIT_EFFECT,ifx view then r[0].reads else r[0].effects,now,r[0].deadline-1000);
     return false;
   }
-  if !jf_intent(r[0].journal,kind,target) {return false;}
+  if !jf_intent(r[0].journal,kind,mc_journal_clip(target,AJ_PAYLOAD)) {return false;}
   if view {r[0].reads+=1;} else {r[0].effects+=1;}
   return true;
+}
+
+// Single-frame journal records (decision, command_intent, view_intent) carry at most AJ_PAYLOAD bytes;
+// clip metadata to fit instead of failing the run when a command exceeds the frame limit.
+mc_journal_clip :: (s: string, most: int) -> string {
+  if most <= 0 { return ""; }
+  if s.count <= most { return s; }
+  n := most;
+  while n > 0 && (cast(u8) s[n] & 0xc0) == 0x80 { n -= 1; }
+  return cast(string) s[0..<n];
 }
 
 // Which limit a refused call, command or view ran into, for the ending: the count's own
@@ -686,7 +726,13 @@ mc_run_answer :: (r: [] McRun, allow: bool, why: string, out: [] McRunEvent) -> 
   l := r[0].l[..]; a := mc_pending(l); i := r[0].ask_i;
   k := 0;
   if r[0].journal.count>0 {
-    b:[8192]u8;n:=json_raw(b[..],0,ifx allow then "allow " else "refuse ");n=json_raw(b[..],n,a.commands[i]);n=json_raw(b[..],n," reason=");n=json_raw(b[..],n,why);
+    b:[AJ_PAYLOAD]u8;
+    n:=json_raw(b[..],0,ifx allow then "allow " else "refuse ");
+    why_clip:=mc_journal_clip(why,1024);
+    room:=AJ_PAYLOAD-n-8-why_clip.count;
+    n=json_raw(b[..],n,mc_journal_clip(a.commands[i],room));
+    n=json_raw(b[..],n," reason=");
+    n=json_raw(b[..],n,why_clip);
     if n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n]) {return mc_run_failed(r,out,0);}
   }
   if allow { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
@@ -804,8 +850,12 @@ mc_run_stop :: (r: [] McRun, out: [] McRunEvent) -> int {
 mc_run_ask :: (r:[]McRun,out:[]McRunEvent,k:int,command:string)->int {
   if r[0].ask_ticket==9223372036854775807 {return mc_run_failed(r,out,k);}
   r[0].ask_ticket+=1;r[0].asking=true;
-  b:[8192]u8;n:=json_raw(b[..],0,"proposal=");n=json_write_int(b[..],n,r[0].ask_ticket);n=json_raw(b[..],n," command=");n=json_raw(b[..],n,command);
-  if r[0].journal.count>0 && (n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n])) {return mc_run_failed(r,out,k);}
+  if r[0].journal.count>0 {
+    b:[AJ_PAYLOAD]u8;
+    n:=json_raw(b[..],0,"proposal=");n=json_write_int(b[..],n,r[0].ask_ticket);n=json_raw(b[..],n," command=");
+    n=json_raw(b[..],n,mc_journal_clip(command,AJ_PAYLOAD-n));
+    if n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n]) {return mc_run_failed(r,out,k);}
+  }
   return mc_run_put(out,k,McRunEvent.{kind=MR_ASK,ticket=r[0].ask_ticket,text=command});
 }
 mc_run_answer_owned :: (r:[]McRun,ticket:int,allow:bool,why:string,out:[]McRunEvent)->int {
@@ -854,4 +904,45 @@ MC_RUN_SPLIT :: "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",
     if gated { #assert n == 1 && out[0].kind == MR_ASK && out[0].text == "true" && out[0].ticket == 2 && r[0].asking; }
     else { #assert n == 1 && out[0].kind == MR_STEP && !r[0].asking && r[0].calling; }     // no commands (a check cannot run one): the next call
   }
+}
+
+#test "attached images propagate into mc_request and format a descriptive view note" {
+  f: [1] McRunFixture;
+  mc_run_fixture(f[..], "describe the screenshot");
+  r := f[0].r[..];
+  r[0].img[0].images[0] = GwImage.{media_type = "image/png", data = "iVBORw0KGgo="};
+  r[0].img[0].n = 1;
+  r[0].l[0].images = r[0].img[0].images[0..<1];
+  req := mc_request(r[0].l[..]);
+  #assert req.messages.count == 1 && req.messages[0].images.count == 1;
+  #assert req.messages[0].images[0].media_type == "image/png" && req.messages[0].images[0].data == "iVBORw0KGgo=";
+  note_buf: [256] u8;
+  note := mc_image_view_note("/Users/me/Desktop/Screenshot 2026.png", McImageLoad.{ok = true, media_type = "image/png", raw_bytes = 1024, b64 = "iVBORw0KGgo="}, note_buf[..]);
+  #assert ps_count(note, "[image attached:") == 1 && ps_count(note, "image/png") == 1;
+}
+
+#test "mc_journal_clip keeps journal metadata within AJ_PAYLOAD on UTF-8 boundaries" {
+  #assert mc_journal_clip("abc", 10) == "abc";
+  #assert mc_journal_clip("abc", 3) == "abc";
+  #assert mc_journal_clip("abc", 2) == "ab";
+  #assert mc_journal_clip("abc", 0) == "";
+  #assert mc_journal_clip("abc", -5) == "";
+  // Multi-byte UTF-8: em-dash (3 bytes: e2 80 94) after 'a' must not split mid-codepoint.
+  u := [5] u8.[97, 0xe2, 0x80, 0x94, 98];
+  us := cast(string) u[..];
+  #assert mc_journal_clip(us, 2) == "a";
+  #assert mc_journal_clip(us, 3) == "a";
+  #assert mc_journal_clip(us, 4).count == 4;
+  // Commands longer than 8192 and AJ_PAYLOAD clip cleanly to AJ_PAYLOAD.
+  cb: [AJ_PAYLOAD + 1024] u8;
+  i := 0; while i < cb.count { cb[i] = 120; i += 1; }
+  long_cmd := cast(string) cb[..];
+  #assert mc_journal_clip(long_cmd, AJ_PAYLOAD).count == AJ_PAYLOAD;
+  // Non-journaled gated ask still delivers the full command text.
+  r: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+  mc_init(r[0].l[..], sb[..], lb[..], "t", "long command", "{}", 0.9);
+  r[0].gated = true;
+  out: [8] McRunEvent;
+  k := mc_run_ask(r[..], out[..], 0, long_cmd);
+  #assert !r[0].ended && r[0].asking && k == 1 && out[0].kind == MR_ASK && out[0].text.count == long_cmd.count;
 }

@@ -83,7 +83,22 @@ gwt_history_valid :: (messages:[]GwMessage)->bool #effects(all) {
 // Provider-native continuation bytes; called only after whole-history admission.
 gwt_chat_message :: (out:[]u8,at:int,m:GwMessage)->int #effects(all) {
  n:=at;if m.role=="tool" {n=json_raw(out,n,"{\"role\":\"tool\",\"tool_call_id\":");n=json_write_string(out,n,m.result.call_id);n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,m.result.output);return json_raw(out,n,"}");}
- n=json_raw(out,n,ifx m.role=="assistant" then "{\"role\":\"assistant\",\"content\":" else "{\"role\":\"user\",\"content\":");n=json_write_string(out,n,m.text);
+ n=json_raw(out,n,ifx m.role=="assistant" then "{\"role\":\"assistant\",\"content\":" else "{\"role\":\"user\",\"content\":");
+ if m.images.count==0 { n=json_write_string(out,n,m.text); } else {
+  n=json_raw(out,n,"["); first:=true;
+  if m.text.count>0 { n=json_raw(out,n,"{\"type\":\"text\",\"text\":"); n=json_write_string(out,n,m.text); n=json_raw(out,n,"}"); first=false; }
+  for img:m.images {
+   if img.media_type.count==0 || img.data.count==0 { continue; }
+   if !first { n=json_raw(out,n,","); }
+   n=json_raw(out,n,"{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:");
+   n=json_raw(out,n,img.media_type);
+   n=json_raw(out,n,";base64,");
+   n=json_raw(out,n,img.data);
+   n=json_raw(out,n,"\"}}");
+   first=false;
+  }
+  n=json_raw(out,n,"]");
+ }
  if m.calls.count>0 {n=json_raw(out,n,",\"tool_calls\":[");for call,i:m.calls {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"{\"id\":");n=json_write_string(out,n,call.call_id);n=json_raw(out,n,",\"type\":\"function\",\"function\":{\"name\":");n=json_write_string(out,n,call.name);n=json_raw(out,n,",\"arguments\":");n=json_write_string(out,n,call.input_json);n=json_raw(out,n,"}}");}n=json_raw(out,n,"]");}
  return json_raw(out,n,"}");
 }

@@ -97,6 +97,7 @@ McLoop :: struct {
   finish_refused: int;           // finishes the owner refused
   agents: bool;                  // the action's delegate is read: the owner runs sub-agents (mc_agents)
   claude: bool;                  // its levels include the Claude models: the owner runs Claude Code too
+  images: [] GwImage;            // multimodal images attached to the user message for this run
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
@@ -164,7 +165,7 @@ mc_request :: (l: [] McLoop) -> GwRequest {
     if l[0].st[0].nlog == kept { mc_log_drop(l[0].st[..], 0); }
     state = mc_state_json(l[0].st[..], l[0].prompt);
   }
-  l[0].msgs[0] = GwMessage.{role = "user", text = state};
+  l[0].msgs[0] = GwMessage.{role = "user", text = state, images = l[0].images};
   return GwRequest.{system = l[0].system, messages = l[0].msgs[..], schema = l[0].schema, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
 

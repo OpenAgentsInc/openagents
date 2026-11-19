@@ -1,0 +1,390 @@
+// Multimodal image support for Microcoder: detecting image paths in user
+// messages (including paths with spaces, narrow no-break spaces U+202F,
+// backslash escapes, quotes, file://, and ~/) and loading/encoding image
+// files (png, jpg, jpeg, webp, gif) as base64 for the gateway request.
+
+#load "tools.coax";
+#load "../text/base64.coax";
+#load "../gateway/types.coax";
+
+MC_IMAGES_MAX :: 4;              // attached images kept per run
+MC_IMAGE_RAW_MAX :: 524288;      // 512 KB max raw image bytes before base64
+MC_IMAGE_B64_BUF :: 786432;      // 768 KB total base64 storage across attached images
+MC_IMAGE_PATH_BUF :: 4096;       // path storage for attached images
+
+McImageStore :: struct {
+  images: [MC_IMAGES_MAX] GwImage;
+  paths: [MC_IMAGES_MAX] string;
+  n: int;
+  b64: [MC_IMAGE_B64_BUF] u8;
+  nb64: int;
+  pbuf: [MC_IMAGE_PATH_BUF] u8;
+  npbuf: int;
+}
+
+McImageScan :: struct {
+  paths: [MC_IMAGES_MAX] string;
+  n: int;
+  buf: [MC_IMAGE_PATH_BUF] u8;
+  nbuf: int;
+}
+
+McImageLoad :: struct {
+  ok: bool;
+  media_type: string;
+  raw_bytes: int;
+  b64: string;
+  why: string;
+}
+
+mc_ascii_lower :: (c: u8) -> u8 {
+  if c >= 'A' && c <= 'Z' { return c + 32; }
+  return c;
+}
+
+mc_ends_with_ci :: (s: string, suffix: string) -> bool {
+  if s.count < suffix.count { return false; }
+  off := s.count - suffix.count;
+  for i: 0..<suffix.count {
+    if mc_ascii_lower(s[off + i]) != mc_ascii_lower(suffix[i]) { return false; }
+  }
+  return true;
+}
+
+// Supported LLM multimodal image MIME type from file extension, or "" when not an image.
+mc_image_ext_type :: (path: string) -> string {
+  if mc_ends_with_ci(path, ".png") { return "image/png"; }
+  if mc_ends_with_ci(path, ".jpg") || mc_ends_with_ci(path, ".jpeg") { return "image/jpeg"; }
+  if mc_ends_with_ci(path, ".webp") { return "image/webp"; }
+  if mc_ends_with_ci(path, ".gif") { return "image/gif"; }
+  return "";
+}
+
+mc_is_image_path :: (path: string) -> bool {
+  return mc_image_ext_type(path).count > 0;
+}
+
+// Supported LLM multimodal image MIME type from file magic bytes, or "".
+mc_image_magic_type :: (data: [] u8) -> string {
+  if data.count >= 8 && data[0] == 0x89 && data[1] == 'P' && data[2] == 'N' && data[3] == 'G' && data[4] == 0x0D && data[5] == 0x0A && data[6] == 0x1A && data[7] == 0x0A {
+    return "image/png";
+  }
+  if data.count >= 3 && data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
+    return "image/jpeg";
+  }
+  if data.count >= 6 && data[0] == 'G' && data[1] == 'I' && data[2] == 'F' && data[3] == '8' && (data[4] == '7' || data[4] == '9') && data[5] == 'a' {
+    return "image/gif";
+  }
+  if data.count >= 12 && data[0] == 'R' && data[1] == 'I' && data[2] == 'F' && data[3] == 'F' && data[8] == 'W' && data[9] == 'E' && data[10] == 'B' && data[11] == 'P' {
+    return "image/webp";
+  }
+  return "";
+}
+
+// True when byte at idx is a boundary after an image extension.
+mc_img_end_delim :: (s: string, idx: int) -> bool {
+  if idx >= s.count { return true; }
+  c := s[idx];
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ',' || c == ';' || c == ':' || c == ')' || c == ']' || c == '>' || c == '}' || c == '\'' || c == '"' || c == '`' || c == '?' || c == '!';
+}
+
+// True when the byte right before a path start is a separator (whitespace or opening punctuation).
+mc_img_start_delim :: (s: string, idx: int) -> bool {
+  if idx <= 0 { return true; }
+  c := s[idx - 1];
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '(' || c == '[' || c == '<' || c == '{' || c == '\'' || c == '"' || c == '`' || c == '=' || c == ',' || c == ';';
+}
+
+// Matches a known image extension starting at s[i] ('.png', '.jpg', '.jpeg', '.webp', '.gif').
+// Returns the extension length (4 or 5) when followed by a delimiter, else 0.
+mc_img_ext_at :: (s: string, i: int) -> int {
+  if i >= s.count || s[i] != '.' { return 0; }
+  rem := cast(string) s[i..<s.count];
+  exts: [5] string;
+  exts[0] = ".jpeg"; exts[1] = ".webp"; exts[2] = ".png"; exts[3] = ".jpg"; exts[4] = ".gif";
+  for k: 0..<5 {
+    e := exts[k];
+    if rem.count >= e.count {
+      ok := true;
+      for j: 0..<e.count { if mc_ascii_lower(rem[j]) != e[j] { ok = false; break; } }
+      if ok && mc_img_end_delim(s, i + e.count) { return e.count; }
+    }
+  }
+  return 0;
+}
+
+// Copies raw candidate into s.buf, unescaping shell backslash-escapes (\ , \(, \U+202F, etc.)
+// and stripping file:// prefix. Returns the stored slice, or "" on overflow/URL.
+mc_img_keep_path :: (out: [] McImageScan, raw: string) -> string {
+  p := raw;
+  // skip http:// and https:// URLs
+  if ps_find(p, "http://") >= 0 || ps_find(p, "https://") >= 0 { return ""; }
+  if p.count > 7 && p[0] == 'f' && p[1] == 'i' && p[2] == 'l' && p[3] == 'e' && p[4] == ':' && p[5] == '/' && p[6] == '/' {
+    p = cast(string) p[7..<p.count];
+  }
+  if p.count == 0 { return ""; }
+  start := out[0].nbuf;
+  i := 0;
+  while i < p.count {
+    c := p[i];
+    if c == '\\' && i + 1 < p.count {
+      nxt := p[i + 1];
+      // shell-escaped space, punctuation, backslash, or UTF-8 non-ASCII (e.g. \ + U+202F)
+      if nxt == ' ' || nxt == '\\' || nxt == '(' || nxt == ')' || nxt == '[' || nxt == ']' || nxt == '\'' || nxt == '"' || nxt == '&' || nxt == ';' || nxt == '$' || nxt >= 0x80 {
+        i += 1;
+        continue;
+      }
+    }
+    if out[0].nbuf >= out[0].buf.count { out[0].nbuf = start; return ""; }
+    out[0].buf[out[0].nbuf] = c;
+    out[0].nbuf += 1;
+    i += 1;
+  }
+  res := cast(string) out[0].buf[start..<out[0].nbuf];
+  // deduplicate
+  for k: 0..<out[0].n {
+    if out[0].paths[k] == res { out[0].nbuf = start; return ""; }
+  }
+  return res;
+}
+
+// Scans a user message for image file paths (png, jpg, jpeg, webp, gif), including:
+// - quoted paths ('...', "...", `...`)
+// - absolute paths with spaces or narrow no-break spaces (U+202F) like macOS screenshots
+// - backslash-escaped paths from drag-and-drop into a terminal
+// - ~/... and relative paths
+mc_image_scan :: (task: string, out: [] McImageScan) {
+  out[0].n = 0; out[0].nbuf = 0;
+  bound := 0;
+  i := 0;
+  while i < task.count && out[0].n < MC_IMAGES_MAX {
+    elen := mc_img_ext_at(task, i);
+    if elen == 0 { i += 1; continue; }
+    end := i + elen;
+    // find the start of this path on the same line, not crossing bound
+    line_start := i;
+    while line_start > bound && task[line_start - 1] != '\n' && task[line_start - 1] != '\r' { line_start -= 1; }
+    cand_start := -1;
+    // 1. If closed by a quote right after end, match the opening quote on the same line
+    if end < task.count && (task[end] == '\'' || task[end] == '"' || task[end] == '`') {
+      q := task[end];
+      j := i - 1;
+      while j >= line_start {
+        if task[j] == q { cand_start = j + 1; break; }
+        j -= 1;
+      }
+    }
+    // 2. Look backwards for an explicit path prefix (file://, /, ~/, ./, ../) preceded by a delimiter
+    if cand_start < 0 {
+      j := i;
+      while j >= line_start {
+        // check for file://
+        if j + 7 <= i && task[j] == 'f' && task[j + 1] == 'i' && task[j + 2] == 'l' && task[j + 3] == 'e' && task[j + 4] == ':' && task[j + 5] == '/' && task[j + 6] == '/' && mc_img_start_delim(task, j) {
+          cand_start = j; break;
+        }
+        // check for ~/ or ./
+        if j + 2 <= i && (task[j] == '~' || task[j] == '.') && task[j + 1] == '/' && mc_img_start_delim(task, j) {
+          cand_start = j; break;
+        }
+        // check for ../
+        if j + 3 <= i && task[j] == '.' && task[j + 1] == '.' && task[j + 2] == '/' && mc_img_start_delim(task, j) {
+          cand_start = j; break;
+        }
+        // check for absolute /path (preceded by delimiter, not part of //)
+        if task[j] == '/' && (j == 0 || task[j - 1] != '/') && mc_img_start_delim(task, j) {
+          cand_start = j; break;
+        }
+        // stop searching across sentence-level separators unless inside a path
+        j -= 1;
+      }
+    }
+    // 3. Fallback: relative path token back to unescaped ASCII whitespace or delimiter
+    if cand_start < 0 {
+      j := i;
+      while j > line_start {
+        prev := task[j - 1];
+        // allow backslash-escaped spaces
+        if prev == ' ' && j >= 2 && task[j - 2] == '\\' { j -= 2; continue; }
+        if prev == ' ' || prev == '\t' || prev == '(' || prev == '[' || prev == '<' || prev == '\'' || prev == '"' || prev == '`' || prev == ',' || prev == ';' { break; }
+        j -= 1;
+      }
+      cand_start = j;
+    }
+    if cand_start >= 0 && cand_start < i {
+      raw := cast(string) task[cand_start..<end];
+      kept := mc_img_keep_path(out, raw);
+      if kept.count > 0 {
+        out[0].paths[out[0].n] = kept;
+        out[0].n += 1;
+      }
+    }
+    bound = end;
+    i = end;
+  }
+}
+
+// Resolves an image path (expanding ~/ and joining relative paths with cwd).
+// Returns "" when the path is invalid or leaves cwd under a restricted sandbox.
+mc_image_resolve :: (cwd: string, path: string, profile: string, out: [] u8) -> string {
+  if path.count == 0 { return ""; }
+  if path.count >= 2 && path[0] == '~' && path[1] == '/' {
+    if profile != "danger-full-access" { return ""; }
+    hb: [FS_PATH_MAX] u8;
+    home := cl_getenv("HOME", hb[..]);
+    if home.count == 0 { return ""; }
+    n := json_raw(out, 0, home);
+    n = json_raw(out, n, cast(string) path[1..<path.count]);
+    if n < 0 { return ""; }
+    return cast(string) out[0..<n];
+  }
+  if path[0] == '/' {
+    if profile != "danger-full-access" && !mc_path_inside(cwd, path) { return ""; }
+    if path.count > out.count { return ""; }
+    for i: 0..<path.count { out[i] = path[i]; }
+    return cast(string) out[0..<path.count];
+  }
+  if !mc_path_inside(cwd, path) { return ""; }
+  return fs_join(cwd, path, out);
+}
+
+// Downscales an oversized image using macOS sips(1) into a temporary JPEG and reads it into raw.
+// Returns bytes read, or -1 if unavailable or failed.
+mc_image_sips_shrink :: (src: string, max_dim: string, quality: string, raw: [] u8) -> int {
+  if !fs_exists("/usr/bin/sips") { return -1; }
+  tb: [FS_PATH_MAX] u8;
+  tn := json_raw(tb[..], 0, "/tmp/mc-img-");
+  tn = json_write_int(tb[..], tn, cxproc_now_ms());
+  tn = json_raw(tb[..], tn, ".jpg");
+  if tn < 0 { return -1; }
+  tmp := cast(string) tb[0..<tn];
+  h := cxproc_new();
+  if h < 0 { return -1; }
+  ok := mc_proc_arg(h, CL_FIELD_ARG, "/usr/bin/sips")
+     && mc_proc_arg(h, CL_FIELD_ARG, "-Z") && mc_proc_arg(h, CL_FIELD_ARG, max_dim)
+     && mc_proc_arg(h, CL_FIELD_ARG, "-s") && mc_proc_arg(h, CL_FIELD_ARG, "format") && mc_proc_arg(h, CL_FIELD_ARG, "jpeg")
+     && mc_proc_arg(h, CL_FIELD_ARG, "-s") && mc_proc_arg(h, CL_FIELD_ARG, "formatOptions") && mc_proc_arg(h, CL_FIELD_ARG, quality)
+     && mc_proc_arg(h, CL_FIELD_ARG, src)
+     && mc_proc_arg(h, CL_FIELD_ARG, "--out") && mc_proc_arg(h, CL_FIELD_ARG, tmp);
+  if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return -1; }
+  x := cxproc_close_stdin(h);
+  while true { k := cxproc_read_line(h, 15000); if k < 0 && k != CL_TOO_LONG { break; } }
+  status := cxproc_wait(h, 5000);
+  y := cxproc_release(h);
+  if status != 0 { r := fs_remove(tmp); return -1; }
+  n := fs_read(tmp, raw);
+  r := fs_remove(tmp);
+  return n;
+}
+
+// Reads an image file (shrinking oversized ones on macOS with sips), verifies its format,
+// and base64-encodes it into b64_out.
+mc_image_load :: (cwd: string, path: string, profile: string, raw_scratch: [] u8, b64_out: [] u8) -> McImageLoad {
+  pb: [FS_PATH_MAX] u8;
+  full := mc_image_resolve(cwd, path, profile, pb[..]);
+  if full.count == 0 { return McImageLoad.{why = "not shown: the image path is invalid or leaves the sandbox"}; }
+  if fs_kind(full) != FS_FILE { return McImageLoad.{why = "not shown: no such image file"}; }
+  sz := fs_size(full);
+  if sz <= 0 { return McImageLoad.{why = "not shown: the image file is empty or unreadable"}; }
+  n := -1;
+  if sz <= raw_scratch.count && sz <= MC_IMAGE_RAW_MAX {
+    n = fs_read(full, raw_scratch);
+  } else {
+    n = mc_image_sips_shrink(full, "1568", "80", raw_scratch);
+    if n <= 0 || n > MC_IMAGE_RAW_MAX {
+      n = mc_image_sips_shrink(full, "1024", "65", raw_scratch);
+    }
+    if n <= 0 || n > MC_IMAGE_RAW_MAX {
+      return McImageLoad.{why = "not shown: image file exceeds the size limit"};
+    }
+  }
+  if n <= 0 { return McImageLoad.{why = "not shown: could not read the image file"}; }
+  mime := mc_image_magic_type(raw_scratch[0..<n]);
+  if mime.count == 0 { mime = mc_image_ext_type(full); }
+  if mime.count == 0 { return McImageLoad.{why = "not shown: unsupported image format"}; }
+  bn := b64_encode(cast(string) raw_scratch[0..<n], b64_out);
+  if bn <= 0 { return McImageLoad.{why = "not shown: image attachment buffer is full"}; }
+  return McImageLoad.{ok = true, media_type = mime, raw_bytes = n, b64 = cast(string) b64_out[0..<bn]};
+}
+
+mc_image_store_reset :: (st: [] McImageStore) {
+  st[0].n = 0; st[0].nb64 = 0; st[0].npbuf = 0;
+}
+
+// Loads path and appends it to st (deduplicating by resolved path). Returns the load result.
+mc_image_attach :: (st: [] McImageStore, cwd: string, path: string, profile: string) -> McImageLoad {
+  pb: [FS_PATH_MAX] u8;
+  full := mc_image_resolve(cwd, path, profile, pb[..]);
+  if full.count == 0 { return McImageLoad.{why = "not shown: the image path is invalid or leaves the sandbox"}; }
+  for i: 0..<st[0].n {
+    if st[0].paths[i] == full {
+      return McImageLoad.{ok = true, media_type = st[0].images[i].media_type, raw_bytes = (st[0].images[i].data.count * 3) / 4, b64 = st[0].images[i].data};
+    }
+  }
+  if st[0].n >= MC_IMAGES_MAX { return McImageLoad.{why = "not shown: at most 4 images can be attached in one run"}; }
+  if st[0].npbuf + full.count > st[0].pbuf.count { return McImageLoad.{why = "not shown: image path buffer is full"}; }
+  raw: [MC_IMAGE_RAW_MAX] u8;
+  rem := st[0].b64[st[0].nb64..<st[0].b64.count];
+  res := mc_image_load(cwd, path, profile, raw[..], rem);
+  if !res.ok { return res; }
+  pstart := st[0].npbuf;
+  for c: full { st[0].pbuf[st[0].npbuf] = c; st[0].npbuf += 1; }
+  st[0].paths[st[0].n] = cast(string) st[0].pbuf[pstart..<st[0].npbuf];
+  st[0].images[st[0].n] = GwImage.{media_type = res.media_type, data = res.b64};
+  st[0].nb64 += res.b64.count;
+  st[0].n += 1;
+  return res;
+}
+
+// Formats a human-readable view result for an attached image.
+mc_image_view_note :: (path: string, load: McImageLoad, out: [] u8) -> string {
+  n := json_raw(out, 0, "[image attached: ");
+  n = json_raw(out, n, path);
+  n = json_raw(out, n, " (");
+  n = json_raw(out, n, load.media_type);
+  n = json_raw(out, n, ", ");
+  n = json_write_int(out, n, load.raw_bytes);
+  n = json_raw(out, n, " bytes) - included as a multimodal image part in this turn's prompt]");
+  if n < 0 { return "[image attached - included as a multimodal image part]"; }
+  return cast(string) out[0..<n];
+}
+
+#test "image extension and magic byte detection" {
+  #assert mc_image_ext_type("a.png") == "image/png" && mc_image_ext_type("A.PNG") == "image/png";
+  #assert mc_image_ext_type("b.jpg") == "image/jpeg" && mc_image_ext_type("b.JPEG") == "image/jpeg";
+  #assert mc_image_ext_type("c.webp") == "image/webp" && mc_image_ext_type("d.gif") == "image/gif";
+  #assert mc_image_ext_type("e.txt") == "" && !mc_is_image_path("e.txt") && mc_is_image_path("shot.png");
+  png: [8] u8; png[0] = 0x89; png[1] = 'P'; png[2] = 'N'; png[3] = 'G'; png[4] = 0x0D; png[5] = 0x0A; png[6] = 0x1A; png[7] = 0x0A;
+  #assert mc_image_magic_type(png[..]) == "image/png";
+  jpg: [3] u8; jpg[0] = 0xFF; jpg[1] = 0xD8; jpg[2] = 0xFF;
+  #assert mc_image_magic_type(jpg[..]) == "image/jpeg";
+  gif: [6] u8; gif[0] = 'G'; gif[1] = 'I'; gif[2] = 'F'; gif[3] = '8'; gif[4] = '9'; gif[5] = 'a';
+  #assert mc_image_magic_type(gif[..]) == "image/gif";
+  webp: [12] u8; webp[0] = 'R'; webp[1] = 'I'; webp[2] = 'F'; webp[3] = 'F'; webp[8] = 'W'; webp[9] = 'E'; webp[10] = 'B'; webp[11] = 'P';
+  #assert mc_image_magic_type(webp[..]) == "image/webp";
+}
+
+#test "image path scan handles macOS screenshots with spaces, U+202F, escapes, quotes, and URLs" {
+  s: [1] McImageScan;
+  // macOS screenshot with space and U+202F narrow no-break space (UTF-8: E2 80 AF)
+  nnbsp: [3] u8; nnbsp[0] = 0xE2; nnbsp[1] = 0x80; nnbsp[2] = 0xAF;
+  nn := cast(string) nnbsp[..];
+  b1: [256] u8; n1 := json_raw(b1[..], 0, "Look at /Users/christopherdavid/Desktop/Screenshot 2026-11-18 at 10.30.15");
+  n1 = json_raw(b1[..], n1, nn); n1 = json_raw(b1[..], n1, "AM.png and explain it");
+  e1: [256] u8; ne1 := json_raw(e1[..], 0, "/Users/christopherdavid/Desktop/Screenshot 2026-11-18 at 10.30.15");
+  ne1 = json_raw(e1[..], ne1, nn); ne1 = json_raw(e1[..], ne1, "AM.png");
+  mc_image_scan(cast(string) b1[0..<n1], s[..]);
+  #assert s[0].n == 1 && s[0].paths[0] == cast(string) e1[0..<ne1];
+  // backslash-escaped path from terminal drag-and-drop
+  b2: [256] u8; n2 := json_raw(b2[..], 0, "Fix /Users/me/Desktop/Screenshot\\ 2026-11-18\\ at\\ 10.30.15\\");
+  n2 = json_raw(b2[..], n2, nn); n2 = json_raw(b2[..], n2, "AM.png please");
+  e2: [256] u8; ne2 := json_raw(e2[..], 0, "/Users/me/Desktop/Screenshot 2026-11-18 at 10.30.15");
+  ne2 = json_raw(e2[..], ne2, nn); ne2 = json_raw(e2[..], ne2, "AM.png");
+  mc_image_scan(cast(string) b2[0..<n2], s[..]);
+  #assert s[0].n == 1 && s[0].paths[0] == cast(string) e2[0..<ne2];
+  // quoted path, relative path, multiple images, and skipping https URL
+  mc_image_scan("Compare 'my dir/shot 1.jpg' with docs/ui.webp and https://example.com/skip.png", s[..]);
+  #assert s[0].n == 2 && s[0].paths[0] == "my dir/shot 1.jpg" && s[0].paths[1] == "docs/ui.webp";
+  // file:// URI and two absolute paths in one message
+  mc_image_scan("In /Users/me/repo, check file:///Users/me/a.png and /Users/me/b.gif", s[..]);
+  #assert s[0].n == 2 && s[0].paths[0] == "/Users/me/a.png" && s[0].paths[1] == "/Users/me/b.gif";
+}

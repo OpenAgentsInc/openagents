@@ -105,7 +105,29 @@ gw_responses_body :: (req: GwRequest, out: [] u8) -> int {
     n = json_raw(out, n, "{\"role\":");
     n = json_write_string(out, n, ifx m.role == "assistant" then "assistant" else "user");
     n = json_raw(out, n, ",\"content\":");
-    n = json_write_string(out, n, m.text);
+    if m.images.count == 0 {
+      n = json_write_string(out, n, m.text);
+    } else {
+      n = json_raw(out, n, "[");
+      first := true;
+      if m.text.count > 0 {
+        n = json_raw(out, n, "{\"type\":\"input_text\",\"text\":");
+        n = json_write_string(out, n, m.text);
+        n = json_raw(out, n, "}");
+        first = false;
+      }
+      for img: m.images {
+        if img.media_type.count == 0 || img.data.count == 0 { continue; }
+        if !first { n = json_raw(out, n, ","); }
+        n = json_raw(out, n, "{\"type\":\"input_image\",\"image_url\":\"data:");
+        n = json_raw(out, n, img.media_type);
+        n = json_raw(out, n, ";base64,");
+        n = json_raw(out, n, img.data);
+        n = json_raw(out, n, "\"}");
+        first = false;
+      }
+      n = json_raw(out, n, "]");
+    }
     n = json_raw(out, n, "}");
   }
   n = json_raw(out, n, "]");
@@ -469,4 +491,37 @@ gw_replay_provider :: (r: [] GwReplay) -> string { return cast(string) r[0].prov
   g := Gateway.{name = "gemini", url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-hydrogen:streamGenerateContent?alt=sse", key_env = "GEMINI_API_KEY", key_header = "x-goog-api-key", scheme = "", wire = GW_WIRE_GEMINI};
   c := gw_client(g);
   #assert c.key_env == "GEMINI_API_KEY" && c.key_header == "x-goog-api-key" && c.scheme == "" && c.key_value == "";
+}
+
+gw_has :: (s: string, sub: string) -> bool {
+  if sub.count == 0 || sub.count > s.count { return false; }
+  for i: 0..<(s.count - sub.count + 1) {
+    if s[i..<(i + sub.count)] == sub { return true; }
+  }
+  return false;
+}
+
+#test "multimodal image parts serialize for Open Responses, Gemini, Anthropic, and Chat Completions" {
+  out: [4096] u8; why: [1] string;
+  imgs: [1] GwImage;
+  imgs[0] = GwImage.{media_type = "image/png", data = "iVBORw0KGgo="};
+  msgs: [1] GwMessage;
+  msgs[0] = GwMessage.{role = "user", text = "describe this", images = imgs[..]};
+  req := GwRequest.{model = "test-model", system = "sys", messages = msgs[..], max_tokens = 64};
+
+  g_resp := Gateway.{name = "vercel", wire = GW_WIRE_RESPONSES};
+  b_resp := gw_translate(g_resp, req, out[..], why[..]);
+  #assert json_valid(b_resp) && gw_has(b_resp, "\"type\":\"input_text\"") && gw_has(b_resp, "\"type\":\"input_image\"") && gw_has(b_resp, "data:image/png;base64,iVBORw0KGgo=");
+
+  g_gem := Gateway.{name = "gemini", wire = GW_WIRE_GEMINI};
+  b_gem := gw_translate(g_gem, req, out[..], why[..]);
+  #assert json_valid(b_gem) && gw_has(b_gem, "\"inlineData\":{\"mimeType\":\"image/png\",\"data\":\"iVBORw0KGgo=\"}");
+
+  g_ant := Gateway.{name = "anthropic", wire = GW_WIRE_ANTHROPIC};
+  b_ant := gw_translate(g_ant, req, out[..], why[..]);
+  #assert json_valid(b_ant) && gw_has(b_ant, "\"type\":\"image\"") && gw_has(b_ant, "\"media_type\":\"image/png\"") && gw_has(b_ant, "\"data\":\"iVBORw0KGgo=\"");
+
+  g_chat := Gateway.{name = "openrouter", wire = GW_WIRE_CHAT};
+  b_chat := gw_translate(g_chat, req, out[..], why[..]);
+  #assert json_valid(b_chat) && gw_has(b_chat, "\"type\":\"image_url\"") && gw_has(b_chat, "data:image/png;base64,iVBORw0KGgo=");
 }

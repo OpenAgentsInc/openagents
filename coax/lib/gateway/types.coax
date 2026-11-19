@@ -44,9 +44,15 @@ GwEvent :: struct {
   call_id: string;               // native tool-call ID; absent on later argument-only deltas
 }
 
+GwImage :: struct {
+  media_type: string;            // e.g. "image/png", "image/jpeg", "image/webp", "image/gif"
+  data: string;                  // base64-encoded image bytes
+}
+
 GwMessage :: struct {
   role: string;                  // "user", "assistant" or correlated "tool"
   text: string;
+  images: [] GwImage;            // optional multimodal image attachments
   calls: [] GwToolCall;          // assistant calls, in native order
   result: GwToolResult;          // role tool: correlated output; text and calls are empty
 }
