@@ -53,7 +53,7 @@ BUILD_RHO :: SIM_RHO / 1000.0;
 BUILD_TOW_BALLAST :: 3000.0;     // isolated low tanks, assumed CG 1.5 m above keel
 BUILD_AVAILABLE_KN :: 2000.0;    // assumed combined effective tow force at 4 kn
 BUILD_PORT_DEPTH :: 54.0 * 0.3048; BUILD_PORT_WIDTH :: 530.0 * 0.3048;
-BUILD_SITE_DEPTH :: 40.0;
+BUILD_SITE_DEPTH :: 89.0;   // the Gulf berth, 40 nautical miles off the jetties: slab-where.coax's texas site and slab-build.coax's route (ETOPO1)
 BUILD_CHANNEL_NM :: 8.0; BUILD_GULF_NM :: 40.0;
 BUILD_CHANNEL_H :: BUILD_CHANNEL_NM / 3.0; BUILD_VOYAGE_H :: BUILD_CHANNEL_H + BUILD_GULF_NM / 4.0;
 BUILD_SAIL :: 30.0; BUILD_CYCLE :: 8.0;
@@ -375,7 +375,7 @@ build_scene :: (b: BuildState, water: BuildWater, plan: [] f32, count: int, out:
   if b.city > 0 {
     for i: SLAB_HULL_PIECES..<count {
       j := i * SLAB_RECORD;
-      if cast(int)plan[j + 3] == SLAB_KIND_PIPE { continue; } // no deep-water OTEC pipe in 40 m
+      if cast(int)plan[j + 3] == SLAB_KIND_PIPE { continue; } // no deep-water OTEC pipe in 89 m
       share := f32(sim_clamp(b.city * 2.0 - ((f64(plan[j]) + 500) / 1000), 0, 1));
       if share <= 0 { continue; }
       y := deck + (plan[j + 1] - SLAB_DECK) * share;

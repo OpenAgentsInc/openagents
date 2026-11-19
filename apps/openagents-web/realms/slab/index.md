@@ -61,6 +61,8 @@ Each site is a real place on a chart, with its depth, its distance to land and t
 - A hull too small for its load, sinking to its deck: https://openagents.com/worlds/slab?long=400&wide=300&weight=6
 - Three miles off California, where the ocean thermal plant stops: https://openagents.com/worlds/slab?preset=california
 
+The days to build under **Building it** are one run of our build simulation for the hull you set: the yard, the tows, the joints at sea and the weather.
+
 Try the other sites: Puerto Rico, Kona in Hawaii, the equator, California, the Gulf of Mexico off Texas and a Norwegian fjord. For example https://openagents.com/worlds/slab?site=california
 
 ## In the world
