@@ -12,7 +12,7 @@
 //         28    the discharge: how much (0 to 1), its outlets' depth (m), how far it sinks (m), over what distance (m)
 //         32    the four moonpools' surge (m)
 //         36    the grid's half extents x, z; the sea's significant height (m); the next burst's row
-//         40    the flow overlay is on (the plume's footprint is drawn whole), 0, 0, 0
+//         40    the flow overlay is on (the plume's footprint is drawn whole), the walls' run-up (m), 0, 0
 //   grid  44    the lee's gains, a byte a node (LEE_N x LEE_N nodes; the long waves' gain in sixteenths in the
 //               high four bits, the short waves' in the low), four bytes to a float's bits
 //   foam  188   the white water at the walls' feet as bytes: 32 cells a face (or 16 a dome)
@@ -209,6 +209,7 @@ ww_pack :: (w: [] SlabWater, u: [] f32) {
   u[27] = f32(2.0 * (f.hx * abs(lz) + f.hz * abs(lx)));
   u[28] = f32(ifx w[0].mode == 1 then w[0].discharge else 0.0); u[29] = f32(WW_OUTLET); u[30] = f32(w[0].sink); u[31] = f32(w[0].carry);
   u[40] = ifx w[0].overlay then 1.0f32 else 0.0f32;
+  u[41] = f32(w[0].spray[0].runup);   // the highest the water has stood at a wall, m: the white water on the faces climbs to it
   u[36] = f32(w[0].grid[0].hx); u[37] = f32(w[0].grid[0].hz); u[38] = f32(w[0].sea.significant); u[39] = f32(w[0].spray[0].next);
   for i: 0..<WW_GRID_FLOATS {
     word: u32 = 0;
@@ -314,6 +315,8 @@ ww_test_sea :: (wind: f64) -> Spectrum { return wall_test_sea(wind, 4.36); }
   east := 0; west := 0;
   for i: 0..<WW_CELLS / 4 { if f32_bits(u[WW_FOAM + i]) != 0 { east += 1; } if f32_bits(u[WW_FOAM + 2 * WW_CELLS / 4 + i]) != 0 { west += 1; } }
   #assert east > 0 && west == 0;
+  // the run-up the white water on the faces climbs to: the walls' own, a few metres in a gale
+  #assert u[41] == f32(w[0].spray[0].runup) && u[41] > 2 && u[41] < 30 && u[42] == 0 && u[43] == 0;
   // the grid's bytes: open water upwind (255), calm behind
   first := f32_bits(u[WW_GRID + (12 * LEE_N + LEE_N - 1) / 4]);
   #assert (first >> 24) == 255;

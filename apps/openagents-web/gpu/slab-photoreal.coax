@@ -165,6 +165,13 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
         s.rough=mix(s.rough,0.2f32,wet*0.7f32);
         s.albedo=scale3(s.albedo,1.0f32-(0.25f32*wet));
       }
+      if ((kind==0)&&(abs(nh.y)<0.5f32)) {
+        // the hull's walls: the white water a breaking crest throws up them, and the wet it leaves
+        // (gpu/slab-water.coax sw_wash, from the walls' simulated water)
+        wash:V2=sw_wash(v.world,s.normal,u[28],u);
+        s.rough=mix(s.rough,0.15f32,wash.y*0.8f32);
+        s.albedo=mix3(scale3(s.albedo,1.0f32-(0.35f32*wash.y)),v3(0.8f32,0.82f32,0.84f32),wash.x);
+      }
     } else if ((kind==5)&&(abs(nh.y)<0.5f32)) {
       // a tower's lit rooms at night, a room in two
       along:f32=ifx abs(nh.x)>abs(nh.z) then wh.z else wh.x;

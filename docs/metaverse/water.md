@@ -767,6 +767,14 @@ them. Each states its model at the top of its file and checks it.
 | `metaverse-engine/fx/spray.coax` (`spray_*`) | Where each puff of a burst is at an age, in closed form, for the CPU's checks and the GPU's vertex stage | Gravity and a drag in proportion to speed: v(t) = vt + (v0 − vt) e^(−t/τ). Two puffs in three are drops (τ 0.9 to 2.5 s), one in three is mist (τ 0.15 to 0.4 s) that the wind carries |
 | `metaverse/water-wake.coax` (`wake_*`, `plume_*`, `moonpool_*`) | The wake's width and slack water downstream, a cold discharge's sinking and reach, a moonpool's surge | A bluff body's turbulent wake (width D √(1 + x/D), Strouhal 0.15); Kelvin waves only where the Froude number allows them; Morton, Taylor and Turner's plume settling at 2.8 B^¼ N^−¾; a piston of water with the mouth's added length and a quadratic loss |
 
+**Drawing the white water so it is seen.** The foam at a wall's foot is a
+band a few metres wide, so from a kilometre it covers a few pixels.
+SLAB draws it by its cover (`sw_cover`: solid where the cover passes the
+foam's texture up close, the cover itself where a pixel holds many grains),
+climbs it up the wall's face to the measured run-up where a crest has just
+hit (`sw_wash`, the face wet up to there), and lets the reflected sea carry
+its own whitecaps in front of the wall. Each stays the simulation's size.
+
 **A page uses them in three steps** (`apps/openagents-web/slab-water.coax` is
 the worked example):
 

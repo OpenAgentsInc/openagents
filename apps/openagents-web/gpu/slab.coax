@@ -258,7 +258,8 @@ slab_shoulder :: (x:f32)->f32 {
 slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
   sea:V4=slab_sea(p,world,d,dist,t,sw_sea(p,u),u);
   white:V3=slab_sea_white(u);
-  return sw_tint(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white(p,t,u)),p,white,t,u);
+  fp:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
+  return sw_tint(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white_px(p,t,fp,u)),p,white,t,u);
 }
 
 // ---- The platform: metaverse/slab-plan.coax's records, traced in the hull's frame.

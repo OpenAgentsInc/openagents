@@ -1479,6 +1479,49 @@ by its optics") has the method and its sources.
 - Under the sea the hull casts its shadow on the bed, not in the water: the
   sun's shafts do not stop under the hull.
 
+### White water at the walls the visitor sees
+
+The opening camera stands north-east of the hull, and the opening sea comes
+from Guam's trades (70°, section 5.3), so it meets the east wall squarely and
+the north wall aslant. Before this change the visitor saw almost no white
+water at either. The simulation made it: in the opening 4 m sea, over the
+24 s before the first frame, crests broke against the east wall 27 times, a
+third to a half of its 30 stations had white water at their foot, the
+highest the water stood at a wall was 5 to 6 m and the spray's heaviest
+drops reached about 10 m. The north wall, met at a cosine of 0.34, had none:
+its crests do not break there (measured at `?t=0`, 20 and 60). It was drawn
+too thin to see: a band 11 m wide, broken by a noise texture finer than a
+pixel at 1.2 km, so it averaged out to nothing. Now:
+
+- **The band is drawn by its cover.** Where a pixel is wider than the foam's
+  grain it shows the foam's mean cover, so a band three to six pixels wide
+  stays white from the opening camera (`sw_foot_white`, `sw_cover` in
+  `gpu/slab-water.coax`).
+- **The white water climbs the wall.** Where a crest has just hit, the face
+  is white from the standing wave's line up to the run-up the walls measured,
+  and wet up to there while that foam lasts (`sw_wash`, called from the
+  photoreal hull's material).
+- **The waves sent back break too.** The reflected sea is as steep as the sea
+  that came in (R = 0.99), so its whitecaps join the open sea's in front of
+  the weather walls.
+
+Nothing was made bigger. How far the picture still is from the concept
+(`docs/research/ocean/slab.jpeg`): there, both visible walls throw sheets of
+water 30 to 40 m up the wall every 50 m or so, and the sea for 100 m out is a
+lace of foam. Here, in the same 4 m sea, the east wall has a broken white
+line at its foot a few metres high, the north wall has almost none, and the
+spray is about 10 m at most. The concept's plumes need a much bigger sea
+(about a 10 m gale, `?sea=gale`) or a much steeper one than a 4 m sea at a
+vertical wall in deep water makes. The foam lace far out from the wall is
+the open sea's residual foam, which the engine's foam field
+(`metaverse/water-foam.coax`) models but no page draws yet.
+
+Frame time, headless Chrome on an M-series GPU on a heavily loaded machine
+(load 28 to 40), GPU p50: the opening at 1440×900 2.4 to 3.5 ms after
+against 2.6 to 2.9 ms before, alternating the two shaders on the same page;
+the change is inside the machine's noise. Phone, gale and hurricane, in both
+styles, are unchanged within it too.
+
 ### The hull on its moorings
 
 Measured on November 18, 2026, from the checks in
