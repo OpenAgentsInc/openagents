@@ -1366,7 +1366,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       rows[q + 1] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
                                state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
     }
-    s[0].side_view = h - stop;
+    footer_h := cp_side_footer_h(k);
+    if stop + footer_h > h { footer_h = 0; }
+    s[0].side_view = h - stop - footer_h;
     tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap else 0.0f32;
     s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<s[0].nchats + 1], s[0].side_scroll, tail, CP_CHAT);
     if tail > 0 {
@@ -1374,8 +1376,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
       else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
       my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
-      if my + k.small.line > stop && my < h { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
+      if my + k.small.line > stop && my < stop + s[0].side_view { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
     }
+    if footer_h > 0 { cp_side_footer(f, 0, h - footer_h, sw); }
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
@@ -1396,6 +1399,55 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       _ := app_chip(f, "coder.folder", fx, row_y + (s[0].box.send - k.cmp.chip_h) / 2, max_fw, ICON_FOLDER, "Working folder", name, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
     }
   }
+}
+
+// Bottom-of-sidebar demo pills (modeled after t3code's SidebarFooter update/provider pills).
+cp_side_footer_h :: (k: UiSkin) -> f32 {
+  u: f32 = ARCADE_PHONE_SCALE;
+  pad_v := 10.0f32 / u;
+  gap := k.app.gap_small;
+  return k.border + pad_v + k.cmp.chip_h + gap + k.cmp.chip_h + pad_v;
+}
+cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string) {
+  k := f[0].skin; c := k.cmp; sh := f[0].sheet; m := f[0].m;
+  h := c.chip_h; r := h / 2.0f32;
+  hovered := uiframe_hovered(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, 0);
+  elt_value(f[0].rows, row, detail);
+  _ := sheet_box(sh, x, y, w, h, r, k.border, ifx hovered then k.hover else k.raised, k.hairline);
+  ink := ifx hovered then k.ink else k.muted;
+  pad := 10.0f32 / ARCADE_PHONE_SCALE;
+  tx := x + pad;
+  if icon >= 0 {
+    sheet_icon(sh, icon, tx, y + (h - c.chip_icon) / 2.0f32, c.chip_icon, ink);
+    tx += c.chip_icon + c.chip_gap;
+  }
+  right := x + w - pad;
+  if detail.count > 0 {
+    dw := measure_width(m, k.label.face, detail);
+    if right - dw > tx + c.chip_gap {
+      _ := sheet_text(sh, m, -1, right - dw, y + (h - k.label.line) / 2.0f32, k.label.line, k.label.face, k.faint, detail);
+      right -= dw + c.chip_gap;
+    }
+  }
+  room := right - tx;
+  if room > 0 {
+    _ := sheet_text(sh, m, -1, tx, y + (h - k.small.line) / 2.0f32, k.small.line, k.small.face, ink, app_fit(f, k.small.face, label, room));
+  }
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+}
+cp_side_footer :: (f: [] UiFrame, x: f32, y: f32, w: f32) {
+  k := f[0].skin; a := k.app; c := k.cmp;
+  u: f32 = ARCADE_PHONE_SCALE;
+  pad_v := 10.0f32 / u;
+  sheet_fill(f[0].sheet, x, y, w, k.border, 0, k.menu_divider);
+  px := x + a.row_inset;
+  pw := w - 2.0f32 * a.row_inset;
+  if pw <= 0 { return; }
+  py := y + k.border + pad_v;
+  cp_side_pill(f, "coder.side.pill.update", px, py, pw, ICON_ARROW_UP, "Update available", "v0.2.0");
+  py += c.chip_h + a.gap_small;
+  cp_side_pill(f, "coder.side.pill.provider", px, py, pw, ICON_CLAUDE_14, "Provider update", "Claude");
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -2285,4 +2337,31 @@ cp_find :: (text: string, needle: string) -> int {
   #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
   // Color palette stays Coder's own Arcade monochrome.
   #assert k.canvas.r == base.canvas.r && k.surface.r == base.surface.r && k.ink.r == base.ink.r;
+}
+
+#test "sidebar footer draws demo pills stacked in the footer region" {
+  u0: [64] Prim; o0: [64] Prim; l0: [16] SheetLine; h0: [16] SheetHit; p0: [512] u8; r0: [16] El;
+  u1: [64] Prim; o1: [64] Prim; l1: [16] SheetLine; h1: [16] SheetHit; p1: [512] u8; r1: [16] El;
+  sf: [1] UiSurface;
+  sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  k := cp_skin();
+  f: [1] UiFrame;
+  h: f32 = 660.0f32;
+  footer_h := cp_side_footer_h(k);
+  #assert footer_h > 2.0f32 * k.cmp.chip_h;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_side_footer(f[..], 0, h - footer_h, cast(f32) CP_SIDE - k.border);
+  #assert uiframe_end(f[..], sf[..]);
+  u_idx := surface_find(sf[..], "coder.side.pill.update");
+  p_idx := surface_find(sf[..], "coder.side.pill.provider");
+  #assert u_idx >= 0 && p_idx >= 0;
+  tb := surface_rows(sf[..]);
+  u_row := tb.rows[u_idx];
+  p_row := tb.rows[p_idx];
+  #assert u_row.action == 0 && p_row.action == 0;
+  #assert p_row.y > u_row.y;
+  #assert u_row.y > h - footer_h && p_row.y + p_row.h < h;
 }
