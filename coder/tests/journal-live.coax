@@ -9,17 +9,22 @@ jl_response :: (path:string,action:string) {
   n=json_write_string(b[..],n,action);n=json_raw(b[..],n,"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n");
   #assert n>0 && fs_write(path,cast(string)b[0..<n]);
 }
+// The sandbox profile the run's commands take: workspace-write (bwrap) on Linux; elsewhere
+// danger-full-access, the profile Microcoder's worker runs with on macOS (mcworker.coax), since
+// mc_profile_args confines only with Linux bwrap and a workspace-write command can't start there.
+jl_profile :: ()->string {return ifx cxproc_platform()==3 then "workspace-write" else "danger-full-access";}
 jl_child :: (dir:string)->int {
   pathbuf:[1200]u8;path:=fs_join(dir,"live.ajr",pathbuf[..]);
   journal:[1]JfWriter;#assert jf_open(journal[..],path);defer jf_close(journal[..]);
-  #assert jf_context(journal[..],"frozen system/schema; workspace-write");
+  ctx:[128]u8;nc:=json_raw(ctx[..],0,"frozen system/schema; ");nc=json_raw(ctx[..],nc,jl_profile());
+  #assert nc>0 && jf_context(journal[..],cast(string)ctx[0..<nc]);
   run:[1]McRun;state:[1]McStateBuffers;loop:[1]McLoopBuffers;
   plan:[1]GwPlan;buffers:[1]GwPlanBuffers;bench:[1]GwBench;
   gw_plan_init(plan[..],buffers[..]);plan[0].journal=journal[..];
   g:=Gateway.{name="fixture",url="http://127.0.0.1:1/v1/chat/completions",wire=GW_WIRE_CHAT};
   none:[1]string;#assert gw_plan_add(plan[..],g,"fixture-model",none[0..<0]);
   mc_init(run[0].l[..],state[..],loop[..],"fixture","create and read effect","{}",0.9);
-  run[0].profile="workspace-write";run[0].gated=true;
+  run[0].profile=jl_profile();run[0].gated=true;
   mc_run_start(run[..],plan[..],bench[..],dir,"low");
   expected:[2][262144]u8;lengths:[2]int;calls:=0;
   // gw_call_start retains the exact translated request length.
@@ -34,13 +39,17 @@ jl_child :: (dir:string)->int {
         #assert mc_run_answer_owned(run[..],ticket-1,true,"stale",out[n..<out.count])==0;
         #assert run[0].asking;
         more:=mc_run_answer_owned(run[..],ticket,true,"owner",out[n..<out.count]);n+=more;
-        req=mc_request(run[0].l[..]);req.model="fixture-model";req.effort="low";
-        translated=gw_translate(g,req,expected[1][..],why[..]);lengths[1]=translated.count;calls=2;
       }
       if out[i].kind==MR_COMMAND {seen_command=true;#assert out[i].exit==0;}
       if out[i].kind==MR_VIEW {seen_view=true;#assert out[i].found;}
       if out[i].kind==MR_ENDED {ended=true;#assert out[i].ending==MC_END_FINISHED && out[i].text=="done";}
       i+=1;
+    }
+    // The approved command runs while the run is polled (GitHub #13750), so the second request is
+    // the state once its command and view results are in, not the state at the approval.
+    if calls==1 && seen_command && seen_view {
+      req=mc_request(run[0].l[..]);req.model="fixture-model";req.effort="low";
+      translated=gw_translate(g,req,expected[1][..],why[..]);lengths[1]=translated.count;calls=2;
     }
     if ended {break;}sleep:=cxproc_sleep_ms(2);
   }
@@ -79,6 +88,7 @@ jl_child :: (dir:string)->int {
 tool_main :: ()->int #export_c #effects(all) {
   args:[1]Args;#assert args_load(args[..]);
   if args[0].n==1 {return jl_child(args_at(args[..],0));}
+  if cxproc_platform()!=3 {print("journal-live: commands run under danger-full-access here: workspace-write needs Linux bwrap (Microcoder's macOS profile)\n");}
   b:[1024]u8;dir:=fs_temp("journal-live-",b[..]);#assert dir.count>0;defer {r:=fs_remove(dir);}
   p:[1200]u8;one:=fs_join(dir,"1.http",p[..]);
   jl_response(one,"{\"rationale\":\"inspect\",\"commands\":[\"printf once > effect.txt\"],\"view\":[\"effect.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");

@@ -22,6 +22,7 @@
 #load "../../coax/lib/gateway/openrouter.coax";
 #load "../../coax/lib/gateway/psionic.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/tool.coax";                  // tool_err, tool_errln (the Vertex-skipped note)
 
 MK_SECRETS :: "/work/.secrets/";                          // under $HOME
 MK_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
