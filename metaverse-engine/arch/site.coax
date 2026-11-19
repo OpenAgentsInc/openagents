@@ -1,0 +1,254 @@
+// The Metaverse Engine's architecture kit, a construction site: the parts a building site, a
+// casting yard or a harbour is drawn with in the photoreal style (docs/metaverse/photoreal.md).
+// Each generator writes one part in metres, +y up, and takes the rows of a realm's material table
+// as an ArchCityLook (city.coax), with the colours as tints. SLAB's construction view is the first
+// user (apps/openagents-web/slab-build-draw.coax). A gantry crane on a quay is works.coax's
+// arch_dock_crane; tugs and people are traffic.coax's.
+//
+//   arch_site_mast      one bay of a tower crane's lattice mast: stack it, or stretch the last bay
+//   arch_site_crane_top a tower crane's slewing top: cab, apex, a jib to +x, counter-jib and weights to -x
+//   arch_site_barge     a flat freight barge with a coaming, keel at y 0
+//   arch_site_deck      a metre of planked working deck with a guard rail: a slipform's deck
+//   arch_site_bars      a row of starter bars a metre apart
+//   arch_site_mat       a square reinforcing mat
+//   arch_site_collar    a jump form round a square shaft, with its railed deck
+//   arch_site_truck     a concrete mixer truck
+//   arch_site_light     a floodlight mast; its lamps take the look's lamp row
+//   arch_site_buoy      a channel buoy (tint its record red or green)
+//   arch_site_mound     a metre of rock mound: a jetty or a breakwater, to stretch
+//   arch_site_plant     a concrete batching plant: silos, the mixing tower, bins and a conveyor
+//   coax/bin/coax test --library metaverse-engine/arch/site.coax
+#module "metaverse.engine.arch.site";
+#load "city.coax";
+
+SITE_MAST_BAY :: 6.0f32;      // a mast bay's height
+SITE_MAST_SIDE :: 2.0f32;     // and its side
+SITE_JIB :: 60.0f32;          // the crane top's reach, +x from its middle
+SITE_COUNTER :: 18.0f32;      // and its counter-jib, -x
+SITE_MAT :: 10.0f32;          // a reinforcing mat's side
+SITE_BARS :: 10;              // bars in a row of starter bars, a metre apart
+SITE_TRUCK_L :: 9.0f32;
+SITE_LIGHT_H :: 30.0f32;
+
+// The colours, as tints of the look's rows (a row is best white where a tint colours it).
+site_yellow :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.88, 0.64, 0.10); }
+site_red :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.60, 0.13, 0.08); }
+site_white :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.88, 0.88, 0.86); }
+site_steel :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.26, 0.27, 0.28); }
+site_rust :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.40, 0.22, 0.12); }
+site_timber :: (p: [] ArchPen, look: ArchCityLook) { arch_material(p, look.metal, 0.56, 0.43, 0.28); }
+
+// A thin bar of four faces and no ends: reinforcing steel by the hundred.
+site_rod :: (p: [] ArchPen, a: [3] f32, b: [3] f32, h: f32) { arch_bar2(p, a, b, h, h); }
+
+// One bay of a lattice mast, SITE_MAST_SIDE square and SITE_MAST_BAY tall, standing on y = 0: four
+// chords and a diagonal on each face.
+arch_site_mast :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n; h := SITE_MAST_SIDE * 0.5; t := SITE_MAST_BAY;
+  site_yellow(p, look);
+  sx := [4] f32.[-1, 1, 1, -1]; sz := [4] f32.[-1, -1, 1, 1];
+  for k: 0..<4 {
+    j := (k + 1) % 4;
+    arch_bar(p, arch_v(sx[k] * h, 0, sz[k] * h), arch_v(sx[k] * h, t, sz[k] * h), 0.11);
+    arch_bar(p, arch_v(sx[k] * h, 0, sz[k] * h), arch_v(sx[j] * h, t, sz[j] * h), 0.06);
+  }
+  return arch_part(p, from);
+}
+// A tower crane's top, to stand on its mast (y = 0 is the slewing ring): the turntable, the cab,
+// the apex, a lattice jib SITE_JIB long toward +x, the counter-jib with its weights toward -x, the
+// ties, and the trolley's hoist hanging halfway out. Turn its record to slew it.
+arch_site_crane_top :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n; jib := SITE_JIB; back := SITE_COUNTER;
+  site_yellow(p, look);
+  arch_box(p, 0, 0.6, 0, 1.6, 0.6, 1.6);
+  arch_bar(p, arch_v(0, 1.2, 0), arch_v(0, 11, 0), 0.35);
+  // the jib: two low chords, one high, and the lacing between
+  arch_bar(p, arch_v(1, 1.4, -0.7), arch_v(jib, 1.4, -0.7), 0.1); arch_bar(p, arch_v(1, 1.4, 0.7), arch_v(jib, 1.4, 0.7), 0.1);
+  arch_bar(p, arch_v(1, 3.0, 0), arch_v(jib - 2, 3.0, 0), 0.1);
+  n := 10; step := (jib - 2) / cast(f32) n;
+  for i: 0..<n {
+    x0 := 1 + step * cast(f32) i; x1 := x0 + step; side: f32 = ifx i % 2 == 0 then 0.7 else -0.7;
+    arch_bar(p, arch_v(x0, 1.4, side), arch_v(x0 + step * 0.5, 3.0, 0), 0.05);
+    arch_bar(p, arch_v(x0 + step * 0.5, 3.0, 0), arch_v(x1, 1.4, -side), 0.05);
+  }
+  // the counter-jib and its deck
+  arch_bar(p, arch_v(-back, 1.4, -0.7), arch_v(-1, 1.4, -0.7), 0.1); arch_bar(p, arch_v(-back, 1.4, 0.7), arch_v(-1, 1.4, 0.7), 0.1);
+  arch_box(p, -back * 0.5, 1.3, 0, back * 0.5 - 0.5, 0.06, 0.7);
+  // the ties from the apex, the trolley's ropes and its hook block
+  site_steel(p, look);
+  arch_bar(p, arch_v(0, 11, 0), arch_v(jib * 0.45, 3.0, 0), 0.04); arch_bar(p, arch_v(0, 11, 0), arch_v(jib - 2, 3.0, 0), 0.04);
+  arch_bar(p, arch_v(0, 11, 0), arch_v(-back + 1, 1.5, 0), 0.04);
+  arch_bar(p, arch_v(jib * 0.55, 1.3, 0), arch_v(jib * 0.55, -14, 0), 0.05);
+  site_yellow(p, look); arch_box(p, jib * 0.55, -14.6, 0, 0.5, 0.6, 0.3);
+  arch_material(p, look.stone, 0, 0, 0);
+  arch_box(p, -back + 2.2, 2.4, 0, 1.6, 1.0, 1.0); arch_box(p, -back + 5.6, 2.2, 0, 1.4, 0.8, 1.0);
+  site_white(p, look); arch_box(p, 2.2, 0.2, 1.9, 1.1, 1.1, 0.9);
+  arch_material(p, look.glass, 0, 0, 0); arch_box(p, 3.0, 0.5, 1.9, 0.4, 0.7, 0.85);
+  return arch_part(p, from);
+}
+
+// A flat freight barge `l` by `b` and `d` deep, keel at y = 0, raked at both ends, with a coaming
+// round its deck.
+arch_site_barge :: (p: [] ArchPen, look: ArchCityLook, l: f32, b: f32, d: f32) -> ArchPart {
+  from := p[0].n; hl := l * 0.5; hb := b * 0.5; r := d * 1.6;
+  arch_material(p, look.dark, 0, 0, 0);
+  arch_face(p, arch_v(-hl + r, 0, hb), arch_v(hl - r, 0, hb), arch_v(hl, d, hb), arch_v(-hl, d, hb));
+  arch_face(p, arch_v(hl - r, 0, -hb), arch_v(-hl + r, 0, -hb), arch_v(-hl, d, -hb), arch_v(hl, d, -hb));
+  arch_face(p, arch_v(hl - r, 0, hb), arch_v(hl - r, 0, -hb), arch_v(hl, d, -hb), arch_v(hl, d, hb));
+  arch_face(p, arch_v(-hl + r, 0, -hb), arch_v(-hl + r, 0, hb), arch_v(-hl, d, hb), arch_v(-hl, d, -hb));
+  site_steel(p, look);
+  arch_face(p, arch_v(-hl, d, hb), arch_v(hl, d, hb), arch_v(hl, d, -hb), arch_v(-hl, d, -hb));
+  site_red(p, look);
+  arch_box(p, 0, d + 0.5, hb - 0.3, hl - 2, 0.5, 0.3); arch_box(p, 0, d + 0.5, -hb + 0.3, hl - 2, 0.5, 0.3);
+  arch_box(p, hl - 2.3, d + 0.5, 0, 0.3, 0.5, hb); arch_box(p, -hl + 2.3, d + 0.5, 0, 0.3, 0.5, hb);
+  return arch_part(p, from);
+}
+
+// A working deck a metre long (x) and `wide` m across (z from 0), planked, with a guard rail on
+// its far edge 1.1 m up. Stretch its record along x.
+arch_site_deck :: (p: [] ArchPen, look: ArchCityLook, wide: f32) -> ArchPart {
+  from := p[0].n;
+  site_timber(p, look); arch_box(p, 0, -0.05, wide * 0.5, 0.5, 0.05, wide * 0.5);
+  site_yellow(p, look);
+  arch_box(p, 0, 1.1, wide, 0.5, 0.04, 0.04); arch_box(p, 0, 0.55, wide, 0.5, 0.03, 0.03);
+  arch_box(p, 0, 0.55, wide, 0.04, 0.55, 0.04);
+  return arch_part(p, from);
+}
+// A row of SITE_BARS starter bars a metre apart along x, `tall` m high from y = 0.
+arch_site_bars :: (p: [] ArchPen, look: ArchCityLook, tall: f32) -> ArchPart {
+  from := p[0].n;
+  site_rust(p, look);
+  for i: 0..<SITE_BARS { x := cast(f32) i - cast(f32) (SITE_BARS - 1) * 0.5; site_rod(p, arch_v(x, 0, 0), arch_v(x, tall, 0), 0.04); }
+  return arch_part(p, from);
+}
+// A reinforcing mat SITE_MAT square lying at y = 0: bars a metre apart both ways.
+arch_site_mat :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n; h := SITE_MAT * 0.5;
+  site_rust(p, look);
+  for i: 0..<cast(int) SITE_MAT {
+    a := cast(f32) i + 0.5f32 - h;
+    site_rod(p, arch_v(-h, 0.05, a), arch_v(h, 0.05, a), 0.04);
+    site_rod(p, arch_v(a, 0.13, -h), arch_v(a, 0.13, h), 0.04);
+  }
+  return arch_part(p, from);
+}
+// A jump form round a square shaft `side` m across: four panels 3 m high about y = 0 to 3, and a
+// railed deck round their feet. Place it at the height the shaft has reached, less 3 m.
+arch_site_collar :: (p: [] ArchPen, look: ArchCityLook, side: f32) -> ArchPart {
+  from := p[0].n; h := side * 0.5 + 0.15f32; w := h + 1.6f32;
+  for k: 0..<4 {
+    along_x := k % 2 == 0; s: f32 = ifx k < 2 then 1 else -1;
+    site_red(p, look);
+    if along_x { arch_box(p, 0, 1.5, s * h, h, 1.5, 0.12); } else { arch_box(p, s * h, 1.5, 0, 0.12, 1.5, h); }
+    site_timber(p, look);
+    if along_x { arch_box(p, 0, -0.05, s * (h + 0.8), w, 0.05, 0.8); } else { arch_box(p, s * (h + 0.8), -0.05, 0, 0.8, 0.05, h); }
+    site_yellow(p, look);
+    if along_x { arch_box(p, 0, 1.1, s * w, w, 0.04, 0.04); } else { arch_box(p, s * w, 1.1, 0, 0.04, 0.04, w); }
+  }
+  return arch_part(p, from);
+}
+
+// A concrete mixer truck SITE_TRUCK_L long on y = 0, its cab toward +x.
+arch_site_truck :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n;
+  site_steel(p, look); arch_box(p, 0, 1.0, 0, 4.4, 0.18, 1.1);
+  site_white(p, look); arch_box(p, 3.4, 2.0, 0, 1.0, 1.0, 1.2);
+  arch_material(p, look.glass, 0, 0, 0); arch_box(p, 4.0, 2.4, 0, 0.42, 0.5, 1.1);
+  arch_material(p, look.stone, 0, 0, 0);
+  arch_limb(p, 1.6, 2.2, 0, -1.2, 2.7, 0, 1.0, 1.35, 10); arch_limb(p, -1.2, 2.7, 0, -3.6, 3.2, 0, 1.35, 0.6, 10);
+  arch_material(p, look.dark, 0, 0, 0);
+  arch_box(p, 3.2, 0.5, 0, 0.5, 0.5, 1.25); arch_box(p, -1.6, 0.5, 0, 0.5, 0.5, 1.25); arch_box(p, -2.9, 0.5, 0, 0.5, 0.5, 1.25);
+  return arch_part(p, from);
+}
+// A floodlight mast SITE_LIGHT_H tall on y = 0, its bank of lamps facing +x and down.
+arch_site_light :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n; t := SITE_LIGHT_H;
+  site_steel(p, look);
+  arch_limb(p, 0, 0, 0, 0, t, 0, 0.35, 0.18, 6);
+  arch_box(p, 0.2, t, 0, 0.15, 0.9, 2.2);
+  arch_material(p, look.lamp, 0, 0, 0);
+  for i: 0..<4 { arch_block(p, 0.55, t - 0.5 + cast(f32) (i / 2), -1.1 + 2.2 * cast(f32) (i % 2), 0.12, 0.38, 0.9, 0); }
+  return arch_part(p, from);
+}
+// A channel buoy floating at y = 0: a can, a cage and a top mark. Tint its record green or red.
+arch_site_buoy :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n;
+  arch_material(p, look.paint, 0, 0, 0);
+  arch_limb(p, 0, -1.0, 0, 0, 0.9, 0, 1.3, 1.3, 8); arch_limb(p, 0, 0.9, 0, 0, 3.6, 0, 0.9, 0.25, 8);
+  arch_box(p, 0, 4.0, 0, 0.35, 0.4, 0.35);
+  return arch_part(p, from);
+}
+// A rock mound a metre long (x), a metre wide at its foot and a metre high, on y = 0: a jetty or a
+// breakwater. Stretch its record.
+arch_site_mound :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n; t := 0.18f32;
+  arch_material(p, look.stone, 0.62, 0.6, 0.56);
+  arch_face(p, arch_v(-0.5, 0, 0.5), arch_v(0.5, 0, 0.5), arch_v(0.5, 1, t), arch_v(-0.5, 1, t));
+  arch_face(p, arch_v(0.5, 0, -0.5), arch_v(-0.5, 0, -0.5), arch_v(-0.5, 1, -t), arch_v(0.5, 1, -t));
+  arch_face(p, arch_v(-0.5, 1, t), arch_v(0.5, 1, t), arch_v(0.5, 1, -t), arch_v(-0.5, 1, -t));
+  arch_face(p, arch_v(0.5, 0, 0.5), arch_v(0.5, 0, -0.5), arch_v(0.5, 1, -t), arch_v(0.5, 1, t));
+  arch_face(p, arch_v(-0.5, 0, -0.5), arch_v(-0.5, 0, 0.5), arch_v(-0.5, 1, t), arch_v(-0.5, 1, -t));
+  return arch_part(p, from);
+}
+// A concrete batching plant on y = 0, about 30 m long: three cement silos, the mixing tower, the
+// aggregate bins and the conveyor between.
+arch_site_plant :: (p: [] ArchPen, look: ArchCityLook) -> ArchPart {
+  from := p[0].n;
+  site_white(p, look);
+  for i: 0..<3 {
+    x := -10.0f32 + 5.5f32 * cast(f32) i;
+    arch_limb(p, x, 6, 0, x, 22, 0, 2.3, 2.3, 10); arch_limb(p, x, 22, 0, x, 23.2, 0, 2.3, 0.4, 10); arch_limb(p, x, 3.5, 0, x, 6, 0, 0.5, 2.3, 10);
+  }
+  site_steel(p, look);
+  for i: 0..<3 { x := -10.0f32 + 5.5f32 * cast(f32) i; arch_box(p, x, 1.75, 0, 1.9, 1.75, 1.9); }
+  site_yellow(p, look); arch_box(p, 6, 7, 0, 3, 7, 3);
+  site_steel(p, look); arch_bar(p, arch_v(8, 13, 0), arch_v(22, 2.5, 0), 0.6);
+  arch_material(p, look.stone, 0, 0, 0); arch_box(p, 20, 2, 5, 4, 2, 2.5); arch_box(p, 20, 2, -5, 4, 2, 2.5);
+  return arch_part(p, from);
+}
+
+// ---------------------------------------------------------------- checks
+SiteTest :: struct { mesh: [9000 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; }
+site_test_span :: (out: [] f32, part: ArchPart, axis: int) -> [2] f32 {
+  lo := 1.0e9f32; hi := -1.0e9f32;
+  for i: part.first..<part.first + part.count { v := out[i * ARCH_VERTEX_FLOATS + axis]; if v < lo { lo = v; } if v > hi { hi = v; } }
+  return [2] f32.[lo, hi];
+}
+// Whether every triangle of a part faces out from a point inside it is not asked (a lattice has no
+// inside); these ask what a scene needs: whole triangles, the size said, the look's rows used.
+#test "site kit: every part is whole triangles, in the look's rows, at the size it says" {
+  t: [1] SiteTest; p := t[0].pen[..]; look := arch_city_look();
+  arch_pen(p, t[0].mesh[..]);
+  mast := arch_site_mast(p, look); top := arch_site_crane_top(p, look); barge := arch_site_barge(p, look, 122, 30.5, 7.6);
+  deck := arch_site_deck(p, look, 1.5); bars := arch_site_bars(p, look, 3); mat := arch_site_mat(p, look); collar := arch_site_collar(p, look, 8);
+  truck := arch_site_truck(p, look); light := arch_site_light(p, look); buoy := arch_site_buoy(p, look);
+  mound := arch_site_mound(p, look); plant := arch_site_plant(p, look);
+  parts := [12] ArchPart.[mast, top, barge, deck, bars, mat, collar, truck, light, buoy, mound, plant];
+  #assert !p[0].full && p[0].n < 9000;
+  at := 0;
+  for k: parts {
+    #assert k.first == at && k.count > 0 && k.count % 3 == 0;
+    at += k.count;
+    for i: k.first..<k.first + k.count {
+      o := i * ARCH_VERTEX_FLOATS; mm := t[0].mesh[o + 6];
+      #assert mm >= 1 && mm <= 6;
+      n := t[0].mesh[o + 3] * t[0].mesh[o + 3] + t[0].mesh[o + 4] * t[0].mesh[o + 4] + t[0].mesh[o + 5] * t[0].mesh[o + 5];
+      #assert n > 0.98 && n < 1.02;
+    }
+  }
+  #assert at == p[0].n;
+  out := t[0].mesh[..];
+  // a mast bay stacks; the top reaches its jib and its counter-jib; what floats has its keel at 0
+  y := site_test_span(out, mast, 1); #assert y[0] > -0.2 && abs(y[1] - SITE_MAST_BAY) < 0.2;
+  x := site_test_span(out, top, 0); #assert abs(x[1] - SITE_JIB) < 0.5 && abs(x[0] + SITE_COUNTER) < 0.5;
+  x = site_test_span(out, barge, 0); y = site_test_span(out, barge, 1); z := site_test_span(out, barge, 2);
+  #assert x[0] == -61 && x[1] == 61 && y[0] == 0 && y[1] > 7.6 && z[0] == -15.25 && z[1] == 15.25;
+  y = site_test_span(out, light, 1); #assert y[0] == 0 && y[1] > SITE_LIGHT_H;
+  x = site_test_span(out, mound, 0); #assert x[0] == -0.5 && x[1] == 0.5;
+}
+#test "site kit: a full pen leaves a part out whole and says so" {
+  small: [300 * ARCH_VERTEX_FLOATS] f32; pen: [1] ArchPen; p := pen[..];
+  arch_pen(p, small[..]);
+  _ = arch_site_crane_top(p, arch_city_look());
+  #assert p[0].full && p[0].n <= 300 && p[0].n % 3 == 0;
+}
