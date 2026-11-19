@@ -1575,21 +1575,45 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   return true;
 }
 // The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
-// opened again: the newest 6 (the most it keeps), each message and reply up to 1,200 bytes. 0 for none.
+// opened again: the newest 6 (the most it keeps), each message and reply up to CP_RECALL_TEXT bytes,
+// as the TUI keeps them (MK_TURN_TEXT, MK_CUT). A longer one is cut on a character and ends in
+// CP_RECALL_CUT, so the model knows it goes on. 0 for none.
+CP_RECALL_TEXT :: 8000;
+CP_RECALL_CUT :: " [cut here: the rest is not kept]";
+cp_recall_text :: (t: [] u8, s: string) -> string {
+  if s.count <= t.count { return s; }
+  k := text_byte_floor(s, t.count - CP_RECALL_CUT.count);
+  for i: 0..<k { t[i] = s[i]; }
+  for i: 0..<CP_RECALL_CUT.count { t[k + i] = CP_RECALL_CUT[i]; }
+  return cast(string) t[0..<k + CP_RECALL_CUT.count];
+}
 coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   b := s[0].scratch[..]; n := json_raw(b, 0, "["); some := false;
   first := ifx s[0].nturns > 6 then s[0].nturns - 6 else 0;
   for i: first..<s[0].nturns {
     if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].reply_n == 0 { continue; }
-    an := ifx s[0].turns[i].ask_n > 1200 then 1200 else s[0].turns[i].ask_n; rn := ifx s[0].turns[i].reply_n > 1200 then 1200 else s[0].turns[i].reply_n;
-    n = json_raw(b, n, ifx some then ",{\"task\":" else "{\"task\":"); n = json_write_string(b, n, cast(string) s[0].turns[i].ask[0..<an]);
-    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cast(string) s[0].turns[i].reply[0..<rn]); n = json_raw(b, n, "}");
+    t: [CP_RECALL_TEXT] u8;
+    n = json_raw(b, n, ifx some then ",{\"task\":" else "{\"task\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]));
+    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n])); n = json_raw(b, n, "}");
     some = true;
   }
   n = json_raw(b, n, "]");
   if n < 0 || !some { return 0; }
   return mww_recall(out, cast(string) b[0..<n]);
+}
+#test "the recall line cuts a long message on a character, says it was cut, and the worker takes it" #steps 400000000 {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  // an em dash straddles where the cut falls: CP_RECALL_TEXT less the marker
+  at := CP_RECALL_TEXT - CP_RECALL_CUT.count;
+  r := s[0].turns[0].reply[..]; for k: 0..<at + 100 { r[k] = 'a'; } r[at - 1] = 0xE2; r[at] = 0x80; r[at + 1] = 0x94;
+  s[0].turns[0].reply_n = at + 100; s[0].turns[0].ask[0] = 'q'; s[0].turns[0].ask_n = 1; s[0].turns[0].state = CP_DONE; s[0].nturns = 1;
+  out: [65536] u8; n := coder_page_recall_line(s, out[..]);
+  ar: [1] ClArena; ab: [65536] u8; ar[0].buf = ab[..]; req: [1] MwwRequest;
+  #assert n > 0 && mww_request(ar[..], cast(string) out[0..<n], req[..]) == MWW_RECALL && cl_count(req[0].recall) == 1;
+  t: [CP_RECALL_TEXT] u8; c := cp_recall_text(t[..], cast(string) r[0..<at + 100]);
+  #assert c.count == at - 1 + CP_RECALL_CUT.count && cast(string) c[c.count - CP_RECALL_CUT.count..<c.count] == CP_RECALL_CUT;
+  #assert cp_recall_text(t[..], "short") == "short";
 }
 // A new chat: the window clears and the host has the worker forget. While a run is going the
 // host first moves that chat out of view (coder_page_take), where its run goes on.

@@ -4,7 +4,7 @@
 //        and under the request limit, the cache serves at least 75% of prompt bytes
 //   C10: what a compacted step keeps and loses, and what only the working memory keeps after eviction
 //   C11: the recall line: a reply cut on a character boundary reaches the worker; one cut inside a
-//        character is refused whole (the desktop page's 1,200-byte cut must use a character boundary)
+//        character is refused whole (the desktop page cuts with text_byte_floor and CP_RECALL_CUT, #13729)
 //   C12: cross-turn recall: the newest MK_TURNS turns, each up to MK_TURN_TEXT, fit the run's facts
 
 #load "../../../coax/lib/sys/tool.coax";

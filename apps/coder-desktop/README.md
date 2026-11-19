@@ -39,7 +39,7 @@ Limits, all shown on screen when you reach them:
 - The working folder's name is cut with an ellipsis past 280 points wide.
 - The sidebar lists the 50 most recent chats and says how many older ones it does not show. It shows when the window is at least 900 points wide (at the usual text size).
 - A chat's title in the sidebar is its first message, up to 120 bytes.
-- When you open a chat, Microcoder is told its newest 6 messages and replies, up to 1,200 bytes of each.
+- When you open a chat, Microcoder is told its newest 6 messages and replies, up to 8,000 bytes of each; a longer one is cut on a character and says it was cut.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
 - A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
 - A sub-agent's transcript follows its rows as they arrive. Rows out of view are not drawn, so a long transcript costs what shows.
