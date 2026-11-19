@@ -499,6 +499,51 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
   #assert cast(string)v[0].items[2].role[0..<v[0].items[2].nr]=="assistant";
 }
 
+// One sub-agent's own transcript (ReadSubagent, GitHub #13713): the rows of the agent the item
+// q.item started ("PART:START", a ReadSession item id), newest page first, at most 24 rows and
+// 6000 bytes. The cursor is the count of rows before the page; complete says the agent finished.
+es_project_sub :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
+  v[0].ni=0;v[0].text_n=0;v[0].nc=0;v[0].complete=false;
+  id:=cast(string)q[0].item[0..<q[0].nit];part:=0;digits:=0;for c:id {if c==':' {break;}if c<'0' || c>'9' || digits>6 {es_refuse(v,"not_found");return;}part=part*10+cast(int)(c-'0');digits+=1;}
+  if digits==0 || part>=s[0].n || s[0].parts[part].kind!=P_TOOL || s[0].parts[part].tk!=TK_AGENT {es_refuse(v,"not_found");return;}
+  rows:[S_SUBS]int;nr:=0;for i:0..<s[0].nsubs {if s[0].subs[i].part==part {rows[nr]=i;nr+=1;}}
+  top:=ifx q[0].before>0 then q[0].before else nr;if top>nr {es_refuse(v,"stale_cursor");return;}
+  r:=top-1;bytes:=0;
+  while r>=0 && v[0].ni<24 && bytes<6000 {
+    row:=s[0].subs[rows[r]];text:=ifx row.tool && row.done && row.output.count>0 then row.output else row.text;
+    if text.count>6000-bytes {if v[0].ni>0 {break;}e:=6000;while e>0 && text[e]>=128 && text[e]<192 {e-=1;}text=cast(string)text[0..<e];}
+    m:=v[0].items[v[0].ni];b:[128]u8;n:=hs_cat(b[..],0,"sub:");dg:[64]u8;n=hs_cat(b[..],n,hs_itoa(r,dg[..]));m.ni=ea_copy(m.id[..],cast(string)b[0..<n]);
+    m.nr=ea_copy(m.role[..],ifx row.tool then "tool" else "assistant");m.nk=ea_copy(m.tool[..],hs_cut(row.name,128));if m.nk<0 {m.nk=0;}
+    m.started=0;m.calls=0;m.nn=0;m.np=0;m.ndiff=0;m.diff_cut=false;
+    // a call still out keeps its text open, as ReadSession's live text does
+    m.complete=!row.tool || row.done || !s[0].live;
+    m.text_at=ea_text_put(v,text);m.nt=text.count;if m.text_at<0 {es_refuse(v,"output_limit");return;}
+    v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;r-=1;
+  }
+  for i:0..<v[0].ni/2 {j:=v[0].ni-1-i;tmp:=v[0].items[i];v[0].items[i]=v[0].items[j];v[0].items[j]=tmp;}
+  if r>=0 {b:[64]u8;v[0].nc=ea_copy(v[0].cursor[..],hs_itoa(r+1,b[..]));}
+  v[0].complete=s[0].parts[part].resolved || !s[0].live;
+}
+#test "a sub-agent's transcript pages back from its newest row and says when its agent is done" {
+  ses:[1]Session;pool:[8192]u8;s_init(ses[..],pool[..]);s:=ses[..];s_user(s,"Look");s[0].live=true;
+  a:=s_part(s,P_TOOL);s[0].parts[a].id="a";s[0].parts[a].name="Task";s[0].parts[a].tk=TK_AGENT;s[0].parts[a].input="{}";
+  b:=s_part(s,P_TOOL);s[0].parts[b].id="b";s[0].parts[b].name="Bash";s[0].parts[b].tk=TK_EXEC;s[0].parts[b].input="{}";
+  #assert s_sub_add(s,a,false,"","Looking around","") && s_sub_add(s,a,true,"Bash","ls -la","c1") && s_sub_add(s,b,true,"Read","/other","x");
+  s[0].subs[1].done=true;s[0].subs[1].output="a.toml";
+  for i:0..<30 {#assert s_sub_add(s,a,true,"Read","/w/f","r");}
+  q:[1]EaRequest;q[0].nit=ea_copy(q[0].item[..],"1:0");v:[1]EaView;es_project_sub(s,q[..],v[..]);
+  // the newest 24 of its 32 rows (never the other call's), oldest first, with the earlier ones behind a cursor
+  #assert v[0].ne==0 && v[0].ni==24 && cast(string)v[0].cursor[0..<v[0].nc]=="8" && !v[0].complete && ea_item_text(v[..],0)=="/w/f" && !v[0].items[23].complete;
+  q[0].before=8;v[0]=EaView.{};es_project_sub(s,q[..],v[..]);
+  #assert v[0].ni==8 && v[0].nc==0 && cast(string)v[0].items[0].role[0..<v[0].items[0].nr]=="assistant" && ea_item_text(v[..],0)=="Looking around";
+  #assert cast(string)v[0].items[1].tool[0..<v[0].items[1].nk]=="Bash" && ea_item_text(v[..],1)=="a.toml" && v[0].items[1].complete && cast(string)v[0].items[1].id[0..<v[0].items[1].ni]=="sub:1";
+  s[0].parts[a].resolved=true;v[0]=EaView.{};es_project_sub(s,q[..],v[..]);#assert v[0].complete;
+  // only an agent's call has a transcript
+  q[0].nit=ea_copy(q[0].item[..],"2:0");v[0]=EaView.{};es_project_sub(s,q[..],v[..]);#assert v[0].ne>0 && v[0].ni==0;
+  q[0].nit=ea_copy(q[0].item[..],"x");v[0]=EaView.{};es_project_sub(s,q[..],v[..]);#assert v[0].ne>0;
+  q[0].nit=ea_copy(q[0].item[..],"1:0");q[0].before=99;v[0]=EaView.{};es_project_sub(s,q[..],v[..]);#assert v[0].ne>0;
+}
+
 es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}
 // What a new conversation can start on: the engine's own catalog (the one a
 // fresh slot starts with), its unnamed CLI default named "default".
@@ -609,6 +654,8 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);
   if k>=0 && e[0].slots[k].execution[0].active {es_refuse(v,"unsupported_profile");return;}
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
+  // a sub-agent's transcript is kept while its session is resident; a saved or terminal one has none
+  if method=="ReadSubagent" {if k<0 {es_refuse(v,"not_found");return;}slot:=e[0].slots[k..<k+1];es_project_sub(slot[0].s[..],q,v);return;}
   if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(id,32) {es_refuse(v,"malformed");return;}
   command:[24576]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
   name:[256]u8;name_n:=hs_cat(name[..],0,"command-");name_n=hs_cat(name[..],name_n,grant);name_n=hs_cat(name[..],name_n,"-");name_n=hs_cat(name[..],name_n,cast(string)q[0].command[..]);name_n=hs_cat(name[..],name_n,".json");

@@ -81,6 +81,7 @@ ViewOut :: struct {
 ViewPress :: struct { kind: int; what: int; text: string; }
 
 ChatView :: struct {
+  sub: [128] u8; sub_n: int;                  // the item id of the sub-agent row last pressed (VIEW_C_SUBAGENT's text)
   wall_ms: int;                               // the core's civil time this frame: a computer's running call says how long it has run
   model: [1] ViewModel;
   list: [1] VList; a: [VIEW_ROWS] VRow; b: [VIEW_ROWS] VRow; made: bool;
@@ -245,10 +246,12 @@ view_act_native :: (s: [] Session, k: int, ended: bool) -> AppActRow {
 }
 // Item i of the computer's view as a row: its tool's name says its kind; its text is the call
 // while it runs and the result once it is done.
-view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow {
-  m := e[0].view[0].items[i]; text := ea_item_text(e[0].view[..], i);
-  if ea_thought(e[0].view[..], i) { return AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = text}; }
-  name := ifx m.nk > 0 then cast(string) e[0].view[0].items[i].tool[0..<m.nk] else "";
+view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow { return view_act_item(e[0].view[..], i, wall_ms); }
+// Item i of a computer's view (a session's page, or a sub-agent's: subagent/flow.coax) as a row.
+view_act_item :: (v: [] EaView, i: int, wall_ms: int) -> AppActRow {
+  m := v[0].items[i]; text := ea_item_text(v, i);
+  if ea_thought(v, i) { return AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = text}; }
+  name := ifx m.nk > 0 then cast(string) v[0].items[i].tool[0..<m.nk] else "";
   kind := view_act_kind(tk_of_name(name));
   r := AppActRow.{kind = ifx kind < 0 then APP_ACT_KINDS else kind, verb = view_act_verb(kind, name), target = view_first_line(text)};
   // a call the computer says is still running carries when it began
@@ -256,15 +259,17 @@ view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow {
   if m.started > 0 && wall_ms > 0 { r.timed = true; r.secs = (wall_ms - m.started) / 1000; }
   // an edit or a write names its file (a link to the computer's workspace) and shows what it changed
   if m.np > 0 {
-    r.path = cast(string) e[0].view[0].items[i].path[0..<m.np]; from := 0; for ch, q: r.path { if ch == '/' { from = q + 1; } }
+    r.path = cast(string) v[0].items[i].path[0..<m.np]; from := 0; for ch, q: r.path { if ch == '/' { from = q + 1; } }
     if from < r.path.count { r.target = cast(string) r.path[from..<r.path.count]; }
-    r.diff = ea_item_diff(e[0].view[..], i); r.diff_cut = m.diff_cut;
+    r.diff = ea_item_diff(v, i); r.diff_cut = m.diff_cut;
   }
   // a sub-agent says how many calls its agent has made; while it runs, its row opens onto the newest
   if m.calls > 0 {
     r.calls = m.calls;
-    if r.running && m.nn > 0 { r.output = cast(string) e[0].view[0].items[i].now[0..<m.nn]; }
+    if r.running && m.nn > 0 { r.output = cast(string) v[0].items[i].now[0..<m.nn]; }
   }
+  // a sub-agent's row opens its own transcript (ReadSubagent), on a computer that keeps one
+  if kind == APP_ACT_AGENT { r.opens = true; }
   return r;
 }
 // The rows of the group that starts at model row r, into rows and ids (buf holds the ids).
@@ -535,6 +540,14 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
       if pressed.count >= child.count && cast(string) pressed[0..<child.count] == child && (pressed.count == child.count || pressed[child.count] == '.') {
         // a computer session's file: the page opens that computer's workspace on its changes
         if r.kind == VK_DEVICE_TOOL && app_act_path_pressed(child, pressed) { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_FILE}; }
+        // a computer session's sub-agent: the page opens its transcript (text: the item that started it)
+        if r.kind == VK_DEVICE_TOOL && pressed == child {
+          view_attach_device(v, c);
+          if v[0].dev.count == 1 && k < v[0].dev[0].view[0].ni && view_act_device(v[0].dev, k, 0).kind == APP_ACT_AGENT {
+            m := v[0].dev[0].view[0].items[k]; v[0].sub_n = el_copy(v[0].sub[..], cast(string) v[0].dev[0].view[0].items[k].id[0..<m.ni]);
+            return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_SUBAGENT, text = cast(string) v[0].sub[0..<v[0].sub_n]};
+          }
+        }
         return ViewPress.{kind = ifx app_act_press(keyed, child, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
       }
     }

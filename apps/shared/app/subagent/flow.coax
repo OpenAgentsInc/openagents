@@ -1,0 +1,98 @@
+// A sub-agent's own transcript on the phone (GitHub #13713). A computer session's sub-agent row
+// (the shared activity group's agent row) opens this page; it reads ReadSubagent from the paired
+// computer (coax/lib/agent/environment/wire.coax, served by coder/tui/host-environment.coax
+// es_project_sub): the agent's calls and words, a page of at most 24 back from the newest. While
+// the agent works and the newest page shows, the page reads again every SA_INTERVAL; Earlier
+// shows the page before and stops reading until Latest. It is read-only: nothing here writes.
+//   coax/bin/coax test apps/shared/app/subagent/flow.coax --run-steps 200000000
+#load "../core/core.coax";
+#load "../../../../coax/lib/agent/environment/wire.coax";
+
+SA_READ :: 1;
+SA_INTERVAL :: 2000;          // ms between reads while the agent works and its newest page shows
+SA_ACTION :: 490;             // the page's presses (sa_press by id)
+
+SubagentScreen :: struct {
+  open: bool; host: [64] u8; session: [128] u8; ns: int; item: [128] u8; nit: int;
+  title: [160] u8; nt: int;
+  op: int; generation: int; due: int;
+  before: int;                  // the earlier page that shows (its cursor), 0: the newest, read again while the agent works
+  loaded: bool; done: bool; view: [1] EaView;
+  note: [160] u8; nnote: int;
+}
+
+sa_note :: (s: [] SubagentScreen, words: string) { s[0].nnote = ea_copy(s[0].note[..], words); if s[0].nnote < 0 { s[0].nnote = 0; } }
+
+// Opens the transcript of the agent that item `item` of session `session` started, on the paired
+// computer the conversation runs on. Returns false (nothing changes) with no such computer.
+sa_open :: (s: [] SubagentScreen, c: [] AppCore, session: string, item: string, title: string) -> bool {
+  if !app_device_on(c) { return false; }
+  host := cast(string) c[0].device[0].host[..];
+  if !ea_id(host, 64) || session.count < 1 || session.count > 128 || item.count < 1 || item.count > 128 { return false; }
+  s[0] = SubagentScreen.{}; _ := ea_copy(s[0].host[..], host);
+  s[0].ns = ea_copy(s[0].session[..], session); s[0].nit = ea_copy(s[0].item[..], item);
+  s[0].nt = ea_copy(s[0].title[..], ifx title.count > 160 then cast(string) title[0..<160] else title); if s[0].nt < 0 { s[0].nt = 0; }
+  s[0].open = true; return true;
+}
+
+// The request for the page that shows: the newest, or the earlier one at s.before.
+sa_body :: (s: [] SubagentScreen, out: [] u8) -> int {
+  q: [1] EaRequest; q[0].nm = ea_copy(q[0].method[..], "ReadSubagent"); q[0].nw = ea_copy(q[0].workspace[..], "default");
+  q[0].ns = ea_copy(q[0].session[..], cast(string) s[0].session[0..<s[0].ns]); q[0].nit = ea_copy(q[0].item[..], cast(string) s[0].item[0..<s[0].nit]);
+  q[0].before = s[0].before; return ea_write(q[..], out);
+}
+
+// Whether the page reads again by itself: before the first answer, and while the agent works on
+// its newest page; never while a note asks for Try again.
+sa_reads :: (s: [] SubagentScreen) -> bool { return s[0].nnote == 0 && (!s[0].loaded || (s[0].before == 0 && !s[0].done)); }
+
+sa_sync :: (s: [] SubagentScreen, c: [] AppCore, visible: bool) {
+  if s[0].op > 0 && s[0].generation != fx_generation(c[0].out[..], OWN_SUBAGENT) { s[0].op = 0; }
+  if !visible || !s[0].open || !c[0].foreground || s[0].host[0] == 0 { _ := app_guest_due(c, OWN_SUBAGENT, -1); return; }
+  if s[0].op > 0 { return; }
+  if (sa_reads(s) || s[0].due == 0) && s[0].nnote == 0 && c[0].mono_ms >= s[0].due {
+    raw: [2048] u8; n := sa_body(s, raw[..]);
+    if n > 0 { s[0].op = app_guest_device(c, OWN_SUBAGENT, SA_READ, cast(string) s[0].host[..], cast(string) raw[0..<n]); }
+  }
+  if s[0].op > 0 { s[0].generation = fx_generation(c[0].out[..], OWN_SUBAGENT); _ := app_guest_due(c, OWN_SUBAGENT, -1); }
+  else { _ := app_guest_due(c, OWN_SUBAGENT, ifx sa_reads(s) then (ifx s[0].due > c[0].mono_ms then s[0].due else c[0].mono_ms + SA_INTERVAL) else -1); }
+}
+
+// A guest result that is this page's. Returns false when it belongs to another owner.
+sa_guest :: (s: [] SubagentScreen, c: [] AppCore, raw: string) -> bool {
+  g := c[0].guest; if !g.waiting || g.owner != OWN_SUBAGENT { return false; }
+  if g.op != s[0].op { app_guest_done(c); return true; }
+  s[0].op = 0;
+  v: [1] EaView;
+  ok := g.outcome == FXO_DONE && ea_view_read(raw, v[..]) && cast(string) v[0].host[..] == cast(string) s[0].host[..] && cast(string) v[0].method[0..<v[0].nm] == "ReadSubagent";
+  if ok && v[0].ne > 0 {
+    code := cast(string) v[0].error[0..<v[0].ne];
+    // an earlier page that no longer exists: the newest shows instead
+    if code == "stale_cursor" && s[0].before > 0 { s[0].before = 0; s[0].due = 0; app_guest_done(c); return true; }
+    sa_note(s, ifx code == "not_found" then "Your computer no longer keeps this sub-agent's work." else "Your computer did not share this sub-agent's work.");
+  } else if ok {
+    s[0].view[0] = v[0]; s[0].loaded = true; s[0].done = v[0].complete; s[0].nnote = 0;
+  } else {
+    // an older computer refuses a method it does not know; its silence reads the same
+    sa_note(s, "Your computer did not answer. Update Coder on it to see a sub-agent's work.");
+  }
+  s[0].due = c[0].mono_ms + SA_INTERVAL;
+  app_guest_done(c); return true;
+}
+
+// The cursor of the page before the one that shows, or 0.
+sa_earlier :: (s: [] SubagentScreen) -> int {
+  if !s[0].loaded { return 0; }
+  before := 0; for ch: cast(string) s[0].view[0].cursor[0..<s[0].view[0].nc] { if ch < '0' || ch > '9' || before > 100000000 { return 0; } before = before * 10 + cast(int) (ch - '0'); }
+  return before;
+}
+
+// A press on the page's buttons, by its element's id. Returns whether it did something.
+sa_press :: (s: [] SubagentScreen, id: string) -> bool {
+  if id == "subagent.earlier" { b := sa_earlier(s); if b <= 0 || s[0].op > 0 { return false; } s[0].before = b; s[0].due = 0; s[0].nnote = 0; return true; }
+  if id == "subagent.latest" { if s[0].before == 0 || s[0].op > 0 { return false; } s[0].before = 0; s[0].due = 0; s[0].nnote = 0; return true; }
+  if id == "subagent.retry" { if s[0].nnote == 0 || s[0].op > 0 { return false; } s[0].nnote = 0; s[0].due = 0; return true; }
+  return false;
+}
+
+#load "flow-checks.coax" #test;

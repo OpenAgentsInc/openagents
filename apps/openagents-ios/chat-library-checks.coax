@@ -34,3 +34,18 @@
  #assert s[0].sc[0].foreman[0].open && !s[0].drawer && ch_test_has(s[..],"foreman.none") && c[0].guest_due[OWN_FOREMAN]==0;
  #assert ch_test_tap(s[..],"foreman.back");_=ch_test_frame(s[..],o[..]);#assert !s[0].sc[0].foreman[0].open && ch_test_has(s[..],VIEW_COMPOSER_ID) && ch_draft(s[..])=="Kept draft";
 }
+#test "a computer session's sub-agent row opens its transcript, read from that computer, and Back returns to the chat" #steps 2000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;lane:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],lane[..]);c[0].foreground=true;c[0].mono_ms=1000;c[0].wall_ms=1700000000000;
+ h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";lane[0].np=1;_=ea_copy(lane[0].paired[0].host[..],h);lane[0].on=true;_=ea_copy(lane[0].host[..],h);
+ e:=lane[0].e[..];e[0].active=true;e[0].ns=el_copy(e[0].session[..],"0123456789abcdef0123456789abcdef");v:=e[0].view[..];v[0].ok=true;v[0].ns=1;
+ v[0].sessions[0].ni=el_copy(v[0].sessions[0].id[..],"0123456789abcdef0123456789abcdef");v[0].sessions[0].managed=true;v[0].sessions[0].busy=true;
+ m:=v[0].items[0];m.ni=el_copy(m.id[..],"1:0");m.nr=el_copy(m.role[..],"tool");m.nk=el_copy(m.tool[..],"Task");m.text_at=ea_text_put(v,"Find the config");m.nt=15;m.complete=false;m.calls=2;v[0].items[0]=m;v[0].ni=1;
+ ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");_=ch_test_frame(s[..],o[..]);
+ #assert ch_test_tap(s[..],"dev.1-0.call.0");
+ _=ch_test_frame(s[..],o[..]);
+ #assert s[0].sc[0].subagent[0].open && cast(string)s[0].sc[0].subagent[0].item[0..<s[0].sc[0].subagent[0].nit]=="1:0" && cast(string)s[0].sc[0].subagent[0].title[0..<s[0].sc[0].subagent[0].nt]=="Find the config";
+ #assert ch_test_has(s[..],"subagent.back") && ch_test_has(s[..],"subagent.close") && ch_test_has(s[..],"subagent.loading");
+ // the page asks that computer for the agent's transcript
+ at:=fx_find(c[0].out[..],s[0].sc[0].subagent[0].op);q:[1]EaRequest;#assert at>=0 && ea_read(fx_body(c[0].out[..],at),q[..]) && cast(string)q[0].method[0..<q[0].nm]=="ReadSubagent";
+ #assert ch_test_tap(s[..],"subagent.back");_=ch_test_frame(s[..],o[..]);#assert !s[0].sc[0].subagent[0].open && ch_test_has(s[..],VIEW_COMPOSER_ID);
+}

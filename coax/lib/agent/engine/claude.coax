@@ -129,15 +129,38 @@ s_paragraph :: (s: [] Session) {
   if k >= 0 && s[0].parts[k].kind == P_TEXT && s[0].parts[k].n > 0 { s_delta(s, P_TEXT, "\n\n"); }
 }
 // A sub-agent's frame: each call it makes counts on the call that started it, and the newest one
-// is kept as what it does now ("Bash ls -la"). Its text and thinking stay its own.
+// is kept as what it does now ("Bash ls -la"). Its calls, what it says and its calls' results are
+// its own transcript (Session.subs, GitHub #13713); none of it joins the conversation.
 s_on_sub :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
-  if m.kind != ClKind.assistant { return; }
   k := s_tool_of(s, m.parent_tool_use_id); if k < 0 { return; }
   l := m.line; content := cl_raw(l, "message.content");
+  if m.kind == ClKind.user {
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      if cl_str(ar, item, "type") != "tool_result" { continue; }
+      r := s_sub_of(s, k, cl_str(ar, item, "tool_use_id")); if r < 0 || s[0].subs[r].done { continue; }
+      c := cl_at(item, "content"); out := "";
+      if c.ok && c.tok == JSON_STRING { out = cl_text(ar, item, c); }
+      else if c.ok { blocks := cl_json(item, c); if cl_count(blocks) > 0 { out = cl_str(ar, cl_json(blocks, cl_item(blocks, 0)), "text"); } }
+      if out.count > S_SUB_OUT { e := S_SUB_OUT; while e > 0 && out[e] >= 128 && out[e] < 192 { e -= 1; } out = cast(string) out[0..<e]; }
+      s[0].subs[r].output = s_put(s, out); s[0].subs[r].failed = cl_bool(item, "is_error").value; s[0].subs[r].done = true;
+      s[0].changed = true;
+    }
+    return;
+  }
+  if m.kind != ClKind.assistant { return; }
   for i: 0..<cl_count(content) {
     item := cl_json(content, cl_item(content, i));
-    if cl_str(ar, item, "type") != "tool_use" { continue; }
-    id := cl_str(ar, item, "id"); if id.count > 0 && id == s[0].parts[k].subid { continue; }
+    type := cl_str(ar, item, "type");
+    if type == "text" {
+      // a frame seen again says nothing new
+      text := cl_str(ar, item, "text"); seen := text.count == 0;
+      for q: 0..<s[0].nsubs { if !seen && s[0].subs[q].part == k && !s[0].subs[q].tool && s[0].subs[q].text == text { seen = true; } }
+      if !seen { _ := s_sub_add(s, k, false, "", text, ""); }
+      continue;
+    }
+    if type != "tool_use" { continue; }
+    id := cl_str(ar, item, "id"); if (id.count > 0 && id == s[0].parts[k].subid) || s_sub_of(s, k, id) >= 0 { continue; }
     name := cl_str(ar, item, "name"); input := cl_raw(item, "input");
     arg := cl_str(ar, input, "command"); if arg.count == 0 { arg = cl_str(ar, input, "file_path"); } if arg.count == 0 { arg = cl_str(ar, input, "pattern"); }
     line: [160] u8; n := 0;
@@ -145,6 +168,7 @@ s_on_sub :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
     if arg.count > 0 && n < line.count { line[n] = ' '; n += 1; }
     for c: arg { if c == '\n' || n >= line.count { break; } line[n] = c; n += 1; }
     s[0].parts[k].subcalls += 1; s[0].parts[k].subnow = s_put(s, cast(string) line[0..<n]); s[0].parts[k].subid = s_put(s, id);
+    _ := s_sub_add(s, k, true, name, ifx arg.count > 0 then arg else input, id);
     s[0].changed = true;
   }
 }
@@ -1175,4 +1199,21 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
   #assert s[0].n == 2 && s[0].parts[1].subcalls == 2;
   s_init(s[..], pool[..]); s_user(s[..], "x"); l2 := [2] string.[task, sub1]; s_test_feed(s[..], q[..], l2[..]);
   #assert s[0].parts[1].subnow == "Bash ls -la";
+}
+
+#test "a sub-agent's calls, words and results are its own transcript, once each, never the conversation's" {
+  q: [1] ClQuery; line: [8] u8; arena: [8192] u8; out: [64] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  s: [1] Session; pool: [8192] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "look around");
+  task := "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"tu-1\",\"name\":\"Task\",\"input\":{\"description\":\"Find the config\",\"prompt\":\"find it\"}}]}}";
+  sub1 := "{\"type\":\"assistant\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"looking\"},{\"type\":\"tool_use\",\"id\":\"c1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls -la\"}}]}}";
+  res1 := "{\"type\":\"user\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"c1\",\"content\":\"a.toml\",\"is_error\":false}]}}";
+  sub2 := "{\"type\":\"assistant\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"c2\",\"name\":\"Read\",\"input\":{\"file_path\":\"/w/a.toml\"}}]}}";
+  res2 := "{\"type\":\"user\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"c2\",\"content\":[{\"type\":\"text\",\"text\":\"no such file\"}],\"is_error\":true}]}}";
+  l6 := [6] string.[task, sub1, sub1, res1, sub2, res2]; s_test_feed(s[..], q[..], l6[..]);
+  #assert s[0].n == 2 && s[0].nsubs == 3 && s[0].parts[1].subcalls == 2;
+  #assert !s[0].subs[0].tool && s[0].subs[0].text == "looking" && s[0].subs[0].part == 1;
+  #assert s[0].subs[1].tool && s[0].subs[1].name == "Bash" && s[0].subs[1].text == "ls -la" && s[0].subs[1].done && s[0].subs[1].output == "a.toml" && !s[0].subs[1].failed;
+  #assert s[0].subs[2].name == "Read" && s[0].subs[2].text == "/w/a.toml" && s[0].subs[2].done && s[0].subs[2].failed && s[0].subs[2].output == "no such file";
 }

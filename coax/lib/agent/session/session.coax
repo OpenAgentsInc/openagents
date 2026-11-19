@@ -43,6 +43,11 @@ SPart :: struct {
   // "Name argument" (its id, so a frame seen twice counts once)
   subcalls: int; subnow: string; subid: string;
 }
+// One row of a sub-agent's own transcript (GitHub #13713): a call its agent made (tool: its name,
+// its argument as text, and once it came back its output, cut to S_SUB_OUT) or what its agent
+// said (text). part is the TK_AGENT call it belongs to; id is the call's own id ("" for words).
+S_SUBS :: 256; S_SUB_OUT :: 2000;
+SSub :: struct { part: int; tool: bool; name: string; text: string; id: string; output: string; failed: bool; done: bool; }
 
 Session :: struct {
   exhausted: bool;          // a rejected append is observable; execution owners stop on loss
@@ -61,9 +66,12 @@ Session :: struct {
   hint: bool;               // its one part is a notice shown before any message (Claude Code missing), gone at the first
   tabs: bool;               // text is kept as it came (a surface that prints it); off, a tab is a space (the transcript's fonts draw no tab)
   frames: bool;             // text and thinking come from whole assistant frames, not stream deltas (an engine run without partial messages)
+  // every sub-agent's rows in the order they came, oldest first; past S_SUBS a row is not kept
+  // (its call still counts on its part's subcalls)
+  subs: [S_SUBS] SSub; nsubs: int;
 }
 
-s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].asking = -1; s[0].exhausted=false; s[0].outcome=S_END_NONE; }
+s_init :: (s: [] Session, pool: [] u8) { s[0].pool = pool; s[0].np = 0; s[0].n = 0; s[0].nsubs = 0; s[0].asking = -1; s[0].exhausted=false; s[0].outcome=S_END_NONE; }
 
 // For a surface that prints a conversation as it comes (a terminal, a wire) rather than
 // redrawing it: where it has read up to, and the next thing it has not read.
@@ -166,6 +174,19 @@ s_notice :: (s: [] Session, kind: int, text: string) {
   s[0].parts[k].notice = kind;
   s_append(s, k, text);
   if kind != N_ASK { s[0].noticed = true; }
+}
+// A sub-agent's row: the one of call id under part k, or -1.
+s_sub_of :: (s: [] Session, k: int, id: string) -> int {
+  if id.count == 0 { return -1; }
+  for i: 0..<s[0].nsubs { if s[0].subs[i].part == k && s[0].subs[i].tool && s[0].subs[i].id == id { return i; } }
+  return -1;
+}
+// Adds a row to part k's sub-agent transcript; false when it is full or the pool is.
+s_sub_add :: (s: [] Session, k: int, tool: bool, name: string, text: string, id: string) -> bool {
+  if s[0].nsubs >= S_SUBS { return false; }
+  r := SSub.{part = k, tool = tool, name = s_put(s, name), text = s_put(s, text), id = s_put(s, id)};
+  if s[0].exhausted { return false; }
+  s[0].subs[s[0].nsubs] = r; s[0].nsubs += 1; s[0].changed = true; return true;
 }
 s_tool_of :: (s: [] Session, id: string) -> int {
   k := s[0].n - 1;

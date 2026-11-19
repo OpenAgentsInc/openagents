@@ -29,8 +29,10 @@ legacy realm grant alone does not enable it. Stop remote sharing by revoking
 the grant with `forget`; local operator access remains independent.
 
 The typed `app.rpc` methods are `DescribeEnvironment`, `ListSessions`,
-`ReadSession`, `OpenSession`, `SendMessage`, `StopTurn` and
-`RespondInteraction`. They use the frozen HOST signed/encrypted kind3188
+`ReadSession`, `ReadSubagent`, `OpenSession`, `SendMessage`, `StopTurn` and
+`RespondInteraction`. `ReadSubagent` is a read: it names the `item_id` of the
+call that started a sub-agent and pages that agent's own calls and words
+(newest first, 24 at most); a computer older than it refuses the request. They use the frozen HOST signed/encrypted kind3188
 carriage and correlated replies. The optional projection lives above HOST
 in Coder's `environment/host-wire.coax`; the old browser decoder stays closed.
 There is no generic process or shell RPC.

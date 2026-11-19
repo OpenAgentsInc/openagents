@@ -53,7 +53,7 @@ CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
-CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111; CH_HIT_FOREMAN :: 412; CH_HIT_FOREMAN_BACK :: 413;
+CH_HIT_TEXT :: 101; CH_HIT_SEND :: 102; CH_HIT_MENU :: 103; CH_HIT_SCRIM :: 104; CH_HIT_LOGIN :: 105; CH_HIT_LOGOUT :: 106; CH_HIT_NEW :: 107; CH_HIT_ENV :: 109; CH_HIT_REPO :: 110; CH_HIT_BACK :: 111; CH_HIT_FOREMAN :: 412; CH_HIT_FOREMAN_BACK :: 413; CH_HIT_SUBAGENT_BACK :: 414;
 CH_ZOOM_MAX :: 2.5;  // the largest text size the page draws, against the default (the host's Dynamic Type)
 CH_SWIPE :: 30.0;   // layout units a swipe travels to close or open the drawer
 CH_EDGE :: 18.0;    // the left edge a swipe that opens the drawer starts in
@@ -260,6 +260,14 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     tw:=measure_width(f[0].m,k.title.face,"Workspace");_=app_text(f,"workspace.title.heading",(w-tw)/2,nav_y+(nav-k.title.line)/2,tw,APP_TEXT_TITLE,"Workspace");
     area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
     uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=wsc_view(s[0].sc[0].workspaces[..],f,16/u,area_top-offset,w-32/u,area_top,bottom,ch_focus(s));
+    ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
+  }
+  if s[0].sc[0].subagent[0].open {
+    s[0].menu_side=0;nav:=k.app.icon_button;
+    _:=app_icon_button(f,"subagent.back",16/u,nav_y,ICON_BACK,"Back to chat",APP_BUTTON_QUIET,0,CH_HIT_SUBAGENT_BACK);
+    _=sav_head(s[0].sc[0].subagent[..],f,16/u+nav+k.app.gap,nav_y,nav,CH_HIT_SUBAGENT_BACK);
+    area_top:=nav_y+nav+k.app.gap;key:=uiframe_key(f,"section.viewport");offset:=keyed_scroll(f[0].keyed,key);s[0].section_viewport=bottom-area_top;
+    uiframe_clip(f,0,area_top,w,bottom);s[0].section_content=sav_view(s[0].sc[0].subagent[..],f,16/u,area_top-offset,w-32/u);
     ch_reveal(s,f,key,area_top,bottom,s[0].section_content,offset);uiframe_unclip(f);return;
   }
   if s[0].sc[0].foreman[0].open {
@@ -483,12 +491,22 @@ ch_open_changes :: (s:[]ChatPage)->bool {
  if !wsc_open(s[0].sc[0].workspaces[..],host,false) {return false;}s[0].sc[0].workspaces[0].tab=0;s[0].sc[0].workspaces[0].cursor=0;s[0].workspace=false;s[0].thread_menu=false;s[0].thread_details=false;
  ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;
 }
+// A computer session's sub-agent row: its own transcript opens over the chat (subagent/flow.coax).
+ch_open_subagent :: (s:[]ChatPage,item:string)->bool {
+ c:=s[0].core;if c.count<1 || !app_device_on(c) {return false;}e:=c[0].device[0].e[..];
+ title:="";for i:0..<e[0].view[0].ni {m:=e[0].view[0].items[i];if cast(string)e[0].view[0].items[i].id[0..<m.ni]==item {title=view_first_line(ea_item_text(e[0].view[..],i));}}
+ if !sa_open(s[0].sc[0].subagent[..],c,cast(string)e[0].session[0..<e[0].ns],item,title) {return false;}
+ s[0].workspace=false;s[0].thread_menu=false;s[0].thread_details=false;
+ ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;
+}
 // A press on a committed row; platform effects go through the shared core.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
   if act==WSC_ACTION {ok:=wsc_press(s[0].sc[0].workspaces[..],s[0].core,surface_id(sf,row));ch_set_focus(s,"");ch_step(s);return ok;}
   if act==WSC_FIELD {ch_set_focus(s,surface_id(sf,row));return true;}
   if act==FM_ACTION {ok:=fm_press(s[0].sc[0].foreman[..],surface_id(sf,row));ch_step(s);return ok;}
+  if act==SA_ACTION {ok:=sav_press(s[0].sc[0].subagent[..],s[0].keyed[0..<1],surface_id(sf,row));ch_step(s);return ok;}
+  if act==CH_HIT_SUBAGENT_BACK {s[0].sc[0].subagent[0].open=false;ch_set_focus(s,"");ch_step(s);return true;}
   if act==CH_HIT_FOREMAN {ch_main(s);s[0].drawer=false;_=fm_open(s[0].sc[0].foreman[..],s[0].core);ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;}
   if act==CH_HIT_FOREMAN_BACK {ch_main(s);ch_set_focus(s,"");ch_step(s);return true;}
   if act==450 || act==451 {s[0].rename=false;s[0].workspace=false;s[0].library_note=false;s[0].thread_menu=act==450;s[0].thread_details=act==451;keyed_scroll_set(s[0].keyed[1..<2],keyed_find(s[0].keyed[1..<2],"thread.viewport"),0);ch_set_focus(s,"");return true;}
@@ -574,6 +592,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     p := view_press(s[0].view[..], s[0].core, s[0].keyed[0..<1], surface_id(sf, row), act);
     if p.kind == VIEW_P_FOCUS { ch_set_focus(s, VIEW_COMPOSER_ID); s[0].action = CH_ACT_FOCUS; return true; }
     if p.kind == VIEW_P_DISPATCH && p.what == VIEW_C_FILE { return ch_open_changes(s); }
+    if p.kind == VIEW_P_DISPATCH && p.what == VIEW_C_SUBAGENT { return ch_open_subagent(s, p.text); }
     if p.kind == VIEW_P_DISPATCH { return ch_dispatch(s, p.what, p.text); }
     return p.kind == VIEW_P_LOCAL;
   }

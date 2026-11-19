@@ -1,5 +1,5 @@
 // The pages a phone app shows beside its chat, kept together over the shared app core (GitHub
-// #13713): Settings (identity), Usage, Foreman, Workspace, Projects, and the drawer's two lists
+// #13713): Settings (identity), Usage, Foreman, a sub-agent's transcript, Workspace, Projects, and the drawer's two lists
 // (the account's chats and the paired computers' sessions). A root holds one AppScreens, calls
 // app_screens_sync after every step with what shows, hands every guest result to
 // app_screens_guest first, and closes the nested pages with app_screens_close when the person
@@ -14,9 +14,10 @@
 #load "../projects/view.coax";
 #load "../usage/view.coax";
 #load "../foreman/view.coax";
+#load "../subagent/view.coax";
 
 AppScreens :: struct {
-  identity: [1] IdentitySettings; usage: [1] UsageScreen; foreman: [1] ForemanScreen;
+  identity: [1] IdentitySettings; usage: [1] UsageScreen; foreman: [1] ForemanScreen; subagent: [1] SubagentScreen;
   workspaces: [1] WorkspaceScreen; projects: [1] ProjectScreen;
   history: [1] ChatIndex; devices: [1] DeviceHistory;
 }
@@ -33,21 +34,22 @@ app_screens_sync :: (sc: [] AppScreens, c: [] AppCore, shown: AppScreensShown, l
   wsc_sync(sc[0].workspaces[..], c, sc[0].workspaces[0].open && !shown.covered);
   us_sync(sc[0].usage[..], c, sc[0].usage[0].open && !shown.covered);
   fm_sync(sc[0].foreman[..], c, sc[0].foreman[0].open && !shown.covered);
+  sa_sync(sc[0].subagent[..], c, sc[0].subagent[0].open && !shown.covered);
   ps_sync(sc[0].projects[..], c, shown.projects && !shown.covered && !sc[0].identity[0].open);
 }
 // A guest result: true when one of these pages took it (it called app_guest_done).
 app_screens_guest :: (sc: [] AppScreens, c: [] AppCore, body: string) -> bool {
-  return wsc_guest(sc[0].workspaces[..], c, body) || us_guest(sc[0].usage[..], c, body) || fm_guest(sc[0].foreman[..], c, body)
+  return wsc_guest(sc[0].workspaces[..], c, body) || us_guest(sc[0].usage[..], c, body) || fm_guest(sc[0].foreman[..], c, body) || sa_guest(sc[0].subagent[..], c, body)
     || ps_guest(sc[0].projects[..], c, body) || iks_guest(sc[0].identity[..], c, body) || hi_guest(sc[0].history[..], c, body)
     || dh_guest(sc[0].devices[..], c, body);
 }
-// The nested pages close: Workspace, Foreman, Usage and Settings with what each was asking.
+// The nested pages close: Workspace, Foreman, a sub-agent's, Usage and Settings with what each was asking.
 app_screens_close :: (sc: [] AppScreens) {
-  sc[0].workspaces[0].open = false; sc[0].foreman[0].open = false; sc[0].foreman[0].asking = false;
+  sc[0].workspaces[0].open = false; sc[0].foreman[0].open = false; sc[0].foreman[0].asking = false; sc[0].subagent[0].open = false;
   sc[0].usage[0].open = false; sc[0].usage[0].code_ready = false;
   sc[0].identity[0].open = false; sc[0].identity[0].backup = false; sc[0].identity[0].confirm = 0;
 }
 // Whether a nested page (with its own scroll) shows over the chat.
-app_screens_nested :: (sc: [] AppScreens) -> bool { return sc[0].workspaces[0].open || sc[0].foreman[0].open || sc[0].usage[0].open; }
+app_screens_nested :: (sc: [] AppScreens) -> bool { return sc[0].workspaces[0].open || sc[0].foreman[0].open || sc[0].subagent[0].open || sc[0].usage[0].open; }
 
 #load "screens-checks.coax" #test;

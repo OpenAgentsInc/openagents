@@ -24,7 +24,7 @@ ea_fresh :: (issued:int,expires:int,now:int)->bool #effects(all) {
 }
 
 #test "environment methods have fixed rights, unknown methods cannot dispatch" {
-  #assert ea_right("DescribeEnvironment")==0 && ea_right("ListSessions")==0 && ea_right("ReadSession")==0;
+  #assert ea_right("DescribeEnvironment")==0 && ea_right("ListSessions")==0 && ea_right("ReadSession")==0 && ea_right("ReadSubagent")==0;
   #assert ea_right("OpenSession")==1 && ea_right("SendMessage")==1 && ea_right("StopTurn")==1;
   #assert ea_right("RespondInteraction")==3 && ea_right("")== -1 && ea_right("RunCommand")== -1;
 }
@@ -55,7 +55,7 @@ ea_fresh :: (issued:int,expires:int,now:int)->bool #effects(all) {
 }
 
 ea_right :: (method:string)->int #effects(all) {
-  if method=="DescribeEnvironment" || method=="ListSessions" || method=="ReadSession" {return 0;}
+  if method=="DescribeEnvironment" || method=="ListSessions" || method=="ReadSession" || method=="ReadSubagent" {return 0;}
   if method=="OpenSession" || method=="SendMessage" || method=="StopTurn" {return 1;}
   if method=="RespondInteraction" {return 3;}return -1;
 }

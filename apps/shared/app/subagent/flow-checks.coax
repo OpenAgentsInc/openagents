@@ -1,0 +1,76 @@
+// Checks for a sub-agent's transcript on the phone (flow.coax).
+
+SA_T_HOST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+SA_T_SESSION :: "0123456789abcdef0123456789abcdef";
+// A core in the foreground on a paired computer's conversation, its clocks set.
+sa_t_core :: (c: [] AppCore, lane: [] DeviceLane) {
+  app_init(c); #assert app_device_attach(c, lane); c[0].foreground = true; c[0].wall_ms = 1700000000000; c[0].mono_ms = 1000;
+  lane[0].np = 1; _ := ea_copy(lane[0].paired[0].host[..], SA_T_HOST); lane[0].paired[0].nn = ea_copy(lane[0].paired[0].name[..], "Mac");
+  lane[0].on = true; _ := ea_copy(lane[0].host[..], SA_T_HOST);
+}
+// The computer's answer to the read in flight.
+sa_t_answer :: (s: [] SubagentScreen, c: [] AppCore, outcome: int, raw: string) -> bool {
+  op := s[0].op; #assert op > 0 && fx_take(c[0].out[..], op);
+  c[0].guest = AppGuest.{waiting = true, owner = OWN_SUBAGENT, op = op, outcome = outcome};
+  return sa_guest(s, c, raw);
+}
+// A ReadSubagent view: rows calls named Bash ("ls 0", "ls 1", ...), its cursor and whether the agent is done.
+sa_t_view :: (rows: int, cursor: string, done: bool, error: string, out: [] u8) -> string {
+  v: [1] EaView; v[0].nh = ea_copy(v[0].host[..], SA_T_HOST); v[0].nm = ea_copy(v[0].method[..], "ReadSubagent");
+  for i: 0..<rows {
+    m := v[0].items[i]; b: [16] u8; b[0] = 's'; b[1] = cast(u8) ('0' + i); m.ni = ea_copy(m.id[..], cast(string) b[0..<2]);
+    m.nr = ea_copy(m.role[..], "tool"); m.nk = ea_copy(m.tool[..], "Bash"); t: [8] u8; t[0] = 'l'; t[1] = 's'; t[2] = ' '; t[3] = cast(u8) ('0' + i);
+    m.text_at = ea_text_put(v[..], cast(string) t[0..<4]); m.nt = 4; m.complete = true; v[0].items[i] = m;
+  }
+  v[0].ni = rows; v[0].nc = ea_copy(v[0].cursor[..], cursor); v[0].complete = done; v[0].ne = ea_copy(v[0].error[..], error);
+  n := ea_view_write(v[..], out); #assert n > 0; return cast(string) out[0..<n];
+}
+
+#test "a sub-agent's page reads its transcript from the paired computer while the agent works, then stops" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; sa_t_core(c[..], lane[..]); s: [1] SubagentScreen; b: [16384] u8;
+  #assert sa_open(s[..], c[..], SA_T_SESSION, "3:0", "Find the config") && cast(string) s[0].host[..] == SA_T_HOST;
+  sa_sync(s[..], c[..], false); #assert s[0].op == 0 && c[0].guest_due[OWN_SUBAGENT] == 0;
+  sa_sync(s[..], c[..], true); #assert s[0].op > 0;
+  at := fx_find(c[0].out[..], s[0].op); #assert c[0].out[0].slots[at].kind == FX_DEVICE_CALL;
+  q: [1] EaRequest; #assert ea_read(fx_body(c[0].out[..], at), q[..]) && cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent";
+  #assert cast(string) q[0].item[0..<q[0].nit] == "3:0" && cast(string) q[0].session[0..<q[0].ns] == SA_T_SESSION && q[0].before == 0;
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(2, "", false, "", b[..])) && s[0].loaded && !s[0].done && s[0].view[0].ni == 2;
+  // it reads again at its time while the agent works
+  sa_sync(s[..], c[..], true); #assert s[0].op == 0 && c[0].guest_due[OWN_SUBAGENT] == 1000 + SA_INTERVAL;
+  c[0].mono_ms = 1000 + SA_INTERVAL; sa_sync(s[..], c[..], true); #assert s[0].op > 0;
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(3, "", true, "", b[..])) && s[0].done && s[0].view[0].ni == 3;
+  // done: no more reads by itself
+  c[0].mono_ms += 10 * SA_INTERVAL; sa_sync(s[..], c[..], true); #assert s[0].op == 0 && c[0].guest_due[OWN_SUBAGENT] == 0;
+}
+
+#test "Earlier shows the page before and stops reading; Latest reads the newest again" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; sa_t_core(c[..], lane[..]); s: [1] SubagentScreen; b: [16384] u8;
+  #assert sa_open(s[..], c[..], SA_T_SESSION, "3:0", "Find it"); sa_sync(s[..], c[..], true);
+  #assert !sa_press(s[..], "subagent.earlier");   // nothing loaded yet
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(3, "8", false, "", b[..])) && sa_earlier(s[..]) == 8;
+  #assert !sa_press(s[..], "subagent.latest") && sa_press(s[..], "subagent.earlier") && s[0].before == 8;
+  sa_sync(s[..], c[..], true); at := fx_find(c[0].out[..], s[0].op); q: [1] EaRequest; #assert ea_read(fx_body(c[0].out[..], at), q[..]) && q[0].before == 8;
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(2, "", false, "", b[..]));
+  c[0].mono_ms += 10 * SA_INTERVAL; sa_sync(s[..], c[..], true); #assert s[0].op == 0;   // an earlier page is not polled
+  #assert sa_press(s[..], "subagent.latest") && s[0].before == 0; sa_sync(s[..], c[..], true); #assert s[0].op > 0;
+  // an earlier page that went away shows the newest instead, with no note
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(3, "8", false, "", b[..])) && sa_press(s[..], "subagent.earlier");
+  sa_sync(s[..], c[..], true); #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(0, "", false, "stale_cursor", b[..])) && s[0].before == 0 && s[0].nnote == 0;
+}
+
+#test "a refusal or silence says so, keeps what showed, and reads again only on Try again" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; sa_t_core(c[..], lane[..]); s: [1] SubagentScreen; b: [16384] u8;
+  #assert sa_open(s[..], c[..], SA_T_SESSION, "3:0", "Find it"); sa_sync(s[..], c[..], true);
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(2, "", false, "", b[..]));
+  c[0].mono_ms += SA_INTERVAL; sa_sync(s[..], c[..], true);
+  #assert sa_t_answer(s[..], c[..], FXO_UNKNOWN, "") && s[0].nnote > 0 && s[0].loaded && s[0].view[0].ni == 2;
+  c[0].mono_ms += 10 * SA_INTERVAL; sa_sync(s[..], c[..], true); #assert s[0].op == 0;
+  #assert sa_press(s[..], "subagent.retry") && s[0].nnote == 0; sa_sync(s[..], c[..], true); #assert s[0].op > 0;
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(0, "", false, "not_found", b[..])) && s[0].nnote > 0;
+  // a reply from another computer, or to another method, is not this page's
+  #assert sa_press(s[..], "subagent.retry"); sa_sync(s[..], c[..], true);
+  v: [1] EaView; v[0].nh = ea_copy(v[0].host[..], SA_T_HOST); v[0].nm = ea_copy(v[0].method[..], "ReadSession"); n := ea_view_write(v[..], b[..]);
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, cast(string) b[0..<n]) && s[0].nnote > 0;
+  // no computer on: nothing opens
+  lane[0].on = false; t: [1] SubagentScreen; #assert !sa_open(t[..], c[..], SA_T_SESSION, "3:0", "x") && !t[0].open;
+}

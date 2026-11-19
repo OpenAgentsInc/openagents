@@ -6,7 +6,7 @@ package openagents.environment.access.v1alpha1;
 // Carried in HOST app.rpc; method/right mapping is closed in the Coax policy.
 message RuntimeRequest {
   string method = 1 [json_name = "method"]; // DescribeEnvironment, ListSessions, ReadSession,
-                    // OpenSession, SendMessage, StopTurn, RespondInteraction
+                    // ReadSubagent, OpenSession, SendMessage, StopTurn, RespondInteraction
   string workspace_id = 2 [json_name = "workspace_id"]; // configured canonical workspace ID, never a path
   string session_id = 3 [json_name = "session_id"]; // 32 lowercase hex managed ID or native UUID
   string command_id = 4 [json_name = "command_id"]; // 32 lowercase hex, caller retained across retries
@@ -27,6 +27,11 @@ message RuntimeRequest {
   // OpenSession only: a folder the computer offered (RuntimeView.folders), relative to the bound
   // workspace, plain segments, none empty, hidden, "." or ".."; absent opens the workspace itself.
   optional string folder = 15 [json_name = "folder"];
+  // ReadSubagent only, and required there: the ReadSession item_id of the call that started a
+  // sub-agent. Its view's items are that agent's calls (role tool) and words (assistant), a page
+  // of at most 24 back from the newest; next_cursor counts the rows before the page, and complete
+  // says the agent has finished. A computer that keeps no such transcript refuses not_found.
+  optional string item_id = 16 [json_name = "item_id"];
 }
 message RuntimeItem {
   string item_id = 1 [json_name = "item_id"];

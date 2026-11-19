@@ -1,0 +1,80 @@
+// A sub-agent's page on the phone (GitHub #13713): its own transcript drawn as Coder Desktop's
+// subagent pane draws it (apps/coder-desktop/page/layout/pane.coax, #13744): its calls as the
+// shared activity group (components/app/activity.coax, the summary then a row for each that
+// opens onto its call and output) and what it said between them as plain words. Earlier and
+// Latest page through it; a note with Try again says when the computer did not answer.
+//   coax/bin/coax test apps/shared/app/subagent/view.coax --run-steps 200000000
+#load "flow.coax";
+#load "../view/page.coax";   // view_act_item: a computer's item as the activity row the chat draws
+#load "../../../../components/app/pane.coax";   // app_pane_tab: the head Coder Desktop's subagent pane has
+
+SAV_GROUP :: "subagent.group.";
+SAV_ROW :: "subagent.row.";
+// Item i's row id: SAV_ROW and the digits of its item id ("sub:12" is subagent.row.12).
+sav_row_id :: (v: [] EaView, i: int, out: [] u8) -> string {
+  n := el_put(out, 0, SAV_ROW); m := v[0].items[i];
+  for ch: cast(string) v[0].items[i].id[0..<m.ni] { if ch >= '0' && ch <= '9' && n < out.count { out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+sav_tool :: (v: [] EaView, i: int) -> bool { m := v[0].items[i]; return cast(string) v[0].items[i].role[0..<m.nr] == "tool"; }
+
+// The page's head at (x, y), h tall, as Coder Desktop's subagent pane heads it: Zeron's panel tab
+// chip with the agent's task, its Close going back with back_action. Returns the chip's width.
+sav_head :: (s: [] SubagentScreen, f: [] UiFrame, x: f32, y: f32, h: f32, back_action: int) -> f32 {
+  th := APP_PANE_TAB_H; title := ifx s[0].nt > 0 then cast(string) s[0].title[0..<s[0].nt] else "Sub-agent";
+  return app_pane_tab(f, x, y + (h - th) / 2, ICON_BOT, title, "subagent.close", back_action, 1.0f32);
+}
+// The page under its head; returns its height.
+sav_view :: (s: [] SubagentScreen, f: [] UiFrame, x: f32, origin: f32, w: f32) -> f32 {
+  k := f[0].skin; y := origin; gap := k.app.gap;
+  if s[0].nnote > 0 {
+    y += app_notice(f, "subagent.note", x, y, w, cast(string) s[0].note[0..<s[0].nnote], APP_NOTICE_ERROR) + gap;
+    y += app_button(f, "subagent.retry", x, y, w, -1, "Try again", APP_BUTTON_PRIMARY, ifx s[0].op > 0 then EL_S_DISABLED else 0, SA_ACTION) + gap;
+  }
+  if !s[0].loaded { return y - origin + app_text(f, "subagent.loading", x, y, w, APP_TEXT_BODY, "Connecting…"); }
+  if s[0].before > 0 { y += app_button(f, "subagent.latest", x, y, w, -1, "Latest", APP_BUTTON_QUIET, 0, SA_ACTION) + gap; }
+  if sa_earlier(s) > 0 { y += app_button(f, "subagent.earlier", x, y, w, -1, "Earlier", APP_BUTTON_QUIET, 0, SA_ACTION) + gap; }
+  v := s[0].view[..];
+  if v[0].ni == 0 { y += app_text(f, "subagent.empty", x, y, w, APP_TEXT_CAPTION, ifx s[0].done then "It made no calls." else "It has not made a call yet.") + gap; }
+  i := 0;
+  while i < v[0].ni {
+    if !sav_tool(v, i) {
+      ib: [48] u8; y += app_text(f, sav_row_id(v, i, ib[..]), x, y, w, APP_TEXT_BODY, ea_item_text(v, i)) + gap; i += 1; continue;
+    }
+    // a run of calls is one group: its summary, open while the agent works unless the person chose
+    last := i; while last + 1 < v[0].ni && sav_tool(v, last + 1) { last += 1; }
+    c: [1] AppActCount; live := false;
+    for q: i..<last + 1 { r := view_act_item(v, q, 0); app_act_count(c[..], ifx r.kind < APP_ACT_KINDS then r.kind else -1, r.failed); if r.running { live = true; } }
+    gb: [48] u8; gn := el_put(gb[..], 0, SAV_GROUP); gn = el_put_i(gb[..], gn, i); gid := cast(string) gb[0..<gn];
+    sb: [256] u8; sn := app_act_summary(sb[..], c[0]);
+    key := uiframe_key(f, gid); open := app_act_open(cast(int) keyed_slot(f[0].keyed, key, APP_TOOL_OPEN), live);
+    y += app_act_head(f, gid, x, y, w, sheet_pool(f[0].sheet, cast(string) sb[0..<sn]), live, open, SA_ACTION);
+    if open {
+      y += k.app.gap_small;
+      for q: i..<last + 1 { rb: [48] u8; y += app_act_row(f, sav_row_id(v, q, rb[..]), x, y, w, view_act_item(v, q, 0), q < last, SA_ACTION); }
+    }
+    y += gap; i = last + 1;
+  }
+  if !s[0].done && s[0].before == 0 { y += app_text(f, "subagent.working", x, y, w, APP_TEXT_CAPTION, "Working…") + gap; }
+  return y - origin;
+}
+
+// A press on the page, by its element's id: a group's summary folds or opens it, a row opens onto
+// its call and output, the buttons go to sa_press. keyed is the frame's keyed store.
+sav_press :: (s: [] SubagentScreen, keyed: [] KeyedStore, id: string) -> bool {
+  g := SAV_GROUP; r := SAV_ROW;
+  if id.count > g.count && cast(string) id[0..<g.count] == g {
+    k := keyed_find(keyed, id); if k < 0 { return false; }
+    // the group's own calls say whether it works, as it was drawn
+    v := s[0].view[..]; i := 0; for ch: cast(string) id[g.count..<id.count] { if ch < '0' || ch > '9' || i > 100000 { return false; } i = i * 10 + cast(int) (ch - '0'); }
+    live := false; q := i; while q < v[0].ni && sav_tool(v, q) { if view_act_item(v, q, 0).running { live = true; } q += 1; }
+    keyed_slot_set(keyed, k, APP_TOOL_OPEN, cast(f32) app_act_choose(cast(int) keyed_slot(keyed, k, APP_TOOL_OPEN), live)); return true;
+  }
+  if id.count > r.count && cast(string) id[0..<r.count] == r {
+    e := r.count; while e < id.count && id[e] != '.' { e += 1; }
+    return app_act_press(keyed, cast(string) id[0..<e], id);
+  }
+  return sa_press(s, id);
+}
+
+#load "view-checks.coax" #test;

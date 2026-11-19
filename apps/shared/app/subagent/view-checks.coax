@@ -1,0 +1,48 @@
+// Checks for view.coax: what a sub-agent's page shows, and that its presses open and fold its rows.
+//   coax/bin/coax test apps/shared/app/subagent/view.coax --run-steps 200000000
+#load "../../../../components/skin/arcade.coax";
+
+SavStore :: struct { under_a: [16384] Prim; over_a: [8192] Prim; hits_a: [512] SheetHit; under_b: [16384] Prim; over_b: [8192] Prim; hits_b: [512] SheetHit; rows_a: [512] El; rows_b: [512] El; keys: [64] Keyed; pool_a: [16384] u8; pool_b: [16384] u8; lines_a: [512] SheetLine; lines_b: [512] SheetLine; }
+
+sav_frame :: (st: [] SavStore, s: [] SubagentScreen) -> ElTable #effects(all) {
+  sf := [1] UiSurface.[surface_over(Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..], pool = st[0].pool_a[..], lines = st[0].lines_a[..]}, st[0].rows_a[..],
+                                    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..], pool = st[0].pool_b[..], lines = st[0].lines_b[..]}, st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}]; f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  #assert sav_view(s, f[..], 16, 0, 340) > 0;
+  #assert uiframe_end(f[..], sf[..]);
+  return surface_rows(sf[..]);
+}
+sav_has :: (t: ElTable, id: string) -> bool { tt := [1] ElTable.[t]; return elt_find(tt[..], id) >= 0; }
+sav_t_item :: (v: [] EaView, i: int, id: string, role: string, tool: string, text: string, complete: bool) {
+  m := v[0].items[i]; m.ni = ea_copy(m.id[..], id); m.nr = ea_copy(m.role[..], role); m.nk = ea_copy(m.tool[..], tool);
+  m.text_at = ea_text_put(v, text); m.nt = text.count; m.complete = complete; v[0].items[i] = m; if i >= v[0].ni { v[0].ni = i + 1; }
+}
+
+#test "a sub-agent's page: connecting, its words and its calls as one group, Earlier, and a note with Try again" #steps 2000000000 {
+  st: [1] SavStore; s: [1] SubagentScreen; s[0].open = true;
+  t := sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.loading") && !sav_has(t, "subagent.group.1");
+  s[0].loaded = true; v := s[0].view[..];
+  sav_t_item(v, 0, "sub:0", "assistant", "", "Looking for the config", true);
+  sav_t_item(v, 1, "sub:1", "tool", "Bash", "a.toml", true);
+  sav_t_item(v, 2, "sub:2", "tool", "Read", "/w/a.toml", false);
+  v[0].nc = ea_copy(v[0].cursor[..], "4");
+  t = sav_frame(st[..], s[..]);
+  // its words, then its two calls under one summary, open while it works, and the way to earlier rows
+  #assert sav_has(t, "subagent.row.0") && sav_has(t, "subagent.group.1") && sav_has(t, "subagent.row.1") && sav_has(t, "subagent.row.2");
+  #assert sav_has(t, "subagent.earlier") && !sav_has(t, "subagent.latest") && sav_has(t, "subagent.working");
+  // done: the group folds to its summary; a press on the summary opens it again
+  v[0].items[2].complete = true; s[0].done = true;
+  t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.group.1") && !sav_has(t, "subagent.row.1") && !sav_has(t, "subagent.working");
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  #assert sav_press(s[..], ks[..], "subagent.group.1");
+  t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.row.1");
+  // a row opens onto its output
+  #assert sav_press(s[..], ks[..], "subagent.row.1") && keyed_slot(ks[..], keyed_find(ks[..], "subagent.row.1"), APP_TOOL_OPEN) > 0;
+  // Earlier goes to sa_press; an earlier page offers Latest
+  #assert sav_press(s[..], ks[..], "subagent.earlier") && s[0].before == 4;
+  t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.latest");
+  sa_note(s[..], "Your computer did not answer.");
+  t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.note") && sav_has(t, "subagent.retry") && sav_has(t, "subagent.row.1");
+  #assert !sav_press(s[..], ks[..], "subagent.nothing");
+}
