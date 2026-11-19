@@ -1,6 +1,7 @@
 // Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
 // Dialogs: a chat's budget and goal, the Claude key and the OpenRouter models, drawn by the page
-// (page/overlay.coax, GitHub #13746) with the platform editor over the field that has the keyboard.
+// (page/overlay.coax, GitHub #13746). The field with the keyboard is the page's own editor
+// (page/editor.coax, GitHub #13742): a secure one shows dots and never copies.
 import AppKit
 
 /// A dialog the page draws: its words, its fields and its buttons in the foot's order. `confirm` is
@@ -24,15 +25,11 @@ struct CoderDialog {
     }
 }
 
-/// What the overlay keeps per window: the answers' handlers, the editor over the field with the
-/// keyboard (a secure field for a secret), the clock that places it, and the keys while one is up.
-final class CoderOverlay: NSObject, NSTextFieldDelegate {
+/// What the overlay keeps per window: the answers' handlers, and the clock and the keys while one is up.
+final class CoderOverlay: NSObject {
     weak var owner: CoderWindow?
     let page: UnsafeMutableRawPointer
-    let plain: KitMacEditor
-    let scroll = NSScrollView()
-    let secure = KitMacSecure(frame: .zero)
-    private var field = -1, fieldSecure = false, fields = 0, lines: [Int32] = []
+    private var fields = 0
     private var dialogDone: ((Int, [String]) -> Void)?
     private var menuDone: ((Int) -> Void)?
     private var keys: Any?
@@ -40,35 +37,21 @@ final class CoderOverlay: NSObject, NSTextFieldDelegate {
 
     init(owner: CoderWindow) {
         self.owner = owner; page = owner.page
-        var style = [Float](repeating: 0, count: 14); _ = cd_dialog_style(owner.page, &style)
-        plain = KitMacEditor(style: style)
         super.init()
-        plain.setAccessibilityIdentifier("dialog.editor")
-        plain.committed = { [weak self] text in guard let self, self.field >= 0, !self.fieldSecure else { return }; _ = cd_dialog_set(self.page, Int32(self.field), text) }
-        scroll.documentView = plain; scroll.drawsBackground = false; scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = false; scroll.hasHorizontalScroller = false; scroll.autohidesScrollers = true
-        scroll.isHidden = true
-        secure.isBordered = false; secure.isBezeled = false; secure.drawsBackground = false; secure.focusRingType = .none
-        secure.font = plain.font; secure.textColor = plain.textColor; secure.delegate = self; secure.isHidden = true
-        secure.cell?.usesSingleLineMode = true; secure.cell?.isScrollable = true
-        secure.setAccessibilityIdentifier("dialog.secure")
-        owner.canvas.addSubview(scroll); owner.canvas.addSubview(secure)
         cd_on_overlay(page, { raw in guard let raw else { return }; Unmanaged<CoderOverlay>.fromOpaque(raw).takeUnretainedValue().collect() },
                       Unmanaged.passUnretained(self).toOpaque())
     }
-    func controlTextDidChange(_ note: Notification) { if field >= 0 && fieldSecure { _ = cd_dialog_set(page, Int32(field), secure.stringValue) } }
 
     func present(_ d: CoderDialog, done: @escaping (Int, [String]) -> Void) {
         if let earlier = dialogDone { dialogDone = nil; earlier(-1, []) }
         cd_dialog_begin(page, d.size.rawValue, d.title, d.body)
         for f in d.fields { _ = cd_dialog_field(page, f.label, f.value, f.hint, f.secure ? 1 : 0, f.lines) }
         for b in d.buttons { _ = cd_dialog_button(page, b.title, b.kind.rawValue, b.aside ? 1 : 0) }
-        fields = min(d.fields.count, 4); lines = d.fields.map { $0.lines }
+        fields = min(d.fields.count, 4)
         dialogDone = done; menuDone = nil
-        retire(); field = -1
         cd_dialog_show(page, Int32(d.confirm), Int32(d.cancel), Int32(d.focus))
-        // nothing to type into: the keyboard leaves the composer, so a key goes nowhere
-        if d.fields.isEmpty { owner?.window.makeFirstResponder(nil) }
+        // the page's view takes the keys: its field with the keyboard, or nothing to type into
+        if let owner { owner.window.makeFirstResponder(owner.canvas) }
         begin()
     }
     struct MenuItem { var label = ""; var kind: Int32 = 0; var checked = false; var disabled = false; var danger = false }
@@ -91,7 +74,6 @@ final class CoderOverlay: NSObject, NSTextFieldDelegate {
             let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.place() }
             RunLoop.main.add(t, forMode: .common); clock = t
         }
-        place()
     }
     /// Escape for whoever else listens for it (settings): true when a dialog or a menu took it.
     func escape() -> Bool {
@@ -100,7 +82,7 @@ final class CoderOverlay: NSObject, NSTextFieldDelegate {
         return true
     }
     /// The keys while a dialog or a menu is up: Escape, Return, the arrows and Tab are the page's;
-    /// a dialog's typing is its editor's; the menu bar's shortcuts wait, but for editing ones.
+    /// a dialog's typing is its field's; the menu bar's shortcuts wait, but for editing ones.
     private func key(_ event: NSEvent) -> Bool {
         guard isOpen, event.window === owner?.window else { return false }
         let flags = event.modifierFlags
@@ -120,58 +102,12 @@ final class CoderOverlay: NSObject, NSTextFieldDelegate {
             if took { place(); collect() }
             return took || menuOpen
         }
-        let editing = owner?.window.firstResponder === plain || owner?.window.firstResponder === secure.currentEditor()
+        let editing = owner?.window.firstResponder === owner?.canvas && cd_wants_text(page) != 0
         if flags.contains(.command) { return !(editing && ["c", "v", "x", "a", "z"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "")) }
         return !editing
     }
-    /// The editor over the field with the keyboard, once the dialog is at rest; hidden otherwise.
-    func place() {
-        guard let owner else { return }
-        var box = [Float](repeating: 0, count: 6)
-        let at = Int(cd_dialog_editor(page, &box))
-        if at < 0 {
-            if field >= 0 { retire(); field = -1 }
-            if !isOpen { finish() }
-            return
-        }
-        let isSecure = box[4] != 0, multi = at < lines.count && lines[at] > 1
-        let frame = NSRect(x: CGFloat(box[0]), y: owner.canvas.bounds.height - CGFloat(box[1] + box[3]), width: CGFloat(box[2]), height: CGFloat(box[3]))
-        if at != field {
-            retire()
-            field = at; fieldSecure = isSecure
-            var out = [CChar](repeating: 0, count: 4097)
-            let value = cd_dialog_value(page, Int32(at), &out, Int32(out.count)) >= 0 ? String(cString: out) : ""
-            if isSecure {
-                secure.stringValue = value; secure.frame = frame; secure.isHidden = false
-                owner.window.makeFirstResponder(secure)
-            } else {
-                plain.synchronize { plain.string = value }
-                // one line scrolls sideways to the caret; a box wraps and scrolls down
-                plain.textContainer?.widthTracksTextView = multi
-                plain.isHorizontallyResizable = !multi
-                scroll.hasVerticalScroller = multi
-                scroll.frame = .zero
-                scroll.isHidden = false
-                owner.window.makeFirstResponder(plain)
-                plain.setSelectedRange(NSRange(location: (value as NSString).length, length: 0))
-            }
-        }
-        if isSecure { if secure.frame != frame { secure.frame = frame } }
-        else if scroll.frame != frame {
-            scroll.frame = frame
-            plain.minSize = NSSize(width: frame.width, height: frame.height)
-            if multi { plain.frame.size.width = frame.width; plain.textContainer?.size = NSSize(width: frame.width, height: CGFloat.greatestFiniteMagnitude) }
-            else { plain.textContainer?.size = NSSize(width: CGFloat.greatestFiniteMagnitude, height: frame.height) }
-            plain.sizeToFit()
-            plain.scrollRangeToVisible(plain.selectedRange())
-        }
-    }
-    /// The editor leaves its field: hidden and emptied, the keyboard with nothing until the next field.
-    private func retire() {
-        if !scroll.isHidden { scroll.isHidden = true; plain.discardComposition(); plain.synchronize { plain.string = "" } }
-        if !secure.isHidden { secure.isHidden = true; secure.stringValue = "" }
-        if let w = owner?.window, w.firstResponder === plain || w.firstResponder === secure.currentEditor() { w.makeFirstResponder(nil) }
-    }
+    /// While one is up: once it is gone, the clock and the keys stop.
+    func place() { if !isOpen { finish() } }
     /// Nothing is up any more: the clock and the keys stop.
     private func finish() {
         clock?.invalidate(); clock = nil
@@ -185,7 +121,6 @@ final class CoderOverlay: NSObject, NSTextFieldDelegate {
             var values: [String] = []
             var out = [CChar](repeating: 0, count: 4097)
             for i in 0..<fields { values.append(cd_dialog_value(page, Int32(i), &out, Int32(out.count)) >= 0 ? String(cString: out) : "") }
-            retire(); field = -1
             DispatchQueue.main.async { done(a, values) }
         }
         let m = Int(cd_menu_answer(page))

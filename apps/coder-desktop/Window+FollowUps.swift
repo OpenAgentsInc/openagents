@@ -108,15 +108,13 @@ extension CoderWindow {
     }
     /// The composer's text, and the composer emptied.
     func takeDraft() -> String {
-        let text = editor.string
-        editor.synchronize { editor.string = "" }
-        _ = cd_set_text(page, "")
+        let text = draft
+        _ = cd_set_text(page, ""); wake()
         return text
     }
     func setDraft(_ text: String) {
-        editor.synchronize { editor.string = text }
         _ = cd_set_text(page, text)
-        window.makeFirstResponder(editor)
+        focusComposer()
     }
     /// A worker for the shown chat's queue while no reply runs (a queue kept from before, paused):
     /// started if it is not, told the chat's turns if it was opened since, so a message the queue
@@ -138,7 +136,7 @@ extension CoderWindow {
     }
     /// Command-Return (the File menu's): while a reply runs the draft goes the other way from Return.
     func followUpOther() {
-        guard window.firstResponder === editor, cd_followup_submit(page, 1) != 0 else { return }
+        guard composerFocused, cd_followup_submit(page, 1) != 0 else { return }
         wake()
     }
     /// A press on the tray, or Return, Command-Return or Esc in the composer (cd_action 25).
@@ -146,7 +144,7 @@ extension CoderWindow {
         let op = cd_followup_op(page), item = Int(cd_followup_item(page)), r = run
         switch op {
         case 20, 21:   // the draft steers the running reply, or goes last in the queue
-            let text = editor.string
+            let text = draft
             guard !text.isEmpty else { return }
             if op == 20, steer(text) != nil { _ = takeDraft() }
             else if enqueue(text) != nil { _ = takeDraft() }
@@ -175,7 +173,7 @@ extension CoderWindow {
             } else { queueOp("promote", q.id, now: true) }
         case 5:        // Edit: its text in the composer until Return saves it or Esc gives it up
             guard let q = queuedText(r, item) else { return }
-            if cd_followup_edited(page) < 0 { draftBeforeEdit = editor.string }   // editing another, its draft stays the one kept
+            if cd_followup_edited(page) < 0 { draftBeforeEdit = draft }   // editing another, its draft stays the one kept
             cd_followup_editing(page, Int32(item))
             setDraft(q.text)
         case 7: interrupt(resubmit: true)

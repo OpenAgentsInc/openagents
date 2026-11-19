@@ -15,7 +15,16 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
   o := cp_ov_spec(); d := s[0].ov[0].dlg[..]; mn := s[0].ov[0].menu[..];
   moving := app_dialog_step(d, dt, s[0].reduced, o) || app_menu_step(mn, dt, s[0].reduced, o);
   app_menu_paint(f, mn, w, h, o);
+  // the field with the keyboard is the page's editor (editor.coax): the dialog leaves its words to it
+  box: [5] f32;
+  edit := cp_ed_which(s) == CP_ED_DIALOG && app_dialog_field_box(d, f[0].skin, o, box[..]);
+  d[0].editing = edit;
+  if cp_ed_dialog_field(s) < 0 { s[0].fld[0].dlg_at = -1; }
   app_dialog_paint(f, d, w, h, o);
+  if edit && app_dialog_field_box(d, f[0].skin, o, box[..]) {
+    i := d[0].focus;
+    cp_ed_draw(s, f, CP_ED_DIALOG, box[0], box[1], box[2], box[3], cast(string) d[0].fields[i].hint[0..<d[0].fields[i].nh]);
+  }
   return moving;
 }
 
@@ -56,32 +65,9 @@ coder_page_dialog_value :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_
   for c, k: v { out[k] = c; }
   return v.count;
 }
-// The host's editor's text for field i after an edit.
+// Field i's text set by the host.
 coder_page_dialog_set :: (s: [] CoderPage, i: int, text: string) -> bool #export_c #effects(all) {
   return s.count > 0 && app_dialog_set(s[0].ov[0].dlg[..], i, text);
-}
-// Where the host's editor goes, in points from the view's top left (x, y, w, h), whether the field
-// is secure (out[4]) and its line in points (out[5]). Returns the field with the keyboard, -1 for
-// none (the editor hides). From this call on the dialog leaves that field's text to the editor.
-coder_page_dialog_editor :: (s: [] CoderPage, out: [] f32) -> int #export_c #effects(all) {
-  if s.count < 1 || out.count < 6 { return -1; }
-  d := s[0].ov[0].dlg[..]; k := cp_skin(); u := cp_scale(s);
-  if !app_dialog_field_box(d, k, cp_ov_spec(), out) { d[0].editing = false; return -1; }
-  for i: 0..<4 { out[i] *= u; }
-  out[5] = k.label.line * u;
-  d[0].editing = true;
-  return d[0].focus;
-}
-// How the dialog's editor is styled: the label face's size and line in points, then the ink, the
-// hint's ink and the caret's, each straight RGBA (coder_page_style's layout).
-coder_page_dialog_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 14 { return false; }
-  k := cp_skin(); u := cp_scale(s);
-  out[0] = cast(f32) k.label.size * u; out[1] = k.label.line * u;
-  out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
-  out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
-  out[10] = k.ink.r; out[11] = k.ink.g; out[12] = k.ink.b; out[13] = k.ink.a;
-  return true;
 }
 // A menu: begin, its items (kind 0 a row, 1 a heading, 2 a rule; checked, disabled, destructive),
 // then open it at the pointer in device pixels (the pointer's own coordinates).
@@ -102,11 +88,21 @@ coder_page_menu_answer :: (s: [] CoderPage) -> int #export_c #effects(all) {
 coder_page_overlay_open :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_overlay_open(s); }
 // The pointer while one is up, in device pixels (phases as coder_page_pointer's). True when it took it.
 coder_page_overlay_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  return coder_page_overlay_press(s, x, y, phase, 1, 0);
+}
+// The same with the press's clicks and modifiers: in the field with the keyboard they place the
+// caret, select a word (two) or the line (three), or extend (Shift).
+coder_page_overlay_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) || !cp_overlay_open(s) { return false; }
   ux := x / s[0].d; uy := y / s[0].d;
   s[0].px = ux; s[0].py = uy; s[0].touching = false; s[0].pressed_n = 0;
   if s[0].ov[0].menu[0].open { return app_menu_pointer(s[0].ov[0].menu[..], ux, uy, phase); }
-  return app_dialog_pointer(s[0].ov[0].dlg[..], ux, uy, phase);
+  d := s[0].ov[0].dlg[..];
+  if phase != 0 && s[0].fld[0].drag == CP_ED_DIALOG + 1 { _ = cp_ed_pointer(s, ux, uy, phase, clicks, mods); d[0].px = ux; d[0].py = uy; return true; }
+  before := d[0].focus;
+  took := app_dialog_pointer(d, ux, uy, phase);
+  if phase == 0 && d[0].focus == before && cp_ed_which(s) == CP_ED_DIALOG { _ = cp_ed_pointer(s, ux, uy, 0, clicks, mods); }
+  return took;
 }
 // A key while one is up (composer.coax's numbering: -1 Escape, -2 Return, -6 up, -7 down, -13 Tab;
 // mods 1 Shift, 8 Command). True when it took the key; false leaves it to the dialog's editor.

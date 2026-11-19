@@ -8,9 +8,9 @@
 // the worker's own codec (coax/lib/agent/engine/mcworker-wire.coax).
 //
 // What a person does reaches the host as coder_page_action: send (the host
-// writes coder_page_task to the worker), focus (the platform editor takes the
-// keyboard over coder_page_editor's box), stop, a new chat, and a code block's
-// Copy (coder_page_copied is the text).
+// writes coder_page_task to the worker), focus (the host's view takes the
+// keyboard: the page draws and edits its fields, page/editor.coax), stop, a new
+// chat, and a code block's Copy (coder_page_copied is the text).
 //   coax/bin/coax test apps/coder-desktop/page.coax --library
 
 #load "page/parts.coax";
@@ -24,3 +24,4 @@
 #load "page/checks/followups-checks.coax" #test;
 #load "page/checks/review-checks.coax" #test;
 #load "page/checks/overlay-checks.coax" #test;
+#load "page/checks/editor-checks.coax" #test;

@@ -6,8 +6,9 @@ replies scroll above the message bar.
 
 Every part of the screen is the shared app set (`components/app/`): the
 composer, your message, the reply as Markdown with code blocks and Copy,
-the typing mark and notices. The shared AppKit editor
-(`apps/shared/native/KitEditorMac.swift`) sits over the composer's text.
+the typing mark and notices. The page draws and edits its own text fields
+(`page/editor.coax` on `components/zeron/editor.coax`): the composer, settings'
+search and a dialog's fields, with the Mac's input method through the shared host.
 
 For the repeatable workflow used to match Claude Desktop's layout, spacing, and
 typography in Coder's monochrome palette, see
@@ -400,7 +401,7 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `carrier.c` | The shared component carrier with this page |
 | `Worker.swift` | The worker (the daemon's run, or a child process), the Claude key, the OpenRouter models and the skills note |
 | `Store.swift` | The kept chats' list and files |
-| `Window.swift` | A chat's run and its kept turn, the window's state, the page and editor, the clock, what the page asks for, and quitting |
+| `Window.swift` | A chat's run and its kept turn, the window's state, the page and its keyboard, the clock, what the page asks for, and quitting |
 | `Window+Runs.swift` | Workers wired to pages, the daemon's runs reattached after a relaunch, replies out of view, and syncing with the daemon |
 | `Window+Chats.swift` | Opening, keeping, renaming and deleting chats, the working folder and text size |
 | `Window+Settings.swift`, `Window+Dialogs.swift` | The settings screen's wiring, and the budget, goal, Claude key and OpenRouter dialogs |

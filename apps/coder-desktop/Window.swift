@@ -1,9 +1,10 @@
 // Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
-// The window: a chat's run, the page and editor, the clock, what the page asks for, and quitting.
+// The window: a chat's run, the page, the clock, what the page asks for, and quitting.
 import AppKit
 
-/// The window: the compiled page fills it. The platform editor sits over the composer's text box
-/// and hands Coax each whole draft; what the page asks for (send, stop, a new chat, copy) is done here.
+/// The window: the compiled page fills it and draws and edits its own text fields (page/editor.coax:
+/// the view hands it every key and the input method); what the page asks for (send, stop, a new
+/// chat, copy) is done here.
 /// One chat's run: the page that reads its lines, its worker and its sub-agents' workers. The chat
 /// that is shown runs on the window's page. One whose reply goes on out of view, after New Chat or
 /// a press on another chat, has a page with no window (cd_headless) until it ends or is opened again.
@@ -85,12 +86,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     let page: UnsafeMutableRawPointer
     let canvas: NSView
-    let editor: KitMacEditor
     var run: CoderRun                    // the shown chat's run, on the window's page
     var runs: [String: CoderRun] = [:]   // chats whose replies run out of view, by id
     var unread: Set<String> = []         // background chats with unread output or a completed turn
     private var last = CACurrentMediaTime()      // when the clock last ticked, for their pages' seconds
-    var line: CGFloat
     private var link: CADisplayLink?     // the clock: the canvas's display's refresh (120 Hz on ProMotion)
     private var watchdog: Timer?         // ticks while the display link is paused (the window hidden or off every screen)
     private var ticked = 0.0             // when tick last ran
@@ -98,7 +97,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var also: String?   // --new TEXT: sent in a new chat while --send's reply runs
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     var owed = 3   // frames still to draw after a change
-    private var restoreEditorFocus = false
+    private var blinkAt = 0.0           // when the caret next blinks (the page's own clock), 0 for never
     var draftBeforeEdit = ""          // the draft there before a queued message's text was edited in the composer, back after (GitHub #13717)
     let store = CoderStore()
     var chat: String?          // the id of the chat that is shown, once it is kept
@@ -112,12 +111,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var lastForegroundRunning = false
     var foremanTier: ForemanTier = ForemanTier.load()
     let updater = CoderUpdater()
-    /// Settings' search field (settings.coax draws its box and placeholder; this holds the typing).
-    let search: KitMacEditor
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
     var folder = FileManager.default.homeDirectoryForCurrentUser
     private var monitor: Any?
-    private var keyMonitor: Any?   // Esc in settings
+    private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -128,10 +125,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if UserDefaults.standard.object(forKey: "zoom") != nil { _ = cd_zoom_set(page, Int32(UserDefaults.standard.integer(forKey: "zoom"))) }
         // the sidebars' widths as dragged last time
         cd_sides_set(page, UserDefaults.standard.float(forKey: "sideWidth"), UserDefaults.standard.float(forKey: "paneWidth"))
-        var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
-        editor = KitMacEditor(style: style); line = CGFloat(style[1])
-        var searchStyle = style; searchStyle[0] = 12 * style[0] / 14.4; searchStyle[1] = 16 * style[0] / 14.4
-        search = KitMacEditor(style: searchStyle)
         // Most of the screen, up to 1500 by 1000 points.
         let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
@@ -169,39 +162,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         } else if let kept = UserDefaults.standard.string(forKey: "folder"), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue {
             setFolder(URL(fileURLWithPath: kept), keep: false)
         } else { setFolder(folder, keep: false) }
-        editor.committed = { [weak self] text in guard let self else { return }; _ = cd_set_text(self.page, text); self.wake() }
-        // Return sends; Shift-Return and Option-Return make a new line.
-        editor.command = { [weak self] selector in
-            guard let self else { return false }
-            // Esc gives up an edit of a queued message or stops the reply (#13717)
-            if selector == #selector(NSResponder.cancelOperation(_:)) { if cd_followup_escape(self.page) != 0 { self.wake(); return true }; return false }
-            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
-            if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { return false }
-            // while a reply runs Return steers it or queues a follow-up; editing a queued one, it saves (#13717)
-            let other = NSApp.currentEvent?.modifierFlags.contains(.command) == true
-            if cd_followup_submit(self.page, other ? 1 : 0) != 0 { self.wake(); return true }
-            _ = cd_submit(self.page); self.wake(); return true
-        }
-        editor.setAccessibilityIdentifier("coder.composer"); editor.setAccessibilityLabel("Message")
-        canvas.addSubview(editor)
-        // Settings' search: each edit filters the list; Return opens the best match.
-        search.committed = { [weak self] text in guard let self else { return }; cd_search_set(self.page, text) }
-        search.command = { [weak self] selector in
-            guard let self else { return false }
-            if selector == #selector(NSResponder.insertNewline(_:)) { _ = cd_search_submit(self.page); return true }
-            if selector == #selector(NSResponder.cancelOperation(_:)) { self.escape(); return true }
-            return selector == #selector(NSResponder.insertTab(_:))
-        }
-        search.textContainer?.widthTracksTextView = false; search.textContainer?.size = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        search.isHorizontallyResizable = false; search.isHidden = true
-        search.setAccessibilityIdentifier("set.search.field"); search.setAccessibilityLabel("Search settings")
-        canvas.addSubview(search)
         syncSettingsInfo()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            // the editing chords go to the field with the keyboard before the menu bar sees them
+            if self.window.firstResponder === self.canvas && cd_wants_text(self.page) != 0, let key = self.editingChord(event) {
+                if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
+            }
             // in the composer Esc gives up an edit or stops the reply (#13717); Command-Return is the
             // File menu's (followUpOther)
-            if self.window.firstResponder === self.editor && cd_settings_page(self.page) < 0 {
+            if self.composerFocused {
                 if event.keyCode == 53 && cd_followup_escape(self.page) != 0 { self.wake(); return nil }
             }
             guard event.keyCode == 53, cd_settings_page(self.page) >= 0 else { return event }
@@ -223,7 +193,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self.tick()
         }
         RunLoop.main.add(watchdog, forMode: .common); self.watchdog = watchdog
-        window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
+        window.center(); window.makeKeyAndOrderFront(nil); focusComposer()
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about).
@@ -245,12 +215,28 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         tick()
     }
     func wake() { owed = 3 }
+    /// The composer (or settings' search) takes the keyboard: the page's view is the first responder.
+    func focusComposer() { cd_focus(page, 1); window.makeFirstResponder(canvas); wake() }
+    func focusSearch() { cd_focus(page, 2); window.makeFirstResponder(canvas); wake() }
+    var composerFocused: Bool { window.firstResponder === canvas && cd_settings_page(page) < 0 && cd_overlay_open(page) == 0 && cd_wants_text(page) != 0 }
+    /// The composer's text.
+    var draft: String {
+        var out = [CChar](repeating: 0, count: 16385)
+        return cd_draft(page, &out, Int32(out.count)) > 0 ? String(cString: out) : ""
+    }
+    /// Command-C, -X, -V, -A, -Z and Shift-Command-Z as the page's key and modifiers; nil for the rest.
+    private func editingChord(_ event: NSEvent) -> (code: Int32, mods: Int32)? {
+        let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        guard flags.contains(.command), !flags.contains(.control), !flags.contains(.option),
+              let c = event.charactersIgnoringModifiers?.lowercased().unicodeScalars.first, "cxvaz".unicodeScalars.contains(c) else { return nil }
+        if flags.contains(.shift) && c != "z" { return nil }
+        return (Int32(c.value), flags.contains(.shift) ? 9 : 8)
+    }
 
     func act(_ what: Int32) {
         var out = [CChar](repeating: 0, count: 262144)
         switch what {
         case 1:
-            editor.synchronize { editor.string = "" }
             configureWorkerEnv(run, isForeman: isForemanShown)
             syncSkillsNote(for: page, isForeman: isForemanShown)
             guard run.worker.start() else { cd_failed(page, run.worker.failure ?? "Microcoder could not start."); return }
@@ -266,7 +252,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             run.worker.write(out, count: Int(n))
             beginTurn(run, from: from)
             bindQueue(run)
-        case 2: window.makeFirstResponder(editor)
+        case 2: focusComposer()
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
         case 3: stopRun(run)
         case 4:
@@ -277,10 +263,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             syncSkillsNote(for: page, isForeman: false)
             syncForemanUI()
             let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
-            window.makeFirstResponder(editor)
+            focusComposer()
         case 5:
-            out = [CChar](repeating: 0, count: 2_000_001)   // a whole chat fits: 24 messages and replies
-            guard cd_copied(page, &out, 2_000_000) > 0 else { return }
+            // the buffer grows until the copy fits: a chat has no message cap (#13745); a full buffer may have cut it
+            var cap = 2_000_000, n: Int32 = 0
+            repeat {
+                out = [CChar](repeating: 0, count: cap + 1)
+                n = cd_copied(page, &out, Int32(cap + 1))
+                if n < Int32(cap) { break }
+                cap *= 2
+            } while cap <= 1_536_000_000
+            guard n > 0 else { return }
             let board = NSPasteboard.general; board.clearContents(); board.setString(String(cString: out), forType: .string)
         case 6: chooseFolder()
         case 7:
@@ -306,7 +299,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 20: clearForemanHistory()
         case 21: if let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
         case 22: checkForUpdates()
-        case 23: window.makeFirstResponder(search)
+        case 23: focusSearch()
         case 24:
             // a file a row or a reply names: opened from the working folder unless its path is whole
             guard cd_open_path(page, &out, Int32(out.count)) > 0 else { return }
@@ -318,7 +311,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
     }
     @objc private func refresh(_ link: CADisplayLink) {
-        if owed == 0 && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
+        let blinkDue = blinkAt > 0 && CACurrentMediaTime() >= blinkAt
+        if owed == 0 && !blinkDue && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
+        if blinkDue { owed = max(owed, 1) }
         tick()
     }
     private func tick() {
@@ -365,34 +360,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         var sides = [Float](repeating: 0, count: 2)
         if cd_sides(page, &sides) != 0 { UserDefaults.standard.set(sides[0], forKey: "sideWidth"); UserDefaults.standard.set(sides[1], forKey: "paneWidth") }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
-        // An empty draft leaves the text to the bar, so its placeholder shows under the caret.
-        let focused = window.firstResponder === editor
-        var used = line
-        if let layout = editor.layoutManager, let container = editor.textContainer {
-            layout.ensureLayout(for: container); used = max(line, layout.usedRect(for: container).height)
+        // the page's fields show a caret while the view has the keyboard
+        let active = window.isKeyWindow && window.firstResponder === canvas
+        cd_env(page, active ? 1 : 0, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
+        if cd_moving(page) != 0 || owed > 0 {
+            cd_frame(page); if owed > 0 { owed -= 1 }
+            // the caret's next phase: one frame then (the page's clock is the system's uptime, as CACurrentMediaTime)
+            let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
-        cd_env(page, focused && !editor.string.isEmpty ? 1 : 0, Float(used), NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
-        if cd_moving(page) != 0 || owed > 0 { cd_frame(page); if owed > 0 { owed -= 1 } }
-        placeSearch()
-        var box = [Float](repeating: 0, count: 6)
-        guard cd_editor(page, &box) != 0 else {
-            if focused { restoreEditorFocus = true }
-            // in settings the hidden composer gives the keyboard up
-            if focused && cd_settings_page(page) >= 0 { window.makeFirstResponder(nil) }
-            editor.isHidden = true
-            return
-        }
-        let wasHidden = editor.isHidden
-        editor.isHidden = false
-        if wasHidden && restoreEditorFocus {
-            restoreEditorFocus = false
-            window.makeFirstResponder(editor)
-        }
-        // The bar draws its first line box[4] under the text box's top: the editor's text starts there too.
-        let inset = NSSize(width: 0, height: CGFloat(box[4]))
-        if editor.textContainerInset != inset { editor.textContainerInset = inset; wake() }
-        let frame = NSRect(x: CGFloat(box[0]), y: canvas.bounds.height - CGFloat(box[1] + box[3]), width: CGFloat(box[2]), height: CGFloat(box[3]))
-        if editor.frame != frame { editor.frame = frame; wake() }
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.

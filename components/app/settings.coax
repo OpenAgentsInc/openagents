@@ -68,7 +68,7 @@ set_nav_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, la
 SetBox :: struct { x: f32; y: f32; w: f32; h: f32; }
 // The search field (Zeron's SearchField, size sm) at (x, y), w wide: 28 high, a well with its
 // edge, the search glyph, the placeholder while it is empty, and the quiet key chips of its
-// shortcut at its end ("⌘", "F"). The words themselves are the platform editor's, laid over
+// shortcut at its end ("⌘", "F"). The words themselves are the caller's editor's, drawn in
 // set_search_box. Returns its height.
 set_search :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, placeholder: string, empty: bool, keys: [] string, action: int) -> f32 {
   t := f[0].skin.set; sh := f[0].sheet;

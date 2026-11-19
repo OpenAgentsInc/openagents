@@ -653,7 +653,7 @@ int main(int argc, char **argv) {
         if (!s->page) {
           printf("{\"ok\":false,\"error\":\"cd_open/cd_headless returned NULL\"}\n");
         } else {
-          cd_env(s->page, 1, 0.0f, 1);
+          cd_env(s->page, 1, 1);
           slot_render(s);
           print_slot_state(si);
         }
@@ -860,14 +860,14 @@ int main(int argc, char **argv) {
       } else {
         Slot *s = &g_slots[si];
         slot_render(s);
-        float box[6] = {0};
-        int got = cd_editor(s->page, box);
+        float box[4] = {0};
+        int got = cd_box(s->page, "coder.composer.send", box);
         UiHost *h = (UiHost *)cd_view(s->page);
         int act = 0;
         if (got) {
-          // Composer send/stop button sits at the bottom-right of the composer below the text area.
-          float sx = box[0] + box[2] - 4.0f;
-          float sy = box[1] + box[3] + 22.0f;
+          // the composer's Send/Stop button, pressed in its middle
+          float sx = box[0] + box[2] / 2;
+          float sy = box[1] + box[3] / 2;
           ui_stub_pointer(h, sx, sy, 0, 1, 0);
           ui_stub_pointer(h, sx, sy, 2, 1, 0);
           act = cd_action(s->page);

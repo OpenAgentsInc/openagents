@@ -186,7 +186,8 @@ CoderPage :: struct {
   keys: [CP_KEYED] Keyed; keyed: [1] KeyedStore;
   turns: [CP_TURNS] CpTurn; nturns: int;
   draft: [1] EditBuf;
-  focused: bool; editor_h: f32; reduced: bool;
+  fld: [1] CpFields;          // the composer's and settings' search's text fields, drawn here (editor.coax; GitHub #13742)
+  reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
   claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
@@ -270,6 +271,7 @@ CoderPage :: struct {
 
 cp_init :: (s: [] CoderPage) {
   s[0].ready = true;
+  s[0].fld[0].kb = CP_KB_COMPOSER; s[0].fld[0].dlg_at = -1;
   g := s[0].gen[..];
   s[0].surface[0] = surface_over(
     Sheet.{under = g[0].under[..], over = g[0].over[..], lines = g[0].lines[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],

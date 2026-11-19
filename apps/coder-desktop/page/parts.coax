@@ -9,12 +9,14 @@
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
+#load "../../../components/zeron/editor.coax";
 #load "../../../components/skin/arcade.coax";
 #load "../../../components/backend/gpu.coax";
 #load "../../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../settings.coax";
 
 #load "state.coax";
+#load "editor.coax";
 #load "compose.coax";
 #load "skin.coax";
 #load "models.coax";

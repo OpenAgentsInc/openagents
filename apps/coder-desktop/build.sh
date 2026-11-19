@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
 # Builds Coder.app for this Mac: the page (app.coax, page.coax) compiled to C on the shared
-# component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the shared
-# AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal, the Microcoder worker (coder/tui/mcworker.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
+# component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
+# component shader emitted as Metal, the Microcoder worker (coder/tui/mcworker.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
 #   apps/coder-desktop/build.sh [--open]
 #   CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh   builds into another folder
 set -euo pipefail
@@ -22,7 +22,7 @@ cflags=(-mmacosx-version-min=14.0 -O2 -ffp-contract=off -fno-fast-math -w -I"$wo
 /usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 -import-objc-header "$here/Bridge.h" \
   "$here/Worker.swift" "$here/Store.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/AppDelegate.swift" \
-  "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$repo/apps/shared/native/KitEditorMac.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
+  "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \
   -o "$app/Contents/MacOS/Coder.new"
 mv "$app/Contents/MacOS/Coder.new" "$app/Contents/MacOS/Coder"

@@ -1,0 +1,285 @@
+// Coder Desktop page (../page.coax): its text fields, drawn in the page (GitHub #13742). The
+// composer's draft and settings' search are each a UiEditor (components/zeron/editor.coax): the
+// shared buffer, wrapping, selection, undo, caret and input-method composition. The page keeps
+// which one has the keyboard; the Mac host's view is the first responder and hands every key,
+// paste and input-method call here (host.c: UiApp.key, UiApp.ime). What a field commits is
+// published to the page's own state (the draft, the search's query), and a change the page makes
+// there (a send, a follow-up's edit, a chat opened) opens the field again on the new text. A
+// dialog's field with the keyboard (overlay.coax) is the third: a secure one draws dots.
+
+CP_ED_COMPOSER :: 0; CP_ED_SEARCH :: 1; CP_ED_DIALOG :: 2; CP_EDS :: 3;
+CP_KB_NONE :: 0; CP_KB_COMPOSER :: 1; CP_KB_SEARCH :: 2;   // which field has the keyboard
+
+CpFields :: struct {
+  ed: [CP_EDS] UiEditor;
+  epoch: u64;                 // the owners handed out: each opening is a new one
+  kb: int;                    // CP_KB_*
+  active: bool;               // the host's view has the keyboard (its window key, the view first responder)
+  drag: int;                  // a press in a field selects while it is held: the field plus 1
+  now: f64;                   // the clock at the last frame: the caret's blink and undo's runs follow it
+  blink: f32;                 // seconds from the last frame to the caret's next phase, -1 for none
+  dlg_at: int;                // the dialog's field the third editor holds (-1: none yet)
+  mask: [1] Composer;         // a secure field's dots
+}
+
+// The field that has the keyboard, -1 for none: the search while settings is open, else the composer.
+cp_ed_which :: (s: [] CoderPage) -> int {
+  if cp_overlay_open(s) { return ifx cp_ed_dialog_field(s) >= 0 then CP_ED_DIALOG else -1; }
+  k := s[0].fld[0].kb;
+  if s[0].set_open { return ifx k == CP_KB_SEARCH then CP_ED_SEARCH else -1; }
+  return ifx k == CP_KB_COMPOSER then CP_ED_COMPOSER else -1;
+}
+// The dialog's field with the keyboard while it is up at rest, -1 for none.
+cp_ed_dialog_field :: (s: [] CoderPage) -> int {
+  d := s[0].ov[0].dlg[..];
+  if s[0].ov[0].menu[0].open || !d[0].shown || !d[0].open || d[0].focus < 0 || d[0].focus >= d[0].nf { return -1; }
+  return d[0].focus;
+}
+cp_ed_secure :: (s: [] CoderPage, which: int) -> bool {
+  if which != CP_ED_DIALOG { return false; }
+  i := cp_ed_dialog_field(s);
+  return i >= 0 && s[0].ov[0].dlg[0].fields[i].secure;
+}
+// Whether the composer shows the keyboard's caret and edge.
+cp_composer_focused :: (s: [] CoderPage) -> bool { return s[0].fld[0].active && cp_ed_which(s) == CP_ED_COMPOSER; }
+cp_ed_text :: (s: [] CoderPage, which: int) -> string {
+  if which == CP_ED_DIALOG { return app_dialog_value(s[0].ov[0].dlg[..], cp_ed_dialog_field(s)); }
+  return ifx which == CP_ED_COMPOSER then eb_text(s[0].draft[..]) else cp_set_query(s);
+}
+// Field `which`, opened again when what it committed is not the page's (a send emptied the draft).
+cp_ed :: (s: [] CoderPage, which: int) -> [] UiEditor {
+  fl := s[0].fld[..]; e := fl[0].ed[which..<which + 1];
+  text := cp_ed_text(s, which);
+  at := ifx which == CP_ED_DIALOG then cp_ed_dialog_field(s) else -1;
+  if ue_owner(e) == 0 || ue_value(e) != text || which == CP_ED_DIALOG && fl[0].dlg_at != at {
+    fl[0].epoch += 1;
+    if !ue_open(e, fl[0].epoch, text) { _ = ue_open(e, fl[0].epoch, ""); }
+    multi := at >= 0 && s[0].ov[0].dlg[0].fields[at].lines > 1;
+    e[0].body[0].no_wrap = which == CP_ED_SEARCH || which == CP_ED_DIALOG && !multi;
+    if which == CP_ED_DIALOG { fl[0].dlg_at = at; }
+  }
+  e[0].body[0].focused = fl[0].active && cp_ed_which(s) == which;
+  return e;
+}
+// What the field holds now becomes the page's.
+cp_ed_publish :: (s: [] CoderPage, which: int) {
+  text := ue_value(s[0].fld[0].ed[which..<which + 1]);
+  if which == CP_ED_DIALOG { _ = app_dialog_set(s[0].ov[0].dlg[..], cp_ed_dialog_field(s), text); return; }
+  if which == CP_ED_COMPOSER { if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); } return; }
+  if text != cp_set_query(s) { coder_page_search_set(s, text); }
+}
+// The keyboard goes to a field (CP_KB_*), and the host is asked to give the view the keyboard.
+cp_ed_focus :: (s: [] CoderPage, kb: int) {
+  s[0].fld[0].kb = kb;
+  s[0].ask = ifx kb == CP_KB_SEARCH then CP_ASK_SEARCH else CP_ASK_FOCUS;
+}
+// The skin a field draws in: the composer's draft in Geist 14 on a 22 line, settings' search in
+// the settings' description face. The accent caret and selection are Zeron's.
+cp_ed_skin :: (s: [] CoderPage, k: UiSkin, which: int) -> UiSkin {
+  sk := k;
+  if which == CP_ED_COMPOSER { sk.body.face = CP_COMPOSER_FACE; return sk; }
+  if which == CP_ED_DIALOG { sk.body.face = k.label.face; sk.cmp.line = k.label.line; return sk; }
+  sk.body.face = k.set.desc_face; sk.cmp.line = k.set.desc_line;
+  sk.faint = Rgba.{};   // set_search draws the search's placeholder and key caps itself
+  return sk;
+}
+// Field `which` laid out in box (x, y, w, h, the page's units) and painted into the frame's sheet.
+cp_ed_draw :: (s: [] CoderPage, f: [] UiFrame, which: int, x: f32, y: f32, w: f32, h: f32, placeholder: string) {
+  e := cp_ed(s, which); a := s[0].atlas[..];
+  e[0].body[0].placeholder = placeholder;
+  box := [4] f32.[x, y, w, h];
+  if !ue_layout(e, a, box[..], cp_ed_skin(s, f[0].skin, which), 0) { return; }
+  sh := f[0].sheet;
+  if which == CP_ED_DIALOG {
+    // over the dialog, in its list: dots for a secret
+    if cp_ed_secure(s, which) { sheet_over_n(sh, ue_mask_prims(e, a, s[0].fld[0].mask[..], sh[0].over, sh[0].no)); }
+    else { sheet_over_n(sh, ue_prims(e, a, sh[0].over, sh[0].no)); }
+  } else { sheet_under(sh, ue_prims(e, a, sh[0].under, sh[0].nu)); }
+  if e[0].body[0].focused { s[0].fld[0].blink = ue_blink(e); }
+}
+// Rows the composer's draft wraps to at width w (1 before the atlas has its fonts).
+cp_ed_lines :: (s: [] CoderPage, k: UiSkin, w: f32) -> int {
+  e := cp_ed(s, CP_ED_COMPOSER); a := s[0].atlas[..];
+  if !a[0].ready || !(w > 0) {
+    n := 1; for c: ue_value(e) { if c == 10 { n += 1; } }
+    return n;
+  }
+  c := e[0].body[..]; composer_set_skin(c, cp_ed_skin(s, k, CP_ED_COMPOSER));
+  composer_wrap(c, a, w);
+  return c[0].lines;
+}
+// The frame's clock reaches the field with the keyboard: its caret blinks and its typing runs end.
+cp_ed_tick :: (s: [] CoderPage, now: f64) {
+  fl := s[0].fld[..];
+  dt := ifx fl[0].now > 0 && now > fl[0].now then cast(f32) (now - fl[0].now) else 0.0f32;
+  fl[0].now = now; fl[0].blink = -1;
+  which := cp_ed_which(s);
+  if which < 0 || dt <= 0 || dt > 3600 { return; }
+  c := fl[0].ed[which].body[..];
+  c[0].since += dt; c[0].ed[0].clock += dt;
+}
+// A press, move or release at (x, y) in the page's units over a field's text: the caret goes
+// there, a drag selects, two clicks a word, three a line, Shift extends. False when the point is
+// over no field and no field's press is held.
+cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool {
+  fl := s[0].fld[..]; a := s[0].atlas[..];
+  if !a[0].ready { return false; }
+  if phase == 0 {
+    which := -1;
+    over := cp_overlay_open(s);
+    for i: 0..<CP_EDS {
+      if i == CP_ED_DIALOG && cp_ed_which(s) != CP_ED_DIALOG { continue; }
+      if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu) { continue; }
+      c := fl[0].ed[i].body[..];
+      if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }
+      if x >= c[0].text_x && x < c[0].text_x + c[0].text_w && y >= c[0].text_y && y < c[0].text_y + c[0].view_h { which = i; }
+    }
+    if which < 0 { return false; }
+    if which != CP_ED_DIALOG { cp_ed_focus(s, ifx which == CP_ED_SEARCH then CP_KB_SEARCH else CP_KB_COMPOSER); }
+    e := cp_ed(s, which);
+    ue_unmark(e);
+    e[0].body[0].focused = true;
+    if cp_ed_secure(s, which) { ue_mask_pointer(e, a, fl[0].mask[..], x, y, 0, clicks, (mods & MOD_SHIFT) != 0); }
+    else { _ = composer_press(e[0].body[..], a, x, y, ifx clicks < 1 then 1 else clicks, (mods & MOD_SHIFT) != 0); }
+    fl[0].drag = which + 1;
+    return true;
+  }
+  if fl[0].drag == 0 { return false; }
+  which := fl[0].drag - 1;
+  e := fl[0].ed[which..<which + 1]; c := e[0].body[..];
+  if cp_ed_secure(s, which) { ue_mask_pointer(e, a, fl[0].mask[..], x, y, ifx phase == 1 then 1 else 2, 1, false); }
+  else if phase == 1 { composer_drag(c, a, x, y); }
+  else { composer_release(c); }
+  if phase != 1 { fl[0].drag = 0; }
+  return true;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// A key while the view has the keyboard (ui-host.h's key: named keys below zero, a chord's
+// letter, mods 1 Shift, 2 Control, 4 Option, 8 Command). In the composer Return sends (while a
+// reply runs it steers or queues, editing a queued one it saves), Shift- and Option-Return make a
+// new line, Command-Return goes the other way, Esc gives an edit up or stops the reply. In the
+// search Return opens its best match. True when the page took it.
+coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return false; }
+  if cp_overlay_open(s) {
+    // the dialog's or the menu's keys first (Tab is the host's -15, the overlay's -13)
+    if coder_page_overlay_key(s, ifx key == -15 then APP_OV_TAB else key, mods) { return true; }
+    if cp_ed_which(s) != CP_ED_DIALOG { return true; }
+  }
+  which := cp_ed_which(s);
+  if which < 0 { return false; }
+  e := cp_ed(s, which);
+  if e[0].body[0].ed[0].marked { return false; }
+  if which == CP_ED_DIALOG && key == KEY_ENTER {
+    // the overlay left Return to a box of lines: a new line in it
+    if !ue_insert(e, "\n") { return false; }
+    cp_ed_publish(s, which); return true;
+  }
+  if which == CP_ED_COMPOSER {
+    if key == KEY_ENTER && mods == 0 {
+      if coder_page_followup_submit(s, false) { return true; }
+      _ = cp_send(s); return true;
+    }
+    if key == KEY_ENTER && mods == MOD_CMD { _ = coder_page_followup_submit(s, true); return true; }
+    if key == KEY_ENTER && (mods == MOD_SHIFT || mods == MOD_ALT) {
+      if !ue_insert(e, "\n") { return false; }
+      cp_ed_publish(s, which); return true;
+    }
+    if key == KEY_ESCAPE && mods == 0 { return coder_page_followup_escape(s); }
+  } else {
+    if key == KEY_ENTER && mods == 0 { _ = coder_page_search_submit(s); return true; }
+    if key == -15 { return true; }   // Tab stays in the search
+  }
+  if !ue_key(e, s[0].atlas[..], key, mods) { return false; }
+  cp_ed_publish(s, which);
+  return true;
+}
+// Whether a field has the keyboard: typed keys then go through the input method.
+coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ready && cp_ed_which(s) >= 0; }
+// The keyboard goes to the composer (1) or settings' search (2), or leaves both (0).
+coder_page_focus :: (s: [] CoderPage, kb: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH then kb else CP_KB_NONE;
+}
+// Pasted text into the field with the keyboard, as its own undo step. False when none has it or it does not fit.
+coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return false; }
+  which := cp_ed_which(s);
+  if which < 0 { return false; }
+  e := cp_ed(s, which); ue_unmark(e);
+  if !ue_paste(e, text) { return false; }
+  cp_ed_publish(s, which); return true;
+}
+// Copy (cut false) or Cut: the selection's bytes in out, their count; 0 with no selection, during
+// a composition, or when out does not hold them. Cut removes the selection once it is copied.
+coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return 0; }
+  which := cp_ed_which(s);
+  if which < 0 { return 0; }
+  e := cp_ed(s, which); c := e[0].body[..];
+  if c[0].ed[0].marked || cp_ed_secure(s, which) { return 0; }   // a secret is never copied
+  text := selected(c);
+  if text.count == 0 || text.count > out.count { return 0; }
+  for b, i: text { out[i] = b; }
+  n := text.count;
+  if cut { composer_cut_selection(c); ue_committed(e); cp_ed_publish(s, which); }
+  return n;
+}
+// NSTextInputClient (ui-host.h UiIme) over the field with the keyboard, in UTF-16 units; points in device pixels.
+coder_page_ime_replace :: (s: [] CoderPage, from16: int, to16: int, text: string) #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return; }
+  which := cp_ed_which(s);
+  if which < 0 { return; }
+  if ue_replace16(cp_ed(s, which), from16, to16, text) { cp_ed_publish(s, which); }
+}
+coder_page_ime_mark :: (s: [] CoderPage, from16: int, to16: int, text: string, sel_from16: int, sel_to16: int) #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return; }
+  which := cp_ed_which(s);
+  if which >= 0 { _ = ue_mark16(cp_ed(s, which), from16, to16, text, sel_from16, sel_to16); }
+}
+coder_page_ime_unmark :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return; }
+  which := cp_ed_which(s);
+  if which >= 0 { ue_unmark(cp_ed(s, which)); cp_ed_publish(s, which); }
+}
+coder_page_ime_range :: (s: [] CoderPage, which_range: int) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return -1; }
+  which := cp_ed_which(s);
+  return ifx which < 0 then -1 else ue_range16(cp_ed(s, which), which_range);
+}
+coder_page_ime_text :: (s: [] CoderPage, from16: int, to16: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready { return 0; }
+  which := cp_ed_which(s);
+  return ifx which < 0 then 0 else ue_text16(cp_ed(s, which), from16, to16, out);
+}
+coder_page_ime_rect :: (s: [] CoderPage, at16: int, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || out.count < 4 { return false; }
+  which := cp_ed_which(s);
+  if which < 0 || !ue_rect16(cp_ed(s, which), s[0].atlas[..], at16, out) { return false; }
+  for i: 0..<4 { out[i] *= s[0].d; }
+  return true;
+}
+coder_page_ime_index :: (s: [] CoderPage, x: f32, y: f32) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].ready || !(s[0].d > 0) { return -1; }
+  which := cp_ed_which(s);
+  return ifx which < 0 then -1 else ue_index16(cp_ed(s, which), s[0].atlas[..], x / s[0].d, y / s[0].d);
+}
+// A press, move or release in device pixels with its clicks and modifiers: a field's text takes
+// it first (the caret, a selection), the rest of the page after.
+coder_page_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  if cp_ed_pointer(s, x / s[0].d, y / s[0].d, phase, clicks, mods) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
+  return coder_page_pointer(s, x, y, phase);
+}
+// Seconds until the caret next blinks, after the last frame; -1 when nothing blinks.
+coder_page_blink :: (s: [] CoderPage) -> f32 #export_c #effects(all) { return ifx s.count > 0 && s[0].fld[0].active then s[0].fld[0].blink else -1.0f32; }
+// The composer's draft (its committed text): its length in out, 0 when out does not hold it.
+coder_page_draft :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := eb_text(s[0].draft[..]);
+  if t.count > out.count { return 0; }
+  for b, i: t { out[i] = b; }
+  return t.count;
+}

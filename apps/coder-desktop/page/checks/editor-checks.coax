@@ -1,0 +1,109 @@
+// Checks for the page's editor.coax: the composer's draft, settings' search and a dialog's field,
+// drawn and edited in the page (GitHub #13742). Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+// A page with fonts (the checks' fixed-advance atlas), the view holding the keyboard, one frame drawn.
+cp_test_editing :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  #assert cp_test_draw_side(s, f);
+}
+cp_test_draft :: (s: [] CoderPage) -> string { return eb_text(s[0].draft[..]); }
+
+#test "the composer takes typing from the input method: Return sends, Shift- and Option-Return make a line, Backspace deletes" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]);
+  #assert coder_page_wants_text(s) && cp_composer_focused(s);
+  #assert s[0].fld[0].ed[CP_ED_COMPOSER].body[0].placeholder == "Do anything…";
+  coder_page_ime_replace(s, -1, -1, "hello"); #assert cp_test_draft(s) == "hello";
+  #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && cp_test_draft(s) == "hello\n";
+  #assert coder_page_key(s, KEY_ENTER, MOD_ALT) && cp_test_draft(s) == "hello\n\n";
+  #assert coder_page_key(s, KEY_BACKSPACE, 0) && coder_page_key(s, KEY_BACKSPACE, 0) && cp_test_draft(s) == "hello";
+  // the draft grows the field: two lines are two rows
+  coder_page_ime_replace(s, -1, -1, "\nworld"); #assert cp_test_draw_side(s, f[..]) && s[0].fld[0].ed[CP_ED_COMPOSER].body[0].lines == 2;
+  #assert coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1 && cp_test_draft(s) == "" && coder_page_action(s) == CP_ASK_SEND;
+  // the sent draft leaves the field too: it opens again empty
+  #assert cp_test_draw_side(s, f[..]) && ue_value(s[0].fld[0].ed[CP_ED_COMPOSER..<CP_ED_COMPOSER + 1]) == "";
+  // Esc stops the reply that runs, and while it runs the placeholder says what Return does
+  #assert coder_page_key(s, KEY_ESCAPE, 0) && s[0].turns[0].stopping;
+  #assert cp_test_draw_side(s, f[..]) && cp_find(s[0].fld[0].ed[CP_ED_COMPOSER].body[0].placeholder, "Esc stops") >= 0;
+}
+#test "a composition stays out of the draft until it commits, and Return then belongs to the input method" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]);
+  coder_page_ime_replace(s, -1, -1, "a");
+  coder_page_ime_mark(s, -1, -1, "か", 1, 1);
+  #assert cp_test_draft(s) == "a" && coder_page_ime_range(s, 2) == 1 && coder_page_ime_range(s, 3) == 2;
+  #assert !coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 0;
+  out: [16] u8; #assert coder_page_ime_text(s, 1, 2, out[..]) == 3;
+  // the candidate window goes under the caret, in device pixels
+  r: [4] f32; #assert cp_test_draw_side(s, f[..]) && coder_page_ime_rect(s, 2, r[..]) && r[1] > 0 && r[3] > 0;
+  coder_page_ime_replace(s, -1, -1, "漢"); #assert cp_test_draft(s) == "a漢" && coder_page_ime_range(s, 2) == -1;
+}
+#test "paste is one undo step; Command-A, Copy and Cut take the selection; undo and redo" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]); out: [64] u8;
+  #assert coder_page_paste(s, "abc def") && cp_test_draft(s) == "abc def";
+  #assert coder_page_copy(s, false, out[..]) == 0;   // nothing selected
+  #assert coder_page_key(s, 97, MOD_CMD);
+  n := coder_page_copy(s, false, out[..]); #assert n == 7 && cast(string) out[0..<n] == "abc def";
+  #assert coder_page_copy(s, true, out[..]) == 7 && cp_test_draft(s) == "";
+  #assert coder_page_key(s, 122, MOD_CMD) && cp_test_draft(s) == "abc def";
+  #assert coder_page_key(s, 122, MOD_CMD | MOD_SHIFT) && cp_test_draft(s) == "";
+}
+#test "a press puts the caret, two select a word, a drag selects, and the keyboard follows the press" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]); out: [64] u8;
+  coder_page_ime_replace(s, -1, -1, "one two"); #assert cp_test_draw_side(s, f[..]);
+  c := s[0].fld[0].ed[CP_ED_COMPOSER].body[..];
+  x := c[0].text_x; y := c[0].text_y + c[0].view_h / 2;
+  // two clicks on "one" (8 a glyph in the checks' atlas)
+  #assert coder_page_press(s, x + 4, y, 0, 2, 0) && coder_page_press(s, x + 4, y, 2, 2, 0);
+  n := coder_page_copy(s, false, out[..]); #assert n == 3 && cast(string) out[0..<n] == "one";
+  // a press and a drag across the first five glyphs
+  #assert coder_page_press(s, x, y, 0, 1, 0) && coder_page_press(s, x + 40, y, 1, 1, 0) && coder_page_press(s, x + 40, y, 2, 1, 0);
+  n = coder_page_copy(s, false, out[..]); #assert n == 5 && cast(string) out[0..<n] == "one t";
+  // the blink waits for no selection
+  #assert cp_test_draw_side(s, f[..]) && coder_page_blink(s) == -1;
+  #assert coder_page_press(s, x + 56, y, 0, 1, 0) && coder_page_press(s, x + 56, y, 2, 1, 0);
+  #assert cp_test_draw_side(s, f[..]) && coder_page_blink(s) > 0;
+  // without the keyboard the view shows no caret
+  coder_page_env(s, false, false); #assert !cp_composer_focused(s) && coder_page_blink(s) == -1;
+}
+#test "settings' search: Command-F's focus, typing filters, Return opens the best match, Esc empties it first" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]);
+  coder_page_settings_open(s, 0, ""); #assert cp_test_draw_side(s, f[..]);
+  #assert !coder_page_wants_text(s);   // the composer gave the keyboard up
+  coder_page_focus(s, CP_KB_SEARCH); #assert coder_page_wants_text(s);
+  coder_page_ime_replace(s, -1, -1, "zoom"); #assert cp_set_query(s) == "zoom";
+  #assert coder_page_key(s, -15, 0);   // Tab stays in the search
+  #assert coder_page_search_clear(s) && cp_set_query(s) == "" && coder_page_wants_text(s);
+  #assert !coder_page_search_clear(s);
+  coder_page_ime_replace(s, -1, -1, "zoom");
+  #assert coder_page_key(s, KEY_ENTER, 0) && s[0].set_page == CP_PG_GENERAL;
+  coder_page_settings_open(s, -2, ""); #assert cp_ed_which(s) == CP_ED_COMPOSER;
+}
+#test "a dialog's field is the page's editor: typing, Tab between fields, a box's new line, Return answers; a secret is dots and never copied" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_editing(s, f[..]); out: [64] u8;
+  coder_page_dialog_begin(s, 1, "OpenRouter Models", "");
+  #assert coder_page_dialog_field(s, "Key", "", "sk-or-…", true, 1) && coder_page_dialog_field(s, "Model", "deep", "", false, 1);
+  #assert coder_page_dialog_field(s, "Notes", "", "", false, 3);
+  #assert coder_page_dialog_button(s, "Cancel", 1, false) && coder_page_dialog_button(s, "Save", 0, false);
+  coder_page_dialog_show(s, 1, 0, 0);
+  #assert cp_test_draw_over(s, f[..], 1) && cp_test_draw_over(s, f[..], 0.016);
+  #assert cp_ed_which(s) == CP_ED_DIALOG && coder_page_wants_text(s);
+  coder_page_ime_replace(s, -1, -1, "sk-1");
+  n := coder_page_dialog_value(s, 0, out[..]); #assert n == 4 && cast(string) out[0..<n] == "sk-1";
+  #assert cp_test_draw_over(s, f[..], 0.016) && typed(s[0].fld[0].mask[..]) == "••••";
+  #assert coder_page_key(s, 97, MOD_CMD) && coder_page_copy(s, false, out[..]) == 0 && coder_page_copy(s, true, out[..]) == 0;
+  // Tab: the next field, its own text
+  #assert coder_page_key(s, -15, 0) && cp_test_draw_over(s, f[..], 0.016);
+  #assert cp_ed_which(s) == CP_ED_DIALOG && ue_value(s[0].fld[0].ed[CP_ED_DIALOG..<CP_ED_DIALOG + 1]) == "deep";
+  coder_page_ime_replace(s, -1, -1, "seek");
+  n = coder_page_dialog_value(s, 1, out[..]); #assert cast(string) out[0..<n] == "deepseek";
+  // a box of lines takes Return as a new line; Command-Return answers
+  #assert coder_page_key(s, -15, 0) && cp_test_draw_over(s, f[..], 0.016);
+  coder_page_ime_replace(s, -1, -1, "a");
+  #assert coder_page_key(s, KEY_ENTER, 0) && coder_page_dialog_answer(s) == APP_DLG_NONE;
+  n = coder_page_dialog_value(s, 2, out[..]); #assert cast(string) out[0..<n] == "a\n";
+  #assert coder_page_key(s, KEY_ENTER, MOD_CMD) && coder_page_dialog_answer(s) == 1;
+  // gone, the keyboard is the composer's again
+  #assert cp_test_draw_over(s, f[..], 1) && cp_ed_which(s) == CP_ED_COMPOSER;
+}

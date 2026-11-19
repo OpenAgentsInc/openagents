@@ -52,7 +52,7 @@ extension CoderWindow {
         NSWorkspace.shared.open(url)
     }
     func openForeman() {
-        if chat == Foreman.chatID { cd_current(page, Foreman.chatID); syncForemanUI(); window.makeFirstResponder(editor); wake(); return }
+        if chat == Foreman.chatID { cd_current(page, Foreman.chatID); syncForemanUI(); focusComposer(); wake(); return }
         guard detach() else { return }
         if let back = runs[Foreman.chatID] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -64,7 +64,7 @@ extension CoderWindow {
             configureWorkerEnv(run, isForeman: true)
             syncSkillsNote(for: page, isForeman: true)
             cd_chats(page, chatLines); syncForemanUI()
-            window.makeFirstResponder(editor); wake()
+            focusComposer(); wake()
             return
         }
         if let text = store.text(Foreman.chatID), cd_load(page, text) != 0 {
@@ -83,6 +83,6 @@ extension CoderWindow {
         configureWorkerEnv(run, isForeman: true)
         syncSkillsNote(for: page, isForeman: true)
         cd_chats(page, chatLines); syncForemanUI()
-        window.makeFirstResponder(editor); wake()
+        focusComposer(); wake()
     }
 }

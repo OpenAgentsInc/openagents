@@ -12,16 +12,27 @@ void cd_frame(void *page);
 int cd_moving(void *page);
 // Called when something changed without the app's doing (a click or the wheel on the page).
 void cd_on_change(void *page, void (*changed)(void *context), void *context);
-// The platform editor: whether it holds the keyboard, its own text height in points while it does; reduced motion.
-void cd_env(void *page, int focused, float editor_height, int reduced);
-// The editor's whole text after an edit: 0 when it is longer than a draft may be.
+// Whether the view has the keyboard (its window key, it the first responder); reduced motion.
+void cd_env(void *page, int active, int reduced);
+// The page draws and edits its text fields itself (page/editor.coax): the view hands it every key
+// and the input method. cd_focus gives the keyboard to the composer (1), settings' search (2) or
+// neither (0). cd_wants_text: a field has it. cd_key: a key as the view gives it (a named key below
+// zero or a letter, mods 1 Shift, 2 Control, 4 Option, 8 Command), for a chord the menu bar would
+// take first (Command-C, -X, -V, -A, -Z); 1 when taken. cd_blink: seconds until the caret blinks
+// after the last frame, -1 for none. cd_draft: the composer's text, NUL-ended.
+void cd_focus(void *page, int field);
+int cd_wants_text(void *page);
+int cd_key(void *page, int key, int mods);
+float cd_blink(void *page);
+int cd_draft(void *page, char *out, int cap);
+// The draft set from the app: 0 when it is longer than a draft may be.
 int cd_set_text(void *page, const char *text);
-// Return in the editor: 1 when the draft was sent (cd_action then says so).
+// As a press on Send: 1 when the draft was sent (cd_action then says so).
 int cd_submit(void *page);
 // A new chat, as the New chat button makes one. 0 while a run is going.
 int cd_new(void *page);
 // What the page asks for, once: 0 nothing, 1 the draft was sent (write cd_task to the worker and
-// empty the editor), 2 the text wants the keyboard, 3 stop the run (cd_stop_line), 4 a new chat
+// to the worker), 2 the composer wants the keyboard, 3 stop the run (cd_stop_line), 4 a new chat
 // (cd_forget_line), 5 a code block's Copy (cd_copied is its text), 6 choose the working folder.
 int cd_action(void *page);
 // The worker's lines (coder/tui/mcworker.coax), each with its newline: the length, 0 for none.
@@ -158,14 +169,10 @@ int cd_goal_set(void *page, const char *objective);
 int cd_goal_set_status(void *page, int status);
 int cd_goal_clear(void *page);
 int cd_copied(void *page, char *out, int cap);
-// The text's committed box (x, y, w, h, the first line's inset, a line's height), or 0 before the
-// first frame; the editor's style from the skin (14 floats, as apps/shared/composer/host.h's gc_style).
-int cd_editor(void *page, float box[6]);
 // cd_box: the drawn box (points: x, y from the content's top-left, w, h) of the row with this id; 0 when none shows.
 int cd_box(void *page, const char *id, float box[4]);
-int cd_style(void *page, float style[14]);
 // The text size: a row of 0 to 7, 2 the usual. cd_zoom moves it by rows (0 leaves it), cd_zoom_set
-// names the row. Each returns the row it is at. Read cd_style again after a change.
+// names the row. Each returns the row it is at.
 int cd_zoom(void *page, int by);
 int cd_zoom_set(void *page, int row);
 // A page with no window, for a chat whose reply goes on out of view: every cd_ call that reads
@@ -181,9 +188,9 @@ void cd_close(void *page);
 // below -1 closes it. cd_settings_page: the page it shows, -1 while closed. cd_settings_info: the
 // Claude key's and the OpenRouter key's state as shown ("" not set), the app's version, and the
 // window's title bar over the page in points.
-// cd_settings_tier: the tier a press on Foreman's page chose (cd_action 18). cd_search_box: where
-// the search editor goes, in points (0 while settings is closed). cd_search_set: its text after an
-// edit. cd_search_submit: Return in it; 0 when it found nothing.
+// cd_settings_tier: the tier a press on Foreman's page chose (cd_action 18). cd_search_set: the
+// search's text. cd_search_submit: Return in it; 0 when it found nothing. cd_search_clear: Esc,
+// a search with words emptied (0 when it was empty).
 // cd_action asks: 13 settings opened or closed (move the keyboard), 14/15 text size up/down,
 // 16 the Claude key, 17 OpenRouter, 18 Foreman's tier, 19 its audit log, 20 clear its history,
 // 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard.
@@ -191,23 +198,22 @@ void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar);
 int cd_settings_tier(void *page);
-int cd_search_box(void *page, float out[4]);
 void cd_search_set(void *page, const char *text);
 int cd_search_submit(void *page);
+int cd_search_clear(void *page);
 // Dialogs and right-click menus drawn over the page (page/overlay.coax, GitHub #13746).
 // A dialog: cd_dialog_begin (size 0 sm, 1 md, 2 lg), its fields (secure; lines 1 a line, more a
 // box) and buttons in the foot's order (kind 0 primary, 1 secondary, 2 destructive; aside at the
 // foot's start), then cd_dialog_show with the buttons Return and Escape stand for (-1 none) and the field the keyboard
 // starts on.
 // cd_dialog_answer: the button pressed, -1 cancelled, -2 none yet (once). cd_dialog_value: a
-// field's text, NUL-ended (-1 when it does not fit). cd_dialog_set: the editor's text for a field.
-// cd_dialog_editor: the field with the keyboard (-1 none) and where its editor goes, in points (x,
-// y, w, h, secure, line). cd_dialog_style: the editor's style (cd_style's layout).
+// field's text, NUL-ended (-1 when it does not fit). cd_dialog_set: a field's text.
+// The field with the keyboard is the page's editor (cd_key, the input method): a secure one shows dots and never copies.
 // A menu: cd_menu_begin, its items (kind 0 row, 1 heading, 2 rule), cd_menu_show at the pointer in
 // the canvas's device pixels. cd_menu_answer: the item chosen, -1 none, -2 not yet (once).
 // While one is up it takes the pointer (cd_on_overlay's function is called after each pointer
 // event) and the wheel; cd_overlay_key gives it a key (-1 Escape, -2 Return, -6 up, -7 down,
-// -13 Tab; mods 1 Shift, 8 Command): 0 leaves the key to the dialog's editor.
+// -13 Tab; mods 1 Shift, 8 Command): 0 leaves the key to the field with the keyboard.
 void cd_on_overlay(void *page, void (*fn)(void *context), void *context);
 void cd_dialog_begin(void *page, int size, const char *title, const char *body);
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines);
@@ -216,8 +222,6 @@ void cd_dialog_show(void *page, int confirm, int cancel, int focus);
 int cd_dialog_answer(void *page);
 int cd_dialog_value(void *page, int i, char *out, int cap);
 int cd_dialog_set(void *page, int i, const char *text);
-int cd_dialog_editor(void *page, float out[6]);
-int cd_dialog_style(void *page, float out[14]);
 void cd_menu_begin(void *page);
 int cd_menu_item(void *page, const char *label, int kind, int checked, int disabled, int danger);
 void cd_menu_show(void *page, float x, float y);

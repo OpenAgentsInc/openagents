@@ -8,13 +8,6 @@ extension CoderWindow {
     func zoom(_ by: Int32?) {
         let row = by.map { cd_zoom(page, $0) } ?? cd_zoom_set(page, 2)
         UserDefaults.standard.set(Int(row), forKey: "zoom")
-        var style = [Float](repeating: 0, count: 14); _ = cd_style(page, &style)
-        line = CGFloat(style[1])
-        if let font = editor.font { editor.font = NSFont(descriptor: font.fontDescriptor, size: CGFloat(style[0])) }
-        let paragraph = NSMutableParagraphStyle(); paragraph.minimumLineHeight = line; paragraph.maximumLineHeight = line
-        editor.defaultParagraphStyle = paragraph
-        editor.textStorage?.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: editor.textStorage?.length ?? 0))
-        editor.typingAttributes[.paragraphStyle] = paragraph
         wake()
     }
     func setFolder(_ url: URL, keep: Bool) {
@@ -89,7 +82,7 @@ extension CoderWindow {
         }
     }
     /// File > New Chat (Command-N): what the New chat button does.
-    func newChat() { if cd_new(page) != 0 { window.makeFirstResponder(editor) }; wake() }
+    func newChat() { if cd_new(page) != 0 { focusComposer() }; wake() }
     /// Opens the Nth chat from the top of the sidebar list (1 is the first).
     func openChat(at index: Int) {
         let ordered = store.orderedList
@@ -113,7 +106,7 @@ extension CoderWindow {
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             cd_chats(page, chatLines); syncForemanUI()
-            window.makeFirstResponder(editor); wake()
+            focusComposer(); wake()
             return
         }
         guard let text = store.text(id), cd_load(page, text) != 0 else {
@@ -129,7 +122,7 @@ extension CoderWindow {
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         showKeptQueue(id)
-        window.makeFirstResponder(editor)
+        focusComposer()
         wake()
     }
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.

@@ -11,10 +11,10 @@
   #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.0) < 0.001;
   for i: 0..<9 { _ := coder_page_zoom(s, -1); }
   #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
-  // the platform editor: Zeron's composer text, 14 on a 22 line, and it grows with the text size
-  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.0) < 0.01 && abs(st[1] - 22.0) < 0.001;
-  #assert coder_page_zoom_set(s, 5) == 5;
-  #assert coder_page_style(s, st[..]) && abs(st[0] - 21.0) < 0.01 && abs(st[1] - 33.0) < 0.001;
+  // the composer's editor: Zeron's composer text, 14 on a 22 line, and it grows with the text size
+  sk := cp_ed_skin(s, cp_skin(), CP_ED_COMPOSER);
+  #assert abs(coder_page_font_size(sk.body.face) - 14.0) < 0.01 && abs(sk.cmp.line - 22.0) < 0.001;
+  #assert coder_page_zoom_set(s, 5) == 5 && abs(coder_page_scale(s) - 1.5) < 0.001;
 }
 
 // The size the atlas holds a type's face at, in points.

@@ -9,8 +9,7 @@ typedef struct {
   App app;
   coax_t_CoderPage *s;
   int edge;
-  int focused, reduced;
-  float editor_height;
+  int active, reduced;   // the view has the keyboard (its window key, it first responder); reduced motion
   float screen;   // the screen's own scale
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   void (*changed)(void *context); void *context;
@@ -26,7 +25,7 @@ static void cd_woke(CoderHost *c) { cd_changed(c); if (c->changed) c->changed(c-
 
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
-  coder_page_env(cd_state(c), c->focused != 0, c->editor_height, c->reduced != 0);
+  coder_page_env(cd_state(c), c->active != 0, c->reduced != 0);
   // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
   coder_page_now(cd_state(c), (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9);
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
@@ -47,22 +46,53 @@ static void cd_presented(void *user, int accepted) { if (!accepted) coder_page_c
 static float cd_icon_size(int i) { return coder_page_icon_size(i); }
 static float cd_font_size(int k) { return coder_page_font_size(k); }
 static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
-  (void)clicks; (void)mods;
   CoderHost *c = user;
   // a dialog or a menu over the page takes every press; the host then reads any answer it gave
   if (coder_page_overlay_open(cd_state(c))) {
-    (void)coder_page_overlay_pointer(cd_state(c), x, y, phase);
+    (void)coder_page_overlay_press(cd_state(c), x, y, phase, clicks, mods);
     if (c->edge) { c->edge = 0; ui_cursor(c->app.host, 0); }
     cd_woke(c);
     if (c->overlay) c->overlay(c->overlay_context);
     return;
   }
-  coder_page_pointer(cd_state(c), x, y, phase);
+  // a field's text takes a press first (the caret, a word, a line, Shift's extent), the page the rest
+  coder_page_press(cd_state(c), x, y, phase, clicks, mods);
   // over a sidebar's edge, and while one is dragged, the pointer is the resize arrows
   int edge = coder_page_edge(cd_state(c)) ? 3 : 0;
   if (edge != c->edge) { c->edge = edge; ui_cursor(c->app.host, edge); }
   cd_woke(c);
 }
+// The keyboard while the view has it (page/editor.coax): the field with it edits, Return sends.
+// Command-C, -X and -V are the pasteboard's, here; the page has no effects.
+static char cd_clip[16384 + 1];
+static int cd_on_key(void *user, int key, int mods, int down) {
+  CoderHost *c = user;
+  if (!down) return 0;
+  int over = coder_page_overlay_open(cd_state(c)), took = 0;
+  if ((mods & 8) && !(mods & 6) && (key == 'c' || key == 'x' || key == 'v') && coder_page_wants_text(cd_state(c))) {
+    if (key == 'v') {
+      int n = ui_paste_text(c->app.host, cd_clip, sizeof cd_clip);
+      if (n > 0) (void)coder_page_paste(cd_state(c), (coax_string){cd_clip, n});
+    } else {
+      int n = (int)coder_page_copy(cd_state(c), key == 'x', (coax_v_u8){(uint8_t *)cd_clip, (int64_t)sizeof cd_clip - 1});
+      if (n > 0) (void)ui_copy(c->app.host, cd_clip, (size_t)n);
+    }
+    took = 1;
+  } else took = coder_page_key(cd_state(c), key, mods) != 0;
+  if (took) cd_woke(c);
+  if (over && c->overlay) c->overlay(c->overlay_context);
+  return took;
+}
+static int cd_on_wants_text(void *user) { return coder_page_wants_text(cd_state((CoderHost *)user)) != 0; }
+// The input method over the field with the keyboard (ui-host.h UiIme; UTF-16 units, device pixels).
+static void cd_ime_replace(void *user, int from, int to, const char *bytes, size_t n) { CoderHost *c = user; coder_page_ime_replace(cd_state(c), from, to, (coax_string){bytes, (int64_t)n}); cd_woke(c); }
+static void cd_ime_mark(void *user, int from, int to, const char *bytes, size_t n, int sel_from, int sel_to) { CoderHost *c = user; coder_page_ime_mark(cd_state(c), from, to, (coax_string){bytes, (int64_t)n}, sel_from, sel_to); cd_woke(c); }
+static void cd_ime_unmark(void *user) { CoderHost *c = user; coder_page_ime_unmark(cd_state(c)); cd_woke(c); }
+static int cd_ime_range(void *user, int which) { return (int)coder_page_ime_range(cd_state((CoderHost *)user), which); }
+static int cd_ime_text(void *user, int from, int to, char *out, int cap) { return cap > 0 ? (int)coder_page_ime_text(cd_state((CoderHost *)user), from, to, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+static int cd_ime_rect(void *user, int at, float rect[4]) { return coder_page_ime_rect(cd_state((CoderHost *)user), at, (coax_v_f32){rect, 4}) ? 1 : 0; }
+static int cd_ime_index(void *user, float x, float y) { return (int)coder_page_ime_index(cd_state((CoderHost *)user), x, y); }
+static const UiIme cd_ime = {cd_ime_replace, cd_ime_mark, cd_ime_unmark, cd_ime_range, cd_ime_text, cd_ime_rect, cd_ime_index};
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
 static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
@@ -81,6 +111,7 @@ void *cd_open(const char *resources) {
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
+               .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
@@ -114,12 +145,24 @@ void *cd_view(void *page) { return page ? ui_view(((CoderHost *)page)->app.host)
 void cd_frame(void *page) { if (page) ui_frame(((CoderHost *)page)->app.host); }
 int cd_moving(void *page) { CoderHost *c = page; return c && (c->settle > 0 || coder_page_moving(cd_state(c))); }
 void cd_on_change(void *page, void (*changed)(void *context), void *context) { CoderHost *c = page; if (c) { c->changed = changed; c->context = context; } }
-void cd_env(void *page, int focused, float editor_height, int reduced) {
+void cd_env(void *page, int active, int reduced) {
   CoderHost *c = page;
   if (!c) return;
-  if (c->focused != (focused != 0) || c->editor_height != editor_height || c->reduced != (reduced != 0)) cd_changed(c);
-  c->focused = focused != 0; c->editor_height = editor_height; c->reduced = reduced != 0;
+  if (c->active != (active != 0) || c->reduced != (reduced != 0)) cd_changed(c);
+  c->active = active != 0; c->reduced = reduced != 0;
 }
+void cd_focus(void *page, int field) { CoderHost *c = page; if (c) { coder_page_focus(cd_state(c), field); cd_woke(c); } }
+int cd_wants_text(void *page) { CoderHost *c = page; return c && coder_page_wants_text(cd_state(c)); }
+int cd_key(void *page, int key, int mods) { CoderHost *c = page; return c ? cd_on_key(c, key, mods, 1) : 0; }
+float cd_blink(void *page) { CoderHost *c = page; return c ? coder_page_blink(cd_state(c)) : -1; }
+int cd_draft(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || cap < 1) return 0;
+  int n = (int)coder_page_draft(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_search_clear(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_clear(cd_state(c)); cd_woke(c); return ok; }
 int cd_set_text(void *page, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_set_text(cd_state(c), cd_string(text)); }
 int cd_new(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_new(cd_state(c)); }
 int cd_submit(void *page) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_submit(cd_state(c)); }
@@ -234,9 +277,7 @@ int cd_copied(void *page, char *out, int cap) {
   out[n] = 0; cd_changed(c);
   return n;
 }
-int cd_editor(void *page, float box[6]) { CoderHost *c = page; return c && coder_page_editor(cd_state(c), (coax_v_f32){box, 6}); }
 int cd_box(void *page, const char *id, float box[4]) { CoderHost *c = page; return c && coder_page_box(cd_state(c), cd_string(id), (coax_v_f32){box, 4}); }
-int cd_style(void *page, float style[14]) { CoderHost *c = page; return c ? coder_page_style(cd_state(c), (coax_v_f32){style, 14}) : 0; }
 // A page with no window, for a chat whose reply goes on out of view: it reads its workers' lines
 // and keeps its text as the window's page does. cd_close frees it.
 void *cd_headless(void) {
@@ -264,12 +305,11 @@ void cd_close(void *page) {
   free(c->s); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
-// it shows (-1 closed); what its pages show; the tier a press chose; the search field's box and text.
+// it shows (-1 closed); what its pages show; the tier a press chose; the search's text.
 void cd_settings_open(void *page, int which, const char *row) { CoderHost *c = page; if (c) { coder_page_settings_open(cd_state(c), which, cd_string(row)); cd_woke(c); } }
 int cd_settings_page(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_page(cd_state(c)) : -1; }
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version, float titlebar) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version), titlebar); cd_changed(c); } }
 int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_tier(cd_state(c)) : 0; }
-int cd_search_box(void *page, float out[4]) { CoderHost *c = page; return c && coder_page_search_box(cd_state(c), (coax_v_f32){out, 4}); }
 void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
 int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_submit(cd_state(c)); cd_woke(c); return ok; }
 // Dialogs and right-click menus over the page (page/overlay.coax, GitHub #13746).
@@ -287,8 +327,6 @@ int cd_dialog_value(void *page, int i, char *out, int cap) {
   return n;
 }
 int cd_dialog_set(void *page, int i, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_dialog_set(cd_state(c), i, cd_string(text)); }
-int cd_dialog_editor(void *page, float out[6]) { CoderHost *c = page; return c ? (int)coder_page_dialog_editor(cd_state(c), (coax_v_f32){out, 6}) : -1; }
-int cd_dialog_style(void *page, float out[14]) { CoderHost *c = page; return c && coder_page_dialog_style(cd_state(c), (coax_v_f32){out, 14}); }
 void cd_menu_begin(void *page) { CoderHost *c = page; if (c) coder_page_menu_begin(cd_state(c)); }
 int cd_menu_item(void *page, const char *label, int kind, int checked, int disabled, int danger) { CoderHost *c = page; return c && coder_page_menu_item(cd_state(c), cd_string(label), kind, checked != 0, disabled != 0, danger != 0); }
 void cd_menu_show(void *page, float x, float y) { CoderHost *c = page; if (c) { coder_page_menu_show(cd_state(c), x, y); cd_woke(c); } }

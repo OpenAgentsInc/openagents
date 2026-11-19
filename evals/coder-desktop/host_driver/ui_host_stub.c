@@ -50,6 +50,9 @@ void ui_atlas(UiHost *h, const uint8_t *mono, uint32_t mw, uint32_t mh,
 float ui_dpr(UiHost *h) { return h ? h->dpr : 1.0f; }
 void ui_set_dpr(UiHost *h, float dpr) { if (h && dpr > 0.0f) h->dpr = dpr; }
 void ui_cursor(UiHost *h, int kind) { if (h) h->cursor = kind; }
+// No pasteboard headless: Copy goes nowhere and Paste finds nothing (the page's fields, page/editor.coax).
+int ui_copy(UiHost *h, const char *bytes, size_t n) { (void)h; (void)bytes; (void)n; return 0; }
+int ui_paste_text(UiHost *h, char *out, size_t cap) { (void)h; if (cap) out[0] = 0; return 0; }
 void *ui_view(UiHost *h) { return (void *)h; }
 
 int ui_frame(UiHost *h) {

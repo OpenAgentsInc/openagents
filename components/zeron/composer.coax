@@ -573,6 +573,28 @@ composer_underline :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32
   return v;
 }
 
+// The same underline into a display list, for a host that draws the field in its own list (a
+// page's sheet): one 1-unit fill per visible row the composition covers, inside the text box's clip.
+composer_underline_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas) -> int {
+  if !c[0].ed[0].marked || c[0].ed[0].n == 0 { return n; }
+  sk := composer_skin(c); m := sk.cmp; lh := m.line;
+  left := c[0].text_x-c[0].scroll_x; top := c[0].text_y - c[0].scroll;
+  fi := a[0].fonts[sk.body.face].ascent; fd := a[0].fonts[sk.body.face].descent;
+  pad := ifx c[0].scroll > 1 then m.pad_top else 0.0f32;
+  k := prim_clip(list, n, c[0].text_x, c[0].text_y - pad, c[0].text_x + c[0].text_w, c[0].text_y + c[0].view_h);
+  for r: 0..<c[0].lines {
+    ly := top + cast(f32) r * lh;
+    if ly + lh < c[0].text_y - m.pad_top || ly > c[0].text_y + c[0].view_h { continue; }
+    ma := ifx c[0].ed[0].marked_at > c[0].line_at[r] then c[0].ed[0].marked_at else c[0].line_at[r];
+    mb := ifx c[0].ed[0].marked_end < c[0].line_end[r] then c[0].ed[0].marked_end else c[0].line_end[r];
+    if mb > ma {
+      ux := left + x_in_row(c, a, r, ma);
+      k = prim_fill(list, k, ux, ly + (lh - fi - fd) / 2 + fi + fd * m.underline, x_in_row(c, a, r, mb) - x_in_row(c, a, r, ma), 1, 0, sk.ink);
+    }
+  }
+  return prim_unclip(list, k);
+}
+
 // Draws a composer's list: the text, the IME's underline over it, then the rest.
 composer_draw :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, d: f32, list: [] Prim, n: int, split: int) -> int {
   v := gpu_draw(out, at, a, d, list[0..<split], 0, 0, -PRIM_OPEN, PRIM_OPEN);

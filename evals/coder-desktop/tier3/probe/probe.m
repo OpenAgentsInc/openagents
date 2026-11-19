@@ -103,10 +103,6 @@ static void t3_mouse(NSEventType type, CGFloat x, CGFloat y, NSInteger clicks) {
     default: [target mouseMoved:e]; break;
   }
 }
-static NSTextView *t3_composer(void) {
-  for (NSView *v in t3_canvas().subviews) if ([v isKindOfClass:NSTextView.class] && [v.accessibilityIdentifier isEqualToString:@"coder.composer"]) return (NSTextView *)v;
-  return nil;
-}
 static BOOL t3_key_event(NSString *chars, NSString *bare, unsigned short code, NSEventModifierFlags mods) {
   NSWindow *w = t3_window();
   NSTimeInterval t = NSProcessInfo.processInfo.systemUptime;
@@ -165,10 +161,10 @@ static NSString *t3_state(void) {
   int (*settings)(void *) = dlsym(RTLD_DEFAULT, "cd_settings_page");
   int64_t (*cost)(void *) = dlsym(RTLD_DEFAULT, "cd_cost_usd_micros");
   int (*title)(void *, char *, int) = dlsym(RTLD_DEFAULT, "cd_title");
-  int (*editor)(void *, float *) = dlsym(RTLD_DEFAULT, "cd_editor");
-  if (!running || !settings || !cost || !title || !editor) return t3_err(@"cd_ symbols missing");
+  int (*rowbox)(void *, const char *, float *) = dlsym(RTLD_DEFAULT, "cd_box");
+  if (!running || !settings || !cost || !title || !rowbox) return t3_err(@"cd_ symbols missing");
   char t[512] = {0}; int tn = title(page, t, (int)sizeof t - 1); if (tn < 0) tn = 0; t[tn] = 0;
-  float box[6] = {0}; int has_box = editor(page, box);
+  float box[4] = {0}; int has_box = rowbox(page, "coder.composer", box);   // the composer (the page draws its text, #13742)
   NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
   return t3_json(@{@"ok": @YES, @"running": @(running(page)), @"settings_page": @(settings(page)), @"cost_usd_micros": @(cost(page)),
                    @"title": [NSString stringWithUTF8String:t] ?: @"", @"side_width": @([d floatForKey:@"sideWidth"]), @"pane_width": @([d floatForKey:@"paneWidth"]),
@@ -269,9 +265,17 @@ static NSString *t3_handle(NSString *line) {
     return t3_json(@{@"ok": @YES});
   }
   if ([op isEqualToString:@"composer"]) {
-    NSTextView *tv = t3_composer();
-    if (!tv) return t3_err(@"no composer");
-    return t3_json(@{@"ok": @YES, @"text": tv.string ?: @"", @"focused": @(w.firstResponder == tv), @"hidden": @(tv.isHidden)});
+    // the page draws and edits the composer (#13742): its draft, and whether the page's view has the keyboard for it
+    void *page = t3_page();
+    int (*draft)(void *, char *, int) = dlsym(RTLD_DEFAULT, "cd_draft");
+    int (*wants)(void *) = dlsym(RTLD_DEFAULT, "cd_wants_text");
+    int (*settings)(void *) = dlsym(RTLD_DEFAULT, "cd_settings_page");
+    int (*rowbox)(void *, const char *, float *) = dlsym(RTLD_DEFAULT, "cd_box");
+    if (!page || !draft || !wants || !settings || !rowbox) return t3_err(@"no composer");
+    static char text[16385]; int n = draft(page, text, (int)sizeof text); text[n < 0 ? 0 : n] = 0;
+    float box[4] = {0}; int shown = rowbox(page, "coder.composer", box);
+    BOOL focused = w.firstResponder == (id)t3_canvas() && wants(page) && settings(page) < 0;
+    return t3_json(@{@"ok": @YES, @"text": [NSString stringWithUTF8String:text] ?: @"", @"focused": @(focused), @"hidden": @(!shown)});
   }
   if ([op isEqualToString:@"quit"]) {
     dispatch_async(dispatch_get_main_queue(), ^{ [NSApp terminate:nil]; });

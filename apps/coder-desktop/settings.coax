@@ -87,19 +87,21 @@ cp_set_hits :: (q: string, out: [] int) -> int {
 cp_set_query :: (s: [] CoderPage) -> string { return cast(string) s[0].set_query[0..<s[0].set_query_n]; }
 
 // Opens settings on a page (-1: the one shown last), or closes it (`open` false). The chat that
-// was shown stays as it was. The host is asked to move the keyboard.
+// was shown stays as it was. The keyboard leaves the composer while it is open (Command-F or a
+// press gives it to the search) and comes back to it after; the host is asked to move it.
 cp_settings_show :: (s: [] CoderPage, open: bool, page: int) {
   if open && page >= 0 && page < CP_SET_PAGES { if page != s[0].set_page { s[0].set_scroll = 0; } s[0].set_page = page; }
   if open == s[0].set_open { return; }
   s[0].set_open = open; s[0].model_menu = false;
   if !open { s[0].set_query_n = 0; s[0].set_target_n = 0; }
+  s[0].fld[0].kb = ifx open then CP_KB_NONE else CP_KB_COMPOSER;
   s[0].ask = CP_ASK_SETTINGS;
 }
 cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if act == CP_SET_TOGGLE { cp_settings_show(s, !s[0].set_open, -1); return true; }
   if act == CP_SET_BACK { cp_settings_show(s, false, -1); return true; }
   if act == CP_SET_ACCOUNT { cp_settings_show(s, true, CP_PG_ACCOUNT); return true; }
-  if act == CP_SET_SEARCH { s[0].ask = CP_ASK_SEARCH; return true; }
+  if act == CP_SET_SEARCH { cp_ed_focus(s, CP_KB_SEARCH); return true; }
   if act == CP_SET_PAGE {
     p := cp_number(id, "set.page.");
     if p < 0 || p >= CP_SET_PAGES { return false; }
@@ -151,6 +153,7 @@ cp_settings_list :: (s: [] CoderPage, f: [] UiFrame, lw: f32, h: f32) {
   _ := set_search(f, "set.search", x, y, w, "Search settings", q.count == 0, keys[..], CP_SET_SEARCH);
   b := set_search_box(t, x, y, w);
   s[0].set_box[0] = b.x; s[0].set_box[1] = b.y; s[0].set_box[2] = b.w; s[0].set_box[3] = b.h;
+  cp_ed_draw(s, f, CP_ED_SEARCH, b.x, b.y, b.w, b.h, "");   // its words, caret and selection (page/editor.coax)
   y += t.search_h + t.list_gap;
   foot := h - t.list_pad - t.account - t.account_top;
   view := foot - y;
@@ -347,14 +350,13 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
 }
 // The tier a press on Foreman's page chose (CP_ASK_TIER).
 coder_page_settings_tier :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].set_tier else 0; }
-// Where the search editor goes, in points (x, y, w, h); false while settings is closed.
-coder_page_search_box :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || !s[0].set_open || !(s[0].set_box[2] > 0) || cp_overlay_open(s) { return false; }
-  u := cp_scale(s);
-  for i: 0..<4 { out[i] = s[0].set_box[i] * u; }
+// Esc in settings: a search with words is emptied and keeps the keyboard. False when it was empty.
+coder_page_search_clear :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].set_open || s[0].set_query_n == 0 { return false; }
+  coder_page_search_set(s, ""); s[0].fld[0].kb = CP_KB_SEARCH;
   return true;
 }
-// The search editor's text after an edit: the list shows what it finds.
+// The search's text after an edit: the list shows what it finds.
 coder_page_search_set :: (s: [] CoderPage, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].set_query_n = cp_out(s[0].set_query[..], text); s[0].set_list_scroll = 0;
@@ -445,8 +447,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.2").action == CP_SET_HIT;
   #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_GENERAL;
   #assert cp_set_test_frame(s, 1200, 700) && s[0].set_target_n == 0;
-  box: [4] f32;
-  #assert coder_page_search_box(s, box[..]) && box[2] > 0;
+  #assert s[0].set_box[2] > 0 && cp_ed_which(s) == -1;   // the search's box; the keyboard with neither field until a press or Command-F
   coder_page_settings_open(s, -2, "");
-  #assert !s[0].set_open && !coder_page_search_box(s, box[..]) && s[0].set_query_n == 0;
+  #assert !s[0].set_open && s[0].set_query_n == 0 && cp_ed_which(s) == CP_ED_COMPOSER;
 }

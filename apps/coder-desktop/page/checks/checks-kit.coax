@@ -8,6 +8,22 @@ cp_find :: (text: string, needle: string) -> int {
   while i + needle.count <= text.count { if cast(string) text[i..<i + needle.count] == needle { return i; } i += 1; }
   return -1;
 }
+// A press and release in the middle of field `which`'s text (page/editor.coax), in units: whether the field took it.
+cp_test_press_field :: (s: [] CoderPage, which: int) -> bool {
+  c := s[0].fld[0].ed[which].body[..];
+  if !(c[0].text_w > 0) { return false; }
+  x := c[0].text_x + c[0].text_w / 2; y := c[0].text_y + c[0].view_h / 2;
+  if !cp_ed_pointer(s, x, y, 0, 1, 0) { return false; }
+  _ = cp_ed_pointer(s, x, y, 2, 1, 0);
+  return true;
+}
+// a frame with the overlay over the page, as coder_page_frame paints it
+cp_test_draw_over :: (s: [] CoderPage, f: [] UiFrame, dt: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, dt, false, false);
+  cp_layout(s, f, 1200.0f32, 800.0f32);
+  _ := cp_overlay(s, f, 1200.0f32, 800.0f32, dt);
+  return uiframe_end(f, s[0].surface[..]);
+}
 // a frame wide enough for the sidebar
 cp_test_draw_side :: (s: [] CoderPage, f: [] UiFrame) -> bool {
   uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);

@@ -559,35 +559,11 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f3
   actions_h := 40.0f32;                    // 6pt top breathing + 28pt controls + 6pt bottom inset
   max_text_h := line_h * 8.0f32;               // Zeron MAX_LINES = 8 (176pt)
   text := eb_text(s[0].draft[..]);
-  editing := s[0].focused && !s[0].model_menu;
-  editor_h := s[0].editor_h / cp_scale(s);
+  editing := cp_composer_focused(s) && !s[0].model_menu;
   text_w := w - 2.0f32 * side_pad;
   if text_w < line_h { text_w = line_h; }
-  // Measure or use native editor height, clamped between 1 and 8 lines.
-  text_h := line_h;
-  if editing && editor_h > line_h {
-    text_h = editor_h;
-  } else if text.count > 0 {
-    // Estimate wrapped height when unfocused so height stays consistent with native editor.
-    nlines := 1;
-    cur_w: f32 = 0;
-    pos := 0;
-    while pos < text.count {
-      if text[pos] == 10 {
-        nlines += 1; cur_w = 0; pos += 1;
-      } else {
-        next := pos + 1;
-        while next < text.count && text[next] != 10 && text[next] != 32 { next += 1; }
-        if next < text.count && text[next] == 32 { next += 1; }
-        seg_w := measure_width(m, CP_COMPOSER_FACE, cast(string) text[pos..<next]);
-        if cur_w > 0 && cur_w + seg_w > text_w { nlines += 1; cur_w = seg_w; }
-        else { cur_w += seg_w; }
-        pos = next;
-      }
-      if nlines >= 8 { break; }
-    }
-    text_h = cast(f32) nlines * line_h;
-  }
+  // the draft's own rows (the page's editor wraps it), 1 to 8; past 8 the field scrolls
+  text_h := cast(f32) cp_ed_lines(s, k, text_w) * line_h;
   if text_h < line_h { text_h = line_h; }
   if text_h > max_text_h { text_h = max_text_h; }
   box_h := top_pad + text_h + actions_h;
@@ -598,7 +574,6 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f3
   // the text and its tiers, and the primary button.
   th := zeron_dark();
   z_solid := th.surface; z_edge := th.border; z_edge_focus := th.line_strong;
-  z_ink := th.text; z_placeholder := th.faint;
   z_pri_bg := th.primary; z_pri_hov := th.primary_hover; z_pri_prs := th.primary_active; z_pri_ink := th.bg;
   z_dis_bg := th.secondary; z_dis_ink := th.disabled;
   // zeron.composer.shadow: the skin's, 0 12 32 under the pill.
@@ -609,26 +584,10 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f3
   elt_value(f[0].rows, field_row, text);
   _ := sheet_box(sh, x, box_y, w, box_h, radius, border_w, z_solid, ifx editing then z_edge_focus else z_edge);
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, box_y, w, box_h);
-  // Placeholder or unfocused draft text.
-  if text.count == 0 {
-    // while a reply runs it says what Return does (#13717)
-    hint := ifx !running then "Ask anything..." else ifx s[0].fu[0].queue_first then "Queue a follow-up · ⌘Return steers · Esc stops" else "Steer the reply · ⌘Return queues · Esc stops";
-    _ := sheet_text(sh, m, -1, x + side_pad, box_y + top_pad, line_h, CP_COMPOSER_FACE, z_placeholder, hint);
-  } else if !editing {
-    // Draw unfocused draft text lines inside the text box.
-    ly := box_y + top_pad;
-    pos := 0;
-    drawn := 0;
-    while pos < text.count && drawn < 8 {
-      line_start := pos;
-      line_end := pos;
-      while line_end < text.count && text[line_end] != 10 { line_end += 1; }
-      _ := sheet_text(sh, m, -1, x + side_pad, ly, line_h, CP_COMPOSER_FACE, z_ink, app_fit(f, CP_COMPOSER_FACE, cast(string) text[line_start..<line_end], text_w));
-      ly += line_h;
-      drawn += 1;
-      pos = ifx line_end < text.count then line_end + 1 else line_end;
-    }
-  }
+  // The draft in the page's editor (editor.coax): its caret, selection and composition; empty, the
+  // placeholder, which while a reply runs says what Return does (#13717).
+  hint := ifx !running then "Do anything…" else ifx s[0].fu[0].queue_first then "Queue a follow-up · ⌘Return steers · Esc stops" else "Steer the reply · ⌘Return queues · Esc stops";
+  cp_ed_draw(s, f, CP_ED_COMPOSER, x + side_pad, box_y + top_pad, text_w, text_h, hint);
   // Concentric 28pt circular pill Send / Stop button.
   sx := x + send_x;
   sy := box_y + row_y;
