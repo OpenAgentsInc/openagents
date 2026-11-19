@@ -1609,6 +1609,40 @@ wake as a source of field foam. The field repeats every cascade-0 patch
 away; a wake's foam belongs in the wake's own draw-time path
 (`metaverse/water-wake.coax`).
 
+**Near the eye: streaks, not floes.** Issue 13688, November 18, 2026. Near
+the camera the field's foam drew as flat white patches with torn edges: 40
+to 80 px across on a phone, 20 to 40 px on a desktop. The field breaks on a
+long wave's Jacobian, so its breaks come in clumps of several texels (a
+phone's texel is 10 to 15 m, a desktop's 5 m), and near the eye a clump is
+many pixels wide. Where a texel is wider than about half a pixel, the shader
+now keeps a quarter of where the field broke and spreads the rest evenly
+(`mean + 0.25 (local - mean)`), and draws that cover on short crest streaks
+across the wind, a few pixels wide at any distance. Farther out the field
+draws as before.
+
+- **The cover is unchanged.** The field is not touched, so its measured
+  cover against Monahan is as above (3.0%, 10.3% and 16.0% on a desktop;
+  2.8%, 9.6% and 15.2% on a phone). The spreading is linear, so the mean is
+  the field's. The streaks' rank goes through the measured distribution of
+  its noise (sampled 300,000 times), so a cover `c` whitens a share within
+  5% of `c` up to 40%: 2.9% at 3%, 10.2% at 10%, 16.8% at 16%.
+- **What a visitor sees.** In the opening, a gale and a hurricane, on a
+  phone at the opening distance and at 600, 1,500 and 3,000 m, and on a
+  desktop, the near foam is crest streaks and flecks. A crowded break (a
+  gale's) is a lace of streaks, not a sheet. A streak's white is dimmer
+  where the field's foam is old (75% to 100%).
+
+Frame time, GPU p50, headless Chrome on an Apple M-series GPU, the lowest
+of four to nine alternating runs per build. The machine was under heavy load
+from other agents (load average 20 to 170), so single runs varied by 2 to
+4×; the differences are inside that noise:
+
+| View | Before | After |
+|---|---|---|
+| Opening, 390×844 | 1.74 ms | 1.68 ms |
+| Gale, 390×844 | 1.88 ms | 1.96 ms |
+| Opening, 1440×900 | 7.81 ms | 8.02 ms |
+
 ### Gardens, water and night (photoreal)
 
 Measured on November 18, 2026, with `?style=photoreal`, from the checks in

@@ -797,9 +797,17 @@ phone, stepped every 0.2 s and sent through the frame store when it steps.
 Under a texel the drawing decides only where the white goes (a soft crest
 band when fresh, a dimmer lace as it thins, lines for lane foam); a pixel
 sees the texel's share on average, and a pixel wider than a texel sees the
-field's mean. The wall's foot band uses the same rank pattern. Spindrift is
-drawn downwind of fresh whitecaps; spume through the particle pass is not
-wired yet. A moving source (a ship's wake) does not belong in the field: it
+field's mean. Near the eye, where a texel is wider than about half a pixel,
+the field's breaks run in clumps of several texels along a long wave's trough,
+and drawn as they are they read as flat floes 20 to 80 px across. There the
+drawing keeps a quarter of where the field broke and spreads the rest evenly
+(`mean + 0.25 (local - mean)`, so the mean cover is unchanged), and puts the
+white on short crest streaks sized to the pixel (`slab_foam_streak`, two
+octaves of value noise mapped through their own measured distribution so a
+cover `c` whitens a share `c`, blended across octaves of the pixel's size so
+the pattern does not bend with distance). The wall's foot band uses the same
+rank pattern. Spindrift is drawn downwind of fresh whitecaps; spume through
+the particle pass is not wired yet. A moving source (a ship's wake) does not belong in the field: it
 would repeat every patch.
 
 Checks: `coax/bin/coax test --library metaverse/water-foam.coax --steps

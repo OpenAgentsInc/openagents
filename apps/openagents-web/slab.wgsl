@@ -5867,6 +5867,10 @@ fn coax_p_slab_foam_white(p_p: vec2f, p_t: f32, p_fp: f32, p_dist: f32, p_wind: 
   var l_gap: f32;
   var l_soft: f32;
   var l_cap: f32;
+  var l_near: f32;
+  var l_fresh: f32;
+  var l_cn: f32;
+  var l_capn: f32;
   var l_lane: f32;
   var l_m: f32;
   var l_nn: f32;
@@ -5913,6 +5917,15 @@ fn coax_p_slab_foam_white(p_p: vec2f, p_t: f32, p_fp: f32, p_dist: f32, p_wind: 
   }
   l_soft = (0x1.99999ap-5f + (0x1.99999ap-4f * (0x1.000000p0f - l_fa.x)));
   l_cap = (coax_p_slab_foam_show(l_fa.x, l_rank, l_soft, l_fp, (0x1.800000p0f / l_zoom)) * (0x1.666666p-2f + (0x1.4cccccp-1f * coax_p_smoothstep(0x1.333334p-3f, 0x1.666666p-1f, l_fa.x))));
+  l_near = coax_p_smoothstep(0x1.333334p-2f, 0x1.ccccccp-1f, (l_tex / coax_p_fmax(l_fp, 0x1.0624dep-10f)));
+  l_fresh = l_fa.x;
+  if ((l_near > 0.0f))
+  {
+    l_cn = (l_mean.x + (0x1.000000p-2f * (l_fa.x - l_mean.x)));
+    l_capn = (coax_p_slab_foam_streaks(l_cn, l_wa, l_wc, l_fp) * (0x1.800000p-1f + (0x1.000000p-2f * coax_p_smoothstep(0x1.99999ap-4f, 0x1.333334p-1f, l_fa.x))));
+    l_cap = coax_p_mix(l_cap, l_capn, l_near);
+    l_fresh = coax_p_mix(l_fa.x, l_cn, l_near);
+  }
   l_lane = 0.0f;
   if ((l_fa.y > 0x1.0624dep-8f))
   {
@@ -5934,7 +5947,7 @@ fn coax_p_slab_foam_white(p_p: vec2f, p_t: f32, p_fp: f32, p_dist: f32, p_wind: 
     l_smoke = coax_p_slab_noise(coax_p_v2(((l_wa * 0x1.99999ap-5f) - (l_t * 0x1.19999ap0f)), (l_wc * 0x1.666666p-2f)));
     l_white = coax_p_fmax(l_white, ((l_spin * l_torn) * (coax_p_smoothstep(0x1.333334p-2f, 0x1.800000p-1f, l_smoke) * (0x1.99999ap-2f + (0x1.99999ap-2f * l_gate)))));
   }
-  return coax_p_v2(coax_p_clampf(l_white, 0.0f, 0x1.000000p0f), l_fa.x);
+  return coax_p_v2(coax_p_clampf(l_white, 0.0f, 0x1.000000p0f), l_fresh);
 }
 fn coax_p_slab_sea_foam_lit(p_ndl: f32) -> vec3f {
   let l_ndl: f32 = p_ndl;
@@ -7179,6 +7192,21 @@ fn coax_p_slab_foam_show(p_cover: f32, p_rank: f32, p_soft: f32, p_fp: f32, p_gr
   l_fine = coax_p_smoothstep(l_at, (l_at + (0x1.000000p1f * l_soft)), l_c);
   return coax_p_mix(l_fine, l_c, coax_p_smoothstep((0x1.99999ap-2f * l_grain), (0x1.000000p1f * l_grain), l_fp));
 }
+fn coax_p_slab_foam_streaks(p_cover: f32, p_wa: f32, p_wc: f32, p_fp: f32) -> f32 {
+  let l_cover: f32 = p_cover;
+  let l_wa: f32 = p_wa;
+  let l_wc: f32 = p_wc;
+  let l_fp: f32 = p_fp;
+  var l_l: f32;
+  var l_s: f32;
+  var l_w0: f32;
+  var l_w1: f32;
+  l_l = coax_p_wg_log2(coax_p_fmax(l_fp, 0x1.000000p-2f));
+  l_s = coax_pow_bg_vs(0x1.000000p1f, floor(l_l));
+  l_w0 = coax_p_slab_foam_show(l_cover, coax_p_slab_foam_streak(l_wa, l_wc, l_s), 0x1.eb851ep-6f, 0.0f, 0x1.000000p0f);
+  l_w1 = coax_p_slab_foam_show(l_cover, coax_p_slab_foam_streak((l_wa + 0x1.f00000p4f), (l_wc + 0x1.100000p4f), (0x1.000000p1f * l_s)), 0x1.eb851ep-6f, 0.0f, 0x1.000000p0f);
+  return coax_p_mix(l_w0, l_w1, coax_p_fract(l_l));
+}
 fn coax_p_slab_photo_air(p_c: vec3f, p_d: vec3f, p_dist: f32) -> vec3f {
   let l_c: vec3f = p_c;
   let l_d: vec3f = p_d;
@@ -7605,6 +7633,22 @@ fn coax_p_slab_foam_texel(p_ix: i32, p_iz: i32, p_n: i32) -> vec2f {
   l_w = coax_p_wg_atu_1((16i + i32((l_k >> u32(1i)))));
   l_b = (l_w >> u32(u32(((l_k & 1i) * 16i))));
   return coax_p_v2((f32((l_b & 255u)) / 0x1.fe0000p7f), (f32(((l_b >> u32(8u)) & 255u)) / 0x1.f80000p6f));
+}
+fn coax_p_slab_foam_streak(p_wa: f32, p_wc: f32, p_s: f32) -> f32 {
+  let l_wa: f32 = p_wa;
+  let l_wc: f32 = p_wc;
+  let l_s: f32 = p_s;
+  var l_a: f32;
+  var l_b: f32;
+  var l_v: f32;
+  var l_lo: f32;
+  var l_e: f32;
+  l_a = coax_p_slab_noise(coax_p_v2((l_wa / (0x1.800000p1f * l_s)), (l_wc / (0x1.a00000p3f * l_s))));
+  l_b = coax_p_slab_noise(coax_p_v2(((l_wa / (0x1.4cccccp0f * l_s)) + 0x1.c00000p2f), ((l_wc / (0x1.333334p2f * l_s)) + 0x1.800000p1f)));
+  l_v = ((l_a * 0x1.4cccccp-1f) + (l_b * 0x1.666666p-2f));
+  l_lo = coax_p_fmin(l_v, (0x1.000000p0f - l_v));
+  l_e = (0x1.000000p-1f * coax_pow_bg_vs(coax_p_clampf(((l_lo - 0x1.333334p-4f) / 0x1.b33334p-2f), 0.0f, 0x1.000000p0f), 0x1.333334p1f));
+  return select((0x1.000000p0f - l_e), l_e, (l_v < 0x1.000000p-1f));
 }
 fn coax_p_slab_tholos_sd(p_q: vec3f, p_s: vec3f) -> f32 {
   let l_q: vec3f = p_q;
