@@ -42,7 +42,16 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return cp_open_file(s, -1, turn, n);
   }
   if act == CP_GROUP {
-    turn := cp_number(surface_id(s[0].surface[..], row), "t");
+    gid := surface_id(s[0].surface[..], row);
+    if gid.count > 0 && gid[0] == 'p' {
+      // the open sub-agent's, in the pane (#13744)
+      pb: [EL_ID] u8;
+      if !s[0].pane_open || gid != cp_pane_id(pb[..], s, ".grp", -1) { return false; }
+      ti := s[0].pane_turn; aj := s[0].pane_agent;
+      s[0].turns[ti].agents[aj].fold = app_act_choose(s[0].turns[ti].agents[aj].fold, s[0].turns[ti].agents[aj].state == CP_RUNNING);
+      return true;
+    }
+    turn := cp_number(gid, "t");
     if turn < 0 || turn >= s[0].nturns { return false; }
     s[0].turns[turn].fold = app_act_choose(s[0].turns[turn].fold, s[0].turns[turn].state == CP_RUNNING);
     s[0].turns[turn].h = 0;
@@ -60,19 +69,16 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   }
   if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
   if act == CP_PANE_TOOL {
+    // a row of the open sub-agent's activity group (#13744): it opens, or its file opens
     id := surface_id(s[0].surface[..], row);
-    q := cp_number(id, ".x"); tb: [EL_ID] u8;
-    if !s[0].pane_open || q < 0 { return false; }
-    return app_tool_press(s[0].keyed[..], cp_pane_id(tb[..], s, ".x", q), id);
-  }
-  if act == CP_SAID_COPY {
-    // a code block's Copy in what a sub-agent said: its row and its block, by the button's id
-    id := surface_id(s[0].surface[..], row);
-    at := cp_number(id, ".x"); block := cp_number(id, ".code.");
-    if !s[0].pane_open || at < 0 || block < 0 { return false; }
-    q := cp_nth(s, s[0].pane_turn, s[0].pane_agent, at - s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].early_rows);
-    if q < 0 || !s[0].calls[q].said { return false; }
-    s[0].copied_turn = s[0].pane_turn; s[0].copied_row = q; s[0].copied_block = block; s[0].copied_kind = CP_COPIED_SAID; s[0].ask = CP_ASK_COPY; return true;
+    k := cp_number(id, ".x"); tb: [EL_ID] u8;
+    if !s[0].pane_open || k < 0 { return false; }
+    rid := cp_pane_id(tb[..], s, ".x", k);
+    if app_act_path_pressed(rid, id) {
+      q := cp_nth(s, s[0].pane_turn, s[0].pane_agent, k - s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].early_rows);
+      return q >= 0 && cp_open_file(s, q, s[0].pane_turn, -1);
+    }
+    return app_act_press(s[0].keyed[..], rid, id);
   }
   if act == CP_PANE_COPY {
     block := cp_number(surface_id(s[0].surface[..], row), ".code.");

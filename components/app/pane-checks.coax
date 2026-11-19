@@ -36,3 +36,28 @@
   #assert surface_find(sf[..], "pane.close") >= 0;
   #assert surface_find(sf[..], "pane.meta") >= 0;
 }
+
+#test "app_pane_tab_shell draws Zeron's tab chip: 28 points tall, the label at most 160, Close in its slot (#13744)" {
+  u0: [256] Prim; o0: [64] Prim; l0: [32] SheetLine; h0: [32] SheetHit; p0: [1024] u8; r0: [32] El;
+  u1: [256] Prim; o1: [64] Prim; l1: [32] SheetLine; h1: [32] SheetHit; p1: [1024] u8; r1: [32] El;
+  sf: [1] UiSurface; sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), zeron_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  // a short title is as wide as it is; a long one stops at 160 points, at any scale
+  lb: [600] u8; for q: 0..<lb.count { lb[q] = 'x'; }
+  name := cast(string) lb[..];
+  short := app_pane_tab_width(f[..], "Neon", 1.0f32);
+  long := app_pane_tab_width(f[..], name, 1.0f32);
+  #assert short < long && long == 4 + 4 + 40 + 12 + APP_PANE_TAB_LABEL;
+  #assert app_pane_tab_width(f[..], name, 1.2f32) * 1.2f32 > long - 0.01f32 && app_pane_tab_width(f[..], name, 1.2f32) * 1.2f32 < long + 0.01f32;
+  top := app_pane_tab_shell(f[..], 700, 0, 500, 800, ICON_BOT, "Neon", "pane.took", "12s", "pane.close", 99, 12, 1.0f32);
+  #assert top > 12 + APP_PANE_TAB_H / 2;
+  #assert uiframe_end(f[..], sf[..]);
+  c := surface_find(sf[..], "pane.close");
+  #assert c >= 0 && surface_action(sf[..], c) == 99 && surface_say(sf[..], c) == "Close";
+  t := surface_find(sf[..], "pane.close.tab");
+  #assert t >= 0 && surface_say(sf[..], t) == "Neon" && surface_find(sf[..], "pane.took") >= 0;
+}

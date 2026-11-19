@@ -49,17 +49,38 @@ cp_act_agent :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int) -> AppActRow {
   return AppActRow.{kind = APP_ACT_AGENT, verb = "Ran a subagent", target = sheet_pool(f[0].sheet, cast(string) tb[0..<n]),
                     failed = g.state == CP_FAILED, running = g.state == CP_RUNNING && !g.paused, opens = true};
 }
+// "t7" + ".x" + 12: a part of an activity group, under the group's name ("t7" a message's, "p3.1"
+// a sub-agent's) and, when k is not negative, its number.
+cp_named :: (out: [] u8, name: string, part: string, k: int) -> string {
+  n := el_put(out, 0, name); n = el_put(out, n, part);
+  if k >= 0 { n = el_put_i(out, n, k); }
+  return cast(string) out[0..<n];
+}
 // Turn i's activity group at (x, y), cw wide (#13731): the summary, counted in Zeron's words;
 // open while the message works or when the person opened it, its thoughts, commands, reads and
 // sub-agents in the order they came, a tree down their left. Rows out of view between top and
 // bottom keep their place and are not drawn. Returns its height, 0 when it did nothing.
 cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32) -> f32 {
+  nb: [EL_ID] u8; name := cp_named(nb[..], "t", "", i);
+  live := s[0].turns[i].state == CP_RUNNING;
+  return cp_act_group(s, f, name, s[0].turns[i].head, s[0].turns[i].ncmds, s[0].turns[i].early_cmds, s[0].turns[i].more_cmds,
+                      i, s[0].turns[i].nagents, live, app_act_open(s[0].turns[i].fold, live), x, y0, cw, top, bottom, CP_TOOL);
+}
+// One activity group at (x, y0), cw wide, as the conversation and a sub-agent's pane both draw
+// it (#13731, #13744): the summary over the nrows rows from call head on (a place in the page's
+// calls plus 1, 0 for none), the early rows that went and the more that were not kept said
+// above and below them, and turn i's nagents sub-agents (0 for a sub-agent's own group) each in
+// its place among them. Its parts are named under `name`: name + ".grp" the summary (CP_GROUP),
+// name + ".x" + k each row (`row` its action), name + ".g" + j each sub-agent (CP_AGENT). Rows
+// out of view between top and bottom keep their place and are not drawn. Returns its height,
+// 0 when it did nothing.
+cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows: int, early: int, more: int, i: int, nagents: int,
+                 live: bool, open: bool, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int) -> f32 {
   a := f[0].skin.act; sh := f[0].sheet;
-  nagents := s[0].turns[i].nagents; early := s[0].turns[i].early_cmds; more := s[0].turns[i].more_cmds;
-  if s[0].turns[i].ncmds + nagents + early + more == 0 { return 0; }
+  if nrows + nagents + early + more == 0 { return 0; }
   // the summary: every kind it did, counted
   c := [1] AppActCount.[AppActCount.{}];
-  q := s[0].turns[i].head - 1;
+  q := head - 1;
   while q >= 0 {
     kind := ifx s[0].calls[q].thought || s[0].calls[q].said then APP_ACT_THOUGHT else ifx s[0].calls[q].read then APP_ACT_READ else APP_ACT_EXEC;
     app_act_count(c[..], kind, s[0].calls[q].failed);
@@ -68,36 +89,34 @@ cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, t
   for j: 0..<nagents { app_act_count(c[..], APP_ACT_AGENT, s[0].turns[i].agents[j].state == CP_FAILED); }
   sb: [256] u8; sn := app_act_summary(sb[..], c[0]);
   if sn == 0 { sn = el_put(sb[..], 0, "Worked"); }
-  live := s[0].turns[i].state == CP_RUNNING;
-  open := app_act_open(s[0].turns[i].fold, live);
-  ib: [EL_ID] u8; tb: [EL_ID] u8; xb: [EL_ID] u8;
+  ib: [EL_ID] u8; tb: [EL_ID] u8;
   y := y0;
-  y += app_act_head(f, cp_id(ib[..], i, ".grp"), x, y, cw, sheet_pool(sh, cast(string) sb[0..<sn]), live, open, CP_GROUP);
+  y += app_act_head(f, cp_named(ib[..], name, ".grp", -1), x, y, cw, sheet_pool(sh, cast(string) sb[0..<sn]), live, open, CP_GROUP);
   if !open { return y - y0; }
   // the tree's rows: its sub-agents each in its place among the message's own, after the rows
   // that came before it was handed over
-  last := s[0].turns[i].ncmds + nagents - 1; pos := 0; drawn := 0;
+  last := nrows + nagents - 1; pos := 0; drawn := 0;
   if early > 0 {
     eb: [96] u8; en := el_put_i(eb[..], 0, early); en = el_put(eb[..], en, ifx early == 1 then " earlier row is not shown. A chat keeps 6,000 tool calls and thoughts." else " earlier rows are not shown. A chat keeps 6,000 tool calls and thoughts.");
-    y += app_meta(f, cp_id(ib[..], i, ".xe"), x + a.gutter, y, cw - a.gutter, sheet_pool(sh, cast(string) eb[0..<en]), false);
+    y += app_meta(f, cp_named(ib[..], name, ".xe", -1), x + a.gutter, y, cw - a.gutter, sheet_pool(sh, cast(string) eb[0..<en]), false);
   }
-  q = s[0].turns[i].head - 1; at := early;
+  q = head - 1; at := early;
   while q >= 0 || drawn < nagents {
     if drawn < nagents && (q < 0 || s[0].turns[i].agents[drawn].after <= at) {
-      y += app_act_row(f, app_id(tb[..], cp_id(xb[..], i, ".g"), CP_CMD_IDS[drawn]), x, y, cw, cp_act_agent(s, f, i, drawn), pos < last, CP_AGENT);
+      y += app_act_row(f, cp_named(tb[..], name, ".g", drawn), x, y, cw, cp_act_agent(s, f, i, drawn), pos < last, CP_AGENT);
       drawn += 1; pos += 1; continue;
     }
     nx := s[0].calls[q].next - 1;
     // a row out of view keeps its place and is not drawn, so a long run costs what shows
     rh := s[0].calls[q].h;
     if rh > 0 && (y + rh < top - CP_PANE_MARGIN || y > bottom + CP_PANE_MARGIN) { y += rh; q = nx; at += 1; pos += 1; continue; }
-    rh = app_act_row(f, cp_row_id(tb[..], i, at), x, y, cw, cp_act_row(s, f, q, cw), pos < last, CP_TOOL);   // a row keeps its id when older ones go, so an open row stays open
+    rh = app_act_row(f, cp_named(tb[..], name, ".x", at), x, y, cw, cp_act_row(s, f, q, cw), pos < last, row);   // a row keeps its id when older ones go, so an open row stays open
     s[0].calls[q].h = rh; y += rh;
     q = nx; at += 1; pos += 1;
   }
   if more > 0 {
     mb: [96] u8; mn := el_put_i(mb[..], 0, more); mn = el_put(mb[..], mn, " more ran after these and were not kept.");
-    y += app_meta(f, cp_id(ib[..], i, ".xm"), x + a.gutter, y, cw - a.gutter, sheet_pool(sh, cast(string) mb[0..<mn]), false);
+    y += app_meta(f, cp_named(ib[..], name, ".xm", -1), x + a.gutter, y, cw - a.gutter, sheet_pool(sh, cast(string) mb[0..<mn]), false);
   }
   return y - y0;
 }

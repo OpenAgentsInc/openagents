@@ -2,6 +2,7 @@
 // On wide viewports it docks as a resizable right split pane; on narrow viewports it opens
 // full-width over the conversation column.
 #load "chat.coax";
+#load "activity.coax";
 
 APP_PANE_SIDE :: 0; // wide viewport: docked resizable right split pane
 APP_PANE_FULL :: 1; // narrow viewport: full-width overlay sheet
@@ -91,6 +92,69 @@ app_pane_shell :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, icon: int, tit
   }
   _ := app_icon_button(f, close_id, x + w - side - corner, y + corner, ICON_CLOSE, "Close", APP_BUTTON_QUIET, 0, close_action);
   return y + corner + side + a.gap_small;
+}
+
+// Zeron's panel tab chip (apps/zgx/ui/screens/panel/init.luau, #13744), in points: 28 tall,
+// rounded 8, its 20-point tile and end slot 4 in from its ends, 6 between its parts, its label
+// at most 160 wide and fading past that; the strip 6 in from the panel's side, in a 40-point band.
+APP_PANE_TAB_H :: 28.0f32; APP_PANE_TAB_RADIUS :: 8.0f32; APP_PANE_TAB_SLOT :: 20.0f32; APP_PANE_TAB_GAP :: 6.0f32;
+APP_PANE_TAB_LABEL :: 160.0f32; APP_PANE_TAB_ICON :: 14.0f32; APP_PANE_TAB_CLOSE :: 12.0f32; APP_PANE_TAB_TILE_RADIUS :: 4.0f32;
+APP_PANE_TAB_EDGE :: 6.0f32; APP_PANE_TAB_FADE :: 24.0f32;
+
+// The width of the chip app_pane_tab draws for `title` at `scale` points a unit.
+app_pane_tab_width :: (f: [] UiFrame, title: string, scale: f32) -> f32 {
+  u := ifx scale > 0 then scale else 1.0f32; k := f[0].skin;
+  tw := measure_width(f[0].m, k.tool.face, title); most := APP_PANE_TAB_LABEL / u;
+  if tw > most { tw = most; }
+  inset := (APP_PANE_TAB_H - APP_PANE_TAB_SLOT) / 2 / u;
+  return 2 * inset + 2 * APP_PANE_TAB_SLOT / u + 2 * APP_PANE_TAB_GAP / u + tw;
+}
+// A panel's tab as Zeron draws its chosen one, at (x, y), at `scale` points a unit: on the
+// selected wash, its icon on a tile, its title (fading past 160 points) and Close in its end
+// slot, which dispatches close_action under close_id. Returns its width.
+app_pane_tab :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, close_id: string, close_action: int, scale: f32) -> f32 {
+  u := ifx scale > 0 then scale else 1.0f32; k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  h := APP_PANE_TAB_H / u; slot := APP_PANE_TAB_SLOT / u; gap := APP_PANE_TAB_GAP / u; inset := (h - slot) / 2;
+  w := app_pane_tab_width(f, title, scale);
+  wash := ifx k.set.selected.a > 0 then k.set.selected else k.hover;
+  sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, wash);
+  // the tile and its icon
+  tx := x + inset; ty := y + inset;
+  if icon >= 0 {
+    sheet_fill(sh, tx, ty, slot, slot, APP_PANE_TAB_TILE_RADIUS / u, ifx k.set.well.a > 0 then k.set.well else k.raised);
+    ic := APP_PANE_TAB_ICON / u;
+    sheet_icon(sh, icon, tx + (slot - ic) / 2, ty + (slot - ic) / 2, ic, k.ink);
+  }
+  // the title, its end fading past the label's most
+  lx := tx + slot + gap; right := x + w - inset - slot - gap;
+  _ := app_act_fade_text(sh, m, lx, y + (h - k.tool.line) / 2, k.tool.line, k.tool.face, k.ink, title, right, APP_PANE_TAB_FADE / u);
+  tb: [EL_ID] u8;
+  _ := uiframe_semantic(f, app_id(tb[..], close_id, ".tab"), EL_TAB, title, x, y, w, h, EL_S_CURRENT, 0);
+  // Close in the end slot, its wash under the pointer
+  cx := x + w - inset - slot;
+  hovered := uiframe_hovered(f, close_id);
+  if hovered { sheet_fill(sh, cx, ty, slot, slot, APP_PANE_TAB_TILE_RADIUS / u, k.hover); }
+  ci := APP_PANE_TAB_CLOSE / u;
+  sheet_icon(sh, ICON_CLOSE, cx + (slot - ci) / 2, ty + (slot - ci) / 2, ci, ifx hovered then k.ink else k.muted);
+  close := uiframe_semantic(f, close_id, EL_BUTTON, "Close", cx, ty, slot, slot, 0, close_action);
+  sheet_hit(sh, UIFRAME_HIT, close, 0, cx, ty, slot, slot);
+  return w;
+}
+// A panel's head as Zeron's (#13744): its divider when docked, one tab chip (app_pane_tab) whose
+// middle sits `corner` plus half an icon button down from y, level with the window's corner
+// buttons, and the meta text after it. Returns the y where the scrolling body starts.
+app_pane_tab_shell :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, icon: int, title: string, meta_id: string, meta: string, close_id: string, close_action: int, corner: f32, scale: f32) -> f32 {
+  k := f[0].skin; a := k.app; sh := f[0].sheet;
+  u := ifx scale > 0 then scale else 1.0f32;
+  if x > 0 { sheet_fill(sh, x, y, k.border, h, 0, k.menu_divider); }
+  mid := y + corner + a.icon_button / 2; th := APP_PANE_TAB_H / u;
+  cx := x + APP_PANE_TAB_EDGE / u;
+  cw := app_pane_tab(f, cx, mid - th / 2, icon, title, close_id, close_action, scale);
+  if meta.count > 0 {
+    mx := cx + cw + a.gap;
+    _ := app_meta(f, meta_id, mx, mid - k.small.line / 2, x + w - mx - APP_PANE_TAB_EDGE / u, meta, false);
+  }
+  return y + corner + a.icon_button + a.gap_small;
 }
 
 #load "pane-checks.coax" #test;

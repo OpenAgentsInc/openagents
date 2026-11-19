@@ -342,3 +342,38 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"all twelve done\"}") == MWW_ENDED;
   #assert !cp_running(s) && s[0].turns[0].state == CP_DONE;
 }
+
+#test "a sub-agent's pane draws its work as the conversation's activity group: open while it runs, folded when done, rows open (#13744)" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"view\",\"path\":\"apps/coder-desktop/page.coax\",\"found\":true}") == MWW_VIEW;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\\nb\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"false\",\"exit\":1,\"timed_out\":false,\"output\":\"no\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":2}") == MWW_ASK;
+  s[0].clock += 9;
+  #assert cp_test_draw(s, f[..]);
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  // the summary in Zeron's words; the rows as the conversation's: verb and target, the failed one said so, the running one timed
+  g := surface_find(s[0].surface[..], "p0.0.grp");
+  #assert g >= 0 && surface_say(s[0].surface[..], g) == "Ran 3 commands · read 1 file · 1 failed";
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "p0.0.x1")) == "Ran ls";
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "p0.0.x2")) == "Failed";
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "p0.0.x3")) == "9s" && surface_find(s[0].surface[..], "p0.0.t") >= 0;
+  // its tab: the model's name, Close in the chip
+  #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.pane.close.tab")) == "Carbon" && surface_find(s[0].surface[..], "coder.pane.close") >= 0;
+  // a row opens onto its output; a file's name opens the file
+  #assert cp_press(s, surface_find(s[0].surface[..], "p0.0.x1")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "p0.0.x1.output") >= 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "p0.0.x0.path")) && coder_page_action(s) == CP_ASK_OPEN_FILE;
+  out: [64] u8; n := coder_page_open_path(s, out[..]);
+  #assert cast(string) out[0..<n] == "apps/coder-desktop/page.coax";
+  // done: folded to its summary, no working line; a press opens it, another folds it
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"sleep 9\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"3\"}") == MWW_ENDED;
+  #assert cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "p0.0.grp") >= 0 && surface_find(s[0].surface[..], "p0.0.x1") < 0 && surface_find(s[0].surface[..], "p0.0.t") < 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "p0.0.grp")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "p0.0.x1") >= 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "p0.0.grp")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "p0.0.x1") < 0;
+  // the message's own group is apart from the pane's: its press does not fold the pane's
+  #assert s[0].turns[0].fold == APP_ACT_UNCHOSEN;
+}

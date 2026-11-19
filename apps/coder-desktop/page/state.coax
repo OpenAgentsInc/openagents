@@ -85,7 +85,7 @@ CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUD
 CP_ASK_OPEN_FILE :: 24;     // a press on a file a row or a reply names: coder_page_open_path is its path
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
-CP_GROUP :: 41;            // a message's activity group: a press on its summary opens or folds it (#13731)
+CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
 CP_PATH :: 42;             // a file a reply names in inline code (#13698)
 CP_SET_BACK :: 29; CP_SET_PAGE :: 30; CP_SET_SEARCH :: 31; CP_SET_HIT :: 32; CP_SET_ACCOUNT :: 33; CP_SET_TOGGLE :: 34; CP_SET_ACT :: 35;   // settings.coax
 // Desktop auto-updater pill states shown in the sidebar footer.
@@ -133,6 +133,7 @@ CpAgent :: struct {
   again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on
   after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
   said_open: bool;            // its newest row is what it says in the model call still streaming: the next piece joins it
+  fold: int;                  // its pane's activity group as the person left it: APP_ACT_UNCHOSEN, _OPENED or _FOLDED (#13744)
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {

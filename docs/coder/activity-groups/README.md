@@ -43,4 +43,4 @@ worker in place of `mcworker` and its own home folder.
 - Fade: Coder fades a long target per character, not with a gradient mask.
 - An opened command shows its whole command and output; Coder keeps no exit
   code number, only failed or not.
-- A sub-agent's transcript pane still uses the older rows.
+- A sub-agent's transcript pane draws its work with the same group (#13744); its tab is Zeron's panel chip (28 tall, the label at most 160, fading).

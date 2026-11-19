@@ -1,7 +1,7 @@
 // Coder's page (macOS first): a conversation with Microcoder. The turns
 // scroll above the shared composer; each is the person's message
 // (app_message_user), the reply as Markdown (app_message_agent) and what the
-// run is doing (app_typing, app_notice, app_meta), all from the app set
+// run is doing (the activity group, app_working, app_notice, app_meta), all from the app set
 // (components/app/). The page keeps the draft, the turns and the scroll; it
 // has no effects. Its host (host.c, App.swift) runs the Microcoder worker
 // (coder/tui/mcworker.coax) and passes its lines here; the lines both ways are
