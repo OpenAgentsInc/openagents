@@ -365,6 +365,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var also: String?   // --new TEXT: sent in a new chat while --send's reply runs
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
     private var owed = 3   // frames still to draw after a change
+    private var restoreEditorFocus = false
     private let store = CoderStore()
     private var chat: String?          // the id of the chat that is shown, once it is kept
     private var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
@@ -1316,8 +1317,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_env(page, focused && !editor.string.isEmpty ? 1 : 0, Float(used), NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
         if cd_moving(page) != 0 || owed > 0 { cd_frame(page); if owed > 0 { owed -= 1 } }
         var box = [Float](repeating: 0, count: 6)
-        guard cd_editor(page, &box) != 0 else { editor.isHidden = true; return }
+        guard cd_editor(page, &box) != 0 else {
+            if focused { restoreEditorFocus = true }
+            editor.isHidden = true
+            return
+        }
+        let wasHidden = editor.isHidden
         editor.isHidden = false
+        if wasHidden && restoreEditorFocus {
+            restoreEditorFocus = false
+            window.makeFirstResponder(editor)
+        }
         // The bar draws its first line box[4] under the text box's top: the editor's text starts there too.
         let inset = NSSize(width: 0, height: CGFloat(box[4]))
         if editor.textContainerInset != inset { editor.textContainerInset = inset; wake() }

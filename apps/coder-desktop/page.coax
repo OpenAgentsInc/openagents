@@ -2283,7 +2283,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
     state = ifx running then APP_COMPOSER_RUNNING else ifx (full || exceeded) then APP_COMPOSER_OFF else APP_COMPOSER_READY,
-    editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
+    editing = s[0].focused && !s[0].model_menu, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
   s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
   // bottom toolbar inside the composer, matching Claude Desktop: working folder on the left,
   // compact model selector beside the send button on the right, and its popover menu above it.
@@ -2332,7 +2332,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     ph := pad * 2 + cast(f32) cp_models(s) * rh;
     px := m_x + m_w - pw;
     if px < x { px = x; }
-    py := chip_y - ph - 6;
+    py := box_y - ph - 6;
     if py < 8 { py = 8; }
     // Paint the popover card in the over list so it cleanly covers underlying transcript text.
     sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, k.radius, k.border, k.raised, k.hairline));
@@ -2768,7 +2768,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
 // The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
 // then the first line's inset and a line's height.
 coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 6 { return false; }
+  if s.count < 1 || out.count < 6 || s[0].model_menu { return false; }
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   i := elt_find(t[..], "coder.composer");
   if i < 0 { return false; }
@@ -3995,6 +3995,48 @@ cp_find :: (text: string, needle: string) -> int {
   // Loading an older saved chat without a model field defaults to Neon.
   #assert coder_page_load(s3, "{\"turns\":[{\"ask\":\"hi\",\"reply\":\"yo\",\"state\":1}]}");
   #assert s3[0].model == CP_MODEL_DEFAULT && s3[0].turns[0].model == CP_MODEL_DEFAULT;
+}
+
+#test "OpenRouter model picker popover clears the composer, hides the platform editor while open, and receives clicks" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  s[0].d = 1.0f32;
+  coder_page_set_openrouter(s, "anthropic/claude-sonnet-4", "");
+  #assert cp_models(s) == 5;
+  f: [1] UiFrame;
+  // Closed state: platform editor is active.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  eb: [6] f32;
+  #assert coder_page_editor(s, eb[..]);
+  // Open the model menu popover.
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && cp_press(s, btn) && s[0].model_menu;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  // While open, platform editor is hidden so AppKit NSTextView cannot paint over or intercept the popover.
+  #assert !coder_page_editor(s, eb[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  comp := elt_find(t[..], "coder.composer");
+  menu := elt_find(t[..], "coder.model.menu");
+  or_opt := elt_find(t[..], "coder.model.4");
+  #assert comp >= 0 && menu >= 0 && or_opt >= 0;
+  // Popover sits cleanly above the composer box without overlapping the text field.
+  #assert t[0].rows[menu].y + t[0].rows[menu].h <= t[0].rows[comp].y;
+  #assert t[0].rows[or_opt].y + t[0].rows[or_opt].h <= t[0].rows[comp].y;
+  // Clicking the center of the OpenRouter option hits coder.model.4 and selects OpenRouter.
+  cx := t[0].rows[or_opt].x + t[0].rows[or_opt].w * 0.5f32;
+  cy := t[0].rows[or_opt].y + t[0].rows[or_opt].h * 0.5f32;
+  #assert surface_hit(s[0].surface[..], cx, cy) == or_opt;
+  #assert coder_page_pointer(s, cx, cy, 0);
+  #assert coder_page_pointer(s, cx, cy, 2);
+  #assert !s[0].model_menu && s[0].model == CP_MODEL_OR;
+  // Once closed, platform editor is active again.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_editor(s, eb[..]);
 }
 
 #test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
