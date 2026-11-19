@@ -78,6 +78,9 @@ targets:
         # The Coax page steps hold multi-megabyte frames (a screen reset builds its state on the
         # stack); iOS gives the main thread 1 MB by default, so launch overflowed (build 1404-1408).
         OTHER_LDFLAGS: ["$(inherited)", "-Wl,-stack_size,0x4000000"]
+        # Xcode's debug dylib (the app as a thin stub over OpenAgents.debug.dylib) cannot carry a
+        # stack size, so Debug links one binary like Release.
+        ENABLE_DEBUG_DYLIB: NO
   OpenAgentsIdentityTests:
     type: bundle.unit-test
     platform: iOS
