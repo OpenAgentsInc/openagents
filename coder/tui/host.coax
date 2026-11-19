@@ -51,6 +51,7 @@
 #load "host-tasks.coax";
 #load "host-transcript.coax";
 #load "host-offers.coax";
+#load "host-daemon.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -470,6 +471,7 @@ HsHost :: struct {
   // retained replies (NIP-HOST "Admission order and retention"): request ID, event ID, expiry, the signed reply
   rq: [HS_RETAINED] [64] u8; rev: [HS_RETAINED] [64] u8; rexp: [HS_RETAINED] int; rn: [HS_RETAINED] int; rbody: [HS_RETAINED] [HS_REPLY_MAX] u8; rnext: int;
   seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
+  started_at: int;
   environment:[1]EsHost;providers:[1]PaManager;station:[1]StCache;offers:[1]XoHost;
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
@@ -523,6 +525,7 @@ hs_handle :: (h: [] HsHost, text: string, w: [] HbWork, st: [] HsState, statebuf
       if rpc[0].method=="DescribeTaskOffer" {return xo_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       if xt_right(rpc[0].method)>=0 {return xt_handle(h,rpc[..],sig,ev,mb,w,st,statebuf,out);}
       workspace:[1]WsRequest;if ws_read(rpc[0].params,workspace[..]) {return ws_handle(h,rpc[..],workspace[..],sig,ev,mb,w,st,statebuf,out);}
+      daemon:[1]DmRequest;if dm_read(rpc[0].params,daemon[..]) {return dm_handle(h,rpc[..],daemon[..],sig,ev,mb,w,st,statebuf,out);}
       if pa_request_read(rpc[0].params,provider[..]) {defer {for i:0..<provider[0].code.count {provider[0].code[i]=0;}}return pa_handle(h,rpc[..],provider[..],sig,ev,mb,w,st,statebuf,out);}
       refresh:=rtr_describe_read(rpc[0].params);if refresh>=0 {return st_handle(h,rpc[..],refresh==1,sig,ev,mb,w,st,statebuf,out);}
     }
@@ -677,6 +680,9 @@ hs_serve :: (args: [] Args) -> int {
   relay := args_value(args, "--relay", ifx env.count > 0 then env else HS_RELAY);
   if relay.count > 500 || !relay_uri(relay).ok { tool_errln("coder host: --relay is a ws:// or wss:// URL with a host name (ws://localhost:7777, not an IP address)"); return 2; }
   h[0].nrelay = hs_set(h[0].relay[..], relay);
+  h[0].started_at = hs_now();
+  dm_write_discovery(h,true);
+  defer {dm_write_discovery(h,false);}
   gb: [64] u8; engine := args_value(args, "--engine", proc_getenv("CODER_HOST_ENGINE", gb[..]));
   if engine.count == 0 { engine = "claude"; }
   engines := [6] string.["claude", "codex", "cursor", "micro", "psionic", "echo"];
@@ -931,6 +937,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "environment-enable" {return es_configure(args);}
   if verb == "pair" {return es_pair(args);}
   if verb == "local-rpc" {return es_local_call(args);}
+  if verb == "daemon-status" {return dm_cmd_status(args);}
+  if verb == "daemon-rpc" {return dm_rpc_call(args);}
   if verb == "rpc" {return es_rpc_call(args);}
   if verb == "execution-rpc" {return xp_rpc_call(args);}
   if verb == "accounts-enable" {return pa_enable(args);}

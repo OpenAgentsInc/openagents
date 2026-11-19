@@ -1,0 +1,300 @@
+// Unified daemon control-plane handler: health/discovery, Foreman state, and
+// shared session metadata (pin, rename, archive, folder) served over both
+// local Unix socket (Coder Desktop / CLI) and sealed NIP-HOST relay (Mobile).
+
+dm_foreman_path :: (out:[]u8)->string #effects(all) {return es_path("foreman-state.json",out);}
+dm_meta_path :: (out:[]u8)->string #effects(all) {return es_path("session-meta.json",out);}
+dm_discovery_path :: (out:[]u8)->string #effects(all) {return es_path("daemon.json",out);}
+
+dm_count_active_slots :: (h:[]HsHost)->int #effects(all) {
+  n:=0;
+  for i:0..<ES_SLOTS {
+    slot:=h[0].environment[0].slots[i..<i+1];
+    if slot[0].occupied && (slot[0].s[0].live || slot[0].summary.busy || slot[0].probing || slot[0].execution[0].active) {n+=1;}
+  }
+  return n;
+}
+
+dm_count_occupied_slots :: (h:[]HsHost)->int #effects(all) {
+  n:=0;
+  for i:0..<ES_SLOTS {if h[0].environment[0].slots[i].occupied {n+=1;}}
+  return n;
+}
+
+dm_count_paired_devices :: ()->int #effects(all) {
+  st:[1]HsState;buf:[HS_STATE_MAX]u8;
+  hs_load(st[..],buf[..]);
+  now:=hs_now();
+  n:=0;
+  for i:0..<st[0].ng {if hs_current(st[..],i,now) {n+=1;}}
+  return n;
+}
+
+dm_foreman_load :: (f:[]DmForeman)->bool #effects(all) {
+  f[0]=DmForeman.{tier=1};
+  p:[1400]u8;b:[8192]u8;
+  n:=fs_read(dm_foreman_path(p[..]),b[..]);
+  if n<1 {return false;}
+  j:[1]Jv;nodes:[128]JvNode;
+  if !jv_parse(j[..],cast(string)b[0..<n],nodes[..]) {return false;}
+  return dm_foreman_read_obj(j[0],0,f);
+}
+
+dm_foreman_save :: (f:[]DmForeman)->bool #effects(all) {
+  buf:[8192]u8;o:[1]Jo;jo_start(o[..],buf[..]);
+  dm_foreman_write_obj(o[..],f);
+  if o[0].bad || o[0].n<1 {return false;}
+  p:[1400]u8;
+  return fs_replace_durable(dm_foreman_path(p[..]),cast(string)buf[0..<o[0].n]);
+}
+
+dm_meta_load :: (items:[]DmSessionMeta)->int #effects(all) {
+  p:[1400]u8;b:[65536]u8;
+  n:=fs_read(dm_meta_path(p[..]),b[..]);
+  if n<1 {return 0;}
+  j:[1]Jv;nodes:[1024]JvNode;
+  if !jv_parse(j[..],cast(string)b[0..<n],nodes[..]) {return 0;}
+  arr:=jv_get(j[0],0,"sessions");
+  if arr<0 || jv_kind(j[0],arr)!=JV_ARRAY {return 0;}
+  count:=0;total:=jv_len(j[0],arr);
+  for i:0..<total {
+    if count>=items.count {break;}
+    m:[1]DmSessionMeta;
+    if dm_meta_read_obj(j[0],jv_at(j[0],arr,i),m[..]) {items[count]=m[0];count+=1;}
+  }
+  return count;
+}
+
+dm_meta_save :: (items:[]DmSessionMeta,count:int)->bool #effects(all) {
+  buf:[65536]u8;o:[1]Jo;jo_start(o[..],buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],DM_SCHEMA);
+  jo_key(o[..],"sessions");jo_arr(o[..]);
+  for i:0..<count {dm_meta_write_obj(o[..],items[i..<i+1]);}
+  jo_end(o[..]);jo_end(o[..]);
+  if o[0].bad || o[0].n<1 {return false;}
+  p:[1400]u8;
+  return fs_replace_durable(dm_meta_path(p[..]),cast(string)buf[0..<o[0].n]);
+}
+
+dm_write_discovery :: (h:[]HsHost,alive:bool) #effects(all) {
+  buf:[4096]u8;o:[1]Jo;jo_start(o[..],buf[..]);
+  jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],DM_SCHEMA);
+  jo_key(o[..],"alive");jo_bool(o[..],alive);
+  jo_key(o[..],"host");jo_str(o[..],cast(string)h[0].xhex[..]);
+  jo_key(o[..],"started_at");jo_int(o[..],h[0].started_at);
+  jo_key(o[..],"updated_at");jo_int(o[..],hs_now());
+  jo_key(o[..],"relay");jo_str(o[..],cast(string)h[0].relay[0..<h[0].nrelay]);
+  sock:[1400]u8;sp:=es_path("service.sock",sock[..]);
+  jo_key(o[..],"socket");jo_str(o[..],sp);
+  jo_key(o[..],"max_slots");jo_int(o[..],ES_SLOTS);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n<1 {return;}
+  p:[1400]u8;
+  _ = fs_replace_durable(dm_discovery_path(p[..]),cast(string)buf[0..<o[0].n]);
+}
+
+dm_fill_common :: (h:[]HsHost,q:[]DmRequest,v:[]DmView) #effects(all) {
+  v[0]=DmView.{};
+  v[0].ok=true;
+  v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);
+  c:=h[0].environment[0].configuration[..];
+  if h[0].environment[0].configured {v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nw=ea_copy(v[0].workspace[..],cast(string)c[0].workspace[0..<c[0].nw]);}
+  v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);
+  v[0].started_at=h[0].started_at;
+  v[0].paired_devices=dm_count_paired_devices();
+  v[0].active_slots=dm_count_active_slots(h);
+  v[0].max_slots=ES_SLOTS;
+  v[0].nrelay=ea_copy(v[0].relay[..],cast(string)h[0].relay[0..<h[0].nrelay]);
+  if q[0].nc>0 {v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[0..<q[0].nc]);}
+}
+
+dm_meta_apply :: (items:[]DmSessionMeta,count:[]int,q:[]DmRequest,now:int)->int #effects(all) {
+  if q[0].ns<1 {return -1;}
+  target:=cast(string)q[0].session[0..<q[0].ns];
+  n:=count[0];
+  found:=-1;
+  for i:0..<n {
+    if cast(string)items[i].id[0..<items[i].ni]==target {found=i;break;}
+  }
+  if found<0 {
+    if n>=items.count {return -1;}
+    found=n;n+=1;count[0]=n;
+    items[found]=DmSessionMeta.{};
+    items[found].ni=ea_copy(items[found].id[..],target);
+  }
+  if q[0].ntl>0 {items[found].nt=ea_copy(items[found].title[..],cast(string)q[0].title[0..<q[0].ntl]);}
+  if q[0].nf>0 {items[found].nf=ea_copy(items[found].folder[..],cast(string)q[0].folder[0..<q[0].nf]);}
+  if q[0].has_pinned {items[found].pinned=q[0].pinned;}
+  if q[0].has_archived {items[found].archived=q[0].archived;}
+  items[found].updated=now;
+  return found;
+}
+
+dm_fail :: (v:[]DmView,code:string) #effects(all) {
+  v[0].ok=false;
+  v[0].ne=ea_copy(v[0].error[..],code);
+  v[0].nst=ea_copy(v[0].status[..],"failed");
+}
+
+dm_execute :: (h:[]HsHost,q:[]DmRequest,v:[]DmView) #effects(all) {
+  dm_fill_common(h,q,v);
+  method:=cast(string)q[0].method[0..<q[0].nm];
+  if method=="DaemonHealth" {
+    f:[1]DmForeman;
+    _ = dm_foreman_load(f[..]);
+    f[0].active_runs=v[0].active_slots;
+    f[0].total_sessions=dm_count_occupied_slots(h);
+    v[0].foreman[0]=f[0];
+    v[0].nst=ea_copy(v[0].status[..],"ready");
+    return;
+  }
+  if method=="ReadForeman" {
+    f:[1]DmForeman;
+    _ = dm_foreman_load(f[..]);
+    f[0].active_runs=v[0].active_slots;
+    f[0].total_sessions=dm_count_occupied_slots(h);
+    if f[0].nw==0 && v[0].nw>0 {f[0].nw=ea_copy(f[0].workspace[..],cast(string)v[0].workspace[0..<v[0].nw]);}
+    v[0].foreman[0]=f[0];
+    v[0].nst=ea_copy(v[0].status[..],"ready");
+    return;
+  }
+  if method=="UpdateForeman" {
+    cur:[1]DmForeman;
+    _ = dm_foreman_load(cur[..]);
+    if q[0].has_tier {
+      if !dm_tier_valid(q[0].tier) {dm_fail(v,"invalid-tier");return;}
+      cur[0].tier=q[0].tier;
+    }
+    if q[0].nt>0 {cur[0].np=ea_copy(cur[0].prompt[..],cast(string)q[0].text[0..<q[0].nt]);}
+    if q[0].nf>0 {cur[0].nw=ea_copy(cur[0].workspace[..],cast(string)q[0].folder[0..<q[0].nf]);}
+    cur[0].active_runs=v[0].active_slots;
+    cur[0].total_sessions=dm_count_occupied_slots(h);
+    cur[0].updated=hs_now();
+    if !dm_foreman_save(cur[..]) {dm_fail(v,"save-failed");return;}
+    v[0].foreman[0]=cur[0];
+    v[0].nst=ea_copy(v[0].status[..],"updated");
+    return;
+  }
+  if method=="ListSessionMeta" {
+    items:[DM_META_MAX]DmSessionMeta;
+    n:=dm_meta_load(items[..]);
+    for i:0..<n {v[0].meta[i]=items[i];}
+    v[0].nmeta=n;
+    v[0].nst=ea_copy(v[0].status[..],"ready");
+    return;
+  }
+  if method=="UpdateSessionMeta" {
+    if q[0].ns<1 {dm_fail(v,"missing-session");return;}
+    items:[DM_META_MAX]DmSessionMeta;
+    n:[1]int;n[0]=dm_meta_load(items[..]);
+    found:=dm_meta_apply(items[..],n[..],q,hs_now());
+    if found<0 {dm_fail(v,"meta-limit");return;}
+    if !dm_meta_save(items[..],n[0]) {dm_fail(v,"save-failed");return;}
+    v[0].meta[0]=items[found];
+    v[0].nmeta=1;
+    v[0].nst=ea_copy(v[0].status[..],"updated");
+    return;
+  }
+  dm_fail(v,"unknown-method");
+}
+
+dm_handle :: (h:[]HsHost,r:[]HbRpcRequest,q:[]DmRequest,signer:string,event:string,mailbox:string,w:[]HbWork,st:[]HsState,statebuf:[]u8,out:[]u8)->int #effects(all) {
+  if r[0].request!=mailbox || r[0].host!=cast(string)h[0].xhex[..] || r[0].relay!=hs_relay_of(h) || r[0].method!=cast(string)q[0].method[0..<q[0].nm] {return 0;}
+  configured:=es_load_for(h[0].environment[..],signer,r[0].grant);
+  c:=h[0].environment[0].configuration[..];
+  scoped:=ea_scope(configured,c[0].enabled,cast(string)c[0].device[..]==signer,cast(string)c[0].grant[..]==r[0].grant);
+  hs_load(st,statebuf);
+  ga:[HS_GRANTS]HostGrantRecord;epochs:[HS_EPOCHS]HostEpoch;
+  hs_records(st,ga[..],epochs[..]);
+  right:=ifx dm_is_write(r[0].method) then HA_OPERATE else HA_OBSERVE;
+  req:=HostRequest.{request=r[0].request,event=event,signer=signer,grant=r[0].grant,epoch=r[0].epoch,issued_at=r[0].issued_at,expires_at=r[0].expires_at,right=right};
+  none:[1]HostRetained;
+  verdict:=host_admit(ga[0..<st[0].ng],epochs[0..<st[0].ne],none[0..<0],req,hs_now());
+  if verdict==HA_SILENT {return 0;}
+  if verdict!=HA_OK || !scoped {return hs_seal_reply(h,hs_refused(h,r[0].request,event,r[0].expires_at,"forbidden",""),signer,w,out);}
+  v:[1]DmView;
+  dm_execute(h,q,v[..]);
+  raw:[HB_BODY_MAX]u8;n:=dm_view_write(v[..],raw[..]);
+  body:[HB_BODY_MAX]u8;
+  made:=ifx n>0 then hb_app_reply_write(r[0].request,event,cast(string)h[0].xhex[..],hs_now(),r[0].expires_at,r[0].method,cast(string)raw[0..<n],body[..]) else -1;
+  peer:[32]u8;nonce:[32]u8;aux:[32]u8;
+  if made<1 || !hb_unhex(signer,peer[..]) || cxrand_draw(nonce[..],32)!=0 || cxrand_draw(aux[..],32)!=0 {return 0;}
+  return hb_seal(cast(string)body[0..<made],HB_REPLY_SCHEMA,h[0].secret[..],peer[..],r[0].request,nonce[..],aux[..],hs_now(),w,out);
+}
+
+dm_rpc_call :: (args:[]Args)->int #effects(all) {
+  input:[24576]u8;n:=fs_read(args_value(args,"--request-file",""),input[..]);
+  q:[1]DmRequest;
+  if n<1 || !dm_read(cast(string)input[0..<n],q[..]) {return 2;}
+  out:[HB_BODY_MAX]u8;
+  r:=es_rpc_exchange(args,cast(string)q[0].method[0..<q[0].nm],cast(string)input[0..<n],out[..]);
+  v:[1]DmView;
+  if r.n<1 || !dm_view_read(cast(string)out[0..<r.n],v[..]) {return 3;}
+  hs_outln(cast(string)out[0..<r.n]);
+  return 0;
+}
+
+dm_cmd_status :: (args:[]Args)->int #effects(all) {
+  q:[1]DmRequest;
+  q[0].nm=ea_copy(q[0].method[..],"DaemonHealth");
+  req:[2048]u8;rn:=dm_write(q[..],req[..]);
+  if rn<1 {return 1;}
+  path:[1400]u8;p:=es_path("service.sock",path[..]);
+  for ch:p {_ = cxsock_host_push(cast(int)ch);}
+  connection:=cxsock_connect_unix(2000);
+  if connection<0 {tool_errln("coder host: daemon is not running");return 3;}
+  defer {_ = cxsock_close(connection);}
+  if cxsock_peer_self(connection)!=1 {return 3;}
+  for i:0..<rn {_ = cxsock_write(connection,cast(int)req[i]);}
+  _ = cxsock_write(connection,10);
+  if cxsock_flush(connection,2000)<0 {return 3;}
+  out:[HB_BODY_MAX]u8;at:=0;deadline:=cxsock_now_ms()+5000;
+  while cxsock_now_ms()<deadline {
+    got:=cxsock_read(connection,500);
+    if got== -2 {continue;}
+    if got<0 {return 3;}
+    for i:0..<got {
+      ch:=cxsock_byte(connection,i);
+      if ch==10 {
+        v:[1]DmView;
+        if !dm_view_read(cast(string)out[0..<at],v[..]) {return 3;}
+        hs_outln(cast(string)out[0..<at]);
+        return 0;
+      }
+      if at>=out.count {return 3;}
+      out[at]=cast(u8)ch;at+=1;
+    }
+  }
+  return 3;
+}
+
+#test "daemon session metadata upsert merges rename, pin, archive, and folder updates" {
+  items:[4]DmSessionMeta;count:[1]int;count[0]=0;
+  q:[1]DmRequest;
+  q[0].ns=ea_copy(q[0].session[..],"sess-1");
+  q[0].ntl=ea_copy(q[0].title[..],"Fix daemon");
+  q[0].nf=ea_copy(q[0].folder[..],"/tmp/repo");
+  q[0].has_pinned=true;q[0].pinned=true;
+  idx:=dm_meta_apply(items[..],count[..],q[..],1700000100);
+  #assert idx==0 && count[0]==1;
+  #assert cast(string)items[0].title[0..<items[0].nt]=="Fix daemon" && items[0].pinned && !items[0].archived;
+
+  q2:[1]DmRequest;
+  q2[0].ns=ea_copy(q2[0].session[..],"sess-1");
+  q2[0].has_archived=true;q2[0].archived=true;
+  idx2:=dm_meta_apply(items[..],count[..],q2[..],1700000200);
+  #assert idx2==0 && count[0]==1;
+  #assert cast(string)items[0].title[0..<items[0].nt]=="Fix daemon" && items[0].pinned && items[0].archived && items[0].updated==1700000200;
+}
+
+#test "daemon session metadata upsert refuses empty session id and respects capacity" {
+  items:[1]DmSessionMeta;count:[1]int;count[0]=0;
+  empty:[1]DmRequest;
+  #assert dm_meta_apply(items[..],count[..],empty[..],10)==-1 && count[0]==0;
+  q1:[1]DmRequest;q1[0].ns=ea_copy(q1[0].session[..],"s1");
+  #assert dm_meta_apply(items[..],count[..],q1[..],10)==0 && count[0]==1;
+  q2:[1]DmRequest;q2[0].ns=ea_copy(q2[0].session[..],"s2");
+  #assert dm_meta_apply(items[..],count[..],q2[..],11)==-1 && count[0]==1;
+}
