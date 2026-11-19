@@ -1,0 +1,6 @@
+# Chapter 1: one text input on the GPU.
+# app: composer-screen
+tree
+type composer.input hello
+state draft
+counts

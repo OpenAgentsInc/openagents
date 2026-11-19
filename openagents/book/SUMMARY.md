@@ -7,7 +7,7 @@
 
 ## I. The chat page, one step at a time
 
-- [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) — design draft
+- [1. A text input on the GPU](ch001-a-text-input-on-the-gpu.md) — partly implemented
 - [2. State and actions](ch002-state-and-actions.md) — design draft
 - [3. A transcript](ch003-a-transcript.md) — design draft
 - [4. A reply from the service](ch004-a-reply-from-the-service.md) — design draft

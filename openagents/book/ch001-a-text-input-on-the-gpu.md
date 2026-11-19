@@ -1,10 +1,12 @@
 # 1. A text input on the GPU
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
-> The pieces it builds on run today: the GPU component foundation and the
-> GPU login screen, checked in the iOS Simulator only
-> ([#13645](https://github.com/OpenAgentsInc/openagents/issues/13645)).
+> **Status: partly implemented.** The Coax screen module
+> (`apps/openagents-ios/composer_screen.coax`) and its `#test` checks for the
+> `tree` / `type composer.input hello` / `state draft` / `counts` trace and
+> duplicate-ID refusal run on `cpu`, beside
+> `openagents/examples/cases/composer-type.ops`. Remaining for `ios-simulator`
+> and `ios-device`: wiring the standalone `composer.input` screen into the
+> iOS host and running the independent XCUITest through the system keyboard.
 
 ## Premise
 
@@ -120,7 +122,7 @@ It builds on what exists today:
   accessibility tree and types into it with the system keyboard, with no
   `coax drive`, and reads back the same value.
 
-Planned paths: `openagents/examples/cases/composer-type.ops`. The app is
+Implemented paths: [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The app is
 [`apps/openagents-ios`](../../apps/openagents-ios), and components extend
 [`components/`](../../components).
 

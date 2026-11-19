@@ -1,0 +1,382 @@
+// Chapter 1 of The OpenAgents Book: one text input on the GPU.
+//
+// One compiled Coax screen with one text input (`composer.input`, label
+// "Message") drawn on the GPU through the shared display-list component kit
+// (components/kit/frame.coax, components/kit/form.coax, components/core/edit.coax,
+// components/skin/arcade.coax, components/paint/surface.coax,
+// components/backend/gpu.coax).
+//
+// The host owns the Metal surface, the platform editor overlay and VoiceOver.
+// Each frame commits primitives, hit regions and semantic rows together on one
+// surface. A frame that overflows or records a duplicate row id is refused:
+// the last committed generation stays whole and `counts` reports the refusal.
+//
+// Check:
+//   coax/bin/coax test apps/openagents-ios/composer_screen.coax
+
+#load "../../components/kit/form.coax";
+#load "../../components/core/edit.coax";
+#load "../../components/skin/arcade.coax";
+#load "../../components/backend/gpu.coax";
+
+CS_SCALE :: ARCADE_PHONE_SCALE;
+CS_MAX_VERTICES :: 8192;
+CS_UNDER :: 256;
+CS_OVER :: 64;
+CS_HITS :: 16;
+CS_POOL :: 512;
+CS_ROWS :: 16;
+CS_KEYED :: 16;
+CS_MARGIN :: 14.0;
+CS_PANEL_MAX :: 360.0;
+CS_HIT_COMPOSER :: 1;
+
+CsGeneration :: struct {
+  under: [CS_UNDER] Prim;
+  over: [CS_OVER] Prim;
+  hits: [CS_HITS] SheetHit;
+  pool: [CS_POOL] u8;
+  rows: [CS_ROWS] El;
+}
+
+ComposerScreen :: struct {
+  ready: bool;
+  time: f32;
+  d: f32;
+  width: f32;
+  height: f32;
+  safe_top: f32;
+  safe_bottom: f32;
+  keyboard: f32;
+  reduced_motion: bool;
+  reduced_transparency: bool;
+  focused: bool;
+  pressed: int;
+  down_x: f32;
+  down_y: f32;
+  moving: bool;
+  draft: [1] EditBuf;
+  atlas: [1] Atlas;
+  gen: [2] CsGeneration;
+  surface: [1] UiSurface;
+  keys: [CS_KEYED] Keyed;
+  keyed: [1] KeyedStore;
+}
+
+cs_init :: (s: [] ComposerScreen) {
+  if s[0].ready { return; }
+  a := Sheet.{under = s[0].gen[0].under[..], over = s[0].gen[0].over[..], hits = s[0].gen[0].hits[..], pool = s[0].gen[0].pool[..]};
+  b := Sheet.{under = s[0].gen[1].under[..], over = s[0].gen[1].over[..], hits = s[0].gen[1].hits[..], pool = s[0].gen[1].pool[..]};
+  s[0].surface[0] = surface_over(a, s[0].gen[0].rows[..], b, s[0].gen[1].rows[..]);
+  s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+  s[0].ready = true;
+}
+
+cs_rows :: (s: [] ComposerScreen) -> ElTable { return surface_rows(s[0].surface[..]); }
+
+cs_find :: (s: [] ComposerScreen, id: string) -> int {
+  t := [1] ElTable.[cs_rows(s)];
+  return elt_find(t[..], id);
+}
+
+cs_draft :: (s: [] ComposerScreen) -> string { return eb_text(s[0].draft[..]); }
+
+cs_out :: (out: [] u8, text: string) -> int { return el_put(out, 0, text); }
+
+cs_layout :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id: bool) {
+  k := f[0].skin;
+  pw := ifx w - 2 * CS_MARGIN < CS_PANEL_MAX then w - 2 * CS_MARGIN else CS_PANEL_MAX;
+  px := (w - pw) / 2;
+  fh := form_field_height(k);
+  top := s[0].safe_top / CS_SCALE + k.space;
+  bottom := h - s[0].safe_bottom / CS_SCALE - k.space;
+  if s[0].keyboard > 0 { bottom = h - s[0].keyboard / CS_SCALE - k.space; }
+  py := bottom - fh;
+  if py < top { py = top; }
+  _ := ctx_field(f, "composer.input", px, py, pw, "Message", cs_draft(s), "Message", s[0].focused, 0, CS_HIT_COMPOSER);
+  if duplicate_id {
+    _ := ctx_field(f, "composer.input", px, py + fh + k.space, pw, "Message", cs_draft(s), "Message", false, 0, CS_HIT_COMPOSER);
+  }
+}
+
+cs_render :: (s: [] ComposerScreen, out: [] f32, px_w: int, px_h: int, scale: f32, dt: f32, duplicate_id: bool) -> int {
+  if s.count < 1 || px_w <= 0 || px_h <= 0 || scale <= 0 { return 0; }
+  cs_init(s);
+  a := s[0].atlas[..];
+  d := (ifx scale < 1 then 1.0f32 else scale) * CS_SCALE;
+  w := cast(f32) px_w / d;
+  h := cast(f32) px_h / d;
+  s[0].d = d;
+  s[0].width = w;
+  s[0].height = h;
+  step := ifx dt > 0 && dt < 0.1 then dt else 0.016f32;
+  if !s[0].reduced_motion { s[0].time += step; }
+  a[0].frame += 1;
+  k := arcade_phone_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+  if !a[0].ready { return v; }
+  focus_id := ifx s[0].focused then "composer.input" else "";
+  pressed_id := ifx s[0].pressed != 0 then "composer.input" else "";
+  inp := uiinput(s[0].down_x, s[0].down_y, s[0].pressed != 0, s[0].pressed != 0, pressed_id, focus_id);
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, inp, s[0].time, step, s[0].reduced_motion, s[0].reduced_transparency);
+  cs_layout(s, f[..], w, h, duplicate_id);
+  s[0].moving = uiframe_moving(f[..]);
+  b := 1 - s[0].surface[0].front;
+  if s[0].surface[0].writing && s[0].surface[0].rows[b].renamed > 0 {
+    s[0].surface[0].rows[b].lost += s[0].surface[0].rows[b].renamed;
+  }
+  _ := uiframe_end(f[..], s[0].surface[..]);
+  sh := surface_sheet(s[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  gpu_monochrome(out, v);
+  return v;
+}
+
+composer_env :: (s: [] ComposerScreen, safe_top: f32, safe_bottom: f32, keyboard: f32, reduced_motion: bool, reduced_transparency: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].safe_top = safe_top;
+  s[0].safe_bottom = safe_bottom;
+  s[0].keyboard = keyboard;
+  s[0].reduced_motion = reduced_motion;
+  s[0].reduced_transparency = reduced_transparency;
+}
+
+composer_screen_frame :: (s: [] ComposerScreen, out: [] f32, px_w: int, px_h: int, scale: f32, dt: f32) -> int #export_c #effects(all) {
+  return cs_render(s, out, px_w, px_h, scale, dt, false);
+}
+
+composer_pointer :: (s: [] ComposerScreen, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || s[0].d <= 0 { return false; }
+  ux := x / s[0].d;
+  uy := y / s[0].d;
+  s[0].down_x = ux;
+  s[0].down_y = uy;
+  if phase == 0 {
+    row := surface_hit(s[0].surface[..], ux, uy);
+    s[0].pressed = ifx row >= 0 then cs_rows(s).rows[row].action else 0;
+    return s[0].pressed != 0;
+  }
+  if phase == 2 {
+    was := s[0].pressed;
+    s[0].pressed = 0;
+    row := surface_hit(s[0].surface[..], ux, uy);
+    hit := ifx row >= 0 then cs_rows(s).rows[row].action else 0;
+    if was == CS_HIT_COMPOSER && hit == CS_HIT_COMPOSER {
+      s[0].focused = true;
+      return true;
+    }
+    if row < 0 {
+      s[0].focused = false;
+    }
+    return false;
+  }
+  if phase == 3 {
+    s[0].pressed = 0;
+    return false;
+  }
+  return false;
+}
+
+composer_focus :: (s: [] ComposerScreen) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return s[0].focused;
+}
+
+composer_blur :: (s: [] ComposerScreen) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].focused = false;
+}
+
+composer_field_rect :: (s: [] ComposerScreen, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 { return false; }
+  i := cs_find(s, "composer.input");
+  if i < 0 { return false; }
+  r := cs_rows(s).rows[i];
+  out[0] = r.x * CS_SCALE;
+  out[1] = r.y * CS_SCALE;
+  out[2] = r.w * CS_SCALE;
+  out[3] = r.h * CS_SCALE;
+  return true;
+}
+
+composer_set_text :: (s: [] ComposerScreen, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  eb_set(s[0].draft[..], text);
+}
+
+composer_text :: (s: [] ComposerScreen, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cs_out(out, cs_draft(s));
+}
+
+composer_rows :: (s: [] ComposerScreen) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cs_rows(s).n;
+}
+
+composer_row_id :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)];
+  return cs_out(out, elt_id(t[..], i));
+}
+
+composer_row_label :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)];
+  return cs_out(out, elt_label(t[..], i));
+}
+
+composer_row_value :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := [1] ElTable.[cs_rows(s)];
+  return cs_out(out, elt_value_of(t[..], i));
+}
+
+composer_row_rect :: (s: [] ComposerScreen, i: int, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 { return false; }
+  t := cs_rows(s);
+  if i < 0 || i >= t.n { return false; }
+  r := t.rows[i];
+  out[0] = r.x * CS_SCALE;
+  out[1] = r.y * CS_SCALE;
+  out[2] = r.w * CS_SCALE;
+  out[3] = r.h * CS_SCALE;
+  return true;
+}
+
+composer_activate :: (s: [] ComposerScreen, id: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if cs_find(s, id) < 0 { return false; }
+  if id == "composer.input" { s[0].focused = true; return true; }
+  return false;
+}
+
+composer_refused :: (s: [] ComposerScreen) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return s[0].surface[0].refused;
+}
+
+// coax drive: `tree`, `type ID TEXT`, `state draft`, and `counts`.
+composer_drive :: (s: [] ComposerScreen, op: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  if op == "tree" { return surface_tree(s[0].surface[..], out); }
+  if op == "counts" { return uiframe_counts(s[0].surface[..], s[0].keyed[..], out); }
+  if op.count > 6 && op[0..<6] == "state " {
+    key := cast(string) op[6..<op.count];
+    if key == "draft" {
+      n := cs_out(out, cs_draft(s));
+      return el_put(out, n, "\n");
+    }
+    return cs_out(out, "unknown state\n");
+  }
+  if op.count > 5 && op[0..<5] == "type " {
+    rest := cast(string) op[5..<op.count];
+    cut := 0;
+    while cut < rest.count && rest[cut] != ' ' { cut += 1; }
+    id := cast(string) rest[0..<cut];
+    text := ifx cut < rest.count then cast(string) rest[cut + 1..<rest.count] else "";
+    if id != "composer.input" || cs_find(s, id) < 0 { return cs_out(out, "no such field\n"); }
+    eb_set(s[0].draft[..], text);
+    return cs_out(out, "typed\n");
+  }
+  return -1;
+}
+
+// ---------------------------------------------------------------- checks
+
+CsOut :: struct { v: [CS_MAX_VERTICES * GP_VERTEX_FLOATS] f32; }
+
+cs_test_atlas :: (a: [] Atlas) { text_test_atlas(a); gp_set_atlas(a, 4096, 4096, 2); }
+
+cs_test_frame :: (s: [] ComposerScreen, o: [] CsOut) -> int {
+  return composer_screen_frame(s, o[0].v[..], 1206, 2622, 3, 0.016);
+}
+
+cs_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for j: 0..<needle.count {
+      if hay[i + j] != needle[j] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+#test "chapter 1 trace: tree, type composer.input hello, state draft, counts" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  cs_test_atlas(s[0].atlas[..]);
+  composer_env(s[..], 59, 34, 0, true, true);
+  n := cs_test_frame(s[..], o[..]);
+  #assert n > 0 && composer_rows(s[..]) == 1 && composer_refused(s[..]) == 0;
+
+  buf: [512] u8;
+  tn := composer_drive(s[..], "tree", buf[..]);
+  tree := cast(string) buf[0..<tn];
+  #assert cs_contains(tree, "composer.input field \"Message\"");
+
+  yn := composer_drive(s[..], "type composer.input hello", buf[..]);
+  #assert cast(string) buf[0..<yn] == "typed\n";
+
+  sn := composer_drive(s[..], "state draft", buf[..]);
+  #assert cast(string) buf[0..<sn] == "hello\n";
+
+  // Re-render and confirm the committed row carries the typed value and counts says refused 0.
+  _ := cs_test_frame(s[..], o[..]);
+  vn := composer_row_value(s[..], 0, buf[..]);
+  #assert cast(string) buf[0..<vn] == "hello";
+  cn := composer_drive(s[..], "counts", buf[..]);
+  counts := cast(string) buf[0..<cn];
+  #assert cs_contains(counts, "refused 0");
+}
+
+#test "chapter 1 refusal: duplicate composer.input id keeps last committed frame and counts prints refusal" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  cs_test_atlas(s[0].atlas[..]);
+  composer_env(s[..], 59, 34, 0, true, true);
+
+  // Commit a clean frame with draft "keep".
+  composer_set_text(s[..], "keep");
+  n1 := cs_test_frame(s[..], o[..]);
+  #assert n1 > 0 && s[0].surface[0].generation == 1 && composer_refused(s[..]) == 0;
+
+  // Attempt a frame that records two rows with id `composer.input`.
+  composer_set_text(s[..], "dropped");
+  _ := cs_render(s[..], o[0].v[..], 1206, 2622, 3, 0.016, true);
+  #assert composer_refused(s[..]) == 1 && s[0].surface[0].generation == 1;
+
+  // Last committed generation stayed whole: 1 row with the previous value "keep".
+  buf: [512] u8;
+  #assert composer_rows(s[..]) == 1;
+  vn := composer_row_value(s[..], 0, buf[..]);
+  #assert cast(string) buf[0..<vn] == "keep";
+
+  cn := composer_drive(s[..], "counts", buf[..]);
+  counts := cast(string) buf[0..<cn];
+  #assert cs_contains(counts, "refused 1");
+}
+
+#test "chapter 1 pointer and accessibility activation focus the composer" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  cs_test_atlas(s[0].atlas[..]);
+  composer_env(s[..], 59, 34, 0, true, true);
+  _ := cs_test_frame(s[..], o[..]);
+  #assert !composer_focus(s[..]);
+  #assert composer_activate(s[..], "composer.input") && composer_focus(s[..]);
+  composer_blur(s[..]);
+  #assert !composer_focus(s[..]);
+  // Tap on the middle of the committed row.
+  r := cs_rows(s[..]).rows[0];
+  x := (r.x + r.w / 2) * s[0].d;
+  y := (r.y + r.h / 2) * s[0].d;
+  #assert composer_pointer(s[..], x, y, 0);
+  #assert composer_pointer(s[..], x, y, 2);
+  #assert composer_focus(s[..]);
+}
