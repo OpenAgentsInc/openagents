@@ -535,7 +535,11 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
     if ss[0].live || ss[0].n != k[0].chats[i].seen_n { k[0].chats[i].active_at = k[0].clock; k[0].chats[i].seen_n = ss[0].n; }
   }
   s := dsk_chat(k);
-  zr_set_skin(s, dsk_skin(k));   // the chat shown wears the desk's skin
+  // the chat shown wears the desk's skin, taken from the skin table by its id (the desk's is always
+  // one of them, coaxial_desk_set_skin): passing k[0].skin itself made each of its strings a store
+  // from the desk into the chat, 16 of the checker's 256 retained stores for dsk_frame, which
+  // already carries zr_tick's ~240 and went over (E0381 at its zr_tick call, #13736)
+  zr_set_skin(s, uiskin(dsk_skin(k).id));
   a := s[0].atlas[..];
   v := 0;
   if !k[0].room_shown { v = zr_paint(s, out); dsk_shift(out, 0, v, side * d); }
