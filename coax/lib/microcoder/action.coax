@@ -38,11 +38,11 @@ MC_MAX_NOTES :: 8;
 MC_MAX_DELEGATES :: 6;
 
 // A run whose owner runs sub-agents (GitHub #13655) gets one more member, delegate: up to 6
-// tasks, each with a level (hydrogen or carbon). mc_schema_delegate adds it to a run's schema.
+// tasks, each with a level (hydrogen, carbon or neon). mc_schema_delegate adds it to a run's schema.
 // An owner that also runs Claude Code sub-agents (GitHub #13660) has four more levels, one for
 // each Claude model: haiku, sonnet, opus and fable (MC_SCHEMA_DELEGATE_CLAUDE).
-MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
-MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
 MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
 mc_schema_find :: (text: string, needle: string) -> int {
@@ -94,7 +94,7 @@ mc_schema :: (out: [] u8, intel: bool, memory: bool) -> string {
 // declaration in path that text replaces whole (old is then not used).
 McEdit :: struct { path: string; old: string; text: string; seen: string; name: string; }   // text: the "new" field
 
-// A task handed to a sub-agent, and its level: hydrogen, carbon, or a Claude model (haiku, sonnet, opus, fable).
+// A task handed to a sub-agent, and its level: hydrogen, carbon, neon, or a Claude model (haiku, sonnet, opus, fable).
 // resume (GitHub #13676): the number of a paused sub-agent this task lets go on, with the task as a
 // note to it; 0 or less for a new sub-agent.
 McDelegate :: struct { level: string; task: string; resume: int; }
@@ -173,7 +173,7 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
 // claude: the Claude levels are allowed too.
 mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bool) -> string {
   a[0].nd = 0;
-  if !cl_valid(text, ifx claude then "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|haiku|sonnet|opus|fable ?s:delegate.*.task" else "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon ?s:delegate.*.task") { return "the reply's delegate does not match the next_action schema"; }
+  if !cl_valid(text, ifx claude then "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon|haiku|sonnet|opus|fable ?s:delegate.*.task" else "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon ?s:delegate.*.task") { return "the reply's delegate does not match the next_action schema"; }
   ds := cl_raw(text, "delegate");
   nd := ifx ds.count > 0 then cl_count(ds) else 0; // mutant: equivalent
   if nd > MC_MAX_DELEGATES { return "the reply delegates more than 6 tasks"; }
@@ -234,6 +234,9 @@ mc_question :: (q: string) -> McQuestion {
   whole := "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
   #assert mc_action_parse(ar[..], whole, a[..]) == "" && a[0].nd == 0;
   #assert mc_action_delegates(ar[..], whole, a[..], false) == "" && a[0].nd == 2 && a[0].delegates[0].level == "hydrogen" && a[0].delegates[0].task == "count the files" && a[0].delegates[1].level == "carbon";
+  // neon is a Gemini level: read with or without the Claude levels
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], false) == "" && a[0].nd == 1 && a[0].delegates[0].level == "neon";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], true) == "" && a[0].nd == 1;
   // the Claude levels are read only for an owner that runs Claude Code
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"}]}", a[..], false) != "";
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"},{\"level\":\"fable\",\"task\":\"y\"}]}", a[..], true) == "" && a[0].nd == 2 && a[0].delegates[0].level == "opus" && a[0].delegates[1].level == "fable";

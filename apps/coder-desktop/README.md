@@ -63,7 +63,7 @@ Microcoder and its sub-agents think before they answer or run a command
 commands, named by its first line. Press it to read it, formatted as a reply is.
 A thought longer than 2,000 bytes takes more rows, so none of it is cut.
 
-- Hydrogen and Carbon (Gemini) send a summary of their thinking, which is what Gemini gives; the full trace is not available.
+- Hydrogen, Carbon and Neon (Gemini) send a summary of their thinking, which is what Gemini gives; the full trace is not available.
 - A Claude sub-agent's thinking shows as Claude Code summarizes it: Coder asks for the summaries (`--thinking-display summarized`), which Claude Code otherwise leaves empty.
 - Thoughts are saved with the chat. Copying the whole chat leaves them out.
 
@@ -78,12 +78,13 @@ level for each task:
 
 - **Hydrogen** (Gemini 4 Hydrogen) takes lookups, searches, commands and small changes.
 - **Carbon** (Gemini 4 Carbon) takes work that needs many steps or careful reasoning.
+- **Neon** (Gemini 4 Neon) takes complex work that should finish fast: frontier-level software, research and analysis tasks done end to end.
 
-Microcoder knows both by name, so "task it to Carbon" works.
+Microcoder knows all three by name, so "task it to Carbon" or "give it to Neon" works.
 - **Claude** tasks go to Claude Code, on the model Microcoder picks: Haiku, Sonnet, Opus or Fable. See [Claude sub-agents](#claude-sub-agents).
 
 Sub-agents handed over in one step run at the same time. Each is a row above
-the reply, named for its model (Hydrogen, Carbon, or Claude Haiku, Claude
+the reply, named for its model (Hydrogen, Carbon, Neon, or Claude Haiku, Claude
 Sonnet, Claude Opus, Claude Fable), with its task beside the name and its
 elapsed time on the right. While a sub-agent runs, the line under its row
 says how many tool calls it has made and names the newest.

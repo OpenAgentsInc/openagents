@@ -40,14 +40,17 @@ CP_PANE :: 440;             // the sub-agent transcript's width, on the window's
 CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
 CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a complex task's model; a simple one runs on CP_MODEL
-// A sub-agent's level, as Microcoder names it, and the name its row shows. The last four run in
-// Claude Code on the Claude login of this computer (coder/tui/claudeworker.coax, GitHub #13660).
-CP_LEVELS :: 6;
-CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "haiku", "sonnet", "opus", "fable"];
+CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 4 Neon, frontier work that finishes fast (2026-11-18)
+// A sub-agent's level, as Microcoder names it, and the name its row shows. The first three run on
+// Gemini (Hydrogen, Carbon, Neon); the last four in Claude Code on the Claude login of this
+// computer (coder/tui/claudeworker.coax, GitHub #13660). Chats keep a level by its name, so a
+// level's place in the list can change.
+CP_LEVELS :: 7;
+CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "haiku", "sonnet", "opus", "fable"];
 // What the first two were called before 2026-11-17, as chats kept then have them.
 CP_LEVEL_OLD :: [2] string.["simple", "complex"];
-CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
-CP_LEVEL_CLAUDE :: 2;                       // the first Claude level
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
+CP_LEVEL_CLAUDE :: 3;                       // the first Claude level
 CP_PAD :: 16;               // the page's margin
 CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
@@ -488,7 +491,7 @@ coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(
   return j >= 0 && j < s[0].turns[i].nagents && s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;
 }
 // Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
-// Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
+// neon one on Gemini 4 Neon, a Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
 // It has no sub-agents of its own.
 coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -499,9 +502,10 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   n += cp_out(whole[n..<whole.count], cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
   level := s[0].turns[i].agents[j].level;
   if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, model = CP_LEVEL[level]}); }
-  complex := level == 1;
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true,
-               model = ifx complex then CP_MODEL_COMPLEX else CP_MODEL, effort = ifx complex then "medium" else "low"};
+               model = CP_MODEL, effort = "low"};
+  if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }
+  if level == 2 { t.model = CP_MODEL_NEON; t.effort = "medium"; }
   return mww_task(out, t);
 }
 // One line from sub-agent j's worker. Returns its kind (MWW_*).
@@ -1855,6 +1859,22 @@ cp_find :: (text: string, needle: string) -> int {
   #assert !coder_page_pointer(s, 200, 60, 0) && !coder_page_pointer(s, 260, 60, 2) && !s[0].turns[0].info;
   #assert !coder_page_pointer(s, 50, 60, 0) && !coder_page_pointer(s, 50, 60, 2) && !s[0].turns[0].info;
   #assert coder_page_icon_size(ICON_COPY) == coder_page_icon_size(ICON_COMPOSE) && coder_page_icon_size(ICON_FOLDER) == CP_ICON && coder_page_icon_size(ICON_CHECK) == CP_ICON;
+}
+#test "sub-agents: a neon task runs on Gemini 4 Neon, its row and wait line name Neon, and it is not a Claude level" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 2 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Neon" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
+  #assert CP_LEVEL_NAME[s[0].turns[0].agents[1].level] == "Claude Opus";
+  #assert coder_page_agent_next(s) == 0;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "build it" && back[0].model == "gemini-4-neon" && back[0].effort == "medium" && back[0].gated && back[0].edits;
+  s[0].clock = s[0].turns[0].agents[0].heard + 4;
+  wb: [256] u8;
+  #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Neon · 4s";
 }
 #test "sub-agents: tasks start once each, a complex one on Carbon; their tool calls show; when all end the worker gets the results" {
   p: [1] CoderPage; s := p[..];

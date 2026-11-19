@@ -230,7 +230,7 @@ mww_ask :: (o: [] u8, command: string, ticket: int) -> int {
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
-// tasks: the delegated tasks' JSON list, [{"level":L,"task":T}]; L is hydrogen or carbon, or a Claude model (haiku, sonnet, opus, fable).
+// tasks: the delegated tasks' JSON list, [{"level":L,"task":T}]; L is hydrogen, carbon or neon, or a Claude model (haiku, sonnet, opus, fable).
 mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
   n := json_raw(o, 0, "{\"kind\":\"delegate\",\"tasks\":"); n = json_raw(o, n, tasks);
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
