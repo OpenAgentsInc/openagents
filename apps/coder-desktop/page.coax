@@ -194,11 +194,13 @@ cp_init :: (s: [] CoderPage) {
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
-// Coder Desktop's skin: Coder's monochrome Arcade palette with Claude Desktop's sidebar geometry
-// (32pt rows, 26pt section headers, 8pt inset/radius, 16pt horizontal text padding, 15pt icons).
+// Coder Desktop's skin: Coder's monochrome Arcade palette with Claude Desktop's sidebar and
+// composer geometry, and slightly smaller main-area typography (14.4pt body, 13.2pt code/tools/chips)
+// relative to the unchanged 13.2pt sidebar.
 cp_skin :: () -> UiSkin {
   u: f32 = ARCADE_PHONE_SCALE;
   k := arcade_phone_skin();
+  // Sidebar: unchanged Claude Desktop proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
   k.app.side_row = 32.0f32 / u;
   k.app.side_row_two = 48.0f32 / u;
   k.app.side_head = 26.0f32 / u;
@@ -206,10 +208,55 @@ cp_skin :: () -> UiSkin {
   k.app.row_radius = 8.0f32 / u;
   k.app.side_pad = 16.0f32 / u;
   k.app.icon = 15.0f32 / u;
+  // Main-area typography (everything outside the sidebar; k.small stays FONT_SMALL for sidebar parity).
+  k.body.face = FONT_TOOL; k.body.size = 12; k.body.line = 19.0f32;
+  k.strong.face = FONT_CHIP; k.strong.size = 12; k.strong.line = 19.0f32;
+  k.code.face = FONT_MONO_12; k.code.size = 12; k.code.line = 19.0f32;
+  k.mono.face = FONT_MONO_11; k.mono.size = 11; k.mono.line = 16.5f32;
+  k.mono_small.face = FONT_MONO_11; k.mono_small.size = 11; k.mono_small.line = 16.0f32;
+  k.tool.face = FONT_SMALL; k.tool.size = 11; k.tool.line = 16.5f32;
+  k.label.face = FONT_MENU_SMALL; k.label.size = 11; k.label.line = 16.0f32;
+  k.title.face = FONT_MENU; k.title.size = 13; k.title.line = 20.0f32;
+  // Main transcript: Claude Desktop proportions (prose, user bubble, code blocks, tool & thinking rows).
+  k.md.line = 19.0f32;
+  k.md.block_line = 16.5f32;
+  k.md.block_gap = 12.0f32;
+  k.app.gap = 10.0f32 / u;
+  k.app.gap_small = 6.0f32 / u;
+  k.app.icon_button = 28.0f32 / u;
+  k.app.bubble_pad_x = 16.0f32 / u;
+  k.app.bubble_pad_y = 10.0f32 / u;
+  k.app.bubble_radius = 16.0f32 / u;
+  k.app.bubble_share = 0.85f32;
+  k.app.code_head = 32.0f32 / u;
+  k.app.code_pad = 14.0f32 / u;
+  k.app.code_radius = 10.0f32 / u;
+  k.app.tool_h = 34.0f32 / u;
+  k.app.tool_pad = 12.0f32 / u;
+  k.app.tool_body_pad = 10.0f32 / u;
+  k.app.tool_radius = 10.0f32 / u;
+  k.app.tool_icon = 14.0f32 / u;
+  k.app.tool_chevron = 12.0f32 / u;
+  k.tr.bubble_pad_x = 16.0f32 / u;
+  k.tr.bubble_pad_y = 10.0f32 / u;
+  k.tr.bubble_radius = 16.0f32 / u;
+  // Composer: Claude Desktop card proportions (16pt radius, 21pt input line, 32pt send button, 28pt chip).
+  k.cmp.radius = 16.0f32 / u;
+  k.cmp.line = 21.0f32 / u;
+  k.cmp.text_inset = 6.0f32 / u;
+  k.cmp.pad_top = 12.0f32 / u;
+  k.cmp.pad_v = 20.0f32 / u;
+  k.cmp.actions_row = 32.0f32 / u;
+  k.cmp.actions_bottom = 10.0f32 / u;
+  k.cmp.action_inset = 10.0f32 / u;
+  k.cmp.send = 32.0f32 / u;
+  k.cmp.stop = 11.0f32 / u;
+  k.cmp.stop_radius = 2.5f32 / u;
   k.cmp.chip_h = 28.0f32 / u;
   k.cmp.chip_radius = 8.0f32 / u;
-  k.cmp.chip_pad = 10.0f32 / u;
+  k.cmp.chip_pad = 8.0f32 / u;
   k.cmp.chip_icon = 14.0f32 / u;
+  k.cmp.chip_gap = 6.0f32 / u;
   return k;
 }
 cp_out :: (out: [] u8, text: string) -> int {
@@ -1230,7 +1277,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       y0 := y;
       y += app_message_user(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
-      y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK);
+      y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK) + a.gap_small;
       tb: [EL_ID] u8; xb: [EL_ID] u8; kb: [24] u8;
       // its sub-agents, each in its place among Microcoder's own rows: after the rows that came
       // before it was handed over
@@ -1276,6 +1323,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       if st == CP_RUNNING { y += app_typing(f, cp_id(ib[..], i, ".t"), x, y, ifx s[0].turns[i].stopping then "Stopping" else ifx s[0].turns[i].waiting then "Waiting for sub-agents" else ifx s[0].turns[i].reply_n > 0 then "Writing a reply" else "Working") + a.gap; }
       else if st == CP_FAILED { y += app_notice(f, cp_id(ib[..], i, ".n"), x, y, cw, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n], APP_NOTICE_ERROR) + a.gap; }
       else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
+      if i + 1 < s[0].nturns { y += a.gap; }
       s[0].turns[i].h = ifx st == CP_RUNNING then 0.0f32 else y - y0; s[0].turns[i].hw = cw;
     }
   }
@@ -1635,8 +1683,8 @@ coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(a
 // ink, the placeholder's ink and the caret's, each straight RGBA.
 coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 14 { return false; }
-  k := arcade_phone_skin();
-  out[0] = k.body.size * cp_scale(s); out[1] = 23 * cp_scale(s) / ARCADE_PHONE_SCALE;
+  k := cp_skin();
+  out[0] = k.body.size * cp_scale(s); out[1] = k.cmp.line * cp_scale(s);
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
   out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
@@ -1763,7 +1811,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.4) < 0.001;
   for i: 0..<9 { _ := coder_page_zoom(s, -1); }
   #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
-  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[1] - 23) < 0.001;
+  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.4) < 0.01 && abs(st[1] - 21) < 0.001;
 }
 
 #test "a command shows as running when the worker asks, is answered yes, and takes its output when it ends" {
@@ -2228,6 +2276,12 @@ cp_find :: (text: string, needle: string) -> int {
   #assert k.app.row_inset * u > 7.9f32 && k.app.row_inset * u < 8.1f32;
   #assert k.app.row_radius * u > 7.9f32 && k.app.row_radius * u < 8.1f32;
   #assert k.app.side_pad * u > 15.9f32 && k.app.side_pad * u < 16.1f32;
+  // Main-area typography is smaller than Arcade default while sidebar (k.small) stays unchanged.
+  #assert k.small.face == base.small.face && k.small.size == base.small.size;
+  #assert k.body.size < base.body.size && k.mono.size < base.mono.size && k.tool.size < base.tool.size && k.label.size < base.label.size;
+  // Composer geometry matches Claude Desktop card proportions.
+  #assert k.cmp.radius * u > 15.9f32 && k.cmp.radius * u < 16.1f32;
+  #assert k.cmp.send * u > 31.9f32 && k.cmp.send * u < 32.1f32;
   #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
   // Color palette stays Coder's own Arcade monochrome.
   #assert k.canvas.r == base.canvas.r && k.surface.r == base.surface.r && k.ink.r == base.ink.r;

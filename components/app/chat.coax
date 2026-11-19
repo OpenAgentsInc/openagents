@@ -105,7 +105,7 @@ app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, co
   for i: 0..<code.count { if code[i] == '\n' && i + 1 < code.count { nl += 1; } }
   h := a.code_head + 2 * a.code_pad + cast(f32) nl * line;
   uiframe_open(f, uiframe_semantic(f, id, EL_REGION, ifx lang.count > 0 then lang else "Code", x, y, w, h, 0, 0));
-  _ := sheet_box(sh, x, y, w, h, a.code_radius, s.border, s.surface, s.hover);
+  _ := sheet_box(sh, x, y, w, h, a.code_radius, s.border, s.surface, s.menu_divider);
   sheet_rule(sh, x + s.border, y + a.code_head, w - 2 * s.border, s.border, s.menu_divider);
   _ := sheet_text(sh, m, -1, x + a.code_pad, y + (a.code_head - s.small.line) / 2, s.small.line, s.small.face, s.muted, lang);
   cid: [EL_ID] u8; word := ifx copied then "Copied" else "Copy";

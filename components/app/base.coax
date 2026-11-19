@@ -214,14 +214,15 @@ app_chip :: (f: [] UiFrame, id: string, x: f32, y: f32, most: f32, icon: int, la
   shown := app_fit(f, s.small.face, value, w - 2 * c.chip_pad - lead);
   k := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  hovered := !off && uiframe_hovered(f, id);
   row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, c.chip_h, state, ifx off then 0 else action);
   elt_value(f[0].rows, row, value);
   if on { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx off then s.hover else s.accent); }
   else {
-    _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, s.raised, s.hairline);
+    _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, ifx hovered then s.hover else s.raised, s.hairline);
     if p > 0 { _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, opacity(s.hover, p), s.hairline); }
   }
-  ink := ifx off then s.faint else ifx on then s.on_accent else ifx p > 0 then s.ink else s.muted;
+  ink := ifx off then s.faint else ifx on then s.on_accent else ifx (p > 0 || hovered) then s.ink else s.muted;
   tx := x + c.chip_pad;
   if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += lead; }
   _ := sheet_text(sh, m, -1, tx, y + (c.chip_h - s.small.line) / 2, s.small.line, s.small.face, ink, shown);

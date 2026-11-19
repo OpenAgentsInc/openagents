@@ -204,7 +204,10 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   is_open := app_tool_is_open(f, k, open);
   shown := uiframe_spring(f, k, ifx is_open then 1.0f32 else 0.0f32);
   p := uiframe_press(f, k, id);
-  ground := sheet_box(sh, x, y, w, head, a.tool_radius, ifx s.chat.enabled then 0.0f32 else s.border, ifx s.chat.enabled then s.clear else s.surface, ifx s.chat.enabled then s.clear else s.hover);
+  hovered := uiframe_hovered(f, id);
+  flat := s.chat.enabled || t.note;
+  ground := sheet_box(sh, x, y, w, head, a.tool_radius, ifx flat then 0.0f32 else s.border, ifx flat then s.clear else s.surface, ifx flat then s.clear else s.menu_divider);
+  if hovered { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.raised, ifx flat then 0.75 else 0.55)); }
   if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
   words := ifx t.state == APP_TOOL_FAILED then "Failed" else ifx t.state == APP_TOOL_PENDING then "Waiting" else "";
   row := uiframe_semantic(f, id, EL_BUTTON, t.title, x, y, w, head,
@@ -213,11 +216,13 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
   // the header: icon, title, argument, state, chevron
   pen := x + a.tool_pad; mid := y + head / 2;
-  if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, s.muted); pen += a.tool_icon + a.gap; }
+  icon_ink := ifx hovered then s.ink else s.muted;
+  title_ink := ifx flat then (ifx hovered || is_open then s.ink else s.muted) else s.ink;
+  if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, icon_ink); pen += a.tool_icon + a.gap; }
   title:=app_fit(f,s.tool.face,sheet_single_line(sh,t.title),w-a.tool_icon-2*a.tool_chevron-4*a.gap-2*a.tool_pad);
-  pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, ifx s.chat.enabled then s.muted else s.ink, title) + a.gap;
+  pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, title_ink, title) + a.gap;
   right := x + w - a.tool_pad - a.tool_chevron;
-  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, s.faint);
+  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, ifx hovered then s.muted else s.faint);
   right -= a.gap;
   if t.took.count > 0 {
     tw := measure_width(m, s.small.face, t.took); right -= tw;
@@ -230,21 +235,29 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.ink else s.faint, words);
     right -= a.gap;
   }
-  if right > pen {face:=ifx s.chat.enabled then s.tool.face else s.mono_small.face;_ := sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, face, s.muted, app_fit(f, face, sheet_single_line(sh,t.arg), right - pen)); }
+  if right > pen {
+    face := ifx flat then s.tool.face else s.mono_small.face;
+    arg_line := ifx flat then s.tool.line else s.mono_small.line;
+    arg_ink := ifx t.note then s.faint else s.muted;
+    _ := sheet_text(sh, m, -1, pen, mid - arg_line / 2, arg_line, face, arg_ink, app_fit(f, face, sheet_single_line(sh, t.arg), right - pen));
+  }
   if !(shown > 0) { return head; }
-  // the body, revealed: its input, then its result
-  bx := x + a.tool_pad; bw := w - 2 * a.tool_pad; top := y + head;
+  // the body, revealed: its input, then its result (or an indented rail for inline thoughts)
+  note_indent: f32 = ifx t.note && t.icon >= 0 then a.tool_icon + a.gap else 0.0f32;
+  bx := x + a.tool_pad + note_indent; bw := w - 2 * a.tool_pad - note_indent; top := y + head;
   uiframe_clip(f, x, top, x + w, top + PRIM_OPEN);
   clip_under := sh[0].nu - 1; clip_over := sh[0].no - 1;
+  if !flat { sheet_fill(sh, x + a.tool_pad, top, w - 2 * a.tool_pad, s.border, 0, s.menu_divider); }
   bh := a.tool_body_pad;
   if t.note && t.blocks > 0 {
     nb: [EL_ID] u8; nh: f32 = 0;
+    ns := s; ns.ink = s.muted;
     said := uiframe_semantic(f, app_id(nb[..], id, ".note"), EL_TEXT, t.title, bx, top + bh, bw, s.md.line, 0, 0);
     elt_value(f[0].rows, said, t.output);
     for b: t.block0..<t.block0 + t.blocks {
       if b > t.block0 { nh += s.md.block_gap; }
       if t.doc[0].blocks[b].kind == MB_RULE { nh += app_divider(f, bx, top + bh + nh, bw); }
-      else { nh += markdown_block(sh, m, s, t.doc, b, bx, top + bh + nh, bw); }
+      else { nh += markdown_block(sh, m, ns, t.doc, b, bx, top + bh + nh, bw); }
     }
     if said >= 0 { f[0].rows[0].rows[said].h = nh; }
     bh += nh;
@@ -252,7 +265,7 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     total := app_lines(t.output); line := s.mono_small.line; nb: [EL_ID] u8;
     said := uiframe_semantic(f, app_id(nb[..], id, ".note"), EL_TEXT, t.title, bx, top + bh, bw, cast(f32) total * line, 0, 0);
     elt_value(f[0].rows, said, t.output);
-    for q: 0..<total { _ := sheet_plain(sh, m, bx, top + bh + cast(f32) q * line, line, s.mono_small.face, s.ink, app_fit(f, s.mono_small.face, app_line(t.output, q), bw), true); }
+    for q: 0..<total { _ := sheet_plain(sh, m, bx, top + bh + cast(f32) q * line, line, s.mono_small.face, s.muted, app_fit(f, s.mono_small.face, app_line(t.output, q), bw), true); }
     bh += cast(f32) total * line;
   } else {
     bh += app_tool_part(f, id, k, APP_TOOL_INPUT_PAGE, ".input", "Input", bx, top + bh, bw, t.input, action);
@@ -262,6 +275,10 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     }
   }
   bh += a.tool_body_pad;
+  if t.note && bh > 2 * a.tool_body_pad {
+    rail_x := x + a.tool_pad + (ifx t.icon >= 0 then a.tool_icon / 2 - 0.75f32 else 0.0f32);
+    sheet_fill(sh, rail_x, top + a.tool_body_pad / 2, 1.5f32, bh - a.tool_body_pad, 0.75f32, s.menu_divider);
+  }
   uiframe_unclip(f);
   // the clip's bottom is where the reveal stands now
   bottom := top + bh * am_unit(shown);
