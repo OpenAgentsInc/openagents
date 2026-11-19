@@ -469,9 +469,13 @@ mono_scene_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".scn-tab[aria-pressed=true]{color:#000;background:#c8c8c8}");
   // a sheet, a card and a caption: a framed panel whose body scrolls inside it
   n = mc(out, n, ".scn-sheet,.scn-card,.scn-cap{display:flex;flex-direction:column;min-height:0;padding:14px;pointer-events:auto;--frame-bg:var(--ground);--frame-line:var(--line-dim);--frame-deco:var(--line)}");
-  n = mc(out, n, ".scn-body{min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}");
+  // a sheet's or a card's body: it takes the room its panel is held to (under the bar, over the foot
+  // line; a phone's bottom sheet) and scrolls inside it by wheel, trackpad and touch without turning the
+  // camera. What it holds keeps its own height: shrunk to fit, rows ran into each other and the body
+  // never grew past its panel, so its end could not be scrolled to (#13686).
+  n = mc(out, n, ".scn-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:var(--line-dim) transparent}.scn-body>*,.scn-cap>*{flex-shrink:0}");
   n = mc(out, n, ".scn-sheet{width:380px;max-width:100%}.scn-card{position:absolute;top:64px;right:8px;width:380px;max-width:calc(100% - 16px);max-height:calc(100% - 116px)}");
-  n = mc(out, n, ".scn-cap{position:absolute;left:50%;bottom:48px;transform:translateX(-50%);width:600px;max-width:calc(100% - 16px);max-height:60%;gap:10px;overflow-y:auto}");
+  n = mc(out, n, ".scn-cap{position:absolute;left:50%;bottom:48px;transform:translateX(-50%);width:600px;max-width:calc(100% - 16px);max-height:60%;gap:10px;overflow-y:auto;overscroll-behavior:contain}");
   n = mc(out, n, ".scn-head{display:flex;align-items:center;gap:8px}.scn-head .ib{flex:none;width:36px;height:36px;color:var(--ink-muted)}.scn-h{flex:1;min-width:0;margin:0;font:600 16px/1.3 var(--sans)}");
   n = mc(out, n, ".scn-h3{margin:6px 0 0;font:600 14px/1.4 var(--sans)}.scn-p{margin:0;max-width:62ch}.scn-lead{margin:0;font:500 18px/1.4 var(--sans)}.scn-note{color:var(--ink-muted);font:14px/1.4 var(--sans)}");
   // a row that opens a part of the sheet
@@ -505,6 +509,9 @@ mono_scene_css :: (out: [] u8, at: int) -> int {
   n = mc(out, n, ".scn .chips{display:flex;flex-wrap:wrap;gap:4px;min-height:0}.scn .chip{appearance:none;border:1px solid var(--line-dim);outline:0;background:none;color:var(--ink-muted);height:36px;padding:0 12px;cursor:pointer}");
   n = mc(out, n, ".scn .chip:hover,.scn .chip:focus-visible{color:#fff;border-color:var(--line-bright)}.scn .chip[aria-pressed=true]{color:#000;background:#c8c8c8;border-color:#c8c8c8}");
   n = mc(out, n, ".scn .anchor{display:block}.scn .sel{width:100%;height:40px;justify-content:space-between;color:var(--ink)}.scn .menu.pop{position:relative;inset:auto;width:100%;max-width:none;margin-top:6px}");
+  // an open menu shows whole: while one is open the body rests where the menu's select ends at its foot
+  // (it does not move when the menu already shows; a menu taller than the body scrolls within it)
+  n = mc(out, n, ".scn-body:has(.sel[aria-expanded=true]){scroll-snap-type:y mandatory}.scn-body .anchor:has(>.sel[aria-expanded=true]){scroll-snap-align:end}");
   n = mc(out, n, ".scn .row{padding:9px 12px}.scn .prop{grid-template-columns:minmax(0,1fr) auto}");
   // a narrow window: the sheet, the card and the caption are as wide as the window and stand in a column at its
   // foot, over the foot's line however many lines that takes; a finger's targets are 44 px

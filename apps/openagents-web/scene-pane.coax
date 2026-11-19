@@ -271,7 +271,9 @@ sp_build :: (s: [] ScenePane) {
     // the open tab's sheet: all of it, or the one part of it that was opened from a row
     at := ifx s[0].open_n > 0 then sp_find(text, 0, 'G', sp_open(s)) else -1;
     if at >= 0 {
-      sheet := k_scene_sheet(t, u, "sheet", sp_open(s));
+      // the tab and the part opened from it: another part opens at its top (a menu or a slider keeps the scroll)
+      kp: [UI_ID] u8; kq: [UI_ID] u8;
+      sheet := k_scene_sheet(t, u, "sheet", sp_open(s), tr_cat(kq[..], tr_cat(kp[..], sp_open(s), "/"), sp_part(s)));
       part := ifx s[0].part_n > 0 then sp_find(text, at, 'P', sp_part(s)) else -1;
       if part >= 0 {
         title := "";

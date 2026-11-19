@@ -47,14 +47,27 @@ k_scene_mode :: (t: [] Tree, id: string, label: string, on: bool) -> int {
   tr_attr(t, i, AT_PRESSED, ifx on then "true" else "false");
   return i;
 }
-// Sheet: what a tab opens, under the bar: a panel of controls whose body scrolls inside it when it is
-// taller than the window leaves it. Close it with k_scene_sheet_end.
-k_scene_sheet :: (t: [] Tree, u: [] Ui, id: string, label: string) -> int {
-  ida: [UI_ID] u8;
+// Sheet: what a tab opens, under the bar: a panel of controls held inside the window (under the bar, over
+// the foot's line; on a phone, its bottom sheet) whose body scrolls inside it when it is taller. `part`
+// names what it shows (the tab, and the row opened from it): a sheet that shows another part opens its
+// body at the top, and one that only changed (a menu, a fold, a slider) stays where it was scrolled.
+// Close it with k_scene_sheet_end.
+k_scene_sheet :: (t: [] Tree, u: [] Ui, id: string, label: string, part: string) -> int {
   i := k_frame(t, u, id, TG_SECTION, "scn-sheet", MF_PANEL);
   tr_attr(t, i, AT_LABEL, label);
-  b := tr_open(t, tr_cat(ida[..], id, ".b"), TG_DIV, "scn-body");
+  b := k_scene_body(t, id, part);
   return i;
+}
+// The body of a sheet or a card, the part of it that scrolls: a new element for each `part` it shows, so
+// each opens at its top (the browser keeps an element's scroll, and the page compares nodes by id).
+k_scene_body :: (t: [] Tree, id: string, part: string) -> int {
+  ida: [UI_ID] u8;
+  return tr_open(t, k_scene_body_id(ida[..], id, part), TG_DIV, "scn-body");
+}
+// The body's id: `id`, ".b." and a hash of `part`.
+k_scene_body_id :: (out: [] u8, id: string, part: string) -> string {
+  ida: [UI_ID] u8;
+  return tr_join(out, tr_cat(ida[..], id, ".b."), tr_hash(part));
 }
 k_scene_sheet_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
 // The head of a part of a sheet that was opened from a row of it: a button back (its id is `id`)
@@ -129,16 +142,16 @@ k_scene_fold :: (t: [] Tree, id: string, label: string, open: bool) -> int {
   return i;
 }
 // Card: what one thing in the scene is: its name, a button that closes it (its id is `id` with
-// ".x"), and a body that scrolls inside it. Close it with k_scene_card_end.
+// ".x"), and a body that scrolls inside it, from its top for each thing. Close it with k_scene_card_end.
 k_scene_card :: (t: [] Tree, u: [] Ui, id: string, title: string, close: string) -> int {
-  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8; idd: [UI_ID] u8;
+  ida: [UI_ID] u8; idb: [UI_ID] u8; idc: [UI_ID] u8;
   i := k_frame(t, u, id, TG_SECTION, "scn-card", MF_PANEL);
   tr_attr(t, i, AT_LABEL, title);
   h := tr_open(t, tr_cat(ida[..], id, ".head"), TG_DIV, "scn-head");
   n := tr_leaf(t, tr_cat(idb[..], id, ".t"), TG_H2, "scn-h", title);
   x := k_icon_button(t, tr_cat(idc[..], id, ".x"), IC_X, close);
   tr_close(t);
-  b := tr_open(t, tr_cat(idd[..], id, ".b"), TG_DIV, "scn-body");
+  b := k_scene_body(t, id, title);   // another thing's card opens at its top
   return i;
 }
 k_scene_card_end :: (t: [] Tree) { tr_close(t); tr_close(t); }
@@ -278,4 +291,41 @@ k_scene_toast :: (t: [] Tree, id: string, text: string) -> int {
   tr_close(t[..]);
   #assert tr_attr_of(t[..], tr_find(t[..], "s.0"), AT_STATE) == "done" && tr_attr_of(t[..], tr_find(t[..], "s.2"), AT_STATE) == "now";
   #assert tr_attr_of(t[..], tr_find(t[..], "s.6"), AT_STATE) == "next" && tr_attr_of(t[..], tr_find(t[..], "s.2.f"), AT_VARS) == "--p:0.500";
+}
+#test "a sheet and a card hold their body, which scrolls inside a panel held to the window (#13686)" {
+  ts: [1] Tree; t := ts[..]; us: [1] Ui; u := us[..];
+  tr_begin(t); ui_begin(u, 0, true);
+  r := k_scene(t, "scn");
+  top := k_scene_top(t, "top");
+  sh := k_scene_sheet(t, u, "sheet", "Change", "change/");
+  a := k_scene_door(t, "a", "What would it take?", "Change the hull");
+  k_scene_sheet_end(t);
+  tr_close(t);
+  c := k_scene_card(t, u, "card", "The bow", "Close");
+  d := k_scene_say(t, "d", "A sentence.");
+  k_scene_card_end(t);
+  tr_close(t);
+  // everything a sheet or a card holds sits in its one body, the part that scrolls
+  sb := sh + 1; cb := tr_find(t, "card.x") + 1;
+  while cb < t[0].n && t[0].nodes[cb].parent != c { cb += 1; }
+  #assert tr_class(t, sb) == "scn-body" && t[0].nodes[sb].parent == sh && t[0].nodes[a].parent == sb;
+  #assert tr_class(t, cb) == "scn-body" && t[0].nodes[cb].parent == c && t[0].nodes[d].parent == cb && t[0].depth == 0;
+  // another part of the sheet, or another thing's card, is a new body, so it opens at its top
+  ia: [UI_ID] u8; ib: [UI_ID] u8; ic: [UI_ID] u8;
+  #assert tr_id(t, sb) == k_scene_body_id(ia[..], "sheet", "change/") && tr_id(t, sb) != k_scene_body_id(ib[..], "sheet", "change/hull");
+  #assert tr_id(t, cb) == k_scene_body_id(ic[..], "card", "The bow") && tr_id(t, cb) != k_scene_body_id(ib[..], "card", "The hull");
+  // the rules: the sheet is held under the bar (on a phone, to its bottom sheet's height), the body takes the
+  // room left and scrolls without passing the scroll on to the scene, and what it holds is never squeezed
+  css: [49152] u8; at := mono_dock_css(css[..], mono_css(css[..]));
+  rules := cast(string) css[at..<mono_scene_css(css[..], at)];
+  parts := [6] string.[".scn-body:has(.sel[aria-expanded=true]){scroll-snap-type:y mandatory}.scn-body .anchor:has(>.sel[aria-expanded=true]){scroll-snap-align:end}",
+    ".scn-top{position:absolute;top:8px;left:8px;right:8px;max-height:calc(100% - 56px);display:flex;flex-direction:column",
+    ".scn-sheet,.scn-card,.scn-cap{display:flex;flex-direction:column;min-height:0;",
+    ".scn-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;",
+    ".scn-body>*,.scn-cap>*{flex-shrink:0}", ".scn-sheet{align-self:stretch;width:auto;margin-top:auto;max-height:46vh}"];
+  for p: parts {
+    found := false; k := 0;
+    while !found && k + p.count <= rules.count { found = rules[k..<k + p.count] == p; k += 1; }
+    #assert found;
+  }
 }
