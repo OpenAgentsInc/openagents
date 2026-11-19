@@ -67,6 +67,12 @@ main :: () {
   ok = ok && v.content == "   499\t499\n   500\t500\n[lines 499-500 of 1000; next: view n.txt:501-800]";
   v = mc_view_lines(dir, "../outside.txt", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
   ok = ok && !v.found;
+  // a sandbox profile this computer can't run (bwrap is Linux only) says so, not "could not read it" (GitHub #13732)
+  if cxproc_platform() != 3 {
+    v = mc_view_lines(dir, "n.txt", "workspace-write", "", MC_STEP_BUDGET, b[..]);
+    print("profile view: [%]\n", v.content);
+    ok = ok && !v.found && v.content == MC_PROFILE_NOT_HERE;
+  }
   // an edit in the middle shows two lines around its new text; a failed one the nearest lines
   e = mc_edit_file(dir, McEdit.{path = "n.txt", old = "500\n501\n", text = "five hundred\n501\n"}, "danger-full-access", b[..]);
   print("edit shows: [%]\n", e.shown);

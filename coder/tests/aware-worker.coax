@@ -3,7 +3,9 @@
 // has the longer system prompt, and after "ended" the worker writes the run's "aware" counts. Then a
 // second run whose message names no mode still has the memory (eval C16, evals/coder-desktop/
 // compaction/run.sh). Recorded replies (GW_REPLAY), no provider credentials. The modes themselves
-// are checked in coax/lib/microcoder/aware-selftest.coax.
+// are checked in coax/lib/microcoder/aware-selftest.coax. The runs use danger-full-access, the
+// profile Coder Desktop sends: workspace-write needs Linux bwrap, and on macOS its views read
+// nothing, so the memory counted 0 reads (GitHub #13732).
 //
 //   coax/web/tool.sh coder/tests/aware-worker.coax
 #import "Basic";
@@ -39,7 +41,7 @@ tool_main :: () -> int #export_c #effects(all) {
   n := json_raw(env[..], 0, "GW_REPLAY="); n = json_raw(env[..], n, replies); #assert proc_env(h, cast(string) env[0..<n]);
   #assert proc_start(h) == 0; defer { k := proc_kill(h, 9); r := proc_release(h); }
   message: [8192] u8;
-  n = json_raw(message[..], 0, "{\"task\":\"read a.txt\",\"local\":true,\"sandbox\":\"workspace-write\",\"intel\":true,\"memory\":true,\"memory_dir\":");
+  n = json_raw(message[..], 0, "{\"task\":\"read a.txt\",\"local\":true,\"sandbox\":\"danger-full-access\",\"intel\":true,\"memory\":true,\"memory_dir\":");
   n = json_write_string(message[..], n, mem); n = json_raw(message[..], n, ",\"cwd\":"); n = json_write_string(message[..], n, ws); n = json_raw(message[..], n, "}\n");
   aw_send(h, cast(string) message[0..<n]);
   line: [65536] u8; arbuf: [65536] u8; ar: [1] ClArena; ar[0].buf = arbuf[..];
@@ -53,8 +55,7 @@ tool_main :: () -> int #export_c #effects(all) {
     if kind == "aware" {
       #assert ended;     // after the run's end
       asked := cl_int(text, "intel.asked"); reads := cl_int(text, "memory.reads"); notes := cl_int(text, "memory.notes");
-      // reads: 0 on main before GitHub #13730 too (the view is not counted), so only its presence is checked here
-      #assert asked.ok && asked.value == 1 && cl_str(ar[..], text, "memory.dir") == mem && reads.ok && notes.ok && notes.value == 1;
+      #assert asked.ok && asked.value == 1 && cl_str(ar[..], text, "memory.dir") == mem && reads.ok && reads.value == 1 && notes.ok && notes.value == 1;
       aware = true; break;
     }
   }
@@ -68,7 +69,7 @@ tool_main :: () -> int #export_c #effects(all) {
   // working memory, in this worker's own folder for that working directory
   aw_reply(fs_join(replies, "3.http", pb[..]), "{\"rationale\":\"look\",\"notes\":[\"a.txt:1-2 still two lines\"],\"edits\":[],\"commands\":[],\"view\":[\"a.txt\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
   aw_reply(fs_join(replies, "4.http", pb[..]), "{\"rationale\":\"done\",\"notes\":[],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
-  n = json_raw(message[..], 0, "{\"task\":\"read a.txt again\",\"local\":true,\"sandbox\":\"workspace-write\",\"session\":\"chat-1\"");
+  n = json_raw(message[..], 0, "{\"task\":\"read a.txt again\",\"local\":true,\"sandbox\":\"danger-full-access\",\"session\":\"chat-1\"");
   n = json_raw(message[..], n, ",\"cwd\":"); n = json_write_string(message[..], n, ws); n = json_raw(message[..], n, "}\n");
   aw_send(h, cast(string) message[0..<n]);
   ended = false; aware = false; started = proc_now_ms();
@@ -82,7 +83,7 @@ tool_main :: () -> int #export_c #effects(all) {
       reads := cl_int(text, "memory.reads"); notes := cl_int(text, "memory.notes");
       #assert cl_raw(text, "intel").count == 0 || cl_int(text, "intel.asked").value == 0;
       d := cl_str(ar[..], text, "memory.dir"); nd := d.count; #assert nd <= mdir2.count; for c, i: d { mdir2[i] = c; }
-      #assert aw_has(d, home) && aw_has(d, "/worker-") && !aw_has(d, "chat-1") && reads.ok && notes.ok && notes.value == 1;
+      #assert aw_has(d, home) && aw_has(d, "/worker-") && !aw_has(d, "chat-1") && reads.ok && reads.value == 1 && notes.ok && notes.value == 1;
       ndir2 = nd;
       aware = true; break;
     }

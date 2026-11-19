@@ -236,9 +236,18 @@ mc_head :: (profile: string, usr_bin_head: bool) -> string {
 // them; why when it was not read.
 McRead :: struct { ok: bool; n: int; more: bool; binary: bool; why: string; }
 
+// Whether profile can run here: danger-full-access everywhere; read-only and workspace-write only
+// on Linux, where bwrap confines them (mc_profile_args). Elsewhere a view under them could not
+// start head(1), and said only "could not read it" (GitHub #13732: a worker run's views never
+// reached the working memory's reads, because the run's profile could not read on macOS).
+mc_profile_here :: (profile: string) -> bool { return mc_profile_runs(profile, cxproc_platform() == 3); }
+mc_profile_runs :: (profile: string, linux: bool) -> bool { return profile == "danger-full-access" || (linux && (profile == "workspace-write" || profile == "read-only")); }
+MC_PROFILE_NOT_HERE :: "not shown: this run's sandbox profile needs Linux bwrap, so it can't read files on this computer";
+
 // Reads path under cwd (limit bytes at most, and at most buf's) into buf, through head(1), in profile's sandbox.
 mc_read_profile :: (cwd: string, path: string, limit: int, buf: [] u8, profile: string) -> McRead {
   if !mc_path_inside(cwd, path) { return McRead.{why = "not shown: the path leaves the working directory"}; }
+  if !mc_profile_here(profile) { return McRead.{why = MC_PROFILE_NOT_HERE}; }
   h := cxproc_new();
   if h < 0 { return McRead.{why = "not shown: no process slot is free"}; }
   most := ifx limit < buf.count then limit else buf.count;
@@ -641,6 +650,12 @@ mc_work_list :: (cwd: string, start: string, profile: string, o: [] McOutput, wh
 #test "a view's head(1): /usr/bin/head where there is one or a sandbox links it, else NixOS's" {
   #assert mc_head("danger-full-access", true) == "/usr/bin/head" && mc_head("workspace-write", false) == "/usr/bin/head" && mc_head("read-only", false) == "/usr/bin/head";
   #assert mc_head("danger-full-access", false) == "/run/current-system/sw/bin/head";
+}
+
+#test "a sandbox profile runs only where bwrap confines it; elsewhere a view says why (GitHub #13732)" {
+  #assert mc_profile_runs("danger-full-access", false) && mc_profile_runs("danger-full-access", true);
+  #assert !mc_profile_runs("workspace-write", false) && !mc_profile_runs("read-only", false);
+  #assert mc_profile_runs("workspace-write", true) && mc_profile_runs("read-only", true) && !mc_profile_runs("bogus", true);
 }
 
 #test "an edit finds its old text once, splices, and says why when it can't" {

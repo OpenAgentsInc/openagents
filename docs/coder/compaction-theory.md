@@ -230,10 +230,18 @@ first compaction.
    one (#13730, eval C14). The journal's 256 KB request bound
    (`AF_REQUEST`) still caps a large window: growing past it is a change to
    the journal's policy.
-6. **The memory's `reads` count is 0 for a worker run's view.** Found while
-   extending `coder/tests/aware-worker.coax`: on main before #13730 its first
-   phase failed on `memory.reads == 1`. The test now checks only that the
-   count is present; the count itself needs its own fix.
+6. **The memory's `reads` count is 0 for a worker run's view.** Fixed
+   (#13732). Found while extending
+   `coder/tests/aware-worker.coax`: on main before #13730 its first phase
+   failed on `memory.reads == 1`. The memory was not at fault. The test's runs
+   asked for the `workspace-write` profile, which needs Linux `bwrap`; on
+   macOS `mc_profile_args` refuses it, so every view failed with "could not
+   read it" and `mc_aw_view` never reached `mc_aw_read`. The runs now use
+   `danger-full-access`, the profile Coder Desktop sends, and the test checks
+   `memory.reads == 1` in both phases again. A view under a profile this
+   computer can't run now says so (`mc_profile_here`, `MC_PROFILE_NOT_HERE`
+   in `coax/lib/microcoder/tools.coax`), checked by a `#test` there and by
+   `tools_smoke.coax`.
 5. **Corrections to the first draft of this document.** The desktop recall
    buffer is 256 KB (`App.swift`), not 4 KB; the 4 KB buffer is in a test.
    `loop.coax` has no provider context-length retry; the guard is the byte
