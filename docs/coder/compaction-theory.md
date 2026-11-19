@@ -230,8 +230,8 @@ first compaction.
    one (#13730, eval C14). The journal's 256 KB request bound
    (`AF_REQUEST`) still caps a large window: growing past it is a change to
    the journal's policy.
-6. **The memory's `reads` count is 0 for a worker run's view.** Fixed
-   (#13732). Found while extending
+6. **The memory's `reads` count is 0 for a worker run's view.** Fixed in
+   commit e950c1b7be (#13732). Found while extending
    `coder/tests/aware-worker.coax`: on main before #13730 its first phase
    failed on `memory.reads == 1`. The memory was not at fault. The test's runs
    asked for the `workspace-write` profile, which needs Linux `bwrap`; on
