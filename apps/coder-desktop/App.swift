@@ -131,7 +131,7 @@ func coderSkillsNote() -> String {
 
 /// One kept chat in the list: its id (its file's name), its title, when it was created, when it last changed,
 /// its working folder, and whether the user gave it a custom title that should not be overwritten on subsequent saves.
-struct CoderChat: Codable { var id: String; var title: String; var created: Double? = nil; var updated: Double; var folder: String; var renamed: Bool? = nil }
+struct CoderChat: Codable { var id: String; var title: String; var created: Double? = nil; var updated: Double; var folder: String; var renamed: Bool? = nil; var pinned: Int? = nil }
 /// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
 /// the page's text) and index.json, the list, newest created first.
 final class CoderStore {
@@ -165,11 +165,46 @@ final class CoderStore {
     private func saveIndex() {
         if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
     }
+    var pinnedList: [CoderChat] { list.filter { $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
+    var recentList: [CoderChat] { list.filter { $0.pinned == nil } }
+    var orderedList: [CoderChat] { pinnedList + recentList }
     /// The list as the page reads it: one chat a line, its id, a tab, its title.
-    var lines: String { list.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
+    var lines: String { orderedList.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
     func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
     func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
     func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
+    func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
+    private func normalizePins() {
+        let ids = pinnedList.map(\.id)
+        for (order, id) in ids.enumerated() {
+            if let i = list.firstIndex(where: { $0.id == id }) { list[i].pinned = order }
+        }
+    }
+    /// Pins or unpins a chat, persisting its state and order in index.json.
+    func togglePin(_ id: String) {
+        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+        if list[i].pinned != nil {
+            list[i].pinned = nil
+            normalizePins()
+        } else {
+            let next = (list.compactMap(\.pinned).max() ?? -1) + 1
+            list[i].pinned = next
+        }
+        saveIndex()
+    }
+    /// Reorders a pinned chat to the given 0-based index in the Pinned section.
+    func movePinned(_ id: String, to index: Int) {
+        var ids = pinnedList.map(\.id)
+        guard let from = ids.firstIndex(of: id), !ids.isEmpty else { return }
+        let to = max(0, min(ids.count - 1, index))
+        guard from != to else { return }
+        let moved = ids.remove(at: from)
+        ids.insert(moved, at: to)
+        for (order, cid) in ids.enumerated() {
+            if let i = list.firstIndex(where: { $0.id == cid }) { list[i].pinned = order }
+        }
+        saveIndex()
+    }
     /// Renames a kept chat without changing its place in the list.
     func rename(_ id: String, to title: String) {
         let clean = Self.cleanTitle(title)
@@ -182,6 +217,7 @@ final class CoderStore {
     func remove(_ id: String) {
         try? FileManager.default.removeItem(at: dir.appendingPathComponent(id + ".json"))
         list.removeAll { $0.id == id }
+        normalizePins()
         saveIndex()
     }
     /// Keeps a chat's text. A new chat joins the top of the list; an existing chat updates in place
@@ -342,7 +378,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     /// The list as the page reads it: one chat a line, its id, a tab, its title, and a tab and 1
     /// when its reply runs out of view.
-    private var chatLines: String { store.list.map { $0.id + "\t" + $0.title + (runs[$0.id] != nil ? "\t1" : "") }.joined(separator: "\n") }
+    private var chatLines: String {
+        store.orderedList.map { chat in
+            let isBusy = runs[chat.id] != nil
+            if chat.pinned != nil {
+                return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t1"
+            }
+            return chat.id + "\t" + chat.title + (isBusy ? "\t1" : "")
+        }.joined(separator: "\n")
+    }
     /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
     /// window gets a new run. True when nothing runs in the window now.
     @discardableResult private func detach() -> Bool {
@@ -437,14 +481,20 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             open(String(cString: out))
         case 8: editBudget()
         case 9: editGoal()
+        case 10:
+            var to: Int32 = -1
+            guard cd_pin_move(page, &out, Int32(out.count), &to) > 0, to >= 0 else { return }
+            store.movePinned(String(cString: out), to: Int(to))
+            cd_chats(page, chatLines)
         default: break
         }
     }
 
-    /// Opens the Nth chat from the top of the list (1 is the newest).
+    /// Opens the Nth chat from the top of the sidebar list (1 is the first).
     func openChat(at index: Int) {
-        guard index >= 1, index <= store.list.count else { return }
-        open(store.list[index - 1].id)
+        let ordered = store.orderedList
+        guard index >= 1, index <= ordered.count else { return }
+        open(ordered[index - 1].id)
     }
     /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had. A reply
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
@@ -645,9 +695,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
         }
     }
+    @objc private func togglePinFromMenu(_ item: NSMenuItem) {
+        guard let id = item.representedObject as? String else { return }
+        store.togglePin(id)
+        cd_chats(page, chatLines)
+        wake()
+    }
     @objc private func renameFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { rename(id) } }
     @objc private func deleteFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { delete(id) } }
-    /// A right-click on a chat in the sidebar: a context menu with Rename Chat and Delete Chat.
+    /// A right-click on a chat in the sidebar: a context menu with Pin/Unpin Chat, Rename Chat, and Delete Chat.
     private func rightClick(_ event: NSEvent) -> Bool {
         guard event.window === window else { return false }
         let at = canvas.convert(event.locationInWindow, from: nil), scale = window.backingScaleFactor
@@ -655,6 +711,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         guard cd_chat_at(page, Float(at.x * scale), Float(y * scale), &out, Int32(out.count)) > 0 else { return false }
         let id = String(cString: out), menu = NSMenu()
+        let pinItem = menu.addItem(withTitle: store.isPinned(id) ? "Unpin Chat" : "Pin Chat", action: #selector(togglePinFromMenu(_:)), keyEquivalent: "")
+        pinItem.target = self; pinItem.representedObject = id
         let renameItem = menu.addItem(withTitle: "Rename Chat…", action: #selector(renameFromMenu(_:)), keyEquivalent: "")
         renameItem.target = self; renameItem.representedObject = id
         menu.addItem(.separator())

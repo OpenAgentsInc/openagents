@@ -83,7 +83,7 @@ CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE ::
 CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 2; CP_GOAL_PROMPT_UPDATED :: 3; CP_GOAL_PROMPT_BUDGET :: 4;
 CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10;
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
@@ -145,7 +145,7 @@ CpTurn :: struct {
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 // One kept chat in the sidebar's list.
-CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; }   // busy: a reply runs in it, out of view
+CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; pinned: bool; }   // busy: a reply runs in it, out of view; pinned: shown in Pinned section
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
   ready: bool; time: f32; d: f32;
@@ -160,6 +160,9 @@ CoderPage :: struct {
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
   open: int;                  // the row a press asked to open
+  pin_drag: int; pin_dragging: bool; pin_drop: int;   // 1-based chat index being dragged in Pinned, whether past threshold, target 0-based pin slot
+  pin_top: f32; pin_row_h: f32;                       // y of the first pinned row and row height as last drawn
+  pin_move_id: [CP_CHAT_ID] u8; pin_move_id_n: int; pin_move_to: int;   // completed pinned reorder owed to the host
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
   kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
@@ -998,23 +1001,73 @@ cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
 coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].nchats = 0; s[0].chats_more = 0;
+  s[0].pin_drag = 0; s[0].pin_dragging = false;
   i := 0;
   while i < list.count {
     e := i; while e < list.count && list[e] != 10 { e += 1; }
     t := i; while t < e && list[t] != 9 { t += 1; }
     u := ifx t < e then t + 1 else e; while u < e && list[u] != 9 { u += 1; }   // the title's end: a third column says a reply runs in it
+    v := ifx u < e then u + 1 else e; while v < e && list[v] != 9 { v += 1; }   // optional fourth column: '1' when pinned
     if t > i {
       if s[0].nchats < CP_CHATS {
         k := s[0].nchats;
         n := cp_out(s[0].chats[k].id[..], "chat."); n += cp_out(s[0].chats[k].id[n..<CP_CHAT_ID], cast(string) list[i..<t]);
         s[0].chats[k].id_n = n;
         s[0].chats[k].title_n = ifx t + 1 < u then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<u]) else cp_out(s[0].chats[k].title[..], "New chat");
-        s[0].chats[k].busy = u + 1 < e && list[u + 1] == '1';
+        s[0].chats[k].busy = u + 1 < v && list[u + 1] == '1';
+        s[0].chats[k].pinned = v + 1 < e && list[v + 1] == '1';
         s[0].nchats += 1;
       } else { s[0].chats_more += 1; }
     }
     i = e + 1;
   }
+}
+// Helpers for pinned chats in the sidebar.
+cp_pin_count :: (s: [] CoderPage) -> int {
+  n := 0;
+  for q: 0..<s[0].nchats { if s[0].chats[q].pinned { n += 1; } }
+  return n;
+}
+cp_pin_index :: (s: [] CoderPage, target: int) -> int {
+  idx := 0;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].pinned {
+      if q == target { return idx; }
+      idx += 1;
+    }
+  }
+  return -1;
+}
+cp_pin_reorder :: (s: [] CoderPage, from_q: int, to_idx: int) -> bool {
+  slots: [CP_CHATS] int; np := 0; from_idx := -1;
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].pinned {
+      if q == from_q { from_idx = np; }
+      slots[np] = q; np += 1;
+    }
+  }
+  if from_idx < 0 || to_idx < 0 || to_idx >= np || from_idx == to_idx { return false; }
+  moved := s[0].chats[slots[from_idx]];
+  if from_idx < to_idx {
+    for k: from_idx..<to_idx { s[0].chats[slots[k]] = s[0].chats[slots[k + 1]]; }
+  } else {
+    k := from_idx;
+    while k > to_idx { s[0].chats[slots[k]] = s[0].chats[slots[k - 1]]; k -= 1; }
+  }
+  s[0].chats[slots[to_idx]] = moved;
+  return true;
+}
+// The pinned chat id and new 0-based pinned index after CP_ASK_REORDER_PIN.
+coder_page_pin_move_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || s[0].pin_move_id_n <= 5 { return 0; }
+  n := cp_out(out, cast(string) s[0].pin_move_id[5..<s[0].pin_move_id_n]);
+  s[0].pin_move_id_n = 0;
+  return n;
+}
+coder_page_pin_move_to :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  to := s[0].pin_move_to; s[0].pin_move_to = -1;
+  return to;
 }
 // The id of the chat that is shown ("" for a new one that is not saved yet): its row is lit.
 coder_page_current :: (s: [] CoderPage, id: string) #export_c #effects(all) {
@@ -1816,20 +1869,59 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     sy := 10.0f32 / u;
     sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
     stop := sy + 10.0f32 / u;
-    rows: [CP_CHATS + 1] AppSideRow;
-    rows[0] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
+    rows: [CP_CHATS + 2] AppSideRow;
+    nrows := 0;
+    npinned := cp_pin_count(s);
+    nrecent := s[0].nchats - npinned;
     cur := cast(string) s[0].current[0..<s[0].current_n];
-    for q: 0..<s[0].nchats {
-      id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
-      is := cur.count > 0 && id == cur;
-      rows[q + 1] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
-                               state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
+    if npinned > 0 {
+      rows[nrows] = AppSideRow.{id = "coder.pinned", title = "Pinned", heading = true};
+      nrows += 1;
+      for q: 0..<s[0].nchats {
+        if !s[0].chats[q].pinned { continue; }
+        id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+        is := cur.count > 0 && id == cur;
+        rows[nrows] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
+                                  state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
+        nrows += 1;
+      }
+    }
+    if nrecent > 0 || npinned == 0 || s[0].chats_more > 0 {
+      rows[nrows] = AppSideRow.{id = "coder.chats", title = "Recents", heading = true};
+      nrows += 1;
+      for q: 0..<s[0].nchats {
+        if s[0].chats[q].pinned { continue; }
+        id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
+        is := cur.count > 0 && id == cur;
+        rows[nrows] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
+                                  state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
+        nrows += 1;
+      }
     }
     footer_h := cp_side_footer_h(k);
     if stop + footer_h > h { footer_h = 0; }
     s[0].side_view = h - stop - footer_h;
     tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap else 0.0f32;
-    s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<s[0].nchats + 1], s[0].side_scroll, tail, CP_CHAT);
+    s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, tail, CP_CHAT);
+    s[0].pin_row_h = a.side_row;
+    s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+    if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
+      from := cp_pin_index(s, s[0].pin_drag - 1);
+      if from >= 0 {
+        dy := s[0].pin_top + cast(f32) from * a.side_row;
+        if dy + a.side_row > stop && dy < stop + s[0].side_view {
+          sheet_fill(f[0].sheet, a.row_inset, dy, sw - 2 * a.row_inset, a.side_row, a.row_radius, opacity(k.hover, 0.6));
+        }
+        to := s[0].pin_drop;
+        if to >= 0 && to < npinned && to != from {
+          line_slot := ifx to > from then to + 1 else to;
+          ly := s[0].pin_top + cast(f32) line_slot * a.side_row - 1.0f32 / u;
+          if ly >= stop && ly <= stop + s[0].side_view {
+            sheet_fill(f[0].sheet, a.row_inset, ly, sw - 2 * a.row_inset, 2.0f32 / u, 1.0f32 / u, k.ink);
+          }
+        }
+      }
+    }
     if tail > 0 {
       mb: [96] u8; mn := 0;
       if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
@@ -2016,8 +2108,59 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
       }
     }
   }
-  if phase == 0 { s[0].touching = true; s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0; return acts; }
-  if phase == 1 { if was != id { s[0].pressed_n = 0; } return s[0].pressed_n > 0; }
+  if phase == 0 {
+    s[0].touching = true;
+    s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0;
+    s[0].pin_drag = 0; s[0].pin_dragging = false;
+    if surface_action(s[0].surface[..], row) == CP_CHAT && cp_pin_count(s) > 1 {
+      for q: 0..<s[0].nchats {
+        if s[0].chats[q].pinned && id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] {
+          s[0].pin_drag = q + 1;
+          s[0].pin_drop = cp_pin_index(s, q);
+          break;
+        }
+      }
+    }
+    return acts;
+  }
+  if phase == 1 {
+    if s[0].touching && s[0].pin_drag > 0 {
+      if !s[0].pin_dragging && abs(uy - s[0].dy) >= 4.0f32 {
+        s[0].pin_dragging = true;
+        s[0].pressed_n = 0;
+      }
+      if s[0].pin_dragging {
+        np := cp_pin_count(s);
+        rh := ifx s[0].pin_row_h > 0 then s[0].pin_row_h else 32.0f32;
+        idx := ifx uy <= s[0].pin_top then 0 else cast(int) ((uy - s[0].pin_top) / rh);
+        if idx >= np { idx = np - 1; }
+        if idx < 0 { idx = 0; }
+        s[0].pin_drop = idx;
+        return true;
+      }
+    }
+    if was != id { s[0].pressed_n = 0; }
+    return s[0].pressed_n > 0;
+  }
+  if s[0].pin_drag > 0 {
+    q := s[0].pin_drag - 1;
+    was_dragging := s[0].pin_dragging;
+    target := s[0].pin_drop;
+    s[0].pin_drag = 0; s[0].pin_dragging = false;
+    if was_dragging {
+      s[0].touching = false; s[0].pressed_n = 0;
+      if q >= 0 && q < s[0].nchats && s[0].chats[q].pinned {
+        tmp: [CP_CHAT_ID] u8;
+        tmp_n := cp_out(tmp[..], cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n]);
+        if cp_pin_reorder(s, q, target) {
+          s[0].pin_move_id_n = cp_out(s[0].pin_move_id[..], cast(string) tmp[0..<tmp_n]);
+          s[0].pin_move_to = target;
+          s[0].ask = CP_ASK_REORDER_PIN;
+        }
+      }
+      return true;
+    }
+  }
   held := s[0].pressed_n > 0 && was == id;
   s[0].touching = false; s[0].pressed_n = 0;
   return phase == 2 && held && cp_press(s, row);
@@ -2953,4 +3096,52 @@ cp_find :: (text: string, needle: string) -> int {
   #assert s[0].nturns == 1 && s[0].turns[0].ncmds == 600;
   #assert cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "big chat";
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "done";
+}
+
+#test "pinned chats parse, stay distinct from recents, and reorder by drag" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  coder_page_chats(s, "p1\tAlpha\t0\t1\np2\tBeta\t0\t1\np3\tGamma\t0\t1\nr1\tRecent one\nr2\tRecent two\n");
+  #assert s[0].nchats == 5 && cp_pin_count(s) == 3;
+  #assert s[0].chats[0].pinned && s[0].chats[1].pinned && s[0].chats[2].pinned;
+  #assert !s[0].chats[3].pinned && !s[0].chats[4].pinned;
+  #assert cp_pin_index(s, 0) == 0 && cp_pin_index(s, 1) == 1 && cp_pin_index(s, 2) == 2 && cp_pin_index(s, 3) == -1;
+  // Commit a layout frame so surface_hit knows the pinned rows.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pin_row_h > 0 && s[0].pin_top > 0;
+  // Drag p1 down onto p3's slot.
+  y1 := s[0].pin_top + 0.5f32 * s[0].pin_row_h;
+  y3 := s[0].pin_top + 2.5f32 * s[0].pin_row_h;
+  #assert coder_page_pointer(s, 80, y1, 0);
+  #assert s[0].pin_drag == 1 && !s[0].pin_dragging;
+  #assert coder_page_pointer(s, 80, y3, 1);
+  #assert s[0].pin_dragging && s[0].pin_drop == 2;
+  #assert coder_page_pointer(s, 80, y3, 2);
+  #assert coder_page_action(s) == CP_ASK_REORDER_PIN;
+  moved: [64] u8;
+  mn := coder_page_pin_move_id(s, moved[..]);
+  #assert cast(string) moved[0..<mn] == "p1" && coder_page_pin_move_to(s) == 2;
+  // Internal pinned order is now p2, p3, p1 while recents stay intact.
+  #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.p2";
+  #assert cast(string) s[0].chats[1].id[0..<s[0].chats[1].id_n] == "chat.p3";
+  #assert cast(string) s[0].chats[2].id[0..<s[0].chats[2].id_n] == "chat.p1";
+  #assert cast(string) s[0].chats[3].id[0..<s[0].chats[3].id_n] == "chat.r1";
+  // Re-layout and drag p1 back up to the top slot (0).
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_pointer(s, 80, y3, 0);
+  #assert coder_page_pointer(s, 80, y1, 1);
+  #assert s[0].pin_dragging && s[0].pin_drop == 0;
+  #assert coder_page_pointer(s, 80, y1, 2);
+  #assert coder_page_action(s) == CP_ASK_REORDER_PIN;
+  mn = coder_page_pin_move_id(s, moved[..]);
+  #assert cast(string) moved[0..<mn] == "p1" && coder_page_pin_move_to(s) == 0;
+  #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.p1";
+  #assert cast(string) s[0].chats[1].id[0..<s[0].chats[1].id_n] == "chat.p2";
+  #assert cast(string) s[0].chats[2].id[0..<s[0].chats[2].id_n] == "chat.p3";
 }

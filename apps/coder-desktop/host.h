@@ -53,6 +53,8 @@ int cd_agent_running(void *page, int agent);
 void cd_chats(void *page, const char *list);
 void cd_current(void *page, const char *id);
 int cd_open_id(void *page, char *out, int cap);
+// The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
+int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);
 // The id of the chat whose sidebar row is at (x, y) device pixels, 0 when none is there.
 int cd_chat_at(void *page, float x, float y, char *out, int cap);
