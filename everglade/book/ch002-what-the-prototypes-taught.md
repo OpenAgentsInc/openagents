@@ -127,5 +127,7 @@ the hit, and you see and hear what you're rolling against.
 
 ## What comes next
 
-[Chapter 3](ch003-a-realm-with-no-editor.md) sets up the files, the build and
-the checks for a realm that you build as text.
+[Chapter 3](ch003-start-from-a-bare-world.md) starts a fresh world with the
+`gamebuilder` CLI, edits it programmatically with `world.edit.v1` batches, dips
+into the desktop UI with `--attach`, and draws the line between GameBuilder and
+the Metaverse Engine.

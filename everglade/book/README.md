@@ -29,13 +29,20 @@ the outcome. You play it free in your browser at
 [everglade.world](https://everglade.world). Up to 16 players share a room.
 When a room is full, the next player joins another room.
 
-This book shows you how to build Everglade from scratch, one working piece at a
-time, with these tools:
+This book shows you how to build Everglade from scratch, starting from a bare
+world and building outward one working piece at a time, with these tools:
 
-- [Coax](../../coax/book/README.md), the language. You write everything in it:
-  the land, the rules, the network code and the shaders it generates.
-- [the Metaverse Engine](../../metaverse-engine/book/README.md), the world engine. Everglade uses its
-  frame loop, terrain, renderer, lighting, physics, animation and room server.
+- **GameBuilder** (`gamebuilder` CLI and desktop app), where a new world begins.
+  You create a game from a template, inspect its level and shape table, and lay
+  out or change the world programmatically through CLI commands and atomic
+  `world.edit.v1` batches—dipping into the desktop UI with `--attach` when you
+  want to look around, tweak by eye, or undo a batch with `⌘Z`.
+- [Coax](../../coax/book/README.md), the language. When a world grows past what
+  a level's palette can express, you write the land, the rules, the network code
+  and the shaders in Coax.
+- [the Metaverse Engine](../../metaverse-engine/book/README.md), the world
+  engine that GameBuilder is built on. Everglade uses its frame loop, terrain,
+  renderer, lighting, physics, animation and room server.
 - The OpenAgents Metaverse, where Everglade is one realm among many.
 
 The Metaverse Engine book builds the engine. This book builds a game on it. Each chapter
@@ -71,23 +78,30 @@ reason. For example:
 Each rules chapter lists what follows the SRD exactly, what changes and why,
 and the checks that keep each rule true.
 
-## How you build: text first, no editor
+## How you build: programmatic first, with GameBuilder
 
-Most people will make realms with the OpenAgents Metaverse Engine's tools and the Metaverse's maker
-flows. In this book, you build Everglade without them. Every tree, path, rule
-and light is a Coax function in a text file. You build it from the command line
-and verify it in a headless browser. You don't use a level editor or any other
-UI.
+You start Everglade from a bare world in **GameBuilder**, driven from the
+command line:
 
-The book works this way for two reasons:
+1. **Create and inspect from the CLI.** Run `gamebuilder new-game` to start a
+   bare world, `read-level` and `list-palette` to see its things and shape
+   table, and `apply-edits --dry-run` to validate `world.edit.v1` batches before
+   they land.
+2. **Dip into the UI when you want to see it.** Open the level in the
+   GameBuilder desktop app (`gamebuilder --attach open-level LEVEL`), route
+   programmatic edits straight into the open viewport with `--attach`, frame
+   what changed with `show-changes`, and undo any batch as one step (`⌘Z`).
+3. **Drop down to Coax and the engine when the world needs more.** GameBuilder
+   owns the level, its palette and its editor. When Everglade needs something
+   below the level—custom terrain tiles, procedural forest planting, SRD combat
+   rules or a new rendering primitive—you build it in Coax on the OpenAgents
+   Metaverse Engine (`gamebuilder engine-list` shows what the engine already
+   does, and `gamebuilder engine-ready` prepares a pull request to
+   `OpenAgentsInc/openagents`).
 
-- It shows what the engine does underneath the tools. Each maker tool wraps
-  something this book builds by hand.
-- Some people prefer to build as code and checks, with no UI. This book is
-  their guide.
-
-When a chapter does something a maker tool will do later, it links to that
-tool's chapter in the Metaverse Engine book.
+Building this way keeps every step repeatable and checkable—every edit is JSON
+or Coax, every headless check is a command—while still letting you walk around
+in the app whenever your eyes are faster than a query.
 
 ## Where Everglade came from
 
@@ -118,14 +132,16 @@ now the default for every realm in that art style
 The book follows the order in which you build the game. Each part ends with
 something you can walk around in and test.
 
-### Part I: One picture to build toward
+### Part I: Start from a bare world
 
 1. **A reference image.** Turn one picture into numbers: light, colour,
    density and scale.
 2. **What the prototypes taught.** What v1, Experimental and Character Create
    settled, and what you throw away.
-3. **A realm with no editor.** A realm's files, building one unit, a headless
-   capture and the checks that run while compiling.
+3. **Start from a bare world.** Create a game with the `gamebuilder` CLI,
+   inspect its level and palette, lay out the first glade with `world.edit.v1`
+   batches, dip into the desktop UI with `--attach`, and know when to drop down
+   to Coax and the Metaverse Engine.
 
 ### Part II: The glade
 

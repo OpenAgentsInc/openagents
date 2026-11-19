@@ -2,11 +2,11 @@
 
 - [Introduction and proposed structure](README.md)
 
-## Part I: One picture to build toward
+## Part I: Start from a bare world
 
 - [1. A reference image](ch001-a-reference-image.md) (partly implemented)
 - [2. What the prototypes taught](ch002-what-the-prototypes-taught.md) (partly implemented)
-- [3. A realm with no editor](ch003-a-realm-with-no-editor.md) (partly implemented)
+- [3. Start from a bare world](ch003-start-from-a-bare-world.md) (partly implemented)
 
 ## Part II: The glade
 
