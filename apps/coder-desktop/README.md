@@ -9,12 +9,16 @@ composer, your message, the reply as Markdown with code blocks and Copy,
 the typing mark and notices. The shared AppKit editor
 (`apps/shared/native/KitEditorMac.swift`) sits over the composer's text.
 
+For the repeatable workflow used to match Claude Desktop's layout, spacing, and
+typography in Coder's monochrome palette, see
+[`docs/coder/claude-desktop-parity-process.md`](../../docs/coder/claude-desktop-parity-process.md).
+
 ## What it does
 
 - **Send** (or Return) starts one Microcoder run. Shift-Return makes a new line.
 - **Stop** ends the run.
-- **New chat** (the icon in the window's top right corner, or Command-N) clears the window and makes Microcoder forget the conversation.
-- **The working folder** shows in the window's top left corner. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
+- **New chat** (the top row of the sidebar, the top-right icon when the sidebar is hidden, or Command-N) clears the window and makes Microcoder forget the conversation.
+- **The working folder** shows as a chip in the composer's bottom-left toolbar. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
 - **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.

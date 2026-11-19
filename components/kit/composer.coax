@@ -167,7 +167,7 @@ ctx_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32
   action := uiframe_semantic(f, send_id, EL_BUTTON, ifx look.stop then "Stop generating" else "Send message", x + box.send_x, row, box.send, box.send,
                              ifx look.enabled then 0 else EL_S_DISABLED, send_action);
   sheet_hit(sh, UIFRAME_HIT, action, 0, x + box.send_x, row, box.send, box.send);
-  out := box; out.height = h;
+  out := box; out.height = h; out.row_y = box.row_y + grown;
   return out;
 }
 

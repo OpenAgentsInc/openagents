@@ -42,15 +42,44 @@ app_side_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: strin
   h := ifx detail.count > 0 then a.side_row_two else a.side_row;
   k := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  hovered := !off && uiframe_hovered(f, id);
   if current { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, s.raised); }
+  else if hovered { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.raised, 0.75)); }
   if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
   row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, ifx off then 0 else action);
   elt_value(f[0].rows, row, detail);
   room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else 0.0f32);
-  lines := s.body.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
-  _ := sheet_text(sh, m, -1, x + a.side_pad, ty, s.body.line, s.body.face, ifx off then s.faint else ifx current then s.ink else s.muted, app_fit(f, s.body.face, title, room));
-  if detail.count > 0 { _ := sheet_text(sh, m, -1, x + a.side_pad, ty + s.body.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
+  tf := ifx a.side_row < 34 then s.small else s.body;
+  lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
+  ink := ifx off then s.faint else ifx current || hovered then s.ink else s.muted;
+  _ := sheet_text(sh, m, -1, x + a.side_pad, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
+  if detail.count > 0 { _ := sheet_text(sh, m, -1, x + a.side_pad, ty + tf.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
   if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+// A primary action row in the sidebar at (x, y), w wide: a leading icon and
+// a single-line label, sharing the sidebar's inset, radius and row height.
+app_side_action :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, title: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  off := (state & EL_S_DISABLED) != 0;
+  h := a.side_row;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  hovered := !off && uiframe_hovered(f, id);
+  if hovered { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.raised, 0.75)); }
+  if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
+  row := uiframe_semantic(f, id, EL_BUTTON, title, x, y, w, h, state, ifx off then 0 else action);
+  tf := ifx a.side_row < 34 then s.small else s.body;
+  ink := ifx off then s.faint else s.ink;
+  tx := x + a.side_pad;
+  if icon >= 0 {
+    mark := a.icon;
+    sheet_icon(sh, icon, tx, y + (h - mark) / 2, mark, ifx off then s.faint else ifx hovered then s.ink else s.muted);
+    tx += mark + a.row_inset;
+  }
+  room := x + w - a.side_pad - tx;
+  if room > 0 { _ := sheet_text(sh, m, -1, tx, y + (h - tf.line) / 2, tf.line, tf.face, ink, app_fit(f, tf.face, title, room)); }
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
 }
