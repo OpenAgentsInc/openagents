@@ -147,10 +147,10 @@ cp_drive :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, op: string) 
 #test "drive edits Project fields while private custody never falls through into the public composer" #steps 2000000000 {
  p:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;d:[1]GdDrive;r:[1]CpRun;app_init(c[..]);c[0].auth=AUTH_IN;ch_test_atlas(p[0].atlas[..]);chat_attach(p[..],c[..],"");
  cp_open(r[..],p[..],o[0].v[..],d[..],c[..],"cpu",0,false);r[0].reduced=true;
- p[0].section=1;p[0].projects[0].signed_in=true;p[0].projects[0].open=true;p[0].projects[0].page=1;
+ p[0].section=1;p[0].sc[0].projects[0].signed_in=true;p[0].sc[0].projects[0].open=true;p[0].sc[0].projects[0].page=1;
  #assert cp_drive(r[..],p[..],o[0].v[..],d[..],"type project.name Research") && gd_answer(d[..])=="typed into project.name";
- #assert ps_field(p[0].projects[..],"project.name")=="Research" && app_draft(c[..])=="";
- #assert cp_drive(r[..],p[..],o[0].v[..],d[..],"type project.text Evidence") && ps_field(p[0].projects[..],"project.text")=="Evidence" && app_draft(c[..])=="";
+ #assert ps_field(p[0].sc[0].projects[..],"project.name")=="Research" && app_draft(c[..])=="";
+ #assert cp_drive(r[..],p[..],o[0].v[..],d[..],"type project.text Evidence") && ps_field(p[0].sc[0].projects[..],"project.text")=="Evidence" && app_draft(c[..])=="";
  ch_set_focus(p[..],"identity.secret");cp_step(r[..],p[..],o[0].v[..],d[..],GD_EDITOR);
- #assert !d[0].edited && app_draft(c[..])=="" && !p[0].identity[0].secret_ready;
+ #assert !d[0].edited && app_draft(c[..])=="" && !p[0].sc[0].identity[0].secret_ready;
 }

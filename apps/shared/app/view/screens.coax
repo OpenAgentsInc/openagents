@@ -1,0 +1,53 @@
+// The pages a phone app shows beside its chat, kept together over the shared app core (GitHub
+// #13713): Settings (identity), Usage, Foreman, Workspace, Projects, and the drawer's two lists
+// (the account's chats and the paired computers' sessions). A root holds one AppScreens, calls
+// app_screens_sync after every step with what shows, hands every guest result to
+// app_screens_guest first, and closes the nested pages with app_screens_close when the person
+// leaves for a drawer destination. Each page keeps its own rules (its *_sync and *_guest); this
+// file only says which shows and routes their results, so a second root (Android, a desktop
+// shell) gets the same glue instead of copying it.
+//   coax/bin/coax test apps/shared/app/view/screens.coax --traversal 1000000000 --run-steps 250000000
+#load "../workspace/view.coax";
+#load "../settings/identity.coax";
+#load "../history/index.coax";
+#load "../history/devices.coax";
+#load "../projects/view.coax";
+#load "../usage/view.coax";
+#load "../foreman/view.coax";
+
+AppScreens :: struct {
+  identity: [1] IdentitySettings; usage: [1] UsageScreen; foreman: [1] ForemanScreen;
+  workspaces: [1] WorkspaceScreen; projects: [1] ProjectScreen;
+  history: [1] ChatIndex; devices: [1] DeviceHistory;
+}
+// What shows this step. covered: the drawer or the login card is over the page. lists: the
+// drawer's lists show (the drawer, or the search page). projects: the Projects section shows.
+// query: the search that filters the lists, with the library that names their rows.
+AppScreensShown :: struct { covered: bool; lists: bool; projects: bool; query: string; }
+
+app_screens_sync :: (sc: [] AppScreens, c: [] AppCore, shown: AppScreensShown, library: [] ChatLibrary) {
+  iks_sync(sc[0].identity[..], c);
+  hi_query(sc[0].history[..], c, shown.query, library); dh_query(sc[0].devices[..], c, shown.query, library);
+  hi_sync(sc[0].history[..], c, shown.lists);
+  dh_sync(sc[0].devices[..], c, shown.lists);
+  wsc_sync(sc[0].workspaces[..], c, sc[0].workspaces[0].open && !shown.covered);
+  us_sync(sc[0].usage[..], c, sc[0].usage[0].open && !shown.covered);
+  fm_sync(sc[0].foreman[..], c, sc[0].foreman[0].open && !shown.covered);
+  ps_sync(sc[0].projects[..], c, shown.projects && !shown.covered && !sc[0].identity[0].open);
+}
+// A guest result: true when one of these pages took it (it called app_guest_done).
+app_screens_guest :: (sc: [] AppScreens, c: [] AppCore, body: string) -> bool {
+  return wsc_guest(sc[0].workspaces[..], c, body) || us_guest(sc[0].usage[..], c, body) || fm_guest(sc[0].foreman[..], c, body)
+    || ps_guest(sc[0].projects[..], c, body) || iks_guest(sc[0].identity[..], c, body) || hi_guest(sc[0].history[..], c, body)
+    || dh_guest(sc[0].devices[..], c, body);
+}
+// The nested pages close: Workspace, Foreman, Usage and Settings with what each was asking.
+app_screens_close :: (sc: [] AppScreens) {
+  sc[0].workspaces[0].open = false; sc[0].foreman[0].open = false; sc[0].foreman[0].asking = false;
+  sc[0].usage[0].open = false; sc[0].usage[0].code_ready = false;
+  sc[0].identity[0].open = false; sc[0].identity[0].backup = false; sc[0].identity[0].confirm = 0;
+}
+// Whether a nested page (with its own scroll) shows over the chat.
+app_screens_nested :: (sc: [] AppScreens) -> bool { return sc[0].workspaces[0].open || sc[0].foreman[0].open || sc[0].usage[0].open; }
+
+#load "screens-checks.coax" #test;

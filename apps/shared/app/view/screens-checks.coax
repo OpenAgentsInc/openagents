@@ -1,0 +1,21 @@
+// Checks for screens.coax: which page asks the core for what, and where results go.
+
+#test "only a page that shows asks its computer or account, and closing the nested pages stops them" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; app_init(c[..]); #assert app_device_attach(c[..], lane[..]); c[0].foreground = true; c[0].mono_ms = 1000; c[0].wall_ms = 1700000000000;
+  lane[0].np = 1; _ := ea_copy(lane[0].paired[0].host[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); lane[0].paired[0].nn = ea_copy(lane[0].paired[0].name[..], "Mac");
+  sc: [1] AppScreens; lib: [1] ChatLibrary;
+  app_screens_sync(sc[..], c[..], AppScreensShown.{}, lib[..]); #assert sc[0].foreman[0].op == 0 && !app_screens_nested(sc[..]);
+  #assert fm_open(sc[0].foreman[..], c[..]) && app_screens_nested(sc[..]);
+  // covered by the drawer: nothing is read
+  app_screens_sync(sc[..], c[..], AppScreensShown.{covered = true}, lib[..]); #assert sc[0].foreman[0].op == 0;
+  app_screens_sync(sc[..], c[..], AppScreensShown.{}, lib[..]); #assert sc[0].foreman[0].op > 0;
+  // its result is Foreman's, and is taken
+  op := sc[0].foreman[0].op; #assert fx_take(c[0].out[..], op);
+  c[0].guest = AppGuest.{waiting = true, owner = OWN_FOREMAN, op = op, outcome = FXO_UNKNOWN};
+  #assert app_screens_guest(sc[..], c[..], "") && !c[0].guest.waiting && sc[0].foreman[0].nnote > 0;
+  // a result for no page here is left for the root
+  c[0].guest = AppGuest.{waiting = true, owner = OWN_CHAT, op = 99, outcome = FXO_DONE};
+  #assert !app_screens_guest(sc[..], c[..], "") && c[0].guest.waiting;
+  sc[0].usage[0].open = true; sc[0].identity[0].confirm = 2;
+  app_screens_close(sc[..]); #assert !app_screens_nested(sc[..]) && !sc[0].foreman[0].open && sc[0].identity[0].confirm == 0;
+}
