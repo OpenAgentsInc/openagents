@@ -23,7 +23,9 @@ MARKDOWN_HIT_WRAP :: 3; MARKDOWN_HIT_COPY :: 4;
 
 // One wrapped line of styled text: each run in its face and colour, inline
 // code on its rounded wash (painted under the glyphs, past them by the
-// skin's pad, inset from the line box).
+// skin's pad, inset from the line box). A code run that ends the line leaves
+// its trailing spaces off the wash, so a chip broken at a space ends at its
+// last glyph, inside the column (text_wrap left room for the pad).
 markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, color: Rgba, hard: bool) {
   ln := sheet_line(sh, x, y, lh, hard);
   i := from; pen := x;
@@ -35,8 +37,10 @@ markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, tex
     face := text_face(faces, style);
     w: f32 = 0;
     if style == MD_CODE {
-      w = measure_width(m, face, seg);
-      sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, w + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash);
+      lit := seg.count;
+      if j == to { while lit > 0 && seg[lit - 1] == ' ' { lit -= 1; } }
+      ww := measure_width(m, face, cast(string) seg[0..<lit]);
+      if lit > 0 { sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, ww + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash); }
       w = sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
     } else {
       // a link reads in the accent; struck text keeps its colour under a rule through its middle
@@ -304,4 +308,23 @@ markdown_height :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: i
   h := markdown_block(sh, m, s, doc, b, 0, 0, w);
   sh[0].nu = nu; sh[0].no = no; sh[0].nl = nl; sh[0].nh = nh; sh[0].np = np;
   return h;
+}
+
+#test "inline code broken across lines keeps each wash inside the width, with no trailing space washed" {
+  a: [1] Atlas; text_test_atlas(a[..]); m := measure_font(a[..]);   // every glyph 8 wide
+  s: UiSkin; s.body.face = 0; s.strong.face = 3; s.code.face = 4; s.md.code_pad_x = 4;
+  under: [32] Prim; over: [8] Prim; lines: [8] SheetLine; hits: [1] SheetHit; pool: [1] u8;
+  sh := [1] Sheet.[Sheet.{under = under[..], over = over[..], lines = lines[..], hits = hits[..], pool = pool[..]}];
+  t := "aa bb cc dd";                                                // "aa `bb cc` dd"
+  runs := [1] MdRun.[MdRun.{from = 3, to = 8, style = MD_CODE}];
+  h := markdown_text(sh[..], m, s, t, runs[..], 0, 0, 50, 20, Rgba.{});
+  #assert h == 40;                                                   // "aa bb " then "cc dd"
+  boxes := 0;
+  for k: 0..<sh[0].nu {
+    if sh[0].under[k].kind == PRIM_BOX {
+      boxes += 1;
+      #assert sh[0].under[k].x + sh[0].under[k].w <= 50;
+    }
+  }
+  #assert boxes == 2 && sh[0].under[0].w == 24;                        // "bb" (16) and its pads, not "bb " (24 + 8 past the width)
 }

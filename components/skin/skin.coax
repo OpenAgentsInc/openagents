@@ -329,9 +329,9 @@ UiSkin :: struct {
 }
 
 // A skin's faces for styled text (layout/text.coax).
-uiskin_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.body.face, bold = s.strong.face, code = s.code.face}; }
+uiskin_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.body.face, bold = s.strong.face, code = s.code.face, code_pad = s.md.code_pad_x}; }
 // The faces for styled text a size down (a tool row's, a notice's): no bold face of its own.
-uiskin_small_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.tool.face, bold = s.tool.face, code = s.mono_small.face}; }
+uiskin_small_faces :: (s: UiSkin) -> TextFaces { return TextFaces.{plain = s.tool.face, bold = s.tool.face, code = s.mono_small.face, code_pad = s.md.code_pad_x}; }
 
 // Whether a skin value has been set (a zeroed one has no name).
 uiskin_is_set :: (s: UiSkin) -> bool { return s.name.count > 0; }
