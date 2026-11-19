@@ -31,6 +31,9 @@ message RuntimeItem {
   string text = 3 [json_name = "text"];
   string tool_name = 4 [json_name = "tool_name"];
   bool complete = 5 [json_name = "complete"];
+  // A call still running: when it began on the computer, Unix ms. Absent once it is done and from
+  // an older computer; a reader shows how long it has run. `complete` is about the text only.
+  optional int64 started_at_ms = 6 [json_name = "started_at_ms"];
 }
 // A turn's thinking. A v1alpha1 reader draws any role but user, assistant, tool and notice as a
 // reply, so thoughts never travel in items: each sits beside them, before the item at `at` (an

@@ -20,6 +20,8 @@ EsSlot :: struct {
   mode:int;codex:[1]CxEngine;codex_mem:[CX_MEM]u8;execution:[1]XtRun;
   provider:[32]u8;nprovider:int;options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
   out:[2*EX_INPUT_MAX+8192]u8;scratch:[2*EX_INPUT_MAX+8192]u8;prompt:[EX_INPUT_MAX+1024]u8;last_saved:int;failed:bool;started:bool;
+  // when each of the session's parts first showed here, wall ms: a running call's start on the page
+  stamps:[S_PARTS]int;nstamps:int;
 }
 EsHost :: struct {slots:[ES_SLOTS]EsSlot;configuration:[1]EaConfiguration;configured:bool;}
 
@@ -200,7 +202,7 @@ es_tick :: (h:[]HsHost) #effects(all) {
     why:=es_free_why(slot,now);if why!=ES_KEEP {es_release(h,slot,why==ES_IDLE);continue;}
     if !slot[0].occupied || slot[0].probing || slot[0].failed || slot[0].execution[0].active {continue;}
     s:=slot[0].s[..];before:=s[0].live;asking:=s[0].asking;
-    slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);
+    slot[0].started=slot[0].started || slot[0].engine[0].running;ag_poll(es_agent(slot),0.016,true);es_stamp(slot,now);
     if s[0].exhausted {slot[0].failed=true;ag_stop(es_agent(slot));}
     if slot[0].started && !slot[0].engine[0].running {slot[0].summary.nc=ea_copy(slot[0].summary.control[..],"observe-only");}
     if s[0].changed || before!=s[0].live || asking!=s[0].asking {
@@ -268,7 +270,7 @@ es_resume_id :: (grant:string,id:string,out:[]u8)->string #effects(all) {
 es_occupy :: (h:[]HsHost,slot:[]EsSlot,grant:string,device:string) #effects(all) {
   e:=h[0].environment[..];
   xt_reset(slot);slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
-  s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
+  s:=slot[0].s[..];s_init(s,slot[0].pool[..]);slot[0].nstamps=0;engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
   c:=e[0].configuration[..];ws:=cast(string)c[0].workspace[0..<c[0].nw];slot[0].nw=ea_copy(slot[0].workspace[..],ws);engine[0].cwd_n=ea_copy(engine[0].cwd[..],ws);
   home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
   slot[0].summary.updated=cxproc_wall_us()/1000;
@@ -377,7 +379,7 @@ es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) 
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
   for i:0..<ES_SLOTS {if e[0].slots[i].occupied && !e[0].slots[i].probing && !e[0].slots[i].execution[0].active && es_slot_matches(e,i,grant) {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 || e[0].slots[k].execution[0].active {return;}
-  slot:=e[0].slots[k..<k+1];es_project(slot[0].s[..],q,v);
+  slot:=e[0].slots[k..<k+1];es_project_at(slot[0].s[..],slot[0].stamps[0..<slot[0].nstamps],q,v);
   if slot[0].failed {for i:0..<v[0].ns {if cast(string)v[0].sessions[i].id[0..<v[0].sessions[i].ni]==id {v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"unknown");}}es_refuse(v,"record_limit");}
 
 }
@@ -386,7 +388,15 @@ es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) 
 // is (part+1)*1000000 + byte-end. Pages walk backward without dropping a long
 // message; the owned arena survives value copies. A page is at most6000 raw
 // bytes, leaving room for worst-case JSON escaping and HOST metadata.
-es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
+es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {none:[1]int;es_project_at(s,none[0..<0],q,v);}
+// The parts that appeared since the last tick are stamped now; a session started over is stamped afresh.
+es_stamp :: (slot:[]EsSlot,now:int) #effects(all) {slot[0].nstamps=es_stamp_parts(slot[0].s[0].n,slot[0].stamps[..],slot[0].nstamps,now);}
+es_stamp_parts :: (n:int,stamps:[]int,have:int,now:int)->int {
+  from:=ifx n<have then 0 else have;to:=ifx n>stamps.count then stamps.count else n;
+  for k:from..<to {stamps[k]=now;}return to;
+}
+// stamps[k]: when part k showed (wall ms); a call still running in a live turn carries its own.
+es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(all) {
   part:=s[0].n-1;end:= -1;
   if q[0].before>0 {part=q[0].before/1000000-1;end=q[0].before%1000000;if part<0 || part>=s[0].n {es_refuse(v,"stale_cursor");return;}}
   bytes:=0;
@@ -398,6 +408,7 @@ es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
     while start<to && text[start]>=128 && text[start]<192 {start+=1;}
     m:=v[0].items[v[0].ni];id:[128]u8;n:=hs_cat(id[..],0,"");digits:[64]u8;n=hs_cat(id[..],n,hs_itoa(part,digits[..]));n=hs_cat(id[..],n,":");n=hs_cat(id[..],n,hs_itoa(start,digits[..]));m.ni=ea_copy(m.id[..],cast(string)id[0..<n]);
     m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else ifx p.kind==P_THINK then EA_ROLE_THOUGHT else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
+    if p.kind==P_TOOL && !p.resolved && s[0].live && part<stamps.count && stamps[part]>0 {m.started=stamps[part];}
     m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && ((p.kind!=P_TEXT && p.kind!=P_THINK) || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
     v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;
     if start>0 {end=start;break;}part-=1;end= -1;
@@ -412,6 +423,18 @@ es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
   q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[6000..<12000] && v[0].nc>0;
   q[0].before=1006000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[0..<6000] && v[0].nc==0;
   q[0].before=9000000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ne>0 && v[0].ni==0;
+}
+#test "a running call in a live turn carries when it showed; a resolved one, one past the stamps or one of an ended turn does not" {
+  ses:[1]Session;pool:[4096]u8;s_init(ses[..],pool[..]);s:=ses[..];s_user(s,"Run it");stamps:[8]int;have:=0;
+  a:=s_part(s,P_TOOL);s[0].parts[a].id="a";s[0].parts[a].input="{}";s[0].parts[a].resolved=true;s[0].parts[a].output="done";have=es_stamp_parts(s[0].n,stamps[..],have,1000);
+  b:=s_part(s,P_TOOL);s[0].parts[b].id="b";s[0].parts[b].input="{\"command\":\"ls\"}";have=es_stamp_parts(s[0].n,stamps[..],have,5000);
+  c:=s_part(s,P_TOOL);s[0].parts[c].id="c";s[0].parts[c].input="{}";
+  q:[1]EaRequest;v:[1]EaView;es_project_at(s,stamps[0..<have],q[..],v[..]);
+  #assert v[0].ni==4 && v[0].items[0].started==0 && v[0].items[1].started==0 && v[0].items[2].started==5000 && v[0].items[3].started==0;
+  s[0].live=false;v[0]=EaView.{};es_project_at(s,stamps[0..<have],q[..],v[..]);#assert v[0].items[2].started==0;
+  // a session started over is stamped afresh, and never past the stamps there are
+  s_init(s,pool[..]);s_user(s,"Again");have=es_stamp_parts(s[0].n,stamps[..],have,9000);#assert have==1 && stamps[0]==9000;
+  #assert es_stamp_parts(20,stamps[..],1,7)==8 && stamps[7]==7;
 }
 #test "a session's thinking reaches the page as thought items in place, the live one still open" {
   s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"Fix it");s[0].live=true;s_delta(s[..],P_THINK,"Look first");s_delta(s[..],P_TEXT,"On it");s_delta(s[..],P_THINK,"Then edit");

@@ -104,3 +104,16 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   h = app_act_row(f, "th2", 0, 0, 400, r, false, 9);
   #assert app_test_end(t[..]) && h == 28 && app_test_find(t[..], "th2") < 0 && app_test_value(t[..], "th2.words") == "just this";
 }
+
+#test "app activity: a timed call in flight says how long it has run at the row's end; an untimed one or a finished one says nothing" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  r := AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = "cargo test", running = true, timed = true, secs = 65};
+  y := app_act_row(f, "g.0", 0, 0, 400, r, true, 9);
+  r.secs = -3; y += app_act_row(f, "g.1", 0, y, 400, r, true, 9);
+  r.timed = false; y += app_act_row(f, "g.2", 0, y, 400, r, true, 9);
+  r.timed = true; r.running = false; y += app_act_row(f, "g.3", 0, y, 400, r, false, 9);
+  #assert app_test_end(t[..]);
+  #assert app_test_value(t[..], "g.0") == "1m 5s" && app_test_value(t[..], "g.1") == "0s" && app_test_value(t[..], "g.2") == "" && app_test_value(t[..], "g.3") == "";
+  #assert app_test_label(t[..], "g.0") == "Ran cargo test" && app_test_texts(t[..], "1m 5s") == 1;
+}

@@ -81,6 +81,7 @@ ViewOut :: struct {
 ViewPress :: struct { kind: int; what: int; text: string; }
 
 ChatView :: struct {
+  wall_ms: int;                               // the core's civil time this frame: a computer's running call says how long it has run
   model: [1] ViewModel;
   list: [1] VList; a: [VIEW_ROWS] VRow; b: [VIEW_ROWS] VRow; made: bool;
   doc: [1] MdDoc;
@@ -244,13 +245,15 @@ view_act_native :: (s: [] Session, k: int, ended: bool) -> AppActRow {
 }
 // Item i of the computer's view as a row: its tool's name says its kind; its text is the call
 // while it runs and the result once it is done.
-view_act_device :: (e: [] EnvironmentApp, i: int) -> AppActRow {
+view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow {
   m := e[0].view[0].items[i]; text := ea_item_text(e[0].view[..], i);
   if ea_thought(e[0].view[..], i) { return AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = text}; }
   name := ifx m.nk > 0 then cast(string) e[0].view[0].items[i].tool[0..<m.nk] else "";
   kind := view_act_kind(tk_of_name(name));
   r := AppActRow.{kind = ifx kind < 0 then APP_ACT_KINDS else kind, verb = view_act_verb(kind, name), target = view_first_line(text)};
-  if m.complete { r.output = text; } else { r.running = true; if r.target != text { r.call = text; } }
+  // a call the computer says is still running carries when it began
+  if m.complete && m.started == 0 { r.output = text; } else { r.running = true; if r.target != text { r.call = text; } }
+  if m.started > 0 && wall_ms > 0 { r.timed = true; r.secs = (wall_ms - m.started) / 1000; }
   return r;
 }
 // The rows of the group that starts at model row r, into rows and ids (buf holds the ids).
@@ -268,7 +271,7 @@ view_act_rows :: (v: [] ChatView, d: [] DurableChat, r: ViewRow, id: string, row
       if ses[0].parts[k].kind == P_THINK && k == ses[0].n - 1 && !xt_terminal(d[0].native[0].status[0].state) { live[0] = true; }
     } else {
       if v[0].dev.count != 1 || k < 0 || k >= v[0].dev[0].view[0].ni { continue; }
-      rows[n] = view_act_device(v[0].dev, k);
+      rows[n] = view_act_device(v[0].dev, k, v[0].wall_ms);
       if ea_thought(v[0].dev[0].view[..], k) && !v[0].dev[0].view[0].items[k].complete { live[0] = true; }
     }
     if rows[n].running { live[0] = true; }
@@ -392,7 +395,7 @@ view_composer_state :: (d: [] DurableChat, facts: ViewFacts) -> int {
 view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> ViewOut {
   view_init(v);
   s := f[0].skin; a := s.app; d := view_chat_of(c); l := v[0].list[..]; vm := v[0].model[..];
-  facts := view_facts(c);
+  facts := view_facts(c); v[0].wall_ms = c[0].wall_ms;
   view_attach_device(v, c);
   if facts.device && v[0].dev.count == 1 { view_build_device(vm, v[0].dev, facts); } else { view_build(vm, d, facts); }
   if s.chat.enabled {view_group_tools(vm);}

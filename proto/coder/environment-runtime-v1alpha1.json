@@ -20,7 +20,7 @@
     },
     {
       "kind": "view",
-      "bytes": "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"0:0\",\"role\":\"user\",\"text\":\"Fix it\",\"tool_name\":\"\",\"complete\":true},{\"item_id\":\"2:0\",\"role\":\"tool\",\"text\":\"ls\",\"tool_name\":\"Bash\",\"complete\":false}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"thoughts\":[{\"item_id\":\"1:0\",\"text\":\"Look first\",\"complete\":true,\"at\":1},{\"item_id\":\"3:0\",\"text\":\"Then edit\",\"complete\":false,\"at\":2}]}"
+      "bytes": "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"Mac\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"0:0\",\"role\":\"user\",\"text\":\"Fix it\",\"tool_name\":\"\",\"complete\":true},{\"item_id\":\"2:0\",\"role\":\"tool\",\"text\":\"ls\",\"tool_name\":\"Bash\",\"complete\":false,\"started_at_ms\":1700000000123}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"thoughts\":[{\"item_id\":\"1:0\",\"text\":\"Look first\",\"complete\":true,\"at\":1},{\"item_id\":\"3:0\",\"text\":\"Then edit\",\"complete\":false,\"at\":2}]}"
     },
     {
       "kind": "configuration",

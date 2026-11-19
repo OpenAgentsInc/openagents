@@ -42,6 +42,7 @@ AppActRow :: struct {
   output: string;             // what came back; a thought's words when it has no Markdown
   failed: bool;               // its glyph in the danger's tone, its output's edge too
   running: bool;              // in flight: the loader in its glyph's place
+  timed: bool; secs: int;     // in flight with a known start: how long it has run, said at the row's end
   opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
@@ -344,9 +345,17 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   else { kind := ifx r.kind >= 0 && r.kind < APP_ACT_KINDS then r.kind else APP_ACT_EXEC; sheet_icon(sh, APP_ACT_GLYPH[kind], gx, gy, a.glyph, ifx r.failed then s.danger else s.muted); }
   // the verb, then the target, on one line cut at the row's end
   tx := x + a.gutter; ly := y + (rh - s.tool.line) / 2;
+  // a timed call in flight says how long it has run at the row's end, the target fading before it
+  right := x + w; took := "";
+  if r.running && r.timed {
+    eb: [24] u8; en := app_act_elapsed(eb[..], ifx r.secs < 0 then 0 else r.secs); took = sheet_pool(sh, cast(string) eb[0..<en]);
+    right -= measure_width(m, s.tool.face, took);
+    _ := sheet_text(sh, m, -1, right, ly, s.tool.line, s.tool.face, s.faint, took);
+    right -= a.verb_gap;
+  }
   vw := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, r.verb);
   if r.target.count > 0 {
-    _ := app_act_fade_text(sh, m, tx + vw + a.verb_gap, y + (rh - s.mono_small.line) / 2, s.mono_small.line, s.mono_small.face, s.ink, r.target, x + w, a.fade);
+    _ := app_act_fade_text(sh, m, tx + vw + a.verb_gap, y + (rh - s.mono_small.line) / 2, s.mono_small.line, s.mono_small.face, s.ink, r.target, right, a.fade);
   }
   lb: [EL_LABEL] u8; ln := el_put(lb[..], 0, r.verb);
   if r.target.count > 0 { ln = el_put(lb[..], ln, " "); ln = el_put(lb[..], ln, r.target); }
@@ -354,6 +363,7 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, rh,
     (ifx shows && !r.opens then EL_S_EXPANDS else 0) | (ifx open then EL_S_EXPANDED else 0) | (ifx r.running then EL_S_BUSY else 0), ifx opens then action else 0);
   if row >= 0 && r.failed { elt_value(f[0].rows, row, "Failed"); }
+  else if row >= 0 && took.count > 0 { elt_value(f[0].rows, row, took); }
   if opens { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, rh); }
   h := rh;
   if open { h += app_act_detail(f, id, k, tx, y + rh, w - a.gutter, r, action); }
