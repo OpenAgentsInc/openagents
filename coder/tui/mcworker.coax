@@ -144,7 +144,7 @@ tool_main :: () -> int #export_c #effects(all) {
   aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8;   // the compiler's answers and the working memory (#13444, #13445)
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;
   k: [1] MkKeys; h: [1] MkTurns;
-  facts: [32768] u8;
+  facts: [MC_FACTS_BYTES] u8;
   line: [MW_LINE] u8; nl := 0;
   out: [MW_LINE] u8;
   ab: [65536] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};

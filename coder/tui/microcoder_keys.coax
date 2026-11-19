@@ -30,7 +30,8 @@ MK_GCLOUDS :: [5] string.["/google-cloud-sdk/bin/gcloud", "/.nix-profile/bin/gcl
 MK_GCLOUDS_HOME :: 2;
 MK_AGY_ENV :: "/.openagents/coder/antigravity.env";      // under $HOME: the Antigravity engine's Google Cloud sign-in
 MK_TURNS :: 6;                   // earlier turns each run is told
-MK_TURN_TEXT :: 1200;            // bytes of each task and reply kept
+MK_TURN_TEXT :: 8000;            // bytes of each earlier task and reply told to a run (a sub-agent's reply keeps as much); a longer one ends in MK_CUT
+MK_CUT :: " [cut here: the rest is not kept]";   // so the model knows its own earlier reply goes on, and doesn't hunt for the rest
 
 MkKeys :: struct {
   read: bool;
@@ -218,6 +219,14 @@ MkTurns :: struct {
 mk_slot :: (h: [] MkTurns, k: int) -> [] u8 { return h[0].text[k * MK_TURN_TEXT..<(k + 1) * MK_TURN_TEXT]; }
 mk_text :: (h: [] MkTurns, k: int) -> string { return cast(string) h[0].text[k * MK_TURN_TEXT..<k * MK_TURN_TEXT + h[0].n[k]]; }
 
+// A turn's text into its slot: whole when it fits, else its start and MK_CUT.
+mk_keep_turn :: (dst: [] u8, s: string) -> int {
+  if s.count <= dst.count { return mk_keep(dst, s); }
+  n := mk_keep(dst[0..<dst.count - MK_CUT.count], s);
+  for i: 0..<MK_CUT.count { dst[n + i] = MK_CUT[i]; }
+  return n + MK_CUT.count;
+}
+
 // Remembers the running turn with its reply; the oldest goes when there are MK_TURNS.
 mk_remember :: (h: [] MkTurns, reply: string) {
   if h[0].turns == MK_TURNS {
@@ -225,8 +234,8 @@ mk_remember :: (h: [] MkTurns, reply: string) {
     h[0].turns -= 1;
   }
   k := 2 * h[0].turns;
-  h[0].n[k] = mk_keep(mk_slot(h, k), cast(string) h[0].cur[0..<h[0].ncur]);
-  h[0].n[k + 1] = mk_keep(mk_slot(h, k + 1), reply);
+  h[0].n[k] = mk_keep_turn(mk_slot(h, k), cast(string) h[0].cur[0..<h[0].ncur]);
+  h[0].n[k + 1] = mk_keep_turn(mk_slot(h, k + 1), reply);
   h[0].turns += 1;
 }
 
@@ -236,25 +245,30 @@ mk_remember :: (h: [] MkTurns, reply: string) {
 MK_COMMAND_SECONDS :: 120;
 
 // The facts a run is told: the machine, the folder, a command's time limit (when the run has
-// its own) and the conversation so far.
+// its own) and the conversation so far. When they don't fit o, the oldest turns go first.
 mk_facts :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, o: [] u8) -> string {
+  for first: 0..<h[0].turns + 1 {
+    n := mk_facts_from(h, first, os, cwd, command_seconds, o);
+    if n >= 0 { return cast(string) o[0..<n]; }
+  }
+  return "{\"os\":\"macOS\"}";
+}
+mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_seconds: int, o: [] u8) -> int {
   n := json_raw(o, 0, "{\"os\":"); n = json_write_string(o, n, os);
   n = json_raw(o, n, ",\"app\":\"Coder in the terminal\",\"cwd\":");
   n = json_write_string(o, n, cwd);
   if command_seconds > 0 { n = json_raw(o, n, ",\"command_seconds\":"); n = json_write_int(o, n, command_seconds); }
-  if h[0].turns > 0 {
+  if h[0].turns > first {
     n = json_raw(o, n, ",\"conversation\":[");
-    for i: 0..<h[0].turns {
-      if i > 0 { n = json_raw(o, n, ","); }
+    for i: first..<h[0].turns {
+      if i > first { n = json_raw(o, n, ","); }
       n = json_raw(o, n, "{\"user\":"); n = json_write_string(o, n, mk_text(h, 2 * i));
       n = json_raw(o, n, ",\"you\":"); n = json_write_string(o, n, mk_text(h, 2 * i + 1));
       n = json_raw(o, n, "}");
     }
     n = json_raw(o, n, "]");
   }
-  n = json_raw(o, n, "}");
-  if n < 0 { return "{\"os\":\"macOS\"}"; }
-  return cast(string) o[0..<n];
+  return json_raw(o, n, "}");
 }
 
 #test "the conversation keeps the last turns, oldest first, and goes into the facts" {
@@ -269,6 +283,25 @@ mk_facts :: (h: [] MkTurns, os: string, cwd: string, command_seconds: int, o: []
   #assert h[0].turns == MK_TURNS && mk_text(h[..], 0) == "c" && mk_text(h[..], 2 * MK_TURNS - 2) == "h";
   f := mk_facts(h[..], "Linux", "/w", 0, o[..]);
   #assert cl_count(cl_raw(f, "conversation")) == MK_TURNS;
+}
+
+#test "a long reply is told whole up to MK_TURN_TEXT and then says it was cut; facts that overflow drop the oldest turns, not all" {
+  h: [1] MkTurns;
+  long: [3000] u8; for i: 0..<long.count { long[i] = 'x'; } long[2990] = 'E';
+  h[0].ncur = mk_keep(h[0].cur[..], "list three options");
+  mk_remember(h[..], cast(string) long[..]);                       // 3,000 bytes: the old 1,200 cut it
+  #assert mk_text(h[..], 1).count == 3000 && mk_text(h[..], 1)[2990] == 'E';
+  big: [MK_TURN_TEXT + 500] u8; for i: 0..<big.count { big[i] = 'y'; }
+  h[0].ncur = mk_keep(h[0].cur[..], "again");
+  mk_remember(h[..], cast(string) big[..]);
+  r := mk_text(h[..], 3);
+  #assert r.count == MK_TURN_TEXT && cast(string) r[r.count - MK_CUT.count..<r.count] == MK_CUT;
+  o: [6000] u8;                                                    // room for the newest turn only
+  f := mk_facts(h[..], "macOS", "/w", 0, o[..]);
+  #assert cl_raw(f, "conversation").count == 0 && json_valid(f);   // neither fits: no conversation, still the facts
+  o2: [10000] u8;                                                 // the newest fits, not both
+  f = mk_facts(h[..], "macOS", "/w", 0, o2[..]);
+  #assert cl_count(cl_raw(f, "conversation")) == 1 && cl_raw(f, "cwd") == "\"/w\"";   // the oldest went, the newest stayed
 }
 
 #test "Vertex from antigravity.env: its project and location, the defaults without them; the model and its limits" {

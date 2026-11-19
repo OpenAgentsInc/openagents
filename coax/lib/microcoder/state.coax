@@ -43,7 +43,8 @@ MC_ACTION_ROOM :: 49152;         // free log a new step starts with; else the ol
 MC_KEEP_RECENT :: 24576;         // the recent steps kept whole by a compaction, at most
 MC_EARLIER_BYTES :: 40960;       // the compacted steps
 MC_MAX_ACTIONS :: 512;           // steps the log can hold
-MC_PROMPT_BYTES :: 458752;       // the whole state's JSON: every buffer below, with room for its keys
+MC_FACTS_BYTES :: 131072;        // the environment: an owner's facts with its earlier turns (coder/tui/microcoder_keys.coax mk_facts)
+MC_PROMPT_BYTES :: 573440;       // the whole state's JSON: every buffer below, with room for its keys
 MC_STEP_BUDGET :: 32768;         // bytes one step's results may add to the recent steps (GitHub #13325): one step can't flush the rest
 MC_HELD :: "this step's results reached their 32 KB";   // why a result was cut or held back
 
@@ -52,7 +53,7 @@ McStateBuffers :: struct {
   clog: [MC_LOG_BYTES] u8;
   earlier: [MC_EARLIER_BYTES] u8;
   notes: [8192] u8;
-  facts: [16384] u8;
+  facts: [MC_FACTS_BYTES] u8;
   task: [16384] u8;
   route: [4096] u8;
 }
