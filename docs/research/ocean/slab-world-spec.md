@@ -1092,8 +1092,8 @@ later hour lifts the sun and shortens the shadows. The painterly style's
 golden-hour grade lifts the exposure and adds sepia; the photoreal style
 exposes for the deck's pale concrete and warms the camera's white balance
 under a low sun (photoreal.md). The spray at the walls is computed from the waves that meet them
-(section 4.7), so in this 4 m sea it is small against a 118 m wall: bursts a
-few metres high, about three every two seconds round the hull. The picture's
+(section 4.7), so in this 4 m sea it is small against a 118 m wall: bursts up
+to about 10 m high, about three every two seconds round the hull. The picture's
 plumes, about 36 m, need a sea between the `gale` and the `hurricane`
 (section 12).
 
