@@ -1,0 +1,47 @@
+// The wakes of the ships under way (apps/openagents-web/slab-content-life.coax writes them, slab.coax
+// U_SHIPS): white water at the bow, a Kelvin wake whose two arms open at 19.47 degrees from the
+// bow (the angle is the same for any ship at any speed: Kelvin 1887), and the propellers' wash
+// down the middle, fading astern. Foam only: the waves under the ships are the sea's.
+//   the block: SHIP_WAKES ships of 8 floats: world x, z, its bow's way x, z, speed (m/s), length, beam, 0
+SLAB_SHIPS :: 16236;   // slab.coax U_SHIPS
+SHIP_WAKES :: 2;
+SHIP_KELVIN :: 0.3536f32;   // tan(19.47 degrees)
+// How much of the sea at world point p is a ship's white water, 0 to 1.
+slab_ship_wake :: (p:V2,t:f32,u:[]f32)->f32 {
+  foam:f32=0.0f32;
+  k:int=0;
+  while k<SHIP_WAKES {
+    b:int=SLAB_SHIPS+(k*8);
+    speed:f32=u[b+4];
+    if (speed>0.3f32) {
+      dx:f32=p.x-u[b]; dz:f32=p.y-u[b+1];
+      fx:f32=u[b+2]; fz:f32=u[b+3];
+      ln:f32=u[b+5]; half:f32=u[b+6]*0.5f32;
+      a:f32=(dx*fx)+(dz*fz);          // along it, + toward the bow
+      y:f32=abs((dz*fx)-(dx*fz));     // off its centreline
+      back:f32=(ln*0.5f32)-a;        // behind the bow
+      if ((back> -4.0f32)&&(back<(ln*14.0f32))&&(y<(back*0.5f32)+half+8.0f32)) {
+        strong:f32=smoothstep(0.3f32,4.0f32,speed);
+        fade:f32=exp((-fmax(back,0.0f32))/(ln*4.0f32));
+        // the Kelvin arms: a band along each cusp line, widening astern
+        arm:f32=(y-(half*0.6f32))-(back*SHIP_KELVIN);
+        aw:f32=1.5f32+(0.025f32*back);
+        kel:f32=exp(-((arm*arm)/(aw*aw)))*fade*smoothstep(0.0f32,ln*0.3f32,back);
+        // the bow wave: white water climbing the hull's sides forward, and spreading off them
+        side:f32=half*clampf((back+2.0f32)/(ln*0.3f32),0.0f32,1.0f32);
+        bw:f32=(y-side)/(1.2f32+(0.05f32*back));
+        bow:f32=exp(-(bw*bw))*(1.0f32-smoothstep(ln*0.15f32,ln*0.7f32,back));
+        // the propellers' wash astern: a white lane a beam wide, widening and thinning out
+        aft:f32=back-ln;
+        ww:f32=half*(0.8f32+(0.03f32*fmax(aft,0.0f32)));
+        wash:f32=ifx aft>0.0f32 then exp(-((y*y)/(ww*ww)))*exp((-aft)/(ln*3.0f32))*smoothstep(-2.0f32,6.0f32,aft) else 0.0f32;
+        // broken up: patches, not paint
+        n:f32=(slab_noise(v2((p.x*0.09f32)+(t*0.05f32),p.y*0.09f32))*0.6f32)+(slab_noise(v2(p.x*0.31f32,(p.y*0.31f32)-(t*0.08f32)))*0.4f32);
+        f:f32=fmax(fmax(kel*0.8f32,bow),wash*0.9f32)*strong*smoothstep(0.25f32,0.7f32,n+(0.25f32*bow));
+        foam=fmax(foam,f);
+      }
+    }
+    k=k+1;
+  }
+  return clampf(foam,0.0f32,0.9f32);
+}

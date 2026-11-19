@@ -14,7 +14,7 @@
 //              the centre line, stopping at every crossing; forklifts circle the industry and
 //              container yards.
 //   ships      a supply ship goes round the platform and into the dock's basin in the lee, waits
-//              there and comes out; a tug stands by off the north wall; a bulk carrier holds
+//              there and comes out; a tug runs to and fro off the north wall; the ships under way leave wakes (gpu/slab-ship-wake.coax); a bulk carrier holds
 //              station 1.7 km off. Each rides the page's own sea (ww_height in slab-water.coax):
 //              heave, pitch and roll from nine heights under its hull (traffic_ride).
 //   aircraft   a helicopter on the hospital's roof lifts, flies out 2.5 km and comes back; gulls
@@ -36,6 +36,9 @@ LIFE_ROUTES :: 72;              // walking and driving loops the deck can hold
 LIFE_PTS :: 16;                 // points a loop may have, its last its first again
 LIFE_WALKERS :: 480; LIFE_WALKERS_PHONE :: 190;
 LIFE_STANDERS :: 48; LIFE_STANDERS_PHONE :: 20;
+LIFE_WAKE_FLOATS :: 16;     // two ships' wakes: world x, z, bow's way x, z, speed, length, beam, 0 (gpu/slab-ship-wake.coax SHIP_WAKES)
+LIFE_STATUE_SIZE :: 3.0f32;  // the statues: three times life size, 5.2 m (our assumption, as the classical colossi of a forum)
+LIFE_LAMP_GLOW :: 14.0f32;   // the lights' glow at full night, in whites (our assumption: bright enough to read 1 km off)
 LIFE_NEAR :: 48; LIFE_NEAR_PHONE :: 14;   // walking figures drawn whole, the nearest first
 LIFE_NEAR_M :: 70.0f32;         // within this many metres of the eye a person is a whole figure
 LIFE_FAR_M :: 1700.0f32;        // beyond this a far person is under a pixel tall at 1440 x 900
@@ -88,6 +91,7 @@ SlabLife :: struct {
   // the figure: three builds, each its own speed and strides a metre
   rigs: [3] mfig.Skeleton;
   rig_speed: [3] f32; rig_stride: [3] f32;
+  statue: mfig.Skeleton;        // the promenade's statues: a figure three times life size
   // what the deck gives, from the last list
   deck: CityDeck; ok: bool;
   routes: [LIFE_ROUTES] LifeRoute; route_count: int;
@@ -103,6 +107,7 @@ SlabLife :: struct {
   heli_on: bool; heli_x: f32; heli_y: f32; heli_z: f32; heli_yaw: f32; heli_pitch: f32; heli_turn: f32;
   shown: bool;                  // the deck's life is drawn this frame
   time: f32;
+  wakes: [LIFE_WAKE_FLOATS] f32;   // the ships under way, for the sea's shader (gpu/slab-ship-wake.coax)
   counts: [LIFE_KINDS] int;     // what this frame draws, by kind
 }
 
@@ -113,6 +118,7 @@ slab_life_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   k.paint = photo_material(ph, 0.92, 0.92, 0.9, 0.55, 0, PR_PATTERN_PLAIN, 0, 0);
   k.glass = photo_material(ph, 0.14, 0.18, 0.21, 0.08, 0.6, PR_PATTERN_PLAIN, 0, 0);
   k.dark = photo_material(ph, 0.06, 0.06, 0.065, 0.75, 0, PR_PATTERN_PLAIN, 0, 0);
+  k.lamp = photo_material(ph, 1, 1, 1, 0.3, 0, PR_PATTERN_PLAIN, 0, 0);   // the ships', vehicles' and helicopter's lights: lit after dusk (slab_life_move)
   L[0].look = k;
   L[0].cloth = photo_material(ph, 0.95, 0.95, 0.94, 0.85, 0, PR_PATTERN_PLAIN, 0, 0);
   L[0].pad = photo_material(ph, 0.16, 0.17, 0.18, 0.7, 0, PR_PATTERN_PLAIN, 0, 0);
@@ -135,6 +141,7 @@ slab_life_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
     L[0].rig_speed[r] = pr_figure_speed(sizes[r]);
     L[0].rig_stride[r] = pr_figure_strides(sizes[r]) / life_max(L[0].rig_speed[r], 0.1);
   }
+  L[0].statue = pr_figure_rig(LIFE_STATUE_SIZE, 1.05);
   L[0].made = L[0].wing >= 0;
 }
 
@@ -446,6 +453,52 @@ life_ship_world :: (s: [] Slab, L: [] SlabLife, kind: int, x: f32, z: f32, yaw: 
   life_body(L, LifeBody.{part = L[0].ship[kind], x = x, y = ride.heave, z = z, yaw = yaw, pitch = ride.pitch, roll = ride.roll, free = true, lean = true, tint = tint});
   L[0].counts[LIFE_K_SHIP] += 1;
 }
+// A statue on its pedestal (slab-photoreal.coax's row of statues): a moulded base and cap round the
+// pedestal, then the figure in marble, standing or caught mid-stride by its seed, facing `heading`.
+// y is the pedestal's top. False when the figures are not made yet (the row then keeps its drums).
+slab_life_statue :: (ph: [] SlabPhoto, l: [] PrList, i: int, px: f32, y: f32, pz: f32, heading: f32, seed: int) -> bool {
+  L := ph[0].content.life[..];
+  if !L[0].made { return false; }
+  v := cast(f32) (i + 1);
+  r := pr_box(l, ph[0].box, px - 0.98f32, y - 1.8f32, pz - 0.98f32, px + 0.98f32, y - 1.5f32, pz + 0.98f32, SLAB_M_LIMESTONE); pr_value(l, r, v);
+  r = pr_box(l, ph[0].box, px - 0.94f32, y - 0.24f32, pz - 0.94f32, px + 0.94f32, y, pz + 0.94f32, SLAB_M_LIMESTONE); pr_value(l, r, v);
+  // five poses, so a row is not one shape repeated: at rest, and four moments of a slow stride
+  // with the feet close (the stance's middle), each a little turned
+  k := seed % 5;
+  phase := [5] f32.[0, 0.2, 0.3, 0.7, 0.8];
+  pose := pr_figure_walk(phase[k], cast(f32) seed * 1.7f32, k > 0);
+  fl: PrFigureLook;
+  fl.material = SLAB_M_MARBLE; fl.sleeves = false;
+  w := [3] f32.[1, 1, 1];
+  fl.skin = w; fl.top = w; fl.legs = w; fl.shoes = w; fl.hair = w;
+  turn := (life_hash(seed, 41) - 0.5f32) * 0.5f32;
+  _ = pr_figure(l, L[0].bone, L[0].statue, pose, px, y, pz, heading + turn, fl, v);
+  return true;
+}
+// A ship's wake for the sea's shader: slot k, at hull point (hx, hz) with its bow along (dx, dz), at `speed`.
+life_wake :: (s: [] Slab, L: [] SlabLife, k: int, kind: int, hx: f32, hz: f32, dx: f32, dz: f32, speed: f32) {
+  sh := traffic_ship_of(kind);
+  p := to_world(s, hx, 0, hz);
+  yaw := life_yaw(dx, dz) + angle_atan2(-s[0].pose[8], s[0].pose[0]);
+  b := k * 8;
+  L[0].wakes[b] = p[0]; L[0].wakes[b + 1] = p[2]; L[0].wakes[b + 2] = cos(yaw); L[0].wakes[b + 3] = -sin(yaw);
+  L[0].wakes[b + 4] = speed; L[0].wakes[b + 5] = sh.length; L[0].wakes[b + 6] = sh.beam;
+}
+life_dist :: (a: [4] f32, b: [4] f32) -> f32 { return sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1])); }
+// The tug at `t`: out and back along the north wall at 3 m/s (our assumption), a minute and a half
+// at each end. Hull frame, as life_supply.
+life_tug :: (L: [] SlabLife, t: f32) -> [4] f32 {
+  d := L[0].deck;
+  z := d.z1 + 150;
+  pts := [6] f32.[d.x1 - 420, z, d.x1 - 120, z, d.x1 - 420, z];
+  al: [3] f32; wait := [3] f32.[90, 90, 0];
+  _ = lane.metaverse_lane_build(pts[..], al[..]);
+  cyc := tt_cycle(al[..], wait[..], 3, 0.15, false) + 90;
+  q := t + 40; q = q - floor(q / cyc) * cyc;
+  r := tt_run(al[..], wait[..], 3, 0.15, false, q);
+  p := tt_place(pts[..], al[..], r); h := tt_heading(pts[..], al[..], r, false, 30);
+  return [4] f32.[p[0], p[1], h[0], h[1]];
+}
 // The supply ship's round: clockwise past the north and east walls, along the south wall into the
 // dock's basin (sideways at a crawl), four minutes at the stage, out and home along the west wall.
 // Hull frame: x, z and the way its bow points.
@@ -522,6 +575,7 @@ life_heli :: (L: [] SlabLife, t: f32) {
 // Called by slab-photoreal.coax once a frame, before the moving list: everything's place now.
 slab_life_frame :: (s: [] Slab, w: SlabWorld) {
   L := s[0].photo[0].content.life[..];
+  for i: 0..<LIFE_WAKE_FLOATS { L[0].wakes[i] = 0; }
   L[0].body_count = 0; L[0].figure_count = 0; L[0].bird_count = 0; L[0].heli_on = false; L[0].shown = false;
   for k: 0..<LIFE_KINDS { L[0].counts[k] = 0; }
   if !L[0].made || !L[0].ok || w.layout != LAYOUT_PRIME || w.build { return; }
@@ -593,14 +647,16 @@ slab_life_frame :: (s: [] Slab, w: SlabWorld) {
     for i: 0..<forks { k := life_nth(L, i % nf, true); life_drive(L, k, wait[..], t, 500 + i, L[0].forklift, 2.5, d.y, [3] f32.[0.85, 0.62, 0.12]); }
   }
   // ships
-  sp := life_supply(L, t);
-  life_ship(s, L, TRAFFIC_SUPPLY, sp[0], sp[1], sp[2], sp[3], [3] f32.[0.78, 0.2, 0.14]);
-  // the tug off the north wall and the bulk carrier far off, each with its bow to the weather
+  sp := life_supply(L, t); sn := life_supply(L, t + 1);
+  life_ship(s, L, TRAFFIC_SUPPLY, sp[0], sp[1], sp[2], sp[3], [3] f32.[1, 1, 1]);
+  life_wake(s, L, 0, TRAFFIC_SUPPLY, sp[0], sp[1], sp[2], sp[3], life_dist(sp, sn));
+  // the tug patrolling off the north wall, and the bulk carrier far off with its bow to the weather
   into := angle_atan2(cos(hd), -sin(hd));
-  tp := to_world(s, d.x1 - 200, 0, d.z1 + 160);
-  life_ship_world(s, L, TRAFFIC_TUG, tp[0], tp[2], into, [3] f32.[0.9, 0.42, 0.12]);
+  tg := life_tug(L, t); tn := life_tug(L, t + 1);
+  life_ship(s, L, TRAFFIC_TUG, tg[0], tg[1], tg[2], tg[3], [3] f32.[1, 1, 1]);
+  life_wake(s, L, 1, TRAFFIC_TUG, tg[0], tg[1], tg[2], tg[3], life_dist(tg, tn));
   bp := to_world(s, d.x0 - 650, 0, d.z0 - 950);
-  life_ship_world(s, L, TRAFFIC_BULKER, bp[0], bp[2], into + 0.12f32, [3] f32.[0.3, 0.22, 0.2]);
+  life_ship_world(s, L, TRAFFIC_BULKER, bp[0], bp[2], into + 0.12f32, [3] f32.[1, 1, 1]);
   // the tour's size stop: Prelude, a container ship and a tower fill the outlines as they grow
   if s[0].hp.tour.on && s[0].hp.tour.stop == 1 {
     for i: 0..<TOUR_THINGS {
@@ -687,6 +743,7 @@ life_drive :: (L: [] SlabLife, k: int, wait: [] f32, t: f32, i: int, part: int, 
 slab_life_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   L := ph[0].content.life[..];
   if !L[0].made || !L[0].shown { return; }
+  photo_glow(ph, L[0].look.lamp, LIFE_LAMP_GLOW * w.night);   // the lights come on as the sun goes down
   for i: 0..<L[0].body_count {
     b := L[0].bodies[i];
     r := pr_put(l, b.part, b.x, b.y, b.z, b.yaw, 1);
@@ -818,13 +875,13 @@ life_card :: (s: [] Slab, h: [] SceneHud, i: int) {
     return;
   }
   if what == LIFE_SEL_TUG {
-    cd_open(h, "Tug", "A harbour tug, standing by off the north wall.",
+    cd_open(h, "Tug", "A harbour tug, on watch off the north wall.",
       "Tugs push big ships into a berth, and stand by in case one loses power near the walls.");
     cd_number(h, cd_plan(32, 11.5), "How long and wide it is", cd_p("The wall behind it is ", wall / 12.5, 0, " times as tall as the tug."), SH_OURS);
     cd_number(h, cd_v(70, 0, " t"), "How hard it can pull", cd_p("As much as ", 70 / 1.5, 0, " cars hanging from a rope."), SH_OURS);
-    cd_number(h, cd_v(160, 0, " m"), "How far off the wall it waits", cd_words("Clear of the waves that bounce back off the wall."), SH_OURS);
+    cd_number(h, cd_v(150, 0, " m"), "How far off the wall it keeps", cd_words("Clear of the waves that bounce back off the wall."), SH_OURS);
     cd_now(h);
-    sh_say(h, "Holding its place with its bow to the waves. It rides the simulated sea.");
+    sh_say(h, ifx life_dist(life_tug(L, t), life_tug(L, t + 1)) > 0.3f32 then "Running slowly along the north wall, leaving a wake. It rides the simulated sea." else "Waiting at one end of its watch. It rides the simulated sea.");
     cd_maths(h);
       sh_say(h, "A harbour tug of this size pulls about 70 t at its towing hook. A car weighs about 1.5 t.");
     sh_end_of(h);

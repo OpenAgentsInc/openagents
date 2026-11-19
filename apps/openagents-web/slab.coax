@@ -105,7 +105,8 @@ TILE_N :: 64;
 WORDS :: W_FINE + TILE_N * TILE_N;
 U_WATER :: U_WORDS + WORDS + SEAS_FLOATS + PHOTO_FLOATS;   // the sea block (slab-sea.coax), the photoreal frame's (slab-photoreal.coax), then what the hull does to the water (slab-water.coax, WW_FLOATS)
 U_MOOR :: U_WATER + WW_FLOATS;   // then the mooring lines as the view under the sea draws them (slab-lines.coax)
-UNIFORM_FLOATS :: U_MOOR + LINES_FLOATS;
+U_SHIPS :: U_MOOR + LINES_FLOATS;   // then the ships' wakes (slab-content-life.coax, LIFE_WAKE_FLOATS)
+UNIFORM_FLOATS :: U_SHIPS + LIFE_WAKE_FLOATS;
 
 CAM_ORBIT :: 0; CAM_FLY :: 1; CAM_WALK :: 2;
 

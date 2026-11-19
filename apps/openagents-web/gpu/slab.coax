@@ -7,6 +7,7 @@
 #load "slab-sea.coax";
 #load "slab-foam.coax";   // the open sea's foam, from the frame store (slab-foam.coax beside the page)
 #load "slab-water.coax";
+#load "slab-ship-wake.coax";   // the ships' wakes (slab-content-life.coax)
 #load "../../../metaverse/hull.coax";
 #load "slab-photoreal.coax";   // the photoreal style's mesh pass, sky and air (docs/metaverse/photoreal.md)
 
@@ -279,7 +280,7 @@ slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32,frame:[]f32)->V3 {
   sea:V4=slab_sea(p,world,d,dist,t,sw_sea(p,u),u,frame);
   white:V3=slab_sea_white(u);
   fp:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
-  return sw_tint(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white_px(p,t,fp,u)),p,white,t,u);
+  return sw_tint(sb_mix(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white_px(p,t,fp,u)),white,slab_ship_wake(p,t,u)),p,white,t,u);
 }
 
 // ---- The platform: metaverse/slab-plan.coax's records, traced in the hull's frame.

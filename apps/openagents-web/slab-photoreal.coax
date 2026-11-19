@@ -320,7 +320,9 @@ photo_plan :: (ph: [] SlabPhoto, l: [] PrList, rec: [] f32, n: int, tripped: boo
           w := ifx side == 0 then s0 else s1;
           px := ifx along_x then c else w; pz := ifx along_x then w else c;
           r := pr_box(l, ph[0].box, px - 0.8f32, y0, pz - 0.8f32, px + 0.8f32, y0 + 1.8f32, pz + 0.8f32, SLAB_M_LIMESTONE); pr_value(l, r, cast(f32) (i + 1));
-          photo_drum(ph, l, i, px, y0 + 1.8f32, pz, 0.76, 2.4, SLAB_M_MARBLE);
+          // the figure faces across the promenade (slab-content-life.coax)
+          face := ifx along_x then (ifx side == 0 then 0.0f32 else 3.14159265f32) else (ifx side == 0 then 1.5707963f32 else -1.5707963f32);
+          if !slab_life_statue(ph, l, i, px, y0 + 1.8f32, pz, face, k * 2 + side + i * 7) { photo_drum(ph, l, i, px, y0 + 1.8f32, pz, 0.76, 2.4, SLAB_M_MARBLE); }
         }
       }
       pr_fine(l, false);
@@ -509,6 +511,7 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   key := photo_key(rec, n, tripped, phone);
   if !ph[0].keyed || key != ph[0].key { photo_list(s, rec, n, tripped, phone); ph[0].key = key; ph[0].keyed = true; }
   slab_life_frame(s, photo_world(s, rec, n, phone));   // where what moves is now (slab-content-life.coax)
+  for i: 0..<LIFE_WAKE_FLOATS { u[U_SHIPS + i] = s[0].photo[0].content.life[0].wakes[i]; }   // and its ships' wakes
   photo_movers(s, rec, n, phone, u[P + P_PICK + 3]);
   // the lamps nearest the view shine on smooth things (a desktop only); the rest are the lamp field's
   near: PrNear;
