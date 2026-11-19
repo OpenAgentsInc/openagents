@@ -50,3 +50,21 @@
  #assert app_test_end(t[..]) && n==5*height && app_test_row(t[..],"h.d").y==20;
 
 }
+
+#test "app nav: unread rows draw a dot only when neither current nor busy" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  rows := [3] AppSideRow.[
+    AppSideRow.{id = "u.read", title = "Read"},
+    AppSideRow.{id = "u.unread", title = "Unread", unread = true},
+    AppSideRow.{id = "u.busy", title = "Busy", state = EL_S_BUSY, unread = true}];
+  app_test_begin(t[..], "", "", true);
+  _ := app_side_window(f, 0, 0, 120, 200, rows[..], 0, 0, 5);
+  #assert app_test_end(t[..]);
+  // Only u.unread draws a filled dot primitive (u.read has none; u.busy draws its activity arcs).
+  #assert app_test_prims(t[..], PRIM_BOX) == 1 && app_test_prims(t[..], PRIM_ARC) == 2;
+  // Marking u.unread as current suppresses the dot (only the current highlight rect is drawn).
+  cur_rows := [1] AppSideRow.[AppSideRow.{id = "u.unread", title = "Unread", state = EL_S_CURRENT, unread = true}];
+  app_test_begin(t[..], "", "", true);
+  _ := app_side_window(f, 0, 0, 120, 200, cur_rows[..], 0, 0, 5);
+  #assert app_test_end(t[..]) && app_test_prims(t[..], PRIM_BOX) == 1;
+}

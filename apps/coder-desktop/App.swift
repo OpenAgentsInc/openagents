@@ -262,6 +262,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private let editor: KitMacEditor
     private var run: CoderRun                    // the shown chat's run, on the window's page
     private var runs: [String: CoderRun] = [:]   // chats whose replies run out of view, by id
+    private var unread: Set<String> = []         // background chats with unread output or a completed turn
     private var last = CACurrentMediaTime()      // when the clock last ticked, for their pages' seconds
     private var line: CGFloat
     private var clock: Timer?
@@ -335,10 +336,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
 
     func wake() { owed = 3 }
 
+    /// Marks a background chat unread when it produces output or completes a turn while unfocused.
+    private func markUnread(_ r: CoderRun) {
+        guard r !== run, let id = r.chat, id != chat else { return }
+        if unread.insert(id).inserted { cd_chats(page, chatLines) }
+    }
     /// A run's worker lines go to its page, wherever that page is now.
     private func wire(_ r: CoderRun) {
-        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.pump(r) }
-        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); self.pump(r) }
+        r.worker.line = { [weak self, weak r] text in guard let self, let r else { return }; cd_line(r.page, text); self.markUnread(r); self.pump(r) }
+        r.worker.gone = { [weak self, weak r] in guard let self, let r else { return }; cd_failed(r.page, "Microcoder stopped running. Send the message again."); self.markUnread(r); self.pump(r) }
     }
     /// After any worker's line: answer what is owed, start the sub-agents the page asks for, and
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
@@ -360,8 +366,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 if j < 0 { break }
                 let one = CoderWorker()
                 if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-                one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.pump(r) }
-                one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.pump(r) }
+                one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.markUnread(r); self.pump(r) }
+                one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.markUnread(r); self.pump(r) }
                 guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
                 let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), cwd, &out, Int32(out.count))
@@ -376,12 +382,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         wake()
     }
-    /// The list as the page reads it: one chat a line, its id, a tab, its title, and a tab and 1
-    /// when its reply runs out of view.
+    /// The list as the page reads it: one chat a line, its id, a tab, its title, and optional tabs
+    /// for busy, pinned, managed and unread flags.
     private var chatLines: String {
         store.orderedList.map { chat in
             let isBusy = runs[chat.id] != nil
-            if chat.pinned != nil {
+            let isPinned = chat.pinned != nil
+            let isUnread = unread.contains(chat.id)
+            if isUnread {
+                return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t0\t1"
+            }
+            if isPinned {
                 return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t1"
             }
             return chat.id + "\t" + chat.title + (isBusy ? "\t1" : "")
@@ -407,6 +418,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
         back.stop(); cd_close(back.page)
+        if id != chat { unread.insert(id) }
         cd_chats(page, chatLines); wake()
     }
     var canFolder: Bool { cd_running(page) == 0 }
@@ -506,6 +518,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             runs[id] = nil; cd_close(back.page); back.page = page
             run.stop()   // the window's idle worker: a message in a chat opened later starts another
             run = back
+            unread.remove(id)
             chat = id; recallDue = false; cd_current(page, id)
             setFolder(back.folder, keep: false)
             cd_chats(page, chatLines)
@@ -519,7 +532,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             failed.beginSheetModal(for: window)
             return
         }
+        let clearedUnread = unread.remove(id) != nil
         chat = id; recallDue = true; cd_current(page, id)
+        if clearedUnread { cd_chats(page, chatLines) }
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         window.makeFirstResponder(editor)
@@ -654,6 +669,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             guard let self, answer == .alertFirstButtonReturn else { return }
             if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page) }
             guard !self.busy(id) else { return }
+            self.unread.remove(id)
             self.store.remove(id)
             cd_chats(self.page, self.chatLines)
             self.window.makeFirstResponder(self.editor); self.wake()
@@ -736,7 +752,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)
-        if shown { chat = id; cd_current(page, id) } else { r.chat = id }
+        if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         cd_chats(page, chatLines)
     }
 

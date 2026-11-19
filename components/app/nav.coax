@@ -34,11 +34,13 @@ app_side_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: stri
 // A history row in the sidebar at (x, y), w wide: a title cut with an
 // ellipsis and, when it has one, a second line under it (a time, a model).
 // EL_S_CURRENT is the chat that is shown, on a lit ground; EL_S_BUSY shows the
-// activity mark at its right edge (a reply runs there). It is washed while
-// held. Returns its height.
-app_side_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, action: int) -> f32 {
+// activity mark at its right edge (a reply runs there); unread shows a dot at
+// the right edge when neither current nor busy. It is washed while held.
+// Returns its height.
+app_side_row_draw :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, unread: bool, action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
   current := (state & EL_S_CURRENT) != 0; busy := (state & EL_S_BUSY) != 0; off := (state & EL_S_DISABLED) != 0;
+  mark_unread := unread && !busy && !current && !off;
   h := ifx detail.count > 0 then a.side_row_two else a.side_row;
   k := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, id);
@@ -48,15 +50,21 @@ app_side_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: strin
   if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
   row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, ifx off then 0 else action);
   elt_value(f[0].rows, row, detail);
-  room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else 0.0f32);
+  dot := a.dot;
+  dot_inset := ifx a.icon > dot then (a.icon + dot) / 2 else dot;
+  room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else ifx mark_unread then dot_inset + a.gap else 0.0f32);
   tf := ifx a.side_row < 34 then s.small else s.body;
   lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
-  ink := ifx off then s.faint else ifx current || hovered then s.ink else s.muted;
+  ink := ifx off then s.faint else ifx current || hovered || mark_unread then s.ink else s.muted;
   _ := sheet_text(sh, m, -1, x + a.side_pad, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
   if detail.count > 0 { _ := sheet_text(sh, m, -1, x + a.side_pad, ty + tf.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
   if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
+  else if mark_unread { sheet_fill(sh, x + w - a.side_pad - dot_inset, y + (h - dot) / 2, dot, dot, dot / 2, s.accent); }
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
   return h;
+}
+app_side_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, action: int) -> f32 {
+  return app_side_row_draw(f, id, x, y, w, title, detail, state, false, action);
 }
 // A primary action row in the sidebar at (x, y), w wide: a leading icon and
 // a single-line label, sharing the sidebar's inset, radius and row height.
@@ -90,6 +98,7 @@ AppSideRow :: struct {
   detail: string;             // its second line ("": none)
   state: int;                 // EL_S_CURRENT, EL_S_BUSY
   heading: bool;
+  unread: bool;
   action: int= -1;             // -1 uses the list's action
 }
 // A section of the sidebar at (x, y), w wide: its head (head_id, "" for no
@@ -98,7 +107,7 @@ AppSideRow :: struct {
 app_side_list :: (f: [] UiFrame, head_id: string, x: f32, y: f32, w: f32, head: string, rows: [] AppSideRow, action: int) -> f32 {
   h: f32 = 0;
   if head.count > 0 { h += app_side_head(f, head_id, x, y, w, head); }
-  for r: rows { h += app_side_row(f, r.id, x, y + h, w, r.title, r.detail, r.state, action); }
+  for r: rows { h += app_side_row_draw(f, r.id, x, y + h, w, r.title, r.detail, r.state, r.unread, action); }
   return h;
 }
 
@@ -109,7 +118,7 @@ app_side_window :: (f:[]UiFrame,x:f32,top:f32,w:f32,viewport:f32,rows:[]AppSideR
  uiframe_clip(f,x,top,x+w,top+viewport);
  for r:rows {h:=ifx r.heading then f[0].skin.app.side_head else f[0].skin.app.side_row;y:=top+cursor-at;cursor+=h;if y+h<=top || y>=top+viewport {continue;}
   if r.heading {_:=app_side_head(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title));}
-  else {_:=app_side_row(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),"",r.state,ifx r.action>=0 then r.action else action);}
+  else {_:=app_side_row_draw(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),"",r.state,r.unread,ifx r.action>=0 then r.action else action);}
  }
  uiframe_unclip(f);return content;
 }
