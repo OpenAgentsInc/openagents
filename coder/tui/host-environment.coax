@@ -431,7 +431,7 @@ es_stamp_parts :: (n:int,stamps:[]int,have:int,now:int)->int {
 es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(all) {
   part:=s[0].n-1;end:= -1;
   if q[0].before>0 {part=q[0].before/1000000-1;end=q[0].before%1000000;if part<0 || part>=s[0].n {es_refuse(v,"stale_cursor");return;}}
-  bytes:=0;
+  bytes:=0;dbytes:=0;
   while part>=0 && v[0].ni<24 && bytes<5996 {
     p:=s[0].parts[part];
     text:=ifx p.kind==P_TOOL then (ifx p.resolved && p.output.count>0 then p.output else ifx p.input.count>0 then p.input else p.detail) else s_text_of(s,part);
@@ -442,6 +442,15 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
     m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else ifx p.kind==P_THINK then EA_ROLE_THOUGHT else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
     if p.kind==P_TOOL && !p.resolved && s[0].live && part<stamps.count && stamps[part]>0 {m.started=stamps[part];}
     if p.kind==P_TOOL && p.subcalls>0 {m.calls=p.subcalls;m.nn=ea_copy(m.now[..],hs_cut(p.subnow,160));if m.nn<0 {m.nn=0;}}
+    m.np=0;m.ndiff=0;m.diff_cut=false;
+    // an edit's or a write's file, and what it changed while the page has room (GitHub #13713)
+    if p.kind==P_TOOL && (p.tk==TK_EDIT || p.tk==TK_WRITE) && p.arg.count>0 && p.arg.count<=512 {
+      m.np=ea_copy(m.path[..],p.arg);
+      if (p.before.count>0 || p.after.count>0) && dbytes<16000 {
+        d:[EA_DIFF]u8;cut:[1]bool;dn:=ea_diff_make(d[..],p.before,p.after,cut[..]);
+        if dn>0 {m.diff_at=ea_text_put(v,cast(string)d[0..<dn]);if m.diff_at<0 {es_refuse(v,"output_limit");return;}m.ndiff=dn;m.diff_cut=cut[0];dbytes+=dn;}
+      }
+    }
     m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && ((p.kind!=P_TEXT && p.kind!=P_THINK) || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
     v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;
     if start>0 {end=start;break;}part-=1;end= -1;
@@ -474,6 +483,14 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
   a:=s_part(s,P_TOOL);s[0].parts[a].id="a";s[0].parts[a].name="Task";s[0].parts[a].tk=TK_AGENT;s[0].parts[a].input="{}";s[0].parts[a].subcalls=4;s[0].parts[a].subnow="Read /w/a.toml";
   q:[1]EaRequest;v:[1]EaView;es_project(s,q[..],v[..]);
   #assert v[0].ni==2 && v[0].items[1].calls==4 && cast(string)v[0].items[1].now[0..<v[0].items[1].nn]=="Read /w/a.toml" && v[0].items[0].calls==0;
+}
+#test "an edit reaches the page with its file and its change; a read carries neither" {
+  ses:[1]Session;pool:[4096]u8;s_init(ses[..],pool[..]);s:=ses[..];s_user(s,"Fix it");
+  a:=s_part(s,P_TOOL);s[0].parts[a].id="a";s[0].parts[a].name="Edit";s[0].parts[a].tk=TK_EDIT;s[0].parts[a].input="{}";s[0].parts[a].arg="/w/a.coax";s[0].parts[a].before="x := 1";s[0].parts[a].after="x := 2";s[0].parts[a].resolved=true;s[0].parts[a].output="The file was updated";
+  b:=s_part(s,P_TOOL);s[0].parts[b].id="b";s[0].parts[b].name="Read";s[0].parts[b].tk=TK_READ;s[0].parts[b].input="{}";s[0].parts[b].arg="/w/b.coax";
+  q:[1]EaRequest;v:[1]EaView;es_project(s,q[..],v[..]);
+  #assert v[0].ni==3 && cast(string)v[0].items[1].path[0..<v[0].items[1].np]=="/w/a.coax" && ea_item_diff(v[..],1)=="-x := 1\n+x := 2\n" && ea_item_text(v[..],1)=="The file was updated";
+  #assert v[0].items[2].np==0 && ea_item_diff(v[..],2)=="";
 }
 #test "a session's thinking reaches the page as thought items in place, the live one still open" {
   s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"Fix it");s[0].live=true;s_delta(s[..],P_THINK,"Look first");s_delta(s[..],P_TEXT,"On it");s_delta(s[..],P_THINK,"Then edit");

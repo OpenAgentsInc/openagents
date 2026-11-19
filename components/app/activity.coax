@@ -33,7 +33,8 @@ APP_ACT_GLOB :: 5; APP_ACT_WEB :: 6; APP_ACT_TODO :: 7; APP_ACT_AGENT :: 8; APP_
 APP_ACT_KINDS :: 10;
 // Zeron's glyph for each kind (ds/activity GLYPH); a sub-agent's is the bot.
 APP_ACT_GLYPH :: [APP_ACT_KINDS] int.[ICON_TERMINAL, ICON_DOCUMENT, ICON_PEN, ICON_DOCUMENT_ADD, ICON_MAGNIFER, ICON_FOLDER, ICON_GLOBAL, ICON_CHECKLIST, ICON_BOT, ICON_THOUGHT];
-APP_ACT_OUTPUT_OPEN :: APP_TOOL_RESULT_PAGE;   // the keyed slot that says a row's long output shows whole
+APP_ACT_OUTPUT_OPEN :: APP_TOOL_RESULT_PAGE;
+APP_ACT_DIFF_LINES :: 24;   // an edit's change shows this many lines at most, then how many more   // the keyed slot that says a row's long output shows whole
 
 // One row of a group.
 AppActRow :: struct {
@@ -48,6 +49,7 @@ AppActRow :: struct {
   calls: int;                 // a sub-agent's: the calls its agent has made, said at the row's end before that ("3 tool calls")
   opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
   path: string;               // the file it names, when its target is one: the target is a link that dispatches the row's action under id + ".path"
+  diff: string; diff_cut: bool;   // an edit's change, "-" and "+" lines, shown before its output in the danger's and success's tones; diff_cut: it was longer
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
 
@@ -249,6 +251,27 @@ app_act_detail :: (f: [] UiFrame, id: string, k: int, tx: f32, y: f32, tw: f32, 
     elt_value(f[0].rows, row, r.call);
     h += bh + a.detail_gap;
   }
+  if r.diff.count > 0 {
+    // the change: removed lines in the danger's tone, added ones in the success's, at most APP_ACT_DIFF_LINES
+    total := app_lines(r.diff); shown := ifx total > APP_ACT_DIFF_LINES then APP_ACT_DIFF_LINES else total;
+    more := total - shown; foot := ifx more > 0 || r.diff_cut then 1 else 0;
+    bh := 2 * a.detail_pad_y + cast(f32) (shown + foot) * line;
+    sheet_fill(sh, tx, y + h, tw, bh, a.detail_radius, wash);
+    uiframe_clip(f, tx, y + h, tx + tw - a.detail_pad_x, y + h + bh);
+    for q: 0..<shown {
+      l := app_line(r.diff, q); tone := ifx l.count > 0 && l[0] == '-' then s.danger else ifx l.count > 0 && l[0] == '+' then s.success else s.muted;
+      _ := sheet_plain(sh, m, tx + a.detail_pad_x, y + h + a.detail_pad_y + cast(f32) q * line, line, s.mono_small.face, tone, l, true);
+    }
+    if foot > 0 {
+      fb: [64] u8; fn := 0;
+      if more > 0 { fn = el_put_i(fb[..], 0, more); fn = el_put(fb[..], fn, ifx more == 1 then " more line" else " more lines"); } else { fn = el_put(fb[..], 0, "Change shortened"); }
+      _ := sheet_plain(sh, m, tx + a.detail_pad_x, y + h + a.detail_pad_y + cast(f32) shown * line, line, s.mono_small.face, s.faint, sheet_pool(sh, cast(string) fb[0..<fn]), true);
+    }
+    uiframe_unclip(f);
+    row := uiframe_semantic(f, app_id(ib[..], id, ".diff"), EL_TEXT, "Change", tx, y + h, tw, bh, 0, 0);
+    elt_value(f[0].rows, row, r.diff);
+    h += bh + a.detail_gap;
+  }
   if r.output.count > 0 || r.failed {
     total := app_lines(r.output); most := cast(int) a.detail_lines;
     whole := keyed_slot(f[0].keyed, k, APP_ACT_OUTPUT_OPEN) > 0;
@@ -345,7 +368,7 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   if r.kind == APP_ACT_THOUGHT { return app_act_thought(f, id, x, y, w, r, below, action); }
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; rh := a.row;
   k := uiframe_key(f, id);
-  shows := r.call.count > 0 || r.output.count > 0 || r.failed;
+  shows := r.call.count > 0 || r.output.count > 0 || r.failed || r.diff.count > 0;
   opens := r.opens || shows;
   open := shows && !r.opens && app_tool_is_open(f, k, false);
   // the glyph, in a box of its own off the line

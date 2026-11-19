@@ -41,6 +41,11 @@ message RuntimeItem {
   // Absent for any other item and from an older computer; subagent_now never comes without a count.
   optional int64 subagent_calls = 7 [json_name = "subagent_calls"];
   optional string subagent_now = 8 [json_name = "subagent_now"]; // at most 160 bytes
+  // An edit's or a write's file and what it changed: "-" lines, then "+" lines, whole lines, at most
+  // 4000 bytes; diff_cut says it was longer. Absent for any other item and from an older computer.
+  optional string path = 9 [json_name = "path"]; // at most 512 bytes
+  optional string diff = 10 [json_name = "diff"];
+  optional bool diff_cut = 11 [json_name = "diff_cut"]; // only with a diff
 }
 // A turn's thinking. A v1alpha1 reader draws any role but user, assistant, tool and notice as a
 // reply, so thoughts never travel in items: each sits beside them, before the item at `at` (an

@@ -254,6 +254,12 @@ view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow {
   // a call the computer says is still running carries when it began
   if m.complete && m.started == 0 { r.output = text; } else { r.running = true; if r.target != text { r.call = text; } }
   if m.started > 0 && wall_ms > 0 { r.timed = true; r.secs = (wall_ms - m.started) / 1000; }
+  // an edit or a write names its file (a link to the computer's workspace) and shows what it changed
+  if m.np > 0 {
+    r.path = cast(string) e[0].view[0].items[i].path[0..<m.np]; from := 0; for ch, q: r.path { if ch == '/' { from = q + 1; } }
+    if from < r.path.count { r.target = cast(string) r.path[from..<r.path.count]; }
+    r.diff = ea_item_diff(e[0].view[..], i); r.diff_cut = m.diff_cut;
+  }
   // a sub-agent says how many calls its agent has made; while it runs, its row opens onto the newest
   if m.calls > 0 {
     r.calls = m.calls;
@@ -527,6 +533,8 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
     for k: r.index..<last + 1 {
       child := view_group_key(buf[..], id, k);
       if pressed.count >= child.count && cast(string) pressed[0..<child.count] == child && (pressed.count == child.count || pressed[child.count] == '.') {
+        // a computer session's file: the page opens that computer's workspace on its changes
+        if r.kind == VK_DEVICE_TOOL && app_act_path_pressed(child, pressed) { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_FILE}; }
         return ViewPress.{kind = ifx app_act_press(keyed, child, pressed) then VIEW_P_LOCAL else VIEW_P_NONE};
       }
     }

@@ -491,6 +491,12 @@ ch_login_close :: (s: [] ChatPage) -> bool {
 ch_stamp :: (s: [] ChatPage) -> int { return surface_stamp(ch_live(s)); }
 // A drawer destination leaves Settings, including its nested Usage page.
 ch_main :: (s:[]ChatPage) {s[0].workspaces[0].open=false;s[0].foreman[0].open=false;s[0].foreman[0].asking=false;s[0].thread_menu=false;s[0].thread_details=false;s[0].rename=false;s[0].workspace=false;s[0].filter_menu=false;s[0].renderer=false;s[0].usage[0].open=false;s[0].usage[0].code_ready=false;s[0].identity[0].open=false;s[0].identity[0].backup=false;s[0].identity[0].confirm=0;}
+// A file a computer session changed: that computer's workspace opens on its changes (the Diff tab).
+ch_open_changes :: (s:[]ChatPage)->bool {
+ if s[0].core.count<1 || !app_device_on(s[0].core) {return false;}host:=app_environment(s[0].core);
+ if !wsc_open(s[0].workspaces[..],host,false) {return false;}s[0].workspaces[0].tab=0;s[0].workspaces[0].cursor=0;s[0].workspace=false;s[0].thread_menu=false;s[0].thread_details=false;
+ ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;
+}
 // A press on a committed row; platform effects go through the shared core.
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
@@ -581,6 +587,7 @@ ch_press :: (s: [] ChatPage, row: int) -> bool {
     if s[0].core.count < 1 { return false; }
     p := view_press(s[0].view[..], s[0].core, s[0].keyed[0..<1], surface_id(sf, row), act);
     if p.kind == VIEW_P_FOCUS { ch_set_focus(s, VIEW_COMPOSER_ID); s[0].action = CH_ACT_FOCUS; return true; }
+    if p.kind == VIEW_P_DISPATCH && p.what == VIEW_C_FILE { return ch_open_changes(s); }
     if p.kind == VIEW_P_DISPATCH { return ch_dispatch(s, p.what, p.text); }
     return p.kind == VIEW_P_LOCAL;
   }

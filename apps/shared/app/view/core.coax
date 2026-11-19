@@ -39,7 +39,7 @@ view_facts :: (c: [] AppCore) -> ViewFacts {
 }
 
 // What a press asks the core for. VIEW_C_* are the page's own words for it.
-VIEW_C_SEND :: 1; VIEW_C_STOP :: 2; VIEW_C_ALLOW :: 3; VIEW_C_DENY :: 4; VIEW_C_RETRY :: 5; VIEW_C_RECONNECT :: 6; VIEW_C_COPY :: 7; VIEW_C_LINK :: 8;
+VIEW_C_SEND :: 1; VIEW_C_STOP :: 2; VIEW_C_ALLOW :: 3; VIEW_C_DENY :: 4; VIEW_C_RETRY :: 5; VIEW_C_RECONNECT :: 6; VIEW_C_COPY :: 7; VIEW_C_LINK :: 8; VIEW_C_FILE :: 9;   // a file a computer session changed: the page itself opens that computer's workspace (no core action)
 view_code :: (what: int) -> int {
   return ifx what == VIEW_C_SEND then ACT_SEND else ifx what == VIEW_C_STOP then ACT_STOP else ifx what == VIEW_C_ALLOW then ACT_ALLOW
     else ifx what == VIEW_C_DENY then ACT_DENY else ifx what == VIEW_C_RETRY then ACT_RETRY else ifx what == VIEW_C_RECONNECT then ACT_RECONNECT

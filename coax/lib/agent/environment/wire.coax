@@ -83,7 +83,28 @@ EA_ROLE_THOUGHT :: "thought";
 // ("started_at_ms"): an older computer sends none and an older reader skips it.
 // calls, now: a sub-agent's call, the calls its agent has made and the newest ("Bash ls -la");
 // optional on the wire ("subagent_calls", "subagent_now"), absent for any other item.
-EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;}
+// path, diff: an edit's or a write's file and what it changed, "-" and "+" lines (in the view's text
+// arena at diff_at, at most EA_DIFF bytes; diff_cut: it was longer). Optional on the wire ("path",
+// "diff", "diff_cut"), absent for any other item and from an older computer.
+EA_DIFF :: 4000;
+EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;}
+// An edit's change as "-" lines (before) then "+" lines (after), whole lines only, into out: its
+// length. cut[0] says some lines did not fit.
+ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(all) {
+  n:=0;cut[0]=false;
+  for side:0..<2 {
+    t:=ifx side==0 then before else after;mark:=ifx side==0 then cast(u8)'-' else cast(u8)'+';start:=0;i:=0;
+    while start<t.count {
+      i=start;while i<t.count && t[i]!='\n' {i+=1;}
+      if n+(i-start)+2>out.count {cut[0]=true;return n;}
+      out[n]=mark;n+=1;for k:start..<i {out[n]=t[k];n+=1;}out[n]='\n';n+=1;start=i+1;
+    }
+  }
+  return n;
+}
+ea_item_diff :: (v:[]EaView,i:int)->string #effects(all) {
+  if i<0 || i>=v[0].ni || v[0].items[i].ndiff<1 {return "";}m:=v[0].items[i];return cast(string)v[0].text[m.diff_at..<m.diff_at+m.ndiff];
+}
 EaView :: struct {folders:[EA_FOLDERS]EaFolder;nfolders:int;ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
@@ -152,12 +173,14 @@ ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
   jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);
   if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}jo_end(o);
 }
-ea_item :: (o:[]Jo,m_in:EaItem,text:string) #effects(all) {
+ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   m:=m_in;
   jo_obj(o);jo_key(o,"item_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"role");jo_str(o,cast(string)m.role[0..<m.nr]);
   jo_key(o,"text");jo_str(o,text);jo_key(o,"tool_name");jo_str(o,cast(string)m.tool[0..<m.nk]);jo_key(o,"complete");jo_bool(o,m.complete);
   if m.started>0 {jo_key(o,"started_at_ms");jo_int(o,m.started);}
-  if m.calls>0 {jo_key(o,"subagent_calls");jo_int(o,m.calls);if m.nn>0 {jo_key(o,"subagent_now");jo_str(o,cast(string)m.now[0..<m.nn]);}}jo_end(o);
+  if m.calls>0 {jo_key(o,"subagent_calls");jo_int(o,m.calls);if m.nn>0 {jo_key(o,"subagent_now");jo_str(o,cast(string)m.now[0..<m.nn]);}}
+  if m.np>0 {jo_key(o,"path");jo_str(o,cast(string)m.path[0..<m.np]);}
+  if diff.count>0 {jo_key(o,"diff");jo_str(o,diff);if m.diff_cut {jo_key(o,"diff_cut");jo_bool(o,true);}}jo_end(o);
 }
 ea_thought :: (v:[]EaView,i:int)->bool #effects(all) {m:=v[0].items[i];return cast(string)m.role[0..<m.nr]==EA_ROLE_THOUGHT;}
 ea_thoughts_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -185,7 +208,7 @@ ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EA_SCHEMA);jo_key(o[..],"host_pubkey");jo_str(o[..],cast(string)v[0].host[0..<v[0].nh]);
   jo_key(o[..],"display_name");jo_str(o[..],cast(string)v[0].label[0..<v[0].nl]);jo_key(o[..],"method");jo_str(o[..],cast(string)v[0].method[0..<v[0].nm]);
   jo_key(o[..],"sessions");jo_arr(o[..]);for i:0..<v[0].ns {ea_summary(o[..],v[0].sessions[i]);}jo_end(o[..]);
-  jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {if !ea_thought(v,i) {ea_item(o[..],v[0].items[i],ea_item_text(v,i));}}jo_end(o[..]);
+  jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {if !ea_thought(v,i) {ea_item(o[..],v[0].items[i],ea_item_text(v,i),ea_item_diff(v,i));}}jo_end(o[..]);
   jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"complete");jo_bool(o[..],v[0].complete);
   jo_key(o[..],"next_cursor");jo_str(o[..],cast(string)v[0].cursor[0..<v[0].nc]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nq]);
   jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);
@@ -251,7 +274,12 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     at:=jv_get(j,row,"started_at_ms");m.started=ifx at<0 then 0 else jv_int(j,at,-1);
     sc:=jv_get(j,row,"subagent_calls");m.calls=ifx sc<0 then 0 else jv_int(j,sc,-1);
     sn:=jv_get(j,row,"subagent_now");m.nn=ifx sn<0 then 0 else jv_str(j,sn,m.now[..]);
-    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
+    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;
+    pk:=jv_get(j,row,"path");m.np=ifx pk<0 then 0 else jv_str(j,pk,m.path[..]);
+    dk:=jv_get(j,row,"diff");m.diff_at=v[0].text_n;m.ndiff=0;
+    if dk>=0 {dend:=ifx v[0].text_n+EA_DIFF<v[0].text.count then v[0].text_n+EA_DIFF else v[0].text.count;m.ndiff=jv_str(j,dk,v[0].text[v[0].text_n..<dend]);}
+    ck:=jv_get(j,row,"diff_cut");m.diff_cut=ck>=0 && jv_bool(j,ck);
+    if m.np<0 || m.ndiff<0 || (m.diff_cut && m.ndiff==0) {return false;}v[0].text_n+=m.ndiff;v[0].items[i]=m;
   }
   if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) {return false;}
   v[0].ok=true;return true;
@@ -358,4 +386,17 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   v[0].nfolders=2;v[0].folders[0].np=ea_copy(v[0].folders[0].path[..],"apps");v[0].folders[1].np=ea_copy(v[0].folders[1].path[..],"docs");
   n=ea_view_write(v[..],out[..]);#assert n>0 && ea_view_read(cast(string)out[0..<n],w[..]) && w[0].nfolders==2 && cast(string)w[0].folders[1].path[0..<w[0].folders[1].np]=="docs";
   v[0].folders[1].np=ea_copy(v[0].folders[1].path[..],"..");n=ea_view_write(v[..],out[..]);#assert !ea_view_read(cast(string)out[0..<n],w[..]);
+}
+#test "an edit's file and change travel as optional fields; a cut without a change is refused" {
+  cut:[1]bool;d:[64]u8;n:=ea_diff_make(d[..],"a\nb","c",cut[..]);#assert cast(string)d[0..<n]=="-a\n-b\n+c\n" && !cut[0];
+  n=ea_diff_make(d[0..<7],"a\nb","c",cut[..]);#assert cast(string)d[0..<n]=="-a\n-b\n" && cut[0];
+  n=ea_diff_make(d[..],"","new",cut[..]);#assert cast(string)d[0..<n]=="+new\n";
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");
+  m:=v[0].items[0];m.ni=ea_copy(m.id[..],"a");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Edit");m.text_at=ea_text_put(v[..],"updated");m.nt=7;m.complete=true;
+  m.np=ea_copy(m.path[..],"/w/a.coax");m.diff_at=ea_text_put(v[..],"-old\n+new\n");m.ndiff=10;m.diff_cut=true;v[0].items[0]=m;
+  m=v[0].items[1];m.ni=ea_copy(m.id[..],"b");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Bash");m.text_at=ea_text_put(v[..],"ls");m.nt=2;m.complete=true;v[0].items[1]=m;v[0].ni=2;
+  out:[8192]u8;w:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert w>0 && ea_view_read(cast(string)out[0..<w],r[..]);
+  #assert cast(string)r[0].items[0].path[0..<r[0].items[0].np]=="/w/a.coax" && ea_item_diff(r[..],0)=="-old\n+new\n" && r[0].items[0].diff_cut && ea_item_text(r[..],0)=="updated";
+  #assert r[0].items[1].np==0 && ea_item_diff(r[..],1)=="" && !r[0].items[1].diff_cut && ea_item_text(r[..],1)=="ls";
+  #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"a\",\"role\":\"tool\",\"text\":\"x\",\"tool_name\":\"Edit\",\"complete\":true,\"diff_cut\":true}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}",r[..]);
 }

@@ -145,3 +145,27 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_test_row(t[..], "r.0.path").action == 9 && app_test_find(t[..], "r.1.path") < 0;
   #assert app_act_path_pressed("r.0", "r.0.path") && !app_act_path_pressed("r.0", "r.0") && !app_act_path_pressed("r.0", "r.0.out") && !app_act_press(t[0].ks[..], "r.0", "r.0.path");
 }
+
+#test "app activity: an opened edit shows its change, removed lines in the danger's tone and added ones in the success's" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; s := arcade_phone_skin();
+  r := AppActRow.{kind = APP_ACT_EDIT, verb = "Edited", target = "a.coax", path = "/w/a.coax", output = "updated", diff = "-x := 1\n+x := 2\n"};
+  app_test_begin(t[..], "", "", true);
+  _ := app_act_row(f, "e.0", 0, 0, 400, r, true, 9);
+  q := r; q.diff_cut = true; _ = app_act_row(f, "e.1", 0, 200, 400, q, true, 9);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "e.0.diff") < 0;
+  // opened, each shows its change before its output
+  #assert app_act_press(t[0].ks[..], "e.0", "e.0") && app_act_press(t[0].ks[..], "e.1", "e.1");
+  app_test_begin(t[..], "", "", true);
+  _ = app_act_row(f, "e.0", 0, 0, 400, r, true, 9); _ = app_act_row(f, "e.1", 0, 200, 400, q, true, 9);
+  #assert app_test_end(t[..]);
+  #assert app_test_find(t[..], "e.0.diff") >= 0;
+  #assert app_test_find(t[..], "e.0.output") >= 0;
+  #assert app_test_texts(t[..], "Change shortened") == 1;
+  sh := surface_sheet(t[0].sf[..]); minus := false; plus := false;
+  for i: 0..<sh.no { p := sh.over[i]; if p.kind == PRIM_TEXT && p.text == "-x := 1" && p.fill.r == s.danger.r && p.fill.g == s.danger.g { minus = true; } if p.kind == PRIM_TEXT && p.text == "+x := 2" && p.fill.r == s.success.r && p.fill.g == s.success.g { plus = true; } }
+  #assert minus && plus;
+  // a row with only a change still opens
+  w := AppActRow.{kind = APP_ACT_WRITE, verb = "Wrote", target = "b.txt", diff = "+hello\n"};
+  app_test_begin(t[..], "", "", true); _ = app_act_row(f, "w.0", 0, 0, 400, w, false, 9); #assert app_test_end(t[..]);
+  #assert app_test_has(t[..], "w.0", EL_S_EXPANDS);
+}
