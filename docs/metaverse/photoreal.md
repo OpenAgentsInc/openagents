@@ -318,7 +318,10 @@ from the engine's street and works kits (`metaverse-engine/arch/city.coax`,
 `works.coax`). Every piece follows a rule over the plan's records as they
 are this rebuild, so a resized hull keeps its detail. It reads the deck's
 bounds, height and dock basin from the hull's own records (`city_deck`) and
-keeps clear of every building (`city_open`). It places on the prime layout
+keeps clear of every building (`city_open`). The parapet is the hull's wall
+concrete (`SLAB_M_WALL`), kerbs are granite (`SLAB_M_KERB`), and temple detail
+is its temple's marble or limestone; the set's own six rows (metal, dark,
+glass, lamp, stone, paint) and ribbed sheet are for its fittings. It places on the prime layout
 only, and nothing in the construction view.
 
 | Rule | What it places | Records |
@@ -328,6 +331,7 @@ only, and nothing in the construction view.
 | Streets | On the deck paint's 100 m grid, where nothing stands: kerbs and gutters, centre dashes, drain covers, lamps on both sides, benches, zebra crossings, bollards and blank sign posts at the corners | 1,269 |
 | Blocks | Towers: a roof parapet, roof plant round a lift overrun, masts on the tallest, a plinth, piers and a fascia at the foot, canopies over doors that open onto clear deck, and fins, belts or stone corners by a seeded style. The medical and civic blocks: a surround round each painted window, a door, roof plant. Data halls: fans in cowls over the roof's painted ones, louvres and doors, and a cooling yard of chillers and headers on the clearest side | 1,160 |
 | Works | Process halls (turbine halls, heat exchangers, industry, desalination): a pipe rack down the clearest long side with drops into the wall and valve stations, louvres and doors, a stair tower, roof plant. Stacks and tall columns: ring walks, a caged ladder, a flue duct to the nearest hall. Tanks: a railed rim walk, a ladder, a valve station and pipes between neighbours. Moonpools: a rim walk and a gantry. The cooling plant: fans in cowls and louvres. The mining yard: a fan bank and an intake louvre on each container, a cable duct and switchgear. The desalination plant: reverse-osmosis trains and its sea pipes over the promenade and down the wall | 791 |
+| Temples | For each temple and colonnade, in its own marble or limestone: a flight of steps up each front, a cornice over the entablature, triglyphs along the frieze, and the pediment's trim | 852 |
 
 The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
 

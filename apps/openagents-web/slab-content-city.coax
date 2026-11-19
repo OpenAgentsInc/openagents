@@ -14,10 +14,12 @@
 //   works         pipe racks, louvres and doors, stair towers and valve stations on process halls;
 //                 walkways, ladders and ducts on stacks and tanks; the moonpools' gantries; fans
 //                 on the mining yard's containers; the desalination plant's trains and sea pipes
+//   temples       front steps, a cornice and triglyphs, the pediments' trim
 // The parts are the Metaverse Engine's (metaverse-engine/arch/city.coax, works.coax, plaza.coax).
 // Small things carry a distance (pr_near) and most are fine (pr_fine): a phone leaves those out.
 #load "../../metaverse-engine/arch/works.coax";
 #load "../../metaverse-engine/arch/plaza.coax";
+#load "../../metaverse-engine/arch/classical.coax";
 
 CITY_SEED :: 7129;
 CITY_PI :: 3.14159265f32;
@@ -29,7 +31,7 @@ CITY_FLOOR :: 3.9f32;      // a tower's storey and its mullions' module: the gla
 CITY_MODULE :: 4.5f32;
 CITY_GRID :: 100.0f32;     // the streets' grid: the deck's paint (gpu/slab.coax slab_paint)
 // What the last list placed, by rule (the report's and the checks' counts).
-CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_BLOCKS :: 3; CITY_WORKS :: 4; CITY_RULES :: 5;
+CITY_EDGE :: 0; CITY_DOCK :: 1; CITY_STREETS :: 2; CITY_BLOCKS :: 3; CITY_WORKS :: 4; CITY_TEMPLES :: 5; CITY_RULES :: 6;
 
 SlabCity :: struct {
   made: bool;
@@ -41,6 +43,7 @@ SlabCity :: struct {
   sign: int; dashes: int; zebra: int; cover: int;
   canopy: int; ring: int; ring_wide: int; fan: int; unit: int; chiller: int; mast: int; frame: int; louvre: int; pipe: int;
   rack: [2] int; foot: int; ladder: int; ring_stack: int; ring_tank: int; stair: int; valves: int; fans: int; train: int;
+  trim: int; steps: int;
   placed: [CITY_RULES] int;
 }
 
@@ -92,7 +95,11 @@ slab_city_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
   c.valves = photo_part(ph, arch_valve_station(p, k));
   c.fans = photo_part(ph, arch_fan_bank(p, k, 4, 0.55, 1.5));
   c.train = photo_part(ph, arch_vessel_rack(p, k, 3, 4, 7));
-  c.made = c.train >= 0;
+  // the temples': of their own stone, which their records name
+  arch_material(p, 0, 0, 0, 0);
+  c.trim = photo_part(ph, arch_pediment_trim(p, 12));
+  c.steps = photo_part(ph, arch_steps(p, 1, 1, 1, 9));
+  c.made = c.steps >= 0;
   ph[0].content.city = c;
 }
 
@@ -240,7 +247,7 @@ city_edge_run :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck, ax:
   tx := (bx - ax) / run; tz := (bz - az) / run;
   // the parapet: a metre of the wall's own concrete at its face, a drain channel inside its foot
   pr_fine(l, false);
-  r := pr_box(l, ph[0].box, arch_lowf(ax - nx * 0.5, bx), y, arch_lowf(az - nz * 0.5, bz), arch_highf(ax - nx * 0.5, bx), y + 1.05, arch_highf(az - nz * 0.5, bz), PHOTO_PAINT);
+  r := pr_box(l, ph[0].box, arch_lowf(ax - nx * 0.5, bx), y, arch_lowf(az - nz * 0.5, bz), arch_highf(ax - nx * 0.5, bx), y + 1.05, arch_highf(az - nz * 0.5, bz), SLAB_M_WALL);
   pr_value(l, r, 1);
   pr_fine(l, true);
   r = city_box(ph, l, ax - nx * 0.95, y, az - nz * 0.95, bx - nx * 0.6, y + 0.02, bz - nz * 0.6, c.look.metal, 0.2, 0.2, 0.21, CITY_NEAR_KERB);
@@ -354,7 +361,7 @@ city_streets :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
           if ok && !going { start = s; going = true; }
           if !ok && going {
             going = false;
-            _ = city_box(ph, l, city_sx(axis, start, q + e * 5.0), y, city_sz(axis, start, q + e * 5.0), city_sx(axis, s, q + e * 5.3), y + 0.13, city_sz(axis, s, q + e * 5.3), c.look.stone, 1, 1, 1, CITY_NEAR_KERB);
+            _ = city_box(ph, l, city_sx(axis, start, q + e * 5.0), y, city_sz(axis, start, q + e * 5.0), city_sx(axis, s, q + e * 5.3), y + 0.13, city_sz(axis, s, q + e * 5.3), SLAB_M_KERB, 1, 1, 1, CITY_NEAR_KERB);
             r := city_box(ph, l, city_sx(axis, start, q + e * 4.5), y, city_sz(axis, start, q + e * 4.5), city_sx(axis, s, q + e * 5.0), y + 0.015, city_sz(axis, s, q + e * 5.0), c.look.metal, 0.3, 0.3, 0.31, CITY_NEAR_KERB);
             pr_laid(l, r);
           }
@@ -931,6 +938,62 @@ city_works :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
   pr_fine(l, false);
 }
 
+// ---- the temples
+// A box of the temple's own stone in its frame (as slab-photoreal.coax photo_box), tinted.
+city_temple_box :: (ph: [] SlabPhoto, l: [] PrList, i: int, stone: int, turned: bool, cx: f32, cz: f32, x: f32, y0: f32, z: f32, hx: f32, y1: f32, hz: f32, tone: f32, near: f32) {
+  px := ifx turned then cx + z else cx + x; pz := ifx turned then cz + x else cz + z;
+  ax := ifx turned then hz else hx; az := ifx turned then hx else hz;
+  r := pr_box(l, ph[0].box, px - ax, y0, pz - az, px + ax, y1, pz + az, stone);
+  pr_value(l, r, cast(f32) (i + 1)); pr_tint(l, r, tone, tone, tone);
+  if near > 0 { pr_near(l, r, near); }
+}
+// A Greek temple's detail, in the proportions slab-photoreal.coax photo_temple stands it in: a
+// flight of steps a person can climb up each front, a cornice over the entablature, triglyphs
+// along its frieze over every column and between, and the roof's pediment trim.
+city_temple :: (ph: [] SlabPhoto, l: [] PrList, i: int, stone: int, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) {
+  c := ph[0].content.city;
+  turned := x1 - x0 < z1 - z0;
+  cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
+  sx := (ifx turned then z1 - z0 else x1 - x0) * 0.5; sz := (ifx turned then x1 - x0 else z1 - z0) * 0.5; hh := y1 - y0;
+  if sx < 8 || sz < 5 || hh < 8 { return; }
+  st := hh * 0.09; step := sz * 0.03;
+  hl := sx - 3 * step; hw := sz - 3 * step;
+  hc := hh * 0.56; rc := arch_highf(hw * 0.055, 0.45);
+  cl := hl - rc * 1.6; cw := hw - rc * 1.6;
+  nl := cast(int) arch_highf(floor(cl * 2 / (rc * 5)), 2); sl := cl * 2 / cast(f32) nl;
+  nw := cast(int) arch_highf(floor(cw * 2 / (rc * 5)), 2); sw := cw * 2 / cast(f32) nw;
+  ye := y0 + st + hc; he := hh * 0.13;
+  yr := ye + he; hr := arch_highf(y1 - yr, 0.5);
+  pr_fine(l, false);
+  // the steps: over the three great ones, in from each front's edge
+  for e: 0..<2 {
+    px: f32 = cx; pz: f32 = cz; yaw: f32 = 0;
+    if turned { pz = ifx e == 0 then cz + sx else cz - sx; yaw = ifx e == 0 then 0.0f32 else CITY_PI; }
+    else { px = ifx e == 0 then cx + sx else cx - sx; yaw = ifx e == 0 then CITY_PI * 0.5 else -CITY_PI * 0.5; }
+    r := city_put(l, c.steps, px, y0, pz, yaw, CITY_NEAR_PLANT);
+    pr_stretch(l, r, sz * 0.9, st + 0.02, step * 3); pr_made_of(l, r, stone); pr_value(l, r, cast(f32) (i + 1)); pr_laid(l, r);
+  }
+  city_temple_box(ph, l, i, stone, turned, cx, cz, 0, ye + he * 0.88, 0, hl + rc * 0.55, ye + he, hw + rc * 0.55, 1, 0);
+  r := city_put(l, c.trim, cx, yr, cz, ifx turned then CITY_PI * 0.5 else 0.0f32, CITY_NEAR_PLANT);
+  pr_stretch(l, r, (hl + 0.4) * 2, hr, (hw + 0.4) * 2); pr_made_of(l, r, stone); pr_value(l, r, cast(f32) (i + 1));
+  pr_fine(l, true);
+  for k: 0..<nl * 2 + 1 { for side: 0..<2 {
+    x := -cl + cast(f32) k * sl * 0.5; z := ifx side == 0 then -hw - 0.07 else hw + 0.07;
+    city_temple_box(ph, l, i, stone, turned, cx, cz, x, ye + he * 0.42, z, rc * 0.42, ye + he * 0.88, 0.07, 0.86, CITY_NEAR_STEEL);
+  } }
+  for k: 0..<nw * 2 + 1 { for side: 0..<2 {
+    z := -cw + cast(f32) k * sw * 0.5; x := ifx side == 0 then -hl - 0.07 else hl + 0.07;
+    city_temple_box(ph, l, i, stone, turned, cx, cz, x, ye + he * 0.42, z, 0.07, ye + he * 0.88, rc * 0.42, 0.86, CITY_NEAR_STEEL);
+  } }
+  pr_fine(l, false);
+}
+city_temples :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld, d: CityDeck) {
+  for i: SLAB_HULL_PIECES..<w.count {
+    if city_shape(w, i) != SLAB_TEMPLE || city_rec(w, i, 1) < d.y - 0.5 { continue; }
+    city_temple(ph, l, i, ifx city_kind(w, i) == SLAB_KIND_TEMPLE then SLAB_M_MARBLE else SLAB_M_LIMESTONE, city_rec(w, i, 0), city_rec(w, i, 1), city_rec(w, i, 2), city_rec(w, i, 4), city_rec(w, i, 5), city_rec(w, i, 6));
+  }
+}
+
 // ---- the set's calls (slab-content.coax)
 slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   if !ph[0].content.city.made || w.layout != LAYOUT_PRIME || w.build { return; }
@@ -943,6 +1006,7 @@ slab_city_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   city_streets(ph, l, w, d); n[3] = city_total(l);
   city_blocks(ph, l, w, d); n[4] = city_total(l);
   city_works(ph, l, w, d); n[5] = city_total(l);
+  city_temples(ph, l, w, d); n[6] = city_total(l);
   pr_fine(l, false);
   if l[0].filling { for k: 0..<CITY_RULES { ph[0].content.city.placed[k] = n[k + 1] - n[k]; } }
 }
@@ -993,7 +1057,7 @@ city_test_world :: (rec: [] f32, n: int) -> SlabWorld { return SlabWorld.{record
   // the page's deck has the dock cut (slab-change.coax): the basin's rims get cranes and a stage
   d := city_deck(photo_world(s[..], u[U_BOXES..<U_BOXES + s[0].box_count * SLAB_RECORD], s[0].box_count, false));
   #assert d.ok && d.dock;
-  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160 && c.placed[CITY_WORKS] == 791;
+  #assert c.placed[CITY_EDGE] == 466 && c.placed[CITY_DOCK] == 29 && c.placed[CITY_STREETS] == 1269 && c.placed[CITY_BLOCKS] == 1160 && c.placed[CITY_WORKS] == 791 && c.placed[CITY_TEMPLES] == 852;
   // every record stands on or over the deck's plan, or down the wall or in the basin beside it
   for r: 0..<ph[0].still {
     o := r * PR_RECORD_FLOATS;
