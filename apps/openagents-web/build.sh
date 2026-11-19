@@ -108,11 +108,17 @@ after_generated() { while [[ ! -e "$generated" ]]; do kill -0 $$ 2> /dev/null ||
   # relay keeps the last snapshot), then `openagents project bake` writes its
   # commits and the projects/baked.coax table project.coax draws from. Adding a
   # project is data.
+  # At most SNAP_AT_ONCE snapshots read at once: relay.openagents.com refuses a
+  # connection past about nine held open from one address, and the homepage's
+  # capture and the project index read beside these. Ten snapshots at once made
+  # every release from one machine fail (2026-11-18).
+  SNAP_AT_ONCE=4
   (
     chain
     snaps=()
     t="$(now)"
     for slug in $(oa_here project bake --list); do
+      if (( ${#snaps[@]} >= SNAP_AT_ONCE )); then wait "${snaps[0]}"; snaps=("${snaps[@]:1}"); fi
       oa_here project snapshot --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
     done
     for pid in "${snaps[@]}"; do wait "$pid"; done; printf 'project-snapshots beside %s %s\n' "$t" "$(now)" >> "$steps"
