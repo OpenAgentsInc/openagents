@@ -887,8 +887,8 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   n += cp_out(whole[n..<whole.count], cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
   level := s[0].turns[i].agents[j].level;
-  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, model = CP_LEVEL[level]}); }
-  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true,
+  if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, no_ask = true, model = CP_LEVEL[level]}); }
+  t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true,
                model = CP_MODEL_SIMPLE, effort = "low"};
   if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }
   if level == 2 { t.model = CP_MODEL_NEON; t.effort = "medium"; }
@@ -2367,7 +2367,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   }
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -3534,4 +3534,21 @@ cp_find :: (text: string, needle: string) -> int {
   #assert coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0 && cast(string) s[0].chats[0].id[5..<s[0].chats[0].id_n] == "m1";
   #assert cp_press(s, ti);
   #assert s[0].foreman_hud_collapsed;
+}
+
+#test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  coder_page_set_claude(s, true);
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  out: [8192] u8; n := coder_page_task(s, "sess-1", "/tmp/work", out[..]);
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  t: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].no_ask && t[0].unlimited && t[0].sandbox == "danger-full-access";
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"sonnet\",\"task\":\"b\"}],\"ticket\":1}") == MWW_DELEGATE;
+  for j: 0..<2 {
+    an := coder_page_agent_task(s, j, "sess-1", "/tmp/work", out[..]);
+    ar[0].at = 0; ar[0].full = false;
+    #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], t[..]) && t[0].no_ask && t[0].sandbox == "danger-full-access";
+  }
 }
