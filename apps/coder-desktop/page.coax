@@ -30,7 +30,7 @@ CP_SKILLS :: 4000;          // bytes of the note on installed skills that goes a
 CP_CMD :: 400;              // bytes of a command or a tool call shown
 CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
 CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
-CP_LONG_POOL :: 2080768;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
+CP_LONG_POOL :: 2097152;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
 CP_ARENA :: 131072;         // a worker line's strings
 CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
@@ -2905,7 +2905,7 @@ cp_find :: (text: string, needle: string) -> int {
   #assert coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_running(s);
   tn2 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
-  #assert tn2 > 0 && cp_contains(cast(string) task_buf[0..<tn2], "Continue working toward the active thread goal.");
+  #assert tn2 > 0 && cp_contains(cast(string) task_buf[0..<tn2], "Continue working toward the active thread goal above.");
   // Pausing stops the active turn and sets status to paused.
   #assert coder_page_set_text(s, "/goal pause") && coder_page_submit(s);
   #assert coder_page_goal_status(s) == CP_GOAL_PAUSED;
