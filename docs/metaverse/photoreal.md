@@ -2,8 +2,8 @@
 
 Status: the drawing path is built (November 18) and SLAB is its first zone:
 its realm record names `photoreal`, and `/worlds/slab?style=painterly`
-shows the older look. Materials for SLAB's concrete, glass and deck are the
-next step. The style's definition is in
+shows the older look. SLAB's walls, glass, deck, stone and works are drawn
+with the style's built surfaces (below, "Materials"). The style's definition is in
 [art-styles.md](art-styles.md).
 
 This page says what the style is made of, how a realm draws with it, and
@@ -94,6 +94,83 @@ and no fine normal detail. `pr_list_draws(l, true)` leaves out records
 marked fine (`pr_fine`). The host draws a phone's shadow map at half the
 size.
 
+## Materials
+
+A material names a pattern (`PR_PATTERN_*`, `photoreal-layout.coax`). The
+patterns for built things are in
+`metaverse-engine/render/shade/photoreal-surfaces.coax`. Each is written to
+hold at three distances: a kilometre off, at the face of a wall, and at a
+walker's height. A line, a joint or a hole finer than a pixel fades to its
+share of the pixel (`pr_line`, `pr_band`) or goes (`pr_resolve`), so
+nothing shimmers when the camera moves.
+
+| Pattern | Size (`PR_M_SCALE`) | What it draws |
+| --- | --- | --- |
+| `PR_PATTERN_CONCRETE` 1 | | cloudy pours and a fine grain |
+| `PR_PATTERN_GLASS` 2 | a floor's height (3.9 m) | unitized curtain wall: a spandrel at each floor, a mullion every 1.5 m, each pane tilted a hair, lit rooms at night |
+| `PR_PATTERN_PAVING` 3 | a slab's side (1.2 m) | slabs with joints, each its own tone, worn |
+| `PR_PATTERN_ASPHALT` 4 | | a road's grit and wear |
+| `PR_PATTERN_STONE` 7 | a course (0.6 m); two rows | dressed stone: blocks set half along, veins, hanging streaks, grime at the foot; flutes round a column |
+| `PR_PATTERN_PANELS` 8 | a rib (0.3 m) | ribbed metal sheet |
+| `PR_PATTERN_POURED` 12 | a lift (3 m); two rows | a wall cast in place: lifts, form panels, tie holes, construction joints, a seam, openings and their streaks, a waterline |
+| `PR_PATTERN_RIBBON` 13 | a floor's height | ribbon windows between pale metal spandrels, lit rooms |
+| `PR_PATTERN_FINS` 14 | a floor's height | glass behind pale fins every 1.2 m, lit rooms |
+| `PR_PATTERN_PAINTED` 15 | a plate's course (2.4 m) | painted steel plate: welds, chalky paint, rust runs from the seams, grime at the foot |
+
+Patterns 10 and 11 are kept for the lights' and gardens' patterns.
+
+**Two rows.** A pattern marked "two rows" reads eight more numbers from the
+row after its material's (`PR_M_MORE`). Make it with
+`photo_material2(ph, r, g, b, rough, metal, pattern, scale, glow, more)`; it
+takes two rows and answers the first.
+
+- `PR_PATTERN_POURED`: the form panel's width, the bay between construction
+  joints, the seam's height over the part's foot (0: none), the spacing of
+  openings, the two rows of openings' heights over the foot (0: no row), how
+  much the pours' tone varies, and how much lighter the wall over the seam
+  is. Its growth and salt bands sit at the frame's sea level
+  (`PR_HAZE + 2`).
+- `PR_PATTERN_STONE`: flutes round a column (0: a plain face), and how
+  weathered it is (0 to 1).
+
+**Wet.** `pr_wet(s, wet, puddle, flat)` makes any surface wet: porous stuff
+darkens and turns glossy, and standing water is a flat mirror. SLAB wets its
+walls where the live sea reaches and its deck after rain.
+
+**Lit rooms.** The glass patterns light a share of their rooms at night
+(`pr_room`): whole floors busier or quieter together, each room warm or cool,
+brightest under its ceiling, and far off the field's average. The share is
+the frame's `PR_ROOMS`: write it with `pr_frame_rooms(u, b, share)` after
+`pr_frame_sky`. `pr_rooms_by_hour(hour, day)` gives a city's share: about
+two in five in the evening, an eighth from 2 to 5 in the morning.
+
+### SLAB's materials
+
+SLAB makes its materials first, in a fixed order, so the shader can name
+them: `apps/openagents-web/slab-photo-rows.coax` lists the rows, and content
+sets' materials follow `SLAB_M_FIRST_FREE` (24). SLAB uses 23 rows of the 62:
+four facades for the towers, steel and the bridge decks, the poured wall
+(two rows), asphalt, pavers, plaza slabs, the promenade, kerbs, marble,
+fluted marble and limestone (two rows each), painted steel, cladding,
+corrugated sheet and the stacks' concrete.
+
+- `photo_kind_material` picks a plan record's material by its kind. Rows
+  `SLAB_M_TINTED_FIRST` to `SLAB_M_TINTED_LAST` take their colour times the
+  plan's paint for the kind (`slab_paint`), so a container keeps its colour
+  and a stack its red bands.
+- The hull's top takes the deck's zones in the shader (`slab_deck_at`): a
+  10 m carriageway on each street of the 100 m grid, kerbs from 5 to 5.3 m,
+  0.6 m pavers to 10 m, 1.2 m slabs between, the 1.5 m promenade within
+  20 m of the edge. `slab_deck_street` paints edge lines, the gutter's shade
+  and the tyres' tracks. The detail set (`slab-content-city.coax`) draws the
+  kerbs, gutters, centre dashes and crossings as parts near the eye, on the
+  same lines.
+- The hull's walls: 3 m lifts in 2.5 m forms, a joint at each 50 m bulkhead,
+  the seam 50 m over the keel where the watertight hull meets the lighter
+  wall on its columns, scuppers every 25 m with rust and water streaks under
+  them, marine growth and a salt band at the waterline, and a wet band that
+  follows the live sea (`slab_sea_height`) as high as its waves run.
+
 ## Add things to SLAB
 
 SLAB's platform comes from its plan (`metaverse/slab-plan.coax`).
@@ -161,8 +238,8 @@ blue), the roughness (0 a mirror to 1 chalk), the metal (0 or 1), a pattern
 and the glow. `photo_glow(ph, material, glow)` changes a material's glow
 later, for a lamp that comes on at dusk.
 
-The table holds 62 materials for content (row 0 is the default and row 63
-means "the plan's own paint").
+The table holds 62 materials (row 0 is the default and row 63 means "the
+plan's own paint"); SLAB's own take the first 23 (above).
 
 A part takes a material in one of two ways:
 

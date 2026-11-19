@@ -294,6 +294,31 @@ pr_material :: (table: [] f32, k: int, r: f32, g: f32, bl: f32, rough: f32, meta
   table[o + PR_M_SCALE] = scale; table[o + PR_M_GLOW] = glow;
 }
 
+// The numbers a pattern reads from the row after its material's (photoreal-layout.coax PR_M_MORE;
+// photoreal-surfaces.coax says what each pattern reads). Row k + 1 is then not a material.
+pr_material_more :: (table: [] f32, k: int, more: [8] f32) {
+  if k < 0 || k + 1 >= PR_MATERIALS || (k + 2) * PR_MATERIAL_FLOATS > table.count { return; }
+  o := (k + 1) * PR_MATERIAL_FLOATS;
+  for i: 0..<8 { table[o + i] = more[i]; }
+}
+// The share of rooms behind glass with their lights on (the glass patterns' pr_room): about a third
+// by day, which the daylight hides, nearly half in the evening, falling to an eighth from 2 to 5 in
+// the morning and rising again before dawn. `hour` is the site's, 0 to 24; `day` the frame's
+// daylight (0 night to 1 day, PR_SUN's fourth).
+pr_rooms_by_hour :: (hour: f32, day: f32) -> f32 {
+  h := hour - 24 * floor(hour / 24);
+  evening: f32 = 0.42;
+  if h < 2 { evening = 0.2 - 0.04 * h; }             // after midnight, toward the night's low
+  else if h < 5 { evening = 0.12; }
+  else if h < 7 { evening = 0.12 + 0.1 * (h - 5); }    // early risers
+  else if h < 17 { evening = 0.32; }
+  else if h < 21 { evening = 0.42; }
+  else { evening = 0.42 - 0.0733 * (h - 21); }         // 21 to 24: 0.42 down to 0.2
+  d := st_min(st_max(day, 0), 1);
+  return evening * (1 - d) + 0.3 * d;
+}
+pr_frame_rooms :: (u: [] f32, b: int, share: f32) { u[b + PR_ROOMS] = st_min(st_max(share, 0), 1); }
+
 // ---- checks
 #test "the sky's block: a high sun is white and bright, a low one gold, and a set one gives no sun light" {
   u: [PR_FLOATS] f32;
@@ -440,4 +465,15 @@ pr_test_light_row :: (u: [] f32, x: f32, y: f32, z: f32, row: int) -> f32 { o :=
   // a setting past what a grade may be is held to a fifth
   pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.3, 0.866, 0.4], warm = 3});
   #assert u[PR_WARM] == 0.2;
+}
+#test "rooms: most lit in the evening, fewest before dawn, written past the sky's rows" {
+  #assert pr_rooms_by_hour(20, 0) > 0.4 && pr_rooms_by_hour(3, 0) < 0.15 && pr_rooms_by_hour(0, 0) > pr_rooms_by_hour(1.5, 0);
+  #assert abs(pr_rooms_by_hour(24, 0) - pr_rooms_by_hour(0, 0)) < 0.001 && abs(pr_rooms_by_hour(23.99, 0) - pr_rooms_by_hour(0, 0)) < 0.01;
+  #assert abs(pr_rooms_by_hour(12, 1) - 0.3) < 0.001;
+  u: [PR_FLOATS] f32;
+  pr_frame_rooms(u[..], 0, 0.4);
+  #assert u[PR_ROOMS] == 0.4 && PR_ROOMS == PR_SH + 2 * 4 + 3;
+  table: [PR_MATERIALS * PR_MATERIAL_FLOATS] f32;
+  pr_material_more(table[..], 5, [8] f32.[1, 2, 3, 4, 5, 6, 7, 8]);
+  #assert table[6 * PR_MATERIAL_FLOATS] == 1 && table[6 * PR_MATERIAL_FLOATS + 7] == 8;
 }

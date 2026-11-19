@@ -28,6 +28,7 @@
 #load "pbr-env.coax";
 #load "character-material.coax";
 #load "photoreal-layout.coax";
+#load "photoreal-surfaces.coax";
 
 // A record as the shader reads it: four rows of four (photoreal-layout.coax PR_R_*).
 PrObj :: struct {a:V4; b:V4; c:V4; d:V4;}
@@ -407,6 +408,8 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
   f:V2=pr_face(v.local,fl);
   // a pixel's width across the face, taken here, before any branch
   ax:f32=gpu_fwidth(f.x); ay:f32=gpu_fwidth(f.y);
+  // and how fast the facing turns (a column's flutes)
+  da:f32=gpu_fwidth(fl.x)+gpu_fwidth(fl.z);
   // each instance its own corner of the noise
   seed:f32=v.info.z*7.31f32;
   if (pattern==PR_PATTERN_CONCRETE) {
@@ -416,26 +419,15 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
     s.albedo=scale3(s.albedo,0.86f32+0.2f32*cloud+0.06f32*(grain-0.5f32));
     s.rough=saturate(s.rough+0.12f32*(cloud-0.5f32));
   } else if (pattern==PR_PATTERN_GLASS) {
-    floor_h:f32=ifx scale>0.0f32 then scale else 3.9f32;
-    if (abs(fl.y)<0.7f32) {
-      // a curtain wall: a spandrel band at each floor, a mullion every 1.5 m, and each pane tilted
-      // a hair of its own, so the sky's reflection breaks from pane to pane as real glazing's does
-      band:f32=pr_line(f.y-0.45f32,floor_h,0.9f32,ay);
-      mullion:f32=fmax(pr_line(f.x,1.5f32,0.09f32,ax),pr_line(f.y,floor_h,0.09f32,ay));
-      px:f32=floor(f.x/1.5f32+0.5f32); py:f32=floor(f.y/floor_h);
-      tone:f32=render_noise2(px+seed*13.0f32,py-seed*5.0f32);
-      if (full) {s.normal=pr_tilt(s.normal,fl,(render_noise2(px+31.0f32,py+seed)-0.5f32)*0.012f32,(tone-0.5f32)*0.012f32);}
-      // behind the glass: blinds, ceilings, a dark room; a little of each
-      s.albedo=mix3(scale3(s.albedo,0.5f32+0.9f32*tone*tone),scale3(s.albedo,1.6f32),band*0.6f32);
-      s.rough=mix(s.rough,0.45f32,band);
-      s.albedo=mix3(s.albedo,v3(0.16f32,0.17f32,0.18f32),mullion);
-      s.rough=mix(s.rough,0.4f32,mullion);
-      s.metal=mix(s.metal,1.0f32,mullion*0.8f32);
-    } else {
-      // its roof: a membrane and gravel
-      s.albedo=scale3(v3(0.19f32,0.19f32,0.185f32),0.8f32+0.4f32*pr_noise2(f.x*0.7f32,f.y*0.7f32));
-      s.rough=0.9f32; s.metal=0.0f32;
-    }
+    s=pr_glazing(s,f,ax,ay,fl,seed,scale,0,full,u,b);
+  } else if (pattern==PR_PATTERN_RIBBON) {
+    s=pr_glazing(s,f,ax,ay,fl,seed,scale,1,full,u,b);
+  } else if (pattern==PR_PATTERN_FINS) {
+    s=pr_glazing(s,f,ax,ay,fl,seed,scale,2,full,u,b);
+  } else if (pattern==PR_PATTERN_POURED) {
+    s=pr_poured(s,f,ax,ay,v.world,fl,seed,scale,u,b,materials,row+PR_M_MORE);
+  } else if (pattern==PR_PATTERN_PAINTED) {
+    s=pr_painted(s,f,ax,ay,v.local,fl,seed,scale);
   } else if (pattern==PR_PATTERN_PAVING) {
     side:f32=ifx scale>0.0f32 then scale else 1.2f32;
     cx:f32=floor(f.x/side); cz:f32=floor(f.y/side);
@@ -460,15 +452,7 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
       s.normal=normalize3(add3(s.normal,v3(rx*0.05f32,0.0f32,rz*0.05f32)));
     }
   } else if (pattern==PR_PATTERN_STONE) {
-    course:f32=ifx scale>0.0f32 then scale else 0.6f32;
-    row_i:f32=floor(f.y/course);
-    // each course's blocks are set half a block along from the course under it
-    along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32);
-    tone:f32=render_noise2(floor(along/(course*2.0f32))+seed*3.0f32,row_i);
-    joint:f32=fmax(pr_line(f.y,course,0.012f32,ay),pr_line(along,course*2.0f32,0.012f32,ax));
-    vein:f32=pr_cloud2(f.x*0.5f32+seed,f.y*0.5f32);
-    s.albedo=scale3(s.albedo,(0.9f32+0.14f32*tone)*(0.9f32+0.16f32*vein)*(1.0f32-0.3f32*joint));
-    s.rough=saturate(s.rough+0.15f32*(vein-0.5f32));
+    s=pr_stone(s,f,ax,ay,da,v.local,fl,seed,scale,full,materials,row+PR_M_MORE);
   } else if (pattern==PR_PATTERN_PANELS) {
     rib:f32=ifx scale>0.0f32 then scale else 0.3f32;
     // ribs run up a wall and down a roof's slope: their shade is in the normal
@@ -752,4 +736,29 @@ pr_test_block :: (u:[]f32) {
   // a vertex with no tint of its own takes the record's whole
   e=pr_stand(cast(u32)2,cast(u32)1,u[..],0,mesh[..],objects[..]);
   #assert abs(e.tint.x-0.4f32)<0.0001f32 && abs(e.tint.y-0.5f32)<0.0001f32 && abs(e.tint.z-0.6f32)<0.0001f32;
+}
+#test "built surfaces: a band covers its share of a pixel, rooms stay dark by day, a lift's joint and a tie hole darken a poured wall" {
+  #assert abs(pr_band(0.0f32,0.0f32,0.5f32,0.1f32,0.0f32)-1.0f32)<0.0001f32 && pr_band(2.0f32,0.0f32,0.5f32,0.1f32,0.0f32)==0.0f32;
+  // a band a tenth of a pixel wide covers a tenth of it
+  #assert abs(pr_band(0.0f32,0.0f32,0.1f32,1.0f32,0.0f32)-0.1f32)<0.0001f32;
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  #assert pr_room(v2(3.0f32,10.0f32),3.0f32,3.9f32,0.0f32,0.01f32,0.01f32,u[..],0).x==0.0f32;
+  u[PR_ROOMS]=1.0f32;
+  lit:f32=0.0f32;
+  for i:0..<40 {lit=lit+pr_room(v2(cast(f32)i*3.0f32+1.5f32,cast(f32)(i%7)*3.9f32+2.0f32),3.0f32,3.9f32,0.0f32,0.01f32,0.01f32,u[..],0).x;}
+  #assert lit>0.0f32;
+  m:[16]f32; for i:0..<16 {m[i]=0.0f32;}
+  s:PrSurface; s.albedo=v3(0.6f32,0.6f32,0.6f32); s.rough=0.8f32; s.normal=v3(0.0f32,0.0f32,1.0f32);
+  u[PR_HAZE+2]=0.0f32-500.0f32;
+  face:V3=v3(0.0f32,0.0f32,1.0f32);
+  plain:PrSurface=pr_poured(s,v2(1.0f32,1.5f32),0.002f32,0.002f32,v3(0.0f32,100.0f32,0.0f32),face,0.0f32,3.0f32,u[..],0,m[..],8);
+  joint:PrSurface=pr_poured(s,v2(1.0f32,3.0f32),0.002f32,0.002f32,v3(0.0f32,100.0f32,0.0f32),face,0.0f32,3.0f32,u[..],0,m[..],8);
+  hole:PrSurface=pr_poured(s,v2(1.25f32,0.75f32),0.002f32,0.002f32,v3(0.0f32,100.0f32,0.0f32),face,0.0f32,3.0f32,u[..],0,m[..],8);
+  #assert joint.albedo.x<plain.albedo.x*0.85f32 && hole.albedo.x<plain.albedo.x*0.7f32;
+  // seen from far off (a pixel of 2 m) the tie hole is gone
+  far:PrSurface=pr_poured(s,v2(1.25f32,0.75f32),2.0f32,2.0f32,v3(0.0f32,100.0f32,0.0f32),face,0.0f32,3.0f32,u[..],0,m[..],8);
+  #assert far.albedo.x>hole.albedo.x*1.2f32;
+  // wet concrete is darker and glossier
+  w:PrSurface=pr_wet(s,1.0f32,0.0f32,face);
+  #assert w.albedo.x<s.albedo.x*0.7f32 && w.rough<0.3f32;
 }

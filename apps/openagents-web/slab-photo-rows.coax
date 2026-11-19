@@ -1,0 +1,25 @@
+// SLAB's photoreal materials by row (docs/metaverse/photoreal.md, "SLAB's materials"): the CPU
+// (slab-photoreal.coax photo_make) makes them in this order and the shader
+// (gpu/slab-photoreal.coax) names them, so both load this file. Content sets' materials follow
+// SLAB_M_FIRST_FREE. A row marked "two rows" keeps its pattern's numbers in the next row.
+SLAB_M_GLASS :: 1;       // the towers' four facades, by tower: unitized glass, ribbon windows, fins, bronze glass
+SLAB_M_STEEL :: 5;       // hawsers and cables
+SLAB_M_SPAN :: 6;        // the cluster's bridge decks
+SLAB_M_WALL :: 7;        // the hull's walls, poured in lifts (two rows)
+SLAB_M_ASPHALT :: 9;     // the streets' carriageways
+SLAB_M_PAVER :: 10;      // the pavements: 0.6 m pavers
+SLAB_M_PLAZA :: 11;      // the deck between the streets and the plazas: 1.2 m slabs
+SLAB_M_PROMENADE :: 12;  // the promenade round the edge: 1.5 m limestone
+SLAB_M_KERB :: 13;       // the kerbs: granite
+// From here to SLAB_M_TINTED_LAST, a row's colour is multiplied by the plan's paint for its kind
+// (gpu/slab.coax slab_paint): a stack's red bands, a container's colour, a temple's dim cella.
+SLAB_M_MARBLE :: 14;     // temples and statues (two rows)
+SLAB_M_FLUTED :: 16;     // the temples' columns, fluted (two rows)
+SLAB_M_LIMESTONE :: 18;  // civic halls and colonnades (two rows)
+SLAB_M_PAINTED :: 20;    // tanks, cranes: painted steel plate
+SLAB_M_CLADDING :: 21;   // halls: ribbed metal cladding
+SLAB_M_CORRUGATED :: 22; // containers
+SLAB_M_STACK :: 23;      // the chimneys: slip-formed concrete
+SLAB_M_TINTED_FIRST :: 14;
+SLAB_M_TINTED_LAST :: 23;
+SLAB_M_FIRST_FREE :: 24;

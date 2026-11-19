@@ -35,8 +35,10 @@ all three styles, defines painterly in full, and audits both realms against it.
 Lowpoly is what most realms draw today. Photoreal's drawing path is built
 (November 18): one instanced mesh pass, physically based shading, a physical
 sky with haze, a shadow map, a sky field for ambient occlusion and the
-engine's film response. SLAB is its first zone. [photoreal.md](photoreal.md)
-says how a realm draws with it.
+engine's film response, and built surfaces any realm can name: poured
+concrete, three curtain walls with lit rooms at night, paving, asphalt,
+dressed and fluted stone, painted steel and cladding. SLAB is its first
+zone. [photoreal.md](photoreal.md) says how a realm draws with it.
 
 ## The style field
 

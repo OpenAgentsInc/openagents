@@ -1,0 +1,267 @@
+// The photoreal style's built surfaces (docs/metaverse/photoreal.md, "Materials"): the patterns a
+// material may name for a city's walls, glass, metal and stone, written to hold at three
+// distances: a kilometre off, the face of a wall, and a walker's height. photoreal.coax loads this
+// file; pr_surface calls these by the material's pattern. Every line, joint and hole fades to its
+// average where it is finer than a pixel (pr_line, pr_band), so nothing shimmers in motion.
+//
+// A pattern that needs more numbers than a material row holds reads them from the row after it
+// (PR_M_MORE): photo_material2 in a realm, pr_material_more in the frame writer. Lengths are
+// metres across and up a face (pr_face): along a wall from the part's middle, up from its foot.
+
+// A band `wide` metres across centred on c: the share of a pixel `aa0` metres wide that it covers
+// (a box filter), so a band finer than a pixel still shows as a faint line, as a photograph's
+// does, and never flickers. `every` is kept for callers' sake and unused.
+pr_band :: (x:f32,c:f32,wide:f32,aa0:f32,every:f32)->f32 {
+  h:f32=fmax(aa0,0.0001f32)*0.5f32;
+  return saturate((fmin(x+h,c+wide*0.5f32)-fmax(x-h,c-wide*0.5f32))/(h*2.0f32));
+}
+// How much of a feature `size` metres across a pixel of `aa` metres still resolves: 1 sharp to 0
+// gone, for detail that has no average worth keeping (a pane's own tilt, a tie hole).
+pr_resolve :: (size:f32,aa:f32)->f32 {return saturate(size/(fmax(aa,0.0001f32)*3.0f32)-0.5f32);}
+
+// ---- poured concrete (PR_PATTERN_POURED): a wall cast in place in lifts
+// The row: colour, roughness, the lift's height (PR_M_SCALE, 3 m when 0). The row after it:
+// the form panel's width, the bay between construction joints, the seam's height over the foot
+// where a heavier wall below meets a lighter one above (0: none), the spacing of openings along
+// the wall (0: none), the two rows of openings' heights over the foot, how much the pours' tone
+// varies, and how much lighter the upper wall is.
+// Each lift is its own pour and shade; each bay of a lift its own again. Joints, form-panel lines
+// and tie holes (two a panel a lift) come in as the eye comes near. Under each opening a streak
+// of rust or of water runs down. Where the face stands near the sea (the frame's sea level), a
+// band of marine growth and above it a pale salt band.
+pr_poured :: (s0:PrSurface,f:V2,ax:f32,ay:f32,world:V3,fl:V3,seed:f32,lift0:f32,u:[]f32,b:int,m:[]f32,x:int)->PrSurface {
+  s:PrSurface=s0;
+  if (abs(fl.y)>0.7f32) {
+    // a top or a soffit: board-marked and cloudy
+    cloud:f32=pr_cloud2(f.x*0.05f32+seed,f.y*0.05f32-seed);
+    s.albedo=scale3(s.albedo,0.88f32+0.18f32*cloud);
+    return s;
+  }
+  lift:f32=ifx lift0>0.0f32 then lift0 else 3.0f32;
+  panel:f32=ifx m[x]>0.0f32 then m[x] else 2.5f32;
+  bay:f32=ifx m[x+1]>0.0f32 then m[x+1] else 50.0f32;
+  seam:f32=m[x+2]; every:f32=m[x+3]; o1:f32=m[x+4]; o2:f32=m[x+5];
+  vary:f32=ifx m[x+6]>0.0f32 then m[x+6] else 0.05f32;
+  li:f32=floor(f.y/lift); bi:f32=floor(f.x/bay);
+  // the pours: each lift a little its own, each bay of it again; a lift's top a hair paler (laitance)
+  t1:f32=render_noise2(li*0.73f32+seed,3.1f32)-0.5f32;
+  t2:f32=render_noise2(bi*1.31f32+seed*2.0f32,li*0.67f32+5.0f32)-0.5f32;
+  k:f32=fract(f.y/lift);
+  tone:f32=(1.0f32+0.6f32*vary*t1+vary*t2)*(0.985f32+0.03f32*k);
+  // cloudy hydration marks a few metres across, and a fine grain
+  cloud:f32=pr_cloud2(f.x*0.11f32+seed,f.y*0.16f32-seed);
+  tone=tone*(0.96f32+0.08f32*cloud);
+  // the seam: a heavier, greyer hull below, the lighter wall on its columns above
+  above:f32=0.0f32;
+  if (seam>0.0f32) {
+    above=smoothstep(seam-ay,seam+ay,f.y);
+    tone=tone*mix(0.95f32,1.0f32+m[x+7],above);
+  }
+  s.albedo=scale3(s.albedo,tone);
+  s.albedo=mix3(s.albedo,scale3(v3(0.62f32,0.63f32,0.64f32),pr_lum(s.albedo)/0.63f32),(1.0f32-above)*0.25f32);
+  // weathering: long faint streaks down the face
+  streak:f32=pr_noise2(f.x*0.9f32+seed,f.y*0.012f32);
+  s.albedo=scale3(s.albedo,1.0f32-0.07f32*smoothstep(0.45f32,0.9f32,streak));
+  // the lines: lift joints, the form panels' joints, the bays' construction joints
+  dark:f32=0.0f32;
+  dark=fmax(dark,0.28f32*pr_line(f.y,lift,0.03f32,ay));
+  dark=fmax(dark,0.14f32*fmax(pr_line(f.x,panel,0.012f32,ax),pr_line(f.y,lift*0.5f32,0.008f32,ay)));
+  dark=fmax(dark,0.4f32*pr_line(f.x,bay,0.06f32,ax));
+  // tie holes, two a panel a lift, gone before they are a pixel
+  tx:f32=(fract(f.x/panel)-0.5f32)*panel; ty:f32=(fract(f.y/(lift*0.5f32))-0.5f32)*lift*0.5f32;
+  hole:f32=(1.0f32-smoothstep(0.013f32,0.02f32,sqrt(tx*tx+ty*ty)))*pr_resolve(0.03f32,fmax(ax,ay));
+  dark=fmax(dark,0.55f32*hole);
+  if (seam>0.0f32) {
+    // the ledge where the walls meet: a lit nib and its shadow under it; columns' lines above
+    dark=fmax(dark,0.45f32*pr_band(f.y,seam-0.35f32,0.7f32,ay,0.0f32));
+    s.albedo=scale3(s.albedo,1.0f32+0.12f32*pr_band(f.y,seam+0.12f32,0.24f32,ay,0.0f32));
+    d:f32=abs(fract(f.x/bay+0.5f32)-0.5f32)*bay;
+    pil:f32=pr_band(d,0.0f32,8.0f32,ax,0.0f32)*above;
+    s.albedo=scale3(s.albedo,1.0f32+0.035f32*pil);
+    dark=fmax(dark,0.22f32*pr_band(d,4.0f32,0.08f32,ax,0.0f32)*above);
+  }
+  // openings in two rows, and what runs down from each
+  if (every>0.0f32) {
+    id:f32=floor(f.x/every);
+    ox:f32=(fract(f.x/every)-0.5f32)*every;
+    for r:0..<2 {
+      oy:f32=ifx r==0 then o1 else o2;
+      if (oy>0.0f32) {
+        dark=fmax(dark,0.85f32*pr_band(ox,0.0f32,1.2f32,ax,0.0f32)*pr_band(f.y,oy,0.6f32,ay,0.0f32));
+        h:f32=render_noise2(id*1.7f32+cast(f32)r*5.0f32+seed,oy);
+        reach:f32=10.0f32+20.0f32*h;
+        dy:f32=oy-0.3f32-f.y;
+        if ((dy>0.0f32)&&(dy<reach)) {
+          w:f32=0.5f32+0.35f32*(1.0f32-dy/reach)+0.4f32*(pr_noise2(f.x*2.0f32,f.y*0.3f32)-0.5f32);
+          run:f32=(1.0f32-smoothstep(w*0.5f32,w*0.5f32+0.4f32+ax,abs(ox)))*pow(1.0f32-dy/reach,1.5f32);
+          if (h>0.55f32) {
+            s.albedo=mix3(s.albedo,mul3(s.albedo,v3(0.62f32,0.42f32,0.27f32)),run*0.75f32);
+          } else {
+            dark=fmax(dark,0.3f32*run);
+          }
+        }
+      }
+    }
+  }
+  s.albedo=scale3(s.albedo,1.0f32-dark);
+  // at the sea's edge: growth to a metre and a half over the still water, a salt band above it
+  over:f32=world.y-u[b+PR_HAZE+2];
+  if (over<6.0f32) {
+    blot:f32=pr_cloud2(f.x*0.4f32+seed,f.y*0.9f32);
+    top:f32=1.5f32+0.8f32*blot;
+    grow:f32=1.0f32-smoothstep(top-0.4f32,top+0.3f32,over);
+    salt:f32=(1.0f32-smoothstep(3.0f32+blot,4.5f32+blot,over))*(1.0f32-grow);
+    s.albedo=mix3(s.albedo,scale3(s.albedo,1.08f32),salt*0.6f32);
+    s.albedo=mix3(s.albedo,mix3(v3(0.07f32,0.08f32,0.05f32),v3(0.16f32,0.17f32,0.11f32),blot),grow);
+    s.rough=mix(s.rough,0.6f32,grow);
+  }
+  s.rough=saturate(s.rough+0.1f32*(cloud-0.5f32)+0.2f32*hole);
+  return s;
+}
+
+// ---- wet
+// A surface wet by a share `wet` (spray, rain), and standing water in `puddle`: porous stuff
+// darkens and turns glossy; standing water is a flat mirror. `flat` is the face's own normal.
+pr_wet :: (s0:PrSurface,wet:f32,puddle:f32,flat:V3)->PrSurface {
+  s:PrSurface=s0;
+  w:f32=saturate(wet); p:f32=saturate(puddle)*w;
+  s.albedo=scale3(s.albedo,(1.0f32-0.42f32*w)*(1.0f32-0.3f32*p));
+  s.rough=mix(mix(s.rough,fmin(s.rough,0.22f32),w),0.03f32,p);
+  s.normal=normalize3(mix3(s.normal,flat,p));
+  return s;
+}
+
+// ---- glass (PR_PATTERN_GLASS, PR_PATTERN_RIBBON, PR_PATTERN_FINS)
+// Rooms behind the glass at night: a share of them lit (PR_ROOMS, the frame writer's
+// pr_frame_rooms), whole floors busy or dark together, each room warm or cool and brightest under
+// its ceiling. Far off, where a room is under a pixel, the field is its average.
+pr_room :: (f:V2,bay:f32,floor_h:f32,seed:f32,ax:f32,ay:f32,u:[]f32,b:int)->V3 {
+  share:f32=u[b+PR_ROOMS];
+  if (share<=0.0f32) {return v3(0.0f32,0.0f32,0.0f32);}
+  py:f32=floor(f.y/floor_h); px:f32=floor(f.x/bay);
+  fl:f32=render_noise2(py*1.7f32+seed*9.0f32,seed*3.0f32+11.0f32);
+  busy:f32=0.35f32+1.3f32*fl;
+  h:f32=render_noise2(px*1.31f32+seed*13.0f32,py*0.77f32-seed*5.0f32);
+  on:f32=stepf(h,share*busy);
+  hue:f32=render_noise2(px*0.37f32+seed,py*2.1f32);
+  c:V3=ifx hue<0.45f32 then v3(1.0f32,0.66f32,0.38f32) else (ifx hue<0.8f32 then v3(1.0f32,0.82f32,0.62f32) else v3(0.82f32,0.9f32,1.0f32));
+  v:f32=fract(f.y/floor_h);
+  inside:f32=smoothstep(0.1f32,0.2f32,v)*(1.0f32-smoothstep(0.86f32,0.93f32,v))*(0.6f32+0.5f32*v);
+  dim:f32=fract(h*7.3f32);
+  // some rooms behind blinds or lit by a lamp alone, a few bright
+  near:V3=scale3(c,on*inside*(0.2f32+1.1f32*dim*dim));
+  far:V3=scale3(v3(1.0f32,0.78f32,0.56f32),share*0.3f32);
+  return scale3(mix3(far,near,saturate(fmin(bay,floor_h)/(fmax(fmax(ax,ay),0.0001f32)*1.2f32)-0.4f32)),0.025f32);
+}
+// A curtain wall. `facade` is the kind: 0 unitized glass (a spandrel band at each floor and a
+// mullion every 1.5 m), 1 ribbon windows between pale metal spandrels, 2 glass behind pale
+// vertical fins every 1.2 m. Each pane is tilted a hair, so the sky's reflection breaks from pane
+// to pane as real glazing's does, until panes are under a pixel. A roof is a membrane and gravel.
+pr_glazing :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,floor0:f32,facade:int,full:bool,u:[]f32,b:int)->PrSurface {
+  s:PrSurface=s0;
+  if (abs(fl.y)>=0.7f32) {
+    s.albedo=scale3(v3(0.19f32,0.19f32,0.185f32),0.8f32+0.4f32*pr_noise2(f.x*0.7f32,f.y*0.7f32));
+    s.rough=0.9f32; s.metal=0.0f32;
+    return s;
+  }
+  floor_h:f32=ifx floor0>0.0f32 then floor0 else 3.9f32;
+  bay:f32=ifx facade==2 then 1.2f32 else (ifx facade==1 then 1.8f32 else 1.5f32);
+  px:f32=floor(f.x/bay+0.5f32); py:f32=floor(f.y/floor_h);
+  tone:f32=render_noise2(px+seed*13.0f32,py-seed*5.0f32);
+  if (full) {
+    k:f32=pr_resolve(bay,ax)*0.012f32;
+    s.normal=pr_tilt(s.normal,fl,(render_noise2(px+31.0f32,py+seed)-0.5f32)*k,(tone-0.5f32)*k);
+  }
+  s.albedo=scale3(s.albedo,0.94f32+0.12f32*tone);
+  v:f32=fract(f.y/floor_h);
+  if (facade==1) {
+    // a ribbon of glass, then a pale aluminium spandrel over the slab's edge
+    sp:f32=pr_band(v*floor_h,floor_h*0.21f32,floor_h*0.42f32,ay,floor_h);
+    s.albedo=mix3(s.albedo,v3(0.70f32,0.70f32,0.68f32),sp);
+    s.rough=mix(s.rough,0.32f32,sp); s.metal=mix(s.metal,0.7f32,sp);
+  } else {
+    // a spandrel of back-painted glass over the slab's edge
+    sp:f32=pr_band(v*floor_h,floor_h*0.12f32,0.9f32,ay,floor_h);
+    s.albedo=mix3(s.albedo,scale3(s.albedo,0.7f32),sp);
+    s.rough=mix(s.rough,0.12f32,sp);
+  }
+  mullion:f32=fmax(pr_line(f.x,bay,0.07f32,ax),pr_line(f.y,floor_h,0.07f32,ay));
+  s.albedo=mix3(s.albedo,v3(0.32f32,0.33f32,0.34f32),mullion);
+  s.rough=mix(s.rough,0.35f32,mullion); s.metal=mix(s.metal,1.0f32,mullion*0.8f32);
+  if (facade==2) {
+    fin:f32=pr_line(f.x,bay,0.28f32,ax);
+    s.albedo=mix3(s.albedo,v3(0.78f32,0.76f32,0.72f32),fin);
+    s.rough=mix(s.rough,0.55f32,fin); s.metal=mix(s.metal,0.0f32,fin);
+  }
+  s.glow=add3(s.glow,pr_room(f,bay*2.0f32,floor_h,seed,ax,ay,u,b));
+  return s;
+}
+
+// ---- painted steel (PR_PATTERN_PAINTED): a tank's or a crane's plates
+// Plates in courses PR_M_SCALE high (2.4 m when 0) and four times as long, welded; the paint
+// chalky in the sun, rust bleeding down from the seams, grime at the foot.
+pr_painted :: (s0:PrSurface,f:V2,ax:f32,ay:f32,local:V3,fl:V3,seed:f32,course0:f32)->PrSurface {
+  s:PrSurface=s0;
+  course:f32=ifx course0>0.0f32 then course0 else 2.4f32;
+  long:f32=course*4.0f32;
+  ci:f32=floor(f.y/course);
+  along:f32=f.x+(ifx fract(ci*0.5f32)>0.25f32 then long*0.5f32 else 0.0f32);
+  chalk:f32=pr_cloud2(f.x*0.12f32+seed,f.y*0.12f32);
+  s.albedo=scale3(s.albedo,0.92f32+0.14f32*chalk+0.05f32*(render_noise2(floor(along/long)+seed,ci)-0.5f32));
+  seam:f32=fmax(pr_line(f.y,course,0.02f32,ay),pr_line(along,long,0.02f32,ax));
+  s.albedo=scale3(s.albedo,1.0f32-0.18f32*seam);
+  // rust from the seams: thin runs under each horizontal weld
+  k:f32=fract(f.y/course);
+  runs:f32=smoothstep(0.62f32,0.85f32,pr_noise2(f.x*1.6f32+seed,f.y*0.08f32))*pow(k,6.0f32);
+  s.albedo=mix3(s.albedo,v3(0.30f32,0.16f32,0.08f32),runs*0.6f32*pr_resolve(0.15f32,ax));
+  s.albedo=scale3(s.albedo,1.0f32-0.22f32*(1.0f32-smoothstep(0.0f32,1.6f32,local.y))*abs(1.0f32-abs(fl.y)));
+  s.rough=saturate(s.rough+0.15f32*(chalk-0.5f32)+0.3f32*runs);
+  return s;
+}
+
+// ---- dressed stone (PR_PATTERN_STONE): marble or limestone
+// Courses PR_M_SCALE high, each block set half along from the one under it; veins; the weather's
+// marks: dark streaks hanging down the face and splash grime at the foot. The row after it:
+// flutes round a column (0: a plain face or block coursing), and how weathered (0 to 1).
+// A fluted column has no vertical joints, only its drums' beds.
+pr_stone :: (s0:PrSurface,f:V2,ax:f32,ay:f32,da:f32,local:V3,fl:V3,seed:f32,course0:f32,full:bool,m:[]f32,x:int)->PrSurface {
+  s:PrSurface=s0;
+  course:f32=ifx course0>0.0f32 then course0 else 0.6f32;
+  flutes:f32=m[x]; weather:f32=m[x+1];
+  row_i:f32=floor(f.y/course);
+  vein:f32=pr_cloud2(f.x*0.5f32+seed,f.y*0.5f32);
+  fine:f32=pr_noise2(f.x*3.0f32+f.y*1.3f32,f.y*3.0f32-seed);
+  joint:f32=pr_line(f.y,course,0.008f32,ay);
+  tone:f32=0.0f32;
+  if ((flutes>0.0f32)&&(abs(fl.y)<0.7f32)) {
+    // round a column: the flutes' concave faces, in the normal and darker in the hollows
+    a:f32=wg_atan2(fl.z,fl.x);
+    ph:f32=fract(a*flutes/6.2831853f32);
+    keep:f32=saturate((6.2831853f32/flutes)/(fmax(da,0.0001f32)*3.0f32)-0.5f32);
+    if (full) {
+      t:V3=normalize3(v3(0.0f32-s.normal.z,0.0f32,s.normal.x));
+      s.normal=normalize3(add3(s.normal,scale3(t,sin(ph*6.2831853f32)*0.35f32*keep)));
+    }
+    hollow:f32=0.5f32-0.5f32*cos(ph*6.2831853f32);
+    s.albedo=scale3(s.albedo,1.0f32-(0.1f32+0.12f32*weather)*(1.0f32-hollow)*keep);
+    tone=render_noise2(row_i+seed*3.0f32,seed);
+  } else if (abs(fl.y)<0.7f32) {
+    along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32);
+    tone=render_noise2(floor(along/(course*2.0f32))+seed*3.0f32,row_i);
+    joint=fmax(joint,pr_line(along,course*2.0f32,0.008f32,ax));
+  } else {
+    tone=render_noise2(floor(f.x/(course*2.0f32))+seed,floor(f.y/course));
+    joint=fmax(pr_line(f.x,course*2.0f32,0.008f32,ax),pr_line(f.y,course,0.008f32,ay));
+  }
+  s.albedo=scale3(s.albedo,(0.93f32+0.1f32*tone)*(0.92f32+0.12f32*vein)*(0.97f32+0.06f32*fine)*(1.0f32-0.32f32*joint));
+  // a warm patina where the sun and rain have worked; dark streaks hanging down; foot grime
+  s.albedo=mix3(s.albedo,mul3(s.albedo,v3(1.02f32,0.95f32,0.84f32)),weather*smoothstep(0.35f32,0.75f32,vein));
+  if (abs(fl.y)<0.7f32) {
+    hang:f32=smoothstep(0.55f32,0.9f32,pr_noise2(f.x*1.1f32+seed,f.y*0.05f32));
+    s.albedo=scale3(s.albedo,1.0f32-0.22f32*weather*hang);
+    foot:f32=(1.0f32-smoothstep(0.0f32,0.9f32,local.y))*(0.6f32+0.4f32*fine);
+    s.albedo=mix3(s.albedo,mul3(s.albedo,v3(0.62f32,0.6f32,0.55f32)),foot*weather);
+  }
+  s.rough=saturate(s.rough+0.12f32*(vein-0.5f32)+0.15f32*joint);
+  return s;
+}

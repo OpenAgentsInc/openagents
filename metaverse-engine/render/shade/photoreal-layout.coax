@@ -27,6 +27,7 @@ PR_LIGHT :: 52;      // world to the shadow map, four rows of four
 PR_SH :: 68;         // the sky's light on a surface by its normal: nine rows of r, g, b, 0 (pr_sky_light); the first two rows' fourths are PR_WARM and PR_SKY_SHARE
 PR_WARM :: 71;       // the camera's white balance: 0 daylight (light keeps its own colour), 0.08 a little warm, below 0 cool
 PR_SKY_SHARE :: 75;  // the share of a clear sky's light that comes through the cloud (1 under a clear sky); the second row's fourth
+PR_ROOMS :: 79;      // the share of rooms behind glass with their lights on (0 by day; photoreal-frame.coax pr_frame_rooms); the third row's fourth
 PR_FLOATS :: 104;
 
 PR_TIER_FULL :: 0;     // a desktop: every effect
@@ -63,6 +64,7 @@ PR_M_METAL :: 4;     // 0 or 1, rarely between
 PR_M_PATTERN :: 5;   // PR_PATTERN_*
 PR_M_SCALE :: 6;     // the pattern's size (m): a floor's height, a slab's side; 0 takes the pattern's own
 PR_M_GLOW :: 7;      // light of its own, in whites (a lamp, a lit window)
+PR_M_MORE :: 8;      // a pattern that needs more numbers reads them from the next row (photoreal-surfaces.coax)
 PR_MATERIALS :: 64;  // rows a table may hold
 
 PR_PATTERN_PLAIN :: 0;     // one colour
@@ -75,4 +77,9 @@ PR_PATTERN_WATER :: 6;     // still water: a pool, a canal
 PR_PATTERN_STONE :: 7;     // dressed stone in courses
 PR_PATTERN_PANELS :: 8;    // ribbed metal sheet
 PR_PATTERN_LAWN :: 9;      // mown grass or planted ground
-PR_PATTERNS :: 10;
+// (10 and 11 are kept for the lights' and gardens' patterns)
+PR_PATTERN_POURED :: 12;   // a wall cast in place: lifts, form panels, tie holes, bays, a seam, streaks, a waterline (two rows)
+PR_PATTERN_RIBBON :: 13;   // ribbon windows between pale metal spandrels
+PR_PATTERN_FINS :: 14;     // glass behind pale vertical fins
+PR_PATTERN_PAINTED :: 15;  // painted steel plates: welds, chalky paint, rust runs
+PR_PATTERNS :: 16;

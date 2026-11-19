@@ -13,6 +13,7 @@
 // same (apps/openagents-web/slab-photoreal.coax writes them). Water that wants light's own scale
 // reads the frame's block instead: pr_dome, pr_sky_light, pr_air and pr_out with SLAB_PHOTO.
 #load "../../../metaverse-engine/render/shade/photoreal.coax";
+#load "../slab-photo-rows.coax";
 
 SLAB_PHOTO :: 15872;   // the photoreal frame's block in the uniforms (slab.coax U_PHOTO), then SLAB's own four:
 SLAB_PHOTO_ON :: SLAB_PHOTO + PR_FLOATS;          // 1: the realm draws photoreal
@@ -120,15 +121,66 @@ slab_photo_mirror :: (ph:V3,rh:V3,sky:V3,u:[]f32)->V3 {
   pt:SlabPaint=slab_paint(hit,w,rh,u);
   nw:V3=sb_dir_to_world(hit.n,u);
   light:V3=add3(scale3(pr_at3(u,b+PR_SUN_LIGHT),fmax(dot3(nw,pr_at3(u,b+PR_SUN)),0.0f32)),pr_sky_light(nw,u,b));
-  c:V3=add3(mul3(pr_decode(pt.c),light),scale3(pr_decode(pt.emit),1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
+  // (a tower's painted windows are not its lit rooms: those are the glass's own, pr_room)
+  emit:V3=ifx wg_i32_f(hit.kind+0.5f32)==5 then v3(0.0f32,0.0f32,0.0f32) else pr_decode(pt.emit);
+  c:V3=add3(mul3(pr_decode(pt.c),light),scale3(emit,1.0f32/fmax(u[b+PR_SUN_LIGHT+3],0.001f32)));
   // the air between the mirror and what it shows
   t:f32=pr_air_through(hit.t,u[b+PR_EYE+1],rh.y,u,b);
   return mix3(sky,c,t);
 }
+// The deck's zones at the hull's point p (slab_paint's plan: 20 m streets on the 100 m grid, the
+// promenade within 20 m of the edge, the parapet's cap): which material it is, and the street's
+// own frame there. `across` is metres from the street's centre line, `along` metres along it,
+// `cross` how far the nearest crossing street's centre is (0 at an intersection).
+SlabDeck :: struct {row:f32; across:f32; along:f32; cross:f32;}
+slab_deck_at :: (p:V2,u:[]f32)->SlabDeck {
+  sx:f32=p.x-(wg_round(p.x/100.0f32)*100.0f32); sz:f32=p.y-(wg_round(p.y/100.0f32)*100.0f32);
+  gx:f32=abs(sx); gz:f32=abs(sz);
+  d:SlabDeck=SlabDeck.{row=cast(f32)(SLAB_M_PLAZA),across=sx,along=p.y,cross=gz};
+  if (gz<gx) {d.across=sz; d.along=p.x; d.cross=gx;}
+  g:f32=abs(d.across);
+  if (g<10.0f32) {
+    d.row=ifx g<5.0f32 then cast(f32)(SLAB_M_ASPHALT) else (ifx g<5.3f32 then cast(f32)(SLAB_M_KERB) else cast(f32)(SLAB_M_PAVER));
+    // where two streets meet, the crossing's carriageway runs through
+    if (d.cross<5.0f32) {d.row=cast(f32)(SLAB_M_ASPHALT);}
+  }
+  edge:f32=slab_hull_plan(p,u);
+  if (edge>-20.0f32) {d.row=cast(f32)(SLAB_M_PROMENADE);}
+  return d;
+}
+// A street's surface under the detail set's kerbs, gutters, dashes and crossings
+// (slab-content-city.coax, which draws those as parts near the eye): edge lines, the gutter's
+// shade at the kerb and the tyres' tracks, which also carry the street from far off.
+// `aa` is a pixel's width on the deck (taken before any branch).
+slab_deck_street :: (s0:PrSurface,d:SlabDeck,aa:f32)->PrSurface {
+  s:PrSurface=s0;
+  g:f32=abs(d.across);
+  white:f32=0.0f32;
+  if (d.row<cast(f32)(SLAB_M_ASPHALT)+0.5f32) {
+    junction:bool=d.cross<10.0f32;
+    if (!junction) {
+      white=fmax(white,pr_band(g,4.2f32,0.12f32,aa,10.0f32));
+      // the tyres' tracks: a little darker and smoother; oil down each lane's middle
+      track:f32=fmax(pr_band(g,1.2f32,0.7f32,aa,0.0f32),pr_band(g,3.4f32,0.7f32,aa,0.0f32));
+      s.albedo=scale3(s.albedo,1.0f32-0.07f32*track);
+      s.rough=s.rough-0.1f32*track;
+      oil:f32=pr_band(g,2.3f32,0.6f32,aa,0.0f32)*smoothstep(0.55f32,0.8f32,pr_noise2(d.along*0.7f32,d.across*2.0f32));
+      s.albedo=scale3(s.albedo,1.0f32-0.25f32*oil);
+    }
+    // the gutter: the kerb's shadow and the grime that collects there
+    s.albedo=scale3(s.albedo,1.0f32-0.38f32*pr_band(g,4.75f32,0.5f32,aa,0.0f32)*(ifx junction then 0.0f32 else 1.0f32));
+  } else if (d.row<cast(f32)(SLAB_M_KERB)+0.5f32) {
+    // the kerb's top catches the light; its face toward the road falls in shade
+    s.albedo=scale3(s.albedo,mix(0.55f32,1.12f32,smoothstep(5.03f32,5.1f32,g)));
+  } else if (d.row<cast(f32)(SLAB_M_PAVER)+0.5f32) {
+    s.albedo=scale3(s.albedo,1.0f32-0.12f32*pr_band(g,5.4f32,0.2f32,aa,0.0f32));
+  }
+  s.albedo=mix3(s.albedo,v3(0.62f32,0.62f32,0.58f32),white);
+  s.rough=mix(s.rough,0.6f32,white);
+  return s;
+}
 slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->V4 {
   b:int=SLAB_PHOTO;
-  // (first: the material takes its derivatives before anything branches)
-  s:PrSurface=pr_surface(v,u,b,materials);
   full:bool=u[b+PR_GROUND+3]<0.5f32;
   eye:V3=pr_at3(u,b+PR_EYE);
   to:V3=sub3(v.world,eye);
@@ -137,48 +189,76 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
   toward:V3=scale3(rd,0.0f32-1.0f32);
   free:bool=v.info.w>0.5f32;
   // the hull's frame, where the plan's records and its paint live
-  wh:V3=v.world; nh:V3=s.normal; dh:V3=rd;
-  if (!free) {wh=sb_to_hull(v.world,u); nh=sb_dir_to_hull(s.normal,u); dh=sb_dir_to_hull(rd,u);}
+  wh:V3=v.world; gh:V3=normalize3(v.normal); dh:V3=rd;
+  if (!free) {wh=sb_to_hull(v.world,u); gh=sb_dir_to_hull(gh,u); dh=sb_dir_to_hull(rd,u);}
+  // (a pixel's width on the deck, taken before anything branches)
+  aa:f32=fmax(gpu_fwidth(wh.x),gpu_fwidth(wh.z));
   record:int=cast(int)(v.info.y+0.5f32)-1;
   exposure:f32=fmax(u[b+PR_SUN_LIGHT+3],0.001f32);
-  night:f32=u[SLAB_P+39];
   kind:s32=-1;
+  row:f32=v.info.x;
+  painted:bool=row>SLAB_PAINT-0.5f32;
+  tinted:bool=(row>cast(f32)(SLAB_M_TINTED_FIRST)-0.5f32)&&(row<cast(f32)(SLAB_M_TINTED_LAST)+0.5f32);
+  pt:SlabPaint=SlabPaint.{c=v3(1.0f32,1.0f32,1.0f32),emit=v3(0.0f32,0.0f32,0.0f32)};
+  wall:bool=false; deck:bool=false;
+  street:SlabDeck=SlabDeck.{row=row,across=0.0f32,along=0.0f32,cross=100.0f32};
+  vv:PrV=v;
   if (record>=0) {
     at:int=SLAB_BOXES+(record*8);
     p:V4=wg_at4(u,at);
     q:V4=wg_at4(u,at+4);
     kind=wg_i32_f(p.w+0.5f32);
-    if (v.info.x>SLAB_PAINT-0.5f32) {
-      hit:SlabHit=SlabHit.{t=dist,n=nh,kind=p.w+(ifx q.w>10.5f32 then 0.25f32 else 0.0f32),top=q.y,id=cast(f32)(record),lo=v3(p.x,p.y,p.z),hi=v3(q.x,q.y,q.z)};
-      pt:SlabPaint=slab_paint(hit,wh,dh,u);
-      s.albedo=mul3(pr_decode(pt.c),v.tint);
-      s.glow=scale3(pr_decode(pt.emit),1.0f32/exposure);
-      s.rough=slab_photo_rough(kind,nh.y>0.5f32);
-      s.metal=0.0f32;
-      if ((kind==14)&&(nh.y>0.5f32)) {
-        // water on the deck: dark, smooth, a mirror
-        s.albedo=v3(0.006f32,0.03f32,0.04f32); s.rough=0.05f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
-      }
-      if ((kind==0)&&(nh.y>0.5f32)) {
-        // the deck's margin is wet with spray: darker and smoother toward its edge
-        wet:f32=smoothstep(-45.0f32,-4.0f32,slab_hull_plan(v2(wh.x,wh.z),u))*saturate(u[SLAB_P+44]/20.0f32);
-        s.rough=mix(s.rough,0.2f32,wet*0.7f32);
-        s.albedo=scale3(s.albedo,1.0f32-(0.25f32*wet));
-      }
-      if ((kind==0)&&(abs(nh.y)<0.5f32)) {
-        // the hull's walls: the white water a breaking crest throws up them, and the wet it leaves
-        // (gpu/slab-water.coax sw_wash, from the walls' simulated water)
-        wash:V2=sw_wash(v.world,s.normal,u[28],u);
-        s.rough=mix(s.rough,0.15f32,wash.y*0.8f32);
-        s.albedo=mix3(scale3(s.albedo,1.0f32-(0.35f32*wash.y)),v3(0.8f32,0.82f32,0.84f32),wash.x);
-      }
-    } else if ((kind==5)&&(abs(nh.y)<0.5f32)) {
-      // a tower's lit rooms at night, a room in two
-      along:f32=ifx abs(nh.x)>abs(nh.z) then wh.z else wh.x;
-      storey:f32=(wh.y-u[38])/3.9f32;
-      lit:f32=stepf(0.5f32,slab_hash2(v2(floor(along/3.0f32),floor(storey)+(cast(f32)(record)*13.0f32))))*stepf(0.3f32,fract(storey));
-      s.glow=add3(s.glow,scale3(v3(1.0f32,0.6f32,0.25f32),(lit*night*0.55f32)/exposure));
+    if (painted||tinted) {
+      hit:SlabHit=SlabHit.{t=dist,n=gh,kind=p.w+(ifx q.w>10.5f32 then 0.25f32 else 0.0f32),top=q.y,id=cast(f32)(record),lo=v3(p.x,p.y,p.z),hi=v3(q.x,q.y,q.z)};
+      pt=slab_paint(hit,wh,dh,u);
     }
+    if ((kind==0)&&(abs(row-cast(f32)(SLAB_M_WALL))<0.5f32)) {
+      if (gh.y>0.5f32) {deck=true; street=slab_deck_at(v2(wh.x,wh.z),u); vv.info.x=street.row;}
+      else if (abs(gh.y)<0.5f32) {wall=true;}
+    }
+  }
+  // the plan's paint tints the stone and the works (slab-photo-rows.coax)
+  if (tinted) {vv.tint=mul3(vv.tint,pr_decode(pt.c));}
+  s:PrSurface=pr_surface(vv,u,b,materials);
+  nh:V3=s.normal;
+  if (!free) {nh=sb_dir_to_hull(s.normal,u);}
+  if (tinted) {s.glow=add3(s.glow,scale3(pr_decode(pt.emit),1.0f32/exposure));}
+  if (painted&&(record>=0)) {
+    s.albedo=mul3(pr_decode(pt.c),v.tint);
+    s.glow=scale3(pr_decode(pt.emit),1.0f32/exposure);
+    s.rough=slab_photo_rough(kind,nh.y>0.5f32);
+    s.metal=0.0f32;
+    if ((kind==14)&&(nh.y>0.5f32)) {
+      // water on the deck: dark, smooth, a mirror
+      s.albedo=v3(0.006f32,0.03f32,0.04f32); s.rough=0.05f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
+    }
+  }
+  rain:f32=saturate(u[SLAB_SEA+17]*1.6f32);
+  if (deck) {
+    s=slab_deck_street(s,street,aa);
+    // after rain the deck is dark and glossy, with standing water in its low places and gutters
+    if (rain>0.0f32) {
+      low:f32=smoothstep(0.6f32,0.7f32,pr_cloud2(wh.x*0.13f32,wh.z*0.13f32));
+      gutter:f32=ifx street.row<cast(f32)(SLAB_M_ASPHALT)+0.5f32 then pr_band(abs(street.across),4.75f32,0.5f32,aa,0.0f32) else 0.0f32;
+      s=pr_wet(s,rain,fmax(low,gutter*0.8f32),normalize3(v.normal));
+    }
+  }
+  if (wall&&(v.world.y<u[28]+16.0f32)) {
+    // the live sea wets the wall where it reaches, and leaves a damp band as high as its waves run
+    hs:f32=u[35];
+    over:f32=v.world.y-slab_sea_height(v2(v.world.x,v.world.z),u);
+    along:f32=ifx abs(gh.x)>abs(gh.z) then wh.z else wh.x;
+    run:f32=0.4f32+(hs*(0.5f32+(0.8f32*pr_noise2(along*0.05f32,u[b+PR_UP+3]*0.15f32))));
+    wet:f32=1.0f32-smoothstep(0.0f32,run,over);
+    damp:f32=0.5f32*(1.0f32-smoothstep(hs*0.6f32,(hs*1.4f32)+1.0f32,v.world.y-u[28]));
+    s=pr_wet(s,fmax(wet,damp),0.0f32,s.normal);
+  }
+  if (wall) {
+    // the white water a breaking crest throws up the walls, and the wet it leaves
+    // (gpu/slab-water.coax sw_wash, from the walls' simulated water)
+    wash:V2=sw_wash(v.world,s.normal,u[28],u);
+    s=pr_wet(s,wash.y,0.0f32,s.normal);
+    s.albedo=mix3(s.albedo,v3(0.8f32,0.82f32,0.84f32),wash.x);
   }
   n:V3=s.normal;
   sun:V3=pr_at3(u,b+PR_SUN);
