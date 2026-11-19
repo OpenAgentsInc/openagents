@@ -61,6 +61,18 @@ mc_schema_delegate :: (schema: string, out: [] u8, claude: bool) -> string {
   if n < 0 { return ""; }
   return cast(string) out[0..<n];
 }
+// schema with ask restricted to ["none"] so the model cannot emit ask: question (GitHub #13701).
+MC_SCHEMA_ASK_ANY :: "\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}";
+MC_SCHEMA_ASK_NONE :: "\"ask\":{\"type\":\"string\",\"enum\":[\"none\"]}";
+mc_schema_no_ask :: (schema: string, out: [] u8) -> string {
+  a := mc_schema_find(schema, MC_SCHEMA_ASK_ANY);
+  if a < 0 { return ""; }
+  n := json_raw(out, 0, cast(string) schema[0..<a]);
+  n = json_raw(out, n, MC_SCHEMA_ASK_NONE);
+  n = json_raw(out, n, cast(string) schema[a + MC_SCHEMA_ASK_ANY.count..<schema.count]);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
 
 // The schema for a run: MC_SCHEMA, with questions and each edit's seen and name when intel is
 // on, and notes when memory is on. Into out; "" when it doesn't fit. Each member is where the
