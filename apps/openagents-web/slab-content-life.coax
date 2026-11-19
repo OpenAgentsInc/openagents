@@ -587,8 +587,9 @@ slab_life_frame :: (s: [] Slab, w: SlabWorld) {
   near_cap := ifx phone then LIFE_NEAR_PHONE else LIFE_NEAR;
   // the visitor, walking: drawn as one of the people (the shader's own walker steps aside, slab.coax)
   if s[0].mode == CAM_WALK {
-    L[0].figures[0] = LifeFigure.{x = s[0].foot.walk.x, y = feet_y(s), z = s[0].foot.walk.z, heading = sr_face_yaw(s[0].foot.walk),
-      strides = s[0].stride * L[0].rig_stride[1], walking = s[0].foot.walk.speed > 0.3f32, rig = 1, look = 2};
+    wa := walker_at(s);
+    L[0].figures[0] = LifeFigure.{x = wa[0], y = wa[1], z = wa[2], heading = walker_face(s),
+      strides = s[0].stride * L[0].rig_stride[1], walking = walker_speed(s) > 0.3f32, rig = 1, look = 2};
     L[0].figure_count = 1;
   }
   // the wind, toward where it blows, in the hull's frame (slab-bearing.coax: the waves' heading)

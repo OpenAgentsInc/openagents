@@ -11,9 +11,9 @@
 // nuclear option, the data halls, desalination, industry and the miners, and the HUD shows them.
 //
 // Three ways to look: an orbit round a point on the deck, a free fly-through, and walking the
-// deck as a character with GameBuilder's controller (metaverse/splice-bots/rules/walk.coax and
-// metaverse-engine/move/creative-fly.coax, wired as GameBuilder's hud_walk wires them: W runs
-// away from the camera, Space jumps, a double Space flies). Click anything to learn about it:
+// deck as a character with Everglade's controller, the Druid's (metaverse-engine/move/walk.coax and
+// its follow camera, metaverse-engine/cam/follow.coax: W walks away from the camera, Shift walks
+// rather than runs, Space jumps), with metaverse-engine/move/creative-fly.coax's double Space to fly. Click anything to learn about it:
 // an info card with its construction, its physics and its numbers now.
 //
 // The URL: ?site=guam|puerto-rico|kona|equator|california|texas|fjord, ?sea=calm|trade|equator-max|rough|
@@ -48,7 +48,7 @@
 #load "../../components/core/slider.coax";
 #load "../../metaverse-engine/core/budget.coax";
 #load "../../metaverse-engine/ui/font.coax";
-#load "../../metaverse/splice-bots/rules/walk.coax";
+#load "../../metaverse-engine/move/walk.coax" as eng;   // Everglade's controller (the Druid walks on it)
 #load "../../metaverse-engine/move/creative-fly.coax" as fly;
 #load "slab-panel.coax";  // the "What would it take?" panel under Change (GitHub #13686)
 #load "slab-chart.coax";  // and its chart
@@ -142,9 +142,11 @@ Slab :: struct {
   intro: f32;                      // seconds of the arrival's push-in left
   // the fly-through
   fx: f32; fy: f32; fz: f32; fyaw: f32; fpitch: f32; fspeed: f32 = 30;
-  // on foot (hull frame): GameBuilder's controller
-  foot: SrOnFoot; flyer: fly.Fly; born: bool; taps: int;
-  wyaw: f32 = 1.2; wpitch: f32 = 0.18; wdist: f32 = 9.5;
+  // on foot (hull frame): Everglade's controller, its body and its follow camera
+  walker: eng.Player; flyer: fly.Fly; born: bool; taps: int;
+  // the view the visitor turns: the follow camera's turn round +Y (theta), its rise above the
+  // level (pi/2 less its phi) and the distance the zoom asks for
+  wyaw: f32 = 1.2; wpitch: f32 = WALK_PITCH; wdist: f32 = WALK_DIST;
   stride: f32;          // metres walked, for the gait
   mode: int;
   section: bool;        // V: the hull cut open across, where the camera looks
@@ -226,7 +228,7 @@ slab_reset :: (s: [] Slab) {
   s[0].sea = SEA_ROUGH;
   s[0].plant.power = sim_opening_power(true);   // a power that carries the loads (spec 6.7)
   s[0].fx = 900; s[0].fy = 160; s[0].fz = 520; s[0].fyaw = 1.0; s[0].fpitch = 0.12;
-  s[0].foot.walk.x = 470; s[0].foot.walk.z = 30;
+  s[0].walker = eng.walk_place(470, SLAB_DECK, 30, 0);
   change_init(s[0].change[..]);
   s[0].change[0].world = change_now(s);
   layout_records(s);
@@ -396,61 +398,121 @@ slide :: (s: [] Slab, x: f32, z: f32, feet: f32, dx: f32, dz: f32) -> [2] f32 {
 axis :: (k: int, plus: int, minus: int) -> f32 {
   return (ifx k & plus != 0 then 1.0f32 else 0.0f32) - (ifx k & minus != 0 then 1.0f32 else 0.0f32);
 }
-// On foot: GameBuilder's walk (hud_walk), in the hull's frame. Ahead is away from the camera.
+// On foot: Everglade's controller, the Druid's (metaverse-engine/move/walk.coax, as Everglade drives
+// it: walk_input, then fixed 1/64 s steps of the body and then of its follow camera), in the hull's
+// frame. The deck is the walker's world: each step stands on ground_at under it, and slides along
+// what blocked says is solid (the parapet, the buildings, the trees' trunks, the statues), as the
+// deck always held its walker. A double Space flies (creative-fly.coax) and lands on the deck.
+WALK_DIST :: 4.4f32;                     // Everglade's follow distance (FOLLOW_DIST), m
+WALK_PITCH :: 0.4636476f32;              // its view from behind and above (pi/2 less BEHIND_PHI)
+WALK_ZOOM_MIN :: 1.0f32; WALK_ZOOM_MAX :: 20.0f32;   // its zoom (FOLLOW_ZOOM_MIN, FOLLOW_ZOOM_MAX)
+WALK_PITCH_MIN :: -1.47f32; WALK_PITCH_MAX :: 1.47f32;   // its tilt (pi/2 less FOLLOW_PHI_MAX, FOLLOW_PHI_MIN)
+// The deck's world for one step at the walker's feet: its ground there and the camera's room.
+walk_world :: (s: [] Slab, b: eng.Body) -> eng.World {
+  w: eng.World;
+  w.ground = ground_at(s, b.pos.x, b.pos.z, b.pos.y);
+  return w;
+}
+// The visitor's view into the follow camera: its turn, its tilt and the distance asked for.
+walker_look :: (s: [] Slab) -> eng.Player {
+  p := s[0].walker;
+  p.cam.theta = angle_wrap(s[0].wyaw);
+  p.cam.phi = PI32 * 0.5f32 - clamp32(s[0].wpitch, WALK_PITCH_MIN, WALK_PITCH_MAX);
+  p.cam.max_dist = clamp32(s[0].wdist, WALK_ZOOM_MIN, WALK_ZOOM_MAX);
+  return p;
+}
+// Set the walker down standing at (x, z) on the deck, facing away from the view.
+walker_set :: (s: [] Slab, x: f32, z: f32) {
+  g := ground_at(s, x, z, SLAB_DECK + 2);
+  w: eng.World; w.ground = g;
+  s[0].walker = eng.place_in(w, x, g, z, angle_wrap(s[0].wyaw + PI32));
+  s[0].walker.cam.max_dist = clamp32(s[0].wdist, WALK_ZOOM_MIN, WALK_ZOOM_MAX); s[0].walker.cam.dist = s[0].walker.cam.max_dist; s[0].walker.cam.prev_dist = s[0].walker.cam.dist;
+  s[0].flyer = fly.fly_stop(s[0].flyer);
+  s[0].born = true;
+}
 walk_step :: (s: [] Slab, dt: f32) {
-  t: SrWalkTuning;
-  if !s[0].born { s[0].foot.jump = sr_her_jump(ground_at(s, s[0].foot.walk.x, s[0].foot.walk.z, SLAB_DECK + 1), t); s[0].born = true; }
+  if !s[0].born { walker_set(s, s[0].walker.body.pos.x, s[0].walker.body.pos.z); }
   k := s[0].held;
-  go := axis(k, KB_W, KB_S) + axis(k, KB_UP, KB_DOWN) * 0;
+  go := axis(k, KB_W, KB_S);
   side := axis(k, KB_D, KB_A);
-  was := s[0].foot.walk;
-  view := angle_wrap(s[0].wyaw + PI32);
-  was.face_off = angle_wrap(was.face_off - angle_wrap(view - was.yaw));
-  was.yaw = view;
-  j := s[0].foot.jump;
   space := k & KB_SPACE != 0; sink := k & KB_SHIFT != 0;
-  ft: fly.FlyTuning; toggled := false;
+  // a double Space toggles flight (creative-fly.coax); a tap between frames is a press too
+  ft: fly.FlyTuning; toggled := false; tapped := s[0].taps > 0;
   for e: 0..<s[0].taps {
-    j = sr_jump_press(sr_jump_press(j, false), true);
     up := fly.fly_press(fly.fly_press(s[0].flyer, false, ft).fly, true, ft); s[0].flyer = up.fly; toggled = toggled != up.toggled;
   }
   s[0].taps = 0;
-  j = sr_jump_press(j, space);
   pr := fly.fly_press(s[0].flyer, space, ft);
   s[0].flyer = fly.fly_tick(pr.fly, dt);
-  if toggled != pr.toggled { j.presses.waiting = 0; j.waiting_time = 0; j.vy = 0; j.on_ground = false; }
-  flying := s[0].flyer.on;
-  s[0].foot.stance = sr_stance_forward(s[0].foot.stance, k & KB_W != 0, t);
-  n := sr_walk_step(was, go, side, sr_walk_pace(s[0].foot.stance, t), sr_jump_airborne(j), t, dt);
-  if flying {
-    v := fly.fly_velocity(sin(was.yaw) * go - cos(was.yaw) * side, cos(was.yaw) * go + sin(was.yaw) * side, space, sink, ft);
-    n.vx = v.x; n.vz = v.z; n.speed = sqrt(v.x * v.x + v.z * v.z);
-    n.x = was.x + v.x * dt; n.z = was.z + v.z * dt;
+  p := walker_look(s);
+  p = eng.walk_input(p, side, go, 0, 0, eng.walk_runs(sink, false, 0, 0), (space || tapped) && !s[0].flyer.on, 0, 0);
+  if s[0].flyer.on {
+    // flying: the view's way, Space up and Shift down; the deck's solids still stop it
+    b := p.body; from := b.pos;
+    view := angle_wrap(s[0].wyaw + PI32);
+    v := fly.fly_velocity(sin(view) * go - cos(view) * side, cos(view) * go + sin(view) * side, space, sink, ft);
+    at := slide(s, from.x, from.z, from.y, v.x * dt, v.z * dt);
+    y := lo_f32(from.y + fly.fly_velocity(0, 0, space, sink, ft).y * dt, SLAB_DECK + 400);
+    ground := ground_at(s, at[0], at[1], y);
+    if y <= ground { y = ground; s[0].flyer = fly.fly_ground(s[0].flyer, true, sink && !space); }
+    b.prev_pos = from; b.prev_face = b.face;
+    b.pos = eng.Vec3.{x = at[0], y = y, z = at[1]};
+    vx := ifx dt > 0 then (at[0] - from.x) / dt else 0.0f32; vz := ifx dt > 0 then (at[1] - from.z) / dt else 0.0f32;
+    b.vel = eng.Vec3.{x = vx, y = 0, z = vz};
+    if vx * vx + vz * vz > 0.25 { b.face = angle_atan2(vx, vz); }
+    b.prev_face = b.face;
+    b.on_ground = !s[0].flyer.on; b.act = ifx s[0].flyer.on then eng.Act.airborne else eng.Act.idle;
+    b.clock.carry_ns = 0;
+    p.body = b;
+    p.cam.prev_target = p.cam.target; p.cam.prev_dist = p.cam.dist;
+    p = eng.camera_step(walk_world(s, b), p, dt);
+    s[0].stride += sqrt((at[0] - from.x) * (at[0] - from.x) + (at[1] - from.z) * (at[1] - from.z));
+    s[0].walker = p;
+    return;
   }
-  at := slide(s, was.x, was.z, j.y, n.x - was.x, n.z - was.z);
-  if dt > 0 && (at[0] != n.x || at[1] != n.z) {
-    n.vx = (at[0] - was.x) / dt; n.vz = (at[1] - was.z) / dt; n.speed = sqrt(n.vx * n.vx + n.vz * n.vz);
-  }
-  n.x = at[0]; n.z = at[1];
-  ground := ground_at(s, n.x, n.z, j.y);
-  if flying {
-    up := fly.fly_velocity(0, 0, space, sink, ft).y;
-    j.prev_y = j.y; j.y += up * dt; j.vy = up; j.on_ground = false; j.presses.waiting = 0; j.waiting_time = 0; j.landed = false;
-    if j.y <= ground {
-      j.y = ground;
-      s[0].flyer = fly.fly_ground(s[0].flyer, true, sink && !space);
-      if !s[0].flyer.on { j.on_ground = true; j.landed = true; j.impact = 0; }
+  // walking: the steps the frame's time makes due, on the controller's own clock
+  sch := eng.walk_schedule(p.body.clock, dt);
+  if !sch.ok { s[0].walker = p; return; }
+  p.body.clock = sch.clock;
+  for i: 0..<sch.count {
+    b0 := p.body;
+    w := walk_world(s, b0);
+    p.body.prev_pos = b0.pos; p.body.prev_face = b0.face; p.cam.prev_target = p.cam.target; p.cam.prev_dist = p.cam.dist;
+    p = eng.step(w, p, eng.STEP);
+    // the deck's solids: the step slides along what it meets
+    at := slide(s, b0.pos.x, b0.pos.z, b0.pos.y, p.body.pos.x - b0.pos.x, p.body.pos.z - b0.pos.z);
+    if at[0] != p.body.pos.x || at[1] != p.body.pos.z {
+      p.body.pos.x = at[0]; p.body.pos.z = at[1];
+      p.body.vel.x = (at[0] - b0.pos.x) / eng.STEP; p.body.vel.z = (at[1] - b0.pos.z) / eng.STEP;
     }
-    if j.y > SLAB_DECK + 400 { j.y = SLAB_DECK + 400; }
-    j.prev_y = j.y; j.vy = 0; j.clock = 0;
-  } else { j = sr_jump_advance(j, t, ground, dt); }
-  s[0].stride += n.speed * dt;
-  s[0].foot.walk = n; s[0].foot.jump = j; s[0].foot.stance = sr_stance_tick(s[0].foot.stance, dt);
+    p = eng.camera_step(w, p, eng.STEP);
+    s[0].stride += sqrt((p.body.pos.x - b0.pos.x) * (p.body.pos.x - b0.pos.x) + (p.body.pos.z - b0.pos.z) * (p.body.pos.z - b0.pos.z));
+  }
+  // the steps paid (metaverse-engine/core/loop.coax loop_ran)
+  c := p.body.clock;
+  c.carry_ns -= c.due * c.step_ns; c.ticks += c.due; c.ran = c.due; c.due = 0;
+  p.body.clock = c;
+  s[0].walker = p;
 }
-feet_y :: (s: [] Slab) -> f32 {
-  t: SrWalkTuning;
-  return sr_feet_y(s[0].foot, ground_at(s, s[0].foot.walk.x, s[0].foot.walk.z, s[0].foot.jump.y), t);
+// How far this frame lies between the walker's last two steps, 0 to 1.
+walker_share :: (s: [] Slab) -> f32 {
+  c := s[0].walker.body.clock;
+  if c.step_ns <= 0 { return 1; }
+  return clamp32(cast(f32) (cast(f64) c.carry_ns / cast(f64) c.step_ns), 0, 1);
 }
+// The walker's feet as this frame draws them: between its last two steps.
+walker_at :: (s: [] Slab) -> [3] f32 {
+  b := s[0].walker.body; a := walker_share(s);
+  return [3] f32.[b.prev_pos.x + (b.pos.x - b.prev_pos.x) * a, b.prev_pos.y + (b.pos.y - b.prev_pos.y) * a, b.prev_pos.z + (b.pos.z - b.prev_pos.z) * a];
+}
+feet_y :: (s: [] Slab) -> f32 { return walker_at(s)[1]; }
+// The way the walker faces (yaw: it faces (sin, cos)), between its last two steps.
+walker_face :: (s: [] Slab) -> f32 {
+  b := s[0].walker.body;
+  return angle_wrap(b.prev_face + angle_wrap(b.face - b.prev_face) * walker_share(s));
+}
+walker_speed :: (s: [] Slab) -> f32 { v := s[0].walker.body.vel; return sqrt(v.x * v.x + v.z * v.z); }
+walker_air :: (s: [] Slab) -> bool { return !s[0].walker.body.on_ground; }
 
 // The fly-through: W A S D along the view, Space up, Shift down, the wheel sets the speed.
 fly_step :: (s: [] Slab, dt: f32) {
@@ -500,9 +562,7 @@ travel :: (s: [] Slab, i: int) {
     if i >= 7 { x = 470; z = 30; }
     // find open deck near the station
     for r: 0..<40 { if !blocked(s, x, z, SLAB_DECK) { break; } x += 3; z += 2; }
-    s[0].foot.walk.x = x; s[0].foot.walk.z = z; s[0].foot.walk.vx = 0; s[0].foot.walk.vz = 0;
-    t: SrWalkTuning;
-    s[0].foot.jump = sr_her_jump(ground_at(s, x, z, SLAB_DECK + 2), t);
+    walker_set(s, x, z);
   } else if s[0].mode == CAM_FLY {
     yaw := STATION_YAW[i]; pitch := STATION_PITCH[i]; d := STATION_DIST[i];
     s[0].fx = STATION_X[i] + sin(yaw) * cos(pitch) * d; s[0].fz = STATION_Z[i] + cos(yaw) * cos(pitch) * d;
@@ -667,14 +727,10 @@ set_mode :: (s: [] Slab, m: int) {
     // from a distant overview, the gardens' promenade (the spec's arrival); else under the orbit's point
     if !in_plan(x, z, 4) || (s[0].mode == CAM_ORBIT && s[0].dist > 600) { x = 470; z = 30; }
     for r: 0..<60 { if !blocked(s, x, z, SLAB_DECK) { break; } x += 4; z += 1; if !in_plan(x, z, 4) { x = 470; z = 30 + f32(r); } }
-    s[0].foot.walk.x = x; s[0].foot.walk.z = z; s[0].foot.walk.vx = 0; s[0].foot.walk.vz = 0;
-    t: SrWalkTuning;
-    s[0].foot.jump = sr_her_jump(ground_at(s, x, z, SLAB_DECK + 2), t);
-    s[0].born = true;
-    s[0].flyer = fly.fly_stop(s[0].flyer);
-    s[0].wyaw = s[0].yaw; s[0].wpitch = 0.18; s[0].wdist = 9.5;
+    s[0].wyaw = s[0].yaw; s[0].wpitch = WALK_PITCH; s[0].wdist = WALK_DIST;
+    walker_set(s, x, z);
   }
-  if m == CAM_ORBIT && s[0].mode == CAM_WALK { s[0].tx = s[0].foot.walk.x; s[0].tz = s[0].foot.walk.z; s[0].ty = SLAB_DECK; s[0].dist = 160; s[0].yaw = s[0].wyaw; s[0].pitch = 0.4; }
+  if m == CAM_ORBIT && s[0].mode == CAM_WALK { s[0].tx = s[0].walker.body.pos.x; s[0].tz = s[0].walker.body.pos.z; s[0].ty = SLAB_DECK; s[0].dist = 160; s[0].yaw = s[0].wyaw; s[0].pitch = 0.4; }
   s[0].mode = m;
   s[0].intro = 0;
   // the foot says how to move in this mode (sea_look_foot)
@@ -882,15 +938,19 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   } else if s[0].mode == CAM_WALK {
     if k & KB_LEFT != 0 { s[0].wyaw -= turn * 1.6f32; }
     if k & KB_RIGHT != 0 { s[0].wyaw += turn * 1.6f32; }
-    if k & KB_UP != 0 { s[0].wpitch = clamp32(s[0].wpitch + turn, -0.5, 1.3); }
-    if k & KB_DOWN != 0 { s[0].wpitch = clamp32(s[0].wpitch - turn, -0.5, 1.3); }
+    if k & KB_UP != 0 { s[0].wpitch = clamp32(s[0].wpitch + turn, WALK_PITCH_MIN, WALK_PITCH_MAX); }
+    if k & KB_DOWN != 0 { s[0].wpitch = clamp32(s[0].wpitch - turn, WALK_PITCH_MIN, WALK_PITCH_MAX); }
     walk_step(s, step);
-    feet := feet_y(s);
-    cy := cos(s[0].wpitch);
-    fx = -sin(s[0].wyaw) * cy; fy = -sin(s[0].wpitch); fz = -cos(s[0].wyaw) * cy;
-    head := [3] f32.[s[0].foot.walk.x, feet + 1.55f32, s[0].foot.walk.z];
-    hx := head[0] - fx * s[0].wdist; hy := head[1] - fy * s[0].wdist; hz := head[2] - fz * s[0].wdist;
-    // keep the eye over the deck, and short of what stands between it and the character
+    // the follow camera's shot, between its last two steps (metaverse-engine/cam/follow.coax follow_shot)
+    pc := s[0].walker.cam; a := walker_share(s);
+    hx0 := pc.prev_target.x + (pc.target.x - pc.prev_target.x) * a;
+    hy0 := pc.prev_target.y + (pc.target.y - pc.prev_target.y) * a;
+    hz0 := pc.prev_target.z + (pc.target.z - pc.prev_target.z) * a;
+    d := pc.prev_dist + (pc.dist - pc.prev_dist) * a;
+    so := sin(pc.phi);
+    head := [3] f32.[hx0, hy0, hz0];
+    hx := hx0 + so * sin(pc.theta) * d; hy := hy0 + cos(pc.phi) * d; hz := hz0 + so * cos(pc.theta) * d;
+    // keep the eye over the deck
     hy = hi_f32(hy, ground_at(s, hx, hz, hy) + 0.4f32);
     w := to_world(s, hx, hy, hz);
     ex = w[0]; ey = w[1]; ez = w[2];
@@ -1063,10 +1123,11 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   sh := dir_to_hull(s, f32(sun.x), f32(sun.y), f32(sun.z));
   u[P + P_SUNHULL] = sh[0]; u[P + P_SUNHULL + 1] = sh[1]; u[P + P_SUNHULL + 2] = sh[2];
   shown := s[0].mode == CAM_WALK && !(s[0].photo[0].on && s[0].photo[0].content.life[0].shown);   // photoreal draws the visitor as one of its people (slab-content-life.coax)
-  u[P + P_CHAR] = s[0].foot.walk.x; u[P + P_CHAR + 1] = ifx shown then feet_y(s) else -1000.0f32; u[P + P_CHAR + 2] = s[0].foot.walk.z;
-  u[P + P_CHAR + 3] = sr_face_yaw(s[0].foot.walk);
-  u[P + P_GAIT] = s[0].stride / 1.9f32 * TAU32; u[P + P_GAIT + 1] = s[0].foot.walk.speed;
-  u[P + P_GAIT + 2] = ifx shown then 1.0f32 else 0.0f32; u[P + P_GAIT + 3] = ifx s[0].foot.jump.on_ground then 0.0f32 else 1.0f32;
+  wa := walker_at(s);
+  u[P + P_CHAR] = wa[0]; u[P + P_CHAR + 1] = ifx shown then wa[1] else -1000.0f32; u[P + P_CHAR + 2] = wa[2];
+  u[P + P_CHAR + 3] = walker_face(s);
+  u[P + P_GAIT] = s[0].stride / 1.9f32 * TAU32; u[P + P_GAIT + 1] = walker_speed(s);
+  u[P + P_GAIT + 2] = ifx shown then 1.0f32 else 0.0f32; u[P + P_GAIT + 3] = ifx walker_air(s) then 1.0f32 else 0.0f32;
   u[P + P_PICK] = f32(s[0].selected); u[P + P_PICK + 1] = f32(s[0].hovered); u[P + P_PICK + 2] = f32(s[0].time - s[0].selected_at);
   // (the spray up the walls is simulated: slab-water.coax)
   u[P + P_SPRAY + 2] = f32(pw.containers); u[P + P_SPRAY + 3] = f32(ifx pw.data_load > 0 then s[0].hp.backup.lit else 0.0);
@@ -1087,7 +1148,7 @@ slab_ballast_top :: () -> f32 { return -SLAB_DRAFT + f32(hull_ledger(hull_prime(
 // Where the section cuts across the hull: through the orbit's point, or the walker, kept inside
 // the hull's beam.
 section_cut :: (s: [] Slab) -> f32 {
-  z := ifx s[0].mode == CAM_WALK then s[0].foot.walk.z else s[0].tz;
+  z := ifx s[0].mode == CAM_WALK then s[0].walker.body.pos.z else s[0].tz;
   if s[0].mode == CAM_FLY {
     // where the view meets the deck's plane (or the waterline's, from under it)
     e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
@@ -1757,7 +1818,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
       if s[0].build.on && s[0].moved >= 6 * s[0].dpr { bd_take(s); }   // a drag takes the build view's camera
       if s[0].build.on && !s[0].build.own { s[0].last_x = x; s[0].last_y = y; return true; }
       if s[0].mode == CAM_FLY { s[0].fyaw -= dx * 0.004; s[0].fpitch = clamp32(s[0].fpitch + dy * 0.003, -1.4, 1.4); }
-      else if s[0].mode == CAM_WALK { s[0].wyaw -= dx * 0.005; s[0].wpitch = clamp32(s[0].wpitch + dy * 0.004, -0.5, 1.3); }
+      else if s[0].mode == CAM_WALK { s[0].wyaw -= dx * 0.005; s[0].wpitch = clamp32(s[0].wpitch + dy * 0.004, WALK_PITCH_MIN, WALK_PITCH_MAX); }
       else { s[0].yaw -= dx * 0.004; s[0].pitch = clamp32(s[0].pitch + dy * 0.003, -0.2, 1.45); s[0].intro = 0; }
       s[0].last_x = x; s[0].last_y = y;
       return true;
@@ -1783,7 +1844,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
 slab_wheel :: (s: [] Slab, dy: f32) #export_c #effects(all) {
   if !s[0].started { slab_reset(s); }
   if s[0].mode == CAM_FLY { s[0].fspeed = clamp32(s[0].fspeed * (1 - dy * 0.001), 3, 60); return; }
-  if s[0].mode == CAM_WALK { s[0].wdist = clamp32(s[0].wdist * (1 + dy * 0.001), 1.5, 12); return; }
+  if s[0].mode == CAM_WALK { s[0].wdist = clamp32(s[0].wdist * (1 + dy * 0.001), WALK_ZOOM_MIN, WALK_ZOOM_MAX); return; }
   if s[0].build.on { bd_take(s); }
   s[0].dist = clamp32(s[0].dist * (1 + dy * 0.001), 25, 9000);
   s[0].intro = 0;
@@ -1948,7 +2009,23 @@ coaxial_slab_uniform_floats :: () -> int #export_c #effects(all) { return UNIFOR
   s: [1] Slab;
   slab_reset(s[..]);
   s[0].mode = CAM_WALK;
-  for i: 0..<9 { travel(s[..], i); #assert !blocked(s[..], s[0].foot.walk.x, s[0].foot.walk.z, s[0].foot.jump.y); }
+  for i: 0..<9 { travel(s[..], i); #assert !blocked(s[..], s[0].walker.body.pos.x, s[0].walker.body.pos.z, s[0].walker.body.pos.y); }
+}
+#test "on foot, W walks Everglade's walker away from the view, on the deck, at its run" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  s[0].mode = CAM_WALK;
+  travel(s[..], 0);
+  from := s[0].walker.body.pos;
+  s[0].held = KB_W;
+  for i: 0..<60 { walk_step(s[..], 1.0f32 / 60.0f32); }
+  at := s[0].walker.body.pos;
+  moved := sqrt((at.x - from.x) * (at.x - from.x) + (at.z - from.z) * (at.z - from.z));
+  #assert moved > 3.0f32;                      // a second at its run (7.5 m/s once up to speed)
+  #assert s[0].walker.body.on_ground;
+  #assert !blocked(s[..], at.x, at.z, at.y);
+  // away from the view: the view looks along -(sin wyaw, cos wyaw)
+  #assert (at.x - from.x) * -sin(s[0].wyaw) + (at.z - from.z) * -cos(s[0].wyaw) > 0.5f32 * moved;
 }
 #test "?mode=fly before the first frame starts the flyer where the orbit camera stands, outside the hull" {
   s: [1] Slab;

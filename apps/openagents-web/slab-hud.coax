@@ -257,7 +257,7 @@ sb_look :: (s: [] Slab, h: [] SceneHud) {
       sh_option(h, "look.walk", "Walk", "", s[0].mode == CAM_WALK);
       sh_option(h, "look.fly", "Fly", "", s[0].mode == CAM_FLY);
     sh_end_of(h);
-    if s[0].mode == CAM_WALK { sh_say(h, "W, A, S and D walk. Space jumps; twice, and you fly. Drag to turn. Scroll to zoom."); }
+    if s[0].mode == CAM_WALK { sh_say(h, "W, A, S and D run; hold Shift to walk. Space jumps; twice, and you fly. Drag to turn. Scroll to zoom."); }
     else if s[0].mode == CAM_FLY { sh_say(h, "W, A, S and D fly. Space climbs and Shift drops. Drag to look. Scroll to change speed, from 3 to 60 metres a second."); }
     else { sh_say(h, "Drag to turn. Scroll to zoom. W, A, S and D move the point you circle. Click anything to learn what it is."); }
   }
