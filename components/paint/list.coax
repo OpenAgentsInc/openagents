@@ -34,6 +34,8 @@
 //                                             groups around it, until the matching end (on false). A
 //                                             group's own primitives each take the opacity; they are not
 //                                             composited as one layer first (overlaps inside show through)
+//   PRIM_LAYER     a backdrop's mask (w 0: none) matrix its affine, a its opacity, b its blur, c 1: a backdrop;
+//                                             radius the mask's corner; on false: the group's end
 //   PRIM_POLY      the points' bounds          pts its points (x, y pairs, a view into the caller's pool),
 //                                             fill; a closed polygon, filled even-odd (ARWES's frames)
 //   coax/bin/coax test components/paint/list.coax
@@ -148,6 +150,16 @@ prim_unalpha :: (list: [] Prim, n: int) -> int { return prim_put(list, n, Prim.{
 prim_layer :: (list:[]Prim,n:int,matrix:[6]f32,alpha:f32,blur:f32,backdrop:bool)->int {
  return prim_put(list,n,Prim.{kind=PRIM_LAYER,on=true,matrix=matrix,a=alpha,b=blur,c=ifx backdrop then 1.0f32 else 0.0f32,id=-1,line=-1});
 }
+// A frosted surface's backdrop: an untransformed backdrop group whose blurred
+// copy of what is already painted, and the children over it, show only
+// inside the rounded rect (x, y, w, h, radius) in the parent's coordinates
+// (zgx blur.wgsl: a rounded panel blurs only inside its curve). Paint the
+// surface's shadow before it and its fill and content inside it; end it with
+// prim_unlayer. A target without composition-v1 skips the group and paints
+// its children flat.
+prim_backdrop :: (list:[]Prim,n:int,x:f32,y:f32,w:f32,h:f32,radius:f32,blur:f32)->int {
+ return prim_put(list,n,Prim.{kind=PRIM_LAYER,on=true,matrix=[6]f32.[1,0,0,1,0,0],a=1,b=blur,c=1,x=x,y=y,w=w,h=h,radius=radius,id=-1,line=-1});
+}
 prim_unlayer :: (list:[]Prim,n:int)->int {return prim_put(list,n,Prim.{kind=PRIM_LAYER,id=-1,line=-1});}
 // Primitives from..<to, already painted, at `alpha`: their colours' alpha scaled (what a part that
 // enters fades with, once it knows where its primitives end).
@@ -181,7 +193,7 @@ prim_move :: (list: [] Prim, from: int, to: int, dx: f32, dy: f32) {
   for k: from..<to {
     if k < 0 || k >= list.count { continue; }
     kind := list[k].kind;
-    if kind==PRIM_LAYER {if list[k].on {if layers==0 {list[k].matrix[4]+=dx;list[k].matrix[5]+=dy;}layers+=1;}else if layers>0 {layers-=1;}continue;}
+    if kind==PRIM_LAYER {if list[k].on {if layers==0 {list[k].matrix[4]+=dx;list[k].matrix[5]+=dy;if list[k].w>0 {list[k].x+=dx;list[k].y+=dy;}}layers+=1;}else if layers>0 {layers-=1;}continue;}
     if layers>0 {continue;}
     if kind == PRIM_CLIP {
       if !list[k].on { continue; }
@@ -279,4 +291,11 @@ prim_extent :: (p: Prim) -> f32 {
  prim_move(p[..],0,n,3,4);prim_opacity(p[..],0,n,0.5);
  #assert p[0].matrix[4]==23 && p[0].matrix[5]==4 && p[0].a==0.4 && p[1].x==1 && p[1].y==2 && p[1].fill.a==1;
  #assert p[3].x==33 && p[3].y==44 && p[3].fill.a==0.5;
+}
+#test "a backdrop is an untransformed backdrop group whose mask moves with it, as its children do not" {
+ p:[3]Prim;n:=prim_backdrop(p[..],0,10,20,100,50,12,16);n=prim_fill(p[..],n,10,20,100,50,12,rgba(1,1,1,0.5));n=prim_unlayer(p[..],n);
+ #assert n==3 && p[0].kind==PRIM_LAYER && p[0].on && p[0].c==1 && p[0].b==16 && p[0].a==1 && p[0].matrix[0]==1 && p[0].matrix[3]==1 && p[0].matrix[4]==0;
+ #assert p[0].x==10 && p[0].y==20 && p[0].w==100 && p[0].h==50 && p[0].radius==12 && prim_groups_valid(p[0..<n],2);
+ prim_move(p[..],0,n,3,4);
+ #assert p[0].x==13 && p[0].y==24 && p[0].matrix[4]==3 && p[0].matrix[5]==4 && p[1].x==10;
 }

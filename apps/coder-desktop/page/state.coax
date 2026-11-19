@@ -247,6 +247,7 @@ CoderPage :: struct {
   set_orkey: [48] u8; set_orkey_n: int;
   set_version: [48] u8; set_version_n: int;
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
+  cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   arena: [CP_ARENA] u8;
 }
 

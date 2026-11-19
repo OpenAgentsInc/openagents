@@ -15,6 +15,10 @@ uc_fixture :: (s:[]UcFixture,out:[]f32,w:int,h:int)->int #export_c #effects(all)
  } else if s[0].mode==3 {
   n=prim_fill(p,n,16,16,16,32,0,rgba(1,1,1,1));n=prim_layer(p,n,[6]f32.[1,0,0,1,0,0],1,6,true);
   n=prim_fill(p,n,40,24,8,8,0,rgba(1,1,1,1));n=prim_unlayer(p,n);
+ } else if s[0].mode==6 {
+  // a backdrop masked to a rounded rect: its dark child shows inside the curve only
+  n=prim_fill(p,n,0,0,cast(f32)w,cast(f32)h,0,rgba(1,1,1,1));n=prim_backdrop(p,n,8,8,48,48,16,0);
+  n=prim_fill(p,n,0,0,cast(f32)w,cast(f32)h,0,rgba(0,0,0,1));n=prim_unlayer(p,n);
  } else {
   s[0].image=[16]u8.[255,0,0,255,0,255,0,0,0,0,255,128,255,255,255,255];
   n=prim_image(p,n,1,16,16,32,32);

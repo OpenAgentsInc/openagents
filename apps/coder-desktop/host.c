@@ -15,6 +15,7 @@ typedef struct {
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   void (*changed)(void *context); void *context;
   int headless;   // a page with no window: a chat whose reply runs out of view
+  char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -32,6 +33,16 @@ static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr,
   if (c->settle > 0) c->settle--;
   return n < 0 ? 0 : n;
 }
+// A frame with a frosted surface is composition-v1's plan (page/compose.coax); the rest are flat.
+static int cd_composition(void *user, UiComposition *out) {
+  CoderHost *c = user;
+  if (!coder_page_composed(cd_state(c))) return 0;
+  coax_t_UcPlan *p = c->s->cmp_gpu.e->plan.e;
+  *out = (UiComposition){p->ops.e, (uint32_t)p->n, (uint32_t)p->targets, (uint32_t)p->words};
+  return 1;
+}
+// A composed frame the GPU refused: the page draws flat from then on.
+static void cd_presented(void *user, int accepted) { if (!accepted) coder_page_compose_refused(cd_state((CoderHost *)user)); }
 static float cd_icon_size(int i) { return coder_page_icon_size(i); }
 static float cd_font_size(int k) { return coder_page_font_size(k); }
 static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
@@ -52,14 +63,19 @@ void *cd_open(const char *resources) {
   App *a = &c->app;
   snprintf(a->resources, sizeof a->resources, "%s", resources);
   char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
+  snprintf(c->composition_shader, sizeof c->composition_shader, "%s/composition.metal", resources);
+  FILE *composition = fopen(c->composition_shader, "rb");
+  if (composition) fclose(composition);
   c->s = calloc(1, sizeof *c->s);
   if (!c->s) { free(c); return NULL; }
   a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll};
+               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
+               .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
+  coder_page_compose(cd_state(c), composition != NULL);
   // the atlas at the scale the page draws its units at
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   c->screen = a->dpr;

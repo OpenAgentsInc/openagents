@@ -21,7 +21,18 @@ follow the same affine. A transform maps `(x,y)` to
 clips nest to the existing sixteen-level semantic limit. Singular or
 nonfinite transforms refuse the candidate.
 
-The direct display-list API is `prim_layer` / `prim_unlayer`.
+The direct display-list API is `prim_layer` / `prim_unlayer`. A frosted
+surface uses `prim_backdrop(list, n, x, y, w, h, radius, blur)` … `prim_unlayer`:
+an untransformed backdrop group whose composite carries a rounded mask (the
+quad's bounds and corner radius, in the parent's coordinates), so the blurred
+backdrop and the children over it show only inside the curve, as zgx's
+`blur.wgsl` does. Wrap it in a `prim_clip` of the same rectangle to bound the
+capture and blur passes. Every other composite keeps the full canvas at radius
+0, which covers every pixel, so existing plans draw as before. Coder Desktop's
+models menu is the first desktop consumer (`apps/coder-desktop/page/compose.coax`):
+its page hands the Mac host a plan only on frames with a backdrop and draws
+flat otherwise. The blur radius is bounded at 32 device pixels (sigma a third
+of it); Zeron's wider blurs need its downsampled levels, which v1 does not have.
 `PRIM_ALPHA` remains the old per-primitive opacity operation. `PRIM_IMAGE`
 names an immutable image descriptor supplied to `uc_build`; its rectangle
 scales the full image, and the ordinary nested clip supplies cropping.
@@ -86,9 +97,10 @@ blur and uses opaque group opacity.
 ## Qualification and inspection
 
 `coax/native/tests/gpu-composition-fixture.coax` feeds the same scene into native SDK and browser
-pixel oracles. The six cases check isolated overlap opacity, transformed
+pixel oracles. The seven cases check isolated overlap opacity, transformed
 clipping, source blur halo, backdrop blur with a sharp child, transparent
-RGBA image interpolation, and translucent overlap over a gray destination. `composition-oracle.c` uses actual offscreen SDK
+RGBA image interpolation, translucent overlap over a gray destination, and a
+backdrop's rounded mask. `composition-oracle.c` uses actual offscreen SDK
 readback exclusively for qualification. `ui_readback` is not a frame path.
 
 The web inspector is `components/gallery/composition.html`, served from the
@@ -102,7 +114,7 @@ coax/web/serve.sh . --static --listen 127.0.0.1:9027
 
 Then use the shared headless `shot` tool on
 `http://127.0.0.1:9027/components/gallery/composition.html`.
-The page exposes `window.compositionResults` with six pixel results and SDK
+The page exposes `window.compositionResults` with seven pixel results and SDK
 validation errors. It renders GPU specimens inside a normal HTML document.
 
 World texture/depth borrowing, production desktop migration, Android SDK

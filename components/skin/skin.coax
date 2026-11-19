@@ -327,7 +327,21 @@ UiActivity :: struct {
   working_h: f32 = 26; working_gap: f32 = 8; rotate: f32 = 7;   // the working line: its height, its gaps, seconds a word holds
 }
 UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;}
+// One drop shadow as CSS writes it (offset x, y; blur; spread; colour), as
+// Zeron's tokens give them (zgx ui/ds/themes/zeron-dark.json). Draw one with
+// uiskin_shadow: the blur is CSS's, twice the gaussian's sigma.
+UiShadow :: struct { dx: f32; dy: f32; blur: f32; spread: f32; color: Rgba; }
+// The elevation ramp and the floating surfaces' shadows (Zeron Dark).
+UiShadows :: struct {
+  sm: UiShadow = UiShadow.{dy = 1, blur = 2, color = Rgba.{a = 0.349}};          // 0 1 2 #00000059
+  md: UiShadow = UiShadow.{dy = 4, blur = 12, color = Rgba.{a = 0.4}};           // 0 4 12 #00000066
+  lg: UiShadow = UiShadow.{dy = 12, blur = 32, color = Rgba.{a = 0.502}};        // 0 12 32 #00000080
+  composer: UiShadow = UiShadow.{dy = 12, blur = 32, color = Rgba.{a = 0.4}};    // 0 12 32 #00000066
+  menu: UiShadow = UiShadow.{dy = 20, blur = 56, color = Rgba.{a = 0.322}};      // 0 20 56 #00000052
+  dialog: UiShadow = UiShadow.{dy = 24, blur = 64, color = Rgba.{a = 0.502}};    // 0 24 64 #00000080
+}
 UiSkin :: struct {
+ shadows:UiShadows;
  chat:UiConversation;
  animated:UiAnimated;
  motion:UiMotion;
@@ -440,6 +454,19 @@ uiskin_float :: (list: [] Prim, n: int, s: UiSkin, x: f32, y: f32, w: f32, h: f3
   k := n;
   for i: 0..<s.lifted.dy.count { k = prim_shadow(list, k, x, y, w, h, radius, 0, s.lifted.dy[i], s.lifted.blur[i], s.lifted.spread[i], s.lift); }
   return k;
+}
+// A drop shadow token under (x, y, w, h) with its corner radius: the
+// analytic gaussian rounded-rect shadow (backend/gpu-shader.coax, kind 1),
+// sigma half the CSS blur. Returns the count.
+uiskin_shadow :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, s: UiShadow) -> int {
+  return prim_shadow(list, n, x, y, w, h, radius, s.dx, s.dy, s.blur / 2, s.spread, s.color);
+}
+#test "a shadow token is a prim_shadow at half its CSS blur, and Zeron's ramp is the default" {
+  k: UiSkin;
+  #assert k.shadows.menu.dy == 20 && k.shadows.menu.blur == 56 && k.shadows.dialog.color.a > 0.5 && k.shadows.sm.color.a > 0.34;
+  p: [2] Prim;
+  n := uiskin_shadow(p[..], 0, 10, 20, 100, 40, 26, k.shadows.composer);
+  #assert n == 1 && p[0].kind == PRIM_SHADOW && p[0].b == 12 && p[0].c == 16 && p[0].d == 0 && p[0].fill.a == 0.4f32 && p[0].radius == 26;
 }
 // A colour moved toward white by amount (glass.rs lift).
 uiskin_lift :: (c: Rgba, amount: f32) -> Rgba { return Rgba.{r = c.r + (1 - c.r) * amount, g = c.g + (1 - c.g) * amount, b = c.b + (1 - c.b) * amount, a = c.a}; }

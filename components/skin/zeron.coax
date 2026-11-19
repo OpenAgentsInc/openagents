@@ -130,6 +130,22 @@ zeron_dark :: () -> Theme {
 // Zeron's shadows (shadow.*, zeron.composer.shadow, zeron.menu.shadow, zeron.dialog.shadow): how far down and how soft.
 ZD_SHADOW_SM :: [2] f32.[1, 2]; ZD_SHADOW_MD :: [2] f32.[4, 12]; ZD_SHADOW_LG :: [2] f32.[12, 32];
 ZD_SHADOW_MENU :: [2] f32.[20, 56]; ZD_SHADOW_DIALOG :: [2] f32.[24, 64];
+// The skin's shadow tokens (skin.coax UiShadows) from the theme: offset, CSS blur and colour.
+zeron_shadows :: (th: Theme) -> UiShadows {
+  t := UiShadows.{};
+  t.sm = UiShadow.{dy = ZD_SHADOW_SM[0], blur = ZD_SHADOW_SM[1], color = th.shadow_sm};
+  t.md = UiShadow.{dy = ZD_SHADOW_MD[0], blur = ZD_SHADOW_MD[1], color = th.shadow_md};
+  t.lg = UiShadow.{dy = ZD_SHADOW_LG[0], blur = ZD_SHADOW_LG[1], color = th.shadow_lg};
+  t.composer = UiShadow.{dy = ZD_SHADOW_LG[0], blur = ZD_SHADOW_LG[1], color = th.composer_shadow};
+  t.menu = UiShadow.{dy = ZD_SHADOW_MENU[0], blur = ZD_SHADOW_MENU[1], color = th.menu_shadow};
+  t.dialog = UiShadow.{dy = ZD_SHADOW_DIALOG[0], blur = ZD_SHADOW_DIALOG[1], color = th.dialog_shadow};
+  return t;
+}
+#test "Zeron's skin takes its shadow tokens from the theme, and they match the skin's defaults" {
+  k := zeron_skin(); d := UiShadows.{};
+  #assert k.shadows.menu.dy == 20 && k.shadows.menu.blur == 56 && k.shadows.composer.blur == 32 && k.shadows.dialog.dy == 24;
+  #assert abs(k.shadows.menu.color.a - d.menu.color.a) < 0.002 && abs(k.shadows.sm.color.a - d.sm.color.a) < 0.002 && abs(k.shadows.lg.color.a - d.lg.color.a) < 0.002;
+}
 
 // A chip hovered or with its menu open (Zeron Dark element_hover).
 CHIP_WASH :: Rgba.{r = 1, g = 1, b = 1, a = 0.11};
@@ -472,6 +488,7 @@ zeron_skin :: () -> UiSkin {
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
   s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk(); s.chrome = zeron_chrome();
   s.lifted = UiFloat.{dy = [2] f32.[10, 4], blur = [2] f32.[15, 6], spread = [2] f32.[-3, -4]};   // Tailwind's shadow-lg
+  s.shadows = zeron_shadows(th);
   s.app.icon_alert = ICON_DANGER; s.app.icon_nav = ICON_SIDEBAR; s.app.icon_disclose = ICON_CHEVRON_RIGHT;   // the app set's marks (components/app/)
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
   s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1

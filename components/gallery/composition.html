@@ -15,8 +15,8 @@ try {
  const color=device.createTexture({size:[1,1],format,usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});device.queue.writeTexture({texture:color},new Uint8Array([255,255,255,255]),{},[1,1]);
  const image=device.createTexture({size:[2,2],format,usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
  const vb=device.createBuffer({size:32768*4,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});
- const titles=['Group opacity','Transform + clip','Source blur','Backdrop + sharp child','RGBA image','Translucent children'];const results=[];
- for(let mode=0;mode<6;mode++) {
+ const titles=['Group opacity','Transform + clip','Source blur','Backdrop + sharp child','RGBA image','Translucent children','Rounded backdrop mask'];const results=[];
+ for(let mode=0;mode<7;mode++) {
   if(!compositor.reserve())throw Error('busy');const n=x.frame(mode,64,64);if(!n)throw Error('Coax refused');
   device.queue.writeBuffer(vb,0,new Float32Array(x.memory.buffer,x.vertices(),n*28));
   device.queue.writeTexture({texture:image},new Uint8Array(x.memory.buffer,x.image(),16),{bytesPerRow:8},[2,2]);
@@ -25,9 +25,9 @@ try {
   const read=device.createBuffer({size:256*64,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});const command=device.createCommandEncoder();command.copyTextureToBuffer({texture:target},{buffer:read,bytesPerRow:256},[64,64]);device.queue.submit([command.finish()]);await read.mapAsync(GPUMapMode.READ);
   const pixels=new Uint8Array(read.getMappedRange()).slice();read.unmap();read.destroy();target.destroy();
   const at=(xx,yy,c=0)=>pixels[(yy*64+xx)*4+c];
-  const pass=mode===0?Math.abs(at(12,16)-128)<=1&&Math.abs(at(25,16)-128)<=1:mode===1?at(30,16)>250&&at(12,16)===0&&at(30,30)===0:mode===2?at(32,32)>245&&at(22,32)>0&&at(16,32)===0:mode===3?at(32,32)>0&&at(43,27)>250&&at(50,27)===0:mode===4?at(24,24)>220&&at(40,20,1)===0&&at(24,40,2)>100&&at(24,40,2)<140:Math.abs(at(12,16)-140)<=2&&Math.abs(at(25,16)-160)<=2;
+  const pass=mode===0?Math.abs(at(12,16)-128)<=1&&Math.abs(at(25,16)-128)<=1:mode===1?at(30,16)>250&&at(12,16)===0&&at(30,30)===0:mode===2?at(32,32)>245&&at(22,32)>0&&at(16,32)===0:mode===3?at(32,32)>0&&at(43,27)>250&&at(50,27)===0:mode===4?at(24,24)>220&&at(40,20,1)===0&&at(24,40,2)>100&&at(24,40,2)<140:mode===6?at(9,9)>250&&at(32,32)<5&&at(9,32)<5&&at(4,32)>250&&at(54,54)>250:Math.abs(at(12,16)-140)<=2&&Math.abs(at(25,16)-160)<=2;
   results.push({mode,pass});const section=document.createElement('section'),canvas=document.createElement('canvas');canvas.width=canvas.height=64;canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels),64,64),0,0);section.append(titles[mode],canvas);document.querySelector('main').append(section);
  }
- window.compositionResults={results,errors};document.querySelector('#status').textContent=results.every(r=>r.pass)&&!errors.length?'6 GPU pixel checks passed':'Failed: '+JSON.stringify(window.compositionResults);
+ window.compositionResults={results,errors};document.querySelector('#status').textContent=results.every(r=>r.pass)&&!errors.length?'7 GPU pixel checks passed':'Failed: '+JSON.stringify(window.compositionResults);
 } catch(e) {window.compositionResults={error:String(e)};document.querySelector('#status').textContent=String(e);}
 </script></html>

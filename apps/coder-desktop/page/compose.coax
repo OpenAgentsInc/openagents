@@ -1,0 +1,77 @@
+// Coder Desktop page: Zeron's elevation. Shadows are the skin's tokens (components/skin/skin.coax
+// UiShadows) drawn with the shared analytic shadow; a frosted surface (the models' menu) blurs what
+// is behind it through composition-v1 (coax/native/gpu-composition.coax, prim_backdrop), which the
+// Mac host draws when the page hands it a plan (host.c coder_page_plan). A frame with no backdrop,
+// or one the planner refuses (a window past 4096 device pixels, the resource budget), draws flat
+// as before, and the surface falls back to its solid fill.
+#load "../../../coax/native/gpu-composition.coax";
+
+CP_BLUR_DEVICE :: 31.5;       // the planner's bounded kernel: at most 32 device pixels (sigma a third of it)
+
+CpCompose :: struct {
+  plan: [1] UcPlan;
+  list: [CP_UNDER + CP_OVER + 2] Prim;
+  on: bool;                   // the host has composition-v1's shader (coder_page_compose)
+  off: bool;                  // the host refused a composed frame: draw flat from now on
+  used: bool;                 // this frame is the plan's
+  w: f32; h: f32;             // the frame's device pixels
+}
+
+// Whether this frame can blur behind a surface: the host draws composition-v1 and the window fits it.
+cp_glass :: (s: [] CoderPage) -> bool {
+  c := s[0].cmp_gpu[0];
+  return c.on && !c.off && uc_extent(cast(int) c.w, cast(int) c.h);
+}
+// A backdrop's blur radius in the page's units: the bounded kernel's widest.
+cp_glass_blur :: (s: [] CoderPage) -> f32 { return ifx s[0].d > 0 then CP_BLUR_DEVICE / s[0].d else 0.0f32; }
+
+cp_has_layer :: (list: [] Prim) -> bool {
+  for p: list { if p.kind == PRIM_LAYER { return true; } }
+  return false;
+}
+// The composed frame: the canvas and both lists, culled to the band the flat path draws, planned
+// into out. Returns the vertex count, or -1 when the frame draws flat. flat is the flat frame's.
+cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32, canvas: Rgba, under: [] Prim, over: [] Prim, flat: int) -> int {
+  c := s[0].cmp_gpu[..];
+  c[0].used = false;
+  if !cp_glass(s) || !cp_has_layer(over) { return -1; }
+  l := c[0].list[..];
+  n := prim_fill(l, 0, 0, 0, w, h, 0, canvas);
+  y0: f32 = -8; y1 := h + 8;
+  for pass: 0..<2 {
+    src := ifx pass == 0 then under else over;
+    for p: src {
+      structural := p.kind == PRIM_CLIP || p.kind == PRIM_FADE || p.kind == PRIM_ALPHA || p.kind == PRIM_LAYER;
+      if !structural && (p.y > y1 || p.y + prim_extent(p) < y0) { continue; }
+      k := prim_put(l, n, p);
+      if k == n { return -1; }
+      n = k;
+    }
+  }
+  // charge the planner only for the vertices this frame can need, so the targets fit its budget
+  cap := (flat * 2 + 4096) * GP_VERTEX_FLOATS;
+  if cap > out.count { cap = out.count; }
+  images: [1] UcImage;
+  if !uc_build(c[0].plan[..], out[0..<cap], a, l[0..<n], images[0..<0], cast(int) c[0].w, cast(int) c[0].h, d) { return -1; }
+  c[0].used = true;
+  return c[0].plan[0].v;
+}
+
+// The host: whether it can draw composition-v1 (its shader loaded), and that it refused a composed frame.
+coder_page_compose :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].on = on; } }
+coder_page_compose_refused :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count > 0 && s[0].cmp_gpu[0].used { s[0].cmp_gpu[0].off = true; s[0].cmp_gpu[0].used = false; }
+}
+// Whether the last frame is the plan's (host.c reads cmp_gpu.plan then).
+coder_page_composed :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].cmp_gpu[0].used && s[0].cmp_gpu[0].plan[0].ok; }
+
+#test "the glass needs the host's composition shader, a window that fits and no refusal" {
+  s: [1] CoderPage;
+  s[0].cmp_gpu[0].w = 2400; s[0].cmp_gpu[0].h = 1600;
+  #assert !cp_glass(s[..]);
+  coder_page_compose(s[..], true); #assert cp_glass(s[..]);
+  s[0].cmp_gpu[0].w = 5120; #assert !cp_glass(s[..]);
+  s[0].cmp_gpu[0].w = 2400; s[0].cmp_gpu[0].used = true; coder_page_compose_refused(s[..]);
+  #assert !cp_glass(s[..]) && !coder_page_composed(s[..]);
+  s[0].d = 2; #assert cp_glass_blur(s[..]) * 2 <= 32;
+}

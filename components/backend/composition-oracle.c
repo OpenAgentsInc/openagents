@@ -15,7 +15,7 @@ int main(int argc,char**argv) {
  assert(argc==4);Fixture *f=calloc(1,sizeof *f);assert(f);
  UiApp a={.title="Composition oracle",.max_vertices=32768/28,.shader=argv[1],.composition_shader=argv[2],.user=f,.frame=frame,.composition=plan,.image=image,.presented=accepted};
  f->host=ui_open(&a,1);assert(f->host);unsigned char mono=255,white[4]={255,255,255,255},pixels[64*64*4];ui_atlas(f->host,&mono,1,1,white,1,1);
- for(int mode=0;mode<6;mode++) {
+ for(int mode=0;mode<7;mode++) {
   f->s.mode=mode;assert(ui_shot_frame(f->host,64,64,0));assert(ui_readback(f->host,pixels,sizeof pixels));
   if(mode==0) {assert(abs(channel(pixels,12,16,0)-128)<=1);assert(abs(channel(pixels,25,16,0)-128)<=1);assert(channel(pixels,50,16,0)==0);}
   if(mode==1) {assert(channel(pixels,30,16,0)>250);assert(channel(pixels,12,16,0)==0);assert(channel(pixels,30,30,0)==0);}
@@ -23,6 +23,7 @@ int main(int argc,char**argv) {
   if(mode==3) {assert(channel(pixels,32,32,0)>0);assert(channel(pixels,43,27,0)>250);assert(channel(pixels,50,27,0)==0);}
   if(mode==4) {assert(channel(pixels,24,24,0)>220);assert(channel(pixels,40,20,1)==0);assert(channel(pixels,24,40,2)>100 && channel(pixels,24,40,2)<140);}
   if(mode==5) {assert(abs(channel(pixels,12,16,0)-140)<=2);assert(abs(channel(pixels,25,16,0)-160)<=2);}
+  if(mode==6) {assert(channel(pixels,9,9,0)>250);assert(channel(pixels,32,32,0)<5);assert(channel(pixels,9,32,0)<5);assert(channel(pixels,4,32,0)>250);assert(channel(pixels,54,54,0)>250);}
   char path[2048];snprintf(path,sizeof path,"%s-%d.png",argv[3],mode);assert(ui_shot_write(f->host,path));printf("ok GPU pixels mode %d\n",mode);
  }
  f->s.mode=4;assert(ui_shot_frame(f->host,64,64,0));assert(ui_readback(f->host,pixels,sizeof pixels));

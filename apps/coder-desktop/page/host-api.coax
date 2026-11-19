@@ -23,7 +23,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   a := s[0].atlas[..];
   d := (ifx dpr < 1 then 1.0f32 else dpr) * cp_scale(s);
   w := width / d; h := height / d;
-  s[0].d = d;
+  s[0].d = d; s[0].cmp_gpu[0].w = width; s[0].cmp_gpu[0].h = height;
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
   s[0].clock += t;
@@ -48,6 +48,15 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   sh := surface_sheet(s[0].surface[..]);
   v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
   v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  // a frosted surface on screen: the same frame as composition-v1's plan (compose.coax), else flat
+  composed := cp_compose(s, out, a, d, w, h, k.canvas, sh.under[0..<sh.nu], sh.over[0..<sh.no], v);
+  if composed >= 0 { v = composed; }
+  else if cp_glass(s) && cp_has_layer(sh.over[0..<sh.no]) {
+    // a refused plan wrote over the flat frame: draw it again
+    v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
+    v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+    v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  }
   gpu_monochrome(out, v);
   return v;
 }

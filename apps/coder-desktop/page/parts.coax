@@ -14,6 +14,7 @@
 #load "../settings.coax";
 
 #load "state.coax";
+#load "compose.coax";
 #load "skin.coax";
 #load "models.coax";
 #load "goal.coax";

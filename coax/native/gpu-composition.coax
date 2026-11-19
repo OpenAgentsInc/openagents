@@ -83,6 +83,12 @@ uc_mark :: (s:[]UcPlan,out:[]f32,target:int,first:int,end:int) {
  if r<=x || b<=y {return;}prior:=s[0].bounds[target];if prior.on {if x>prior.x {x=prior.x;}if y>prior.y {y=prior.y;}if r<prior.r {r=prior.r;}if b<prior.b {b=prior.b;}}
  s[0].bounds[target]=UcRect.{x=x,y=y,r=r,b=b,on=true};
 }
+// A backdrop's rounded mask (prim_backdrop) on its composite: the quad's
+// bounds and corner radius, which uc_fs covers kind 8 by. Any other
+// composite keeps the full canvas at radius 0, which covers every pixel.
+uc_mask :: (out:[]f32,first:int,end:int,p:Prim,d:f32) {
+ for i:first..<end {o:=i*28;if o+8>=out.count {return;}out[o+4]=p.x*d;out[o+5]=p.y*d;out[o+6]=p.w*d;out[o+7]=p.h*d;out[o+8]=p.radius*d;}
+}
 uc_blur :: (s:[]UcPlan,out:[]f32,source:int,radius:f32)->int {
  x:=uc_target(s);y:=uc_target(s);if x<0 || y<0 {return -1;}
  if !uc_quad(s,out,x,source,Affine.{},1,9,radius,UcState.{},true) || !uc_quad(s,out,y,x,Affine.{},1,10,radius,UcState.{},true) {return -1;}
@@ -115,6 +121,7 @@ uc_build :: (s:[]UcPlan,out:[]f32,a:[]Atlas,list:[]Prim,images:[]UcImage,w:int,h
     if p.kind==PRIM_LAYER {
      lp:=prior.layer;if lp.b>0 && lp.c!=1 {source=uc_blur(s,out,source,lp.b*d);if source<0 {return false;}}
      if !uc_quad(s,out,state.target,source,uc_matrix(lp,d),lp.a*state.alpha,8,0,state,false) {return false;}
+     if lp.w>0 {uc_mask(out,s[0].v-6,s[0].v,lp,d);}
      s[0].used[source]=false;
     }
    }continue;
@@ -174,4 +181,15 @@ uc_build :: (s:[]UcPlan,out:[]f32,a:[]Atlas,list:[]Prim,images:[]UcImage,w:int,h
  #assert uc_build(s[..],out[..],a[..],p[0..<n],images[0..<0],64,64,1);
  #assert out[6*28]==18 && out[6*28+1]==24 && out[12*28]==18 && out[12*28+1]==18;
  #assert out[12*28+10]==18.0f32/64 && out[12*28+11]==18.0f32/64;
+}
+
+#test "a backdrop's composite carries its rounded mask; other composites keep the full canvas" {
+ p:[4]Prim;n:=prim_backdrop(p[..],0,4,6,20,10,3,2);n=prim_fill(p[..],n,4,6,20,10,3,rgba(1,1,1,0.5));n=prim_unlayer(p[..],n);
+ a:[1]Atlas;out:[2016]f32;plan:[1]UcPlan;images:[1]UcImage;
+ #assert uc_build(plan[..],out[..],a[..],p[0..<n],images[0..<0],32,32,2);
+ // capture, two blur passes, the fill, the masked composite, the output
+ c:=(plan[0].v-12)*28;
+ #assert out[c+2]==8 && out[c+4]==8 && out[c+5]==12 && out[c+6]==40 && out[c+7]==20 && out[c+8]==6;
+ o:=(plan[0].v-6)*28;#assert out[o+2]==8 && out[o+4]==0 && out[o+6]==32 && out[o+8]==0;
+ #assert out[2]==8 && out[6]==32 && out[8]==0;
 }
