@@ -249,6 +249,7 @@ only, and nothing in the construction view.
 | The edge | A parapet and handrail round the wall's top and the basin, a drain channel, lamps every 36 m, benches, lift and stair heads | 466 |
 | The dock | Four gantry cranes on the basin's rims, a landing stage, a gangway and a door, a lift shaft, bollards, fenders | 29 |
 | Streets | On the deck paint's 100 m grid, where nothing stands: kerbs and gutters, centre dashes, drain covers, lamps on both sides, benches, zebra crossings, bollards and blank sign posts at the corners | 1,269 |
+| Blocks | Towers: a roof parapet, roof plant round a lift overrun, masts on the tallest, a plinth, piers and a fascia at the foot, canopies over doors that open onto clear deck, and fins, belts or stone corners by a seeded style. The medical and civic blocks: a surround round each painted window, a door, roof plant. Data halls: fans in cowls over the roof's painted ones, louvres and doors, and a cooling yard of chillers and headers on the clearest side | 1,160 |
 
 The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
 
