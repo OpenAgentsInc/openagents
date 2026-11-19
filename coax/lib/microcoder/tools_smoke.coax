@@ -2,10 +2,11 @@
 // output, a command past its timeout killed and recorded, views inside and
 // outside the working directory, numbered and by range, exact edits and what
 // they show, a long output saved whole and viewed by range, and a loop step's
-// tools recorded in state.
+// tools recorded in state; a command read without waiting, and stopped with its process group.
 
 #import "Basic";
 #load "tools.coax";
+cxproc_sleep_ms :: (ms: int) -> int #foreign #effects(all);
 
 main :: () {
   dirb: [512] u8;
@@ -19,6 +20,21 @@ main :: () {
   ms := cxproc_now_ms() - t0;
   print("timeout: exit % timed_out % after %ms output [%]\n", r.exit, r.timed_out, ms, r.output);
   ok = ok && r.timed_out && r.exit == -1 && ms < 4000 && r.output == "started\n\n[killed after 1 s]";
+  // a command read without waiting (GitHub #13750): each step comes back at once, the output arrives
+  // while it runs, and a stop kills its whole process group (the sleep under the shell too)
+  p: [1] McCommandProc;
+  t0 = cxproc_now_ms();
+  mc_cmd_start(p[..], dir, "echo begun; sleep 30 & wait", 30, b[0].out[..], "danger-full-access");
+  seen := false;
+  for guard: 0..<400 { if mc_cmd_step(p[..], b[0].out[..], 0) { break; } if b[0].out[0].total > 0 { seen = true; break; } x := cxproc_sleep_ms(5); }
+  pid := cxproc_pid(p[0].h);
+  ok = ok && seen && !p[0].done && pid > 0 && cxproc_group_alive(pid) != 0;
+  for i: 0..<10 { ok = ok && !mc_cmd_step(p[..], b[0].out[..], 0); }
+  mc_cmd_stop(p[..]);
+  r = mc_cmd_result(p[..], b[0].out[..]);
+  ms = cxproc_now_ms() - t0;
+  print("stop: exit % timed_out % after %ms output [%] group alive %\n", r.exit, r.timed_out, ms, r.output, cxproc_group_alive(pid));
+  ok = ok && p[0].done && p[0].stopped && r.exit == -1 && !r.timed_out && ms < 3000 && r.output == "begun\n\n[stopped]" && cxproc_group_alive(pid) == 0;
   r = mc_run_command(dir, "echo out; echo err 1>&2; exit 3", 30, b[0].out[..]);
   print("fail: exit % output [%]\n", r.exit, r.output);
   ok = ok && r.exit == 3 && r.output == "out\nerr\n";

@@ -6,9 +6,12 @@
 // and the ending. mc_run_stop is STOP: curl goes and the run ends stopped.
 //
 // Infrastructure only: the Mac app's Lab and /chat call this when the
-// owner asks for the wiring. Model calls never block a poll; a step's
-// commands run inside the poll that starts them (30 s each at most, or the owner's
-// command_seconds).
+// owner asks for the wiring. Model calls never block a poll, and neither do
+// commands (GitHub #13750): a poll starts a step's command, each later poll
+// reads what it printed so far, and the poll that sees it end records it and
+// goes on (30 s each at most, or the owner's command_seconds). So the owner
+// reads its input while a command runs, and mc_run_stop kills a running
+// command's process group at once.
 //
 // Checks: coax test coax/lib/microcoder/run.coax --library (no main of its own).
 
@@ -174,7 +177,21 @@ McRun :: struct {
   // What the person sends while the turn runs (steer.coax; GitHub #13715): the owner's storage.
   // Empty: the run takes no steers, and is as it was.
   steers: [] McSteers;
+  // The command running across polls (GitHub #13750): mc_run_one starts it, each poll reads it
+  // (mc_run_cmd_poll), and what follows it once it ends is cmd_then at cmd_i.
+  cmd: [1] McCommandProc;
+  cmd_on: bool;
+  cmd_text: string;              // the command: a pending action's, or cmd_seed
+  cmd_seed: [256] u8;            // a seeded step's lookup command
+  cmd_sp: string;                // where its whole output goes when long ("" for nowhere)
+  cmd_began: int;
+  cmd_then: int;                 // MC_THEN_*
+  cmd_i: int;                    // its place: the step's command, or the seeded step's code name
+  seed_begun: bool;              // the seeded step has begun in the state
 }
+MC_THEN_STEP :: 0;               // the step's next command, then its views (mc_run_commands_from)
+MC_THEN_ANSWER :: 1;             // a gated run's next ask, then the views (mc_run_answered)
+MC_THEN_SEED :: 2;               // the seeded step's next lookup, then the first call (mc_run_seed_names)
 
 // The step a result recorded now belongs to: the open one, or the one about to open.
 mc_run_step :: (r: [] McRun) -> int { return ifx r[0].l[0].st[0].open >= 0 then r[0].l[0].st[0].steps else r[0].l[0].st[0].steps + 1; }
@@ -243,6 +260,7 @@ MC_RUN_MS :: 900000;
 // Starts a run of the loop already set up in r.l (mc_init) through plan p
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
 mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
+  if r[0].cmd_on { mc_cmd_stop(r[0].cmd[..]); x := mc_cmd_result(r[0].cmd[..], r[0].tb[0].out[..]); r[0].cmd_on = false; }
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
@@ -299,18 +317,28 @@ mc_run_seed :: (r: [] McRun, out: [] McRunEvent) -> int {
     k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = p, found = true});
     viewed += 1;
   }
+  r[0].seed_begun = begun;
+  return mc_run_seed_names(r, out, k, 0);
+}
+// The seeded step's code names from the from'th on, each looked up by a command; a command that
+// runs on past this poll comes back here when it ends (MC_THEN_SEED). Then the first call.
+mc_run_seed_names :: (r: [] McRun, out: [] McRunEvent, k0: int, from: int) -> int {
+  l := r[0].l[..]; k := k0;
+  s: [1] McSeed; mc_seed_scan(l[0].st[0].task, s[..]);
+  pb: [FS_PATH_MAX] u8;
   git := fs_join(r[0].cwd, ".git", pb[..]);
   if git.count > 0 && fs_exists(git) {
-    for i: 0..<s[0].nn {
-      cb: [256] u8;
-      n := json_raw(cb[..], 0, "git grep -n -w -F -e "); n = json_raw(cb[..], n, s[0].names[i]); n = json_raw(cb[..], n, " | head -n 8");
+    for i: from..<s[0].nn {
+      cb := r[0].cmd_seed[..];
+      n := json_raw(cb, 0, "git grep -n -w -F -e "); n = json_raw(cb, n, s[0].names[i]); n = json_raw(cb, n, " | head -n 8");
       if n < 0 { continue; }
-      if !begun { mc_action_begin(l[0].st[..], MC_SEED_RATIONALE); begun = true; }
-      k = mc_run_one(r, out, k, mc_run_keep(r, cast(string) cb[0..<n]));
-      if r[0].ended { return k; }
+      if !r[0].seed_begun { mc_action_begin(l[0].st[..], MC_SEED_RATIONALE); r[0].seed_begun = true; }
+      r[0].cmd_then = MC_THEN_SEED; r[0].cmd_i = i;
+      k = mc_run_one(r, out, k, cast(string) cb[0..<n]);
+      if r[0].ended || r[0].cmd_on { return k; }
     }
   }
-  if begun { mc_action_end(l[0].st[..]); }
+  if r[0].seed_begun { mc_action_end(l[0].st[..]); r[0].seed_begun = false; }
   mc_run_call(r);
   return k;
 }
@@ -377,6 +405,7 @@ mc_run_poll_plain :: (r: [] McRun, out: [] McRunEvent) -> int {
 McHeard :: struct { k: int; tools: bool; }
 mc_run_hear :: (r: [] McRun, out: [] McRunEvent) -> McHeard {
   if r[0].ended || r[0].asking { return McHeard.{}; }
+  if r[0].cmd_on { return McHeard.{k = mc_run_cmd_poll(r, out)}; }
   if r[0].l[0].ending==MC_END_FAILED {return McHeard.{k = mc_run_end(r,out,0)};}
   if r[0].seed && !r[0].seeded { return McHeard.{k = mc_run_seed(r, out)}; }
   if r[0].journal.count>0 && !r[0].unbounded && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);r[0].refused="time limit reached: a run has 15 minutes";return McHeard.{k = mc_run_failed(r,out,0)};}
@@ -442,7 +471,17 @@ mc_run_commands :: (r: [] McRun, out: [] McRunEvent, k0: int) -> int {
     r[0].ask_i = 0;
     return mc_run_ask(r,out,k,a.commands[0]);
   }
-  for i: 0..<a.nc { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
+  return mc_run_commands_from(r, out, k, 0);
+}
+// The step's commands from the from'th on, then its views. A command that runs on past this poll
+// comes back here when it ends (MC_THEN_STEP).
+mc_run_commands_from :: (r: [] McRun, out: [] McRunEvent, k0: int, from: int) -> int {
+  a := mc_pending(r[0].l[..]); k := k0;
+  for i: from..<a.nc {
+    r[0].cmd_then = MC_THEN_STEP; r[0].cmd_i = i;
+    k = mc_run_one(r, out, k, a.commands[i]);
+    if r[0].ended || r[0].cmd_on { return k; }
+  }
   return mc_run_after(r, out, k);
 }
 
@@ -578,6 +617,58 @@ mc_test_str :: (j: string, key: string, b: [] u8) -> string { ar := [1] ClArena.
   }
 }
 
+MC_RUN_TWO :: "{\"rationale\":\"look\",\"edits\":[],\"commands\":[\"echo one\",\"echo two; exit 3\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+// A fixture's step of MC_RUN_TWO with command i running, as mc_run_one leaves it, its process
+// already ended (a check can't start one; tools_smoke.coax runs real ones): exit, what it printed,
+// and whether a stop killed it.
+mc_test_running :: (f: [] McRunFixture, gated: bool, after: int, i: int, exit: int, printed: string, stopped: bool) {
+  mc_run_fixture(f, "look");
+  r := f[0].r[..]; r[0].gated = gated;
+  out: [16] McRunEvent;
+  ev := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_TWO}, GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  h := mc_run_heard(r, out[..], ev[..]);
+  #assert h.tools;
+  a := mc_pending(r[0].l[..]);
+  o := r[0].tb[0].out[..]; mc_output_reset(o); mc_cmd_say(o, printed);
+  r[0].cmd[0] = McCommandProc.{h = -1, exit = exit, done = true, stopped = stopped};
+  r[0].cmd_on = true; r[0].cmd_then = after; r[0].cmd_i = i; r[0].cmd_text = a.commands[i];
+  if after == MC_THEN_ANSWER { r[0].ask_ticket = 1; r[0].ask_i = i; }
+}
+#test "a poll while a command runs reads only the command; once it has ended it is recorded and the step goes on (GitHub #13750)" {
+  f: [1] McRunFixture; out: [16] McRunEvent;
+  mc_test_running(f[..], false, MC_THEN_STEP, 1, 3, "two\n", false);
+  r := f[0].r[..];
+  // the plan has no attempts: a poll that called it would end the run with no capacity
+  n := mc_run_poll(r, out[..]);
+  #assert n == 2 && !r[0].cmd_on && !r[0].ended && r[0].calling;
+  #assert out[0].kind == MR_COMMAND && out[0].text == "echo two; exit 3" && out[0].exit == 3 && out[0].output == "two\n" && !out[0].timed_out;
+  #assert out[1].kind == MR_STEP;
+  b: [4096] u8; pb: [MC_PROMPT_BYTES] u8; j := mc_state_json(r[0].l[0].st[..], pb[..]);
+  #assert mc_test_str(j, "actions.0.results.0.command", b[..]) == "echo two; exit 3";
+}
+#test "a gated run asks nothing while its allowed command runs, and asks for the next once it has ended (GitHub #13750)" {
+  f: [1] McRunFixture; out: [16] McRunEvent;
+  mc_test_running(f[..], true, MC_THEN_ANSWER, 0, 0, "one\n", false);
+  r := f[0].r[..];
+  #assert !r[0].asking && mc_run_answer_owned(r, 1, true, "", out[..]) == 0 && r[0].cmd_on;     // an answer while it runs changes nothing
+  n := mc_run_poll(r, out[..]);
+  #assert n == 2 && out[0].kind == MR_COMMAND && out[0].text == "echo one" && out[0].exit == 0;
+  #assert out[1].kind == MR_ASK && out[1].text == "echo two; exit 3" && out[1].ticket == 2 && r[0].asking && r[0].ask_i == 1 && !r[0].cmd_on;
+}
+#test "a stop while a command runs records it as stopped, starts no other, and ends the run stopped (GitHub #13750)" {
+  for gated: [2] bool.[false, true] {
+    f: [1] McRunFixture; out: [16] McRunEvent;
+    mc_test_running(f[..], gated, ifx gated then MC_THEN_ANSWER else MC_THEN_STEP, 0, -1, "begun\n", true);
+    r := f[0].r[..];
+    o := r[0].tb[0].out[..];
+    n := mc_run_stop(r, out[..]);
+    #assert n == 2 && !r[0].cmd_on && r[0].ended && !r[0].asking;
+    #assert out[0].kind == MR_COMMAND && out[0].text == "echo one" && out[0].exit == -1 && !out[0].timed_out && out[0].output == "begun\n\n[stopped]";
+    #assert out[1].kind == MR_ENDED && out[1].ending == MC_END_STOPPED;
+    #assert mc_run_poll(r, out[..]) == 0;
+  }
+}
+
 // The live journal owns every effect ticket. Any uncertain completion ends
 // the run; a later call never silently retries the pending operation.
 // A view inside the workspace changes nothing, so views spend a budget of their own (NP_READS)
@@ -634,7 +725,9 @@ mc_run_failed :: (r:[]McRun,out:[]McRunEvent,k:int)->int {
   r[0].asking=false;return mc_run_end(r,out,k);
 }
 
-// One command run, its result recorded and given out.
+// One command started (GitHub #13750): its intent journaled, its process spawned, and what it
+// has printed read without waiting. When it has ended already it is recorded and given out here;
+// else cmd_on is set, and a later poll (mc_run_cmd_poll) records it and goes on with cmd_then.
 mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int {
   if !mc_run_intent(r,AjKind.command_intent,command) {return mc_run_failed(r,out,k);}
   seconds:=ifx r[0].command_seconds>0 then r[0].command_seconds else MC_COMMAND_SECONDS;
@@ -642,9 +735,35 @@ mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int 
   o := r[0].tb[0].out[..];
   sp := mc_run_spill_path(r);
   o[0].spill = sp; o[0].all = ifx sp.count > 0 then r[0].spill_buf[..] else r[0].spill_buf[0..<0];
-  began := cxproc_now_ms();
-  res := mc_run_command_profile(r[0].cwd, command, seconds, o, r[0].profile);
-  took := cxproc_now_ms() - began;
+  r[0].cmd_text = command; r[0].cmd_sp = sp; r[0].cmd_began = cxproc_now_ms();
+  mc_cmd_start(r[0].cmd[..], r[0].cwd, command, seconds, o, r[0].profile);
+  r[0].cmd_on = true;
+  return mc_run_cmd_read(r, out, k);
+}
+
+// The running command's output so far, read without waiting; recorded when it has ended.
+mc_run_cmd_read :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
+  if !mc_cmd_step(r[0].cmd[..], r[0].tb[0].out[..], 0) { return k; }
+  return mc_run_cmd_done(r, out, k);
+}
+
+// A poll while a command runs: it is read, and once it has ended, what follows it runs.
+mc_run_cmd_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
+  r[0].nob = 0;
+  k := mc_run_cmd_read(r, out, 0);
+  if r[0].cmd_on || r[0].ended { return k; }
+  if r[0].cmd_then == MC_THEN_SEED { return mc_run_seed_names(r, out, k, r[0].cmd_i + 1); }
+  if r[0].cmd_then == MC_THEN_ANSWER { return mc_run_answered(r, out, k); }
+  return mc_run_commands_from(r, out, k, r[0].cmd_i + 1);
+}
+
+// The ended command recorded: journaled, put in the state, given out.
+mc_run_cmd_done :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
+  r[0].cmd_on = false;
+  o := r[0].tb[0].out[..];
+  res := mc_cmd_result(r[0].cmd[..], o);
+  stopped := r[0].cmd[0].stopped;
+  command := r[0].cmd_text; sp := r[0].cmd_sp;
   // a long output keeps its head and tail in the state, and goes whole to its file, which the cut line names
   shown := res.output;
   show := mc_result_room(r[0].l[0].st[..], command) - 512;
@@ -653,11 +772,13 @@ mc_run_one :: (r: [] McRun, out: [] McRunEvent, k: int, command: string) -> int 
   o[0].spill = ""; o[0].all = r[0].spill_buf[0..<0];
   metadata:[128]u8;m:=json_raw(metadata[..],0,"exit=");m=json_write_int(metadata[..],m,res.exit);
   m=json_raw(metadata[..],m,ifx res.timed_out then " timed_out=true" else " timed_out=false");
+  if stopped { m=json_raw(metadata[..],m," stopped=true"); }
   if r[0].journal.count>0 && (!jf_output(r[0].journal,res.output) || !jf_result(r[0].journal,cast(string)metadata[0..<m])) {return mc_run_failed(r,out,k);}
   mc_command(r[0].l[..], command, res.exit, res.timed_out, shown);
-  k2 := mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = command, exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
+  text := ifx r[0].cmd_then == MC_THEN_SEED then mc_run_keep(r, command) else command;     // the next lookup reuses cmd_seed
+  k2 := mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = text, exit = res.exit, timed_out = res.timed_out, output = mc_run_keep(r, res.output)});
   // the memory keeps the run (the output as the tools kept it), as a run of the task's check when it is one
-  if r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_ran(r[0].aw, command, res.exit, res.timed_out, took, res.output); }
+  if !stopped && r[0].aw.count > 0 && r[0].aw[0].memory { mc_aw_ran(r[0].aw, command, res.exit, res.timed_out, cxproc_now_ms() - r[0].cmd_began, res.output); }
   return k2;
 }
 
@@ -854,12 +975,22 @@ mc_run_answer :: (r: [] McRun, allow: bool, why: string, out: [] McRunEvent) -> 
     n=json_raw(b[..],n,why_clip);
     if n<0 || !jf_decision(r[0].journal,cast(string)b[0..<n]) {return mc_run_failed(r,out,0);}
   }
-  if allow { k = mc_run_one(r, out, k, a.commands[i]);if r[0].ended {return k;} }
+  if allow {
+    // while it runs the run asks nothing, so a poll reads it; an answer then changes nothing
+    r[0].asking = false; r[0].cmd_then = MC_THEN_ANSWER; r[0].cmd_i = i;
+    k = mc_run_one(r, out, k, a.commands[i]);
+    if r[0].ended || r[0].cmd_on { return k; }
+  }
   else {
     mc_action_refused(l[0].st[..], a.commands[i], why);
     k = mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = a.commands[i], exit = 126, output = mc_run_keep(r, why)});
   }
-  r[0].ask_i = i + 1;
+  return mc_run_answered(r, out, k);
+}
+// After a gated run's command (run or refused): the next command's MR_ASK, or the step's views.
+mc_run_answered :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
+  a := mc_pending(r[0].l[..]);
+  r[0].ask_i += 1;
   if r[0].ask_i < a.nc { return mc_run_ask(r,out,k,a.commands[r[0].ask_i]); }
   r[0].asking = false;
   return mc_run_after(r, out, k);
@@ -914,13 +1045,20 @@ mc_run_delegated :: (r: [] McRun, ticket: int, results: string, out: [] McRunEve
   return mc_run_commands(r, out, 0);
 }
 
-// STOP: the running call's curl goes and the run ends stopped.
+// STOP: the running call's curl goes, or the running command's process group is killed (its
+// row given out and journaled as stopped), and the run ends stopped.
 mc_run_stop :: (r: [] McRun, out: [] McRunEvent) -> int {
   if r[0].ended { return 0; }
+  k := 0;
+  if r[0].cmd_on {
+    mc_cmd_stop(r[0].cmd[..]); r[0].nob = 0;
+    k = mc_run_cmd_done(r, out, 0);
+    if r[0].ended { return k; }      // the journal refused its result: the run has failed
+  }
   r[0].asking = false; r[0].delegating = false;
   gw_plan_stop(r[0].p);
   mc_stop(r[0].l[..]);
-  k := mc_run_logs(r, out, 0);
+  k = mc_run_logs(r, out, k);
   return mc_run_end(r, out, k);
 }
 

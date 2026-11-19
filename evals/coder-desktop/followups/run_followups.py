@@ -18,6 +18,9 @@ calls a model and nothing touches real Coder data. Every case drives the worker'
                        with nothing lost and nothing run twice
   approvals_separate   a command's approval and a queued follow-up do not mix: queue lines and a
                        steer during an ask leave it waiting; the answer goes on; then the queue
+  during_command       a steer, a queue op and an interrupt while a 30 s command runs are answered
+                       at once (GitHub #13750): the interrupt kills the command's process group and
+                       ends the turn in under a second, and the same for an approved command
   page_host            the same through the desktop's real host.c and page (host_driver): the
                        page's steer statuses, the queue it shows, and a turn the worker starts
 
@@ -165,7 +168,8 @@ def ended():
 # ---------------------------------------------------------------- cases
 
 def steer_applied(w_bin: Path) -> None:
-    box = Box([act(commands=["sleep 1"], finished=False), act("first done"), act("took the steer")])
+    # the steer arrives while the step's command runs, so the next model call already has it (#13750)
+    box = Box([act(commands=["sleep 1"], finished=False), act("took the steer")])
     w = Worker(w_bin, box)
     try:
         w.send(box.task("do a"))
@@ -409,6 +413,91 @@ def approvals_separate(w_bin: Path) -> None:
         w.close(); box.close()
 
 
+def _group_gone(pid: int, timeout: float = 2.0) -> bool:
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            os.killpg(pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            pass
+        time.sleep(0.05)
+    return False
+
+
+def _wait_file(path: Path, timeout: float = 10.0) -> str:
+    end = time.time() + timeout
+    while time.time() < end:
+        if path.exists() and path.read_text().strip():
+            return path.read_text().strip()
+        time.sleep(0.02)
+    raise AssertionError(f"{path.name} never appeared: the command did not start")
+
+
+def during_command(w_bin: Path) -> None:
+    long_cmd = "echo $$ > cmd.pid; echo begun; sleep 30"
+    box = Box([act(commands=[long_cmd], finished=False), act("never")])
+    w = Worker(w_bin, box)
+    try:
+        w.send({"queue": "open", "key": "chat-live"})
+        w.wait(kind("queue"))
+        w.send(box.task("do a"))
+        w.wait(kind("turn"))
+        pid = int(_wait_file(box.work / "cmd.pid"))       # the command runs now, for 30 s
+        t0 = time.time()
+        w.send({"steer": "and b", "id": "st1", "turn": 1})
+        w.wait(kind("steer", id="st1", status="accepted"), 5)
+        took = time.time() - t0
+        assert took < 1.0, f"steer accepted after {took:.2f} s"
+        t0 = time.time()
+        w.send({"queue": "add", "id": "q1", "text": "do c", "message": box.task("do c")})
+        w.wait(lambda l: l.get("kind") == "queue" and [i["id"] for i in l["items"]] == ["q1"], 5)
+        took = time.time() - t0
+        assert took < 1.0, f"queue op answered after {took:.2f} s"
+        assert not w.kinds("command") and not w.kinds("ended"), w.lines[-6:]
+        t0 = time.time()
+        w.send({"interrupt": True})
+        e = w.wait(ended(), 5)
+        took = time.time() - t0
+        assert e["ending"] == "stopped" and took < 1.0, (e, f"{took:.2f} s")
+        c = w.kinds("command")
+        assert len(c) == 1 and c[0]["command"] == long_cmd and c[0]["exit"] == -1 and "begun" in c[0]["output"] and "[stopped]" in c[0]["output"], c
+        assert _group_gone(pid), "the command's process group outlived the interrupt"
+        # the existing semantics: the steer it never took heads the queue, which pauses (interrupted)
+        w.wait(kind("steer", id="st1", status="queued"))
+        snap = w.wait(lambda l: l.get("kind") == "queue" and l.get("paused"))
+        assert snap["reason"] == "interrupted" and [i["id"] for i in snap["items"]] == ["st1", "q1"], snap
+        time.sleep(0.3)
+        assert len(w.kinds("turn")) == 1, w.lines[-6:]
+    finally:
+        w.close(); box.close()
+    # an approved command in a gated run: an interrupt with resubmit kills it, and the steer goes on as a turn
+    box = Box([act(commands=[long_cmd], finished=False), act("answered the steer")])
+    w = Worker(w_bin, box)
+    try:
+        w.send(box.task("run it", gated=True))
+        ask = w.wait(kind("ask"))
+        w.send({"answer": True, "ticket": ask["ticket"]})
+        pid = int(_wait_file(box.work / "cmd.pid"))
+        t0 = time.time()
+        w.send({"steer": "do b instead", "id": "st2", "turn": 1})
+        w.wait(kind("steer", id="st2", status="accepted"), 5)
+        assert time.time() - t0 < 1.0
+        t0 = time.time()
+        w.send({"interrupt": True, "resubmit": True})
+        e = w.wait(ended(), 5)
+        took = time.time() - t0
+        assert e["ending"] == "stopped" and took < 1.0, (e, f"{took:.2f} s")
+        assert _group_gone(pid), "the approved command's process group outlived the interrupt"
+        w.wait(kind("steer", id="st2", status="resubmitted"))
+        t = w.wait(kind("turn", source="resubmit"))
+        assert t["text"] == "do b instead" and t["turn"] == 2, t
+        assert w.wait(ended(), 60)["text"] == "answered the steer"
+    finally:
+        w.close(); box.close()
+
+
 HOST_DRIVER = REPO / "evals/coder-desktop/host_driver/build/host_driver"
 
 
@@ -472,7 +561,7 @@ def page_host(w_bin: Path) -> None:
         h.close(); box.close()
 
 
-CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, restart_restores, approvals_separate, page_host]
+CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, restart_restores, approvals_separate, during_command, page_host]
 
 
 def main() -> int:

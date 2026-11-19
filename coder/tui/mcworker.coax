@@ -51,6 +51,9 @@
 // (status queued), unless an interrupt resubmits them as a turn of their own. Approval answers are
 // lines of their own (answer): a queued follow-up never answers an ask, and none starts while a
 // turn waits on one, since that turn still runs.
+// A running command holds none of these up (GitHub #13750): the run reads a command between
+// polls (run.coax), so this loop reads its input while the command runs, a steer or queue op is
+// answered at once, and an interrupt kills the command's process group and ends the turn.
 //
 // Every line each way is written and read by coax/lib/agent/engine/mcworker-wire.coax, the one
 // codec the owners load too (Protocol C11, GitHub #13250; proto/coder/microcoder-worker-lines-v1.json).

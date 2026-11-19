@@ -501,9 +501,11 @@ def act(reply: str = "", commands: list[str] | None = None) -> dict:
 
 # The real worker (#13718) on these answers, in order, shared by every worker of the flow: turn 1
 # runs a command while the person steers and queues, then takes the steer and finishes; the first
-# follow-up runs a command and Esc stops it; after a relaunch Resume runs the second.
+# follow-up runs a command and Esc stops it; after a relaunch Resume runs the second. Turn 2's command
+# marks that it has started in the flow's record folder (the worker's environment has it).
+FU_STARTED = "turn2.started"
 FOLLOWUPS = {"real": {"answers": [act(commands=["sleep 4"]), act("Fixed the parser, and the empty string is covered too."),
-                                  act(commands=["sleep 3"]), act("Added the changelog entry.")]}}
+                                  act(commands=['touch "$CODER_T3_RECORD/%s"; sleep 3' % FU_STARTED]), act("Added the changelog entry.")]}}
 FU_ASK, FU_STEER = "Fix the parser", "Also cover the empty string"
 FU_QUEUED = ["Then update the docs", "And add a changelog"]
 # Turn 2's activity row says "Ran 1 command", or "1 failed" when the command was stopped as it
@@ -537,7 +539,7 @@ def flow_followups(f: Flow) -> str:
         app.do("key cmd+return")
         taken("Command-Return")
     time.sleep(0.3)
-    # the worker reads lines between steps, so the queue it says back can come after the command
+    # the worker answers these while turn 1's command runs (#13750)
     fu = app.do("followups")
     f.expect(len(fu["steers"]) == 1, f"steers while turn 1 runs: {fu}")
     # the steer is taken in (applied), turn 1 ends, and the queue's head starts on its own as turn 2
@@ -552,11 +554,15 @@ def flow_followups(f: Flow) -> str:
         time.sleep(0.1)
     f.expect(fu["steers"] == [3], f"the steer's status after turn 1: {fu['steers']}, want [3] (applied)")
     f.expect(fu["queue"] == FU_QUEUED[1:], f"queue as turn 2 runs: {fu['queue']}")
-    # Esc stops the reply; the queue pauses with what is left. Turn 2's model call is a recorded
-    # answer, so 1.5 s in its command runs: the worker reads the interrupt when the command ends and
-    # stops before its next step (an Esc before the call would stop it with no command, and the
-    # flow's next answer would go to turn 3).
-    time.sleep(1.5)
+    # Esc stops the reply while turn 2's command runs: the worker kills it at once (#13750), and the
+    # queue pauses with what is left. Esc waits for the command to start (an Esc before the model's
+    # recorded answer would stop the turn with no command, and that answer would go to turn 3).
+    started = f.case_dir / "rec" / FU_STARTED
+    deadline = time.time() + 15
+    while not started.exists():
+        if time.time() > deadline:
+            raise FlowFailed("turn 2's command never started")
+        time.sleep(0.05)
     app.do("key escape")
     app.wait("turn 2 to stop", lambda s: s["running"] == 0, 15)
     deadline = time.time() + 5

@@ -150,53 +150,113 @@ mc_run_command :: (cwd:string,command:string,seconds:int,o:[]McOutput)->McComman
   return mc_run_command_profile(cwd,command,seconds,o,"danger-full-access");
 }
 mc_run_command_profile :: (cwd: string, command: string, seconds: int, o: [] McOutput, profile:string) -> McCommandResult {
+  p: [1] McCommandProc;
+  mc_cmd_start(p[..], cwd, command, seconds, o, profile);
+  while !mc_cmd_step(p[..], o, 1000000) {}
+  return mc_cmd_result(p[..], o);
+}
+
+// A command that runs while its owner does other things (GitHub #13750): mc_cmd_start spawns it,
+// mc_cmd_step reads what it printed so far, waiting at most wait_ms (0: only what is there), and
+// says when it is done; mc_cmd_stop kills it (its whole process group) at once; mc_cmd_result gives
+// the result and frees the process. mc_run_command_profile is the same, waited for.
+McCommandProc :: struct {
+  h: int;                        // the process, -1 when none is held
+  seconds: int; deadline: int;   // its time limit, and when it runs out
+  eof_at: int;                   // when its output ended (it then has MC_EXIT_MS to exit), -1 before
+  exit: int;                     // -1 when killed (timed_out, stopped) or it could not start
+  timed_out: bool;
+  stopped: bool;                 // its owner stopped it (mc_cmd_stop)
+  done: bool;
+}
+MC_EXIT_MS :: 5000;
+MC_PROC_RUNNING :: -2;           // cxproc_wait: still running at its timeout              // how long a command whose output ended has to exit
+MC_STEP_LINES :: 4096;           // lines one mc_cmd_step takes at most, so a loud command can't hold its owner
+
+mc_cmd_say :: (o: [] McOutput, s: string) { for c: s { mc_output_byte(o, c); } }
+
+// Spawns command; done at once (with why in the output) when it could not start.
+mc_cmd_start :: (p: [] McCommandProc, cwd: string, command: string, seconds: int, o: [] McOutput, profile: string) {
   mc_output_reset(o);
-  r := McCommandResult.{exit = -1};
+  p[0] = McCommandProc.{h = -1, seconds = seconds, eof_at = -1, exit = -1};
   h := cxproc_new();
-  if h < 0 { for c: "no process slot is free" { mc_output_byte(o, c); } r.output = mc_output_text(o); return r; }
+  if h < 0 { mc_cmd_say(o, "no process slot is free"); p[0].done = true; return; }
   ok:=mc_profile_args(h,cwd,profile);
   ok = ok && mc_proc_arg(h, CL_FIELD_ARG, "/bin/sh") && mc_proc_arg(h, CL_FIELD_ARG, "-c") && mc_proc_arg(h, CL_FIELD_ARG, command);
   if cwd.count > 0 { ok = ok && mc_proc_arg(h, CL_FIELD_CWD, cwd); }
   if !ok || cxproc_spawn(h) != 0 {
     x := cxproc_release(h);
-    for c: "the command could not start" { mc_output_byte(o, c); }
-    r.output = mc_output_text(o); return r;
+    mc_cmd_say(o, "the command could not start"); p[0].done = true; return;
   }
-  if !mc_profile_input(h,profile) {k:=cxproc_kill(h,9);x:=cxproc_release(h);r.output="sandbox setup failed";return r;}
+  if !mc_profile_input(h,profile) {k:=cxproc_kill(h,9);x:=cxproc_release(h);mc_cmd_say(o, "sandbox setup failed");p[0].done = true;return;}
   x := cxproc_close_stdin(h);
-  deadline := cxproc_now_ms() + seconds * 1000;
-  lines := 0;
-  while true {
-    left := deadline - cxproc_now_ms();
-    if left <= 0 { r.timed_out = true; break; }
-    n := cxproc_read_line(h, left);
-    if n == CL_TIMEOUT { r.timed_out = true; break; }
-    if n == CL_TOO_LONG { for c: "[a line too long to keep]" { mc_output_byte(o, c); } mc_output_byte(o, '\n'); continue; }
-    if n < 0 { break; }
-    for i: 0..<n { mc_output_byte(o, cast(u8) cxproc_line_byte(h, i)); }
-    mc_output_byte(o, '\n');
-    lines += 1;
+  p[0].h = h;
+  p[0].deadline = cxproc_now_ms() + seconds * 1000;
+}
+
+// Reads what the command printed (waiting at most wait_ms for a line); true once it is done: it
+// exited, or ran past its time and was killed.
+mc_cmd_step :: (p: [] McCommandProc, o: [] McOutput, wait_ms: int) -> bool {
+  if p[0].done { return true; }
+  h := p[0].h;
+  if p[0].eof_at < 0 {
+    for guard: 0..<MC_STEP_LINES {
+      left := p[0].deadline - cxproc_now_ms();
+      if left <= 0 { p[0].timed_out = true; break; }
+      n := cxproc_read_line(h, ifx wait_ms < left then wait_ms else left);
+      if n == CL_TIMEOUT {
+        if wait_ms >= left { p[0].timed_out = true; break; }
+        return false;
+      }
+      if n == CL_TOO_LONG { mc_cmd_say(o, "[a line too long to keep]"); mc_output_byte(o, '\n'); continue; }
+      if n < 0 { p[0].eof_at = cxproc_now_ms(); break; }
+      for i: 0..<n { mc_output_byte(o, cast(u8) cxproc_line_byte(h, i)); }
+      mc_output_byte(o, '\n');
+    }
+    if !p[0].timed_out && p[0].eof_at < 0 { return false; }     // more lines wait: the next step reads them
   }
-  if r.timed_out {
+  if p[0].timed_out {
     k := cxproc_kill(h, 9);
     w := cxproc_wait(h, 2000);
-  } else {
-    r.exit = cxproc_wait(h, 5000);
-    if r.exit < 0 { k := cxproc_kill(h, 9); r.exit = -1; r.timed_out = true; }
+    p[0].done = true;
+    return true;
   }
-  // stderr after stdout, as it would read in a terminal when they don't interleave
-  ne := cxproc_stderr_count(h);
-  for i: 0..<ne { mc_output_byte(o, cast(u8) cxproc_stderr_byte(h, i)); }
-  y := cxproc_release(h);
-  if r.timed_out {
+  // its output ended: it has MC_EXIT_MS to exit, else it is killed as timed out
+  left := p[0].eof_at + MC_EXIT_MS - cxproc_now_ms();
+  status := cxproc_wait(h, ifx left <= 0 then 0 else ifx wait_ms < left then wait_ms else left);
+  if status == MC_PROC_RUNNING && cxproc_now_ms() < p[0].eof_at + MC_EXIT_MS { return false; }
+  if status < 0 { k := cxproc_kill(h, 9); p[0].exit = -1; p[0].timed_out = true; }
+  else { p[0].exit = status; }
+  p[0].done = true;
+  return true;
+}
+
+// Stops a running command: its whole process group is killed now.
+mc_cmd_stop :: (p: [] McCommandProc) {
+  if p[0].done || p[0].h < 0 { return; }
+  k := cxproc_kill(p[0].h, 9);
+  w := cxproc_wait(p[0].h, 2000);
+  p[0].exit = -1; p[0].stopped = true; p[0].done = true;
+}
+
+// A done command's result (its stderr after its stdout, and how it ended); the process is freed.
+mc_cmd_result :: (p: [] McCommandProc, o: [] McOutput) -> McCommandResult {
+  if p[0].h >= 0 {
+    // stderr after stdout, as it would read in a terminal when they don't interleave
+    ne := cxproc_stderr_count(p[0].h);
+    for i: 0..<ne { mc_output_byte(o, cast(u8) cxproc_stderr_byte(p[0].h, i)); }
+    y := cxproc_release(p[0].h);
+    p[0].h = -1;
+  }
+  if p[0].timed_out {
     msg: [64] u8;
     m := json_raw(msg[..], 0, "\n[killed after ");
-    m = json_write_int(msg[..], m, seconds);
+    m = json_write_int(msg[..], m, p[0].seconds);
     m = json_raw(msg[..], m, " s]");
     for i: 0..<m { mc_output_byte(o, msg[i]); }
   }
-  r.output = mc_output_text(o);
-  return r;
+  if p[0].stopped { mc_cmd_say(o, "\n[stopped]"); }
+  return McCommandResult.{exit = p[0].exit, timed_out = p[0].timed_out, output = mc_output_text(o)};
 }
 
 // Whether path stays under the working directory: relative with no ".."
