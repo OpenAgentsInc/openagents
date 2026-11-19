@@ -15,7 +15,9 @@ aic_cancel_write :: (command:string,out:[]u8)->int #export_c #effects(all) {
 aic_cancel_read :: (raw:string,out:[]u8)->bool #export_c #effects(all) {
  if out.count!=32 || raw.count>256 {return false;}d:[1]Jv;nodes:[8]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}
  fields:=[2]string.["schema","command"];v:=d[0];
- return js_fields(v,0,fields[..]) && jv_len(v,0)==2 && jv_raw(v,jv_get(v,0,"schema"))=="openagents.account.identity.cancel.v1" && js_string(v,jv_get(v,0,"command"),out)==32 && aw_hex(cast(string)out,32);
+ // with exactly two members, js_fields fails only on a name that is not schema or command, or one named twice: then schema or
+ // command is missing and its own test fails, so (js_fields || len==2) && ... and js_fields && len==2 && ... agree
+ return js_fields(v,0,fields[..]) && jv_len(v,0)==2 && jv_raw(v,jv_get(v,0,"schema"))=="openagents.account.identity.cancel.v1" && js_string(v,jv_get(v,0,"command"),out)==32 && aw_hex(cast(string)out,32); // mutant: equivalent
 }
 #test "discard names only one exact command, never its private request" {
  b:[256]u8;c:[32]u8;cmd:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";n:=aic_cancel_write(cmd,b[..]);
@@ -53,7 +55,9 @@ aic_write :: (a:[]IdentityChange,out:[]u8)->int #export_c #effects(all) {
 aic_read :: (raw:string,a:[]IdentityChange)->bool #export_c #effects(all) {
  if a.count!=1 || raw.count>1024 {return false;}a[0]=IdentityChange.{};d:[1]Jv;nodes:[20]JvNode;
  if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[6]string.["schema","command","expected","mode","secret","expected_revision"];
- if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_SCHEMA {return false;}
+ // six members of which js_fields refuses one leave a name missing, and each name fails its own test below (a missing revision reads as -1),
+ // so (!js_fields && len!=6) || ... refuses what !js_fields || len!=6 || ... does
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=6 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_SCHEMA {return false;} // mutant: equivalent
  if js_string(v,jv_get(v,0,"command"),a[0].command[..])!=32 || js_string(v,jv_get(v,0,"expected"),a[0].expected[..])!=64 {return false;}
  mode:=jv_raw(v,jv_get(v,0,"mode"));a[0].mode=ifx mode=="rotate" then AIC_ROTATE else ifx mode=="restore" then AIC_RESTORE else 0;
  n:=js_string(v,jv_get(v,0,"secret"),a[0].secret[..]);
@@ -67,7 +71,8 @@ aic_state_write :: (account:string,pubkey:string,source:int,revision:int,out:[]u
 }
 aic_state_read :: (raw:string,s:[]IdentityState)->bool #export_c #effects(all) {
  if s.count!=1 {return false;}s[0]=IdentityState.{};d:[1]Jv;nodes:[16]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];fields:=[5]string.["schema","account","pubkey","source","revision"];
- if !js_fields(v,0,fields[..]) || jv_len(v,0)!=5 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_STATE_SCHEMA {return false;}
+ // the same with five: a refused member leaves account, pubkey, source or revision missing, and the return refuses each
+ if !js_fields(v,0,fields[..]) || jv_len(v,0)!=5 || jv_raw(v,jv_get(v,0,"schema"))!=AIC_STATE_SCHEMA {return false;} // mutant: equivalent
  s[0].account_n=js_string(v,jv_get(v,0,"account"),s[0].account[..]);s[0].revision=js_number(v,jv_get(v,0,"revision"));source:=jv_raw(v,jv_get(v,0,"source"));s[0].source=ifx source=="account" then 2 else ifx source=="linked" then 1 else 0;
  return s[0].account_n>0 && s[0].account_n<=127 && js_string(v,jv_get(v,0,"pubkey"),s[0].pubkey[..])==64 && aw_hex(cast(string)s[0].pubkey[..],64) && s[0].source>0 && s[0].revision>=0 && s[0].revision<=AIC_REVISION_MAX;
 }
@@ -87,4 +92,58 @@ aic_receipt :: (account:string,command:string,digest:string,expected:string,pubk
  #assert aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"rotate",false) && aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"restore",false);
  #assert aic_receipt("a",cmd,AIC_G,AIC_G,"","cancel",true) && !aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"cancel",true) && !aic_receipt("a",cmd,AIC_G,AIC_G,"","cancel",false);
  #assert !aic_receipt("a","bad",AIC_G,AIC_G,AIC_G,"rotate",false) && !aic_receipt("a",cmd,"bad",AIC_G,AIC_G,"rotate",false) && !aic_receipt("a",cmd,AIC_G,"bad",AIC_G,"rotate",false) && !aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"sign",false);
+}
+#test "a discard read takes a body of up to 256 bytes into exactly 32, and refuses a body that is no JSON" {
+ cmd:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";body:="{\"schema\":\"openagents.account.identity.cancel.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+ b:[300]u8;c:[33]u8;o:[1]Jo;jo_start(o[..],b[..]);pad:=256-body.count;for i:0..<pad {jo_put(o[..]," ");}jo_put(o[..],body);
+ #assert o[0].n==256 && aic_cancel_read(jo_text(o[..]),c[0..<32]) && cast(string)c[0..<32]==cmd;
+ jo_put(o[..]," ");#assert o[0].n==257 && !aic_cancel_read(jo_text(o[..]),c[0..<32]);
+ #assert aic_cancel_read(body,c[0..<32]) && !aic_cancel_read(body,c[0..<31]) && !aic_cancel_read(body,c[..]) && !aic_cancel_read("bad",c[0..<32]);
+}
+#test "an identity change is one record of at most 1024 bytes: its schema, a known mode, its revision, and a secret only for a restore" {
+ a:[1]IdentityChange;two:[2]IdentityChange;b:[1100]u8;
+ rot:="{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"\",\"expected_revision\":5}";
+ // a read starts from an empty record: what an earlier read left in the secret is gone
+ for i:0..<64 {a[0].secret[i]='9';}
+ #assert aic_read(rot,a[..]) && a[0].mode==AIC_ROTATE && a[0].revision==5 && a[0].secret[0]==0 && a[0].secret[63]==0 && !aic_read(rot,two[..]);
+ o:[1]Jo;jo_start(o[..],b[..]);pad:=1024-rot.count;for i:0..<pad {jo_put(o[..]," ");}jo_put(o[..],rot);
+ #assert o[0].n==1024 && aic_read(jo_text(o[..]),a[..]);
+ jo_put(o[..]," ");#assert o[0].n==1025 && !aic_read(jo_text(o[..]),a[..]);
+ // each of these is rot with one thing wrong: the schema, the command's length, the mode, a rotation's secret, the command's hex
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v2\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"\",\"expected_revision\":5}",a[..]);
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"\",\"expected_revision\":5}",a[..]);
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"sign\",\"secret\":\"\",\"expected_revision\":5}",a[..]);
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"0000000000000000000000000000000000000000000000000000000000000001\",\"expected_revision\":5}",a[..]);
+ #assert !aic_read("{\"schema\":\"openagents.account.identity.change.v1\",\"command\":\"gggggggggggggggggggggggggggggggg\",\"expected\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"mode\":\"rotate\",\"secret\":\"\",\"expected_revision\":5}",a[..]);
+ // writing: one record, a revision from 0 to one under the maximum
+ w:[1]IdentityChange;for i:0..<32 {w[0].command[i]='a';}for i:0..<64 {w[0].expected[i]=AIC_G[i];}w[0].mode=AIC_ROTATE;
+ w[0].revision=AIC_REVISION_MAX-1;#assert aic_write(w[..],b[..])>0;
+ w[0].revision=AIC_REVISION_MAX;#assert aic_write(w[..],b[..])<0;
+ w[0].revision=-1;#assert aic_write(w[..],b[..])<0;
+ w[0].revision=0;two[0]=w[0];two[1]=w[0];#assert aic_write(w[..],b[..])>0 && aic_write(two[..],b[..])<0;
+}
+#test "public identity state: an account of 1 to 127 bytes, a hex key, a known source, a revision up to the maximum" {
+ s:[1]IdentityState;two:[2]IdentityState;b:[512]u8;
+ linked:="{\"schema\":\"openagents.account.identity.state.v1\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"linked\",\"revision\":7}";
+ #assert aic_state_read(linked,s[..]) && s[0].source==1 && s[0].account_n==1 && s[0].revision==7 && !aic_state_read(linked,two[..]);
+ // a read starts from an empty record, and a body that is no JSON is refused
+ s[0].revision=77;#assert !aic_state_read("{}",s[..]) && s[0].revision==0 && !aic_state_read("bad",s[..]);
+ #assert !aic_state_read("{\"schema\":\"openagents.account.identity.state.v2\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"linked\",\"revision\":7}",s[..]);
+ #assert !aic_state_read("{\"schema\":\"openagents.account.identity.state.v1\",\"account\":\"\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"linked\",\"revision\":7}",s[..]);
+ #assert !aic_state_read("{\"schema\":\"openagents.account.identity.state.v1\",\"account\":\"a\",\"pubkey\":\"x9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"linked\",\"revision\":7}",s[..]);
+ #assert !aic_state_read("{\"schema\":\"openagents.account.identity.state.v1\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"other\",\"revision\":7}",s[..]);
+ #assert !aic_state_read("{\"schema\":\"openagents.account.identity.state.v1\",\"account\":\"a\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"source\":\"linked\",\"revision\":2147483648}",s[..]);
+ // 127 bytes of account is written and read; 128 is neither
+ long:[128]u8;for i:0..<128 {long[i]='a';}
+ n:=aic_state_write(cast(string)long[0..<127],AIC_G,2,1,b[..]);#assert n>0 && aic_state_read(cast(string)b[0..<n],s[..]) && s[0].account_n==127;
+ #assert aic_state_write(cast(string)long[..],AIC_G,2,1,b[..])<0;
+ o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],AIC_STATE_SCHEMA);jo_key(o[..],"account");jo_str(o[..],cast(string)long[..]);
+ jo_key(o[..],"pubkey");jo_str(o[..],AIC_G);jo_key(o[..],"source");jo_str(o[..],"account");jo_key(o[..],"revision");jo_int(o[..],1);jo_end(o[..]);
+ #assert !aic_state_read(jo_text(o[..]),s[..]);
+ // writing: a one-byte account and a linked source are fine; an empty account and a key that is no hex are not
+ n=aic_state_write("a",AIC_G,1,0,b[..]);#assert n>0 && aic_state_read(cast(string)b[0..<n],s[..]) && s[0].source==1 && s[0].account_n==1;
+ #assert aic_state_write("",AIC_G,2,0,b[..])<0 && aic_state_write("a","bad",2,0,b[..])<0;
+ // a stored selection may be at the maximum; a receipt needs an account, and a cancelled one is never a rotation
+ cmd:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+ #assert aic_selection("a",AIC_G,AIC_REVISION_MAX) && !aic_receipt("",cmd,AIC_G,AIC_G,AIC_G,"rotate",false) && !aic_receipt("a",cmd,AIC_G,AIC_G,AIC_G,"rotate",true);
 }
