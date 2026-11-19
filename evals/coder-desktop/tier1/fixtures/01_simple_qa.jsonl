@@ -1,0 +1,7 @@
+{"op":"submit","text":"What does CP_TURNS control in page.coax?"}
+{"kind":"ready"}
+{"kind":"thought","text":"Checking the turn limit constant in apps/coder-desktop/page.coax."}
+{"kind":"reply","text":"CP_TURNS sets the maximum number of turns "}
+{"kind":"reply","text":"a single chat holds (24)."}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":1250}
+{"kind":"ended","ending":"finished","text":"CP_TURNS sets the maximum number of turns a single chat holds (24)."}

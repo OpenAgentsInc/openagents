@@ -1,0 +1,14 @@
+{"op":"current","id":"a1"}
+{"op":"submit","text":"Audit in background."}
+{"kind":"ready"}
+{"kind":"delegate","tasks":[{"level":"hydrogen","task":"scan files"}],"ticket":4}
+{"op":"agent_line","agent":0,"line":{"kind":"ask","command":"ls","ticket":1}}
+{"op":"agent_answer","agent":0}
+{"op":"bg_swap_out"}
+{"op":"chats","list":"a1\tAudit in background\t1\nb2\tForeground chat\n"}
+{"op":"bg_tick","ms":7}
+{"op":"bg_agent_line","agent":0,"line":{"kind":"command","command":"ls","exit":0,"timed_out":false,"output":"a.coax"}}
+{"op":"bg_agent_line","agent":0,"line":{"kind":"ended","ending":"finished","text":"Found a.coax."}}
+{"op":"bg_answer"}
+{"op":"bg_swap_in"}
+{"kind":"ended","ending":"finished","text":"Background audit finished cleanly."}

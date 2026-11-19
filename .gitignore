@@ -94,3 +94,7 @@ build/pipeline/
 
 # Generated resident environment service C and native binaries.
 /coder/build/
+
+# Coder Desktop evaluation run logs and headless host driver build output.
+/evals/coder-desktop/results/
+/evals/coder-desktop/host_driver/build/

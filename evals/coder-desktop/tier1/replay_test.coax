@@ -1,0 +1,282 @@
+// Tier 1 deterministic transcript replay harness for Coder Desktop.
+// Replays the 10 golden JSONL fixtures in evals/coder-desktop/tier1/fixtures/
+// through apps/coder-desktop/page.coax, checking layout, state, cost, and
+// save/load round-trip invariants.
+#load "../../../apps/coder-desktop/page.coax";
+#load "fixtures_data.coax";
+
+t1_is_finite :: (v: f32) -> bool { return v == v && v > -1.0e30f32 && v < 1.0e30f32; }
+
+t1_check_layout :: (s: [] CoderPage, w: f32, h: f32) {
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], w, h);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  cp_clamp(s);
+  #assert s[0].refused == 0;
+  #assert t1_is_finite(s[0].side) && s[0].side >= 0;
+  #assert t1_is_finite(s[0].pane_w) && s[0].pane_w >= 0;
+  #assert t1_is_finite(s[0].col_w) && s[0].col_w >= 0;
+  #assert t1_is_finite(s[0].scroll) && s[0].scroll >= 0;
+  #assert s[0].nturns >= 0 && s[0].nturns <= CP_TURNS;
+}
+
+// Extract a raw JSON object value for key "line" from an op envelope, e.g.
+// {"op":"agent_line","agent":0,"line":{"kind":...}} -> {"kind":...}
+t1_extract_line_obj :: (src: string) -> string {
+  needle := "\"line\":";
+  pos := cp_find(src, needle);
+  if pos < 0 { return ""; }
+  start := pos + needle.count;
+  while start < src.count && (src[start] == ' ' || src[start] == '\t') { start += 1; }
+  if start >= src.count || src[start] != '{' { return ""; }
+  depth := 0;
+  in_str := false;
+  esc := false;
+  i := start;
+  while i < src.count {
+    c := src[i];
+    if in_str {
+      if esc { esc = false; }
+      else if c == '\\' { esc = true; }
+      else if c == '"' { in_str = false; }
+    } else {
+      if c == '"' { in_str = true; }
+      else if c == '{' { depth += 1; }
+      else if c == '}' {
+        depth -= 1;
+        if depth == 0 { return cast(string) src[start..<i + 1]; }
+      }
+    }
+    i += 1;
+  }
+  return "";
+}
+
+t1_replay_line :: (s: [] CoderPage, b: [] CoderPage, line: string, has_bg: bool) {
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  op := cl_str(ar[..], line, "op");
+  if op.count == 0 {
+    _ := coder_page_line(s, line);
+    return;
+  }
+  out: [8192] u8;
+  if op == "submit" {
+    text := cl_str(ar[..], line, "text");
+    #assert coder_page_set_text(s, text) && coder_page_submit(s);
+  } else if op == "answer" {
+    #assert coder_page_answer_line(s, out[..]) > 0;
+  } else if op == "agent_line" {
+    ag := cl_int(line, "agent");
+    #assert ag.ok;
+    raw := t1_extract_line_obj(line);
+    #assert raw.count > 0;
+    _ := coder_page_agent_line(s, ag.value, raw);
+  } else if op == "agent_answer" {
+    ag := cl_int(line, "agent");
+    #assert ag.ok;
+    #assert coder_page_agent_answer_line(s, ag.value, out[..]) > 0;
+  } else if op == "set_budget" {
+    usd := cl_int(line, "usd_micros");
+    #assert usd.ok && coder_page_set_budget_usd_micros(s, usd.value);
+  } else if op == "assert_budget_exceeded" {
+    #assert coder_page_budget_exceeded(s);
+    #assert coder_page_action(s) == CP_ASK_STOP;
+  } else if op == "budget_approve" {
+    #assert coder_page_budget_approve(s);
+  } else if op == "stop" {
+    #assert cp_running(s);
+    s[0].turns[s[0].nturns - 1].stopping = true;
+    s[0].ask = CP_ASK_STOP;
+  } else if op == "failed" {
+    why := cl_str(ar[..], line, "why");
+    coder_page_failed(s, why);
+  } else if op == "current" {
+    id := cl_str(ar[..], line, "id");
+    coder_page_current(s, id);
+  } else if op == "chats" {
+    list := cl_str(ar[..], line, "list");
+    coder_page_chats(s, list);
+  } else if op == "bg_swap_out" {
+    #assert has_bg;
+    #assert coder_page_new(s) && coder_page_action(s) == CP_ASK_NEW;
+    #assert coder_page_take(b, s) && !cp_running(s) && cp_running(b);
+  } else if op == "bg_tick" {
+    #assert has_bg;
+    ms := cl_int(line, "ms");
+    #assert ms.ok;
+    coder_page_tick(b, cast(f32) ms.value);
+  } else if op == "bg_agent_line" {
+    #assert has_bg;
+    ag := cl_int(line, "agent");
+    #assert ag.ok;
+    raw := t1_extract_line_obj(line);
+    #assert raw.count > 0;
+    _ := coder_page_agent_line(b, ag.value, raw);
+  } else if op == "bg_answer" {
+    #assert has_bg;
+    #assert coder_page_answer_line(b, out[..]) > 0;
+  } else if op == "bg_swap_in" {
+    #assert has_bg;
+    #assert coder_page_take(s, b) && cp_running(s) && b[0].nturns == 0;
+  } else if op == "huge_line" {
+    huge: [16384] u8;
+    for k: 0..<huge.count { huge[k] = 'a'; }
+    #assert coder_page_line(s, cast(string) huge[..]) == MWW_NONE;
+  } else if op == "burst_commands" {
+    cnt := cl_int(line, "count");
+    cmd := cl_str(ar[..], line, "command");
+    #assert cnt.ok && cnt.value > 0 && s[0].nturns > 0;
+    payload: [CP_CMD_OUT] u8;
+    for k: 0..<CP_CMD_OUT { payload[k] = 'x'; }
+    ps := cast(string) payload[..];
+    ti := s[0].nturns - 1;
+    for k: 0..<cnt.value {
+      #assert cp_call_add(s, ti, -1, cmd, ps, true, false, false) >= 0;
+      if (k % 50) == 49 { t1_check_layout(s, 1200.0f32, 800.0f32); }
+    }
+  } else if op == "assert_save_load_over_1mib" {
+    kept: [1500000] u8;
+    kn := coder_page_save(s, kept[..]);
+    #assert kn > CL_LINE_MAX;
+    turns_before := s[0].nturns;
+    cmds_before := s[0].turns[0].ncmds;
+    #assert coder_page_new(s) && s[0].nturns == 0;
+    #assert coder_page_load(s, cast(string) kept[0..<kn]);
+    #assert s[0].nturns == turns_before && s[0].turns[0].ncmds == cmds_before;
+    // First layout after loading 600 freshly-deserialized rows measures row heights so subsequent frames cull off-screen rows.
+    fw: [1] UiFrame;
+    uiframe_begin(fw[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+    cp_layout(s, fw[..], 1200.0f32, 800.0f32);
+    _ := uiframe_end(fw[..], s[0].surface[..]);
+  } else {
+    #assert false;
+  }
+}
+
+t1_replay :: (s: [] CoderPage, b: [] CoderPage, fixture: string, has_bg: bool) {
+  i := 0;
+  step := 0;
+  while i < fixture.count {
+    j := i;
+    while j < fixture.count && fixture[j] != '\n' { j += 1; }
+    line := cast(string) fixture[i..<j];
+    i = j + 1;
+    t1_replay_line(s, b, line, has_bg);
+    step += 1;
+    if step <= 25 || (step % 25) == 0 {
+      t1_check_layout(s, 1200.0f32, 800.0f32);
+    }
+  }
+  t1_check_layout(s, 1200.0f32, 800.0f32);
+  t1_check_layout(s, 500.0f32, 700.0f32);
+}
+
+t1_verify_save_load :: (s: [] CoderPage) {
+  #assert !cp_running(s);
+  turns_before := s[0].nturns;
+  cost_before := coder_page_cost_usd_micros(s);
+  budget_before := coder_page_budget_usd_micros(s);
+  goal_before := coder_page_goal_status(s);
+  kept: [65536] u8;
+  kn := coder_page_save(s, kept[..]);
+  #assert kn > 0;
+  #assert coder_page_new(s) && s[0].nturns == 0;
+  #assert coder_page_load(s, cast(string) kept[0..<kn]);
+  #assert s[0].nturns == turns_before;
+  #assert coder_page_cost_usd_micros(s) == cost_before;
+  #assert coder_page_budget_usd_micros(s) == budget_before;
+  #assert coder_page_goal_status(s) == goal_before;
+  t1_check_layout(s, 1200.0f32, 800.0f32);
+}
+
+#test "tier1 fixture 01: simple Q&A streaming, cost accounting, and save/load" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_01_SIMPLE_QA, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert coder_page_cost_usd_micros(s) == 1250;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "CP_TURNS sets the maximum number of turns a single chat holds (24).";
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 02: multi-step view, edit, and command run" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_02_MULTI_STEP_EDIT, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert s[0].turns[0].ncmds >= 3;
+  #assert coder_page_cost_usd_micros(s) == 4800;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 03: parallel sub-agent delegation and transcript rendering" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_03_SUBAGENT_PARALLEL, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert s[0].turns[0].nagents == 2;
+  #assert s[0].turns[0].agents[0].state == CP_DONE && s[0].turns[0].agents[1].state == CP_DONE;
+  #assert coder_page_cost_usd_micros(s) == 9200;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 04: sub-agent 100-tool-call pause and resume" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_04_SUBAGENT_PAUSE_100, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert s[0].turns[0].nagents == 1;
+  #assert !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].state == CP_DONE;
+  #assert coder_page_cost_usd_micros(s) == 11400;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 05: /goal autonomous multi-turn continuation to [GOAL_COMPLETE]" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_05_GOAL_AUTONOMOUS, false);
+  #assert s[0].nturns == 2 && !cp_running(s);
+  #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
+  #assert coder_page_cost_usd_micros(s) == 6000;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 06: budget exceeded auto-stop and override continuation" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_06_BUDGET_EXCEEDED, false);
+  #assert s[0].nturns == 2 && !cp_running(s);
+  #assert coder_page_cost_usd_micros(s) == 127000;
+  #assert s[0].budget_override;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 07: mid-turn stop, worker crash, and clean recovery" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_07_STOP_AND_CRASH, false);
+  #assert s[0].nturns == 3 && !cp_running(s);
+  #assert s[0].turns[0].state == CP_STOPPED;
+  #assert s[0].turns[1].state == CP_FAILED;
+  #assert s[0].turns[2].state == CP_DONE;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 08: running chat swaps to background, receives lines, and swaps back" {
+  p: [2] CoderPage; s := p[0..<1]; b := p[1..<2];
+  cp_init(s); coder_page_init(b); s[0].d = 1.0f32;
+  t1_replay(s, b, FIX_08_BACKGROUND_CHAT_SWITCH, true);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert s[0].turns[0].nagents == 1 && s[0].turns[0].agents[0].state == CP_DONE;
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 09: malformed, unknown, truncated, and oversized wire lines" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_09_MALFORMED_WIRE, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Valid reply survived malformed traffic.";
+  t1_verify_save_load(s);
+}
+
+#test "tier1 fixture 10: large chat >1 MiB save/load round-trip" {
+  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  t1_replay(s, s, FIX_10_LARGE_SAVE_LOAD, false);
+  #assert s[0].nturns == 1 && !cp_running(s);
+  #assert s[0].turns[0].ncmds == 600;
+  #assert coder_page_cost_usd_micros(s) == 8500;
+}

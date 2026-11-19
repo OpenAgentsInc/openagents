@@ -1,0 +1,12 @@
+{"op":"set_budget","usd_micros":100000}
+{"op":"submit","text":"Run a pricey analysis."}
+{"kind":"ready"}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":60000}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":55000}
+{"op":"assert_budget_exceeded","expect_stop":true}
+{"kind":"ended","ending":"stopped","text":"stopped"}
+{"op":"budget_approve"}
+{"op":"submit","text":"Continue after budget override."}
+{"kind":"ready"}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":12000}
+{"kind":"ended","ending":"finished","text":"Completed after budget approval."}

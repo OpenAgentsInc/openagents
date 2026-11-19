@@ -1,0 +1,12 @@
+{"op":"submit","text":"Start a long scan."}
+{"kind":"ready"}
+{"kind":"reply","text":"Scanning files..."}
+{"op":"stop"}
+{"kind":"ended","ending":"stopped","text":"stopped"}
+{"op":"submit","text":"Try another run that crashes."}
+{"kind":"ready"}
+{"kind":"thought","text":"Working before crash."}
+{"op":"failed","why":"Microcoder stopped running."}
+{"op":"submit","text":"Recover on a clean turn."}
+{"kind":"ready"}
+{"kind":"ended","ending":"finished","text":"Recovered cleanly."}

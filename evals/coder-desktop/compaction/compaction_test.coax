@@ -1,0 +1,381 @@
+// Deterministic & long-horizon compaction evaluation suite for OpenAgents Coder (GitHub #13706).
+// Covers:
+//   C1: Prompt-prefix stability across non-compacting steps (KV cache friendliness)
+//   C2: `earlier` append-only prefix stability across multiple compactions
+//   C3: Compacted step fidelity (rationales, edits, failures, refusals, command exit/output/last_check)
+//   C4: Working memory (`memory` key) survival across compactions and cache-friendly placement
+//   C5: Long-horizon multi-compaction + `earlier` eviction stress (36 steps)
+//   C6: Per-step 32 KB budget (`MC_STEP_BUDGET`) isolation
+//   C7: Cross-turn recall (`MWW_RECALL` wire round-trip + `MkTurns`/`mk_facts` budget degradation)
+//   C8: Full-flush compaction (`mc_compact(st, 0)`) recovery after context-limit error
+
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coder/tui/microcoder_keys.coax";
+#load "../../../coax/lib/agent/engine/mcworker-wire.coax";
+
+CE_Harness :: struct {
+  b: [1] McStateBuffers;
+  mem: [MC_MEM_BYTES] u8;
+  out1: [MC_PROMPT_BYTES] u8;
+  out2: [MC_PROMPT_BYTES] u8;
+  out3: [MC_PROMPT_BYTES] u8;
+}
+
+ce_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if cast(string) hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+ce_index_of :: (hay: string, needle: string) -> int {
+  if needle.count == 0 { return 0; }
+  if needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if cast(string) hay[i..<i + needle.count] == needle { return i; }
+  }
+  return -1;
+}
+
+ce_fill_lines :: (dst: [] u8, ch: u8, line_len: int) -> string {
+  for i: 0..<dst.count {
+    dst[i] = ifx (i + 1) % line_len == 0 then '\n' else ch;
+  }
+  return cast(string) dst[..];
+}
+
+ce_step_label :: (buf: [] u8, prefix: string, idx: int) -> string {
+  n := 0;
+  for c: prefix { if n < buf.count { buf[n] = c; n += 1; } }
+  d1 := cast(u8) ('0' + (idx / 10) % 10);
+  d0 := cast(u8) ('0' + idx % 10);
+  if n + 2 <= buf.count { buf[n] = d1; buf[n + 1] = d0; n += 2; }
+  return cast(string) buf[0..<n];
+}
+
+#test "compaction C1: prompt-prefix stability across non-compacting steps (cache friendliness)" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/repo\"}", "audit compaction", "{\"local_work\":0.9}");
+
+  mc_action_begin(st[..], "step 1: inspect state.coax");
+  mc_file(st[..], "coax/lib/microcoder/state.coax:1-40", true, "1\t// state.coax\n2\tMC_LOG_BYTES :: 147456;\n");
+  mc_action_end(st[..]);
+  p1 := mc_state_json(st[..], h[0].out1[..]);
+  #assert p1.count > 0 && json_valid(p1);
+  // Everything before the closing `],"notes":` must be a byte-for-byte prefix of step 2's prompt.
+  tail1 := ce_index_of(p1, "],\"notes\":");
+  #assert tail1 > 0;
+
+  mc_action_begin(st[..], "step 2: run state tests");
+  mc_action_command(st[..], "coax test coax/lib/microcoder/state.coax", 0, false, "192 checks, 192 passed, 0 failed\n");
+  mc_action_end(st[..]);
+  p2 := mc_state_json(st[..], h[0].out2[..]);
+  #assert p2.count > p1.count && json_valid(p2);
+  #assert cast(string) p2[0..<tail1] == cast(string) p1[0..<tail1];
+  #assert st[0].compactions == 0;
+
+  tail2 := ce_index_of(p2, "],\"notes\":");
+  #assert tail2 > tail1;
+
+  mc_action_begin(st[..], "step 3: apply edit");
+  mc_action_edit_shown(st[..], "docs/coder/compaction-theory.md", true, "", 1, 3, "1\t# Theory\n");
+  mc_action_end(st[..]);
+  p3 := mc_state_json(st[..], h[0].out3[..]);
+  #assert p3.count > p2.count && json_valid(p3);
+  #assert cast(string) p3[0..<tail2] == cast(string) p2[0..<tail2];
+  #assert st[0].compactions == 0;
+}
+
+#test "compaction C2: earlier append-only prefix stability across multiple compactions" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/repo\"}", "multi-compaction cache check", "{\"local_work\":0.9}");
+  blob: [22000] u8;
+  body := ce_fill_lines(blob[..], 'a', 80);
+
+  // Push steps until the first automatic compaction happens.
+  i := 0;
+  while st[0].compactions == 0 && i < 20 {
+    lbuf: [32] u8;
+    mc_action_begin(st[..], ce_step_label(lbuf[..], "phase1-step-", i));
+    mc_file(st[..], "src/big.coax", true, body);
+    mc_action_end(st[..]);
+    i += 1;
+  }
+  #assert st[0].compactions == 1 && st[0].nearly > 0 && st[0].left_out == 0;
+  p1 := mc_state_json(st[..], h[0].out1[..]);
+  #assert p1.count > 0 && json_valid(p1);
+  // Find the end of the `earlier` array content before `],"actions":[`.
+  e1 := ce_index_of(p1, "],\"actions\":[");
+  #assert e1 > 0 && ce_contains(cast(string) p1[0..<e1], "\"earlier\":[");
+
+  // Push more steps until a second automatic compaction happens (without overflowing earlier).
+  while st[0].compactions == 1 && i < 40 {
+    lbuf: [32] u8;
+    mc_action_begin(st[..], ce_step_label(lbuf[..], "phase2-step-", i));
+    mc_file(st[..], "src/big2.coax", true, body);
+    mc_action_end(st[..]);
+    i += 1;
+  }
+  #assert st[0].compactions == 2 && st[0].left_out == 0;
+  p2 := mc_state_json(st[..], h[0].out2[..]);
+  #assert p2.count > 0 && json_valid(p2);
+  // Everything through the end of the first compaction's `earlier` items must remain byte-identical.
+  #assert cast(string) p2[0..<e1] == cast(string) p1[0..<e1];
+  #assert p2[e1] == ',';
+}
+
+#test "compaction C3: compacted step fidelity for rationales, edits, failures, refusals, and commands" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\"}", "fidelity check", "{\"local_work\":0.9}");
+
+  // Build a 1050-byte rationale (< MC_BRIEF_RATIONALE = 1200) with a unique sentinel at the end.
+  rbuf: [1050] u8;
+  for k: 0..<rbuf.count { rbuf[k] = 'r'; }
+  sentinel := "KEY_FINDING_LINE_42";
+  for k: 0..<sentinel.count { rbuf[rbuf.count - sentinel.count + k] = sentinel[k]; }
+
+  cmd_out: [2000] u8;
+  for k: 0..<cmd_out.count { cmd_out[k] = 'm'; }
+  head_tag := "HEAD_TAG_START";
+  tail_tag := "TAIL_TAG_END";
+  for k: 0..<head_tag.count { cmd_out[k] = head_tag[k]; }
+  for k: 0..<tail_tag.count { cmd_out[cmd_out.count - tail_tag.count + k] = tail_tag[k]; }
+
+  mc_action_begin(st[..], cast(string) rbuf[..]);
+  mc_action_edit_shown(st[..], "coax/lib/foo.coax", true, "", 12, 18, "12\tx := 1;\n13\ty := 2;\n");
+  mc_action_edit_shown(st[..], "coax/lib/bar.coax", false, "old text not found", 0, 0, "5\told_line\n");
+  mc_action_refused(st[..], "rm -rf /", "blocked by policy");
+  mc_action_command_checked(st[..], "git commit -m fix", 0, false, cast(string) cmd_out[..], "passed (192 checks)");
+  mc_action_command(st[..], "slow-test", -1, true, "partial output");
+  mc_file(st[..], "missing/file.coax", false, "no such file");
+  mc_file(st[..], "seen/file.coax:1-50", true, "1\thello world\n");
+  mc_action_end(st[..]);
+
+  // Force compaction of step 1 into `earlier`.
+  mc_compact(st[..], 0);
+  #assert st[0].compactions == 1 && st[0].nearly == 1 && st[0].nacts == 0;
+
+  p := mc_state_json(st[..], h[0].out1[..]);
+  #assert p.count > 0 && json_valid(p);
+  earlier_json := cl_raw(p, "earlier");
+  #assert earlier_json.count > 0;
+
+  // Rationale preserved up to MC_BRIEF_RATIONALE including end sentinel.
+  #assert ce_contains(earlier_json, "KEY_FINDING_LINE_42");
+  // Applied edit keeps path and line span, drops full `now` snippet.
+  #assert ce_contains(earlier_json, "\"edit\":\"coax/lib/foo.coax\"");
+  #assert ce_contains(earlier_json, "\"applied\":true");
+  #assert ce_contains(earlier_json, "\"lines\":\"12-18\"");
+  #assert !ce_contains(earlier_json, "\"now\":");
+  // Failed edit keeps path and failure reason, drops `nearest` snippet.
+  #assert ce_contains(earlier_json, "\"edit\":\"coax/lib/bar.coax\"");
+  #assert ce_contains(earlier_json, "\"failed\":\"old text not found\"");
+  #assert !ce_contains(earlier_json, "\"nearest\":");
+  // Refused command keeps command and refusal reason.
+  #assert ce_contains(earlier_json, "\"command\":\"rm -rf /\"");
+  #assert ce_contains(earlier_json, "\"refused\":\"blocked by policy\"");
+  // Command keeps exit, last_check, timed_out, and head+tail output tags.
+  #assert ce_contains(earlier_json, "\"last_check\":\"passed (192 checks)\"");
+  #assert ce_contains(earlier_json, "HEAD_TAG_START");
+  #assert ce_contains(earlier_json, "TAIL_TAG_END");
+  #assert ce_contains(earlier_json, "\"timed_out\":true");
+  // Missing file keeps missing reason; found view keeps path and byte size, drops content.
+  #assert ce_contains(earlier_json, "\"view\":\"missing/file.coax\"");
+  #assert ce_contains(earlier_json, "\"missing\":\"no such file\"");
+  #assert ce_contains(earlier_json, "\"view\":\"seen/file.coax:1-50\"");
+  #assert ce_contains(earlier_json, "\"bytes\":14");
+  #assert !ce_contains(earlier_json, "hello world");
+}
+
+#test "compaction C4: working memory survives compactions and sits after actions for cache preservation" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\"}", "memory survival", "{\"local_work\":0.9}");
+  mc_memory_on(st[..], h[0].mem[..]);
+  mc_memory_set(st[..], "state.coax:169 mc_compact", "docs/coder/compaction-theory.md:1-180", "run evals/coder-desktop/run.sh");
+
+  mc_action_begin(st[..], "step 1");
+  mc_action_command(st[..], "echo hi", 0, false, "hi\n");
+  mc_action_end(st[..]);
+  p1 := mc_state_json(st[..], h[0].out1[..]);
+  #assert json_valid(p1);
+  // Ordering invariant: actions -> memory -> notes.
+  idx_act := ce_index_of(p1, "\"actions\":[");
+  idx_mem := ce_index_of(p1, "\"memory\":{");
+  idx_notes := ce_index_of(p1, "\"notes\":");
+  #assert idx_act > 0 && idx_mem > idx_act && idx_notes > idx_mem;
+
+  // Updating memory does NOT change a single byte of the prompt up to `,\"memory\":`.
+  mc_memory_set(st[..], "state.coax:169 mc_compact; loop.coax:514", "docs/coder/compaction-theory.md:1-180", "all checks green");
+  p2 := mc_state_json(st[..], h[0].out2[..]);
+  #assert json_valid(p2);
+  #assert cast(string) p2[0..<idx_mem] == cast(string) p1[0..<idx_mem];
+
+  // Compact everything: memory must survive verbatim.
+  mc_compact(st[..], 0);
+  p3 := mc_state_json(st[..], h[0].out3[..]);
+  #assert json_valid(p3) && st[0].compactions == 1;
+  #assert ce_contains(p3, "state.coax:169 mc_compact; loop.coax:514");
+  #assert ce_contains(p3, "all checks green");
+}
+
+#test "compaction C5: long-horizon 36-step multi-compaction and earlier eviction stress" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/repo\"}", "long horizon refactor", "{\"local_work\":0.9}");
+  mc_memory_on(st[..], h[0].mem[..]);
+  mc_memory_set(st[..], "anchor: invariant-A holds", "core/file.coax:10-40", "verify final suite");
+
+  // Each step adds ~22 KB of view + ~1 KB rationale + command + edit so we trigger
+  // multiple compactions AND eventually overflow MC_EARLIER_BYTES (40 KB).
+  view_blob: [22000] u8;
+  view_body := ce_fill_lines(view_blob[..], 'v', 100);
+  rat_blob: [1100] u8;
+  for k: 0..<rat_blob.count { rat_blob[k] = 'n'; }
+  cmd_blob: [800] u8;
+  for k: 0..<cmd_blob.count { cmd_blob[k] = 'c'; }
+
+  for step: 0..<36 {
+    // Stamp step number into rationale start so each compacted step is distinct.
+    rat_blob[0] = 'S';
+    rat_blob[1] = cast(u8) ('0' + (step / 10) % 10);
+    rat_blob[2] = cast(u8) ('0' + step % 10);
+    rat_blob[3] = ':';
+    mc_action_begin(st[..], cast(string) rat_blob[..]);
+    mc_file(st[..], "src/module.coax", true, view_body);
+    mc_action_edit_shown(st[..], "src/module.coax", true, "", 10 + step, 20 + step, "10\tupdated\n");
+    mc_action_command(st[..], "coax test src/module.coax", ifx step % 5 == 0 then 1 else 0, false, cast(string) cmd_blob[..]);
+    mc_action_end(st[..]);
+
+    // Every intermediate state must serialize to valid JSON under MC_PROMPT_BYTES.
+    p := mc_state_json(st[..], h[0].out1[..]);
+    #assert p.count > 0 && p.count <= MC_PROMPT_BYTES && json_valid(p);
+  }
+
+  // Must have compacted multiple times and evicted oldest `earlier` entries cleanly.
+  #assert st[0].steps == 36;
+  #assert st[0].compactions >= 4;
+  #assert st[0].left_out > 0;
+  #assert st[0].nearly > 0;
+  #assert st[0].nacts > 0;
+  #assert st[0].left_out + st[0].nearly + st[0].nacts == 36;
+
+  p_final := mc_state_json(st[..], h[0].out2[..]);
+  #assert p_final.count > 0 && json_valid(p_final);
+  #assert ce_contains(p_final, "\"left_out\":");
+  // Working memory anchor survived all 36 steps, compactions, and `earlier` evictions.
+  #assert ce_contains(p_final, "anchor: invariant-A holds");
+  #assert ce_contains(p_final, "verify final suite");
+  // Most recent step rationale is still in `actions`.
+  #assert ce_contains(cl_raw(p_final, "actions"), "S35:");
+}
+
+#test "compaction C6: per-step 32 KB budget isolates noisy steps from flushing prior actions" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\"}", "budget isolation", "{\"local_work\":0.9}");
+
+  mc_action_begin(st[..], "important step 1");
+  mc_action_edit_shown(st[..], "src/a.coax", true, "", 1, 5, "1\tkeep_me\n");
+  mc_action_end(st[..]);
+  #assert st[0].compactions == 0;
+
+  // Step 2 attempts to dump 3 huge views (~20 KB each) and a held view.
+  big: [20000] u8;
+  big_s := ce_fill_lines(big[..], 'z', 80);
+  mc_action_begin(st[..], "noisy step 2");
+  mc_file(st[..], "big1.txt", true, big_s);
+  mc_file(st[..], "big2.txt", true, big_s);
+  mc_file_held(st[..], "big3.txt");
+  mc_action_end(st[..]);
+
+  // Step 1 must not have been flushed by step 2, and step 2's results must stay near MC_STEP_BUDGET.
+  #assert st[0].compactions == 0 && st[0].nacts == 2;
+  #assert st[0].nlog < MC_STEP_BUDGET + 8192;
+  p := mc_state_json(st[..], h[0].out1[..]);
+  #assert p.count > 0 && json_valid(p);
+  #assert ce_contains(p, "keep_me");
+  #assert ce_contains(p, MC_HELD);
+}
+
+#test "compaction C7: cross-turn recall (MWW_RECALL wire round-trip + MkTurns and mk_facts budget degradation)" {
+  // 1. Wire round-trip via mww_recall -> mww_request.
+  wire: [4096] u8;
+  turns_json := "[{\"task\":\"turn one\",\"reply\":\"reply one\"},{\"task\":\"turn two\",\"reply\":\"reply two\"}]";
+  wn := mww_recall(wire[..], turns_json);
+  #assert wn > 0;
+  ar: [1] ClArena; abuf: [4096] u8; ar[0].buf = abuf[..];
+  req: [1] MwwRequest;
+  kind := mww_request(ar[..], cast(string) wire[0..<wn], req[..]);
+  #assert kind == MWW_RECALL && req[0].recall == turns_json;
+  #assert cl_count(req[0].recall) == 2;
+
+  // 2. MkTurns ring buffer caps at MK_TURNS (6), preserving newest turns in chronological order.
+  mt: [1] MkTurns;
+  for i: 0..<MK_TURNS + 3 {
+    tbuf: [16] u8; rbuf: [16] u8;
+    mt[0].ncur = mk_keep(mt[0].cur[..], ce_step_label(tbuf[..], "task-", i));
+    mk_remember(mt[..], ce_step_label(rbuf[..], "reply-", i));
+  }
+  #assert mt[0].turns == MK_TURNS;
+  #assert mk_text(mt[..], 0) == "task-03";
+  #assert mk_text(mt[..], 2 * MK_TURNS - 2) == "task-08";
+  #assert mk_text(mt[..], 2 * MK_TURNS - 1) == "reply-08";
+
+  // 3. Long reply truncation appends MK_CUT marker.
+  oversized: [MK_TURN_TEXT + 256] u8;
+  for k: 0..<oversized.count { oversized[k] = 'q'; }
+  mt[0].ncur = mk_keep(mt[0].cur[..], "task-big-1");
+  mk_remember(mt[..], cast(string) oversized[..]);
+  mt[0].ncur = mk_keep(mt[0].cur[..], "task-big-2");
+  mk_remember(mt[..], cast(string) oversized[..]);
+  last_reply := mk_text(mt[..], 2 * MK_TURNS - 1);
+  #assert last_reply.count == MK_TURN_TEXT;
+  #assert ce_contains(last_reply, MK_CUT);
+
+  // 4. mk_facts drops oldest turns first when output buffer is tight, keeping valid JSON.
+  tight: [9000] u8;
+  f_tight := mk_facts(mt[..], "macOS", "/repo", MK_COMMAND_SECONDS, tight[..]);
+  #assert json_valid(f_tight);
+  #assert cl_count(cl_raw(f_tight, "conversation")) == 1;
+  #assert ce_contains(f_tight, "task-big-2");
+  #assert !ce_contains(f_tight, "task-big-1");
+
+  // 5. Even when zero turns fit, mk_facts still returns valid JSON with base environment.
+  tiny: [256] u8;
+  f_tiny := mk_facts(mt[..], "macOS", "/repo", MK_COMMAND_SECONDS, tiny[..]);
+  #assert json_valid(f_tiny);
+  #assert cl_raw(f_tiny, "conversation").count == 0;
+  #assert ce_contains(f_tiny, "\"cwd\":\"/repo\"");
+}
+
+#test "compaction C8: full-flush compaction (mc_compact keep=0) recovery and continuation" {
+  h: [1] CE_Harness; st: [1] McState;
+  mc_state_init(st[..], h[0].b[..], "{\"os\":\"macOS\"}", "context limit recovery", "{\"local_work\":0.9}");
+
+  for i: 0..<4 {
+    lbuf: [24] u8;
+    mc_action_begin(st[..], ce_step_label(lbuf[..], "pre-flush-", i));
+    mc_action_command(st[..], "ls", 0, false, "a.coax\nb.coax\n");
+    mc_action_end(st[..]);
+  }
+  #assert st[0].nacts == 4 && st[0].compactions == 0;
+
+  // Simulate loop.coax:514 recovery on context-length 400 error.
+  mc_compact(st[..], 0);
+  #assert st[0].nacts == 0 && st[0].nearly == 4 && st[0].compactions == 1;
+  p1 := mc_state_json(st[..], h[0].out1[..]);
+  #assert p1.count > 0 && json_valid(p1);
+  #assert cl_count(cl_raw(p1, "actions")) == 0;
+  #assert cl_count(cl_raw(p1, "earlier")) == 4;
+
+  // Subsequent step appends cleanly without disturbing earlier.
+  e1 := ce_index_of(p1, "],\"actions\":[");
+  mc_action_begin(st[..], "post-flush-step");
+  mc_action_command(st[..], "git status", 0, false, "clean\n");
+  mc_action_end(st[..]);
+  p2 := mc_state_json(st[..], h[0].out2[..]);
+  #assert p2.count > 0 && json_valid(p2);
+  #assert cast(string) p2[0..<e1] == cast(string) p1[0..<e1];
+  #assert cl_count(cl_raw(p2, "actions")) == 1;
+  #assert ce_contains(cl_raw(p2, "actions"), "post-flush-step");
+}

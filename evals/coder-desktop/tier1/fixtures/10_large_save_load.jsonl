@@ -1,0 +1,6 @@
+{"op":"submit","text":"Generate a large transcript exceeding 1 MiB."}
+{"kind":"ready"}
+{"op":"burst_commands","count":600,"command":"cat chunk.txt"}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":8500}
+{"kind":"ended","ending":"finished","text":"Large chat complete."}
+{"op":"assert_save_load_over_1mib"}

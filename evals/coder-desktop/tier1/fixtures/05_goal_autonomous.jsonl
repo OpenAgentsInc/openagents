@@ -1,0 +1,11 @@
+{"op":"submit","text":"/goal ship phase 1 eval harness with full tests"}
+{"kind":"ready"}
+{"kind":"thought","text":"Milestone 1: create fixtures."}
+{"kind":"command","command":"echo fixtures ready","exit":0,"timed_out":false,"output":"fixtures ready"}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":3100}
+{"kind":"ended","ending":"finished","text":"Milestone 1 complete: created golden fixtures. Moving to harness."}
+{"kind":"ready"}
+{"kind":"thought","text":"Milestone 2: run harness and verify."}
+{"kind":"command","command":"echo harness green","exit":0,"timed_out":false,"output":"harness green"}
+{"kind":"attempt","gateway":"vertex","outcome":"done","status":200,"usd_micros":2900}
+{"kind":"ended","ending":"finished","text":"All eval harness tests pass.\n[GOAL_COMPLETE]"}

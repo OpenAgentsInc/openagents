@@ -1,0 +1,9 @@
+{"op":"submit","text":"Handle malformed wire traffic gracefully."}
+{"kind":"ready"}
+
+not-json-at-all
+{"kind":"unknown_future_event","payload":123}
+{"kind":"reply","text":"unterminated
+{"op":"huge_line","bytes":16384}
+{"kind":"reply","text":"Valid reply survived malformed traffic."}
+{"kind":"ended","ending":"finished","text":"Valid reply survived malformed traffic."}
