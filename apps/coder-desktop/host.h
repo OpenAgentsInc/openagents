@@ -54,6 +54,8 @@ void cd_chats(void *page, const char *list);
 void cd_current(void *page, const char *id);
 // Update the persistent Foreman sidebar row's running spinner and permission tier (0=Observe, 1=Assist, 2=Auto).
 void cd_foreman(void *page, int busy, int tier);
+// Update the sidebar footer auto-updater pill (state: 0=hidden, 1=available, 2=downloading, 3=ready, 4=error).
+void cd_update(void *page, int state, const char *label, const char *detail);
 int cd_open_id(void *page, char *out, int cap);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
