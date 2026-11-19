@@ -592,11 +592,11 @@ moment. A renderer calls three things:
 
 ```
 cs_run(p, run);                  // once for a seed and settings
-csv_at(run, day, view);          // any day, with its fraction, in any order
+cs_view_at(run, day, view);          // any day, with its fraction, in any order
 run[0].total                     // the totals for a panel
 ```
 
-`csv_at` fills a `CsvView`:
+`cs_view_at` fills a `CsvView`:
 
 | Field | What it holds |
 | --- | --- |

@@ -308,7 +308,7 @@ BfTest :: struct { run: [1] CsRun; view: [1] CsvView; film: [1] BuildFilm; }
   #assert s.subject == BF_JOINT && s.id == 1 && s.d0 == bf_tick_day(p1.t_join) && s.d1 == bf_tick_day(p1.t_fast);
   // the storm's shot is a stand-down of the run, and the lift's holds the first lift
   k = bf_chapter(f, 13); s = f[0].shots[k];
-  csv_at(run, (s.d0 + s.d1) * 0.5, t[0].view[..]);
+  cs_view_at(run, (s.d0 + s.d1) * 0.5, t[0].view[..]);
   #assert t[0].view[0].wx.storm != 0;
   k = bf_chapter(f, 15); s = f[0].shots[k]; lift := bf_event(run, CS_EV_LIFT, -1, 0.0);
   #assert s.subject == BF_EDGE && s.d0 < lift && s.d1 > lift;
@@ -322,7 +322,7 @@ BfTest :: struct { run: [1] CsRun; view: [1] CsvView; film: [1] BuildFilm; }
     s := f[0].shots[i];
     for j: 0..<2 {
       sec := s.t0 + (s.t1 - s.t0) * (0.03 + 0.94 * f64(j));
-      csv_at(run, bf_day(f, sec), v);
+      cs_view_at(run, bf_day(f, sec), v);
       at := bf_subject(run, v, s); c := bf_camera(s, at, sec);
       // the subject is at the height of the work of that day: never the finished deck over an unbuilt hull
       top := fmax(v[0].hull.top - v[0].hull.draft, 40.0);
@@ -332,11 +332,11 @@ BfTest :: struct { run: [1] CsRun; view: [1] CsvView; film: [1] BuildFilm; }
     }
   }
   // the first shot of the yard looks at an empty basin: nothing is afloat and no concrete is cast
-  csv_at(run, 0.0, v);
+  cs_view_at(run, 0.0, v);
   for i: 0..<v[0].bodies { b := v[0].body[i]; #assert b.kind != CSV_PIECE && b.kind != CSV_GANTRY && (b.kind != CSV_CAISSON || (b.base == 0.0 && b.walls == 0.0)); }
   // the tow's shots follow the piece: its subject moves with it, by kilometres
   k := bf_chapter(f, 7); s := f[0].shots[k];
-  csv_at(run, s.d0, v); a := bf_subject(run, v, s);
-  csv_at(run, s.d1, v); b := bf_subject(run, v, s);
+  cs_view_at(run, s.d0, v); a := bf_subject(run, v, s);
+  cs_view_at(run, s.d1, v); b := bf_subject(run, v, s);
   #assert sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)) > 5000.0;
 }

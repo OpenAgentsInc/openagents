@@ -10,8 +10,7 @@
 // can't work lead the panel. Every state has an address: a press writes it to the address bar.
 //
 //
-// The days to build are a run of the build simulation (metaverse/slab-build.coax; not its view,
-// slab-build-view.coax, whose csv_at has the name of coax/lib/text/csv.coax's in this page): the yard, the tows, the joints at sea and the weather, for this hull, this
+// The days to build are a run of the build simulation (metaverse/slab-build.coax): the yard, the tows, the joints at sea and the weather, for this hull, this
 // many casting positions and this pour rate. A run takes about a quarter of a second, so the panel
 // runs it once the settings have stood still for a moment and "Building it" is the open part.
 //
