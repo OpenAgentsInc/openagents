@@ -1,0 +1,94 @@
+// Long-horizon compaction scenarios, compaction fidelity and cross-turn recall bounds (GitHub #13706).
+// The scenarios live in scenarios.coax; report.coax prints their numbers. No model is called.
+//   C9:  four 200-step scenarios: no prefix break, no gap in the step numbers, every prompt valid
+//        and under the request limit, the cache serves at least 75% of prompt bytes
+//   C10: what a compacted step keeps and loses, and what only the working memory keeps after eviction
+//   C11: the recall line: a reply cut on a character boundary reaches the worker; one cut inside a
+//        character is refused whole (the desktop page's 1,200-byte cut must use a character boundary)
+//   C12: cross-turn recall: the newest MK_TURNS turns, each up to MK_TURN_TEXT, fit the run's facts
+
+#load "../../../coax/lib/sys/tool.coax";
+#load "scenarios.coax";
+#load "../../../coder/tui/microcoder_keys.coax";
+
+CC_STEPS :: 200;
+
+#test "compaction C9: long-horizon scenarios keep the cache prefix, the step numbers and the request limit" #steps 4000000000 {
+  z: [1] CsBufs;
+  for kind: 0..<CS_KINDS {
+    r := cs_run(z[..], kind, CC_STEPS);
+    #assert r.steps == CC_STEPS && r.left_out + r.nearly + r.nacts == CC_STEPS;
+    #assert r.invalid == 0 && r.gaps == 0 && r.breaks == 0;
+    #assert r.max_prompt + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
+    #assert r.memory_kept;
+    // compaction comes in rare blocks, and the cache serves most prompt bytes
+    #assert r.compactions >= 1 && r.compactions * 4 <= CC_STEPS;
+    #assert cs_shared_permille(r) >= 750;
+    // a long run outgrows earlier: the oldest steps leave, and only the count says so
+    #assert r.evictions >= 1 && r.left_out > 0;
+  }
+}
+
+#test "compaction C10: a compacted step keeps rationale, edit lines and output ends; eviction leaves only the memory" #steps 2000000000 {
+  z: [1] CsBufs; st: [1] McState;
+  mc_state_init(st[..], z[0].b[..], "{}", "fidelity", "{}");
+  mc_memory_on(st[..], z[0].mem[..]);
+  mc_memory_set(st[..], "Findings (current):\nF1 NEEDLE-MEM a.coax:42\n", "", "");
+  mid: [9000] u8; for i: 0..<mid.count { mid[i] = '.'; }
+  needle_mid := "NEEDLE-MID"; needle_tail := "NEEDLE-TAIL";
+  for i: 0..<needle_mid.count { mid[4500 + i] = needle_mid[i]; }
+  for i: 0..<needle_tail.count { mid[mid.count - 40 + i] = needle_tail[i]; }
+  mc_action_begin(st[..], "NEEDLE-RAT: the handler is a.coax:42");
+  mc_file(st[..], "a.coax", true, "41\tx\n42\tNEEDLE-VIEW handler\n");
+  mc_action_edit_shown(st[..], "a.coax", true, "", 40, 44, "42\tNEEDLE-NOW\n");
+  mc_action_command(st[..], "coax test a.coax", 1, false, cast(string) mid[..]);
+  mc_action_end(st[..]);
+  mc_action_begin(st[..], "next"); mc_action_end(st[..]);
+  j := mc_state_json(st[..], z[0].out[..]);
+  #assert cs_has(j, "NEEDLE-VIEW") && cs_has(j, "NEEDLE-NOW") && cs_has(j, "NEEDLE-MID");
+  // compacted: the rationale, the edit's lines, the exit code and the output's ends stay
+  mc_compact(st[..], st[0].nlog - st[0].act_at[1]);
+  j = mc_state_json(st[..], z[0].out[..]);
+  e := cl_raw(j, "earlier");
+  #assert st[0].nearly == 1 && cs_has(e, "NEEDLE-RAT: the handler is a.coax:42") && cs_has(e, "\"lines\":\"40-44\"");
+  #assert cs_has(e, "\"exit\":1") && cs_has(e, "NEEDLE-TAIL") && cs_has(e, "\"bytes\":");
+  // the view's body, the edit's shown text and the output's middle go
+  #assert !cs_has(j, "NEEDLE-VIEW") && !cs_has(j, "NEEDLE-NOW") && !cs_has(j, "NEEDLE-MID");
+  // fill earlier until the step leaves it: only the memory still knows
+  i := 0;
+  while st[0].left_out == 0 && i < 400 { cs_step(st[..], z[..], CS_NOTES, i); i += 1; }
+  j = mc_state_json(st[..], z[0].out[..]);
+  #assert st[0].left_out > 0 && json_valid(j) && !cs_has(j, "NEEDLE-RAT") && cs_has(j, "NEEDLE-MEM a.coax:42");
+}
+
+#test "compaction C11: a recall reply cut on a character boundary reaches the worker; one cut inside a character is refused" {
+  // 1,199 ASCII bytes then an em dash (3 bytes): a cut at 1,200 bytes falls inside it.
+  reply: [1202] u8; for k: 0..<1199 { reply[k] = 'a'; } reply[1199] = 0xE2; reply[1200] = 0x80; reply[1201] = 0x94;
+  for safe: 0..<2 {
+    cut := ifx safe == 1 then text_byte_floor(cast(string) reply[..], 1200) else 1200;
+    b: [4096] u8;
+    n := json_raw(b[..], 0, "[{\"task\":\"t\",\"reply\":"); n = json_write_string(b[..], n, cast(string) reply[0..<cut]); n = json_raw(b[..], n, "}]");
+    o: [8192] u8; wn := mww_recall(o[..], cast(string) b[0..<n]);
+    ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; req: [1] MwwRequest;
+    kind := mww_request(ar[..], cast(string) o[0..<wn], req[..]);
+    if safe == 1 { #assert cut == 1199 && kind == MWW_RECALL && cl_count(req[0].recall) == 1; }
+    else { #assert kind != MWW_RECALL; }
+  }
+}
+
+#test "compaction C12: the newest turns, each up to MK_TURN_TEXT, fit the run's facts whole" #steps 400000000 {
+  mt: [1] MkTurns;
+  long: [MK_TURN_TEXT] u8; for k: 0..<long.count { long[k] = 'w'; }
+  for i: 0..<20 {
+    long[0] = cast(u8) ('A' + i);
+    mt[0].ncur = mk_keep(mt[0].cur[..], cast(string) long[..]);
+    mk_remember(mt[..], cast(string) long[..]);
+  }
+  #assert mt[0].turns == MK_TURNS;
+  facts: [MC_FACTS_BYTES] u8;
+  f := mk_facts(mt[..], "macOS", "/repo", MK_COMMAND_SECONDS, facts[..]);
+  #assert json_valid(f) && cl_count(cl_raw(f, "conversation")) == MK_TURNS;
+  // the oldest 14 turns are gone; the newest is last
+  ab: [1] ClArena; abuf: [MK_TURN_TEXT + 64] u8; ab[0].buf = abuf[..];
+  #assert cl_str(ab[..], f, "conversation.5.you")[0] == 'A' + 19 && cl_str(ab[..], f, "conversation.0.user")[0] == 'A' + 14;
+}

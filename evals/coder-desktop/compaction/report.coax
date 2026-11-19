@@ -1,0 +1,16 @@
+// Prints the long-horizon compaction scenarios' numbers (scenarios.coax), one line each, for
+// evals/coder-desktop/compaction/run.sh and docs/coder/compaction-theory.md. No model is called.
+//   coax/bin/coax run evals/coder-desktop/compaction/report.coax
+#import "Basic";
+#load "scenarios.coax";
+
+CS_REPORT_STEPS :: 200;
+
+main :: () {
+  z: [1] CsBufs;
+  for kind: 0..<CS_KINDS {
+    r := cs_run(z[..], kind, CS_REPORT_STEPS);
+    print("scenario % steps % compactions % evictions % left_out % earlier % actions % max_prompt % avg_prompt % cache_shared_permille % breaks % gaps % invalid % memory_kept %\n",
+      cs_name(kind), r.steps, r.compactions, r.evictions, r.left_out, r.nearly, r.nacts, r.max_prompt, r.prompt_bytes / r.steps, cs_shared_permille(r), r.breaks, r.gaps, r.invalid, r.memory_kept);
+  }
+}

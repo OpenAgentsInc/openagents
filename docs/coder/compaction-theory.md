@@ -1,182 +1,298 @@
-<!-- GitHub issue #13706 -->
-# Context Compaction Theory & Architecture for OpenAgents Coder
+# Coder compaction theory
 
-This document audits how OpenAgents Microcoder and Coder Desktop currently manage context growth and multi-turn recall, compares our approach with **OpenAI Codex** (`openai/codex`) and **T3 Code** (`pingdotgg/t3code`), formulates a compaction theory for OpenAgents Coder, and specifies the deterministic and long-horizon evaluations in `evals/coder-desktop/compaction/`.
+This document describes how Coder keeps a long run inside the model's context,
+what OpenAI Codex and T3 Code do instead, and what Coder should do next. It
+also describes the compaction evals in `evals/coder-desktop/compaction/`.
+GitHub issue #13706 tracks this work.
 
----
+## The theory in two lines
 
-## 1. Audit: What OpenAgents Coder Does Today
+Compact by structure, not by summary: Coder keeps every step twice, whole and
+compacted, and moves the compacted copies into an append-only `earlier` list,
+so compaction costs no model call and the cached prompt prefix survives it.
+Keep what the model needs to finish in the working memory, which compaction
+never touches, and tell the model exactly what left its context and how to get
+it back.
 
-OpenAgents splits context management across three layers: the **in-run step log** (`coax/lib/microcoder/state.coax`), **structured working memory** (`coax/lib/agent/workmem/`), and **cross-turn recall** (`MWW_RECALL` across `apps/coder-desktop/page.coax`, `coder/tui/mcworker.coax`, and `coder/tui/microcoder_keys.coax`).
+## How Coder compacts today
 
-### 1.1 Dual-Log Deterministic Compaction (`coax/lib/microcoder/state.coax`)
-
-Microcoder does **not** use an LLM call to summarize past steps. Instead, every action is written simultaneously to two fixed-size buffers inside `McStateBuffers`:
-
-| Constant | Value | Role |
-| --- | --- | --- |
-| `MC_LOG_BYTES` | `147,456` (144 KB) | Full recent steps (`log`) and parallel pre-compacted mirror (`clog`) |
-| `MC_ACTION_ROOM` | `49,152` (48 KB) | Minimum free space in `log` before `mc_action_begin` triggers compaction |
-| `MC_KEEP_RECENT` | `24,576` (24 KB) | Target bytes of full recent steps kept after `mc_compact` |
-| `MC_EARLIER_BYTES` | `40,960` (40 KB) | Ring-like buffer of compacted older steps (`earlier`) |
-| `MC_MAX_ACTIONS` | `512` | Hard cap on step count in `log` before forced compaction |
-| `MC_STEP_BUDGET` | `32,768` (32 KB) | Per-step result budget so one noisy step cannot flush prior steps |
-| `MC_OUTPUT_HEAD` / `TAIL` | `6,000` / `6,000` B | Full-step command output head/tail window |
-| `MC_BRIEF_RATIONALE` | `1,200` B | Rationale bytes preserved per step in `clog` / `earlier` |
-| `MC_BRIEF_OUTPUT` | `160` B | Command output head/tail bytes preserved per step in `clog` / `earlier` |
-| `MC_FACTS_BYTES` | `131,072` (128 KB) | Environment JSON + cross-turn recall (`mk_facts`) |
-| `MC_PROMPT_BYTES` | `573,440` (560 KB) | Maximum serialized `mc_state_json` output buffer |
-
-**Compaction trigger (`mc_action_begin`, lines 196–200):**
-When starting a new step, if `nacts >= MC_MAX_ACTIONS` or `log.count - nlog < MC_ACTION_ROOM`, Microcoder calls `mc_compact(st, MC_KEEP_RECENT)`. If `nacts` is still at `MC_MAX_ACTIONS`, it calls `mc_compact(st, 0)`.
-
-**What `mc_compact(st, keep)` does (lines 169–186):**
-1. Finds the smallest prefix `k` of closed steps such that the remaining bytes in `log` are `<= keep` (never compacting the currently open step).
-2. Copies the pre-formatted compacted bytes `clog[0..<ccut]` onto the tail of `earlier`.
-3. If `earlier` would overflow `MC_EARLIER_BYTES`, calls `mc_earlier_drop(st, earlier.count / 2 - ccut)` (falling back to `0`), dropping the oldest compacted steps in one block at a `,{"step":` boundary and incrementing `left_out`.
-4. Shifts `log`, `clog`, `act_at`, and `cact_at` down by `cut` / `ccut` and increments `compactions`.
-
-**What survives compaction in `clog` / `earlier`:**
-- **Rationales**: kept up to `MC_BRIEF_RATIONALE` (1,200 B). The system prompt explicitly instructs the model to write file paths, line numbers, and facts it will need later into `rationale`.
-- **Edits**: applied edits keep path + line range (new text body is dropped); failed edits keep path + failure marker (nearest-region context is dropped).
-- **Commands**: keep command string, exit code (or refusal/timeout), and `MC_BRIEF_OUTPUT` (160 B) of output head and tail.
-- **Views**: normal file views drop their body and keep only `{view: path, bytes: N}`; missing/errored views keep their error status.
-
-**Provider overflow fallback (`coax/lib/microcoder/loop.coax:514`):**
-If the LLM provider rejects a request for exceeding context length, the loop calls `mc_compact(l[0].st[..], 0)` to flush all closed steps into `earlier` and retries.
-
-### 1.2 Prompt-Cache Prefix Layout (`mc_state_json`, lines 477–501)
-
-Microcoder serializes the entire state as a single JSON object in a deliberate order designed for KV-cache prefix reuse:
+Microcoder renders its whole state as one JSON object for every step
+(`mc_state_json` in `coax/lib/microcoder/state.coax`):
 
 ```text
-{"environment":..., "task":..., "route":...,
- ["left_out":N,] ["earlier":[...],] "actions":[...],
- ["memory":{"findings":...,"changed":...,"open":...},] "notes":...}
+{"environment":…, "task":…, "route":…,
+ ["left_out":N,] ["earlier":[…],] "actions":[…],
+ ["memory":{"findings":…,"changed":…,"open":…},] "notes":…}
 ```
 
-- **Immutable head**: `environment`, `task`, and `route` never change within a run.
-- **Append-only `earlier`**: between rare `mc_earlier_drop` evictions, new compacted blocks are appended strictly at the end of `earlier`. Previously compacted steps stay byte-for-byte identical.
-- **Append-only `actions`**: between compactions, new steps are appended strictly at the end of `actions`.
-- **Mutable tail (`memory` + `notes`)**: `memory` (populated from `coax/lib/agent/workmem/` via `mc_memory_set`, capped at `4000` B findings / `2000` B changed / `1500` B open) is intentionally placed **after** `actions` so that updating findings, edits, or open requirements on every step never invalidates the cached prefix of `earlier` + `actions`.
+The order serves the prompt cache. Vertex serves a request's prefix from its
+implicit cache when the prefix matches the previous request, so the parts that
+never change come first and the parts that change every step come last:
 
-### 1.3 Working Memory (`coax/lib/agent/workmem/`)
+- `environment`, `task`, and `route` never change during a run.
+- `earlier` only grows at its end, except when it loses its oldest steps.
+- `actions` only grows at its end between compactions.
+- `memory` and `notes` change every step, so they come after `actions`.
 
-`workmem` maintains an append-only, hash-addressed evidence store on disk (`file`, `read`, `finding`, `change`, `run`, `check`, `requirement`) with automatic staleness detection via SHA-256 content hashes and a tree digest (`wm_tree`). Its projected views (`findings`, `changed`, `open`) are injected into `state.memory` and are **never compacted**—even after the originating steps are evicted from `earlier` (`left_out > 0`).
+### The two logs
 
-### 1.4 Cross-Turn Recall (`MWW_RECALL`)
+Each step is written twice as it runs (`mc_action_begin`, `mc_action_command`,
+`mc_file`, and `mc_action_edit_shown`): whole into `log`, and compacted into
+`clog`. A compaction moves the compacted copies of the oldest steps from
+`clog` to the end of `earlier` and drops their whole copies from `log`.
+Nothing allocates, and no model call is made.
 
-Across user turns in a desktop or TUI session:
-- `coax/lib/agent/engine/mcworker-wire.coax:43` defines `MWW_RECALL :: 17`, carrying `{"recall":[{"task":T,"reply":R}]}`.
-- `apps/coder-desktop/page.coax:1374` (`coder_page_recall_line`) serializes prior turns into a `MWW_RECALL` frame. However, the caller at `apps/coder-desktop/page.coax:2803` allocates a fixed **`out: [4096] u8`** buffer (4 KB), which silently truncates or drops older/longer turns long before hitting Microcoder's `MC_FACTS_BYTES` (128 KB) limit.
-- `coder/tui/mcworker.coax:204` parses `MWW_RECALL` into `MkTurn` slots (up to `MK_MAX_TURNS = 16` in `coder/tui/microcoder_keys.coax`), and `mk_facts` embeds them into `environment.earlier` before the run starts.
-
-### 1.5 Concrete Gaps Identified in the Audit
-
-1. **First-compaction and `left_out` key insertion**: `left_out` and `earlier` are omitted when zero. When `nearly` transitions `0 -> >0`, `,"earlier":[` is inserted before `,"actions":[`; when `left_out` transitions `0 -> >0` or increments, `,"left_out":N` mutates the prefix *before* `earlier`, invalidating all of `earlier` at once (though `earlier` already shifts when `mc_earlier_drop` runs).
-2. **No semantic checkpoint before `left_out` eviction**: when `earlier` exceeds 40 KB, its oldest half is discarded permanently. Unless the model wrote durable notes into `workmem` (`findings`/`changed`/`open`), rationale details from those steps are gone.
-3. **4 KB desktop recall bottleneck**: `apps/coder-desktop/page.coax:2803` caps `coder_page_recall_line` at 4,096 bytes despite `MC_FACTS_BYTES` supporting 128 KB, starving multi-turn desktop conversations of prior turn context.
-4. **Byte-only trigger, no model-window awareness**: `MC_LOG_BYTES` (144 KB) and `MC_EARLIER_BYTES` (40 KB) are static compile-time constants regardless of whether the active model has a 64K, 200K, or 1M token window.
-5. **No omission manifest**: `left_out` reports only an integer count of evicted steps, not which files/edits/decisions were in those steps.
-
----
-
-## 2. Comparative Study: OpenAI Codex & T3 Code
-
-### 2.1 OpenAI Codex (`openai/codex`)
-
-Codex treats compaction as a **token-budgeted, semantic checkpointing operation** with two backends (local LLM summarization and server-side Responses compaction):
-
-- **Token-budget auto-compaction (`codex-rs/core/src/state/auto_compact_window.rs`, `codex-rs/core/src/compact_token_budget.rs`)**:
-  Tracks context occupancy using server-observed `input_tokens` (`AutoCompactWindowPrefill::ServerObserved(usage.input_tokens.max(0))`) tied to a `ContextWindowId`. Runs pre- and post-compaction lifecycle hooks (`PreCompactHookOutcome`, `PostCompactHookOutcome`) that can inspect or abort compaction.
-- **Local LLM handoff compaction (`codex-rs/core/src/compact.rs`, `codex-rs/prompts/templates/compact/prompt.md`, `summary_prefix.md`)**:
-  When triggered (manually or automatically), Codex runs a dedicated summarization turn using `SUMMARIZATION_PROMPT` (*"CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task..."*). `build_compacted_history` then reconstructs the conversation history by:
-  1. Retaining the most recent user messages up to a token cap (`annotated_user_messages` walked in reverse up to `max_tokens`),
-  2. Inserting the LLM summary wrapped in `SUMMARY_PREFIX`, and
-  3. Installing a fresh turn context and `world_state_baseline`.
-- **Remote Responses API compaction (`codex-rs/core/src/compact_remote_v2.rs`, `compact_remote_history.rs`)**:
-  Delegates compaction to OpenAI's Responses endpoint (`CompactionImplementation::ResponsesCompactionV2`), which returns opaque encrypted compaction items while retaining selected client items (`should_retain_client_item` / `compact_retained_tool_outputs.rs`) and tracking unclamped token totals.
-- **Tradeoffs**: High semantic fidelity across very long horizons and exact model-window awareness, at the cost of an extra LLM round-trip (latency + token cost) and a full KV-cache prefix reset whenever history is replaced by a summary.
-
-### 2.2 T3 Code (`pingdotgg/t3code`)
-
-T3 Code is a multi-provider orchestration layer (driving Claude Code, Codex, etc.), so it separates **native provider compaction scheduling** from **cross-provider / thread-switch context handoff**:
-
-- **Idle & resume compaction orchestration (`apps/server/src/orchestration-v2/IdleCompaction.ts`, `packages/shared/src/claudeCompaction.ts`, `apps/web/src/components/chat/compaction.logic.ts`)**:
-  Delegates in-session compaction to the underlying provider, but actively manages *when* to suggest or trigger it. Sets `COMPACTION_SUGGESTION_MIN_TOKENS = 200_000` (matching Claude Code's idle compaction threshold), tracks cache-expiry lead windows (`IdleCompaction.ts`), and prompts users on stale-session resume (`"This session is X old and uses Y tokens. Compact it before continuing?"`).
-- **Budgeted deterministic context handoff (`apps/server/src/orchestration-v2/ContextHandoffService.ts`, `packages/provider-core/src/server/handoffBudget.ts`)**:
-  When handing a thread to a different provider or fresh native thread, T3 Code computes a pessimistic byte/token budget:
-  - Caps imported history at `DEFAULT_HANDOFF_TOKEN_CAP = 16_000` (hard `HANDOFF_BYTE_CAP = 64_000`).
-  - Computes `handoffBudget = min(tokenCap, HANDOFF_BYTE_CAP, window - native - current - workReserve)`, where `window = min(modelContextWindow, maxTokens, autoCompactThreshold)` and `workReserve = clamp(window / 4, 16_000, window / 2)`.
-  - Accounts for attachment overhead (`8,192` tokens per image, `4,096` per other attachment) and fixed system/MCP overhead (`apps/server/src/provider/agentContextBudget.json`: ~6.2 KB Claude append, ~7.6 KB Codex context, ~57.3 KB MCP tool schemas).
-  - `selectHistory` selects intact historical items (`user_message`, `assistant_message`, `command_execution`, `file_change`, `proposed_plan`, `error`) without mid-item truncation, while reserving up to 1/8 of the budget for an explicit **Omitted item IDs** manifest (`MAX_LISTED_OMITTED_ITEMS = 20`) so the receiving model knows *what* was omitted and that historical items are context rather than new instructions.
-
-### 2.3 Side-by-Side Comparison
-
-| Dimension | OpenAgents Microcoder | OpenAI Codex | T3 Code |
-| --- | --- | --- | --- |
-| **Primary mechanism** | Dual-log structural compaction (`log` -> `clog` -> `earlier`) + `workmem` | Local LLM checkpoint summary or Responses API remote compaction | Native provider compaction + budgeted deterministic handoff |
-| **Compaction cost / latency** | **Zero** (deterministic in-memory shift, < 1 ms) | 1 full LLM call (or server-side compaction API) | Zero for handoff; provider-native for in-session |
-| **Trigger** | Static byte/step thresholds (`MC_ACTION_ROOM`, `MC_MAX_ACTIONS`) + overflow retry | Server-observed `input_tokens` vs. model window | `COMPACTION_SUGGESTION_MIN_TOKENS` (200K), cache expiry, or provider switch |
-| **KV-cache friendliness** | **Very high** — append-only `earlier` and `actions`; mutable `memory` placed after `actions` | Resets prefix on compaction (amortized over long windows) | Aware of cache TTL (`IdleCompaction.ts`) to compact right before cache expiry |
-| **Evidence / failure fidelity** | High for rationales (1.2 KB), edits, exit codes; views drop to `{view, bytes}` | Depends on LLM summary quality + retained user messages/tool outputs | Selects intact items; explicit `Omitted item IDs` manifest |
-| **Multi-turn / cross-session** | `MWW_RECALL` (currently bottlenecked at 4 KB in Desktop) | Persistent thread rollout + compaction items | `handoffBudget` (16K tokens / 64 KB cap) with explicit omission accounting |
-
----
-
-## 3. Compaction Theory & Recommended Architecture for OpenAgents Coder
-
-### 3.1 Five Core Invariants
-
-A coding agent's context manager should satisfy five invariants:
-
-1. **Prefix Monotonicity (Cache-First Layout)**: Every byte before the active append point must remain byte-for-byte identical between turns and across compactions whenever possible. Mutable summaries or working-memory projections belong **after** append-only logs, never before them.
-2. **Lossless Evidence, Lossy Transcript**: Raw file views and verbose stdout are ephemeral and safe to collapse to `{path, bytes}` or `head/tail` snippets; *evidence* (which files were edited, what failed, what requirements remain open, verified findings) must live in a hash-verified, non-compacted store (`workmem`).
-3. **Bounded Per-Step Blast Radius**: No single tool output or file read may evict the rest of the working set (`MC_STEP_BUDGET = 32 KB`).
-4. **Explicit Omission Accounting**: Whenever context is truncated, held back, or evicted (`left_out`), the model must see *what* was omitted and *how* to recover it (line range, saved output file path, or omitted step/file manifest)—never silent data loss.
-5. **Zero-Cost Default, Semantic Escalation Only at Eviction**: Structural compaction (`log` -> `earlier`) should remain free, deterministic, and instantaneous. LLM-generated semantic checkpointing should only be considered when `earlier` itself would otherwise evict un-captured history (`mc_earlier_drop`), or when a user explicitly invokes `/compact`.
-
-### 3.2 Tiered Memory Hierarchy
-
-OpenAgents Coder should explicitly treat context as four tiers:
-
-1. **Tier 1 — Hot Window (`actions`, <= 144 KB, kept to 24 KB on compact)**: Full step results, capped at 32 KB/step.
-2. **Tier 2 — Warm Window (`earlier`, <= 40 KB)**: Deterministic compacted steps (`clog`): 1.2 KB rationale, edit line ranges, command exit codes + 160 B head/tail, view byte counts. Appended in rare blocks to preserve KV-cache hits.
-3. **Tier 3 — Durable Evidence (`memory` from `workmem`, <= 7.5 KB)**: Hash-verified `findings`, `changed`, and `open` views rendered *after* `actions`. Never compacted; survives `left_out > 0`.
-4. **Tier 4 — Cross-Turn Recall (`MWW_RECALL`, target 16–32 KB budget)**: Prior conversation turns embedded in `environment.earlier` via `mk_facts`, budgeted using T3 Code's pessimistic byte-budget + intact-item selection + omission count.
-
-### 3.3 Concrete Recommended Improvements
-
-| Priority | Component | Recommendation |
+| Constant | Value | What it bounds |
 | --- | --- | --- |
-| **P0** | `apps/coder-desktop/page.coax:2803` | Raise `coder_page_recall_line`'s output buffer from `4096` B to `32768` B (or stream via dynamic buffer) and apply intact-turn selection with an explicit omitted-turn count, matching `handoffBudget.ts` discipline. |
-| **P1** | `coax/lib/microcoder/state.coax` | Keep `workmem` (`mc_memory_on`) enabled by default in Desktop/TUI sessions so `findings`/`changed`/`open` always survive `earlier` eviction (`left_out > 0`). |
-| **P1** | `coax/lib/microcoder/state.coax` | Add an explicit omission summary when `mc_earlier_drop` runs (e.g., step range `steps 1..k omitted`) instead of only an opaque `left_out` integer. |
-| **P2** | `coax/lib/microcoder/loop.coax` | Track provider-reported `input_tokens` against the active model's context window (like Codex's `AutoCompactWindowPrefill::ServerObserved`) to scale `MC_ACTION_ROOM` / `MC_KEEP_RECENT` dynamically and avoid reactive overflow retries. |
-| **P2** | `apps/coder-desktop/` | Adopt T3 Code's cache-TTL awareness (`IdleCompaction.ts`): surface a non-intrusive "Compact & continue" chip when resuming a stale session whose KV cache has expired and whose context exceeds a configurable threshold. |
-| **P3** | `coax/lib/microcoder/loop.coax` | Optional semantic checkpoint hook right before `mc_earlier_drop` (or on user `/compact`) that distills evicted steps into a single `workmem` checkpoint note, gated behind a config flag so default runs stay zero-cost. |
+| `MC_LOG_BYTES` | 144 KB | The recent steps, whole (`log`) and compacted (`clog`). |
+| `MC_ACTION_ROOM` | 48 KB | Free log a new step needs; with less, the oldest steps are compacted. |
+| `MC_KEEP_RECENT` | 24 KB | The recent steps a compaction keeps whole, at most. |
+| `MC_EARLIER_BYTES` | 40 KB | The compacted steps (`earlier`). |
+| `MC_MAX_ACTIONS` | 512 | Steps the log can hold. |
+| `MC_STEP_BUDGET` | 32 KB | What one step's results can add, so one step cannot flush the rest. |
+| `MC_OUTPUT_HEAD`, `MC_OUTPUT_TAIL` | 6,000 B each | A whole command output's start and end. |
+| `MC_BRIEF_RATIONALE` | 1,200 B | A compacted step's rationale. |
+| `MC_BRIEF_OUTPUT` | 160 B each | A compacted command output's start and end. |
+| `MC_FACTS_BYTES` | 128 KB | The environment, including earlier turns of the conversation. |
+| `MC_REQUEST_MAX` | 256 KB | One request (`coax/lib/microcoder/loop.coax`). |
 
----
+### When compaction runs
 
-## 4. What We Should Evaluate
+- **Before a step.** `mc_action_begin` calls `mc_compact(st, MC_KEEP_RECENT)`
+  when the log has less than `MC_ACTION_ROOM` free or holds `MC_MAX_ACTIONS`
+  steps. Compaction therefore runs once per 72 KB or more of new steps, not
+  every step.
+- **Before a request.** `mc_request` in `loop.coax` halves the log, then
+  empties it, until the escaped state fits `MC_REQUEST_MAX`. Coder has no
+  retry on a provider's context-length error; the byte bound stands in for it.
 
-To prevent regressions and ground future compaction changes in measurements, `evals/coder-desktop/compaction/` implements deterministic checks covering six dimensions:
+### What a compacted step keeps
 
-1. **Step-to-step prefix stability**: Between compactions, step `N`'s prompt starts with step `N-1`'s exact bytes up to the closing `actions` bracket (KV-cache hit invariant).
-2. **Cross-compaction prefix stability**: Across multiple compactions (before `earlier` eviction), `environment` + `task` + `route` + previously compacted `earlier` entries remain a byte-for-byte prefix.
-3. **Mutable `memory` cache isolation**: Updating `findings`, `changed`, and `open` via `mc_memory_set` on every step never alters any byte before `,"memory":`.
-4. **Compaction fidelity**: Rationales (up to 1,200 B), applied edit line ranges, failed edits, non-zero command exits + head/tail snippets, refused commands, and missing-file errors survive compaction; large normal file views collapse to `{view, bytes}`.
-5. **Long-horizon multi-compaction + eviction resilience**: Over 40+ steps triggering `>= 3` compactions and `earlier` eviction (`left_out > 0`), every state renders valid JSON, step numbers stay strictly monotonic, `mc_compact(st, 0)` overflow recovery works cleanly, and `workmem`-backed `memory` preserves critical edits/open items even after their originating steps leave `earlier`.
-6. **Multi-turn `MWW_RECALL` wire & budget behavior**: `mww_recall` / `mww_parse` round-trips multi-turn payloads with JSON-escaped content cleanly and enforces buffer bounds without partial/corrupt JSON frames.
+| Result | Whole (`actions`) | Compacted (`earlier`) |
+| --- | --- | --- |
+| Rationale | Up to 2,000 B | Up to 1,200 B |
+| Applied edit | Path, lines, and the new text, numbered | Path and lines |
+| Failed edit | Path, why, and the file's nearest lines | Path and why |
+| Command | Command, exit code, 6,000 B of the output's start and of its end | Command (300 B), exit code, 160 B of the output's start and of its end |
+| Refused command | Command and why | Command and why (300 B each) |
+| View | Path and content | Path and size in bytes |
+| Missing file | Path and why | Path and why (300 B) |
 
-Run the suite directly via:
+The system prompt (`MC_SYSTEM` in `loop.coax`) tells the model that its
+rationale stays and asks it to write there what it needs later: the path, the
+line, and the text.
+
+### When `earlier` is full
+
+`mc_earlier_drop` drops the oldest compacted steps in one block, at a step
+boundary, until `earlier` is half empty, and adds their count to `left_out`.
+The model sees only that count. The steps themselves are gone.
+
+### The working memory
+
+The working memory (`coax/lib/agent/workmem/`, set with `mc_memory_set`) holds
+three views: current findings (4,000 B), every edit and the lines it wrote
+(2,000 B), and what still stops the run from finishing (1,500 B). Compaction
+never touches it, so it is the one record that outlives `left_out`.
+
+### Cross-turn recall
+
+A run sees earlier turns of the conversation as `environment.conversation`:
+
+- The TUI (`coder/tui/microcoder_keys.coax`) keeps the newest `MK_TURNS` (6)
+  turns, each task and reply up to `MK_TURN_TEXT` (8,000 B). A cut text ends
+  with `MK_CUT`, so the model knows its reply goes on. `mk_facts` drops the
+  oldest turns first when the facts do not fit.
+- The desktop app sends the turns of a chat you open again as an `MWW_RECALL`
+  line (`coder_page_recall_line` in `apps/coder-desktop/page.coax`, read by
+  `coder/tui/mcworker.coax`). It sends the newest 6 turns but cuts each
+  message and reply at 1,200 bytes, with no marker and on a byte, not a
+  character. Issue #13729 covers the fix.
+
+### Measured behavior
+
+`evals/coder-desktop/compaction/report.coax` runs four 200-step scenarios
+against `state.coax` and prints these numbers. "Cache share" is the bytes each
+prompt shares with the one before it, as a share of all prompt bytes.
+
+| Scenario | Compactions | Evictions | Steps left out | In `earlier` | Largest prompt | Cache share |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reader: a search, then 8–20 KB views | 34 | 2 | 103 | 94 | 146 KB | 79.6% |
+| Notes: 1,190 B rationales, small commands | 3 | 3 | 143 | 31 | 136 KB | 96.9% |
+| Fix loop: edit, then a 12 KB test output | 28 | 8 | 169 | 27 | 142 KB | 81.3% |
+| Mixed: the three in turn | 22 | 6 | 164 | 31 | 140 KB | 84.6% |
+
+Every scenario keeps the cache prefix at every step that does not evict, keeps
+the step numbers continuous, and keeps the working memory. Two numbers stand
+out: `earlier` holds only about 30 compacted steps of edit-and-test work, and
+the notes scenario evicts on every compaction. Before the fix in finding 1,
+the notes scenario crashed at its first compaction.
+
+## Audit findings
+
+1. **Fixed: a compaction larger than `earlier` lost steps and crashed the next
+   prompt.** When the compacted copies of the steps to move exceeded
+   `MC_EARLIER_BYTES`, `mc_compact` set the bytes to move to 0 but still
+   counted the steps in `earlier`. The next `mc_state_json` sliced
+   `earlier[1..<0]` and trapped. Long rationales with small commands trigger
+   this within 80 steps, because a compacted step is then about as long as a
+   whole one. A second path passed a negative size to `mc_earlier_drop`, which
+   moved `nearlier` below zero. `mc_compact` now empties `earlier`, counts the
+   oldest compacted steps that still do not fit as `left_out`, and moves the
+   newest that fit. The state test "steps whose compacted copies overflow
+   earlier go to left_out" and the eval C9 cover it.
+2. **Desktop recall drops the whole conversation on a split character.** When
+   byte 1,200 of a kept reply falls inside a multi-byte character, the recall
+   line carries invalid UTF-8 and the worker refuses all of it. Eval C11 shows
+   the failure and the fix (`text_byte_floor`). Issue #13729.
+3. **`left_out` is opaque.** The model sees a count, not which steps, files,
+   or edits left, and `MC_SYSTEM` does not explain the key. T3 Code lists the
+   IDs it omits and names the tool that reads them back. Issue #13730.
+4. **The budgets ignore the model's window.** The byte constants are the same
+   for a 1M-token Gemini model and a 32K-token local model. `earlier` is 40 KB
+   while the log is 144 KB, so a long fix loop keeps only its last ~30 steps
+   even in compacted form, on models that could hold far more. Issue #13730.
+5. **Corrections to the first draft of this document.** The desktop recall
+   buffer is 256 KB (`App.swift`), not 4 KB; the 4 KB buffer is in a test.
+   `loop.coax` has no provider context-length retry; the guard is the byte
+   bound in `mc_request`. Adding the `left_out` key before `earlier` costs no
+   extra cache: it changes only when an eviction already rewrites `earlier`.
+
+## How Codex compacts
+
+Reference: `~/work/projects/repos/codex` at `a098129` (2026-11-01).
+
+- **Thresholds.** `ModelInfo::auto_compact_token_limit`
+  (`codex-rs/protocol/src/openai_models.rs`) is 90% of the model's context
+  window, or a configured lower limit. The usable window reserves 5% headroom
+  (`effective_context_window_percent`, default 95). Codex counts tokens from
+  the server's reported `input_tokens`, not bytes.
+- **Summary handover.** `codex-rs/core/src/compact.rs` runs a summarization
+  turn with the prompt in `codex-rs/prompts/templates/compact/prompt.md`
+  ("Create a handoff summary for another LLM that will resume the task").
+  `build_compacted_history` rebuilds the history as the initial context, then
+  the newest user messages up to `COMPACT_USER_MESSAGE_MAX_TOKENS` (20,000),
+  then the summary behind `summary_prefix.md`. Tool outputs do not survive
+  unless a tool marks them (`compact_retained_tool_outputs.rs`).
+- **Background compaction.** `codex-rs/core/src/session/async_compaction.rs`
+  starts a speculative compaction request in the background once the context
+  passes `async_compaction_threshold_percent` (default 65%) of the window, and
+  uses it when compaction falls due, so you rarely wait for it.
+- **Remote compaction.** `compact_remote_v2.rs` asks the Responses API to
+  compact, which returns opaque compaction items.
+- **Tool-output truncation.** Separate from compaction: a command's output is
+  cut to `DEFAULT_MAX_OUTPUT_TOKENS` (10,000) by keeping its start and end, with
+  a header that gives the original token and line counts
+  (`codex-rs/utils/output-truncation/src/lib.rs`).
+- **Context-length errors.** When a compaction request itself overflows, Codex
+  removes the oldest history item and retries, to keep the cached prefix and
+  the recent messages (`compact.rs`).
+- **Cache.** Requests carry a `prompt_cache_key` per thread. A compaction
+  replaces the history, so the cached prefix ends at the system prompt.
+
+## How T3 Code compacts
+
+Reference: `~/work/projects/repos/t3code` at `a6d2bed55b` (2026-11-18). T3 Code
+drives other agents (Claude Code, Codex), so it schedules their compaction and
+hands context between them rather than compacting itself.
+
+- **Idle compaction before the cache expires.** `idleCompactionWindow` in
+  `apps/server/src/orchestration-v2/IdleCompaction.ts` compacts an idle Claude
+  thread 2 minutes before its prompt cache expires (1 hour on subscriptions, 5
+  minutes on API keys). It skips threads under
+  `COMPACTION_SUGGESTION_MIN_TOKENS` (200,000), because below that a cold
+  re-read is cheap, and it never compacts a compaction.
+- **A question on stale resume.** `packages/shared/src/claudeCompaction.ts`
+  asks whether to compact a session that is old and large before it continues.
+- **A budgeted handover.** `handoffBudget` in
+  `packages/provider-core/src/server/handoffBudget.ts` counts one byte as one
+  token, caps history at 16,000 tokens (`DEFAULT_HANDOFF_TOKEN_CAP`) and 64,000
+  bytes, and reserves a quarter of the window, clamped between 16,000 tokens
+  and half the window, for the work itself.
+- **Intact items, in priority order.** `selectHistory` keeps whole items,
+  never parts: the last user message, the last assistant message, the first
+  user message, then the rest newest first.
+- **Explicit omission.** The handover says how many items it left out, lists
+  up to 20 of their IDs within an eighth of the budget, and names a tool
+  (`t3_thread_read`) that reads an omitted item back. It also tells the model
+  that historical material is context, not a new request.
+
+## Comparison
+
+| | Coder | Codex | T3 Code |
+| --- | --- | --- | --- |
+| Mechanism | Structural: two logs, append-only `earlier`, working memory | Model-written summary, or remote compaction | The agent's own compaction, plus a budgeted handover |
+| Cost | No model call, under a millisecond | One model call, started early in the background | None for the handover |
+| Trigger | Bytes: free log under 48 KB, request over 256 KB | Tokens: 90% of the window; background at 65% | 200,000 tokens and cache expiry; a provider switch |
+| Cache | Prefix through `earlier` survives compaction | Prefix ends at the system prompt | Compacts while the cache is warm |
+| What survives | Rationale, edit lines, exit codes, output ends, view sizes, memory | The summary and the newest 20,000 tokens of user messages | Whole items in priority order |
+| Omission | A count (`left_out`) | Implicit in the summary | A count, IDs, and a tool to read them back |
+
+## What Coder should do
+
+### Principles
+
+1. **Keep the prefix.** Every byte before the append point stays the same
+   between steps and across compactions. Anything that changes every step goes
+   after `actions`.
+2. **Compact transcripts, keep evidence.** File bodies and long outputs can
+   shrink to a path, a size, or their ends, because the model can read them
+   again. Edits, failing checks, open requirements, and findings belong in the
+   working memory, which never shrinks.
+3. **Bound each step.** One result cannot push out the rest (`MC_STEP_BUDGET`).
+4. **Say what left.** Whenever context is cut, held back, or evicted, the model
+   sees what and how to get it back.
+5. **Summarize only at eviction.** Structural compaction stays free. A
+   model-written summary is worth its cost only when steps would otherwise
+   leave `earlier` for good, or when you ask for one.
+
+### Recommendations
+
+| Priority | Where | Change |
+| --- | --- | --- |
+| Done | `coax/lib/microcoder/state.coax` | `mc_compact` handles a compaction larger than `earlier` (finding 1). |
+| P0 | `apps/coder-desktop/page.coax` | Cut recall texts on a character boundary, at `MK_TURN_TEXT`, with `MK_CUT` (#13729). |
+| P1 | `state.coax`, `loop.coax` | Replace the bare `left_out` count with an omission line: the step range that left and the files and edits it touched; explain it in `MC_SYSTEM`. Take T3 Code's wording that history is context, not instructions (#13730). |
+| P1 | Coder Desktop, TUI | Turn the working memory on in every Coder run, so findings, edits, and open checks outlive eviction (#13730). |
+| P2 | `state.coax`, `loop.coax` | Size `MC_EARLIER_BYTES` and `MC_REQUEST_MAX` from the model's window, and grow `earlier` first: compacted steps are the cheapest context per step (#13730). |
+| P2 | `loop.coax` | Retry a provider's context-length error once with `mc_compact(st, 0)`, as Codex trims and retries (#13730). |
+| P3 | `loop.coax` | Before an eviction, optionally write one model-made finding that sums up the steps about to leave, like Codex's handover summary, behind a setting so default runs stay free. |
+| P3 | Coder Desktop | Compact or warn before a long idle chat's cache expires, as T3 Code does. |
+
+## Evals
+
+The suite lives in `evals/coder-desktop/compaction/`. It calls no model; every
+byte is deterministic.
+
+| ID | File | What it checks |
+| --- | --- | --- |
+| C1 | `compaction_test.coax` | Between compactions, each prompt starts with the one before it. |
+| C2 | `compaction_test.coax` | Across compactions, the prefix through `earlier` stays the same. |
+| C3 | `compaction_test.coax` | A compacted step keeps rationale, edits, failures, refusals, and commands. |
+| C4 | `compaction_test.coax` | The working memory survives compaction and sits after `actions`. |
+| C5 | `compaction_test.coax` | 36 steps with several compactions and an eviction stay valid. |
+| C6 | `compaction_test.coax` | The 32 KB step budget keeps one noisy step from flushing the rest. |
+| C7 | `compaction_test.coax` | The `MWW_RECALL` line round-trips; `mk_facts` drops the oldest turns first. |
+| C8 | `compaction_test.coax` | A full flush (`mc_compact(st, 0)`) recovers and runs on. |
+| C9 | `compaction_scenarios_test.coax` | Four 200-step scenarios: no prefix break, no gap in step numbers, every prompt valid and under the request limit, cache share at least 75%. |
+| C10 | `compaction_scenarios_test.coax` | What compaction keeps and loses, and that only the memory remains after eviction. |
+| C11 | `compaction_scenarios_test.coax` | A recall text cut on a character reaches the worker; one cut inside a character is refused. |
+| C12 | `compaction_scenarios_test.coax` | The newest 6 turns, each 8,000 B, fit the run's facts whole. |
+
+`scenarios.coax` holds the scenario driver that C9 and `report.coax` share.
+
+Run the suite:
 
 ```sh
 evals/coder-desktop/compaction/run.sh
 ```
 
-or as part of the full Coder Desktop evaluation harness:
+Or run it with the other Coder Desktop evals, which write one JSONL record per
+check to `evals/coder-desktop/results/`:
 
 ```sh
-evals/coder-desktop/run.sh --tier 1
+evals/coder-desktop/run.sh --tier compaction
 ```
+
+When you change a compaction constant or the state's layout, run the suite and
+update the measured table above from `report.coax`'s output.

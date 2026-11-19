@@ -1,0 +1,145 @@
+// Long-horizon compaction scenarios for Microcoder's state (GitHub #13706; docs/coder/compaction-theory.md).
+//
+// Each scenario drives coax/lib/microcoder/state.coax through many steps of one shape of work,
+// renders the prompt after every step, and measures what compaction does to it:
+//   - prompt-cache reuse: the bytes each prompt shares with the one before it, as a share of all
+//     prompt bytes (Vertex's implicit cache serves a request's prefix that matches the last one)
+//   - prefix breaks: a prompt that changed before the boundary the cache relies on (the end of
+//     actions between compactions; the end of earlier across a compaction), not counting evictions
+//   - continuity: left_out, then earlier, then actions number every step once, with no gap
+//   - size: the largest prompt, which must stay under the request limit (loop.coax MC_REQUEST_MAX)
+// No model is called; every byte is deterministic. compaction_scenarios_test.coax asserts the
+// bounds, and report.coax prints the numbers (evals/coder-desktop/compaction/run.sh runs both).
+
+#load "../../../coax/lib/microcoder/prefix.coax";
+#load "../../../coax/lib/agent/engine/mcworker-wire.coax";
+
+CS_READER :: 0;      // reads files: a search, then 8-20 KB views
+CS_NOTES :: 1;       // long rationales (the model's notes) and small commands
+CS_FIXLOOP :: 2;     // edit, then a test run with a long failing or passing output
+CS_MIXED :: 3;       // the three above in turn
+CS_KINDS :: 4;
+
+CsBufs :: struct {
+  b: [1] McStateBuffers;
+  mem: [MC_MEM_BYTES] u8;
+  prev: [MC_PROMPT_BYTES] u8;
+  out: [MC_PROMPT_BYTES] u8;
+  text: [24000] u8;
+  rat: [1400] u8;
+  ab: [4096] u8;
+}
+
+CsResult :: struct {
+  steps: int;
+  compactions: int;
+  evictions: int;          // compactions that also dropped steps from earlier
+  left_out: int;
+  nearly: int;
+  nacts: int;
+  max_prompt: int;
+  prompt_bytes: int;       // every prompt's bytes, summed
+  shared_bytes: int;       // the bytes each prompt shares with the one before it, summed
+  breaks: int;             // a prefix the cache relies on changed (evictions not counted)
+  gaps: int;               // a compaction after which the step numbers did not run on
+  invalid: int;            // a prompt that was not one JSON object, or did not fit
+  memory_kept: bool;       // the working memory's anchor was in the last prompt
+}
+
+cs_name :: (kind: int) -> string {
+  if kind == CS_READER { return "reader"; }
+  if kind == CS_NOTES { return "notes"; }
+  if kind == CS_FIXLOOP { return "fixloop"; }
+  return "mixed";
+}
+
+// n bytes of lines of text into buf, shifted by seed so that steps differ.
+cs_text :: (buf: [] u8, n: int, seed: int) -> string {
+  m := ifx n > buf.count then buf.count else n;
+  for i: 0..<m { buf[i] = ifx (i + 1) % 72 == 0 then '\n' else cast(u8) ('a' + (i + seed) % 26); }
+  return cast(string) buf[0..<m];
+}
+
+// A rationale of n bytes that starts with the step's number.
+cs_rationale :: (buf: [] u8, n: int, step: int) -> string {
+  m := ifx n > buf.count then buf.count else n;
+  for i: 0..<m { buf[i] = 'n'; }
+  if m >= 6 { buf[0] = 'S'; buf[1] = cast(u8) ('0' + (step / 100) % 10); buf[2] = cast(u8) ('0' + (step / 10) % 10); buf[3] = cast(u8) ('0' + step % 10); buf[4] = ':'; buf[5] = ' '; }
+  return cast(string) buf[0..<m];
+}
+
+// One step of the given kind.
+cs_step :: (st: [] McState, z: [] CsBufs, kind: int, step: int) {
+  k := ifx kind == CS_MIXED then step % 3 else kind;
+  if k == CS_READER {
+    mc_action_begin(st, cs_rationale(z[0].rat[..], 240, step));
+    if step % 4 == 0 { mc_action_command(st, "git grep -n handler -- src", 0, false, cs_text(z[0].text[..], 3000, step)); }
+    mc_file(st, "src/module.coax:1-300", true, cs_text(z[0].text[..], 8000 + (step * 1777) % 12000, step));
+  } else if k == CS_NOTES {
+    mc_action_begin(st, cs_rationale(z[0].rat[..], 1190, step));
+    mc_action_command(st, "ls src", 0, false, "a.coax\nb.coax\n");
+  } else {
+    mc_action_begin(st, cs_rationale(z[0].rat[..], 500, step));
+    mc_action_edit_shown(st, "src/module.coax", true, "", 10 + step % 50, 20 + step % 50, cs_text(z[0].text[..], 900, step));
+    mc_action_command(st, "coax test src/module.coax", ifx step % 3 == 0 then 0 else 1, false, cs_text(z[0].text[..], 12000, step));
+  }
+  mc_action_end(st);
+}
+
+// Runs steps steps of kind and measures every prompt. Prompts are checked for JSON and continuity
+// at each compaction and at the end (each check reads the whole prompt).
+cs_run :: (z: [] CsBufs, kind: int, steps: int) -> CsResult {
+  r: CsResult;
+  st: [1] McState;
+  mc_state_init(st[..], z[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/repo\"}", "a long task", "{\"local_work\":0.9}");
+  mc_memory_on(st[..], z[0].mem[..]);
+  mc_memory_set(st[..], "Findings (current):\nF1 anchor: src/module.coax:42 holds the handler\n", "Changes:\nC0 src/module.coax 10-20\n", "Open:\ncheck coax test src/module.coax\n");
+  pn := 0;
+  for s: 0..<steps {
+    c0 := st[0].compactions; l0 := st[0].left_out;
+    cs_step(st[..], z, kind, s);
+    j := mc_state_json(st[..], z[0].out[..]);
+    if j.count == 0 { r.invalid += 1; continue; }
+    compacted := st[0].compactions != c0;
+    evicted := st[0].left_out != l0;
+    if compacted { r.compactions += 1; }
+    if evicted { r.evictions += 1; }
+    r.prompt_bytes += j.count;
+    if j.count > r.max_prompt { r.max_prompt = j.count; }
+    if pn > 0 {
+      prev := cast(string) z[0].prev[0..<pn];
+      shared := mc_common_prefix_len(prev, j);
+      r.shared_bytes += shared;
+      if !evicted {
+        need := ifx compacted then mc_earlier_prefix_boundary(prev) else mc_actions_prefix_boundary(prev);
+        if need < 0 || shared < need { r.breaks += 1; }
+      }
+    }
+    if compacted || s == steps - 1 {
+      if !json_valid(j) { r.invalid += 1; }
+      ar: [1] ClArena; ar[0] = ClArena.{buf = z[0].ab[..]};
+      first_actions := ifx st[0].nacts > 0 then cl_int(j, "actions.0.step").value else st[0].steps + 1;
+      if st[0].nearly != cl_count(cl_raw(j, "earlier")) { r.gaps += 1; }
+      if st[0].nearly > 0 && cl_int(j, "earlier.0.step").value != st[0].left_out + 1 { r.gaps += 1; }
+      if first_actions != st[0].left_out + st[0].nearly + 1 { r.gaps += 1; }
+    }
+    if st[0].left_out + st[0].nearly + st[0].nacts != s + 1 { r.gaps += 1; }
+    for i: 0..<j.count { z[0].prev[i] = j[i]; }
+    pn = j.count;
+    if s == steps - 1 { r.memory_kept = cs_has(j, "F1 anchor: src/module.coax:42"); }
+  }
+  r.steps = st[0].steps; r.left_out = st[0].left_out; r.nearly = st[0].nearly; r.nacts = st[0].nacts;
+  return r;
+}
+
+cs_has :: (hay: string, needle: string) -> bool {
+  if needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+
+// The share of prompt bytes the cache could serve, in parts per thousand.
+cs_shared_permille :: (r: CsResult) -> int {
+  if r.prompt_bytes == 0 { return 0; }
+  return (r.shared_bytes * 1000) / r.prompt_bytes;
+}

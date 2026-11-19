@@ -26,7 +26,7 @@ while [ "$#" -gt 0 ]; do
       echo "Usage: $0 [--tier 0|1|compaction|all]"
       echo "  --tier 0           Run Tier 0 unit & wire-contract checks (page.coax, mcworker-wire.coax, tools_smoke.sh)"
       echo "  --tier 1           Run Tier 1 deterministic transcript replay + compaction suites"
-      echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C8)"
+      echo "  --tier compaction  Run deterministic & long-horizon compaction eval suite (C1-C12)"
       echo "  --tier all         Run Tier 0, Tier 1, and Compaction (default)"
       exit 0
       ;;

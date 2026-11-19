@@ -360,7 +360,7 @@ ce_step_label :: (buf: [] u8, prefix: string, idx: int) -> string {
   }
   #assert st[0].nacts == 4 && st[0].compactions == 0;
 
-  // Simulate loop.coax:514 recovery on context-length 400 error.
+  // The full flush mc_request falls back to when a state is too long to send (loop.coax).
   mc_compact(st[..], 0);
   #assert st[0].nacts == 0 && st[0].nearly == 4 && st[0].compactions == 1;
   p1 := mc_state_json(st[..], h[0].out1[..]);
