@@ -37,6 +37,10 @@
 #  20. a tool problem keeps it open while it still reproduces, and it closes once it doesn't
 #  21. survivors in a file the change didn't touch are one line a file, not an item
 #  22. a part its own head's tools can't finish runs again with the newest head's, and clears
+#  23. a part that runs out of time is not run again as it is: it becomes two parts of half its
+#      suites (I/N as I/2N and (I+N)/2N), again when one of those runs out, and they clear
+#  24. a recheck is scoped to its item: the item's suite from the parent of the first commit that
+#      changed the item's file, and what it finds in another file is not an item; the fixed item clears
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -102,12 +106,19 @@ case "$1" in
   suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
   mutate-since|mutate-only|mutate-range)
     log="$dir/build/pipeline/$1.log"; : > "$log"; mb="$2"; pt="${3:-}"
-    if [[ "$1" == mutate-only ]]; then mb="$3"
+    if [[ "$1" == mutate-only ]]; then mb="$3"; echo "$commit $2 $3" >> "$OA_TEST_W/onlys"
     else
       [[ "$1" != mutate-range ]] || { pt="${4:-}"; echo "$commit $2 $3 $pt" >> "$OA_TEST_W/ranges"; }
       has mutate-host-down && [[ "$pt" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
       has mutate-old-tools && [[ "$pt" == 2/* ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+      # a part listed in slow-parts runs out of the host's time (host-job.sh's status 124)
+      grep -qxF "$pt" "$OA_TEST_W/slow-parts" 2> /dev/null && { echo "$1 $pt" >> "$OA_TEST_W/slow-runs"; echo "remote: oa-x slot 1: checkout and compiler 1 s, command 4140 s, status 124"; exit 124; }
       [[ "$pt" == 1/* ]] || exit 0
+    fi
+    if [[ "$1" == mutate-only ]] && has mutant-elsewhere && ! has mutant-survives; then
+      { echo "FAIL lib/a.coax (mutate --changed $mb): 5 mutants, 4 killed, 1 survived (2 s)"
+        echo "       c.coax:1:8: mutant survived: 3 became 4"; echo "suites: 0 of 1 passed in 2 s (0 skipped)"; } >> "$log"
+      fail "$1" "suite lib/a.coax"
     fi
     if has mutant-survives; then
       { echo "FAIL lib/a.coax (mutate --changed $mb): 5 mutants, 3 killed, 2 survived (2 s)"
@@ -396,6 +407,31 @@ issue_is OPEN && [[ "$(gh_n reopen)" == 4 ]] && outstanding P "part 2/3" '' &&
 rm -f "$w/repo/mutate-old-tools"; echo 'twentythree :: 23;' >> "$w/repo/lib/a.coax"; push agent-mut "the tools are fixed"; c22b="$(g rev-parse HEAD)"; s="$(run15)"
 issue_is CLOSED && [[ "$(out_n)" == 0 && "$(gh_n close)" == 5 ]] && grep -qE "^$c22b [0-9a-f]+ $c22 2/3\$" "$w/ranges" 2> /dev/null &&
   ok "22: the part runs again at the newest head (check.sh mutate-range BASE TOP 2/3), finishes, and the issue closes" || { bad "22: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
+
+# 23: a part that runs out of time is split in two, not run again unchanged (#13610)
+printf '2/3\n2/6\n' > "$w/slow-parts"; : > "$w/slow-runs"
+echo 'twentyfour :: 24;' >> "$w/repo/lib/a.coax"; push agent-mut "a part too big for its time"; c23="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is OPEN && outstanding P "part 2/6" '' && outstanding P "part 5/6" '' && ! outstanding P "part 2/3" '' &&
+  [[ "$(grep -c "mutate-since 2/3" "$w/slow-runs")" == 1 ]] && grep -q "runs again as parts 2/6 and 5/6" "$w/pl/releases/after/$c23/mutants/report.md" &&
+  ok "23: a part that ran out of time runs once and becomes parts 2/6 and 5/6" || { bad "23: the split"; cat "$w/slow-runs" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c23/mutants/report.md" 2> /dev/null; }
+printf '2/6\n' > "$w/slow-parts"; echo 'twentyfive :: 25;' >> "$w/repo/lib/a.coax"; push agent-mut "one half still too big"; c23b="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is OPEN && outstanding P "part 2/12" '' && outstanding P "part 8/12" '' && ! outstanding P "part 2/6" '' && ! outstanding P "part 5/6" '' &&
+  grep -qE "^$c23b [0-9a-f]+ $c23 5/6\$" "$w/ranges" && [[ "$(grep -c "mutate-range 2/6" "$w/slow-runs")" == 1 ]] &&
+  grep -q "^Split at ${c23b:0:10}" "$w/pl/releases/after/$c23b/mutants/comment.md" &&
+  ok "23: the half that finished clears, the half that ran out again becomes parts 2/12 and 8/12" || { bad "23: the second split"; cat "$w/slow-runs" "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c23b/mutants/comment.md" 2> /dev/null; }
+: > "$w/slow-parts"; echo 'twentysix :: 26;' >> "$w/repo/lib/a.coax"; push agent-mut "the quarters finish"; c23c="$(g rev-parse HEAD)"; s="$(run15)"
+issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qE "^$c23c [0-9a-f]+ $c23 8/12\$" "$w/ranges" && ! grep -qE " $c23 2/3\$" "$w/ranges" &&
+  ok "23: once the finer parts finish, nothing is outstanding and the issue closes" || { bad "23: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
+
+# 24: a recheck scoped to its item (#13610)
+echo 'twentyseven :: 27;' >> "$w/repo/lib/a.coax"; push agent-a "before the survivors"; c24a="$(g rev-parse HEAD)"
+printf 'bee :: (x: int) -> int {\n  y := x - 1;\n  return y * 5;\n}\n' > "$w/repo/lib/b.coax"; touch "$w/repo/mutant-survives"; push agent-mut "survivors to recheck"; c24="$(g rev-parse HEAD)"; s="$(run15)"
+outstanding S lib/b.coax '^bee$' && issue_is OPEN && ok "24: survivors in lib/b.coax are outstanding" || { bad "24: no survivors"; cat "$w/pl/releases/after/mutants-outstanding.tsv"; }
+rm -f "$w/repo/mutant-survives"; touch "$w/repo/mutant-elsewhere"; echo 'cee :: 3;' > "$w/repo/lib/c.coax"; push agent-mut "the checks kill them; c.coax changes"; c24b="$(g rev-parse HEAD)"; : > "$w/onlys"; s="$(run15)"
+issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qxF "$c24b lib/a.coax $c24a" "$w/onlys" && [[ "$(wc -l < "$w/onlys" | tr -d ' ')" == 1 ]] &&
+  awk -F'\t' '$2 == "lib/b.coax"' "$w/pl/releases/after/$c24b/mutants/cleared.tsv" | grep -q . && ! grep -q "c.coax" "$w/pl/releases/after/$c24b/mutants/comment.md" &&
+  ok "24: the recheck runs the item's suite from the parent of the commit that changed its file, clears the killed item and adds nothing from c.coax" || { bad "24: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/onlys" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c24b/mutants/comment.md" 2> /dev/null; echo "want $c24b lib/a.coax $c24a"; }
+rm -f "$w/repo/mutant-elsewhere"
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

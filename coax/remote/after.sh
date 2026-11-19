@@ -94,7 +94,8 @@
 #
 # Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_FAST_PARTS
 # (3), OA_AFTER_API_PARTS (2), OA_AFTER_MUTATE (1: the mutation report; 0: none),
-# OA_AFTER_MUTATE_PARTS (3), OA_AFTER_MUTATE_TIMEOUT (OA_AFTER_TIMEOUT), OA_AFTER_MUTATE_RECHECK (6: suites the report rechecks), OA_AFTER_GAP (10800: seconds between full
+# OA_AFTER_MUTATE_PARTS (3), OA_AFTER_MUTATE_TIMEOUT (4200: a mutation job's command), OA_AFTER_MUTATE_RECHECK (6: suites the report rechecks),
+# OA_AFTER_MUTATE_PART_RECHECK (6: parts it runs again), OA_AFTER_MUTATE_SPLIT_MAX (96: the finest part, I/96), OA_AFTER_GAP (10800: seconds between full
 # runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job's command),
@@ -447,6 +448,9 @@ judged() {   # outfile check-args...
 # again on another host when there is one, with the slot's compiler installed
 # again first (OA_REMOTE_AVOID, OA_REMOTE_FRESH_COMPILER), and is never
 # counted as the commit's failure (#13256).
+timeout_retry=1   # 0: a job whose command ran out of time on the host is not run again (check)
+# Whether a job's output (or a P item's reason) says it ran out of time: after.sh's own timeout or the host's.
+ran_out() { grep -Eq '^after: the (check|command) ran past ' "$1" 2> /dev/null; }
 check() {   # commit outdir check-args...
   local commit="$1" dir="$2" s try=0 avoid="${OA_REMOTE_AVOID:-}" fresh="${OA_REMOTE_FRESH_COMPILER:-0}"; shift 2
   local t0; t0=$(date +%s)
@@ -465,10 +469,20 @@ check() {   # commit outdir check-args...
     fi
     case "$s" in
       0) break ;;
-      124) echo "after: the check ran past $(( limit + queue )) s, its wait for a host slot included" >> "$dir/out"; s=97; break ;;
+      124) if grep -Eq '^remote: .* status 124$' "$dir/out"; then echo "after: the command ran past its $(( limit - 60 )) s on the host" >> "$dir/out"
+           else echo "after: the check ran past $(( limit + queue )) s, its wait for a host slot included" >> "$dir/out"; fi
+           s=97; break ;;
       97|255) s=97 ;;
       *) if judged "$dir/out" "$@"; then s=1; break; fi
-         echo "after: status $s with no verdict from the check (empty output, or it stopped first): the host could not judge it (97)" >> "$dir/out"; s=97 ;;
+         # The host stopped the command at its time (OA_REMOTE_TIMEOUT, host-job.sh: status 124). With
+         # timeout_retry=0 (the mutation report's jobs, #13610) it doesn't run again unchanged: the same
+         # work runs out of the same time, and the report splits a part that ran out (mutants_split).
+         if grep -Eq '^remote: .* status 124$' "$dir/out"; then
+           echo "after: the command ran past its $(( limit - 60 )) s on the host" >> "$dir/out"; s=97
+           (( timeout_retry )) || break
+         else
+           echo "after: status $s with no verdict from the check (empty output, or it stopped first): the host could not judge it (97)" >> "$dir/out"; s=97
+         fi ;;
     esac
     (( try < retries )) || break
     try=$((try + 1)); cp "$dir/out" "$dir/../$(basename "$dir").try$try.out" 2> /dev/null
@@ -505,7 +519,7 @@ args_for() {   # item job-args...
 # the caller sets), so one bad host can't confirm its own failure (#13256).
 confirm() {   # dir head item check-args...
   local dir="$1" head="$2" item="$3" tries=1 t; shift 3
-  ! cut -f1 "$flaky_tsv" 2> /dev/null | grep -qxF "$(flaky_key "$item")" || tries="${OA_AFTER_FLAKY_TRIES:-3}"
+  ! cut -f1 "$flaky_tsv" 2> /dev/null | grep -xF "$(flaky_key "$item")" > /dev/null || tries="${OA_AFTER_FLAKY_TRIES:-3}"
   for (( t = 1; t <= tries; t++ )); do
     check "$head" "$dir/c$t-${head:0:10}" "$@"
     case $? in 0) echo flaky; return 0 ;; 97) echo infra; return 0 ;; esac
@@ -693,7 +707,12 @@ $(tail -n 30 "$dir/build/pipeline/soak.log" 2> /dev/null | cut -c1-300)
 # finds them, and one GitHub issue is open exactly while any is outstanding
 # (mutants_lifecycle, below; OA_AFTER_MUTATE=0: no report).
 mutate_parts="${OA_AFTER_MUTATE_PARTS:-3}"
-mutate_limit="${OA_AFTER_MUTATE_TIMEOUT:-$limit}"
+# A part's time: more than one suite's own limit (suites.coax stops a suite "still running after 60
+# minutes"), so a part of at most --jobs suites always finishes, as a summary or a tool problem.
+mutate_limit="${OA_AFTER_MUTATE_TIMEOUT:-4200}"
+# A part that ran out of time runs again as two parts of half its suites, I/N as I/2N and (I+N)/2N
+# (tool.sh suites --part I/N takes suites I, I+N, ...), up to N = OA_AFTER_MUTATE_SPLIT_MAX (96).
+split_max="${OA_AFTER_MUTATE_SPLIT_MAX:-96}"
 mutants_title="Mutation report: survivors and tool problems after landing"
 mutants_pid=""
 mutants_path() {   # dir rel: DIR/REL with "." and ".." taken out
@@ -766,17 +785,17 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
       cut -f3,6 <<< "$rows" | head -n 12 | awk -F'\t' '{ print "  - line " $1 ": " $2 }'
     done < <(cut -f1,2 "$dir/survivors.tsv" | awk '!seen[$0]++')
   fi
-  if awk -F'\t' '$1 == "U"' "$dir/records.tsv" | grep -q .; then
+  if awk -F'\t' '$1 == "U"' "$dir/records.tsv" | grep . > /dev/null; then
     echo; echo "Changed procedures no check reaches (call each from a #test or #forall):"
     while IFS=$'\t' read -r _ suite summ what; do
       n_u=$((n_u + 1)); echo "- \`$suite\`: $what. Run alone: \`$alone only $suite $base\`"
     done < <(awk -F'\t' '$1 == "U"' "$dir/records.tsv")
   fi
-  if awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv" | grep -q .; then
+  if awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv" | grep . > /dev/null; then
     echo; echo "Tool problems: the mutation tool did not finish these, so their mutants are not judged (not the commit's failure, not flaky):"
     while IFS=$'\t' read -r k suite summ what; do
       n_t=$((n_t + 1)); [[ "$what" != - ]] || what=""
-      if [[ "$k" == P ]]; then echo "- $suite: $summ${what:+ (\`$what\`)}. Run alone: \`$alone mutate-since $base ${suite#part }\`"
+      if [[ "$k" == P ]]; then echo "- $suite: $summ${what:+ (\`$what\`)}. Run alone: \`$alone mutate-since $base ${suite#part }\`$(mutants_split "$suite" "$what" | awk -F'\t' '{ p = p (p == "" ? "" : " and ") substr($2, 6) } END { if (p != "") printf ". It ran out of time, so it runs again as parts %s", p }')"
       else echo "- \`$suite\`: $summ${what:+: \`$what\`}. Run alone: \`$alone only $suite $base\`"; fi
     done < <(awk -F'\t' '$1 == "T" || $1 == "P"' "$dir/records.tsv")
   fi
@@ -785,7 +804,7 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
     while IFS=$'\t' read -r p n; do n_o=$((n_o + 1)); echo "- \`$p\`: $n mutant(s) survived"; done < <(awk -F'\t' '{ n[$1]++; if (!($1 in s)) { s[$1] = 1; o[++k] = $1 } } END { for (i = 1; i <= k; i++) printf "%s\t%d\n", o[i], n[o[i]] }' "$dir/outside.tsv")
   fi
   # Check units: survivors in procedures only checks reach, one line a file, never an action item.
-  if awk -F'\t' '$1 == "C"' "$dir/records.tsv" | grep -q .; then
+  if awk -F'\t' '$1 == "C"' "$dir/records.tsv" | grep . > /dev/null; then
     echo; echo "Check-only helper code (not action items: these procedures are in files the suite loads only with \`#load ... #test;\`, so no compile ships them, and a mutant there that still lets every check pass is not a gap in what ships; Chapter 11):"
     while IFS=$'\t' read -r p n; do
       n_c=$((n_c + 1)); echo "- \`$p\`: $n mutant(s) survived"
@@ -800,10 +819,14 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
 # KIND FILE PROC LINE WHAT SUITE BASE HEAD (S a surviving mutant in shipped code; U a changed
 # procedure no check reaches, FILE the suite and PROC the names; T a suite the tool could not
 # finish; P a part the hosts could not finish, FILE and SUITE "part I/N"). Each report first
-# rechecks the earlier heads' items: their suites' mutants again at this head from the item's
-# base (check.sh mutate-only SUITES BASE), at most OA_AFTER_MUTATE_RECHECK (6) suites, and up to
-# OA_AFTER_MUTATE_PARTS parts the hosts could not finish, again at this head (check.sh mutate-range). An item a recheck no longer finds is cleared; one it can't judge
-# stays. The issue is open while OUTSTANDING has a row: the same steps as the nightly sweep's
+# rechecks the earlier heads' items, each scoped to its item: its suite's mutants again at this
+# head from the parent of the first commit after the item's base that changed the item's file
+# (check.sh mutate-only SUITE BASE), one job a suite, at most OA_AFTER_MUTATE_RECHECK (6) suites;
+# what that finds in other files is not an item. And up to OA_AFTER_MUTATE_PART_RECHECK (6) parts
+# the hosts could not finish, again at this head (check.sh mutate-range). A part that ran out of
+# time is never run again as it is: it becomes two parts of half its suites (mutants_split), and
+# a mutation job whose command ran out of the host's time isn't retried. An item a recheck no
+# longer finds is cleared; one it can't judge stays. The issue is open while OUTSTANDING has a row: the same steps as the nightly sweep's
 # issue (mutation-sweep.coax, ms_issue_step): nothing outstanding closes an open issue with a
 # summary; an item reopens a closed one, or files one when there is none; the issue is the number
 # kept in mutants-issue, else the newest with the title in any state. One comment a head at most.
@@ -811,20 +834,36 @@ mutants_out="$results/mutants-outstanding.tsv"
 mutants_touched() {   # head base path: whether the change from base to head touched the file
   ! git diff --quiet "$2" "$1" -- "$3" 2> /dev/null
 }
-mutants_items() {   # head base records: the action items in records, as OUTSTANDING rows
-  local head="$1" base="$2" k suite summ at what p line
+# A part that ran out of time (its reason says so) as the two P rows of half its suites each:
+# "part I/N" becomes I/2N and (I+N)/2N, the same suites between them (tool.sh suites --part takes
+# suites I, I+N, ...). Nothing, status 1, when it didn't run out of time or 2N is over split_max.
+mutants_split() {   # "part I/N" reason [base head]
+  local i n
+  [[ "$2" == "after: the check ran past "* || "$2" == "after: the command ran past "* ]] || return 1
+  i="${1#part }"; n="${i#*/}"; i="${i%/*}"
+  [[ "$i" =~ ^[0-9]+$ && "$n" =~ ^[0-9]+$ ]] && (( 2 * n <= split_max )) || return 1
+  local p
+  for p in "$i" $(( i + n )); do
+    printf 'P\tpart %s/%s\tnot run yet: part %s/%s ran out of time, so it runs as two parts\t-\t-\tpart %s/%s\t%s\t%s\n' "$p" $(( 2 * n )) "$i" "$n" "$p" $(( 2 * n )) "${3:-}" "${4:-}"
+  done
+}
+mutants_items() {   # head base records [top]: the action items in records, as OUTSTANDING rows (a survivor only in a file BASE..TOP touched; TOP is HEAD)
+  local head="$1" base="$2" top="${4:-$1}" k suite summ at what p line
   while IFS=$'\t' read -r k suite summ at what; do
     case "$k" in
       S) p="$(mutants_path "$(dirname "$suite")" "${at%%:*}")"; line="${at#*:}"; line="${line%%:*}"
-         mutants_touched "$head" "$base" "$p" || continue
+         mutants_touched "$top" "$base" "$p" || continue
          printf 'S\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$p" "$(mutants_proc "$head" "$p" "$line")" "$line" "$what" "$suite" "$base" "$head" ;;
       U) printf 'U\t%s\t%s\t-\t-\t%s\t%s\t%s\n' "$suite" "$at" "$suite" "$base" "$head" ;;
-      T|P) printf '%s\t%s\t%s\t-\t%s\t%s\t%s\t%s\n' "$k" "$suite" "$summ" "${at:--}" "$suite" "$base" "$head" ;;
+      P) mutants_split "$suite" "$at" "$base" "$head" ||
+           printf '%s\t%s\t%s\t-\t%s\t%s\t%s\t%s\n' "$k" "$suite" "$summ" "${at:--}" "$suite" "$base" "$head" ;;
+      T) printf '%s\t%s\t%s\t-\t%s\t%s\t%s\t%s\n' "$k" "$suite" "$summ" "${at:--}" "$suite" "$base" "$head" ;;
     esac
   done < "$3"
 }
-# An item's key: a survivor is its procedure's; the rest are their suite's (or part's) at a base and head.
-mutants_key_awk='function key() { return ($1 == "S") ? ("S\t" $2 "\t" $3) : ($1 "\t" $6 "\t" $7 ($1 == "P" ? "\t" $8 : "")) }'
+# An item's key: a survivor is its procedure's, a suite's tool problem or unreached procedures the
+# suite's (whatever base its recheck ran from), a part its range's.
+mutants_key_awk='function key() { return ($1 == "S") ? ("S\t" $2 "\t" $3) : ($1 "\t" $6 ($1 == "P" ? "\t" $7 "\t" $8 : "")) }'
 mutants_list() {   # rows: the items as markdown lines, one a procedure (or suite)
   awk -F'\t' -v alone="coax/remote/remote.sh run -- coax/remote/check.sh" '
     $1 == "S" { k = $2 "\t" $3; if (!(k in n)) { o[++m] = k; f[k] = $2; p[k] = $3; s[k] = $6; b[k] = $7; h[k] = $8; lo[k] = $4 }
@@ -845,21 +884,51 @@ mutants_issue() {   # "NUMBER STATE" of the report's one issue, nothing when the
     --jq "[.[] | select(.title == \"$mutants_title\")] | first // empty | \"\\(.number) \\(.state)\"" 2> /dev/null
 }
 mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows still outstanding into DIR/kept.tsv, the cleared into DIR/cleared.tsv
-  local head="$1" dir="$2" max="${OA_AFTER_MUTATE_RECHECK:-6}" k=0 b list pids=() st=() i j=0 ph pb pp rd rlog s
+  local head="$1" dir="$2" max="${OA_AFTER_MUTATE_RECHECK:-6}" pmax="${OA_AFTER_MUTATE_PART_RECHECK:-6}"
+  local k=0 np=0 b list pids=() st=() i j=0 ph pb pp rd rlog s f c rb
   [[ -f "$mutants_out" ]] || : > "$mutants_out"
-  : > "$dir/judged.tsv"; : > "$dir/again.tsv"; : > "$dir/cleared.tsv"
-  # Each base's suites, oldest item first, at most max suites in all.
-  awk -F'\t' -v h="$head" -v max="$max" '$8 != h && ($1 == "S" || $1 == "U" || $1 == "T") && !(($7 "\t" $6) in seen) && n < max { seen[$7 "\t" $6] = 1; n++
-      if (!($7 in l)) o[++m] = $7; l[$7] = l[$7] (l[$7] == "" ? "" : ",") $6 }
-    END { for (i = 1; i <= m; i++) printf "%s\t%s\n", o[i], l[o[i]] }' "$mutants_out" > "$dir/plan.tsv"
+  : > "$dir/judged.tsv"; : > "$dir/again.tsv"; : > "$dir/cleared.tsv"; : > "$dir/split.tsv"
+  # A part kept with the reason that it ran out of time (one from before #13610's split) is split now,
+  # not run again as it is.
+  if awk -F'\t' '$1 == "P" && $5 ~ /^after: the (check|command) ran past /' "$mutants_out" | grep . > /dev/null; then
+    local kk ff ss ll ww su bb hh
+    while IFS=$'\t' read -r kk ff ss ll ww su bb hh; do
+      if [[ "$kk" == P && "$hh" != "$head" ]] && mutants_split "$ff" "$ww" "$bb" "$hh"; then
+        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$kk" "$ff" "$ss" "$ll" "$ww" "$su" "$bb" "$hh" >> "$dir/split.tsv"
+      else printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$kk" "$ff" "$ss" "$ll" "$ww" "$su" "$bb" "$hh"; fi
+    done < "$mutants_out" > "$mutants_out.split" && mv "$mutants_out.split" "$mutants_out"
+  fi
+  # A recheck is scoped to the item (#13610): it runs the item's own suite, from the parent of the
+  # first commit after the item's base that changed the item's file (a survivor's file, else the
+  # suite), so it mutates what changed in that file since then and as little else as it can; a
+  # suite with several items runs once, from the oldest of their bases. What it finds in other files
+  # is dropped: those changes were in the reports that covered them.
+  awk -F'\t' -v h="$head" '$8 != h && ($1 == "S" || $1 == "U" || $1 == "T") { print (($1 == "S") ? $2 : $6) "\t" $7 "\t" $8 }' "$mutants_out" | sort -u > "$dir/files.tsv"
+  while IFS=$'\t' read -r f b ph <&3; do
+    c="$(git rev-list --reverse --first-parent "$b..$ph" -- "$f" 2> /dev/null | head -n 1)"
+    rb="$b"; [[ -z "$c" ]] || rb="$(git rev-parse -q --verify "$c^" 2> /dev/null || echo "$b")"
+    printf '%s\t%s\t%s\t%s\t%s\n' "$f" "$b" "$ph" "$rb" "$(git log -1 --format=%ct "$rb" 2> /dev/null || echo 0)"
+  done 3< "$dir/files.tsv" > "$dir/rebased.tsv"
+  # Each row with the base its suite's recheck runs from (column 9, "-": not rechecked now), and the
+  # plan: at most max suites, the oldest item's first.
+  awk -F'\t' -v h="$head" -v max="$max" '
+    FILENAME == ARGV[1] { rb[$1 "\t" $2 "\t" $3] = $4; ct[$1 "\t" $2 "\t" $3] = $5 + 0; next }
+    $8 != h && ($1 == "S" || $1 == "U" || $1 == "T") { s = $6; a = (($1 == "S") ? $2 : $6) "\t" $7 "\t" $8
+      if (!(s in best)) { if (m < max) { o[++m] = s; best[s] = rb[a]; bct[s] = ct[a] } }
+      else if (ct[a] < bct[s]) { best[s] = rb[a]; bct[s] = ct[a] } }
+    END { for (i = 1; i <= m; i++) printf "%s\t%s\n", best[o[i]], o[i] }' "$dir/rebased.tsv" "$mutants_out" > "$dir/plan.tsv"
+  awk -F'\t' -v OFS='\t' -v h="$head" 'FILENAME == ARGV[1] { best[$2] = $1; next }
+    { print $1, $2, $3, $4, $5, $6, $7, $8, (($8 != h && ($1 == "S" || $1 == "U" || $1 == "T") && ($6 in best)) ? best[$6] : "-") }' "$dir/plan.tsv" "$mutants_out" > "$dir/annotated.tsv"
+  [[ -f "$dir/plan.tsv" ]] || : > "$dir/plan.tsv"
   while IFS=$'\t' read -r b list <&3; do
     k=$((k + 1)); check "$head" "$dir/recheck-$k" mutate-only "$list" "$b" < /dev/null & pids+=($!)
   done 3< "$dir/plan.tsv"
-  # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PARTS of them, again:
-  # the same part of the suites BASE..TOP touched, at this head, so the compiler and tools are this
-  # head's (an earlier head's tools could be why the part never finished: #13614's swollen
-  # mutants at 7a2d5b2d5b).
-  awk -F'\t' -v h="$head" '$1 == "P" && $8 != h { print $2 "\t" $7 "\t" $8 }' "$mutants_out" | head -n "$mutate_parts" > "$dir/parts.tsv"
+  np=$k
+  # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PART_RECHECK (6) of them,
+  # again: the same part of the suites BASE..TOP touched, at this head, so the compiler and tools are
+  # this head's (an earlier head's tools could be why the part never finished: #13614's swollen
+  # mutants at 7a2d5b2d5b). A part that runs out of time again is split (mutants_split), not rerun as it is.
+  awk -F'\t' -v h="$head" -v n="$pmax" '$1 == "P" && $8 != h && k++ < n { print $2 "\t" $7 "\t" $8 }' "$mutants_out" > "$dir/parts.tsv"
   while IFS=$'\t' read -r pp pb ph <&3; do
     j=$((j + 1)); check "$head" "$dir/recheck-part-$j" mutate-range "$pb" "$ph" "${pp#part }" < /dev/null & pids+=($!)
   done 3< "$dir/parts.tsv"
@@ -867,39 +936,54 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   i=0
   while IFS=$'\t' read -r b list <&3; do
     i=$((i + 1)); rd="$dir/recheck-$i"; rlog="$rd/build/pipeline/mutate-only.log"
-    # Judged: the hosts finished it, the suites ran to their end, and the tool finished the suite.
+    # Judged: the hosts finished it, the suite ran to its end, and the tool finished the suite.
     if [[ "${st[$((i - 1))]}" != 97 ]] && grep -q '^suites: ' "$rlog" 2> /dev/null; then
       mutants_records "$rlog" > "$rd.tsv"
-      tr ',' '\n' <<< "$list" | while IFS= read -r s; do
-        awk -F'\t' -v s="$s" '$1 == "T" && $2 == s { f = 1 } END { exit !f }' "$rd.tsv" || printf '%s\t%s\n' "$s" "$b"
-      done >> "$dir/judged.tsv"
+      awk -F'\t' -v s="$list" '$1 == "T" && $2 == s { f = 1 } END { exit !f }' "$rd.tsv" || printf '%s\t%s\n' "$list" "$b" >> "$dir/judged.tsv"
       mutants_items "$head" "$b" "$rd.tsv" >> "$dir/again.tsv"
     fi
   done 3< "$dir/plan.tsv"
-  # An item in a judged suite stays only when the recheck finds it again (its new rows replace it).
+  cp "$dir/annotated.tsv" "$dir/scope.tsv"
+  # An item in a judged suite stays only when the recheck finds it again (its new rows replace it);
+  # what the recheck found joins the items only in the files of that suite's items (a survivor) or
+  # as that suite's own unreached procedures when it had them.
   awk -F'\t' -v OFS='\t' -v kept="$dir/kept.tsv" -v cleared="$dir/cleared.tsv" -v found="$dir/found.tsv" "$mutants_key_awk"'
+    function row() { return $1 OFS $2 OFS $3 OFS $4 OFS $5 OFS $6 OFS $7 OFS $8 }
     FILENAME == ARGV[1] { j[$1 "\t" $2] = 1; next }
-    FILENAME == ARGV[2] { k = key(); if (!(k in again) && (($6 "\t" $7) in j)) o[++m] = k; again[k] = again[k] $0 "\n"; next }
-    !(($6 "\t" $7) in j) || $1 == "P" { print > kept; next }
-    { k = key(); if (k in again) { if (!(k in done)) { printf "%s", again[k] > kept; done[k] = 1 } } else print > cleared }
-    # what the recheck found that no item had: survivors the report could not list before (it lists 39 a suite)
+    FILENAME == ARGV[2] { if ($9 != "-" && (($6 "\t" $9) in j)) { if ($1 == "S") file[$6 "\t" $9 "\t" $2] = 1; else kind[$6 "\t" $9 "\t" $1] = 1 }; next }
+    FILENAME == ARGV[3] { p = $6 "\t" $7
+      if ($1 == "S" ? !((p "\t" $2) in file) : !((p "\t" $1) in kind)) next
+      k = key(); if (!(k in again)) o[++m] = k; again[k] = again[k] row() "\n"; next }
+    { if ($9 == "-" || !(($6 "\t" $9) in j)) { print row() > kept; next }
+      k = key(); if (k in again) { if (!(k in done)) { printf "%s", again[k] > kept; done[k] = 1 } } else print row() > cleared }
+    # survivors the report could not list before (it lists 39 a suite), in the same files
     END { for (i = 1; i <= m; i++) if (!(o[i] in done)) printf "%s", again[o[i]] > found }' \
-    "$dir/judged.tsv" "$dir/again.tsv" "$mutants_out"
+    "$dir/judged.tsv" "$dir/scope.tsv" "$dir/again.tsv" "$dir/annotated.tsv"
   [[ -f "$dir/kept.tsv" ]] || : > "$dir/kept.tsv"
   [[ -f "$dir/found.tsv" ]] || : > "$dir/found.tsv"
-  # A part: cleared once the hosts finish it, and what it found joins the items.
+  # A part: cleared once the hosts finish it, and what it found joins the items; one that ran out of
+  # time again becomes two parts of half its suites each (it stays as it is past split_max).
   j=0
   while IFS=$'\t' read -r pp pb ph <&3; do
-    j=$((j + 1)); [[ "${st[$((i + j - 1))]}" != 97 ]] || continue
-    awk -F'\t' -v p="$pp" -v h="$ph" -v OFS='\t' -v kept="$dir/kept.tsv.new" -v cleared="$dir/cleared.part" '!($1 == "P" && $2 == p && $8 == h) { print > kept; next } { print > cleared }' "$dir/kept.tsv"
+    j=$((j + 1))
+    if [[ "${st[$((np + j - 1))]}" == 97 ]]; then
+      ran_out "$dir/recheck-part-$j/out" || continue
+      mutants_split "$pp" "after: the command ran past " "$pb" "$ph" > "$dir/split.part" || continue
+      awk -F'\t' -v p="$pp" -v b="$pb" -v h="$ph" -v kept="$dir/kept.tsv.new" -v gone="$dir/split.tsv" '$1 == "P" && $2 == p && $7 == b && $8 == h { print >> gone; next } { print > kept }' "$dir/kept.tsv"
+      [[ -f "$dir/kept.tsv.new" ]] || : > "$dir/kept.tsv.new"
+      cat "$dir/split.part" >> "$dir/kept.tsv.new"; mv "$dir/kept.tsv.new" "$dir/kept.tsv"; rm -f "$dir/split.part"
+      continue
+    fi
+    awk -F'\t' -v p="$pp" -v b="$pb" -v h="$ph" -v kept="$dir/kept.tsv.new" -v cleared="$dir/cleared.part" '!($1 == "P" && $2 == p && $7 == b && $8 == h) { print > kept; next } { print > cleared }' "$dir/kept.tsv"
     [[ -f "$dir/kept.tsv.new" ]] || : > "$dir/kept.tsv.new"
     mv "$dir/kept.tsv.new" "$dir/kept.tsv"; cat "$dir/cleared.part" >> "$dir/cleared.tsv" 2> /dev/null; rm -f "$dir/cleared.part"
+    # Its survivors only in files BASE..TOP touched; their lines and procedures are this head's.
     mutants_records "$dir/recheck-part-$j/build/pipeline/mutate-range.log" > "$dir/recheck-part-$j.tsv"
-    mutants_items "$ph" "$pb" "$dir/recheck-part-$j.tsv" >> "$dir/kept.tsv"
+    mutants_items "$head" "$pb" "$dir/recheck-part-$j.tsv" "$ph" >> "$dir/kept.tsv"
   done 3< "$dir/parts.tsv"
 }
 mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the one issue to match it
-  local head="$1" base="$2" dir="$3" found n state new=0 cleared=0 out=0 nc url
+  local head="$1" base="$2" dir="$3" found n state new=0 cleared=0 out=0 split=0 nc url
   # The first report with a lifecycle takes the earlier reports' items (#13610).
   if [[ ! -f "$mutants_out" ]]; then
     : > "$mutants_out.seed"
@@ -916,9 +1000,9 @@ mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the 
   # This head's items replace the same keys.
   awk -F'\t' "$mutants_key_awk"' FILENAME == ARGV[1] { n[key()] = 1; next } !(key() in n)' "$dir/items.tsv" "$dir/kept.tsv" > "$mutants_out.new"
   cat "$dir/items.tsv" >> "$mutants_out.new"; mv "$mutants_out.new" "$mutants_out"
-  new="$(grep -c . "$dir/items.tsv")"; cleared="$(grep -c . "$dir/cleared.tsv")"; out="$(grep -c . "$mutants_out")"
+  new="$(grep -c . "$dir/items.tsv")"; cleared="$(grep -c . "$dir/cleared.tsv")"; out="$(grep -c . "$mutants_out")"; split="$(grep -c . "$dir/split.tsv" 2> /dev/null)"
   read -r _ _ _ nc < "$dir/counts" 2> /dev/null || nc=0
-  pl_say "after: mutation report at ${head:0:10}: $new new item(s), $cleared cleared, $out outstanding"
+  pl_say "after: mutation report at ${head:0:10}: $new new item(s), $cleared cleared, ${split:-0} part(s) split, $out outstanding"
   # The comment: this head's report when it has items, then what the recheck cleared and what is still open.
   {
     if (( new > 0 )); then cat "$dir/report.md"
@@ -928,7 +1012,8 @@ mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the 
     fi
     if [[ -s "$dir/found.tsv" ]]; then echo; echo "Found by the recheck of earlier items' suites at ${head:0:10} (survivors an earlier report could not list):"; mutants_list "$dir/found.tsv"; fi
     if (( cleared > 0 )); then echo; echo "Cleared by the recheck at ${head:0:10} (killed, marked, or the tool finished):"; mutants_list "$dir/cleared.tsv"; fi
-    if awk -F'\t' -v h="$head" '$8 != h' "$mutants_out" | grep -q .; then
+    if [[ -s "$dir/split.tsv" ]]; then echo; echo "Split at ${head:0:10}: these parts ran out of time, so each runs again as two parts of half its suites:"; mutants_list "$dir/split.tsv"; fi
+    if awk -F'\t' -v h="$head" '$8 != h' "$mutants_out" | grep . > /dev/null; then
       echo; echo "Still outstanding from earlier heads:"; awk -F'\t' -v h="$head" '$8 != h' "$mutants_out" | mutants_list
     fi
   } > "$dir/comment.md"
@@ -944,7 +1029,7 @@ It reopens when a later report has something to act on." > /dev/null 2>&1 && pl_
   elif [[ "$state" == CLOSED ]]; then
     gh issue reopen "$n" --repo "$pl_repo" --comment "**${head:0:10}**: $(head -c 60000 "$dir/comment.md")" > /dev/null 2>&1 || pl_say "could not reopen #$n"
   elif [[ "$state" == OPEN ]]; then
-    (( new + cleared == 0 )) || pl_issue_comment "$n" "**${head:0:10}**: $(head -c 60000 "$dir/comment.md")"
+    (( new + cleared + ${split:-0} == 0 )) || pl_issue_comment "$n" "**${head:0:10}**: $(head -c 60000 "$dir/comment.md")"
   else
     url="$(gh issue create --repo "$pl_repo" --title "$mutants_title" --body "The after-landing mutation report (\`coax/remote/after.sh\`, docs/metaverse/green-main-pipeline.md): each fast run's change, mutated. It never holds \`$pl_green\` or reverts anything; each comment is one head's report. It closes itself when nothing is outstanding.
 
@@ -958,11 +1043,11 @@ mutants_of() {   # head base: the head's report, in the background
   [[ ! -f "$results/mutants-head" ]] || last="$(cat "$results/mutants-head")"
   if [[ -n "$last" && "$last" != "$head" ]] && git merge-base --is-ancestor "$base" "$last" 2> /dev/null &&
      git merge-base --is-ancestor "$last" "$head" 2> /dev/null; then base="$last"; fi
-  git diff --name-only "$base" "$head" | grep -qvE '(\.md$|^docs/)' || return 0
+  git diff --name-only "$base" "$head" | grep -vE '(\.md$|^docs/)' > /dev/null || return 0
   (
     flock -n 6 || { pl_say "after: a mutation report is running; ${head:0:10}'s change goes in the next one"; exit 0; }
     dir="$results/$head/mutants"; mkdir -p "$dir"; echo "$base" > "$dir/base"
-    limit="$mutate_limit"
+    limit="$mutate_limit"; timeout_retry=0
     pids=() st=()
     for (( i = 1; i <= mutate_parts; i++ )); do check "$head" "$dir/part-$i" mutate-since "$base" "$i/$mutate_parts" & pids+=($!); done
     for p in "${pids[@]}"; do wait "$p"; st+=($?); done
@@ -1074,7 +1159,7 @@ run_head() {
   elif [[ -n "$ref" && "$head" != "$ref" && ! -f "$dir/status" ]] && due last-fast "$fast_gap"; then
     kind=fast
     # A changed compiler can change any check, so that head gets a full run.
-    if [[ ! -f "$dir/full" ]] && git diff --name-only "$ref" "$head" | grep -Eq '^coax/(src|bootstrap)/|^coax/(build|provenance)\.sh$|^coax/web/native-check\.c$'; then kind=full; fi
+    if [[ ! -f "$dir/full" ]] && git diff --name-only "$ref" "$head" | grep -E '^coax/(src|bootstrap)/|^coax/(build|provenance)\.sh$|^coax/web/native-check\.c$' > /dev/null; then kind=full; fi
   fi
   if [[ -z "$kind" ]]; then
     # main has not moved since a red run: its failures are still there.
@@ -1103,7 +1188,7 @@ run_head() {
     fi
     [[ -z "$changed" ]] || ! grep -qv '\.md$' <<< "$changed" || jobs+=("web $ref" "room-since $ref${prod:+ $prod}" "coder-since $ref")
     # The API suite's parts only when the change reaches it (check.sh's api_inputs; it checks again).
-    if grep -v '\.md$' <<< "$changed" | grep -Eq '^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)'; then
+    if grep -v '\.md$' <<< "$changed" | grep -E '^(coax/web/api/|coax/web/agent/|coax/lib/|coax/platform/|coax/src/|coax/bootstrap/|apps/openagents-web/docs/limits/)' > /dev/null; then
       for (( i = 1; i <= api_parts; i++ )); do jobs+=("api-since $ref $i/$api_parts"); done
     fi
     # The last full run's failures, each as its own check.
@@ -1125,7 +1210,7 @@ run_head() {
   case "$compiler_mode" in
     always) compiler=1 ;;
     auto) if [[ -z "$base" ]]; then compiler=1
-          elif git diff --name-only "$base" "$head" | grep -Eq '^coax/(src|tests|bootstrap|lib/compiler)/'; then compiler=1; fi ;;
+          elif git diff --name-only "$base" "$head" | grep -E '^coax/(src|tests|bootstrap|lib/compiler)/' > /dev/null; then compiler=1; fi ;;
   esac
   (( compiler == 0 )) || for (( i = 1; i <= 8; i++ )); do jobs+=("compiler $i/8"); done
   pl_say "after: $kind run on ${head:0:10} ($(git log -1 --format=%s "$head" | cut -c1-60)), ${#jobs[@]} job(s), $pl_green $([[ -n "$green" ]] && echo "${green:0:10}" || echo none)$([[ "$kind" != fast || "$ref" == "$green" ]] || echo ", against the full run on ${ref:0:10}")"

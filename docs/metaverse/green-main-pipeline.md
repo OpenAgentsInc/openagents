@@ -611,17 +611,42 @@ as changed on every run (#13614).
 The action items stay outstanding in `releases/after/mutants-outstanding.tsv`,
 one row each: the kind, the file, the procedure, the line, the mutation, the
 suite, the base and the head. Before it posts anything, each report runs the
-earlier heads' items again at its own head (`check.sh mutate-only SUITES
-BASE`, from each item's base), at most `OA_AFTER_MUTATE_RECHECK` (6) suites,
-and up to `OA_AFTER_MUTATE_PARTS` parts that the hosts could not finish. A part
-runs again at the report's head, not at its own (`check.sh mutate-range BASE
-TOP I/N`: the same part of the suites that `BASE..TOP` touched), so it gets the
-newest compiler and tools. The parts at 7a2d5b2d5b never finished on their own
-head's tools, which mutated every `#import_proto` procedure (#13614). What a
-part finds when it finishes joins the items. A recheck runs in the report job, after its parts, and never
-in a verdict job. An item that the recheck no longer finds is cleared: it is
+earlier heads' items again at its own head. Each recheck is scoped to its
+item, so a fixed item clears and the recheck doesn't keep adding items:
+
+- It runs the item's own suite (`check.sh mutate-only SUITE BASE`), one job a
+  suite, at most `OA_AFTER_MUTATE_RECHECK` (6) suites, the oldest items first.
+- BASE is the parent of the first commit after the item's base that changed
+  the item's file (a survivor's file, else the suite). So the recheck mutates
+  what changed in that file and as little else as it can. A suite with
+  several items runs once, from the oldest of their bases.
+- What the recheck finds in other files is not an item: those changes were in
+  the reports that covered them. New survivors in the item's own file are
+  items (the report lists at most 39 a suite).
+
+It also runs again up to `OA_AFTER_MUTATE_PART_RECHECK` (6) parts that the
+hosts could not finish. A part runs again at the report's head, not at its own
+(`check.sh mutate-range BASE TOP I/N`: the same part of the suites that
+`BASE..TOP` touched), so it gets the newest compiler and tools. The parts at
+7a2d5b2d5b never finished on their own head's tools, which mutated every
+`#import_proto` procedure (#13614). What a part finds when it finishes joins
+the items. A recheck runs in the report job, after its parts, and never in a
+verdict job. An item that the recheck no longer finds is cleared: it is
 killed, marked equivalent, or the tool now finishes it. An item that the
 recheck can't judge stays, for example when the tool again gives no summary.
+
+A part that runs out of time is never run again as it is: the same suites
+run out of the same time. It becomes two parts of half its suites each: part
+`I/N` becomes `I/2N` and `(I+N)/2N` (`tool.sh suites --part I/N` takes suites
+I, I+N, I+2N...). A finer part that runs out of time splits again, down to
+`I/96` (`OA_AFTER_MUTATE_SPLIT_MAX`). A mutation job whose command runs out of
+the host's time isn't retried. A mutation job's command gets 4200 seconds
+(`OA_AFTER_MUTATE_TIMEOUT`), more than one suite's own limit (`suites.coax`
+stops a suite still running after 60 minutes), so a part of at most 8 suites
+(`--jobs`) always finishes, with a summary or a tool problem for each suite.
+The ranges 5dd368..7a2d5b (138 `#authority` suites), c7cca5..0f4d16 (50) and
+4c111f..e525d2 (16) were stuck this way: each of their parts ran out of time
+and ran again unchanged.
 
 The report has one GitHub issue, "Mutation report: survivors and tool
 problems after landing". Its number is kept in `releases/after/mutants-issue`;
@@ -652,7 +677,11 @@ finds them killed, close the issue. A new survivor reopens it, and no second
 issue is filed. Survivors only in check units neither open it nor keep it
 open. A tool problem keeps it open while it still happens. Case 22 checks
 that a part its own head's tools can't finish runs again with the newest
-head's tools, and clears when they finish it.
+head's tools, and clears when they finish it. Case 23 checks that a part that runs out of time
+runs once, becomes two parts of half its suites, splits again when a half runs
+out, and clears when the finer parts finish. Case 24 checks that a recheck runs
+the item's suite from the parent of the commit that changed the item's file,
+clears the fixed item, and adds nothing from another file.
 
 Before this, the `since` jobs ran the mutants themselves (#13583). A slow
 mutate run then held the whole job past its time limit, so the run was
