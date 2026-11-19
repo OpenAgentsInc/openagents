@@ -238,6 +238,19 @@ coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(a
   out[4] = b.inset * u; out[5] = b.line * u;
   return true;
 }
+// The drawn box of the row with this id, in points (x, y from the content's top-left, w, h): for a
+// test driver that presses what a person sees (evals/coder-desktop/tier3/probe). False when no
+// row has the id or none of it shows.
+coder_page_box :: (s: [] CoderPage, id: string, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 { return false; }
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  i := elt_find(t[..], id);
+  if i < 0 { return false; }
+  b := el_box(t[0].rows[i]); u: f32 = cp_scale(s);
+  if !b.visible { return false; }
+  out[0] = b.x * u; out[1] = b.y * u; out[2] = b.w * u; out[3] = b.h * u;
+  return true;
+}
 // How the platform editor is styled, from the skin: the text's size and line (points), then the
 // ink, the placeholder's ink and the caret's, each straight RGBA.
 coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {

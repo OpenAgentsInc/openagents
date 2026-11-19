@@ -52,6 +52,12 @@ def classify_owner_line(obj: dict[str, Any]) -> str:
         return "recall"
     if obj.get("forget") is True:
         return "forget"
+    if "steer" in obj:
+        return "steer"
+    if "interrupt" in obj:
+        return "interrupt"
+    if "queue" in obj:
+        return "queue"
     return "unknown"
 
 

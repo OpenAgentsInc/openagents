@@ -11,6 +11,15 @@ lines until the first {"task": ...} line, picks a script from the flow's worker 
    "default": {...},                                         when none matches
    "agents": {"0": {...}, "1": {...}}}                       sub-agent J (session has -agent-J-)
 
+  {"real": {"answers": [{"action": {...}, "think": "..."}, ...]}}
+
+With "real", every main worker is the real worker (CODER_T3_REAL_WORKER, the bundle's own mcworker,
+GitHub #13718): no script, the follow-up wire (steers, the queue, interrupts) as it really runs.
+Nothing calls a model: GW_REPLAY points at CODER_T3_RECORD/replay, which holds the answers in order
+as recorded responses. Every worker of the flow shares it, so a worker started later (Resume after a
+relaunch) takes the next answer. The router starts it at once (Resume sends no task line) and only
+passes Coder's lines on; the worker writes straight to Coder.
+
 Every line from Coder is recorded to CODER_T3_RECORD/<role>-<pid>.jsonl.
 """
 
@@ -19,10 +28,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import signal
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "mock_worker"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "followups"))
 import mock_worker  # noqa: E402
 
 FINISHED = {"turns": []}
@@ -40,9 +52,46 @@ def pick(spec: dict, task: dict) -> tuple[str, dict]:
     return "main", spec.get("default", FINISHED)
 
 
+def run_real(real: dict, record_dir: Path) -> int:
+    from run_followups import http  # noqa: PLC0415 - only the real worker's flows need it
+    replay = record_dir / "replay"
+    replay.mkdir(exist_ok=True)
+    for i, a in enumerate(real.get("answers", [])):
+        f = replay / f"{i + 1}.http"
+        if not f.exists():
+            f.write_text(http(a["action"], a.get("think", "")), encoding="utf-8")
+    env = dict(os.environ, GW_REPLAY=str(replay))
+    env.pop("CODER_CLAUDE_KEY", None)
+    child = subprocess.Popen([os.environ["CODER_T3_REAL_WORKER"]], stdin=subprocess.PIPE, env=env)
+    signal.signal(signal.SIGTERM, lambda *_: (child.terminate(), sys.exit(0)))
+    rec = mock_worker.MockWorker({"turns": []}, str(record_dir / f"main-{os.getpid()}.jsonl"))
+    assert child.stdin is not None
+    try:
+        for raw in sys.stdin:
+            line = raw.rstrip("\r\n")
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                obj = None
+            rec.record(line, obj)
+            try:
+                child.stdin.write(raw.encode("utf-8")); child.stdin.flush()
+            except BrokenPipeError:
+                break
+    finally:
+        rec.close()
+        try:
+            child.stdin.close()
+        except OSError:
+            pass
+    return child.wait()
+
+
 def main() -> int:
     spec = json.loads(Path(os.environ["CODER_T3_WORKERS"]).read_text(encoding="utf-8"))
     record_dir = Path(os.environ.get("CODER_T3_RECORD", "."))
+    if spec.get("real"):
+        return run_real(spec["real"], record_dir)
     held: list[tuple[str, dict]] = []
     task = None
     while task is None:

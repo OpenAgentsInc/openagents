@@ -25,6 +25,10 @@
 //      state                      read-only page state: running, settings page, cost, title, editor box,
 //                                 the kept sidebar widths, whether a sheet is up
 //      composer                   the composer's text and whether it has focus
+//      box ID                     the drawn box of the page's row with that id (content points), to click
+//                                 what a person sees: {"ok":true,"x":..,"y":..,"w":..,"h":..}
+//      followups                  the follow-ups as the page holds them (#13718): the queue's texts,
+//                                 whether it is paused and why, each steer's status, the worker's turn
 //      quit                       NSApp terminate
 // Events are real NSEvents: keys go through the window (NSWindow sendEvent:, Command keys through
 // the main menu first), mouse events to the view under the point. Nothing moves the system
@@ -172,6 +176,25 @@ static NSString *t3_state(void) {
                    @"sheet": @(t3_window().attachedSheet != nil)});
 }
 
+static NSString *t3_followups(void) {
+  void *page = t3_page();
+  int (*count)(void *) = dlsym(RTLD_DEFAULT, "cd_queue_count");
+  int (*paused)(void *) = dlsym(RTLD_DEFAULT, "cd_queue_paused");
+  int (*reason)(void *, char *, int) = dlsym(RTLD_DEFAULT, "cd_queue_reason");
+  int (*item)(void *, int, char *, int) = dlsym(RTLD_DEFAULT, "cd_queue_item_text");
+  int (*steers)(void *) = dlsym(RTLD_DEFAULT, "cd_steer_count");
+  int (*status)(void *, int) = dlsym(RTLD_DEFAULT, "cd_steer_status");
+  int (*turn)(void *) = dlsym(RTLD_DEFAULT, "cd_worker_turn");
+  if (!page || !count || !paused || !reason || !item || !steers || !status || !turn) return t3_err(@"no page or follow-up cd_ symbols");
+  char b[512];
+  NSMutableArray *items = [NSMutableArray array];
+  for (int i = 0; i < count(page); i++) { int n = item(page, i, b, (int)sizeof b - 1); b[n < 0 ? 0 : n] = 0; [items addObject:[NSString stringWithUTF8String:b] ?: @""]; }
+  NSMutableArray *st = [NSMutableArray array];
+  for (int i = 0; i < steers(page); i++) [st addObject:@(status(page, i))];
+  int n = reason(page, b, (int)sizeof b - 1); b[n < 0 ? 0 : n] = 0;
+  return t3_json(@{@"ok": @YES, @"queue": items, @"paused": @(paused(page)), @"reason": [NSString stringWithUTF8String:b] ?: @"", @"steers": st, @"turn": @(turn(page))});
+}
+
 // ---- requests -------------------------------------------------------------------------------
 static NSString *t3_handle(NSString *line) {
   NSArray *parts = [line componentsSeparatedByString:@" "];
@@ -194,6 +217,15 @@ static NSString *t3_handle(NSString *line) {
     return t3_json(@{@"ok": @YES});
   }
   if ([op isEqualToString:@"state"]) return t3_state();
+  if ([op isEqualToString:@"box"] && rest.length) {
+    void *page = t3_page();
+    int (*box)(void *, const char *, float *) = dlsym(RTLD_DEFAULT, "cd_box");
+    if (!page || !box) return t3_err(@"no page or cd_box");
+    float b[4] = {0};
+    if (!box(page, rest.UTF8String, b)) return t3_err([NSString stringWithFormat:@"no row %@ shows", rest]);
+    return t3_json(@{@"ok": @YES, @"x": @(b[0]), @"y": @(b[1]), @"w": @(b[2]), @"h": @(b[3])});
+  }
+  if ([op isEqualToString:@"followups"]) return t3_followups();
   if ([op isEqualToString:@"click"] && parts.count >= 3) {
     CGFloat x = [parts[1] doubleValue], y = [parts[2] doubleValue];
     NSInteger n = parts.count >= 4 ? [parts[3] integerValue] : 1;

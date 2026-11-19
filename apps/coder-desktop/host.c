@@ -235,6 +235,7 @@ int cd_copied(void *page, char *out, int cap) {
   return n;
 }
 int cd_editor(void *page, float box[6]) { CoderHost *c = page; return c && coder_page_editor(cd_state(c), (coax_v_f32){box, 6}); }
+int cd_box(void *page, const char *id, float box[4]) { CoderHost *c = page; return c && coder_page_box(cd_state(c), cd_string(id), (coax_v_f32){box, 4}); }
 int cd_style(void *page, float style[14]) { CoderHost *c = page; return c ? coder_page_style(cd_state(c), (coax_v_f32){style, 14}) : 0; }
 // A page with no window, for a chat whose reply goes on out of view: it reads its workers' lines
 // and keeps its text as the window's page does. cd_close frees it.

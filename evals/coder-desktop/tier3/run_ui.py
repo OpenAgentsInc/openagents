@@ -80,6 +80,8 @@ def stage_app(built: Path, run_dir: Path) -> tuple[Path, Path]:
     info = plistlib.loads(plist.read_bytes())
     info["CFBundleIdentifier"] = BUNDLE_ID
     plist.write_bytes(plistlib.dumps(info))
+    # the real worker stays beside the stand-in: the follow-ups flow runs it on recorded answers
+    shutil.copy2(app / "Contents/Resources/mcworker", app / "Contents/Resources/mcworker-real")
     for name in ("mcworker", "claudeworker"):
         w = app / "Contents/Resources" / name
         w.write_text(f'#!/bin/sh\nexec "{sys.executable}" -I "{HERE / "mock_router.py"}" "$@"\n', encoding="utf-8")
@@ -111,6 +113,7 @@ class App:
             "CODER_HOME": str(home / ".openagents/coder/host"), "CODER_RELEASE_HOME": str(home / ".cache/coder-release"),
             "CODER_UPDATE_URL": "", "BROWSER": "/usr/bin/true", "LANG": "en_US.UTF-8",
             "CODER_T3_SOCKET": str(self.sock_path), "CODER_T3_WORKERS": str(wfile), "CODER_T3_RECORD": str(rec),
+            "CODER_T3_REAL_WORKER": str(binary.parent.parent / "Resources/mcworker-real"),
             "DYLD_INSERT_LIBRARIES": str(dylib),
         }
         if self.sock_path.exists():
@@ -291,19 +294,20 @@ class Flow:
             shutil.rmtree(self.home)
         self.home.mkdir(parents=True)
         self.app: App | None = None
+        self.workers: dict = WORKERS
         self.captures = 0
         self.problems: list[str] = []
 
     def launch(self, *args: str, size: tuple[int, int] = (1200, 800)) -> App:
         forget_prefs()
-        self.app = App(self.ctx.binary, self.ctx.dylib, self.home, self.case_dir, WORKERS, list(args))
+        self.app = App(self.ctx.binary, self.ctx.dylib, self.home, self.case_dir, self.workers, list(args))
         self.app.do(f"size {size[0]} {size[1]}")
         time.sleep(0.4)
         return self.app
 
     def relaunch(self, *args: str, size: tuple[int, int] = (1200, 800)) -> App:
         """A second launch on the same HOME (the chats kept), preferences kept."""
-        self.app = App(self.ctx.binary, self.ctx.dylib, self.home, self.case_dir, WORKERS, list(args))
+        self.app = App(self.ctx.binary, self.ctx.dylib, self.home, self.case_dir, self.workers, list(args))
         self.app.do(f"size {size[0]} {size[1]}")
         time.sleep(0.4)
         return self.app
@@ -350,6 +354,12 @@ class Flow:
         if not ok:
             self.problems.append(why)
 
+    def press(self, row: str) -> None:
+        """A click in the middle of the page's row with this id, as drawn."""
+        assert self.app is not None
+        b = self.app.do("box " + row)
+        self.app.do("click %d %d" % (b["x"] + b["w"] / 2, b["y"] + b["h"] / 2))
+
     def records(self, role: str) -> list[dict]:
         out = []
         for f in sorted((self.case_dir / "rec").glob(f"{role}-*.jsonl")):
@@ -369,14 +379,11 @@ class Flow:
 
 
 # Points in a 1200 by 800 window's content (top-left), from the goldens: the sidebar's New chat
-# row, its right edge, the first Recents row and the composer's send / stop button.
+# row, its right edge and the first Recents row. A control the page names is pressed by its id
+# (Flow.press), where it is drawn.
 NEW_CHAT = (70, 26)
-SIDE_EDGE_X = 281
+SIDE_EDGE_X = 270
 FIRST_CHAT = (100, 126)
-
-
-def send_button(w: int, h: int) -> tuple[int, int]:
-    return (w - 78, h - 36)
 
 
 def flow_idle_layouts(f: Flow) -> str:
@@ -415,9 +422,9 @@ def flow_stop(f: Flow) -> str:
     f.send("Run a long analysis")
     app.wait("the reply to run", lambda s: s["running"] == 1, 5)
     time.sleep(0.5)
-    # the sidebar row's spinner and the transcript's typing dots move
-    f.check("streaming_1200x800", masks=[[232, 138, 44, 40], [322, 228, 56, 28]])
-    app.do("click %d %d" % send_button(1200, 800))
+    # the sidebar row's spinner, the thought's spinner and the working line's spinner and clock move
+    f.check("streaming_1200x800", masks=[[232, 138, 44, 40], [400, 140, 30, 30], [385, 240, 140, 35]])
+    f.press("coder.composer.send")
     app.wait("the reply to stop", lambda s: s["running"] == 0, 5)
     stops = [r for r in f.records("main") if r["kind"] == "stop"]
     f.expect(len(stops) == 1, f"{len(stops)} stop lines reached the worker, want 1")
@@ -444,8 +451,8 @@ def flow_sidebar_resize(f: Flow) -> str:
     before = app.state()["side_width"]
     app.do(f"drag {SIDE_EDGE_X} 400 {SIDE_EDGE_X + 90} 400 15")
     st = app.wait("the width to be kept", lambda s: s["side_width"] > 0, 3)
-    # kept in the page's units: points / 1.2 at the usual text size, so 371 points is about 309
-    f.expect(before == 0 and 295 <= st["side_width"] <= 325, f"side width {before} -> {st['side_width']}, want about 309")
+    # kept in the page's units, points since #13737: the edge at 270 dragged 90 further is about 360
+    f.expect(before == 0 and 345 <= st["side_width"] <= 375, f"side width {before} -> {st['side_width']}, want about 360")
     f.check("sidebar_resized_1200x800")
     return "sidebar resize"
 
@@ -488,6 +495,108 @@ def flow_quit_reopen(f: Flow) -> str:
     return "quit and reopen"
 
 
+def act(reply: str = "", commands: list[str] | None = None) -> dict:
+    return {"action": {"rationale": "r", "commands": commands or [], "view": [], "finished": not commands, "reply": reply, "ask": "none"}}
+
+
+# The real worker (#13718) on these answers, in order, shared by every worker of the flow: turn 1
+# runs a command while the person steers and queues, then takes the steer and finishes; the first
+# follow-up runs a command and Esc stops it; after a relaunch Resume runs the second.
+FOLLOWUPS = {"real": {"answers": [act(commands=["sleep 4"]), act("Fixed the parser, and the empty string is covered too."),
+                                  act(commands=["sleep 3"]), act("Added the changelog entry.")]}}
+FU_ASK, FU_STEER = "Fix the parser", "Also cover the empty string"
+FU_QUEUED = ["Then update the docs", "And add a changelog"]
+# Turn 2's activity row says "Ran 1 command", or "1 failed" when the command was stopped as it
+# started (a slow machine): masked.
+FU_MASK = [[380, 395, 420, 25]]
+
+
+def flow_followups(f: Flow) -> str:
+    """Steer a running reply and queue two follow-ups; Esc stops the first and pauses the queue; after a relaunch the queue is back and Resume runs it"""
+    f.workers = FOLLOWUPS
+    app = f.launch()
+    f.send(FU_ASK)
+    app.wait("turn 1 to run", lambda s: s["running"] == 1, 5)
+    deadline = time.time() + 5
+    while app.do("followups")["turn"] != 1:
+        if time.time() > deadline:
+            raise FlowFailed("the worker never said turn 1 started")
+        time.sleep(0.1)
+    # Return steers while a reply runs; Command-Return queues. The host takes each draft on its next
+    # frame: the next one is typed once the composer is empty again.
+    def taken(what: str) -> None:
+        deadline = time.time() + 5
+        while app.do("composer")["text"] != "":
+            if time.time() > deadline:
+                raise FlowFailed(f"the composer kept the draft after {what}")
+            time.sleep(0.05)
+    f.send(FU_STEER)
+    taken("Return")
+    for text in FU_QUEUED:
+        app.do("type " + text)
+        app.do("key cmd+return")
+        taken("Command-Return")
+    time.sleep(0.3)
+    # the worker reads lines between steps, so the queue it says back can come after the command
+    fu = app.do("followups")
+    f.expect(len(fu["steers"]) == 1, f"steers while turn 1 runs: {fu}")
+    # the steer is taken in (applied), turn 1 ends, and the queue's head starts on its own as turn 2
+    fu = None
+    deadline = time.time() + 20
+    while True:
+        fu = app.do("followups")
+        if fu["turn"] == 2 and app.state()["running"] == 1:
+            break
+        if time.time() > deadline:
+            raise FlowFailed(f"the queue's head never started; {fu}")
+        time.sleep(0.1)
+    f.expect(fu["steers"] == [3], f"the steer's status after turn 1: {fu['steers']}, want [3] (applied)")
+    f.expect(fu["queue"] == FU_QUEUED[1:], f"queue as turn 2 runs: {fu['queue']}")
+    # Esc stops the reply; the queue pauses with what is left. Turn 2's model call is a recorded
+    # answer, so 1.5 s in its command runs: the worker reads the interrupt when the command ends and
+    # stops before its next step (an Esc before the call would stop it with no command, and the
+    # flow's next answer would go to turn 3).
+    time.sleep(1.5)
+    app.do("key escape")
+    app.wait("turn 2 to stop", lambda s: s["running"] == 0, 15)
+    deadline = time.time() + 5
+    while not (fu := app.do("followups"))["paused"]:
+        if time.time() > deadline:
+            break
+        time.sleep(0.1)
+    f.expect(fu["paused"] == 1 and fu["reason"] == "interrupted" and fu["queue"] == FU_QUEUED[1:], f"after Esc: {fu}")
+    main = f.records("main")
+    kinds = [r["kind"] for r in main]
+    f.expect(kinds.count("steer") == 1 and kinds.count("interrupt") == 1, f"lines to the worker: {kinds}")
+    adds = [r["msg"].get("text") for r in main if r["kind"] == "queue" and r["msg"].get("queue") == "add"]
+    f.expect(adds == FU_QUEUED, f"queue adds {adds}")
+    f.check("followups_paused_1200x800", masks=FU_MASK)
+    app.quit()
+    f.app = None
+    # the kept chat opens again with no worker on it: its queue is back from the file, paused
+    app = f.relaunch()
+    app.do("click %d %d" % FIRST_CHAT)
+    app.wait("the kept chat to open", lambda s: s["title"] == FU_ASK, 5)
+    time.sleep(0.5)
+    fu = app.do("followups")
+    f.expect(fu["queue"] == FU_QUEUED[1:] and fu["paused"] == 1 and fu["turn"] == 0, f"restored: {fu}")
+    f.check("followups_restored_1200x800", masks=FU_MASK)
+    # Resume starts a worker on the chat, which runs the queued message as turn 3
+    f.press("coder.fu.resume")
+    st = app.wait("the queued message to run and end", lambda s: s["running"] == 0 and app.do("followups")["turn"] >= 1 and not app.do("followups")["queue"], 20)
+    fu = app.do("followups")
+    f.expect(fu["queue"] == [] and fu["paused"] == 0, f"after Resume: {fu}")
+    f.expect(st["title"] == FU_ASK, f"title {st['title']!r}")
+    time.sleep(0.5)
+    f.check("followups_resumed_1200x800", masks=FU_MASK)
+    # the kept chat has the steer in turn 1, and the queued turns
+    kept = [json.loads(p.read_text()) for p in f.chats()]
+    turns = kept[0]["turns"] if len(kept) == 1 else []
+    f.expect([t["ask"] for t in turns] == [FU_ASK, *FU_QUEUED], f"kept turns {[t['ask'] for t in turns]}")
+    f.expect(bool(turns) and turns[0].get("steers") == [FU_STEER], f"kept steers {turns[0].get('steers') if turns else None}")
+    return "follow-ups"
+
+
 FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("idle_layouts", flow_idle_layouts),
     ("send_stream_new_chat", flow_send_stream),
@@ -496,6 +605,7 @@ FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("sidebar_resize", flow_sidebar_resize),
     ("settings", flow_settings),
     ("quit_reopen", flow_quit_reopen),
+    ("followups", flow_followups),
 ]
 
 
