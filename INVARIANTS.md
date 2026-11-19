@@ -6791,73 +6791,6 @@ The synchronized two-rig GPU upload stays within the inspector's combined
 64 MiB limit. Metrics and frame hashes are recorded in
 `docs/verification/animation-lab-a2-2026-11-06/README.md`.
 
-## Ocarina Lab retains its complete private source scene across rendering
-
-`ocarina-lab` / `ocarinalab` is an exact tracked legacy renderer admission and an
-unlisted realm. Its owner-local VPK1 pack is gated by complete SHA-256 and byte
-count before upload. No extracted game payload belongs in Git or a public
-build. Local loading retains the existing `?pack` opt-in.
-
-The KOC1/KOC2 catalogue binds disjoint complete OCL1 rig and KCG1 collision streams,
-finite spawn, and bounded GPU byte/index/material/texture counts. Full collision
-validation checks finite coordinates, complete disjoint spans, contiguous cell
-tables and sorted in-range triangle references before retaining any view. The
-96 MiB browser staging buffer becomes immutable after admission: the rig is
-copied, while collision borrows that retained buffer without a second 55 MiB
-copy. A replacement asset request cannot overwrite the live borrowed source.
-Readiness requires the catalogue, rig, collision, whole-pack identity and every
-exact declared upload. Device recovery retains these owners.
-
-KOC2 retains KOC1 compatibility and binds an 80-byte header with complete,
-triangle-aligned opaque/water index spans. Source water draws after opaque
-geometry using the existing alpha-blend ABI; it does not cast a solid shadow.
-The coincident back-flow helper is suppressed. Ground projection uses tiling
-source moss/soil maps, never a padded UV atlas. Sky, clouds, sun, ripples,
-Fresnel reflection and height haze remain explicit renderer adaptations.
-
-Fixed foliage (kind 14) bakes original silhouette views into world-space crossed
-cards. Camera motion cannot select or rotate branch geometry, including shadow
-geometry. Source images remain unresized with repeated atlas gutters; native
-plant generation/wind/depth remain unrecovered. Play pitch is bounded, and the
-light-space shadow origin snaps to a fixed texel lattice.
-
-The delegated Coax OCL1 gate requires the complete 309-joint/eight-clip profile, ordered
-parents, finite inverse binds, unit quaternions, positive finite scale tracks,
-whole disjoint payloads and the exact total size. Source flags preserve Maya SSC;
-playback keeps an unscaled world basis separately and never divides by parent
-scale. The exact content gate and structural gate remain independent.
-
-Material import resolves original hash strings and texture aliases, preserves
-UV1 hair coverage, BNTX block height and component selectors. Special shader
-responses remain documented Metaverse Engine approximations. The procedural forest is
-replaced by original source scenery and ground. Original Phive physical and
-smooth stair geometry joins the dense rendered ground fallback in a conservative
-two-metre collision index. Each paid 1/64-second step resolves source grounding
-and capsule contacts before committing history and following the camera. Camera
-segments query the same source index, including walls and ceilings. Reset uses a tested clearing on the original village floor.
-
-The original child standing controller is a prism (radius 0.23 m, head 1.17 m,
-shoulder 1.02 m, step 0.35 m); the lab explicitly approximates it with a capsule.
-Three-pass depenetration, two-sided floors and a 55-degree steep-face split do
-not reproduce Havok margins, filters, continuous sweeps or the original slope
-rules. One cylinder remains omitted. The source 256 MiB Wasm memory declaration,
-256 MiB GPU storage ceiling and dynamic four-GiB resident budget cover retained
-encoded source, source geometry and every mipmapped texture layer. See
-`docs/metaverse/2026-11-06-ocarina-lab.md` for reconstruction and verification evidence.
-
-During play the controller owns planar translation. The sampled carrier's X/Z
-transport is removed after pose blending, including inspector-to-play blends;
-original rotations and raw inspection tracks survive. During physical jump/backflip\nonly, the actor owns carrier Y too, preventing a second vertical displacement.
-Locomotion limits come from original carrier distance/duration, and gait time
-uses actual collision-resolved travel, not an extra animated world displacement
-or unresolved velocity. The source 30-fps assumption remains explicit; original
-controller physics and its transition graph have not been fully recovered.
-The child gameplay jump/backflip height, gravity-scale and backflip-speed values
-are pinned in `metaverse/ocarina/controller.coax`. Their ballistic launch mapping and
-absolute gravity remain explicit Metaverse Engine adaptations. Backflip captures facing,
-uses normal source collision, refuses airborne restarts and recovers after landing
-and the selected clip. Analog input retains magnitude above the Metaverse Engine's dead zone.
-
 ## Animation performance sampling is bounded and starts from source each frame
 
 `metaverse-engine/anim/layers.coax` evaluates an admitted performance from immutable
@@ -7037,25 +6970,6 @@ and remixed cliff retain explicit provenance; no original scene recovery,
 pixel equality or shared/native renderer qualification is inferred.
 See `docs/metaverse/character-glade.md` and
 `docs/verification/character-glade-source-parity-2026-11-06/`.
-
-## Everglade's private Link experiment is reversible and keeps room authority
-
-The unlisted `experiments/link-raid` page admits an owner-local combined pack.
-OCL2 keeps OCL1's layout and full admission checks, with source file 03's original
-Rolling_Short in slot seven; it cannot silently relabel the OCL1 facial clip.
-The face owns bounded rig storage outside gameplay snapshots. Source skinning
-preserves all eight 16-bit joint indices, source scales and SSC. The extra draw
-replaces only the local standing avatar; water remains the final blended draw.
-Shift+L restores the ordinary avatar and cancels the action. Spell controls and
-remote characters retain their existing paths. The raid and Ocarina Lab share
-`metaverse/ocarina/locomotion.coax` and the character FMAT evaluator. Versioned J1
-inputs retain profile/action/heading through client prediction and room replay;
-ordinary I input retains its published meaning. Room collision and combat rules
-still apply. This is Lab-port parity, not a claim of fully recovered native
-controller physics. VPK2 carries the 60 original texture maps without vertex
-colour baking; VPK1's 48-entry bound and the registry's 64-slot bound remain.
-See `docs/metaverse/2026-11-06-everglade-link-experiment.md` and
-`docs/protocol/everglade-link-input-v1.md` for fidelity, controls and rollback.
 
 ## Native character detail keeps CPU draws and GPU coverage coherent
 

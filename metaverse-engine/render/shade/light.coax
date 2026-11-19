@@ -68,9 +68,9 @@ metaverse_style_haze_hue :: (h:f32,ch:f32,f:f32,cap:f32)->f32 #export_c #effects
 }
 
 
-// ---- 4b. Atmosphere: forward scattering and the near/far window (Ore, Ocarina noon fog)
+// ---- 4b. Atmosphere: forward scattering and the near/far window
 // The Mie phase of air with anisotropy g (Henyey-Greenstein), scaled so still air (g = 0) is 1:
-// with g near .62-.70, as Ocarina's open-field fog, haze looking toward the sun glows warm and
+// with g near .62-.70, as in open-field fog, haze looking toward the sun glows warm and
 // looking away stays sky blue. vdl is the view ray's cosine to the key light.
 metaverse_style_haze_phase :: (vdl:f32,g:f32)->f32 #export_c #effects(all) {
  g2:=g*g;d:=st_max(1.0f32+g2-2.0f32*g*st_max(-1.0f32,st_min(1.0f32,vdl)),0.0001f32);

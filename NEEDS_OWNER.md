@@ -1574,14 +1574,6 @@ The Mac was not available to the agent:
       shortened ID: three reader calls, all conversation/context pages and
       no shell commands. An already running thread keeps its earlier catalog.
 
-### Ocarina Lab: continuous forward locomotion
-
-- [ ] Reload an already open Ocarina Lab page to load the root-motion correction.
-      The local page is `http://127.0.0.1:8837/worlds/ocarina-lab?pack`. The rebuilt
-      Wasm removes the repeated backward chop and synchronizes gait with resolved
-      travel. Automated real-source and browser loop checks passed; no new asset
-      download is needed.
-
 ### Echo native recording: controlled GPU timing (#12984, November 7)
 
 - [ ] Pause competing 3D/GPU previews for one minute, then signal that the

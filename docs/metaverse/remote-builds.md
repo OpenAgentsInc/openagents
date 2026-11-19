@@ -222,7 +222,7 @@ saved; the report line of each job does.
 modules are the old set (#13269): v1 Everglade (`everglade`, `fivemmo`,
 `everglade5e`), Experimental and the 5E Lab (`fivelab`), the lab pages
 (`animationlab`, `animelab`, `audiolab`, `bitcoin-lab`, `bitcoin-lab-walk`,
-`coax-lab-walk`, `metahumanlab`, `nostr-lab-walk`, `ocarinalab`, `portallab`,
+`coax-lab-walk`, `metahumanlab`, `nostr-lab-walk`, `portallab`,
 `splatlab`, `valleylab`, `waterlab`) and two engine fixtures (`cullstream`
 with its fixture tool step, and `state-lab`). Their lines in `build.sh` start
 with `old`, and they build only under `COAXIAL_PAGES=all`. The actor fixture

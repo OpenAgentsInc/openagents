@@ -691,16 +691,6 @@
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
         "assets": ["local:/private/animation-lab.bundle", "local:/private/animation-lab.performance.json", "local:/private/animation-lab.contact.clip.json"]
       } },
-    { "id": "ocarinalab", "name": "OCARINA LAB", "kind": "open", "listed": false,
-      "orbit": { "r": 0.45, "a": 5.6, "size": 0.018 },
-      "realm": {
-        "slug": "ocarina-lab", "title": "Ocarina Lab", "module": "ocarinalab", "slot": "ocarina-lab",
-        "style": "lowpoly", "clock": "fixed:0.5", "timing": true,
-        "description": "A private source character workbench: Link's original rig, eight skin influences, recovered materials and source locomotion in a walkable Metaverse Engine forest.",
-        "alt": "Link exploring a winding forest path in Ocarina Lab",
-        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
-        "assets": ["private:ocarina-lab"]
-      } },
     { "id": "painted", "name": "PAINTED VILLAGE", "kind": "open", "listed": false, "orbit": { "r": 0.38, "a": 0.9, "size": 0.02 },
       "realm": {
         "slug": "painted-village", "style": "lowpoly", "clock": "fixed:0.5",

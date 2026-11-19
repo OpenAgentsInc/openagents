@@ -962,7 +962,7 @@ Everglade is lit as Character Create's glade (docs/metaverse/character-glade-lig
 owner's request to rebuild it with that lighting and foliage:
 
 - `metaverse_style_glade_light` (metaverse/style-preset.coax), applied after `metaverse_style_no_outlines`:
-  smooth light (band softness .30) in place of hard cel bands, as Ocarina shades; at noon a
+  smooth light (band softness .30) in place of hard cel bands; at noon a
   4500 K sun under a 6500 K white balance at 1.2; olive, not blue, shadows (shadow cool .6); clear
   air to 70 m, thinner haze (density .007, cap .45) with a gold glow toward the sun; the glade's
   soft-knee bloom (.62, .30) and saturation 1.16. Night, dawn and dusk keep their keys.

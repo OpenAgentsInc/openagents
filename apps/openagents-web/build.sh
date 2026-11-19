@@ -341,8 +341,6 @@ timed villa "$here/../../coax/web/wasm.sh" "$here/villa.coax" "$here/villa-face.
 villa=$!
 old timed animationlab "$here/../../coax/web/wasm.sh" "$here/old/labs/animationlab.coax" "$here/old/labs/animationlab-face.c" "$here/build/animationlab.wasm" &
 animationlab=$!
-old timed ocarinalab "$here/../../coax/web/wasm.sh" "$here/old/labs/ocarinalab.coax" "$here/old/labs/ocarinalab-face.c" "$here/build/ocarinalab.wasm" &
-ocarinalab=$!
 # /worlds/fixture: the realm host's test world, the smallest realm module.
 timed fixture "$here/../../coax/web/wasm.sh" "$here/fixture.coax" "$here/fixture-face.c" "$here/build/fixture.wasm" &
 fixture=$!
@@ -619,7 +617,6 @@ wait "$microduck_bay"
 wait "$valleycanyon"
 wait "$characterhost"
 wait "$animationlab"
-wait "$ocarinalab"
 wait "$valleyworld"
 wait "$importworld"
 wait "$droprealm"

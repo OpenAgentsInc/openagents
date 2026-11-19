@@ -74,7 +74,6 @@ static double now;
 static float width, height, dpr;
 static uint8_t inbox[16384];
 static uint8_t catalog[16777216];
-static uint8_t link_data[12582912];
 static coax_t_Track track_state;
 static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everglade-track.coax)
 #define NPC_URL "/api/playtest/npc/ask"
@@ -448,7 +447,6 @@ uint32_t coaxial_frame(cx_face_addr state, cx_face_addr vertices, cx_face_addr u
     // held or busy (the map, a talk, a board, down) nothing of yours moves you here: none is sent,
     // so the server, which doesn't know you are busy, doesn't walk you on while the page stands
     if (busy) { input.key_x = 0; input.key_y = 0; input.pad_x = 0; input.pad_y = 0; input.jump = false; }
-    input = everglade_link_input(at(state), input);
     input = net_as_sent(at(state), input);
     step_jump = step_jump || input.jump;
     if (net_fix_due(at(state))) {
@@ -1007,10 +1005,7 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(cx_face_addr st
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(cx_face_addr state, int32_t i, uint32_t bytes) {
   start(state);
-  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) {
-    everglade_link_storage(at(state), (coax_v_u8){link_data, sizeof link_data});
-    everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
-  }
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
   if (i >= 0 && i <= 3 && bytes == 0) everglade_pack_failed(at(state));
 }
 
@@ -1105,7 +1100,6 @@ static void guide_out(cx_face_addr state) {
   everglade_guide_view(at(state), ggs_view(guides(), ms), observation, ggp_offer(facts), ms);
 }
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(cx_face_addr state, int32_t field) {
-  if (field >= 300 && field <= 305) return (int32_t)everglade_link_probe(at(state), field);
   if (field == 248) return guide_authenticated ? 1 : 0;
   if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
   if (field >= 200) return (int32_t)ggs_probe(guides(), field);
@@ -1125,6 +1119,5 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_DemoWorld(&demo_world);
 }
 
-EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)everglade_link_layer_side(at(state)); }
 
 EXPORT("coaxial_player_appearance_v1") uint32_t coaxial_player_appearance_v1(void) {return 1u;}

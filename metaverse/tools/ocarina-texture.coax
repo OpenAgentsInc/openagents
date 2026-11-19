@@ -1,4 +1,0 @@
-// Decode original single-image textures using the shared bounded BNTX helpers.
-// tool.sh: stack-gib 2
-#load "ocarina-texture-core.coax";
-tool_main :: ()->int #export_c #effects(all) {args:[1]Args;if !args_load(args[..]) || args_count(args[..])!=4 {return 2;}source:=args_at(args[..],0);dest:=args_at(args[..],1);#assert fs_mkdir(dest) || fs_kind(dest)==2;list:[1]FsList;#assert fs_list(source,list[..])>=0 && !list[0].full;path:[4096]u8;for k:0..<list[0].n {name:=fs_entry(list[..],k);if name.count>=5 && name[name.count-5..<name.count]==".bntx" {ot_decode(fs_join(source,name,path[..]),dest,args_at(args[..],2),args_at(args[..],3));}}return 0;}

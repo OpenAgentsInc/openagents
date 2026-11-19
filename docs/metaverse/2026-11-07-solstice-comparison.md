@@ -160,8 +160,8 @@ our main target. Solstice stopped at BC because the good ASTC and ETC2
 encoders wrap C++. iPhones expose ASTC, so we should go past them here:
 
 - Write an offline ASTC and BC encoder in Coax as a tool.
-  `metaverse/tools/ocarina-texture-core.coax` already decodes both against
-  reference runners, which gives us an oracle.
+  The pinned bcdec runner and ARM astcenc decode both, which gives us an
+  oracle.
 - Choose a format per device through `requiredFeatures`.
 - Keep the RGBA8 fallback.
 

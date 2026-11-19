@@ -94,7 +94,7 @@
 
 // The one key light every glade material reads (Metaverse Engine book ch. 13: one lighting record).
 paint_sun_dir :: ()->V3 {return normalize3(v3(ENV_GLADE_SUN_X,ENV_GLADE_SUN_Y,ENV_GLADE_SUN_Z));}
-// Ore's Ocarina noon: a 4500 K sun under 6500 K white balance (metaverse-engine/render/shade/light.coax 4c), decoded once.
+// Noon: a 4500 K sun under 6500 K white balance (metaverse-engine/render/shade/light.coax 4c), decoded once.
 paint_sun_colour :: ()->V3 {
  return scale3(transfer_decode(v3(metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,0),metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,1),metaverse_style_balanced(ENV_GLADE_KELVIN,ENV_GLADE_WHITE,2))),ENV_GLADE_INTENSITY);
 }

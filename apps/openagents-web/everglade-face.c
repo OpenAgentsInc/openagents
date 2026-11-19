@@ -44,7 +44,6 @@ static double now;
 static float width, height, dpr;
 static uint8_t inbox[16384];
 static uint8_t catalog[16777216];
-static uint8_t link_data[12582912];
 static coax_t_Track track_state;
 static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everglade-track.coax)
 #define NPC_URL "/api/playtest/npc/ask"
@@ -628,10 +627,7 @@ EXPORT("coaxial_asset_capacity") uint32_t coaxial_asset_capacity(uint32_t state,
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
   start(state);
-  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) {
-    everglade_link_storage(at(state), (coax_v_u8){link_data, sizeof link_data});
-    everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
-  }
+  if (i == 0 && bytes > 0 && bytes <= sizeof catalog) everglade_catalog(at(state), (coax_string){(const char *)catalog, bytes});
   if (i >= 0 && i <= 3 && bytes == 0) everglade_pack_failed(at(state));
 }
 
@@ -739,4 +735,3 @@ __attribute__((constructor)) static void coaxial_face_defaults(void) {
   coax_default_t_DemoWorld(&demo_world);
 }
 
-EXPORT("coaxial_layers_side_v1") uint32_t coaxial_layers_side_v1(cx_face_addr state) { return (uint32_t)everglade_link_layer_side(at(state)); }

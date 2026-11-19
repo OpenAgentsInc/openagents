@@ -6,7 +6,7 @@
 //   fp_refusals   how many refusals the profile names (a check asks for three at least)
 //   fp_refuse     damages the fixture as refusal i says; the tool's reader must then refuse it
 // The engine's formats: metaverse-engine/tools/format-profile.coax. A realm tool's own format
-// brings its own tool (metaverse/tools/ocarina-material-profile.coax), since the engine loads no realm tool.
+// brings its own tool under metaverse/tools/, since the engine loads no realm tool.
 #load "../../coax/lib/json/json.coax";
 
 FP_MAX :: 8192;       // a fixture's bytes at most

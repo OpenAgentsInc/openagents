@@ -70,7 +70,7 @@ Verse now:
 | 7 | **Crowds as structure-of-arrays with LOD and representation tiers**, on the server and the page | Mass Entity, MassLOD, MassRepresentation, MassReplication | Raids put up to 64 raiders, 38 townsfolk and creatures in one square | Adapt a simplified version |
 | 8 | **WebGPU delivery lessons:** pipeline prewarm lists, render bundles, no indirect dispatch in hot loops, CPU-ahead pacing, per-GPU texture sets | UE Wasm platform docs and `WebGPURHI` | First visits compile every shader; Chrome's shader cache is 6 MiB for all sites | Adapt the idea |
 | 9 | **Motion matching, small and deterministic**, for locomotion starts, stops and turns | PoseSearch, UAF | ECH1 has 24 fixed clips selected by a graph; transitions are the most visible "game feel" gap | Adapt a simplified version |
-| 10 | **A derived-data cache keyed by input hashes and tool version**, shared across agents and remote hosts, plus Range-streamed pack chunks | DDC, Zen, IoStore on-demand | Packers (Kokiri, Valley, page packs) rerun per worktree; packs download whole | Adapt a simplified version |
+| 10 | **A derived-data cache keyed by input hashes and tool version**, shared across agents and remote hosts, plus Range-streamed pack chunks | DDC, Zen, IoStore on-demand | Packers (Valley, page packs) rerun per worktree; packs download whole | Adapt a simplified version |
 
 Nanite, Lumen, MegaLights and virtual shadow maps are not in the top ten.
 Their web-feasible cores are already on our roadmap (the cluster DAG in
@@ -646,7 +646,7 @@ confirms the choice.
 - `coax/remote/pages.sh` to fetch main's built pages.
 
 **The gap.**
-- Derived outputs (Kokiri, Valley and page packs, encoded textures) aren't
+- Derived outputs (Valley and page packs, encoded textures) aren't
   cached by input hash across worktrees or hosts, so agents rebuild them.
 - Packs download whole; there's no per-chunk Range streaming.
 - There's no queryable dependency index across realms.

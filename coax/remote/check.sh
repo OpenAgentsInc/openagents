@@ -379,10 +379,8 @@ packs_admitted() {
 # driver, built here with face addresses as pointers and as 32-bit offsets, over fixtures Coax
 # writes; and the browser's pack module reports the same entries from the same pack.
 host_core() { step host-core coax/web/tool.sh metaverse-engine/host/core/conformance.coax check "$PWD" coax/web/build/host-core --web || status=1; }
-# The engine's four-character stored formats hold their profiles (proto/aethyr/, #13304), and the
-# Ocarina import's material records hold theirs (proto/verse/).
+# The engine's four-character stored formats hold their profiles (proto/aethyr/, #13304).
 format_profiles() { step format-profiles coax/web/tool.sh metaverse-engine/tools/format-profile.coax proto/aethyr/echo-pack-ech1.json proto/aethyr/face-pack-efc1.json proto/aethyr/face-rig-frg1.json proto/aethyr/resource-manifest-rcm1.json proto/aethyr/fact-state-fst1.json proto/aethyr/checkpoint-ack1.json proto/aethyr/transport-manifest-htp1.json proto/aethyr/paged-pack-vpk3.json || status=1;
-  step format-profile-ocm1 coax/web/tool.sh metaverse/tools/ocarina-material-profile.coax proto/verse/ocarina-material-pack-ocm1.json || status=1
 }
 # The frame plan's numbers for C hosts (#13303): metaverse-engine/host/frame-plan.h is what metaverse-engine/render/graph/frame-plan.coax
 # writes. Committed, because a host's build takes no Coax step for it; compared with its source here.

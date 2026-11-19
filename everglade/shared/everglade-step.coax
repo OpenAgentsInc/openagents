@@ -17,9 +17,7 @@
 #load "../../metaverse-engine/physics/query.coax" as hull_query;
 #load "everglade-move-types.coax";
 #load "../../metaverse-engine/action/sprint.coax" as sprint;   // the engine's sprint, for the Dash checks
-#load "../../metaverse-engine/core/math.coax" as link_math;
 #load "../../metaverse-engine/physics/collision-profiles.coax" as link_collision;
-#load "../../metaverse/ocarina/locomotion.coax" as link_motion;
 
 eg_step_body :: (p: walk.Body) -> EgBody #export_c #effects(reads, writes, traps) {
   return EgBody.{x = p.pos.x, y = p.pos.y, z = p.pos.z, px = p.prev_pos.x, py = p.prev_pos.y, pz = p.prev_pos.z,
@@ -33,10 +31,11 @@ eg_step_put :: (p0: walk.Body, b: EgBody) -> walk.Body #export_c #effects(reads,
   if b.air { p.act = walk.Act.airborne; }
   return p;
 }
-// The complete profile travels with each input and its replay, not an unreplicated local impulse.
+// The Dash (link flag 512) travels with each input and its replay, not an unreplicated local impulse.
+// No other flag moves you: the wire keeps the field, the step reads only 512.
 eg_step_world :: (w0:EgMoveWorld,input:EgMoveIn)->EgMoveWorld #export_c #effects(all) {
- w:=w0;w.link_flags=input.link_flags;w.link_yaw=input.theta;
- if w.busy || w.still {w.link_flags&=288;}if w.aboard {w.link_flags=0;}return w;
+ w:=w0;w.link_flags=input.link_flags&512;w.link_yaw=input.theta;
+ if w.busy || w.still || w.aboard {w.link_flags=0;}return w;
 }
 // book:begin shared-step
 // Before the advance: a blast's throw into your velocity; held or busy, no input of yours; your input;
@@ -52,12 +51,6 @@ eg_step_begin :: (p0: walk.Body, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> wa
   if (w.link_flags & 512) != 0 && !w.busy && !w.still { p.key_x = 0; p.key_y = 1; p.pad_x = 0; p.pad_y = 0; p.run = true; }
   p.pace = w.pace; p.grip = w.grip;
   p.yaw = input.theta;   // the view's yaw from the wire: the step's input
-  if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
-  if (w.link_flags&128)!=0 {
-    p.face=input.theta;
-    if p.on_ground && p.jumps.waiting>0 {p.vel.x= -link_math.math_sin(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.z= -link_math.math_cos(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.y=link_motion.ocl_launch(link_motion.OCL_FLIP_HEIGHT,16*link_motion.OCL_FLIP_GRAVITY);p.on_ground=false;p.jumps.waiting=0;}
-    else if p.on_ground {p.key_x=0;p.key_y=0;}
-  }
   if !p.on_ground { p.vel.y += w.low_grav * dt; }
   return p;
 }
@@ -78,14 +71,6 @@ eg_step_advance_among :: (p0: walk.Body, w: EgMoveWorld, bodies: [] f32, walls: 
     return p;
   }
   if !w.deck && bodies.count >= 7 && p.pos.y > 0.6 { bodies[4] = 1.9; bodies[6] = 0.62; }
-  if (w.link_flags&32)!=0 {
-    profile:=link_collision.collision_profile_lookup("ocarina-lab");
-    world:=walk.World.{bodies=bodies,walls=walls,floors=floors,hulls=hulls,collision=profile.profile,locomotion=link_motion.ocl_locomotion(link_motion.OCL_WALK_SPEED,link_motion.OCL_RUN_SPEED,(w.link_flags&128)!=0,(w.link_flags&256)!=0,(w.link_flags&64)!=0)};
-    p=walk.body_advance_in(world,p,frame);
-    if (w.link_flags&128)!=0 {p.face=w.link_yaw;if p.on_ground {p.vel.x=0;p.vel.z=0;}}
-    if (w.link_flags&64)!=0 {p.face=w.link_yaw-walk.PI;}
-    return p;
-  }
   if (w.link_flags & 512) != 0 {
     profile := link_collision.collision_profile_lookup("everglade");
     world := walk.World.{bodies = bodies, walls = walls, floors = floors, hulls = hulls, collision = profile.profile};
@@ -263,19 +248,11 @@ eg_test_step :: (p0: walk.Body, key_y: f32, jump: bool) -> walk.Body #effects(re
   #assert abs(after.x - before.x) + abs(after.z - before.z) < 0.002;
 }
 
-#test "step: Link uses Lab launch and source speeds on both prediction and room replay" {
- p:=walk.body_place(0,0,0,0);none:[1]f32;w:=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=32,key_y=1,theta=0});
- for k:0..<64 {p=eg_step_begin(p,EgMoveIn.{link_flags=32,key_y=1,theta=0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}
- #assert p.pos.z< -0.58 && p.pos.z> -0.7;
- p=walk.body_place(0,0,0,0);peak:f32=0;w=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=288,jump=true});
- for k:0..<100 {p=eg_step_begin(p,EgMoveIn.{link_flags=288,jump=k==0},w,1.0f32/64);p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);peak=walk.hi(peak,p.pos.y);}
- #assert peak>0.66 && peak<0.71 && p.on_ground;
-}
-
-#test "step: Link backflip launches at source speed and keeps captured facing across camera input" {
- p:=walk.body_place(0,0,0,0);i:=EgMoveIn.{key_y=1,jump=true,link_flags=160,theta=0.7};w:=eg_step_world(EgMoveWorld.{},i);p=eg_step_begin(p,i,w,1.0f32/64);
- #assert !p.on_ground && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)>6.79999 && sqrt(p.vel.x*p.vel.x+p.vel.z*p.vel.z)<6.80001 && p.vel.y>2.9 && p.face==0.7;
- none:[1]f32;for k:0..<32 {p=eg_step_advance(p,w,none[0..<0],none[0..<0],none[0..<0],1.0f32/64);}#assert p.on_ground && p.face==0.7 && p.vel.x==0 && p.vel.z==0;
+#test "step: only the Dash flag reaches the step; busy, still and aboard drop it" {
+ w:=eg_step_world(EgMoveWorld.{},EgMoveIn.{link_flags=32|64|128|256|512});#assert w.link_flags==512;
+ w=eg_step_world(EgMoveWorld.{busy=true},EgMoveIn.{link_flags=512});#assert w.link_flags==0;
+ w=eg_step_world(EgMoveWorld.{still=true},EgMoveIn.{link_flags=512});#assert w.link_flags==0;
+ w=eg_step_world(EgMoveWorld.{aboard=true},EgMoveIn.{link_flags=512});#assert w.link_flags==0;
 }
 
 #test "experimental dash runs forward faster and cannot pass a wall" {
@@ -338,7 +315,7 @@ eg_step_advance_jump :: (p0:walk.Body,w:EgMoveWorld,bodies:[]f32,walls:[]f32,flo
   // a Dash's sprint (link flag 512, metaverse-engine/action/sprint.coax) always takes the scaled path: its pace is
   // the scale, the sprint over the run, in as many collision steps as it needs
   if scale==1 && !shaped && (w.link_flags&512)==0 { return eg_step_advance(p,w,bodies,walls,floors,frame); }
-  if !walk.finite(scale) || scale<0 || w.aboard || (w.link_flags&32)!=0 {
+  if !walk.finite(scale) || scale<0 || w.aboard {
     return walk.body_collision_report(p0,scaled_collision.CollideResult.{status=scaled_collision.CollideStatus.bad_profile});
   }
   if scale==0 { p.vel.x=0; p.vel.z=0; }
@@ -383,10 +360,10 @@ eg_step_advance_jump :: (p0:walk.Body,w:EgMoveWorld,bodies:[]f32,walls:[]f32,flo
 #test "combat walking rate refuses unsupported profiles and stops horizontal motion at zero" {
   p:=walk.body_input(walk.body_place(0,0,0,0),0,1,0,0,true,false,f32(walk.PI)); p.vel.z=7.5;
   empty:[1]f32; zero:f32=0;
-  for mode:0..<5 {
+  for mode:0..<4 {
     w:=EgMoveWorld.{deck=true}; rate:f32=2;
     if mode==0 { rate= -1; } if mode==1 { rate=zero/zero; } if mode==2 { rate=1/zero; }
-    if mode==3 { w.aboard=true; } if mode==4 { w.link_flags=32; }
+    if mode==3 { w.aboard=true; }
     q:=eg_step_advance_scaled(p,w,empty[0..<0],empty[0..<0],empty[0..<0],f32(walk.STEP),rate);
     #assert q.collision_status==scaled_collision.CollideStatus.bad_profile && q.pos.z==p.pos.z && q.clock.ticks==p.clock.ticks;
   }

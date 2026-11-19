@@ -58,9 +58,8 @@ The same materials as block formats, at the same sizes (the audit's projection):
 - **The encoder.** `metaverse-engine/render/texture-encode.coax` writes BC7 (mode 6), BC4/BC5 and
   ASTC 4x4 and 6x6 (one partition, LDR, binary ranges; colour, colour with alpha, and
   dual-plane normals with X in `.r` and Y in `.a`). `metaverse-engine/tools/texture-encode.coax`
-  runs it offline (`encode`) and checks it (`check`) against the independent decoders
-  `metaverse/tools/ocarina-texture-core.coax` already uses: the pinned bcdec runner and ARM
-  astcenc 5.7.1.
+  runs it offline (`encode`) and checks it (`check`) against independent decoders: the pinned bcdec runner
+  (`metaverse-engine/tools/bc-reference.c`) and ARM astcenc 5.7.1.
 
 ## Encoder quality
 
@@ -78,7 +77,7 @@ Colour layers (PSNR over RGB, mean over every texel of the set; `quality/*-summa
 | Everglade pack | 38 | 7,405,568 | 41.64 dB | 41.18 dB | 35.70 dB |
 | Character Create pack (`glade.pack`) | 64 | 15,794,176 | 39.33 dB | 38.91 dB | 33.37 dB |
 
-Normal maps (17 Ocarina `Nrm` maps and a 512 synthetic sphere field, 9,109,504 texels):
+Normal maps (17 source `Nrm` maps and a 512 synthetic sphere field, 9,109,504 texels):
 
 | Format | PSNR | Mean angle error | Worst texel |
 | --- | ---: | ---: | ---: |

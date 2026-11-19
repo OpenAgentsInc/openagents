@@ -51,12 +51,6 @@ eg_step_begin :: (p0: walk.Body, input: EgMoveIn, w: EgMoveWorld, dt: f32) -> wa
   if (w.link_flags & 512) != 0 && !w.busy && !w.still { p.key_x = 0; p.key_y = 1; p.pad_x = 0; p.pad_y = 0; p.run = true; }
   p.pace = w.pace; p.grip = w.grip;
   p.yaw = input.theta;   // the view's yaw from the wire: the step's input
-  if (w.link_flags&32)!=0 {p.pace*=link_motion.ocl_input_pace(p.key_x,p.key_y,p.pad_x,p.pad_y);}
-  if (w.link_flags&128)!=0 {
-    p.face=input.theta;
-    if p.on_ground && p.jumps.waiting>0 {p.vel.x= -link_math.math_sin(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.z= -link_math.math_cos(input.theta)*link_motion.OCL_FLIP_SPEED;p.vel.y=link_motion.ocl_launch(link_motion.OCL_FLIP_HEIGHT,16*link_motion.OCL_FLIP_GRAVITY);p.on_ground=false;p.jumps.waiting=0;}
-    else if p.on_ground {p.key_x=0;p.key_y=0;}
-  }
   if !p.on_ground { p.vel.y += w.low_grav * dt; }
   return p;
 }

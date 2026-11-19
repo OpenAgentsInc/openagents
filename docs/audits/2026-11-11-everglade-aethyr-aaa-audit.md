@@ -389,7 +389,7 @@ hit test, with a bound.
   `Player` carries camera fields. The server's player state includes orbit
   angles. It also loads three test files in production (lines 26, 31, 34).
 - The game's rules (`metaverse-engine/rules/srd`, 39,256 lines) are the engine's largest
-  directory. Realm tools (`valley-*`, `kokiri-*`) live in `metaverse-engine/tools`.
+  directory. Realm tools (`valley-*`) live in `metaverse-engine/tools`.
 - 77 files sit flat at the engine's root. Eight of them are walking.
 - `metaverse-engine/entity.coax` is a good store (generation-checked handles, deferred
   spawn). Everglade's files load none of it. Its world is a struct of page

@@ -7,9 +7,9 @@ RenderAdoption :: struct { shared: bool; tracked_legacy: bool; profile: int = -1
 
 // Source inspectors and the fivelab animation palette need the larger
 // bounded Wasm ceiling. Other producers retain the 64 MiB ceiling.
-render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="ocarinalab" || app=="fivelab" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" then 4096 else 1024;}
+render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animationlab" || app=="fivelab" || app=="bitcoin-lab-walk" || app=="nostr-lab-walk" || app=="coax-lab-walk" || app=="worldbuilder" || app=="worldbuilder-walk" then 4096 else 1024;}
 #test "the source inspectors request the bounded larger Wasm memory" {
-  #assert render_memory_pages("animationlab")==4096 && render_memory_pages("ocarinalab")==4096 && render_memory_pages("fivelab")==4096;
+  #assert render_memory_pages("animationlab")==4096 && render_memory_pages("fivelab")==4096;
   for app:[4]string.["", "animationla", "animelab", "valleycanyon"] {#assert render_memory_pages(app)==1024;}
 }
 
@@ -18,14 +18,6 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert r.tracked_legacy && !r.shared && r.profile== -1;
   #assert !render_adoption("animation-lab","animelab").tracked_legacy;
   #assert !render_adoption("animation-la","animationlab").tracked_legacy;
-}
-
-#test "Ocarina Lab binds its source renderer only to the unlisted Ocarina producer" {
-  r:=render_adoption("ocarina-lab","ocarinalab");
-  #assert r.tracked_legacy && !r.shared && r.profile== -1;
-  #assert !render_adoption("ocarina-lab","animationlab").tracked_legacy;
-  #assert !render_adoption("ocarina-labs","ocarinalab").tracked_legacy;
-  #assert !render_adoption("animation-lab","ocarinalab").tracked_legacy;
 }
 
 #test "shared adoption binds each catalog slug to its actual producer" {
@@ -157,7 +149,6 @@ render_memory_pages :: (app:string)->int #effects(all) {return ifx app=="animati
   #assert !render_adoption("splice-bots-jam","valleyworld").tracked_legacy && !render_adoption("valley-world","importworld").tracked_legacy;
 }
 render_adoption :: (slug: string, app: string) -> RenderAdoption #export_c #effects(all) {
-  if slug == "ocarina-lab" && app == "ocarinalab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "animation-lab" && app == "animationlab" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-world" && app == "valleyworld" { return RenderAdoption.{tracked_legacy = true}; }
   if slug == "valley-canyon" && app == "valleycanyon" { return RenderAdoption.{tracked_legacy = true}; }
