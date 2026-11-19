@@ -4789,12 +4789,12 @@ fn coax_p_pr_poured(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_world: v
   var l_s: coax_t26;
   var l_cloud: f32;
   var l_lift: f32;
-  var l_panel: f32;
-  var l_bay: f32;
   var l_seam: f32;
   var l_every: f32;
   var l_o1: f32;
   var l_o2: f32;
+  var l_panel: f32;
+  var l_bay: f32;
   var l_vary: f32;
   var l_li: f32;
   var l_bi: f32;
@@ -4833,13 +4833,16 @@ fn coax_p_pr_poured(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_world: v
     return l_s;
   }
   l_lift = select(0x1.800000p1f, l_lift0, (l_lift0 > 0.0f));
-  l_panel = select(0x1.400000p1f, materials[l_x], (materials[l_x] > 0.0f));
-  l_bay = select(0x1.900000p5f, materials[(l_x + 1i)], (materials[(l_x + 1i)] > 0.0f));
   l_seam = materials[(l_x + 2i)];
   l_every = materials[(l_x + 3i)];
   l_o1 = materials[(l_x + 4i)];
   l_o2 = materials[(l_x + 5i)];
-  l_vary = select(0x1.99999ap-5f, materials[(l_x + 6i)], (materials[(l_x + 6i)] > 0.0f));
+  l_panel = materials[l_x];
+  l_bay = materials[(l_x + 1i)];
+  l_vary = materials[(l_x + 6i)];
+  l_panel = select(0x1.400000p1f, l_panel, (l_panel > 0.0f));
+  l_bay = select(0x1.900000p5f, l_bay, (l_bay > 0.0f));
+  l_vary = select(0x1.99999ap-5f, l_vary, (l_vary > 0.0f));
   l_li = floor((l_f.y / l_lift));
   l_bi = floor((l_f.x / l_bay));
   l_t1 = (coax_p_render_noise2(((l_li * 0x1.75c290p-1f) + l_seed), 0x1.8cccccp1f) - 0x1.000000p-1f);
@@ -4968,6 +4971,7 @@ fn coax_p_pr_paving(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_fl: vec3
   let l_full: bool = p_full;
   var l_s: coax_t26;
   var l_side: f32;
+  var l_staggered: bool;
   var l_slab: f32;
   var l_aa: f32;
   var l_rz: f32;
@@ -4985,10 +4989,11 @@ fn coax_p_pr_paving(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_fl: vec3
   var l_t: f32;
   l_s = l_s0;
   l_side = select(0x1.333334p0f, l_side0, (l_side0 > 0.0f));
-  l_slab = select(select(l_side, (l_side * 0x1.000000p1f), (l_side > 0x1.666666p0f)), (l_side * 0x1.800000p0f), (l_side < 0x1.000000p0f));
+  l_staggered = ((l_side < 0x1.000000p0f) || (l_side > 0x1.666666p0f));
+  l_slab = (l_side * select(select(0x1.000000p0f, 0x1.000000p1f, l_staggered), 0x1.800000p0f, (l_side < 0x1.000000p0f)));
   l_aa = coax_p_fmax(l_ax, l_ay);
   l_rz = floor((l_f.y / l_side));
-  l_along = (l_f.x + select(0.0f, (coax_p_fract((l_rz * 0x1.000000p-1f)) * l_slab), (l_slab > (l_side + 0x1.47ae14p-7f))));
+  l_along = (l_f.x + select(0.0f, (coax_p_fract((l_rz * 0x1.000000p-1f)) * l_slab), l_staggered));
   l_rx = floor((l_along / l_slab));
   l_tone = coax_p_render_noise2((l_rx + (l_seed * 0x1.800000p1f)), (l_rz - l_seed));
   l_warm = (coax_p_render_noise2(((l_rx * 0x1.b33334p0f) + 0x1.400000p2f), ((l_rz * 0x1.4cccccp0f) + l_seed)) - 0x1.000000p-1f);

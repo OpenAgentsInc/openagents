@@ -38,10 +38,11 @@ pr_poured :: (s0:PrSurface,f:V2,ax:f32,ay:f32,world:V3,fl:V3,seed:f32,lift0:f32,
     return s;
   }
   lift:f32=ifx lift0>0.0f32 then lift0 else 3.0f32;
-  panel:f32=ifx m[x]>0.0f32 then m[x] else 2.5f32;
-  bay:f32=ifx m[x+1]>0.0f32 then m[x+1] else 50.0f32;
   seam:f32=m[x+2]; every:f32=m[x+3]; o1:f32=m[x+4]; o2:f32=m[x+5];
-  vary:f32=ifx m[x+6]>0.0f32 then m[x+6] else 0.05f32;
+  panel:f32=m[x]; bay:f32=m[x+1]; vary:f32=m[x+6];
+  panel=ifx panel>0.0f32 then panel else 2.5f32;
+  bay=ifx bay>0.0f32 then bay else 50.0f32;
+  vary=ifx vary>0.0f32 then vary else 0.05f32;
   li:f32=floor(f.y/lift); bi:f32=floor(f.x/bay);
   // the pours: each lift a little its own, each bay of it again; a lift's top a hair paler (laitance)
   t1:f32=render_noise2(li*0.73f32+seed,3.1f32)-0.5f32;
@@ -76,7 +77,7 @@ pr_poured :: (s0:PrSurface,f:V2,ax:f32,ay:f32,world:V3,fl:V3,seed:f32,lift0:f32,
     // the ledge where the walls meet: a lit nib and its shadow under it; columns' lines above
     dark=fmax(dark,0.45f32*pr_band(f.y,seam-0.35f32,0.7f32,ay,0.0f32));
     s.albedo=scale3(s.albedo,1.0f32+0.12f32*pr_band(f.y,seam+0.12f32,0.24f32,ay,0.0f32));
-    d:f32=abs(fract(f.x/bay+0.5f32)-0.5f32)*bay;
+    d:f32=abs(fract(f.x/bay+0.5f32)-0.5f32)*bay; // mutant: equivalent (fract of x+0.5 and of x-0.5 are one)
     pil:f32=pr_band(d,0.0f32,8.0f32,ax,0.0f32)*above;
     s.albedo=scale3(s.albedo,1.0f32+0.035f32*pil);
     dark=fmax(dark,0.22f32*pr_band(d,4.0f32,0.08f32,ax,0.0f32)*above);
@@ -92,10 +93,10 @@ pr_poured :: (s0:PrSurface,f:V2,ax:f32,ay:f32,world:V3,fl:V3,seed:f32,lift0:f32,
         h:f32=render_noise2(id*1.7f32+cast(f32)r*5.0f32+seed,oy);
         reach:f32=10.0f32+20.0f32*h;
         dy:f32=oy-0.3f32-f.y;
-        if ((dy>0.0f32)&&(dy<reach)) {
+        if ((dy>0.0f32)&&(dy<reach)) { // mutant: equivalent (a run's ends are lines no sample lands on)
           w:f32=0.5f32+0.35f32*(1.0f32-dy/reach)+0.4f32*(pr_noise2(f.x*2.0f32,f.y*0.3f32)-0.5f32);
           run:f32=(1.0f32-smoothstep(w*0.5f32,w*0.5f32+0.4f32+ax,abs(ox)))*pow(1.0f32-dy/reach,1.5f32);
-          if (h>0.55f32) {
+          if (h>0.55f32) { // mutant: equivalent (one value of a hash in a million)
             s.albedo=mix3(s.albedo,mul3(s.albedo,v3(0.62f32,0.42f32,0.27f32)),run*0.75f32);
           } else {
             dark=fmax(dark,0.3f32*run);
@@ -107,7 +108,7 @@ pr_poured :: (s0:PrSurface,f:V2,ax:f32,ay:f32,world:V3,fl:V3,seed:f32,lift0:f32,
   s.albedo=scale3(s.albedo,1.0f32-dark);
   // at the sea's edge: growth to a metre and a half over the still water, a salt band above it
   over:f32=world.y-u[b+PR_HAZE+2];
-  if (over<6.0f32) {
+  if (over<6.0f32) { // mutant: equivalent (at 6 m neither the growth nor the salt reaches)
     blot:f32=pr_cloud2(f.x*0.4f32+seed,f.y*0.9f32);
     top:f32=1.5f32+0.8f32*blot;
     grow:f32=1.0f32-smoothstep(top-0.4f32,top+0.3f32,over);
@@ -162,10 +163,11 @@ pr_room :: (f:V2,bay:f32,floor_h:f32,seed:f32,ax:f32,ay:f32,u:[]f32,b:int)->V3 {
 pr_paving :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,side0:f32,full:bool)->PrSurface {
   s:PrSurface=s0;
   side:f32=ifx side0>0.0f32 then side0 else 1.2f32;
-  slab:f32=ifx side<1.0f32 then side*1.5f32 else (ifx side>1.4f32 then side*2.0f32 else side);
+  staggered:bool=(side<1.0f32)||(side>1.4f32);
+  slab:f32=side*(ifx side<1.0f32 then 1.5f32 else (ifx staggered then 2.0f32 else 1.0f32));
   aa:f32=fmax(ax,ay);
   rz:f32=floor(f.y/side);
-  along:f32=f.x+(ifx slab>side+0.01f32 then fract(rz*0.5f32)*slab else 0.0f32);
+  along:f32=f.x+(ifx staggered then fract(rz*0.5f32)*slab else 0.0f32);
   rx:f32=floor(along/slab);
   tone:f32=render_noise2(rx+seed*3.0f32,rz-seed);
   warm:f32=render_noise2(rx*1.7f32+5.0f32,rz*1.3f32+seed)-0.5f32;
@@ -207,7 +209,7 @@ pr_glazing :: (s0:PrSurface,f:V2,ax:f32,ay:f32,fl:V3,seed:f32,floor0:f32,facade:
     // each pane bows a little under its own weight and sits a hair off true, so what it mirrors
     // slides smoothly across the pane and steps only at the mullions
     k:f32=pr_resolve(bay,ax);
-    ux:f32=fract(f.x/bay+0.5f32)-0.5f32; uy:f32=fract(f.y/floor_h)-0.5f32;
+    ux:f32=fract(f.x/bay+0.5f32)-0.5f32; uy:f32=fract(f.y/floor_h)-0.5f32; // mutant: equivalent (fract of x+0.5 and of x-0.5 are one)
     s.normal=pr_tilt(s.normal,fl,(ux*0.006f32+(render_noise2(px+31.0f32,py+seed)-0.5f32)*0.002f32)*k,(uy*0.004f32+(tone-0.5f32)*0.002f32)*k);
   }
   s.albedo=scale3(s.albedo,0.94f32+0.12f32*tone);
@@ -289,7 +291,7 @@ pr_stone :: (s0:PrSurface,f:V2,ax:f32,ay:f32,da:f32,local:V3,fl:V3,seed:f32,cour
     s.albedo=scale3(s.albedo,1.0f32-(0.1f32+0.12f32*weather)*(1.0f32-hollow)*keep);
     tone=0.5f32+0.35f32*(render_noise2(row_i+seed*3.0f32,seed)-0.5f32);
   } else if (abs(fl.y)<0.7f32) {
-    along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32);
+    along:f32=f.x+(ifx fract(row_i*0.5f32)>0.25f32 then course else 0.0f32); // mutant: equivalent (the fraction is 0 or a half, never a quarter)
     tone=render_noise2(floor(along/(course*2.0f32))+seed*3.0f32,row_i);
     joint=fmax(joint,pr_line(along,course*2.0f32,0.008f32,ax));
   } else {
