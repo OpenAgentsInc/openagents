@@ -1,0 +1,18 @@
+> tap composer.send
+composer.send can't be pressed now
+> state messages
+
+> state draft
+
+> type composer.input hello
+typed
+> tap composer.send
+tapped composer.send
+> state messages
+you: hello
+> state draft
+
+> tree
+message.1 text "you: hello"
+composer.input field "Message"
+composer.send button "Send" disabled

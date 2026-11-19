@@ -1,7 +1,12 @@
 # 2. State and actions
 
-> **Status: unimplemented — design draft.** This chapter is a plan for the
-> owner to edit. It ships no code yet, and paths marked planned do not exist.
+> **Status: partly implemented.** The compiled Coax state record,
+> serialized action dispatcher (`composer.edit`, `composer.send`), all-or-nothing
+> refusal on empty draft, per-surface dirty marks (`transcript` and `composer`),
+> frame redraw gating, `composer.send` button (`ctx_button`), driver ops
+> (`openagents/examples/cases/send.ops`), and unit/`#forall` checks pass on
+> `cpu` (`coax/bin/coax test apps/openagents-ios/composer_screen.coax`). The
+> iOS simulator/device host wiring and XCUITest remain pending.
 
 ## Premise
 
@@ -61,15 +66,23 @@ leaves the phone. Chapter 4 sends it.
 
 ## What we build
 
-A plan for what this chapter ships once the draft is approved:
+Implemented on `cpu` in [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax):
 
-- The chat page's state record: the draft, the sent messages, Send's state.
-- The actions `composer.edit` and `composer.send`, with the refusal for an
-  empty draft.
-- Per-surface dirty marks and the frame that commits only dirty surfaces.
-- Send as a frame-context button, `composer.send`, beside the field.
+- The chat page's state record (`ChatState`): the draft (`EditBuf`), the sent
+  messages (`ChatMessage` with stable domain keys `message.<id>`), and
+  `send_enabled`.
+- Serialized action dispatch (`cs_dispatch` / `chat_state_apply`) for
+  `composer.edit` and `composer.send`, with all-or-nothing refusal on an empty
+  draft (and on full message buffer or re-entrant dispatch).
+- Per-surface dirty marks (`dirty_composer`, `dirty_transcript`) across two
+  `UiSurface`s (`surface` and `transcript`) and frame redraw only when a
+  surface is dirty or motion is due (`composer_needs_redraw`).
+- Send as a frame-context button (`ctx_button`), `composer.send`, beside
+  `composer.input`, disabled when the draft is empty.
+- Driver case [`openagents/examples/cases/send.ops`](../examples/cases/send.ops)
+  and expected trace [`openagents/examples/cases/send.trace`](../examples/cases/send.trace).
 
-It builds on what exists today:
+It builds on:
 
 - [`coax/native.md`](../../coax/native.md)
 - [`coax/checked-state.md`](../../coax/checked-state.md)
@@ -79,8 +92,7 @@ It builds on what exists today:
 
 ### The chapter's check
 
-- **Source:** the chat page's state and actions in the lean app, with their
-  checks, and `openagents/examples/cases/send.ops`.
+- **Source:** [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) and [`openagents/examples/cases/send.ops`](../examples/cases/send.ops).
 - **Trace:** `type composer.input hello`, `tap composer.send`, `state
   messages` prints `you: hello`, `state draft` prints an empty line, and
   `tree` shows `message.1`.
@@ -89,11 +101,10 @@ It builds on what exists today:
 - **Independent check:** a `#forall` check that any sequence of refused
   actions leaves the state equal to its start, and a check that an
   incremental frame and a full rebuild commit the same rows.
+- **Command:** `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
-Planned paths: `openagents/examples/cases/send.ops`. Generic dispatch code
-goes in the proposed `coax/lib/app/` that
-[Coax Native](../../coax/native.md#architecture) describes, not in this
-book.
+Generic dispatch code goes in the proposed `coax/lib/app/` that
+[Coax Native](../../coax/native.md#architecture) describes, not in this book.
 
 ## Sources
 

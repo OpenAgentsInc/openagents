@@ -1,0 +1,10 @@
+# Chapter 2: state, actions, refusal on empty draft, and send.
+# app: composer-screen
+tap composer.send
+state messages
+state draft
+type composer.input hello
+tap composer.send
+state messages
+state draft
+tree

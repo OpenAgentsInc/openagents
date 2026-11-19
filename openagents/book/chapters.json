@@ -1,6 +1,6 @@
 {"schema": 1, "book": "openagents", "chapters": [
   {"number": 1, "title": "A text input on the GPU", "file": "ch001-a-text-input-on-the-gpu.md", "status": "partly implemented", "profile": "cpu", "depends_on": [], "source": ["apps/openagents-ios/composer_screen.coax", "openagents/examples/cases/composer-type.ops"], "qualified_targets": ["cpu"], "adopted_by": []},
-  {"number": 2, "title": "State and actions", "file": "ch002-state-and-actions.md", "status": "design draft", "profile": "", "depends_on": [1], "source": [], "qualified_targets": [], "adopted_by": []},
+  {"number": 2, "title": "State and actions", "file": "ch002-state-and-actions.md", "status": "partly implemented", "profile": "cpu", "depends_on": [1], "source": ["apps/openagents-ios/composer_screen.coax", "openagents/examples/cases/send.ops"], "qualified_targets": ["cpu"], "adopted_by": []},
   {"number": 3, "title": "A transcript", "file": "ch003-a-transcript.md", "status": "design draft", "profile": "", "depends_on": [2], "source": [], "qualified_targets": [], "adopted_by": []},
   {"number": 4, "title": "A reply from the service", "file": "ch004-a-reply-from-the-service.md", "status": "design draft", "profile": "", "depends_on": [3], "source": [], "qualified_targets": [], "adopted_by": []},
   {"number": 5, "title": "Logging in when a send needs it", "file": "ch005-logging-in-when-a-send-needs-it.md", "status": "design draft", "profile": "", "depends_on": [4], "source": [], "qualified_targets": [], "adopted_by": []},

@@ -1,15 +1,18 @@
-// Chapter 1 of The OpenAgents Book: one text input on the GPU.
+// Chapters 1-2 of The OpenAgents Book: text input on the GPU, state and actions.
 //
-// One compiled Coax screen with one text input (`composer.input`, label
-// "Message") drawn on the GPU through the shared display-list component kit
-// (components/kit/frame.coax, components/kit/form.coax, components/core/edit.coax,
+// One compiled Coax screen with a transcript surface (`message.<id>`) and a
+// composer surface (`composer.input` + `composer.send`) drawn on the GPU
+// through the shared display-list component kit (components/kit/frame.coax,
+// components/kit/form.coax, components/kit/controls.coax, components/core/edit.coax,
 // components/skin/arcade.coax, components/paint/surface.coax,
 // components/backend/gpu.coax).
 //
-// The host owns the Metal surface, the platform editor overlay and VoiceOver.
-// Each frame commits primitives, hit regions and semantic rows together on one
-// surface. A frame that overflows or records a duplicate row id is refused:
-// the last committed generation stays whole and `counts` reports the refusal.
+// Chapter 1: one text input (`composer.input`, label "Message") with atomic
+// surface commits and duplicate-id/overflow refusal.
+// Chapter 2: explicit state record (draft, messages, send-enabled), serialized
+// action dispatch (`composer.edit`, `composer.send`) with all-or-nothing
+// refusal on empty draft, per-surface dirty marks, and frame redraw only when
+// dirty.
 //
 // Check:
 //   coax/bin/coax test apps/openagents-ios/composer_screen.coax
@@ -22,14 +25,58 @@
 CS_SCALE :: ARCADE_PHONE_SCALE;
 CS_MAX_VERTICES :: 8192;
 CS_UNDER :: 256;
-CS_OVER :: 64;
+CS_OVER :: 128;
 CS_HITS :: 16;
-CS_POOL :: 512;
-CS_ROWS :: 16;
+CS_POOL :: 1024;
+CS_ROWS :: 32;
 CS_KEYED :: 16;
 CS_MARGIN :: 14.0;
 CS_PANEL_MAX :: 360.0;
+
 CS_HIT_COMPOSER :: 1;
+CS_HIT_SEND :: 2;
+
+CS_MAX_MESSAGES :: 16;
+CS_MSG_CAP :: 256;
+
+// Actions (Chapter 2).
+CS_ACT_NONE :: 0;
+CS_ACT_EDIT :: 1; // composer.edit
+CS_ACT_SEND :: 2; // composer.send
+
+// Dispatch refusal reasons.
+CS_DISPATCH_OK :: 0;
+CS_DISPATCH_REFUSED_EMPTY :: 1;
+CS_DISPATCH_REFUSED_FULL :: 2;
+CS_DISPATCH_REFUSED_REENTRANT :: 3;
+CS_DISPATCH_REFUSED_UNKNOWN :: 4;
+
+ChatMessage :: struct {
+  id: int; // stable domain key: message.<id> (never a list index)
+  body: [CS_MSG_CAP] u8;
+  body_n: int;
+}
+
+ChatState :: struct {
+  draft: [1] EditBuf;
+  messages: [CS_MAX_MESSAGES] ChatMessage;
+  message_count: int;
+  next_message_id: int;
+  send_enabled: bool;
+}
+
+ChatAction :: struct {
+  kind: int;
+  text: string;
+}
+
+ChatDispatchResult :: struct {
+  accepted: bool;
+  reason: int;
+  dirty_composer: bool;
+  dirty_transcript: bool;
+  seq: int;
+}
 
 CsGeneration :: struct {
   under: [CS_UNDER] Prim;
@@ -55,12 +102,24 @@ ComposerScreen :: struct {
   down_x: f32;
   down_y: f32;
   moving: bool;
-  draft: [1] EditBuf;
+  // Chapter 2: explicit state record, serialized dispatch, per-surface dirty marks.
+  state: [1] ChatState;
+  dispatching: bool;
+  action_seq: int;
+  actions_refused: int;
+  dirty_composer: bool;
+  dirty_transcript: bool;
+  redraws: int;
+  // GPU atlas + two surfaces (composer and transcript) + keyed state.
   atlas: [1] Atlas;
   gen: [2] CsGeneration;
   surface: [1] UiSurface;
+  tgen: [2] CsGeneration;
+  transcript: [1] UiSurface;
   keys: [CS_KEYED] Keyed;
   keyed: [1] KeyedStore;
+  tkeys: [CS_KEYED] Keyed;
+  tkeyed: [1] KeyedStore;
 }
 
 cs_init :: (s: [] ComposerScreen) {
@@ -69,21 +128,127 @@ cs_init :: (s: [] ComposerScreen) {
   b := Sheet.{under = s[0].gen[1].under[..], over = s[0].gen[1].over[..], hits = s[0].gen[1].hits[..], pool = s[0].gen[1].pool[..]};
   s[0].surface[0] = surface_over(a, s[0].gen[0].rows[..], b, s[0].gen[1].rows[..]);
   s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
+
+  ta := Sheet.{under = s[0].tgen[0].under[..], over = s[0].tgen[0].over[..], hits = s[0].tgen[0].hits[..], pool = s[0].tgen[0].pool[..]};
+  tb := Sheet.{under = s[0].tgen[1].under[..], over = s[0].tgen[1].over[..], hits = s[0].tgen[1].hits[..], pool = s[0].tgen[1].pool[..]};
+  s[0].transcript[0] = surface_over(ta, s[0].tgen[0].rows[..], tb, s[0].tgen[1].rows[..]);
+  s[0].tkeyed[0] = KeyedStore.{rows = s[0].tkeys[..]};
+
+  s[0].dirty_composer = true;
+  s[0].dirty_transcript = true;
   s[0].ready = true;
 }
 
 cs_rows :: (s: [] ComposerScreen) -> ElTable { return surface_rows(s[0].surface[..]); }
+cs_trows :: (s: [] ComposerScreen) -> ElTable { return surface_rows(s[0].transcript[..]); }
 
-cs_find :: (s: [] ComposerScreen, id: string) -> int {
+cs_find_composer :: (s: [] ComposerScreen, id: string) -> int {
   t := [1] ElTable.[cs_rows(s)];
   return elt_find(t[..], id);
 }
 
-cs_draft :: (s: [] ComposerScreen) -> string { return eb_text(s[0].draft[..]); }
+cs_find_transcript :: (s: [] ComposerScreen, id: string) -> int {
+  t := [1] ElTable.[cs_trows(s)];
+  return elt_find(t[..], id);
+}
+
+cs_find :: (s: [] ComposerScreen, id: string) -> int {
+  ti := cs_find_transcript(s, id);
+  if ti >= 0 { return ti; }
+  ci := cs_find_composer(s, id);
+  if ci >= 0 { return cs_trows(s).n + ci; }
+  return -1;
+}
+
+cs_draft :: (s: [] ComposerScreen) -> string { return eb_text(s[0].state[0].draft[..]); }
 
 cs_out :: (out: [] u8, text: string) -> int { return el_put(out, 0, text); }
 
-cs_layout :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id: bool) {
+cs_msg_body :: (st: [] ChatState, idx: int) -> string {
+  return cast(string) st[0].messages[idx].body[0..<st[0].messages[idx].body_n];
+}
+
+cs_msg_id :: (id: int, out: [] u8) -> int {
+  n := el_put(out, 0, "message.");
+  return el_put_i(out, n, id);
+}
+
+cs_msg_line :: (st: [] ChatState, idx: int, out: [] u8) -> int {
+  n := el_put(out, 0, "you: ");
+  return el_put(out, n, cs_msg_body(st, idx));
+}
+
+// Pure all-or-nothing state transition for one action.
+chat_state_apply :: (st: [] ChatState, act: ChatAction) -> ChatDispatchResult {
+  if st.count < 1 { return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_UNKNOWN}; }
+  if act.kind == CS_ACT_EDIT {
+    eb_set(st[0].draft[..], act.text);
+    st[0].send_enabled = eb_text(st[0].draft[..]).count > 0;
+    return ChatDispatchResult.{accepted = true, reason = CS_DISPATCH_OK, dirty_composer = true, dirty_transcript = false};
+  }
+  if act.kind == CS_ACT_SEND {
+    draft := eb_text(st[0].draft[..]);
+    if draft.count == 0 || !st[0].send_enabled {
+      return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_EMPTY};
+    }
+    if st[0].message_count >= CS_MAX_MESSAGES {
+      return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_FULL};
+    }
+    idx := st[0].message_count;
+    next_id := st[0].next_message_id + 1;
+    st[0].messages[idx].id = next_id;
+    st[0].messages[idx].body_n = el_copy(st[0].messages[idx].body[..], draft);
+    st[0].message_count = idx + 1;
+    st[0].next_message_id = next_id;
+    eb_set(st[0].draft[..], "");
+    st[0].send_enabled = false;
+    return ChatDispatchResult.{accepted = true, reason = CS_DISPATCH_OK, dirty_composer = true, dirty_transcript = true};
+  }
+  return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_UNKNOWN};
+}
+
+chat_state_equal :: (a: [] ChatState, b: [] ChatState) -> bool {
+  if a.count < 1 || b.count < 1 { return false; }
+  if a[0].send_enabled != b[0].send_enabled { return false; }
+  if a[0].message_count != b[0].message_count { return false; }
+  if a[0].next_message_id != b[0].next_message_id { return false; }
+  if eb_text(a[0].draft[..]) != eb_text(b[0].draft[..]) { return false; }
+  for i: 0..<a[0].message_count {
+    if a[0].messages[i].id != b[0].messages[i].id { return false; }
+    if a[0].messages[i].body_n != b[0].messages[i].body_n { return false; }
+    if cs_msg_body(a, i) != cs_msg_body(b, i) { return false; }
+  }
+  return true;
+}
+
+// Serialized action dispatch on the screen.
+cs_dispatch :: (s: [] ComposerScreen, act: ChatAction) -> ChatDispatchResult {
+  if s.count < 1 { return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_UNKNOWN}; }
+  if s[0].dispatching {
+    s[0].actions_refused += 1;
+    return ChatDispatchResult.{accepted = false, reason = CS_DISPATCH_REFUSED_REENTRANT, seq = s[0].action_seq};
+  }
+  s[0].dispatching = true;
+  res := chat_state_apply(s[0].state[..], act);
+  s[0].dispatching = false;
+  if !res.accepted {
+    s[0].actions_refused += 1;
+    res.seq = s[0].action_seq;
+    return res;
+  }
+  s[0].action_seq += 1;
+  res.seq = s[0].action_seq;
+  if res.dirty_composer { s[0].dirty_composer = true; }
+  if res.dirty_transcript { s[0].dirty_transcript = true; }
+  return res;
+}
+
+cs_dirty :: (s: [] ComposerScreen) -> bool {
+  if s.count < 1 { return false; }
+  return !s[0].ready || s[0].dirty_composer || s[0].dirty_transcript || s[0].moving;
+}
+
+cs_layout_composer :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id: bool) {
   k := f[0].skin;
   pw := ifx w - 2 * CS_MARGIN < CS_PANEL_MAX then w - 2 * CS_MARGIN else CS_PANEL_MAX;
   px := (w - pw) / 2;
@@ -93,9 +258,36 @@ cs_layout :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32, duplicate_id:
   if s[0].keyboard > 0 { bottom = h - s[0].keyboard / CS_SCALE - k.space; }
   py := bottom - fh;
   if py < top { py = top; }
-  _ := ctx_field(f, "composer.input", px, py, pw, "Message", cs_draft(s), "Message", s[0].focused, 0, CS_HIT_COMPOSER);
+  send_w := button_width(f[0].m, k, "Send");
+  gap := k.space;
+  field_w := pw - send_w - gap;
+  if field_w < 80 { field_w = 80; }
+  send_x := px + field_w + gap;
+  send_y := py + (fh - k.control_h) / 2;
+  send_state := ifx s[0].state[0].send_enabled then 0 else EL_S_DISABLED;
+  _ := ctx_field(f, "composer.input", px, py, field_w, "Message", cs_draft(s), "Message", s[0].focused, 0, CS_HIT_COMPOSER);
+  _ := ctx_button(f, "composer.send", send_x, send_y, "Send", s[0].state[0].send_enabled, send_state, CS_HIT_SEND);
   if duplicate_id {
-    _ := ctx_field(f, "composer.input", px, py + fh + k.space, pw, "Message", cs_draft(s), "Message", false, 0, CS_HIT_COMPOSER);
+    _ := ctx_field(f, "composer.input", px, py + fh + k.space, field_w, "Message", cs_draft(s), "Message", false, 0, CS_HIT_COMPOSER);
+  }
+}
+
+cs_layout_transcript :: (s: [] ComposerScreen, f: [] UiFrame, w: f32, h: f32) {
+  k := f[0].skin;
+  pw := ifx w - 2 * CS_MARGIN < CS_PANEL_MAX then w - 2 * CS_MARGIN else CS_PANEL_MAX;
+  px := (w - pw) / 2;
+  top := s[0].safe_top / CS_SCALE + k.space;
+  y := top;
+  id_buf: [32] u8;
+  line_buf: [CS_MSG_CAP + 8] u8;
+  for i: 0..<s[0].state[0].message_count {
+    id_n := cs_msg_id(s[0].state[0].messages[i].id, id_buf[..]);
+    line_n := cs_msg_line(s[0].state[..], i, line_buf[..]);
+    id := cast(string) id_buf[0..<id_n];
+    line := cast(string) line_buf[0..<line_n];
+    _ := uiframe_semantic(f, id, EL_TEXT, line, px, y, pw, k.body.line, 0, 0);
+    _ := sheet_text(f[0].sheet, f[0].m, -1, px, y, k.body.line, k.body.face, k.ink, sheet_pool(f[0].sheet, line));
+    y += k.body.line + k.space;
   }
 }
 
@@ -106,27 +298,64 @@ cs_render :: (s: [] ComposerScreen, out: [] f32, px_w: int, px_h: int, scale: f3
   d := (ifx scale < 1 then 1.0f32 else scale) * CS_SCALE;
   w := cast(f32) px_w / d;
   h := cast(f32) px_h / d;
+  if d != s[0].d || w != s[0].width || h != s[0].height {
+    s[0].dirty_composer = true;
+    s[0].dirty_transcript = true;
+  }
   s[0].d = d;
   s[0].width = w;
   s[0].height = h;
+  if duplicate_id { s[0].dirty_composer = true; }
+  // Frame redraws only when at least one surface is dirty or animating.
+  if !s[0].dirty_composer && !s[0].dirty_transcript && !s[0].moving {
+    return 0;
+  }
   step := ifx dt > 0 && dt < 0.1 then dt else 0.016f32;
   if !s[0].reduced_motion { s[0].time += step; }
   a[0].frame += 1;
   k := arcade_phone_skin();
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
   if !a[0].ready { return v; }
+
   focus_id := ifx s[0].focused then "composer.input" else "";
-  pressed_id := ifx s[0].pressed != 0 then "composer.input" else "";
+  pressed_id := ifx s[0].pressed == CS_HIT_COMPOSER then "composer.input" else ifx s[0].pressed == CS_HIT_SEND then "composer.send" else "";
   inp := uiinput(s[0].down_x, s[0].down_y, s[0].pressed != 0, s[0].pressed != 0, pressed_id, focus_id);
-  f: [1] UiFrame;
-  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, inp, s[0].time, step, s[0].reduced_motion, s[0].reduced_transparency);
-  cs_layout(s, f[..], w, h, duplicate_id);
-  s[0].moving = uiframe_moving(f[..]);
-  b := 1 - s[0].surface[0].front;
-  if s[0].surface[0].writing && s[0].surface[0].rows[b].renamed > 0 {
-    s[0].surface[0].rows[b].lost += s[0].surface[0].rows[b].renamed;
+
+  moving := false;
+  if s[0].dirty_transcript {
+    tf: [1] UiFrame;
+    uiframe_begin(tf[..], s[0].transcript[..], s[0].tkeyed[..], measure_font(a), k, inp, s[0].time, step, s[0].reduced_motion, s[0].reduced_transparency);
+    cs_layout_transcript(s, tf[..], w, h);
+    if uiframe_moving(tf[..]) { moving = true; }
+    tb := 1 - s[0].transcript[0].front;
+    if s[0].transcript[0].writing && s[0].transcript[0].rows[tb].renamed > 0 {
+      s[0].transcript[0].rows[tb].lost += s[0].transcript[0].rows[tb].renamed;
+    }
+    if uiframe_end(tf[..], s[0].transcript[..]) {
+      s[0].dirty_transcript = false;
+    }
   }
-  _ := uiframe_end(f[..], s[0].surface[..]);
+
+  if s[0].dirty_composer {
+    f: [1] UiFrame;
+    uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, inp, s[0].time, step, s[0].reduced_motion, s[0].reduced_transparency);
+    cs_layout_composer(s, f[..], w, h, duplicate_id);
+    if uiframe_moving(f[..]) { moving = true; }
+    b := 1 - s[0].surface[0].front;
+    if s[0].surface[0].writing && s[0].surface[0].rows[b].renamed > 0 {
+      s[0].surface[0].rows[b].lost += s[0].surface[0].rows[b].renamed;
+    }
+    if uiframe_end(f[..], s[0].surface[..]) {
+      s[0].dirty_composer = false;
+    }
+  }
+
+  s[0].moving = moving;
+  s[0].redraws += 1;
+
+  tsh := surface_sheet(s[0].transcript[..]);
+  v = gpu_draw(out, v, a, d, tsh.under[0..<tsh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, tsh.over[0..<tsh.no], 0, 0, -8, h + 8);
   sh := surface_sheet(s[0].surface[..]);
   v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
   v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
@@ -136,6 +365,10 @@ cs_render :: (s: [] ComposerScreen, out: [] f32, px_w: int, px_h: int, scale: f3
 
 composer_env :: (s: [] ComposerScreen, safe_top: f32, safe_bottom: f32, keyboard: f32, reduced_motion: bool, reduced_transparency: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  if s[0].safe_top != safe_top || s[0].safe_bottom != safe_bottom || s[0].keyboard != keyboard || s[0].reduced_motion != reduced_motion || s[0].reduced_transparency != reduced_transparency {
+    s[0].dirty_composer = true;
+    s[0].dirty_transcript = true;
+  }
   s[0].safe_top = safe_top;
   s[0].safe_bottom = safe_bottom;
   s[0].keyboard = keyboard;
@@ -155,24 +388,34 @@ composer_pointer :: (s: [] ComposerScreen, x: f32, y: f32, phase: int) -> bool #
   s[0].down_y = uy;
   if phase == 0 {
     row := surface_hit(s[0].surface[..], ux, uy);
-    s[0].pressed = ifx row >= 0 then cs_rows(s).rows[row].action else 0;
+    next_pressed := ifx row >= 0 then cs_rows(s).rows[row].action else 0;
+    if next_pressed != s[0].pressed { s[0].dirty_composer = true; }
+    s[0].pressed = next_pressed;
     return s[0].pressed != 0;
   }
   if phase == 2 {
     was := s[0].pressed;
+    if s[0].pressed != 0 { s[0].dirty_composer = true; }
     s[0].pressed = 0;
     row := surface_hit(s[0].surface[..], ux, uy);
     hit := ifx row >= 0 then cs_rows(s).rows[row].action else 0;
     if was == CS_HIT_COMPOSER && hit == CS_HIT_COMPOSER {
+      if !s[0].focused { s[0].dirty_composer = true; }
       s[0].focused = true;
       return true;
     }
+    if was == CS_HIT_SEND && hit == CS_HIT_SEND {
+      res := cs_dispatch(s, ChatAction.{kind = CS_ACT_SEND});
+      return res.accepted;
+    }
     if row < 0 {
+      if s[0].focused { s[0].dirty_composer = true; }
       s[0].focused = false;
     }
     return false;
   }
   if phase == 3 {
+    if s[0].pressed != 0 { s[0].dirty_composer = true; }
     s[0].pressed = 0;
     return false;
   }
@@ -186,12 +429,13 @@ composer_focus :: (s: [] ComposerScreen) -> bool #export_c #effects(all) {
 
 composer_blur :: (s: [] ComposerScreen) #export_c #effects(all) {
   if s.count < 1 { return; }
+  if s[0].focused { s[0].dirty_composer = true; }
   s[0].focused = false;
 }
 
 composer_field_rect :: (s: [] ComposerScreen, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 { return false; }
-  i := cs_find(s, "composer.input");
+  i := cs_find_composer(s, "composer.input");
   if i < 0 { return false; }
   r := cs_rows(s).rows[i];
   out[0] = r.x * CS_SCALE;
@@ -203,7 +447,7 @@ composer_field_rect :: (s: [] ComposerScreen, out: [] f32) -> bool #export_c #ef
 
 composer_set_text :: (s: [] ComposerScreen, text: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  eb_set(s[0].draft[..], text);
+  _ := cs_dispatch(s, ChatAction.{kind = CS_ACT_EDIT, text = text});
 }
 
 composer_text :: (s: [] ComposerScreen, out: [] u8) -> int #export_c #effects(all) {
@@ -213,32 +457,48 @@ composer_text :: (s: [] ComposerScreen, out: [] u8) -> int #export_c #effects(al
 
 composer_rows :: (s: [] ComposerScreen) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
-  return cs_rows(s).n;
+  return cs_trows(s).n + cs_rows(s).n;
 }
 
 composer_row_id :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
+  tr := [1] ElTable.[cs_trows(s)];
+  if i < tr[0].n { return cs_out(out, elt_id(tr[..], i)); }
   t := [1] ElTable.[cs_rows(s)];
-  return cs_out(out, elt_id(t[..], i));
+  return cs_out(out, elt_id(t[..], i - tr[0].n));
 }
 
 composer_row_label :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
+  tr := [1] ElTable.[cs_trows(s)];
+  if i < tr[0].n { return cs_out(out, elt_label(tr[..], i)); }
   t := [1] ElTable.[cs_rows(s)];
-  return cs_out(out, elt_label(t[..], i));
+  return cs_out(out, elt_label(t[..], i - tr[0].n));
 }
 
 composer_row_value :: (s: [] ComposerScreen, i: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
+  tr := [1] ElTable.[cs_trows(s)];
+  if i < tr[0].n { return cs_out(out, elt_value_of(tr[..], i)); }
   t := [1] ElTable.[cs_rows(s)];
-  return cs_out(out, elt_value_of(t[..], i));
+  return cs_out(out, elt_value_of(t[..], i - tr[0].n));
 }
 
 composer_row_rect :: (s: [] ComposerScreen, i: int, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 { return false; }
+  tr := cs_trows(s);
+  if i >= 0 && i < tr.n {
+    r := tr.rows[i];
+    out[0] = r.x * CS_SCALE;
+    out[1] = r.y * CS_SCALE;
+    out[2] = r.w * CS_SCALE;
+    out[3] = r.h * CS_SCALE;
+    return true;
+  }
+  ci := i - tr.n;
   t := cs_rows(s);
-  if i < 0 || i >= t.n { return false; }
-  r := t.rows[i];
+  if ci < 0 || ci >= t.n { return false; }
+  r := t.rows[ci];
   out[0] = r.x * CS_SCALE;
   out[1] = r.y * CS_SCALE;
   out[2] = r.w * CS_SCALE;
@@ -249,25 +509,58 @@ composer_row_rect :: (s: [] ComposerScreen, i: int, out: [] f32) -> bool #export
 composer_activate :: (s: [] ComposerScreen, id: string) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if cs_find(s, id) < 0 { return false; }
-  if id == "composer.input" { s[0].focused = true; return true; }
+  if id == "composer.input" {
+    if !s[0].focused { s[0].dirty_composer = true; }
+    s[0].focused = true;
+    return true;
+  }
+  if id == "composer.send" {
+    res := cs_dispatch(s, ChatAction.{kind = CS_ACT_SEND});
+    return res.accepted;
+  }
   return false;
 }
 
 composer_refused :: (s: [] ComposerScreen) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
-  return s[0].surface[0].refused;
+  return s[0].surface[0].refused + s[0].transcript[0].refused;
 }
 
-// coax drive: `tree`, `type ID TEXT`, `state draft`, and `counts`.
+composer_needs_redraw :: (s: [] ComposerScreen) -> bool #export_c #effects(all) {
+  return cs_dirty(s);
+}
+
+cs_tree :: (s: [] ComposerScreen, out: [] u8) -> int {
+  n := surface_tree(s[0].transcript[..], out);
+  if n >= out.count { return n; }
+  m := surface_tree(s[0].surface[..], out[n..<out.count]);
+  return n + m;
+}
+
+// coax drive: `tree`, `type ID TEXT`, `tap ID`, `state draft|messages|send`, and `counts`.
 composer_drive :: (s: [] ComposerScreen, op: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return -1; }
-  if op == "tree" { return surface_tree(s[0].surface[..], out); }
+  if op == "tree" { return cs_tree(s, out); }
   if op == "counts" { return uiframe_counts(s[0].surface[..], s[0].keyed[..], out); }
   if op.count > 6 && op[0..<6] == "state " {
     key := cast(string) op[6..<op.count];
     if key == "draft" {
       n := cs_out(out, cs_draft(s));
       return el_put(out, n, "\n");
+    }
+    if key == "messages" {
+      if s[0].state[0].message_count == 0 { return cs_out(out, "\n"); }
+      n := 0;
+      line_buf: [CS_MSG_CAP + 8] u8;
+      for i: 0..<s[0].state[0].message_count {
+        ln := cs_msg_line(s[0].state[..], i, line_buf[..]);
+        n = el_put(out, n, cast(string) line_buf[0..<ln]);
+        n = el_put(out, n, "\n");
+      }
+      return n;
+    }
+    if key == "send" {
+      return cs_out(out, ifx s[0].state[0].send_enabled then "enabled\n" else "disabled\n");
     }
     return cs_out(out, "unknown state\n");
   }
@@ -277,9 +570,26 @@ composer_drive :: (s: [] ComposerScreen, op: string, out: [] u8) -> int #export_
     while cut < rest.count && rest[cut] != ' ' { cut += 1; }
     id := cast(string) rest[0..<cut];
     text := ifx cut < rest.count then cast(string) rest[cut + 1..<rest.count] else "";
-    if id != "composer.input" || cs_find(s, id) < 0 { return cs_out(out, "no such field\n"); }
-    eb_set(s[0].draft[..], text);
+    if id != "composer.input" || cs_find_composer(s, id) < 0 { return cs_out(out, "no such field\n"); }
+    _ := cs_dispatch(s, ChatAction.{kind = CS_ACT_EDIT, text = text});
     return cs_out(out, "typed\n");
+  }
+  if op.count > 4 && op[0..<4] == "tap " {
+    id := cast(string) op[4..<op.count];
+    if cs_find(s, id) < 0 { return cs_out(out, "no such control\n"); }
+    if id == "composer.input" {
+      if !s[0].focused { s[0].dirty_composer = true; }
+      s[0].focused = true;
+      return cs_out(out, "tapped composer.input\n");
+    }
+    if id == "composer.send" {
+      res := cs_dispatch(s, ChatAction.{kind = CS_ACT_SEND});
+      if !res.accepted {
+        return cs_out(out, "composer.send can't be pressed now\n");
+      }
+      return cs_out(out, "tapped composer.send\n");
+    }
+    return cs_out(out, "can't be pressed now\n");
   }
   return -1;
 }
@@ -313,12 +623,13 @@ cs_contains :: (hay: string, needle: string) -> bool {
   cs_test_atlas(s[0].atlas[..]);
   composer_env(s[..], 59, 34, 0, true, true);
   n := cs_test_frame(s[..], o[..]);
-  #assert n > 0 && composer_rows(s[..]) == 1 && composer_refused(s[..]) == 0;
+  #assert n > 0 && composer_rows(s[..]) == 2 && composer_refused(s[..]) == 0;
 
   buf: [512] u8;
   tn := composer_drive(s[..], "tree", buf[..]);
   tree := cast(string) buf[0..<tn];
   #assert cs_contains(tree, "composer.input field \"Message\"");
+  #assert cs_contains(tree, "composer.send button \"Send\"");
 
   yn := composer_drive(s[..], "type composer.input hello", buf[..]);
   #assert cast(string) buf[0..<yn] == "typed\n";
@@ -328,7 +639,8 @@ cs_contains :: (hay: string, needle: string) -> bool {
 
   // Re-render and confirm the committed row carries the typed value and counts says refused 0.
   _ := cs_test_frame(s[..], o[..]);
-  vn := composer_row_value(s[..], 0, buf[..]);
+  fi := cs_find(s[..], "composer.input");
+  vn := composer_row_value(s[..], fi, buf[..]);
   #assert cast(string) buf[0..<vn] == "hello";
   cn := composer_drive(s[..], "counts", buf[..]);
   counts := cast(string) buf[0..<cn];
@@ -351,10 +663,11 @@ cs_contains :: (hay: string, needle: string) -> bool {
   _ := cs_render(s[..], o[0].v[..], 1206, 2622, 3, 0.016, true);
   #assert composer_refused(s[..]) == 1 && s[0].surface[0].generation == 1;
 
-  // Last committed generation stayed whole: 1 row with the previous value "keep".
+  // Last committed generation stayed whole: composer rows kept previous value "keep".
   buf: [512] u8;
-  #assert composer_rows(s[..]) == 1;
-  vn := composer_row_value(s[..], 0, buf[..]);
+  #assert composer_rows(s[..]) == 2;
+  fi := cs_find(s[..], "composer.input");
+  vn := composer_row_value(s[..], fi, buf[..]);
   #assert cast(string) buf[0..<vn] == "keep";
 
   cn := composer_drive(s[..], "counts", buf[..]);
@@ -372,11 +685,115 @@ cs_contains :: (hay: string, needle: string) -> bool {
   #assert composer_activate(s[..], "composer.input") && composer_focus(s[..]);
   composer_blur(s[..]);
   #assert !composer_focus(s[..]);
-  // Tap on the middle of the committed row.
+  // Tap on the middle of the committed composer.input row.
   r := cs_rows(s[..]).rows[0];
   x := (r.x + r.w / 2) * s[0].d;
   y := (r.y + r.h / 2) * s[0].d;
   #assert composer_pointer(s[..], x, y, 0);
   #assert composer_pointer(s[..], x, y, 2);
   #assert composer_focus(s[..]);
+}
+
+#test "chapter 2 trace and refusal: empty send refused, type + send appends message.1 and clears draft" #steps 400000000 {
+  s: [1] ComposerScreen;
+  o: [1] CsOut;
+  cs_test_atlas(s[0].atlas[..]);
+  composer_env(s[..], 59, 34, 0, true, true);
+  n0 := cs_test_frame(s[..], o[..]);
+  #assert n0 > 0 && !composer_needs_redraw(s[..]);
+  #assert s[0].surface[0].generation == 1 && s[0].transcript[0].generation == 1;
+  #assert !s[0].state[0].send_enabled && s[0].state[0].message_count == 0;
+
+  // Frame when clean does not redraw or advance either surface generation.
+  #assert cs_test_frame(s[..], o[..]) == 0;
+  #assert s[0].redraws == 1 && s[0].surface[0].generation == 1 && s[0].transcript[0].generation == 1;
+
+  // Refusal: tap composer.send with an empty draft.
+  buf: [1024] u8;
+  rn := composer_drive(s[..], "tap composer.send", buf[..]);
+  #assert cast(string) buf[0..<rn] == "composer.send can't be pressed now\n";
+  #assert s[0].actions_refused == 1 && s[0].action_seq == 0 && s[0].state[0].message_count == 0;
+  #assert !composer_needs_redraw(s[..]) && cs_test_frame(s[..], o[..]) == 0;
+
+  // Edit marks only composer dirty; transcript surface does NOT redraw.
+  tn := composer_drive(s[..], "type composer.input hello", buf[..]);
+  #assert cast(string) buf[0..<tn] == "typed\n";
+  #assert s[0].state[0].send_enabled && s[0].dirty_composer && !s[0].dirty_transcript;
+  n1 := cs_test_frame(s[..], o[..]);
+  #assert n1 > 0 && s[0].surface[0].generation == 2 && s[0].transcript[0].generation == 1;
+  #assert !composer_needs_redraw(s[..]);
+
+  // Send marks both composer and transcript dirty, appends message.1, clears draft.
+  sn := composer_drive(s[..], "tap composer.send", buf[..]);
+  #assert cast(string) buf[0..<sn] == "tapped composer.send\n";
+  #assert !s[0].state[0].send_enabled && s[0].dirty_composer && s[0].dirty_transcript;
+  n2 := cs_test_frame(s[..], o[..]);
+  #assert n2 > 0 && s[0].surface[0].generation == 3 && s[0].transcript[0].generation == 2;
+  #assert !composer_needs_redraw(s[..]) && cs_test_frame(s[..], o[..]) == 0;
+
+  // state messages, state draft, and tree.
+  mn := composer_drive(s[..], "state messages", buf[..]);
+  #assert cast(string) buf[0..<mn] == "you: hello\n";
+  dn := composer_drive(s[..], "state draft", buf[..]);
+  #assert cast(string) buf[0..<dn] == "\n";
+  trn := composer_drive(s[..], "tree", buf[..]);
+  tree := cast(string) buf[0..<trn];
+  #assert cs_contains(tree, "message.1") && cs_contains(tree, "you: hello");
+  #assert cs_contains(tree, "composer.input") && cs_contains(tree, "composer.send");
+}
+
+#test "chapter 2 incremental frame and full rebuild commit the same rows" #steps 400000000 {
+  // Incremental screen: edit, frame, send, frame, edit, frame.
+  inc: [1] ComposerScreen;
+  o1: [1] CsOut;
+  cs_test_atlas(inc[0].atlas[..]);
+  composer_env(inc[..], 59, 34, 0, true, true);
+  _ := cs_test_frame(inc[..], o1[..]);
+
+  buf: [1024] u8;
+  _ := composer_drive(inc[..], "type composer.input first", buf[..]);
+  _ := cs_test_frame(inc[..], o1[..]);
+  _ := composer_drive(inc[..], "tap composer.send", buf[..]);
+  _ := cs_test_frame(inc[..], o1[..]);
+  _ := composer_drive(inc[..], "type composer.input second", buf[..]);
+  _ := cs_test_frame(inc[..], o1[..]);
+  // Notice: the second edit left transcript at generation 2 while composer is at generation 4.
+  #assert inc[0].transcript[0].generation == 2 && inc[0].surface[0].generation == 4;
+
+  // Full rebuild screen: same final state, built from scratch in a single frame.
+  full: [1] ComposerScreen;
+  o2: [1] CsOut;
+  cs_test_atlas(full[0].atlas[..]);
+  composer_env(full[..], 59, 34, 0, true, true);
+  _ := cs_dispatch(full[..], ChatAction.{kind = CS_ACT_EDIT, text = "first"});
+  _ := cs_dispatch(full[..], ChatAction.{kind = CS_ACT_SEND});
+  _ := cs_dispatch(full[..], ChatAction.{kind = CS_ACT_EDIT, text = "second"});
+  _ := cs_test_frame(full[..], o2[..]);
+  #assert full[0].transcript[0].generation == 1 && full[0].surface[0].generation == 1;
+
+  // Both screens committed the exact same semantic tree.
+  b1: [1024] u8;
+  b2: [1024] u8;
+  n1 := composer_drive(inc[..], "tree", b1[..]);
+  n2 := composer_drive(full[..], "tree", b2[..]);
+  #assert n1 == n2 && cast(string) b1[0..<n1] == cast(string) b2[0..<n2];
+}
+
+#forall "chapter 2: any sequence of refused actions leaves the state equal to its start" seed:0..<64 {
+  st: [1] ChatState;
+  // Seed initial state: 0..3 prior messages, empty draft (send disabled).
+  prior := seed % 4;
+  for i: 0..<prior {
+    _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_EDIT, text = "msg"});
+    _ := chat_state_apply(st[..], ChatAction.{kind = CS_ACT_SEND});
+  }
+  snap := [1] ChatState.[st[0]];
+  // Run a sequence of refused actions (empty send and unknown kinds).
+  steps := 1 + ((seed / 4) % 8);
+  for k: 0..<steps {
+    kind := ifx ((seed + k) % 3) == 0 then CS_ACT_SEND else ifx ((seed + k) % 3) == 1 then CS_ACT_NONE else 99;
+    res := chat_state_apply(st[..], ChatAction.{kind = kind, text = "ignored"});
+    #assert !res.accepted && !res.dirty_composer && !res.dirty_transcript;
+  }
+  #assert chat_state_equal(st[..], snap[..]);
 }
