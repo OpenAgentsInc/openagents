@@ -215,6 +215,19 @@ tool_main :: () -> int #export_c #effects(all) {
           }
         } else if m.kind == ClKind.result {
           r := cl_result_of(car, m);
+          if r.total_cost_usd > 0.0 {
+            micros := cast(int) (r.total_cost_usd * 1000000.0 + 0.5);
+            if micros > 0 {
+              an := json_raw(out[..], 0, "{\"kind\":\"attempt\",\"gateway\":\"claude\",\"outcome\":\"");
+              an = json_raw(out[..], an, ifx r.kind == ClResultKind.success && !r.is_error then "done" else "failed");
+              an = json_raw(out[..], an, "\",\"status\":200,\"provider_cost_usd_micros\":");
+              an = json_write_int(out[..], an, micros);
+              an = json_raw(out[..], an, ",\"usd_micros\":");
+              an = json_write_int(out[..], an, micros);
+              an = json_raw(out[..], an, "}");
+              cw_send(out[..], an);
+            }
+          }
           // held text that is not the reply was said along the way
           if held_n > 0 && cast(string) held[0..<held_n] != r.result { cw_send(out[..], mww_reply(out[..], cast(string) held[0..<held_n])); }
           held_n = 0;

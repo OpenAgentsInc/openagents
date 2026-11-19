@@ -274,7 +274,7 @@ MwwLine :: struct {
   found: ClBool;                 // view
   ticket: JsonInt;               // ask, delegate
   tasks: string;                 // delegate: the tasks' JSON list
-  gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt;   // attempt, what an owner shows
+  gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt; provider_cost_usd_micros: JsonInt;   // attempt, what an owner shows
   values: string;                // embedding: the list's JSON text, "" when there is none
   error: string;                 // embedding: the error member's JSON text, "" when there is none
   why: string;                   // embedding: the error's words
@@ -292,6 +292,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "attempt" {
     k = MWW_ATTEMPT;
     l[0].usd_micros = cl_int(line, "usd_micros");
+    l[0].provider_cost_usd_micros = cl_int(line, "provider_cost_usd_micros");
     l[0].outcome = cl_str(ar, line, "outcome");
     l[0].gateway = cl_str(ar, line, "gateway");
     l[0].status = cl_int(line, "status");
@@ -421,7 +422,9 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   values := [7] int.[10, 2, 0, -1, -1, -1, 12];
   n = mww_attempt(o[..], "vertex", "m", "low", "rate_limited", 429, values[..]);
   #assert n > 0 && mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT;
-  #assert l[0].gateway == "vertex" && l[0].outcome == "rate_limited" && l[0].status.value == 429 && l[0].usd_micros.ok && l[0].usd_micros.value == 12;
+  #assert l[0].gateway == "vertex" && l[0].outcome == "rate_limited" && l[0].status.value == 429 && l[0].usd_micros.ok && l[0].usd_micros.value == 12 && !l[0].provider_cost_usd_micros.ok;
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":345,\"usd_micros\":400}", l[..]) == MWW_ATTEMPT;
+  #assert l[0].provider_cost_usd_micros.ok && l[0].provider_cost_usd_micros.value == 345 && l[0].usd_micros.ok && l[0].usd_micros.value == 400;
   back: [2048] u8;
   m := mww_attempt_again(ar[..], cast(string) o[0..<n], back[..]);
   #assert m == n && cast(string) back[0..<m] == cast(string) o[0..<n] && cl_raw(cast(string) back[0..<m], "engine") == "null";

@@ -132,6 +132,7 @@ int cd_forget_line(char *out, int cap) { return cap > 0 ? (int)coder_page_forget
 void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return; coder_page_line(cd_state(c), cd_string(line)); cd_changed(c); }
 void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
 int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }
+int64_t cd_cost_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_cost_usd_micros(cd_state(c)) : 0; }
 int cd_copied(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || cap < 1) return 0;
