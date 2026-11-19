@@ -72,23 +72,64 @@ ICON_SIZES :: [53] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 
                         14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
                         16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11];
 
-// Zeron Dark, opaque (builtins.rs zeron_dark and theme.rs's derived roles).
+// Zeron Dark: zgx's themes/zeron-dark.json (Zeron e393c4a8), the one source of its colours. A
+// skin reads its roles from here, and so does a page that draws a part the skin has no role for
+// (Coder Desktop's composer and menus): no colour is written out anywhere else.
 Theme :: struct {
-  shell: Rgba;          // the window's canvas
-  surface: Rgba;        // composer_surface_bg
-  border: Rgba;         // composer_surface_border
-  text: Rgba; muted: Rgba; faint: Rgba;
+  shell: Rgba;          // zeron.window
+  surface: Rgba;        // zeron.composer.solid: the composer's pill
+  border: Rgba;         // zeron.composer.edge
+  text: Rgba; muted: Rgba; faint: Rgba;   // text.primary, .secondary (0.6), .tertiary (0.42)
+  disabled: Rgba;       // text.disabled (0.28)
   accent: Rgba;         // the caret
-  selection: Rgba;      // the accent at 0.35 (theme crate AccentRoles::derive)
-  bg: Rgba;             // Send's arrow
+  accent_hover: Rgba; accent_active: Rgba;
+  selection: Rgba;      // the accent at 0.35: selected text
+  focus_ring: Rgba;     // the accent at 0.6, 2 wide, 1 out
+  bg: Rgba;             // zeron.primary.text: Send's arrow, what is drawn on the primary
   claude: Rgba;         // the Claude mark (icons.rs claude_brand)
+  line: Rgba; line_subtle: Rgba; line_strong: Rgba;   // border, border.subtle, border.strong
+  hover: Rgba; pressed: Rgba; selected: Rgba;         // washes: hover, pressed, selection.item
+  raised: Rgba; base: Rgba;                           // surface.raised, surface.base
+  sidebar: Rgba; row_selected: Rgba;                  // zeron.sidebar.tint, zeron.selected.flat.bg
+  primary: Rgba; primary_hover: Rgba; primary_active: Rgba;   // zeron.primary
+  secondary: Rgba; secondary_hover: Rgba;             // zeron.secondary
+  menu: Rgba; menu_selected: Rgba;                    // zeron.menu.solid, .selected
+  popover: Rgba;                                      // popover.bg
+  composer_tint: Rgba;                                // zeron.composer.tint (frosted)
+  shadow_sm: Rgba; shadow_md: Rgba; shadow_lg: Rgba;  // shadow.sm 0 1 2, .md 0 4 12, .lg 0 12 32
+  composer_shadow: Rgba;                              // zeron.composer.shadow, 0 12 32
+  menu_shadow: Rgba;                                  // zeron.menu.shadow, 0 20 56
+  dialog_shadow: Rgba;                                // zeron.dialog.shadow, 0 24 64
+  danger: Rgba; warning: Rgba; success: Rgba; info: Rgba;
+  // an agent's state (zeron.status): palette 400 steps
+  connecting: Rgba; input: Rgba; approval: Rgba; plan: Rgba; done: Rgba; failed: Rgba; limited: Rgba;
 }
+ZD_TEXT :: 0xededef; ZD_ACCENT :: 0x9277b0;
 zeron_dark :: () -> Theme {
+  text := hex(ZD_TEXT, 1);
   return Theme.{
-    shell = hex(0x0d0d0d, 1), surface = hex(0x27272a, 1), border = rgba(1, 1, 1, 26.0 / 255.0),   // zeron_theme stores alpha as a byte: 0.10 is 26
-    text = hex(0xe8e8ea, 1), muted = hex(0xa9a9ae, 1), faint = hex(0x85858a, 1),
-    accent = hex(0x8b7cf6, 1), selection = hex(0x8b7cf6, 89.0 / 255.0), bg = hex(0x060606, 1), claude = hex(0xd97757, 1)};
+    shell = hex(0x0e0e10, 1), surface = hex(0x18181b, 1), border = hex(0xc7d2de, 0x17 / 255.0),
+    text = text, muted = opacity(text, 0.6), faint = opacity(text, 0.42), disabled = opacity(text, 0.28),
+    accent = hex(ZD_ACCENT, 1), accent_hover = hex(0x9e85bb, 1), accent_active = hex(0x83699f, 1),
+    selection = hex(ZD_ACCENT, 89.0 / 255.0), focus_ring = hex(ZD_ACCENT, 0.6),
+    bg = hex(0x0b0b0c, 1), claude = hex(0xd97757, 1),
+    line = rgba(1, 1, 1, 0x12 / 255.0), line_subtle = rgba(1, 1, 1, 0x0a / 255.0), line_strong = rgba(1, 1, 1, 0x2e / 255.0),
+    hover = rgba(1, 1, 1, 0x0d / 255.0), pressed = rgba(1, 1, 1, 0x17 / 255.0), selected = rgba(1, 1, 1, 0x1a / 255.0),
+    raised = rgba(1, 1, 1, 0x0f / 255.0), base = rgba(1, 1, 1, 0x08 / 255.0),
+    sidebar = hex(0xebebeb, 0x0d / 255.0), row_selected = hex(0xebebeb, 0x24 / 255.0),
+    primary = hex(0xececee, 1), primary_hover = hex(0xffffff, 1), primary_active = hex(0xd2d2d7, 1),
+    secondary = rgba(1, 1, 1, 0x14 / 255.0), secondary_hover = rgba(1, 1, 1, 0x1f / 255.0),
+    menu = hex(0x1c1c1f, 1), menu_selected = hex(0xebebeb, 0x17 / 255.0), popover = hex(0x2a2a2f, 1),
+    composer_tint = hex(0x080808, 0x26 / 255.0),
+    shadow_sm = rgba(0, 0, 0, 0x59 / 255.0), shadow_md = rgba(0, 0, 0, 0x66 / 255.0), shadow_lg = rgba(0, 0, 0, 0x80 / 255.0),
+    composer_shadow = rgba(0, 0, 0, 0x66 / 255.0), menu_shadow = rgba(0, 0, 0, 0x52 / 255.0), dialog_shadow = rgba(0, 0, 0, 0x80 / 255.0),
+    danger = hex(DANGER, 1), warning = hex(WARNING, 1), success = hex(SUCCESS, 1), info = hex(0x60a5fa, 1),
+    connecting = hex(0x74acfe, 1), input = hex(0x93a3fe, 1), approval = hex(0xe9a64b, 1), plan = hex(0xad98fe, 1),
+    done = hex(0x5dc496, 1), failed = hex(0xf9837b, 1), limited = hex(0xf4925e, 1)};
 }
+// Zeron's shadows (shadow.*, zeron.composer.shadow, zeron.menu.shadow, zeron.dialog.shadow): how far down and how soft.
+ZD_SHADOW_SM :: [2] f32.[1, 2]; ZD_SHADOW_MD :: [2] f32.[4, 12]; ZD_SHADOW_LG :: [2] f32.[12, 32];
+ZD_SHADOW_MENU :: [2] f32.[20, 56]; ZD_SHADOW_DIALOG :: [2] f32.[24, 64];
 
 // A chip hovered or with its menu open (Zeron Dark element_hover).
 CHIP_WASH :: Rgba.{r = 1, g = 1, b = 1, a = 0.11};
@@ -100,10 +141,12 @@ ink :: (a: f32) -> Rgba { return rgba(1, 1, 1, a); }
 byte_alpha :: (c: Rgba, a: f32) -> Rgba { return opacity(c, floor(a * 255 + 0.5) / 255); }
 wash :: (a: f32) -> Rgba { return rgba(0.92, 0.92, 0.92, a); }
 DANGER :: 0xf87171; SUCCESS :: 0x34d399;
-DANGER_MUTED :: 0xfca5a5; WARNING :: 0xfbbf24; WARNING_MUTED :: 0xfde68a;
+DANGER_MUTED :: 0xfca5a5; WARNING :: 0xfacc15; WARNING_MUTED :: 0xfde68a;
 
-// Zeron Dark's syntax seeds, by role (builtins.rs zeron_dark).
-SYNTAX_DARK :: [12] int.[0x92929a, 0x8b7cf6, 0x34d399, 0xfacc15, 0xc084fc, 0x60a5fa, 0xf472b6, 0xe8e8ea, 0xa1a1aa, 0xf472b6, 0x22d3ee, 0xf87171];
+// Zeron Dark's code colours, by role (zeron.syntax): palette 300 steps for words, the text's own ink
+// fainter for comments and punctuation, red 400 for what is invalid.
+SYNTAX_DARK :: [12] int.[ZD_TEXT, 0xc6bbfe, 0x9edaa5, 0xffb58f, 0xf5c283, 0xa3c8fe, 0xffced3, 0xfaa9cf, ZD_TEXT, 0xffada6, 0xe6d288, 0xf9837b];
+SYNTAX_DARK_ALPHA :: [12] f32.[0.46, 1, 1, 1, 1, 1, 1, 1, 0.5, 1, 1, 1];
 
 
 // render.rs and theme.rs: the transcript's Markdown.
@@ -342,13 +385,13 @@ zeron_transcript :: () -> UiTranscript {
 
 zeron_syntax :: (role: int, plain: Rgba) -> Rgba {
   if role < 0 || role > 11 { return plain; }
-  palette := SYNTAX_DARK;
-  return hex(palette[role], 1);
+  palette := SYNTAX_DARK; alpha := SYNTAX_DARK_ALPHA;
+  return hex(palette[role], alpha[role]);
 }
 
 // Zeron's settings screen, dark (ds/settings.luau, ds/account_row.luau, ds/tokens.luau, themes/zeron-dark.json), in points.
 zeron_settings :: () -> UiSettings {
-  text := hex(0xededef, 1);
+  th := zeron_dark();
   return UiSettings.{
     title_face = FONT_SET_TITLE, title_line = 26,
     text_face = FONT_MENU, text_line = 18, page_line = 20,   // (the atlas has no Geist 13 regular: a 1x skin reads it in the medium)
@@ -370,23 +413,23 @@ zeron_settings :: () -> UiSettings {
     row_px = 16, row_py = 12, text_gap = 16, desc_gap = 2, control = 240,   // zeron.settings.control
     lead = 28, lead_radius = 8, lead_gap = 12, lead_icon = 16, chevron = 14, chevron_gap = 4,
     button_h = 32, button_pad = 12, button_radius = 8, small_h = 28, small_pad = 10, small_radius = 6, button_top = 8,
-    text = text, secondary = opacity(text, 0.6), tertiary = opacity(text, 0.42),
-    selected = hex(0xebebeb, 0x24 / 255.0), tint = hex(0xebebeb, 0x0b / 255.0),
-    subtle = rgba(1, 1, 1, 0x0a / 255.0), strong = rgba(1, 1, 1, 0x2e / 255.0),
-    hover = rgba(1, 1, 1, 0x0d / 255.0), pressed = rgba(1, 1, 1, 0x17 / 255.0),
-    well = rgba(1, 1, 1, 0x14 / 255.0), well_hover = rgba(1, 1, 1, 0x1f / 255.0),
-    field = rgba(0, 0, 0, 0x38 / 255.0), field_edge = rgba(1, 1, 1, 0x14 / 255.0),
-    primary = hex(0xececee, 1), primary_hover = hex(0xffffff, 1), on_primary = hex(0x0b0b0c, 1),
-    danger = hex(DANGER, 1)};
+    text = th.text, secondary = th.muted, tertiary = th.faint,
+    selected = th.row_selected, tint = hex(0xebebeb, 0x0b / 255.0),   // zeron.settings.tint
+    subtle = th.line_subtle, strong = th.line_strong,
+    hover = th.hover, pressed = th.pressed,
+    well = th.secondary, well_hover = th.secondary_hover,
+    field = rgba(0, 0, 0, 0x38 / 255.0), field_edge = rgba(1, 1, 1, 0x14 / 255.0),   // zeron.field.bg, .edge
+    primary = th.primary, primary_hover = th.primary_hover, on_primary = th.bg,
+    danger = th.danger};
 }
 
 zeron_skin :: () -> UiSkin {
   th := zeron_dark();
   s := UiSkin.{id = UISKIN_ZERON, name = "zeron",
-    canvas = th.shell, surface = th.surface, raised = wash(0.08), sunk = ink(0.035), hairline = ink(0.10), hover = ink(0.08),
+    canvas = th.shell, surface = th.surface, raised = th.raised, sunk = th.base, hairline = th.line, hover = th.hover,
     ink = th.text, muted = th.muted, faint = th.faint,
     accent = th.accent, on_accent = th.bg, selection = th.selection,
-    danger = hex(DANGER, 1), warning = hex(WARNING, 1), success = hex(SUCCESS, 1),
+    danger = th.danger, warning = th.warning, success = th.success,
     code_wash = opacity(th.accent, 56.0 / 255.0), quote_wash = opacity(th.accent, 0.05), quote_rail = opacity(th.accent, 0.6),
     header_wash = ink(0.02),
     body = UiType.{face = FONT_INPUT, size = 14, line = MD_LINE_HEIGHT},
@@ -424,8 +467,7 @@ zeron_skin :: () -> UiSkin {
       task = LIST_DISC * 2 + 4, task_radius = 3,
       cell_pad = TABLE_CELL_PADDING, cell_pad_y = TABLE_CELL_PADDING, divider = TABLE_DIVIDER, col_min_content = TABLE_MIN_COLUMN_CONTENT, col_min = TABLE_MIN_COLUMN_WIDTH,
       bullet = "•", task_open = "☐", task_done = "☑"}};
-  palette := SYNTAX_DARK;
-  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = hex(palette[k], 1); }
+  for k: 0..<UISKIN_SYNTAX { s.syntax[k] = zeron_syntax(k, th.text); }
   tints := GSPIN_TINTS;
   for k: 0..<3 { s.spinner[k] = hex(tints[k], 1); }
   s.tr = zeron_transcript(); s.cmp = zeron_composer(); s.menus = zeron_menus(); s.desk = zeron_desk(); s.chrome = zeron_chrome();
@@ -434,9 +476,9 @@ zeron_skin :: () -> UiSkin {
   // the composer and its menus (composer.rs, pickers.rs, glass.rs)
   s.doc_tint = rgba(0.796, 0.835, 0.882, 1);   // the file theme's dark tint, #CBD5E1
   s.clear = rgba(0, 0, 0, 0);
-  s.sidebar = th.bg; s.action_hover = ink(0.06); s.row_hover = ink(0.05); s.row_shown = ink(0.08); s.tab_hover = ink(0.04); s.accent_light = ink(0.12);
+  s.sidebar = th.sidebar; s.action_hover = ink(0.06); s.row_hover = ink(0.05); s.row_shown = ink(0.08); s.tab_hover = ink(0.04); s.accent_light = ink(0.12);
   s.brand = th.claude; s.field_edge = th.border; s.lift = rgba(0, 0, 0, 0.1); s.hover_chip = CHIP_WASH;
-  s.menu_hover = ink(0.05); s.menu_selected = wash(0.11); s.menu_ring = ink(0.09);   // card_selected_bg, card_selected_shadows
+  s.menu_hover = ink(0.05); s.menu_selected = th.menu_selected; s.menu_ring = ink(0.09);   // card_selected_bg, card_selected_shadows
   s.menu_rule = ink(0.08); s.menu_divider = ink(0.07); s.list_wash = ink(0.02);
   s.stop_on = ink(0.4);
   s.track = UiPlate.{top = ink(0.08), bottom = ink(0.05), rim = ink(0.09), inset = ink(0.07), inset_dy = 1, drop = rgba(0, 0, 0, 0.16), drop_dy = 1, drop_blur = 2};
@@ -451,11 +493,19 @@ zeron_skin :: () -> UiSkin {
 #test "the Zeron skin is Zeron Dark: its roles, faces and Markdown measures" {
   s := zeron_skin();
   #assert s.id == UISKIN_ZERON && s.name == "zeron" && s.frame == UIFRAME_PLATE;
-  #assert s.ink.r == hex(0xe8e8ea, 1).r && s.accent.b == hex(0x8b7cf6, 1).b && s.canvas.r == hex(0x0d0d0d, 1).r;
+  // zgx's zeron-dark.json: window, text and its tiers, accent, borders, washes, warning, the primary button, composer, menus
+  #assert s.ink.r == hex(0xededef, 1).r && s.accent.b == hex(0x9277b0, 1).b && s.canvas.r == hex(0x0e0e10, 1).r;
+  #assert s.muted.a == 0.6 && s.faint.a == 0.42 && zeron_dark().disabled.a == 0.28 && s.muted.r == s.ink.r;
+  #assert abs(s.hairline.a - 0x12 / 255.0) < 0.0001 && abs(s.hover.a - 0x0d / 255.0) < 0.0001 && abs(s.raised.a - 0x0f / 255.0) < 0.0001;
+  #assert s.warning.g == hex(0xfacc15, 1).g && s.surface.r == hex(0x18181b, 1).r && abs(s.field_edge.a - 0x17 / 255.0) < 0.0001;
+  th := zeron_dark();
+  #assert th.primary.r == hex(0xececee, 1).r && th.primary_active.b == hex(0xd2d2d7, 1).b && th.bg.r == hex(0x0b0b0c, 1).r;
+  #assert th.menu.r == hex(0x1c1c1f, 1).r && th.popover.r == hex(0x2a2a2f, 1).r && abs(th.line_strong.a - 0x2e / 255.0) < 0.0001;
+  #assert s.set.text.r == th.text.r && s.set.primary.r == th.primary.r && s.set.selected.a == th.row_selected.a;
   #assert s.body.face == FONT_INPUT && s.strong.face == FONT_BOLD && s.code.face == FONT_MONO_14 && s.mono.face == FONT_CODE;
   f := uiskin_faces(s);
   #assert f.plain == FONT_INPUT && f.bold == FONT_BOLD && f.code == FONT_MONO_14;
   #assert s.md.line == 22 && s.md.block_line == 18 && s.md.marker_w + s.md.marker_gap == 26 && s.md.cell_pad == 12;
-  #assert uiskin_syntax(s, 1, s.ink).r == hex(0x8b7cf6, 1).r && uiskin_syntax(s, -1, s.ink).r == s.ink.r;
+  #assert uiskin_syntax(s, 1, s.ink).r == hex(0xc6bbfe, 1).r && uiskin_syntax(s, -1, s.ink).r == s.ink.r && s.syntax[0].a == 0.46;
   #assert s.syntax[0].r == zeron_syntax(0, s.ink).r;
 }

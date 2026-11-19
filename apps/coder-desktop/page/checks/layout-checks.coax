@@ -48,7 +48,16 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert k.app.side_row == 32 && k.app.side_head == 26 && k.app.row_inset == 8 && k.app.row_radius == 8 && k.app.side_pad == 16;
   // Composer: Zeron's pill (22pt line, 28pt circular send at 6pt inset, 28pt chips)
   #assert k.cmp.send == 28 && k.cmp.action_inset == 6 && k.cmp.chip_h == 28;
-  #assert k.canvas.r == zeron_skin().canvas.r && k.ink.r == zeron_skin().ink.r;
+}
+
+#test "Coder's skin is Zeron Dark as zgx ships it, with no colour of its own" {
+  k := cp_skin(); z := zeron_skin(); th := zeron_dark();
+  #assert k.canvas.r == th.shell.r && k.sidebar.a == z.sidebar.a && k.sidebar.r == z.sidebar.r;
+  #assert k.ink.r == th.text.r && k.muted.a == 0.6 && k.faint.a == 0.42 && k.accent.b == th.accent.b && k.warning.g == th.warning.g;   // zeron.coax checks these against zeron-dark.json
+  #assert k.raised.a == z.raised.a && k.hover.a == z.hover.a && k.hairline.a == z.hairline.a && k.surface.r == th.surface.r;
+  #assert k.set.text.r == th.text.r && k.set.primary.r == th.primary.r;
+  // Zeron's radii: the composer's 26, code blocks' 12
+  #assert k.cmp.radius == 26 && k.md.block_radius == 12 && k.app.code_radius == 12;
 }
 
 #test "sidebar footer draws demo pills stacked in the footer region" {

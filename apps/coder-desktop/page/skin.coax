@@ -8,45 +8,12 @@ cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].
 // 14 (the composer's draft, as the platform editor sets it; the menus' search), then the library's display faces.
 CP_FONT_SIZES :: [16] f32.[15, 12, 12, 15, 13.5, 13, 12, 11, 14, 13, 11, 14, 24, 11, 12, 20];
 CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placeholder when the platform editor is not showing
-// Coder Desktop's skin: Zeron Dark palette, typography, transcript rhythm (user bubbles,
+// Coder Desktop's skin: Zeron Dark, typography, transcript rhythm (user bubbles,
 // markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
 cp_skin :: () -> UiSkin {
-  k := arcade_phone_skin();
-  z := zeron_skin();
-  // Zeron Dark surface, ink, semantic, and syntax tokens (zeron-dark.json / ds/tokens.luau).
-  k.canvas = z.canvas;
-  k.surface = z.surface;
-  k.sidebar = rgba(0.086f32, 0.090f32, 0.102f32, 1.0f32);
-  k.raised = z.raised;
-  k.sunk = z.sunk;
-  k.hairline = z.hairline;
-  k.field_edge = z.hairline;
-  k.hover = z.hover;
-  k.ink = z.ink;
-  k.muted = z.muted;
-  k.faint = z.faint;
-  k.accent = z.accent;
-  k.on_accent = z.on_accent;
-  k.selection = z.selection;
-  k.code_wash = z.code_wash;
-  k.quote_wash = z.quote_wash;
-  k.quote_rail = z.quote_rail;
-  k.header_wash = z.header_wash;
-  k.syntax = z.syntax;
-  k.chip = z.chip;
-  k.well = z.well;
-  k.rail = z.rail;
-  k.hunk_wash = z.hunk_wash;
-  k.add_wash = z.add_wash;
-  k.add_bar = z.add_bar;
-  k.del_wash = z.del_wash;
-  k.del_bar = z.del_bar;
-  k.danger = z.danger;
-  k.warning = z.warning;
-  k.success = z.success;
-  k.danger_muted = z.danger_muted;
-  k.warning_muted = z.warning_muted;
-  k.menu_divider = z.menu_divider;
+  // Zeron Dark as it is (components/skin/zeron.coax, from zgx's zeron-dark.json): every colour
+  // here is the skin's or the theme's (zeron_dark()); none is written out in the page (#13738).
+  k := zeron_skin();
   k.chat.enabled = true;
   // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
   k.app.side_row = 32.0f32;
@@ -81,7 +48,7 @@ cp_skin :: () -> UiSkin {
   k.md.block_header = 32.0f32;
   k.md.block_pad_x = 14.0f32;
   k.md.block_pad_y = 12.0f32;
-  k.md.block_radius = 10.0f32;
+  k.md.block_radius = 12.0f32;   // radius.xl
   k.md.quote_rail = 2.0f32;
   k.app.gap = 12.0f32;
   k.app.gap_small = 4.0f32;
@@ -92,7 +59,7 @@ cp_skin :: () -> UiSkin {
   k.app.bubble_share = 0.80f32;
   k.app.code_head = 32.0f32;
   k.app.code_pad = 14.0f32;
-  k.app.code_radius = 10.0f32;
+  k.app.code_radius = 12.0f32;
   k.app.code_copy_h = 24.0f32; k.app.code_copy_x = 8.0f32; k.app.code_copy_icon = 12.0f32; k.app.code_copy_gap = 4.0f32; k.app.code_copy_edge = 5.0f32;
   k.app.tool_h = 26.0f32;
   k.app.tool_pad = 10.0f32;
@@ -106,9 +73,9 @@ cp_skin :: () -> UiSkin {
   // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
   k.motion.enter = 0.12f32;
   k.app.rise = 3.0f32;
-  // Composer: exact Zeron pill geometry (20pt radius, 22pt input line (14/22), 14pt side pad, 12pt top pad,
+  // Composer: exact Zeron pill geometry (26pt radius (zeron.composer.radius), 22pt input line (14/22), 14pt side pad, 12pt top pad,
   // 40pt action strip, 6pt concentric inset, 28pt circular send/stop pill, 10pt stop square r=3, 28pt chips).
-  k.cmp.radius = 20.0f32;
+  k.cmp.radius = 26.0f32;
   k.cmp.line = 22.0f32;
   k.cmp.text_inset = 14.0f32;
   k.cmp.pad_top = 12.0f32;

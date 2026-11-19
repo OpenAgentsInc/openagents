@@ -21,6 +21,10 @@
 //    (a path glob, Python's power operator) doesn't count as reading it.
 // 4. One shader. components/backend/gpu-shader.coax lowers to WGSL's
 //    siblings, SPIR-V and Metal, with the compiler in this checkout.
+// 5. No colours in Coder Desktop's page (GitHub #13738, as zgx's
+//    tests/design_lint.rs). A colour made in apps/coder-desktop/page/
+//    (rgba( or hex(, outside a comment) fails: the page reads Zeron Dark
+//    from its skin and zeron_dark() (components/skin/zeron.coax).
 #import "Basic";
 #load "../lib/sys/tool.coax";
 #load "../lib/sys/fs.coax";
@@ -29,6 +33,7 @@
 CC_FILE :: 4194304;
 CC_SELF :: "coax/web/components-check.coax";
 CC_SHADER :: "components/backend/gpu-shader.coax";
+CC_CODER_PAGE :: "apps/coder-desktop/page/";   // rule 5: a page that takes every colour from Zeron Dark
 
 // The layers, in the order they may load each other.
 CC_CORE :: 0; CC_LAYOUT :: 1; CC_PAINT :: 2; CC_SKIN :: 3; CC_BACKEND :: 4; CC_KIT :: 5;
@@ -165,6 +170,9 @@ cc_names_a_look :: (code: string) -> bool {
   return false;
 }
 
+// Whether a line of Coder Desktop's page makes a colour of its own (rule 5).
+cc_makes_a_colour :: (code: string) -> bool { return cc_has(code, "rgba(") || cc_has(code, "hex("); }
+
 cc_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
 cc_ident :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || cc_digit(c) || c == '_'; }
 // Whether a line of a component writes a size: a number other than 0, 1, 2
@@ -296,6 +304,15 @@ tool_main :: () -> int #export_c #effects(all) {
     n := fs_read(path, body[..]);
     if n < 0 { continue; }
     text := cast(string) body[0..<n];
+    if layer == CC_OUTSIDE && cc_starts(path, CC_CODER_PAGE) {
+      // rule 5
+      k := 0;
+      while k < text.count {
+        e := k; while e < text.count && text[e] != '\n' { e += 1; }
+        line := cast(string) text[k..<e]; k = e + 1;
+        if cc_makes_a_colour(cc_code(line)) { print("a colour in Coder Desktop's page: % (read it from the skin or zeron_dark()): %\n", path, line); bad += 1; }
+      }
+    }
     if layer == CC_OUTSIDE {
       // rule 3
       scanned += 1;
@@ -364,6 +381,11 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert cc_may_load(CC_KIT, "components/skin/skin.coax") && cc_may_load(CC_KIT, "components/kit/button.coax") && !cc_may_load(CC_KIT, "components/backend/gpu.coax");
   #assert !cc_may_load(CC_KIT, "components/zeron/composer.coax") && !cc_may_load(CC_CORE, "metaverse-engine/ui/tree.coax") && !cc_may_load(CC_KIT, "coax/lib/json/json.coax");
   #assert cc_may_load(CC_BACKEND, "metaverse-engine/gpu/wgsl.coax") && cc_may_load(CC_OTHER, "metaverse-engine/ui/hud-style.coax");
+}
+#test "Coder Desktop's page makes no colour: rgba( and hex( fail, a role or a comment does not" {
+  #assert cc_makes_a_colour("  z := rgba(0.93f32, 0.93f32, 0.94f32, 1.0f32);") && cc_makes_a_colour("c := hex(0xededef, 1);");
+  #assert !cc_makes_a_colour("  z_ink := th.text;") && !cc_makes_a_colour(cc_code("x := k.ink;   // was rgba(1, 1, 1, 1)")) && !cc_makes_a_colour("prim_box(l, n, x, y, w, h, r, 0, fill, Rgba.{});");
+  #assert cc_starts("apps/coder-desktop/page/layout/conversation.coax", CC_CODER_PAGE) && !cc_starts("apps/coder-desktop/host.c", CC_CODER_PAGE);
 }
 #test "a look in a component: colours made or written out and a skin's faces; a comment or a role is none" {
   #assert cc_names_a_look("  fill := hex(0x27272a, 1);") && cc_names_a_look("c := rgba(1, 1, 1, 0.1);") && cc_names_a_look("x := 0xe8e8ea;") && cc_names_a_look("f := FONT_BOLD;");

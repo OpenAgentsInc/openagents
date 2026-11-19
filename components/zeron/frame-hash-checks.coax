@@ -24,7 +24,8 @@ fc_hash :: (list: [] Prim, n: int, seed: int) -> int {
   return h;
 }
 
-// The hashes as of 6cc616b5eb, before the chat set's measures moved into its skin.
-FC_WANT :: [9] int.[895054135633, 668902141251, 972258035541,     // zeron: transcript, composer, menus
-                    140100635475, 1036568112289, 470701923851,    // everglade
-                    807423348363, 396024690953, 326021744922];    // verse
+// The hashes as of #13738, Zeron Dark taken from zgx's zeron-dark.json (the composer's Everglade and Verse hashes
+// are 6cc616b5eb's: those skins set every colour the composer draws).
+FC_WANT :: [9] int.[57101955023, 35688652535, 842496758639,       // zeron: transcript, composer, menus
+                    538021595987, 1036568112289, 767849352680,    // everglade
+                    64846318443, 396024690953, 655685823925];     // verse

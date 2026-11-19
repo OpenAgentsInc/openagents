@@ -105,35 +105,35 @@ cf_new :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
 
 #test "frames: the demo conversation as it opens" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 0) == 106710439169503552;
+  #assert cf_demo(h[..], o[..], 0) == 101228666197503552;
 }
 #test "frames: the demo with its groups and three chips open, scrolled" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 1) == 88335731829705892;
+  #assert cf_demo(h[..], o[..], 1) == 56803173987105892;
 }
 #test "frames: the opened demo on a phone at density 1" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 2) == 74379182179705808;
+  #assert cf_demo(h[..], o[..], 2) == 28781912739905808;
 }
 #test "frames: the table reply, a quote, lists, two notices and the working trailer" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_table(h[..], o[..], 0) == 43299420899703090;
+  #assert cf_table(h[..], o[..], 0) == 97010701052703090;
 }
 #test "frames: a selection across those rows" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_table(h[..], o[..], 1) == 18347394871303156;
+  #assert cf_table(h[..], o[..], 1) == 14146302510303156;
 }
 #test "frames: the new-chat composer, empty" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_new(h[..], o[..], 0) == 29067752412901170;
+  #assert cf_new(h[..], o[..], 0) == 31056394361901170;
 }
 #test "frames: the new-chat composer with two lines typed" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_new(h[..], o[..], 1) == 30046082436101404;
+  #assert cf_new(h[..], o[..], 1) == 18631912931501404;
 }
 #test "frames: the new-chat composer with its model menu open" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_new(h[..], o[..], 2) == 69069390256101722;
+  #assert cf_new(h[..], o[..], 2) == 77295518678501722;
 }
 
 // Theme (GitHub #13230). Every colour a frame's vertices paint, fills and
