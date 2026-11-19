@@ -635,6 +635,7 @@ sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
   // the build view has the fourth group, and going back takes it away
   sb_act(s, "mode.build"); sb_say(s);
   #assert s[0].build.on && sb_test_has(s, 'G', "build", "Build it") && !sb_test_has(s, 'G', "look", "") && sb_test_field(s, 'D', "build", 0) == "build";
+  bd_ready(s); sb_say(s);   // the run done (it goes on a piece a frame: slab-build-draw.coax bd_more)
   #assert sb_test_has(s, 'R', "build.at", "") && sb_test_has(s, 'B', "build.play", "");
   sb_act(s, "mode.explore"); sb_say(s);
   #assert !s[0].build.on && sb_test_has(s, 'G', "look", "Look");

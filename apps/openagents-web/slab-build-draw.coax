@@ -1,5 +1,5 @@
 // SLAB's construction view (?view=build, key B; GitHub #13682 phases 3 to 6): the build drawn from
-// the simulation, not from a schedule. One run of metaverse/slab-build.coax (cs_run) is made when
+// the simulation, not from a schedule. One run of metaverse/slab-build.coax is made a piece a frame when
 // the view opens; each frame asks its view for the day (cs_view_at in metaverse/slab-build-view.coax) and
 // draws every body where the view puts it, at the draft it gives: caissons in their casting cells and
 // afloat in the basin, tow pieces split into their caissons, tugs, barges and the hull's gantries,
@@ -55,6 +55,9 @@ BdParts :: struct {
 BuildDraw :: struct {
   ready: bool;
   run: [] CsRun;            // the panel's run of the simulation, borrowed while the view is open (slab-panel.coax)
+  q: [] CsProc;             // and the panel's process for it: the run goes on a piece a frame (bd_more)
+  working: bool;            // the run is still going: the film is one shot of the first day's yard
+  want_t: f64 = -1; want_day: f64 = -1;   // a seek asked for while the run goes on, made when it ends
   view: [1] CsvView; film: [1] BuildFilm;
   plan: [SLAB_MAX_BOXES * SLAB_RECORD] f32; plan_n: int;
   day: f64; shot: int = -1; rate: f64;
@@ -69,22 +72,50 @@ BuildDraw :: struct {
 }
 
 // ---------------------------------------------------------------- the run
-bd_ready :: (s: [] Slab) {
+// Opening the view starts the run and draws the first day's yard at once; the rest of the run goes
+// on BD_TICKS ticks a frame (bd_more), as the panel's does, and the film is planned when it ends.
+BD_TICKS :: 320;   // ticks of the build simulation a frame (40 days; about 8 ms in a browser on a Mac)
+bd_begin :: (s: [] Slab) {
   d := s[0].bdraw[..];
   if d[0].ready { return; }
   // One run is held for the page (about 1.4 MB): the panel's. The build view runs the picture's
   // platform into it, and the panel runs its own hull again when it next shows "Building it".
-  d[0].run = s[0].panel.run[..]; s[0].panel.ran = false; s[0].panel.running = false;   // a run it had going is dropped
+  d[0].run = s[0].panel.run[..]; d[0].q = s[0].panel.q[..];
+  s[0].panel.ran = false; s[0].panel.running = false;   // a run it had going is dropped
   run := d[0].run;
-  cs_run(cs_params(), run);
-  bf_plan(run, d[0].film[..]);
-  d[0].plan_n = slab_plan(d[0].plan[..]);
+  done := cs_run_begin(cs_params(), cs_route_gulf(), run, d[0].q);
   r := run[0].route;
   y0 := cs_yard_point(r, 0, 0); y1 := cs_yard_point(r, 1, 0); y2 := cs_yard_point(r, 0, 1);
   d[0].yx = y0.x; d[0].yz = y0.z; d[0].ax = y1.x - y0.x; d[0].az = y1.z - y0.z; d[0].sx = y2.x - y0.x; d[0].sz = y2.z - y0.z;
   d[0].yard_yaw = afloat_angle(r.leg[0].bx - r.leg[0].ax, r.leg[0].bz - r.leg[0].az);
   d[0].cells = cs_cells(run[0].p);
-  d[0].shot = -1; d[0].ready = true;
+  d[0].plan_n = 0; d[0].want_t = -1; d[0].want_day = -1;
+  // until the run ends, the film is the yard on its first day
+  f := d[0].film[..];
+  f[0].count = 0; f[0].length = 0.0; f[0].days = 0.02;
+  bf_add(f, 0.01, 6, 0, BF_YARD, 0, -125, -80, 24, 20, 1000, 760, true, false);
+  d[0].shot = -1; d[0].ready = true; d[0].working = true;
+  if done { bd_finish(s); }
+}
+// More of the run; when it ends, the film and the city's plan, then any seek asked for meanwhile.
+bd_more :: (s: [] Slab, ticks: int) {
+  d := s[0].bdraw[..];
+  if !d[0].working { return; }
+  if cs_run_more(d[0].run, d[0].q, ticks) { bd_finish(s); }
+}
+bd_finish :: (s: [] Slab) {
+  d := s[0].bdraw[..];
+  d[0].working = false;
+  bf_plan(d[0].run, d[0].film[..]);
+  d[0].plan_n = slab_plan(d[0].plan[..]);
+  d[0].shot = -1;
+  wt := d[0].want_t; wd := d[0].want_day; d[0].want_t = -1; d[0].want_day = -1;
+  if wd >= 0 { bd_seek_day(s, wd); } else if wt >= 0 { bd_seek(s, wt); } else { bd_seek_view(s); }
+}
+// The whole run now (the tour and the checks read it at once).
+bd_ready :: (s: [] Slab) {
+  bd_begin(s);
+  while s[0].bdraw[0].working { bd_more(s, CS_MAX_TICKS + 1); }
 }
 bd_length :: (s: [] Slab) -> f64 { return s[0].bdraw[0].film[0].length; }
 // A point of the yard (along the channel, ashore of its centreline) in the site's frame.
@@ -93,7 +124,7 @@ bd_yard :: (d: [] BuildDraw, along: f64, ashore: f64) -> [2] f64 { return [2] f6
 // The view for the film's second `t`: its day, its shot and the shot's origin.
 bd_seek_view :: (s: [] Slab) {
   d := s[0].bdraw[..];
-  bd_ready(s);
+  bd_begin(s);
   f := d[0].film[..]; run := d[0].run;
   t := fclamp(s[0].build.cursor, 0.0, f[0].length);
   k := bf_shot(f, t);
@@ -110,8 +141,9 @@ bd_seek_view :: (s: [] Slab) {
 }
 // Once a frame while the build view is open: the clock, then the view.
 bd_frame :: (s: [] Slab, dt: f32, frozen: bool) {
-  bd_ready(s);
-  if s[0].build.play && !frozen {
+  bd_begin(s);
+  bd_more(s, BD_TICKS);
+  if s[0].build.play && !frozen && !s[0].bdraw[0].working {
     t := loop_frame(s[0].build.clock, f64(dt));
     s[0].build.clock = t.clock;
     speeds := BD_SPEEDS;
@@ -121,11 +153,16 @@ bd_frame :: (s: [] Slab, dt: f32, frozen: bool) {
   bd_seek_view(s);
 }
 bd_seek :: (s: [] Slab, cursor: f64) {
-  bd_ready(s);
+  bd_begin(s);
+  if s[0].bdraw[0].working { s[0].bdraw[0].want_t = cursor; s[0].bdraw[0].want_day = -1; s[0].build.play = false; return; }
   s[0].build.cursor = fclamp(cursor, 0.0, bd_length(s)); s[0].build.play = false; s[0].build.clock = FrameClock.{};
   bd_seek_view(s);
 }
-bd_seek_day :: (s: [] Slab, day: f64) { bd_ready(s); bd_seek(s, bf_time(s[0].bdraw[0].film[..], day)); }
+bd_seek_day :: (s: [] Slab, day: f64) {
+  bd_begin(s);
+  if s[0].bdraw[0].working { s[0].bdraw[0].want_day = day; s[0].bdraw[0].want_t = -1; s[0].build.play = false; return; }
+  bd_seek(s, bf_time(s[0].bdraw[0].film[..], day));
+}
 
 // ---------------------------------------------------------------- open and close
 build_toggle :: (s: [] Slab) {
@@ -134,7 +171,7 @@ build_toggle :: (s: [] Slab) {
     s[0].mode = v.mode; s[0].yaw = v.yaw; s[0].pitch = v.pitch; s[0].dist = v.dist;
     s[0].tx = v.x; s[0].tz = v.z; s[0].intro = v.intro;
     s[0].build.on = false; s[0].build.play = false; s[0].build.picked = -1;
-    s[0].bdraw[0].ready = false;   // the panel has its run back
+    s[0].bdraw[0].ready = false; s[0].bdraw[0].working = false;   // the panel has its run back
     // the build ends at the berth in the Gulf: leaving it, that is where you are
     if s[0].site != SITE_TEXAS || s[0].layout != LAYOUT_PRIME {
       c := s[0].change[..];
@@ -164,7 +201,9 @@ bd_camera :: (s: [] Slab, width: f32, height: f32, step: f32) -> [6] f32 {
   at := d[0].at; k := d[0].shot;
   tx := f32(at.x - d[0].ox); ty := f32(at.y); tz := f32(at.z - d[0].oz);
   ex: f32; ey: f32; ez: f32;
-  portrait := hi_f32(1, 0.92f32 * height / width);   // a tall screen backs off to keep the subject's width
+  // The film's distances are for a wide screen, where the subject fills about half of what the pane
+  // leaves. A phone held upright keeps the same eye: there the subject fills about 80% of the width,
+  // lifted over the sheet below (view_lift), with the chart small in the corner (bd_chart_view).
   if s[0].build.own {
     kh := s[0].held; turn := step;
     if kh & KB_LEFT != 0 { s[0].yaw -= turn; }
@@ -177,7 +216,7 @@ bd_camera :: (s: [] Slab, width: f32, height: f32, step: f32) -> [6] f32 {
     ex = tx + sin(s[0].yaw) * cy * s[0].dist; ey = ty + sin(s[0].pitch) * s[0].dist; ez = tz + cos(s[0].yaw) * cy * s[0].dist;
   } else {
     c := bf_camera(f[0].shots[k], at, s[0].build.cursor);
-    ex = tx + c.ex * portrait; ey = ty + c.ey * portrait; ez = tz + c.ez * portrait;
+    ex = tx + c.ex; ey = ty + c.ey; ez = tz + c.ez;
   }
   // over the water and over what stands under the eye (the hull's deck, the yard's apron)
   ey = hi_f32(ey, bd_floor(s, f64(ex) + d[0].ox, f64(ez) + d[0].oz) + 6);
@@ -734,29 +773,40 @@ bd_hud :: (s: [] Slab, h: [] SceneHud) {
   v := d[0].view[..]; run := d[0].run; f := d[0].film[..]; hl := v[0].hull;
   shot := f[0].shots[d[0].shot]; titles := BF_TITLES;
   sh_group(h, "build", "Build it");
+  if d[0].working {
+    // the first moments: the yard on its first day while the run goes on (bd_more)
+    sh_lead(h, "Working out the build…");
+    sh_say(h, "The casting yard at Ingleside on the first day. Our simulation is working out the rest, day by day.");
+    sb_more(s, h, HUD_BUILD);
+    return;
+  }
   t = sb_w(t, titles[shot.chapter]); t = sb_w(t, ". Day "); t = sb_n(t, floor(d[0].day) + 1, 0); t = sb_w(t, " of "); t = sb_n(t, floor(f[0].days) + 1, 0); t = sb_w(t, "."); ts[0] = t;
   sh_lead(h, sb_s(ts[..]));
   ts[0] = bd_now(s); sh_say(h, sb_s(ts[..]));
-  t = SbText.{}; t = sb_w(t, "The hull is "); t = sb_n(t, f64(run[0].units), 0); t = sb_w(t, " caissons, hollow concrete boxes that float, cast ashore and joined at sea."); ts[0] = t;
-  sh_say(h, sb_s(ts[..]));
+  // until the hull has its first caissons at sea; after that the count below carries it
+  if hl.units == 0 {
+    t = SbText.{}; t = sb_w(t, "The hull is "); t = sb_n(t, f64(run[0].units), 0); t = sb_w(t, " caissons: hollow concrete boxes that float."); ts[0] = t;
+    sh_say(h, sb_s(ts[..]));
+  }
   sh_button(h, "build.play", ifx s[0].build.play then "Pause" else ifx s[0].build.cursor >= bd_length(s) then "Play again" else "Play", !s[0].build.play);
   t = SbText.{}; t = sb_w(t, "Day "); t = sb_n(t, floor(d[0].day) + 1, 0); ts[0] = t;
   sh_slider(h, "build.at", "Where in the build", sb_s(ts[..]), 0, cast(int) floor(bd_length(s) + 0.999), 1, cast(int) floor(s[0].build.cursor));
-  sh_limits(h, "The first day", "Commissioned", "The film runs from the empty yard to the finished platform.");
+  sh_limits(h, "The first day", "Commissioned", "");
   sh_menu(h, "build.chapter", "Chapters", titles[shot.chapter]);
     for c: 0..<BF_CHAPTERS { if bf_chapter(f, c) >= 0 { sh_option(h, sb_id(ids[..], "build.ch.", c), titles[c], "", c == shot.chapter); } }
   sh_end_of(h);
-  sh_choices(h, "build.speed", "Speed");
+  // the speed's label says what a second shows
+  speeds := BD_SPEEDS;
+  t = SbText.{}; t = sb_w(t, "Speed: a second shows ");
+  days := d[0].rate * speeds[s[0].build.speed];
+  if days < 1 { t = sb_n(t, days * 24.0, 1); t = sb_w(t, " hours"); } else { t = sb_n(t, days, ifx days < 10 then 1 else 0); t = sb_w(t, " days"); }
+  ts[0] = t;
+  sh_choices(h, "build.speed", sb_s(ts[..]));
     names := BD_SPEED_NAMES;
     for k: 0..<3 { sh_option(h, sb_id(ids[..], "build.sp.", k), names[k], "", s[0].build.speed == k); }
   sh_end_of(h);
-  speeds := BD_SPEEDS;
-  t = SbText.{}; t = sb_w(t, "One second shows ");
-  days := d[0].rate * speeds[s[0].build.speed];
-  if days < 1 { t = sb_n(t, days * 24.0, 1); t = sb_w(t, " hours of the build."); } else { t = sb_n(t, days, ifx days < 10 then 1 else 0); t = sb_w(t, " days of the build."); }
-  ts[0] = t; sh_say(h, sb_s(ts[..]));
   if s[0].build.own { sh_button(h, "build.film", "Back to the film", false); }
-  else { sh_say(h, ifx s[0].hp.touch then "Drag to take the camera. Tap a caisson, a tug or a barge to learn what holds it." else "Drag to take the camera. Click a caisson, a tug or a barge to learn what holds it."); }
+  else { sh_say(h, ifx s[0].hp.touch then "Drag to look around. Tap a caisson, tug or barge for what holds it." else "Drag to look around. Click a caisson, tug or barge for what holds it."); }
   t = SbText.{}; t = sb_n(t, f64(hl.units), 0); t = sb_w(t, " of "); t = sb_n(t, f64(run[0].units), 0); ts[0] = t;
   sh_fact(h, "Caissons joined at sea", sb_s(ts[..]), SH_OURS);
   placed := v[0].proc.poured_yard + v[0].proc.lining + v[0].proc.upper;
@@ -764,7 +814,7 @@ bd_hud :: (s: [] Slab, h: [] SceneHud) {
   sh_fact(h, "Concrete placed", sb_s(ts[..]), SH_OURS);
   draft := bd_draft(s);
   if draft > 0 { t = SbText.{}; t = sb_n(t, draft, 1); t = sb_w(t, " m"); ts[0] = t; sh_fact(h, "How deep it sits in the water", sb_s(ts[..]), SH_OURS); }
-  sh_say(h, "A run of our simulation: each day's weather, tow, joint and pour is worked out from forces, not drawn from a plan. The land at the yard is schematic and the lines are drawn thicker than they are.");
+  sh_say(h, "Worked out from forces by our simulation. The yard's land is schematic; lines are drawn thicker.");
   sh_link(h, "How the build is worked out", BD_DOCS);
   sb_more(s, h, HUD_BUILD);
 }
@@ -825,8 +875,9 @@ bd_card :: (s: [] Slab, h: [] SceneHud) {
 // work is now. Its names are said with the HUD (bd_tags).
 bd_chart_view :: (s: [] Slab) -> ChartView {
   k := s[0].dpr; w := s[0].width; narrow := w <= 600 * k;
-  side := ifx narrow then 132 * k else 230 * k;
-  x := w - side - (ifx narrow then 10.0f32 else 16.0f32) * k; y := ifx narrow then 100 * k else 66 * k;
+  // on a phone, small in the top corner under the menu, out of the subject's way (bd_camera)
+  side := ifx narrow then 92 * k else 230 * k;
+  x := w - side - (ifx narrow then 10.0f32 else 16.0f32) * k; y := ifx narrow then 64 * k else 66 * k;
   mid := [2] f64.[(WHERE_YARD[0] + CS_SITE_AT[0]) * 0.5, (WHERE_YARD[1] + CS_SITE_AT[1]) * 0.5];
   return ChartView.{x = x, y = y, w = side, h = side, lat = mid[0], lon = mid[1], miles = 72.0};
 }
@@ -843,7 +894,7 @@ bd_lines_2d :: (s: [] Slab, out: [] f32) -> int {
 bd_tags :: (s: [] Slab, h: [] SceneHud) {
   if !s[0].bdraw[0].ready { return; }
   v := s[0].chart.view; k := s[0].dpr;
-  chart_label(s, h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12 * k, false);
+  if v.w >= 200 * k { chart_label(s, h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12 * k, false); }
   if v.w >= 200 * k { chart_route_tags(s, h); }
 }
 // A press in the build view's HUD. True when the id was the build view's.
@@ -877,7 +928,11 @@ bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
   slab_reset(s[..]); s[0].dist = 830; s[0].tx = 20; s[0].yaw = 1.3;
   press(s[..], BTN_BUILD);
   d := s[0].bdraw[..];
-  #assert s[0].build.on && s[0].build.play && d[0].ready && d[0].shot == 0 && d[0].day < 1;
+  // at once: the first day's yard, while the run goes on a piece a frame
+  #assert s[0].build.on && s[0].build.play && d[0].ready && d[0].working && d[0].shot == 0 && d[0].day < 1;
+  frames := 0;
+  while d[0].working { bd_frame(s[..], 0.016, false); frames += 1; #assert d[0].day < 1; }
+  #assert frames > 10 && frames < 120 && d[0].shot == 0 && d[0].day < 1;
   #assert bd_length(s[..]) > 150 && d[0].film[0].days > 1000;
   // the film's seconds and the build's days go together, both ways
   bd_seek_day(s[..], 400);
@@ -888,11 +943,14 @@ bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
   #assert !s[0].build.on && s[0].dist == 830 && s[0].tx == 20 && s[0].yaw == 1.3 && s[0].site == SITE_TEXAS && !d[0].ready;
   l: [1] Slab;
   slab_message(l[..], HOST_FACTS, "url=/worlds/slab?view=build&day=600\n");
+  // the day asked for is shown when the run ends
+  #assert l[0].build.on && l[0].bdraw[0].working && !l[0].build.play;
+  while l[0].bdraw[0].working { bd_frame(l[..], 0.016, false); }
   #assert l[0].build.on && !l[0].build.play && abs(l[0].bdraw[0].day - 600) < 1.0;
 }
 #test "Build view: every caisson is drawn where the simulation has it, and the last day is the hull's ledger" #steps 8000000000 #traversal 400000000 {
   s: [1] Slab;
-  slab_reset(s[..]); build_toggle(s[..]);
+  slab_reset(s[..]); build_toggle(s[..]); bd_ready(s[..]);
   d := s[0].bdraw[..]; run := d[0].run; f := d[0].film[..];
   days := [6] f64.[5.0, 60.0, 200.0, 520.0, 900.0, f[0].days];
   for k: 0..<6 {
@@ -924,7 +982,7 @@ bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
   s: [1] Slab; u: [UNIFORM_FLOATS] f32; out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   slab_reset(s[..]);
   #assert !s[0].photo[0].on;   // the realm draws painterly; the build view draws meshes all the same
-  build_toggle(s[..]);
+  build_toggle(s[..]); bd_ready(s[..]);
   d := s[0].bdraw[..];
   days := [5] f64.[3.0, 45.0, 330.0, 700.0, d[0].film[0].days];
   for k: 0..<5 {
@@ -942,6 +1000,8 @@ bd_key :: (s: [] Slab, key: int, down: bool) -> bool {
   s: [1] Slab;
   slab_reset(s[..]); s[0].hp.pane = true;
   sb_act(s[..], "mode.build"); sb_say(s[..]);
+  #assert sb_test_has(s[..], 'J', "Working out the build…", "") && !sb_test_has(s[..], 'R', "build.at", "");
+  bd_ready(s[..]); sb_say(s[..]);
   #assert sb_test_has(s[..], 'B', "build.play", "Pause") && sb_test_has(s[..], 'R', "build.at", "") && sb_test_has(s[..], 'N', "build.chapter", "");
   #assert sb_test_has(s[..], 'F', "Caissons joined at sea", "") && sb_test_has(s[..], 'F', "Concrete placed", "");
   // a chapter seeks to its first shot and plays; the slider pauses
