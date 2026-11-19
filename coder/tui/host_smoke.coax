@@ -7,11 +7,16 @@
 // `claude` (coder/tui/claude_standin.coax, no login, no model): a realm job
 // reads and edits the realm through the realm tools while the read ceiling
 // refuses its shell command and its file write, and a long job is stopped
-// while it runs. An unpaired key is refused, a forgotten key is refused
+// while it runs. Then, on that host, the phone's view of a Coder session (GitHub #13713), sent as
+// OpenAgents Mobile sends it (coder host rpc and daemon-rpc over the relay with the paired key):
+// the folder list, a session opened in a folder, its thinking, a running sub-agent call's start
+// and call count, the sub-agent's own transcript (ReadSubagent), Foreman (ReadForeman) and the
+// end of the turn, on the stand-in's "delegate" turn. An unpaired key is refused, a forgotten key is refused
 // revoked, and browser.status keeps answering for the pairing (allowed, then denied).
 // The relay and `coder host` run as child processes (coax/lib/sys/proc.coax).
 //
-//   coax/web/tool.sh coder/tui/host_smoke.coax      from the repository root; exit 0 when every check passes
+//   TMPDIR=/tmp coax/web/tool.sh coder/tui/host_smoke.coax   from the repository root; exit 0 when every check passes
+//   (a short TMPDIR: the host's service socket path must fit macOS's 104 bytes)
 //
 // A host to point a browser or another harness at, by hand (a relay URL
 // names a host, never an IP literal: relay_uri.coax refuses ws://127.0.0.1):
@@ -30,6 +35,8 @@ tool_main :: () -> int #export_c #effects(all) {
   if !fs_exists(sm_str(s[0].coder[..], s[0].ncoder)) { tool_errln("host_smoke: run it from the repository root (coder/tui/coder.sh not found)"); return 2; }
   tb: [1024] u8; tmp := fs_temp("coder-host-smoke.", tb[..]);
   if tmp.count == 0 { tool_errln("host_smoke: no temporary folder"); return 1; }
+  // the host's service socket lives under this folder, and a Unix socket path is at most 104 bytes on macOS
+  if tmp.count > 48 { tool_errln("host_smoke: the temporary folder path is too long for the host's socket; run it with TMPDIR=/tmp"); return 2; }
   s[0].ntmp = sm_cat(s[0].tmp[..], 0, tmp);
   hb: [1100] u8; home := sm_in_tmp(s, "home", hb[..]); s[0].nhome = sm_cat(s[0].home[..], 0, home);
   ok := fs_mkdir(home);
@@ -238,6 +245,54 @@ tool_main :: () -> int #export_c #effects(all) {
   sm_check(s, sm_has(sm_steps(steps, sb2[..]), "Working on it"), "what it said before it stopped comes in as a step");
   sob: [8192] u8; son := fs_read(sout, sob[..]);
   sm_check(s, son > 0 && sm_has(cast(string) sob[0..<son], "\"interrupted\":true"), "the engine was interrupted, not left running");
+  // The phone's view of a Coder session on this computer (GitHub #13713), sent as the phone sends
+  // it (coder host rpc and daemon-rpc over the relay with the paired key): the folders a session
+  // may open in, one opened in a folder, its thinking, its running sub-agent call with when it
+  // began and its calls counted, the sub-agent's own transcript, Foreman, and the end of the turn.
+  apps_b:[1300]u8;apps_dir:=sm_in_tmp(s,"execution-workspace/apps",apps_b[..]);ok=fs_mkdir(apps_dir);
+  rq_b:[1200]u8;rq_file:=sm_in_tmp(s,"environment-request.json",rq_b[..]);er:[1]EaRequest;
+  sm_ea(er[..],"DescribeEnvironment","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  has_apps:=false;for i:0..<(ifx rp_count(rp,"folders")>0 then rp_count(rp,"folders") else 0) {fb3:[64]u8;pb3:[24]u8;pn3:=sm_cat(pb3[..],0,"folders.");ib3:[8]u8;pn3=sm_cat(pb3[..],pn3,sm_itoa(i,ib3[..]));if rp_s(rp,cast(string)pb3[0..<pn3],fb3[..])=="apps" {has_apps=true;}}
+  sm_check_or(s,rp[0].ok && has_apps,"the phone sees the workspace's folders (DescribeEnvironment folders)",sm_text(rp));
+  sid_b:[64]u8;sid:=sm_hex32(1,sid_b[..]);cmd_b:[64]u8;cmd:=sm_hex32(2,cmd_b[..]);
+  sm_ea(er[..],"OpenSession",sid);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Please delegate the test survey to a sub-agent");er[0].nf=ea_copy(er[0].folder[..],"apps");
+  er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone opens a Coder session in the folder it chose (OpenSession folder)",sm_text(rp));
+  task_id:[128]u8;ntask:=0;thought:=false;started:=false;counted:=false;
+  for attempt:0..<40 {
+    sm_ea(er[..],"ReadSession",sid);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp_count(rp,"thoughts")>0 && sm_has(sm_text(rp),"A sub-agent can survey the tests.") {thought=true;}
+    for i:0..<(ifx rp_count(rp,"items")>0 then rp_count(rp,"items") else 0) {
+      pb4:[32]u8;pn4:=sm_cat(pb4[..],0,"items.");ib4:[8]u8;pn4=sm_cat(pb4[..],pn4,sm_itoa(i,ib4[..]));base:=cast(string)pb4[0..<pn4];
+      kb4:[64]u8;kn4:=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".tool_name");
+      if !rp_is(rp,cast(string)kb4[0..<kn4],"Task") {continue;}
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".item_id");tb4:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)kb4[0..<kn4],tb4[..]));
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".started_at_ms");if rp_i(rp,cast(string)kb4[0..<kn4])>1700000000000 {started=true;}
+      kn4=sm_cat(kb4[..],0,base);kn4=sm_cat(kb4[..],kn4,".subagent_calls");if rp_i(rp,cast(string)kb4[0..<kn4])>=1 {counted=true;}
+    }
+    if thought && started && counted {break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,thought,"the phone reads the session's thinking (ReadSession thoughts)",sm_text(rp));
+  sm_check_or(s,ntask>0 && started,"the running sub-agent call says when it began (started_at_ms), so the phone counts its seconds",sm_text(rp));
+  sm_check_or(s,counted,"the sub-agent call counts its agent's calls (subagent_calls)",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",sid);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sub_text:=sm_text(rp);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"method","ReadSubagent") && rp_kind(rp,"complete")==JV_FALSE && sm_has(sub_text,"Looking at the tests first.") && sm_has(sub_text,"\"tool_name\":\"Bash\"") && sm_has(sub_text,"a_test.coax"),"the phone reads the running sub-agent's own transcript: its words, its call and that call's result (ReadSubagent)",sub_text);
+  sm_daemon_rpc(s,rp,bk,grant,epoch,rq_file,"{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"ReadForeman\"}");
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"foreman.tier")==JV_NUMBER,"the phone reads Foreman from the daemon (ReadForeman)",sm_text(rp));
+  turn_done:=false;
+  for attempt:0..<40 {
+    sm_ea(er[..],"ReadSession",sid);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp_kind(rp,"sessions.0.busy")==JV_FALSE && sm_has(sm_text(rp),"The sub-agent found two tests.") {turn_done=true;break;}
+    proc_sleep(1000);
+  }
+  sm_check_or(s,turn_done,"the turn ends with the agent's answer",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",sid);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_TRUE && rp_count(rp,"items")==3 && sm_has(sm_text(rp),"\"tool_name\":\"Read\""),"the finished sub-agent's transcript is whole and says it is done",sm_text(rp));
+  so2:[8192]u8;sn2:=fs_read(sout,so2[..]);
+  sm_check(s,sn2>0 && sm_has(cast(string)so2[0..<sn2],"execution-workspace/apps"),"the session's agent ran in the folder the phone chose");
   sm_call(s, rp, "thread.read", other, e5[..]);
   sm_check2(s, rp_refused(rp, "forbidden"), "an unpaired key is refused", rp_s(rp, "result.code", b1[..]));
   sm_call(s, rp, "browser.status", bk, e2[..]);

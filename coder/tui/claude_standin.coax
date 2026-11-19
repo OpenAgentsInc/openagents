@@ -19,7 +19,11 @@
 // touches $CLAUDE_STANDIN_MARK; Write writes the file. Each decision is a
 // JSON line in $CLAUDE_STANDIN_OUT. A prompt with "slowly" in it makes no
 // calls and works for $CLAUDE_STANDIN_SECONDS (default 60), a line a second,
-// until Coder interrupts it.
+// until Coder interrupts it. A prompt with "delegate" in it (GitHub #13713) thinks, starts a
+// sub-agent (a Task call; Claude Code asks no permission for one), whose own frames come as
+// Claude Code sends a sub-agent's (parent_tool_use_id): its words, a Bash call and its result,
+// then $CLAUDE_STANDIN_SUB_SECONDS of work (default 8) while the Task is still out, then a Read
+// call and its result; the Task's result and a reply end the turn. It notes its working folder.
 //
 //   coax/web/tool.sh coder/tui/claude_standin.coax    (the harness links its build as `claude`)
 #import "Basic";
@@ -168,6 +172,7 @@ si_assistant :: (kind: string, id: string, name: string, input: string, text: st
   jo_key(o[..], "content"); jo_arr(o[..]); jo_obj(o[..]);
   jo_key(o[..], "type"); jo_str(o[..], kind);
   if kind == "tool_use" { jo_key(o[..], "id"); jo_str(o[..], id); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "input"); jo_raw(o[..], input); }
+  else if kind == "thinking" { jo_key(o[..], "thinking"); jo_str(o[..], text); }
   else { jo_key(o[..], "text"); jo_str(o[..], text); }
   jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
   jo_key(o[..], "parent_tool_use_id"); jo_null(o[..]); jo_key(o[..], "uuid"); jo_str(o[..], id); jo_key(o[..], "session_id"); jo_str(o[..], "standin");
@@ -261,6 +266,46 @@ si_call :: (s: [] St, k: int, name: string, input: string, spec: string) {
   if name == "Write" { pb: [1100] u8; n := 0; for c: cast(string) s[0].cwd[0..<s[0].ncwd] { pb[n] = c; n += 1; } for c: "/note.txt" { pb[n] = c; n += 1; } ok := fs_write(cast(string) pb[0..<n], "hi\n"); si_result_of(id, "written", false); return; }
 }
 
+// Waits ms, answering Coder meanwhile; true when Coder interrupted the turn (it is ended then).
+si_wait :: (s: [] St, ms: int) -> bool {
+  deadline := proc_now_ms() + ms;
+  while proc_now_ms() < deadline {
+    line := si_read(s, deadline - proc_now_ms());
+    if s[0].eof { return true; }
+    if line.count == 0 { continue; }
+    nodes: [4096] JvNode; d: [1] Jv;
+    tb: [32] u8; tn := ifx jv_parse(d[..], line, nodes[..]) then jv_str(d[0], jv_get(d[0], 0, "type"), tb[..]) else -1;
+    if tn == 15 && cast(string) tb[0..<15] == "control_request" && si_control(s, d[0]) {
+      si_note(s, "{\"interrupted\":true}"); si_result_known(false, "interrupted", "aborted_streaming"); return true;
+    }
+  }
+  return false;
+}
+// A sub-agent's frame: an assistant (or, for a result, user) message under the Task call tu.
+SI_SUB_TEXT :: "{\"type\":\"assistant\",\"parent_tool_use_id\":\"toolu_task\",\"session_id\":\"standin\",\"uuid\":\"s-1\",\"message\":{\"id\":\"m-sub-1\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Looking at the tests first.\"}]}}";
+SI_SUB_BASH :: "{\"type\":\"assistant\",\"parent_tool_use_id\":\"toolu_task\",\"session_id\":\"standin\",\"uuid\":\"s-2\",\"message\":{\"id\":\"m-sub-2\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_sub_1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls tests\"}}]}}";
+SI_SUB_BASH_DONE :: "{\"type\":\"user\",\"parent_tool_use_id\":\"toolu_task\",\"session_id\":\"standin\",\"uuid\":\"s-3\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_sub_1\",\"content\":\"a_test.coax\\nb_test.coax\",\"is_error\":false}]}}";
+SI_SUB_READ :: "{\"type\":\"assistant\",\"parent_tool_use_id\":\"toolu_task\",\"session_id\":\"standin\",\"uuid\":\"s-4\",\"message\":{\"id\":\"m-sub-3\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_sub_2\",\"name\":\"Read\",\"input\":{\"file_path\":\"tests/a_test.coax\"}}]}}";
+SI_SUB_READ_DONE :: "{\"type\":\"user\",\"parent_tool_use_id\":\"toolu_task\",\"session_id\":\"standin\",\"uuid\":\"s-5\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_sub_2\",\"content\":\"#test one\",\"is_error\":false}]}}";
+// The "delegate" turn: thinking, a sub-agent with its own calls, the agent's answer.
+si_delegate :: (s: [] St) {
+  si_note(s, "{\"delegate\":true}");
+  cb: [1200] u8; o: [1] Jo; jo_start(o[..], cb[..]); jo_obj(o[..]); jo_key(o[..], "cwd"); jo_str(o[..], cast(string) s[0].cwd[0..<s[0].ncwd]); jo_end(o[..]); si_note(s, jo_text(o[..]));
+  // thinking, both ways Claude Code may send it: a stream delta and the whole frame
+  si_send("{\"type\":\"stream_event\",\"event\":{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"A sub-agent can survey the tests.\"}},\"parent_tool_use_id\":null,\"uuid\":\"t-1\",\"session_id\":\"standin\"}");
+  si_assistant("thinking", "m-think", "", "", "A sub-agent can survey the tests.");
+  si_assistant("tool_use", "toolu_task", "Task", "{\"description\":\"Survey the tests\",\"prompt\":\"List and read the tests\",\"subagent_type\":\"general-purpose\"}", "");
+  si_send(SI_SUB_TEXT); si_send(SI_SUB_BASH); si_send(SI_SUB_BASH_DONE);
+  eb: [16] u8; secs := 0; for c: proc_getenv("CLAUDE_STANDIN_SUB_SECONDS", eb[..]) { if c >= '0' && c <= '9' { secs = secs * 10 + cast(int) (c - '0'); } }
+  if secs <= 0 { secs = 8; }
+  if si_wait(s, secs * 1000) { return; }
+  si_send(SI_SUB_READ); si_send(SI_SUB_READ_DONE);
+  if si_wait(s, 1000) { return; }
+  si_result_of("toolu_task", "Two tests: a_test.coax and b_test.coax.", false);
+  si_assistant("text", "m-delegate-done", "", "", "The sub-agent found two tests.");
+  si_result(true, "The sub-agent found two tests.");
+}
+
 tool_main :: () -> int #export_c #effects(all) {
   av: [1] Args;
   if args_load(av[..]) && args_has(av[..], "--version") { si_send("0.0.0 (a stand-in claude for Coder's checks)"); return 0; }
@@ -321,6 +366,8 @@ tool_main :: () -> int #export_c #effects(all) {
       }
     }
     si_result(true, "done working");
+  } else if si_has(prompt, "delegate") {
+    si_delegate(s);
   } else if si_has(prompt,"routed-task-smoke") {
     si_call(s,91,"Write","{\"file_path\":\"note.txt\",\"content\":\"hi\"}","");
     si_assistant("text","task-continuation","","","The native fixture consumed its correlated tool result.");

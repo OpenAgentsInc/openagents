@@ -19,7 +19,11 @@ static inline int64_t cxsecret_copy(const char *service,const char *account,int 
   if (account) {CFStringRef a=CFStringCreateWithCString(NULL,account,kCFStringEncodingUTF8);if (!a) {CFRelease(q);return -1;}CFDictionarySetValue(q,kSecAttrAccount,a);CFRelease(a);}
   CFDictionarySetValue(q,kSecReturnData,kCFBooleanTrue);
   CFDictionarySetValue(q,kSecMatchLimit,kSecMatchLimitOne);
+  /* Deprecated but still honoured; tools built with -Werror include this. */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
   if (no_ui) CFDictionarySetValue(q,kSecUseAuthenticationUI,kSecUseAuthenticationUIFail);
+#pragma clang diagnostic pop
   CFTypeRef got=NULL;OSStatus status=SecItemCopyMatching(q,&got);CFRelease(q);
   if (status==errSecItemNotFound) return 0;
   if (status!=errSecSuccess || !got) {if (got) CFRelease(got);return -3;}

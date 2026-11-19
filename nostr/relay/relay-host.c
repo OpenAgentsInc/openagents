@@ -42,6 +42,7 @@
    them and says how much memory they take.
    Effects only; every relay decision is Coax. */
 #define _DEFAULT_SOURCE /* getentropy */
+#define __STDC_WANT_LIB_EXT1__ 1 /* memset_s, macOS's explicit_bzero */
 #include "socket-server-native.h"
 #include "store-file-native.h"
 #include "tls-native.h"
@@ -64,6 +65,8 @@
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <sys/random.h>
+/* macOS has no explicit_bzero; memset_s is its wipe the compiler keeps. */
+#define explicit_bzero(p, n) ((void)memset_s((p), (n), 0, (n)))
 #endif
 
 static long long capacity = -1;

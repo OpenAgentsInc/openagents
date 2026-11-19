@@ -147,13 +147,30 @@ sm_call :: (s: [] Sm, rp: [] Rp, op: string, key_file: string, extra: [] string)
   sm_exec(s, rp, argv[0..<n], 90000);
 }
 sm_host :: (s: [] Sm, rp: [] Rp, args: [] string) {
-  argv: [16] string; argv[0] = sm_str(s[0].coder[..], s[0].ncoder); argv[1] = "host"; n := 2;
+  argv: [24] string; argv[0] = sm_str(s[0].coder[..], s[0].ncoder); argv[1] = "host"; n := 2;
   for a: args { argv[n] = a; n += 1; }
   sm_exec(s, rp, argv[0..<n], 600000);
 }
 sm_execution :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,file:string) {
  args:=[13]string.["execution-rpc","--host",sm_key(s),"--grant",grant,"--epoch",epoch,"--browser-key",key,"--request-file",file,"--relay",sm_str(s[0].url[..],s[0].nurl)];sm_host(s,rp,args[..]);
 }
+// One environment request to this host as a paired phone sends it (coder host rpc over the relay,
+// sealed with the paired key): q written to file, the view's JSON in rp. daemon: a daemon-wire
+// request (raw) through daemon-rpc instead.
+sm_env_rpc :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,file:string,q:[]EaRequest) {
+ b:[24576]u8;n:=ea_write(q,b[..]);if n<1 || !fs_write(file,cast(string)b[0..<n]) {rp[0].status= -1;rp[0].ok=false;return;}
+ args:=[15]string.["rpc","--host",sm_key(s),"--grant",grant,"--epoch",epoch,"--browser-key",key,"--request-file",file,"--relay",sm_str(s[0].url[..],s[0].nurl),"--wait-ms","15000"];sm_host(s,rp,args[..]);
+}
+sm_daemon_rpc :: (s:[]Sm,rp:[]Rp,key:string,grant:string,epoch:string,file:string,raw:string) {
+ if !fs_write(file,raw) {rp[0].status= -1;rp[0].ok=false;return;}
+ args:=[15]string.["daemon-rpc","--host",sm_key(s),"--grant",grant,"--epoch",epoch,"--browser-key",key,"--request-file",file,"--relay",sm_str(s[0].url[..],s[0].nurl),"--wait-ms","15000"];sm_host(s,rp,args[..]);
+}
+// A check whose detail (a reply, say) shows only when it fails, cut to 2000 bytes.
+sm_check_or :: (s:[]Sm,ok:bool,what:string,detail:string) {sm_check(s,ok,what);if !ok {sm_out("     ");sm_out(ifx detail.count>2000 then cast(string)detail[0..<2000] else detail);sm_out("\n");}}
+// 32 lowercase hex digits from the clock and a salt: a fresh session or command id.
+sm_hex32 :: (salt:int,out:[]u8)->string {v:=(proc_now_ms()%1000000007+salt*104729)%1000000007;for i:0..<32 {v=(v*48271+12345)%2147483647;out[i]="0123456789abcdef"[(v>>7)&15];}return cast(string)out[0..<32];}
+// A request of method m on session id (32 hex, or ""), read-only unless command is named.
+sm_ea :: (q:[]EaRequest,m:string,id:string) {q[0]=EaRequest.{};q[0].nm=ea_copy(q[0].method[..],m);q[0].nw=ea_copy(q[0].workspace[..],"default");q[0].ns=ea_copy(q[0].session[..],id);}
 // A file's permission bits as octal text (stat -f on macOS, stat -c elsewhere).
 sm_mode :: (s: [] Sm, path: string, out: [] u8) -> string {
   rp_b: [1] Rp;
