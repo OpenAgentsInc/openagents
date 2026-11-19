@@ -264,6 +264,30 @@ To build a second copy somewhere else, and leave a running Coder's files alone:
 CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh
 ```
 
+## Install in Applications
+
+To keep `/Applications/Coder.app` at the newest `main`, run this once:
+
+```sh
+apps/coder-desktop/install.sh --agent
+```
+
+It builds `origin/main` in a checkout of its own under
+`~/.cache/openagents/coder-release` (never in yours), installs it, and from then
+on checks every 15 minutes. A check builds only when `main` changed something
+Coder's build reads, which takes about 20 seconds. While Coder is open, a new
+build waits; it goes in at the first check after you quit Coder. A check skips
+its turn when the Mac is busy or has under 10 GB free.
+
+| Command | What it does |
+| --- | --- |
+| `apps/coder-desktop/install.sh` | Build and install now. A Coder open from Applications is quit and opened again |
+| `apps/coder-desktop/install.sh --status` | The commit of `main`, of the installed Coder and of a build that waits |
+| `apps/coder-desktop/install.sh --remove-agent` | Stop the checks. The installed Coder stays |
+
+The installed app's `Info.plist` names its commit (`OACommit`) and its commit
+count (`CFBundleVersion`). The log is `~/.cache/openagents/coder-release/log`.
+
 ## Checks
 
 ```sh
@@ -280,3 +304,4 @@ coax/bin/coax test apps/coder-desktop/page.coax --library
 | `carrier.c` | The shared component carrier with this page |
 | `App.swift` | The AppKit lifecycle, the window, the editor's placement, the worker processes and the kept chats' files |
 | `build.sh` | Coax to C and Metal, the two workers' images, then clang, swiftc and codesign |
+| `install.sh` | Builds `origin/main` and keeps `/Applications/Coder.app` at it, every 15 minutes with `--agent` |
