@@ -101,6 +101,7 @@ AppTool :: struct {
   output: string;             // what came back ("" while it runs)
   took: string;               // how long it took or has run so far, as the app words it (12s, 1m 05s); "": not shown
   note: bool;                 // not a call but words, such as a model's thinking: it opens onto its output alone, every line, with no input and no pages
+  diff: bool;                 // a file edit or unified diff: header shows +N -M stats, body renders a unified diff card with line numbers and +/- bands
   doc: [] MdDoc; block0: int; blocks: int;   // a note's words as Markdown: `blocks` blocks of doc from block0, drawn as a reply's are. 0 blocks: its output's lines as they are
 }
 // How many lines text has (a last line with no newline counts), and line k's bytes.
@@ -123,6 +124,136 @@ app_pages :: (text: string, per: int) -> int {
   n := app_lines(text);
   if per < 1 || n <= per { return 1; }
   return (n + per - 1) / per;
+}
+// Whether text is a unified diff (starts with a diff/hunk header or contains a @@ - hunk line).
+app_is_diff :: (text: string) -> bool {
+  n := app_lines(text);
+  lim := ifx n < 12 then n else 12;
+  for i: 0..<lim {
+    ln := app_line(text, i);
+    if ln.count >= 4 && cast(string) ln[0..<4] == "@@ -" { return true; }
+    if ln.count >= 11 && cast(string) ln[0..<11] == "diff --git " { return true; }
+  }
+  return false;
+}
+// Count added (+) and removed (-) lines in a unified diff, ignoring +++ / --- file headers.
+app_diff_stats :: (text: string, added: [] int, removed: [] int) {
+  a := 0; r := 0; n := app_lines(text);
+  for i: 0..<n {
+    ln := app_line(text, i);
+    if ln.count == 0 { continue; }
+    if ln[0] == '+' {
+      if ln.count >= 3 && cast(string) ln[0..<3] == "+++" { continue; }
+      a += 1;
+    } else if ln[0] == '-' {
+      if ln.count >= 3 && cast(string) ln[0..<3] == "---" { continue; }
+      r += 1;
+    }
+  }
+  added[0] = a; removed[0] = r;
+}
+// Parse a unified diff hunk header "@@ -old[,c] +new[,c] @@" into starting line numbers.
+app_diff_parse_hunk :: (ln: string, old_ln: [] int, new_ln: [] int) -> bool {
+  if ln.count < 6 || cast(string) ln[0..<4] != "@@ -" { return false; }
+  i := 4; o := 0;
+  while i < ln.count && ln[i] >= '0' && ln[i] <= '9' { o = o * 10 + cast(int) (ln[i] - '0'); i += 1; }
+  while i < ln.count && ln[i] != '+' { i += 1; }
+  if i >= ln.count { return false; }
+  i += 1; nw := 0;
+  while i < ln.count && ln[i] >= '0' && ln[i] <= '9' { nw = nw * 10 + cast(int) (ln[i] - '0'); i += 1; }
+  old_ln[0] = ifx o > 0 then o else 1;
+  new_ln[0] = ifx nw > 0 then nw else 1;
+  return true;
+}
+// A unified diff card body at (x, y), w wide: bordered surface, line-number gutter,
+// subtle monochrome bands and left edge ticks for +/- lines, hunk headers, and pagination.
+app_diff_body :: (f: [] UiFrame, id: string, k: int, x: f32, y: f32, w: f32, text: string, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
+  line_h := s.mono_small.line + 3.0f32;
+  per := cast(int) a.tool_page_lines; total := app_lines(text); pages := app_pages(text, per);
+  page := cast(int) keyed_slot(f[0].keyed, k, APP_TOOL_RESULT_PAGE);
+  if page > pages - 1 { page = pages - 1; keyed_slot_set(f[0].keyed, k, APP_TOOL_RESULT_PAGE, cast(f32) page); }
+  first := page * per; last := ifx first + per < total then first + per else total;
+  shown := ifx last > first then last - first else 1;
+  pad_v: f32 = 4.0f32;
+  box_h := pad_v * 2 + cast(f32) shown * line_h;
+  _ := sheet_box(sh, x, y, w, box_h, a.tool_radius, s.border, s.surface, s.menu_divider);
+  tid: [EL_ID] u8; pid: [EL_ID] u8;
+  row := uiframe_semantic(f, app_id(tid[..], id, ".diff"), EL_TEXT, "Diff", x, y, w, box_h, 0, 0);
+  elt_value(f[0].rows, row, text);
+  // Track old/new line numbers from the start of the diff up to `first`.
+  ol: [1] int; nl: [1] int; ol[0] = 1; nl[0] = 1;
+  for q: 0..<first {
+    ln := app_line(text, q);
+    if app_diff_parse_hunk(ln, ol[..], nl[..]) { continue; }
+    if ln.count >= 3 && (cast(string) ln[0..<3] == "---" || cast(string) ln[0..<3] == "+++") { continue; }
+    if ln.count >= 11 && cast(string) ln[0..<11] == "diff --git " { continue; }
+    if ln.count > 0 && ln[0] == '-' { ol[0] += 1; }
+    else if ln.count > 0 && ln[0] == '+' { nl[0] += 1; }
+    else { ol[0] += 1; nl[0] += 1; }
+  }
+  gutter_w := measure_width(m, s.mono_small.face, "0000") + 10.0f32;
+  sign_w := measure_width(m, s.mono_small.face, "+ ");
+  code_x := x + gutter_w + 6.0f32 + sign_w;
+  code_w := w - (code_x - x) - 8.0f32;
+  if code_w < 24.0f32 { code_w = 24.0f32; }
+  // Gutter divider
+  sheet_fill(sh, x + gutter_w, y + s.border, s.border, box_h - 2 * s.border, 0, opacity(s.menu_divider, 0.7));
+  for q: first..<last {
+    ln := app_line(text, q);
+    ry := y + pad_v + cast(f32) (q - first) * line_h;
+    ty := ry + (line_h - s.mono_small.line) / 2;
+    is_hunk := app_diff_parse_hunk(ln, ol[..], nl[..]);
+    is_hdr := !is_hunk && ((ln.count >= 3 && (cast(string) ln[0..<3] == "---" || cast(string) ln[0..<3] == "+++")) || (ln.count >= 11 && cast(string) ln[0..<11] == "diff --git "));
+    is_add := !is_hunk && !is_hdr && ln.count > 0 && ln[0] == '+';
+    is_del := !is_hunk && !is_hdr && ln.count > 0 && ln[0] == '-';
+    if is_hunk || is_hdr {
+      sheet_fill(sh, x + s.border, ry, w - 2 * s.border, line_h, 0, opacity(s.raised, 0.55));
+      _ := sheet_plain(sh, m, x + gutter_w + 6.0f32, ty, s.mono_small.line, s.mono_small.face, s.faint, app_fit(f, s.mono_small.face, ln, w - gutter_w - 14.0f32), true);
+      continue;
+    }
+    lnum := ifx is_del then ol[0] else nl[0];
+    if is_add {
+      sheet_fill(sh, x + s.border, ry, w - 2 * s.border, line_h, 0, opacity(s.ink, 0.08));
+      sheet_fill(sh, x + s.border, ry, 2.0f32, line_h, 0, s.ink);
+      nl[0] += 1;
+    } else if is_del {
+      sheet_fill(sh, x + s.border, ry, w - 2 * s.border, line_h, 0, opacity(s.ink, 0.035));
+      sheet_fill(sh, x + s.border, ry, 2.0f32, line_h, 0, s.faint);
+      ol[0] += 1;
+    } else {
+      ol[0] += 1; nl[0] += 1;
+    }
+    // Right-aligned line number in gutter
+    nb: [16] u8; nn := el_put_i(nb[..], 0, lnum);
+    nstr := sheet_pool(sh, cast(string) nb[0..<nn]);
+    nw := measure_width(m, s.mono_small.face, nstr);
+    _ := sheet_plain(sh, m, x + gutter_w - nw - 6.0f32, ty, s.mono_small.line, s.mono_small.face, s.faint, nstr, true);
+    // Sign marker (+ / - / space)
+    sign := ifx is_add then "+" else ifx is_del then "-" else " ";
+    sign_ink := ifx is_add then s.ink else ifx is_del then s.muted else s.faint;
+    _ := sheet_plain(sh, m, x + gutter_w + 6.0f32, ty, s.mono_small.line, s.mono_small.face, sign_ink, sign, true);
+    // Line content (strip leading +/-/space prefix when present)
+    body := ifx (is_add || is_del || (ln.count > 0 && ln[0] == ' ')) then cast(string) ln[1..<ln.count] else ln;
+    code_ink := ifx is_add then s.ink else s.muted;
+    _ := sheet_plain(sh, m, code_x, ty, s.mono_small.line, s.mono_small.face, code_ink, app_fit(f, s.mono_small.face, body, code_w), true);
+  }
+  h := box_h;
+  if pages > 1 {
+    buf: [EL_LABEL] u8;
+    n := el_put(buf[..], 0, "Page "); n = el_put_i(buf[..], n, page + 1); n = el_put(buf[..], n, " of "); n = el_put_i(buf[..], n, pages);
+    n = el_put(buf[..], n, " · "); n = el_put_i(buf[..], n, total); n = el_put(buf[..], n, " lines");
+    words := sheet_pool(sh, cast(string) buf[0..<n]);
+    py := y + h; ph := a.pager_h; ly := py + (ph - s.control_h) / 2;
+    nw := form_link_width(m, s, "Next");
+    name := app_id(pid[..], id, ".result");
+    prev: [EL_ID] u8; next: [EL_ID] u8;
+    _ := ctx_link(f, app_id(prev[..], name, ".prev"), x - s.space, ly, "Previous", "Previous page", ifx page > 0 then 0 else EL_S_DISABLED, ifx page > 0 then action else 0);
+    _ := sheet_text(sh, m, -1, x + (w - measure_width(m, s.small.face, words)) / 2, py + (ph - s.small.line) / 2, s.small.line, s.small.face, s.muted, words);
+    _ := ctx_link(f, app_id(next[..], name, ".next"), x + w - nw + s.space, ly, "Next", "Next page", ifx page < pages - 1 then 0 else EL_S_DISABLED, ifx page < pages - 1 then action else 0);
+    h += ph;
+  }
+  return h;
 }
 // A press on a tool row, a tool group or one of a tool row's pagers changes
 // what is open and which page is shown: the app calls this with the id of the
@@ -235,6 +366,26 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     _ := sheet_text(sh, m, -1, right, mid - s.small.line / 2, s.small.line, s.small.face, ifx t.state == APP_TOOL_FAILED then s.ink else s.faint, words);
     right -= a.gap;
   }
+  if t.diff && t.output.count > 0 {
+    da: [1] int; dr: [1] int;
+    app_diff_stats(t.output, da[..], dr[..]);
+    if dr[0] > 0 {
+      db: [24] u8; dn := el_put(db[..], 0, "-"); dn = el_put_i(db[..], dn, dr[0]);
+      dstr := sheet_pool(sh, cast(string) db[0..<dn]);
+      dw := measure_width(m, s.mono_small.face, dstr); right -= dw;
+      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.muted, dstr);
+      right -= a.gap_small;
+    }
+    if da[0] > 0 {
+      ab: [24] u8; an := el_put(ab[..], 0, "+"); an = el_put_i(ab[..], an, da[0]);
+      astr := sheet_pool(sh, cast(string) ab[0..<an]);
+      aw := measure_width(m, s.mono_small.face, astr); right -= aw;
+      _ := sheet_text(sh, m, -1, right, mid - s.mono_small.line / 2, s.mono_small.line, s.mono_small.face, s.ink, astr);
+      right -= a.gap;
+    } else if dr[0] > 0 {
+      right -= a.gap - a.gap_small;
+    }
+  }
   if right > pen {
     face := ifx flat then s.tool.face else s.mono_small.face;
     arg_line := ifx flat then s.tool.line else s.mono_small.line;
@@ -267,6 +418,8 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
     elt_value(f[0].rows, said, t.output);
     for q: 0..<total { _ := sheet_plain(sh, m, bx, top + bh + cast(f32) q * line, line, s.mono_small.face, s.muted, app_fit(f, s.mono_small.face, app_line(t.output, q), bw), true); }
     bh += cast(f32) total * line;
+  } else if t.diff && t.output.count > 0 {
+    bh += app_diff_body(f, id, k, bx, top + bh, bw, t.output, action);
   } else {
     bh += app_tool_part(f, id, k, APP_TOOL_INPUT_PAGE, ".input", "Input", bx, top + bh, bw, t.input, action);
     if t.output.count > 0 || t.state == APP_TOOL_DONE || t.state == APP_TOOL_FAILED {

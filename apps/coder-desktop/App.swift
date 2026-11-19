@@ -1,5 +1,6 @@
 // Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
 import AppKit
+import Darwin
 
 /// The Microcoder worker (coder/tui/mcworker.coax, built into the bundle): a process that reads
 /// one JSON line a message and writes one a line back. This class starts it, carries bytes each
@@ -15,6 +16,8 @@ final class CoderWorker {
 
     /// The bundled program it runs: Microcoder's worker, or the Claude Code worker for a Claude sub-agent.
     var program = "mcworker"
+    /// Additional environment variables injected only for this worker (used by the Foreman worker).
+    var extraEnv: [String: String] = [:]
     /// The folders added to the system's short PATH for what the workers start.
     static var path: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -35,6 +38,13 @@ final class CoderWorker {
         // find what is installed for this person (gamebuilder is in ~/.local/bin).
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = CoderWorker.path
+        for (k, v) in extraEnv {
+            if k == "PATH" {
+                env["PATH"] = v + ":" + (env["PATH"] ?? CoderWorker.path)
+            } else {
+                env[k] = v
+            }
+        }
         // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
         env["CODER_CLAUDE_KEY"] = program == "claudeworker" ? CoderKey.current : nil
         p.environment = env
@@ -131,7 +141,21 @@ func coderSkillsNote() -> String {
 
 /// One kept chat in the list: its id (its file's name), its title, when it was created, when it last changed,
 /// its working folder, and whether the user gave it a custom title that should not be overwritten on subsequent saves.
-struct CoderChat: Codable { var id: String; var title: String; var created: Double? = nil; var updated: Double; var folder: String; var renamed: Bool? = nil; var pinned: Int? = nil }
+struct CoderChat: Codable {
+    var id: String
+    var title: String
+    var created: Double? = nil
+    var updated: Double
+    var folder: String
+    var renamed: Bool? = nil
+    var pinned: Int? = nil
+    var managedBy: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, created, updated, folder, renamed, pinned
+        case managedBy = "managed_by"
+    }
+}
 /// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
 /// the page's text) and index.json, the list, newest created first.
 final class CoderStore {
@@ -165,15 +189,17 @@ final class CoderStore {
     private func saveIndex() {
         if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
     }
-    var pinnedList: [CoderChat] { list.filter { $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
-    var recentList: [CoderChat] { list.filter { $0.pinned == nil } }
+    var pinnedList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
+    var recentList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned == nil } }
     var orderedList: [CoderChat] { pinnedList + recentList }
     /// The list as the page reads it: one chat a line, its id, a tab, its title.
     var lines: String { orderedList.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
     func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
     func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
     func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
+    func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
+    func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
     private func normalizePins() {
         let ids = pinnedList.map(\.id)
         for (order, id) in ids.enumerated() {
@@ -222,16 +248,33 @@ final class CoderStore {
     }
     /// Keeps a chat's text. A new chat joins the top of the list; an existing chat updates in place
     /// so chats stay ordered chronologically by creation time (newest created first).
-    func keep(id: String, title: String, folder: String, text: String) {
+    func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil) {
         guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
         let now = Date().timeIntervalSince1970
         if let i = list.firstIndex(where: { $0.id == id }) {
             if list[i].created == nil { list[i].created = list[i].updated }
-            if list[i].renamed != true { list[i].title = title }
+            if list[i].renamed != true && id != Foreman.chatID { list[i].title = title }
             list[i].updated = now
             list[i].folder = folder
+            if let managedBy { list[i].managedBy = managedBy }
         } else {
-            list.insert(CoderChat(id: id, title: title, created: now, updated: now, folder: folder), at: 0)
+            let effectiveTitle = id == Foreman.chatID ? Foreman.title : title
+            list.insert(CoderChat(id: id, title: effectiveTitle, created: now, updated: now, folder: folder, managedBy: managedBy), at: 0)
+        }
+        saveIndex()
+    }
+    func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {
+        let now = Date().timeIntervalSince1970
+        let clean = Self.cleanTitle(title)
+        let effectiveTitle = clean.isEmpty ? "New chat" : clean
+        if let i = list.firstIndex(where: { $0.id == id }) {
+            list[i].title = effectiveTitle
+            list[i].renamed = true
+            list[i].updated = now
+            list[i].folder = folder
+            if let managedBy { list[i].managedBy = managedBy }
+        } else {
+            list.insert(CoderChat(id: id, title: effectiveTitle, created: now, updated: now, folder: folder, renamed: true, managedBy: managedBy), at: 0)
         }
         saveIndex()
     }
@@ -272,6 +315,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private let store = CoderStore()
     private var chat: String?          // the id of the chat that is shown, once it is kept
     private var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
+    private var choosingFolder = false // prevents stacking folder sheets while one is opening or open
+    private let launchBinary = CoderWindow.currentBinaryIdentity()
+    private let foremanServer = ForemanControlServer()
+    private let foremanEvents = ForemanEventBus()
+    private let foremanAudit = ForemanAuditLog()
+    private var lastForegroundRunning = false
+    var foremanTier: ForemanTier = ForemanTier.load()
 
     init?(resources: String) {
         guard let page = cd_open(resources), let raw = cd_view(page) else { return nil }
@@ -297,6 +347,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
         cd_chats(page, chatLines)
+        syncForemanUI()
+        foremanServer.handler = { [weak self] request, done in
+            guard let self else {
+                done(ForemanResponse(status: 503, body: ["error": "window unavailable"]))
+                return
+            }
+            self.handleForemanAsyncRequest(request, done: done)
+        }
+        _ = foremanServer.start()
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -321,6 +380,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let clock = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(clock, forMode: .common); self.clock = clock
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
+        // Coder --foreman opens the persistent Foreman chat at launch.
+        if CommandLine.arguments.contains("--foreman") { openForeman() }
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
@@ -381,11 +442,138 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private var chatLines: String {
         store.orderedList.map { chat in
             let isBusy = runs[chat.id] != nil
-            if chat.pinned != nil {
-                return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t1"
-            }
-            return chat.id + "\t" + chat.title + (isBusy ? "\t1" : "")
+            let isPinned = chat.pinned != nil
+            let isManaged = chat.managedBy == Foreman.managedTag
+            return chat.id + "\t" + chat.title + "\t" + (isBusy ? "1" : "0") + "\t" + (isPinned ? "1" : "0") + "\t" + (isManaged ? "1" : "0")
         }.joined(separator: "\n")
+    }
+    private var isForemanShown: Bool { chat == Foreman.chatID }
+    private func syncForemanUI() {
+        let busy = runs[Foreman.chatID] != nil || (chat == Foreman.chatID && cd_running(page) != 0)
+        cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
+    }
+    private func syncSkillsNote(for pagePtr: UnsafeMutableRawPointer, isForeman: Bool) {
+        let base = coderSkillsNote()
+        if isForeman {
+            let note = Foreman.systemPrompt(tier: foremanTier, workspace: folder.path, chatCount: store.orderedList.count, runningCount: runningCount, baseSkills: base)
+            cd_skills(pagePtr, note)
+        } else {
+            cd_skills(pagePtr, base)
+        }
+    }
+    private func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
+        var env: [String: String] = [:]
+        if isForeman && foremanServer.port > 0 {
+            env = [
+                "CODER_FOREMAN_URL": foremanServer.baseURL,
+                "CODER_FOREMAN_TOKEN": foremanServer.token,
+                "CODER_FOREMAN_TIER": foremanTier.wireName
+            ]
+            if let res = Bundle.main.resourcePath {
+                env["PATH"] = res
+            }
+        }
+        let changed = r.worker.extraEnv != env
+        r.worker.extraEnv = env
+        if changed && r.worker.alive && cd_running(r.page) == 0 {
+            r.worker.stop()
+            if r === run { recallDue = true }
+        }
+    }
+    func setForemanTier(_ tier: ForemanTier) {
+        let previous = foremanTier
+        foremanTier = tier
+        tier.save()
+        if isForemanShown {
+            syncSkillsNote(for: page, isForeman: true)
+            configureWorkerEnv(run, isForeman: true)
+        }
+        if previous != tier {
+            _ = foremanEvents.emit(type: "tier.changed", chatID: nil, data: ["from": previous.wireName, "to": tier.wireName])
+        }
+        syncForemanUI()
+        wake()
+    }
+    func clearForemanHistory() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Clear Foreman history?"
+        alert.informativeText = "This removes the Foreman conversation history. Managed chats are not deleted."
+        alert.addButton(withTitle: "Clear History")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].hasDestructiveAction = true
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self, answer == .alertFirstButtonReturn else { return }
+            if self.chat == Foreman.chatID {
+                if cd_running(self.page) != 0 { self.stopRun(self.run) }
+                _ = cd_new(self.page)
+                self.recallDue = false
+                var out = [CChar](repeating: 0, count: 256)
+                let n = cd_forget_line(&out, Int32(out.count)); self.run.worker.write(out, count: Int(n))
+            } else if let back = self.runs.removeValue(forKey: Foreman.chatID) {
+                self.stopRun(back); back.stop(); cd_close(back.page)
+            }
+            self.store.remove(Foreman.chatID)
+            cd_chats(self.page, self.chatLines); self.syncForemanUI(); self.wake()
+        }
+    }
+    func openForemanAuditLog() {
+        let url = foremanAudit.fileURL
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: url.path) {
+            try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            fm.createFile(atPath: url.path, contents: Data())
+        }
+        NSWorkspace.shared.open(url)
+    }
+    func openForeman() {
+        if chat == Foreman.chatID { window.makeFirstResponder(editor); wake(); return }
+        guard detach() else { return }
+        if let back = runs[Foreman.chatID] {
+            guard cd_take(page, back.page) != 0 else { return }
+            runs[Foreman.chatID] = nil; cd_close(back.page); back.page = page
+            run.stop()
+            run = back
+            chat = Foreman.chatID; recallDue = false; cd_current(page, Foreman.chatID)
+            setFolder(back.folder, keep: false)
+            configureWorkerEnv(run, isForeman: true)
+            syncSkillsNote(for: page, isForeman: true)
+            cd_chats(page, chatLines); syncForemanUI()
+            window.makeFirstResponder(editor); wake()
+            return
+        }
+        if let text = store.text(Foreman.chatID), cd_load(page, text) != 0 {
+            recallDue = true
+        } else {
+            _ = cd_new(page)
+            recallDue = false
+            var out = [CChar](repeating: 0, count: 256)
+            let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
+        }
+        chat = Foreman.chatID; cd_current(page, Foreman.chatID)
+        var isFolder: ObjCBool = false
+        if let kept = store.folder(Foreman.chatID), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue {
+            setFolder(URL(fileURLWithPath: kept), keep: false)
+        }
+        configureWorkerEnv(run, isForeman: true)
+        syncSkillsNote(for: page, isForeman: true)
+        cd_chats(page, chatLines); syncForemanUI()
+        window.makeFirstResponder(editor); wake()
+    }
+    func stopAllChats() {
+        if cd_running(page) != 0 { stopRun(run) }
+        let ids = Array(runs.keys)
+        for id in ids {
+            if let back = runs.removeValue(forKey: id) {
+                stopRun(back)
+                keep(back)
+                back.stop()
+                cd_close(back.page)
+            }
+        }
+        cd_chats(page, chatLines)
+        syncForemanUI()
+        wake()
     }
     /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
     /// window gets a new run. True when nothing runs in the window now.
@@ -399,15 +587,22 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         runs[id] = moved
         run = CoderRun(page: page, folder: folder); wire(run)
         chat = nil; recallDue = false; cd_current(page, "")
-        cd_chats(page, chatLines)
+        configureWorkerEnv(run, isForeman: false)
+        syncSkillsNote(for: page, isForeman: false)
+        cd_chats(page, chatLines); syncForemanUI()
         wake()
         return true
     }
     /// A reply out of view ended: its chat is kept, its workers stop and its page goes.
     private func finish(_ id: String) {
         guard let back = runs.removeValue(forKey: id) else { return }
+        let cost = Int(cd_cost_usd_micros(back.page))
         back.stop(); cd_close(back.page)
-        cd_chats(page, chatLines); wake()
+        _ = foremanEvents.emit(type: "chat.finished", chatID: id, data: [
+            "title": store.title(id) ?? "Chat",
+            "cost_usd_micros": cost
+        ])
+        cd_chats(page, chatLines); syncForemanUI(); wake()
     }
     var canFolder: Bool { cd_running(page) == 0 }
     /// View > Bigger Text, Smaller Text, Actual Size: by is a row up or down, nil the usual size.
@@ -433,15 +628,73 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
         wake()
     }
-    func chooseFolder() {
-        guard cd_running(page) == 0 else { return }
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
-        panel.directoryURL = folder; panel.prompt = "Choose"; panel.message = "Choose the working folder. Commands start there."
-        panel.beginSheetModal(for: window) { [weak self] answer in
+    private struct BinaryIdentity: Equatable {
+        let path: String
+        let dev: dev_t
+        let ino: ino_t
+    }
+    /// The running executable's path and inode on disk, or nil if the bundle was moved or deleted.
+    /// macOS's out-of-process NSOpenPanel (openAndSavePanelService) validates the host binary on disk via
+    /// SecCodeCopyGuestWithAttributes; if the bundle was replaced or removed while running, ViewBridge faults
+    /// and blocks the main thread for ~10s (spinning beachball) before failing to display the panel.
+    private static func currentBinaryIdentity() -> BinaryIdentity? {
+        var buf = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        let n = proc_pidpath(getpid(), &buf, UInt32(buf.count))
+        guard n > 0 else { return nil }
+        let path = String(cString: buf)
+        var st = stat()
+        guard stat(path, &st) == 0 else { return nil }
+        return BinaryIdentity(path: path, dev: st.st_dev, ino: st.st_ino)
+    }
+    private func canPresentOpenPanel() -> Bool {
+        guard let initial = launchBinary, let current = CoderWindow.currentBinaryIdentity() else { return false }
+        return initial == current
+    }
+    private func chooseFolderFallback() {
+        let alert = NSAlert()
+        alert.messageText = "Choose Working Folder"
+        alert.informativeText = "Enter the path to the working folder (commands start there). Restart Coder to restore the Finder folder picker after an app update."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        field.stringValue = folder.path
+        field.placeholderString = FileManager.default.homeDirectoryForCurrentUser.path
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Choose")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self else { return }
-            if answer == .OK, let url = panel.url { self.setFolder(url, keep: true) }
-            self.window.makeFirstResponder(self.editor)
+            self.choosingFolder = false
+            defer { self.window.makeFirstResponder(self.editor) }
+            guard answer == .alertFirstButtonReturn else { return }
+            let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return }
+            let expanded = (raw as NSString).expandingTildeInPath
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
+                self.setFolder(URL(fileURLWithPath: expanded, isDirectory: true), keep: true)
+            }
+        }
+    }
+    func chooseFolder() {
+        guard cd_running(page) == 0, !choosingFolder, window.attachedSheet == nil else { return }
+        choosingFolder = true
+        // Defer presentation out of the 60 Hz .common RunLoop timer tick.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard cd_running(self.page) == 0, self.window.attachedSheet == nil else { self.choosingFolder = false; return }
+            guard self.canPresentOpenPanel() else { self.chooseFolderFallback(); return }
+            let panel = NSOpenPanel()
+            panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false; panel.canCreateDirectories = true
+            var isDir: ObjCBool = false
+            panel.directoryURL = (FileManager.default.fileExists(atPath: self.folder.path, isDirectory: &isDir) && isDir.boolValue)
+                ? self.folder : FileManager.default.homeDirectoryForCurrentUser
+            panel.prompt = "Choose"; panel.message = "Choose the working folder. Commands start there."
+            panel.beginSheetModal(for: self.window) { [weak self] answer in
+                guard let self else { return }
+                self.choosingFolder = false
+                if answer == .OK, let url = panel.url { self.setFolder(url, keep: true) }
+                self.window.makeFirstResponder(self.editor)
+            }
         }
     }
     func newChat() { if cd_new(page) != 0 { window.makeFirstResponder(editor) }; wake() }
@@ -451,6 +704,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         switch what {
         case 1:
             editor.synchronize { editor.string = "" }
+            configureWorkerEnv(run, isForeman: isForemanShown)
+            syncSkillsNote(for: page, isForeman: isForemanShown)
             guard run.worker.start() else { cd_failed(page, "Microcoder could not start."); return }
             if recallDue {
                 // an opened chat's turns, or nothing to remember when it has none that ended
@@ -468,6 +723,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             // a new chat: one whose reply is running goes on out of view
             guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
+            configureWorkerEnv(run, isForeman: false)
+            syncSkillsNote(for: page, isForeman: false)
+            syncForemanUI()
             let n = cd_forget_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
             window.makeFirstResponder(editor)
         case 5:
@@ -486,6 +744,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             guard cd_pin_move(page, &out, Int32(out.count), &to) > 0, to >= 0 else { return }
             store.movePinned(String(cString: out), to: Int(to))
             cd_chats(page, chatLines)
+        case 11: openForeman()
         default: break
         }
     }
@@ -500,6 +759,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
     /// with its run.
     private func open(_ id: String) {
+        if id == Foreman.chatID { openForeman(); return }
         guard id != chat, detach() else { return }
         if let back = runs[id] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -520,16 +780,19 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             return
         }
         chat = id; recallDue = true; cd_current(page, id)
+        configureWorkerEnv(run, isForeman: false)
+        syncSkillsNote(for: page, isForeman: false)
+        syncForemanUI()
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
         window.makeFirstResponder(editor)
         wake()
     }
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
-    var canRename: Bool { chat != nil }
-    func renameShown() { if let id = chat { rename(id) } }
+    var canRename: Bool { chat != nil && chat != Foreman.chatID }
+    func renameShown() { if let id = chat, id != Foreman.chatID { rename(id) } }
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
-    var canDelete: Bool { chat != nil && cd_running(page) == 0 }
+    var canDelete: Bool { chat != nil && chat != Foreman.chatID && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }
     /// Asks for a new max budget (USD) for the shown chat thread.
     func editBudget() {
@@ -703,13 +966,43 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     }
     @objc private func renameFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { rename(id) } }
     @objc private func deleteFromMenu(_ item: NSMenuItem) { if let id = item.representedObject as? String { delete(id) } }
-    /// A right-click on a chat in the sidebar: a context menu with Pin/Unpin Chat, Rename Chat, and Delete Chat.
+    @objc private func openForemanFromMenu(_ item: NSMenuItem) { openForeman() }
+    @objc private func setForemanTierFromMenu(_ item: NSMenuItem) {
+        if let tier = ForemanTier(rawValue: item.tag) { setForemanTier(tier) }
+    }
+    @objc private func stopAllFromMenu(_ item: NSMenuItem) { stopAllChats() }
+    @objc private func viewAuditFromMenu(_ item: NSMenuItem) { openForemanAuditLog() }
+    @objc private func clearForemanFromMenu(_ item: NSMenuItem) { clearForemanHistory() }
+    /// A right-click on the Foreman row or a chat in the sidebar.
     private func rightClick(_ event: NSEvent) -> Bool {
         guard event.window === window else { return false }
         let at = canvas.convert(event.locationInWindow, from: nil), scale = window.backingScaleFactor
-        var out = [CChar](repeating: 0, count: 128)
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
-        guard cd_chat_at(page, Float(at.x * scale), Float(y * scale), &out, Int32(out.count)) > 0 else { return false }
+        let px = Float(at.x * scale), py = Float(y * scale)
+        if cd_foreman_at(page, px, py) != 0 {
+            let menu = NSMenu()
+            let openItem = menu.addItem(withTitle: "Open Foreman", action: #selector(openForemanFromMenu(_:)), keyEquivalent: "")
+            openItem.target = self
+            menu.addItem(.separator())
+            for (tag, label) in [(0, "Tier 0: Observe (Read-Only)"), (1, "Tier 1: Managed (Default)"), (2, "Tier 2: Autonomous")] {
+                let ti = menu.addItem(withTitle: label, action: #selector(setForemanTierFromMenu(_:)), keyEquivalent: "")
+                ti.target = self; ti.tag = tag
+                ti.state = foremanTier.rawValue == tag ? .on : .off
+            }
+            menu.addItem(.separator())
+            let auditItem = menu.addItem(withTitle: "View Audit Log…", action: #selector(viewAuditFromMenu(_:)), keyEquivalent: "")
+            auditItem.target = self
+            let stopAll = menu.addItem(withTitle: "Stop All Running Chats", action: #selector(stopAllFromMenu(_:)), keyEquivalent: "")
+            stopAll.target = self; stopAll.isEnabled = runningCount > 0
+            menu.addItem(.separator())
+            let clearItem = menu.addItem(withTitle: "Clear Foreman History…", action: #selector(clearForemanFromMenu(_:)), keyEquivalent: "")
+            clearItem.target = self
+            menu.autoenablesItems = false
+            NSMenu.popUpContextMenu(menu, with: event, for: canvas)
+            return true
+        }
+        var out = [CChar](repeating: 0, count: 128)
+        guard cd_chat_at(page, px, py, &out, Int32(out.count)) > 0 else { return false }
         let id = String(cString: out), menu = NSMenu()
         let pinItem = menu.addItem(withTitle: store.isPinned(id) ? "Unpin Chat" : "Pin Chat", action: #selector(togglePinFromMenu(_:)), keyEquivalent: "")
         pinItem.target = self; pinItem.representedObject = id
@@ -737,7 +1030,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)
         if shown { chat = id; cd_current(page, id) } else { r.chat = id }
-        cd_chats(page, chatLines)
+        cd_chats(page, chatLines); syncForemanUI()
     }
 
     private func tick() {
@@ -762,6 +1055,17 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        let fgRunning = cd_running(page) != 0
+        if fgRunning != lastForegroundRunning {
+            lastForegroundRunning = fgRunning
+            if let cid = chat {
+                _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
+                    "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),
+                    "cost_usd_micros": Int(cd_cost_usd_micros(page))
+                ])
+            }
+            syncForemanUI()
+        }
         if let text = also, chat != nil, cd_running(page) != 0 { also = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
         if cd_save_due(page) != 0 { keep(); wake() }
@@ -792,7 +1096,743 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     func show() { window.makeKeyAndOrderFront(nil); wake() }
     func windowShouldClose(_ sender: NSWindow) -> Bool { window.orderOut(nil); return false }
 
+    // MARK: - Foreman Control Plane
+
+    private func handleForemanAsyncRequest(_ request: ForemanRequest, done: @escaping (ForemanResponse) -> Void) {
+        if request.method == "POST" && (request.path == "/v1/wait" || request.path == "/wait") {
+            foremanWait(request.payload, done: done)
+            return
+        }
+        let response = handleForemanRequest(request)
+        done(response)
+    }
+
+    private func handleForemanRequest(_ request: ForemanRequest) -> ForemanResponse {
+        let method = request.method
+        let path = request.path
+        let payload = request.payload
+        let query = request.query
+        switch (method, path) {
+        case ("GET", "/v1/status"), ("GET", "/health"):
+            let managedRunning = store.orderedList.filter { $0.managedBy == Foreman.managedTag && busy($0.id) }.count
+            return ForemanResponse(status: 200, body: [
+                "ok": true,
+                "tier": foremanTier.wireName,
+                "tier_level": foremanTier.rawValue,
+                "tier_label": foremanTier.label,
+                "workspace": folder.path,
+                "chat_count": store.orderedList.count,
+                "running_count": runningCount,
+                "managed_running_count": managedRunning,
+                "shown_chat": chat ?? "",
+                "event_cursor": foremanEvents.latestID,
+                "audit_log": foremanAudit.fileURL.path
+            ])
+        case ("GET", "/v1/tier"), ("GET", "/tier"):
+            return ForemanResponse(status: 200, body: [
+                "tier": foremanTier.wireName,
+                "tier_level": foremanTier.rawValue,
+                "label": foremanTier.label,
+                "short_label": foremanTier.shortLabel
+            ])
+        case ("GET", "/v1/events"), ("POST", "/v1/events"):
+            let since = Int(query["since"] ?? query["since_id"] ?? "") ?? (payload["since"] as? Int) ?? (payload["since_id"] as? Int) ?? 0
+            let limit = max(1, min(200, Int(query["limit"] ?? "") ?? (payload["limit"] as? Int) ?? 50))
+            let chatFilter = query["chat_id"] ?? (payload["chat_id"] as? String) ?? ""
+            let chatIds: Set<String> = chatFilter.isEmpty ? [] : [chatFilter]
+            let events = foremanEvents.recent(sinceId: since, chatIds: chatIds, limit: limit).map { $0.toDictionary() }
+            return ForemanResponse(status: 200, body: [
+                "cursor": foremanEvents.latestID,
+                "events": events
+            ])
+        case ("GET", "/v1/audit"), ("POST", "/v1/audit"):
+            let limit = max(1, min(200, Int(query["limit"] ?? "") ?? (payload["limit"] as? Int) ?? 50))
+            return ForemanResponse(status: 200, body: [
+                "path": foremanAudit.fileURL.path,
+                "entries": foremanAudit.tail(limit: limit)
+            ])
+        case ("POST", "/v1/chats/list"), ("GET", "/v1/chats"), ("GET", "/chats"):
+            var merged = payload
+            if merged["filter"] == nil, let f = query["filter"] { merged["filter"] = f }
+            if merged["limit"] == nil, let l = Int(query["limit"] ?? "") { merged["limit"] = l }
+            return foremanListChats(merged)
+        case ("POST", "/v1/chats/read"), ("POST", "/chats/read"):
+            return foremanReadChat(payload)
+        case ("POST", "/v1/chats/create"), ("POST", "/chats/create"):
+            let resp = foremanCreateChat(payload)
+            foremanAudit.record(action: "create_chat", tier: foremanTier, chatID: resp.body["chat_id"] as? String, status: resp.status, detail: [
+                "title": resp.body["title"] ?? payload["title"] ?? "",
+                "folder": resp.body["folder"] ?? payload["folder"] ?? ""
+            ])
+            return resp
+        case ("POST", "/v1/chats/send"), ("POST", "/chats/send"):
+            let resp = foremanSendChat(payload)
+            foremanAudit.record(action: "send_chat", tier: foremanTier, chatID: payload["chat_id"] as? String, status: resp.status, detail: [
+                "mode": payload["mode"] ?? "send"
+            ])
+            return resp
+        case ("POST", "/v1/chats/control"), ("POST", "/chats/control"):
+            let resp = foremanControlChat(payload)
+            let act = (payload["action"] as? String) ?? ""
+            if act != "open" {
+                foremanAudit.record(action: "control:\(act)", tier: foremanTier, chatID: payload["chat_id"] as? String, status: resp.status, detail: payload)
+            }
+            return resp
+        case ("POST", "/v1/chats/stop-all"), ("POST", "/chats/stop-all"):
+            let resp = foremanStopAll(payload)
+            foremanAudit.record(action: "stop_all", tier: foremanTier, chatID: nil, status: resp.status, detail: [
+                "stopped": resp.body["stopped"] ?? []
+            ])
+            return resp
+        case ("POST", "/v1/search/chats"), ("POST", "/search/chats"):
+            return foremanSearchChats(payload)
+        case ("POST", "/v1/search/repo"), ("POST", "/search/repo"):
+            return foremanSearchRepo(payload)
+        default:
+            return ForemanResponse(status: 404, body: ["error": "unknown endpoint: \(method) \(path)"])
+        }
+    }
+
+    private func foremanStopAll(_ payload: [String: Any]) -> ForemanResponse {
+        if foremanTier == .observe {
+            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier."])
+        }
+        let stopAll = (payload["all"] as? Bool) ?? (payload["include_foreman"] as? Bool) ?? false
+        var stopped: [String] = []
+        if cd_running(page) != 0, let id = chat, id != Foreman.chatID {
+            if foremanTier == .autonomous || store.isManagedByForeman(id) {
+                stopRun(run)
+                stopped.append(id)
+                _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
+            }
+        }
+        for id in Array(runs.keys) where id != Foreman.chatID {
+            if !stopAll && foremanTier == .managed && !store.isManagedByForeman(id) { continue }
+            if stopAll && foremanTier != .autonomous && !store.isManagedByForeman(id) { continue }
+            if let back = runs.removeValue(forKey: id) {
+                stopRun(back); keep(back); back.stop(); cd_close(back.page)
+                stopped.append(id)
+                _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
+            }
+        }
+        cd_chats(page, chatLines); syncForemanUI(); wake()
+        return ForemanResponse(status: 200, body: ["ok": true, "stopped": stopped])
+    }
+
+    private func foremanWait(_ payload: [String: Any], done: @escaping (ForemanResponse) -> Void) {
+        let mode = ((payload["mode"] as? String) ?? "any").lowercased()
+        let timeoutSec = max(1.0, min(300.0, (payload["timeout_seconds"] as? Double) ?? Double((payload["timeout_seconds"] as? Int) ?? 60)))
+        var targets: [String] = []
+        if let ids = payload["chat_ids"] as? [String], !ids.isEmpty {
+            targets = ids.filter { !$0.isEmpty && $0 != Foreman.chatID }
+        } else if let single = payload["chat_id"] as? String, !single.isEmpty {
+            targets = [single]
+        } else {
+            // Default to currently running managed chats, or any running non-Foreman chats.
+            let runningManaged = store.orderedList.filter { $0.managedBy == Foreman.managedTag && busy($0.id) }.map { $0.id }
+            targets = runningManaged.isEmpty ? store.orderedList.filter { busy($0.id) }.map { $0.id } : runningManaged
+        }
+        if targets.isEmpty {
+            done(ForemanResponse(status: 200, body: [
+                "ok": true,
+                "timed_out": false,
+                "completed": [],
+                "still_running": [],
+                "message": "no running chats to wait for"
+            ]))
+            return
+        }
+        let targetSet = Set(targets)
+        let evaluate: () -> (satisfied: Bool, completed: [String], running: [String]) = { [weak self] in
+            guard let self else { return (true, [], []) }
+            let running = targets.filter { self.busy($0) }
+            let completed = targets.filter { !self.busy($0) }
+            let ok = mode == "all" ? running.isEmpty : !completed.isEmpty
+            return (ok, completed, running)
+        }
+        let initial = evaluate()
+        if initial.satisfied {
+            done(ForemanResponse(status: 200, body: [
+                "ok": true,
+                "timed_out": false,
+                "mode": mode,
+                "completed": initial.completed,
+                "still_running": initial.running
+            ]))
+            return
+        }
+        var finished = false
+        var token: UUID?
+        let finishWait: (Bool, ForemanEvent?) -> Void = { [weak self] timedOut, trigger in
+            guard !finished else { return }
+            finished = true
+            if let t = token { self?.foremanEvents.unsubscribe(t); token = nil }
+            let state = evaluate()
+            var body: [String: Any] = [
+                "ok": true,
+                "timed_out": timedOut,
+                "mode": mode,
+                "completed": state.completed,
+                "still_running": state.running
+            ]
+            if let trigger { body["event"] = trigger.toDictionary() }
+            done(ForemanResponse(status: 200, body: body))
+        }
+        token = foremanEvents.subscribe { ev in
+            guard ev.type == "chat.finished" || ev.type == "chat.stopped" || ev.type == "chat.deleted" else { return }
+            if let cid = ev.chatID, !targetSet.contains(cid) { return }
+            let state = evaluate()
+            if state.satisfied {
+                finishWait(false, ev)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeoutSec) {
+            finishWait(true, nil)
+        }
+    }
+
+    private static func goalStatusName(_ status: Int32) -> String {
+        switch status {
+        case 1: return "active"
+        case 2: return "paused"
+        case 3: return "complete"
+        case 4: return "blocked"
+        case 5: return "budget_limited"
+        default: return "none"
+        }
+    }
+
+    private func foremanListChats(_ payload: [String: Any]) -> ForemanResponse {
+        let limit = max(1, min(200, (payload["limit"] as? Int) ?? 50))
+        let managedOnly = (payload["managed_only"] as? Bool) ?? false
+        let filter = ((payload["filter"] as? String) ?? "all").lowercased()
+        let folderFilter = (payload["folder"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let filtered = store.orderedList.filter { c in
+            if managedOnly && c.managedBy != Foreman.managedTag { return false }
+            if !folderFilter.isEmpty && !c.folder.localizedCaseInsensitiveContains(folderFilter) { return false }
+            switch filter {
+            case "running", "active": return busy(c.id)
+            case "idle": return !busy(c.id)
+            case "managed": return c.managedBy == Foreman.managedTag
+            case "user": return c.managedBy != Foreman.managedTag
+            case "pinned": return c.pinned != nil
+            default: return true
+            }
+        }.prefix(limit)
+        let items: [[String: Any]] = filtered.map { c in
+            var item: [String: Any] = [
+                "id": c.id,
+                "title": c.title,
+                "folder": c.folder,
+                "updated": c.updated,
+                "pinned": c.pinned != nil,
+                "managed_by": c.managedBy ?? "",
+                "status": busy(c.id) ? "running" : "idle",
+                "shown": chat == c.id
+            ]
+            let livePage: UnsafeMutableRawPointer? = (c.id == chat) ? page : runs[c.id]?.page
+            if let p = livePage {
+                item["cost_usd_micros"] = Int(cd_cost_usd_micros(p))
+                item["budget_usd_micros"] = Int(cd_budget_usd_micros(p))
+                let gs = cd_goal_status(p)
+                if gs != 0 {
+                    item["goal_status"] = CoderWindow.goalStatusName(gs)
+                    var buf = [CChar](repeating: 0, count: 512)
+                    if cd_goal_objective(p, &buf, Int32(buf.count)) > 0 {
+                        item["goal_objective"] = String(cString: buf)
+                    }
+                }
+            }
+            return item
+        }
+        return ForemanResponse(status: 200, body: [
+            "tier": foremanTier.wireName,
+            "workspace": folder.path,
+            "running_count": runningCount,
+            "chats": items
+        ])
+    }
+
+    private func snapshotText(for id: String) -> String? {
+        let targetPage: UnsafeMutableRawPointer?
+        if id == chat { targetPage = page }
+        else if let back = runs[id] { targetPage = back.page }
+        else { targetPage = nil }
+        if let p = targetPage {
+            var out = [CChar](repeating: 0, count: 4_000_000)
+            if cd_save(p, &out, Int32(out.count)) > 0 {
+                return String(cString: out)
+            }
+        }
+        return store.text(id)
+    }
+
+    private func foremanReadChat(_ payload: [String: Any]) -> ForemanResponse {
+        guard let id = payload["chat_id"] as? String, !id.isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "chat_id is required"])
+        }
+        let tail = max(1, min(50, (payload["tail"] as? Int) ?? 8))
+        let includeTools = (payload["include_tools"] as? Bool) ?? false
+        guard let raw = snapshotText(for: id), let data = raw.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
+        }
+        let meta = store.meta(id)
+        let allTurns = (obj["turns"] as? [[String: Any]]) ?? []
+        let slice = allTurns.suffix(tail).map { t -> [String: Any] in
+            let user = (t["ask"] as? String) ?? (t["u"] as? String) ?? ""
+            let reply = (t["reply"] as? String) ?? (t["r"] as? String) ?? ""
+            let note = (t["note"] as? String) ?? (t["e"] as? String) ?? ""
+            let state = (t["state"] as? Int) ?? 0
+            let maxChars = 4000
+            let clippedReply = reply.count > maxChars ? String(reply.prefix(maxChars)) + "…[truncated]" : reply
+            var entry: [String: Any] = [
+                "user": user,
+                "reply": clippedReply,
+                "note": note,
+                "state": state
+            ]
+            if includeTools {
+                if let cmds = t["cmds"] as? [[String: Any]] {
+                    entry["tools"] = cmds.map { c -> [String: Any] in
+                        let outStr = (c["out"] as? String) ?? ""
+                        let clippedOut = outStr.count > 1000 ? String(outStr.prefix(1000)) + "…[truncated]" : outStr
+                        return [
+                            "text": (c["text"] as? String) ?? "",
+                            "out": clippedOut,
+                            "failed": (c["failed"] as? Bool) ?? false,
+                            "took": (c["took"] as? Int) ?? 0
+                        ]
+                    }
+                }
+                if let agents = t["agents"] as? [[String: Any]], !agents.isEmpty {
+                    entry["agents"] = agents.map { a -> [String: Any] in
+                        [
+                            "level": (a["level"] as? String) ?? "",
+                            "task": (a["task"] as? String) ?? "",
+                            "state": (a["state"] as? Int) ?? 0,
+                            "calls": (a["calls"] as? Int) ?? 0
+                        ]
+                    }
+                }
+            }
+            return entry
+        }
+        var body: [String: Any] = [
+            "chat_id": id,
+            "title": meta?.title ?? (id == Foreman.chatID ? Foreman.title : "Chat"),
+            "folder": meta?.folder ?? folder.path,
+            "managed_by": meta?.managedBy ?? "",
+            "status": busy(id) ? "running" : "idle",
+            "total_turns": allTurns.count,
+            "turns": slice
+        ]
+        if let cost = obj["cost_usd_micros"] as? Int { body["cost_usd_micros"] = cost }
+        if let budget = obj["budget_usd_micros"] as? Int { body["budget_usd_micros"] = budget }
+        if let gs = obj["goal_status"] as? Int, gs != 0 {
+            body["goal_status"] = CoderWindow.goalStatusName(Int32(gs))
+            if let gobj = obj["goal_objective"] as? String { body["goal_objective"] = gobj }
+        }
+        return ForemanResponse(status: 200, body: body)
+    }
+
+    private func foremanCreateChat(_ payload: [String: Any]) -> ForemanResponse {
+        if foremanTier == .observe {
+            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier. Switch to Managed or Autonomous tier to create chats."])
+        }
+        guard let prompt = payload["prompt"] as? String, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "prompt is required"])
+        }
+        let folderPath = (payload["folder"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? folder.path
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: folderPath, isDirectory: &isDir), isDir.boolValue else {
+            return ForemanResponse(status: 400, body: ["error": "folder does not exist: \(folderPath)"])
+        }
+        guard let back = cd_headless() else {
+            return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
+        }
+        cd_skills(back, coderSkillsNote())
+        cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
+            _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
+        }
+        if let goalObj = (payload["goal"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !goalObj.isEmpty {
+            _ = cd_goal_set(back, goalObj)
+        }
+        let id = UUID().uuidString.lowercased()
+        let rawTitle = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let title = rawTitle.isEmpty ? String(prompt.prefix(60)) : rawTitle
+        let folderURL = URL(fileURLWithPath: folderPath)
+        let moved = CoderRun(page: back, folder: folderURL)
+        moved.chat = id
+        wire(moved)
+        store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: Foreman.managedTag)
+        if (payload["pin"] as? Bool) == true && !store.isPinned(id) {
+            store.togglePin(id)
+        }
+        let attributed = "[From Foreman]\n" + prompt
+        guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
+            moved.stop(); cd_close(back)
+            return ForemanResponse(status: 500, body: ["error": "failed to submit prompt to new chat"])
+        }
+        if cd_action(back) == 1 {
+            var out = [CChar](repeating: 0, count: 262144)
+            if moved.worker.start() {
+                let n = cd_task(back, moved.session, moved.folder.path, &out, Int32(out.count))
+                moved.worker.write(out, count: Int(n))
+            } else {
+                cd_failed(back, "Microcoder could not start.")
+            }
+        }
+        runs[id] = moved
+        keep(moved)
+        _ = foremanEvents.emit(type: "chat.created", chatID: id, data: ["title": store.title(id) ?? title, "folder": folderURL.path])
+        _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? title])
+        foremanAudit.record(action: "create_chat", tier: foremanTier, chatID: id, details: ["title": title, "folder": folderURL.path])
+        if (payload["open"] as? Bool) == true { open(id) }
+        cd_chats(page, chatLines); syncForemanUI(); wake()
+        return ForemanResponse(status: 200, body: [
+            "ok": true,
+            "chat_id": id,
+            "title": store.title(id) ?? title,
+            "folder": folderURL.path,
+            "managed_by": Foreman.managedTag,
+            "pinned": store.isPinned(id),
+            "status": "running"
+        ])
+    }
+
+    private func checkMutationPermission(for id: String, action: String) -> ForemanResponse? {
+        if id == Foreman.chatID {
+            return ForemanResponse(status: 400, body: ["error": "cannot \(action) the Foreman chat itself"])
+        }
+        switch foremanTier {
+        case .observe:
+            return ForemanResponse(status: 403, body: ["error": "Foreman is in Observe (read-only) tier; \(action) is not allowed."])
+        case .managed:
+            if !store.isManagedByForeman(id) {
+                return ForemanResponse(status: 403, body: ["error": "Chat \(id) is user-created. In Managed tier, Foreman can only \(action) Foreman-managed chats. Switch to Autonomous tier to control all chats."])
+            }
+            return nil
+        case .autonomous:
+            return nil
+        }
+    }
+
+    private func foremanSendChat(_ payload: [String: Any]) -> ForemanResponse {
+        guard let id = payload["chat_id"] as? String, !id.isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "chat_id is required"])
+        }
+        let rawMsg = (payload["prompt"] as? String) ?? (payload["message"] as? String) ?? ""
+        guard !rawMsg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "prompt is required"])
+        }
+        let message = rawMsg
+        if let denied = checkMutationPermission(for: id, action: "send to") { return denied }
+        let mode = ((payload["mode"] as? String) ?? "follow_up").lowercased()
+        let steer = ((payload["steer"] as? Bool) ?? false) || mode == "steer" || mode == "interrupt"
+        if busy(id) {
+            if !steer {
+                return ForemanResponse(status: 400, body: ["error": "chat \(id) is currently running; wait, stop, or pass steer=true"])
+            }
+            if id == chat && cd_running(page) != 0 {
+                stopRun(run)
+            } else if let back = runs.removeValue(forKey: id) {
+                stopRun(back); keep(back); back.stop(); cd_close(back.page)
+            }
+        }
+        let attributed = "[From Foreman]\n" + message
+        if id == chat {
+            guard cd_set_text(page, attributed) != 0, cd_submit(page) != 0 else {
+                return ForemanResponse(status: 500, body: ["error": "failed to submit message to shown chat"])
+            }
+            foremanAudit.record(action: "send_chat", tier: foremanTier, chatID: id, details: ["steer": steer])
+            wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
+        }
+        guard let saved = store.text(id) else {
+            return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
+        }
+        guard let back = cd_headless() else {
+            return ForemanResponse(status: 500, body: ["error": "could not allocate headless chat page"])
+        }
+        cd_skills(back, coderSkillsNote())
+        cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        guard cd_load(back, saved) != 0 else {
+            cd_close(back)
+            return ForemanResponse(status: 500, body: ["error": "could not load saved chat \(id)"])
+        }
+        let folderPath = store.folder(id) ?? folder.path
+        let moved = CoderRun(page: back, folder: URL(fileURLWithPath: folderPath))
+        moved.chat = id
+        wire(moved)
+        guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
+            moved.stop(); cd_close(back)
+            return ForemanResponse(status: 500, body: ["error": "failed to submit follow-up message"])
+        }
+        if cd_action(back) == 1 {
+            var out = [CChar](repeating: 0, count: 262144)
+            if moved.worker.start() {
+                var rn = cd_recall_line(back, &out, Int32(out.count))
+                if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }
+                moved.worker.write(out, count: Int(rn))
+                let tn = cd_task(back, moved.session, moved.folder.path, &out, Int32(out.count))
+                moved.worker.write(out, count: Int(tn))
+            } else {
+                cd_failed(back, "Microcoder could not start.")
+            }
+        }
+        runs[id] = moved
+        keep(moved)
+        _ = foremanEvents.emit(type: "chat.started", chatID: id, data: ["title": store.title(id) ?? "Chat"])
+        foremanAudit.record(action: "send_chat", tier: foremanTier, chatID: id, details: ["steer": steer])
+        cd_chats(page, chatLines); syncForemanUI(); wake()
+        return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "running"])
+    }
+
+    private func foremanControlChat(_ payload: [String: Any]) -> ForemanResponse {
+        guard let id = payload["chat_id"] as? String, !id.isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "chat_id is required"])
+        }
+        guard let action = payload["action"] as? String, !action.isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "action is required"])
+        }
+        if action == "open" {
+            open(id)
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": "open"])
+        }
+        if let denied = checkMutationPermission(for: id, action: action) { return denied }
+        switch action {
+        case "stop":
+            if id == chat && cd_running(page) != 0 {
+                stopRun(run)
+            } else if let back = runs.removeValue(forKey: id) {
+                stopRun(back); keep(back); back.stop(); cd_close(back.page)
+            } else {
+                return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "status": "already_idle"])
+            }
+            _ = foremanEvents.emit(type: "chat.stopped", chatID: id, data: ["title": store.title(id) ?? "Chat"])
+            foremanAudit.record(action: "control_stop", tier: foremanTier, chatID: id)
+            cd_chats(page, chatLines); syncForemanUI(); wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": "stop", "status": "stopped"])
+        case "pin":
+            if !store.isPinned(id) { store.togglePin(id) }
+            foremanAudit.record(action: "control_pin", tier: foremanTier, chatID: id)
+            cd_chats(page, chatLines); wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "pinned": true])
+        case "unpin":
+            if store.isPinned(id) { store.togglePin(id) }
+            foremanAudit.record(action: "control_unpin", tier: foremanTier, chatID: id)
+            cd_chats(page, chatLines); wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "pinned": false])
+        case "rename":
+            guard let title = payload["title"] as? String, !CoderStore.cleanTitle(title).isEmpty else {
+                return ForemanResponse(status: 400, body: ["error": "non-empty title is required for rename"])
+            }
+            let cleaned = CoderStore.cleanTitle(title)
+            store.rename(id, to: cleaned)
+            foremanAudit.record(action: "control_rename", tier: foremanTier, chatID: id, details: ["title": cleaned])
+            cd_chats(page, chatLines); wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "title": store.title(id) ?? cleaned])
+        case "delete":
+            if busy(id) {
+                return ForemanResponse(status: 400, body: ["error": "cannot delete a running chat; stop it first"])
+            }
+            if id == chat { chat = nil; _ = cd_new(page); cd_current(page, "") }
+            store.remove(id)
+            _ = foremanEvents.emit(type: "chat.deleted", chatID: id)
+            foremanAudit.record(action: "control_delete", tier: foremanTier, chatID: id)
+            cd_chats(page, chatLines); wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "deleted": true])
+        case "set_budget", "budget":
+            let rawBudget = (payload["budget_usd"] as? Double) ?? (payload["budget_usd"] as? Int).map(Double.init)
+            guard let budgetUSD = rawBudget, budgetUSD > 0 else {
+                return ForemanResponse(status: 400, body: ["error": "positive budget_usd is required"])
+            }
+            let micros = Int64((budgetUSD * 1_000_000.0).rounded())
+            if id == chat {
+                _ = cd_set_budget_usd_micros(page, micros); keep()
+            } else if let back = runs[id] {
+                _ = cd_set_budget_usd_micros(back.page, micros); keep(back)
+            } else if let saved = store.text(id), let tmp = cd_headless() {
+                if cd_load(tmp, saved) != 0 {
+                    _ = cd_set_budget_usd_micros(tmp, micros)
+                    var buf = [CChar](repeating: 0, count: 4_000_000)
+                    if cd_save(tmp, &buf, Int32(buf.count)) > 0 {
+                        let dir = store.folder(id) ?? folder.path
+                        store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: String(cString: buf))
+                    }
+                }
+                cd_close(tmp)
+            } else {
+                return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
+            }
+            foremanAudit.record(action: "control_set_budget", tier: foremanTier, chatID: id, details: ["budget_usd": budgetUSD])
+            wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "budget_usd": budgetUSD])
+        case "set_goal", "goal", "pause_goal", "resume_goal", "resume", "clear_goal":
+            let goalStatus = ((payload["goal_status"] as? String) ?? "").lowercased()
+            let applyGoal: (UnsafeMutableRawPointer) -> Bool = { p in
+                switch action {
+                case "set_goal", "goal":
+                    if goalStatus == "paused" || goalStatus == "pause" { return cd_goal_set_status(p, 2) != 0 }
+                    if goalStatus == "active" || goalStatus == "resume" { return cd_goal_set_status(p, 1) != 0 }
+                    if goalStatus == "clear" || goalStatus == "none" { return cd_goal_clear(p) != 0 }
+                    let rawObj = (payload["objective"] as? String) ?? (payload["goal"] as? String) ?? ""
+                    let obj = rawObj.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !obj.isEmpty else { return false }
+                    return cd_goal_set(p, obj) != 0
+                case "pause_goal": return cd_goal_set_status(p, 2) != 0
+                case "resume_goal", "resume": return cd_goal_set_status(p, 1) != 0
+                case "clear_goal": return cd_goal_clear(p) != 0
+                default: return false
+                }
+            }
+            var ok = false
+            if id == chat {
+                ok = applyGoal(page); if ok { keep() }
+            } else if let back = runs[id] {
+                ok = applyGoal(back.page); if ok { keep(back) }
+            } else if let saved = store.text(id), let tmp = cd_headless() {
+                if cd_load(tmp, saved) != 0 {
+                    ok = applyGoal(tmp)
+                    if ok {
+                        var buf = [CChar](repeating: 0, count: 4_000_000)
+                        if cd_save(tmp, &buf, Int32(buf.count)) > 0 {
+                            let dir = store.folder(id) ?? folder.path
+                            store.keep(id: id, title: store.title(id) ?? "Chat", folder: dir, text: String(cString: buf))
+                        }
+                    }
+                }
+                cd_close(tmp)
+            } else {
+                return ForemanResponse(status: 404, body: ["error": "chat not found: \(id)"])
+            }
+            if !ok { return ForemanResponse(status: 400, body: ["error": "failed to apply \(action)"]) }
+            foremanAudit.record(action: "control_\(action)", tier: foremanTier, chatID: id)
+            wake()
+            return ForemanResponse(status: 200, body: ["ok": true, "chat_id": id, "action": action])
+        default:
+            return ForemanResponse(status: 400, body: ["error": "unknown action: \(action)"])
+        }
+    }
+
+    private func foremanSearchChats(_ payload: [String: Any]) -> ForemanResponse {
+        guard let query = payload["query"] as? String, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "query is required"])
+        }
+        let limit = max(1, min(50, (payload["limit"] as? Int) ?? 20))
+        let folderFilter = (payload["folder"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let managedOnly = (payload["managed_only"] as? Bool) ?? false
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.timeZone = TimeZone(secondsFromGMT: 0)
+        let dateFromTs = (payload["date_from"] as? String).flatMap { df.date(from: $0)?.timeIntervalSince1970 } ?? 0
+        let dateToTs = (payload["date_to"] as? String).flatMap { df.date(from: $0)?.timeIntervalSince1970 }.map { $0 + 86400 } ?? 0
+        let since = max((payload["since"] as? Double) ?? (payload["since"] as? Int).map(Double.init) ?? 0, dateFromTs)
+        let needle = query.lowercased()
+        var results: [[String: Any]] = []
+        for meta in store.orderedList {
+            if results.count >= limit { break }
+            if managedOnly && meta.managedBy != Foreman.managedTag { continue }
+            if !folderFilter.isEmpty && !meta.folder.localizedCaseInsensitiveContains(folderFilter) { continue }
+            if since > 0 && meta.updated < since { continue }
+            if dateToTs > 0 && meta.updated > dateToTs { continue }
+            var snippets: [String] = []
+            if meta.title.lowercased().contains(needle) {
+                snippets.append("title: " + meta.title)
+            }
+            if let raw = snapshotText(for: meta.id), let data = raw.data(using: .utf8),
+               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let turns = obj["turns"] as? [[String: Any]] {
+                for (idx, t) in turns.enumerated() {
+                    if snippets.count >= 3 { break }
+                    let pairs: [(String, String?)] = [
+                        ("user", (t["ask"] as? String) ?? (t["u"] as? String)),
+                        ("reply", (t["reply"] as? String) ?? (t["r"] as? String))
+                    ]
+                    for (role, maybeText) in pairs {
+                        guard let text = maybeText, let range = text.range(of: query, options: .caseInsensitive) else { continue }
+                        let start = text.index(range.lowerBound, offsetBy: -60, limitedBy: text.startIndex) ?? text.startIndex
+                        let end = text.index(range.upperBound, offsetBy: 120, limitedBy: text.endIndex) ?? text.endIndex
+                        let excerpt = String(text[start..<end]).replacingOccurrences(of: "\n", with: " ")
+                        snippets.append("turn \(idx + 1) (\(role)): " + excerpt)
+                        if snippets.count >= 3 { break }
+                    }
+                }
+            }
+            if !snippets.isEmpty {
+                results.append([
+                    "chat_id": meta.id,
+                    "title": meta.title,
+                    "managed_by": meta.managedBy ?? "",
+                    "folder": meta.folder,
+                    "updated": meta.updated,
+                    "snippets": snippets
+                ])
+            }
+        }
+        return ForemanResponse(status: 200, body: [
+            "query": query,
+            "total": results.count,
+            "results": results
+        ])
+    }
+
+    private func foremanSearchRepo(_ payload: [String: Any]) -> ForemanResponse {
+        guard let query = payload["query"] as? String, !query.isEmpty else {
+            return ForemanResponse(status: 400, body: ["error": "query is required"])
+        }
+        let limit = max(1, min(200, (payload["max"] as? Int) ?? (payload["limit"] as? Int) ?? 50))
+        let rootPath: String
+        if let sub = ((payload["folder"] as? String) ?? (payload["path"] as? String)), !sub.isEmpty {
+            rootPath = sub.hasPrefix("/") ? sub : folder.appendingPathComponent(sub).path
+        } else {
+            rootPath = folder.path
+        }
+        let p = Process()
+        let isGitRepo = FileManager.default.fileExists(atPath: URL(fileURLWithPath: rootPath).appendingPathComponent(".git").path) ||
+                        FileManager.default.fileExists(atPath: folder.appendingPathComponent(".git").path)
+        if isGitRepo {
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            var args = ["-C", rootPath, "grep", "-n", "-i", "-F", query]
+            if let glob = payload["glob"] as? String, !glob.isEmpty { args.append(contentsOf: ["--", glob]) }
+            p.arguments = args
+        } else {
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/grep")
+            p.arguments = ["-rnIiF", query, rootPath]
+        }
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch {
+            return ForemanResponse(status: 500, body: ["error": "search command failed: \(error.localizedDescription)"])
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        var matches: [[String: Any]] = []
+        for line in text.split(separator: "\n") {
+            if matches.count >= limit { break }
+            let parts = line.split(separator: ":", maxSplits: 2, omittingEmptySubsequences: false)
+            if parts.count >= 3 {
+                matches.append([
+                    "file": String(parts[0]),
+                    "line": Int(parts[1]) ?? 0,
+                    "text": String(parts[2]).trimmingCharacters(in: .whitespaces)
+                ])
+            }
+        }
+        return ForemanResponse(status: 200, body: [
+            "workspace": rootPath,
+            "query": query,
+            "total": matches.count,
+            "matches": matches
+        ])
+    }
+
     func retire() {
+        foremanServer.stop()
         if chat != nil { keep() }
         for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
         runs = [:]
@@ -853,6 +1893,18 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
     @objc func selectChat(_ sender: NSMenuItem) { main?.openChat(at: sender.tag) }
+    @objc func openForeman(_ sender: Any?) { main?.openForeman() }
+    @objc func setForemanTier(_ sender: NSMenuItem) {
+        switch sender.tag {
+        case 0: main?.setForemanTier(.observe)
+        case 1: main?.setForemanTier(.managed)
+        case 2: main?.setForemanTier(.autonomous)
+        default: break
+        }
+    }
+    @objc func stopAllChats(_ sender: Any?) { main?.stopAllChats() }
+    @objc func viewForemanAuditLog(_ sender: Any?) { main?.openForemanAuditLog() }
+    @objc func clearForemanHistory(_ sender: Any?) { main?.clearForemanHistory() }
     @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
@@ -860,6 +1912,18 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
+        if item.action == #selector(setForemanTier(_:)) {
+            let current = main?.foremanTier ?? .managed
+            let matches = (senderTag: item.tag, tier: current)
+            switch matches.senderTag {
+            case 0: item.state = matches.tier == .observe ? .on : .off
+            case 1: item.state = matches.tier == .managed ? .on : .off
+            case 2: item.state = matches.tier == .autonomous ? .on : .off
+            default: item.state = .off
+            }
+            return true
+        }
+        if item.action == #selector(stopAllChats(_:)) { return (main?.runningCount ?? 0) > 0 }
         return true
     }
 }
@@ -879,7 +1943,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         del.target = delegate; del.keyEquivalentModifierMask = [.command]
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
-        view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0").target = delegate
+        let actual = view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0")
+        actual.target = delegate; actual.keyEquivalentModifierMask = [.command, .option]
         view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "+").target = delegate
         // Command-= is Command-plus with no Shift
         let plain = view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "=")
@@ -903,7 +1968,26 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem); bar.addItem(viewItem)
+        let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
+        let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "0")
+        openForemanItem.target = delegate; openForemanItem.keyEquivalentModifierMask = [.command]
+        foremanMenu.addItem(.separator())
+        let t0 = foremanMenu.addItem(withTitle: "Tier 0: Observe (Read-Only)", action: #selector(CoderDelegate.setForemanTier(_:)), keyEquivalent: "")
+        t0.target = delegate; t0.tag = 0
+        let t1 = foremanMenu.addItem(withTitle: "Tier 1: Managed (Default)", action: #selector(CoderDelegate.setForemanTier(_:)), keyEquivalent: "")
+        t1.target = delegate; t1.tag = 1
+        let t2 = foremanMenu.addItem(withTitle: "Tier 2: Autonomous", action: #selector(CoderDelegate.setForemanTier(_:)), keyEquivalent: "")
+        t2.target = delegate; t2.tag = 2
+        foremanMenu.addItem(.separator())
+        let stopAll = foremanMenu.addItem(withTitle: "Stop All Running Chats", action: #selector(CoderDelegate.stopAllChats(_:)), keyEquivalent: ".")
+        stopAll.target = delegate; stopAll.keyEquivalentModifierMask = [.command, .shift]
+        let auditLogItem = foremanMenu.addItem(withTitle: "View Audit Log…", action: #selector(CoderDelegate.viewForemanAuditLog(_:)), keyEquivalent: "")
+        auditLogItem.target = delegate
+        foremanMenu.addItem(.separator())
+        let clearHistItem = foremanMenu.addItem(withTitle: "Clear Foreman History…", action: #selector(CoderDelegate.clearForemanHistory(_:)), keyEquivalent: "")
+        clearHistItem.target = delegate
+        foremanItem.submenu = foremanMenu
+        appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem); bar.addItem(viewItem); bar.addItem(foremanItem)
         app.mainMenu = bar
         app.run()
     }

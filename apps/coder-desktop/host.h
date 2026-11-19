@@ -52,12 +52,16 @@ int cd_agent_running(void *page, int agent);
 // cd_recall_line: the line that tells the worker the opened chat's turns, 0 for none.
 void cd_chats(void *page, const char *list);
 void cd_current(void *page, const char *id);
+// Update the persistent Foreman sidebar row's running spinner and permission tier (0=Observe, 1=Assist, 2=Auto).
+void cd_foreman(void *page, int busy, int tier);
 int cd_open_id(void *page, char *out, int cap);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);
 // The id of the chat whose sidebar row is at (x, y) device pixels, 0 when none is there.
 int cd_chat_at(void *page, float x, float y, char *out, int cap);
+// Nonzero when the persistent Foreman sidebar row is at (x, y) device pixels.
+int cd_foreman_at(void *page, float x, float y);
 int cd_save_due(void *page);
 int cd_save(void *page, char *out, int cap);
 int cd_load(void *page, const char *text);

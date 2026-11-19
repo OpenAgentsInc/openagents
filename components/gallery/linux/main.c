@@ -46,6 +46,7 @@ typedef struct {
   char resources[PATH_MAX];
   coax_t_RaFonts fonts;
   uint8_t *font_bytes[4];
+  uint8_t *fallback_bytes;
   coax_t_RaPlan plan;
   coax_t_RaWork *work;
   float sizes[16], icon_sizes[64];
@@ -57,16 +58,20 @@ typedef struct {
   float dpr;
 } App;
 
-static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
-  char path[PATH_MAX];
-  snprintf(path, sizeof path, "%s/%s/%s%s", dir, sub, name, ext);
+static uint8_t *slurp_path(const char *path, size_t *n, int quiet) {
   FILE *f = fopen(path, "rb");
-  if (!f) { fprintf(stderr, "Components: missing %s\n", path); return NULL; }
+  if (!f) { if (!quiet) fprintf(stderr, "Components: missing %s\n", path); return NULL; }
   fseek(f, 0, SEEK_END); long size = ftell(f); fseek(f, 0, SEEK_SET);
+  if (size <= 0) { fclose(f); return NULL; }
   uint8_t *p = malloc((size_t)size + 1);
   if (!p || fread(p, 1, (size_t)size, f) != (size_t)size) { fclose(f); free(p); return NULL; }
   fclose(f); p[size] = 0; *n = (size_t)size;
   return p;
+}
+static uint8_t *slurp(const char *dir, const char *sub, const char *name, const char *ext, size_t *n) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof path, "%s/%s/%s%s", dir, sub, name, ext);
+  return slurp_path(path, n, 0);
 }
 #ifndef COMPONENTS_NO_GALLERY
 static coax_v_t_GalleryState state_of(App *a) { return (coax_v_t_GalleryState){a->g, 1}; }
@@ -87,6 +92,25 @@ static int atlas_setup(App *a) {
     size_t n; uint8_t *bytes = slurp(a->resources, "fonts", files[w], ".ttf", &n);
     a->font_bytes[w] = bytes;
     if (!bytes || !coaxial_ra_open((coax_v_t_RaFonts){&a->fonts, 1}, w, (coax_v_u8){bytes, (int64_t)n})) { fprintf(stderr, "Components: %s is not a TrueType font\n", files[w]); return 0; }
+  }
+  static const char *const fallbacks[] = {
+#ifdef __APPLE__
+    "/System/Library/Fonts/SFNSMono.ttf",
+    "/System/Library/Fonts/SFNS.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+#else
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+#endif
+    NULL
+  };
+  for (int i = 0; fallbacks[i] && !a->fallback_bytes; i++) {
+    size_t n; uint8_t *bytes = slurp_path(fallbacks[i], &n, 1);
+    if (bytes && coaxial_ra_open_fallback((coax_v_t_RaFonts){&a->fonts, 1}, (coax_v_u8){bytes, (int64_t)n})) {
+      a->fallback_bytes = bytes;
+    } else {
+      free(bytes);
+    }
   }
   a->nfonts = (int)coaxial_components_font_count(); a->nicons = a->icon_count ? a->icon_count() : (int)coaxial_components_icon_count();
   if (a->nfonts > 16 || a->nicons > 64) return 0;
@@ -151,6 +175,7 @@ static void gallery_free(App *a) {
   if (!a) return;
   if (a->host) ui_close(a->host);
   for (int i=0;i<4;i++) free(a->font_bytes[i]);
+  free(a->fallback_bytes);
   for (int i=0;i<64;i++) free(a->svg[i]);
   free(a->mono);free(a->color);free(a->work);free(a->g);
 }

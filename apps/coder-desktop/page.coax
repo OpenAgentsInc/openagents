@@ -72,8 +72,16 @@ CP_COLUMN :: 680;           // the conversation's widest column
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
 CP_CORNER :: 6;             // New chat from the window's top and right edges
-CP_MODEL :: "gemini-4-neon";               // Microcoder's own model (Hydrogen until 2026-11-18)
+CP_MODEL :: "gemini-4-neon";               // Microcoder's default main model (Hydrogen until 2026-11-18)
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
+// Main models available in the composer model picker (Neon is the default for every chat).
+CP_MODELS :: 4;
+CP_MODEL_DEFAULT :: 0;
+CP_MODEL_ID :: [CP_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
+CP_MODEL_LABEL :: [CP_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
+CP_MODEL_SHORT :: [CP_MODELS] string.["Neon", "Carbon", "Hydrogen", "Argon"];
+CP_MODEL_DESC :: [CP_MODELS] string.["Fast frontier", "Deep reasoning", "Fast & light", "Heavyweight"];
+CP_MODEL_META :: [CP_MODELS] string.["Microcoder · Gemini 4 Neon", "Microcoder · Gemini 4 Carbon", "Microcoder · Gemini 4 Hydrogen", "Microcoder · Gemini 4 Argon"];
 
 // Default per-chat-thread max budget in microdollars ($50.00).
 CP_BUDGET_DEFAULT :: 50000000;
@@ -86,7 +94,7 @@ CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal re
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26;
 // Foreman permission tiers shown in the sidebar.
 CP_FOREMAN_TIER_OBSERVE :: 0; CP_FOREMAN_TIER_ASSIST :: 1; CP_FOREMAN_TIER_AUTO :: 2;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
@@ -142,6 +150,7 @@ CpTurn :: struct {
   doc: [1] MdDoc; blocks: int;
   note: [CP_NOTE] u8; note_n: int;
   state: int; stopping: bool;
+  model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy
   ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
   fresh: bool;                // a model request ended: the next reply text starts the reply again
@@ -170,6 +179,7 @@ CoderPage :: struct {
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
   kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
+  model: int; kept_model: int; model_menu: bool;            // selected main model for this chat (0: Neon) and picker popover state
   cost_usd_micros: int;                                     // running total cost of this chat in microdollars (1e-6 USD)
   budget_usd_micros: int;                                   // per-chat max budget in microdollars (default CP_BUDGET_DEFAULT)
   budget_override: bool;                                    // user manually approved continuing above budget_usd_micros
@@ -219,7 +229,38 @@ cp_init :: (s: [] CoderPage) {
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
+  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
+}
+cp_model_index :: (s: [] CoderPage) -> int {
+  return ifx s.count > 0 && s[0].model >= 0 && s[0].model < CP_MODELS then s[0].model else CP_MODEL_DEFAULT;
+}
+cp_model_find :: (name: string) -> int {
+  ids := CP_MODEL_ID; shorts := CP_MODEL_SHORT;
+  for i: 0..<CP_MODELS {
+    if name == ids[i] || name == shorts[i] { return i; }
+  }
+  return CP_MODEL_DEFAULT;
+}
+cp_model_id :: (idx: int) -> string {
+  ids := CP_MODEL_ID;
+  return ifx idx >= 0 && idx < CP_MODELS then ids[idx] else ids[CP_MODEL_DEFAULT];
+}
+cp_model_label :: (idx: int) -> string {
+  labels := CP_MODEL_LABEL;
+  return ifx idx >= 0 && idx < CP_MODELS then labels[idx] else labels[CP_MODEL_DEFAULT];
+}
+cp_model_short :: (idx: int) -> string {
+  shorts := CP_MODEL_SHORT;
+  return ifx idx >= 0 && idx < CP_MODELS then shorts[idx] else shorts[CP_MODEL_DEFAULT];
+}
+cp_model_desc :: (idx: int) -> string {
+  descs := CP_MODEL_DESC;
+  return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
+}
+cp_model_meta :: (idx: int) -> string {
+  metas := CP_MODEL_META;
+  return ifx idx >= 0 && idx < CP_MODELS then metas[idx] else metas[CP_MODEL_DEFAULT];
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
@@ -420,6 +461,8 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
   s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
+  s[0].turns[i].model = s[0].model;
+  s[0].model_menu = false;
   s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1; s[0].pane_manual = false;
   s[0].goal_prompt_kind = prompt_kind;
   if s[0].goal_status == CP_GOAL_ACTIVE {
@@ -943,9 +986,17 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   } else if kind == MWW_REPLY { cp_thought_add(s, i, j, l[0].text, true);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";
-    cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, ifx l[0].text.count > 0 then l[0].text else "The sub-agent ended before a reply.");
+    cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, cp_ended_why(l[0].ending, l[0].text, true));
   }
   return kind;
+}
+cp_ended_why :: (ending: string, text: string, sub: bool) -> string {
+  if text.count > 0 { return text; }
+  if ending == "bad_replies" { return ifx sub then "The sub-agent stopped after three unreadable model replies." else "The run stopped after three unreadable model replies."; }
+  if ending == "idle" { return ifx sub then "The sub-agent stopped after three empty steps." else "The run stopped after three empty steps."; }
+  if ending == "no_capacity" { return ifx sub then "The sub-agent could not reach a model." else "The run could not reach a model."; }
+  if ending == "limit" { return ifx sub then "The sub-agent reached its step limit." else "The run reached its step limit."; }
+  return ifx sub then "The sub-agent ended before a reply." else "The run ended before a reply.";
 }
 // Sub-agent j's worker could not start or went away.
 coder_page_agent_failed :: (s: [] CoderPage, j: int, why: string) #export_c #effects(all) {
@@ -1211,9 +1262,10 @@ coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   r := cp_running(s);
   b := cp_budget(s);
-  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; return false; }
-  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time { return false; }
-  s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override;
+  m := cp_model_index(s);
+  if s[0].nturns == 0 && s[0].goal_status == CP_GOAL_NONE { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m; s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0; return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override && m == s[0].kept_model && s[0].goal_status == s[0].kept_goal_status && s[0].goal_objective_n == s[0].kept_goal_n && s[0].goal_time_seconds == s[0].kept_goal_time { return false; }
+  s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; s[0].kept_model = m;
   s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds;
   return true;
 }
@@ -1242,6 +1294,8 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
   n = json_raw(out, n, ",\"budget_usd_micros\":");
   n = json_write_int(out, n, cp_budget(s));
   if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
+  n = json_raw(out, n, ",\"model\":");
+  n = json_write_string(out, n, cp_model_id(cp_model_index(s)));
   if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
     n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
     n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
@@ -1254,6 +1308,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
     n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
     n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s[0].turns[i].model));
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
     n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].more_cmds);
     n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].early_cmds);
@@ -1310,6 +1365,9 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     cut := cl_bool(t, "cut"); if cut.ok && cut.value { s[0].turns[i].cut = true; }
     ar[0].at = 0;
     s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cl_str(ar[..], t, "note"));
+    ar[0].at = 0;
+    tm := cl_str(ar[..], t, "model");
+    s[0].turns[i].model = ifx tm.count > 0 then cp_model_find(tm) else s[0].model;
     state := cl_int(t, "state"); more := cl_int(t, "more");
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
@@ -1357,6 +1415,9 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   s[0].budget_usd_micros = ifx budget.ok && budget.value > 0 then budget.value else CP_BUDGET_DEFAULT;
   ov := cl_bool(text, "budget_override");
   s[0].budget_override = ov.ok && ov.value;
+  mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
+  s[0].model = cp_model_find(cl_str(mar[..], text, "model"));
+  s[0].model_menu = false;
   cp_goal_reset(s);
   gs := cl_int(text, "goal_status");
   if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_BUDGET_LIMITED {
@@ -1371,7 +1432,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   }
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
-  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override;
+  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].kept_model = s[0].model;
   s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false; s[0].pane_manual = false;
   return true;
 }
@@ -1398,6 +1459,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
   s[0].nturns = 0; cp_calls_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
+  s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
@@ -1423,9 +1485,9 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
-  to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override;
+  to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model;
   to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
-  to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override;
+  to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false;
   to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
   to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);
   to[0].goal_notice_n = cp_out(to[0].goal_notice[..], cast(string) from[0].goal_notice[0..<from[0].goal_notice_n]);
@@ -1436,6 +1498,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
+  from[0].model = CP_MODEL_DEFAULT; from[0].kept_model = CP_MODEL_DEFAULT; from[0].model_menu = false;
   cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
   from[0].pane_open = false; from[0].pane_manual = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
@@ -1508,7 +1571,18 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     }
     return false;
   }
-  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_MODEL_MENU {
+    s[0].model_menu = !s[0].model_menu;
+    return true;
+  }
+  if act == CP_MODEL_PICK {
+    idx := cp_number(surface_id(s[0].surface[..], row), "coder.model.");
+    s[0].model_menu = false;
+    if idx < 0 || idx >= CP_MODELS { return false; }
+    s[0].model = idx;
+    return true;
+  }
   if act == CP_COPY {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); block := cp_number(id, ".code.");
@@ -1838,7 +1912,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           // who wrote it, beside Copy, after a click on the reply
-          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, CP_MODEL_NAME, false); }
+          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, cp_model_meta(s[0].turns[i].model), false); }
           y += app_icon_button(f, cp_id(ib[..], i, ".ac"), x - edge, y, ifx did then k.icon_check else k.icon_copy, ifx did then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else { s[0].turns[i].ah = 0; }
@@ -2082,19 +2156,83 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     state = ifx running then APP_COMPOSER_RUNNING else ifx (full || exceeded) then APP_COMPOSER_OFF else APP_COMPOSER_READY,
     editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
   s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
-  // the working folder sits in the composer's bottom-left toolbar, matching Claude Desktop;
-  // a press asks the host for another folder.
+  // bottom toolbar inside the composer, matching Claude Desktop: working folder on the left,
+  // compact model selector beside the send button on the right, and its popover menu above it.
+  box_y := (h - CP_BOTTOM) - s[0].box.height;
+  row_y := box_y + s[0].box.row_y;
+  chip_y := row_y + (s[0].box.send - k.cmp.chip_h) / 2;
+  m_label := cp_model_label(s[0].model);
+  m_tw := measure_width(f[0].m, k.small.face, m_label);
+  m_chev: f32 = 12;
+  m_gap: f32 = 4;
+  m_w := m_tw + m_gap + m_chev + 2 * k.cmp.chip_pad;
+  m_max := s[0].box.send_x - k.cmp.action_inset - a.gap_small;
+  if m_w > m_max { m_w = m_max; }
+  m_x := x + s[0].box.send_x - a.gap_small - m_w;
   if s[0].folder_n > 0 {
     u: f32 = ARCADE_PHONE_SCALE;
     name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
-    box_y := (h - CP_BOTTOM) - s[0].box.height;
-    row_y := box_y + s[0].box.row_y;
     fx := x + k.cmp.action_inset;
-    max_fw := s[0].box.send_x - k.cmp.action_inset - a.gap_small;
+    max_fw := m_x - fx - a.gap_small;
     cap := cast(f32) CP_FOLDER_MOST / u;
     if max_fw > cap { max_fw = cap; }
     if max_fw > 0 {
-      _ := app_chip(f, "coder.folder", fx, row_y + (s[0].box.send - k.cmp.chip_h) / 2, max_fw, ICON_FOLDER, "Working folder", name, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+      _ := app_chip(f, "coder.folder", fx, chip_y, max_fw, ICON_FOLDER, "Working folder", name, ifx running then EL_S_DISABLED else 0, CP_FOLDER);
+    }
+  }
+  if m_w > 0 {
+    sh := f[0].sheet;
+    m_state := ifx s[0].model_menu then EL_S_CURRENT else 0;
+    m_row := uiframe_semantic(f, "coder.model", EL_BUTTON, "Model", m_x, chip_y, m_w, k.cmp.chip_h, m_state, CP_MODEL_MENU);
+    elt_value(f[0].rows, m_row, m_label);
+    m_hov := uiframe_hovered(f, "coder.model");
+    m_bg := ifx s[0].model_menu || m_hov then k.hover else k.raised;
+    _ := sheet_box(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, k.border, m_bg, k.hairline);
+    m_ink := ifx s[0].model_menu || m_hov then k.ink else k.muted;
+    shown := app_fit(f, k.small.face, m_label, m_w - 2 * k.cmp.chip_pad - m_gap - m_chev);
+    _ := sheet_text(sh, f[0].m, -1, m_x + k.cmp.chip_pad, chip_y + (k.cmp.chip_h - k.small.line) / 2, k.small.line, k.small.face, m_ink, shown);
+    sheet_icon(sh, ICON_CHEVRON, m_x + m_w - k.cmp.chip_pad - m_chev, chip_y + (k.cmp.chip_h - m_chev) / 2, m_chev, m_ink);
+    sheet_hit(sh, UIFRAME_HIT, m_row, 0, m_x, chip_y, m_w, k.cmp.chip_h);
+  }
+  if s[0].model_menu {
+    sh := f[0].sheet;
+    pw: f32 = 224;
+    if pw > cw { pw = cw; }
+    pad: f32 = 6;
+    rh: f32 = 42;
+    ph := pad * 2 + cast(f32) CP_MODELS * rh;
+    px := m_x + m_w - pw;
+    if px < x { px = x; }
+    py := chip_y - ph - 6;
+    if py < 8 { py = 8; }
+    // Paint the popover card in the over list so it cleanly covers underlying transcript text.
+    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, k.radius, k.border, k.raised, k.hairline));
+    card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
+    sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
+    mb: [32] u8;
+    for mi: 0..<CP_MODELS {
+      ry := py + pad + cast(f32) mi * rh;
+      mn := el_put(mb[..], 0, "coder.model."); mn = el_put_i(mb[..], mn, mi);
+      mid := sheet_pool(sh, cast(string) mb[0..<mn]);
+      sel := mi == s[0].model;
+      hov := uiframe_hovered(f, mid);
+      label := cp_model_label(mi);
+      desc := cp_model_desc(mi);
+      mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
+      elt_value(f[0].rows, mrow, desc);
+      if hov || sel {
+        fill := ifx hov then k.hover else opacity(k.hover, 0.55f32);
+        sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1, pw - 2 * pad, rh - 2, k.cmp.chip_radius, 0, fill, Rgba.{}));
+      }
+      tx := px + pad + 10;
+      tw := pw - 2 * pad - 34;
+      _ := sheet_text(sh, f[0].m, -1, tx, ry + 5, k.body.line, k.body.face, k.ink, app_fit(f, k.body.face, label, tw));
+      _ := sheet_text(sh, f[0].m, -1, tx, ry + 22, k.small.line, k.small.face, k.muted, app_fit(f, k.small.face, desc, tw));
+      if sel {
+        ck: f32 = 14;
+        sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10 - ck, ry + (rh - ck) / 2, ck, ck, k.accent));
+      }
+      sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
     }
   }
 }
@@ -2255,6 +2393,13 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
       }
     }
   }
+  if phase == 0 && s[0].model_menu {
+    act := surface_action(s[0].surface[..], row);
+    if act != CP_MODEL_MENU && act != CP_MODEL_PICK {
+      s[0].model_menu = false;
+      return true;
+    }
+  }
   if phase == 0 {
     s[0].touching = true;
     s[0].pressed_n = ifx acts then el_copy(s[0].pressed[..], id) else 0;
@@ -2367,7 +2512,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   }
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, agents = true, claude = s[0].claude, model = CP_MODEL, effort = "low"};
+               ceiling = 3, gated = true, edits = true, unlimited = true, agents = true, claude = s[0].claude, model = cp_model_id(s[0].turns[i].model), effort = "low"};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -2421,7 +2566,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       s[0].turns[i].state = CP_DONE;
     } else if s[0].turns[i].stopping { s[0].turns[i].state = CP_STOPPED; }
     else {
-      s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], ifx l[0].text.count > 0 then l[0].text else "The run ended before a reply.");
+      s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cp_ended_why(l[0].ending, l[0].text, false));
       s[0].turns[i].state = CP_FAILED;
       s[0].live_reply = i;
     }
@@ -3534,4 +3679,75 @@ cp_find :: (text: string, needle: string) -> int {
   #assert coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0 && cast(string) s[0].chats[0].id[5..<s[0].chats[0].id_n] == "m1";
   #assert cp_press(s, ti);
   #assert s[0].foreman_hud_collapsed;
+}
+
+#test "composer model picker defaults to Neon, switches models per chat, routes tasks, and persists across save/load/take/new" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  #assert s[0].model == CP_MODEL_DEFAULT && cp_model_id(s[0].model) == "gemini-4-neon";
+  // First turn uses default Neon.
+  #assert coder_page_set_text(s, "first") && coder_page_submit(s);
+  out: [4096] u8;
+  n := coder_page_task(s, "sess-1", "/w", out[..]);
+  ar: [1] ClArena; ab: [2048] u8; ar[0] = ClArena.{buf = ab[..]};
+  back: [1] McTask;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-neon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  // Layout and open the model picker popover via the composer button.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && !s[0].model_menu;
+  #assert cp_press(s, btn);
+  #assert s[0].model_menu;
+  // Re-layout with popover open: all 4 model options appear.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  opt0 := surface_find(s[0].surface[..], "coder.model.0");
+  opt1 := surface_find(s[0].surface[..], "coder.model.1");
+  opt2 := surface_find(s[0].surface[..], "coder.model.2");
+  opt3 := surface_find(s[0].surface[..], "coder.model.3");
+  #assert opt0 >= 0 && opt1 >= 0 && opt2 >= 0 && opt3 >= 0;
+  // Pick Gemini 4 Carbon (index 1).
+  #assert cp_press(s, opt1);
+  #assert !s[0].model_menu && s[0].model == 1 && cp_model_id(s[0].model) == "gemini-4-carbon";
+  #assert coder_page_save_due(s);
+  // Second turn routes to Carbon while first turn remembers Neon.
+  #assert coder_page_set_text(s, "second") && coder_page_submit(s);
+  n = coder_page_task(s, "sess-1", "/w", out[..]);
+  ar[0].at = 0;
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-carbon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok2\"}") == MWW_ENDED;
+  #assert s[0].turns[0].model == 0 && s[0].turns[1].model == 1;
+  // Clicking outside an open popover dismisses it.
+  s[0].model_menu = true;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_pointer(s, 10.0f32, 10.0f32, 0);
+  #assert !s[0].model_menu;
+  // Save/load preserves chat model and per-turn models.
+  saved: [16384] u8;
+  sn := coder_page_save(s, saved[..]);
+  #assert sn > 0;
+  p2: [1] CoderPage; s2 := p2[..];
+  cp_init(s2);
+  #assert coder_page_load(s2, cast(string) saved[0..<sn]);
+  #assert s2[0].model == 1 && s2[0].turns[0].model == 0 && s2[0].turns[1].model == 1;
+  // coder_page_take transfers selected model and resets source to Neon.
+  p3: [1] CoderPage; s3 := p3[..];
+  cp_init(s3);
+  #assert coder_page_take(s3, s2);
+  #assert s3[0].model == 1 && s2[0].model == CP_MODEL_DEFAULT;
+  // New chat resets selected model to Neon.
+  #assert cp_new(s3);
+  #assert s3[0].model == CP_MODEL_DEFAULT && !s3[0].model_menu;
+  // Loading an older saved chat without a model field defaults to Neon.
+  #assert coder_page_load(s3, "{\"turns\":[{\"ask\":\"hi\",\"reply\":\"yo\",\"state\":1}]}");
+  #assert s3[0].model == CP_MODEL_DEFAULT && s3[0].turns[0].model == CP_MODEL_DEFAULT;
 }

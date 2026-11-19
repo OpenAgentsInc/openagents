@@ -20,7 +20,7 @@ cflags=(-mmacosx-version-min=14.0 -O2 -ffp-contract=off -fno-fast-math -w -I"$wo
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -c "$work/c/gallery.c" -o "$work/c/gallery.o"
 /usr/bin/clang -fobjc-arc "${cflags[@]}" -c "$repo/apps/shared/host/apple/ui-host.m" -o "$work/c/ui-host.o"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 -import-objc-header "$here/Bridge.h" \
-  "$here/App.swift" "$repo/apps/shared/native/KitEditorMac.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
+  "$here/App.swift" "$here/Foreman.swift" "$repo/apps/shared/native/KitEditorMac.swift" "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \
   -o "$app/Contents/MacOS/Coder.new"
 mv "$app/Contents/MacOS/Coder.new" "$app/Contents/MacOS/Coder"
@@ -32,6 +32,8 @@ cp "$repo/coax/web/build/tools/mcworker-$(shasum -a 256 "$coax" | cut -d " " -f 
 # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/claudeworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/claudeworker"
+cp "$here/foreman-ctl" "$res/foreman-ctl"
+chmod +x "$res/foreman-ctl"
 rm -rf "$res/Components/fonts" "$res/Components/icons"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$res/Components/"
 cp "$repo/components/zeron/NOTICE" "$res/Components/NOTICE"

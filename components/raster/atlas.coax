@@ -42,7 +42,7 @@ RaPlan :: struct {
   // the rows ra_serve drew into since ra_clean: the host uploads them
   dirty_y0: int; dirty_y1: int;
 }
-RaFonts :: struct { f: [RA_WEIGHTS] TtfFont; }
+RaFonts :: struct { f: [RA_WEIGHTS] TtfFont; fallback: TtfFont; }
 RaWork :: struct { raster: [1] TtfRaster; path: [1] SvgPath; }
 
 ra_ceil :: (v: f32) -> int { f := floor(v); return ifx f < v then cast(int) f + 1 else cast(int) f; }
@@ -196,12 +196,14 @@ ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, size
     code := gp_cluster(a, slot, bytes[..]);
     k := code / 256; count := code % 256;
     if k < 0 || k >= GP_FONTS || k >= weights.count || k >= sizes.count { gp_measured(a, slot, 0, false); continue; }
-    f := fonts[0].f[weights[k] % RA_WEIGHTS];
     text := cast(string) bytes[0..<count];
     width := 0.0f32; i := 0;
     while i < text.count {
       cp := ttf_utf8(text, i, n[..]); i += n[0];
-      if !ra_zero_width(cp) { width += ra_advance(f, ttf_glyph(f, cp), sizes[k]); }
+      if !ra_zero_width(cp) {
+        pf := ra_pick_font(fonts, weights[k], cp);
+        width += ra_advance(pf, ttf_glyph(pf, cp), sizes[k]);
+      }
     }
     gp_measured(a, slot, width, false);
   }
@@ -216,17 +218,17 @@ ra_serve :: (a: [] Atlas, p: [] RaPlan, fonts: [] RaFonts, weights: [] int, size
     k := code / 256; count := code % 256;
     // a colour cell is never asked for (ra_serve measures every grapheme as mono); mark it done
     if info[3] > 0.5 || k < 0 || k >= GP_FONTS || k >= weights.count || k >= sizes.count { a[0].cells[c].state = 2; continue; }
-    f := fonts[0].f[weights[k] % RA_WEIGHTS];
-    scale := ra_scale(f, sizes[k], p[0].dpr);
     if ra_cell_begin(w[0].raster[..], p[0].dyn_cell, p[0].dyn_pen_x, p[0].dyn_pen_y) {
       text := cast(string) bytes[0..<count];
       pen := variant * 64 / GP_SUBPIXEL; i := 0;
       while i < text.count {
         cp := ttf_utf8(text, i, n[..]); i += n[0];
         if ra_zero_width(cp) { continue; }
-        g := ttf_glyph(f, cp);
-        ok := ttf_outline(f, g, scale, pen, 0, w[0].raster[..], 0);
-        pen += ttf_mulfix(ttf_advance(f, g), scale);
+        pf := ra_pick_font(fonts, weights[k], cp);
+        pscale := ra_scale(pf, sizes[k], p[0].dpr);
+        g := ttf_glyph(pf, cp);
+        ok := ttf_outline(pf, g, pscale, pen, 0, w[0].raster[..], 0);
+        pen += ttf_mulfix(ttf_advance(pf, g), pscale);
       }
       ox := cast(int) info[4]; oy := cast(int) info[5];
       ra_cell_end(w[0].raster[..], px, p[0].width, ox, oy, p[0].dyn_cell);
@@ -248,11 +250,23 @@ coaxial_ra_plan_max :: (p: [] RaPlan, dpr: f32, sizes: [] f32, icon_sizes: [] f3
 coaxial_ra_width :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].width else 0; }
 coaxial_ra_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].height else 0; }
 coaxial_ra_color_height :: (p: [] RaPlan) -> int #export_c #effects(all) { return ifx p.count > 0 then p[0].color_height else 0; }
+// Pick the weight's font for cp, falling back to the fallback font when the primary lacks a glyph.
+ra_pick_font :: (fonts: [] RaFonts, weight: int, cp: int) -> TtfFont {
+  f := fonts[0].f[weight % RA_WEIGHTS];
+  if ttf_glyph(f, cp) == 0 && fonts[0].fallback.ok && ttf_glyph(fonts[0].fallback, cp) != 0 { return fonts[0].fallback; }
+  return f;
+}
 // A font's bytes for a weight (they must stay where they are); whether it is a TrueType font.
 coaxial_ra_open :: (fonts: [] RaFonts, weight: int, data: [] u8) -> bool #export_c #effects(all) {
   if fonts.count < 1 || weight < 0 || weight >= RA_WEIGHTS { return false; }
   fonts[0].f[weight] = ttf_open(data);
   return fonts[0].f[weight].ok;
+}
+// An optional fallback TrueType font for code points missing from the primary weights (e.g. macOS ⌘/⌥/⌃).
+coaxial_ra_open_fallback :: (fonts: [] RaFonts, data: [] u8) -> bool #export_c #effects(all) {
+  if fonts.count < 1 { return false; }
+  fonts[0].fallback = ttf_open(data);
+  return fonts[0].fallback.ok;
 }
 coaxial_ra_font :: (a: [] Atlas, p: [] RaPlan, slot: int, fonts: [] RaFonts, weight: int, size: f32, px: [] u8, w: [] RaWork) -> bool #export_c #effects(all) {
   if a.count < 1 || p.count < 1 || fonts.count < 1 || w.count < 1 || weight < 0 || weight >= RA_WEIGHTS || px.count < p[0].width * p[0].height { return false; }
@@ -325,4 +339,10 @@ coaxial_ra_clean :: (p: [] RaPlan) #export_c #effects(all) { if p.count > 0 { p[
   #assert ra_plan(p[..], 4.5, sizes[..], icons[..]) && p[0].sub == 1 && p[0].height <= 8192;
   #assert !ra_plan(p[..], 12, sizes[..], icons[..]) && p[0].width == 8192 && p[0].height > 8192;
   #assert ra_plan_max(p[..], 4, sizes[..], icons[..], 16384) && p[0].height <= 16384;
+}
+#test "ra_pick_font falls back only when primary lacks the glyph and fallback has it" {
+  fonts: [1] RaFonts;
+  // With no loaded fonts, ra_pick_font returns the primary slot (unloaded) without crashing.
+  picked := ra_pick_font(fonts[..], 0, 0x2318);
+  #assert !picked.ok;
 }

@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+
+def die(msg, code=1):
+    sys.stderr.write(msg + "\n")
+    sys.exit(code)
+
+
+def call(method, path, payload=None, timeout=35):
+    base = os.environ.get("CODER_FOREMAN_URL", "").rstrip("/")
+    token = os.environ.get("CODER_FOREMAN_TOKEN", "")
+    if not base or not token:
+        die("foreman-ctl: CODER_FOREMAN_URL/CODER_FOREMAN_TOKEN not set (only available inside Foreman chat)")
+    data = None
+    headers = {"X-Foreman-Token": token}
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            print(body)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        print(body)
+        sys.exit(1)
+    except Exception as e:
+        die(f"foreman-ctl: request failed: {e}")
+
+
+def parse_flags(args):
+    pos = []
+    flags = {}
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a.startswith("--"): 
+            key = a[2:]
+            if i + 1 < len(args) and not args[i + 1].startswith("--"): 
+                flags[key] = args[i + 1]
+                i += 2
+            else:
+                flags[key] = True
+                i += 1
+        else:
+            pos.append(a)
+            i += 1
+    return pos, flags
+
+
+def main():
+    usage = "usage: foreman-ctl <status|list-chats|read-chat|create-chat|send-chat|control-chat|wait|events|audit|stop-all|search-repo|search-chats|tier> [args...]"
+    if len(sys.argv) < 2:
+        die(usage)
+    cmd = sys.argv[1]
+    if cmd in ("-h", "--help", "help"):
+        print(usage)
+        return
+    pos, flags = parse_flags(sys.argv[2:])
+
+    if cmd == "status" or cmd == "tier":
+        call("GET", "/v1/status")
+    elif cmd == "list-chats":
+        payload = {
+            "limit": int(flags.get("limit", 50)),
+            "managed_only": bool(flags.get("managed-only", False)),
+        }
+        if "filter" in flags:
+            payload["filter"] = str(flags["filter"])
+        call("POST", "/v1/chats/list", payload)
+    elif cmd == "read-chat":
+        if not pos:
+            die("usage: foreman-ctl read-chat <chat_id> [--tail N] [--include-tools]")
+        payload = {
+            "chat_id": pos[0],
+            "tail": int(flags.get("tail", 20)),
+            "include_tools": bool(flags.get("include-tools", False)),
+        }
+        call("POST", "/v1/chats/read", payload)
+    elif cmd == "create-chat":
+        prompt = flags.get("prompt", "")
+        if not prompt and pos:
+            prompt = " ".join(pos)
+        if not prompt:
+            die("usage: foreman-ctl create-chat --prompt \"...\" [--title \"...\"] [--folder \"...\"] [--budget USD] [--goal \"...\"] [--pin]")
+        payload = {
+            "title": flags.get("title", ""),
+            "prompt": prompt,
+            "folder": flags.get("folder", ""),
+        }
+        if "budget" in flags:
+            payload["budget_usd"] = float(flags["budget"])
+        if "goal" in flags:
+            payload["goal"] = str(flags["goal"])
+        if flags.get("pin", False):
+            payload["pin"] = True
+        call("POST", "/v1/chats/create", payload)
+    elif cmd == "send-chat":
+        if not pos:
+            die("usage: foreman-ctl send-chat <chat_id> --prompt \"...\" [--mode follow_up|steer|interrupt]")
+        prompt = flags.get("prompt", "")
+        if not prompt and len(pos) > 1:
+            prompt = " ".join(pos[1:])
+        if not prompt:
+            die("usage: foreman-ctl send-chat <chat_id> --prompt \"...\" [--mode follow_up|steer|interrupt]")
+        payload = {
+            "chat_id": pos[0],
+            "prompt": prompt,
+            "mode": str(flags.get("mode", "follow_up")),
+        }
+        call("POST", "/v1/chats/send", payload)
+    elif cmd == "control-chat":
+        if not pos or "action" not in flags:
+            die("usage: foreman-ctl control-chat <chat_id> --action <stop|resume|rename|pin|unpin|delete|approve|budget|goal> [--title \"...\"] [--budget USD] [--goal \"...\"]")
+        payload = {
+            "chat_id": pos[0],
+            "action": flags["action"],
+            "title": flags.get("title", ""),
+        }
+        if "budget" in flags:
+            payload["budget_usd"] = float(flags["budget"])
+        if "goal" in flags:
+            payload["goal"] = str(flags["goal"])
+        if "goal-status" in flags:
+            payload["goal_status"] = str(flags["goal-status"])
+        call("POST", "/v1/chats/control", payload)
+    elif cmd == "wait":
+        timeout_s = float(flags.get("timeout", 60))
+        payload = {
+            "chat_ids": pos,
+            "mode": "all" if flags.get("all", False) else "any",
+            "timeout_seconds": timeout_s,
+        }
+        if "since-id" in flags:
+            payload["since_id"] = int(flags["since-id"])
+        call("POST", "/v1/wait", payload, timeout=max(30, int(timeout_s) + 20))
+    elif cmd == "events":
+        payload = {"limit": int(flags.get("limit", 50))}
+        if "since-id" in flags:
+            payload["since_id"] = int(flags["since-id"])
+        if "chat-id" in flags:
+            payload["chat_id"] = str(flags["chat-id"])
+        call("POST", "/v1/events", payload)
+    elif cmd == "audit":
+        payload = {"limit": int(flags.get("limit", 50))}
+        call("POST", "/v1/audit", payload)
+    elif cmd == "stop-all":
+        payload = {"all": bool(flags.get("all", False))}
+        call("POST", "/v1/chats/stop-all", payload)
+    elif cmd == "search-repo":
+        query = flags.get("query", "") or (" ".join(pos) if pos else "")
+        if not query:
+            die("usage: foreman-ctl search-repo <query> [--folder PATH] [--glob PATTERN] [--max N]")
+        payload = {
+            "query": query,
+            "folder": flags.get("folder", ""),
+            "max": int(flags.get("max", 50)),
+        }
+        if "glob" in flags:
+            payload["glob"] = str(flags["glob"])
+        call("POST", "/v1/search/repo", payload)
+    elif cmd == "search-chats":
+        query = flags.get("query", "") or (" ".join(pos) if pos else "")
+        if not query:
+            die("usage: foreman-ctl search-chats <query> [--limit N] [--folder PATH] [--date-from YYYY-MM-DD] [--date-to YYYY-MM-DD]")
+        payload = {
+            "query": query,
+            "limit": int(flags.get("limit", 20)),
+        }
+        if "folder" in flags:
+            payload["folder"] = str(flags["folder"])
+        if "date-from" in flags:
+            payload["date_from"] = str(flags["date-from"])
+        if "date-to" in flags:
+            payload["date_to"] = str(flags["date-to"])
+        call("POST", "/v1/search/chats", payload)
+    else:
+        die(f"foreman-ctl: unknown command '{cmd}'")
+
+
+if __name__ == "__main__":
+    main()

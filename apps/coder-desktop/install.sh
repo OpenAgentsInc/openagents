@@ -36,7 +36,7 @@ mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
 commit_of() { /usr/libexec/PlistBuddy -c "Print :OACommit" "$1/Contents/Info.plist" 2>/dev/null || true; }
-coder_pid() { pgrep -f "^$app/Contents/MacOS/Coder" | head -n 1 || true; }
+coder_pids() { pgrep -f "^$app/Contents/MacOS/Coder" || true; }
 
 # The clone this checkout belongs to (the LaunchAgent's copy of this script reads it from $state/clone).
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -149,11 +149,15 @@ fi
 
 [[ "$installed" == "$target" ]] && { say "up to date at ${target:0:10}"; exit 0; }
 
-pid="$(coder_pid)"
-if [[ -n "$pid" ]]; then
+pids="$(coder_pids)"
+if [[ -n "$pids" ]]; then
   if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit Coder"; exit 0; fi
-  kill "$pid"
-  for _ in $(seq 1 40); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
+  if [[ -n "$(coder_pids)" ]]; then
+    say "Coder is still running; quit it before installing so its bundle is not removed out from under it"
+    exit 1
+  fi
 fi
 
 # Swap it in whole: the new copy lands beside the old one, then takes its name.
@@ -163,5 +167,5 @@ mv "$dest/Coder.app.new" "$app"
 rm -rf "$dest/.Coder.app.old"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" 2>/dev/null || true
 say "installed ${target:0:10} at $app"
-[[ -n "$pid" || "$mode" == now ]] && open "$app"
+[[ -n "$pids" || "$mode" == now ]] && open "$app"
 exit 0

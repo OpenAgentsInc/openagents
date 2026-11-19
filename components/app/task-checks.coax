@@ -217,3 +217,25 @@ APP_TEST_LONG :: "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\n13\n14\n15\n16\n17\n18\
   #assert app_test_end(t[..]) && app_test_label(t[..], "r.1") == "Finished in 2 min 14 s · 12 tool calls · 1 failed · $0.42" && app_test_label(t[..], "r.2") == "Finished in 48 s · 1 tool call";
   #assert app_test_has(t[..], "b.1", EL_S_LIVE | EL_S_BUSY) && app_test_label(t[..], "b.2") == "You are offline." && app_test_pressable(t[..], "b.2.retry") && app_test_row(t[..], "b.2.retry").action == 13 && app_test_find(t[..], "b.1.retry") < 0;
 }
+
+#test "app task: a collapsible diff row shows +/- stats, starts closed, and opens onto its unified diff card" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  patch := "@@ -10,2 +10,3 @@\n context\n-old line\n+new line 1\n+new line 2\n";
+  #assert app_is_diff(patch) && !app_is_diff("applied") && !app_is_diff("hello world");
+  da: [1] int; dr: [1] int; app_diff_stats(patch, da[..], dr[..]);
+  #assert da[0] == 2 && dr[0] == 1;
+  ol: [1] int; nl: [1] int;
+  #assert app_diff_parse_hunk("@@ -10,2 +10,3 @@", ol[..], nl[..]) && ol[0] == 10 && nl[0] == 10;
+  tool := AppTool.{icon = 6, title = "Edited", arg = "src/main.coax", state = APP_TOOL_DONE, input = "edit src/main.coax", output = patch, diff = true};
+  app_test_begin(t[..], "", "", true);
+  closed := app_tool(f, "d.1", 0, 0, 360, tool, false, 9);
+  #assert app_test_end(t[..]) && app_test_row(t[..], "d.1").role == EL_BUTTON && !app_test_has(t[..], "d.1", EL_S_EXPANDED) && app_test_find(t[..], "d.1.diff") < 0;
+  #assert app_tool_press(t[0].ks[..], "d.1", "d.1");
+  app_test_begin(t[..], "", "", true);
+  opened := app_tool(f, "d.1", 0, 0, 360, tool, false, 9);
+  #assert app_test_end(t[..]) && opened > closed && app_test_has(t[..], "d.1", EL_S_EXPANDED) && app_test_find(t[..], "d.1.diff") >= 0 && app_test_find(t[..], "d.1.input") < 0;
+  #assert app_tool_press(t[0].ks[..], "d.1", "d.1");
+  app_test_begin(t[..], "", "", true);
+  reclosed := app_tool(f, "d.1", 0, 0, 360, tool, false, 9);
+  #assert app_test_end(t[..]) && reclosed == closed && !app_test_has(t[..], "d.1", EL_S_EXPANDED) && app_test_find(t[..], "d.1.diff") < 0;
+}

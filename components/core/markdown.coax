@@ -461,13 +461,18 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
     e := md_line_end(src, i);
     line := cast(string) src[i..<e];
     if md_blank(line) { i = e + 1; continue; }
-    fc := md_fence_char(line);
+    tline := md_trim_left(line);
+    fc := md_fence_char(tline);
     if fc != 0 {
-      // fenced code: the raw lines up to the closing fence (the opening one's character)
+      // fenced code (including indented fences inside list items): strip up to the opening
+      // fence's indentation from each body line up to the matching closing fence
       b := md_new_block(doc, MB_CODE, part);
       if b < 0 { return doc[0].nb - before; }
+      fence_ind := md_indent(line);
       la := doc[0].n;
-      for q: 3..<line.count { if line[q] != ' ' { md_put(doc, line[q]); } }
+      q0 := 3;
+      while q0 < tline.count && tline[q0] == fc { q0 += 1; }
+      for q: q0..<tline.count { if tline[q] != ' ' && tline[q] != '\t' && tline[q] != '\r' { md_put(doc, tline[q]); } }
       doc[0].blocks[b].lang_at = la; doc[0].blocks[b].lang_n = doc[0].n - la;
       doc[0].blocks[b].at = doc[0].n;
       i = e + 1; first := true;
@@ -475,9 +480,20 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
         e2 := md_line_end(src, i);
         l2 := cast(string) src[i..<e2];
         i = e2 + 1;
-        if md_fence_char(l2) == fc { break; }
+        tl2 := md_trim_left(l2);
+        if md_fence_char(tl2) == fc {
+          cq := 3;
+          while cq < tl2.count && tl2[cq] == fc { cq += 1; }
+          if cq >= q0 && md_blank(cast(string) tl2[cq..<tl2.count]) { break; }
+        }
         if !first { md_put(doc, '\n'); }
-        for q: 0..<l2.count { md_put(doc, l2[q]); }
+        drop := 0; col := 0;
+        while drop < l2.count && col < fence_ind {
+          if l2[drop] == ' ' { col += 1; drop += 1; }
+          else if l2[drop] == '\t' { col += 4; drop += 1; }
+          else { break; }
+        }
+        for q: drop..<l2.count { md_put(doc, l2[q]); }
         first = false;
       }
       doc[0].blocks[b].n = doc[0].n - doc[0].blocks[b].at;
@@ -735,4 +751,35 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
   #assert doc[0].items[1].task == MD_TASK_OPEN && md_item_text(doc[..], 1) == "to do" && doc[0].items[2].task == MD_TASK_NONE && md_item_text(doc[..], 2) == "[y] not a box";
   #assert doc[0].blocks[1].kind == MB_CODE && md_lang(doc[..], 1) == "sh" && md_block_text(doc[..], 1) == "ls\n```" && md_block_text(doc[..], 2) == "after";
   #assert md_task("[X] a") == MD_TASK_DONE && md_task("[x]") == MD_TASK_NONE && md_fence_char("~~~") == '~' && md_fence_char("``x") == 0;
+}
+#test "indented fenced code blocks inside ordered and unordered lists parse as code blocks with dedented bodies" {
+  doc: [1] MdDoc;
+  // Ordered list with indented backtick fence, language tag, and following numbered item
+  src := "1. Launch the freshly built app:\n   ```sh\n   open apps/coder-desktop/build/Coder.app\n   ```\n2. Click Foreman at the top of the sidebar (or press `⌘0`).";
+  n := md_parse(doc[..], src, 0);
+  #assert n == 3;
+  #assert doc[0].blocks[0].kind == MB_LIST && doc[0].blocks[0].ordered && doc[0].blocks[0].items == 1;
+  #assert md_item_text(doc[..], doc[0].blocks[0].item0) == "Launch the freshly built app:";
+  #assert doc[0].blocks[1].kind == MB_CODE && md_lang(doc[..], 1) == "sh";
+  #assert md_block_text(doc[..], 1) == "open apps/coder-desktop/build/Coder.app";
+  #assert doc[0].blocks[2].kind == MB_LIST && doc[0].blocks[2].ordered && doc[0].blocks[2].items == 1;
+  #assert doc[0].items[doc[0].blocks[2].item0].number == 2;
+  #assert md_item_text(doc[..], doc[0].blocks[2].item0) == "Click Foreman at the top of the sidebar (or press ⌘0).";
+
+  // Unordered list with blank line before indented multi-line fence preserving relative indentation
+  d2: [1] MdDoc;
+  src2 := "- Run this snippet:\n\n  ```rust\n  fn main() {\n      println!(\"hi\");\n  }\n  ```\n- Next item";
+  n2 := md_parse(d2[..], src2, 0);
+  #assert n2 == 3;
+  #assert d2[0].blocks[0].kind == MB_LIST && !d2[0].blocks[0].ordered && d2[0].blocks[0].items == 1;
+  #assert d2[0].blocks[1].kind == MB_CODE && md_lang(d2[..], 1) == "rust";
+  #assert md_block_text(d2[..], 1) == "fn main() {\n    println!(\"hi\");\n}";
+  #assert d2[0].blocks[2].kind == MB_LIST && !d2[0].blocks[2].ordered && md_item_text(d2[..], d2[0].blocks[2].item0) == "Next item";
+
+  // Indented tilde fence with 4 tildes and no language tag inside an unordered list
+  d3: [1] MdDoc;
+  src3 := "- Example:\n  ~~~~\n  line one\n  ```\n  line two\n  ~~~~";
+  n3 := md_parse(d3[..], src3, 0);
+  #assert n3 == 2 && d3[0].blocks[1].kind == MB_CODE && md_lang(d3[..], 1) == "";
+  #assert md_block_text(d3[..], 1) == "line one\n```\nline two";
 }
