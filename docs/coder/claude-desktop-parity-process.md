@@ -53,28 +53,22 @@ logical points (`px / 2` on 2x Retina):
    `VNRecognizeTextRequest` on cropped sidebar and composer regions to verify
    text cap heights, baselines, horizontal padding (`16pt`), and control order.
 
-## Step 3: Convert Points to Coax Layout Units
+## Step 3: Write Measures in Points
 
-Coder Desktop renders with `cp_scale(s) = ARCADE_PHONE_SCALE * zoom`, where
-`ARCADE_PHONE_SCALE = 1.2` (`components/skin/arcade.coax`) and default zoom is
-`1.0`. Therefore:
+Coder Desktop lays out in points (GitHub #13737): `cp_scale(s)` is the text
+size alone (`CP_ZOOMS`, 1.0 by default), so a measured point value goes into
+`cp_skin()` (`apps/coder-desktop/page/skin.coax`) or `page/state.coax` as is.
+Font sizes are the atlas's, in points, in `CP_FONT_SIZES`; the check
+`every font slot comes out at Zeron's type ramp` in
+`page/checks/layout-checks.coax` holds them to Zeron's ramp.
 
-```text
-coax_units = target_points / ARCADE_PHONE_SCALE   // divide by 1.2
-```
-
-Apply desktop-specific geometry overrides in `cp_skin()` inside
-`apps/coder-desktop/page/skin.coax` (keeping shared skins intact for other apps):
-
-| Element | Claude Desktop (pt) | Coder `cp_skin()` (Coax units at 1.2x) |
+| Element | Points | Where |
 | --- | --- | --- |
-| Default sidebar width (`CP_SIDE`) | `280pt` | `234` (`280 / 1.2`) |
-| Sidebar row height (`side_row`) | `32pt` | `32.0 / u` |
-| Sidebar section heading (`side_head`) | `26pt` | `26.0 / u` |
-| Row horizontal inset & radius (`row_inset`, `row_radius`) | `8pt` | `8.0 / u` |
-| Row text horizontal padding (`side_pad`) | `16pt` | `16.0 / u` |
-| Sidebar icon size (`app.icon`) | `15pt` | `15.0 / u` |
-| Composer toolbar chip height / radius / icon | `28pt` / `8pt` / `14pt` | `28.0 / u`, `8.0 / u`, `14.0 / u` |
+| Default sidebar width | `272` (242-400) | `CP_SIDE` |
+| Sidebar row height, heading | `32`, `26` | `k.app.side_row`, `k.app.side_head` |
+| Row inset and radius, text padding | `8`, `8`, `16` | `k.app.row_inset`, `k.app.row_radius`, `k.app.side_pad` |
+| Conversation column, side room | `660`, `32` | `CP_COLUMN`, `CP_PAD` |
+| Composer chip height / radius / icon | `28` / `8` / `14` | `k.cmp.chip_h`, `k.cmp.chip_radius`, `k.cmp.chip_icon` |
 
 ## Step 4: Implement in Coax Components & `apps/coder-desktop/page/`
 

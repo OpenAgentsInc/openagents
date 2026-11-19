@@ -134,7 +134,7 @@ app_act_path_pressed :: (id: string, pressed: string) -> bool {
   suffix := ".path";
   return pressed.count == id.count + suffix.count && cast(string) pressed[0..<id.count] == id && cast(string) pressed[id.count..<pressed.count] == suffix;
 }
-// Measures in points drawn at `scale` points a unit (Coder Desktop's 1.2): the sizes divided by it.
+// Measures in points drawn at `scale` points a unit: the sizes divided by it.
 app_act_scaled :: (scale: f32) -> UiActivity {
   a := UiActivity.{}; u := ifx scale > 0 then scale else 1.0f32;
   a.loader /= u; a.trunk /= u; a.bend /= u; a.branch_end /= u; a.glyph_left /= u; a.glyph /= u; a.gutter /= u;

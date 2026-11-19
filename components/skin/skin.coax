@@ -303,13 +303,14 @@ UiApp :: struct {
   banner_h: f32 = 36; banner_radius: f32 = 18;
   nav: f32 = 44; nav_icon: f32 = 20;
   side_row: f32 = 44; side_row_two: f32 = 58; side_head: f32 = 30; side_pad: f32 = 14;
+  side_text: UiType;                                   // a sidebar row's title (line 0: the skin's body)
   off_ink: f32 = 0.45;                                 // a disabled part's ink strength
   icon_alert: int = -1; icon_nav: int = -1; icon_disclose: int = -1;   // slots in the target's icons: a failure's mark, the navigation button's, a row that opens (-1: the skin has none)
 }
 // Conversation presentation; optional so other skins retain their geometry.
 // The activity group's measures (components/app/activity.coax, GitHub #13731): Zeron's
 // ds/activity.luau, tree_line.luau and working.luau, read in points, as layout units. A skin
-// drawn at another scale (Coder Desktop's 1.2) divides the sizes by it (app_act_scaled). A
+// drawn at another scale divides the sizes by it (app_act_scaled). A
 // `_ink` or `_wash` is a strength, 0 to 1; `_lines` and `rotate` are counts and seconds.
 UiActivity :: struct {
   loader: f32 = 16;                                    // the working loader, and the trunk's x under its middle

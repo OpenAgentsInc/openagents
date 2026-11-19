@@ -20,8 +20,8 @@ CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and hand
 CP_AGENT_CALLS :: 6000;     // commands, tool calls and thoughts a chat keeps in all (#13670, #13671). Past it the oldest in the chat goes, and its message or transcript says how many went
 CP_QUIET :: 100;            // tool calls a sub-agent makes in a row with no file changed before it pauses and Microcoder decides (#13676)
 CP_ROUND :: 6;              // tasks Microcoder hands over in one step
-CP_PANE :: 440;             // the sub-agent transcript's width, on the window's right
-CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
+CP_PANE :: 520;             // the sub-agent transcript's width, on the window's right (Zeron's panel), in points as every measure here
+CP_PANE_MAIN :: 456;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
 CP_MODEL_SIMPLE :: "gemini-4-hydrogen";     // a level hydrogen task's model
 CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a level carbon task's model
@@ -38,23 +38,23 @@ CP_LEVEL_OLD :: [2] string.["simple", "complex"];
 CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
 CP_LEVEL_OR :: 3;                           // the OpenRouter level
 CP_LEVEL_CLAUDE :: 4;                       // the first Claude level
-CP_PAD :: 16;               // the page's margin
+CP_PAD :: 32;               // the page's margin: Zeron's side room for the composer
 CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
 CP_CHAT_TITLE :: 120;       // bytes of a chat's title: its first message on one line
-CP_SIDE :: 234;             // the sidebar's width until its edge is dragged (280pt at 1.2x, matching Claude Desktop)
-CP_SIDE_LEAST :: 180; CP_SIDE_MOST :: 480;     // how narrow and wide a drag makes the sidebar
-CP_PANE_LEAST :: 320; CP_PANE_MOST :: 900;     // and a sub-agent's transcript
-CP_PANE_MARGIN :: 200;      // how far out of view a transcript's row is still drawn
+CP_SIDE :: 272;             // the sidebar's width until its edge is dragged (Zeron's)
+CP_SIDE_LEAST :: 242; CP_SIDE_MOST :: 400;     // how narrow and wide a drag makes the sidebar
+CP_PANE_LEAST :: 360; CP_PANE_MOST :: 1080;     // and a sub-agent's transcript
+CP_PANE_MARGIN :: 240;      // how far out of view a transcript's row is still drawn
 CP_EDGE :: 4;               // how near a sidebar's edge a press takes hold of it
-CP_SIDE_FROM :: 900;        // the window width from which the sidebar shows; a narrower window has none
+CP_SIDE_FROM :: 1080;       // the window width from which the sidebar shows; a narrower window has none
 CP_ZOOMS :: [8] f32.[0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];   // the text sizes Command-plus and Command-minus step through
 CP_ZOOM_USUAL :: 2;
 CP_BOTTOM :: 8;             // under the message bar
-CP_COLUMN :: 720;           // the conversation (Zeron zeron.prose.measure)'s widest column
+CP_COLUMN :: 660;           // the conversation's widest column (Zeron's prose.measure)
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
-CP_CORNER :: 6;             // New chat from the window's top and right edges
+CP_CORNER :: 8;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-neon";               // Microcoder's default main model (Hydrogen until 2026-11-18)
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
 // Main models available in the composer model picker (Neon is the default for every chat). The

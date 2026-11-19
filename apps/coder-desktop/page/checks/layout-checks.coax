@@ -2,41 +2,53 @@
 #load "../parts.coax";
 #load "checks-kit.coax";
 
-#test "the text size steps through its rows and stops at each end" {
+#test "the page lays out in points: its scale is the text size alone" {
   p: [1] CoderPage; s := p[..];
   cp_init(s);
-  #assert coder_page_zoom(s, 0) == 2 && abs(coder_page_scale(s) - 1.2) < 0.001;
-  #assert coder_page_zoom(s, 1) == 3 && abs(coder_page_scale(s) - 1.32) < 0.001;
+  #assert coder_page_zoom(s, 0) == 2 && abs(coder_page_scale(s) - 1.0) < 0.001;
+  #assert coder_page_zoom(s, 1) == 3 && abs(coder_page_scale(s) - 1.1) < 0.001;
   for i: 0..<9 { _ := coder_page_zoom(s, 1); }
-  #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.4) < 0.001;
+  #assert coder_page_zoom(s, 0) == 7 && abs(coder_page_scale(s) - 2.0) < 0.001;
   for i: 0..<9 { _ := coder_page_zoom(s, -1); }
   #assert coder_page_zoom(s, 0) == 0 && coder_page_zoom_set(s, 2) == 2;
-  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.0) < 0.01 && abs(st[1] - 20.0) < 0.001;
+  // the platform editor: Zeron's composer text, 14 on a 22 line, and it grows with the text size
+  st: [14] f32; #assert coder_page_style(s, st[..]) && abs(st[0] - 14.0) < 0.01 && abs(st[1] - 22.0) < 0.001;
+  #assert coder_page_zoom_set(s, 5) == 5;
+  #assert coder_page_style(s, st[..]) && abs(st[0] - 21.0) < 0.01 && abs(st[1] - 33.0) < 0.001;
 }
 
-#test "desktop skin matches Zeron Dark palette and Zeron composer proportions" {
-  u: f32 = ARCADE_PHONE_SCALE;
+// The size the atlas holds a type's face at, in points.
+cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
+#test "every font slot comes out at Zeron's type ramp at the usual text size" {
   k := cp_skin();
-  base := arcade_phone_skin();
-  z := zeron_skin();
-  // Sidebar proportions unchanged at 1.2x scale (280pt sidebar, 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad).
-  #assert CP_SIDE == 234;
-  #assert k.app.side_row * u > 31.9f32 && k.app.side_row * u < 32.1f32;
-  #assert k.app.side_head * u > 25.9f32 && k.app.side_head * u < 26.1f32;
-  #assert k.app.row_inset * u > 7.9f32 && k.app.row_inset * u < 8.1f32;
-  #assert k.app.row_radius * u > 7.9f32 && k.app.row_radius * u < 8.1f32;
-  #assert k.app.side_pad * u > 15.9f32 && k.app.side_pad * u < 16.1f32;
-  // Main-area typography is smaller than Arcade default while sidebar (k.small) stays unchanged.
-  #assert k.small.face == base.small.face && k.small.size == base.small.size;
-  #assert k.body.size < base.body.size && k.mono.size < base.mono.size && k.tool.size < base.tool.size && k.label.size < base.label.size;
-  // Composer geometry matches Zeron pill proportions (20pt radius, 20pt line, 28pt circular send pill at 6pt inset, 28pt chips).
-  #assert k.cmp.radius * u > 19.9f32 && k.cmp.radius * u < 20.1f32;
-  #assert k.cmp.line * u > 19.9f32 && k.cmp.line * u < 20.1f32;
-  #assert k.cmp.send * u > 27.9f32 && k.cmp.send * u < 28.1f32;
-  #assert k.cmp.action_inset * u > 5.9f32 && k.cmp.action_inset * u < 6.1f32;
-  #assert k.cmp.chip_h * u > 27.9f32 && k.cmp.chip_h * u < 28.1f32;
-  // Color palette matches Zeron Dark tokens.
-  #assert k.canvas.r == z.canvas.r && k.surface.r == z.surface.r && k.ink.r == z.ink.r;
+  // prose 15/24, its bold, inline code 13.5, code blocks 13/20
+  #assert cp_pt(k.body) == 15 && k.body.size == 15 && k.body.line == 24 && k.md.line == 24;
+  #assert cp_pt(k.strong) == 15 && k.strong.line == 24;
+  #assert cp_pt(k.code) == 13.5 && k.code.size == 13.5;
+  #assert cp_pt(k.mono) == 13 && k.mono.line == 20 && k.md.block_line == 20;
+  // sm 12/16 (tool rows, captions, tool output), md 13/18 (labels, titles, menus, sidebar rows), xs 11/14
+  #assert cp_pt(k.tool) == 12 && k.tool.line == 16 && cp_pt(k.small) == 12 && k.small.line == 16;
+  #assert cp_pt(k.mono_small) == 12 && k.mono_small.line == 16 && cp_pt(k.mono_tiny) == 11 && k.mono_tiny.line == 14;
+  #assert cp_pt(k.label) == 13 && k.label.line == 18 && cp_pt(k.title) == 13 && cp_pt(k.menu) == 13 && k.menu.line == 18;
+  #assert cp_pt(k.app.side_text) == 13 && k.app.side_text.line == 18 && cp_pt(k.menu_small) == 11 && k.menu_small.line == 14;
+  // the composer's 14/22, and settings' own faces at Zeron's 11, 12 and 20 with no correction for a scale
+  #assert coder_page_font_size(CP_COMPOSER_FACE) == 14 && k.cmp.line == 22;
+  #assert coder_page_font_size(FONT_SET_HEAD) == 11 && coder_page_font_size(FONT_SET_DESC) == 12 && coder_page_font_size(FONT_SET_TITLE) == 20;
+  #assert k.set.title_line == zeron_settings().title_line && k.set.row == zeron_settings().row;
+  // each size the face's weight is: Medium for md and the chips, SemiBold for bold, Mono for code
+  w := FONT_WEIGHTS;
+  #assert w[k.body.face] == 0 && w[k.strong.face] == 2 && w[k.label.face] == 1 && w[k.code.face] == 3 && w[k.mono.face] == 3;
+}
+
+#test "the window's measures are Zeron's, in points" {
+  k := cp_skin();
+  #assert CP_COLUMN == 660 && CP_PAD == 32 && CP_BOTTOM == 8;
+  #assert CP_SIDE == 272 && CP_SIDE_LEAST == 242 && CP_SIDE_MOST == 400;
+  #assert CP_PANE == 520 && CP_PANE_LEAST == 360;
+  #assert k.app.side_row == 32 && k.app.side_head == 26 && k.app.row_inset == 8 && k.app.row_radius == 8 && k.app.side_pad == 16;
+  // Composer: Zeron's pill (22pt line, 28pt circular send at 6pt inset, 28pt chips)
+  #assert k.cmp.send == 28 && k.cmp.action_inset == 6 && k.cmp.chip_h == 28;
+  #assert k.canvas.r == zeron_skin().canvas.r && k.ink.r == zeron_skin().ink.r;
 }
 
 #test "sidebar footer draws demo pills stacked in the footer region" {
@@ -96,7 +108,7 @@
   cp_init(s);
   s[0].d = 1.0f32;
   f: [1] UiFrame;
-  // At exactly CP_SIDE_FROM (900 px), the chats sidebar is visible.
+  // At exactly CP_SIDE_FROM (1080 pt), the chats sidebar is visible.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
   cp_layout(s, f[..], cast(f32) CP_SIDE_FROM, 800.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
@@ -106,7 +118,7 @@
   cp_layout(s, f[..], cast(f32) (CP_SIDE_FROM - 1), 800.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert s[0].side == 0;
-  // With a sub-agent pane open at 1000 px, chats sidebar yields first (1000 - 234 - 440 < 380) while the pane stays at CP_PANE.
+  // With a sub-agent pane open at 1000 px, chats sidebar yields first (1000 - 272 - 520 < 456) while the pane stays at CP_PANE.
   #assert coder_page_set_text(s, "check") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"inspect\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert s[0].pane_open;
@@ -114,7 +126,7 @@
   cp_layout(s, f[..], 1000.0f32, 800.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert s[0].side == 0 && s[0].pane_w == cast(f32) CP_PANE && s[0].col_w > 0;
-  // At 600 px, even without the chats sidebar the transcript pane cannot leave CP_PANE_MAIN, so it takes the whole window.
+  // At 600 pt, even without the chats sidebar the transcript pane cannot leave CP_PANE_MAIN, so it takes the whole window.
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, true, false);
   cp_layout(s, f[..], 600.0f32, 800.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
@@ -125,10 +137,10 @@
   p: [1] CoderPage; s := p[..];
   cp_init(s);
   s[0].d = 1.0f32;
-  #assert coder_page_zoom_set(s, -5) == 0 && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[0];
+  #assert coder_page_zoom_set(s, -5) == 0 && cp_scale(s) == CP_ZOOMS[0];
   #assert coder_page_zoom(s, -1) == 0;
   max_z := CP_ZOOMS.count - 1;
-  #assert coder_page_zoom_set(s, 99) == max_z && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[max_z];
+  #assert coder_page_zoom_set(s, 99) == max_z && cp_scale(s) == CP_ZOOMS[max_z];
   #assert coder_page_zoom(s, 1) == max_z;
   #assert coder_page_zoom_set(s, CP_ZOOM_USUAL) == CP_ZOOM_USUAL;
   // Sidebar and pane width clamping on setter.

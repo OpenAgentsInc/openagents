@@ -245,19 +245,19 @@
   _ = cp_call_add(s, 0, 1, "newest", "", false, false, false);
   #assert s[0].turns[0].agents[1].early_rows == 0 && cast(string) s[0].calls[s[0].turns[0].agents[1].tail - 1].text[0..<6] == "newest";
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"# Done\"}") == MWW_ENDED && !s[0].calls[cp_nth(s, 0, 1, 0)].running && !s[0].calls[cp_nth(s, 0, 1, 0)].failed;
-  // a sidebar's edge drags: the chats' between 180 and 480 points, the transcript's from 320, and
-  // the conversation keeps 380; the widths are owed to the host once, and a kept one is held to its limits
+  // a sidebar's edge drags: the chats' between 242 and 400 points, the transcript's from 360, and
+  // the conversation keeps 456; the widths are owed to the host once, and a kept one is held to its limits
   s[0].d = 1; s[0].win_w = 1400; s[0].side = 260; s[0].pane_open = true; s[0].pane_x = 960; s[0].pane_w = 440;
   #assert coder_page_pointer(s, 262, 300, 0) && s[0].drag == 1 && coder_page_edge(s);
-  #assert coder_page_pointer(s, 300, 300, 1) && s[0].side_w == 300 && coder_page_pointer(s, 20, 300, 1) && s[0].side_w == 180 && coder_page_pointer(s, 900, 300, 1) && s[0].side_w == 480;
-  #assert coder_page_pointer(s, 330, 300, 2) && s[0].drag == 0 && s[0].side_w == 480 && !coder_page_edge(s);
-  s[0].side = 480;
-  #assert coder_page_pointer(s, 958, 300, 0) && s[0].drag == 2 && coder_page_pointer(s, 700, 300, 1) && s[0].pane_user == 540;
-  #assert coder_page_pointer(s, 1390, 300, 1) && s[0].pane_user == 320 && coder_page_pointer(s, 1390, 300, 2);
+  #assert coder_page_pointer(s, 300, 300, 1) && s[0].side_w == 300 && coder_page_pointer(s, 20, 300, 1) && s[0].side_w == 242 && coder_page_pointer(s, 900, 300, 1) && s[0].side_w == 400;
+  #assert coder_page_pointer(s, 330, 300, 2) && s[0].drag == 0 && s[0].side_w == 400 && !coder_page_edge(s);
+  s[0].side = 400;
+  #assert coder_page_pointer(s, 958, 300, 0) && s[0].drag == 2 && coder_page_pointer(s, 700, 300, 1) && s[0].pane_user == 544;
+  #assert coder_page_pointer(s, 1390, 300, 1) && s[0].pane_user == 360 && coder_page_pointer(s, 1390, 300, 2);
   sw: [2] f32;
-  #assert coder_page_sides(s, sw[..]) && sw[0] == 480 && sw[1] == 320 && !coder_page_sides(s, sw[..]);
+  #assert coder_page_sides(s, sw[..]) && sw[0] == 400 && sw[1] == 360 && !coder_page_sides(s, sw[..]);
   coder_page_sides_set(s, 9000, 10);
-  #assert s[0].side_w == 480 && s[0].pane_user == 320;
+  #assert s[0].side_w == 400 && s[0].pane_user == 360;
   coder_page_sides_set(s, 0, 0);
   #assert s[0].side_w == 0 && s[0].pane_user == 0 && !coder_page_pointer(s, 600, 300, 1) && !coder_page_edge(s);
   s[0].side = 0;

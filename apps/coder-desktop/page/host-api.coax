@@ -51,23 +51,19 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   gpu_monochrome(out, v);
   return v;
 }
-// An icon's size in the atlas. An icon draws at this size wherever it is, so the ones that sit
-// together in the window's top corners and under messages (folder, copy, its check, new chat) are
-// one size; the rest keep the component library's.
+// An icon's size in the atlas, in points. An icon draws at this size wherever it is, so the ones that
+// sit together in the window's top corners and under messages (folder, copy, its check, new chat) are
+// one size; the rest keep the component library's (Zeron's, in points).
 CP_ICON :: 18;
 coder_page_icon_size :: (i: int) -> f32 #export_c #effects(all) {
   if i == ICON_FOLDER || i == ICON_COPY || i == ICON_CHECK || i == ICON_COMPOSE || i == ICON_CLOSE { return CP_ICON; }
   sizes := ICON_SIZES;
-  // settings' icons are Zeron's, in points
-  if i >= ICON_SET_GENERAL && i <= ICON_SET_COMMAND { return sizes[i] / ARCADE_PHONE_SCALE; }
   return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32;
 }
-// A font's size in the atlas: the settings' faces are Zeron's, in points; the rest keep the
-// component library's.
+// A font's size in the atlas, in points: Zeron's type ramp (CP_FONT_SIZES, skin.coax).
 coder_page_font_size :: (k: int) -> f32 #export_c #effects(all) {
-  sizes := FONT_SIZES;
+  sizes := CP_FONT_SIZES;
   if k < 0 || k >= sizes.count { return 12.0f32; }
-  if k == FONT_SET_HEAD || k == FONT_SET_DESC || k == FONT_SET_TITLE { return sizes[k] / ARCADE_PHONE_SCALE; }
   return sizes[k];
 }
 // What the page asks of the host (CP_ASK_*), once.
@@ -235,7 +231,7 @@ coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(a
 coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 14 { return false; }
   k := cp_skin();
-  out[0] = 14.0f32 * cp_scale(s) / ARCADE_PHONE_SCALE; out[1] = k.cmp.line * cp_scale(s);
+  out[0] = CP_FONT_SIZES[CP_COMPOSER_FACE] * cp_scale(s); out[1] = k.cmp.line * cp_scale(s);
   out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
   out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
   out[10] = k.accent.r; out[11] = k.accent.g; out[12] = k.accent.b; out[13] = k.accent.a;
@@ -247,7 +243,7 @@ coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return 
 coder_page_now :: (s: [] CoderPage, now: f64) #export_c #effects(all) { if s.count > 0 { s[0].now = now; s[0].now_host = true; } }
 coder_page_refused :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 coder_page_max_vertices :: () -> int #export_c #effects(all) { return CP_MAX_VERTICES; }
-coder_page_scale :: (s: [] CoderPage) -> f32 #export_c #effects(all) { if s.count < 1 { return ARCADE_PHONE_SCALE; } return cp_scale(s); }
+coder_page_scale :: (s: [] CoderPage) -> f32 #export_c #effects(all) { if s.count < 1 { return 1.0f32; } return cp_scale(s); }
 // The text size: a row of CP_ZOOMS (0 to 7; 2 is the usual size). by moves it a row up or down and
 // 0 leaves it; coder_page_zoom_set names the row. Each returns the row it is at now.
 coder_page_zoom :: (s: [] CoderPage, by: int) -> int #export_c #effects(all) {

@@ -1,11 +1,16 @@
 // Coder Desktop page (../page.coax): the layout scale and the page's skin.
 
-// Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
-cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
+// Points to a unit of the page's layout: the page lays out in points (Zeron's), so this is the text size alone (#13737).
+cp_scale :: (s: [] CoderPage) -> f32 { return CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
+// The atlas's sizes for Coder, in points: Zeron's type ramp (ds/tokens.luau) on the component library's slots.
+// Prose 15 (Geist, SemiBold for **bold**), inline code 13.5, code blocks 13, tool output 12 and gutters 11 (Mono),
+// sm 12 (tool rows, captions; Medium for chips), md 13 Medium (labels, menus, sidebar rows), xs 11 Medium,
+// 14 (the composer's draft, as the platform editor sets it; the menus' search), then the library's display faces.
+CP_FONT_SIZES :: [16] f32.[15, 12, 12, 15, 13.5, 13, 12, 11, 14, 13, 11, 14, 24, 11, 12, 20];
+CP_COMPOSER_FACE :: FONT_SMALL;   // Geist 14: the composer's draft and placeholder when the platform editor is not showing
 // Coder Desktop's skin: Zeron Dark palette, typography, transcript rhythm (user bubbles,
 // markdown prose, code blocks, quiet activity/tool/thinking rows), and Zeron pill composer.
 cp_skin :: () -> UiSkin {
-  u: f32 = ARCADE_PHONE_SCALE;
   k := arcade_phone_skin();
   z := zeron_skin();
   // Zeron Dark surface, ink, semantic, and syntax tokens (zeron-dark.json / ds/tokens.luau).
@@ -43,81 +48,84 @@ cp_skin :: () -> UiSkin {
   k.warning_muted = z.warning_muted;
   k.menu_divider = z.menu_divider;
   k.chat.enabled = true;
-  // Sidebar: unchanged proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
-  k.app.side_row = 32.0f32 / u;
-  k.app.side_row_two = 48.0f32 / u;
-  k.app.side_head = 26.0f32 / u;
-  k.app.row_inset = 8.0f32 / u;
-  k.app.row_radius = 8.0f32 / u;
-  k.app.side_pad = 16.0f32 / u;
-  k.app.icon = 15.0f32 / u;
-  // Main-area typography aligned with Zeron prose (15pt/24pt rhythm, 13pt mono code, 13pt compact tools).
-  k.body.face = FONT_TOOL; k.body.size = 12; k.body.line = 20.0f32;
-  k.strong.face = FONT_CHIP; k.strong.size = 12; k.strong.line = 20.0f32;
-  k.code.face = FONT_MONO_12; k.code.size = 12; k.code.line = 20.0f32;
-  k.mono.face = FONT_MONO_11; k.mono.size = 11; k.mono.line = 16.5f32;
-  k.mono_small.face = FONT_MONO_11; k.mono_small.size = 11; k.mono_small.line = 15.5f32;
-  k.tool.face = FONT_SMALL; k.tool.size = 11; k.tool.line = 16.0f32;
-  k.label.face = FONT_MENU_SMALL; k.label.size = 11; k.label.line = 16.0f32;
-  k.title.face = FONT_MENU; k.title.size = 13; k.title.line = 20.0f32;
+  // Sidebar: 32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons.
+  k.app.side_row = 32.0f32;
+  k.app.side_row_two = 48.0f32;
+  k.app.side_head = 26.0f32;
+  k.app.row_inset = 8.0f32;
+  k.app.row_radius = 8.0f32;
+  k.app.side_pad = 16.0f32;
+  k.app.icon = 15.0f32;
+  // Zeron's type ramp in points (ds/tokens.luau): prose 15/24, code 13/20, inline code 13.5, sm 12/16, md 13/18, xs 11/14.
+  k.body.face = FONT_INPUT; k.body.size = 15; k.body.line = 24;
+  k.strong.face = FONT_BOLD; k.strong.size = 15; k.strong.line = 24;
+  k.code.face = FONT_MONO_14; k.code.size = 13.5; k.code.line = 24;
+  k.mono.face = FONT_CODE; k.mono.size = 13; k.mono.line = 20;
+  k.mono_small.face = FONT_MONO_12; k.mono_small.size = 12; k.mono_small.line = 16;
+  k.mono_tiny.face = FONT_MONO_11; k.mono_tiny.size = 11; k.mono_tiny.line = 14;
+  k.tool.face = FONT_TOOL; k.tool.size = 12; k.tool.line = 16;
+  k.small.face = FONT_TOOL; k.small.size = 12; k.small.line = 16;
+  k.label.face = FONT_MENU; k.label.size = 13; k.label.line = 18;
+  k.title.face = FONT_MENU; k.title.size = 13; k.title.line = 18;
+  k.menu.face = FONT_MENU; k.menu.size = 13; k.menu.line = 18;
+  k.menu_small.face = FONT_MENU_SMALL; k.menu_small.size = 11; k.menu_small.line = 14;
+  k.search.face = FONT_SEARCH; k.search.size = 14; k.search.line = 22;
+  k.app.side_text = UiType.{face = FONT_MENU, size = 13, line = 18};   // a sidebar row: md, Zeron's main UI weight
   // Main transcript: Zeron proportions (ds/markdown.luau, ds/user_message.luau, ds/activity.luau).
-  k.md.line = 20.0f32;
-  k.md.block_line = 16.5f32;
-  k.md.block_gap = 16.0f32 / u;
-  k.md.code_pad_x = 4.0f32 / u;
-  k.md.code_inset_y = 1.5f32 / u;
-  k.md.code_radius = 4.5f32 / u;
-  k.md.block_header = 32.0f32 / u;
-  k.md.block_pad_x = 14.0f32 / u;
-  k.md.block_pad_y = 12.0f32 / u;
-  k.md.block_radius = 10.0f32 / u;
-  k.md.quote_rail = 2.0f32 / u;
-  k.app.gap = 12.0f32 / u;
-  k.app.gap_small = 4.0f32 / u;
-  k.app.icon_button = 28.0f32 / u;
-  k.app.bubble_pad_x = 14.0f32 / u;
-  k.app.bubble_pad_y = 10.0f32 / u;
-  k.app.bubble_radius = 16.0f32 / u;
+  k.md.line = 24;
+  k.md.block_line = 20;
+  k.md.block_gap = 16.0f32;
+  k.md.code_pad_x = 4.0f32;
+  k.md.code_inset_y = 1.5f32;
+  k.md.code_radius = 4.5f32;
+  k.md.block_header = 32.0f32;
+  k.md.block_pad_x = 14.0f32;
+  k.md.block_pad_y = 12.0f32;
+  k.md.block_radius = 10.0f32;
+  k.md.quote_rail = 2.0f32;
+  k.app.gap = 12.0f32;
+  k.app.gap_small = 4.0f32;
+  k.app.icon_button = 28.0f32;
+  k.app.bubble_pad_x = 14.0f32;
+  k.app.bubble_pad_y = 10.0f32;
+  k.app.bubble_radius = 16.0f32;
   k.app.bubble_share = 0.80f32;
-  k.app.code_head = 32.0f32 / u;
-  k.app.code_pad = 14.0f32 / u;
-  k.app.code_radius = 10.0f32 / u;
-  k.app.code_copy_h = 24.0f32 / u; k.app.code_copy_x = 8.0f32 / u; k.app.code_copy_icon = 12.0f32 / u; k.app.code_copy_gap = 4.0f32 / u; k.app.code_copy_edge = 5.0f32 / u;
-  k.app.tool_h = 26.0f32 / u;
-  k.app.tool_pad = 10.0f32 / u;
-  k.app.tool_body_pad = 10.0f32 / u;
-  k.app.tool_radius = 8.0f32 / u;
-  k.app.tool_icon = 14.0f32 / u;
-  k.app.tool_chevron = 12.0f32 / u;
-  k.tr.bubble_pad_x = 14.0f32 / u;
-  k.tr.bubble_pad_y = 10.0f32 / u;
-  k.tr.bubble_radius = 16.0f32 / u;
+  k.app.code_head = 32.0f32;
+  k.app.code_pad = 14.0f32;
+  k.app.code_radius = 10.0f32;
+  k.app.code_copy_h = 24.0f32; k.app.code_copy_x = 8.0f32; k.app.code_copy_icon = 12.0f32; k.app.code_copy_gap = 4.0f32; k.app.code_copy_edge = 5.0f32;
+  k.app.tool_h = 26.0f32;
+  k.app.tool_pad = 10.0f32;
+  k.app.tool_body_pad = 10.0f32;
+  k.app.tool_radius = 8.0f32;
+  k.app.tool_icon = 14.0f32;
+  k.app.tool_chevron = 12.0f32;
+  k.tr.bubble_pad_x = 14.0f32;
+  k.tr.bubble_pad_y = 10.0f32;
+  k.tr.bubble_radius = 16.0f32;
   // Minimal live message entrance (120ms, 3pt); non-live messages suppress enter completely.
   k.motion.enter = 0.12f32;
-  k.app.rise = 3.0f32 / u;
-  // Composer: exact Zeron pill geometry (20pt radius, 20pt input line, 14pt side pad, 12pt top pad,
+  k.app.rise = 3.0f32;
+  // Composer: exact Zeron pill geometry (20pt radius, 22pt input line (14/22), 14pt side pad, 12pt top pad,
   // 40pt action strip, 6pt concentric inset, 28pt circular send/stop pill, 10pt stop square r=3, 28pt chips).
-  k.cmp.radius = 20.0f32 / u;
-  k.cmp.line = 20.0f32 / u;
-  k.cmp.text_inset = 14.0f32 / u;
-  k.cmp.pad_top = 12.0f32 / u;
-  k.cmp.pad_v = 12.0f32 / u;
-  k.cmp.actions_row = 28.0f32 / u;
-  k.cmp.actions_bottom = 6.0f32 / u;
-  k.cmp.action_inset = 6.0f32 / u;
-  k.cmp.send = 28.0f32 / u;
-  k.cmp.stop = 10.0f32 / u;
-  k.cmp.stop_radius = 3.0f32 / u;
-  k.cmp.chip_h = 28.0f32 / u;
-  k.cmp.chip_radius = 8.0f32 / u;
-  k.cmp.chip_pad = 8.0f32 / u;
-  k.cmp.chip_icon = 14.0f32 / u;
-  k.cmp.chip_gap = 6.0f32 / u;
-  // The transcript's activity groups: Zeron's measures in points (#13731)
-  k.act = app_act_scaled(u);
-  // Settings (settings.coax): Zeron's measures in points, in the page's units. Its 13pt faces are
-  // Coder's 11-unit ones (13.2pt); its 11pt, 12pt and 20pt faces are slots the host sizes in points.
-  k.set = uisettings_scaled(zeron_settings(), u);
-  k.set.text_face = FONT_SMALL; k.set.name_face = FONT_MENU_SMALL;
+  k.cmp.radius = 20.0f32;
+  k.cmp.line = 22.0f32;
+  k.cmp.text_inset = 14.0f32;
+  k.cmp.pad_top = 12.0f32;
+  k.cmp.pad_v = 12.0f32;
+  k.cmp.actions_row = 28.0f32;
+  k.cmp.actions_bottom = 6.0f32;
+  k.cmp.action_inset = 6.0f32;
+  k.cmp.send = 28.0f32;
+  k.cmp.stop = 10.0f32;
+  k.cmp.stop_radius = 3.0f32;
+  k.cmp.chip_h = 28.0f32;
+  k.cmp.chip_radius = 8.0f32;
+  k.cmp.chip_pad = 8.0f32;
+  k.cmp.chip_icon = 14.0f32;
+  k.cmp.chip_gap = 6.0f32;
+  // The transcript's activity groups (#13731) and settings (settings.coax): Zeron's measures, in points as the page is.
+  k.act = UiActivity.{};
+  k.set = zeron_settings();
   return k;
 }

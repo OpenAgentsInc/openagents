@@ -5,16 +5,15 @@
   // section header, 32pt rows with 8pt inset/radius) in Coder's monochrome palette.
 cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool) {
   k := f[0].skin; a := k.app;
-  u: f32 = ARCADE_PHONE_SCALE;
   sw := app_sidebar_surface(f, 0, 0, left, h);
-  sy := 10.0f32 / u;
+  sy := 10.0f32;
   toggle_w := a.icon_button + a.row_inset;
   _ := app_icon_button(f, "coder.side.toggle", sw - toggle_w, sy + (a.side_row - a.icon_button) / 2, a.icon_nav, "Hide sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
   sy += app_side_action(f, "coder.new", 0, sy, sw - toggle_w, ICON_COMPOSE, "New chat", 0, CP_NEW);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
   sy += cp_side_foreman(s, f, sw, sy, cur, running);
-  stop := sy + 10.0f32 / u;
+  stop := sy + 10.0f32;
   rows: [CP_CHATS + 2] AppSideRow;
   nrows := 0;
   npinned := cp_pin_count(s);
@@ -62,7 +61,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   if stop + footer_h + me_h > h { footer_h = 0; }
   if stop + me_h > h { me_h = 0; }
   s[0].side_view = h - stop - footer_h - me_h;
-  bottom_pad := 16.0f32 / u;
+  bottom_pad := 16.0f32;
   tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
   s[0].side_content = app_side_window_at(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, s[0].side_scr[0].stretch, tail, CP_CHAT);
   app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
@@ -78,9 +77,9 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
       to := s[0].pin_drop;
       if to >= 0 && to < npinned && to != from {
         line_slot := ifx to > from then to + 1 else to;
-        ly := s[0].pin_top + cast(f32) line_slot * a.side_row - 1.0f32 / u;
+        ly := s[0].pin_top + cast(f32) line_slot * a.side_row - 1.0f32;
         if ly >= stop && ly <= stop + s[0].side_view {
-          sheet_fill(f[0].sheet, a.row_inset, ly, sw - 2 * a.row_inset, 2.0f32 / u, 1.0f32 / u, k.ink);
+          sheet_fill(f[0].sheet, a.row_inset, ly, sw - 2 * a.row_inset, 2.0f32, 1.0f32, k.ink);
         }
       }
     }
@@ -111,7 +110,7 @@ cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: strin
   else if fhov { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75)); }
   if fp > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.hover, fp)); }
   frow := uiframe_semantic(f, "coder.foreman", EL_BUTTON, "Foreman", 0, sy, sw, fh, f_state, CP_FOREMAN);
-  tf := k.body;
+  tf := a.side_text;
   tx := a.side_pad;
   mark := a.icon;
   sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur || fhov then k.ink else k.muted);
@@ -145,8 +144,7 @@ cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: strin
 // Bottom-of-sidebar desktop auto-updater pill (hidden when no update is active).
 cp_side_footer_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
   if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return 0.0f32; }
-  u: f32 = ARCADE_PHONE_SCALE;
-  pad_v := 10.0f32 / u;
+  pad_v := 10.0f32;
   return k.border + pad_v + k.cmp.chip_h + pad_v;
 }
 cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
@@ -160,7 +158,7 @@ cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, l
   _ := sheet_box(sh, x, y, w, h, r, k.border, bg, border);
   ink := ifx hovered || highlighted then k.ink else k.muted;
   icon_ink := ifx highlighted then k.accent else ink;
-  pad := 10.0f32 / ARCADE_PHONE_SCALE;
+  pad := 10.0f32;
   tx := x + pad;
   if icon >= 0 {
     sheet_icon(sh, icon, tx, y + (h - c.chip_icon) / 2.0f32, c.chip_icon, icon_ink);
@@ -183,8 +181,7 @@ cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, l
 cp_side_footer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
   if s.count < 1 || s[0].update_state == CP_UPD_HIDDEN { return; }
   k := f[0].skin; a := k.app;
-  u: f32 = ARCADE_PHONE_SCALE;
-  pad_v := 10.0f32 / u;
+  pad_v := 10.0f32;
   sheet_fill(f[0].sheet, x, y, w, k.border, 0, k.menu_divider);
   px := x + a.row_inset;
   pw := w - 2.0f32 * a.row_inset;

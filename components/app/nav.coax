@@ -53,7 +53,7 @@ app_side_row_draw :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: 
   dot := a.dot;
   dot_inset := ifx a.icon > dot then (a.icon + dot) / 2 else dot;
   room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else ifx mark_unread then dot_inset + a.gap else 0.0f32);
-  tf := s.body;
+  tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
   ink := ifx off then s.faint else ifx current || hovered || mark_unread then s.ink else opacity(s.ink, 0.95);
   _ := sheet_text(sh, m, -1, x + a.side_pad, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
@@ -78,7 +78,7 @@ app_side_action :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int
   if hovered { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.raised, 0.75)); }
   if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
   row := uiframe_semantic(f, id, EL_BUTTON, title, x, y, w, h, state, ifx off then 0 else action);
-  tf := s.body;
+  tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   ink := ifx off then s.faint else s.ink;
   tx := x + a.side_pad;
   if icon >= 0 {

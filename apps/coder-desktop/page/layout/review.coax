@@ -37,10 +37,10 @@ cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32, meta:
   if s[0].review && s[0].pane_open {
     tabs := [2] string.[agent, "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
     return app_pane_tabs(f, px, 0, pw, h, icons[..], tabs[..], ifx changes then 1 else 0, "coder.pane.tab.", CP_PANE_TAB, "coder.pane.took", ifx changes then "" else meta,
-                         "coder.pane.close", ifx changes then CP_REVIEW else CP_PANE_CLOSE, CP_CORNER, ARCADE_PHONE_SCALE);
+                         "coder.pane.close", ifx changes then CP_REVIEW else CP_PANE_CLOSE, CP_CORNER, 1.0f32);
   }
-  if changes { return app_pane_tab_shell(f, px, 0, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, ARCADE_PHONE_SCALE); }
-  return app_pane_tab_shell(f, px, 0, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, ARCADE_PHONE_SCALE);
+  if changes { return app_pane_tab_shell(f, px, 0, pw, h, ICON_PEN, "Changes", "coder.pane.took", "", "coder.pane.close", CP_REVIEW, CP_CORNER, 1.0f32); }
+  return app_pane_tab_shell(f, px, 0, pw, h, ICON_BOT, agent, "coder.pane.took", meta, "coder.pane.close", CP_PANE_CLOSE, CP_CORNER, 1.0f32);
 }
 // The review from px, pw wide, the window's height: the header, then, scrolling, the card's head
 // and each changed file's row over its edits' hunks while it is open. Rows out of view are not drawn.

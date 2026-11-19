@@ -140,7 +140,7 @@
   #assert cp_side_busy(s) && coder_page_moving(s);
   // Click and hit-test the Foreman row directly below New chat.
   fx := 40.0f32;
-  fy := 10.0f32 / ARCADE_PHONE_SCALE + cp_skin().app.side_row * 1.5f32;
+  fy := 10.0f32 + cp_skin().app.side_row * 1.5f32;
   #assert coder_page_foreman_at(s, fx, fy);
   #assert !coder_page_foreman_at(s, fx, 5.0f32);
   #assert coder_page_pointer(s, fx, fy, 0);
