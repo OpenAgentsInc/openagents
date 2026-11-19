@@ -177,6 +177,9 @@ slab_land :: (c:V3,d:V3,o:V3,u:[]f32)->V3 {
   ridge:f32=peak*within*rise;
   el:f32=d.y/flat;
   m:f32=(1.0f32-smoothstep(ridge-(0.0012f32+(ridge*0.04f32)),ridge,el))*smoothstep(foot-0.0006f32,foot,el);
+  // where no land stands (within 0) the ridge is 0 and the band above would still draw a pixel of
+  // land along the whole horizon: a hard dark line over the open sea
+  m=m*smoothstep(0.0f32,0.002f32,ridge);
   // the ridge stands at the shore's distance, so it takes that much haze and no more
   return sb_mix(c,slab_haze(slab_land_colour(u),d,far*0.6f32,u),m);
 }

@@ -1692,6 +1692,7 @@ fn coax_p_slab_land(p_c: vec3f, p_d: vec3f, p_o: vec3f) -> vec3f {
   l_ridge = ((l_peak * l_within) * l_rise);
   l_el = (l_d.y / l_flat);
   l_m = ((0x1.000000p0f - coax_p_smoothstep((l_ridge - (0x1.3a92a4p-10f + (l_ridge * 0x1.47ae14p-5f))), l_ridge, l_el)) * coax_p_smoothstep((l_foot - 0x1.3a92a4p-11f), l_foot, l_el));
+  l_m = (l_m * coax_p_smoothstep(0.0f, 0x1.0624dep-9f, l_ridge));
   return coax_p_sb_mix(l_c, coax_p_slab_haze(coax_p_slab_land_colour(), l_d, (l_far * 0x1.333334p-1f)), l_m);
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
