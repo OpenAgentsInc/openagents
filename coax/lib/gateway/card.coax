@@ -150,3 +150,35 @@ gw_card_cost :: (rate: GwRate, input: int, cached_in: int, cache_write: int, out
   h := gw_rate("anthropic", "claude-haiku-4-5").rate;
   #assert gw_card_scaled(h, 0, 0, 0, 7, 0) == 7 * 1250000 && gw_card_scaled(gw_rate("vertex", "gemini-4-carbon").rate, 0, 0, 2, 3, 0) == 5 * 4000000;
 }
+
+// ---------------------------------------------------------------- context windows
+//
+// A model's context window in tokens, for sizing what a request carries (coax/lib/microcoder
+// state.coax mc_budget; GitHub #13730). Rows only for models whose window is published: the Gemini
+// models Microcoder's plans send take 1,048,576 input tokens (Vertex's and the Gemini API's model
+// pages, read 2026-11-19), and Anthropic's Claude models 200,000 (docs.anthropic.com, the
+// standard window). A model not here is unknown (0): its caller keeps its own floor.
+GwWindow :: struct { model: string; tokens: int; }
+GW_WINDOWS :: [5] GwWindow.[
+  GwWindow.{model = "gemini-4-hydrogen", tokens = 1048576},
+  GwWindow.{model = "gemini-4-carbon", tokens = 1048576},
+  GwWindow.{model = "gemini-4-argon", tokens = 1048576},
+  GwWindow.{model = "gemini-4-neon", tokens = 1048576},
+  GwWindow.{model = "gemini-2.5-flash-lite", tokens = 1048576},
+];
+GW_CLAUDE_WINDOW :: 200000;
+
+// model as a plan sends it ("google/" before a Gemini model on the OpenAI-style endpoints).
+gw_window :: (model: string) -> int {
+  m := model;
+  if m.count > 7 && m[0..<7] == "google/" { m = cast(string) m[7..<m.count]; }
+  rows := GW_WINDOWS;
+  for r: rows { if r.model == m { return r.tokens; } }
+  if m.count > 7 && m[0..<7] == "claude-" { return GW_CLAUDE_WINDOW; }
+  return 0;
+}
+
+#test "context windows: the Gemini models a plan sends, with or without google/; Claude; anything else unknown" {
+  #assert gw_window("gemini-4-hydrogen") == 1048576 && gw_window("google/gemini-4-hydrogen") == 1048576 && gw_window("gemini-4-neon") == 1048576;
+  #assert gw_window("claude-haiku-4-5") == 200000 && gw_window("local") == 0 && gw_window("z-ai/glm-5.3-flash") == 0 && gw_window("") == 0 && gw_window("google/") == 0;
+}

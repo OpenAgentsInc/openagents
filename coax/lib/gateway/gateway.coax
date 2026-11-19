@@ -330,6 +330,41 @@ gw_refusal :: (ar: [] ClArena, status: int, body: string) -> GwEvent {
   return GwEvent.{kind = GW_EV_REFUSED, status = status, reason = why};
 }
 
+// A refusal that says the request is longer than the model's context window (GitHub #13730):
+// a 413, or a 400 whose message is one of the providers' known wordings. This is a bounded parse
+// of provider error text after the request already failed, not intent routing. The wordings,
+// read 2026-11-19: OpenAI and OpenRouter ("context_length_exceeded", "maximum context length is
+// N tokens"), Anthropic ("prompt is too long", "model_context_window_exceeded"), Gemini and Vertex
+// ("The input token count (N) exceeds the maximum number of tokens allowed (M)"), llama-server
+// and other Chat Completions servers ("exceeds the available context size", "context window").
+GW_TOO_LONG_WORDS :: [8] string.["context_length_exceeded", "maximum context length", "prompt is too long", "context_window_exceeded", "input token count", "context size", "context window", "too many tokens"];
+gw_too_long :: (status: int, reason: string) -> bool {
+  if status == 413 { return true; }
+  if status != 400 && status != 422 && status != 200 && status != 0 { return false; }     // 200 and 0: an error event in the stream, before any text
+  words := GW_TOO_LONG_WORDS;
+  for w: words { if gw_has_ci(reason, w) { return true; } }
+  return false;
+}
+gw_has_ci :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    ok := true;
+    for k: 0..<needle.count {
+      c := hay[i + k]; if c >= 'A' && c <= 'Z' { c += 32; }
+      if c != needle[k] { ok = false; break; }
+    }
+    if ok { return true; }
+  }
+  return false;
+}
+
+#test "a context-length refusal: a 413, or a 400 in any provider's wording; other refusals are not" {
+  #assert gw_too_long(413, "") && gw_too_long(400, "This model's maximum context length is 128000 tokens. However, your messages resulted in 140000 tokens.");
+  #assert gw_too_long(400, "prompt is too long: 210000 tokens > 200000 maximum") && gw_too_long(400, "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).");
+  #assert gw_too_long(400, "context_length_exceeded") && gw_too_long(400, "the request exceeds the available context size, try increasing it") && gw_too_long(0, "Context Window exceeded");
+  #assert !gw_too_long(400, "Invalid JSON schema") && !gw_too_long(429, "maximum context length") && !gw_too_long(503, "busy") && !gw_too_long(401, "") && !gw_too_long(400, "");
+}
+
 #load "client.coax"; // native HTTP/process effects over the shared completion policy
 
 // ---------------------------------------------------------------- checks

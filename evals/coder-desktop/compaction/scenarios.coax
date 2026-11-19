@@ -8,6 +8,10 @@
 //     actions between compactions; the end of earlier across a compaction), not counting evictions
 //   - continuity: left_out, then earlier, then actions number every step once, with no gap
 //   - size: the largest prompt, which must stay under the request limit (loop.coax MC_REQUEST_MAX)
+//   - window: the same run with the budgets sized for a model's context window (state.coax mc_budget,
+//     GitHub #13730): 0 keeps the constants, 1,048,576 tokens is a Gemini model, 32,768 a small one;
+//     overs counts the prompts that would not fit that window's request bound without loop.coax
+//     mc_request's emergency compaction
 // No model is called; every byte is deterministic. compaction_scenarios_test.coax asserts the
 // bounds, and report.coax prints the numbers (evals/coder-desktop/compaction/run.sh runs both).
 
@@ -30,7 +34,14 @@ CsBufs :: struct {
   ab: [4096] u8;
 }
 
+CS_WINDOWS :: [3] int.[0, 1048576, 32768];
+
 CsResult :: struct {
+  window: int;
+  earlier_cap: int;
+  request_max: int;
+  overs: int;              // prompts over the request bound (escaped, with the room for the system prompt)
+  last: int;               // the last prompt's bytes, left in CsBufs.prev
   steps: int;
   compactions: int;
   evictions: int;          // compactions that also dropped steps from earlier
@@ -88,11 +99,14 @@ cs_step :: (st: [] McState, z: [] CsBufs, kind: int, step: int) {
 
 // Runs steps steps of kind and measures every prompt. Prompts are checked for JSON and continuity
 // at each compaction and at the end (each check reads the whole prompt).
-cs_run :: (z: [] CsBufs, kind: int, steps: int) -> CsResult {
+cs_run :: (z: [] CsBufs, kind: int, steps: int) -> CsResult { return cs_run_window(z, kind, steps, 0); }
+cs_run_window :: (z: [] CsBufs, kind: int, steps: int, window: int) -> CsResult {
   r: CsResult;
   st: [1] McState;
   mc_state_init(st[..], z[0].b[..], "{\"os\":\"macOS\",\"cwd\":\"/repo\"}", "a long task", "{\"local_work\":0.9}");
   mc_memory_on(st[..], z[0].mem[..]);
+  mc_budget(st[..], window, mc_escaped_size(st[0].environment) + mc_escaped_size(st[0].task) + mc_escaped_size(st[0].route) + MC_MEM_BYTES);
+  r.window = window; r.earlier_cap = st[0].earlier_cap; r.request_max = st[0].request_max;
   mc_memory_set(st[..], "Findings (current):\nF1 anchor: src/module.coax:42 holds the handler\n", "Changes:\nC0 src/module.coax 10-20\n", "Open:\ncheck coax test src/module.coax\n");
   pn := 0;
   for s: 0..<steps {
@@ -106,6 +120,7 @@ cs_run :: (z: [] CsBufs, kind: int, steps: int) -> CsResult {
     if evicted { r.evictions += 1; }
     r.prompt_bytes += j.count;
     if j.count > r.max_prompt { r.max_prompt = j.count; }
+    if mc_escaped_size(j) + MC_REQUEST_ROOM > st[0].request_max { r.overs += 1; }
     if pn > 0 {
       prev := cast(string) z[0].prev[0..<pn];
       shared := mc_common_prefix_len(prev, j);
@@ -128,6 +143,7 @@ cs_run :: (z: [] CsBufs, kind: int, steps: int) -> CsResult {
     pn = j.count;
     if s == steps - 1 { r.memory_kept = cs_has(j, "F1 anchor: src/module.coax:42"); }
   }
+  r.last = pn;
   r.steps = st[0].steps; r.left_out = st[0].left_out; r.nearly = st[0].nearly; r.nacts = st[0].nacts;
   return r;
 }

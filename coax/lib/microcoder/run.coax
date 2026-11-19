@@ -246,7 +246,21 @@ mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effo
   r[0].runs += 1;
   if r[0].journal.count > 0 { r[0].nstart = mc_git_head(cwd, r[0].profile, r[0].tb[0].out[..], r[0].start[..]).count; }
   mc_run_attach_task_images(r);
+  mc_window(r[0].l[..], mc_plan_window(p));       // the state's budgets from the model's window (GitHub #13730)
   if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
+}
+
+// The smallest context window of the plan's attempts, in tokens (gateway card.coax gw_window): a
+// request goes to each in turn, so it must fit each. 0 when any attempt's model is unknown: the
+// state then keeps its constant budgets.
+mc_plan_window :: (p: [] GwPlan) -> int {
+  w := 0;
+  for i: 0..<p[0].n {
+    t := gw_window(p[0].attempts[i].model);
+    if t <= 0 { return 0; }
+    if w == 0 || t < w { w = t; }
+  }
+  return w;
 }
 
 // The seeded first step (GitHub #13325; loop.coax mc_seed_scan): before the first call, the

@@ -8,9 +8,12 @@ CS_REPORT_STEPS :: 200;
 
 main :: () {
   z: [1] CsBufs;
-  for kind: 0..<CS_KINDS {
-    r := cs_run(z[..], kind, CS_REPORT_STEPS);
-    print("scenario % steps % compactions % evictions % left_out % earlier % actions % max_prompt % avg_prompt % cache_shared_permille % breaks % gaps % invalid % memory_kept %\n",
-      cs_name(kind), r.steps, r.compactions, r.evictions, r.left_out, r.nearly, r.nacts, r.max_prompt, r.prompt_bytes / r.steps, cs_shared_permille(r), r.breaks, r.gaps, r.invalid, r.memory_kept);
+  windows := CS_WINDOWS;
+  for w: windows {
+    for kind: 0..<CS_KINDS {
+      r := cs_run_window(z[..], kind, CS_REPORT_STEPS, w);
+      print("window % scenario % steps % compactions % evictions % left_out % earlier % actions % earlier_cap % request_max % max_prompt % avg_prompt % cache_shared_permille % overs % breaks % gaps % invalid % memory_kept %\n",
+        w, cs_name(kind), r.steps, r.compactions, r.evictions, r.left_out, r.nearly, r.nacts, r.earlier_cap, r.request_max, r.max_prompt, r.prompt_bytes / r.steps, cs_shared_permille(r), r.overs, r.breaks, r.gaps, r.invalid, r.memory_kept);
+    }
   }
 }

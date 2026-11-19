@@ -3,7 +3,7 @@
 This document describes how Coder keeps a long run inside the model's context,
 what OpenAI Codex and T3 Code do instead, and what Coder should do next. It
 also describes the compaction evals in `evals/coder-desktop/compaction/`.
-GitHub issue #13706 tracks this work.
+GitHub issue #13706 tracks this work, and #13730 its P1 and P2 follow-ups.
 
 ## The theory in two lines
 
@@ -21,7 +21,7 @@ Microcoder renders its whole state as one JSON object for every step
 
 ```text
 {"environment":…, "task":…, "route":…,
- ["left_out":N,] ["earlier":[…],] "actions":[…],
+ ["left_out":{"steps":"1-N","viewed":[…],"edited":[…]},] ["earlier":[…],] "actions":[…],
  ["memory":{"findings":…,"changed":…,"open":…},] "notes":…}
 ```
 
@@ -45,26 +45,56 @@ Nothing allocates, and no model call is made.
 | Constant | Value | What it bounds |
 | --- | --- | --- |
 | `MC_LOG_BYTES` | 144 KB | The recent steps, whole (`log`) and compacted (`clog`). |
-| `MC_ACTION_ROOM` | 48 KB | Free log a new step needs; with less, the oldest steps are compacted. |
-| `MC_KEEP_RECENT` | 24 KB | The recent steps a compaction keeps whole, at most. |
-| `MC_EARLIER_BYTES` | 40 KB | The compacted steps (`earlier`). |
+| `MC_ACTION_ROOM` | 48 KB | Free log a new step needs; with less, the oldest steps are compacted. A known window sets the state's `log_limit` instead. |
+| `MC_KEEP_RECENT` | 24 KB | The recent steps a compaction keeps whole, at most (the state's `keep`). |
+| `MC_EARLIER_BYTES` | 40 KB | The compacted steps (`earlier`) for an unknown window: the state's `earlier_cap`. |
+| `MC_EARLIER_MAX` | 96 KB | `earlier`'s buffer: the most a large window gives it. |
+| `MC_GONE_LIST` | 20 | Paths `left_out` names in each of its lists. |
 | `MC_MAX_ACTIONS` | 512 | Steps the log can hold. |
 | `MC_STEP_BUDGET` | 32 KB | What one step's results can add, so one step cannot flush the rest. |
 | `MC_OUTPUT_HEAD`, `MC_OUTPUT_TAIL` | 6,000 B each | A whole command output's start and end. |
 | `MC_BRIEF_RATIONALE` | 1,200 B | A compacted step's rationale. |
 | `MC_BRIEF_OUTPUT` | 160 B each | A compacted command output's start and end. |
 | `MC_FACTS_BYTES` | 128 KB | The environment, including earlier turns of the conversation. |
-| `MC_REQUEST_MAX` | 256 KB | One request (`coax/lib/microcoder/loop.coax`). |
+| `MC_REQUEST_MAX` | 256 KB | One request for an unknown or large window: the journal's bound (`AF_REQUEST`). The state's `request_max`. |
 
 ### When compaction runs
 
-- **Before a step.** `mc_action_begin` calls `mc_compact(st, MC_KEEP_RECENT)`
-  when the log has less than `MC_ACTION_ROOM` free or holds `MC_MAX_ACTIONS`
-  steps. Compaction therefore runs once per 72 KB or more of new steps, not
-  every step.
+- **Before a step.** `mc_action_begin` calls `mc_compact(st, keep)` when the
+  log holds more than `log_limit` bytes (144 KB less `MC_ACTION_ROOM` by
+  default) or `MC_MAX_ACTIONS` steps. Compaction therefore runs once per 72 KB
+  or more of new steps, not every step.
 - **Before a request.** `mc_request` in `loop.coax` halves the log, then
-  empties it, until the escaped state fits `MC_REQUEST_MAX`. Coder has no
-  retry on a provider's context-length error; the byte bound stands in for it.
+  empties it, then halves `earlier`, until the escaped state fits the state's
+  `request_max`.
+- **After a context-length refusal.** When every attempt of the plan refuses
+  the request as too long (`gw_too_long` in `coax/lib/gateway/gateway.coax`: a
+  413, or a 400 in a provider's known wording), `mc_too_long` compacts every
+  step (`mc_compact(st, 0)`), lowers `request_max` to three quarters of the
+  refused request, and sends it again, once. A second refusal of the same
+  request ends the run as `no_capacity`, as before.
+
+### Budgets from the model's window
+
+`mc_run_start` sizes the budgets before the first request (`mc_window`,
+`mc_budget` in `state.coax`) from the smallest context window of the plan's
+attempts (`gw_window` in `coax/lib/gateway/card.coax`). A plan with an attempt
+whose window is unknown keeps the constants above, the floor.
+
+- A known window gives the request three quarters of the window, at 3 bytes a
+  token, between 48 KB and `MC_REQUEST_MAX`. Every Gemini model the plans send
+  (1,048,576 tokens) and Claude (200,000 tokens) reach the 256 KB bound: the
+  journal caps a request there, whatever the window.
+- Inside the request, the state gets seven eighths (the rest covers escaping
+  it once more), less the facts, the task, the route and the memory. A large
+  window keeps the recent steps' 96 KB limit and gives `earlier` what is left
+  after one step's 36 KB, up to 96 KB: about 65 KB with the memory on, against
+  40 KB before.
+- A small window gives `earlier` a quarter of the state's room and the recent
+  steps the rest, less half a step. A 32,768-token model gets a 72 KB request.
+
+The budgets are set once, before any step, so they never move a cached prefix.
+Only a context-length refusal lowers them mid-run.
 
 ### What a compacted step keeps
 
@@ -86,14 +116,34 @@ line, and the text.
 
 `mc_earlier_drop` drops the oldest compacted steps in one block, at a step
 boundary, until `earlier` is half empty, and adds their count to `left_out`.
-The model sees only that count. The steps themselves are gone.
+Before they go, `mc_gone_scan` reads the files they viewed and the edits they
+applied, and the state names them:
+
+```text
+"left_out":{"steps":"1-103","viewed":["src/a.coax:1-300"],"edited":["src/a.coax:10-20"],"unlisted":4}
+```
+
+Each list keeps the newest 20 paths, once each; `unlisted` counts the ones
+that no longer fit. Missing files, held views and failed edits are not named.
+`MC_SYSTEM` says what `left_out` is, that a file it names can be viewed again,
+and, after T3 Code, that steps that left are history, not a new request.
+`MC_AWARE_MEMORY` says the working memory still has what they found and
+changed. The line stands before `earlier` and changes only when steps leave,
+which already rewrites `earlier`'s start, so it costs the cache nothing.
 
 ### The working memory
 
 The working memory (`coax/lib/agent/workmem/`, set with `mc_memory_set`) holds
 three views: current findings (4,000 B), every edit and the lines it wrote
 (2,000 B), and what still stops the run from finishing (1,500 B). Compaction
-never touches it, so it is the one record that outlives `left_out`.
+never touches it, so it is the one record that outlives `left_out`. Since
+#13730 the worker (`coder/tui/mcworker.coax`) gives every run the memory, so
+Coder Desktop and the TUI always have it. A message's `memory_dir` picks its
+folder; a message that asks for the memory (`"memory":true`) gets its
+session's, as before; any other gets one of the worker's own for its working
+directory, so sub-agents of one chat, each in a worker of its own, never share
+one. A memory that fails to open leaves such a run without it rather than
+failing the run.
 
 ### Cross-turn recall
 
@@ -112,21 +162,46 @@ A run sees earlier turns of the conversation as `environment.conversation`:
 ### Measured behavior
 
 `evals/coder-desktop/compaction/report.coax` runs four 200-step scenarios
-against `state.coax` and prints these numbers. "Cache share" is the bytes each
-prompt shares with the one before it, as a share of all prompt bytes.
+against `state.coax` for three windows and prints these numbers. "Cache share"
+is the bytes each prompt shares with the one before it, as a share of all
+prompt bytes. Every run has the working memory on.
+
+Unknown window (the constants; before #13730 every run used these):
 
 | Scenario | Compactions | Evictions | Steps left out | In `earlier` | Largest prompt | Cache share |
 | --- | --- | --- | --- | --- | --- | --- |
 | Reader: a search, then 8–20 KB views | 34 | 2 | 103 | 94 | 146 KB | 79.6% |
 | Notes: 1,190 B rationales, small commands | 3 | 3 | 143 | 31 | 136 KB | 96.9% |
-| Fix loop: edit, then a 12 KB test output | 28 | 8 | 169 | 27 | 142 KB | 81.3% |
-| Mixed: the three in turn | 22 | 6 | 164 | 31 | 140 KB | 84.6% |
+| Fix loop: edit, then a 12 KB test output | 28 | 8 | 169 | 27 | 142 KB | 81.4% |
+| Mixed: the three in turn | 22 | 6 | 164 | 31 | 140 KB | 84.7% |
+
+A 1,048,576-token window (every Gemini model the plans send), `earlier` 65 KB:
+
+| Scenario | Compactions | Evictions | Steps left out | In `earlier` | Largest prompt | Cache share |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reader | 34 | 1 | 78 | 119 | 170 KB | 81.4% |
+| Notes | 3 | 3 | 122 | 52 | 163 KB | 97.0% |
+| Fix loop | 28 | 4 | 143 | 53 | 170 KB | 84.1% |
+| Mixed | 22 | 3 | 132 | 63 | 179 KB | 86.9% |
+
+A 32,768-token window, a 72 KB request:
+
+| Scenario | Compactions | Evictions | Steps left out | In `earlier` | Largest prompt | Cache share |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reader | 133 | 15 | 179 | 19 | 41 KB | 37.8% |
+| Notes | 19 | 19 | 183 | 7 | 26 KB | 86.0% |
+| Fix loop | 99 | 32 | 192 | 6 | 36 KB | 43.9% |
+| Mixed | 67 | 32 | 194 | 5 | 45 KB | 46.8% |
 
 Every scenario keeps the cache prefix at every step that does not evict, keeps
-the step numbers continuous, and keeps the working memory. Two numbers stand
-out: `earlier` holds only about 30 compacted steps of edit-and-test work, and
-the notes scenario evicts on every compaction. Before the fix in finding 1,
-the notes scenario crashed at its first compaction.
+the step numbers continuous, keeps the working memory, and fits every prompt
+in its window's request bound without `mc_request`'s emergency compaction. On a
+large window `earlier` holds about twice as many compacted steps, evictions
+halve, and the cache share rises by 1.5 to 3 points. The `left_out` line adds
+about 60 bytes to the unknown window's prompts and does not change its cache
+share. A 32K-token window is tight for a 32 KB step budget: its runs compact
+most steps. Before the fix in finding 1, the notes scenario crashed at its
+first compaction.
 
 ## Audit findings
 
@@ -145,13 +220,20 @@ the notes scenario crashed at its first compaction.
    byte 1,200 of a kept reply falls inside a multi-byte character, the recall
    line carries invalid UTF-8 and the worker refuses all of it. Eval C11 shows
    the failure and the fix (`text_byte_floor`). Issue #13729.
-3. **`left_out` is opaque.** The model sees a count, not which steps, files,
-   or edits left, and `MC_SYSTEM` does not explain the key. T3 Code lists the
-   IDs it omits and names the tool that reads them back. Issue #13730.
-4. **The budgets ignore the model's window.** The byte constants are the same
-   for a 1M-token Gemini model and a 32K-token local model. `earlier` is 40 KB
-   while the log is 144 KB, so a long fix loop keeps only its last ~30 steps
-   even in compacted form, on models that could hold far more. Issue #13730.
+3. **Fixed: `left_out` was opaque.** The model saw a count, not which steps,
+   files, or edits left, and `MC_SYSTEM` did not explain the key. It now names
+   the step range and the files and edits, and the system prompt explains it
+   (#13730, eval C13).
+4. **Fixed: the budgets ignored the model's window.** The byte constants were
+   the same for a 1M-token Gemini model and a 32K-token local model. They are
+   now sized from the window, with the constants as the floor for an unknown
+   one (#13730, eval C14). The journal's 256 KB request bound
+   (`AF_REQUEST`) still caps a large window: growing past it is a change to
+   the journal's policy.
+6. **The memory's `reads` count is 0 for a worker run's view.** Found while
+   extending `coder/tests/aware-worker.coax`: on main before #13730 its first
+   phase failed on `memory.reads == 1`. The test now checks only that the
+   count is present; the count itself needs its own fix.
 5. **Corrections to the first draft of this document.** The desktop recall
    buffer is 256 KB (`App.swift`), not 4 KB; the 4 KB buffer is in a test.
    `loop.coax` has no provider context-length retry; the guard is the byte
@@ -252,10 +334,10 @@ hands context between them rather than compacting itself.
 | --- | --- | --- |
 | Done | `coax/lib/microcoder/state.coax` | `mc_compact` handles a compaction larger than `earlier` (finding 1). |
 | P0 | `apps/coder-desktop/page.coax` | Cut recall texts on a character boundary, at `MK_TURN_TEXT`, with `MK_CUT` (#13729). |
-| P1 | `state.coax`, `loop.coax` | Replace the bare `left_out` count with an omission line: the step range that left and the files and edits it touched; explain it in `MC_SYSTEM`. Take T3 Code's wording that history is context, not instructions (#13730). |
-| P1 | Coder Desktop, TUI | Turn the working memory on in every Coder run, so findings, edits, and open checks outlive eviction (#13730). |
-| P2 | `state.coax`, `loop.coax` | Size `MC_EARLIER_BYTES` and `MC_REQUEST_MAX` from the model's window, and grow `earlier` first: compacted steps are the cheapest context per step (#13730). |
-| P2 | `loop.coax` | Retry a provider's context-length error once with `mc_compact(st, 0)`, as Codex trims and retries (#13730). |
+| Done | `state.coax`, `loop.coax` | Replace the bare `left_out` count with an omission line: the step range that left and the files and edits it touched; explain it in `MC_SYSTEM`. Take T3 Code's wording that history is context, not instructions (#13730). |
+| Done | `coder/tui/mcworker.coax` | Turn the working memory on in every Coder run, so findings, edits, and open checks outlive eviction (#13730). |
+| Done | `state.coax`, `loop.coax`, `run.coax`, `card.coax` | Size `earlier` and the request bound from the model's window, and grow `earlier` first: compacted steps are the cheapest context per step (#13730). |
+| Done | `loop.coax`, `gateway.coax` | Retry a provider's context-length error once with `mc_compact(st, 0)`, as Codex trims and retries (#13730). |
 | P3 | `loop.coax` | Before an eviction, optionally write one model-made finding that sums up the steps about to leave, like Codex's handover summary, behind a setting so default runs stay free. |
 | P3 | Coder Desktop | Compact or warn before a long idle chat's cache expires, as T3 Code does. |
 
@@ -278,8 +360,13 @@ byte is deterministic.
 | C10 | `compaction_scenarios_test.coax` | What compaction keeps and loses, and that only the memory remains after eviction. |
 | C11 | `compaction_scenarios_test.coax` | A recall text cut on a character reaches the worker; one cut inside a character is refused. |
 | C12 | `compaction_scenarios_test.coax` | The newest 6 turns, each 8,000 B, fit the run's facts whole. |
+| C13 | `compaction_scenarios_test.coax` | `left_out` names the step range and the files and edits that left, and breaks no prefix. |
+| C14 | `compaction_scenarios_test.coax` | A 1M-token window grows `earlier`, evicts less, and keeps at least the cache share; a 32K-token window fits its 72 KB request. |
+| C15 | `compaction_scenarios_test.coax` | A context-length refusal compacts every step and sends a smaller request again, once. |
+| C16 | `coder/tests/aware-worker.coax` | The worker gives a run whose message names no mode the working memory. |
 
-`scenarios.coax` holds the scenario driver that C9 and `report.coax` share.
+`scenarios.coax` holds the scenario driver that C9, C13, C14 and `report.coax`
+share.
 
 Run the suite:
 

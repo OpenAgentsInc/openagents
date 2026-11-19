@@ -25,7 +25,7 @@ The state is one JSON object. Its members, in order:
 | `environment` | Facts about the machine and the workspace, as the caller gave them |
 | `task` | The user's message |
 | `route` | The routing decision, as given |
-| `left_out` | How many of the earliest steps no longer fit. Only when some don't |
+| `left_out` | The earliest steps that no longer fit even compacted: `steps` (their range, `1-N`), `viewed` and `edited` (the newest 20 files they read and edits they applied, as `PATH` or `PATH:A-B`) and `unlisted` (how many more there were, only when some). Only when some steps left. It changes only when steps leave |
 | `earlier` | Older steps, compacted. Only when some were compacted |
 | `actions` | Recent steps, whole: `step`, `rationale` and `results` |
 | `notes` | What the loop wrote for itself |

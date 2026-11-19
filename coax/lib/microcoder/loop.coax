@@ -43,13 +43,13 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, left_out (only when your oldest steps have left the state: their step range, and the files they viewed and the edits they made, by path and lines), earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. When even the compacted steps fill their room, the oldest leave the state for good, and left_out names them: view a file it names again to see it as it is now. Steps that left are history, not a new request. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
 
 // What a run's system prompt gains with each mode (mc_aware; docs/coder/microcoder.md, "Compiler
 // questions and working memory"; GitHub #13444, #13445). They go after MC_SYSTEM, so a run
 // with neither sends MC_SYSTEM and nothing else.
 MC_AWARE_INTEL :: "\n- The Coax compiler answers questions about .coax files. questions is a list of up to 16, each one line: defines NAME (where NAME is declared: kind, file, lines), uses NAME [FILE] (every use, with the procedure or check it is written in; FILE says which declaration you mean when several files declare the name), exports FILE (what a file declares), show NAME [FILE] (one declaration's lines numbered, with their hash), check FILE (the file's diagnostics; a part of a larger unit is checked through the file that loads it), explain CODE (what a diagnostic code such as E0325 means), vocab NAME (what a library name or keyword is), effects FILE [PROC] (what a procedure may do, with a call path to each effect), depends FILE (the declarations it uses from other files). The compiler's answers are certain where a search is a guess: ask it before you search for a symbol, and show a declaration you can name rather than view its file. Each answer is a result named \"ask: ...\", with exit 0, bounded, and it says how many records it left out. A result that starts \"no answer:\" (exit 1) means the compiler could not answer: use git grep and view for that question.\n- Hashes tie an edit to what you read. A view ends with a line that gives the file's hash, and show gives a declaration's. In an edit, seen is the hash you read (its 12 hex digits), or \"\" for none. When seen is given and the file is no longer what you read, the edit is refused as stale: nothing is written, and its result gives the hash as it is now and the nearest lines. Read them and edit again. To replace a whole declaration, set name to its name, path to its file, seen to the hash show gave (or the file's), old to \"\" and new to the declaration's whole new text; otherwise name is \"\". An applied edit of a .coax file returns the file's new hash and its check: fix what the check reports before you go on.\n- In one turn the order is: edits, then questions, then commands, then view. So a check FILE question sees that turn's edits.";
-MC_AWARE_MEMORY :: "\n- You have a working memory. What you view, edit and run is recorded in it as you go. Your state shows it as memory: findings (your notes that are still current), changed (every edit so far and the lines it wrote) and open (what still stops you finishing). It is never compacted. notes is a list of up to 8 findings to keep, each one line; start a note with PATH:A-B and a space when it is about those lines of a file, and it stays current until that file changes. Write a note when you learn something you will need later, rather than viewing the file again. A view of lines you already had, unchanged, starts with a line that says so and since which step.\n- A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. finished true before that is refused, with what is open: run the check again, then finish. If it can't pass, say why in reply.";
+MC_AWARE_MEMORY :: "\n- You have a working memory. What you view, edit and run is recorded in it as you go. Your state shows it as memory: findings (your notes that are still current), changed (every edit so far and the lines it wrote) and open (what still stops you finishing). It is never compacted: steps that left the state (left_out) are still in it, with what they found and changed. notes is a list of up to 8 findings to keep, each one line; start a note with PATH:A-B and a space when it is about those lines of a file, and it stays current until that file changes. Write a note when you learn something you will need later, rather than viewing the file again. A view of lines you already had, unchanged, starts with a line that says so and since which step.\n- A check the task names (a command it quotes in backticks) has passed only when its latest run exited 0 after your last edit. finished true before that is refused, with what is open: run the check again, then finish. If it can't pass, say why in reply.";
 
 MC_FINISH_REFUSALS :: 2;         // times a finish is refused before it stands
 
@@ -103,6 +103,9 @@ McLoop :: struct {
   openrouter: bool;              // its levels include openrouter: the owner runs an OpenRouter model for sub-agents
   no_ask: bool;                  // interactive ask: question is disabled; never pause with MC_END_ASKED (GitHub #13701)
   images: [] GwImage;            // multimodal images attached to the user message for this run
+  sent: int;                     // the last request's state, escaped, with its room for the system prompt and schema
+  long_retry: bool;              // this request was refused as too long and sent again (mc_feed): once each
+  too_long: int;                 // requests refused as too long this run
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
@@ -171,31 +174,56 @@ mc_no_ask :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
 
 // The next step's request: the system prompt, the state as JSON, the strict
 // next_action schema. The plan fills in each attempt's model. Valid until
-// the next mc_request.
-// The largest request body a journaled run may send (coax/lib/agent/journal-flow.coax's
-// AF_REQUEST, 256 KB: a longer one fails the run), less room for the system prompt and schema.
-MC_REQUEST_MAX :: 262144;
-MC_REQUEST_ROOM :: 12288;
-
+// the next mc_request. It is at most the state's request_max (state.coax mc_budget; MC_REQUEST_MAX,
+// the journal's bound, at most).
 mc_request :: (l: [] McLoop) -> GwRequest {
   l[0].nr = 0; l[0].raw_overflow = false; l[0].got_text = false;
   state := mc_state_json(l[0].st[..], l[0].prompt);
   // a run with a mode on sends a longer system prompt and schema (the schema's quotes are escaped)
   room := MC_REQUEST_ROOM + (l[0].system.count - MC_SYSTEM.count) + 2 * (l[0].schema.count - MC_SCHEMA.count);
   // too long to send (escaped once more inside the request's JSON): the earliest steps leave
-  for guard: 0..<16 {
-    if state.count > 0 && mc_escaped_size(state) + room <= MC_REQUEST_MAX { break; }
-    if l[0].st[0].nacts == 0 { break; }
-    kept := l[0].st[0].nlog;
-    mc_log_drop(l[0].st[..], kept / 2);
-    if l[0].st[0].nlog == kept { mc_log_drop(l[0].st[..], 0); }
+  most := l[0].st[0].request_max;
+  for guard: 0..<24 {
+    if state.count > 0 && mc_escaped_size(state) + room <= most { break; }
+    if l[0].st[0].nacts == 0 {
+      // nothing left to compact (a small window, or a request refused as too long): earlier's oldest half leaves
+      if l[0].st[0].nearly == 0 { break; }
+      mc_earlier_drop(l[0].st[..], l[0].st[0].nearlier / 2);
+    } else {
+      kept := l[0].st[0].nlog;
+      mc_log_drop(l[0].st[..], kept / 2);
+      if l[0].st[0].nlog == kept { mc_log_drop(l[0].st[..], 0); }
+    }
     state = mc_state_json(l[0].st[..], l[0].prompt);
   }
+  l[0].sent = mc_escaped_size(state) + room;
   l[0].msgs[0] = GwMessage.{role = "user", text = state, images = l[0].images};
   return GwRequest.{system = l[0].system, messages = l[0].msgs[..], schema = l[0].schema, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
 
 mc_end :: (l: [] McLoop, ending: int) -> int { l[0].ending = ending; return MC_ENDED; }
+
+// A provider refused the request as longer than its window (GitHub #13730; Codex trims and
+// retries on ContextWindowExceeded, codex-rs/core/src/compact.rs): every step is compacted, the
+// run's request bound drops to three quarters of what was refused (so later steps fit too), and
+// the request goes again, once. A second refusal of the same request ends the run as before.
+mc_too_long :: (l: [] McLoop) -> int {
+  l[0].long_retry = true; l[0].too_long += 1;
+  mc_compact(l[0].st[..], 0);
+  fixed := mc_escaped_size(l[0].st[0].environment) + mc_escaped_size(l[0].st[0].task) + l[0].st[0].nmem;
+  mc_budget_request(l[0].st[..], l[0].sent / 4 * 3, fixed);
+  return MC_AGAIN;
+}
+
+// Sizes the state's budgets from the model's context window in tokens (0 when unknown: the
+// constants stay), before the run's first request (run.coax mc_run_start). What every request
+// carries beside the steps (the facts, the task, the memory's room) comes out of the room first.
+mc_window :: (l: [] McLoop, window: int) {
+  fixed := mc_escaped_size(l[0].st[0].environment) + mc_escaped_size(l[0].st[0].task) + mc_escaped_size(l[0].st[0].route);
+  if l[0].memory { fixed += MC_MEM_BYTES; }
+  fixed += (l[0].system.count - MC_SYSTEM.count) + 2 * (l[0].schema.count - MC_SCHEMA.count);
+  mc_budget(l[0].st[..], window, fixed);
+}
 
 // One event of the step's call. Text accumulates; done hands the reply to
 // mc_take; a refusal with no text is no_capacity (the plan tried every
@@ -212,10 +240,12 @@ mc_feed :: (l: [] McLoop, ev: GwEvent) -> int {
   }
   if ev.kind == GW_EV_REASONING { return MC_WAIT; }
   if ev.kind == GW_EV_REFUSED {
+    if !l[0].got_text && !l[0].long_retry && gw_too_long(ev.status, ev.reason) { return mc_too_long(l); }
     if !l[0].got_text { l[0].why = ev.reason; return mc_end(l, MC_END_NO_CAPACITY); }
     return mc_bad(l, "the reply was cut off before it finished");
   }
   if ev.kind == GW_EV_DONE {
+    l[0].long_retry = false;
     if l[0].raw_overflow { return mc_bad(l, "the reply exceeded the 256 KB reply buffer; split large edits into smaller changes"); }
     return mc_take(l, cast(string) l[0].raw[0..<l[0].nr]);
   }
@@ -442,6 +472,7 @@ mc_script_step :: (l: [] McLoop, s: [] McScript) -> int {
   if s[0].at >= s[0].replies.count { return mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, reason = "script over"}); }
   r := s[0].replies[s[0].at]; s[0].at += 1;
   if r == "!refuse" { return mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, status = 503, reason = "every gateway in the plan refused"}); }
+  if r == "!long" { return mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, status = 400, reason = "prompt is too long: 212000 tokens > 200000 maximum"}); }
   if r.count > 5 && r[0..<5] == "!cut:" {
     x := mc_feed(l, GwEvent.{kind = GW_EV_TEXT, text = cast(string) r[5..<r.count]});
     return mc_feed(l, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the stream ended before the response finished"});
@@ -498,6 +529,61 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   #assert mc_escaped_size(req.messages[0].text) + MC_REQUEST_ROOM <= MC_REQUEST_MAX;
   #assert json_valid(req.messages[0].text);
   #assert l[0].st[0].nearly > before;      // compacted, not dropped
+}
+
+#test "a request refused as too long is compacted harder and sent again, once; a reply clears the once" #steps 400000000 {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "fix it", "{}", 1.0);
+  mc_window(l[..], 1048576);
+  big: [9000] u8; for i: 0..<big.count { big[i] = cast(u8) ('a' + i % 26); }
+  for k: 0..<6 { mc_action_begin(l[0].st[..], "read"); mc_file(l[0].st[..], "f.txt", true, cast(string) big[..]); mc_action_end(l[0].st[..]); }
+  before := l[0].st[0].request_max;
+  replies: [2] string;
+  replies[0] = "!long";
+  replies[1] = "{\"rationale\":\"done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Fixed.\",\"ask\":\"none\"}";
+  s: [1] McScript; s[0].replies = replies[..];
+  mc_script_run(l[..], s[..]);
+  // the second request went out with every step compacted, under three quarters of the first
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "Fixed." && s[0].calls == 2 && l[0].too_long == 1 && !l[0].long_retry;
+  #assert l[0].st[0].nearly >= 6 && l[0].st[0].request_max < before && l[0].st[0].request_max >= MC_REQUEST_MIN;
+  // refused twice in a row: the run ends as a refusal does
+  mc_init(l[..], sb[..], lb[..], "{}", "fix it", "{}", 1.0);
+  replies2: [2] string; replies2[0] = "!long"; replies2[1] = "!long";
+  s[0] = McScript.{replies = replies2[..]};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_NO_CAPACITY && s[0].calls == 2 && l[0].too_long == 1 && ps_count(l[0].why, "too long") == 1;
+  // a reply in between: each request gets its own retry
+  mc_init(l[..], sb[..], lb[..], "{}", "fix it", "{}", 1.0);
+  replies3: [4] string; replies3[0] = "!long"; replies3[2] = "!long"; replies3[3] = replies[1];
+  replies3[1] = "{\"rationale\":\"look\",\"edits\":[],\"commands\":[\"ls\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  s[0] = McScript.{replies = replies3[..]};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 4 && l[0].too_long == 2;
+  // any other refusal is no_capacity at once, as before
+  mc_init(l[..], sb[..], lb[..], "{}", "fix it", "{}", 1.0);
+  replies4: [1] string; replies4[0] = "!refuse";
+  s[0] = McScript.{replies = replies4[..]};
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_NO_CAPACITY && s[0].calls == 1 && l[0].too_long == 0;
+}
+
+#test "a request bound smaller than earlier: earlier's oldest steps leave, and left_out names them" #steps 400000000 {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "x", "{}", 1.0);
+  rat: [1190] u8; for i: 0..<rat.count { rat[i] = 'r'; }
+  for k: 0..<60 { mc_action_begin(l[0].st[..], cast(string) rat[..]); mc_file(l[0].st[..], "a.txt", true, "x"); mc_action_end(l[0].st[..]); }
+  mc_compact(l[0].st[..], 0);
+  #assert l[0].st[0].left_out == 0 || l[0].st[0].nearly > 0;
+  l[0].st[0].request_max = 30000;
+  req := mc_request(l[..]);
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert l[0].sent <= 30000 && json_valid(req.messages[0].text) && l[0].st[0].left_out > 0 && cl_str(ar[..], req.messages[0].text, "left_out.viewed.0") == "a.txt";
+}
+
+#test "the system prompt says what left_out is and how to get it back, and that it is history" {
+  #assert ps_count(MC_SYSTEM, "left_out (only when your oldest steps have left the state") == 1 && ps_count(MC_SYSTEM, "view a file it names again to see it as it is now") == 1;
+  #assert ps_count(MC_SYSTEM, "Steps that left are history, not a new request.") == 1;
+  #assert ps_count(MC_AWARE_MEMORY, "steps that left the state (left_out) are still in it") == 1;
 }
 
 #test "a finish that carries edits, commands or views runs them and is not taken; the next finish is" {

@@ -6,7 +6,8 @@
 //     environment   the Lab's Environment.facts (a JSON object, given)
 //     task          the user's message
 //     route         Mammoth's decision (a JSON object, given)
-//     left_out      how many of the earliest steps no longer fit even compacted (only when some)
+//     left_out      the earliest steps that no longer fit even compacted (only when some): their
+//                   range, and the files they viewed and edited (mc_gone_json)
 //     earlier[]     the older steps, compacted: each step's rationale, edits and commands with
 //                   exit codes and the start and end of each output, and the files it viewed
 //                   by size
@@ -39,19 +40,30 @@ MC_OUTPUT_TAIL :: 6000;          // and from its end
 MC_BRIEF_OUTPUT :: 160;          // a compacted command's output: this much of its start and of its end
 MC_BRIEF_RATIONALE :: 1200;      // a compacted step's rationale: the model's own notes, which it is told stay (loop.coax MC_SYSTEM)
 MC_LOG_BYTES :: 147456;          // the recent steps' JSON
-MC_ACTION_ROOM :: 49152;         // free log a new step starts with; else the older steps are compacted
-MC_KEEP_RECENT :: 24576;         // the recent steps kept whole by a compaction, at most
-MC_EARLIER_BYTES :: 40960;       // the compacted steps
+MC_ACTION_ROOM :: 49152;         // free log a new step starts with; else the older steps are compacted (an unknown window's)
+MC_KEEP_RECENT :: 24576;         // the recent steps kept whole by a compaction, at most (an unknown window's)
+MC_EARLIER_BYTES :: 40960;       // the compacted steps: an unknown window's budget, the floor of a large one (mc_budget)
+MC_EARLIER_MAX :: 98304;         // earlier's buffer: the most a large window gives it
 MC_MAX_ACTIONS :: 512;           // steps the log can hold
 MC_FACTS_BYTES :: 131072;        // the environment: an owner's facts with its earlier turns (coder/tui/microcoder_keys.coax mk_facts)
-MC_PROMPT_BYTES :: 573440;       // the whole state's JSON: every buffer below, with room for its keys
+MC_GONE_LIST :: 20;              // paths the left_out line names in each list, at most (T3 Code's handover names 20)
+MC_GONE_BYTES :: 4096;           // each list's escaped bytes
+MC_GONE_PATH :: 300;             // one listed path's escaped bytes, at most (a longer one is counted, not named)
+MC_PROMPT_BYTES :: 647168;       // the whole state's JSON: every buffer below, with room for its keys
+// The largest request body a journaled run may send (coax/lib/agent/journal-flow.coax's
+// AF_REQUEST, 256 KB: a longer one fails the run), and the room kept in it for the system prompt
+// and schema (loop.coax mc_request).
+MC_REQUEST_MAX :: 262144;
+MC_REQUEST_ROOM :: 12288;
 MC_STEP_BUDGET :: 32768;         // bytes one step's results may add to the recent steps (GitHub #13325): one step can't flush the rest
 MC_HELD :: "this step's results reached their 32 KB";   // why a result was cut or held back
 
 McStateBuffers :: struct {
   log: [MC_LOG_BYTES] u8;
   clog: [MC_LOG_BYTES] u8;
-  earlier: [MC_EARLIER_BYTES] u8;
+  earlier: [MC_EARLIER_MAX] u8;
+  gone_viewed: [MC_GONE_BYTES] u8;
+  gone_edited: [MC_GONE_BYTES] u8;
   notes: [8192] u8;
   facts: [MC_FACTS_BYTES] u8;
   task: [16384] u8;
@@ -68,6 +80,12 @@ McState :: struct {
   earlier: [] u8; nearlier: int; nearly: int;   // the compacted older steps, each after a comma; how many
   compactions: int;              // how many times steps moved into earlier
   left_out: int;                 // steps that left even earlier
+  gone: [2] McGoneList;          // the files those steps viewed (MC_GONE_VIEWED) and the edits they applied, as PATH:A-B (MC_GONE_EDITED), newest last
+  // The budgets (mc_budget): an unknown window's are the constants above; a known window sizes them.
+  earlier_cap: int;              // earlier's bytes, at most (<= earlier.count)
+  log_limit: int;                // a new step compacts the older ones when the log holds more than this
+  keep: int;                     // the recent steps a compaction keeps whole, at most
+  request_max: int;              // one request's bytes, at most (loop.coax mc_request)
   steps: int;                    // actions recorded so far (the step number of the next is steps + 1)
   open: int;                     // the action being written (its index), -1 when none
   open_cmds: int;
@@ -80,6 +98,8 @@ McState :: struct {
 // environment and route are JSON objects (anything else is kept as a string).
 mc_state_init :: (st: [] McState, b: [] McStateBuffers, environment: string, task: string, route: string) {
   st[0] = McState.{log = b[0].log[..], clog = b[0].clog[..], earlier = b[0].earlier[..], notes = b[0].notes[..], facts = b[0].facts[..], task_buf = b[0].task[..], route_buf = b[0].route[..], open = -1};
+  st[0].gone[MC_GONE_VIEWED] = McGoneList.{buf = b[0].gone_viewed[..]}; st[0].gone[MC_GONE_EDITED] = McGoneList.{buf = b[0].gone_edited[..]};
+  mc_budget_default(st);
   st[0].environment = mc_copy(st[0].facts, environment);
   st[0].task = mc_copy(st[0].task_buf, task);
   st[0].route = mc_copy(st[0].route_buf, route);
@@ -153,6 +173,7 @@ mc_earlier_drop :: (st: [] McState, keep: int) {
   while at < st[0].nearlier && !(st[0].earlier[at] == ',' && at + 1 < st[0].nearlier && st[0].earlier[at + 1] == '{' && mc_entry_start(st[0].earlier, at)) { at += 1; }
   dropped := 0;
   for i: 0..<at { if st[0].earlier[i] == ',' && i + 1 < st[0].nearlier && st[0].earlier[i + 1] == '{' && mc_entry_start(st[0].earlier, i) { dropped += 1; } }
+  mc_gone_scan(st, st[0].earlier[0..<at]);
   st[0].nearlier = mc_shift(st[0].earlier, st[0].nearlier, at);
   st[0].nearly -= dropped; st[0].left_out += dropped;
 }
@@ -162,6 +183,170 @@ mc_entry_start :: (b: [] u8, i: int) -> bool {
   key := ",{\"step\":";
   if i + key.count > b.count { return false; }
   return cast(string) b[i..<i + key.count] == key;
+}
+
+// ---------------------------------------------------------------- what left (GitHub #13730)
+//
+// When steps leave earlier for good, the state says which: their range, the files they viewed and
+// the edits they applied, by path and lines (docs/coder/compaction-theory.md, "Say what left"):
+//   "left_out":{"steps":"1-103","viewed":["src/a.coax:1-300"],"edited":["src/a.coax:10-20"],"unlisted":4}
+// Each list keeps its newest MC_GONE_LIST paths, once each; "unlisted" counts the ones that no longer
+// fit. The line stands before earlier and changes only when steps leave, which already rewrites
+// earlier's start, so the cached prefix is lost no more often than before (T3 Code's handover,
+// packages/provider-core/src/server/handoffBudget.ts selectHistory, names the IDs it leaves out
+// the same way). The model reads a file again to see it as it is now; the working memory keeps
+// what those steps found and changed.
+MC_GONE_VIEWED :: 0;
+MC_GONE_EDITED :: 1;
+McGoneList :: struct {
+  buf: [] u8; n: int;                     // the paths, escaped as in a JSON string, back to back
+  at: [MC_GONE_LIST] int; count: int;     // where each starts in buf, oldest first
+  more: int;                              // paths that left the list (or never fit it)
+}
+
+mc_gone_entry :: (g: McGoneList, i: int) -> string {
+  end := ifx i + 1 < g.count then g.at[i + 1] else g.n;
+  return cast(string) g.buf[g.at[i]..<end];
+}
+
+// Removes entry i (its bytes and offset), keeping the rest in order.
+mc_gone_remove :: (g: [] McGoneList, i: int) {
+  e := mc_gone_entry(g[0], i);
+  start := g[0].at[i]; size := e.count;
+  for x: start + size..<g[0].n { g[0].buf[x - size] = g[0].buf[x]; }
+  g[0].n -= size;
+  for k: i + 1..<g[0].count { g[0].at[k - 1] = g[0].at[k] - size; }
+  g[0].count -= 1;
+}
+
+// Adds an escaped path (seen before: it moves to the end). The oldest leave to make room.
+mc_gone_add :: (g: [] McGoneList, path: string) {
+  if path.count == 0 { return; }
+  if path.count > MC_GONE_PATH || path.count > g[0].buf.count { g[0].more += 1; return; }
+  for i: 0..<g[0].count { if mc_gone_entry(g[0], i) == path { mc_gone_remove(g, i); break; } }
+  while g[0].count > 0 && (g[0].count >= MC_GONE_LIST || g[0].n + path.count > g[0].buf.count) { mc_gone_remove(g, 0); g[0].more += 1; }
+  g[0].at[g[0].count] = g[0].n; g[0].count += 1;
+  for c: path { g[0].buf[g[0].n] = c; g[0].n += 1; }
+}
+
+// The end of the JSON string whose content starts at b[i] (the index of its closing quote), or -1.
+mc_gone_string_end :: (b: [] u8, i: int) -> int {
+  k := i;
+  while k < b.count {
+    if b[k] == '\\' { k += 2; continue; }
+    if b[k] == '"' { return k; }
+    k += 1;
+  }
+  return -1;
+}
+mc_gone_at :: (b: [] u8, i: int, key: string) -> bool {
+  return i + key.count <= b.count && cast(string) b[i..<i + key.count] == key;
+}
+
+// The views and applied edits of the compacted steps in b (as earlier holds them), into the lists.
+// A '{"' never occurs inside a JSON string (its quote would be escaped), so each match opens a result.
+mc_gone_scan :: (st: [] McState, b: [] u8) {
+  eb: [MC_GONE_PATH + 32] u8;
+  i := 0;
+  while i < b.count {
+    view := mc_gone_at(b, i, "{\"view\":\""); edit := mc_gone_at(b, i, "{\"edit\":\"");
+    if !view && !edit { i += 1; continue; }
+    from := i + 9;                        // past {"view":" or {"edit":"
+    end := mc_gone_string_end(b, from);
+    if end < 0 { return; }
+    path := cast(string) b[from..<end];
+    i = end + 1;
+    if view {
+      if mc_gone_at(b, i, ",\"bytes\":") { mc_gone_add(st[0].gone[MC_GONE_VIEWED..<MC_GONE_VIEWED + 1], path); }     // a file it read, not one missing or held back
+      continue;
+    }
+    if !mc_gone_at(b, i, ",\"applied\":true") { continue; }
+    k := i + 15;
+    if mc_gone_at(b, k, ",\"lines\":\"") && path.count + 24 <= eb.count {
+      le := mc_gone_string_end(b, k + 10);
+      if le > 0 && le - (k + 10) <= 22 {
+        n := 0;
+        for c: path { eb[n] = c; n += 1; }
+        eb[n] = ':'; n += 1;
+        for c: b[k + 10..<le] { eb[n] = c; n += 1; }
+        mc_gone_add(st[0].gone[MC_GONE_EDITED..<MC_GONE_EDITED + 1], cast(string) eb[0..<n]);
+        continue;
+      }
+    }
+    mc_gone_add(st[0].gone[MC_GONE_EDITED..<MC_GONE_EDITED + 1], path);
+  }
+}
+
+mc_gone_list_json :: (out: [] u8, at: int, g: McGoneList) -> int {
+  n := json_raw(out, at, "[");
+  for i: 0..<g.count {
+    n = json_raw(out, n, ifx i > 0 then ",\"" else "\"");
+    n = json_raw(out, n, mc_gone_entry(g, i));
+    n = json_raw(out, n, "\"");
+  }
+  return json_raw(out, n, "]");
+}
+
+// The left_out object at out[at..]: the steps' range, then the lists.
+mc_gone_json :: (st: [] McState, out: [] u8, at: int) -> int {
+  n := json_raw(out, at, "{\"steps\":\"1-");
+  n = json_write_int(out, n, st[0].left_out);
+  n = json_raw(out, n, "\",\"viewed\":");
+  n = mc_gone_list_json(out, n, st[0].gone[MC_GONE_VIEWED]);
+  n = json_raw(out, n, ",\"edited\":");
+  n = mc_gone_list_json(out, n, st[0].gone[MC_GONE_EDITED]);
+  more := st[0].gone[MC_GONE_VIEWED].more + st[0].gone[MC_GONE_EDITED].more;
+  if more > 0 { n = json_raw(out, n, ",\"unlisted\":"); n = json_write_int(out, n, more); }
+  return json_raw(out, n, "}");
+}
+
+// ---------------------------------------------------------------- budgets (GitHub #13730)
+//
+// The budgets come from the model's context window (docs/coder/compaction-theory.md, finding 4).
+// An unknown window keeps the constants (mc_budget_default). A known one gives the request a
+// quarter less than the window, at MC_TOKEN_BYTES a token, bounded by MC_REQUEST_MAX, the journal's
+// bound. Inside that, a large window grows earlier first (a compacted step is the cheapest context
+// a step leaves), up to MC_EARLIER_MAX; a small one shrinks earlier and the recent steps to fit.
+// Set before a run's first step (loop.coax mc_window), so they never move a cached prefix.
+MC_TOKEN_BYTES :: 3;             // bytes a token, at the low end for code and JSON (3-4)
+MC_REQUEST_MIN :: 49152;         // the smallest request a known window gets
+MC_STEP_ADDS :: 36864;           // what one step adds to the recent steps after compaction: its 32 KB budget and its rationale
+
+mc_budget_default :: (st: [] McState) {
+  st[0].earlier_cap = MC_EARLIER_BYTES; st[0].log_limit = MC_LOG_BYTES - MC_ACTION_ROOM;
+  st[0].keep = MC_KEEP_RECENT; st[0].request_max = MC_REQUEST_MAX;
+}
+
+// window: the model's context window in tokens (0 when unknown). fixed: what every request carries
+// beside the steps (the facts, the task, the memory), escaped.
+mc_budget :: (st: [] McState, window: int, fixed: int) {
+  if window <= 0 { mc_budget_default(st); return; }
+  mc_budget_request(st, window * MC_TOKEN_BYTES / 4 * 3, fixed);
+}
+
+// The budgets for a request of req bytes: the state's room in it is less the system prompt and
+// schema, and an eighth for escaping the state once more inside the request.
+mc_budget_request :: (st: [] McState, req0: int, fixed: int) {
+  req := ifx req0 < MC_REQUEST_MIN then MC_REQUEST_MIN else req0;
+  if req > MC_REQUEST_MAX { req = MC_REQUEST_MAX; }
+  room := (req - MC_REQUEST_ROOM) / 8 * 7 - fixed;
+  recent := MC_LOG_BYTES - MC_ACTION_ROOM;
+  earlier := room - recent - MC_STEP_ADDS;
+  if earlier < MC_EARLIER_BYTES {
+    // a small window: earlier a quarter of the room, the recent steps the rest less half a step (a
+    // typical one; a step that fills its 32 KB is compacted by mc_request's bound before it goes)
+    earlier = room / 4;
+    if earlier > MC_EARLIER_BYTES { earlier = MC_EARLIER_BYTES; }
+    if earlier < 8192 { earlier = 8192; }
+    recent = room - earlier - MC_STEP_ADDS / 2;
+    if recent > MC_LOG_BYTES - MC_ACTION_ROOM { recent = MC_LOG_BYTES - MC_ACTION_ROOM; }
+    if recent < 16384 { recent = 16384; }
+  }
+  if earlier > MC_EARLIER_MAX { earlier = MC_EARLIER_MAX; }
+  if earlier > st[0].earlier.count { earlier = st[0].earlier.count; }
+  st[0].earlier_cap = earlier; st[0].log_limit = recent; st[0].request_max = req;
+  st[0].keep = ifx recent / 4 < MC_KEEP_RECENT then recent / 4 else MC_KEEP_RECENT;
+  if st[0].nearlier > earlier { mc_earlier_drop(st, earlier / 2); }     // a budget that shrank mid-run (a refused request): what no longer fits leaves
 }
 
 // The oldest closed steps are compacted into earlier until at most keep bytes of whole steps are
@@ -178,16 +363,18 @@ mc_compact :: (st: [] McState, keep: int) {
   // go straight to left_out; the newest that fit move in (GitHub #13706). Before, they all
   // vanished while nearly still counted them, and the next state's earlier[1..<0] trapped.
   j := 0;
-  if ccut > st[0].earlier.count {
+  cap := st[0].earlier_cap;
+  if ccut > cap {
     mc_earlier_drop(st, 0);
-    while j < k && ccut - st[0].cact_at[j] > st[0].earlier.count { j += 1; }
+    while j < k && ccut - st[0].cact_at[j] > cap { j += 1; }
     st[0].left_out += j;
+    if j > 0 { mc_gone_scan(st, st[0].clog[0..<st[0].cact_at[j]]); }
   }
   from := ifx j < k then st[0].cact_at[j] else ccut;
   move := ccut - from;
-  half := st[0].earlier.count / 2 - move;            // never below 0: a negative keep shifted earlier past its start
-  if st[0].nearlier + move > st[0].earlier.count { mc_earlier_drop(st, ifx half > 0 then half else 0); }
-  if st[0].nearlier + move > st[0].earlier.count { mc_earlier_drop(st, 0); }
+  half := cap / 2 - move;            // never below 0: a negative keep shifted earlier past its start
+  if st[0].nearlier + move > cap { mc_earlier_drop(st, ifx half > 0 then half else 0); }
+  if st[0].nearlier + move > cap { mc_earlier_drop(st, 0); }
   for i: 0..<move { st[0].earlier[st[0].nearlier + i] = st[0].clog[from + i]; }
   st[0].nearlier += move; st[0].nearly += k - j;
   st[0].nlog = mc_shift(st[0].log, st[0].nlog, cut);
@@ -207,7 +394,7 @@ mc_croom :: (st: [] McState) -> [] u8 { return st[0].clog[0..<st[0].clog.count -
 // Begins the next action: {"step":N,"rationale":"...","results":[ in both logs.
 mc_action_begin :: (st: [] McState, rationale: string) {
   if st[0].open >= 0 { mc_action_end(st); }
-  if st[0].nacts >= MC_MAX_ACTIONS || st[0].log.count - st[0].nlog < MC_ACTION_ROOM { mc_compact(st, MC_KEEP_RECENT); }
+  if st[0].nacts >= MC_MAX_ACTIONS || st[0].nlog > st[0].log_limit { mc_compact(st, st[0].keep); }
   if st[0].nacts >= MC_MAX_ACTIONS { mc_compact(st, 0); }
   st[0].steps += 1;
   at := st[0].nlog; cat := st[0].nclog;
@@ -493,7 +680,7 @@ mc_state_json :: (st: [] McState, out: [] u8) -> string {
   n = json_write_string(out, n, st[0].task);
   n = json_raw(out, n, ",\"route\":");
   n = mc_json_or_string(out, n, st[0].route);
-  if st[0].left_out > 0 { n = json_raw(out, n, ",\"left_out\":"); n = json_write_int(out, n, st[0].left_out); }
+  if st[0].left_out > 0 { n = json_raw(out, n, ",\"left_out\":"); n = mc_gone_json(st, out, n); }
   if st[0].nearly > 0 {
     n = json_raw(out, n, ",\"earlier\":[");
     n = json_raw(out, n, cast(string) st[0].earlier[1..<st[0].nearlier]);
@@ -714,7 +901,116 @@ mc_through_earlier :: (j: string) -> int {
   }
   j := mc_state_json(st[..], t[0].out[..]);
   #assert json_valid(j) && st[0].left_out > 0 && st[0].nearly + st[0].left_out == 400 && st[0].nearlier <= st[0].earlier.count;
-  #assert cl_int(j, "left_out").value == st[0].left_out && cl_int(j, "earlier.0.step").value == st[0].left_out + 1;
+  ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]}; rb: [32] u8;
+  #assert cl_str(ar[..], j, "left_out.steps") == mc_test_range(st[0].left_out, rb[..]) && cl_int(j, "earlier.0.step").value == st[0].left_out + 1;
+}
+
+mc_test_range :: (n: int, b: [] u8) -> string { k := json_raw(b, 0, "1-"); k = json_write_int(b, k, n); return cast(string) b[0..<k]; }
+
+#test "what left is named: the steps' range, the files they read, the edits they applied; it changes only when steps leave" #steps 2000000000 {
+  t: [1] McStateTest; st: [1] McState; prev: [1] McStateTest;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  rat: [1190] u8; for i: 0..<rat.count { rat[i] = 'r'; }
+  pb: [64] u8;
+  pl := 0; seen_left := 0;
+  for s: 0..<240 {
+    mc_action_begin(st[..], cast(string) rat[..]);
+    p := json_raw(pb[..], 0, "src/f"); p = json_write_int(pb[..], p, s % 30); p = json_raw(pb[..], p, ".c");
+    path := cast(string) pb[0..<p];
+    mc_file(st[..], path, true, "body");
+    if s % 7 == 0 { mc_action_edit_shown(st[..], path, true, "", s, s + 2, "x"); }
+    if s % 11 == 0 { mc_action_edit(st[..], "plain.txt", true, ""); mc_action_edit(st[..], "bad.c", false, "no match"); mc_file(st[..], "gone.c", false, "no such file"); }
+    mc_action_end(st[..]);
+    j := mc_state_json(st[..], t[0].out[..]);
+    #assert json_valid(j);
+    // the line stands before earlier: the prompt through it changes only when steps leave
+    if st[0].left_out > 0 {
+      e := mc_through_earlier(j);
+      if st[0].left_out == seen_left { #assert pl > 0 && cast(string) prev[0].out[0..<pl] == cast(string) j[0..<pl]; }
+      key := ",\"earlier\":["; k := 0; while k + key.count < j.count && cast(string) j[k..<k + key.count] != key { k += 1; }
+      pl = k; for i: 0..<pl { prev[0].out[i] = j[i]; }
+      seen_left = st[0].left_out;
+    }
+  }
+  #assert st[0].left_out > 30;
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert cl_str(ar[..], j, "left_out.steps") == mc_test_range(st[0].left_out, pb[..]);
+  viewed := cl_raw(j, "left_out.viewed"); edited := cl_raw(j, "left_out.edited");
+  // 30 files were read, so the newest 20 are named, once each; the missing one is not
+  #assert cl_count(viewed) == MC_GONE_LIST && mc_count(viewed, "\"src/f") == MC_GONE_LIST && mc_count(viewed, "gone.c") == 0;
+  #assert cl_int(j, "left_out.unlisted").value > 0 && cl_int(j, "left_out.unlisted").value == st[0].gone[0].more + st[0].gone[1].more;
+  // applied edits with their lines, and a whole-file one by its path; the failed one is not named
+  #assert mc_count(edited, "plain.txt") == 1 && mc_count(edited, "bad.c") == 0 && mc_count(edited, ".c:") >= 1;
+  ar[0].at = 0; first := cl_str(ar[..], j, "left_out.edited.0");
+  #assert mc_count(first, ":") == 0 || mc_count(first, "-") == 1;
+  // none of the named files are counted twice
+  for i: 0..<st[0].gone[0].count { for k: i + 1..<st[0].gone[0].count { #assert mc_gone_entry(st[0].gone[0], i) != mc_gone_entry(st[0].gone[0], k); } }
+}
+
+#test "the omission lists: a path seen again moves to the end, the oldest leave first, an escaped path stays valid JSON" {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  g := st[0].gone[0..<1];
+  mc_gone_add(g, "a"); mc_gone_add(g, "b"); mc_gone_add(g, "a");
+  #assert g[0].count == 2 && mc_gone_entry(g[0], 0) == "b" && mc_gone_entry(g[0], 1) == "a" && g[0].more == 0;
+  pb: [16] u8;
+  for i: 0..<MC_GONE_LIST { p := json_raw(pb[..], 0, "p"); p = json_write_int(pb[..], p, i); mc_gone_add(g, cast(string) pb[0..<p]); }
+  #assert g[0].count == MC_GONE_LIST && g[0].more == 2 && mc_gone_entry(g[0], 0) == "p0";
+  long: [400] u8; for i: 0..<long.count { long[i] = 'l'; }
+  mc_gone_add(g, cast(string) long[..]);
+  #assert g[0].more == 3 && g[0].count == MC_GONE_LIST;
+  // scanned from compacted steps: an escaped quote in a path survives
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  mc_action_begin(st[..], "r"); mc_file(st[..], "we\"ird.c", true, "x"); mc_action_edit_shown(st[..], "we\"ird.c", true, "", 3, 4, "x"); mc_action_end(st[..]);
+  mc_action_begin(st[..], "next"); mc_action_end(st[..]);
+  mc_compact(st[..], st[0].nlog - st[0].act_at[1]);
+  mc_earlier_drop(st[..], 0);
+  j := mc_state_json(st[..], t[0].out[..]);
+  ab: [512] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert json_valid(j) && st[0].left_out == 1 && cl_str(ar[..], j, "left_out.viewed.0") == "we\"ird.c";
+  ar[0].at = 0;
+  #assert cl_str(ar[..], j, "left_out.edited.0") == "we\"ird.c:3-4" && cl_raw(j, "left_out.unlisted").count == 0;
+}
+
+#test "budgets: an unknown window keeps the constants; a large one grows earlier first; a small one shrinks the request" #steps 2000000000 {
+  t: [1] McStateTest; st: [1] McState;
+  mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+  #assert st[0].earlier_cap == MC_EARLIER_BYTES && st[0].log_limit == MC_LOG_BYTES - MC_ACTION_ROOM && st[0].keep == MC_KEEP_RECENT && st[0].request_max == MC_REQUEST_MAX;
+  mc_budget(st[..], 0, 2000);
+  #assert st[0].earlier_cap == MC_EARLIER_BYTES && st[0].request_max == MC_REQUEST_MAX;
+  // a 1M-token window: the request stays at the journal's bound, and earlier takes the room the recent steps leave
+  mc_budget(st[..], 1048576, 2000);
+  #assert st[0].request_max == MC_REQUEST_MAX && st[0].log_limit == MC_LOG_BYTES - MC_ACTION_ROOM && st[0].keep == MC_KEEP_RECENT;
+  #assert st[0].earlier_cap > 3 * MC_EARLIER_BYTES / 2 && st[0].earlier_cap <= MC_EARLIER_MAX;
+  big := st[0].earlier_cap;
+  // big facts leave earlier less, and the recent steps fit what is left
+  mc_budget(st[..], 1048576, 60000);
+  #assert st[0].earlier_cap < big && st[0].earlier_cap + st[0].log_limit + MC_STEP_ADDS / 2 <= (MC_REQUEST_MAX - MC_REQUEST_ROOM) / 8 * 7 - 60000;
+  // a 32K-token window: a request of 72 KB, its state inside it
+  mc_budget(st[..], 32768, 2000);
+  #assert st[0].request_max == 73728 && st[0].earlier_cap < MC_EARLIER_BYTES && st[0].log_limit < MC_LOG_BYTES - MC_ACTION_ROOM && st[0].keep <= st[0].log_limit / 4;
+  // half a typical step is kept free: a step that fills its 32 KB is compacted by the request bound
+  // (loop.coax mc_request) before it goes, and a too-long refusal is retried
+  #assert st[0].earlier_cap <= ((73728 - MC_REQUEST_ROOM) / 8 * 7 - 2000) / 4 && st[0].log_limit >= 16384;
+  #assert st[0].earlier_cap + st[0].log_limit + MC_STEP_ADDS / 2 <= (73728 - MC_REQUEST_ROOM) / 8 * 7 - 2000;
+  mc_budget(st[..], 65536, 2000);
+  #assert st[0].request_max == 147456 && st[0].earlier_cap + st[0].log_limit + MC_STEP_ADDS / 2 <= (147456 - MC_REQUEST_ROOM) / 8 * 7 - 2000;
+  // the same notes-heavy run evicts less with the large window's earlier
+  ev: [2] int;
+  rat: [1190] u8; for i: 0..<rat.count { rat[i] = 'r'; }
+  for w: 0..<2 {
+    mc_state_init(st[..], t[0].b[..], "{}", "x", "{}");
+    mc_budget(st[..], ifx w == 0 then 0 else 1048576, 2000);
+    for s: 0..<200 { mc_action_begin(st[..], cast(string) rat[..]); mc_action_command(st[..], "ls", 0, false, "a\n"); mc_action_end(st[..]); }
+    j := mc_state_json(st[..], t[0].out[..]);
+    #assert json_valid(j) && st[0].nearlier <= st[0].earlier_cap && st[0].left_out + st[0].nearly + st[0].nacts == 200;
+    ev[w] = st[0].left_out;
+  }
+  #assert ev[1] < ev[0];
+  // a budget that shrinks mid-run (a refused request) drops what earlier no longer holds
+  mc_budget_request(st[..], 60000, 2000);
+  #assert st[0].nearlier <= st[0].earlier_cap && st[0].request_max == 60000;
 }
 
 #test "every step can be compacted: the log empties and renders, and new steps follow" {

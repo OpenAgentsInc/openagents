@@ -6,6 +6,12 @@
 //   C11: the recall line: a reply cut on a character boundary reaches the worker; one cut inside a
 //        character is refused whole (the desktop page cuts with text_byte_floor and CP_RECALL_CUT, #13729)
 //   C12: cross-turn recall: the newest MK_TURNS turns, each up to MK_TURN_TEXT, fit the run's facts
+//   C13: what left is named (GitHub #13730): left_out gives the steps' range and the files and edits
+//        they touched, and changes only when steps leave (C9's breaks count it)
+//   C14: budgets from the window: a 1M-token window grows earlier and evicts less with no prefix
+//        break and every prompt under the request bound; a 32K-token window shrinks the bound and fits it
+//   C15: a request refused as too long is compacted harder and sent again, once
+//   (C16, the working memory in every worker run, is coder/tests/aware-worker.coax: run.sh runs it)
 
 #load "../../../coax/lib/sys/tool.coax";
 #load "scenarios.coax";
@@ -24,7 +30,7 @@ CC_STEPS :: 200;
     // compaction comes in rare blocks, and the cache serves most prompt bytes
     #assert r.compactions >= 1 && r.compactions * 4 <= CC_STEPS;
     #assert cs_shared_permille(r) >= 750;
-    // a long run outgrows earlier: the oldest steps leave, and only the count says so
+    // a long run outgrows earlier: the oldest steps leave, and left_out names them (C13)
     #assert r.evictions >= 1 && r.left_out > 0;
   }
 }
@@ -59,36 +65,61 @@ CC_STEPS :: 200;
   while st[0].left_out == 0 && i < 400 { cs_step(st[..], z[..], CS_NOTES, i); i += 1; }
   j = mc_state_json(st[..], z[0].out[..]);
   #assert st[0].left_out > 0 && json_valid(j) && !cs_has(j, "NEEDLE-RAT") && cs_has(j, "NEEDLE-MEM a.coax:42");
+  // and the omission line still names the file it read and the lines it edited (GitHub #13730)
+  #assert cs_has(cl_raw(j, "left_out.viewed"), "\"a.coax\"") && cs_has(cl_raw(j, "left_out.edited"), "\"a.coax:40-44\"");
 }
 
-#test "compaction C11: a recall reply cut on a character boundary reaches the worker; one cut inside a character is refused" {
-  // 1,199 ASCII bytes then an em dash (3 bytes): a cut at 1,200 bytes falls inside it.
-  reply: [1202] u8; for k: 0..<1199 { reply[k] = 'a'; } reply[1199] = 0xE2; reply[1200] = 0x80; reply[1201] = 0x94;
-  for safe: 0..<2 {
-    cut := ifx safe == 1 then text_byte_floor(cast(string) reply[..], 1200) else 1200;
-    b: [4096] u8;
-    n := json_raw(b[..], 0, "[{\"task\":\"t\",\"reply\":"); n = json_write_string(b[..], n, cast(string) reply[0..<cut]); n = json_raw(b[..], n, "}]");
-    o: [8192] u8; wn := mww_recall(o[..], cast(string) b[0..<n]);
-    ar: [1] ClArena; ab: [8192] u8; ar[0].buf = ab[..]; req: [1] MwwRequest;
-    kind := mww_request(ar[..], cast(string) o[0..<wn], req[..]);
-    if safe == 1 { #assert cut == 1199 && kind == MWW_RECALL && cl_count(req[0].recall) == 1; }
-    else { #assert kind != MWW_RECALL; }
+#test "compaction C13: left_out names the steps that left, the files they read and the edits they made" #steps 4000000000 {
+  z: [1] CsBufs;
+  rb: [32] u8; ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  // the fix loop: one file edited at many lines; the newest MC_GONE_LIST edits are named
+  r := cs_run(z[..], CS_FIXLOOP, CC_STEPS);
+  j := cast(string) z[0].prev[0..<r.last];
+  n := json_raw(rb[..], 0, "1-"); n = json_write_int(rb[..], n, r.left_out);
+  #assert json_valid(j) && cl_str(ar[..], j, "left_out.steps") == cast(string) rb[0..<n];
+  edited := cl_raw(j, "left_out.edited");
+  #assert cl_count(edited) == MC_GONE_LIST && cs_has(edited, "\"src/module.coax:") && cl_int(j, "left_out.unlisted").value > 0;
+  // the reader: one file read by range, named once
+  r = cs_run(z[..], CS_READER, CC_STEPS);
+  j = cast(string) z[0].prev[0..<r.last];
+  ar[0].at = 0;
+  #assert r.left_out > 0 && cl_count(cl_raw(j, "left_out.viewed")) == 1 && cl_str(ar[..], j, "left_out.viewed.0") == "src/module.coax:1-300";
+  // the line stands before earlier: it never breaks the prefix the cache keeps between evictions
+  #assert r.breaks == 0 && cl_count(cl_raw(j, "left_out.edited")) == 0;
+}
+
+#test "compaction C14: budgets sized from the model's window: a large one grows earlier first, a small one shrinks the request" #steps 4000000000 {
+  z: [1] CsBufs;
+  for kind: 0..<CS_KINDS {
+    base := cs_run_window(z[..], kind, CC_STEPS, 0);
+    big := cs_run_window(z[..], kind, CC_STEPS, 1048576);
+    small := cs_run_window(z[..], kind, CC_STEPS, 32768);
+    #assert base.earlier_cap == MC_EARLIER_BYTES && base.request_max == MC_REQUEST_MAX;
+    // 1M tokens: earlier holds more compacted steps, fewer leave, the cache serves at least as much
+    #assert big.earlier_cap > base.earlier_cap && big.request_max == MC_REQUEST_MAX;
+    #assert big.left_out < base.left_out && big.nearly > base.nearly && cs_shared_permille(big) >= cs_shared_permille(base);
+    #assert big.breaks == 0 && big.gaps == 0 && big.invalid == 0 && big.overs == 0 && big.memory_kept;
+    // 32K tokens: a 72 KB request, and every prompt fits it without mc_request's emergency compaction
+    #assert small.request_max == 73728 && small.earlier_cap < base.earlier_cap && small.overs == 0;
+    #assert small.breaks == 0 && small.gaps == 0 && small.invalid == 0 && small.memory_kept;
   }
 }
 
-#test "compaction C12: the newest turns, each up to MK_TURN_TEXT, fit the run's facts whole" #steps 400000000 {
-  mt: [1] MkTurns;
-  long: [MK_TURN_TEXT] u8; for k: 0..<long.count { long[k] = 'w'; }
-  for i: 0..<20 {
-    long[0] = cast(u8) ('A' + i);
-    mt[0].ncur = mk_keep(mt[0].cur[..], cast(string) long[..]);
-    mk_remember(mt[..], cast(string) long[..]);
-  }
-  #assert mt[0].turns == MK_TURNS;
-  facts: [MC_FACTS_BYTES] u8;
-  f := mk_facts(mt[..], "macOS", "/repo", MK_COMMAND_SECONDS, facts[..]);
-  #assert json_valid(f) && cl_count(cl_raw(f, "conversation")) == MK_TURNS;
-  // the oldest 14 turns are gone; the newest is last
-  ab: [1] ClArena; abuf: [MK_TURN_TEXT + 64] u8; ab[0].buf = abuf[..];
-  #assert cl_str(ab[..], f, "conversation.5.you")[0] == 'A' + 19 && cl_str(ab[..], f, "conversation.0.user")[0] == 'A' + 14;
+#test "compaction C15: a provider's context-length refusal compacts every step and sends the request again, once" #steps 2000000000 {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "long task", "{}", 1.0);
+  mc_window(l[..], 1048576);
+  z: [1] CsBufs;
+  for s: 0..<12 { cs_step(l[0].st[..], z[..], CS_FIXLOOP, s); }
+  #assert l[0].st[0].nacts > 0;
+  replies: [2] string;
+  replies[0] = "!long";
+  replies[1] = "{\"rationale\":\"done\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Done.\",\"ask\":\"none\"}";
+  s: [1] McScript; s[0].replies = replies[..];
+  first := mc_escaped_size(mc_state_json(l[0].st[..], lb[0].prompt[..]));
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && s[0].calls == 2 && l[0].too_long == 1;
+  // the retried request: no whole step left, and smaller than the refused one
+  #assert l[0].st[0].request_max < MC_REQUEST_MAX && l[0].sent < first;
+  #assert gw_too_long(400, "The input token count (1100000) exceeds the maximum number of tokens allowed (1048576).") && !gw_too_long(503, "busy");
 }
