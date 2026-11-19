@@ -305,12 +305,31 @@ UiApp :: struct {
   icon_alert: int = -1; icon_nav: int = -1; icon_disclose: int = -1;   // slots in the target's icons: a failure's mark, the navigation button's, a row that opens (-1: the skin has none)
 }
 // Conversation presentation; optional so other skins retain their geometry.
+// The activity group's measures (components/app/activity.coax, GitHub #13731): Zeron's
+// ds/activity.luau, tree_line.luau and working.luau, read in points, as layout units. A skin
+// drawn at another scale (Coder Desktop's 1.2) divides the sizes by it (app_act_scaled). A
+// `_ink` or `_wash` is a strength, 0 to 1; `_lines` and `rotate` are counts and seconds.
+UiActivity :: struct {
+  loader: f32 = 16;                                    // the working loader, and the trunk's x under its middle
+  trunk: f32 = 8.5; bend: f32 = 6; branch_end: f32 = 20;   // the trunk's x, an elbow's bend, where a branch ends
+  glyph_left: f32 = 24; glyph: f32 = 16; gutter: f32 = 48;   // a row's glyph, and where its words start
+  row: f32 = 28; header: f32 = 26; header_gap: f32 = 8;   // a tool's row, the summary's line, the loader to the summary
+  verb_gap: f32 = 4; fade: f32 = 24;                   // the verb to its target; how far a line that runs over fades
+  tree_ink: f32 = 0.12;                                // the trunk and elbows: the ink at this strength
+  thought_line: f32 = 20; thought_gap: f32 = 12;       // a thought's prose: its line, the gap between its blocks
+  thought_lines: f32 = 4; thought_fade: f32 = 1.5;     // a thought folds past this many lines, its foot fading over this many
+  fold_h: f32 = 20; fold_pad: f32 = 6; fold_radius: f32 = 4; fold_room: f32 = 26; fold_wash: f32 = 0.08;   // "Show all N lines"
+  detail_pad_x: f32 = 12; detail_pad_y: f32 = 8; detail_radius: f32 = 6; detail_gap: f32 = 4;   // a row opened onto its call and output
+  detail_lines: f32 = 10; detail_wash: f32 = 0.05;     // an output folds past this many lines
+  working_h: f32 = 26; working_gap: f32 = 8; rotate: f32 = 7;   // the working line: its height, its gaps, seconds a word holds
+}
 UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;}
 UiSkin :: struct {
  chat:UiConversation;
  animated:UiAnimated;
  motion:UiMotion;
  app:UiApp;
+ act:UiActivity;
   id: int; name: string;
   // colour roles
   canvas: Rgba;             // the window behind everything

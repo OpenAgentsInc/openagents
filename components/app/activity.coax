@@ -1,0 +1,394 @@
+// The app set's activity group (GitHub #13731): what an agent did on its way
+// to a reply, as Zeron draws it (apps/zgx/ui/ds/activity.luau, tree_line.luau
+// and working.luau; Zeron by Wing, MIT, ported here, not copied).
+//
+//   ◌ Thought process · ran 2 commands         the summary: the loader before it while it works
+//   ├─ ▣ Ran gh issue list --state open …      a tool's row: an elbow off the trunk, its glyph, verb and target
+//   │  I want a bit more detail on a few …     a thought: its words in the tree, no glyph, no branch
+//   ╰─ ◌ Ran for n in 13723 13610 …            the tool in flight: the loader in its glyph's place
+//   ◌ Scheming… 9s                             the working line: a word that rolls, the seconds
+//
+// The summary counts the group's kinds in Zeron's words and order
+// (app_act_summary). While the agent works the group is open; settled, it
+// folds to its summary unless the person opened it (app_act_open). A press on
+// a row opens it onto its call and output; a thought past four lines folds
+// under "Show all N lines".
+//
+// A caller draws the header, then each row in order, saying of each whether
+// the trunk runs on below it (a row with a branch follows). A row off screen
+// need not be drawn: every row's height is its own, so a caller that keeps
+// them skips the rows out of view. What is open is keyed state under the
+// row's id (APP_TOOL_OPEN, as task.coax's rows), changed by app_act_press.
+// Measures are the skin's `act` (skin.coax UiActivity), colours its roles: a
+// renderer-neutral component like the rest of components/app.
+//   coax/bin/coax test components/app/activity.coax
+
+#load "task.coax";
+
+// A row's kind: its glyph and its part of the summary come from it.
+APP_ACT_EXEC :: 0; APP_ACT_READ :: 1; APP_ACT_EDIT :: 2; APP_ACT_WRITE :: 3; APP_ACT_SEARCH :: 4;
+APP_ACT_GLOB :: 5; APP_ACT_WEB :: 6; APP_ACT_TODO :: 7; APP_ACT_AGENT :: 8; APP_ACT_THOUGHT :: 9;
+APP_ACT_KINDS :: 10;
+// Zeron's glyph for each kind (ds/activity GLYPH); a sub-agent's is the bot.
+APP_ACT_GLYPH :: [APP_ACT_KINDS] int.[ICON_TERMINAL, ICON_DOCUMENT, ICON_PEN, ICON_DOCUMENT_ADD, ICON_MAGNIFER, ICON_FOLDER, ICON_GLOBAL, ICON_CHECKLIST, ICON_BOT, ICON_THOUGHT];
+APP_ACT_OUTPUT_OPEN :: APP_TOOL_RESULT_PAGE;   // the keyed slot that says a row's long output shows whole
+
+// One row of a group.
+AppActRow :: struct {
+  kind: int;                  // APP_ACT_*
+  verb: string;               // what it did: Ran, Read, Ran a subagent
+  target: string;             // to what, on one line: the command, the file's name ("": none)
+  call: string;               // the whole call, when the line says less (a command of many lines): its row opens to it
+  output: string;             // what came back; a thought's words when it has no Markdown
+  failed: bool;               // its glyph in the danger's tone, its output's edge too
+  running: bool;              // in flight: the loader in its glyph's place
+  opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
+  doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
+}
+
+// ---------------------------------------------------------------- the summary
+
+// What a group did, counted (Zeron's GroupTally, apps/zgx/src/chat.rs).
+AppActCount :: struct { thoughts: int; commands: int; edits: int; reads: int; searches: int; fetches: int; todos: int; agents: int; other: int; failed: int; }
+app_act_count :: (c: [] AppActCount, kind: int, failed: bool) {
+  if kind == APP_ACT_THOUGHT { c[0].thoughts += 1; return; }
+  if kind == APP_ACT_EXEC { c[0].commands += 1; }
+  else if kind == APP_ACT_EDIT || kind == APP_ACT_WRITE { c[0].edits += 1; }
+  else if kind == APP_ACT_READ { c[0].reads += 1; }
+  else if kind == APP_ACT_SEARCH || kind == APP_ACT_GLOB { c[0].searches += 1; }
+  else if kind == APP_ACT_WEB { c[0].fetches += 1; }
+  else if kind == APP_ACT_TODO { c[0].todos += 1; }
+  else if kind == APP_ACT_AGENT { c[0].agents += 1; }
+  else { c[0].other += 1; }
+  if failed { c[0].failed += 1; }
+}
+app_act_put_n :: (out: [] u8, at: int, before: string, n: int, one: string, many: string) -> int {
+  k := el_put(out, at, before); k = el_put_i(out, k, n); k = el_put(out, k, " ");
+  return el_put(out, k, ifx n == 1 then one else many);
+}
+// The group's line into out, in Zeron's words and order: its thinking, then what its tools did,
+// then how many failed, joined with " · ", the first letter raised ("Thought process · ran 2
+// commands"). Returns the bytes written.
+app_act_summary :: (out: [] u8, c: AppActCount) -> int {
+  n := 0; parts := 0;
+  sep := " · ";
+  if c.thoughts == 1 { n = el_put(out, n, "thought process"); parts += 1; }
+  else if c.thoughts > 1 { n = el_put(out, n, "thought "); n = el_put_i(out, n, c.thoughts); n = el_put(out, n, " times"); parts += 1; }
+  if c.commands > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "ran ", c.commands, "command", "commands"); parts += 1; }
+  if c.edits > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "edited ", c.edits, "file", "files"); parts += 1; }
+  if c.reads > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "read ", c.reads, "file", "files"); parts += 1; }
+  if c.searches > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "searched ", c.searches, "time", "times"); parts += 1; }
+  if c.fetches > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "fetched ", c.fetches, "page", "pages"); parts += 1; }
+  if c.todos > 0 { if parts > 0 { n = el_put(out, n, sep); } n = el_put(out, n, "updated todos"); parts += 1; }
+  if c.agents == 1 { if parts > 0 { n = el_put(out, n, sep); } n = el_put(out, n, "ran a subagent"); parts += 1; }
+  else if c.agents > 1 { if parts > 0 { n = el_put(out, n, sep); } n = el_put(out, n, "ran "); n = el_put_i(out, n, c.agents); n = el_put(out, n, " subagents"); parts += 1; }
+  if c.other > 0 { n = app_act_put_n(out, ifx parts > 0 then el_put(out, n, sep) else n, "called ", c.other, "tool", "tools"); parts += 1; }
+  if c.failed > 0 { if parts > 0 { n = el_put(out, n, sep); } n = el_put_i(out, n, c.failed); n = el_put(out, n, " failed"); }
+  if n > 0 && out[0] >= 'a' && out[0] <= 'z' { out[0] = out[0] - 32; }   // not a size: ASCII's case offset
+  return n;
+}
+// Seconds as Zeron says them (chat.rs `elapsed`): 9s, 1m 5s, 2h 3m, 1d 4h. Returns the bytes written.
+app_act_elapsed :: (out: [] u8, seconds: int) -> int {
+  v := ifx seconds < 0 then 0 else seconds; n := 0;
+  minute := 60; hour := 3600; day := 86400;   // not sizes
+  if v < minute { n = el_put_i(out, n, v); return el_put(out, n, "s"); }
+  if v < hour { n = el_put_i(out, n, v / minute); n = el_put(out, n, "m "); n = el_put_i(out, n, v % minute); return el_put(out, n, "s"); }
+  if v < day { n = el_put_i(out, n, v / hour); n = el_put(out, n, "h "); n = el_put_i(out, n, (v % hour) / minute); return el_put(out, n, "m"); }
+  n = el_put_i(out, n, v / day); n = el_put(out, n, "d "); n = el_put_i(out, n, (v % day) / hour); return el_put(out, n, "h");
+}
+
+// ---------------------------------------------------------------- open and fold
+
+// Whether a group is open: what the person chose (0 nothing yet, 1 opened, 2 folded), else open
+// while it works and folded once it is done.
+APP_ACT_UNCHOSEN :: 0; APP_ACT_OPENED :: 1; APP_ACT_FOLDED :: 2;
+app_act_open :: (choice: int, live: bool) -> bool {
+  if choice == APP_ACT_OPENED { return true; }
+  if choice == APP_ACT_FOLDED { return false; }
+  return live;
+}
+// The choice a press on the summary leaves: the other of what shows now.
+app_act_choose :: (choice: int, live: bool) -> int { return ifx app_act_open(choice, live) then APP_ACT_FOLDED else APP_ACT_OPENED; }
+// A press reached the app as a row's action: `id` is the row, `pressed` the id pressed. The row
+// itself opens or folds (a thought's "Show all N lines" is the row's own id); id + ".out" shows a
+// long output whole or folds it again. Returns whether the press was one of these.
+app_act_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
+  k := keyed_find(keyed, id);
+  if k < 0 || pressed.count < id.count || cast(string) pressed[0..<id.count] != id { return false; }
+  part := cast(string) pressed[id.count..<pressed.count];
+  slot := ifx part == "" then APP_TOOL_OPEN else ifx part == ".out" then APP_ACT_OUTPUT_OPEN else -1;
+  if slot < 0 { return false; }
+  keyed_slot_set(keyed, k, slot, ifx keyed_slot(keyed, k, slot) > 0 then 0.0f32 else 1.0f32);
+  return true;
+}
+// Measures in points drawn at `scale` points a unit (Coder Desktop's 1.2): the sizes divided by it.
+app_act_scaled :: (scale: f32) -> UiActivity {
+  a := UiActivity.{}; u := ifx scale > 0 then scale else 1.0f32;
+  a.loader /= u; a.trunk /= u; a.bend /= u; a.branch_end /= u; a.glyph_left /= u; a.glyph /= u; a.gutter /= u;
+  a.row /= u; a.header /= u; a.header_gap /= u; a.verb_gap /= u; a.fade /= u;
+  a.thought_line /= u; a.thought_gap /= u;
+  a.fold_h /= u; a.fold_pad /= u; a.fold_radius /= u; a.fold_room /= u;
+  a.detail_pad_x /= u; a.detail_pad_y /= u; a.detail_radius /= u; a.detail_gap /= u;
+  a.working_h /= u; a.working_gap /= u;
+  return a;
+}
+
+// ---------------------------------------------------------------- paint
+
+app_act_smooth :: (e0: f32, e1: f32, x: f32) -> f32 {
+  t := (x - e0) / (e1 - e0); t = ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  return t * t * (3 - 2 * t);
+}
+// Zeron's working loader (ds/status RING), `size` wide at (x, y): eight short dashes round a
+// ring; once a run (3.9 s, then 0.9 s still) a lead sweeps two laps, each dash it passes
+// stretching after it and lightening as it stretches. Still with reduced motion.
+APP_ACT_RUN :: 3.9f32; APP_ACT_REST :: 0.9f32;
+app_loader :: (sh: [] Sheet, x: f32, y: f32, size: f32, ink: Rgba, clock: f32, reduced: bool) {
+  u := size / 24; r := 10 * u; width := 2 * u;
+  ph: f32 = 0;
+  if !reduced { period := APP_ACT_RUN + APP_ACT_REST; t := clock - floor(clock / period) * period; ph = ifx t > APP_ACT_RUN then APP_ACT_RUN else t; }
+  amp := app_act_smooth(0, 0.55, ph) * (1 - app_act_smooth(APP_ACT_RUN - 0.75, APP_ACT_RUN, ph));
+  tau := ph / APP_ACT_RUN; pi: f32 = 3.14159265;
+  lead := 720 * (0.5 - 0.5 * cos(pi * tau)); pull := lead - 14 * sin(pi * tau);
+  white := rgba(1, 1, 1, ink.a); black := rgba(0, 0, 0, ink.a);
+  toward := ifx ink.r * 0.2126 + ink.g * 0.7152 + ink.b * 0.0722 > 0.5 then white else black;
+  for i: 0..<8 {
+    c := 45 * cast(f32) i;
+    dl := pull - c; dl = dl - 360 * floor(dl / 360 + 0.5);
+    sig: f32 = ifx dl < 0 then 26.0f32 else 40.0f32;
+    g := amp * exp(-(dl * dl) / (sig * sig));
+    centre := c + (ifx dl < 0 then -9.0f32 else ifx dl > 0 then 9.0f32 else 0.0f32) * g;
+    half := 10.95 * (1 + 1.3 * g);
+    t := 0.6 * g;
+    tone := Rgba.{r = ink.r + (toward.r - ink.r) * t, g = ink.g + (toward.g - ink.g) * t, b = ink.b + (toward.b - ink.b) * t, a = ink.a};
+    sheet_under(sh, prim_arc(sh[0].under, sh[0].nu, x + size / 2 - r, y + size / 2 - r, 2 * r, 2 * r, width, (centre - half) / 360, 2 * half / 360, tone));
+  }
+}
+// One line of text from x that fades out over `band` before `right` when it runs past it, as
+// Zeron's FadeText (ds/fade_text) fades a line's end: the start as one run, then each character
+// in the band on its own at the strength its middle stands at. Returns the width drawn.
+app_act_fade_text :: (sh: [] Sheet, m: TextMeasure, x: f32, y: f32, lh: f32, face: int, ink: Rgba, text: string, right: f32, band: f32) -> f32 {
+  if text.count == 0 || right <= x { return 0; }
+  whole := measure_width(m, face, text);
+  if x + whole <= right + 0.5 { return sheet_text(sh, m, -1, x, y, lh, face, ink, text); }
+  from := right - band; pen := x; i := 0;
+  while i < text.count {
+    j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }   // not a size: a UTF-8 continuation byte
+    cw := measure_width(m, face, cast(string) text[i..<j]);
+    if pen + cw > from { break; }
+    pen += cw; i = j;
+  }
+  if i > 0 { _ := sheet_text(sh, m, -1, x, y, lh, face, ink, cast(string) text[0..<i]); }
+  while i < text.count && pen < right {
+    j := i + 1; while j < text.count && (text[j] & 0xC0) == 0x80 { j += 1; }   // not a size
+    cw := measure_width(m, face, cast(string) text[i..<j]);
+    k := (right - (pen + cw / 2)) / band; k = ifx k < 0 then 0.0f32 else ifx k > 1 then 1.0f32 else k;
+    if k > 0 { _ := sheet_text(sh, m, -1, pen, y, lh, face, opacity(ink, k), cast(string) text[i..<j]); }
+    pen += cw; i = j;
+  }
+  return right - x;
+}
+// The trunk down a row from y, h tall.
+app_act_trunk :: (f: [] UiFrame, x: f32, y: f32, h: f32) {
+  s := f[0].skin; if h <= 0 { return; }
+  sheet_fill(f[0].sheet, x + s.act.trunk - 0.5, y, 1, h, 0, opacity(s.ink, s.act.tree_ink));
+}
+// A small quiet button on a faint ground ("Show all N lines"), at (x, y). Returns its width.
+app_act_fold_button :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, expanded: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m;
+  w := measure_width(m, s.tool.face, label) + 2 * a.fold_pad;
+  hovered := uiframe_hovered(f, id);
+  sheet_fill(sh, x, y, w, a.fold_h, a.fold_radius, opacity(s.ink, ifx hovered then a.fold_wash * 1.5 else a.fold_wash));
+  _ := sheet_text(sh, m, -1, x + a.fold_pad, y, a.fold_h, s.tool.face, ifx hovered then s.ink else s.muted, label);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, a.fold_h, EL_S_EXPANDS | (ifx expanded then EL_S_EXPANDED else 0), action);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, a.fold_h);
+  return w;
+}
+
+// ---------------------------------------------------------------- the group's lines
+
+// The summary at (x, y), w wide: the loader before it while the group works, the summary in the
+// small face and the muted ink (the ink under the pointer), its end fading when it runs over. A
+// press dispatches `action` under id; the caller turns it into app_act_choose. Returns its height.
+app_act_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, summary: string, live: bool, open: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.act; sh := f[0].sheet; h := a.header;
+  hovered := uiframe_hovered(f, id);
+  tx := x;
+  if live { app_loader(sh, x, y + (h - a.loader) / 2, a.loader, s.muted, f[0].clock, f[0].reduced_motion); tx += a.loader + a.header_gap; }
+  _ := app_act_fade_text(sh, f[0].m, tx, y + (h - s.tool.line) / 2, s.tool.line, s.tool.face, ifx hovered then s.ink else s.muted, summary, x + w, a.fade);
+  row := uiframe_semantic(f, id, EL_BUTTON, summary, x, y, w, h, EL_S_EXPANDS | (ifx open then EL_S_EXPANDED else 0) | (ifx live then EL_S_BUSY | EL_S_LIVE else 0), action);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  return h;
+}
+
+// What an opened row shows under its line, from tx, tw wide: its whole call, then its output,
+// each in the small mono face on a faint ground; an output past ten lines shows its first ten,
+// the last fading, and "Show all N lines" under them. Returns its height.
+app_act_detail :: (f: [] UiFrame, id: string, k: int, tx: f32, y: f32, tw: f32, r: AppActRow, action: int) -> f32 {
+  s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; line := s.mono_small.line;
+  h: f32 = 0; wash := opacity(s.ink, a.detail_wash);
+  ib: [EL_ID] u8; ob: [EL_ID] u8;
+  if r.call.count > 0 {
+    n := app_lines(r.call);
+    bh := 2 * a.detail_pad_y + cast(f32) n * line;
+    sheet_fill(sh, tx, y + h, tw, bh, a.detail_radius, wash);
+    uiframe_clip(f, tx, y + h, tx + tw - a.detail_pad_x, y + h + bh);
+    for q: 0..<n { _ := sheet_plain(sh, m, tx + a.detail_pad_x, y + h + a.detail_pad_y + cast(f32) q * line, line, s.mono_small.face, s.muted, app_line(r.call, q), true); }
+    uiframe_unclip(f);
+    row := uiframe_semantic(f, app_id(ib[..], id, ".call"), EL_TEXT, r.verb, tx, y + h, tw, bh, 0, 0);
+    elt_value(f[0].rows, row, r.call);
+    h += bh + a.detail_gap;
+  }
+  if r.output.count > 0 || r.failed {
+    total := app_lines(r.output); most := cast(int) a.detail_lines;
+    whole := keyed_slot(f[0].keyed, k, APP_ACT_OUTPUT_OPEN) > 0;
+    long := total > most;
+    shown := ifx long && !whole then most else total;
+    bh := 2 * a.detail_pad_y + cast(f32) shown * line;
+    _ := sheet_box(sh, tx, y + h, tw, bh, a.detail_radius, ifx r.failed then 1.0f32 else 0.0f32, wash, ifx r.failed then opacity(s.danger, 0.5) else wash);
+    if long && !whole {
+      band := line * s.act.thought_fade; bottom := y + h + a.detail_pad_y + cast(f32) shown * line;
+      sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, bottom, band));
+      sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, bottom, band));
+    }
+    uiframe_clip(f, tx, y + h, tx + tw - a.detail_pad_x, y + h + bh);
+    for q: 0..<shown { _ := sheet_plain(sh, m, tx + a.detail_pad_x, y + h + a.detail_pad_y + cast(f32) q * line, line, s.mono_small.face, s.muted, app_line(r.output, q), true); }
+    uiframe_unclip(f);
+    if long && !whole { sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no)); }
+    row := uiframe_semantic(f, app_id(ib[..], id, ".output"), EL_TEXT, ifx r.failed then "Failed" else "Output", tx, y + h, tw, bh, 0, 0);
+    elt_value(f[0].rows, row, r.output);
+    h += bh;
+    if long {
+      lb: [64] u8; ln := 0;
+      if whole { ln = el_put(lb[..], 0, "Show fewer lines"); } else { ln = el_put(lb[..], 0, "Show all "); ln = el_put_i(lb[..], ln, total); ln = el_put(lb[..], ln, " lines"); }
+      _ := app_act_fold_button(f, app_id(ob[..], id, ".out"), tx, y + h + a.detail_gap, sheet_pool(sh, cast(string) lb[0..<ln]), whole, action);
+      h += a.detail_gap + a.fold_h;
+    }
+    h += a.detail_gap;
+  }
+  return h;
+}
+
+// A thought's row at (x, y), w wide: its words in the tree where a tool's line sits, as a
+// reply's Markdown a step smaller in the muted ink; no glyph, no branch, the trunk passing it
+// only on its way to a row below. Past four lines it folds, its foot fading, "Show all N lines"
+// under it; opened, the whole thought and "Show fewer lines". Returns its height.
+app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow, below: bool, action: int) -> f32 {
+  s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m;
+  line := a.thought_line; folded_h := a.thought_lines * line;
+  k := uiframe_key(f, id);
+  open := app_tool_is_open(f, k, false);
+  tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
+  ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
+  // the fade over the foot, taken back below if the words fit
+  fu := sh[0].nu; fo := sh[0].no;
+  if !open {
+    sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
+    sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
+    uiframe_clip(f, tx, ty, x + w, ty + folded_h);
+  }
+  total: f32 = 0; lines := 0;
+  if r.blocks > 0 {
+    // painted while it shows; past the fold, laid out and taken back, to count its lines
+    for b: r.block0..<r.block0 + r.blocks {
+      if b > r.block0 { total += a.thought_gap; }
+      if open || total < folded_h { total += markdown_block(sh, m, ns, r.doc, b, tx, ty + total, tw); }
+      else { total += markdown_height(sh, m, ns, r.doc, b, tw); }
+    }
+    lines = cast(int) ((total - cast(f32) (r.blocks - 1) * a.thought_gap) / line + 0.5);
+  } else {
+    n := app_lines(r.output);
+    for q: 0..<n {
+      if !open && cast(f32) q * line >= folded_h { break; }
+      _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, s.body.face, s.muted, app_line(r.output, q), true);
+    }
+    total = cast(f32) n * line; lines = n;
+  }
+  long := total > folded_h + 0.5;
+  if !open {
+    uiframe_unclip(f);
+    if !long { sh[0].under[fu].on = false; sh[0].over[fo].on = false; }
+    sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
+  }
+  shown := ifx open || !long then total else folded_h;
+  wb: [EL_ID] u8;
+  said := uiframe_semantic(f, app_id(wb[..], id, ".words"), EL_TEXT, "Thought process", tx, ty, tw, shown, 0, 0);
+  elt_value(f[0].rows, said, r.output);
+  h := 2 * pad + shown;
+  if long {
+    lb: [64] u8; ln := 0;
+    if open { ln = el_put(lb[..], 0, "Show fewer lines"); } else { ln = el_put(lb[..], 0, "Show all "); ln = el_put_i(lb[..], ln, lines); ln = el_put(lb[..], ln, " lines"); }
+    _ := app_act_fold_button(f, id, tx, ty + shown + a.fold_room - a.fold_h, sheet_pool(sh, cast(string) lb[0..<ln]), open, action);
+    h += a.fold_room;
+  }
+  if below { app_act_trunk(f, x, y, h); }
+  return h;
+}
+
+// One row of a group at (x, y), w wide (a thought: app_act_thought). A tool's row is its branch
+// off the trunk (the trunk running on below it when `below`), its glyph (the loader while it
+// runs, the danger's tone when it failed), its verb in the muted ink and its target in the small
+// mono face, fading at the row's end. A press dispatches `action` under id: it opens the row onto
+// its call and output (app_act_press), or does what the caller says (a sub-agent's row opens its
+// pane). Returns its height.
+app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow, below: bool, action: int) -> f32 {
+  if r.kind == APP_ACT_THOUGHT { return app_act_thought(f, id, x, y, w, r, below, action); }
+  s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; rh := a.row;
+  k := uiframe_key(f, id);
+  shows := r.call.count > 0 || r.output.count > 0 || r.failed;
+  opens := r.opens || shows;
+  open := shows && !r.opens && app_tool_is_open(f, k, false);
+  // the glyph, in a box of its own off the line
+  gy := y + (rh - a.glyph) / 2; gx := x + a.glyph_left;
+  if r.running { app_loader(sh, gx, gy, a.glyph, s.muted, f[0].clock, f[0].reduced_motion); }
+  else { kind := ifx r.kind >= 0 && r.kind < APP_ACT_KINDS then r.kind else APP_ACT_EXEC; sheet_icon(sh, APP_ACT_GLYPH[kind], gx, gy, a.glyph, ifx r.failed then s.danger else s.muted); }
+  // the verb, then the target, on one line cut at the row's end
+  tx := x + a.gutter; ly := y + (rh - s.tool.line) / 2;
+  vw := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, r.verb);
+  if r.target.count > 0 {
+    _ := app_act_fade_text(sh, m, tx + vw + a.verb_gap, y + (rh - s.mono_small.line) / 2, s.mono_small.line, s.mono_small.face, s.ink, r.target, x + w, a.fade);
+  }
+  lb: [EL_LABEL] u8; ln := el_put(lb[..], 0, r.verb);
+  if r.target.count > 0 { ln = el_put(lb[..], ln, " "); ln = el_put(lb[..], ln, r.target); }
+  label := sheet_pool(sh, cast(string) lb[0..<ln]);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, rh,
+    (ifx shows && !r.opens then EL_S_EXPANDS else 0) | (ifx open then EL_S_EXPANDED else 0) | (ifx r.running then EL_S_BUSY else 0), ifx opens then action else 0);
+  if row >= 0 && r.failed { elt_value(f[0].rows, row, "Failed"); }
+  if opens { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, rh); }
+  h := rh;
+  if open { h += app_act_detail(f, id, k, tx, y + rh, w - a.gutter, r, action); }
+  // the branch: the trunk to the elbow (on down the row when a row follows), the elbow to its end
+  mid := rh / 2; tree := opacity(s.ink, a.tree_ink);
+  if below { app_act_trunk(f, x, y, h); } else { app_act_trunk(f, x, y, mid - a.bend); }
+  sheet_elbow(sh, x + a.trunk, y + mid - a.bend, a.bend, x + a.branch_end, below, tree);
+  return h;
+}
+
+// The working line at (x, y): the loader, a word that rolls to another every seven seconds
+// ("Scheming…") and how long the run has gone, as Zeron's (ds/working). `seed` picks where the
+// words start; `label`, when given, is said in the word's place ("Stopping…"). Its row is live and
+// busy. Returns its height.
+APP_ACT_WORDS :: [20] string.["Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering", "Musing", "Composing", "Sifting", "Untangling",
+                              "Distilling", "Sketching", "Plotting", "Riffing", "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"];
+app_working_word :: (out: [] u8, seconds: int, seed: int) -> int {
+  words := APP_ACT_WORDS; at := ifx seconds < 0 then 0 else seconds;
+  rotate := 7;   // not a size: seconds a word holds (Zeron's ROTATE)
+  w := words[((seed % words.count + words.count) % words.count + at / rotate) % words.count];
+  return el_put(out, el_put(out, 0, w), "…");
+}
+app_working :: (f: [] UiFrame, id: string, x: f32, y: f32, seconds: int, seed: int, label: string) -> f32 {
+  s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; h := a.working_h;
+  app_loader(sh, x, y + (h - a.loader) / 2, a.loader, s.muted, f[0].clock, f[0].reduced_motion);
+  wb: [64] u8; wn := ifx label.count > 0 then el_put(wb[..], 0, label) else app_working_word(wb[..], seconds, seed);
+  word := sheet_pool(sh, cast(string) wb[0..<wn]);
+  tx := x + a.loader + a.header_gap; ly := y + (h - s.tool.line) / 2;
+  ww := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, word);
+  eb: [24] u8; en := app_act_elapsed(eb[..], seconds);
+  took := sheet_pool(sh, cast(string) eb[0..<en]);
+  tw := sheet_text(sh, m, -1, tx + ww + a.working_gap, ly, s.tool.line, s.tool.face, s.faint, took);
+  row := uiframe_semantic(f, id, EL_PROGRESS, "Working", x, y, tx + ww + a.working_gap + tw - x, h, EL_S_BUSY | EL_S_LIVE, 0);
+  elt_value(f[0].rows, row, word);
+  return h;
+}
+
+#load "activity-checks.coax" #test;

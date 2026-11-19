@@ -1,0 +1,106 @@
+// Checks for the app set's activity group (activity.coax).
+#load "checks-kit.coax";
+
+app_act_t_is :: (c: AppActCount, want: string) -> bool {
+  buf: [256] u8; n := app_act_summary(buf[..], c);
+  return cast(string) buf[0..<n] == want;
+}
+
+#test "app activity: the summary counts kinds in Zeron's words and order, the first letter raised; seconds read as Zeron says them" {
+  c := [1] AppActCount.[AppActCount.{}];
+  app_act_count(c[..], APP_ACT_EXEC, false); app_act_count(c[..], APP_ACT_THOUGHT, false); app_act_count(c[..], APP_ACT_EXEC, false);
+  #assert app_act_t_is(c[0], "Thought process · ran 2 commands");
+  app_act_count(c[..], APP_ACT_READ, true); app_act_count(c[..], APP_ACT_AGENT, false); app_act_count(c[..], APP_ACT_THOUGHT, false);
+  #assert app_act_t_is(c[0], "Thought 2 times · ran 2 commands · read 1 file · ran a subagent · 1 failed");
+  d := [1] AppActCount.[AppActCount.{}];
+  app_act_count(d[..], APP_ACT_READ, false); app_act_count(d[..], APP_ACT_READ, false); app_act_count(d[..], APP_ACT_AGENT, false); app_act_count(d[..], APP_ACT_AGENT, false);
+  #assert app_act_t_is(d[0], "Read 2 files · ran 2 subagents") && app_act_t_is(AppActCount.{}, "");
+  b: [24] u8;
+  #assert cast(string) b[0..<app_act_elapsed(b[..], 9)] == "9s" && cast(string) b[0..<app_act_elapsed(b[..], 65)] == "1m 5s" && cast(string) b[0..<app_act_elapsed(b[..], 7380)] == "2h 3m";
+  // the working word rolls every seven seconds from the seed's word
+  #assert cast(string) b[0..<app_working_word(b[..], 0, 2)] == "Scheming…" && cast(string) b[0..<app_working_word(b[..], 6, 2)] == "Scheming…" && cast(string) b[0..<app_working_word(b[..], 7, 2)] == "Brewing…";
+}
+
+#test "app activity: a group is open while it works and folded once done, unless the person chose; a choice flips what shows" {
+  #assert app_act_open(APP_ACT_UNCHOSEN, true) && !app_act_open(APP_ACT_UNCHOSEN, false);
+  #assert app_act_choose(APP_ACT_UNCHOSEN, true) == APP_ACT_FOLDED && app_act_choose(APP_ACT_UNCHOSEN, false) == APP_ACT_OPENED;
+  #assert app_act_open(APP_ACT_OPENED, false) && !app_act_open(APP_ACT_FOLDED, true);
+  // Coder Desktop's 1.2: every size divided, strengths and counts kept
+  a := app_act_scaled(2);
+  #assert a.trunk == 4.25 && a.row == 14 && a.gutter == 24 && a.tree_ink == 0.12 && a.thought_lines == 4 && a.rotate == 7;
+}
+
+#test "app activity: the header, rows and the working line sit on Zeron's measures: trunk 8.5, elbow 6 to 20, glyph at 24, words at 48, rows 28, header 26" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..]; s := arcade_phone_skin(); a := s.act;
+  app_test_begin(t[..], "", "", true);
+  y := app_act_head(f, "g", 0, 0, 400, "Thought process · ran 2 commands", true, true, 7);
+  #assert y == 26;
+  r := AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = "gh issue list --state open", output = "a\nb"};
+  y += app_act_row(f, "g.0", 0, y, 400, r, true, 9);
+  r.running = true; r.output = "";
+  y += app_act_row(f, "g.1", 0, y, 400, r, false, 9);
+  wy := y; y += app_working(f, "w", 0, y, 9, 1, "");
+  #assert app_test_end(t[..]) && y == 26 + 28 + 28 + 26;
+  #assert app_test_label(t[..], "g") == "Thought process · ran 2 commands" && app_test_has(t[..], "g", EL_S_EXPANDED | EL_S_BUSY) && app_test_pressable(t[..], "g");
+  #assert app_test_label(t[..], "g.0") == "Ran gh issue list --state open" && app_test_has(t[..], "g.0", EL_S_EXPANDS) && app_test_pressable(t[..], "g.0");
+  #assert app_test_has(t[..], "g.1", EL_S_BUSY) && !app_test_pressable(t[..], "g.1");
+  #assert app_test_label(t[..], "w") == "Working";
+  #assert app_test_has(t[..], "w", EL_S_BUSY | EL_S_LIVE);
+  #assert app_test_texts(t[..], "Scheming…") == 1 && app_test_texts(t[..], "9s") == 1 && app_test_texts(t[..], "Ran") == 2;
+  // the geometry: two elbows from the trunk at 8.5 to 20, their bend 6 above each row's middle; the trunk runs through the first row
+  sh := surface_sheet(t[0].sf[..]); elbows := 0; trunk_full := false; glyph_ok := false;
+  for i: 0..<sh.nu {
+    p := sh.under[i];
+    if p.kind == PRIM_ELBOW { elbows += 1; #assert p.x == 8.5 && p.radius == 6 && p.a == 20 && (p.y == 26 + 14 - 6 || p.y == 54 + 14 - 6); #assert p.on == (p.y == 34); }
+    if p.kind == PRIM_BOX && p.x == 8 && p.w == 1 && p.y == 26 && p.h == 28 { trunk_full = true; }
+    if p.kind == PRIM_ICON && p.x == 24 && p.y == 26 + 6 && p.w == 16 { glyph_ok = true; }
+  }
+  #assert elbows == 2 && trunk_full && glyph_ok;
+  // the words start at 48
+  so := surface_sheet(t[0].sf[..]); at48 := 0;
+  for i: 0..<so.no { if so.over[i].kind == PRIM_TEXT && so.over[i].text == "Ran" { #assert so.over[i].x == 48; at48 += 1; } }
+  #assert at48 == 2 && wy == 82;
+}
+
+#test "app activity: a row opens onto its output, a long one folds at ten lines under Show all; a press on another id is not the row's" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  long := "1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12";
+  r := AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = "seq 12", output = long};
+  app_test_begin(t[..], "", "", true);
+  closed := app_act_row(f, "x.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && closed == 28 && app_test_find(t[..], "x.0.output") < 0;
+  #assert app_act_press(t[0].ks[..], "x.0", "x.0") && !app_act_press(t[0].ks[..], "x.0", "x.1") && !app_act_press(t[0].ks[..], "x.0", "x.0.zzz");
+  app_test_begin(t[..], "", "", true);
+  open := app_act_row(f, "x.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && open > closed;
+  #assert app_test_has(t[..], "x.0", EL_S_EXPANDED);
+  #assert app_test_find(t[..], "x.0.output") >= 0;
+  #assert app_test_label(t[..], "x.0.out") == "Show all 12 lines" && app_test_texts(t[..], "10") == 1 && app_test_texts(t[..], "11") == 0;
+  #assert app_act_press(t[0].ks[..], "x.0", "x.0.out");
+  app_test_begin(t[..], "", "", true);
+  whole := app_act_row(f, "x.0", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && whole > open && app_test_label(t[..], "x.0.out") == "Show fewer lines" && app_test_texts(t[..], "12") == 1;
+  // a sub-agent's row dispatches its own action and never opens in place
+  g := AppActRow.{kind = APP_ACT_AGENT, verb = "Ran a subagent", target = "Carbon · count the files", opens = true, running = true};
+  app_test_begin(t[..], "", "", true);
+  gh := app_act_row(f, "t0.g0", 0, 0, 400, g, false, 10);
+  #assert app_test_end(t[..]) && gh == 28 && app_test_pressable(t[..], "t0.g0") && app_test_row(t[..], "t0.g0").action == 10 && !app_test_has(t[..], "t0.g0", EL_S_EXPANDS);
+}
+
+#test "app activity: a thought's words sit in the tree; past four lines they fold under Show all N lines, and open whole" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  words := "one\ntwo\nthree\nfour\nfive\nsix";
+  r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = words};
+  app_test_begin(t[..], "", "", true);
+  h := app_act_row(f, "th", 0, 0, 400, r, true, 9);
+  #assert app_test_end(t[..]) && h == 4 + 4 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show all 6 lines" && app_test_texts(t[..], "five") == 0;
+  #assert app_act_press(t[0].ks[..], "th", "th");
+  app_test_begin(t[..], "", "", true);
+  h = app_act_row(f, "th", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && h == 4 + 6 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show fewer lines" && app_test_texts(t[..], "six") == 1;
+  // a short one shows no button and no fade
+  r.output = "just this";
+  app_test_begin(t[..], "", "", true);
+  h = app_act_row(f, "th2", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && h == 28 && app_test_find(t[..], "th2") < 0 && app_test_value(t[..], "th2.words") == "just this";
+}
