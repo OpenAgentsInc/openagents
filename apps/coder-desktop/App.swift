@@ -308,20 +308,29 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
     /// on a worker of its own, all at once, and the run's page reads every line. (Each count is
     /// taken before its write: see act.)
+    private func stopRun(_ r: CoderRun) {
+        var out = [CChar](repeating: 0, count: 4096)
+        let n = cd_stop_line(&out, Int32(out.count))
+        r.worker.write(out, count: Int(n))
+        for (_, one) in r.agents { one.write(out, count: Int(n)) }
+    }
     private func pump(_ r: CoderRun) {
         var out = [CChar](repeating: 0, count: 300_000)
         let page = r.page, cwd = (r === run ? folder : r.folder).path
-        while true {
-            let j = cd_agent_next(page)
-            if j < 0 { break }
-            let one = CoderWorker()
-            if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-            one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.pump(r) }
-            one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.pump(r) }
-            guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
-            r.agents[j] = one
-            let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), cwd, &out, Int32(out.count))
-            one.write(out, count: Int(n))
+        if r !== run && cd_action(page) == 3 { stopRun(r) }
+        if cd_budget_exceeded(page) == 0 {
+            while true {
+                let j = cd_agent_next(page)
+                if j < 0 { break }
+                let one = CoderWorker()
+                if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+                one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.pump(r) }
+                one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.pump(r) }
+                guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
+                r.agents[j] = one
+                let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), cwd, &out, Int32(out.count))
+                one.write(out, count: Int(n))
+            }
         }
         for (j, one) in r.agents {
             let n = cd_agent_answer_line(page, j, &out, Int32(out.count))
@@ -410,7 +419,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             run.worker.write(out, count: Int(n))
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
-        case 3: let n = cd_stop_line(&out, Int32(out.count)); run.worker.write(out, count: Int(n))
+        case 3: stopRun(run)
         case 4:
             // a new chat: one whose reply is running goes on out of view
             guard detach() else { return }
@@ -426,6 +435,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             // a press on a chat in the sidebar: its kept text becomes the chat that is shown
             guard cd_open_id(page, &out, Int32(out.count)) > 0 else { return }
             open(String(cString: out))
+        case 8: editBudget()
         default: break
         }
     }
@@ -464,6 +474,35 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
     var canDelete: Bool { chat != nil && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }
+    /// Asks for a new max budget (USD) for the shown chat thread.
+    func editBudget() {
+        let currentCost = Double(cd_cost_usd_micros(page)) / 1_000_000.0
+        let currentBudget = Double(cd_budget_usd_micros(page)) / 1_000_000.0
+        let alert = NSAlert()
+        alert.messageText = "Chat Max Budget"
+        alert.informativeText = String(format: "Set the maximum spend (USD) for this chat thread. Current spend: $%.2f.", currentCost)
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = String(format: "%.2f", currentBudget)
+        field.placeholderString = "50.00"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            defer { self.window.makeFirstResponder(self.editor) }
+            guard answer == .alertFirstButtonReturn else { return }
+            let cleaned = field.stringValue
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "$", with: "")
+                .replacingOccurrences(of: ",", with: "")
+            guard let dollars = Double(cleaned), dollars.isFinite, dollars > 0, dollars <= 1_000_000 else { return }
+            let micros = Int64((dollars * 1_000_000.0).rounded())
+            guard micros > 0 else { return }
+            _ = cd_set_budget_usd_micros(self.page, micros)
+            self.wake()
+        }
+    }
     /// Asks for a new title, then renames a kept chat.
     func rename(_ id: String) {
         guard let current = store.title(id) else { return }

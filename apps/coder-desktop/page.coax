@@ -74,10 +74,12 @@ CP_CORNER :: 6;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-neon";               // Microcoder's own model (Hydrogen until 2026-11-18)
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
 
+// Default per-chat-thread max budget in microdollars ($50.00).
+CP_BUDGET_DEFAULT :: 50000000;
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
 CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
@@ -153,8 +155,10 @@ CoderPage :: struct {
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
   open: int;                  // the row a press asked to open
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
-  kept_turns: int; kept_running: bool; kept_cost: int;      // what the host last kept (coder_page_save_due)
+  kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
   cost_usd_micros: int;                                     // running total cost of this chat in microdollars (1e-6 USD)
+  budget_usd_micros: int;                                   // per-chat max budget in microdollars (default CP_BUDGET_DEFAULT)
+  budget_override: bool;                                    // user manually approved continuing above budget_usd_micros
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
@@ -191,6 +195,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].keyed[0] = KeyedStore.{rows = s[0].keys[..]};
   s[0].stick = true; s[0].copied_turn = -1; s[0].copied_block = -1;
   s[0].zoom = CP_ZOOM_USUAL;
+  s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
@@ -298,9 +303,23 @@ cp_clamp :: (s: [] CoderPage) {
   if s[0].scroll < 0 { s[0].scroll = 0; }
 }
 // The draft becomes a turn. False when there is nothing to send or nowhere to put it.
+cp_budget :: (s: [] CoderPage) -> int {
+  return ifx s[0].budget_usd_micros > 0 then s[0].budget_usd_micros else CP_BUDGET_DEFAULT;
+}
+cp_budget_exceeded :: (s: [] CoderPage) -> bool {
+  return !s[0].budget_override && s[0].cost_usd_micros >= cp_budget(s);
+}
+cp_add_cost :: (s: [] CoderPage, delta: int) {
+  if delta <= 0 { return; }
+  s[0].cost_usd_micros += delta;
+  if cp_budget_exceeded(s) && cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+    s[0].turns[s[0].nturns - 1].stopping = true;
+    s[0].ask = CP_ASK_STOP;
+  }
+}
 cp_send :: (s: [] CoderPage) -> bool {
   text := eb_text(s[0].draft[..]);
-  if text.count == 0 || cp_running(s) || cp_full(s) { return false; }
+  if text.count == 0 || cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
   i := s[0].nturns;
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], text);
   s[0].turns[i].reply_n = 0; s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].early_cmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
@@ -614,7 +633,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   kind := mww_read(ar[..], line, l[..]);
   claude := s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;   // its worker's ask is a tool call starting: no answer is owed
   waited := s[0].clock - s[0].turns[i].agents[j].heard; s[0].turns[i].agents[j].heard = s[0].clock;
-  if kind == MWW_ATTEMPT { s[0].cost_usd_micros += cp_attempt_cost(l[0]); }
+  if kind == MWW_ATTEMPT { cp_add_cost(s, cp_attempt_cost(l[0])); }
   if kind == MWW_ATTEMPT && l[0].outcome == "retried" {
     // a model call that failed before its answer and goes again: the row says so until the sub-agent moves on
     tb: [24] u8; ab := s[0].turns[i].agents[j].again[..]; n := 0;
@@ -815,14 +834,28 @@ cp_cost :: (out: [] u8, micros: int) -> string {
   n = el_put_i(out, n, rem);
   return cast(string) out[0..<n];
 }
-// The chat's running total cost in microdollars (1,000,000 = $1.00).
+// The chat's running total cost and max budget in microdollars (1,000,000 = $1.00).
 coder_page_cost_usd_micros :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].cost_usd_micros else 0; }
+coder_page_budget_usd_micros :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_budget(s) else CP_BUDGET_DEFAULT; }
+coder_page_set_budget_usd_micros :: (s: [] CoderPage, micros: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || micros <= 0 { return false; }
+  s[0].budget_usd_micros = micros;
+  if s[0].cost_usd_micros < micros { s[0].budget_override = false; }
+  if cp_budget_exceeded(s) && cp_running(s) && !s[0].turns[s[0].nturns - 1].stopping {
+    s[0].turns[s[0].nturns - 1].stopping = true;
+    s[0].ask = CP_ASK_STOP;
+  }
+  return true;
+}
+coder_page_budget_exceeded :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_budget_exceeded(s); }
+coder_page_budget_approve :: (s: [] CoderPage) -> bool #export_c #effects(all) { if s.count < 1 { return false; } s[0].budget_override = true; return true; }
 coder_page_save_due :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   r := cp_running(s);
-  if s[0].nturns == 0 { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; return false; }
-  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost { return false; }
-  s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros;
+  b := cp_budget(s);
+  if s[0].nturns == 0 { s[0].kept_turns = 0; s[0].kept_running = false; s[0].kept_cost = 0; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override; return false; }
+  if r == s[0].kept_running && s[0].nturns == s[0].kept_turns && s[0].cost_usd_micros == s[0].kept_cost && b == s[0].kept_budget && s[0].budget_override == s[0].kept_override { return false; }
+  s[0].kept_running = r; s[0].kept_turns = s[0].nturns; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = b; s[0].kept_override = s[0].budget_override;
   return true;
 }
 cp_whole :: (seconds: f32) -> int { return ifx seconds < 0 then -1 else cast(int) seconds; }
@@ -847,6 +880,9 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
   if s.count < 1 { return 0; }
   n := json_raw(out, 0, "{\"v\":1,\"cost_usd_micros\":");
   n = json_write_int(out, n, s[0].cost_usd_micros);
+  n = json_raw(out, n, ",\"budget_usd_micros\":");
+  n = json_write_int(out, n, cp_budget(s));
+  if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
   n = json_raw(out, n, ",\"turns\":[");
   for i: 0..<s[0].nturns {
     n = json_raw(out, n, ifx i > 0 then ",{\"ask\":" else "{\"ask\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]);
@@ -952,8 +988,12 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   }
   cost := cl_int(text, "cost_usd_micros");
   s[0].cost_usd_micros = ifx cost.ok && cost.value > 0 then cost.value else 0;
+  budget := cl_int(text, "budget_usd_micros");
+  s[0].budget_usd_micros = ifx budget.ok && budget.value > 0 then budget.value else CP_BUDGET_DEFAULT;
+  ov := cl_bool(text, "budget_override");
+  s[0].budget_override = ov.ok && ov.value;
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
-  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].pane_open = false;
+  s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override; s[0].pane_open = false;
   return true;
 }
 // The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
@@ -977,7 +1017,9 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
 // host first moves that chat out of view (coder_page_take), where its run goes on.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
-  s[0].nturns = 0; cp_calls_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
+  s[0].nturns = 0; cp_calls_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0;
+  s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
+  s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 // A page with no window, for a chat whose reply runs out of view.
@@ -1000,11 +1042,13 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
-  to[0].cost_usd_micros = from[0].cost_usd_micros;
+  to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override;
+  to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override;
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
   to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
   from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
+  from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
   from[0].pane_open = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
   from[0].scroll = 0; from[0].stick = true;
   return true;
@@ -1078,6 +1122,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if s[0].nturns == 0 { return false; }
     s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true;
   }
+  if act == CP_BUDGET_EDIT { s[0].ask = CP_ASK_BUDGET; return true; }
+  if act == CP_BUDGET_APPROVE { s[0].budget_override = true; return true; }
   return false;
 }
 
@@ -1256,7 +1302,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   x := left + (w - left - cw) / 2;
   s[0].col_x = x; s[0].col_w = cw;
   side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
-  running := cp_running(s); full := cp_full(s);
+  running := cp_running(s); full := cp_full(s); exceeded := cp_budget_exceeded(s);
   bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
   top: f32 = 0; bottom := h - CP_BOTTOM - bar;   // what scrolls runs up to the bar
   s[0].view = bottom - top;
@@ -1264,7 +1310,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   uiframe_clip(f, left, top, w, bottom);
   y := top - s[0].scroll + a.gap;
   // where the column reaches under a corner's buttons, the first message starts below them
-  right_corner := 2 * side + CP_CORNER + (ifx s[0].cost_usd_micros > 0 then 72.0f32 else 0.0f32);
+  right_corner := (ifx left > 0 then side else 2 * side) + CP_CORNER + 128.0f32;
   if x + cw > w - right_corner || left == 0 && x < CP_CORNER + CP_FOLDER_MOST { y += CP_CORNER + side; }
   if s[0].nturns == 0 {
     _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
@@ -1328,19 +1374,41 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     }
   }
   if full && !running { y += app_notice(f, "coder.full", x, y, cw, "This chat holds 24 messages. Start a new chat to send more.", APP_NOTICE_INFO) + a.gap; }
+  if exceeded {
+    cb1: [32] u8; bb1: [32] u8; nb: [160] u8;
+    c_str := ifx s[0].cost_usd_micros > 0 then cp_cost(cb1[..], s[0].cost_usd_micros) else "$0.00";
+    b_str := cp_cost(bb1[..], cp_budget(s));
+    nn := el_put(nb[..], 0, "Chat budget reached ("); nn = el_put(nb[..], nn, c_str); nn = el_put(nb[..], nn, " / "); nn = el_put(nb[..], nn, b_str);
+    nn = el_put(nb[..], nn, "). Approve continuing above budget or increase the limit.");
+    y += app_notice(f, "coder.budget.notice", x, y, cw, sheet_pool(f[0].sheet, cast(string) nb[0..<nn]), APP_NOTICE_ERROR) + a.gap_small;
+    aw := app_button_width(f, -1, "Continue above budget");
+    ew := app_button_width(f, -1, "Edit budget");
+    if aw + a.gap_small + ew <= cw {
+      bh := app_button(f, "coder.budget.approve", x, y, aw, -1, "Continue above budget", APP_BUTTON_PRIMARY, 0, CP_BUDGET_APPROVE);
+      _ := app_button(f, "coder.budget.edit", x + aw + a.gap_small, y, ew, -1, "Edit budget", APP_BUTTON_DEFAULT, 0, CP_BUDGET_EDIT);
+      y += bh + a.gap;
+    } else {
+      y += app_button(f, "coder.budget.approve", x, y, cw, -1, "Continue above budget", APP_BUTTON_PRIMARY, 0, CP_BUDGET_APPROVE) + a.gap_small;
+      y += app_button(f, "coder.budget.edit", x, y, cw, -1, "Edit budget", APP_BUTTON_DEFAULT, 0, CP_BUDGET_EDIT) + a.gap;
+    }
+  }
   uiframe_unclip(f);
   s[0].content = y + s[0].scroll - top;
   // New chat floats in the window's top right corner, over what scrolls
-  if s[0].cost_usd_micros > 0 {
-    cb: [32] u8; cost := cp_cost(cb[..], s[0].cost_usd_micros);
-    cw_cost := measure_width(f[0].m, k.small.face, cost);
-    cx := w - 2 * a.icon_button - CP_CORNER - a.gap_small - cw_cost;
-    if cx > left + CP_CORNER {
-      _ := app_meta(f, "coder.cost", cx, CP_CORNER + (side - k.small.line) / 2, cw_cost + 2, sheet_pool(f[0].sheet, cost), false);
-    }
-  }
   all := s[0].copied_kind == CP_COPIED_ALL;
   copy_x := ifx left > 0 then w - a.icon_button - CP_CORNER else w - 2 * a.icon_button - CP_CORNER;
+  {
+    cb: [32] u8; bb: [32] u8; lb: [64] u8;
+    cost := ifx s[0].cost_usd_micros > 0 then cp_cost(cb[..], s[0].cost_usd_micros) else "$0.00";
+    bud := cp_cost(bb[..], cp_budget(s));
+    ln := el_put(lb[..], 0, cost); ln = el_put(lb[..], ln, " / "); ln = el_put(lb[..], ln, bud);
+    label := sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
+    cw_cost := app_chip_width(f, -1, label, 0);
+    cx := copy_x - a.gap_small - cw_cost;
+    if cx > left + CP_CORNER {
+      _ := app_chip(f, "coder.cost", cx, CP_CORNER + (side - k.cmp.chip_h) / 2, 0, -1, "Chat budget", label, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT);
+    }
+  }
   _ := app_icon_button(f, "coder.copy", copy_x, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
@@ -1381,7 +1449,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     if footer_h > 0 { cp_side_footer(f, 0, h - footer_h, sw); }
   }
   c := AppComposer.{placeholder = "Message", text = eb_text(s[0].draft[..]),
-    state = ifx running then APP_COMPOSER_RUNNING else ifx full then APP_COMPOSER_OFF else APP_COMPOSER_READY,
+    state = ifx running then APP_COMPOSER_RUNNING else ifx (full || exceeded) then APP_COMPOSER_OFF else APP_COMPOSER_READY,
     editing = s[0].focused, editor_h = s[0].editor_h / cp_scale(s), unit = ARCADE_PHONE_SCALE};
   s[0].box = app_composer(f, "coder.composer", "coder.composer.send", x, h - CP_BOTTOM, cw, c, CP_FIELD, CP_SEND);
   // the working folder sits in the composer's bottom-left toolbar, matching Claude Desktop;
@@ -1648,7 +1716,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
   if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
-  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; s[0].cost_usd_micros += cp_attempt_cost(l[0]); }
+  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); }
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }
@@ -2315,6 +2383,47 @@ cp_find :: (text: string, needle: string) -> int {
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":12500}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 12500;
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":7500,\"usd_micros\":9999}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 7500;
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"retried\",\"status\":429}", l[..]) == MWW_ATTEMPT && cp_attempt_cost(l[0]) == 0;
+}
+
+#test "per-thread max budget defaults to $50, persists across save/load/take, auto-stops on exceed, and requires manual approval or budget increase" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_usd_micros(s) == 100000;
+  #assert !coder_page_set_budget_usd_micros(s, 0) && !coder_page_set_budget_usd_micros(s, -5);
+  // Start a turn and exceed the $0.10 budget: page automatically asks host to stop.
+  #assert coder_page_set_text(s, "do work") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"vertex\",\"outcome\":\"done\",\"status\":200,\"usd_micros\":100000}") == MWW_ATTEMPT;
+  #assert coder_page_cost_usd_micros(s) == 100000 && coder_page_budget_exceeded(s) && coder_page_action(s) == CP_ASK_STOP;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\"}") == MWW_ENDED && !cp_running(s);
+  // New turns are blocked while over budget.
+  #assert coder_page_set_text(s, "more work") && !coder_page_submit(s);
+  // Persist and reload preserves custom budget and cost.
+  kept: [16384] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  #assert coder_page_load(s, cast(string) kept[0..<kn]) && coder_page_budget_usd_micros(s) == 100000 && coder_page_cost_usd_micros(s) == 100000 && coder_page_budget_exceeded(s);
+  // Older chats without budget_usd_micros default to $50.
+  #assert coder_page_load(s, "{\"v\":1,\"cost_usd_micros\":5000,\"turns\":[{\"ask\":\"hi\",\"reply\":\"hello\"}]}") && coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
+  // Reload over-budget chat, approve continuing above budget, verify unblocked and save_due.
+  #assert coder_page_load(s, cast(string) kept[0..<kn]) && coder_page_budget_exceeded(s) && !coder_page_save_due(s);
+  #assert coder_page_budget_approve(s) && !coder_page_budget_exceeded(s) && coder_page_save_due(s);
+  // Persist override across save/load.
+  kn2 := coder_page_save(s, kept[..]);
+  #assert kn2 > 0 && coder_page_load(s, cast(string) kept[0..<kn2]) && !coder_page_budget_exceeded(s) && s[0].budget_override;
+  // Can now submit a new turn; raising budget above current cost clears override; lowering re-triggers exceeded + stop.
+  #assert coder_page_set_text(s, "continue") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_set_budget_usd_micros(s, 500000) && !s[0].budget_override && !coder_page_budget_exceeded(s);
+  #assert coder_page_set_budget_usd_micros(s, 50000) && coder_page_budget_exceeded(s) && coder_page_action(s) == CP_ASK_STOP;
+}
+
+#test "per-thread max budget and override transfer across coder_page_take and reset the source page" {
+  p: [1] CoderPage; s := p[..]; q: [1] CoderPage; b := q[..];
+  cp_init(s); cp_init(b);
+  #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_approve(s);
+  #assert coder_page_set_text(s, "run") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_take(b, s);
+  #assert coder_page_budget_usd_micros(b) == 100000 && b[0].budget_override;
+  #assert coder_page_budget_usd_micros(s) == 50000000 && !s[0].budget_override;
 }
 
 #test "desktop skin matches Claude sidebar proportions while keeping Coder monochrome palette" {

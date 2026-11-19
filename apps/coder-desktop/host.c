@@ -133,6 +133,10 @@ void cd_line(void *page, const char *line) { CoderHost *c = page; if (!c) return
 void cd_failed(void *page, const char *why) { CoderHost *c = page; if (!c) return; coder_page_failed(cd_state(c), cd_string(why)); cd_changed(c); }
 int cd_running(void *page) { CoderHost *c = page; return c && coder_page_running(cd_state(c)); }
 int64_t cd_cost_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_cost_usd_micros(cd_state(c)) : 0; }
+int64_t cd_budget_usd_micros(void *page) { CoderHost *c = page; return c ? coder_page_budget_usd_micros(cd_state(c)) : 50000000; }
+int cd_set_budget_usd_micros(void *page, int64_t micros) { CoderHost *c = page; return c ? (int)coder_page_set_budget_usd_micros(cd_state(c), micros) : 0; }
+int cd_budget_exceeded(void *page) { CoderHost *c = page; return c ? (int)coder_page_budget_exceeded(cd_state(c)) : 0; }
+int cd_budget_approve(void *page) { CoderHost *c = page; return c ? (int)coder_page_budget_approve(cd_state(c)) : 0; }
 int cd_copied(void *page, char *out, int cap) {
   CoderHost *c = page;
   if (!c || cap < 1) return 0;

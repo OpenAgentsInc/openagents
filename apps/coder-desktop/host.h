@@ -80,6 +80,10 @@ void cd_failed(void *page, const char *why);
 int cd_running(void *page);
 // The chat's running total cost in microdollars (1,000,000 = $1.00), updated in real time as attempts arrive.
 int64_t cd_cost_usd_micros(void *page);
+int64_t cd_budget_usd_micros(void *page);
+int cd_set_budget_usd_micros(void *page, int64_t micros);
+int cd_budget_exceeded(void *page);
+int cd_budget_approve(void *page);
 int cd_copied(void *page, char *out, int cap);
 // The text's committed box (x, y, w, h, the first line's inset, a line's height), or 0 before the
 // first frame; the editor's style from the skin (14 floats, as apps/shared/composer/host.h's gc_style).
