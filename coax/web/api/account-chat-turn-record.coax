@@ -64,19 +64,26 @@ ctr_message_read :: (raw:string,conversation:string,out:[]CtMessage,text:[]u8)->
  }
  out[0]=next[0];return true;
 }
+// The whole page is checked before out changes, so a refused page leaves out
+// as it was. The checked fields are held in locals and the page bytes copied
+// straight into out: a [1]CtHistory local would be a 1 MB stack frame (#13747).
 ctr_history_read :: (raw:string,out:[]CtHistory)->bool {
  if raw.count>1048576 {return false;}d:[1]Jv;nodes:[2304]JvNode;if !jv_parse(d[..],raw,nodes[..]) {return false;}v:=d[0];keys:=[11]string.["schema","id","revision","project_id","legacy_thread_id","legacy_thread_revision","messages","active_turn_id","created_at_ms","updated_at_ms","next_cursor"];
  if !js_fields(v,0,keys[..]) || jv_len(v,0)!=11 || jv_raw(v,jv_get(v,0,"schema"))!=CTR_CONVERSATION {return false;}
- next:[1]CtHistory;n:=js_string(v,jv_get(v,0,"id"),next[0].id[..]);next[0].revision=js_number(v,jv_get(v,0,"revision"));next[0].project_n=ctr_reference(v,"project_id","prj_",next[0].project[..]);next[0].active_n=ctr_reference(v,"active_turn_id","trn_",next[0].active[..]);next[0].created=js_number(v,jv_get(v,0,"created_at_ms"));next[0].updated=js_number(v,jv_get(v,0,"updated_at_ms"));
- if n!=36 || !ct_id(cast(string)next[0].id[..],"cnv_",32) || next[0].revision<1 || next[0].revision>CT_SEQUENCE_MAX || next[0].project_n<0 || next[0].active_n<0 || !ctr_time(next[0].created) || !ctr_time(next[0].updated) || next[0].updated<next[0].created {return false;}
- legacy:=jv_get(v,0,"legacy_thread_id");next[0].legacy_n=ct_nullable_string(v,legacy,next[0].legacy[..]);next[0].legacy_revision=ct_nullable_number(v,jv_get(v,0,"legacy_thread_revision"));if next[0].legacy_n<0 {return false;}
- if next[0].legacy_n==0 {if jv_kind(v,legacy)!=JV_NULL || next[0].legacy_revision!= -1 {return false;}}else if !ct_id(cast(string)next[0].legacy[..],"m_",20) || next[0].legacy_revision<1 {return false;}
- cursor:=jv_get(v,0,"next_cursor");if jv_kind(v,cursor)!=JV_NULL {b:[10]u8;n=js_string(v,cursor,b[..]);if n<1 {return false;}next[0].next=ctr_cursor(cast(string)b[0..<n]);if next[0].next<0 {return false;}}
- list:=jv_get(v,0,"messages");count:=jv_len(v,list);if jv_kind(v,list)!=JV_ARRAY || count>32 || (next[0].next>=0 && count==0) {return false;}m:[1]CtMessage;text:[131087]u8;
- for index:0..<count {at:=jv_at(v,list,index);if !ctr_message_read(jv_raw(v,at),cast(string)next[0].id[..],m[..],text[..]) {return false;}next[0].starts[index]=v.nodes[at].from;next[0].ends[index]=v.nodes[at].to;
+ id:[36]u8;project:[36]u8;active:[36]u8;legacy:[22]u8;starts:[32]int;ends:[32]int;
+ n:=js_string(v,jv_get(v,0,"id"),id[..]);revision:=js_number(v,jv_get(v,0,"revision"));project_n:=ctr_reference(v,"project_id","prj_",project[..]);active_n:=ctr_reference(v,"active_turn_id","trn_",active[..]);created:=js_number(v,jv_get(v,0,"created_at_ms"));updated:=js_number(v,jv_get(v,0,"updated_at_ms"));
+ if n!=36 || !ct_id(cast(string)id[..],"cnv_",32) || revision<1 || revision>CT_SEQUENCE_MAX || project_n<0 || active_n<0 || !ctr_time(created) || !ctr_time(updated) || updated<created {return false;}
+ legacy_at:=jv_get(v,0,"legacy_thread_id");legacy_n:=ct_nullable_string(v,legacy_at,legacy[..]);legacy_revision:=ct_nullable_number(v,jv_get(v,0,"legacy_thread_revision"));if legacy_n<0 {return false;}
+ if legacy_n==0 {if jv_kind(v,legacy_at)!=JV_NULL || legacy_revision!= -1 {return false;}}else if !ct_id(cast(string)legacy[..],"m_",20) || legacy_revision<1 {return false;}
+ next:= -1;cursor:=jv_get(v,0,"next_cursor");if jv_kind(v,cursor)!=JV_NULL {b:[10]u8;n=js_string(v,cursor,b[..]);if n<1 {return false;}next=ctr_cursor(cast(string)b[0..<n]);if next<0 {return false;}}
+ list:=jv_get(v,0,"messages");count:=jv_len(v,list);if jv_kind(v,list)!=JV_ARRAY || count>32 || (next>=0 && count==0) {return false;}m:[1]CtMessage;text:[131087]u8;
+ for index:0..<count {at:=jv_at(v,list,index);if !ctr_message_read(jv_raw(v,at),cast(string)id[..],m[..],text[..]) {return false;}starts[index]=v.nodes[at].from;ends[index]=v.nodes[at].to;
   for before:0..<index {previous:=jv_at(v,list,before);if jv_raw(v,jv_get(v,previous,"id"))==cast(string)m[0].id[0..<m[0].id_n] {return false;}}
  }
- next[0].n=count;next[0].raw_n=js_copy(next[0].raw[..],raw);out[0]=next[0];return true;
+ h:=out[0..<1];stale:=h[0].raw_n;if stale<0 || stale>h[0].raw.count {stale=h[0].raw.count;}
+ h[0].raw_n=js_copy(h[0].raw[..],raw);for i:h[0].raw_n..<stale {h[0].raw[i]=0;}
+ h[0].id=id;h[0].revision=revision;h[0].project=project;h[0].project_n=project_n;h[0].legacy=legacy;h[0].legacy_n=legacy_n;h[0].legacy_revision=legacy_revision;h[0].active=active;h[0].active_n=active_n;
+ h[0].created=created;h[0].updated=updated;h[0].next=next;h[0].starts=starts;h[0].ends=ends;h[0].n=count;return true;
 }
 ctr_history_message :: (h:[]CtHistory,index:int,out:[]CtMessage,text:[]u8)->bool {
  if index<0 || index>=h[0].n {return false;}return ctr_message_read(cast(string)h[0].raw[h[0].starts[index]..<h[0].ends[index]],cast(string)h[0].id[..],out,text);

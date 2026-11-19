@@ -13,3 +13,12 @@ rm -rf $g/Components/fonts $g/Components/icons
 cp -R components/zeron/fonts components/zeron/icons $g/Components/
 cp components/zeron/NOTICE $g/Components/NOTICE
 '
+# Frame budget (#13747): the generated C may hold no stack frame over 512 KB, at -Os with and
+# without inlining, as the iOS release build compiles it. Needs Xcode; skipped elsewhere.
+if command -v xcrun > /dev/null && sdk="$(xcrun --sdk iphoneos --show-sdk-path 2> /dev/null)"; then
+  for inline in "" -fno-inline; do
+    xcrun clang -target arm64-apple-ios17.0 -isysroot "$sdk" -Os $inline -c apps/openagents-ios/Generated/gallery.c \
+      -I apps/openagents-ios/Generated -I apps/openagents-ios -o /dev/null -Wframe-larger-than=524288 -Werror=frame-larger-than \
+      || { echo "generate.sh: a stack frame is over the 512 KB budget${inline:+ ($inline)}; move the large local into caller-owned state (#13747)" >&2; exit 1; }
+  done
+fi

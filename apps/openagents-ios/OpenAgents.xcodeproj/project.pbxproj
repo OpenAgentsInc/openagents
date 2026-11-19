@@ -415,6 +415,11 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wframe-larger-than=524288",
+					"-Werror=frame-larger-than",
+				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-Wl,-stack_size,0x4000000",
@@ -529,6 +534,11 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
+				);
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-Wframe-larger-than=524288",
+					"-Werror=frame-larger-than",
 				);
 				OTHER_LDFLAGS = (
 					"$(inherited)",

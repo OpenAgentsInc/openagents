@@ -204,7 +204,10 @@ fi
 if [[ "${1:-}" == "test" ]]; then
   [[ -z "${snapshot:-}" ]] || rm -rf "$snapshot"
   [[ -z "$building" ]] || rm -rf "$building"
-  [[ -z "$changed_file" ]] || rm -f "$changed_file"
+  # The changed-lines file is this build's own: remove it and stop exporting
+  # it, or the nested builds in tests/run.sh (provenance, release) read a
+  # path that no longer exists ("no changed-lines file").
+  if [[ -n "$changed_file" ]]; then rm -f "$changed_file"; unset COAX_MUTATION_CHANGED; fi
   trap - EXIT
   exec tests/run.sh
 fi

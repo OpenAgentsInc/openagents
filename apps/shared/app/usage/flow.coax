@@ -69,6 +69,21 @@ us_sync :: (s:[]UsageScreen,c:[]AppCore,visible:bool) {
   if due>=0 && due<=c[0].mono_ms {due=c[0].mono_ms+1000;}_=app_guest_due(c,OWN_USAGE,due);
  }
 }
+// Views follow their hosts into the new catalog order: views[i] becomes the
+// old views[from[i]], or empty when from[i] is -1. Hosts are unique, so from
+// is one to one; it is moved in place, one view at a time, because a [64]PaView
+// copy would be a 1 MB stack frame (#13747).
+us_views_move :: (s:[]UsageScreen,from:[]int) {
+ order:[64]int;used:[64]bool;for i:0..<64 {order[i]=from[i];if from[i]>=0 {used[from[i]]=true;}}
+ spare:=0;for i:0..<64 {if order[i]<0 {while used[spare] {spare+=1;}order[i]=spare;used[spare]=true;}}
+ done:[64]bool;hold:[1]PaView;
+ for i:0..<64 {
+  if done[i] || order[i]==i {done[i]=true;continue;}
+  hold[0]=s[0].views[i];k:=i;
+  while true {src:=order[k];done[k]=true;if src==i {s[0].views[k]=hold[0];break;}s[0].views[k]=s[0].views[src];k=src;}
+ }
+ for i:0..<64 {if from[i]<0 {s[0].views[i]=PaView.{};}}
+}
 us_guest :: (s:[]UsageScreen,c:[]AppCore,raw:string)->bool {
  g:=c[0].guest;if !g.waiting || g.owner!=OWN_USAGE {return false;}
  if g.op!=s[0].op {app_guest_done(c);return true;}what:=s[0].purpose;s[0].op=0;s[0].purpose=0;
@@ -77,11 +92,12 @@ us_guest :: (s:[]UsageScreen,c:[]AppCore,raw:string)->bool {
   candidate:[1]EaCatalog;s[0].failed= !ok || !ea_catalog_read(raw,candidate[..]);
   if s[0].failed {us_note(s,"Some computers are unavailable");}
   else {
-   old:[1]EaCatalog;old[0]=s[0].catalog[0];views:[64]PaView;states:[64]int;recovered:[64]bool;routes:=s[0].via_account;
+   old:[1]EaCatalog;old[0]=s[0].catalog[0];states:[64]int;recovered:[64]bool;routes:=s[0].via_account;from:[64]int;
    s[0].catalog[0]=EaCatalog.{};
    for j:0..<candidate[0].n {entry:=candidate[0].entries[j];host:=cast(string)entry.host[..];if us_find(s,host)>=0 {continue;}i:=s[0].catalog[0].n;s[0].catalog[0].entries[i]=entry;s[0].catalog[0].n+=1;}
-   for i:0..<s[0].catalog[0].n {for j:0..<old[0].n {if cast(string)s[0].catalog[0].entries[i].host[..]==cast(string)old[0].entries[j].host[..] {views[i]=s[0].views[j];states[i]=s[0].states[j];recovered[i]=s[0].recovered[j] && routes[j];}}}
-   s[0].views=views;s[0].states=states;s[0].recovered=recovered;for i:0..<64 {s[0].via_account[i]=i<s[0].catalog[0].n;}
+   for i:0..<64 {from[i]= -1;}
+   for i:0..<s[0].catalog[0].n {for j:0..<old[0].n {if cast(string)s[0].catalog[0].entries[i].host[..]==cast(string)old[0].entries[j].host[..] {from[i]=j;states[i]=s[0].states[j];recovered[i]=s[0].recovered[j] && routes[j];}}}
+   us_views_move(s,from[..]);s[0].states=states;s[0].recovered=recovered;for i:0..<64 {s[0].via_account[i]=i<s[0].catalog[0].n;}
    s[0].index=0;s[0].next=c[0].mono_ms;
   }
   s[0].loaded=true;s[0].catalog_due=c[0].mono_ms+60000;us_merge(s,c);

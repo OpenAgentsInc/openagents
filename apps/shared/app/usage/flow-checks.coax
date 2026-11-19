@@ -25,3 +25,9 @@
  v:[1]PaView;_=pa_copy(v[0].host[..],h);v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].command=q[0].command;v[0].nc=q[0].nc;body:[32768]u8;n=pa_view_write(v[..],body[..]);#assert n>0;
  c[0].guest=AppGuest.{waiting=true,owner=OWN_USAGE,op=op,outcome=FXO_DONE,status=200};#assert us_guest(s[..],c[..],cast(string)body[0..<n]) && !s[0].pending && !s[0].unknown && !s[0].code_ready;
 }
+#forall "views follow their hosts to the new order in place; a new host gets an empty view" seed:0..<24 {
+ s:[1]UsageScreen;from:[64]int;taken:[64]bool;for i:0..<64 {s[0].views[i].nm=i+1;from[i]= -1;}
+ x:=seed*7919+13;for i:0..<64 {x=(x*1103515245+12345)%2147483648;if x%5!=0 {j:=x%64;while taken[j] {j=(j+1)%64;}taken[j]=true;from[i]=j;}}
+ us_views_move(s[..],from[..]);
+ for i:0..<64 {#assert ifx from[i]<0 then s[0].views[i].nm==0 else s[0].views[i].nm==from[i]+1;}
+}

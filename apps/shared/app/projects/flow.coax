@@ -78,7 +78,7 @@ ps_guest :: (s:[]ProjectScreen,c:[]AppCore,raw:string)->bool {
   ok:=false;
   if what==PS_LIST {ok=pr_index_read(raw,s[0].list[..]);if ok {s[0].loaded=true;s[0].failed=false;s[0].next=c[0].mono_ms+15000;}}
   if what==PS_READ || what==PS_CREATE || what==PS_UPDATE {next:[1]PrProject;ok=pr_project_read(raw,next[..]);if ok {ref:=cast(string)next[0].id[0..<next[0].ni];ok=ex_reference(ref,"prj_") && (what==PS_CREATE || ref==ps_id(s));}if ok {p[0].api[0]=next[0];p[0].api_loaded=true;s[0].page=2;}}
-  if what==PS_KNOWLEDGE {ok=pr_knowledge_read(raw,p[0].knowledge[..]);}
+  if what==PS_KNOWLEDGE {ok=pr_knowledge_read(raw,p[0].knowledge[..],p[0].knowledge_nodes[..]);}
   if what==PS_CHATS {ok=ctr_index_read(raw,s[0].chats[..]);}
   if what==PS_SOURCE {n:=pr_content_read(raw,cast(string)s[0].source[0..<s[0].ns],p[0].api_content[..]);ok=n>=0;if ok {p[0].api_nc=n;s[0].page=6;}}
   if what==PS_INSTRUCTIONS || what==PS_ADD || what==PS_REMOVE {ok=pr_mutation_result(raw,ifx what==PS_INSTRUCTIONS then 3 else ifx what==PS_ADD then 4 else 5,ps_id(s),cast(string)s[0].source[0..<s[0].ns],p[0].pending_revision);}
