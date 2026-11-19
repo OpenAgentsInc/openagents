@@ -429,7 +429,7 @@ sb_act :: (s: [] Slab, body: string) {
   if id == "view.flow" { press(s, BTN_FLOW); return; }
   // Change
   k = sb_index(id, "site.");
-  if k >= 0 && k < SITES { sites := SB_SITES; s[0].site = k; s[0].sea = sim_site(k).sea; s[0].wind_forced = -1; sb_toast(s, sites[k]); return; }
+  if k >= 0 && k < SITES { sites := SB_SITES; s[0].site = k; s[0].sea = sim_site(k).sea; s[0].wind_forced = -1; sb_toast(s, sites[k]); change_said(s); return; }
   k = sb_index(id, "sea.");
   if k >= 0 && k < SEAS { s[0].sea = k; s[0].wind_forced = -1; return; }
   if id == "hour" { if p.has { s[0].hour = fclamp(f64(p.value) / 4, 0, 23.99); } return; }
@@ -446,7 +446,7 @@ sb_act :: (s: [] Slab, body: string) {
     return;
   }
   k = sb_index(id, "layout.");
-  if k >= 0 && k < 3 { set_layout(s, k); return; }
+  if k >= 0 && k < 3 { set_layout(s, k); change_said(s); return; }
   if id == "fault.pipe" { s[0].plant.pipe_tripped = !s[0].plant.pipe_tripped; return; }
   if id == "fault.refuel" { press(s, BTN_REFUEL); return; }
   if id == "fault.hole" {

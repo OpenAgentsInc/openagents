@@ -150,18 +150,37 @@ chart_draw :: (s: [] Slab, out: [] f32, at: int) -> int {
   return chart_draw_in(s, out, at, s[0].chart.view);
 }
 
-// A name on the chart, centred on a point of the canvas and kept inside the chart's edges.
+// A name on the chart, centred on a point of the canvas and kept inside the chart's edges. A name too
+// wide for the chart, or one that would cover a name already placed, is left out: no name is ever
+// drawn outside the chart's frame. Its box goes in the scene's list of tags (slab-labels.coax's
+// LabBox), so the chart's names keep clear of each other and of the scene's. True when it was placed.
 chart_label :: (s: [] Slab, h: [] SceneHud, id: string, name: string, px: f32, py: f32, press: bool) {
-  v := s[0].chart.view; k := s[0].dpr;
-  half := cast(f32) name.count * 3.7f32 + (ifx press then 16.0f32 else 6.0f32);   // about half its width, CSS pixels
-  x := px / k; y := py / k;
-  left := v.x / k + half; right := (v.x + v.w) / k - half;
-  if x < left { x = left; }
-  if x > right { x = right; }
-  if y < v.y / k + 12 { y = v.y / k + 12; }
-  if y > (v.y + v.h) / k - 12 { y = (v.y + v.h) / k - 12; }
-  sh_tag(h, id, name, x, y, 1, press);
+  _ = chart_put(s, h, id, name, px, py, press);
 }
+chart_put :: (s: [] Slab, h: [] SceneHud, id: string, name: string, px: f32, py: f32, press: bool) -> bool {
+  v := s[0].chart.view; k := hi_f32(s[0].dpr, 0.5);
+  // the kit's body size, about 7.6 px a letter; a name that can be pressed has a box round it
+  half := (cast(f32) name.count * 7.6f32 + (ifx press then 24.0f32 else 8.0f32)) / 2;
+  tall := ifx press then 30.0f32 else 18.0f32;
+  x0 := v.x / k + 4; x1 := (v.x + v.w) / k - 4; y0 := v.y / k + 4; y1 := (v.y + v.h) / k - 4;
+  if x1 - x0 < 2 * half || y1 - y0 < tall { return false; }
+  x := px / k; y := py / k;
+  if x < x0 + half { x = x0 + half; }
+  if x > x1 - half { x = x1 - half; }
+  if y < y0 + tall / 2 { y = y0 + tall / 2; }
+  if y > y1 - tall / 2 { y = y1 - tall / 2; }
+  b := LabBox.{x0 = x - half, y0 = y - tall / 2, x1 = x + half, y1 = y + tall / 2};
+  l := s[0].hp.lab;
+  if l.boxes >= LAB_MAX { return false; }
+  for i: 0..<l.boxes {
+    o := l.box[i];
+    if b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0 { return false; }
+  }
+  s[0].hp.lab.box[l.boxes] = b; s[0].hp.lab.boxes = l.boxes + 1;
+  sh_tag(h, id, name, x, y, 1, press);
+  return true;
+}
+CHART_SMALL :: 400.0f32;   // CSS px: a chart narrower than this (the build view's inset, the tour's aside, a phone) has the short names
 // A name at a place of the chart, when the place is in view. `dy` lifts it off its mark, in CSS pixels.
 chart_tag :: (s: [] Slab, h: [] SceneHud, id: string, name: string, lat: f64, lon: f64, dy: f32) {
   v := s[0].chart.view; k := s[0].dpr;
@@ -172,8 +191,9 @@ chart_tag :: (s: [] Slab, h: [] SceneHud, id: string, name: string, lat: f64, lo
 // The construction route's names (the casting yard, the jetties, the freight port), for any drawing
 // that has laid the chart out.
 chart_route_tags :: (s: [] Slab, h: [] SceneHud) {
-  chart_tag(s, h, "chart.yard", "Ingleside: the casting yard and the freight wharf", WHERE_YARD[0], WHERE_YARD[1], -16);
-  chart_tag(s, h, "chart.jetties", "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
+  small := s[0].chart.view.w / hi_f32(s[0].dpr, 0.5) < CHART_SMALL;
+  chart_tag(s, h, "chart.yard", ifx small then "Ingleside yard" else "Ingleside: the casting yard and the freight wharf", WHERE_YARD[0], WHERE_YARD[1], -16);
+  chart_tag(s, h, "chart.jetties", ifx small then "Jetties" else "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
 }
 // A legal line's name, on the line: each line's name is on a row of its own up from the chart's foot,
 // so two lines a few miles apart do not write over each other.
@@ -194,7 +214,7 @@ chart_line_tag :: (s: [] Slab, h: [] SceneHud, layer: int, id: string, name: str
       if d < cost { cost = d; best = i; slot = r; at = p; }
     }
   }
-  if best >= 0 { used[slot] = true; chart_label(s, h, id, name, at[0], top + step * cast(f32) slot, false); }
+  if best >= 0 && chart_put(s, h, id, name, at[0], top + step * cast(f32) slot, false) { used[slot] = true; }
 }
 // The chart's names, said with the HUD: its title, the platform, the lines, the scale and a switch
 // between the near and the whole view.
@@ -210,6 +230,7 @@ chart_tags :: (s: [] Slab, h: [] SceneHud) {
   bar := f32(chart_view_scale(v)) * (ifx m.far then 100.0f32 else 10.0f32);
   chart_label(s, h, "chart.scale", ifx m.far then "100 nautical miles" else "10 nautical miles", v.x + 14 * k + bar / 2, v.y + v.h - 30 * k, false);
   chart_tag(s, h, "chart.here", "The platform", w.lat, w.lon, -16);
+  if w.site == SITE_TEXAS { chart_route_tags(s, h); }   // the places before the lines: a line's name gives way
   used: [SC_ROWS] bool;
   chart_line_tag(s, h, SC_SHELF, "chart.l.shelf", "200 m deep", used[..]);
   chart_line_tag(s, h, SC_COLD, "chart.l.cold", "1,000 m deep", used[..]);
@@ -219,7 +240,6 @@ chart_tags :: (s: [] Slab, h: [] SceneHud) {
     chart_line_tag(s, h, SC_CUSTOMS, "chart.l.24", "24 miles", used[..]);
     chart_line_tag(s, h, SC_ECONOMIC, "chart.l.200", "200 miles", used[..]);
   }
-  if w.site == SITE_TEXAS { chart_route_tags(s, h); }
 }
 // A press on the chart: the platform goes to that place. True when the chart took the press.
 chart_pointer :: (s: [] Slab, x: f32, y: f32, phase: int) -> bool {
@@ -239,6 +259,40 @@ chart_pointer :: (s: [] Slab, x: f32, y: f32, phase: int) -> bool {
 chart_act :: (s: [] Slab, id: string) -> bool {
   if id == "chart.zoom" { chart_far(s, !s[0].chart.far); return true; }
   return false;
+}
+
+#test "Chart: in a small chart (the build view's inset, a phone) every name is short and stays inside the frame" #steps 2000000000 {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=https://openagents.com/worlds/slab?intro=0&site=texas\n");
+  s[0].dpr = 1; s[0].width = 1440; s[0].height = 900;
+  // the build view's inset: 230 px square at the top right
+  v := bd_chart_view(s[..]); s[0].chart.view = v;
+  h := s[0].hp.said[..]; sh_begin(h); s[0].hp.lab.boxes = 0;
+  chart_label(s[..], h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12, false);
+  chart_route_tags(s[..], h);
+  // a name far too wide for it is left out, never drawn past the edge
+  chart_label(s[..], h, "chart.wide", "Ingleside: the casting yard and the freight wharf", v.x + 10, v.y + 40, false);
+  #assert sb_test_has(s[..], 'W', "chart.yard", "Ingleside yard") && sb_test_has(s[..], 'W', "chart.title", "Where the work is now");
+  #assert !sb_test_has(s[..], 'W', "chart.wide", "") && !sb_test_has(s[..], 'W', "chart.yard", "Ingleside: the casting yard and the freight wharf");
+  // every box placed is inside the frame and none covers another
+  l := s[0].hp.lab;
+  #assert l.boxes >= 2;
+  for i: 0..<l.boxes {
+    b := l.box[i];
+    #assert b.x0 >= v.x && b.x1 <= v.x + v.w && b.y0 >= v.y && b.y1 <= v.y + v.h;
+    for j: 0..<i { o := l.box[j]; #assert !(b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0); }
+  }
+  // a phone's chart: the short names too, and inside its frame
+  s[0].dpr = 2; s[0].width = 780; s[0].height = 1688; s[0].hp.pane = true;
+  chart_show(s[..], true);
+  vertices: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  _ = chart_draw(s[..], vertices[..], 0);
+  p := s[0].chart.view;
+  sh_begin(h); s[0].hp.lab.boxes = 0;
+  chart_tags(s[..], h);
+  #assert !sb_test_has(s[..], 'W', "chart.yard", "Ingleside: the casting yard and the freight wharf") && sb_test_has(s[..], 'W', "chart.zoom", "");
+  l = s[0].hp.lab;
+  for i: 0..<l.boxes { b := l.box[i]; #assert b.x0 >= p.x / 2 && b.x1 <= (p.x + p.w) / 2 && b.y0 >= p.y / 2 && b.y1 <= (p.y + p.h) / 2; }
 }
 
 #test "Chart: off Texas the chart has its depth lines, the nine mile line and the route, and a press moves the platform" #steps 2000000000 {

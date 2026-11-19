@@ -302,6 +302,11 @@ panel_picture_hull :: (s: [] Slab) {
   c[0].what.layout = WHAT_PRIME;
   change_refresh(c); panel_moved(s);
 }
+// A place or a shape chosen with the HUD's own menus: the settings take it now, and the address says it.
+change_said :: (s: [] Slab) {
+  if change_world(s[0].change[..], change_now(s)) { change_push(s, false); }
+  panel_address(s);
+}
 // A setting moved: the world takes it and the address says it.
 panel_moved :: (s: [] Slab) { change_push(s, true); panel_address(s); }
 // What a press does. True when the id was the panel's.
@@ -491,6 +496,11 @@ panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   #assert panel_act(s, "take.reset", 0);
   sb_say(s);
   #assert sb_test_has(s, 'W', "at.4", "Tower district");
+  // a place chosen with the HUD's menu is in the address too
+  sb_act(s, "site.5"); #assert s[0].site == SITE_TEXAS;
+  #assert s[0].change[0].what.site == SITE_TEXAS;
+  #assert slab_outbox(s) == "/realms/slab/?site=texas";
+  sb_act(s, "site.0");
   // the places on the deck are not offered, and the tour puts the picture's hull back where it is
   #assert panel_act(s, "take.from.1", 0);
   sb_say(s);
