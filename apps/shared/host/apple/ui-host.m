@@ -188,6 +188,13 @@ static int ui_ax_box(UiHost *h, NSRect *box);
 }
 - (void)scrollWheel:(NSEvent *)e {
   UiHost *h = self.host;
+  if (h->app.scroll_gesture) {
+    NSEventPhase ph = e.phase, mo = e.momentumPhase;
+    int phase = (ph & (NSEventPhaseBegan | NSEventPhaseMayBegin)) ? 1 : (ph & NSEventPhaseChanged) ? 2 : (ph & (NSEventPhaseEnded | NSEventPhaseCancelled)) ? 3 : 0;
+    int momentum = (mo & NSEventPhaseBegan) ? 1 : (mo & NSEventPhaseChanged) ? 2 : (mo & (NSEventPhaseEnded | NSEventPhaseCancelled)) ? 3 : 0;
+    h->app.scroll_gesture(h->app.user, (float)e.scrollingDeltaY, e.hasPreciseScrollingDeltas ? 1 : 0, phase, momentum, e.timestamp);
+    return;
+  }
   if (h->app.scroll) { h->app.scroll(h->app.user, (float)e.scrollingDeltaY, e.hasPreciseScrollingDeltas ? 1 : 0); return; }
   if (!h->app.wheel) return;
   // GPUI's pixel delta: precise deltas as they come, a mouse's lines times the line height (22.75)

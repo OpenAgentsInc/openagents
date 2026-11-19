@@ -3,6 +3,7 @@
 // carrier (components/gallery/linux/main.c), so it shares that file's App and atlas code and the
 // one generated library. It holds no behaviour: frames, clicks and lines go to page.coax.
 #include "host.h"
+#include <time.h>
 
 typedef struct {
   App app;
@@ -24,6 +25,8 @@ static void cd_woke(CoderHost *c) { cd_changed(c); if (c->changed) c->changed(c-
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
   coder_page_env(cd_state(c), c->focused != 0, c->editor_height, c->reduced != 0);
+  // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
+  coder_page_now(cd_state(c), (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9);
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
   if (atlas_serve(&c->app)) cd_changed(c);
   if (c->settle > 0) c->settle--;
@@ -41,6 +44,7 @@ static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, i
   cd_woke(c);
 }
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
+static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
 void *cd_open(const char *resources) {
   CoderHost *c = calloc(1, sizeof *c);
@@ -53,7 +57,7 @@ void *cd_open(const char *resources) {
   a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
-               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel};
+               .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
   // the atlas at the scale the page draws its units at

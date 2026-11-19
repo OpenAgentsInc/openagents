@@ -90,7 +90,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var unread: Set<String> = []         // background chats with unread output or a completed turn
     private var last = CACurrentMediaTime()      // when the clock last ticked, for their pages' seconds
     var line: CGFloat
-    private var clock: Timer?
+    private var link: CADisplayLink?     // the clock: the canvas's display's refresh (120 Hz on ProMotion)
+    private var watchdog: Timer?         // ticks while the display link is paused (the window hidden or off every screen)
+    private var ticked = 0.0             // when tick last ran
     private var then: String?   // --then TEXT: sent in a new chat once --send's reply ends
     private var also: String?   // --new TEXT: sent in a new chat while --send's reply runs
     private var showAgent: Int?   // --agent N: the Nth sub-agent's transcript opens as soon as there is one
@@ -196,8 +198,16 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in self?.rightClick(event) == true ? nil : event }
-        let clock = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
-        RunLoop.main.add(clock, forMode: .common); self.clock = clock
+        // Frames come with the display's refresh, measured by the system (Zeron's per-display link):
+        // 120 Hz on a ProMotion screen. Idle, the page draws nothing; its other work runs at most 60 times a second.
+        let link = canvas.displayLink(target: self, selector: #selector(refresh(_:)))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common); self.link = link
+        let watchdog = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self, CACurrentMediaTime() - self.ticked > 0.25 else { return }
+            self.tick()
+        }
+        RunLoop.main.add(watchdog, forMode: .common); self.watchdog = watchdog
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
@@ -291,7 +301,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         default: break
         }
     }
+    @objc private func refresh(_ link: CADisplayLink) {
+        if owed == 0 && cd_moving(page) == 0 && CACurrentMediaTime() - ticked < 1.0 / 61.0 { return }
+        tick()
+    }
     private func tick() {
+        ticked = CACurrentMediaTime()
         // replies out of view: their seconds pass, they are kept as they change, and they end
         let now = CACurrentMediaTime(), dt = Float(now - last); last = now
         for (id, back) in runs {
@@ -384,7 +399,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         for back in runs.values { keep(back, closing: true); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }
         runs = [:]
         if run.turn != nil && cd_running(page) != 0 { run.detach() } else { run.stop() }
-        if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil
+        if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; link?.invalidate(); link = nil; watchdog?.invalidate(); watchdog = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
         cd_on_change(page, nil, nil); cd_close(page)
     }

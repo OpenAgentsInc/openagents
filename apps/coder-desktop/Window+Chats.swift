@@ -74,7 +74,7 @@ extension CoderWindow {
     func chooseFolder() {
         guard cd_running(page) == 0, !choosingFolder, window.attachedSheet == nil else { return }
         choosingFolder = true
-        // Defer presentation out of the 60 Hz .common RunLoop timer tick.
+        // Defer presentation out of the display link's .common run loop tick.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             guard cd_running(self.page) == 0, self.window.attachedSheet == nil else { self.choosingFolder = false; return }

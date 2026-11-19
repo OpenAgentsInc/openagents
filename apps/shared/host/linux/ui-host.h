@@ -120,6 +120,12 @@ typedef struct {
   int (*composition)(void *user,UiComposition *out); // 0 flat, 1 admitted, -1 refused
   int (*image)(void *user,int slot,UiImage *out); // canonical straight RGBA8; retained for recovery
   void (*presented)(void *user,int accepted); // commit/abort a staged composed surface
+  // The wheel with its trackpad gesture (the Mac's; others leave it unused), taken before scroll and
+  // wheel: dy as the platform reports it (points, down the fingers' way; a mouse's notches in lines),
+  // precise 1 for a trackpad's or Magic Mouse's deltas, phase 0 none, 1 the fingers touched (began or
+  // may begin), 2 moved, 3 lifted (ended or cancelled), momentum the same for the system's momentum
+  // after a lift, and time the event's own, in seconds on the system's uptime clock (CACurrentMediaTime's).
+  void (*scroll_gesture)(void *user, float dy, int precise, int phase, int momentum, double time);
 
 } UiApp;
 

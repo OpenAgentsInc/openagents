@@ -279,28 +279,67 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   s[0].touching = false; s[0].pressed_n = 0;
   return phase == 2 && held && cp_press(s, row);
 }
-// The wheel, in device pixels, down positive. Scrolling up lets go of the newest message.
+// The wheel, in device pixels, down positive: a mouse's notch (it never stretches or coasts).
 coder_page_wheel :: (s: [] CoderPage, dy: f32) #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return; }
-  // in settings the wheel moves the list of pages or the page
-  if s[0].set_open {
-    if s[0].px < s[0].side { s[0].set_list_scroll = scroll_clamp(s[0].set_list_scroll + dy / s[0].d, s[0].set_list_content, s[0].set_list_view); }
-    else { s[0].set_scroll = scroll_clamp(s[0].set_scroll + dy / s[0].d, s[0].set_content, s[0].set_view); }
+  cp_scroll_at(s, cp_scroll_under(s), dy / s[0].d, UI_SCROLL_WHEEL, s[0].now);
+}
+// The wheel as the platform reports it, with its trackpad gesture (ui-host.h scroll_gesture): dy in
+// points the fingers' way (a mouse's notches in lines), phase and momentum 0 none, 1 touched, 2 moved,
+// 3 lifted, time on the host's clock. The transcript, the chats and a sub-agent's pane coast, stretch
+// and show their rail (components/core/scroll.coax); settings' lists move as the deltas come.
+coder_page_scroll :: (s: [] CoderPage, dy: f32, precise: bool, phase: int, momentum: int, time: f64) #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return; }
+  delta := -dy * (ifx precise then 1.0f32 else CP_WHEEL_LINE) / cp_scale(s);
+  kind := ifx momentum != 0 then UI_SCROLL_MOMENTUM else ifx phase == 1 then UI_SCROLL_BEGAN else ifx phase == 2 then UI_SCROLL_MOVED else ifx phase == 3 then UI_SCROLL_ENDED else UI_SCROLL_WHEEL;
+  if s[0].set_open { cp_scroll_at(s, CP_SCR_SETTINGS, delta, kind, time); return; }
+  // a gesture stays with the view it began over
+  if kind == UI_SCROLL_WHEEL || kind == UI_SCROLL_BEGAN { s[0].scr_at = cp_scroll_under(s); }
+  cp_scroll_at(s, s[0].scr_at, delta, kind, time);
+}
+CP_WHEEL_LINE :: 22.75f32;   // GPUI's line, in points: a mouse's notch
+CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3;
+// The view under the pointer.
+cp_scroll_under :: (s: [] CoderPage) -> int {
+  if s[0].set_open { return CP_SCR_SETTINGS; }
+  if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_PANE; }
+  return CP_SCR_TALK;
+}
+// delta points (down positive) of kind UI_SCROLL_* to a view. Scrolling up lets go of the newest message.
+cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
+  r := s[0].reduced;
+  moved := delta != 0 && kind != UI_SCROLL_MOMENTUM;
+  if view == CP_SCR_SETTINGS {
+    // in settings the wheel moves the list of pages or the page
+    if s[0].px < s[0].side { s[0].set_list_scroll = scroll_clamp(s[0].set_list_scroll + delta, s[0].set_list_content, s[0].set_list_view); }
+    else { s[0].set_scroll = scroll_clamp(s[0].set_scroll + delta, s[0].set_content, s[0].set_view); }
     return;
   }
-  // over the sidebar the wheel moves the list of chats
-  if s[0].side > 0 && s[0].px < s[0].side {
-    s[0].side_scroll = scroll_clamp(s[0].side_scroll + dy / s[0].d, s[0].side_content, s[0].side_view);
+  if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
+  if view == CP_SCR_PANE {
+    if !s[0].pane_open { return; }
+    s[0].pane_scroll = ui_scroll_by(s[0].pane_scr[..], s[0].pane_scroll, delta, s[0].pane_content, s[0].pane_view, kind, time, r);
+    if moved { s[0].pane_stick = s[0].pane_scroll >= s[0].pane_content - s[0].pane_view - 1; }
     return;
   }
-  // over a sub-agent's transcript it moves that; scrolling up lets go of its newest row
-  if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x {
-    s[0].pane_scroll = scroll_clamp(s[0].pane_scroll + dy / s[0].d, s[0].pane_content, s[0].pane_view);
+  s[0].scroll = ui_scroll_by(s[0].scr[..], s[0].scroll, delta, s[0].content, s[0].view, kind, time, r);
+  if moved && delta < 0 { s[0].stick = false; }
+  if moved && s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+}
+// Each view's coast and spring for a refresh shown at `shows`; whether any still moves.
+cp_scroll_step :: (s: [] CoderPage, shows: f64) -> bool {
+  r := s[0].reduced;
+  if s[0].scr[0].coasting || s[0].scr[0].spring {
+    was := s[0].scroll;
+    s[0].scroll = ui_scroll_step(s[0].scr[..], s[0].scroll, s[0].content, s[0].view, shows, r);
+    if s[0].scroll < was { s[0].stick = false; }
+    else if s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+  }
+  if s[0].side_scr[0].coasting || s[0].side_scr[0].spring { s[0].side_scroll = ui_scroll_step(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, shows, r); }
+  if s[0].pane_open && (s[0].pane_scr[0].coasting || s[0].pane_scr[0].spring) {
+    s[0].pane_scroll = ui_scroll_step(s[0].pane_scr[..], s[0].pane_scroll, s[0].pane_content, s[0].pane_view, shows, r);
     s[0].pane_stick = s[0].pane_scroll >= s[0].pane_content - s[0].pane_view - 1;
-    return;
   }
-  s[0].stick = false;
-  s[0].scroll += dy / s[0].d;
-  cp_clamp(s);
-  if s[0].scroll >= s[0].content - s[0].view - 1 { s[0].stick = true; }
+  return ui_scroll_moving(s[0].scr[..], s[0].now) || ui_scroll_moving(s[0].side_scr[..], s[0].now) || s[0].pane_open && ui_scroll_moving(s[0].pane_scr[..], s[0].now);
 }

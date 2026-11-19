@@ -24,3 +24,300 @@ scroll_reveal :: (offset:f32,content:f32,viewport:f32,top:f32,bottom:f32)->f32 {
  #assert scroll_reveal(20,500,100,30,200)==30;
  #assert scroll_clamp(-1,500,100)==0 && scroll_clamp(600,500,100)==400 && scroll_clamp(1,20,100)==0;
 }
+
+// ---------------------------------------------------------------- momentum, rubber band and the overlay rail
+// One vertical scroll view's motion, as Zeron's (zgx `coast.rs`, `elastic.rs`, app `ui/ds/rail.luau`):
+// - A trackpad's coast is made here from the fingers' speed as they lift, as AppKit's scroll views
+//   make it; the system's momentum events go unused. The curve is a quartic ease-out that stops:
+//   from speed v it goes K (v / 4K)^(4/3) points in (v / 4K)^(1/3) seconds (K 1000 points a second
+//   to the fourth), at most 2 s, each refresh showing whole points.
+// - Fingers pushing past an edge stretch the view a twentieth of the push; letting go springs it
+//   back. A coast reaching an edge bounces once. A mouse wheel never stretches.
+// - The rail: a thin thumb with no track over the view's trailing edge, there while the view
+//   scrolls and 1.4 s after, then fading over 0.26 s.
+// The caller keeps the offset (0 to scroll_max) and adds `stretch` to where its content is drawn.
+// Times are seconds on one clock (the host's event clock); Reduce Motion stretches nothing,
+// bounces nothing and drops the rail at once instead of fading it.
+UI_SCROLL_WHEEL :: 0;      // a mouse wheel's notch, or a precise delta outside a gesture
+UI_SCROLL_BEGAN :: 1;      // the fingers touched down
+UI_SCROLL_MOVED :: 2;      // the fingers moved
+UI_SCROLL_ENDED :: 3;      // the fingers lifted
+UI_SCROLL_MOMENTUM :: 4;   // the system's momentum after a lift: unused, the lift made a coast
+UI_SCROLL_K :: 1000.0f32;
+UI_SCROLL_LONGEST :: 2.0f32;
+UI_SCROLL_WEIGHT :: 0.8f32;
+UI_SCROLL_SOONEST :: 0.002f32;
+UI_SCROLL_LATEST :: 0.2f32;
+UI_SCROLL_PULL :: 20.0f32;        // push per point of stretch
+UI_SCROLL_REBOUND :: 12.5f32;     // a stretch's way back, per second: gone in about 0.4 s
+UI_SCROLL_AMPLITUDE :: 0.31f32;   // how far an edge's speed carries past it
+UI_SCROLL_MOST_SPEED :: 20000.0f32;
+UI_RAIL_THUMB :: 3.0f32;   // the thumb's width, its room from the edge, its ends in from the view's, its shortest
+UI_RAIL_SIDE :: 2.0f32;
+UI_RAIL_END :: 4.0f32;
+UI_RAIL_MIN :: 24.0f32;
+UI_RAIL_LINGER :: 1.4f32;
+UI_RAIL_FADE :: 0.26f32;
+UI_RAIL_INK :: 0.26f32;    // the thumb: the text's ink at this alpha (Zeron's scrollbar.thumb)
+
+UiScroll :: struct {
+  stretch: f32;                   // shown past an edge, points: below 0 before the start, above 0 after the end
+  pushed: f32;                    // what the fingers pushed past the edge
+  fingers: bool;
+  speed: f32; measured: bool; pending: f32; at: f64; timed: bool;   // the fingers' speed
+  coasting: bool; c_start: f64; c_k: f32; c_len: f32; c_dist: f32; c_shown: f32;
+  spring: bool; sp_from: f32; sp_speed: f32; sp_since: f64;
+  bounced: bool;                  // this coast bounced once already
+  moved_at: f64; moved: bool;     // the last scroll a person made, for the rail
+}
+UiScrollRail :: struct { shown: bool; y: f32; h: f32; alpha: f32; }
+
+// A distance in whole points, as AppKit rounds its scroll views': within an eighth of a whole point,
+// that point; otherwise the nearest, halves toward zero.
+ui_scroll_whole :: (d: f32) -> f32 {
+  near := floor(d + 0.5);
+  if abs(d - near) <= 0.125 { return near; }
+  toward := ifx d < 0 then -floor(-d) else floor(d);
+  return ifx abs(d - toward) == 0.5 then toward else near;
+}
+ui_scroll_sign :: (v: f32) -> f32 { return ifx v < 0 then -1.0f32 else 1.0f32; }
+ui_scroll_since :: (now: f64, from: f64) -> f32 { d := cast(f32) (now - from); return ifx d < 0 then 0.0f32 else d; }
+// The fingers scrolled delta at `at`: each scroll's speed weighed against the speed so far.
+ui_scroll_measure :: (s: [] UiScroll, delta: f32, at: f64) {
+  if !s[0].timed { s[0].at = at; s[0].timed = true; s[0].measured = false; s[0].pending = 0; return; }
+  dt := ui_scroll_since(at, s[0].at);
+  if dt < UI_SCROLL_SOONEST { s[0].pending += delta; return; }
+  d := delta + s[0].pending; s[0].pending = 0;
+  now := d / dt;
+  s[0].speed = ifx !s[0].measured || dt > UI_SCROLL_LATEST || now * s[0].speed < 0 then now else UI_SCROLL_WEIGHT * now + (1 - UI_SCROLL_WEIGHT) * s[0].speed;
+  s[0].measured = true; s[0].at = at;
+}
+// Back in place at once.
+ui_scroll_snap :: (s: [] UiScroll) { s[0].stretch = 0; s[0].pushed = 0; s[0].spring = false; }
+ui_scroll_catch :: (s: [] UiScroll) { if s[0].spring { s[0].spring = false; s[0].pushed = s[0].stretch * UI_SCROLL_PULL; } }
+ui_scroll_release :: (s: [] UiScroll, now: f64, speed: f32, reduced: bool) {
+  if s[0].stretch == 0 { s[0].pushed = 0; return; }
+  if reduced { ui_scroll_snap(s); return; }
+  sp := ifx speed > UI_SCROLL_MOST_SPEED then UI_SCROLL_MOST_SPEED else ifx speed < -UI_SCROLL_MOST_SPEED then -UI_SCROLL_MOST_SPEED else speed;
+  s[0].spring = true; s[0].sp_from = s[0].stretch; s[0].sp_speed = sp; s[0].sp_since = now; s[0].pushed = 0;
+}
+// The fingers lifted at now: a stretch springs back at their speed; otherwise a coast starts, if they were moving.
+ui_scroll_lift :: (s: [] UiScroll, now: f64, reduced: bool) {
+  v := ifx s[0].measured && s[0].timed && ui_scroll_since(now, s[0].at) <= UI_SCROLL_LATEST then s[0].speed else 0.0f32;
+  s[0].fingers = false; s[0].timed = false; s[0].measured = false; s[0].pending = 0; s[0].speed = 0;
+  if s[0].stretch != 0 { ui_scroll_release(s, now, v, reduced); return; }
+  s[0].coasting = false;
+  if v == 0 { return; }
+  dist := pow(abs(v) / (4 * UI_SCROLL_K), 4.0f32 / 3.0f32) * UI_SCROLL_K;
+  span := pow(dist / UI_SCROLL_K, 0.25f32); k := UI_SCROLL_K;
+  if span > UI_SCROLL_LONGEST {
+    // where it would be by then, reached on a steeper curve
+    over := span - UI_SCROLL_LONGEST;
+    reached := (dist - UI_SCROLL_K * over * over * over * over) / dist;
+    dist = dist * reached; span = UI_SCROLL_LONGEST; k = dist / (UI_SCROLL_LONGEST * UI_SCROLL_LONGEST * UI_SCROLL_LONGEST * UI_SCROLL_LONGEST);
+  }
+  if !(dist > 0) { return; }
+  s[0].coasting = true; s[0].bounced = false; s[0].c_start = now; s[0].c_k = k; s[0].c_len = span; s[0].c_dist = dist * ui_scroll_sign(v); s[0].c_shown = 0;
+}
+// A scroll of delta points (down positive: the offset grows) of kind UI_SCROLL_* at now, on a view whose
+// offset is `offset`. Returns the new offset, within 0 and scroll_max(content, view).
+ui_scroll_by :: (s: [] UiScroll, offset: f32, delta: f32, content: f32, view: f32, kind: int, now: f64, reduced: bool) -> f32 {
+  if s.count < 1 { return scroll_clamp(offset + delta, content, view); }
+  if kind == UI_SCROLL_MOMENTUM { return offset; }
+  limit := scroll_max(content, view);
+  if kind == UI_SCROLL_BEGAN {
+    s[0].coasting = false; s[0].fingers = true; s[0].bounced = false;
+    s[0].timed = true; s[0].at = now; s[0].measured = false; s[0].pending = 0; s[0].speed = 0;
+    ui_scroll_catch(s);
+  }
+  if kind == UI_SCROLL_WHEEL { s[0].coasting = false; }
+  d := delta;
+  next := offset;
+  if d != 0 && d == d {
+    s[0].moved = true; s[0].moved_at = now;
+    if s[0].fingers && kind != UI_SCROLL_WHEEL { ui_scroll_measure(s, d, now); }
+    // stretched: what pulls it back comes first, then the rest scrolls
+    if s[0].stretch != 0 && !s[0].spring && d * s[0].pushed < 0 {
+      back := abs(d); most := abs(s[0].pushed) / UI_SCROLL_PULL;
+      if back > most { back = most; }
+      back = back * ui_scroll_sign(d);
+      s[0].pushed += back * UI_SCROLL_PULL; d -= back; s[0].stretch = s[0].pushed / UI_SCROLL_PULL;
+      if abs(s[0].pushed) < 0.5 { s[0].pushed = 0; s[0].stretch = 0; }
+    }
+    next = offset + d;
+    over: f32 = 0;
+    if next < 0 { over = next; next = 0; }
+    else if next > limit { over = next - limit; next = limit; }
+    if over != 0 && s[0].fingers && kind != UI_SCROLL_WHEEL && !reduced && limit > 0 {
+      ui_scroll_catch(s);
+      s[0].pushed += over; s[0].stretch = s[0].pushed / UI_SCROLL_PULL;
+    }
+  } else { next = scroll_clamp(offset, content, view); }
+  if kind == UI_SCROLL_ENDED { ui_scroll_lift(s, now, reduced); }
+  return next;
+}
+// One refresh, shown on screen at `shows`: the coast's next whole points and the spring's step.
+// Returns the new offset.
+ui_scroll_step :: (s: [] UiScroll, offset: f32, content: f32, view: f32, shows: f64, reduced: bool) -> f32 {
+  if s.count < 1 { return offset; }
+  limit := scroll_max(content, view);
+  if limit <= 0 { ui_scroll_snap(s); s[0].coasting = false; return 0; }
+  at := offset;
+  if s[0].coasting {
+    t := ui_scroll_since(shows, s[0].c_start);
+    left := s[0].c_len - t; if left < 0 { left = 0; }
+    total := abs(s[0].c_dist);
+    part := (total - s[0].c_k * left * left * left * left) / total;
+    part = ifx part < 0 then 0.0f32 else ifx part > 1 then 1.0f32 else part;
+    there := ui_scroll_whole(s[0].c_dist * part);
+    d := there - s[0].c_shown; s[0].c_shown = there;
+    if left == 0 { s[0].coasting = false; }
+    if d != 0 {
+      s[0].moved_at = shows;
+      at = offset + d;
+      if at < 0 || at > limit {
+        // a coast reaching an edge bounces off it at its speed there, once; the rest is spent
+        speed := 4 * s[0].c_k * left * left * left * ui_scroll_sign(s[0].c_dist);
+        at = ifx at < 0 then 0.0f32 else limit;
+        s[0].coasting = false;
+        if !reduced && !s[0].bounced && s[0].stretch == 0 {
+          s[0].bounced = true;
+          sp := ifx speed > UI_SCROLL_MOST_SPEED then UI_SCROLL_MOST_SPEED else ifx speed < -UI_SCROLL_MOST_SPEED then -UI_SCROLL_MOST_SPEED else speed;
+          s[0].spring = true; s[0].sp_from = 0; s[0].sp_speed = sp; s[0].sp_since = shows;
+        }
+      }
+    }
+  }
+  if s[0].spring {
+    if reduced { ui_scroll_snap(s); }
+    else {
+      t := ui_scroll_since(shows, s[0].sp_since);
+      shown := (s[0].sp_from + UI_SCROLL_AMPLITUDE * s[0].sp_speed * t) * exp(-UI_SCROLL_REBOUND * t);
+      // a bounce from the edge is done once under half a point past its furthest
+      peak := UI_SCROLL_AMPLITUDE * abs(s[0].sp_speed) / UI_SCROLL_REBOUND * exp(-1.0f32);
+      past := s[0].sp_from != 0 || t > 1 / UI_SCROLL_REBOUND || peak < 0.5;
+      if abs(shown) < 0.5 && past { ui_scroll_snap(s); } else { s[0].stretch = shown; }
+    }
+  }
+  if reduced && !s[0].fingers && s[0].stretch != 0 { ui_scroll_snap(s); }
+  return at;
+}
+// Whether the view still moves at now: a coast, a stretch on its way back, or the rail lingering or fading.
+ui_scroll_moving :: (s: [] UiScroll, now: f64) -> bool {
+  if s.count < 1 { return false; }
+  if s[0].coasting || s[0].spring || s[0].stretch != 0 && !s[0].fingers { return true; }
+  return s[0].moved && ui_scroll_since(now, s[0].moved_at) < UI_RAIL_LINGER + UI_RAIL_FADE;
+}
+// The rail over a view `track` long (the view's length, or less where something lies over its foot):
+// the thumb's top from the track's, its length and its alpha. Nothing when the content fits.
+ui_scroll_rail :: (s: [] UiScroll, offset: f32, content: f32, view: f32, track: f32, now: f64, reduced: bool) -> UiScrollRail {
+  r := UiScrollRail.{};
+  if s.count < 1 || !s[0].moved { return r; }
+  limit := content - view; room := track - 2 * UI_RAIL_END;
+  if limit <= 0 || room <= 0 || view <= 0 { return r; }
+  age := ui_scroll_since(now, s[0].moved_at);
+  alpha: f32 = 1;
+  if s[0].fingers || s[0].coasting || s[0].spring || age < UI_RAIL_LINGER { alpha = 1; }
+  else if reduced || age >= UI_RAIL_LINGER + UI_RAIL_FADE { return r; }
+  else { p := 1 - (age - UI_RAIL_LINGER) / UI_RAIL_FADE; alpha = p * p; }
+  span := room * view / content;
+  if span > room { span = room; }
+  if span < UI_RAIL_MIN { span = UI_RAIL_MIN; }
+  travel := room - span; if travel < 0 { travel = 0; }
+  at := ifx offset < 0 then 0.0f32 else ifx offset > limit then limit else offset;
+  y := UI_RAIL_END + travel * at / limit;
+  // stretched, the thumb is squeezed against the end it is pulled past
+  squeeze := abs(s[0].stretch);
+  if squeeze > span - UI_RAIL_THUMB * 2 { squeeze = span - UI_RAIL_THUMB * 2; }
+  if squeeze > 0 { span -= squeeze; if s[0].stretch > 0 { y += squeeze; } }
+  r.shown = alpha > 0; r.y = y; r.h = span; r.alpha = alpha;
+  return r;
+}
+
+#test "a flick coasts on AppKit's curve in whole points and stops by its time" {
+  // 300 ms of fingers at 3000 points a second, 120 Hz, then the lift
+  s := [1]UiScroll.[UiScroll.{}];
+  at: f32 = 1000; t: f64 = 10;
+  at = ui_scroll_by(s[..], at, 0, 100000, 500, UI_SCROLL_BEGAN, t, false);
+  for i: 0..<36 { t += 1.0f64 / 120.0f64; at = ui_scroll_by(s[..], at, 3000.0f32 / 120.0f32, 100000, 500, UI_SCROLL_MOVED, t, false); }
+  lifted := at;
+  at = ui_scroll_by(s[..], at, 0, 100000, 500, UI_SCROLL_ENDED, t, false);
+  #assert s[0].coasting && abs(s[0].c_len - 0.909) < 0.01;
+  // the system's momentum goes unused
+  #assert ui_scroll_by(s[..], at, 40, 100000, 500, UI_SCROLL_MOMENTUM, t, false) == at;
+  last: f32 = 100000; steps := 0;
+  while s[0].coasting {
+    t += 1.0f64 / 120.0f64; was := at;
+    at = ui_scroll_step(s[..], at, 100000, 500, t, false);
+    step := at - was;
+    #assert step == floor(step) && step <= last + 1;
+    last = step; steps += 1;
+  }
+  #assert abs(at - lifted - 681) <= 1 && steps < 120;
+  #assert ui_scroll_moving(s[..], t) && !ui_scroll_moving(s[..], t + 2);
+}
+#test "a coast ends by two seconds; rested fingers lift without one; a touch stops it" {
+  s := [1]UiScroll.[UiScroll.{}];
+  t: f64 = 5;
+  _ := ui_scroll_by(s[..], 0, 0, 1000000, 500, UI_SCROLL_BEGAN, t, false);
+  for i: 0..<36 { t += 1.0f64 / 120.0f64; _ = ui_scroll_by(s[..], 0, 40000.0f32 / 120.0f32, 1000000, 500, UI_SCROLL_MOVED, t, false); }
+  _ = ui_scroll_by(s[..], 0, 0, 1000000, 500, UI_SCROLL_ENDED, t, false);
+  #assert s[0].coasting && abs(s[0].c_len - 2) < 0.001;
+  _ = ui_scroll_by(s[..], 0, 0, 1000000, 500, UI_SCROLL_BEGAN, t + 0.1, false);
+  #assert !s[0].coasting;
+  for i: 0..<10 { t += 1.0f64 / 120.0f64; _ = ui_scroll_by(s[..], 0, 25, 1000000, 500, UI_SCROLL_MOVED, t, false); }
+  _ = ui_scroll_by(s[..], 0, 0, 1000000, 500, UI_SCROLL_ENDED, t + 0.25, false);
+  #assert !s[0].coasting;
+  // a wheel's notch never coasts
+  _ = ui_scroll_by(s[..], 0, 68, 1000000, 500, UI_SCROLL_WHEEL, t + 1, false);
+  #assert !s[0].coasting && s[0].stretch == 0;
+}
+#test "fingers past an edge stretch a twentieth of the push and spring back; wheels never stretch" {
+  s := [1]UiScroll.[UiScroll.{}];
+  t: f64 = 1;
+  at := ui_scroll_by(s[..], 0, 0, 2000, 500, UI_SCROLL_BEGAN, t, false);
+  at = ui_scroll_by(s[..], at, -200, 2000, 500, UI_SCROLL_MOVED, t + 0.01, false);
+  #assert at == 0 && s[0].stretch == -10;
+  // back toward the content: the stretch comes back as far as the hand moves, then it scrolls
+  at = ui_scroll_by(s[..], at, 15, 2000, 500, UI_SCROLL_MOVED, t + 0.02, false);
+  #assert s[0].stretch == 0 && at == 5;
+  at = ui_scroll_by(s[..], at, -405, 2000, 500, UI_SCROLL_MOVED, t + 0.03, false);
+  #assert at == 0 && s[0].stretch == -20;
+  at = ui_scroll_by(s[..], at, 0, 2000, 500, UI_SCROLL_ENDED, t + 0.5, false);
+  #assert s[0].spring && !s[0].coasting;
+  tt := t + 0.5;
+  for i: 0..<120 { tt += 1.0f64 / 120.0f64; at = ui_scroll_step(s[..], at, 2000, 500, tt, false); }
+  #assert s[0].stretch == 0 && !s[0].spring && at == 0;
+  w := [1]UiScroll.[UiScroll.{}];
+  #assert ui_scroll_by(w[..], 0, -300, 2000, 500, UI_SCROLL_WHEEL, t, false) == 0 && w[0].stretch == 0;
+  #assert ui_scroll_by(w[..], 1400, 300, 2000, 500, UI_SCROLL_WHEEL, t, false) == 1500 && w[0].stretch == 0;
+  // Reduce Motion: no stretch
+  r := [1]UiScroll.[UiScroll.{}];
+  _ = ui_scroll_by(r[..], 0, 0, 2000, 500, UI_SCROLL_BEGAN, t, true);
+  #assert ui_scroll_by(r[..], 0, -200, 2000, 500, UI_SCROLL_MOVED, t + 0.01, true) == 0 && r[0].stretch == 0;
+}
+#test "a coast reaching an edge bounces once and settles" {
+  s := [1]UiScroll.[UiScroll.{}];
+  t: f64 = 1;
+  at := ui_scroll_by(s[..], 1300, 0, 2000, 500, UI_SCROLL_BEGAN, t, false);
+  for i: 0..<20 { t += 1.0f64 / 120.0f64; at = ui_scroll_by(s[..], at, 3000.0f32 / 120.0f32, 2000, 500, UI_SCROLL_MOVED, t, false); }
+  at = ui_scroll_by(s[..], at, 0, 2000, 500, UI_SCROLL_ENDED, t, false);
+  out: f32 = 0;
+  for i: 0..<240 { t += 1.0f64 / 120.0f64; at = ui_scroll_step(s[..], at, 2000, 500, t, false); if s[0].stretch > out { out = s[0].stretch; } }
+  #assert at == 1500 && out > 0.5 && s[0].stretch == 0 && !s[0].spring && !s[0].coasting;
+}
+#test "the rail shows while scrolling, lingers, fades and is squeezed by a stretch" {
+  s := [1]UiScroll.[UiScroll.{}];
+  #assert !ui_scroll_rail(s[..], 0, 2000, 500, 500, 0, false).shown;
+  _ := ui_scroll_by(s[..], 0, 750, 2000, 500, UI_SCROLL_WHEEL, 10, false);
+  r := ui_scroll_rail(s[..], 750, 2000, 500, 500, 10.5, false);
+  #assert r.shown && r.alpha == 1 && r.h == 123 && abs(r.y - (4 + 369.0f32 * 0.5f32)) < 0.01;
+  #assert ui_scroll_rail(s[..], 750, 2000, 500, 500, 10 + 1.4 + 0.13, false).alpha < 1;
+  #assert !ui_scroll_rail(s[..], 750, 2000, 500, 500, 10 + 1.7, false).shown;
+  #assert !ui_scroll_rail(s[..], 750, 2000, 500, 500, 10 + 1.5, true).shown;
+  #assert !ui_scroll_rail(s[..], 0, 400, 500, 500, 10.1, false).shown;
+  s[0].stretch = 20;
+  q := ui_scroll_rail(s[..], 1500, 2000, 500, 500, 10.1, false);
+  #assert q.h == 103 && q.y == 4 + 369 + 20;
+  #assert ui_scroll_whole(2.4) == 2 && ui_scroll_whole(2.5) == 2 && ui_scroll_whole(-2.5) == -2 && ui_scroll_whole(2.6) == 3 && ui_scroll_whole(2.88) == 3;
+}

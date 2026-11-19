@@ -130,7 +130,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   s[0].view = bottom - top;
   if s[0].stick { s[0].scroll = s[0].content - s[0].view; if s[0].scroll < 0 { s[0].scroll = 0; } }
   uiframe_clip(f, left, top, w, bottom);
-  y := top - s[0].scroll + a.gap;
+  y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
   // where the column reaches under a corner's buttons, the first message starts below them
   right_corner := (ifx left > 0 then side else 2 * side) + CP_CORNER + 128.0f32;
   if x + cw > w - right_corner || left == 0 && x < CP_CORNER + CP_FOLDER_MOST { y += CP_CORNER + side; }
@@ -246,7 +246,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
     }
   }
   uiframe_unclip(f);
-  s[0].content = y + s[0].scroll - top;
+  s[0].content = y + s[0].scroll + s[0].scr[0].stretch - top;
+  app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
 }
 // The Foreman chat's HUD at (x, y), cw wide: its tier, budget and managed chats. Returns the height it takes.
 cp_foreman_hud :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, running: bool, exceeded: bool) -> f32 {

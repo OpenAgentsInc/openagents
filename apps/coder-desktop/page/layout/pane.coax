@@ -36,7 +36,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
   s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
   uiframe_clip(f, px, stop, px + pw, h);
-  x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].pane_scroll + a.gap;
+  x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := stop - s[0].pane_scroll - s[0].pane_scr[0].stretch + a.gap;
   enter := f[0].skin.motion.enter;
   f[0].skin.motion.enter = 0;
   y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + a.gap;
@@ -71,5 +71,6 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   }
   else if state == CP_STOPPED { y += app_meta(f, cp_pane_id(ib[..], s, ".s", -1), x, y, cw, "Stopped", false) + a.gap; }
   uiframe_unclip(f);
-  s[0].pane_content = y + s[0].pane_scroll - stop;
+  s[0].pane_content = y + s[0].pane_scroll + s[0].pane_scr[0].stretch - stop;
+  app_scroll_rail(f, s[0].pane_scr[..], px + pw, stop, s[0].pane_scroll, s[0].pane_content, s[0].pane_view, s[0].pane_view, s[0].now, s[0].reduced);
 }

@@ -27,6 +27,9 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
   if !s[0].reduced { s[0].time += t; }
   s[0].clock += t;
+  // the views' coasts and springs, where they are when this refresh shows (a refresh after this one's dt)
+  if !s[0].now_host { s[0].now = cast(f64) s[0].clock; }
+  live := cp_scroll_step(s, s[0].now + cast(f64) (ifx t > 0.004 && t < 0.034 then t else 0.0083f32));
   a[0].frame += 1;
   k := cp_skin();
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
@@ -38,6 +41,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
   s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due;
+  s[0].scr_live = live;
   s[0].set_due = false;
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
@@ -238,7 +242,9 @@ coder_page_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(al
   return true;
 }
 coder_page_running :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_running(s); }
-coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving); }
+coder_page_moving :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || !s[0].reduced && s[0].moving || s[0].scr_live); }
+// The host's clock before a frame, in seconds (the one its scroll events are stamped on).
+coder_page_now :: (s: [] CoderPage, now: f64) #export_c #effects(all) { if s.count > 0 { s[0].now = now; s[0].now_host = true; } }
 coder_page_refused :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 coder_page_max_vertices :: () -> int #export_c #effects(all) { return CP_MAX_VERTICES; }
 coder_page_scale :: (s: [] CoderPage) -> f32 #export_c #effects(all) { if s.count < 1 { return ARCADE_PHONE_SCALE; } return cp_scale(s); }

@@ -200,3 +200,33 @@
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert s[0].side > 0;
 }
+#test "a trackpad flick coasts the transcript, a gesture stays with its view, and the system's momentum goes unused" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  coder_page_now(s, 100);
+  sc := cp_scale(s);
+  s[0].d = 2; s[0].side = 200; s[0].px = 600; s[0].content = 5000; s[0].view = 500; s[0].scroll = 4500; s[0].stick = true;
+  s[0].side_content = 3000; s[0].side_view = 500;
+  // fingers up the transcript (down the screen) at 2400 points a second: it lets go of the newest message
+  t: f64 = 100;
+  coder_page_scroll(s, 0, true, 1, 0, t);
+  for i: 0..<30 { t += 1.0f64 / 120.0f64; coder_page_scroll(s, 20 * sc, true, 2, 0, t); }
+  #assert !s[0].stick && abs(s[0].scroll - 3900) < 0.5 && s[0].scr_at == CP_SCR_TALK;
+  // the pointer moves over the chats mid-gesture: the gesture stays with the transcript
+  s[0].px = 50;
+  coder_page_scroll(s, 0, true, 3, 0, t);
+  #assert s[0].scr[0].coasting && s[0].side_scroll == 0;
+  was := s[0].scroll;
+  coder_page_scroll(s, 30 * sc, true, 0, 2, t);
+  #assert s[0].scroll == was;
+  for i: 0..<300 { t += 1.0f64 / 120.0f64; coder_page_now(s, t); _ := cp_scroll_step(s, t); }
+  #assert !s[0].scr[0].coasting && s[0].scroll < was - 100 && s[0].scroll == floor(s[0].scroll);
+  // a mouse's notch over the chats moves them 22.75 points, and never stretches
+  coder_page_scroll(s, -1, false, 0, 0, t);
+  #assert abs(s[0].side_scroll - 22.75 / sc) < 0.01 && s[0].side_scr[0].stretch == 0;
+  coder_page_scroll(s, 10, false, 0, 0, t);
+  #assert s[0].side_scroll == 0 && s[0].side_scr[0].stretch == 0;
+  // the rail keeps frames coming while it lingers, then lets them stop
+  coder_page_now(s, t + 0.5); #assert cp_scroll_step(s, t + 0.5);
+  coder_page_now(s, t + 3); #assert !cp_scroll_step(s, t + 3);
+}

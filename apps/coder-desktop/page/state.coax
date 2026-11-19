@@ -211,6 +211,7 @@ CoderPage :: struct {
   zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
+  scr: [1] UiScroll; side_scr: [1] UiScroll; pane_scr: [1] UiScroll; scr_at: int; scr_live: bool; now: f64; now_host: bool;   // each view's coast, stretch and rail (components/core/scroll.coax), the view a gesture holds, the host's clock (else the page's)
   box: ComposerBox;
   ask: int; refused: int; moving: bool;
   live_ask: int; live_reply: int; live_call: int; live_pane: int;   // >= 0: newly arrived live item to animate in once

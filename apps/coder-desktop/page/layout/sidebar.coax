@@ -64,9 +64,10 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   s[0].side_view = h - stop - footer_h - me_h;
   bottom_pad := 16.0f32 / u;
   tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
-  s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, tail, CP_CHAT);
+  s[0].side_content = app_side_window_at(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, s[0].side_scr[0].stretch, tail, CP_CHAT);
+  app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
   s[0].pin_row_h = a.side_row;
-  s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+  s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
   if s[0].pin_dragging && s[0].pin_drag > 0 && npinned > 1 {
     from := cp_pin_index(s, s[0].pin_drag - 1);
     if from >= 0 {
@@ -89,7 +90,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
     mb: [96] u8; mn := 0;
     if s[0].nchats == 0 { mn = el_put(mb[..], 0, "Your chats show here."); }
     else { mn = el_put_i(mb[..], 0, s[0].chats_more); mn = el_put(mb[..], mn, ifx s[0].chats_more == 1 then " older chat is not shown." else " older chats are not shown."); }
-    my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
+    my := stop + s[0].side_content - tail + a.gap - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
     if my + k.small.line > stop && my < stop + s[0].side_view { _ := app_meta(f, "coder.chats.more", a.side_pad, my, sw - 2 * a.side_pad, sheet_pool(f[0].sheet, cast(string) mb[0..<mn]), false); }
   }
   if footer_h > 0 { cp_side_footer(s, f, 0, h - me_h - footer_h, sw); }
