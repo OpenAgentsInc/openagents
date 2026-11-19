@@ -4850,8 +4850,8 @@ fn coax_p_pr_poured(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_world: v
   }
   l_s.x = coax_p_scale3(l_s.x, l_tone);
   l_s.x = coax_p_mix3(l_s.x, coax_p_scale3(coax_p_v3(0x1.3d70a4p-1f, 0x1.428f5cp-1f, 0x1.47ae14p-1f), (coax_p_pr_lum(l_s.x) / 0x1.428f5cp-1f)), ((0x1.000000p0f - l_above) * 0x1.000000p-2f));
-  l_streak = coax_p_pr_noise2(((l_f.x * 0x1.ccccccp-1f) + l_seed), (l_f.y * 0x1.89374cp-7f));
-  l_s.x = coax_p_scale3(l_s.x, (0x1.000000p0f - (0x1.1eb852p-4f * coax_p_smoothstep(0x1.ccccccp-2f, 0x1.ccccccp-1f, l_streak))));
+  l_streak = coax_p_smoothstep(0x1.ccccccp-2f, 0x1.ccccccp-1f, coax_p_pr_noise2(((l_f.x * 0x1.4cccccp-1f) + l_seed), (l_f.y * 0x1.89374cp-7f)));
+  l_s.x = coax_p_scale3(l_s.x, (0x1.000000p0f - (0x1.1eb852p-4f * coax_p_mix(0x1.c28f5cp-3f, l_streak, coax_p_pr_resolve(0x1.800000p0f, l_ax)))));
   l_dark = 0.0f;
   l_dark = coax_p_fmax(l_dark, (0x1.1eb852p-2f * coax_p_pr_line(l_f.y, l_lift, 0x1.eb851ep-6f, l_ay)));
   l_dark = coax_p_fmax(l_dark, (0x1.1eb852p-3f * coax_p_fmax(coax_p_pr_line(l_f.x, l_panel, 0x1.89374cp-7f, l_ax), coax_p_pr_line(l_f.y, (l_lift * 0x1.000000p-1f), 0x1.0624dep-7f, l_ay))));
@@ -5050,7 +5050,7 @@ fn coax_p_pr_stone(p_s0: coax_t26, p_f: vec2f, p_ax: f32, p_ay: f32, p_da: f32, 
   l_s.x = coax_p_mix3(l_s.x, coax_p_mul3(l_s.x, coax_p_v3(0x1.051eb8p0f, 0x1.e66666p-1f, 0x1.ae147ap-1f)), (l_weather * coax_p_smoothstep(0x1.666666p-2f, 0x1.800000p-1f, l_vein)));
   if ((abs(l_fl.y) < 0x1.666666p-1f))
   {
-    l_hang = coax_p_smoothstep(0x1.19999ap-1f, 0x1.ccccccp-1f, coax_p_pr_noise2(((l_f.x * 0x1.19999ap0f) + l_seed), (l_f.y * 0x1.99999ap-5f)));
+    l_hang = coax_p_mix(0x1.333334p-3f, coax_p_smoothstep(0x1.19999ap-1f, 0x1.ccccccp-1f, coax_p_pr_noise2(((l_f.x * 0x1.19999ap0f) + l_seed), (l_f.y * 0x1.99999ap-5f))), coax_p_pr_resolve(0x1.ccccccp-1f, l_ax));
     l_s.x = coax_p_scale3(l_s.x, (0x1.000000p0f - ((0x1.c28f5cp-3f * l_weather) * l_hang)));
     l_foot = ((0x1.000000p0f - coax_p_smoothstep(0.0f, 0x1.ccccccp-1f, l_local.y)) * (0x1.333334p-1f + (0x1.99999ap-2f * l_fine)));
     l_s.x = coax_p_mix3(l_s.x, coax_p_mul3(l_s.x, coax_p_v3(0x1.3d70a4p-1f, 0x1.333334p-1f, 0x1.19999ap-1f)), (l_foot * l_weather));
