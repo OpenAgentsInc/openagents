@@ -223,6 +223,12 @@ lab_section :: (s: [] Slab, h: [] SceneHud) {
   for i: 0..<4 { _ = lab_put(s, h, sb_id(ids[..], "lab.s.empty.", i), "Empty", -half + cell * (9.5f32 + cast(f32) i * 3), 8, z, 1, false); }
 }
 
+// The districts, the stations and the tour stand where the picture's hull has them: a hull resized
+// or stripped bare in the "What would it take?" panel (slab-change.coax) has none there.
+lab_picture_deck :: (s: [] Slab) -> bool {
+  sh := s[0].change[0].facts.shape;
+  return sh.l == HULL_PRIME_L && sh.b == HULL_PRIME_B && sh.deck == HULL_PRIME_DECK && !what_bare(s[0].change[0].what);
+}
 // The names in the scene for this frame. sb_say calls it.
 lab_say :: (s: [] Slab, h: [] SceneHud) {
   if s[0].build.on || s[0].layout != LAYOUT_PRIME { return; }
@@ -237,10 +243,7 @@ lab_say :: (s: [] Slab, h: [] SceneHud) {
   if s[0].hp.tour.on || s[0].section || s[0].flow || s[0].under || s[0].mode == CAM_WALK || s[0].chart.on { return; }   // the chart (slab-chart.coax) covers the scene
   show := lab_high(s[0].eye[1] - SLAB_DECK);
   if !(show > 0.05) { return; }
-  // the districts stand where the picture's hull has them: a hull resized or stripped bare in the
-  // "What would it take?" panel (slab-change.coax) has none there to name
-  sh := s[0].change[0].facts.shape;
-  if sh.l != HULL_PRIME_L || sh.b != HULL_PRIME_B || sh.deck != HULL_PRIME_DECK || what_bare(s[0].change[0].what) { return; }
+  if !lab_picture_deck(s) { return; }
   name: [LAB_TEXT] u8;
   narrow := s[0].width / hi_f32(s[0].dpr, 0.5) < 600;
   e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);

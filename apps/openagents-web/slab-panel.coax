@@ -182,7 +182,9 @@ panel_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
       if f.carries > 0 { what_mass(l, f.carries); panel_fact(h, "More it could carry before its top went under", l, WHAT_OURS); }
       what_num(l, led.gm_t, 0); what_put(l, " m"); panel_fact(h, "Steadiness (GM: how far the point it rocks about sits over its weight)", l, WHAT_OURS);
       if !change_picture_hull(c) {
-        sh_say(h, "The buildings are the picture's, scaled to fit this deck. The hull still rocks as the picture's hull does: a smaller one would move more.");
+        if what_bare(w) { sh_say(h, "A bare hull: nothing stands on the deck."); }
+        else if change_scale(sh) < 1 { sh_say(h, "The picture's city, scaled down to fit this deck."); }
+        else if sh.l > HULL_PRIME_L || sh.b > HULL_PRIME_B { sh_say(h, "The picture's city at its designed size; the rest of this deck is open."); }
       }
     }
     if part == PP_BUILD {
@@ -293,6 +295,13 @@ slab_action :: (s: [] Slab) -> int #export_c #effects(all) { return ifx s.count 
 slab_outbox :: (s: [] Slab) -> string #export_c #effects(all) { return cast(string) s[0].panel.out[0..<s[0].panel.out_n]; }
 slab_action_done :: (s: [] Slab) #export_c #effects(all) { s[0].panel.action = 0; }
 
+// The picture's hull and load again, the place and the rest kept (the tour is of the picture's platform).
+panel_picture_hull :: (s: [] Slab) {
+  c := s[0].change[..]; pic := what_picture();
+  for i: WC_WEIGHT..<WC_DRAFT + 1 { c[0].what.v[i] = pic.v[i]; }
+  c[0].what.layout = WHAT_PRIME;
+  change_refresh(c); panel_moved(s);
+}
 // A setting moved: the world takes it and the address says it.
 panel_moved :: (s: [] Slab) { change_push(s, true); panel_address(s); }
 // What a press does. True when the id was the panel's.
@@ -482,6 +491,15 @@ panel_act :: (s: [] Slab, id: string, value: int) -> bool {
   #assert panel_act(s, "take.reset", 0);
   sb_say(s);
   #assert sb_test_has(s, 'W', "at.4", "Tower district");
+  // the places on the deck are not offered, and the tour puts the picture's hull back where it is
+  #assert panel_act(s, "take.from.1", 0);
+  sb_say(s);
+  #assert !sb_test_has(s, 'O', "go.4", "") && sb_test_has(s, 'O', "go.8", "");
+  sb_act(s, "go.4"); #assert s[0].tx != STATION_X[4] || s[0].dist != STATION_DIST[4];
+  tour_start(s);
+  #assert lab_picture_deck(s) && s[0].site == SITE_TEXAS && s[0].change[0].what.site == SITE_TEXAS;
+  tour_end(s);
+  #assert panel_act(s, "take.reset", 0);
   // and none over the chart
   chart_show(s, true); sb_say(s);
   #assert sb_test_count(s, 'W') == 0;

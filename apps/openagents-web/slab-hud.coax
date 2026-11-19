@@ -216,8 +216,11 @@ sb_look :: (s: [] Slab, h: [] SceneHud) {
   }
   sh_menu(h, "go", "Go to a place", "Choose a place");
     names := SB_STATIONS;
-    for i: 0..<9 { sh_option(h, sb_id(ids[..], "go.", i), names[i], "", false); }
+    // the places on the deck are the picture's (slab-labels.coax): on another hull only the two views from the sea
+    deck := lab_picture_deck(s);
+    for i: 0..<9 { if deck || i >= 7 { sh_option(h, sb_id(ids[..], "go.", i), names[i], "", false); } }
   sh_end_of(h);
+  if !deck { sh_say(h, "The places on the deck are the picture's. Reset to the picture under Change to visit them."); }
   sb_more(s, h, HUD_LOOK);
 }
 
@@ -419,7 +422,7 @@ sb_act :: (s: [] Slab, body: string) {
   if id == "look.in" { s[0].dist = clamp32(s[0].dist * 0.7f32, 25, 9000); s[0].intro = 0; return; }
   if id == "look.out" { s[0].dist = clamp32(s[0].dist / 0.7f32, 25, 9000); s[0].intro = 0; return; }
   k := sb_index(id, "go.");
-  if k >= 0 && k < 9 { names := SB_STATIONS; travel(s, k); sb_toast(s, names[k]); return; }
+  if k >= 0 && k < 9 { if k < 7 && !lab_picture_deck(s) { return; } names := SB_STATIONS; travel(s, k); sb_toast(s, names[k]); return; }
   // See inside
   if id == "view.section" { press(s, BTN_SECTION); return; }
   if id == "view.under" { press(s, BTN_UNDER); return; }

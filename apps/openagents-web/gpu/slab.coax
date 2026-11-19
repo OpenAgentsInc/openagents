@@ -163,6 +163,14 @@ slab_land_within :: (toward:f32,u:[]f32)->f32 {
   if (edge<=-0.999f32) { return 1.0f32; }
   return smoothstep(edge,edge+((1.0f32-edge)*0.3f32)+0.0001f32,toward);
 }
+// Distant land toward the sky's colour `sky`: a share that grows with its distance (m) and toward
+// its foot (low 1), and its colour a little greyed.
+slab_land_far :: (land:V3,sky:V3,far:f32,low:f32)->V3 {
+  grey:f32=(land.x*0.3f32)+(land.y*0.59f32)+(land.z*0.11f32);
+  l:V3=sb_mix(land,v3(grey,grey,grey),0.35f32);
+  k:f32=fmin(0.22f32+(0.45f32*(1.0f32-exp(-far/9000.0f32)))+(0.15f32*low),0.85f32);
+  return sb_mix(l,sky,k);
+}
 slab_land :: (c:V3,d:V3,o:V3,u:[]f32)->V3 {
   peak:f32=u[SLAB_P+58];
   far:f32=wg_length2(v2(u[SLAB_P+50],u[SLAB_P+51]));
@@ -174,15 +182,22 @@ slab_land :: (c:V3,d:V3,o:V3,u:[]f32)->V3 {
   // looking away from the nearest shore, land that is all round stands on the horizon
   reach:f32=fmax(far-(((o.x*u[SLAB_P+50])+(o.z*u[SLAB_P+51]))/far),1.0f32)/fmax(toward,0.0001f32);
   foot:f32=ifx toward>0.02f32 then -(fmax(o.y,0.0f32)/reach) else -0.001f32;
-  rise:f32=0.3f32+(0.5f32*slab_noise(v2((d.x/flat)*4.0f32,(d.z/flat)*4.0f32)))+(0.2f32*slab_noise(v2((d.x/flat)*13.0f32+3.0f32,(d.z/flat)*13.0f32)));
+  // a ridge line with relief: a broad swell, hills of a kilometre or so at a few kilometres off, and
+  // a ragged edge of trees and crests (the chart gives the height; these are the shape, not survey)
+  ax:f32=d.x/flat; az:f32=d.z/flat;
+  rise:f32=0.12f32+(0.38f32*slab_noise(v2(ax*4.0f32,az*4.0f32)))+(0.32f32*slab_noise(v2(ax*17.0f32+3.0f32,az*17.0f32)))+(0.14f32*slab_noise(v2(ax*61.0f32+7.0f32,az*61.0f32)))+(0.04f32*slab_noise(v2(ax*240.0f32+11.0f32,az*240.0f32)));
+  rise=rise*rise*1.6f32;
   ridge:f32=peak*within*rise;
   el:f32=d.y/flat;
   m:f32=(1.0f32-smoothstep(ridge-(0.0012f32+(ridge*0.04f32)),ridge,el))*smoothstep(foot-0.0006f32,foot,el);
   // where no land stands (within 0) the ridge is 0 and the band above would still draw a pixel of
   // land along the whole horizon: a hard dark line over the open sea
   m=m*smoothstep(0.0f32,0.002f32,ridge);
-  // the ridge stands at the shore's distance, so it takes that much haze and no more
-  return sb_mix(c,slab_haze(slab_land_colour(u),d,far*0.6f32,u),m);
+  // the ridge stands at the shore's distance, so it takes that much haze; then aerial perspective
+  // pulls it toward the sky behind it (c, the horizon's colour), most at its foot where the air over
+  // the water is thickest, and greys its green, so land 5 km and more away reads as far
+  land:V3=slab_land_far(slab_haze(slab_land_colour(u),d,far*0.6f32,u),c,far,1.0f32-fmin(fmax((el-foot)/fmax(ridge-foot,0.0001f32),0.0f32),1.0f32));
+  return sb_mix(c,land,m);
 }
 slab_shore :: (c:V3,w:V3,d:V3,u:[]f32)->V3 {
   far:f32=wg_length2(v2(u[SLAB_P+50],u[SLAB_P+51]));
@@ -194,7 +209,8 @@ slab_shore :: (c:V3,w:V3,d:V3,u:[]f32)->V3 {
   // it takes the haze of a hillside a little past the shore and not of a plain out to the horizon
   strand:f32=1.0f32-smoothstep(far*1.02f32,(far*1.05f32)+40.0f32,along);
   land:V3=sb_mix(slab_land_colour(u),sb_mul(sb_p(u,12),0.82f32),strand*0.6f32);
-  return sb_mix(c,slab_haze(land,d,fmin(r,far*1.5f32)*0.4f32,u),m);
+  // the same aerial perspective as the ridge's (slab_land_far), toward the horizon's own colour
+  return sb_mix(c,slab_land_far(slab_haze(land,d,fmin(r,far*1.5f32)*0.4f32,u),slab_haze(land,d,1.0e6f32,u),far,1.0f32),m);
 }
 
 // The sky: zenith to horizon in the hour's colours, the sun's disc and its glow, broad pale clouds.

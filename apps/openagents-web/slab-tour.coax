@@ -117,6 +117,9 @@ tour_go :: (s: [] Slab, stop: int) {
   e := s[0].eye; f := s[0].fwd; reach := hi_f32(s[0].dist, 200);
   tour_clear(s);
   if s[0].layout != LAYOUT_PRIME { set_layout(s, LAYOUT_PRIME); cut = true; }
+  // the tour is of the picture's platform: a hull changed in the panel goes back to the picture's
+  // size and load, wherever it is
+  if !lab_picture_deck(s) { panel_picture_hull(s); cut = true; }
   if s[0].mode != CAM_ORBIT { set_mode(s, CAM_ORBIT); }
   s[0].intro = 0;
   s[0].hp.tour.on = true; s[0].hp.tour.stop = k; s[0].hp.tour.at = 0; s[0].hp.tour.held = false; s[0].hp.tour.cut = cut;
