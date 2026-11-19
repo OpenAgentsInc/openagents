@@ -140,6 +140,7 @@ tour_end :: (s: [] Slab) {
 tour_opening :: (s: [] Slab) {
   v := TOUR_OPEN;
   s[0].tx = v.x; s[0].ty = v.y; s[0].tz = v.z; s[0].dist = v.dist; s[0].yaw = v.yaw; s[0].pitch = v.pitch;
+  s[0].hp.open = 1;   // and a phone's is framed for it (sb_open_fit)
 }
 
 // The tour's camera for this frame, after `step` more seconds: eye and forward, and whether it has
