@@ -144,7 +144,8 @@ sh_caption :: (h: [] SceneHud, id: string, label: string, step: int, steps: int,
   sh_line(h, 'U', f[..]);
 }
 sh_lead :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'J', f[..]); }
-sh_plate :: (h: [] SceneHud, src: string, alt: string, show: f32) { a: [SH_NUM] u8; f := [3] string.[src, alt, sh_int(a[..], sh_round(show * 100))]; sh_line(h, 'I', f[..]); }
+// `ratio` is the picture's width over its height (0 if not known): with it, the pane fades its edges.
+sh_plate :: (h: [] SceneHud, src: string, alt: string, show: f32, ratio: f32) { a: [SH_NUM] u8; r: [SH_NUM] u8; f := [4] string.[src, alt, sh_int(a[..], sh_round(show * 100)), sh_int(r[..], sh_round(ratio * 1000))]; sh_line(h, 'I', f[..]); }
 sh_foot :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'Z', f[..]); }
 sh_toast :: (h: [] SceneHud, text: string) { f := [1] string.[text]; sh_line(h, 'Y', f[..]); }
 

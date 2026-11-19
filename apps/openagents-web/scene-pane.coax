@@ -41,6 +41,7 @@ ScenePane :: struct {
   back: [SH_ID] u8; back_n: int;
   acts: [SP_ACTS] [SP_ACT] u8; act_n: [SP_ACTS] int; nacts: int;
   inbox: [SH_TEXT] u8;
+  bar_said: int; sheet_said: int;       // the bar's and the open sheet's heights the page was last told (CSS px)
   sets: [MF_COUNT] AfSettings;
   css: [SP_CSS] u8;
   ui: [1] Ui;
@@ -54,6 +55,18 @@ sp_act :: (s: [] ScenePane, body: string) -> bool {
   for i: 0..<body.count { s[0].acts[k][i] = body[i]; }
   s[0].act_n[k] = body.count; s[0].nacts += 1;
   return true;
+}
+// How tall the bar and the open sheet stand, in CSS pixels, as the browser last measured them: the
+// page is told each when it changes ("hud.bar 87", "hud.sheet 0" once the sheet is shut), so it can
+// keep its names in the scene clear of the bar and lift its view over a sheet.
+sp_sizes :: (s: [] ScenePane) {
+  d := s[0].dom[..];
+  bar := dm_find(d, "bar"); sheet := dm_find(d, "sheet");
+  bh := ifx bar >= 0 then cast(int) (d[0].slots[bar].h + 0.5) else 0;
+  sht := ifx sheet >= 0 then cast(int) (d[0].slots[sheet].h + 0.5) else 0;
+  b: [SP_ACT] u8;
+  if bh != s[0].bar_said && sp_act(s, sh_press(b[..], "hud.bar", true, bh)) { s[0].bar_said = bh; }
+  if sht != s[0].sheet_said && sp_act(s, sh_press(b[..], "hud.sheet", true, sht)) { s[0].sheet_said = sht; }
 }
 sp_set :: (to: [] u8, id: string) -> int {
   n := ifx id.count > to.count then to.count else id.count;
@@ -242,7 +255,7 @@ sp_build :: (s: [] ScenePane) {
   i = 0;
   while i < text.count {
     l := sh_read(text, i); i = l.next;
-    if l.kind == 'I' && l.n >= 3 { p := k_scene_plate(t, "plate", l.f[0], l.f[1], cast(f32) sh_number_of(l.f[2], 0) / 100); }
+    if l.kind == 'I' && l.n >= 3 { p := k_scene_plate(t, "plate", l.f[0], l.f[1], cast(f32) sh_number_of(l.f[2], 0) / 100, ifx l.n >= 4 then cast(f32) sh_number_of(l.f[3], 0) / 1000 else 0.0f32); }
   }
   if bar {
     top := k_scene_top(t, "top");
@@ -424,6 +437,7 @@ coaxial_scenepane_frame :: (s: [] ScenePane, dt: f32, reduced: bool) -> int #exp
   s[0].dirty = false;
   bytes := dm_flush(d, s[0].tree[..], s[0].sets[..]);
   if d[0].overflow { dm_reset(d); s[0].dirty = true; s[0].slides = 0; return -1; }
+  sp_sizes(s);
   return bytes;
 }
 coaxial_scenepane_busy :: (s: [] ScenePane) -> bool #export_c #effects(all) { return s.count > 0 && (s[0].dirty || s[0].animating); }
@@ -548,6 +562,18 @@ sp_test_world :: (x: [] SpTest, site: int, depth: int) {
   sp_test_press(x, "part.back");
   #assert tr_find(t, "take.depth") < 0 && tr_find(t, "reset") >= 0;
 }
+#test "the page hears how tall the bar and an open sheet stand, and that a shut sheet is gone" {
+  xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; d := s[0].dom[..];
+  sp_test_world(x, 0, 1500); sp_test_said(x);
+  #assert sp_test_act(x) == "";
+  sp_test_press(x, "tab.look");
+  coaxial_scenepane_size(s, dm_find(d, "bar"), 374, 87.4); coaxial_scenepane_size(s, dm_find(d, "sheet"), 374, 400);
+  _ = coaxial_scenepane_frame(s, 0.016, true);
+  #assert sp_test_act(x) == "hud.bar 87"; coaxial_scenepane_act_done(s);
+  #assert sp_test_act(x) == "hud.sheet 400"; coaxial_scenepane_act_done(s);
+  sp_test_press(x, "tab.look");
+  #assert sp_test_act(x) == "hud.sheet 0";
+}
 #test "tags are pinned where the page says; one that can be pressed goes to the page" {
   xs: [1] SpTest; x := xs[..]; s := x[0].s[..]; t := s[0].tree[..];
   sp_test_world(x, 0, 1500); sp_test_said(x);
@@ -604,7 +630,7 @@ sp_test_world :: (x: [] SpTest, site: int, depth: int) {
   sp_test_world(x, 0, 1500);
   sh_card(h, "card", "Cold-water pipe"); sh_number(h, "1", "a", "b", SH_CLAIM); sh_fold(h, "maths", "The maths"); sh_end_of(h); sh_action(h, "a", "A", false);
   sh_caption(h, "cap", "Tour", 1, 7, 0.5); sh_lead(h, "One kilometre long."); sh_action(h, "tour.next", "Next", true);
-  sh_plate(h, "/build/slab.jpeg", "The picture", 0.5); sh_toast(h, "Hello");
+  sh_plate(h, "/build/slab.jpeg", "The picture", 0.5, 1.5); sh_toast(h, "Hello");
   sp_test_said(x); sp_test_press(x, "tab.change"); sp_test_press(x, "menu.site");
   css := cast(string) s[0].css[0..<mono_scene_css(s[0].css[..], mono_dock_css(s[0].css[..], mono_css(s[0].css[..])))];
   #assert css.count < SP_CSS - 512;

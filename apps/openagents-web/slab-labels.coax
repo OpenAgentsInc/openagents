@@ -43,6 +43,9 @@ lab_put :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32, y: f32
 }
 // The same, trying only `tries` places: 1 is the point itself, 3 a row above or below it too.
 lab_put_within :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32, y: f32, z: f32, show: f32, press: bool, tries: int) -> bool {
+  // a name is whole or not there: shown at half it cannot be read over a lit deck, so while it shows at
+  // all it shows whole, and once its distance takes it away it goes whole (the pane fades it in and
+  // out: mono's .scn-tag)
   if s[0].hp.lab.boxes >= LAB_MAX || !(show > 0.05) { return false; }
   k := hi_f32(s[0].dpr, 0.5);
   q := screen_of(s, x, y, z);
@@ -57,7 +60,7 @@ lab_put_within :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32,
     row := cast(f32) ((step + 1) / 2) * (ifx step % 2 == 1 then -1.0f32 else 1.0f32);
     ty := cy + row * (t + 2);
     b := LabBox.{x0 = cx - w / 2, y0 = ty - t / 2, x1 = cx + w / 2, y1 = ty + t / 2};
-    if b.y0 < 60 || b.y1 > tall - 44 { continue; }
+    if b.y0 < lab_top(s) || b.y1 > tall - 44 { continue; }
     clear := true;
     for i: 0..<s[0].hp.lab.boxes {
       o := s[0].hp.lab.box[i];
@@ -65,7 +68,7 @@ lab_put_within :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32,
     }
     if !clear { continue; }
     s[0].hp.lab.box[s[0].hp.lab.boxes] = b; s[0].hp.lab.boxes += 1;
-    sh_tag(h, id, text, cx, ty, show, press);
+    sh_tag(h, id, text, cx, ty, 1, press);
     return true;
   }
   return false;
@@ -73,12 +76,15 @@ lab_put_within :: (s: [] Slab, h: [] SceneHud, id: string, text: string, x: f32,
 
 // A tag's box at a point of the screen (CSS px), for a name that cannot be pressed, and whether it is
 // clear of the screen's edges, the other tags and the platform's outline (lab_outline).
+// The highest a name may stand (CSS px from the top): under the pane's bar as the pane measured it
+// (two rows of it on a phone), and never above 60.
+lab_top :: (s: [] Slab) -> f32 { return hi_f32(60, 8 + s[0].hp.bar + 8); }
 lab_box_at :: (text: string, cx: f32, cy: f32) -> LabBox {
   w := cast(f32) text.count * 7.6f32 + 8;
   return LabBox.{x0 = cx - w / 2, y0 = cy - 11, x1 = cx + w / 2, y1 = cy + 11};
 }
 lab_clear :: (s: [] Slab, b: LabBox, ox: [] f32, oy: [] f32, on: int) -> bool {
-  if s[0].hp.lab.boxes >= LAB_MAX || b.y0 < 60 || b.y1 > s[0].height / hi_f32(s[0].dpr, 0.5) - 44 || lab_on_outline(ox, oy, on, b) { return false; }
+  if s[0].hp.lab.boxes >= LAB_MAX || b.y0 < lab_top(s) || b.y1 > s[0].height / hi_f32(s[0].dpr, 0.5) - 44 || lab_on_outline(ox, oy, on, b) { return false; }
   for i: 0..<s[0].hp.lab.boxes {
     o := s[0].hp.lab.box[i];
     if b.x0 < o.x1 + LAB_GAP && b.x1 > o.x0 - LAB_GAP && b.y0 < o.y1 + LAB_GAP && b.y1 > o.y0 - LAB_GAP { return false; }
@@ -309,6 +315,18 @@ lab_test_clash :: (s: [] Slab) -> bool {
   // the places' names stand on the platform; a line's name is the one more box, off it
   if sb_test_has(s, 'W', "place.state", "") { #assert b < s[0].hp.lab.boxes && !lab_test_clash(s); }
 }
+#test "labels: no name stands under the pane's bar, however tall the pane says the bar is" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  #assert lab_top(s) == 60;
+  sb_act(s, "hud.bar 87");   // the bar in two rows, on a phone
+  #assert lab_top(s) == 103;
+  // the camera looking at the platform from high up, so the far districts stand near the top
+  lab_test_view(s, TourShot.{x = 0, y = 0, z = -300, dist = 1500, yaw = 0.8, pitch = 0.75}, 390, 844);
+  sb_say(s);
+  #assert s[0].hp.lab.boxes > 0;
+  for i: 0..<s[0].hp.lab.boxes { #assert s[0].hp.lab.box[i].y0 >= 103; }
+}
 #test "labels: each district's name stands in its district, written as a sentence writes it" {
   out: [LAB_TEXT] u8;
   #assert lab_plain(out[..], "OTEC PLANT DISTRICT") == "OTEC plant district";
@@ -342,7 +360,7 @@ lab_test_clash :: (s: [] Slab) -> bool {
   #assert s[0].hp.lab.boxes >= 3 && !lab_test_clash(s) && sb_test_has(s, 'W', "at.4", "Tower district");
   // and from the opening's distance only the places you can go to are named there
   for i: 5..<LAB_DISTRICTS { #assert !sb_test_has(s, 'W', sb_id(ids[..], "lab.d.", i), ""); }
-  // half way down they are half there; low over the deck they are gone
+  // half way down they are still there, whole (lab_put_within); low over the deck they are gone
   #assert lab_high(LAB_HIGH + 50) == 1 && lab_high((LAB_HIGH + LAB_LOW) / 2) == 0.5 && lab_high(LAB_LOW - 10) == 0;
   lab_test_view(s, TourShot.{x = 385, y = SLAB_DECK, z = 42, dist = 230, yaw = 0.6, pitch = 0.35}, 1440, 900);
   sb_say(s);
@@ -350,6 +368,17 @@ lab_test_clash :: (s: [] Slab) -> bool {
   // a press goes to the station
   sb_act(s, "at.1");
   #assert s[0].tx == STATION_X[1] && s[0].dist == STATION_DIST[1];
+}
+#test "labels: a name is whole or not there, never half shown" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  lab_test_view(s, TOUR_OPEN, 1440, 900);
+  h := s[0].hp.said[..]; sh_begin(h); s[0].hp.lab.boxes = 0;
+  #assert lab_put(s, h, "lab.a", "Civic quarter", 0, SLAB_DECK + 30, 0, 0.3, false);
+  #assert !lab_put(s, h, "lab.b", "Medical campus", 300, SLAB_DECK + 30, 0, 0.03, false);
+  _ = sh_end(h);
+  #assert sb_test_field(s, 'W', "lab.a", 4) == "100" && !sb_test_has(s, 'W', "lab.b", "");
 }
 #test "labels: the section names its parts with the ledger's figures, and the flow view's names are tags" {
   xs: [1] SbTest; x := xs[..]; s := x[0].s[..];

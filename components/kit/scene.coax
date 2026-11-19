@@ -206,15 +206,32 @@ k_scene_tag :: (t: [] Tree, id: string, text: string, x: f32, y: f32, show: f32,
   return i;
 }
 // Plate: a picture laid over the whole scene, as much of it showing as `show` says (0 to 1), so a
-// scene can fade in from the picture it was built from. `src` is a path on this site.
-k_scene_plate :: (t: [] Tree, id: string, src: string, alt: string, show: f32) -> int {
+// scene can fade in from the picture it was built from. `src` is a path on this site. The picture is
+// shown whole, as large as the window lets it; `ratio` is its width over its height, and when the
+// page knows it (more than 0) the picture's edges fade into the scene over 48 px, so a window of
+// another shape shows no hard line where the picture stops.
+k_scene_plate :: (t: [] Tree, id: string, src: string, alt: string, show: f32, ratio: f32) -> int {
   v: [SC_VARS] u8;
   if !k_here(src) { return -1; }
-  i := tr_open(t, id, TG_IMG, "scn-plate");
+  i := tr_open(t, id, TG_IMG, ifx ratio > 0 then "scn-plate scn-plate-fit" else "scn-plate");
   tr_attr(t, i, AT_SRC, src); tr_attr(t, i, AT_LABEL, alt);
-  tr_attr(t, i, AT_VARS, sc_place(v[..], 0, 0, show));
+  tr_attr(t, i, AT_VARS, sc_ratio(v[..], sc_place(v[..], 0, 0, show).count, ratio));
   tr_close(t);
   return i;
+}
+// The vars `out[0..<at]` with ";--r:" and `ratio` to three places after them, when it is more than 0.
+sc_ratio :: (out: [] u8, at: int, ratio: f32) -> string {
+  n := at;
+  if !(ratio > 0) || ratio > 999 { return cast(string) out[0..<n]; }
+  k := cast(int) (ratio * 1000 + 0.5);
+  for c: ";--r:" { out[n] = c; n += 1; }
+  whole := k / 1000;
+  if whole >= 100 { out[n] = cast(u8) (cast(int) '0' + whole / 100); n += 1; }
+  if whole >= 10 { out[n] = cast(u8) (cast(int) '0' + whole / 10 % 10); n += 1; }
+  out[n] = cast(u8) (cast(int) '0' + whole % 10); n += 1;
+  out[n] = '.'; n += 1;
+  out[n] = cast(u8) (cast(int) '0' + k / 100 % 10); out[n + 1] = cast(u8) (cast(int) '0' + k / 10 % 10); out[n + 2] = cast(u8) (cast(int) '0' + k % 10); n += 3;
+  return cast(string) out[0..<n];
 }
 // The line that stays at the window's foot (what the scene is and is not).
 k_scene_foot :: (t: [] Tree, id: string, text: string) -> int { return tr_leaf(t, id, TG_P, "scn-foot", text); }
@@ -225,6 +242,15 @@ k_scene_toast :: (t: [] Tree, id: string, text: string) -> int {
   return i;
 }
 
+#test "a plate whose shape the page knows fades at its edges; one whose shape it does not, does not" {
+  t: [1] Tree; tr_begin(t[..]);
+  r := k_scene(t[..], "scn");
+  a := k_scene_plate(t[..], "a", "/worlds/slab/pictures/concept.jpg", "The picture", 0.5, 1280.0f32 / 861);
+  b := k_scene_plate(t[..], "b", "/worlds/slab/pictures/concept.jpg", "The picture", 1, 0);
+  tr_close(t[..]);
+  #assert tr_attr_of(t[..], a, AT_VARS) == "--x:0.0px;--y:0.0px;--a:0.50;--r:1.487";
+  #assert tr_attr_of(t[..], b, AT_VARS) == "--x:0.0px;--y:0.0px;--a:1";
+}
 #test "a tag is pinned where the page says, and a pressed one is a button" {
   t: [1] Tree; tr_begin(t[..]);
   r := k_scene(t[..], "scn");

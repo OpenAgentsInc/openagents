@@ -31,6 +31,7 @@ TOUR_STOPS :: 7;           // the stops; stop TOUR_STOPS is "Your turn"
 TOUR_SECONDS :: [8] f32.[15, 15, 15, 15, 15, 20, 15, 0];
 TOUR_MOVE :: 2.5f32;       // seconds the camera takes to reach a stop's view
 TOUR_PICTURE :: "/worlds/slab/pictures/concept.jpg";
+TOUR_PICTURE_RATIO :: 1280.0f32 / 861;   // its width over its height: the pane fades its edges into the scene
 TOUR_BUILD :: 5;           // the stop that is the timelapse
 TOUR_UNDER :: 3;
 TOUR_WHERE :: 6;
@@ -342,7 +343,7 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   t := s[0].hp.tour; k := s[0].dpr;
   ts: [1] SbText; a: SbText; ls: [1] SbText; b: SbText;
   ids: [SH_ID] u8;
-  if t.stop == 0 && tour_plate(t.at) > 0 { sh_plate(h, TOUR_PICTURE, "The one picture of SLAB that Palmer Luckey has published", tour_plate(t.at)); }
+  if t.stop == 0 && tour_plate(t.at) > 0 { sh_plate(h, TOUR_PICTURE, "The one picture of SLAB that Palmer Luckey has published", tour_plate(t.at), TOUR_PICTURE_RATIO); }
   if t.stop == 1 {
     for i: 0..<TOUR_THINGS {
       g := tour_shown(i, t.at);

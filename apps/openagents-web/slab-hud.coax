@@ -63,6 +63,12 @@ SlabHud :: struct {
   lift: f32;               // how far the orbit's view is lifted over an open card, eased (sb_card_lift)
   open: int;               // the opening view on a tall screen: 1 asked (tour_opening), 2 made, 0 gone (sb_open_fit)
   open_v: [3] f32;         // its pitch, distance and target's x as made: the visitor moving any of them ends it
+  bar: f32;                // how tall the pane's bar stands, CSS px, as the pane last said ("hud.bar")
+  sheet: f32;              // how tall the open sheet stands, CSS px; 0 with none open ("hud.sheet")
+  fit_l: f32; fit_b: f32;  // the hull's length and beam the view was last fitted to (0: none yet) (sb_hull_fit)
+  fit_on: bool;            // the orbit easing to a resized hull's view
+  fit_v: [4] f32;          // that view's distance and point (x, y, z)
+  fit_was: [4] f32;        // the distance and point as last eased: the visitor moving any ends the easing
 }
 
 // The opening view on a phone held upright. The wide screen's view leaves the platform at mid-height,
@@ -101,9 +107,52 @@ sb_card_lift :: (s: [] Slab, step: f32) -> f32 {
     q := screen_of(s, (rec(s, i, 0) + rec(s, i, 4)) / 2, (rec(s, i, 1) + rec(s, i, 5)) / 2, (rec(s, i, 2) + rec(s, i, 6)) / 2);
     if q[2] > 5 { want = clamp32(SB_CARD_AT - (1 - 2 * q[1] / s[0].height) + s[0].hp.lift, 0, 0.9); }
   }
+  // any sheet open (the panel, Look, See inside, Help) covers a phone's lower half as a card does: the
+  // platform stands between the bar and the sheet. (The build view lifts its own: slab-build-draw.coax.)
+  if s[0].hp.sheet > 0 && s[0].hp.pane && !s[0].build.on { want = hi_f32(want, tour_tall(s)); }
   want = hi_f32(want, sb_open_lift(s));
   s[0].hp.lift += (want - s[0].hp.lift) * clamp32(step * 6, 0, 1);
   return s[0].hp.lift;
+}
+
+// A hull resized (a preset, a slider, the address) fills the screen as the picture's hull does: the
+// orbit eases its distance, and its point, by how much larger or smaller the hull's footprint is than
+// the picture's, from the opening view (TOUR_OPEN), on a wide screen and a tall one alike. Only a change
+// of size does it: a visitor who zooms or moves by hand is never pulled back, and moving during the
+// easing ends it. Not in the tour or the build view, whose cameras are their own.
+SB_FIT_NEAR :: 60.0f32;     // m: the nearest the orbit is fitted, for the smallest hull
+// The hull's size as the eye takes it in: across its footprint's diagonal and twice its height from
+// keel to deck, against the picture's hull's.
+sb_fit_share :: (l: f32, b: f32, tall: f32) -> f32 {
+  pt := f32(HULL_PRIME_DECK) * 2;
+  return sqrt(l * l + b * b + 4 * tall * tall) / sqrt(f32(HULL_PRIME_L * HULL_PRIME_L + HULL_PRIME_B * HULL_PRIME_B) + pt * pt);
+}
+sb_hull_fit :: (s: [] Slab, step: f32) {
+  hs := change_hull(s[0].change[..]);
+  l := hs[0] * 2; b := hs[1] * 2;
+  // the view as made is the picture's hull's: an address that sizes the hull is a change from it
+  if s[0].hp.fit_l == 0 { s[0].hp.fit_l = f32(HULL_PRIME_L); s[0].hp.fit_b = f32(HULL_PRIME_B); }
+  if l != s[0].hp.fit_l || b != s[0].hp.fit_b {
+    s[0].hp.fit_l = l; s[0].hp.fit_b = b;
+    if s[0].hp.tour.on || s[0].build.on || s[0].mode != CAM_ORBIT || s[0].layout != LAYOUT_PRIME { s[0].hp.fit_on = false; return; }
+    r := sb_fit_share(l, b, hs[2] - hs[3]);
+    // the point looked at is as far into the hull, and no higher over the water than the hull's share of it
+    s[0].hp.fit_v = [4] f32.[clamp32(TOUR_OPEN.dist * r, SB_FIT_NEAR, 9000), clamp32(TOUR_OPEN.x * r, -4000, 4000), TOUR_OPEN.y * clamp32(r, 0, 1), clamp32(TOUR_OPEN.z * r, -4000, 4000)];
+    s[0].hp.fit_was = [4] f32.[s[0].dist, s[0].tx, s[0].ty, s[0].tz];
+    s[0].hp.fit_on = true;
+  }
+  if !s[0].hp.fit_on { return; }
+  w := s[0].hp.fit_was;
+  if s[0].dist != w[0] || s[0].tx != w[1] || s[0].ty != w[2] || s[0].tz != w[3] || s[0].hp.tour.on || s[0].build.on || s[0].mode != CAM_ORBIT { s[0].hp.fit_on = false; return; }
+  v := s[0].hp.fit_v;
+  k := clamp32(step * 4, 0, 1);
+  s[0].dist += (v[0] - s[0].dist) * k; s[0].tx += (v[1] - s[0].tx) * k; s[0].ty += (v[2] - s[0].ty) * k; s[0].tz += (v[3] - s[0].tz) * k;
+  if abs(s[0].dist - v[0]) < 0.5 && abs(s[0].tx - v[1]) < 0.5 && abs(s[0].ty - v[2]) < 0.5 && abs(s[0].tz - v[3]) < 0.5 {
+    s[0].dist = v[0]; s[0].tx = v[1]; s[0].ty = v[2]; s[0].tz = v[3]; s[0].hp.fit_on = false;
+  }
+  s[0].hp.fit_was = [4] f32.[s[0].dist, s[0].tx, s[0].ty, s[0].tz];
+  // a phone's opening view stays the opening while the hull's view eases (sb_open_lift)
+  if s[0].hp.open == 2 { s[0].hp.open_v = [3] f32.[s[0].pitch, s[0].dist, s[0].tx]; }
 }
 
 // ---------------------------------------------------------------- the data halls' backup
@@ -408,6 +457,9 @@ sb_act :: (s: [] Slab, body: string) {
     if ((s[0].hp.visit == 1 && s[0].hp.tour.wanted) || s[0].hp.tour.asked) && !s[0].hp.tour.on { s[0].hp.tour.asked = false; tour_start(s); }
     return;
   }
+  // the pane's measures: the bar (names stay clear of it) and the open sheet (the view lifts over it)
+  if id == "hud.bar" { s[0].hp.bar = cast(f32) p.value; return; }
+  if id == "hud.sheet" { s[0].hp.sheet = cast(f32) p.value; return; }
   if tour_act(s, id) { return; }
   if lab_act(s, id) { return; }
   if cd_act(s, id) { return; }
@@ -745,6 +797,43 @@ sb_test_field :: (s: [] Slab, kind: u8, a: string, k: int) -> string {
   s[0].selected = low; s[0].hp.lift = 0; a := sb_card_lift(s, 0.1);
   s[0].selected = high; s[0].hp.lift = 0; b := sb_card_lift(s, 0.1);
   #assert a > b && a > 0;
+}
+#test "HUD: an open sheet on a phone held upright lifts the view as a card does; shut, or on a wide screen, it does not" {
+  s: [1] Slab; slab_reset(s[..]); s[0].hp.pane = true; s[0].tanh = 1;
+  s[0].aspect = 390.0 / 844.0; s[0].selected = -1;
+  sb_act(s[..], "hud.sheet 412");
+  for i: 0..<60 { _ = sb_card_lift(s[..], 0.1); }
+  #assert abs(s[0].hp.lift - tour_tall(s[..])) < 0.001;
+  sb_act(s[..], "hud.sheet 0");
+  for i: 0..<60 { _ = sb_card_lift(s[..], 0.1); }
+  #assert s[0].hp.lift < 0.001;
+  s[0].aspect = 1.6; sb_act(s[..], "hud.sheet 412");
+  #assert sb_card_lift(s[..], 1) == 0;
+}
+#test "HUD: a resized hull eases the orbit to fill the screen as the picture's does, and a hand-made zoom stays" {
+  s: [1] Slab; slab_reset(s[..]);
+  if s[0].hp.tour.on { tour_end(s[..]); }
+  sb_hull_fit(s[..], 0.1);
+  #assert !s[0].hp.fit_on;   // the picture's hull: nothing to do
+  d0 := s[0].dist;
+  change_preset(s[0].change[..], WP_PILOT);
+  for i: 0..<200 { sb_hull_fit(s[..], 0.1); }
+  hs := change_hull(s[0].change[..]);
+  #assert abs(s[0].dist - TOUR_OPEN.dist * sb_fit_share(hs[0] * 2, hs[1] * 2, hs[2] - hs[3])) < 1 && s[0].dist < d0 / 4 && !s[0].hp.fit_on;
+  // the visitor zooms out by hand: it stays
+  s[0].dist = 900; sb_hull_fit(s[..], 0.1);
+  #assert s[0].dist == 900;
+  // a hull of 2,000 by 1,000 m is fitted farther than the picture's, within the orbit's reach
+  change_preset(s[0].change[..], WP_PICTURE);
+  w := s[0].change[0].what; w.v[WC_LENGTH] = 2000; w.v[WC_WIDTH] = 1000; s[0].change[0].what = w; change_refresh(s[0].change[..]);
+  hs = change_hull(s[0].change[..]);
+  #assert hs[0] * 2 == 2000;
+  sb_hull_fit(s[..], 0.1);
+  #assert s[0].hp.fit_on;
+  s[0].dist -= 10; sb_hull_fit(s[..], 0.1);   // moved during the easing: it ends
+  #assert !s[0].hp.fit_on;
+  s[0].hp.fit_l = 1; for i: 0..<200 { sb_hull_fit(s[..], 0.1); }
+  #assert s[0].dist > TOUR_OPEN.dist * 1.5 && s[0].dist <= 9000;
 }
 #test "HUD: an open card on a phone held upright lifts the orbit's view, and nothing else does" {
   s: [1] Slab; slab_reset(s[..]); s[0].hp.pane = true; s[0].tanh = 1;
