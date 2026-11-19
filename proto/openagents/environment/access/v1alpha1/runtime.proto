@@ -34,6 +34,10 @@ message RuntimeItem {
   // A call still running: when it began on the computer, Unix ms. Absent once it is done and from
   // an older computer; a reader shows how long it has run. `complete` is about the text only.
   optional int64 started_at_ms = 6 [json_name = "started_at_ms"];
+  // A sub-agent's call: the calls its agent has made so far and the newest one ("Bash ls -la").
+  // Absent for any other item and from an older computer; subagent_now never comes without a count.
+  optional int64 subagent_calls = 7 [json_name = "subagent_calls"];
+  optional string subagent_now = 8 [json_name = "subagent_now"]; // at most 160 bytes
 }
 // A turn's thinking. A v1alpha1 reader draws any role but user, assistant, tool and notice as a
 // reply, so thoughts never travel in items: each sits beside them, before the item at `at` (an

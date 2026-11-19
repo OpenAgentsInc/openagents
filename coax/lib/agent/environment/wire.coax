@@ -63,7 +63,9 @@ EA_ROLE_THOUGHT :: "thought";
 // started: a call still running, when it began on the computer, wall ms (0: not running, or not
 // known). `complete` says the text is whole, not that the call is done. Optional on the wire
 // ("started_at_ms"): an older computer sends none and an older reader skips it.
-EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;}
+// calls, now: a sub-agent's call, the calls its agent has made and the newest ("Bash ls -la");
+// optional on the wire ("subagent_calls", "subagent_now"), absent for any other item.
+EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;}
 EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
   if text.count>16384 || v[0].text_n+text.count>v[0].text.count {return -1;}
@@ -133,7 +135,8 @@ ea_item :: (o:[]Jo,m_in:EaItem,text:string) #effects(all) {
   m:=m_in;
   jo_obj(o);jo_key(o,"item_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"role");jo_str(o,cast(string)m.role[0..<m.nr]);
   jo_key(o,"text");jo_str(o,text);jo_key(o,"tool_name");jo_str(o,cast(string)m.tool[0..<m.nk]);jo_key(o,"complete");jo_bool(o,m.complete);
-  if m.started>0 {jo_key(o,"started_at_ms");jo_int(o,m.started);}jo_end(o);
+  if m.started>0 {jo_key(o,"started_at_ms");jo_int(o,m.started);}
+  if m.calls>0 {jo_key(o,"subagent_calls");jo_int(o,m.calls);if m.nn>0 {jo_key(o,"subagent_now");jo_str(o,cast(string)m.now[0..<m.nn]);}}jo_end(o);
 }
 ea_thought :: (v:[]EaView,i:int)->bool #effects(all) {m:=v[0].items[i];return cast(string)m.role[0..<m.nr]==EA_ROLE_THOUGHT;}
 ea_thoughts_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -217,7 +220,9 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
     m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
     at:=jv_get(j,row,"started_at_ms");m.started=ifx at<0 then 0 else jv_int(j,at,-1);
-    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
+    sc:=jv_get(j,row,"subagent_calls");m.calls=ifx sc<0 then 0 else jv_int(j,sc,-1);
+    sn:=jv_get(j,row,"subagent_now");m.nn=ifx sn<0 then 0 else jv_str(j,sn,m.now[..]);
+    if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
   }
   if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) {return false;}
   v[0].ok=true;return true;
@@ -299,4 +304,13 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   k=0;for c:head {b[k]=c;k+=1;}for c:"\"complete\":true,\"started_at_ms\":\"5\"" {b[k]=c;k+=1;}for c:tail {b[k]=c;k+=1;}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
   k=0;for c:head {b[k]=c;k+=1;}for c:"\"complete\":false,\"started_at_ms\":-5" {b[k]=c;k+=1;}for c:tail {b[k]=c;k+=1;}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
   k=0;for c:head {b[k]=c;k+=1;}for c:"\"complete\":false" {b[k]=c;k+=1;}for c:tail {b[k]=c;k+=1;}#assert ea_view_read(cast(string)b[0..<k],r[..]) && r[0].items[0].started==0;
+}
+
+#test "a sub-agent's call count and newest call travel as optional fields; a newest call without a count is refused" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");
+  m:=v[0].items[0];m.ni=ea_copy(m.id[..],"a");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Task");m.text_at=ea_text_put(v[..],"Find it");m.nt=7;m.complete=true;m.calls=3;m.nn=ea_copy(m.now[..],"Read /w/a.toml");v[0].items[0]=m;
+  m=v[0].items[1];m.ni=ea_copy(m.id[..],"b");m.nr=ea_copy(m.role[..],"tool");m.nk=ea_copy(m.tool[..],"Bash");m.text_at=ea_text_put(v[..],"ls");m.nt=2;m.complete=true;v[0].items[1]=m;v[0].ni=2;
+  out:[8192]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]);
+  #assert r[0].items[0].calls==3 && cast(string)r[0].items[0].now[0..<r[0].items[0].nn]=="Read /w/a.toml" && r[0].items[1].calls==0 && r[0].items[1].nn==0;
+  #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"a\",\"role\":\"tool\",\"text\":\"x\",\"tool_name\":\"Task\",\"complete\":true,\"subagent_now\":\"Bash ls\"}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}",r[..]);
 }

@@ -43,6 +43,7 @@ s_tool_use :: (s: [] Session, ar: [] ClArena, id: string, name: string, input: s
   if k < 0 { return; }
   p := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, id), input = s_put(s, input), name = s_put(s, name)};
   p.output = s[0].parts[k].output; p.failed = s[0].parts[k].failed; p.resolved = s[0].parts[k].resolved;
+  p.subcalls = s[0].parts[k].subcalls; p.subnow = s[0].parts[k].subnow; p.subid = s[0].parts[k].subid;
   if name == "Bash" { p.tk = TK_EXEC; p.arg = s_put(s, cl_str(ar, input, "command")); p.detail = s_single(s, p.arg); }
   else if name == "Read" { p.tk = TK_READ; p.arg = s_put(s, cl_str(ar, input, "file_path")); }
   else if name == "Write" { p.tk = TK_WRITE; p.arg = s_put(s, cl_str(ar, input, "file_path")); p.after = s_put(s, cl_str(ar, input, "content")); }
@@ -127,9 +128,29 @@ s_paragraph :: (s: [] Session) {
   k := s[0].n - 1;
   if k >= 0 && s[0].parts[k].kind == P_TEXT && s[0].parts[k].n > 0 { s_delta(s, P_TEXT, "\n\n"); }
 }
+// A sub-agent's frame: each call it makes counts on the call that started it, and the newest one
+// is kept as what it does now ("Bash ls -la"). Its text and thinking stay its own.
+s_on_sub :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
+  if m.kind != ClKind.assistant { return; }
+  k := s_tool_of(s, m.parent_tool_use_id); if k < 0 { return; }
+  l := m.line; content := cl_raw(l, "message.content");
+  for i: 0..<cl_count(content) {
+    item := cl_json(content, cl_item(content, i));
+    if cl_str(ar, item, "type") != "tool_use" { continue; }
+    id := cl_str(ar, item, "id"); if id.count > 0 && id == s[0].parts[k].subid { continue; }
+    name := cl_str(ar, item, "name"); input := cl_raw(item, "input");
+    arg := cl_str(ar, input, "command"); if arg.count == 0 { arg = cl_str(ar, input, "file_path"); } if arg.count == 0 { arg = cl_str(ar, input, "pattern"); }
+    line: [160] u8; n := 0;
+    for c: name { if n < line.count { line[n] = c; n += 1; } }
+    if arg.count > 0 && n < line.count { line[n] = ' '; n += 1; }
+    for c: arg { if c == '\n' || n >= line.count { break; } line[n] = c; n += 1; }
+    s[0].parts[k].subcalls += 1; s[0].parts[k].subnow = s_put(s, cast(string) line[0..<n]); s[0].parts[k].subid = s_put(s, id);
+    s[0].changed = true;
+  }
+}
 // One SDK message from the CLI's stdout.
 s_on_message :: (s: [] Session, ar: [] ClArena, m: ClMessage) {
-  if m.parent_tool_use_id.count > 0 { return; }   // a subagent's frame
+  if m.parent_tool_use_id.count > 0 { s_on_sub(s, ar, m); return; }   // a subagent's frame
   l := m.line;
   if m.kind == ClKind.stream_event {
     if s[0].frames { return; }                      // the text is the whole frames', never both
@@ -1136,4 +1157,22 @@ s_test_feed :: (s: [] Session, q: [] ClQuery, lines: [] string) {
  e:[1]Engine;e_init(e[..]);_:=e_set(e[0].config_dir[..],0,"/private/profile-one");e[0].config_n=20;o:[1]ClOptions;e_options(e[..],o[..]);found:=false;
  for i:0..<o[0].env_count {if o[0].env[i]=="CLAUDE_CONFIG_DIR=/private/profile-one" {found=true;}}#assert found;
  e[0].model=1;e_options(e[..],o[..]);found=false;for i:0..<o[0].env_count {if o[0].env[i]=="CLAUDE_CONFIG_DIR=/private/profile-one" {found=true;}}#assert found;
+}
+
+#test "a sub-agent's calls count on the call that started it, once each, and its newest call is what it does now" {
+  q: [1] ClQuery; line: [8] u8; arena: [8192] u8; out: [64] u8;
+  cl_init(q[..], line[..], arena[..], out[..]);
+  s: [1] Session; pool: [8192] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "look around");
+  task := "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"tu-1\",\"name\":\"Task\",\"input\":{\"description\":\"Find the config\",\"prompt\":\"find it\"}}]}}";
+  sub1 := "{\"type\":\"assistant\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"looking\"},{\"type\":\"tool_use\",\"id\":\"c1\",\"name\":\"Bash\",\"input\":{\"command\":\"ls -la\\nmore\"}}]}}";
+  sub2 := "{\"type\":\"assistant\",\"parent_tool_use_id\":\"tu-1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"c2\",\"name\":\"Read\",\"input\":{\"file_path\":\"/w/config.toml\"}}]}}";
+  stray := "{\"type\":\"assistant\",\"parent_tool_use_id\":\"tu-9\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"c3\",\"name\":\"Bash\",\"input\":{\"command\":\"x\"}}]}}";
+  l5 := [5] string.[task, sub1, sub1, sub2, stray]; s_test_feed(s[..], q[..], l5[..]);
+  #assert s[0].n == 2 && s[0].parts[1].tk == TK_AGENT && s[0].parts[1].subcalls == 2 && s[0].parts[1].subnow == "Read /w/config.toml";
+  // the sub-agent's text is never the conversation's, and the call seen again keeps its count
+  l1 := [1] string.[task]; s_test_feed(s[..], q[..], l1[..]);
+  #assert s[0].n == 2 && s[0].parts[1].subcalls == 2;
+  s_init(s[..], pool[..]); s_user(s[..], "x"); l2 := [2] string.[task, sub1]; s_test_feed(s[..], q[..], l2[..]);
+  #assert s[0].parts[1].subnow == "Bash ls -la";
 }

@@ -254,6 +254,11 @@ view_act_device :: (e: [] EnvironmentApp, i: int, wall_ms: int) -> AppActRow {
   // a call the computer says is still running carries when it began
   if m.complete && m.started == 0 { r.output = text; } else { r.running = true; if r.target != text { r.call = text; } }
   if m.started > 0 && wall_ms > 0 { r.timed = true; r.secs = (wall_ms - m.started) / 1000; }
+  // a sub-agent says how many calls its agent has made; while it runs, its row opens onto the newest
+  if m.calls > 0 {
+    r.calls = m.calls;
+    if r.running && m.nn > 0 { r.output = cast(string) e[0].view[0].items[i].now[0..<m.nn]; }
+  }
   return r;
 }
 // The rows of the group that starts at model row r, into rows and ids (buf holds the ids).

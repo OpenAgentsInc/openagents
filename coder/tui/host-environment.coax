@@ -409,6 +409,7 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
     m:=v[0].items[v[0].ni];id:[128]u8;n:=hs_cat(id[..],0,"");digits:[64]u8;n=hs_cat(id[..],n,hs_itoa(part,digits[..]));n=hs_cat(id[..],n,":");n=hs_cat(id[..],n,hs_itoa(start,digits[..]));m.ni=ea_copy(m.id[..],cast(string)id[0..<n]);
     m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else ifx p.kind==P_THINK then EA_ROLE_THOUGHT else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
     if p.kind==P_TOOL && !p.resolved && s[0].live && part<stamps.count && stamps[part]>0 {m.started=stamps[part];}
+    if p.kind==P_TOOL && p.subcalls>0 {m.calls=p.subcalls;m.nn=ea_copy(m.now[..],hs_cut(p.subnow,160));if m.nn<0 {m.nn=0;}}
     m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && ((p.kind!=P_TEXT && p.kind!=P_THINK) || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
     v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;
     if start>0 {end=start;break;}part-=1;end= -1;
@@ -435,6 +436,12 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
   // a session started over is stamped afresh, and never past the stamps there are
   s_init(s,pool[..]);s_user(s,"Again");have=es_stamp_parts(s[0].n,stamps[..],have,9000);#assert have==1 && stamps[0]==9000;
   #assert es_stamp_parts(20,stamps[..],1,7)==8 && stamps[7]==7;
+}
+#test "a sub-agent's call reaches the page with its agent's call count and newest call" {
+  ses:[1]Session;pool:[4096]u8;s_init(ses[..],pool[..]);s:=ses[..];s_user(s,"Look");
+  a:=s_part(s,P_TOOL);s[0].parts[a].id="a";s[0].parts[a].name="Task";s[0].parts[a].tk=TK_AGENT;s[0].parts[a].input="{}";s[0].parts[a].subcalls=4;s[0].parts[a].subnow="Read /w/a.toml";
+  q:[1]EaRequest;v:[1]EaView;es_project(s,q[..],v[..]);
+  #assert v[0].ni==2 && v[0].items[1].calls==4 && cast(string)v[0].items[1].now[0..<v[0].items[1].nn]=="Read /w/a.toml" && v[0].items[0].calls==0;
 }
 #test "a session's thinking reaches the page as thought items in place, the live one still open" {
   s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"Fix it");s[0].live=true;s_delta(s[..],P_THINK,"Look first");s_delta(s[..],P_TEXT,"On it");s_delta(s[..],P_THINK,"Then edit");

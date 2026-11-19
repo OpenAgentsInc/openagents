@@ -117,3 +117,12 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_test_value(t[..], "g.0") == "1m 5s" && app_test_value(t[..], "g.1") == "0s" && app_test_value(t[..], "g.2") == "" && app_test_value(t[..], "g.3") == "";
   #assert app_test_label(t[..], "g.0") == "Ran cargo test" && app_test_texts(t[..], "1m 5s") == 1;
 }
+#test "app activity: a sub-agent's calls are said at its row's end, before how long it has run" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  app_test_begin(t[..], "", "", true);
+  r := AppActRow.{kind = APP_ACT_AGENT, verb = "Ran a subagent", target = "Find the config", running = true, timed = true, secs = 12, calls = 3};
+  y := app_act_row(f, "g.0", 0, 0, 400, r, true, 9);
+  r.running = false; y += app_act_row(f, "g.1", 0, y, 400, r, false, 9);
+  #assert app_test_end(t[..]);
+  #assert app_test_value(t[..], "g.0") == "3 tool calls · 12s" && app_test_value(t[..], "g.1") == "3 tool calls";
+}

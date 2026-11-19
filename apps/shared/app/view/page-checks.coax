@@ -75,6 +75,8 @@ view_pt_conversation :: (p:[]ViewPageTest,c:[]AppCore) {
  // a call the computer stamped says how long it has run
  #assert app_test_value(t,"dev.p0.call.2")=="";
  v[0].items[2].started=1700000000000;c[0].wall_ms=1700000065500;view_pt_conversation(p[..],c[..]);#assert app_test_value(t,"dev.p0.call.2")=="1m 5s" && app_test_has(t,"dev.p0.call.2",EL_S_BUSY);
+ // the sub-agent says how many calls its agent has made
+ v[0].items[1].calls=3;v[0].items[1].nn=el_copy(v[0].items[1].now[..],"Read /w/a.toml");view_pt_conversation(p[..],c[..]);#assert app_test_value(t,"dev.p0.call.1")=="3 tool calls";
  // the last word was the computer's call: no working line yet; once a message of the person's is last, the line shows
  #assert app_test_find(t,"chat.typing")<0;
  m:=v[0].items[3];m.ni=el_copy(m.id[..],"p3");m.nr=el_copy(m.role[..],"user");m.text_at=ea_text_put(v,"And the tests?");m.nt=14;m.complete=true;v[0].items[3]=m;v[0].ni=4;

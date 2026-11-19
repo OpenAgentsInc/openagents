@@ -39,6 +39,9 @@ SPart :: struct {
   input: string;            // the call's input, JSON (an approval answers with it); Codex's
                             // file change has none: its unified diff is kept here instead (123 is "{")
   output: string; failed: bool; resolved: bool;
+  // a sub-agent's call (TK_AGENT): the calls its agent has made so far, and the newest one as
+  // "Name argument" (its id, so a frame seen twice counts once)
+  subcalls: int; subnow: string; subid: string;
 }
 
 Session :: struct {
