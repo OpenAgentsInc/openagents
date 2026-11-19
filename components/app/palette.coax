@@ -1,0 +1,616 @@
+// The command palette (⌘K), drawn on the GPU after Zeron's ds/command_palette.luau
+// (zgx e393c4a8): one field that finds a session, a command or a setting and
+// does it. It stands over a whole page like overlay.coax's dialogs and menus,
+// painting into the sheet's `over` list in one group opacity, on the same
+// backdrop, panel and soft menu shadow (app_overlay_paint_panel, shadows.menu).
+//
+// A card 640 wide, its top 88 from the window's, the list under the field at
+// most 440 tall (less in a short window, never under 160). It opens over 180
+// ms out(4) and leaves over 130 ms in(2); its top holds still, so only its foot
+// moves. Reduced motion shows and hides it at once.
+//
+// What it lists comes in pages: the root, and the pages its rows open ("Switch
+// model"), each a chip before the field; Backspace on an empty field goes back
+// a page. At the root, scopes (All, Sessions, Commands, Settings, each with its
+// count) narrow it to one kind; Tab steps through them. With nothing typed,
+// pinned things come first, then what was used lately from it, then each
+// section in the caller's order (All shows six sessions, then "Show all").
+// Typing narrows the page by components/core/match.coax's ranked fuzzy match
+// (title over keywords over section), best first. A filter over a list the
+// person browses, never intent routing.
+//
+// The keys: up and down move round the ends, Return does the row, Escape goes
+// back a page and then closes, Tab the next scope. A row clicked does it; a
+// press outside the card closes it. The field's text is the caller's editor's,
+// laid over app_palette_field_box as overlay.coax's dialog fields are; the
+// palette draws it while no editor is over it. Each time the palette empties
+// its field (a new page, back) its `gen` moves on, so the host knows to load
+// the field afresh.
+//
+// The host owns what a row does: the answer is the row's item, kept until taken.
+// Items carry the host's own number (`code`) and a key that survives a new
+// list, so what was used lately is remembered across openings.
+//   coax/bin/coax test components/app/palette-checks.coax
+
+#load "overlay.coax";
+#load "../core/match.coax";
+
+// ---------------------------------------------------------------- measures
+
+// In points (command_palette.luau's W, SEARCH_H, ...); app_palette_scaled puts them in a page's units.
+AppPaletteSpec :: struct {
+  w: f32; top: f32; search_h: f32; scopes_h: f32; foot_h: f32;
+  row: f32; head: f32; head_first: f32; inset: f32; slot: f32;
+  view_max: f32; view_min: f32; note_h: f32; bottom_clear: f32;
+  pad_x: f32; gap: f32; radius: f32; row_radius: f32;
+  chip_h: f32; chip_pad: f32; chip_gap: f32; chip_radius: f32; back_h: f32;
+  key_h: f32; key_pad: f32; key_gap: f32; key_radius: f32; legend_gap: f32;
+  enter: f32; exit: f32;     // seconds
+  all_sessions: int; recent: int;   // sessions All shows before "Show all"; recent things shown
+}
+app_palette_zeron :: () -> AppPaletteSpec {
+  return AppPaletteSpec.{w = 640, top = 88, search_h = 52, scopes_h = 38, foot_h = 40,
+    row = 36, head = 32, head_first = 26, inset = 6, slot = 18,
+    view_max = 440, view_min = 160, note_h = 96, bottom_clear = 24,
+    pad_x = 12, gap = 8, radius = 16, row_radius = 8,
+    chip_h = 24, chip_pad = 10, chip_gap = 6, chip_radius = 8, back_h = 24,
+    key_h = 18, key_pad = 5, key_gap = 3, key_radius = 4, legend_gap = 16,
+    enter = 0.18, exit = 0.13, all_sessions = 6, recent = 5};
+}
+app_palette_scaled :: (o: AppPaletteSpec, u: f32) -> AppPaletteSpec {
+  if !(u > 0) { return o; }
+  r := o;
+  r.w = o.w / u; r.top = o.top / u; r.search_h = o.search_h / u; r.scopes_h = o.scopes_h / u; r.foot_h = o.foot_h / u;
+  r.row = o.row / u; r.head = o.head / u; r.head_first = o.head_first / u; r.inset = o.inset / u; r.slot = o.slot / u;
+  r.view_max = o.view_max / u; r.view_min = o.view_min / u; r.note_h = o.note_h / u; r.bottom_clear = o.bottom_clear / u;
+  r.pad_x = o.pad_x / u; r.gap = o.gap / u; r.radius = o.radius / u; r.row_radius = o.row_radius / u;
+  r.chip_h = o.chip_h / u; r.chip_pad = o.chip_pad / u; r.chip_gap = o.chip_gap / u; r.chip_radius = o.chip_radius / u; r.back_h = o.back_h / u;
+  r.key_h = o.key_h / u; r.key_pad = o.key_pad / u; r.key_gap = o.key_gap / u; r.key_radius = o.key_radius / u; r.legend_gap = o.legend_gap / u;
+  return r;
+}
+// out(4) (ds/motion.luau).
+app_pal_out4 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; y := 1 - x; return 1 - y * y * y * y; }
+
+// ---------------------------------------------------------------- the list
+
+APP_PAL_ITEMS :: 112; APP_PAL_ROWS :: 136; APP_PAL_DEPTH :: 4; APP_PAL_RECENT :: 8;
+APP_PAL_POOL :: 1024;    // words a caller makes up for its items (app_palette_keep)
+APP_PAL_KEY :: 48; APP_PAL_QUERY :: 256;
+// The scopes, in Tab's order.
+APP_PAL_ALL :: 0; APP_PAL_SESSIONS :: 1; APP_PAL_COMMANDS :: 2; APP_PAL_SETTINGS :: 3;
+APP_PAL_SCOPES :: 4;
+APP_PAL_SCOPE_NAME :: [APP_PAL_SCOPES] string.["All", "Sessions", "Commands", "Settings"];
+APP_PAL_NONE :: -1;     // closed with nothing chosen
+APP_PAL_WAIT :: -2;     // not answered (or the answer was taken)
+// A list row's kind: a section's title, an item, "Show all" (it opens the Sessions scope).
+APP_PAL_HEAD :: 0; APP_PAL_ITEM :: 1; APP_PAL_MORE :: 2;
+APP_OV_BACKSPACE :: -3;   // composer.coax's Backspace
+APP_OV_CTRL :: 2;
+
+// Its words are the caller's, kept by it while the list is (constants, its own state, or
+// app_palette_keep's pool): its label; other words it answers to, weighing less; a muted word at
+// its end (a setting's page, "Current"); the keys that do it elsewhere, space-separated ("⌘ N");
+// the section it lists under; what it is called across lists, for what was used lately.
+AppPalItem :: struct {
+  label: string; words: string; hint: string; keys: string; section: string; key: string;
+  scope: int;           // APP_PAL_SESSIONS, _COMMANDS or _SETTINGS
+  page: int;            // the page that lists it: 0 the root
+  opens: int;           // the page it opens (0: none; it is done)
+  icon: int;            // its glyph (-1: the slot stays empty)
+  pinned: bool; checked: bool;
+  code: int;            // the host's number for it
+}
+AppPalRow :: struct { kind: int; item: int; head: int; y: f32; h: f32; }   // head: 0 its section, 1 Pinned, 2 Recent
+AppPalette :: struct {
+  shown: bool; open: bool; t: f32;
+  items: [APP_PAL_ITEMS] AppPalItem; n: int;
+  pool: [APP_PAL_POOL] u8; npool: int;
+  scope: int;
+  stack: [APP_PAL_DEPTH] int; depth: int;   // the items that opened the pages shown past the root
+  query: [APP_PAL_QUERY] u8; nq: int;
+  gen: int;                                 // moves on each time the palette empties its field
+  placeholder: string;                      // the caller's, as an item's words are
+  rows: [APP_PAL_ROWS] AppPalRow; nrows: int; content: f32;
+  lit: int;                                 // the row the keys or the pointer light (-1: none)
+  scroll: f32; view: f32;
+  recent: [APP_PAL_RECENT][APP_PAL_KEY] u8; recent_n: [APP_PAL_RECENT] int; nrecent: int;
+  answer: int;                              // APP_PAL_WAIT, APP_PAL_NONE or an item
+  editing: bool;                            // the caller's editor is over the field
+  held: int;                                // a press began on: a row (>= 0), -2 a scope, -3 the back chip, -4 outside, -1 nothing
+  held_scope: int;
+  px: f32; py: f32; moved: bool;
+  x: f32; y: f32; w: f32; h: f32;           // the card, as last laid out
+  list_y: f32; field_x: f32; field_w: f32; search_y: f32;
+  scope_x: [APP_PAL_SCOPES] f32; scope_w: [APP_PAL_SCOPES] f32; scope_y: f32;
+  back_x: f32; back_y: f32; back_w: f32; back_h: f32;
+  scope_h: f32;
+}
+
+// A new list (the palette shown is kept): its items follow, then app_palette_open.
+app_palette_begin :: (p: [] AppPalette) { p[0].n = 0; p[0].nrows = 0; p[0].npool = 0; }
+// Words the caller makes up (a key from a number), kept with the list; "" when the pool is full.
+app_palette_keep :: (p: [] AppPalette, text: string) -> string {
+  if p[0].npool + text.count > APP_PAL_POOL { return ""; }
+  at := p[0].npool;
+  for c, k: text { p[0].pool[at + k] = c; }
+  p[0].npool += text.count;
+  return cast(string) p[0].pool[at..<at + text.count];
+}
+// An item on page `page` (0: the root) that opens page `opens` (0: none). False when the list is full.
+app_palette_item :: (p: [] AppPalette, page: int, scope: int, section: string, label: string, words: string, hint: string, keys: string,
+                     key: string, icon: int, pinned: bool, checked: bool, opens: int, code: int) -> bool {
+  if p[0].n >= APP_PAL_ITEMS { return false; }
+  q := p[0].n; p[0].n += 1;
+  p[0].items[q].label = label; p[0].items[q].words = words; p[0].items[q].hint = hint;
+  p[0].items[q].keys = keys; p[0].items[q].section = section; p[0].items[q].key = key;
+  p[0].items[q].scope = scope; p[0].items[q].page = page; p[0].items[q].opens = opens; p[0].items[q].icon = icon;
+  p[0].items[q].pinned = pinned; p[0].items[q].checked = checked; p[0].items[q].code = code;
+  return true;
+}
+// Opens at the root in a scope (APP_PAL_ALL ...), its field empty, saying `placeholder` while it is.
+app_palette_open :: (p: [] AppPalette, scope: int, placeholder: string) {
+  p[0].scope = ifx scope >= 0 && scope < APP_PAL_SCOPES then scope else APP_PAL_ALL;
+  p[0].depth = 0; p[0].nq = 0; p[0].gen += 1; p[0].scroll = 0; p[0].held = -1; p[0].editing = false; p[0].moved = false;
+  p[0].placeholder = placeholder;
+  if !p[0].open { p[0].t = 0; }
+  p[0].shown = true; p[0].open = true; p[0].answer = APP_PAL_WAIT;
+  app_palette_refresh(p);
+}
+app_palette_close :: (p: [] AppPalette, answer: int) {
+  if !p[0].open { return; }
+  p[0].open = false; p[0].t = 0; p[0].answer = answer; p[0].held = -1; p[0].editing = false;
+}
+app_palette_take :: (p: [] AppPalette) -> int { a := p[0].answer; p[0].answer = APP_PAL_WAIT; return a; }
+app_pal_label :: (p: [] AppPalette, i: int) -> string { return p[0].items[i].label; }
+app_pal_section :: (p: [] AppPalette, i: int) -> string { return p[0].items[i].section; }
+app_palette_query :: (p: [] AppPalette) -> string { return cast(string) p[0].query[0..<p[0].nq]; }
+// The page shown: 0 the root, else the page the newest step opened.
+app_palette_page :: (p: [] AppPalette) -> int { return ifx p[0].depth > 0 then p[0].items[p[0].stack[p[0].depth - 1]].opens else 0; }
+// The caller's editor's text. A text longer than the field holds is refused.
+app_palette_set_query :: (p: [] AppPalette, text: string) -> bool {
+  if text.count > APP_PAL_QUERY { return false; }
+  same := text == app_palette_query(p);
+  p[0].nq = app_ov_put(p[0].query[..], text);
+  if !same { p[0].scroll = 0; app_palette_refresh(p); }
+  return true;
+}
+// Whether item i was used lately: its place in what was, 1 the newest; 0 not.
+app_pal_recent_at :: (p: [] AppPalette, i: int) -> int {
+  k := p[0].items[i].key;
+  if k.count == 0 { return 0; }
+  for r: 0..<p[0].nrecent { if cast(string) p[0].recent[r][0..<p[0].recent_n[r]] == k { return r + 1; } }
+  return 0;
+}
+app_pal_remember :: (p: [] AppPalette, i: int) {
+  k := p[0].items[i].key;
+  if k.count == 0 { return; }
+  at := app_pal_recent_at(p, i) - 1;
+  last := ifx at >= 0 then at else (ifx p[0].nrecent < APP_PAL_RECENT then p[0].nrecent else APP_PAL_RECENT - 1);
+  r := last;
+  while r > 0 { for c: 0..<p[0].recent_n[r - 1] { p[0].recent[r][c] = p[0].recent[r - 1][c]; } p[0].recent_n[r] = p[0].recent_n[r - 1]; r -= 1; }
+  p[0].recent_n[0] = app_ov_put(p[0].recent[0][..], k);
+  if at < 0 && p[0].nrecent < APP_PAL_RECENT { p[0].nrecent += 1; }
+}
+// Whether item i is on the page shown and in the scope.
+app_pal_listed :: (p: [] AppPalette, i: int) -> bool {
+  pi := p[0].items[i];
+  if pi.page != app_palette_page(p) { return false; }
+  return p[0].depth > 0 || p[0].scope == APP_PAL_ALL || pi.scope == p[0].scope;
+}
+// How many items a scope holds at the root.
+app_palette_count :: (p: [] AppPalette, scope: int) -> int {
+  n := 0;
+  for i: 0..<p[0].n { if p[0].items[i].page == 0 && (scope == APP_PAL_ALL || p[0].items[i].scope == scope) { n += 1; } }
+  return n;
+}
+// How well item i answers the query (0: not at all).
+app_pal_score :: (p: [] AppPalette, i: int, q: string) -> f32 {
+  pi := p[0].items[i];
+  fs: [3] MatchField; n := 0;
+  fs[n] = MatchField.{text = app_pal_label(p, i), weight = 100, title = true}; n += 1;
+  if pi.words.count > 0 { fs[n] = MatchField.{text = pi.words, weight = 50, title = false}; n += 1; }
+  // its section's title too ("settings" finds every setting), but not a session's: every session would answer to "s"
+  if pi.scope != APP_PAL_SESSIONS && pi.section.count > 0 { fs[n] = MatchField.{text = pi.section, weight = 12, title = false}; n += 1; }
+  return match_rank(fs[0..<n], q);
+}
+app_pal_add :: (p: [] AppPalette, kind: int, item: int, head: int) {
+  if p[0].nrows >= APP_PAL_ROWS { return; }
+  p[0].rows[p[0].nrows] = AppPalRow.{kind = kind, item = item, head = head};
+  p[0].nrows += 1;
+}
+// The rows for the page, scope and query; the highlight on the first that can be done.
+app_palette_refresh :: (p: [] AppPalette) {
+  p[0].nrows = 0;
+  q := cp_pal_trim(app_palette_query(p));
+  if q.count > 0 {
+    // best first; ties keep what was used lately, then the caller's order
+    score: [APP_PAL_ITEMS] f32; idx: [APP_PAL_ITEMS] int; m := 0;
+    for i: 0..<p[0].n {
+      if !app_pal_listed(p, i) { continue; }
+      v := app_pal_score(p, i, q);
+      if v <= 0 { continue; }
+      r := app_pal_recent_at(p, i);
+      if r > 0 { v += cast(f32) (APP_PAL_RECENT + 1 - r); }
+      // insertion keeps the caller's order among equals
+      j := m; while j > 0 && score[j - 1] < v { score[j] = score[j - 1]; idx[j] = idx[j - 1]; j -= 1; }
+      score[j] = v; idx[j] = i; m += 1;
+    }
+    for k: 0..<m { app_pal_add(p, APP_PAL_ITEM, idx[k], 0); }
+  } else {
+    used: [APP_PAL_ITEMS] bool;
+    root_all := p[0].depth == 0 && p[0].scope == APP_PAL_ALL;
+    // pinned, then what was used lately, at the root
+    if p[0].depth == 0 {
+      first := true;
+      for i: 0..<p[0].n { if app_pal_listed(p, i) && p[0].items[i].pinned { if first { app_pal_add(p, APP_PAL_HEAD, i, 1); first = false; } app_pal_add(p, APP_PAL_ITEM, i, 0); used[i] = true; } }
+      shown := 0;
+      for r: 0..<p[0].nrecent {
+        if shown >= app_palette_zeron().recent { break; }
+        for i: 0..<p[0].n {
+          if used[i] || !app_pal_listed(p, i) || app_pal_recent_at(p, i) != r + 1 { continue; }
+          if shown == 0 { app_pal_add(p, APP_PAL_HEAD, i, 2); }
+          app_pal_add(p, APP_PAL_ITEM, i, 0); used[i] = true; shown += 1;
+          break;
+        }
+      }
+    }
+    // then each section, in the order its first item came
+    for i: 0..<p[0].n {
+      if used[i] || !app_pal_listed(p, i) { continue; }
+      sec := app_pal_section(p, i);
+      if p[0].depth == 0 || sec.count > 0 { app_pal_add(p, APP_PAL_HEAD, i, 0); }
+      shown := 0; total := 0;
+      for j: i..<p[0].n {
+        if used[j] || !app_pal_listed(p, j) || app_pal_section(p, j) != sec { continue; }
+        total += 1;
+        if root_all && p[0].items[j].scope == APP_PAL_SESSIONS && shown >= app_palette_zeron().all_sessions { used[j] = true; continue; }
+        app_pal_add(p, APP_PAL_ITEM, j, 0); used[j] = true; shown += 1;
+      }
+      if shown < total { app_pal_add(p, APP_PAL_MORE, i, total); }
+    }
+  }
+  p[0].lit = app_pal_next(p, -1, 1);
+  // on a page that opened, its current choice is lit
+  if q.count == 0 && p[0].depth > 0 { for r: 0..<p[0].nrows { if p[0].rows[r].kind == APP_PAL_ITEM && p[0].items[p[0].rows[r].item].checked { p[0].lit = r; break; } } }
+}
+cp_pal_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == 32 || s[a] == 9) { a += 1; }
+  while b > a && (s[b - 1] == 32 || s[b - 1] == 9) { b -= 1; }
+  return cast(string) s[a..<b];
+}
+// The next row that can be done from `from`, by step, round the ends; -1 for none.
+app_pal_next :: (p: [] AppPalette, from: int, step: int) -> int {
+  n := p[0].nrows;
+  if n == 0 { return -1; }
+  i := from;
+  for k: 0..<n {
+    i = ifx i < 0 then (ifx step > 0 then 0 else n - 1) else (i + step + n) % n;
+    if p[0].rows[i].kind != APP_PAL_HEAD { return i; }
+  }
+  return -1;
+}
+// The empty field again: the caller's editor loads it afresh.
+app_pal_clear :: (p: [] AppPalette) { p[0].nq = 0; p[0].gen += 1; p[0].scroll = 0; p[0].editing = false; }
+// Back a page (or out of a scope at the root). False when there is nowhere back to.
+app_palette_back :: (p: [] AppPalette) -> bool {
+  if p[0].depth > 0 { p[0].depth -= 1; app_pal_clear(p); app_palette_refresh(p); return true; }
+  return false;
+}
+app_palette_scope :: (p: [] AppPalette, scope: int) {
+  if p[0].depth > 0 || scope < 0 || scope >= APP_PAL_SCOPES { return; }
+  p[0].scope = scope; p[0].scroll = 0; app_palette_refresh(p);
+}
+// Does row r: a page opens, "Show all" opens the Sessions scope, an item is the answer.
+app_palette_do :: (p: [] AppPalette, r: int) {
+  if r < 0 || r >= p[0].nrows || !p[0].open { return; }
+  row := p[0].rows[r];
+  if row.kind == APP_PAL_MORE { app_palette_scope(p, APP_PAL_SESSIONS); return; }
+  if row.kind != APP_PAL_ITEM { return; }
+  i := row.item;
+  app_pal_remember(p, i);
+  if p[0].items[i].opens != 0 && p[0].depth < APP_PAL_DEPTH {
+    p[0].stack[p[0].depth] = i; p[0].depth += 1;
+    app_pal_clear(p); app_palette_refresh(p);
+    return;
+  }
+  app_palette_close(p, i);
+}
+
+// ---------------------------------------------------------------- time and keys
+
+app_palette_phase :: (p: [] AppPalette, reduced: bool) -> f32 {
+  if !p[0].shown { return 0; }
+  if reduced { return ifx p[0].open then 1.0f32 else 0.0f32; }
+  return ifx p[0].open then app_pal_out4(p[0].t) else 1 - app_ov_in2(p[0].t);
+}
+app_palette_step :: (p: [] AppPalette, dt: f32, reduced: bool, o: AppPaletteSpec) -> bool {
+  if !p[0].shown { return false; }
+  span := ifx p[0].open then o.enter else o.exit;
+  if reduced || !(span > 0) { p[0].t = 1; } else { p[0].t += dt / span; }
+  if p[0].t >= 1 { p[0].t = 1; if !p[0].open { p[0].shown = false; } return false; }
+  return true;
+}
+// A key while it is shown (composer.coax's numbering; mods 1 Shift): up and down move, Return does
+// the row, Escape goes back then closes, Tab the next scope (Shift the one before), Backspace on an
+// empty field goes back a page or out of a scope. True when it took the key; typing is the editor's.
+app_palette_key :: (p: [] AppPalette, key: int, mods: int) -> bool {
+  if !p[0].shown { return false; }
+  if !p[0].open { return true; }
+  if key == APP_OV_DOWN { p[0].lit = app_pal_next(p, p[0].lit, 1); p[0].moved = false; app_pal_reveal(p); return true; }
+  if key == APP_OV_UP { p[0].lit = app_pal_next(p, p[0].lit, -1); p[0].moved = false; app_pal_reveal(p); return true; }
+  if key == APP_OV_ENTER { if p[0].lit >= 0 { app_palette_do(p, p[0].lit); } return true; }
+  if key == APP_OV_ESCAPE { if !app_palette_back(p) { app_palette_close(p, APP_PAL_NONE); } return true; }
+  if key == APP_OV_TAB {
+    if p[0].depth == 0 { back := (mods & APP_OV_SHIFT) != 0; app_palette_scope(p, (p[0].scope + (ifx back then APP_PAL_SCOPES - 1 else 1)) % APP_PAL_SCOPES); }
+    return true;
+  }
+  if key == APP_OV_BACKSPACE && p[0].nq == 0 {
+    if app_palette_back(p) { return true; }
+    if p[0].scope != APP_PAL_ALL { app_palette_scope(p, APP_PAL_ALL); return true; }
+    return true;
+  }
+  return false;
+}
+// The wheel, points down positive.
+app_palette_scroll :: (p: [] AppPalette, dy: f32) {
+  if !p[0].open { return; }
+  most := p[0].content - p[0].view;
+  p[0].scroll += dy;
+  if p[0].scroll > most { p[0].scroll = most; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+// The lit row in view (rows keep their places from the last layout).
+app_pal_reveal :: (p: [] AppPalette) {
+  r := p[0].lit;
+  if r < 0 || r >= p[0].nrows || !(p[0].view > 0) { return; }
+  y := p[0].rows[r].y; h := p[0].rows[r].h;
+  // a section's first row shows its title too
+  if r > 0 && p[0].rows[r - 1].kind == APP_PAL_HEAD { y = p[0].rows[r - 1].y; h += p[0].rows[r - 1].h; }
+  if y < p[0].scroll { p[0].scroll = y; }
+  if p[0].rows[r].y + p[0].rows[r].h > p[0].scroll + p[0].view { p[0].scroll = p[0].rows[r].y + p[0].rows[r].h - p[0].view; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+// The row under (x, y), -1 for none.
+app_pal_row_at :: (p: [] AppPalette, x: f32, y: f32) -> int {
+  if x < p[0].x || x >= p[0].x + p[0].w || y < p[0].list_y || y >= p[0].list_y + p[0].view { return -1; }
+  ly := y - p[0].list_y + p[0].scroll;
+  for r: 0..<p[0].nrows { if p[0].rows[r].kind != APP_PAL_HEAD && ly >= p[0].rows[r].y && ly < p[0].rows[r].y + p[0].rows[r].h { return r; } }
+  return -1;
+}
+// The pointer, in units: phase 0 down, 1 moved, 2 up, 3 cancelled. A row under a moving pointer is
+// lit; one released on where it was pressed is done; a scope chip or the back chip is taken; a
+// press outside the card closes it when released outside.
+app_palette_pointer :: (p: [] AppPalette, x: f32, y: f32, phase: int) -> bool {
+  if !p[0].shown { return false; }
+  moved := x != p[0].px || y != p[0].py;
+  p[0].px = x; p[0].py = y;
+  if !p[0].open { return true; }
+  at := app_pal_row_at(p, x, y);
+  if phase == 1 { if moved && at >= 0 { p[0].lit = at; p[0].moved = true; } return true; }
+  if phase == 0 {
+    p[0].held = -1;
+    if !app_ov_inside(x, y, p[0].x, p[0].y, p[0].w, p[0].h) { p[0].held = -4; return true; }
+    if at >= 0 { p[0].held = at; p[0].lit = at; return true; }
+    if p[0].depth > 0 && p[0].back_w > 0 && app_ov_inside(x, y, p[0].back_x, p[0].back_y, p[0].back_w, p[0].back_h) { p[0].held = -3; return true; }
+    if p[0].depth == 0 { for k: 0..<APP_PAL_SCOPES { if app_ov_inside(x, y, p[0].scope_x[k], p[0].scope_y, p[0].scope_w[k], p[0].scope_h) { p[0].held = -2; p[0].held_scope = k; return true; } } }
+    return true;
+  }
+  if phase == 2 {
+    held := p[0].held; p[0].held = -1;
+    if held == -4 && !app_ov_inside(x, y, p[0].x, p[0].y, p[0].w, p[0].h) { app_palette_close(p, APP_PAL_NONE); return true; }
+    if held >= 0 && at == held { app_palette_do(p, held); return true; }
+    if held == -3 { _ := app_palette_back(p); return true; }
+    if held == -2 { app_palette_scope(p, p[0].held_scope); return true; }
+    return true;
+  }
+  p[0].held = -1;
+  return true;
+}
+
+// ---------------------------------------------------------------- paint
+
+// The list's height at most in a view_h window: view_max, less what would run past the window's foot.
+app_pal_view_max :: (o: AppPaletteSpec, view_h: f32, scopes: bool) -> f32 {
+  room := view_h - o.top - o.bottom_clear - o.search_h - (ifx scopes then o.scopes_h else 0.0f32) - o.foot_h;
+  v := ifx room < o.view_max then room else o.view_max;
+  return ifx v < o.view_min then o.view_min else v;
+}
+// Key caps right to left ending at `right` (keys space-separated; "⌘" is the Command icon). Returns their left edge.
+app_pal_caps :: (f: [] UiFrame, o: AppPaletteSpec, right: f32, y: f32, h: f32, keys: string, ink: Rgba) -> f32 {
+  s := f[0].skin; st := s.set; sh := f[0].sheet;
+  cx := right; e := keys.count;
+  while e > 0 {
+    a := e; while a > 0 && keys[a - 1] != ' ' { a -= 1; }
+    k := cast(string) keys[a..<e];
+    if k.count > 0 {
+      sign := k == "⌘";
+      tw := ifx sign then st.key_icon else ceil(measure_width(f[0].m, st.head_face, k));
+      kw := tw + 2 * o.key_pad; if kw < o.key_h { kw = o.key_h; }
+      cx -= kw;
+      ky := y + (h - o.key_h) / 2;
+      app_ov_box(sh, cx, ky, kw, o.key_h, o.key_radius, 0, st.well, s.clear);
+      if sign { app_ov_icon(sh, ICON_SET_COMMAND, cx + (kw - tw) / 2, y + (h - tw) / 2, tw, ink); }
+      else { _ := sheet_text(sh, f[0].m, -1, cx + (kw - tw) / 2, y + (h - st.head_line) / 2, st.head_line, st.head_face, ink, k); }
+      cx -= o.key_gap;
+    }
+    e = a - 1;
+  }
+  return cx;
+}
+// Lays it out over a view_w by view_h page and paints it in `over`, with its rows.
+app_palette_paint :: (f: [] UiFrame, p: [] AppPalette, view_w: f32, view_h: f32, ov: AppOverlaySpec, o: AppPaletteSpec) {
+  if !p[0].shown { return; }
+  s := f[0].skin; st := s.set; sh := f[0].sheet; m := f[0].m;
+  ph := app_palette_phase(p, f[0].reduced_motion);
+  app_ov_box(sh, 0, 0, view_w, view_h, 0, 0, opacity(ov.backdrop, ph), s.clear);
+  scopes := p[0].depth == 0;
+  w := o.w; if w > view_w - 2 * ov.margin { w = view_w - 2 * ov.margin; }
+  if w < 0 { w = 0; }
+  // the rows' places
+  y: f32 = o.inset;
+  for r: 0..<p[0].nrows {
+    kind := p[0].rows[r].kind;
+    h := ifx kind == APP_PAL_HEAD then (ifx r == 0 then o.head_first else o.head) else o.row;
+    p[0].rows[r].y = y; p[0].rows[r].h = h; y += h;
+  }
+  p[0].content = ifx p[0].nrows > 0 then y + o.inset else 0.0f32;
+  vmax := app_pal_view_max(o, view_h, scopes);
+  view := ifx p[0].nrows == 0 then o.note_h else ifx p[0].content < vmax then p[0].content else vmax;
+  p[0].view = ifx p[0].nrows == 0 then 0.0f32 else view;
+  most := p[0].content - p[0].view; if p[0].scroll > most { p[0].scroll = most; } if p[0].scroll < 0 { p[0].scroll = 0; }
+  h := o.search_h + s.border + (ifx scopes then o.scopes_h else 0.0f32) + view + s.border + o.foot_h;
+  x := (view_w - w) / 2; cy := o.top; if cy + h > view_h - ov.margin { cy = view_h - ov.margin - h; } if cy < ov.margin { cy = ov.margin; }
+  p[0].x = x; p[0].y = cy; p[0].w = w; p[0].h = h;
+  sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, ph));
+  app_overlay_paint_panel(sh, s, ov, x, cy, w, h, o.radius, s.shadows.menu);
+  uiframe_open(f, uiframe_semantic(f, "palette", EL_REGION, "Command palette", x, cy, w, h, 0, 0));
+  // the field: the search glyph, the page's chip, then the words (the caller's editor's while it is over them)
+  sx := x + o.pad_x; p[0].search_y = cy;
+  app_ov_icon(sh, ICON_SET_SEARCH, sx + (o.slot - st.search_icon) / 2, cy + (o.search_h - st.search_icon) / 2, st.search_icon, st.tertiary);
+  tx := sx + o.slot + o.gap;
+  p[0].back_w = 0;
+  if p[0].depth > 0 {
+    title := app_pal_label(p, p[0].stack[p[0].depth - 1]);
+    shown := app_fit(f, s.label.face, title, w / 3);
+    bw := ceil(measure_width(m, s.label.face, shown)) + 12 + 2 * o.chip_pad;
+    by := cy + (o.search_h - o.back_h) / 2;
+    app_ov_box(sh, tx, by, bw, o.back_h, o.chip_radius, 0, st.well, s.clear);
+    app_ov_icon(sh, ICON_SET_BACK, tx + o.chip_pad - 2, by + (o.back_h - 12) / 2, 12, st.tertiary);
+    _ := sheet_text(sh, m, -1, tx + o.chip_pad + 12, by + (o.back_h - s.label.line) / 2, s.label.line, s.label.face, s.ink, shown);
+    _ := uiframe_semantic(f, "palette.back", EL_BUTTON, title, tx, by, bw, o.back_h, 0, 0);
+    p[0].back_x = tx; p[0].back_y = by; p[0].back_w = bw; p[0].back_h = o.back_h;
+    tx += bw + o.gap;
+  }
+  fw := x + w - o.pad_x - tx;
+  p[0].field_x = tx; p[0].field_w = fw;
+  q := app_palette_query(p);
+  frow := uiframe_semantic(f, "palette.field", EL_FIELD, "Search", tx, cy, fw, o.search_h, EL_S_FOCUSED, 0);
+  elt_value(f[0].rows, frow, q);
+  if !p[0].editing {
+    ly := cy + (o.search_h - s.label.line) / 2;
+    if p[0].nq == 0 { _ := sheet_text(sh, m, -1, tx, ly, s.label.line, s.label.face, st.tertiary, app_fit(f, s.label.face, p[0].placeholder, fw)); }
+    else { _ := sheet_text(sh, m, -1, tx, ly, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, sheet_single_line(sh, q), fw)); }
+  }
+  ry := cy + o.search_h;
+  sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, x, ry, w, s.border, 0, s.menu_divider)); ry += s.border;
+  // the scopes, each with its count
+  idb: [EL_ID] u8;
+  if scopes {
+    chx := sx; p[0].scope_y = ry + (o.scopes_h - o.chip_h) / 2; p[0].scope_h = o.chip_h;
+    for k: 0..<APP_PAL_SCOPES {
+      names := APP_PAL_SCOPE_NAME;
+      cb: [48] u8; cn := el_put(cb[..], 0, names[k]); cn = el_put(cb[..], cn, " "); cn = el_put_i(cb[..], cn, app_palette_count(p, k));
+      label := sheet_pool(sh, cast(string) cb[0..<cn]);
+      cw := ceil(measure_width(m, s.label.face, label)) + 2 * o.chip_pad;
+      on := p[0].scope == k;
+      if on { app_ov_box(sh, chx, p[0].scope_y, cw, o.chip_h, o.chip_radius, 0, ov.lit, s.clear); }
+      _ := sheet_text(sh, m, -1, chx + o.chip_pad, p[0].scope_y + (o.chip_h - s.label.line) / 2, s.label.line, s.label.face, ifx on then s.ink else s.muted, label);
+      n := el_put(idb[..], 0, "palette.scope."); n = el_put_i(idb[..], n, k);
+      _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_TAB, label, chx, p[0].scope_y, cw, o.chip_h, ifx on then EL_S_CURRENT else 0, 0);
+      p[0].scope_x[k] = chx; p[0].scope_w[k] = cw;
+      chx += cw + o.chip_gap;
+    }
+    ry += o.scopes_h;
+  }
+  // the list, clipped to its view
+  p[0].list_y = ry;
+  if p[0].nrows == 0 {
+    note := ifx p[0].nq > 0 then "No results" else "Nothing here";
+    _ := sheet_text(sh, m, -1, x + (w - measure_width(m, s.label.face, note)) / 2, ry + (view - s.label.line) / 2, s.label.line, s.label.face, st.tertiary, note);
+    _ := uiframe_semantic(f, "palette.empty", EL_TEXT, note, x, ry, w, view, 0, 0);
+  } else {
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, x, ry, x + w, ry + view));
+    rx := x + o.inset; rw := w - 2 * o.inset;
+    for r: 0..<p[0].nrows {
+      row := p[0].rows[r];
+      top := ry + row.y - p[0].scroll;
+      if top + row.h < ry || top > ry + view { continue; }
+      if row.kind == APP_PAL_HEAD {
+        title := ifx row.head == 1 then "Pinned" else ifx row.head == 2 then "Recent" else app_pal_section(p, row.item);
+        _ := sheet_text(sh, m, -1, sx, top + row.h - st.head_line - 6, st.head_line, st.head_face, st.tertiary, app_fit(f, st.head_face, title, rw));
+        n := el_put(idb[..], 0, "palette.head."); n = el_put_i(idb[..], n, r);
+        _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_HEADING, title, rx, top, rw, row.h, 0, 0);
+        continue;
+      }
+      lit := r == p[0].lit;
+      if lit { sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, rx, top, rw, row.h, o.row_radius, ov.lit)); }
+      ly := top + (row.h - s.label.line) / 2;
+      n := el_put(idb[..], 0, "palette.row."); n = el_put_i(idb[..], n, r);
+      if row.kind == APP_PAL_MORE {
+        mb: [40] u8; mn := el_put(mb[..], 0, "Show all "); mn = el_put_i(mb[..], mn, row.head);
+        more := sheet_pool(sh, cast(string) mb[0..<mn]);
+        _ := sheet_text(sh, m, -1, sx + o.slot + o.gap, ly, s.label.line, s.label.face, s.muted, more);
+        _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_ROW, more, rx, top, rw, row.h, ifx lit then EL_S_FOCUSED else 0, 0);
+        continue;
+      }
+      pi := p[0].items[row.item];
+      if pi.icon >= 0 { app_ov_icon(sh, pi.icon, sx + (o.slot - 16) / 2, top + (row.h - 16) / 2, 16, ifx lit then s.ink else s.muted); }
+      // its end: a check, a page's chevron, the keys, a muted hint
+      ex := rx + rw - o.pad_x + o.inset;
+      if pi.checked { ex -= 14; app_ov_icon(sh, s.icon_check, ex, top + (row.h - 14) / 2, 14, s.ink); ex -= o.gap; }
+      if pi.opens != 0 { ex -= 14; app_ov_icon(sh, ICON_SET_CHEVRON, ex, top + (row.h - 14) / 2, 14, st.tertiary); ex -= o.gap; }
+      if pi.keys.count > 0 { ex = app_pal_caps(f, o, ex, top, row.h, pi.keys, st.tertiary) - o.gap; }
+      lx := sx + o.slot + o.gap;
+      if pi.hint.count > 0 {
+        hint := app_fit(f, s.label.face, pi.hint, (ex - lx) / 2);
+        hw := measure_width(m, s.label.face, hint);
+        ex -= hw;
+        _ := sheet_text(sh, m, -1, ex, ly, s.label.line, s.label.face, st.tertiary, hint);
+        ex -= o.gap;
+      }
+      label := app_pal_label(p, row.item);
+      _ := sheet_text(sh, m, -1, lx, ly, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, label, ex - lx));
+      state := (ifx lit then EL_S_FOCUSED else 0) | (ifx pi.checked then EL_S_CHECKS | EL_S_CHECKED else 0);
+      _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_ROW, label, rx, top, rw, row.h, state, 0);
+    }
+    sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no));
+  }
+  ry += view;
+  sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, x, ry, w, s.border, 0, s.menu_divider)); ry += s.border;
+  // the foot: a legend of the keys, what Return does and the way out
+  fy := ry;
+  verb := "Run";
+  if p[0].lit >= 0 && p[0].lit < p[0].nrows {
+    lr := p[0].rows[p[0].lit];
+    if lr.kind == APP_PAL_MORE || (lr.kind == APP_PAL_ITEM && (p[0].items[lr.item].opens != 0 || p[0].items[lr.item].scope != APP_PAL_COMMANDS)) { verb = "Open"; }
+  }
+  lx := sx;
+  lx = app_pal_legend(f, o, lx, fy, "enter", verb, s.muted, p[0].lit >= 0);
+  way := ifx p[0].depth > 0 then "Back" else "Close";
+  ex := x + w - o.pad_x;
+  ew := app_pal_legend_w(f, o, "esc", way);
+  _ := app_pal_legend(f, o, ex - ew, fy, "esc", way, st.tertiary, true);
+  if p[0].nrows > 1 {
+    nw := app_pal_legend_w(f, o, "up down", "Navigate");
+    _ := app_pal_legend(f, o, ex - ew - o.legend_gap - nw, fy, "up down", "Navigate", st.tertiary, true);
+  }
+  uiframe_close(f);
+  sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
+}
+// A legend's width: its caps, then its words.
+app_pal_legend_w :: (f: [] UiFrame, o: AppPaletteSpec, keys: string, words: string) -> f32 {
+  st := f[0].skin.set; w: f32 = 0; e := keys.count;
+  while e > 0 {
+    a := e; while a > 0 && keys[a - 1] != ' ' { a -= 1; }
+    kw := ceil(measure_width(f[0].m, st.head_face, cast(string) keys[a..<e])) + 2 * o.key_pad; if kw < o.key_h { kw = o.key_h; }
+    w += kw + o.key_gap; e = a - 1;
+  }
+  return w + o.gap / 2 + ceil(measure_width(f[0].m, st.desc_face, words));
+}
+// A legend at x in the foot (its caps, then its words). Returns where the next one may start.
+app_pal_legend :: (f: [] UiFrame, o: AppPaletteSpec, x: f32, y: f32, keys: string, words: string, ink: Rgba, paint: bool) -> f32 {
+  if !paint { return x; }
+  st := f[0].skin.set; w := app_pal_legend_w(f, o, keys, words);
+  ww := ceil(measure_width(f[0].m, st.desc_face, words));
+  caps_right := x + w - ww - o.gap / 2 + o.key_gap;
+  _ := app_pal_caps(f, o, caps_right, y, o.foot_h, keys, st.tertiary);
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x + w - ww, y + (o.foot_h - st.desc_line) / 2, st.desc_line, st.desc_face, ink, words);
+  return x + w + o.legend_gap;
+}
+// Where the field holds its words, in units (x, y, w, h); false while it is not at rest.
+app_palette_field_box :: (p: [] AppPalette, s: UiSkin, o: AppPaletteSpec, out: [] f32) -> bool {
+  if out.count < 4 || !p[0].shown || !p[0].open || p[0].t < 1 || !(p[0].field_w > 0) { return false; }
+  out[0] = p[0].field_x; out[1] = p[0].search_y + (o.search_h - s.label.line) / 2; out[2] = p[0].field_w; out[3] = s.label.line;
+  return true;
+}

@@ -2,18 +2,29 @@
 // components/app/overlay.coax (GitHub #13746). The host says what a dialog or a menu holds and
 // opens it; the page draws it, takes the pointer and the keys while it is up, and keeps the answer
 // until the host takes it. What an answer does stays in the host (Window+Dialogs.swift,
-// Window+Menus.swift). The menu bar, the status item and the folder panel stay native.
+// Window+Menus.swift). The menu bar, the status item and the folder panel stay native. The command
+// palette (palette.coax, GitHub #13700) stands here too, under a dialog: its field is the page's
+// fourth editor (editor.coax).
 
-CpOverlay :: struct { dlg: [1] AppDialog; menu: [1] AppMenu; }
+CpOverlay :: struct { dlg: [1] AppDialog; menu: [1] AppMenu; pal: [1] AppPalette; pal_cmd: int; }
 
 // Zeron's measures, in points: the page lays out in points (GitHub #13737).
 cp_ov_spec :: () -> AppOverlaySpec { return app_overlay_zeron(); }
-cp_overlay_open :: (s: [] CoderPage) -> bool { return s[0].ov[0].dlg[0].shown || s[0].ov[0].menu[0].open; }
+cp_overlay_open :: (s: [] CoderPage) -> bool { return s[0].ov[0].dlg[0].shown || s[0].ov[0].menu[0].open || s[0].ov[0].pal[0].shown; }
 
 // One frame's worth: time passes for whichever is up, then it paints over the page. True while one moves.
 cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool {
   o := cp_ov_spec(); d := s[0].ov[0].dlg[..]; mn := s[0].ov[0].menu[..];
+  pal := s[0].ov[0].pal[..];
   moving := app_dialog_step(d, dt, s[0].reduced, o) || app_menu_step(mn, dt, s[0].reduced, o);
+  if app_palette_step(pal, dt, s[0].reduced, cp_pal_spec()) { moving = true; }
+  // the palette's words are the page's fourth editor once it is at rest (editor.coax)
+  pbox: [4] f32;
+  pal[0].editing = cp_ed_which(s) == CP_ED_PALETTE && app_palette_field_box(pal, f[0].skin, cp_pal_spec(), pbox[..]);
+  app_palette_paint(f, pal, w, h, o, cp_pal_spec());
+  if pal[0].editing && app_palette_field_box(pal, f[0].skin, cp_pal_spec(), pbox[..]) {
+    cp_ed_draw(s, f, CP_ED_PALETTE, pbox[0], pbox[1], pbox[2], pbox[3], pal[0].placeholder);
+  }
   app_menu_paint(f, mn, w, h, o);
   // the field with the keyboard is the page's editor (editor.coax): the dialog leaves its words to it
   box: [5] f32;
@@ -76,7 +87,7 @@ coder_page_menu_item :: (s: [] CoderPage, label: string, kind: int, checked: boo
   return s.count > 0 && app_menu_item(s[0].ov[0].menu[..], label, kind, checked, disabled, danger);
 }
 coder_page_menu_show :: (s: [] CoderPage, x: f32, y: f32) #export_c #effects(all) {
-  if s.count < 1 || !(s[0].d > 0) || s[0].ov[0].dlg[0].shown { return; }
+  if s.count < 1 || !(s[0].d > 0) || s[0].ov[0].dlg[0].shown || s[0].ov[0].pal[0].shown { return; }
   s[0].model_menu = false;
   app_menu_open(s[0].ov[0].menu[..], x / s[0].d, y / s[0].d);
 }
@@ -97,6 +108,12 @@ coder_page_overlay_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks
   ux := x / s[0].d; uy := y / s[0].d;
   s[0].px = ux; s[0].py = uy; s[0].touching = false; s[0].pressed_n = 0;
   if s[0].ov[0].menu[0].open { return app_menu_pointer(s[0].ov[0].menu[..], ux, uy, phase); }
+  if !s[0].ov[0].dlg[0].shown && s[0].ov[0].pal[0].shown {
+    // the palette's field takes a press on its words (and the drag it starts); the rest is the list's
+    if phase != 0 && s[0].fld[0].drag == CP_ED_PALETTE + 1 { _ = cp_ed_pointer(s, ux, uy, phase, clicks, mods); return true; }
+    if phase == 0 && cp_ed_pointer(s, ux, uy, 0, clicks, mods) { return true; }
+    took := app_palette_pointer(cp_pal(s), ux, uy, phase); cp_palette_collect(s); return took;
+  }
   d := s[0].ov[0].dlg[..];
   if phase != 0 && s[0].fld[0].drag == CP_ED_DIALOG + 1 { _ = cp_ed_pointer(s, ux, uy, phase, clicks, mods); d[0].px = ux; d[0].py = uy; return true; }
   before := d[0].focus;
@@ -109,5 +126,12 @@ coder_page_overlay_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks
 coder_page_overlay_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if s[0].ov[0].menu[0].open { return app_menu_key(s[0].ov[0].menu[..], key, mods); }
+  if !s[0].ov[0].dlg[0].shown && s[0].ov[0].pal[0].shown { took := app_palette_key(cp_pal(s), key, mods); cp_palette_collect(s); return took; }
   return app_dialog_key(s[0].ov[0].dlg[..], key, mods);
+}
+// The wheel while the palette is up: a mouse's notch as coder_page_wheel takes it (wheel), else a
+// gesture's as coder_page_scroll does (dy the fingers' way; a mouse's notches in lines unless precise).
+coder_page_overlay_scroll :: (s: [] CoderPage, dy: f32, precise: bool, wheel: bool) #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) || !s[0].ov[0].pal[0].open || s[0].ov[0].dlg[0].shown { return; }
+  app_palette_scroll(cp_pal(s), ifx wheel then dy / s[0].d else -dy * (ifx precise then 1.0f32 else CP_WHEEL_LINE) / cp_scale(s));
 }

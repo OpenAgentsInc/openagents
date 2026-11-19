@@ -1,0 +1,132 @@
+// A ranked fuzzy match of what a person typed against the rows of a list they
+// are browsing (a picker: the command palette, a chat switcher), after Zeron's
+// ds/command_palette.luau (zgx e393c4a8). It narrows and orders a list; it is
+// not intent routing, and never decides what a sentence means (that is the
+// Decisions API's, coax/lib/systemone/).
+//
+// Each word of the query must match some field of the row. How a word matches
+// a field, best first: a run of its letters starting a word of the field (more
+// at the field's start), every letter starting a word in order (an acronym:
+// "nc" is New chat), a run inside a word, then its letters in order scattered
+// close together. One letter matches only a word's start. The kind of match
+// outranks the field's weight, so a run at a word's start in any field beats
+// letters scattered through the title; letters scattered (or two inside a word)
+// count in the title alone. Bytes are folded to lower case for ASCII; the rest
+// of UTF-8 matches exactly, and a byte past ASCII is a letter.
+//   coax/bin/coax test components/core/match.coax
+
+#load "text.coax";
+
+// One field of a row: its text, its weight (a title 100, the rest less), and whether it is the title.
+MatchField :: struct { text: string; weight: f32; title: bool; }
+
+match_is_word :: (c: u8) -> bool { l := text_ascii_lower(c); return c >= 128 || (l >= '0' && l <= '9') || (l >= 'a' && l <= 'z'); }
+// Whether a word of s starts at byte i.
+match_is_start :: (s: string, i: int) -> bool { return i == 0 || (i > 0 && i <= s.count && !match_is_word(s[i - 1])); }
+// Where term (lower case) first is in field at or after `from`, by folded bytes; -1 for nowhere.
+match_find :: (field: string, term: string, from: int) -> int {
+  if term.count == 0 || from < 0 { return -1; }
+  i := from;
+  while i + term.count <= field.count {
+    ok := true;
+    for k: 0..<term.count { if text_ascii_lower(field[i + k]) != text_ascii_lower(term[k]) { ok = false; break; } }
+    if ok { return i; }
+    i += 1;
+  }
+  return -1;
+}
+// The byte c (folded) at or after `from` in field, at a word's start when `start`; -1 for none.
+match_byte :: (field: string, c: u8, from: int, start: bool) -> int {
+  i := ifx from < 0 then 0 else from; lc := text_ascii_lower(c);
+  while i < field.count {
+    if text_ascii_lower(field[i]) == lc && (!start || match_is_start(field, i)) { return i; }
+    i += 1;
+  }
+  return -1;
+}
+
+// How well one word matches one field, as a multiple of the field's weight; 0 for not at all.
+match_term :: (field: string, term: string) -> f32 {
+  n := term.count;
+  if n == 0 || n > field.count { return 0; }
+  best: f32 = 0; at := 0;
+  while true {
+    i := match_find(field, term, at);
+    if i < 0 { break; }
+    if match_is_start(field, i) { best = ifx i == 0 then 1.6f32 else 1.5f32; break; }
+    if best == 0 && n > 1 { best = 0.7f32 + cast(f32) (ifx n < 5 then n else 5) * 0.06f32; }
+    at = i + 1;
+  }
+  if best >= 1.5 { return best; }
+  // every letter at the next word's start that has it: an acronym
+  if n > 1 {
+    from := 0; whole := true;
+    for k: 0..<n { j := match_byte(field, term[k], from, true); if j < 0 { whole = false; break; } from = j + 1; }
+    if whole { return 1.3f32; }
+  }
+  if best > 0 || n < 2 { return best; }
+  // scattered: each letter at the next place it is, close together (spread out is noise)
+  first := -1; last := -1; from := 0; starts := 0; runs := 0;
+  for k: 0..<n {
+    j := match_byte(field, term[k], from, false);
+    if j < 0 { return 0; }
+    if k == 0 { first = j; }
+    if match_is_start(field, j) { starts += 1; } else if k > 0 && j == last + 1 { runs += 1; }
+    last = j; from = j + 1;
+  }
+  if last - first + 1 > n * 4 { return 0; }
+  v := (cast(f32) starts + cast(f32) runs * 0.6f32) / cast(f32) n;
+  return 0.3f32 + 0.5f32 * (ifx v > 1 then 1.0f32 else v);
+}
+// A match's kind, as a score that outranks any field's weight.
+match_class :: (m: f32) -> f32 { return ifx m >= 1.5 then 600.0f32 else ifx m >= 1.3 then 400.0f32 else ifx m > 0.8 then 200.0f32 else 0.0f32; }
+
+// How well a row's fields answer the query (its words split at spaces): the sum of each word's best
+// field, 0 when some word matches none. An empty query answers every row with 0.
+match_rank :: (fields: [] MatchField, query: string) -> f32 {
+  total: f32 = 0; i := 0;
+  while i < query.count {
+    while i < query.count && match_space(query[i]) { i += 1; }
+    a := i;
+    while i < query.count && !match_space(query[i]) { i += 1; }
+    if i == a { continue; }
+    term := cast(string) query[a..<i];
+    best: f32 = 0;
+    for fl: fields {
+      m := match_term(fl.text, term);
+      // letters scattered, or two inside a word, count in the title alone: elsewhere they are chance
+      if !fl.title && (m <= 0.8 || (m < 1.3 && term.count < 3)) { m = 0; }
+      v := ifx m > 0 then match_class(m) + m * fl.weight else 0.0f32;
+      if v > best { best = v; }
+    }
+    if best == 0 { return 0; }
+    total += best;
+  }
+  return total;
+}
+match_space :: (c: u8) -> bool { return c == 32 || c == 9 || c == 10 || c == 13; }
+
+#test "a run at a word's start beats an acronym, a run inside a word and scattered letters" {
+  #assert match_term("new chat", "new") == 1.6 && match_term("open new chat", "new") == 1.5;
+  #assert match_term("new chat", "nc") == 1.3 && match_term("New Chat", "NC") == 1.3;
+  #assert match_term("branch", "an") > 0.7 && match_term("branch", "an") < 0.9;
+  s := match_term("settings", "stg"); #assert s >= 0.3 && s <= 0.8;
+  #assert match_term("a long title with many words", "aw") == 1.3;
+  // one letter matches only a word's start; letters spread out are noise
+  #assert match_term("open chat", "c") == 1.5 && match_term("open", "p") == 0;
+  #assert match_term("a-very-long-field-indeed", "af") == 1.3 && match_term("abcdefghijklmnop", "ap") == 0;
+  #assert match_term("café", "fé") > 0 && match_term("", "x") == 0 && match_term("x", "") == 0;
+}
+#test "every word must match some field; the kind of match outranks the field's weight" {
+  title := MatchField.{text = "Rename project", weight = 100, title = true};
+  words := MatchField.{text = "branch label", weight = 50, title = false};
+  fs := [2] MatchField.[title, words];
+  #assert match_rank(fs[..], "ren pro") > 0 && match_rank(fs[..], "ren zzz") == 0;
+  #assert match_rank(fs[..], "") == 0 && match_rank(fs[..], "   ") == 0;
+  // "lab" starts a word of the keywords: it beats nothing; "an" inside "branch" is chance outside the title
+  #assert match_rank(fs[..], "lab") > 600 && match_rank(fs[..], "an") == 0;
+  a := [1] MatchField.[MatchField.{text = "Restart engine", weight = 100, title = true}];
+  b := [1] MatchField.[MatchField.{text = "Refresh models", weight = 100, title = true}];
+  c := [1] MatchField.[MatchField.{text = "Open settings", weight = 100, title = true}];
+  #assert match_rank(a[..], "re") > match_rank(c[..], "re") && match_rank(b[..], "rm") > match_rank(a[..], "rm");
+}

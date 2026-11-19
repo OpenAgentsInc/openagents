@@ -1,0 +1,123 @@
+// Checks for the command palette (palette.coax), with command_palette_order_fixture.luau's rows.
+//   coax/bin/coax test components/app/palette-checks.coax
+#load "checks-kit.coax";
+#load "palette.coax";
+
+pal_test_list :: (p: [] AppPalette) {
+  app_palette_begin(p);
+  cmds := [4] string.["Refresh models", "Restart engine", "Reload window", "Open settings"];
+  for c, i: cmds { #assert app_palette_item(p, 0, APP_PAL_COMMANDS, "Actions", c, "", "", ifx i == 0 then "⌘ R" else "", c, -1, false, false, 0, 10 + i); }
+  chats := [3] string.["Rebase the branch", "Retry uploads", "Rename project"];
+  for c, i: chats { #assert app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", c, "", "", "", c, -1, i == 2, false, 0, 20 + i); }
+  #assert app_palette_item(p, 0, APP_PAL_COMMANDS, "Actions", "Switch model", "model", "", "", "model", -1, false, false, 7, 30);
+  #assert app_palette_item(p, 7, APP_PAL_COMMANDS, "", "Neon", "", "", "", "m.neon", -1, false, true, 0, 31);
+  #assert app_palette_item(p, 7, APP_PAL_COMMANDS, "", "Carbon", "", "", "", "m.carbon", -1, false, false, 0, 32);
+  #assert app_palette_item(p, 0, APP_PAL_SETTINGS, "Settings", "Text size", "zoom font", "General", "", "set.zoom", -1, false, false, 0, 40);
+}
+pal_test_paint :: (t: [] AppTest, p: [] AppPalette, h: f32) -> bool {
+  app_test_begin(t, "", "", true);
+  app_palette_paint(t[0].f[..], p, 1200, h, app_overlay_zeron(), app_palette_zeron());
+  return app_test_end(t);
+}
+pal_row_code :: (p: [] AppPalette, r: int) -> int { return ifx r >= 0 && r < p[0].nrows && p[0].rows[r].kind == APP_PAL_ITEM then p[0].items[p[0].rows[r].item].code else -1; }
+
+#test "with nothing typed: Pinned first, then each section in order; the highlight on the first row" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert p[0].rows[0].kind == APP_PAL_HEAD && p[0].rows[0].head == 1 && pal_row_code(p[..], 1) == 22;
+  #assert p[0].rows[2].kind == APP_PAL_HEAD && pal_row_code(p[..], 3) == 10 && p[0].lit == 1;
+  // a page's items are not at the root
+  for r: 0..<p[0].nrows { #assert pal_row_code(p[..], r) != 31; }
+  #assert app_palette_count(p[..], APP_PAL_ALL) == 9 && app_palette_count(p[..], APP_PAL_SESSIONS) == 3 && app_palette_count(p[..], APP_PAL_SETTINGS) == 1;
+}
+#test "typing narrows by the ranked match: a word's start first, every word somewhere" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert app_palette_set_query(p[..], "re");
+  // every item whose title has a word starting "re", none of the others, no headings
+  for r: 0..<p[0].nrows { #assert p[0].rows[r].kind == APP_PAL_ITEM && cp_pal_starts(app_pal_label(p[..], p[0].rows[r].item)); }
+  #assert p[0].nrows == 6;
+  #assert app_palette_set_query(p[..], "rm") && pal_row_code(p[..], 0) == 10;   // Refresh models, an acronym
+  #assert app_palette_set_query(p[..], "ren proj") && p[0].nrows == 1 && pal_row_code(p[..], 0) == 22;
+  #assert app_palette_set_query(p[..], "zoom") && pal_row_code(p[..], 0) == 40;  // a setting's other words
+  #assert app_palette_set_query(p[..], "qqq") && p[0].nrows == 0 && p[0].lit == -1;
+}
+cp_pal_starts :: (s: string) -> bool { return s.count >= 2 && text_ascii_lower(s[0]) == 'r' && s[1] == 'e'; }
+#test "a scope narrows to one kind; Tab steps through them and Backspace on an empty field leaves one" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_SESSIONS, "Search");
+  for r: 0..<p[0].nrows { if p[0].rows[r].kind == APP_PAL_ITEM { #assert p[0].items[p[0].rows[r].item].scope == APP_PAL_SESSIONS; } }
+  #assert app_palette_key(p[..], APP_OV_TAB, 0) && p[0].scope == APP_PAL_COMMANDS;
+  #assert app_palette_key(p[..], APP_OV_TAB, APP_OV_SHIFT) && p[0].scope == APP_PAL_SESSIONS;
+  #assert app_palette_key(p[..], APP_OV_BACKSPACE, 0) && p[0].scope == APP_PAL_ALL && p[0].open;
+  // with words in the field Backspace is the editor's
+  #assert app_palette_set_query(p[..], "x") && !app_palette_key(p[..], APP_OV_BACKSPACE, 0);
+}
+#test "a row that opens a page drills in with its choice lit; Backspace and Escape go back, then Escape closes" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  g := p[0].gen;
+  #assert app_palette_set_query(p[..], "switch") && pal_row_code(p[..], 0) == 30;
+  #assert app_palette_key(p[..], APP_OV_ENTER, 0) && p[0].open && p[0].depth == 1 && app_palette_page(p[..]) == 7;
+  // its field emptied (the host loads it again), its rows are the page's, the current choice lit
+  #assert p[0].nq == 0 && p[0].gen != g && p[0].nrows == 2 && pal_row_code(p[..], p[0].lit) == 31;
+  #assert app_palette_key(p[..], APP_OV_BACKSPACE, 0) && p[0].depth == 0;
+  #assert app_palette_key(p[..], APP_OV_ENTER, 0) == true;   // nothing typed: the first row (a pinned chat) is done
+  #assert !p[0].open && app_palette_take(p[..]) >= 0 && app_palette_take(p[..]) == APP_PAL_WAIT;
+  app_palette_open(p[..], APP_PAL_ALL, "Search"); p[0].lit = 0;
+  #assert app_palette_set_query(p[..], "switch") && app_palette_key(p[..], APP_OV_ENTER, 0) && p[0].depth == 1;
+  #assert app_palette_key(p[..], APP_OV_ESCAPE, 0) && p[0].depth == 0 && p[0].open;
+  #assert app_palette_key(p[..], APP_OV_ESCAPE, 0) && !p[0].open && app_palette_take(p[..]) == APP_PAL_NONE;
+}
+#test "up and down go round the ends past the headings; Return answers the item, which is used lately next time" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert app_palette_key(p[..], APP_OV_UP, 0) && p[0].rows[p[0].lit].kind != APP_PAL_HEAD && p[0].lit == p[0].nrows - 1;
+  #assert app_palette_key(p[..], APP_OV_DOWN, 0) && p[0].lit == 1;
+  #assert app_palette_key(p[..], APP_OV_DOWN, 0) && pal_row_code(p[..], p[0].lit) == 10;
+  #assert app_palette_key(p[..], APP_OV_DOWN, 0) && app_palette_key(p[..], APP_OV_ENTER, 0);
+  a := app_palette_take(p[..]); #assert a >= 0 && p[0].items[a].code == 11;
+  // a new list, same keys: Restart engine is under Recent, after Pinned
+  pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert p[0].rows[2].kind == APP_PAL_HEAD && p[0].rows[2].head == 2 && pal_row_code(p[..], 3) == 11;
+}
+#test "it is 640 wide, 88 from the top, over the dim with the menu's shadow; its rows are the list's" {
+  t: [1] AppTest; app_test_init(t[..]); p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search sessions, commands and settings…");
+  #assert pal_test_paint(t[..], p[..], 800);
+  #assert p[0].w == 640 && p[0].x == 280 && p[0].y == 88;
+  sh := surface_sheet(t[0].sf[..]);
+  #assert sh.over[0].kind == PRIM_BOX && sh.over[0].w == 1200 && sh.over[0].h == 800;
+  #assert app_test_label(t[..], "palette") == "Command palette" && app_test_find(t[..], "palette.scope.0") >= 0;
+  #assert app_test_label(t[..], "palette.scope.1") == "Sessions 3" && app_test_has(t[..], "palette.scope.0", EL_S_CURRENT);
+  #assert app_test_texts(t[..], "Search sessions, commands and settings…") == 1 && app_test_has(t[..], "palette.row.1", EL_S_FOCUSED);
+  // at rest the caller's editor goes over the field; from then on the field's words are its
+  box: [4] f32; #assert !app_palette_field_box(p[..], t[0].f[0].skin, app_palette_zeron(), box[..]) && !app_palette_step(p[..], 1, true, app_palette_zeron());
+  #assert app_palette_field_box(p[..], t[0].f[0].skin, app_palette_zeron(), box[..]) && box[0] > 280 && box[2] > 500;
+  // a short window keeps the list at least 160 tall
+  #assert app_pal_view_max(app_palette_zeron(), 300, true) == 160 && app_pal_view_max(app_palette_zeron(), 2000, true) == 440;
+}
+#test "a click on a row does it, on a scope takes it, outside the card closes it" {
+  t: [1] AppTest; app_test_init(t[..]); p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert pal_test_paint(t[..], p[..], 800);
+  sx := p[0].scope_x[2] + 2; sy := p[0].scope_y + 2;
+  #assert app_palette_pointer(p[..], sx, sy, 0) && app_palette_pointer(p[..], sx, sy, 2) && p[0].scope == APP_PAL_COMMANDS;
+  #assert pal_test_paint(t[..], p[..], 800);
+  r := p[0].lit; ry := p[0].list_y + p[0].rows[r].y - p[0].scroll + 4;
+  #assert app_palette_pointer(p[..], p[0].x + 40, ry, 0) && app_palette_pointer(p[..], p[0].x + 40, ry, 2) && !p[0].open;
+  a := app_palette_take(p[..]); #assert a >= 0 && p[0].items[a].scope == APP_PAL_COMMANDS;
+  app_palette_open(p[..], APP_PAL_ALL, "Search"); #assert pal_test_paint(t[..], p[..], 800);
+  #assert app_palette_pointer(p[..], 5, 5, 0) && app_palette_pointer(p[..], 5, 5, 2) && !p[0].open && app_palette_take(p[..]) == APP_PAL_NONE;
+}
+#test "it opens over 180 ms and leaves over 130 ms; reduced motion shows it at once" {
+  p: [1] AppPalette; pal_test_list(p[..]); app_palette_open(p[..], APP_PAL_ALL, "Search");
+  o := app_palette_zeron();
+  #assert app_palette_phase(p[..], false) == 0 && app_palette_step(p[..], 0.09, false, o) && app_palette_phase(p[..], false) > 0.9;
+  #assert !app_palette_step(p[..], 0.1, false, o) && app_palette_phase(p[..], false) == 1;
+  app_palette_close(p[..], APP_PAL_NONE);
+  #assert app_palette_step(p[..], 0.1, false, o) && !app_palette_step(p[..], 0.05, false, o) && !p[0].shown;
+  app_palette_open(p[..], APP_PAL_ALL, "Search"); #assert app_palette_phase(p[..], true) == 1 && !app_palette_step(p[..], 0.001, true, o);
+}
+#test "All shows six sessions, then Show all opens the Sessions scope" {
+  p: [1] AppPalette; app_palette_begin(p[..]);
+  nb: [16] u8;
+  for i: 0..<9 { n := el_put(nb[..], 0, "Chat "); n = el_put_i(nb[..], n, i); name := app_palette_keep(p[..], cast(string) nb[0..<n]); #assert name.count == n && app_palette_item(p[..], 0, APP_PAL_SESSIONS, "Sessions", name, "", "", "", name, -1, false, false, 0, i); }
+  app_palette_open(p[..], APP_PAL_ALL, "Search");
+  #assert p[0].nrows == 8 && p[0].rows[7].kind == APP_PAL_MORE && p[0].rows[7].head == 9;
+  app_palette_do(p[..], 7);
+  #assert p[0].open && p[0].scope == APP_PAL_SESSIONS && p[0].nrows == 10;
+}

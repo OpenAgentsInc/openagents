@@ -123,6 +123,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return cp_send(s);
   }
   if act == CP_NEW { return cp_new(s); }
+  if act == CP_PALETTE { cp_palette_show(s, APP_PAL_SESSIONS); return true; }
   if act == CP_FOREMAN { s[0].ask = CP_ASK_FOREMAN; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
   if act == CP_SIDE_TOGGLE { s[0].side_collapsed = !s[0].side_collapsed; return true; }

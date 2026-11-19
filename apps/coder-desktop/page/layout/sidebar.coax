@@ -9,6 +9,7 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   // under the window's title bar, which holds the sidebar's toggle (titlebar.coax)
   sy := cp_bar(s);
   sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
+  sy += app_side_action(f, "coder.search", 0, sy, sw, ICON_SET_SEARCH, "Search", 0, CP_PALETTE);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
   sy += cp_side_foreman(s, f, sw, sy, cur, running);

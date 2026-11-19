@@ -138,9 +138,9 @@
   s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert cp_side_busy(s) && coder_page_moving(s);
-  // Click and hit-test the Foreman row directly below New chat.
+  // Click and hit-test the Foreman row directly below New chat and Search.
   fx := 40.0f32;
-  fy := cp_bar(s) + cp_skin().app.side_row * 1.5f32;   // under the title bar (layout/titlebar.coax)
+  fy := cp_bar(s) + cp_skin().app.side_row * 2.5f32;   // under the title bar (layout/titlebar.coax)
   #assert coder_page_foreman_at(s, fx, fy);
   #assert !coder_page_foreman_at(s, fx, 5.0f32);
   #assert coder_page_pointer(s, fx, fy, 0);

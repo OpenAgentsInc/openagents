@@ -34,6 +34,7 @@ final class CoderOverlay: NSObject {
     private var menuDone: ((Int) -> Void)?
     private var keys: Any?
     private var clock: Timer?
+    private var paletteWatched = false
 
     init(owner: CoderWindow) {
         self.owner = owner; page = owner.page
@@ -63,6 +64,15 @@ final class CoderOverlay: NSObject {
         cd_menu_show(page, x, y)
         begin()
     }
+    /// The command palette (page/palette.coax) opened: its field takes the keyboard while it is up,
+    /// and the composer takes it back when it closes.
+    func watchPalette() {
+        paletteWatched = true
+        if let owner { owner.window.makeFirstResponder(owner.canvas) }
+        begin()
+    }
+    /// The palette is up with no dialog over it.
+    var paletteUp: Bool { cd_palette_open(page) != 0 && dialogDone == nil }
     var isOpen: Bool { cd_overlay_open(page) != 0 }
     var menuOpen: Bool { menuDone != nil }
     var dialogOpen: Bool { isOpen && !menuOpen }
@@ -88,6 +98,17 @@ final class CoderOverlay: NSObject {
         let flags = event.modifierFlags
         var mods: Int32 = 0
         if flags.contains(.shift) { mods |= 1 }; if flags.contains(.control) { mods |= 2 }; if flags.contains(.option) { mods |= 4 }; if flags.contains(.command) { mods |= 8 }
+        // ⌃Tab and ⌃⇧Tab are the window's (the next and previous chat)
+        if event.keyCode == 48 && flags.contains(.control) { return false }
+        if paletteUp {
+            // the menu bar's shortcuts close it and go on (⌘K only closes); Backspace is the page's (editor.coax)
+            if flags.contains(.command) && ![36, 76, 53, 126, 125, 48].contains(event.keyCode) {
+                let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+                if ["c", "v", "x", "a", "z"].contains(ch) { return false }
+                _ = cd_palette_toggle(page, 0); place(); collect()
+                return ch == "k"
+            }
+        }
         var code: Int32 = 0
         switch event.keyCode {
         case 53: code = -1
@@ -106,8 +127,12 @@ final class CoderOverlay: NSObject {
         if flags.contains(.command) { return !(editing && ["c", "v", "x", "a", "z"].contains(event.charactersIgnoringModifiers?.lowercased() ?? "")) }
         return !editing
     }
-    /// While one is up: once it is gone, the clock and the keys stop.
-    func place() { if !isOpen { finish() } }
+    /// While one is up: once it is gone, the clock and the keys stop. The palette closed: the
+    /// composer takes the keyboard back (a dialog it opened takes it instead).
+    func place() {
+        if paletteWatched && cd_palette_open(page) == 0 { paletteWatched = false; if dialogDone == nil { owner?.refocus() } }
+        if !isOpen { finish() }
+    }
     /// Nothing is up any more: the clock and the keys stop.
     private func finish() {
         clock?.invalidate(); clock = nil

@@ -93,8 +93,8 @@ static int cd_ime_text(void *user, int from, int to, char *out, int cap) { retur
 static int cd_ime_rect(void *user, int at, float rect[4]) { return coder_page_ime_rect(cd_state((CoderHost *)user), at, (coax_v_f32){rect, 4}) ? 1 : 0; }
 static int cd_ime_index(void *user, float x, float y) { return (int)coder_page_ime_index(cd_state((CoderHost *)user), x, y); }
 static const UiIme cd_ime = {cd_ime_replace, cd_ime_mark, cd_ime_unmark, cd_ime_range, cd_ime_text, cd_ime_rect, cd_ime_index};
-static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
-static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
+static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, 0, 1); cd_woke(c); return; } coder_page_wheel(cd_state(c), dy); cd_woke(c); }
+static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, precise != 0, 0); cd_woke(c); return; } coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
 void *cd_open(const char *resources) {
   CoderHost *c = calloc(1, sizeof *c);
@@ -334,4 +334,11 @@ int cd_menu_item(void *page, const char *label, int kind, int checked, int disab
 void cd_menu_show(void *page, float x, float y) { CoderHost *c = page; if (c) { coder_page_menu_show(cd_state(c), x, y); cd_woke(c); } }
 int cd_menu_answer(void *page) { CoderHost *c = page; return c ? (int)coder_page_menu_answer(cd_state(c)) : -2; }
 int cd_overlay_open(void *page) { CoderHost *c = page; return c && coder_page_overlay_open(cd_state(c)); }
+// The command palette (page/palette.coax, GitHub #13700): ⌘K, its host-only commands, ⌃Tab, ⌘B and ⌘/.
+int cd_palette_toggle(void *page, int scope) { CoderHost *c = page; if (!c) return 0; int open = coder_page_palette_toggle(cd_state(c), scope); cd_woke(c); return open; }
+int cd_palette_open(void *page) { CoderHost *c = page; return c && coder_page_palette_open(cd_state(c)); }
+int cd_palette_command(void *page) { CoderHost *c = page; return c ? (int)coder_page_palette_command(cd_state(c)) : 0; }
+int cd_chat_step(void *page, int dir) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_chat_step(cd_state(c), dir); cd_woke(c); return ok; }
+void cd_toggle_sidebar(void *page) { CoderHost *c = page; if (c) { coder_page_toggle_sidebar(cd_state(c)); cd_woke(c); } }
+void cd_toggle_models(void *page) { CoderHost *c = page; if (c) { coder_page_toggle_models(cd_state(c)); cd_woke(c); } }
 int cd_overlay_key(void *page, int key, int mods) { CoderHost *c = page; if (!c) return 0; int took = coder_page_overlay_key(cd_state(c), key, mods); if (took) cd_woke(c); return took; }

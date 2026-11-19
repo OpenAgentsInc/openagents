@@ -89,6 +89,7 @@ CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_
 CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUDE_KEY :: 16; CP_ASK_OPENROUTER :: 17; CP_ASK_TIER :: 18; CP_ASK_AUDIT :: 19; CP_ASK_CLEAR_FOREMAN :: 20; CP_ASK_LOGIN :: 21; CP_ASK_CHECK_UPDATES :: 22; CP_ASK_SEARCH :: 23;
 CP_ASK_OPEN_FILE :: 24;     // a press on a file a row or a reply names: coder_page_open_path is its path
 CP_ASK_FOLLOWUP :: 25;      // a follow-up for the host (followups.coax): coder_page_followup_op says which
+CP_ASK_PALETTE :: 26;       // the command palette opened (the host watches it) or asks a command of the host: coder_page_palette_command says which (palette.coax)
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -100,6 +101,7 @@ CP_FU_DRAFT :: 47;         // the composer's Steer or Queue while a reply runs: 
 CP_REVIEW :: 48; CP_PANE_TAB :: 49; CP_REVIEW_FILE :: 50;
 CP_BUBBLE_FOLD :: 61;      // a person's long message's Show more or Show less (#13745)
 CP_JUMP :: 62;             // Jump to latest (New reply): the transcript glides to its end (#13745)
+CP_PALETTE :: 51;          // the sidebar's Search: the command palette opens on Sessions (#13700)
 CP_TAB_AGENT :: 0; CP_TAB_CHANGES :: 1;   // which tab the pane shows when both are open
 CP_REVIEW_EDITS :: 256;     // edits the review lists, newest kept
 CP_REVIEW_FILES :: 64;      // files it lists

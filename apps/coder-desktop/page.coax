@@ -25,3 +25,4 @@
 #load "page/checks/review-checks.coax" #test;
 #load "page/checks/overlay-checks.coax" #test;
 #load "page/checks/editor-checks.coax" #test;
+#load "page/checks/palette-checks.coax" #test;

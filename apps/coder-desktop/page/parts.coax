@@ -6,6 +6,7 @@
 #load "../../../components/app/nav.coax";
 #load "../../../components/app/followups.coax";
 #load "../../../components/app/overlay.coax";
+#load "../../../components/app/palette.coax";
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
@@ -34,3 +35,4 @@
 #load "host-api.coax";
 #load "followups.coax";
 #load "overlay.coax";
+#load "palette.coax";

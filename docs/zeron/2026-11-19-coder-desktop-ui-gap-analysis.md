@@ -198,13 +198,13 @@ Steps:
 
 | Surface | Zeron | Coder now | Gap |
 | --- | --- | --- | --- |
-| Command palette | ⌘K. Width 640, 88 from the top, opens over 180 ms. Scopes All, Sessions, Commands, Files, Settings. Pinned and Recent; drill-in pages with ⌫ to go back | None | Build it. It also serves sidebar Search. Selection goes through the shared semantic selector. |
+| Command palette | ⌘K. Width 640, 88 from the top, opens over 180 ms. Scopes All, Sessions, Commands, Files, Settings. Pinned and Recent; drill-in pages with ⌫ to go back | Built (#13700): `components/app/palette.coax`, on ⌘K and sidebar Search; scopes All, Sessions, Commands, Settings; ranked by `components/core/match.coax` | Files scope (no file index yet); the frosted card; matched letters marked. |
 | Menus | Rows 28, headings 24, width 232. Virtualized dropdown rows | Native NSMenu for context menus; Coax model popover with 42pt rows | Draw context menus in Coax at Zeron's measures. |
 | Dialogs | sm 380, md 460, lg 560, sheet 400, radius 16. In 200 ms, out 130 ms | NSAlert sheets for budget, goal, keys and updates | Draw dialogs in Coax with GPU text fields. |
 | Toasts | 340 wide, at most 4, bottom corner, menu glass, pause on hover | None | Add them for update, Foreman and error notices that don't belong in the transcript. |
 | Settings | Column 640, rows 52, control width 240, grouped cards. Many pages | Zeron's measures, five pages (`settings.coax`); search is a native editor overlay | Swap the search field to the GPU editor. Add Appearance (conversation width, text size) and Shortcuts. |
 | Empty state | Composer in expanded mode as the page's centre | "What do you want to do?" | Use Zeron's expanded composer for new chats. |
-| Shortcuts | ⌘N, ⌘K, ⌘/, ⌘B, ⌘D, ⌘F, ⌘W, ⌘[ / ⌘], ⌃Tab, ⇧⌘A, ⇧⌘P and more (`screens/shell/keys.luau`) | ⌘N, ⌘1-9, ⌘+ / ⌘- / ⌘0, ⌘F in settings | Add ⌘K, ⌘/, ⌘B, ⌃Tab, ⇧⌘A and ⇧⌘P. |
+| Shortcuts | ⌘N, ⌘K, ⌘/, ⌘B, ⌘D, ⌘F, ⌘W, ⌘[ / ⌘], ⌃Tab, ⇧⌘A, ⇧⌘P and more (`screens/shell/keys.luau`) | ⌘N, ⌘1-9, ⌘+ / ⌘- / ⌘0, ⌘F in settings; ⌘K, ⌘/, ⌘B, ⌃Tab and ⌃⇧Tab (#13700) | Add ⇧⌘A and ⇧⌘P. |
 
 ## 7. Verification
 

@@ -10,6 +10,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             fputs("Coder: the GPU surface could not start.\n", stderr); exit(1)
         }
         self.main = main
+        main.installPaletteKeys()
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Coder")
@@ -49,6 +50,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationWillTerminate(_ notification: Notification) { main?.retire() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
+    @objc func search(_ sender: Any?) { main?.togglePalette() }
+    @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
+    @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
+    @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
+    @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
@@ -113,6 +119,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
+        file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
         file.addItem(.separator())
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
@@ -135,6 +142,14 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             item.target = delegate; item.tag = k; item.keyEquivalentModifierMask = [.command]
             item.isHidden = true; item.allowsKeyEquivalentWhenHidden = true
         }
+        view.addItem(.separator())
+        view.addItem(withTitle: "Toggle Sidebar", action: #selector(CoderDelegate.toggleSidebar(_:)), keyEquivalent: "b").target = delegate
+        view.addItem(withTitle: "Choose Model", action: #selector(CoderDelegate.chooseModel(_:)), keyEquivalent: "/").target = delegate
+        // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys
+        let next = view.addItem(withTitle: "Next Chat", action: #selector(CoderDelegate.nextChat(_:)), keyEquivalent: "\t")
+        next.target = delegate; next.keyEquivalentModifierMask = [.control]
+        let previous = view.addItem(withTitle: "Previous Chat", action: #selector(CoderDelegate.previousChat(_:)), keyEquivalent: "\t")
+        previous.target = delegate; previous.keyEquivalentModifierMask = [.control, .shift]
         view.addItem(.separator())
         view.addItem(withTitle: "Back to Chats", action: #selector(CoderDelegate.backToChats(_:)), keyEquivalent: "[").target = delegate
         viewItem.submenu = view

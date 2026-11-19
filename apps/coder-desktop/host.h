@@ -217,8 +217,20 @@ void cd_bar_full(void *page, int on);
 // the canvas's device pixels. cd_menu_answer: the item chosen, -1 none, -2 not yet (once).
 // While one is up it takes the pointer (cd_on_overlay's function is called after each pointer
 // event) and the wheel; cd_overlay_key gives it a key (-1 Escape, -2 Return, -6 up, -7 down,
-// -13 Tab; mods 1 Shift, 8 Command): 0 leaves the key to the field with the keyboard.
+// -13 Tab, -3 Backspace, which on the palette's empty field goes back; mods 1 Shift, 8 Command): 0 leaves the key to the field with the keyboard.
 void cd_on_overlay(void *page, void (*fn)(void *context), void *context);
+// The command palette (page/palette.coax, GitHub #13700), drawn as the dialogs are; its field is
+// the page's fourth editor (page/editor.coax), typed into as the others are. cd_palette_toggle: ⌘K opens it in a
+// scope (0 All, 1 Sessions, 2 Commands, 3 Settings) or closes it; whether it is up now.
+// cd_palette_command: what cd_action 26 asks (0 watch the palette that opened, 16 rename the chat
+// shown, 17 delete it, 18 stop every running chat). cd_chat_step: ⌃Tab (1) and ⌃⇧Tab (-1), then
+// cd_action opens the chat. cd_toggle_sidebar: ⌘B. cd_toggle_models: ⌘/.
+int cd_palette_toggle(void *page, int scope);
+int cd_palette_open(void *page);
+int cd_palette_command(void *page);
+int cd_chat_step(void *page, int dir);
+void cd_toggle_sidebar(void *page);
+void cd_toggle_models(void *page);
 void cd_dialog_begin(void *page, int size, const char *title, const char *body);
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines);
 int cd_dialog_button(void *page, const char *label, int kind, int aside);

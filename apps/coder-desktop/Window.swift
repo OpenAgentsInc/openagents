@@ -310,6 +310,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let url = named.hasPrefix("/") ? URL(fileURLWithPath: named) : folder.appendingPathComponent(named)
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
         case 25: followUp()
+        case 26: paletteAsked()
         default: break
         }
     }
