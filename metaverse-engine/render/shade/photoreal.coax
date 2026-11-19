@@ -176,7 +176,7 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
   c:f32=cos(m.a.w); sn:f32=sin(m.a.w);
   time:f32=u[b+PR_UP+3];
   wind:V4=wg_at4(u,b+PR_WIND);
-  eye:V3=pr_at3(u,b+PR_EYE);
+  eye:V3=pr_at3(u,b+PR_EYE); // mutant: equivalent (PR_EYE is 0: b+PR_EYE and b-PR_EYE are one index)
   rides:bool=m.b.w<0.5f32;
   gone:bool=false;
   dim:f32=1.0f32;
@@ -186,7 +186,7 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
     level:f32=u[b+PR_LAMPS];
     at:V3=v3(m.a.x,m.a.y,m.a.z);
     if (rides) {at=pr_posed(at,u,b);}
-    grow:f32=pr_lamp_grow(length3(sub3(at,eye)),0.5f32*s.x,u[b+PR_EYE+3]);
+    grow:f32=pr_lamp_grow(length3(sub3(at,eye)),0.5f32*s.x,u[b+PR_EYE+3]); // mutant: equivalent (PR_EYE is 0: b+PR_EYE+3 and b-PR_EYE+3 are one index)
     p=scale3(p,grow);
     dim=level*fmax(1.0f32/(grow*grow),0.004f32);
     gone=level<0.02f32||(m.b.y>5.5f32&&sin(time*2.1f32+m.b.z)<0.0f32-0.3f32);
@@ -199,7 +199,7 @@ pr_stand :: (id:u32,instance:u32,u:[]f32,b:int,mesh:[]f32,objects:[]PrObj)->PrV 
     // a leaf: it flutters, and with distance sinks into the mass under it and is gone
     seen:V3=w;
     if (rides) {seen=pr_posed(w,u,b);}
-    fold:f32=pr_fold(length3(sub3(seen,eye)),from,u[b+PR_EYE+3]);
+    fold:f32=pr_fold(length3(sub3(seen,eye)),from,u[b+PR_EYE+3]); // mutant: equivalent (PR_EYE is 0: b+PR_EYE+3 and b-PR_EYE+3 are one index)
     if (u[b+PR_GROUND+3]>0.5f32) {fold=1.0f32;}
     gone=fold>=1.0f32;
     own:f32=fract(sin(p.x*12.9898f32+p.y*78.233f32+p.z*37.719f32)*43758.5453f32);
@@ -381,7 +381,7 @@ pr_sky :: (rd:V3,u:[]f32,b:int)->V3 {
 // width in radians.
 PR_MOON_RADIUS :: 0.0046f32;   // radians: a quarter of a degree, the moon's own
 pr_moon_face :: (rd:V3,moon:V3,sun:V3,soft:f32)->V2 {
-  if (dot3(rd,moon)<0.99f32) {return v2(0.0f32,0.0f32);}
+  if (dot3(rd,moon)<0.99f32) {return v2(0.0f32,0.0f32);} // mutant: equivalent (a ray at exactly 0.99 is 8 degrees off a disc a quarter degree wide: cover is 0 and the next guard returns the same nothing)
   // the disc's own two ways across the sky
   ax:V3=cross3(v3(0.0f32,1.0f32,0.0f32),moon);
   if (dot3(ax,ax)<0.000001f32) {ax=v3(1.0f32,0.0f32,0.0f32);}
@@ -421,7 +421,7 @@ pr_night_sky :: (sky:V3,rd:V3,soft:f32,hide:f32,u:[]f32,b:int)->V3 {
   night:f32=1.0f32-u[b+PR_SUN+3];
   show:f32=1.0f32-hide;
   stars:V3=v3(0.0f32,0.0f32,0.0f32);
-  if (night>0.25f32) {stars=scale3(pr_stars(rd),(night-0.25f32)*1.3333f32*show);}
+  if (night>0.25f32) {stars=scale3(pr_stars(rd),(night-0.25f32)*1.3333f32*show);} // mutant: equivalent (at night exactly 0.25 the stars' factor night-0.25 is 0, so they add nothing either way)
   c:V3=sky;
   if (u[b+PR_MOON+3]>0.5f32) {
     face:V2=pr_moon_face(rd,pr_at3(u,b+PR_MOON),pr_at3(u,b+PR_SUN),soft);
@@ -569,21 +569,21 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
       // than a pixel is a different glint each frame (the far canal glittered), so the slopes a
       // pixel can't hold go to the roughness, a blurred sheen, instead
       pw:f32=fmax(ax,ay);
-      k1:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*1.7f32);
-      k2:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*5.1f32);
+      k1:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*1.7f32); // mutant: equivalent (off the GPU a derivative is 0: pw is 0, smoothstep of it 0, and k1 1 either way)
+      k2:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*5.1f32); // mutant: equivalent (off the GPU a derivative is 0: pw is 0, smoothstep of it 0, and k2 1 either way)
       rx:f32=k1*(pr_noise2(qx*1.7f32+seed,qz*1.7f32)-0.5f32)+0.5f32*k2*(pr_noise2(qx*5.1f32-t*0.4f32,qz*5.1f32+seed)-0.5f32);
       rz:f32=k1*(pr_noise2(qx*1.7f32+19.0f32,qz*1.7f32-seed)-0.5f32)+0.5f32*k2*(pr_noise2(qx*5.1f32+7.0f32,qz*5.1f32+t*0.37f32)-0.5f32);
       s.normal=normalize3(add3(s.normal,v3(rx*amp,0.0f32,rz*amp)));
       lost:f32=1.0f32-(((2.0f32*k1)+k2)/3.0f32);
-      toward:V3=normalize3(sub3(pr_at3(u,b+PR_EYE),v.world));
+      toward:V3=normalize3(sub3(pr_at3(u,b+PR_EYE),v.world)); // mutant: equivalent (PR_EYE is 0: b+PR_EYE and b-PR_EYE are one index)
       ci:f32=fmax(dot3(s.normal,toward),0.03f32);
       // down to the floor along the sun's way in the water and back up along the eye's
       sun_in:f32=wo_cos_refracted(fmax(u[b+PR_SUN+1],0.05f32));
       body:V3=wo_through(v3(0.42f32,0.075f32,0.035f32),depth/wo_cos_refracted(ci)+depth/sun_in);
       // (the net's lines are a few times finer than its cells: gone where a pixel spans them)
-      net:f32=ifx full then 1.0f32+0.5f32*(wo_caustic(v2(f.x*1.4f32,f.y*1.4f32),t)-0.18f32)*u[b+PR_SUN+3]*(1.0f32-smoothstep(0.1f32,0.4f32,pw*5.0f32)) else 1.0f32;
+      net:f32=ifx full then 1.0f32+0.5f32*(wo_caustic(v2(f.x*1.4f32,f.y*1.4f32),t)-0.18f32)*u[b+PR_SUN+3]*(1.0f32-smoothstep(0.1f32,0.4f32,pw*5.0f32)) else 1.0f32; // mutant: equivalent (off the GPU a derivative is 0: pw is 0 and the net's fade term 0)
       s.albedo=scale3(mul3(s.albedo,body),WO_LEAVING*1.6f32*net);
-      s.rough=0.04f32+(lost*fmin(4.0f32*amp,0.35f32)); s.metal=0.0f32;
+      s.rough=0.04f32+(lost*fmin(4.0f32*amp,0.35f32)); s.metal=0.0f32; // mutant: equivalent (off the GPU a derivative is 0: k1 and k2 are 1, so lost is 0 and what it multiplies or adds to is 0)
     }
   } else if (pattern==PR_PATTERN_GRAVEL) {
     grit:f32=pr_noise2(f.x*23.0f32+seed,f.y*23.0f32);
@@ -780,7 +780,7 @@ pr_lamps :: (q:V3,n:V3,toward:V3,s:PrSurface,u:[]f32,b:int,field:[]f32,materials
     out=scale3(mul3(scale3(s.albedo,1.0f32-s.metal),v3(e.x,e.y,e.z)),share);
   }
   count:int=cast(int)(u[b+PR_LAMPS+2]+0.5f32);
-  if (count>0&&s.rough<0.5f32) {
+  if (count>0&&s.rough<0.5f32) { // mutant: equivalent (with no near lights the loop below adds only lights under the count: none)
     f0:V3=cm_f0(s.albedo,s.metal);
     rough:f32=fmax(s.rough,0.16f32);   // (a lamp is no point: its highlight is never a single sparkle)
     for k:0..<PR_NEAR_LIGHTS {
@@ -1310,3 +1310,4 @@ pr_test_patterns :: ()->f64 {
   t:f64=pr_test_patterns();
   #assert abs(t-628089.97940666)<0.000000000001*abs(t);
 }
+#load "photoreal-stand-checks.coax" #test;
