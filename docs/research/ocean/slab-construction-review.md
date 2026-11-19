@@ -30,8 +30,9 @@ scripts/slab-build-film.sh docs/research/ocean/slab-construction.mp4
 Each frame is one fixed step of the page's clock, so the same commit gives
 the same film. The film is about 215 seconds long (6,500 frames).
 
-[slab-construction.mp4](slab-construction.mp4) is the film taken at
-`56499f9820`: 216 seconds at 1920 × 1080. It is encoded small for the
+[slab-construction.mp4](slab-construction.mp4) is the film taken from
+`f2d0854d20` (the build view has not changed since): 216 seconds at
+1920 × 1080. It is encoded small for the
 repository (H.264 at CRF 30, about 28 MB, no sound); take it again with the
 command above for full quality.
 
