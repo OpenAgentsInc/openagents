@@ -40,8 +40,42 @@ CW_OUTPUT :: 4000;
 CW_OPEN :: 32;
 CW_ID :: 96;
 
-// A tool call that has started and not ended: its id and the words its lines carry.
-CwCall :: struct { id: [CW_ID] u8; id_n: int; label: [CW_LABEL] u8; label_n: int; used: bool; }
+// A tool call that has started and not ended: its id, the words its lines carry, and any unified diff.
+CwCall :: struct { id: [CW_ID] u8; id_n: int; label: [CW_LABEL] u8; label_n: int; diff: [CW_OUTPUT] u8; diff_n: int; used: bool; }
+cw_diff_lines :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 0;
+  for c: s { if c == '\n' { n += 1; } }
+  return ifx s[s.count - 1] != '\n' then n + 1 else n;
+}
+cw_diff_put_lines :: (out: [] u8, at: int, mark: u8, s: string) -> int {
+  n := at; i := 0;
+  while i < s.count {
+    j := i; while j < s.count && s[j] != '\n' { j += 1; }
+    if n + 2 > out.count { break; }
+    out[n] = mark; n += 1;
+    for p: i..<j {
+      if n + 2 > out.count { break; }
+      out[n] = s[p]; n += 1;
+    }
+    if n < out.count { out[n] = '\n'; n += 1; }
+    i = ifx j < s.count then j + 1 else j;
+  }
+  return n;
+}
+cw_make_diff :: (out: [] u8, old: string, text: string) -> int {
+  on := cw_diff_lines(old); nn := cw_diff_lines(text);
+  if on == 0 && nn == 0 { return 0; }
+  n := json_raw(out, 0, "@@ -1,");
+  n = json_write_int(out, n, on);
+  n = json_raw(out, n, " +1,");
+  n = json_write_int(out, n, nn);
+  n = json_raw(out, n, " @@\n");
+  if n < 0 { return 0; }
+  n = cw_diff_put_lines(out, n, '-', old);
+  n = cw_diff_put_lines(out, n, '+', text);
+  return n;
+}
 
 cw_send :: (o: [] u8, n: int) {
   if n < 0 || n >= o.count { return; }
@@ -180,13 +214,18 @@ tool_main :: () -> int #export_c #effects(all) {
               continue;
             }
             if cl_str(car, item, "type") != "tool_use" { continue; }
-            n := cw_label(car, cl_str(car, item, "name"), cl_raw(item, "input"), lb[..]);
+            tname := cl_str(car, item, "name");
+            tinput := cl_raw(item, "input");
+            n := cw_label(car, tname, tinput, lb[..]);
             id := cl_str(car, item, "id");
             for k: 0..<CW_OPEN {
               if calls[k].used { continue; }
               calls[k].used = true; calls[k].id_n = cl_copy(calls[k].id[..], id);
               for j: 0..<n { calls[k].label[j] = lb[j]; }
               calls[k].label_n = n;
+              calls[k].diff_n = 0;
+              if tname == "Edit" { calls[k].diff_n = cw_make_diff(calls[k].diff[..], cl_str(car, tinput, "old_string"), cl_str(car, tinput, "new_string")); }
+              else if tname == "Write" { calls[k].diff_n = cw_make_diff(calls[k].diff[..], "", cl_str(car, tinput, "content")); }
               break;
             }
             ticket += 1;
@@ -209,7 +248,9 @@ tool_main :: () -> int #export_c #effects(all) {
               calls[k].used = false;
               on := cw_output(car, item, ob[..]);
               failed := cl_bool(item, "is_error");
-              cw_send(out[..], mww_command(out[..], cast(string) calls[k].label[0..<calls[k].label_n], ifx failed.ok && failed.value then 1 else 0, false, cast(string) ob[0..<on]));
+              is_err := failed.ok && failed.value;
+              out_s := ifx !is_err && calls[k].diff_n > 0 then cast(string) calls[k].diff[0..<calls[k].diff_n] else cast(string) ob[0..<on];
+              cw_send(out[..], mww_command(out[..], cast(string) calls[k].label[0..<calls[k].label_n], ifx is_err then 1 else 0, false, out_s));
               break;
             }
           }

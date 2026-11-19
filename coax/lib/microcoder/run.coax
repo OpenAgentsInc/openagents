@@ -680,6 +680,45 @@ mc_run_finish :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
 // One exact edit, applied and given out as a command row ("edit PATH", exit 0 or 1, the
 // result as output). A gated run's changes wait for approval, which edits have no way to ask
 // for: there the model is told to make the change with a command.
+mc_diff_lines :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  n := 0;
+  for c: s { if c == '\n' { n += 1; } }
+  return ifx s[s.count - 1] != '\n' then n + 1 else n;
+}
+mc_diff_put_lines :: (out: [] u8, at: int, mark: u8, s: string) -> int {
+  n := at; i := 0;
+  while i < s.count {
+    j := i; while j < s.count && s[j] != '\n' { j += 1; }
+    if n + 2 > out.count { break; }
+    out[n] = mark; n += 1;
+    for p: i..<j {
+      if n + 2 > out.count { break; }
+      out[n] = s[p]; n += 1;
+    }
+    if n < out.count { out[n] = '\n'; n += 1; }
+    i = ifx j < s.count then j + 1 else j;
+  }
+  return n;
+}
+mc_edit_diff :: (out: [] u8, from: int, old: string, text: string) -> int {
+  on := mc_diff_lines(old); nn := mc_diff_lines(text);
+  if on == 0 && nn == 0 { return 0; }
+  start := ifx from > 0 then from else 1;
+  n := json_raw(out, 0, "@@ -");
+  n = json_write_int(out, n, start);
+  n = json_raw(out, n, ",");
+  n = json_write_int(out, n, on);
+  n = json_raw(out, n, " +");
+  n = json_write_int(out, n, start);
+  n = json_raw(out, n, ",");
+  n = json_write_int(out, n, nn);
+  n = json_raw(out, n, " @@\n");
+  if n < 0 { return 0; }
+  n = mc_diff_put_lines(out, n, '-', old);
+  n = mc_diff_put_lines(out, n, '+', text);
+  return n;
+}
 mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
   tb: [1100] u8; tn := json_raw(tb[..], 0, "edit "); tn = json_raw(tb[..], tn, e.path);
   label := ifx tn < 0 then "edit" else cast(string) tb[0..<tn];
@@ -692,7 +731,9 @@ mc_run_edit :: (r: [] McRun, out: [] McRunEvent, k: int, e: McEdit) -> int {
   res := mc_edit_file(r[0].cwd, e, r[0].profile, r[0].tb[..]);
   if r[0].journal.count > 0 && (!jf_output(r[0].journal, ifx res.ok then "applied" else res.why) || !jf_result(r[0].journal, ifx res.ok then "exit=0 timed_out=false" else "exit=1 timed_out=false")) { return mc_run_failed(r, out, k); }
   mc_edited_shown(r[0].l[..], e.path, res.ok, res.why, res.from, res.to, res.shown);
-  return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx res.ok then 0 else 1, output = mc_run_keep(r, ifx res.ok then "applied" else res.why)});
+  db: [4096] u8; dn := ifx res.ok then mc_edit_diff(db[..], res.from, e.old, e.text) else 0;
+  ev_out := ifx res.ok then (ifx dn > 0 then cast(string) db[0..<dn] else "applied") else res.why;
+  return mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = mc_run_keep(r, label), exit = ifx res.ok then 0 else 1, output = mc_run_keep(r, ev_out)});
 }
 
 // After the step's commands: its views, then the next call or the end.

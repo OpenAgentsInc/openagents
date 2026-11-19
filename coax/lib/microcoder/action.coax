@@ -119,7 +119,7 @@ mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string { re
 // (each may be missing: a gateway without strict schemas leaves members out).
 mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool) -> string {
   a[0] = McAction.{};
-  if !json_valid(text) { return "the reply is not JSON"; }
+  if !cl_root(text).ok { return "the reply is not JSON"; }
   if !cl_valid(text, "s:rationale a:commands s:commands.* a:view s:view.* b:finished s:reply s:ask=none|question") {
     return "the reply does not match the next_action schema";
   }

@@ -64,11 +64,13 @@ mc_ending_name :: (e: int) -> string {
   return "";
 }
 
+MC_REPLY_BYTES :: 262144;        // one model reply (raw JSON, decoded arena, normalized text)
+
 McLoopBuffers :: struct {
   prompt: [MC_PROMPT_BYTES] u8;
-  raw: [32768] u8;
-  arena: [32768] u8;
-  norm: [32768] u8;              // a text reply's action, rewritten whole
+  raw: [MC_REPLY_BYTES] u8;
+  arena: [MC_REPLY_BYTES] u8;
+  norm: [MC_REPLY_BYTES] u8;     // a text reply's action, rewritten whole
   system: [16384] u8;            // the system prompt and schema of a run with a mode on (mc_aware)
   schema: [4096] u8;
 }
@@ -78,6 +80,7 @@ McLoop :: struct {
   local_work: f64;
   prompt: [] u8;
   raw: [] u8; nr: int;           // this step's reply as it streams
+  raw_overflow: bool;            // true when a step's reply exceeded raw.count
   norm: [] u8;
   got_text: bool;
   ar: [1] ClArena;
@@ -152,7 +155,7 @@ MC_REQUEST_MAX :: 262144;
 MC_REQUEST_ROOM :: 12288;
 
 mc_request :: (l: [] McLoop) -> GwRequest {
-  l[0].nr = 0; l[0].got_text = false;
+  l[0].nr = 0; l[0].raw_overflow = false; l[0].got_text = false;
   state := mc_state_json(l[0].st[..], l[0].prompt);
   // a run with a mode on sends a longer system prompt and schema (the schema's quotes are escaped)
   room := MC_REQUEST_ROOM + (l[0].system.count - MC_SYSTEM.count) + 2 * (l[0].schema.count - MC_SCHEMA.count);
@@ -178,7 +181,10 @@ mc_feed :: (l: [] McLoop, ev: GwEvent) -> int {
   if l[0].ending != MC_END_NONE { return MC_ENDED; }
   if ev.kind == GW_EV_TEXT {
     l[0].got_text = true;
-    for c: ev.text { if l[0].nr < l[0].raw.count { l[0].raw[l[0].nr] = c; l[0].nr += 1; } }
+    for c: ev.text {
+      if l[0].nr < l[0].raw.count { l[0].raw[l[0].nr] = c; l[0].nr += 1; }
+      else { l[0].raw_overflow = true; }
+    }
     return MC_WAIT;
   }
   if ev.kind == GW_EV_REASONING { return MC_WAIT; }
@@ -186,7 +192,10 @@ mc_feed :: (l: [] McLoop, ev: GwEvent) -> int {
     if !l[0].got_text { l[0].why = ev.reason; return mc_end(l, MC_END_NO_CAPACITY); }
     return mc_bad(l, "the reply was cut off before it finished");
   }
-  if ev.kind == GW_EV_DONE { return mc_take(l, cast(string) l[0].raw[0..<l[0].nr]); }
+  if ev.kind == GW_EV_DONE {
+    if l[0].raw_overflow { return mc_bad(l, "the reply exceeded the 256 KB reply buffer; split large edits into smaller changes"); }
+    return mc_take(l, cast(string) l[0].raw[0..<l[0].nr]);
+  }
   return MC_WAIT;
 }
 
@@ -764,4 +773,30 @@ ps_count :: (text: string, needle: string) -> int {
   mc_init(l[..], sb[..], lb[..], "{}", "x", "{}", 1.0);
   s := mc_take(l[..], "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
   #assert s == MC_ENDED && mc_pending(l[..]).nd == 0;
+}
+
+#test "a reply larger than 64 KB with a large edit parses, and one over MC_REPLY_BYTES reports the buffer limit" {
+  l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+  mc_init(l[..], sb[..], lb[..], "{}", "write a large file", "{}", 1.0);
+  _ = mc_request(l[..]);
+  // stream a 70 KB valid next_action edit reply (exceeds both the old 32 KB raw buffer and JSON_MAX_STRING 64 KB)
+  head := "{\"rationale\":\"big edit\",\"edits\":[{\"path\":\"big.coax\",\"old\":\"\",\"new\":\"";
+  tail := "\"}],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  #assert mc_feed(l[..], GwEvent.{kind = GW_EV_TEXT, text = head}) == MC_WAIT;
+  chunk: [1024] u8; for i: 0..<1024 { chunk[i] = 'a'; }
+  for i: 0..<70 { #assert mc_feed(l[..], GwEvent.{kind = GW_EV_TEXT, text = cast(string) chunk[..]}) == MC_WAIT; }
+  #assert mc_feed(l[..], GwEvent.{kind = GW_EV_TEXT, text = tail}) == MC_WAIT;
+  #assert mc_feed(l[..], GwEvent.{kind = GW_EV_DONE}) == MC_TOOLS;
+  p := mc_pending(l[..]);
+  #assert p.ne == 1 && p.edits[0].path == "big.coax" && p.edits[0].text.count == 70 * 1024;
+
+  // a reply that exceeds MC_REPLY_BYTES is flagged as overflow with an explicit note rather than silent truncation
+  mc_init(l[..], sb[..], lb[..], "{}", "too big", "{}", 1.0);
+  _ = mc_request(l[..]);
+  for i: 0..<260 { _ = mc_feed(l[..], GwEvent.{kind = GW_EV_TEXT, text = cast(string) chunk[..]}); }
+  #assert l[0].raw_overflow;
+  #assert mc_feed(l[..], GwEvent.{kind = GW_EV_DONE}) == MC_AGAIN;
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  #assert ps_count(cl_str(ar[..], j, "notes"), "256 KB reply buffer") == 1;
 }

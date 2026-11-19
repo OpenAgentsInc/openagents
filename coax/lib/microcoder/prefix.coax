@@ -1,0 +1,369 @@
+// Prompt-prefix byte-stability guarantees and checks for Microcoder (Coder Book Ch. 3).
+//
+// Microcoder's prompt cache depends on consecutive requests sharing an identical byte prefix:
+//   - system prompt and action schema never change during a session
+//   - environment, task and route come first in mc_state_json and never change
+//   - between compactions, actions only grows at its end; memory and notes sit after actions
+//   - across compactions (while left_out == 0), earlier only grows at its end
+//
+// This file checks those invariants on rendered requests and reports the exact section and byte
+// offset if a prefix regresses (e.g. from a per-turn timestamp, key-order drift, or prompt change).
+
+#load "loop.coax";
+
+MC_PFX_OK :: 0;
+MC_PFX_SYSTEM_CHANGED :: 1;
+MC_PFX_SCHEMA_CHANGED :: 2;
+MC_PFX_STATE_REGRESSED :: 3;
+MC_PFX_VOLATILE_ENV :: 4;
+
+McPrefixCheck :: struct {
+  ok: bool;
+  kind: int;
+  common_bytes: int;
+  boundary: int;
+  at: int;
+  why: string;
+}
+
+// Byte length of the longest common prefix of a and b.
+mc_common_prefix_len :: (a: string, b: string) -> int {
+  n := ifx a.count < b.count then a.count else b.count;
+  i := 0;
+  while i < n && a[i] == b[i] { i += 1; }
+  return i;
+}
+
+// First byte offset of needle in text at or after start, or -1.
+mc_find_from :: (text: string, needle: string, start: int) -> int {
+  if needle.count == 0 || start < 0 || start + needle.count > text.count { return -1; }
+  for i: start..<text.count - needle.count + 1 {
+    if cast(string) text[i..<i + needle.count] == needle { return i; }
+  }
+  return -1;
+}
+
+// Scan a JSON value starting at i (skipping strings with escapes and nested objects/arrays).
+// Returns the index just past the value, or -1 if malformed.
+mc_json_skip_value :: (s: string, i: int) -> int {
+  if i < 0 || i >= s.count { return -1; }
+  c := s[i];
+  if c == '"' {
+    p := i + 1;
+    while p < s.count {
+      if s[p] == '\\' { p += 2; continue; }
+      if s[p] == '"' { return p + 1; }
+      p += 1;
+    }
+    return -1;
+  }
+  if c == '{' || c == '[' {
+    depth := 0;
+    p := i;
+    while p < s.count {
+      ch := s[p];
+      if ch == '"' {
+        p = mc_json_skip_value(s, p);
+        if p < 0 { return -1; }
+        continue;
+      }
+      if ch == '{' || ch == '[' { depth += 1; }
+      else if ch == '}' || ch == ']' {
+        depth -= 1;
+        if depth == 0 { return p + 1; }
+      }
+      p += 1;
+    }
+    return -1;
+  }
+  p := i;
+  while p < s.count && s[p] != ',' && s[p] != '}' && s[p] != ']' { p += 1; }
+  return p;
+}
+
+// Locate the value span [val_start, val_end) of a top-level key in a compact JSON object.
+// Returns val_end (or -1 if not found).
+mc_top_key_span :: (s: string, key: string, out_start: [] int) -> int {
+  if s.count < 2 || s[0] != '{' { return -1; }
+  p := 1;
+  while p < s.count && s[p] != '}' {
+    if s[p] == ',' { p += 1; }
+    if p >= s.count || s[p] != '"' { return -1; }
+    kend := mc_json_skip_value(s, p);
+    if kend < 0 || kend >= s.count || s[kend] != ':' { return -1; }
+    kname := cast(string) s[p + 1..<kend - 1];
+    vstart := kend + 1;
+    vend := mc_json_skip_value(s, vstart);
+    if vend < 0 { return -1; }
+    if kname == key {
+      if out_start.count > 0 { out_start[0] = vstart; }
+      return vend;
+    }
+    p = vend;
+  }
+  return -1;
+}
+
+// The byte boundary up to which a non-compacting next step must match prev_state:
+// everything through the last closed action inside "actions":[...] (just before the closing ']').
+// Neither memory nor notes (which sit after actions) may lie before this boundary.
+mc_actions_prefix_boundary :: (state_json: string) -> int {
+  start: [1] int;
+  end := mc_top_key_span(state_json, "actions", start[..]);
+  if end < 2 || state_json[end - 1] != ']' { return -1; }
+  return end - 1;
+}
+
+// The byte boundary up to which a compacting next step (when left_out == 0) must match prev_state:
+// if prev_state already has "earlier":[...], everything before its closing ']';
+// otherwise everything through "route":<val> (just before ",\"actions\":[").
+mc_earlier_prefix_boundary :: (state_json: string) -> int {
+  start: [1] int;
+  end := mc_top_key_span(state_json, "earlier", start[..]);
+  if end >= 2 && state_json[end - 1] == ']' { return end - 1; }
+  rend := mc_top_key_span(state_json, "route", start[..]);
+  if rend > 0 { return rend; }
+  return -1;
+}
+
+// Whether an environment JSON object contains a volatile per-turn key (timestamps, clocks, nonces)
+// that would bust the prompt cache if refreshed between turns.
+mc_env_has_volatile_key :: (env_json: string) -> bool {
+  if !json_valid(env_json) || env_json.count < 2 || env_json[0] != '{' { return false; }
+  volatile := [8] string.["timestamp", "time", "now", "clock", "date", "uptime", "nonce", "request_id"];
+  dummy: [1] int;
+  for k: volatile {
+    if mc_top_key_span(env_json, k, dummy[..]) > 0 { return true; }
+  }
+  return false;
+}
+
+// Check that the next request preserves the byte-stable prefix of the previous request.
+// compacted: true when a compaction moved steps from actions into earlier between the two turns.
+mc_prefix_check :: (prev_sys: string, prev_schema: string, prev_state: string, next_sys: string, next_schema: string, next_state: string, compacted: bool) -> McPrefixCheck {
+  if prev_sys != next_sys {
+    at := mc_common_prefix_len(prev_sys, next_sys);
+    return McPrefixCheck.{ok = false, kind = MC_PFX_SYSTEM_CHANGED, common_bytes = at, boundary = prev_sys.count, at = at, why = "system prompt changed between turns"};
+  }
+  if prev_schema != next_schema {
+    at := mc_common_prefix_len(prev_schema, next_schema);
+    return McPrefixCheck.{ok = false, kind = MC_PFX_SCHEMA_CHANGED, common_bytes = at, boundary = prev_schema.count, at = at, why = "action schema changed between turns"};
+  }
+  boundary := ifx compacted then mc_earlier_prefix_boundary(prev_state) else mc_actions_prefix_boundary(prev_state);
+  if boundary < 0 {
+    return McPrefixCheck.{ok = false, kind = MC_PFX_STATE_REGRESSED, common_bytes = 0, boundary = 0, at = 0, why = "previous state has no valid prefix boundary"};
+  }
+  common := mc_common_prefix_len(prev_state, next_state);
+  if common < boundary {
+    return McPrefixCheck.{ok = false, kind = MC_PFX_STATE_REGRESSED, common_bytes = common, boundary = boundary, at = common, why = "state prefix changed before cache boundary"};
+  }
+  return McPrefixCheck.{ok = true, kind = MC_PFX_OK, common_bytes = common, boundary = boundary, at = common, why = ""};
+}
+
+// Stateful multi-turn prefix watcher: remembers the previous turn's request bytes in caller-owned
+// buffers and verifies every subsequent turn.
+McPrefixWatchBufs :: struct {
+  sys: [16384] u8;
+  schema: [16384] u8;
+  state: [MC_PROMPT_BYTES] u8;
+}
+
+McPrefixWatch :: struct {
+  has_prev: bool;
+  prev_sys: string;
+  prev_schema: string;
+  prev_state: string;
+  sys_buf: [] u8;
+  schema_buf: [] u8;
+  state_buf: [] u8;
+  turns: int;
+  stable_turns: int;
+  violations: int;
+  min_common: int;
+  last: McPrefixCheck;
+}
+
+mc_prefix_watch_init :: (w: [] McPrefixWatch, b: [] McPrefixWatchBufs) {
+  w[0] = McPrefixWatch.{sys_buf = b[0].sys[..], schema_buf = b[0].schema[..], state_buf = b[0].state[..], min_common = -1};
+}
+
+mc_prefix_watch_step :: (w: [] McPrefixWatch, req: GwRequest, compacted: bool) -> McPrefixCheck {
+  state := ifx req.messages.count > 0 then req.messages[0].text else "";
+  w[0].turns += 1;
+  res := McPrefixCheck.{ok = true, kind = MC_PFX_OK, common_bytes = state.count, boundary = 0, at = state.count, why = ""};
+  if w[0].has_prev {
+    res = mc_prefix_check(w[0].prev_sys, w[0].prev_schema, w[0].prev_state, req.system, req.schema, state, compacted);
+    if res.ok {
+      w[0].stable_turns += 1;
+      if w[0].min_common < 0 || res.common_bytes < w[0].min_common { w[0].min_common = res.common_bytes; }
+    } else {
+      w[0].violations += 1;
+    }
+  }
+  w[0].last = res;
+  w[0].prev_sys = mc_copy(w[0].sys_buf, req.system);
+  w[0].prev_schema = mc_copy(w[0].schema_buf, req.schema);
+  w[0].prev_state = mc_copy(w[0].state_buf, state);
+  w[0].has_prev = true;
+  return res;
+}
+
+// ---------------------------------------------------------------- checks
+
+McPrefixTest :: struct {
+  sb: [1] McStateBuffers;
+  lb: [1] McLoopBuffers;
+  l: [1] McLoop;
+  wb: [1] McPrefixWatchBufs;
+  w: [1] McPrefixWatch;
+  mb: [MC_MEM_BYTES] u8;
+}
+
+#test "prefix stability: multi-turn session without compaction keeps system, schema and actions prefix byte-stable" {
+  t: [1] McPrefixTest;
+  mc_init(t[0].l[..], t[0].sb[..], t[0].lb[..], "{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"}", "fix sum.c", "{\"route\":\"code\",\"local_work\":0.9}", 0.9);
+  mc_prefix_watch_init(t[0].w[..], t[0].wb[..]);
+
+  r0 := mc_request(t[0].l[..]);
+  c0 := mc_prefix_watch_step(t[0].w[..], r0, false);
+  #assert c0.ok;
+
+  mc_action_begin(t[0].l[0].st[..], "inspect");
+  mc_action_command(t[0].l[0].st[..], "ls", 0, false, "sum.c\nMakefile\n");
+  mc_file(t[0].l[0].st[..], "sum.c", true, "int sum() { return 0; }\n");
+  mc_action_end(t[0].l[0].st[..]);
+  r1 := mc_request(t[0].l[..]);
+  c1 := mc_prefix_watch_step(t[0].w[..], r1, false);
+  #assert c1.ok && c1.common_bytes >= c1.boundary && c1.boundary > 0;
+
+  mc_action_begin(t[0].l[0].st[..], "edit and test");
+  mc_action_edit(t[0].l[0].st[..], "sum.c", true, "");
+  mc_action_command(t[0].l[0].st[..], "make test", 0, false, "ok\n");
+  mc_action_end(t[0].l[0].st[..]);
+  r2 := mc_request(t[0].l[..]);
+  c2 := mc_prefix_watch_step(t[0].w[..], r2, false);
+  #assert c2.ok && c2.common_bytes >= c2.boundary && c2.boundary > c1.boundary;
+
+  #assert t[0].w[0].turns == 3 && t[0].w[0].stable_turns == 2 && t[0].w[0].violations == 0;
+}
+
+#test "prefix stability: updating notes and working memory never invalidates the prefix through actions" {
+  t: [1] McPrefixTest;
+  mc_init(t[0].l[..], t[0].sb[..], t[0].lb[..], "{\"os\":\"macOS\"}", "investigate", "{\"route\":\"code\"}", 0.9);
+  mc_memory_on(t[0].l[0].st[..], t[0].mb[..]);
+  mc_prefix_watch_init(t[0].w[..], t[0].wb[..]);
+
+  mc_action_begin(t[0].l[0].st[..], "step 1");
+  mc_action_command(t[0].l[0].st[..], "echo hi", 0, false, "hi\n");
+  mc_action_end(t[0].l[0].st[..]);
+  mc_memory_set(t[0].l[0].st[..], "finding 1", "changed 1", "open 1");
+  mc_note(t[0].l[0].st[..], "first note");
+  r1 := mc_request(t[0].l[..]);
+  #assert mc_prefix_watch_step(t[0].w[..], r1, false).ok;
+
+  // Mutate notes and memory drastically, and add step 2: prefix through step 1's actions must stay byte-identical.
+  mc_memory_set(t[0].l[0].st[..], "finding 1\nfinding 2", "changed 1\nchanged 2", "open 2 completely rewritten");
+  mc_note(t[0].l[0].st[..], "second note that is much longer");
+  mc_action_begin(t[0].l[0].st[..], "step 2");
+  mc_action_command(t[0].l[0].st[..], "echo ok", 0, false, "ok\n");
+  mc_action_end(t[0].l[0].st[..]);
+  r2 := mc_request(t[0].l[..]);
+  c2 := mc_prefix_watch_step(t[0].w[..], r2, false);
+  #assert c2.ok && c2.common_bytes >= c2.boundary;
+}
+
+#test "prefix stability: across compactions, environment, task, route and prior earlier entries remain byte-stable" {
+  t: [1] McPrefixTest;
+  mc_init(t[0].l[..], t[0].sb[..], t[0].lb[..], "{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"}", "long task", "{\"route\":\"code\"}", 0.9);
+  mc_prefix_watch_init(t[0].w[..], t[0].wb[..]);
+
+  // Record two steps and compact them into earlier (compaction #1).
+  for s: 0..<2 {
+    mc_action_begin(t[0].l[0].st[..], "early step");
+    mc_action_command(t[0].l[0].st[..], "echo a", 0, false, "alpha\n");
+    mc_action_end(t[0].l[0].st[..]);
+  }
+  r_pre := mc_request(t[0].l[..]);
+  #assert mc_prefix_watch_step(t[0].w[..], r_pre, false).ok;
+
+  mc_compact(t[0].l[0].st[..], 0);
+  r_c1 := mc_request(t[0].l[..]);
+  c1 := mc_prefix_watch_step(t[0].w[..], r_c1, true);
+  #assert c1.ok && t[0].l[0].st[0].nearly == 2 && t[0].l[0].st[0].left_out == 0;
+
+  // Add two more steps without compacting: full prefix through earlier + actions is stable.
+  for s: 0..<2 {
+    mc_action_begin(t[0].l[0].st[..], "mid step");
+    mc_action_command(t[0].l[0].st[..], "echo b", 0, false, "beta\n");
+    mc_action_end(t[0].l[0].st[..]);
+  }
+  r_mid := mc_request(t[0].l[..]);
+  c_mid := mc_prefix_watch_step(t[0].w[..], r_mid, false);
+  #assert c_mid.ok && c_mid.common_bytes >= c_mid.boundary;
+
+  // Compaction #2: earlier only grows at its end, so everything through compaction #1's earlier stays byte-identical.
+  b_earlier := mc_earlier_prefix_boundary(r_mid.messages[0].text);
+  mc_compact(t[0].l[0].st[..], 0);
+  r_c2 := mc_request(t[0].l[..]);
+  c2 := mc_prefix_watch_step(t[0].w[..], r_c2, true);
+  #assert c2.ok && c2.boundary == b_earlier && c2.common_bytes >= b_earlier;
+  #assert t[0].l[0].st[0].nearly == 4 && t[0].l[0].st[0].left_out == 0;
+  #assert t[0].w[0].violations == 0;
+}
+
+#test "prefix stability: deterministic rendering across independent loops (no timestamps or ordering drift)" {
+  a: [1] McPrefixTest; b: [1] McPrefixTest;
+  env := "{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\",\"command_seconds\":30}";
+  task := "check determinism";
+  route := "{\"route\":\"code\",\"local_work\":0.9}";
+  mc_init(a[0].l[..], a[0].sb[..], a[0].lb[..], env, task, route, 0.9);
+  mc_init(b[0].l[..], b[0].sb[..], b[0].lb[..], env, task, route, 0.9);
+  for step: 0..<3 {
+    mc_action_begin(a[0].l[0].st[..], "run check");
+    mc_action_command(a[0].l[0].st[..], "echo 1", 0, false, "1\n");
+    mc_file(a[0].l[0].st[..], "f.txt", true, "hello\n");
+    mc_action_end(a[0].l[0].st[..]);
+
+    mc_action_begin(b[0].l[0].st[..], "run check");
+    mc_action_command(b[0].l[0].st[..], "echo 1", 0, false, "1\n");
+    mc_file(b[0].l[0].st[..], "f.txt", true, "hello\n");
+    mc_action_end(b[0].l[0].st[..]);
+
+    ra := mc_request(a[0].l[..]);
+    rb := mc_request(b[0].l[..]);
+    #assert ra.system == rb.system && ra.schema == rb.schema && ra.messages[0].text == rb.messages[0].text;
+  }
+}
+
+#test "prefix stability: detects volatile timestamps, system drift, schema drift and prefix regression" {
+  // Volatile environment key detection.
+  #assert !mc_env_has_volatile_key("{\"os\":\"macOS\",\"cwd\":\"/tmp/demo\"}");
+  #assert mc_env_has_volatile_key("{\"os\":\"macOS\",\"timestamp\":1700000000}");
+  #assert mc_env_has_volatile_key("{\"now\":\"2026-11-18T12:00:00Z\",\"os\":\"macOS\"}");
+  #assert mc_env_has_volatile_key("{\"request_id\":\"abc\"}");
+
+  s1 := "{\"environment\":{\"os\":\"macOS\",\"timestamp\":100},\"task\":\"t\",\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"a\",\"results\":[]}],\"notes\":\"\"}";
+  s2_ts := "{\"environment\":{\"os\":\"macOS\",\"timestamp\":101},\"task\":\"t\",\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"a\",\"results\":[]},{\"step\":2,\"rationale\":\"b\",\"results\":[]}],\"notes\":\"\"}";
+  s2_ok := "{\"environment\":{\"os\":\"macOS\",\"timestamp\":100},\"task\":\"t\",\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"a\",\"results\":[]},{\"step\":2,\"rationale\":\"b\",\"results\":[]}],\"notes\":\"\"}";
+
+  // Timestamp changed in environment -> refused with exact byte offset.
+  bad_ts := mc_prefix_check(MC_SYSTEM, MC_SCHEMA, s1, MC_SYSTEM, MC_SCHEMA, s2_ts, false);
+  #assert !bad_ts.ok && bad_ts.kind == MC_PFX_STATE_REGRESSED && bad_ts.at == mc_common_prefix_len(s1, s2_ts) && bad_ts.at < bad_ts.boundary;
+
+  // System prompt drift -> refused.
+  bad_sys := mc_prefix_check(MC_SYSTEM, MC_SCHEMA, s1, "changed system", MC_SCHEMA, s2_ok, false);
+  #assert !bad_sys.ok && bad_sys.kind == MC_PFX_SYSTEM_CHANGED && bad_sys.at == 0;
+
+  // Schema drift -> refused.
+  bad_sch := mc_prefix_check(MC_SYSTEM, MC_SCHEMA, s1, MC_SYSTEM, "{}", s2_ok, false);
+  #assert !bad_sch.ok && bad_sch.kind == MC_PFX_SCHEMA_CHANGED;
+
+  // Key-order drift -> refused.
+  s2_reorder := "{\"task\":\"t\",\"environment\":{\"os\":\"macOS\",\"timestamp\":100},\"route\":{},\"actions\":[{\"step\":1,\"rationale\":\"a\",\"results\":[]}],\"notes\":\"\"}";
+  bad_ord := mc_prefix_check(MC_SYSTEM, MC_SCHEMA, s1, MC_SYSTEM, MC_SCHEMA, s2_reorder, false);
+  #assert !bad_ord.ok && bad_ord.kind == MC_PFX_STATE_REGRESSED;
+
+  // Stable append -> accepted.
+  good := mc_prefix_check(MC_SYSTEM, MC_SCHEMA, s1, MC_SYSTEM, MC_SCHEMA, s2_ok, false);
+  #assert good.ok && good.kind == MC_PFX_OK && good.common_bytes >= good.boundary;
+}
