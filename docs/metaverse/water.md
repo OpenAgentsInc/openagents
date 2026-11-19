@@ -775,6 +775,13 @@ climbs it up the wall's face to the measured run-up where a crest has just
 hit (`sw_wash`, the face wet up to there), and lets the reflected sea carry
 its own whitecaps in front of the wall. Each stays the simulation's size.
 
+**Moonpools in the photoreal style** are drawn as what they are, a shaft 6 m
+in radius down through the hull to the sea, with its water at the simulated
+surge and a pale ring where it works against the wall (`sw_pool`), lit only
+by the sky that reaches down it. SLAB's deck stands 118 m over the water, so
+from the rim the water is a small dark disc at the bottom of a well: a surge
+of half a metre does not show from up there, and it is not drawn larger.
+
 **A page uses them in three steps** (`apps/openagents-web/slab-water.coax` is
 the worked example):
 

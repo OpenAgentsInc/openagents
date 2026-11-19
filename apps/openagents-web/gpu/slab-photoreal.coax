@@ -231,6 +231,14 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     if ((kind==14)&&(nh.y>0.5f32)) {
       // water on the deck: dark, smooth, a mirror
       s.albedo=v3(0.006f32,0.03f32,0.04f32); s.rough=0.05f32; s.glow=v3(0.0f32,0.0f32,0.0f32);
+      if (abs(wh.x+389.0f32)<6.5f32) {
+        // a moonpool: not water at the deck but a shaft down to the sea, whose water rises and
+        // falls with the simulated surge (gpu/slab-water.coax sw_pool); the shaft's own shade is
+        // in the colour, and only the sky's light reaches down it, not the sun's
+        pool:V3=sw_pool(v3(0.0f32,0.0f32,0.0f32),wh,dh,u);
+        s.albedo=v3(0.0f32,0.0f32,0.0f32); s.rough=1.0f32;
+        s.glow=mul3(pr_decode(pool),pr_sky_light(v3(0.0f32,1.0f32,0.0f32),u,b));
+      }
     }
   }
   rain:f32=saturate(u[SLAB_SEA+17]*1.6f32);

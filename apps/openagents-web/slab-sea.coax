@@ -203,11 +203,32 @@ sea_look_press :: (s: [] Slab, id: int) -> bool {
   if id == BTN_WATER { if s[0].under { s[0].look.real_water = !s[0].look.real_water; } return true; }
   return false;
 }
-// Key C steps the weather; X, under the sea, swaps the survey view for the water as it is.
+// The weather in force, as the Weather menu names it.
+sea_look_named :: (s: [] Slab) -> string {
+  if !s[0].look.chosen { return "Weather: the sea's own"; }
+  words := [5] string.["Weather: clear", "Weather: overcast", "Weather: fog", "Weather: rain", "Weather: storm"];
+  return words[s[0].look.pin];
+}
+// Key C steps the weather; X, under the sea, swaps the survey view for the water as it is. Each
+// says what it now shows, as the menu would.
 sea_look_key :: (s: [] Slab, key: int) -> bool {
-  if key == 'c' || key == 'C' { return sea_look_press(s, BTN_WEATHER); }
-  if (key == 'x' || key == 'X') && s[0].under { return sea_look_press(s, BTN_WATER); }
+  if key == 'c' || key == 'C' { _ = sea_look_press(s, BTN_WEATHER); sb_toast(s, sea_look_named(s)); return true; }
+  if (key == 'x' || key == 'X') && s[0].under {
+    _ = sea_look_press(s, BTN_WATER);
+    sb_toast(s, ifx s[0].look.real_water then "The water as it is here" else "Survey view: the water drawn clearer than it is");
+    return true;
+  }
   return false;
+}
+#test "key C steps the weather and says which it is now" {
+  s: [1] Slab;
+  slab_message(s[..], HOST_FACTS, "url=/worlds/slab\n");
+  #assert sea_look_key(s[..], 'c') && s[0].look.chosen && s[0].look.pin == WEATHER_CLEAR;
+  #assert cast(string) s[0].hp.toast[0..<s[0].hp.toast_n] == "Weather: clear";
+  for i: 0..<4 { _ = sea_look_key(s[..], 67); }
+  #assert cast(string) s[0].hp.toast[0..<s[0].hp.toast_n] == "Weather: storm";
+  _ = sea_look_key(s[..], 99);
+  #assert !s[0].look.chosen && cast(string) s[0].hp.toast[0..<s[0].hp.toast_n] == "Weather: the sea's own";
 }
 // The HUD's part (slab-hud.coax): the weather under Change, and under See inside, while under
 // the sea, what the water is drawn as.
