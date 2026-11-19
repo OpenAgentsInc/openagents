@@ -1841,17 +1841,20 @@ vehicles, ships, a helicopter, birds and flags that follow the wind.
 |---|---|
 | People | up to 480 walking and 48 standing (190 and 20 on a phone); the 48 nearest within 70 m (14 on a phone) are whole walking figures. All walk routes made by rule from the plan's records: promenade loops, sidewalk runs at least 60 m long, none through a building |
 | Vehicles | up to 22 trucks and carts (10 on a phone) on street loops, waiting 1.2 s at every crossing; 6 forklifts (3) round the works. Speeds 8, 4.5 and 2.5 m/s, our assumption |
-| Ships | a supply ship, 76 × 17 m, our assumption, goes round the north and east walls into the dock, lies 240 s at the landing stage under the cranes and leaves by the west; a tug off the north wall and a 229 m bulk carrier 1 km off, bows to the weather. Each rides the simulated sea from nine height samples |
+| Ships | a supply ship, 76 × 17 m, our assumption, goes round the north and east walls into the dock, lies 240 s at the landing stage under the cranes and leaves by the west; a tug patrols 150 m off the north wall at 3 m/s with 90 s waits, our assumption, and a 229 m bulk carrier lies 1 km off, bows to the weather. Each rides the simulated sea from nine height samples. Each has rounded hull sections, a red bottom and black boot-top, a white house with rows of windows, rails, a mast with radar, banded funnels, cranes with wires, lifeboats and anchors: about 11,000 more fixed vertices (26,750 to 37,750, limit 72,000) |
+| Wakes | a ship under way leaves Kelvin arms at 19.5 degrees, a bow wave and propeller wash; a stopped ship leaves none. Two ship slots, 16 floats (`U_SHIPS`), take the uniform block to 4,063 of 4,096 vec4s |
+| Night | red and green sidelights, white masthead and stern lights, the helicopter's beacon and the vehicles' head and tail lights glow as the sun goes down (the scene's night value, not a fixed hour) |
+| Statues | the promenade statues are marble figures three times life size (5.2 m, our assumption) in five poses on moulded limestone plinths |
 | Helicopter | parks on the hospital's roof, lifts, flies 2.5 km out and back on a 360 s round, our assumption |
 | Wind | flags and the stacks' plumes turn with `?winddir=` (checked at 0 and 180 degrees) |
-| `slab.wasm` | 739,528 bytes with the city's detail in (budget raised to 820,000) |
+| `slab.wasm` | 739,528 bytes with the city's detail in (budget raised to 820,000); 834,959 with the ship detail, wakes, lights and statues (budget 930,000) |
 | GPU frame time, ms p50 / p95 | opening view 1440 × 900: 3.57 / 4.17 (3.68 / 8.57 before); phone 390 × 844 at 3×: 0.76 / 0.85 (0.83 / 3.95); walk 1440 × 900: 2.45 / 2.82. The Mac was at a load of 60 to 100 with other agents, so the numbers move run to run |
 | Cards | the supply ship, tug, bulk carrier, helicopter, truck, forklift and cart each have a card in the one pattern; a headless click on the berthed supply ship opens its card |
 
-Not done: the ships leave no wake on the water and the plumes stay the
-shader's, not volumetric; people are too small to make out from the
-opening view at 1.3 km (the ships are); crowds do not change with the
-shift or the hour, and there are no night lights on the movers.
+Not done: the plumes stay the shader's, not volumetric; the wakes are a
+little blocky at 400 m; ships carry no painted names; people are too
+small to make out from the opening view at 1.3 km (the ships are); and
+crowds do not change with the shift or the hour.
 
 ### The construction, simulated
 

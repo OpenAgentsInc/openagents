@@ -467,6 +467,13 @@ because the list runs twice. It draws, at most:
 | Flags | 6 | 6 |
 | Ships (supply ship, tug, bulk carrier) and the helicopter | 4 | 4 |
 
+Ships are built in `metaverse-engine/arch/traffic.coax` with rounded hull
+sections, a red bottom and black boot-top, a white house with rows of
+windows, rails, a mast with radar, banded funnels, cranes with wires,
+lifeboats and anchors. Their lights, and the vehicles' and the
+helicopter's, share one lamp material whose glow follows the sun. The
+promenade statues are `pr_figure` at three times life size in marble.
+
 People beyond 1.7 km are not drawn. In walk mode under the photoreal style
 the visitor is one of these figures, and the shader's own walker steps
 aside. Clicks on a ship, a vehicle or the helicopter select codes -10 to
