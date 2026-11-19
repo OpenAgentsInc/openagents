@@ -137,8 +137,13 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
     if st < 0 { return true; }
     i := cp_fu_steer_put(f, l.id, "", st, s[0].nturns - 1);
     if i < 0 { return true; }
+    was := f[0].steers[i].status;
     f[0].steers[i].status = st;
-    if st == CP_STEER_APPLIED && f[0].steers[i].at >= 0 && f[0].steers[i].at < s[0].nturns { s[0].turns[f[0].steers[i].at].h = 0; }
+    at := f[0].steers[i].at;
+    if st == CP_STEER_APPLIED && was != CP_STEER_APPLIED && at >= 0 && at < s[0].nturns {
+      s[0].turns[at].h = 0;
+      cp_fu_steered_add(s, at, cp_fu_str(f[0].steers[i].text[..], f[0].steers[i].ntext));
+    }
     f[0].steers[i].nreason = cp_out(f[0].steers[i].reason[..], l.reason);
     if l.turn.ok { f[0].steers[i].turn = l.turn.value; }
     if l.step.ok { f[0].steers[i].step = l.step.value; }
@@ -357,13 +362,24 @@ cp_fu_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32, run
   h := app_fu_tray(f, "coder.fu", x, bottom, cw, t, rows[0..<n], CP_FU);
   fu[0].tray_h = ifx h > 0 then h + f[0].skin.app.gap_small else 0.0f32;
 }
+// A steer turn i took in joins what it keeps with the chat: its first CP_FU_TEXT bytes, cut on a
+// character's start, and a zero byte; left out when the turn has no room for it.
+cp_fu_steered_add :: (s: [] CoderPage, i: int, text: string) {
+  n := ifx text.count < CP_FU_TEXT then text.count else CP_FU_TEXT;
+  while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  m := s[0].turns[i].steered_n;
+  if n == 0 || m + n + 1 > CP_STEERED { return; }
+  for k: 0..<n { s[0].turns[i].steered[m + k] = text[k]; }
+  s[0].turns[i].steered[m + n] = 0; s[0].turns[i].steered_n = m + n + 1;
+}
 // Turn i's steers that the reply took in, in the timeline at (x, y): their height.
 cp_fu_steered :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32) -> f32 {
-  fu := s[0].fu[..]; h: f32 = 0; ib: [EL_ID] u8;
-  for k: 0..<fu[0].nsteers {
-    if fu[0].steers[k].status != CP_STEER_APPLIED || fu[0].steers[k].at != i { continue; }
+  h: f32 = 0; ib: [EL_ID] u8; from := 0; k := 0;
+  for at: 0..<s[0].turns[i].steered_n {
+    if s[0].turns[i].steered[at] != 0 { continue; }
     nn := cp_id(ib[..], i, ".st").count; nn = el_put_i(ib[..], nn, k);
-    h += app_message_steer(f, sheet_pool(f[0].sheet, cast(string) ib[0..<nn]), x, y + h, cw, cp_fu_str(fu[0].steers[k].text[..], fu[0].steers[k].ntext)) + f[0].skin.app.gap;
+    h += app_message_steer(f, sheet_pool(f[0].sheet, cast(string) ib[0..<nn]), x, y + h, cw, cast(string) s[0].turns[i].steered[from..<at]) + f[0].skin.app.gap;
+    from = at + 1; k += 1;
   }
   return h;
 }

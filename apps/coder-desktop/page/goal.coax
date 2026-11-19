@@ -53,7 +53,7 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   if ask_text.count == 0 || cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
   i := s[0].nturns;
   s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask[..], ask_text);
-  s[0].turns[i].reply_n = 0; s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].early_cmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0;
+  s[0].turns[i].reply_n = 0; s[0].turns[i].head = 0; s[0].turns[i].tail = 0; s[0].turns[i].ncmds = 0; s[0].turns[i].early_cmds = 0; s[0].turns[i].more_cmds = 0; s[0].turns[i].cut = false; s[0].turns[i].blocks = 0; s[0].turns[i].note_n = 0; s[0].turns[i].steered_n = 0;
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
   s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;

@@ -8,6 +8,7 @@ CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL ::
 CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
+CP_STEERED :: 1024;         // bytes of the steers a message took in, kept with the chat: each steer's text (as the page keeps it, CP_FU_TEXT) and a zero byte
 CP_SKILLS :: 4096;          // bytes of the note on installed skills / Foreman instructions that goes ahead of each message
 CP_CMD :: 400;              // bytes of a command or a tool call shown
 CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
@@ -157,6 +158,7 @@ CpTurn :: struct {
   reply: [CP_REPLY] u8; reply_n: int; cut: bool;
   doc: [1] MdDoc; blocks: int;
   note: [CP_NOTE] u8; note_n: int;
+  steered: [CP_STEERED] u8; steered_n: int;   // the steers it took in (#13718): "Steered into the reply", kept with the chat
   state: int; stopping: bool;
   model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy

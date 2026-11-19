@@ -63,7 +63,7 @@ MWW_RECALL :: 17;              // {"recall":[{"task":T,"reply":R}]}: the owner's
 MWW_STEER :: 19; MWW_INTERRUPT :: 20; MWW_QUEUE :: 21;
 MWW_TURN :: 22; MWW_STEERED :: 23; MWW_QUEUED :: 24; MWW_QUEUE_REFUSED :: 25;
 // queue ops
-MWW_QUEUE_OPS :: [11] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list", "close"];
+MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
 MWW_STOP_LINE :: "{\"stop\":true}\n";
 MWW_FORGET_LINE :: "{\"forget\":true}\n";
