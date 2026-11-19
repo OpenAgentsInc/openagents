@@ -1,0 +1,412 @@
+// Unit/Arbiter-inspired GPU component system for Coder Desktop's Foreman HUD.
+// Built strictly on Coder Desktop's shared vector display list (Sheet, Prim, UiFrame,
+// UiSkin) with zero heap allocation and full semantic/hit-test parity.
+// See docs/coder/foreman-hud-components.md.
+//   coax/bin/coax test components/kit/foreman_hud.coax
+
+#load "controls.coax";
+#load "frame.coax";
+#load "animated.coax";
+
+// Node / telemetry status tones mapped to UiSkin semantic roles.
+FHUD_IDLE :: 0;
+FHUD_RUNNING :: 1;
+FHUD_DONE :: 2;
+FHUD_WARN :: 3;
+FHUD_FAILED :: 4;
+
+// Bounded number of managed worker nodes rendered in the live topology canvas.
+FHUD_MAX_NODES :: 6;
+
+// One 2D dataflow node in the Foreman topology.
+FhudNode :: struct {
+  id: string;        // stable semantic id (e.g. "chat.<id>" to open that chat on click)
+  title: string;     // primary display label
+  subtitle: string;  // secondary telemetry line (e.g. "Running · Managed")
+  status: int;       // FHUD_*
+  action: int;       // dispatched action on click (0 = non-interactive)
+}
+
+// Summary telemetry passed into the Foreman HUD.
+FhudData :: struct {
+  tier_label: string;     // "Observe", "Managed", "Auto"
+  tier_status: int;       // FHUD_IDLE / FHUD_RUNNING / FHUD_WARN
+  foreman_busy: bool;
+  managed_total: int;
+  managed_busy: int;
+  agents_active: int;
+  budget_text: string;    // e.g. "$0.12 / $50.00"
+  budget_ratio: f32;      // 0..1 progress ring fill (< 0 hides ring)
+  budget_status: int;     // FHUD_*
+  nodes: [FHUD_MAX_NODES] FhudNode;
+  nnodes: int;
+  collapsed: bool;
+  toggle_action: int;
+}
+
+// Map a Foreman HUD status tone to the active skin's color role.
+fhud_status_color :: (s: UiSkin, status: int) -> Rgba {
+  if status == FHUD_RUNNING { return s.accent; }
+  if status == FHUD_DONE { return s.success; }
+  if status == FHUD_WARN { return s.warning; }
+  if status == FHUD_FAILED { return s.danger; }
+  return s.muted;
+}
+
+// Unit-style circular dataflow port socket centered at (cx, cy).
+fhud_port :: (sh: [] Sheet, s: UiSkin, cx: f32, cy: f32, radius: f32, status: int, active: bool) {
+  d := radius * 2.0f32;
+  tone := fhud_status_color(s, status);
+  ring_c := ifx active then tone else s.hairline;
+  // Outer socket fill + ring
+  sheet_fill(sh, cx - radius, cy - radius, d, d, radius, s.surface);
+  sheet_under(sh, prim_ring(sh[0].under, sh[0].nu, cx - radius, cy - radius, d, d, 1.25f32, ring_c));
+  // Inner terminal core
+  core := radius * 0.48f32;
+  core_c := ifx active then tone else s.faint;
+  sheet_fill(sh, cx - core, cy - core, core * 2.0f32, core * 2.0f32, core, core_c);
+}
+
+// 3-segment orthogonal Manhattan dataflow wire from (x0, y0) -> (mid_x, y0) -> (mid_x, y1) -> (x1, y1).
+// When `active` is true, renders an energized stroke plus a traveling signal pulse bead.
+fhud_wire :: (sh: [] Sheet, s: UiSkin, x0: f32, y0: f32, x1: f32, y1: f32, mid_x: f32, status: int, active: bool, clock: f32, reduced: bool, phase: f32) {
+  tone := fhud_status_color(s, status);
+  stroke := ifx active then 1.6f32 else 1.1f32;
+  col := ifx active then opacity(tone, 0.72f32) else opacity(s.hairline, 0.9f32);
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x0, y0, mid_x, y0, stroke, col));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, mid_x, y0, mid_x, y1, stroke, col));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, mid_x, y1, x1, y1, stroke, col));
+  // Subtle elbow junction dots at the two bends.
+  jr := ifx active then 1.6f32 else 1.2f32;
+  sheet_fill(sh, mid_x - jr, y0 - jr, jr * 2.0f32, jr * 2.0f32, jr, col);
+  sheet_fill(sh, mid_x - jr, y1 - jr, jr * 2.0f32, jr * 2.0f32, jr, col);
+  if !active { return; }
+  // Traveling signal pulse along total Manhattan length.
+  d1 := mid_x - x0; if d1 < 0 { d1 = -d1; }
+  d2 := y1 - y0; if d2 < 0 { d2 = -d2; }
+  d3 := x1 - mid_x; if d3 < 0 { d3 = -d3; }
+  total := d1 + d2 + d3;
+  if total <= 0.001f32 { return; }
+  t: f32 = 0.5f32;
+  if !reduced {
+    raw := clock * 0.55f32 + phase;
+    whole := cast(f32) cast(int) raw;
+    t = raw - whole;
+    if t < 0 { t += 1.0f32; }
+  }
+  dist := t * total;
+  px := x0; py := y0;
+  if dist <= d1 {
+    u := ifx d1 > 0.001f32 then dist / d1 else 0.0f32;
+    px = x0 + (mid_x - x0) * u;
+    py = y0;
+  } else if dist <= d1 + d2 {
+    u := ifx d2 > 0.001f32 then (dist - d1) / d2 else 0.0f32;
+    px = mid_x;
+    py = y0 + (y1 - y0) * u;
+  } else {
+    u := ifx d3 > 0.001f32 then (dist - d1 - d2) / d3 else 0.0f32;
+    px = mid_x + (x1 - mid_x) * u;
+    py = y1;
+  }
+  // Outer glow halo + bright core bead.
+  sheet_fill(sh, px - 4.0f32, py - 4.0f32, 8.0f32, 8.0f32, 4.0f32, opacity(tone, 0.25f32));
+  sheet_fill(sh, px - 2.2f32, py - 2.2f32, 4.4f32, 4.4f32, 2.2f32, tone);
+}
+
+// Compact GPU telemetry tile with label, value, and optional progress ring (progress >= 0).
+fhud_metric :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, label: string, value: string, status: int, progress: f32) {
+  s := f[0].skin; m := f[0].m; sh := f[0].sheet;
+  tone := fhud_status_color(s, status);
+  _ := sheet_box(sh, x, y, w, h, 6.0f32, s.border, s.raised, s.hairline);
+  // Thin top accent bar for non-idle states.
+  if status != FHUD_IDLE {
+    sheet_fill(sh, x + 6.0f32, y + 1.0f32, w - 12.0f32, 1.5f32, 0.75f32, opacity(tone, 0.75f32));
+  }
+  pad: f32 = 8.0f32;
+  ring_sz: f32 = 18.0f32;
+  has_ring := progress >= 0.0f32 && w >= 88.0f32;
+  text_w := w - pad * 2.0f32 - (ifx has_ring then ring_sz + 6.0f32 else 0.0f32);
+  if text_w < 12.0f32 { text_w = 12.0f32; }
+  sheet_clip_right(sh, x + pad + text_w);
+  _ := sheet_text(sh, m, -1, x + pad, y + 5.0f32, s.small.line, s.small.face, s.muted, label);
+  val_c := ifx status == FHUD_IDLE then s.ink else tone;
+  _ := sheet_text(sh, m, -1, x + pad, y + h - s.strong.line - 4.0f32, s.strong.line, s.strong.face, val_c, value);
+  sheet_unclip(sh);
+  if has_ring {
+    rx := x + w - pad - ring_sz;
+    ry := y + (h - ring_sz) / 2.0f32;
+    p := am_unit(progress);
+    sheet_under(sh, prim_ring(sh[0].under, sh[0].nu, rx, ry, ring_sz, ring_sz, 2.2f32, s.hairline));
+    if p > 0.01f32 {
+      sheet_under(sh, prim_arc(sh[0].under, sh[0].nu, rx, ry, ring_sz, ring_sz, 2.2f32, 0.0f32, p, tone));
+    }
+  }
+}
+
+// Interactive Unit/Arbiter-inspired 2D dataflow node card.
+// Renders optional left input port and right output port, status beacon, title, and subtitle.
+fhud_node :: (f: [] UiFrame, node: FhudNode, x: f32, y: f32, w: f32, h: f32, has_in: bool, has_out: bool) {
+  s := f[0].skin; m := f[0].m; sh := f[0].sheet;
+  interactive := node.action != 0 && node.id.count > 0;
+  hov := interactive && uiframe_hovered(f, node.id);
+  down := interactive && uiframe_pressed(f, node.id);
+  tone := fhud_status_color(s, node.status);
+  active := node.status == FHUD_RUNNING;
+  bg := ifx down then s.hover else ifx hov then opacity(s.hover, 0.75f32) else s.raised;
+  edge := ifx active || hov then opacity(tone, 0.85f32) else s.hairline;
+  _ := sheet_box(sh, x, y, w, h, 7.0f32, s.border, bg, edge);
+  // Left vertical status rail.
+  rail_c := ifx active then tone else opacity(tone, 0.55f32);
+  sheet_fill(sh, x + 1.0f32, y + 6.0f32, 2.5f32, h - 12.0f32, 1.25f32, rail_c);
+  // Status beacon (spinning dual-arc activity ring when running, solid indicator otherwise).
+  bx := x + 10.0f32;
+  by := y + (h - 12.0f32) / 2.0f32;
+  if active {
+    activity(sh, s, bx, by, 12.0f32, f[0].clock, f[0].reduced_motion);
+  } else {
+    sheet_fill(sh, bx + 2.5f32, by + 2.5f32, 7.0f32, 7.0f32, 3.5f32, tone);
+  }
+  tx := bx + 18.0f32;
+  right_pad := ifx has_out then 12.0f32 else 8.0f32;
+  sheet_clip_right(sh, x + w - right_pad);
+  _ := sheet_text(sh, m, -1, tx, y + 6.0f32, s.strong.line, s.strong.face, s.ink, node.title);
+  if node.subtitle.count > 0 {
+    sub_c := ifx active then tone else s.muted;
+    _ := sheet_text(sh, m, -1, tx, y + h - s.small.line - 5.0f32, s.small.line, s.small.face, sub_c, node.subtitle);
+  }
+  sheet_unclip(sh);
+  // Unit-style input/output ports centered on the left/right edges.
+  cy := y + h / 2.0f32;
+  if has_in { fhud_port(sh, s, x, cy, 4.0f32, node.status, active || node.status == FHUD_DONE); }
+  if has_out { fhud_port(sh, s, x + w, cy, 4.0f32, node.status, active); }
+  if interactive {
+    st := 0;
+    if active { st |= EL_S_BUSY; }
+    row := uiframe_semantic(f, node.id, EL_BUTTON, node.title, x, y, w, h, st, node.action);
+    if node.subtitle.count > 0 { elt_value(f[0].rows, row, node.subtitle); }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h);
+  }
+}
+
+// Tactical corner brackets around the HUD frame (inspired by animated_frame / Unit stage).
+fhud_brackets :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, arm: f32, thick: f32, color: Rgba) {
+  if w < arm * 2.0f32 || h < arm * 2.0f32 { return; }
+  // Top-left
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x, y, x + arm, y, thick, color));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x, y, x, y + arm, thick, color));
+  // Top-right
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x + w - arm, y, x + w, y, thick, color));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x + w, y, x + w, y + arm, thick, color));
+  // Bottom-left
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x, y + h, x + arm, y + h, thick, color));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x, y + h - arm, x, y + h, thick, color));
+  // Bottom-right
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x + w - arm, y + h, x + w, y + h, thick, color));
+  sheet_under(sh, prim_line(sh[0].under, sh[0].nu, x + w, y + h - arm, x + w, y + h, thick, color));
+}
+
+// Format a non-negative integer into a pooled string on the current sheet.
+fhud_pool_int :: (sh: [] Sheet, v: int) -> string {
+  buf: [24] u8;
+  n := el_put_i(buf[..], 0, v);
+  return sheet_pool(sh, cast(string) buf[0..<n]);
+}
+
+// Format "a / b" into a pooled string on the current sheet.
+fhud_pool_pair :: (sh: [] Sheet, a: int, b: int) -> string {
+  buf: [48] u8;
+  n := el_put_i(buf[..], 0, a);
+  n = el_put(buf[..], n, " / ");
+  n = el_put_i(buf[..], n, b);
+  return sheet_pool(sh, cast(string) buf[0..<n]);
+}
+
+// Complete GPU Foreman HUD panel: tactical frame, telemetry strip, and interactive 2D
+// Foreman -> Managed Workers dataflow graph. Returns total height consumed.
+fhud_hud :: (f: [] UiFrame, x: f32, y: f32, w: f32, data: [] FhudData) -> f32 {
+  if data.count < 1 { return 0.0f32; }
+  s := f[0].skin; m := f[0].m; sh := f[0].sheet;
+  pad: f32 = 12.0f32;
+  header_h: f32 = 30.0f32;
+  metric_h: f32 = 42.0f32;
+  node_h: f32 = 44.0f32;
+  node_gap: f32 = 8.0f32;
+  // Compute total panel height before painting the outer frame.
+  vis_nodes := data[0].nnodes;
+  if vis_nodes > FHUD_MAX_NODES { vis_nodes = FHUD_MAX_NODES; }
+  graph_rows := ifx vis_nodes > 0 then vis_nodes else 1;
+  graph_h := cast(f32) graph_rows * node_h + cast(f32) (graph_rows - 1) * node_gap;
+  overflow := data[0].managed_total - vis_nodes;
+  extra_h: f32 = ifx overflow > 0 then s.small.line + 6.0f32 else 0.0f32;
+  total_h := header_h + pad;
+  if !data[0].collapsed {
+    total_h = header_h + 8.0f32 + metric_h + 12.0f32 + graph_h + extra_h + pad;
+  } else {
+    total_h = header_h + 8.0f32;
+  }
+  // Outer tactical plate + corner brackets.
+  any_active := data[0].foreman_busy || data[0].managed_busy > 0 || data[0].agents_active > 0;
+  frame_edge := ifx any_active then opacity(s.accent, 0.45f32) else s.hairline;
+  _ := sheet_box(sh, x, y, w, total_h, 8.0f32, s.border, s.surface, frame_edge);
+  fhud_brackets(sh, x + 2.0f32, y + 2.0f32, w - 4.0f32, total_h - 4.0f32, 9.0f32, 1.5f32, ifx any_active then s.accent else opacity(s.muted, 0.65f32));
+  // Header bar: live beacon, title, status pill, and collapse/expand button.
+  hy := y + 6.0f32;
+  hx := x + pad;
+  if any_active {
+    activity(sh, s, hx, hy + 5.0f32, 12.0f32, f[0].clock, f[0].reduced_motion);
+  } else {
+    sheet_fill(sh, hx + 2.5f32, hy + 7.5f32, 7.0f32, 7.0f32, 3.5f32, s.muted);
+  }
+  hx += 18.0f32;
+  hx += sheet_text(sh, m, -1, hx, hy + 2.0f32, s.strong.line, s.strong.face, s.ink, "FOREMAN HUD") + 10.0f32;
+  // Live status pill.
+  pill_text := ifx any_active then "LIVE" else "STANDBY";
+  pill_c := ifx any_active then s.accent else s.muted;
+  pill_w := ceil(measure_width(m, s.small.face, pill_text)) + 14.0f32;
+  _ := sheet_box(sh, hx, hy + 2.0f32, pill_w, 18.0f32, 9.0f32, s.border, opacity(pill_c, 0.14f32), opacity(pill_c, 0.55f32));
+  _ := sheet_text(sh, m, -1, hx + 7.0f32, hy + 2.0f32 + (18.0f32 - s.small.line) / 2.0f32, s.small.line, s.small.face, pill_c, pill_text);
+  // Collapse/expand toggle on the right of the header.
+  if data[0].toggle_action != 0 {
+    tlabel := ifx data[0].collapsed then "Expand HUD" else "Compact";
+    tw := ceil(measure_width(m, s.small.face, tlabel)) + 16.0f32;
+    tx := x + w - pad - tw;
+    ty := hy + 1.0f32;
+    th: f32 = 20.0f32;
+    thov := uiframe_hovered(f, "foreman.hud.toggle");
+    tdown := uiframe_pressed(f, "foreman.hud.toggle");
+    _ := sheet_box(sh, tx, ty, tw, th, 6.0f32, s.border, ifx tdown then s.hover else ifx thov then opacity(s.hover, 0.7f32) else s.raised, s.hairline);
+    _ := sheet_text(sh, m, -1, tx + 8.0f32, ty + (th - s.small.line) / 2.0f32, s.small.line, s.small.face, s.ink, tlabel);
+    trow := uiframe_semantic(f, "foreman.hud.toggle", EL_BUTTON, tlabel, tx, ty, tw, th, ifx !data[0].collapsed then EL_S_CURRENT else 0, data[0].toggle_action);
+    sheet_hit(sh, UIFRAME_HIT, trow, 0, tx, ty, tw, th);
+  }
+  if data[0].collapsed { return total_h; }
+  // Divider rule below header.
+  cur_y := y + header_h + 2.0f32;
+  sheet_rule(sh, x + pad, cur_y, w - pad * 2.0f32, 1.0f32, opacity(s.hairline, 0.7f32));
+  cur_y += 6.0f32;
+  // Telemetry metric strip (4 equal columns when wide, 2 columns when narrow).
+  inner_w := w - pad * 2.0f32;
+  gap: f32 = 8.0f32;
+  cols := ifx inner_w >= 420.0f32 then 4 else 2;
+  mw := (inner_w - gap * cast(f32) (cols - 1)) / cast(f32) cols;
+  active_ratio: f32 = ifx data[0].managed_total > 0 then cast(f32) data[0].managed_busy / cast(f32) data[0].managed_total else 0.0f32;
+  fhud_metric(f, x + pad, cur_y, mw, metric_h, "TIER", data[0].tier_label, data[0].tier_status, -1.0f32);
+  fhud_metric(f, x + pad + (mw + gap), cur_y, mw, metric_h, "MANAGED", fhud_pool_pair(sh, data[0].managed_busy, data[0].managed_total), ifx data[0].managed_busy > 0 then FHUD_RUNNING else FHUD_IDLE, active_ratio);
+  if cols == 4 {
+    fhud_metric(f, x + pad + 2.0f32 * (mw + gap), cur_y, mw, metric_h, "SUB-AGENTS", fhud_pool_int(sh, data[0].agents_active), ifx data[0].agents_active > 0 then FHUD_RUNNING else FHUD_IDLE, -1.0f32);
+    fhud_metric(f, x + pad + 3.0f32 * (mw + gap), cur_y, mw, metric_h, "BUDGET", ifx data[0].budget_text.count > 0 then data[0].budget_text else "$0.00", data[0].budget_status, data[0].budget_ratio);
+  }
+  cur_y += metric_h + 12.0f32;
+  // 2D Dataflow Graph: Left Foreman Orchestrator Node -> Signal Wires -> Right Managed Worker Nodes.
+  wire_span: f32 = ifx inner_w >= 480.0f32 then 64.0f32 else 36.0f32;
+  left_w := (inner_w - wire_span) * 0.42f32;
+  if left_w < 140.0f32 { left_w = 140.0f32; }
+  if left_w > 220.0f32 { left_w = 220.0f32; }
+  right_w := inner_w - left_w - wire_span;
+  if right_w < 120.0f32 { right_w = 120.0f32; }
+  left_x := x + pad;
+  right_x := left_x + left_w + wire_span;
+  mid_x := left_x + left_w + wire_span * 0.5f32;
+  // Foreman root node centered vertically against the worker stack.
+  root_y := cur_y + (graph_h - node_h) / 2.0f32;
+  root_cy := root_y + node_h / 2.0f32;
+  root_status := ifx data[0].foreman_busy || data[0].managed_busy > 0 then FHUD_RUNNING else FHUD_DONE;
+  root_sub := ifx data[0].foreman_busy then "Orchestrating" else ifx data[0].managed_busy > 0 then "Supervising fleet" else "Ready";
+  root_node := FhudNode.{id = "foreman.hud.root", title = "Foreman", subtitle = root_sub, status = root_status, action = 0};
+  // Paint wires first (underneath nodes and ports).
+  if vis_nodes == 0 {
+    ty := cur_y + node_h / 2.0f32;
+    fhud_wire(sh, s, left_x + left_w, root_cy, right_x, ty, mid_x, FHUD_IDLE, false, f[0].clock, f[0].reduced_motion, 0.0f32);
+  } else {
+    for i: 0..<vis_nodes {
+      ny := cur_y + cast(f32) i * (node_h + node_gap);
+      ncy := ny + node_h / 2.0f32;
+      nd := data[0].nodes[i];
+      w_active := nd.status == FHUD_RUNNING || data[0].foreman_busy;
+      fhud_wire(sh, s, left_x + left_w, root_cy, right_x, ncy, mid_x, nd.status, w_active, f[0].clock, f[0].reduced_motion, cast(f32) i * 0.23f32);
+    }
+  }
+  // Paint Foreman orchestrator node.
+  fhud_node(f, root_node, left_x, root_y, left_w, node_h, false, true);
+  // Paint managed worker nodes (or standby placeholder).
+  if vis_nodes == 0 {
+    empty_node := FhudNode.{id = "", title = "No managed workers", subtitle = "Ask Foreman to delegate tasks", status = FHUD_IDLE, action = 0};
+    fhud_node(f, empty_node, right_x, cur_y, right_w, node_h, true, false);
+  } else {
+    for i: 0..<vis_nodes {
+      ny := cur_y + cast(f32) i * (node_h + node_gap);
+      fhud_node(f, data[0].nodes[i], right_x, ny, right_w, node_h, true, false);
+    }
+  }
+  if overflow > 0 {
+    ob: [48] u8;
+    on := el_put(ob[..], 0, "+");
+    on = el_put_i(ob[..], on, overflow);
+    on = el_put(ob[..], on, " more managed chats in sidebar");
+    _ := sheet_text(sh, m, -1, right_x, cur_y + graph_h + 4.0f32, s.small.line, s.small.face, s.muted, sheet_pool(sh, cast(string) ob[0..<on]));
+  }
+  return total_h;
+}
+
+// ---------------------------------------------------------------- checks
+
+FhudTestStore :: struct {
+  under_a: [512] Prim; over_a: [256] Prim; hits_a: [32] SheetHit; pool_a: [2048] u8; rows_a: [32] El;
+  under_b: [512] Prim; over_b: [256] Prim; hits_b: [32] SheetHit; pool_b: [2048] u8; rows_b: [32] El;
+  keys: [16] Keyed;
+}
+
+#test "foreman hud paints ports, orthogonal wires, active pulses, and clickable worker nodes with zero lost" {
+  st: [1] FhudTestStore;
+  sf := [1] UiSurface.[surface_over(
+    Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..], pool = st[0].pool_a[..]}, st[0].rows_a[..],
+    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..], pool = st[0].pool_b[..]}, st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  s := UiSkin.{}; s.border = 1; s.small.line = 12; s.strong.line = 14;
+  m := measure_cells();
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 1.25f32, 0.016f32, false, false);
+  d := [1] FhudData.[FhudData.{
+    tier_label = "Managed", tier_status = FHUD_RUNNING,
+    foreman_busy = true, managed_total = 2, managed_busy = 1, agents_active = 2,
+    budget_text = "$1.20 / $50", budget_ratio = 0.25f32, budget_status = FHUD_DONE,
+    nnodes = 2, collapsed = false, toggle_action = 23
+  }];
+  d[0].nodes[0] = FhudNode.{id = "chat.w1", title = "Build API", subtitle = "Running · Managed", status = FHUD_RUNNING, action = 11};
+  d[0].nodes[1] = FhudNode.{id = "chat.w2", title = "Fix tests", subtitle = "Idle · Managed", status = FHUD_IDLE, action = 11};
+  h := fhud_hud(f[..], 16.0f32, 16.0f32, 620.0f32, d[..]);
+  #assert uiframe_end(f[..], sf[..]) && h > 160.0f32;
+  sh := surface_sheet(sf[..]);
+  #assert sh.lost == 0 && sh.nu > 20 && sh.no > 8 && sh.nh == 3;
+  lines := 0; rings := 0; arcs := 0;
+  for i: 0..<sh.nu {
+    if sh.under[i].kind == PRIM_LINE { lines += 1; }
+    if sh.under[i].kind == PRIM_RING { rings += 1; }
+    if sh.under[i].kind == PRIM_ARC { arcs += 1; }
+  }
+  #assert lines >= 14 && rings >= 5 && arcs >= 4;
+  // First managed worker node and toggle button are both hit-testable with expected semantic ids.
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert t[0].n == 3 && elt_id(t[..], 0) == "foreman.hud.toggle" && elt_id(t[..], 1) == "chat.w1" && elt_id(t[..], 2) == "chat.w2";
+  r1 := t[0].rows[1];
+  hit := surface_hit(sf[..], r1.x + r1.w / 2.0f32, r1.y + r1.h / 2.0f32);
+  #assert surface_id(sf[..], hit) == "chat.w1" && t[0].rows[hit].action == 11;
+}
+
+#test "foreman hud supports compact collapsed mode and reduced motion" {
+  st: [1] FhudTestStore;
+  sf := [1] UiSurface.[surface_over(
+    Sheet.{under = st[0].under_a[..], over = st[0].over_a[..], hits = st[0].hits_a[..], pool = st[0].pool_a[..]}, st[0].rows_a[..],
+    Sheet.{under = st[0].under_b[..], over = st[0].over_b[..], hits = st[0].hits_b[..], pool = st[0].pool_b[..]}, st[0].rows_b[..])];
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  s := UiSkin.{}; s.border = 1; s.small.line = 12; s.strong.line = 14;
+  m := measure_cells();
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 4.0f32, 0.016f32, true, false);
+  d := [1] FhudData.[FhudData.{tier_label = "Observe", tier_status = FHUD_IDLE, collapsed = true, toggle_action = 23}];
+  h := fhud_hud(f[..], 0.0f32, 0.0f32, 500.0f32, d[..]);
+  #assert uiframe_end(f[..], sf[..]) && h < 50.0f32;
+  sh := surface_sheet(sf[..]);
+  #assert sh.lost == 0 && sh.nh == 1;
+}

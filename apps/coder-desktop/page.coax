@@ -15,6 +15,7 @@
 
 #load "../../components/app/task.coax";
 #load "../../components/app/nav.coax";
+#load "../../components/kit/foreman_hud.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
 #load "../../components/backend/gpu.coax";
@@ -26,7 +27,7 @@ CP_UNDER :: 4096; CP_OVER :: 16384; CP_LINES :: 4096; CP_HITS :: 512; CP_POOL ::
 CP_TURNS :: 24;             // messages a chat holds; the page says so when it is full
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
-CP_SKILLS :: 4000;          // bytes of the note on installed skills that goes ahead of each message
+CP_SKILLS :: 4096;          // bytes of the note on installed skills / Foreman instructions that goes ahead of each message
 CP_CMD :: 400;              // bytes of a command or a tool call shown
 CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
 CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
@@ -83,9 +84,11 @@ CP_GOAL_NONE :: 0; CP_GOAL_ACTIVE :: 1; CP_GOAL_PAUSED :: 2; CP_GOAL_COMPLETE ::
 CP_GOAL_PROMPT_NONE :: 0; CP_GOAL_PROMPT_START :: 1; CP_GOAL_PROMPT_CONTINUE :: 2; CP_GOAL_PROMPT_UPDATED :: 3; CP_GOAL_PROMPT_BUDGET :: 4;
 CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal resume | /goal complete | /goal clear";
 // What the page asks of its host (coder_page_action), once.
-CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10;
+CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24;
+// Foreman permission tiers shown in the sidebar.
+CP_FOREMAN_TIER_OBSERVE :: 0; CP_FOREMAN_TIER_ASSIST :: 1; CP_FOREMAN_TIER_AUTO :: 2;
 // What was copied last (its button shows a check): a code block, a person's message, a reply, the whole chat.
 CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :: 3; CP_COPIED_ALL :: 4; CP_COPIED_PANE :: 5; CP_COPIED_SAID :: 6;
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take: 24 messages and replies fit
@@ -145,7 +148,7 @@ CpTurn :: struct {
   h: f32; hw: f32;            // its height as last drawn, and the column's width then
 }
 // One kept chat in the sidebar's list.
-CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; pinned: bool; }   // busy: a reply runs in it, out of view; pinned: shown in Pinned section
+CpChat :: struct { id: [CP_CHAT_ID] u8; id_n: int; title: [CP_CHAT_TITLE] u8; title_n: int; busy: bool; pinned: bool; managed: bool; }   // busy: a reply runs in it, out of view; pinned: shown in Pinned section; managed: Foreman-managed
 CpGeneration :: struct { under: [CP_UNDER] Prim; over: [CP_OVER] Prim; lines: [CP_LINES] SheetLine; hits: [CP_HITS] SheetHit; pool: [CP_POOL] u8; rows: [CP_ROWS] El; }
 CoderPage :: struct {
   ready: bool; time: f32; d: f32;
@@ -162,6 +165,7 @@ CoderPage :: struct {
   open: int;                  // the row a press asked to open
   pin_drag: int; pin_dragging: bool; pin_drop: int;   // 1-based chat index being dragged in Pinned, whether past threshold, target 0-based pin slot
   pin_top: f32; pin_row_h: f32;                       // y of the first pinned row and row height as last drawn
+  foreman_busy: bool; foreman_tier: int; foreman_hud_collapsed: bool; // persistent Foreman chat state, permission tier, and HUD fold
   pin_move_id: [CP_CHAT_ID] u8; pin_move_id_n: int; pin_move_to: int;   // completed pinned reorder owed to the host
   side: f32; side_scroll: f32; side_content: f32; side_view: f32;   // the sidebar as last drawn: its width (0: not shown), its scroll
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
@@ -181,7 +185,7 @@ CoderPage :: struct {
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
   // the sub-agent whose transcript shows on the window's right (GitHub #13666): which, where it
   // was last drawn, its scroll, and its reply as a document
-  pane_open: bool; pane_turn: int; pane_agent: int;
+  pane_open: bool; pane_turn: int; pane_agent: int; pane_manual: bool;
   pane_x: f32; pane_w: f32; pane_scroll: f32; pane_content: f32; pane_view: f32; pane_stick: bool;
   pane_doc: [1] MdDoc; pane_blocks: int; pane_parsed: int;
   think: [2] MdDoc; think_at: int;   // the open thoughts' Markdown, parsed afresh each frame; two, so the frame before keeps its words
@@ -319,6 +323,14 @@ cp_number :: (id: string, mark: string) -> int {
   return -1;
 }
 cp_running :: (s: [] CoderPage) -> bool { return s[0].nturns > 0 && s[0].turns[s[0].nturns - 1].state == CP_RUNNING; }
+cp_side_busy :: (s: [] CoderPage) -> bool {
+  if s[0].side <= 0 { return false; }
+  if s[0].foreman_busy { return true; }
+  for q: 0..<s[0].nchats {
+    if s[0].chats[q].busy { return true; }
+  }
+  return false;
+}
 cp_full :: (s: [] CoderPage) -> bool { return s[0].nturns >= CP_TURNS; }
 cp_clamp :: (s: [] CoderPage) {
   most := s[0].content - s[0].view;
@@ -408,7 +420,7 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
   s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
-  s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1;
+  s[0].nturns += 1; s[0].live_ask = i; s[0].live_reply = -1; s[0].pane_manual = false;
   s[0].goal_prompt_kind = prompt_kind;
   if s[0].goal_status == CP_GOAL_ACTIVE {
     s[0].goal_turns += 1;
@@ -784,10 +796,16 @@ cp_calls_end :: (s: [] CoderPage, i: int, j: int, failed: bool) {
     q = nx;
   }
 }
+cp_pane_open :: (s: [] CoderPage, turn: int, j: int) {
+  s[0].live_pane = -1; s[0].live_call = -1;
+  s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
+  s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
+}
 cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
   asked := ifx tasks.count > 1 && tasks[0] == '[' then cl_count(tasks) else 0;
   if asked > CP_ROUND { asked = CP_ROUND; }
   s[0].turns[i].round_asked = asked; s[0].turns[i].ticket = ticket; s[0].turns[i].waiting = true;
+  first := -1;
   for q: 0..<asked {
     one := cl_json(tasks, cl_item(tasks, q));
     ar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
@@ -802,6 +820,7 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
         s[0].turns[i].agents[g].say_n = cp_out(s[0].turns[i].agents[g].say[..], cl_str(ar[..], one, "task"));
         s[0].turns[i].agents[g].now_n = cp_out(s[0].turns[i].agents[g].now[..], "going on");
         s[0].turns[i].round_who[q] = g + 1;
+        if first < 0 { first = g; }
       }
       continue;
     }
@@ -816,6 +835,10 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     s[0].turns[i].agents[j].began = s[0].clock; s[0].turns[i].agents[j].took = -1; s[0].turns[i].agents[j].heard = s[0].clock;
     s[0].turns[i].agents[j].after = s[0].turns[i].early_cmds + s[0].turns[i].ncmds;
     s[0].turns[i].nagents = j + 1; s[0].turns[i].round_who[q] = j + 1;
+    if first < 0 { first = j; }
+  }
+  if first >= 0 && !s[0].pane_manual && !(s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == first) {
+    cp_pane_open(s, i, first);
   }
   s[0].turns[i].h = 0;
   cp_round_check(s, i);
@@ -1008,6 +1031,7 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
     t := i; while t < e && list[t] != 9 { t += 1; }
     u := ifx t < e then t + 1 else e; while u < e && list[u] != 9 { u += 1; }   // the title's end: a third column says a reply runs in it
     v := ifx u < e then u + 1 else e; while v < e && list[v] != 9 { v += 1; }   // optional fourth column: '1' when pinned
+    w := ifx v < e then v + 1 else e; while w < e && list[w] != 9 { w += 1; }   // optional fifth column: '1' when managed by Foreman
     if t > i {
       if s[0].nchats < CP_CHATS {
         k := s[0].nchats;
@@ -1015,7 +1039,8 @@ coder_page_chats :: (s: [] CoderPage, list: string) #export_c #effects(all) {
         s[0].chats[k].id_n = n;
         s[0].chats[k].title_n = ifx t + 1 < u then cp_out(s[0].chats[k].title[..], cast(string) list[t + 1..<u]) else cp_out(s[0].chats[k].title[..], "New chat");
         s[0].chats[k].busy = u + 1 < v && list[u + 1] == '1';
-        s[0].chats[k].pinned = v + 1 < e && list[v + 1] == '1';
+        s[0].chats[k].pinned = v + 1 < w && list[v + 1] == '1';
+        s[0].chats[k].managed = w + 1 < e && list[w + 1] == '1';
         s[0].nchats += 1;
       } else { s[0].chats_more += 1; }
     }
@@ -1070,6 +1095,12 @@ coder_page_pin_move_to :: (s: [] CoderPage) -> int #export_c #effects(all) {
   return to;
 }
 // The id of the chat that is shown ("" for a new one that is not saved yet): its row is lit.
+// Update the persistent Foreman sidebar row's running spinner and permission tier.
+coder_page_foreman :: (s: [] CoderPage, busy: bool, tier: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].foreman_busy = busy;
+  s[0].foreman_tier = ifx tier < CP_FOREMAN_TIER_OBSERVE then CP_FOREMAN_TIER_OBSERVE else ifx tier > CP_FOREMAN_TIER_AUTO then CP_FOREMAN_TIER_AUTO else tier;
+}
 coder_page_current :: (s: [] CoderPage, id: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   n := 0;
@@ -1089,6 +1120,12 @@ coder_page_chat_at :: (s: [] CoderPage, x: f32, y: f32, out: [] u8) -> int #expo
   id := surface_id(s[0].surface[..], surface_hit(s[0].surface[..], x / s[0].d, y / s[0].d));
   for q: 0..<s[0].nchats { if id == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { return cp_out(out, cast(string) id[5..<id.count]); } }
   return 0;
+}
+// True when the persistent Foreman sidebar row is at (x, y) in device pixels (for right-click menu).
+coder_page_foreman_at :: (s: [] CoderPage, x: f32, y: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) { return false; }
+  id := surface_id(s[0].surface[..], surface_hit(s[0].surface[..], x / s[0].d, y / s[0].d));
+  return id == "coder.foreman";
 }
 // The chat's title for the list: its first message on one line, up to 120 bytes.
 coder_page_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
@@ -1335,7 +1372,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   s[0].nturns = count; s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].results_due = false; s[0].answer_due = false;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
   s[0].kept_turns = count; s[0].kept_running = false; s[0].kept_cost = s[0].cost_usd_micros; s[0].kept_budget = s[0].budget_usd_micros; s[0].kept_override = s[0].budget_override;
-  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false;
+  s[0].kept_goal_status = s[0].goal_status; s[0].kept_goal_n = s[0].goal_objective_n; s[0].kept_goal_time = s[0].goal_time_seconds; s[0].pane_open = false; s[0].pane_manual = false;
   return true;
 }
 // The chat's finished turns as the worker's recall line, so Microcoder knows a chat that was
@@ -1363,7 +1400,7 @@ cp_new :: (s: [] CoderPage) -> bool {
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
   s[0].live_ask = -1; s[0].live_reply = -1; s[0].live_call = -1; s[0].live_pane = -1;
-  s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].ask = CP_ASK_NEW; return true;
+  s[0].scroll = 0; s[0].stick = true; s[0].copied_turn = -1; s[0].copied_kind = CP_COPIED_NONE; s[0].pane_open = false; s[0].pane_manual = false; s[0].ask = CP_ASK_NEW; return true;
 }
 coder_page_new :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_new(s); }
 // A page with no window, for a chat whose reply runs out of view.
@@ -1395,13 +1432,13 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].answer = from[0].answer; to[0].answer_due = from[0].answer_due; to[0].results_due = from[0].results_due;
   to[0].live_ask = -1; to[0].live_reply = -1; to[0].live_call = -1; to[0].live_pane = -1;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
-  to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
+  to[0].scroll = 0; to[0].stick = true; to[0].pane_open = false; to[0].pane_manual = false; to[0].copied_turn = -1; to[0].copied_kind = CP_COPIED_NONE;
   from[0].nturns = 0; cp_calls_reset(from); from[0].current_n = 0; from[0].answer_due = false; from[0].results_due = false;
   from[0].kept_turns = 0; from[0].kept_running = false; from[0].kept_cost = 0; from[0].cost_usd_micros = 0;
   from[0].budget_usd_micros = CP_BUDGET_DEFAULT; from[0].budget_override = false; from[0].kept_budget = CP_BUDGET_DEFAULT; from[0].kept_override = false;
   cp_goal_reset(from); from[0].kept_goal_status = CP_GOAL_NONE; from[0].kept_goal_n = 0; from[0].kept_goal_time = 0;
   from[0].live_ask = -1; from[0].live_reply = -1; from[0].live_call = -1; from[0].live_pane = -1;
-  from[0].pane_open = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
+  from[0].pane_open = false; from[0].pane_manual = false; from[0].copied_turn = -1; from[0].copied_kind = CP_COPIED_NONE;
   from[0].scroll = 0; from[0].stick = true;
   return true;
 }
@@ -1420,13 +1457,12 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     turn := cp_number(id, "t"); j := cp_number(id, ".g");
     if turn < 0 || turn >= s[0].nturns || j < 0 || j >= s[0].turns[turn].nagents { return false; }
     // its transcript opens on the window's right; a press on the one that is open closes it
+    s[0].pane_manual = true;
     if s[0].pane_open && s[0].pane_turn == turn && s[0].pane_agent == j { s[0].pane_open = false; return true; }
-    s[0].live_pane = -1; s[0].live_call = -1;
-    s[0].pane_open = true; s[0].pane_turn = turn; s[0].pane_agent = j; s[0].pane_parsed = -1;
-    s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[turn].agents[j].state == CP_RUNNING;
+    cp_pane_open(s, turn, j);
     return true;
   }
-  if act == CP_PANE_CLOSE { s[0].pane_open = false; return true; }
+  if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
   if act == CP_PANE_TOOL {
     id := surface_id(s[0].surface[..], row);
     q := cp_number(id, ".x"); tb: [EL_ID] u8;
@@ -1459,6 +1495,19 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return cp_send(s);
   }
   if act == CP_NEW { return cp_new(s); }
+  if act == CP_FOREMAN { s[0].ask = CP_ASK_FOREMAN; return true; }
+  if act == CP_FOREMAN_HUD_TOGGLE { s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
+  if act == CP_FOREMAN_HUD_OPEN {
+    id := surface_id(s[0].surface[..], row);
+    prefix := "foreman.node.";
+    if id.count > prefix.count && id[0..<prefix.count] == prefix {
+      cid := id[prefix.count..<id.count];
+      for q: 0..<s[0].nchats {
+        if cid == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { s[0].open = q; s[0].ask = CP_ASK_OPEN; return true; }
+      }
+    }
+    return false;
+  }
   if act == CP_FOLDER { if cp_running(s) { return false; } s[0].ask = CP_ASK_FOLDER; return true; }
   if act == CP_COPY {
     id := surface_id(s[0].surface[..], row);
@@ -1499,9 +1548,8 @@ coder_page_pane :: (s: [] CoderPage, n: int) -> bool #export_c #effects(all) {
   for back: 0..<s[0].nturns {
     i := s[0].nturns - 1 - back;
     if s[0].turns[i].nagents < n { continue; }
-    s[0].live_pane = -1; s[0].live_call = -1;
-    s[0].pane_open = true; s[0].pane_turn = i; s[0].pane_agent = n - 1; s[0].pane_parsed = -1;
-    s[0].pane_scroll = 0; s[0].pane_content = 0; s[0].pane_stick = s[0].turns[i].agents[n - 1].state == CP_RUNNING;
+    cp_pane_open(s, i, n - 1);
+    s[0].pane_manual = true;
     return true;
   }
   return false;
@@ -1691,8 +1739,54 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   // where the column reaches under a corner's buttons, the first message starts below them
   right_corner := (ifx left > 0 then side else 2 * side) + CP_CORNER + 128.0f32;
   if x + cw > w - right_corner || left == 0 && x < CP_CORNER + CP_FOLDER_MOST { y += CP_CORNER + side; }
+  is_foreman := cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
+  if is_foreman {
+    hud: [1] FhudData;
+    hud[0].tier_label = ifx s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE then "Observe" else ifx s[0].foreman_tier == CP_FOREMAN_TIER_AUTO then "Auto" else "Managed";
+    hud[0].tier_status = ifx s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE then FHUD_IDLE else ifx s[0].foreman_tier == CP_FOREMAN_TIER_AUTO then FHUD_WARN else FHUD_RUNNING;
+    hud[0].foreman_busy = s[0].foreman_busy || running;
+    hud[0].collapsed = s[0].foreman_hud_collapsed;
+    hud[0].toggle_action = CP_FOREMAN_HUD_TOGGLE;
+    for ti: 0..<s[0].nturns {
+      for ai: 0..<s[0].turns[ti].nagents {
+        if s[0].turns[ti].agents[ai].state == CP_RUNNING { hud[0].agents_active += 1; }
+      }
+    }
+    fcost := ifx s[0].cost_usd_micros > 0 then cp_cost(s[0].scratch[0..<32], s[0].cost_usd_micros) else "$0.00";
+    fbud := cp_cost(s[0].scratch[32..<64], cp_budget(s));
+    fln := el_put(s[0].scratch[64..<128], 0, fcost); fln = el_put(s[0].scratch[64..<128], fln, " / "); fln = el_put(s[0].scratch[64..<128], fln, fbud);
+    hud[0].budget_text = sheet_pool(f[0].sheet, cast(string) s[0].scratch[64..<64 + fln]);
+    b_lim := cp_budget(s);
+    hud[0].budget_ratio = ifx b_lim > 0 then cast(f32) s[0].cost_usd_micros / cast(f32) b_lim else 0.0f32;
+    if hud[0].budget_ratio > 1.0f32 { hud[0].budget_ratio = 1.0f32; }
+    hud[0].budget_status = ifx exceeded then FHUD_FAILED else ifx hud[0].budget_ratio >= 0.8f32 then FHUD_WARN else FHUD_DONE;
+    for q: 0..<s[0].nchats {
+      if !s[0].chats[q].managed { continue; }
+      hud[0].managed_total += 1;
+      if s[0].chats[q].busy { hud[0].managed_busy += 1; }
+      if hud[0].nnodes < FHUD_MAX_NODES {
+        nn := el_put(s[0].scratch[0..<EL_ID], 0, "foreman.node.");
+        nn = el_put(s[0].scratch[0..<EL_ID], nn, cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n]);
+        ntitle := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
+        if ntitle.count == 0 { ntitle = "Managed chat"; }
+        hud[0].nodes[hud[0].nnodes] = FhudNode.{
+          id = sheet_pool(f[0].sheet, cast(string) s[0].scratch[0..<nn]),
+          title = sheet_pool(f[0].sheet, ntitle),
+          subtitle = ifx s[0].chats[q].busy then "Running · Managed" else "Standby · Managed",
+          status = ifx s[0].chats[q].busy then FHUD_RUNNING else FHUD_DONE,
+          action = CP_FOREMAN_HUD_OPEN,
+        };
+        hud[0].nnodes += 1;
+      }
+    }
+    y += fhud_hud(f, x, y, cw, hud[..]) + a.gap;
+  }
   if s[0].nturns == 0 {
-    _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
+    if is_foreman {
+      _ := app_empty(f, "coder.empty", x, y + a.gap, cw, ICON_BOT, "Foreman is standing by", "Describe a goal or delegate work across managed chats.");
+    } else {
+      _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
+    }
   }
   ib: [EL_ID] u8;
   for i: 0..<s[0].nturns {
@@ -1868,12 +1962,55 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     sheet_fill(f[0].sheet, sw, 0, k.border, h, 0, k.menu_divider);
     sy := 10.0f32 / u;
     sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
+    cur := cast(string) s[0].current[0..<s[0].current_n];
+    // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
+    {
+      f_cur := cur == "chat.foreman";
+      f_busy := s[0].foreman_busy || (f_cur && running);
+      f_state := (ifx f_cur then EL_S_CURRENT else 0) | (ifx f_busy then EL_S_BUSY else 0);
+      fh := a.side_row;
+      fk := uiframe_key(f, "coder.foreman");
+      fp := uiframe_press(f, fk, "coder.foreman");
+      fhov := uiframe_hovered(f, "coder.foreman");
+      if f_cur { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, k.raised); }
+      else if fhov { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75)); }
+      if fp > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.hover, fp)); }
+      frow := uiframe_semantic(f, "coder.foreman", EL_BUTTON, "Foreman", 0, sy, sw, fh, f_state, CP_FOREMAN);
+      tf := ifx a.side_row < 34 then k.small else k.body;
+      tx := a.side_pad;
+      mark := a.icon;
+      sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur || fhov then k.ink else k.muted);
+      tx += mark + a.row_inset;
+      managed_busy := 0;
+      for q: 0..<s[0].nchats {
+        if s[0].chats[q].managed && s[0].chats[q].busy { managed_busy += 1; }
+      }
+      tier_base := ifx s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE then "Observe" else ifx s[0].foreman_tier == CP_FOREMAN_TIER_AUTO then "Auto" else "Managed";
+      tb_lbl: [32] u8;
+      tier_lbl := tier_base;
+      if managed_busy > 0 {
+        tn := el_put_i(tb_lbl[..], 0, managed_busy);
+        tn = el_put(tb_lbl[..], tn, " · ");
+        tn = el_put(tb_lbl[..], tn, tier_base);
+        tier_lbl = sheet_pool(f[0].sheet, cast(string) tb_lbl[0..<tn]);
+      }
+      badge_w := ifx f_busy then a.icon + a.gap else measure_width(f[0].m, k.small.face, tier_lbl) + a.gap;
+      froom := sw - a.side_pad - tx - badge_w;
+      if froom > 0 { _ := sheet_text(f[0].sheet, f[0].m, -1, tx, sy + (fh - tf.line) / 2, tf.line, tf.face, k.ink, app_fit(f, tf.face, "Foreman", froom)); }
+      if f_busy {
+        activity(f[0].sheet, k, sw - a.side_pad - a.icon, sy + (fh - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion);
+      } else {
+        tw := measure_width(f[0].m, k.small.face, tier_lbl);
+        _ := sheet_text(f[0].sheet, f[0].m, -1, sw - a.side_pad - tw, sy + (fh - k.small.line) / 2, k.small.line, k.small.face, ifx managed_busy > 0 then k.muted else k.faint, tier_lbl);
+      }
+      sheet_hit(f[0].sheet, UIFRAME_HIT, frow, 0, 0, sy, sw, fh);
+      sy += fh;
+    }
     stop := sy + 10.0f32 / u;
     rows: [CP_CHATS + 2] AppSideRow;
     nrows := 0;
     npinned := cp_pin_count(s);
     nrecent := s[0].nchats - npinned;
-    cur := cast(string) s[0].current[0..<s[0].current_n];
     if npinned > 0 {
       rows[nrows] = AppSideRow.{id = "coder.pinned", title = "Pinned", heading = true};
       nrows += 1;
@@ -1881,7 +2018,12 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         if !s[0].chats[q].pinned { continue; }
         id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
         is := cur.count > 0 && id == cur;
-        rows[nrows] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
+        t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
+        if s[0].chats[q].managed {
+          tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
+          t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
+        }
+        rows[nrows] = AppSideRow.{id = id, title = t_str,
                                   state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
         nrows += 1;
       }
@@ -1893,7 +2035,12 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         if s[0].chats[q].pinned { continue; }
         id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
         is := cur.count > 0 && id == cur;
-        rows[nrows] = AppSideRow.{id = id, title = cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n],
+        t_str := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
+        if s[0].chats[q].managed {
+          tb: [CP_CHAT_TITLE + 8] u8; tn := el_put(tb[..], 0, t_str); tn = el_put(tb[..], tn, " · F");
+          t_str = sheet_pool(f[0].sheet, cast(string) tb[0..<tn]);
+        }
+        rows[nrows] = AppSideRow.{id = id, title = t_str,
                                   state = (ifx is then EL_S_CURRENT else 0) | (ifx (is && running) || s[0].chats[q].busy then EL_S_BUSY else 0)};
         nrows += 1;
       }
@@ -2037,7 +2184,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
-  s[0].moving = uiframe_moving(f[..]) || cp_running(s);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
@@ -3144,4 +3291,247 @@ cp_find :: (text: string, needle: string) -> int {
   #assert cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.p1";
   #assert cast(string) s[0].chats[1].id[0..<s[0].chats[1].id_n] == "chat.p2";
   #assert cast(string) s[0].chats[2].id[0..<s[0].chats[2].id_n] == "chat.p3";
+}
+
+#test "a busy sidebar chat keeps the page moving while idle" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "a1\tBackground run\t1\nb2\tIdle chat\n");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert !cp_running(s) && s[0].side > 0 && cp_side_busy(s) && coder_page_moving(s);
+  // Collapsing the sidebar or clearing the busy flag lets the page go idle.
+  s[0].side = 0;
+  #assert !cp_side_busy(s);
+  coder_page_chats(s, "a1\tBackground run\nb2\tIdle chat\n");
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0 && !cp_side_busy(s) && !coder_page_moving(s);
+}
+
+#test "delegating to sub-agents auto-opens the first one in the sidebar without hijacking manual changes" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
+  #assert !s[0].pane_open;
+  // Delegating to multiple sub-agents opens the first one in the sidebar.
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"},{\"level\":\"carbon\",\"task\":\"second\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 0 && s[0].pane_stick && !s[0].pane_manual;
+  // User switches to the second sub-agent: a later delegation in the same turn does not hijack the sidebar.
+  #assert coder_page_pane(s, 2) && s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1 && s[0].pane_manual;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a\"}") == MWW_ENDED;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"b\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"third\"}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1;
+  #assert coder_page_agent_line(s, 2, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"c\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done 1\"}") == MWW_ENDED;
+  // A new turn resets manual override and auto-opens its first delegated sub-agent.
+  #assert coder_page_set_text(s, "next step") && coder_page_submit(s) && !s[0].pane_manual;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"inspect\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 1 && s[0].pane_agent == 0 && s[0].pane_stick;
+  // Closing the sidebar manually via its close button prevents later delegations in the same turn from reopening it.
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  close_row := surface_find(s[0].surface[..], "coder.pane.close");
+  #assert close_row >= 0 && cp_press(s, close_row) && !s[0].pane_open && s[0].pane_manual;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"d\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"follow up\"}],\"ticket\":4}") == MWW_DELEGATE;
+  #assert !s[0].pane_open;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"e\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done 2\"}") == MWW_ENDED;
+}
+
+#test "loading a saved chat with historical sub-agents leaves the sidebar closed" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a\"}") == MWW_ENDED;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  kept: [8192] u8; kn := coder_page_save(s, kept[..]);
+  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]) && !s[0].pane_open && !s[0].pane_manual;
+}
+
+#test "sidebar collapses below CP_SIDE_FROM and yields to transcript pane under CP_PANE_MAIN" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  f: [1] UiFrame;
+  // At exactly CP_SIDE_FROM (900 px), the chats sidebar is visible.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], cast(f32) CP_SIDE_FROM, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == cast(f32) CP_SIDE;
+  // One pixel below CP_SIDE_FROM, the chats sidebar collapses.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], cast(f32) (CP_SIDE_FROM - 1), 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0;
+  // With a sub-agent pane open at 1000 px, chats sidebar yields first (1000 - 234 - 440 < 380) while the pane stays at CP_PANE.
+  #assert coder_page_set_text(s, "check") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"inspect\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert s[0].pane_open;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0 && s[0].pane_w == cast(f32) CP_PANE && s[0].col_w > 0;
+  // At 600 px, even without the chats sidebar the transcript pane cannot leave CP_PANE_MAIN, so it takes the whole window.
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, true, false);
+  cp_layout(s, f[..], 600.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0 && s[0].pane_w == 600.0f32 && s[0].col_w == 0;
+}
+
+#test "turn limit caps a chat at CP_TURNS and blocks further submissions cleanly" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  for i: 0..<CP_TURNS {
+    #assert !cp_full(s);
+    #assert coder_page_set_text(s, "turn") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+    #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  }
+  #assert s[0].nturns == CP_TURNS && cp_full(s);
+  #assert coder_page_set_text(s, "one too many") && !coder_page_submit(s);
+  #assert s[0].nturns == CP_TURNS && coder_page_action(s) == 0;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+}
+
+#test "sub-agent delegation caps at CP_AGENTS without overflow and ignores out-of-range agent lines" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "fan out") && coder_page_submit(s);
+  // Delegate 12 sub-agents across two batches of 6, then attempt a 13th.
+  batch := "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"b\"},{\"level\":\"hydrogen\",\"task\":\"c\"},{\"level\":\"hydrogen\",\"task\":\"d\"},{\"level\":\"hydrogen\",\"task\":\"e\"},{\"level\":\"hydrogen\",\"task\":\"f\"}],\"ticket\":1}";
+  #assert coder_page_line(s, batch) == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 6;
+  for i: 0..<6 {
+    #assert coder_page_agent_line(s, i, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  }
+  #assert coder_page_line(s, batch) == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == CP_AGENTS;
+  for i: 6..<CP_AGENTS {
+    #assert coder_page_agent_line(s, i, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  }
+  // A 13th delegated task is clipped at CP_AGENTS.
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"overflow\"}],\"ticket\":3}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == CP_AGENTS;
+  // Out-of-range agent index is safely ignored.
+  #assert coder_page_agent_line(s, CP_AGENTS, "{\"kind\":\"reply\",\"text\":\"ignored\"}") == 0;
+  #assert coder_page_agent_line(s, -1, "{\"kind\":\"reply\",\"text\":\"ignored\"}") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"all twelve done\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE;
+}
+
+#test "zoom and pane resize clamp to configured bounds" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  #assert coder_page_zoom_set(s, -5) == 0 && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[0];
+  #assert coder_page_zoom(s, -1) == 0;
+  max_z := CP_ZOOMS.count - 1;
+  #assert coder_page_zoom_set(s, 99) == max_z && cp_scale(s) == ARCADE_PHONE_SCALE * CP_ZOOMS[max_z];
+  #assert coder_page_zoom(s, 1) == max_z;
+  #assert coder_page_zoom_set(s, CP_ZOOM_USUAL) == CP_ZOOM_USUAL;
+  // Sidebar and pane width clamping on setter.
+  coder_page_sides_set(s, 50.0f32, 100.0f32);
+  #assert s[0].side_w == cast(f32) CP_SIDE_LEAST && s[0].pane_user == cast(f32) CP_PANE_LEAST;
+  coder_page_sides_set(s, 9999.0f32, 9999.0f32);
+  #assert s[0].side_w == cast(f32) CP_SIDE_MOST && s[0].pane_user == cast(f32) CP_PANE_MOST;
+  coder_page_sides_set(s, 0.0f32, 0.0f32);
+  #assert s[0].side_w == 0.0f32 && s[0].pane_user == 0.0f32;
+  // When pane_user leaves less than CP_PANE_MAIN, layout gives the pane the whole window; with room, it uses pane_user.
+  #assert coder_page_set_text(s, "open pane") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"work\"}],\"ticket\":1}") == MWW_DELEGATE;
+  coder_page_sides_set(s, 0.0f32, cast(f32) CP_PANE_MOST);
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pane_w == 1000.0f32 && s[0].col_w == 0;
+  coder_page_sides_set(s, 0.0f32, cast(f32) CP_PANE_LEAST);
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, true, false);
+  cp_layout(s, f[..], 1000.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].pane_w == cast(f32) CP_PANE_LEAST && s[0].col_w > 0;
+}
+
+#test "malformed and truncated wire JSON lines do not corrupt a running turn" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "resilience") && coder_page_submit(s);
+  #assert coder_page_line(s, "") == 0;
+  #assert coder_page_line(s, "not json at all") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"trunc") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"unknown_kind\",\"text\":\"x\"}") == 0;
+  #assert coder_page_line(s, "{\"kind\":\"command\"}") == MWW_COMMAND;
+  #assert cp_running(s) && s[0].nturns == 1;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"recovered\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"recovered\"}") == MWW_ENDED;
+  #assert !cp_running(s) && s[0].turns[0].state == CP_DONE;
+  #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "recovered";
+}
+
+#test "foreman sidebar row sits above pinned and recents, dispatches CP_ASK_FOREMAN, and parses managed chats" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "p1\tPinned\t0\t1\t0\nm1\tManaged task\t1\t0\t1\nr1\tRegular\n");
+  #assert s[0].nchats == 3 && !s[0].chats[0].managed && s[0].chats[1].managed && !s[0].chats[2].managed;
+  coder_page_foreman(s, true, CP_FOREMAN_TIER_AUTO);
+  #assert s[0].foreman_busy && s[0].foreman_tier == CP_FOREMAN_TIER_AUTO;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert cp_side_busy(s) && coder_page_moving(s);
+  // Click and hit-test the Foreman row directly below New chat.
+  fx := 40.0f32;
+  fy := 10.0f32 / ARCADE_PHONE_SCALE + cp_skin().app.side_row * 1.5f32;
+  #assert coder_page_foreman_at(s, fx, fy);
+  #assert !coder_page_foreman_at(s, fx, 5.0f32);
+  #assert coder_page_pointer(s, fx, fy, 0);
+  #assert coder_page_pointer(s, fx, fy, 2);
+  #assert coder_page_action(s) == CP_ASK_FOREMAN;
+  // Clearing busy on both Foreman and chats lets the page settle.
+  coder_page_foreman(s, false, CP_FOREMAN_TIER_OBSERVE);
+  coder_page_chats(s, "p1\tPinned\t0\t1\t0\nm1\tManaged task\t0\t0\t1\n");
+  #assert !cp_side_busy(s) && s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE;
+}
+
+#test "foreman chat renders GPU Foreman HUD with clickable managed worker nodes and compact toggle" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "m1\tManaged task\t1\t0\t1\nr1\tRegular\n");
+  coder_page_foreman(s, true, CP_FOREMAN_TIER_AUTO);
+  coder_page_current(s, "foreman");
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 500.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  ti := surface_find(s[0].surface[..], "foreman.hud.toggle");
+  n1 := surface_find(s[0].surface[..], "foreman.node.chat.m1");
+  #assert ti >= 0 && n1 >= 0 && surface_find(s[0].surface[..], "foreman.node.chat.r1") < 0;
+  #assert cp_press(s, n1);
+  #assert coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0 && cast(string) s[0].chats[0].id[5..<s[0].chats[0].id_n] == "m1";
+  #assert cp_press(s, ti);
+  #assert s[0].foreman_hud_collapsed;
 }
