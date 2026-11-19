@@ -175,6 +175,7 @@ cd_hull :: (s: [] Slab, h: [] SceneHud) {
   cd_fact(h, "Lean", cd_v(cd_lean(s), 3, "°"));
   cd_fact(h, "Pushed off its place by", cd_v(sqrt(hl.surge * hl.surge + hl.sway * hl.sway), 1, " m"));
   cd_fact(h, "Hardest-pulled mooring line", sb_w(sb_n(sb_w(sb_n(cd_t(), hl.tension / 1e6, 1), " of "), SIM_BREAK / 1e6, 0), " meganewtons"));
+  lines_cd_now(s, h);   // the turn, storm lines and lines broken (slab-lines.coax)
   if hl.holed {
     cd_say(h, sb_w(sb_n(cd_words("A corner cell is holed: "), hl.flood * SIM_RHO / 1e6, 0), " tonnes of water are in."));
     if hl.pumping { cd_say(h, sb_w(sb_n(cd_words("The pumps have moved "), hl.moved, 0), " m³ of ballast to the far corner to level it.")); }
@@ -183,6 +184,7 @@ cd_hull :: (s: [] Slab, h: [] SceneHud) {
     cd_say(h, sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(sb_w(sb_n(cd_words("It floats when the sea water it pushes aside weighs what it does: about "), hs.l, 0), " m × "), hs.b, 0), " m × "), led.draft, 0), " m of water at 1,025 kg a cubic metre is "), led.mass / 1e9, 1), " million tonnes."));
     cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("GM is how far the point the hull swings about sits above its centre of gravity; the bigger, the steadier. Here it is "), led.gm_t, 0), " m across and "), led.gm_l, 0), " m along."));
     cd_say(h, sb_w(sb_n(sb_w(sb_n(cd_words("Left alone it would rise and fall every "), sim_heave_period(), 1), " s and roll every "), sim_roll_period(), 1), " s. Most wind waves come faster than that, every 5 to 10 s, so they move it little."));
+    lines_cd_maths(s, h);   // the mooring layout, and what is not modelled (slab-lines.coax)
   sh_end_of(h);
   cd_close(h, "view.section", cd_cut(s), "31-prime-the-monolith-default");
 }

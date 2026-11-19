@@ -12,10 +12,29 @@ sim_line_now :: (h: SimHull, i: int) -> MoorNow {
   return moor_now(rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
 }
 sim_lines_lost :: (h: SimHull) -> int { n := 0; for i: 0..<MOOR_MAX { if (h.lost >> cast(u32) i) & 1 == 1 { n += 1; } } return n; }
+// Whether the weather is a storm warning for this hull: at rest in it, its own lines alone would
+// carry more than their breaking load over SIM_MOOR_SAFETY. The storm legs are made fast then,
+// as during the build (metaverse/slab-build.coax).
+sim_storm_due :: (h0: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64) -> bool {
+  h := h0; h.storm = false; sh := sim_shape(h);
+  if h.free || sh.round || (sh.storm_kz <= 0 && sh.storm_kx <= 0) { return false; }
+  h.lost &= (cast(u32) 1 << cast(u32) sh.lines) - 1;
+  return sim_hull_settle(h, sea, wind, wdx, wdz).tension > sh.mbl / SIM_MOOR_SAFETY;
+}
+// The hull's storm legs made fast or let go, and the hull where the rest leaves it.
+sim_hull_stormed :: (h0: SimHull, fast: bool, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64) -> SimHull {
+  h := h0; h.storm = fast;
+  if !fast { h.lost &= (cast(u32) 1 << cast(u32) sim_shape(h).lines) - 1; }
+  return sim_hull_settle(h, sea, wind, wdx, wdz);
+}
+// Where this weather leaves the hull, with its storm legs made fast if it is a storm warning.
+sim_hull_weathered :: (h0: SimHull, sea: [] DriftSea, wind: f64, wdx: f64, wdz: f64) -> SimHull {
+  return sim_hull_stormed(h0, sim_storm_due(h0, sea, wind, wdx, wdz), sea, wind, wdx, wdz);
+}
 // The hull with its moorings laid, if they were not yet (the step lays them on its first).
 sim_rigged :: (h0: SimHull) -> SimHull {
   h := h0; sh := sim_shape(h);
-  if !h.free && (!h.rig[0].built || h.rig[0].depth != h.depth || h.rig[0].count != sh.lines) { h.rig[0] = sim_rig_of(sh, h.depth); }
+  if sim_rig_stale(sh, h) { h.rig[0] = sim_rig_for(sh, h); }
   return h;
 }
 // "Lose a line": the most loaded line that still holds parts. The hull shifts and turns and its
@@ -24,11 +43,14 @@ sim_lose_line :: (h0: SimHull) -> SimHull {
   h := sim_rigged(h0);
   if h.free { return h; }
   f := moor_force(h.rig[..], h.lost, h.surge, h.sway, h.yaw, h.heave);
-  if f.worst >= 0 { h.lost |= cast(u32) 1 << cast(u32) f.worst; }
+  if f.worst < 0 { return h; }
+  // one line of a storm leg's several: the rest of the leg carry its share
+  if h.rig[0].chains[f.worst] > 1 { h.rig[0].chains[f.worst] -= 1; return h; }
+  h.lost |= cast(u32) 1 << cast(u32) f.worst;
   return h;
 }
-// New lines on every fairlead.
-sim_refit_lines :: (h0: SimHull) -> SimHull { h := h0; h.lost = 0; h.broke = -1.0; return h; }
+// New lines on every fairlead, and on every storm leg (the next step lays the rig afresh).
+sim_refit_lines :: (h0: SimHull) -> SimHull { h := h0; h.lost = 0; h.broke = -1.0; h.rig[0].built = false; return sim_rigged(h); }
 
 // The steady force and turning moment on a hull held still at its place: wind, current, moorings
 // and the waves' mean drift (their wave-by-wave push averages to nothing).
@@ -92,7 +114,12 @@ SimStation :: struct {
   moored: bool;               // it has lines of its own
   kind: int;                  // MOOR_TAUT or MOOR_CATENARY
   depth: f64;                 // the water, m
-  lines: int; lost: int;
+  lines: int; lost: int;      // its own lines, and those of them lost
+  storm: bool;                // its storm legs are made fast
+  legs: int; legs_lost: int;  // storm legs made fast, and those of them lost
+  storm_lines: int;           // the lines in those legs, in all, as made fast
+  storm_held: int;            // and those of them still holding
+  held: int;                  // lines and legs still holding
   length: f64;                // each line, m
   span: f64;                  // each anchor from its fairlead at rest, m
   breaking: f64;              // each line's breaking load, N
@@ -111,7 +138,14 @@ sim_station :: (h0: SimHull) -> SimStation {
   o.offset = sqrt(h.surge * h.surge + h.sway * h.sway); o.turn = h.yaw * 180.0 / SIM_PI;
   if h.free { return o; }
   rig := h.rig[0];
-  o.moored = true; o.kind = rig.kind; o.lines = rig.count; o.lost = sim_lines_lost(h);
+  o.moored = true; o.kind = rig.kind; o.lines = rig.own;
+  o.storm = rig.count > rig.own; o.legs = rig.count - rig.own;
+  for i: 0..<rig.count {
+    gone := (h.lost >> cast(u32) i) & 1 == 1;
+    if i < rig.own { if gone { o.lost += 1; } } else if gone { o.legs_lost += 1; } else { o.storm_held += cast(int) rig.chains[i]; }
+    if !gone && rig.chains[i] > 0 { o.held += 1; }
+  }
+  if o.storm { sh := sim_shape(h); o.storm_lines = 2 * (MOOR_STORM_LONG * sh.storm_kz + MOOR_STORM_SHORT * sh.storm_kx); }
   o.length = rig.line.length; o.span = rig.span; o.breaking = rig.line.mbl;
   first := true;
   for i: 0..<rig.count {
@@ -139,47 +173,50 @@ sim_line_points :: (h0: SimHull, i: int, out: [] f32, at: int) {
   out[at + 15] = ifx n.lost then 3.0f32 else 1.0f32 + f32(sim_min(n.pull.tension / h.rig[0].line.mbl, 0.999));
 }
 // Line i packed small for a shader, STATION_PACKED floats into out[at..], in the world's frame:
-//   anchor x, z (it lies on the seabed); fairlead x, y, z;
+//   anchor x, z (it lies on the seabed); fairlead x, z (its height is sim_fairlead_y, the same
+//     for every line);
 //   how far from the anchor to the fairlead the line leaves the seabed, as a share of the way
 //     along the seabed (0 for a taut leg, most of the way for a chain; under 0: no line);
-//   the line's height over the straight run from there to the fairlead, a third and two thirds
-//     of the way along it (it hangs below: these are 0 or less).
-// The same solution as sim_line_points: these are points of the line's own curve. A lost line lies
-// on the seabed from its anchor toward where its fairlead was.
-STATION_PACKED :: 8;
+//   the line's height over the straight run from there to the fairlead, half way along it (it
+//     hangs below: 0 or less). A drawing bends the run through that point as a parabola.
+// The same solution as sim_line_points: the middle point is a point of the line's own curve. A
+// lost line lies on the seabed from its anchor toward where its fairlead was (its fairlead here
+// is where it ends, and its share 0.5; a drawing puts all of it on the seabed).
+STATION_PACKED :: 6;
+sim_fairlead_y :: (h0: SimHull) -> f64 { h := sim_rigged(h0); return h.rig[0].fair_y + h.heave; }
 sim_line_packed :: (h0: SimHull, i: int, out: [] f32, at: int) {
   h := sim_rigged(h0);
   for k: 0..<STATION_PACKED { out[at + k] = 0; }
-  out[at + 5] = -1;
-  if h.free || i < 0 || i >= h.rig[0].count { return; }
+  out[at + 4] = -1;
+  if h.free || i < 0 || i >= h.rig[0].count || h.rig[0].chains[i] <= 0 { return; }
   n := moor_now(h.rig[..], h.lost, i, h.surge, h.sway, h.yaw, h.heave);
-  l := h.rig[0].line; ax := h.rig[0].ax[i]; az := h.rig[0].az[i]; bed := -h.rig[0].depth;
+  l := h.rig[0].line; ax := h.rig[0].ax[i]; az := h.rig[0].az[i];
   out[at] = f32(h.cx + ax); out[at + 1] = f32(h.cz + az);
   if n.lost {
     reach := ifx n.span > 0 then sim_min(l.length / n.span, 1.0) else 0.0;
-    out[at + 2] = f32(h.cx + ax + (n.wx - ax) * reach); out[at + 3] = f32(bed); out[at + 4] = f32(h.cz + az + (n.wz - az) * reach);
-    out[at + 5] = 0.5;
+    out[at + 2] = f32(h.cx + ax + (n.wx - ax) * reach); out[at + 3] = f32(h.cz + az + (n.wz - az) * reach);
+    out[at + 4] = 0.5; out[at + 5] = 1;
     return;
   }
-  out[at + 2] = f32(h.cx + n.wx); out[at + 3] = f32(bed + n.rise); out[at + 4] = f32(h.cz + n.wz);
-  if !(n.span > 0) { out[at + 5] = 1; return; }
+  out[at + 2] = f32(h.cx + n.wx); out[at + 3] = f32(h.cz + n.wz);
+  if !(n.span > 0) { out[at + 4] = 1; return; }
   from := moor_at(l, n.pull, n.span, n.pull.grounded)[0];
-  out[at + 5] = f32(sim_clamp(from / n.span, 0, 1));
+  out[at + 4] = f32(sim_clamp(from / n.span, 0, 1));
   if n.pull.slack || n.span - from < 1.0e-6 { return; }
-  for k: 1..<3 {
-    // the length of line that reaches this far along: the line runs on with its length, so bisect
-    want := from + (n.span - from) * f64(k) / 3.0;
-    lo := n.pull.grounded; hi := l.length;
-    for j: 0..<32 { mid := 0.5 * (lo + hi); if moor_at(l, n.pull, n.span, mid)[0] < want { lo = mid; } else { hi = mid; } }
-    out[at + 5 + k] = f32(moor_at(l, n.pull, n.span, 0.5 * (lo + hi))[1] - n.rise * f64(k) / 3.0);
-  }
+  // the length of line that reaches half way along: the line runs on with its length, so bisect
+  want := from + (n.span - from) * 0.5;
+  lo := n.pull.grounded; hi := l.length;
+  for j: 0..<32 { mid := 0.5 * (lo + hi); if moor_at(l, n.pull, n.span, mid)[0] < want { lo = mid; } else { hi = mid; } }
+  out[at + 5] = f32(sim_min(moor_at(l, n.pull, n.span, 0.5 * (lo + hi))[1] - n.rise * 0.5, 0));
 }
 
 // ---------------------------------------------------------------- checks (spec section 9, H1 to H5)
 // The page's sea for a wind (apps/openagents-web/slab.coax's slab_spectrum): a long fetch, scaled
 // to Pierson-Moskowitz's height, running west-south-west.
-station_check_spectrum :: (wind: f64) -> Spectrum {
-  sp := Spectrum.{seed = 23, wind_speed = wind, wind = 4.36, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
+station_check_spectrum :: (wind: f64) -> Spectrum { return station_check_spectrum_at(wind, 4.36); }
+// The same sea running another way.
+station_check_spectrum_at :: (wind: f64, heading: f64) -> Spectrum {
+  sp := Spectrum.{seed = 23, wind_speed = wind, wind = heading, fetch = 300000.0, choppiness = 0.8, spread = 0.8, depth = 4000.0};
   grown := wsp_significant_height(sp);
   if grown > 0.001 { sp.amplitude = 0.21 * wind * wind / 9.81 / grown; }
   return sp;
@@ -300,17 +337,16 @@ STATION_CHECK_EVERY :: 6;
   // point is, the same place the chain leaves the seabed, and a curve that hangs below the
   // straight run (a taut leg to windward by some ten metres and a slackened one to leeward by a
   // hundred or more; a chain by 20 m of its 89 m)
-  k: [8] f32;
+  k: [6] f32;
   sim_line_packed(shallow, 0, k[..], 0);
-  #assert k[0] == p[0] && k[1] == p[2] && abs(k[2] - p[12]) < 0.5 && abs(k[3] - p[13]) < 0.5 && abs(k[4] - p[14]) < 0.5;
-  whole := sqrt(f64(k[2] - k[0]) * f64(k[2] - k[0]) + f64(k[4] - k[1]) * f64(k[4] - k[1]));
-  #assert abs(f64(k[5]) * whole - reach) < 1.0 && k[5] > 0.1 && k[5] < 1;
-  #assert k[6] < -1 && k[7] < -1 && k[6] > -89 && k[7] > -89;
+  #assert k[0] == p[0] && k[1] == p[2] && abs(k[2] - p[12]) < 0.5 && abs(k[3] - p[14]) < 0.5 && abs(sim_fairlead_y(shallow)) < 0.5;
+  whole := sqrt(f64(k[2] - k[0]) * f64(k[2] - k[0]) + f64(k[3] - k[1]) * f64(k[3] - k[1]));
+  #assert abs(f64(k[4]) * whole - reach) < 1.0 && k[4] > 0.1 && k[4] < 1 && k[5] < -1 && k[5] > -89;
   sim_line_packed(deep, 0, p[..], 0);
-  #assert p[5] == 0 && p[3] > -26 && p[3] < -24 && p[6] < -5 && p[7] < -5 && p[6] > -400 && p[7] > -400;
+  #assert p[4] == 0 && abs(sim_fairlead_y(deep) + 25.0) < 0.5 && p[5] < -5 && p[5] > -400;
   // no such line
   sim_line_packed(deep, 16, p[..], 0);
-  #assert p[5] < 0;
+  #assert p[4] < 0;
 }
 #test "H5: lose a line in a gale: the hull shifts and turns, its neighbour takes the load, and it shows" #steps 2000000000 {
   s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
@@ -339,7 +375,7 @@ STATION_CHECK_EVERY :: 6;
   sim_line_points(g, before.worst, p[..], 0);
   #assert p[15] == 3 && p[13] == -1500;
   sim_line_packed(g, before.worst, p[..], 0);
-  #assert p[3] == -1500 && p[5] == 0.5 && p[6] == 0 && p[7] == 0;
+  #assert p[4] == 0.5 && p[5] == 1;
   // new lines put it back
   #assert sim_lines_lost(sim_refit_lines(g)) == 0;
 }
@@ -390,6 +426,124 @@ station_check_run :: (s: [] Synth, sp: Spectrum, from: SimHull, steps: int, cut:
     h = sim_hull_step_in(h, sea[..], sp.wind_speed, w.x, w.y, SIM_STEP);
   }
   return h;
+}
+// The most loaded line with the hull held against a steady push of `f` N on its long side.
+station_check_push :: (h0: SimHull, f: f64) -> f64 {
+  h := sim_rigged(h0); lo := 0.0; hi := 400.0;
+  for i: 0..<50 { mid := 0.5 * (lo + hi); if -moor_force(h.rig[..], 0, 0, mid, 0, 0).fz < f { lo = mid; } else { hi = mid; } }
+  return moor_force(h.rig[..], 0, 0, lo, 0, 0).peak;
+}
+#test "H6: the hurricane is a storm warning. The sixteen lines alone are over their margin and break beam on; with the storm legs it is held from every side, and so is the build's design storm" #steps 4000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  safe := SIM_BREAK / SIM_MOOR_SAFETY;
+  #assert abs(safe - 23.95e6) < 0.01e6 && SIM_STORM_KZ == 2 && SIM_STORM_KX == 1 && MOOR_STORM_LEGS == 12;
+  // the page's sea (it runs west-south-west onto the east end and the north side), beam on, on
+  // the quarter and end on; in Guam's 1,408 m on taut rope and in Texas's 89 m on chain
+  heads := [4] f64.[4.36, 3.14159265, 3.92699, 4.71238898];
+  depths := [2] f64.[1408.0, 89.0];
+  for hi: 0..<4 {
+    sp := station_check_spectrum_at(25.6, heads[hi]);
+    wsp_synth(s[..], sp, 1, 64);
+    whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+    w := wsp_direction(sp);
+    for di: 0..<2 {
+      own := sim_hull_stormed(SimHull.{depth = depths[di]}, false, sea[..], 25.6, w.x, w.y);
+      both := sim_hull_weathered(SimHull.{depth = depths[di]}, sea[..], 25.6, w.x, w.y);
+      a := sim_station(own); b := sim_station(both);
+      #assert a.lines == 16 && !a.storm && a.legs == 0 && b.lines == 16 && b.peak < safe;
+      if hi == 3 {
+        // end on the sixteen hold it with the margin in hand (20 MN): no storm warning
+        #assert a.peak < safe && a.peak > 18.0e6 && !b.storm && b.legs == 0 && b.peak == a.peak;
+        continue;
+      }
+      // a storm warning: the twelve legs, twenty lines, are made fast and the worst line is at
+      // 14 to 17 MN, the hull half as far off its place or nearer
+      #assert a.peak > safe && b.storm && b.legs == 12 && b.storm_lines == 20 && b.held == 28 && b.legs_lost == 0;
+      #assert b.peak > 13.0e6 && b.peak < 17.5e6 && b.offset < 0.8 * a.offset;
+      // the sixteen alone: 26 to 28 MN from the page's side, 34 to 35 MN on the quarter, and
+      // beam on 44 to 46 MN, over their breaking load
+      if hi == 0 { #assert a.peak > 26.0e6 && a.peak < 28.0e6; }
+      if hi == 2 { #assert a.peak > 33.0e6 && a.peak < 36.0e6; }
+      if hi == 1 { #assert a.peak > SIM_BREAK && a.peak < 47.0e6; }
+    }
+  }
+  // the gale from the page's side is not a storm warning (17.9 MN on the sixteen)
+  sp := station_check_spectrum(21.6);
+  wsp_synth(s[..], sp, 1, 64);
+  whl_sea(s[..], 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  #assert !sim_storm_due(SimHull.{depth = 1408.0}, sea[..], 21.6, w.x, w.y) && !sim_hull_weathered(SimHull.{depth = 1408.0}, sea[..], 21.6, w.x, w.y).storm;
+  // the build's design storm (an 8 m sea, 40 m/s of wind and a 1 m/s current: 211 MN on the long
+  // side, metaverse/slab-build.coax) as a steady push: 23.1 MN on rope and 21.1 MN on chain with
+  // the storm legs, inside the margin; 67 and 72 MN on the sixteen alone
+  for di: 0..<2 {
+    with := station_check_push(SimHull.{depth = depths[di], storm = true}, 211.0e6);
+    #assert with < safe && with > 20.0e6 && station_check_push(SimHull.{depth = depths[di]}, 211.0e6) > 1.5 * SIM_BREAK;
+  }
+  // a dome has no storm legs
+  #assert !sim_storm_due(SimHull.{round = true}, sea[..], 25.6, w.x, w.y);
+}
+// A minute of the hurricane beam on in Texas's 89 m, the storm legs made fast or not: [the
+// highest tension, lines lost, when the third line parted (s, -1: none did)].
+station_check_storm :: (s: [] Synth, sp: Spectrum, depth: f64, fast: bool, steps: int) -> [3] f64 {
+  sea: [1] DriftSea; scratch: [16384] f32;
+  whl_sea(s, 0, 25.0, scratch[..], sea[..]);
+  w := wsp_direction(sp);
+  h := sim_hull_stormed(SimHull.{depth = depth}, fast, sea[..], 25.6, w.x, w.y); sh := sim_shape(h);
+  peak := 0.0; third := -1.0;
+  for i: 0..<steps {
+    if i % STATION_CHECK_EVERY == 0 { whl_sea(s, wsp_tick_at(sp, h.time), 25.0, scratch[..], sea[..]); }
+    h = sim_hull_step_in_on(sh, h, sea[..], 25.6, w.x, w.y, SIM_STEP);
+    if h.tension > peak { peak = h.tension; }
+    if third < 0 && sim_lines_lost(h) >= 3 { third = h.time; }
+  }
+  return [3] f64.[peak, f64(sim_lines_lost(h)), third];
+}
+#test "H7: a minute of the hurricane beam on in shallow water. The sixteen alone part one after another; with the storm legs none parts" #steps 4000000000 {
+  s: [1] Synth;
+  sp := station_check_spectrum_at(25.6, 3.14159265);
+  wsp_synth(s[..], sp, 1, 64);
+  // the sixteen alone are at 46 MN at rest: the two hardest-pulled part at once, their neighbours
+  // take the load and a third goes some 50 s later
+  a := station_check_storm(s[..], sp, 89.0, false, 3600);
+  #assert a[0] >= SIM_BREAK && a[1] >= 3 && a[2] > 30 && a[2] < 60;
+  // with the storm legs made fast no line parts and the worst moment stays inside the margin
+  b := station_check_storm(s[..], sp, 89.0, true, 3600);
+  #assert b[1] == 0 && b[0] < SIM_BREAK / SIM_MOOR_SAFETY && b[0] > 13.0e6;
+  // "Lose a line" on a storm leg takes one of its two lines: its partner carries the leg, and the
+  // leg goes when that one does
+  h := sim_rigged(SimHull.{depth = 89.0, storm = true}); h.sway = 15;
+  #assert sim_station(h).storm_held == 20 && moor_force(h.rig[..], 0, 0, 15, 0, 0).worst >= 16;
+  one := sim_lose_line(h); two := sim_lose_line(one);
+  #assert sim_station(one).storm_held == 19 && sim_station(one).legs_lost == 0 && one.lost == 0;
+  #assert sim_station(two).storm_held == 18 && sim_station(two).legs_lost == 1 && sim_station(two).lost == 0;
+  #assert sim_station(sim_refit_lines(two)).storm_held == 20 && sim_refit_lines(two).lost == 0;
+}
+#test "H8: a hull of any size the panel allows, or overloaded, rides a gale on its lines without blowing up" #steps 4000000000 {
+  s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;
+  sp := station_check_spectrum(21.6);
+  wsp_synth(s[..], sp, 1, 64);
+  w := wsp_direction(sp);
+  // the panel's Gulf Coast pilot (metaverse/slab-whatif.coax, WP_PILOT): one bare caisson
+  pilot := hull_prime(); pilot.l = 100; pilot.b = 50; pilot.deck = 30; pilot.hull = 30; pilot.wall = 0.5; pilot.web = 0.5;
+  pilot.bottom = 0.5; pilot.top = 0.5 * 2.0 / 3.0; pilot.draft = 5; pilot.topsides = 0; pilot.liquids = 0;
+  giant := hull_prime(); giant.l = 2000; giant.b = 1000;
+  heavy := hull_prime(); heavy.topsides = 9.0e9;
+  shapes := [3] HullShape.[pilot, giant, heavy];
+  for k: 0..<3 {
+    led := hull_ledger(shapes[k]); sh := sim_shape_of_hull(shapes[k], led);
+    #assert sh.t > 1 && sh.t < sh.d && sim_columns(sh) == sim_columns_x(sh) * sim_columns_z(sh);
+    h := SimHull.{depth = 1408.0};
+    for i: 0..<600 {
+      if i % STATION_CHECK_EVERY == 0 { whl_sea(s[..], wsp_tick_at(sp, h.time), sh.t, scratch[..], sea[..]); }
+      h = sim_hull_step_in_on(sh, h, sea[..], 21.6, w.x, w.y, SIM_STEP);
+    }
+    // ten seconds on: it floats near its draft, upright, near its place, still on its lines
+    #assert h.rig[0].built && h.rig[0].count == 16 && sim_lines_lost(h) == 0 && h.tension > 0 && h.tension < SIM_BREAK;
+    #assert abs(h.heave) < 5 && abs(h.roll) < 0.1 && abs(h.pitch) < 0.1 && abs(h.yaw) < 0.1 && abs(h.surge) < 50 && abs(h.sway) < 50;
+  }
+  // the heavy hull draws more water than prime
+  #assert sim_shape_of_hull(heavy, hull_ledger(heavy)).t > SIM_T + 1;
 }
 #test "9: two runs give the same hull bit for bit at tick 10,000, and a late joiner goes on the same" #steps 4000000000 {
   s: [1] Synth; sea: [1] DriftSea; scratch: [16384] f32;

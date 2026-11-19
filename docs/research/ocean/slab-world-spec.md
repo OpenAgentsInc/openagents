@@ -482,6 +482,18 @@ Since November 18, 2026 the lines are not this polynomial. Each is a
 catenary with a length, a weight and a stiffness, laid for the site's depth,
 and it can break. Section 12, "The hull on its moorings", describes them.
 
+**Storm legs.** `prime` also has twelve storm legs: four square to each long
+side and two square to each end, each more of the same line with its anchor
+as far out as the corner lines'. Each leg on a long side is two lines side
+by side and each on an end is one, 20 lines in all. They are made fast at a
+storm warning: when the sixteen alone, at rest in the forecast weather,
+would carry more than their breaking load over 1.67 (23.95 MN). The
+construction simulation lays the same legs on the growing hull
+(`moor_storm_leg` in `metaverse/slab-moor.coax`), so the build and the world
+have one mooring. The 1.67 is our assumption, after offshore practice's
+intact-line safety factor. The number of legs and lines is the build's
+design-storm sizing (`cs_mooring`), not tuned to the world's tests.
+
 ### 4.4 Wind and current
 
 - **Wind:** F = ½ ρ_air C_d A U², with ρ_air = 1.225 and C_d = 1.0. A is the
@@ -492,6 +504,13 @@ and it can break. Section 12, "The hull on its moorings", describes them.
   - At U = 20 m/s this gives ≈ 44 MN. The moorings must hold the offset
     under 5% of depth (75 m). The sixteen catenary lines hold it at 66 m,
     with the worst line at 16 MN (section 12, "The hull on its moorings").
+  - At 25.6 m/s (`hurricane`) the wind alone is 72 MN beam on and the waves'
+    slow drift adds 60 MN. The sixteen alone are then over their breaking
+    load and part one after another. With the storm legs made fast the worst
+    line is at 14 to 17 MN at rest from every side, and no line parts in ten
+    minutes of the storm. In 89 m of water, on chain, single moments reach
+    about 30 MN, over the 23.95 MN margin and under breaking. Section 12 has
+    the numbers.
   - Until November 18, 2026 the area was the 50 m hull's, 1,000 m × 85 m
     (21 MN at 20 m/s). The lines were not resized when it grew: section 12
     says what they hold and what they don't.
@@ -1527,7 +1546,7 @@ styles, are unchanged within it too.
 Measured on November 18, 2026, from the checks in
 `metaverse-engine/physics/moor.coax`, `metaverse/slab-moor.coax`,
 `metaverse/slab-drift.coax`, `metaverse/water-hull.coax` and
-`metaverse/slab-station.coax` (H1 to H5, and tests 9 and 10 run on the
+`metaverse/slab-station.coax` (H1 to H8, and tests 9 and 10 run on the
 moorings). Issue 13688 asked for these.
 
 **What the hull's step now does.**
@@ -1587,16 +1606,24 @@ moorings). Issue 13688 asked for these.
 | 25.6 m/s wind from the south-west, no waves (H1) | 80 MN: 108 m off its place and turned 1.1°, the worst line at 24 MN. The wind's own moment is 1.9 GN·m toward broadside; the unequal lines turn it the other way with 5.6 GN·m until the two balance. Mirrored, it turns the other way by as much. End on, it doesn't turn |
 | `gale`, as the page runs it (H3) | the hull turns back a sea 8.0 m high of the gale's 10 m. Drift 17 MN on top of the wind's 46 MN: 72 m off its place where wind and current alone leave it 51 m, and the worst line at 18.0 MN instead of 13.7 |
 | `hurricane`, as the page runs it (H5) | wind 65 MN and drift 33 MN: 113 m off its place, turned 1.5°, the worst line at 26.4 MN of 40. One line lost: it comes to rest 146 m off and turned 3.1° with the worst line at 30.5 MN, swinging out to 163 m and 33.5 MN on the way. Two lost: 190 m, 7.3°, 35.7 MN at rest. Three lost: a fourth is over 40 MN at rest and parts on its own |
-| `hurricane` square on the long wall (H5; not a sea the page runs) | wind 72 MN and drift 60 MN: the worst of the sixteen lines is at 44 MN at rest, over its breaking load |
+| `hurricane` square on the long wall (H5, H6; `?winddir=` gives it) | wind 72 MN and drift 60 MN: the worst of the sixteen lines is at 44 MN at rest, over its breaking load |
+| Storm warning (H6) | the sixteen alone at rest over 23.95 MN (40 MN over 1.67). The hurricane is one from the page's side (26 to 28 MN), on the quarter (34 to 35 MN) and beam on (44 to 46 MN); end on (19 to 20 MN) and the `gale` off Guam (17.9 MN) are not |
+| `hurricane` with the storm legs, at rest (H6) | the worst line at 13.9 to 17.2 MN from the page's side, on the quarter and beam on, at 1,408 m and at 89 m: under the margin. The hull lies 54 to 65 m off its place at 1,408 m (105 to 196 m on the sixteen alone) and 12 to 14 m off at 89 m |
+| The build's design storm as a steady 211 MN on the long wall (H6) | 23.1 MN on rope and 21.1 MN on chain with the storm legs, inside the margin; 67 and 72 MN on the sixteen alone |
+| Ten minutes of the `hurricane` with the storm legs (release probe; not a check, it runs past a native check's time limit) | no line parts from any of the three sides, at either depth. At 1,408 m the worst moment is 15.8 to 18.2 MN. At 89 m, on chain, it is 22.2 MN beam on and 29.8 to 30.4 MN from the page's side and the quarter: over the 23.95 MN margin, under breaking |
+| A minute of the `hurricane` beam on at 89 m (H7) | on the sixteen alone the two hardest-pulled lines part at once, and their neighbours take the load: a third parts at 51 s and a fourth at 60 s. With the storm legs none parts |
+| One line lost by hand in the `hurricane` with the storm legs, at 89 m, ten minutes (release probe) | from the page's side and the quarter, a second line reaches 38.1 and 34.1 MN and parts: the cascade. Beam on the rest hold, at 28.8 MN. At 1,408 m nothing more parts |
+| Other hulls (H8) | the panel's 100 × 50 m pilot, a 2,000 × 1,000 m hull and `prime` with 9 Mt of buildings (31 m draft) each ride ten seconds of the `gale` on their lines, upright and near their place. A hull with negative GM rolls over in the step rather than giving a NaN |
 | A line lost in the gale (H5) | the hull comes to rest 95 m off its place instead of 72 m, turned 2.2° instead of 0.9°, with another line the most loaded at 21.0 MN |
 | Heave on the gale's sea (H2) | less with each wave faded by its length than with the same sea lifting the hull unfaded; both are centimetres |
 | Determinism (test 9) | two runs of 10,000 ticks in `winter`, with a line lost at tick 4,000, end in the same hull bit for bit, and a hull handed over at tick 10,000 steps on the same |
 | Ledger (test 10) | over 600 s of `trade` from rest, each step's change in velocity is that step's summed force over the mass it moves, and the yaw and heave ledgers close to one part in a million |
 
 **On the page.** `apps/openagents-web/slab-lines.coax` runs this in the
-world. Each frame it makes the three weighted tiles once, puts the hull at
-rest when the place, the layout, the wind or the depth changes
-(`sim_hull_settle`), and then steps it. The hull's pose carries its turn, so
+world. Each frame it makes the three weighted tiles once, makes the storm
+legs fast if the weather is a storm warning and puts the hull at rest when
+the place, the layout, the wind or the depth changes (`sim_hull_weathered`),
+and then steps it. The hull's pose carries its turn, so
 the camera, the walker, the drawing and the cards follow the turned hull.
 
 - **See inside**, **What holds it in place** says the layout the depth gives
@@ -1606,15 +1633,32 @@ the camera, the walker, the drawing and the cards follow the turned hull.
   the seabed. **Lose a line** breaks the most loaded line and **Fit new
   lines** puts them back. A line that reaches its breaking load parts on its
   own and the HUD says so. `?lose=N` opens the world with N lines broken.
+  In a storm warning it says the storm lines are made fast and how many
+  hold. **Let the storm lines go** shows the sixteen alone in that weather,
+  and **Make the storm lines fast** puts them back. Losing a line of a
+  storm leg leaves its partner to carry the leg.
+- **The panel's hull.** A hull set with **What would it take?** moves as
+  that hull: `sim_shape_of_hull` gives the step its plan, draft, depth,
+  centre of gravity and wind area (by `SIM_WINDAGE`'s rule) from
+  `metaverse/hull.coax`'s ledger, and its lines are laid afresh at its own
+  corners for the site's depth. The lines are still `prime`'s sixteen 40 MN
+  lines; they are not resized for the hull. A hull whose ledger says it
+  would not float is held at a metre of freeboard in the step. The picture's
+  own hull stays `prime`'s shape exactly, so the spec's runs are unchanged.
 - The hull's card gives the same layout, the turn, both pushes and the lines
   broken, and says what is not modelled.
-- Under the sea each line is drawn as four straight pieces through points of
-  the mooring model's own curve (`sim_line_packed`): the anchor, where the
-  line leaves the seabed, two points up the hanging part and the fairlead.
-  They are the last 132 floats of the uniforms (the seabed's height, then 8
-  floats a line, in the world's frame), which brings the block to 4,083 of
-  the 4,096 vec4s a uniform block may hold on every device. A broken line
-  lies on the seabed from its anchor.
+- Under the sea each line is drawn through points of the mooring model's
+  own curve (`sim_line_packed`): along the seabed from the anchor to where
+  the line leaves it, then up a parabola through the curve's point half way
+  to the fairlead, as three straight pieces. The storm legs are drawn the
+  same way when they are made fast, and a leg down to one of its two lines
+  is drawn thinner. The view draws the four lines nearest the eye; under
+  water it sees tens of metres, and the lines' anchors are hundreds of
+  metres apart. They are the last 24 floats of the uniforms (the seabed's
+  and the fairleads' heights, two spare, then 5 floats a line, in the
+  world's frame), which brings the block to 4,056 of the 4,096 vec4s a
+  uniform block may hold on every device WebGPU promises, leaving 40 for
+  others. A broken line lies on the seabed from its anchor.
 - **What the hull samples.** The hull feels the spectral sea's waves at its
   place, each weighted by its length against the draft, in the sea the hull
   changes round itself. `metaverse/slab-shelter.coax` takes the wall and lee
@@ -1638,14 +1682,15 @@ the camera, the walker, the drawing and the cards follow the turned hull.
 
 **Departures, and what this does not model:**
 - The sixteen 40 MN lines are the spec's, sized for a 20 m/s wind on a 25 m
-  wall. They pass test 6 on the drawn wall, but they have no storm margin.
-  In the page's hurricane the worst line is at two thirds of its breaking
-  load and the hull is 113 m off its place, 7.5% of the depth. Square on the
-  long wall the same storm would part them. A mooring designed to offshore
-  practice keeps its worst line under 60% of breaking in its design storm
-  with every line intact, which here needs about twice the lines or twice
-  their strength. That sizing is open. The numbers are as the model gives
-  them; nothing was tuned.
+  wall. They pass test 6 on the drawn wall, but alone they have no storm
+  margin: square on the long wall the hurricane parts them. The storm legs
+  (section 4.3) close this: with them the hurricane is held from every side
+  at rest inside the 1.67 margin, and for ten minutes without a line
+  parting. What does not hold: in 89 m of water, on chain, the storm's
+  single moments pass the margin (about 30 MN), and one line lost there
+  can start a cascade. The world shows both. The legs and lines are the
+  construction simulation's sizing and the 1.67 is our assumption; nothing
+  was tuned to the tests.
 - The drift force is an estimate from the wall's draft and the waves the
   hull turns back. It leaves out the hull's own motion, the waves the hull
   sends out and any change to the sea round the hull.

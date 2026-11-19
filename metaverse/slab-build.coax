@@ -150,7 +150,7 @@ CS_WORK_HS :: 2.5; CS_WORK_WIND :: 15.0; CS_WORK_CURRENT :: 0.5;   // the worst 
 // storm lines: more of the same chain, laid square to the hull's sides as it grows and made fast
 // at a storm warning. Four legs on each side that lies along x and two on each that lies along z,
 // each leg as many chains side by side as the design storm asks for
-CS_STORM_LONG :: 4; CS_STORM_SHORT :: 2;
+CS_STORM_LONG :: MOOR_STORM_LONG; CS_STORM_SHORT :: MOOR_STORM_SHORT;   // slab-moor.coax's storm legs
 CS_STORM_CHAINS :: 8;       // the most chains in a leg
 // the ocean tow
 CS_OCEAN_TUG_T :: 300.0;    // each tug, t
@@ -1073,22 +1073,13 @@ cs_rig_hold :: (rig: [] MoorRig, fx: f64, fz: f64) -> CsHold {
 // slab-moor.coax solves and draws them. Legs 0 to 2 CS_STORM_LONG - 1 leave the sides that lie
 // along x and hold a push along z; the rest leave the other two sides and hold along x.
 cs_storm_rig :: (run: [] CsRun, lx: f64, lz: f64, draft: f64) -> MoorRig {
-  o := cs_rig(run, lx, lz, draft); n := 0;
-  for side: 0..<2 {
-    s := ifx side == 0 then -1.0 else 1.0;
-    for i: 0..<CS_STORM_LONG {
-      o.fx[n] = -lx * 0.5 + (f64(i) + 0.5) * lx / f64(CS_STORM_LONG); o.fz[n] = s * lz * 0.5;
-      o.ax[n] = o.fx[n]; o.az[n] = o.fz[n] + s * o.span; n += 1;
-    }
+  o := cs_rig(run, lx, lz, draft);
+  // the legs are slab-moor.coax's, the finished world's storm legs (moor_storm_leg)
+  for n: 0..<MOOR_STORM_LEGS {
+    g := moor_storm_leg(lx, lz, o.span, n);
+    o.fx[n] = g[0]; o.fz[n] = g[1]; o.ax[n] = g[2]; o.az[n] = g[3]; o.chains[n] = 1;
   }
-  for side: 0..<2 {
-    s := ifx side == 0 then -1.0 else 1.0;
-    for i: 0..<CS_STORM_SHORT {
-      o.fx[n] = s * lx * 0.5; o.fz[n] = -lz * 0.5 + (f64(i) + 0.5) * lz / f64(CS_STORM_SHORT);
-      o.ax[n] = o.fx[n] + s * o.span; o.az[n] = o.fz[n]; n += 1;
-    }
-  }
-  o.count = n;
+  o.count = MOOR_STORM_LEGS; o.own = MOOR_STORM_LEGS;
   return o;
 }
 // The pull of both rigs on a hull moved (x, z): the world's lines and the storm legs, each leg

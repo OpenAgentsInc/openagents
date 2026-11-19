@@ -775,29 +775,41 @@ slab_capsule :: (o:V3,d:V3,a:V3,b:V3,r:f32)->V4 {
   }
   return v4(SLAB_MISS,0.0f32,1.0f32,0.0f32);
 }
-SLAB_MOOR :: 16200;   // the mooring lines (slab-lines.coax, U_MOOR): the seabed's height, then 16 lines of 8 floats
-// The mooring lines (the world's frame), seen under water, as the mooring model has them now.
-// Each line is its anchor on the seabed (x, z), its fairlead (x, y, z), the share of the way to
-// the fairlead at which it leaves the seabed (under 0: no line), and how far it hangs below the
-// straight run from there, a third and two thirds of the way along. Four straight pieces: along
-// the seabed, then up through the two hanging points to the hull. A broken line lies on the seabed.
+SLAB_MOOR :: 16200;   // the mooring lines (slab-lines.coax, U_MOOR): the seabed's and the fairleads' heights, two spare, then 4 lines of 5 floats
+// The mooring lines nearest the eye (the world's frame), seen under water, as the mooring model
+// has them now, the hull's own or its storm legs. Each line is its anchor on the seabed (x, z),
+// its fairlead (x, z) and a code (slab-lines.coax, lines_uniforms): under 0 no line; else 2,048
+// times the thousandths of the way to the fairlead at which it leaves the seabed, plus how far it
+// hangs below the straight run half way (m), plus 1,024 for a storm leg down to one line (drawn
+// thinner), or 2,047 for a broken line on the seabed. Four straight pieces: along the seabed, then
+// up a parabola through the hanging point (at a third and two thirds of the way it hangs 8/9 as
+// far) to the hull.
 slab_lines :: (o:V3,d:V3,limit:f32,u:[]f32)->SlabHit {
   hit:SlabHit=SlabHit.{t=limit,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
   bed:f32=u[SLAB_MOOR];
+  fy:f32=u[SLAB_MOOR+1];
   i:s32=0;
-  while i<16 {
-    b:s32=SLAB_MOOR+4+(i*8);
-    if (u[b+5]>=0.0f32) {
+  while i<4 {
+    b:s32=SLAB_MOOR+4+(i*5);
+    code:f32=u[b+4];
+    if (code>=0.0f32) {
+      q:f32=floor(code/2048.0f32);
+      r:f32=code-(q*2048.0f32);
+      lost:bool=r>2046.5f32;
+      half:bool=(r>1023.5f32)&&(!lost);
+      sag:f32=ifx lost then 0.0f32 else (-(ifx half then r-1024.0f32 else r)*0.8888889f32);
+      share:f32=ifx lost then 0.5f32 else (q/1000.0f32);
       a:V3=v3(u[b],bed,u[b+1]);
-      f:V3=v3(u[b+2],u[b+3],u[b+4]);
-      p1:V3=v3(mix(a.x,f.x,u[b+5]),bed,mix(a.z,f.z,u[b+5]));
-      p2:V3=sb_add(sb_mix(p1,f,0.33333334f32),v3(0.0f32,u[b+6],0.0f32));
-      p3:V3=sb_add(sb_mix(p1,f,0.6666667f32),v3(0.0f32,u[b+7],0.0f32));
+      f:V3=v3(u[b+2],ifx lost then bed else fy,u[b+3]);
+      p1:V3=v3(mix(a.x,f.x,share),bed,mix(a.z,f.z,share));
+      p2:V3=sb_add(sb_mix(p1,f,0.33333334f32),v3(0.0f32,sag,0.0f32));
+      p3:V3=sb_add(sb_mix(p1,f,0.6666667f32),v3(0.0f32,sag,0.0f32));
+      rad:f32=ifx half then 0.3f32 else 0.6f32;
       j:s32=0;
       while j<4 {
         ca:V3=ifx j==0 then a else (ifx j==1 then p1 else (ifx j==2 then p2 else p3));
         cb:V3=ifx j==0 then p1 else (ifx j==1 then p2 else (ifx j==2 then p3 else f));
-        h:V4=slab_capsule(o,d,ca,cb,0.6f32);
+        h:V4=slab_capsule(o,d,ca,cb,rad);
         if (h.x<hit.t) { hit=SlabHit.{t=h.x,n=v3(h.y,h.z,h.w),kind=45.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)}; }
         j+=1;
       }

@@ -14,9 +14,13 @@
 
 #load "../../metaverse/slab-shelter.coax";
 
-LINES_SHOWN :: 16;                              // lines the view under water draws
-LINES_HEAD :: 4;                                // the block's first floats: the seabed's height, then spare
-LINES_FLOATS :: LINES_HEAD + LINES_SHOWN * STATION_PACKED;   // their block of the uniforms: 132 floats
+LINES_ALL :: 16 + MOOR_STORM_LEGS;              // the hull's own lines and its storm legs
+LINES_SHOWN :: 4;                               // the lines nearest the eye, which the view under water draws
+LINES_EACH :: 5;                                // floats a line in the block (lines_uniforms)
+LINES_HEAD :: 4;                                // the block's first floats: the seabed's height, the fairleads' height, then spare
+LINES_FLOATS :: LINES_HEAD + LINES_SHOWN * LINES_EACH;   // their block of the uniforms: 24 floats, 6 vec4s
+LINES_LOST :: 2047.0;                           // a line's code: lost, on the seabed
+LINES_HALF :: 1024.0;                           // added to a storm leg's code when it has lost a line of its own
 LINES_DOC :: "https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/ocean/slab-world-spec.md#the-hull-on-its-moorings";
 // What this world does not work out, for the HUD and the hull's card.
 LINES_HONEST :: "Not worked out here: how the platform changes the waves round it, beyond the white water at its walls and the calm behind it, and the forces a full hydrodynamic analysis gives for each wave frequency. The water it carries and its damping are stand-ins.";
@@ -27,7 +31,7 @@ Lines :: struct {
   have: bool; site: int; layout: int; wind: f64; depth: f64;
   lose: int;                // ?lose=N: lines already lost when the world opens
   // where the lines that still hold will bring the hull to rest, worked out when a line goes
-  rested: bool; rest_lost: u32; rest: SimStation;
+  rested: bool; rest_lost: u32; rest_chains: f64; rest: SimStation;
   // the sea as the hull changes it, for its forces, and the wall and lee models' lay it was made from
   shelter: [1] Shelter;
   sheltered: bool; lee_wind: f64; lee_x: f64; lee_z: f64; lee_c: f64; lee_s: f64; lee_mode: int;
@@ -55,6 +59,9 @@ lines_shelter :: (s: [] Slab, phone: bool) {
 // seconds. Called once a frame after the sea's own tile is made (its working room is free then).
 lines_step :: (s: [] Slab, tick: u64, wx: f64, wz: f64, frame: f64, settle: bool, phone: bool) {
   depth := slab_site(s).depth; wind := s[0].wind;
+  // the hull the "What would it take?" panel gives: its size, draft and load move it (a change
+  // lays its lines afresh, so the next lines put it at rest for that hull)
+  if !s[0].hull.round && s[0].layout != LAYOUT_CLUSTER { s[0].hull = sim_hull_sized(s[0].hull, lines_shape(s)); }
   whl_sea(s[0].synth[..], tick, sim_shape(s[0].hull).t, s[0].tile[0].scratch[..], s[0].lines[0].sea[..]);
   if s[0].layout == LAYOUT_CLUSTER {
     for i: 0..<SIM_DOMES { s[0].cluster.domes[i].depth = depth; }
@@ -70,8 +77,9 @@ lines_step :: (s: [] Slab, tick: u64, wx: f64, wz: f64, frame: f64, settle: bool
   s[0].hull.depth = depth;
   k := s[0].lines[0];
   if !k.have || !s[0].hull.rig[0].built || k.site != s[0].site || k.layout != s[0].layout || k.wind != wind || k.depth != depth {
-    // new weather or a new place: the hull is where hours of it would leave it
-    s[0].hull = sim_hull_settle(s[0].hull, s[0].lines[0].sea[..], wind, wx, wz);
+    // new weather or a new place: the storm legs are made fast if it is a storm warning, and the
+    // hull is where hours of it would leave it
+    s[0].hull = sim_hull_weathered(s[0].hull, s[0].lines[0].sea[..], wind, wx, wz);
     for i: 0..<k.lose { s[0].hull = sim_hull_settle(sim_lose_line(s[0].hull), s[0].lines[0].sea[..], wind, wx, wz); }
     s[0].lines[0].lose = 0;
     s[0].lines[0].have = true; s[0].lines[0].site = s[0].site; s[0].lines[0].layout = s[0].layout;
@@ -87,10 +95,17 @@ lines_step :: (s: [] Slab, tick: u64, wx: f64, wz: f64, frame: f64, settle: bool
   held := s[0].hull.lost;
   s[0].hull = sim_hull_advance_lee(s[0].hull, s[0].lines[0].sea[..], s[0].lines[0].shelter[0].lee[0..<nc], s[0].lines[0].shelter[0].wall[0..<ne], wind, wx, wz, frame);
   if s[0].hull.lost != held { sb_toast(s, "A mooring line reached its breaking load and parted."); }
-  if !s[0].lines[0].rested || s[0].lines[0].rest_lost != s[0].hull.lost {
+  if !lines_rest_now(s) {
     s[0].lines[0].rest = sim_station(sim_hull_settle(s[0].hull, s[0].lines[0].sea[..], wind, wx, wz));
-    s[0].lines[0].rested = true; s[0].lines[0].rest_lost = s[0].hull.lost;
+    s[0].lines[0].rested = true; s[0].lines[0].rest_lost = s[0].hull.lost; s[0].lines[0].rest_chains = lines_chains(s[0].hull);
   }
+}
+// The lines in the hull's rig, a storm leg counting each of its own.
+lines_chains :: (h: SimHull) -> f64 { n := 0.0; for i: 0..<h.rig[0].count { n += h.rig[0].chains[i]; } return n; }
+// Whether the rest worked out last is for the lines that hold now.
+lines_rest_now :: (s: [] Slab) -> bool {
+  k := s[0].lines[0];
+  return k.rested && k.rest_lost == s[0].hull.lost && k.rest_chains == lines_chains(s[0].hull);
 }
 // The most loaded line parts; the hull moves off and turns over the next minutes.
 lines_lose :: (s: [] Slab) {
@@ -102,17 +117,76 @@ lines_refit :: (s: [] Slab) {
   s[0].hull = sim_refit_lines(s[0].hull);
   s[0].lines[0].have = false;
 }
+// The hull's shape for the physics: the panel's hull in the prime layout, else prime's.
+lines_shape :: (s: [] Slab) -> SimShape {
+  if s[0].layout == LAYOUT_PRIME && s[0].change[0].ready && !change_picture_hull(s[0].change[..]) { return sim_shape_of_hull(s[0].change[0].facts.shape, s[0].change[0].facts.led); }
+  return sim_prime_shape();
+}
+// The storm legs made fast, or let go, in the weather now; the hull is where the lines then hold it.
+lines_storm :: (s: [] Slab, fast: bool) {
+  if s[0].layout == LAYOUT_CLUSTER { return; }
+  wd := wsp_direction(s[0].spectrum);
+  s[0].hull = sim_hull_stormed(s[0].hull, fast, s[0].lines[0].sea[..], s[0].wind, wd.x, wd.y);
+  s[0].lines[0].rested = false;
+}
 
+// Every line as sim_line_packed has it, in the world's frame: STATION_PACKED floats each at
+// out[j * STATION_PACKED] for j up to LINES_ALL (under 0 at +4: no line).
+lines_packed :: (h: SimHull, out: [] f32) {
+  for j: 0..<LINES_ALL { sim_line_packed(h, j, out, j * STATION_PACKED); }
+}
+// Whether storm leg j has lost a line of its own (its partner carries it).
+lines_half :: (h0: SimHull, j: int) -> bool {
+  h := sim_rigged(h0); sh := sim_shape(h); rig := h.rig[0];
+  if j < rig.own || j >= rig.count { return false; }
+  made := ifx j - rig.own < 2 * MOOR_STORM_LONG then sh.storm_kz else sh.storm_kx;
+  return rig.chains[j] > 0 && rig.chains[j] < f64(made);
+}
 // The lines for the view under the sea, in the world's frame: LINES_FLOATS floats at u[at..]. The
-// seabed's height, then each line as sim_line_packed has it (its anchor, its fairlead, where it
-// leaves the seabed and how far it hangs below the straight run; under 0 there: no line). The
-// shader (gpu/slab.coax, slab_lines) draws each as four straight pieces through those points.
+// seabed's height and the fairleads', then the LINES_SHOWN lines nearest the eye (the sea hides
+// the rest: under water the view reaches tens of metres), each its anchor x, z, its fairlead x, z,
+// and a code: under 0 no line; else 2,048 times the share of the way along the seabed at which it
+// leaves it (in thousandths) plus how far it hangs below the straight run half way, in m, with
+// LINES_HALF added for a storm leg down to one line, or LINES_LOST for a line on the seabed. The
+// shader (gpu/slab.coax, slab_lines) draws each along the seabed, then up a parabola to the hull.
+// A uniform block holds 4,096 vec4s on every device WebGPU promises; this block keeps to six.
 lines_uniforms :: (s: [] Slab, u: [] f32, at: int) {
   for i: 0..<LINES_FLOATS { u[at + i] = 0; }
-  for j: 0..<LINES_SHOWN { u[at + LINES_HEAD + j * STATION_PACKED + 5] = -1; }
+  for j: 0..<LINES_SHOWN { u[at + LINES_HEAD + j * LINES_EACH + 4] = -1; }
   if !s[0].under || s[0].build.on || s[0].layout == LAYOUT_CLUSTER { return; }
-  u[at] = -f32(sim_rigged(s[0].hull).rig[0].depth);
-  for j: 0..<LINES_SHOWN { sim_line_packed(s[0].hull, j, u, at + LINES_HEAD + j * STATION_PACKED); }
+  h := s[0].hull;
+  bed := -f32(sim_rigged(h).rig[0].depth); fy := f32(sim_fairlead_y(h));
+  u[at] = bed; u[at + 1] = fy;
+  p: [LINES_ALL * STATION_PACKED] f32;
+  lines_packed(h, p[..]);
+  // each line's distance from the eye: to the straight run from its anchor to its fairlead
+  far: [LINES_ALL] f32;
+  e := s[0].eye;
+  for j: 0..<LINES_ALL {
+    b := j * STATION_PACKED;
+    far[j] = 1.0e30;
+    if p[b + 4] < 0 { continue; }
+    top := ifx p[b + 5] >= 1 then bed else fy;
+    dx := p[b + 2] - p[b]; dy := top - bed; dz := p[b + 3] - p[b + 1];
+    ll := dx * dx + dy * dy + dz * dz;
+    t: f32 = 0;
+    if ll > 0 { t = ((e[0] - p[b]) * dx + (e[1] - bed) * dy + (e[2] - p[b + 1]) * dz) / ll; }
+    if t < 0 { t = 0; } if t > 1 { t = 1; }
+    qx := p[b] + dx * t - e[0]; qy := bed + dy * t - e[1]; qz := p[b + 1] + dz * t - e[2];
+    far[j] = qx * qx + qy * qy + qz * qz;
+  }
+  for k: 0..<LINES_SHOWN {
+    best := -1;
+    for j: 0..<LINES_ALL { if far[j] < 1.0e29 && (best < 0 || far[j] < far[best]) { best = j; } }
+    if best < 0 { break; }
+    far[best] = 1.0e30;
+    b := best * STATION_PACKED; o := at + LINES_HEAD + k * LINES_EACH;
+    u[o] = p[b]; u[o + 1] = p[b + 1]; u[o + 2] = p[b + 2]; u[o + 3] = p[b + 3];
+    sag := -p[b + 5]; if sag < 0 { sag = 0; } if sag > 1000 { sag = 1000; }
+    code := f32(floor(f64(p[b + 4]) * 1000.0 + 0.5)) * 2048.0;
+    if p[b + 5] >= 1 { code += f32(LINES_LOST); } else { code += f32(floor(f64(sag) + 0.5)); if lines_half(h, best) { code += f32(LINES_HALF); } }
+    u[o + 4] = code;
+  }
 }
 
 // ---------------------------------------------------------------- words
@@ -148,7 +222,28 @@ lines_card_now :: (s: [] Slab, c: [] Card) {
   l := line(c, ST_LIVE, "OFFSET "); num(c, l, st.offset, 1); more(c, l, " M  TURN "); num(c, l, abs(st.turn), 2);
   more(c, l, "°  PEAK LINE "); num(c, l, st.peak / 1e6, 1); more(c, l, " OF "); num(c, l, st.breaking / 1e6, 0); more(c, l, " MN");
   l = line(c, ST_LIVE, "WIND "); num(c, l, st.wind / 1e6, 1); more(c, l, " MN  WAVES' SLOW PUSH "); num(c, l, st.drift / 1e6, 1); more(c, l, " MN");
+  if st.storm { l = line(c, ST_LIVE, "STORM LINES FAST: "); num(c, l, f64(st.storm_lines), 0); more(c, l, " IN "); num(c, l, f64(st.legs), 0); more(c, l, " LEGS"); if st.storm_held < st.storm_lines { more(c, l, ", "); num(c, l, f64(st.storm_lines - st.storm_held), 0); more(c, l, " BROKEN"); } }
   if st.lost > 0 { l = line(c, ST_WARN, "LINES BROKEN: "); num(c, l, f64(st.lost), 0); more(c, l, " OF "); num(c, l, f64(st.lines), 0); }
+}
+// The hull's card in the HUD (slab-cards.coax, cd_hull): what the lines are doing now ...
+lines_cd_now :: (s: [] Slab, h: [] SceneHud) {
+  st := sim_station(s[0].hull);
+  ts: [1] SbText; t: SbText;
+  t = SbText.{}; t = sb_n(t, abs(st.turn), 1); t = sb_w(t, "°"); ts[0] = t;
+  sh_fact(h, "Turned by", sb_s(ts[..]), SH_OURS);
+  if st.storm {
+    t = SbText.{}; t = sb_n(t, f64(st.storm_held), 0); t = sb_w(t, " of "); t = sb_n(t, f64(st.storm_lines), 0); ts[0] = t;
+    sh_fact(h, "Storm lines holding", sb_s(ts[..]), SH_OURS);
+  }
+  if st.lost > 0 {
+    t = SbText.{}; t = sb_n(t, f64(st.lost), 0); t = sb_w(t, " of "); t = sb_n(t, f64(st.lines), 0); ts[0] = t;
+    sh_fact(h, "Mooring lines broken", sb_s(ts[..]), SH_OURS);
+  }
+}
+// ... and, behind its fold, the layout the depth gives and what this world does not work out.
+lines_cd_maths :: (s: [] Slab, h: [] SceneHud) {
+  ts: [1] SbText; ts[0] = lines_layout(sim_station(s[0].hull)); sh_say(h, sb_s(ts[..]));
+  sh_say(h, LINES_HONEST);
 }
 lines_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
   if group != HUD_INSIDE || s[0].build.on { return; }
@@ -159,11 +254,15 @@ lines_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
     ts[0] = lines_layout(st); sh_say(h, sb_s(ts[..]));
     t = SbText.{}; t = sb_n(t, f64(st.lines - st.lost), 0); t = sb_w(t, " of "); t = sb_n(t, f64(st.lines), 0); ts[0] = t;
     sh_fact(h, "Lines holding", sb_s(ts[..]), SH_NONE);
+    if st.storm {
+      t = SbText.{}; t = sb_n(t, f64(st.storm_held), 0); t = sb_w(t, " of "); t = sb_n(t, f64(st.storm_lines), 0); t = sb_w(t, ", in "); t = sb_n(t, f64(st.legs), 0); t = sb_w(t, " legs"); ts[0] = t;
+      sh_fact(h, "Storm lines holding", sb_s(ts[..]), SH_OURS);
+    }
     t = SbText.{}; t = sb_n(t, st.offset, 0); t = sb_w(t, " m"); ts[0] = t;
     sh_fact(h, "Pushed off its place by", sb_s(ts[..]), SH_NONE);
     t = SbText.{}; t = sb_n(t, abs(st.turn), 1); t = sb_w(t, "°"); ts[0] = t;
     sh_fact(h, "Turned by", sb_s(ts[..]), SH_NONE);
-    if st.lost < st.lines {
+    if st.held > 0 {
       t = SbText.{}; t = sb_n(t, st.peak / 1e6, 1); t = sb_w(t, " of "); t = sb_n(t, st.breaking / 1e6, 0); t = sb_w(t, " meganewtons"); ts[0] = t;
       sh_fact(h, "Hardest-pulled line", sb_s(ts[..]), SH_OURS);
     }
@@ -171,7 +270,7 @@ lines_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
     sh_fact(h, "Push of the wind", sb_s(ts[..]), SH_NONE);
     t = SbText.{}; t = sb_n(t, st.drift / 1e6, 1); t = sb_w(t, " meganewtons"); ts[0] = t;
     sh_fact(h, "Slow push of the waves", sb_s(ts[..]), SH_NONE);
-    if st.lost < st.lines {
+    if st.held > 0 {
       if st.kind == MOOR_CATENARY {
         t = SbText.{}; t = sb_w(t, "at least "); t = sb_n(t, st.grounded, 0); t = sb_w(t, " m of each"); ts[0] = t;
         sh_fact(h, "Chain still on the seabed", sb_s(ts[..]), SH_NONE);
@@ -180,11 +279,13 @@ lines_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
         sh_fact(h, "Hardest upward pull on an anchor", sb_s(ts[..]), SH_NONE);
       }
     }
-    if st.lost == st.lines { sh_say(h, "Every line has broken. The platform is adrift."); }
-    else if st.lost > 0 {
+    if lines_hull(s).round { sh_say(h, "The domes have no storm lines in this world: their own lines hold them alone, whatever the weather."); }
+    if st.storm { sh_say(h, "A storm is forecast, so storm lines are made fast: more of the same line in legs square to the sides, as during the build. The sixteen alone would be pulled past their safe load."); }
+    if st.held == 0 { sh_say(h, "Every line has broken. The platform is adrift."); }
+    else if st.lost > 0 || st.storm_held < st.storm_lines {
       sh_say(h, "A broken line lies on the seabed. The platform moves off and turns, over several minutes, until the rest hold it. If one of those reaches its breaking load it goes too.");
       k := s[0].lines[0];
-      if s[0].layout != LAYOUT_CLUSTER && k.rested && k.rest_lost == s[0].hull.lost {
+      if s[0].layout != LAYOUT_CLUSTER && lines_rest_now(s) {
         t = SbText.{}; t = sb_n(t, k.rest.offset, 0); t = sb_w(t, " m off its place, turned "); t = sb_n(t, abs(k.rest.turn), 1); t = sb_w(t, "°"); ts[0] = t;
         sh_fact(h, "Where it comes to rest", sb_s(ts[..]), SH_NONE);
         t = SbText.{}; t = sb_n(t, k.rest.peak / 1e6, 1); t = sb_w(t, " of "); t = sb_n(t, k.rest.breaking / 1e6, 0); t = sb_w(t, " meganewtons"); ts[0] = t;
@@ -193,8 +294,9 @@ lines_hud :: (s: [] Slab, h: [] SceneHud, group: int) {
       }
     }
     if s[0].layout != LAYOUT_CLUSTER {
-      if st.lost < st.lines { sh_button(h, "lines.lose", "Lose a line", false); }
-      if st.lost > 0 { sh_button(h, "lines.refit", "Fit new lines", false); }
+      if st.held > 0 { sh_button(h, "lines.lose", "Lose a line", false); }
+      if st.lost > 0 || st.storm_held < st.storm_lines { sh_button(h, "lines.refit", "Fit new lines", false); }
+      if !lines_hull(s).round { sh_button(h, "lines.storm", ifx st.storm then "Let the storm lines go" else "Make the storm lines fast", false); }
     }
     sh_say(h, LINES_HONEST);
     sh_link(h, "How this is worked out", LINES_DOC);
@@ -209,6 +311,12 @@ lines_act :: (s: [] Slab, id: string, value: int) -> bool {
   if id == "lines.refit" {
     lines_refit(s);
     sb_toast(s, "New lines are fitted.");
+    return true;
+  }
+  if id == "lines.storm" {
+    fast := !s[0].hull.storm;
+    lines_storm(s, fast);
+    sb_toast(s, ifx fast then "The storm lines are made fast." else "The storm lines are let go. The sixteen hold the platform alone.");
     return true;
   }
   return false;
@@ -230,10 +338,10 @@ lines_test_step :: (s: [] Slab, frame: f64, settle: bool) {
 }
 
 #test "lines: the mooring block follows the sea block, where the shader reads it" {
-  // gpu/slab.coax SLAB_MOOR and gpu/slab.bindings' vec4 count (4083) follow these. A uniform block
-  // is at most 64 KiB (4,096 vec4s) on every device WebGPU promises, so 13 are left.
-  #assert U_MOOR == 16200 && LINES_FLOATS == 132 && UNIFORM_FLOATS == 16332 && UNIFORM_FLOATS == 4083 * 4 && UNIFORM_FLOATS * 4 <= 65536;
-  #assert LINES_SHOWN == MOOR_MAX && STATION_PACKED == 8;
+  // gpu/slab.coax SLAB_MOOR and gpu/slab.bindings' vec4 count (4093) follow these. A uniform block
+  // is at most 64 KiB (4,096 vec4s) on every device WebGPU promises, so 3 are left.
+  #assert U_MOOR == 16200 && LINES_FLOATS == 24 && UNIFORM_FLOATS == 16224 && UNIFORM_FLOATS == 4056 * 4 && UNIFORM_FLOATS * 4 <= 65536;
+  #assert LINES_ALL == 28 && LINES_ALL <= MOOR_MAX && LINES_SHOWN == 4 && LINES_EACH == 5 && STATION_PACKED == 6;
 }
 #test "lines: the hull's forces read the sea the wall and lee models draw: more at the weather walls, less in the lee" #steps 4000000000 {
   xs: [1] SbTest; s := xs[0].s[..];
@@ -328,31 +436,42 @@ lines_test_step :: (s: [] Slab, frame: f64, settle: bool) {
   slab_card(s, 0, card[..]);
   #assert card_says(card[..], "LINES BROKEN: 1 OF 16");
   // under the sea fifteen lines run to the hull and one lies on the seabed
-  u: [UNIFORM_FLOATS] f32;
+  u: [LINES_ALL * STATION_PACKED] f32; fy := f32(sim_fairlead_y(s[0].hull));
   s[0].under = true; slab_pose(s);
-  lines_uniforms(s, u[..], U_MOOR);
-  #assert u[U_MOOR] == -1408;
+  lines_packed(s[0].hull, u[..]);
   held := 0; down := 0;
-  for j: 0..<LINES_SHOWN {
-    at := U_MOOR + LINES_HEAD + j * STATION_PACKED;
-    #assert u[at + 5] >= 0;
-    if u[at + 3] > -100 {
+  for j: 0..<LINES_ALL {
+    at := j * STATION_PACKED;
+    // a gale is no storm warning: no storm legs are drawn
+    if j >= 16 { #assert u[at + 4] < 0; continue; }
+    #assert u[at + 4] >= 0;
+    if u[at + 5] < 1 {
       held += 1;
       // a taut leg from its anchor 2 km out to the keel, at a corner of the hull as it lies now
-      f := to_hull(s, u[at + 2], u[at + 3], u[at + 4]);
-      #assert u[at + 5] == 0 && abs(f[1] + f32(SIM_T)) < 0.5 && abs(abs(f[0]) - f32(SIM_L) / 2) < 15 && abs(abs(f[2]) - f32(SIM_B) / 2) < 15;
-      #assert sqrt(u[at] * u[at] + u[at + 1] * u[at + 1]) > 2000 && u[at + 6] < 0 && u[at + 7] < 0;
+      f := to_hull(s, u[at + 2], fy, u[at + 3]);
+      #assert u[at + 4] == 0 && abs(f[1] + f32(SIM_T)) < 0.5 && abs(abs(f[0]) - f32(SIM_L) / 2) < 15 && abs(abs(f[2]) - f32(SIM_B) / 2) < 15;
+      #assert sqrt(u[at] * u[at] + u[at + 1] * u[at + 1]) > 2000 && u[at + 5] < 0;
     } else {
       // the broken one lies on the seabed
       down += 1;
-      #assert u[at + 3] == -1408 && u[at + 6] == 0 && u[at + 7] == 0;
+      #assert u[at + 4] == 0.5 && u[at + 5] == 1;
     }
   }
   #assert held == 15 && down == 1;
+  // the view under the sea draws the four nearest the eye: at the broken line's anchor, it is one
+  // of them, on the seabed
+  b: [UNIFORM_FLOATS] f32;
+  gone := -1; for j: 0..<LINES_ALL { if u[j * STATION_PACKED + 4] >= 0 && u[j * STATION_PACKED + 5] >= 1 { gone = j; } }
+  s[0].eye[0] = u[gone * STATION_PACKED]; s[0].eye[1] = -1400; s[0].eye[2] = u[gone * STATION_PACKED + 1];
+  lines_uniforms(s, b[..], U_MOOR);
+  #assert b[U_MOOR] == -1408;
+  b0 := U_MOOR + LINES_HEAD;
+  #assert b[b0] == u[gone * STATION_PACKED] && b[b0 + 1] == u[gone * STATION_PACKED + 1] && abs(f64(b[b0 + 4]) - (500.0 * 2048.0 + LINES_LOST)) < 0.5;
+  for k: 1..<LINES_SHOWN { #assert b[b0 + k * LINES_EACH + 4] >= 0 && b[b0 + k * LINES_EACH + 4] < 2048; }
   // out of the water the block says no lines: nothing is worked out for a view that does not draw it
   s[0].under = false;
-  lines_uniforms(s, u[..], U_MOOR);
-  for j: 0..<LINES_SHOWN { #assert u[U_MOOR + LINES_HEAD + j * STATION_PACKED + 5] < 0; }
+  lines_uniforms(s, b[..], U_MOOR);
+  for j: 0..<LINES_SHOWN { #assert b[U_MOOR + LINES_HEAD + j * LINES_EACH + 4] < 0; }
   // new lines put it back
   sb_act(s, "lines.refit");
   lines_test_step(s, 0, true);
@@ -371,15 +490,16 @@ lines_test_step :: (s: [] Slab, frame: f64, settle: bool) {
   #assert card_says(card[..], "16 CHAINS OF 1,0") && card_says(card[..], "LIE ALONG THE SEABED 89 M DOWN");
   sb_say(s);
   #assert sb_test_has(s, 'F', "Chain still on the seabed", "") && !sb_test_has(s, 'F', "Hardest upward pull on an anchor", "");
-  u: [UNIFORM_FLOATS] f32;
+  u: [LINES_ALL * STATION_PACKED] f32;
   s[0].under = true; slab_pose(s);
-  lines_uniforms(s, u[..], U_MOOR);
-  #assert u[U_MOOR] == -89;
-  for j: 0..<LINES_SHOWN {
-    at := U_MOOR + LINES_HEAD + j * STATION_PACKED;
+  lines_packed(s[0].hull, u[..]);
+  #assert sim_rigged(s[0].hull).rig[0].depth == 89;
+  for j: 0..<LINES_ALL {
+    at := j * STATION_PACKED;
+    if j >= 16 { #assert u[at + 4] < 0; continue; }
     // the chain lies on the seabed 89 m down for part of its run, then comes up to the waterline,
     // hanging below the straight run
-    #assert u[at + 5] > 0.1 && u[at + 5] < 1 && abs(u[at + 3]) < 1.5 && u[at + 6] < -1 && u[at + 7] < -1;
+    #assert u[at + 4] > 0.1 && u[at + 4] < 1 && abs(sim_fairlead_y(s[0].hull)) < 1.5 && u[at + 5] < -1;
     #assert sqrt(u[at] * u[at] + u[at + 1] * u[at + 1]) > 1000;
   }
   // the deep site
@@ -414,4 +534,84 @@ lines_test_step :: (s: [] Slab, frame: f64, settle: bool) {
   s[0].held = KB_SHIFT;
   for i: 0..<600 { fly_step(s, 0.1); }
   #assert abs(s[0].fy + 87) < 0.01;
+}
+#test "lines: a hurricane is a storm warning: the storm lines are made fast, said, drawn, and can be let go from the HUD" #steps 4000000000 {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..]; card: [1] Card;
+  sb_test_open(x);
+  s[0].site = SITE_TEXAS; s[0].sea = SEA_HURRICANE; s[0].wind_forced = -1;
+  slab_build(s, true);
+  lines_test_step(s, 0, true);
+  st := sim_station(s[0].hull);
+  #assert st.storm && st.legs == MOOR_STORM_LEGS && st.storm_lines == 20 && st.storm_held == 20 && st.held == 28 && st.peak < st.breaking;
+  sb_say(s);
+  #assert sb_test_has(s, 'F', "Storm lines holding", "20 of 20, in 12 legs") && sb_test_has(s, 'B', "lines.storm", "Let the storm lines go");
+  slab_card(s, 0, card[..]);
+  #assert card_says(card[..], "STORM LINES FAST: 20 IN 12 LEGS");
+  // the HUD's card for the hull says it too, and behind its fold what is not modelled
+  s[0].selected = cd_test_pick(s, SLAB_KIND_HULL, 0); sb_say(s);
+  #assert sb_test_has(s, 'K', "card", "The hull") && sb_test_has(s, 'F', "Storm lines holding", "20 of 20") && sb_test_has(s, 'F', "Turned by", "");
+  #assert sb_test_has(s, 'S', LINES_HONEST, "");
+  s[0].selected = -1; sb_say(s);
+  // under the sea the twelve legs are drawn too, each from its own anchor square to a side
+  u: [LINES_ALL * STATION_PACKED] f32;
+  s[0].under = true; slab_pose(s);
+  lines_packed(s[0].hull, u[..]);
+  for j: 0..<LINES_ALL { #assert u[j * STATION_PACKED + 4] >= 0; }
+  // a line of a storm leg lost by hand: its partner carries the leg, the HUD says so, and the leg
+  // is drawn as one line
+  sb_act(s, "lines.lose");
+  ss := sim_station(s[0].hull);
+  sb_say(s);
+  #assert (ss.storm_held == 19 || ss.lost == 1) && sb_test_has(s, 'B', "lines.refit", "Fit new lines");
+  if ss.storm_held == 19 {
+    leg := -1; for j: 16..<LINES_ALL { if lines_half(s[0].hull, j) { leg = j; } }
+    #assert leg >= 16;
+    lines_packed(s[0].hull, u[..]);
+    b: [UNIFORM_FLOATS] f32;
+    s[0].eye[0] = u[leg * STATION_PACKED]; s[0].eye[1] = -60; s[0].eye[2] = u[leg * STATION_PACKED + 1];
+    lines_uniforms(s, b[..], U_MOOR);
+    code := f64(b[U_MOOR + LINES_HEAD + 4]); r := code - floor(code / 2048.0) * 2048.0;
+    #assert b[U_MOOR + LINES_HEAD] == u[leg * STATION_PACKED] && r >= LINES_HALF && r < LINES_LOST;
+  }
+  sb_act(s, "lines.refit"); lines_test_step(s, 0, true);
+  #assert sim_station(s[0].hull).storm_held == 20 && sim_station(s[0].hull).lost == 0;
+  // let them go: the sixteen alone, and the HUD offers to make them fast again
+  sb_act(s, "lines.storm");
+  lone := sim_station(s[0].hull);
+  #assert !lone.storm && lone.legs == 0 && lone.peak > st.peak + 5e6;
+  sb_say(s);
+  #assert sb_test_has(s, 'B', "lines.storm", "Make the storm lines fast") && !sb_test_has(s, 'F', "Storm lines holding", "");
+  sb_act(s, "lines.storm");
+  #assert sim_station(s[0].hull).storm;
+  // a gale off Guam is not a storm warning
+  sb_act(s, "site.0"); s[0].sea = SEA_GALE; slab_build(s, true); lines_test_step(s, 0, true);
+  #assert s[0].site == SITE_GUAM && !sim_station(s[0].hull).storm;
+}
+#test "lines: the panel's hull moves as that hull: a pilot caisson and a 2 km hull each get their own lines and ride the sea" #steps 8000000000 {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  slab_build(s, true); lines_test_step(s, 0, true);
+  #assert !s[0].hull.sized && sim_shape(s[0].hull).l == SIM_L;
+  // the Gulf Coast pilot: one 100 by 50 m caisson drawing 5 m, off Texas, on chains at its corners
+  #assert panel_act(s, "take.from.1", 0);
+  slab_build(s, true); lines_test_step(s, 0, true);
+  sh := sim_shape(s[0].hull);
+  #assert s[0].hull.sized && sh.l == 100 && sh.b == 50 && abs(sh.t - 5) < 0.5 && s[0].hull.rig[0].built && s[0].hull.rig[0].kind == MOOR_CATENARY;
+  for i: 0..<s[0].hull.rig[0].count { #assert abs(s[0].hull.rig[0].fx[i]) <= 50.01 && abs(s[0].hull.rig[0].fz[i]) <= 25.01; }
+  for i: 0..<40 { lines_test_step(s, 0.1, false); }
+  st := sim_station(s[0].hull);
+  #assert st.held == 16 && st.offset < 100 && abs(s[0].hull.heave) < 3 && abs(s[0].hull.roll) < 0.2 && st.wind < 5e6;
+  // a hull of 2,000 by 1,000 m takes about four times the wind of the picture's
+  w := s[0].change[..];
+  wi: [1] WhatIf; wi[0] = w[0].what;
+  what_set(wi[..], change_chart(w), WC_LENGTH, 2000); what_set(wi[..], change_chart(w), WC_WIDTH, 1000); w[0].what = wi[0]; change_refresh(w);
+  slab_build(s, true); lines_test_step(s, 0, true);
+  big := sim_shape(s[0].hull);
+  #assert big.l == 2000 && big.b == 1000 && s[0].hull.rig[0].built && abs(s[0].hull.rig[0].fx[0]) > 900;
+  for i: 0..<8 { lines_test_step(s, 0.1, false); }
+  #assert sim_station(s[0].hull).held == 16 && abs(s[0].hull.heave) < 3 && abs(s[0].hull.roll) < 0.05;
+  // back to the picture: prime's own hull and lines again
+  #assert panel_act(s, "take.reset", 0);
+  slab_build(s, true); lines_test_step(s, 0, true);
+  #assert !s[0].hull.sized && s[0].hull.rig[0].built && abs(s[0].hull.rig[0].fx[0]) > 400 && abs(s[0].hull.rig[0].fx[0]) <= SIM_L / 2;
 }

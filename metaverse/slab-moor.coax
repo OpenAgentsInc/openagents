@@ -22,7 +22,13 @@
 //   coax/bin/coax test metaverse/slab-moor.coax
 #load "../metaverse-engine/physics/moor.coax";
 
-MOOR_MAX :: 16;
+MOOR_MAX :: 32;               // a hull's own lines and its storm legs
+// Storm legs: more of the same line, square to the hull's sides, made fast when a storm is
+// forecast. Four leave each long side and two each end, each leg several lines side by side.
+// The build's storm lines (metaverse/slab-build.coax, cs_storm_rig) and the finished world's
+// (metaverse/slab-sim.coax, SimHull.storm) are these.
+MOOR_STORM_LONG :: 4; MOOR_STORM_SHORT :: 2;
+MOOR_STORM_LEGS :: 2 * (MOOR_STORM_LONG + MOOR_STORM_SHORT);
 MOOR_TAUT :: 0; MOOR_CATENARY :: 1;
 MOOR_SHALLOW :: 400.0;        // m of water: chain catenaries under it, taut rope legs from it down
 MOOR_ROPE_W :: 5.9e-6;        // polyester rope: N/m in water for each N of breaking load
@@ -36,7 +42,9 @@ MOOR_REFERENCE :: 1500.0;     // the depth the spec's anchor distances are given
 MoorRig :: struct {
   built: bool;
   kind: int;                  // MOOR_TAUT or MOOR_CATENARY
-  count: int;                 // lines
+  count: int;                 // lines: the hull's own, then any storm legs
+  own: int;                   // the hull's own lines
+  chains: [MOOR_MAX] f64;     // how many lines lie side by side at each (1; a storm leg: its chains). Each carries the same.
   depth: f64;                 // the water's, m
   line: MoorLine;             // each line: they are alike
   pretension: f64;            // each line's tension with the hull at rest, N
@@ -93,7 +101,38 @@ moor_rig :: (h: MoorHull, depth: f64) -> MoorRig {
     }
     o.ax[i] = o.fx[i] + cos(a) * o.span; o.az[i] = o.fz[i] + sin(a) * o.span;
   }
+  o.own = o.count;
+  for i: 0..<o.count { o.chains[i] = 1; }
   o.built = true;
+  return o;
+}
+// Storm leg i (0 to MOOR_STORM_LEGS - 1) of a hull `lx` by `lz` m whose anchors lie `span` m out:
+// [fairlead x, z, anchor x, z] in the hull's frame at rest. Legs 0 to 2 MOOR_STORM_LONG - 1 leave
+// the sides that lie along x, evenly spaced, and hold a push along z; the rest leave the two ends
+// and hold along x.
+moor_storm_leg :: (lx: f64, lz: f64, span: f64, i: int) -> [4] f64 {
+  if i < 2 * MOOR_STORM_LONG {
+    s := ifx i < MOOR_STORM_LONG then -1.0 else 1.0; k := i % MOOR_STORM_LONG;
+    x := -lx * 0.5 + (f64(k) + 0.5) * lx / f64(MOOR_STORM_LONG);
+    return [4] f64.[x, s * lz * 0.5, x, s * (lz * 0.5 + span)];
+  }
+  j := i - 2 * MOOR_STORM_LONG;
+  s := ifx j < MOOR_STORM_SHORT then -1.0 else 1.0; k := j % MOOR_STORM_SHORT;
+  z := -lz * 0.5 + (f64(k) + 0.5) * lz / f64(MOOR_STORM_SHORT);
+  return [4] f64.[s * lx * 0.5, z, s * (lx * 0.5 + span), z];
+}
+// A rig with its storm legs made fast after its own lines: `kz` lines in each leg on the long
+// sides and `kx` in each on the ends, of the rig's own line at its own length.
+moor_storm :: (rig: MoorRig, lx: f64, lz: f64, kz: int, kx: int) -> MoorRig {
+  o := rig;
+  o.count = o.own;
+  if o.own + MOOR_STORM_LEGS > MOOR_MAX || (kz <= 0 && kx <= 0) { return o; }
+  for i: 0..<MOOR_STORM_LEGS {
+    g := moor_storm_leg(lx, lz, o.span, i); n := o.own + i;
+    o.fx[n] = g[0]; o.fz[n] = g[1]; o.ax[n] = g[2]; o.az[n] = g[3];
+    o.chains[n] = f64(ifx i < 2 * MOOR_STORM_LONG then kz else kx);
+  }
+  o.count = o.own + MOOR_STORM_LEGS;
   return o;
 }
 
@@ -116,7 +155,8 @@ moor_now :: (rig: [] MoorRig, lost: u32, i: int, x: f64, z: f64, yaw: f64, heave
   return o;
 }
 // The lines' pull on the hull together: the force, the turning moment about the hull's centre
-// (turning the bow toward +z), the downward pull, and the most loaded line.
+// (turning the bow toward +z), the downward pull, and the most loaded line (one line of a leg's
+// several: they share its pull evenly).
 MoorForce :: struct {
   fx: f64; fz: f64; yaw: f64; down: f64;
   peak: f64; worst: int;      // the most loaded line's tension, and which (-1: none holds)
@@ -125,13 +165,15 @@ MoorForce :: struct {
 moor_force :: (rig: [] MoorRig, lost: u32, x: f64, z: f64, yaw: f64, heave: f64) -> MoorForce {
   o := MoorForce.{worst = -1};
   for i: 0..<rig[0].count {
+    k := rig[0].chains[i];
+    if k <= 0 { continue; }
     n := moor_now(rig, lost, i, x, z, yaw, heave);
     if n.lost { continue; }
     o.held += 1;
     if n.pull.tension > o.peak || o.worst < 0 { o.peak = n.pull.tension; o.worst = i; }
-    o.down += n.pull.v;
+    o.down += k * n.pull.v;
     if n.span <= 0 { continue; }
-    fx := n.pull.h * (rig[0].ax[i] - n.wx) / n.span; fz := n.pull.h * (rig[0].az[i] - n.wz) / n.span;
+    fx := k * n.pull.h * (rig[0].ax[i] - n.wx) / n.span; fz := k * n.pull.h * (rig[0].az[i] - n.wz) / n.span;
     o.fx += fx; o.fz += fz;
     o.yaw += (n.wx - x) * fz - (n.wz - z) * fx;
   }
