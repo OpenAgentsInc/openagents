@@ -14,6 +14,10 @@ calls a model and nothing touches real Coder data. Every case drives the worker'
   interrupt_resubmit   interrupt with resubmit sends the pending steers as a new turn
   interrupt_pauses     interrupt without resubmit pauses the queue; pending steers head it
   promote_now          promote with now stops the turn and starts that message next
+  restart_restores     a killed worker's queue comes back from its file in a new worker, paused,
+                       with nothing lost and nothing run twice
+  approvals_separate   a command's approval and a queued follow-up do not mix: queue lines and a
+                       steer during an ask leave it waiting; the answer goes on; then the queue
   page_host            the same through the desktop's real host.c and page (host_driver): the
                        page's steer statuses, the queue it shows, and a turn the worker starts
 
@@ -324,6 +328,81 @@ def promote_now(w_bin: Path) -> None:
         w.close(); box.close()
 
 
+def restart_restores(w_bin: Path) -> None:
+    box = Box([act(commands=["sleep 5"], finished=False)])
+    w = Worker(w_bin, box)
+    try:
+        w.send({"queue": "open", "key": "chat-rs"})
+        w.send(box.task("do a"))
+        w.wait(kind("turn"))
+        w.send({"queue": "add", "id": "q1", "text": "do b", "message": box.task("do b")})
+        w.send({"queue": "add", "id": "q2", "text": "do c", "message": box.task("do c")})
+        w.wait(lambda l: l.get("kind") == "queue" and len(l["items"]) == 2)
+        w.kill()
+    finally:
+        w.close()
+    # a worker that went away mid-turn: the next one reads the file, paused, and starts nothing
+    w2 = Worker(w_bin, box)
+    try:
+        w2.send({"queue": "open", "key": "chat-rs"})
+        snap = w2.wait(kind("queue"))
+        assert snap["paused"] and snap["reason"] == "restored" and [i["id"] for i in snap["items"]] == ["q1", "q2"], snap
+        time.sleep(0.5)
+        assert len(w2.kinds("turn")) == 0, w2.kinds("turn")
+        # one whose head was running when it went away: that head is not run twice
+        w2.send({"queue": "open", "key": "chat-other"})     # saves chat-rs as it is, then lets go of it
+        w2.wait(lambda l: l.get("kind") == "queue" and not l["items"])
+        f = box.queue_file("chat-rs"); f["active"] = "q0"; f["done"] = ["q0"]; f["paused"] = False
+        (box.home / ".openagents/coder/sessions/chat-rs.queue.json").write_text(json.dumps(f))
+        w2.send({"queue": "open", "key": "chat-rs"})
+        snap = w2.wait(lambda l: l.get("kind") == "queue" and l.get("paused") and len(l["items"]) == 2)
+        assert snap["reason"] == "restored", snap
+        w2.send({"queue": "add", "id": "q0", "text": "again", "message": box.task("again")})
+        assert w2.wait(kind("queue_refused", op="add"))["reason"] == "dispatched"
+        # resume: the head starts, once
+        nxt = int((box.replay / ".next").read_text().strip()) if (box.replay / ".next").exists() else 1
+        for k in range(nxt, nxt + 3):
+            (box.replay / f"{k}.http").write_text(http(act("b done")))
+        w2.send({"queue": "resume"})
+        t = w2.wait(kind("turn", source="queue"))
+        assert t["id"] == "q1", t
+        assert w2.wait(ended(), 60)["text"] == "b done"
+        assert box.queue_file("chat-rs")["done"].count("q1") == 1
+    finally:
+        w2.close(); box.close()
+
+
+def approvals_separate(w_bin: Path) -> None:
+    box = Box([act(commands=["echo approved-ran"], finished=False), act("ran it"), act("queued done")])
+    w = Worker(w_bin, box)
+    try:
+        w.send({"queue": "open", "key": "chat-ask"})
+        w.send(box.task("run it", gated=True))
+        ask = w.wait(kind("ask"))
+        # queue lines and a steer while the command waits for its answer: none of them answers it
+        w.send({"queue": "add", "id": "q1", "text": "do b", "message": box.task("do b")})
+        w.send({"queue": "list"})
+        w.send({"steer": "and then say so", "id": "st1", "turn": 1})
+        w.wait(kind("steer", id="st1", status="accepted"))
+        time.sleep(0.5)
+        assert not w.kinds("command") and not w.kinds("ended") and len(w.kinds("turn")) == 1, w.lines[-6:]
+        w.send({"answer": True, "ticket": ask["ticket"]})
+        c = w.wait(kind("command"))
+        assert "approved-ran" in c["output"], c
+        w.wait(kind("steer", id="st1", status="applied"))
+        assert w.wait(ended())["text"] == "ran it"
+        t = w.wait(kind("turn", source="queue"))
+        assert t["id"] == "q1", t
+        assert w.wait(ended())["text"] == "queued done"
+        # an answer with no ask waiting starts nothing and is not queued
+        w.send({"answer": True, "ticket": ask["ticket"]})
+        w.send({"queue": "list"})
+        snap = w.wait(kind("queue"))
+        assert snap["items"] == [] and len(w.kinds("turn")) == 2, snap
+    finally:
+        w.close(); box.close()
+
+
 HOST_DRIVER = REPO / "evals/coder-desktop/host_driver/build/host_driver"
 
 
@@ -387,7 +466,7 @@ def page_host(w_bin: Path) -> None:
         h.close(); box.close()
 
 
-CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, page_host]
+CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, restart_restores, approvals_separate, page_host]
 
 
 def main() -> int:

@@ -13,7 +13,8 @@
 // Paused: the worker does not start the head on its own. A turn that fails or is stopped pauses
 // the queue (reason error or interrupted), as does the person (pause); resume, an edit of the head
 // that starts it (promote now) or clear lets it go on. A queue opened from its file whose turn was
-// running when the worker went away (active) comes back paused (restored): that turn did not end.
+// running when the worker went away (active), or with items waiting and no pause (an idle worker
+// would have started the head, so a turn ran), comes back paused (restored): that turn did not end.
 //
 // The file (mwq_save, mwq_load) keeps the queue across a worker that ends (Coder quit and the
 // daemon went away, or the Mac restarted): ~/.openagents/coder/sessions/KEY.queue.json, KEY the
@@ -226,8 +227,11 @@ mwq_from :: (q: [] MwQueue, text: string, arena: [] u8) -> bool {
   ar[0].at = 0; ar[0].full = false;
   active := cl_str(ar[..], text, "active");
   p := cl_bool(text, "paused");
-  if active.count > 0 { mwq_pause(q, "restored"); }
-  else if p.ok && p.value { ar[0].at = 0; mwq_pause(q, cl_str(ar[..], text, "reason")); }
+  // A worker that is idle starts an unpaused head at once, so a file with items waiting and no pause
+  // was saved while a turn ran (the head's, or a message's): it comes back paused too, and nothing
+  // starts again until the person says so.
+  if p.ok && p.value { ar[0].at = 0; mwq_pause(q, cl_str(ar[..], text, "reason")); }
+  else if active.count > 0 || q[0].n > 0 { mwq_pause(q, "restored"); }
   return true;
 }
 // Opens the queue at path: what its file holds, or an empty queue when there is none. False when
@@ -293,8 +297,11 @@ MWQ_TEST_B :: "{\"task\":\"fix b\",\"cwd\":\"/w\"}";
   mwq_ended(q[..]); mwq_pause(q[..], "error");
   m = mwq_json(q[..], f[..]);
   #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && back[0].paused && mwq_reason(back[..]) == "error";
+  // items waiting with no pause: saved while a turn ran, so they come back paused too; an empty one does not
   mwq_resume(q[..]); m = mwq_json(q[..], f[..]);
-  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && !back[0].paused;
+  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && back[0].paused && mwq_reason(back[..]) == "restored";
+  mwq_clear(q[..]); m = mwq_json(q[..], f[..]);
+  #assert mwq_from(back[..], cast(string) f[0..<m], ab[..]) && !back[0].paused && back[0].n == 0;
   #assert !mwq_from(back[..], "nope", ab[..]) && back[0].n == 0;
   #assert mwq_key_ok("chat-1.a_b") && !mwq_key_ok("a/b") && !mwq_key_ok("..") && !mwq_key_ok("");
   pb: [256] u8;
