@@ -217,10 +217,12 @@ e2g_weights :: (x: f32, z: f32) -> [4] f32 {
 }
 
 // ---- the lattice and the tiles' layout
+// book:begin lattice
 e2g_s64 :: () -> f64 { return f64(f32(E2G_SPACING)); }
 // Lattice coordinate `index` (half-steps allowed through `half`) from base: one f64 sum, one rounding.
 e2g_at :: (base: f32, index: int) -> f32 { return f32(f64(base) + f64(index) * e2g_s64()); }
 e2g_mid :: (base: f32, index: int, step: int) -> f32 { return f32(f64(base) + (f64(index) + 0.5 * f64(step)) * e2g_s64()); }
+// book:end lattice
 // The glade's sample (i, j): rows south to north (+z), west to east.
 e2g_x :: (i: int) -> f32 { return e2g_at(f32(E2G_WEST), i); }
 e2g_z :: (j: int) -> f32 { return e2g_at(f32(E2G_SOUTH), j); }
@@ -395,6 +397,7 @@ e2g_count_live :: (s: [] E2Tiles) {
 }
 
 // ---- seams: every shared edge repeats bit for bit, and the coarse rows' edge is stitched
+// book:begin seams
 // 0 when every seam holds, else 1 + the tile whose seam fails.
 e2g_seams :: (s: [] E2Tiles) -> int {
   for b: 0..<s[0].n {
@@ -419,6 +422,7 @@ e2g_seams :: (s: [] E2Tiles) -> int {
   }
   return 0;
 }
+// book:end seams
 
 // ---- publication: a set goes live whole, or not at all
 // The two sets' storage (3 MB each), the owner's: a page keeps it outside its state, a tool or a check on its stack.
@@ -428,6 +432,7 @@ e2g_frames :: (g: [] E2Ground, s: [] E2Tiles) {
   for t: 0..<s[0].n { s[0].frame[t] = e2tt.terrain_tile_ground(s[0].tile[t], g[0].frame_x, g[0].frame_z); }
 }
 e2g_refuse :: (g: [] E2Ground, code: int) -> int { g[0].refused += 1; if g[0].first_refusal == 0 { g[0].first_refusal = code; } return code; }
+// book:begin publish
 // Publishes the staged set (sets[1 - cur]) when its seams hold and every frame converts. The status.
 // The set may be any of the tiles (by cell, the cells' that are in); the bake needs the glade's.
 e2g_publish :: (g: [] E2Ground, route: int) -> int {
@@ -446,6 +451,7 @@ e2g_publish :: (g: [] E2Ground, route: int) -> int {
   e2g_gpu(g);
   return E2G_REC_OK;
 }
+// book:end publish
 // The cell's tiles leave the published set (the cell left the page). The status: OK when none was in.
 e2g_drop_cell :: (g: [] E2Ground, cell: int) -> int {
   if !g[0].ok { return E2G_REC_OK; }
@@ -674,6 +680,7 @@ e2g_far_read :: (g: [] E2Ground, b: [] u8) -> int {
 }
 
 // ---- queries
+// book:begin query
 // Where you stand at (x, z), in the realm's frame: the admitted tile's triangle where a tile has
 // ground there, e2_height past them (counted).
 e2g_y :: (g: [] E2Ground, x: f32, z: f32) -> f32 {
@@ -689,6 +696,7 @@ e2g_y :: (g: [] E2Ground, x: f32, z: f32) -> f32 {
   g[0].outside += 1;
   return e2_height(x + f32(g[0].frame_x), z + f32(g[0].frame_z));
 }
+// book:end query
 // Whether a tile has ground at (x, z).
 e2g_ground_at :: (g: [] E2Ground, x: f32, z: f32) -> bool {
   if !g[0].ok { return false; }
@@ -942,7 +950,7 @@ e2g_ao :: (g: [] E2Ground, x: f32, z: f32, above: f32) -> f32 {
   s := e2g_live_set(g[..]);
   // the glade, then a run of path tiles in both spacings, the glade's south neighbour among them
   coarse := 0; for t: 0..<s[0].n { if e2g_step(s[0].k[t]) == 2 { coarse += 1; } }
-  #assert s[0].n >= 15 && s[0].n <= E2G_TILES && coarse >= 3 && e2g_find(s, 0, 0) > 0 && e2g_seams(s) == 0;
+  #assert s[0].n == 24 && s[0].n <= E2G_TILES && coarse >= 3 && e2g_find(s, 0, -1) == 0 && e2g_find(s, 0, 0) > 0 && e2g_seams(s) == 0;
   // a fine/coarse pair exists, so the stitch is checked on this land
   pairs := 0; for t: 0..<s[0].n { if s[0].k[t] == E2G_COARSE_ROW && e2g_find(s, s[0].m[t], E2G_COARSE_ROW - 1) >= 0 { pairs += 1; } }
   #assert pairs >= 1;

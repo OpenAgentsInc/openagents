@@ -1,10 +1,10 @@
 # Building Everglade
 
-**Status: drafting.** Chapters 1 to 18 are drafted, each marked partly
-implemented. They copy listings only from source that already has
-`// book:begin` markers; the rest wait until the code moves into
-`everglade/`. The [contents](SUMMARY.md) list them. Chapters 19 to 32 are
-planned.
+**Status: drafting.** Chapters 1 to 18 and 33 are drafted (Chapter 4 is
+implemented; the rest are marked partly implemented). They copy listings from
+source between `// book:begin` and `// book:end` markers; chapters whose code
+has not moved into `everglade/` yet wait for that move. The
+[contents](SUMMARY.md) list them. Chapters 19 to 32 are planned.
 
 ## Start here
 

@@ -10,7 +10,7 @@
 
 ## Part II: The glade
 
-- [4. Ground you can stand on](ch004-ground-you-can-stand-on.md) (partly implemented)
+- [4. Ground you can stand on](ch004-ground-you-can-stand-on.md)
 - [5. Plant a forest with a function](ch005-plant-a-forest-with-a-function.md) (partly implemented)
 - [6. The glade's light](ch006-the-glades-light.md) (partly implemented)
 - [7. Character Create in the world](ch007-character-create-in-the-world.md) (partly implemented)
