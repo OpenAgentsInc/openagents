@@ -1627,7 +1627,7 @@ Issue 13687 asked for these. `docs/metaverse/photoreal.md` has the method.
 | Lit rooms | the painted towers' windows follow the glass's share of rooms lit by the hour, at 0.55 of their paint's glow |
 | Night sky | stars, and the moon at its place and phase for the date |
 | GPU frame time p50 (p95) | 1440×900 orbit noon 4.27 (5.70) ms, midnight 3.25 (3.59) ms; gardens noon 4.38 (6.45) ms, midnight 3.26 (3.70) ms. 390×844 phone tier orbit noon 0.73 (0.83) ms, midnight 0.71 (0.80) ms. Headless Chrome on an Apple M-series GPU at a load of about 50, before the last merge with main's glazing and contact pass; a run after it at a load of 169 read 4.9, 3.8 and 10.6 ms and phone 4.2 ms, too noisy to compare |
-| Shared limits | 72,000 vertices (`PHOTO_VERTICES`, was 40,000); 4,059 of 4,096 uniform vec4s (3 for the wind, the moon and the lamps); the realm's memory budget 13 MB (was 10 MB); `slab.wasm` 667,977 bytes, its budget raised from 670,000 to 720,000 |
+| Shared limits | 72,000 vertices (`PHOTO_VERTICES`, was 40,000); 4,059 of 4,096 uniform vec4s (3 for the wind, the moon and the lamps); the realm's memory budget 13 MB (was 10 MB); `slab.wasm` 854,150 bytes with the life and the build view in; its budget 880,000 -> 930,000 |
 
 **Not done.**
 

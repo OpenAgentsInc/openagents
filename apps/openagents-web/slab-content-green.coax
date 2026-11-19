@@ -31,6 +31,7 @@ SlabGreen :: struct {
   water: int; shallow: int; deep: int;
   trees: [GREEN_TREES * GREEN_TREE_FLOATS] f32;
   tree_count: int;
+  leafy: int;          // trees whose leaves are placed this frame (green_move)
 }
 
 green_species :: (k: int) -> int { if k == 1 { return ARCH_STONE_PINE; } if k == 2 { return ARCH_OLIVE; } return ARCH_CYPRESS; }
@@ -260,6 +261,7 @@ green_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
 }
 // Every frame: the leaves of the trees near enough the eye to show them (none on a phone).
 green_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  ph[0].content.green.leafy = 0;
   if w.reduced { return; }
   reach := pr_fold_reach(GREEN_FOLD, w.tangent) + 3;
   for k: 0..<ph[0].content.green.tree_count {
@@ -271,6 +273,7 @@ green_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
     far := reach + ph[0].content.green.trees[o + 4] * ph[0].content.green.wide[sp];
     if dx * dx + dy * dy + dz * dz > far * far { continue; }
     green_tree(ph, l, ph[0].content.green.leaves[sp], o);
+    ph[0].content.green.leafy += 1;
   }
 }
 
@@ -313,10 +316,10 @@ green_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   }
   #assert pines > 5 && olives > 5 && pines + olives < n / 2;
   // leaves: some trees near this eye have them, and far fewer than all
-  #assert ph[0].moving > 3 && ph[0].moving < n / 2;
+  #assert ph[0].content.green.leafy > 3 && ph[0].content.green.leafy < n / 2;
   // a phone draws the low trees and no leaves
   slab_photo_frame(s[..], u[..], sun, true);
-  #assert ph[0].moving == 0 && ph[0].content.green.tree_count == n;
+  #assert ph[0].content.green.leafy == 0 && ph[0].content.green.tree_count == n;
   // a deck planned half as wide still gets its trees by the same rule: nothing here names a place
   slab_photo_frame(s[..], u[..], sun, false);
   for i: 0..<s[0].box_count { at := i * SLAB_RECORD; if cast(int) (u[U_BOXES + at + 7] + 0.5) == SLAB_GLADE_GROVE { u[U_BOXES + at + 4] = u[U_BOXES + at] + (u[U_BOXES + at + 4] - u[U_BOXES + at]) * 0.5f32; } }
