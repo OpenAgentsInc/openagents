@@ -247,7 +247,7 @@ final class CoderWindow: NSObject {
         RunLoop.main.add(clock, forMode: .common); self.clock = clock
         window.center(); window.makeKeyAndOrderFront(nil); window.makeFirstResponder(editor)
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
-        if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]), k >= 1, k <= store.list.count { open(store.list[k - 1].id) }
+        if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
@@ -391,6 +391,11 @@ final class CoderWindow: NSObject {
         }
     }
 
+    /// Opens the Nth chat from the top of the list (1 is the newest).
+    func openChat(at index: Int) {
+        guard index >= 1, index <= store.list.count else { return }
+        open(store.list[index - 1].id)
+    }
     /// Opens a kept chat: it becomes the chat that is shown, with the working folder it had. A reply
     /// running in the shown chat goes on out of view; a chat whose reply runs out of view comes back
     /// with its run.
@@ -566,6 +571,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
     @objc func smallerText(_ sender: Any?) { main?.zoom(-1) }
     @objc func actualSize(_ sender: Any?) { main?.zoom(nil) }
+    @objc func selectChat(_ sender: NSMenuItem) { main?.openChat(at: sender.tag) }
     @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
@@ -596,6 +602,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let plain = view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "=")
         plain.target = delegate; plain.isHidden = true; plain.allowsKeyEquivalentWhenHidden = true
         view.addItem(withTitle: "Smaller Text", action: #selector(CoderDelegate.smallerText(_:)), keyEquivalent: "-").target = delegate
+        for k in 1...9 {
+            let item = view.addItem(withTitle: "Chat \(k)", action: #selector(CoderDelegate.selectChat(_:)), keyEquivalent: "\(k)")
+            item.target = delegate; item.tag = k; item.keyEquivalentModifierMask = [.command]
+            item.isHidden = true; item.allowsKeyEquivalentWhenHidden = true
+        }
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())

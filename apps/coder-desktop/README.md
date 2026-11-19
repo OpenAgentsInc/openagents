@@ -20,7 +20,7 @@ the typing mark and notices. The shared AppKit editor
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.
 - **The copy icon in the top right corner**, beside New chat, copies the whole chat: each message under `You:`, each command under `Ran:`, each reply under `Microcoder:`. Command output and thoughts are not included.
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
-- **The sidebar** on the left lists your chats, most recent at the top. Click one to open it. See [Saved chats](#saved-chats).
+- **The sidebar** on the left lists your chats, most recent at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top. See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:
