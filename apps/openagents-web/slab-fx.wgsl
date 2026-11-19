@@ -115,6 +115,10 @@ fn coax_p_particle_over_vs(p_v: u32, p_n: u32) -> coax_t11 {
   {
     return coax_p_sfx_gone();
   }
+  if (((coax_at_u(i32(1492i)) != 0.0f) && ((coax_at_u(i32(1492i)) * ((coax_p_sb_to_hull(coax_p_v3(l_e.x.x, l_e.x.y, l_e.x.z))).z - coax_at_u(i32(1493i)))) > 0.0f)))
+  {
+    return coax_p_sfx_gone();
+  }
   l_tau = coax_p_spray_tau(l_seed, l_fi);
   l_share = coax_p_spray_share(l_seed, l_fi);
   l_h2 = coax_p_spray_hash(l_seed, l_fi, 0x1.000000p1f);
@@ -247,6 +251,18 @@ fn coax_p_spray_fade(p_i: f32, p_age: f32) -> f32 {
   l_rise = select(0x1.000000p0f, (l_age / 0x1.eb851ep-4f), (l_age < 0x1.eb851ep-4f));
   return ((l_rise * (0x1.000000p0f - l_a)) * (0x1.000000p0f - l_a));
 }
+fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
+  let l_x: f32 = p_x;
+  let l_y: f32 = p_y;
+  let l_z: f32 = p_z;
+  return vec3f(l_x, l_y, l_z);
+}
+fn coax_p_sb_to_hull(p_w: vec3f) -> vec3f {
+  let l_w: vec3f = p_w;
+  var l_q: vec3f;
+  l_q = coax_p_sb_sub(l_w, coax_p_v3(coax_at_u(i32(1459i)), coax_at_u(i32(1463i)), coax_at_u(i32(1467i))));
+  return coax_p_sb_dir_to_hull(l_q);
+}
 fn coax_p_spray_tau(p_seed: f32, p_i: f32) -> f32 {
   let l_seed: f32 = p_seed;
   let l_i: f32 = p_i;
@@ -275,12 +291,6 @@ fn coax_p_v2(p_x: f32, p_y: f32) -> vec2f {
   let l_x: f32 = p_x;
   let l_y: f32 = p_y;
   return vec2f(l_x, l_y);
-}
-fn coax_p_v3(p_x: f32, p_y: f32, p_z: f32) -> vec3f {
-  let l_x: f32 = p_x;
-  let l_y: f32 = p_y;
-  let l_z: f32 = p_z;
-  return vec3f(l_x, l_y, l_z);
 }
 fn coax_p_wg_length3(p_a: vec3f) -> f32 {
   let l_a: vec3f = p_a;
@@ -408,6 +418,16 @@ fn coax_p_smoothstep(p_a: f32, p_b: f32, p_x: f32) -> f32 {
 fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   let l_a: vec2f = p_a;
   return sqrt(dot(l_a, l_a));
+}
+fn coax_p_sb_dir_to_hull(p_q: vec3f) -> vec3f {
+  let l_q: vec3f = p_q;
+  var l_r0: vec3f;
+  var l_r1: vec3f;
+  var l_r2: vec3f;
+  l_r0 = coax_p_sb_p(16i);
+  l_r1 = coax_p_sb_p(20i);
+  l_r2 = coax_p_sb_p(24i);
+  return coax_p_v3((((l_r0.x * l_q.x) + (l_r1.x * l_q.y)) + (l_r2.x * l_q.z)), (((l_r0.y * l_q.x) + (l_r1.y * l_q.y)) + (l_r2.y * l_q.z)), (((l_r0.z * l_q.x) + (l_r1.z * l_q.y)) + (l_r2.z * l_q.z)));
 }
 fn coax_p_render_noise3(p_x: f32, p_y: f32, p_z: f32) -> f32 {
   let l_x: f32 = p_x;

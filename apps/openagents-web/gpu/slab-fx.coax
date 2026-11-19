@@ -35,6 +35,8 @@ slabfx_particle_over_vs :: (v:u32,n:u32,u:[]f32,rows:[]SprayRow)->SfxP {
   seed:f32=e.wall.z;
   fade:f32=spray_fade(fi,age)*e.wall.w;
   if (fade<=0.004f32) { return sfx_gone(); }
+  // none off a wall the section cuts away (slab.coax P_SECTION)
+  if ((u[SLAB_P+52]!=0.0f32)&&((u[SLAB_P+52]*(sb_to_hull(v3(e.at.x,e.at.y,e.at.z),u).z-u[SLAB_P+53]))>0.0f32)) { return sfx_gone(); }
   tau:f32=spray_tau(seed,fi);
   share:f32=spray_share(seed,fi);
   h2:f32=spray_hash(seed,fi,2.0f32);

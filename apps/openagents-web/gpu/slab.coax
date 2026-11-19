@@ -1354,9 +1354,9 @@ slab_bg_fs :: (frag:V4,u:[]f32)->SlabOut {
   d:V3=wg_normalize3(sb_add(sb_add(v3(u[12],u[13],u[14]),sb_mul(sb_mul(v3(u[16],u[17],u[18]),ndc.x),u[11]*aspect)),sb_mul(v3(u[20],u[21],u[22]),ndc.y*u[11])));
   o:V3=v3(u[8],u[9],u[10]);
   // Where the clipmap sea will cover this pixel (photoreal meshes, above the water, no traced walker,
-  // no dry casting cells, the ray down onto the sea well inside its skirt's reach u[47]), the sea's
-  // opaque surface draws over all of this: skip the sky, the smoke and the air (#13687).
-  if (slab_photo_meshes(u)&&(o.y>0.0f32)&&(u[SLAB_P+34]<0.5f32)&&(u[SLAB_P+61]<0.5f32)&&(d.y<(0.0f32-fmax(0.02f32,(2.0f32*(o.y+40.0f32))/fmax(u[47],1000.0f32))))) {
+  // no dry casting cells, no section's slot, the ray down onto the sea well inside its skirt's reach
+  // u[47]), the sea's opaque surface draws over all of this: skip the sky, the smoke and the air (#13687).
+  if (slab_photo_meshes(u)&&(o.y>0.0f32)&&(u[SLAB_P+34]<0.5f32)&&(u[SLAB_P+61]<0.5f32)&&(u[SLAB_P+52]==0.0f32)&&(d.y<(0.0f32-fmax(0.02f32,(2.0f32*(o.y+40.0f32))/fmax(u[47],1000.0f32))))) {
     return SlabOut.{c=v4(u[SLAB_P+12],u[SLAB_P+13],u[SLAB_P+14],1.0f32),aux=v4(0.0f32,1.0f32,0.0f32,PR_POST_NONE),depth=1.0f32};
   }
   ho:V3=sb_to_hull(o,u);

@@ -12,8 +12,10 @@
 // slab_paint, as the trace does) and warm what is selected. Picking is slab.coax's own, over
 // the records, and does not read the meshes.
 //
-// The section and the view from under the sea stay traced (slab.wgsl bg_fs): there the meshes
-// are not drawn. What stands on the platform beyond its plan joins in slab-content.coax.
+// The view from under the sea stays traced (slab.wgsl bg_fs): there the meshes are not drawn. In
+// the section the meshes draw what the cut leaves and its cut faces, and the trace only what is
+// under the sea (gpu/slab-photoreal.coax slab_photo_first, slab_photo_cut_point). What stands on
+// the platform beyond its plan joins in slab-content.coax.
 #load "../../metaverse-engine/render/shade/photoreal-frame.coax";
 #load "../../metaverse-engine/render/shade/photoreal-scene.coax";
 #load "../../metaverse-engine/render/shade/photoreal-lights.coax";
@@ -548,8 +550,8 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone_tier: bool) {
   }
   pr_frame_lamps(u, b, ph[0].lamps, u[b + PR_ROOMS], near.count, ph[0].field_on && ph[0].light_count > 0);
   if ph[0].field_on { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); } else { pr_frame_no_field(u, b); }
-  // the section and the view from under the sea stay traced
-  meshes := u[P + P_SECTION] == 0 && u[P + P_UNDER] < 0.5;
+  // the view from under the sea stays traced; the section's meshes leave out what the cut takes away
+  meshes := u[P + P_UNDER] < 0.5;
   if meshes { u[U_PHOTO_ON + 1] = 1; } else { ph[0].draw_count = 0; }
   // the post pass's contact shade (gpu/slab-photoreal.coax slab_post_fs), unless the address leaves it out
   u[U_PHOTO_ON + 2] = ifx meshes && !ph[0].no_contact && sq_contact(s) then 1.0f32 else 0.0f32;   // and not on the detail's lowest rungs
@@ -594,7 +596,7 @@ slab_photo_store_span :: (s: [] Slab, k: int, field: int) -> int #export_c #effe
   #assert U_PHOTO == 15872 && U_WATER == U_PHOTO + PHOTO_FLOATS && U_WATER == 3998 * 4;
   #assert PHOTO_PAINT == PR_MATERIALS - 1;
 }
-#test "a photoreal frame places the plan's parts and draws them; the section and the painterly realm draw none" #steps 4000000000 {
+#test "a photoreal frame places the plan's parts and draws them, in the section too; under the sea and the painterly realm draw none" #steps 4000000000 {
   s: [1] Slab;
   u: [UNIFORM_FLOATS] f32;
   slab_reset(s[..]);
@@ -632,8 +634,11 @@ slab_photo_store_span :: (s: [] Slab, k: int, field: int) -> int #export_c #effe
   // a phone leaves the fine parts out
   slab_photo_frame(s[..], u[..], sun, true);
   #assert ph[0].versions[1] > version + 1;
-  // the section stays traced
+  // the section draws the meshes, cut (gpu/slab-photoreal.coax slab_photo_cut_point); under the sea stays traced
   u[U_PARAMS + P_SECTION] = 1;
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert ph[0].draw_count >= 6 && u[U_PHOTO_ON] == 1 && u[U_PHOTO_ON + 1] == 1;
+  u[U_PARAMS + P_UNDER] = 1;
   slab_photo_frame(s[..], u[..], sun, false);
   #assert ph[0].draw_count == 0 && u[U_PHOTO_ON] == 1 && u[U_PHOTO_ON + 1] == 0;
 }

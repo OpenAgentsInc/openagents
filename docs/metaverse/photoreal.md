@@ -580,10 +580,20 @@ Two build traps:
 
 ## What SLAB keeps traced
 
-- The section and the view from under the sea. The meshes aren't drawn
-  there. The trace draws the platform under the same sun and sky
-  (`slab_photo_lit`): its paint, the platform's own shadow traced, and the
-  sky's light by facing. Whoever walks the deck is lit the same way.
+- The view from under the sea. The meshes aren't drawn there. The trace
+  draws the platform under the same sun and sky (`slab_photo_lit`): its
+  paint, the platform's own shadow traced, and the sky's light by facing.
+  Whoever walks the deck is lit the same way.
+- What the section shows under the sea. In the section the meshes draw
+  what the cut leaves, with the same materials as the normal view. The
+  vertex shader cuts them (`slab_photo_cut_point`, `slab_photo_cut_gone`
+  in `gpu/slab-photoreal.coax`): a part wholly on the eye's side of the cut
+  goes, and a part the cut crosses is pressed flat onto the cut plane, so
+  its faces toward the eye become the cut face. `slab_scene_fs` paints that
+  face as the trace's drawing (`slab_section`, lit by `slab_photo_lit`).
+  The trace draws only what lies under the sea, which the slot shows
+  through its water. The cut is made on the vertices, not by discarding
+  fragments, so the mesh pass keeps the GPU's early depth test.
 - Rain. The sea's rain streaks are drawn over the meshes too.
 - Picking. A click is still tested against the plan's records on the CPU.
 - The sea. It reads the same sky (below).

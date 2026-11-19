@@ -17,23 +17,73 @@
 
 SLAB_PHOTO :: 15872;   // the photoreal frame's block in the uniforms (slab.coax U_PHOTO), then SLAB's own four:
 SLAB_PHOTO_ON :: SLAB_PHOTO + PR_FLOATS;          // 1: the realm draws photoreal
-SLAB_PHOTO_MESHES :: SLAB_PHOTO + PR_FLOATS + 1;  // 1: the meshes draw the platform this frame (0 in the section and under the sea)
+SLAB_PHOTO_MESHES :: SLAB_PHOTO + PR_FLOATS + 1;  // 1: the meshes draw the platform this frame (0 under the sea)
 SLAB_PHOTO_CONTACT :: SLAB_PHOTO + PR_FLOATS + 2; // 1: the post pass draws contact (photoreal.coax pr_post)
 SLAB_PAINT :: 63.0f32;   // the material row that means: the plan's own paint for the record's kind (slab_paint)
 
 slab_photo :: (u:[]f32)->bool {return u[SLAB_PHOTO_ON]>0.5f32;}
 slab_photo_meshes :: (u:[]f32)->bool {return u[SLAB_PHOTO_MESHES]>0.5f32;}
 
-// The background's first hit: the traced platform, or nothing where the meshes draw it.
+// The background's first hit: the traced platform, or nothing where the meshes draw it. In the
+// section (slab.coax P_SECTION) the meshes draw what the cut leaves and its cut faces above the
+// sea (slab_photo_cut_point), and the trace what lies under the sea, which the slot shows through
+// its water.
 slab_photo_first :: (o:V3,d:V3,u:[]f32)->SlabHit {
   if (slab_photo_meshes(u)) {
+    if (u[SLAB_P+52]!=0.0f32) {
+      h:SlabHit=slab_scene(o,d,false,SLAB_MISS,u);
+      if ((h.t<SLAB_MISS)&&((o.y+(d.y*h.t))<0.0f32)) {return h;}
+    }
     return SlabHit.{t=SLAB_MISS,n=v3(0.0f32,1.0f32,0.0f32),kind=-1.0f32,top=0.0f32,id=-1.0f32,lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
   }
   return slab_scene(o,d,false,SLAB_MISS,u);
 }
+// In the section, how the cut takes the plan's `record` (-1: none), as slab_scene does: 0 point by
+// point (a box, the hull, what stands on no record), 1 whole, -1 not at all (any other shape goes
+// whole when its middle lies beyond the cut).
+slab_photo_cut_whole :: (record:int,u:[]f32)->s32 {
+  if (record<0) {return 0;}
+  at:int=SLAB_BOXES+(record*8);
+  p:V4=wg_at4(u,at);
+  q:V4=wg_at4(u,at+4);
+  if ((wg_i32_f(q.w+0.5f32)==0)||(wg_i32_f(p.w+0.5f32)==0)) {return 0;}
+  return ifx (u[SLAB_P+52]*(((p.z+q.z)*0.5f32)-u[SLAB_P+53]))>0.0f32 then 1 else -1;
+}
+// In the section, where the meshes draw a point h (hull frame) of a part that rides the hull and
+// stands on the plan's `record`. What the cut takes away is pressed flat onto the cut: a part's
+// faces toward the eye become its cut face there (slab_scene_fs paints them as slab_section does),
+// and its other faces end at the cut. What lies under the sea, which the trace draws wet, is
+// pressed up to the waterline. It is done to the vertices, not by discarding fragments, so the
+// mesh pass keeps the GPU's early depth test. What stands on no record is cut only where the
+// sea's slot is.
+slab_photo_cut_point :: (h:V3,record:int,u:[]f32)->V3 {
+  sec:f32=u[SLAB_P+52]; cut:f32=u[SLAB_P+53];
+  if (slab_photo_cut_whole(record,u)!=0) {return h;}
+  c:V3=h;
+  by:bool=abs(h.x)<u[36]+20.0f32;
+  if (by&&(c.y<0.0f32)) {c.y=0.0f32;}
+  if (((sec*(h.z-cut))>0.0f32)&&((record>=0)||by)) {c.z=cut;}
+  return c;
+}
+// In the section, whether a part goes whole: a shape the cut takes by its record, a part on a box
+// that lies wholly on the eye's side of the cut, and a part on no record whose place lies on the
+// eye's side where the sea's slot is (a ship, a tree, a lamp).
+slab_photo_cut_gone :: (place:V3,record:int,u:[]f32)->bool {
+  sec:f32=u[SLAB_P+52]; cut:f32=u[SLAB_P+53];
+  whole:s32=slab_photo_cut_whole(record,u);
+  if (whole!=0) {return whole>0;}
+  if (record>=0) {
+    at:int=SLAB_BOXES+(record*8);
+    far:f32=ifx sec>0.0f32 then u[at+2] else u[at+6];
+    return (sec*(far-cut))>-0.01f32;
+  }
+  beyond:f32=sec*(place.z-cut);
+  return (abs(place.x)<u[36]+20.0f32)&&(beyond>0.0f32)&&(beyond<1500.0f32);
+}
 // What the traced platform shows under the physical sky, as the display shows it before the air:
-// its paint under the sun, the platform's own shadow traced, and the sky's light. The section and
-// the view from under the sea draw the platform this way, and so does whoever walks the deck.
+// its paint under the sun, the platform's own shadow traced, and the sky's light. The section's cut
+// faces under the sea and the view from under the sea draw the platform this way, and so does
+// whoever walks the deck.
 slab_photo_lit :: (hit:SlabHit,o:V3,d:V3,u:[]f32)->V3 {
   return slab_photo_pulse(pr_out(slab_photo_light(hit,o,d,u),u,SLAB_PHOTO),hit.id,u);
 }
@@ -104,8 +154,46 @@ slab_photo_sea_haze :: (u:[]f32)->f32 {return ifx slab_photo(u) then 0.0f32 else
 
 // ---- the mesh pass
 // (the vertices' store is not named `mesh`: host.js gives a store of that name in a page's shader its older single-mesh layout)
-slab_scene_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {return pr_stand(id,instance,u,SLAB_PHOTO,parts,objects);}
-slab_shadow_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrShade {return pr_shadow_stand(id,instance,u,SLAB_PHOTO,parts,objects);}
+slab_scene_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {
+  v:PrV=pr_stand(id,instance,u,SLAB_PHOTO,parts,objects);
+  if ((u[SLAB_P+52]==0.0f32)||((v.pos.z==2.0f32)&&(v.pos.w==1.0f32)&&(v.pos.x==0.0f32))) {return v;}   // (pr_stand put it out of sight)
+  // the section (slab_photo_cut_point)
+  b:int=SLAB_PHOTO;
+  m:PrObj=objects[cast(int)instance];
+  record:int=cast(int)(m.c.w+0.5f32)-1;
+  riding:bool=m.b.w<0.5f32;
+  place:V3=v3(m.a.x,m.a.y,m.a.z);
+  if (!riding) {place=sb_to_hull(place,u);}
+  if (slab_photo_cut_gone(place,record,u)) {v.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32); return v;}
+  if ((!riding)||(m.b.y>4.5f32)) {return v;}
+  h:V3=sb_to_hull(v.world,u);
+  c:V3=slab_photo_cut_point(h,record,u);
+  if ((c.x==h.x)&&(c.y==h.y)&&(c.z==h.z)) {return v;}
+  // the part's own frame moves with it (its patterns are laid on it), turned by its yaw
+  dy:f32=c.y-h.y; dz:f32=c.z-h.z;
+  v.local=add3(v.local,v3((0.0f32-sin(m.a.w))*dz,dy,cos(m.a.w)*dz));
+  v.world=pr_posed(c,u,b);
+  v.pos=pr_clip(v.world,u,b);
+  if ((m.b.y>2.5f32)&&(m.b.y<4.5f32)) {v.pos=v4(v.pos.x,v.pos.y,v.pos.z-(0.0000006f32*v.pos.w),v.pos.w);}
+  return v;
+}
+slab_shadow_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrShade {
+  s:PrShade=pr_shadow_stand(id,instance,u,SLAB_PHOTO,parts,objects);
+  m:PrObj=objects[cast(int)instance];
+  o:int=cast(int)id*12;
+  if ((u[SLAB_P+52]==0.0f32)||(m.b.y>4.5f32)||(parts[o+7]<=0.0f32-PR_FOLD_MARK)) {return s;}
+  // the section: what the cut takes away casts no shadow (slab_photo_cut_point)
+  b:int=SLAB_PHOTO;
+  record:int=cast(int)(m.c.w+0.5f32)-1;
+  riding:bool=m.b.w<0.5f32;
+  place:V3=v3(m.a.x,m.a.y,m.a.z);
+  if (!riding) {place=sb_to_hull(place,u);}
+  if (slab_photo_cut_gone(place,record,u)) {s.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32); return s;}
+  if (!riding) {return s;}
+  w:V3=pr_placed_in(v3(parts[o],parts[o+1],parts[o+2]),m,u[b+PR_UP+3],wg_at4(u,b+PR_WIND));
+  s.pos=pr_light_clip(pr_kept(pr_posed(slab_photo_cut_point(w,record,u),u,b),m,u,b),u,b);
+  return s;
+}
 slab_shadow_fs :: (s:PrShade) {}
 
 // How rough a kind's painted surface is (the plan's paint has no roughness of its own).
@@ -272,6 +360,16 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
         s.glow=mul3(pr_decode(pool),pr_sky_light(v3(0.0f32,1.0f32,0.0f32),u,b));
       }
     }
+  }
+  if ((u[SLAB_P+52]!=0.0f32)&&(!free)&&(abs(gh.z)>0.9f32)&&(abs(wh.z-u[SLAB_P+53])<0.6f32)) {
+    // the section's cut face (slab_photo_cut_point pressed it there): the drawing bg_fs traces
+    // there (slab_section), lit as the trace lights it, and without the post pass's contact shade
+    cut:SlabHit=SlabHit.{t=dist,n=v3(0.0f32,0.0f32,ifx gh.z>0.0f32 then 1.0f32 else -1.0f32),kind=cast(f32)(ifx kind<0 then 0 else kind),top=0.0f32,id=cast(f32)(record),lo=v3(0.0f32,0.0f32,0.0f32),hi=v3(0.0f32,0.0f32,0.0f32)};
+    ho:V3=sb_to_hull(eye,u);
+    cc:V3=slab_haze(slab_photo_lit(cut,ho,dh,u),rd,dist,u);
+    cs:V4=slab_smoke(ho,dh,dist,u);
+    cc=slab_grade(slab_weather_air(mix3(cc,v3(cs.x,cs.y,cs.z),cs.w),v2(v.pos.x,v.pos.y),u),u);
+    return pr_lit_plain(v4(cc.x,cc.y,cc.z,1.0f32));
   }
   rain:f32=saturate(u[SLAB_SEA+17]*1.6f32);
   if (deck) {
