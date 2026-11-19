@@ -50,6 +50,7 @@
 #load "slab-place.coax";  // the land on the horizon, the legal lines on the water and the dock's card
 #load "slab-hud.coax";   // the HUD in plain words, drawn by the browser (GitHub #13685)
 #load "slab-sea.coax";
+#load "slab-foam.coax";   // the open sea's foam field, through the frame store (GitHub #13688)
 #load "slab-bearing.coax";   // where the weather comes from: ?winddir=, each site's normal bearing
 #load "slab-photoreal.coax";   // the photoreal style: the platform as meshes under a physical sky (docs/metaverse/photoreal.md)
 #load "slab-lines.coax";   // the hull on its moorings: its sea, its lines, "lose a line" (GitHub #13688)
@@ -167,6 +168,7 @@ Slab :: struct {
   tile: [1] Tile;
   foam: [4096] f32;     // the foam field over cascade 0
   look: SeaLook;        // the finer cascades, the water's type, the weather (slab-sea.coax)
+  sea_foam: [1] SlabFoam;   // the foam the open sea carries (slab-foam.coax)
   water: [1] SlabWater; // the lee, the walls' spray and foam, the wake, the plume, the moonpools (slab-water.coax)
   baked: [WSP_TILE_FLOATS] f32;
   baked_ready: bool;
@@ -279,6 +281,7 @@ slab_build :: (s: [] Slab, phone: bool) {
     wsp_synth(s[0].synth[..], s[0].spectrum, 1, TILE_N);
   }
   sea_look_built(s, phone);
+  slab_foam_reset(s);
 }
 
 // ---------------------------------------------------------------- the hull's frame

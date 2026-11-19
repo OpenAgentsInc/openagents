@@ -689,13 +689,10 @@ and not a shimmer.
 **Whitecaps.** Cascade 0's foam is W4's (its Jacobian under a threshold). Its
 texels are 10 to 30 m wide, so the fine tile makes its own foam at 2 to 6 m:
 the share of the tile where its Jacobian is least (`sea_share_threshold`
-counts it from the tile, because a short wave's Jacobian is skewed), kept by
-the drawing only on the long waves' crests. The share is Monahan's cover of
-the whole sea, `3.84e-6 U^3.41`, over the 0.4 of the sea the crest gate
-passes. Foam streaks along the wind begin in a near gale (Beaufort 7) and are
-dense by a strong gale; spindrift begins in a strong gale (Beaufort 9). The
-streaks are drawn as short broken patches of stretched noise, a few metres
-wide and tens of metres long; their place is not simulated.
+counts it from the tile, because a short wave's Jacobian is skewed). Foam
+streaks along the wind begin in a near gale (Beaufort 7) and are dense by a
+strong gale; spindrift begins in a strong gale (Beaufort 9). SLAB now draws
+all of its open-sea foam from the foam field (next section).
 
 **Water types by site** (our reading of Jerlov's 1976 map):
 
@@ -753,6 +750,53 @@ tile: 0.40 (0.44) ms before, 0.62 (2.39) ms after.
 **Checks.** `coax/bin/coax test --library
 metaverse-engine/render/shade/water-optics.coax` and `coax/bin/coax test
 --library metaverse/water-sea.coax --steps 2000000000`.
+
+## Foam as a state of the sea
+
+`metaverse/water-foam.coax` keeps the white water of an open sea as a field
+the simulation carries, not a pattern a shader draws. It is N by N texels over
+cascade 0's patch, so it repeats as the sea does, and its origin rides the
+drift of what floats (the current and 3% of the wind), so the drift blurs
+nothing. Each texel holds two shares of white:
+
+- **Whitecap.** A texel breaks where the Jacobian of the displaced surface is
+  under a threshold counted from the field, so a stated share breaks at a
+  moment. The foam stays as the crest moves on and its area e-folds in
+  3.53 s (Monahan and O'Muircheartaigh 1980). The breaking share is the whole
+  cover over the field's trail ratio, measured from the field: 7 with two
+  cascades' Jacobians, 4.1 with cascade 0's alone (`foam_break_share_of`),
+  so the mean cover comes to Monahan's `3.84e-6 U^3.41` within a factor of
+  two (measured: 3.0% against 2.9% at 13.7 m/s, 10% against 14% at
+  21.6 m/s).
+- **Lane foam.** From a near gale a share of the lost whitecap foam stays on
+  for about a minute (our assumption), and Langmuir's cells carry it
+  sideways into windrows `4.8 s × U` apart (Faller and Woodcock 1964) at
+  0.85% of the wind (Sutcliffe, Baylor and Menzel 1963). Finer windrows at
+  an eighth and a sixty-fourth of the spacing (Assaf, Gerard and Gordon
+  1971) are under a texel: a renderer draws them as lines.
+- **Spume.** From a strong gale a texel that has just broken can launch one
+  burst of the engine's spray (`foam_spume_row`, all mist).
+
+A field is a pure function of its sea and its moment: `foam_run` makes the
+field of a fixed moment from the seconds before it. `foam_pack` packs it for
+a storage buffer: a 16-float head (size, patch, origin, the windrows'
+lattice, the mean cover) and two texels a word (the whitecap over 255, the
+lane foam over 126, so no word is a NaN's pattern).
+
+SLAB is the first page to draw it (`apps/openagents-web/slab-foam.coax`,
+`gpu/slab-foam.coax`): 256 squared texels on a desktop and 128 squared on a
+phone, stepped every 0.2 s and sent through the frame store when it steps.
+Under a texel the drawing decides only where the white goes (a soft crest
+band when fresh, a dimmer lace as it thins, lines for lane foam); a pixel
+sees the texel's share on average, and a pixel wider than a texel sees the
+field's mean. The wall's foot band uses the same rank pattern. Spindrift is
+drawn downwind of fresh whitecaps; spume through the particle pass is not
+wired yet. A moving source (a ship's wake) does not belong in the field: it
+would repeat every patch.
+
+Checks: `coax/bin/coax test --library metaverse/water-foam.coax --steps
+6000000000`, and `coax/bin/coax test apps/openagents-web/slab.coax --only
+"foam field" --steps 12000000000`.
 
 ## Large floating bodies: the wall, the lee and the wake (SLAB)
 

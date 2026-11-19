@@ -62,6 +62,7 @@ FOAM_HEAD :: 16;                // floats before the packed texels (foam_pack)
 FOAM_FLOATS :: FOAM_HEAD + FOAM_TEXELS / 2;
 FOAM_CAP_LIFE :: 3.53;          // s: a whitecap's area e-folds (Monahan and O'Muircheartaigh 1980)
 FOAM_TRAIL :: 7.0;              // the whole cover over the share breaking now, in this field (measured: 10 to 6)
+FOAM_TRAIL_ONE :: 4.1;          // the same on cascade 0's Jacobian alone (a phone's): at 7 it covered 0.58 to 0.66 as much
 FOAM_LANE_LIFE :: 60.0;         // s: stabilised foam (our assumption)
 FOAM_LANE_SHARE :: 0.05;        // of a whitecap's lost foam, in a strong gale (our fit: streaks cover about a tenth of a 10 m sea)
 FOAM_WINDROW :: 4.8;            // s: windrow spacing over wind speed (Faller and Woodcock 1964)
@@ -73,6 +74,9 @@ FOAM_SPUME_RATE :: 60.0;        // bursts a second over the field when the air i
 
 // The share of the field breaking at a moment, for Monahan's whole cover once the foam has trailed.
 foam_break_share :: (wind_speed: f64) -> f64 { return wsp_whitecap_cover(wind_speed) / FOAM_TRAIL; }
+// The same for a field broken on `cascades` of the sea's Jacobians: one cascade's crests are
+// broader, so fewer texels break at a moment and each leaves more white behind.
+foam_break_share_of :: (wind_speed: f64, cascades: int) -> f64 { return wsp_whitecap_cover(wind_speed) / (ifx cascades > 1 then FOAM_TRAIL else FOAM_TRAIL_ONE); }
 // Stage A whitecaps, for comparison: the share of a real sea that is an actively breaking crest
 // (Monahan and Woolf 1989).
 foam_stage_a :: (wind_speed: f64) -> f64 { return 0.000000292 * pow(fmax(wind_speed, 0.0), 3.204); }
@@ -339,25 +343,28 @@ foam_run :: (f: [] FoamField, s: [] Synth, t: [] Tile, j0: [] f32, moment: f64, 
     for i: 0..<n0 * n0 { j0[i] = t[0].jacobian[i]; }
     if s[0].count > 1 {
       wsp_tile(s, 1, tick, t);
-      foam_step(f, j0, n0, t[0].jacobian[..], s[0].cascades[1].size, s[0].cascades[1].patch, foam_break_share(wind), foam_lane_share(wind), sea_spindrift(wind), step);
+      foam_step(f, j0, n0, t[0].jacobian[..], s[0].cascades[1].size, s[0].cascades[1].patch, foam_break_share_of(wind, 2), foam_lane_share(wind), sea_spindrift(wind), step);
     } else {
-      foam_step(f, j0, n0, j0, 0, 0.0, foam_break_share(wind), foam_lane_share(wind), sea_spindrift(wind), step);
+      foam_step(f, j0, n0, j0, 0, 0.0, foam_break_share_of(wind, 1), foam_lane_share(wind), sea_spindrift(wind), step);
     }
   }
 }
 
 // The field for a shader: FOAM_HEAD floats, then two texels a word, each (whitecap, lane) in
-// bytes. The head: [0] texels a side, [1] the patch (m), [2, 3] the origin (m), [4, 5] the
-// windrows' lattice (cycles across the patch along x and z), [6] FOAM_SCALES, [7] the windrows'
-// spacing (m).
+// bytes: the whitecap over 255, the lane foam over 126 (so a word's top byte never makes a NaN's
+// or an infinity's pattern). The head: [0] texels a side, [1] the patch (m), [2, 3] the origin
+// (m), [4, 5] the windrows' lattice (cycles across the patch along x and z), [6] FOAM_SCALES, [7]
+// the windrows' spacing (m), [8, 9] the field's mean whitecap and lane foam.
 foam_pack :: (f: [] FoamField, out: [] f32) -> int {
   nt := f[0].n;
   for i: 0..<FOAM_HEAD { out[i] = 0; }
   out[0] = f32(nt); out[1] = f32(f[0].patch); out[2] = f32(f[0].ox); out[3] = f32(f[0].oz);
   out[4] = f32(f[0].m); out[5] = f32(f[0].nn); out[6] = FOAM_SCALES; out[7] = f32(foam_spacing(f));
+  cover := foam_cover(f);
+  out[8] = f32(cover.x); out[9] = f32(cover.y);
   for i: 0..<nt * nt / 2 {
-    a := cast(u32) (wsp_clamp(f[0].cap[2 * i], 0, 1) * 255 + 0.5); b := cast(u32) (wsp_clamp(f[0].lane[2 * i], 0, 1) * 255 + 0.5);
-    c := cast(u32) (wsp_clamp(f[0].cap[2 * i + 1], 0, 1) * 255 + 0.5); d := cast(u32) (wsp_clamp(f[0].lane[2 * i + 1], 0, 1) * 255 + 0.5);
+    a := cast(u32) (wsp_clamp(f[0].cap[2 * i], 0, 1) * 255 + 0.5); b := cast(u32) (wsp_clamp(f[0].lane[2 * i], 0, 1) * 126 + 0.5);
+    c := cast(u32) (wsp_clamp(f[0].cap[2 * i + 1], 0, 1) * 255 + 0.5); d := cast(u32) (wsp_clamp(f[0].lane[2 * i + 1], 0, 1) * 126 + 0.5);
     out[FOAM_HEAD + i] = f32_from_bits(a | (b << 8) | (c << 16) | (d << 24));
   }
   return FOAM_HEAD + nt * nt / 2;
@@ -496,6 +503,10 @@ foam_test_run :: (f: [] FoamField, wind: f64, n: int, cascades: int, moment: f64
   #assert cover.x > 0.5 * want && cover.x < 2.0 * want;
   // streaks: about a tenth of the sea in a strong gale
   #assert cover.y > 0.05 && cover.y < 0.2;
+  // a field broken on cascade 0 alone (a phone's) covers the sea as much, within a fifth
+  foam_test_run(f[..], 21.6, 128, 1, 40.0, 8.0);
+  one := foam_cover(f[..]);
+  #assert abs(one.x / cover.x - 1.0) < 0.2;
   // the 4 m winter sea (Beaufort 6): whitecaps, no streaks
   foam_test_run(f[..], 13.7, 128, 2, 40.0, 8.0);
   rough := foam_cover(f[..]);
@@ -513,10 +524,11 @@ foam_test_run :: (f: [] FoamField, wind: f64, n: int, cascades: int, moment: f64
   #assert a[0].ox == b[0].ox && a[0].steps == 20 && a[0].spumes == b[0].spumes;
   u: [FOAM_HEAD + 2048] f32;
   #assert foam_pack(a[..], u[..]) == FOAM_HEAD + 2048;
-  #assert u[0] == 64 && abs(f64(u[1]) - a[0].patch) < 0.001 && u[6] == 8;
+  #assert u[0] == 64 && abs(f64(u[1]) - a[0].patch) < 0.001 && u[6] == 8 && abs(f64(u[8]) - foam_cover(a[..]).x) < 1e-6;
   for i: 0..<2048 {
     w := f32_bits(u[FOAM_HEAD + i]);
-    #assert (w & 0xff) == cast(u32) (wsp_clamp(a[0].cap[2 * i], 0, 1) * 255 + 0.5) && ((w >> 24) & 0xff) == cast(u32) (wsp_clamp(a[0].lane[2 * i + 1], 0, 1) * 255 + 0.5);
+    #assert (w & 0xff) == cast(u32) (wsp_clamp(a[0].cap[2 * i], 0, 1) * 255 + 0.5) && ((w >> 24) & 0xff) == cast(u32) (wsp_clamp(a[0].lane[2 * i + 1], 0, 1) * 126 + 0.5);
+    #assert ((w >> 23) & 0xff) != 0xff;
   }
   // spume comes off texels that have just broken; a 4 m sea's wind tears none
   spumes := 0;

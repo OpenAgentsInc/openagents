@@ -214,7 +214,8 @@ sw_foot_white :: (p:V2,t:f32,fp:f32,u:[]f32)->f32 {
   hs:f32=u[SLAB_WW+38];
   dd:V2=sw_turn(v2(u[SLAB_WW+20],u[SLAB_WW+21]),u);
   da:f32=(q.x*dd.x)+(q.y*dd.y); dc:f32=(q.y*dd.x)-(q.x*dd.y);
-  rag:f32=(slab_noise(v2((da*0.05f32)-(t*0.05f32),dc*0.22f32))*0.6f32)+(slab_noise(v2((da*0.21f32)-(t*0.2f32),(dc*0.6f32)+3.0f32))*0.4f32);
+  // the open sea's own foam pattern (gpu/slab-foam.coax), so the band and the sea's foam are one lace
+  rag:f32=slab_foam_rank(da,dc);
   hx:f32=u[SLAB_WW+36]; hz:f32=u[SLAB_WW+37];
   width:f32=4.0f32+(2.0f32*hs);
   reach:f32=fmax(u[SLAB_WW+23],20.0f32);
@@ -304,7 +305,8 @@ sw_tint :: (col:V3,p:V2,foam:V3,t:f32,u:[]f32)->V3 {
     k:int=0;
     while k<4 {
       pl:V2=sw_plume_at(q,k,u);
-      seen=fmax(seen,pl.x*mix(exp((-2.0f32*pl.y)/80.0f32),0.75f32,u[SLAB_WW+40]));
+      // its water is clear: from above only the flow overlay draws it (slab-world-spec.md 4.7)
+      seen=fmax(seen,(pl.x*0.75f32)*u[SLAB_WW+40]);
       k=k+1;
     }
     c=sb_mix(c,sb_add(sb_mul(col,0.55f32),v3(0.10f32,0.36f32,0.42f32)),clampf(seen*1.6f32,0.0f32,0.8f32));

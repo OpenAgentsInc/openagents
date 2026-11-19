@@ -1,0 +1,113 @@
+// SLAB's open-sea foam as the simulation leaves it (gpu/slab.coax loads this; slab-foam.coax
+// beside the page runs the field, metaverse/water-foam.coax is the model). The field comes in the
+// frame store, `frame`: water-foam.coax foam_pack's 16-float head, then two texels a word, each a
+// whitecap byte (over 255) and a lane foam byte (over 126).
+//
+// What is the simulation's and what is drawn. How much of each texel is white is the field's:
+// whitecaps born where the sea's Jacobian broke, fading as Monahan measured, and lane foam the
+// wind's cells gathered into windrows. A texel is 5 to 7 m (a phone's 10 to 15 m), so the shape
+// under it is drawn: a whitecap is a soft band along its crest (across the wind) where fresh, and
+// breaks into a lace of holes as it thins; lane foam lies on the windrows' finer lines (an eighth
+// and a sixty-fourth of their spacing, Assaf, Gerard and Gordon 1971), streaked along the wind.
+// The pattern only decides where in the texel the white goes: a pixel sees the texel's share on
+// average, and a pixel wider than the pattern sees the share itself.
+SLAB_FOAM_HEAD :: 16;
+
+// Texel (ix, iz) of the field: (whitecap, lane foam), each 0 to 1; n texels a side, a power of two.
+slab_foam_texel :: (ix:s32,iz:s32,n:s32,frame:[]f32)->V2 {
+  m:s32=n-1;
+  k:s32=((iz&m)*n)+(ix&m);
+  w:u32=wg_atu(frame,SLAB_FOAM_HEAD+cast(int)(k>>1));
+  b:u32=w>>(cast(u32)((k&1)*16));
+  return v2((cast(f32)(b&0xff))/255.0f32,(cast(f32)((b>>8)&0xff))/126.0f32);
+}
+// The field at rest point p, bilinear between texel centres: (whitecap, lane foam). (0, 0) until
+// the page has sent a field.
+slab_foam_at :: (p:V2,frame:[]f32)->V2 {
+  nf:f32=frame[0];
+  if (nf<1.0f32) { return v2(0.0f32,0.0f32); }
+  n:s32=wg_i32_f(nf+0.5f32);
+  patch:f32=frame[1];
+  q:V2=v2((((p.x-frame[2])/patch)*nf)-0.5f32,(((p.y-frame[3])/patch)*nf)-0.5f32);
+  fl:V2=wg_floor_f2(q);
+  f:V2=wg_sub_f2f2(q,fl);
+  // floor of a large negative stays exact: the patch wraps
+  ix:s32=wg_i32_f(fl.x-(floor(fl.x/nf)*nf));
+  iz:s32=wg_i32_f(fl.y-(floor(fl.y/nf)*nf));
+  a:V2=slab_foam_texel(ix,iz,n,frame);
+  b:V2=slab_foam_texel(ix+1,iz,n,frame);
+  c:V2=slab_foam_texel(ix,iz+1,n,frame);
+  d:V2=slab_foam_texel(ix+1,iz+1,n,frame);
+  return wg_add_f2f2(wg_mul_f2f(wg_add_f2f2(wg_mul_f2f(a,1.0f32-f.x),wg_mul_f2f(b,f.x)),1.0f32-f.y),wg_mul_f2f(wg_add_f2f2(wg_mul_f2f(c,1.0f32-f.x),wg_mul_f2f(d,f.x)),f.y));
+}
+// The field's mean (whitecap, lane foam): what a pixel far wider than a texel sees.
+slab_foam_mean :: (frame:[]f32)->V2 {return v2(frame[8],frame[9]);}
+// The field's texel, m (0: no field).
+slab_foam_texel_m :: (frame:[]f32)->f32 {return ifx frame[0]>0.5f32 then frame[1]/frame[0] else 0.0f32;}
+
+// Where in a texel the white goes, 0 to 1, about evenly spread: white where a cover passes it.
+// `wa` runs down the wind, `wc` across it (m). A breaking crest lies across the wind, so the
+// pattern is long across it.
+slab_foam_rank :: (wa:f32,wc:f32)->f32 {
+  a:f32=slab_noise(v2(wa*0.30f32,wc*0.075f32));
+  b:f32=slab_noise(v2((wa*0.85f32)+7.0f32,wc*0.42f32));
+  c:f32=slab_noise(v2((wa*2.6f32)+3.0f32,(wc*2.1f32)+11.0f32));
+  return smoothstep(0.18f32,0.82f32,(a*0.55f32)+(b*0.3f32)+(c*0.15f32));
+}
+// A cover (0 to 1) drawn against a rank: soft-edged, with `soft` the edge's width in cover; a
+// pixel `fp` metres wide that holds many of the pattern's grains (about `grain` metres) is the
+// cover itself.
+slab_foam_show :: (cover:f32,rank:f32,soft:f32,fp:f32,grain:f32)->f32 {
+  c:f32=clampf(cover,0.0f32,1.0f32);
+  // no cover, no white, however low the rank
+  at:f32=rank*(1.0f32-(2.0f32*soft));
+  fine:f32=smoothstep(at,at+(2.0f32*soft),c);
+  return mix(fine,c,smoothstep(0.4f32*grain,2.0f32*grain,fp));
+}
+
+// The open sea's white at rest point p for a pixel `fp` metres wide, seen from `dist` away: (white
+// 0 to 1, fresh whitecap 0 to 1 for the bubbles' glow). `wind` is the way the waves run (unit),
+// `spin` the spindrift's strength (water-sea.coax sea_spindrift), `gate` the long waves' crest
+// (spindrift leaves the crests). Before the page has sent a field: the cover, `cover`.
+slab_foam_white :: (p:V2,t:f32,fp:f32,dist:f32,wind:V2,spin:f32,gate:f32,cover:f32,frame:[]f32)->V2 {
+  tex:f32=slab_foam_texel_m(frame);
+  if (tex<=0.0f32) { return v2(cover,0.0f32); }
+  // the pattern rides the water with the field's origin
+  o:V2=v2(p.x-frame[2],p.y-frame[3]);
+  wa:f32=(o.x*wind.x)+(o.y*wind.y);
+  wc:f32=(o.y*wind.x)-(o.x*wind.y);
+  fa:V2=slab_foam_at(p,frame);
+  mean:V2=slab_foam_mean(frame);
+  // a pixel wider than a texel: the field's own mean, so the far sea neither sparkles nor goes bald
+  far:f32=smoothstep(0.6f32*tex,3.0f32*tex,fp);
+  fa=slab_foam_mix2(fa,mean,far);
+  // whitecaps: fresh foam is a solid crest band; as it thins the edge eats in and it laces
+  // the pattern grows with the pixel (to a texel's size at most), so a coarse view (a phone's,
+  // the far sea) still sees crest bands and holes, not round blobs
+  zoom:f32=clampf(2.0f32/fmax(fp,1e-3f32),fmin(1.0f32,(0.5f32*tex)/12.0f32),1.0f32);
+  rank:f32=slab_foam_rank(wa*zoom,wc*zoom);
+  soft:f32=0.05f32+(0.1f32*(1.0f32-fa.x));
+  // and it is brightest fresh: a thinning patch is a film the water shows through
+  cap:f32=slab_foam_show(fa.x,rank,soft,fp,1.5f32/zoom)*(0.35f32+(0.65f32*smoothstep(0.15f32,0.7f32,fa.x)));
+  // lane foam on the windrows' finer lines, streaked down the wind
+  lane:f32=0.0f32;
+  if (fa.y>0.004f32) {
+    m:f32=frame[4]; nn:f32=frame[5]; scales:f32=frame[6];
+    phase:f32=((m*(p.x-frame[2]))+(nn*(p.y-frame[3])))/frame[1];
+    l8:f32=abs(fract(phase*scales)-0.5f32)*2.0f32;
+    l64:f32=abs(fract(phase*scales*scales)-0.5f32)*2.0f32;
+    streak:f32=slab_noise(v2(wa*0.035f32,wc*0.6f32));
+    lr:f32=clampf(((1.0f32-(l8*l8))*0.45f32)+((1.0f32-l64)*0.25f32)+(streak*0.3f32),0.0f32,1.0f32);
+    lane=slab_foam_show(fa.y,1.0f32-lr,0.12f32,fp,1.2f32)*0.85f32;
+  }
+  white:f32=fmax(cap,lane);
+  // spindrift: the wind tears the tops off fresh crests and lays them downwind in smoking streaks
+  if (spin>0.0f32) {
+    up:V2=slab_foam_at(wg_sub_f2f2(p,wg_mul_f2f(wind,7.0f32)),frame);
+    torn:f32=smoothstep(0.35f32,0.9f32,fmax(fa.x,up.x));
+    smoke:f32=slab_noise(v2((wa*0.05f32)-(t*1.1f32),wc*0.35f32));
+    white=fmax(white,(spin*torn)*(smoothstep(0.3f32,0.75f32,smoke)*(0.4f32+(0.4f32*gate))));
+  }
+  return v2(clampf(white,0.0f32,1.0f32),fa.x);
+}
+slab_foam_mix2 :: (a:V2,b:V2,k:f32)->V2 {return v2(mix(a.x,b.x,k),mix(a.y,b.y,k));}

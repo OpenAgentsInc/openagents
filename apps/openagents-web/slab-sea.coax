@@ -94,8 +94,10 @@ sea_look_frame :: (s: [] Slab, u: [] f32, phone: bool, tick: u64, folded: u64) {
   if phone {
     u[U_PACK + 2] = 0.5;
     for i: 0..<nn { u[fine + i] = f32_from_bits(snorm8(s[0].baked[4 * i] / 0.5) | (snorm8(s[0].baked[4 * i + 1] / 0.5) << 8)); }
+    slab_foam_frame(s, true, s[0].tile[0].jacobian[..]);   // the open sea's foam (slab-foam.coax)
   } else {
     wsp_tile(s[0].synth[..], 1, folded, s[0].tile[..]);
+    slab_foam_frame(s, false, s[0].look.kept[5 * nn..<6 * nn]);
     share := sea_fine_share(sp.wind_speed);
     if !s[0].look.have_tick || tick != s[0].look.last_tick {
       gap := ifx s[0].look.have_tick && tick > s[0].look.last_tick then f32(tick - s[0].look.last_tick) * f32(sp.tick) else 0.0f32;

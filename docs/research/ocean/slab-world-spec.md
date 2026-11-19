@@ -1504,8 +1504,8 @@ by its optics") has the method and its sources.
   frame's sun, sky and air too. In both the sea's optics still work between a
   square and a square root of the display's colours, not yet in the photoreal
   frame's own light and film response.
-- Foam is where the sea's own Jacobian breaks, but its lace, the streaks'
-  places and the spindrift are drawn from noise, not simulated.
+- Foam was drawn from noise at first; it now comes from the engine's foam
+  field (see "The open sea's foam, from the simulation" below).
 - Rain does not flatten the sea or ring its surface, and the cloud deck is a
   texture with no shadow of its own on the water.
 - Under the sea the hull casts its shadow on the bed, not in the water: the
@@ -1546,13 +1546,72 @@ spray is about 10 m at most. The concept's plumes need a much bigger sea
 (about a 10 m gale, `?sea=gale`) or a much steeper one than a 4 m sea at a
 vertical wall in deep water makes. The foam lace far out from the wall is
 the open sea's residual foam, which the engine's foam field
-(`metaverse/water-foam.coax`) models but no page draws yet.
+(`metaverse/water-foam.coax`) models and the page now draws (next section).
 
 Frame time, headless Chrome on an M-series GPU on a heavily loaded machine
 (load 28 to 40), GPU p50: the opening at 1440×900 2.4 to 3.5 ms after
 against 2.6 to 2.9 ms before, alternating the two shaders on the same page;
 the change is inside the machine's noise. Phone, gale and hurricane, in both
 styles, are unchanged within it too.
+
+### The open sea's foam, from the simulation
+
+Issue 13688, November 18, 2026. Before this change the opening's whitecaps
+were drawn from cascade 0's 20 m texels and a noise texture: separate white
+blobs with hard edges, spread evenly, and teal patches between them. Now
+every white thing on the open sea comes from the engine's foam field
+(`metaverse/water-foam.coax`), which `apps/openagents-web/slab-foam.coax`
+runs and `gpu/slab-foam.coax` draws:
+
+- **Where.** A texel breaks where the sea's own Jacobian (cascade 0's, plus
+  the fine cascade's on a desktop) is least. The foam stays where it broke
+  while the crest moves on, fades with Monahan and O'Muircheartaigh's 3.53 s
+  life, and rides the drift of what floats. From a near gale a share of it
+  stays on as lane foam that Langmuir's cells gather into windrows 4.8 s × U
+  apart.
+- **How much.** The cover is the simulation's, calibrated to Monahan's
+  `3.84e-6 U^3.41`. Measured over the field, after 12 s of sea: 3.0% at
+  13.7 m/s (Monahan 2.9%), 10.3% at 21.6 (13.6%) and 16.0% at 25.6 (24.3%),
+  with lane foam over 11% of a gale and 19% of a hurricane. A phone's field
+  breaks on cascade 0 alone, and covers 2.8%, 9.6% and 15.2% (the breaking
+  share is set per number of cascades, `foam_break_share_of`).
+- **What is drawn, not simulated.** A texel is 5 m on a desktop and 10 to
+  15 m on a phone. Inside it a pattern decides where the texel's white goes:
+  a soft band along the crest when fresh, a lace as it thins (and dimmer: a
+  thinning patch is a film); lane foam lies on lines at an eighth and a
+  sixty-fourth of the windrows' spacing. A pixel wider than a texel shows the
+  field's mean cover. Spindrift in a strong gale and up is drawn downwind of
+  the field's fresh whitecaps.
+- **The teal patches** were the OTEC discharge's tint drawn on the surface.
+  Section 4.7 says it cannot be seen from above through 60 to 160 m of
+  water, so the surface now shows it only with the flow overlay.
+
+The field is 256 by 256 texels on a desktop and 128 by 128 on a phone, steps
+every 0.2 s of the world's clock, and goes to the shader through the frame
+store (a storage buffer, group 0 binding 1), copied only when it steps: 128
+KB on a desktop, 32 KB on a phone. A fixed moment (`?t=`) runs it up from
+the 12 s before, so the same moment draws the same foam.
+
+Frame time, GPU p50 (p95), headless Chrome on an Apple M-series GPU,
+alternating the old and new builds on the same page on a busy machine:
+
+| View | Before | After |
+|---|---|---|
+| Opening, 1440×900 | 7.89 (8.94) ms | 6.92 (7.63) ms |
+| Opening, 390×844 | 1.63 (1.74) ms | 1.64 (1.75) ms |
+| Gale, 1440×900 | 7.22 (7.96) ms | 6.87 (7.33) ms |
+| Gale, 390×844 | 1.68 (1.97) ms | 1.68 (1.90) ms |
+| Hurricane, 1440×900 | 7.53 (8.33) ms | 7.15 (8.07) ms |
+| Hurricane, 390×844 | 1.71 (2.07) ms | 1.67 (1.76) ms |
+
+`slab.wasm` grew from 751,624 to 763,828 bytes (budget 820,000).
+
+Not done: spume through the particle pass (`foam_spume_row` exists; the
+page draws spindrift in the shader instead), and a ship's or the hull's
+wake as a source of field foam. The field repeats every cascade-0 patch
+(1.2 to 1.9 km), so a moving source in it would be drawn again a patch
+away; a wake's foam belongs in the wake's own draw-time path
+(`metaverse/water-wake.coax`).
 
 ### The hull on its moorings
 

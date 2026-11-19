@@ -5,6 +5,7 @@
 #load "../../../metaverse-engine/gpu/wgsl.coax";
 #load "../../../metaverse/style.coax";
 #load "slab-sea.coax";
+#load "slab-foam.coax";   // the open sea's foam, from the frame store (slab-foam.coax beside the page)
 #load "slab-water.coax";
 #load "../../../metaverse/hull.coax";
 #load "slab-photoreal.coax";   // the photoreal style's mesh pass, sky and air (docs/metaverse/photoreal.md)
@@ -258,8 +259,8 @@ slab_shoulder :: (x:f32)->f32 {
 // The water: the sea as the hull leaves it (gpu/slab-water.coax sw_sea: calmer in its lee, the
 // walls' reflections added) drawn by its optics (slab-sea.coax slab_sea), then the white water
 // the hull makes, its discharge and its wake over it, all from the simulation.
-slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
-  sea:V4=slab_sea(p,world,d,dist,t,sw_sea(p,u),u);
+slab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32,frame:[]f32)->V3 {
+  sea:V4=slab_sea(p,world,d,dist,t,sw_sea(p,u),u,frame);
   white:V3=slab_sea_white(u);
   fp:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
   return sw_tint(sb_mix(v3(sea.x,sea.y,sea.z),white,sw_white_px(p,t,fp,u)),p,white,t,u);
@@ -1455,7 +1456,7 @@ slab_surface_vs :: (vid:u32,_iid2:u32,u:[]f32)->SlabS {
   o.world=w;
   return o;
 }
-slab_surface_fs :: (v:SlabS,u:[]f32)->PrLit {
+slab_surface_fs :: (v:SlabS,u:[]f32,frame:[]f32)->PrLit {
   rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
   dist:f32=wg_length3(rel);
   d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
@@ -1474,7 +1475,7 @@ slab_surface_fs :: (v:SlabS,u:[]f32)->PrLit {
     c=slab_grade(sw_under(c,sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u),u);
     return pr_lit_plain(wg_make_f4_f3f(c,1.0f32));
   }
-  c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u),d,dist*slab_photo_sea_haze(u),u),v.world,d,u);
+  c:V3=slab_shore(slab_haze(slab_water(v.rest,v.world,d,dist,u[2],u,frame),d,dist*slab_photo_sea_haze(u),u),v.world,d,u);
   sm:V4=slab_smoke(sb_to_hull(v3(u[8],u[9],u[10]),u),sb_dir_to_hull(d,u),dist,u);
   c=slab_grade(slab_weather_air(sb_mix(c,v3(sm.x,sm.y,sm.z),sm.w),slab_weather_px(d,u),u),u);
   return pr_lit_plain(wg_make_f4_f3f(c,1.0f32));

@@ -116,7 +116,7 @@ slab_sea_white :: (u:[]f32)->V3 {
 
 // The open sea at a rest point p, seen along d from `dist` away; c is cascade 0 there (height,
 // foam, slopes). rgb is the display's colour before the air's haze, w how white the water is.
-slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
+slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32,frame:[]f32)->V4 {
   phone:bool=u[5]>0.5f32;
   hs:f32=fmax(u[35],0.05f32);
   wind:V2=v2(u[32],u[33]);
@@ -167,44 +167,15 @@ slab_sea :: (p:V2,world:V3,d:V3,dist:f32,t:f32,c:V4,u:[]f32)->V4 {
   crest:f32=smoothstep(0.05f32,0.45f32,high);
   flat:f32=fmax(((d.x*sun.x)+(d.z*sun.z))/fmax(sqrt(((d.x*d.x)+(d.z*d.z))*((sun.x*sun.x)+(sun.z*sun.z))),1e-4f32),0.0f32);
   col=sb_add(col,sb_mul(sb_mulv(sunl,wo_through(slab_sea_kd(u),6.0f32)),(0.11f32*crest)*((flat*flat)*(into*(1.0f32-fres)))));
-  // whitecaps: cascade 0's own foam, and the fine tile's where a long wave's crest carries it
+  // whitecaps, lane foam and spindrift: the foam the sea carries (gpu/slab-foam.coax, the field
+  // slab-foam.coax runs); past where a texel shows, the field's own mean
   gate:f32=smoothstep(-0.05f32,0.2f32,high);
-  near:f32=1.0f32-smoothstep(600.0f32,3500.0f32,dist);
-  wa:f32=(p.x*wind.x)+(p.y*wind.y);
-  wc:f32=(p.y*wind.x)-(p.x*wind.y);
-  f1:f32=0.0f32;
-  if ((u[SLAB_SEA+12]>0.5f32)&&(keep1>0.0f32)) { f1=(slab_sea_foam1(p,u)*gate)*keep1; }
-  foam:f32=fmax(c.y,f1);
-  white:f32=0.0f32;
-  if ((foam>0.02f32)||(u[SLAB_SEA+13]>0.0f32)) {
-    grain:f32=(slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.21f32),v2(t*0.12f32,0.0f32)))*0.5f32)+(slab_noise(wg_mul_f2f(p,0.63f32))*0.3f32)+(slab_noise(wg_mul_f2f(p,1.9f32))*0.2f32);
-    // cascade 0's foam is as coarse as its texels: the grain and the crest break it up; the fine
-    // tile's is its own shape. Fresh foam is solid; as it ages it thins to a lace of holes
-    // (a breaking crest lies across the wind)
-    along:f32=slab_noise(v2((wa*0.07f32)-(t*0.05f32),wc*0.016f32));
-    f0:f32=(c.y*gate)*((0.2f32+(0.8f32*grain))+(0.75f32*along));
-    body:f32=fmax(fmin(f0,1.0f32),(f1*(0.55f32+(0.45f32*along)))*(0.6f32+(0.6f32*grain)));
-    // the foam's own texture eats it from its thin edges in: solid where it is thick, a lace of
-    // holes where it thins
-    lace:f32=((slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.55f32),v2(t*0.08f32,t*0.05f32)))*0.5f32)+(slab_noise(wg_mul_f2f(p,1.9f32))*0.3f32))+(slab_noise(wg_mul_f2f(p,5.3f32))*0.2f32);
-    white=smoothstep((lace*1.25f32)-0.3f32,(lace*1.25f32)+0.25f32,body)*(0.7f32+(0.3f32*slab_noise(wg_mul_f2f(p,2.3f32))));
-    // foam blown out along the wind, from a near gale
-    s1:f32=slab_noise(v2((wa*0.03f32)-(t*0.04f32),wc*0.5f32));
-    s2:f32=slab_noise(v2(((wa*0.08f32)-(t*0.07f32))+4.0f32,(wc*1.2f32)+9.0f32));
-    soft:f32=0.08f32+(footprint*0.02f32);
-    line:f32=smoothstep(0.64f32-soft,0.64f32+soft,(s1*0.6f32)+(s2*0.4f32));
-    patches:f32=smoothstep(0.35f32,0.75f32,slab_noise(wg_add_f2f2(wg_mul_f2f(p,0.02f32),v2(3.0f32,t*0.01f32))));
-    white=fmax(white,(u[SLAB_SEA+13]*patches)*((line*0.45f32)*(0.5f32+(0.5f32*grain))));
-  }
-  // past where the foam's grain shows, the sea is as white as its whitecaps cover it
-  white=mix(u[SLAB_SEA+25]*(0.4f32+(0.6f32*gate)),white,near);
-  // spindrift: the crests smoke
-  smoke:f32=(u[SLAB_SEA+14]*gate)*smoothstep(0.35f32,0.8f32,slab_noise(v2((wa*0.03f32)-(t*1.1f32),wc*0.12f32)));
-  white=clampf(fmax(white,smoke*0.7f32),0.0f32,1.0f32);
+  fw:V2=slab_foam_white(p,t,footprint,dist,wind,u[SLAB_SEA+14],gate,u[SLAB_SEA+25],frame);
+  white:f32=fw.x;
   // nothing breaks in the hull's lee, so its whitecaps, streaks and spindrift stop there
   white=white*lee.y;
   // the bubbles under fresh foam lighten the water round it
-  col=sb_add(col,sb_mul(sb_mulv(wo_through(slab_sea_kd(u),3.0f32),light),(0.05f32*smoothstep(0.05f32,0.5f32,foam))*(1.0f32-fres)));
+  col=sb_add(col,sb_mul(sb_mulv(wo_through(slab_sea_kd(u),3.0f32),light),(0.05f32*smoothstep(0.1f32,0.7f32,fw.y*lee.y))*(1.0f32-fres)));
   col=sb_mix(col,slab_sea_foam_lit(ndl,u),white);
   // and the spray hangs over the sea
   veil:f32=u[SLAB_SEA+14]*(1.0f32-exp((-dist)/700.0f32));

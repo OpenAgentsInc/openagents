@@ -70,6 +70,11 @@ EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return 
 EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { (void)state; return (uint32_t)sizeof(((coax_t_Slab *)0)->water.e[0].spray.e[0].rows); }
 EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { int64_t n = slab_particle_instances(at(state)); return n < 0 ? 0u : (uint32_t)n; }
 EXPORT("coaxial_particle_version") uint32_t coaxial_particle_version(uint32_t state) { return (uint32_t)slab_particle_version(at(state)); }
+// The open sea's foam field (slab-foam.coax): the frame store at group 0 binding 1 (host.js
+// "frame"), copied when the field has stepped (slab_foam_store_bytes answers 0 otherwise).
+EXPORT("coaxial_frame_store_cap") uint32_t coaxial_frame_store_cap(void) { return (uint32_t)sizeof(((coax_t_Slab *)0)->sea_foam.e[0].packed); }
+EXPORT("coaxial_frame_store") uint32_t coaxial_frame_store(uint32_t state) { return (uint32_t)(uintptr_t)state_at(state)->sea_foam.e[0].packed.e; }
+EXPORT("coaxial_frame_store_bytes") uint32_t coaxial_frame_store_bytes(uint32_t state) { int64_t n = slab_foam_store_bytes(at(state)); return n < 0 ? 0u : (uint32_t)n; }
 // The HUD's panels and strokes blend over the frame by their coverage.
 EXPORT("coaxial_fx_alpha_v1") uint32_t coaxial_fx_alpha_v1(void) { return 1; }
 // The post pass (gpu/slab-photoreal.coax slab_post_fs) draws contact; none of its five bloom passes.

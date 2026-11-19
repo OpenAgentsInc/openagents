@@ -1,0 +1,120 @@
+// SLAB's open-sea foam (slab.coax loads this): the engine's foam field (metaverse/water-foam.coax)
+// run on SLAB's sea and handed to the shader through the frame store (slab-face.c
+// coaxial_frame_store; gpu/slab-foam.coax draws it). The uniform block is full, so the field rides
+// a storage buffer the host copies when it changes.
+//
+// A desktop keeps 256 by 256 texels over cascade 0's patch (5 to 7 m each) and breaks them on
+// cascade 0's Jacobian plus the fine cascade's; a phone keeps 128 by 128 on cascade 0's alone.
+// The field steps every FOAM_STEP of the world's clock. A fixed moment (?t=), the page's first
+// frame and a jump in the clock run it up from SLAB_FOAM_RUN seconds before, from the lane foam's
+// steady state, so the same moment draws the same foam every time.
+#load "../../metaverse/water-foam.coax";
+
+SLAB_FOAM_DESK :: 256;
+SLAB_FOAM_PHONE :: 128;
+SLAB_FOAM_RUN :: 12.0;     // s: a whitecap's area is down to 3% after it (FOAM_CAP_LIFE 3.53 s)
+SLAB_FOAM_JUMP :: 20.0;    // s: a longer gap in the clock runs the field up again
+
+SlabFoam :: struct {
+  field: [1] FoamField;
+  j0: [4096] f32;          // scratch for cascade 0's Jacobian while the field is run up
+  packed: [FOAM_FLOATS] f32;
+  floats: int;             // of packed, in use (0: no field yet)
+  last: f64;               // the world's moment the field was stepped to
+  have: bool;
+  version: int; sent: int; asks: int;
+}
+
+// Drop the field: the sea changed (slab_build).
+slab_foam_reset :: (s: [] Slab) { s[0].sea_foam[0].have = false; }
+
+// The field's sea: cascade 0's patch, the wind, and what floats drifting with the current and
+// 3% of the wind (water-wake.coax wake_drift).
+slab_foam_begin :: (s: [] Slab, phone: bool) {
+  sp := s[0].spectrum;
+  wd := wsp_direction(sp);
+  drift := wake_drift(d2(-SIM_CURRENT, 0.0), d2(wd.x * sp.wind_speed, wd.y * sp.wind_speed));
+  foam_begin(s[0].sea_foam[0].field[..], ifx phone then SLAB_FOAM_PHONE else SLAB_FOAM_DESK, s[0].synth[0].cascades[0].patch, wd, sp.wind_speed, drift);
+}
+slab_foam_pack :: (s: [] Slab) {
+  f := s[0].sea_foam[..];
+  f[0].floats = foam_pack(f[0].field[..], f[0].packed[..]);
+  f[0].version += 1;
+}
+
+// Each frame from sea_look_frame, with the sea's tile at this frame's moment: on a desktop
+// cascade 0's Jacobian set aside in `j0` and the fine cascade's in Slab.tile; on a phone cascade
+// 0's in Slab.tile. A run-up leaves Slab.tile as it found it: the last cascade it reads, at this
+// moment.
+slab_foam_frame :: (s: [] Slab, phone: bool, j0: [] f32) {
+  f := s[0].sea_foam[..];
+  sp := s[0].spectrum;
+  syn := s[0].synth[0];
+  if s[0].build.on || !syn.ok { f[0].floats = 0; return; }
+  now := s[0].time;
+  n0 := syn.cascades[0].size;
+  wind := sp.wind_speed;
+  if !f[0].have || now < f[0].last - 0.001 || now - f[0].last > SLAB_FOAM_JUMP {
+    slab_foam_begin(s, phone);
+    foam_run(f[0].field[..], s[0].synth[..], s[0].tile[..], f[0].j0[..], now, SLAB_FOAM_RUN, FOAM_STEP);
+    f[0].last = now; f[0].have = true;
+    slab_foam_pack(s);
+    return;
+  }
+  dt := now - f[0].last;
+  if dt < FOAM_STEP { return; }
+  if phone {
+    foam_step(f[0].field[..], s[0].tile[0].jacobian[..], n0, s[0].tile[0].jacobian[..], 0, 0.0, foam_break_share_of(wind, 1), foam_lane_share(wind), sea_spindrift(wind), dt);
+  } else {
+    c1 := syn.cascades[1];
+    foam_step(f[0].field[..], j0, n0, s[0].tile[0].jacobian[..], c1.size, c1.patch, foam_break_share_of(wind, 2), foam_lane_share(wind), sea_spindrift(wind), dt);
+  }
+  f[0].last = now;
+  slab_foam_pack(s);
+}
+
+// The frame store's bytes this frame: the field when it changed since the host last copied it
+// (and every 64th ask regardless, so a new GPU buffer is never left empty for long), else 0.
+slab_foam_store_bytes :: (s: [] Slab) -> int #export_c #effects(all) {
+  f := s[0].sea_foam[..];
+  f[0].asks += 1;
+  if f[0].floats <= 0 { return 0; }
+  if f[0].sent == f[0].version && f[0].asks % 64 != 0 { return 0; }
+  f[0].sent = f[0].version;
+  return 4 * f[0].floats;
+}
+
+#test "the page's foam field: a phone's covers the sea like a desktop's, and a fixed moment is the same every time" #steps 12000000000 {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  s[0].sea = SEA_GALE; s[0].time = 30.0;
+  slab_build(s[..], false);
+  sp := s[0].spectrum;
+  want := wsp_whitecap_cover(sp.wind_speed);
+  k: [4096] f32;
+  wsp_tile(s[0].synth[..], 0, wsp_tick_at(sp, 30.0) % sp.period, s[0].tile[..]);
+  for i: 0..<4096 { k[i] = s[0].tile[0].jacobian[i]; }
+  slab_foam_frame(s[..], false, k[..]);
+  desk := foam_cover(s[0].sea_foam[0].field[..]);
+  #assert s[0].sea_foam[0].field[0].n == 256 && desk.x > 0.5 * want && desk.x < 2.0 * want && desk.y > 0.02;
+  #assert slab_foam_store_bytes(s[..]) == 4 * FOAM_FLOATS && slab_foam_store_bytes(s[..]) == 0;
+  // a moment later the field steps on, and is sent again
+  s[0].time = 30.4;
+  slab_foam_frame(s[..], false, k[..]);
+  #assert s[0].sea_foam[0].field[0].steps == 61 && slab_foam_store_bytes(s[..]) == 4 * FOAM_FLOATS;
+  // the same moment again: the same field
+  a := s[0].sea_foam[0].field[0].cap[1234]; b := s[0].sea_foam[0].field[0].lane[777];
+  s[0].time = 30.0;
+  slab_foam_reset(s[..]);
+  slab_foam_frame(s[..], false, k[..]);
+  s[0].time = 30.4;
+  slab_foam_frame(s[..], false, k[..]);
+  #assert s[0].sea_foam[0].field[0].cap[1234] == a && s[0].sea_foam[0].field[0].lane[777] == b;
+  // a phone's field, on cascade 0 alone, covers the sea as much
+  slab_build(s[..], true);
+  s[0].time = 30.0;
+  wsp_tile(s[0].synth[..], 0, wsp_tick_at(sp, 30.0) % sp.period, s[0].tile[..]);
+  slab_foam_frame(s[..], true, k[..]);
+  phone := foam_cover(s[0].sea_foam[0].field[..]);
+  #assert s[0].sea_foam[0].field[0].n == 128 && phone.x > 0.75 * desk.x && phone.x < 1.33 * desk.x;
+}
