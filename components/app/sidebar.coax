@@ -1,0 +1,310 @@
+// The phone sidebar (components/app/README.md; GitHub #13645). Added by
+// claude-ios-host for the iOS app's navigation button; it replaced the
+// floating drawer (ioshost-drawer.coax).
+//
+// It pushes the page: the panel, pure black and square, slides in flush with
+// the left edge and takes about three quarters of the width, and the page
+// moves right by as much (app_sidebar_shift; the caller draws the page at
+// that offset). What shows of the page is dimmed by the share, and a press
+// on it closes the sidebar.
+//
+// In the panel: a head (a large title at the left, the search button's slot
+// at the right), rows with an icon and a label (the current one on a filled
+// pill), section heads and history rows (nav.coax's app_side_head and
+// app_side_row), hairline dividers, and at the bottom a floating New chat
+// pill and the account's round avatar.
+//
+// `share` is how far the sidebar is open, 0 to 1: the caller animates it
+// (app_sidebar_ease) and owns whether it is open.
+//   coax/bin/coax test components/app/ioshost-sidebar.coax
+
+#load "nav.coax";
+
+APP_SIDEBAR_MOST :: 360.0;     // the panel's widest, in layout units
+APP_SIDEBAR_SHARE :: 0.78;     // the panel's share of a narrow screen
+APP_SIDEBAR_DIM :: 0.2;        // how much darker the page's content goes when fully open
+APP_SIDEBAR_PAGE :: 0.094;     // the pushed page's ground when fully open, a lighter dark grey (#181818) than the black panel
+APP_SIDEBAR_EDGE :: 0.2;       // the pushed page's left edge, a full-height line the skin's border wide (#333)
+APP_SIDEBAR_RATE :: 16.0;      // how fast the share follows its target, per second
+APP_SIDEBAR_ROW :: 48.0;       // an icon row's height
+APP_SIDEBAR_ICON :: 20.0;      // an icon row's icon
+
+// The panel's width on a screen w wide.
+app_sidebar_width :: (w: f32) -> f32 { d := w * APP_SIDEBAR_SHARE; return ifx d > APP_SIDEBAR_MOST then APP_SIDEBAR_MOST else d; }
+// The pushed page's ground at `share`: the page's canvas, lightening to APP_SIDEBAR_PAGE as the
+// sidebar opens, so the page reads apart from the black panel. The caller paints the page on it.
+app_sidebar_ground :: (canvas: Rgba, share: f32) -> Rgba {
+  t := ifx share < 0 then 0.0f32 else ifx share > 1 then 1.0f32 else share;
+  g: f32 = APP_SIDEBAR_PAGE;
+  return Rgba.{r = canvas.r + (g - canvas.r) * t, g = canvas.g + (g - canvas.g) * t, b = canvas.b + (g - canvas.b) * t, a = 1};
+}
+// How far the page moves right at `share`.
+app_sidebar_shift :: (w: f32, share: f32) -> f32 { return share * app_sidebar_width(w); }
+
+// The share one frame later, following `open`. Reduced motion jumps.
+app_sidebar_ease :: (share: f32, open: bool, dt: f32, reduced: bool) -> f32 {
+  goal: f32 = ifx open then 1 else 0;
+  if reduced { return goal; }
+  // a frame's step is capped at a 30 Hz frame's: the first frame after the display link wakes carries
+  // the idle time, which would otherwise jump the whole way in one frame
+  step := ifx dt > 1.0f32 / 30 then 1.0f32 / 30 else dt;
+  k := step * APP_SIDEBAR_RATE; if k > 1 { k = 1; }
+  next := share + (goal - share) * k;
+  if abs(next - goal) < 0.004 { return goal; }
+  return next;
+}
+
+// The sidebar in the box (ox, oy, w, h) at `share`: the dimmed page right of
+// the panel, a button `scrim_id` ("Close menu") that dispatches `close`, and
+// the panel. Returns where the panel's content goes: inside its side padding,
+// `top` under its top edge (the safe area). Draws nothing and returns w 0 at
+// share 0.
+app_sidebar :: (f: [] UiFrame, id: string, scrim_id: string, ox: f32, oy: f32, w: f32, h: f32, top: f32, share: f32, label: string, close: int) -> PanelInside {
+  if !(share > 0) { return PanelInside.{}; }
+  s := f[0].skin; a := s.app; sh := f[0].sheet;
+  pw := app_sidebar_width(w); x := ox - (1 - share) * pw; edge := x + pw; rest := ox + w - edge;
+  black := Rgba.{r = 0, g = 0, b = 0, a = 1};
+  // the page, pushed right and dimmed
+  if rest > 0 {
+    sheet_fill(sh, edge, oy, rest, h, 0, opacity(black, APP_SIDEBAR_DIM * share));
+    // the page's square left edge, a full-height line, so the black panel and the page read apart
+    e := APP_SIDEBAR_EDGE * share;
+    sheet_rule(sh, edge, oy, s.border, h, Rgba.{r = e, g = e, b = e, a = 1});
+    scrim := uiframe_semantic(f, scrim_id, EL_BUTTON, "Close menu", edge, oy, rest, h, 0, close);
+    sheet_hit(sh, UIFRAME_HIT, scrim, 0, edge, oy, rest, h);
+  }
+  // the panel: pure black, square, flush with the left edge
+  sheet_fill(sh, x, oy, pw, h, 0, black);
+  panel := uiframe_semantic(f, id, EL_REGION, label, x, oy, pw, h, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, panel, 0, x, oy, pw, h);
+  uiframe_open(f, panel);
+  return PanelInside.{x = x + a.gap * 2, y = oy + top, w = pw - a.gap * 4};
+}
+app_sidebar_end :: (f: [] UiFrame, inside: PanelInside) { if inside.w > 0 { uiframe_close(f); } }
+
+// The head at (x, y), w wide: the title in the skin's display face (large and bold) at the left, and the
+// search button's slot at the right. The button shows only when search works
+// (search_action != 0); its slot is kept either way. Returns its height.
+app_sidebar_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, search_id: string, search_icon: int, search_action: int) -> f32 {
+  s := f[0].skin; a := s.app; h := a.icon_button;
+  room := w - h - a.gap;
+  t := ifx s.display.size > 0 then s.display else s.title;   // the large title, where the skin has one
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x, y + (h - t.line) / 2, t.line, t.face, s.ink, app_fit(f, t.face, title, room));
+  _ := uiframe_semantic(f, id, EL_HEADING, title, x, y, room, h, 0, 0);
+  if search_action != 0 { _ := app_icon_button(f, search_id, x + w - h, y, search_icon, "Search", APP_BUTTON_DEFAULT, 0, search_action); }
+  return h;
+}
+
+// A row at (x, y), w wide: an icon and a label in large type. EL_S_CURRENT
+// puts it on a filled pill; it is washed while held. Returns its height.
+app_sidebar_item :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, state: int, action: int) -> f32 {
+  s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; h: f32 = APP_SIDEBAR_ROW;
+  current := (state & EL_S_CURRENT) != 0; off := (state & EL_S_DISABLED) != 0;
+  k := uiframe_key(f, id);
+  p := ifx off then 0.0f32 else uiframe_press(f, k, id);
+  if current { sheet_fill(sh, x, y, w, h, h / 2, s.raised); }
+  if p > 0 { sheet_fill(sh, x, y, w, h, h / 2, opacity(s.hover, p)); }
+  row := uiframe_semantic(f, id, EL_ROW, label, x, y, w, h, state, ifx off then 0 else action);
+  ink := ifx off then s.faint else s.ink;
+  ix := x + a.side_pad;
+  if icon >= 0 { sheet_icon(sh, icon, ix, y + (h - APP_SIDEBAR_ICON) / 2, APP_SIDEBAR_ICON, ink); }
+  tx := ifx icon >= 0 then ix + APP_SIDEBAR_ICON + a.side_pad else ix;
+  _ := sheet_text(sh, m, -1, tx, y + (h - s.body.line) / 2, s.body.line, s.body.face, ink, app_fit(f, s.body.face, label, x + w - a.side_pad - tx));
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
+  return h;
+}
+
+// A hairline across the panel between groups, with room above and below. Returns its height.
+app_sidebar_rule :: (f: [] UiFrame, x: f32, y: f32, w: f32) -> f32 {
+  s := f[0].skin; g := s.app.gap;
+  sheet_rule(f[0].sheet, x, y + g, w, s.border, s.hairline);
+  return 2 * g + s.border;
+}
+
+// The floating New chat pill at (x, y): a light pill with its icon, over the
+// skin's lift. Returns its width.
+app_sidebar_new :: (f: [] UiFrame, id: string, x: f32, y: f32, icon: int, label: string, action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet;
+  bw := app_button_width(f, icon, label);
+  sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, x, y, bw, s.control_h, s.control_h / 2));
+  _ := app_button(f, id, x, y, bw, icon, label, APP_BUTTON_PRIMARY, 0, action);
+  return bw;
+}
+
+// The account's round avatar at (x, y) with its initials (app_initials);
+// `label` says whose it is. Pressable when `action` is not 0. Returns its side.
+app_sidebar_avatar :: (f: [] UiFrame, id: string, x: f32, y: f32, initials: string, label: string, action: int) -> f32 {
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; d := s.control_h;
+  k := uiframe_key(f, id);
+  p := ifx action == 0 then 0.0f32 else uiframe_press(f, k, id);
+  sheet_fill(sh, x, y, d, d, d / 2, s.raised);
+  if p > 0 { sheet_fill(sh, x, y, d, d, d / 2, opacity(s.hover, p)); }
+  tw := measure_width(m, s.strong.face, initials);
+  _ := sheet_text(sh, m, -1, x + (d - tw) / 2, y + (d - s.strong.line) / 2, s.strong.line, s.strong.face, s.ink, initials);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, d, d, 0, action);
+  if action != 0 { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, d, d); }
+  return d;
+}
+
+// Up to two initials of a name or an email, upper case: the first letter, and
+// the letter after the first space, dot, dash or underscore before any "@".
+app_initials :: (who: string, out: [] u8) -> int {
+  n := 0; next := true;
+  for c: who {
+    if c == '@' || n >= 2 || n >= out.count { break; }
+    if c == ' ' || c == '.' || c == '-' || c == '_' { next = true; continue; }
+    if next {
+      out[n] = ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1; next = false;
+    }
+  }
+  return n;
+}
+
+
+
+// ---------------------------------------------------------------------------
+// Responsive sidebar / drawer unification (GitHub #13712, Phase 3)
+//
+// On wide viewports (>= breakpoint) the navigation panel docks as a persistent
+// resizable left column; on narrow viewports (< breakpoint) it slides in as a
+// drawer pushing the page right behind a scrim (app_sidebar above).
+// ---------------------------------------------------------------------------
+
+APP_SIDEBAR_DRAWER :: 0;       // narrow viewport: slide-in drawer with scrim
+APP_SIDEBAR_PERSISTENT :: 1;   // wide viewport: docked resizable left column
+
+APP_SIDEBAR_BREAKPOINT :: 900.0f32; // viewport width (pt) at which drawer switches to persistent
+APP_SIDEBAR_DEFAULT :: 234.0f32;    // default persistent width (280pt at 1.2x Arcade scale)
+APP_SIDEBAR_MIN :: 180.0f32;        // narrowest user-dragged persistent sidebar
+APP_SIDEBAR_MAX :: 380.0f32;        // widest user-dragged persistent sidebar
+APP_SIDEBAR_MAIN_MIN :: 380.0f32;   // minimum main column width beside sidebar + secondary pane
+APP_SIDEBAR_RESIZE_EDGE :: 5.0f32;         // hit slop (pt) for dragging the sidebar divider
+
+AppSidebarSpec :: struct {
+  breakpoint: f32;
+  default_w: f32;
+  min_w: f32;
+  max_w: f32;
+  main_min: f32;
+}
+
+app_sidebar_spec_default :: () -> AppSidebarSpec {
+  return AppSidebarSpec.{
+    breakpoint = APP_SIDEBAR_BREAKPOINT,
+    default_w = APP_SIDEBAR_DEFAULT,
+    min_w = APP_SIDEBAR_MIN,
+    max_w = APP_SIDEBAR_MAX,
+    main_min = APP_SIDEBAR_MAIN_MIN,
+  };
+}
+
+AppSidebarLayout :: struct {
+  mode: int;        // APP_SIDEBAR_DRAWER or APP_SIDEBAR_PERSISTENT
+  persistent: bool; // true when docked on the left
+  visible: bool;    // true when any part of the sidebar is drawn
+  width: f32;       // sidebar column width (or drawer panel width when in drawer mode)
+  page_shift: f32;  // horizontal shift applied to the main page (drawer mode)
+}
+
+app_sidebar_clamp_width :: (w: f32, spec: AppSidebarSpec) -> f32 {
+  if !(w > 0) { return 0.0f32; }
+  if w < spec.min_w { return spec.min_w; }
+  if w > spec.max_w { return spec.max_w; }
+  return w;
+}
+
+// Compute responsive sidebar geometry for a viewport of width win_w.
+// pane_w is the width currently reserved by a right-hand secondary pane (0 if closed).
+// user_w is the user-dragged persistent width (0 uses spec.default_w).
+// drawer_share is 0..1 animation progress when in drawer mode.
+app_sidebar_layout :: (
+  win_w: f32,
+  pane_w: f32,
+  user_w: f32,
+  drawer_share: f32,
+  collapsed: bool,
+  spec: AppSidebarSpec,
+) -> AppSidebarLayout {
+  if win_w >= spec.breakpoint {
+    if collapsed {
+      return AppSidebarLayout.{ mode = APP_SIDEBAR_PERSISTENT, persistent = false, visible = false, width = 0.0f32, page_shift = 0.0f32 };
+    }
+    want := ifx user_w > 0 then app_sidebar_clamp_width(user_w, spec) else spec.default_w;
+    // If a secondary pane leaves less than spec.main_min beside the sidebar, collapse the sidebar.
+    if win_w - pane_w - want < spec.main_min {
+      return AppSidebarLayout.{ mode = APP_SIDEBAR_PERSISTENT, persistent = false, visible = false, width = 0.0f32, page_shift = 0.0f32 };
+    }
+    return AppSidebarLayout.{ mode = APP_SIDEBAR_PERSISTENT, persistent = true, visible = true, width = want, page_shift = 0.0f32 };
+  }
+  sh := drawer_share;
+  if sh < 0 { sh = 0; }
+  if sh > 1 { sh = 1; }
+  dw := app_sidebar_width(win_w);
+  return AppSidebarLayout.{
+    mode = APP_SIDEBAR_DRAWER,
+    persistent = false,
+    visible = sh > 0.001f32,
+    width = dw,
+    page_shift = app_sidebar_shift(win_w, sh),
+  };
+}
+
+// Dragging the persistent sidebar edge to pointer ux, clamped to [spec.min_w, spec.max_w]
+// while preserving spec.main_min for the conversation beside pane_w.
+app_sidebar_drag :: (ux: f32, win_w: f32, pane_w: f32, spec: AppSidebarSpec) -> f32 {
+  wv := ux;
+  most := win_w - pane_w - spec.main_min;
+  if wv > most { wv = most; }
+  if wv > spec.max_w { wv = spec.max_w; }
+  if wv < spec.min_w { wv = spec.min_w; }
+  return wv;
+}
+
+// Persistent docked sidebar container (desktop mode): draws surface fill and right hairline divider,
+// returning the usable content width inside the column (before the border).
+app_sidebar_surface :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) -> f32 {
+  if w <= 0 || h <= 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet;
+  sw := w - k.border;
+  if sw < 0 { sw = 0; }
+  sheet_fill(sh, x, y, sw, h, 0, k.surface);
+  sheet_fill(sh, x + sw, y, k.border, h, 0, k.menu_divider);
+  return sw;
+}
+
+app_sidebar_clamp :: (w: f32, spec: AppSidebarSpec) -> f32 {
+  if !(w > 0) { return 0.0f32; }
+  if w < spec.min_w { return spec.min_w; }
+  if w > spec.max_w { return spec.max_w; }
+  return w;
+}
+
+// Unified responsive sidebar/drawer container: draws a docked persistent left column on wide
+// viewports or a slide-in drawer with scrim on narrow viewports. Always pair with app_sidebar_end.
+app_sidebar_responsive :: (
+  f: [] UiFrame,
+  id: string,
+  scrim_id: string,
+  x: f32,
+  y: f32,
+  w: f32,
+  h: f32,
+  top: f32,
+  lay: AppSidebarLayout,
+  share: f32,
+  label: string,
+  scrim_action: int,
+) -> PanelInside {
+  if !lay.visible { return PanelInside.{}; }
+  if lay.persistent {
+    sw := app_sidebar_surface(f, x, y, lay.width, h);
+    if sw <= 0 { return PanelInside.{}; }
+    panel := uiframe_semantic(f, id, EL_REGION, label, x, y, sw, h, 0, 0);
+    sheet_hit(f[0].sheet, UIFRAME_HIT, panel, 0, x, y, sw, h);
+    uiframe_open(f, panel);
+    return PanelInside.{ x = x, y = y + top, w = sw };
+  }
+  return app_sidebar(f, id, scrim_id, x, y, w, h, top, share, label, scrim_action);
+}
+
+#load "sidebar-checks.coax" #test;

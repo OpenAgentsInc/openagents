@@ -1,0 +1,38 @@
+#test "responsive pane docks on wide viewports and goes full-width when main column would fall below main_min" {
+  spec := app_pane_spec_default();
+  closed := app_pane_layout(1200.0f32, 0.0f32, false, spec);
+  #assert !closed.open && closed.w == 0.0f32 && closed.x == 1200.0f32;
+
+  wide := app_pane_layout(1200.0f32, 0.0f32, true, spec);
+  #assert wide.open && wide.mode == APP_PANE_SIDE && wide.w == APP_PANE_DEFAULT && wide.x == 1200.0f32 - APP_PANE_DEFAULT;
+
+  // When requested user_w leaves < main_min (1000 - 900 = 100 < 380), pane takes full width.
+  full_user := app_pane_layout(1000.0f32, APP_PANE_MAX, true, spec);
+  #assert full_user.open && full_user.mode == APP_PANE_FULL && full_user.x == 0.0f32 && full_user.w == 1000.0f32;
+
+  // With a smaller user_w that leaves >= main_min (1000 - 320 = 680 >= 380), pane docks.
+  fit_user := app_pane_layout(1000.0f32, APP_PANE_MIN, true, spec);
+  #assert fit_user.open && fit_user.mode == APP_PANE_SIDE && fit_user.w == APP_PANE_MIN && fit_user.x == 680.0f32;
+
+  narrow := app_pane_layout(500.0f32, 0.0f32, true, spec);
+  #assert narrow.open && narrow.mode == APP_PANE_FULL && narrow.x == 0.0f32 && narrow.w == 500.0f32;
+
+  #assert app_pane_drag(800.0f32, 1200.0f32, 0.0f32, spec) == 400.0f32;
+  #assert app_pane_drag(100.0f32, 1200.0f32, 0.0f32, spec) == 820.0f32;
+}
+
+#test "app_pane_shell draws divider, title, meta, and close button" {
+  u0: [128] Prim; o0: [32] Prim; l0: [16] SheetLine; h0: [32] SheetHit; p0: [512] u8; r0: [32] El;
+  u1: [128] Prim; o1: [32] Prim; l1: [16] SheetLine; h1: [32] SheetHit; p1: [512] u8; r1: [32] El;
+  sf: [1] UiSurface; sf[0] = surface_over(
+    Sheet.{under = u0[..], over = o0[..], lines = l0[..], hits = h0[..], pool = p0[..]}, r0[..],
+    Sheet.{under = u1[..], over = o1[..], lines = l1[..], hits = h1[..], pool = p1[..]}, r1[..]);
+  keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
+  f: [1] UiFrame;
+  uiframe_begin(f[..], sf[..], ks[..], measure_cells(), zeron_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  top := app_pane_shell(f[..], 700, 0, 500, 800, -1, "Inspector", "pane.meta", "Running", "pane.close", 99, 20, 12);
+  #assert top > 0.0f32;
+  #assert uiframe_end(f[..], sf[..]);
+  #assert surface_find(sf[..], "pane.close") >= 0;
+  #assert surface_find(sf[..], "pane.meta") >= 0;
+}

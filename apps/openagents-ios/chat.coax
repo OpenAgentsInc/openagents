@@ -27,7 +27,7 @@
 
 #load "../shared/app/view/page.coax";
 #load "../../components/app/nav.coax";
-#load "../../components/app/ioshost-sidebar.coax";
+#load "../../components/app/sidebar.coax";
 #load "../../components/skin/conversation.coax";
 #load "../shared/app/login/card.coax";
 #load "../shared/app/login/bridge.coax";

@@ -15,6 +15,7 @@
 
 #load "../../components/app/task.coax";
 #load "../../components/app/nav.coax";
+#load "../shared/app/view/shell.coax";
 #load "../../components/kit/foreman_hud.coax";
 #load "../../components/core/edit.coax";
 #load "../../components/skin/arcade.coax";
@@ -1823,19 +1824,20 @@ cp_row :: (s: [] CoderPage, f: [] UiFrame, q: int, id: string, x: f32, y: f32, w
 // A sub-agent's transcript (GitHub #13666) from px, pw wide, the window's height: its model, how
 // long it ran and Close at the top; under them, scrolling, its task as a message, each tool call
 // as a row that opens onto its input and output, and its reply, as the conversation shows its own.
+cp_sidebar_spec :: () -> AppSidebarSpec {
+  return AppSidebarSpec.{ breakpoint = cast(f32) CP_SIDE_FROM, default_w = cast(f32) CP_SIDE, min_w = cast(f32) CP_SIDE_LEAST, max_w = cast(f32) CP_SIDE_MOST, main_min = cast(f32) CP_PANE_MAIN };
+}
+cp_pane_spec :: () -> AppPaneSpec {
+  return AppPaneSpec.{ default_w = cast(f32) CP_PANE, min_w = cast(f32) CP_PANE_LEAST, max_w = cast(f32) CP_PANE_MOST, main_min = cast(f32) CP_PANE_MAIN };
+}
 cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet;
   i := s[0].pane_turn; j := s[0].pane_agent;
   side := a.icon_button; state := s[0].turns[i].agents[j].state;
   kb: [24] u8; ib: [EL_ID] u8;
-  if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
-  hx := px + CP_PAD; mid := CP_CORNER + side / 2;
-  sheet_icon(sh, ICON_BOT, hx, mid - a.tool_icon / 2, a.tool_icon, k.muted); hx += a.tool_icon + a.gap;
-  hx += sheet_text(sh, f[0].m, -1, hx, mid - k.tool.line / 2, k.tool.line, k.tool.face, k.ink, CP_LEVEL_NAME[s[0].turns[i].agents[j].level]) + a.gap;
   took := cp_took(kb[..], ifx state == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took);
-  if took.count > 0 { _ := app_meta(f, "coder.pane.took", hx, mid - k.small.line / 2, px + pw - side - CP_CORNER - hx, sheet_pool(sh, took), false); }
-  _ := app_icon_button(f, "coder.pane.close", px + pw - side - CP_CORNER, CP_CORNER, ICON_CLOSE, "Close", APP_BUTTON_QUIET, 0, CP_PANE_CLOSE);
-  stop := CP_CORNER + side + a.gap_small;
+  took_s := ifx took.count > 0 then sheet_pool(sh, took) else "";
+  stop := app_pane_shell(f, px, 0, pw, h, ICON_BOT, CP_LEVEL_NAME[s[0].turns[i].agents[j].level], "coder.pane.took", took_s, "coder.pane.close", CP_PANE_CLOSE, CP_PAD, CP_CORNER);
   s[0].pane_view = h - stop;
   if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
   s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
@@ -1916,24 +1918,18 @@ cp_agent_row :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int, x: f32, y0: f32
 }
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   k := f[0].skin; a := k.app;
-  left: f32 = ifx window_w >= CP_SIDE_FROM then (ifx s[0].side_w > 0 then s[0].side_w else cast(f32) CP_SIDE) else 0.0f32;   // the sidebar's width
   s[0].win_w = window_w;
-  // a sub-agent's transcript takes the window's right side. Where the conversation would have
-  // under 380 points beside it, the chats' sidebar goes; where it still would, the transcript
-  // takes the whole window until it is closed.
-  whole := window_w; right: f32 = 0;
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
-  if s[0].pane_open {
-    right = ifx s[0].pane_user > 0 then s[0].pane_user else cast(f32) CP_PANE;
-    if whole - left - right < CP_PANE_MAIN { left = 0; }
-    if whole - right < CP_PANE_MAIN { right = whole; left = 0; }
-  }
-  s[0].side = left; s[0].pane_w = right; s[0].pane_x = whole - right;
-  if right >= whole { s[0].col_w = 0; cp_pane(s, f, 0, whole, h); return; }
-  if right > 0 { cp_pane(s, f, whole - right, right, h); }
-  w := whole - right;   // from here w is where the conversation's side ends
-  cw := w - left - 2 * CP_PAD; if cw > CP_COLUMN { cw = CP_COLUMN; }
-  x := left + (w - left - cw) / 2;
+  // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
+  // wide viewports, centered conversation column, and right sub-agent transcript pane.
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, false, 0.0f32, s[0].pane_open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  left := ifx shell.side.persistent then shell.side.width else 0.0f32;
+  right := shell.pane.w;
+  s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
+  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_pane(s, f, 0, window_w, h); return; }
+  if shell.pane.open && right > 0 { cp_pane(s, f, shell.pane.x, right, h); }
+  w := window_w - right;   // from here w is where the conversation's side ends
+  cw := shell.col_w; x := shell.col_x;
   s[0].col_x = x; s[0].col_w = cw;
   side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
   running := cp_running(s); full := cp_full(s); exceeded := cp_budget_exceeded(s);
@@ -2164,9 +2160,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   // section header, 32pt rows with 8pt inset/radius) in Coder's monochrome palette.
   if left > 0 {
     u: f32 = ARCADE_PHONE_SCALE;
-    sw := left - k.border;
-    sheet_fill(f[0].sheet, 0, 0, sw, h, 0, k.surface);
-    sheet_fill(f[0].sheet, sw, 0, k.border, h, 0, k.menu_divider);
+    sw := app_sidebar_surface(f, 0, 0, left, h);
     sy := 10.0f32 / u;
     sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
     cur := cast(string) s[0].current[0..<s[0].current_n];
@@ -2501,8 +2495,8 @@ coder_page_sides :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(al
 // The widths the host kept. One outside its limits is put inside them; 0 leaves the usual width.
 coder_page_sides_set :: (s: [] CoderPage, left: f32, right: f32) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].side_w = ifx !(left > 0) then 0.0f32 else ifx left < CP_SIDE_LEAST then cast(f32) CP_SIDE_LEAST else ifx left > CP_SIDE_MOST then cast(f32) CP_SIDE_MOST else left;
-  s[0].pane_user = ifx !(right > 0) then 0.0f32 else ifx right < CP_PANE_LEAST then cast(f32) CP_PANE_LEAST else ifx right > CP_PANE_MOST then cast(f32) CP_PANE_MOST else right;
+  s[0].side_w = app_sidebar_clamp(left, cp_sidebar_spec());
+  s[0].pane_user = app_pane_clamp(right, cp_pane_spec());
 }
 // A click, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled, routed through the committed rows.
 coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
@@ -2518,13 +2512,9 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   if s[0].drag != 0 {
     if phase == 1 {
       if s[0].drag == 1 {
-        wv := ux; most := s[0].win_w - s[0].pane_w - CP_PANE_MAIN;
-        if wv > most { wv = most; } if wv > CP_SIDE_MOST { wv = CP_SIDE_MOST; } if wv < CP_SIDE_LEAST { wv = CP_SIDE_LEAST; }
-        s[0].side_w = wv;
+        s[0].side_w = app_sidebar_drag(ux, s[0].win_w, s[0].pane_w, cp_sidebar_spec());
       } else {
-        wv := s[0].win_w - ux; most := s[0].win_w - s[0].side - CP_PANE_MAIN;
-        if wv > most { wv = most; } if wv > CP_PANE_MOST { wv = CP_PANE_MOST; } if wv < CP_PANE_LEAST { wv = CP_PANE_LEAST; }
-        s[0].pane_user = wv;
+        s[0].pane_user = app_pane_drag(ux, s[0].win_w, s[0].side, cp_pane_spec());
       }
       return true;
     }

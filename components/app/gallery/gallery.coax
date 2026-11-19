@@ -21,7 +21,7 @@
 #load "../identity.coax";
 #load "../../../apps/shared/app/login/card.coax";   // the one login card (lf_card), shown with example state
 #load "../nav.coax";
-#load "../ioshost-sidebar.coax";
+#load "../sidebar.coax";
 #load "../../skin/arcade.coax";
 #load "../../backend/gpu.coax";
 
