@@ -22,6 +22,7 @@ A realm that names `photoreal` draws its world as meshes: a few *parts*
 | Shaders | The mesh pass, shading, sky, air, film | `metaverse-engine/render/shade/photoreal.coax` |
 | Frame writer | Fills the frame's numbers on the CPU each frame | `metaverse-engine/render/shade/photoreal-frame.coax` |
 | Scene list | Parts and records, written so one draw covers one part | `metaverse-engine/render/shade/photoreal-scene.coax` |
+| Lamps, the lamp field, near lights, lit rooms, the moon, the wind | `pr_light_add`, `pr_lamp_field`, `pr_lights_near`, `pr_lamps_level`, `pr_moon_at`, `pr_frame_wind` | `metaverse-engine/render/shade/photoreal-lights.coax` |
 | Checks that hold the CPU and the shaders together | | `metaverse-engine/render/tests/photoreal-checks.coax` |
 
 The parts themselves are made with the architecture kit's pen
@@ -91,12 +92,50 @@ The parts themselves are made with the architecture kit's pen
   either way. SLAB sets 0.07 under a high sun and up to 0.14 under a low
   one, less under cloud, with a haze of 0.22 (a marine morning). Keep it
   small: most of the golden hour comes from the sun and the haze.
+- **Night sky.** After the sun sets, `pr_dome` draws stars (fixed to the
+  sky, fading in as the sky darkens) and the moon at its place and phase for
+  the date (`pr_moon_at`: a low-precision lunar ephemeris, good to about a
+  degree). The moon lights the scene as a second, much weaker sun when it is
+  up. SLAB's months are mid-month dates in 2026, and several of them fall
+  near a new moon, so the moon is often a thin crescent or not up.
+- **Lamps.** A realm places lamps with `photo_light(ph, x, y, z, high, r, g,
+  b, climb)`: a light `high` metres over the ground, in linear (r, g, b),
+  that lights walls up to the height `climb`. All of them bake into a lamp
+  field (4 floats a cell on the ambient-occlusion grid: SLAB's is 250 × 150
+  cells of 4 m), so a street of lamps costs one texture read. The field
+  lights only ground inside it and over its ground's height: a hull wall
+  below the deck takes none. On a desktop the twelve lamps nearest the eye
+  are also near lights (`PR_NEAR_LIGHTS`, from `pr_lights_near`), each with a GGX highlight, so a
+  wet-looking pool shines under each post. `pr_lamps_level` turns every
+  lamp on as the daylight fails (0 by day, 1 by dusk). A lamp's glow is a
+  record with `PR_LAMP` (or `PR_BEACON`, which flashes): dark by day, and
+  never drawn under a pixel or two, so a far street is a row of lights.
+  Limits: 3,072 lamps (`PHOTO_LIGHTS`); no shadows from lamps; the sea does
+  not mirror them yet.
+- **Lit rooms.** The glass patterns light a share of the rooms behind
+  their panes at night (`pr_room` in `photoreal-surfaces.coax`; the share is
+  `PR_ROOMS`, from `pr_rooms_by_hour`). SLAB's painted towers follow the
+  same share.
 
 ### Shading
 
 `pr_lit` is a physically based surface: GGX highlights, Fresnel, and energy
 kept (what a surface mirrors it does not also scatter). A material gives it
 a colour, a roughness, how much metal, a pattern and a glow.
+
+### Wind
+
+`PR_WIND` (`pr_frame_wind`) holds the wind's direction and strength for the
+frame. A record with `PR_SWAY` bends with it: the higher a vertex stands in
+its part the more it moves, in gusts of a few seconds, and leaves flutter a
+little on their own, so a crown shivers while its trunk leans.
+
+**Leaves that fold.** `pr_part_fold` (`photoreal-scene.coax`) marks a part's
+leaf vertices (a vertex's u at −8 or below). They stand as made near the
+eye, sink into the crown with distance and are gone past
+`pr_fold_reach`, where the solid crown under them (`arch_tree_hearts`)
+stands alone. A phone never draws them. This is how SLAB's groves keep
+their many leaf cards to the trees near the eye.
 
 ### The phone tier
 
@@ -233,7 +272,7 @@ metre across and stretched by its records: SLAB already has `ph[0].box`,
 `ph[0].drum` (40 sides), `ph[0].post` (12 sides), `ph[0].dome` and
 `ph[0].gable`.
 
-Limits, all shared by every set: 40,000 vertices (`PHOTO_VERTICES`), 128
+Limits, all shared by every set: 72,000 vertices (`PHOTO_VERTICES`), 128
 parts (`PR_PARTS`). When something doesn't fit it is left out and
 `ph[0].full` is set; the check in `slab-photoreal.coax` fails on it.
 
@@ -345,7 +384,36 @@ only, and nothing in the construction view.
 | Works | Process halls (turbine halls, heat exchangers, industry, desalination): a pipe rack down the clearest long side with drops into the wall and valve stations, louvres and doors, a stair tower, roof plant. Stacks and tall columns: ring walks, a caged ladder, a flue duct to the nearest hall. Tanks: a railed rim walk, a ladder, a valve station and pipes between neighbours. Moonpools: a rim walk and a gantry. The cooling plant: fans in cowls and louvres. The mining yard: a fan bank and an intake louvre on each container, a cable duct and switchgear. The desalination plant: reverse-osmosis trains and its sea pipes over the promenade and down the wall | 791 |
 | Temples | For each temple and colonnade, in its own marble or limestone: a flight of steps up each front, a cornice over the entablature, triglyphs along the frieze, and the pediment's trim | 852 |
 
-The lamps' lens material is `slab_city_lamp(ph)`, for the night lights to light.
+The lamps' lens material is `slab_city_lamp(ph)`. The night set lights it,
+and each post calls `night_post` for its light.
+
+### The gardens
+
+`apps/openagents-web/slab-content-green.coax` plants the plan's garden
+records and fills the water:
+
+| Rule | What it places |
+| --- | --- |
+| Groves and avenues | Stone pines, cypresses and olives from the engine's layered trees (`metaverse-engine/arch/flora.coax`), each swaying in the wind; hedges, shrubs and flower beds; a gravel court |
+| The canal and pools | A still-water sheet over a dark floor (`PR_PATTERN_WATER`: the sky and the temples mirrored, a faint caustic net), inside a stone rim |
+| The fountain | Its bowls, and a jet: `green_jet` finds the fountain's record and the water set throws a burst every 0.25 s at 7 m/s into the spray ring, so the jet stands about 2 m and falls back in the wind |
+
+### The night set
+
+`apps/openagents-web/slab-content-night.coax` lights the platform by rule
+over the plan:
+
+| Rule | What it places |
+| --- | --- |
+| Street lamps | A warm light at each of content-city's lamp posts (`night_post`) |
+| Temples | Floodlights round every temple and tholos, 4 m out, washing the columns |
+| The fountain | Four lamps in the basin, and the jet lit from below |
+| Works | Cold-white work lights on 16 m masts over the plant and the yards (`night_work_light`, for a construction set too) |
+| Aviation | Red beacons on the stacks' rims and on the corners of towers over 60 m, white flashing beacons at the hull's corners |
+
+`night_lamp(ph, l, x, y, z, high, r, g, b, climb)` puts a light and its glow
+ball at a post another set stood. `NIGHT_STREETS` true makes the set stand
+its own posts on a 25 m grid of the open deck instead.
 
 ### The construction view
 

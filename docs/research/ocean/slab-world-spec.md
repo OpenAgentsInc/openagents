@@ -1609,6 +1609,34 @@ wake as a source of field foam. The field repeats every cascade-0 patch
 away; a wake's foam belongs in the wake's own draw-time path
 (`metaverse/water-wake.coax`).
 
+### Gardens, water and night (photoreal)
+
+Measured on November 18, 2026, with `?style=photoreal`, from the checks in
+`apps/openagents-web/slab.coax` ("SLAB's groves", "the fountain's jet",
+"SLAB at night") and `metaverse-engine/render/shade/photoreal-lights.coax`,
+and from pictures at noon, 18:00, 19:00 and midnight from the orbit, the
+gardens, the canal, a street and the fountain, at 1440×900 and 390×844.
+Issue 13687 asked for these. `docs/metaverse/photoreal.md` has the method.
+
+| Quantity | Measured |
+|---|---|
+| Trees | stone pines, cypresses and olives from the engine's layered trees in the plan's groves and avenues, bending with the frame's wind; leaf cards fold away with distance and are not drawn on a phone |
+| Water | the canal, the pools and the fountain's basin are still water over a dark floor in a stone rim, mirroring the sky and, at night, the floodlit temples |
+| The fountain's jet | a burst every 0.25 s at 7 m/s: 8 bursts in 2 s, a peak of 1.5 to 2.6 m (checked), lit from the basin at night |
+| Lamps | more than 150 lamps (checked; at most 3,072): a light at each of content-city's street lamps, temple floodlights (8 or more), work lights on 16 m masts (8 or more), red beacons on stacks and tall towers, white beacons at the hull's corners; on as the daylight fails, off at noon (checked) |
+| Lit rooms | the painted towers' windows follow the glass's share of rooms lit by the hour, at 0.55 of their paint's glow |
+| Night sky | stars, and the moon at its place and phase for the date |
+| GPU frame time p50 (p95) | 1440×900 orbit noon 4.27 (5.70) ms, midnight 3.25 (3.59) ms; gardens noon 4.38 (6.45) ms, midnight 3.26 (3.70) ms. 390×844 phone tier orbit noon 0.73 (0.83) ms, midnight 0.71 (0.80) ms. Headless Chrome on an Apple M-series GPU at a load of about 50, before the last merge with main's glazing and contact pass; a run after it at a load of 169 read 4.9, 3.8 and 10.6 ms and phone 4.2 ms, too noisy to compare |
+| Shared limits | 72,000 vertices (`PHOTO_VERTICES`, was 40,000); 4,059 of 4,096 uniform vec4s (3 for the wind, the moon and the lamps); the realm's memory budget 13 MB (was 10 MB); `slab.wasm` 667,977 bytes, its budget raised from 670,000 to 720,000 |
+
+**Not done.**
+
+- The sea does not mirror the lamps, and lamps cast no shadows.
+- SLAB's months are mid-month 2026 dates, and several fall near a new moon,
+  so the moon is often thin or down.
+- The construction view has no lamp field; `night_work_light` is there for
+  a construction set to call.
+
 ### The hull on its moorings
 
 Measured on November 18, 2026, from the checks in
