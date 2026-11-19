@@ -288,6 +288,15 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
       if (far.t<900.0f32) {outside=0.0f32;}
     }
     reach=pr_shadow(v.world,n,outside,u,b,shadow_map,shadow_cmp);
+    // the walker is traced, not drawn into the shadow map: trace its own shadow near its feet
+    // (its bounding sphere turns away every other pixel)
+    if ((reach>0.0f32)&&(u[SLAB_P+34]>0.5f32)) {
+      fe:V3=sb_sub(wh,sb_p(u,28));
+      if (((fe.x*fe.x)+(fe.z*fe.z))<900.0f32) {
+        me:SlabHit=slab_walker(sb_add(wh,sb_mul(nh,0.05f32)),sb_dir_to_hull(sun,u),40.0f32,u);
+        if (me.t<40.0f32) {reach=0.0f32;}
+      }
+    }
   }
   open:f32=ifx free then 1.0f32 else pr_field(wh,nh,u,b,field);
   mirrored:V3=pr_environment(n,toward,s.rough,u,b);
