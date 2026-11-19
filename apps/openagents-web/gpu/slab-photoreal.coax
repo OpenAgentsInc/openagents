@@ -155,7 +155,21 @@ slab_photo_sea_haze :: (u:[]f32)->f32 {return ifx slab_photo(u) then 0.0f32 else
 
 // ---- the mesh pass
 // (the vertices' store is not named `mesh`: host.js gives a store of that name in a page's shader its older single-mesh layout)
+// A pool's parts (its water sheet and its stone, slab-content-green.coax green_pool) a little
+// nearer the eye in depth than they are: the sheet lies 2 to 8 cm over the deck and the pool's own
+// top, closer than the depth can tell apart past a few hundred metres, and the deck would show
+// through the water by turns each frame. A fixed share of the depth (5 of its steps by 1: about
+// 1.5 mm at 50 m, 0.2 m at 600 m, a metre and a half at 1.5 km) always parts them.
+SLAB_POOL_BIAS :: 0.0000003f32;
 slab_scene_vs :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {
+  v:PrV=slab_scene_place(id,instance,u,parts,objects);
+  record:int=cast(int)(objects[cast(int)instance].c.w+0.5f32)-1;
+  if ((record>=0)&&(wg_i32_f(u[SLAB_BOXES+(record*8)+3]+0.5f32)==14)) {
+    v.pos=v4(v.pos.x,v.pos.y,v.pos.z-(SLAB_POOL_BIAS*v.pos.w),v.pos.w);
+  }
+  return v;
+}
+slab_scene_place :: (id:u32,instance:u32,u:[]f32,parts:[]f32,objects:[]PrObj)->PrV {
   v:PrV=pr_stand(id,instance,u,SLAB_PHOTO,parts,objects);
   if ((u[SLAB_P+52]==0.0f32)||((v.pos.z==2.0f32)&&(v.pos.w==1.0f32)&&(v.pos.x==0.0f32))) {return v;}   // (pr_stand put it out of sight)
   // the section (slab_photo_cut_point)
@@ -287,6 +301,21 @@ slab_deck_street :: (s0:PrSurface,d:SlabDeck,aa:f32)->PrSurface {
   s.rough=mix(s.rough,0.6f32,white);
   return s;
 }
+// Whether a point on a pool record's top lies under its water sheet (green_pool's: inset 0.35 m,
+// round in a round pool), by 0.1 m more so the sheet's edge covers the stone's; a moonpool's top
+// is its shaft, and a pool too small for a sheet keeps its top.
+slab_photo_under_sheet :: (w:V3,p:V4,q:V4)->bool {
+  if (abs(((p.x+q.x)*0.5f32)+389.0f32)<6.5f32) {return false;}
+  sheet:f32=0.35f32+0.1f32;
+  if (abs(q.w-1.0f32)<0.5f32) {
+    r:f32=(fmin(q.x-p.x,q.z-p.z)*0.5f32)-sheet;
+    if (r<0.15f32) {return false;}
+    dx:f32=w.x-((p.x+q.x)*0.5f32); dz:f32=w.z-((p.z+q.z)*0.5f32);
+    return ((dx*dx)+(dz*dz))<(r*r);
+  }
+  if (((q.x-p.x)<1.5f32)||((q.z-p.z)<1.5f32)) {return false;}
+  return (w.x>p.x+sheet)&&(w.x<q.x-sheet)&&(w.z>p.z+sheet)&&(w.z<q.z-sheet);
+}
 slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->PrLit {
   b:int=SLAB_PHOTO;
   full:bool=u[b+PR_GROUND+3]<0.5f32;
@@ -316,6 +345,10 @@ slab_scene_fs :: (v:PrV,u:[]f32,materials:[]f32,field:[]f32,shadow_map:TexDepth,
     p:V4=wg_at4(u,at);
     q:V4=wg_at4(u,at+4);
     kind=wg_i32_f(p.w+0.5f32);
+    // a pool's own top under its water sheet, which lies 3 cm over it (slab-content-green.coax
+    // green_pool): from a few hundred metres the depth can't tell the two apart, and the stone
+    // and the water take a pixel by turns each frame. The stone is left only round the sheet.
+    if (painted&&(kind==14)&&(gh.y>0.5f32)&&slab_photo_under_sheet(wh,p,q)) {gpu_discard();}
     // a temple, a round temple and the statues are built in their own stone: the plan's paint
     // fakes their columns and dims their cella, which the real parts and the light now do
     if ((q.w>10.5f32)&&(q.w<13.5f32)&&(row<cast(f32)(SLAB_M_LIMESTONE)+1.5f32)) {tinted=false;}

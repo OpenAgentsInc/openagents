@@ -565,17 +565,25 @@ pr_surface :: (v:PrV,u:[]f32,b:int,materials:[]f32)->PrSurface {
       amp:f32=fmin(0.02f32+0.011f32*wind.z,0.16f32);
       run:f32=t*(0.12f32+0.03f32*wind.z);
       qx:f32=f.x-wind.x*run; qz:f32=f.y-wind.y*run;
-      rx:f32=(pr_noise2(qx*1.7f32+seed,qz*1.7f32)-0.5f32)+0.5f32*(pr_noise2(qx*5.1f32-t*0.4f32,qz*5.1f32+seed)-0.5f32);
-      rz:f32=(pr_noise2(qx*1.7f32+19.0f32,qz*1.7f32-seed)-0.5f32)+0.5f32*(pr_noise2(qx*5.1f32+7.0f32,qz*5.1f32+t*0.37f32)-0.5f32);
+      // each octave of ripples only as far as a pixel still holds it: on a mirror a ripple finer
+      // than a pixel is a different glint each frame (the far canal glittered), so the slopes a
+      // pixel can't hold go to the roughness, a blurred sheen, instead
+      pw:f32=fmax(ax,ay);
+      k1:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*1.7f32);
+      k2:f32=1.0f32-smoothstep(0.12f32,0.45f32,pw*5.1f32);
+      rx:f32=k1*(pr_noise2(qx*1.7f32+seed,qz*1.7f32)-0.5f32)+0.5f32*k2*(pr_noise2(qx*5.1f32-t*0.4f32,qz*5.1f32+seed)-0.5f32);
+      rz:f32=k1*(pr_noise2(qx*1.7f32+19.0f32,qz*1.7f32-seed)-0.5f32)+0.5f32*k2*(pr_noise2(qx*5.1f32+7.0f32,qz*5.1f32+t*0.37f32)-0.5f32);
       s.normal=normalize3(add3(s.normal,v3(rx*amp,0.0f32,rz*amp)));
+      lost:f32=1.0f32-(((2.0f32*k1)+k2)/3.0f32);
       toward:V3=normalize3(sub3(pr_at3(u,b+PR_EYE),v.world));
       ci:f32=fmax(dot3(s.normal,toward),0.03f32);
       // down to the floor along the sun's way in the water and back up along the eye's
       sun_in:f32=wo_cos_refracted(fmax(u[b+PR_SUN+1],0.05f32));
       body:V3=wo_through(v3(0.42f32,0.075f32,0.035f32),depth/wo_cos_refracted(ci)+depth/sun_in);
-      net:f32=ifx full then 1.0f32+0.5f32*(wo_caustic(v2(f.x*1.4f32,f.y*1.4f32),t)-0.18f32)*u[b+PR_SUN+3] else 1.0f32;
+      // (the net's lines are a few times finer than its cells: gone where a pixel spans them)
+      net:f32=ifx full then 1.0f32+0.5f32*(wo_caustic(v2(f.x*1.4f32,f.y*1.4f32),t)-0.18f32)*u[b+PR_SUN+3]*(1.0f32-smoothstep(0.1f32,0.4f32,pw*5.0f32)) else 1.0f32;
       s.albedo=scale3(mul3(s.albedo,body),WO_LEAVING*1.6f32*net);
-      s.rough=0.04f32; s.metal=0.0f32;
+      s.rough=0.04f32+(lost*fmin(4.0f32*amp,0.35f32)); s.metal=0.0f32;
     }
   } else if (pattern==PR_PATTERN_GRAVEL) {
     grit:f32=pr_noise2(f.x*23.0f32+seed,f.y*23.0f32);
