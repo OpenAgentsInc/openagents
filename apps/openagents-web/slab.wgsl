@@ -3596,12 +3596,16 @@ fn coax_p_pr_out(p_c: vec3f, p_b: i32) -> vec3f {
   let l_b: i32 = p_b;
   var l_e: f32;
   var l_w: f32;
+  var l_gr: f32;
+  var l_gb: f32;
   var l_k: f32;
   var l_t: vec3f;
   l_e = coax_at_u(i32(((l_b + 20i) + 3i)));
   l_w = coax_at_u(i32((l_b + 71i)));
-  l_k = (l_e / (0x1.000000p0f + (0x1.1f8a0ap-3f * l_w)));
-  l_t = coax_p_film_photo(coax_p_film_rgb(((coax_p_fmax(l_c.x, 0.0f) * l_k) * (0x1.000000p0f + l_w)), (coax_p_fmax(l_c.y, 0.0f) * l_k), ((coax_p_fmax(l_c.z, 0.0f) * l_k) * (0x1.000000p0f - l_w))));
+  l_gr = ((0x1.000000p0f + l_w) * (0x1.000000p0f + coax_at_u(i32((l_b + 83i)))));
+  l_gb = ((0x1.000000p0f - l_w) * (0x1.000000p0f + coax_at_u(i32((l_b + 87i)))));
+  l_k = (l_e / (((0x1.b367a0p-3f * l_gr) + 0x1.6e2eb2p-1f) + (0x1.27bb30p-4f * l_gb)));
+  l_t = coax_p_film_photo(coax_p_film_rgb(((coax_p_fmax(l_c.x, 0.0f) * l_k) * l_gr), (coax_p_fmax(l_c.y, 0.0f) * l_k), ((coax_p_fmax(l_c.z, 0.0f) * l_k) * l_gb)));
   return coax_p_pr_encode(coax_p_v3(coax_p_saturate(l_t.x), coax_p_saturate(l_t.y), coax_p_saturate(l_t.z)));
 }
 fn coax_p_pr_sun_share(p_n: vec3f, p_sun_reach: f32, p_open: f32, p_b: i32) -> f32 {

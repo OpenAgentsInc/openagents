@@ -25,6 +25,7 @@ U_PHOTO :: U_WORDS + WORDS + SEAS_FLOATS;   // the photoreal frame's block, afte
 U_PHOTO_ON :: U_PHOTO + PR_FLOATS;   // 1: the realm draws photoreal; then 1: the meshes draw the platform this frame
 PHOTO_FLOATS :: PR_FLOATS + 4;
 PHOTO_EXPOSURE :: 1.3f32;
+PHOTO_BALANCE :: 0.85f32;             // how much of twilight's blue cast the camera balances out (photoreal-frame.coax pr_balance)
 PHOTO_VERTICES :: 72000;             // the parts' vertices, fixed and loose
 PHOTO_RECORDS :: 16384;              // placed parts, still and moving
 PHOTO_DRAWS :: 2 * PR_PARTS;
@@ -508,10 +509,12 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone_tier: bool) {
     sky_share = clamp32(sky_share * (1 - 0.65f32 * clamp32(f32(w.rain), 0, 1)), 0.03, 1);
   }
   // a photographer's choices: the deck's pale concrete in the sun near the top of the display
-  // (PHOTO_EXPOSURE over the engine's pale-grey ground), and a warmer balance under a low sun
+  // (PHOTO_EXPOSURE over the engine's pale-grey ground), a warmer balance under a low sun, and in
+  // twilight most of the sky's blue cast balanced out, so the sea stays grey-blue (PHOTO_BALANCE)
   lt := clamp32((sv[1] - 0.2f32) / 0.4f32, 0, 1); low := 1 - lt * lt * (3 - 2 * lt);
   pr_frame_sky(u, b, PrSky.{sun = sv, cover = 0.3f32 + 0.6f32 * cloud, sun_share = sun_share, sky_share = sky_share, air = thick * 0.75f32, air_height = 900,
     haze = 0.22f32 + 0.14f32 * cloud, warm = (0.07f32 + 0.07f32 * low) * (1 - cloud), sea_level = 0, ground = [3] f32.[0.26, 0.26, 0.25], exposure = PHOTO_EXPOSURE, reduced = phone});
+  pr_frame_balance(u, b, PHOTO_BALANCE);
   // the towers' rooms lit by the hour and the daylight (the glass patterns' pr_room)
   pr_frame_rooms(u, b, pr_rooms_by_hour(f32(s[0].hour), u[b + PR_SUN + 3]));
   // the night: the moon for the site's date (the page has no year: 2026), its light in the

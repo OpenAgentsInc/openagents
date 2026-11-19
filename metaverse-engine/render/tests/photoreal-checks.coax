@@ -37,6 +37,17 @@ prc_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00002 + 0.0002 * a
     m := pr_frame_out(u[..], 4, c);
     #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
   }
+  // and in twilight, with the camera's balance for a cool light
+  dusk: [PR_FLOATS + 8] f32;
+  pr_frame_sky(dusk[..], 4, PrSky.{sun = [3] f32.[0.8, -0.04, 0.6], sea_level = 0, warm = 0.08});
+  pr_frame_balance(dusk[..], 4, 0.85);
+  #assert dusk[4 + PR_BALANCE_R] > 0.3 && dusk[4 + PR_BALANCE_B] < -0.4;
+  for i: 0..<7 {
+    c := [3] f32.[levels[i], levels[(i + 2) % 7], levels[(i + 5) % 7]];
+    a := pr_out(v3(c[0], c[1], c[2]), dusk[..], 4);
+    m := pr_frame_out(dusk[..], 4, c);
+    #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
+  }
   for k: 0..<PR_SKY_SAMPLES {
     d := pr_sky_direction(k);
     if d[1] < 0 { continue; }
@@ -51,6 +62,29 @@ prc_near :: (a: f32, b: f32) -> bool { return abs(a - b) <= 0.00002 + 0.0002 * a
     m := pr_frame_sky_light(u[..], 4, d[0], d[1], d[2]);
     #assert prc_near(m[0], a.x) && prc_near(m[1], a.y) && prc_near(m[2], a.z);
   }
+}
+#test "the camera's balance for a cool light, worked from the light on level ground as the shaders read it" {
+  heights := [8] f32.[-0.3, -0.18, -0.08, -0.02, 0.03, 0.2, 0.7, 0.012];
+  shares := [3] f32.[0, 0.5, 1];
+  for h: 0..<8 { for j: 0..<3 {
+    u: [PR_FLOATS + 8] f32;
+    r := sqrt(1 - heights[h] * heights[h]);
+    pr_frame_sky(u[..], 4, PrSky.{sun = [3] f32.[0.6 * r, heights[h], 0.8 * r], haze = 0.1});
+    pr_frame_balance(u[..], 4, shares[j]);
+    // the light on level ground: the sun's on it and the sky's from overhead (pr_sky_light facing up)
+    sky := pr_sky_light(v3(0, 1, 0), u[..], 4);
+    up := st_max(heights[h], 0);
+    key := v3(u[4 + PR_SUN_LIGHT] * up + sky.x, u[4 + PR_SUN_LIGHT + 1] * up + sky.y, u[4 + PR_SUN_LIGHT + 2] * up + sky.z);
+    // its cast past a clear day's sky, red under 0.8 of green and blue over 1.3 of it, by the share,
+    // fading out between nautical twilight and night
+    fade := smoothstep(-0.2419219, -0.12, heights[h]);
+    k := shares[j] * fade;
+    red := key.x / key.y / 0.8f32; blue := key.z / key.y / 1.3f32;
+    want_r := pow(st_min(red, 1), 0 - k) - 1; want_b := pow(st_max(blue, 1), 0 - k) - 1;
+    #assert prc_near(u[4 + PR_BALANCE_R], want_r) && prc_near(u[4 + PR_BALANCE_B], want_b);
+    if j == 0 || h == 0 { #assert u[4 + PR_BALANCE_R] == 0 && u[4 + PR_BALANCE_B] == 0; }
+    if h == 3 && j == 2 { #assert want_r > 0.3 && want_b < -0.4; }   // twilight: a strong cast, much of it balanced
+  } }
 }
 #test "with haze the writer's sky, far air and sunlight are the shader's; with none the shader's are the engine's atmosphere" {
   heights := [5] f32.[-0.1, 0, 0.08, 0.21, 0.8];

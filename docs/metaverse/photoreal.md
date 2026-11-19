@@ -92,6 +92,18 @@ The parts themselves are made with the architecture kit's pen
   either way. SLAB sets 0.07 under a high sun and up to 0.14 under a low
   one, less under cloud, with a haze of 0.22 (a marine morning). Keep it
   small: most of the golden hour comes from the sun and the haze.
+- **Twilight balance.** `pr_frame_balance(u, base, share)`, called after
+  `pr_frame_sky`, is the camera's automatic white balance for a cool light
+  (`pr_balance`). With the sun just under the horizon, only the sky's
+  twice-scattered blue lights the scene: about 12 times as much blue as red,
+  where measured twilight daylight has two to three times. Unbalanced, the
+  camera opens all the way for that dim light and the whole picture turns a
+  saturated blue. `share` removes that share of the cast past a clear day's
+  sky (blue to green above 1.3, red to green under 0.8), so a day, a
+  sunset's warm light and deep night are unchanged. A realm that does not
+  call it gets no balance. SLAB sets 0.85 (`PHOTO_BALANCE`), so its sea at
+  dawn and dusk, and the build view's first tow before sunrise, stay
+  grey-blue.
 - **Night sky.** After the sun sets, `pr_dome` draws stars (fixed to the
   sky, fading in as the sky darkens) and the moon at its place and phase for
   the date (`pr_moon_at`: a low-precision lunar ephemeris, good to about a

@@ -24,10 +24,12 @@ PR_FIELD :: 44;      // the ground's sky field: its corner x, z; a cell's side (
 PR_FIELD_N :: 48;    // its cells along x, along z; the height (m) over which its shade fades out; the air's haze (PR_AIR_HAZE)
 PR_AIR_HAZE :: 51;   // how much more haze the air carries than a clear day's: 0 clear, 0.15 a hazy evening at sea (photoreal.coax pr_air_light)
 PR_LIGHT :: 52;      // world to the shadow map, four rows of four
-PR_SH :: 68;         // the sky's light on a surface by its normal: nine rows of r, g, b, 0 (pr_sky_light); the first two rows' fourths are PR_WARM and PR_SKY_SHARE
+PR_SH :: 68;         // the sky's light on a surface by its normal: nine rows of r, g, b, 0 (pr_sky_light); the first five rows' fourths are PR_WARM, PR_SKY_SHARE, PR_ROOMS, PR_BALANCE_R and PR_BALANCE_B
 PR_WARM :: 71;       // the camera's white balance: 0 daylight (light keeps its own colour), 0.08 a little warm, below 0 cool
 PR_SKY_SHARE :: 75;  // the share of a clear sky's light that comes through the cloud (1 under a clear sky); the second row's fourth
 PR_ROOMS :: 79;      // the share of rooms behind glass with their lights on (0 by day; photoreal-frame.coax pr_frame_rooms); the third row's fourth
+PR_BALANCE_R :: 83;  // the camera's balance for a cool light (PrSky.balance): what it adds to red's gain (0 none); the fourth row's fourth
+PR_BALANCE_B :: 87;  // and what it adds to blue's (0 none, -0.5 halves blue); the fifth row's fourth
 PR_WIND :: 104;      // the wind over the parts, in their own frame: the way it blows x, z (unit); its speed (m/s); how gusty (0 steady to 1)
 PR_MOON :: 108;      // toward the moon x, y, z (unit); 1 when a moon is in the sky's list (0: none drawn)
 PR_LAMPS :: 112;     // the lamps: how far on (0 by day to 1 by night); the share of rooms lit (0 to 1, PR_ROOMS's again); near lights in the table (PR_NEAR_LIGHTS at most); 1 when a lamp field follows the sky field

@@ -129,6 +129,25 @@ pr_exposure :: (sun_lum: f32, sun_up: f32, sky_lum: f32, bias: f32) -> f32 {
   key := sun_lum * (0.3 + 0.7 * st_sat(sun_up)) * 0.8 + sky_lum;
   return bias * 0.8 / st_max(key, 0.045);
 }
+// A camera's balance for a cool light: what it adds to red's gain and to blue's (photoreal.coax
+// pr_out; pr_frame_balance writes them). `key` is the light on level ground (the sun's and the sky's). By day it is near white,
+// no bluer than a clear day's sky (PR_COOL_RED, PR_COOL_BLUE), and nothing changes; a sunset's
+// warm light is kept. In twilight, with the sun just under the horizon, only the sky's
+// twice-scattered blue is left: about 12 times as much blue as red, where measured twilight
+// daylight has two to three times (a colour temperature of 10,000 to 20,000 K). A camera set for
+// the scene, as it opens up for that dim light (pr_exposure), balances part of it out, as its
+// automatic white balance does, so the sea reads grey-blue, not a saturated blue. `share` of the
+// cast past a clear day's goes (as a power of red's and blue's ratios to green); deep night keeps
+// its own blue.
+PR_COOL_RED :: 0.8f32;    // red to green in a clear day's sky light, at its least
+PR_COOL_BLUE :: 1.3f32;   // and blue to green, at its most
+pr_balance :: (key: [3] f32, sun_up: f32, share: f32) -> [2] f32 {
+  g := st_max(key[1], 0.000001);
+  red := st_max(key[0], 0.000001) / g / PR_COOL_RED; blue := st_max(key[2], 0.000001) / g / PR_COOL_BLUE;
+  k := st_sat(share) * prf_smooth(PRF_NIGHT, -0.12, sun_up);
+  // (only the cool side: red further below green than a clear day's, blue further above)
+  return [2] f32.[pow(st_min(red, 1), -k) - 1, pow(st_max(blue, 1), -k) - 1];
+}
 // How far a camera opens up for a darker sky: 1 would keep every sky as bright on the display,
 // 0 would leave a storm as dark as its light. Most of the way, as an eye does.
 PR_ADAPT :: 0.7f32;
@@ -199,14 +218,25 @@ pr_frame_sky :: (u: [] f32, b: int, s: PrSky) {
   u[b + PR_AIR_HAZE] = st_max(s.haze, 0);
   u[b + PR_WARM] = st_min(st_max(s.warm, -0.2), 0.2);
 }
+// The camera's balance for a cool light (pr_balance), after pr_frame_sky: `share` of the cast of
+// the light on level ground, the sun's and the sky's as the shaders read them. pr_frame_sky
+// leaves no balance; a realm that wants one calls this.
+pr_frame_balance :: (u: [] f32, b: int, share: f32) {
+  sky := pr_frame_sky_light(u, b, 0, 1, 0);
+  up := st_max(u[b + PR_SUN + 1], 0);
+  key := [3] f32.[u[b + PR_SUN_LIGHT] * up + sky[0], u[b + PR_SUN_LIGHT + 1] * up + sky[1], u[b + PR_SUN_LIGHT + 2] * up + sky[2]];
+  cool := pr_balance(key, u[b + PR_SUN + 1], share);
+  u[b + PR_BALANCE_R] = cool[0]; u[b + PR_BALANCE_B] = cool[1];
+}
 // A light's colour as the display shows it under the frame's exposure and film (photoreal.coax
 // pr_out, on the CPU): for a page that hands display colours to code written for them.
 prf_encode :: (x: f32) -> f32 { c := st_max(x, 0); if c <= 0.0031308 { return c * 12.92; } return 1.055f32 * pow(c, 1 / 2.4f32) - 0.055f32; }
 pr_frame_out :: (u: [] f32, b: int, c: [3] f32) -> [3] f32 {
   e := u[b + PR_SUN_LIGHT + 3];
   w := u[b + PR_WARM];
-  k := e / (1 + 0.1404f32 * w);
-  t := film_photo(film_rgb(st_max(c[0], 0) * k * (1 + w), st_max(c[1], 0) * k, st_max(c[2], 0) * k * (1 - w)));
+  gr := (1 + w) * (1 + u[b + PR_BALANCE_R]); gb := (1 - w) * (1 + u[b + PR_BALANCE_B]);
+  k := e / (0.2126f32 * gr + 0.7152f32 + 0.0722f32 * gb);
+  t := film_photo(film_rgb(st_max(c[0], 0) * k * gr, st_max(c[1], 0) * k, st_max(c[2], 0) * k * gb));
   return [3] f32.[prf_encode(st_sat(t.r)), prf_encode(st_sat(t.g)), prf_encode(st_sat(t.b))];
 }
 // The sky along rd as pr_sky draws it over the horizon, from the block's sun: the air and the night's floor.
@@ -465,6 +495,30 @@ pr_test_light_row :: (u: [] f32, x: f32, y: f32, z: f32, row: int) -> f32 { o :=
   // a setting past what a grade may be is held to a fifth
   pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.3, 0.866, 0.4], warm = 3});
   #assert u[PR_WARM] == 0.2;
+}
+#test "in twilight the camera balances out most of the sky's blue; by day, at sunset and at night it changes nothing" {
+  // a grey under the twilight sky's own light, as the display shows it: blue over four times red unbalanced
+  twilight := [3] f32.[0.8, -0.04, 0.6];
+  u: [PR_FLOATS] f32;
+  pr_frame_sky(u[..], 0, PrSky.{sun = twilight});
+  #assert u[PR_BALANCE_R] == 0 && u[PR_BALANCE_B] == 0;   // none unless asked
+  sky := pr_frame_sky_light(u[..], 0, 0, 1, 0);
+  #assert sky[2] / sky[0] > 4;
+  raw := pr_frame_out(u[..], 0, [3] f32.[sky[0] * 0.3, sky[1] * 0.3, sky[2] * 0.3]);
+  pr_frame_balance(u[..], 0, 0.85);
+  shown := pr_frame_out(u[..], 0, [3] f32.[sky[0] * 0.3, sky[1] * 0.3, sky[2] * 0.3]);
+  // still bluish, as daylight's sky is, but nowhere near the raw cast; and as bright
+  #assert raw[2] - raw[0] > 0.35 && shown[2] > shown[0] && shown[2] - shown[0] < 0.2;
+  la := raw[0] * 0.2126 + raw[1] * 0.7152 + raw[2] * 0.0722; lb := shown[0] * 0.2126 + shown[1] * 0.7152 + shown[2] * 0.0722;
+  #assert lb > la * 0.9 && lb < la * 1.25;
+  // a high sun, a setting sun's warm light and deep night keep their balance
+  heights := [3] f32.[0.866, 0.2, -0.3];
+  for h: 0..<3 {
+    r := sqrt(1 - heights[h] * heights[h]);
+    pr_frame_sky(u[..], 0, PrSky.{sun = [3] f32.[0.8 * r, heights[h], 0.6 * r]});
+    pr_frame_balance(u[..], 0, 0.85);
+    #assert abs(u[PR_BALANCE_R]) < 0.02 && abs(u[PR_BALANCE_B]) < 0.02;
+  }
 }
 #test "rooms: most lit in the evening, fewest before dawn, written past the sky's rows" {
   #assert pr_rooms_by_hour(20, 0) > 0.4 && pr_rooms_by_hour(3, 0) < 0.15 && pr_rooms_by_hour(0, 0) > pr_rooms_by_hour(1.5, 0);

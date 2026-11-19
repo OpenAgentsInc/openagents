@@ -791,10 +791,13 @@ pr_lamps :: (q:V3,n:V3,toward:V3,s:PrSurface,u:[]f32,b:int,field:[]f32,materials
 // The frame's light as the display's colour: exposed, through the film response, encoded.
 pr_out :: (c:V3,u:[]f32,b:int)->V3 {
   e:f32=u[b+PR_SUN_LIGHT+3];
-  // the camera's white balance: red up and blue down by the same share, a grey's brightness kept
+  // the camera's white balance: red up and blue down by the same share (the grade), then its
+  // balance for a cool light (photoreal-frame.coax pr_balance), a grey's brightness kept
   w:f32=u[b+PR_WARM];
-  k:f32=e/(1.0f32+0.1404f32*w);
-  t:FilmRGB=film_photo(film_rgb(fmax(c.x,0.0f32)*k*(1.0f32+w),fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k*(1.0f32-w)));
+  gr:f32=(1.0f32+w)*(1.0f32+u[b+PR_BALANCE_R]);
+  gb:f32=(1.0f32-w)*(1.0f32+u[b+PR_BALANCE_B]);
+  k:f32=e/(0.2126f32*gr+0.7152f32+0.0722f32*gb);
+  t:FilmRGB=film_photo(film_rgb(fmax(c.x,0.0f32)*k*gr,fmax(c.y,0.0f32)*k,fmax(c.z,0.0f32)*k*gb));
   return pr_encode(v3(saturate(t.r),saturate(t.g),saturate(t.b)));
 }
 
@@ -999,6 +1002,19 @@ pr_test_block :: (u:[]f32) {
   // a stop more exposure is brighter
   u[PR_SUN_LIGHT+3]=2.0f32;
   #assert pr_out(v3(0.18f32,0.18f32,0.18f32),u[..],0).x>g.x;
+}
+#test "the white balance and the cool light's balance: each channel's gain, worked by hand, a grey's brightness kept" {
+  u:[PR_FLOATS]f32; pr_test_block(u[..]);
+  u[PR_SUN_LIGHT+3]=2.0f32; u[PR_WARM]=0.1f32; u[PR_BALANCE_R]=0.5f32; u[PR_BALANCE_B]=0.0f32-0.4f32;
+  // the floats beside them are the sky's light, never read as a balance
+  u[PR_BALANCE_R+1]=7.0f32; u[PR_BALANCE_B+1]=9.0f32;
+  // red 1.1 * 1.5 = 1.65, blue 0.9 * 0.6 = 0.54; a grey's brightness 0.2126 * 1.65 + 0.7152 + 0.0722 * 0.54 = 1.104978
+  k:f32=2.0f32/1.104978f32;
+  c:V3=v3(0.03f32,0.05f32,0.08f32);
+  t:FilmRGB=film_photo(film_rgb(0.03f32*k*1.65f32,0.05f32*k,0.08f32*k*0.54f32));
+  want:V3=pr_encode(v3(saturate(t.r),saturate(t.g),saturate(t.b)));
+  got:V3=pr_out(c,u[..],0);
+  #assert abs(got.x-want.x)<0.0002f32 && abs(got.y-want.y)<0.0002f32 && abs(got.z-want.z)<0.0002f32;
 }
 #test "a surface keeps energy: it never sends back more than reaches it" {
   u:[PR_FLOATS]f32; pr_test_block(u[..]);

@@ -1994,6 +1994,15 @@ link. Explore costs the same before and after (2.5 to 2.8 ms median over two
 runs each). The view reuses the panel's run of the simulation, so it adds no
 second copy of it; slab.wasm went from 607,046 to 666,684 bytes (809,254 on main with the life on the deck that landed alongside it).
 
+**The first tow's light.** The film's slow shots keep the day's true hour,
+so the first tow leaves the yard before sunrise. In twilight the photoreal
+camera opened all the way for the sky's twice-scattered blue, and the whole
+picture, sea and land, turned a saturated blue. The camera now balances out
+most of that cast (`PHOTO_BALANCE`, `pr_balance` in
+[photoreal.md](../../metaverse/photoreal.md)), so the tow's sea is grey-blue
+like the rest of the world's, and the finished world at dawn and dusk is too.
+Daylight, sunsets and night are unchanged. slab.wasm: 855,823 bytes.
+
 ### What a frame costs, and the picture's detail on a slow device (#13687)
 
 Measured headless on the M-series Mac (Apple, Metal 3) on 2026-11-18 with
