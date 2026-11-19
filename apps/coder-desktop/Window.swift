@@ -280,6 +280,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 21: if let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
         case 22: checkForUpdates()
         case 23: window.makeFirstResponder(search)
+        case 24:
+            // a file a row or a reply names: opened from the working folder unless its path is whole
+            guard cd_open_path(page, &out, Int32(out.count)) > 0 else { return }
+            let named = (String(cString: out) as NSString).expandingTildeInPath
+            let url = named.hasPrefix("/") ? URL(fileURLWithPath: named) : folder.appendingPathComponent(named)
+            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
         default: break
         }
     }

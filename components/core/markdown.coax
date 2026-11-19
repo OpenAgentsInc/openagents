@@ -93,6 +93,32 @@ md_style_at :: (runs: [] MdRun, i: int) -> int {
   for k: 0..<runs.count { if i >= runs[k].from && i < runs[k].to { return runs[k].style; } }
   return MD_PLAIN;
 }
+// Whether inline code names a file or folder (a reply's `apps/page.coax`, `README.md`,
+// `~/work`), so a reader can open it: one word of path characters that has a slash in it or
+// ends in a file type known here; not a web address, a flag or a version number.
+MD_PATH_TYPES :: [36] string.["coax", "rs", "swift", "md", "ts", "tsx", "js", "jsx", "json", "toml", "yaml", "yml", "sh", "py", "c", "h", "cpp", "go",
+                              "html", "css", "txt", "lock", "luau", "lua", "kt", "java", "rb", "sql", "plist", "xml", "csv", "log", "ops", "jsonl", "mm", "m"];
+md_path_like :: (text: string) -> bool {
+  most := 1024;   // not a size: bytes a path may take
+  if text.count < 2 || text.count > most || text[0] == '-' { return false; }
+  slash := false; dot := -1; letter := false;
+  for i: 0..<text.count {
+    c := text[i];
+    is_letter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    if is_letter { letter = true; }
+    if c == '/' { slash = true; dot = -1; }
+    else if c == '.' { dot = i; }
+    else if c == ':' { return false; }   // a web address (https://…) or a line (file.rs:12) is not opened as a file
+    else if !(is_letter || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '~' || c == '@' || c == '+') { return false; }
+  }
+  if !letter { return false; }
+  if slash { return text.count > 1 && !(text[0] == '/' && text[1] == '/'); }
+  if dot <= 0 || dot + 1 >= text.count { return false; }
+  kind := cast(string) text[dot + 1..<text.count];
+  types := MD_PATH_TYPES;
+  for k: 0..<types.count { if kind == types[k] { return true; } }
+  return false;
+}
 
 md_put :: (doc: [] MdDoc, c: u8) {
   if doc[0].n < MD_TEXT { doc[0].text[doc[0].n] = c; doc[0].n += 1; }
@@ -782,4 +808,9 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
   n3 := md_parse(d3[..], src3, 0);
   #assert n3 == 2 && d3[0].blocks[1].kind == MB_CODE && md_lang(d3[..], 1) == "";
   #assert md_block_text(d3[..], 1) == "line one\n```\nline two";
+}
+
+#test "inline code that names a file or folder is a path; a web address, a flag, a version or an identifier is not" {
+  #assert md_path_like("apps/coder-desktop/page.coax") && md_path_like("README.md") && md_path_like("~/work/openagents") && md_path_like("src/") && md_path_like("/usr/bin/true");
+  #assert !md_path_like("https://openagents.com") && !md_path_like("--force") && !md_path_like("1.2.3") && !md_path_like("s.md.line") && !md_path_like("a b/c") && !md_path_like("page.coax:12") && !md_path_like("x");
 }

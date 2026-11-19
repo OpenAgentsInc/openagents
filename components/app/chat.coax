@@ -94,23 +94,46 @@ app_message_user :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: st
   app_enter(f, k, from);
   return h;
 }
-// A code block at (x, y), w wide: a header with the language and Copy, then
-// the lines in the mono face. Copy is a row of its own (id + ".copy") that
-// dispatches `action`; `copied` says the app has copied it, and the action
-// reads Copied. Rust-like languages are highlighted in the skin's syntax
-// roles. A line wider than the block is cut with an ellipsis. Returns its height.
+// A code block's language as Zeron names it (ds/syntax `name`): "Rust" for
+// a ```rust fence, the fence's own tag for one not known here, "text" for none.
+APP_CODE_TAGS :: [32] string.["rust", "rs", "coax", "jai", "c", "h", "cpp", "c++", "swift", "ts", "typescript", "tsx", "js", "javascript", "jsx", "py",
+                              "python", "sh", "bash", "zsh", "shell", "json", "toml", "yaml", "yml", "go", "html", "css", "md", "markdown", "luau", "diff"];
+APP_CODE_NAMES :: [32] string.["Rust", "Rust", "Coax", "Jai", "C", "C", "C++", "C++", "Swift", "TypeScript", "TypeScript", "TSX", "JavaScript", "JavaScript", "JSX", "Python",
+                               "Python", "Shell", "Bash", "Zsh", "Shell", "JSON", "TOML", "YAML", "YAML", "Go", "HTML", "CSS", "Markdown", "Markdown", "Luau", "Diff"];
+app_code_lang :: (lang: string) -> string {
+  if lang.count == 0 { return "text"; }
+  tags := APP_CODE_TAGS; names := APP_CODE_NAMES;
+  for i: 0..<tags.count { if lang == tags[i] { return names[i]; } }
+  return lang;
+}
+// A code block at (x, y), w wide, as Zeron's (ds/markdown CodeBlock): one
+// quiet panel, its strip (the language by its name, Copy at its end) sharing
+// the panel's fill, then the lines in the mono face. Copy is a row of its own
+// (id + ".copy"), its icon and word, that dispatches `action`; `copied` says
+// the app has copied it, and it reads Copied by the check. Rust-like
+// languages are highlighted in the skin's syntax roles. A line wider than the
+// block is cut with an ellipsis. Returns its height.
 app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, code: string, copied: bool, action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.md.block_line;
   nl := 1;
   for i: 0..<code.count { if code[i] == '\n' && i + 1 < code.count { nl += 1; } }
   h := a.code_head + 2 * a.code_pad + cast(f32) nl * line;
-  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, ifx lang.count > 0 then lang else "Code", x, y, w, h, 0, 0));
+  name := app_code_lang(lang);
+  uiframe_open(f, uiframe_semantic(f, id, EL_REGION, name, x, y, w, h, 0, 0));
   _ := sheet_box(sh, x, y, w, h, a.code_radius, s.border, s.surface, s.menu_divider);
-  sheet_rule(sh, x + s.border, y + a.code_head, w - 2 * s.border, s.border, s.menu_divider);
-  _ := sheet_text(sh, m, -1, x + a.code_pad, y + (a.code_head - s.small.line) / 2, s.small.line, s.small.face, s.muted, lang);
-  cid: [EL_ID] u8; word := ifx copied then "Copied" else "Copy";
-  cw := form_link_width(m, s, word);
-  _ := ctx_link(f, app_id(cid[..], id, ".copy"), x + w - cw - a.code_copy_pad + s.space, y + (a.code_head - s.control_h) / 2, word, ifx copied then "Copied" else "Copy code", 0, action);
+  _ := sheet_text(sh, m, -1, x + a.code_pad, y + (a.code_head - s.small.line) / 2, s.small.line, s.small.face, s.muted, name);
+  // Copy: its icon and word on a ground that shows under the pointer, as far from the end as from the strip's top
+  cid: [EL_ID] u8; cpid := app_id(cid[..], id, ".copy");
+  word := ifx copied then "Copied" else "Copy";
+  bw := 2 * a.code_copy_x + a.code_copy_icon + a.code_copy_gap + measure_width(m, s.small.face, word);
+  bh := a.code_copy_h; bx := x + w - s.border - a.code_copy_edge - bw; by := y + (a.code_head - bh) / 2;
+  hovered := uiframe_hovered(f, cpid);
+  if hovered { sheet_fill(sh, bx, by, bw, bh, a.code_radius - a.code_copy_edge, s.hover); }
+  tone := ifx hovered then s.ink else s.muted;
+  sheet_icon(sh, ifx copied then s.icon_check else s.icon_copy, bx + a.code_copy_x, by + (bh - a.code_copy_icon) / 2, a.code_copy_icon, tone);
+  _ := sheet_text(sh, m, -1, bx + a.code_copy_x + a.code_copy_icon + a.code_copy_gap, by + (bh - s.small.line) / 2, s.small.line, s.small.face, tone, word);
+  crow := uiframe_semantic(f, cpid, EL_BUTTON, ifx copied then "Copied" else "Copy code", bx, by, bw, bh, 0, action);
+  sheet_hit(sh, UIFRAME_HIT, crow, 0, bx, by, bw, bh);
   colored := lang == "rust" || lang == "coax" || lang == "jai" || lang == "c" || lang == "swift";
   top := y + a.code_head + a.code_pad;
   // a line wider than the block is cut with an ellipsis, not clipped: the
@@ -142,13 +165,20 @@ app_message_agent :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: []
 // The same for `blocks` blocks of doc from block0, as when several messages share one document.
 // Code blocks are numbered from block0 (".code.0" is the first), and so is `copied`.
 app_message_agent_part :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int) -> f32 {
+  return app_message_agent_linked(f, id, x, y, w, doc, block0, blocks, copied, copy_action, 0);
+}
+// The same, and inline code that names a file (`apps/page.coax`, core/markdown.coax
+// md_path_like) is a link: a row of its own, id + ".path.N" for the message's Nth such file
+// counted from block0 (app_message_path is its text), underlined under the pointer, that
+// dispatches `path_action` (0: none, the code is only text).
+app_message_agent_linked :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m;
   k := uiframe_key(f, id); from := app_sheet_mark(f);
   // a screen reader hears the whole message, block by block, and a new reply is announced (EL_S_LIVE)
   row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, block0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
   for b: block0 + 1..<block0 + blocks { if doc[0].blocks[b].kind != MB_RULE { uiframe_say(f, row, md_block_text(doc, b)); } }
   uiframe_open(f, row);
-  h: f32 = 0;
+  h: f32 = 0; files := 0;
   for b: block0..<block0 + blocks {
     if b > block0 { h += s.md.block_gap; }
     kind := doc[0].blocks[b].kind;
@@ -157,12 +187,54 @@ app_message_agent_part :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, do
       n := el_copy(part[..], ".code."); n = text_put_int(part[..], n, b - block0);
       h += app_code(f, app_id(cid[..], id, cast(string) part[0..<n]), x, y + h, w, md_lang(doc, b), md_block_text(doc, b), copied == b - block0, copy_action);
     } else if kind == MB_RULE { h += app_divider(f, x, y + h, w); }
-    else { h += markdown_block(sh, m, s, doc, b, x, y + h, w); }
+    else if path_action == 0 { h += markdown_block(sh, m, s, doc, b, x, y + h, w); }
+    else {
+      ls := s; ls.md.link_paths = true; nh0 := sh[0].nh;
+      h += markdown_block(sh, m, ls, doc, b, x, y + h, w);
+      files += app_message_paths(f, id, doc, b, nh0, files, path_action);
+    }
   }
   uiframe_close(f);
   if row >= 0 && h > 0 { f[0].rows[0].rows[row].h = h; }
   app_enter(f, k, from);
   return h;
+}
+APP_MESSAGE_PATHS :: 64;    // files one block's inline code may name as links
+// The path hits block b left on the sheet from hit nh0 on become link rows, numbered from
+// `first`; the block's other hits stay. Returns how many files the block names.
+app_message_paths :: (f: [] UiFrame, id: string, doc: [] MdDoc, b: int, nh0: int, first: int, action: int) -> int {
+  s := f[0].skin; sh := f[0].sheet;
+  paths: [APP_MESSAGE_PATHS] MdPath; np := markdown_paths(doc, b, paths[..]);
+  found: [APP_MESSAGE_PATHS] SheetHit; at: [APP_MESSAGE_PATHS] int; nf := 0;
+  keep := nh0; c := 0;
+  for q: nh0..<sh[0].nh {
+    hit := sh[0].hits[q];
+    if hit.kind != MARKDOWN_HIT_PATH { sh[0].hits[keep] = hit; keep += 1; continue; }
+    while c < np && !(paths[c].from == hit.a && paths[c].to == hit.b) { c += 1; }
+    if c < np && nf < found.count { found[nf] = hit; at[nf] = c; nf += 1; c += 1; }
+  }
+  sh[0].nh = keep;
+  for q: 0..<nf {
+    hit := found[q]; p := paths[at[q]];
+    pb: [EL_ID] u8; pn := el_copy(pb[..], ".path."); pn = text_put_int(pb[..], pn, first + at[q]);
+    lb: [EL_ID] u8; lid := app_id(lb[..], id, cast(string) pb[0..<pn]);
+    name := cast(string) p.text[p.from..<p.to];
+    if uiframe_hovered(f, lid) { sheet_rule(sh, hit.x + s.md.code_pad_x, hit.y + hit.h - s.md.code_inset_y - s.border, hit.w - 2 * s.md.code_pad_x, s.border, s.accent); }
+    link := uiframe_semantic(f, lid, EL_LINK, name, hit.x, hit.y, hit.w, hit.h, 0, action);
+    sheet_hit(sh, UIFRAME_HIT, link, 0, hit.x, hit.y, hit.w, hit.h);
+  }
+  return np;
+}
+// The Nth file the message's inline code names (app_message_agent_linked's id + ".path.N"), "" for none.
+app_message_path :: (doc: [] MdDoc, block0: int, blocks: int, n: int) -> string {
+  if n < 0 { return ""; }
+  seen := 0;
+  for b: block0..<block0 + blocks {
+    paths: [APP_MESSAGE_PATHS] MdPath; np := markdown_paths(doc, b, paths[..]);
+    if n < seen + np { p := paths[n - seen]; return cast(string) p.text[p.from..<p.to]; }
+    seen += np;
+  }
+  return "";
 }
 // The typing mark at (x, y): three dots that brighten in turn on the frame's
 // clock while a reply is being written. Reduced motion shows them still.

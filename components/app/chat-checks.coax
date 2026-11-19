@@ -58,12 +58,30 @@ APP_TEST_MD :: "## Plan\n\nRead the **composer** and *fix* [the test](https://ex
   #assert u.role == EL_TEXT && u.x + u.w == 300 && u.w < 300 && app_test_label(t[..], "m.1") == "Fix the failing check" && app_test_texts(t[..], "Fix the failing check") == 1;
   #assert app_test_row(t[..], "m.2").h == g && app_test_label(t[..], "m.2") == "Plan";
   copy := app_test_row(t[..], "m.2.code.4.copy");
-  #assert copy.role == EL_BUTTON && copy.action == 7 && app_test_label(t[..], "m.2.code.4.copy") == "Copy code" && app_test_pressable(t[..], "m.2.code.4.copy") && app_test_label(t[..], "m.2.code.4") == "rust";
-  #assert app_test_texts(t[..], "Copy") == 1 && app_test_texts(t[..], "rust") == 1 && surface_sheet(t[0].sf[..]).nl >= 8;
+  #assert copy.role == EL_BUTTON && copy.action == 7 && app_test_label(t[..], "m.2.code.4.copy") == "Copy code" && app_test_pressable(t[..], "m.2.code.4.copy") && app_test_label(t[..], "m.2.code.4") == "Rust";
+  #assert app_test_texts(t[..], "Copy") == 1 && app_test_texts(t[..], "Rust") == 1 && surface_sheet(t[0].sf[..]).nl >= 8;
   // the copied block says so
   app_test_begin(t[..], "", "", true);
   _ := app_message_agent(f, "m.2", 0, 0, 300, doc[..], blocks, 4, 7);
   #assert app_test_end(t[..]) && app_test_texts(t[..], "Copied") == 1 && app_test_label(t[..], "m.2.code.4.copy") == "Copied";
+}
+
+#test "app chat: a code block names its language as Zeron does; inline code that names a file is a link when the caller asks" {
+  #assert app_code_lang("rust") == "Rust" && app_code_lang("ts") == "TypeScript" && app_code_lang("") == "text" && app_code_lang("zig") == "zig";
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  doc: [1] MdDoc; blocks := md_parse(doc[..], "Edit `apps/page.coax` and `README.md`, not `s.md.line`.\n\n- see `docs/zeron/`", 0);
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_agent_linked(f, "m", 0, 0, 400, doc[..], 0, blocks, -1, 7, 11);
+  #assert app_test_end(t[..]);
+  #assert app_test_row(t[..], "m.path.0").role == EL_LINK && app_test_label(t[..], "m.path.0") == "apps/page.coax" && app_test_pressable(t[..], "m.path.0") && app_test_row(t[..], "m.path.0").action == 11;
+  #assert app_test_label(t[..], "m.path.1") == "README.md" && app_test_label(t[..], "m.path.2") == "docs/zeron/" && app_test_find(t[..], "m.path.3") < 0;
+  #assert app_message_path(doc[..], 0, blocks, 0) == "apps/page.coax" && app_message_path(doc[..], 0, blocks, 2) == "docs/zeron/" && app_message_path(doc[..], 0, blocks, 3) == "";
+  // without a path action the code is only text, and no path hit is left on the sheet
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_agent(f, "m", 0, 0, 400, doc[..], blocks, -1, 7);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "m.path.0") < 0;
+  sh := surface_sheet(t[0].sf[..]);
+  for i: 0..<sh.nh { #assert sh.hits[i].kind != MARKDOWN_HIT_PATH; }
 }
 
 #test "app chat: a message rises in when its id appears and is in place at once with reduced motion" {

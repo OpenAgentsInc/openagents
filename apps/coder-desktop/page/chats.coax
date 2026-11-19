@@ -107,6 +107,12 @@ coder_page_current :: (s: [] CoderPage, id: string) #export_c #effects(all) {
     }
   }
 }
+// The file a press asked to open (after CP_ASK_OPEN_FILE), as the row or reply named it: the host
+// opens it from the working folder when it is not a whole path. Its length in out.
+coder_page_open_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cp_open_path(s));
+}
 // The id of the chat a press asked for (after CP_ASK_OPEN). Its length in out.
 coder_page_open_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].open < 0 || s[0].open >= s[0].nchats { return 0; }

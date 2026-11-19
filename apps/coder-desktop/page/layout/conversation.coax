@@ -26,10 +26,18 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
     base := 0;
     for c, ci: text { if c == '/' && ci + 1 < text.count { base = ci + 1; } }
     return AppActRow.{kind = APP_ACT_READ, verb = "Read", target = sheet_pool(sh, cast(string) text[base..<text.count]),
-                      call = ifx base > 0 then text else "", output = output, failed = s[0].calls[q].failed};
+                      call = ifx base > 0 then text else "", output = output, failed = s[0].calls[q].failed,
+                      timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q), path = ifx s[0].calls[q].failed then "" else text};
   }
   return AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = sheet_single_line(sh, text), call = text, output = output,
-                    failed = s[0].calls[q].failed, running = s[0].calls[q].running};
+                    failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
+}
+// Whether row q says how long it took: while it runs, and once done when it took a second or more.
+cp_call_timed :: (s: [] CoderPage, q: int) -> bool { return s[0].calls[q].running || s[0].calls[q].took >= 1; }
+// How long row q took, or has run so far, in seconds; 0 when it was not timed.
+cp_call_took :: (s: [] CoderPage, q: int) -> f32 {
+  if s[0].calls[q].running { return s[0].clock - s[0].calls[q].began; }
+  return ifx s[0].calls[q].took > 0 then s[0].calls[q].took else 0.0f32;
 }
 // Sub-agent j of turn i as a row of its message's group: "Ran a subagent", its model and its
 // task's first line; a press opens its transcript beside the conversation.
@@ -134,8 +142,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
         if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
-        y += app_message_agent(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], s[0].turns[i].blocks,
-                               ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY);
+        y += app_message_agent_linked(f, cp_id(ib[..], i, ".a"), x, y, cw, s[0].turns[i].doc[..], 0, s[0].turns[i].blocks,
+                                      ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH);
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {

@@ -265,6 +265,29 @@
   #assert cp_press(s, surface_find(s[0].surface[..], "t0.x1")) && cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.x1.output") >= 0;
 }
 
+#test "a row says how long it has run; a file a row reads or a reply names opens through the host" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\"apps/coder-desktop/page.coax\",\"found\":true}") == MWW_VIEW;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"sleep 9\",\"ticket\":8}") == MWW_ASK;
+  s[0].clock += 9;
+  #assert cp_test_draw(s, f[..]);
+  // the running command counts its seconds at its end; the read names its file as a link
+  tb := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "t0.x1")) == "9s";
+  #assert surface_find(s[0].surface[..], "t0.x0.path") >= 0 && surface_find(s[0].surface[..], "t0.x1.path") < 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.x0.path")) && coder_page_action(s) == CP_ASK_OPEN_FILE;
+  out: [64] u8; n := coder_page_open_path(s, out[..]);
+  #assert cast(string) out[0..<n] == "apps/coder-desktop/page.coax";
+  // the reply's inline code that names a file is a link too; other code is text
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"See `docs/zeron/README.md` and `cp_press`.\"}") == MWW_ENDED;
+  #assert cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.a.path.1") < 0;
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.a.path.0")) && coder_page_action(s) == CP_ASK_OPEN_FILE;
+  n = coder_page_open_path(s, out[..]);
+  #assert cast(string) out[0..<n] == "docs/zeron/README.md";
+}
+
 #test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
   p: [1] CoderPage; s := p[..]; cp_init(s);
   coder_page_set_claude(s, true);

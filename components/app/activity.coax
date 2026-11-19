@@ -12,7 +12,9 @@
 // (app_act_summary). While the agent works the group is open; settled, it
 // folds to its summary unless the person opened it (app_act_open). A press on
 // a row opens it onto its call and output; a thought past four lines folds
-// under "Show all N lines".
+// under "Show all N lines". A timed row says how long it has run or took at its
+// end in the faint ink ("12s"); a row that names a file makes its target a link (id + ".path",
+// app_act_path_pressed) the caller opens the file from.
 //
 // A caller draws the header, then each row in order, saying of each whether
 // the trunk runs on below it (a row with a branch follows). A row off screen
@@ -42,9 +44,10 @@ AppActRow :: struct {
   output: string;             // what came back; a thought's words when it has no Markdown
   failed: bool;               // its glyph in the danger's tone, its output's edge too
   running: bool;              // in flight: the loader in its glyph's place
-  timed: bool; secs: int;     // in flight with a known start: how long it has run, said at the row's end
+  timed: bool; secs: int;     // how long it has run (in flight, from a known start) or took (done): said at the row's end
   calls: int;                 // a sub-agent's: the calls its agent has made, said at the row's end before that ("3 tool calls")
   opens: bool;                // a press dispatches even with nothing to show (a sub-agent's row opens its pane)
+  path: string;               // the file it names, when its target is one: the target is a link that dispatches the row's action under id + ".path"
   doc: [] MdDoc; block0: int; blocks: int;   // a thought's words as Markdown: `blocks` blocks of doc from block0
 }
 
@@ -122,6 +125,11 @@ app_act_press :: (keyed: [] KeyedStore, id: string, pressed: string) -> bool {
   if slot < 0 { return false; }
   keyed_slot_set(keyed, k, slot, ifx keyed_slot(keyed, k, slot) > 0 then 0.0f32 else 1.0f32);
   return true;
+}
+// Whether a press reached the app on row id's file (its target, a link): the caller opens the file.
+app_act_path_pressed :: (id: string, pressed: string) -> bool {
+  suffix := ".path";
+  return pressed.count == id.count + suffix.count && cast(string) pressed[0..<id.count] == id && cast(string) pressed[id.count..<pressed.count] == suffix;
 }
 // Measures in points drawn at `scale` points a unit (Coder Desktop's 1.2): the sizes divided by it.
 app_act_scaled :: (scale: f32) -> UiActivity {
@@ -346,20 +354,27 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   else { kind := ifx r.kind >= 0 && r.kind < APP_ACT_KINDS then r.kind else APP_ACT_EXEC; sheet_icon(sh, APP_ACT_GLYPH[kind], gx, gy, a.glyph, ifx r.failed then s.danger else s.muted); }
   // the verb, then the target, on one line cut at the row's end
   tx := x + a.gutter; ly := y + (rh - s.tool.line) / 2;
-  // a timed call in flight says how long it has run at the row's end, the target fading before it
+  // a timed call says how long it has run, or took, at the row's end, the target fading before it
   right := x + w; took := "";
-  if r.calls > 0 || (r.running && r.timed) {
+  if r.calls > 0 || r.timed {
     eb: [EL_LABEL] u8; en := 0;
     if r.calls > 0 { en = app_act_put_n(eb[..], 0, "", r.calls, "tool call", "tool calls"); }
-    if r.running && r.timed { if en > 0 { en = el_put(eb[..], en, " · "); } ab: [24] u8; en = el_put(eb[..], en, cast(string) ab[0..<app_act_elapsed(ab[..], ifx r.secs < 0 then 0 else r.secs)]); }
+    if r.timed { if en > 0 { en = el_put(eb[..], en, " · "); } ab: [24] u8; en = el_put(eb[..], en, cast(string) ab[0..<app_act_elapsed(ab[..], ifx r.secs < 0 then 0 else r.secs)]); }
     took = sheet_pool(sh, cast(string) eb[0..<en]);
     right -= measure_width(m, s.tool.face, took);
     _ := sheet_text(sh, m, -1, right, ly, s.tool.line, s.tool.face, s.faint, took);
     right -= a.verb_gap;
   }
   vw := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, r.verb);
+  link_id := ""; px: f32 = 0; py: f32 = 0; pw: f32 = 0; pb: [EL_ID] u8;
   if r.target.count > 0 {
-    _ := app_act_fade_text(sh, m, tx + vw + a.verb_gap, y + (rh - s.mono_small.line) / 2, s.mono_small.line, s.mono_small.face, s.ink, r.target, right, a.fade);
+    px = tx + vw + a.verb_gap; py = y + (rh - s.mono_small.line) / 2;
+    pw = app_act_fade_text(sh, m, px, py, s.mono_small.line, s.mono_small.face, s.ink, r.target, right, a.fade);
+    if r.path.count > 0 && pw > 0 {
+      // the file it names: its target is a link, underlined under the pointer
+      link_id = app_id(pb[..], id, ".path");
+      if uiframe_hovered(f, link_id) { sheet_fill(sh, px, py + s.mono_small.line - s.border, pw, s.border, 0, opacity(s.ink, 0.6)); }
+    }
   }
   lb: [EL_LABEL] u8; ln := el_put(lb[..], 0, r.verb);
   if r.target.count > 0 { ln = el_put(lb[..], ln, " "); ln = el_put(lb[..], ln, r.target); }
@@ -369,6 +384,11 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   if row >= 0 && r.failed { elt_value(f[0].rows, row, "Failed"); }
   else if row >= 0 && took.count > 0 { elt_value(f[0].rows, row, took); }
   if opens { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, rh); }
+  if link_id.count > 0 {
+    // made after the row, so a press on the target reaches the link
+    link := uiframe_semantic(f, link_id, EL_LINK, r.path, px, py, pw, s.mono_small.line, 0, action);
+    sheet_hit(sh, UIFRAME_HIT, link, 0, px, py, pw, s.mono_small.line);
+  }
   h := rh;
   if open { h += app_act_detail(f, id, k, tx, y + rh, w - a.gutter, r, action); }
   // the branch: the trunk to the elbow (on down the row when a row follows), the elbow to its end

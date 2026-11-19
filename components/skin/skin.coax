@@ -53,6 +53,7 @@ UiMarkdown :: struct {
   col_min_content: f32; col_min: f32;                // and its columns' floors
   bullet: string;           // a terminal's bullet (a pixel target draws a disc)
   task_open: string; task_done: string;             // and its task boxes (a pixel target draws them)
+  link_paths: bool;         // inline code that names a file leaves a MARKDOWN_HIT_PATH where it is drawn, for its reader to open
 }
 
 // A glass surface (a slider's track or thumb): a vertical gradient, a rim,
@@ -291,6 +292,7 @@ UiApp :: struct {
   ring: f32 = 22;
   bubble_radius: f32 = 18; bubble_pad_x: f32 = 14; bubble_pad_y: f32 = 9; bubble_share: f32 = 0.84;
   code_radius: f32 = 12; code_head: f32 = 34; code_pad: f32 = 12; code_copy_pad: f32 = 10;
+  code_copy_h: f32 = 24; code_copy_x: f32 = 8; code_copy_icon: f32 = 12; code_copy_gap: f32 = 4; code_copy_edge: f32 = 5;   // a code block's Copy: Zeron's 24 tall button, its padding, icon and gap, 5 from the strip's end
   dot: f32 = 6; dot_gap: f32 = 5; dot_period: f32 = 1.2; dot_dim: f32 = 0.3;
   jump: f32 = 38; jump_icon: f32 = 16;
   state_dot: f32 = 8;

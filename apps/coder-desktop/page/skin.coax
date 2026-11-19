@@ -44,6 +44,7 @@ cp_skin :: () -> UiSkin {
   k.app.code_head = 32.0f32 / u;
   k.app.code_pad = 14.0f32 / u;
   k.app.code_radius = 10.0f32 / u;
+  k.app.code_copy_h = 24.0f32 / u; k.app.code_copy_x = 8.0f32 / u; k.app.code_copy_icon = 12.0f32 / u; k.app.code_copy_gap = 4.0f32 / u; k.app.code_copy_edge = 5.0f32 / u;
   k.app.tool_h = 34.0f32 / u;
   k.app.tool_pad = 12.0f32 / u;
   k.app.tool_body_pad = 10.0f32 / u;

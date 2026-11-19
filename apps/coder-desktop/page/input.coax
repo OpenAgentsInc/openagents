@@ -1,5 +1,25 @@
 // Coder Desktop page (../page.coax): presses, the pointer, the wheel, and the sidebars' edges.
 
+// A file a row reads (call q) or a reply names (turn i's nth): the host opens it
+// (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
+cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
+  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n;
+  if cp_open_path(s).count == 0 { return false; }
+  s[0].ask = CP_ASK_OPEN_FILE;
+  return true;
+}
+cp_open_path :: (s: [] CoderPage) -> string {
+  q := s[0].open_call; i := s[0].open_turn;
+  if q >= 0 && q < s[0].calls_n { return cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; }
+  if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(s[0].turns[i].doc[..], 0, s[0].turns[i].blocks, s[0].open_file); }
+  return "";
+}
+// Row k of turn i's own rows (cp_row_id's k, counted from the rows that went) as its place in the page's calls, -1 for none.
+cp_turn_call :: (s: [] CoderPage, i: int, k: int) -> int {
+  q := s[0].turns[i].head - 1; at := s[0].turns[i].early_cmds;
+  while q >= 0 { if at == k { return q; } q = s[0].calls[q].next - 1; at += 1; }
+  return -1;
+}
 cp_press :: (s: [] CoderPage, row: int) -> bool {
   act := surface_action(s[0].surface[..], row);
   if act >= CP_SET_BACK && act <= CP_SET_ACT { return cp_settings_press(s, act, surface_id(s[0].surface[..], row)); }
@@ -7,9 +27,19 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     id := surface_id(s[0].surface[..], row);
     turn := cp_number(id, "t"); k := cp_number(id, ".x");
     if turn < 0 || turn >= s[0].nturns || k < 0 { return false; }
-    tb: [EL_ID] u8;
+    tb: [EL_ID] u8; rid := cp_row_id(tb[..], turn, k);
+    if app_act_path_pressed(rid, id) {
+      q := cp_turn_call(s, turn, k);
+      return q >= 0 && cp_open_file(s, q, turn, -1);
+    }
     s[0].turns[turn].h = 0;
-    return app_act_press(s[0].keyed[..], cp_row_id(tb[..], turn, k), id);
+    return app_act_press(s[0].keyed[..], rid, id);
+  }
+  if act == CP_PATH {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); n := cp_number(id, ".path.");
+    if turn < 0 || turn >= s[0].nturns || n < 0 { return false; }
+    return cp_open_file(s, -1, turn, n);
   }
   if act == CP_GROUP {
     turn := cp_number(surface_id(s[0].surface[..], row), "t");

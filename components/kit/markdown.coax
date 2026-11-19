@@ -20,6 +20,35 @@
 
 // The hits a code block's header leaves on the sheet: a = the block.
 MARKDOWN_HIT_WRAP :: 3; MARKDOWN_HIT_COPY :: 4;
+// With the skin's md.link_paths, inline code that names a file (md_path_like) drawn whole on
+// one line leaves this hit over it: a = where the code starts in its text, b = where it ends.
+MARKDOWN_HIT_PATH :: 6;
+
+// Whether bytes i to j are one whole code run (not part of one wrapped over two lines).
+markdown_whole_code :: (runs: [] MdRun, i: int, j: int) -> bool {
+  for k: 0..<runs.count { if runs[k].style == MD_CODE && runs[k].from == i && runs[k].to == j { return true; } }
+  return false;
+}
+// A file a block names in inline code: the text it is in (the block's, or an item's), and where.
+MdPath :: struct { text: string; from: int; to: int; }
+// The files block b names in inline code, in the order they are drawn, into out. Returns how many.
+markdown_paths :: (doc: [] MdDoc, b: int, out: [] MdPath) -> int {
+  kind := doc[0].blocks[b].kind;
+  if kind == MB_CODE || kind == MB_RULE { return 0; }
+  if kind == MB_PARA { return markdown_paths_in(md_block_text(doc, b), md_block_runs(doc, b), out, 0); }
+  n := 0; i0 := doc[0].blocks[b].item0;
+  for k: 0..<doc[0].blocks[b].items { n = markdown_paths_in(md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), out, n); }
+  return n;
+}
+markdown_paths_in :: (text: string, runs: [] MdRun, out: [] MdPath, n0: int) -> int {
+  n := n0;
+  for k: 0..<runs.count {
+    r := runs[k];
+    if r.style != MD_CODE || r.to > text.count || r.from >= r.to || n >= out.count { continue; }
+    if md_path_like(cast(string) text[r.from..<r.to]) { out[n] = MdPath.{text = text, from = r.from, to = r.to}; n += 1; }
+  }
+  return n;
+}
 
 // One wrapped line of styled text: each run in its face and colour, inline
 // code on its rounded wash (painted under the glyphs, past them by the
@@ -42,6 +71,9 @@ markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, tex
       ww := measure_width(m, face, cast(string) seg[0..<lit]);
       if lit > 0 { sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, ww + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash); }
       w = sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
+      if s.md.link_paths && lit > 0 && markdown_whole_code(runs, i, j) && md_path_like(cast(string) seg[0..<lit]) {
+        sheet_hit(sh, MARKDOWN_HIT_PATH, i, j, pen - s.md.code_pad_x, y, ww + 2 * s.md.code_pad_x, lh);
+      }
     } else {
       // a link reads in the accent; struck text keeps its colour under a rule through its middle
       w = sheet_text(sh, m, ln, pen, y, lh, face, ifx (marks & MD_LINK) != 0 then s.accent else color, seg);
