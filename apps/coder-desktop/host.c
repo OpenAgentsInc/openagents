@@ -16,6 +16,7 @@ typedef struct {
   void (*changed)(void *context); void *context;
   int headless;   // a page with no window: a chat whose reply runs out of view
   char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
+  void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -48,14 +49,22 @@ static float cd_font_size(int k) { return coder_page_font_size(k); }
 static void cd_on_pointer(void *user, float x, float y, int phase, int clicks, int mods) {
   (void)clicks; (void)mods;
   CoderHost *c = user;
+  // a dialog or a menu over the page takes every press; the host then reads any answer it gave
+  if (coder_page_overlay_open(cd_state(c))) {
+    (void)coder_page_overlay_pointer(cd_state(c), x, y, phase);
+    if (c->edge) { c->edge = 0; ui_cursor(c->app.host, 0); }
+    cd_woke(c);
+    if (c->overlay) c->overlay(c->overlay_context);
+    return;
+  }
   coder_page_pointer(cd_state(c), x, y, phase);
   // over a sidebar's edge, and while one is dragged, the pointer is the resize arrows
   int edge = coder_page_edge(cd_state(c)) ? 3 : 0;
   if (edge != c->edge) { c->edge = edge; ui_cursor(c->app.host, edge); }
   cd_woke(c);
 }
-static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
-static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
+static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_wheel(cd_state(c), dy); cd_woke(c); }
+static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) return; coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
 void *cd_open(const char *resources) {
   CoderHost *c = calloc(1, sizeof *c);
@@ -262,3 +271,26 @@ int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_pa
 int cd_search_box(void *page, float out[4]) { CoderHost *c = page; return c && coder_page_search_box(cd_state(c), (coax_v_f32){out, 4}); }
 void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
 int cd_search_submit(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_search_submit(cd_state(c)); cd_woke(c); return ok; }
+// Dialogs and right-click menus over the page (page/overlay.coax, GitHub #13746).
+void cd_on_overlay(void *page, void (*fn)(void *context), void *context) { CoderHost *c = page; if (c) { c->overlay = fn; c->overlay_context = context; } }
+void cd_dialog_begin(void *page, int size, const char *title, const char *body) { CoderHost *c = page; if (c) coder_page_dialog_begin(cd_state(c), size, cd_string(title), cd_string(body)); }
+int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines) { CoderHost *c = page; return c && coder_page_dialog_field(cd_state(c), cd_string(label), cd_string(value), cd_string(hint), secure != 0, lines); }
+int cd_dialog_button(void *page, const char *label, int kind, int aside) { CoderHost *c = page; return c && coder_page_dialog_button(cd_state(c), cd_string(label), kind, aside != 0); }
+void cd_dialog_show(void *page, int confirm, int cancel, int focus) { CoderHost *c = page; if (c) { coder_page_dialog_show(cd_state(c), confirm, cancel, focus); cd_woke(c); } }
+int cd_dialog_answer(void *page) { CoderHost *c = page; return c ? (int)coder_page_dialog_answer(cd_state(c)) : -2; }
+int cd_dialog_value(void *page, int i, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || cap < 1) return -1;
+  int n = (int)coder_page_dialog_value(cd_state(c), i, (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n < 0 ? 0 : n] = 0;
+  return n;
+}
+int cd_dialog_set(void *page, int i, const char *text) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_dialog_set(cd_state(c), i, cd_string(text)); }
+int cd_dialog_editor(void *page, float out[6]) { CoderHost *c = page; return c ? (int)coder_page_dialog_editor(cd_state(c), (coax_v_f32){out, 6}) : -1; }
+int cd_dialog_style(void *page, float out[14]) { CoderHost *c = page; return c && coder_page_dialog_style(cd_state(c), (coax_v_f32){out, 14}); }
+void cd_menu_begin(void *page) { CoderHost *c = page; if (c) coder_page_menu_begin(cd_state(c)); }
+int cd_menu_item(void *page, const char *label, int kind, int checked, int disabled, int danger) { CoderHost *c = page; return c && coder_page_menu_item(cd_state(c), cd_string(label), kind, checked != 0, disabled != 0, danger != 0); }
+void cd_menu_show(void *page, float x, float y) { CoderHost *c = page; if (c) { coder_page_menu_show(cd_state(c), x, y); cd_woke(c); } }
+int cd_menu_answer(void *page) { CoderHost *c = page; return c ? (int)coder_page_menu_answer(cd_state(c)) : -2; }
+int cd_overlay_open(void *page) { CoderHost *c = page; return c && coder_page_overlay_open(cd_state(c)); }
+int cd_overlay_key(void *page, int key, int mods) { CoderHost *c = page; if (!c) return 0; int took = coder_page_overlay_key(cd_state(c), key, mods); if (took) cd_woke(c); return took; }

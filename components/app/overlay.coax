@@ -1,0 +1,508 @@
+// Dialogs and context menus drawn on the GPU (GitHub #13746), after Zeron's
+// ds/dialog.luau, ds/menu.luau, ds/context_menu.luau and ds/motion.luau (zgx
+// at e393c4a8). They stand over a whole page, so they paint into the sheet's
+// `over` list after everything the page drew, in one group opacity.
+//
+// A dialog asks one thing in the middle of the window: a title, a line saying
+// what it means, up to APP_DLG_FIELDS fields, then its buttons at the foot
+// (an aside one at the foot's start). The window dims under it. It arrives
+// over 200 ms out(3), rising 4 points into place, and leaves over 130 ms
+// in(2); reduced motion shows and hides it at once. Escape and a click on the
+// dim cancel it; Return presses its confirm button (for a destructive one the
+// caller names Cancel); Tab moves between its fields; the keyboard starts on
+// the first field. The text of the field with the keyboard is the host's
+// editor's (Apple keeps its platform text view: components/zeron/editor.coax
+// says why); the dialog draws the field, and its text whenever no editor is
+// over it.
+//
+// A menu is a list of rows, headings and rules at the pointer, 232 wide, kept
+// inside the window (it opens to the pointer's left or above it where there
+// is no room). The keys move a highlight (up, down), Return takes it, Escape
+// and Tab close it; a click outside closes it. It fades in over 120 ms.
+//
+// The host owns what an answer does: a dialog's answer is the button pressed
+// (APP_DLG_CANCEL for Escape or the dim) with its fields' text, a menu's the
+// row chosen (APP_MENU_NONE for none). Both are kept until taken.
+//
+// Each panel lays the skin's soft shadow under it (shadows.dialog 0 24 64,
+// shadows.menu 0 20 56). Zeron also frosts both panels (a 16 point backdrop
+// blur); here they stay solid (#1c1c1f) with a hairline, since the frost needs
+// the host's composition plan (Coder's page/compose.coax does it for the
+// models menu). app_overlay_paint_panel is the one place to change.
+//   coax/bin/coax test components/app/overlay-checks.coax
+
+#load "base.coax";
+
+// ---------------------------------------------------------------- measures
+
+// In points (Zeron's tokens.luau zeron.dialog and zeron.menu, ds/menu.luau);
+// app_overlay_scaled puts the lengths in a page's units.
+AppOverlaySpec :: struct {
+  sm: f32; md: f32; lg: f32;                     // a dialog's width at each size
+  radius: f32; pad: f32; gap: f32; title_gap: f32;   // its corner, its inset, between its parts, title to body
+  field_gap: f32; label_gap: f32;                // between fields; a field's label to its box
+  field_h: f32; field_radius: f32; field_pad: f32; area_lines: int;   // a field's box; a multi-line one's lines
+  button_h: f32; button_pad: f32; button_radius: f32; button_gap: f32; button_least: f32; ring: f32;
+  rise: f32; margin: f32;                        // the arrival's rise; kept from the window's edge
+  menu_w: f32; menu_row: f32; menu_heading: f32; menu_inset: f32; menu_radius: f32; menu_rule: f32;
+  menu_pad_x: f32; menu_check: f32; menu_item_radius: f32;
+  enter: f32; exit: f32; menu_enter: f32;        // seconds
+  backdrop: Rgba; fill: Rgba; lit: Rgba; field: Rgba;
+}
+app_overlay_zeron :: () -> AppOverlaySpec {
+  return AppOverlaySpec.{sm = 380, md = 460, lg = 560, radius = 16, pad = 20, gap = 20, title_gap = 6,
+    field_gap = 12, label_gap = 6, field_h = 32, field_radius = 8, field_pad = 10, area_lines = 5,
+    button_h = 28, button_pad = 12, button_radius = 8, button_gap = 8, button_least = 72, ring = 1.5,
+    rise = 4, margin = 8,
+    menu_w = 232, menu_row = 28, menu_heading = 24, menu_inset = 4, menu_radius = 10, menu_rule = 9,
+    menu_pad_x = 8, menu_check = 14, menu_item_radius = 6,
+    enter = 0.2, exit = 0.13, menu_enter = 0.12,
+    backdrop = hex(0x000000, 0.349f32),          // zeron-dark backdrop #00000059
+    fill = hex(0x1c1c1f, 1),                     // zeron.menu.solid
+    lit = hex(0xebebeb, 0.09f32),                // zeron.menu.selected #ebebeb17
+    field = hex(0xffffff, 0.04f32)};
+}
+// The lengths in a page's units (u points a unit); times and colours stay.
+app_overlay_scaled :: (o: AppOverlaySpec, u: f32) -> AppOverlaySpec {
+  if !(u > 0) { return o; }
+  r := o;
+  r.sm = o.sm / u; r.md = o.md / u; r.lg = o.lg / u; r.radius = o.radius / u; r.pad = o.pad / u; r.gap = o.gap / u; r.title_gap = o.title_gap / u;
+  r.field_gap = o.field_gap / u; r.label_gap = o.label_gap / u; r.field_h = o.field_h / u; r.field_radius = o.field_radius / u; r.field_pad = o.field_pad / u;
+  r.button_h = o.button_h / u; r.button_pad = o.button_pad / u; r.button_radius = o.button_radius / u; r.button_gap = o.button_gap / u; r.button_least = o.button_least / u; r.ring = o.ring / u;
+  r.rise = o.rise / u; r.margin = o.margin / u;
+  r.menu_w = o.menu_w / u; r.menu_row = o.menu_row / u; r.menu_heading = o.menu_heading / u; r.menu_inset = o.menu_inset / u; r.menu_radius = o.menu_radius / u; r.menu_rule = o.menu_rule / u;
+  r.menu_pad_x = o.menu_pad_x / u; r.menu_check = o.menu_check / u; r.menu_item_radius = o.menu_item_radius / u;
+  return r;
+}
+
+// The host's keys, in components/zeron/composer.coax's numbering (its own
+// names are not loaded here), and its modifier bits.
+APP_OV_ESCAPE :: -1; APP_OV_ENTER :: -2; APP_OV_UP :: -6; APP_OV_DOWN :: -7; APP_OV_TAB :: -13;
+APP_OV_SHIFT :: 1; APP_OV_CMD :: 8;
+
+// out(3) and in(2) (ds/motion.luau's eases).
+app_ov_out3 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return 1 - (1 - x) * (1 - x) * (1 - x); }
+app_ov_in2 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return x * x; }
+// Bytes into a buffer, cut at a character when they do not fit. Returns the count kept.
+app_ov_put :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  if n < src.count { while n > 0 && (src[n] & 0xC0) == 0x80 { n -= 1; } }   // not a size: a UTF-8 continuation byte
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+app_ov_inside :: (x: f32, y: f32, bx: f32, by: f32, bw: f32, bh: f32) -> bool { return x >= bx && y >= by && x < bx + bw && y < by + bh; }
+// Painting over everything the page drew: boxes and icons go in `over` too.
+app_ov_box :: (sh: [] Sheet, x: f32, y: f32, w: f32, h: f32, radius: f32, border: f32, fill: Rgba, edge: Rgba) {
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, x, y, w, h, radius, border, fill, edge));
+}
+app_ov_icon :: (sh: [] Sheet, icon: int, x: f32, y: f32, size: f32, tint: Rgba) {
+  sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, icon, x, y, size, size, tint));
+}
+APP_OV_LINES :: 32;
+// Wrapped words (hard breaks kept): their height, and their lines painted when paint is true.
+app_ov_copy :: (sh: [] Sheet, m: TextMeasure, face: UiType, color: Rgba, x: f32, y: f32, w: f32, text: string, paint: bool) -> f32 {
+  if text.count == 0 { return 0; }
+  lines: [APP_OV_LINES] TextLine; faces := TextFaces.{plain = face.face, bold = face.face, code = face.face};
+  n := text_wrap_lines(m, faces, text, ifx w > 1 then w else 1.0f32, lines[..]);
+  if paint { for i: 0..<n { _ := sheet_text(sh, m, -1, x, y + cast(f32) i * face.line, face.line, face.face, color, cast(string) text[lines[i].from..<lines[i].to]); } }
+  return cast(f32) n * face.line;
+}
+// A panel's ground: the skin's shadow under it, then its fill and hairline (see the note at the top).
+app_overlay_paint_panel :: (sh: [] Sheet, s: UiSkin, o: AppOverlaySpec, x: f32, y: f32, w: f32, h: f32, radius: f32, shadow: UiShadow) {
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, x, y, w, h, radius, shadow));
+  app_ov_box(sh, x, y, w, h, radius, s.border, o.fill, s.hairline);
+}
+
+// ---------------------------------------------------------------- dialog
+
+APP_DLG_FIELDS :: 4; APP_DLG_BUTTONS :: 4;
+APP_DLG_TITLE :: 160; APP_DLG_BODY :: 1536; APP_DLG_LABEL :: 64; APP_DLG_HINT :: 128; APP_DLG_VALUE :: 4096;
+APP_DLG_SM :: 0; APP_DLG_MD :: 1; APP_DLG_LG :: 2;
+APP_DLG_PRIMARY :: 0; APP_DLG_SECONDARY :: 1; APP_DLG_DANGER :: 2;
+APP_DLG_NONE :: -2;     // not answered (or the answer was taken)
+APP_DLG_CANCEL :: -1;   // Escape, or a click on the dim
+APP_DLG_DIM :: -3;      // a press that began on the dim
+
+AppDlgField :: struct {
+  label: [APP_DLG_LABEL] u8; nl: int; hint: [APP_DLG_HINT] u8; nh: int; value: [APP_DLG_VALUE] u8; nv: int;
+  secure: bool; lines: int;
+  x: f32; y: f32; w: f32; h: f32;      // its box, as last laid out
+}
+AppDlgButton :: struct { label: [APP_DLG_LABEL] u8; n: int; kind: int; aside: bool; x: f32; y: f32; w: f32; h: f32; }
+AppDialog :: struct {
+  shown: bool;          // on screen: open, or leaving
+  open: bool;           // wanted
+  t: f32;               // how far the arrival (open) or the leaving has gone, 0 to 1
+  size: int;
+  title: [APP_DLG_TITLE] u8; nt: int; body: [APP_DLG_BODY] u8; nb: int;
+  fields: [APP_DLG_FIELDS] AppDlgField; nf: int;
+  buttons: [APP_DLG_BUTTONS] AppDlgButton; nbtn: int;
+  confirm: int; cancel: int;   // the buttons Return and Escape stand for (-1: none)
+  focus: int;           // the field with the keyboard (-1: none)
+  held: int;            // the button a press began on, APP_DLG_DIM, or -1
+  answer: int;          // APP_DLG_NONE, APP_DLG_CANCEL or a button
+  editing: bool;        // the host's editor is over the field with the keyboard
+  px: f32; py: f32;     // the pointer, for a button's hover
+  x: f32; y: f32; w: f32; h: f32;   // the panel, as last laid out
+}
+
+// A new dialog's words; its fields and buttons follow, then app_dialog_open.
+// One already shown is replaced at once.
+app_dialog_begin :: (d: [] AppDialog, size: int, title: string, body: string) {
+  d[0].nf = 0; d[0].nbtn = 0; d[0].focus = -1; d[0].held = -1; d[0].editing = false;
+  d[0].size = ifx size < APP_DLG_SM || size > APP_DLG_LG then APP_DLG_SM else size;
+  d[0].nt = app_ov_put(d[0].title[..], title); d[0].nb = app_ov_put(d[0].body[..], body);
+}
+// A field: its label, its text, what it shows while empty, whether its text is
+// secret (dots, kept out of its row) and how many lines it holds (1: one line,
+// more: Return makes a new line in it). False when the dialog is full.
+app_dialog_field :: (d: [] AppDialog, label: string, value: string, hint: string, secure: bool, lines: int) -> bool {
+  if d[0].nf >= APP_DLG_FIELDS || value.count > APP_DLG_VALUE { return false; }
+  q := d[0].nf; d[0].nf += 1;
+  d[0].fields[q].nl = app_ov_put(d[0].fields[q].label[..], label);
+  d[0].fields[q].nh = app_ov_put(d[0].fields[q].hint[..], hint);
+  d[0].fields[q].nv = app_ov_put(d[0].fields[q].value[..], value);
+  d[0].fields[q].secure = secure; d[0].fields[q].lines = ifx lines < 1 then 1 else lines;
+  return true;
+}
+// A button, in the foot's order from its start (an aside one stands at the foot's start).
+app_dialog_button :: (d: [] AppDialog, label: string, kind: int, aside: bool) -> bool {
+  if d[0].nbtn >= APP_DLG_BUTTONS { return false; }
+  q := d[0].nbtn; d[0].nbtn += 1;
+  d[0].buttons[q].n = app_ov_put(d[0].buttons[q].label[..], label); d[0].buttons[q].kind = kind; d[0].buttons[q].aside = aside;
+  return true;
+}
+app_dialog_open :: (d: [] AppDialog, confirm: int, cancel: int) {
+  d[0].confirm = ifx confirm >= 0 && confirm < d[0].nbtn then confirm else -1;
+  d[0].cancel = ifx cancel >= 0 && cancel < d[0].nbtn then cancel else -1;
+  d[0].focus = ifx d[0].nf > 0 then 0 else -1;
+  d[0].shown = true; d[0].open = true; d[0].t = 0; d[0].answer = APP_DLG_NONE; d[0].held = -1;
+}
+// It leaves with an answer; the host takes it with app_dialog_take.
+app_dialog_close :: (d: [] AppDialog, answer: int) {
+  if !d[0].open { return; }
+  d[0].open = false; d[0].t = 0; d[0].answer = answer; d[0].held = -1; d[0].focus = -1; d[0].editing = false;
+}
+app_dialog_take :: (d: [] AppDialog) -> int { a := d[0].answer; d[0].answer = APP_DLG_NONE; return a; }
+app_dialog_value :: (d: [] AppDialog, i: int) -> string {
+  if i < 0 || i >= d[0].nf { return ""; }
+  return cast(string) d[0].fields[i].value[0..<d[0].fields[i].nv];
+}
+// The host's editor's text for field i. A text longer than a field holds is refused.
+app_dialog_set :: (d: [] AppDialog, i: int, text: string) -> bool {
+  if i < 0 || i >= d[0].nf || text.count > APP_DLG_VALUE { return false; }
+  d[0].fields[i].nv = app_ov_put(d[0].fields[i].value[..], text);
+  return true;
+}
+// How shown it is, 0 to 1, by its eases; with reduced motion it is there or not.
+app_dialog_phase :: (d: [] AppDialog, reduced: bool) -> f32 {
+  if !d[0].shown { return 0; }
+  if reduced { return ifx d[0].open then 1.0f32 else 0.0f32; }
+  return ifx d[0].open then app_ov_out3(d[0].t) else 1 - app_ov_in2(d[0].t);
+}
+// Time passes: the arrival or the leaving goes on. True while it moves.
+app_dialog_step :: (d: [] AppDialog, dt: f32, reduced: bool, o: AppOverlaySpec) -> bool {
+  if !d[0].shown { return false; }
+  span := ifx d[0].open then o.enter else o.exit;
+  if reduced || !(span > 0) { d[0].t = 1; } else { d[0].t += dt / span; }
+  if d[0].t >= 1 { d[0].t = 1; if !d[0].open { d[0].shown = false; } return false; }
+  return true;
+}
+// Its width at its size, inside the window.
+app_dialog_width :: (d: [] AppDialog, o: AppOverlaySpec, view_w: f32) -> f32 {
+  w := ifx d[0].size == APP_DLG_LG then o.lg else ifx d[0].size == APP_DLG_MD then o.md else o.sm;
+  most := view_w - 2 * o.margin;
+  return ifx w > most then (ifx most > 0 then most else 0.0f32) else w;
+}
+// A field's box height.
+app_dialog_field_h :: (s: UiSkin, o: AppOverlaySpec, q: AppDlgField) -> f32 {
+  if q.lines <= 1 { return o.field_h; }
+  return cast(f32) q.lines * s.label.line + 2 * o.field_pad;
+}
+// Where the field with the keyboard holds its text, in units (x, y, w, h), and
+// whether it is secure (out[4] 1). False when no field has the keyboard or the
+// dialog is not at rest.
+app_dialog_field_box :: (d: [] AppDialog, s: UiSkin, o: AppOverlaySpec, out: [] f32) -> bool {
+  i := d[0].focus;
+  if out.count < 5 || !d[0].shown || !d[0].open || d[0].t < 1 || i < 0 || i >= d[0].nf { return false; }
+  q := d[0].fields[i];
+  if !(q.w > 0) { return false; }
+  out[0] = q.x + o.field_pad; out[2] = q.w - 2 * o.field_pad;
+  if q.lines <= 1 { out[1] = q.y + (q.h - s.label.line) / 2; out[3] = s.label.line; }
+  else { out[1] = q.y + o.field_pad; out[3] = q.h - 2 * o.field_pad; }
+  out[4] = ifx q.secure then 1.0f32 else 0.0f32;
+  return true;
+}
+app_dlg_button_w :: (f: [] UiFrame, o: AppOverlaySpec, d: [] AppDialog, i: int) -> f32 {
+  w := ceil(measure_width(f[0].m, f[0].skin.label.face, cast(string) d[0].buttons[i].label[0..<d[0].buttons[i].n])) + 2 * o.button_pad;
+  return ifx w < o.button_least then o.button_least else w;
+}
+// Lays it out over a view_w by view_h page and paints it in `over`, with its
+// rows (a region named by its title, a heading, its fields and buttons).
+app_dialog_paint :: (f: [] UiFrame, d: [] AppDialog, view_w: f32, view_h: f32, o: AppOverlaySpec) {
+  if !d[0].shown { return; }
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  p := app_dialog_phase(d, f[0].reduced_motion);
+  app_ov_box(sh, 0, 0, view_w, view_h, 0, 0, opacity(o.backdrop, p), s.clear);
+  w := app_dialog_width(d, o, view_w); cw := w - 2 * o.pad;
+  title := cast(string) d[0].title[0..<d[0].nt]; body := cast(string) d[0].body[0..<d[0].nb];
+  title_h := app_ov_copy(sh, m, s.title, s.ink, 0, 0, cw, title, false);
+  body_h := app_ov_copy(sh, m, s.label, s.muted, 0, 0, cw, body, false);
+  fields_h: f32 = 0;
+  for i: 0..<d[0].nf { fields_h += (ifx i > 0 then o.field_gap else 0.0f32) + (ifx d[0].fields[i].nl > 0 then s.label.line + o.label_gap else 0.0f32) + app_dialog_field_h(s, o, d[0].fields[i]); }
+  h := o.pad + title_h + (ifx body_h > 0 then o.title_gap + body_h else 0.0f32) + (ifx d[0].nf > 0 then o.gap + fields_h else 0.0f32) + (ifx d[0].nbtn > 0 then o.gap + o.button_h else 0.0f32) + o.pad;
+  x := (view_w - w) / 2;
+  y := (view_h - h) / 2; if y < o.margin { y = o.margin; }
+  y += o.rise * (1 - p);
+  d[0].x = x; d[0].y = y; d[0].w = w; d[0].h = h;
+  sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, p));
+  app_overlay_paint_panel(sh, s, o, x, y, w, h, o.radius, s.shadows.dialog);
+  uiframe_open(f, uiframe_semantic(f, "dialog", EL_REGION, title, x, y, w, h, 0, 0));
+  cx := x + o.pad; cy := y + o.pad;
+  _ := uiframe_semantic(f, "dialog.title", EL_HEADING, title, cx, cy, cw, title_h, 0, 0);
+  _ := app_ov_copy(sh, m, s.title, s.ink, cx, cy, cw, title, true);
+  cy += title_h;
+  if body_h > 0 {
+    cy += o.title_gap;
+    _ := uiframe_semantic(f, "dialog.body", EL_TEXT, body, cx, cy, cw, body_h, 0, 0);
+    _ := app_ov_copy(sh, m, s.label, s.muted, cx, cy, cw, body, true);
+    cy += body_h;
+  }
+  if d[0].nf > 0 { cy += o.gap; }
+  idb: [EL_ID] u8;
+  for i: 0..<d[0].nf {
+    q := d[0].fields[i];
+    if i > 0 { cy += o.field_gap; }
+    label := cast(string) d[0].fields[i].label[0..<d[0].fields[i].nl];
+    if q.nl > 0 { _ := sheet_text(sh, m, -1, cx, cy, s.label.line, s.label.face, s.muted, app_fit(f, s.label.face, label, cw)); cy += s.label.line + o.label_gap; }
+    fh := app_dialog_field_h(s, o, q);
+    d[0].fields[i].x = cx; d[0].fields[i].y = cy; d[0].fields[i].w = cw; d[0].fields[i].h = fh;
+    focused := d[0].open && d[0].focus == i;
+    app_ov_box(sh, cx, cy, cw, fh, o.field_radius, s.border, o.field, ifx focused then opacity(s.ink, 0.45f32) else s.hairline);
+    n := el_put(idb[..], 0, "dialog.field."); n = el_put_i(idb[..], n, i);
+    id := sheet_pool(sh, cast(string) idb[0..<n]);
+    value := cast(string) d[0].fields[i].value[0..<d[0].fields[i].nv];
+    row := uiframe_semantic(f, id, EL_FIELD, label, cx, cy, cw, fh, ifx focused then EL_S_FOCUSED else 0, 0);
+    if !q.secure { elt_value(f[0].rows, row, value); }
+    if !(focused && d[0].editing) {
+      tw := cw - 2 * o.field_pad;
+      shown := ifx q.secure then app_dots(f, value) else value;
+      if q.nv == 0 { _ := sheet_text(sh, m, -1, cx + o.field_pad, cy + (ifx q.lines <= 1 then (fh - s.label.line) / 2 else o.field_pad), s.label.line, s.label.face, s.faint, app_fit(f, s.label.face, cast(string) d[0].fields[i].hint[0..<d[0].fields[i].nh], tw)); }
+      else if q.lines <= 1 { _ := sheet_text(sh, m, -1, cx + o.field_pad, cy + (fh - s.label.line) / 2, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, sheet_single_line(sh, shown), tw)); }
+      else {
+        lines: [APP_OV_LINES] TextLine; faces := TextFaces.{plain = s.label.face, bold = s.label.face, code = s.label.face};
+        k := text_wrap_lines(m, faces, shown, ifx tw > 1 then tw else 1.0f32, lines[..]);
+        if k > q.lines { k = q.lines; }
+        for j: 0..<k { _ := sheet_text(sh, m, -1, cx + o.field_pad, cy + o.field_pad + cast(f32) j * s.label.line, s.label.line, s.label.face, s.ink, cast(string) shown[lines[j].from..<lines[j].to]); }
+      }
+    }
+    cy += fh;
+  }
+  if d[0].nbtn > 0 {
+    by := y + h - o.pad - o.button_h;
+    // the aside ones from the foot's start, the rest ending at its end, in the caller's order
+    lx := cx; rw: f32 = 0;
+    for i: 0..<d[0].nbtn { if !d[0].buttons[i].aside { rw += (ifx rw > 0 then o.button_gap else 0.0f32) + app_dlg_button_w(f, o, d, i); } }
+    rx := cx + cw - rw;
+    for i: 0..<d[0].nbtn {
+      b := d[0].buttons[i]; bw := app_dlg_button_w(f, o, d, i); bx: f32;
+      if b.aside { bx = lx; lx += bw + o.button_gap; } else { bx = rx; rx += bw + o.button_gap; }
+      d[0].buttons[i].x = bx; d[0].buttons[i].y = by; d[0].buttons[i].w = bw; d[0].buttons[i].h = o.button_h;
+      label := cast(string) d[0].buttons[i].label[0..<d[0].buttons[i].n];
+      lit := d[0].open && (d[0].held == i || (d[0].held < 0 && app_ov_inside(d[0].px, d[0].py, bx, by, bw, o.button_h)));
+      // a destructive one is a wash of the danger ink under it, readable on a red skin and a mono one alike
+      fill := ifx b.kind == APP_DLG_PRIMARY then s.ink else ifx b.kind == APP_DLG_DANGER then opacity(s.danger, 0.16f32) else s.hover;
+      ink := ifx b.kind == APP_DLG_PRIMARY then s.canvas else ifx b.kind == APP_DLG_DANGER then s.danger else s.ink;
+      app_ov_box(sh, bx, by, bw, o.button_h, o.button_radius, 0, fill, s.clear);
+      if lit { app_ov_box(sh, bx, by, bw, o.button_h, o.button_radius, 0, ifx b.kind == APP_DLG_PRIMARY then opacity(s.canvas, 0.12f32) else o.lit, s.clear); }
+      // Return's button wears a ring unless it is the filled confirm already
+      if i == d[0].confirm && b.kind != APP_DLG_PRIMARY { app_ov_box(sh, bx - o.ring, by - o.ring, bw + 2 * o.ring, o.button_h + 2 * o.ring, o.button_radius + o.ring, o.ring, s.clear, opacity(s.ink, 0.55f32)); }
+      shown := app_fit(f, s.label.face, label, bw - 2 * o.button_pad);
+      _ := sheet_text(sh, m, -1, bx + (bw - measure_width(m, s.label.face, shown)) / 2, by + (o.button_h - s.label.line) / 2, s.label.line, s.label.face, ink, shown);
+      n := el_put(idb[..], 0, "dialog.button."); n = el_put_i(idb[..], n, i);
+      _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_BUTTON, label, bx, by, bw, o.button_h, ifx i == d[0].confirm then EL_S_CURRENT else 0, 0);
+    }
+  }
+  uiframe_close(f);
+  sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
+}
+// A key while it is shown: Escape cancels, Return presses the confirm button
+// (in a multi-line field Return is the editor's: Command-Return confirms), Tab
+// and Shift-Tab move between fields. True when it took the key; every other
+// key is left to the host's editor.
+app_dialog_key :: (d: [] AppDialog, key: int, mods: int) -> bool {
+  if !d[0].shown { return false; }
+  if !d[0].open { return true; }
+  if key == APP_OV_ESCAPE { app_dialog_close(d, APP_DLG_CANCEL); return true; }
+  if key == APP_OV_ENTER {
+    cmd := (mods & APP_OV_CMD) != 0;
+    multi := d[0].focus >= 0 && d[0].focus < d[0].nf && d[0].fields[d[0].focus].lines > 1;
+    if !cmd && multi { return false; }   // the editor's new line, Shift or Option with it too
+    // a one-line field takes no new line: Shift-Return and the like do nothing
+    if (cmd || mods == 0) && d[0].confirm >= 0 { app_dialog_close(d, d[0].confirm); }
+    return true;
+  }
+  if key == APP_OV_TAB {
+    if d[0].nf < 2 { return true; }
+    back := (mods & APP_OV_SHIFT) != 0;
+    d[0].focus = (d[0].focus + (ifx back then d[0].nf - 1 else 1)) % d[0].nf;
+    d[0].editing = false;
+    return true;
+  }
+  return false;
+}
+// The pointer, in units: phase 0 down, 1 moved, 2 up, 3 cancelled. While it
+// is shown every press is its own: one on a button presses it when released
+// there, one on a field gives it the keyboard, one on the dim cancels.
+app_dialog_pointer :: (d: [] AppDialog, x: f32, y: f32, phase: int) -> bool {
+  if !d[0].shown { return false; }
+  d[0].px = x; d[0].py = y;
+  if !d[0].open { return true; }
+  if phase == 0 {
+    d[0].held = -1;
+    if !app_ov_inside(x, y, d[0].x, d[0].y, d[0].w, d[0].h) { d[0].held = APP_DLG_DIM; return true; }
+    for i: 0..<d[0].nbtn { b := d[0].buttons[i]; if app_ov_inside(x, y, b.x, b.y, b.w, b.h) { d[0].held = i; return true; } }
+    for i: 0..<d[0].nf { q := d[0].fields[i]; if app_ov_inside(x, y, q.x, q.y, q.w, q.h) { if d[0].focus != i { d[0].editing = false; } d[0].focus = i; return true; } }
+    return true;
+  }
+  if phase == 2 {
+    held := d[0].held; d[0].held = -1;
+    if held == APP_DLG_DIM && !app_ov_inside(x, y, d[0].x, d[0].y, d[0].w, d[0].h) { app_dialog_close(d, APP_DLG_CANCEL); return true; }
+    if held >= 0 && held < d[0].nbtn { b := d[0].buttons[held]; if app_ov_inside(x, y, b.x, b.y, b.w, b.h) { app_dialog_close(d, held); } }
+    return true;
+  }
+  if phase == 3 { d[0].held = -1; }
+  return true;
+}
+
+// ---------------------------------------------------------------- context menu
+
+APP_MENU_ITEMS :: 16; APP_MENU_LABEL :: 64;
+APP_MENU_ROW :: 0; APP_MENU_HEADING :: 1; APP_MENU_RULE :: 2;
+APP_MENU_NONE :: -1;    // closed with nothing chosen
+APP_MENU_WAIT :: -2;    // not answered (or the answer was taken)
+
+AppMenuItem :: struct { label: [APP_MENU_LABEL] u8; n: int; kind: int; checked: bool; disabled: bool; danger: bool; y: f32; h: f32; }
+AppMenu :: struct {
+  open: bool; t: f32;
+  items: [APP_MENU_ITEMS] AppMenuItem; n: int;
+  ax: f32; ay: f32;                   // where it was asked for: the pointer, in units
+  x: f32; y: f32; w: f32; h: f32;     // the panel, as last placed
+  lit: int;                           // the row the pointer or the keys light (-1: none)
+  inside: bool;                       // the press began in it
+  answer: int;
+}
+app_menu_begin :: (mn: [] AppMenu) { mn[0].n = 0; mn[0].lit = -1; }
+app_menu_item :: (mn: [] AppMenu, label: string, kind: int, checked: bool, disabled: bool, danger: bool) -> bool {
+  if mn[0].n >= APP_MENU_ITEMS { return false; }
+  q := mn[0].n; mn[0].n += 1;
+  mn[0].items[q].n = app_ov_put(mn[0].items[q].label[..], label); mn[0].items[q].kind = kind;
+  mn[0].items[q].checked = checked; mn[0].items[q].disabled = disabled || kind != APP_MENU_ROW; mn[0].items[q].danger = danger;
+  return true;
+}
+// It opens at the pointer (units); placement waits for the next paint, which knows the window.
+app_menu_open :: (mn: [] AppMenu, x: f32, y: f32) {
+  mn[0].open = true; mn[0].t = 0; mn[0].ax = x; mn[0].ay = y; mn[0].lit = -1; mn[0].inside = false; mn[0].answer = APP_MENU_WAIT;
+  mn[0].w = 0; mn[0].h = 0;
+}
+app_menu_close :: (mn: [] AppMenu, answer: int) { if !mn[0].open { return; } mn[0].open = false; mn[0].answer = answer; mn[0].lit = -1; }
+app_menu_take :: (mn: [] AppMenu) -> int { a := mn[0].answer; mn[0].answer = APP_MENU_WAIT; return a; }
+app_menu_item_h :: (o: AppOverlaySpec, q: AppMenuItem) -> f32 {
+  return ifx q.kind == APP_MENU_RULE then o.menu_rule else ifx q.kind == APP_MENU_HEADING then o.menu_heading else o.menu_row;
+}
+// Where it stands in a view_w by view_h window: at the pointer, to its left or
+// above it where there is no room, and inside the window's margin.
+app_menu_place :: (mn: [] AppMenu, view_w: f32, view_h: f32, o: AppOverlaySpec) {
+  w := o.menu_w; if w > view_w - 2 * o.margin { w = view_w - 2 * o.margin; }
+  h := 2 * o.menu_inset; for i: 0..<mn[0].n { mn[0].items[i].y = h; mn[0].items[i].h = app_menu_item_h(o, mn[0].items[i]); h += mn[0].items[i].h; }
+  x := mn[0].ax; y := mn[0].ay;
+  if x + w > view_w - o.margin && mn[0].ax - w >= o.margin { x = mn[0].ax - w; }
+  if y + h > view_h - o.margin && mn[0].ay - h >= o.margin { y = mn[0].ay - h; }
+  if x + w > view_w - o.margin { x = view_w - o.margin - w; }
+  if y + h > view_h - o.margin { y = view_h - o.margin - h; }
+  if x < o.margin { x = o.margin; }
+  if y < o.margin { y = o.margin; }
+  mn[0].x = x; mn[0].y = y; mn[0].w = w; mn[0].h = h;
+}
+app_menu_step :: (mn: [] AppMenu, dt: f32, reduced: bool, o: AppOverlaySpec) -> bool {
+  if !mn[0].open || mn[0].t >= 1 { return false; }
+  if reduced || !(o.menu_enter > 0) { mn[0].t = 1; return false; }
+  mn[0].t += dt / o.menu_enter;
+  if mn[0].t >= 1 { mn[0].t = 1; return false; }
+  return true;
+}
+app_menu_paint :: (f: [] UiFrame, mn: [] AppMenu, view_w: f32, view_h: f32, o: AppOverlaySpec) {
+  if !mn[0].open { return; }
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  app_menu_place(mn, view_w, view_h, o);
+  x := mn[0].x; y := mn[0].y; w := mn[0].w; h := mn[0].h;
+  p := ifx f[0].reduced_motion then 1.0f32 else app_ov_out3(mn[0].t);
+  sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, p));
+  app_overlay_paint_panel(sh, s, o, x, y, w, h, o.menu_radius, s.shadows.menu);
+  uiframe_open(f, uiframe_semantic(f, "menu", EL_REGION, "Menu", x, y, w, h, 0, 0));
+  idb: [EL_ID] u8;
+  rx := x + o.menu_inset; rw := w - 2 * o.menu_inset;
+  for i: 0..<mn[0].n {
+    q := mn[0].items[i]; ry := y + q.y;
+    label := cast(string) mn[0].items[i].label[0..<mn[0].items[i].n];
+    if q.kind == APP_MENU_RULE { sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, x, ry + (q.h - s.border) / 2, w, s.border, 0, s.menu_divider)); continue; }
+    tw := rw - 2 * o.menu_pad_x - o.menu_check - o.menu_pad_x;
+    if q.kind == APP_MENU_HEADING {
+      _ := sheet_text(sh, m, -1, rx + o.menu_pad_x, ry + (q.h - s.small.line) / 2, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, label, tw));
+      n := el_put(idb[..], 0, "menu.head."); n = el_put_i(idb[..], n, i);
+      _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_HEADING, label, rx, ry, rw, q.h, 0, 0);
+      continue;
+    }
+    if i == mn[0].lit && !q.disabled { sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, rx, ry, rw, q.h, o.menu_item_radius, ifx q.danger then opacity(s.danger, 0.14f32) else o.lit)); }
+    ink := ifx q.disabled then s.faint else ifx q.danger then s.danger else s.ink;
+    _ := sheet_text(sh, m, -1, rx + o.menu_pad_x, ry + (q.h - s.label.line) / 2, s.label.line, s.label.face, ink, app_fit(f, s.label.face, label, tw));
+    if q.checked { app_ov_icon(sh, s.icon_check, rx + rw - o.menu_pad_x - o.menu_check, ry + (q.h - o.menu_check) / 2, o.menu_check, ink); }
+    n := el_put(idb[..], 0, "menu.row."); n = el_put_i(idb[..], n, i);
+    state := (ifx q.disabled then EL_S_DISABLED else 0) | (ifx q.checked then EL_S_CHECKS | EL_S_CHECKED else 0) | (ifx i == mn[0].lit then EL_S_FOCUSED else 0);
+    _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_ROW, label, rx, ry, rw, q.h, state, 0);
+  }
+  uiframe_close(f);
+  sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
+}
+// The row at y (units) that can be chosen, -1 for none.
+app_menu_row_at :: (mn: [] AppMenu, x: f32, y: f32) -> int {
+  if !app_ov_inside(x, y, mn[0].x, mn[0].y, mn[0].w, mn[0].h) { return -1; }
+  for i: 0..<mn[0].n { q := mn[0].items[i]; if !q.disabled && y >= mn[0].y + q.y && y < mn[0].y + q.y + q.h { return i; } }
+  return -1;
+}
+// The next row that can be chosen from `from`, by step (1 down, -1 up), round the end; -1 for none.
+app_menu_next :: (mn: [] AppMenu, from: int, step: int) -> int {
+  if mn[0].n == 0 { return -1; }
+  i := from;
+  for k: 0..<mn[0].n {
+    i = ifx i < 0 then (ifx step > 0 then 0 else mn[0].n - 1) else (i + step + mn[0].n) % mn[0].n;
+    if !mn[0].items[i].disabled { return i; }
+  }
+  return -1;
+}
+// Keys while it is open: up and down move the highlight, Return takes it,
+// Escape and Tab close it. It takes every key.
+app_menu_key :: (mn: [] AppMenu, key: int, mods: int) -> bool {
+  if !mn[0].open { return false; }
+  if key == APP_OV_DOWN { mn[0].lit = app_menu_next(mn, mn[0].lit, 1); }
+  else if key == APP_OV_UP { mn[0].lit = app_menu_next(mn, mn[0].lit, -1); }
+  else if key == APP_OV_ENTER { app_menu_close(mn, ifx mn[0].lit >= 0 then mn[0].lit else APP_MENU_NONE); }
+  else if key == APP_OV_ESCAPE || key == APP_OV_TAB { app_menu_close(mn, APP_MENU_NONE); }
+  return true;
+}
+// The pointer, in units: the row under it is lit; a press outside closes it
+// (and goes no further); a release on a row chooses it.
+app_menu_pointer :: (mn: [] AppMenu, x: f32, y: f32, phase: int) -> bool {
+  if !mn[0].open { return false; }
+  at := app_menu_row_at(mn, x, y);
+  if phase == 1 { if at >= 0 || app_ov_inside(x, y, mn[0].x, mn[0].y, mn[0].w, mn[0].h) { mn[0].lit = at; } return true; }
+  if phase == 0 {
+    mn[0].inside = app_ov_inside(x, y, mn[0].x, mn[0].y, mn[0].w, mn[0].h);
+    if !mn[0].inside { app_menu_close(mn, APP_MENU_NONE); }
+    else { mn[0].lit = at; }
+    return true;
+  }
+  if phase == 2 { if mn[0].inside && at >= 0 { app_menu_close(mn, at); } mn[0].inside = false; return true; }
+  mn[0].inside = false;
+  return true;
+}

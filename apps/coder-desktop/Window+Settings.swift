@@ -18,6 +18,7 @@ extension CoderWindow {
     func findInSettings() { if settingsOpen { window.makeFirstResponder(search); wake() } }
     /// Esc in settings: a search is emptied first, then settings closes.
     func escape() {
+        if overlay.escape() { return }   // a dialog or a menu over settings closes first
         if !search.string.isEmpty { search.synchronize { search.string = "" }; cd_search_set(page, ""); window.makeFirstResponder(search); wake(); return }
         closeSettings()
     }

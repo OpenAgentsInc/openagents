@@ -43,6 +43,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due;
   s[0].scr_live = live;
   s[0].set_due = false;
+  if cp_overlay(s, f[..], w, h, t) { s[0].moving = true; }
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
@@ -226,7 +227,7 @@ coder_page_copied :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all
 // The text's committed box for the platform editor, in points from the view's top left: x, y, w, h,
 // then the first line's inset and a line's height.
 coder_page_editor :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 6 || s[0].model_menu { return false; }
+  if s.count < 1 || out.count < 6 || s[0].model_menu || cp_overlay_open(s) { return false; }
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   i := elt_find(t[..], "coder.composer");
   if i < 0 { return false; }

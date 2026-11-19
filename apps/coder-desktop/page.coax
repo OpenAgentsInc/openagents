@@ -23,3 +23,4 @@
 #load "page/checks/layout-checks.coax" #test;
 #load "page/checks/followups-checks.coax" #test;
 #load "page/checks/review-checks.coax" #test;
+#load "page/checks/overlay-checks.coax" #test;

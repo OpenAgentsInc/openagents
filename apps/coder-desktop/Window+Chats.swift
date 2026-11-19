@@ -47,22 +47,17 @@ extension CoderWindow {
         return initial == current
     }
     private func chooseFolderFallback() {
-        let alert = NSAlert()
-        alert.messageText = "Choose Working Folder"
-        alert.informativeText = "Enter the path to the working folder (commands start there). Restart Coder to restore the Finder folder picker after an app update."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
-        field.stringValue = folder.path
-        field.placeholderString = FileManager.default.homeDirectoryForCurrentUser.path
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Choose")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] answer in
+        var d = CoderDialog(size: .md, title: "Choose Working Folder",
+                            body: "Enter the path to the working folder (commands start there). Restart Coder to restore the Finder folder picker after an app update.")
+        d.fields = [.init(value: folder.path, hint: FileManager.default.homeDirectoryForCurrentUser.path)]
+        d.buttons = [.init(title: "Cancel"), .init(title: "Choose", kind: .primary)]
+        d.confirm = 1; d.cancel = 0
+        present(d) { [weak self] answer, values in
             guard let self else { return }
             self.choosingFolder = false
             defer { self.refocus() }
-            guard answer == .alertFirstButtonReturn else { return }
-            let raw = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard answer == 1 else { return }
+            let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !raw.isEmpty else { return }
             let expanded = (raw as NSString).expandingTildeInPath
             var isDir: ObjCBool = false
@@ -122,10 +117,7 @@ extension CoderWindow {
             return
         }
         guard let text = store.text(id), cd_load(page, text) != 0 else {
-            let failed = NSAlert()
-            failed.messageText = "This chat could not be opened."
-            failed.informativeText = "“" + (store.title(id) ?? "Chat") + "” could not be read."
-            failed.beginSheetModal(for: window)
+            present(.notice("This chat could not be opened.", "“" + (store.title(id) ?? "Chat") + "” could not be read."))
             return
         }
         let clearedUnread = unread.remove(id) != nil
@@ -149,21 +141,15 @@ extension CoderWindow {
     /// Asks for a new title, then renames a kept chat.
     func rename(_ id: String) {
         guard let current = store.title(id) else { return }
-        let alert = NSAlert()
-        alert.messageText = "Rename Chat"
-        alert.informativeText = "Enter a new title for this chat."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        field.stringValue = current
-        field.placeholderString = "Chat title"
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        alert.beginSheetModal(for: window) { [weak self] answer in
+        var d = CoderDialog(title: "Rename Chat", body: "Enter a new title for this chat.")
+        d.fields = [.init(value: current, hint: "Chat title")]
+        d.buttons = [.init(title: "Cancel"), .init(title: "Rename", kind: .primary)]
+        d.confirm = 1; d.cancel = 0
+        present(d) { [weak self] answer, values in
             guard let self else { return }
             defer { self.refocus() }
-            guard answer == .alertFirstButtonReturn else { return }
-            let title = CoderStore.cleanTitle(field.stringValue)
+            guard answer == 1 else { return }
+            let title = CoderStore.cleanTitle(values.first ?? "")
             guard !title.isEmpty else { return }
             self.store.rename(id, to: title)
             self.daemonClient.updateSessionMeta(sessionID: id, title: title)
@@ -177,13 +163,13 @@ extension CoderWindow {
     /// reply is running in it.
     func delete(_ id: String) {
         if busy(id) { return }
-        let alert = NSAlert()
-        alert.messageText = "Delete this chat?"
-        alert.informativeText = "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this."
-        alert.addButton(withTitle: "Delete").hasDestructiveAction = true
-        alert.addButton(withTitle: "Cancel")
-        alert.beginSheetModal(for: window) { [weak self] answer in
-            guard let self, answer == .alertFirstButtonReturn else { return }
+        // destructive: Return stays on Cancel
+        var d = CoderDialog(title: "Delete this chat?", body: "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this.")
+        d.buttons = [.init(title: "Cancel"), .init(title: "Delete", kind: .danger)]
+        d.confirm = 0; d.cancel = 0
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            guard answer == 1 else { self.refocus(); return }
             if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
             guard !self.busy(id) else { return }
             self.unread.remove(id)

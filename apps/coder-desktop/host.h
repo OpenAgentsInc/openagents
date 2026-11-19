@@ -192,4 +192,34 @@ int cd_settings_tier(void *page);
 int cd_search_box(void *page, float out[4]);
 void cd_search_set(void *page, const char *text);
 int cd_search_submit(void *page);
+// Dialogs and right-click menus drawn over the page (page/overlay.coax, GitHub #13746).
+// A dialog: cd_dialog_begin (size 0 sm, 1 md, 2 lg), its fields (secure; lines 1 a line, more a
+// box) and buttons in the foot's order (kind 0 primary, 1 secondary, 2 destructive; aside at the
+// foot's start), then cd_dialog_show with the buttons Return and Escape stand for (-1 none) and the field the keyboard
+// starts on.
+// cd_dialog_answer: the button pressed, -1 cancelled, -2 none yet (once). cd_dialog_value: a
+// field's text, NUL-ended (-1 when it does not fit). cd_dialog_set: the editor's text for a field.
+// cd_dialog_editor: the field with the keyboard (-1 none) and where its editor goes, in points (x,
+// y, w, h, secure, line). cd_dialog_style: the editor's style (cd_style's layout).
+// A menu: cd_menu_begin, its items (kind 0 row, 1 heading, 2 rule), cd_menu_show at the pointer in
+// the canvas's device pixels. cd_menu_answer: the item chosen, -1 none, -2 not yet (once).
+// While one is up it takes the pointer (cd_on_overlay's function is called after each pointer
+// event) and the wheel; cd_overlay_key gives it a key (-1 Escape, -2 Return, -6 up, -7 down,
+// -13 Tab; mods 1 Shift, 8 Command): 0 leaves the key to the dialog's editor.
+void cd_on_overlay(void *page, void (*fn)(void *context), void *context);
+void cd_dialog_begin(void *page, int size, const char *title, const char *body);
+int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines);
+int cd_dialog_button(void *page, const char *label, int kind, int aside);
+void cd_dialog_show(void *page, int confirm, int cancel, int focus);
+int cd_dialog_answer(void *page);
+int cd_dialog_value(void *page, int i, char *out, int cap);
+int cd_dialog_set(void *page, int i, const char *text);
+int cd_dialog_editor(void *page, float out[6]);
+int cd_dialog_style(void *page, float out[14]);
+void cd_menu_begin(void *page);
+int cd_menu_item(void *page, const char *label, int kind, int checked, int disabled, int danger);
+void cd_menu_show(void *page, float x, float y);
+int cd_menu_answer(void *page);
+int cd_overlay_open(void *page);
+int cd_overlay_key(void *page, int key, int mods);
 #endif

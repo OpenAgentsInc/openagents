@@ -1,0 +1,138 @@
+// Checks for the dialog and the context menu (overlay.coax, GitHub #13746).
+//   coax/bin/coax test components/app/overlay-checks.coax
+#load "checks-kit.coax";
+#load "overlay.coax";
+
+ov_test_dialog :: (d: [] AppDialog) {
+  app_dialog_begin(d, APP_DLG_SM, "Chat Max Budget", "Set the maximum spend (USD) for this chat thread.");
+  #assert app_dialog_field(d, "Budget", "50.00", "50.00", false, 1);
+  #assert app_dialog_field(d, "Key", "sk-secret", "sk-…", true, 1);
+  #assert app_dialog_button(d, "Cancel", APP_DLG_SECONDARY, false) && app_dialog_button(d, "Save", APP_DLG_PRIMARY, false);
+  app_dialog_open(d, 1, 0);
+}
+ov_test_paint_dialog :: (t: [] AppTest, d: [] AppDialog, reduced: bool) -> bool {
+  app_test_begin(t, "", "", reduced);
+  app_dialog_paint(t[0].f[..], d, 800, 600, app_overlay_zeron());
+  return app_test_end(t);
+}
+
+#test "a dialog is centred at its size with its title, fields and buttons as rows; a secure field keeps its text out" {
+  t: [1] AppTest; app_test_init(t[..]); d: [1] AppDialog; ov_test_dialog(d[..]);
+  #assert ov_test_paint_dialog(t[..], d[..], true);
+  o := app_overlay_zeron();
+  #assert d[0].w == o.sm && abs(d[0].x - (800 - o.sm) / 2) < 0.01 && abs(d[0].y + d[0].h / 2 - 300) < 0.01;
+  #assert app_test_label(t[..], "dialog") == "Chat Max Budget" && app_test_row(t[..], "dialog.title").role == EL_HEADING;
+  #assert app_test_value(t[..], "dialog.field.0") == "50.00" && app_test_has(t[..], "dialog.field.0", EL_S_FOCUSED);
+  #assert app_test_value(t[..], "dialog.field.1") == "" && app_test_texts(t[..], "sk-secret") == 0;
+  #assert app_test_label(t[..], "dialog.button.1") == "Save" && app_test_has(t[..], "dialog.button.1", EL_S_CURRENT);
+  // Save is the foot's last, at its end; Cancel before it
+  #assert d[0].buttons[1].x + d[0].buttons[1].w == d[0].x + d[0].w - o.pad && d[0].buttons[0].x < d[0].buttons[1].x;
+  // the dim covers the window under the panel
+  sh := surface_sheet(t[0].sf[..]);
+  #assert sh.over[0].kind == PRIM_BOX && sh.over[0].w == 800 && sh.over[0].h == 600 && abs(sh.over[0].fill.a - 0.349) < 0.001;
+}
+#test "Return confirms, Escape cancels, Tab moves between fields, and an answer is taken once" {
+  d: [1] AppDialog; ov_test_dialog(d[..]);
+  #assert app_dialog_key(d[..], APP_OV_TAB, 0) && d[0].focus == 1 && app_dialog_key(d[..], APP_OV_TAB, APP_OV_SHIFT) && d[0].focus == 0;
+  #assert !app_dialog_key(d[..], 'a', 0) && app_dialog_key(d[..], APP_OV_ENTER, APP_OV_SHIFT) && d[0].open;
+  #assert app_dialog_set(d[..], 0, "12.5") && app_dialog_value(d[..], 0) == "12.5";
+  #assert app_dialog_key(d[..], APP_OV_ENTER, 0) && !d[0].open && d[0].shown;
+  #assert app_dialog_take(d[..]) == 1 && app_dialog_take(d[..]) == APP_DLG_NONE && app_dialog_value(d[..], 0) == "12.5";
+  ov_test_dialog(d[..]);
+  #assert app_dialog_key(d[..], APP_OV_ESCAPE, 0) && app_dialog_take(d[..]) == APP_DLG_CANCEL;
+  // leaving, it still takes every key
+  #assert app_dialog_key(d[..], 'a', 0);
+}
+#test "in a multi-line field Return is the editor's and Command-Return confirms" {
+  d: [1] AppDialog;
+  app_dialog_begin(d[..], APP_DLG_MD, "Set Thread Goal", "");
+  #assert app_dialog_field(d[..], "", "", "Describe a long-running objective", false, 5);
+  #assert app_dialog_button(d[..], "Cancel", APP_DLG_SECONDARY, false) && app_dialog_button(d[..], "Start Goal", APP_DLG_PRIMARY, false);
+  app_dialog_open(d[..], 1, 0);
+  #assert !app_dialog_key(d[..], APP_OV_ENTER, 0) && !app_dialog_key(d[..], APP_OV_ENTER, APP_OV_SHIFT) && d[0].open;
+  #assert app_dialog_key(d[..], APP_OV_ENTER, APP_OV_CMD) && app_dialog_take(d[..]) == 1;
+}
+#test "a press on the dim cancels, a button answers only when released on it, a field takes the keyboard" {
+  t: [1] AppTest; app_test_init(t[..]); d: [1] AppDialog; ov_test_dialog(d[..]);
+  #assert ov_test_paint_dialog(t[..], d[..], true);
+  b := d[0].buttons[1]; q := d[0].fields[1];
+  #assert app_dialog_pointer(d[..], b.x + 2, b.y + 2, 0) && app_dialog_pointer(d[..], 5, 5, 2) && d[0].open;
+  #assert app_dialog_pointer(d[..], q.x + 2, q.y + 2, 0) && d[0].focus == 1 && app_dialog_pointer(d[..], q.x + 2, q.y + 2, 2) && d[0].open;
+  #assert app_dialog_pointer(d[..], b.x + 2, b.y + 2, 0) && app_dialog_pointer(d[..], b.x + 3, b.y + 3, 2) && app_dialog_take(d[..]) == 1;
+  ov_test_dialog(d[..]); #assert ov_test_paint_dialog(t[..], d[..], true);
+  // inside the panel but on nothing: no answer; on the dim: cancelled
+  #assert app_dialog_pointer(d[..], d[0].x + 2, d[0].y + 2, 0) && app_dialog_pointer(d[..], d[0].x + 2, d[0].y + 2, 2) && d[0].open;
+  #assert app_dialog_pointer(d[..], 5, 5, 0) && app_dialog_pointer(d[..], 5, 5, 2) && app_dialog_take(d[..]) == APP_DLG_CANCEL;
+}
+#test "it arrives over 200 ms out(3) and leaves over 130 ms in(2); reduced motion shows and hides it at once" {
+  d: [1] AppDialog; o := app_overlay_zeron(); box: [5] f32; ov_test_dialog(d[..]);
+  #assert app_dialog_phase(d[..], false) == 0 && !app_dialog_field_box(d[..], arcade_phone_skin(), o, box[..]);
+  #assert app_dialog_step(d[..], 0.1, false, o) && abs(app_dialog_phase(d[..], false) - 0.875) < 0.001;
+  #assert !app_dialog_step(d[..], 0.1, false, o) && app_dialog_phase(d[..], false) == 1;
+  app_dialog_close(d[..], APP_DLG_CANCEL);
+  #assert app_dialog_step(d[..], 0.065, false, o) && abs(app_dialog_phase(d[..], false) - 0.75) < 0.001 && d[0].shown;
+  #assert !app_dialog_step(d[..], 0.07, false, o) && !d[0].shown;
+  ov_test_dialog(d[..]);
+  #assert app_dialog_phase(d[..], true) == 1 && !app_dialog_step(d[..], 0.001, true, o);
+  app_dialog_close(d[..], APP_DLG_CANCEL);
+  #assert app_dialog_phase(d[..], true) == 0 && !app_dialog_step(d[..], 0.001, true, o) && !d[0].shown;
+}
+#test "the field with the keyboard tells the host where its editor goes once the dialog is at rest" {
+  t: [1] AppTest; app_test_init(t[..]); d: [1] AppDialog; ov_test_dialog(d[..]); o := app_overlay_zeron(); box: [5] f32;
+  _ := app_dialog_step(d[..], 1, false, o);
+  #assert ov_test_paint_dialog(t[..], d[..], false);
+  s := arcade_phone_skin();
+  #assert app_dialog_field_box(d[..], s, o, box[..]) && box[0] == d[0].fields[0].x + o.field_pad && box[4] == 0;
+  d[0].focus = 1; #assert app_dialog_field_box(d[..], s, o, box[..]) && box[4] == 1;
+  // with the editor over it, the field's own text is not painted
+  d[0].focus = 0; d[0].editing = true; #assert ov_test_paint_dialog(t[..], d[..], false) && app_test_texts(t[..], "50.00") == 0;
+}
+
+ov_test_menu :: (mn: [] AppMenu) {
+  app_menu_begin(mn);
+  #assert app_menu_item(mn, "Open Foreman", APP_MENU_ROW, false, false, false);
+  #assert app_menu_item(mn, "", APP_MENU_RULE, false, false, false);
+  #assert app_menu_item(mn, "Tier", APP_MENU_HEADING, false, false, false);
+  #assert app_menu_item(mn, "Tier 1: Managed (Default)", APP_MENU_ROW, true, false, false);
+  #assert app_menu_item(mn, "Stop All Running Chats", APP_MENU_ROW, false, true, false);
+  #assert app_menu_item(mn, "Delete Chat…", APP_MENU_ROW, false, false, true);
+}
+#test "a menu opens at the pointer, 232 wide with Zeron's rows, and keeps inside the window" {
+  t: [1] AppTest; app_test_init(t[..]); mn: [1] AppMenu; ov_test_menu(mn[..]); o := app_overlay_zeron();
+  app_menu_open(mn[..], 100, 120);
+  app_test_begin(t[..], "", "", true); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]);
+  #assert mn[0].x == 100 && mn[0].y == 120 && mn[0].w == 232 && mn[0].h == 2 * o.menu_inset + 4 * o.menu_row + o.menu_rule + o.menu_heading;
+  #assert app_test_row(t[..], "menu.head.2").role == EL_HEADING && app_test_has(t[..], "menu.row.3", EL_S_CHECKED) && app_test_has(t[..], "menu.row.4", EL_S_DISABLED);
+  // near the right and bottom edges it opens to the pointer's left and above it
+  app_menu_open(mn[..], 790, 590); app_menu_place(mn[..], 800, 600, o);
+  #assert mn[0].x == 790 - 232 && mn[0].y == 590 - mn[0].h;
+  // a window too short for either side: clamped into its margin
+  app_menu_open(mn[..], 50, 60); app_menu_place(mn[..], 800, 150, o);
+  #assert mn[0].y == o.margin;
+}
+#test "keys move over the rows that can be chosen, Return takes one, Escape and a press outside choose none" {
+  mn: [1] AppMenu; ov_test_menu(mn[..]); o := app_overlay_zeron();
+  app_menu_open(mn[..], 100, 120); app_menu_place(mn[..], 800, 600, o);
+  #assert app_menu_key(mn[..], APP_OV_DOWN, 0) && mn[0].lit == 0 && app_menu_key(mn[..], APP_OV_DOWN, 0) && mn[0].lit == 3;
+  #assert app_menu_key(mn[..], APP_OV_DOWN, 0) && mn[0].lit == 5 && app_menu_key(mn[..], APP_OV_DOWN, 0) && mn[0].lit == 0;
+  #assert app_menu_key(mn[..], APP_OV_UP, 0) && mn[0].lit == 5 && app_menu_key(mn[..], 'x', 0) && mn[0].open;
+  #assert app_menu_key(mn[..], APP_OV_ENTER, 0) && !mn[0].open && app_menu_take(mn[..]) == 5 && app_menu_take(mn[..]) == APP_MENU_WAIT;
+  app_menu_open(mn[..], 100, 120); app_menu_place(mn[..], 800, 600, o);
+  #assert app_menu_key(mn[..], APP_OV_ESCAPE, 0) && app_menu_take(mn[..]) == APP_MENU_NONE;
+  app_menu_open(mn[..], 100, 120); app_menu_place(mn[..], 800, 600, o);
+  #assert app_menu_pointer(mn[..], 20, 20, 0) && !mn[0].open && app_menu_take(mn[..]) == APP_MENU_NONE;
+}
+#test "the pointer lights the row under it and a release on a row chooses it, never a disabled one" {
+  mn: [1] AppMenu; ov_test_menu(mn[..]); o := app_overlay_zeron();
+  app_menu_open(mn[..], 100, 120); app_menu_place(mn[..], 800, 600, o);
+  y3 := mn[0].y + mn[0].items[3].y + 2; y4 := mn[0].y + mn[0].items[4].y + 2;
+  #assert app_menu_pointer(mn[..], 110, y3, 1) && mn[0].lit == 3 && app_menu_pointer(mn[..], 110, y4, 1) && mn[0].lit == -1;
+  #assert app_menu_pointer(mn[..], 110, y4, 0) && app_menu_pointer(mn[..], 110, y4, 2) && mn[0].open;
+  #assert app_menu_pointer(mn[..], 110, y3, 0) && app_menu_pointer(mn[..], 110, y3, 2) && app_menu_take(mn[..]) == 3;
+}
+#test "a menu fades in over 120 ms unless motion is reduced" {
+  mn: [1] AppMenu; ov_test_menu(mn[..]); o := app_overlay_zeron();
+  app_menu_open(mn[..], 0, 0);
+  #assert app_menu_step(mn[..], 0.06, false, o) && !app_menu_step(mn[..], 0.07, false, o) && mn[0].t == 1;
+  app_menu_open(mn[..], 0, 0); #assert !app_menu_step(mn[..], 0.001, true, o) && mn[0].t == 1;
+}

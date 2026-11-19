@@ -11,16 +11,11 @@ extension CoderWindow {
     func checkForUpdates() {
         updater.checkNow(userInitiated: true) { [weak self] state in
             guard let self else { return }
-            let alert = NSAlert()
-            alert.messageText = "Coder Updates"
             switch state {
             case .hidden:
-                alert.informativeText = "Coder is up to date."
-                alert.beginSheetModal(for: self.window)
+                self.present(.notice("Coder Updates", "Coder is up to date."))
             case .error(let msg, _):
-                alert.alertStyle = .warning
-                alert.informativeText = msg
-                alert.beginSheetModal(for: self.window)
+                self.present(.notice("Coder Updates", msg))
             case .available, .downloading, .ready:
                 break
             }
@@ -32,11 +27,7 @@ extension CoderWindow {
             retire()
             NSApp.terminate(nil)
         case .failure(let err):
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Update Failed"
-            alert.informativeText = err.localizedDescription
-            alert.beginSheetModal(for: window)
+            present(.notice("Update Failed", err.localizedDescription))
         }
     }
     func handleUpdatePillClick() {
@@ -48,14 +39,13 @@ extension CoderWindow {
         case .ready:
             let count = runningCount
             if count > 0 {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = count == 1 ? "An agent task is still running" : "\(count) agent tasks are still running"
-                alert.informativeText = "Restarting to install the update will stop all running agent tasks."
-                alert.addButton(withTitle: "Cancel")
-                alert.addButton(withTitle: "Restart & Update")
-                alert.beginSheetModal(for: window) { [weak self] response in
-                    guard response == .alertSecondButtonReturn else { return }
+                // it stops the running tasks: Return stays on Cancel
+                var d = CoderDialog(title: count == 1 ? "An agent task is still running" : "\(count) agent tasks are still running",
+                                    body: "Restarting to install the update will stop all running agent tasks.")
+                d.buttons = [.init(title: "Cancel"), .init(title: "Restart & Update", kind: .danger)]
+                d.confirm = 0; d.cancel = 0
+                present(d) { [weak self] answer, _ in
+                    guard answer == 1 else { self?.refocus(); return }
                     self?.performInstallAndRelaunch()
                 }
                 return

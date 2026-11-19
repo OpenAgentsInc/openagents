@@ -349,7 +349,7 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
 coder_page_settings_tier :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].set_tier else 0; }
 // Where the search editor goes, in points (x, y, w, h); false while settings is closed.
 coder_page_search_box :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 4 || !s[0].set_open || !(s[0].set_box[2] > 0) { return false; }
+  if s.count < 1 || out.count < 4 || !s[0].set_open || !(s[0].set_box[2] > 0) || cp_overlay_open(s) { return false; }
   u := cp_scale(s);
   for i: 0..<4 { out[i] = s[0].set_box[i] * u; }
   return true;

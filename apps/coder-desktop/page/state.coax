@@ -248,6 +248,7 @@ CoderPage :: struct {
   set_version: [48] u8; set_version_n: int;
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
+  ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   arena: [CP_ARENA] u8;
 }
 

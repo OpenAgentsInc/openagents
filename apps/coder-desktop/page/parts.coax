@@ -5,6 +5,7 @@
 #load "../../../components/app/activity.coax";
 #load "../../../components/app/nav.coax";
 #load "../../../components/app/followups.coax";
+#load "../../../components/app/overlay.coax";
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
@@ -29,3 +30,4 @@
 #load "layout/conversation.coax";
 #load "host-api.coax";
 #load "followups.coax";
+#load "overlay.coax";

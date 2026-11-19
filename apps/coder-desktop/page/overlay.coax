@@ -1,0 +1,117 @@
+// Coder Desktop page (../page.coax): the dialogs and the right-click menus, drawn over the page by
+// components/app/overlay.coax (GitHub #13746). The host says what a dialog or a menu holds and
+// opens it; the page draws it, takes the pointer and the keys while it is up, and keeps the answer
+// until the host takes it. What an answer does stays in the host (Window+Dialogs.swift,
+// Window+Menus.swift). The menu bar, the status item and the folder panel stay native.
+
+CpOverlay :: struct { dlg: [1] AppDialog; menu: [1] AppMenu; }
+
+// Zeron's measures, in points: the page lays out in points (GitHub #13737).
+cp_ov_spec :: () -> AppOverlaySpec { return app_overlay_zeron(); }
+cp_overlay_open :: (s: [] CoderPage) -> bool { return s[0].ov[0].dlg[0].shown || s[0].ov[0].menu[0].open; }
+
+// One frame's worth: time passes for whichever is up, then it paints over the page. True while one moves.
+cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool {
+  o := cp_ov_spec(); d := s[0].ov[0].dlg[..]; mn := s[0].ov[0].menu[..];
+  moving := app_dialog_step(d, dt, s[0].reduced, o) || app_menu_step(mn, dt, s[0].reduced, o);
+  app_menu_paint(f, mn, w, h, o);
+  app_dialog_paint(f, d, w, h, o);
+  return moving;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// A dialog: begin with its size (0 sm 380, 1 md 460, 2 lg 560), title and words; then its fields
+// (label, text, hint, secure, lines: 1 one line, more a box of that many) and its buttons in the
+// foot's order (kind 0 primary, 1 secondary, 2 destructive; aside stands at the foot's start); then
+// show it with the buttons Return and Escape stand for (-1: none) and the field the keyboard starts
+// on (-1 or one past the last: the first). A menu over it closes.
+coder_page_dialog_begin :: (s: [] CoderPage, size: int, title: string, body: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  app_menu_close(s[0].ov[0].menu[..], APP_MENU_NONE); _ := app_menu_take(s[0].ov[0].menu[..]);
+  app_dialog_begin(s[0].ov[0].dlg[..], size, title, body);
+}
+coder_page_dialog_field :: (s: [] CoderPage, label: string, value: string, hint: string, secure: bool, lines: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && app_dialog_field(s[0].ov[0].dlg[..], label, value, hint, secure, lines);
+}
+coder_page_dialog_button :: (s: [] CoderPage, label: string, kind: int, aside: bool) -> bool #export_c #effects(all) {
+  return s.count > 0 && app_dialog_button(s[0].ov[0].dlg[..], label, kind, aside);
+}
+coder_page_dialog_show :: (s: [] CoderPage, confirm: int, cancel: int, focus: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].model_menu = false;
+  d := s[0].ov[0].dlg[..];
+  app_dialog_open(d, confirm, cancel);
+  if focus >= 0 && focus < d[0].nf { d[0].focus = focus; }
+}
+// The answer once: the button pressed, -1 for Escape or a click on the dim, -2 while none is owed.
+coder_page_dialog_answer :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then app_dialog_take(s[0].ov[0].dlg[..]) else APP_DLG_NONE;
+}
+// Field i's text (after an answer too, until the next dialog begins). Its length in out, -1 when it does not fit.
+coder_page_dialog_value :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  v := app_dialog_value(s[0].ov[0].dlg[..], i);
+  if v.count > out.count { return -1; }
+  for c, k: v { out[k] = c; }
+  return v.count;
+}
+// The host's editor's text for field i after an edit.
+coder_page_dialog_set :: (s: [] CoderPage, i: int, text: string) -> bool #export_c #effects(all) {
+  return s.count > 0 && app_dialog_set(s[0].ov[0].dlg[..], i, text);
+}
+// Where the host's editor goes, in points from the view's top left (x, y, w, h), whether the field
+// is secure (out[4]) and its line in points (out[5]). Returns the field with the keyboard, -1 for
+// none (the editor hides). From this call on the dialog leaves that field's text to the editor.
+coder_page_dialog_editor :: (s: [] CoderPage, out: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 || out.count < 6 { return -1; }
+  d := s[0].ov[0].dlg[..]; k := cp_skin(); u := cp_scale(s);
+  if !app_dialog_field_box(d, k, cp_ov_spec(), out) { d[0].editing = false; return -1; }
+  for i: 0..<4 { out[i] *= u; }
+  out[5] = k.label.line * u;
+  d[0].editing = true;
+  return d[0].focus;
+}
+// How the dialog's editor is styled: the label face's size and line in points, then the ink, the
+// hint's ink and the caret's, each straight RGBA (coder_page_style's layout).
+coder_page_dialog_style :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 14 { return false; }
+  k := cp_skin(); u := cp_scale(s);
+  out[0] = cast(f32) k.label.size * u; out[1] = k.label.line * u;
+  out[2] = k.ink.r; out[3] = k.ink.g; out[4] = k.ink.b; out[5] = k.ink.a;
+  out[6] = k.faint.r; out[7] = k.faint.g; out[8] = k.faint.b; out[9] = k.faint.a;
+  out[10] = k.ink.r; out[11] = k.ink.g; out[12] = k.ink.b; out[13] = k.ink.a;
+  return true;
+}
+// A menu: begin, its items (kind 0 a row, 1 a heading, 2 a rule; checked, disabled, destructive),
+// then open it at the pointer in device pixels (the pointer's own coordinates).
+coder_page_menu_begin :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 { app_menu_begin(s[0].ov[0].menu[..]); } }
+coder_page_menu_item :: (s: [] CoderPage, label: string, kind: int, checked: bool, disabled: bool, danger: bool) -> bool #export_c #effects(all) {
+  return s.count > 0 && app_menu_item(s[0].ov[0].menu[..], label, kind, checked, disabled, danger);
+}
+coder_page_menu_show :: (s: [] CoderPage, x: f32, y: f32) #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) || s[0].ov[0].dlg[0].shown { return; }
+  s[0].model_menu = false;
+  app_menu_open(s[0].ov[0].menu[..], x / s[0].d, y / s[0].d);
+}
+// The menu's answer once: the item chosen, -1 when it closed with none, -2 while none is owed.
+coder_page_menu_answer :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then app_menu_take(s[0].ov[0].menu[..]) else APP_MENU_WAIT;
+}
+// Whether a dialog or a menu is up: the pointer, the wheel and the keys are its.
+coder_page_overlay_open :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_overlay_open(s); }
+// The pointer while one is up, in device pixels (phases as coder_page_pointer's). True when it took it.
+coder_page_overlay_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !(s[0].d > 0) || !cp_overlay_open(s) { return false; }
+  ux := x / s[0].d; uy := y / s[0].d;
+  s[0].px = ux; s[0].py = uy; s[0].touching = false; s[0].pressed_n = 0;
+  if s[0].ov[0].menu[0].open { return app_menu_pointer(s[0].ov[0].menu[..], ux, uy, phase); }
+  return app_dialog_pointer(s[0].ov[0].dlg[..], ux, uy, phase);
+}
+// A key while one is up (composer.coax's numbering: -1 Escape, -2 Return, -6 up, -7 down, -13 Tab;
+// mods 1 Shift, 8 Command). True when it took the key; false leaves it to the dialog's editor.
+coder_page_overlay_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if s[0].ov[0].menu[0].open { return app_menu_key(s[0].ov[0].menu[..], key, mods); }
+  return app_dialog_key(s[0].ov[0].dlg[..], key, mods);
+}

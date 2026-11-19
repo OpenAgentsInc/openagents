@@ -19,16 +19,13 @@ extension CoderWindow {
         wake()
     }
     func clearForemanHistory() {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Clear Foreman history?"
-        alert.informativeText = "This removes the Foreman conversation history. Managed chats are not deleted."
-        alert.addButton(withTitle: "Clear History")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons[0].hasDestructiveAction = true
-        alert.beginSheetModal(for: window) { [weak self] answer in
-            guard let self, answer == .alertFirstButtonReturn else { return }
-            self.resetForeman()
+        var d = CoderDialog(title: "Clear Foreman history?", body: "This removes the Foreman conversation history. Managed chats are not deleted.")
+        d.buttons = [.init(title: "Cancel"), .init(title: "Clear History", kind: .danger)]
+        d.confirm = 0; d.cancel = 0
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == 1 { self.resetForeman() }
+            self.refocus()
         }
     }
     /// Clears the Foreman conversation with no question asked: the menu asks first, the operator API does not.
