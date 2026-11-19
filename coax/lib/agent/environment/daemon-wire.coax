@@ -1,0 +1,274 @@
+// Unified daemon control-plane wire codec: health/discovery, Foreman state,
+// and session metadata (pin, rename, archive, folder) shared by Coder Desktop
+// (local Unix socket) and OpenAgents Mobile (sealed NIP-HOST relay).
+#load "wire.coax";
+#authority;
+
+DM_SCHEMA :: "openagents.environment.daemon.v1alpha1";
+DM_META_MAX :: 64;
+
+DmForeman :: struct {
+  tier:int;
+  active_runs:int;
+  total_sessions:int;
+  workspace:[1024]u8;nw:int;
+  prompt:[4096]u8;np:int;
+  updated:int;
+}
+
+DmSessionMeta :: struct {
+  id:[128]u8;ni:int;
+  title:[256]u8;nt:int;
+  folder:[1024]u8;nf:int;
+  pinned:bool;
+  archived:bool;
+  updated:int;
+}
+
+DmRequest :: struct {
+  method:[32]u8;nm:int;
+  workspace:[64]u8;nw:int;
+  session:[128]u8;ns:int;
+  command:[32]u8;nc:int;
+  tier:int;has_tier:bool;
+  text:[4096]u8;nt:int;
+  title:[256]u8;ntl:int;
+  folder:[1024]u8;nf:int;
+  pinned:bool;has_pinned:bool;
+  archived:bool;has_archived:bool;
+  issued:int;expires:int;
+}
+
+DmView :: struct {
+  ok:bool;
+  host:[64]u8;nh:int;
+  label:[80]u8;nl:int;
+  method:[32]u8;nm:int;
+  pid:int;started_at:int;paired_devices:int;active_slots:int;max_slots:int;
+  relay:[512]u8;nrelay:int;
+  workspace:[1024]u8;nw:int;
+  foreman:[1]DmForeman;
+  meta:[DM_META_MAX]DmSessionMeta;nmeta:int;
+  command:[32]u8;nq:int;
+  status:[32]u8;nst:int;
+  error:[64]u8;ne:int;
+}
+
+dm_method_valid :: (m:string)->bool #effects(all) {
+  return m=="DaemonHealth" || m=="ReadForeman" || m=="UpdateForeman" || m=="ListSessionMeta" || m=="UpdateSessionMeta";
+}
+
+dm_is_write :: (m:string)->bool #effects(all) {
+  return m=="UpdateForeman" || m=="UpdateSessionMeta";
+}
+
+dm_tier_valid :: (tier:int)->bool #effects(all) {
+  return tier>=0 && tier<=3;
+}
+
+dm_write :: (q:[]DmRequest,out:[]u8)->int #effects(all) {
+  m:=cast(string)q[0].method[0..<q[0].nm];
+  if !dm_method_valid(m) {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],DM_SCHEMA);
+  jo_key(o[..],"method");jo_str(o[..],m);
+  if q[0].nw>0 {jo_key(o[..],"workspace_id");jo_str(o[..],cast(string)q[0].workspace[0..<q[0].nw]);}
+  if q[0].ns>0 {jo_key(o[..],"session_id");jo_str(o[..],cast(string)q[0].session[0..<q[0].ns]);}
+  if q[0].nc>0 {jo_key(o[..],"command_id");jo_str(o[..],cast(string)q[0].command[0..<q[0].nc]);}
+  if q[0].has_tier {jo_key(o[..],"tier");jo_int(o[..],q[0].tier);}
+  if q[0].nt>0 {jo_key(o[..],"text");jo_str(o[..],cast(string)q[0].text[0..<q[0].nt]);}
+  if q[0].ntl>0 {jo_key(o[..],"title");jo_str(o[..],cast(string)q[0].title[0..<q[0].ntl]);}
+  if q[0].nf>0 {jo_key(o[..],"folder");jo_str(o[..],cast(string)q[0].folder[0..<q[0].nf]);}
+  if q[0].has_pinned {jo_key(o[..],"pinned");jo_bool(o[..],q[0].pinned);}
+  if q[0].has_archived {jo_key(o[..],"archived");jo_bool(o[..],q[0].archived);}
+  if q[0].issued>0 {jo_key(o[..],"issued_at");jo_int(o[..],q[0].issued);}
+  if q[0].expires>0 {jo_key(o[..],"expires_at");jo_int(o[..],q[0].expires);}
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+dm_read :: (raw:string,q:[]DmRequest)->bool #effects(all) {
+  q[0]=DmRequest.{};
+  nodes:[128]JvNode;d:[1]Jv;
+  if !jv_parse(d[..],raw,nodes[..]) {return false;}
+  j:=d[0];
+  if jv_kind(j,0)!=JV_OBJECT {return false;}
+  if jv_raw(j,jv_get(j,0,"schema"))!=DM_SCHEMA {return false;}
+  q[0].nm=ea_field(j,"method",q[0].method[..]);
+  if q[0].nm<1 {return false;}
+  m:=cast(string)q[0].method[0..<q[0].nm];
+  if !dm_method_valid(m) {return false;}
+  ws:=jv_get(j,0,"workspace_id");
+  if ws>=0 {q[0].nw=jv_str(j,ws,q[0].workspace[..]);if q[0].nw<1 {return false;}}
+  ss:=jv_get(j,0,"session_id");
+  if ss>=0 {q[0].ns=jv_str(j,ss,q[0].session[..]);if q[0].ns<1 {return false;}}
+  cm:=jv_get(j,0,"command_id");
+  if cm>=0 {q[0].nc=jv_str(j,cm,q[0].command[..]);if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) {return false;}}
+  tr:=jv_get(j,0,"tier");
+  if tr>=0 {if jv_kind(j,tr)!=JV_NUMBER {return false;}q[0].tier=jv_int(j,tr,-1);if !dm_tier_valid(q[0].tier) {return false;}q[0].has_tier=true;}
+  tx:=jv_get(j,0,"text");
+  if tx>=0 {q[0].nt=jv_str(j,tx,q[0].text[..]);if q[0].nt<0 {return false;}}
+  tl:=jv_get(j,0,"title");
+  if tl>=0 {q[0].ntl=jv_str(j,tl,q[0].title[..]);if q[0].ntl<0 {return false;}}
+  fl:=jv_get(j,0,"folder");
+  if fl>=0 {q[0].nf=jv_str(j,fl,q[0].folder[..]);if q[0].nf<0 {return false;}}
+  pn:=jv_get(j,0,"pinned");
+  if pn>=0 {k:=jv_kind(j,pn);if k!=JV_TRUE && k!=JV_FALSE {return false;}q[0].pinned=k==JV_TRUE;q[0].has_pinned=true;}
+  ar:=jv_get(j,0,"archived");
+  if ar>=0 {k:=jv_kind(j,ar);if k!=JV_TRUE && k!=JV_FALSE {return false;}q[0].archived=k==JV_TRUE;q[0].has_archived=true;}
+  q[0].issued=jv_int(j,jv_get(j,0,"issued_at"),0);
+  q[0].expires=jv_int(j,jv_get(j,0,"expires_at"),0);
+  return true;
+}
+
+dm_foreman_write_obj :: (o:[]Jo,fp:[]DmForeman) #effects(all) {
+  f:=fp[0];
+  jo_obj(o);
+  jo_key(o,"tier");jo_int(o,f.tier);
+  jo_key(o,"active_runs");jo_int(o,f.active_runs);
+  jo_key(o,"total_sessions");jo_int(o,f.total_sessions);
+  jo_key(o,"workspace");jo_str(o,cast(string)f.workspace[0..<f.nw]);
+  jo_key(o,"prompt");jo_str(o,cast(string)f.prompt[0..<f.np]);
+  jo_key(o,"updated");jo_int(o,f.updated);
+  jo_end(o);
+}
+
+dm_foreman_read_obj :: (j:Jv,node:int,f:[]DmForeman)->bool #effects(all) {
+  f[0]=DmForeman.{};
+  if node<0 || jv_kind(j,node)!=JV_OBJECT {return false;}
+  f[0].tier=jv_int(j,jv_get(j,node,"tier"),1);
+  if !dm_tier_valid(f[0].tier) {return false;}
+  f[0].active_runs=jv_int(j,jv_get(j,node,"active_runs"),0);
+  f[0].total_sessions=jv_int(j,jv_get(j,node,"total_sessions"),0);
+  w:=jv_get(j,node,"workspace");if w>=0 {n:=jv_str(j,w,f[0].workspace[..]);if n<0 {return false;}f[0].nw=n;}
+  p:=jv_get(j,node,"prompt");if p>=0 {n:=jv_str(j,p,f[0].prompt[..]);if n<0 {return false;}f[0].np=n;}
+  f[0].updated=jv_int(j,jv_get(j,node,"updated"),0);
+  return true;
+}
+
+dm_meta_write_obj :: (o:[]Jo,mp:[]DmSessionMeta) #effects(all) {
+  m:=mp[0];
+  jo_obj(o);
+  jo_key(o,"id");jo_str(o,cast(string)m.id[0..<m.ni]);
+  jo_key(o,"title");jo_str(o,cast(string)m.title[0..<m.nt]);
+  jo_key(o,"folder");jo_str(o,cast(string)m.folder[0..<m.nf]);
+  jo_key(o,"pinned");jo_bool(o,m.pinned);
+  jo_key(o,"archived");jo_bool(o,m.archived);
+  jo_key(o,"updated");jo_int(o,m.updated);
+  jo_end(o);
+}
+
+dm_meta_read_obj :: (j:Jv,node:int,m:[]DmSessionMeta)->bool #effects(all) {
+  m[0]=DmSessionMeta.{};
+  if node<0 || jv_kind(j,node)!=JV_OBJECT {return false;}
+  m[0].ni=jv_str(j,jv_get(j,node,"id"),m[0].id[..]);if m[0].ni<1 {return false;}
+  t:=jv_get(j,node,"title");if t>=0 {n:=jv_str(j,t,m[0].title[..]);if n<0 {return false;}m[0].nt=n;}
+  fl:=jv_get(j,node,"folder");if fl>=0 {n:=jv_str(j,fl,m[0].folder[..]);if n<0 {return false;}m[0].nf=n;}
+  m[0].pinned=jv_kind(j,jv_get(j,node,"pinned"))==JV_TRUE;
+  m[0].archived=jv_kind(j,jv_get(j,node,"archived"))==JV_TRUE;
+  m[0].updated=jv_int(j,jv_get(j,node,"updated"),0);
+  return true;
+}
+
+dm_view_write :: (v:[]DmView,out:[]u8)->int #effects(all) {
+  if v[0].nmeta<0 || v[0].nmeta>DM_META_MAX {return -1;}
+  o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);
+  jo_key(o[..],"schema");jo_str(o[..],DM_SCHEMA);
+  jo_key(o[..],"ok");jo_bool(o[..],v[0].ok);
+  jo_key(o[..],"host");jo_str(o[..],cast(string)v[0].host[0..<v[0].nh]);
+  jo_key(o[..],"label");jo_str(o[..],cast(string)v[0].label[0..<v[0].nl]);
+  jo_key(o[..],"method");jo_str(o[..],cast(string)v[0].method[0..<v[0].nm]);
+  jo_key(o[..],"pid");jo_int(o[..],v[0].pid);
+  jo_key(o[..],"started_at");jo_int(o[..],v[0].started_at);
+  jo_key(o[..],"paired_devices");jo_int(o[..],v[0].paired_devices);
+  jo_key(o[..],"active_slots");jo_int(o[..],v[0].active_slots);
+  jo_key(o[..],"max_slots");jo_int(o[..],v[0].max_slots);
+  jo_key(o[..],"relay");jo_str(o[..],cast(string)v[0].relay[0..<v[0].nrelay]);
+  jo_key(o[..],"workspace");jo_str(o[..],cast(string)v[0].workspace[0..<v[0].nw]);
+  jo_key(o[..],"foreman");dm_foreman_write_obj(o[..],v[0].foreman[..]);
+  jo_key(o[..],"sessions_meta");jo_arr(o[..]);
+  for i:0..<v[0].nmeta {dm_meta_write_obj(o[..],v[0].meta[i..<i+1]);}
+  jo_end(o[..]);
+  if v[0].nq>0 {jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nq]);}
+  if v[0].nst>0 {jo_key(o[..],"status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nst]);}
+  if v[0].ne>0 {jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);}
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+dm_view_read :: (raw:string,v:[]DmView)->bool #effects(all) {
+  v[0]=DmView.{};
+  nodes:[2048]JvNode;d:[1]Jv;
+  if !jv_parse(d[..],raw,nodes[..]) {return false;}
+  j:=d[0];
+  if jv_kind(j,0)!=JV_OBJECT || jv_raw(j,jv_get(j,0,"schema"))!=DM_SCHEMA {return false;}
+  ok:=jv_kind(j,jv_get(j,0,"ok"));if ok!=JV_TRUE && ok!=JV_FALSE {return false;}v[0].ok=ok==JV_TRUE;
+  v[0].nh=ea_field(j,"host",v[0].host[..]);
+  if v[0].nh!=64 || !ea_id(cast(string)v[0].host[0..<64],64) {return false;}
+  l:=jv_get(j,0,"label");if l>=0 {n:=jv_str(j,l,v[0].label[..]);if n<0 {return false;}v[0].nl=n;}
+  v[0].nm=ea_field(j,"method",v[0].method[..]);
+  if v[0].nm<1 || !dm_method_valid(cast(string)v[0].method[0..<v[0].nm]) {return false;}
+  v[0].pid=jv_int(j,jv_get(j,0,"pid"),0);
+  v[0].started_at=jv_int(j,jv_get(j,0,"started_at"),0);
+  v[0].paired_devices=jv_int(j,jv_get(j,0,"paired_devices"),0);
+  v[0].active_slots=jv_int(j,jv_get(j,0,"active_slots"),0);
+  v[0].max_slots=jv_int(j,jv_get(j,0,"max_slots"),0);
+  rl:=jv_get(j,0,"relay");if rl>=0 {n:=jv_str(j,rl,v[0].relay[..]);if n<0 {return false;}v[0].nrelay=n;}
+  ws:=jv_get(j,0,"workspace");if ws>=0 {n:=jv_str(j,ws,v[0].workspace[..]);if n<0 {return false;}v[0].nw=n;}
+  fm:=jv_get(j,0,"foreman");
+  if fm>=0 {f:[1]DmForeman;if !dm_foreman_read_obj(j,fm,f[..]) {return false;}v[0].foreman[0]=f[0];}
+  arr:=jv_get(j,0,"sessions_meta");
+  if arr>=0 {
+    if jv_kind(j,arr)!=JV_ARRAY || jv_len(j,arr)>DM_META_MAX {return false;}
+    v[0].nmeta=jv_len(j,arr);
+    for i:0..<v[0].nmeta {m:[1]DmSessionMeta;if !dm_meta_read_obj(j,jv_at(j,arr,i),m[..]) {return false;}v[0].meta[i]=m[0];}
+  }
+  cm:=jv_get(j,0,"command_id");if cm>=0 {v[0].nq=jv_str(j,cm,v[0].command[..]);if v[0].nq<0 {return false;}}
+  st:=jv_get(j,0,"status");if st>=0 {v[0].nst=jv_str(j,st,v[0].status[..]);if v[0].nst<0 {return false;}}
+  er:=jv_get(j,0,"error");if er>=0 {v[0].ne=jv_str(j,er,v[0].error[..]);if v[0].ne<0 {return false;}}
+  return true;
+}
+
+#test "daemon request and view round-trip cleanly across all control-plane methods" {
+  q:[1]DmRequest;
+  q[0].nm=ea_copy(q[0].method[..],"UpdateForeman");
+  q[0].nc=ea_copy(q[0].command[..],"0123456789abcdef0123456789abcdef");
+  q[0].has_tier=true;q[0].tier=2;
+  q[0].nt=ea_copy(q[0].text[..],"Coordinate desktop and mobile runs");
+  q[0].issued=100;q[0].expires=200;
+  b:[16384]u8;n:=dm_write(q[..],b[..]);#assert n>0;
+  r:[1]DmRequest;#assert dm_read(cast(string)b[0..<n],r[..]);
+  #assert cast(string)r[0].method[0..<r[0].nm]=="UpdateForeman" && r[0].has_tier && r[0].tier==2;
+  #assert cast(string)r[0].text[0..<r[0].nt]=="Coordinate desktop and mobile runs";
+  v:[1]DmView;v[0].ok=true;
+  v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  v[0].nl=ea_copy(v[0].label[..],"MacBook");
+  v[0].nm=ea_copy(v[0].method[..],"UpdateForeman");
+  v[0].pid=4242;v[0].started_at=1000;v[0].paired_devices=2;v[0].active_slots=1;v[0].max_slots=4;
+  v[0].foreman[0].tier=2;v[0].foreman[0].active_runs=1;v[0].foreman[0].total_sessions=3;
+  v[0].foreman[0].np=ea_copy(v[0].foreman[0].prompt[..],"Coordinate desktop and mobile runs");
+  v[0].nmeta=1;
+  v[0].meta[0].ni=ea_copy(v[0].meta[0].id[..],"0123456789abcdef0123456789abcdef");
+  v[0].meta[0].nt=ea_copy(v[0].meta[0].title[..],"Synced session");
+  v[0].meta[0].pinned=true;
+  v[0].nq=ea_copy(v[0].command[..],"0123456789abcdef0123456789abcdef");
+  v[0].nst=ea_copy(v[0].status[..],"accepted");
+  out:[32768]u8;vn:=dm_view_write(v[..],out[..]);#assert vn>0;
+  rv:[1]DmView;#assert dm_view_read(cast(string)out[0..<vn],rv[..]);
+  #assert rv[0].ok && rv[0].pid==4242 && rv[0].paired_devices==2 && rv[0].foreman[0].tier==2;
+  #assert rv[0].nmeta==1 && rv[0].meta[0].pinned && cast(string)rv[0].meta[0].title[0..<rv[0].meta[0].nt]=="Synced session";
+}
+
+#test "daemon wire refuses unknown methods and out-of-range Foreman tiers" {
+  r:[1]DmRequest;
+  #assert !dm_read("{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"DropTable\"}",r[..]);
+  #assert !dm_read("{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"UpdateForeman\",\"tier\":9}",r[..]);
+  #assert !dm_read("{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"UpdateForeman\",\"tier\":-1}",r[..]);
+  #assert dm_read("{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"DaemonHealth\"}",r[..]);
+}
+
+#test "daemon write classification distinguishes read and write methods" {
+  #assert !dm_is_write("DaemonHealth") && !dm_is_write("ReadForeman") && !dm_is_write("ListSessionMeta");
+  #assert dm_is_write("UpdateForeman") && dm_is_write("UpdateSessionMeta");
+  #assert !dm_is_write("Unknown");
+}

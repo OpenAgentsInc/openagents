@@ -3,16 +3,19 @@
 #load "wire.coax";
 #load "../workspace/wire.coax";
 #load "../accounts/wire.coax";
+#load "daemon-wire.coax";
 #authority;
 ea_local_kind :: (raw:string)->int #effects(all) {
  e:[1]EaRequest;if ea_read(raw,e[..]) {return 1;}
  w:[1]WsRequest;if ws_read(raw,w[..]) {return 3;}
+ d:[1]DmRequest;if dm_read(raw,d[..]) {return 4;}
  p:[1]PaRequest;defer {for i:0..<p[0].code.count {p[0].code[i]=0;}} // mutant: equivalent — erases opaque stack bytes, no record escapes
  ok:=pa_request_read(raw,p[..]);return ifx ok then 2 else 0;
 }
 ea_local_answer :: (request:string,raw:string)->bool #effects(all) {
  kind:=ea_local_kind(request);
  if kind==1 {v:[1]EaView;return ea_view_read(raw,v[..]);}
+ if kind==4 {q:[1]DmRequest;v:[1]DmView;return dm_read(request,q[..]) && dm_view_read(raw,v[..]) && cast(string)q[0].method[0..<q[0].nm]==cast(string)v[0].method[0..<v[0].nm] && (q[0].nc==0 || cast(string)q[0].command[0..<q[0].nc]==cast(string)v[0].command[0..<v[0].nq]);}
  if kind==3 {q:[1]WsRequest;v:[1]WsView;return ws_read(request,q[..]) && ws_view_read(raw,v[..]) && cast(string)q[0].method[0..<q[0].nm]==cast(string)v[0].method[0..<v[0].nm] && cast(string)q[0].command[0..<q[0].nc]==cast(string)v[0].command[0..<v[0].nc] && (cast(string)q[0].workspace[0..<q[0].nw]==cast(string)v[0].workspace[0..<v[0].nw] || cast(string)q[0].method[0..<q[0].nm]=="RemoveWorktree" && cast(string)v[0].workspace[0..<v[0].nw]=="default");}
  if kind!=2 {return false;}
  q:[1]PaRequest;defer {for i:0..<q[0].code.count {q[0].code[i]=0;}} // mutant: equivalent — erases opaque stack bytes, no record escapes
@@ -41,4 +44,10 @@ ea_local_answer :: (request:string,raw:string)->bool #effects(all) {
  v[0].workspace=q[0].workspace;v[0].nw=q[0].nw;nr=ws_view_write(v[..],raw[..]);#assert ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);v[0].workspace[0]='b';nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
  v[0].workspace=q[0].workspace;v[0].command[0]='1';nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);v[0].command=q[0].command;
  q[0].nm=js_copy(q[0].method[..],"PushBranch");n=ws_write(q[..],b[..]);v[0].method=q[0].method;v[0].nm=q[0].nm;v[0].nw=js_copy(v[0].workspace[..],"default");nr=ws_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
+}
+
+#test "local daemon control-plane profile is additive and correlates method and command" {
+ q:[1]DmRequest;q[0].nm=ea_copy(q[0].method[..],"DaemonHealth");b:[16384]u8;n:=dm_write(q[..],b[..]);#assert n>0 && ea_local_kind(cast(string)b[0..<n])==4;
+ v:[1]DmView;v[0].ok=true;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"DaemonHealth");raw:[32768]u8;nr:=dm_view_write(v[..],raw[..]);#assert nr>0 && ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
+ v[0].nm=ea_copy(v[0].method[..],"ReadForeman");nr=dm_view_write(v[..],raw[..]);#assert !ea_local_answer(cast(string)b[0..<n],cast(string)raw[0..<nr]);
 }

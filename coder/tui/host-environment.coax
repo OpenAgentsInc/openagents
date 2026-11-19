@@ -16,7 +16,7 @@ XtRun :: struct {
  auth:[1]PaProbe;auth_account:[1]PaAccount;auth_done:bool;auth_ok:bool;deadline:int;
 }
 EsSlot :: struct {
-  occupied:bool;probing:bool;offer_index:int;summary:EaSession;grant:[64]u8;device:[64]u8;engine:[1]Engine;s:[1]Session;
+  occupied:bool;probing:bool;offer_index:int;summary:EaSession;grant:[64]u8;device:[64]u8;workspace:[1024]u8;nw:int;engine:[1]Engine;s:[1]Session;
   mode:int;codex:[1]CxEngine;codex_mem:[CX_MEM]u8;execution:[1]XtRun;
   provider:[32]u8;nprovider:int;options:[1]ClOptions;pool:[524288]u8;line:[1048576]u8;arena:[1048576]u8;
   out:[2*EX_INPUT_MAX+8192]u8;scratch:[2*EX_INPUT_MAX+8192]u8;prompt:[EX_INPUT_MAX+1024]u8;last_saved:int;failed:bool;started:bool;
@@ -46,9 +46,11 @@ es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
   }
   defer {for i:0..<input.count {input[i]=0;}}
   if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);if kind==0 {return;}
-  c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
   out:[HB_BODY_MAX]u8;made:= -1;
-  if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
+  if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return;}v:[1]DmView;dm_execute(h,q[..],v[..]);made=dm_view_write(v[..],out[..]);}
+  else {
+    c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
+    if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}
   else if kind==3 {q:[1]WsRequest;if !ws_read(raw,q[..]) {return;}v:[1]WsView;if !ws_enabled(c) {return;}ws_execute(h,cast(string)c[0].workspace[0..<c[0].nw],cast(string)c[0].grant[..],q[..],v[..]);made=ws_view_write(v[..],out[..]);}
   else {
     q:[1]PaRequest;if !pa_request_read(raw,q[..]) {return;}defer {for i:0..<q[0].code.count {q[0].code[i]=0;}}
@@ -58,6 +60,7 @@ es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
     if pa_scope(true,enabled,cast(string)s[0].device[..]==cast(string)c[0].device[..],cast(string)s[0].grant[..]==cast(string)c[0].grant[..],true,pa_right(cast(string)q[0].method[0..<q[0].nm])) {pa_dispatch(h,q[..],v[..]);}
     else {pa_snapshot(h,q[..],v[..]);pa_fail(v[..],"forbidden");}
     made=pa_view_write(v[..],out[..]);
+    }
   }
   if made<1 {return;}
   for i:0..<made {_ = cxsock_write(connection,cast(int)out[i]);}_ = cxsock_write(connection,10);_ = cxsock_flush(connection,2000);
@@ -125,9 +128,53 @@ es_load_configuration :: (e:[]EsHost)->bool #effects(all) {
   e[0].configured=n>0 && ea_config_read(cast(string)b[0..<ifx n>0 then n else 0],e[0].configuration[..]) && e[0].configuration[0].enabled;
   return e[0].configured;
 }
+es_same_workspace_rule :: (slot_grant:string,req_grant:string,slot_ws:string,req_ws:string)->bool {
+  if slot_grant==req_grant {return true;}
+  return slot_ws.count>0 && req_ws.count>0 && slot_ws==req_ws;
+}
+es_slot_matches :: (e:[]EsHost,i:int,grant:string)->bool #effects(all) {
+  slot_ws:=cast(string)e[0].slots[i].workspace[0..<e[0].slots[i].nw];
+  req_ws:=ifx e[0].configured then cast(string)e[0].configuration[0].workspace[0..<e[0].configuration[0].nw] else "";
+  return es_same_workspace_rule(cast(string)e[0].slots[i].grant[..],grant,slot_ws,req_ws);
+}
+es_grant_matches_workspace :: (e:[]EsHost,file_grant:string,req_grant:string)->bool #effects(all) {
+  if file_grant==req_grant {return true;}
+  if !e[0].configured || !ea_id(file_grant,64) {return false;}
+  req_ws:=cast(string)e[0].configuration[0].workspace[0..<e[0].configuration[0].nw];
+  if req_ws.count==0 {return false;}
+  first:[1]EsHost;
+  if es_load_configuration(first[..]) && cast(string)first[0].configuration[0].grant[..]==file_grant {
+    return cast(string)first[0].configuration[0].workspace[0..<first[0].configuration[0].nw]==req_ws;
+  }
+  other:[1]EsHost;
+  if es_load_device(other[..],file_grant) {
+    return cast(string)other[0].configuration[0].workspace[0..<other[0].configuration[0].nw]==req_ws;
+  }
+  return false;
+}
+es_saved_owner_grant :: (h:[]HsHost,id:string,req_grant:string,out_grant:[]u8)->string #effects(all) {
+  p:[1400]u8;
+  if fs_exists(es_named_file(req_grant,id,".json",p[..])) {n:=ea_copy(out_grant,req_grant);return cast(string)out_grant[0..<n];}
+  dir:[1400]u8;files:[1]FsList;count:=fs_list(es_path("",dir[..]),files[..]);if count<0 {return "";}
+  for i:0..<count {name:=fs_entry(files[..],i);
+    // environment-<64-char-grant>-<32-char-id>.json => 12 + 64 + 1 + 32 + 5 = 114 bytes
+    if name.count!=114 || !hs_prefix(name,"environment-") || !csr_suffix(name,".json") {continue;}
+    if name[76]!=cast(u8)'-' {continue;}
+    fg:=cast(string)name[12..<76];fid:=cast(string)name[77..<109];
+    if fid!=id {continue;}
+    if es_grant_matches_workspace(h[0].environment[..],fg,req_grant) {n:=ea_copy(out_grant,fg);return cast(string)out_grant[0..<n];}
+  }
+  return "";
+}
+#test "workspace-scoped session sync shares sessions within one workspace and isolates others" {
+  #assert es_same_workspace_rule("g1","g1","/repo/a","/repo/b");
+  #assert es_same_workspace_rule("g1","g2","/repo/a","/repo/a");
+  #assert !es_same_workspace_rule("g1","g2","/repo/a","/repo/b");
+  #assert !es_same_workspace_rule("g1","g2","","/repo/a");
+}
 es_find :: (e:[]EsHost,id:string,grant:string)->int #effects(all) {
-  for i:0..<ES_SLOTS {s:=e[0].slots[i].summary;g:=e[0].slots[i].grant;
-    if e[0].slots[i].occupied && cast(string)s.id[0..<s.ni]==id && cast(string)g[..]==grant {return i;}}
+  for i:0..<ES_SLOTS {s:=e[0].slots[i].summary;
+    if e[0].slots[i].occupied && cast(string)s.id[0..<s.ni]==id && es_slot_matches(e,i,grant) {return i;}}
   return -1;
 }
 es_file :: (slot:[]EsSlot,extension:string,out:[]u8)->string #effects(all) {
@@ -222,18 +269,19 @@ es_occupy :: (h:[]HsHost,slot:[]EsSlot,grant:string,device:string) #effects(all)
   e:=h[0].environment[..];
   xt_reset(slot);slot[0].occupied=true;ncopy:=ea_copy(slot[0].grant[..],grant);ncopy=ea_copy(slot[0].device[..],device);
   s:=slot[0].s[..];s_init(s,slot[0].pool[..]);engine:=slot[0].engine[..];e_attach(engine,slot[0].line[..],slot[0].arena[..],slot[0].out[..],slot[0].scratch[..],slot[0].prompt[..]);
-  c:=e[0].configuration[..];engine[0].cwd_n=ea_copy(engine[0].cwd[..],cast(string)c[0].workspace[0..<c[0].nw]);
+  c:=e[0].configuration[..];ws:=cast(string)c[0].workspace[0..<c[0].nw];slot[0].nw=ea_copy(slot[0].workspace[..],ws);engine[0].cwd_n=ea_copy(engine[0].cwd[..],ws);
   home:[1024]u8;exe:[1200]u8;p:=fs_join(proc_getenv("HOME",home[..]),".local/bin/claude",exe[..]);if fs_kind(p)==FS_FILE {engine[0].claude_n=ea_copy(engine[0].claude[..],p);}
   slot[0].summary.updated=cxproc_wall_us()/1000;
 }
 // A chat given back while idle takes a slot again with its saved history and Claude session:
 // its slot index, -1 when it cannot continue, -2 when no slot is free.
 es_resume :: (h:[]HsHost,id:string,grant:string,device:string)->int #effects(all) {
-  summary:[1]EaSession;sid:[128]u8;
-  if !es_saved_summary(h,id,grant,summary[..]) || cast(string)summary[0].control[0..<summary[0].nc]!="available" {return -1;}
-  resume:=es_resume_id(grant,id,sid[..]);if resume.count==0 {return -1;}
+  summary:[1]EaSession;sid:[128]u8;og:[64]u8;
+  owner:=es_saved_owner_grant(h,id,grant,og[..]);if owner.count==0 {return -1;}
+  if !es_saved_summary(h,id,owner,summary[..]) || cast(string)summary[0].control[0..<summary[0].nc]!="available" {return -1;}
+  resume:=es_resume_id(owner,id,sid[..]);if resume.count==0 {return -1;}
   k:=es_take_slot(h);if k<0 {return -2;}
-  slot:=h[0].environment[0].slots[k..<k+1];es_occupy(h,slot,grant,device);
+  slot:=h[0].environment[0].slots[k..<k+1];es_occupy(h,slot,owner,device);
   saved:=summary[0];saved.updated=slot[0].summary.updated;slot[0].summary=saved;
   path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot,".jsonl",path[..]),data[..]);
   if n<0 || !pa_bind(h,slot,id,grant) {xt_reset(slot);return -1;}
@@ -327,7 +375,7 @@ es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcRe
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
   e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
-  for i:0..<ES_SLOTS {g:=e[0].slots[i].grant;if e[0].slots[i].occupied && !e[0].slots[i].probing && !e[0].slots[i].execution[0].active && cast(string)g[..]==grant {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
+  for i:0..<ES_SLOTS {if e[0].slots[i].occupied && !e[0].slots[i].probing && !e[0].slots[i].execution[0].active && es_slot_matches(e,i,grant) {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 || e[0].slots[k].execution[0].active {return;}
   slot:=e[0].slots[k..<k+1];es_project(slot[0].s[..],q,v);
   if slot[0].failed {for i:0..<v[0].ns {if cast(string)v[0].sessions[i].id[0..<v[0].sessions[i].ni]==id {v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"unknown");}}es_refuse(v,"record_limit");}
@@ -421,17 +469,21 @@ es_saved_summary :: (h:[]HsHost,id:string,grant:string,summary:[]EaSession)->boo
 }
 es_saved_list :: (h:[]HsHost,grant:string,v:[]EaView) #effects(all) {
   dir:[1400]u8;files:[1]FsList;count:=fs_list(es_path("",dir[..]),files[..]);if count<0 {v[0].complete=false;return;}
-  prefix:[128]u8;np:=hs_cat(prefix[..],0,"environment-");np=hs_cat(prefix[..],np,grant);np=hs_cat(prefix[..],np,"-");
   for i:0..<count {name:=fs_entry(files[..],i);
-    if name.count!=np+37 || !hs_prefix(name,cast(string)prefix[0..<np]) || !csr_suffix(name,".json") {continue;}
-    id:=cast(string)name[np..<np+32];if es_find(h[0].environment[..],id,grant)>=0 {continue;}
-    summary:[1]EaSession;if !es_saved_summary(h,id,grant,summary[..]) {v[0].complete=false;continue;}
+    if name.count!=114 || !hs_prefix(name,"environment-") || !csr_suffix(name,".json") || name[76]!=cast(u8)'-' {continue;}
+    fg:=cast(string)name[12..<76];id:=cast(string)name[77..<109];
+    if !es_grant_matches_workspace(h[0].environment[..],fg,grant) {continue;}
+    if es_find(h[0].environment[..],id,grant)>=0 {continue;}
+    dup:=false;for j:0..<v[0].ns {if cast(string)v[0].sessions[j].id[0..<v[0].sessions[j].ni]==id {dup=true;break;}}
+    if dup {continue;}
+    summary:[1]EaSession;if !es_saved_summary(h,id,fg,summary[..]) {v[0].complete=false;continue;}
     if v[0].ns>=8 {v[0].complete=false;break;}v[0].sessions[v[0].ns]=summary[0];v[0].ns+=1;
   }
 }
 es_read_saved :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
-  summary:[1]EaSession;id:=cast(string)q[0].session[0..<q[0].ns];if !es_saved_summary(h,id,grant,summary[..]) {es_refuse(v,"not_found");return;}
-  slot:[1]EsSlot;slot[0].summary=summary[0];ncopy:=ea_copy(slot[0].grant[..],grant);path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot[..],".jsonl",path[..]),data[..]);
+  summary:[1]EaSession;id:=cast(string)q[0].session[0..<q[0].ns];og:[64]u8;
+  owner:=es_saved_owner_grant(h,id,grant,og[..]);if owner.count==0 || !es_saved_summary(h,id,owner,summary[..]) {es_refuse(v,"not_found");return;}
+  slot:[1]EsSlot;slot[0].summary=summary[0];ncopy:=ea_copy(slot[0].grant[..],owner);path:[1400]u8;data:[2097152]u8;n:=fs_read(es_file(slot[..],".jsonl",path[..]),data[..]);
   if n<0 {es_refuse(v,"source_unavailable");return;}s_init(slot[0].s[..],slot[0].pool[..]);sl_load(slot[0].s[..],cast(string)data[0..<n]);
   v[0].ns=1;v[0].sessions[0]=summary[0];es_project(slot[0].s[..],q,v);
 

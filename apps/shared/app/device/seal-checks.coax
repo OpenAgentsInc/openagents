@@ -98,3 +98,16 @@ dvt_reply :: (rp: HbReply, out: [] u8) -> int {
  arena:[8192]u8;a:=[1]HbText.[HbText.{buf=arena[..]}];rpc:[1]HbRpcRequest;parsed:[1]WsRequest;#assert hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],a[..]) && rpc[0].method=="ReadWorkspace" && ws_read(rpc[0].params,parsed[..]) && cast(string)parsed[0].workspace[..]==cast(string)q[0].workspace[..];
  rf:=HbReply.{request=cast(string)x[0].request[..],request_event=cast(string)x[0].event[..],host=HBT_HOST_X,issued_at=HBT_T0,expires_at=HBT_T0+60,ok=false,code="forbidden"};re:[DV_EVENT_MAX]u8;rn:=dvt_reply(rf,re[..]);#assert rn>0;out:[49152]u8;vn:=dv_open(x[..],secret,HBT_HOST_X,cast(string)re[0..<rn],HBT_T0+1,out[..]);v:[1]WsView;#assert vn>0 && ws_view_read(cast(string)out[0..<vn],v[..]) && cast(string)v[0].workspace[..]==cast(string)q[0].workspace[..] && cast(string)v[0].error[0..<v[0].ne]=="forbidden";
 }
+
+#test "daemon control-plane RPC uses signed HOST carriage and correlates a refusal to its command" {
+ x:[1]DvWork;sk:[32]u8;r:[DV_RANDOM]u8;ev:[DV_EVENT_MAX]u8;secret:=dvt_key(HBT_BROWSER_SECRET,sk[..]);
+ q:[1]DmRequest;q[0].nm=ea_copy(q[0].method[..],"UpdateSessionMeta");q[0].nc=ea_copy(q[0].command[..],"44444444444444444444444444444444");q[0].ns=ea_copy(q[0].session[..],"chat-sync-1");q[0].nt=ea_copy(q[0].title[..],"Synced Title");q[0].has_pinned=true;q[0].pinned=true;q[0].issued=1;q[0].expires=300001;
+ b:[16384]u8;n:=dm_write(q[..],b[..]);#assert n>0;
+ sn:=dv_seal(x[..],DV_RPC,secret,HBT_HOST_X,"wss://relay.openagents.com",HBT_GRANT,3,cast(string)b[0..<n],HBT_T0,dvt_random(2,r[..]),ev[..]);#assert sn>0 && x[0].daemon && x[0].nc==32;
+ hs:[32]u8;hx:[32]u8;w:[1]HbWork;body:[HB_BODY_MAX]u8;o:=hb_open(cast(string)ev[0..<sn],dvt_key(HBT_HOST_SECRET,hs[..]),dvt_key(HBT_HOST_X,hx[..]),HB_REQUEST_SCHEMA,w[..],body[..]);#assert o.error==HB_OK;
+ arena:[8192]u8;a:=[1]HbText.[HbText.{buf=arena[..]}];rpc:[1]HbRpcRequest;parsed:[1]DmRequest;
+ #assert hb_rpc_read(cast(string)body[0..<o.body_n],rpc[..],a[..]) && rpc[0].method=="UpdateSessionMeta" && dm_read(rpc[0].params,parsed[..]) && cast(string)parsed[0].session[0..<parsed[0].ns]=="chat-sync-1";
+ rf:=HbReply.{request=cast(string)x[0].request[..],request_event=cast(string)x[0].event[..],host=HBT_HOST_X,issued_at=HBT_T0,expires_at=HBT_T0+60,ok=false,code="forbidden"};re:[DV_EVENT_MAX]u8;rn:=dvt_reply(rf,re[..]);#assert rn>0;
+ out:[32768]u8;vn:=dv_open(x[..],secret,HBT_HOST_X,cast(string)re[0..<rn],HBT_T0+1,out[..]);v:[1]DmView;
+ #assert vn>0 && dm_view_read(cast(string)out[0..<vn],v[..]) && cast(string)v[0].method[0..<v[0].nm]=="UpdateSessionMeta" && cast(string)v[0].command[0..<v[0].nq]==cast(string)q[0].command[0..<q[0].nc] && cast(string)v[0].error[0..<v[0].ne]=="forbidden";
+}

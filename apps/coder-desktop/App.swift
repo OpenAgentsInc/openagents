@@ -373,6 +373,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     private let foremanServer = ForemanControlServer()
     private let foremanEvents = ForemanEventBus()
     private let foremanAudit = ForemanAuditLog()
+    private let daemonClient = CoderDaemonClient()
     private var lastForegroundRunning = false
     var foremanTier: ForemanTier = ForemanTier.load()
     private let updater = CoderUpdater()
@@ -411,6 +412,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self.handleForemanAsyncRequest(request, done: done)
         }
         _ = foremanServer.start()
+        syncFromDaemon()
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -513,6 +515,36 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }.joined(separator: "\n")
     }
     private var isForemanShown: Bool { chat == Foreman.chatID }
+    private func syncFromDaemon() {
+        daemonClient.readForeman { [weak self] state in
+            guard let self, let rawTier = state?.tier, let tier = ForemanTier(rawValue: rawTier) else { return }
+            if self.foremanTier != tier {
+                self.foremanTier = tier
+                tier.save()
+                self.syncForemanUI()
+                self.wake()
+            }
+        }
+        daemonClient.listSessionMeta { [weak self] items in
+            guard let self, !items.isEmpty else { return }
+            var changed = false
+            for item in items {
+                guard self.store.meta(item.session_id) != nil else { continue }
+                if let title = item.title, !title.isEmpty, self.store.title(item.session_id) != title {
+                    self.store.rename(item.session_id, to: title)
+                    changed = true
+                }
+                if let pinned = item.pinned, self.store.isPinned(item.session_id) != pinned {
+                    self.store.togglePin(item.session_id)
+                    changed = true
+                }
+            }
+            if changed {
+                cd_chats(self.page, self.chatLines)
+                self.wake()
+            }
+        }
+    }
     private func syncForemanUI() {
         let busy = runs[Foreman.chatID] != nil || (chat == Foreman.chatID && cd_running(page) != 0)
         cd_foreman(page, busy ? 1 : 0, Int32(foremanTier.rawValue))
@@ -613,6 +645,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let previous = foremanTier
         foremanTier = tier
         tier.save()
+        daemonClient.updateForeman(tier: tier.rawValue)
         if isForemanShown {
             syncSkillsNote(for: page, isForeman: true)
             configureWorkerEnv(run, isForeman: true)
@@ -1033,6 +1066,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let title = CoderStore.cleanTitle(field.stringValue)
             guard !title.isEmpty else { return }
             self.store.rename(id, to: title)
+            self.daemonClient.updateSessionMeta(sessionID: id, title: title)
             cd_chats(self.page, self.chatLines)
             self.wake()
         }
@@ -1054,6 +1088,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             guard !self.busy(id) else { return }
             self.unread.remove(id)
             self.store.remove(id)
+            self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
             cd_chats(self.page, self.chatLines)
             self.window.makeFirstResponder(self.editor); self.wake()
         }
@@ -1160,6 +1195,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     @objc private func togglePinFromMenu(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String else { return }
         store.togglePin(id)
+        daemonClient.updateSessionMeta(sessionID: id, pinned: store.isPinned(id))
         cd_chats(page, chatLines)
         wake()
     }
