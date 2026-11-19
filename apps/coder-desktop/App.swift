@@ -462,7 +462,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             window.makeFirstResponder(editor); wake()
             return
         }
-        guard let text = store.text(id), cd_load(page, text) != 0 else { return }
+        guard let text = store.text(id), cd_load(page, text) != 0 else {
+            let failed = NSAlert()
+            failed.messageText = "This chat could not be opened."
+            failed.informativeText = "“" + (store.title(id) ?? "Chat") + "” could not be read."
+            failed.beginSheetModal(for: window)
+            return
+        }
         chat = id; recallDue = true; cd_current(page, id)
         var isFolder: ObjCBool = false
         if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }

@@ -18,7 +18,8 @@
 #load "../../nostr/json.coax";
 #load "../../nostr/json-f64.coax";
 
-CL_LINE_MAX :: 1048576;    // one stream-json line, and the parser's limits for it
+CL_LINE_MAX :: 1048576;    // one stream-json line buffer
+CL_DOC_MAX  :: 33554432;   // parser limit for kept documents (e.g. saved chats up to 32 MiB)
 
 ClSlice :: struct {
   ok: bool;
@@ -35,7 +36,7 @@ ClArena :: struct {
 
 ClBool :: struct { ok: bool; value: bool; }
 
-cl_parse :: (j: [] Json, text: string) { json_start_bounded(j, text, CL_LINE_MAX, CL_LINE_MAX); }
+cl_parse :: (j: [] Json, text: string) { json_start_bounded(j, text, CL_DOC_MAX, CL_DOC_MAX); }
 
 // A value whose first token j just read: its range (a container skipped to its end).
 cl_value_here :: (j: [] Json) -> ClSlice {
