@@ -193,7 +193,7 @@ chart_tag :: (s: [] Slab, h: [] SceneHud, id: string, name: string, lat: f64, lo
 chart_route_tags :: (s: [] Slab, h: [] SceneHud) {
   small := s[0].chart.view.w / hi_f32(s[0].dpr, 0.5) < CHART_SMALL;
   chart_tag(s, h, "chart.yard", ifx small then "Ingleside yard" else "Ingleside: the casting yard and the freight wharf", WHERE_YARD[0], WHERE_YARD[1], -16);
-  chart_tag(s, h, "chart.jetties", ifx small then "Jetties" else "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
+  chart_tag(s, h, "chart.jetties", "Port Aransas jetties", WHERE_JETTIES[0], WHERE_JETTIES[1], 16);
 }
 // A legal line's name, on the line: each line's name is on a row of its own up from the chart's foot,
 // so two lines a few miles apart do not write over each other.
@@ -268,7 +268,7 @@ chart_act :: (s: [] Slab, id: string) -> bool {
   // the build view's inset: 230 px square at the top right
   v := bd_chart_view(s[..]); s[0].chart.view = v;
   h := s[0].hp.said[..]; sh_begin(h); s[0].hp.lab.boxes = 0;
-  chart_label(s[..], h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12, false);
+  chart_label(s[..], h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 18, false);   // as bd_tags puts it
   chart_route_tags(s[..], h);
   // a name far too wide for it is left out, never drawn past the edge
   chart_label(s[..], h, "chart.wide", "Ingleside: the casting yard and the freight wharf", v.x + 10, v.y + 40, false);
@@ -276,7 +276,8 @@ chart_act :: (s: [] Slab, id: string) -> bool {
   #assert !sb_test_has(s[..], 'W', "chart.wide", "") && !sb_test_has(s[..], 'W', "chart.yard", "Ingleside: the casting yard and the freight wharf");
   // every box placed is inside the frame and none covers another
   l := s[0].hp.lab;
-  #assert l.boxes >= 2;
+  #assert l.boxes >= 2 && l.box[0].y0 >= v.y + 8;   // the title clear of the frame's top
+  #assert sb_test_has(s[..], 'W', "chart.jetties", "Port Aransas jetties");
   for i: 0..<l.boxes {
     b := l.box[i];
     #assert b.x0 >= v.x && b.x1 <= v.x + v.w && b.y0 >= v.y && b.y1 <= v.y + v.h;

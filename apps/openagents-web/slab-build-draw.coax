@@ -894,7 +894,7 @@ bd_lines_2d :: (s: [] Slab, out: [] f32) -> int {
 bd_tags :: (s: [] Slab, h: [] SceneHud) {
   if !s[0].bdraw[0].ready { return; }
   v := s[0].chart.view; k := s[0].dpr;
-  if v.w >= 200 * k { chart_label(s, h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 12 * k, false); }
+  if v.w >= 200 * k { chart_label(s, h, "chart.title", "Where the work is now", v.x + v.w / 2, v.y + 18 * k, false); }   // its own line, clear of the frame
   if v.w >= 200 * k { chart_route_tags(s, h); }
 }
 // A press in the build view's HUD. True when the id was the build view's.
