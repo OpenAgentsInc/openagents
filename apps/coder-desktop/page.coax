@@ -39,7 +39,8 @@ CP_ROUND :: 6;              // tasks Microcoder hands over in one step
 CP_PANE :: 440;             // the sub-agent transcript's width, on the window's right
 CP_PANE_MAIN :: 380;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
 CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
-CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a complex task's model; a simple one runs on CP_MODEL
+CP_MODEL_SIMPLE :: "gemini-4-hydrogen";     // a level hydrogen task's model
+CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a level carbon task's model
 CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 4 Neon, frontier work that finishes fast (2026-11-18)
 // A sub-agent's level, as Microcoder names it, and the name its row shows. The first three run on
 // Gemini (Hydrogen, Carbon, Neon); the last four in Claude Code on the Claude login of this
@@ -68,8 +69,8 @@ CP_COLUMN :: 680;           // the conversation's widest column
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
 CP_CORNER :: 6;             // New chat from the window's top and right edges
-CP_MODEL :: "gemini-4-hydrogen";
-CP_MODEL_NAME :: "Microcoder · Gemini 4 Hydrogen";
+CP_MODEL :: "gemini-4-neon";               // Microcoder's own model (Hydrogen until 2026-11-18)
+CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
 
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7;
@@ -503,7 +504,7 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   level := s[0].turns[i].agents[j].level;
   if level >= CP_LEVEL_CLAUDE { return mww_task(out, McTask.{task = cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, model = CP_LEVEL[level]}); }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true,
-               model = CP_MODEL, effort = "low"};
+               model = CP_MODEL_SIMPLE, effort = "low"};
   if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }
   if level == 2 { t.model = CP_MODEL_NEON; t.effort = "medium"; }
   return mww_task(out, t);
@@ -1132,7 +1133,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   // where the column reaches under a corner's buttons, the first message starts below them
   if x + cw > w - 2 * side - CP_CORNER || left == 0 && x < CP_CORNER + CP_FOLDER_MOST { y += CP_CORNER + side; }
   if s[0].nturns == 0 {
-    _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Hydrogen.");
+    _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
   }
   ib: [EL_ID] u8;
   for i: 0..<s[0].nturns {
@@ -1557,7 +1558,7 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   #assert s[0].nturns == 1 && cp_running(s) && eb_text(s[0].draft[..]) == "" && coder_page_action(s) == CP_ASK_SEND && coder_page_action(s) == CP_ASK_NONE;
   out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
   ar: [1] ClArena; buf: [4096] u8; ar[0].buf = buf[..]; back: [1] McTask;
-  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "gemini-4-hydrogen" && back[0].sandbox == "danger-full-access" && back[0].cwd == "/w";
+  #assert n > 0 && mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].task == "What is 2+2?" && back[0].model == "gemini-4-neon" && back[0].sandbox == "danger-full-access" && back[0].cwd == "/w";
   #assert !coder_page_submit(s);   // one run at a time
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"equals 4\"}") == MWW_REPLY;
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "2 + 2 equals 4" && s[0].turns[0].blocks == 1 && cp_running(s);

@@ -1,7 +1,7 @@
 # Coder for desktop
 
 Coder is a Coax Native desktop app. It targets macOS first. It is a
-conversation with Microcoder on Gemini 4 Hydrogen: your messages and the
+conversation with Microcoder on Gemini 4 Neon: your messages and the
 replies scroll above the message bar.
 
 Every part of the screen is the shared app set (`components/app/`): the
