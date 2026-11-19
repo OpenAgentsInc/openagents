@@ -66,6 +66,16 @@ eu_tool_open :: (e:[]EnvironmentApp,key:int)->bool #effects(all) {for i:0..<e[0]
   eu_press(e[..],"env.composer.send");#assert e[0].action==0 && !e[0].random;
   eu_press(e[..],"env.reconnect");#assert e[0].action==4 && e[0].request[0].command[0]=='1';
 }
+#test "a running Coder Desktop chat takes words as a steer and an empty Send as Stop; any other running chat only stops (#13713)" {
+  e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;
+  e[0].ns=ea_copy(e[0].session[..],"desktop-0123456789abcdef0123456789abcdef");e[0].view[0].ns=1;row:=e[0].view[0].sessions[..];
+  row[0].ni=ea_copy(row[0].id[..],"desktop-0123456789abcdef0123456789abcdef");row[0].busy=true;row[0].desktop=true;
+  e[0].nd=ea_copy(e[0].draft[..],"use b");eu_press(e[..],"env.composer.send");#assert e[0].random && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="SendMessage" && ea_text(cast(string)e[0].request[0].text[0..<e[0].request[0].nt]);
+  e[0].random=false;e[0].action=0;eu_press(e[..],"env.composer.stop");#assert cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="StopTurn";
+  e[0].random=false;e[0].action=0;e[0].nd=0;eu_press(e[..],"env.composer.send");#assert cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="StopTurn";
+  e[0].random=false;e[0].action=0;row[0].desktop=false;e[0].nd=ea_copy(e[0].draft[..],"use b");eu_press(e[..],"env.composer.send");#assert cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="StopTurn";
+  e[0].random=false;e[0].action=0;row[0].busy=false;eu_press(e[..],"env.composer.stop");#assert !e[0].random && e[0].action==0;
+}
 #test "a detached environment ignores late timers and identity replies" {
   e:[1]EnvironmentApp;e[0].timer=true;e[0].random=true;
   eu_reply(e[..],12,0,"{}",false);eu_reply(e[..],11,0,"{}",false);#assert e[0].action==0 && !e[0].flight;
@@ -204,9 +214,12 @@ eu_press :: (e:[]EnvironmentApp,id:string) #effects(all) {
   if (id=="env.earlier" || id=="env.more") && !e[0].flight && !e[0].random {cursor:=cast(string)e[0].view[0].cursor[0..<e[0].view[0].nc];before:=0;for c:cursor {if c<'0' || c>'9' {return;}before=before*10+cast(int)(c-'0');}if before>0 {eu_request(e,ifx id=="env.more" then "ListSessions" else "ReadSession");e[0].request[0].before=before;if id=="env.earlier" {e[0].history_before=before;}eu_http(e,false);}return;}
   for i:0..<e[0].catalog[0].n {b:[96]u8;if id==tr_join(b[..],"environment.",i) && !e[0].flight {e[0].selected=i;e[0].page=1;eu_request(e,"ListSessions");eu_http(e,false);return;}}
   for i:0..<e[0].view[0].ns {b:[96]u8;if id==tr_join(b[..],"environment.session.",i) && !e[0].flight {row:=e[0].view[0].sessions[i];e[0].ns=ea_copy(e[0].session[..],cast(string)row.id[0..<row.ni]);e[0].nmo=0;e[0].nef=0;e[0].menu=0;e[0].expanded_n=0;e[0].history_before=0;e[0].page=2;eu_request(e,"ReadSession");eu_http(e,false);return;}}
-  if id=="env.composer.send" {
-    busy:=false;for i:0..<e[0].view[0].ns {row:=e[0].view[0].sessions[i];if cast(string)row.id[0..<row.ni]==cast(string)e[0].session[0..<e[0].ns] {busy=row.busy;}}
-    eu_mutate(e,ifx busy then "StopTurn" else ifx e[0].ns==0 then "OpenSession" else "SendMessage",false);return;
+  // A Coder Desktop chat's running turn takes more input (GitHub #13713): with words in the
+  // composer Send steers it; with none it stops it. env.composer.stop always stops.
+  if id=="env.composer.send" || id=="env.composer.stop" {
+    busy:=false;steer:=false;for i:0..<e[0].view[0].ns {row:=e[0].view[0].sessions[i];if cast(string)row.id[0..<row.ni]==cast(string)e[0].session[0..<e[0].ns] {busy=row.busy;steer=row.desktop && id=="env.composer.send" && ea_text(cast(string)e[0].draft[0..<e[0].nd]);}}
+    if id=="env.composer.stop" && !busy {return;}
+    eu_mutate(e,ifx busy && !steer then "StopTurn" else ifx e[0].ns==0 then "OpenSession" else "SendMessage",false);return;
   }
   if id=="env.allow" || id=="env.deny" {eu_mutate(e,"RespondInteraction",id=="env.allow");}
 }

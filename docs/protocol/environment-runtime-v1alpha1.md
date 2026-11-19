@@ -106,6 +106,29 @@ as observe-only/unknown instead of guessing that an old native writer can
 be resumed safely. Full persisted process reconciliation and qualified native
 continuation remain implementation work from the larger plan.
 
+## Coder Desktop chats (2026-11-19, #13713)
+
+Coder Desktop runs each chat's worker, and each of its sub-agents' workers, as
+a daemon run (`StartRun` on the local socket). `ListSessions` on the first
+page lists the running and finished top-level runs whose folder is the grant's
+workspace or inside it, as `desktop-RUN` sessions with `"surface":
+"coder-desktop"` (an optional field older clients ignore). The daemon reads
+them from the run files only (`coder/tui/host-desktop.coax`): the chat's
+first task and queue key from `RUN.in`, and its transcript from the worker's
+lines in `RUN.out`. Each turn's words, thinking, commands, reads and
+delegations become items; a delegation's call links to the sub-agent run whose
+session is the chat's plus `-agent-`, which `ReadSubagent` pages. A finished
+chat reads as observe-only.
+
+On a running chat, `SendMessage` while a turn runs is a steer (the worker's
+`steer` line); while it is idle it is a follow-up: a queue item that carries
+the chat's last task with the new words, promoted at once, so Coder Desktop's
+queue shows it. `StopTurn` interrupts the turn and stops its sub-agents. Both
+check the run's generation and use the same idempotent command record as
+managed chats. The worker's accepted steer line carries its words, so Coder
+Desktop shows a steer it did not send. `StartRun`, `StopRun`, `ListRuns` and
+`ForgetRun` stay local-socket only.
+
 ## Bounds and failure
 
 Owned timeline pages contain at most6000 raw text bytes, with UTF-8-safe

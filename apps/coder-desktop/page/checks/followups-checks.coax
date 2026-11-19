@@ -25,6 +25,17 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED && s[0].turns[0].state == CP_STOPPED;
 }
 
+#test "follow-ups: a steer this page did not send (the paired phone's, #13713) shows with the words the worker gave" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"0123456789abcdef0123456789abcdef\",\"status\":\"accepted\",\"turn\":1,\"text\":\"use b\"}") == MWW_STEERED;
+  t: [64] u8;
+  #assert coder_page_steer_count(s) == 1 && coder_page_steer_text(s, 0, t[..]) == 5 && cast(string) t[0..<5] == "use b";
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"0123456789abcdef0123456789abcdef\",\"status\":\"applied\",\"turn\":1,\"step\":2}") == MWW_STEERED;
+  #assert s[0].turns[0].steered_n == 6 && cast(string) s[0].turns[0].steered[0..<5] == "use b";
+}
+
 #test "follow-ups: a queued follow-up carries the task object its message would send" {
   p: [1] CoderPage; s := p[..]; cp_init(s);
   out: [2048] u8;

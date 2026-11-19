@@ -233,7 +233,12 @@ dl_writing :: (c: [] AppCore) -> bool { return dl_e_writing(c[0].device[0].e[..]
 dl_unsure :: (c: [] AppCore) -> bool { return dl_e_unsure(c[0].device[0].e[..]); }
 dl_method :: (c: [] AppCore) -> string { return dl_e_method(c[0].device[0].e[..]); }
 
+// Whether the open conversation is a Coder Desktop chat, whose running turn takes a steer.
+dl_e_steerable :: (e: [] EnvironmentApp) -> bool { k := eu_current(e); if k < 0 { return false; } return e[0].view[0].sessions[k].desktop; }
+dl_steerable :: (c: [] AppCore) -> bool { return dl_e_steerable(c[0].device[0].e[..]); }
 dl_send_state :: (c: [] AppCore) -> int {
+  // a Coder Desktop chat's running turn: words in the composer steer it, an empty one stops it
+  if dl_busy(c) && dl_steerable(c) && app_draft(c).count > 0 { return ifx dl_free_steer(c) then SEND_READY else SEND_WAIT; }
   if dl_busy(c) { return SEND_STOP; }
   if c[0].device[0].queued { return SEND_WAIT; }
   if app_draft(c).count == 0 { return SEND_EMPTY; }
@@ -244,6 +249,11 @@ dl_send_state :: (c: [] AppCore) -> int {
 dl_free :: (c: [] AppCore) -> bool {
   e := c[0].device[0].e[..];
   return !dl_busy(c) && !e[0].flight && !e[0].random && !e[0].uncertain && e[0].action == 0 && !d_reading(c);
+}
+// Nothing is on its way to the computer while its Coder Desktop chat runs: a steer can go now.
+dl_free_steer :: (c: [] AppCore) -> bool {
+  e := c[0].device[0].e[..];
+  return !e[0].flight && !e[0].random && !e[0].uncertain && e[0].action == 0 && !d_reading(c);
 }
 // A Send that waits for a read (not for a write whose outcome is unknown) is kept until the read lands.
 dl_can_queue :: (c: [] AppCore) -> bool { d := dl_lane(c); return !d[0].queued && d[0].sent_n == 0 && !dl_writing(c) && !dl_unsure(c); }
@@ -292,7 +302,7 @@ dl_action :: (c: [] AppCore, a: int) -> int {
   }
   if a == ACT_STOP {
     if !dl_busy(c) || dl_writing(c) || e[0].uncertain { return APP_R_BLOCKED; }
-    eu_press(e, "env.composer.send");
+    eu_press(e, "env.composer.stop");
     if e[0].action != 11 { return APP_R_BLOCKED; }
     app_mark(c, SURF_COMPOSER | SURF_TASK); return APP_OK;
   }
@@ -324,7 +334,7 @@ dl_step :: (c: [] AppCore) {
   if d[0].op == 0 { eu_wait(e); }
   if e[0].action == 12 { e[0].action = 0; d[0].wake_at = now + DL_POLL_MS; }
   // a message sent before the read landed goes now
-  if d[0].queued && d[0].op == 0 && dl_free(c) {
+  if d[0].queued && d[0].op == 0 && (dl_free(c) || (dl_busy(c) && dl_steerable(c) && dl_free_steer(c))) {
     d[0].queued = false;
     if !dl_send_now(c, cast(string) d[0].sent_text[0..<d[0].sent_n]) { d[0].sent_n = 0; }
     app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER);

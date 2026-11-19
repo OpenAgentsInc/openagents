@@ -26,7 +26,7 @@
 //     {"kind":"ended","ending":E,"text":T}                                         mww_ended
 //     {"kind":"embedding","values":[...]}  {"kind":"embedding","error":W}          mww_embedding, mww_embedding_error
 //     {"kind":"turn","turn":N,"source":S,"id":I,"text":T}   a turn starts          mww_turn
-//     {"kind":"steer","id":I,"status":S,"turn":N[,"reason":R][,"step":K]}          mww_steered
+//     {"kind":"steer","id":I,"status":S,"turn":N[,"reason":R][,"step":K][,"text":T]}   mww_steered
 //     {"kind":"queue","paused":B,"reason":R,"active":I,"items":[{"id":I,"text":T}]}   mww_queue_begin/item/end
 //     {"kind":"queue_refused","op":O,"id":I,"reason":R}                            mww_queue_refused
 //
@@ -355,12 +355,15 @@ mww_turn :: (o: [] u8, turn: int, source: string, id: string, text: string) -> i
 }
 // A steer's status (accepted, rejected, applied, queued, resubmitted); reason for a rejected one,
 // step for an applied one (0: left out).
-mww_steered :: (o: [] u8, id: string, status: string, turn: int, reason: string, step: int) -> int {
+// text: the steer's words, on accepted, so an owner that did not send it (a steer from the paired
+// phone, GitHub #13713) can show it; "" leaves it out.
+mww_steered :: (o: [] u8, id: string, status: string, turn: int, reason: string, step: int, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"steer\",\"id\":"); n = json_write_string(o, n, id);
   n = json_raw(o, n, ",\"status\":"); n = json_write_string(o, n, status);
   n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn);
   if reason.count > 0 { n = json_raw(o, n, ",\"reason\":"); n = json_write_string(o, n, reason); }
   if step > 0 { n = json_raw(o, n, ",\"step\":"); n = json_write_int(o, n, step); }
+  if text.count > 0 { n = json_raw(o, n, ",\"text\":"); n = json_write_string(o, n, text); }
   return json_raw(o, n, "}");
 }
 // The whole queue, in three parts: begin, each item in order (k its place), end. Each returns
@@ -445,7 +448,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "turn" { k = MWW_TURN; l[0].turn = cl_int(line, "turn"); l[0].source = cl_str(ar, line, "source"); l[0].id = cl_str(ar, line, "id"); l[0].text = cl_str(ar, line, "text"); }
   else if kind == "steer" {
     k = MWW_STEERED; l[0].id = cl_str(ar, line, "id"); l[0].steer_status = cl_str(ar, line, "status"); l[0].turn = cl_int(line, "turn");
-    l[0].reason = cl_str(ar, line, "reason"); l[0].step = cl_int(line, "step");
+    l[0].reason = cl_str(ar, line, "reason"); l[0].step = cl_int(line, "step"); l[0].text = cl_str(ar, line, "text");
   }
   // the items are left as JSON: a long queue's text would not fit an owner's arena at once
   else if kind == "queue" { k = MWW_QUEUED; l[0].paused = cl_bool(line, "paused"); l[0].reason = cl_str(ar, line, "reason"); l[0].active = cl_str(ar, line, "active"); l[0].items = cl_raw(line, "items"); }
@@ -639,11 +642,15 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   n = mww_turn(o[..], 2, "queue", "q-1", "fix it");
   #assert cast(string) o[0..<n] == "{\"kind\":\"turn\",\"turn\":2,\"source\":\"queue\",\"id\":\"q-1\",\"text\":\"fix it\"}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_TURN && l[0].turn.value == 2 && l[0].source == "queue" && l[0].id == "q-1" && l[0].text == "fix it";
-  n = mww_steered(o[..], "s-1", "rejected", 2, "expected_turn_mismatch", 0);
+  n = mww_steered(o[..], "s-1", "rejected", 2, "expected_turn_mismatch", 0, "");
   #assert cast(string) o[0..<n] == "{\"kind\":\"steer\",\"id\":\"s-1\",\"status\":\"rejected\",\"turn\":2,\"reason\":\"expected_turn_mismatch\"}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].steer_status == "rejected" && l[0].reason == "expected_turn_mismatch" && !l[0].step.ok;
-  n = mww_steered(o[..], "s-1", "applied", 2, "", 4);
+  n = mww_steered(o[..], "s-1", "applied", 2, "", 4, "");
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].steer_status == "applied" && l[0].step.value == 4 && l[0].reason == "";
+  // an accepted steer carries its words, for an owner that did not send it
+  n = mww_steered(o[..], "s-3", "accepted", 2, "", 0, "use b");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"steer\",\"id\":\"s-3\",\"status\":\"accepted\",\"turn\":2,\"text\":\"use b\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].text == "use b" && l[0].steer_status == "accepted";
   n = mww_queue_begin(o[..], true, "error", "");
   n = mww_queue_item(o[..], n, 0, "q-1", "a"); n = mww_queue_item(o[..], n, 1, "q-2", "b"); n = mww_queue_end(o[..], n);
   #assert cast(string) o[0..<n] == "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"error\",\"active\":\"\",\"items\":[{\"id\":\"q-1\",\"text\":\"a\"},{\"id\":\"q-2\",\"text\":\"b\"}]}";

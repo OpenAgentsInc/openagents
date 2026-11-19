@@ -230,6 +230,30 @@ lc_unpaired :: (r: [] LcRun) {
   lc_ok(r, app_host_launch(c, 2, 1000, "fb9347515b57c2c3a066baa42dc6920b24645539a4e32c11ed36c2e4789c265a\tnot an id!") < 0, "a kept device conversation that does not read is refused");
 }
 
+// A Coder Desktop chat (GitHub #13713): while its turn runs, words in the composer go as a steer
+// (SendMessage) and Stop with an empty composer stops it.
+lc_steer :: (r: [] LcRun) {
+  a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq; vb: [65536] u8;
+  lc_ok(r, lc_ready(c, dl[..], r, ""), "a paired computer is chosen for a Coder Desktop chat");
+  _ = app_host_action(c, r[0].t + 1, 1200, ACT_DRAFT, false, "hello", ""); r[0].t += 1;
+  _ = app_host_action(c, r[0].t + 1, 1200, ACT_SEND, false, "", ""); r[0].t += 1;
+  ok := lc_next(c, q[..]) && lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813765580) == APP_OK && lc_next(c, q[..]);
+  // the computer answers with the chat running, a Coder Desktop chat
+  raw := lc_view("OpenSession", LC_CMD_A, true, "", false, vb[..]); v: [1] EaView; ok = ok && ea_view_read(raw, v[..]); v[0].sessions[0].desktop = true;
+  out: [65536] u8; n := ea_view_write(v[..], out[..]);
+  lc_ok(r, ok && n > 0 && lc_done(c, r, q[..], FXO_DONE, false, cast(string) out[0..<n], "", 0) == APP_OK && app_send_state(c) == SEND_STOP, "the chat runs: an empty composer shows Stop");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_DRAFT, false, "use b", "") == APP_OK && app_send_state(c) == SEND_READY, "words in the composer can steer the running turn");
+  r[0].t += 1;
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_SEND, false, "", "") == APP_OK && lc_next(c, q[..]) && q[0].kind == FX_IDS, "Send asks for its identity");
+  r[0].t += 1;
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_B, LC_SESSION, 1794813766000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"SendMessage\"") && lc_has(lc_body(q[..]), "\"use b\""), "the steer is SendMessage on the running chat");
+  raw = lc_view("SendMessage", LC_CMD_B, true, "", false, vb[..]); ok = ea_view_read(raw, v[..]); v[0].sessions[0].desktop = true; n = ea_view_write(v[..], out[..]);
+  lc_ok(r, ok && n > 0 && lc_done(c, r, q[..], FXO_DONE, false, cast(string) out[0..<n], "", 0) == APP_OK && app_draft(c).count == 0 && app_send_state(c) == SEND_STOP, "the computer has it: the composer empties and Stop shows again");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1400, ACT_STOP, false, "", "") == APP_OK && lc_next(c, q[..]) && q[0].kind == FX_IDS, "Stop is admitted");
+  r[0].t += 1;
+  lc_ok(r, lc_done(c, r, q[..], FXO_DONE, false, LC_CMD_A, LC_SESSION, 1794813767000) == APP_OK && lc_next(c, q[..]) && lc_has(lc_body(q[..]), "\"StopTurn\""), "Stop is StopTurn");
+}
+
 lc_bridge :: (r: [] LcRun) {
   // the picker's bridge: the rejoined computer stays chosen
   a: [1] AppCore; c := a[..]; dl: [1] DeviceLane; q: [1] LcReq;
@@ -252,7 +276,7 @@ lc_bridge :: (r: [] LcRun) {
 
 tool_main :: () -> int #export_c #effects(all) {
   r: [1] LcRun;
-  lc_turn(r[..]); lc_rejoin(r[..]); lc_rejoin_lost(r[..]); lc_early_send(r[..]); lc_refused(r[..]); lc_unpaired(r[..]); lc_bridge(r[..]);
+  lc_turn(r[..]); lc_rejoin(r[..]); lc_rejoin_lost(r[..]); lc_early_send(r[..]); lc_refused(r[..]); lc_unpaired(r[..]); lc_steer(r[..]); lc_bridge(r[..]);
   b: [64] u8; n := 0;
   lc_say(ifx r[0].failed == 0 then "device lane: all checks passed" else "device lane: checks failed");
   return ifx r[0].failed == 0 then 0 else 1;

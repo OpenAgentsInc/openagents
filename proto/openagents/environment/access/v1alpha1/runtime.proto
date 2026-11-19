@@ -74,6 +74,9 @@ message RuntimeSession {
   int64 updated_at_ms = 10 [json_name = "updated_at_ms"];
   optional string model = 11 [json_name = "model"]; // the managed conversation's model_id
   optional string effort = 12 [json_name = "effort"]; // its effort_id; absent for a model with none
+  // "coder-desktop" for a Coder Desktop chat the daemon runs (session_id desktop-RUN); absent otherwise.
+  // On one, SendMessage steers a running turn or starts a follow-up, and StopTurn stops it.
+  optional string surface = 13 [json_name = "surface"];
 }
 // One effort level the computer's Claude takes.
 message RuntimeEffort {

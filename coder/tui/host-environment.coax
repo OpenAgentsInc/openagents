@@ -650,8 +650,9 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   e:=h[0].environment[..];es_snapshot(h,q,grant,v);method:=cast(string)q[0].method[0..<q[0].nm];
   if method=="DescribeEnvironment" {es_folders(h,v);return;}
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
-  if method=="ListSessions" {if q[0].before==0 {es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
-  id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);
+  // Coder Desktop's chats, whose workers the daemon runs (host-desktop.coax, GitHub #13713)
+  if method=="ListSessions" {if q[0].before==0 {dk_list(h,v);es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
+  id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);
   if k>=0 && e[0].slots[k].execution[0].active {es_refuse(v,"unsupported_profile");return;}
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
   // a sub-agent's transcript is kept while its session is resident; a saved or terminal one has none

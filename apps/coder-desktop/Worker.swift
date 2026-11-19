@@ -117,8 +117,10 @@ final class CoderWorker {
     func attach(_ id: String, from: UInt64) {
         guard let daemon = CoderWorker.daemon else { return }
         runID = id; offset = from; tailHeld = Data()
-        runInput = try? FileHandle(forWritingTo: daemon.runsDir.appendingPathComponent(id + ".in"))
-        _ = try? runInput?.seekToEnd()
+        // O_APPEND: the daemon appends the paired phone's lines to the same file (host-desktop.coax,
+        // GitHub #13713), so every write lands at the end and no line overwrites another.
+        let fd = open(daemon.runsDir.appendingPathComponent(id + ".in").path, O_WRONLY | O_APPEND | O_CLOEXEC)
+        runInput = fd >= 0 ? FileHandle(fileDescriptor: fd, closeOnDealloc: true) : nil
     }
     /// The whole lines of the run's output not read yet, read now (a reattached run's replay).
     func readAvailable() -> [String] {

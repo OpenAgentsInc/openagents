@@ -70,7 +70,12 @@ ea_folder_ok :: (p:string)->bool #effects(all) {
   }
   return true;
 }
-EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;}
+// desktop: a Coder Desktop chat whose worker the computer's daemon runs (GitHub #13713), optional
+// on the wire as "surface":"coder-desktop". Its running turn takes more input: SendMessage while it
+// is busy steers the turn, and one while it is idle starts a follow-up. An older reader skips the
+// member and still reads and stops it; an older computer sends none.
+EA_SURFACE_DESKTOP :: "coder-desktop";
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;}
 // What the computer's Claude offers a turn: its models and effort levels.
 // Bit k of a model's ladder is level k; a model with no ladder takes no effort.
 // The default model's id is "default" (the CLI's own choice, no --model).
@@ -179,7 +184,8 @@ ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
   jo_key(o,"title");jo_str(o,cast(string)s.title[0..<s.nt]);jo_key(o,"origin");jo_str(o,ifx s.managed then "managed" else "observed-native");
   jo_key(o,"control");jo_str(o,cast(string)s.control[0..<s.nc]);jo_key(o,"generation");jo_int(o,s.generation);jo_key(o,"revision");jo_int(o,s.revision);
   jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);
-  if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}jo_end(o);
+  if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}
+  if s.desktop {jo_key(o,"surface");jo_str(o,EA_SURFACE_DESKTOP);}jo_end(o);
 }
 ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   m:=m_in;
@@ -274,7 +280,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     origin:=jv_raw(j,jv_get(j,row,"origin"));if origin!="managed" && origin!="observed-native" {return false;}s.managed=origin=="managed";
     s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
-    s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);
+    s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);s.desktop=jv_raw(j,jv_get(j,row,"surface"))==EA_SURFACE_DESKTOP;
     if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
@@ -340,6 +346,14 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"low\"]}]}",r[..]) && r[0].offer.models[0].ladder==1;
   #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"max\"]}]}",r[..]);
   v[0].offer=EaOffer.{};n=ea_view_write(v[..],out[..]);#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]) && r[0].offer.n==0;
+}
+
+#test "a Coder Desktop chat says so on the wire; a session without the member is not one" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ListSessions");v[0].ns=2;
+  for i:0..<2 {v[0].sessions[i].ni=ea_copy(v[0].sessions[i].id[..],ifx i==0 then "desktop-0123456789abcdef0123456789abcdef" else "s1");v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"available");v[0].sessions[i].managed=true;}
+  v[0].sessions[0].desktop=true;
+  out:[16384]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;found:=false;for i:0..<(ifx n>25 then n-25 else 0) {if cast(string)out[i..<i+25]=="\"surface\":\"coder-desktop\"" {found=true;}}
+  #assert n>0 && found && ea_view_read(cast(string)out[0..<n],r[..]) && r[0].sessions[0].desktop && !r[0].sessions[1].desktop;
 }
 
 #test "a thought travels beside items at its place, so a v1alpha1 reader never sees it as a reply" {

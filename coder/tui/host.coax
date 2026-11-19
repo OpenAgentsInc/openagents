@@ -53,6 +53,7 @@
 #load "host-offers.coax";
 #load "host-daemon.coax";
 #load "host-runs.coax";
+#load "host-desktop.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";

@@ -95,7 +95,7 @@ mp_worker :: (w: [] MpWork, k: int, line: string) -> string {
   else if got == MWW_TURN { if !l[0].turn.ok { return "a turn with no number"; } n = mww_turn(o, l[0].turn.value, l[0].source, l[0].id, l[0].text); }
   else if got == MWW_STEERED {
     if !l[0].turn.ok { return "a steer with no turn"; }
-    n = mww_steered(o, l[0].id, l[0].steer_status, l[0].turn.value, l[0].reason, ifx l[0].step.ok then l[0].step.value else 0);
+    n = mww_steered(o, l[0].id, l[0].steer_status, l[0].turn.value, l[0].reason, ifx l[0].step.ok then l[0].step.value else 0, l[0].text);
   }
   else if got == MWW_QUEUED {
     if !l[0].paused.ok || l[0].items.count < 2 { return "a queue with no paused or items"; }

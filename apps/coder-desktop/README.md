@@ -287,6 +287,14 @@ chat, reads the run's lines from where the message started, and then follows
 them. The control methods (StartRun, StopRun, ListRuns, ForgetRun) are on the
 daemon's local socket only, never on the relay.
 
+**On your phone.** OpenAgents Mobile, paired to this Mac, lists these chats
+(those in the paired workspace) with the rest of the Mac's chats. It shows
+each one's messages, thinking, tool calls and sub-agents, live. From the phone
+you can send a message (it steers a running reply, or starts a follow-up
+through the chat's queue) and press Stop. Coder shows what the phone sent. The
+phone writes to `ID.in` through the daemon, which checks the pairing's grant
+(`coder/tui/host-desktop.coax`).
+
 Limits:
 
 - The daemon runs up to 12 workers at once, sub-agents included. Past that a message or a sub-agent does not start, and the chat says so: "Coder runs up to 12 workers at once, sub-agents included."

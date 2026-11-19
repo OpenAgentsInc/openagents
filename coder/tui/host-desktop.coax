@@ -1,0 +1,452 @@
+// Coder Desktop's chats on the paired phone (GitHub #13713). Since #13694 the daemon
+// (`coder host serve`) runs each Coder Desktop chat's worker as a run under
+// ~/.openagents/coder/host/runs (host-runs.coax). This file shows those runs to a paired phone over
+// the same environment methods and the same admission as the computer's own sessions:
+//
+//   ListSessions   each chat whose worker runs in the grant's workspace, as a session
+//                  "desktop-RUN" with "surface":"coder-desktop" (EaSession.desktop)
+//   ReadSession    the chat's transcript, built from the run's worker lines (ID.out): each turn's
+//                  message, thoughts, replies, commands, file reads and sub-agent calls, paged as
+//                  any session is (es_project_at)
+//   ReadSubagent   a sub-agent call's own transcript: the run the chat's Coder started for it (an
+//                  mcworker or claudeworker run whose task line names the chat's session)
+//   SendMessage    while a turn runs, a steer for it (mww_steer); while none runs, a follow-up the
+//                  worker starts at once (mww_queue add, then promote now)
+//   StopTurn       ends the running turn (mww_interrupt) and stops its sub-agents' workers
+//
+// The phone never starts, stops or forgets a run: StartRun, StopRun, ListRuns and ForgetRun stay
+// on the local socket (daemon-wire.coax). Its lines go into the run's ID.in, which the daemon
+// forwards as it forwards Coder's (both append whole lines with O_APPEND), so Coder Desktop sees a
+// phone's follow-up as a queued turn and a phone's steer by the words the worker says back.
+// Everything here reads the worker's own lines (mcworker-wire.coax); no transcript text is ever
+// taken as an operation.
+//
+// A chat is the phone's only when its worker's folder (the task line's "cwd") is the grant's
+// workspace or inside it, as a session the phone opens is.
+
+DK_PREFIX :: "desktop-";
+DK_RUNS :: 64;
+DK_HEAD :: 131072;         // bytes of a run's input a listing reads (its first task, its queue key)
+DK_FILE :: 1048576;        // bytes of a run's input or output read whole (the newest, past that)
+DK_TAIL :: 512;            // bytes of a run's task text kept to match a sub-agent run to its call
+DK_ARENA :: 262144;
+
+DkInfo :: struct {
+  id: [32] u8; state: [16] u8; ns: int; started: int; ended: int; out: int; updated: int;
+  session: [192] u8; nsession: int;      // the worker's session ("coder-desktop-UUID"; a sub-agent's adds "-agent-J-UUID")
+  cwd: [1024] u8; ncwd: int;
+  title: [256] u8; nt: int;              // its first message, cut
+  tail: [DK_TAIL] u8; ntail: int;        // the end of its first task's text
+  key: [128] u8; nkey: int;              // the chat's id, from the queue's open line
+  busy: bool;                            // a turn of it runs: its newest turn line is after its newest ended line
+}
+
+dk_is :: (id: string) -> bool { return id.count == DK_PREFIX.count + 32 && hs_prefix(id, DK_PREFIX) && ea_id(cast(string) id[DK_PREFIX.count..<id.count], 32); }
+dk_run_of :: (id: string) -> string { return cast(string) id[DK_PREFIX.count..<id.count]; }
+dk_has :: (s: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > s.count { return needle.count == 0; }
+  for i: 0..<s.count - needle.count + 1 { if cast(string) s[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+dk_top :: (r: [] DkInfo) -> bool { return r[0].nsession > 0 && !dk_has(cast(string) r[0].session[0..<r[0].nsession], "-agent-"); }
+dk_running :: (r: [] DkInfo) -> bool { return cast(string) r[0].state[0..<r[0].ns] == "running"; }
+
+// The whole lines of b, one at a time: next[0] is where the next starts. A line not ended by a
+// newline (still being written) is not one.
+dk_line :: (b: string, next: [] int) -> string {
+  at := next[0];
+  if at >= b.count { return ""; }
+  e := at; while e < b.count && b[e] != '\n' { e += 1; }
+  if e >= b.count { next[0] = b.count; return ""; }
+  next[0] = e + 1;
+  return cast(string) b[at..<e];
+}
+// The newest up to DK_FILE bytes of a run's file into out, from a line's start: what was read.
+dk_read_tail :: (path: string, out: [] u8) -> string {
+  size := fs_size(path);
+  if size < 1 { return ""; }
+  from := ifx size > out.count then size - out.count else 0;
+  n := fs_read_at(path, from, out);
+  if n < 1 { return ""; }
+  at := 0;
+  if from > 0 { while at < n && out[at] != '\n' { at += 1; } at += 1; }
+  return ifx at < n then cast(string) out[at..<n] else "";
+}
+
+// What a run is, from its state file, the head of its input and the tail of its output.
+dk_info :: (id: string, r: [] DkInfo) -> bool {
+  r[0] = DkInfo.{};
+  st: [1] DmRun;
+  if !ea_id(id, 32) || !dr_state_read(id, st[..]) { return false; }
+  _ = hs_set(r[0].id[..], id);
+  r[0].ns = ea_copy(r[0].state[..], cast(string) st[0].state[0..<st[0].ns]);
+  r[0].started = st[0].started; r[0].ended = st[0].ended; r[0].out = st[0].out;
+  ip: [1400] u8; head: [DK_HEAD] u8; n := fs_read(dr_file(id, ".in", ip[..]), head[..]);
+  defer { for i: 0..<head.count { head[i] = 0; } }
+  if n < 1 { return false; }
+  b := cast(string) head[0..<n]; next := [1] int.[0];
+  ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; q: [1] MwwRequest;
+  while true {
+    line := dk_line(b, next[..]);
+    if line.count == 0 { if next[0] >= b.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    k := mww_request(ar[..], line, q[..]);
+    if k == MWW_TASK && r[0].nsession == 0 {
+      r[0].nsession = hs_set(r[0].session[..], q[0].session);
+      r[0].ncwd = hs_set(r[0].cwd[..], q[0].cwd);
+      r[0].nt = hs_set(r[0].title[..], hs_cut(q[0].task, 200));
+      t := q[0].task; from := ifx t.count > DK_TAIL then t.count - DK_TAIL else 0;
+      while from < t.count && (t[from] & 0xc0) == 0x80 { from += 1; }
+      r[0].ntail = hs_set(r[0].tail[..], cast(string) t[from..<t.count]);
+    }
+    if k == MWW_QUEUE && q[0].op == "open" && q[0].key.count > 0 && q[0].key.count <= 128 { r[0].nkey = hs_set(r[0].key[..], q[0].key); }
+  }
+  if r[0].nsession == 0 { return false; }
+  // a turn runs while the newest turn line is after the newest ended line
+  op: [1400] u8; out := dr_file(id, ".out", op[..]);
+  tail: [65536] u8; t := dk_read_tail(out, tail[..]); tn := [1] int.[0];
+  turn := -1; ended := -1; k := 0;
+  while true {
+    line := dk_line(t, tn[..]);
+    if line.count == 0 { if tn[0] >= t.count { break; } continue; }
+    if hs_prefix(line, "{\"kind\":\"turn\"") { turn = k; }
+    if hs_prefix(line, "{\"kind\":\"ended\"") { ended = k; }
+    k += 1;
+  }
+  r[0].busy = dk_running(r) && turn > ended;
+  mt := fs_mtime_ns(out); r[0].updated = ifx mt > 0 then mt / 1000000 else r[0].started * 1000;
+  return true;
+}
+
+// Every run that has a state file, at most DK_RUNS.
+dk_all :: (runs: [] DkInfo) -> int {
+  l: [1] FsList; p: [1400] u8; n := fs_list(es_path("runs", p[..]), l[..]); count := 0;
+  for i: 0..<n {
+    if count >= runs.count { break; }
+    name := fs_entry(l[..], i);
+    if name.count != 38 || !hs_ends(name, ".state") { continue; }
+    if dk_info(cast(string) name[0..<32], runs[count..<count + 1]) { count += 1; }
+  }
+  return count;
+}
+
+// Whether the run's folder is the grant's workspace or inside it.
+dk_scoped :: (h: [] HsHost, r: [] DkInfo) -> bool {
+  c := h[0].environment[0].configuration[..];
+  root := cast(string) c[0].workspace[0..<c[0].nw];
+  real: [1024] u8; at := fs_realpath(cast(string) r[0].cwd[0..<r[0].ncwd], real[..]);
+  return root.count > 0 && at.count > 0 && (at == root || es_folder_inside(root, at));
+}
+
+// The run as the phone's session: its id, the chat's title (the name Coder gave it, else its first
+// message), available while its worker runs and read only after.
+dk_summary :: (r: [] DkInfo, s: [] EaSession) {
+  s[0] = EaSession.{};
+  b: [64] u8; n := hs_cat(b[..], 0, DK_PREFIX); n = hs_cat(b[..], n, cast(string) r[0].id[..]);
+  s[0].ni = ea_copy(s[0].id[..], cast(string) b[0..<n]); s[0].nw = ea_copy(s[0].workspace[..], "default");
+  title := cast(string) r[0].title[0..<r[0].nt];
+  meta: [DM_META_MAX] DmSessionMeta; nm := dm_meta_load(meta[..]); key := cast(string) r[0].key[0..<r[0].nkey];
+  for i: 0..<nm { if key.count > 0 && cast(string) meta[i].id[0..<meta[i].ni] == key && meta[i].nt > 0 { title = cast(string) meta[i].title[0..<meta[i].nt]; } }
+  s[0].nt = ea_copy(s[0].title[..], hs_cut(title, 200)); if s[0].nt < 0 { s[0].nt = 0; }
+  s[0].managed = true; s[0].desktop = true;
+  s[0].nc = ea_copy(s[0].control[..], ifx dk_running(r) then "available" else "observe-only");
+  s[0].generation = r[0].started * 1000; s[0].revision = r[0].out; s[0].busy = r[0].busy; s[0].updated = r[0].updated;
+}
+
+// ListSessions: the grant's Coder Desktop chats, running ones first.
+dk_list :: (h: [] HsHost, v: [] EaView) {
+  runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
+  for pass: 0..<2 {
+    for i: 0..<n {
+      r := runs[i..<i + 1];
+      if !dk_top(r) || dk_running(r) != (pass == 0) || !dk_scoped(h, r) { continue; }
+      if v[0].ns >= 96 { v[0].complete = false; return; }
+      dk_summary(r, v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- the transcript
+
+// A sub-agent run of the chat with session `parent`: its run id, start and task text's end.
+DkSub :: struct { id: [32] u8; started: int; tail: [DK_TAIL] u8; ntail: int; used: bool; running: bool; }
+dk_subs :: (runs: [] DkInfo, n: int, parent: string, subs: [] DkSub) -> int {
+  m := 0;
+  b: [256] u8; pn := hs_cat(b[..], 0, parent); pn = hs_cat(b[..], pn, "-agent-"); prefix := cast(string) b[0..<pn];
+  for i: 0..<n {
+    if m >= subs.count { break; }
+    if !hs_prefix(cast(string) runs[i].session[0..<runs[i].nsession], prefix) { continue; }
+    subs[m] = DkSub.{}; subs[m].id = runs[i].id; subs[m].started = runs[i].started;
+    subs[m].ntail = hs_set(subs[m].tail[..], cast(string) runs[i].tail[0..<runs[i].ntail]); subs[m].running = dk_running(runs[i..<i + 1]);
+    m += 1;
+  }
+  // oldest first: a delegate line's tasks take them in the order they started
+  for i: 1..<m { j := i; while j > 0 && subs[j - 1].started > subs[j].started { t := subs[j]; subs[j] = subs[j - 1]; subs[j - 1] = t; j -= 1; } }
+  return m;
+}
+// The unused sub-agent run whose task ends with the delegated task's text, else the oldest unused.
+dk_sub_for :: (subs: [] DkSub, n: int, task: string) -> int {
+  want := ifx task.count > DK_TAIL then cast(string) task[task.count - DK_TAIL..<task.count] else task;
+  for i: 0..<n {
+    if subs[i].used { continue; }
+    t := cast(string) subs[i].tail[0..<subs[i].ntail];
+    if want.count > 0 && (hs_ends(t, want) || (t.count == DK_TAIL && hs_ends(want, cast(string) t[t.count / 2..<t.count]))) { return i; }
+  }
+  for i: 0..<n { if !subs[i].used { return i; } }
+  return -1;
+}
+
+dk_tool :: (s: [] Session, name: string, tk: int, arg: string) -> int {
+  k := s_part(s, P_TOOL);
+  if k < 0 { return -1; }
+  s[0].parts[k].name = s_put(s, name); s[0].parts[k].tk = tk; s[0].parts[k].arg = s_put(s, hs_cut(arg, 4000));
+  s[0].parts[k].input = s[0].parts[k].arg;
+  return k;
+}
+dk_done :: (s: [] Session, k: int, output: string, failed: bool) {
+  if k < 0 { return; }
+  s[0].parts[k].output = s_put(s, hs_cut(output, 4000)); s[0].parts[k].failed = failed; s[0].parts[k].resolved = true;
+}
+
+// Part k's sub-agent rows, from its run's lines: the calls its agent made and what it said.
+dk_sub_rows :: (s: [] Session, k: int, id: string, running: bool, file: [] u8, ab: [] u8) {
+  op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
+  next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine;
+  said: [4000] u8; nsaid := 0; ended := false; ending_text: [2000] u8; nend := 0;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := mww_read(ar[..], line, l[..]);
+    if kind == MWW_REPLY { nsaid = hs_cat(said[..], nsaid, l[0].text); continue; }
+    if kind == MWW_NONE || kind == MWW_READY || kind == MWW_JOURNAL || kind == MWW_ATTEMPT || kind == MWW_THOUGHT { continue; }
+    if nsaid > 0 { _ = s_sub_add(s, k, false, "", cast(string) said[0..<nsaid], ""); nsaid = 0; }
+    if kind == MWW_ASK {
+      if s_sub_add(s, k, true, "Bash", l[0].command, "") { s[0].parts[k].subcalls += 1; dk_now(s, k, "Bash", l[0].command); }
+    } else if kind == MWW_COMMAND {
+      // the call its ask started, else one of its own
+      r := -1; i := s[0].nsubs - 1;
+      while i >= 0 { if s[0].subs[i].part == k && s[0].subs[i].tool && !s[0].subs[i].done && s[0].subs[i].text == l[0].command { r = i; break; } i -= 1; }
+      if r < 0 && s_sub_add(s, k, true, "Bash", l[0].command, "") { r = s[0].nsubs - 1; s[0].parts[k].subcalls += 1; dk_now(s, k, "Bash", l[0].command); }
+      if r >= 0 {
+        s[0].subs[r].done = true; s[0].subs[r].output = s_put(s, hs_cut(l[0].output, S_SUB_OUT));
+        s[0].subs[r].failed = (l[0].exit.ok && l[0].exit.value != 0) || (l[0].timed_out.ok && l[0].timed_out.value);
+      }
+    } else if kind == MWW_VIEW {
+      if s_sub_add(s, k, true, "Read", l[0].path, "") {
+        r := s[0].nsubs - 1; s[0].subs[r].done = true; s[0].subs[r].output = s_put(s, ifx l[0].found.ok && l[0].found.value then "" else "Not found");
+        s[0].parts[k].subcalls += 1; dk_now(s, k, "Read", l[0].path);
+      }
+    } else if kind == MWW_ENDED {
+      ended = true; nend = hs_cat(ending_text[..], 0, hs_cut(l[0].text, ending_text.count));
+    }
+  }
+  if nsaid > 0 { _ = s_sub_add(s, k, false, "", cast(string) said[0..<nsaid], ""); }
+  if ended || !running { dk_done(s, k, cast(string) ending_text[0..<nend], false); }
+}
+dk_now :: (s: [] Session, k: int, name: string, arg: string) {
+  b: [160] u8; n := hs_cat(b[..], 0, name); n = hs_cat(b[..], n, " "); n = hs_cat(b[..], n, hs_cut(arg, 150));
+  s[0].parts[k].subnow = s_put(s, hs_cut(cast(string) b[0..<n], 160));
+}
+
+// The chat's transcript from its run's lines, sub-agent calls with their own rows; stamps[k] is
+// when a still running sub-agent call began (wall ms). The parts' count of stamps.
+dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps: [] int, file: [] u8, ab: [] u8) -> int {
+  for i: 0..<stamps.count { stamps[i] = 0; }
+  subs: [32] DkSub; nsub := dk_subs(runs, nruns, cast(string) r[0].session[0..<r[0].nsession], subs[..]);
+  // the delegated calls first (their rows are read after the chat's lines: file is reused)
+  calls: [32] int; call_sub: [32] int; ncall := 0;
+  steer_ids: [8 * 64] u8; steer_n: [8] int; steer_text: [8 * 2000] u8; steer_tn: [8] int; nsteer := 0;
+  id := cast(string) r[0].id[..];
+  op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
+  next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine;
+  ask := -1; open := false; text_since := false;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := mww_read(ar[..], line, l[..]);
+    if kind == MWW_TURN { s_user(s, ifx l[0].text.count > 0 then l[0].text else "(follow-up)"); open = true; text_since = false; ask = -1; }
+    else if kind == MWW_THOUGHT { k := s_part(s, P_THINK); if k >= 0 { s_append(s, k, l[0].text); } }
+    else if kind == MWW_REPLY { s_delta(s, P_TEXT, l[0].text); text_since = true; }
+    else if kind == MWW_ASK { ask = dk_tool(s, "Bash", TK_EXEC, l[0].command); }
+    else if kind == MWW_COMMAND {
+      k := -1;
+      if ask >= 0 && s[0].parts[ask].arg == hs_cut(l[0].command, 4000) && !s[0].parts[ask].resolved { k = ask; } else { k = dk_tool(s, "Bash", TK_EXEC, l[0].command); }
+      dk_done(s, k, l[0].output, (l[0].exit.ok && l[0].exit.value != 0) || (l[0].timed_out.ok && l[0].timed_out.value)); ask = -1;
+    }
+    else if kind == MWW_VIEW { k := dk_tool(s, "Read", TK_READ, l[0].path); dk_done(s, k, ifx l[0].found.ok && l[0].found.value then "" else "Not found", false); }
+    else if kind == MWW_DELEGATE {
+      tasks := l[0].tasks;
+      for i: 0..<cl_count(tasks) {
+        one := cl_json(tasks, cl_item(tasks, i));
+        ta: [32768] u8; tar := [1] ClArena.[ClArena.{buf = ta[..]}];
+        task := cl_str(tar[..], one, "task");
+        k := dk_tool(s, "Task", TK_AGENT, task);
+        if k < 0 || ncall >= calls.count { continue; }
+        j := dk_sub_for(subs[..], nsub, task); if j >= 0 { subs[j].used = true; }
+        calls[ncall] = k; call_sub[ncall] = j; ncall += 1;
+      }
+    }
+    else if kind == MWW_STEERED {
+      // a steer the turn took shows where it went in, with the words its accepted line gave
+      if l[0].steer_status == "accepted" && l[0].text.count > 0 && nsteer < 8 {
+        steer_n[nsteer] = hs_set(steer_ids[nsteer * 64..<nsteer * 64 + 64], hs_cut(l[0].id, 64)); steer_tn[nsteer] = hs_set(steer_text[nsteer * 2000..<nsteer * 2000 + 2000], hs_cut(l[0].text, 2000)); nsteer += 1;
+      }
+      if l[0].steer_status == "applied" {
+        for q: 0..<nsteer { if cast(string) steer_ids[q * 64..<q * 64 + steer_n[q]] == hs_cut(l[0].id, 64) { k := s_part(s, P_USER); if k >= 0 { s_append(s, k, cast(string) steer_text[q * 2000..<q * 2000 + steer_tn[q]]); } } }
+      }
+    }
+    else if kind == MWW_ENDED {
+      open = false;
+      if l[0].ending == "finished" || l[0].ending == "asked" { if !text_since && l[0].text.count > 0 { s_delta(s, P_TEXT, l[0].text); } }
+      else { s_notice(s, ifx l[0].ending == "stopped" then N_STOPPED else N_ERROR, ifx l[0].ending == "stopped" then "Stopped" else ifx l[0].text.count > 0 then l[0].text else "The turn ended early."); }
+    }
+  }
+  s[0].live = open && dk_running(r);
+  for c: 0..<ncall {
+    k := calls[c]; j := call_sub[c];
+    if j >= 0 {
+      dk_sub_rows(s, k, cast(string) subs[j].id[..], subs[j].running, file, ab);
+      if !s[0].parts[k].resolved && k < stamps.count { stamps[k] = subs[j].started * 1000; }
+    }
+    if !s[0].live { s[0].parts[k].resolved = true; }
+  }
+  return ifx s[0].n < stamps.count then s[0].n else stamps.count;
+}
+
+// The run `id` names for this grant, or false (refused not_found).
+dk_find :: (h: [] HsHost, id: string, runs: [] DkInfo, n: int) -> int {
+  if !dk_is(id) { return -1; }
+  run := dk_run_of(id);
+  for i: 0..<n { if cast(string) runs[i].id[..] == run && dk_top(runs[i..<i + 1]) && dk_scoped(h, runs[i..<i + 1]) { return i; } }
+  return -1;
+}
+
+// ReadSession and ReadSubagent of a Coder Desktop chat.
+dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
+  runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
+  k := dk_find(h, cast(string) q[0].session[0..<q[0].ns], runs[..], n);
+  if k < 0 { es_refuse(v, "not_found"); return; }
+  r := runs[k..<k + 1];
+  if v[0].ns < 128 { dk_summary(r, v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1; }
+  ses: [1] Session; pool: [524288] u8; s_init(ses[..], pool[..]);
+  stamps: [S_PARTS] int; file: [DK_FILE] u8; ab: [DK_ARENA] u8;
+  have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..]);
+  if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
+  es_project_at(ses[..], stamps[0..<have], q, v);
+}
+
+// ---------------------------------------------------------------- the phone's writes
+
+// The newest task line Coder sent the run (the follow-up's settings), and its queue's key.
+dk_last_task :: (id: string, task: [] u8, ntask: [] int, key: [] u8, nkey: [] int) {
+  ntask[0] = 0; nkey[0] = 0;
+  ip: [1400] u8; b: [DK_FILE] u8; t := dk_read_tail(dr_file(id, ".in", ip[..]), b[..]);
+  defer { for i: 0..<b.count { b[i] = 0; } }
+  next := [1] int.[0]; ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; q: [1] MwwRequest;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    k := mww_request(ar[..], line, q[..]);
+    if k == MWW_TASK && line.count <= task.count { for c, i: line { task[i] = c; } ntask[0] = line.count; }
+    if k == MWW_QUEUE && q[0].op == "open" && q[0].key.count > 0 && q[0].key.count <= key.count { nkey[0] = hs_set(key, q[0].key); }
+  }
+}
+
+// The lines a phone's SendMessage or StopTurn writes into the run's input: their length, or -1.
+dk_lines :: (r: [] DkInfo, runs: [] DkInfo, n: int, method: string, command: string, text: string, out: [] u8) -> int {
+  id := cast(string) r[0].id[..];
+  if method == "StopTurn" {
+    if !r[0].busy { return 0; }
+    return mww_interrupt(out, false);
+  }
+  if r[0].busy { return mww_steer(out, command, text, 0); }
+  // a follow-up: the chat's own settings with the phone's words, queued and started at once
+  tb: [32768] u8; tn: [1] int; kb: [128] u8; kn: [1] int;
+  dk_last_task(id, tb[..], tn[..], kb[..], kn[..]);
+  defer { for i: 0..<tb.count { tb[i] = 0; } }
+  if tn[0] < 1 { return -1; }
+  ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; t: [1] McTask;
+  if !mww_task_read(ar[..], cast(string) tb[0..<tn[0]], t[..]) { return -1; }
+  t[0].task = text;
+  msg: [32768] u8; mn := mww_task(msg[..], t[0]);
+  if mn < 2 { return -1; }
+  at := 0;
+  if kn[0] > 0 { w := mww_queue(out, "open", "", "", "", 0, false, cast(string) kb[0..<kn[0]]); if w < 0 { return -1; } at = w; }
+  w := mww_queue(out[at..<out.count], "add", command, text, cast(string) msg[0..<mn - 1], 0, false, "");
+  if w < 0 { return -1; }
+  at += w;
+  w = mww_queue(out[at..<out.count], "promote", command, "", "", 0, true, "");
+  if w < 0 { return -1; }
+  return at + w;
+}
+
+// SendMessage and StopTurn on a Coder Desktop chat, under one command identity each: its intent is
+// kept before its lines go, and a retry of the same request is answered without writing again.
+dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
+  method := cast(string) q[0].method[0..<q[0].nm];
+  if method != "SendMessage" && method != "StopTurn" { es_refuse(v, "unsupported_profile"); return; }
+  command := cast(string) q[0].command[0..<q[0].nc];
+  if !ea_id(command, 32) { es_refuse(v, "malformed"); return; }
+  runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
+  k := dk_find(h, cast(string) q[0].session[0..<q[0].ns], runs[..], n);
+  if k < 0 { es_refuse(v, "not_found"); return; }
+  r := runs[k..<k + 1];
+  raw: [24576] u8; rn := ea_write(q, raw[..]); if rn < 0 { es_refuse(v, "malformed"); return; }
+  name: [256] u8; nn := hs_cat(name[..], 0, "command-"); nn = hs_cat(name[..], nn, grant); nn = hs_cat(name[..], nn, "-"); nn = hs_cat(name[..], nn, command); nn = hs_cat(name[..], nn, ".json");
+  path: [1400] u8; file := es_path(cast(string) name[0..<nn], path[..]);
+  if fs_exists(file) {
+    previous: [24576] u8; got := fs_read(file, previous[..]);
+    if got != rn || cast(string) previous[0..<ifx got > 0 then got else 0] != cast(string) raw[0..<rn] { es_refuse(v, "idempotency_conflict"); return; }
+    dk_summary(r, v[0].sessions[0..<1]); v[0].ns = 1;
+    v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted"); return;
+  }
+  if !ea_fresh(q[0].issued, q[0].expires, cxproc_wall_us() / 1000) { es_refuse(v, "expired"); return; }
+  if !dk_running(r) || q[0].generation != r[0].started * 1000 { es_refuse(v, "conflict"); return; }
+  text := cast(string) q[0].text[0..<q[0].nt];
+  if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
+  lines: [98304] u8; ln := dk_lines(r, runs[..], n, method, command, text, lines[..]);
+  if ln < 0 { es_refuse(v, "conflict"); return; }
+  if !fs_replace_durable(file, cast(string) raw[0..<rn]) { es_refuse(v, "storage_unavailable"); return; }
+  ip: [1400] u8;
+  if ln > 0 && !fs_append(dr_file(cast(string) r[0].id[..], ".in", ip[..]), cast(string) lines[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
+  // a stopped turn's sub-agents stop too, as Coder's own Stop does
+  if method == "StopTurn" && r[0].busy {
+    subs: [32] DkSub; ns := dk_subs(runs[..], n, cast(string) r[0].session[0..<r[0].nsession], subs[..]);
+    for i: 0..<ns { if subs[i].running { sp: [1400] u8; _ = fs_append(dr_file(cast(string) subs[i].id[..], ".in", sp[..]), MWW_STOP_LINE); } }
+  }
+  dk_summary(r, v[0].sessions[0..<1]); v[0].ns = 1;
+  v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted");
+}
+
+dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
+  method := cast(string) q[0].method[0..<q[0].nm];
+  if method == "ReadSession" || method == "ReadSubagent" { dk_read(h, q, v); return; }
+  dk_write(h, q, grant, v);
+}
+
+#test "a Coder Desktop chat's session id names its run" {
+  #assert dk_is("desktop-0123456789abcdef0123456789abcdef") && dk_run_of("desktop-0123456789abcdef0123456789abcdef") == "0123456789abcdef0123456789abcdef";
+  #assert !dk_is("desktop-0123") && !dk_is("0123456789abcdef0123456789abcdef") && !dk_is("desktop-0123456789ABCDEF0123456789abcdef");
+}
+#test "a run's lines are read whole, never a line still being written" {
+  b := "{\"a\":1}\n{\"b\":2}\n{\"c\":"; next := [1] int.[0];
+  #assert dk_line(b, next[..]) == "{\"a\":1}" && dk_line(b, next[..]) == "{\"b\":2}" && dk_line(b, next[..]) == "" && next[0] == b.count;
+}
+#test "a delegated task finds the sub-agent run whose task ends with it" {
+  subs: [3] DkSub;
+  subs[0].ntail = hs_set(subs[0].tail[..], "skills...\nSurvey the docs"); subs[1].ntail = hs_set(subs[1].tail[..], "skills...\nSurvey the tests");
+  #assert dk_sub_for(subs[..], 2, "Survey the tests") == 1 && dk_sub_for(subs[..], 2, "Survey the docs") == 0;
+  subs[1].used = true; #assert dk_sub_for(subs[..], 2, "Survey the tests") == 0;   // none matches: the oldest unused
+  subs[0].used = true; #assert dk_sub_for(subs[..], 2, "x") == -1;
+}
+#test "a phone's steer and stop become the worker's own lines" {
+  r: [1] DkInfo; r[0].busy = true; out: [4096] u8; none: [1] DkInfo;
+  n := dk_lines(r[..], none[..], 0, "SendMessage", "0123456789abcdef0123456789abcdef", "use b", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "{\"steer\":\"use b\",\"id\":\"0123456789abcdef0123456789abcdef\"}\n";
+  n = dk_lines(r[..], none[..], 0, "StopTurn", "0123456789abcdef0123456789abcdef", "", out[..]);
+  #assert cast(string) out[0..<n] == "{\"interrupt\":true}\n";
+  r[0].busy = false; #assert dk_lines(r[..], none[..], 0, "StopTurn", "0123456789abcdef0123456789abcdef", "", out[..]) == 0;
+}

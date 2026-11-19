@@ -722,6 +722,11 @@
      "name": "step",
      "type": "integer",
      "note": "written only for applied: the step it became"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "written only for accepted: the steer's words, so an owner that did not send it (one from the paired phone) can show it"
     }
    ]
   },

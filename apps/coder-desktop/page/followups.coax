@@ -135,8 +135,10 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
   if kind == MWW_STEERED {
     st := cp_fu_status(l.steer_status);
     if st < 0 { return true; }
-    i := cp_fu_steer_put(f, l.id, "", st, s[0].nturns - 1);
+    // a steer this page did not send (the paired phone's, GitHub #13713) shows the words the worker gave
+    i := cp_fu_steer_put(f, l.id, l.text, st, s[0].nturns - 1);
     if i < 0 { return true; }
+    if f[0].steers[i].ntext == 0 && l.text.count > 0 { f[0].steers[i].ntext = cp_fu_cut(f[0].steers[i].text[..], l.text); }
     was := f[0].steers[i].status;
     f[0].steers[i].status = st;
     at := f[0].steers[i].at;
