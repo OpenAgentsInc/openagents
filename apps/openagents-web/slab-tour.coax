@@ -263,6 +263,7 @@ tour_address :: (s: [] Slab, url: string) {
   if k == 0 { s[0].hp.tour.wanted = false; }
   s[0].hp.tour.hold = cast(f32) query_number(url, "hold", -1);
   if k >= 1 && s[0].hud { s[0].hp.tour.on = false; tour_go(s, cast(int) k - 1); s[0].hp.tour.cut = true; }
+  flight_address(s, url);   // ?fly=: a flythrough, with the tour left off
 }
 
 // ---------------------------------------------------------------- what it says
@@ -560,4 +561,67 @@ tour_say :: (s: [] Slab, h: [] SceneHud) {
   #assert s[0].chart.aside && v.x >= 1020 && v.x + v.w <= 1440;
   #assert n > 0 && !tour_pointer(s, v.x + v.w / 2, v.y + v.h / 2, 0) && tour_pointer(s, v.x + v.w + 40, v.y + v.h + 40, 0);
   #assert slab_key(s, KEY_ESCAPE, true) && !s[0].hp.tour.on && !s[0].under && !s[0].build.on && !s[0].chart.on;
+}
+
+// ---------------------------------------------------------------- a flythrough
+
+// ?fly=T,EX,EY,EZ,LX,LY,LZ~...: the camera flies that path on the page's clock and holds its last
+// key, with the tour and the arrival left off. The text is metaverse-engine/cam/flyover.coax's
+// (keys split by '~', each the second, the eye and the point looked at, metres, split by ','), flown
+// through as cam/track.coax flies it. &flyat=SECONDS holds the path at that second, for a picture. A
+// path the track refuses leaves the camera the visitor's. The flythrough film of the finished
+// platform is scripts/slab-flythrough.sh.
+SlabFlight :: struct { on: bool; track: trk.CamTrack; at: f32; hold: f32 = -1; }
+flight_address :: (s: [] Slab, url: string) {
+  text := query_text(url, "fly");
+  if text.count == 0 { return; }
+  s[0].flight.track = trk.cam_track_fly(text);
+  s[0].flight.on = trk.cam_track_length(s[0].flight.track) > 0;
+  s[0].flight.hold = cast(f32) query_number(url, "flyat", -1);
+  if s[0].flight.on { s[0].intro = 0; s[0].hp.tour.wanted = false; s[0].hp.tour.on = false; }
+}
+flight_camera :: (s: [] Slab, step: f32) -> TourCamera {
+  c: TourCamera;
+  if !s[0].flight.on { return c; }
+  s[0].flight.at = ifx s[0].flight.hold >= 0 then s[0].flight.hold else s[0].flight.at + step;
+  v := trk.cam_track_at(s[0].flight.track, s[0].flight.at);
+  ax := v.lx - v.ex; ay := v.ly - v.ey; az := v.lz - v.ez;
+  al := hi_f32(sqrt(ax * ax + ay * ay + az * az), 0.01);
+  c.on = true;
+  c.eye = [3] f32.[v.ex, v.ey, v.ez];
+  c.fwd = [3] f32.[ax / al, ay / al, az / al];
+  // the orbit follows the point looked at, so the sea's detail stays round it
+  s[0].tx = v.lx; s[0].tz = v.lz; s[0].dist = clamp32(al, 25, 9000);
+  return c;
+}
+// The text after `key` in the URL's query (?key=TEXT), or nothing.
+query_text :: (url: string, key: string) -> string {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if e - i > key.count && url[i..<i + key.count] == key && url[i + key.count] == '=' { return url[i + key.count + 1..<e]; }
+    i = e;
+  }
+  return "";
+}
+#test "tour: ?fly= flies the camera along its path and holds the last key, with the tour off" {
+  s: [1] Slab;
+  slab_reset(s[..]);
+  flight_address(s[..], "https://x/worlds/slab?hud=0&fly=0,1200,300,900,0,118,0~10,600,200,0,0,118,0&tour=0");
+  #assert s[0].flight.on && !s[0].hp.tour.wanted && s[0].intro == 0;
+  c := flight_camera(s[..], 0);
+  #assert c.on && c.eye[0] == 1200 && c.eye[1] == 300 && c.eye[2] == 900;
+  for i: 0..<50 { c = flight_camera(s[..], 0.1); }
+  #assert abs(c.eye[0] - 900) < 200 && c.eye[2] > 0 && c.eye[2] < 900;
+  for i: 0..<100 { c = flight_camera(s[..], 0.1); }
+  #assert c.eye[0] == 600 && c.eye[2] == 0 && c.fwd[0] < 0;
+  // a held second, and a path the track refuses
+  flight_address(s[..], "https://x/worlds/slab?fly=0,1200,300,900,0,118,0~10,600,200,0,0,118,0&flyat=10");
+  #assert flight_camera(s[..], 0.1).eye[0] == 600;
+  q: [1] Slab; slab_reset(q[..]);
+  flight_address(q[..], "https://x/worlds/slab?fly=1,2,3");
+  #assert !q[0].flight.on && !flight_camera(q[..], 0.1).on;
+  #assert query_text("https://x/a?b=1&fly=abc~d&c=2", "fly") == "abc~d" && query_text("https://x/a?flyat=3", "fly") == "";
 }

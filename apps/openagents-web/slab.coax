@@ -24,6 +24,7 @@
 // orbit), ?mode=orbit|fly|walk, ?ex=, ?ey=, ?ez= (metres) and ?eyaw=, ?epitch= (radians: where the
 // fly-through or the view under the sea starts and looks), ?view=section|under, ?hole=1 (cell A1
 // holed), ?lose=N (N mooring lines already broken), ?plant=demo10,
+// ?fly=T,EX,EY,EZ,LX,LY,LZ~... and &flyat=SECONDS (a flythrough's path: slab-tour.coax),
 // ?flow=1 (the flow overlay), ?hud=0, ?tier=phone, ?weather=clear|overcast|fog|rain|storm (else
 // the sea's own weather), ?water=real (under the sea: the water as it is, not the survey view),
 // ?style=painterly (the older look), ?contact=0 (photoreal without its contact pass), ?tier=0..11|full|lighter|auto
@@ -190,6 +191,7 @@ Slab :: struct {
   selected: int = -1; hovered: int = -1; selected_at: f64; card_x: f32; card_y: f32;
   stats: bool; stats_set: bool; hud: bool = true; help: bool;
   hp: SlabHud;          // the HUD the browser draws (slab-hud.coax)
+  flight: SlabFlight;   // ?fly=: a flythrough's path (slab-tour.coax)
   change: [1] Change;   // the "What would it take?" settings and what they do to the world (slab-change.coax)
   photo: [1] SlabPhoto; // the photoreal style's scene (slab-photoreal.coax)
   panel: Panel;         // their panel (slab-panel.coax)
@@ -935,6 +937,8 @@ slab_frame :: (s: [] Slab, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   }
   tc := tour_camera(s, ifx frozen then 0.0f32 else step);   // the guided tour's camera (slab-tour.coax)
   if tc.on { ex = tc.eye[0]; ey = tc.eye[1]; ez = tc.eye[2]; fx = tc.fwd[0]; fy = tc.fwd[1]; fz = tc.fwd[2]; }
+  fc := flight_camera(s, ifx frozen then 0.0f32 else step);   // ?fly=: a flythrough (slab-tour.coax)
+  if fc.on { ex = fc.eye[0]; ey = fc.eye[1]; ez = fc.eye[2]; fx = fc.fwd[0]; fy = fc.fwd[1]; fz = fc.fwd[2]; }
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
   u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32;
