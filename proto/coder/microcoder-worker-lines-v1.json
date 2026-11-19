@@ -2,9 +2,9 @@
  "identity": "microcoder-worker-lines-v1",
  "check": "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json",
  "codec": "coax/lib/agent/engine/mcworker-wire.coax",
- "scope": "What Microcoder's worker process (coder/tui/mcworker.coax) and its owner say to each other over the worker's standard input and output: one JSON object a line each way, with no spaces. The owners are Coder's terminal (coder/tui/microcoder.coax), the turn runner (coax/lib/agent/engine/run.coax), both through mcworker-client.coax, and Coder's memory (coder/tui/memory.coax) for embeddings.",
- "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time).",
- "framing": "A line ends with one line feed. A string is escaped as coax/lib/nostr/json.coax json_write_string does: a quote and a backslash behind a backslash, \\n \\r \\t \\b \\f, any other byte under 32 as \\u00XX, every other byte as it is. Members are written in the order given here; the readers find them by name in any order and skip members they do not know. The worker takes an owner's line as the first of stop, forget, embed, answer, task that fits; a line that fits none is skipped. An owner skips a worker's line of a kind it does not know.",
+ "scope": "What Microcoder's worker process (coder/tui/mcworker.coax) and its owner say to each other over the worker's standard input and output: one JSON object a line each way, with no spaces. The owners are Coder's terminal (coder/tui/microcoder.coax), the turn runner (coax/lib/agent/engine/run.coax), both through mcworker-client.coax, Coder's memory (coder/tui/memory.coax) for embeddings, and Coder Desktop's page (apps/coder-desktop/page/followups.coax and persist.coax, through host.c) for messages, steers, the follow-up queue and interrupts.",
+ "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time). The runs named followups-* (GitHub #13718) were captured on 2026-11-19 by evals/coder-desktop/followups/capture_wire.py from the worker built from this tree, on scripted GW_REPLAY answers; followups-page through the desktop's host.c and page (host_driver's WIRE_LOG).",
+ "framing": "A line ends with one line feed. A string is escaped as coax/lib/nostr/json.coax json_write_string does: a quote and a backslash behind a backslash, \\n \\r \\t \\b \\f, any other byte under 32 as \\u00XX, every other byte as it is. Members are written in the order given here; the readers find them by name in any order and skip members they do not know. The worker takes an owner's line as the first of stop, forget, embed, recall, results, answer, steer, interrupt, queue, task that fits; a line that fits none is skipped. An owner skips a worker's line of a kind it does not know. Two kinds share a line kind with an owner's line: the profile calls the worker's {\"kind\":\"steer\"} steered and its {\"kind\":\"queue\"} queued (line_kind gives the kind the line carries). After ended, a run with intel or memory also writes {\"kind\":\"aware\",...}: that line is coax/lib/microcoder/aware.coax's (mc_aw_report), not this codec's, and the owners here skip it, so the runs leave it out.",
  "endings": {
   "finished": "the reply is whole",
   "asked": "the reply is a question for the person",
@@ -72,6 +72,31 @@
      "note": "written only when true: each command waits for an answer line"
     },
     {
+     "name": "agents",
+     "type": "true",
+     "note": "written only when true: the owner runs sub-agents, so a step may delegate tasks and wait for a results line"
+    },
+    {
+     "name": "claude",
+     "type": "true",
+     "note": "written only when true, with agents: a task's level may be haiku, sonnet, opus or fable (Claude Code on this computer)"
+    },
+    {
+     "name": "edits",
+     "type": "true",
+     "note": "written only when true: a gated run whose edits are not refused; the owner gates commands only to show each as it starts"
+    },
+    {
+     "name": "unlimited",
+     "type": "true",
+     "note": "written only when true: no model call, command, view or time limit ends the run"
+    },
+    {
+     "name": "no_ask",
+     "type": "true",
+     "note": "written only when true: the run may not end asking the person a question"
+    },
+    {
      "name": "model",
      "type": "string",
      "note": "written only when the owner names a model; not read for a local task. openrouter:VENDOR/MODEL runs on OpenRouter alone"
@@ -85,6 +110,11 @@
      "name": "openrouter",
      "type": "string",
      "note": "written only when the owner set an OpenRouter model for sub-agents: a delegated task's level may be openrouter, which the owner runs on VENDOR/MODEL"
+    },
+    {
+     "name": "steerable",
+     "type": "false",
+     "note": "written only as false: the turn takes no steers (a sub-agent's); a steer for it is rejected active_turn_not_steerable"
     }
    ]
   },
@@ -156,6 +186,161 @@
    ]
   },
   {
+   "kind": "results",
+   "from": "owner",
+   "writer": "mww_results",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "results",
+     "type": "array",
+     "note": "the sub-agents' results for the waiting delegate line, one {\"exit\":N,\"output\":TEXT} for each task, in order"
+    },
+    {
+     "name": "ticket",
+     "type": "integer",
+     "note": "the delegate line's ticket"
+    }
+   ]
+  },
+  {
+   "kind": "recall",
+   "from": "owner",
+   "writer": "mww_recall",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "recall",
+     "type": "array",
+     "note": "the conversation's kept turns, [{\"task\":T,\"reply\":R}], oldest first: a worker that has not seen them (a chat opened again) forgets what it held and remembers these"
+    }
+   ]
+  },
+  {
+   "kind": "steer",
+   "from": "owner",
+   "writer": "mww_steer",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "steer",
+     "type": "string",
+     "note": "input for the running turn, taken between its steps; empty is rejected invalid"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "note": "the owner's id for it, stable for a resend: the worker takes an id once"
+    },
+    {
+     "name": "turn",
+     "type": "integer",
+     "note": "written only when over 0: the turn it is meant for; another turn's steer is rejected expected_turn_mismatch"
+    }
+   ]
+  },
+  {
+   "kind": "interrupt",
+   "from": "owner",
+   "writer": "mww_interrupt",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "interrupt",
+     "type": "true",
+     "note": "end the running turn; the worker takes a boolean of either value"
+    },
+    {
+     "name": "resubmit",
+     "type": "true",
+     "note": "written only when true: the steers the turn had not taken start a turn of their own; else they head the queue, paused"
+    }
+   ]
+  },
+  {
+   "kind": "queue",
+   "from": "owner",
+   "writer": "mww_queue",
+   "reader": "mww_request",
+   "members": [
+    {
+     "name": "queue",
+     "type": "string",
+     "note": "the op: open, add, update, delete, move, promote, pause, resume, clear or list; another is refused invalid"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "note": "written when given: the item's id (add, update, delete, move, promote)"
+    },
+    {
+     "name": "to",
+     "type": "integer",
+     "note": "written whenever the op is move: the item's new place, from 0"
+    },
+    {
+     "name": "now",
+     "type": "true",
+     "note": "written only when true, with promote: start the item at once, stopping a running turn"
+    },
+    {
+     "name": "key",
+     "type": "string",
+     "note": "written when given, with open: the chat's id, which names the queue's file (~/.openagents/coder/sessions/KEY.queue.json)"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "written when given, with add and update: the text the person wrote, shown in the queue"
+    },
+    {
+     "name": "message",
+     "type": "object",
+     "note": "written when given, with add and update: the task object the turn sends (a task line's members, no line end)"
+    },
+    {
+     "name": "message.task",
+     "type": "string",
+     "note": "the message"
+    },
+    {
+     "name": "message.session",
+     "type": "string",
+     "note": "the session"
+    },
+    {
+     "name": "message.cwd",
+     "type": "string",
+     "note": "the folder"
+    },
+    {
+     "name": "message.sandbox",
+     "type": "string",
+     "note": "the sandbox"
+    },
+    {
+     "name": "message.policy",
+     "type": "object",
+     "note": "the policy, as a task line's"
+    },
+    {
+     "name": "message.gated",
+     "type": "true",
+     "note": "as a task line's"
+    },
+    {
+     "name": "message.model",
+     "type": "string",
+     "note": "as a task line's"
+    },
+    {
+     "name": "message.effort",
+     "type": "string",
+     "note": "as a task line's"
+    }
+   ]
+  },
+  {
    "kind": "journal",
    "from": "worker",
    "writer": "mww_journal",
@@ -201,6 +386,24 @@
      "name": "text",
      "type": "string",
      "note": "more of the reply"
+    }
+   ]
+  },
+  {
+   "kind": "thought",
+   "from": "worker",
+   "writer": "mww_thought",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "a step's thinking, whole, as the model summarized it, before its answer"
     }
    ]
   },
@@ -382,6 +585,29 @@
    ]
   },
   {
+   "kind": "delegate",
+   "from": "worker",
+   "writer": "mww_delegate",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "tasks",
+     "type": "array",
+     "note": "the step's delegated tasks, [{\"level\":L,\"task\":T[,\"resume\":N]}]; L is hydrogen, carbon, neon, openrouter or a Claude model"
+    },
+    {
+     "name": "ticket",
+     "type": "integer",
+     "note": "over 0; the results line carries it back"
+    }
+   ]
+  },
+  {
    "kind": "ended",
    "from": "worker",
    "writer": "mww_ended",
@@ -424,6 +650,140 @@
      "name": "error",
      "type": "string",
      "note": "why there is none"
+    }
+   ]
+  },
+  {
+   "kind": "turn",
+   "from": "worker",
+   "writer": "mww_turn",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "turn",
+     "type": "integer",
+     "note": "the worker's turn number, from 1"
+    },
+    {
+     "name": "source",
+     "type": "string",
+     "note": "message (an owner's task line), queue (the queue's head, started when the worker went idle) or resubmit (an interrupt's steers)"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "note": "the queue item's or the steer's id; empty for a message"
+    },
+    {
+     "name": "text",
+     "type": "string",
+     "note": "what the person wrote, for a queued or resubmitted turn; empty for a message"
+    }
+   ]
+  },
+  {
+   "kind": "steered",
+   "from": "worker",
+   "writer": "mww_steered",
+   "reader": "mww_read",
+   "line_kind": "steer",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "note": "the steer's id"
+    },
+    {
+     "name": "status",
+     "type": "string",
+     "note": "accepted, rejected, applied (it reached the model), queued (its turn ended first: it heads the paused queue) or resubmitted"
+    },
+    {
+     "name": "turn",
+     "type": "integer",
+     "note": "the turn it was for"
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "note": "written only for rejected: no_active_turn, expected_turn_mismatch, active_turn_not_steerable, invalid or full"
+    },
+    {
+     "name": "step",
+     "type": "integer",
+     "note": "written only for applied: the step it became"
+    }
+   ]
+  },
+  {
+   "kind": "queued",
+   "from": "worker",
+   "writer": "mww_queue_begin, mww_queue_item, mww_queue_end",
+   "reader": "mww_read",
+   "line_kind": "queue",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "paused",
+     "type": "boolean",
+     "note": "the queue starts nothing on its own"
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "note": "why it is paused: error, interrupted, user or restored; empty when it is not"
+    },
+    {
+     "name": "active",
+     "type": "string",
+     "note": "the item whose turn runs, empty for none"
+    },
+    {
+     "name": "items",
+     "type": "array",
+     "note": "the whole queue in order, [{\"id\":I,\"text\":T}]: an owner shows it as it is"
+    }
+   ]
+  },
+  {
+   "kind": "queue_refused",
+   "from": "worker",
+   "writer": "mww_queue_refused",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "op",
+     "type": "string",
+     "note": "the op refused"
+    },
+    {
+     "name": "id",
+     "type": "string",
+     "note": "its item's id, or empty"
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "note": "unknown_id, invalid, full, dispatched (a started id) or no_key"
     }
    ]
   }
@@ -1229,6 +1589,551 @@
      "from": "worker",
      "kind": "embedding",
      "line": "{\"kind\":\"embedding\",\"error\":\"Vertex gave no embedding (status 0)\"}"
+    }
+   ]
+  },
+  {
+   "name": "followups-steer-queue",
+   "what": "the worker on a temp HOME with GW_REPLAY answers: a step's thought; turn 1 from a message; a steer accepted then applied, one for another turn rejected; a follow-up queued and an unknown id refused; turn 2 from the queue",
+   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-55c6tn3q/home/.openagents/coder/sessions/worker-1795128955460872.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"open\",\"key\":\"chat-wire\"}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"do a\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-55c6tn3q/work\",\"sandbox\":\"danger-full-access\",\"session\":\"fu\"}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "thought",
+     "line": "{\"kind\":\"thought\",\"text\":\"Look at a first.\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "steer",
+     "line": "{\"steer\":\"also b\",\"id\":\"st1\",\"turn\":1}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"accepted\",\"turn\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "steer",
+     "line": "{\"steer\":\"x\",\"id\":\"st2\",\"turn\":7}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"sleep 1\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"applied\",\"turn\":1,\"step\":2}"
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st2\",\"status\":\"rejected\",\"turn\":1,\"reason\":\"expected_turn_mismatch\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"add\",\"id\":\"q1\",\"text\":\"do b\",\"message\":{\"task\":\"do b\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-55c6tn3q/work\",\"sandbox\":\"danger-full-access\",\"session\":\"fu\"}}",
+     "read_only": true
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"delete\",\"id\":\"nope\"}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"do b\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "queue_refused",
+     "line": "{\"kind\":\"queue_refused\",\"op\":\"delete\",\"id\":\"nope\",\"reason\":\"unknown_id\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"took the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"took the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"do b\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"q1\",\"items\":[]}"
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":2,\"source\":\"queue\",\"id\":\"q1\",\"text\":\"do b\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"b done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"b done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    }
+   ]
+  },
+  {
+   "name": "followups-delegate",
+   "what": "the recall line, then a task with agents: the worker delegates one task and takes the owner's results",
+   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-8qq7jchd/home/.openagents/coder/sessions/worker-1795128956855815.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "recall",
+     "line": "{\"recall\":[{\"task\":\"what is here\",\"reply\":\"a few files\"}]}",
+     "read_only": true
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"count them\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-8qq7jchd/work\",\"sandbox\":\"danger-full-access\",\"session\":\"fu\",\"agents\":true}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "delegate",
+     "line": "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"}],\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "results",
+     "line": "{\"results\":[{\"exit\":0,\"output\":\"3 files\"}],\"ticket\":1}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"three files\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"three files\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    }
+   ]
+  },
+  {
+   "name": "followups-interrupt",
+   "what": "a steer accepted, then interrupt with resubmit: the turn stops and the steer starts turn 2",
+   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-ep9wu5f1/home/.openagents/coder/sessions/worker-1795128957063239.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"do a\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-ep9wu5f1/work\",\"sandbox\":\"danger-full-access\",\"session\":\"fu\"}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"sleep 3\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "steer",
+     "line": "{\"steer\":\"actually do b\",\"id\":\"st1\",\"turn\":1}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"accepted\",\"turn\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "interrupt",
+     "line": "{\"interrupt\":true,\"resubmit\":true}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"stopped\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"resubmitted\",\"turn\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":2,\"source\":\"resubmit\",\"id\":\"st1\",\"text\":\"actually do b\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"answered the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"answered the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    }
+   ]
+  },
+  {
+   "name": "followups-page",
+   "what": "the desktop's host.c and page (evals/coder-desktop/host_driver) on the worker: queue open, a message, a steer, pause, two follow-ups, move, delete, promote now, interrupt, list",
+   "from": "capture_wire.py through host_driver's WIRE_LOG: the owner's lines are what the page (apps/coder-desktop/page/followups.coax, persist.coax) and host.c wrote, the worker's what it sent; nothing called a model.",
+   "lines": [
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"open\",\"key\":\"chat-page\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"do a\",\"session\":\"fu-wire\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-1huvxu8z/work\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"gated\":true,\"agents\":true,\"edits\":true,\"unlimited\":true,\"no_ask\":true,\"model\":\"gemini-4-neon\",\"effort\":\"low\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-1huvxu8z/home/.openagents/coder/sessions/worker-1795128960376773.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}"
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"sleep 2\",\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "steer",
+     "line": "{\"steer\":\"also b\",\"id\":\"st1\",\"turn\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"pause\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"add\",\"id\":\"q1\",\"text\":\"then c\",\"message\":{\"task\":\"then c\",\"session\":\"fu-wire\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-1huvxu8z/work\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"gated\":true,\"agents\":true,\"edits\":true,\"unlimited\":true,\"no_ask\":true,\"model\":\"gemini-4-neon\",\"effort\":\"low\"}}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"add\",\"id\":\"q2\",\"text\":\"and d\",\"message\":{\"task\":\"and d\",\"session\":\"fu-wire\",\"cwd\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coder-fu-1huvxu8z/work\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"gated\":true,\"agents\":true,\"edits\":true,\"unlimited\":true,\"no_ask\":true,\"model\":\"gemini-4-neon\",\"effort\":\"low\"}}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"sleep 2\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"accepted\",\"turn\":1}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[]}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then c\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"first done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q1\",\"text\":\"then c\"},{\"id\":\"q2\",\"text\":\"and d\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"applied\",\"turn\":1,\"step\":3}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"move\",\"id\":\"q2\",\"to\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"took the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and d\"},{\"id\":\"q1\",\"text\":\"then c\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"took the steer\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and d\"},{\"id\":\"q1\",\"text\":\"then c\"}]}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"delete\",\"id\":\"q1\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and d\"}]}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"promote\",\"id\":\"q2\",\"now\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"\",\"items\":[{\"id\":\"q2\",\"text\":\"and d\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"user\",\"active\":\"q2\",\"items\":[]}"
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":2,\"source\":\"queue\",\"id\":\"q2\",\"text\":\"and d\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ask",
+     "line": "{\"kind\":\"ask\",\"command\":\"sleep 5\",\"ticket\":2}"
+    },
+    {
+     "from": "owner",
+     "kind": "answer",
+     "line": "{\"answer\":true,\"ticket\":2}"
+    },
+    {
+     "from": "owner",
+     "kind": "interrupt",
+     "line": "{\"interrupt\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"sleep 5\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"stopped\",\"status\":0,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}"
+    },
+    {
+     "from": "owner",
+     "kind": "queue",
+     "line": "{\"queue\":\"list\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "queued",
+     "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}"
     }
    ]
   }

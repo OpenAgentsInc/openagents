@@ -59,10 +59,12 @@ def act(reply: str = "", commands: list[str] | None = None, finished: bool = Tru
     return {"rationale": "r", "commands": commands or [], "view": [], "finished": finished, "reply": reply, "ask": "none"}
 
 
-def http(action: dict) -> str:
+def http(action: dict, think: str = "") -> str:
+    """A recorded streamed answer; think, when given, comes first as the step's reasoning."""
     body = json.dumps({"choices": [{"delta": {"content": json.dumps(action), "role": "assistant"}, "index": 0}]})
     end = json.dumps({"choices": [{"delta": {"content": ""}, "finish_reason": "stop", "index": 0}]})
-    return "HTTP/2 200 \ncontent-type: text/event-stream\n\ndata: " + body + "\n\ndata: " + end + "\n\ndata: [DONE]\n\n"
+    first = "data: " + json.dumps({"choices": [{"delta": {"reasoning": think, "role": "assistant"}, "index": 0}]}) + "\n\n" if think else ""
+    return "HTTP/2 200 \ncontent-type: text/event-stream\n\n" + first + "data: " + body + "\n\ndata: " + end + "\n\ndata: [DONE]\n\n"
 
 
 class Box:
@@ -96,12 +98,15 @@ class Worker:
                                   env=env, cwd=str(box.work), text=True, bufsize=1)
         self.lines: list[dict] = []
         self.pending: list[dict] = []   # read but not yet looked at
+        self.wire: list[tuple[str, str]] = []   # every line each way, as sent: ("owner"|"worker", line); capture_wire.py keeps them
         self.held = b""
         self.wait(lambda l: l.get("kind") == "ready", 20)
 
     def send(self, obj: dict) -> None:
         assert self.p.stdin
-        self.p.stdin.write(json.dumps(obj) + "\n"); self.p.stdin.flush()
+        line = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
+        self.wire.append(("owner", line))
+        self.p.stdin.write(line + "\n"); self.p.stdin.flush()
 
     def wait(self, pred, timeout: float = 20.0) -> dict:
         """The first line from here on for which pred holds (lines read on the way are kept). It reads
@@ -126,6 +131,7 @@ class Worker:
             self.held += chunk
             while b"\n" in self.held:
                 raw, self.held = self.held.split(b"\n", 1)
+                self.wire.append(("worker", raw.decode("utf-8", "replace")))
                 try:
                     self.pending.append(json.loads(raw))
                 except ValueError:

@@ -20,7 +20,7 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-deskto
 |---|---|---|
 | 0 | `page.coax` and `mcworker-wire.coax` tests, `tools_smoke.sh` | free |
 | 1 | Transcript replay (`tier1/replay_test.coax`) and 20 host scenarios (`tier1/scenarios/`): the real `host.c` and `page.coax` in `host_driver` against `mock_worker/mock_worker.py` | free |
-| 1 | Follow-ups (`followups/run_followups.py`): steer, queue and interrupt on the real `mcworker` with generated `GW_REPLAY` replies in a temp `HOME`, and once through `host_driver` (GitHub #13715, #13716) | free (no model is called) |
+| 1 | Follow-ups (`followups/run_followups.py`): steer, queue and interrupt on the real `mcworker` with generated `GW_REPLAY` replies in a temp `HOME`, and once through `host_driver` (GitHub #13715, #13716). `followups/capture_wire.py --write` records the follow-up lines each way into `proto/coder/microcoder-worker-lines-v1.json` (#13718) | free (no model is called) |
 | compaction | `compaction/` C1-C12 | free |
 | 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
 | 3 | 7 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 15 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |

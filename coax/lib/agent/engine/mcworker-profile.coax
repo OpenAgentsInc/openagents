@@ -23,10 +23,17 @@ MP_FILE :: 524288;
 MP_LINE :: 16384;
 MP_PATH :: "proto/coder/microcoder-worker-lines-v1.json";
 MP_CHECK :: "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json";
-MP_KINDS :: 14;
-MP_NAMES :: [MP_KINDS] string.["task", "answer", "stop", "forget", "embed", "journal", "ready", "reply", "attempt", "command", "view", "ask", "ended", "embedding"];
-MP_CODES :: [MP_KINDS] int.[MWW_TASK, MWW_ANSWER, MWW_STOP, MWW_FORGET, MWW_EMBED, MWW_JOURNAL, MWW_READY, MWW_REPLY, MWW_ATTEMPT, MWW_COMMAND, MWW_VIEW, MWW_ASK, MWW_ENDED, MWW_EMBEDDING];
-MP_OWNER :: 5;       // the first five are the owner's lines
+// The profile's names for the kinds: an owner's line by the member that makes it its kind, a
+// worker's by its kind, except steered and queued, the worker's {"kind":"steer"} and
+// {"kind":"queue"} (named as the codec names them, apart from the owner's steer and queue lines).
+MP_KINDS :: 25;
+MP_NAMES :: [MP_KINDS] string.["task", "answer", "stop", "forget", "embed", "results", "recall", "steer", "interrupt", "queue",
+                               "journal", "ready", "reply", "thought", "attempt", "command", "view", "ask", "delegate", "ended", "embedding",
+                               "turn", "steered", "queued", "queue_refused"];
+MP_CODES :: [MP_KINDS] int.[MWW_TASK, MWW_ANSWER, MWW_STOP, MWW_FORGET, MWW_EMBED, MWW_RESULTS, MWW_RECALL, MWW_STEER, MWW_INTERRUPT, MWW_QUEUE,
+                            MWW_JOURNAL, MWW_READY, MWW_REPLY, MWW_THOUGHT, MWW_ATTEMPT, MWW_COMMAND, MWW_VIEW, MWW_ASK, MWW_DELEGATE, MWW_ENDED, MWW_EMBEDDING,
+                            MWW_TURN, MWW_STEERED, MWW_QUEUED, MWW_QUEUE_REFUSED];
+MP_OWNER :: 10;      // the first ten are the owner's lines
 
 MpWork :: struct {
   file: [MP_FILE] u8; line: [MP_LINE] u8; back: [MP_LINE] u8; arena: [MP_LINE] u8; word: [256] u8; name: [256] u8;
@@ -83,6 +90,25 @@ mp_worker :: (w: [] MpWork, k: int, line: string) -> string {
   else if got == MWW_ASK { if !l[0].ticket.ok { return "an ask with no ticket"; } n = mww_ask(o, l[0].command, l[0].ticket.value); }
   else if got == MWW_ENDED { n = mww_ended(o, l[0].ending, l[0].text); }
   else if got == MWW_EMBEDDING { n = ifx l[0].error.count > 0 then mww_embedding_error(o, l[0].why) else mww_embedding(o, l[0].values); }
+  else if got == MWW_THOUGHT { n = mww_thought(o, l[0].text); }
+  else if got == MWW_DELEGATE { if !l[0].ticket.ok || l[0].tasks.count == 0 { return "a delegate with no ticket or tasks"; } n = mww_delegate(o, l[0].tasks, l[0].ticket.value); }
+  else if got == MWW_TURN { if !l[0].turn.ok { return "a turn with no number"; } n = mww_turn(o, l[0].turn.value, l[0].source, l[0].id, l[0].text); }
+  else if got == MWW_STEERED {
+    if !l[0].turn.ok { return "a steer with no turn"; }
+    n = mww_steered(o, l[0].id, l[0].steer_status, l[0].turn.value, l[0].reason, ifx l[0].step.ok then l[0].step.value else 0);
+  }
+  else if got == MWW_QUEUED {
+    if !l[0].paused.ok || l[0].items.count < 2 { return "a queue with no paused or items"; }
+    n = mww_queue_begin(o, l[0].paused.value, l[0].reason, l[0].active);
+    items := l[0].items;
+    for i: 0..<cl_count(items) {
+      one := cl_json(items, cl_item(items, i));
+      n = mww_queue_item(o, n, i, cl_str(ar[..], one, "id"), cl_str(ar[..], one, "text"));
+      if n < 0 { break; }
+    }
+    if n >= 0 { n = mww_queue_end(o, n); }
+  }
+  else if got == MWW_QUEUE_REFUSED { n = mww_queue_refused(o, l[0].op, l[0].id, l[0].reason); }
   if ar[0].full { return "it does not fit the check's arena"; }
   if n < 0 || cast(string) o[0..<n] != line { return "written back, it is not the same bytes"; }
   return "";
@@ -108,6 +134,11 @@ mp_owner :: (w: [] MpWork, k: int, line: string, read_only: bool) -> string {
   else if got == MWW_EMBED { n = mww_embed(o, r[0].text, r[0].query); }
   else if got == MWW_STOP { n = json_raw(o, 0, MWW_STOP_LINE); }
   else if got == MWW_FORGET { n = json_raw(o, 0, MWW_FORGET_LINE); }
+  else if got == MWW_RESULTS { if !r[0].ticket.ok { return "results with no ticket"; } n = mww_results(o, r[0].ticket.value, r[0].results); }
+  else if got == MWW_RECALL { n = mww_recall(o, r[0].recall); }
+  else if got == MWW_STEER { n = mww_steer(o, r[0].id, r[0].text, ifx r[0].turn.ok then r[0].turn.value else 0); }
+  else if got == MWW_INTERRUPT { n = mww_interrupt(o, r[0].resubmit); }
+  else if got == MWW_QUEUE { n = mww_queue(o, r[0].op, r[0].id, r[0].text, r[0].message, ifx r[0].to.ok then r[0].to.value else 0, r[0].now, r[0].key); }
   if ar[0].full { return "it does not fit the check's arena"; }
   if n < 1 || o[n - 1] != 10 || cast(string) o[0..<n - 1] != line { return "written back, it is not the same bytes"; }
   return "";
@@ -157,6 +188,11 @@ mp_check :: (w: [] MpWork, d: Jv, path: string) -> bool {
      mp_line(w, d, "owner", "task", "{\"task\":\"t\",\"cwd\":\"/w\"}", false) == "" ||
      mp_line(w, d, "owner", "answer", "{\"answer\":true,\"ticket\":1,\"why\":\"x\"}", false) == "" ||
      mp_line(w, d, "owner", "stop", "{\"stop\":false}", false) == "" ||
+     mp_line(w, d, "worker", "steered", "{\"kind\":\"steer\",\"status\":\"accepted\",\"id\":\"s\",\"turn\":1}", false) == "" ||
+     mp_line(w, d, "worker", "queued", "{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"text\":\"t\",\"id\":\"q\"}]}", false) == "" ||
+     mp_line(w, d, "owner", "queue", "{\"queue\":\"move\",\"id\":\"q\"}", false) == "" ||
+     mp_line(w, d, "owner", "steer", "{\"steer\":\"s\",\"id\":\"a\",\"turn\":0}", false) == "" ||
+     mp_line(w, d, "worker", "steered", "{\"kind\":\"steer\",\"id\":\"s\",\"status\":\"accepted\",\"turn\":1}", false) != "" ||
      mp_line(w, d, "owner", "task", "{\"task\":\"t\",\"cwd\":\"/w\"}", true) != "" ||
      mp_line(w, d, "worker", "view", "{\"kind\":\"view\",\"path\":\"a.txt\",\"found\":true}", false) != "" {
     print("FAIL  the check takes a line it should refuse, or refuses one it should take\n"); return false;
