@@ -58,6 +58,7 @@ VK_DEVICE_SENT :: 13;       // the person's message on its way; text: the messag
 VK_DEVICE_PERMISSION :: 14; // the computer asks Allow or Deny
 VK_DEVICE_STATE :: 15;      // the turn runs (or is stopping) on the computer
 VK_THOUGHT :: 16;     // the task's thinking; index: its part in the task's session (the conversation look folds it into the activity next to it)
+VK_DEVICE_THOUGHT :: 17;    // the computer's thinking; index: its item in the view (folded like VK_THOUGHT)
 
 // What a notice's action asks for.
 VIEW_DO_NONE :: 0;
@@ -109,10 +110,11 @@ ViewRow :: struct {
 view_group_tools :: (vm:[]ViewModel) {
  out:=0;i:=0;
  while i<vm[0].n {r:=vm[0].rows[i];j:=i+1;
-  if r.kind==VK_TOOL || r.kind==VK_DEVICE_TOOL || r.kind==VK_THOUGHT {
+  if r.kind==VK_TOOL || r.kind==VK_DEVICE_TOOL || r.kind==VK_THOUGHT || r.kind==VK_DEVICE_THOUGHT {
    // a turn's thoughts and its calls are one group: it takes the tool's kind
-   native:=r.kind!=VK_DEVICE_TOOL;if r.kind==VK_THOUGHT {r.kind=VK_TOOL;}
-   while j<vm[0].n && j-i<16 && (vm[0].rows[j].kind==r.kind || (native && vm[0].rows[j].kind==VK_THOUGHT)) {j+=1;}
+   native:=r.kind!=VK_DEVICE_TOOL && r.kind!=VK_DEVICE_THOUGHT;if r.kind==VK_THOUGHT {r.kind=VK_TOOL;}if r.kind==VK_DEVICE_THOUGHT {r.kind=VK_DEVICE_TOOL;}
+   thought:=ifx native then VK_THOUGHT else VK_DEVICE_THOUGHT;
+   while j<vm[0].n && j-i<16 && (vm[0].rows[j].kind==r.kind || vm[0].rows[j].kind==thought) {j+=1;}
    if j-i>1 {r.group_count=j-i;r.group_last=vm[0].rows[j-1].index;for k:i+1..<j {r.stamp+=vm[0].rows[k].stamp;}r.stamp+=r.group_count*37;}
   }
   vm[0].rows[out]=r;out+=1;i=j;
@@ -290,6 +292,7 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
     for i: 0..<v[0].ni {
       m := v[0].items[i]; role := cast(string) m.role[0..<m.nr];
       n := view_device_id(id[..], e, i);
+      if role == EA_ROLE_THOUGHT { _ := view_add(vm, VK_DEVICE_THOUGHT, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
       if view_device_tool(e, i) { _ := view_add(vm, VK_DEVICE_TOOL, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
       r := view_add(vm, VK_DEVICE_MESSAGE, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0));
       if r >= 0 { vm[0].rows[r].assistant = role != "user"; }

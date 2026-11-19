@@ -391,14 +391,14 @@ es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
   if q[0].before>0 {part=q[0].before/1000000-1;end=q[0].before%1000000;if part<0 || part>=s[0].n {es_refuse(v,"stale_cursor");return;}}
   bytes:=0;
   while part>=0 && v[0].ni<24 && bytes<5996 {
-    p:=s[0].parts[part];if p.kind==P_THINK {part-=1;end= -1;continue;}
+    p:=s[0].parts[part];
     text:=ifx p.kind==P_TOOL then (ifx p.resolved && p.output.count>0 then p.output else ifx p.input.count>0 then p.input else p.detail) else s_text_of(s,part);
     to:=ifx end>=0 then end else text.count;if to>text.count {es_refuse(v,"stale_cursor");return;}
     start:=ifx to>6000-bytes then to-(6000-bytes) else 0;
     while start<to && text[start]>=128 && text[start]<192 {start+=1;}
     m:=v[0].items[v[0].ni];id:[128]u8;n:=hs_cat(id[..],0,"");digits:[64]u8;n=hs_cat(id[..],n,hs_itoa(part,digits[..]));n=hs_cat(id[..],n,":");n=hs_cat(id[..],n,hs_itoa(start,digits[..]));m.ni=ea_copy(m.id[..],cast(string)id[0..<n]);
-    m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
-    m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && (p.kind!=P_TEXT || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
+    m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else ifx p.kind==P_THINK then EA_ROLE_THOUGHT else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
+    m.text_at=ea_text_put(v,cast(string)text[start..<to]);m.nt=to-start;m.complete=start==0 && to==text.count && ((p.kind!=P_TEXT && p.kind!=P_THINK) || part<s[0].n-1 || !s[0].live);if m.text_at<0 {es_refuse(v,"output_limit");return;}
     v[0].items[v[0].ni]=m;v[0].ni+=1;bytes+=m.nt;
     if start>0 {end=start;break;}part-=1;end= -1;
   }
@@ -412,6 +412,12 @@ es_project :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
   q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[6000..<12000] && v[0].nc>0;
   q[0].before=1006000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ni==1 && ea_item_text(v[..],0)==cast(string)text[0..<6000] && v[0].nc==0;
   q[0].before=9000000;v[0]=EaView.{};es_project(s[..],q[..],v[..]);#assert v[0].ne>0 && v[0].ni==0;
+}
+#test "a session's thinking reaches the page as thought items in place, the live one still open" {
+  s:[1]Session;pool:[4096]u8;s_init(s[..],pool[..]);s_user(s[..],"Fix it");s[0].live=true;s_delta(s[..],P_THINK,"Look first");s_delta(s[..],P_TEXT,"On it");s_delta(s[..],P_THINK,"Then edit");
+  q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);
+  #assert v[0].ni==4 && ea_thought(v[..],1) && ea_item_text(v[..],1)=="Look first" && v[0].items[1].complete && ea_thought(v[..],3) && !v[0].items[3].complete;
+  #assert cast(string)v[0].items[2].role[0..<v[0].items[2].nr]=="assistant";
 }
 
 es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}

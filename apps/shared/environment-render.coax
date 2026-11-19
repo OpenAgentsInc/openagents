@@ -77,6 +77,7 @@ eu_render :: (e:[]EnvironmentApp,t:[]Tree,u:[]Ui,markdown:[]MdDoc) #effects(all)
     if e[0].history_before>0 {x=k_link(t,"env.latest","Latest");}
     if e[0].view[0].ni==0 && e[0].ns>0 {x=k_text(t,u,"env.welcome",TG_P,"","Loading…");}
     for i:0..<e[0].view[0].ni {b:[96]u8;m:=e[0].view[0].items[i];id:=eu_item_id(e[0].view[..],i,b[..]);
+      if ea_thought(e[0].view[..],i) {continue;}
       if m.nk>0 || cast(string)m.role[0..<m.nr]=="tool" {
         if !m.complete {reviewable=false;}
         x=k_tool_line(t,u,id,ifx m.nk>0 then cast(string)m.tool[0..<m.nk] else "Tool",ifx !m.complete then "Partial output" else "",TL_INFO,eu_tool_open(e,eu_item_key(e[0].view[..],i)),"",ea_item_text(e[0].view[..],i));

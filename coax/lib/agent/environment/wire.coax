@@ -56,6 +56,10 @@ EaModel :: struct {id:[64]u8;ni:int;label:[48]u8;nl:int;ladder:int;}
 EaLevel :: struct {id:[16]u8;ni:int;label:[24]u8;nl:int;}
 EaOffer :: struct {models:[EA_MODELS]EaModel;n:int;levels:[EA_LEVELS]EaLevel;nv:int;default_level:int;}
 EA_ITEMS :: 64;
+// A turn's thinking. v1alpha1 readers know four item roles (user, assistant, tool, notice) and draw
+// any other as a reply, so a thought never travels in "items": it goes in "thoughts", each at the
+// v1alpha1 item it comes before, and a reader that knows it puts it back in place (GitHub #13713).
+EA_ROLE_THOUGHT :: "thought";
 EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;}
 EaView :: struct {ok:bool;host:[64]u8;nh:int;label:[80]u8;nl:int;method:[32]u8;nm:int;sessions:[128]EaSession;ns:int;items:[EA_ITEMS]EaItem;ni:int;text:[49152]u8;text_n:int;error:[64]u8;ne:int;complete:bool;cursor:[128]u8;nc:int;command:[32]u8;nq:int;status:[32]u8;nt:int;epoch:[128]u8;np:int;offer:EaOffer;}
 ea_text_put :: (v:[]EaView,text:string)->int #effects(all) {
@@ -127,15 +131,37 @@ ea_item :: (o:[]Jo,m_in:EaItem,text:string) #effects(all) {
   jo_obj(o);jo_key(o,"item_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"role");jo_str(o,cast(string)m.role[0..<m.nr]);
   jo_key(o,"text");jo_str(o,text);jo_key(o,"tool_name");jo_str(o,cast(string)m.tool[0..<m.nk]);jo_key(o,"complete");jo_bool(o,m.complete);jo_end(o);
 }
+ea_thought :: (v:[]EaView,i:int)->bool #effects(all) {m:=v[0].items[i];return cast(string)m.role[0..<m.nr]==EA_ROLE_THOUGHT;}
+ea_thoughts_write :: (o:[]Jo,v:[]EaView) #effects(all) {
+  any:=false;for i:0..<v[0].ni {if ea_thought(v,i) {any=true;}}if !any {return;}
+  jo_key(o,"thoughts");jo_arr(o);at:=0;
+  for i:0..<v[0].ni {if !ea_thought(v,i) {at+=1;continue;}m:=v[0].items[i];
+    jo_obj(o);jo_key(o,"item_id");jo_str(o,cast(string)m.id[0..<m.ni]);jo_key(o,"text");jo_str(o,ea_item_text(v,i));jo_key(o,"complete");jo_bool(o,m.complete);jo_key(o,"at");jo_int(o,at);jo_end(o);}
+  jo_end(o);
+}
+// The thoughts are optional (an older computer sends none); each goes back at its place among items.
+ea_thoughts_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
+  list:=jv_get(j,0,"thoughts");if list<0 {return true;}
+  if jv_kind(j,list)!=JV_ARRAY || v[0].ni+jv_len(j,list)>EA_ITEMS {return false;}
+  plain:=v[0].ni;last:=0;
+  for t:0..<jv_len(j,list) {row:=jv_at(j,list,t);at:=jv_int(j,jv_get(j,row,"at"),-1);if at<last || at>plain {return false;}last=at;
+    m:EaItem;m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=ea_copy(m.role[..],EA_ROLE_THOUGHT);m.text_at=v[0].text_n;
+    end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
+    if m.ni<1 || m.nt<0 {return false;}v[0].text_n+=m.nt;
+    // the t thoughts before it are in place already, each at an item no later than this one's
+    k:=at+t;q:=v[0].ni;while q>k {v[0].items[q]=v[0].items[q-1];q-=1;}v[0].items[k]=m;v[0].ni+=1;
+  }
+  return true;
+}
 ea_view_write :: (v:[]EaView,out:[]u8)->int #effects(all) {
   o:[1]Jo;jo_start(o[..],out);jo_obj(o[..]);jo_key(o[..],"schema");jo_str(o[..],EA_SCHEMA);jo_key(o[..],"host_pubkey");jo_str(o[..],cast(string)v[0].host[0..<v[0].nh]);
   jo_key(o[..],"display_name");jo_str(o[..],cast(string)v[0].label[0..<v[0].nl]);jo_key(o[..],"method");jo_str(o[..],cast(string)v[0].method[0..<v[0].nm]);
   jo_key(o[..],"sessions");jo_arr(o[..]);for i:0..<v[0].ns {ea_summary(o[..],v[0].sessions[i]);}jo_end(o[..]);
-  jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {ea_item(o[..],v[0].items[i],ea_item_text(v,i));}jo_end(o[..]);
+  jo_key(o[..],"items");jo_arr(o[..]);for i:0..<v[0].ni {if !ea_thought(v,i) {ea_item(o[..],v[0].items[i],ea_item_text(v,i));}}jo_end(o[..]);
   jo_key(o[..],"error");jo_str(o[..],cast(string)v[0].error[0..<v[0].ne]);jo_key(o[..],"complete");jo_bool(o[..],v[0].complete);
   jo_key(o[..],"next_cursor");jo_str(o[..],cast(string)v[0].cursor[0..<v[0].nc]);jo_key(o[..],"command_id");jo_str(o[..],cast(string)v[0].command[0..<v[0].nq]);
   jo_key(o[..],"command_status");jo_str(o[..],cast(string)v[0].status[0..<v[0].nt]);jo_key(o[..],"source_epoch");jo_str(o[..],cast(string)v[0].epoch[0..<v[0].np]);
-  if v[0].offer.n>0 {ea_offer_write(o[..],v[..]);}jo_end(o[..]);
+  ea_thoughts_write(o[..],v);if v[0].offer.n>0 {ea_offer_write(o[..],v[..]);}jo_end(o[..]);
   return ifx o[0].bad then -1 else o[0].n;
 }
 ea_offer_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -188,7 +214,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
     if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 {return false;}v[0].text_n+=m.nt;v[0].items[i]=m;
   }
-  if !ea_offer_read(j,v) {return false;}
+  if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) {return false;}
   v[0].ok=true;return true;
 }
 
@@ -239,4 +265,20 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"low\"]}]}",r[..]) && r[0].offer.models[0].ladder==1;
   #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ListSessions\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"efforts\":[{\"effort_id\":\"low\",\"display_name\":\"Low\"}],\"default_effort\":\"low\",\"models\":[{\"model_id\":\"x\",\"display_name\":\"X\",\"efforts\":[\"max\"]}]}",r[..]);
   v[0].offer=EaOffer.{};n=ea_view_write(v[..],out[..]);#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]) && r[0].offer.n==0;
+}
+
+#test "a thought travels beside items at its place, so a v1alpha1 reader never sees it as a reply" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");
+  roles:=[5]string.["user","thought","tool","thought","assistant"];texts:=[5]string.["Fix it","Look first","ls","Then edit","Done"];
+  for r,i:roles {m:=v[0].items[i];b:[8]u8;b[0]=cast(u8)('a'+i);m.ni=ea_copy(m.id[..],cast(string)b[0..<1]);m.nr=ea_copy(m.role[..],r);m.text_at=ea_text_put(v[..],texts[i]);m.nt=texts[i].count;m.complete=i!=3;v[0].items[i]=m;}
+  v[0].ni=5;out:[8192]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]);
+  #assert r[0].ni==5;for i:0..<5 {#assert cast(string)r[0].items[i].role[0..<r[0].items[i].nr]==roles[i] && ea_item_text(r[..],i)==texts[i];}
+  #assert !r[0].items[3].complete && r[0].items[1].complete;
+  // the items a v1alpha1 reader sees hold no thought
+  w:=cast(string)out[0..<n];k:=0;found:=false;while k+9<w.count {if cast(string)w[k..<k+9]=="\"thought\"" {found=true;}k+=1;}#assert !found;
+  // a thought out of order or past the end is refused
+  bad:="{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"thoughts\":[{\"item_id\":\"t\",\"text\":\"x\",\"complete\":true,\"at\":1}]}";
+  #assert !ea_view_read(bad,r[..]);
+  good:="{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\",\"thoughts\":[{\"item_id\":\"t\",\"text\":\"x\",\"complete\":true,\"at\":0}]}";
+  #assert ea_view_read(good,r[..]) && r[0].ni==1 && ea_thought(r[..],0);
 }

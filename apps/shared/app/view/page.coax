@@ -246,6 +246,7 @@ view_act_native :: (s: [] Session, k: int, ended: bool) -> AppActRow {
 // while it runs and the result once it is done.
 view_act_device :: (e: [] EnvironmentApp, i: int) -> AppActRow {
   m := e[0].view[0].items[i]; text := ea_item_text(e[0].view[..], i);
+  if ea_thought(e[0].view[..], i) { return AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = text}; }
   name := ifx m.nk > 0 then cast(string) e[0].view[0].items[i].tool[0..<m.nk] else "";
   kind := view_act_kind(tk_of_name(name));
   r := AppActRow.{kind = ifx kind < 0 then APP_ACT_KINDS else kind, verb = view_act_verb(kind, name), target = view_first_line(text)};
@@ -268,6 +269,7 @@ view_act_rows :: (v: [] ChatView, d: [] DurableChat, r: ViewRow, id: string, row
     } else {
       if v[0].dev.count != 1 || k < 0 || k >= v[0].dev[0].view[0].ni { continue; }
       rows[n] = view_act_device(v[0].dev, k);
+      if ea_thought(v[0].dev[0].view[..], k) && !v[0].dev[0].view[0].items[k].complete { live[0] = true; }
     }
     if rows[n].running { live[0] = true; }
     ids[n] = view_group_key(buf[n][..], id, k); n += 1;
@@ -340,7 +342,7 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
     if s.chat.enabled { secs := ifx v[0].working_from >= 0 then cast(int) (f[0].clock - v[0].working_from) else 0; h = app_working(f, id, x, y, secs, 0, ""); }
     else { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
   }
-  else if r.kind == VK_THOUGHT { gap = 0; }   // outside the conversation look a thought shows nowhere; in it, view_group_tools folds it into its group
+  else if r.kind == VK_THOUGHT || r.kind == VK_DEVICE_THOUGHT { gap = 0; }   // outside the conversation look a thought shows nowhere; in it, view_group_tools folds it into its group
   else if r.kind == VK_TASK_HEAD { if !s.chat.enabled {h = app_task_header(f, id, x, y, w, view_app_task(d, facts));gap=s.app.gap;}else {gap=0;} }
   else if (r.kind == VK_TOOL || r.kind == VK_DEVICE_TOOL) && s.chat.enabled { h = view_activity(f, v, d, r, id, x, y, w); gap = s.app.gap; }
   else if r.kind == VK_TOOL {if r.group_count>1 {h=view_group_row(f,v,d,facts,r,id,x,y,w,open);}else {h = app_tool(f, id, x, y, w, view_app_tool(ses, r.index, xt_terminal(n[0].status[0].state)), open, VIEW_A_TOOL);} gap = s.app.gap_small; }

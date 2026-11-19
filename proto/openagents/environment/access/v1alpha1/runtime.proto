@@ -32,6 +32,15 @@ message RuntimeItem {
   string tool_name = 4 [json_name = "tool_name"];
   bool complete = 5 [json_name = "complete"];
 }
+// A turn's thinking. A v1alpha1 reader draws any role but user, assistant, tool and notice as a
+// reply, so thoughts never travel in items: each sits beside them, before the item at `at` (an
+// index into items; at == len(items) is after the last). Readers put them back in place.
+message RuntimeThought {
+  string item_id = 1 [json_name = "item_id"];
+  string text = 2 [json_name = "text"];
+  bool complete = 3 [json_name = "complete"];
+  int64 at = 4 [json_name = "at"]; // non-decreasing across thoughts
+}
 message RuntimeSession {
   string session_id = 1 [json_name = "session_id"];
   string workspace_id = 2 [json_name = "workspace_id"];
@@ -74,6 +83,8 @@ message RuntimeView {
   repeated RuntimeEffort efforts = 13 [json_name = "efforts"]; // at most 8
   optional string default_effort = 14 [json_name = "default_effort"];
   repeated RuntimeModel models = 15 [json_name = "models"]; // at most 12
+  // Absent from an older computer; items plus thoughts are at most 64.
+  repeated RuntimeThought thoughts = 16 [json_name = "thoughts"];
 }
 // Private local configuration; never returned in a RuntimeView.
 message RuntimeConfiguration {
