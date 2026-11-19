@@ -9,6 +9,11 @@ work="$here/build"
 
 mkdir -p "$work"
 
+if [ ! -x "$coax" ]; then
+  echo "host_driver/build.sh: no coax compiler at $coax; run coax/build.sh first" >&2
+  exit 127
+fi
+
 # Rebuild gallery.c/gallery.h if app.coax or page.coax is newer than gallery.c
 need_coax=0
 if [ ! -f "$work/gallery.c" ] || [ ! -f "$work/gallery.h" ]; then
