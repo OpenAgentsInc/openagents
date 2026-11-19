@@ -47,7 +47,7 @@ es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
   defer {for i:0..<input.count {input[i]=0;}}
   if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);if kind==0 {return;}
   out:[HB_BODY_MAX]u8;made:= -1;
-  if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return;}v:[1]DmView;dm_execute(h,q[..],v[..]);made=dm_view_write(v[..],out[..]);}
+  if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return;}v:[1]DmView;dm_fill_common(h,q[..],v[..]);if dm_is_run(cast(string)q[0].method[0..<q[0].nm]) {dr_execute(h,q[..],v[..]);} else {dm_execute(h,q[..],v[..]);}made=dm_view_write(v[..],out[..]);}
   else {
     c:=h[0].environment[0].configuration[..];if !es_load_configuration(h[0].environment[..]) {return;}
     if kind==1 {q:[1]EaRequest;if !ea_read(raw,q[..]) {return;}v:[1]EaView;es_dispatch(h,q[..],cast(string)c[0].device[..],cast(string)c[0].grant[..],v[..]);made=ea_view_write(v[..],out[..]);}

@@ -52,6 +52,7 @@
 #load "host-transcript.coax";
 #load "host-offers.coax";
 #load "host-daemon.coax";
+#load "host-runs.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -473,6 +474,7 @@ HsHost :: struct {
   seen: [256] [64] u8; nseen: int;   // event IDs already answered (two subscriptions overlap)
   started_at: int;
   environment:[1]EsHost;providers:[1]PaManager;station:[1]StCache;offers:[1]XoHost;
+  runs:[1]DrHost;   // Coder Desktop's worker runs (host-runs.coax)
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {
@@ -704,8 +706,10 @@ hs_serve :: (args: [] Args) -> int {
   hs_outln("Paste this key into Your computer in Settings, This machine on openagents.com to pair this computer.");
   retry_at := 0;
   while end_at == 0 || hs_now() < end_at {
-    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);
+    es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);
     es_local_tick(h,local_listener);
+    // while a worker run is going its lines reach Coder within a few tens of milliseconds
+    busy_ms := ifx dr_active(h) > 0 then 20 else 250;
     now_ms := cxsock_now_ms();
     if !live[cur] && now_ms >= retry_at {
       live[cur] = hs_subscribe(h, subs[cur..<cur + 1]);
@@ -713,7 +717,7 @@ hs_serve :: (args: [] Args) -> int {
       if !live[cur] { retry_at = now_ms + 3000; tool_err("coder host: the relay "); tool_err(relay); tool_errln(" did not answer; trying again"); }
       else if !caught_up { hs_outln("Listening for browsers."); caught_up = true; }
     }
-    if !live[cur] { x := cxproc_sleep_ms(200); continue; }
+    if !live[cur] { x := cxproc_sleep_ms(ifx busy_ms < 200 then busy_ms else 200); continue; }
     // before the relay's connection lifetime ends, the next connection subscribes; both are read until the old one closes
     other := 1 - cur;
     if now_ms - since_ms[cur] > HS_ROTATE_S * 1000 && !live[other] {
@@ -729,7 +733,7 @@ hs_serve :: (args: [] Args) -> int {
         cr_close(subs[cur..<cur + 1]); live[cur] = false; cur = other;
       }
     }
-    r := hs_pump(h, subs[cur..<cur + 1], pub[..], w_b[..], st_b[..], statebuf[..], file[..], out[..], 250);
+    r := hs_pump(h, subs[cur..<cur + 1], pub[..], w_b[..], st_b[..], statebuf[..], file[..], out[..], busy_ms);
     if r == CR_FAIL || r == CR_CLOSED { cr_dropped(subs[cur..<cur + 1]); live[cur] = false; }
   }
   for i: 0..<2 { if live[i] { cr_close(subs[i..<i + 1]); } }

@@ -2,6 +2,8 @@
 // Speaks the newline-framed `openagents.environment.daemon.v1alpha1` control plane
 // over ~/.openagents/coder/host/service.sock so Coder Desktop and OpenAgents Mobile
 // share daemon health, Foreman policy, and session metadata (pin, rename, archive).
+// It also owns Coder's worker runs (GitHub #13694): StartRun, StopRun, ListRuns and
+// ForgetRun, with each run's lines in files under host/runs (coder/tui/host-runs.coax).
 import Darwin
 import Foundation
 
@@ -22,11 +24,24 @@ struct DaemonForemanState: Decodable {
 
 struct DaemonSessionMeta: Decodable {
     let session_id: String
+    enum CodingKeys: String, CodingKey { case session_id = "id", title, folder, pinned, archived, updated }
     let title: String?
     let folder: String?
     let pinned: Bool?
     let archived: Bool?
     let updated: Int?
+}
+
+/// One worker run the daemon owns: running, stopping, exited, stopped or lost.
+struct DaemonRun: Decodable {
+    let run_id: String
+    let state: String
+    let pid: Int?
+    let started: Int?
+    let ended: Int?
+    let exit: Int?
+    let out: Int?
+    var isLive: Bool { state == "running" || state == "stopping" }
 }
 
 struct DaemonView: Decodable {
@@ -39,7 +54,10 @@ struct DaemonView: Decodable {
     let daemon_status: String?
     let foreman: DaemonForemanState?
     let meta: [DaemonSessionMeta]?
+    let runs: [DaemonRun]?
+    let status: String?
     let error: String?
+    enum CodingKeys: String, CodingKey { case schema, ok, host, label, method, pid, daemon_status, foreman, meta = "sessions_meta", runs, status, error }
 }
 
 final class CoderDaemonClient {
@@ -49,8 +67,10 @@ final class CoderDaemonClient {
 
     init() {
         let fm = FileManager.default
+        // the daemon's own rule (hs_path): $CODER_HOME, else $HOME, then .openagents/coder/host
         if let custom = ProcessInfo.processInfo.environment["CODER_HOME"], !custom.isEmpty {
-            self.hostDir = URL(fileURLWithPath: custom, isDirectory: true).appendingPathComponent("host", isDirectory: true)
+            self.hostDir = URL(fileURLWithPath: custom, isDirectory: true)
+                .appendingPathComponent(".openagents/coder/host", isDirectory: true)
         } else {
             self.hostDir = fm.homeDirectoryForCurrentUser
                 .appendingPathComponent(".openagents/coder/host", isDirectory: true)
@@ -136,6 +156,70 @@ final class CoderDaemonClient {
         }
     }
 
+    // MARK: worker runs (GitHub #13694)
+
+    /// The folder the daemon keeps runs in: ID.spec, ID.in, ID.out, ID.state, ID.attached.
+    var runsDir: URL { hostDir.appendingPathComponent("runs", isDirectory: true) }
+    /// Whether the running daemon owns worker runs: it answered ListRuns.
+    private(set) var ownsRuns = false
+
+    /// A daemon that answers, started from the bundled `coder-host serve` when none does,
+    /// and whether it owns runs. Waits up to `wait` seconds for a daemon it started.
+    @discardableResult func ensureDaemon(wait: TimeInterval = 4) -> Bool {
+        if probeRuns() { return true }
+        guard let host = Bundle.main.path(forResource: "coder-host", ofType: nil) else { return false }
+        try? FileManager.default.createDirectory(at: hostDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        guard spawnDetached(host, ["serve"], log: hostDir.appendingPathComponent("daemon.log").path) else { return false }
+        let until = Date().addingTimeInterval(wait)
+        while Date() < until {
+            usleep(100_000)
+            if probeRuns() { return true }
+        }
+        return false
+    }
+    private func probeRuns() -> Bool {
+        let view = sendSync(["schema": Self.schema, "method": "ListRuns"])
+        ownsRuns = view?.ok == true
+        return ownsRuns
+    }
+    /// The daemon in a session of its own, so it outlives Coder: stdin from /dev/null,
+    /// stdout and stderr appended to the daemon's log.
+    private func spawnDetached(_ path: String, _ args: [String], log: String) -> Bool {
+        var actions: posix_spawn_file_actions_t?
+        var attrs: posix_spawnattr_t?
+        posix_spawn_file_actions_init(&actions); defer { posix_spawn_file_actions_destroy(&actions) }
+        posix_spawnattr_init(&attrs); defer { posix_spawnattr_destroy(&attrs) }
+        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&actions, 1, log, O_WRONLY | O_CREAT | O_APPEND, 0o600)
+        posix_spawn_file_actions_adddup2(&actions, 1, 2)
+        posix_spawnattr_setflags(&attrs, Int16(POSIX_SPAWN_SETSID))
+        let argv: [UnsafeMutablePointer<CChar>?] = ([path] + args).map { strdup($0) } + [nil]
+        defer { for a in argv { free(a) } }
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = CoderWorker.path
+        env["BROWSER"] = env["BROWSER"] ?? "/usr/bin/true"
+        let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0.key + "=" + $0.value) } + [nil]
+        defer { for e in envp { free(e) } }
+        var pid: pid_t = 0
+        return posix_spawn(&pid, path, &actions, &attrs, argv, envp) == 0
+    }
+    /// StartRun: the daemon starts the worker its ID.spec names. nil when it runs, else why not.
+    func startRun(_ id: String) -> String? {
+        guard let view = sendSync(["schema": Self.schema, "method": "StartRun", "run_id": id,
+                                   "command_id": Self.newCommandID()]) else { return "unreachable" }
+        return view.ok == true ? nil : (view.error ?? "failed")
+    }
+    func stopRun(_ id: String, then: (() -> Void)? = nil) {
+        sendAsync(["schema": Self.schema, "method": "StopRun", "run_id": id, "command_id": Self.newCommandID()]) { _ in then?() }
+    }
+    func forgetRun(_ id: String) {
+        sendAsync(["schema": Self.schema, "method": "ForgetRun", "run_id": id, "command_id": Self.newCommandID()]) { _ in }
+    }
+    func listRuns() -> [DaemonRun]? {
+        guard let view = sendSync(["schema": Self.schema, "method": "ListRuns"]), view.ok == true else { return nil }
+        return view.runs ?? []
+    }
+
     private static func newCommandID() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
@@ -196,7 +280,7 @@ final class CoderDaemonClient {
 
         var response = Data()
         var buf = [UInt8](repeating: 0, count: 4096)
-        while response.count < 65_536 {
+        while response.count < 1_048_576 {
             let r = Darwin.read(fd, &buf, buf.count)
             if r <= 0 { break }
             if let nl = buf[0..<r].firstIndex(of: 0x0A) {

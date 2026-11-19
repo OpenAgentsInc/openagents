@@ -5,6 +5,11 @@ import Darwin
 /// The Microcoder worker (coder/tui/mcworker.coax, built into the bundle): a process that reads
 /// one JSON line a message and writes one a line back. This class starts it, carries bytes each
 /// way and says when it went away. Every line is written and read by the page's Coax.
+///
+/// When the unified daemon (`coder host serve`, DaemonClient.swift) owns runs, the daemon starts
+/// the worker and keeps it (GitHub #13694): this class writes the run's ID.spec and appends lines
+/// to ID.in, and follows ID.out, so the run goes on after Coder quits and Coder attaches to it again
+/// when it opens. Without that daemon the worker is Coder's own child process, as before.
 final class CoderWorker {
     var line: ((String) -> Void)?      // a line it wrote, on the main queue
     var gone: (() -> Void)?            // it exited, on the main queue
@@ -12,7 +17,25 @@ final class CoderWorker {
     private var input: FileHandle?
     private var held = Data()
 
-    var alive: Bool { process?.isRunning == true }
+    /// The daemon that owns runs, when there is one (set at launch).
+    static var daemon: CoderDaemonClient?
+    /// The most workers the daemon runs at once (host-runs.coax DR_MAX), and what Coder says at it.
+    static let runLimit = 12
+    static let runLimitNote = "Coder runs up to \(runLimit) workers at once, sub-agents included. Stop a chat or wait for one to finish, then send again."
+    /// Why the last start failed, in words for the page; nil for the usual "could not start".
+    private(set) var failure: String?
+    /// The daemon run this worker is, while it is one.
+    private(set) var runID: String?
+    private var runInput: FileHandle?
+    private var tail: DispatchSourceTimer?
+    private let tailQueue = DispatchQueue(label: "openagents.coder.worker-tail", qos: .userInitiated)
+    private var tailHeld = Data()
+    /// Bytes of ID.out already read: where a turn's lines start (CoderTurn.offset).
+    private(set) var offset: UInt64 = 0
+    private var touched = Date.distantPast
+
+    var alive: Bool { process?.isRunning == true || runID != nil }
+    var isDaemonRun: Bool { runID != nil }
 
     /// The bundled program it runs: Microcoder's worker, or the Claude Code worker for a Claude sub-agent.
     var program = "mcworker"
@@ -28,25 +51,29 @@ final class CoderWorker {
     /// Whether Claude Code is installed: a claude command on that PATH.
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
 
+    /// The variables the worker gets on top of what it inherits, and the ones it loses.
+    private func environment() -> (set: [String: String], unset: [String]) {
+        var env: [String: String] = ["PATH": CoderWorker.path]
+        for (k, v) in extraEnv { env[k] = k == "PATH" ? v + ":" + CoderWorker.path : v }
+        // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
+        if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
+        return (env, ["CODER_CLAUDE_KEY"])
+    }
+
     func start() -> Bool {
         if alive { return true }
+        failure = nil
         guard let path = Bundle.main.path(forResource: program, ofType: nil) else { return false }
+        if let daemon = CoderWorker.daemon, daemon.ownsRuns { return startRun(path, daemon) }
         let p = Process(), into = Pipe(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         // An app opened from the Finder has the system's short PATH: the commands Microcoder runs also
         // find what is installed for this person (gamebuilder is in ~/.local/bin).
         var env = ProcessInfo.processInfo.environment
-        env["PATH"] = CoderWorker.path
-        for (k, v) in extraEnv {
-            if k == "PATH" {
-                env["PATH"] = v + ":" + (env["PATH"] ?? CoderWorker.path)
-            } else {
-                env[k] = v
-            }
-        }
-        // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
-        env["CODER_CLAUDE_KEY"] = program == "claudeworker" ? CoderKey.current : nil
+        let (set, unset) = environment()
+        for (k, v) in set { env[k] = v }
+        for k in unset { env[k] = nil }
         p.environment = env
         p.standardInput = into; p.standardOutput = out; p.standardError = FileHandle.nullDevice
         held = Data()
@@ -62,6 +89,106 @@ final class CoderWorker {
         process = p; input = into.fileHandleForWriting
         return true
     }
+    /// The daemon starts the worker: its spec (mode 600, as it may hold the Claude key), an empty
+    /// input, then StartRun. A refusal at the daemon's limit is said on the page (failure).
+    private func startRun(_ path: String, _ daemon: CoderDaemonClient) -> Bool {
+        let fm = FileManager.default, dir = daemon.runsDir
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let (set, unset) = environment()
+        let spec: [String: Any] = ["program": path, "cwd": fm.homeDirectoryForCurrentUser.path,
+                                   "env": set.map { $0.key + "=" + $0.value }, "unset": unset]
+        guard let data = try? JSONSerialization.data(withJSONObject: spec) else { return false }
+        let specURL = dir.appendingPathComponent(id + ".spec")
+        guard fm.createFile(atPath: specURL.path, contents: data, attributes: [.posixPermissions: 0o600]),
+              fm.createFile(atPath: dir.appendingPathComponent(id + ".in").path, contents: nil, attributes: [.posixPermissions: 0o600]) else { return false }
+        attach(id, from: 0)
+        touch(force: true)
+        if let why = daemon.startRun(id) {
+            if why == "run-limit" { failure = CoderWorker.runLimitNote }
+            try? fm.removeItem(at: specURL)
+            detach(); return false
+        }
+        follow()
+        return true
+    }
+    /// This worker is the daemon's run `id` again, from byte `from` of its output (a reopened Coder).
+    func attach(_ id: String, from: UInt64) {
+        guard let daemon = CoderWorker.daemon else { return }
+        runID = id; offset = from; tailHeld = Data()
+        runInput = try? FileHandle(forWritingTo: daemon.runsDir.appendingPathComponent(id + ".in"))
+        _ = try? runInput?.seekToEnd()
+    }
+    /// The whole lines of the run's output not read yet, read now (a reattached run's replay).
+    func readAvailable() -> [String] {
+        guard let id = runID, let daemon = CoderWorker.daemon else { return [] }
+        return tailQueue.sync { readLines(daemon.runsDir.appendingPathComponent(id + ".out")) }
+    }
+    private func readLines(_ url: URL) -> [String] {
+        guard let h = try? FileHandle(forReadingFrom: url) else { return [] }
+        defer { try? h.close() }
+        guard (try? h.seek(toOffset: offset)) != nil, let bytes = try? h.readToEnd(), !bytes.isEmpty else { return [] }
+        offset += UInt64(bytes.count)
+        tailHeld.append(bytes)
+        var lines: [String] = []
+        while let end = tailHeld.firstIndex(of: 0x0a) {
+            let one = tailHeld.subdata(in: tailHeld.startIndex..<end)
+            tailHeld.removeSubrange(tailHeld.startIndex...end)
+            if let text = String(data: one, encoding: .utf8), !text.isEmpty { lines.append(text) }
+        }
+        return lines
+    }
+    /// The run's state as the daemon keeps it: running, stopping, exited, stopped or lost.
+    static func runState(_ id: String) -> String? {
+        guard let daemon, let data = try? Data(contentsOf: daemon.runsDir.appendingPathComponent(id + ".state")),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj["state"] as? String
+    }
+    /// Coder is attached: the daemon leaves the worker's asks to it (host-runs.coax dr_detached).
+    private func touch(force: Bool = false) {
+        guard let id = runID, let daemon = CoderWorker.daemon, force || Date().timeIntervalSince(touched) > 1 else { return }
+        touched = Date()
+        let url = daemon.runsDir.appendingPathComponent(id + ".attached")
+        if !FileManager.default.createFile(atPath: url.path, contents: Data("\(Int(touched.timeIntervalSince1970))".utf8), attributes: [.posixPermissions: 0o600]) { return }
+    }
+    /// Lines as the worker writes them, every 30 ms, until it ends or Coder lets it go.
+    func follow() {
+        guard let id = runID, let daemon = CoderWorker.daemon, tail == nil else { return }
+        let out = daemon.runsDir.appendingPathComponent(id + ".out")
+        let timer = DispatchSource.makeTimerSource(queue: tailQueue)
+        var quiet = 0
+        timer.schedule(deadline: .now(), repeating: .milliseconds(30))
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            let lines = self.readLines(out)
+            if !lines.isEmpty {
+                quiet = 0
+                DispatchQueue.main.async { [weak self] in guard let self, self.runID == id else { return }; for l in lines { self.line?(l) } }
+                return
+            }
+            quiet += 1
+            if quiet % 10 != 0 { return }
+            DispatchQueue.main.async { [weak self] in self?.touch() }
+            // it ended: what it wrote is read, so the page hears it went away
+            if let state = CoderWorker.runState(id), state != "running", state != "stopping" {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.runID == id else { return }
+                    self.tail?.cancel(); self.tail = nil
+                    self.runID = nil; try? self.runInput?.close(); self.runInput = nil
+                    self.gone?()
+                }
+            }
+        }
+        tail = timer
+        timer.resume()
+    }
+    /// Coder lets the run go without stopping it (Coder quits): the daemon keeps it running.
+    func detach() {
+        tail?.cancel(); tail = nil
+        try? runInput?.close(); runInput = nil
+        if let id = runID, let daemon = CoderWorker.daemon { try? FileManager.default.removeItem(at: daemon.runsDir.appendingPathComponent(id + ".attached")) }
+        runID = nil
+    }
     private func read(_ bytes: Data) {
         held.append(bytes)
         while let end = held.firstIndex(of: 0x0a) {
@@ -71,13 +198,21 @@ final class CoderWorker {
         }
     }
     func write(_ bytes: [CChar], count: Int) {
-        guard alive, count > 0, let input else { return }
+        guard alive, count > 0 else { return }
         let data = bytes.prefix(count).withUnsafeBytes { Data($0) }
+        if let runInput { try? runInput.write(contentsOf: data); return }
+        guard let input else { return }
         try? input.write(contentsOf: data)
     }
     /// Closes its input first: a worker ends on that and stops what it started (the Claude worker
     /// kills the claude process group). Half a second later it is terminated if it is still there.
-    func stop() {
+    /// A daemon run is stopped by the daemon the same way; with `forget` its files go once it ends.
+    func stop(forget: Bool = true) {
+        if let id = runID, let daemon = CoderWorker.daemon {
+            detach()
+            daemon.stopRun(id) { if forget { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } }
+            return
+        }
         let p = process, i = input
         process = nil; input = nil
         try? i?.close()
@@ -339,14 +474,72 @@ final class CoderRun {
     var page: UnsafeMutableRawPointer
     let worker = CoderWorker()
     var agents: [Int32: CoderWorker] = [:]
-    let session = "coder-desktop-" + UUID().uuidString.lowercased()
+    var session = "coder-desktop-" + UUID().uuidString.lowercased()
     var folder: URL                    // its working folder, once it is out of view
     var chat: String?                  // its kept chat's id, once it is out of view
+    var turn: CoderTurn?               // the running message, kept so a reopened Coder attaches to it
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
+        endTurn()
         worker.gone = nil; worker.line = nil; worker.stop()
         for one in agents.values { one.gone = nil; one.line = nil; one.stop() }
         agents = [:]
+    }
+    /// The message ended: nothing is left to attach to, and its sub-agents' runs go.
+    func endTurn() {
+        guard let t = turn else { return }
+        turn = nil
+        CoderTurn.remove(t.run)
+        for id in t.agents { CoderWorker.daemon?.forgetRun(id) }
+    }
+    /// Coder quits: the daemon keeps its workers running, and the kept turn says where to attach.
+    func detach() {
+        worker.gone = nil; worker.line = nil; worker.detach()
+        for one in agents.values { one.gone = nil; one.line = nil; one.detach() }
+        agents = [:]
+    }
+}
+
+/// A message whose workers the daemon runs (GitHub #13694), kept in Coder's Application Support
+/// folder as turns/RUN.json with the chat as it was when the message was sent (RUN.chat). A Coder
+/// that opens again loads that chat, sends the message on its page without a worker, and reads
+/// the run's lines from `offset` on, its sub-agents' runs in the order they started.
+struct CoderTurn: Codable {
+    var run: String
+    var chat: String
+    var offset: UInt64
+    var folder: String
+    var session: String
+    var program: String
+    var agents: [String]
+    static var dir: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+        return base.appendingPathComponent("Coder/turns", isDirectory: true)
+    }
+    func save(chatText: String? = nil) {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: CoderTurn.dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        if let chatText { try? Data(chatText.utf8).write(to: CoderTurn.dir.appendingPathComponent(run + ".chat"), options: .atomic) }
+        if let data = try? JSONEncoder().encode(self) { try? data.write(to: CoderTurn.dir.appendingPathComponent(run + ".json"), options: .atomic) }
+    }
+    var chatText: String? { try? String(contentsOf: CoderTurn.dir.appendingPathComponent(run + ".chat"), encoding: .utf8) }
+    static func remove(_ run: String) {
+        for ext in [".json", ".chat"] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(run + ext)) }
+    }
+    static func all() -> [CoderTurn] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.filter { $0.hasSuffix(".json") }.compactMap { name in
+            guard let data = try? Data(contentsOf: dir.appendingPathComponent(name)) else { return nil }
+            return try? JSONDecoder().decode(CoderTurn.self, from: data)
+        }
+    }
+    /// The kept chat without its last message (the one this turn sent), for the page to send again.
+    static func withoutLast(_ text: String) -> (chat: String, ask: String)? {
+        guard let data = text.data(using: .utf8), var obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var turns = obj["turns"] as? [Any], let last = turns.popLast() as? [String: Any], let ask = last["ask"] as? String, !ask.isEmpty else { return nil }
+        obj["turns"] = turns
+        guard let out = try? JSONSerialization.data(withJSONObject: obj), let chat = String(data: out, encoding: .utf8) else { return nil }
+        return (chat, ask)
     }
 }
 
@@ -419,6 +612,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if foremanServer.start() {
             ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
         }
+        // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
+        CoderWorker.daemon = daemonClient
+        daemonClient.ensureDaemon()
         syncFromDaemon()
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
@@ -455,6 +651,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             self.escape(); return nil
         }
         wire(run)
+        reattach()
         canvas.postsFrameChangedNotifications = true
         NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: canvas, queue: .main) { [weak self] _ in self?.wake() }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in self?.rightClick(event) == true ? nil : event }
@@ -514,10 +711,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 if j < 0 { break }
                 let one = CoderWorker()
                 if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-                one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.markUnread(r); self.pump(r) }
-                one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.markUnread(r); self.pump(r) }
-                guard one.start() else { cd_agent_failed(page, j, "The sub-agent's worker could not start."); continue }
+                wireAgent(r, j, one)
+                guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
+                if let id = one.runID, r.turn != nil { r.turn?.agents.append(id); r.turn?.save() }
                 let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), cwd, &out, Int32(out.count))
                 one.write(out, count: Int(n))
             }
@@ -525,10 +722,104 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         for (j, one) in r.agents {
             let n = cd_agent_answer_line(page, j, &out, Int32(out.count))
             one.write(out, count: Int(n))
-            if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop() }
+            // an ended sub-agent's run is kept until the message ends: a reopened Coder reads it again
+            if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
         }
         let n = cd_answer_line(page, &out, Int32(out.count)); r.worker.write(out, count: Int(n))
         wake()
+    }
+    /// Sub-agent j's worker lines go to its run's page.
+    private func wireAgent(_ r: CoderRun, _ j: Int32, _ one: CoderWorker) {
+        one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.markUnread(r); self.pump(r) }
+        one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.markUnread(r); self.pump(r) }
+    }
+    /// A message sent on a daemon run is kept (CoderTurn) with the chat as it is now, so a Coder
+    /// that quits and opens again attaches to it. `from` is where its lines start in the run's output.
+    private func beginTurn(_ r: CoderRun, from: UInt64) {
+        guard let runID = r.worker.runID else { return }
+        let shown = r === run
+        keep(shown ? nil : r)
+        guard let id = shown ? chat : r.chat, let text = store.text(id) else { return }
+        let t = CoderTurn(run: runID, chat: id, offset: from, folder: (shown ? folder : r.folder).path,
+                          session: r.session, program: r.worker.program, agents: [])
+        r.turn = t
+        t.save(chatText: text)
+    }
+    /// At launch: every message whose run the daemon kept while Coder was closed comes back as a
+    /// chat whose reply runs out of view. Its page sends the message again without a worker and
+    /// reads what the run wrote since (replay); then it follows the run live, or ends as completed.
+    /// A run no kept message names (an idle worker of a Coder that crashed) is stopped, and its files go.
+    private func reattach() {
+        guard let daemon = CoderWorker.daemon, daemon.ownsRuns else { return }
+        var named = Set<String>()
+        for t in CoderTurn.all() {
+            guard CoderWorker.runState(t.run) != nil, store.meta(t.chat) != nil, runs[t.chat] == nil,
+                  let kept = t.chatText, let sent = CoderTurn.withoutLast(kept), let back = cd_headless() else {
+                CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
+            }
+            coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+            syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
+            var out = [CChar](repeating: 0, count: 300_000)
+            guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {
+                cd_close(back); CoderTurn.remove(t.run); continue
+            }
+            _ = cd_task(back, t.session, t.folder, &out, Int32(out.count))   // the worker had it when the message was sent
+            let r = CoderRun(page: back, folder: URL(fileURLWithPath: t.folder))
+            r.chat = t.chat; r.session = t.session; r.turn = t; r.worker.program = t.program
+            r.worker.attach(t.run, from: t.offset)
+            replay(r)
+            wire(r); r.worker.follow()
+            runs[t.chat] = r
+            if t.chat != chat { unread.insert(t.chat) }
+            named.insert(t.run); named.formUnion(r.turn?.agents ?? [])
+            pump(r)
+        }
+        if let live = daemon.listRuns() {
+            for one in live where !named.contains(one.run_id) {
+                let id = one.run_id
+                if one.isLive { daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
+            }
+        }
+        cd_chats(page, chatLines); syncForemanUI()
+    }
+    /// The run's lines since the message was sent go to its page as they came. A line after one
+    /// that owed the worker an answer means the answer was given, so it is not given again.
+    private func replay(_ r: CoderRun) {
+        var out = [CChar](repeating: 0, count: 300_000)
+        var started = r.turn?.agents ?? []
+        for (k, text) in r.worker.readAvailable().enumerated() {
+            if k > 0 { _ = cd_answer_line(r.page, &out, Int32(out.count)) }
+            cd_line(r.page, text)
+            resumeAgents(r, &started, &out)
+        }
+    }
+    /// The sub-agents a replayed line handed over: each attaches to the run started for it, in
+    /// order, and its lines are read the same way; one with no run yet starts now.
+    private func resumeAgents(_ r: CoderRun, _ started: inout [String], _ out: inout [CChar]) {
+        let page = r.page
+        while true {
+            let j = cd_agent_next(page)
+            if j < 0 { break }
+            let one = CoderWorker()
+            if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+            let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), r.folder.path, &out, Int32(out.count))
+            if !started.isEmpty {
+                one.attach(started.removeFirst(), from: 0)
+                var owed = [CChar](repeating: 0, count: 4096)
+                for (m, text) in one.readAvailable().enumerated() {
+                    if m > 0 { _ = cd_agent_answer_line(page, j, &owed, Int32(owed.count)) }
+                    cd_agent_line(page, j, text)
+                }
+            } else {
+                guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
+                one.write(out, count: Int(n))
+                if let id = one.runID { r.turn?.agents.append(id); r.turn?.save() }
+            }
+            wireAgent(r, j, one)
+            r.agents[j] = one
+            if cd_agent_running(page, j) == 0 { r.agents[j] = nil; one.gone = nil; one.line = nil; one.stop(forget: false) }
+            else { one.follow() }
+        }
     }
     /// The list as the page reads it: one chat a line, its id, a tab, its title, and optional tabs
     /// for busy, pinned, managed and unread flags.
@@ -901,7 +1192,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             editor.synchronize { editor.string = "" }
             configureWorkerEnv(run, isForeman: isForemanShown)
             syncSkillsNote(for: page, isForeman: isForemanShown)
-            guard run.worker.start() else { cd_failed(page, "Microcoder could not start."); return }
+            guard run.worker.start() else { cd_failed(page, run.worker.failure ?? "Microcoder could not start."); return }
+            let from = run.worker.offset
             if recallDue {
                 // an opened chat's turns, or nothing to remember when it has none that ended
                 recallDue = false
@@ -911,6 +1203,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
             let n = cd_task(page, run.session, folder.path, &out, Int32(out.count))
             run.worker.write(out, count: Int(n))
+            beginTurn(run, from: from)
         case 2: window.makeFirstResponder(editor)
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
         case 3: stopRun(run)
@@ -1390,10 +1683,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if bgAct == 1 {
                 var out = [CChar](repeating: 0, count: 262144)
                 if back.worker.start() {
+                    let from = back.worker.offset
                     let n = cd_task(back.page, back.session, back.folder.path, &out, Int32(out.count))
                     back.worker.write(out, count: Int(n))
+                    beginTurn(back, from: from)
                 } else {
-                    cd_failed(back.page, "Microcoder could not start.")
+                    cd_failed(back.page, back.worker.failure ?? "Microcoder could not start.")
                 }
             } else if bgAct == 3 {
                 stopRun(back)
@@ -1406,6 +1701,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning
+            if !fgRunning { run.endTurn() }
             if let cid = chat {
                 _ = foremanEvents.emit(type: fgRunning ? "chat.started" : "chat.finished", chatID: cid, data: [
                     "title": store.title(cid) ?? (cid == Foreman.chatID ? Foreman.title : "Chat"),
@@ -1450,6 +1746,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         if editor.frame != frame { editor.frame = frame; wake() }
     }
 
+    /// Whether quitting leaves the running messages going: the daemon runs their workers.
+    var runsOutliveQuit: Bool { CoderWorker.daemon?.ownsRuns == true }
     var runningCount: Int {
         (cd_running(page) != 0 ? 1 : 0) + runs.values.filter { cd_running($0.page) != 0 }.count
     }
@@ -1967,8 +2265,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if moved.worker.start() {
                 let n = cd_task(back, moved.session, moved.folder.path, &out, Int32(out.count))
                 moved.worker.write(out, count: Int(n))
+                beginTurn(moved, from: 0)
             } else {
-                cd_failed(back, "Microcoder could not start.")
+                cd_failed(back, moved.worker.failure ?? "Microcoder could not start.")
             }
         }
         runs[id] = moved
@@ -2066,8 +2365,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 moved.worker.write(out, count: Int(rn))
                 let tn = cd_task(back, moved.session, moved.folder.path, &out, Int32(out.count))
                 moved.worker.write(out, count: Int(tn))
+                beginTurn(moved, from: 0)
             } else {
-                cd_failed(back, "Microcoder could not start.")
+                cd_failed(back, moved.worker.failure ?? "Microcoder could not start.")
             }
         }
         runs[id] = moved
@@ -2324,11 +2624,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         foremanServer.stop()
         ForemanControlDescriptor.remove()
         if chat != nil { keep() }
-        for back in runs.values { keep(back); back.stop(); cd_close(back.page) }
+        // the daemon's runs go on after Coder quits; a reopened Coder attaches to them (GitHub #13694)
+        for back in runs.values { keep(back); if back.turn != nil { back.detach() } else { back.stop() }; cd_close(back.page) }
         runs = [:]
+        if run.turn != nil && cd_running(page) != 0 { run.detach() } else { run.stop() }
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; clock?.invalidate(); clock = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
-        run.stop(); cd_on_change(page, nil, nil); cd_close(page)
+        cd_on_change(page, nil, nil); cd_close(page)
     }
 }
 
@@ -2366,6 +2668,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let count = main?.runningCount, count > 0 else { return .terminateNow }
+        // the daemon keeps them running; the next Coder attaches to them (GitHub #13694)
+        if main?.runsOutliveQuit == true { return .terminateNow }
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .warning

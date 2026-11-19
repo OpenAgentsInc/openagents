@@ -254,12 +254,44 @@ The app bundles the Microcoder worker (`coder/tui/mcworker.coax`) and starts
 it on the first message. `App.swift` carries bytes between the worker and the
 page. The page (`page.coax`) writes the task line and reads every reply line
 with the worker's own codec (`coax/lib/agent/engine/mcworker-wire.coax`).
-Each sub-agent is one more worker process, which the app starts when
+Each sub-agent is one more worker process, which the app starts (through the daemon, see [Runs outlive Coder](#runs-outlive-coder)) when
 Microcoder hands a task over and stops when the task ends.
 The worker reads this machine's credentials as Coder's terminal app does
 (`coder/tui/microcoder_keys.coax`): Vertex first, then the Gemini API, then
 OpenRouter. A model you set in OpenRouter Models runs on OpenRouter alone,
 with the key Coder keeps (see [OpenRouter models](#openrouter-models)).
+
+## Runs outlive Coder
+
+Coder's background service runs the workers (#13694). It is the unified
+daemon, `coder host serve` (`coder/tui/host.coax`), bundled as
+`Contents/Resources/coder-host`. When Coder opens and no daemon answers on
+`~/.openagents/coder/host/service.sock`, Coder starts it in a session of its
+own, so it keeps running after Coder quits. Its output goes to
+`~/.openagents/coder/host/daemon.log`.
+
+- **Quit Coder** while a reply runs and the reply goes on. Coder quits without asking.
+- **Open Coder** again and each chat whose reply ran while it was closed is back in the sidebar. A reply that is still running shows as running and fills in live; open the chat to watch it or press Stop. A reply that ended while Coder was closed shows complete and unread.
+- **Several chats** run at once, and Foreman-managed chats run the same way.
+
+How it works: for each worker the daemon starts, it keeps the worker's own
+lines (`mcworker-wire`, unchanged) in `~/.openagents/coder/host/runs/ID.out`
+and forwards what Coder appends to `ID.in` (`coder/tui/host-runs.coax`). Coder
+keeps each running message in `~/Library/Application Support/Coder/turns/`
+with the chat as it was when you sent it. When Coder opens, it loads that
+chat, reads the run's lines from where the message started, and then follows
+them. The control methods (StartRun, StopRun, ListRuns, ForgetRun) are on the
+daemon's local socket only, never on the relay.
+
+Limits:
+
+- The daemon runs up to 12 workers at once, sub-agents included. Past that a message or a sub-agent does not start, and the chat says so: "Coder runs up to 12 workers at once, sub-agents included."
+- While Coder is closed, the daemon answers each command's check with yes, as Coder does. A sub-agent's pause after 100 tool calls in a row (see [Sub-agents](#sub-agents)) is answered the same way, so a sub-agent goes on past it.
+- While Coder is closed, sub-agents that Microcoder hands work to don't start, and Microcoder waits for the results of sub-agents that finish. Both happen when you open Coder again.
+- The Foreman chat's `foreman-ctl` calls need Coder open: the address they use is Coder's.
+- Stopping the daemon, or restarting the Mac, ends its workers. Coder then shows those replies as stopped ("Microcoder stopped running").
+- A daemon from an older Coder that doesn't run workers leaves them to Coder, as before: quitting Coder then stops them, and Coder asks first.
+- A finished run's files are removed when Coder sees it end, and after a week otherwise.
 
 ## Build and open
 
@@ -347,8 +379,9 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `app.coax` | The compiled unit: the page and the atlas tables |
 | `host.c`, `host.h` | The page on the shared GPU carrier, as calls for Swift |
 | `carrier.c` | The shared component carrier with this page |
-| `App.swift` | The AppKit lifecycle, the window, the editor's placement, the worker processes and the kept chats' files |
+| `App.swift` | The AppKit lifecycle, the window, the editor's placement, the workers (the daemon's runs, or child processes) and the kept chats' files |
+| `DaemonClient.swift` | The unified daemon's local socket: health, Foreman policy, session metadata, and the worker runs |
 | `ForemanOperator.swift` | The Foreman control API's two credentials, route policy and control file, for programs outside the Foreman chat |
 | `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |
-| `build.sh` | Coax to C and Metal, the two workers' images, then clang, swiftc and codesign |
+| `build.sh` | Coax to C and Metal, the two workers' images and the daemon's, then clang, swiftc and codesign |
 | `install.sh` | Builds `origin/main` and keeps `/Applications/Coder.app` at it, every 15 minutes with `--agent` |

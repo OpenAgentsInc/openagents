@@ -2,7 +2,7 @@
 # Firm reason: 5 (thin wrapper around coax, clang, swiftc and codesign; holds no logic)
 # Builds Coder.app for this Mac: the page (app.coax, page.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the shared
-# AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal, and the Microcoder worker (coder/tui/mcworker.coax) it talks to.
+# AppKit editor (apps/shared/native/KitEditorMac.swift) and the component shader emitted as Metal, the Microcoder worker (coder/tui/mcworker.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
 #   apps/coder-desktop/build.sh [--open]
 #   CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh   builds into another folder
 set -euo pipefail
@@ -32,6 +32,10 @@ cp "$repo/coax/web/build/tools/mcworker-$(shasum -a 256 "$coax" | cut -d " " -f 
 # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/claudeworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/claudeworker"
+# The unified daemon (coder/tui/host.coax, `coder host serve`): Coder starts it when none answers, and it
+# owns the worker runs so they go on after Coder quits (GitHub #13694). An unknown verb only builds it.
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only < /dev/null > /dev/null 2>&1 || true
+cp "$repo/coax/web/build/tools/host-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/coder-host"
 cp "$here/foreman-ctl" "$res/foreman-ctl"
 chmod +x "$res/foreman-ctl"
 rm -rf "$res/Components/fonts" "$res/Components/icons"
