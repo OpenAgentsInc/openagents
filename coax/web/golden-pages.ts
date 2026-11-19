@@ -89,6 +89,9 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
     byAddress[`fixture-painterly-phone-${c}`] = { path: `/worlds/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture", size: [390, 844] }
   // and backlit at noon, the sun put behind the blob tree (?sun=, ?sunup=), for the light shafts (spec 6)
   byAddress["fixture-painterly-shafts"] = { path: "/worlds/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
+  // SLAB at walking height on the promenade under the morning sun: the photoreal style's
+  // deck, long shadows and the walker's own (the realm's own golden is the opening orbit)
+  byAddress["slab-walk"] = { path: "/worlds/slab?mode=walk&yaw=3.9", lit: 0.3, settle: 3000, blocks: 6, module: "slab" }
   for (const [name, page] of Object.entries(byAddress)) pages[name] ??= page
   return { pages, byAddress, open, unlisted, devOnly }
 }
