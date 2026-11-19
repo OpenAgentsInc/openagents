@@ -101,7 +101,7 @@ CP_GOAL_USAGE :: "Usage: /goal <objective> | /goal edit | /goal pause | /goal re
 // What the page asks of its host (coder_page_action), once.
 CP_ASK_NONE :: 0; CP_ASK_SEND :: 1; CP_ASK_FOCUS :: 2; CP_ASK_STOP :: 3; CP_ASK_NEW :: 4; CP_ASK_COPY :: 5; CP_ASK_FOLDER :: 6; CP_ASK_OPEN :: 7; CP_ASK_BUDGET :: 8; CP_ASK_GOAL :: 9; CP_ASK_REORDER_PIN :: 10; CP_ASK_FOREMAN :: 11; CP_ASK_UPDATE :: 12;
 // What a row dispatches.
-CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27;
+CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 // Desktop auto-updater pill states shown in the sidebar footer.
 CP_UPD_HIDDEN :: 0; CP_UPD_AVAILABLE :: 1; CP_UPD_DOWNLOADING :: 2; CP_UPD_READY :: 3; CP_UPD_ERROR :: 4;
 // Foreman permission tiers shown in the sidebar.
@@ -216,7 +216,7 @@ CoderPage :: struct {
   // transcript's) or under the pointer; the window's width as last drawn; the host owes keeping them
   calls: [CP_AGENT_CALLS] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
   long_buf: [CP_LONG_POOL] u8; long_n: int;
-  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool;
+  side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
   scratch: [CP_SCRATCH] u8;
   zoom: int;                  // the text size, a row of CP_ZOOMS
@@ -325,7 +325,12 @@ cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx 
 cp_skin :: () -> UiSkin {
   u: f32 = ARCADE_PHONE_SCALE;
   k := arcade_phone_skin();
-  // Sidebar: unchanged Claude Desktop proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
+  // Sidebar surface & divider: visibly distinct cool-dark surface with crisp 1pt divider and clear selection pill.
+  k.sidebar = rgba(0.086f32, 0.090f32, 0.102f32, 1.0f32);
+  k.menu_divider = rgba(1.0f32, 1.0f32, 1.0f32, 0.14f32);
+  k.raised = rgba(0.157f32, 0.165f32, 0.184f32, 1.0f32);
+  k.hover = rgba(0.204f32, 0.212f32, 0.235f32, 1.0f32);
+  // Sidebar: Claude Desktop proportions (32pt rows, 26pt headers, 8pt inset/radius, 16pt pad, 15pt icons).
   k.app.side_row = 32.0f32 / u;
   k.app.side_row_two = 48.0f32 / u;
   k.app.side_head = 26.0f32 / u;
@@ -1693,6 +1698,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_NEW { return cp_new(s); }
   if act == CP_FOREMAN { s[0].ask = CP_ASK_FOREMAN; return true; }
   if act == CP_UPDATE { s[0].ask = CP_ASK_UPDATE; return true; }
+  if act == CP_SIDE_TOGGLE { s[0].side_collapsed = !s[0].side_collapsed; return true; }
   if act == CP_FOREMAN_HUD_TOGGLE { s[0].foreman_hud_collapsed = !s[0].foreman_hud_collapsed; return true; }
   if act == CP_FOREMAN_HUD_OPEN {
     id := surface_id(s[0].surface[..], row);
@@ -1922,7 +1928,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, false, 0.0f32, s[0].pane_open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   left := ifx shell.side.persistent then shell.side.width else 0.0f32;
   right := shell.pane.w;
   s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
@@ -2153,6 +2159,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   _ := app_icon_button(f, "coder.copy", copy_x, CP_CORNER, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
+    if s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM {
+      _ := app_icon_button(f, "coder.side.toggle", CP_CORNER, CP_CORNER, a.icon_nav, "Show sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+    }
     _ := app_icon_button(f, "coder.new", w - a.icon_button - CP_CORNER, CP_CORNER, ICON_COMPOSE, "New chat", APP_BUTTON_QUIET,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
@@ -2162,7 +2171,9 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     u: f32 = ARCADE_PHONE_SCALE;
     sw := app_sidebar_surface(f, 0, 0, left, h);
     sy := 10.0f32 / u;
-    sy += app_side_action(f, "coder.new", 0, sy, sw, ICON_COMPOSE, "New chat", 0, CP_NEW);
+    toggle_w := a.icon_button + a.row_inset;
+    _ := app_icon_button(f, "coder.side.toggle", sw - toggle_w, sy + (a.side_row - a.icon_button) / 2, a.icon_nav, "Hide sidebar", APP_BUTTON_QUIET, 0, CP_SIDE_TOGGLE);
+    sy += app_side_action(f, "coder.new", 0, sy, sw - toggle_w, ICON_COMPOSE, "New chat", 0, CP_NEW);
     cur := cast(string) s[0].current[0..<s[0].current_n];
     // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
     {
@@ -2177,7 +2188,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
       else if fhov { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75)); }
       if fp > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.hover, fp)); }
       frow := uiframe_semantic(f, "coder.foreman", EL_BUTTON, "Foreman", 0, sy, sw, fh, f_state, CP_FOREMAN);
-      tf := ifx a.side_row < 34 then k.small else k.body;
+      tf := k.body;
       tx := a.side_pad;
       mark := a.icon;
       sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur || fhov then k.ink else k.muted);
@@ -2251,7 +2262,8 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     footer_h := cp_side_footer_h(s, k);
     if stop + footer_h > h { footer_h = 0; }
     s[0].side_view = h - stop - footer_h;
-    tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap else 0.0f32;
+    bottom_pad := 16.0f32 / u;
+    tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
     s[0].side_content = app_side_window(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, tail, CP_CHAT);
     s[0].pin_row_h = a.side_row;
     s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view);
@@ -4012,4 +4024,30 @@ cp_find :: (text: string, needle: string) -> int {
     ar[0].at = 0; ar[0].full = false;
     #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], t[..]) && t[0].no_ask && t[0].sandbox == "danger-full-access";
   }
+}
+
+#test "sidebar collapse toggle hides and restores the persistent sidebar on wide windows" {
+  p: [1] CoderPage; s := p[..]; cp_init(s);
+  f: [1] UiFrame;
+  // Wide window starts with persistent sidebar and a Hide sidebar toggle
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0 && !s[0].side_collapsed;
+  row := surface_find(s[0].surface[..], "coder.side.toggle");
+  #assert row >= 0 && surface_action(s[0].surface[..], row) == CP_SIDE_TOGGLE;
+  // Pressing the toggle collapses the sidebar and shows the Show sidebar toggle in the main pane
+  #assert cp_press(s, row) && s[0].side_collapsed;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side == 0;
+  row2 := surface_find(s[0].surface[..], "coder.side.toggle");
+  #assert row2 >= 0 && surface_action(s[0].surface[..], row2) == CP_SIDE_TOGGLE;
+  // Pressing again restores the persistent sidebar
+  #assert cp_press(s, row2) && !s[0].side_collapsed;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, false, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert s[0].side > 0;
 }

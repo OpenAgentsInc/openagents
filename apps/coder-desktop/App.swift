@@ -394,7 +394,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         super.init()
-        window.title = "Coder"; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
+        window.title = "Coder"; window.titleVisibility = .hidden; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
         canvas.frame = window.contentLayoutRect; canvas.autoresizingMask = [.width, .height]
         window.contentView = canvas
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
@@ -689,7 +689,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         NSWorkspace.shared.open(url)
     }
     func openForeman() {
-        if chat == Foreman.chatID { window.makeFirstResponder(editor); wake(); return }
+        if chat == Foreman.chatID { cd_current(page, Foreman.chatID); syncForemanUI(); window.makeFirstResponder(editor); wake(); return }
         guard detach() else { return }
         if let back = runs[Foreman.chatID] {
             guard cd_take(page, back.page) != 0 else { return }
@@ -934,7 +934,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             unread.remove(id)
             chat = id; recallDue = false; cd_current(page, id)
             setFolder(back.folder, keep: false)
-            cd_chats(page, chatLines)
+            configureWorkerEnv(run, isForeman: false)
+            syncSkillsNote(for: page, isForeman: false)
+            cd_chats(page, chatLines); syncForemanUI()
             window.makeFirstResponder(editor); wake()
             return
         }
@@ -1084,7 +1086,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] answer in
             guard let self, answer == .alertFirstButtonReturn else { return }
-            if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page) }
+            if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
             guard !self.busy(id) else { return }
             self.unread.remove(id)
             self.store.remove(id)

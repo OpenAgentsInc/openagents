@@ -267,7 +267,8 @@ app_sidebar_surface :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) -> f32 {
   k := f[0].skin; sh := f[0].sheet;
   sw := w - k.border;
   if sw < 0 { sw = 0; }
-  sheet_fill(sh, x, y, sw, h, 0, k.surface);
+  bg := ifx k.sidebar.a > 0 then k.sidebar else k.surface;
+  sheet_fill(sh, x, y, sw, h, 0, bg);
   sheet_fill(sh, x + sw, y, k.border, h, 0, k.menu_divider);
   return sw;
 }
