@@ -44,7 +44,7 @@ checks from measurements of real coding outcomes.
 - **The core path.** Chapters 1, 2, 4 and 5 (the loop, the log, tools and
   the sandbox), 9–11 (engines), 14 (forks and jobs), 17 (many tasks), 20
   (staying online), 21 (measurement) and 23 (the command line).
-- **Two books in one.** Parts I–VI and VIII build Coder. Part VII is a
+- **Two books in one.** Parts I–VI, VIII and IX build Coder. Part VII is a
   field guide: it reads other coding agents' source at a pinned revision
   and records what Coder takes from each. Those chapters describe the other
   tool as it was at that revision.
@@ -53,8 +53,9 @@ checks from measurements of real coding outcomes.
 
 ## Status
 
-Written 2026-11-01; counts as of 2026-11-05. Of the 38 chapters, 8 are
-implemented, 18 are partly implemented and 12 are written surveys. The
+Written 2026-11-01; updated 2026-11-18. Of the 42 chapters, 11 are
+implemented, 18 are partly implemented, 12 are written surveys and 1 is a
+design draft. The
 opening native profile composes the owned worker, durable journal and Linux
 confinement; the finite teaching examples remain under `psionic/lib/harness/`.
 The [registry](chapters.json) names each chapter’s sources and qualified targets.
@@ -110,6 +111,9 @@ The [registry](chapters.json) names each chapter’s sources and qualified targe
 | [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) | Partly implemented: vt-text-v1, bounded CPU |
 | [38. Drive Cursor](ch038-drive-cursor.md) | Partly implemented: cursor-agent 2026.10.14-941492e ACP |
 | [39. Drive Antigravity](ch039-drive-antigravity.md) | Implemented: agy 1.5.6 ACP on Google Cloud credits |
+| [40. The desktop app](ch040-the-desktop-app.md) | Implemented: native macOS Metal + AppKit app, concurrent chats, skills |
+| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) | Implemented: mcworker-wire.coax JSON-lines protocol, parallel sub-agents |
+| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) | Unimplemented: design draft |
 
 ## Contents
 

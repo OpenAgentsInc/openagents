@@ -149,6 +149,14 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | [38. Drive Cursor](ch038-drive-cursor.md) — partly implemented | The installed Cursor CLI as an engine, driven as `agent acp` on the person's own login: one session, streamed replies, tool rows and diffs, chapter 5's approvals. Pinned CLI build `2026.10.14-941492e`. |
 | [39. Drive Antigravity](ch039-drive-antigravity.md) — implemented | Google's Antigravity CLI as an engine, driven as `agy acp` on the same ACP client and engine as Cursor: its own sign-in or a credentials file naming Google Cloud credentials, models and thought level, `session/resume` for forks, chapter 5's approvals. agy 1.5.6. |
 
+## IX. The desktop app
+
+| Chapter | What we build and check |
+| --- | --- |
+| [40. The desktop app](ch040-the-desktop-app.md) — implemented | Native macOS desktop app (`apps/coder-desktop/`): a Coax UI/state machine (`page.coax`) on a Metal GPU carrier with an AppKit host (`App.swift`) and native editor (`KitEditorMac.swift`), concurrent and headless background chats, disk persistence and `~/.claude/skills` injection. |
+| [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented | The shared JSON-lines wire protocol (`mcworker-wire.coax`) between the desktop/TUI host and `mcworker` / `claudeworker`, including parallel sub-agent delegation across Gemini and Claude levels and streamed thinking/replies. |
+| [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft | Connecting the desktop app to the rest of the book: unified Chapter 2 session logs, Codex/Psionic/ACP engines and System One routing, approvals/consent/memory in the UI, embedded VT terminal, remote daemons and cross-platform carriers. |
+
 ## What stays in Psionic
 
 Psionic keeps a short part on serving a harness, because these need the

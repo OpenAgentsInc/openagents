@@ -67,3 +67,9 @@
 - [37. A terminal inside the agent](ch037-a-terminal-inside-the-agent.md) — partly implemented
 - [38. Drive Cursor](ch038-drive-cursor.md) — partly implemented
 - [39. Drive Antigravity](ch039-drive-antigravity.md) — implemented
+
+## IX. The desktop app
+
+- [40. The desktop app](ch040-the-desktop-app.md) — implemented
+- [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented
+- [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft
