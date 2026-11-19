@@ -1,0 +1,968 @@
+// SLAB's life (docs/metaverse/photoreal.md, "Things that move"; spec section 7): the people,
+// vehicles, ships, helicopter, birds and flags that tell a visitor how big the platform is. A
+// content set of slab-content.coax.
+//
+// Everything moves on the world's clock (s[0].time) and keeps no state, so every visitor sees the
+// same thing at the same second and a picture at ?t= is repeatable. Nothing is placed by hand:
+// the routes follow rules over the plan's records as they are this frame (city_deck and city_open
+// in slab-content-city.coax), so a resized or re-planned deck still works.
+//   people     walk the promenade round the deck's edge and the sidewalks round each clear 100 m
+//              block; some stand at the parapet looking out. Far off each is one record
+//              (traffic_person); within LIFE_NEAR_M of the eye the nearest are the engine's walking
+//              figure (pr_figure). A phone keeps two in five by a stable hash.
+//   vehicles   trucks and carts drive loops on the street grid where it is clear, 2.5 m right of
+//              the centre line, stopping at every crossing; forklifts circle the industry and
+//              container yards.
+//   ships      a supply ship goes round the platform and into the dock's basin in the lee, waits
+//              there and comes out; a tug stands by off the north wall; a bulk carrier holds
+//              station 1.7 km off. Each rides the page's own sea (ww_height in slab-water.coax):
+//              heave, pitch and roll from nine heights under its hull (traffic_ride).
+//   aircraft   a helicopter on the hospital's roof lifts, flies out 2.5 km and comes back; gulls
+//              circle the corners of the walls.
+//   flags      on poles at the deck's corners, streaming with the simulated wind.
+//   scale      the tour's size stop (slab-tour.coax tour_thing) fills its outlines with Prelude, a
+//              container ship and a 100 m tower, grown in as the outlines are.
+// slab_life_frame works out where everything is once a frame (it reads the sea, the camera and
+// the clock, which the list's two runs must not); slab_life_move only writes those places.
+//   coax/bin/coax test apps/openagents-web/slab.coax --only life
+#load "../../metaverse-engine/render/shade/photoreal-life.coax";
+#load "../../metaverse-engine/anim/figure.coax" as mfig;
+#load "../../metaverse-engine/world/timetable.coax";
+#load "../../metaverse-engine/world/lanes.coax" as lane;
+
+LIFE_SEED :: 4513;
+LIFE_PI :: 3.14159265f32;
+LIFE_ROUTES :: 72;              // walking and driving loops the deck can hold
+LIFE_PTS :: 16;                 // points a loop may have, its last its first again
+LIFE_WALKERS :: 480; LIFE_WALKERS_PHONE :: 190;
+LIFE_STANDERS :: 48; LIFE_STANDERS_PHONE :: 20;
+LIFE_NEAR :: 48; LIFE_NEAR_PHONE :: 14;   // walking figures drawn whole, the nearest first
+LIFE_NEAR_M :: 70.0f32;         // within this many metres of the eye a person is a whole figure
+LIFE_FAR_M :: 1700.0f32;        // beyond this a far person is under a pixel tall at 1440 x 900
+LIFE_DRIVERS :: 22; LIFE_DRIVERS_PHONE :: 10;
+LIFE_FORKLIFTS :: 6; LIFE_FORKLIFTS_PHONE :: 3;
+LIFE_BIRDS :: 24; LIFE_BIRDS_PHONE :: 8;
+LIFE_FLAGS :: 6;
+LIFE_BODIES :: 640;             // one-record things this frame
+LIFE_DECK_PROM :: 5.0f32;       // the promenade's walking lines in from the edge, m (the lamps
+LIFE_DECK_PROM2 :: 13.5f32;     // and benches are 2 to 3 m in, the stair and lift heads 9 m)
+LIFE_STAND_IN :: 1.5f32;        // where people stand at the parapet
+LIFE_CURB :: 7.5f32;            // a sidewalk's line from the street's centre (the street is 20 m wide)
+LIFE_LANE :: 2.5f32;            // a vehicle's line right of the centre
+LIFE_HELI_CYCLE :: 360.0f32;    // s: parked, lift, out 2.5 km and back, land
+LIFE_HELI_OUT :: 2500.0f32;
+// The kinds of thing a visitor can count (the spec's and the checks' numbers).
+LIFE_K_WALK :: 0; LIFE_K_STAND :: 1; LIFE_K_FIGURE :: 2; LIFE_K_VEHICLE :: 3; LIFE_K_SHIP :: 4; LIFE_K_BIRD :: 5; LIFE_K_AIR :: 6; LIFE_K_FLAG :: 7;
+LIFE_KINDS :: 8;
+
+LifeRoute :: struct {
+  n: int;                       // points, the last the first again
+  pts: [LIFE_PTS * 2] f32;
+  along: [LIFE_PTS] f32;
+  length: f32;
+  walk: bool;                   // people walk it; else it is driven
+  fork: bool;                   // forklifts drive it
+}
+// A one-record thing this frame: a far person, a vehicle, a ship, a helicopter's body, a tower.
+LifeBody :: struct {
+  part: int; x: f32; y: f32; z: f32; yaw: f32; pitch: f32; roll: f32;
+  free: bool; lean: bool; near: f32;
+  sx: f32; sy: f32; sz: f32;    // a stretch (0: none)
+  tint: [3] f32; material: int;
+}
+LifeFigure :: struct { x: f32; y: f32; z: f32; heading: f32; strides: f32; walking: bool; rig: int; look: int; }
+LifeBird :: struct { x: f32; y: f32; z: f32; fx: f32; fz: f32; beat: f32; bank: f32; }
+LifeFlag :: struct { x: f32; z: f32; top: f32; seed: f32; }
+
+SlabLife :: struct {
+  made: bool;
+  look: TrafficLook;            // paint, glass, dark (metaverse-engine/arch/traffic.coax)
+  cloth: int;                   // the flags'
+  pad: int;                     // the helipad's dark deck
+  // parts
+  ship: [TRAFFIC_SHIPS] int;
+  truck: int; forklift: int; cart: int;
+  heli: int; rotor: int; tail: int;
+  bone: int; walk_a: int; walk_b: int; stand: int;
+  bird: int; wing: int;
+  // the figure: three builds, each its own speed and strides a metre
+  rigs: [3] mfig.Skeleton;
+  rig_speed: [3] f32; rig_stride: [3] f32;
+  // what the deck gives, from the last list
+  deck: CityDeck; ok: bool;
+  routes: [LIFE_ROUTES] LifeRoute; route_count: int;
+  walk_length: f32;             // all the walking routes' lengths
+  stands: [LIFE_STANDERS * 3] f32; stand_count: int;   // x, z, the way they face (heading)
+  flags: [LIFE_FLAGS] LifeFlag; flag_count: int;
+  pad_x: f32; pad_z: f32; pad_y: f32; has_pad: bool;
+  // this frame
+  bodies: [LIFE_BODIES] LifeBody; body_count: int;
+  figures: [LIFE_NEAR] LifeFigure; figure_count: int;
+  birds: [LIFE_BIRDS] LifeBird; bird_count: int;
+  wind_x: f32; wind_z: f32; wind: f32;                 // toward, hull frame, and m/s
+  heli_on: bool; heli_x: f32; heli_y: f32; heli_z: f32; heli_yaw: f32; heli_pitch: f32; heli_turn: f32;
+  shown: bool;                  // the deck's life is drawn this frame
+  time: f32;
+  counts: [LIFE_KINDS] int;     // what this frame draws, by kind
+}
+
+// ---- once: the materials and the parts
+slab_life_make :: (ph: [] SlabPhoto, p: [] ArchPen) {
+  L := ph[0].content.life[..];
+  k: TrafficLook;
+  k.paint = photo_material(ph, 0.92, 0.92, 0.9, 0.55, 0, PR_PATTERN_PLAIN, 0, 0);
+  k.glass = photo_material(ph, 0.14, 0.18, 0.21, 0.08, 0.6, PR_PATTERN_PLAIN, 0, 0);
+  k.dark = photo_material(ph, 0.06, 0.06, 0.065, 0.75, 0, PR_PATTERN_PLAIN, 0, 0);
+  L[0].look = k;
+  L[0].cloth = photo_material(ph, 0.95, 0.95, 0.94, 0.85, 0, PR_PATTERN_PLAIN, 0, 0);
+  L[0].pad = photo_material(ph, 0.16, 0.17, 0.18, 0.7, 0, PR_PATTERN_PLAIN, 0, 0);
+  for i: 0..<TRAFFIC_SHIPS { L[0].ship[i] = photo_part(ph, traffic_ship(p, k, i)); }
+  L[0].truck = photo_part(ph, traffic_truck(p, k));
+  L[0].forklift = photo_part(ph, traffic_forklift(p, k));
+  L[0].cart = photo_part(ph, traffic_cart(p, k));
+  L[0].heli = photo_part(ph, traffic_helicopter(p, k));
+  L[0].rotor = photo_part(ph, traffic_rotor(p, k));
+  L[0].tail = photo_part(ph, traffic_tail_rotor(p, k));
+  L[0].bone = photo_part(ph, traffic_bone(p, k));
+  L[0].walk_a = photo_part(ph, traffic_person(p, k, 1));
+  L[0].walk_b = photo_part(ph, traffic_person(p, k, -1));
+  L[0].stand = photo_part(ph, traffic_person(p, k, 0));
+  L[0].bird = photo_part(ph, traffic_bird(p, k));
+  L[0].wing = photo_part(ph, traffic_wing(p, k));
+  sizes := [3] f32.[0.93, 1.0, 1.05];
+  for r: 0..<3 {
+    L[0].rigs[r] = pr_figure_rig(sizes[r], 1);
+    L[0].rig_speed[r] = pr_figure_speed(sizes[r]);
+    L[0].rig_stride[r] = pr_figure_strides(sizes[r]) / life_max(L[0].rig_speed[r], 0.1);
+  }
+  L[0].made = L[0].wing >= 0;
+}
+
+// ---- small sums
+life_max :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+life_min :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+life_clamp :: (a: f32, lo: f32, hi: f32) -> f32 { return life_min(hi, life_max(lo, a)); }
+life_ease :: (a: f32) -> f32 { t := life_clamp(a, 0, 1); return t * t * (3 - 2 * t); }
+life_frac :: (a: f32) -> f32 { return a - floor(a); }
+// A number in [0, 1) for thing i and a salt: the same on every visit.
+life_hash :: (i: int, salt: int) -> f32 {
+  h: u64 = cast(u64) (i * 7919 + salt * 104729 + LIFE_SEED) & 0xFFFFFFFF;
+  h = ((h ^ (h >> 13)) * 1540483477) & 0xFFFFFFFF;
+  h = ((h ^ (h >> 15)) * 2246822519) & 0xFFFFFFFF;
+  h = h ^ (h >> 16);
+  return cast(f32) (h & 0xFFFF) / 65536.0f32;
+}
+// The yaw that turns a part's +x along (dx, dz), and the heading that turns a figure's face (+z) there.
+life_yaw :: (dx: f32, dz: f32) -> f32 { return angle_atan2(-dz, dx); }
+life_heading :: (dx: f32, dz: f32) -> f32 { return angle_atan2(dx, dz); }
+
+// ---- routes
+life_route_new :: (L: [] SlabLife, walk: bool, fork: bool) -> int {
+  if L[0].route_count >= LIFE_ROUTES { return -1; }
+  k := L[0].route_count;
+  L[0].routes[k].n = 0; L[0].routes[k].walk = walk; L[0].routes[k].fork = fork; L[0].routes[k].length = 0;
+  return k;
+}
+life_route_point :: (L: [] SlabLife, k: int, x: f32, z: f32) {
+  if k < 0 { return; }
+  n := L[0].routes[k].n;
+  if n >= LIFE_PTS - 1 { return; }
+  L[0].routes[k].pts[n * 2] = x; L[0].routes[k].pts[n * 2 + 1] = z;
+  L[0].routes[k].n = n + 1;
+}
+// Closes the loop (its first point again) and measures it: a line of two points is walked there and back.
+life_route_close :: (L: [] SlabLife, k: int) {
+  if k < 0 { return; }
+  n := L[0].routes[k].n;
+  if n < 2 { return; }
+  L[0].routes[k].pts[n * 2] = L[0].routes[k].pts[0]; L[0].routes[k].pts[n * 2 + 1] = L[0].routes[k].pts[1];
+  L[0].routes[k].n = n + 1;
+  L[0].routes[k].length = lane.metaverse_lane_build(L[0].routes[k].pts[0..<(n + 1) * 2], L[0].routes[k].along[0..<n + 1]);
+  if L[0].routes[k].length > 10 { L[0].route_count += 1; }
+}
+// Where a walker is `d` metres round loop k: x, z and the way along (unit).
+life_at :: (L: [] SlabLife, k: int, d: f32) -> [4] f32 {
+  n := L[0].routes[k].n; span_all := L[0].routes[k].length;
+  t := d - floor(d / span_all) * span_all;
+  i := 0;
+  while i < n - 2 && L[0].routes[k].along[i + 1] <= t { i += 1; }
+  ax := L[0].routes[k].pts[i * 2]; az := L[0].routes[k].pts[i * 2 + 1];
+  bx := L[0].routes[k].pts[i * 2 + 2]; bz := L[0].routes[k].pts[i * 2 + 3];
+  span := life_max(L[0].routes[k].along[i + 1] - L[0].routes[k].along[i], 0.0001);
+  f := (t - L[0].routes[k].along[i]) / span;
+  return [4] f32.[ax + (bx - ax) * f, az + (bz - az) * f, (bx - ax) / span, (bz - az) / span];
+}
+// Whether a person can stand at (x, z), m clear: on the deck, and on nothing taller than a kerb
+// but lawns and paving (a grove's lawn, a plaza), never in water.
+life_walkable :: (w: SlabWorld, d: CityDeck, x: f32, z: f32, m: f32) -> bool {
+  if !city_on(d, x, z, m) { return false; }
+  for i: SLAB_HULL_PIECES..<w.count {
+    o := i * SLAB_RECORD;
+    if w.records[o + 5] < d.y - 0.5 { continue; }
+    sh := cast(int) (w.records[o + 7] + 0.5); kind := cast(int) (w.records[o + 3] + 0.5);
+    if (sh >= 7 && sh <= 10) || sh >= SLAB_SILONE { continue; }
+    if w.records[o + 5] < d.y + 0.6 && kind != SLAB_KIND_POOL && kind != SLAB_KIND_FOUNTAIN { continue; }
+    if x < w.records[o] - m || x > w.records[o + 4] + m || z < w.records[o + 2] - m || z > w.records[o + 6] + m { continue; }
+    return false;
+  }
+  return true;
+}
+// Whether the straight line from a to b is clear by m, sampled every `step` metres.
+life_clear :: (w: SlabWorld, d: CityDeck, ax: f32, az: f32, bx: f32, bz: f32, m: f32, step: f32, walk: bool) -> bool {
+  run := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+  n := cast(int) floor(run / step) + 1;
+  for j: 0..<n + 1 {
+    f := cast(f32) j / cast(f32) n;
+    x := ax + (bx - ax) * f; z := az + (bz - az) * f;
+    if walk { if !life_walkable(w, d, x, z, m) { return false; } } else if !city_open(w, d, x, z, m, -1) { return false; }
+  }
+  return true;
+}
+// The promenade: a loop `m` in from the deck's edge, round the dock's basin, clockwise seen from above.
+life_promenade :: (L: [] SlabLife, d: CityDeck, m: f32) {
+  k := life_route_new(L, true, false);
+  life_route_point(L, k, d.x0 + m, d.z1 - m); life_route_point(L, k, d.x1 - m, d.z1 - m); life_route_point(L, k, d.x1 - m, d.z0 + m);
+  if d.dock {
+    life_route_point(L, k, d.bx1 + m, d.z0 + m); life_route_point(L, k, d.bx1 + m, d.bz + m);
+    life_route_point(L, k, d.bx0 - m, d.bz + m); life_route_point(L, k, d.bx0 - m, d.z0 + m);
+  }
+  life_route_point(L, k, d.x0 + m, d.z0 + m);
+  life_route_close(L, k);
+}
+// A rectangle's loop, if its sides are all clear by m: clockwise from above, or the other way.
+life_rect :: (L: [] SlabLife, w: SlabWorld, d: CityDeck, x0: f32, z0: f32, x1: f32, z1: f32, m: f32, walk: bool, fork: bool, step: f32, back: bool) -> bool {
+  if !life_clear(w, d, x0, z1, x1, z1, m, step, walk) || !life_clear(w, d, x1, z1, x1, z0, m, step, walk) || !life_clear(w, d, x1, z0, x0, z0, m, step, walk) || !life_clear(w, d, x0, z0, x0, z1, m, step, walk) { return false; }
+  k := life_route_new(L, walk, fork);
+  if k < 0 { return false; }
+  // a driven loop stops at every crossing: a point each `step` along each side
+  sides := [8] f32.[x0, z1, x1, z1, x1, z0, x0, z0];
+  if back { sides = [8] f32.[x0, z1, x0, z0, x1, z0, x1, z1]; }
+  for c: 0..<4 {
+    ax := sides[c * 2]; az := sides[c * 2 + 1]; bx := sides[(c * 2 + 2) % 8]; bz := sides[(c * 2 + 3) % 8];
+    run := abs(bx - ax) + abs(bz - az);
+    cuts := ifx walk then 1 else life_max(1, floor(run / 100 + 0.5));
+    for j: 0..<cast(int) cuts { f := cast(f32) j / cuts; life_route_point(L, k, ax + (bx - ax) * f, az + (bz - az) * f); }
+  }
+  life_route_close(L, k);
+  return true;
+}
+// Every route and stand from the deck as the records have it now.
+life_routes :: (L: [] SlabLife, w: SlabWorld, d: CityDeck) {
+  L[0].route_count = 0; L[0].stand_count = 0; L[0].flag_count = 0; L[0].has_pad = false;
+  // the promenade, two lines, one each way round
+  life_promenade(L, d, LIFE_DECK_PROM);
+  life_promenade(L, d, LIFE_DECK_PROM2);
+  // a sidewalk round each 100 m block whose kerbs are clear
+  g := CITY_GRID;
+  i0 := cast(int) floor(d.x0 / g); i1 := cast(int) floor(d.x1 / g);
+  j0 := cast(int) floor(d.z0 / g); j1 := cast(int) floor(d.z1 / g);
+  for j: j0..<j1 + 1 { for i: i0..<i1 + 1 {
+    x0 := cast(f32) i * g + LIFE_CURB; x1 := cast(f32) (i + 1) * g - LIFE_CURB;
+    z0 := cast(f32) j * g + LIFE_CURB; z1 := cast(f32) (j + 1) * g - LIFE_CURB;
+    if x0 < d.x0 + 20 || x1 > d.x1 - 20 || z0 < d.z0 + 20 || z1 > d.z1 - 20 { continue; }
+    _ = life_rect(L, w, d, x0, z0, x1, z1, 0.6, true, false, 8, (i + j) % 2 == 1);
+  } }
+  // the sidewalks down every street, where they run clear for 60 m or more: walked there and back
+  for axis: 0..<2 {
+    lines := ifx axis == 0 then j1 - j0 + 1 else i1 - i0 + 1;
+    for li: 0..<lines + 1 {
+      q := cast(f32) ((ifx axis == 0 then j0 else i0) + li) * g;
+      for side: 0..<2 {
+        e: f32 = ifx side == 0 then -1 else 1;
+        lo := ifx axis == 0 then d.x0 + 15 else d.z0 + 15; hi := ifx axis == 0 then d.x1 - 15 else d.z1 - 15;
+        cells := cast(int) floor((hi - lo) / 5);
+        start: f32 = 0; going := false;
+        for c: 0..<cells + 1 {
+          m := lo + 5 * cast(f32) c;
+          px := ifx axis == 0 then m else q + e * LIFE_CURB; pz := ifx axis == 0 then q + e * LIFE_CURB else m;
+          ok := c < cells && life_walkable(w, d, px, pz, 0.5);
+          if ok && !going { start = m; going = true; }
+          if !ok && going {
+            going = false;
+            if m - 5 - start >= 60 {
+              k := life_route_new(L, true, false);
+              if axis == 0 { life_route_point(L, k, start, q + e * LIFE_CURB); life_route_point(L, k, m - 5, q + e * LIFE_CURB); }
+              else { life_route_point(L, k, q + e * LIFE_CURB, start); life_route_point(L, k, q + e * LIFE_CURB, m - 5); }
+              life_route_close(L, k);
+            }
+          }
+        }
+      }
+    }
+  }
+  // the streets: loops on the grid's lines, one to three blocks round, where the lines are clear
+  // by 4 m, kept 2.5 m right of the centre (clockwise loops in from it, the others out)
+  drives := 0;
+  for size: 0..<3 {
+    bw := 3 - size; bh := ifx size == 0 then 2 else 1;
+    for j: j0 + 1..<j1 + 1 { for i: i0 + 1..<i1 + 1 {
+      if drives >= 14 { continue; }
+      x0 := cast(f32) i * g; z0 := cast(f32) j * g; x1 := cast(f32) (i + bw) * g; z1 := cast(f32) (j + bh) * g;
+      if x1 > d.x1 - 40 || z1 > d.z1 - 40 { continue; }
+      // a loop shares no side with one already driven
+      taken := false;
+      for q: 0..<L[0].route_count {
+        if L[0].routes[q].walk || L[0].routes[q].fork { continue; }
+        qx := L[0].routes[q].pts[0]; qz := L[0].routes[q].pts[1];
+        if abs(qx - x0) < 60 && abs(qz - z1) < 60 { taken = true; }
+      }
+      if taken { continue; }
+      back := drives % 2 == 1;
+      o := ifx back then -LIFE_LANE else LIFE_LANE;
+      if life_rect(L, w, d, x0 + o, z0 + o, x1 - o, z1 - o, 2.0, false, false, 10, back) { drives += 1; }
+    } }
+  }
+  // forklifts round the industry and the container yards
+  forks := 0;
+  for r: SLAB_HULL_PIECES..<w.count {
+    kind := city_kind(w, r);
+    if forks >= 6 || (kind != SLAB_KIND_INDUSTRY && kind != SLAB_KIND_CONTAINERS) { continue; }
+    if city_rec(w, r, 5) < d.y - 0.5 { continue; }
+    x0 := city_rec(w, r, 0) - 5; z0 := city_rec(w, r, 2) - 5; x1 := city_rec(w, r, 4) + 5; z1 := city_rec(w, r, 6) + 5;
+    if life_rect_free(w, d, r, x0, z0, x1, z1) {
+      k := life_route_new(L, false, true);
+      life_route_point(L, k, x0, z1); life_route_point(L, k, x1, z1); life_route_point(L, k, x1, z0); life_route_point(L, k, x0, z0);
+      life_route_close(L, k);
+      forks += 1;
+    }
+  }
+  L[0].walk_length = 0;
+  for q: 0..<L[0].route_count { if L[0].routes[q].walk { L[0].walk_length += L[0].routes[q].length; } }
+  // people at the parapet: along the north and east walls the opening view looks at, and a few
+  // along the others, each facing the sea
+  for i: 0..<LIFE_STANDERS {
+    side := ifx i < 18 then 0 else ifx i < 34 then 1 else ifx i < 41 then 2 else 3;
+    f := 0.04f32 + 0.92f32 * life_hash(i, 11);
+    x: f32 = 0; z: f32 = 0; h: f32 = 0;
+    if side == 0 { x = d.x0 + (d.x1 - d.x0) * (0.35f32 + 0.65f32 * f); z = d.z1 - LIFE_STAND_IN; h = 0; }
+    else if side == 1 { x = d.x1 - LIFE_STAND_IN; z = d.z0 + (d.z1 - d.z0) * f; h = LIFE_PI * 0.5; }
+    else if side == 2 { x = d.x0 + LIFE_STAND_IN; z = d.z0 + (d.z1 - d.z0) * f; h = -LIFE_PI * 0.5; }
+    else { x = d.x0 + (d.x1 - d.x0) * f; z = d.z0 + LIFE_STAND_IN; h = LIFE_PI; }
+    if !city_open(w, d, x, z, 0.4, -1) { continue; }
+    n := L[0].stand_count;
+    L[0].stands[n * 3] = x; L[0].stands[n * 3 + 1] = z; L[0].stands[n * 3 + 2] = h + (life_hash(i, 12) - 0.5f32) * 0.8f32;
+    L[0].stand_count = n + 1;
+  }
+  // flags at the deck's four corners and two along the north wall
+  spots := [12] f32.[d.x1 - 6, d.z1 - 6, d.x0 + 6, d.z1 - 6, d.x1 - 6, d.z0 + 6, d.x0 + 6, d.z0 + 6, d.x1 - 180, d.z1 - 6, d.x1 - 360, d.z1 - 6];
+  for f: 0..<LIFE_FLAGS {
+    x := spots[f * 2]; z := spots[f * 2 + 1];
+    if !city_open(w, d, x, z, 0.5, -1) { continue; }
+    n := L[0].flag_count;
+    L[0].flags[n] = LifeFlag.{x = x, z = z, top = d.y + 14, seed = 1.7f32 * cast(f32) f};
+    L[0].flag_count = n + 1;
+  }
+  // the helipad: on the hospital's widest roof
+  best: f32 = 0;
+  for r: SLAB_HULL_PIECES..<w.count {
+    if city_kind(w, r) != SLAB_KIND_MEDICAL { continue; }
+    a := (city_rec(w, r, 4) - city_rec(w, r, 0)) * (city_rec(w, r, 6) - city_rec(w, r, 2));
+    if a > best && city_rec(w, r, 4) - city_rec(w, r, 0) > 24 && city_rec(w, r, 6) - city_rec(w, r, 2) > 24 {
+      best = a; L[0].has_pad = true;
+      L[0].pad_x = (city_rec(w, r, 0) + city_rec(w, r, 4)) * 0.5; L[0].pad_z = (city_rec(w, r, 2) + city_rec(w, r, 6)) * 0.5; L[0].pad_y = city_rec(w, r, 5);
+    }
+  }
+}
+// Whether a forklift's loop round record r is on the deck and clear of everything but r.
+life_rect_free :: (w: SlabWorld, d: CityDeck, r: int, x0: f32, z0: f32, x1: f32, z1: f32) -> bool {
+  c := [10] f32.[x0, z1, x1, z1, x1, z0, x0, z0, x0, z1];
+  for e: 0..<4 {
+    ax := c[e * 2]; az := c[e * 2 + 1]; bx := c[e * 2 + 2]; bz := c[e * 2 + 3];
+    run := abs(bx - ax) + abs(bz - az); n := cast(int) floor(run / 6) + 1;
+    for j: 0..<n + 1 {
+      f := cast(f32) j / cast(f32) n;
+      if !city_open(w, d, ax + (bx - ax) * f, az + (bz - az) * f, 1.6, r) { return false; }
+    }
+  }
+  return true;
+}
+
+// ---- on every rebuild: the routes, and what stands still (the flags' poles, the helipad)
+slab_life_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  L := ph[0].content.life[..];
+  L[0].ok = false;
+  if !L[0].made || w.layout != LAYOUT_PRIME || w.build { return; }
+  d := city_deck(w);
+  if !d.ok { return; }
+  if !l[0].filling { L[0].deck = d; life_routes(L, w, d); }
+  L[0].ok = true;
+  for f: 0..<L[0].flag_count {
+    q := L[0].flags[f];
+    r := pr_put(l, ph[0].post, q.x, d.y, q.z, 0, 1);
+    pr_stretch(l, r, 0.16, q.top - d.y + 0.3f32, 0.16); pr_made_of(l, r, L[0].look.paint);
+    pr_near(l, r, 700);
+  }
+  if L[0].has_pad {
+    // a dark square with a white ring and an H, a hand's breadth over the roof
+    y := L[0].pad_y; x := L[0].pad_x; z := L[0].pad_z;
+    r := pr_box(l, ph[0].box, x - 11, y, z - 11, x + 11, y + 0.12f32, z + 11, L[0].pad); pr_laid(l, r);
+    for e: 0..<4 {
+      ex := ifx e < 2 then 0.0f32 else 1.0f32; ez := 1 - ex; sg: f32 = ifx e % 2 == 0 then -1 else 1;
+      cx := x + ex * sg * 9; cz := z + ez * sg * 9;
+      r = pr_box(l, ph[0].box, cx - ez * 9 - ex * 0.4f32, y + 0.12f32, cz - ex * 9 - ez * 0.4f32, cx + ez * 9 + ex * 0.4f32, y + 0.16f32, cz + ex * 9 + ez * 0.4f32, L[0].look.paint); pr_laid(l, r);
+    }
+    for e: 0..<2 {
+      sg: f32 = ifx e == 0 then -1 else 1;
+      r = pr_box(l, ph[0].box, x + sg * 3 - 0.6f32, y + 0.12f32, z - 4, x + sg * 3 + 0.6f32, y + 0.16f32, z + 4, L[0].look.paint); pr_laid(l, r);
+    }
+    r = pr_box(l, ph[0].box, x - 3, y + 0.12f32, z - 0.6f32, x + 3, y + 0.16f32, z + 0.6f32, L[0].look.paint); pr_laid(l, r);
+  }
+}
+
+// ---- once a frame: where everything is
+life_body :: (L: [] SlabLife, b: LifeBody) {
+  if L[0].body_count >= LIFE_BODIES { return; }
+  L[0].bodies[L[0].body_count] = b;
+  L[0].body_count += 1;
+}
+life_tint :: (k: int) -> [3] f32 {
+  if k == 0 { return [3] f32.[0.85, 0.84, 0.8]; }
+  if k == 1 { return [3] f32.[0.2, 0.3, 0.55]; }
+  if k == 2 { return [3] f32.[0.62, 0.2, 0.16]; }
+  if k == 3 { return [3] f32.[0.2, 0.42, 0.34]; }
+  if k == 4 { return [3] f32.[0.82, 0.6, 0.22]; }
+  if k == 5 { return [3] f32.[0.16, 0.16, 0.18]; }
+  if k == 6 { return [3] f32.[0.5, 0.52, 0.56]; }
+  return [3] f32.[0.9, 0.9, 0.88];
+}
+// A ship of `kind` at (hx, hz) on the hull's frame, its bow along (dx, dz) there: set on the sea.
+life_ship :: (s: [] Slab, L: [] SlabLife, kind: int, hx: f32, hz: f32, dx: f32, dz: f32, tint: [3] f32) {
+  p := to_world(s, hx, 0, hz);
+  turn := angle_atan2(-s[0].pose[8], s[0].pose[0]);   // the hull's own yaw in the world
+  yaw := life_yaw(dx, dz) + turn;
+  life_ship_world(s, L, kind, p[0], p[2], yaw, tint);
+}
+life_ship_world :: (s: [] Slab, L: [] SlabLife, kind: int, x: f32, z: f32, yaw: f32, tint: [3] f32) {
+  sh := traffic_ship_of(kind);
+  c := cos(yaw); sn := sin(yaw);
+  heights: [9] f32;
+  patch := s[0].synth[0].cascades[0].patch;
+  for k: 0..<9 {
+    o := traffic_ride_at(k, sh.length, sh.beam);
+    wx := x + c * o[0] + sn * o[1]; wz := z - sn * o[0] + c * o[1];
+    heights[k] = f32(ww_height(s[0].water[..], s[0].tile[..], patch, f64(wx), f64(wz)));
+  }
+  ride := traffic_ride(heights, sh.length, sh.beam);
+  life_body(L, LifeBody.{part = L[0].ship[kind], x = x, y = ride.heave, z = z, yaw = yaw, pitch = ride.pitch, roll = ride.roll, free = true, lean = true, tint = tint});
+  L[0].counts[LIFE_K_SHIP] += 1;
+}
+// The supply ship's round: clockwise past the north and east walls, along the south wall into the
+// dock's basin (sideways at a crawl), four minutes at the stage, out and home along the west wall.
+// Hull frame: x, z and the way its bow points.
+life_supply :: (L: [] SlabLife, t: f32) -> [4] f32 {
+  d := L[0].deck;
+  N := d.z1 + 75; E := d.x1 + 60; W := d.x0 - 60;
+  mid := ifx d.dock then (d.bx0 + d.bx1) * 0.5f32 else 0.0f32;
+  S := ifx d.dock then d.z0 - 45 else d.z0 - 16;
+  berth := ifx d.dock then d.bz - 20 else S;
+  stay := 240.0f32;
+  a_pts := [16] f32.[-250, N, E - 70, N, E, N - 70, E, S + 70, E - 70, S, mid, S, 0, 0, 0, 0];
+  a_al: [6] f32; a_wait := [6] f32.[0, 0, 0, 0, 0, 0];
+  _ = lane.metaverse_lane_build(a_pts[0..<12], a_al[..]);
+  b_pts := [6] f32.[mid, S, mid, berth, mid, S];
+  b_al: [3] f32; b_wait := [3] f32.[0, stay, 0];
+  _ = lane.metaverse_lane_build(b_pts[..], b_al[..]);
+  c_pts := [12] f32.[mid, S, W + 70, S, W, S + 70, W, N - 70, W + 70, N, -250, N];
+  c_al: [6] f32; c_wait := [6] f32.[0, 0, 0, 0, 0, 0];
+  _ = lane.metaverse_lane_build(c_pts[..], c_al[..]);
+  cruise := 5.0f32; accel := 0.05f32; crawl := 0.5f32; slow := 0.02f32;
+  ta := tt_cycle(a_al[..], a_wait[..], cruise, accel, false);
+  tb := ifx d.dock then tt_cycle(b_al[..], b_wait[..], crawl, slow, false) else stay;
+  tc := tt_cycle(c_al[..], c_wait[..], cruise, accel, false);
+  // two minutes in, so a visitor's first picture has it under way along the north wall
+  q := t + 120; total := ta + tb + tc;
+  q = q - floor(q / total) * total;
+  if q < ta {
+    r := tt_run(a_al[..], a_wait[..], cruise, accel, false, q);
+    p := tt_place(a_pts[0..<12], a_al[..], r); h := tt_heading(a_pts[0..<12], a_al[..], r, false, 60);
+    return [4] f32.[p[0], p[1], h[0], h[1]];
+  }
+  q -= ta;
+  if q < tb {
+    if !d.dock { return [4] f32.[mid, S, -1, 0]; }
+    r := tt_run(b_al[..], b_wait[..], crawl, slow, false, q);
+    p := tt_place(b_pts[..], b_al[..], r);
+    return [4] f32.[p[0], p[1], -1, 0];
+  }
+  q -= tb;
+  r := tt_run(c_al[..], c_wait[..], cruise, accel, false, q);
+  p := tt_place(c_pts[..], c_al[..], r); h := tt_heading(c_pts[..], c_al[..], r, false, 60);
+  return [4] f32.[p[0], p[1], h[0], h[1]];
+}
+// The helicopter at `t`: on the pad, lifting, out and back, landing. Hull frame.
+life_heli :: (L: [] SlabLife, t: f32) {
+  q := t + 30; q = q - floor(q / LIFE_HELI_CYCLE) * LIFE_HELI_CYCLE;
+  ox := 0.96f32; oz := -0.28f32;
+  x := L[0].pad_x; z := L[0].pad_z; y := L[0].pad_y + 0.2f32; yaw := life_yaw(ox, oz); pitch: f32 = 0;
+  w := 2.3f32 * 2 * LIFE_PI;     // the main rotor's turn, rad/s
+  turn: f32 = 0;
+  if q >= 50 && q < 305 {
+    // spooled up over 15 s and down over the last 15; the angle is the integral of the speed
+    up := life_min(q - 50, 15); turn = w * up * up / 30;
+    if q > 65 { turn += w * life_min(q - 65, 225); }
+    if q > 290 { dn := q - 290; turn -= w * dn * dn / 30; }
+  }
+  if q >= 65 && q < 80 { y += 40 * life_ease((q - 65) / 15); }
+  else if q >= 80 && q < 170 {
+    u := (q - 80) / 90; s := LIFE_HELI_OUT * life_ease(u);
+    x += ox * s; z += oz * s; y += 40 + 260 * life_ease(u * 1.5f32);
+    pitch = -0.09f32 * sin(LIFE_PI * u);
+  } else if q >= 170 && q < 180 {
+    x += ox * LIFE_HELI_OUT; z += oz * LIFE_HELI_OUT; y += 300;
+    yaw += LIFE_PI * life_ease((q - 170) / 10);
+  } else if q >= 180 && q < 270 {
+    u := (q - 180) / 90; s := LIFE_HELI_OUT * (1 - life_ease(u));
+    x += ox * s; z += oz * s; y += 40 + 260 * (1 - life_ease((u - 0.33f32) * 1.5f32));
+    yaw += LIFE_PI; pitch = -0.09f32 * sin(LIFE_PI * u);
+  } else if q >= 270 && q < 290 {
+    y += 40 * (1 - life_ease((q - 270) / 20)); yaw += LIFE_PI;
+  } else if q >= 290 { yaw += LIFE_PI; }
+  L[0].heli_x = x; L[0].heli_y = y; L[0].heli_z = z; L[0].heli_yaw = yaw; L[0].heli_pitch = pitch; L[0].heli_turn = turn;
+}
+// Called by slab-photoreal.coax once a frame, before the moving list: everything's place now.
+slab_life_frame :: (s: [] Slab, w: SlabWorld) {
+  L := s[0].photo[0].content.life[..];
+  L[0].body_count = 0; L[0].figure_count = 0; L[0].bird_count = 0; L[0].heli_on = false; L[0].shown = false;
+  for k: 0..<LIFE_KINDS { L[0].counts[k] = 0; }
+  if !L[0].made || !L[0].ok || w.layout != LAYOUT_PRIME || w.build { return; }
+  L[0].shown = true;
+  d := L[0].deck;
+  t := f32(s[0].time); L[0].time = t;
+  phone := w.reduced;
+  e := to_hull(s, s[0].eye[0], s[0].eye[1], s[0].eye[2]);
+  near_cap := ifx phone then LIFE_NEAR_PHONE else LIFE_NEAR;
+  // the visitor, walking: drawn as one of the people (the shader's own walker steps aside, slab.coax)
+  if s[0].mode == CAM_WALK {
+    L[0].figures[0] = LifeFigure.{x = s[0].foot.walk.x, y = feet_y(s), z = s[0].foot.walk.z, heading = sr_face_yaw(s[0].foot.walk),
+      strides = s[0].stride * L[0].rig_stride[1], walking = s[0].foot.walk.speed > 0.3f32, rig = 1, look = 2};
+    L[0].figure_count = 1;
+  }
+  // the wind, toward where it blows, in the hull's frame (slab-bearing.coax: the waves' heading)
+  hd := f32(s[0].spectrum.wind);
+  wd := dir_to_hull(s, sin(hd), 0, cos(hd));
+  wl := life_max(sqrt(wd[0] * wd[0] + wd[2] * wd[2]), 0.0001);
+  L[0].wind_x = wd[0] / wl; L[0].wind_z = wd[2] / wl; L[0].wind = f32(s[0].wind);
+  // walkers, spread over the walking routes by length, each its own pace and start
+  walkers := ifx phone then LIFE_WALKERS_PHONE else LIFE_WALKERS;
+  if L[0].walk_length > 0 {
+    for i: 0..<LIFE_WALKERS {
+      if phone && life_hash(i, 1) >= 0.4f32 { continue; }
+      pick := life_hash(i, 2) * L[0].walk_length;
+      k := -1;
+      for q: 0..<L[0].route_count {
+        if !L[0].routes[q].walk { continue; }
+        if k < 0 { k = q; }
+        if pick < L[0].routes[q].length { k = q; break; }
+        pick -= L[0].routes[q].length;
+      }
+      if k < 0 { continue; }
+      rig := cast(int) floor(life_hash(i, 3) * 3); if rig > 2 { rig = 2; }
+      speed := L[0].rig_speed[rig] * (0.85f32 + 0.25f32 * life_hash(i, 4));
+      back := life_hash(i, 5) < 0.5f32;
+      walked := speed * t + life_hash(i, 6) * L[0].routes[k].length;
+      a := life_at(L, k, ifx back then -walked else walked);
+      dx := ifx back then -a[2] else a[2]; dz := ifx back then -a[3] else a[3];
+      // each walks a little to one side of the line
+      side := (life_hash(i, 7) - 0.5f32) * 2.4f32;
+      x := a[0] + dz * side; z := a[1] - dx * side;
+      strides := walked * L[0].rig_stride[rig];
+      life_person(L, e, d.y, x, z, dx, dz, strides, true, rig, i, near_cap);
+    }
+  }
+  _ = walkers;
+  standers := ifx phone then LIFE_STANDERS_PHONE else LIFE_STANDERS;
+  for i: 0..<life_min_i(L[0].stand_count, standers) {
+    h := L[0].stands[i * 3 + 2];
+    life_person(L, e, d.y, L[0].stands[i * 3], L[0].stands[i * 3 + 1], sin(h), cos(h), 0, false, i % 3, 1000 + i, near_cap);
+  }
+  // vehicles: trucks and carts on the street loops, forklifts round the yards
+  drivers := ifx phone then LIFE_DRIVERS_PHONE else LIFE_DRIVERS;
+  forks := ifx phone then LIFE_FORKLIFTS_PHONE else LIFE_FORKLIFTS;
+  nd := 0; nf := 0;
+  for q: 0..<L[0].route_count { if L[0].routes[q].walk { continue; } if L[0].routes[q].fork { nf += 1; } else { nd += 1; } }
+  wait: [LIFE_PTS] f32;
+  for i: 0..<LIFE_PTS { wait[i] = 1.2f32; }
+  if nd > 0 {
+    for i: 0..<drivers {
+      j := i % nd; k := life_nth(L, j, false);
+      cart := i % 4 == 3;
+      life_drive(L, k, wait[..], t, i, ifx cart then L[0].cart else L[0].truck, ifx cart then 4.5f32 else 8.0f32, d.y, life_tint(i % 7));
+    }
+  }
+  if nf > 0 {
+    for i: 0..<forks { k := life_nth(L, i % nf, true); life_drive(L, k, wait[..], t, 500 + i, L[0].forklift, 2.5, d.y, [3] f32.[0.85, 0.62, 0.12]); }
+  }
+  // ships
+  sp := life_supply(L, t);
+  life_ship(s, L, TRAFFIC_SUPPLY, sp[0], sp[1], sp[2], sp[3], [3] f32.[0.78, 0.2, 0.14]);
+  // the tug off the north wall and the bulk carrier far off, each with its bow to the weather
+  into := angle_atan2(cos(hd), -sin(hd));
+  tp := to_world(s, d.x1 - 200, 0, d.z1 + 160);
+  life_ship_world(s, L, TRAFFIC_TUG, tp[0], tp[2], into, [3] f32.[0.9, 0.42, 0.12]);
+  bp := to_world(s, d.x0 - 650, 0, d.z0 - 950);
+  life_ship_world(s, L, TRAFFIC_BULKER, bp[0], bp[2], into + 0.12f32, [3] f32.[0.3, 0.22, 0.2]);
+  // the tour's size stop: Prelude, a container ship and a tower fill the outlines as they grow
+  if s[0].hp.tour.on && s[0].hp.tour.stop == 1 {
+    for i: 0..<TOUR_THINGS {
+      g := tour_shown(i, s[0].hp.tour.at);
+      if !(g > 0.001f32) { continue; }
+      th := tour_thing(i);
+      x0 := th.x - th.l / 2;
+      if i < 2 {
+        kind := ifx i == 0 then TRAFFIC_FLNG else TRAFFIC_CONTAINER;
+        life_body(L, LifeBody.{part = L[0].ship[kind], x = x0 + th.l * g * 0.5f32, y = 0, z = th.z, yaw = 0, sx = g, sy = g, sz = 1, tint = [3] f32.[0.6, 0.62, 0.62]});
+      } else {
+        life_body(L, LifeBody.{part = s[0].photo[0].box, x = x0 + th.l * g * 0.5f32, y = 0.5f32, z = th.z, yaw = 0, sx = th.l * g, sy = th.h * g - 0.5f32, sz = th.b, tint = [3] f32.[1, 1, 1], material = s[0].photo[0].glass});
+      }
+      L[0].counts[LIFE_K_SHIP] += 1;
+    }
+  }
+  // the helicopter
+  if L[0].has_pad {
+    life_heli(L, t);
+    hw := to_world(s, L[0].heli_x, L[0].heli_y, L[0].heli_z);
+    turn := angle_atan2(-s[0].pose[8], s[0].pose[0]);
+    L[0].heli_x = hw[0]; L[0].heli_y = hw[1]; L[0].heli_z = hw[2]; L[0].heli_yaw += turn;
+    life_body(L, LifeBody.{part = L[0].heli, x = hw[0], y = hw[1], z = hw[2], yaw = L[0].heli_yaw, pitch = L[0].heli_pitch, free = true, lean = true, tint = [3] f32.[0.9, 0.9, 0.88]});
+    L[0].heli_on = true; L[0].counts[LIFE_K_AIR] = 1;
+  }
+  // gulls round the walls' corners
+  birds := ifx phone then LIFE_BIRDS_PHONE else LIFE_BIRDS;
+  for i: 0..<birds {
+    corner := i % 4;
+    cx := ifx corner == 0 || corner == 3 then d.x1 + 20 else d.x0 - 20;
+    cz := ifx corner < 2 then d.z1 + 20 else d.z0 - 20;
+    rr := 25 + 60 * life_hash(i, 21); hy := d.y - 30 + 70 * life_hash(i, 22);
+    dir: f32 = ifx life_hash(i, 23) < 0.5f32 then 1 else -1;
+    v := 8.5f32 + 3 * life_hash(i, 24);
+    a := life_hash(i, 25) * 2 * LIFE_PI + dir * v / rr * t;
+    flap := sin(0.35f32 * t + 6 * life_hash(i, 26));
+    beat := ifx flap > 0.2f32 then 0.1f32 + 0.45f32 * sin(2 * LIFE_PI * 2.9f32 * t + 3 * life_hash(i, 27)) else 0.12f32;
+    L[0].birds[L[0].bird_count] = LifeBird.{x = cx + rr * cos(a), y = hy + 4 * sin(0.3f32 * t + cast(f32) i), z = cz + rr * sin(a), fx = -sin(a) * dir, fz = cos(a) * dir, beat = beat, bank = -0.3f32 * dir};
+    L[0].bird_count += 1;
+  }
+  L[0].counts[LIFE_K_BIRD] = L[0].bird_count;
+  L[0].counts[LIFE_K_FLAG] = L[0].flag_count;
+}
+life_min_i :: (a: int, b: int) -> int { if a < b { return a; } return b; }
+// The j-th driven loop (forklifts' or the streets').
+life_nth :: (L: [] SlabLife, j: int, fork: bool) -> int {
+  m := 0;
+  for q: 0..<L[0].route_count {
+    if L[0].routes[q].walk || L[0].routes[q].fork != fork { continue; }
+    if m == j { return q; }
+    m += 1;
+  }
+  return -1;
+}
+// A person: a whole figure when near the eye and there is room, else one record.
+life_person :: (L: [] SlabLife, e: [3] f32, y: f32, x: f32, z: f32, dx: f32, dz: f32, strides: f32, walking: bool, rig: int, i: int, cap: int) {
+  ex := x - e[0]; ey := y + 1 - e[1]; ez := z - e[2];
+  far := ex * ex + ey * ey + ez * ez;
+  look := cast(int) floor(life_hash(i, 8) * 7);
+  if far < LIFE_NEAR_M * LIFE_NEAR_M && L[0].figure_count < cap {
+    L[0].figures[L[0].figure_count] = LifeFigure.{x = x, y = y, z = z, heading = life_heading(dx, dz), strides = strides, walking = walking, rig = rig, look = look};
+    L[0].figure_count += 1;
+    L[0].counts[LIFE_K_FIGURE] += 1;
+    return;
+  }
+  if far > LIFE_FAR_M * LIFE_FAR_M { return; }
+  part := ifx !walking then L[0].stand else ifx life_frac(strides) < 0.5f32 then L[0].walk_a else L[0].walk_b;
+  life_body(L, LifeBody.{part = part, x = x, y = y, z = z, yaw = life_heading(dx, dz), near = LIFE_FAR_M, tint = life_tint(look)});
+  L[0].counts[ifx walking then LIFE_K_WALK else LIFE_K_STAND] += 1;
+}
+// A vehicle on driven loop k, stopping at each of its points.
+life_drive :: (L: [] SlabLife, k: int, wait: [] f32, t: f32, i: int, part: int, cruise: f32, y: f32, tint: [3] f32) {
+  if k < 0 { return; }
+  n := L[0].routes[k].n;
+  cyc := tt_cycle(L[0].routes[k].along[0..<n], wait[0..<n], cruise, 1.5, true);
+  r := tt_run(L[0].routes[k].along[0..<n], wait[0..<n], cruise, 1.5, true, t + life_hash(i, 31) * cyc);
+  p := tt_place(L[0].routes[k].pts[0..<n * 2], L[0].routes[k].along[0..<n], r);
+  h := tt_heading(L[0].routes[k].pts[0..<n * 2], L[0].routes[k].along[0..<n], r, true, 8);
+  life_body(L, LifeBody.{part = part, x = p[0], y = y, z = p[1], yaw = life_yaw(h[0], h[1]), tint = tint, near = 2600});
+  L[0].counts[LIFE_K_VEHICLE] += 1;
+}
+
+// ---- every frame, twice: write the places down
+slab_life_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  L := ph[0].content.life[..];
+  if !L[0].made || !L[0].shown { return; }
+  for i: 0..<L[0].body_count {
+    b := L[0].bodies[i];
+    r := pr_put(l, b.part, b.x, b.y, b.z, b.yaw, 1);
+    if b.sx > 0 { pr_stretch(l, r, b.sx, b.sy, b.sz); }
+    pr_tint(l, r, b.tint[0], b.tint[1], b.tint[2]);
+    if b.material > 0 { pr_made_of(l, r, b.material); }
+    if b.lean { pr_lean(l, r, b.pitch, b.roll); }
+    if b.free { pr_free(l, r); }
+    if b.near > 0 { pr_near(l, r, b.near); }
+  }
+  for i: 0..<L[0].figure_count {
+    f := L[0].figures[i];
+    fl: PrFigureLook;
+    fl.material = L[0].look.paint;
+    fl.top = life_tint(f.look);
+    fl.legs = life_tint((f.look + 4) % 7); fl.legs = [3] f32.[fl.legs[0] * 0.35f32, fl.legs[1] * 0.35f32, fl.legs[2] * 0.4f32];
+    fl.sleeves = f.look % 2 == 0;
+    pose := pr_figure_walk(f.strides, L[0].time, f.walking);
+    _ = pr_figure(l, L[0].bone, L[0].rigs[f.rig], pose, f.x, f.y, f.z, f.heading, fl, 0);
+  }
+  if L[0].heli_on {
+    pr_rotors(l, L[0].rotor, L[0].tail, L[0].heli_x, L[0].heli_y, L[0].heli_z, L[0].heli_yaw, L[0].heli_pitch, L[0].heli_turn, L[0].look.dark, true);
+  }
+  for i: 0..<L[0].bird_count {
+    b := L[0].birds[i];
+    pr_bird(l, L[0].bird, L[0].wing, b.x, b.y, b.z, b.fx, b.fz, b.beat, b.bank, L[0].look.paint);
+  }
+  for f: 0..<L[0].flag_count {
+    q := L[0].flags[f];
+    pr_flag(l, ph[0].box, q.x, q.top, q.z, 3.6, 2.4, L[0].wind_x, L[0].wind_z, L[0].wind, L[0].time, q.seed,
+      [3] f32.[0.92, 0.92, 0.9], [3] f32.[0.12, 0.2, 0.42], L[0].cloth, false);
+  }
+}
+
+// ---- clicks and cards
+// A mover a visitor clicked: s[0].selected takes these (the plan's records are 0 up, the sea -2, the dock -3).
+LIFE_SEL :: -10;      // LIFE_SEL - what: the supply ship, the tug, the bulk carrier, the helicopter, a truck, a forklift, a cart
+LIFE_SEL_SUPPLY :: 0; LIFE_SEL_TUG :: 1; LIFE_SEL_BULKER :: 2; LIFE_SEL_HELI :: 3; LIFE_SEL_TRUCK :: 4; LIFE_SEL_FORK :: 5; LIFE_SEL_CART :: 6;
+LIFE_SEL_KINDS :: 7;
+life_selected :: (i: int) -> int { if i <= LIFE_SEL && i > LIFE_SEL - LIFE_SEL_KINDS { return LIFE_SEL - i; } return -1; }
+// What a body is, as a selection (-1: nothing a card tells of), and its box in its own frame.
+life_what :: (L: [] SlabLife, part: int) -> int {
+  if part == L[0].ship[TRAFFIC_SUPPLY] { return LIFE_SEL_SUPPLY; }
+  if part == L[0].ship[TRAFFIC_TUG] { return LIFE_SEL_TUG; }
+  if part == L[0].ship[TRAFFIC_BULKER] { return LIFE_SEL_BULKER; }
+  if part == L[0].heli { return LIFE_SEL_HELI; }
+  if part == L[0].truck { return LIFE_SEL_TRUCK; }
+  if part == L[0].forklift { return LIFE_SEL_FORK; }
+  if part == L[0].cart { return LIFE_SEL_CART; }
+  return -1;
+}
+life_box :: (what: int) -> [6] f32 {
+  if what <= LIFE_SEL_BULKER {
+    sh := traffic_ship_of(ifx what == LIFE_SEL_SUPPLY then TRAFFIC_SUPPLY else ifx what == LIFE_SEL_TUG then TRAFFIC_TUG else TRAFFIC_BULKER);
+    return [6] f32.[-sh.length / 2, -2, -sh.beam / 2, sh.length / 2, sh.air, sh.beam / 2];
+  }
+  // the small ones a little larger than they are, so a tap can find them
+  if what == LIFE_SEL_HELI { return [6] f32.[-10, -1, -7, 10, 6, 7]; }
+  if what == LIFE_SEL_TRUCK { return [6] f32.[-5, -1, -2.5, 5, 5, 2.5]; }
+  return [6] f32.[-3, -1, -2, 3, 4, 2];
+}
+// Called by slab.coax's click with what the plan's records gave (`p`): a mover in front of it wins.
+life_pick :: (s: [] Slab, x: f32, y: f32, p: int) -> int {
+  L := s[0].photo[0].content.life[..];
+  if !s[0].photo[0].on || !L[0].shown || s[0].width < 1 { return p; }
+  nx := (x / s[0].width) * 2 - 1; ny := 1 - (y / s[0].height) * 2;
+  d: [3] f32;
+  for a: 0..<3 { d[a] = s[0].fwd[a] + s[0].right[a] * nx * s[0].tanh * s[0].aspect + s[0].up[a] * ny * s[0].tanh; }
+  dl := sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+  for a: 0..<3 { d[a] /= dl; }
+  ow := s[0].eye; oh := to_hull(s, ow[0], ow[1], ow[2]); dh := dir_to_hull(s, d[0], d[1], d[2]);
+  best := 1e9f32;
+  if p >= 0 {
+    t := ray_box(oh, dh, [3] f32.[rec(s, p, 0), rec(s, p, 1), rec(s, p, 2)], [3] f32.[rec(s, p, 4), rec(s, p, 5), rec(s, p, 6)]);
+    if t >= 0 { best = t; }
+  }
+  found := p;
+  for i: 0..<L[0].body_count {
+    b := L[0].bodies[i];
+    what := life_what(L, b.part);
+    if what < 0 { continue; }
+    o := ifx b.free then ow else oh; v := ifx b.free then d else dh;
+    c := cos(b.yaw); sn := sin(b.yaw);
+    rx := o[0] - b.x; ry := o[1] - b.y; rz := o[2] - b.z;
+    lo := [3] f32.[rx * c - rz * sn, ry, rx * sn + rz * c];
+    lv := [3] f32.[v[0] * c - v[2] * sn, v[1], v[0] * sn + v[2] * c];
+    bx := life_box(what);
+    t := ray_box(lo, lv, [3] f32.[bx[0], bx[1], bx[2]], [3] f32.[bx[3], bx[4], bx[5]]);
+    if t >= 0 && t < best { best = t; found = LIFE_SEL - what; }
+  }
+  return found;
+}
+// The supply ship's errand now, in words.
+life_supply_now :: (L: [] SlabLife, t: f32) -> string {
+  p := life_supply(L, t);
+  d := L[0].deck;
+  if d.dock && p[0] > d.bx0 && p[0] < d.bx1 && p[1] < d.bz && p[1] > d.z0 - 2 { return "In the dock, unloading at the landing stage."; }
+  if d.dock && p[0] > d.bx0 && p[0] < d.bx1 && p[1] < d.z0 { return "Moving slowly in or out of the dock."; }
+  return "Going round the platform to the dock in the sheltered south wall.";
+}
+life_heli_now :: (t: f32) -> string {
+  q := t + 30; q = q - floor(q / LIFE_HELI_CYCLE) * LIFE_HELI_CYCLE;
+  if q < 50 || q >= 305 { return "Parked on the hospital's roof."; }
+  if q < 80 { return "Lifting off the hospital's roof."; }
+  if q < 170 { return "Flying out to sea."; }
+  if q < 270 { return "Flying back to the platform."; }
+  return "Landing on the hospital's roof.";
+}
+// The card of a mover (slab-cards.coax cd_card): what it is, why it is here, three numbers with comparisons.
+life_card :: (s: [] Slab, h: [] SceneHud, i: int) {
+  L := s[0].photo[0].content.life[..];
+  what := life_selected(i);
+  t := f32(s[0].time);
+  wall := f64(SLAB_DECK);
+  if what == LIFE_SEL_SUPPLY {
+    cd_open(h, "Supply ship", "A platform supply ship: it brings food, fuel, water and spare parts, and takes away waste.",
+      "A city at sea lives on deliveries. This one goes round to the dock in the sheltered south wall.");
+    cd_number(h, cd_plan(76, 17), "How long and wide it is", cd_p("The wall it passes is ", f64(L[0].deck.x1 - L[0].deck.x0) / 76, 0, " times as long."), SH_OURS);
+    cd_number(h, cd_v(3500, 0, " t"), "What it carries", cd_p("About ", 3500 / 20, 0, " loaded trucks."), SH_OURS);
+    cd_number(h, cd_v(25, 0, " m"), "Its mast over the water", cd_p("The deck stands ", wall / 25, 1, " times as high."), SH_OURS);
+    cd_now(h);
+    sh_say(h, life_supply_now(L, t));
+    sh_say(h, "It rides the simulated sea: it rises, pitches and rolls with the waves under it.");
+    cd_maths(h);
+      sh_say(h, "Its size is typical of the platform supply ships that serve oil rigs. A loaded truck carries about 20 t.");
+      sh_say(h, "It goes round at 5 m/s (about 10 knots) and crawls into the dock at half a metre a second.");
+    sh_end_of(h);
+    cd_close(h, "place.dock", "See the dock", "31-prime-the-monolith-default");
+    return;
+  }
+  if what == LIFE_SEL_TUG {
+    cd_open(h, "Tug", "A harbour tug, standing by off the north wall.",
+      "Tugs push big ships into a berth, and stand by in case one loses power near the walls.");
+    cd_number(h, cd_plan(32, 11.5), "How long and wide it is", cd_p("The wall behind it is ", wall / 12.5, 0, " times as tall as the tug."), SH_OURS);
+    cd_number(h, cd_v(70, 0, " t"), "How hard it can pull", cd_p("As much as ", 70 / 1.5, 0, " cars hanging from a rope."), SH_OURS);
+    cd_number(h, cd_v(160, 0, " m"), "How far off the wall it waits", cd_words("Clear of the waves that bounce back off the wall."), SH_OURS);
+    cd_now(h);
+    sh_say(h, "Holding its place with its bow to the waves. It rides the simulated sea.");
+    cd_maths(h);
+      sh_say(h, "A harbour tug of this size pulls about 70 t at its towing hook. A car weighs about 1.5 t.");
+    sh_end_of(h);
+    cd_close(h, "place.dock", "See the dock", "31-prime-the-monolith-default");
+    return;
+  }
+  if what == LIFE_SEL_BULKER {
+    cd_open(h, "Bulk carrier", "A bulk carrier 1.7 km off, the kind that carries grain, ore or coal.",
+      "It is here for scale. The sea is too deep for its anchor here, so a real one would hold its place with its engine.");
+    cd_number(h, cd_plan(229, 32), "How long and wide it is", cd_p("The platform is ", f64(L[0].deck.x1 - L[0].deck.x0) / 229, 1, " times as long."), SH_SOURCE);
+    cd_number(h, cd_v(82000, 0, " t"), "What it carries", cd_p("About ", 82000.0 / 20.0, 0, " loaded trucks."), SH_SOURCE);
+    cd_number(h, cd_v(27, 0, " m"), "Its bridge over the water", cd_p("The platform's deck stands ", wall / 27, 1, " times as high."), SH_OURS);
+    cd_now(h);
+    sh_say(h, "Holding its place with its bow to the weather. It rides the simulated sea.");
+    cd_maths(h);
+      sh_say(h, "Kamsarmax bulk carriers are up to 229 m long, so they fit the port of Kamsar in Guinea, and carry about 82,000 t.");
+    sh_end_of(h);
+    cd_close(h, "go.8", "See the whole platform", "31-prime-the-monolith-default");
+    return;
+  }
+  if what == LIFE_SEL_HELI {
+    cd_open(h, "Helicopter", "A medium helicopter, the kind that flies crews out to rigs at sea.",
+      "The hospital's roof is its pad: crews, patients and parts come and go by air.");
+    cd_number(h, cd_v(13.8, 1, " m"), "Across its main rotor", cd_words("About as long as a city bus."), SH_OURS);
+    cd_number(h, cd_v(2.5, 1, " km"), "How far out it flies on each trip here", cd_words("A real one flies to shore, much further."), SH_OURS);
+    cd_number(h, cd_v(6, 0, " min"), "One trip, out and back", cd_words("Shortened so you can watch it go and come back."), SH_OURS);
+    cd_now(h);
+    sh_say(h, life_heli_now(t));
+    cd_maths(h);
+      sh_say(h, "A medium twin-engine helicopter, like those that fly crews to rigs, has a rotor about 14 m across. A city bus is about 12 m long.");
+    sh_end_of(h);
+    cd_close(h, "go.8", "See the whole platform", "31-prime-the-monolith-default");
+    return;
+  }
+  name := ifx what == LIFE_SEL_TRUCK then "Truck" else ifx what == LIFE_SEL_FORK then "Forklift" else "Utility cart";
+  long := ifx what == LIFE_SEL_TRUCK then 7.4 else ifx what == LIFE_SEL_FORK then 3.6 else 2.7;
+  high := ifx what == LIFE_SEL_TRUCK then 3.3 else ifx what == LIFE_SEL_FORK then 2.2 else 1.8;
+  cd_open(h, name,
+    ifx what == LIFE_SEL_TRUCK then "A box truck on its round of the streets." else ifx what == LIFE_SEL_FORK then "A forklift moving crates round the yard." else "A small electric cart for people and parcels.",
+    ifx what == LIFE_SEL_FORK then "Goods come off the ships and the plant's halls by the pallet." else "Goods come up from the dock in the lifts and go round the 100 m street grid.");
+  cd_number(h, cd_v(long, 1, " m"), "How long it is", cd_p("The platform is ", f64(L[0].deck.x1 - L[0].deck.x0) / long, 0, " of them long."), SH_OURS);
+  cd_number(h, cd_v(high, 1, " m"), "How tall it is", cd_p("The wall is as tall as ", wall / high, 0, " of them stacked."), SH_OURS);
+  pace := ifx what == LIFE_SEL_TRUCK then 8.0 else ifx what == LIFE_SEL_FORK then 2.5 else 4.5;
+  cd_number(h, cd_v(pace * 3.6, 0, " km/h"), "How fast it goes", cd_words(ifx what == LIFE_SEL_FORK then "A brisk walk." else "A quiet town street's pace."), SH_OURS);
+  cd_now(h);
+  sh_say(h, ifx what == LIFE_SEL_FORK then "Going round the yard." else "Driving round its block, stopping at every crossing.");
+  cd_maths(h);
+    sh_say(h, "The platform's deck is 118 m over the water; each comparison is that height or the deck's length over the vehicle's own.");
+  sh_end_of(h);
+  cd_close(h, "go.8", "See the whole platform", "31-prime-the-monolith-default");
+}
+
+// ---- checks
+#test "life: the deck's routes, stands, flags and pad come from the records by rule, and every walker is on the deck" #steps 30000000000 {
+  s: [1] Slab;
+  u: [UNIFORM_FLOATS] f32;
+  slab_reset(s[..]);
+  slab_build(s[..], false);
+  u[U_MODE + 2] = f32(s[0].box_count);
+  for i: 0..<s[0].box_count * SLAB_RECORD { u[U_BOXES + i] = s[0].boxes[i]; }
+  for i: 0..<12 { u[U_PARAMS + P_POSE + i] = ifx i == 0 || i == 5 || i == 10 then 1.0f32 else 0.0f32; }
+  for i: 0..<12 { s[0].pose[i] = u[U_PARAMS + P_POSE + i]; }
+  s[0].eye = [3] f32.[600, 500, 700]; s[0].fwd = [3] f32.[-0.6, -0.5, -0.6245]; s[0].right = [3] f32.[0.72, 0, -0.69]; s[0].up = [3] f32.[-0.35, 0.87, -0.36];
+  s[0].tanh = 0.4; s[0].aspect = 1.6;
+  sun := sim_sun(27.8, 5.5, 17.85);
+  s[0].photo[0].on = true;
+  s[0].time = 20;
+  slab_photo_frame(s[..], u[..], sun, false);
+  ph := s[0].photo[..];
+  L := ph[0].content.life[..];
+  #assert L[0].made && L[0].ok && L[0].shown && !ph[0].full;
+  d := L[0].deck;
+  // two promenade loops, sidewalks, street loops and forklift loops
+  walks := 0; drives := 0; forks := 0;
+  for q: 0..<L[0].route_count { if L[0].routes[q].walk { walks += 1; } else if L[0].routes[q].fork { forks += 1; } else { drives += 1; } }
+  #assert walks >= 10 && drives >= 4 && forks >= 2 && L[0].route_count <= LIFE_ROUTES;
+  #assert L[0].stand_count > 20 && L[0].flag_count >= 4 && L[0].has_pad;
+  // every walker, stander and vehicle stands on the deck, clear of its edge
+  for i: 0..<L[0].body_count {
+    b := L[0].bodies[i];
+    if b.free || b.part == L[0].ship[TRAFFIC_FLNG] || b.part == ph[0].box { continue; }
+    #assert b.x > d.x0 && b.x < d.x1 && b.z > d.z0 && b.z < d.z1 && b.y == d.y;
+  }
+  // the counts are what the frame drew
+  c := L[0].counts;
+  #assert c[LIFE_K_WALK] + c[LIFE_K_FIGURE] > 300 && c[LIFE_K_STAND] > 10 && c[LIFE_K_VEHICLE] >= 10 && c[LIFE_K_SHIP] == 3 && c[LIFE_K_AIR] == 1 && c[LIFE_K_BIRD] == LIFE_BIRDS;
+  #assert ph[0].moving > 600 && ph[0].still + ph[0].moving < PHOTO_RECORDS;
+  // a phone draws fewer, and still the ships
+  slab_photo_frame(s[..], u[..], sun, true);
+  #assert L[0].counts[LIFE_K_WALK] + L[0].counts[LIFE_K_FIGURE] < c[LIFE_K_WALK] + c[LIFE_K_FIGURE] && L[0].counts[LIFE_K_SHIP] == 3 && L[0].counts[LIFE_K_BIRD] == LIFE_BIRDS_PHONE;
+  // the construction view: none of it
+  s[0].build.on = true; ph[0].keyed = false;
+  slab_photo_frame(s[..], u[..], sun, false);
+  #assert !L[0].shown && L[0].body_count == 0;
+}
+#test "life: the supply ship goes round, into the basin and out, and the timetable repeats" {
+  L: [1] SlabLife;
+  L[0].deck = CityDeck.{ok = true, x0 = -500, z0 = -300, x1 = 500, z1 = 300, y = 118, dock = true, bx0 = -50, bx1 = 50, bz = -240};
+  // the first picture: under way off the north wall, heading east
+  a := life_supply(L[..], 0);
+  #assert abs(a[1] - 375) < 1 && a[0] > -250 && a[0] < 560 && a[2] > 0.9;
+  // at some time it lies at the berth, inside the basin, bow west; and it is never on the deck
+  berthed := false;
+  for k: 0..<400 {
+    p := life_supply(L[..], cast(f32) k * 5);
+    inside := p[0] > -500 && p[0] < 500 && p[1] > -300 && p[1] < 300;
+    basin := p[0] > -50 && p[0] < 50 && p[1] < -240;
+    #assert !inside || basin;
+    if abs(p[1] + 260) < 0.5f32 && abs(p[0]) < 1 && p[2] < -0.99f32 { berthed = true; }
+  }
+  #assert berthed;
+}
+#test "life: a click on a ship or the helicopter opens its card, in the cards' one pattern" {
+  xs: [1] SbTest; x := xs[..]; s := x[0].s[..];
+  sb_test_open(x);
+  if s[0].hp.tour.on { tour_end(s); }
+  for k: 0..<LIFE_SEL_KINDS {
+    s[0].selected = LIFE_SEL - k; sb_say(s);
+    #assert life_selected(s[0].selected) == k && cd_key(s, s[0].selected) == "life" && cd_test_card(s) == 0;
+  }
+  s[0].selected = LIFE_SEL; sb_say(s);
+  #assert sb_test_has(s, 'K', "card", "Supply ship");
+  // a ship's box in its own frame: a ray square on to its side meets it, one past its bow does not
+  b := life_box(LIFE_SEL_SUPPLY);
+  #assert ray_box([3] f32.[0, 5, -100], [3] f32.[0, 0, 1], [3] f32.[b[0], b[1], b[2]], [3] f32.[b[3], b[4], b[5]]) > 90;
+  #assert ray_box([3] f32.[45, 5, -100], [3] f32.[0, 0, 1], [3] f32.[b[0], b[1], b[2]], [3] f32.[b[3], b[4], b[5]]) < 0;
+  #assert life_selected(-1) == -1 && life_selected(-2) == -1 && life_selected(5) == -1;
+}
+#test "life: the helicopter stands on its pad, lifts, goes out 2.5 km and lands again on the same spot" {
+  L: [1] SlabLife;
+  L[0].pad_x = 300; L[0].pad_z = -200; L[0].pad_y = 136;
+  life_heli(L[..], 0);
+  #assert L[0].heli_x == 300 && L[0].heli_z == -200 && abs(L[0].heli_y - 136.2f32) < 0.01 && L[0].heli_turn == 0;
+  // out at the far end of its run
+  life_heli(L[..], 175 - 30);
+  far := sqrt((L[0].heli_x - 300) * (L[0].heli_x - 300) + (L[0].heli_z + 200) * (L[0].heli_z + 200));
+  #assert abs(far - LIFE_HELI_OUT) < 1 && L[0].heli_y > 400 && L[0].heli_turn > 0;
+  // and back on the pad, its rotor at rest
+  life_heli(L[..], 320 - 30);
+  #assert abs(L[0].heli_x - 300) < 0.01 && abs(L[0].heli_z + 200) < 0.01 && abs(L[0].heli_y - 136.2f32) < 0.01;
+}

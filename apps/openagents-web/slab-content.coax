@@ -7,9 +7,11 @@
 //      to place what stands still, and every frame to place what moves.
 // slab-photoreal.coax owns the buffers and the drawing; nothing here reads the GPU.
 #load "slab-content-city.coax";
+#load "slab-content-life.coax";
 
 SlabContent :: struct {
   city: SlabCity;      // windows, railings, street and works detail (slab-content-city.coax)
+  life: [1] SlabLife;  // people, vehicles, ships, the helicopter, birds and flags (slab-content-life.coax)
 }
 // What a content set may read of the world when it places things.
 SlabWorld :: struct {
@@ -27,11 +29,14 @@ SlabWorld :: struct {
 // Once: make parts with the architecture kit's pen and photo_part, and materials with photo_material.
 slab_content_make :: (ph: [] SlabPhoto, pen: [] ArchPen) {
   slab_city_make(ph, pen);
+  slab_life_make(ph, pen);
 }
 // On every rebuild, twice (photoreal-scene.coax: count, then fill): place what stands still.
 slab_content_place :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
   slab_city_place(ph, l, w);
+  slab_life_place(ph, l, w);
 }
 // Every frame, twice: place what moves. Keep it small: these records go to the GPU every frame.
 slab_content_move :: (ph: [] SlabPhoto, l: [] PrList, w: SlabWorld) {
+  slab_life_move(ph, l, w);
 }

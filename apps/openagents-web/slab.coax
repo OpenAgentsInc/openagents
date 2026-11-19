@@ -1082,7 +1082,7 @@ slab_state_params :: (s: [] Slab, u: [] f32, sun: SimSun) {
   lines_uniforms(s, u, U_MOOR);   // the mooring lines, in this frame
   sh := dir_to_hull(s, f32(sun.x), f32(sun.y), f32(sun.z));
   u[P + P_SUNHULL] = sh[0]; u[P + P_SUNHULL + 1] = sh[1]; u[P + P_SUNHULL + 2] = sh[2];
-  shown := s[0].mode == CAM_WALK;
+  shown := s[0].mode == CAM_WALK && !(s[0].photo[0].on && s[0].photo[0].content.life[0].shown);   // photoreal draws the visitor as one of its people (slab-content-life.coax)
   u[P + P_CHAR] = s[0].foot.walk.x; u[P + P_CHAR + 1] = ifx shown then feet_y(s) else -1000.0f32; u[P + P_CHAR + 2] = s[0].foot.walk.z;
   u[P + P_CHAR + 3] = sr_face_yaw(s[0].foot.walk);
   u[P + P_GAIT] = s[0].stride / 1.9f32 * TAU32; u[P + P_GAIT + 1] = s[0].foot.walk.speed;
@@ -1813,7 +1813,7 @@ slab_pointer :: (s: [] Slab, x: f32, y: f32, phase: int, kind: int, id: int) -> 
     was := s[0].dragging;
     s[0].dragging = false;
     if phase == 2 && was && !s[0].build.on && s[0].moved < 6 * s[0].dpr {
-      p := pick(s, x, y);
+      p := life_pick(s, x, y, pick(s, x, y));   // a ship, vehicle or the helicopter in front wins (slab-content-life.coax)
       if p == -1 || p == s[0].selected { s[0].selected = -1; }
       else { s[0].selected = p; s[0].selected_at = s[0].time; s[0].card_x = x; s[0].card_y = y; }
       return true;

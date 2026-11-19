@@ -323,7 +323,9 @@ waterlab 190000
 # The guided tour and the names in the scene add about 29 KB (slab-tour.coax, slab-labels.coax, #13685).
 # Every card in one pattern, with its comparisons worked in code, adds about 80 KB (slab-cards.coax, #13685):
 # 524,903 bytes measured 2026-11-18; about 8% room.
-slab 670000
+# The life on the deck and the sea adds about 102 KB (the ships', vehicles', helicopter's and people's parts, the engine's
+# walking figure and timetable, their routes and cards: slab-content-life.coax, #13687): 739,528 bytes measured 2026-11-18 with the city's detail in; about 10% room.
+slab 820000
 # ... and its HUD's pane, any scene's HUD drawn with the scene set (scene-pane.coax, #13685): 124,869 bytes measured 2026-11-18 on a Mac; about 10% room.
 scene-pane 137500
 # The acknowledged three-phase block/transaction recording adds 156 KiB of data.

@@ -472,6 +472,7 @@ slab_photo_frame :: (s: [] Slab, u: [] f32, sun: SimSun, phone: bool) {
   tripped := u[P + P_UNDER + 1] > 0.5;
   key := photo_key(rec, n, tripped, phone);
   if !ph[0].keyed || key != ph[0].key { photo_list(s, rec, n, tripped, phone); ph[0].key = key; ph[0].keyed = true; }
+  slab_life_frame(s, photo_world(s, rec, n, phone));   // where what moves is now (slab-content-life.coax)
   photo_movers(s, rec, n, phone, u[P + P_PICK + 3]);
   if ph[0].field_on { pr_frame_field(u, b, -SLAB_LENGTH / 2, -SLAB_BEAM / 2, PHOTO_CELL, SLAB_DECK, PHOTO_NX, PHOTO_NZ, 8); } else { pr_frame_no_field(u, b); }
   // the section and the view from under the sea stay traced
@@ -550,13 +551,14 @@ slab_photo_store_span :: (s: [] Slab, k: int, field: int) -> int #export_c #effe
   }
   // the sea gets the sky's colours as a display shows them, and no painted golden grade
   #assert u[U_PARAMS + P_SUNCOL] > u[U_PARAMS + P_SUNCOL + 2] && u[U_PARAMS + P_SUNCOL] <= 1 && u[U_PARAMS + P_SUNHULL + 3] == 0;
-  // the same records make the same list: nothing is built again
-  version := ph[0].versions[1];
+  // the same records make the same list: nothing still is built again, only what moves (slab-content-life.coax) is written
+  version := ph[0].versions[1]; still := ph[0].still;
   slab_photo_frame(s[..], u[..], sun, false);
-  #assert ph[0].versions[1] == version;
+  #assert ph[0].versions[1] == version + 1 && ph[0].still == still && ph[0].moving > 0;
+  version = ph[0].versions[1];
   // a phone leaves the fine parts out
   slab_photo_frame(s[..], u[..], sun, true);
-  #assert ph[0].versions[1] != version;
+  #assert ph[0].versions[1] > version + 1;
   // the section stays traced
   u[U_PARAMS + P_SECTION] = 1;
   slab_photo_frame(s[..], u[..], sun, false);

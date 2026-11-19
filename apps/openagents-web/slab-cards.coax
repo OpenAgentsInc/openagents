@@ -519,6 +519,7 @@ cd_deck :: (s: [] Slab, h: [] SceneHud, cx: f32, cz: f32) {
 cd_key :: (s: [] Slab, i: int) -> string {
   if i == -2 { return "sea"; }
   if i == -3 { return "dock"; }
+  if life_selected(i) >= 0 { return "life"; }   // a ship, a vehicle or the helicopter (slab-content-life.coax)
   if i < 0 || i >= s[0].box_count { return ""; }
   k := rec_kind(s, i);
   cx := (rec(s, i, 0) + rec(s, i, 4)) * 0.5; wide := rec(s, i, 4) - rec(s, i, 0);
@@ -559,6 +560,7 @@ cd_card :: (s: [] Slab, h: [] SceneHud) {
   if key == "" { return; }
   if key == "sea" { cd_sea(s, h); return; }
   if key == "dock" { cd_dock(s, h); return; }
+  if key == "life" { life_card(s, h, i); return; }
   x0 := rec(s, i, 0); z0 := rec(s, i, 2); x1 := rec(s, i, 4); y1 := rec(s, i, 5); z1 := rec(s, i, 6);
   cx := (x0 + x1) * 0.5; cz := (z0 + z1) * 0.5;
   wide := f64(x1 - x0); deep := f64(z1 - z0); tall := f64(y1 - SLAB_DECK);

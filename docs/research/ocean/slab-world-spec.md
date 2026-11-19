@@ -1732,6 +1732,30 @@ glass towers); the street signs are blank panels, because the engine's stroke
 font has capitals only; the lamps' night glow is the night-lights set's; the
 temples' columns stay the materials set's fluted drums.
 
+### Life on the deck and the sea (#13687)
+
+Measured on November 18, 2026, from the checks in
+`apps/openagents-web/slab-content-life.coax` and from pictures with
+`?style=photoreal` at 1440 × 900 and 390 × 844. Issue 13687 asked for people,
+vehicles, ships, a helicopter, birds and flags that follow the wind.
+`docs/metaverse/photoreal.md` ("Things that move") lists the counts.
+
+| Quantity | Measured |
+|---|---|
+| People | up to 480 walking and 48 standing (190 and 20 on a phone); the 48 nearest within 70 m (14 on a phone) are whole walking figures. All walk routes made by rule from the plan's records: promenade loops, sidewalk runs at least 60 m long, none through a building |
+| Vehicles | up to 22 trucks and carts (10 on a phone) on street loops, waiting 1.2 s at every crossing; 6 forklifts (3) round the works. Speeds 8, 4.5 and 2.5 m/s, our assumption |
+| Ships | a supply ship, 76 × 17 m, our assumption, goes round the north and east walls into the dock, lies 240 s at the landing stage under the cranes and leaves by the west; a tug off the north wall and a 229 m bulk carrier 1 km off, bows to the weather. Each rides the simulated sea from nine height samples |
+| Helicopter | parks on the hospital's roof, lifts, flies 2.5 km out and back on a 360 s round, our assumption |
+| Wind | flags and the stacks' plumes turn with `?winddir=` (checked at 0 and 180 degrees) |
+| `slab.wasm` | 739,528 bytes with the city's detail in (budget raised to 820,000) |
+| GPU frame time, ms p50 / p95 | opening view 1440 × 900: 3.57 / 4.17 (3.68 / 8.57 before); phone 390 × 844 at 3×: 0.76 / 0.85 (0.83 / 3.95); walk 1440 × 900: 2.45 / 2.82. The Mac was at a load of 60 to 100 with other agents, so the numbers move run to run |
+| Cards | the supply ship, tug, bulk carrier, helicopter, truck, forklift and cart each have a card in the one pattern; a headless click on the berthed supply ship opens its card |
+
+Not done: the ships leave no wake on the water and the plumes stay the
+shader's, not volumetric; people are too small to make out from the
+opening view at 1.3 km (the ships are); crowds do not change with the
+shift or the hour, and there are no night lights on the movers.
+
 ### The construction, simulated
 
 Measured on November 18, 2026, from the checks in

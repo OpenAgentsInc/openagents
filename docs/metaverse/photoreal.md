@@ -364,8 +364,29 @@ A timetable is a function of the time alone: every visitor sees the same
 mover in the same place, and a picture at a fixed time is repeatable.
 Movers do not see each other, so space them in time.
 
-SLAB does not draw these yet. Its content set for them
-(`slab-content-life.coax`, issue #13687) is still to be written.
+SLAB's set is `apps/openagents-web/slab-content-life.coax` (issue #13687).
+Its routes come from the plan's records by rule, on each rebuild: two
+promenade loops inside the parapet, sidewalk runs down every street where
+the deck is clear for 60 m or more, street loops that stop at every
+crossing, and forklift loops round the works. `slab_life_frame` works out
+where everything is once a frame, before the moving records are written,
+because the list runs twice. It draws, at most:
+
+| What | Desktop | Phone |
+| --- | --- | --- |
+| People walking, as one record each | 480 | 190 |
+| People standing at the parapet | 48 | 20 |
+| Of those, whole walking figures (`pr_figure`) within 70 m | 48 | 14 |
+| Trucks and carts | 22 | 10 |
+| Forklifts | 6 | 3 |
+| Seabirds | 24 | 8 |
+| Flags | 6 | 6 |
+| Ships (supply ship, tug, bulk carrier) and the helicopter | 4 | 4 |
+
+People beyond 1.7 km are not drawn. In walk mode under the photoreal style
+the visitor is one of these figures, and the shader's own walker steps
+aside. Clicks on a ship, a vehicle or the helicopter select codes -10 to
+-16 and open a card in the cards' one pattern.
 
 A leaning record is a metre a metre unless it has a stretch: its scale's
 float holds the roll. The shader leans its normal with it.
