@@ -11,7 +11,10 @@
 #   coax/remote/after.sh install    run the watcher under launchd (macOS) or as a
 #                                   systemd user service (Linux): it starts at login
 #                                   or boot, starts again whenever it stops, and takes
-#                                   new pipeline scripts from main (uninstall: stop it)
+#                                   new pipeline scripts from main (uninstall: stop it).
+#                                   OA_AFTER_STANDIN=1: a stand-in that stops and
+#                                   uninstalls itself once another machine's watcher
+#                                   publishes the shared state again (#13723)
 #   coax/remote/after.sh state      the watcher, main, main-green, the last runs and
 #                                   the red list
 #   coax/remote/after.sh health     whether the watcher is running (status 1: it is not)
@@ -317,6 +320,7 @@ case "${1:-}" in
       git -C "$co" sparse-checkout set --cone coax/remote || exit 1
     fi
     git -C "$co" checkout -q --detach "$mref" || exit 1
+    keep="OA_REMOTE_STATE OA_REMOTE_DAILY_USD CLOUDSDK_CONFIG OA_PIPELINE_SHARED OA_PIPELINE_NOTIFY OA_AFTER_REVERT OA_AFTER_STANDIN"
     esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' <<< "$1"; }
     cmd="cd '$co' || exit 1; if git fetch -q $pl_remote '+refs/heads/$pl_main:$mref'; then git checkout -q --detach '$mref'; fi; exec coax/remote/after.sh --watch"
     if [[ "$(uname -s)" == Linux ]]; then
@@ -335,7 +339,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-Environment="PATH=$(sd "$PATH")" "HOME=$(sd "$HOME")" OA_AFTER_SUPERVISED=1 "OA_PIPELINE_DIR=$(sd "$pl_dir")"$(for v in OA_REMOTE_STATE OA_REMOTE_DAILY_USD CLOUDSDK_CONFIG OA_PIPELINE_SHARED OA_PIPELINE_NOTIFY; do [[ -z "${!v:-}" ]] || printf ' "%s=%s"' "$v" "$(sd "${!v}")"; done)
+Environment="PATH=$(sd "$PATH")" "HOME=$(sd "$HOME")" OA_AFTER_SUPERVISED=1 "OA_PIPELINE_DIR=$(sd "$pl_dir")"$(for v in $keep; do [[ -z "${!v:-}" ]] || printf ' "%s=%s"' "$v" "$(sd "${!v}")"; done)
 ExecStart=$(command -v bash) -c "$(sd "$cmd")"
 Restart=always
 RestartSec=60
@@ -365,6 +369,7 @@ EOF
     <key>HOME</key><string>$(esc "$HOME")</string>
     <key>OA_AFTER_SUPERVISED</key><string>1</string>
     <key>OA_PIPELINE_DIR</key><string>$(esc "$pl_dir")</string>
+$(for v in $keep; do [[ -z "${!v:-}" ]] || printf '    <key>%s</key><string>%s</string>\n' "$v" "$(esc "${!v}")"; done)
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -1382,6 +1387,32 @@ once() {
   run_head
   exec 8>&-
 }
+# The other machine whose watcher published the shared state after this one
+# last did (status 1: none).
+standin_superseded() {
+  [[ "$pl_shared" != 0 ]] || return 1
+  local t host at
+  t="$(mktemp -d "${TMPDIR:-/tmp}/oa-pl-standin.XXXXXXXX")" || return 1
+  pl_gcloud storage cp "$pl_shared/state.tar.gz" "$t/state.tar.gz" > /dev/null 2>&1 &&
+    read -r host at < <(tar -xzOf "$t/state.tar.gz" watcher 2> /dev/null)
+  rm -rf "$t"
+  [[ -n "${host:-}" && "$host" != "$(pl_host)" && "${at:-0}" =~ ^[0-9]+$ ]] || return 1
+  (( at > $(cat "$results/published" 2> /dev/null || echo 0) )) || return 1
+  echo "$host"
+}
+# The stand-in stops for good: as `after.sh uninstall`, and the watcher with it.
+standin_stop() {   # other-host
+  pl_say "after: the watcher on $1 is publishing again; this stand-in stops and uninstalls itself"
+  rm -f "$results/heartbeat" "$results/published"
+  if [[ -n "${OA_AFTER_SUPERVISED:-}" && "$(uname -s)" == Linux ]]; then
+    rm -f "$HOME/.config/systemd/user/$label.service"
+    systemctl --user disable --now "$label.service" > /dev/null 2>&1
+  elif [[ -n "${OA_AFTER_SUPERVISED:-}" ]]; then
+    rm -f "$HOME/Library/LaunchAgents/$label.plist"
+    launchctl bootout "gui/$(id -u)/$label" > /dev/null 2>&1
+  fi
+  kill "$$" 2> /dev/null
+}
 if (( watch == 1 )); then
   exec 7> "$results/watch.lock"
   flock -n 7 || { pl_say "after: another watcher is running ($results/watch.lock)"; exit 75; }
@@ -1394,7 +1425,15 @@ if (( watch == 1 )); then
   # This machine is the watcher now; other machines read its state (pl_publish).
   rm -f "$results/watcher-host"
   # Beside it, the service alerts passed on to the agents (pipeline-lib.sh pl_service_watch, #13297).
-  ( while kill -0 $$ 2> /dev/null; do date +%s > "$results/heartbeat"; pl_service_watch; pl_publish; sleep 60; done ) 7>&- &
+  # A stand-in (OA_AFTER_STANDIN=1, #13723) steps aside when another machine's
+  # watcher publishes the shared state after it did: that watcher is back, and
+  # two would race on main-green.
+  date +%s > "$results/published"
+  ( while kill -0 $$ 2> /dev/null; do
+      date +%s > "$results/heartbeat"; pl_service_watch
+      if [[ "${OA_AFTER_STANDIN:-0}" == 1 ]] && other="$(standin_superseded)"; then standin_stop "$other"; break; fi
+      pl_publish; date +%s > "$results/published"; sleep 60
+    done ) 7>&- &
   while true; do
     once
     stale_check

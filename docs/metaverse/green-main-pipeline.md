@@ -773,8 +773,9 @@ On Linux, it writes the systemd user service
 `RestartSec=60`, `KillMode=process`) and enables it; `sudo loginctl
 enable-linger USER` keeps it running with no one logged in (coderos has it
 on), and `OA_AFTER_INSTALL_PRINT=1` prints the unit without enabling it. The
-unit keeps `OA_REMOTE_STATE`, `OA_REMOTE_DAILY_USD`, `CLOUDSDK_CONFIG`,
-`OA_PIPELINE_SHARED` and `OA_PIPELINE_NOTIFY` when they are set at install.
+unit and the plist keep `OA_REMOTE_STATE`, `OA_REMOTE_DAILY_USD`,
+`CLOUDSDK_CONFIG`, `OA_PIPELINE_SHARED`, `OA_PIPELINE_NOTIFY`,
+`OA_AFTER_REVERT` and `OA_AFTER_STANDIN` when they are set at install.
 Either way the job runs `after.sh --watch` in a checkout of its own,
 `~/.openagents/pipeline/checkout`, which holds only `coax/remote`, and is
 started again whenever it stops. When the pipeline's scripts change on `main`,
@@ -836,6 +837,23 @@ coax/remote/after.sh install      # on the Mac, from any checkout
 
 A Mac watcher starts from the state the mirror last copied, so after
 `after.sh state` has run there it starts where coderos stopped.
+
+When coderos can't be reached, the Mac runs a stand-in (#13723: coderos-4080
+dropped off the tailnet at 23:08 on 2026-11-18 and `main-green` stood still
+for 16 hours):
+
+```sh
+coax/remote/after.sh state     # copies coderos's last state here first
+OA_AFTER_STANDIN=1 OA_AFTER_REVERT=0 coax/remote/after.sh install
+```
+
+`OA_AFTER_REVERT=0` checks heads and moves `main-green` but lands no revert and
+runs no integrator round. `OA_AFTER_STANDIN=1` makes it step aside on its own:
+each minute it reads the shared state, and when another machine's watcher has
+published it since the stand-in last did, the stand-in uninstalls itself and
+stops, so coderos's service, which starts again by itself when the machine is
+back, never races it for more than a minute. `after.sh uninstall` on the Mac
+stops it by hand.
 
 #### Why coderos, not a pool host
 
