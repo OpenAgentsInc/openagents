@@ -74,12 +74,17 @@
     {
      "name": "model",
      "type": "string",
-     "note": "written only when the owner names a model; not read for a local task"
+     "note": "written only when the owner names a model; not read for a local task. openrouter:VENDOR/MODEL runs on OpenRouter alone"
     },
     {
      "name": "effort",
      "type": "string",
      "note": "written only when given: low, medium or high; anything else reads as low"
+    },
+    {
+     "name": "openrouter",
+     "type": "string",
+     "note": "written only when the owner set an OpenRouter model for sub-agents: a delegated task's level may be openrouter, which the owner runs on VENDOR/MODEL"
     }
    ]
   },

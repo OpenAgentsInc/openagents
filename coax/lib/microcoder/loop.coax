@@ -100,6 +100,7 @@ McLoop :: struct {
   finish_refused: int;           // finishes the owner refused
   agents: bool;                  // the action's delegate is read: the owner runs sub-agents (mc_agents)
   claude: bool;                  // its levels include the Claude models: the owner runs Claude Code too
+  openrouter: bool;              // its levels include openrouter: the owner runs an OpenRouter model for sub-agents
   no_ask: bool;                  // interactive ask: question is disabled; never pause with MC_END_ASKED (GitHub #13701)
   images: [] GwImage;            // multimodal images attached to the user message for this run
 }
@@ -131,19 +132,24 @@ mc_aware :: (l: [] McLoop, b: [] McLoopBuffers, intel: bool, memory: bool) -> bo
 MC_AGENTS :: "\n- You can hand work to sub-agents. delegate is a list of up to 6 tasks, each with a level and a task. They run at the same time, each in a run of its own with your tools and your working directory. None of them sees this conversation: write each task so it stands alone, with the paths and facts it needs and what to report back. The levels are models. level hydrogen is Gemini 4 Hydrogen, a fast, light model: for a lookup, a search, a command or a small change. level carbon is Gemini 4 Carbon, a stronger, slower model: for work that takes many steps or careful reasoning. level neon is Gemini 4 Neon, a frontier model that finishes complex work fast: for many-step software, research or analysis work that should be done quickly from start to end. When the person names Hydrogen, Carbon or Neon, use that level. Each sub-agent's reply comes back as a result of this step named agent LEVEL: TASK, ahead of the step's edits and commands. Answer a plain question or run one quick command yourself; delegate the rest, as one task or as several that do not depend on each other. Do not delegate the same task twice, and do not redo a sub-agent's work to check it. A sub-agent that makes 100 tool calls in a row without changing a file is paused: its result says so and gives its number. Decide then. To let it go on, delegate one task with resume set to that number, at its level, with a short note as the task that tells it what to do next; it keeps what it has learned. To stop it, do not resume it. Leave resume out for a new sub-agent. Leave delegate empty when you hand nothing over.";
 // What a run is told when its owner also runs Claude Code sub-agents (GitHub #13660), after MC_AGENTS.
 MC_AGENTS_CLAUDE :: "\n- Four more levels hand a task to Claude Code, on the person's own Claude login, with Claude's tools in your working directory: haiku, sonnet, opus and fable. From weakest to strongest the levels are: haiku, sonnet, carbon and neon, opus, fable. carbon and neon are stronger than haiku and sonnet, so never pick haiku or sonnet for hard work: use them only when the person asks for Claude Haiku or Claude Sonnet by name. Pick opus or fable when the person asks for them, or when a task needs more than carbon or neon gives: opus for hard work that takes careful reasoning, fable for the hardest. When the person asks for Claude and names no model, pick by the task: sonnet for everyday work, opus or fable for hard work. Otherwise use hydrogen, carbon or neon.";
+// What a run is told when its owner runs an OpenRouter model for sub-agents, around the model's id.
+MC_AGENTS_OPENROUTER_A :: "\n- One more level, openrouter, hands a task to ";
+MC_AGENTS_OPENROUTER_B :: " through OpenRouter, in a run of its own with your tools in your working directory. The person chose this model for sub-agents. Use level openrouter when the person asks for OpenRouter or names this model, or asks for every sub-agent to use it. Otherwise pick as above.";
 // Turns on delegation for a loop mc_init set up (after mc_aware, when the run has a mode): the
 // schema gains delegate and the system prompt MC_AGENTS. False when they don't fit b (they do).
-// claude: with the Claude levels (MC_AGENTS_CLAUDE).
-mc_agents :: (l: [] McLoop, b: [] McLoopBuffers, claude: bool) -> bool {
+// claude: with the Claude levels (MC_AGENTS_CLAUDE). openrouter: the OpenRouter model offered as
+// level openrouter ("" for none).
+mc_agents :: (l: [] McLoop, b: [] McLoopBuffers, claude: bool, openrouter: string) -> bool {
   sb: [4096] u8;
-  schema := mc_schema_delegate(l[0].schema, sb[..], claude);
+  schema := mc_schema_delegate(l[0].schema, sb[..], claude, openrouter.count > 0);
   n := json_raw(b[0].system[..], 0, l[0].system);          // in place when mc_aware wrote it there
   n = json_raw(b[0].system[..], n, MC_AGENTS);
   if claude { n = json_raw(b[0].system[..], n, MC_AGENTS_CLAUDE); }
+  if openrouter.count > 0 { n = json_raw(b[0].system[..], n, MC_AGENTS_OPENROUTER_A); n = json_raw(b[0].system[..], n, openrouter); n = json_raw(b[0].system[..], n, MC_AGENTS_OPENROUTER_B); }
   if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
-  l[0].agents = true; l[0].claude = claude;
+  l[0].agents = true; l[0].claude = claude; l[0].openrouter = openrouter.count > 0;
   return true;
 }
 
@@ -244,7 +250,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
     why = mc_text_action(l[0].ar[..], text, l[0].norm, l[0].pending[..]);
   }
   if why.count > 0 { return mc_bad(l, why); }
-  if l[0].agents { why = mc_action_delegates(l[0].ar[..], text, l[0].pending[..], l[0].claude); if why.count > 0 { return mc_bad(l, why); } }
+  if l[0].agents { why = mc_action_delegates(l[0].ar[..], text, l[0].pending[..], l[0].claude, l[0].openrouter); if why.count > 0 { return mc_bad(l, why); } }
   l[0].steps += 1;
   l[0].bad = 0;
   // a finish that carries edits, commands or views is a working step: they are run, not
@@ -788,7 +794,7 @@ ps_count :: (text: string, needle: string) -> int {
   for aware: [2] bool.[false, true] {
     l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
     mc_init(l[..], sb[..], lb[..], "{}", "do two things", "{}", 1.0);
-    #assert mc_aware(l[..], lb[..], aware, aware) && mc_agents(l[..], lb[..], aware) && l[0].agents && l[0].claude == aware;
+    #assert mc_aware(l[..], lb[..], aware, aware) && mc_agents(l[..], lb[..], aware, "") && l[0].agents && l[0].claude == aware;
     #assert ps_count(l[0].system, "You can hand work to sub-agents.") == 1 && ps_count(l[0].system, "You are Microcoder") == 1 && ps_count(l[0].system, "You have a working memory.") == (ifx aware then 1 else 0);
     #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.delegate").count > 0 && (cl_raw(l[0].schema, "properties.notes").count > 0) == aware;
     s := mc_take(l[..], "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done\",\"ask\":\"none\"}");
@@ -831,7 +837,7 @@ ps_count :: (text: string, needle: string) -> int {
   for agents: [2] bool.[false, true] {
     l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
     mc_init(l[..], sb[..], lb[..], "{}", "do the work", "{}", 1.0);
-    if agents { #assert mc_agents(l[..], lb[..], true); }
+    if agents { #assert mc_agents(l[..], lb[..], true, ""); }
     #assert mc_no_ask(l[..], lb[..]) && l[0].no_ask;
     #assert ps_count(l[0].system, "Interactive questions are disabled.") == 1;
     #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.ask.enum") == "[\"none\"]";

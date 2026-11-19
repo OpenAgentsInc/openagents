@@ -43,6 +43,12 @@ MC_MAX_DELEGATES :: 6;
 // each Claude model: haiku, sonnet, opus and fable (MC_SCHEMA_DELEGATE_CLAUDE).
 MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+// An owner with an OpenRouter model for sub-agents has one more level, openrouter (after the
+// Claude levels when both are on). mc_schema_delegate writes the enum from these pieces.
+MC_SCHEMA_DELEGATE_HEAD :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"";
+MC_SCHEMA_DELEGATE_CLAUDE_LEVELS :: ",\"haiku\",\"sonnet\",\"opus\",\"fable\"";
+MC_SCHEMA_DELEGATE_OPENROUTER_LEVEL :: ",\"openrouter\"";
+MC_SCHEMA_DELEGATE_TAIL :: "]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
 MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
 mc_schema_find :: (text: string, needle: string) -> int {
@@ -51,12 +57,16 @@ mc_schema_find :: (text: string, needle: string) -> int {
   return -1;
 }
 // schema (mc_schema's, any modes) with the delegate member after rationale, and required. Into
-// out; "" when it doesn't fit or schema is not one of mc_schema's. claude: with the Claude levels.
-mc_schema_delegate :: (schema: string, out: [] u8, claude: bool) -> string {
+// out; "" when it doesn't fit or schema is not one of mc_schema's. claude: with the Claude levels;
+// openrouter: with the openrouter level.
+mc_schema_delegate :: (schema: string, out: [] u8, claude: bool, openrouter: bool) -> string {
   a := mc_schema_find(schema, MC_SCHEMA_RATIONALE); b := mc_schema_find(schema, MC_SCHEMA_REQUIRED);
   if a < 0 || b < a { return ""; }
   a += MC_SCHEMA_RATIONALE.count; b += MC_SCHEMA_REQUIRED.count;
-  n := json_raw(out, 0, cast(string) schema[0..<a]); n = json_raw(out, n, ifx claude then MC_SCHEMA_DELEGATE_CLAUDE else MC_SCHEMA_DELEGATE);
+  n := json_raw(out, 0, cast(string) schema[0..<a]); n = json_raw(out, n, MC_SCHEMA_DELEGATE_HEAD);
+  if claude { n = json_raw(out, n, MC_SCHEMA_DELEGATE_CLAUDE_LEVELS); }
+  if openrouter { n = json_raw(out, n, MC_SCHEMA_DELEGATE_OPENROUTER_LEVEL); }
+  n = json_raw(out, n, MC_SCHEMA_DELEGATE_TAIL);
   n = json_raw(out, n, cast(string) schema[a..<b]); n = json_raw(out, n, ",\"delegate\""); n = json_raw(out, n, cast(string) schema[b..<schema.count]);
   if n < 0 { return ""; }
   return cast(string) out[0..<n];
@@ -182,10 +192,15 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
 
 // The reply's delegate member read into a (a run whose owner runs sub-agents; after
 // mc_action_parse_as, which leaves nd 0). The member may be missing. What's wrong with it, or "".
-// claude: the Claude levels are allowed too.
-mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bool) -> string {
+// claude: the Claude levels are allowed too; openrouter: the openrouter level.
+mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bool, openrouter: bool) -> string {
   a[0].nd = 0;
-  if !cl_valid(text, ifx claude then "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon|haiku|sonnet|opus|fable ?s:delegate.*.task" else "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon ?s:delegate.*.task") { return "the reply's delegate does not match the next_action schema"; }
+  spec: [160] u8;
+  ns := json_raw(spec[..], 0, "?a:delegate ?o:delegate.* ?s:delegate.*.level=hydrogen|carbon|neon");
+  if claude { ns = json_raw(spec[..], ns, "|haiku|sonnet|opus|fable"); }
+  if openrouter { ns = json_raw(spec[..], ns, "|openrouter"); }
+  ns = json_raw(spec[..], ns, " ?s:delegate.*.task");
+  if !cl_valid(text, cast(string) spec[0..<ns]) { return "the reply's delegate does not match the next_action schema"; }
   ds := cl_raw(text, "delegate");
   nd := ifx ds.count > 0 then cl_count(ds) else 0; // mutant: equivalent
   if nd > MC_MAX_DELEGATES { return "the reply delegates more than 6 tasks"; }
@@ -235,37 +250,44 @@ mc_question :: (q: string) -> McQuestion {
 
 #test "the delegate member: in the schema of any modes, read from a reply, refused when wrong" {
   b: [4096] u8; d: [4096] u8;
-  s := mc_schema_delegate(MC_SCHEMA, d[..], false);
+  s := mc_schema_delegate(MC_SCHEMA, d[..], false, false);
   #assert json_valid(s) && cl_raw(s, "properties.delegate.items.properties.level.enum").count > 0 && cl_count(cl_raw(s, "required")) == 8;
   #assert cl_count(cl_raw(s, "properties.edits.items.required")) == 3 && s.count == MC_SCHEMA.count + MC_SCHEMA_DELEGATE.count + 11;
-  s = mc_schema_delegate(mc_schema(b[..], true, true), d[..], true);
+  s = mc_schema_delegate(mc_schema(b[..], true, true), d[..], true, false);
   #assert json_valid(s) && cl_count(cl_raw(s, "required")) == 10 && cl_raw(s, "properties.notes").count > 0 && cl_raw(s, "properties.delegate").count > 0;
-  #assert mc_schema_delegate("{}", d[..], false) == "" && mc_schema_delegate(MC_SCHEMA, d[0..<64], false) == "";
+  #assert mc_schema_delegate("{}", d[..], false, false) == "" && mc_schema_delegate(MC_SCHEMA, d[0..<64], false, false) == "";
   ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
   a: [1] McAction;
   whole := "{\"rationale\":\"split\",\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
   #assert mc_action_parse(ar[..], whole, a[..]) == "" && a[0].nd == 0;
-  #assert mc_action_delegates(ar[..], whole, a[..], false) == "" && a[0].nd == 2 && a[0].delegates[0].level == "hydrogen" && a[0].delegates[0].task == "count the files" && a[0].delegates[1].level == "carbon";
+  #assert mc_action_delegates(ar[..], whole, a[..], false, false) == "" && a[0].nd == 2 && a[0].delegates[0].level == "hydrogen" && a[0].delegates[0].task == "count the files" && a[0].delegates[1].level == "carbon";
+  // the schema written from pieces is the old constants; openrouter joins the enum only when on
+  #assert mc_schema_delegate(MC_SCHEMA, d[..], false, false).count == MC_SCHEMA.count + MC_SCHEMA_DELEGATE.count + 11;
+  #assert mc_schema_delegate(MC_SCHEMA, d[..], true, false).count == MC_SCHEMA.count + MC_SCHEMA_DELEGATE_CLAUDE.count + 11;
+  s = mc_schema_delegate(MC_SCHEMA, d[..], true, true);
+  #assert json_valid(s) && cl_count(cl_raw(s, "properties.delegate.items.properties.level.enum")) == 8;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"openrouter\",\"task\":\"t\"}]}", a[..], false, true) == "" && a[0].delegates[0].level == "openrouter";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"openrouter\",\"task\":\"t\"}]}", a[..], true, false) != "";
   // neon is a Gemini level: read with or without the Claude levels
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], false) == "" && a[0].nd == 1 && a[0].delegates[0].level == "neon";
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], true) == "" && a[0].nd == 1;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], false, false) == "" && a[0].nd == 1 && a[0].delegates[0].level == "neon";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"neon\",\"task\":\"ship it\"}]}", a[..], true, false) == "" && a[0].nd == 1;
   // the Claude levels are read only for an owner that runs Claude Code
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"}]}", a[..], false) != "";
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"},{\"level\":\"fable\",\"task\":\"y\"}]}", a[..], true) == "" && a[0].nd == 2 && a[0].delegates[0].level == "opus" && a[0].delegates[1].level == "fable";
-  #assert mc_action_delegates(ar[..], "{\"rationale\":\"x\"}", a[..], false) == "" && a[0].nd == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"}]}", a[..], false, false) != "";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"opus\",\"task\":\"x\"},{\"level\":\"fable\",\"task\":\"y\"}]}", a[..], true, false) == "" && a[0].nd == 2 && a[0].delegates[0].level == "opus" && a[0].delegates[1].level == "fable";
+  #assert mc_action_delegates(ar[..], "{\"rationale\":\"x\"}", a[..], false, false) == "" && a[0].nd == 0;
   // resume names a paused sub-agent by its number; left out, zero or less, the task is a new sub-agent's
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"write it now\",\"resume\":3},{\"level\":\"carbon\",\"task\":\"y\",\"resume\":0},{\"level\":\"carbon\",\"task\":\"z\",\"resume\":-2}]}", a[..], false) == "" && a[0].nd == 3;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"write it now\",\"resume\":3},{\"level\":\"carbon\",\"task\":\"y\",\"resume\":0},{\"level\":\"carbon\",\"task\":\"z\",\"resume\":-2}]}", a[..], false, false) == "" && a[0].nd == 3;
   #assert a[0].delegates[0].resume == 3 && a[0].delegates[1].resume == 0 && a[0].delegates[2].resume == -2;
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"z\"}]}", a[..], false) == "" && a[0].delegates[0].resume == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"z\"}]}", a[..], false, false) == "" && a[0].delegates[0].resume == 0;
   // six tasks are the most
   six := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"}]}";
   seven := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"},{\"level\":\"carbon\",\"task\":\"g\"}]}";
-  #assert mc_action_delegates(ar[..], six, a[..], false) == "" && a[0].nd == 6 && a[0].delegates[5].task == "f";
-  #assert mc_action_delegates(ar[..], seven, a[..], false) == "the reply delegates more than 6 tasks" && a[0].nd == 0;
-  #assert cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], false), "properties.delegate.items.properties.resume.type") == "\"integer\"" && cl_count(cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], true), "properties.delegate.items.required")) == 2;
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hard\",\"task\":\"x\"}]}", a[..], false) != "" && a[0].nd == 0;
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"\"}]}", a[..], false) == "a delegated task is empty";
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"}]}", a[..], false) == "the reply delegates more than 6 tasks";
+  #assert mc_action_delegates(ar[..], six, a[..], false, false) == "" && a[0].nd == 6 && a[0].delegates[5].task == "f";
+  #assert mc_action_delegates(ar[..], seven, a[..], false, false) == "the reply delegates more than 6 tasks" && a[0].nd == 0;
+  #assert cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], false, false), "properties.delegate.items.properties.resume.type") == "\"integer\"" && cl_count(cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], true, false), "properties.delegate.items.required")) == 2;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hard\",\"task\":\"x\"}]}", a[..], false, false) != "" && a[0].nd == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"\"}]}", a[..], false, false) == "a delegated task is empty";
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"hydrogen\",\"task\":\"a\"}]}", a[..], false, false) == "the reply delegates more than 6 tasks";
 }
 
 #test "the schema a run sends: MC_SCHEMA with nothing on, the added members with each mode" {

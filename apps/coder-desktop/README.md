@@ -88,6 +88,7 @@ level for each task:
 
 Microcoder knows all three by name, so "task it to Carbon" or "give it to Neon" works.
 - **Claude** tasks go to Claude Code, on the model Microcoder picks: Haiku, Sonnet, Opus or Fable. See [Claude sub-agents](#claude-sub-agents).
+- **OpenRouter** tasks go to the OpenRouter model you set for sub-agents. Microcoder uses it when you ask for OpenRouter or name the model. See [OpenRouter models](#openrouter-models).
 
 Sub-agents handed over in one step run at the same time. Each is a row above
 the reply, named for its model (Hydrogen, Carbon, Neon, or Claude Haiku, Claude
@@ -160,6 +161,33 @@ or `CLAUDE_CODE_OAUTH_TOKEN` in Coder's environment is not passed on. If
 Claude refuses the key, the sub-agent's row says so. You still need the
 `claude` command installed.
 
+## OpenRouter models
+
+Microcoder and its sub-agents can run on any OpenRouter model that takes a
+strict JSON schema (OpenRouter lists most models that way). Open
+**Coder > OpenRouter Models…** and fill in:
+
+- **Key:** your OpenRouter key (`sk-or-…`, from [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)). Coder keeps it in `~/Library/Application Support/Coder/openrouter-key`, readable by you only. Leave it empty to keep the key already set. Without a key here, Coder uses `~/work/.secrets/openrouter.env`.
+- **Model for Microcoder:** an OpenRouter id such as `deepseek/deepseek-v4.1-flash-1017`. It joins the composer's model picker, under its name after the vendor.
+- **Model for sub-agents:** an OpenRouter id. It becomes the sub-agent level `openrouter`: "use an OpenRouter sub-agent to count the tests" or "give it to DeepSeek" hands a task to it.
+
+Press Save. Coder checks each id against OpenRouter's model list first and
+refuses one that does not take a strict JSON schema. Leave a model empty to
+remove it; a chat on the removed model goes back to Gemini 4 Neon.
+
+An OpenRouter model runs on OpenRouter only: when OpenRouter can't answer,
+the run fails and says so, and no other model answers in its place.
+Requests ask OpenRouter for providers that keep no training data
+(`data_collection: deny`) and that take every field sent
+(`require_parameters`). The cost OpenRouter reports for each call counts
+against the chat's budget.
+
+To pick it for one launch, add `--model openrouter` (or a Gemini name such as `Carbon`):
+
+```sh
+open -n apps/coder-desktop/build/Coder.app --args --model openrouter --send "What is 2+2?"
+```
+
 ## Saved chats
 
 Coder keeps every chat on this Mac (#13661). It saves a chat when you send a
@@ -230,7 +258,8 @@ Each sub-agent is one more worker process, which the app starts when
 Microcoder hands a task over and stops when the task ends.
 The worker reads this machine's credentials as Coder's terminal app does
 (`coder/tui/microcoder_keys.coax`): Vertex first, then the Gemini API, then
-OpenRouter.
+OpenRouter. A model you set in OpenRouter Models runs on OpenRouter alone,
+with the key Coder keeps (see [OpenRouter models](#openrouter-models)).
 
 ## Build and open
 

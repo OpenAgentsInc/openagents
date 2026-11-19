@@ -61,6 +61,7 @@ McTask :: struct {
   edits: bool;                   // a gated run whose edits are not refused: the owner gates commands only to show each as it starts
   unlimited: bool;               // the run has no budget: no model call, command, view or time limit ends it (GitHub #13667)
   no_ask: bool;                  // disable ask: "question" interactive prompting (GitHub #13701)
+  openrouter: string;            // with agents: the OpenRouter model a task's level openrouter runs on ("" for none)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -80,6 +81,7 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.no_ask { n = json_raw(o, n, ",\"no_ask\":true"); }
   if t.model.count > 0 { n = json_raw(o, n, ",\"model\":"); n = json_write_string(o, n, t.model); }
   if t.effort.count > 0 { n = json_raw(o, n, ",\"effort\":"); n = json_write_string(o, n, t.effort); }
+  if t.openrouter.count > 0 { n = json_raw(o, n, ",\"openrouter\":"); n = json_write_string(o, n, t.openrouter); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -121,6 +123,7 @@ MwwRequest :: struct {
   query: bool;                   // embed: a query's embedding
   allow: bool; ticket: JsonInt; why: string;       // answer
   task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
+  openrouter: string;            // the OpenRouter model offered to sub-agents as level openrouter
   local: bool; gated: bool; agents: bool; edits: bool; claude: bool; unlimited: bool; no_ask: bool;
   results: string;               // results: the list's JSON text
   recall: string;                // recall: the turns' JSON text
@@ -173,6 +176,7 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   r[0].session = cl_str(ar, msg, "session");
   r[0].policy = cl_raw(msg, "policy");
   r[0].effort = cl_str(ar, msg, "effort");
+  r[0].openrouter = cl_str(ar, msg, "openrouter");
   r[0].kind = MWW_TASK; return MWW_TASK;
 }
 
@@ -193,6 +197,7 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   no_ask := cl_bool(msg, "no_ask"); t[0].no_ask = no_ask.ok && no_ask.value;
   t[0].policy = on.value; t[0].allow = allow.value; t[0].ceiling = ceiling.value; t[0].roots = cl_str(ar, msg, "policy.roots");
   t[0].model = cl_str(ar, msg, "model"); t[0].effort = cl_str(ar, msg, "effort");
+  t[0].openrouter = cl_str(ar, msg, "openrouter");
   return !ar[0].full;
 }
 

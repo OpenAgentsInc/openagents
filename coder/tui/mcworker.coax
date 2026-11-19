@@ -13,6 +13,8 @@
 //        {"task":...,"unlimited":true}            the run has no budget: no model call, command, view or time limit ends it
 //        {"task":...,"gated":true}        each command waits for an answer: {"answer":true,"ticket":N} or {"answer":false,"ticket":N,"why":"..."}
 //        {"task":...,"model":"gemini-4-argon","effort":"low"}   the owner's model and thinking level (Hydrogen and low by default)
+//        {"task":...,"model":"openrouter:VENDOR/MODEL"}   the owner's model on OpenRouter alone (the key Coder set, else openrouter.env)
+//        {"task":...,"agents":true,"openrouter":"VENDOR/MODEL"}   a task's level may also be openrouter: the owner runs it on that model
 //        {"task":...,"intel":true}        the Coax compiler answers the action's questions, and an edit may name the hash it read
 //        {"task":...,"memory":true}       the working memory and its finish rule; the folder is "memory_dir", else the
 //                                          session's (~/.openagents/coder/sessions/ID.workmem, ID the "session" or this worker's)
@@ -261,6 +263,7 @@ tool_main :: () -> int #export_c #effects(all) {
       wb: [512] u8; why := mk_plan_local(k[..], plan[..], pb[..], wb[..]);
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
     } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
+      if mk_openrouter_model(req[0].model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
       mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
@@ -293,7 +296,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if why.count > 0 { mw_ended(out[..], "failed", why); continue; }
       run[0].aw = aw[..];
     }
-    if req[0].agents && !mc_agents(run[0].l[..], lb[..], req[0].claude) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
+    if req[0].agents && !mc_agents(run[0].l[..], lb[..], req[0].claude, req[0].openrouter) { mw_ended(out[..], "failed", "the sub-agents' schema does not fit"); continue; }
     if req[0].no_ask && !mc_no_ask(run[0].l[..], lb[..]) { mw_ended(out[..], "failed", "the no-ask schema does not fit"); continue; }
     context:[32768]u8;nc:=json_raw(context[..],0,"{\"profile\":\"coder-owned-v1\",\"cwd\":");nc=json_write_string(context[..],nc,cd);
     nc=json_raw(context[..],nc,",\"session\":");nc=json_write_string(context[..],nc,req[0].session);

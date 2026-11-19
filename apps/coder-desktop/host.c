@@ -110,6 +110,8 @@ void cd_agent_line(void *page, int agent, const char *line) { CoderHost *c = pag
 void cd_agent_failed(void *page, int agent, const char *why) { CoderHost *c = page; if (!c) return; coder_page_agent_failed(cd_state(c), agent, cd_string(why)); cd_changed(c); }
 int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_agent_answer_line(cd_state(c), agent, (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
+void cd_openrouter(void *page, const char *main, const char *sub) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_set_openrouter(cd_state(c), cd_string(main), cd_string(sub)); } }
+int cd_pick_model(void *page, const char *name) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_pick_model(cd_state(c), cd_string(name)); }
 // The sidebars' widths as dragged: read (1 once after a drag, when they are to be kept) and set.
 int cd_sides(void *page, float out[2]) { CoderHost *c = page; return c && coder_page_sides(cd_state(c), (coax_v_f32){out, 2}); }
 void cd_sides_set(void *page, float left, float right) { CoderHost *c = page; if (c) { coder_page_sides_set(cd_state(c), left, right); cd_woke(c); } }

@@ -69,6 +69,11 @@ int cd_recall_line(void *page, char *out, int cap);
 // cd_claude: whether Claude Code is installed here (with it, Microcoder may hand a task to a Claude
 // model). cd_agent_claude: whether this sub-agent runs in Claude Code, on the Claude worker.
 void cd_claude(void *page, int on);
+// cd_openrouter: the OpenRouter models set with Coder > OpenRouter Models ("" for none): main is a
+// composer picker entry for Microcoder, sub is a sub-agent level (openrouter).
+void cd_openrouter(void *page, const char *main, const char *sub);
+// cd_pick_model: the shown chat's model by name (a launch's --model); 0 when no entry has that name.
+int cd_pick_model(void *page, const char *name);
 int cd_agent_claude(void *page, int agent);
 // Opens the transcript of sub-agent n (1 is the first) of the newest message that has that many, on
 // the window's right, as a press on its row does. 0 when no message has.

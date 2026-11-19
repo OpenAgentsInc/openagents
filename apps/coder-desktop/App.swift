@@ -116,6 +116,58 @@ enum CoderKey {
     static func tail(_ key: String) -> String { "…" + key.suffix(4) }
 }
 
+/// The OpenRouter models Coder offers (Coder > OpenRouter Models): main is a composer picker entry
+/// for Microcoder, sub a sub-agent level. Each is an OpenRouter id (VENDOR/MODEL), kept in the
+/// app's defaults. The key is kept in ~/Library/Application Support/Coder/openrouter-key, readable by
+/// this user only; the Microcoder worker reads it there (coder/tui/microcoder_keys.coax) and puts it
+/// in curl's environment only. Without it the worker uses ~/work/.secrets/openrouter.env.
+enum CoderOpenRouter {
+    static var main: String { UserDefaults.standard.string(forKey: "openRouterMain") ?? "" }
+    static var sub: String { UserDefaults.standard.string(forKey: "openRouterSub") ?? "" }
+    static func setModels(main: String, sub: String) {
+        UserDefaults.standard.set(main, forKey: "openRouterMain"); UserDefaults.standard.set(sub, forKey: "openRouterSub")
+    }
+    static var file: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
+        return base.appendingPathComponent("Coder/openrouter-key")
+    }
+    static var saved: String? {
+        let key = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? nil : key
+    }
+    /// Whether the worker finds a key: the one set here, or ~/work/.secrets/openrouter.env.
+    static var hasKey: Bool {
+        saved != nil || FileManager.default.fileExists(atPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("work/.secrets/openrouter.env").path)
+    }
+    /// Keeps a key (mode 600), or removes the kept one when key is empty. False when it could not be written.
+    static func save(_ key: String) -> Bool {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty { try? FileManager.default.removeItem(at: file); return saved == nil }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard FileManager.default.createFile(atPath: file.path, contents: Data(key.utf8), attributes: [.posixPermissions: 0o600]) else { return false }
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        return true
+    }
+    /// The models among ids that OpenRouter does not list as taking a strict JSON schema
+    /// (structured_outputs), which every Microcoder step sends. nil when the list could not be read.
+    static func unfit(_ ids: [String], done: @escaping ([String]?) -> Void) {
+        let wanted = ids.filter { !$0.isEmpty }
+        guard !wanted.isEmpty, let url = URL(string: "https://openrouter.ai/api/v1/models") else { done([]); return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var fit = Set<String>()
+            guard let data, let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let models = root["data"] as? [[String: Any]] else {
+                DispatchQueue.main.async { done(nil) }; return
+            }
+            for m in models {
+                if let id = m["id"] as? String, let params = m["supported_parameters"] as? [String], params.contains("structured_outputs") { fit.insert(id) }
+            }
+            DispatchQueue.main.async { done(wanted.filter { !fit.contains($0) }) }
+        }.resume()
+    }
+}
+/// Gives a page the OpenRouter models set now.
+func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
+
 /// The window: the compiled page fills it. The platform editor sits over the composer's text box
 /// and hands Coax each whole draft; what the page asks for (send, stop, a new chat, copy) is done here.
 // The skills installed for this person (~/.claude/skills/NAME/SKILL.md), in words for Microcoder:
@@ -347,6 +399,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyOpenRouter(page)
         cd_chats(page, chatLines)
         syncForemanUI()
         foremanServer.handler = { [weak self] request, done in
@@ -386,6 +439,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --chat N opens the Nth most recent chat at launch (1 is the newest).
         if let at = CommandLine.arguments.firstIndex(of: "--chat"), at + 1 < CommandLine.arguments.count, let k = Int(CommandLine.arguments[at + 1]) { openChat(at: k) }
         // Coder --send TEXT sends TEXT at launch, for a check of the whole path with no typing.
+        if let at = CommandLine.arguments.firstIndex(of: "--model"), at + 1 < CommandLine.arguments.count { _ = cd_pick_model(page, CommandLine.arguments[at + 1]) }
         if let at = CommandLine.arguments.firstIndex(of: "--send"), at + 1 < CommandLine.arguments.count, cd_set_text(page, CommandLine.arguments[at + 1]) != 0, cd_submit(page) != 0,
            let next = CommandLine.arguments.firstIndex(of: "--then"), next + 1 < CommandLine.arguments.count { then = CommandLine.arguments[next + 1] }
         // Coder --send A --new B sends B in a new chat while A's reply runs, which goes on out of view.
@@ -588,6 +642,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         guard cd_running(page) != 0 else { return true }
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
+        coderApplyOpenRouter(back)
         guard cd_take(back, page) != 0 else { cd_close(back); return false }
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id
@@ -969,6 +1024,61 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 failed.beginSheetModal(for: self.window)
             }
         }
+    }
+    /// Coder > OpenRouter Models: the key, the model for Microcoder (a composer picker entry) and the
+    /// model for sub-agents (level openrouter). An empty model removes it. Each model is checked against
+    /// OpenRouter's list first: it must take a strict JSON schema.
+    func chooseOpenRouter() {
+        let alert = NSAlert()
+        alert.messageText = "OpenRouter Models"
+        var about = "Run Microcoder or its sub-agents on any OpenRouter model that takes a strict JSON schema. Use OpenRouter ids such as deepseek/deepseek-v4.1-flash-1017. The main model joins the composer's model picker. The sub-agent model is one more level Microcoder can hand tasks to: ask for OpenRouter by name."
+        if let kept = CoderOpenRouter.saved { about += "\n\nThe key set now ends " + CoderKey.tail(kept) + ". Leave the key empty to keep it." }
+        else if CoderOpenRouter.hasKey { about += "\n\nNo key is set here: Coder uses ~/work/.secrets/openrouter.env." }
+        else { about += "\n\nNo key is set. Paste one from openrouter.ai/settings/keys." }
+        alert.informativeText = about
+        func field(_ secure: Bool, _ value: String, _ hint: String) -> NSTextField {
+            let f = secure ? NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24)) : NSTextField(frame: NSRect(x: 0, y: 0, width: 340, height: 24))
+            f.stringValue = value; f.placeholderString = hint; return f
+        }
+        let key = field(true, "", "OpenRouter key (sk-or-…)")
+        let main = field(false, CoderOpenRouter.main, "Model for Microcoder (empty: none)")
+        let sub = field(false, CoderOpenRouter.sub, "Model for sub-agents (empty: none)")
+        let stack = NSStackView(views: [key, main, sub])
+        stack.orientation = .vertical; stack.spacing = 8; stack.frame = NSRect(x: 0, y: 0, width: 340, height: 88)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        let hadKey = CoderOpenRouter.saved != nil
+        if hadKey { alert.addButton(withTitle: "Remove Key").hasDestructiveAction = true }
+        alert.window.initialFirstResponder = hadKey ? main : key
+        alert.beginSheetModal(for: window) { [weak self] answer in
+            guard let self else { return }
+            if answer == .alertThirdButtonReturn && hadKey { _ = CoderOpenRouter.save(""); self.window.makeFirstResponder(self.editor); return }
+            guard answer == .alertFirstButtonReturn else { self.window.makeFirstResponder(self.editor); return }
+            let k = key.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let m = main.stringValue.trimmingCharacters(in: .whitespacesAndNewlines), s = sub.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !k.isEmpty && !CoderOpenRouter.save(k) {
+                let failed = NSAlert(); failed.messageText = "The key could not be saved."
+                failed.informativeText = "Coder could not write " + CoderOpenRouter.file.path + "."
+                failed.beginSheetModal(for: self.window); return
+            }
+            CoderOpenRouter.unfit([m, s]) { bad in
+                if let bad, !bad.isEmpty {
+                    let failed = NSAlert(); failed.messageText = "OpenRouter has no model " + bad.joined(separator: " or ") + " that takes a strict JSON schema."
+                    failed.informativeText = "Microcoder sends one on every step. Check the id on openrouter.ai/models. The models were not changed."
+                    failed.beginSheetModal(for: self.window); return
+                }
+                CoderOpenRouter.setModels(main: m, sub: s)
+                self.applyOpenRouter()
+                self.window.makeFirstResponder(self.editor)
+            }
+        }
+    }
+    /// The OpenRouter models to the window's page and every page running out of view.
+    func applyOpenRouter() {
+        coderApplyOpenRouter(page)
+        for (_, r) in runs { coderApplyOpenRouter(r.page) }
+        wake()
     }
     @objc private func togglePinFromMenu(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String else { return }
@@ -1465,6 +1575,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         cd_skills(back, coderSkillsNote())
         cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyOpenRouter(back)
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
             _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
         }
@@ -1570,6 +1681,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         cd_skills(back, coderSkillsNote())
         cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        coderApplyOpenRouter(back)
         guard cd_load(back, saved) != 0 else {
             cd_close(back)
             return ForemanResponse(status: 500, body: ["error": "could not load saved chat \(id)"])
@@ -1918,6 +2030,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func viewForemanAuditLog(_ sender: Any?) { main?.openForemanAuditLog() }
     @objc func clearForemanHistory(_ sender: Any?) { main?.clearForemanHistory() }
     @objc func claudeKey(_ sender: Any?) { main?.chooseKey() }
+    @objc func openRouterModels(_ sender: Any?) { main?.chooseOpenRouter() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -1969,6 +2082,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         }
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())

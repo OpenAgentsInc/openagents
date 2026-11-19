@@ -49,12 +49,14 @@ CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 
 // Gemini (Hydrogen, Carbon, Neon); the last four in Claude Code on the Claude login of this
 // computer (coder/tui/claudeworker.coax, GitHub #13660). Chats keep a level by its name, so a
 // level's place in the list can change.
-CP_LEVELS :: 7;
-CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "haiku", "sonnet", "opus", "fable"];
+// openrouter runs on the OpenRouter model the person set for sub-agents (Coder > OpenRouter Models).
+CP_LEVELS :: 8;
+CP_LEVEL :: [CP_LEVELS] string.["hydrogen", "carbon", "neon", "openrouter", "haiku", "sonnet", "opus", "fable"];
 // What the first two were called before 2026-11-17, as chats kept then have them.
 CP_LEVEL_OLD :: [2] string.["simple", "complex"];
-CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
-CP_LEVEL_CLAUDE :: 3;                       // the first Claude level
+CP_LEVEL_NAME :: [CP_LEVELS] string.["Hydrogen", "Carbon", "Neon", "OpenRouter", "Claude Haiku", "Claude Sonnet", "Claude Opus", "Claude Fable"];
+CP_LEVEL_OR :: 3;                           // the OpenRouter level
+CP_LEVEL_CLAUDE :: 4;                       // the first Claude level
 CP_PAD :: 16;               // the page's margin
 CP_CHATS :: 50;             // recent chats the sidebar lists; it says how many more there are
 CP_CHAT_ID :: 48;           // bytes of a chat's row id ("chat." and the host's id)
@@ -74,8 +76,12 @@ CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longe
 CP_CORNER :: 6;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-neon";               // Microcoder's default main model (Hydrogen until 2026-11-18)
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
-// Main models available in the composer model picker (Neon is the default for every chat).
+// Main models available in the composer model picker (Neon is the default for every chat). The
+// OpenRouter model the person set (Coder > OpenRouter Models) is one more entry, CP_MODEL_OR, after these.
 CP_MODELS :: 4;
+CP_MODEL_OR :: CP_MODELS;
+CP_OR_ID :: 256;            // bytes of an OpenRouter model id kept (VENDOR/MODEL)
+CP_OR_PREFIX :: "openrouter:";
 CP_MODEL_DEFAULT :: 0;
 CP_MODEL_ID :: [CP_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
 CP_MODEL_LABEL :: [CP_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
@@ -137,6 +143,7 @@ CpAgent :: struct {
   heard: f32;                 // the clock when its worker last sent a line: since then it waits on its model
   again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on
   after: int;                 // how many of Microcoder's own rows came before it was handed over: it shows after them
+  said_open: bool;            // its newest row is what it says in the model call still streaming: the next piece joins it
 }
 CP_CMD_IDS :: [CP_AGENTS] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
 CpTurn :: struct {
@@ -180,6 +187,9 @@ CoderPage :: struct {
   kept_turns: int; kept_running: bool; kept_cost: int; kept_budget: int; kept_override: bool;   // what the host last kept (coder_page_save_due)
   kept_goal_status: int; kept_goal_n: int; kept_goal_time: int;
   model: int; kept_model: int; model_menu: bool;            // selected main model for this chat (0: Neon) and picker popover state
+  or_main: [CP_OR_ID] u8; or_main_n: int;                   // the OpenRouter model for Microcoder ("" for none): the picker's CP_MODEL_OR
+  or_sub: [CP_OR_ID] u8; or_sub_n: int;                     // the OpenRouter model for sub-agents ("" for none): level openrouter
+  or_id: [CP_OR_ID + 16] u8; or_sub_id: [CP_OR_ID + 16] u8; or_meta: [CP_OR_ID + 40] u8;   // "openrouter:" ids and the reply's byline
   cost_usd_micros: int;                                     // running total cost of this chat in microdollars (1e-6 USD)
   budget_usd_micros: int;                                   // per-chat max budget in microdollars (default CP_BUDGET_DEFAULT)
   budget_override: bool;                                    // user manually approved continuing above budget_usd_micros
@@ -232,21 +242,36 @@ cp_init :: (s: [] CoderPage) {
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
 }
+// How many entries the picker has: the Gemini models, and the OpenRouter model when one is set.
+cp_models :: (s: [] CoderPage) -> int { return ifx s.count > 0 && s[0].or_main_n > 0 then CP_MODELS + 1 else CP_MODELS; }
 cp_model_index :: (s: [] CoderPage) -> int {
-  return ifx s.count > 0 && s[0].model >= 0 && s[0].model < CP_MODELS then s[0].model else CP_MODEL_DEFAULT;
+  return ifx s.count > 0 && s[0].model >= 0 && s[0].model < cp_models(s) then s[0].model else CP_MODEL_DEFAULT;
 }
+// A kept model's entry: a Gemini id or short name, or any "openrouter:" id (CP_MODEL_OR).
 cp_model_find :: (name: string) -> int {
+  if name.count > CP_OR_PREFIX.count && cast(string) name[0..<CP_OR_PREFIX.count] == CP_OR_PREFIX { return CP_MODEL_OR; }
   ids := CP_MODEL_ID; shorts := CP_MODEL_SHORT;
   for i: 0..<CP_MODELS {
     if name == ids[i] || name == shorts[i] { return i; }
   }
   return CP_MODEL_DEFAULT;
 }
-cp_model_id :: (idx: int) -> string {
+cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
+cp_or_sub :: (s: [] CoderPage) -> string { return cast(string) s[0].or_sub[0..<s[0].or_sub_n]; }
+cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return idx == CP_MODEL_OR && s.count > 0 && s[0].or_main_n > 0; }
+// The worker's model id for an entry: "openrouter:VENDOR/MODEL" for the OpenRouter one.
+cp_model_id :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
   ids := CP_MODEL_ID;
   return ifx idx >= 0 && idx < CP_MODELS then ids[idx] else ids[CP_MODEL_DEFAULT];
 }
-cp_model_label :: (idx: int) -> string {
+// The OpenRouter entry's label is the model's name after its vendor (deepseek-v4.1-flash-1017).
+cp_model_label :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) {
+    m := cp_or_main(s); at := 0;
+    for c, i: m { if c == '/' { at = i + 1; } }
+    return ifx at < m.count then cast(string) m[at..<m.count] else m;
+  }
   labels := CP_MODEL_LABEL;
   return ifx idx >= 0 && idx < CP_MODELS then labels[idx] else labels[CP_MODEL_DEFAULT];
 }
@@ -254,13 +279,37 @@ cp_model_short :: (idx: int) -> string {
   shorts := CP_MODEL_SHORT;
   return ifx idx >= 0 && idx < CP_MODELS then shorts[idx] else shorts[CP_MODEL_DEFAULT];
 }
-cp_model_desc :: (idx: int) -> string {
+cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) { return "OpenRouter"; }
   descs := CP_MODEL_DESC;
   return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
 }
-cp_model_meta :: (idx: int) -> string {
+cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
+  if cp_is_or(s, idx) {
+    n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
+    n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
+    return cast(string) s[0].or_meta[0..<n];
+  }
   metas := CP_MODEL_META;
   return ifx idx >= 0 && idx < CP_MODELS then metas[idx] else metas[CP_MODEL_DEFAULT];
+}
+// The OpenRouter models the person set (Coder > OpenRouter Models): main for Microcoder, sub for
+// sub-agents, each "" for none. A chat on the OpenRouter entry goes back to Neon when main is cleared.
+// The shown chat's model by name (a launch's --model): a Gemini id or short name, or "openrouter"
+// (or an "openrouter:" id) for the OpenRouter entry. False when no entry has that name.
+coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
+  if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
+  if idx >= cp_models(s) { return false; }
+  s[0].model = idx;
+  return true;
+}
+coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
+  s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
+  if s[0].model >= cp_models(s) { s[0].model = CP_MODEL_DEFAULT; }
 }
 // Device pixels to a unit of the page's layout, before the screen's own scale: the skin's, times the text size.
 cp_scale :: (s: [] CoderPage) -> f32 { return ARCADE_PHONE_SCALE * CP_ZOOMS[ifx s[0].ready then s[0].zoom else CP_ZOOM_USUAL]; }
@@ -681,7 +730,7 @@ cp_agent_wait :: (s: [] CoderPage, i: int, j: int, out: [] u8) -> string {
   if g.state != CP_RUNNING || g.now_running || g.paused || s[0].clock - g.heard < CP_WAIT_SHOWN { return ""; }
   tb: [24] u8;
   n := cp_out(out, "waiting on ");
-  if g.level < CP_LEVEL_CLAUDE { n += cp_out(out[n..<out.count], "Gemini 4 "); }
+  if g.level < CP_LEVEL_OR { n += cp_out(out[n..<out.count], "Gemini 4 "); }
   n += cp_out(out[n..<out.count], CP_LEVEL_NAME[g.level]); n += cp_out(out[n..<out.count], " · ");
   n += cp_out(out[n..<out.count], cp_took(tb[..], s[0].clock - g.heard));
   if g.again_n > 0 { n += cp_out(out[n..<out.count], " · "); n += cp_out(out[n..<out.count], cast(string) g.again[0..<g.again_n]); }
@@ -772,20 +821,77 @@ cp_long_set :: (s: [] CoderPage, q: int, text: string) {
 // A model's thinking joins a list as one row marked as a thought (GitHub #13671), up to
 // CP_THOUGHT_MAX bytes without splitting mid-sentence. A row is named by its first line, without
 // Markdown's marks. said: what a sub-agent said between its tool calls, shown as a reply does.
-cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
-  if text.count == 0 { return; }
-  hb: [CP_CMD] u8; hn := 0; at := 0;
+// A row's name: the first line of its text, without Markdown marks.
+cp_row_head :: (text: string, hb: [] u8) -> int {
+  hn := 0; at := 0;
   while at < text.count && (text[at] == 10 || text[at] == 32) { at += 1; }
-  while at < text.count && text[at] != 10 && hn < CP_CMD {
+  while at < text.count && text[at] != 10 && hn < hb.count {
     c := text[at]; at += 1;
     if c == '*' || c == '#' || c == '`' || c == 32 && hn == 0 { continue; }
     hb[hn] = c; hn += 1;
   }
+  return hn;
+}
+cp_thought_add :: (s: [] CoderPage, i: int, j: int, text: string, said: bool) {
+  if text.count == 0 { return; }
+  hb: [CP_CMD] u8; hn := cp_row_head(text, hb[..]);
   q := cp_call_add(s, i, j, cast(string) hb[0..<hn], "", false, false, false);
   if q >= 0 {
     s[0].calls[q].thought = !said; s[0].calls[q].said = said;
     cp_long_set(s, q, text);
   }
+}
+// A piece of what sub-agent j says, as its model streams it: one model call's pieces are one row
+// (a model that streams a few bytes at a time made a row of each). In place at the pool's end when
+// the row's text is there, else the row's text and the piece are kept again.
+cp_said_add :: (s: [] CoderPage, i: int, j: int, piece: string) {
+  if piece.count == 0 { return; }
+  q := s[0].turns[i].agents[j].tail - 1;
+  if !s[0].turns[i].agents[j].said_open || q < 0 || !s[0].calls[q].said {
+    cp_thought_add(s, i, j, piece, true);
+    s[0].turns[i].agents[j].said_open = true;
+    return;
+  }
+  c := s[0].calls[q];
+  room := CP_THOUGHT_MAX - cp_call_text(s, q).count;
+  take := ifx piece.count < room then piece.count else room;
+  while take > 0 && take < piece.count && piece[take] >= 128 && piece[take] < 192 { take -= 1; }
+  if take <= 0 { return; }
+  if c.long_n == 0 && c.out_n + take <= CP_CMD_OUT {
+    for k: 0..<take { s[0].calls[q].out[c.out_n + k] = piece[k]; }
+    s[0].calls[q].out_n = c.out_n + take;
+  } else if c.long_n > 0 && c.long_at + c.long_n == s[0].long_n && s[0].long_n + take <= CP_LONG_POOL {
+    for k: 0..<take { s[0].long_buf[s[0].long_n + k] = piece[k]; }
+    s[0].long_n += take; s[0].calls[q].long_n = c.long_n + take;
+  } else {
+    jb: [CP_THOUGHT_MAX] u8; old := cp_call_text(s, q);
+    n := cp_out(jb[..], old); for k: 0..<take { if n < jb.count { jb[n] = piece[k]; n += 1; } }
+    cp_long_set(s, q, cast(string) jb[0..<n]);
+  }
+  hb: [CP_CMD] u8; hn := cp_row_head(cp_call_text(s, q), hb[..]);
+  s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], cast(string) hb[0..<hn]);
+}
+// The text without spaces and new lines at either end.
+cp_trimmed :: (t: string) -> string {
+  a := 0; b := t.count;
+  while a < b && (t[a] == 32 || t[a] == 10 || t[a] == 13 || t[a] == 9) { a += 1; }
+  while b > a && (t[b - 1] == 32 || t[b - 1] == 10 || t[b - 1] == 13 || t[b - 1] == 9) { b -= 1; }
+  return cast(string) t[a..<b];
+}
+// Sub-agent j ended with reply: its newest row, when it is that same text said as the reply
+// streamed, goes, so the transcript shows the reply once.
+cp_said_drop_reply :: (s: [] CoderPage, i: int, j: int, reply: string) {
+  q := s[0].turns[i].agents[j].tail - 1;
+  if q < 0 || !s[0].calls[q].said || reply.count == 0 || cp_trimmed(cp_call_text(s, q)) != cp_trimmed(reply) { return; }
+  prev := -1; at := s[0].turns[i].agents[j].head - 1;
+  while at >= 0 && at != q { prev = at; at = s[0].calls[at].next - 1; }
+  if at != q { return; }
+  if prev < 0 { s[0].turns[i].agents[j].head = 0; s[0].turns[i].agents[j].tail = 0; }
+  else { s[0].calls[prev].next = 0; s[0].turns[i].agents[j].tail = prev + 1; }
+  s[0].turns[i].agents[j].nrows -= 1;
+  s[0].calls[q].next = s[0].calls_free; s[0].calls_free = q + 1;
+  s[0].calls[q].said = false; s[0].calls[q].text_n = 0; s[0].calls[q].out_n = 0; s[0].calls[q].long_n = 0;
+  if s[0].live_call == q { s[0].live_call = -1; }
 }
 // Text with a new line wherever a line would pass `per` bytes, at a word's end where it has one.
 cp_wrap :: (out: [] u8, text: string, per: int) -> int {
@@ -920,7 +1026,7 @@ coder_page_agent_claude :: (s: [] CoderPage, j: int) -> bool #export_c #effects(
   return j >= 0 && j < s[0].turns[i].nagents && s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;
 }
 // Sub-agent j's task line for its worker: a simple task on Hydrogen, a complex one on Carbon, a
-// neon one on Gemini 4 Neon, a Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
+// neon one on Gemini 4 Neon, an openrouter one on the OpenRouter model set for sub-agents, a Claude level's on that Claude model (the task alone: Claude Code finds the skills itself).
 // It has no sub-agents of its own.
 coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -935,6 +1041,10 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
                model = CP_MODEL_SIMPLE, effort = "low"};
   if level == 1 { t.model = CP_MODEL_COMPLEX; t.effort = "medium"; }
   if level == 2 { t.model = CP_MODEL_NEON; t.effort = "medium"; }
+  if level == CP_LEVEL_OR && s[0].or_sub_n > 0 {
+    k := cp_out(s[0].or_sub_id[..], CP_OR_PREFIX); k += cp_out(s[0].or_sub_id[k..<s[0].or_sub_id.count], cp_or_sub(s));
+    t.model = cast(string) s[0].or_sub_id[0..<k]; t.effort = "medium";
+  }
   return mww_task(out, t);
 }
 // One line from sub-agent j's worker. Returns its kind (MWW_*).
@@ -947,6 +1057,7 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   kind := mww_read(ar[..], line, l[..]);
   claude := s[0].turns[i].agents[j].level >= CP_LEVEL_CLAUDE;   // its worker's ask is a tool call starting: no answer is owed
   waited := s[0].clock - s[0].turns[i].agents[j].heard; s[0].turns[i].agents[j].heard = s[0].clock;
+  if kind != MWW_REPLY { s[0].turns[i].agents[j].said_open = false; }   // a model call or a tool call ended what it was saying
   if kind == MWW_ATTEMPT { cp_add_cost(s, cp_attempt_cost(l[0])); }
   if kind == MWW_ATTEMPT && l[0].outcome == "retried" {
     // a model call that failed before its answer and goes again: the row says so until the sub-agent moves on
@@ -983,9 +1094,10 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     s[0].turns[i].agents[j].quiet += 1;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value, false);
   } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text, false);
-  } else if kind == MWW_REPLY { cp_thought_add(s, i, j, l[0].text, true);   // said between tool calls; the reply comes in ended
+  } else if kind == MWW_REPLY { cp_said_add(s, i, j, l[0].text);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";
+    if done { cp_said_drop_reply(s, i, j, l[0].text); }
     cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, cp_ended_why(l[0].ending, l[0].text, true));
   }
   return kind;
@@ -1303,7 +1415,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
   n = json_write_int(out, n, cp_budget(s));
   if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
   n = json_raw(out, n, ",\"model\":");
-  n = json_write_string(out, n, cp_model_id(cp_model_index(s)));
+  n = json_write_string(out, n, cp_model_id(s, cp_model_index(s)));
   if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
     n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
     n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
@@ -1316,7 +1428,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n]);
     n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
     n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
-    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s[0].turns[i].model));
+    n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
     n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].more_cmds);
     n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].early_cmds);
@@ -1587,7 +1699,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_MODEL_PICK {
     idx := cp_number(surface_id(s[0].surface[..], row), "coder.model.");
     s[0].model_menu = false;
-    if idx < 0 || idx >= CP_MODELS { return false; }
+    if idx < 0 || idx >= cp_models(s) { return false; }
     s[0].model = idx;
     return true;
   }
@@ -1920,7 +2032,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           // who wrote it, beside Copy, after a click on the reply
-          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, cp_model_meta(s[0].turns[i].model), false); }
+          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, cp_model_meta(s, s[0].turns[i].model), false); }
           y += app_icon_button(f, cp_id(ib[..], i, ".ac"), x - edge, y, ifx did then k.icon_check else k.icon_copy, ifx did then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else { s[0].turns[i].ah = 0; }
@@ -2171,7 +2283,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   box_y := (h - CP_BOTTOM) - s[0].box.height;
   row_y := box_y + s[0].box.row_y;
   chip_y := row_y + (s[0].box.send - k.cmp.chip_h) / 2;
-  m_label := cp_model_label(s[0].model);
+  m_label := cp_model_label(s, cp_model_index(s));
   m_tw := measure_width(f[0].m, k.small.face, m_label);
   m_chev: f32 = 12;
   m_gap: f32 = 4;
@@ -2210,7 +2322,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     if pw > cw { pw = cw; }
     pad: f32 = 6;
     rh: f32 = 42;
-    ph := pad * 2 + cast(f32) CP_MODELS * rh;
+    ph := pad * 2 + cast(f32) cp_models(s) * rh;
     px := m_x + m_w - pw;
     if px < x { px = x; }
     py := chip_y - ph - 6;
@@ -2220,14 +2332,14 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
     sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
     mb: [32] u8;
-    for mi: 0..<CP_MODELS {
+    for mi: 0..<cp_models(s) {
       ry := py + pad + cast(f32) mi * rh;
       mn := el_put(mb[..], 0, "coder.model."); mn = el_put_i(mb[..], mn, mi);
       mid := sheet_pool(sh, cast(string) mb[0..<mn]);
-      sel := mi == s[0].model;
+      sel := mi == cp_model_index(s);
       hov := uiframe_hovered(f, mid);
-      label := cp_model_label(mi);
-      desc := cp_model_desc(mi);
+      label := cp_model_label(s, mi);
+      desc := cp_model_desc(s, mi);
       mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
       elt_value(f[0].rows, mrow, desc);
       if hov || sel {
@@ -2522,7 +2634,7 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   }
   for c: cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n] { if n < whole.count { whole[n] = c; n += 1; } }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s[0].turns[i].model), effort = "low"};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, s[0].turns[i].model), effort = "low", openrouter = cp_or_sub(s)};
   return mww_task(out, t);
 }
 // What the host found installed on this computer (skills and their files), in words for Microcoder.
@@ -2914,6 +3026,24 @@ cp_find :: (text: string, needle: string) -> int {
   q2 := cp_nth(s, 0, 0, 2);
   #assert s[0].turns[0].agents[0].nrows == 3 && s[0].calls[q2].thought && cp_call_text(s, q2).count == CP_THOUGHT_MAX - 1;
 }
+#test "a sub-agent's reply streamed a few bytes at a time is one row, and the reply it ends with shows once" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
+  for piece: [4] string.["I'll", " list", " them.\\n", "Now."] {
+    lb: [256] u8; n := cp_out(lb[..], "{\"kind\":\"reply\",\"text\":\""); n += cp_out(lb[n..<lb.count], piece); n += cp_out(lb[n..<lb.count], "\"}");
+    #assert coder_page_agent_line(s, 0, cast(string) lb[0..<n]) == MWW_REPLY;
+  }
+  #assert s[0].turns[0].agents[0].nrows == 1 && cp_call_text(s, cp_nth(s, 0, 0, 0)) == "I'll list them.\nNow." && cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].text[0..<s[0].calls[cp_nth(s, 0, 0, 0)].text_n] == "I'll list them.";
+  // a model call's end starts a new row for the next call's words
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200}") == MWW_ATTEMPT;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"There is \"}") == MWW_REPLY && coder_page_agent_line(s, 0, "{\"kind\":\"reply\",\"text\":\"1 file.\"}") == MWW_REPLY;
+  #assert s[0].turns[0].agents[0].nrows == 2;
+  // ended with that same text: the row goes, the reply shows it
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"There is 1 file.\"}") == MWW_ENDED;
+  #assert s[0].turns[0].agents[0].nrows == 1 && cp_call_text(s, cp_nth(s, 0, 0, 0)) == "I'll list them.\nNow.";
+}
 #test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
   p: [1] CoderPage; s := p[..];
   cp_init(s);
@@ -3015,6 +3145,44 @@ cp_find :: (text: string, needle: string) -> int {
   s[0].clock = s[0].turns[0].agents[0].heard + 4;
   wb: [256] u8;
   #assert cp_agent_wait(s, 0, 0, wb[..]) == "waiting on Gemini 4 Neon · 4s";
+}
+#test "OpenRouter: the set model is a picker entry and a sub-agent level, routed as openrouter: ids, kept by save/load" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert cp_models(s) == CP_MODELS;                              // none set: no entry, no level offered
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].openrouter == "" && back[0].model == "gemini-4-neon";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "moonshotai/kimi-k3");
+  #assert cp_models(s) == CP_MODELS + 1 && cp_model_label(s, CP_MODEL_OR) == "deepseek-v4.1-flash-1017" && cp_model_desc(s, CP_MODEL_OR) == "OpenRouter";
+  #assert cp_model_meta(s, CP_MODEL_OR) == "Microcoder · OpenRouter · deepseek/deepseek-v4.1-flash-1017";
+  s[0].model = CP_MODEL_OR;
+  #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
+  ar[0].at = 0;
+  n = coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "openrouter:deepseek/deepseek-v4.1-flash-1017" && back[0].openrouter == "moonshotai/kimi-k3";
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"openrouter\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert CP_LEVEL_NAME[s[0].turns[1].agents[0].level] == "OpenRouter" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
+  #assert coder_page_agent_next(s) == 0;
+  ar[0].at = 0;
+  n = coder_page_agent_task(s, 0, "s-a0", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "openrouter:moonshotai/kimi-k3" && back[0].effort == "medium" && !back[0].agents;
+  s[0].clock = s[0].turns[1].agents[0].heard + 4;
+  wb: [256] u8;
+  #assert cp_agent_wait(s, 1, 0, wb[..]) == "waiting on OpenRouter · 4s";
+  // saved by its id, found again as the OpenRouter entry; clearing the setting goes back to Neon
+  saved: [65536] u8; sn := coder_page_save(s, saved[..]);
+  p2: [1] CoderPage; s2 := p2[..]; cp_init(s2);
+  coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]) && s2[0].model == CP_MODEL_OR && s2[0].turns[1].model == CP_MODEL_OR && s2[0].turns[1].agents[0].level == CP_LEVEL_OR;
+  coder_page_set_openrouter(s2, "", "");
+  #assert s2[0].model == CP_MODEL_DEFAULT && cp_model_id(s2, CP_MODEL_OR) == "gemini-4-neon";
+  // a launch's --model
+  #assert !coder_page_pick_model(s2, "openrouter") && coder_page_pick_model(s2, "Carbon") && s2[0].model == 1 && !coder_page_pick_model(s2, "gpt");
+  coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert coder_page_pick_model(s2, "openrouter") && s2[0].model == CP_MODEL_OR && coder_page_pick_model(s2, "gemini-4-neon") && s2[0].model == CP_MODEL_DEFAULT;
 }
 #test "sub-agents: tasks start once each, a complex one on Carbon; their tool calls show; when all end the worker gets the results" {
   p: [1] CoderPage; s := p[..];
@@ -3722,7 +3890,7 @@ cp_find :: (text: string, needle: string) -> int {
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
-  #assert s[0].model == CP_MODEL_DEFAULT && cp_model_id(s[0].model) == "gemini-4-neon";
+  #assert s[0].model == CP_MODEL_DEFAULT && cp_model_id(s, s[0].model) == "gemini-4-neon";
   // First turn uses default Neon.
   #assert coder_page_set_text(s, "first") && coder_page_submit(s);
   out: [4096] u8;
@@ -3751,7 +3919,7 @@ cp_find :: (text: string, needle: string) -> int {
   #assert opt0 >= 0 && opt1 >= 0 && opt2 >= 0 && opt3 >= 0;
   // Pick Gemini 4 Carbon (index 1).
   #assert cp_press(s, opt1);
-  #assert !s[0].model_menu && s[0].model == 1 && cp_model_id(s[0].model) == "gemini-4-carbon";
+  #assert !s[0].model_menu && s[0].model == 1 && cp_model_id(s, s[0].model) == "gemini-4-carbon";
   #assert coder_page_save_due(s);
   // Second turn routes to Carbon while first turn remembers Neon.
   #assert coder_page_set_text(s, "second") && coder_page_submit(s);

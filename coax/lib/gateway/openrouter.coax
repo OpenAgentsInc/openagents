@@ -23,6 +23,14 @@ gw_openrouter :: (zdr: bool) -> Gateway {
                   flags = ifx zdr then GW_CHAT_NO_DATA_COLLECTION | GW_CHAT_ZDR else GW_CHAT_NO_DATA_COLLECTION};
 }
 
+// A model the person picked (Coder's OpenRouter model): only providers that take the strict
+// schema Microcoder sends, so a reply always parses as next_action.
+gw_openrouter_picked :: () -> Gateway {
+  g := gw_openrouter(false);
+  g.flags = g.flags | GW_CHAT_REQUIRE_PARAMS;
+  return g;
+}
+
 // ---------------------------------------------------------------- checks
 
 #test "an OpenRouter body is Chat Completions with its provider routing" {
@@ -31,6 +39,7 @@ gw_openrouter :: (zdr: bool) -> Gateway {
   req := GwRequest.{model = GW_OPENROUTER_FLASH, messages = msgs[..]};
   #assert gw_translate(gw_openrouter(false), req, out[..], why[..]) == "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\"}}";
   #assert gw_translate(gw_openrouter(true), req, out[..], why[..]) == "{\"model\":\"google/gemini-4-hydrogen\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\",\"zdr\":true}}";
+  #assert gw_translate(gw_openrouter_picked(), GwRequest.{model = "deepseek/deepseek-v4.1-flash-1017", messages = msgs[..]}, out[..], why[..]) == "{\"model\":\"deepseek/deepseek-v4.1-flash-1017\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"provider\":{\"data_collection\":\"deny\",\"require_parameters\":true}}";
   g := gw_openrouter(false);
   #assert g.key_env == "OPENROUTER_API_KEY" && g.scheme == "Bearer" && g.key_value == "";
   h := GW_OPENROUTER_HEADERS;
