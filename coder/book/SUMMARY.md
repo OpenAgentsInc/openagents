@@ -73,3 +73,4 @@
 - [40. The desktop app](ch040-the-desktop-app.md) — implemented
 - [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented
 - [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft
+- [43. The Foreman](ch043-the-foreman.md) — design draft

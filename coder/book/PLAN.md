@@ -156,6 +156,7 @@ testing, the chapter names the chapter in Parts I–V that measures it.
 | [40. The desktop app](ch040-the-desktop-app.md) — implemented | Native macOS desktop app (`apps/coder-desktop/`): a Coax UI/state machine (`page.coax`) on a Metal GPU carrier with an AppKit host (`App.swift`) and native editor (`KitEditorMac.swift`), concurrent and headless background chats, disk persistence and `~/.claude/skills` injection. |
 | [41. Worker protocol and sub-agents](ch041-worker-protocol-and-sub-agents.md) — implemented | The shared JSON-lines wire protocol (`mcworker-wire.coax`) between the desktop/TUI host and `mcworker` / `claudeworker`, including parallel sub-agent delegation across Gemini and Claude levels and streamed thinking/replies. |
 | [42. Beyond the desktop app](ch042-beyond-the-desktop-app.md) — design draft | Connecting the desktop app to the rest of the book: unified Chapter 2 session logs, Codex/Psionic/ACP engines and System One routing, approvals/consent/memory in the UI, embedded VT terminal, remote daemons and cross-platform carriers. |
+| [43. The Foreman](ch043-the-foreman.md) — design draft | A persistent supervisory chat pinned to the top of the Coder desktop sidebar that commands other chats, spawns new chats, searches across the whole repository and previous chats, and operates under scoped elevated permissions (`docs/coder/foreman-spec.md`). |
 
 ## What stays in Psionic
 
