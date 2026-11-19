@@ -37,7 +37,7 @@ a lander the browser kept in memory shows it as it was before the press (message
 The old unlisted address of the lander answers 301 to `/newlander` (the Coaxial load balancer's URL
 map, `production` path matcher).
 
-The light is one function, `portal_field` in `everglade/scene/gpu/portal.coax`,
+The light is one function, `portal_field` in `metaverse-engine/render/shade/portal.coax`,
 drawn by both pages at the same scale (`PORTAL_HANDOFF`) and on the same clock
 (the wall clock's seconds, from each page's `now=` fact). Until Character
 Create's engine draws, its loading screen is the light, moving: a CSS swirl and

@@ -1,2 +1,0 @@
-// Shared scene sampling and admission diagnostics.
-#load "../../metaverse-engine/anim/scene-check.coax";

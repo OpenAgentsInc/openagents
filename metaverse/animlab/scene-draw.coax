@@ -1,6 +1,6 @@
 // Skyreach's original geometry and admitted skinned performances share the
 // inspection renderer. Geometry is retained; each model has its own palette.
-#load "project.coax";
+#load "../../metaverse-engine/anim/project.coax";
 #load "scene.coax";
 #load "../../metaverse-engine/anim/cut-playback.coax";
 #load "../../metaverse-engine/anim/inspect-mesh.coax";

@@ -476,7 +476,7 @@ original props and bird geometry, and an offline stock voice with
 speech-aligned jaw motion. Stage weather/time and camera focus remain
 metadata until the finished A6 rendering work. The study is not the A8
 publishable scene. The [scene profile](anim-scenes-v1.md) records these
-limits and the [recipe](../../metaverse/animlab/guardian/README.md) reproduces it.
+limits and the [recipe](../../metaverse-engine/tools/guardian/README.md) reproduces it.
 
 JSON diagnostics name their models: canonical elbow/knee angle screening
 and upright character capsules. Rig v1 does not declare per-joint limits,

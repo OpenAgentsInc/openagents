@@ -1,9 +1,9 @@
-// Its checks, with the checks files it loads: coax/bin/coax test --library metaverse/animlab/layer-demo.coax
+// Its checks, with the checks files it loads: coax/bin/coax test --library metaverse-engine/anim/layer-demo.coax
 // A private study performance. Contact annotations exclude the introductory
 // and outgoing base blends, where the feet are deliberately not planted.
-#load "../../metaverse-engine/anim/fixup.coax";
-#load "../../metaverse-engine/anim/bundle.coax";
-#load "layer-demo-checks.coax";
+#load "fixup.coax";
+#load "bundle.coax";
+#load "layer-demo-checks.coax" #test;
 AlContact :: struct {joint:int;first:int;last:int;end:f32;target:Point;}
 AlLayerDemo :: struct {performance:AnimPerformance;clip:AnimClip;contacts:[24]AlContact;count:int;}
 al_demo :: (library:[]AnimLibrary,out:[]AlLayerDemo)->int {

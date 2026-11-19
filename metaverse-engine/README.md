@@ -237,8 +237,10 @@ Animation Lab's reusable document readers, project admission, scene sampling,
 scene checks and typed directing engine live in `anim/`. CLI and realm editors
 share the same catalogue, schema admission and one-component edit writer.
 Native version file effects live in `tools/anim-direction-store.coax`; browser
-session/effect bindings remain in `metaverse/animlab/`. The former realm project,
-scene and check paths are compatibility loaders. See the
+session/effect bindings remain in `metaverse/animlab/`. The block mannequin
+(`anim/block-mannequin.coax`), the layered contact demo (`anim/layer-demo.coax`)
+and the Guardian study's staging documents (`tools/guardian/`) live here too, so
+the engine's anim tools load nothing from a realm. See the
 [directing profile](../docs/metaverse/anim-directing-v1.md).
 
 The component readers' shared closed-key lists live in `anim/field-catalog.coax`.

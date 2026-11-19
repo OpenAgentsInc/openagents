@@ -1,5 +1,5 @@
 // Animation Lab's rig and clip stations. All visible controls are Coax.
-#load "mannequin.coax";
+#load "../../metaverse-engine/anim/block-mannequin.coax";
 #load "scene-draw.coax";
 #load "../../metaverse-engine/anim/fixup.coax";
 #load "layers-station-checks.coax";

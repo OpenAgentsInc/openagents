@@ -5,7 +5,7 @@
 #load "../../scene/gpu/fivelab.coax";
 #load "everglade2-uniforms.coax";   // the frame's uniforms, a typed block (E2U, #13451)
 #load "../../world/field.coax";
-#load "../../scene/gpu/portal.coax";   // Everglade's portal's light: Character Create's arrival from the homepage
+#load "../../../metaverse-engine/render/shade/portal.coax";   // the engine's portal light: Character Create's arrival from the homepage
 #load "../../../metaverse-engine/render/shade/terrain-shade.coax";   // the ground's material table and baked AO (#13052)
 #load "../../../metaverse-engine/render/shade/character-material.coax";   // the characters' material record's shading (#13012)
 #load "../../../metaverse-engine/character/material.coax" as cmat;   // the material record and its surface flags (#13541)
@@ -597,7 +597,7 @@ e2_pane_edge :: (p:V2,u:[]E2U)->f32 {return fmax(e2_box_edge(p,u[0].pane[0].x,u[
 }
 // Character Create's arrival through Everglade's portal (everglade/client/create.coax): u[0].arrival.x how much of the
 // view the portal's light still holds, u[0].arrival.y its clock, u[0].arrival.z its swell, u[0].opening.x how far the glade has
-// opened through it from the middle. The light is everglade/scene/gpu/portal.coax's, at the scale the homepage handed
+// opened through it from the middle. The light is metaverse-engine/render/shade/portal.coax's, at the scale the homepage handed
 // over (PORTAL_HANDOFF half diagonals); the glade opens from the middle through rings that shimmer,
 // and the picture ripples as it settles.
 e2_arrival_uv :: (uv:V2,u:[]E2U)->V2 {

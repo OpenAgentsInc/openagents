@@ -23,7 +23,7 @@ existing owner-local layout; explicit paths can be substituted.
 study="$HOME/.openagents/aethyrforge/animation-lab/guardian-study"
 mkdir -p "$study"
 openagents labs anim retarget "$HOME/.openagents/aethyrforge/animation-lab/a0-documents/clip-1.json" --to mannequin --out "$study/walk"
-cp metaverse/animlab/guardian/*.json "$study/"
+cp metaverse-engine/tools/guardian/*.json "$study/"
 coax/web/tool.sh metaverse-engine/tools/anim-guardian-study.coax "$study/walk" "$study"
 ```
 
