@@ -26,6 +26,7 @@ UiNode :: struct {
   label: int;
   action: int;            // what activating it produces, 0 for nothing
   parent: int = UI_NONE;
+  focus_order: int;       // 0: reading order; >0: explicit order within its container
   enabled: bool = true;
   pressed: bool;          // a toggle's or a tab's state
   value: f32; low: f32; high: f32;   // a slider's
@@ -45,7 +46,26 @@ UI_ACTION :: 3;     // an interactive element that does nothing
 UI_PARENT :: 4;     // a parent that isn't an earlier dialog
 UI_RANGE :: 5;      // a slider whose value is outside its range
 UI_COUNT :: 6;      // no elements, or more than UI_MAX
+UI_ORDER :: 7;      // a negative, skipped or duplicate explicit focus order in a container
 UiProblem :: struct { index: int = UI_NONE; reason: int = UI_OK; }
+
+// Whether element `i` breaks its container's explicit focus order: negative, omitted (0 while
+// another interactive element in the same container has one), or duplicating an earlier one.
+ui_order_bad :: (t: [] UiNode, i: int) -> bool {
+  n := t[i];
+  if n.focus_order < 0 { return true; }
+  if !ui_interactive(n) { return false; }
+  if n.focus_order == 0 {
+    for j: 0..<t.count {
+      if ui_interactive(t[j]) && t[j].parent == n.parent && t[j].focus_order > 0 { return true; }
+    }
+    return false;
+  }
+  for j: 0..<i {
+    if ui_interactive(t[j]) && t[j].parent == n.parent && t[j].focus_order == n.focus_order { return true; }
+  }
+  return false;
+}
 
 // The first element the tree can't have, and why; a tree is drawn only when there is none.
 ui_check :: (t: [] UiNode) -> UiProblem {
@@ -58,6 +78,7 @@ ui_check :: (t: [] UiNode) -> UiProblem {
     else if ui_interactive(n) && n.action <= 0 { why = UI_ACTION; }
     else if n.parent != UI_NONE && (n.parent < 0 || n.parent >= i || t[n.parent].role != UI_DIALOG) { why = UI_PARENT; }
     else if n.role == UI_SLIDER && !(n.low <= n.value && n.value <= n.high) { why = UI_RANGE; }
+    else if ui_order_bad(t, i) { why = UI_ORDER; }
     if why != UI_OK { return UiProblem.{index = i, reason = why}; }
   }
   return UiProblem.{};
@@ -72,13 +93,17 @@ ui_reason_name :: (why: int) -> string {
   if why == UI_PARENT { return "parent"; }
   if why == UI_RANGE { return "range"; }
   if why == UI_COUNT { return "count"; }
+  if why == UI_ORDER { return "order"; }
   return "unknown";
 }
 
 // book:begin focus
-// Whether element a comes before b in reading order: top to bottom by their top edges, then start
-// to end along the line, then the table's order.
+// Whether element a comes before b in focus order: explicit `focus_order` when set, otherwise
+// reading order (top to bottom by their top edges, then start to end along the line, then the
+// table's order).
 ui_before :: (t: [] UiNode, a: int, b: int) -> bool {
+  if t[a].focus_order < t[b].focus_order { return true; }
+  if t[a].focus_order > t[b].focus_order { return false; }
   if t[a].box.y < t[b].box.y { return true; }
   if t[a].box.y > t[b].box.y { return false; }
   if t[a].box.x < t[b].box.x { return true; }
@@ -179,10 +204,10 @@ ui_button :: (x: f32, y: f32, label: int, action: int) -> UiNode {
   #assert ui_button(0, 0, 1, 1).role == UI_BUTTON;
 }
 #test "every reason has its own name" {
-  for a: 0..<8 { for b: 0..<8 { if a != b { #assert ui_reason_name(a) != ui_reason_name(b); } } }
+  for a: 0..<9 { for b: 0..<9 { if a != b { #assert ui_reason_name(a) != ui_reason_name(b); } } }
   #assert ui_reason_name(UI_OK) == "none" && ui_reason_name(UI_ROLE) == "role" && ui_reason_name(UI_LABEL) == "label";
   #assert ui_reason_name(UI_ACTION) == "action" && ui_reason_name(UI_PARENT) == "parent" && ui_reason_name(UI_RANGE) == "range";
-  #assert ui_reason_name(UI_COUNT) == "count" && ui_reason_name(-1) == "unknown" && ui_reason_name(7) == "unknown";
+  #assert ui_reason_name(UI_COUNT) == "count" && ui_reason_name(UI_ORDER) == "order" && ui_reason_name(-1) == "unknown" && ui_reason_name(8) == "unknown";
 }
 #test "reading order: top to bottom, then along the line, then the table's order" {
   t := [4] UiNode.[ui_button(100, 10, 1, 1), ui_button(10, 10, 2, 2), ui_button(10, 60, 3, 3), ui_button(10, 60, 4, 4)];
@@ -266,4 +291,42 @@ ui_button :: (x: f32, y: f32, label: int, action: int) -> UiNode {
   #assert ui_tap(t[..], 40, 40, UI_NONE) == 11 && ui_activate(t[..], 1, UI_NONE) == 0;
   #assert ui_activate(t[..], -1, UI_NONE) == 0 && ui_activate(t[..], 4, UI_NONE) == 0;
   #assert ui_activate(t[..], 2, UI_NONE) == 0;   // a dialog isn't a control
+}
+#test "explicit focus order overrides reading order and refuses skipped, duplicate or negative entries" {
+  // A two-column dialog whose reading order (row by row) differs from column-down focus order.
+  t: [7] UiNode;
+  t[0] = ui_button(10, 10, 1, 1);                                  // outside the dialog: keeps reading order (0)
+  t[1] = UiNode.{role = UI_TEXT, box = HudBox.{x = 10, y = 200, width = 100, height = 20}};   // non-interactive
+  t[2] = UiNode.{role = UI_DIALOG, label = 2};
+  t[3] = ui_button(10, 20, 3, 3); t[3].parent = 2; t[3].focus_order = 1;
+  t[4] = ui_button(120, 20, 4, 4); t[4].parent = 2; t[4].focus_order = 3;  // top-right, but third in focus
+  t[5] = ui_button(10, 80, 5, 5); t[5].parent = 2; t[5].focus_order = 2;   // bottom-left, second in focus
+  t[6] = ui_button(120, 80, 6, 6); t[6].parent = 2; t[6].focus_order = 4;
+  #assert ui_check(t[..]).reason == UI_OK;
+  // forward and back inside the dialog follow focus_order: 3 -> 5 -> 4 -> 6 -> 3
+  #assert ui_focus_next(t[..], UI_NONE, false, 2) == 3;
+  #assert ui_focus_next(t[..], 3, false, 2) == 5 && ui_focus_next(t[..], 5, false, 2) == 4;
+  #assert ui_focus_next(t[..], 4, false, 2) == 6 && ui_focus_next(t[..], 6, false, 2) == 3;
+  #assert ui_focus_next(t[..], UI_NONE, true, 2) == 6 && ui_focus_next(t[..], 6, true, 2) == 4;
+  #assert ui_focus_next(t[..], 4, true, 2) == 5 && ui_focus_next(t[..], 5, true, 2) == 3;
+  #assert ui_before(t[..], 5, 4) && !ui_before(t[..], 4, 5);
+  // skipping an interactive element in the container (even a disabled one) is refused
+  b := t; b[5].focus_order = 0; r := ui_check(b[..]); #assert r.index == 5 && r.reason == UI_ORDER;
+  b = t; b[5].focus_order = 0; b[5].enabled = false; r = ui_check(b[..]); #assert r.index == 5 && r.reason == UI_ORDER;
+  // duplicate focus_order in the same container is refused at the later element
+  b = t; b[5].focus_order = 1; r = ui_check(b[..]); #assert r.index == 5 && r.reason == UI_ORDER;
+  // a sibling container's explicit order doesn't collide with another container's ranks
+  b = t; b[0].focus_order = 1; #assert ui_check(b[..]).reason == UI_OK;
+  // negative focus_order is refused on any element
+  b = t; b[1].focus_order = -1; r = ui_check(b[..]); #assert r.index == 1 && r.reason == UI_ORDER;
+  b = t; b[3].focus_order = -1; r = ui_check(b[..]); #assert r.index == 3 && r.reason == UI_ORDER;
+  // a non-interactive sibling with focus_order > 0 doesn't force explicit order on interactive siblings
+  p := [2] UiNode.[UiNode.{role = UI_TEXT, focus_order = 1}, ui_button(0, 0, 1, 1)];
+  #assert ui_check(p[..]).reason == UI_OK;
+  p2 := [2] UiNode.[UiNode.{role = UI_TEXT, focus_order = 1}, ui_button(0, 0, 1, 1)];
+  p2[1].focus_order = 1; #assert ui_check(p2[..]).reason == UI_OK;
+  // index 0 with focus_order 1 still flags a later skipped (0) or duplicate (1) sibling
+  q := [2] UiNode.[ui_button(0, 0, 1, 1), ui_button(0, 50, 2, 2)];
+  q[0].focus_order = 1; r = ui_check(q[..]); #assert r.index == 1 && r.reason == UI_ORDER;
+  q[1].focus_order = 1; r = ui_check(q[..]); #assert r.index == 1 && r.reason == UI_ORDER;
 }

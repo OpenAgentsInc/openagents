@@ -69,6 +69,7 @@ UiNode :: struct {
   label: int;
   action: int;            // what activating it produces, 0 for nothing
   parent: int = UI_NONE;
+  focus_order: int;       // 0: reading order; >0: explicit order within its container
   enabled: bool = true;
   pressed: bool;          // a toggle's or a tab's state
   value: f32; low: f32; high: f32;   // a slider's
@@ -97,7 +98,26 @@ UI_ACTION :: 3;     // an interactive element that does nothing
 UI_PARENT :: 4;     // a parent that isn't an earlier dialog
 UI_RANGE :: 5;      // a slider whose value is outside its range
 UI_COUNT :: 6;      // no elements, or more than UI_MAX
+UI_ORDER :: 7;      // a negative, skipped or duplicate explicit focus order in a container
 UiProblem :: struct { index: int = UI_NONE; reason: int = UI_OK; }
+
+// Whether element `i` breaks its container's explicit focus order: negative, omitted (0 while
+// another interactive element in the same container has one), or duplicating an earlier one.
+ui_order_bad :: (t: [] UiNode, i: int) -> bool {
+  n := t[i];
+  if n.focus_order < 0 { return true; }
+  if !ui_interactive(n) { return false; }
+  if n.focus_order == 0 {
+    for j: 0..<t.count {
+      if ui_interactive(t[j]) && t[j].parent == n.parent && t[j].focus_order > 0 { return true; }
+    }
+    return false;
+  }
+  for j: 0..<i {
+    if ui_interactive(t[j]) && t[j].parent == n.parent && t[j].focus_order == n.focus_order { return true; }
+  }
+  return false;
+}
 
 // The first element the tree can't have, and why; a tree is drawn only when there is none.
 ui_check :: (t: [] UiNode) -> UiProblem {
@@ -110,6 +130,7 @@ ui_check :: (t: [] UiNode) -> UiProblem {
     else if ui_interactive(n) && n.action <= 0 { why = UI_ACTION; }
     else if n.parent != UI_NONE && (n.parent < 0 || n.parent >= i || t[n.parent].role != UI_DIALOG) { why = UI_PARENT; }
     else if n.role == UI_SLIDER && !(n.low <= n.value && n.value <= n.high) { why = UI_RANGE; }
+    else if ui_order_bad(t, i) { why = UI_ORDER; }
     if why != UI_OK { return UiProblem.{index = i, reason = why}; }
   }
   return UiProblem.{};
@@ -119,16 +140,21 @@ ui_check :: (t: [] UiNode) -> UiProblem {
 `ui_check` refuses the first element that has no role, an interactive
 element or an image that carries information without a label, an
 interactive element that does nothing, a parent that isn't an earlier
-dialog, or a slider outside its range. A decorative image is marked
+dialog, a slider outside its range, or an invalid explicit focus order
+(negative, skipped while a sibling in the same container sets one, or
+duplicating an earlier sibling's rank). A decorative image is marked
 `decorative` and needs no label. The realm doesn't draw a refused tree.
 
 ### Focus
 
 <!-- source: metaverse-engine/ui/tree.coax focus -->
 ```jai
-// Whether element a comes before b in reading order: top to bottom by their top edges, then start
-// to end along the line, then the table's order.
+// Whether element a comes before b in focus order: explicit `focus_order` when set, otherwise
+// reading order (top to bottom by their top edges, then start to end along the line, then the
+// table's order).
 ui_before :: (t: [] UiNode, a: int, b: int) -> bool {
+  if t[a].focus_order < t[b].focus_order { return true; }
+  if t[a].focus_order > t[b].focus_order { return false; }
   if t[a].box.y < t[b].box.y { return true; }
   if t[a].box.y > t[b].box.y { return false; }
   if t[a].box.x < t[b].box.x { return true; }
@@ -171,8 +197,12 @@ ui_focus_after :: (t: [] UiNode, gone: int, trap: int) -> int {
 ```
 
 Focus moves through the interactive, enabled elements in reading order: top
-to bottom by their top edges, then start to end along the line. These rules
-apply:
+to bottom by their top edges, then start to end along the line. When a
+container's reading order is wrong (for instance, a two-column dialog read
+down each column instead of across rows), its interactive elements can set
+positive `focus_order` ranks; `ui_check` refuses any container that mixes
+explicit ranks with omitted (`0`), negative or duplicate ones so no
+interactive element can be skipped. These rules apply:
 
 1. Focus wraps at both ends.
 2. A dialog traps focus. While it is open, only its own elements can be
@@ -421,8 +451,6 @@ tree itself; the journey runs them through a realm and its host.
   same step needs the tree's actions mapped through chapter 4's input
   sampling.
 - **The platform mirror and the complete journey** above.
-- **An explicit focus order** for a container whose reading order is wrong,
-  with the check that it doesn't skip an interactive element.
 - **Text layout** over the stroke font's advance widths
   (`metaverse-engine/ui/text.coax`), and moving the hotbar and frame from `metaverse/hud`
   into `metaverse-engine/ui/layout.coax`. `metaverse/hud.coax` is also the Coax compiler's
