@@ -85,22 +85,27 @@ markdown_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFac
     seg := cast(string) text[i..<j];
     face := text_face(faces, style);
     w: f32 = 0;
+    pad_l: f32 = 0; pad_r: f32 = 0;
     if style == MD_CODE {
       lit := seg.count;
       if j == to { while lit > 0 && seg[lit - 1] == ' ' { lit -= 1; } }
+      if lit > 0 {
+        if i == from || md_style_at(runs, i - 1) != MD_CODE { pad_l = s.md.code_pad_x; }
+        if j == to || md_style_at(runs, j) != MD_CODE { pad_r = s.md.code_pad_x; }
+      }
       ww := measure_width(m, face, cast(string) seg[0..<lit]);
-      if lit > 0 { sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, ww + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, opacity(s.code_wash, a)); }
-      w = sheet_text(sh, m, ln, pen, y, lh, face, opacity(s.accent, a), seg);
+      if lit > 0 { sheet_fill(sh, pen, y + s.md.code_inset_y, ww + pad_l + pad_r, lh - 2 * s.md.code_inset_y, s.md.code_radius, opacity(s.code_wash, a)); }
+      w = sheet_text(sh, m, ln, pen + pad_l, y, lh, face, opacity(s.accent, a), seg);
       if s.md.link_paths && lit > 0 && markdown_whole_code(runs, i, j) && md_path_like(cast(string) seg[0..<lit]) {
-        sheet_hit(sh, MARKDOWN_HIT_PATH, i, j, pen - s.md.code_pad_x, y, ww + 2 * s.md.code_pad_x, lh);
+        sheet_hit(sh, MARKDOWN_HIT_PATH, i, j, pen, y, ww + pad_l + pad_r, lh);
       }
     } else {
       // a link reads in the accent; struck text keeps its colour under a rule through its middle
       c := ifx (marks & MD_LINK) != 0 then s.accent else color;
       w = sheet_text(sh, m, ln, pen, y, lh, face, opacity(c, a), seg);
     }
-    if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen, y + (lh - s.border) / 2, w, s.border, opacity(color, a)); }
-    pen += w;
+    if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen + pad_l, y + (lh - s.border) / 2, w, s.border, opacity(color, a)); }
+    pen += pad_l + w + pad_r;
     i = j;
   }
 }
@@ -304,9 +309,10 @@ markdown_table_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc
         lx := cx;
         al := doc[0].items[k].number;
         if al != MA_LEFT {
-          lw := text_run_width(m, faces, text, runs, lines[q].from, lines[q].to);
+          end := lines[q].to;
           // a wrapped line's trailing space doesn't count toward its alignment
-          if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= text_run_width(m, faces, text, runs, lines[q].to - 1, lines[q].to); }
+          if end > lines[q].from && text[end - 1] == ' ' { end -= 1; }
+          lw := text_run_width(m, faces, text, runs, lines[q].from, end);
           lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
         }
         markdown_line_veiled(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad_y + cast(f32) q * lh, lh, s.ink, q + 1 == n, doc[0].items[k].at, vv);
@@ -411,4 +417,20 @@ markdown_height :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: i
     }
   }
   #assert boxes == 2 && sh[0].under[0].w == 24;                        // "bb" (16) and its pads, not "bb " (24 + 8 past the width)
+}
+
+#test "inline code pads advance the pen so the wash never overlaps adjacent spaces or words" {
+  a: [1] Atlas; text_test_atlas(a[..]); m := measure_font(a[..]);   // every glyph 8 wide
+  s: UiSkin; s.body.face = 0; s.strong.face = 3; s.code.face = 4; s.md.code_pad_x = 4;
+  under: [32] Prim; over: [8] Prim; lines: [8] SheetLine; hits: [1] SheetHit; pool: [1] u8;
+  sh := [1] Sheet.[Sheet.{under = under[..], over = over[..], lines = lines[..], hits = hits[..], pool = pool[..]}];
+  t := "the foo bar";                                                // "the `foo` bar"
+  runs := [1] MdRun.[MdRun.{from = 4, to = 7, style = MD_CODE}];
+  h := markdown_text(sh[..], m, s, t, runs[..], 0, 0, 200, 20, Rgba.{});
+  #assert h == 20 && sh[0].nu == 1 && sh[0].no == 3;
+  // "the " is 0..32; wash is 32..64 (pad 4 + 24 + pad 4); "foo" is at 36; " bar" starts at 64
+  #assert sh[0].over[0].x == 0 && sh[0].over[0].w == 32;
+  #assert sh[0].under[0].x == 32 && sh[0].under[0].w == 32;
+  #assert sh[0].over[1].x == 36 && sh[0].over[1].w == 24;
+  #assert sh[0].over[2].x == 64 && sh[0].over[2].w == 32;
 }

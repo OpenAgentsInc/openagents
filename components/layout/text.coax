@@ -18,9 +18,9 @@
 TextLine :: struct { from: int; to: int; }
 
 // The faces a styled text is set in: one per inline style. A skin gives them.
-// code_pad: how far inline code's wash reaches past its glyphs on each side
-// (kit/markdown.coax): a code glyph fits on a line only with its wash's right
-// side inside the width too, so a chip that ends a line stays in the column.
+// code_pad: horizontal padding on each side of an inline code span's glyphs
+// (kit/markdown.coax): a code span occupies 2 * code_pad beyond its glyphs so
+// its wash never overlaps adjacent spaces or words.
 TextFaces :: struct { plain: int; bold: int; code: int; code_pad: f32; }
 text_face :: (f: TextFaces, style: int) -> int {
   if style == MD_BOLD { return f.bold; }
@@ -33,10 +33,15 @@ text_run_width :: (m: TextMeasure, f: TextFaces, text: string, runs: [] MdRun, f
   w: f32 = 0; i := from; prev := -1; style := -1;
   while i < to {
     s := md_style_at(runs, i);
-    if s != style { prev = -1; style = s; }
+    if s != style {
+      if style == MD_CODE { w += f.code_pad; }
+      if s == MD_CODE { w += f.code_pad; }
+      prev = -1; style = s;
+    }
     st := measure_step(m, text_face(f, s), text, i, prev);
     w += st.advance; prev = st.chain; i += st.len;
   }
+  if style == MD_CODE { w += f.code_pad; }
   return w;
 }
 
@@ -48,7 +53,11 @@ text_wrap :: (m: TextMeasure, f: TextFaces, text: string, runs: [] MdRun, width:
     stop := text.count;
     while i < text.count {
       s := md_style_at(runs, i);
-      if s != style { prev = -1; style = s; }
+      if s != style {
+        if style == MD_CODE { x += f.code_pad; }
+        if s == MD_CODE { x += f.code_pad; }
+        prev = -1; style = s;
+      }
       st := measure_step(m, text_face(f, s), text, i, prev);
       reach := st.advance; if s == MD_CODE { reach += f.code_pad; }
       if text[i] != ' ' && x + reach > width && i > start {
@@ -126,8 +135,10 @@ text_test_atlas :: (a: [] Atlas) {
   #assert text_wrap(m, f, t, runs[..], 80, lines[..]) == 1;            // no pad: the glyphs alone fit
   f.code_pad = 4;
   n := text_wrap(m, f, t, runs[..], 80, lines[..]);
-  #assert n == 2 && lines[0].to == 4 && lines[1].from == 4;           // with the pad the chip moves down whole
-  #assert text_wrap(m, f, t, runs[..], 84, lines[..]) == 1;            // and fits when the pad does
+  #assert n == 2 && lines[0].to == 4 && lines[1].from == 4;           // with the pads the chip moves down whole
+  #assert text_wrap(m, f, t, runs[..], 84, lines[..]) == 2;            // one pad alone is not enough
+  #assert text_wrap(m, f, t, runs[..], 88, lines[..]) == 1;            // and fits when both pads do
+  #assert text_run_width(m, f, t, runs[..], 0, t.count) == 88;         // run width includes both pads
   // plain text keeps the whole width
   no_runs: [1] MdRun;
   #assert text_wrap(m, f, t, no_runs[0..<0], 80, lines[..]) == 1;
