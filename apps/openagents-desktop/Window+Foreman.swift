@@ -55,6 +55,7 @@ extension CoderWindow {
     }
     func openForeman() {
         guard isForemanEnabled else { return }
+        closeGym()
         if chat == Foreman.chatID { cd_current(page, Foreman.chatID); syncForemanUI(); focusComposer(); wake(); return }
         guard detach() else { return }
         if let back = runs[Foreman.chatID] {

@@ -32,8 +32,19 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if left < 0.5 { left = 0; }
   if right < 0.5 { right = 0; }
   s[0].side = left; s[0].pane_w = ifx right > 0 then pane_w else 0.0f32; s[0].pane_x = window_w - right;
-  // the sidebar's toggle on the title bar while the window has room to show the sidebar
+  s[0].gym_w = 0; s[0].gym_h = 0;
   toggle := left > 0 || (s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM);
+  if s[0].gym_open {
+    running := cp_running(s);
+    sc := cp_scale(s);
+    gy := cp_bar(s);
+    gw := window_w - left;
+    gh := h - gy;
+    if gw > 0 && gh > 0 { s[0].gym_x = left * sc; s[0].gym_y = gy * sc; s[0].gym_w = gw * sc; s[0].gym_h = gh * sc; }
+    if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
+    cp_title_bar(s, f, left, toggle);
+    return;
+  }
   if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].side = 0; s[0].pane_w = shell.pane.w; s[0].pane_x = shell.pane.x; s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); cp_title_bar(s, f, 0, toggle); return; }
   // a pane comes in from the window's right edge at its whole width; one shutting leaves its edge behind
   if docked && right > 0 { cp_side_pane(s, f, window_w - right, pane_w, h); }

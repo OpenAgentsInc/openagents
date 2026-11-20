@@ -211,3 +211,36 @@
   #assert s[0].surface[0].sheet[sf2].nu == base_u;
   #assert s[0].surface[0].sheet[sf2].no == base_o;
 }
+
+#test "gym sidebar row sits right under foreman, dispatches CP_ASK_GYM, and reports workbench rect" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  fi := elt_find(t[..], "coder.foreman");
+  gi := elt_find(t[..], "coder.gym");
+  #assert fi >= 0 && gi >= 0;
+  fb := el_box(t[0].rows[fi]);
+  gb := el_box(t[0].rows[gi]);
+  #assert gb.y >= fb.y + fb.h - 1.0f32 && gb.y <= fb.y + fb.h + 12.0f32;
+  gx := gb.x + 12.0f32;
+  gy := gb.y + gb.h * 0.5f32;
+  #assert coder_page_pointer(s, gx, gy, 0);
+  #assert coder_page_pointer(s, gx, gy, 2);
+  #assert coder_page_action(s) == CP_ASK_GYM;
+  r: [4] f32;
+  #assert !coder_page_gym_open(s) && !coder_page_gym_rect(s, r[..]);
+  coder_page_gym_set(s, true);
+  #assert coder_page_gym_open(s);
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  #assert coder_page_gym_rect(s, r[..]) && r[0] > 100 && r[2] > 400 && r[3] > 300;
+  coder_page_gym_set(s, false);
+  #assert !coder_page_gym_open(s) && !coder_page_gym_rect(s, r[..]);
+}

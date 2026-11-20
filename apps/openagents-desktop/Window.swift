@@ -119,6 +119,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var folder = FileManager.default.homeDirectoryForCurrentUser
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
+    var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -221,6 +222,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         window.center(); window.makeKeyAndOrderFront(nil); focusComposer()
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
+        if CommandLine.arguments.contains("--gym") { openGym() }
         // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
            let which = ["general", "models", "foreman", "account", "about"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
@@ -269,6 +271,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 3: stopRun(run)
         case 4:
             // a new chat: one whose reply is running goes on out of view
+            closeGym()
             guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
             leaveWorktreeFolder()
@@ -333,6 +336,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                scheme == "http" || scheme == "https" {
                 NSWorkspace.shared.open(url)
             }
+        case 32: openGym()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -390,6 +394,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
         syncScenePanelFrame()
+        syncGymPanelFrame()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.

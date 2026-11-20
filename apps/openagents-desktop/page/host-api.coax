@@ -282,3 +282,18 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   if r != s[0].zoom { s[0].zoom = r; for i: 0..<s[0].nturns { s[0].turns[i].h = 0; } }
   return s[0].zoom;
 }
+
+// Gym / 3D PLE Workbench mode (#13792): toggled by the sidebar's Gym row (CP_ASK_GYM) or the host.
+coder_page_gym_set :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].gym_open = open;
+  if open { s[0].set_open = false; }
+}
+coder_page_gym_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].gym_open;
+}
+coder_page_gym_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 || s[0].set_open || !s[0].gym_open || !(s[0].gym_w > 0) || !(s[0].gym_h > 0) { return false; }
+  out[0] = s[0].gym_x; out[1] = s[0].gym_y; out[2] = s[0].gym_w; out[3] = s[0].gym_h;
+  return true;
+}

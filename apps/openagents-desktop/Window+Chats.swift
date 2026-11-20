@@ -127,7 +127,9 @@ extension CoderWindow {
     /// with its run.
     func open(_ id: String) {
         if id == Foreman.chatID { openForeman(); return }
-        guard id != chat, detach() else { return }
+        if id == chat { closeGym(); focusComposer(); wake(); return }
+        closeGym()
+        guard detach() else { return }
         if let back = runs[id] {
             guard cd_take(page, back.page) != 0 else { return }
             runs[id] = nil; cd_close(back.page); back.page = page

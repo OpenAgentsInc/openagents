@@ -299,4 +299,7 @@ void cd_menu_show(void *page, float x, float y);
 int cd_menu_answer(void *page);
 int cd_overlay_open(void *page);
 int cd_overlay_key(void *page, int key, int mods);
+void cd_gym_set(void *page, int open);
+int cd_gym_open(void *page);
+int cd_gym_rect(void *page, float out[4]);
 #endif
