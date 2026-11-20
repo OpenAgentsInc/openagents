@@ -100,7 +100,13 @@ EA_ROLE_THOUGHT :: "thought";
 // arena at diff_at, at most EA_DIFF bytes; diff_cut: it was longer). Optional on the wire ("path",
 // "diff", "diff_cut"), absent for any other item and from an older computer.
 EA_DIFF :: 4000;
-EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;}
+// notice: a notice's kind, so a reader draws a setup problem as one (EA_NOTICE_*: Claude Code or
+// Codex not installed on the computer, signed out there, its limit reached). Optional on the wire
+// ("notice_kind"), only on a notice item, absent for any other kind and from an older computer.
+EA_NOTICE_INSTALL :: "install"; EA_NOTICE_LOGIN :: "login"; EA_NOTICE_LIMIT :: "limit";
+EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;notice:[16]u8;nnk:int;}
+// A notice kind the wire carries.
+ea_notice_ok :: (k:string)->bool #effects(all) {return k==EA_NOTICE_INSTALL || k==EA_NOTICE_LOGIN || k==EA_NOTICE_LIMIT;}
 // An edit's change as "-" lines (before) then "+" lines (after), whole lines only, into out: its
 // length. cut[0] says some lines did not fit.
 ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(all) {
@@ -197,7 +203,8 @@ ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   if m.started>0 {jo_key(o,"started_at_ms");jo_int(o,m.started);}
   if m.calls>0 {jo_key(o,"subagent_calls");jo_int(o,m.calls);if m.nn>0 {jo_key(o,"subagent_now");jo_str(o,cast(string)m.now[0..<m.nn]);}}
   if m.np>0 {jo_key(o,"path");jo_str(o,cast(string)m.path[0..<m.np]);}
-  if diff.count>0 {jo_key(o,"diff");jo_str(o,diff);if m.diff_cut {jo_key(o,"diff_cut");jo_bool(o,true);}}jo_end(o);
+  if diff.count>0 {jo_key(o,"diff");jo_str(o,diff);if m.diff_cut {jo_key(o,"diff_cut");jo_bool(o,true);}}
+  if m.nnk>0 {jo_key(o,"notice_kind");jo_str(o,cast(string)m.notice[0..<m.nnk]);}jo_end(o);
 }
 ea_thought :: (v:[]EaView,i:int)->bool #effects(all) {m:=v[0].items[i];return cast(string)m.role[0..<m.nr]==EA_ROLE_THOUGHT;}
 ea_thoughts_write :: (o:[]Jo,v:[]EaView) #effects(all) {
@@ -300,7 +307,10 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     dk:=jv_get(j,row,"diff");m.diff_at=v[0].text_n;m.ndiff=0;
     if dk>=0 {dend:=ifx v[0].text_n+EA_DIFF<v[0].text.count then v[0].text_n+EA_DIFF else v[0].text.count;m.ndiff=jv_str(j,dk,v[0].text[v[0].text_n..<dend]);}
     ck:=jv_get(j,row,"diff_cut");m.diff_cut=ck>=0 && jv_bool(j,ck);
-    if m.np<0 || m.ndiff<0 || (m.diff_cut && m.ndiff==0) {return false;}v[0].text_n+=m.ndiff;v[0].items[i]=m;
+    if m.np<0 || m.ndiff<0 || (m.diff_cut && m.ndiff==0) {return false;}v[0].text_n+=m.ndiff;
+    nk:=jv_get(j,row,"notice_kind");m.nnk=ifx nk<0 then 0 else jv_str(j,nk,m.notice[..]);
+    if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_ok(cast(string)m.notice[0..<m.nnk]))) {return false;}
+    v[0].items[i]=m;
   }
   if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) {return false;}
   v[0].ok=true;return true;
@@ -432,6 +442,21 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert !ea_view_read("{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"a\",\"role\":\"tool\",\"text\":\"x\",\"tool_name\":\"Edit\",\"complete\":true,\"diff_cut\":true}],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}",r[..]);
 }
 
+#test "a setup notice's kind travels as an optional field on a notice item only; an unknown kind is refused" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");
+  m:=v[0].items[0];m.ni=ea_copy(m.id[..],"1:0");m.nr=ea_copy(m.role[..],"notice");m.text_at=ea_text_put(v[..],"Install it");m.nt=10;m.complete=true;m.nnk=ea_copy(m.notice[..],EA_NOTICE_INSTALL);v[0].items[0]=m;
+  m=v[0].items[1];m.ni=ea_copy(m.id[..],"2:0");m.nr=ea_copy(m.role[..],"notice");m.text_at=ea_text_put(v[..],"Stopped");m.nt=7;m.complete=true;v[0].items[1]=m;v[0].ni=2;
+  out:[8192]u8;w:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert w>0 && ea_view_read(cast(string)out[0..<w],r[..]);
+  #assert cast(string)r[0].items[0].notice[0..<r[0].items[0].nnk]=="install" && r[0].items[1].nnk==0;
+  seen:=0;t:=cast(string)out[0..<w];for i:0..<t.count-11 {if cast(string)t[i..<i+11]=="notice_kind" {seen+=1;}}#assert seen==1;
+  #assert ea_notice_ok("install") && ea_notice_ok("login") && ea_notice_ok("limit") && !ea_notice_ok("") && !ea_notice_ok("error");
+  head:="{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"a\",\"role\":\"";
+  tail:="],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}";
+  b:[2048]u8;k:=0;
+  for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"login\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert ea_view_read(cast(string)b[0..<k],r[..]) && cast(string)r[0].items[0].notice[0..<r[0].items[0].nnk]=="login";
+  k=0;for part:[3]string.[head,"notice\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"other\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
+  k=0;for part:[3]string.[head,"assistant\",\"text\":\"x\",\"tool_name\":\"\",\"complete\":true,\"notice_kind\":\"login\"}",tail] {for c:part {b[k]=c;k+=1;}}#assert !ea_view_read(cast(string)b[0..<k],r[..]);
+}
 #test "ReadSubagent names the item that started its agent, and only it may" {
   r:[1]EaRequest;
   ok:="{\"method\":\"ReadSubagent\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"item_id\":\"3:0\"}";

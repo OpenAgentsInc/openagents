@@ -93,6 +93,19 @@ VIEW_W_STOP_UNSURE :: "We could not confirm that Stop reached the task.";
 VIEW_W_FAILED :: "The reply failed.";
 VIEW_W_LOST :: "We lost track of this reply.";
 VIEW_W_STOPPED :: "Stopped.";
+// A computer's setup notice (the item's notice_kind), drawn as a notice, never as the agent's reply.
+VIEW_W_SETUP_INSTALL :: "This agent isn't installed on the computer, so it couldn't answer. A new chat runs on an agent the computer has.";
+VIEW_W_SETUP_LOGIN :: "This agent is signed out on the computer. Sign in to it there, then send again.";
+VIEW_W_SETUP_LIMIT :: "This agent reached its usage limit on the computer. Try again later, or start a new chat.";
+// A device notice item's words: its setup words by kind, else its own text.
+view_device_notice :: (e: [] EnvironmentApp, i: int) -> string {
+  m := e[0].view[0].items[i]; k := cast(string) m.notice[0..<m.nnk];
+  if k == EA_NOTICE_INSTALL { return VIEW_W_SETUP_INSTALL; }
+  if k == EA_NOTICE_LOGIN { return VIEW_W_SETUP_LOGIN; }
+  if k == EA_NOTICE_LIMIT { return VIEW_W_SETUP_LIMIT; }
+  t := ea_item_text(e[0].view[..], i);
+  return ifx t == "Stopped" then VIEW_W_STOPPED else t;
+}
 
 ViewRow :: struct {
   group_count:int;group_last:int;
@@ -294,6 +307,8 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
       n := view_device_id(id[..], e, i);
       if role == EA_ROLE_THOUGHT { _ := view_add(vm, VK_DEVICE_THOUGHT, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
       if view_device_tool(e, i) { _ := view_add(vm, VK_DEVICE_TOOL, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
+      // a notice from the computer (a setup problem, a stopped turn) is a notice row, not a reply
+      if role == "notice" { view_notice(vm, cast(string) id[0..<n], view_device_notice(e, i), VIEW_DO_NONE); last_agent = true; continue; }
       r := view_add(vm, VK_DEVICE_MESSAGE, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0));
       if r >= 0 { vm[0].rows[r].assistant = role != "user"; }
       last_agent = role != "user";

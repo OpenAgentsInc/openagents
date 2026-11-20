@@ -53,6 +53,10 @@ message RuntimeItem {
   optional string path = 9 [json_name = "path"]; // at most 512 bytes
   optional string diff = 10 [json_name = "diff"];
   optional bool diff_cut = 11 [json_name = "diff_cut"]; // only with a diff
+  // A notice's kind, on a notice item only: "install" (the agent's CLI is not installed on the
+  // computer), "login" (it is signed out there) or "limit" (its usage limit). A reader draws it as
+  // a setup notice, never as the agent's reply. Absent for any other notice and from an older computer.
+  optional string notice_kind = 12 [json_name = "notice_kind"];
 }
 // A turn's thinking. A v1alpha1 reader draws any role but user, assistant, tool and notice as a
 // reply, so thoughts never travel in items: each sits beside them, before the item at `at` (an

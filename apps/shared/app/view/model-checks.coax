@@ -63,6 +63,23 @@ view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
   k := view_find(vm[..], "chat.note");
   #assert k >= 0 && vm[0].rows[k].act == VIEW_DO_RETRY && view_find(vm[..], "dev.sent") < 0;
 }
+#test "a computer's setup notice is a notice row in plain words, never the agent's reply" #steps 2000000000 {
+  e: [1] EnvironmentApp; vm: [1] ViewModel; v := e[0].view[..];
+  v[0].nh = ea_copy(v[0].host[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  m := v[0].items[0]; m.ni = ea_copy(m.id[..], "0:0"); m.nr = ea_copy(m.role[..], "user"); m.text_at = ea_text_put(v, "Are you here?"); m.nt = 13; m.complete = true; v[0].items[0] = m;
+  m = v[0].items[1]; m.ni = ea_copy(m.id[..], "1:0"); m.nr = ea_copy(m.role[..], "notice"); m.text_at = ea_text_put(v, "Install it in Terminal, then send again: curl -fsSL https://claude.ai/install.sh | bash"); m.nt = 86; m.complete = true; m.nnk = ea_copy(m.notice[..], EA_NOTICE_INSTALL); v[0].items[1] = m;
+  m = v[0].items[2]; m.ni = ea_copy(m.id[..], "2:0"); m.nr = ea_copy(m.role[..], "notice"); m.text_at = ea_text_put(v, "Stopped"); m.nt = 7; m.complete = true; v[0].items[2] = m;
+  m = v[0].items[3]; m.ni = ea_copy(m.id[..], "3:0"); m.nr = ea_copy(m.role[..], "notice"); m.text_at = ea_text_put(v, "The turn ended early."); m.nt = 21; m.complete = true; v[0].items[3] = m; v[0].ni = 4;
+  view_build_device(vm[..], e[..], ViewFacts.{device = true});
+  #assert vm[0].n == 4 && vm[0].rows[0].kind == VK_DEVICE_MESSAGE && !vm[0].rows[0].assistant;
+  #assert vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].text == VIEW_W_SETUP_INSTALL && vm[0].rows[1].act == VIEW_DO_NONE;
+  #assert vm[0].rows[2].kind == VK_NOTICE && vm[0].rows[2].text == VIEW_W_STOPPED && vm[0].rows[3].kind == VK_NOTICE && vm[0].rows[3].text == "The turn ended early.";
+  for r: 0..<vm[0].n { #assert vm[0].rows[r].kind != VK_DEVICE_MESSAGE || !vm[0].rows[r].assistant; }
+  v[0].items[1].nnk = ea_copy(v[0].items[1].notice[..], EA_NOTICE_LOGIN); view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].rows[1].text == VIEW_W_SETUP_LOGIN;
+  v[0].items[1].nnk = ea_copy(v[0].items[1].notice[..], EA_NOTICE_LIMIT); view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].rows[1].text == VIEW_W_SETUP_LIMIT;
+  // an older computer sends no kind: its own words, still as a notice
+  v[0].items[1].nnk = 0; view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].text.count == 86;
+}
 #test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
   t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");
   vm := t[0].vm[..];
