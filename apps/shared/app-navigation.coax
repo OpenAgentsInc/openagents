@@ -54,7 +54,8 @@ nav_draft :: (n:[]AppNavigation,key:string)->string {for i:0..<16 {if n[0].draft
 nav_session_id :: (host:string,session:string,out:[]u8)->string {
  if host.count!=64 || session.count<1 || session.count>128 || out.count<47 {return "";}
  key:[193]u8;for c,i:host {key[i]=c;}key[64]='\t';for c,i:session {key[65+i]=c;}
- hash:[32]u8;if sha256_hash(key[0..<65+session.count],hash[..])!=SHA_OK {return "";}
+ // key and hash are two locals, never overlapping: the checked form also runs in a compile-time check
+ hash:[32]u8;if sha256_hash_checked(key[0..<65+session.count],hash[..],false)!=SHA_OK {return "";}
  prefix:="nav.chat.";for c,i:prefix {out[i]=c;}hex:="0123456789abcdef";
  for i:0..<19 {out[9+2*i]=hex[cast(int)(hash[i]>>4)];out[10+2*i]=hex[cast(int)(hash[i]&15)];}return cast(string)out[0..<47];
 }

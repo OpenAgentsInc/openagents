@@ -56,6 +56,7 @@ CH_MAX_VERTICES :: 160000;
 CH_UNDER :: 512; CH_OVER :: 2048; CH_LINES :: 256; CH_HITS :: 32; CH_POOL :: 8192; CH_ROWS :: 48; CH_KEYED :: 32;
 // The page's: the whole transcript in view, with its overscan.
 CH_P_UNDER :: 2048; CH_P_OVER :: 8192; CH_P_LINES :: 4096; CH_P_HITS :: 256; CH_P_POOL :: 262144; CH_P_ROWS :: 512; CH_P_KEYED :: 256;
+CH_HOLD :: 0.45;    // seconds a still touch on a drawer row holds before its actions open
 CH_MOVE :: 8.0;     // layout units a touch travels before it scrolls instead of pressing
 CH_ACT_NONE :: 0; CH_ACT_FOCUS :: 1;
 // The page's own actions start at 100: the login card's rows carry the flow's LF_ACT_ values (1 to 7).
@@ -89,6 +90,8 @@ ChatPage :: struct {
   // the drawer: whether it is open, and how far it is out
   drawer: bool; share: f32;
   thread_menu:bool;thread_details:bool;
+  // a drawer row's own actions (Zeron's row swipe and long-press): the touch's start, and the row the menu acts on
+  held:f32;row_menu:bool;row_y:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
   library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
   menu_content:f32;menu_viewport:f32;
   search:[128]u8;search_n:int;
@@ -390,6 +393,15 @@ ch_lift :: (f: [] UiFrame, from: int) {
   for i: from..<sh[0].nu { if n >= sh[0].over.count { sh[0].lost += 1; break; } sh[0].over[n] = sh[0].under[i]; n += 1; }
   sh[0].no = n; sh[0].nu = from;
 }
+// The same for a card that also wrote words (over from `ofrom`): its grounds, then its words, both above
+// everything before it, so a menu stands opaque over the list's text.
+ch_lift_card :: (f: [] UiFrame, from: int, ofrom: int) {
+  sh := f[0].sheet; keep: [256] Prim; k := 0;
+  for i: ofrom..<sh[0].no { if k < keep.count { keep[k] = sh[0].over[i]; k += 1; } else { sh[0].lost += 1; } }
+  sh[0].no = ofrom; ch_lift(f, from);
+  n := sh[0].no; for i: 0..<k { if n >= sh[0].over.count { sh[0].lost += 1; break; } sh[0].over[n] = keep[i]; n += 1; }
+  sh[0].no = n;
+}
 // The menu button's row and hit with no paint: the host's system button stands over it.
 ch_menu_row :: (s: [] ChatPage, f: [] UiFrame, x: f32, y: f32) {
   side := f[0].skin.app.nav; open := s[0].drawer;
@@ -483,6 +495,7 @@ ch_layout_cover :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
       bottom -= a.side_row; _ := app_side_action(f, "drawer.login", in.x, bottom, in.w, -1, "Log in", 0, CH_HIT_LOGIN);
     }
     ch_history(s, f, in.x, iy + a.gap, in.w, bottom - a.gap);
+    if s[0].row_menu { ch_row_menu(s, f, in.x, iy, in.w, foot); }
     name := ifx logged && who.count > 0 then who else "Local";
     initial := ifx logged && s[0].initials_n > 0 then cast(string) s[0].initials[0..<s[0].initials_n] else "L";
     _ := set_account_row(f, "drawer.me", in.x, foot, in.w, name, initial, false, s[0].sc[0].identity[0].open, 211, 211);
@@ -536,8 +549,51 @@ ch_open_subagent :: (s:[]ChatPage,item:string)->bool {
  ch_set_focus(s,"");keyed_scroll_set(s[0].keyed[0..<1],keyed_find(s[0].keyed[0..<1],"section.viewport"),0);ch_step(s);return true;
 }
 // A press on a committed row; platform effects go through the shared core.
+// The saved-chat key and title of a paired computer's chat row in the drawer (its id), false for any other row.
+// A held drawer row's actions, as Zeron's context menu: a card under the row (over it near the foot),
+// over a clear scrim that closes it. Pin, Rename, Archive.
+ch_row_menu :: (s:[]ChatPage,f:[]UiFrame,x:f32,top:f32,w:f32,foot:f32) {
+ k:=f[0].skin;key:=cast(string)s[0].row_key[0..<s[0].row_nk];flags:=chlib_flags(s[0].library[..],key);
+ lift_u:=f[0].sheet[0].nu;lift_o:=f[0].sheet[0].no;
+ panel:=ifx k.sidebar.a==1 then k.sidebar else Rgba.{r=0,g=0,b=0,a=1};   // the list steps back behind the menu, into the panel's own ground
+ sheet_fill(f[0].sheet,x-2*k.app.gap,top,w+4*k.app.gap,foot-top,0,opacity(panel,0.78));
+ sr:=uiframe_semantic(f,"drawer.row.scrim",EL_BUTTON,"Close",x,top,w,foot-top,0,473);sheet_hit(f[0].sheet,UIFRAME_HIT,sr,0,x,top,w,foot-top);
+ mw:=ifx k.chat.menu_w<w-2*k.app.gap then k.chat.menu_w else w-2*k.app.gap;mh:=3*k.control_h+2*k.app.card_pad;
+ my:=s[0].row_y+k.app.side_row;if my+mh>foot {my=s[0].row_y-mh;}if my<top {my=top;}
+ ch_row_echo(s,f,x,w);
+ in:=app_card(f,"drawer.row.menu",x+w-mw-k.app.gap,my,mw,mh,ifx s[0].row_nt>0 then cast(string)s[0].row_title[0..<s[0].row_nt] else "Chat");
+ _:=app_icon_menu_row(f,"drawer.row.pin",in.x,in.y,in.w,ICON_PIN,ifx (flags&1)!=0 then "Unpin" else "Pin",0,470);
+ _:=app_icon_menu_row(f,"drawer.row.rename",in.x,in.y+k.control_h,in.w,ICON_PEN,"Rename",0,472);
+ _:=app_icon_menu_row(f,"drawer.row.archive",in.x,in.y+2*k.control_h,in.w,ICON_ARCHIVE,ifx (flags&2)!=0 then "Unarchive" else "Archive",0,471);
+ app_card_end(f);
+ ch_lift_card(f,lift_u,lift_o);
+}
+ch_row_target :: (s:[]ChatPage,id:string)->bool {
+ h:=s[0].sc[0].devices[..];buf:[64]u8;
+ for i:0..<h[0].nav[0].n {if dh_row_id(h,i,buf[..])!=id {continue;}r:=h[0].nav[0].rows[i];entry:=h[0].nav[0].browser[0].catalog[0].entries[r.host];
+  keybuf:[CHLIB_KEY]u8;key:=chlib_device_key(cast(string)entry.host[..],cast(string)r.session.id[0..<r.session.ni],keybuf[..]);if !chlib_key(key) {return false;}
+  s[0].row_nk=el_copy(s[0].row_key[..],key);title:=chlib_label(s[0].library[..],key,cast(string)r.session.title[0..<r.session.nt]);
+  s[0].row_nt=text_single_line(cast(string)title[0..<text_byte_floor(title,ifx title.count<CHLIB_TITLE then title.count else CHLIB_TITLE)],s[0].row_title[..]);return true;}
+ return false;
+}
+// The held row itself, lifted clear of the veil over the list (Zeron's context-menu preview).
+ch_row_echo :: (s:[]ChatPage,f:[]UiFrame,x:f32,w:f32) {
+ k:=f[0].skin;a:=k.app;sheet_fill(f[0].sheet,x+a.row_inset,s[0].row_y,w-2*a.row_inset,a.side_row,a.row_radius,k.raised);
+ tf:=ifx a.side_text.line>0 then a.side_text else k.body;
+ _:=sheet_text(f[0].sheet,f[0].m,-1,x+a.side_pad,s[0].row_y+(a.side_row-tf.line)/2,tf.line,tf.face,k.ink,app_fit(f,tf.face,cast(string)s[0].row_title[0..<s[0].row_nt],w-2*a.side_pad));
+}
+// Pin (bit 1) or archive (bit 2) the drawer row's chat, or take it back.
+ch_row_flip :: (s:[]ChatPage,bit:int)->bool {
+ key:=cast(string)s[0].row_key[0..<s[0].row_nk];if !chlib_key(key) {return false;}
+ title:=ifx s[0].row_nt>0 then cast(string)s[0].row_title[0..<s[0].row_nt] else "New chat";
+ ok:=chlib_change(s[0].library[..],key,title,chlib_flags(s[0].library[..],key)^bit);if !ok {app_say(s[0].core,"Saved-chat preferences are full.");}
+ s[0].row_menu=false;ch_step(s);return ok;
+}
 ch_press :: (s: [] ChatPage, row: int) -> bool {
   sf := ch_live(s); act := surface_action(sf, row); l := s[0].lf[..];
+  if act==470 || act==471 {return ch_row_flip(s,ifx act==470 then 1 else 2);}
+  if act==472 {s[0].row_menu=false;s[0].target_n=el_copy(s[0].target[..],cast(string)s[0].row_key[0..<s[0].row_nk]);s[0].rename_n=el_copy(s[0].rename_text[..],cast(string)s[0].row_title[0..<s[0].row_nt]);s[0].drawer=false;s[0].thread_menu=true;s[0].rename=true;ch_set_focus(s,"thread.rename");ch_step(s);return true;}
+  if act==473 {s[0].row_menu=false;return true;}
   if act==WSC_ACTION {ok:=wsc_press(s[0].sc[0].workspaces[..],s[0].core,surface_id(sf,row));ch_set_focus(s,"");ch_step(s);return ok;}
   if act==WSC_FIELD {ch_set_focus(s,surface_id(sf,row));return true;}
   if act==FM_ACTION {ok:=fm_press(s[0].sc[0].foreman[..],surface_id(sf,row));ch_step(s);return ok;}
@@ -666,9 +722,20 @@ chat_env :: (s: [] ChatPage, safe_top: f32, safe_bottom: f32, keyboard: f32, foc
   s[0].editor_h = ifx focused && editor_height > 0 then editor_height else 0.0f32; s[0].reduced = reduced;
 }
 // One frame of width by height device pixels. Returns the vertex count.
+// A still touch on a computer's chat in the drawer, held CH_HOLD, opens that row's actions (Zeron's long-press).
+ch_hold :: (s:[]ChatPage,dt:f32) {
+ if !s[0].drawer {s[0].row_menu=false;}
+ if !s[0].touching || !s[0].drawer || s[0].row_menu || s[0].swiped || s[0].scrolling || s[0].pressed_n<1 {return;}
+ if abs(s[0].px-s[0].down_x)>CH_MOVE || abs(s[0].py-s[0].down_y)>CH_MOVE {return;}
+ s[0].held+=dt;if s[0].held<CH_HOLD {return;}
+ id:=cast(string)s[0].pressed[0..<s[0].pressed_n];if !ch_row_target(s,id) {return;}
+ t:=[1]ElTable.[ch_rows(s)];i:=elt_find(t[..],id);s[0].row_y=ifx i>=0 then t[0].rows[i].y else s[0].py;
+ s[0].row_menu=true;s[0].swiped=true;s[0].pressed_n=0;ch_step(s);
+}
 chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
   if s.count < 1 || width < 1 || height < 1 { return 0; }
   if !s[0].ready { ch_init(s); }
+  ch_hold(s, dt);
   s[0].render_staged=false;s[0].frame_renderer=s[0].renderer;
   for i:0..<2 {s[0].staged_front[i]=s[0].surface[i].front;s[0].staged_generation[i]=s[0].surface[i].generation;}
   a := s[0].atlas[..];
@@ -739,7 +806,7 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
   was := cast(string) s[0].pressed[0..<s[0].pressed_n];
   s[0].px = ux; s[0].py = uy;
   if phase == 0 {
-    s[0].touching = true; s[0].down_x = ux; s[0].swiped = false;
+    s[0].touching = true; s[0].down_x = ux; s[0].swiped = false; s[0].held = 0;
     s[0].down_y = uy; s[0].last_y = uy; s[0].scrolling = false;
     s[0].pressed_n = ifx surface_action(sf, row) != 0 || (ch_picking(s) && ch_env_row(id)) then el_copy(s[0].pressed[..], id) else 0;
     // the focus rule at once, so a tap that begins and ends between two frames still moves the keyboard
@@ -749,6 +816,8 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
   }
   if phase == 1 {
     if was != id && !uiframe_field_capture(sf,was,ch_focus(s),ux-s[0].down_x,uy-s[0].down_y,CH_MOVE) { s[0].pressed_n = 0; }
+    // a swipe right along a computer's chat in the drawer pins it (or unpins it): Zeron's leading swipe
+    if !s[0].swiped && s[0].drawer && !s[0].row_menu && ux - s[0].down_x > CH_SWIPE && abs(uy - s[0].down_y) < CH_MOVE && ch_row_target(s, was) { _ = ch_row_flip(s, 1); s[0].swiped = true; s[0].pressed_n = 0; }
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on a pushed page (Workspace, a sub-agent, Foreman, Usage, Settings, Projects) it goes back, as a navigation stack's edge swipe does
@@ -942,7 +1011,7 @@ chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
   return true;
 }
 // Whether the next frame differs with no input: kit motion.
-chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].render_staged || s[0].again || !s[0].reduced && s[0].moving); }
+chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].render_staged || s[0].again || s[0].touching && s[0].drawer && s[0].pressed_n > 0 && !s[0].row_menu || !s[0].reduced && s[0].moving); }
 chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 chat_access_capacity :: ()->int #export_c #effects(all) {return CH_P_ROWS;}
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
