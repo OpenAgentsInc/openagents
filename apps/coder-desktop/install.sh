@@ -35,13 +35,26 @@ legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
 # hosts and assets.
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
-       apps/coder-desktop apps/shared/host apps/shared/native components/zeron apps/openagents-desktop/native)
-roots=(apps/coder-desktop/app.coax components/backend/gpu-shader.coax coder/tui/mcworker.coax coder/tui/claudeworker.coax coder/tui/gitguard.coax)
+       apps/shared/host apps/shared/native components/zeron apps/openagents-desktop/native)
+roots=(components/backend/gpu-shader.coax coder/tui/mcworker.coax coder/tui/claudeworker.coax coder/tui/gitguard.coax)
 mode="${1:-now}"
 mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
 commit_of() { /usr/libexec/PlistBuddy -c "Print :OACommit" "$1/Contents/Info.plist" 2>/dev/null || true; }
+# The app's folder in a checkout: apps/openagents-desktop once the Phase 2 move lands (#13780), apps/coder-desktop
+# before it. Checked per build, so this script keeps working across the move.
+app_dir() { if [[ -f "$1/apps/openagents-desktop/app.coax" ]]; then echo apps/openagents-desktop; else echo apps/coder-desktop; fi; }
+# True when this script runs inside one of the given app processes (an agent in OpenAgents ran it): quitting the
+# app would kill this run with it, half done.
+inside_app() {
+  local p=$$ pids=" $* "
+  while [[ -n "$p" && "$p" -gt 1 ]]; do
+    [[ "$pids" == *" $p "* ]] && return 0
+    p="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')"
+  done
+  return 1
+}
 coder_pids() {
   { pgrep -f "^$app/Contents/MacOS/OpenAgents" || true;
     pgrep -f "^$legacy_app/Contents/MacOS/Coder" || true; } | sort -u
@@ -201,8 +214,10 @@ if [[ "$staged" != "$target" && "$installed" != "$target" ]]; then
     git -C "$clone" worktree add -q --no-checkout --detach "$src" "$target"
   fi
   git -C "$src" checkout -q --force --detach "$target"
+  appdir="$(app_dir "$src")"
+  fixed+=("$appdir"); roots+=("$appdir/app.coax")
   (cd "$src" && coax/build.sh) > "$state/build.log" 2>&1 || { say "coax build failed: $state/build.log"; exit 1; }
-  CODER_BUILD="$stage" "$src/apps/coder-desktop/build.sh" >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
+  CODER_BUILD="$stage" "$src/$appdir/build.sh" >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
   plist="$stage/OpenAgents.app/Contents/Info.plist"
   rev_count="$(git -C "$src" rev-list --count HEAD)"
   (( rev_count < 28830 )) && rev_count=28830
@@ -222,7 +237,7 @@ for line in sys.stdin:
   } | sort -u > "$state/inputs.new" && mv "$state/inputs.new" "$state/inputs"
   echo "$target" > "$state/current"
   # The LaunchAgent runs the newest copy of this script from here on.
-  [[ ! -f "$src/apps/coder-desktop/install.sh" ]] || { cp "$src/apps/coder-desktop/install.sh" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"; }
+  [[ ! -f "$src/$appdir/install.sh" ]] || { cp "$src/$appdir/install.sh" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"; }
   staged="$target"
 fi
 
@@ -231,6 +246,7 @@ fi
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
   if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; retire_legacy_agent; exit 0; fi
+  if inside_app $pids; then say "${target:0:10} is built; this run is inside OpenAgents, so it installs when you quit OpenAgents (the next check)"; retire_legacy_agent; exit 0; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
   if [[ -n "$(coder_pids)" ]]; then
