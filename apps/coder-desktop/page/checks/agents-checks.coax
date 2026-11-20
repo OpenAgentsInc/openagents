@@ -425,6 +425,7 @@
     n = coder_page_agent_task(s, j, "s-a", wt, out[..]);
     #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].cwd == wt;
   }
+}
 
 #test "early failure wakes parent while sibling sub-agent stays running (#13766)" {
   p: [1] CoderPage; s := p[..];
