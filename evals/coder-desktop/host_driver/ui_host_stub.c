@@ -53,6 +53,8 @@ void ui_cursor(UiHost *h, int kind) { if (h) h->cursor = kind; }
 // No pasteboard headless: Copy goes nowhere and Paste finds nothing (the page's fields, page/editor.coax).
 int ui_copy(UiHost *h, const char *bytes, size_t n) { (void)h; (void)bytes; (void)n; return 0; }
 int ui_paste_text(UiHost *h, char *out, size_t cap) { (void)h; if (cap) out[0] = 0; return 0; }
+// No files or pictures on it either: Command-V in the composer falls through to its text (host.c).
+int ui_paste_files(UiHost *h) { (void)h; return 0; }
 void *ui_view(UiHost *h) { return (void *)h; }
 
 int ui_frame(UiHost *h) {

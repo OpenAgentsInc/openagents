@@ -10,6 +10,7 @@
 #ifndef __APPLE__
 void *ui_view(UiHost *h);
 int ui_paste_text(UiHost *h, char *out, size_t cap);
+int ui_paste_files(UiHost *h);
 #endif
 
 // Accessors for headless test assertions on a UiHost returned by cd_view(page).
