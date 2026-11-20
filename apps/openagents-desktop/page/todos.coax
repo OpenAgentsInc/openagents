@@ -95,14 +95,33 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
   n := td[0].n;
   if n == 0 { td[0].tray_h = 0.0f32; return 0.0f32; }
   sk := f[0].skin; a := sk.app; sh := f[0].sheet; m := f[0].m;
-  rh := sk.body.line + 6.0f32;
+  pad := a.gap;
+  icon_sz := a.tool_icon;
+  tf := sk.small;
+  line_h := tf.line + 2.0f32;
+  row_pad := 4.0f32;
   hh := sk.cmp.chip_h + 4.0f32;
   shown := ifx td[0].collapsed then 0 else n;
-  h := 2 * a.gap_small + hh + cast(f32) shown * rh;
+  text_x := x + pad + icon_sz + a.gap_small;
+  avail_w := x + cw - pad - text_x;
+  cw_char := measure_width(m, tf.face, "0");
+  per := ifx cw_char > 0.0f32 then cast(int) (avail_w / cw_char) - 1 else 24;
+  if per < 8 { per = 8; }
+  wb: [CP_TODO_TEXT + 32] u8;
+  rows_h := 0.0f32;
+  row_lines: [CP_TODOS] int;
+  for i: 0..<shown {
+    item := td[0].items[i];
+    wn := cp_wrap(wb[..], cp_todo_str(item.content[..], item.ncontent), per);
+    lines := 1;
+    for j: 0..<wn { if wb[j] == 10 { lines += 1; } }
+    row_lines[i] = lines;
+    rows_h += cast(f32) lines * line_h + row_pad;
+  }
+  h := 2 * a.gap_small + hh + rows_h;
   y := ifx up then at - h else at;
   uiframe_open(f, uiframe_semantic(f, "coder.todos", EL_REGION, "Tasks", x, y, cw, h, 0, 0));
   _ := sheet_box(sh, x, y, cw, h, a.card_radius, sk.border, sk.surface, sk.hover);
-  pad := a.gap;
   hy := y + a.gap_small;
   // Right-aligned Collapse / Expand chip
   tlabel := ifx td[0].collapsed then "Show" else "Hide";
@@ -110,7 +129,6 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
   _ := app_chip(f, "coder.todos.toggle", bx, hy + (hh - sk.cmp.chip_h) / 2, 0, -1, tlabel, tlabel, 0, CP_TODOS_TOGGLE);
   bx -= a.gap_small;
   // Left-aligned checklist icon + "Tasks · done/total" (plus active item when collapsed)
-  icon_sz := a.tool_icon;
   sheet_icon(sh, ICON_CHECKLIST, x + pad, hy + (hh - icon_sz) / 2, icon_sz, sk.muted);
   tx := x + pad + icon_sz + a.gap_small;
   hb: [192] u8;
@@ -130,29 +148,40 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
   head := app_fit(f, sk.label.face, sheet_pool(sh, cast(string) hb[0..<hn]), bx - tx);
   _ := sheet_text(sh, m, -1, tx, hy + (hh - sk.label.line) / 2, sk.label.line, sk.label.face, sk.ink, head);
   // Expanded rows
-  ry0 := hy + hh;
+  ry := hy + hh;
   ib: [EL_ID] u8;
   for i: 0..<shown {
-    ry := ry0 + cast(f32) i * rh;
+    rh := cast(f32) row_lines[i] * line_h + row_pad;
     item := td[0].items[i];
     text := cp_todo_str(item.content[..], item.ncontent);
     nn := el_put(ib[..], 0, "coder.todos."); nn = el_put_i(ib[..], nn, i);
     _ := uiframe_semantic(f, sheet_pool(sh, cast(string) ib[0..<nn]), EL_TEXT, text, x + pad, ry, cw - 2 * pad, rh, 0, 0);
     gx := x + pad;
-    text_x := gx + icon_sz + a.gap_small;
     color := sk.muted;
+    iy := ry + row_pad / 2 + (line_h - icon_sz) / 2;
     if item.status == CP_TODO_DONE {
-      sheet_icon(sh, ICON_CHECK, gx, ry + (rh - icon_sz) / 2, icon_sz, sk.accent);
+      sheet_icon(sh, ICON_CHECK, gx, iy, icon_sz, sk.accent);
       color = sk.faint;
     } else if item.status == CP_TODO_ACTIVE {
-      _ := sheet_text(sh, m, -1, gx + 2, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, sk.accent, "●");
+      _ := sheet_text(sh, m, -1, gx + 2, ry + row_pad / 2 + (line_h - tf.line) / 2, tf.line, tf.face, sk.accent, "●");
       color = sk.ink;
     } else {
-      _ := sheet_text(sh, m, -1, gx + 2, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, sk.faint, "○");
+      _ := sheet_text(sh, m, -1, gx + 2, ry + row_pad / 2 + (line_h - tf.line) / 2, tf.line, tf.face, sk.faint, "○");
       color = sk.muted;
     }
-    fit := app_fit(f, sk.body.face, sheet_pool(sh, text), x + cw - pad - text_x);
-    _ := sheet_text(sh, m, -1, text_x, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, color, fit);
+    wn := cp_wrap(wb[..], text, per);
+    ls := 0;
+    ly := ry + row_pad / 2 + (line_h - tf.line) / 2;
+    for j: 0..wn {
+      if j == wn || wb[j] == 10 {
+        if j > ls {
+          _ := sheet_text(sh, m, -1, text_x, ly, tf.line, tf.face, color, sheet_pool(sh, cast(string) wb[ls..<j]));
+        }
+        ly += line_h;
+        ls = j + 1;
+      }
+    }
+    ry += rh;
   }
   uiframe_close(f);
   td[0].tray_h = h + a.gap_small;
