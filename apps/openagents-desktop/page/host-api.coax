@@ -191,6 +191,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
       s[0].live_reply = i;
     }
     cp_cmds_end(s, i);
+    cp_todos_reset(s);
     s[0].turns[i].h = 0; s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
     cp_goal_on_turn_end(s, i, l[0].ending, l[0].text);
   }
@@ -203,6 +204,7 @@ coder_page_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
   s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], why); s[0].turns[i].state = CP_FAILED; s[0].live_reply = i; s[0].turns[i].h = 0;
   s[0].turns[i].took = s[0].clock - s[0].turns[i].began;
   cp_cmds_end(s, i);
+  cp_todos_reset(s);
 }
 // What the last Copy took: a code block, a person's message, a reply as its Markdown, or the whole
 // chat (each message under "You:", each command under "Ran:", each reply under "Microcoder:"). Its length in out.
