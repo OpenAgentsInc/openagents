@@ -104,9 +104,11 @@ EA_DIFF :: 4000;
 // Codex not installed on the computer, signed out there, its limit reached). Optional on the wire
 // ("notice_kind"), only on a notice item, absent for any other kind and from an older computer.
 EA_NOTICE_INSTALL :: "install"; EA_NOTICE_LOGIN :: "login"; EA_NOTICE_LIMIT :: "limit";
+// note: a quiet line about the chat itself, in plain words (the agent it fell back to), not a problem
+EA_NOTICE_NOTE :: "note";
 EaItem :: struct {id:[128]u8;ni:int;role:[16]u8;nr:int;text_at:int;nt:int;tool:[128]u8;nk:int;complete:bool;started:int;calls:int;now:[160]u8;nn:int;path:[512]u8;np:int;diff_at:int;ndiff:int;diff_cut:bool;notice:[16]u8;nnk:int;}
 // A notice kind the wire carries.
-ea_notice_ok :: (k:string)->bool #effects(all) {return k==EA_NOTICE_INSTALL || k==EA_NOTICE_LOGIN || k==EA_NOTICE_LIMIT;}
+ea_notice_ok :: (k:string)->bool #effects(all) {return k==EA_NOTICE_INSTALL || k==EA_NOTICE_LOGIN || k==EA_NOTICE_LIMIT || k==EA_NOTICE_NOTE;}
 // An edit's change as "-" lines (before) then "+" lines (after), whole lines only, into out: its
 // length. cut[0] says some lines did not fit.
 ea_diff_make :: (out:[]u8,before:string,after:string,cut:[]bool)->int #effects(all) {
@@ -449,7 +451,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   out:[8192]u8;w:=ea_view_write(v[..],out[..]);r:[1]EaView;#assert w>0 && ea_view_read(cast(string)out[0..<w],r[..]);
   #assert cast(string)r[0].items[0].notice[0..<r[0].items[0].nnk]=="install" && r[0].items[1].nnk==0;
   seen:=0;t:=cast(string)out[0..<w];for i:0..<t.count-11 {if cast(string)t[i..<i+11]=="notice_kind" {seen+=1;}}#assert seen==1;
-  #assert ea_notice_ok("install") && ea_notice_ok("login") && ea_notice_ok("limit") && !ea_notice_ok("") && !ea_notice_ok("error");
+  #assert ea_notice_ok("install") && ea_notice_ok("login") && ea_notice_ok("limit") && ea_notice_ok("note") && !ea_notice_ok("") && !ea_notice_ok("error");
   head:="{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"ReadSession\",\"sessions\":[],\"items\":[{\"item_id\":\"a\",\"role\":\"";
   tail:="],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}";
   b:[2048]u8;k:=0;

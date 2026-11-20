@@ -79,6 +79,9 @@ view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
   v[0].items[1].nnk = ea_copy(v[0].items[1].notice[..], EA_NOTICE_LIMIT); view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].rows[1].text == VIEW_W_SETUP_LIMIT;
   // an older computer sends no kind: its own words, still as a notice
   v[0].items[1].nnk = 0; view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].text.count == 86;
+  // a chat that fell back says so in its own words, as a quiet line, not a problem
+  v[0].items[1].nnk = ea_copy(v[0].items[1].notice[..], EA_NOTICE_NOTE); view_build_device(vm[..], e[..], ViewFacts.{device = true});
+  #assert vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].act == VIEW_DO_QUIET && vm[0].rows[1].text.count == 86 && vm[0].rows[3].act == VIEW_DO_NONE;
 }
 #test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
   t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");

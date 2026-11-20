@@ -407,7 +407,7 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
   else if r.kind == VK_NOTICE {
     if r.act == VIEW_DO_RETRY { h = app_retry(f, id, x, y, w, r.text, "Try again", 0, VIEW_A_RETRY); }
     else if r.act == VIEW_DO_RECONNECT { h = app_retry(f, id, x, y, w, r.text, "Reconnect", 0, VIEW_A_RECONNECT); }
-    else if r.text == VIEW_W_STOPPED { h = app_meta(f, id, x, y, w, r.text, false); }
+    else if r.text == VIEW_W_STOPPED || r.act == VIEW_DO_QUIET { h = app_meta(f, id, x, y, w, r.text, false); }
     else { h = app_notice(f, id, x, y, w, r.text, APP_NOTICE_ERROR); }
   }
   view_keep(sh, from);

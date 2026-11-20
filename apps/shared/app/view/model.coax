@@ -64,6 +64,7 @@ VK_DEVICE_THOUGHT :: 17;    // the computer's thinking; index: its item in the v
 VIEW_DO_NONE :: 0;
 VIEW_DO_RETRY :: 1;       // send the kept request again, byte for byte
 VIEW_DO_RECONNECT :: 2;   // read the conversation and its task again
+VIEW_DO_QUIET :: 3;       // nothing: a quiet line about the chat (the agent it fell back to), not a problem
 
 // The composer's Send (the core's app_send_state).
 VIEW_SEND_EMPTY :: 0; VIEW_SEND_LOGIN :: 1; VIEW_SEND_WAIT :: 2; VIEW_SEND_STOP :: 3; VIEW_SEND_READY :: 4;
@@ -310,7 +311,7 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
       if role == EA_ROLE_THOUGHT { _ := view_add(vm, VK_DEVICE_THOUGHT, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
       if view_device_tool(e, i) { _ := view_add(vm, VK_DEVICE_TOOL, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0)); last_agent = true; continue; }
       // a notice from the computer (a setup problem, a stopped turn) is a notice row, not a reply
-      if role == "notice" { view_notice(vm, cast(string) id[0..<n], view_device_notice(e, i), VIEW_DO_NONE); last_agent = true; continue; }
+      if role == "notice" { quiet := cast(string) e[0].view[0].items[i].notice[0..<e[0].view[0].items[i].nnk] == EA_NOTICE_NOTE; view_notice(vm, cast(string) id[0..<n], view_device_notice(e, i), ifx quiet then VIEW_DO_QUIET else VIEW_DO_NONE); last_agent = true; continue; }
       r := view_add(vm, VK_DEVICE_MESSAGE, cast(string) id[0..<n], i, m.nt * 2 + (ifx m.complete then 1 else 0));
       if r >= 0 { vm[0].rows[r].assistant = role != "user"; }
       last_agent = role != "user";
