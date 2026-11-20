@@ -119,3 +119,14 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_fp_test_press(s, "coder.pane.close") && !s[0].review && cp_fp_shown(s);
   #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.body") >= 0;
 }
+
+#test "a 3D scene file opens in CP_FP_SCENE mode and reports its body rect while shown" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  #assert coder_page_file_open_scene(s, "~/fixtures/hall.ple-scene.json");
+  #assert coder_page_file_mode(s) == CP_FP_SCENE && coder_page_file_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.state") == "3D Scene";
+  r: [4] f32;
+  #assert coder_page_file_scene_rect(s, r[..]) && r[2] > 100 && r[3] > 100;
+  coder_page_file_close(s);
+  #assert !coder_page_file_scene_rect(s, r[..]) && coder_page_file_mode(s) == CP_FP_NONE;
+}

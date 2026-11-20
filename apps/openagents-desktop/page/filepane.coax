@@ -16,7 +16,7 @@
 CP_FP_MOST :: 262144;        // bytes the pane shows; a longer file is not read
 CP_FP_EDIT_LINES :: 512;     // lines a file may have to be edited here (the shared editor's rows, wrapped)
 CP_FP_PATH :: 1024;          // bytes of the path it shows
-CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3;   // what the pane holds
+CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3; CP_FP_SCENE :: 4;   // what the pane holds
 // what its controls dispatch, and what it asks of the host (coder_page_action)
 CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82;
 CP_ASK_FILE_SAVE :: 40; CP_ASK_FILE_EXTERNAL :: 41; CP_ASK_FILE_CLOSE :: 42; CP_ASK_FILE_FOCUS :: 43;
@@ -36,6 +36,7 @@ CpFilePane :: struct {
   dirty: bool;                // text is not what the file holds
   saved: bool;                // saved since it opened, with no change after
   scroll: f32; content: f32; view: f32;   // the read-only view's scroll
+  body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the pane body rect in logical points (for native 3D scene viewport)
 }
 
 // ---------------------------------------------------------------- what the rest of the page asks
@@ -53,6 +54,7 @@ cp_fp_name :: (s: [] CoderPage) -> string {
 // What the tab says after the name: Edited, Saved, Read-only, or nothing.
 cp_fp_state :: (s: [] CoderPage) -> string {
   fp := s[0].fp[..];
+  if fp[0].mode == CP_FP_SCENE { return "3D Scene"; }
   if fp[0].mode == CP_FP_READ { return "Read-only"; }
   if fp[0].mode != CP_FP_EDIT { return ""; }
   return ifx fp[0].dirty then "Edited" else ifx fp[0].saved then "Saved" else "";
@@ -135,6 +137,14 @@ cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   y += app_meta(f, "coder.file.path", x, y, cw, cast(string) fp[0].path[0..<fp[0].path_n], false) + a.gap_small;
   why := cast(string) fp[0].why[0..<fp[0].why_n];
   if fp[0].mode == CP_FP_FAILED { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap; return; }
+  if fp[0].mode == CP_FP_SCENE {
+    sx := px + k.border; sw := pw - k.border; sh_h := h - y;
+    fp[0].body_x = sx; fp[0].body_y = y; fp[0].body_w = ifx sw > 0 then sw else 0.0f32; fp[0].body_h = ifx sh_h > 0 then sh_h else 0.0f32;
+    if fp[0].body_w > 0 && fp[0].body_h > 0 {
+      _ := uiframe_semantic(f, "coder.file.scene", EL_REGION, cp_fp_name(s), sx, y, fp[0].body_w, fp[0].body_h, 0, 0);
+    }
+    return;
+  }
   if fp[0].save_failed { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap_small; }
   if fp[0].mode == CP_FP_READ {
     b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 16 KB and 512 lines here; this one is ");
@@ -227,6 +237,22 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
   if text.count <= EB_TEXT && cp_fp_lines(text) <= CP_FP_EDIT_LINES {
     fp[0].mode = CP_FP_EDIT; fp[0].text_n = cp_out(fp[0].text[..], text);
   } else { fp[0].mode = CP_FP_READ; }
+  return true;
+}
+// A 3D scene file (ple-scene.v1.json) opened in the pane: the host mounts the Metal viewport over its body rect.
+coder_page_file_open_scene :: (s: [] CoderPage, path: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  if !s[0].ready { cp_init(s); }
+  cp_fp_begin(s, path);
+  s[0].fp[0].mode = CP_FP_SCENE;
+  return true;
+}
+// The 3D scene viewport rect (x, y, w, h in logical points, top-left origin) while the scene is on screen.
+coder_page_file_scene_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 4 || s[0].set_open { return false; }
+  fp := s[0].fp[..];
+  if !cp_fp_shown(s) || fp[0].mode != CP_FP_SCENE || !(fp[0].body_w > 0) || !(fp[0].body_h > 0) { return false; }
+  out[0] = fp[0].body_x; out[1] = fp[0].body_y; out[2] = fp[0].body_w; out[3] = fp[0].body_h;
   return true;
 }
 // A file the host could not read (missing, a folder, not text, too long): the pane says why.

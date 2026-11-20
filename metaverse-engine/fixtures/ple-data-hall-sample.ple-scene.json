@@ -1,0 +1,3549 @@
+{
+  "version": "ple-scene.v1",
+  "task": "data-hall-mep-routing",
+  "units": "meters",
+  "bounds": {
+    "min": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max": [
+      27.0,
+      21.0,
+      4.5
+    ]
+  },
+  "run": {
+    "score": 0.84,
+    "gates": {
+      "schema": true,
+      "clash": false,
+      "connectivity": true
+    },
+    "total_length_m": 142.5
+  },
+  "elements": [
+    {
+      "id": "floor_raised_01",
+      "layer": "architecture",
+      "ifc_class": "IfcSlab",
+      "shape": "box",
+      "center": [
+        13.5,
+        10.5,
+        0.3
+      ],
+      "size": [
+        27.0,
+        21.0,
+        0.6
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "seed": "hall_seed000_d000",
+        "role": "raised_floor"
+      }
+    },
+    {
+      "id": "col_01",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        3.0,
+        2.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C1"
+      }
+    },
+    {
+      "id": "col_02",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        10.0,
+        2.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C2"
+      }
+    },
+    {
+      "id": "col_03",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        17.0,
+        2.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C3"
+      }
+    },
+    {
+      "id": "col_04",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        24.0,
+        2.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C4"
+      }
+    },
+    {
+      "id": "col_05",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        3.0,
+        18.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C5"
+      }
+    },
+    {
+      "id": "col_06",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        10.0,
+        18.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C6"
+      }
+    },
+    {
+      "id": "col_07",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        17.0,
+        18.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C7"
+      }
+    },
+    {
+      "id": "col_08",
+      "layer": "architecture",
+      "ifc_class": "IfcColumn",
+      "shape": "box",
+      "center": [
+        24.0,
+        18.5,
+        2.25
+      ],
+      "size": [
+        0.5,
+        0.5,
+        4.5
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "grid": "C8"
+      }
+    },
+    {
+      "id": "rack_r1_c01",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        3.9,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 1
+      }
+    },
+    {
+      "id": "rack_r1_c02",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        4.52,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 2
+      }
+    },
+    {
+      "id": "rack_r1_c03",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.14,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 3
+      }
+    },
+    {
+      "id": "rack_r1_c04",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.76,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 4
+      }
+    },
+    {
+      "id": "rack_r1_c05",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        6.38,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 5
+      }
+    },
+    {
+      "id": "rack_r1_c06",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.0,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 6
+      }
+    },
+    {
+      "id": "rack_r1_c07",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.62,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 7
+      }
+    },
+    {
+      "id": "rack_r1_c08",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.24,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 8
+      }
+    },
+    {
+      "id": "rack_r1_c09",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.86,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 9
+      }
+    },
+    {
+      "id": "rack_r1_c10",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        9.48,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 10
+      }
+    },
+    {
+      "id": "rack_r1_c11",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.1,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 11
+      }
+    },
+    {
+      "id": "rack_r1_c12",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.72,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 12
+      }
+    },
+    {
+      "id": "rack_r1_c13",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.34,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 13
+      }
+    },
+    {
+      "id": "rack_r1_c14",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.96,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 14
+      }
+    },
+    {
+      "id": "rack_r1_c15",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        12.58,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 15
+      }
+    },
+    {
+      "id": "rack_r1_c16",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.2,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 16
+      }
+    },
+    {
+      "id": "rack_r1_c17",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.82,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 17
+      }
+    },
+    {
+      "id": "rack_r1_c18",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        14.44,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 18
+      }
+    },
+    {
+      "id": "rack_r1_c19",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.06,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 19
+      }
+    },
+    {
+      "id": "rack_r1_c20",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.68,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 20
+      }
+    },
+    {
+      "id": "rack_r1_c21",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.3,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 21
+      }
+    },
+    {
+      "id": "rack_r1_c22",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.92,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 22
+      }
+    },
+    {
+      "id": "rack_r1_c23",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        17.54,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 23
+      }
+    },
+    {
+      "id": "rack_r1_c24",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.16,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 24
+      }
+    },
+    {
+      "id": "rack_r1_c25",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.78,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 25
+      }
+    },
+    {
+      "id": "rack_r1_c26",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        19.4,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 26
+      }
+    },
+    {
+      "id": "rack_r1_c27",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.02,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 27
+      }
+    },
+    {
+      "id": "rack_r1_c28",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.64,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 28
+      }
+    },
+    {
+      "id": "rack_r1_c29",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.26,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 29
+      }
+    },
+    {
+      "id": "rack_r1_c30",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.88,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 30
+      }
+    },
+    {
+      "id": "rack_r1_c31",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        22.5,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 31
+      }
+    },
+    {
+      "id": "rack_r1_c32",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        23.12,
+        5.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "pos": 32
+      }
+    },
+    {
+      "id": "rack_r2_c01",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        3.9,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 1
+      }
+    },
+    {
+      "id": "rack_r2_c02",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        4.52,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 2
+      }
+    },
+    {
+      "id": "rack_r2_c03",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.14,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 3
+      }
+    },
+    {
+      "id": "rack_r2_c04",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.76,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 4
+      }
+    },
+    {
+      "id": "rack_r2_c05",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        6.38,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 5
+      }
+    },
+    {
+      "id": "rack_r2_c06",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.0,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 6
+      }
+    },
+    {
+      "id": "rack_r2_c07",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.62,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 7
+      }
+    },
+    {
+      "id": "rack_r2_c08",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.24,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 8
+      }
+    },
+    {
+      "id": "rack_r2_c09",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.86,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 9
+      }
+    },
+    {
+      "id": "rack_r2_c10",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        9.48,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 10
+      }
+    },
+    {
+      "id": "rack_r2_c11",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.1,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 11
+      }
+    },
+    {
+      "id": "rack_r2_c12",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.72,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 12
+      }
+    },
+    {
+      "id": "rack_r2_c13",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.34,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 13
+      }
+    },
+    {
+      "id": "rack_r2_c14",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.96,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 14
+      }
+    },
+    {
+      "id": "rack_r2_c15",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        12.58,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 15
+      }
+    },
+    {
+      "id": "rack_r2_c16",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.2,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 16
+      }
+    },
+    {
+      "id": "rack_r2_c17",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.82,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 17
+      }
+    },
+    {
+      "id": "rack_r2_c18",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        14.44,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 18
+      }
+    },
+    {
+      "id": "rack_r2_c19",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.06,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 19
+      }
+    },
+    {
+      "id": "rack_r2_c20",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.68,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 20
+      }
+    },
+    {
+      "id": "rack_r2_c21",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.3,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 21
+      }
+    },
+    {
+      "id": "rack_r2_c22",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.92,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 22
+      }
+    },
+    {
+      "id": "rack_r2_c23",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        17.54,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 23
+      }
+    },
+    {
+      "id": "rack_r2_c24",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.16,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 24
+      }
+    },
+    {
+      "id": "rack_r2_c25",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.78,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 25
+      }
+    },
+    {
+      "id": "rack_r2_c26",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        19.4,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 26
+      }
+    },
+    {
+      "id": "rack_r2_c27",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.02,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 27
+      }
+    },
+    {
+      "id": "rack_r2_c28",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.64,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 28
+      }
+    },
+    {
+      "id": "rack_r2_c29",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.26,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 29
+      }
+    },
+    {
+      "id": "rack_r2_c30",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.88,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 30
+      }
+    },
+    {
+      "id": "rack_r2_c31",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        22.5,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 31
+      }
+    },
+    {
+      "id": "rack_r2_c32",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        23.12,
+        8.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "pos": 32
+      }
+    },
+    {
+      "id": "rack_r3_c01",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        3.9,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 1
+      }
+    },
+    {
+      "id": "rack_r3_c02",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        4.52,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 2
+      }
+    },
+    {
+      "id": "rack_r3_c03",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.14,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 3
+      }
+    },
+    {
+      "id": "rack_r3_c04",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.76,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 4
+      }
+    },
+    {
+      "id": "rack_r3_c05",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        6.38,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 5
+      }
+    },
+    {
+      "id": "rack_r3_c06",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.0,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 6
+      }
+    },
+    {
+      "id": "rack_r3_c07",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.62,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 7
+      }
+    },
+    {
+      "id": "rack_r3_c08",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.24,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 8
+      }
+    },
+    {
+      "id": "rack_r3_c09",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.86,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 9
+      }
+    },
+    {
+      "id": "rack_r3_c10",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        9.48,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 10
+      }
+    },
+    {
+      "id": "rack_r3_c11",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.1,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 11
+      }
+    },
+    {
+      "id": "rack_r3_c12",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.72,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 12
+      }
+    },
+    {
+      "id": "rack_r3_c13",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.34,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 13
+      }
+    },
+    {
+      "id": "rack_r3_c14",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.96,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 14
+      }
+    },
+    {
+      "id": "rack_r3_c15",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        12.58,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 15
+      }
+    },
+    {
+      "id": "rack_r3_c16",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.2,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 16
+      }
+    },
+    {
+      "id": "rack_r3_c17",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.82,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 17
+      }
+    },
+    {
+      "id": "rack_r3_c18",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        14.44,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 18
+      }
+    },
+    {
+      "id": "rack_r3_c19",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.06,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 19
+      }
+    },
+    {
+      "id": "rack_r3_c20",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.68,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 20
+      }
+    },
+    {
+      "id": "rack_r3_c21",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.3,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 21
+      }
+    },
+    {
+      "id": "rack_r3_c22",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.92,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 22
+      }
+    },
+    {
+      "id": "rack_r3_c23",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        17.54,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 23
+      }
+    },
+    {
+      "id": "rack_r3_c24",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.16,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 24
+      }
+    },
+    {
+      "id": "rack_r3_c25",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.78,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 25
+      }
+    },
+    {
+      "id": "rack_r3_c26",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        19.4,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 26
+      }
+    },
+    {
+      "id": "rack_r3_c27",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.02,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 27
+      }
+    },
+    {
+      "id": "rack_r3_c28",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.64,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 28
+      }
+    },
+    {
+      "id": "rack_r3_c29",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.26,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 29
+      }
+    },
+    {
+      "id": "rack_r3_c30",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.88,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 30
+      }
+    },
+    {
+      "id": "rack_r3_c31",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        22.5,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 31
+      }
+    },
+    {
+      "id": "rack_r3_c32",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        23.12,
+        12.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "pos": 32
+      }
+    },
+    {
+      "id": "rack_r4_c01",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        3.9,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 1
+      }
+    },
+    {
+      "id": "rack_r4_c02",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        4.52,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 2
+      }
+    },
+    {
+      "id": "rack_r4_c03",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.14,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 3
+      }
+    },
+    {
+      "id": "rack_r4_c04",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        5.76,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 4
+      }
+    },
+    {
+      "id": "rack_r4_c05",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        6.38,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 5
+      }
+    },
+    {
+      "id": "rack_r4_c06",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.0,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 6
+      }
+    },
+    {
+      "id": "rack_r4_c07",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        7.62,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 7
+      }
+    },
+    {
+      "id": "rack_r4_c08",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.24,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 8
+      }
+    },
+    {
+      "id": "rack_r4_c09",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        8.86,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 9
+      }
+    },
+    {
+      "id": "rack_r4_c10",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        9.48,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 10
+      }
+    },
+    {
+      "id": "rack_r4_c11",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.1,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 11
+      }
+    },
+    {
+      "id": "rack_r4_c12",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        10.72,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 12
+      }
+    },
+    {
+      "id": "rack_r4_c13",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.34,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 13
+      }
+    },
+    {
+      "id": "rack_r4_c14",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        11.96,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 14
+      }
+    },
+    {
+      "id": "rack_r4_c15",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        12.58,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 15
+      }
+    },
+    {
+      "id": "rack_r4_c16",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.2,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 16
+      }
+    },
+    {
+      "id": "rack_r4_c17",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        13.82,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 17
+      }
+    },
+    {
+      "id": "rack_r4_c18",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        14.44,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 18
+      }
+    },
+    {
+      "id": "rack_r4_c19",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.06,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 19
+      }
+    },
+    {
+      "id": "rack_r4_c20",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        15.68,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 20
+      }
+    },
+    {
+      "id": "rack_r4_c21",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.3,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 21
+      }
+    },
+    {
+      "id": "rack_r4_c22",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        16.92,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 22
+      }
+    },
+    {
+      "id": "rack_r4_c23",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        17.54,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 23
+      }
+    },
+    {
+      "id": "rack_r4_c24",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.16,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 24
+      }
+    },
+    {
+      "id": "rack_r4_c25",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        18.78,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 25
+      }
+    },
+    {
+      "id": "rack_r4_c26",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        19.4,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 26
+      }
+    },
+    {
+      "id": "rack_r4_c27",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.02,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 27
+      }
+    },
+    {
+      "id": "rack_r4_c28",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        20.64,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 28
+      }
+    },
+    {
+      "id": "rack_r4_c29",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.26,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 29
+      }
+    },
+    {
+      "id": "rack_r4_c30",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        21.88,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 30
+      }
+    },
+    {
+      "id": "rack_r4_c31",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        22.5,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 31
+      }
+    },
+    {
+      "id": "rack_r4_c32",
+      "layer": "racks",
+      "ifc_class": "IfcFurniture",
+      "shape": "box",
+      "center": [
+        23.12,
+        15.5,
+        1.7
+      ],
+      "size": [
+        0.6,
+        1.2,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "pos": 32
+      }
+    },
+    {
+      "id": "crah_01",
+      "layer": "cooling",
+      "ifc_class": "IfcUnitaryEquipment",
+      "shape": "box",
+      "center": [
+        1.5,
+        5.5,
+        1.7
+      ],
+      "size": [
+        1.2,
+        2.4,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "capacity_kw": 120
+      }
+    },
+    {
+      "id": "crah_02",
+      "layer": "cooling",
+      "ifc_class": "IfcUnitaryEquipment",
+      "shape": "box",
+      "center": [
+        1.5,
+        15.5,
+        1.7
+      ],
+      "size": [
+        1.2,
+        2.4,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "capacity_kw": 120
+      }
+    },
+    {
+      "id": "crah_03",
+      "layer": "cooling",
+      "ifc_class": "IfcUnitaryEquipment",
+      "shape": "box",
+      "center": [
+        25.5,
+        5.5,
+        1.7
+      ],
+      "size": [
+        1.2,
+        2.4,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "capacity_kw": 120
+      }
+    },
+    {
+      "id": "crah_04",
+      "layer": "cooling",
+      "ifc_class": "IfcUnitaryEquipment",
+      "shape": "box",
+      "center": [
+        25.5,
+        15.5,
+        1.7
+      ],
+      "size": [
+        1.2,
+        2.4,
+        2.2
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "capacity_kw": 120
+      }
+    },
+    {
+      "id": "pdu_01",
+      "layer": "power",
+      "ifc_class": "IfcElectricDistributionBoard",
+      "shape": "box",
+      "center": [
+        1.5,
+        8.5,
+        1.6
+      ],
+      "size": [
+        1.0,
+        1.0,
+        2.0
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "kva": 300
+      }
+    },
+    {
+      "id": "pdu_02",
+      "layer": "power",
+      "ifc_class": "IfcElectricDistributionBoard",
+      "shape": "box",
+      "center": [
+        1.5,
+        12.5,
+        1.6
+      ],
+      "size": [
+        1.0,
+        1.0,
+        2.0
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "kva": 300
+      }
+    },
+    {
+      "id": "pdu_03",
+      "layer": "power",
+      "ifc_class": "IfcElectricDistributionBoard",
+      "shape": "box",
+      "center": [
+        25.5,
+        8.5,
+        1.6
+      ],
+      "size": [
+        1.0,
+        1.0,
+        2.0
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "kva": 300
+      }
+    },
+    {
+      "id": "pdu_04",
+      "layer": "power",
+      "ifc_class": "IfcElectricDistributionBoard",
+      "shape": "box",
+      "center": [
+        25.5,
+        12.5,
+        1.6
+      ],
+      "size": [
+        1.0,
+        1.0,
+        2.0
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "kva": 300
+      }
+    },
+    {
+      "id": "sprinkler_01",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        4.5,
+        5.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_02",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        4.5,
+        10.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_03",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        4.5,
+        15.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_04",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        10.5,
+        5.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_05",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        10.5,
+        10.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_06",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        10.5,
+        15.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_07",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        16.5,
+        5.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_08",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        16.5,
+        10.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_09",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        16.5,
+        15.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_10",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        22.5,
+        5.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_11",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        22.5,
+        10.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "sprinkler_12",
+      "layer": "fire",
+      "ifc_class": "IfcFireSuppressionTerminal",
+      "shape": "cylinder",
+      "center": [
+        22.5,
+        15.5,
+        4.2
+      ],
+      "size": [
+        0.15,
+        0.15,
+        0.25
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "k_factor": 5.6
+      }
+    },
+    {
+      "id": "cable_tray_01",
+      "layer": "comms",
+      "ifc_class": "IfcCableCarrierSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        5.5,
+        3.35
+      ],
+      "size": [
+        20.0,
+        0.45,
+        0.1
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1
+      }
+    },
+    {
+      "id": "cable_tray_02",
+      "layer": "comms",
+      "ifc_class": "IfcCableCarrierSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        8.5,
+        3.35
+      ],
+      "size": [
+        20.0,
+        0.45,
+        0.1
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2
+      }
+    },
+    {
+      "id": "cable_tray_03",
+      "layer": "comms",
+      "ifc_class": "IfcCableCarrierSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        12.5,
+        3.35
+      ],
+      "size": [
+        20.0,
+        0.45,
+        0.1
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3
+      }
+    },
+    {
+      "id": "cable_tray_04",
+      "layer": "comms",
+      "ifc_class": "IfcCableCarrierSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        15.5,
+        3.35
+      ],
+      "size": [
+        20.0,
+        0.45,
+        0.1
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4
+      }
+    },
+    {
+      "id": "busway_01",
+      "layer": "power",
+      "ifc_class": "IfcCableSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        5.5,
+        3.65
+      ],
+      "size": [
+        20.0,
+        0.2,
+        0.18
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 1,
+        "amps": 800
+      }
+    },
+    {
+      "id": "busway_02",
+      "layer": "power",
+      "ifc_class": "IfcCableSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        8.5,
+        3.65
+      ],
+      "size": [
+        20.0,
+        0.2,
+        0.18
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 2,
+        "amps": 800
+      }
+    },
+    {
+      "id": "busway_03",
+      "layer": "power",
+      "ifc_class": "IfcCableSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        12.5,
+        3.65
+      ],
+      "size": [
+        20.0,
+        0.2,
+        0.18
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 3,
+        "amps": 800
+      }
+    },
+    {
+      "id": "busway_04",
+      "layer": "power",
+      "ifc_class": "IfcCableSegment",
+      "shape": "box",
+      "center": [
+        13.5,
+        15.5,
+        3.65
+      ],
+      "size": [
+        20.0,
+        0.2,
+        0.18
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "row": 4,
+        "amps": 800
+      }
+    },
+    {
+      "id": "chw_pipe_01",
+      "layer": "cooling",
+      "ifc_class": "IfcPipeSegment",
+      "shape": "cylinder",
+      "center": [
+        13.5,
+        4.0,
+        3.9
+      ],
+      "size": [
+        0.25,
+        0.25,
+        22.0
+      ],
+      "rot_z": 1.571,
+      "meta": {
+        "medium": "chilled_water"
+      }
+    },
+    {
+      "id": "chw_pipe_02",
+      "layer": "cooling",
+      "ifc_class": "IfcPipeSegment",
+      "shape": "cylinder",
+      "center": [
+        13.5,
+        17.0,
+        3.9
+      ],
+      "size": [
+        0.25,
+        0.25,
+        22.0
+      ],
+      "rot_z": 1.571,
+      "meta": {
+        "medium": "chilled_water"
+      }
+    },
+    {
+      "id": "clash_01",
+      "layer": "clash",
+      "ifc_class": "IfcVirtualElement",
+      "shape": "box",
+      "center": [
+        10.0,
+        5.5,
+        3.5
+      ],
+      "size": [
+        0.4,
+        0.4,
+        0.4
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "severity": "hard",
+        "pair": [
+          "cable_tray_01",
+          "busway_01"
+        ]
+      }
+    },
+    {
+      "id": "clash_02",
+      "layer": "clash",
+      "ifc_class": "IfcVirtualElement",
+      "shape": "box",
+      "center": [
+        16.5,
+        15.5,
+        3.9
+      ],
+      "size": [
+        0.35,
+        0.35,
+        0.35
+      ],
+      "rot_z": 0.0,
+      "meta": {
+        "severity": "clearance",
+        "pair": [
+          "sprinkler_09",
+          "chw_pipe_02"
+        ]
+      }
+    }
+  ]
+}

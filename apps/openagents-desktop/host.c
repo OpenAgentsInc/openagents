@@ -498,6 +498,8 @@ int cd_file_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_f
 int cd_file_dirty(void *page) { CoderHost *c = page; return c && coder_page_file_dirty(cd_state(c)); }
 int cd_file_shown(void *page) { CoderHost *c = page; return c && coder_page_file_shown(cd_state(c)); }
 int cd_file_name(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_file_name(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_file_open_scene(void *page, const char *path) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_open_scene(cd_state(c), cd_string(path)); if (ok) { free(c->file); c->file = NULL; cd_woke(c); } return ok; }
+int cd_file_scene_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_file_scene_rect(cd_state(c), (coax_v_f32){out, 4}); }
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;

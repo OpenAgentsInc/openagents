@@ -118,6 +118,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
     var folder = FileManager.default.homeDirectoryForCurrentUser
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
+    var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -388,6 +389,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             // the caret's next phase: one frame then (the page's clock is the system's uptime, as CACurrentMediaTime)
             let b = cd_blink(page); blinkAt = b >= 0 ? CACurrentMediaTime() + Double(b) + 0.002 : 0
         }
+        syncScenePanelFrame()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.

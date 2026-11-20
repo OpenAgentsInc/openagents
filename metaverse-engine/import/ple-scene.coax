@@ -1,0 +1,723 @@
+// Loader, layer visibility, camera framing/presets, and ray picking for
+// ple-scene.v1 JSON scenes (GitHub #13792).
+#load "../../coax/lib/json/json.coax";
+#load "../core/points.coax";
+
+PLE_SCENE_VERSION :: "ple-scene.v1";
+PLE_MAX_ELEMENTS :: 512;
+PLE_MAX_CLASHES :: 128;
+PLE_MAX_JSON_NODES :: 16384;
+PLE_ALL_LAYERS_VISIBLE :: cast(u32) 0x1ff;
+PLE_PICK_INF :: 1000000000.0f32;
+
+PleLayer :: enum u8 {
+  architecture;
+  racks;
+  crah;
+  pdu;
+  sprinklers;
+  tray;
+  busway;
+  chw_pipe;
+  clashes;
+}
+
+PleShape :: enum u8 {
+  box;
+  cylinder;
+}
+
+PleCameraPreset :: enum u8 {
+  iso;
+  plan;
+  overhead;
+  under_floor;
+}
+
+PleRgba :: struct {
+  r: f32;
+  g: f32;
+  b: f32;
+  a: f32;
+}
+
+PleBounds :: struct {
+  min: Point;
+  max: Point;
+}
+
+PleGates :: struct {
+  schema: bool;
+  clash: bool;
+  connectivity: bool;
+}
+
+PleRun :: struct {
+  score: f32;
+  gates: PleGates;
+  total_length_m: f32;
+}
+
+PleText64 :: struct {
+  bytes: [64] u8;
+  n: int;
+}
+
+PleText128 :: struct {
+  bytes: [128] u8;
+  n: int;
+}
+
+PleElement :: struct {
+  id: PleText64;
+  layer: PleLayer;
+  ifc_class: PleText64;
+  shape: PleShape;
+  center: Point;
+  size: Point;
+  rot_z: f32;
+  meta: PleText128;
+}
+
+PleClash :: struct {
+  a: PleText64;
+  b: PleText64;
+  point: Point;
+  penetration_mm: f32;
+}
+
+PleScene :: struct {
+  version: PleText64;
+  task: PleText64;
+  units: PleText64;
+  bounds: PleBounds;
+  run: PleRun;
+  elements: [PLE_MAX_ELEMENTS] PleElement;
+  element_count: int;
+  clashes: [PLE_MAX_CLASHES] PleClash;
+  clash_count: int;
+}
+
+PleCamera :: struct {
+  target: Point;
+  yaw: f32;
+  pitch: f32;
+  distance: f32;
+  min_distance: f32;
+  max_distance: f32;
+  preset: PleCameraPreset;
+}
+
+ple_text64_eq :: (t: PleText64, s: string) -> bool {
+  if t.n != s.count { return false; }
+  for i: 0..<t.n { if t.bytes[i] != s[i] { return false; } }
+  return true;
+}
+
+ple_text64_str :: (t: PleText64, buf: [] u8) -> string {
+  n := ifx t.n > buf.count then buf.count else t.n;
+  for i: 0..<n { buf[i] = t.bytes[i]; }
+  return cast(string) buf[0..<n];
+}
+
+ple_text128_str :: (t: PleText128, buf: [] u8) -> string {
+  n := ifx t.n > buf.count then buf.count else t.n;
+  for i: 0..<n { buf[i] = t.bytes[i]; }
+  return cast(string) buf[0..<n];
+}
+
+ple_make_text64 :: (s: string) -> PleText64 {
+  out: PleText64;
+  if s.count > 64 { return out; }
+  for i: 0..<s.count { out.bytes[i] = s[i]; }
+  out.n = s.count;
+  return out;
+}
+
+ple_make_text128 :: (s: string) -> PleText128 {
+  out: PleText128;
+  n := ifx s.count > 128 then 128 else s.count;
+  for i: 0..<n { out.bytes[i] = s[i]; }
+  out.n = n;
+  return out;
+}
+
+ple_element_id_eq :: (e: PleElement, s: string) -> bool { return ple_text64_eq(e.id, s); }
+ple_element_ifc_eq :: (e: PleElement, s: string) -> bool { return ple_text64_eq(e.ifc_class, s); }
+ple_clash_a_eq :: (c: PleClash, s: string) -> bool { return ple_text64_eq(c.a, s); }
+ple_clash_b_eq :: (c: PleClash, s: string) -> bool { return ple_text64_eq(c.b, s); }
+
+ple_layer_bit :: (layer: PleLayer) -> u32 {
+  return (cast(u32) 1) << cast(u32) layer;
+}
+
+ple_layer_visible :: (mask: u32, layer: PleLayer) -> bool {
+  return (mask & ple_layer_bit(layer)) != (cast(u32) 0);
+}
+
+ple_layer_toggle :: (mask: u32, layer: PleLayer) -> u32 {
+  return mask ^ ple_layer_bit(layer);
+}
+
+ple_layer_name :: (layer: PleLayer) -> string {
+  switch layer {
+    case PleLayer.architecture { return "architecture"; }
+    case PleLayer.racks { return "racks"; }
+    case PleLayer.crah { return "crah"; }
+    case PleLayer.pdu { return "pdu"; }
+    case PleLayer.sprinklers { return "sprinklers"; }
+    case PleLayer.tray { return "tray"; }
+    case PleLayer.busway { return "busway"; }
+    case PleLayer.chw_pipe { return "chw_pipe"; }
+    case PleLayer.clashes { return "clashes"; }
+  }
+}
+
+ple_layer_color :: (layer: PleLayer) -> PleRgba {
+  switch layer {
+    case PleLayer.architecture { return PleRgba.{r = 0.62, g = 0.65, b = 0.69, a = 0.45}; }
+    case PleLayer.racks { return PleRgba.{r = 0.20, g = 0.25, b = 0.33, a = 1.0}; }
+    case PleLayer.crah { return PleRgba.{r = 0.08, g = 0.72, b = 0.65, a = 1.0}; }
+    case PleLayer.pdu { return PleRgba.{r = 0.96, g = 0.62, b = 0.04, a = 1.0}; }
+    case PleLayer.sprinklers { return PleRgba.{r = 0.38, g = 0.75, b = 0.98, a = 1.0}; }
+    case PleLayer.tray { return PleRgba.{r = 0.13, g = 0.77, b = 0.37, a = 1.0}; }
+    case PleLayer.busway { return PleRgba.{r = 0.98, g = 0.55, b = 0.15, a = 1.0}; }
+    case PleLayer.chw_pipe { return PleRgba.{r = 0.02, g = 0.71, b = 0.83, a = 1.0}; }
+    case PleLayer.clashes { return PleRgba.{r = 0.94, g = 0.20, b = 0.20, a = 1.0}; }
+  }
+}
+
+ple_has_substr :: (s: string, sub_str: string) -> bool {
+  if sub_str.count == 0 { return true; }
+  if s.count < sub_str.count { return false; }
+  for i: 0..<(s.count - sub_str.count + 1) {
+    if cast(string) s[i..<i + sub_str.count] == sub_str { return true; }
+  }
+  return false;
+}
+
+ple_parse_layer :: (raw: string, ifc_class: string, out: [] PleLayer) -> bool {
+  if raw == "architecture" { out[0] = PleLayer.architecture; return true; }
+  if raw == "racks" { out[0] = PleLayer.racks; return true; }
+  if raw == "crah" { out[0] = PleLayer.crah; return true; }
+  if raw == "pdu" { out[0] = PleLayer.pdu; return true; }
+  if raw == "sprinklers" || raw == "fire" { out[0] = PleLayer.sprinklers; return true; }
+  if raw == "tray" || raw == "comms" { out[0] = PleLayer.tray; return true; }
+  if raw == "busway" { out[0] = PleLayer.busway; return true; }
+  if raw == "chw_pipe" { out[0] = PleLayer.chw_pipe; return true; }
+  if raw == "clashes" || raw == "clash" { out[0] = PleLayer.clashes; return true; }
+  if raw == "cooling" {
+    out[0] = ifx ple_has_substr(ifc_class, "Pipe") then PleLayer.chw_pipe else PleLayer.crah;
+    return true;
+  }
+  if raw == "power" {
+    out[0] = ifx ple_has_substr(ifc_class, "Cable") then PleLayer.busway else PleLayer.pdu;
+    return true;
+  }
+  return false;
+}
+
+ple_parse_f64_ok :: (s: string, out: [] f64) -> bool {
+  if s.count < 1 || s.count > 48 { return false; }
+  i := 0;
+  neg := false;
+  if s[i] == '-' { neg = true; i += 1; }
+  else if s[i] == '+' { return false; }
+  if i >= s.count { return false; }
+  v: f64 = 0.0;
+  digits := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    v = v * 10.0 + cast(f64) (s[i] - '0');
+    digits += 1;
+    i += 1;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    frac_digits := 0;
+    scale: f64 = 0.1;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      v += cast(f64) (s[i] - '0') * scale;
+      scale *= 0.1;
+      frac_digits += 1;
+      i += 1;
+    }
+    if frac_digits == 0 { return false; }
+    digits += frac_digits;
+  }
+  if digits == 0 { return false; }
+  if i < s.count && (s[i] == 'e' || s[i] == 'E') {
+    i += 1;
+    if i >= s.count { return false; }
+    exp_neg := false;
+    if s[i] == '-' { exp_neg = true; i += 1; }
+    else if s[i] == '+' { i += 1; }
+    if i >= s.count { return false; }
+    exp_val := 0;
+    while i < s.count && s[i] >= '0' && s[i] <= '9' {
+      exp_val = exp_val * 10 + cast(int) (s[i] - '0');
+      if exp_val > 38 { return false; }
+      i += 1;
+    }
+    for k: 0..<exp_val {
+      if exp_neg { v /= 10.0; } else { v *= 10.0; }
+    }
+  }
+  if i != s.count { return false; }
+  out[0] = ifx neg then -v else v;
+  return true;
+}
+
+ple_jv_f32 :: (d: Jv, node: int, out: [] f32) -> bool {
+  if jv_kind(d, node) != JV_NUMBER { return false; }
+  num: [1] f64;
+  if !ple_parse_f64_ok(jv_raw(d, node), num[..]) { return false; }
+  val := cast(f32) num[0];
+  if !finite(val) { return false; }
+  out[0] = val;
+  return true;
+}
+
+ple_jv_vec3 :: (d: Jv, node: int, out: [] Point) -> bool {
+  if jv_kind(d, node) != JV_ARRAY || jv_len(d, node) != 3 { return false; }
+  x: [1] f32;
+  y: [1] f32;
+  z: [1] f32;
+  if !ple_jv_f32(d, jv_at(d, node, 0), x[..]) { return false; }
+  if !ple_jv_f32(d, jv_at(d, node, 1), y[..]) { return false; }
+  if !ple_jv_f32(d, jv_at(d, node, 2), z[..]) { return false; }
+  out[0] = v3(x[0], y[0], z[0]);
+  return true;
+}
+
+ple_jv_is_bool :: (d: Jv, node: int) -> bool {
+  k := jv_kind(d, node);
+  return k == JV_TRUE || k == JV_FALSE;
+}
+
+ple_jv_text64 :: (d: Jv, node: int, out: [] PleText64) -> bool {
+  if jv_kind(d, node) != JV_STRING { return false; }
+  t: PleText64;
+  n := jv_str(d, node, t.bytes[..]);
+  if n < 0 { return false; }
+  t.n = n;
+  out[0] = t;
+  return true;
+}
+
+ple_scene_parse_with_nodes :: (json_text: string, scene: [] PleScene, nodes: [] JvNode) -> bool {
+  if scene.count < 1 { return false; }
+  scene[0] = PleScene.{};
+  d: [1] Jv;
+  if !jv_parse(d[..], json_text, nodes) { return false; }
+  if jv_kind(d[0], 0) != JV_OBJECT { return false; }
+
+  ver: [1] PleText64;
+  task: [1] PleText64;
+  units: [1] PleText64;
+  if !ple_jv_text64(d[0], jv_get(d[0], 0, "version"), ver[..]) { return false; }
+  if !ple_text64_eq(ver[0], PLE_SCENE_VERSION) { return false; }
+  if !ple_jv_text64(d[0], jv_get(d[0], 0, "task"), task[..]) { return false; }
+  if !ple_jv_text64(d[0], jv_get(d[0], 0, "units"), units[..]) { return false; }
+  scene[0].version = ver[0];
+  scene[0].task = task[0];
+  scene[0].units = units[0];
+
+  bounds_node := jv_get(d[0], 0, "bounds");
+  if jv_kind(d[0], bounds_node) != JV_OBJECT { return false; }
+  bmin: [1] Point;
+  bmax: [1] Point;
+  if !ple_jv_vec3(d[0], jv_get(d[0], bounds_node, "min"), bmin[..]) { return false; }
+  if !ple_jv_vec3(d[0], jv_get(d[0], bounds_node, "max"), bmax[..]) { return false; }
+  if bmax[0].x < bmin[0].x || bmax[0].y < bmin[0].y || bmax[0].z < bmin[0].z { return false; }
+  scene[0].bounds = PleBounds.{min = bmin[0], max = bmax[0]};
+
+  run_node := jv_get(d[0], 0, "run");
+  if jv_kind(d[0], run_node) != JV_OBJECT { return false; }
+  score: [1] f32;
+  total_len: [1] f32;
+  if !ple_jv_f32(d[0], jv_get(d[0], run_node, "score"), score[..]) { return false; }
+  if !ple_jv_f32(d[0], jv_get(d[0], run_node, "total_length_m"), total_len[..]) { return false; }
+  gates_node := jv_get(d[0], run_node, "gates");
+  if jv_kind(d[0], gates_node) != JV_OBJECT { return false; }
+  g_schema := jv_get(d[0], gates_node, "schema");
+  g_clash := jv_get(d[0], gates_node, "clash");
+  g_conn := jv_get(d[0], gates_node, "connectivity");
+  if !ple_jv_is_bool(d[0], g_schema) || !ple_jv_is_bool(d[0], g_clash) || !ple_jv_is_bool(d[0], g_conn) { return false; }
+  scene[0].run = PleRun.{
+    score = score[0],
+    gates = PleGates.{
+      schema = jv_bool(d[0], g_schema),
+      clash = jv_bool(d[0], g_clash),
+      connectivity = jv_bool(d[0], g_conn),
+    },
+    total_length_m = total_len[0],
+  };
+
+  elems_node := jv_get(d[0], 0, "elements");
+  if jv_kind(d[0], elems_node) != JV_ARRAY { return false; }
+  elem_count := jv_len(d[0], elems_node);
+  if elem_count < 0 || elem_count > PLE_MAX_ELEMENTS { return false; }
+  ei := 0;
+  ek := d[0].nodes[elems_node].first;
+  while ek != -1 {
+    if jv_kind(d[0], ek) != JV_OBJECT { return false; }
+    id_t: [1] PleText64;
+    layer_t: [1] PleText64;
+    ifc_t: [1] PleText64;
+    shape_t: [1] PleText64;
+    if !ple_jv_text64(d[0], jv_get(d[0], ek, "id"), id_t[..]) || id_t[0].n == 0 { return false; }
+    if !ple_jv_text64(d[0], jv_get(d[0], ek, "layer"), layer_t[..]) { return false; }
+    if !ple_jv_text64(d[0], jv_get(d[0], ek, "ifc_class"), ifc_t[..]) { return false; }
+    if !ple_jv_text64(d[0], jv_get(d[0], ek, "shape"), shape_t[..]) { return false; }
+    layer_val: [1] PleLayer;
+    lbuf: [64] u8; ibuf: [64] u8; sbuf: [64] u8;
+    if !ple_parse_layer(ple_text64_str(layer_t[0], lbuf[..]), ple_text64_str(ifc_t[0], ibuf[..]), layer_val[..]) { return false; }
+    shape_str := ple_text64_str(shape_t[0], sbuf[..]);
+    shape_val := PleShape.box;
+    if shape_str == "box" { shape_val = PleShape.box; }
+    else if shape_str == "cylinder" { shape_val = PleShape.cylinder; }
+    else { return false; }
+    center_v: [1] Point;
+    size_v: [1] Point;
+    rot_v: [1] f32;
+    if !ple_jv_vec3(d[0], jv_get(d[0], ek, "center"), center_v[..]) { return false; }
+    if !ple_jv_vec3(d[0], jv_get(d[0], ek, "size"), size_v[..]) { return false; }
+    if size_v[0].x <= 0 || size_v[0].y <= 0 || size_v[0].z <= 0 { return false; }
+    rot_node := jv_get(d[0], ek, "rot_z");
+    if rot_node == -1 { rot_v[0] = 0.0; }
+    else if !ple_jv_f32(d[0], rot_node, rot_v[..]) { return false; }
+    meta_node := jv_get(d[0], ek, "meta");
+    meta_t: PleText128;
+    if meta_node != -1 { meta_t = ple_make_text128(jv_raw(d[0], meta_node)); }
+    scene[0].elements[ei] = PleElement.{
+      id = id_t[0],
+      layer = layer_val[0],
+      ifc_class = ifc_t[0],
+      shape = shape_val,
+      center = center_v[0],
+      size = size_v[0],
+      rot_z = rot_v[0],
+      meta = meta_t,
+    };
+    ei += 1;
+    ek = d[0].nodes[ek].next;
+  }
+  scene[0].element_count = ei;
+
+  clashes_node := jv_get(d[0], 0, "clashes");
+  if clashes_node != -1 && jv_kind(d[0], clashes_node) != JV_NULL {
+    if jv_kind(d[0], clashes_node) != JV_ARRAY { return false; }
+    clash_count := jv_len(d[0], clashes_node);
+    if clash_count < 0 || clash_count > PLE_MAX_CLASHES { return false; }
+    ci := 0;
+    ck := d[0].nodes[clashes_node].first;
+    while ck != -1 {
+      if jv_kind(d[0], ck) != JV_OBJECT { return false; }
+      ca: [1] PleText64;
+      cb: [1] PleText64;
+      cp: [1] Point;
+      pen: [1] f32;
+      if !ple_jv_text64(d[0], jv_get(d[0], ck, "a"), ca[..]) || ca[0].n == 0 { return false; }
+      if !ple_jv_text64(d[0], jv_get(d[0], ck, "b"), cb[..]) || cb[0].n == 0 { return false; }
+      if !ple_jv_vec3(d[0], jv_get(d[0], ck, "point"), cp[..]) { return false; }
+      if !ple_jv_f32(d[0], jv_get(d[0], ck, "penetration_mm"), pen[..]) { return false; }
+      scene[0].clashes[ci] = PleClash.{
+        a = ca[0],
+        b = cb[0],
+        point = cp[0],
+        penetration_mm = pen[0],
+      };
+      ci += 1;
+      ck = d[0].nodes[ck].next;
+    }
+    scene[0].clash_count = ci;
+  }
+  return true;
+}
+
+ple_scene_parse :: (json_text: string, scene: [] PleScene) -> bool {
+  nodes: [PLE_MAX_JSON_NODES] JvNode;
+  return ple_scene_parse_with_nodes(json_text, scene, nodes[..]);
+}
+
+// ---- Camera state (orbit / pan / zoom + 4 presets)
+
+ple_bounds_center :: (b: PleBounds) -> Point {
+  return mix(b.min, b.max, 0.5);
+}
+
+ple_bounds_span :: (b: PleBounds) -> Point {
+  return v3(hi(b.max.x - b.min.x, 0.1), hi(b.max.y - b.min.y, 0.1), hi(b.max.z - b.min.z, 0.1));
+}
+
+ple_camera_preset_name :: (preset: PleCameraPreset) -> string {
+  switch preset {
+    case PleCameraPreset.iso { return "Iso"; }
+    case PleCameraPreset.plan { return "Plan"; }
+    case PleCameraPreset.overhead { return "Overhead"; }
+    case PleCameraPreset.under_floor { return "Under-Floor"; }
+  }
+}
+
+ple_camera_preset_from_name :: (name: string, out: [] PleCameraPreset) -> bool {
+  if name == "Iso" || name == "Isometric" || name == "iso" { out[0] = PleCameraPreset.iso; return true; }
+  if name == "Plan" || name == "Top Plan" || name == "plan" { out[0] = PleCameraPreset.plan; return true; }
+  if name == "Overhead" || name == "Overhead Plenum" || name == "overhead" { out[0] = PleCameraPreset.overhead; return true; }
+  if name == "Under-Floor" || name == "Under-Floor Plenum" || name == "under_floor" { out[0] = PleCameraPreset.under_floor; return true; }
+  return false;
+}
+
+ple_camera_preset :: (bounds: PleBounds, preset: PleCameraPreset) -> PleCamera {
+  mid := ple_bounds_center(bounds);
+  span := ple_bounds_span(bounds);
+  diag := length(span);
+  min_d := hi(diag * 0.05, 0.5);
+  max_d := hi(diag * 4.0, 20.0);
+  switch preset {
+    case PleCameraPreset.iso {
+      return PleCamera.{
+        target = mid,
+        yaw = -0.78539816,
+        pitch = 0.55,
+        distance = clamp(diag * 1.15, min_d, max_d),
+        min_distance = min_d,
+        max_distance = max_d,
+        preset = PleCameraPreset.iso,
+      };
+    }
+    case PleCameraPreset.plan {
+      xy := hi(span.x, span.y);
+      return PleCamera.{
+        target = mid,
+        yaw = -1.5707963,
+        pitch = 1.55,
+        distance = clamp(xy * 1.25, min_d, max_d),
+        min_distance = min_d,
+        max_distance = max_d,
+        preset = PleCameraPreset.plan,
+      };
+    }
+    case PleCameraPreset.overhead {
+      z_plenum := bounds.min.z + span.z * 0.80;
+      return PleCamera.{
+        target = v3(mid.x, mid.y, z_plenum),
+        yaw = -0.65,
+        pitch = 0.22,
+        distance = clamp(diag * 0.55, min_d, max_d),
+        min_distance = min_d,
+        max_distance = max_d,
+        preset = PleCameraPreset.overhead,
+      };
+    }
+    case PleCameraPreset.under_floor {
+      z_under := bounds.min.z + span.z * 0.08;
+      return PleCamera.{
+        target = v3(mid.x, mid.y, z_under),
+        yaw = -0.65,
+        pitch = 0.08,
+        distance = clamp(diag * 0.45, min_d, max_d),
+        min_distance = min_d,
+        max_distance = max_d,
+        preset = PleCameraPreset.under_floor,
+      };
+    }
+  }
+}
+
+ple_camera_frame :: (bounds: PleBounds) -> PleCamera {
+  return ple_camera_preset(bounds, PleCameraPreset.iso);
+}
+
+ple_camera_orbit :: (cam: PleCamera, delta_yaw: f32, delta_pitch: f32) -> PleCamera {
+  out := cam;
+  out.yaw = wrap_angle(cam.yaw + delta_yaw);
+  out.pitch = clamp(cam.pitch + delta_pitch, -1.55, 1.55);
+  return out;
+}
+
+ple_camera_pan :: (cam: PleCamera, delta_right: f32, delta_up: f32) -> PleCamera {
+  out := cam;
+  right := v3(-sin(cam.yaw), cos(cam.yaw), 0.0);
+  fwd_xy := v3(-cos(cam.yaw), -sin(cam.yaw), 0.0);
+  up := v3(fwd_xy.x * sin(cam.pitch), fwd_xy.y * sin(cam.pitch), cos(cam.pitch));
+  out.target = add(cam.target, add(times(right, delta_right), times(up, delta_up)));
+  return out;
+}
+
+ple_camera_zoom :: (cam: PleCamera, scale: f32) -> PleCamera {
+  out := cam;
+  factor := hi(scale, 0.05);
+  out.distance = clamp(cam.distance * factor, cam.min_distance, cam.max_distance);
+  return out;
+}
+
+ple_camera_eye :: (cam: PleCamera) -> Point {
+  cp := cos(cam.pitch);
+  offset := v3(cp * cos(cam.yaw), cp * sin(cam.yaw), sin(cam.pitch));
+  return add(cam.target, times(offset, cam.distance));
+}
+
+// ---- Ray-AABB and ray-cylinder picking
+
+ple_local_xy :: (p: Point, center: Point, rot_z: f32) -> Point {
+  rel := sub(p, center);
+  if rot_z == 0.0 { return rel; }
+  c := cos(-rot_z);
+  s := sin(-rot_z);
+  return v3(rel.x * c - rel.y * s, rel.x * s + rel.y * c, rel.z);
+}
+
+ple_local_dir_xy :: (d: Point, rot_z: f32) -> Point {
+  if rot_z == 0.0 { return d; }
+  c := cos(-rot_z);
+  s := sin(-rot_z);
+  return v3(d.x * c - d.y * s, d.x * s + d.y * c, d.z);
+}
+
+// Closest non-negative hit distance t along origin + t * dir against box [bmin, bmax], or -1.
+ple_ray_aabb :: (bmin: Point, bmax: Point, origin: Point, dir: Point) -> f32 {
+  ov := [3] f32.[origin.x, origin.y, origin.z];
+  dv := [3] f32.[dir.x, dir.y, dir.z];
+  lv := [3] f32.[bmin.x, bmin.y, bmin.z];
+  hv := [3] f32.[bmax.x, bmax.y, bmax.z];
+  t_enter := -PLE_PICK_INF;
+  t_exit := PLE_PICK_INF;
+  for k: 0..<3 {
+    if abs(dv[k]) < 0.0000001 {
+      if ov[k] < lv[k] || ov[k] > hv[k] { return -1.0; }
+    } else {
+      inv := 1.0 / dv[k];
+      t0 := (lv[k] - ov[k]) * inv;
+      t1 := (hv[k] - ov[k]) * inv;
+      t_enter = hi(t_enter, lo(t0, t1));
+      t_exit = lo(t_exit, hi(t0, t1));
+    }
+  }
+  if t_exit < hi(t_enter, 0.0) { return -1.0; }
+  return ifx t_enter >= 0.0 then t_enter else 0.0;
+}
+
+// Closest non-negative hit distance t along origin + t * dir against a vertical
+// cylinder centered at center with diameter (size.x, size.y) and height size.z, or -1.
+ple_ray_cylinder :: (center: Point, size: Point, origin: Point, dir: Point) -> f32 {
+  rx := size.x * 0.5;
+  ry := size.y * 0.5;
+  hz := size.z * 0.5;
+  if rx <= 0.0 || ry <= 0.0 || hz <= 0.0 { return -1.0; }
+  ox := (origin.x - center.x) / rx;
+  oy := (origin.y - center.y) / ry;
+  oz := origin.z - center.z;
+  dx := dir.x / rx;
+  dy := dir.y / ry;
+  dz := dir.z;
+
+  if ox * ox + oy * oy <= 1.0 && abs(oz) <= hz {
+    return 0.0;
+  }
+
+  best := PLE_PICK_INF;
+  a := dx * dx + dy * dy;
+  b := 2.0 * (ox * dx + oy * dy);
+  c := ox * ox + oy * oy - 1.0;
+  if a > 0.000000001 {
+    disc := b * b - 4.0 * a * c;
+    if disc >= 0.0 {
+      root := sqrt(disc);
+      t0 := (-b - root) / (2.0 * a);
+      if t0 >= 0.0 {
+        z0 := oz + t0 * dz;
+        if abs(z0) <= hz { best = lo(best, t0); }
+      }
+      t1 := (-b + root) / (2.0 * a);
+      if t1 >= 0.0 {
+        z1 := oz + t1 * dz;
+        if abs(z1) <= hz { best = lo(best, t1); }
+      }
+    }
+  }
+
+  if abs(dz) > 0.0000001 {
+    for cap: 0..<2 {
+      zc := ifx cap == 0 then -hz else hz;
+      tc := (zc - oz) / dz;
+      if tc >= 0.0 {
+        cx := ox + tc * dx;
+        cy := oy + tc * dy;
+        if cx * cx + cy * cy <= 1.0 {
+          best = lo(best, tc);
+        }
+      }
+    }
+  }
+
+  return ifx best < PLE_PICK_INF then best else -1.0;
+}
+
+ple_ray_element :: (elem: PleElement, origin: Point, dir: Point) -> f32 {
+  lo_origin := ple_local_xy(origin, elem.center, elem.rot_z);
+  lo_dir := ple_local_dir_xy(dir, elem.rot_z);
+  half := times(elem.size, 0.5);
+  switch elem.shape {
+    case PleShape.box {
+      return ple_ray_aabb(times(half, -1.0), half, lo_origin, lo_dir);
+    }
+    case PleShape.cylinder {
+      return ple_ray_cylinder(v3(0.0, 0.0, 0.0), elem.size, lo_origin, lo_dir);
+    }
+  }
+}
+
+// Picks the closest visible element hit along origin + t * dir, returning its
+// index in scene[0].elements or -1 when nothing visible is hit.
+ple_pick :: (scene: [] PleScene, visible_mask: u32, origin: Point, dir: Point) -> int {
+  if scene.count < 1 || !finite3(origin) || !finite3(dir) { return -1; }
+  dir_len := length(dir);
+  if !(dir_len > 0.000001) { return -1; }
+  unit_dir := times(dir, 1.0 / dir_len);
+  best_idx := -1;
+  best_t := PLE_PICK_INF;
+  for i: 0..<scene[0].element_count {
+    elem := scene[0].elements[i];
+    if !ple_layer_visible(visible_mask, elem.layer) { continue; }
+    t := ple_ray_element(elem, origin, unit_dir);
+    if t >= 0.0 && t < best_t {
+      best_t = t;
+      best_idx = i;
+    }
+  }
+  return best_idx;
+}
+
+#test "ple-scene parses schema, layers, camera presets, and ray picking" {
+  sample := "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[27.0,21.0,4.5]},\"run\":{\"score\":0.84,\"gates\":{\"schema\":true,\"clash\":false,\"connectivity\":true},\"total_length_m\":142.5},\"elements\":[{\"id\":\"rack-001\",\"layer\":\"racks\",\"ifc_class\":\"IfcFurniture\",\"shape\":\"box\",\"center\":[3.6,4.2,1.1],\"size\":[0.6,1.2,2.2],\"rot_z\":0.0,\"meta\":{\"row\":\"A\"}},{\"id\":\"sprinkler-001\",\"layer\":\"sprinklers\",\"ifc_class\":\"IfcFireSuppressionTerminal\",\"shape\":\"cylinder\",\"center\":[8.0,4.2,4.1],\"size\":[0.4,0.4,0.3],\"rot_z\":0.0}],\"clashes\":[{\"a\":\"pipe-012\",\"b\":\"col-04\",\"point\":[12.1,8.4,3.2],\"penetration_mm\":14.2}]}";
+  sc: [1] PleScene;
+  #assert ple_scene_parse(sample, sc[..]);
+  #assert ple_text64_eq(sc[0].version, "ple-scene.v1");
+  #assert ple_text64_eq(sc[0].task, "data-hall-mep-routing");
+  #assert ple_text64_eq(sc[0].units, "meters");
+  #assert near(sc[0].bounds.max.x, 27.0, 0.001) && near(sc[0].bounds.max.z, 4.5, 0.001);
+  #assert near(sc[0].run.score, 0.84, 0.001) && sc[0].run.gates.schema && !sc[0].run.gates.clash && sc[0].run.gates.connectivity;
+  #assert sc[0].element_count == 2 && sc[0].clash_count == 1;
+  #assert ple_clash_a_eq(sc[0].clashes[0], "pipe-012") && near(sc[0].clashes[0].penetration_mm, 14.2, 0.01);
+
+  mask := PLE_ALL_LAYERS_VISIBLE;
+  #assert ple_layer_visible(mask, PleLayer.racks);
+  mask = ple_layer_toggle(mask, PleLayer.racks);
+  #assert !ple_layer_visible(mask, PleLayer.racks);
+  #assert ple_layer_color(PleLayer.clashes).r > 0.8 && ple_layer_color(PleLayer.architecture).a < 1.0;
+
+  cam_iso := ple_camera_preset(sc[0].bounds, PleCameraPreset.iso);
+  cam_plan := ple_camera_preset(sc[0].bounds, PleCameraPreset.plan);
+  cam_over := ple_camera_preset(sc[0].bounds, PleCameraPreset.overhead);
+  cam_under := ple_camera_preset(sc[0].bounds, PleCameraPreset.under_floor);
+  #assert cam_over.target.z > cam_iso.target.z && cam_under.target.z < cam_iso.target.z;
+  #assert ple_camera_eye(cam_plan).z > cam_plan.target.z;
+  zoomed := ple_camera_zoom(cam_iso, 0.5);
+  #assert zoomed.distance < cam_iso.distance;
+
+  // Ray along +X at y=4.2, z=1.1 hits rack-001 (index 0) when visible, misses when hidden.
+  #assert ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, v3(0.0, 4.2, 1.1), v3(1.0, 0.0, 0.0)) == 0;
+  #assert ple_pick(sc[..], mask, v3(0.0, 4.2, 1.1), v3(1.0, 0.0, 0.0)) == -1;
+  // Ray along +X at y=4.2, z=4.1 hits cylinder sprinkler-001 (index 1).
+  #assert ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, v3(0.0, 4.2, 4.1), v3(1.0, 0.0, 0.0)) == 1;
+}

@@ -10,6 +10,10 @@ extension CoderWindow {
     /// A file a row, a reply or an attachment names: a text file opens in the pane, anything else
     /// (a picture, a PDF) in the Mac's own app for it, as before.
     func openNamedFile(_ url: URL) {
+        if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
+            openFileInPane(url)
+            return
+        }
         if let type = UTType(filenameExtension: url.pathExtension), type.isDeclared, !type.conforms(to: .text) {
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
             return
@@ -36,9 +40,18 @@ extension CoderWindow {
         let name = url.lastPathComponent
         var isFolder: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder) else {
+            hideScenePanel()
             cd_file_failed(page, shown, "Coder couldn't find \(name). It may have been moved or deleted."); wake(); return
         }
-        if isFolder.boolValue { cd_file_failed(page, shown, "\(name) is a folder, not a file."); wake(); return }
+        if isFolder.boolValue {
+            hideScenePanel()
+            cd_file_failed(page, shown, "\(name) is a folder, not a file."); wake(); return
+        }
+        if PleSceneLoader.isSceneFile(url) || PleSceneLoader.isIfcFile(url) {
+            openSceneInPane(url, shown: shown)
+            return
+        }
+        hideScenePanel()
         let size = ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
         let most = Int64(cd_file_most())
         if size > most {
@@ -108,6 +121,7 @@ extension CoderWindow {
     }
     func dropFile() {
         let hadKeys = cd_wants_text(page) != 0
+        hideScenePanel()
         cd_file_close(page); fileURL = nil
         if hadKeys { refocus() } else { wake() }
     }
@@ -143,5 +157,94 @@ extension CoderWindow {
             return
         }
         ws.activateFileViewerSelecting([url])
+    }
+
+    // MARK: - 3D PLE Scene Viewport (SceneView.swift, GitHub #13792)
+
+    /// Opens a `.ple-scene.json`, `.ple-scene.v1.json`, or `.ifc` file in the right-hand pane's
+    /// embedded Metal 3D viewport.
+    func openSceneInPane(_ url: URL, shown: String? = nil) {
+        let displayPath = shown ?? (url.path as NSString).abbreviatingWithTildeInPath
+        let name = url.lastPathComponent
+        do {
+            let doc: PleScene
+            if PleSceneLoader.isIfcFile(url) {
+                doc = try PleSceneLoader.loadIfc(from: url, searchRoot: folder)
+            } else {
+                doc = try PleSceneLoader.load(from: url)
+            }
+            guard cd_file_open_scene(page, displayPath) != 0 else {
+                hideScenePanel()
+                cd_file_failed(page, displayPath, "Coder couldn't open 3D scene \(name).")
+                wake()
+                return
+            }
+            let panel = ensureScenePanel()
+            panel.loadScene(doc)
+            panel.isHidden = false
+            syncScenePanelFrame()
+            wake()
+        } catch {
+            hideScenePanel()
+            cd_file_failed(page, displayPath, "Coder couldn't parse 3D scene \(name): \(error.localizedDescription)")
+            wake()
+        }
+    }
+
+    /// File > Open 3D Scene… panel.
+    func chooseSceneFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Open 3D PLE Scene"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = folder
+        panel.allowedContentTypes = [.json, UTType(filenameExtension: "ifc") ?? .data]
+        panel.beginSheetModal(for: window) { [weak self] resp in
+            guard resp == .OK, let url = panel.url else { return }
+            self?.openFileInPane(url)
+        }
+    }
+
+    private func ensureScenePanel() -> PleScenePanelView {
+        if let existing = scenePanel {
+            if existing.superview !== canvas {
+                canvas.addSubview(existing)
+            }
+            return existing
+        }
+        let panel = PleScenePanelView(frame: .zero)
+        panel.isHidden = true
+        canvas.addSubview(panel)
+        scenePanel = panel
+        return panel
+    }
+
+    func hideScenePanel() {
+        scenePanel?.isHidden = true
+    }
+
+    /// Keeps the embedded Metal 3D viewport aligned to the Coax filepane's body rect.
+    func syncScenePanelFrame() {
+        guard let panel = scenePanel else { return }
+        var rect = [Float](repeating: 0, count: 4)
+        let shown = cd_file_scene_rect(page, &rect)
+        guard shown != 0, rect[2] > 1, rect[3] > 1 else {
+            if !panel.isHidden { panel.isHidden = true }
+            return
+        }
+        // Coax layout uses top-left logical points; AppKit canvas uses bottom-left points.
+        let canvasH = canvas.bounds.height
+        let x = CGFloat(rect[0]).rounded()
+        let w = CGFloat(rect[2]).rounded()
+        let h = CGFloat(rect[3]).rounded()
+        let y = (canvasH - CGFloat(rect[1]) - h).rounded()
+        let target = NSRect(x: x, y: max(0, y), width: max(1, w), height: max(1, h))
+        if panel.frame != target {
+            panel.frame = target
+        }
+        if panel.isHidden {
+            panel.isHidden = false
+        }
     }
 }

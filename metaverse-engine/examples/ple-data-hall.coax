@@ -1,0 +1,74 @@
+// Runnable PLE data-hall scene example and checks (GitHub #13792).
+#load "../import/ple-scene.coax";
+#import "Basic";
+
+PLE_DATA_HALL_FIXTURE :: "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0.0,0.0,0.0],\"max\":[27.0,21.0,4.5]},\"run\":{\"score\":0.88,\"gates\":{\"schema\":true,\"clash\":false,\"connectivity\":true},\"total_length_m\":164.2},\"elements\":[{\"id\":\"slab-floor\",\"layer\":\"architecture\",\"ifc_class\":\"IfcSlab\",\"shape\":\"box\",\"center\":[13.5,10.5,0.1],\"size\":[27.0,21.0,0.2],\"rot_z\":0.0},{\"id\":\"rack-a01\",\"layer\":\"racks\",\"ifc_class\":\"IfcFurniture\",\"shape\":\"box\",\"center\":[4.0,6.0,1.2],\"size\":[0.6,1.2,2.2],\"rot_z\":0.0},{\"id\":\"crah-01\",\"layer\":\"crah\",\"ifc_class\":\"IfcUnitaryEquipment\",\"shape\":\"box\",\"center\":[1.5,6.0,1.7],\"size\":[1.2,2.4,2.2],\"rot_z\":0.0},{\"id\":\"pdu-01\",\"layer\":\"pdu\",\"ifc_class\":\"IfcElectricDistributionBoard\",\"shape\":\"box\",\"center\":[1.5,10.5,1.2],\"size\":[0.8,0.8,1.8],\"rot_z\":0.0},{\"id\":\"sprinkler-01\",\"layer\":\"sprinklers\",\"ifc_class\":\"IfcFireSuppressionTerminal\",\"shape\":\"cylinder\",\"center\":[8.0,6.0,4.1],\"size\":[0.4,0.4,0.3],\"rot_z\":0.0},{\"id\":\"tray-01\",\"layer\":\"tray\",\"ifc_class\":\"IfcCableCarrierSegment\",\"shape\":\"box\",\"center\":[6.0,6.0,3.2],\"size\":[4.0,0.6,0.15],\"rot_z\":0.0},{\"id\":\"busway-01\",\"layer\":\"busway\",\"ifc_class\":\"IfcCableSegment\",\"shape\":\"box\",\"center\":[6.0,7.5,3.5],\"size\":[4.0,0.25,0.25],\"rot_z\":0.0},{\"id\":\"chw-pipe-01\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[10.0,6.0,0.25],\"size\":[0.2,0.2,0.4],\"rot_z\":0.0},{\"id\":\"clash-01\",\"layer\":\"clashes\",\"ifc_class\":\"PleClashMarker\",\"shape\":\"cylinder\",\"center\":[4.0,6.0,0.25],\"size\":[0.36,0.36,0.36],\"rot_z\":0.0}],\"clashes\":[{\"a\":\"chw-pipe-01\",\"b\":\"rack-a01\",\"point\":[4.0,6.0,0.25],\"penetration_mm\":14.2}]}";
+
+PLE_EXPORTER_FIXTURE :: "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[27,21,4.5]},\"run\":{\"score\":0.84,\"gates\":{\"schema\":true,\"clash\":false,\"connectivity\":true},\"total_length_m\":142.5},\"elements\":[{\"id\":\"crah_01\",\"layer\":\"cooling\",\"ifc_class\":\"IfcUnitaryEquipment\",\"shape\":\"box\",\"center\":[1.6,5.5,1.7],\"size\":[1.2,2.4,2.2],\"rot_z\":0.0},{\"id\":\"chw_pipe_01\",\"layer\":\"cooling\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[1.6,10.5,0.25],\"size\":[0.18,0.18,0.18],\"rot_z\":0.0},{\"id\":\"pdu_01\",\"layer\":\"power\",\"ifc_class\":\"IfcElectricDistributionBoard\",\"shape\":\"box\",\"center\":[25.4,4.2,1.5],\"size\":[0.9,1.2,1.8],\"rot_z\":0.0},{\"id\":\"busway_01\",\"layer\":\"power\",\"ifc_class\":\"IfcCableCarrierSegment\",\"shape\":\"box\",\"center\":[13.5,5.5,3.55],\"size\":[18.0,0.35,0.25],\"rot_z\":0.0},{\"id\":\"cable_tray_01\",\"layer\":\"comms\",\"ifc_class\":\"IfcCableCarrierSegment\",\"shape\":\"box\",\"center\":[13.5,5.5,3.2],\"size\":[18.0,0.6,0.15],\"rot_z\":0.0},{\"id\":\"sprinkler_01\",\"layer\":\"fire\",\"ifc_class\":\"IfcFireSuppressionTerminal\",\"shape\":\"cylinder\",\"center\":[4.5,3.5,4.15],\"size\":[0.16,0.16,0.22],\"rot_z\":0.0},{\"id\":\"clash_01\",\"layer\":\"clash\",\"ifc_class\":\"IfcVirtualElement\",\"shape\":\"box\",\"center\":[9.0,5.5,3.38],\"size\":[0.4,0.4,0.4],\"rot_z\":0.0}]}";
+
+#test "ple-data-hall parses bounds, elements, clashes, layers, camera presets, and picking" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_DATA_HALL_FIXTURE, sc[..]);
+  #assert ple_text64_eq(sc[0].version, "ple-scene.v1");
+  #assert ple_text64_eq(sc[0].task, "data-hall-mep-routing");
+  #assert ple_text64_eq(sc[0].units, "meters");
+  #assert same(sc[0].bounds.min, v3(0.0, 0.0, 0.0), 0.001);
+  #assert same(sc[0].bounds.max, v3(27.0, 21.0, 4.5), 0.001);
+  #assert near(sc[0].run.score, 0.88, 0.001);
+  #assert sc[0].run.gates.schema && !sc[0].run.gates.clash && sc[0].run.gates.connectivity;
+  #assert near(sc[0].run.total_length_m, 164.2, 0.01);
+  #assert sc[0].element_count == 9;
+  #assert sc[0].clash_count == 1;
+  #assert ple_text64_eq(sc[0].clashes[0].a, "chw-pipe-01") && ple_text64_eq(sc[0].clashes[0].b, "rack-a01");
+  #assert near(sc[0].clashes[0].penetration_mm, 14.2, 0.01);
+
+  // Semantic RGBA colors and u32 layer visibility bitmask.
+  c_clash := ple_layer_color(PleLayer.clashes);
+  c_pipe := ple_layer_color(PleLayer.chw_pipe);
+  #assert c_clash.r > c_clash.b && c_pipe.b > c_pipe.r;
+  mask := PLE_ALL_LAYERS_VISIBLE;
+  #assert ple_layer_visible(mask, PleLayer.crah) && ple_layer_visible(mask, PleLayer.sprinklers);
+  mask = ple_layer_toggle(mask, PleLayer.crah);
+  #assert !ple_layer_visible(mask, PleLayer.crah) && ple_layer_visible(mask, PleLayer.racks);
+
+  // Camera framing, orbit/pan/zoom, and all 4 presets.
+  cam_iso := ple_camera_preset(sc[0].bounds, PleCameraPreset.iso);
+  cam_plan := ple_camera_preset(sc[0].bounds, PleCameraPreset.plan);
+  cam_over := ple_camera_preset(sc[0].bounds, PleCameraPreset.overhead);
+  cam_under := ple_camera_preset(sc[0].bounds, PleCameraPreset.under_floor);
+  #assert same(cam_iso.target, v3(13.5, 10.5, 2.25), 0.01);
+  #assert cam_plan.pitch > 1.4 && cam_over.target.z > cam_iso.target.z && cam_under.target.z < cam_iso.target.z;
+  cam_moved := ple_camera_zoom(ple_camera_pan(ple_camera_orbit(cam_iso, 0.25, -0.1), 1.0, -0.5), 0.8);
+  #assert cam_moved.distance < cam_iso.distance;
+
+  // Ray-AABB and ray-cylinder picking respecting layer visibility.
+  // Ray from x=-2 along +X at y=6, z=1.7 hits crah-01 (index 2) first, then rack-a01 (index 1) when crah is hidden.
+  #assert ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, v3(-2.0, 6.0, 1.7), v3(1.0, 0.0, 0.0)) == 2;
+  #assert ple_pick(sc[..], mask, v3(-2.0, 6.0, 1.7), v3(1.0, 0.0, 0.0)) == 1;
+  // Vertical ray down through sprinkler-01 cylinder at (8.0, 6.0, 4.1) hits index 4.
+  #assert ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, v3(8.0, 6.0, 5.0), v3(0.0, 0.0, -1.0)) == 4;
+  #assert ple_pick(sc[..], cast(u32) 0, v3(8.0, 6.0, 5.0), v3(0.0, 0.0, -1.0)) == -1;
+}
+
+#test "ple-data-hall maps IFC exporter layer aliases onto semantic PleLayer values" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_EXPORTER_FIXTURE, sc[..]);
+  #assert sc[0].element_count == 7;
+  #assert sc[0].elements[0].layer == PleLayer.crah;
+  #assert sc[0].elements[1].layer == PleLayer.chw_pipe;
+  #assert sc[0].elements[2].layer == PleLayer.pdu;
+  #assert sc[0].elements[3].layer == PleLayer.busway;
+  #assert sc[0].elements[4].layer == PleLayer.tray;
+  #assert sc[0].elements[5].layer == PleLayer.sprinklers;
+  #assert sc[0].elements[6].layer == PleLayer.clashes;
+}
+
+main :: () {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_DATA_HALL_FIXTURE, sc[..]);
+  cam := ple_camera_preset(sc[0].bounds, PleCameraPreset.iso);
+  eye := ple_camera_eye(cam);
+  hit := ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, eye, sub(cam.target, eye));
+  print("ple-data-hall: elements=% clashes=% score=% camera_dist=% center_hit=%\n",
+    sc[0].element_count, sc[0].clash_count, sc[0].run.score, cam.distance, hit);
+}

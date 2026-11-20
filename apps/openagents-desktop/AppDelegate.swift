@@ -84,6 +84,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
+    @objc func openScene(_ sender: Any?) { main?.chooseSceneFile() }
     @objc func saveFile(_ sender: Any?) { main?.saveOpenFile() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
@@ -197,6 +198,7 @@ enum TestLaunch {
         let fileItem = NSMenuItem(), file = NSMenu(title: "File")
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
+        file.addItem(withTitle: "Open 3D Scene…", action: #selector(CoderDelegate.openScene(_:)), keyEquivalent: "").target = delegate
         file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
         file.addItem(withTitle: "Save", action: #selector(CoderDelegate.saveFile(_:)), keyEquivalent: "s").target = delegate
         file.addItem(.separator())

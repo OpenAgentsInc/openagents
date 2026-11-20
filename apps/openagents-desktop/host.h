@@ -123,6 +123,8 @@ int cd_file_mode(void *page);
 int cd_file_dirty(void *page);
 int cd_file_shown(void *page);
 int cd_file_name(void *page, char *out, int cap);
+int cd_file_open_scene(void *page, const char *path);
+int cd_file_scene_rect(void *page, float out[4]);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);
