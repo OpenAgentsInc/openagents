@@ -517,6 +517,7 @@ int cd_file_name(void *page, char *out, int cap) { CoderHost *c = page; return c
 int cd_file_open_scene(void *page, const char *path) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_open_scene(cd_state(c), cd_string(path)); if (ok) { free(c->file); c->file = NULL; cd_woke(c); } return ok; }
 int cd_file_scene_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_file_scene_rect(cd_state(c), (coax_v_f32){out, 4}); }
 int cd_live_scene(void *page, float out[8], char *path, int cap) { CoderHost *c = page; return c && out && cap > 1 ? cd_text_out((int)coder_page_live_scene(cd_state(c), (coax_v_f32){out, 8}, (coax_v_u8){(uint8_t *)path, cap - 1}), path, cap) : 0; }
+int cd_over_rects(void *page, float *out, int rects) { CoderHost *c = page; return c && out && rects > 0 ? (int)coder_page_over_rects(cd_state(c), (coax_v_f32){out, (int64_t)rects * 4}) : 0; }
 // The iOS Simulator in the pane (page/simpane.coax, GitHub #13811): the page speaks the helper's
 // wire itself; the host moves its lines and shows the screen.
 void cd_sim_setup(void *page, const char *stills, const char *shots) { CoderHost *c = page; if (c) coder_page_sim_setup(cd_state(c), cd_string(stills), cd_string(shots)); }

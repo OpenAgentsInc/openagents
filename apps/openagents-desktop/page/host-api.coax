@@ -58,6 +58,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
+  s[0].over_n = cp_over_rects(sh.over[0..<sh.no], cp_scale(s), s[0].over_r[..]);
   // a flat frame's pictures, where the host draws them (compose.coax)
   ids: [CP_IMAGES] int;
   s[0].cmp_gpu[0].flat_used = false;

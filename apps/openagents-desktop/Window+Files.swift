@@ -243,6 +243,7 @@ extension CoderWindow {
         if panel.frame != target {
             panel.frame = target
         }
+        panel.setHoles(pageOverRects(in: panel))
         if panel.isHidden {
             panel.isHidden = false
         }
@@ -278,6 +279,7 @@ extension CoderWindow {
         let card = NSRect(x: CGFloat(r[0]) - clip.minX, y: canvasH - CGFloat(r[1]) - CGFloat(r[3]) - clip.minY, width: CGFloat(r[2]), height: CGFloat(r[3])).integral
         if box.frame != clip { box.frame = clip }
         if panel.frame != card { panel.frame = card }
+        panel.setHoles(pageOverRects(in: panel))
         if box.isHidden { box.isHidden = false }
     }
 
@@ -307,7 +309,7 @@ extension CoderWindow {
             if box.superview !== canvas { canvas.addSubview(box) }
             return panel
         }
-        let box = NSView(frame: .zero)
+        let box = PassThroughView(frame: .zero)
         box.wantsLayer = true
         box.layer?.masksToBounds = true
         box.isHidden = true
@@ -318,5 +320,27 @@ extension CoderWindow {
         liveSceneBox = box
         liveScenePanel = panel
         return panel
+    }
+
+    /// What the page drew over everything in its last frame (coder_page_over_rects: menus,
+    /// popovers, dialogs, toasts) in view's coordinates, for a native view over the page to cut out.
+    func pageOverRects(in view: NSView) -> [NSRect] {
+        var r = [Float](repeating: 0, count: 32)
+        let n = Int(cd_over_rects(page, &r, 8))
+        guard n > 0 else { return [] }
+        let canvasH = canvas.bounds.height
+        return (0..<n).map { i in
+            let c = NSRect(x: CGFloat(r[i * 4]), y: canvasH - CGFloat(r[i * 4 + 1]) - CGFloat(r[i * 4 + 3]), width: CGFloat(r[i * 4 + 2]), height: CGFloat(r[i * 4 + 3]))
+            return view.convert(c, from: canvas)
+        }
+    }
+}
+
+/// A view that holds others and takes no press itself: the live 3D card's clip (#13812), so a press
+/// outside its viewport, or in a hole the page cut in it, reaches the page under it.
+final class PassThroughView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
     }
 }

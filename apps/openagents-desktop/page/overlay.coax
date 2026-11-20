@@ -10,6 +10,47 @@ CpOverlay :: struct { dlg: [1] AppDialog; menu: [1] AppMenu; pal: [1] AppPalette
 
 // Zeron's measures, in points: the page lays out in points (GitHub #13737).
 cp_ov_spec :: () -> AppOverlaySpec { return app_overlay_zeron(); }
+CP_OVER_RECTS :: 8;           // the rects the page hands the host for what it drew over everything
+
+// The rects of what list (the sheet's over list) paints, merged where they touch, at scale sc into
+// out (x, y, w, h each). Its boxes, pictures and frosted layers count, not their shadows, the text
+// and icons inside them, nor what draws at no opacity. More than out holds join its last. Returns how many.
+cp_over_rects :: (list: [] Prim, sc: f32, out: [] f32) -> int {
+  n := 0; most := out.count / 4;
+  ga: f32 = 1; depth := 0; gs: [16] f32;
+  for p: list {
+    if p.kind == PRIM_ALPHA {
+      if p.on { if depth < gs.count { gs[depth] = ga; } depth += 1; ga *= p.a; }
+      else if depth > 0 { depth -= 1; if depth < gs.count { ga = gs[depth]; } }
+      continue;
+    }
+    solid := p.kind == PRIM_BOX || p.kind == PRIM_IMAGE || p.kind == PRIM_GRADIENT || p.kind == PRIM_INSET || p.kind == PRIM_RING || (p.kind == PRIM_LAYER && p.on);
+    if !solid || !(ga > 0) || !(p.w > 0) || !(p.h > 0) || most == 0 { continue; }
+    x0 := p.x * sc; y0 := p.y * sc; x1 := (p.x + p.w) * sc; y1 := (p.y + p.h) * sc;
+    k := -1;
+    for i: 0..<n {
+      o := i * 4;
+      if x0 <= out[o] + out[o + 2] && x1 >= out[o] && y0 <= out[o + 1] + out[o + 3] && y1 >= out[o + 1] { k = i; break; }
+    }
+    if k < 0 && n < most { k = n; n += 1; out[k * 4] = x0; out[k * 4 + 1] = y0; out[k * 4 + 2] = x1 - x0; out[k * 4 + 3] = y1 - y0; continue; }
+    if k < 0 { k = n - 1; }
+    o := k * 4;
+    l := ifx x0 < out[o] then x0 else out[o]; t := ifx y0 < out[o + 1] then y0 else out[o + 1];
+    r := ifx x1 > out[o] + out[o + 2] then x1 else out[o] + out[o + 2]; b := ifx y1 > out[o + 1] + out[o + 3] then y1 else out[o + 1] + out[o + 3];
+    out[o] = l; out[o + 1] = t; out[o + 2] = r - l; out[o + 3] = b - t;
+  }
+  return n;
+}
+// What the page drew over everything in the last frame, for a native view over the page (the 3D
+// pane, a live 3D card) to leave uncovered: rects (x, y, w, h each, host points from the top left)
+// into out. Returns how many.
+coder_page_over_rects :: (s: [] CoderPage, out: [] f32) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  n := ifx s[0].over_n * 4 > out.count then out.count / 4 else s[0].over_n;
+  for k: 0..<n * 4 { out[k] = s[0].over_r[k]; }
+  return n;
+}
+
 cp_overlay_open :: (s: [] CoderPage) -> bool { return s[0].ov[0].dlg[0].shown || s[0].ov[0].menu[0].open || s[0].ov[0].pal[0].shown; }
 
 // One frame's worth: time passes for whichever is up, then it paints over the page. True while one moves.

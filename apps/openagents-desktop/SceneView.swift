@@ -1801,6 +1801,35 @@ final class PleScenePanelView: NSView {
         layer?.masksToBounds = true
     }
 
+    /// What the page drew over this view (its menus, popovers, dialogs and toasts: coder_page_over_rects),
+    /// in this view's coordinates: cut out of it, so the page's drawing under it shows there, and
+    /// presses there go to the page (#13817).
+    private(set) var holes: [NSRect] = []
+
+    func setHoles(_ rects: [NSRect]) {
+        let cut = rects.map { $0.intersection(bounds) }.filter { !$0.isEmpty }
+        if cut == holes { return }
+        holes = cut
+        guard let layer = layer else { return }
+        if cut.isEmpty { layer.mask = nil; return }
+        let mask = (layer.mask as? CAShapeLayer) ?? CAShapeLayer()
+        let path = CGMutablePath()
+        path.addRect(bounds)
+        for r in cut { path.addRect(r) }
+        mask.frame = bounds
+        mask.fillRule = .evenOdd
+        mask.path = path
+        layer.mask = mask
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if !holes.isEmpty {
+            let p = convert(point, from: superview)
+            if holes.contains(where: { $0.contains(p) }) { return nil }
+        }
+        return super.hitTest(point)
+    }
+
     func loadScene(_ scene: PleScene, preserveView: Bool = false) {
         errorBanner.isHidden = true
         metalView.setScene(scene, preserveView: preserveView)

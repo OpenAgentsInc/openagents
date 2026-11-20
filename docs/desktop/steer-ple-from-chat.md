@@ -181,8 +181,13 @@ its scene is seen live in the chat. The picture stays under the viewport. It sho
 Experimental is off, for every other live card, when the file fails to load, and with Settings
 or the Gym open, since the conversation isn't drawn then.
 
-Not covered: page menus and popovers that open over a live card are drawn under the viewport (the
-3D pane has the same limit), and only one card at a time is live.
+Page menus, popovers, dialogs and toasts stay above both 3D viewports, the live card and the 3D
+pane (#13817). Each frame the page records the rects of what it drew over everything
+(`cp_over_rects` in `page/overlay.coax`: the over list's boxes, pictures and frosted layers,
+merged where they touch, not their shadows or what draws at no opacity), and
+`coder_page_over_rects` (`cd_over_rects`) hands them to the host. The host cuts those rects out of
+each viewport (`PleScenePanelView.setHoles`, an even-odd layer mask), so the page's own drawing
+shows there, and a press in a hole goes to the page. Only one card at a time is live.
 
 ## A Gym route for programs
 

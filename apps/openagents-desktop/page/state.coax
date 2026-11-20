@@ -315,6 +315,9 @@ CoderPage :: struct {
   // the live 3D card (shows.coax, #13812) the last frame drew: the card's rect and the conversation's
   // clip (x, y, w, h each, host points), and the scene the host mounts a viewport over it for
   live_on: bool; live_r: [8] f32; live_path: [CP_IMG_PATH] u8; live_path_n: int;
+  // what the page drew over everything in the last frame (overlay.coax cp_over_rects): menus,
+  // popovers, dialogs, toasts, as rects in host points; a native view over the page cuts them out
+  over_r: [CP_OVER_RECTS * 4] f32; over_n: int;
   set_scroll: f32; set_content: f32; set_view: f32; set_target_y: f32;
   set_list_scroll: f32; set_list_content: f32; set_list_view: f32;
   set_query: [64] u8; set_query_n: int;

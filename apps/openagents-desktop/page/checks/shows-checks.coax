@@ -92,3 +92,47 @@
   s[0].set_open = true;
   #assert cp_test_draw(s, f[..]) && coder_page_live_scene(s, r[..], pb[..]) == 0;
 }
+
+#test "over rects: what the page draws over everything, merged where it touches, for a native view to leave uncovered" {
+  l: [16] Prim; n := 0; c := rgba(1, 1, 1, 1);
+  n = uiskin_shadow(l[..], n, 0, 0, 100, 50, 8, cp_skin().shadows.menu);   // a shadow is not the box
+  n = prim_box(l[..], n, 10, 10, 100, 50, 8, 1, c, c);
+  n = prim_text(l[..], n, 20, 20, 400, 16, 0, c, "x");                    // text inside it is not counted
+  n = prim_box(l[..], n, 100, 40, 20, 40, 0, 0, c, c);                      // touches the first: one rect
+  n = prim_alpha(l[..], n, 0); n = prim_box(l[..], n, 300, 300, 10, 10, 0, 0, c, c); n = prim_unalpha(l[..], n);   // unseen
+  n = prim_image(l[..], n, 1, 200, 0, 10, 10);
+  n = prim_backdrop(l[..], n, 400, 0, 20, 20, 4, 8);
+  n = prim_box(l[..], n, 500, 0, 0, 10, 0, 0, c, c);                        // empty
+  out: [16] f32;
+  #assert cp_over_rects(l[0..<n], 2, out[..]) == 3;
+  #assert out[0] == 20 && out[1] == 20 && out[2] == 220 && out[3] == 140;
+  #assert out[4] == 400 && out[5] == 0 && out[6] == 20 && out[7] == 20 && out[8] == 800 && out[10] == 40;
+  // past what out holds, the rest join its last
+  few: [8] f32;
+  #assert cp_over_rects(l[0..<n], 1, few[..]) == 2 && few[4] == 200 && few[6] == 220 && few[7] == 20;
+  none: [2] f32;
+  #assert cp_over_rects(l[0..<n], 1, none[..]) == 0;
+}
+
+#test "over rects: a menu over a live 3D card is handed to the host; none while nothing is over it" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_test_composing(s);
+  #assert coder_page_set_text(s, "show me the run live") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ple-run show\",\"exit\":0,\"timed_out\":false,\"output\":\"OA-SHOW: /r/after.jpg\\nOA-SHOW-OPEN: /r/run.ple-scene.json\\nOA-SHOW-LIVE: on\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  out: [262144] f32; r: [8] f32; pb: [256] u8; o: [32] f32;
+  for i: 0..<3 { _v := coder_page_frame(s, out[..], 1200, 800, 1, 0); }
+  #assert coder_page_live_scene(s, r[..], pb[..]) > 0;
+  k := coder_page_over_rects(s, o[..]);
+  for i: 0..<k { #assert !(o[i * 4] < r[0] + r[2] && o[i * 4] + o[i * 4 + 2] > r[0] && o[i * 4 + 1] < r[1] + r[3] && o[i * 4 + 1] + o[i * 4 + 3] > r[1]); }
+  coder_page_menu_begin(s);
+  #assert coder_page_menu_item(s, "Copy", 0, false, false, false) && coder_page_menu_item(s, "Open", 0, false, false, false);
+  coder_page_menu_show(s, r[0] + 20, r[1] + 20);
+  for i: 0..<20 { _v := coder_page_frame(s, out[..], 1200, 800, 1, 0.05); }
+  k = coder_page_over_rects(s, o[..]);
+  hit := false;
+  for i: 0..<k { if o[i * 4] < r[0] + r[2] && o[i * 4] + o[i * 4 + 2] > r[0] && o[i * 4 + 1] < r[1] + r[3] && o[i * 4 + 1] + o[i * 4 + 3] > r[1] && o[i * 4 + 1] >= r[1] { hit = true; } }
+  #assert k > 0 && hit;
+  small: [4] f32;
+  #assert coder_page_over_rects(s, small[..]) == 1 && coder_page_over_rects(s[0..<0], o[..]) == 0;
+}
