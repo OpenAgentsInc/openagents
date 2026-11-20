@@ -961,7 +961,7 @@ MoE, 3-pass middle-layer loop, native NVFP4 weights with MXFP8 last four layers,
 
 | Chapter | What it proves |
 | --- | --- |
-| [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) — design draft | Authenticate and decode native NVFP4 and MXFP8 checkpoint tensors with exact CPU reference dequantization. |
+| [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) | Authenticate and decode native NVFP4 and MXFP8 checkpoint tensors with exact CPU reference dequantization. |
 | [267. A looped MoE transformer](ch267-a-looped-moe-transformer.md) — design draft | Execute the 3-pass middle-layer recurrence (and variable loop counts) with per-loop KV-cache/state layout against a tiny hand-checked reference. |
 | [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) — design draft | Load the original ~20GB checkpoint, apply its tokenizer/chat template, and verify logits and greedy decode against an independent reference. |
 | [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) — design draft | Coax-generated Metal kernels for NVFP4/MXFP8 matvec/matmul, looped MoE prefill/decode, and residency planning for >=32GB Macs. |

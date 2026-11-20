@@ -1,0 +1,29 @@
+#import "Basic";
+#load "../lib/inkling-weights.coax";
+
+// book:begin example
+main :: () {
+    packed:=[16]u8.[0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe, 0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe];
+    nv_scales:=[2]u8.[0x38,0x40];
+    nv_out:[32]f32;
+    nv:=nvfp4_decode(1,32,packed[..],nv_scales[..],0x3f000000,nv_out[..],false);
+    #assert nv.status==InklingWeightStatus.ok;
+    print("NVFP4: 16 packed bytes + 2 E4M3 scales (global 0.5) -> % f32 values\n",nv.written);
+    print("NVFP4 block 0: %, %, %, %\n",nv_out[0],nv_out[1],nv_out[7],nv_out[15]);
+    print("NVFP4 block 1: %, %, %, %\n",nv_out[16],nv_out[17],nv_out[23],nv_out[31]);
+
+    mx_data:[32]u8;
+    for i:0..<32 {mx_data[i]=0x38;}
+    mx_data[0]=0x00; mx_data[1]=0x01; mx_data[2]=0x3c; mx_data[3]=0xfe;
+    mx_scales:=[1]u8.[128];
+    mx_out:[32]f32;
+    mx:=mxfp8_decode(1,32,mx_data[..],mx_scales[..],mx_out[..],false);
+    #assert mx.status==InklingWeightStatus.ok;
+    print("MXFP8: 32 E4M3 bytes + 1 UE8M0 scale (2^1) -> % f32 values\n",mx.written);
+    print("MXFP8 values: %, %, %, %\n",mx_out[0],mx_out[1],mx_out[2],mx_out[3]);
+
+    #assert inkling_layer_format(0,24)==InklingWeightFormat.nvfp4;
+    #assert inkling_layer_format(20,24)==InklingWeightFormat.mxfp8;
+    print("layer format check: layer 0 NVFP4, layer 20 MXFP8\n");
+}
+// book:end example

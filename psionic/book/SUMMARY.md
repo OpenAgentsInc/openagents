@@ -331,7 +331,7 @@
 
 **XXVII. Looped transformers: Inkling 2 Mini**
 
-- [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) — design draft
+- [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md)
 - [267. A looped MoE transformer](ch267-a-looped-moe-transformer.md) — design draft
 - [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) — design draft
 - [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) — design draft

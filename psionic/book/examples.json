@@ -3691,6 +3691,16 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "psionic/examples/original-nvfp4-mxfp8.coax",
+      "chapter": "psionic/book/ch266-original-nvfp4-and-mxfp8-weights.md",
+      "stdout": "psionic/fixtures/original-nvfp4-mxfp8.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

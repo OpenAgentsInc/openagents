@@ -1,0 +1,187 @@
+// Chapter 266: Original NVFP4 and MXFP8 weights for Inkling 2 Mini.
+// NVFP4: 16-element E2M1 micro-blocks with per-block FP8 E4M3 scale and per-tensor FP32 global scale.
+// MXFP8: 32-element FP8 E4M3 micro-blocks with shared UE8M0 power-of-two block scale (last four layers).
+#authority;
+
+NVFP4_BLOCK :: 16;
+NVFP4_PACKED_BYTES :: 8;
+NVFP4_BLOCKS_MAX :: 65536;
+
+MXFP8_BLOCK :: 32;
+MXFP8_BLOCKS_MAX :: 32768;
+MXFP8_SCALE_MAX :: 246;
+
+INKLING_MXFP8_TAIL_LAYERS :: 4;
+
+// book:begin types
+InklingWeightStatus :: enum u8 {ok;shape;limit;storage;capacity;alias;scale;code;layer;}
+InklingWeightFormat :: enum u8 {nvfp4;mxfp8;bf16;f32;}
+InklingWeightPlan :: struct {status:InklingWeightStatus;blocks:int;data_bytes:int;scale_bytes:int;values:int;}
+InklingWeightResult :: struct {status:InklingWeightStatus;written:int;}
+// book:end types
+
+// Positive E2M1 magnitudes, exact in binary64.
+NVFP4_E2M1 :: [8]f64.[0,0.5,1,1.5,2,3,4,6];
+
+#test "NVFP4 hand table and block/global scale arithmetic" {
+    // Unit global scale (1.0), unit block scale (0x38 = 1.0 in E4M3).
+    #assert nvfp4_e4m3_ok(0x38) && nvfp4_e4m3_value(0x38)==1;
+    #assert nvfp4_e4m3_ok(0x00) && nvfp4_e4m3_value(0x00)==0;
+    #assert nvfp4_e4m3_ok(0x01) && nvfp4_e4m3_value(0x01)==0.001953125;
+    #assert nvfp4_e4m3_ok(0x40) && nvfp4_e4m3_value(0x40)==2;
+    #assert nvfp4_e4m3_ok(0x7e) && nvfp4_e4m3_value(0x7e)==448;
+    #assert !nvfp4_e4m3_ok(0x7f) && !nvfp4_e4m3_ok(0x80) && !nvfp4_e4m3_ok(0xff);
+    // Negative zero preserved from E2M1 code 8.
+    #assert nvfp4_bits(0,0x38,1.0)==0x00000000;
+    #assert nvfp4_bits(8,0x38,1.0)==0x80000000;
+    // 0.5 * 2.0 * 0.25 = 0.25; -6.0 * 1.5 * 0.5 = -4.5.
+    #assert f32_from_bits(nvfp4_bits(1,0x40,0.25))==0.25f32;
+    #assert f32_from_bits(nvfp4_bits(15,0x3c,0.5))==-4.5f32;
+}
+
+#test "NVFP4 16-element micro-blocks decode low nibble then high nibble" {
+    packed:=[16]u8.[0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe, 0x10,0x32,0x54,0x76,0x98,0xba,0xdc,0xfe];
+    scales:=[2]u8.[0x38,0x40]; // 1.0, 2.0
+    out:[33]f32;for i:0..<33 {out[i]=-7;}
+    r:=nvfp4_decode(1,32,packed[..],scales[..],0x3f000000,out[..],false); // global scale 0.5
+    #assert r.status==InklingWeightStatus.ok && r.written==32 && out[32]==-7;
+    // First block: E2M1 * 1.0 * 0.5
+    #assert f32_bits(out[0])==0x00000000 && out[1]==0.25f32 && out[7]==3.0f32;
+    #assert f32_bits(out[8])==0x80000000 && out[9]==-0.25f32 && out[15]==-3.0f32;
+    // Second block: E2M1 * 2.0 * 0.5 = E2M1
+    #assert out[16]==0.0f32 && out[17]==0.5f32 && out[23]==6.0f32 && out[31]==-6.0f32;
+}
+
+#test "MXFP8 32-element micro-blocks decode E4M3 with shared UE8M0 scale" {
+    data:[64]u8;
+    for i:0..<64 {data[i]=0x38;} // 1.0
+    data[0]=0x00; data[1]=0x80; data[2]=0x01; data[3]=0x3c; data[4]=0xfe;
+    data[32]=0x38; data[33]=0xc0; // 1.0, -2.0
+    scales:=[2]u8.[127,128]; // 2^0 = 1.0, 2^1 = 2.0
+    out:[65]f32;for i:0..<65 {out[i]=-7;}
+    r:=mxfp8_decode(1,64,data[..],scales[..],out[..],false);
+    #assert r.status==InklingWeightStatus.ok && r.written==64 && out[64]==-7;
+    #assert f32_bits(out[0])==0x00000000 && f32_bits(out[1])==0x80000000;
+    #assert out[2]==0.001953125f32 && out[3]==1.5f32 && out[4]==-448.0f32;
+    #assert out[32]==2.0f32 && out[33]==-4.0f32;
+}
+
+#test "refusals preserve destination for both NVFP4 and MXFP8" {
+    packed:[8]u8;nv_scales:=[1]u8.[0x38];out:[33]f32;for i:0..<33 {out[i]=-7;}
+    #assert nvfp4_decode(1,15,packed[..],nv_scales[..],0x3f800000,out[..],false).status==InklingWeightStatus.shape;
+    #assert nvfp4_decode(1,16,packed[0..<7],nv_scales[..],0x3f800000,out[..],false).status==InklingWeightStatus.storage;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x3f800000,out[0..<15],false).status==InklingWeightStatus.capacity;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x3f800000,out[..],true).status==InklingWeightStatus.alias;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x00000000,out[..],false).status==InklingWeightStatus.scale;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x7f800000,out[..],false).status==InklingWeightStatus.scale;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0xbf800000,out[..],false).status==InklingWeightStatus.scale;
+    nv_scales[0]=0x7f;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x3f800000,out[..],false).status==InklingWeightStatus.scale;
+    nv_scales[0]=0x80;
+    #assert nvfp4_decode(1,16,packed[..],nv_scales[..],0x3f800000,out[..],false).status==InklingWeightStatus.scale;
+
+    mx_data:[32]u8;mx_scales:=[1]u8.[127];
+    #assert mxfp8_decode(1,31,mx_data[..],mx_scales[..],out[..],false).status==InklingWeightStatus.shape;
+    #assert mxfp8_decode(1,32,mx_data[0..<31],mx_scales[..],out[..],false).status==InklingWeightStatus.storage;
+    #assert mxfp8_decode(1,32,mx_data[..],mx_scales[..],out[0..<31],false).status==InklingWeightStatus.capacity;
+    #assert mxfp8_decode(1,32,mx_data[..],mx_scales[..],out[..],true).status==InklingWeightStatus.alias;
+    mx_scales[0]=247;
+    #assert mxfp8_decode(1,32,mx_data[..],mx_scales[..],out[..],false).status==InklingWeightStatus.scale;
+    mx_scales[0]=127;mx_data[31]=0x7f;
+    #assert mxfp8_decode(1,32,mx_data[..],mx_scales[..],out[..],false).status==InklingWeightStatus.code;
+    mx_data[31]=0xff;
+    #assert mxfp8_decode(1,32,mx_data[..],mx_scales[..],out[..],false).status==InklingWeightStatus.code;
+    for i:0..<33 {#assert out[i]==-7;}
+}
+
+#test "Inkling 2 Mini layer format puts last four layers in MXFP8 and earlier layers in NVFP4" {
+    for l:0..<20 {#assert inkling_layer_format(l,24)==InklingWeightFormat.nvfp4;}
+    for l:20..<24 {#assert inkling_layer_format(l,24)==InklingWeightFormat.mxfp8;}
+    #assert inkling_layer_valid(0,24) && inkling_layer_valid(23,24);
+    #assert !inkling_layer_valid(-1,24) && !inkling_layer_valid(24,24) && !inkling_layer_valid(0,3);
+}
+
+// book:begin nvfp4
+nvfp4_plan :: (rows:int,columns:int)->InklingWeightPlan #export_c #effects(all) {
+    if rows<1 || columns<NVFP4_BLOCK || columns%NVFP4_BLOCK!=0 {return InklingWeightPlan.{status=InklingWeightStatus.shape};}
+    per_row:=columns/NVFP4_BLOCK;
+    if rows>NVFP4_BLOCKS_MAX/per_row {return InklingWeightPlan.{status=InklingWeightStatus.limit};}
+    blocks:=rows*per_row;
+    return InklingWeightPlan.{blocks=blocks,data_bytes=blocks*NVFP4_PACKED_BYTES,scale_bytes=blocks,values=blocks*NVFP4_BLOCK};
+}
+
+nvfp4_e4m3_ok :: (code:u8)->bool #effects(all) {return code<0x7f;}
+
+nvfp4_e4m3_value :: (code:u8)->f64 #effects(all) {
+    exponent:=cast(u64)(code>>3)&15;
+    fraction:=f64(code&7);
+    if exponent==0 {return fraction*f64_from_bits(1014<<52);}
+    return (8+fraction)*f64_from_bits((exponent+1013)<<52);
+}
+
+nvfp4_global_scale_ok :: (bits:u32)->bool #effects(all) {return bits!=0 && bits<0x7f800000;}
+
+nvfp4_bits :: (code:u8,block_scale:u8,global_scale:f64)->u32 #effects(all) {
+    magnitude:=f32(NVFP4_E2M1[cast(int)(code&7)]*nvfp4_e4m3_value(block_scale)*global_scale);
+    return ((cast(u32)code&8)<<28)|f32_bits(magnitude);
+}
+
+nvfp4_decode :: (rows:int,columns:int,packed:[]u8,block_scales:[]u8,global_scale_bits:u32,out:[]f32,overlap:bool)->InklingWeightResult #export_c #effects(all) {
+    p:=nvfp4_plan(rows,columns);if p.status!=InklingWeightStatus.ok {return InklingWeightResult.{status=p.status};}
+    if packed.count!=p.data_bytes || block_scales.count!=p.scale_bytes {return InklingWeightResult.{status=InklingWeightStatus.storage};}
+    if out.count<p.values {return InklingWeightResult.{status=InklingWeightStatus.capacity};}
+    if overlap {return InklingWeightResult.{status=InklingWeightStatus.alias};}
+    if !nvfp4_global_scale_ok(global_scale_bits) {return InklingWeightResult.{status=InklingWeightStatus.scale};}
+    for s:block_scales {if !nvfp4_e4m3_ok(s) {return InklingWeightResult.{status=InklingWeightStatus.scale};}}
+    gs:=f64(f32_from_bits(global_scale_bits));
+    for i:0..<packed.count {
+        byte:=packed[i];
+        bs:=block_scales[i/NVFP4_PACKED_BYTES];
+        out[2*i]=f32_from_bits(nvfp4_bits(byte&15,bs,gs));
+        out[2*i+1]=f32_from_bits(nvfp4_bits(byte>>4,bs,gs));
+    }
+    return InklingWeightResult.{written=p.values};
+}
+// book:end nvfp4
+
+// book:begin mxfp8
+mxfp8_plan :: (rows:int,columns:int)->InklingWeightPlan #export_c #effects(all) {
+    if rows<1 || columns<MXFP8_BLOCK || columns%MXFP8_BLOCK!=0 {return InklingWeightPlan.{status=InklingWeightStatus.shape};}
+    per_row:=columns/MXFP8_BLOCK;
+    if rows>MXFP8_BLOCKS_MAX/per_row {return InklingWeightPlan.{status=InklingWeightStatus.limit};}
+    blocks:=rows*per_row;
+    return InklingWeightPlan.{blocks=blocks,data_bytes=blocks*MXFP8_BLOCK,scale_bytes=blocks,values=blocks*MXFP8_BLOCK};
+}
+
+mxfp8_nan :: (code:u8)->bool #effects(all) {return (code&127)==127;}
+
+mxfp8_bits :: (code:u8,scale:u8)->u32 #effects(all) {
+    power:=f64_from_bits((cast(u64)scale+896)<<52);
+    magnitude:=f32(nvfp4_e4m3_value(code&127)*power);
+    return ((cast(u32)code&128)<<24)|f32_bits(magnitude);
+}
+
+mxfp8_decode :: (rows:int,columns:int,data:[]u8,scales:[]u8,out:[]f32,overlap:bool)->InklingWeightResult #export_c #effects(all) {
+    p:=mxfp8_plan(rows,columns);if p.status!=InklingWeightStatus.ok {return InklingWeightResult.{status=p.status};}
+    if data.count!=p.data_bytes || scales.count!=p.scale_bytes {return InklingWeightResult.{status=InklingWeightStatus.storage};}
+    if out.count<p.values {return InklingWeightResult.{status=InklingWeightStatus.capacity};}
+    if overlap {return InklingWeightResult.{status=InklingWeightStatus.alias};}
+    for s:scales {if s>MXFP8_SCALE_MAX {return InklingWeightResult.{status=InklingWeightStatus.scale};}}
+    for c:data {if mxfp8_nan(c) {return InklingWeightResult.{status=InklingWeightStatus.code};}}
+    for i:0..<data.count {
+        out[i]=f32_from_bits(mxfp8_bits(data[i],scales[i/MXFP8_BLOCK]));
+    }
+    return InklingWeightResult.{written=p.values};
+}
+// book:end mxfp8
+
+// book:begin layers
+inkling_layer_valid :: (layer:int,total_layers:int)->bool #export_c #effects(all) {
+    return total_layers>=INKLING_MXFP8_TAIL_LAYERS && layer>=0 && layer<total_layers;
+}
+
+inkling_layer_format :: (layer:int,total_layers:int)->InklingWeightFormat #export_c #effects(all) {
+    if layer>=total_layers-INKLING_MXFP8_TAIL_LAYERS {return InklingWeightFormat.mxfp8;}
+    return InklingWeightFormat.nvfp4;
+}
+// book:end layers
