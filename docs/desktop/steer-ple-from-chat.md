@@ -60,6 +60,10 @@ transcript.
 ```sh
 ple-run feeders [--scene FILE] [--name NAME] [--out DIR]
 ple-run show FILE.ple-scene.json [--view iso|plan|overhead|under_floor] [--out PICTURE]
+ple-run kit start [--task TASK] [--kit DIR] [--harness DIR] [--env-file FILE] [--name NAME]
+ple-run status NAME|DIR
+ple-run stop NAME|DIR
+ple-run ifc FILE.ifc [--out SCENE] [--task TASK]
 ```
 
 - `feeders` is a routing run on a data-hall scene. By default it uses the bundled
@@ -72,8 +76,36 @@ ple-run show FILE.ple-scene.json [--view iso|plan|overhead|under_floor] [--out P
   `after.jpg` are pictures of the scene before and after (added feeders in green). Runs go to
   `~/.openagents/ple/runs/feeders-<ms>/`, which the Gym lists. On the sample it routes 4 of 4
   feeders in 8 steps, in about 0.6 s.
-- `show` pictures any `ple-scene.v1` file. Use it for a converted `model.ifc` or a real
-  ple-kit run.
+- `show` pictures any `ple-scene.v1` file.
+- `kit start` starts a real ple-kit eval and returns at once; the run outlives a chat
+  command's 30 s. It runs `uv run python eval/run.py HARNESS --tasks TASK [--env-file FILE]
+  --out RUN/eval` in the kit, in its own session (`proc_detach`), its output in `RUN/run.log`
+  and its pid in `RUN/run.pid`. `RUN/kit-run.json` (`ple-kit-run.v1`) records the task, kit,
+  harness, env file, out folder, log, pid and start time. `RUN` is
+  `~/.openagents/ple/runs/NAME` (`kit-TASK-<epoch ms>` unless `--name`), where the Gym lists
+  it. The kit is `--kit`, `$PLE_KIT` or `~/work/ple-kit`; the harness `--harness`,
+  `$PLE_HARNESS`, or the first of `../ple` and `../my-harness` beside the kit with a
+  `submission.yaml`; the env file `--env-file`, else the kit's `local.env` when it has one; uv
+  `$PLE_UV`, else on `PATH`, else `~/.local/bin/uv`. The task is `data-hall-mep-routing`
+  unless `--task`. A real run takes hours and spends what the kit spends (the model and the
+  judge through the model proxy), so the chat note says to start one only when asked.
+- `status` says whether the run is running (its pid is alive), finished (the task's score and
+  status from `RUN/eval/results.json`) or ended without results, and prints the log's last
+  lines. Once an `.ifc` is anywhere in `RUN/eval` (12 folders deep; the newest), it is read
+  into `RUN/model.ple-scene.json`, pictured as `RUN/model.iso.jpg` and shown inline with
+  `OA-SHOW` lines, so pressing it opens the model in the 3D pane.
+- `stop` sends the run a TERM (Harbor cancels its trials).
+- `ifc` reads any IFC model into a scene and its picture.
+
+The IFC reader is Coax (`metaverse-engine/import/ple-ifc.coax`), since a Mac rarely has
+ifcopenshell. It reads the STEP text, follows each product's placement chain, and takes its
+'Body' (else 'Box', else another) representation: extrusions of rectangles, circles and closed
+profiles, bounding boxes, triangulated and polygonal face sets, booleans (the first operand)
+and mapped items. One solid keeps its orientation when the scene can say it (a box turned about
+z, an upright cylinder, a cylinder lying along a horizontal direction, `axis` `"x"` and
+`rot_z`); anything else, and a product of several solids, is the box around it. The layer comes
+from the class, or a proxy's name. A run's score is not in the model, so the converted scene
+has score 0 and only the schema gate.
 - **It is honest about what it is.** The router is local and deterministic, with no model.
   It keeps the scene's own `run.score` and writes `run.router` saying that its numbers are
   not a PLE grade. The clash and connectivity gates say what the feeders changed.
@@ -88,8 +120,8 @@ writes a scene back to JSON (`ple_scene_write`), and checks confirm it reads bac
 ### 2. The chat is told
 
 `dc_tools_note` (Coax) words a short note that goes ahead of every message, next to the
-skills note. It says where `ple-run` is, what its two verbs do, and how any command can show a
-picture inline. The Swift host only finds the program (`coderToolsNote()` in `Worker.swift`).
+skills note. It says where `ple-run` is, what its verbs do (a real `kit start` only when asked),
+and how any command can show a picture inline. The Swift host only finds the program (`coderToolsNote()` in `Worker.swift`).
 The note is sent only while Experimental features are on, as the Gym is.
 
 ### 3. Pictures inline in the transcript
@@ -123,9 +155,6 @@ empty frame (`cp_image_request` hands a picture only to a frame that composes).
 - **A live view inline.** The 3D viewport embedded in the transcript, or frames streaming
   while a run is going, instead of pictures at its end. Today, live means pressing the picture
   (3D pane) or the Gym's Live mode.
-- **Real ple-kit runs from a chat.** Starting `eval/run.py` in the background (it outlives a
-  30 s command), reporting its progress, then converting `output/model.ifc` and showing it.
-  `ple-run show` already pictures any scene once it exists.
 - **A Gym route for programs.** Selecting a run, a layer or a camera in the Workbench from a
   chat or from `foreman-ctl`.
 
@@ -154,5 +183,9 @@ coax/bin/coax test metaverse-engine/import/ple-scene-out.coax --library   # writ
 coax/bin/coax test apps/openagents-desktop/ple-run.coax                    # the feeder run: clash, next lane, no lane, no PDU
 coax/bin/coax test apps/openagents-desktop/page/checks/shows-checks.coax --library   # markers, cards over the reply, press opens the scene
 coax/bin/coax test coax/lib/agent/desktop/worker.coax                      # the tools note
+coax/bin/coax test metaverse-engine/import/ple-ifc.coax --library          # the IFC reader: scanner, numbers, shapes, products
+coax/web/tool.sh apps/openagents-desktop/ple-run.coax ifc MODEL.ifc --out /tmp/model.ple-scene.json
+# a stand-in kit (no real eval): PLE_UV a script running "python3 eval/run.py ...", a stub run.py writing results.json and a model.ifc
+HOME=/tmp/h PLE_UV=/tmp/stub/uv coax/web/tool.sh apps/openagents-desktop/ple-run.coax kit start --kit /tmp/stub --harness /tmp/stub/harness
 coax/web/tool.sh apps/openagents-desktop/ple-run.coax feeders --out /tmp/ple-try   # a real run on the sample
 ```

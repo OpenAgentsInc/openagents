@@ -59,3 +59,4 @@ pipeline metaverse-engine/import/unreal/ metaverse-engine/tools/unreal-level-imp
 adopt metaverse-engine/script/ #13467  # stage 2 loads the host from the page's script module and the frame codec from Splice; stage 4 from the room
 adopt metaverse-engine/import/ple-scene.coax #13792  # Stage 1 3D PLE scene loader; Stage 2 adopts it in the OpenAgents Desktop Gym workbench
 adopt metaverse-engine/import/ple-scene-out.coax #13812  # a scene back to JSON and its CPU picture; apps/openagents-desktop/ple-run.coax (a shipped tool) uses it today, and #13812 brings it into the desktop page for the live inline view
+pipeline metaverse-engine/import/ple-ifc.coax apps/openagents-desktop/ple-run.coax  # IFC (STEP) models to ple-scene.v1: the shipped ple-run reads a real ple-kit run's model.ifc with it (#13812)

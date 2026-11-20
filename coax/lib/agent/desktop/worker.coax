@@ -56,7 +56,13 @@ dc_tools_note :: (ple_run: string, out: [] u8) -> string {
   n = dc_cat(out, n, ple_run);
   n = dc_cat(out, n, " feeders` starts a PLE routing run on the bundled data-hall sample (or `--scene FILE`) and writes its snapshots under ~/.openagents/ple/runs/, where the Gym lists them; `");
   n = dc_cat(out, n, ple_run);
-  n = dc_cat(out, n, " show FILE.ple-scene.json [--view iso|plan|overhead|under_floor]` pictures any PLE scene. Run it when asked to run, show or picture a PLE run or scene. Its OA-SHOW lines put the pictures inline in this chat, and a press on one opens the scene in the 3D pane, so don't repeat the paths: say what the run did. Any command can show a picture inline the same way: print `OA-SHOW: /absolute/picture.png`, then optionally `OA-SHOW-CAPTION: words` and `OA-SHOW-OPEN: /absolute/file`.\n\n");
+  n = dc_cat(out, n, " show FILE.ple-scene.json [--view iso|plan|overhead|under_floor]` pictures any PLE scene; `");
+  n = dc_cat(out, n, ple_run);
+  n = dc_cat(out, n, " kit start [--task TASK]` starts a real ple-kit eval in the background (Docker and a model; hours, and it spends what the eval spends, so only when a real run is asked for) and prints its run name; `");
+  n = dc_cat(out, n, ple_run);
+  n = dc_cat(out, n, " status NAME` says whether it runs, its score once done and its log's end, and shows its IFC model once it has one; `");
+  n = dc_cat(out, n, ple_run);
+  n = dc_cat(out, n, " ifc FILE.ifc` pictures any IFC model. Run it when asked to run, show or picture a PLE run or scene. Its OA-SHOW lines put the pictures inline in this chat, and a press on one opens the scene in the 3D pane, so don't repeat the paths: say what the run did. Any command can show a picture inline the same way: print `OA-SHOW: /absolute/picture.png`, then optionally `OA-SHOW-CAPTION: words` and `OA-SHOW-OPEN: /absolute/file`.\n\n");
   return dc_fits(out, n);
 }
 dc_path_has :: (path: string, dir: string) -> bool { return dc_list_has(path, dir, ':'); }
@@ -251,6 +257,13 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
   shows := false; want := "; `/A/Resources/ple-run show FILE";
   for k: 0..<note.count - want.count { if cast(string) note[k..<k + want.count] == want { shows = true; } }
   #assert shows;
+  // and the real runs': kit start, status, ifc
+  wants := [3] string.["; `/A/Resources/ple-run kit start", "; `/A/Resources/ple-run status NAME", "; `/A/Resources/ple-run ifc FILE.ifc"];
+  for w: 0..<3 {
+    has := false;
+    for k: 0..<note.count - wants[w].count { if cast(string) note[k..<k + wants[w].count] == wants[w] { has = true; } }
+    #assert has;
+  }
   #assert dc_tools_note("", b[..]) == "";
   small: [16] u8;
   #assert dc_tools_note("/A/Resources/ple-run", small[..]) == "";
