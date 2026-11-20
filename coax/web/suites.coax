@@ -6,6 +6,7 @@
 //   coax/web/tool.sh suites --since REF --deps # the same, asking coax deps for every suite
 //   coax/web/tool.sh suites --since REF --until REV  # the suites whose sources changed from REF to REV, not to HEAD (#13610)
 //   coax/web/tool.sh suites --since REF --affected [--faces]  # every .coax file whose #load closure holds a changed file (exit 3: can't tell; --faces: the caller places changed .c and .h files itself)
+//   coax/web/tool.sh suites --since REF --check-affected  # coax check of every root (a file nothing #loads) above a changed .coax file, nearest first: the pre-push compile check (exit 1: one fails)
 //   coax/web/tool.sh suites --list             # the suites and their budgets (and "#authority" when one loads such a file); nothing runs
 //   coax/web/tool.sh suites --list --authority-units  # and after "#authority", the #authority files whose mutants the nightly
 //                                              # sweep runs under that suite: each file under the suite with the smallest
@@ -28,7 +29,7 @@
 //                                              # a --root-only suite): the mutation report's recheck of one file (#13610)
 //   coax test coax/web/suites.coax --library   # its own checks
 //
-// The convention. A suite is a .coax file under apps/openagents-web/,
+// The convention. A suite is a .coax file under apps/openagents-web/, apps/openagents-desktop/,
 // metaverse/, metaverse-engine/, everglade/, rules/, coax/web/ or coax/lib/ with a #test or #forall in it (or a --native-link line) that no other file #loads, or one
 // whose header (its first 80 lines) names itself in a `coax test` line. That
 // line is how it runs: `coax test apps/openagents-web/everglade.coax --steps
@@ -316,16 +317,20 @@ su_loads :: (text: string, path: string, a: [] SuArena, loads: [] string, tests:
   return n;
 }
 
-// Under apps/openagents-web/, metaverse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
+// Under apps/openagents-web/, apps/openagents-desktop/, metaverse/, metaverse-engine/ (the engine core), everglade/ (the game), rules/ (the SRD rules: its
 // check files ran as suites under metaverse-engine/rules/srd/ and stopped when the folder moved, #13270), coax/web/ or coax/lib/,
 // and not in a hidden folder (.dev scratch).
 #test "Coax Native installed policy and starter are checked suites" {
   #assert su_in("coax/native/updates-policy.coax") && su_in("coax/native/starter/app.coax");
   #assert !su_in("coax/native/.scratch/app.coax");
   #assert su_in("pay/wallet-balance-policy.coax") && su_in("apps/openagents-desktop/extras/app.coax");
+  // the desktop page suite (641 checks) ran only from evals/coder-desktop/run.sh, so no suite run saw
+  // 76ded7e0e0 break it; the whole app folder is a suite folder, extras/ with it
+  #assert su_in("apps/openagents-desktop/page.coax") && su_in("apps/openagents-desktop/page/checks/simpane-checks.coax");
+  #assert !su_in("apps/openagents-cli/main.coax") && !su_in("evals/coder-desktop/tier1/replay_test.coax");
 }
 su_in :: (path: string) -> bool {
-  roots := [10] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/", "pay/", "apps/openagents-desktop/extras/"];
+  roots := [10] string.["apps/openagents-web/", "metaverse/", "metaverse-engine/", "everglade/", "rules/", "coax/web/", "coax/lib/", "coax/native/", "pay/", "apps/openagents-desktop/"];
   for r: roots { if su_starts(path, 0, r) { return !su_contains(path, "/."); } }
   return false;
 }
@@ -472,6 +477,55 @@ su_check_units :: (start: int, first: [] int, to: [] int, test: [] bool, mark: [
   #assert m2[0] == 0 && m2[1] == 0 && m2[2] == 0;
   su_check_units(3, first2[..], to2[..], test2[..], m2[..], t2[..]);
   #assert m2[0] == 0;
+}
+
+// The files --check-affected compiles: each tracked file whose #load closure holds a changed file
+// (hit) and that no other file loads (a root: a suite, a program, a tool, wherever it lives), the
+// nearest loaders of the change first, so a short time limit still compiles the closest ones. A
+// compile error in a loaded file fails every root above it, and a changed signature fails the
+// loaders that use it; only roots compile alone (a part uses its loader's names). The loads are
+// load_by[l] loading load_to[l] (-1: not in the tree); dist and loaded are scratch, nf long; out
+// takes the roots' file numbers. 76ded7e0e0 broke page/todos.coax, which only
+// apps/openagents-desktop/page.coax loads, and no check before the push compiled it.
+su_affected_roots :: (nf: int, load_by: [] int, load_to: [] int, hit: [] bool, dist: [] int, loaded: [] bool, out: [] int) -> int {
+  for f: 0..<nf { dist[f] = ifx hit[f] then 0 else -1; loaded[f] = false; }
+  for l: 0..<load_by.count { to := load_to[l]; if to >= 0 && to != load_by[l] { loaded[to] = true; } }
+  level := 0; grew := true;
+  while grew {
+    grew = false;
+    for l: 0..<load_by.count {
+      to := load_to[l]; by := load_by[l];
+      if to >= 0 && dist[to] == level && dist[by] < 0 { dist[by] = level + 1; grew = true; }
+    }
+    level += 1;
+  }
+  n := 0;
+  for d: 0..<level { for f: 0..<nf { if dist[f] == d && !loaded[f] && n < out.count { out[n] = f; n += 1; } } }
+  return n;
+}
+#test "the roots above a change, nearest first; a loaded file is never one" {
+  // 0 loads 1, 1 loads 2 (changed), 3 loads 2 and 4, 5 loads 0; 6 is apart and changed; 7 loads one off the tree
+  by := [6] int.[0, 1, 3, 3, 5, 7]; to := [6] int.[1, 2, 2, 4, 0, -1];
+  hit := [8] bool.[false, false, true, false, false, false, true, false];
+  dist: [8] int; loaded: [8] bool; out: [8] int;
+  n := su_affected_roots(8, by[..], to[..], hit[..], dist[..], loaded[..], out[..]);
+  #assert n == 3 && out[0] == 6 && out[1] == 3 && out[2] == 5;
+  #assert dist[2] == 0 && dist[1] == 1 && dist[0] == 2 && dist[5] == 3 && dist[4] == -1 && dist[7] == -1;
+  none := [8] bool.[false, false, false, false, false, false, false, false];
+  #assert su_affected_roots(8, by[..], to[..], none[..], dist[..], loaded[..], out[..]) == 0;
+  // a change to a root alone compiles it; out keeps no more than it holds
+  only5 := [8] bool.[false, false, false, false, false, true, false, false];
+  #assert su_affected_roots(8, by[..], to[..], only5[..], dist[..], loaded[..], out[..]) == 1 && out[0] == 5;
+  one: [1] int;
+  #assert su_affected_roots(8, by[..], to[..], hit[..], dist[..], loaded[..], one[..]) == 1 && one[0] == 6;
+  // a changed root that loads another changed file is still distance 0, ahead of a nearer-numbered root
+  // at distance 1: 0 loads 2, 1 (changed) loads 2 (changed)
+  by2 := [2] int.[0, 1]; to2 := [2] int.[2, 2];
+  hit2 := [3] bool.[false, true, true];
+  #assert su_affected_roots(3, by2[..], to2[..], hit2[..], dist[..], loaded[..], out[..]) == 2 && out[0] == 1 && out[1] == 0;
+  // the scratch from an earlier call is cleared: with no loads every changed file is a root
+  nob: [1] int; all3 := [3] bool.[true, true, true];
+  #assert su_affected_roots(3, nob[0..<0], nob[0..<0], all3[..], dist[..], loaded[..], out[..]) == 3 && out[2] == 2;
 }
 
 // A mutate run's survivor line ("../x.coax:2:12: mutant survived: '+' became '-'") as its file's repo

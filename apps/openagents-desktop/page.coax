@@ -11,7 +11,7 @@
 // writes coder_page_task to the worker), focus (the host's view takes the
 // keyboard: the page draws and edits its fields, page/editor.coax), stop, a new
 // chat, and a code block's Copy (coder_page_copied is the text).
-//   coax/bin/coax test apps/coder-desktop/page.coax --library
+//   coax/bin/coax test apps/openagents-desktop/page.coax --library
 
 #load "page/parts.coax";
 #load "page/checks/transcript-checks.coax" #test;

@@ -42,7 +42,9 @@ tool_main :: () -> int #export_c #effects(all) {
   // A compiler built from an older tree fails suites that use newer language
   // (a stale coax/bin/coax once failed every suite loading cdp.coax), so the
   // run refuses unless the provenance record matches this tree's inputs.
-  if !list_only && !args_has(a[..], "--affected") {
+  // --check-affected compiles with $COAX when the hook names one (coax/remote/hooks/pre-push picks it).
+  if args_has(a[..], "--check-affected") && since.count == 0 { tool_errln("suites: --check-affected needs --since REF"); return 2; }
+  if !list_only && !args_has(a[..], "--affected") && !args_has(a[..], "--check-affected") {
     av0 := [6] string.["coax/provenance.sh", "verify", root, "coax/bin/coax", "coax/bin/provenance-check", "coax/bin/provenance.record"];
     pv := su_run(av0[..], root, big[..]);
     if pv.started != 0 || pv.status != 0 { tool_err("suites: "); tool_err(coax); tool_errln(" was not built from this tree; run coax/build.sh"); return 2; }
@@ -170,6 +172,7 @@ tool_main :: () -> int #export_c #effects(all) {
     // unit isn't #loaded. --affected asks the wider su_web_input.
     hit: [SU_FILES] bool;      // a changed .coax file
     want_affected := args_has(a[..], "--affected"); faces := args_has(a[..], "--faces");
+    check_affected := args_has(a[..], "--check-affected");
     by_graph := !args_has(a[..], "--deps"); any_changed := false;
     c0 := 0;
     while c0 < d.out_n {
@@ -190,6 +193,16 @@ tool_main :: () -> int #export_c #effects(all) {
     // --affected: every tracked .coax file whose #load closure holds a
     // changed file, by the graph (check.sh picks the web modules to build
     // from it); exit 3 when the graph can't tell.
+    // --check-affected: compile (coax check) every root above a changed .coax file, by the #load
+    // graph (su_affected_roots), nearest first; exit 1 when one fails to compile. A changed compiler
+    // source or descriptor doesn't stop it: the graph still names what the changed Coax reaches.
+    if check_affected {
+      ce: [4096] u8; cv := proc_getenv("COAX", ce[..]);
+      cc := ifx cv.count > 0 then cv else coax;
+      dist: [SU_FILES] int; loaded: [SU_FILES] bool; roots: [SU_FILES] int;
+      nr := su_affected_roots(nf, load_by[0..<nl], load_to[0..<nl], hit[0..<nf], dist[..], loaded[..], roots[..]);
+      return su_check_roots(cc, root, since, files[0..<nf], roots[0..<nr], jobs, args_has(a[..], "--keep-going"));
+    }
     if args_has(a[..], "--affected") {
       if !by_graph { tool_errln("suites: --affected: a changed file isn't a .coax file the #load graph reaches"); return 3; }
       affected: [SU_FILES] bool;
@@ -500,5 +513,80 @@ tool_main :: () -> int #export_c #effects(all) {
     proc_sleep(50);
   }
   print("suites: % of % passed in % s (% skipped)\n", ns - failed, ns, (proc_now_ms() - t0) / 1000, skipped);
+  return ifx failed > 0 then 1 else 0;
+}
+
+// --check-affected's run: `coax check` of each root, jobs side by side, in its own folder as a suite
+// runs. A root that fails is compiled again in the merge base's tree (its .coax and .pb files, once,
+// in a temporary folder): one that fails there too is not this push's (a part that compiles only
+// in its loader, a fixture red on purpose: hundreds on 2026-11-20, most under coax/tests/) and is counted; one that
+// compiled there is the push's, and nothing more starts unless --keep-going. Exit 1 when one is.
+su_check_roots :: (coax: string, root: string, base: string, files: [] string, roots: [] int, jobs: int, keep_going: bool) -> int {
+  t0 := proc_now_ms();
+  hs: [16] int; which: [16] int;
+  for l: 0..<16 { hs[l] = -1; }
+  next := 0; running := 0; done := 0; failed := 0; old := 0;
+  db: [4096] u8; line: [65536] u8; err: [2048] u8; said: [16] [1024] u8; said_n: [16] int;
+  tree_b: [4096] u8; tree := ""; tree_ok := false;   // the merge base's tree, made at the first failure
+  big: [65536] u8;
+  while running > 0 || (next < roots.count && (failed == 0 || keep_going)) {
+    for l: 0..<jobs {
+      if hs[l] < 0 && next < roots.count && (failed == 0 || keep_going) {
+        p := files[roots[next]]; next += 1;
+        h := proc_new();
+        ok := h >= 0 && proc_cwd(h, fs_join(root, su_dir(p), db[..])) && proc_arg(h, coax) && proc_arg(h, "check") && proc_arg(h, su_base(p));
+        if !ok || proc_start(h) != 0 {
+          if h >= 0 { r := proc_release(h); }
+          su_say("check: coax check "); su_say(p); su_say(" did not start; not counted\n");
+        } else { hs[l] = h; which[l] = roots[next - 1]; said_n[l] = 0; running += 1; }
+      }
+      if hs[l] < 0 { continue; }
+      h := hs[l]; ended := false;
+      while true {
+        n := proc_line(h, 0, line[..]);
+        if n == PROC_TIMEOUT { break; }
+        if n == PROC_EOF || n == PROC_ERROR { ended = true; break; }
+        if n == PROC_TOO_LONG { continue; }
+        for k: 0..<n + 1 { if said_n[l] < 1024 { said[l][said_n[l]] = ifx k < n then line[k] else 10; said_n[l] += 1; } }
+      }
+      if !ended { continue; }
+      status := proc_wait(h, 5000);
+      tail := proc_stderr(h, err[..]);
+      r := proc_release(h);
+      hs[l] = -1; running -= 1; done += 1;
+      if status == 0 { continue; }
+      p := files[which[l]];
+      if tree.count == 0 {
+        mk := [3] string.["mktemp", "-d", "/tmp/coax-check-base.XXXXXX"];
+        m := su_run(mk[..], root, big[..]);
+        if m.started == 0 && m.status == 0 && m.out_n > 1 {
+          for k: 0..<m.out_n - 1 { tree_b[k] = big[k]; }
+          tree = cast(string) tree_b[0..<m.out_n - 1];
+          sh: [8192] u8; sn := 0;
+          parts := [5] string.["git archive '", base, "' -- '*.coax' '*.pb' | tar -x -C '", tree, "'"];
+          for w: parts { for c: w { sh[sn] = c; sn += 1; } }
+          ar := [3] string.["sh", "-c", cast(string) sh[0..<sn]];
+          x := su_run(ar[..], root, big[..]);
+          tree_ok = x.started == 0 && x.status == 0;
+        }
+      }
+      was := false;   // it fails in the merge base's tree too (or that tree could not be made: not counted)
+      if !tree_ok { was = true; }
+      else {
+        bc := [3] string.[coax, "check", su_base(p)];
+        tb: [4096] u8;
+        y := su_run(bc[..], fs_join(tree, su_dir(p), tb[..]), big[..]);
+        was = y.started != 0 || y.status != 0;
+      }
+      if was { old += 1; continue; }
+      failed += 1;
+      su_say("FAIL coax check "); su_say(p); su_say(" (from its folder; it compiled at the merge base):\n");
+      su_say(cast(string) said[l][0..<said_n[l]]); su_say(tail);
+      if tail.count > 0 && tail[tail.count - 1] != 10 { su_say("\n"); }
+    }
+    proc_sleep(10);
+  }
+  if tree.count > 0 { su_rm(tree); }
+  print("check: % of % roots above the change compiled, % failed (% failed at the merge base too, not counted), in % ms\n", done, roots.count, failed, old, proc_now_ms() - t0);
   return ifx failed > 0 then 1 else 0;
 }

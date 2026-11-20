@@ -12,6 +12,9 @@
 //                       merge base), agent-reference --check, wgsl (the committed .wgsl and their
 //                       copies are what their Coax writes) when the push changes Coax or a shader,
 //                       changelog-page --check when it changes coax/CHANGELOG.md or the page,
+//                       `coax check` of every root above a changed .coax file (its loaders up the
+//                       #load graph to the files nothing loads, wherever they live), a failure the
+//                       merge base shares not counted,
 //                       and `coax test` of the suites the push changed (and, for #authority ones,
 //                       `coax mutate --changed` the merge base: the mutants of the procedures the push changed), on a build host
 //                       when one has a free slot; all of it under OA_PREPUSH_SECONDS (default 120):
@@ -45,7 +48,7 @@ PP_PATHS :: 65536;         // files one commit changes
 PP_WINDOW_S :: 86400;      // how far back a change counts as newer work: 24 hours
 PP_SHOW :: 12;             // findings printed per commit
 PP_PUSH :: 512;            // commits judged per push
-PP_JOBS :: 12;
+PP_JOBS :: 13;
 PP_HOW :: "docs/metaverse/green-main-pipeline.md, \"The pre-push check\"";
 PP_REFUSE :: 3;
 PP_ZERO :: "0000000000000000000000000000000000000000";
@@ -640,6 +643,10 @@ pp_begin :: (r: [] PpRun, e: PpEnv, base: string, commit: string, changed: strin
   wg := [4] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", "--site", "--check"];
   // the changelog page is what coax/CHANGELOG.md writes (#13592); --write regenerates it
   cl := [3] string.["coax/web/tool.sh", "coax/web/changelog-page.coax", "--check"];
+  // every root above a changed .coax file compiles (tool.sh suites --check-affected: the #load graph,
+  // nearest first, a failure the merge base shares not counted): 76ded7e0e0 broke page/todos.coax,
+  // which no suite the push changed loads, and the desktop page and app stopped compiling on main
+  ca := [5] string.["coax/web/tool.sh", "suites", "--since", base, "--check-affected"];
   tests := e.tests != "0";
   if !tests { pp_say(r, "prepush: OA_PREPUSH_TESTS=0: no coax test\n", "", "", "", ""); }
   has_compiler := e.has_compiler;
@@ -663,6 +670,7 @@ pp_begin :: (r: [] PpRun, e: PpEnv, base: string, commit: string, changed: strin
   if has_compiler && pp_drives(changed) { pp_want(r, 9, "drive-hit-check", dh[..]); }
   if some_compiler && pp_shaders(changed) { pp_want(r, 10, "wgsl", wg[..]); }
   if some_compiler && pp_changelog(changed) { pp_want(r, 11, "changelog-page", cl[..]); }
+  if has_compiler && pp_has(changed, ".coax") { pp_want(r, 12, "coax check", ca[..]); }
   r[0].tests = (run & PP_RUN_SUITES) != 0;
   if r[0].tests {
     pp_want(r, 4, "suites --list", sl[..]);
@@ -730,7 +738,7 @@ pp_verdicts :: (r: [] PpRun, jobs: [] PpJob, red: string, now: int) -> int {
     }
     if jobs[k].status == 0 { pp_say(r, "prepush: ", name, " passed (", secs, " s)\n"); continue; }
     excused := pp_has(red, name);
-    if k == PP_REMOTE { excused = false; }
+    if k == PP_REMOTE || k == 12 { excused = false; }   // the push's own suites and compiles: never main's red list
     if jobs[k].status == 1 && !excused {
       pp_say(r, "prepush: ", name, " FAILED (", secs, " s):\n"); pp_tail(r, pp_job_text(jobs, k), 12); failed = true;
     } else if jobs[k].status == 1 {
@@ -807,10 +815,23 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].done_at[6] = 75;
   r := pp_fake_checks(h[..], "B", "C", "coax/web/drive.coax\ncoax/CHANGELOG.md\nmetaverse/b.coax\n", 120, "");
   #assert r == 0 && h[0].now == 75;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (1 s)\nprepush: everglade-parity passed (2 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test passed (3 s)\nprepush: state-keep passed (1 s)\nprepush: agent-reference passed (2 s)\nprepush: drive-hit-check passed (3 s)\nprepush: wgsl passed (0 s)\nprepush: changelog-page passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (1 s)\nprepush: everglade-parity passed (2 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test passed (3 s)\nprepush: state-keep passed (1 s)\nprepush: agent-reference passed (2 s)\nprepush: drive-hit-check passed (3 s)\nprepush: wgsl passed (0 s)\nprepush: changelog-page passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
   #assert h[0].argv[6] == "coax/remote/remote.sh run --no-fallback --commit C -- coax/remote/check.sh only metaverse/b.coax B " && h[0].env[6] == "OA_REMOTE_WAIT=15 " && h[0].env[0] == "";
   #assert h[0].argv[2] == "coax/web/tool.sh wire-check --base B " && h[0].argv[3] == "coax/web/tool.sh layer-check --base B " && h[0].argv[4] == "coax/web/tool.sh suites --since B --list ";
   #assert h[0].argv[11] == "coax/web/tool.sh coax/web/changelog-page.coax --check " && h[0].argv[9] == "coax/web/tool.sh drive-hit-check ";
+  #assert h[0].argv[12] == "coax/web/tool.sh suites --since B --check-affected ";
+}
+#test "the runner: a changed .coax file that a loader no longer compiles with refuses the push, whatever the red list says" {
+  // 76ded7e0e0: page/todos.coax, loaded by apps/openagents-desktop/page.coax, which no suite folder held
+  h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
+  h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 2\n";
+  h[0].status[12] = 1; h[0].text[12] = "FAIL coax check apps/openagents-desktop/app.coax\nE0216\n";
+  r := pp_fake_checks(h[..], "B", "C", "apps/openagents-desktop/page/todos.coax\n", 120, "coax check\n");
+  #assert r == 1 && h[0].argv[12] == "coax/web/tool.sh suites --since B --check-affected ";
+  #assert pp_has(pp_report(h[0].r[..]), "prepush: coax check FAILED (0 s):\n      FAIL coax check apps/openagents-desktop/app.coax\n      E0216\n");
+  // a push with no Coax in it compiles nothing
+  g: [1] PpFake; pp_fake(g[..]); g[0].e.has_compiler = true;
+  #assert pp_fake_checks(g[..], "B", "C", "coax/web/host.js\n", 120, "") == 0 && g[0].argv[12] == "";
 }
 #test "the runner: failures, the red list, a check that can't run, one cut off at the limit, one that can't start" {
   h: [1] PpFake; pp_fake(h[..]);
@@ -843,7 +864,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].status[4] = 1;
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 0;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: suites --list failed (status 1); coax test skipped\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the suite list failed\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: suites --list failed (status 1); coax test skipped\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test skipped: the suite list failed\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: no suite it changes is listed" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -851,7 +872,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].text[4] = "coax/web/x.coax  default\n";
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 0;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the push changes no suite\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test skipped: the push changes no suite\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: the pool is off" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -859,7 +880,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].text[5] = "the pool is off: x. Fix: y\n";
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 0;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: the pool is off: x (coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test skipped: the pool is off: x (coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: no host has a free slot" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -867,7 +888,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].text[5] = "oa-build-1 z RUNNING 1.2.3.4 free slots: 0\n";
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 0;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test skipped: no build host is running with a free slot (idle hosts stop after 15 minutes; coax/remote/remote.sh up starts one; coax/remote/remote.sh status)\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: remote.sh does not start" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -875,7 +896,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].start_ok[6] = false; h[0].done_at[8] = 50;
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 50;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test skipped: remote.sh did not start\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test skipped: remote.sh did not start\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: the list comes after the status, and no host could take it" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -883,7 +904,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].done_at[4] = 25; h[0].status[6] = 97; h[0].text[6] = "remote: x\nremote: no host. Fix: up\n"; h[0].ms[6] = 1500;
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 50;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no host (2 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no host (2 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: no host could take it, and it said nothing" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -891,7 +912,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].status[6] = 97;
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 25;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no build host could take it (0 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test skipped: no build host could take it (0 s; coax/remote/remote.sh status)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: it fails, and the red list never excuses it" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -899,7 +920,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].status[6] = 1; h[0].text[6] = "e";
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 1 && h[0].now == 25;
-  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test FAILED (0 s):\n      e\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: coax test FAILED (0 s):\n      e\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: coax test ran metaverse/b.coax\nprepush: checks took 0 s\n";
 }
 #test "the runner, a push that changes a suite: the list can't start" {
   h: [1] PpFake; pp_fake(h[..]); h[0].e.has_compiler = true;
@@ -907,7 +928,7 @@ pp_fake_checks :: (f: [] PpFake, base: string, commit: string, changed: string, 
   h[0].start_ok[4] = false;
   r := pp_fake_checks(h[..], "B", "C", "metaverse/b.coax\n", 120, "coax test\n");
   #assert r == 0 && h[0].now == 0;
-  #assert pp_report(h[0].r[..]) == "prepush: note: a check could not start\nprepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: checks took 0 s\n";
+  #assert pp_report(h[0].r[..]) == "prepush: note: a check could not start\nprepush: tools-check passed (0 s)\nprepush: everglade-parity passed (0 s)\nprepush: wire-check passed (0 s)\nprepush: layer-check passed (0 s)\nprepush: state-keep passed (0 s)\nprepush: agent-reference passed (0 s)\nprepush: wgsl passed (0 s)\nprepush: coax check passed (0 s)\nprepush: checks took 0 s\n";
 }
 
 // ---- the bypass
