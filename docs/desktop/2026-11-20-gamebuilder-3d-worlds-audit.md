@@ -1,7 +1,8 @@
 # GameBuilder and 3D worlds in OpenAgents Desktop
 
 Written 2026-11-20 against openagents `78585b901a` and GameBuilder `ea3efb0`.
-Status: audit and proposal. Nothing here is built yet.
+Status: audit and proposal. Nothing here is built yet. Updated 2026-11-20:
+the owner decided to open source GameBuilder.
 
 This audit covers two things:
 
@@ -55,8 +56,9 @@ The gaps:
   was deleted in #13645.
 - The engine reads glTF for characters (skins, morphs, clips), not as a
   general static model viewer. Inline glTF needs a small static-mesh path.
-- GameBuilder is proprietary and this repository is open source. Folding it
-  in is an owner decision first (see [Decisions](#decisions-for-the-owner)).
+- GameBuilder was proprietary. On 2026-11-20 the owner decided to open
+  source it as part of this repository (see
+  [Open-sourcing GameBuilder](#open-sourcing-gamebuilder)).
 
 Recommendation: build in four phases. Phase 1 ships typed world cards with
 still pictures and needs no new renderer. Phase 2 adds one live world in the
@@ -139,7 +141,7 @@ and Coder Desktop already runs `gamebuilder` through the skill
 | `apps/gamebuilder/shared/` | `shared/` | Game types and kinds. Over time, the general parts move to `metaverse-engine/` (GameBuilder's own `AGENTS.md` already says so) |
 | `apps/gamebuilder/host/` | `host/`, `project.yml` | The standalone Mac, iOS and Linux apps keep building |
 | `apps/gamebuilder/web/` | `web/` | gamebuilder.org, deployed as today |
-| `apps/gamebuilder/docs/` or `docs/gamebuilder/` | `docs/` | Keep the history; the business docs may need to stay private |
+| `apps/gamebuilder/docs/` or `docs/gamebuilder/` | `docs/` | Everything but `docs/business/`, which stays private |
 
 What changes when it lives here:
 
@@ -299,7 +301,7 @@ When the person moves a block in the side pane, Claude should know.
 
 | Phase | Builds | Done when |
 | --- | --- | --- |
-| 0. Move | GameBuilder in `apps/gamebuilder/`, pin removed, checks wired, history kept | `gamebuilder` builds from this tree, its checks pass, and the standalone apps still build |
+| 0. Move | GameBuilder in `apps/gamebuilder/` under Apache-2.0, private content left out, filtered history kept, pin removed, checks wired | `gamebuilder` builds from this tree, its checks pass, and the standalone apps still build |
 | 1. Cards | Bundled CLI and per-session MCP; `TK_WORLD`; world edit, level and play-test cards with pictures | In the desktop, "make me an arena with ramps" shows edit cards with before and after pictures, and Undo on a card takes the edit back |
 | 2. Pane | World view host, one live view; side pane and full screen; follows revisions; action 13 handled | "Open" on a card shows the level live in the pane; an edit by Claude appears in the pane within a second at the new revision |
 | 3. Inline | Page host context audit; several views with one budget; static glTF model view; model card on desktop and web | Three inline views in one transcript draw correctly, scrolling never steers them, and a `.glb` from a tool result opens as an orbitable model |
@@ -309,20 +311,53 @@ Each phase adds proto records where a new shape crosses a module or the
 wire (`proto/`, one codec and a registry row), as `components/rendering.md`
 requires.
 
+## Open-sourcing GameBuilder
+
+Decided by the owner on 2026-11-20: GameBuilder becomes open source and moves
+into this repository. This replaces the 2026-11-16 decision in GameBuilder's
+`docs/openagents-integration.md` ("GameBuilder is proprietary").
+
+GameBuilder takes this repository's licence, Apache-2.0. Its `LICENSE`
+("proprietary ... confidential property of OpenAgents, Inc.") is not
+carried over, and its README and `AGENTS.md` lose the "proprietary, stays in
+this repo" lines in the same change.
+
+A check of the GameBuilder repository at `ea3efb0` (347 tracked files) found
+no tracked secrets, keys or `.env` files. What moves and what stays:
+
+| Content | Moves? | Why |
+| --- | --- | --- |
+| `coax/`, `cli/`, `shared/`, `host/`, `web/`, `tools/`, `scripts/`, `tests/`, `deploy/` | Yes | The product. Becomes Apache-2.0 |
+| `docs/` except `docs/business/` | Yes | Engineering docs |
+| `docs/business/` (strategy, economics, phase one, comparables, a Cursor report PDF) | No | Company strategy. Stays in the private GameBuilder repository, which becomes an archive |
+| SPLICEBOTS art packs (`splice-bots-jam.pack`, the characters pack) | No, and they aren't tracked today | The owner's private art (`coax/model.coax`, `coax/farm.coax` say so). The code that reads them moves; the packs stay outside git, as now |
+| `tools/splicebots-project-*-v1.json` | Ask first | They list the SPLICEBOTS Unreal project's maps, meshes and music by path. The game's rules are already public in `metaverse/splice-bots/`, but these manifests describe an unreleased project. Kiki confirms before they go public; until then, leave them in the archive |
+| `web/assets/village.pack` and `village-credits.txt` | Yes | 0 A.D. art under CC BY-SA 3.0. Keep the credits file beside it; the pack keeps its own licence, not Apache-2.0 |
+| `host/Assets.xcassets` (the app icon) | Yes | The owner's artwork. Public in the code is fine; the name and icon stay trademarks, as OpenAgents' own are |
+
+Import history with a filter that drops `docs/business/` and the SPLICEBOTS
+manifests from every commit (`git filter-repo --path ... --invert-paths`),
+then run a secret scan over the filtered history before it lands. Without
+the filter, the business docs stay readable in the public history.
+
+After the move:
+
+- The GameBuilder GitHub repository becomes a private archive with a README
+  pointing at `apps/gamebuilder/`.
+- gamebuilder.org, the hosted API and the TestFlight app build from this
+  repository.
+- The `gamebuilder engine` and `engine-*` rows stop describing an engine
+  pull request from another repository; an engine change is now an ordinary
+  change here.
+
 ## Decisions for the owner
 
-1. **License.** GameBuilder is proprietary (its `LICENSE` and the
-   2026-11-16 decision in its `docs/openagents-integration.md`). This
-   repository is open source. Folding it in either makes GameBuilder open
-   source, or needs a private subtree or a separately licensed folder.
-   The business docs in `docs/business/` probably should not move either
-   way.
-2. **Which desktop shell first.** The Zeron GPU shell already draws
+1. **Which desktop shell first.** The Zeron GPU shell already draws
    everything on Metal and Vulkan, so compositing a world into it is
    simplest. The native client is where the product is going. This audit
    assumes the native client, with the world view host shared so the Zeron
    shell can use it too.
-3. **Standalone GameBuilder app.** Keep shipping it, or make GameBuilder a
+2. **Standalone GameBuilder app.** Keep shipping it, or make GameBuilder a
    mode of the desktop app. The proposal above keeps it; the desktop then
    talks to it through `--attach` when it is open.
 
