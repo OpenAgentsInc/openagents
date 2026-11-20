@@ -23,6 +23,7 @@
 //        {"embed":"TEXT","query":true}    a Vertex embedding of TEXT (a query's when query is set, else a document's)
 //        {"task":...,"steerable":false}   the turn takes no steers (a sub-agent's: no person watches it)
 //        {"steer":"TEXT","id":"I","turn":N}   more input for the running turn: taken between its steps (GitHub #13715)
+//        {"steer":"TEXT","id":"I","parent":true}   a parent run's note to this sub-agent: taken though "steerable":false (#13776)
 //        {"interrupt":true,"resubmit":true}   end the running turn; with resubmit its untaken steers start the next
 //        {"queue":"add","id":"I","text":"T","message":{TASK}}   a follow-up: a turn of its own once this worker is idle
 //        {"queue":"open|update|delete|move|promote|pause|resume|clear|list",...}   the follow-up queue (mcworker-queue.coax)
@@ -287,7 +288,8 @@ mw_steer :: (running: bool, req: [] MwwRequest, st: [] McSteers, f: [] MwFollow,
   why := "";
   if !running || f[0].starting { why = "no_active_turn"; }
   else if req[0].turn.ok && req[0].turn.value != f[0].turn { why = "expected_turn_mismatch"; }
-  else if !f[0].steerable { why = "active_turn_not_steerable"; }
+  // a sub-agent's turn takes no person's steers, but takes its parent run's notes (GitHub #13776)
+  else if !f[0].steerable && !req[0].parent { why = "active_turn_not_steerable"; }
   else { why = mc_steer_add(st, req[0].id, req[0].text); }
   // an accepted steer says its words, for an owner that did not send it (the paired phone's, GitHub #13713)
   mw_send(o, mww_steered(o, req[0].id, ifx why.count == 0 then "accepted" else "rejected", f[0].turn, why, 0, ifx why.count == 0 then req[0].text else ""));

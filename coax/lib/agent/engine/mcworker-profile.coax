@@ -138,7 +138,7 @@ mp_owner :: (w: [] MpWork, k: int, line: string, read_only: bool) -> string {
   else if got == MWW_FORGET { n = json_raw(o, 0, MWW_FORGET_LINE); }
   else if got == MWW_RESULTS { if !r[0].ticket.ok { return "results with no ticket"; } n = mww_results(o, r[0].ticket.value, r[0].results); }
   else if got == MWW_RECALL { n = mww_recall(o, r[0].recall); }
-  else if got == MWW_STEER { n = mww_steer(o, r[0].id, r[0].text, ifx r[0].turn.ok then r[0].turn.value else 0); }
+  else if got == MWW_STEER { n = ifx r[0].parent then mww_note(o, r[0].id, r[0].text) else mww_steer(o, r[0].id, r[0].text, ifx r[0].turn.ok then r[0].turn.value else 0); }
   else if got == MWW_INTERRUPT { n = mww_interrupt(o, r[0].resubmit); }
   else if got == MWW_QUEUE { n = mww_queue(o, r[0].op, r[0].id, r[0].text, r[0].message, ifx r[0].to.ok then r[0].to.value else 0, r[0].now, r[0].key); }
   if ar[0].full { return "it does not fit the check's arena"; }

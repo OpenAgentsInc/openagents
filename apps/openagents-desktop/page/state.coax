@@ -138,6 +138,7 @@ CP_COPIED_NONE :: 0; CP_COPIED_BLOCK :: 1; CP_COPIED_ASK :: 2; CP_COPIED_REPLY :
 CP_ALL :: 2000000;          // bytes the whole chat's copy may take
 // A turn's state.
 CP_RUNNING :: 0; CP_DONE :: 1; CP_FAILED :: 2; CP_STOPPED :: 3;
+CP_NOTE_DUE :: 1; CP_NOTE_SENT :: 2; CP_NOTE_REFUSED :: 3;   // CpAgent.note
 
 // One row of a message or of a sub-agent's transcript: a command, a file read, a tool call, a
 // thought, or what the sub-agent said between its tool calls.
@@ -169,6 +170,9 @@ CpAgent :: struct {
   paused: bool;               // it reached CP_QUIET: its next command waits, and Microcoder decides whether it goes on
   deny_due: bool;             // Microcoder let it go on: the command that waited is owed a no that carries the note
   say: [CP_AGENT_TASK] u8; say_n: int;   // the note
+  note: int;                  // a note Microcoder sent it while it runs (#13776): CP_NOTE_DUE, CP_NOTE_SENT or CP_NOTE_REFUSED (0: none); its words are say
+  notes: int;                 // the notes it was sent: the newest one's id is note-AGENT-NOTES
+  note_why: [48] u8; note_why_n: int;   // why its worker refused the newest
   began: f32; took: f32;
   heard: f32;                 // the clock when its worker last sent a line: since then it waits on its model
   again: [CP_CMD] u8; again_n: int;   // its newest model call that was sent again, and why; cleared when it moves on

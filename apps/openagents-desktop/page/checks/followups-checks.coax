@@ -171,3 +171,37 @@
   // a chat kept before #13718 has no steers
   #assert coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"x\",\"reply\":\"y\",\"state\":2}]}") && s[0].turns[0].steered_n == 0;
 }
+
+#test "a note for a running sub-agent goes to its worker as a parent's steer; a refused one, or a Claude sub-agent's, wakes Microcoder with why (#13776)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].claude = true;
+  #assert coder_page_set_text(s, "run two") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":1,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"opus\",\"task\":\"c\"}]}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a done\"}") == MWW_ENDED && s[0].results_due;
+  out: [4096] u8;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  // a still-running Microcoder sub-agent is offered a note; a Claude one is not
+  #assert cp_find(line, "resume 2, level carbon, and as its task a note it is sent, or nothing") >= 0 && cp_find(line, "resume 3, level opus. To stop it") >= 0;
+  // resume with a note: sub-agent 2 is sent it once, ahead of an answer it is owed, and the run waits for it
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":7}") == MWW_ASK;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":2,\"tasks\":[{\"level\":\"carbon\",\"task\":\"Check the b fixtures too\",\"resume\":2}]}") == MWW_DELEGATE && !s[0].results_due;
+  n = coder_page_agent_answer_line(s, 1, out[..]); line = cast(string) out[0..<n];
+  #assert line == "{\"steer\":\"Check the b fixtures too\",\"id\":\"note-2-1\",\"parent\":true}\n{\"answer\":true,\"ticket\":7}\n";
+  #assert coder_page_agent_answer_line(s, 1, out[..]) == 0 && s[0].turns[0].agents[1].note == CP_NOTE_SENT;
+  // its worker takes it: nothing is owed; then it finishes and its result comes back
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"steer\",\"id\":\"note-2-1\",\"status\":\"accepted\",\"turn\":1,\"text\":\"Check the b fixtures too\"}") == MWW_STEERED;
+  #assert s[0].turns[0].agents[1].note == 0 && !s[0].results_due;
+  // an empty note only waits; an older worker that refuses the next note wakes Microcoder with why, once
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":2,\"tasks\":[{\"level\":\"carbon\",\"task\":\"\",\"resume\":2}]}") == MWW_DELEGATE && s[0].turns[0].agents[1].note == 0;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":3,\"tasks\":[{\"level\":\"carbon\",\"task\":\"Stop at the docs\",\"resume\":2}]}") == MWW_DELEGATE;
+  n = coder_page_agent_answer_line(s, 1, out[..]); #assert cp_find(cast(string) out[0..<n], "\"id\":\"note-2-2\"") >= 0;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"steer\",\"id\":\"note-2-2\",\"status\":\"rejected\",\"turn\":1,\"reason\":\"active_turn_not_steerable\"}") == MWW_STEERED && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "\"ticket\":3") >= 0 && cp_find(line, "Your note did not reach it: active_turn_not_steerable. It is still running in the background (sub-agent #2)") >= 0;
+  #assert coder_page_agent_running(s, 1) && s[0].turns[0].agents[1].note == 0;
+  // a Claude sub-agent takes no notes: Microcoder is told at once, and nothing goes to its worker
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":4,\"tasks\":[{\"level\":\"opus\",\"task\":\"Look at c too\",\"resume\":3}]}") == MWW_DELEGATE && s[0].results_due;
+  #assert coder_page_agent_answer_line(s, 2, out[..]) == 0;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "\"ticket\":4") >= 0 && cp_find(line, "Your note did not reach it: a Claude sub-agent takes no notes while it runs.") >= 0;
+}

@@ -1314,6 +1314,24 @@ MC_RUN_STOP_AND_WAIT :: "{\"rationale\":\"one more\",\"delegate\":[{\"level\":\"
   #assert ps_count(state, "agent 2: stop") == 1 && ps_count(state, "agent hydrogen: keep going") == 1 && ps_count(state, "all six found") == 1 && ps_count(state, "did not run") == 0;
 }
 
+MC_RUN_NOTE :: "{\"rationale\":\"steer it\",\"delegate\":[{\"level\":\"carbon\",\"task\":\"Check the b fixtures too\",\"resume\":2}],\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+#test "a note for a running sub-agent goes in the delegate line with its number, for the owner to send it as a steer" {
+  f: [1] McRunFixture; out: [16] McRunEvent;
+  mc_run_fixture(f[..], "two things");
+  r := f[0].r[..]; r[0].l[0].agents = true;
+  ev := [2] GwEvent.[GwEvent.{kind = GW_EV_TEXT, text = MC_RUN_NOTE}, GwEvent.{kind = GW_EV_DONE, reason = "stop"}];
+  h := mc_run_heard(r, out[..], ev[..]);
+  n := mc_run_plain(r, out[..], h.k);
+  // the note is the task, the number its resume (GitHub #13776); the run waits on that sub-agent
+  #assert n == 1 && out[0].kind == MR_DELEGATE && out[0].text == "[{\"level\":\"carbon\",\"task\":\"Check the b fixtures too\",\"resume\":2}]" && r[0].delegating;
+  n = mc_run_delegated(r, out[0].ticket, "[{\"exit\":0,\"output\":\"b fixtures checked\"}]", out[..]);
+  #assert !r[0].delegating && r[0].delegated;
+  state := mc_state_json(r[0].l[0].st[..], r[0].l[0].prompt);
+  #assert ps_count(state, "agent carbon: Check the b fixtures too") == 1 && ps_count(state, "b fixtures checked") == 1;
+  // the run is told a running sub-agent takes the note
+  #assert ps_count(MC_AGENTS, "the note reaches it as more input between its steps") == 1;
+}
+
 #test "attached images propagate into mc_request and format a descriptive view note" {
   f: [1] McRunFixture;
   mc_run_fixture(f[..], "describe the screenshot");

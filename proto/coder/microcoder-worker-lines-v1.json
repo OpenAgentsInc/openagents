@@ -114,7 +114,7 @@
     {
      "name": "steerable",
      "type": "false",
-     "note": "written only as false: the turn takes no steers (a sub-agent's); a steer for it is rejected active_turn_not_steerable"
+     "note": "written only as false: the turn takes no steers (a sub-agent's); a steer for it is rejected active_turn_not_steerable, except a parent's note (steer with parent true)"
     }
    ]
   },
@@ -236,6 +236,11 @@
      "name": "turn",
      "type": "integer",
      "note": "written only when over 0: the turn it is meant for; another turn's steer is rejected expected_turn_mismatch"
+    },
+    {
+     "name": "parent",
+     "type": "boolean",
+     "note": "written only as true, with no turn (mww_note): a parent run's note to its running sub-agent, which its turn takes though it is steerable false (GitHub #13776); a worker older than it rejects it active_turn_not_steerable"
     }
    ]
   },

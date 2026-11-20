@@ -323,12 +323,17 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
     ar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
     s[0].turns[i].round_who[q] = 0;
     // a task with resume lets a paused sub-agent go on, with the task as a note to it (GitHub #13676);
-    // one still running is waited for, and one that has ended gives its result again (#13766)
+    // one still running is waited for, and one that has ended gives its result again (#13766);
+    // a running one is sent the task as a note, a steer of its parent's (#13776)
     resume := cl_int(one, "resume");
     if resume.ok && resume.value > 0 {
       g := resume.value - 1;
       s[0].turns[i].round_who[q] = -1;
-      if g < s[0].turns[i].nagents && !(s[0].turns[i].agents[g].state == CP_RUNNING && s[0].turns[i].agents[g].paused) { s[0].turns[i].round_who[q] = g + 1; continue; }
+      if g < s[0].turns[i].nagents && !(s[0].turns[i].agents[g].state == CP_RUNNING && s[0].turns[i].agents[g].paused) {
+        s[0].turns[i].round_who[q] = g + 1;
+        if s[0].turns[i].agents[g].state == CP_RUNNING { cp_agent_note(s, i, g, cl_str(ar[..], one, "task")); }
+        continue;
+      }
       if g < s[0].turns[i].nagents && s[0].turns[i].agents[g].state == CP_RUNNING && s[0].turns[i].agents[g].paused {
         s[0].turns[i].agents[g].paused = false; s[0].turns[i].agents[g].quiet = 0; s[0].turns[i].agents[g].deny_due = true;
         s[0].turns[i].agents[g].say_n = cp_out(s[0].turns[i].agents[g].say[..], cl_str(ar[..], one, "task"));
@@ -357,6 +362,17 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
   s[0].turns[i].h = 0;
   cp_round_check(s, i);
 }
+// Microcoder's note for running sub-agent j (#13776): due to its worker as a parent's steer
+// (mww_note, sent by coder_page_agent_answer_line). A Claude level's worker takes no steers: the
+// note is refused at once and Microcoder is told. An empty note only waits.
+cp_agent_note :: (s: [] CoderPage, i: int, j: int, note: string) {
+  if note.count == 0 { return; }
+  a := s[0].turns[i].agents[j..<j + 1];
+  if a[0].level >= CP_LEVEL_CLAUDE {
+    a[0].note = CP_NOTE_REFUSED; a[0].note_why_n = cp_out(a[0].note_why[..], "a Claude sub-agent takes no notes while it runs"); return;
+  }
+  a[0].say_n = cp_out(a[0].say[..], note); a[0].note = CP_NOTE_DUE; a[0].notes += 1;
+}
 // Every sub-agent of the round has ended or paused, or any one has ended (finished, failed or
 // stopped) while its siblings run on: the worker is owed results (#13766).
 cp_round_check :: (s: [] CoderPage, i: int) {
@@ -367,6 +383,7 @@ cp_round_check :: (s: [] CoderPage, i: int) {
     if w > 0 {
       st := s[0].turns[i].agents[w - 1].state;
       if st == CP_DONE || st == CP_FAILED || st == CP_STOPPED { s[0].results_due = true; return; }
+      if st == CP_RUNNING && s[0].turns[i].agents[w - 1].note == CP_NOTE_REFUSED { s[0].results_due = true; return; }   // its note did not reach it (#13776)
       if st == CP_RUNNING && !s[0].turns[i].agents[w - 1].paused { all_ready = false; }
     }
   }
@@ -764,6 +781,13 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], cast(string) vb[0..<vn]); s[0].turns[i].agents[j].now_running = false;
     s[0].turns[i].agents[j].quiet += 1;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].path, ifx l[0].found.value then "" else "No such file.", true, !l[0].found.value, false);
+  } else if kind == MWW_STEERED && l[0].id.count > 5 && cast(string) l[0].id[0..<5] == "note-" {
+    // its worker's answer to Microcoder's note (#13776): taken, or refused with why (an older worker refuses it)
+    if l[0].steer_status == "rejected" {
+      s[0].turns[i].agents[j].note = CP_NOTE_REFUSED;
+      s[0].turns[i].agents[j].note_why_n = cp_out(s[0].turns[i].agents[j].note_why[..], ifx l[0].reason.count > 0 then l[0].reason else "refused");
+      cp_round_check(s, i);
+    } else if s[0].turns[i].agents[j].note == CP_NOTE_SENT { s[0].turns[i].agents[j].note = 0; }
   } else if kind == MWW_THOUGHT { cp_thought_add(s, i, j, l[0].text, false);
   } else if kind == MWW_REPLY { cp_said_add(s, i, j, l[0].text);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
@@ -802,16 +826,27 @@ coder_page_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int #ex
   if s.count < 1 || !cp_running(s) { return 0; }
   i := s[0].nturns - 1;
   if j < 0 || j >= s[0].turns[i].nagents { return 0; }
+  // Microcoder's note for it goes first, as a parent's steer (#13776); an answer owed follows it
+  at := 0;
+  if s[0].turns[i].agents[j].note == CP_NOTE_DUE {
+    s[0].turns[i].agents[j].note = CP_NOTE_SENT;
+    ib: [48] u8; k := cp_out(ib[..], "note-"); k = el_put_i(ib[..], k, j + 1); k += cp_out(ib[k..<ib.count], "-"); k = el_put_i(ib[..], k, s[0].turns[i].agents[j].notes);
+    w := mww_note(out, cast(string) ib[0..<k], cast(string) s[0].turns[i].agents[j].say[0..<s[0].turns[i].agents[j].say_n]);
+    if w > 0 { at = w; }
+  }
+  rest := out[at..<out.count];
   if s[0].turns[i].agents[j].deny_due {
     // the command that waited through the pause is not run: its answer carries Microcoder's note
     s[0].turns[i].agents[j].deny_due = false;
     wb: [CP_AGENT_TASK + 256] u8; wn := cp_out(wb[..], "This command was not run. You were paused after 100 tool calls in a row with no file changed, and Microcoder let you go on. Its note: ");
     wn += cp_out(wb[wn..<wb.count], cast(string) s[0].turns[i].agents[j].say[0..<s[0].turns[i].agents[j].say_n]);
-    return mww_answer(out, false, s[0].turns[i].agents[j].answer, cast(string) wb[0..<wn]);
+    w := mww_answer(rest, false, s[0].turns[i].agents[j].answer, cast(string) wb[0..<wn]);
+    return ifx w > 0 then at + w else at;
   }
-  if !s[0].turns[i].agents[j].answer_due { return 0; }
+  if !s[0].turns[i].agents[j].answer_due { return at; }
   s[0].turns[i].agents[j].answer_due = false;
-  return mww_answer(out, true, s[0].turns[i].agents[j].answer, "");
+  w := mww_answer(rest, true, s[0].turns[i].agents[j].answer, "");
+  return ifx w > 0 then at + w else at;
 }
 // What Microcoder is told of a paused sub-agent: that it paused and why, its number, its newest 12
 // rows, and how to let it go on. The text is in the page's arena until the next worker line.
@@ -838,6 +873,7 @@ cp_running_bg :: (s: [] CoderPage, i: int, j: int) -> string {
   n = el_put_i(b, n, j + 1);
   n += cp_out(b[n..<b.count], "). It was left running; you can continue without waiting for it. To wait for it, delegate one task with resume ");
   n = el_put_i(b, n, j + 1); n += cp_out(b[n..<b.count], ", level "); n += cp_out(b[n..<b.count], CP_LEVEL[s[0].turns[i].agents[j].level]);
+  if s[0].turns[i].agents[j].level < CP_LEVEL_CLAUDE { n += cp_out(b[n..<b.count], ", and as its task a note it is sent, or nothing"); }
   n += cp_out(b[n..<b.count], ". To stop it, delegate resume "); n = el_put_i(b, n, j + 1); n += cp_out(b[n..<b.count], " with stop true. It is stopped when you finish.");
   return cast(string) b[0..<n];
 }
@@ -876,6 +912,12 @@ cp_results_list :: (s: [] CoderPage, i: int, b: [] u8, most: int) -> int {
     w := s[0].turns[i].round_who[q];
     if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && s[0].turns[i].agents[w - 1].paused {
       n = json_raw(b, n, "1,\"output\":"); n = json_write_string(b, n, cp_paused(s, i, w - 1));
+    } else if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && s[0].turns[i].agents[w - 1].note == CP_NOTE_REFUSED {
+      // its note did not reach it (#13776): Microcoder is told why, once, and that it still runs
+      a := s[0].turns[i].agents[w - 1..<w]; a[0].note = 0;
+      nb: [640] u8; k := cp_out(nb[..], "Your note did not reach it: "); k += cp_out(nb[k..<nb.count], cast(string) a[0].note_why[0..<a[0].note_why_n]);
+      k += cp_out(nb[k..<nb.count], ". It is "); k += cp_out(nb[k..<nb.count], cp_running_bg(s, i, w - 1));
+      n = json_raw(b, n, "1,\"output\":"); n = json_write_string(b, n, cast(string) nb[0..<k]);
     } else if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING {
       n = json_raw(b, n, "1,\"output\":"); n = json_write_string(b, n, cp_running_bg(s, i, w - 1));
     } else if w > 0 {

@@ -231,7 +231,8 @@ mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bo
     resume := cl_int(d, "resume"); stop := cl_bool(d, "stop");
     a[0].delegates[i] = McDelegate.{level = cl_str(ar, d, "level"), task = cl_str(ar, d, "task"), resume = ifx resume.ok then resume.value else 0,
                                     stop = stop.ok && stop.value && resume.ok && resume.value > 0};
-    if a[0].delegates[i].task.count == 0 && !a[0].delegates[i].stop { return "a delegated task is empty"; }
+    // with resume an empty task only waits for that sub-agent: no note (GitHub #13776)
+    if a[0].delegates[i].task.count == 0 && !a[0].delegates[i].stop && a[0].delegates[i].resume <= 0 { return "a delegated task is empty"; }
   }
   if ar[0].full { return "the reply does not fit its buffer"; }
   a[0].nd = nd;
@@ -306,6 +307,8 @@ mc_question :: (q: string) -> McQuestion {
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"\",\"resume\":2,\"stop\":true},{\"level\":\"carbon\",\"task\":\"w\",\"stop\":true}]}", a[..], false, false) == "" && a[0].nd == 2;
   #assert a[0].delegates[0].stop && a[0].delegates[0].resume == 2 && !a[0].delegates[1].stop;
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"\",\"stop\":true}]}", a[..], false, false) == "a delegated task is empty";
+  // resume with an empty task only waits for that sub-agent (#13776)
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"\",\"resume\":2}]}", a[..], false, false) == "" && a[0].delegates[0].resume == 2 && !a[0].delegates[0].stop;
   #assert cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], false, false), "properties.delegate.items.properties.stop.type") == "\"boolean\"";
   // six tasks are the most
   six := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"}]}";

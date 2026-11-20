@@ -11,6 +11,7 @@
 //     {"stop":true}  {"forget":true}                                               MWW_STOP_LINE, MWW_FORGET_LINE
 //     {"embed":TEXT}  {"embed":TEXT,"query":true}                                  mww_embed
 //     {"steer":T,"id":I[,"turn":N]}   input for the running turn (GitHub #13715)    mww_steer
+//     {"steer":T,"id":I,"parent":true}   a parent run's note to its sub-agent (#13776)   mww_note
 //     {"interrupt":true[,"resubmit":true]}   end the running turn                   mww_interrupt
 //     {"queue":OP[,"id":I][,"to":N][,"now":true][,"key":K][,"text":T,"message":{...}]}   follow-ups   mww_queue
 //   the worker writes, the owner reads (mww_read):
@@ -144,6 +145,14 @@ mww_steer :: (o: [] u8, id: string, text: string, turn: int) -> int {
   if turn > 0 { n = json_raw(o, n, ",\"turn\":"); n = json_write_int(o, n, turn); }
   return json_raw(o, n, "}\n");
 }
+// A parent run's note to its running sub-agent (GitHub #13776): a steer that "parent" marks, which
+// a sub-agent's turn takes though it takes no person's steers ("steerable":false). A worker older
+// than it rejects it active_turn_not_steerable, so its owner learns the note did not reach it.
+mww_note :: (o: [] u8, id: string, text: string) -> int {
+  n := json_raw(o, 0, "{\"steer\":"); n = json_write_string(o, n, text);
+  n = json_raw(o, n, ",\"id\":"); n = json_write_string(o, n, id);
+  return json_raw(o, n, ",\"parent\":true}\n");
+}
 // End the running turn; with resubmit, the steers it had not taken yet start a turn of their own.
 mww_interrupt :: (o: [] u8, resubmit: bool) -> int {
   return json_raw(o, 0, ifx resubmit then "{\"interrupt\":true,\"resubmit\":true}\n" else "{\"interrupt\":true}\n");
@@ -191,6 +200,7 @@ MwwRequest :: struct {
   recall: string;                // recall: the turns' JSON text
   id: string;                    // steer, queue: the item's id
   turn: JsonInt;                 // steer: the turn it is meant for
+  parent: bool;                  // steer: a parent run's note to its sub-agent (mww_note)
   op: string;                    // queue: the op
   message: string;               // queue add, update: the task object's JSON text
   to: JsonInt;                   // queue move: the place
@@ -228,6 +238,7 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   }
   if cl_at(msg, "steer").tok == JSON_STRING {
     r[0].text = cl_str(ar, msg, "steer"); r[0].id = cl_str(ar, msg, "id"); r[0].turn = cl_int(msg, "turn");
+    pa := cl_bool(msg, "parent"); r[0].parent = pa.ok && pa.value;
     r[0].kind = MWW_STEER; return MWW_STEER;
   }
   if cl_bool(msg, "interrupt").ok {
@@ -666,6 +677,13 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_STEER && r[0].text == "use \"b\" too" && r[0].id == "s-1" && r[0].turn.ok && r[0].turn.value == 3;
   n = mww_steer(o[..], "s-2", "x", 0);
   #assert cast(string) o[0..<n] == "{\"steer\":\"x\",\"id\":\"s-2\"}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_STEER && !r[0].turn.ok;
+  #assert !r[0].parent;
+  // a parent's note to its sub-agent (#13776): marked parent, with no turn
+  n = mww_note(o[..], "note-1-1", "check b too");
+  #assert cast(string) o[0..<n] == "{\"steer\":\"check b too\",\"id\":\"note-1-1\",\"parent\":true}\n";
+  #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_STEER && r[0].parent && r[0].text == "check b too" && r[0].id == "note-1-1" && !r[0].turn.ok;
+  #assert mww_request(ar[..], "{\"steer\":\"x\",\"id\":\"s\",\"parent\":false}", r[..]) == MWW_STEER && !r[0].parent;
+  small: [24] u8; #assert mww_note(small[..], "note-1-1", "check b too") < 0;
   n = mww_interrupt(o[..], true);
   #assert cast(string) o[0..<n] == "{\"interrupt\":true,\"resubmit\":true}\n" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_INTERRUPT && r[0].resubmit;
   n = mww_interrupt(o[..], false);
