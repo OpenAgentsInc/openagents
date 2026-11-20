@@ -22,6 +22,7 @@
 #load "page/checks/chats-checks.coax" #test;
 #load "page/checks/layout-checks.coax" #test;
 #load "page/checks/followups-checks.coax" #test;
+#load "page/checks/todos-checks.coax" #test;
 #load "page/checks/review-checks.coax" #test;
 #load "page/checks/overlay-checks.coax" #test;
 #load "page/checks/editor-checks.coax" #test;

@@ -112,6 +112,7 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }
   else if e.kind == MR_STOP_AGENT { n = mww_stop_agent(o, e.agent); }
   else if e.kind == MR_THOUGHT { n = mww_thought(o, e.text); }
+  else if e.kind == MR_TODOS { n = mww_todos(o, e.text); }
   else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
   else { return; }
   mw_send(o, n);

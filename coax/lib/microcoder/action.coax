@@ -25,10 +25,10 @@
 #load "state.coax";
 
 MC_SCHEMA_NAME :: "next_action";
-MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"additionalProperties\":false}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"edits\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\"],\"additionalProperties\":false}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]},\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"id\",\"content\",\"status\"],\"additionalProperties\":false}}},\"required\":[\"rationale\",\"edits\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
 
 // The schema with every added member: what mc_schema writes with both modes on.
-MC_SCHEMA_AWARE :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"notes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"},\"seen\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\",\"seen\",\"name\"],\"additionalProperties\":false}},\"questions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"notes\",\"edits\",\"questions\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+MC_SCHEMA_AWARE :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"notes\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"edits\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"old\":{\"type\":\"string\"},\"new\":{\"type\":\"string\"},\"seen\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"}},\"required\":[\"path\",\"old\",\"new\",\"seen\",\"name\"],\"additionalProperties\":false}},\"questions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]},\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"id\",\"content\",\"status\"],\"additionalProperties\":false}}},\"required\":[\"rationale\",\"notes\",\"edits\",\"questions\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
 
 MC_MAX_COMMANDS :: 32;
 MC_MAX_VIEWS :: 16;
@@ -36,6 +36,7 @@ MC_MAX_EDITS :: 16;
 MC_MAX_QUESTIONS :: 16;
 MC_MAX_NOTES :: 8;
 MC_MAX_DELEGATES :: 6;
+MC_MAX_TODOS :: 24;
 
 // A run whose owner runs sub-agents (GitHub #13655) gets one more member, delegate: up to 6
 // tasks, each with a level (hydrogen, carbon or neon). mc_schema_delegate adds it to a run's schema.
@@ -100,7 +101,7 @@ mc_schema :: (out: [] u8, intel: bool, memory: bool) -> string {
   if intel { n = json_raw(out, n, ",\"questions\":"); n = json_raw(out, n, list); }
   n = json_raw(out, n, ",\"commands\":"); n = json_raw(out, n, list); n = json_raw(out, n, ",\"view\":"); n = json_raw(out, n, list);
   n = json_raw(out, n, ",\"finished\":{\"type\":\"boolean\"},\"reply\":"); n = json_raw(out, n, str);
-  n = json_raw(out, n, ",\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\"");
+  n = json_raw(out, n, ",\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]},\"todos\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"content\":{\"type\":\"string\"},\"status\":{\"type\":\"string\",\"enum\":[\"pending\",\"in_progress\",\"completed\"]}},\"required\":[\"id\",\"content\",\"status\"],\"additionalProperties\":false}}},\"required\":[\"rationale\"");
   if memory { n = json_raw(out, n, ",\"notes\""); }
   n = json_raw(out, n, ",\"edits\"");
   if intel { n = json_raw(out, n, ",\"questions\""); }
@@ -124,6 +125,9 @@ McEdit :: struct { path: string; old: string; text: string; seen: string; name: 
 // run tells its owner at once (MR_STOP_AGENT) and does not wait on it.
 McDelegate :: struct { level: string; task: string; resume: int; stop: bool; }
 
+// A checklist item reported by the agent on multi-step tasks (pending, in_progress, completed).
+McTodo :: struct { id: string; content: string; status: string; }
+
 McAction :: struct {
   rationale: string;
   delegates: [MC_MAX_DELEGATES] McDelegate; nd: int;   // read only by a run whose owner runs sub-agents (mc_action_delegates)
@@ -135,6 +139,8 @@ McAction :: struct {
   asks: bool;                    // ask: question
   questions: [MC_MAX_QUESTIONS] string; nq: int;   // compiler questions (read only with more)
   notes: [MC_MAX_NOTES] string; nn: int;           // findings to keep (read only with more)
+  todos: [MC_MAX_TODOS] McTodo; nt: int;           // optional live task checklist
+  has_todos: bool;                                 // true when the reply included a todos member
 }
 
 // The reply as an action, its strings decoded into ar (they live as long as
@@ -149,6 +155,7 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
     return "the reply does not match the next_action schema";
   }
   if !cl_valid(text, "?a:edits ?o:edits.* ?s:edits.*.path ?s:edits.*.old ?s:edits.*.new") { return "the reply's edits do not match the next_action schema"; }
+  if !cl_valid(text, "?a:todos ?o:todos.* ?s:todos.*.id ?s:todos.*.content ?s:todos.*.status=pending|in_progress|completed") { return "the reply's todos do not match the next_action schema"; }
   if more && !cl_valid(text, "?a:questions ?s:questions.* ?a:notes ?s:notes.* ?s:edits.*.seen ?s:edits.*.name") { return "the reply's questions, notes or an edit's seen or name do not match the next_action schema"; }
   a[0].rationale = cl_str(ar, text, "rationale");
   eds := cl_raw(text, "edits");
@@ -186,6 +193,18 @@ mc_action_parse_as :: (ar: [] ClArena, text: string, a: [] McAction, more: bool)
   a[0].finished = cl_bool(text, "finished").value;
   a[0].reply = cl_str(ar, text, "reply");
   a[0].asks = cl_str(ar, text, "ask") == "question";
+  tds := cl_raw(text, "todos");
+  if tds.count > 0 {
+    a[0].has_todos = true;
+    nt := cl_count(tds);
+    if nt > MC_MAX_TODOS { return "the reply has more than 24 todos"; }
+    for i: 0..<nt {
+      td := cl_json(tds, cl_item(tds, i));
+      a[0].todos[i] = McTodo.{id = cl_str(ar, td, "id"), content = cl_str(ar, td, "content"), status = cl_str(ar, td, "status")};
+      if a[0].todos[i].content.count == 0 { return "a todo has no content"; }
+    }
+    a[0].nt = nt;
+  }
   if ar[0].full { return "the reply does not fit its buffer"; }
   if a[0].finished && a[0].reply.count == 0 { return "finished is true but reply is empty"; }
   if a[0].asks && a[0].reply.count == 0 { return "ask is question but reply is empty"; }
@@ -404,4 +423,21 @@ mc_question :: (q: string) -> McQuestion {
   #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"maybe\"}", a[..]) != "";
   #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"\",\"ask\":\"none\"}", a[..]) == "finished is true but reply is empty";
   #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"question\"}", a[..]) == "ask is question but reply is empty";
+}
+
+#test "optional todos parse, validate status, and leave has_todos false when omitted" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  base := "{\"rationale\":\"work\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}";
+  #assert mc_action_parse(ar[..], base, a[..]) == "" && !a[0].has_todos && a[0].nt == 0;
+  with_todos := "{\"rationale\":\"work\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\",\"todos\":[{\"id\":\"1\",\"content\":\"Read code\",\"status\":\"completed\"},{\"id\":\"2\",\"content\":\"Write tests\",\"status\":\"in_progress\"}]}";
+  #assert mc_action_parse(ar[..], with_todos, a[..]) == "" && a[0].has_todos && a[0].nt == 2;
+  #assert a[0].todos[0].id == "1" && a[0].todos[0].content == "Read code" && a[0].todos[0].status == "completed";
+  #assert a[0].todos[1].id == "2" && a[0].todos[1].content == "Write tests" && a[0].todos[1].status == "in_progress";
+  empty_todos := "{\"rationale\":\"work\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\",\"todos\":[]}";
+  #assert mc_action_parse(ar[..], empty_todos, a[..]) == "" && a[0].has_todos && a[0].nt == 0;
+  bad_status := "{\"rationale\":\"work\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\",\"todos\":[{\"id\":\"1\",\"content\":\"x\",\"status\":\"done\"}]}";
+  #assert mc_action_parse(ar[..], bad_status, a[..]) != "";
+  empty_content := "{\"rationale\":\"work\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\",\"todos\":[{\"id\":\"1\",\"content\":\"\",\"status\":\"pending\"}]}";
+  #assert mc_action_parse(ar[..], empty_content, a[..]) == "a todo has no content";
 }

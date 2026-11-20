@@ -115,6 +115,7 @@ CP_CARGO :: 63; CP_CARGO_REMOVE :: 64; CP_MENTION :: 65; CP_ASK_ADD_PRESS :: 66;
 CP_PANE_STOP :: 67;         // stop button in the sub-agent pane (#13766)
 CP_TOAST_CLOSE :: 68;       // a toast's Close (overlay.coax; #13774)
 CP_AGENT_STOP :: 69;        // stop button under a running sub-agent's activity row: name + ".s" + j (#13766)
+CP_TODOS_TOGGLE :: 70;      // collapse or expand the live agent todo checklist tray
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -293,6 +294,7 @@ CoderPage :: struct {
   set_orkey: [48] u8; set_orkey_n: int;
   set_version: [48] u8; set_version_n: int;
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
+  todos: [1] CpTodos;          // live agent to-do checklist (todos.coax)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)

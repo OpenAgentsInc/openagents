@@ -114,6 +114,7 @@ MR_ASK :: 7;                     // text: a command waiting for mc_run_answer (a
 MR_THOUGHT :: 9;                 // text: the step's thinking, as the model summarized it, once it starts its answer (GitHub #13671)
 MR_DELEGATE :: 8;                // text: the step's delegated tasks as JSON ([{"level":L,"task":T}]), waiting for mc_run_delegated
 MR_STOP_AGENT :: 10;             // agent: the number of a sub-agent the step stops (a delegate with resume and stop, GitHub #13766); nothing waits on it
+MR_TODOS :: 11;                  // text: the step's todo list as JSON ([{"id":I,"content":C,"status":S}])
 
 McRunEvent :: struct {
   kind: int;
@@ -449,6 +450,10 @@ mc_run_heard :: (r: [] McRun, out: [] McRunEvent, ev: [] GwEvent) -> McHeard {
   }
   if rn > 0 { k = mc_run_put(out, k, McRunEvent.{kind = MR_REPLY, text = cast(string) rb[0..<rn]}); }
   k = mc_run_logs(r, out, k);
+  if l[0].todos_dirty {
+    l[0].todos_dirty = false;
+    k = mc_run_put(out, k, McRunEvent.{kind = MR_TODOS, text = cast(string) l[0].todos[0..<l[0].ntodos]});
+  }
   if status == MC_WAIT { return McHeard.{k = k}; }
   r[0].calling = false;
   r[0].nob = 0;

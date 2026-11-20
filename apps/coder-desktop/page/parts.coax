@@ -39,6 +39,7 @@
 #load "layout/conversation.coax";
 #load "host-api.coax";
 #load "followups.coax";
+#load "todos.coax";
 #load "overlay.coax";
 #load "palette.coax";
 #load "attach.coax";

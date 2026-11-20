@@ -72,6 +72,7 @@ MWW_STEER :: 19; MWW_INTERRUPT :: 20; MWW_QUEUE :: 21;
 MWW_TURN :: 22; MWW_STEERED :: 23; MWW_QUEUED :: 24; MWW_QUEUE_REFUSED :: 25;
 // sub-agents that do not block (GitHub #13766): the worker's lines
 MWW_STOP_AGENT :: 26;
+MWW_TODOS :: 27;               // {"kind":"todos","todos":[{"id":I,"content":C,"status":S}]}: live agent checklist
 // queue ops
 MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
@@ -298,6 +299,11 @@ mww_thought :: (o: [] u8, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"thought\",\"text\":"); n = json_write_string(o, n, text);
   return json_raw(o, n, "}");
 }
+mww_todos :: (o: [] u8, todos_json: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"todos\",\"todos\":");
+  n = json_raw(o, n, ifx todos_json.count > 0 then todos_json else "[]");
+  return json_raw(o, n, "}");
+}
 mww_reply :: (o: [] u8, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"reply\",\"text\":"); n = json_write_string(o, n, text);
   return json_raw(o, n, "}");
@@ -430,6 +436,7 @@ MwwLine :: struct {
   paused: ClBool;                // queue
   active: string;                // queue: the item whose turn runs ("" for none)
   items: string;                 // queue: the items' JSON list ([{"id","text"}]); read each with cl_item
+  todos: string;                 // todos: the todo list's JSON array ([{"id","content","status"}]); read each with cl_item
   op: string;                    // queue_refused
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
@@ -442,6 +449,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   else if kind == "ready" { k = MWW_READY; }
   else if kind == "reply" { k = MWW_REPLY; l[0].text = cl_str(ar, line, "text"); }
   else if kind == "thought" { k = MWW_THOUGHT; l[0].text = cl_str(ar, line, "text"); }
+  else if kind == "todos" { k = MWW_TODOS; l[0].todos = cl_raw(line, "todos"); }
   else if kind == "attempt" {
     k = MWW_ATTEMPT;
     l[0].usd_micros = cl_int(line, "usd_micros");
@@ -644,6 +652,8 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STOP_AGENT && l[0].agent.ok && l[0].agent.value == 2 && !l[0].ticket.ok;
   // one with no number reads with none; the worker takes neither as an owner's line
   #assert mww_read(ar[..], "{\"kind\":\"stop_agent\"}", l[..]) == MWW_STOP_AGENT && !l[0].agent.ok;
+  n = mww_todos(o[..], "[{\"id\":\"1\",\"content\":\"Step one\",\"status\":\"in_progress\"}]");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_TODOS && cl_count(l[0].todos) == 1 && cl_str(ar[..], l[0].todos, "0.status") == "in_progress";
   #assert mww_request(ar[..], "{\"kind\":\"stop_agent\",\"agent\":2}", r[..]) == MWW_NONE;
   small: [20] u8; #assert mww_stop_agent(small[..], 2) < 0;
 }

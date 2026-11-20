@@ -43,7 +43,7 @@ MC_BAD_LIMIT :: 3;
 MC_IDLE_LIMIT :: 3;
 MC_LOCAL_WORK_MIN :: 0.5;
 
-MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, left_out (only when your oldest steps have left the state: their step range, and the files they viewed and the edits they made, by path and lines), earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. When even the compacted steps fill their room, the oldest leave the state for good, and left_out names them: view a file it names again to see it as it is now. Steps that left are history, not a new request. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.";
+MC_SYSTEM :: "You are Microcoder, a small coding agent. Each turn you get the state as JSON: environment (the machine and the working directory), task, route, left_out (only when your oldest steps have left the state: their step range, and the files they viewed and the edits they made, by path and lines), earlier (older steps, compacted: their edits, commands with exit codes and the start and end of each output, and the files they viewed by size; view a file again to see it), actions (the recent steps in order, each with its results: edits, commands with their exit codes and output, and the files it viewed, as they were then) and notes. Answer with one next_action object.\n- A plain question or small talk: answer it at once with finished true and the answer in reply.\n- To act, in one turn: edits (exact replacements: old must appear exactly once in path, copied with its whitespace; an empty old writes new as the whole file), then commands (run in order by /bin/sh in the working directory; each is killed after environment.command_seconds, or after 30 seconds when that is not given; a long output is cut to its head and tail, and when it is saved whole the cut line names the file, which you can view by range), then view (each entry PATH, or PATH:A-B for lines A to B; shown as numbered lines, the first 300 or the range asked for, with a line saying which lines are left and how to ask for them). An applied edit's result shows its new text with line numbers, as the file is now; a failed edit's shows the file's nearest lines. Do everything you can in each turn; you see all the results in the next.\n- One step's results take at most about 32 KB of your state: what doesn't fit is held back, and its result says so and how to get it, so ask for what you need rather than everything at once. Your state has room for about 140 KB of recent results. When it fills, the older steps are compacted: a compacted step keeps its rationale, its commands with the start and end of each output, and only the names of the files it viewed. So search before you read (git grep -n, with -C for context), view the lines you need (FILE:A-B, with the numbers a search or an earlier view gave) rather than a whole large file, and write what you will need later (the path, the line, the text) in that step's rationale, which stays. When even the compacted steps fill their room, the oldest leave the state for good, and left_out names them: view a file it names again to see it as it is now. Steps that left are history, not a new request. Do not view or run the same thing again to remember it. When a task has many places to change, change each one as you find it rather than reading everything first.\n- For a change to code or text: find what to change, change it, run the checks the task names, then read your diff (git diff) against every requirement of the task, word for word, before you finish. A git commit's result carries last_check: how the last test or check you ran before it ended, or that none ran since your last edit.\n- Finish with finished true and a short reply addressed to the user. Set ask to question only when you cannot go on without the user's answer.\n- rationale is for the log, never shown to the user.\n- When route.local_work is under 0.5, run no commands: answer from what you know.\n- On multi-step tasks, include todos (array of {id, content, status: pending|in_progress|completed}) to show live progress; omit or leave empty for trivial tasks.";
 
 // What a run's system prompt gains with each mode (mc_aware; docs/coder/microcoder.md, "Compiler
 // questions and working memory"; GitHub #13444, #13445). They go after MC_SYSTEM, so a run
@@ -73,6 +73,7 @@ McLoopBuffers :: struct {
   norm: [MC_REPLY_BYTES] u8;     // a text reply's action, rewritten whole
   system: [24576] u8;            // the system prompt and schema of a run with modes and workspace instructions
   schema: [4096] u8;
+  todos: [8192] u8;              // latest serialized todos JSON array
 }
 
 McLoop :: struct {
@@ -106,11 +107,13 @@ McLoop :: struct {
   sent: int;                     // the last request's state, escaped, with its room for the system prompt and schema
   long_retry: bool;              // this request was refused as too long and sent again (mc_feed): once each
   too_long: int;                 // requests refused as too long this run
+  todos: [] u8; ntodos: int;     // latest todos JSON array ([{"id":...,"content":...,"status":...}])
+  todos_dirty: bool;             // true when the last action updated todos
 }
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
-  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], norm = b[0].norm[..], local_work = local_work, system = MC_SYSTEM, schema = MC_SCHEMA};
+  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], norm = b[0].norm[..], todos = b[0].todos[..], local_work = local_work, system = MC_SYSTEM, schema = MC_SCHEMA};
   l[0].ar[0] = ClArena.{buf = b[0].arena[..]};
   mc_state_init(l[0].st[..], sb, environment, task, route);
 }
@@ -276,6 +279,23 @@ mc_bad :: (l: [] McLoop, why: string) -> int {
   return MC_AGAIN;
 }
 
+
+// Records the action's todos as a compact JSON array in l[0].todos and marks todos_dirty.
+mc_todos_record :: (l: [] McLoop, a: McAction) {
+  if !a.has_todos { return; }
+  o := l[0].todos;
+  n := json_raw(o, 0, "[");
+  for i: 0..<a.nt {
+    if i > 0 { n = json_raw(o, n, ","); }
+    n = json_raw(o, n, "{\"id\":"); n = json_write_string(o, n, a.todos[i].id);
+    n = json_raw(o, n, ",\"content\":"); n = json_write_string(o, n, a.todos[i].content);
+    n = json_raw(o, n, ",\"status\":"); n = json_write_string(o, n, a.todos[i].status);
+    n = json_raw(o, n, "}");
+  }
+  n = json_raw(o, n, "]");
+  if n >= 0 { l[0].ntodos = n; l[0].todos_dirty = true; }
+}
+
 // A whole reply: checked, then acted on.
 mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].ar[0].at = 0; l[0].ar[0].full = false;
@@ -302,6 +322,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   if more && !l[0].memory { l[0].pending[0].nn = 0; }
   if l[0].pending[0].finished && (l[0].pending[0].nc > 0 || l[0].pending[0].ne > 0 || l[0].pending[0].nv > 0 || l[0].pending[0].nq > 0 || l[0].pending[0].nd > 0) { l[0].pending[0].finished = false; }
   a := l[0].pending[0];
+  mc_todos_record(l, a);
   // with the memory the owner decides a finish (the finish rule): the step is open for its notes
   if a.finished && l[0].memory { mc_action_begin(l[0].st[..], a.rationale); return MC_FINISH; }
   if a.finished { l[0].reply = a.reply; mc_record_bare(l); return mc_end(l, MC_END_FINISHED); }

@@ -1,0 +1,161 @@
+// Coder Desktop page (../page.coax): Live Agent To-Do / Task Checklist tray docked over the
+// composer. Updated by Microcoder's MWW_TODOS wire event.
+
+CP_TODOS :: 16;
+CP_TODO_ID :: 32;
+CP_TODO_TEXT :: 160;
+CP_TODO_PENDING :: 0;
+CP_TODO_ACTIVE :: 1;
+CP_TODO_DONE :: 2;
+
+CpTodo :: struct {
+  id: [CP_TODO_ID] u8; nid: int;
+  content: [CP_TODO_TEXT] u8; ncontent: int;
+  status: int;
+}
+CpTodos :: struct {
+  items: [CP_TODOS] CpTodo; n: int;
+  collapsed: bool;
+  tray_h: f32;
+}
+
+cp_todo_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+cp_todo_put :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  while n > 0 && n < src.count && (src[n] & 0xC0) == 0x80 { n -= 1; }
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+cp_todos_reset :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  s[0].todos[0] = CpTodos.{};
+}
+
+cp_todos_take :: (s: [] CoderPage, raw: string) {
+  if s.count < 1 { return; }
+  td := s[0].todos[..];
+  was_collapsed := td[0].collapsed;
+  was_h := td[0].tray_h;
+  td[0] = CpTodos.{collapsed = was_collapsed, tray_h = was_h};
+  if raw.count == 0 { return; }
+  ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
+  cnt := cl_count(raw);
+  if cnt < 0 { return; }
+  if cnt > CP_TODOS { cnt = CP_TODOS; }
+  k := 0;
+  for i: 0..<cnt {
+    item := cl_item(raw, i);
+    if !item.ok { continue; }
+    obj := raw[item.from..<item.to];
+    content := cl_str(ar[..], obj, "content");
+    if content.count == 0 { continue; }
+    id := cl_str(ar[..], obj, "id");
+    st := cl_str(ar[..], obj, "status");
+    code := CP_TODO_PENDING;
+    if st == "in_progress" { code = CP_TODO_ACTIVE; }
+    else if st == "completed" { code = CP_TODO_DONE; }
+    td[0].items[k].nid = cp_todo_put(td[0].items[k].id[..], id);
+    td[0].items[k].ncontent = cp_todo_put(td[0].items[k].content[..], content);
+    td[0].items[k].status = code;
+    k += 1;
+  }
+  td[0].n = k;
+}
+
+cp_todos_toggle :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || s[0].todos[0].n == 0 { return false; }
+  s[0].todos[0].collapsed = !s[0].todos[0].collapsed;
+  return true;
+}
+
+cp_todos_done_count :: (td: [] CpTodos) -> int {
+  done := 0;
+  for i: 0..<td[0].n { if td[0].items[i].status == CP_TODO_DONE { done += 1; } }
+  return done;
+}
+
+coder_page_todo_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].todos[0].n else 0; }
+coder_page_todo_done_count :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_todos_done_count(s[0].todos[..]) else 0; }
+coder_page_todo_status :: (s: [] CoderPage, i: int) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].todos[0].n { return -1; }
+  return s[0].todos[0].items[i].status;
+}
+coder_page_todo_text :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].todos[0].n { return -1; }
+  return cp_out(out, cp_todo_str(s[0].todos[0].items[i].content[..], s[0].todos[0].items[i].ncontent));
+}
+
+// The checklist tray, docked by its bottom edge at `bottom` over the composer (and over follow-ups).
+cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32) {
+  td := s[0].todos[..];
+  n := td[0].n;
+  if n == 0 { td[0].tray_h = 0.0f32; return; }
+  sk := f[0].skin; a := sk.app; sh := f[0].sheet; m := f[0].m;
+  rh := sk.body.line + 6.0f32;
+  hh := sk.cmp.chip_h + 4.0f32;
+  shown := ifx td[0].collapsed then 0 else n;
+  h := 2 * a.gap_small + hh + cast(f32) shown * rh;
+  y := bottom - h;
+  uiframe_open(f, uiframe_semantic(f, "coder.todos", EL_REGION, "Tasks", x, y, cw, h, 0, 0));
+  _ := sheet_box(sh, x, y, cw, h, a.card_radius, sk.border, sk.surface, sk.hover);
+  pad := a.gap;
+  hy := y + a.gap_small;
+  // Right-aligned Collapse / Expand chip
+  tlabel := ifx td[0].collapsed then "Show" else "Hide";
+  bx := x + cw - pad - app_chip_width(f, -1, tlabel, 0);
+  _ := app_chip(f, "coder.todos.toggle", bx, hy + (hh - sk.cmp.chip_h) / 2, 0, -1, tlabel, tlabel, 0, CP_TODOS_TOGGLE);
+  bx -= a.gap_small;
+  // Left-aligned checklist icon + "Tasks · done/total" (plus active item when collapsed)
+  icon_sz := a.tool_icon;
+  sheet_icon(sh, ICON_CHECKLIST, x + pad, hy + (hh - icon_sz) / 2, icon_sz, sk.muted);
+  tx := x + pad + icon_sz + a.gap_small;
+  hb: [192] u8;
+  hn := el_put(hb[..], 0, "Tasks · ");
+  hn = el_put_i(hb[..], hn, cp_todos_done_count(td));
+  hn = el_put(hb[..], hn, "/");
+  hn = el_put_i(hb[..], hn, n);
+  if td[0].collapsed {
+    for i: 0..<n {
+      if td[0].items[i].status == CP_TODO_ACTIVE {
+        hn = el_put(hb[..], hn, " · ");
+        hn = el_put(hb[..], hn, cp_todo_str(td[0].items[i].content[..], td[0].items[i].ncontent));
+        break;
+      }
+    }
+  }
+  head := app_fit(f, sk.label.face, sheet_pool(sh, cast(string) hb[0..<hn]), bx - tx);
+  _ := sheet_text(sh, m, -1, tx, hy + (hh - sk.label.line) / 2, sk.label.line, sk.label.face, sk.ink, head);
+  // Expanded rows
+  ry0 := hy + hh;
+  ib: [EL_ID] u8;
+  for i: 0..<shown {
+    ry := ry0 + cast(f32) i * rh;
+    item := td[0].items[i];
+    text := cp_todo_str(item.content[..], item.ncontent);
+    nn := el_put(ib[..], 0, "coder.todos."); nn = el_put_i(ib[..], nn, i);
+    _ := uiframe_semantic(f, sheet_pool(sh, cast(string) ib[0..<nn]), EL_TEXT, text, x + pad, ry, cw - 2 * pad, rh, 0, 0);
+    gx := x + pad;
+    text_x := gx + icon_sz + a.gap_small;
+    color := sk.muted;
+    if item.status == CP_TODO_DONE {
+      sheet_icon(sh, ICON_CHECK, gx, ry + (rh - icon_sz) / 2, icon_sz, sk.accent);
+      color = sk.faint;
+    } else if item.status == CP_TODO_ACTIVE {
+      _ := sheet_text(sh, m, -1, gx + 2, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, sk.accent, "●");
+      color = sk.ink;
+    } else {
+      _ := sheet_text(sh, m, -1, gx + 2, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, sk.faint, "○");
+      color = sk.muted;
+    }
+    fit := app_fit(f, sk.body.face, sheet_pool(sh, text), x + cw - pad - text_x);
+    _ := sheet_text(sh, m, -1, text_x, ry + (rh - sk.body.line) / 2, sk.body.line, sk.body.face, color, fit);
+  }
+  uiframe_close(f);
+  td[0].tray_h = h + a.gap_small;
+}
+
+coder_page_todo_content :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].todos[0].n { return 0; }
+  return cp_out(out, cp_todo_str(s[0].todos[0].items[i].content[..], s[0].todos[0].items[i].ncontent));
+}

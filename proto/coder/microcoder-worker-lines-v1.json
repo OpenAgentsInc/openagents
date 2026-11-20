@@ -809,6 +809,25 @@
      "note": "the number of the turn's sub-agent the run stops (a delegated task with resume and stop); the owner stops that one alone, its siblings and the turn go on, and nothing waits on it (GitHub #13766)"
     }
    ]
+  },
+  {
+   "kind": "todos",
+   "from": "worker",
+   "writer": "mww_todos",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "todos",
+     "note": "the line's kind"
+    },
+    {
+     "name": "todos",
+     "type": "array",
+     "note": "the current checklist, [{\"id\":ID,\"content\":TEXT,\"status\":\"pending\"|\"in_progress\"|\"completed\"}]"
+    }
+   ]
   }
  ],
  "runs": [
@@ -1177,7 +1196,7 @@
     {
      "from": "worker",
      "kind": "command",
-     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":3,\"timed_out\":false,\"output\":\"a\\tb \\\"q\\\" \\\\ back\\nline2 € \\u0001\\n\"}"
+     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":3,\"timed_out\":false,\"output\":\"a\\tb \\\"q\\\" \\\\ back\\nline2 \u20ac \\u0001\\n\"}"
     },
     {
      "from": "worker",
@@ -2242,6 +2261,33 @@
      "from": "worker",
      "kind": "ended",
      "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"counted; the bug search is stopped\"}"
+    }
+   ]
+  },
+  {
+   "name": "todos-checklist",
+   "what": "a multi-step task emitting a live todos checklist update before replying",
+   "from": "codec fixture for MWW_TODOS (mww_todos / mww_read)",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "todos",
+     "line": "{\"kind\":\"todos\",\"todos\":[{\"id\":\"1\",\"content\":\"Inspect schema\",\"status\":\"completed\"},{\"id\":\"2\",\"content\":\"Wire UI\",\"status\":\"in_progress\"}]}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"done\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}"
     }
    ]
   }
