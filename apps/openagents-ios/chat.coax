@@ -1138,7 +1138,7 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
   core: [1] AppCore; app_init(core[..]);
   chat_attach(s[..], core[..], "");
   n := ch_test_frame(s[..], o[..]);
-  #assert n > 0 && ch_test_text(s[..], "What can we build?") == 1 && ch_test_text(s[..], "Message") == 1 && chat_refused(s[..]) == 0;
+  #assert n > 0 && ch_test_text(s[..], "Let's build") == 1 && ch_test_text(s[..], "Message") == 1 && chat_refused(s[..]) == 0;
   #assert ch_test_has(s[..], "chat.composer") && ch_test_has(s[..], "chat.composer.send") && ch_test_has(s[..], "chat.empty") && ch_test_has(s[..], "nav.menu");
   #assert ch_test_tap(s[..], "chat.composer") && chat_action(s[..]) == CH_ACT_FOCUS && chat_action(s[..]) == CH_ACT_NONE;
   id: [EL_ID] u8; k := chat_focus(s[..], id[..]); #assert cast(string) id[0..<k] == "chat.composer";

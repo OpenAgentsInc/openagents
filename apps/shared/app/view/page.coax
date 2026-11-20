@@ -453,7 +453,7 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   }
   // the empty conversation: the name alone (app_empty's circle would hold no mark)
   if vm[0].empty {
-    if s.chat.enabled {_:=app_conversation_empty(f,cx,top+(viewport-s.chat.mark-s.chat.greeting_gap-s.display.line)/2,cw,"What can we build?");}
+    if s.chat.enabled {_:=app_conversation_empty(f,cx,top+(viewport-s.chat.mark-s.chat.greeting_gap-s.display.line)/2,cw,"Let's build");}
     else {ey := top + (viewport - s.title.line) / 2;
       th := app_centred(f, s.title, s.ink, cx, ey, cw, VIEW_EMPTY_TITLE);
       _ := uiframe_semantic(f, "chat.empty", EL_HEADING, VIEW_EMPTY_TITLE, cx, ey, cw, th, 0, 0);}

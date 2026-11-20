@@ -127,7 +127,7 @@ cp_drive :: (r: [] CpRun, p: [] ChatPage, v: [] f32, d: [] GdDrive, op: string) 
   page: [1] ChatPage; o: [1] ChOut; d: [1] GdDrive; r: [1] CpRun; core: [1] AppCore; cp_open(r[..], page[..], o[0].v[..], d[..], core[..], "cpu", 0, true);
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tree");
   tree := gd_answer(d[..]);
-  #assert fk_find(tree, "chat.empty heading \"What can we build?\"") >= 0 && fk_find(tree, "chat.composer field \"Message\" = \"\"") >= 0 && fk_find(tree, "chat.composer.send button") >= 0;
+  #assert fk_find(tree, "chat.empty heading \"Let's build\"") >= 0 && fk_find(tree, "chat.composer field \"Message\" = \"\"") >= 0 && fk_find(tree, "chat.composer.send button") >= 0;
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "false";
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "tap chat.composer") && gd_answer(d[..]) == "tapped chat.composer";
   #assert cp_drive(r[..], page[..], o[0].v[..], d[..], "state keyboard.shown") && gd_answer(d[..]) == "true";

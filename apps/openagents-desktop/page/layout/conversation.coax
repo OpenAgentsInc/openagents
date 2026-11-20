@@ -435,7 +435,8 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
     least := zc_pill(cw, 0, 0, k.cmp.line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, false, false).height;
     top := (h - s[0].empty_h - a.gap - least - foot) / 2;
     if top < cast(f32) CP_CORNER + a.icon_button { top = cast(f32) CP_CORNER + a.icon_button; }
-    eh := app_empty(f, "coder.empty", x, top, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
+    eh := app_centred(f, k.strong, k.ink, x, top, cw, "Let's build");
+    _ := uiframe_semantic(f, "coder.empty", EL_HEADING, "Let's build", x, top, cw, eh, 0, 0);
     if abs(eh - s[0].empty_h) > 0.5 { s[0].empty_h = eh; s[0].anim = true; }
     if top + eh + a.gap < box_y { box_y = top + eh + a.gap; }
   }
