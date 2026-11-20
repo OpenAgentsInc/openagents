@@ -203,13 +203,11 @@ mc_run_step :: (r: [] McRun) -> int { return ifx r[0].l[0].st[0].open >= 0 then 
 // What is left of the run's time, for a compiler question.
 mc_run_left :: (r: [] McRun) -> int { return r[0].deadline - cxproc_now_ms(); }
 
-// Scans the user task for image file paths (including macOS screenshot paths with spaces
+// Scans text for image file paths (including macOS screenshot paths with spaces
 // and U+202F) and attaches any readable images to the run's multimodal prompt.
-mc_run_attach_task_images :: (r: [] McRun) {
-  mc_image_store_reset(r[0].img[..]);
-  r[0].l[0].images = r[0].img[0].images[0..<0];
+mc_run_attach_images_in :: (r: [] McRun, text: string) {
   scan: [1] McImageScan;
-  mc_image_scan(r[0].l[0].st[0].task, scan[..]);
+  mc_image_scan(text, scan[..]);
   for i: 0..<scan[0].n {
     // Paths explicitly referenced/pasted by the user are allowed even outside cwd.
     res := mc_image_attach(r[0].img[..], r[0].cwd, scan[0].paths[i], "danger-full-access");
@@ -217,6 +215,12 @@ mc_run_attach_task_images :: (r: [] McRun) {
       r[0].l[0].images = r[0].img[0].images[0..<r[0].img[0].n];
     }
   }
+}
+
+mc_run_attach_task_images :: (r: [] McRun) {
+  mc_image_store_reset(r[0].img[..]);
+  r[0].l[0].images = r[0].img[0].images[0..<0];
+  mc_run_attach_images_in(r, r[0].l[0].st[0].task);
 }
 
 // A view for this run: image files are attached as multimodal parts; text files use
@@ -979,7 +983,9 @@ mc_run_drain :: (r: [] McRun, reply: string) {
   if r[0].steers.count == 0 { return; }
   first := true;
   while r[0].steers[0].n > 0 && r[0].steers[0].nd < MC_STEERS {
-    mc_action_user(r[0].l[0].st[..], mc_steer_text(r[0].steers, 0), ifx first then reply else "");
+    stext := mc_steer_text(r[0].steers, 0);
+    mc_run_attach_images_in(r, stext);
+    mc_action_user(r[0].l[0].st[..], stext, ifx first then reply else "");
     first = false;
     if !mc_steer_take(r[0].steers, r[0].l[0].st[0].steps) { break; }
   }

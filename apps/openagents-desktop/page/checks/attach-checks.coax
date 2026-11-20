@@ -53,13 +53,13 @@ cp_test_draft_is :: (s: [] CoderPage, want: string) -> bool {
   saved: [32768] u8; sn := coder_page_save(s, saved[..]);
   #assert sn > 0 && cp_find(cast(string) saved[0..<sn], "\"refs\":") >= 0;
 }
-#test "attachments: a message of files alone says so; an image goes as its path with a note that it can't be seen" {
+#test "attachments: a message of files alone says so; an image goes as its path without a text-only disclaimer" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
   #assert coder_page_attach(s, "/tmp/shot.png", "shot.png", -1);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1;
   out: [8192] u8; ab: [8192] u8;
   task := cp_test_task_text(s, out[..], ab[..]);
-  #assert cp_find(task, CP_ATTACHED_ONLY) >= 0 && cp_find(task, "- /tmp/shot.png (an image: you can't view pictures, so use it as a file)") >= 0;
+  #assert cp_find(task, CP_ATTACHED_ONLY) >= 0 && cp_find(task, "- /tmp/shot.png") >= 0 && cp_find(task, "you can't view pictures") < 0;
 }
 #test "@ lists the working folder's files at the caret; Return puts the path in; the message names the files it mentions" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);

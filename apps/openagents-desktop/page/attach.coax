@@ -3,8 +3,8 @@
 // pasted, dropped on the window or chosen joins the strip over the draft (components/app/cargo.coax
 // over the chat set's Attachments, at_stage). Attachments keep the pill expanded. A message takes
 // the strip's paths, and the files it mentions with @ (mention.coax), as a note its task carries
-// (CpTurn.refs): Microcoder reads them with its own tools. It reads text alone, so an image goes as
-// its path, and the note says it can't see the picture. The strip is the draft's, kept with it.
+// (CpTurn.refs): Microcoder reads them with its own tools and attaches image paths as multimodal
+// image parts (coax/lib/microcoder/image.coax). The strip is the draft's, kept with it.
 
 CP_ATTACHED_ONLY :: "See the attached file(s).";   // what a message with attachments and no words says (Zeron's)
 
@@ -144,7 +144,7 @@ cp_files_forget :: (s: [] CoderPage) { s[0].files = s[0].files[0..<0]; s[0].nfil
 // The draft's attachments and the files its text mentions (@path, a file of the listed folder),
 // as the note a message's task carries. Its length in out.
 cp_refs_note :: (s: [] CoderPage, text: string, out: [] u8) -> int {
-  k := at_note(s[0].cargo[..], false, out, 0);
+  k := at_note(s[0].cargo[..], true, out, 0);
   named := 0; i := 0;
   while i < text.count {
     e := composer_token_at(text, i);
