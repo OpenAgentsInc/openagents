@@ -99,6 +99,9 @@ cp_skin :: () -> UiSkin {
   k.cmp.chip_gap = 6.0f32;
   // The transcript's activity groups (#13731) and settings (settings.coax): Zeron's measures, in points as the page is.
   k.act = UiActivity.{};
+  // a thought's words a step smaller than a reply's, as Zeron's (prose.small 14/20, ds/activity.luau): Geist 14,
+  // Medium 14 for **bold** (the atlas has no SemiBold 14), code 13
+  k.act.thought_face = CP_COMPOSER_FACE; k.act.thought_bold = FONT_SEARCH; k.act.thought_code = FONT_CODE;
   k.set = coder_noir_settings();
   return k;
 }

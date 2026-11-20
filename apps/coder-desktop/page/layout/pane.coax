@@ -30,7 +30,9 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   i := s[0].pane_turn; j := s[0].pane_agent;
   state := s[0].turns[i].agents[j].state;
   kb: [24] u8; ib: [EL_ID] u8;
-  took := cp_took(kb[..], ifx state == CP_RUNNING then s[0].clock - s[0].turns[i].agents[j].began else s[0].turns[i].agents[j].took);
+  // how long it has run, or ran: nothing for one that ended inside a second, as a row's time (#13770)
+  ran := s[0].turns[i].agents[j].took;
+  took := ifx state == CP_RUNNING then cp_took(kb[..], s[0].clock - s[0].turns[i].agents[j].began) else ifx ran >= 1 then cp_took(kb[..], ran) else "";
   took_s := ifx took.count > 0 then sheet_pool(sh, took) else "";
   stop := cp_pane_head(s, f, px, pw, h, took_s);
   s[0].pane_view = h - stop;
@@ -44,7 +46,8 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := body - s[0].pane_scroll - s[0].pane_scr[0].stretch + a.gap;
   enter := f[0].skin.motion.enter;
   f[0].skin.motion.enter = 0;
-  y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + a.gap;
+  // under it the copy lane the conversation keeps under a message, so its work stands level (#13770)
+  y += app_message_user(f, cp_pane_id(ib[..], s, ".u", -1), x, y, cw, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]) + cp_copy_lane_h();
   f[0].skin.motion.enter = enter;
   // its work: one activity group, open while it runs or when the person opened it
   live := state == CP_RUNNING && !s[0].turns[i].agents[j].paused;

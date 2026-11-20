@@ -148,9 +148,12 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
 // always reserved so nothing shifts; button shows only while the message or its lane is
 // hovered (or during the 1.2s Copied confirmation). 24x24 rounded-md (6pt) transparent
 // button with 14pt copy/check icon, flush with the message's edge (right for user, left for reply).
+// The lane's height, reserved under a message whether or not its button shows: a sub-agent's pane
+// keeps it under its task too, so the pane's work stands level with the conversation's (#13770).
+cp_copy_lane_h :: () -> f32 { return 32.0f32 / ARCADE_PHONE_SCALE; }
 cp_copy_lane :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, copied: bool, action: int) -> f32 {
   u: f32 = ARCADE_PHONE_SCALE;
-  lane := 32.0f32 / u;
+  lane := cp_copy_lane_h();
   if !visible { return lane; }
   k := f[0].skin; sh := f[0].sheet;
   side := 24.0f32 / u;
@@ -175,7 +178,7 @@ cp_copy_lane :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, copi
 cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
   u: f32 = ARCADE_PHONE_SCALE;
-  lane := 32.0f32 / u; lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
+  lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h;   // what scrolls runs up to the follow-ups and the bar
   s[0].view = bottom - top;

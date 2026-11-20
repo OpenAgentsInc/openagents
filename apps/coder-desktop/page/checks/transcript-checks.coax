@@ -515,3 +515,21 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   _ := coder_page_frame(s, out[..], 900.0f32, 640.0f32, 1.0f32, 0.016f32);
   #assert s[0].copied_kind == CP_COPIED_NONE && s[0].copied_turn == -1;
 }
+
+#test "a thought's words are a step smaller than a reply's, as Zeron's: 14 point plain and bold, 13 point code (#13770)" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  k := cp_skin();
+  #assert coder_page_font_size(k.body.face) == 15 && coder_page_font_size(k.act.thought_face) == 14;
+  #assert coder_page_font_size(k.act.thought_bold) == 14 && coder_page_font_size(k.act.thought_code) == 13;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"**Plan** listing\"}") == MWW_THOUGHT;
+  #assert cp_test_draw(s, f[..]);
+  sh := surface_sheet(s[0].surface[..]); plain := -1; bold := -1;
+  for q: 0..<sh.no {
+    if sh.over[q].kind != PRIM_TEXT { continue; }
+    if sh.over[q].text == "Plan" { bold = sh.over[q].id; }
+    if sh.over[q].text == "listing" || sh.over[q].text == " listing" { plain = sh.over[q].id; }
+  }
+  #assert plain == k.act.thought_face && bold == k.act.thought_bold;
+}

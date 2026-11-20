@@ -411,6 +411,9 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   if t < 0 { t = 0; } else if t > 1 { t = 1; }
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
   ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
+  // a step smaller where the skin has the faces (Zeron's prose.small): its plain, bold and code text
+  if a.thought_face >= 0 { ns.body.face = a.thought_face; ns.strong.face = ifx a.thought_bold >= 0 then a.thought_bold else a.thought_face; }
+  if a.thought_code >= 0 { ns.code.face = a.thought_code; }
   total: f32 = 0; lines := 0;
   if r.blocks > 0 {
     for b: r.block0..<r.block0 + r.blocks {
@@ -443,7 +446,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   } else {
     for q: 0..<lines {
       if clipped && cast(f32) q * line >= shown { break; }
-      _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, s.body.face, s.muted, app_line(r.output, q), true);
+      _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, ns.body.face, s.muted, app_line(r.output, q), true);
     }
   }
   if clipped {
