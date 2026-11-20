@@ -76,6 +76,8 @@ UiFrame :: struct {
   reduced_motion: bool;        // motion settles at once
   reduced_transparency: bool;  // a component paints an opaque ground where it would blur or wash
   focus_moved: bool;           // this frame's press moved the keyboard (uiframe_focus_moved)
+  clocked: bool;               // something drawn this frame moves with the clock alone (uiframe_tick)
+  kept: Sheet;                 // the sheet committed last (on screen): its pool keeps last frame's text (uiframe_kept)
 }
 
 // A context over a sheet, a measure and a skin alone: no rows, no keyed
@@ -92,10 +94,11 @@ uiframe_begin :: (f: [] UiFrame, surface: [] UiSurface, keyed: [] KeyedStore, m:
   if ins[0].present { ins[0].hovered_n = el_copy(ins[0].hovered[..], surface_id(surface, surface_hit(surface, ins[0].x, ins[0].y))); }
   moved := uiframe_press_focus(surface, ins[..]);
   in := ins[0];
+  kept := surface_sheet(surface);
   b := surface_begin(surface);
   keyed_begin(keyed, dt, reduced_motion);
   f[0] = UiFrame.{sheet = surface[0].sheet[b..<b + 1], rows = surface[0].rows[b..<b + 1], keyed = keyed, m = m, skin = s, input = in,
-    clock = clock, dt = dt, reduced_motion = reduced_motion, reduced_transparency = reduced_transparency, focus_moved = moved};
+    clock = clock, dt = dt, reduced_motion = reduced_motion, reduced_transparency = reduced_transparency, focus_moved = moved, kept = kept};
 }
 // Focus follows a press (owner rule, GitHub #13645): a press that began on a
 // text field (a committed row with role EL_FIELD that is not disabled) gives
@@ -280,7 +283,25 @@ uiframe_spring :: (f: [] UiFrame, k: int, target: f32) -> f32 { return keyed_spr
 uiframe_hover :: (f: [] UiFrame, k: int, id: string) -> f32 { return keyed_hover(f[0].keyed, k, id, uiframe_hovered(f, id), f[0].skin.motion.hover); }
 uiframe_hover_on :: (f: [] UiFrame, k: int, id: string, on: bool) -> f32 { return keyed_hover(f[0].keyed, k, id, on, f[0].skin.motion.hover); }
 // Whether another frame is due for motion alone.
-uiframe_moving :: (f: [] UiFrame) -> bool { return keyed_moving(f[0].keyed); }
+uiframe_moving :: (f: [] UiFrame) -> bool { return keyed_moving(f[0].keyed) || f[0].clocked; }
+// Something drawn this frame moves with the clock alone (a shimmer's sweep): the frame is moving, so
+// the host draws the next one. Never under reduced motion, where such a drawing stands still; a
+// frame that draws none of it is idle again.
+uiframe_tick :: (f: [] UiFrame) { if !f[0].reduced_motion { f[0].clocked = true; } }
+// Text kept from the frame before: `n` bytes at `at` in the pool of the sheet on screen, where a
+// component pooled it last frame (uiframe_keep gave it `at`); "" when out of range. A component
+// carries text across frames this way with no buffer of its own (a status word rolling out).
+uiframe_kept :: (f: [] UiFrame, at: int, n: int) -> string {
+  if at < 0 || n <= 0 || at + n > f[0].kept.np || at + n > f[0].kept.pool.count { return ""; }
+  return cast(string) f[0].kept.pool[at..<at + n];
+}
+// Pools text in this frame's sheet for uiframe_kept to read next frame: its offset (-1: not kept).
+uiframe_keep :: (f: [] UiFrame, text: string) -> int {
+  if text.count == 0 { return -1; }
+  at := f[0].sheet[0].np;
+  if sheet_pool(f[0].sheet, text).count != text.count { return -1; }
+  return at;
+}
 
 // A surface's and a store's counts as text, for a driver or a log: the
 // surface's line (paint/surface.coax surface_counts), then

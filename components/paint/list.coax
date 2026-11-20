@@ -103,6 +103,28 @@ prim_inset :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f3
 prim_gradient :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, top: Rgba, bottom: Rgba) -> int {
   return prim_put(list, n, Prim.{kind = PRIM_GRADIENT, x = x, y = y, w = w, h = h, radius = radius, fill = top, edge = bottom, id = -1, line = -1});
 }
+// A shimmer: a box filled `base` with a soft `band` sweeping across it left to right (GitHub
+// #13773). phase 0..1 is the sweep: the band's middle runs from a band's width before x to a band's
+// width past x + w. The band is PRIM_SHIMMER_STRIPS level strips (a gradient here is upright only),
+// ramping base -> band -> base, clipped to the box's straight run (inside its corners). A caller
+// that must not move passes a phase below 0: the bare base box.
+PRIM_SHIMMER_STRIPS :: 8;
+prim_shimmer :: (list: [] Prim, n: int, x: f32, y: f32, w: f32, h: f32, radius: f32, base: Rgba, band: Rgba, phase: f32) -> int {
+  m := prim_fill(list, n, x, y, w, h, radius, base);
+  if phase < 0 || w <= 2 * radius { return m; }
+  bw := w * 0.4f32; if bw < 24 { bw = 24; }
+  mid := x - bw + (w + 2 * bw) * (ifx phase > 1 then 1.0f32 else phase);
+  sw := bw / cast(f32) PRIM_SHIMMER_STRIPS;
+  m = prim_clip(list, m, x + radius, y, x + w - radius, y + h);
+  for i: 0..<PRIM_SHIMMER_STRIPS {
+    sx := mid - bw / 2 + cast(f32) i * sw;
+    c := (cast(f32) i + 0.5f32) / cast(f32) PRIM_SHIMMER_STRIPS;
+    t := 1 - abs(2 * c - 1);
+    if sx + sw <= x + radius || sx >= x + w - radius { continue; }
+    m = prim_fill(list, m, sx, y, sw, h, 0, rgba_mix(base, band, t));
+  }
+  return prim_unclip(list, m);
+}
 prim_elbow :: (list: [] Prim, n: int, x: f32, y: f32, radius: f32, end_x: f32, joined: bool, color: Rgba) -> int {
   return prim_put(list, n, Prim.{kind = PRIM_ELBOW, x = x, y = y, radius = radius, fill = color, edge = color, a = end_x, on = joined, id = -1, line = -1});
 }
@@ -298,4 +320,18 @@ prim_extent :: (p: Prim) -> f32 {
  #assert p[0].x==10 && p[0].y==20 && p[0].w==100 && p[0].h==50 && p[0].radius==12 && prim_groups_valid(p[0..<n],2);
  prim_move(p[..],0,n,3,4);
  #assert p[0].x==13 && p[0].y==24 && p[0].matrix[4]==3 && p[0].matrix[5]==4 && p[1].x==10;
+}
+
+#test "a shimmer sweeps a clipped band across its box, and a still one is its base alone" {
+  list: [64] Prim;
+  base := Rgba.{r = 0.2, g = 0.2, b = 0.2, a = 1}; band := Rgba.{r = 0.4, g = 0.4, b = 0.4, a = 1};
+  still := prim_shimmer(list[..], 0, 10, 10, 200, 12, 6, base, band, -1);
+  #assert still == 1; #assert list[0].kind == PRIM_BOX;
+  n := prim_shimmer(list[..], 0, 10, 10, 200, 12, 6, base, band, 0.5);
+  #assert n > 3; #assert list[1].kind == PRIM_CLIP; #assert list[n - 1].kind == PRIM_CLIP;
+  brightest := 0.0f32;
+  for i: 2..<n - 1 { #assert list[i].x + list[i].w > 16 && list[i].x < 204; if list[i].fill.r > brightest { brightest = list[i].fill.r; } }
+  #assert brightest > 0.3;
+  off := prim_shimmer(list[..], 0, 10, 10, 200, 12, 6, base, band, 0);
+  #assert off == 3;
 }

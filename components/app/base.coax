@@ -68,6 +68,54 @@ app_presence :: (f: [] UiFrame, k: int, on: bool) -> f32 {
   return keyed_glide(f[0].keyed, k, t, f[0].skin.motion.panel, t);
 }
 
+// A skeleton bar where content is on its way (a thread hydrating, a file list, a diff fetching):
+// a rounded box in the raised ground with a soft band sweeping across it every APP_SKELETON_PERIOD
+// seconds of the frame's clock (GitHub #13773). The sweep keeps the frame moving while it shows
+// (uiframe_tick), and the window idles once the bar is gone. Reduced motion: the bar stands still.
+APP_SKELETON_PERIOD :: 1.4f32;
+app_skeleton :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
+  s := f[0].skin; sh := f[0].sheet;
+  phase := -1.0f32;
+  if !f[0].reduced_motion {
+    c := f[0].clock / APP_SKELETON_PERIOD;
+    phase = c - cast(f32) cast(int) c;
+    uiframe_tick(f);
+  }
+  sheet_under(sh, prim_shimmer(sh[0].under, sh[0].nu, x, y, w, h, h / 2, s.raised, rgba_mix(s.raised, s.faint, 0.35f32), phase));
+}
+
+// A one-line label that rolls when its text changes (GitHub #13773; Zeron's status word: Sending…
+// to Working to Stopping…): the old text rises and fades out as the new one rises in from below,
+// over the skin's roll time, clipped to the line. k is the label's keyed row: its spring is the
+// roll, its slots the text it showed (offset and length in the frame's pool, uiframe_keep) and the
+// text rolling out. A row that just appeared, a refused row and reduced motion show the text at
+// once. Returns the new text's width.
+APP_ROLL_RISE :: 0.6f32;   // how far the text travels, in lines
+app_roll_text :: (f: [] UiFrame, k: int, x: f32, y: f32, line: f32, face: int, ink: Rgba, text: string) -> f32 {
+  sh := f[0].sheet; m := f[0].m; ks := f[0].keyed;
+  if !keyed_ok(ks, k) { return sheet_text(sh, m, -1, x, y, line, face, ink, text); }
+  fresh := keyed_fresh(ks, k);
+  was := ""; out := "";
+  if !fresh {
+    was = uiframe_kept(f, cast(int) keyed_slot(ks, k, 0), cast(int) keyed_slot(ks, k, 1));
+    out = uiframe_kept(f, cast(int) keyed_slot(ks, k, 2), cast(int) keyed_slot(ks, k, 3));
+  }
+  if !fresh && was.count > 0 && was != text { out = was; keyed_spring_set(ks, k, 0); }
+  p := keyed_glide(ks, k, 1, f[0].skin.motion.roll, 1);
+  if p >= 1 { out = ""; }
+  at := uiframe_keep(f, text); keyed_slot_set(ks, k, 0, cast(f32) at); keyed_slot_set(ks, k, 1, cast(f32) text.count);
+  oat := uiframe_keep(f, out); keyed_slot_set(ks, k, 2, cast(f32) oat); keyed_slot_set(ks, k, 3, cast(f32) out.count);
+  out = ifx oat < 0 then "" else cast(string) sh[0].pool[oat..<oat + out.count];   // this frame's copy: last frame's pool is reused next
+  if out.count == 0 { return sheet_text(sh, m, -1, x, y, line, face, ink, text); }
+  rise := line * APP_ROLL_RISE;
+  wn := measure_width(m, face, text); wo := measure_width(m, face, out);
+  uiframe_clip(f, x, y, x + (ifx wn > wo then wn else wo) + 1, y + line);
+  _ := sheet_text(sh, m, -1, x, y - rise * p, line, face, rgba_mix(Rgba.{r = ink.r, g = ink.g, b = ink.b, a = 0}, ink, 1 - p), out);
+  _ = sheet_text(sh, m, -1, x, y + rise * (1 - p), line, face, rgba_mix(Rgba.{r = ink.r, g = ink.g, b = ink.b, a = 0}, ink, p), text);
+  uiframe_unclip(f);
+  return wn;
+}
+
 // Text cut to a width: the text itself when it fits, else its longest start
 // that fits with an ellipsis after it, kept in the sheet's pool.
 app_fit :: (f: [] UiFrame, face: int, text: string, w: f32) -> string {

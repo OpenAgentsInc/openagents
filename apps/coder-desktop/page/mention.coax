@@ -75,7 +75,7 @@ cp_mn_paint :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32) {
     n += 1;
   }
   empty := ifx mn[0].trigger == '/' then "No command matches" else ifx !s[0].files_got then "Listing files…" else "No file matches";
-  app_mention(f, "coder.mention", mn, labels[0..<n], details[0..<n], icons[0..<n], empty, r[0], r[1], r[3], x, cw, CP_MENTION);
+  app_mention(f, "coder.mention", mn, labels[0..<n], details[0..<n], icons[0..<n], empty, mn[0].trigger == '@' && !s[0].files_got, r[0], r[1], r[3], x, cw, CP_MENTION);
 }
 // Whether a point (the page's units) is on the open popover: the composer's text gives hit the press.
 cp_mn_over :: (s: [] CoderPage, x: f32, y: f32) -> bool {

@@ -537,13 +537,14 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
 
 // The working line at (x, y): the loader, "Working" (or `label` when given, e.g. "Stopping…")
 // and how long the run has gone. Negative seconds: the turn has not begun ("Sending…", Zeron's
-// sending bridge), so no clock. Its row is live and busy. Returns its height.
+// sending bridge), so no clock. The word rolls when it changes (app_roll_text). Its row is live and
+// busy. Returns its height.
 app_working :: (f: [] UiFrame, id: string, x: f32, y: f32, seconds: int, label: string) -> f32 {
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; h := a.working_h;
   app_loader(sh, x, y + (h - a.loader) / 2, a.loader, s.muted, f[0].clock, f[0].reduced_motion);
   word := sheet_pool(sh, ifx label.count > 0 then label else "Working");
   tx := x + a.loader + a.header_gap; ly := y + (h - s.tool.line) / 2;
-  ww := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, word);
+  wb: [EL_ID] u8; ww := app_roll_text(f, uiframe_key(f, app_id(wb[..], id, ".word")), tx, ly, s.tool.line, s.tool.face, s.muted, word);   // rolls Sending… to Working to Stopping…
   right := tx + ww;
   if seconds >= 0 {
     eb: [24] u8; en := app_act_elapsed(eb[..], seconds);

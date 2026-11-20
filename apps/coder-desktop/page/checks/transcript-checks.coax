@@ -533,3 +533,31 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   }
   #assert plain == k.act.thought_face && bold == k.act.thought_bold;
 }
+
+// How many texts on screen are exactly `text`.
+cp_test_shown :: (s: [] CoderPage, text: string) -> int {
+  sh := surface_sheet(s[0].surface[..]); n := 0;
+  for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
+  return n;
+}
+#test "the working word rolls from Sending… to Working, then stands still; reduced motion swaps it at once" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  for i: 0..<30 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert cp_test_shown(s, "Sending…") == 1;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert cp_test_frame(s, f[..], 1200, 800, false);
+  #assert cp_test_frame(s, f[..], 1200, 800, false);
+  #assert cp_test_shown(s, "Sending…") == 1 && cp_test_shown(s, "Working") == 1;   // both, mid-roll
+  for i: 0..<20 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
+  #assert cp_test_shown(s, "Sending…") == 0 && cp_test_shown(s, "Working") == 1;
+  k := keyed_find(s[0].keyed[..], "t0.t.word");
+  #assert k >= 0 && keyed_spring(s[0].keyed[..], k, 1) == 1;
+  // reduced motion: a new word lands in the frame it changes
+  q: [1] CoderPage; r := q[..];
+  cp_init(r); r[0].d = 1.0f32; r[0].ready = true;
+  #assert coder_page_set_text(r, "look") && coder_page_submit(r) && cp_test_frame(r, f[..], 1200, 800, true);
+  #assert coder_page_line(r, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert cp_test_frame(r, f[..], 1200, 800, true) && cp_test_shown(r, "Sending…") == 0 && cp_test_shown(r, "Working") == 1;
+}

@@ -68,9 +68,16 @@ cp_test_draft_is :: (s: [] CoderPage, want: string) -> bool {
   #assert s[0].mn[0].open && coder_page_action(s) == CP_ASK_FILES;   // the host is asked for the list
   t := [1] ElTable.[cp_test_pill_rows(s)];
   #assert elt_find(t[..], "coder.mention") >= 0 && elt_find(t[..], "coder.mention.0") < 0;   // "Listing files…"
+  // skeleton rows sweep while the list is on its way: still under reduced motion, ticking without it
+  busy := elt_find(t[..], "coder.mention.loading");
+  #assert busy >= 0 && elt_value_of(t[..], busy) == "Listing files…" && !f[0].clocked;
+  s[0].reduced = false;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && f[0].clocked && uiframe_moving(f[..]);
   list := "src/main.rs\nsrc/lib.rs\nREADME.md\n";
   lb: [64] u8; for c, i: list { lb[i] = c; }
   coder_page_files(s, lb[0..<list.count]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && !f[0].clocked;   // the rows came: nothing sweeps
+  s[0].reduced = true;
   coder_page_ime_replace(s, -1, -1, "ma");
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);

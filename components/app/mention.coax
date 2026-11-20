@@ -136,17 +136,24 @@ app_mn_pressed :: (id: string, pressed: string) -> int {
   for i: id.count + 1..<pressed.count { c := pressed[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return n;
 }
+// Skeleton rows while the list is on its way, each a share of the row's width.
+APP_MN_SKELETON :: 3;
+APP_MN_SKELETON_W :: [APP_MN_SKELETON] f32.[0.62, 0.44, 0.7];
+app_mn_skel_id :: (f: [] UiFrame, id: string) -> string { b: [EL_ID] u8; n := el_put(b[..], 0, id); n = el_put(b[..], n, ".loading"); return sheet_pool(f[0].sheet, cast(string) b[0..<n]); }
 // The popover over the caret at (cx, cy) (its line lh tall), kept inside x..x+w and the view's top:
 // above the caret's line, else under it. labels, details and icons are the rows from p.top on (as
-// many as show; icon -1 for none); empty says why there are none ("No files match"). Rows press
-// with `action`. Drawn over the page.
-app_mention :: (f: [] UiFrame, id: string, p: [] AppMention, labels: [] string, details: [] string, icons: [] int, empty: string, cx: f32, cy: f32, lh: f32, x: f32, w: f32, action: int) {
+// many as show; icon -1 for none); empty says why there are none ("No files match"). loading: the
+// rows are on their way (empty says so, "Listing files…"), so APP_MN_SKELETON skeleton rows sweep
+// where they will be (GitHub #13773). Rows press with `action`. Drawn over the page.
+app_mention :: (f: [] UiFrame, id: string, p: [] AppMention, labels: [] string, details: [] string, icons: [] int, empty: string, loading: bool, cx: f32, cy: f32, lh: f32, x: f32, w: f32, action: int) {
   if !p[0].open { return; }
   s := f[0].skin; sh := f[0].sheet;
   shown := p[0].n - p[0].top; if shown > APP_MN_ROWS { shown = APP_MN_ROWS; } if shown > labels.count { shown = labels.count; } if shown < 0 { shown = 0; }
   rh := cast(f32) APP_MN_ROW; pad := cast(f32) APP_MN_PAD;
   pw := cast(f32) APP_MN_W; if pw > w { pw = w; }
-  ph := 2 * pad + rh * cast(f32) (ifx shown > 0 then shown else 1);
+  skel := shown == 0 && loading;
+  rows := shown; if rows == 0 { rows = 1; if skel { rows = APP_MN_SKELETON; } }
+  ph := 2 * pad + rh * cast(f32) rows;
   px := cx - pad; if px + pw > x + w { px = x + w - pw; } if px < x { px = x; }
   py := cy - cast(f32) APP_MN_GAP - ph;
   if py < 8 { py = cy + lh + cast(f32) APP_MN_GAP; }
@@ -157,6 +164,16 @@ app_mention :: (f: [] UiFrame, id: string, p: [] AppMention, labels: [] string, 
   card := uiframe_semantic(f, id, EL_REGION, ifx p[0].trigger == '/' then "Commands" else "Files", px, py, pw, ph, 0, 0);
   elt_value(f[0].rows, card, app_mn_query(p));
   sheet_hit(sh, UIFRAME_HIT, card, 0, px, py, pw, ph);
+  if skel {
+    busy := uiframe_semantic(f, app_mn_skel_id(f, id), EL_PROGRESS, empty, px + pad, py + pad, pw - 2 * pad, ph - 2 * pad, EL_S_BUSY | EL_S_LIVE, 0);
+    elt_value(f[0].rows, busy, empty);
+    bh := s.label.line * 0.6f32;
+    for v: 0..<APP_MN_SKELETON {
+      bw := (pw - 2 * pad - 16) * APP_MN_SKELETON_W[v];
+      app_skeleton(f, px + pad + 8, py + pad + cast(f32) v * rh + (rh - bh) / 2, bw, bh);
+    }
+    return;
+  }
   if shown == 0 {
     _ := sheet_text(sh, f[0].m, -1, px + pad + 8, py + pad + (rh - s.label.line) / 2, s.label.line, s.label.face, s.muted, app_fit(f, s.label.face, empty, pw - 2 * pad - 16));
     return;
