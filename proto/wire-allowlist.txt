@@ -16,3 +16,5 @@ shape external-format-fixtures  # C13, wave 2: every external row gets a fixture
 # Area 2: Everglade
 
 # Outside the two audited areas. The tracker owns these.
+codec openagents.host-tailnet-admission-request.v1 apps/shared/native/AppTailnet.swift  # Swift shared by OpenAgents iOS and Coder Desktop until a Coax codec lands under nostr/ (#13778)
+codec openagents.host-tailnet-admission.v1 apps/shared/native/AppTailnet.swift  # Swift shared by OpenAgents iOS and Coder Desktop until a Coax codec lands under nostr/ (#13778)
