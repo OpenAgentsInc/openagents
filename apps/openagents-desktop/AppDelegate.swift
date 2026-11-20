@@ -7,6 +7,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var opened: [URL] = []   // files the Mac asked Coder to open before its window was up
     var accountStatusItem: NSMenuItem?
+    var accountItems: [NSMenuItem] = []   // OpenAgents > Log In… and the rest: an experimental feature
+    var foremanMenuItem: NSMenuItem?      // the Foreman menu: an experimental feature
     func applicationDidFinishLaunching(_ notification: Notification) {
         DefaultsMigration.migrateIfNeeded()
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
@@ -20,7 +22,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         MacAccount.shared.changed = { [weak self] in
             DispatchQueue.main.async { self?.refreshAccountMenu() }
         }
-        Task.detached { await MacAccount.shared.look() }
+        applyExperimental(Experimental.on)
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "OpenAgents")
@@ -41,7 +43,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // A .coax file (or another text file) opened with Coder from the Finder or `open` (#13759): it
     // opens in the pane on the window's right. Several go one after another; the last one shows.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where !url.isFileURL {
+        for url in urls where !url.isFileURL && Experimental.on {
             _ = MacAccount.shared.handleUniversalLink(url)
         }
         let files = urls.filter { $0.isFileURL }
@@ -52,7 +54,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         for url in files { main.openFileInPane(url) }
     }
     func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
-        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
+        guard Experimental.on, userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
         return MacAccount.shared.handleUniversalLink(url)
     }
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
@@ -61,11 +63,18 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         MacPush.shared.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
     }
+    /// Experimental features (Settings > General) on or off: the account's and Foreman's menus show or
+    /// hide, and the account is asked about only while they are on. Off, nothing logs in or asks to.
+    func applyExperimental(_ on: Bool) {
+        for item in accountItems { item.isHidden = !on }
+        foremanMenuItem?.isHidden = !on
+        if on { Task.detached { await MacAccount.shared.look() } }
+    }
     @MainActor func refreshAccountMenu() {
         let title = MacAccount.shared.title
         accountStatusItem?.title = title.isEmpty ? "Log In to OpenAgents…" : title
     }
-    @objc func accountLogin(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.showLogin() } }
+    @objc func accountLogin(_ sender: Any?) { guard Experimental.on else { return }; Task { @MainActor in await MacAccount.shared.showLogin() } }
     @objc func accountSecurity(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.showSecurity() } }
     @objc func accountLinkDevice(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.linkDeviceKey() } }
     @objc func accountLogout(_ sender: Any?) { Task.detached { await MacAccount.shared.logout() } }
@@ -142,8 +151,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(accountLogin(_:)) { return Experimental.on }
         if item.action == #selector(accountSecurity(_:)) || item.action == #selector(accountLinkDevice(_:)) || item.action == #selector(accountLogout(_:)) {
-            return MacAccount.shared.loggedIn
+            return Experimental.on && MacAccount.shared.loggedIn
         }
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
@@ -265,13 +275,19 @@ enum TestLaunch {
         view.addItem(withTitle: "Back to Chats", action: #selector(CoderDelegate.backToChats(_:)), keyEquivalent: "[").target = delegate
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Settings…", action: #selector(CoderDelegate.openSettings(_:)), keyEquivalent: ",").target = delegate
-        appMenu.addItem(.separator())
+        // the account's items: an experimental feature (CoderDelegate.applyExperimental shows or hides them)
+        let acctSeparator = NSMenuItem.separator(); appMenu.addItem(acctSeparator)
         let acctItem = appMenu.addItem(withTitle: "Log In to OpenAgents…", action: #selector(CoderDelegate.accountLogin(_:)), keyEquivalent: "")
         acctItem.target = delegate
         delegate.accountStatusItem = acctItem
-        appMenu.addItem(withTitle: "Account Security…", action: #selector(CoderDelegate.accountSecurity(_:)), keyEquivalent: "").target = delegate
-        appMenu.addItem(withTitle: "Link This Mac's Key…", action: #selector(CoderDelegate.accountLinkDevice(_:)), keyEquivalent: "").target = delegate
-        appMenu.addItem(withTitle: "Log Out", action: #selector(CoderDelegate.accountLogout(_:)), keyEquivalent: "").target = delegate
+        let security = appMenu.addItem(withTitle: "Account Security…", action: #selector(CoderDelegate.accountSecurity(_:)), keyEquivalent: "")
+        security.target = delegate
+        let link = appMenu.addItem(withTitle: "Link This Mac's Key…", action: #selector(CoderDelegate.accountLinkDevice(_:)), keyEquivalent: "")
+        link.target = delegate
+        let logout = appMenu.addItem(withTitle: "Log Out", action: #selector(CoderDelegate.accountLogout(_:)), keyEquivalent: "")
+        logout.target = delegate
+        delegate.accountItems = [acctSeparator, acctItem, security, link, logout]
+        for item in delegate.accountItems { item.isHidden = !Experimental.on }
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
@@ -309,6 +325,7 @@ enum TestLaunch {
         let clearHistItem = foremanMenu.addItem(withTitle: "Clear Foreman History…", action: #selector(CoderDelegate.clearForemanHistory(_:)), keyEquivalent: "")
         clearHistItem.target = delegate
         foremanItem.submenu = foremanMenu
+        delegate.foremanMenuItem = foremanItem; foremanItem.isHidden = !Experimental.on
         appItem.submenu = appMenu; editItem.submenu = edit; bar.addItem(appItem); bar.addItem(fileItem); bar.addItem(editItem); bar.addItem(viewItem); bar.addItem(foremanItem)
         app.mainMenu = bar
         app.run()

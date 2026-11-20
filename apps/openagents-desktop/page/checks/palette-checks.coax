@@ -113,3 +113,21 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   coder_page_toggle_sidebar(s); #assert s[0].side_collapsed;
   coder_page_toggle_models(s); #assert s[0].model_menu;
 }
+#test "experimental features off: the palette has no Foreman, its commands or Account's and Foreman's settings, and ⌃Tab skips it" {
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
+  coder_page_experimental_set(s, false);
+  #assert coder_page_palette_toggle(s, APP_PAL_ALL);
+  p := cp_pal(s);
+  #assert app_palette_count(p, APP_PAL_SESSIONS) == 3 && app_palette_count(p, APP_PAL_SETTINGS) == CP_SET_ENTRIES - 5;
+  #assert app_pal_label(p, p[0].rows[1].item) == "Pinned plan";
+  #assert cp_pal_test_row(s, "Open Foreman") < 0 && cp_pal_test_row(s, "Foreman permission tier") < 0 && cp_pal_test_row(s, "View Foreman audit log") < 0;
+  #assert cp_pal_test_row(s, "Experimental features") > 0 && cp_pal_test_row(s, "New chat") > 0;
+  #assert !coder_page_palette_toggle(s, APP_PAL_ALL);
+  #assert !cp_pal_open_chat(s, -1);
+  // r1 shown: the order is p1, r1, r2 with no Foreman, round the ends
+  #assert coder_page_chat_step(s, 1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;
+  coder_page_current(s, "r2");
+  #assert coder_page_chat_step(s, 1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0;
+  coder_page_current(s, "p1");
+  #assert coder_page_chat_step(s, -1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;
+}

@@ -26,7 +26,8 @@ cp_palette_fill :: (s: [] CoderPage) {
   cur := cast(string) s[0].current[0..<s[0].current_n];
   kb: [APP_PAL_KEY] u8;
   // the chats: Foreman, then the sidebar's (most recent first; the pinned ones pinned)
-  _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ `", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN);
+  labs := s[0].experimental;   // Foreman is an experimental feature (Settings > General)
+  if labs { _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ `", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN); }
   for q: 0..<s[0].nchats {
     id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
     title := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
@@ -37,15 +38,17 @@ cp_palette_fill :: (s: [] CoderPage) {
   // the commands that work now
   running := cp_running(s); shown := !s[0].set_open;
   cp_pal_cmd(p, "New chat", "new start fresh", "⌘ N", ICON_COMPOSE, CP_PC_NEW, 0);
-  cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0);
+  if labs { cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0); }
   if !running { cp_pal_cmd(p, "Open folder…", "working folder directory project cwd", "⌘ O", ICON_FOLDER, CP_PC_FOLDER, 0); }
   if shown { cp_pal_cmd(p, ifx s[0].side_collapsed then "Show sidebar" else "Hide sidebar", "toggle sidebar chats", "⌘ B", ICON_SIDEBAR, CP_PC_SIDEBAR, 0); }
   cp_pal_cmd(p, "Switch model", "model gemini openrouter", "⌘ /", -1, CP_PC_MODEL, CP_PAL_PAGE_MODEL);
   p[0].items[p[0].n - 1].hint = cp_model_label(s, cp_model_index(s));
-  cp_pal_cmd(p, "Foreman permission tier", "foreman tier observe managed autonomous", "", ICON_BOT, CP_PC_TIER, CP_PAL_PAGE_TIER);
   ti := ifx s[0].foreman_tier >= 0 && s[0].foreman_tier < 3 then s[0].foreman_tier else 1;
   tiers := CP_TIER_NAME;
-  p[0].items[p[0].n - 1].hint = tiers[ti];
+  if labs {
+    cp_pal_cmd(p, "Foreman permission tier", "foreman tier observe managed autonomous", "", ICON_BOT, CP_PC_TIER, CP_PAL_PAGE_TIER);
+    p[0].items[p[0].n - 1].hint = tiers[ti];
+  }
   if !s[0].set_open { cp_pal_cmd(p, "Open settings", "preferences", "⌘ ,", ICON_SETTINGS, CP_PC_SETTINGS, 0); }
   if shown {
     cp_pal_cmd(p, "Chat budget…", "budget spend cost limit", "", -1, CP_PC_BUDGET, 0);
@@ -67,10 +70,11 @@ cp_palette_fill :: (s: [] CoderPage) {
     cp_pal_cmd(p, "Next chat", "switch", "Ctrl Tab", -1, CP_PC_NEXT, 0);
     cp_pal_cmd(p, "Previous chat", "switch", "Ctrl Shift Tab", -1, CP_PC_PREV, 0);
   }
-  cp_pal_cmd(p, "View Foreman audit log", "foreman history actions", "", -1, CP_PC_AUDIT, 0);
+  if labs { cp_pal_cmd(p, "View Foreman audit log", "foreman history actions", "", -1, CP_PC_AUDIT, 0); }
   // settings: its pages and rows (settings.coax's search entries)
   es := cp_set_entries(); names := CP_SET_NAME; icons := CP_SET_ICON;
   for e, i: es {
+    if !cp_set_page_ok(labs, e.page) { continue; }
     page_hint := ifx e.id.count > 0 then names[e.page] else "";
     n := el_put(kb[..], 0, "set."); n = el_put_i(kb[..], n, i);
     _ := app_palette_item(p, 0, APP_PAL_SETTINGS, "Settings", e.name, e.terms, page_hint, "", app_palette_keep(p, cast(string) kb[0..<n]), ifx e.id.count == 0 then icons[e.page] else -1, false, false, 0, CP_PAL_SET + i);
@@ -103,6 +107,7 @@ cp_pal_leave_settings :: (s: [] CoderPage) { if s[0].set_open { s[0].set_open = 
 // Opens chat q of the sidebar's list (-1: Foreman). False when it is the one shown.
 cp_pal_open_chat :: (s: [] CoderPage, q: int) -> bool {
   cur := cast(string) s[0].current[0..<s[0].current_n];
+  if q < 0 && !s[0].experimental { return false; }
   if q < 0 { if cur == "chat.foreman" && !s[0].set_open { return false; } cp_pal_leave_settings(s); s[0].ask = CP_ASK_FOREMAN; return true; }
   if q >= s[0].nchats { return false; }
   if cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { if s[0].set_open { cp_settings_show(s, false, -1); return true; } return false; }
@@ -155,14 +160,14 @@ cp_palette_collect :: (s: [] CoderPage) {
 // the one shown (none shown: the first or the last). False when there is nothing to step to.
 cp_chat_step :: (s: [] CoderPage, dir: int) -> bool {
   order: [CP_CHATS + 1] int; n := 0;
-  order[n] = -1; n += 1;
+  if s[0].experimental { order[n] = -1; n += 1; }   // Foreman, when experimental features are on
   for q: 0..<s[0].nchats { if s[0].chats[q].pinned { order[n] = q; n += 1; } }
   for q: 0..<s[0].nchats { if !s[0].chats[q].pinned { order[n] = q; n += 1; } }
   if n < 2 { return false; }
   cur := cast(string) s[0].current[0..<s[0].current_n];
   at := -1;
-  if cur == "chat.foreman" { at = 0; }
-  else { for k: 1..<n { q := order[k]; if cur.count > 0 && cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { at = k; break; } } }
+  if cur == "chat.foreman" && s[0].experimental { at = 0; }
+  else { for k: 0..<n { if order[k] < 0 { continue; } q := order[k]; if cur.count > 0 && cur == cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n] { at = k; break; } } }
   next := ifx at < 0 then (ifx dir > 0 then 0 else n - 1) else (at + (ifx dir > 0 then 1 else n - 1)) % n;
   return cp_pal_open_chat(s, order[next]);
 }

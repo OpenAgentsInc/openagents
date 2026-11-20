@@ -285,10 +285,21 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
   return s[0].zoom;
 }
 
+// Experimental features (Settings > General): log in and the account, Gym and Foreman. Off, their
+// rows, pages and palette items are gone, an open Gym closes, and settings on a hidden page shows General.
+coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].experimental = on;
+  if on { return; }
+  s[0].gym_open = false;
+  if !cp_set_page_ok(false, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }
+}
+coder_page_experimental :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].experimental; }
+
 // Gym / 3D PLE Workbench mode (#13792): toggled by the sidebar's Gym row (CP_ASK_GYM) or the host.
 coder_page_gym_set :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].gym_open = open;
+  s[0].gym_open = open && s[0].experimental;
   if open { s[0].set_open = false; }
 }
 coder_page_gym_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {

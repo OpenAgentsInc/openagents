@@ -553,4 +553,6 @@ void cd_toggle_models(void *page) { CoderHost *c = page; if (c) { coder_page_tog
 int cd_overlay_key(void *page, int key, int mods) { CoderHost *c = page; if (!c) return 0; int took = coder_page_overlay_key(cd_state(c), key, mods); if (took) cd_woke(c); return took; }
 void cd_gym_set(void *page, int open) { CoderHost *c = page; if (!c) return; coder_page_gym_set(cd_state(c), open != 0); cd_woke(c); }
 int cd_gym_open(void *page) { CoderHost *c = page; return c ? coder_page_gym_open(cd_state(c)) : 0; }
+void cd_experimental_set(void *page, int on) { CoderHost *c = page; if (!c) return; coder_page_experimental_set(cd_state(c), on != 0); cd_woke(c); }
+int cd_experimental(void *page) { CoderHost *c = page; return c ? coder_page_experimental(cd_state(c)) : 0; }
 int cd_gym_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_gym_rect(cd_state(c), (coax_v_f32){out, 4}); }

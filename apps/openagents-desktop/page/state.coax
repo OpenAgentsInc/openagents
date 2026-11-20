@@ -103,6 +103,7 @@ CP_ASK_GYM :: 32;           // the sidebar's Gym button was pressed: open the 3D
 CP_ASK_AGY :: 33;           // Antigravity CLI / model & effort settings dialog (#13803)
 CP_ASK_AGY_MODE :: 34;      // Antigravity review mode choice changed (coder_page_settings_agy_mode; #13803)
 CP_ASK_AGY_AUTH :: 35;      // Antigravity Google sign-in / isolated profile / antigravity.env dialog (#13803)
+CP_ASK_EXPERIMENTAL :: 36;  // Settings > General > Experimental features was turned on or off (coder_page_experimental)
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -297,6 +298,7 @@ CoderPage :: struct {
   // settings (settings.coax): open, its page, the page's and the list's scroll, the search and the
   // row it asked for, the search field's box, and what the host told it
   set_open: bool; set_page: int; set_tier: int;
+  experimental: bool;         // experimental features (log in and the account, Gym, Foreman) show; off unless the host turns them on
   gym_open: bool;             // the 3D PLE Gym Workbench is open beside the sidebar (#13792)
   gym_x: f32; gym_y: f32; gym_w: f32; gym_h: f32;  // its host viewport rect in logical points
   set_scroll: f32; set_content: f32; set_view: f32; set_target_y: f32;
@@ -377,6 +379,7 @@ CpCheckStore :: struct {
 }
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
+  p[0].experimental = true;   // the checks see every feature; the ones with it off turn it off
   return p;
 }
 // A second page's storage in a check that holds two (a chat taken or read back): a few turns.

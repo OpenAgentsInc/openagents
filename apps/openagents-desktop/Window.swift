@@ -161,9 +161,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             }
             self.handleForemanAsyncRequest(request, done: done)
         }
-        if foremanServer.start() {
-            ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
-        }
+        // Foreman, Gym, log in and the account are experimental features (Settings > General), off unless set
+        cd_experimental_set(page, Experimental.on ? 1 : 0)
+        if Experimental.on { startForemanServer() }
         // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
         CoderWorker.daemon = daemonClient
         daemonClient.ensureDaemon()
@@ -314,7 +314,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 18: if let tier = ForemanTier(rawValue: Int(cd_settings_tier(page))) { setForemanTier(tier) }
         case 19: openForemanAuditLog()
         case 20: clearForemanHistory()
-        case 21: if let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
+        case 21: if Experimental.on, let url = URL(string: "https://openagents.com/login") { NSWorkspace.shared.open(url) }
         case 22: checkForUpdates()
         case 23: focusSearch()
         case 24:
@@ -341,6 +341,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 33: chooseAntigravity()
         case 34: setAntigravityMode(Int(cd_settings_agy_mode(page)))
         case 35: chooseAntigravityAuth()
+        case 36: experimentalChanged()
         case 40...43: fileAsked(what)
         default: break
         }

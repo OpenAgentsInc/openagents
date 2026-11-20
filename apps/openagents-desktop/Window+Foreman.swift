@@ -4,7 +4,7 @@ import AppKit
 
 extension CoderWindow {
     /// Whether Foreman is enabled and reachable via shortcut/menu.
-    var isForemanEnabled: Bool { true }
+    var isForemanEnabled: Bool { Experimental.on }   // an experimental feature (Settings > General)
     func setForemanTier(_ tier: ForemanTier) {
         let previous = foremanTier
         foremanTier = tier

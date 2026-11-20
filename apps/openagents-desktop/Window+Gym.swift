@@ -5,6 +5,7 @@ import AppKit
 extension CoderWindow {
     /// Opens the Gym / 3D PLE Workbench view in the main content area beside the sidebar.
     func openGym() {
+        guard Experimental.on else { return }   // an experimental feature (Settings > General)
         cd_gym_set(page, 1)
         hideScenePanel()
         let workbench = ensureGymView()

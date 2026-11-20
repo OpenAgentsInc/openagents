@@ -12,9 +12,12 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   sy += app_side_action(f, "coder.search", 0, sy, sw, ICON_SET_SEARCH, "Search", 0, CP_PALETTE);
   cur := cast(string) s[0].current[0..<s[0].current_n];
   // Persistent Foreman row pinned at the top of the sidebar above Pinned and Recents.
-  sy += cp_side_foreman(s, f, sw, sy, cur, running);
-  // Gym / 3D PLE Workbench row right under Foreman (#13792).
-  sy += app_side_action(f, "coder.gym", 0, sy, sw, ICON_WIDGET, "Gym", ifx s[0].gym_open then EL_S_CURRENT else 0, CP_GYM);
+  // Both are experimental features (Settings > General): off, neither shows.
+  if s[0].experimental {
+    sy += cp_side_foreman(s, f, sw, sy, cur, running);
+    // Gym / 3D PLE Workbench row right under Foreman (#13792).
+    sy += app_side_action(f, "coder.gym", 0, sy, sw, ICON_WIDGET, "Gym", ifx s[0].gym_open then EL_S_CURRENT else 0, CP_GYM);
+  }
   stop := sy + 10.0f32;
   rows: [CP_CHATS + 2] AppSideRow;
   nrows := 0;

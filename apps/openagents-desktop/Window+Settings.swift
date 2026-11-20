@@ -2,7 +2,42 @@
 // Settings (settings.coax): opening and closing, the search's keyboard, and what only the app knows.
 import AppKit
 
+/// Settings > General > Experimental features, off unless set (UserDefaults `experimentalFeatures`):
+/// log in and the account, Gym, and Foreman (its sidebar row, its menu and its control server).
+/// Off, Coder is local: chats, runs and pairing a phone over Tailscale need no login.
+enum Experimental {
+    static let key = "experimentalFeatures"
+    static var on: Bool { UserDefaults.standard.bool(forKey: key) }
+}
+
 extension CoderWindow {
+    /// The page's Experimental features row was pressed (CP_ASK_EXPERIMENTAL): keep it, then show or
+    /// hide what it covers here and in the menu bar.
+    func experimentalChanged() {
+        let on = cd_experimental(page) != 0
+        UserDefaults.standard.set(on, forKey: Experimental.key)
+        applyExperimental(on)
+    }
+    /// Shows or hides the experimental features: the page's rows, the Foreman control server, the menus.
+    func applyExperimental(_ on: Bool) {
+        cd_experimental_set(page, on ? 1 : 0)
+        if on {
+            startForemanServer()
+        } else {
+            closeGym()
+            if isForemanShown { newChat() }
+            foremanServer.stop()
+            ForemanControlDescriptor.remove()
+        }
+        (NSApp.delegate as? CoderDelegate)?.applyExperimental(on)
+        wake()
+    }
+    /// Starts the Foreman control server (127.0.0.1) and writes its descriptor for programs outside the app.
+    func startForemanServer() {
+        if foremanServer.start() {
+            ForemanControlDescriptor.write(url: foremanServer.baseURL, token: foremanServer.operatorToken, auditLog: foremanAudit.fileURL.path)
+        }
+    }
     // MARK: - Settings (settings.coax)
     /// Coder > Settings… (Command-comma), and the menu items that open one of its pages: 0 General,
     /// 1 Models, 2 Foreman, 3 Account, 4 About & updates (-1 the last one shown), at a row ("" the top).

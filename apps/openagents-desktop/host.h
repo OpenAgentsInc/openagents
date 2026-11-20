@@ -307,4 +307,7 @@ int cd_overlay_key(void *page, int key, int mods);
 void cd_gym_set(void *page, int open);
 int cd_gym_open(void *page);
 int cd_gym_rect(void *page, float out[4]);
+// Experimental features (log in and the account, Gym, Foreman): set by the host from UserDefaults; read after CP_ASK_EXPERIMENTAL.
+void cd_experimental_set(void *page, int on);
+int cd_experimental(void *page);
 #endif
