@@ -11,6 +11,10 @@ extern void coax_entropy_test_provider(uint8_t *,int64_t,int *,int *,int64_t *);
 #elif defined(__linux__)
 #include <sys/random.h>
 #include <errno.h>
+#elif defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <bcrypt.h>   /* link bcrypt (GitHub #13782) */
 #endif
 static int spans_valid(uint8_t *out,uint8_t *scratch,int64_t requested) {
   if(requested<=0) return 1;
@@ -37,6 +41,8 @@ static void os_fill(uint8_t *scratch,int64_t requested,int *available,int *ok,in
     *written+=(int64_t)got;
   }
   *ok=1;
+#elif defined(_WIN32)
+  if(requested<=0xFFFFFFFFll && BCryptGenRandom(NULL,scratch,(ULONG)requested,BCRYPT_USE_SYSTEM_PREFERRED_RNG)==0) {*ok=1;*written=requested;}
 #else
   (void)scratch;(void)requested;*available=0;
 #endif

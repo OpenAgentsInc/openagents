@@ -1,0 +1,10 @@
+// The worker's environment from what this system says (GitHub #13782): its os, ProgramFiles,
+// HOME and the folder's build caches, handed to worker.coax's dc_worker_env_on, which holds
+// every rule and is checked there. This file only reads the system, which a check can't do, so
+// hosts load it in place of worker.coax.
+#load "worker.coax";
+
+dc_worker_env :: (e: [] DcEnv, program: string, folder: string, extra: string, home: string, had_path: string, key: string) {
+  fb: [DC_PATH] u8; hb: [DC_PATH] u8; cb: [8192] u8;
+  dc_worker_env_on(e, dcos_os(), dcwin_folder_env("ProgramFiles", fb[..]), dcos_getenv("HOME", hb[..]), dc_cache_env(folder, cb[..]), program, extra, home, had_path, key);
+}

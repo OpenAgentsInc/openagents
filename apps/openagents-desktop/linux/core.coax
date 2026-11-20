@@ -2,7 +2,7 @@
 // All store, settings, worktree, daemon, worker and signed update logic lives in
 // coax/lib/agent/desktop/; this file exposes a small C ABI for linux/main.c.
 #load "../../../coax/lib/agent/desktop/os-posix.coax";
-#load "../../../coax/lib/agent/desktop/worker.coax";
+#load "../../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../../coax/lib/agent/desktop/update.coax";
 
 OA_MAX_SUBAGENTS :: 8;

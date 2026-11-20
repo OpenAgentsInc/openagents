@@ -12,9 +12,11 @@ Swift app and the core can each read what the other writes.
 | `store.coax` | `Store.swift` (`CoderStore`, the key files, `ChatWorktree.enabled`) | The chat store: `chats/index.json` (Swift `CoderChat`, including the worktree fields) and `ID.json`. It also handles keep, register, rename, pin and remove, the `0600` key files (never the Keychain) and the worktree setting. The index codec is `coder/tui/desktop-store.coax`. |
 | `daemon.coax` | `DaemonClient.swift` (`CoderDaemonClient`) | One `openagents.environment.daemon.v1alpha1` request per connection on the owner-only socket `HOST/service.sock` (or the socket that `daemon.json` names). It also starts `coder-host serve` when no daemon answers. The codec is `coax/lib/agent/environment/daemon-wire.coax`. |
 | `worker.coax` | `Worker.swift` (`CoderWorker`) | Starts the Microcoder worker and carries one JSON line each way. When the daemon owns runs, the worker runs as a daemon run through `DAEMON/runs/ID.{spec,in,out,state,attached}`, the files that `coder/tui/host-runs.coax` keeps. Otherwise it runs as a child process with pipes. The core builds the worker's PATH and environment the way the app does. |
+| `worker-env.coax` | | `dc_worker_env`: reads the system (its os, `ProgramFiles`, `HOME`, the folder's build caches) and hands it to `worker.coax`'s `dc_worker_env_on`, which holds the rules and is checked. Hosts load it in place of `worker.coax`. |
 | `update.coax` | `Updater.swift` (`UpdateVerifier`, `UpdateInstaller.verifyArchive`) | `openagents.desktop.update.v1`: checks the envelope's Ed25519 signature over the payload before it reads the manifest. Then it checks the schema, the pinned bundle and team ids, that the SemVer is newer, an https URL, the size and the SHA-256, and finally the downloaded archive's exact size and SHA-256. |
 | `os.coax` | | The platform seam (below). |
-| `os-posix.coax` | | The seam on macOS and Linux. |
+| `os-posix.coax` | | The seam on macOS, Linux and Windows. |
+| `os-windows.coax` | | The rules that differ on Windows (GitHub #13782): the home and Coder folders, robocopy for clones, the worker's PATH and HOME. |
 | `smoke.coax` | | The headless smoke. |
 
 The core does not cover the Mac-only installer steps: unpacking with `ditto`, checking the code
@@ -23,14 +25,23 @@ they differ on every system.
 
 ## The platform seam
 
-Nothing in this folder calls a `#foreign` except the seam file. `os.coax` loads the seam file for
-the current build. macOS and Linux share `os-posix.coax`, which checks `dcos_os` at run time for
-the few places the two systems differ. A Windows port adds `os-windows.coax` with the same
-procedures and loads it from `os.coax` in place of `os-posix.coax`. No other file changes.
+Nothing in this folder calls a `#foreign` except the seam files. `os.coax` loads the seam.
+Every system runs `os-posix.coax` over one C effect contract (`coax/platform`'s
+`process-native.h`, `store-file-native.h` and `socket-native.h`): POSIX builds link
+`process-native.c`, `store-file-native.c` and `socket-native.c`, and Windows builds link
+`process-win32.c`, `store-file-win32.c` and `socket-win32.c` (GitHub #13782). The seam checks
+`dcos_os` at run time for the few places the systems differ, and calls `os-windows.coax` where
+Windows does.
+
+On Windows every path the core keeps uses forward slashes (`C:/Users/me/.openagents/worktrees`),
+which every Win32 file call and Git for Windows accept. `paths.coax` knows a drive (`C:/` is a
+root, as `/` is) and `dc_win_path` turns what the system gives (`USERPROFILE`, `APPDATA`, a chosen
+folder) into that form. A program the core names by a POSIX path (`/bin/sh`) is looked for by
+name, on `PATH` and in Git for Windows' folders, so Microcoder's commands run in Git's `sh`.
 
 | Procedure | Must do |
 | --- | --- |
-| `dcos_os () -> int` | Return `DC_OS_MAC`, `DC_OS_LINUX` or `DC_OS_WINDOWS`. |
+| `dcos_os () -> int` | Return `DC_OS_MAC`, `DC_OS_LINUX` or `DC_OS_WINDOWS` (a Mac has `/System/Library/CoreServices`, Linux `/proc`, Windows the folder `SystemRoot` names). |
 | `dcos_getenv (name, out) -> string` | Return an environment variable, or `""` when it is unset. |
 | `dcos_home (out) -> string` | Return the user's home folder, with no trailing slash. |
 | `dcos_now_ms`, `dcos_now_us` | Return wall-clock time since 1970, in milliseconds or microseconds. |
@@ -42,12 +53,12 @@ procedures and loads it from `os.coax` in place of `os-posix.coax`. No other fil
 | `dcos_append (path, data) -> bool` | Append to the end of the file (a run's input). |
 | `dcos_mkdirs`, `dcos_mkdir_private`, `dcos_remove`, `dcos_list` | Make a folder and its parents, make one folder readable by this user only, remove a file or a whole folder, or return a folder's names in sorted order. |
 | `dcos_run (argv, env, out) -> DcRun` | Run a program to its end, with empty stdin and stderr joined to stdout. Kill it after `DC_RUN_MS`. |
-| `dcos_clone_tree (from, to) -> bool` | Copy a folder, copy-on-write where the file system supports it (APFS `cp -c`, `cp --reflink=auto`). |
-| `dcos_cut_links (dir, source) -> int` | Remove the symbolic links under `dir` that resolve into `source`. |
+| `dcos_clone_tree (from, to) -> bool` | Copy a folder, copy-on-write where the file system supports it (APFS `cp -c`, `cp --reflink=auto`; Windows `robocopy`). |
+| `dcos_cut_links (dir, source) -> int` | Remove the symbolic links under `dir` that resolve into `source` (none on Windows, where Git checks links out as files). |
 | `dcos_spawn (program, cwd, env, unset) -> int` | Start a worker with pipes to its stdin and stdout and with stderr dropped. Return a handle. |
 | `dcos_send`, `dcos_line`, `dcos_close`, `dcos_alive` | Write to the worker, read its next line within a timeout, close its input (then end it), or check whether it is still running. |
-| `dcos_spawn_detached (program, args, log) -> int` | Start a program that outlives this one, in its own session, with output appended to `log`. Return its pid. |
-| `dcos_unix_call (path, line, out, timeout_ms) -> int` | Send one request line over a local socket and read one reply line. Refuse a peer that is not this user. |
+| `dcos_spawn_detached (program, args, log) -> int` | Start a program that outlives this one, in its own session, with output appended to `log` (dropped on Windows, which has no `/bin/sh`). Return its pid. |
+| `dcos_unix_call (path, line, out, timeout_ms) -> int` | Send one request line over a local socket and read one reply line. Refuse a peer that is not this user (Windows: Winsock's `AF_UNIX`, the peer's process user compared with ours). |
 | `dcos_setting`, `dcos_set_setting` | Read or write an app setting. On macOS this is the app's defaults domain, `com.openagents.coder` (`CODER_SETTINGS_DOMAIN` overrides it). Elsewhere it is the Coder folder's `settings.json` (`CODER_SETTINGS_FILE` overrides it). |
 
 ## Where things live
@@ -57,8 +68,8 @@ procedures and loads it from `os.coax` in place of `os-posix.coax`. No other fil
 | Coder folder | `~/Library/Application Support/Coder` | `$XDG_DATA_HOME/Coder` or `~/.local/share/Coder` | `%APPDATA%\Coder` |
 | Chats | `CODER/chats` (`CODER_DESKTOP_DIR`) | same | same |
 | Keys | `CODER/claude-key`, `CODER/openrouter-key`, mode `0600` | same | same |
-| Worktrees | `~/.openagents/worktrees` (`CODER_WORKTREES`) | same | same |
-| Daemon | `$CODER_HOME` or `~`, then `.openagents/coder/host` | same | same |
+| Worktrees | `~/.openagents/worktrees` (`CODER_WORKTREES`) | same | `%USERPROFILE%\.openagents\worktrees` |
+| Daemon | `$CODER_HOME` or `~`, then `.openagents/coder/host` | same | same, from `%USERPROFILE%` |
 
 ## Checks
 

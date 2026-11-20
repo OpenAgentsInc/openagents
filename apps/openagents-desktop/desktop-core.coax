@@ -6,7 +6,7 @@
 #load "../../coax/lib/agent/desktop/store.coax";
 #load "../../coax/lib/agent/desktop/worktree.coax";
 #load "../../coax/lib/agent/desktop/daemon.coax";
-#load "../../coax/lib/agent/desktop/worker.coax";
+#load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
 
 oa_dc_copy :: (s: string, out: [] u8) -> int {

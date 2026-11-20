@@ -15,7 +15,7 @@
 // It never starts the real daemon, the app or a browser, and never writes outside its folder.
 //   coax/web/tool.sh coax/lib/agent/desktop/smoke.coax       (from the repository's root)
 #load "../../sys/tool.coax";
-#load "worker.coax";
+#load "worker-env.coax";
 #load "update.coax";
 
 // What the Mac app's CoderStore writes (Swift's JSONEncoder, generated from CoderChat's shape).

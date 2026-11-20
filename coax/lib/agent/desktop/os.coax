@@ -1,10 +1,11 @@
 // The desktop core's platform seam (GitHub #13787). Everything the core asks of the operating
 // system goes through the procedures below, and nothing else in coax/lib/agent/desktop calls a
 // #foreign. One file per platform defines them all; this file loads the one for this build.
-// macOS and Linux share os-posix.coax (it picks the few Mac/Linux differences at run time with
-// dcos_os). A Windows port writes os-windows.coax with the same procedures, over its own C
-// effects, and loads it here in place of os-posix.coax. README.md lists the seam with what each
-// procedure must do.
+// One seam serves macOS, Linux and Windows: os-posix.coax, over one C effect contract
+// (coax/platform's process, file and socket headers), which POSIX builds link from
+// *-native.c and Windows builds from *-win32.c (GitHub #13782). The seam picks the few
+// differences at run time with dcos_os; where Windows differs it calls os-windows.coax.
+// README.md lists the seam with what each procedure must do.
 //
 //   dcos_os () -> int                                   DC_OS_MAC, DC_OS_LINUX or DC_OS_WINDOWS (paths.coax)
 //   dcos_getenv (name, out) -> string                   an environment variable, "" when unset

@@ -1,0 +1,134 @@
+// The desktop core's seam on Windows (GitHub #13782): the rules that differ from macOS and
+// Linux. Windows runs the same seam procedures (os-posix.coax) over the same C effects, which
+// coax/platform/*-win32.c provide there (process-win32.c, store-file-win32.c, socket-win32.c,
+// tool-win32.c), so coax/lib/sys and coax/lib/net work unchanged; os-posix.coax asks dcos_os and
+// calls the procedures below where Windows differs:
+//   - the home folder is USERPROFILE, and the Coder folder APPDATA/Coder (paths.coax dc_coder_dir);
+//     every path is kept with forward slashes (paths.coax dc_win_path);
+//   - a folder is cloned with robocopy (Windows has no cp; NTFS has no copy-on-write);
+//   - symbolic links are not cut: Git for Windows checks links out as plain files unless
+//     core.symlinks is set, so a worktree has none that write through;
+//   - a program that outlives the app starts without /bin/sh, its output dropped;
+//   - the worker's PATH is separated by ';' and gets Git for Windows' folders, where sh, git and
+//     the POSIX tools Microcoder's commands use live; it also gets HOME, which Windows lacks.
+//   coax/bin/coax test coax/lib/agent/desktop/os-windows.coax --library
+#load "paths.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+
+// Windows, from what is on disk and in the environment: SystemRoot names the Windows folder.
+dcwin_is :: () -> bool {
+  sb: [DC_PATH] u8; sr := proc_getenv("SystemRoot", sb[..]);
+  if sr.count == 0 { return false; }
+  wb: [DC_PATH] u8;
+  return fs_kind(dc_win_path(sr, wb[..])) == FS_DIR;
+}
+// The home folder: USERPROFILE, else HOMEDRIVE and HOMEPATH, else HOME; forward slashes.
+dcwin_home :: (out: [] u8) -> string {
+  b: [DC_PATH] u8; v := proc_getenv("USERPROFILE", b[..]);
+  if v.count == 0 {
+    d: [64] u8; drive := proc_getenv("HOMEDRIVE", d[..]); p: [DC_PATH] u8; path := proc_getenv("HOMEPATH", p[..]);
+    n := dc_copy(b[..], drive); n = dc_cat(b[..], n, path); v = dc_fits(b[..], n);
+    if drive.count == 0 || path.count == 0 { v = proc_getenv("HOME", b[..]); }
+  }
+  return dc_trim_slash(dc_win_path(v, out));
+}
+// An environment variable that holds a folder, in the core's form ("" when unset).
+dcwin_folder_env :: (name: string, out: [] u8) -> string {
+  b: [DC_PATH] u8; v := proc_getenv(name, b[..]);
+  return ifx v.count == 0 then "" else dc_trim_slash(dc_win_path(v, out));
+}
+// robocopy's arguments for a whole folder: every file with its times and attributes, links and
+// junctions left out (so a loop cannot run away), no retries and no listing.
+DCWIN_ROBOCOPY :: [10] string.["/E", "/COPY:DAT", "/DCOPY:DAT", "/XJ", "/R:0", "/W:0", "/NFL", "/NDL", "/NJH", "/NJS"];
+// robocopy's status: below 8 is a copy that went through (1 copied files, 2 extra, 4 mismatched).
+dcwin_robocopy_ok :: (status: int) -> bool { return status >= 0 && status < 8; }
+// The command that copies the folder from to to (robocopy makes to), in argv (13 entries), with
+// fb and tb holding the two paths; os-posix.coax dcos_clone_tree runs it.
+DCWIN_ROBOCOPY_ARGS :: 13;
+dcwin_robocopy_argv :: (from: string, to: string, fb: [] u8, tb: [] u8, argv: [] string) {
+  argv[0] = "robocopy"; argv[1] = dc_win_native(from, fb); argv[2] = dc_win_native(to, tb);
+  for i: 0..<DCWIN_ROBOCOPY.count { argv[3 + i] = DCWIN_ROBOCOPY[i]; }
+}
+// program with args, outliving this process, with no window and its output dropped (Windows
+// has no /bin/sh to append it to a log). Its pid, or -1.
+dcwin_spawn_detached :: (program: string, args: [] string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, program);
+  for a: args { ok = ok && proc_arg(h, a); }
+  ok = ok && proc_detach(h) && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { _ := proc_release(h); return -1; }
+  pid := proc_pid(h);
+  _ := proc_release(h);
+  return pid;
+}
+// Git for Windows' folders under program_files (the ProgramFiles folder): git in cmd, sh, bash
+// and the POSIX tools in usr/bin. Joined by ';' into out.
+dcwin_git_dirs :: (program_files: string, out: [] u8) -> string {
+  if program_files.count == 0 { return ""; }
+  a: [DC_PATH] u8; b: [DC_PATH] u8;
+  n := dc_copy(out, dc_join(program_files, "Git/cmd", a[..])); n = dc_cat(out, n, ";");
+  n = dc_cat(out, n, dc_join(program_files, "Git/usr/bin", b[..]));
+  return dc_fits(out, n);
+}
+// The worker's PATH on Windows: ~/.local/bin and Git's folders put in front of what it had,
+// each once, separated by ';' (dc_worker_path's rule, with Windows' separator).
+dcwin_worker_path :: (home: string, program_files: string, had: string, out: [] u8) -> string {
+  hb: [DC_PATH] u8; gb: [2 * DC_PATH] u8;
+  more: [3] string; more[0] = dc_join(home, ".local/bin", hb[..]);
+  git := dcwin_git_dirs(program_files, gb[..]);
+  semi := 0; while semi < git.count && git[semi] != ';' { semi += 1; }
+  more[1] = git[0..<semi]; more[2] = ifx semi < git.count then git[semi + 1..<git.count] else "";
+  n := 0; sep := "";
+  for m: more {
+    if m.count == 0 || dc_list_has(had, m, ';') { continue; }
+    n = dc_cat(out, n, sep); n = dc_cat(out, n, m); sep = ";";
+  }
+  if had.count > 0 { n = dc_cat(out, n, sep); n = dc_cat(out, n, had); }
+  return dc_fits(out, n);
+}
+// Whether list (entries separated by sep) holds dir; on Windows case-blind and either slash.
+dc_list_has :: (list: string, dir: string, sep: u8) -> bool {
+  at := 0;
+  while at <= list.count {
+    e := at; while e < list.count && list[e] != sep { e += 1; }
+    if dc_same_dir(list[at..<e], dir, sep == ';') { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+dc_same_dir :: (a: string, b: string, blind: bool) -> bool {
+  if !blind { return a == b; }
+  if a.count != b.count { return false; }
+  for i: 0..<a.count {
+    x := a[i]; y := b[i];
+    if x == '\\' { x = '/'; } if y == '\\' { y = '/'; }
+    if x >= 'A' && x <= 'Z' { x += 32; } if y >= 'A' && y <= 'Z' { y += 32; }
+    if x != y { return false; }
+  }
+  return true;
+}
+
+#test "desktop core on Windows: the worker's PATH and the copy's arguments (GitHub #13782)" {
+  b: [2 * DC_PATH] u8;
+  #assert dcwin_git_dirs("C:/Program Files", b[..]) == "C:/Program Files/Git/cmd;C:/Program Files/Git/usr/bin" && dcwin_git_dirs("", b[..]) == "";
+  #assert dcwin_worker_path("C:/Users/me", "C:/Program Files", "C:\\Windows\\system32;C:\\Windows", b[..]) == "C:/Users/me/.local/bin;C:/Program Files/Git/cmd;C:/Program Files/Git/usr/bin;C:\\Windows\\system32;C:\\Windows";
+  // a folder already on PATH (any case, either slash) is not added again
+  #assert dcwin_worker_path("C:/Users/me", "C:/Program Files", "c:\\program files\\git\\cmd;C:\\Windows", b[..]) == "C:/Users/me/.local/bin;C:/Program Files/Git/usr/bin;c:\\program files\\git\\cmd;C:\\Windows";
+  #assert dcwin_worker_path("C:/Users/me", "", "", b[..]) == "C:/Users/me/.local/bin";
+  #assert dc_list_has("/usr/bin:/bin", "/bin", ':') && !dc_list_has("/usr/bin:/bin", "/BIN", ':') && dc_list_has("C:\\A;D:/b", "c:/a", ';');
+  // odd-length names; an unset ProgramFiles adds no empty entry; a one-letter PATH is kept
+  #assert dcwin_worker_path("C:/U", "C:/PF", "", b[..]) == "C:/U/.local/bin;C:/PF/Git/cmd;C:/PF/Git/usr/bin";
+  #assert dcwin_worker_path("C:/U", "", "X", b[..]) == "C:/U/.local/bin;X" && dcwin_worker_path("", "", "X", b[..]) == "X";
+  #assert dc_list_has("/a:", "", ':') && dc_list_has("/ab:/d", "/ab", ':') && dc_list_has("/ab:/d", "/d", ':');
+  // the same folder: each side's case and slashes, every byte compared
+  #assert dc_same_dir("AZ", "az", true) && dc_same_dir("az", "AZ", true) && dc_same_dir("a\\b", "A/B", true) && dc_same_dir("A/B", "a\\b", true);
+  #assert !dc_same_dir("[", "{", true) && !dc_same_dir("{", "[", true) && !dc_same_dir("@", "`", true) && !dc_same_dir("`", "@", true);
+  #assert !dc_same_dir("x]", "x/", true) && !dc_same_dir("x/", "x]", true) && !dc_same_dir("xa", "ya", true) && !dc_same_dir("ab", "ac", true);
+  #assert !dc_same_dir("a", "A", false) && dc_same_dir("a", "a", false) && !dc_same_dir("a", "ab", true);
+  fb: [DC_PATH] u8; tb: [DC_PATH] u8; argv: [DCWIN_ROBOCOPY_ARGS] string;
+  dcwin_robocopy_argv("C:/r/coax/bin", "C:/w/x/coax/bin", fb[..], tb[..], argv[..]);
+  #assert argv[0] == "robocopy" && argv[1] == "C:\\r\\coax\\bin" && argv[2] == "C:\\w\\x\\coax\\bin" && argv[3] == "/E" && argv[12] == "/NJS";
+  #assert dcwin_robocopy_ok(0) && dcwin_robocopy_ok(1) && dcwin_robocopy_ok(7) && !dcwin_robocopy_ok(8) && !dcwin_robocopy_ok(16) && !dcwin_robocopy_ok(-1);
+}

@@ -14,14 +14,52 @@ dc_copy :: (dst: [] u8, s: string) -> int { return dc_cat(dst, 0, s); }
 dc_fits :: (out: [] u8, n: int) -> string { return ifx n < out.count then cast(string) out[0..<n] else ""; }
 dc_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
 dc_starts :: (s: string, head: string) -> bool { return s.count >= head.count && cast(string) s[0..<head.count] == head; }
-// s without the slashes it ends with ("/" stays "/").
-dc_trim_slash :: (s: string) -> string { t := s; while t.count > 1 && t[t.count - 1] == '/' { t = t[0..<t.count - 1]; } return t; }
+// ---- Windows paths (GitHub #13782) ----
+// The core keeps every path with forward slashes, on Windows too: "C:/Users/me/x", which every
+// Win32 file call and Git for Windows accept. A drive's root is "C:/", as "/" is POSIX's.
+// dc_win_path makes a path the system gave (USERPROFILE, APPDATA, a chosen folder) into that
+// form; dc_win_native gives one back with backslashes, for the few programs that want them.
+
+// 2 when s starts with a drive ("C:", then a slash or nothing), else 0.
+dc_drive :: (s: string) -> int {
+  if s.count < 2 || s[1] != ':' { return 0; }
+  letter := (s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z');
+  return ifx letter && (s.count == 2 || s[2] == '/') then 2 else 0;
+}
+// Whether p names a place on its own: "/x" (POSIX, or a Windows share "//host/x") or "C:/x".
+dc_absolute :: (p: string) -> bool { return (p.count > 0 && p[0] == '/') || (dc_drive(p) == 2 && p.count > 2); }
+// A Windows path in the core's form: backslashes to slashes, without the \\?\ prefix the system
+// adds to a long or final path ("\\?\UNC\host\x" is "//host/x"), and a bare drive "C:" is "C:/".
+dc_win_path :: (native: string, out: [] u8) -> string {
+  p := native;
+  unc := false;
+  if dc_starts(p, "\\\\?\\UNC\\") { p = p[8..<p.count]; unc = true; }
+  else if dc_starts(p, "\\\\?\\") { p = p[4..<p.count]; }
+  n := 0;
+  if unc { n = dc_cat(out, n, "//"); }
+  for c: p { if n < out.count { out[n] = ifx c == '\\' then '/' else c; } n += 1; }
+  if n == 2 && dc_drive(dc_fits(out, n)) == 2 { n = dc_cat(out, n, "/"); }
+  return dc_fits(out, n);
+}
+// The path with backslashes, as cmd.exe and robocopy want it.
+dc_win_native :: (path: string, out: [] u8) -> string {
+  n := 0;
+  for c: path { if n < out.count { out[n] = ifx c == '/' then '\\' else c; } n += 1; }
+  return dc_fits(out, n);
+}
+
+// s without the slashes it ends with ("/" and "C:/" stay as they are).
+dc_trim_slash :: (s: string) -> string {
+  t := s;
+  while t.count > 1 && t[t.count - 1] == '/' && !(t.count == 3 && dc_drive(t) == 2) { t = t[0..<t.count - 1]; }
+  return t;
+}
 // dir + "/" + leaf ("" when it does not fit or dir is empty).
 dc_join :: (dir: string, leaf: string, out: [] u8) -> string {
   if dir.count == 0 { return ""; }
   d := dc_trim_slash(dir);
   n := dc_cat(out, 0, d);
-  if d != "/" { n = dc_cat(out, n, "/"); }
+  if d[d.count - 1] != '/' { n = dc_cat(out, n, "/"); }
   n = dc_cat(out, n, leaf);
   return dc_fits(out, n);
 }
@@ -39,7 +77,7 @@ dc_num :: (v: int, out: [] u8) -> string {
 
 // Where worktrees go: $CODER_WORKTREES when it is absolute, else HOME/.openagents/worktrees.
 dc_worktree_root :: (home: string, set: string, out: [] u8) -> string {
-  if set.count > 0 && set[0] == '/' { return dc_fits(out, dc_copy(out, set)); }
+  if dc_absolute(set) { return dc_fits(out, dc_copy(out, set)); }
   return dc_join(home, ".openagents/worktrees", out);
 }
 // The chat id as a branch and folder name: lowercase letters, digits and dashes only, at most 64; "chat" when none is left.
@@ -110,29 +148,40 @@ dc_cargo_target :: (home: string, repo: string, out: [] u8) -> string {
 // "" when the text has no such line; dir is where the file is (a relative gitdir is under it).
 dc_gitdir_main :: (git_file: string, dir: string, out: [] u8) -> string {
   at := 0;
-  while at < git_file.count {
+  // at reaching the end reads one empty line, which names nothing, so "<=" is the same loop.
+  while at < git_file.count { // mutant: equivalent
     e := at; while e < git_file.count && git_file[e] != '\n' { e += 1; }
     line := git_file[at..<e];
     if dc_starts(line, "gitdir:") {
       g := line[7..<line.count];
-      while g.count > 0 && (g[0] == ' ' || g[0] == '\t') { g = g[1..<g.count]; }
+      // a lone blank left here is trimmed from the end on the next line, so "> 1" is the same.
+      while g.count > 0 && // mutant: equivalent
+            (g[0] == ' ' || g[0] == '\t') { g = g[1..<g.count]; }
       while g.count > 0 && (g[g.count - 1] == ' ' || g[g.count - 1] == '\t' || g[g.count - 1] == '\r') { g = g[0..<g.count - 1]; }
       full: [DC_PATH] u8; fn := 0;
-      if g.count > 0 && g[0] != '/' { fn = dc_cat(full[..], 0, dir); fn = dc_cat(full[..], fn, "/"); }
+      if g.count > 0 && !dc_absolute(g) { fn = dc_cat(full[..], 0, dir); fn = dc_cat(full[..], fn, "/"); }
       fn = dc_cat(full[..], fn, g);
       std: [DC_PATH] u8; s := dc_standard(cast(string) full[0..<fn], std[..]);
-      k := s.count - 16;
-      while k >= 0 { if cast(string) s[k..<k + 16] == "/.git/worktrees/" { return dc_fits(out, dc_copy(out, s[0..<k])); } k -= 1; }
+      // dc_standard drops a trailing slash, so s never ends in "/.git/worktrees/": starting one
+      // place lower finds the same match.
+      k := s.count - 16; // mutant: equivalent
+      // a match at 0 gives "" for the main checkout, the same as no match.
+      while k >= 0 { // mutant: equivalent
+        if cast(string) s[k..<k + 16] == "/.git/worktrees/" { return dc_fits(out, dc_copy(out, s[0..<k])); }
+        k -= 1;
+      }
       return "";
     }
     at = e + 1;
   }
   return "";
 }
-// An absolute path with its "." and ".." parts worked out and doubled slashes dropped (standardizingPath).
+// An absolute path with its "." and ".." parts worked out and doubled slashes dropped
+// (standardizingPath). A Windows path keeps its drive: "C:/a/../b" is "C:/b", "C:/.." is "C:/".
 dc_standard :: (path: string, out: [] u8) -> string {
-  if path.count == 0 || path[0] != '/' { return dc_fits(out, dc_copy(out, path)); }
-  starts: [512] int; depth := 0; n := 0; i := 0;
+  if !dc_absolute(path) { return dc_fits(out, dc_copy(out, path)); }
+  drive := dc_drive(path);
+  starts: [512] int; depth := 0; n := dc_cat(out, 0, path[0..<drive]); i := drive;
   while i < path.count {
     while i < path.count && path[i] == '/' { i += 1; }
     e := i; while e < path.count && path[e] != '/' { e += 1; }
@@ -144,21 +193,25 @@ dc_standard :: (path: string, out: [] u8) -> string {
     n = dc_cat(out, n, "/"); n = dc_cat(out, n, part);
     i = e;
   }
-  if n == 0 { n = dc_copy(out, "/"); }
+  if n == drive { n = dc_cat(out, n, "/"); }
   return dc_fits(out, n);
 }
-// The parent folder of an absolute path ("/" for "/x"; "" for "/").
+// The parent folder of an absolute path ("/" for "/x", "C:/" for "C:/x"; "" for "/" and "C:/").
 dc_parent :: (path: string) -> string {
   p := dc_trim_slash(path);
-  if p == "/" || p.count == 0 { return ""; }
-  k := p.count - 1; while k > 0 && p[k] != '/' { k -= 1; }
-  return ifx k == 0 then "/" else p[0..<k];
+  root := ifx dc_drive(p) == 2 then 3 else 1;   // "/" or "C:/"
+  if p.count <= root { return ""; }
+  // p ends in a name (dc_trim_slash), so the scan back to its slash may start anywhere in it.
+  k := p.count - 1; // mutant: equivalent
+  while k > root && p[k] != '/' { k -= 1; }
+  return p[0..<k];
 }
 // A worktree.json "clone" entry the core may clone in: relative, no "..", no NUL.
 dc_clone_ok :: (p: string) -> bool {
-  if p.count == 0 || p[0] == '/' { return false; }
+  if p.count == 0 || dc_absolute(p) || dc_drive(p) == 2 { return false; }
   at := 0;
-  while at <= p.count {
+  // at reaching the end reads the empty part after a final slash, which is never "..".
+  while at <= p.count { // mutant: equivalent
     e := at; while e < p.count && p[e] != '/' { e += 1; }
     if cast(string) p[at..<e] == ".." { return false; }
     at = e + 1;
@@ -179,7 +232,7 @@ dc_coder_dir :: (os: int, home: string, xdg: string, appdata: string, out: [] u8
     if xdg.count > 0 && xdg[0] == '/' { return dc_join(xdg, "Coder", out); }
     return dc_join(dc_join(home, ".local/share", a[..]), "Coder", out);
   }
-  if os == DC_OS_WINDOWS && appdata.count > 0 { return dc_join(appdata, "Coder", out); }
+  if os == DC_OS_WINDOWS { return dc_join(dc_win_path(appdata, a[..]), "Coder", out); }   // "" when APPDATA is unset
   return "";
 }
 // The chats folder: CODER_DESKTOP_DIR when set (as `coder desktop` reads it), else the Coder folder's chats.
@@ -227,9 +280,60 @@ dc_daemon_dir :: (home: string, coder_home: string, out: [] u8) -> string {
   #assert dc_coder_dir(DC_OS_MAC, "/Users/me", "", "", b[..]) == "/Users/me/Library/Application Support/Coder";
   #assert dc_coder_dir(DC_OS_LINUX, "/home/me", "", "", b[..]) == "/home/me/.local/share/Coder";
   #assert dc_coder_dir(DC_OS_LINUX, "/home/me", "/data", "", b[..]) == "/data/Coder" && dc_coder_dir(DC_OS_LINUX, "/home/me", "rel", "", b[..]) == "/home/me/.local/share/Coder";
-  #assert dc_coder_dir(DC_OS_WINDOWS, "", "", "C:\\Users\\me\\AppData\\Roaming", b[..]) == "C:\\Users\\me\\AppData\\Roaming/Coder" && dc_coder_dir(0, "/h", "", "", b[..]) == "";
+  #assert dc_coder_dir(DC_OS_WINDOWS, "", "", "C:\\Users\\me\\AppData\\Roaming", b[..]) == "C:/Users/me/AppData/Roaming/Coder" && dc_coder_dir(0, "/h", "", "", b[..]) == "";
   d := dc_coder_dir(DC_OS_MAC, "/Users/me", "", "", c[..]);
   #assert dc_chats_dir(d, "", b[..]) == "/Users/me/Library/Application Support/Coder/chats" && dc_chats_dir(d, "/tmp/s//", b[..]) == "/tmp/s";
   #assert dc_daemon_dir("/Users/me", "", b[..]) == "/Users/me/.openagents/coder/host" && dc_daemon_dir("/Users/me", "/alt", b[..]) == "/alt/.openagents/coder/host";
   #assert dc_join("/", "x", b[..]) == "/x" && dc_join("", "x", b[..]) == "" && dc_num(-42, b[..]) == "-42" && dc_num(0, b[..]) == "0";
+}
+#test "desktop core paths: Windows paths keep their drive (GitHub #13782)" {
+  b: [DC_PATH] u8; c: [DC_PATH] u8;
+  #assert dc_drive("C:/x") == 2 && dc_drive("c:") == 2 && dc_drive("C:x") == 0 && dc_drive("1:/") == 0 && dc_drive("/x") == 0 && dc_drive("") == 0;
+  #assert dc_absolute("C:/Users") && dc_absolute("/home") && dc_absolute("//host/share") && !dc_absolute("C:") && !dc_absolute("rel/x") && !dc_absolute("");
+  #assert dc_win_path("C:\\Users\\me", b[..]) == "C:/Users/me" && dc_win_path("C:", b[..]) == "C:/" && dc_win_path("D:\\", b[..]) == "D:/";
+  #assert dc_win_path("\\\\?\\C:\\long\\x", b[..]) == "C:/long/x" && dc_win_path("\\\\?\\UNC\\host\\s\\x", b[..]) == "//host/s/x" && dc_win_path("\\\\host\\s", b[..]) == "//host/s";
+  #assert dc_win_native("C:/a b/c", b[..]) == "C:\\a b\\c";
+  #assert dc_trim_slash("C:/") == "C:/" && dc_trim_slash("C:/x//") == "C:/x" && dc_trim_slash("/") == "/";
+  #assert dc_join("C:/", "x", b[..]) == "C:/x" && dc_join("C:/Users/me/", "x", b[..]) == "C:/Users/me/x";
+  #assert dc_standard("C:/a//b/./c/../d/", b[..]) == "C:/a/b/d" && dc_standard("C:/..", b[..]) == "C:/" && dc_standard("C:/", b[..]) == "C:/";
+  #assert dc_parent("C:/a/b") == "C:/a" && dc_parent("C:/a") == "C:/" && dc_parent("C:/") == "";
+  #assert dc_standard("/a/..", b[..]) == "/" && dc_standard("C:/a/..", b[..]) == "C:/";
+  #assert dc_parent("/") == "" && dc_parent("") == "" && dc_parent("/x") == "/" && dc_parent("/ab/c") == "/ab" && dc_parent("C:") == "" && dc_parent("C:/a/b/") == "C:/a";
+  #assert dc_absolute("/") && !dc_clone_ok("a\0b") && dc_clone_ok("a b");
+  #assert dc_worktree_root("C:/Users/me", "", b[..]) == "C:/Users/me/.openagents/worktrees" && dc_worktree_root("C:/Users/me", "D:/wt", b[..]) == "D:/wt";
+  #assert dc_gitdir_main("gitdir: C:/r/main/.git/worktrees/chat1\n", "C:/w/x/chat1", b[..]) == "C:/r/main";
+  #assert dc_gitdir_main("gitdir: ../../main/.git/worktrees/c\r\n", "C:/w/x/c", b[..]) == "C:/w/main";
+  #assert !dc_clone_ok("C:/x") && !dc_clone_ok("C:") && dc_clone_ok("coax/bin");
+  #assert dc_worktree_path("C:/Users/me/.openagents/worktrees", "C:/Users/me/work/OpenAgents", "Chat1", b[..]) == dc_worktree_path("C:/Users/me/.openagents/worktrees", "C:/Users/me/work/OpenAgents", "chat1", c[..]);
+  #assert dc_coder_dir(DC_OS_WINDOWS, "C:/Users/me", "", "C:/Users/me/AppData/Roaming", b[..]) == "C:/Users/me/AppData/Roaming/Coder";
+  #assert dc_coder_dir(DC_OS_WINDOWS, "C:/Users/me", "", "C:\\Users\\me\\AppData\\Roaming\\", b[..]) == "C:/Users/me/AppData/Roaming/Coder" && dc_coder_dir(DC_OS_WINDOWS, "C:/Users/me", "", "", b[..]) == "";
+  #assert dc_coder_dir(DC_OS_WINDOWS, "", "", "X", b[..]) == "X/Coder" && dc_coder_dir(0, "/h", "", "C:/A", b[..]) == "" && dc_coder_dir(DC_OS_LINUX, "/h", "/", "", b[..]) == "/Coder";
+  #assert dc_daemon_dir("C:/Users/me", "", b[..]) == "C:/Users/me/.openagents/coder/host";
+  // every drive letter and nothing either side of the two ranges
+  #assert dc_drive("A:") == 2 && dc_drive("Z:") == 2 && dc_drive("a:") == 2 && dc_drive("z:") == 2;
+  #assert dc_drive("@:") == 0 && dc_drive("[:") == 0 && dc_drive("`:") == 0 && dc_drive("{:") == 0;
+  #assert dc_absolute("C:/") && !dc_absolute("a/b");
+  // a path that does not fit is "", and nothing is written past the buffer
+  small: [4] u8;
+  #assert dc_win_path("C:\\abc", small[..]) == "" && dc_win_native("C:/abc", small[..]) == "";
+  #assert dc_trim_slash("a/") == "a";
+}
+#test "desktop core paths: a .git file's gitdir line, however it is written (GitHub #13782)" {
+  b: [DC_PATH] u8;
+  // the line may come after others, with no space, a tab, or spaces and tabs after it
+  #assert dc_gitdir_main("x\ngitdir: /r/.git/worktrees/c", "/w", b[..]) == "/r";
+  #assert dc_gitdir_main("gitdir:/r/.git/worktrees/c", "/w", b[..]) == "/r";
+  #assert dc_gitdir_main("gitdir:\t /r/.git/worktrees/c", "/w", b[..]) == "/r";
+  #assert dc_gitdir_main("gitdir: /r/.git/worktrees/c \r\n", "/w", b[..]) == "/r";
+  // an empty gitdir names nothing, even in a folder under a .git/worktrees, whatever blanks it has
+  w := "/r/.git/worktrees";
+  #assert dc_gitdir_main("gitdir:\n", "/r/.git/worktrees/x", b[..]) == "" && dc_gitdir_main("gitdir:   ", "/w", b[..]) == "";
+  #assert dc_gitdir_main("gitdir: ", w, b[..]) == "" && dc_gitdir_main("gitdir:\r", w, b[..]) == "";
+  #assert dc_gitdir_main("gitdir:\r ", w, b[..]) == "" && dc_gitdir_main("gitdir:\r\t", w, b[..]) == "" && dc_gitdir_main("gitdir:\r\r", w, b[..]) == "";
+  // a one-letter gitdir is under dir
+  #assert dc_gitdir_main("gitdir: a", "/r/.git/worktrees", b[..]) == "/r";
+  // a path deeper than dc_standard keeps is ""
+  deep: [1100] u8; n := 0;
+  for i: 0..<513 { n = dc_cat(deep[..], n, "/a"); }
+  #assert dc_standard(cast(string) deep[0..<n], b[..]) == "";
 }
