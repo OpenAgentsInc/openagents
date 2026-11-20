@@ -6,7 +6,7 @@
 //                       first client that finds none
 //   oasim build ...     xcodebuild for the simulator, detached; oasim build_status ID reads it
 // Verbs (arguments as Claude's simulator tool names them; coordinates are device points):
-//   list | boot [DEVICE] | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S]
+//   list | boot [DEVICE] | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S] [--settle MS]
 //   tap X Y [--duration S] | swipe X Y X2 Y2 [--duration S] | touch_path POINTS_JSON
 //   touch2_path POINTS2_JSON | text TEXT | press_key KEY [--count N] | button NAME
 //   set_appearance light|dark | appearance | set_keyboard show|hide | rotate left|right
@@ -386,7 +386,7 @@ os_run :: (a: [] Args) -> int {
 }
 
 os_usage :: () -> int {
-  tool_errln("usage: oasim list | boot DEVICE | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S] | tap X Y | swipe X Y X2 Y2");
+  tool_errln("usage: oasim list | boot DEVICE | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S] [--settle MS] | tap X Y | swipe X Y X2 Y2");
   tool_errln("       | touch_path JSON | touch2_path JSON | text TEXT | press_key KEY [--count N] | button NAME | set_appearance light|dark");
   tool_errln("       | appearance | set_keyboard show|hide | rotate left|right | open_url URL | launch [--app PATH] [--bundle ID] | install APP");
   tool_errln("       | terminate BUNDLE | describe | logs | build (--project P|--workspace W) --scheme S | build_status ID | run ... | serve | status | quit | mcp");
@@ -420,6 +420,12 @@ tool_main :: () -> int #export_c #effects(all) {
   why := os_request(verb, a[..], m[..]);
   if why == "unknown verb" { return os_usage(); }
   if why.count > 0 { return os_print_error("bad_args", why); }
+  if verb == "screenshot" {
+    // --settle MS: let the screen settle first (a device step's closing screenshot); the file's folder is made
+    st := args_value(a[..], "--settle", "");
+    sv: [1] f64; if st.count > 0 { if !os_num(st, sv[..]) || sv[0] < 0.0 || sv[0] > 5000.0 { return os_print_error("bad_args", "--settle is milliseconds, 0 to 5000"); } proc_sleep(cast(int) sv[0]); }
+    _ = fs_mkdir_all(fs_dir(sw_str(m[..], SW_F_OUT)));
+  }
   out: [SW_LINE] u8;
   wait := ifx verb == "boot" then 240000 else 150000;
   return os_call(m[..], wait, out[..]);

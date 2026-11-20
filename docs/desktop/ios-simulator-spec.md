@@ -394,8 +394,8 @@ rather than two tools with an `action` member: each has a typed schema the model
 a call runs `oasim VERB WORDS...` as a child, so it is the command with the same grants (the child's
 hello carries the worker's `OA_SIM_CHAT`). `_screenshot` answers with the PNG as image content.
 `claudeworker` passes it to Claude Code in `--mcp-config` (server `simulator`) when `oasim` is beside
-it or `OA_SIMHOST` names one. `openagents mcp --domains device` and the Microcoder `device` member are
-not built yet.
+it or `OA_SIMHOST` names one. The Microcoder `device` member is built (7.6, as built);
+`openagents mcp --domains device` is not built yet.
 
 ### 7.2 `control` ops (verbs, arguments, replies)
 
@@ -489,6 +489,14 @@ command's JSON names a `path`. Phase 2: the worker writes a `device` line
 (`{"kind":"device","op":"tap","args":{...},"ok":true,"shot":"PATH"}`) added to `mcworker-wire` and its
 registry row, and the page draws it as a tool row whose press brings the simulator pane to the front.
 
+*As built (Phase 2):* the device line is `{"kind":"device","op":"tap","ok":true,"shot":"PATH"}`
+(`mww_device`, `mww_device_of` in `mcworker-wire.coax`), written by `mcworker` right after the command
+line of any `oasim` command, a device op's or one the model ran itself; `shot` is the path the
+command's JSON line names (a screenshot), absolute. Its args are the command's words, so the line
+does not repeat them. The page draws the command row as before ("Tapped (201, 640)"); a press on an
+`oasim` row that went brings the pane to the front (`CP_SIM_ROW`), and a failed one opens onto why.
+Owners that do not know the kind skip it, so older consumers lose nothing.
+
 ### 7.6 Microcoder's `device` member (Phase 2)
 
 With `"device":true` on the task line, `mc_schema` adds:
@@ -510,6 +518,21 @@ image (replacing the oldest of the 4 image slots). Ops' results go into the next
 `device` results, fenced as untrusted like command output (`fence.coax`). The system prompt gains a
 short paragraph: coordinates are points in the last screenshot; take a screenshot before acting on a
 screen you have not seen; prefer `describe` when it exists.
+
+*As built (Phase 2, `coax/lib/microcoder/device.coax`):* the page puts `"device":true` on the task line
+while the simulator pane is open and its helper connected (not merely when Xcode is present: the person
+who opened the pane is the one who wants the chat to drive it); `mcworker` then adds the member
+(`mc_device`). The run does not talk to the helper itself: each op becomes the `oasim` command that does
+it, run first among the step's commands, so it goes through the same command path, journal, fence,
+grants (`OA_SIM_CHAT`) and transcript row as any command, and its result in the next step's state is
+the command's (one JSON line). A step with an op that can change the screen ends with
+`oasim screenshot --settle 300 --out .openagents/shots/device-STEP.png`, which the step views, so the
+image is attached with no view step; a `screenshot` op asks for that closing screenshot (taken once,
+with no settling when nothing moved) rather than running on its own. When the 4 image slots are full
+a device screenshot drops the oldest device screenshot, never an image the person attached
+(`mc_image_drop_oldest`). `describe` is left out of the enum until Phase 3. Checked live on
+2026-11-20: a real mcworker run on Vertex Gemini, on a throwaway iPhone 17 Pro, opened Settings,
+then General and About, and read the iOS version from the screenshots.
 
 ## 8. Lifecycle and state
 

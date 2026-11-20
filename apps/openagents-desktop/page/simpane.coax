@@ -30,6 +30,7 @@ CP_SIM_AGENT_NONE :: 0; CP_SIM_AGENT_ALLOWED :: 1; CP_SIM_AGENT_DRIVING :: 2;
 CP_SIM_CLOSE :: 90; CP_SIM_PICK :: 91; CP_SIM_BOOT :: 92; CP_SIM_SHUTDOWN_ACT :: 93; CP_SIM_SHOT :: 94;
 CP_SIM_APPEARANCE :: 95; CP_SIM_STOP :: 96; CP_SIM_ALLOW_CHAT :: 97; CP_SIM_ALLOW_ONCE :: 98; CP_SIM_DENY :: 99;
 CP_SIM_HOME :: 101; CP_SIM_LOCK :: 102; CP_SIM_ROTATE :: 103;
+CP_SIM_ROW :: 104;          // a transcript row of an oasim command that went: the pane comes to the front (spec 7.5)
 // what the page asks of the host (CP_ASK_SIM, with coder_page_sim_op saying which)
 CP_ASK_SIM :: 46;
 CP_SIM_OP_NONE :: 0; CP_SIM_OP_MENU :: 1; CP_SIM_OP_SAVED :: 2; CP_SIM_OP_CLOSED :: 3; CP_SIM_OP_OPENED :: 4;
@@ -305,6 +306,7 @@ cp_sim_grant :: (s: [] CoderPage, op: string, scope: string) {
 }
 cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
   p := cp_sim(s);
+  if act == CP_SIM_ROW { p[0].closed_by_person = false; cp_sim_show(s); return true; }
   if !p[0].open { return false; }
   m: [1] SwMsg;
   if act == CP_SIM_CLOSE { p[0].closed_by_person = true; cp_sim_hide(s); return true; }

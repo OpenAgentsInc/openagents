@@ -107,7 +107,12 @@ mw_event :: (e: McRunEvent, o: [] u8) {
       e.log.cost_usd_micros, e.log.card_usd_micros];
     n = mww_attempt(o, e.log.gateway, e.log.model, e.log.requested_effort, gw_outcome_name(e.log.outcome), e.log.status, values[..]);
   }
-  else if e.kind == MR_COMMAND { n = mww_command(o, e.text, e.exit, e.timed_out, e.output); }
+  else if e.kind == MR_COMMAND {
+    // an oasim command's line is followed by its device line (GitHub #13811)
+    mw_send(o, mww_command(o, e.text, e.exit, e.timed_out, e.output));
+    n = mww_device_of(o, e.text, e.exit, e.output);
+    if n <= 0 { return; }
+  }
   else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
   else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
   else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }

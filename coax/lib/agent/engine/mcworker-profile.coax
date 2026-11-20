@@ -26,13 +26,13 @@ MP_CHECK :: "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/
 // The profile's names for the kinds: an owner's line by the member that makes it its kind, a
 // worker's by its kind, except steered and queued, the worker's {"kind":"steer"} and
 // {"kind":"queue"} (named as the codec names them, apart from the owner's steer and queue lines).
-MP_KINDS :: 27;
+MP_KINDS :: 28;
 MP_NAMES :: [MP_KINDS] string.["task", "answer", "stop", "forget", "embed", "results", "recall", "steer", "interrupt", "queue",
                                "journal", "ready", "reply", "thought", "attempt", "command", "view", "ask", "delegate", "ended", "embedding",
-                               "turn", "steered", "queued", "queue_refused", "stop_agent", "todos"];
+                               "turn", "steered", "queued", "queue_refused", "stop_agent", "todos", "device"];
 MP_CODES :: [MP_KINDS] int.[MWW_TASK, MWW_ANSWER, MWW_STOP, MWW_FORGET, MWW_EMBED, MWW_RESULTS, MWW_RECALL, MWW_STEER, MWW_INTERRUPT, MWW_QUEUE,
                             MWW_JOURNAL, MWW_READY, MWW_REPLY, MWW_THOUGHT, MWW_ATTEMPT, MWW_COMMAND, MWW_VIEW, MWW_ASK, MWW_DELEGATE, MWW_ENDED, MWW_EMBEDDING,
-                            MWW_TURN, MWW_STEERED, MWW_QUEUED, MWW_QUEUE_REFUSED, MWW_STOP_AGENT, MWW_TODOS];
+                            MWW_TURN, MWW_STEERED, MWW_QUEUED, MWW_QUEUE_REFUSED, MWW_STOP_AGENT, MWW_TODOS, MWW_DEVICE];
 MP_OWNER :: 10;      // the first ten are the owner's lines
 
 MpWork :: struct {
@@ -111,6 +111,7 @@ mp_worker :: (w: [] MpWork, k: int, line: string) -> string {
   else if got == MWW_QUEUE_REFUSED { n = mww_queue_refused(o, l[0].op, l[0].id, l[0].reason); }
   else if got == MWW_STOP_AGENT { if !l[0].agent.ok { return "a stop_agent with no agent"; } n = mww_stop_agent(o, l[0].agent.value); }
   else if got == MWW_TODOS { if l[0].todos.count < 2 { return "a todos with no todos"; } n = mww_todos(o, l[0].todos); }
+  else if got == MWW_DEVICE { if !l[0].ok.ok || l[0].op.count == 0 { return "a device with no op or ok"; } n = mww_device(o, l[0].op, l[0].ok.value, l[0].shot); }
   if ar[0].full { return "it does not fit the check's arena"; }
   if n < 0 || cast(string) o[0..<n] != line { return "written back, it is not the same bytes"; }
   return "";

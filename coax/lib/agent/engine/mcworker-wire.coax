@@ -74,6 +74,7 @@ MWW_TURN :: 22; MWW_STEERED :: 23; MWW_QUEUED :: 24; MWW_QUEUE_REFUSED :: 25;
 // sub-agents that do not block (GitHub #13766): the worker's lines
 MWW_STOP_AGENT :: 26;
 MWW_TODOS :: 27;               // {"kind":"todos","todos":[{"id":I,"content":C,"status":S}]}: live agent checklist
+MWW_DEVICE :: 28;              // {"kind":"device","op":OP,"ok":B,"shot":P}: after an oasim command's line, what it did to the simulator (GitHub #13811)
 // queue ops
 MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
@@ -314,6 +315,29 @@ mww_thought :: (o: [] u8, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"thought\",\"text\":"); n = json_write_string(o, n, text);
   return json_raw(o, n, "}");
 }
+// What an oasim command did to the simulator (docs/desktop/ios-simulator-spec.md 7.5): its verb,
+// whether it went, the screenshot it took ("" for none, and then no shot member).
+mww_device :: (o: [] u8, op: string, ok: bool, shot: string) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"device\",\"op\":"); n = json_write_string(o, n, op);
+  n = json_raw(o, n, ifx ok then ",\"ok\":true" else ",\"ok\":false");
+  if shot.count > 0 { n = json_raw(o, n, ",\"shot\":"); n = json_write_string(o, n, shot); }
+  return json_raw(o, n, "}");
+}
+// The device line for a command the run ran, when the command is oasim's (its program's last
+// path part, as the page reads it): the verb its second word, ok when it exited 0, the shot the
+// path its one JSON line names. 0 when it is not an oasim command.
+mww_device_of :: (o: [] u8, command: string, exit: int, output: string) -> int {
+  i := 0; while i < command.count && command[i] == ' ' { i += 1; }
+  j := i; while j < command.count && command[j] != ' ' { j += 1; }
+  base := i; for c, ci: command[i..<j] { if c == '/' { base = i + ci + 1; } }
+  if cast(string) command[base..<j] != "oasim" { return 0; }
+  v := j; while v < command.count && command[v] == ' ' { v += 1; }
+  e := v; while e < command.count && command[e] != ' ' { e += 1; }
+  if e == v { return 0; }
+  ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  shot := ""; if exit == 0 && json_valid(output) { shot = cl_str(ar[..], output, "path"); }
+  return mww_device(o, cast(string) command[v..<e], exit == 0, shot);
+}
 mww_todos :: (o: [] u8, todos_json: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"todos\",\"todos\":");
   n = json_raw(o, n, ifx todos_json.count > 0 then todos_json else "[]");
@@ -452,7 +476,8 @@ MwwLine :: struct {
   active: string;                // queue: the item whose turn runs ("" for none)
   items: string;                 // queue: the items' JSON list ([{"id","text"}]); read each with cl_item
   todos: string;                 // todos: the todo list's JSON array ([{"id","content","status"}]); read each with cl_item
-  op: string;                    // queue_refused
+  op: string;                    // queue_refused; device: the oasim verb
+  ok: ClBool; shot: string;      // device: whether it went, the screenshot it took ("" for none)
 }
 // The line's kind, MWW_NONE for a kind that is not a worker's. The strings are in line or in ar;
 // they hold until either changes. A string that does not fit in ar reads as "".
@@ -495,6 +520,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   // the items are left as JSON: a long queue's text would not fit an owner's arena at once
   else if kind == "queue" { k = MWW_QUEUED; l[0].paused = cl_bool(line, "paused"); l[0].reason = cl_str(ar, line, "reason"); l[0].active = cl_str(ar, line, "active"); l[0].items = cl_raw(line, "items"); }
   else if kind == "stop_agent" { k = MWW_STOP_AGENT; l[0].agent = cl_int(line, "agent"); }
+  else if kind == "device" { k = MWW_DEVICE; l[0].op = cl_str(ar, line, "op"); l[0].ok = cl_bool(line, "ok"); l[0].shot = cl_str(ar, line, "shot"); }
   else if kind == "queue_refused" { k = MWW_QUEUE_REFUSED; l[0].op = cl_str(ar, line, "op"); l[0].id = cl_str(ar, line, "id"); l[0].reason = cl_str(ar, line, "reason"); }
   l[0].kind = k;
   return k;
@@ -630,6 +656,21 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   o: [MWW_EMBED_MOST + 128] u8;
   n := mww_embedding(o[..], cast(string) big[..]);
   #assert n == 29 + MWW_EMBED_MOST + 1 && o[n - 1] == 125 && o[n - 2] == 49;
+}
+
+#test "an oasim command's device line: its verb, whether it went, its screenshot; nothing for another command" {
+  o: [512] u8; ab: [1024] u8; ar: [1] ClArena; ar[0].buf = ab[..]; l: [1] MwwLine;
+  n := mww_device_of(o[..], "oasim tap 201 640", 0, "{\"id\":2,\"ok\":true}\n");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"device\",\"op\":\"tap\",\"ok\":true}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DEVICE && l[0].op == "tap" && l[0].ok.ok && l[0].ok.value && l[0].shot == "";
+  n = mww_device_of(o[..], "  /A/Resources/oasim screenshot --settle 300 --out s/d-1.png", 0, "{\"id\":2,\"ok\":true,\"path\":\"/w/s/d-1.png\",\"bytes\":9}");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"device\",\"op\":\"screenshot\",\"ok\":true,\"shot\":\"/w/s/d-1.png\"}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DEVICE && l[0].shot == "/w/s/d-1.png";
+  n = mww_device_of(o[..], "oasim tap 1 2", 1, "{\"ok\":false,\"code\":\"no_grant\",\"path\":\"x\"}");
+  #assert cast(string) o[0..<n] == "{\"kind\":\"device\",\"op\":\"tap\",\"ok\":false}" && mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DEVICE && !l[0].ok.value;
+  #assert mww_device_of(o[..], "oasim screenshot", 0, "not json") > 0 && cl_raw(cast(string) o[0..<mww_device_of(o[..], "oasim screenshot", 0, "not json")], "shot") == "";
+  #assert mww_device_of(o[..], "ls oasim", 0, "") == 0 && mww_device_of(o[..], "oasimx tap 1 2", 0, "") == 0 && mww_device_of(o[..], "oasim", 0, "") == 0 && mww_device_of(o[..], "", 0, "") == 0;
+  #assert mww_device_of(o[..], "/x/my-oasim tap 1 2", 0, "") == 0 && mww_device_of(o[..], "oasim   ", 0, "") == 0;
 }
 
 #test "sub-agents: a task's agents and edits, the delegate line and the results line, each way" {

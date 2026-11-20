@@ -39,6 +39,13 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
   return AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = sheet_single_line(sh, text), call = text, output = output,
                     failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
 }
+// What a press on row q does: an oasim command that went brings the simulator pane to the front
+// (spec 7.5, GitHub #13811); any other row does what its group's rows do.
+cp_row_act :: (s: [] CoderPage, q: int, row: int) -> int {
+  if s[0].calls[q].thought || s[0].calls[q].said || s[0].calls[q].read || s[0].calls[q].failed || s[0].calls[q].running { return row; }
+  tb: [256] u8;
+  return ifx cp_sim_cmd(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n], tb[..]).verb.count > 0 then CP_SIM_ROW else row;
+}
 // An edit's row (#13696): "Edited" or "Wrote" and the file's name, a link to the file; its lines
 // added and removed at its end, and it opens onto its diff.
 cp_act_edit :: (s: [] CoderPage, f: [] UiFrame, q: int) -> AppActRow {
@@ -156,7 +163,7 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
     // a row out of view keeps its place and is not drawn, so a long run costs what shows
     rh := s[0].calls[q].h;
     if rh > 0 && (y + rh < top - CP_PANE_MARGIN || y > bottom + CP_PANE_MARGIN) { y += rh; q = nx; at += 1; pos += 1; continue; }
-    rh = app_act_row(f, cp_named(tb[..], name, ".x", at), x, y, cw, cp_act_row(s, f, q, cw), pos < last, row);   // a row keeps its id when older ones go, so an open row stays open
+    rh = app_act_row(f, cp_named(tb[..], name, ".x", at), x, y, cw, cp_act_row(s, f, q, cw), pos < last, cp_row_act(s, q, row));   // a row keeps its id when older ones go, so an open row stays open
     s[0].calls[q].h = rh; y += rh;
     q = nx; at += 1; pos += 1;
   }

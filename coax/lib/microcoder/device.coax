@@ -4,7 +4,7 @@
 // Each op becomes the `oasim` command that does it, run first among the step's commands (after its
 // edits), so it goes through the same command path, journal, fence and transcript row as any
 // command (oasim's rows are labelled "Tapped (201, 640)"). A step whose ops can change the screen
-// also takes a screenshot 300 ms after the last one into the working folder's
+// also takes a screenshot 300 ms after the last one (oasim screenshot --settle 300) into the working folder's
 // .openagents/shots/, viewed by the step, so the model sees the screen it left with no view step.
 
 #load "action.coax";
@@ -12,7 +12,7 @@
 MC_MAX_DEVICE :: 8;
 MC_DEVICE_OPS :: [16] string.["list", "boot", "screenshot", "tap", "swipe", "touch_path", "text", "press_key", "button", "set_appearance", "rotate", "open_url", "launch", "terminate", "build", "build_status"];
 MC_SCHEMA_DEVICE :: ",\"device\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\",\"enum\":[\"list\",\"boot\",\"screenshot\",\"tap\",\"swipe\",\"touch_path\",\"text\",\"press_key\",\"button\",\"set_appearance\",\"rotate\",\"open_url\",\"launch\",\"terminate\",\"build\",\"build_status\"]},\"device\":{\"type\":\"string\"},\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"x2\":{\"type\":\"number\"},\"y2\":{\"type\":\"number\"},\"duration\":{\"type\":\"number\"},\"text\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"app_path\":{\"type\":\"string\"},\"bundle_id\":{\"type\":\"string\"},\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"dt_ms\":{\"type\":\"number\"}},\"required\":[\"x\",\"y\"],\"additionalProperties\":false}},\"project_path\":{\"type\":\"string\"},\"workspace_path\":{\"type\":\"string\"},\"scheme\":{\"type\":\"string\"},\"build_id\":{\"type\":\"string\"}},\"required\":[\"op\"],\"additionalProperties\":false}}";
-MC_DEVICE :: "\n- You can use an iOS Simulator. device is a list of up to 8 ops, run in order after your edits and before your commands: list; boot (device: a name or UDID); screenshot; tap (x, y; duration over 0.5 is a long press); swipe (x, y, x2, y2, duration); touch_path (points); text (text to type into the focused field); press_key (key: return, delete, tab, escape, an arrow, select_all, undo, redo); button (name: HOME, LOCK, SIDE_BUTTON, SIRI, APPLE_PAY); set_appearance (name: light or dark); rotate (name: left or right); open_url (url); launch (app_path of a built .app, or bundle_id); terminate (bundle_id); build (project_path or workspace_path, and scheme; it answers with a build_id); build_status (build_id). Coordinates are points in the last screenshot, origin top left. A step whose ops can change the screen ends with a screenshot of it, attached to your next turn; take a screenshot before acting on a screen you have not seen. The first op that changes the simulator asks the person, so an op can come back no_grant or denied: then say so and do not retry. Each op's result is a command's, `oasim VERB ...`, with one JSON line. Leave device empty when you don't use it.";
+MC_DEVICE :: "\n- You can use an iOS Simulator. device is a list of up to 8 ops, run in order after your edits and before your commands: list; boot (device: a name or UDID); screenshot (you see the screen as the step leaves it; one is taken anyway after an op that changes it); tap (x, y; duration over 0.5 is a long press); swipe (x, y, x2, y2, duration); touch_path (points); text (text to type into the focused field); press_key (key: return, delete, tab, escape, an arrow, select_all, undo, redo); button (name: HOME, LOCK, SIDE_BUTTON, SIRI, APPLE_PAY); set_appearance (name: light or dark); rotate (name: left or right); open_url (url); launch (app_path of a built .app, or bundle_id); terminate (bundle_id); build (project_path or workspace_path, and scheme; it answers with a build_id); build_status (build_id). Coordinates are points in the last screenshot, origin top left. A step whose ops can change the screen ends with a screenshot of it, attached to your next turn; take a screenshot before acting on a screen you have not seen. The first op that changes the simulator asks the person, so an op can come back no_grant or denied: then say so and do not retry. Each op's result is a command's, `oasim VERB ...`, with one JSON line. Leave device empty when you don't use it.";
 
 // The schema with the device member after rationale, and in required. Into out; "" when it
 // doesn't fit or schema has no rationale.
@@ -87,7 +87,7 @@ mc_device_command :: (ar: [] ClArena, d: string, why: [] string) -> string {
   return s;
 }
 // Whether op can change what the screen shows (a step that ran one ends with a screenshot).
-mc_device_moves :: (op: string) -> bool { return op != "list" && op != "build" && op != "build_status"; }
+mc_device_moves :: (op: string) -> bool { return op != "list" && op != "build" && op != "build_status" && op != "screenshot"; }
 
 // The reply's device member (a run with the simulator on, after mc_action_parse_as) folded into
 // a: its ops' commands first among the step's commands, then, when one can change the screen,
@@ -99,18 +99,20 @@ mc_action_device :: (ar: [] ClArena, text: string, a: [] McAction, step: int) ->
   nd := ifx ds.count > 0 then cl_count(ds) else 0;
   if nd == 0 { return ""; }
   if nd > MC_MAX_DEVICE { return "the reply has more than 8 device ops"; }
-  cmds: [MC_MAX_DEVICE + 1] string; why: [1] string; moves := false;
+  // a screenshot op is the step's closing screenshot, taken once after the other ops
+  cmds: [MC_MAX_DEVICE + 1] string; why: [1] string; moves := false; looks := false; k := 0;
   for i: 0..<nd {
     d := cl_json(ds, cl_item(ds, i));
-    cmds[i] = mc_device_command(ar, d, why[..]);
-    if cmds[i].count == 0 { return why[0]; }
-    if mc_device_moves(cl_str(ar, d, "op")) { moves = true; }
+    c := mc_device_command(ar, d, why[..]);
+    if c.count == 0 { return why[0]; }
+    op := cl_str(ar, d, "op");
+    if op == "screenshot" { looks = true; } else { cmds[k] = c; k += 1; }
+    if mc_device_moves(op) { moves = true; }
   }
-  k := nd;
   shot := "";
-  if moves {
+  if moves || looks {
     pb: [128] u8; pn := json_raw(pb[..], 0, ".openagents/shots/device-"); pn = json_write_int(pb[..], pn, step); pn = json_raw(pb[..], pn, ".png");
-    cb: [256] u8; cn := json_raw(cb[..], 0, "sleep 0.3; mkdir -p .openagents/shots && oasim screenshot --out "); cn = json_raw(cb[..], cn, cast(string) pb[0..<pn]);
+    cb: [256] u8; cn := json_raw(cb[..], 0, ifx moves then "oasim screenshot --settle 300 --out " else "oasim screenshot --out "); cn = json_raw(cb[..], cn, cast(string) pb[0..<pn]);
     if cn < 0 || ar[0].at + cn + pn > ar[0].buf.count { return "the reply does not fit its buffer"; }
     for i: 0..<cn { ar[0].buf[ar[0].at + i] = cb[i]; }
     cmds[k] = cast(string) ar[0].buf[ar[0].at..<ar[0].at + cn]; ar[0].at += cn; k += 1;
@@ -138,7 +140,7 @@ mc_action_device :: (ar: [] ClArena, text: string, a: [] McAction, step: int) ->
   #assert mc_action_device(ar[..], t, a[..], 3) == "";
   #assert a[0].nc == 5 && a[0].commands[0] == "oasim tap 201 640.5" && a[0].commands[1] == "oasim text 'it'\\''s here'";
   #assert a[0].commands[2] == "oasim swipe 1 2 3 4 --duration 0.5 --device 'iPhone 17'";
-  #assert a[0].commands[3] == "sleep 0.3; mkdir -p .openagents/shots && oasim screenshot --out .openagents/shots/device-3.png" && a[0].commands[4] == "git status";
+  #assert a[0].commands[3] == "oasim screenshot --settle 300 --out .openagents/shots/device-3.png" && a[0].commands[4] == "git status";
   #assert a[0].nv == 2 && a[0].view[0] == ".openagents/shots/device-3.png" && a[0].view[1] == "a.txt";
   // ops that change nothing take no screenshot; build's flags; touch_path's points
   b: [1] McAction;
@@ -147,6 +149,14 @@ mc_action_device :: (ar: [] ClArena, text: string, a: [] McAction, step: int) ->
   c: [1] McAction;
   #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"touch_path\",\"points\":[{\"x\":1,\"y\":2}]},{\"op\":\"launch\",\"bundle_id\":\"com.apple.Preferences\"},{\"op\":\"button\",\"name\":\"HOME\"}]}", c[..], 2) == "";
   #assert c[0].commands[0] == "oasim touch_path '[{\"x\":1,\"y\":2}]'" && c[0].commands[1] == "oasim launch --bundle 'com.apple.Preferences'" && c[0].commands[2] == "oasim button 'HOME'" && c[0].nc == 4;
+  // a screenshot op is the closing screenshot: taken once, last, with no settling when nothing moved
+  g: [1] McAction;
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"screenshot\"},{\"op\":\"list\"},{\"op\":\"screenshot\"}]}", g[..], 4) == "";
+  #assert g[0].nc == 2 && g[0].commands[0] == "oasim list" && g[0].commands[1] == "oasim screenshot --out .openagents/shots/device-4.png" && g[0].nv == 1 && g[0].view[0] == ".openagents/shots/device-4.png";
+  h: [1] McAction;
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"screenshot\"},{\"op\":\"button\",\"name\":\"HOME\"}]}", h[..], 5) == "";
+  #assert h[0].nc == 2 && h[0].commands[0] == "oasim button 'HOME'" && h[0].commands[1] == "oasim screenshot --settle 300 --out .openagents/shots/device-5.png";
+  #assert !mc_device_moves("screenshot") && !mc_device_moves("list") && !mc_device_moves("build") && !mc_device_moves("build_status") && mc_device_moves("tap") && mc_device_moves("rotate");
   e: [1] McAction; #assert mc_action_device(ar[..], "{\"device\":[]}", e[..], 1) == "" && e[0].nc == 0 && mc_action_device(ar[..], "{}", e[..], 1) == "";
   // refused: an unknown op, a tap with no y, a text with nothing, nine ops, a member of the wrong shape
   #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"erase\"}]}", e[..], 1) == "a device op is not one of the ops";

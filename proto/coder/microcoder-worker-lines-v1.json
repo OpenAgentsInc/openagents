@@ -838,6 +838,35 @@
      "note": "the current checklist, [{\"id\":ID,\"content\":TEXT,\"status\":\"pending\"|\"in_progress\"|\"completed\"}]"
     }
    ]
+  },
+  {
+   "kind": "device",
+   "from": "worker",
+   "writer": "mww_device (mww_device_of)",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "value": "device",
+     "note": "the line's kind; written right after the command line of an oasim command (the program's last path part is oasim), a device op's or the model's own (GitHub #13811)"
+    },
+    {
+     "name": "op",
+     "type": "string",
+     "note": "the oasim verb: tap, swipe, screenshot, build, ..."
+    },
+    {
+     "name": "ok",
+     "type": "boolean",
+     "note": "the command exited 0"
+    },
+    {
+     "name": "shot",
+     "type": "string",
+     "note": "written only when the command went and its JSON line names a path: the screenshot it took, absolute"
+    }
+   ]
   }
  ],
  "runs": [
@@ -1206,7 +1235,7 @@
     {
      "from": "worker",
      "kind": "command",
-     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":3,\"timed_out\":false,\"output\":\"a\\tb \\\"q\\\" \\\\ back\\nline2 \u20ac \\u0001\\n\"}"
+     "line": "{\"kind\":\"command\",\"command\":\"printf 'a\\\\tb \\\"q\\\" \\\\\\\\ back\\\\nline2 \\\\342\\\\202\\\\254 \\\\001\\\\n'; exit 3\",\"exit\":3,\"timed_out\":false,\"output\":\"a\\tb \\\"q\\\" \\\\ back\\nline2 € \\u0001\\n\"}"
     },
     {
      "from": "worker",
@@ -2298,6 +2327,43 @@
      "from": "worker",
      "kind": "ended",
      "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}"
+    }
+   ]
+  },
+  {
+   "name": "device-settings",
+   "what": "a run with \"device\":true on a throwaway iOS Simulator: a tap, the step's closing screenshot, each oasim command's line followed by its device line, the screenshot viewed (GitHub #13811)",
+   "from": "the worker built from this tree (coder/tui/mcworker.coax) on Vertex Gemini, captured 2026-11-20 by a recorder on its standard output; oasim and its helper on their own socket, confined to that device (OA_SIM_ONLY)",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"oasim tap 200 467\",\"exit\":0,\"timed_out\":false,\"output\":\"{\\\"id\\\":2,\\\"ok\\\":true}\\n\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "device",
+     "line": "{\"kind\":\"device\",\"op\":\"tap\",\"ok\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "command",
+     "line": "{\"kind\":\"command\",\"command\":\"oasim screenshot --settle 300 --out .openagents/shots/device-2.png\",\"exit\":0,\"timed_out\":false,\"output\":\"{\\\"id\\\":2,\\\"ok\\\":true,\\\"gen\\\":2409,\\\"path\\\":\\\"/private/tmp/claude-501/oasim-scratch/live/work/.openagents/shots/device-2.png\\\",\\\"points\\\":{\\\"w\\\":402,\\\"h\\\":874},\\\"bytes\\\":95544}\\n\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "device",
+     "line": "{\"kind\":\"device\",\"op\":\"screenshot\",\"ok\":true,\"shot\":\"/private/tmp/claude-501/oasim-scratch/live/work/.openagents/shots/device-2.png\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "view",
+     "line": "{\"kind\":\"view\",\"path\":\".openagents/shots/device-2.png\",\"found\":true}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"About shows iOS version 26.5.\"}"
     }
    ]
   }
