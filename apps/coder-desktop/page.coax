@@ -27,3 +27,4 @@
 #load "page/checks/editor-checks.coax" #test;
 #load "page/checks/palette-checks.coax" #test;
 #load "page/checks/composer-checks.coax" #test;
+#load "page/checks/attach-checks.coax" #test;

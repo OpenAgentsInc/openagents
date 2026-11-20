@@ -89,6 +89,9 @@ Composer :: struct {
   // no paperclip, no access chip, and its own words when empty ("" is Zeron's).
   no_attach: bool; no_access: bool;
   placeholder: string;
+  // Mention tokens styled by type, not chips (zgx ds/mention_tokens.luau): an `@` file or a `/`
+  // command at the draft's start shows its trigger in the faint ink and its name a weight up.
+  tokens: bool;
 }
 CH_SEND :: 0; CH_MODEL :: 1; CH_EFFORT :: 2; CH_ACCESS :: 3; CH_ATTACH :: 4;
 CH_COUNT :: 5;
@@ -508,7 +511,7 @@ composer_body_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, spli
     for r: 0..<c[0].lines {
       ly := top + cast(f32) r * lh;
       if ly + lh < c[0].text_y - m.pad_top || ly > c[0].text_y + view_h { continue; }
-      k = prim_text(list, k, left, ly, 0, lh, sk.body.face, sk.ink, cast(string) t[c[0].line_at[r]..<c[0].line_end[r]]);
+      k = composer_row_text(list, k, c, a, r, left, ly, lh, t);
     }
   }
   split[0] = k;
@@ -519,6 +522,49 @@ composer_body_prims :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, spli
     k = prim_fill(list, k, cx, top + cast(f32) r * lh, m.caret, lh, 0, sk.accent);
   }
   return prim_unclip(list, k);
+}
+
+// Mention tokens (zgx ds/mention_tokens.luau): a trigger starts one at the text's start, after a
+// blank or an opening bracket; the token runs over letters, digits, bytes past ASCII and . / _ : -.
+// `@` names a file anywhere a token may start; `/` names a command, only at the text's start.
+composer_token_char :: (c: u8) -> bool {
+  return c >= 128 || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '/' || c == '_' || c == ':' || c == '-';   // not a size: UTF-8's lead bytes
+}
+composer_token_starts :: (t: string, i: int) -> bool {
+  if i <= 0 { return true; }
+  p := t[i - 1];
+  return p == ' ' || p == '\t' || p == '\n' || p == '\r' || p == '(' || p == '[' || p == '{' || p == '>';
+}
+// Where the token that starts at byte i ends, -1 when none starts there (a bare trigger is none).
+composer_token_at :: (t: string, i: int) -> int {
+  if i < 0 || i >= t.count { return -1; }
+  c := t[i];
+  if !(c == '@' && composer_token_starts(t, i)) && !(c == '/' && i == 0) { return -1; }
+  j := i + 1;
+  while j < t.count && composer_token_char(t[j]) && !(c == '/' && t[j] == '/') { j += 1; }
+  return ifx j > i + 1 then j else -1;
+}
+// Row r of the typed text t at (left, ly): plain, or with c.tokens its tokens styled by type, the
+// trigger in the faint ink and the name one weight up (drawn twice half a point apart, so its
+// advance, and so the caret's place, is the face's own).
+composer_row_text :: (list: [] Prim, n: int, c: [] Composer, a: [] Atlas, r: int, left: f32, ly: f32, lh: f32, t: string) -> int {
+  sk := composer_skin(c); face := sk.body.face;
+  la := c[0].line_at[r]; le := c[0].line_end[r];
+  if !c[0].tokens { return prim_text(list, n, left, ly, 0, lh, face, sk.ink, cast(string) t[la..<le]); }
+  k := n; run := la; i := la;
+  while i < le {
+    e := composer_token_at(t, i);
+    if e < 0 { i += 1; continue; }
+    if e > le { e = le; }
+    if i > run { k = prim_text(list, k, left + x_in_row(c, a, r, run), ly, 0, lh, face, sk.ink, cast(string) t[run..<i]); }
+    k = prim_text(list, k, left + x_in_row(c, a, r, i), ly, 0, lh, face, sk.faint, cast(string) t[i..<i + 1]);
+    nx := left + x_in_row(c, a, r, i + 1);
+    k = prim_text(list, k, nx, ly, 0, lh, face, sk.ink, cast(string) t[i + 1..<e]);
+    k = prim_text(list, k, nx + 0.5, ly, 0, lh, face, sk.ink, cast(string) t[i + 1..<e]);
+    run = e; i = e;
+  }
+  if le > run { k = prim_text(list, k, left + x_in_row(c, a, r, run), ly, 0, lh, face, sk.ink, cast(string) t[run..<le]); }
+  return k;
 }
 
 // The expanded composer at logical (x, y), width w, into list; returns the
@@ -832,6 +878,13 @@ zc_pill :: (w: f32, unwrapped_w: f32, wrapped_h: f32, line: f32, trailing_w: f32
   g.lead_left = at; g.lead_bottom = at;
   g.trail_right = at; g.trail_bottom = at - cast(f32) (ZC_TRAILING - ZC_CONTROL) / 2;   // Send, 4 taller, centred on the leading control
   return g;
+}
+// The pill with a strip of attachments h tall over its text (zgx ds/composer_cargo.luau): as much
+// taller, its text as much lower. Attachments keep it expanded (zc_pill's forced).
+zc_with_cargo :: (g: ZcPill, h: f32) -> ZcPill {
+  if !(h > 0) || !g.expanded { return g; }
+  r := g; r.height += h; r.text_top += h;
+  return r;
 }
 zc_out3 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return 1 - (1 - x) * (1 - x) * (1 - x); }
 zc_mix :: (a: f32, b: f32, p: f32) -> f32 { return a + (b - a) * p; }
@@ -1194,4 +1247,37 @@ press_key :: (c: [] Composer, a: [] Atlas, k: int, mods: int) -> bool { return c
   #assert composer_key(c[..], a[..], KEY_BACKSPACE, 0) && c[0].ed[0].n == 1;
   out: [4000] f32;
   #assert paint_chip(out[..], 0, a[..], 2, FONT_INPUT, 3, 0, 0, 22.75, rgba(1, 1, 1, 1)) > 18;
+}
+
+#test "mention tokens: an @ where a token may start, a / at the text's start; drawn by type, the name a weight up" {
+  t := "/goal fix @src/main.rs and me@x.io (@lib)";
+  #assert composer_token_at(t, 0) == 5 && composer_token_at(t, 10) == 22 && composer_token_at(t, 36) == 40;
+  // an address's @ starts nothing, nor a / past the start, nor a bare trigger
+  #assert composer_token_at(t, 29) == -1 && composer_token_at("a /b", 2) == -1 && composer_token_at("@ x", 0) == -1;
+  // a command's token stops at its next slash; a path's runs over its slashes
+  #assert composer_token_at("/model/x", 0) == 6 && composer_token_at("@a/b/c", 0) == 6;
+  a: [1] Atlas; test_atlas(a[..]);
+  c: [1] Composer; c[0].tokens = true;
+  composer_insert(c[..], "see @ab now");
+  composer_body_layout(c[..], a[..], 0, 0, 400, 100);
+  list: [64] Prim; split: [1] int;
+  n := composer_body_prims(list[..], 0, c[..], a[..], split[..]);
+  sk := composer_skin(c[..]);
+  trig := -1; names := 0; plain := 0;
+  for p, i: list[0..<n] {
+    if p.kind != PRIM_TEXT { continue; }
+    if p.text == "@" && p.fill.r == sk.faint.r && p.fill.a == sk.faint.a { trig = i; }
+    if p.text == "ab" { names += 1; }
+    if p.text == "see " || p.text == " now" { plain += 1; }
+  }
+  #assert trig >= 0 && names == 2 && plain == 2;
+  // without tokens the row is one run
+  c[0].tokens = false; n = composer_body_prims(list[..], 0, c[..], a[..], split[..]);
+  runs := 0; for p: list[0..<n] { if p.kind == PRIM_TEXT { runs += 1; } }
+  #assert runs == 1;
+  // attachments: the pill grows by the strip and its text moves down as much
+  g := zc_pill(600, 100, 22, 22, 32, 25, true, false, false);
+  h := zc_with_cargo(g, 52);
+  #assert h.height == g.height + 52 && h.text_top == g.text_top + 52 && h.text_h == g.text_h;
+  #assert zc_with_cargo(zc_pill(600, 100, 22, 22, 32, 25, false, false, false), 52).height == 49;
 }

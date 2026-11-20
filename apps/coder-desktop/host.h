@@ -73,6 +73,18 @@ int cd_open_id(void *page, char *out, int cap);
 // The file a press on a row or a reply asked to open (cd_action 24), as it was named: a whole path,
 // ~/ and the home folder, or one from the working folder. Its length, 0 for none.
 int cd_open_path(void *page, char *out, int cap);
+// The draft's attachments (page/attach.coax, GitHub #13699): cd_attach a file chosen in the open
+// panel (1 when it joined); cd_attached how many the draft carries; cd_attach_clear takes them
+// away (a follow-up sent them); cd_draft_message the draft as a follow-up sends it, its words and
+// the note on the files it carries and mentions, NUL-ended (0 when it does not fit); cd_add_at
+// where the composer's + is, device pixels, for its menu (cd_action 27); cd_files the working
+// folder's files, paths relative to it one a line, for the @ popover (cd_action 28 asks).
+int cd_attach(void *page, const char *path);
+int cd_attached(void *page);
+void cd_attach_clear(void *page);
+int cd_draft_message(void *page, char *out, int cap);
+int cd_add_at(void *page, float out[2]);
+void cd_files(void *page, const char *lines);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

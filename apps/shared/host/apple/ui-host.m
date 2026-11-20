@@ -319,8 +319,10 @@ static int ui_to(NSRange r) { return r.location == NSNotFound ? -1 : (int)(r.loc
   return [self.window convertRectToScreen:[self convertRect:v toView:nil]];
 }
 // Files dropped on the window go to UiApp.file.
-- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)s { (void)s; return self.host->app.file ? NSDragOperationCopy : NSDragOperationNone; }
-- (BOOL)performDragOperation:(id<NSDraggingInfo>)s { return ui_paste_from(self.host, s.draggingPasteboard) > 0; }
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)s { (void)s; if (self.host->app.file && self.host->app.carrying) self.host->app.carrying(self.host->app.user, 1); return self.host->app.file ? NSDragOperationCopy : NSDragOperationNone; }
+- (void)draggingExited:(id<NSDraggingInfo>)s { (void)s; if (self.host->app.carrying) self.host->app.carrying(self.host->app.user, 0); }
+- (void)draggingEnded:(id<NSDraggingInfo>)s { (void)s; if (self.host->app.carrying) self.host->app.carrying(self.host->app.user, 0); }
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)s { if (self.host->app.carrying) self.host->app.carrying(self.host->app.user, 0); return ui_paste_from(self.host, s.draggingPasteboard) > 0; }
 @end
 
 // The menus' items: each sends its id to the app, which says whether it can run and is checked.

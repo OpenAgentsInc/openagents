@@ -177,6 +177,15 @@ ue_mark :: (e: [] UiEditor, text: string, from: int, to: int) -> bool #export_c 
   e[0].body[0].caret_hidden=from== -1 && to== -1; // mutant: equivalent — the SDK admits either two -1 offsets or two nonnegative UTF-8 boundaries, never one -1
   composer_touched(e[0].body[..],g);return true;
 }
+// Bytes from..<to of the committed text replaced by text, as one undo step, the caret after it (a
+// mention's pick replaces its token: components/app/mention.coax). False with no owner, during a
+// composition, outside the text or when it does not fit.
+ue_replace :: (e: [] UiEditor, from: int, to: int, text: string) -> bool {
+  if e.count<1 || e[0].owner==0 || e[0].body[0].ed[0].marked || from<0 || to<from || to>e[0].body[0].ed[0].n {return false;}
+  c:=e[0].body[..];b:=c[0].ed[..];g:=b[0].gen;
+  if !eb_replace(b,from,to,text) {return false;}
+  c[0].caret_hidden=false;composer_touched(c,g);ue_committed(e);return true;
+}
 // The SDK has validated complete UTF-8 and cursor boundaries. Atomic capacity
 // admission prevents a valid commit followed by an unrepresentable preedit.
 ue_transaction :: (e:[]UiEditor,commit:string,preedit:string,begin:int,end:int)->bool #export_c #effects(all) {
@@ -387,4 +396,12 @@ ue_mask_pointer :: (e: [] UiEditor, a: [] Atlas, m: [] Composer, x: f32, y: f32,
   ue_mask_pointer(e[..],a[..],m[..],0,10,0,1,false);#assert e[0].body[0].ed[0].caret==0;
   ue_mask_pointer(e[..],a[..],m[..],190,10,0,1,true);ue_mask_pointer(e[..],a[..],m[..],190,10,2,1,false);
   #assert e[0].body[0].ed[0].caret==4 && e[0].body[0].ed[0].anchor==0 && selected(e[0].body[..])=="pä5";
+}
+#test "a byte range replaced is one undo step with the caret after it; a range outside the text is refused" {
+  e: [1] UiEditor;
+  #assert !ue_replace(e[..], 0, 0, "x");
+  #assert ue_open(e[..], 1, "see @ma now");
+  #assert ue_replace(e[..], 4, 7, "@src/main.rs") && ue_value(e[..]) == "see @src/main.rs now";
+  #assert e[0].body[0].ed[0].caret == 16 && !ue_replace(e[..], 3, 99, "") && !ue_replace(e[..], 5, 4, "");
+  composer_undo(e[0].body[..]); ue_committed(e[..]); #assert ue_value(e[..]) == "see @ma now";
 }

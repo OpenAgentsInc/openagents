@@ -1,0 +1,138 @@
+// What a message carries, as the composer shows it over the draft (zgx ds/composer_cargo.luau,
+// GitHub #13699): a strip of chips, one a thing attached, on the frame context. A file is its
+// glyph beside its name and what it is ("RS · 2 KB"); an image is a tile the chip's height. Chips
+// are one height, 40, at most 214 wide, and wrap; the glyph's slot is 18, an image's tile 56 wide.
+// Under the pointer an × hangs at the chip's top-right corner, over its edge, laid over the chip
+// so no chip moves. The data is the chat set's Attachments (components/zeron/attachments.coax,
+// at_stage); a press on a chip is act_open, on its × act_remove. The renderer here draws
+// no pictures, so an image's tile holds the gallery's glyph.
+//   coax/bin/coax test components/app/cargo.coax
+
+#load "base.coax";
+#load "../zeron/attachments.coax";
+
+APP_CARGO_H :: 40; APP_CARGO_SLOT :: 18; APP_CARGO_THUMB :: 56; APP_CARGO_MOST :: 214;
+APP_CARGO_GAP :: 8; APP_CARGO_PAD :: 11; APP_CARGO_TEXT_GAP :: 8; APP_CARGO_RADIUS :: 10;
+APP_CARGO_CROSS :: 18; APP_CARGO_CROSS_OUT :: 5; APP_CARGO_CROSS_ICON :: 10;
+APP_CARGO_TOP :: 12;   // room over the strip's first row, so a corner's × is never clipped
+
+// Chip j's width.
+app_cargo_chip_w :: (f: [] UiFrame, t: [] Attachments, j: int) -> f32 {
+  fl := t[0].files[j];
+  if fl.image { return APP_CARGO_THUMB; }
+  s := f[0].skin; mb: [64] u8;
+  name := measure_width(f[0].m, s.label.face, at_label(t[0].files[..], j));
+  meta := measure_width(f[0].m, s.small.face, at_meta(fl, mb[..]));
+  w := cast(f32) (APP_CARGO_PAD * 2 + APP_CARGO_SLOT + APP_CARGO_TEXT_GAP) + (ifx name > meta then name else meta);
+  return ifx w > APP_CARGO_MOST then cast(f32) APP_CARGO_MOST else w;
+}
+// The strip's height at width w, its room over the first row in: 0 with nothing attached.
+app_cargo_height :: (f: [] UiFrame, t: [] Attachments, w: f32) -> f32 {
+  if t[0].n == 0 { return 0; }
+  rows := 1; x: f32 = 0;
+  for j: 0..<t[0].n {
+    cw := app_cargo_chip_w(f, t, j);
+    if x > 0 && x + cw > w { rows += 1; x = 0; }
+    x += cw + APP_CARGO_GAP;
+  }
+  return cast(f32) (APP_CARGO_TOP + rows * APP_CARGO_H + (rows - 1) * APP_CARGO_GAP);
+}
+// Chip j's id: id.j; its ×'s: id.j.x.
+app_cargo_id :: (f: [] UiFrame, id: string, j: int, cross: bool) -> string {
+  b: [EL_ID] u8;
+  n := el_put(b[..], 0, id); n = el_put(b[..], n, "."); n = el_put_i(b[..], n, j);
+  if cross { n = el_put(b[..], n, ".x"); }
+  return sheet_pool(f[0].sheet, cast(string) b[0..<n]);
+}
+// Which chip a pressed id names (id.j or id.j.x), and whether it is the ×; -1 for none.
+app_cargo_pressed :: (id: string, pressed: string, cross: [] bool) -> int {
+  if pressed.count <= id.count + 1 || cast(string) pressed[0..<id.count] != id || pressed[id.count] != '.' { return -1; }
+  i := id.count + 1; n := 0; any := false;
+  while i < pressed.count && pressed[i] >= '0' && pressed[i] <= '9' { n = n * 10 + cast(int) (pressed[i] - '0'); i += 1; any = true; }
+  if !any { return -1; }
+  rest := cast(string) pressed[i..<pressed.count];
+  if rest != "" && rest != ".x" { return -1; }
+  if cross.count > 0 { cross[0] = rest == ".x"; }
+  return n;
+}
+// The strip at (x, y), w wide, its room over the first row in. Returns its height.
+app_cargo :: (f: [] UiFrame, id: string, t: [] Attachments, x: f32, y: f32, w: f32, act_open: int, act_remove: int) -> f32 {
+  if t[0].n == 0 { return 0; }
+  s := f[0].skin; sh := f[0].sheet;
+  cx := x; cy := y + cast(f32) APP_CARGO_TOP; h := cast(f32) APP_CARGO_H;
+  for j: 0..<t[0].n {
+    cw := app_cargo_chip_w(f, t, j);
+    if cx > x && cx + cw > x + w { cx = x; cy += h + cast(f32) APP_CARGO_GAP; }
+    fl := t[0].files[j];
+    name := at_label(t[0].files[..], j);
+    mb: [64] u8; meta := sheet_pool(sh, at_meta(fl, mb[..]));
+    cid := app_cargo_id(f, id, j, false); xid := app_cargo_id(f, id, j, true);
+    row := uiframe_semantic(f, cid, EL_BUTTON, name, cx, cy, cw, h, 0, act_open);
+    elt_value(f[0].rows, row, meta);
+    lit := uiframe_hovered(f, cid) || uiframe_hovered(f, xid);
+    _ := sheet_box(sh, cx, cy, cw, h, APP_CARGO_RADIUS, 1, ifx uiframe_pressed(f, cid) then s.hover else s.raised, s.hairline);
+    slot := cast(f32) APP_CARGO_SLOT;
+    if fl.image {
+      sheet_fill(sh, cx + 1, cy + 1, cw - 2, h - 2, APP_CARGO_RADIUS - 1, s.sunk);
+      sheet_icon(sh, ICON_GALLERY, cx + (cw - slot) / 2, cy + (h - slot) / 2, slot, s.muted);
+    } else {
+      b: [8] u8; e := at_lower_ext(name, b[..]);
+      icon := ifx e == "txt" || e == "md" || e == "log" then ICON_FILE_TEXT else ICON_FILE;
+      sheet_icon(sh, icon, cx + cast(f32) APP_CARGO_PAD, cy + (h - slot) / 2, slot, s.doc_tint);
+      tx := cx + cast(f32) (APP_CARGO_PAD + APP_CARGO_SLOT + APP_CARGO_TEXT_GAP);
+      room := cx + cw - cast(f32) APP_CARGO_PAD - tx;
+      top := cy + (h - s.label.line - s.small.line) / 2;
+      _ := sheet_text(sh, f[0].m, -1, tx, top, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, name, room));
+      _ := sheet_text(sh, f[0].m, -1, tx, top + s.label.line, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, meta, room));
+    }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, cx, cy, cw, h);
+    if lit {
+      d := cast(f32) APP_CARGO_CROSS; out := cast(f32) APP_CARGO_CROSS_OUT; ic := cast(f32) APP_CARGO_CROSS_ICON;
+      dx := cx + cw - d + out; dy := cy - out;
+      lb: [EL_LABEL] u8; ln := el_put(lb[..], 0, "Remove "); ln = el_put(lb[..], ln, name);
+      xrow := uiframe_semantic(f, xid, EL_BUTTON, sheet_pool(sh, cast(string) lb[0..<ln]), dx, dy, d, d, 0, act_remove);
+      on := uiframe_hovered(f, xid);
+      _ := sheet_box(sh, dx, dy, d, d, d / 2, 1, s.surface, s.hairline);
+      sheet_icon(sh, ICON_CLOSE, dx + (d - ic) / 2, dy + (d - ic) / 2, ic, ifx on then s.ink else s.muted);
+      sheet_hit(sh, UIFRAME_HIT, xrow, 0, dx, dy, d, d);
+    }
+    cx += cw + cast(f32) APP_CARGO_GAP;
+  }
+  return cy + h - y;
+}
+
+#test "the strip wraps chips 40 tall, a file's at most 214 wide, an image's 56; the × shows under the pointer" {
+  surface: [1] UiSurface; rows: [2][64] El; under: [2][256] Prim; over: [2][256] Prim; lines: [2][64] SheetLine; hits: [2][64] SheetHit; pool: [2][4096] u8;
+  surface[0] = surface_over(Sheet.{under = under[0][..], over = over[0][..], lines = lines[0][..], hits = hits[0][..], pool = pool[0][..]}, rows[0][..],
+                            Sheet.{under = under[1][..], over = over[1][..], lines = lines[1][..], hits = hits[1][..], pool = pool[1][..]}, rows[1][..]);
+  keys: [32] Keyed; ks := [1] KeyedStore.[KeyedStore.{rows = keys[..]}];
+  store: [8] u8; t: [1] Attachments; t[0].store = store[..];
+  #assert at_stage(t[..], "/w/a/notes.txt", "notes.txt", 900) && at_stage(t[..], "/w/a/shot.png", "shot.png", 4096);
+  long: [200] u8; for i: 0..<long.count { long[i] = 'x'; } long[0] = '/'; long[197] = '.'; long[198] = 'r'; long[199] = 's';
+  #assert at_stage(t[..], cast(string) long[..], "", 20000);   // a name wider than a chip (a column a glyph here)
+  f: [1] UiFrame;
+  uiframe_begin(f[..], surface[..], ks[..], measure_cells(), zeron_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  #assert app_cargo_chip_w(f[..], t[..], 1) == 56;
+  #assert app_cargo_chip_w(f[..], t[..], 2) == 214;
+  #assert app_cargo_chip_w(f[..], t[..], 0) < 214;
+  // three chips in 600: one row; in 250 the third wraps
+  #assert app_cargo_height(f[..], t[..], 600) == 52 && app_cargo_height(f[..], t[..], 250) == 100;
+  h := app_cargo(f[..], "cargo", t[..], 0, 0, 600, 7, 8);
+  #assert uiframe_end(f[..], surface[..]) && h == 52;
+  r := surface_rows(surface[..]); tb := [1] ElTable.[r];
+  c0 := elt_find(tb[..], "cargo.0"); c1 := elt_find(tb[..], "cargo.1");
+  #assert c0 >= 0 && tb[0].rows[c0].h == 40 && tb[0].rows[c0].y == 12 && tb[0].rows[c1].w == 56 && elt_find(tb[..], "cargo.0.x") < 0;
+  #assert elt_value_of(tb[..], c0) == "TXT · 900 B";
+  // hovered, chip 0's × hangs over its corner
+  for k: 0..<2 {
+    uiframe_begin(f[..], surface[..], ks[..], measure_cells(), zeron_skin(), uiinput(10, 30, true, false, "", ""), 0, 0.016, false, false);
+    _ = app_cargo(f[..], "cargo", t[..], 0, 0, 600, 7, 8);
+    #assert uiframe_end(f[..], surface[..]);
+  }
+  tb[0] = surface_rows(surface[..]);
+  x0 := elt_find(tb[..], "cargo.0.x"); c0 = elt_find(tb[..], "cargo.0");
+  #assert x0 >= 0 && tb[0].rows[x0].w == 18 && tb[0].rows[x0].y == 7 && tb[0].rows[x0].x + 18 == tb[0].rows[c0].x + tb[0].rows[c0].w + 5;
+  cross: [1] bool;
+  #assert app_cargo_pressed("cargo", "cargo.2.x", cross[..]) == 2 && cross[0] && app_cargo_pressed("cargo", "cargo.1", cross[..]) == 1 && !cross[0];
+  #assert app_cargo_pressed("cargo", "cargox.1", cross[..]) == -1 && app_cargo_pressed("cargo", "cargo.1.y", cross[..]) == -1;
+}

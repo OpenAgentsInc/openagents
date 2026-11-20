@@ -126,6 +126,8 @@ typedef struct {
   // may begin), 2 moved, 3 lifted (ended or cancelled), momentum the same for the system's momentum
   // after a lift, and time the event's own, in seconds on the system's uptime clock (CACurrentMediaTime's).
   void (*scroll_gesture)(void *user, float dy, int precise, int phase, int momentum, double time);
+  // Files carried over the window toward a drop (1) and no longer (0): dropped, or carried away (the Mac's).
+  void (*carrying)(void *user, int on);
 
 } UiApp;
 

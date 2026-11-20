@@ -1,0 +1,120 @@
+// Coder Desktop page (../page.coax): the composer's @ and / popover (components/app/mention.coax,
+// GitHub #13699). `@` lists the working folder's files as the host listed them (attach.coax,
+// coder_page_files: asked for each time the popover opens); `/` at the draft's start lists the
+// commands that work here. What was typed after the trigger narrows the list through the ranked
+// match: a picker over known items, not a reading of free text. Return or Tab picks: a file's
+// path goes into the draft as @path (the message then carries it, attach.coax cp_refs_note),
+// /goal goes in for its objective (goal.coax reads hit on send), /model opens the models' menu and
+// /new starts a new chat. Escape closes hit until the token changes.
+
+CP_CMDS :: 3;
+CP_CMD_NAME :: [CP_CMDS] string.["goal", "model", "new"];
+CP_CMD_DESC :: [CP_CMDS] string.["Set or manage the thread goal", "Choose the model · ⌘/", "Start a new chat · ⌘N"];
+CP_CMD_GOAL :: 0; CP_CMD_MODEL :: 1; CP_CMD_NEW :: 2;
+
+// The popover follows the composer's token at the caret: opened, narrowed and ranked again when
+// the draft, the caret or the files changed since hit last looked. None while the composer hasn't
+// the keyboard, during a composition or over a selection.
+cp_mn_sync :: (s: [] CoderPage) {
+  mn := s[0].mn[..];
+  if cp_ed_which(s) != CP_ED_COMPOSER { mn[0].open = false; return; }
+  e := cp_ed(s, CP_ED_COMPOSER); b := e[0].body[0].ed[..];
+  if ue_owner(e) == s[0].mn_owner && b[0].gen == s[0].mn_gen && s[0].files_gen == s[0].mn_files { return; }
+  s[0].mn_owner = ue_owner(e); s[0].mn_gen = b[0].gen; s[0].mn_files = s[0].files_gen;
+  tok := AppMnToken.{};
+  if !b[0].marked && b[0].anchor == b[0].caret { tok = app_mn_token(ue_value(e), b[0].caret); }
+  was := mn[0].open && mn[0].trigger == tok.trigger && mn[0].from == tok.from;
+  if !app_mn_follow(mn, tok) { return; }
+  app_mn_begin(mn, tok);
+  if tok.trigger == '@' {
+    // a popover opening lists the folder again (the host walks hit off the main thread)
+    if !was { s[0].files_due = true; }
+    // a file's item is where its line starts in the list
+    at := 0;
+    while at < s[0].files.count {
+      path := cp_file(s, at);
+      if path.count > 0 {
+        fs := [2] MatchField.[MatchField.{text = cp_file_base(path), weight = 100, title = true}, MatchField.{text = path, weight = 60, title = false}];
+        app_mn_offer(mn, at, fs[..]);
+      }
+      at = cp_file_next(s, at);
+    }
+  } else {
+    for c: 0..<CP_CMDS {
+      fs := [2] MatchField.[MatchField.{text = CP_CMD_NAME[c], weight = 100, title = true}, MatchField.{text = CP_CMD_DESC[c], weight = 50, title = false}];
+      app_mn_offer(mn, c, fs[..]);
+    }
+  }
+  app_mn_end(mn);
+}
+// The folder's files are owed to the open @ popover: asked of the host once nothing else is asked.
+cp_mn_due :: (s: [] CoderPage) {
+  if s[0].files_due && s[0].ask == CP_ASK_NONE { s[0].files_due = false; s[0].ask = CP_ASK_FILES; }
+}
+// The popover over the composer's token, kept in the column (x, cw).
+cp_mn_paint :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32) {
+  mn := s[0].mn[..];
+  if !mn[0].open { return; }
+  e := cp_ed(s, CP_ED_COMPOSER); a := s[0].atlas[..];
+  r: [4] f32;
+  if !ue_rect16(e, a, u16_of(e[0].body[..], mn[0].from), r[..]) { return; }
+  labels: [APP_MN_ROWS] string; details: [APP_MN_ROWS] string; icons: [APP_MN_ROWS] int;
+  sh := f[0].sheet; nb: [80] u8;
+  n := 0;
+  for v: 0..<APP_MN_ROWS {
+    k := mn[0].top + v;
+    if k >= mn[0].n { break; }
+    hit := mn[0].hits[k];
+    if mn[0].trigger == '@' {
+      path := cp_file(s, hit);
+      labels[v] = sheet_pool(sh, cp_file_base(path)); details[v] = sheet_pool(sh, cp_file_dir(path)); icons[v] = ICON_FILE;
+    } else {
+      m := el_put(nb[..], 0, "/"); m = el_put(nb[..], m, CP_CMD_NAME[hit]);
+      labels[v] = sheet_pool(sh, cast(string) nb[0..<m]); details[v] = CP_CMD_DESC[hit]; icons[v] = -1;
+    }
+    n += 1;
+  }
+  empty := ifx mn[0].trigger == '/' then "No command matches" else ifx !s[0].files_got then "Listing files…" else "No file matches";
+  app_mention(f, "coder.mention", mn, labels[0..<n], details[0..<n], icons[0..<n], empty, r[0], r[1], r[3], x, cw, CP_MENTION);
+}
+// Whether a point (the page's units) is on the open popover: the composer's text gives hit the press.
+cp_mn_over :: (s: [] CoderPage, x: f32, y: f32) -> bool {
+  mn := s[0].mn[..];
+  return mn[0].open && x >= mn[0].x && x < mn[0].x + mn[0].w && y >= mn[0].y && y < mn[0].y + mn[0].h;
+}
+// The row of rank k is picked: its file or command takes the token's place.
+cp_mn_pick :: (s: [] CoderPage, k: int) -> bool {
+  mn := s[0].mn[..];
+  if !mn[0].open || k < 0 || k >= mn[0].n { return false; }
+  hit := mn[0].hits[k];
+  e := cp_ed(s, CP_ED_COMPOSER);
+  text := ue_value(e);
+  buf: [512] u8;
+  from := mn[0].from; to := mn[0].to;
+  done := false;
+  if mn[0].trigger == '@' {
+    if cp_file(s, hit).count == 0 { return false; }
+    done = ue_replace(e, from, to, cast(string) buf[0..<app_mn_insert(text, mn, cp_file(s, hit), buf[..])]);
+  } else if hit == CP_CMD_GOAL {
+    done = ue_replace(e, from, to, cast(string) buf[0..<app_mn_insert(text, mn, CP_CMD_NAME[hit], buf[..])]);
+  } else {
+    // an action: its token goes (and the blank after hit)
+    end := to; if end < text.count && text[end] == 32 { end += 1; }
+    done = ue_replace(e, from, end, "");
+  }
+  if !done { return false; }
+  cp_ed_publish(s, CP_ED_COMPOSER);
+  mn[0].open = false; mn[0].shut = -1;
+  if mn[0].trigger == '/' && hit == CP_CMD_MODEL { s[0].model_menu = true; }
+  if mn[0].trigger == '/' && hit == CP_CMD_NEW { _ = cp_new(s); }
+  return true;
+}
+// A key in the composer while the popover is open: Up and Down move, Return and Tab pick, Escape
+// closes hit. True when hit took the key.
+cp_mn_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  cp_mn_sync(s);
+  mn := s[0].mn[..];
+  r := app_mn_key(mn, key, mods);
+  if r == APP_MN_PICK { return cp_mn_pick(s, mn[0].sel); }
+  return r == APP_MN_MOVED || r == APP_MN_CLOSED;
+}

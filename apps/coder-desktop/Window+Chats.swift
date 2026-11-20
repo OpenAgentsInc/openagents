@@ -68,7 +68,7 @@ extension CoderWindow {
         guard stat(path, &st) == 0 else { return nil }
         return BinaryIdentity(path: path, dev: st.st_dev, ino: st.st_ino)
     }
-    private func canPresentOpenPanel() -> Bool {
+    func canPresentOpenPanel() -> Bool {
         guard let initial = launchBinary, let current = CoderWindow.currentBinaryIdentity() else { return false }
         return initial == current
     }

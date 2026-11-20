@@ -33,9 +33,10 @@ AT_CHIP_BYTES :: 4;             // a chip's character in UTF-8 (a code point pas
 AtFile :: struct {
   chip: int;                    // its chip (gpui.coax's registry)
   image: bool;
-  label: [64] u8; ln: int;
+  label: [AT_NAME] u8; ln: int;
   path: [AT_PATH] u8; pn: int;  // where it was staged
   at: int; n: int;              // its bytes in the store (n 0: not kept)
+  size: int;                    // its size on disk in bytes, as the host read it (a staged cargo's; -1 not known)
 }
 Attachments :: struct {
   store: [] u8; used: int;      // the bytes, the host's buffer
@@ -202,6 +203,66 @@ at_text_only :: (t: [] Attachments, a: [] Atlas, text: string, model: string, ou
   return cast(string) out[0..<k];
 }
 
+// ---------------------------------------------------------------- cargo
+// Attachments as zgx stages them (ds/composer_cargo.luau): a strip of chips over the draft, one a
+// thing attached, the text left alone (no inline chip). The host hands each file's path, name and
+// size; a page draws the strip (components/app/cargo.coax) and sends the paths with the message
+// (at_note). Nothing is copied or read here: an engine that reads files with its own tools gets
+// their paths.
+
+// A file joins the strip: false when it is full, the path is empty or already there.
+at_stage :: (t: [] Attachments, path: string, name: string, size: int) -> bool {
+  if t[0].n >= AT_MAX || path.count == 0 || path.count > AT_PATH { return false; }
+  for j: 0..<t[0].n { if at_path(t[0].files[..], j) == path { return false; } }
+  f := AtFile.{chip = -1, size = size};
+  shown := ifx name.count > 0 then name else at_base_name(path);
+  f.image = at_is_image_name(shown);
+  f.ln = e_copy(f.label[..], 0, shown);
+  f.pn = e_copy(f.path[..], 0, path);
+  t[0].files[t[0].n] = f; t[0].n += 1;
+  return true;
+}
+// Attachment j leaves the strip.
+at_remove :: (t: [] Attachments, j: int) {
+  if j < 0 || j >= t[0].n { return; }
+  for k: j + 1..<t[0].n { t[0].files[k - 1] = t[0].files[k]; }
+  t[0].n -= 1;
+  if t[0].sn > t[0].n { t[0].sn = t[0].n; }
+}
+at_clear :: (t: [] Attachments) { t[0].n = 0; t[0].sn = 0; t[0].images = 0; }
+// What a chip says under its name: the kind (the extension in capitals, "Image" for a picture
+// with none) and the size ("PNG · 48 KB"); just the kind when the size is not known.
+at_meta :: (file: AtFile, out: [] u8) -> string {
+  f := file; b: [12] u8;
+  e := at_lower_ext(cast(string) f.label[0..<f.ln], b[..]);
+  k := 0;
+  if e.count > 0 { for c: e { if k < out.count { out[k] = ifx c >= 'a' && c <= 'z' then c - 32 else c; k += 1; } } }   // not a size: bytes, digits and letters
+  else { k = e_copy(out, 0, ifx f.image then "Image" else "File"); }
+  if f.size >= 0 {
+    k = e_copy(out, k, " · ");
+    if f.size < 1024 { k = at_put_int(out, k, f.size); k = e_copy(out, k, " B"); }   // not a size: bytes, digits and letters
+    else if f.size < 1048576 { k = at_put_int(out, k, (f.size + 512) / 1024); k = e_copy(out, k, " KB"); }   // not a size: bytes, digits and letters
+    else {
+      tenths := (f.size * 10 + 524288) / 1048576;   // not a size: bytes, digits and letters
+      k = at_put_int(out, k, tenths / 10);   // not a size: bytes, digits and letters
+      if tenths < 100 { k = e_copy(out, k, "."); k = at_put_int(out, k, tenths % 10); }   // not a size: bytes, digits and letters
+      k = e_copy(out, k, " MB");
+    }
+  }
+  return cast(string) out[0..<k];
+}
+// The strip's paths, as a message's note (written at out[at..]; the new end). An engine that sees
+// images gets them noted as pictures; one that reads text alone is told it has the path only.
+at_note :: (t: [] Attachments, sees_images: bool, out: [] u8, at: int) -> int {
+  if t[0].n == 0 { return at; }
+  k := e_copy(out, at, "Attached files (local paths; open them with your tools):");
+  for j: 0..<t[0].n {
+    k = e_copy(out, k, "\n- "); k = e_copy(out, k, at_path(t[0].files[..], j));
+    if t[0].files[j].image && !sees_images { k = e_copy(out, k, " (an image: you can't view pictures, so use it as a file)"); }
+  }
+  return k;
+}
+
 // The notice Zeron shows when staging fails (attachments.rs StageError): 1 too large, 2 not a file, else unreadable.
 at_failure :: (name: string, kind: int, out: [] u8) -> int {
   k := e_copy(out, 0, name);
@@ -270,4 +331,24 @@ at_test_bytes :: (s: string, buf: [] u8) -> [] u8 { for i: 0..<s.count { buf[i] 
   #assert at_take(t[..], cast(string) c[0..<4]) == 1;
   #assert at_text_only(t[..], a[..], "what is this", "gpt-oss-20b", out[..], why[..], wn[..]) == "";
   #assert cast(string) why[0..<wn[0]] == "gpt-oss-20b reads text only, so it can't see Image 1. Remove it, or switch the chat to Claude.";
+}
+
+#test "cargo: files join the strip by path once, leave it, say their kind and size, and go as a note" {
+  store: [8] u8;
+  t: [1] Attachments; t[0].store = store[..];
+  #assert at_stage(t[..], "/w/app/src/main.rs", "main.rs", 2300) && at_stage(t[..], "/tmp/x/shot.png", "", 1572864);
+  #assert !at_stage(t[..], "/w/app/src/main.rs", "main.rs", 2300) && !at_stage(t[..], "", "x", 1) && t[0].n == 2;
+  #assert at_label(t[0].files[..], 1) == "shot.png" && t[0].files[1].image && !t[0].files[0].image && t[0].files[0].chip == -1;
+  mb: [48] u8;
+  #assert at_meta(t[0].files[0], mb[..]) == "RS · 2 KB" && at_meta(t[0].files[1], mb[..]) == "PNG · 1.5 MB";
+  f := AtFile.{size = 700}; f.ln = e_copy(f.label[..], 0, "README");
+  #assert at_meta(f, mb[..]) == "File · 700 B";
+  f.size = -1; #assert at_meta(f, mb[..]) == "File";
+  out: [512] u8;
+  k := at_note(t[..], false, out[..], 0);
+  #assert cast(string) out[0..<k] == "Attached files (local paths; open them with your tools):\n- /w/app/src/main.rs\n- /tmp/x/shot.png (an image: you can't view pictures, so use it as a file)";
+  k = at_note(t[..], true, out[..], 0);
+  #assert cast(string) out[0..<k] == "Attached files (local paths; open them with your tools):\n- /w/app/src/main.rs\n- /tmp/x/shot.png";
+  at_remove(t[..], 0); #assert t[0].n == 1 && at_label(t[0].files[..], 0) == "shot.png";
+  at_clear(t[..]); #assert t[0].n == 0 && at_note(t[..], false, out[..], 3) == 3;
 }

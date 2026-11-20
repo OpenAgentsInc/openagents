@@ -35,4 +35,5 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if left > 0 { cp_sidebar(s, f, left, h, running); }
   cp_title_bar(s, f, left, toggle);
   cp_composer(s, f, x, cw, h, running, full, exceeded);
+  cp_drop_overlay(s, f, window_w, h);
 }

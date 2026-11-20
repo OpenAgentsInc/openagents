@@ -311,6 +311,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
         case 25: followUp()
         case 26: paletteAsked()
+        case 27: attachMenu()
+        case 28: listFiles()
         default: break
         }
     }

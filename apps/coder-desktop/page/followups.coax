@@ -180,7 +180,7 @@ coder_page_queue_message_line :: (s: [] CoderPage, op: string, id: string, text:
   if n < 2 { return 0; }
   n = json_raw(out, n - 2, ",\"message\":");
   if n < 0 { return 0; }
-  m := cp_task_message(s, text, s[0].model, session, cwd, out[n..<out.count]);
+  m := cp_task_message(s, text, "", s[0].model, session, cwd, out[n..<out.count]);
   if m < 2 { return 0; }
   n = json_raw(out, n + m - 1, "}\n");
   return ifx n < 0 then 0 else n;
@@ -285,7 +285,7 @@ cp_fu_press :: (s: [] CoderPage, id: string) -> bool {
 // Command-Return. The host then steers, queues or saves the draft (CP_ASK_FOLLOWUP). False when
 // Return sends the draft as a message (coder_page_submit).
 coder_page_followup_submit :: (s: [] CoderPage, other: bool) -> bool #export_c #effects(all) {
-  if s.count < 1 || eb_text(s[0].draft[..]).count == 0 { return false; }
+  if s.count < 1 || (eb_text(s[0].draft[..]).count == 0 && cp_cargo_n(s) == 0) { return false; }
   f := s[0].fu[..];
   if f[0].editing > 0 { return cp_fu_ask(s, CP_FUO_SAVE, f[0].editing - 1); }
   if !cp_running(s) { return false; }
@@ -295,6 +295,7 @@ coder_page_followup_submit :: (s: [] CoderPage, other: bool) -> bool #export_c #
 // Esc in the composer: an edit is given up, else a running reply stops. False when it does neither.
 coder_page_followup_escape :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
+  if s[0].mn[0].open && cp_ed_which(s) == CP_ED_COMPOSER { app_mn_close(s[0].mn[..]); return true; }   // the @ or / popover closes first
   if s[0].fu[0].editing > 0 { s[0].fu[0].editing = 0; return cp_fu_ask(s, CP_FUO_CANCEL, -1); }
   if !cp_running(s) || s[0].turns[s[0].nturns - 1].stopping { return false; }
   s[0].turns[s[0].nturns - 1].stopping = true;

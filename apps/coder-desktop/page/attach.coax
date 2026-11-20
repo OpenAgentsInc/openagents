@@ -1,0 +1,164 @@
+// Coder Desktop page (../page.coax): the draft's attachments (GitHub #13699). The composer's +
+// opens the host's menu (Attach Files… opens the open panel, Change Folder… the folder's); a file
+// pasted, dropped on the window or chosen joins the strip over the draft (components/app/cargo.coax
+// over the chat set's Attachments, at_stage). Attachments keep the pill expanded. A message takes
+// the strip's paths, and the files it mentions with @ (mention.coax), as a note its task carries
+// (CpTurn.refs): Microcoder reads them with its own tools. It reads text alone, so an image goes as
+// its path, and the note says it can't see the picture. The strip is the draft's, kept with it.
+
+CP_ATTACHED_ONLY :: "See the attached file(s).";   // what a message with attachments and no words says (Zeron's)
+
+// Whether the window takes a file now: the conversation shows (no settings, no dialog or palette over it).
+cp_attach_open :: (s: [] CoderPage) -> bool { return s[0].ready && !s[0].set_open && !cp_overlay_open(s); }
+cp_cargo_n :: (s: [] CoderPage) -> int { return s[0].cargo[0].n; }
+
+// The strip's height over the pill's text at the pill's width cw (0 with nothing attached).
+cp_cargo_height :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> f32 {
+  return app_cargo_height(f, s[0].cargo[..], cw - cast(f32) (ZC_BORDER * 2 + ZC_TEXT_OPEN_SIDE * 2));
+}
+// The strip at the pill's top (x, y), w wide.
+cp_cargo_draw :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
+  side := cast(f32) (ZC_BORDER + ZC_TEXT_OPEN_SIDE);
+  _ := app_cargo(f, "coder.cargo", s[0].cargo[..], x + side, y + cast(f32) ZC_BORDER, w - 2 * side, CP_CARGO, CP_CARGO_REMOVE);
+}
+// A press on a chip opens its file (CP_ASK_OPEN_FILE); on its × it leaves the strip.
+cp_cargo_press :: (s: [] CoderPage, id: string, drop: bool) -> bool {
+  cross: [1] bool;
+  j := app_cargo_pressed("coder.cargo", id, cross[..]);
+  if j < 0 || j >= cp_cargo_n(s) { return false; }
+  if drop { at_remove(s[0].cargo[..], j); return true; }
+  s[0].open_call = -1; s[0].open_turn = -1; s[0].open_cargo = j;
+  s[0].ask = CP_ASK_OPEN_FILE;
+  return true;
+}
+
+// ---------------------------------------------------------------- the working folder's files
+
+// The path whose line starts at byte at of the list, relative to the working folder; and the
+// byte the next line starts at.
+cp_file :: (s: [] CoderPage, at: int) -> string {
+  if at < 0 || at >= s[0].files.count { return ""; }
+  e := at; while e < s[0].files.count && s[0].files[e] != 10 { e += 1; }
+  return cast(string) s[0].files[at..<e];
+}
+cp_file_next :: (s: [] CoderPage, at: int) -> int { return at + cp_file(s, at).count + 1; }
+cp_file_base :: (path: string) -> string { return at_base_name(path); }
+// The folder a file is in ("" for the working folder itself).
+cp_file_dir :: (path: string) -> string {
+  k := path.count - cp_file_base(path).count;
+  return cast(string) path[0..<(ifx k > 0 then k - 1 else 0)];
+}
+cp_file_known :: (s: [] CoderPage, path: string) -> bool {
+  if path.count == 0 { return false; }
+  at := 0;
+  while at < s[0].files.count { if cp_file(s, at) == path { return true; } at = cp_file_next(s, at); }
+  return false;
+}
+// The list goes with the folder it was made for.
+cp_files_forget :: (s: [] CoderPage) { s[0].files = s[0].files[0..<0]; s[0].nfiles = 0; s[0].files_got = false; s[0].files_gen += 1; }
+
+// ---------------------------------------------------------------- what a message carries
+
+// The draft's attachments and the files its text mentions (@path, a file of the listed folder),
+// as the note a message's task carries. Its length in out.
+cp_refs_note :: (s: [] CoderPage, text: string, out: [] u8) -> int {
+  k := at_note(s[0].cargo[..], false, out, 0);
+  named := 0; i := 0;
+  while i < text.count {
+    e := composer_token_at(text, i);
+    if e < 0 || text[i] != '@' { i += 1; continue; }
+    v := cast(string) text[i + 1..<e];
+    // a sentence's full stop or colon after a path is not the path's
+    if !cp_file_known(s, v) && v.count > 1 && (v[v.count - 1] == '.' || v[v.count - 1] == ':') { v = cast(string) v[0..<v.count - 1]; }
+    if cp_file_known(s, v) {
+      if named == 0 { k = e_copy(out, k, ifx k > 0 then "\n\nFiles the message mentions (paths in the working folder):" else "Files the message mentions (paths in the working folder):"); }
+      k = e_copy(out, k, "\n- "); k = e_copy(out, k, v);
+      named += 1;
+    }
+    i = e;
+  }
+  return k;
+}
+// A message was sent: its turn takes the note and the strip empties with the draft.
+cp_refs_take :: (s: [] CoderPage, i: int, text: string) {
+  note: [CP_REFS] u8;
+  _ = cp_refs_set(s, i, cast(string) note[0..<cp_refs_note(s, text, note[..])]);
+  at_clear(s[0].cargo[..]);
+}
+// Turn i's note, kept in the chat's pool of long text (long_buf, as a long row's body is). False
+// when the pool has no room for it.
+cp_refs_set :: (s: [] CoderPage, i: int, note: string) -> bool {
+  s[0].turns[i].refs_at = s[0].long_n; s[0].turns[i].refs_n = 0;
+  if note.count == 0 { return true; }
+  if s[0].long_n + note.count > CP_LONG_POOL { return false; }
+  for c, k: note { s[0].long_buf[s[0].long_n + k] = c; }
+  s[0].turns[i].refs_n = note.count; s[0].long_n += note.count;
+  return true;
+}
+cp_refs :: (s: [] CoderPage, i: int) -> string { return cast(string) s[0].long_buf[s[0].turns[i].refs_at..<s[0].turns[i].refs_at + s[0].turns[i].refs_n]; }
+
+// ---------------------------------------------------------------- files carried over the window
+
+// "Drop to attach" (zgx ds/drop_overlay.luau) while files are carried over the window: the page
+// dimmed, a pill of the menus' ground in its middle. It takes no press.
+cp_drop_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) {
+  if !s[0].carrying || !cp_attach_open(s) { return; }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, 0, 0, w, h, 0, 0, cp_ov_spec().backdrop, Rgba.{}));
+  label := "Drop to attach";
+  pad := 12.0f32;
+  lw := measure_width(f[0].m, k.label.face, label);
+  pw := lw + 2 * pad; ph := k.label.line + 8;
+  px := (w - pw) / 2; py := (h - ph) / 2;
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, ph / 2, 0, th.menu, Rgba.{}));
+  _ := uiframe_semantic(f, "coder.drop", EL_REGION, label, px, py, pw, ph, 0, 0);
+  _ := sheet_text(sh, f[0].m, -1, px + pad, py + 4, k.label.line, k.label.face, th.text, label);
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// A file the person attached (pasted, dropped or chosen): its whole path, the name it shows and its
+// size in bytes (-1 not known). False when the window takes none now, the strip is full, or it is there.
+coder_page_attach :: (s: [] CoderPage, path: string, name: string, size: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !cp_attach_open(s) { return false; }
+  if !at_stage(s[0].cargo[..], path, name, size) { return false; }
+  s[0].anim = true;
+  return true;
+}
+// Whether a paste is the draft's files: the composer has the keyboard and the window takes files.
+coder_page_takes_files :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_attach_open(s) && cp_ed_which(s) == CP_ED_COMPOSER; }
+// How many files the draft carries; and the draft's attachments taken away (a follow-up took them).
+coder_page_attached :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_cargo_n(s) else 0; }
+coder_page_attach_clear :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 { at_clear(s[0].cargo[..]); } }
+// The draft as a follow-up sends it: its words (or "See the attached file(s)." with attachments and
+// none), then the note on its attachments and mentioned files. Its length in out, 0 when it does not fit.
+coder_page_draft_message :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := eb_text(s[0].draft[..]);
+  if t.count == 0 && cp_cargo_n(s) > 0 { t = CP_ATTACHED_ONLY; }
+  note: [CP_REFS] u8; nn := cp_refs_note(s, t, note[..]);
+  if t.count + nn + 2 > out.count { return 0; }
+  k := cp_out(out, t);
+  if nn > 0 { k += cp_out(out[k..<out.count], "\n\n"); k += cp_out(out[k..<out.count], cast(string) note[0..<nn]); }
+  return k;
+}
+// Where the + is, in device pixels (x, y of its foot's middle), for the host's menu.
+coder_page_add_at :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 2 || !(s[0].d > 0) { return false; }
+  out[0] = s[0].add_x * s[0].d; out[1] = s[0].add_y * s[0].d;
+  return true;
+}
+// Files are carried over the window (on) or no longer (off): "Drop to attach" shows while they are.
+coder_page_carrying :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].carrying = on && cp_attach_open(s); } }
+// The working folder's files as the host listed them: paths relative to it, one a line, in the
+// host's buffer, which it keeps until it lists again (it walks no further than CP_FILES paths and
+// CP_FILES_BYTES, and skips .git, node_modules and target, and what .gitignore ignores). The open @
+// popover ranks them at once.
+coder_page_files_bytes :: () -> int #export_c #effects(all) { return CP_FILES_BYTES; }
+coder_page_files :: (s: [] CoderPage, lines: [] u8) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].files = lines; s[0].nfiles = 0;
+  at := 0;
+  while at < lines.count { if cp_file(s, at).count > 0 { s[0].nfiles += 1; } at = cp_file_next(s, at); }
+  s[0].files_got = true; s[0].files_gen += 1;
+}

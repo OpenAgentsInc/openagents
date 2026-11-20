@@ -1,0 +1,240 @@
+// The mention popover at the caret (zgx ds/composer_mentions.luau, ds/mention_launcher.luau,
+// GitHub #13699), on the frame context. Typing `@` lists files; `/` at the draft's start lists
+// commands. The token at the caret (app_mn_token) is the composer's (composer_token_*: an `@`
+// where a token may start, a `/` at the text's start); what was typed after its trigger narrows
+// and orders the list the person is browsing through the ranked match (components/core/match.coax).
+// It is a picker over known items, never intent routing: nothing here decides what free text means.
+// Up and Down move, Return or Tab pick, Escape closes it until the token changes. The caller owns
+// the items: it offers each (app_mn_offer) and paints the rows it names (app_mention).
+//   coax/bin/coax test components/app/mention.coax
+
+#load "base.coax";
+#load "../core/match.coax";
+#load "../zeron/composer.coax";   // the token grammar (composer_token_*)
+
+APP_MN_ROWS :: 8;          // rows shown, then it scrolls (Zeron's ROWS)
+APP_MN_KEEP :: 64;         // ranked rows kept
+APP_MN_QUERY :: 256;
+APP_MN_ROW :: 28; APP_MN_PAD :: 6; APP_MN_W :: 360; APP_MN_RADIUS :: 12; APP_MN_ICON :: 14; APP_MN_GAP :: 6;
+APP_MN_REACH :: 1024;      // how far back from the caret a token is looked for (Zeron's REACH)
+APP_MN_NONE :: 0; APP_MN_MOVED :: 1; APP_MN_PICK :: 2; APP_MN_CLOSED :: 3;   // what a key did
+
+// The token at the caret: its trigger (0: none), its bytes in the text (to runs past the caret
+// over the token's characters), and what was typed between the trigger and the caret.
+AppMnToken :: struct { trigger: u8; from: int; to: int; query: string; }
+AppMention :: struct {
+  open: bool; trigger: u8; from: int; to: int;
+  query: [APP_MN_QUERY] u8; qn: int;
+  hits: [APP_MN_KEEP] int; score: [APP_MN_KEEP] f32; n: int;   // the caller's items, best first
+  offered: int;              // items offered since app_mn_begin
+  sel: int; top: int;
+  shut: int;                 // the start of a token Escape closed, -1 for none: it stays closed until the token changes
+  x: f32; y: f32; w: f32; h: f32;   // as last painted
+}
+
+app_mn_token :: (text: string, caret: int) -> AppMnToken {
+  none := AppMnToken.{};
+  if caret < 0 || caret > text.count { return none; }
+  lo := ifx caret > APP_MN_REACH then caret - APP_MN_REACH else 0;
+  a := caret;
+  while a > lo && composer_token_char(text[a - 1]) { a -= 1; }
+  to := caret;
+  while to < text.count && composer_token_char(text[to]) { to += 1; }
+  if a > 0 && text[a - 1] == '@' && composer_token_starts(text, a - 1) {
+    return AppMnToken.{trigger = '@', from = a - 1, to = to, query = cast(string) text[a..<caret]};
+  }
+  // a command: the text's first word, a slash then no other slash before the caret
+  if text.count > 0 && text[0] == '/' && a <= 1 {
+    for i: 1..<caret { if text[i] == '/' { return none; } }
+    end := 1;
+    while end < text.count && composer_token_char(text[end]) && text[end] != '/' { end += 1; }
+    if caret > end { return none; }
+    return AppMnToken.{trigger = '/', from = 0, to = end, query = cast(string) text[1..<caret]};
+  }
+  return none;
+}
+// The popover follows the token at the caret: false when there is none, or Escape closed this one.
+// A new token, or a new query, starts the ranking again (app_mn_begin, the caller's offers, app_mn_end).
+app_mn_follow :: (p: [] AppMention, tok: AppMnToken) -> bool {
+  if tok.trigger == 0 { p[0].open = false; p[0].shut = -1; return false; }
+  if p[0].shut == tok.from { p[0].open = false; return false; }
+  p[0].shut = -1;
+  return true;
+}
+app_mn_query :: (p: [] AppMention) -> string { return cast(string) p[0].query[0..<p[0].qn]; }
+app_mn_begin :: (p: [] AppMention, tok: AppMnToken) {
+  if !p[0].open || p[0].trigger != tok.trigger || p[0].from != tok.from || app_mn_query(p) != tok.query { p[0].sel = 0; p[0].top = 0; }
+  p[0].open = true; p[0].trigger = tok.trigger; p[0].from = tok.from; p[0].to = tok.to;
+  p[0].qn = 0;
+  for c: tok.query { if p[0].qn < APP_MN_QUERY { p[0].query[p[0].qn] = c; p[0].qn += 1; } }
+  p[0].n = 0; p[0].offered = 0;
+}
+// Item `item` offered with its fields: kept when it answers the query (all do while it is empty,
+// in the order offered), in rank order, the best APP_MN_KEEP.
+app_mn_offer :: (p: [] AppMention, item: int, fields: [] MatchField) {
+  p[0].offered += 1;
+  sc: f32 = 0;
+  if p[0].qn == 0 { if p[0].n >= APP_MN_KEEP { return; } sc = 1; }
+  else { sc = match_rank(fields, app_mn_query(p)); if sc <= 0 { return; } }
+  at := p[0].n;
+  while at > 0 && p[0].score[at - 1] < sc { at -= 1; }
+  if at >= APP_MN_KEEP { return; }
+  last := ifx p[0].n < APP_MN_KEEP then p[0].n else APP_MN_KEEP - 1;
+  k := last;
+  while k > at { p[0].hits[k] = p[0].hits[k - 1]; p[0].score[k] = p[0].score[k - 1]; k -= 1; }
+  p[0].hits[at] = item; p[0].score[at] = sc;
+  if p[0].n < APP_MN_KEEP { p[0].n += 1; }
+}
+app_mn_end :: (p: [] AppMention) {
+  if p[0].sel >= p[0].n { p[0].sel = ifx p[0].n > 0 then p[0].n - 1 else 0; }
+  app_mn_reveal(p);
+}
+app_mn_reveal :: (p: [] AppMention) {
+  if p[0].sel < p[0].top { p[0].top = p[0].sel; }
+  if p[0].sel >= p[0].top + APP_MN_ROWS { p[0].top = p[0].sel - APP_MN_ROWS + 1; }
+  most := p[0].n - APP_MN_ROWS; if most < 0 { most = 0; }
+  if p[0].top > most { p[0].top = most; }
+  if p[0].top < 0 { p[0].top = 0; }
+}
+// The item the highlighted row stands for, -1 for none.
+app_mn_selected :: (p: [] AppMention) -> int { return ifx p[0].open && p[0].sel >= 0 && p[0].sel < p[0].n then p[0].hits[p[0].sel] else -1; }
+app_mn_close :: (p: [] AppMention) { if p[0].open { p[0].shut = p[0].from; } p[0].open = false; }
+// A key while it is open (composer.coax's numbering: -1 Escape, -2 Return, -6 Up, -7 Down; Tab is
+// -13 or the Mac host's -15). Returns APP_MN_*.
+app_mn_key :: (p: [] AppMention, key: int, mods: int) -> int {
+  if !p[0].open || mods != 0 { return APP_MN_NONE; }
+  if key == KEY_ESCAPE { app_mn_close(p); return APP_MN_CLOSED; }
+  if key == KEY_UP || key == KEY_DOWN {
+    if p[0].n == 0 { return APP_MN_MOVED; }
+    p[0].sel = (p[0].sel + (ifx key == KEY_UP then p[0].n - 1 else 1)) % p[0].n;
+    app_mn_reveal(p);
+    return APP_MN_MOVED;
+  }
+  if key == KEY_ENTER || key == -13 || key == -15 { return ifx p[0].n > 0 then APP_MN_PICK else APP_MN_NONE; }
+  return APP_MN_NONE;
+}
+// What a pick writes over the token: the trigger, the value and one space (none where a blank
+// already follows the token). Its length in out.
+app_mn_insert :: (text: string, p: [] AppMention, value: string, out: [] u8) -> int {
+  n := 0;
+  if n < out.count { out[n] = p[0].trigger; n += 1; }
+  for c: value { if n < out.count { out[n] = c; n += 1; } }
+  follows := p[0].to < text.count && (text[p[0].to] == 32 || text[p[0].to] == 10 || text[p[0].to] == 9);
+  if !follows && n < out.count { out[n] = 32; n += 1; }
+  return n;
+}
+// Row k (a rank) of the popover's id: id.k.
+app_mn_row_id :: (f: [] UiFrame, id: string, k: int) -> string {
+  b: [EL_ID] u8;
+  n := el_put(b[..], 0, id); n = el_put(b[..], n, "."); n = el_put_i(b[..], n, k);
+  return sheet_pool(f[0].sheet, cast(string) b[0..<n]);
+}
+// The rank a pressed row id names, -1 for none.
+app_mn_pressed :: (id: string, pressed: string) -> int {
+  if pressed.count <= id.count + 1 || cast(string) pressed[0..<id.count] != id || pressed[id.count] != '.' { return -1; }
+  n := 0;
+  for i: id.count + 1..<pressed.count { c := pressed[i]; if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return n;
+}
+// The popover over the caret at (cx, cy) (its line lh tall), kept inside x..x+w and the view's top:
+// above the caret's line, else under it. labels, details and icons are the rows from p.top on (as
+// many as show; icon -1 for none); empty says why there are none ("No files match"). Rows press
+// with `action`. Drawn over the page.
+app_mention :: (f: [] UiFrame, id: string, p: [] AppMention, labels: [] string, details: [] string, icons: [] int, empty: string, cx: f32, cy: f32, lh: f32, x: f32, w: f32, action: int) {
+  if !p[0].open { return; }
+  s := f[0].skin; sh := f[0].sheet;
+  shown := p[0].n - p[0].top; if shown > APP_MN_ROWS { shown = APP_MN_ROWS; } if shown > labels.count { shown = labels.count; } if shown < 0 { shown = 0; }
+  rh := cast(f32) APP_MN_ROW; pad := cast(f32) APP_MN_PAD;
+  pw := cast(f32) APP_MN_W; if pw > w { pw = w; }
+  ph := 2 * pad + rh * cast(f32) (ifx shown > 0 then shown else 1);
+  px := cx - pad; if px + pw > x + w { px = x + w - pw; } if px < x { px = x; }
+  py := cy - cast(f32) APP_MN_GAP - ph;
+  if py < 8 { py = cy + lh + cast(f32) APP_MN_GAP; }
+  p[0].x = px; p[0].y = py; p[0].w = pw; p[0].h = ph;
+  r := cast(f32) APP_MN_RADIUS;
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, r, s.shadows.menu));
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, r, 1.0f32, s.surface, s.hairline));
+  card := uiframe_semantic(f, id, EL_REGION, ifx p[0].trigger == '/' then "Commands" else "Files", px, py, pw, ph, 0, 0);
+  elt_value(f[0].rows, card, app_mn_query(p));
+  sheet_hit(sh, UIFRAME_HIT, card, 0, px, py, pw, ph);
+  if shown == 0 {
+    _ := sheet_text(sh, f[0].m, -1, px + pad + 8, py + pad + (rh - s.label.line) / 2, s.label.line, s.label.face, s.muted, app_fit(f, s.label.face, empty, pw - 2 * pad - 16));
+    return;
+  }
+  ic := cast(f32) APP_MN_ICON;
+  for v: 0..<shown {
+    k := p[0].top + v;
+    ry := py + pad + cast(f32) v * rh;
+    rid := app_mn_row_id(f, id, k);
+    sel := k == p[0].sel;
+    label := labels[v]; detail := ifx v < details.count then details[v] else "";
+    row := uiframe_semantic(f, rid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, action);
+    elt_value(f[0].rows, row, detail);
+    if sel || uiframe_hovered(f, rid) {
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry, pw - 2 * pad, rh, s.cmp.chip_radius, 0, ifx sel then s.raised else s.hover, s.clear));
+    }
+    tx := px + pad + 8;
+    icon := ifx v < icons.count then icons[v] else -1;
+    if icon >= 0 { sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, icon, tx, ry + (rh - ic) / 2, ic, ic, s.muted)); tx += ic + 8; }
+    room := px + pw - pad - 8 - tx;
+    lw := measure_width(f[0].m, s.label.face, label);
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + (rh - s.label.line) / 2, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, label, room));
+    if detail.count > 0 && lw + 8 < room {
+      _ := sheet_text(sh, f[0].m, -1, tx + lw + 8, ry + (rh - s.small.line) / 2, s.small.line, s.small.face, s.muted, app_fit(f, s.small.face, detail, room - lw - 8));
+    }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, px + pad, ry, pw - 2 * pad, rh);
+  }
+}
+
+#test "the token at the caret: an @ where a token may start, a / only as the text's first word" {
+  t := app_mn_token("see @src/ma", 11);
+  #assert t.trigger == '@' && t.from == 4 && t.to == 11 && t.query == "src/ma";
+  // the caret inside the token: the query is what is before it, the token runs to its end
+  t = app_mn_token("see @src/main.rs now", 9);
+  #assert t.trigger == '@' && t.query == "src/" && t.to == 16;
+  #assert app_mn_token("see @", 5).trigger == '@' && app_mn_token("see @", 5).query == "";
+  // an address is no token; nor is a caret past a blank
+  #assert app_mn_token("me@x.io", 7).trigger == 0 && app_mn_token("@ab x", 5).trigger == 0;
+  c := app_mn_token("/go", 3); #assert c.trigger == '/' && c.from == 0 && c.to == 3 && c.query == "go";
+  #assert app_mn_token("/", 1).trigger == '/' && app_mn_token("a /go", 5).trigger == 0 && app_mn_token("/goal x", 7).trigger == 0;
+  #assert app_mn_token("/a/b", 4).trigger == 0;
+}
+app_mn_test_offer :: (p: [] AppMention, names: [] string) {
+  for i: 0..<names.count { fs := [1] MatchField.[MatchField.{text = names[i], weight = 100, title = true}]; app_mn_offer(p, i, fs[..]); }
+  app_mn_end(p);
+}
+#test "items narrow and order by the ranked match; Up, Down, Return and Escape; a pick's text" {
+  names := [5] string.["main.rs", "mod.rs", "README.md", "matrix.coax", "lib.rs"];
+  p: [1] AppMention; p[0].shut = -1;
+  tok := app_mn_token("@", 1);
+  #assert app_mn_follow(p[..], tok); app_mn_begin(p[..], tok); app_mn_test_offer(p[..], names[..]);
+  #assert p[0].n == 5 && p[0].hits[0] == 0 && p[0].hits[4] == 4;   // empty: in the order offered
+  tok = app_mn_token("@ma", 3); app_mn_begin(p[..], tok); app_mn_test_offer(p[..], names[..]);
+  #assert p[0].n == 2 && app_mn_selected(p[..]) == 0 && p[0].hits[1] == 3;
+  #assert app_mn_key(p[..], KEY_DOWN, 0) == APP_MN_MOVED && app_mn_selected(p[..]) == 3;
+  #assert app_mn_key(p[..], KEY_DOWN, 0) == APP_MN_MOVED && app_mn_selected(p[..]) == 0;   // round to the first
+  #assert app_mn_key(p[..], KEY_UP, 0) == APP_MN_MOVED && app_mn_selected(p[..]) == 3;
+  #assert app_mn_key(p[..], -15, 0) == APP_MN_PICK && app_mn_key(p[..], KEY_ENTER, 0) == APP_MN_PICK && app_mn_key(p[..], KEY_ENTER, MOD_SHIFT) == APP_MN_NONE;
+  out: [64] u8;
+  #assert cast(string) out[0..<app_mn_insert("@ma", p[..], "matrix.coax", out[..])] == "@matrix.coax ";
+  #assert cast(string) out[0..<app_mn_insert("@ma now", p[..], "matrix.coax", out[..])] == "@matrix.coax";
+  // Escape: closed until the token changes
+  #assert app_mn_key(p[..], KEY_ESCAPE, 0) == APP_MN_CLOSED && !p[0].open;
+  #assert !app_mn_follow(p[..], app_mn_token("@mat", 4)) && app_mn_follow(p[..], app_mn_token("x @m", 4));
+  #assert !app_mn_follow(p[..], app_mn_token("plain", 5)) && p[0].shut == -1;
+  // nothing matches: open, no rows, Return picks nothing
+  app_mn_begin(p[..], app_mn_token("@zzz", 4)); app_mn_test_offer(p[..], names[..]);
+  #assert p[0].open && p[0].n == 0 && app_mn_key(p[..], KEY_ENTER, 0) == APP_MN_NONE && app_mn_selected(p[..]) == -1;
+  #assert app_mn_pressed("mn", "mn.12") == 12 && app_mn_pressed("mn", "mn.x") == -1 && app_mn_pressed("mn", "mnx.1") == -1;
+}
+#test "more than eight rows scroll to keep the highlighted one in view; only the best 64 are kept" {
+  p: [1] AppMention; p[0].shut = -1;
+  app_mn_begin(p[..], app_mn_token("@", 1));
+  for i: 0..<100 { fs := [1] MatchField.[MatchField.{text = "f", weight = 100, title = true}]; app_mn_offer(p[..], i, fs[..]); }
+  app_mn_end(p[..]);
+  #assert p[0].n == 64 && p[0].offered == 100;
+  for i: 0..<9 { _ = app_mn_key(p[..], KEY_DOWN, 0); }
+  #assert p[0].sel == 9 && p[0].top == 2;
+  _ = app_mn_key(p[..], KEY_UP, 0); _ = app_mn_key(p[..], KEY_UP, 0); _ = app_mn_key(p[..], KEY_UP, 0);
+  #assert p[0].sel == 6 && p[0].top == 2;
+}

@@ -7,6 +7,8 @@
 #load "../../../components/app/followups.coax";
 #load "../../../components/app/overlay.coax";
 #load "../../../components/app/palette.coax";
+#load "../../../components/app/cargo.coax";
+#load "../../../components/app/mention.coax";
 #load "../../shared/app/view/shell.coax";
 #load "../../../components/kit/foreman_hud.coax";
 #load "../../../components/core/edit.coax";
@@ -37,3 +39,5 @@
 #load "followups.coax";
 #load "overlay.coax";
 #load "palette.coax";
+#load "attach.coax";
+#load "mention.coax";

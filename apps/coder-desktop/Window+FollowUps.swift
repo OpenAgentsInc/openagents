@@ -143,11 +143,11 @@ extension CoderWindow {
     func followUp() {
         let op = cd_followup_op(page), item = Int(cd_followup_item(page)), r = run
         switch op {
-        case 20, 21:   // the draft steers the running reply, or goes last in the queue
-            let text = draft
+        case 20, 21:   // the draft steers the running reply, or goes last in the queue, with what it carries
+            let text = draftMessage
             guard !text.isEmpty else { return }
-            if op == 20, steer(text) != nil { _ = takeDraft() }
-            else if enqueue(text) != nil { _ = takeDraft() }
+            if op == 20, steer(text) != nil { _ = takeDraft(); cd_attach_clear(page) }
+            else if enqueue(text) != nil { _ = takeDraft(); cd_attach_clear(page) }
         case 22:       // the draft is the edited item's new text
             guard item >= 0, let q = queuedText(r, item) else { return }
             let text = takeDraft()

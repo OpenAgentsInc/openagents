@@ -4,6 +4,7 @@
 // one generated library. It holds no behaviour: frames, clicks and lines go to page.coax.
 #include "host.h"
 #include <time.h>
+#include <sys/stat.h>
 
 typedef struct {
   App app;
@@ -16,6 +17,7 @@ typedef struct {
   int headless;   // a page with no window: a chat whose reply runs out of view
   char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
   void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
+  char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -82,7 +84,9 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   int over = coder_page_overlay_open(cd_state(c)), took = 0;
   if ((mods & 8) && !(mods & 6) && (key == 'c' || key == 'x' || key == 'v') && coder_page_wants_text(cd_state(c))) {
     if (key == 'v') {
-      int n = ui_paste_text(c->app.host, cd_clip, sizeof cd_clip);
+      // files or a picture on the pasteboard join the draft's attachments (cd_on_file); else its text
+      int n = coder_page_takes_files(cd_state(c)) ? ui_paste_files(c->app.host) : 0;
+      if (n == 0) n = ui_paste_text(c->app.host, cd_clip, sizeof cd_clip); else n = 0;
       if (n > 0) (void)coder_page_paste(cd_state(c), (coax_string){cd_clip, n});
     } else {
       int n = (int)coder_page_copy(cd_state(c), key == 'x', (coax_v_u8){(uint8_t *)cd_clip, (int64_t)sizeof cd_clip - 1});
@@ -94,6 +98,17 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   if (over && c->overlay) c->overlay(c->overlay_context);
   return took;
 }
+// A file the person gave the window (dropped, pasted or chosen): a regular file joins the draft's
+// attachments with its name and size (page/attach.coax). Files carried over the window show "Drop to attach".
+static void cd_on_file(void *user, int request, const char *path) {
+  CoderHost *c = user; (void)request;
+  struct stat st;
+  if (!path || stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return;
+  const char *slash = strrchr(path, '/');
+  (void)coder_page_attach(cd_state(c), cd_string(path), cd_string(slash ? slash + 1 : path), (int64_t)st.st_size);
+  cd_woke(c);
+}
+static void cd_on_carrying(void *user, int on) { CoderHost *c = user; coder_page_carrying(cd_state(c), on != 0); cd_woke(c); }
 static int cd_on_wants_text(void *user) { return coder_page_wants_text(cd_state((CoderHost *)user)) != 0; }
 // The input method over the field with the keyboard (ui-host.h UiIme; UTF-16 units, device pixels).
 static void cd_ime_replace(void *user, int from, int to, const char *bytes, size_t n) { CoderHost *c = user; coder_page_ime_replace(cd_state(c), from, to, (coax_string){bytes, (int64_t)n}); cd_woke(c); }
@@ -122,7 +137,7 @@ void *cd_open(const char *resources) {
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
-               .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime,
+               .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
@@ -309,12 +324,32 @@ int cd_take(void *to, void *from) {
   cd_changed(t); cd_changed(f);
   return ok;
 }
+// The draft's attachments (page/attach.coax): a file chosen in the open panel; how many it carries;
+// taken away (a follow-up sent them); the draft as a follow-up sends it, with the note on what it
+// carries; where the + is (device pixels) for its menu; the working folder's files, one a line.
+int cd_attach(void *page, const char *path) { CoderHost *c = page; if (!c) return 0; int had = (int)coder_page_attached(cd_state(c)); cd_on_file(c, 1, path); return coder_page_attached(cd_state(c)) > had; }
+int cd_attached(void *page) { CoderHost *c = page; return c ? (int)coder_page_attached(cd_state(c)) : 0; }
+void cd_attach_clear(void *page) { CoderHost *c = page; if (c) { coder_page_attach_clear(cd_state(c)); cd_changed(c); } }
+int cd_draft_message(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_draft_message(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_add_at(void *page, float out[2]) { CoderHost *c = page; return c && coder_page_add_at(cd_state(c), (coax_v_f32){out, 2}); }
+void cd_files(void *page, const char *lines) {
+  CoderHost *c = page;
+  if (!c || !lines) return;
+  size_t n = strlen(lines); if (n > (size_t)coder_page_files_bytes()) n = (size_t)coder_page_files_bytes();
+  while (n > 0 && lines[n - 1] != '\n') n--;   // whole lines only
+  char *keep = malloc(n + 1);
+  if (!keep) return;
+  memcpy(keep, lines, n); keep[n] = 0;
+  coder_page_files(cd_state(c), (coax_v_u8){(uint8_t *)keep, (int64_t)n});
+  free(c->files); c->files = keep;
+  cd_woke(c);
+}
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
-  free(c->s); free(c);
+  free(c->files); free(c->s); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.

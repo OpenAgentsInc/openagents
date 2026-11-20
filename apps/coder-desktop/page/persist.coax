@@ -61,6 +61,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
     if s[0].turns[i].state != CP_RUNNING && s[0].turns[i].took >= 0 { n = json_raw(out, n, ",\"worked\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].took)); }
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
+    if s[0].turns[i].refs_n > 0 { n = json_raw(out, n, ",\"refs\":"); n = json_write_string(out, n, cp_refs(s, i)); }
     if s[0].turns[i].steered_n > 0 {
       n = json_raw(out, n, ",\"steers\":["); from := 0; k := 0;
       for at: 0..<s[0].turns[i].steered_n {
@@ -128,6 +129,8 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     cut := cl_bool(t, "cut"); if cut.ok && cut.value { s[0].turns[i].cut = true; }
     ar[0].at = 0;
     s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cl_str(ar[..], t, "note"));
+    ar[0].at = 0;
+    _ = cp_refs_set(s, i, cl_str(ar[..], t, "refs"));
     s[0].turns[i].steered_n = 0;
     steers := cl_raw(t, "steers"); ns := ifx steers.count > 0 then cl_count(steers) else 0;
     for k: 0..<ns { ar[0].at = 0; ar[0].full = false; cp_fu_steered_add(s, i, cl_text(ar[..], steers, cl_item(steers, k))); }

@@ -3,13 +3,14 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
-  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n;
+  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
 }
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
+  if s[0].open_cargo >= 0 && s[0].open_cargo < cp_cargo_n(s) { return at_path(s[0].cargo[0].files[..], s[0].open_cargo); }   // an attachment's chip (attach.coax)
   if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
   if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_file); }
   return "";
@@ -140,6 +141,9 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return false;
   }
   if act == CP_FOLDER { if cp_running(s) { return false; } s[0].model_menu = false; s[0].ask = CP_ASK_FOLDER; return true; }
+  if act == CP_ASK_ADD_PRESS { s[0].model_menu = false; s[0].ask = CP_ASK_ADD; return true; }
+  if act == CP_CARGO || act == CP_CARGO_REMOVE { return cp_cargo_press(s, surface_id(s[0].surface[..], row), act == CP_CARGO_REMOVE); }
+  if act == CP_MENTION { return cp_mn_pick(s, app_mn_pressed("coder.mention", surface_id(s[0].surface[..], row))); }
   if act == CP_MODEL_MENU {
     s[0].model_menu = !s[0].model_menu;
     return true;

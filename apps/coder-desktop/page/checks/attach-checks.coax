@@ -1,0 +1,126 @@
+// Checks for the composer's attachments, @ files and / commands (attach.coax, mention.coax,
+// GitHub #13699): the strip over the draft, a chip's open and ×, what a message carries, the @
+// popover over the host's file list, the / commands, Escape and "Drop to attach". Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+#load "composer-checks.coax";
+
+// The worker's task line for the newest message, as its task text.
+cp_test_task_text :: (s: [] CoderPage, out: [] u8, ab: [] u8) -> string {
+  n := coder_page_task(s, "sess-1", "/w/app", out);
+  if n <= 0 { return ""; }
+  ar: [1] ClArena; ar[0] = ClArena.{buf = ab};
+  back: [1] McTask;
+  if !mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) { return ""; }
+  return back[0].task;
+}
+cp_test_draft_is :: (s: [] CoderPage, want: string) -> bool {
+  b: [256] u8; n := coder_page_draft(s, b[..]);
+  return cast(string) b[0..<n] == want;
+}
+
+#test "attachments: the strip over the draft keeps the pill expanded; a chip opens, its × removes it; the message carries the paths" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "compact";
+  #assert coder_page_attach(s, "/w/app/notes.txt", "notes.txt", 900) && coder_page_attach(s, "/tmp/shot.png", "shot.png", 4096);
+  #assert !coder_page_attach(s, "/w/app/notes.txt", "notes.txt", 900) && coder_page_attached(s) == 2;   // once each
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  comp := elt_find(t[..], "coder.composer"); c0 := elt_find(t[..], "coder.cargo.0"); c1 := elt_find(t[..], "coder.cargo.1");
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120 + 52;
+  #assert c0 >= 0 && c1 >= 0 && t[0].rows[c0].h == 40 && t[0].rows[c1].w == 56 && t[0].rows[c0].y > t[0].rows[comp].y;
+  #assert elt_value_of(t[..], c0) == "TXT · 900 B";
+  // a chip opens its file
+  #assert cp_press(s, c0) && coder_page_action(s) == CP_ASK_OPEN_FILE;
+  ob: [256] u8; #assert cast(string) ob[0..<coder_page_open_path(s, ob[..])] == "/w/app/notes.txt";
+  // the image's ×, under the pointer, takes it off the strip
+  for k: 0..<2 { #assert cp_test_pill_frame(s, f[..], 1200, 800, t[0].rows[c1].x + 4, t[0].rows[c1].y + 4, true); }
+  t[0] = cp_test_pill_rows(s);
+  x1 := elt_find(t[..], "coder.cargo.1.x");
+  #assert x1 >= 0 && cp_press(s, x1) && coder_page_attached(s) == 1;
+  // the draft as a follow-up would send it, then sent: the strip empties, the task carries the note
+  coder_page_ime_replace(s, -1, -1, "look");
+  dm: [1024] u8; dn := coder_page_draft_message(s, dm[..]);
+  #assert cp_find(cast(string) dm[0..<dn], "look\n\nAttached files (local paths; open them with your tools):\n- /w/app/notes.txt") == 0;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 2 && coder_page_attached(s) == 0;
+  out: [8192] u8; ab: [8192] u8;
+  task := cp_test_task_text(s, out[..], ab[..]);
+  #assert cp_find(task, "look\n\nAttached files") >= 0 && cp_find(task, "- /w/app/notes.txt") >= 0;
+  #assert cast(string) s[0].turns[1].ask[0..<s[0].turns[1].ask_n] == "look";   // the bubble shows the words alone
+  // kept with the chat
+  saved: [32768] u8; sn := coder_page_save(s, saved[..]);
+  #assert sn > 0 && cp_find(cast(string) saved[0..<sn], "\"refs\":") >= 0;
+}
+#test "attachments: a message of files alone says so; an image goes as its path with a note that it can't be seen" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s);
+  #assert coder_page_attach(s, "/tmp/shot.png", "shot.png", -1);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1;
+  out: [8192] u8; ab: [8192] u8;
+  task := cp_test_task_text(s, out[..], ab[..]);
+  #assert cp_find(task, CP_ATTACHED_ONLY) >= 0 && cp_find(task, "- /tmp/shot.png (an image: you can't view pictures, so use it as a file)") >= 0;
+}
+#test "@ lists the working folder's files at the caret; Return puts the path in; the message names the files it mentions" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s);
+  coder_page_ime_replace(s, -1, -1, "see @");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  #assert s[0].mn[0].open && coder_page_action(s) == CP_ASK_FILES;   // the host is asked for the list
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  #assert elt_find(t[..], "coder.mention") >= 0 && elt_find(t[..], "coder.mention.0") < 0;   // "Listing files…"
+  list := "src/main.rs\nsrc/lib.rs\nREADME.md\n";
+  lb: [64] u8; for c, i: list { lb[i] = c; }
+  coder_page_files(s, lb[0..<list.count]);
+  coder_page_ime_replace(s, -1, -1, "ma");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  r0 := elt_find(t[..], "coder.mention.0");
+  #assert r0 >= 0 && elt_label(t[..], r0) == "main.rs" && s[0].mn[0].n >= 1;
+  // the popover sits over the composer's text, beside the caret's line
+  comp := elt_find(t[..], "coder.composer");
+  #assert t[0].rows[r0].y + t[0].rows[r0].h <= t[0].rows[comp].y + t[0].rows[comp].h;
+  #assert coder_page_key(s, KEY_ENTER, 0) && cp_test_draft_is(s, "see @src/main.rs ") && !s[0].mn[0].open && s[0].nturns == 0;
+  // a press on a row picks it too
+  coder_page_ime_replace(s, -1, -1, "and @READ");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  r0 = elt_find(t[..], "coder.mention.0");
+  #assert r0 >= 0 && cp_press(s, r0) && cp_test_draft_is(s, "see @src/main.rs and @README.md ");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1;
+  out: [8192] u8; ab: [8192] u8;
+  task := cp_test_task_text(s, out[..], ab[..]);
+  #assert cp_find(task, "Files the message mentions (paths in the working folder):\n- src/main.rs\n- README.md") >= 0;
+}
+#test "/ at the draft's start lists the commands: /goal goes in, /model opens the models, /new starts over; Escape closes it" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s);
+  coder_page_ime_replace(s, -1, -1, "/mo");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  r0 := elt_find(t[..], "coder.mention.0");
+  #assert r0 >= 0 && elt_label(t[..], r0) == "/model";
+  #assert coder_page_key(s, KEY_ENTER, 0) && cp_test_draft_is(s, "") && s[0].model_menu;
+  s[0].model_menu = false;
+  coder_page_ime_replace(s, -1, -1, "/g");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, -13, 0) && cp_test_draft_is(s, "/goal ");
+  // Up and Down move; Escape closes it, and it stays closed while the token is the same
+  #assert coder_page_set_text(s, "");
+  coder_page_ime_replace(s, -1, -1, "/");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && s[0].mn[0].open && s[0].mn[0].n == CP_CMDS;
+  #assert coder_page_key(s, KEY_DOWN, 0) && s[0].mn[0].sel == 1 && coder_page_key(s, KEY_ESCAPE, 0) && !s[0].mn[0].open;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && !s[0].mn[0].open;
+  // / inside a sentence is no command
+  coder_page_ime_replace(s, -1, -1, "x /n");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && !s[0].mn[0].open;
+}
+#test "files carried over the window: Drop to attach over the page while they are" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s);
+  coder_page_carrying(s, true);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  d := elt_find(t[..], "coder.drop");
+  #assert d >= 0 && elt_label(t[..], d) == "Drop to attach";
+  coder_page_carrying(s, false);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert elt_find(t[..], "coder.drop") < 0;
+}

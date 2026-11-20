@@ -94,6 +94,8 @@ CP_ASK_SETTINGS :: 13; CP_ASK_ZOOM_IN :: 14; CP_ASK_ZOOM_OUT :: 15; CP_ASK_CLAUD
 CP_ASK_OPEN_FILE :: 24;     // a press on a file a row or a reply names: coder_page_open_path is its path
 CP_ASK_FOLLOWUP :: 25;      // a follow-up for the host (followups.coax): coder_page_followup_op says which
 CP_ASK_PALETTE :: 26;       // the command palette opened (the host watches it) or asks a command of the host: coder_page_palette_command says which (palette.coax)
+CP_ASK_ADD :: 27;           // the composer's + was pressed: the host opens its menu at coder_page_add_at (Attach Files…, Change Folder…; attach.coax, #13699)
+CP_ASK_FILES :: 28;         // the @ popover wants the working folder's files listed (coder_page_files)
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -106,6 +108,11 @@ CP_REVIEW :: 48; CP_PANE_TAB :: 49; CP_REVIEW_FILE :: 50;
 CP_BUBBLE_FOLD :: 61;      // a person's long message's Show more or Show less (#13745)
 CP_JUMP :: 62;             // Jump to latest (New reply): the transcript glides to its end (#13745)
 CP_PALETTE :: 51;          // the sidebar's Search: the command palette opens on Sessions (#13700)
+// the draft's attachments and its mentions (#13699): a chip of the strip (it opens), its ×, a row of the @ or / popover
+CP_CARGO :: 63; CP_CARGO_REMOVE :: 64; CP_MENTION :: 65; CP_ASK_ADD_PRESS :: 66;   // and the composer's +
+CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
+CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
+CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
 CP_TAB_AGENT :: 0; CP_TAB_CHANGES :: 1;   // which tab the pane shows when both are open
 CP_REVIEW_EDITS :: 256;     // edits the review lists, newest kept
 CP_REVIEW_FILES :: 64;      // files it lists
@@ -175,6 +182,7 @@ CpTurn :: struct {
   seen_h: f32;                // its height when last measured, kept when that goes stale (0: never measured)
   note: [CP_NOTE] u8; note_n: int;
   steered: [CP_STEERED] u8; steered_n: int;   // the steers it took in (#13718): "Steered into the reply", kept with the chat
+  refs_at: int; refs_n: int;                  // its attachments' paths and the files it mentions, as the note its task carries: CoderPage.long_buf[refs_at..<refs_at + refs_n] (#13699)
   state: int; stopping: bool;
   model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy
@@ -278,6 +286,12 @@ CoderPage :: struct {
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
+  // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
+  // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
+  // @ and / popover and what it last followed, and the working folder's files as the host listed them
+  cargo: [1] Attachments; open_cargo: int; add_x: f32; add_y: f32; carrying: bool;
+  mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int;
+  files: [] u8; nfiles: int; files_gen: int; files_got: bool; files_due: bool;   // one path a line, in the host's buffer (it keeps it until it lists again)
   arena: [CP_ARENA] u8;
 }
 
@@ -295,6 +309,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
+  s[0].open_cargo = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
 }
 

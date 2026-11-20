@@ -402,6 +402,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
   m_x := cp_composer_foot(s, f, x, box_y + g.height + a.gap_small, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y); }
+  // the @ and / popover at the draft's token (mention.coax, #13699)
+  cp_mn_sync(s); cp_mn_due(s);
+  if !s[0].model_menu { cp_mn_paint(s, f, x, cw); }
 }
 // The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
 // the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
@@ -419,8 +422,10 @@ cp_pill_shape :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> ZcPill {
   }
   open_w := cw - cast(f32) (ZC_BORDER * 2 + ZC_TEXT_OPEN_SIDE * 2);
   rows := cast(f32) cp_ed_lines(s, k, open_w) * line;
-  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, s[0].nturns == 0, lines, s[0].pill_next);
+  cargo := cp_cargo_n(s) > 0;   // attachments keep it expanded, their strip over the text (#13699)
+  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, s[0].nturns == 0 || cargo, lines, s[0].pill_next);
   s[0].pill_next = target.next_text;
+  if cargo { target = zc_with_cargo(target, cp_cargo_height(s, f, cw)); }
   g := zc_motion_step(s[0].pill[..], target, f[0].dt, s[0].reduced);
   if zc_moving(s[0].pill[..]) { s[0].anim = true; }
   return g;
@@ -453,11 +458,14 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right;
   if tw < g.line { tw = g.line; }
   cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
-  // + : the working folder (not while a reply runs)
+  // the draft's attachments over its text (attach.coax)
+  if cp_cargo_n(s) > 0 && g.expanded { cp_cargo_draw(s, f, x, y, w); }
+  // + : its menu attaches files or changes the working folder (attach.coax, #13699)
   control := cast(f32) ZC_CONTROL;
   lx := x + border + g.lead_left; ly := y + g.height - border - g.lead_bottom - control;
-  lead_off := running;
-  lead_row := uiframe_semantic(f, "coder.composer.add", EL_BUTTON, "Choose a working folder", lx, ly, control, control, ifx lead_off then EL_S_DISABLED else 0, ifx lead_off then 0 else CP_FOLDER);
+  s[0].add_x = lx + control / 2; s[0].add_y = ly + control;
+  lead_off := false;
+  lead_row := uiframe_semantic(f, "coder.composer.add", EL_BUTTON, "Attach files or change the folder", lx, ly, control, control, 0, CP_ASK_ADD_PRESS);
   lead_hov := !lead_off && uiframe_hovered(f, "coder.composer.add");
   lead_prs := !lead_off && uiframe_pressed(f, "coder.composer.add");
   if lead_prs || lead_hov { sheet_fill(sh, lx, ly, control, control, control / 2, ifx lead_prs then th.pressed else th.hover); }
@@ -469,7 +477,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   // Send / Stop
   send := cast(f32) ZC_TRAILING;
   sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
-  can_send := running || (!off && text.count > 0);
+  can_send := running || (!off && (text.count > 0 || cp_cargo_n(s) > 0));
   send_label := ifx running then "Stop" else "Send";
   send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
