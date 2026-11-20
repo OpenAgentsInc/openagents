@@ -49,7 +49,7 @@ The app keeps its files where the Mac and Linux apps keep theirs, under the user
 | The log | `%LOCALAPPDATA%\OpenAgents\logs\openagents.log` (a new one each launch; the last is `openagents.log.old`) |
 | Worker journals | `%USERPROFILE%\.openagents\coder\sessions` |
 
-A reply needs a model key. Set the OpenRouter key in settings (**OpenRouter Key**), or put
+A reply needs a model key. Set the OpenRouter key in settings (**Models → OpenRouter key**), or put
 `OPENROUTER_API_KEY=...` in `%USERPROFILE%\work\.secrets\openrouter.env` as on a Mac.
 Microcoder runs commands with `sh` and the POSIX tools from
 [Git for Windows](https://git-scm.com/download/win): the app puts Git's `cmd` and
