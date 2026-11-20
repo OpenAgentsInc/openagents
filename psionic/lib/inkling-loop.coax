@@ -1,0 +1,227 @@
+// Chapter 267: A looped MoE transformer for Inkling 2 Mini (K=3) and TML-d24-varloop-research (variable K).
+#authority;
+
+INKLING_LOOP_MAX_PASSES :: 16;
+INKLING_LOOP_MAX_DIM :: 64;
+INKLING_LOOP_MAX_EXPERTS :: 8;
+INKLING_LOOP_MAX_SEQ :: 32;
+
+// book:begin types
+InklingLoopStatus :: enum u8 {ok;shape;limit;pass;capacity;}
+InklingLoopStage :: enum u8 {prelude;loop_body;postlude;}
+InklingLoopConfig :: struct {
+    prelude_layers:int;
+    loop_layers:int;
+    postlude_layers:int;
+    loop_count:int;
+    dim:int;
+    experts:int;
+    top_k:int;
+    max_seq:int;
+}
+InklingLoopPlan :: struct {
+    status:InklingLoopStatus;
+    total_steps:int;
+    kv_slots:int;
+}
+// book:end types
+
+#test "looped schedule validates bounds and computes per-pass KV slots" {
+    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=8};
+    p := inkling_loop_plan(cfg);
+    #assert p.status == InklingLoopStatus.ok && p.total_steps == 5 && p.kv_slots == 40;
+
+    // Each (stage, layer, pass, pos) maps to a distinct KV slot.
+    s_pre := inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 0, 2);
+    s_p0  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 0, 2);
+    s_p1  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 1, 2);
+    s_p2  := inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 2, 2);
+    s_post := inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 2);
+    #assert s_pre == 2 && s_p0 == 10 && s_p1 == 18 && s_p2 == 26 && s_post == 34;
+
+    // Refused inputs: L=0, out-of-bounds pass index, invalid position.
+    bad := cfg; bad.loop_count = 0;
+    #assert inkling_loop_plan(bad).status == InklingLoopStatus.pass;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.loop_body, 0, 3, 0) == -1;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.prelude, 0, 1, 0) == -1;
+    #assert inkling_kv_slot(cfg, InklingLoopStage.postlude, 0, 0, 8) == -1;
+}
+
+#test "prefill and step-by-step decode match across K=1, K=3, and K=5 loops" {
+    for k: [3]int.[1, 3, 5] {
+        cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=k,dim=4,experts=4,top_k=2,max_seq=4};
+        // Deterministic tiny weights.
+        router_w := [16]f32.[
+            0.5f32, -0.2f32, 0.1f32, 0.3f32,
+            -0.4f32, 0.6f32, 0.2f32, -0.1f32,
+            0.2f32, 0.1f32, -0.5f32, 0.4f32,
+            -0.1f32, -0.3f32, 0.7f32, 0.2f32
+        ];
+        expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
+        inputs := [12]f32.[
+            1.0f32, 0.5f32, -0.25f32, 0.75f32,
+            -0.5f32, 1.25f32, 0.5f32, -0.25f32,
+            0.25f32, -0.75f32, 1.0f32, 0.5f32
+        ];
+
+        kv_pre: [256]f32;
+        kv_dec: [256]f32;
+        out_pre: [12]f32;
+        out_dec: [12]f32;
+
+        st1 := inkling_loop_prefill(cfg, 3, inputs[..], router_w[..], expert_scale[..], kv_pre[..], out_pre[..]);
+        #assert st1 == InklingLoopStatus.ok;
+
+        for pos: 0..<3 {
+            st2 := inkling_loop_decode_token(cfg, pos, inputs[pos*4..<(pos+1)*4], router_w[..], expert_scale[..], kv_dec[..], out_dec[pos*4..<(pos+1)*4]);
+            #assert st2 == InklingLoopStatus.ok;
+        }
+
+        for i: 0..<12 {
+            diff := out_pre[i] - out_dec[i];
+            if diff < 0.0f32 { diff = -diff; }
+            #assert diff < 0.000001f32;
+        }
+    }
+}
+
+// book:begin plan
+inkling_loop_plan :: (cfg:InklingLoopConfig)->InklingLoopPlan #export_c #effects(all) {
+    if cfg.loop_count < 1 || cfg.loop_count > INKLING_LOOP_MAX_PASSES {
+        return InklingLoopPlan.{status=InklingLoopStatus.pass};
+    }
+    if cfg.prelude_layers < 0 || cfg.loop_layers < 1 || cfg.postlude_layers < 0 {
+        return InklingLoopPlan.{status=InklingLoopStatus.shape};
+    }
+    if cfg.dim < 1 || cfg.dim > INKLING_LOOP_MAX_DIM || cfg.experts < 1 || cfg.experts > INKLING_LOOP_MAX_EXPERTS {
+        return InklingLoopPlan.{status=InklingLoopStatus.limit};
+    }
+    if cfg.top_k < 1 || cfg.top_k > cfg.experts || cfg.max_seq < 1 || cfg.max_seq > INKLING_LOOP_MAX_SEQ {
+        return InklingLoopPlan.{status=InklingLoopStatus.shape};
+    }
+    total_steps := cfg.prelude_layers + cfg.loop_layers * cfg.loop_count + cfg.postlude_layers;
+    return InklingLoopPlan.{status=InklingLoopStatus.ok, total_steps=total_steps, kv_slots=total_steps * cfg.max_seq};
+}
+
+inkling_kv_slot :: (cfg:InklingLoopConfig, stage:InklingLoopStage, layer_in_stage:int, pass_idx:int, pos:int)->int #export_c #effects(all) {
+    if pos < 0 || pos >= cfg.max_seq || layer_in_stage < 0 { return -1; }
+    step := 0;
+    if stage == InklingLoopStage.prelude {
+        if pass_idx != 0 || layer_in_stage >= cfg.prelude_layers { return -1; }
+        step = layer_in_stage;
+    } else if stage == InklingLoopStage.loop_body {
+        if pass_idx < 0 || pass_idx >= cfg.loop_count || layer_in_stage >= cfg.loop_layers { return -1; }
+        step = cfg.prelude_layers + pass_idx * cfg.loop_layers + layer_in_stage;
+    } else {
+        if pass_idx != 0 || layer_in_stage >= cfg.postlude_layers { return -1; }
+        step = cfg.prelude_layers + cfg.loop_count * cfg.loop_layers + layer_in_stage;
+    }
+    return step * cfg.max_seq + pos;
+}
+// book:end plan
+
+// book:begin forward
+inkling_moe_residual :: (h:[]f32, router_w:[]f32, expert_scale:[]f32, dim:int, experts:int, top_k:int) #effects(all) {
+    scores: [INKLING_LOOP_MAX_EXPERTS]f32;
+    for e: 0..<experts {
+        acc: f32 = 0.0f32;
+        for d: 0..<dim { acc += h[d] * router_w[e * dim + d]; }
+        scores[e] = acc;
+    }
+    chosen: [INKLING_LOOP_MAX_EXPERTS]bool;
+    weight_sum: f32 = 0.0f32;
+    picked_idx: [INKLING_LOOP_MAX_EXPERTS]int;
+    picked_val: [INKLING_LOOP_MAX_EXPERTS]f32;
+    for k: 0..<top_k {
+        best_e := -1;
+        best_s: f32 = -1000000000.0f32;
+        for e: 0..<experts {
+            if !chosen[e] && scores[e] > best_s {
+                best_s = scores[e];
+                best_e = e;
+            }
+        }
+        chosen[best_e] = true;
+        picked_idx[k] = best_e;
+        // Positive bounded gate weight.
+        g := best_s;
+        if g < 0.0f32 { g = 0.1f32; } else { g = 0.1f32 + g; }
+        picked_val[k] = g;
+        weight_sum += g;
+    }
+    delta: [INKLING_LOOP_MAX_DIM]f32;
+    for k: 0..<top_k {
+        e := picked_idx[k];
+        w := picked_val[k] / weight_sum;
+        sc := expert_scale[e];
+        for d: 0..<dim { delta[d] += w * sc * h[d]; }
+    }
+    for d: 0..<dim { h[d] += delta[d]; }
+}
+
+inkling_loop_decode_token :: (cfg:InklingLoopConfig, pos:int, token_in:[]f32, router_w:[]f32, expert_scale:[]f32, kv_cache:[]f32, token_out:[]f32)->InklingLoopStatus #export_c #effects(all) {
+    p := inkling_loop_plan(cfg);
+    if p.status != InklingLoopStatus.ok { return p.status; }
+    if pos < 0 || pos >= cfg.max_seq { return InklingLoopStatus.shape; }
+    if token_in.count < cfg.dim || token_out.count < cfg.dim { return InklingLoopStatus.capacity; }
+    if router_w.count < cfg.experts * cfg.dim || expert_scale.count < cfg.experts { return InklingLoopStatus.capacity; }
+    if kv_cache.count < p.kv_slots * cfg.dim { return InklingLoopStatus.capacity; }
+
+    h: [INKLING_LOOP_MAX_DIM]f32;
+    for d: 0..<cfg.dim { h[d] = token_in[d]; }
+
+    // Stage 1: prelude layers (once).
+    for l: 0..<cfg.prelude_layers {
+        slot := inkling_kv_slot(cfg, InklingLoopStage.prelude, l, 0, pos);
+        for d: 0..<cfg.dim { kv_cache[slot * cfg.dim + d] = h[d]; }
+        // Causal mean-pooled attention residual over 0..pos.
+        for d: 0..<cfg.dim {
+            sum: f32 = 0.0f32;
+            for t: 0..<(pos + 1) {
+                tslot := inkling_kv_slot(cfg, InklingLoopStage.prelude, l, 0, t);
+                sum += kv_cache[tslot * cfg.dim + d];
+            }
+            h[d] += 0.1f32 * (sum / cast(f32)(pos + 1));
+        }
+    }
+
+    // Stage 2: middle recurrent block executed loop_count times (K=3 for Inkling 2 Mini).
+    for pass: 0..<cfg.loop_count {
+        for l: 0..<cfg.loop_layers {
+            slot := inkling_kv_slot(cfg, InklingLoopStage.loop_body, l, pass, pos);
+            for d: 0..<cfg.dim { kv_cache[slot * cfg.dim + d] = h[d]; }
+            for d: 0..<cfg.dim {
+                sum: f32 = 0.0f32;
+                for t: 0..<(pos + 1) {
+                    tslot := inkling_kv_slot(cfg, InklingLoopStage.loop_body, l, pass, t);
+                    sum += kv_cache[tslot * cfg.dim + d];
+                }
+                h[d] += 0.125f32 * (sum / cast(f32)(pos + 1));
+            }
+            inkling_moe_residual(h[0..<cfg.dim], router_w, expert_scale, cfg.dim, cfg.experts, cfg.top_k);
+        }
+    }
+
+    // Stage 3: postlude layers (once).
+    for l: 0..<cfg.postlude_layers {
+        slot := inkling_kv_slot(cfg, InklingLoopStage.postlude, l, 0, pos);
+        for d: 0..<cfg.dim { kv_cache[slot * cfg.dim + d] = h[d]; }
+        for d: 0..<cfg.dim { h[d] *= 0.95f32; }
+    }
+
+    for d: 0..<cfg.dim { token_out[d] = h[d]; }
+    return InklingLoopStatus.ok;
+}
+
+inkling_loop_prefill :: (cfg:InklingLoopConfig, seq_len:int, tokens_in:[]f32, router_w:[]f32, expert_scale:[]f32, kv_cache:[]f32, tokens_out:[]f32)->InklingLoopStatus #export_c #effects(all) {
+    p := inkling_loop_plan(cfg);
+    if p.status != InklingLoopStatus.ok { return p.status; }
+    if seq_len < 1 || seq_len > cfg.max_seq { return InklingLoopStatus.shape; }
+    if tokens_in.count < seq_len * cfg.dim || tokens_out.count < seq_len * cfg.dim { return InklingLoopStatus.capacity; }
+    for pos: 0..<seq_len {
+        st := inkling_loop_decode_token(cfg, pos, tokens_in[pos*cfg.dim..<(pos+1)*cfg.dim], router_w, expert_scale, kv_cache, tokens_out[pos*cfg.dim..<(pos+1)*cfg.dim]);
+        if st != InklingLoopStatus.ok { return st; }
+    }
+    return InklingLoopStatus.ok;
+}
+// book:end forward

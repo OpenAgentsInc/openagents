@@ -3701,6 +3701,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/looped-moe-transformer.coax",
+      "chapter": "psionic/book/ch267-a-looped-moe-transformer.md",
+      "stdout": "psionic/fixtures/looped-moe-transformer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/inkling-loop.coax";
+
+// book:begin example
+main :: () {
+    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=4};
+    plan := inkling_loop_plan(cfg);
+    #assert plan.status == InklingLoopStatus.ok;
+    print("Inkling looped schedule (K=%): % logical steps, % KV slots\n", cfg.loop_count, plan.total_steps, plan.kv_slots);
+
+    router_w := [16]f32.[
+        0.5f32, -0.2f32, 0.1f32, 0.3f32,
+        -0.4f32, 0.6f32, 0.2f32, -0.1f32,
+        0.2f32, 0.1f32, -0.5f32, 0.4f32,
+        -0.1f32, -0.3f32, 0.7f32, 0.2f32
+    ];
+    expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
+    inputs := [8]f32.[1.0f32, 0.5f32, -0.25f32, 0.75f32, -0.5f32, 1.25f32, 0.5f32, -0.25f32];
+    kv_pre: [128]f32; kv_dec: [128]f32; out_pre: [8]f32; out_dec: [8]f32;
+
+    #assert inkling_loop_prefill(cfg, 2, inputs[..], router_w[..], expert_scale[..], kv_pre[..], out_pre[..]) == InklingLoopStatus.ok;
+    #assert inkling_loop_decode_token(cfg, 0, inputs[0..<4], router_w[..], expert_scale[..], kv_dec[..], out_dec[0..<4]) == InklingLoopStatus.ok;
+    #assert inkling_loop_decode_token(cfg, 1, inputs[4..<8], router_w[..], expert_scale[..], kv_dec[..], out_dec[4..<8]) == InklingLoopStatus.ok;
+
+    for i: 0..<8 {
+        d := out_pre[i] - out_dec[i];
+        if d < 0.0f32 { d = -d; }
+        #assert d < 0.000001f32;
+    }
+    print("prefill == step-by-step decode verified across 3 passes\n");
+}
+// book:end example
