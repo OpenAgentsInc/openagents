@@ -17,6 +17,7 @@
 
 #load "tools.coax";
 #load "instructions.coax";
+#load "../agent/user-instructions.coax";
 #load "image.coax";
 #load "aware.coax";
 #load "steer.coax";
@@ -266,14 +267,28 @@ mc_run_keep :: (r: [] McRun, s: string) -> string {
 // at 5 minutes Argon's run of a five-file change ended mid-task as "run budget exhausted").
 MC_RUN_MS :: 900000;
 
-// Loads workspace instructions (AGENTS.md / agents.md, with CLAUDE.md / claude.md fallback)
-// from cwd's repo hierarchy and appends them to l's system prompt.
+// Loads the person's own instructions (~/.openagents/instructions.md, or the file
+// OPENAGENTS_USER_INSTRUCTIONS_PATH names: coax/lib/agent/user-instructions.coax, GitHub #13808)
+// and the workspace's (AGENTS.md / agents.md, with CLAUDE.md / claude.md fallback, from cwd's repo
+// hierarchy) and appends them to l's system prompt, each under its own header.
 mc_run_load_instructions :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string) -> bool {
-  if cwd.count == 0 { return true; }
+  return mc_run_load_instructions_from(l, b, cwd, "");
+}
+// The same with the user instructions read from user_path ("" for this process's file). They go
+// first and have their own budget (UINSTR_MAX_BYTES), so a large AGENTS.md never crowds them out;
+// the workspace's get what is left of the system prompt's buffer, up to MC_INSTR_MAX_BYTES.
+mc_run_load_instructions_from :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string, user_path: string) -> bool {
+  ub: [UINSTR_BLOCK_BYTES] u8;
+  user := uinstr_load(user_path, "\n\n", ub[..]);
+  ok := mc_instructions(l, b, user);
+  if cwd.count == 0 { return ok; }
+  room := b[0].system.count - l[0].system.count;
+  if room > MC_INSTR_MAX_BYTES { room = MC_INSTR_MAX_BYTES; }
+  if room <= MC_INSTR_HEADER.count + 64 { return false; }
   ib: [MC_INSTR_MAX_BYTES] u8;
-  text := mc_instructions_load(cwd, ib[..]);
-  if text.count == 0 { return true; }
-  return mc_instructions(l, b, text);
+  text := mc_instructions_load(cwd, ib[0..<room]);
+  if text.count == 0 { return ok; }
+  return mc_instructions(l, b, text) && ok;
 }
 
 // Sets up a run of the loop in r.l (mc_init) through plan p without firing the first model call

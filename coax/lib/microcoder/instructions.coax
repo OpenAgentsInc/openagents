@@ -9,17 +9,25 @@
 //   - Deduplicate files by canonical realpath (handles symlinks and case-insensitive FS).
 //   - Cap total output bytes so huge files never blow up the context window or the
 //     durable journal's context frame (AJ_PAYLOAD = 32768).
+//   - A file cut short ends with a note: the line it was cut at, how to view the rest, and the
+//     level 1 and 2 headings it left out with their lines (GitHub #13808), so the agent can
+//     view a later section (a long AGENTS.md's git rules, say) by range.
+//   - The person's own instructions (~/.openagents/instructions.md, coax/lib/agent/
+//     user-instructions.coax) are loaded beside these by run.coax mc_run_load_instructions, with
+//     their own header and budget.
 //
 // Checks:
 //   coax test coax/lib/microcoder/instructions.coax --library
 //   coax/web/tool.sh coax/lib/microcoder/instructions-selftest.coax
 
 #load "../sys/fs.coax";
+#load "../nostr/json.coax";
 
 MC_INSTR_MAX_DIRS :: 32;
 MC_INSTR_MAX_BYTES :: 12288;
 MC_INSTR_FILE_BUF :: 16384;
-MC_INSTR_TRUNC_NOTE :: "\n[... truncated; read the file for more ...]";
+MC_INSTR_NOTE_MAX :: 768;        // room kept for a cut file's note: where it was cut and the headings left out
+MC_INSTR_SCAN_MAX :: 262144;     // how far past the cut a note looks for headings
 MC_INSTR_HEADER :: "\n\nWorkspace instructions (loaded automatically):\n";
 
 // Strip trailing slashes from a directory path (keeping "/" as "/").
@@ -161,6 +169,69 @@ mc_instr_label :: (root: string, path: string, lb: [] u8) -> string {
   return fs_base(path);
 }
 
+// Whether line (its first bytes) is a Markdown heading of level 1 or 2 ("# x", "## x").
+mc_instr_heading :: (line: string) -> bool {
+  if line.count >= 2 && line[0] == '#' && line[1] == ' ' { return true; }
+  return line.count >= 3 && line[0] == '#' && line[1] == '#' && line[2] == ' ';
+}
+
+// The note a cut file ends with (GitHub #13808): the line it was cut at, how to view the rest,
+// and the headings it left out with their lines, so a long AGENTS.md's later sections (its git
+// rules, say) are still found. shown is what was kept, from the file's start. Cut to out.
+mc_instr_trunc_note :: (path: string, label: string, shown: string, out: [] u8) -> string {
+  line := 1;
+  for c: shown { if c == '\n' { line += 1; } }
+  lb: [24] u8; ln := json_write_int(lb[..], 0, line);
+  n := mc_instr_put(out, 0, "\n[... truncated at line ");
+  n = mc_instr_put(out, n, cast(string) lb[0..<ln]);
+  n = mc_instr_put(out, n, "; view ");
+  n = mc_instr_put(out, n, label);
+  n = mc_instr_put(out, n, ":");
+  n = mc_instr_put(out, n, cast(string) lb[0..<ln]);
+  n = mc_instr_put(out, n, "- for the rest.");
+  // the headings past the cut, read a chunk at a time
+  at_start := shown.count == 0 || shown[shown.count - 1] == '\n';
+  hb: [120] u8; hn := 0;
+  heads := 0; full := false;
+  off := shown.count;
+  chunk: [4096] u8;
+  while off - shown.count < MC_INSTR_SCAN_MAX && !full {
+    got := fs_read_at(path, off, chunk[..]);
+    if got <= 0 { break; }
+    for i: 0..<got {
+      c := chunk[i];
+      if c == '\n' {
+        if at_start && mc_instr_heading(cast(string) hb[0..<hn]) {
+          hl: [24] u8; hk := json_write_int(hl[..], 0, line);
+          need := 8 + hk + 2 + hn + 1 + 6;   // "\n- line N: TEXT" and room for the close
+          if n + need > out.count { full = true; break; }
+          if heads == 0 { n = mc_instr_put(out, n, " Sections not shown:"); }
+          n = mc_instr_put(out, n, "\n- line ");
+          n = mc_instr_put(out, n, cast(string) hl[0..<hk]);
+          n = mc_instr_put(out, n, ": ");
+          n = mc_instr_put(out, n, cast(string) hb[0..<ifx hn == hb.count then mc_instr_utf8_cut(cast(string) hb[0..<hn], hn - 3) else hn]);
+          heads += 1;
+        }
+        line += 1; hn = 0; at_start = true;
+      } else if hn < hb.count && c != '\r' {
+        hb[hn] = c; hn += 1;
+      }
+    }
+    off += got;
+  }
+  if at_start && hn > 0 && !full && mc_instr_heading(cast(string) hb[0..<hn]) {
+    hl: [24] u8; hk := json_write_int(hl[..], 0, line);
+    if n + 8 + hk + 2 + hn + 6 <= out.count {
+      if heads == 0 { n = mc_instr_put(out, n, " Sections not shown:"); }
+      n = mc_instr_put(out, n, "\n- line "); n = mc_instr_put(out, n, cast(string) hl[0..<hk]);
+      n = mc_instr_put(out, n, ": "); n = mc_instr_put(out, n, cast(string) hb[0..<hn]);
+    }
+  }
+  if full { n = mc_instr_put(out, n, "\n- ..."); }
+  n = mc_instr_put(out, n, " ...]\n");
+  return cast(string) out[0..<n];
+}
+
 // Read one instruction file (up to MC_INSTR_FILE_BUF bytes) and append it to out within cap.
 // Returns new offset in out, and sets appended[0] = true if any non-empty content was added.
 mc_instr_append_file :: (out: [] u8, at: int, cap: int, label: string, path: string, appended: [] bool) -> int {
@@ -187,13 +258,15 @@ mc_instr_append_file :: (out: [] u8, at: int, cap: int, label: string, path: str
   trunc := has_more || raw.count > avail;
   take := raw.count;
   if trunc {
-    room := avail - MC_INSTR_TRUNC_NOTE.count;
+    room := avail - MC_INSTR_NOTE_MAX;
     if room < 0 { room = 0; }
     take = mc_instr_utf8_cut(raw, room);
   }
   p = mc_instr_put(out, p, raw[0..<take]);
   if trunc {
-    p = mc_instr_put(out, p, MC_INSTR_TRUNC_NOTE);
+    nb: [MC_INSTR_NOTE_MAX] u8;
+    nn := ifx cap - p < MC_INSTR_NOTE_MAX then cap - p else MC_INSTR_NOTE_MAX;
+    if nn > 0 { p = mc_instr_put(out, p, mc_instr_trunc_note(path, label, raw[0..<take], nb[0..<nn])); }
   }
   if p > 0 && p < cap && out[p - 1] != '\n' {
     p = mc_instr_put(out, p, "\n");
@@ -298,4 +371,13 @@ mc_instructions_load :: (cwd: string, out: [] u8) -> string {
   #assert mc_instr_label("/repo", "/repo/AGENTS.md", lb[..]) == "AGENTS.md";
   #assert mc_instr_label("/repo", "/repo/sub/AGENTS.md", lb[..]) == "sub/AGENTS.md";
   #assert mc_instr_label("/other", "/repo/AGENTS.md", lb[..]) == "AGENTS.md";
+}
+
+#test "mc_instr_heading finds level 1 and 2 Markdown headings only" {
+  #assert mc_instr_heading("# AGENTS");
+  #assert mc_instr_heading("## Git");
+  #assert !mc_instr_heading("### Deeper");
+  #assert !mc_instr_heading("#tag");
+  #assert !mc_instr_heading("text # not");
+  #assert !mc_instr_heading("");
 }

@@ -2,7 +2,7 @@
 // Run: COAX=coax/bin/coax coax/web/tool.sh coax/lib/microcoder/instructions-selftest.coax
 
 #import "Basic";
-#load "instructions.coax";
+#load "run.coax";
 
 St :: struct {
   pass: int;
@@ -144,13 +144,72 @@ tool_main :: () -> int #export_c #effects(all) {
   for i: 0..<big.count { big[i] = cast(u8) (ifx i % 80 == 79 then '\n' else 'A'); }
   x = fs_write(fs_join(d10, "AGENTS.md", pb[..]), cast(string) big[..]);
   r10 := mc_instructions_load(d10, out[..]);
-  st_check(s[..], r10.count > 0 && r10.count <= MC_INSTR_MAX_BYTES && st_has(r10, "[... truncated;"), "huge file is cleanly truncated within cap", "");
+  st_check(s[..], r10.count > 0 && r10.count <= MC_INSTR_MAX_BYTES && st_has(r10, "[... truncated at line "), "huge file is cleanly truncated within cap", "");
+
+  // 10b. A cut file's note names the headings left out, with their lines (GitHub #13808)
+  d10b := fs_join(root, "t10b-headings", p1[..]);
+  x = fs_mkdir(d10b);
+  x = fs_mkdir(fs_join(d10b, ".git", pb[..]));
+  hbig: [30000] u8;
+  hn := 0;
+  for i: 0..<hbig.count { hbig[i] = cast(u8) (ifx i % 80 == 79 then '\n' else 'B'); }
+  // a heading at the top, one past the cut, and the git rules at the end
+  top := "# Top\n";
+  for i: 0..<top.count { hbig[i] = top[i]; }
+  mid := "## Build and test\n";
+  for i: 0..<mid.count { hbig[16000 + i] = mid[i]; }
+  git := "## Git\n";
+  for i: 0..<git.count { hbig[29920 + i] = git[i]; }
+  x = fs_write(fs_join(d10b, "AGENTS.md", pb[..]), cast(string) hbig[..]);
+  r10b := mc_instructions_load(d10b, out[..]);
+  st_check(s[..], r10b.count <= MC_INSTR_MAX_BYTES && st_has(r10b, "Sections not shown:") && st_has(r10b, "- line 202: ## Build and test") && st_has(r10b, "- line 377: ## Git") && !st_has(r10b, ": # Top"), "a cut file's note lists the later headings with their lines", r10b);
+  st_check(s[..], st_has(r10b, "view AGENTS.md:"), "a cut file's note says how to view the rest", "");
+
+  // 10c. User instructions come first, under their own header, and a large AGENTS.md can't crowd them out
+  ub: [FS_PATH_MAX] u8; upath := fs_join(root, "user-instructions.md", ub[..]);
+  x = fs_write(upath, "USER_RULE: commit and push.\n");
+  sb10: [1] McStateBuffers; lb10: [1] McLoopBuffers; l10: [1] McLoop;
+  mc_init(l10[..], sb10[..], lb10[..], "{}", "t", "{\"local_work\":0.9}", 0.9);
+  ok10 := mc_run_load_instructions_from(l10[..], lb10[..], d10b, upath);
+  sys := l10[0].system;
+  iu := st_index(sys, "USER_RULE: commit and push.");
+  iw := st_index(sys, "Workspace instructions");
+  st_check(s[..], ok10 && st_index(sys, "User instructions (") > 0 && iu > 0 && iw > iu && st_has(sys, "## Git"), "user instructions first, then the cut AGENTS.md with its headings", "");
+
+  // 10d. No user file: the default; an empty one: none
+  nb: [FS_PATH_MAX] u8; none := fs_join(root, "no-such-dir/instructions.md", nb[..]);
+  d2b: [FS_PATH_MAX] u8; d2 = fs_join(root, "t2-agents-upper", d2b[..]);
+  l10[0].system = MC_SYSTEM;
+  ok10 = mc_run_load_instructions_from(l10[..], lb10[..], d2, none);
+  st_check(s[..], ok10 && st_has(l10[0].system, "push the commit") && st_has(l10[0].system, "Upper AGENTS rule"), "no user file: the default user instructions and the workspace's", "");
+  x = fs_write(upath, "  \n");
+  l10[0].system = MC_SYSTEM;
+  ok10 = mc_run_load_instructions_from(l10[..], lb10[..], d2, upath);
+  st_check(s[..], ok10 && !st_has(l10[0].system, "User instructions (") && st_has(l10[0].system, "Upper AGENTS rule"), "an empty user file: no user instructions", "");
 
   // 11. Real repo test: this worktree itself has agents.md and loads cleanly
   cwdb: [FS_PATH_MAX] u8;
   cwd := fs_cwd(cwdb[..]);
   r11 := mc_instructions_load(cwd, out[..]);
   st_check(s[..], r11.count > 0 && r11.count <= MC_INSTR_MAX_BYTES && st_has(r11, "OpenAgents"), "loads real repo agents.md cleanly", "");
+
+  // 10e. Every mode on (the longest system prompt): the user instructions still go in whole, and
+  // the workspace's get what is left of the buffer
+  x = fs_write(upath, "USER_RULE_ALL_MODES\n");
+  l10[0].system = MC_SYSTEM; l10[0].schema = MC_SCHEMA;
+  modes := mc_aware(l10[..], lb10[..], true, true) && mc_agents(l10[..], lb10[..], true, "some/model") && mc_no_ask(l10[..], lb10[..]);
+  ok10 = mc_run_load_instructions_from(l10[..], lb10[..], d10b, upath);
+  st_check(s[..], modes && ok10 && st_has(l10[0].system, "USER_RULE_ALL_MODES") && st_has(l10[0].system, "Workspace instructions") && st_has(l10[0].system, "[... truncated at line ") && l10[0].system.count <= lb10[0].system.count, "every mode on: user instructions whole, workspace cut to fit", "");
+  // ... and mcworker's journal context frame still holds it (coder/tui/mcworker.coax: cwd, session,
+  // policy, sandbox, system and schema, escaped, in AJ_PAYLOAD), with a long working folder
+  ctx: [32768] u8; longcwd: [1024] u8;
+  for i: 0..<longcwd.count { longcwd[i] = 'd'; }
+  nc := json_raw(ctx[..], 0, "{\"profile\":\"coder-owned-v1\",\"cwd\":"); nc = json_write_string(ctx[..], nc, cast(string) longcwd[..]);
+  nc = json_raw(ctx[..], nc, ",\"session\":\"0123456789abcdef0123456789abcdef\",\"policy\":null,\"sandbox\":\"danger-full-access\",\"system\":");
+  nc = json_write_string(ctx[..], nc, l10[0].system);
+  nc = json_raw(ctx[..], nc, ",\"schema\":"); nc = json_write_string(ctx[..], nc, l10[0].schema);
+  nc = json_raw(ctx[..], nc, ",\"gated\":false}");
+  st_check(s[..], nc > 0 && nc <= 32768, "the longest system prompt fits mcworker's journal context frame", "");
 
   print("instructions selftest: % passed, % failed\n", s[0].pass, s[0].fail);
   if s[0].fail == 0 {
