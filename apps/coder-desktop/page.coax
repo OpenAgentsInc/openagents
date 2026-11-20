@@ -26,3 +26,4 @@
 #load "page/checks/overlay-checks.coax" #test;
 #load "page/checks/editor-checks.coax" #test;
 #load "page/checks/palette-checks.coax" #test;
+#load "page/checks/composer-checks.coax" #test;

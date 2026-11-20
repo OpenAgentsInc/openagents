@@ -124,6 +124,12 @@ coder_page_folder :: (s: [] CoderPage, shown: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].folder_n = cp_out(s[0].folder[..], shown);
 }
+// The working folder's Git branch, as the host read it ("" for none): the composer's foot shows it
+// after the folder (#13743).
+coder_page_branch :: (s: [] CoderPage, name: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].branch_n = cp_out(s[0].branch[..], name);
+}
 // The answer the worker is owed for the command it asked about: yes, run it. The page shows every
 // command as it starts; it does not hold one back. Its length in out, 0 when none is owed.
 coder_page_answer_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
@@ -153,7 +159,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   // Each model request streams its own text. What one wrote before it ran commands is not the
   // reply: the next request's text takes its place, as the ended line's whole reply does.
   if kind == MWW_REPLY { cp_reply_set(s, i, l[0].text, !s[0].turns[i].fresh); s[0].turns[i].fresh = false; }
-  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); }
+  else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]); }
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }

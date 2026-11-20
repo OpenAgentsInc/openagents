@@ -59,6 +59,10 @@ CP_BOTTOM :: 8;             // under the message bar
 CP_COLUMN :: 660;           // the conversation's widest column (Zeron's prose.measure)
 CP_FOLDER_TEXT :: 512;     // bytes of the working folder's name as shown
 CP_FOLDER_MOST :: 280;      // the working folder chip's greatest width; a longer name is cut with an ellipsis
+CP_BRANCH_TEXT :: 128;     // bytes of the folder's Git branch as shown
+// the composer (#13743): its foot's side inset, the + glyph's arm and stroke, Send's arrow, a foot
+// chip's chevron, the context card's padding, and the draft's bytes past which it is surely wider than a line
+CP_FOOT_SIDE :: 8; CP_PLUS :: 12; CP_PLUS_STROKE :: 1.5; CP_SEND_ICON :: 14; CP_CHEVRON :: 12; CP_CARD_PAD :: 10; CP_PILL_MEASURE :: 2000;
 CP_CORNER :: 8;             // New chat from the window's top and right edges
 CP_MODEL :: "gemini-4-neon";               // Microcoder's default main model (Hydrogen until 2026-11-18)
 CP_MODEL_NAME :: "Microcoder · Gemini 4 Neon";
@@ -217,6 +221,9 @@ CoderPage :: struct {
   goal_turn_began: f32;                                     // clock when the running goal turn began
   goal_notice: [CP_GOAL_NOTICE] u8; goal_notice_n: int;     // feedback/usage notice from /goal commands
   folder: [CP_FOLDER_TEXT] u8; folder_n: int;   // the working folder as shown (~/work/app): commands start there
+  branch: [CP_BRANCH_TEXT] u8; branch_n: int;   // its Git branch, "" when it has none (#13743)
+  // the context the last model call used (#13743): its input, cached and output tokens, and the model's window (0: not known)
+  ctx_in: int; ctx_cached: int; ctx_out: int; ctx_window: int;
   answer: int; answer_due: bool;   // the ticket of the worker's ask that is owed its answer
   results_due: bool;          // every sub-agent of the round has ended: the worker is owed their results
   // the sub-agent whose transcript shows on the window's right (GitHub #13666): which, where it
@@ -245,6 +252,9 @@ CoderPage :: struct {
   frame_n: int; rev_n: int; doc_clock: int;
   scr: [1] UiScroll; side_scr: [1] UiScroll; pane_scr: [1] UiScroll; scr_at: int; scr_live: bool; now: f64; now_host: bool;   // each view's coast, stretch and rail (components/core/scroll.coax), the view a gesture holds, the host's clock (else the page's)
   box: ComposerBox;
+  // Zeron's pill (components/zeron/composer.coax, #13743): its shape in motion, the draft's
+  // hysteresis, the composer with its footer as last drawn, and the empty chat's heading's height
+  pill: [1] ZcMotion; pill_next: bool; bar_h: f32; empty_h: f32;
   ask: int; refused: int; moving: bool;
   live_ask: int; live_reply: int; live_call: int; live_pane: int;   // >= 0: newly arrived live item to animate in once
   copied_turn: int; copied_block: int; copied_kind: int;

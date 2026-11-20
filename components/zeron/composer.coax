@@ -777,6 +777,130 @@ paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th:
   return composer_draw(out, at, c, a, d, list[..], n, split[0]);
 }
 
+// ---------------------------------------------------------------- Zeron's pill geometry
+
+// Zeron's composer pill as a page lays it out around its own text field (ds/composer_layout.luau
+// and ds/composer_motion.luau): compact, one 49 row (a 28 round control at the start, the text
+// line, Send at the end) while the draft fits; expanded, a text box of 76 to 260 then scrolling,
+// insets 16/16/4, the controls under it. Once expanded it stays until the draft is 32 narrower
+// than the room (hysteresis). A change of shape moves over 220 ms by out(3); with reduced
+// motion it lands at once. The text keeps its compact width until a whole line fits over the
+// controls, then takes its expanded width in one step: it never wraps through moving insets.
+ZC_LINE :: 22; ZC_ONE_LINE :: 47; ZC_TEXT_TOP :: 16; ZC_TEXT_BOTTOM :: 4; ZC_TEXT_MIN :: 76; ZC_TEXT_MAX :: 260;
+ZC_CONTROL :: 28; ZC_TEXT_SIDE :: 8; ZC_TEXT_OPEN_SIDE :: 16; ZC_ACTIONS :: 42; ZC_ACTIONS_OVER :: 3;
+ZC_HYSTERESIS :: 32; ZC_BORDER :: 1; ZC_TRAILING :: 32; ZC_MOTION_MS :: 220; ZC_MS :: 1000;
+ZcPill :: struct {
+  expanded: bool;               // the shape shown (in motion: whether the text has its expanded width yet)
+  next_text: bool;              // the hysteresis carried to the next input change
+  height: f32;                  // the pill, its border in
+  text_left: f32; text_right: f32; text_top: f32; text_h: f32;   // the text box, from the pill's edges
+  compact_left: f32; compact_right: f32;
+  lead_left: f32; lead_bottom: f32;        // the leading control (ZC_CONTROL round), from the pill's start and foot
+  trail_right: f32; trail_bottom: f32;     // Send (ZC_TRAILING), from the pill's end and foot
+  line: f32;
+}
+// The target shape at width w for a draft unwrapped_w wide that wraps to wrapped_h at the expanded
+// text width; trailing_w: what stands at the end (Send, a mic); control_corner: the pill's radius
+// less its border. forced: a new chat, attachments or a question keep it expanded.
+zc_pill :: (w: f32, unwrapped_w: f32, wrapped_h: f32, line: f32, trailing_w: f32, control_corner: f32, forced: bool, multiline: bool, previous: bool) -> ZcPill {
+  inset_line := cast(f32) (ZC_ONE_LINE - ZC_CONTROL) / 2;
+  inset := control_corner - cast(f32) ZC_CONTROL / 2;
+  actions := cast(f32) ZC_ACTIONS; if inset + cast(f32) (ZC_CONTROL + ZC_ACTIONS_OVER) > actions { actions = inset + cast(f32) (ZC_CONTROL + ZC_ACTIONS_OVER); }
+  tail := ifx trailing_w > 0 then trailing_w else cast(f32) (ZC_CONTROL * 2 + ZC_TEXT_SIDE);
+  line_left := inset_line + cast(f32) (ZC_CONTROL + ZC_TEXT_SIDE);
+  line_right := cast(f32) ZC_TEXT_SIDE + tail + inset_line;
+  room := w - cast(f32) (ZC_BORDER * 2) - line_left - line_right;
+  expanded := forced; next := previous;
+  if !forced && w > 0 {
+    if multiline { expanded = true; }
+    else if previous { expanded = unwrapped_w > room - cast(f32) ZC_HYSTERESIS; }
+    else { expanded = unwrapped_w > room; }
+    next = expanded;
+  }
+  lh := ifx line > 0 then line else cast(f32) ZC_LINE;
+  natural := (ifx wrapped_h > lh then wrapped_h else lh) + cast(f32) (ZC_TEXT_TOP + ZC_TEXT_BOTTOM);
+  box := ifx natural < cast(f32) ZC_TEXT_MIN then cast(f32) ZC_TEXT_MIN else ifx natural > cast(f32) ZC_TEXT_MAX then cast(f32) ZC_TEXT_MAX else natural;
+  g: ZcPill;
+  g.expanded = expanded; g.next_text = next; g.line = lh;
+  g.height = ifx expanded then box + actions + cast(f32) (ZC_BORDER * 2) else cast(f32) (ZC_ONE_LINE + ZC_BORDER * 2);
+  g.compact_left = line_left; g.compact_right = line_right;
+  g.text_left = ifx expanded then cast(f32) ZC_TEXT_OPEN_SIDE else line_left;
+  g.text_right = ifx expanded then cast(f32) ZC_TEXT_OPEN_SIDE else line_right;
+  g.text_top = ifx expanded then cast(f32) ZC_TEXT_TOP else cast(f32) (ZC_ONE_LINE - ZC_LINE) / 2;
+  g.text_h = ifx expanded then box - cast(f32) (ZC_TEXT_TOP + ZC_TEXT_BOTTOM) else lh;
+  at := ifx expanded then inset else inset_line;
+  g.lead_left = at; g.lead_bottom = at;
+  g.trail_right = at; g.trail_bottom = at - cast(f32) (ZC_TRAILING - ZC_CONTROL) / 2;   // Send, 4 taller, centred on the leading control
+  return g;
+}
+zc_out3 :: (t: f32) -> f32 { x := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t; return 1 - (1 - x) * (1 - x) * (1 - x); }
+zc_mix :: (a: f32, b: f32, p: f32) -> f32 { return a + (b - a) * p; }
+// The shape a fraction p of the way (eased) from one to the other.
+zc_pill_frame :: (from: ZcPill, to: ZcPill, p: f32) -> ZcPill {
+  if p >= 1 { return to; }
+  g := to;
+  g.height = zc_mix(from.height, to.height, p);
+  g.lead_left = zc_mix(from.lead_left, to.lead_left, p); g.lead_bottom = zc_mix(from.lead_bottom, to.lead_bottom, p);
+  g.trail_right = zc_mix(from.trail_right, to.trail_right, p); g.trail_bottom = zc_mix(from.trail_bottom, to.trail_bottom, p);
+  top := zc_mix(from.text_top, to.text_top, p);
+  fb := from.height - cast(f32) (ZC_BORDER * 2) - from.text_top - from.text_h;
+  tb := to.height - cast(f32) (ZC_BORDER * 2) - to.text_top - to.text_h;
+  bottom := zc_mix(fb, tb, p);
+  avail := g.height - cast(f32) (ZC_BORDER * 2) - top - bottom; if avail < 0 { avail = 0; }
+  controls := g.lead_bottom + cast(f32) ZC_CONTROL; if g.trail_bottom + cast(f32) ZC_TRAILING > controls { controls = g.trail_bottom + cast(f32) ZC_TRAILING; }
+  least := ifx to.line < to.text_h then to.line else to.text_h;
+  expand := to.expanded && bottom >= controls - 0.001 && avail >= least - 0.001;   // not a size: a rounding allowance
+  g.text_left = ifx expand then to.text_left else to.compact_left;
+  g.text_right = ifx expand then to.text_right else to.compact_right;
+  if !expand { inset_line := cast(f32) (ZC_ONE_LINE - ZC_CONTROL) / 2; g.lead_left = inset_line; g.trail_right = inset_line; }
+  g.text_top = top; g.text_h = avail; g.expanded = expand;
+  return g;
+}
+// The pill in motion: where it started, where it goes, and how far (0 to 1, by time).
+ZcMotion :: struct { from: ZcPill; to: ZcPill; t: f32; set: bool; }
+zc_same_shape :: (a: ZcPill, b: ZcPill) -> bool {
+  return a.height == b.height && a.expanded == b.expanded && a.text_top == b.text_top && a.text_h == b.text_h && a.text_left == b.text_left && a.text_right == b.text_right;
+}
+// dt seconds toward target: a new shape starts a run from the one shown; reduced motion lands at once.
+zc_motion_step :: (m: [] ZcMotion, target: ZcPill, dt: f32, reduced: bool) -> ZcPill {
+  if !m[0].set || reduced { m[0].from = target; m[0].to = target; m[0].t = 1; m[0].set = true; return target; }
+  if !zc_same_shape(m[0].to, target) {
+    m[0].from = zc_pill_frame(m[0].from, m[0].to, zc_out3(m[0].t)); m[0].to = target; m[0].t = 0;
+  } else { m[0].to = target; }
+  if m[0].t < 1 { m[0].t += dt * cast(f32) ZC_MS / cast(f32) ZC_MOTION_MS; if m[0].t > 1 { m[0].t = 1; } }
+  return zc_pill_frame(m[0].from, m[0].to, zc_out3(m[0].t));
+}
+zc_moving :: (m: [] ZcMotion) -> bool { return m[0].set && m[0].t < 1; }
+
+#test "Zeron's pill: compact while the line fits, expanded past it, 32 of hysteresis, a new line or a new chat forces it" {
+  // 600 wide, Send 32 at the end, a 25 corner: the line's room is 600 - 2 - 45.5 - 49.5
+  room := 600.0f32 - 2 - 45.5 - 49.5;
+  g := zc_pill(600, 100, 22, 22, 32, 25, false, false, false);
+  #assert !g.expanded && g.height == 49 && g.text_left == 45.5 && g.text_right == 49.5 && g.text_top == 12.5 && g.text_h == 22;
+  #assert g.lead_left == 9.5 && g.trail_bottom == 7.5;
+  #assert zc_pill(600, room + 1, 44, 22, 32, 25, false, false, false).expanded;
+  // once open it stays until the line is 32 narrower than the room
+  #assert zc_pill(600, room - 10, 22, 22, 32, 25, false, false, true).expanded;
+  #assert !zc_pill(600, room - 40, 22, 22, 32, 25, false, false, true).expanded;
+  e := zc_pill(600, 10, 22, 22, 32, 25, false, true, false);
+  #assert e.expanded && e.height == 76 + 42 + 2 && e.text_left == 16 && e.text_top == 16 && e.text_h == 56 && e.lead_left == 11;
+  // the box grows to 260, then the field scrolls
+  #assert zc_pill(600, 10, 400, 22, 32, 25, false, true, false).height == 260 + 42 + 2;
+  f := zc_pill(600, 10, 22, 22, 32, 25, true, false, false);
+  #assert f.expanded && !f.next_text;   // forced: the text's hysteresis is not touched
+}
+#test "Zeron's pill in motion: 220 ms by out(3), compact text width until a line fits, instant with reduced motion" {
+  m: [1] ZcMotion;
+  a := zc_pill(600, 10, 22, 22, 32, 25, false, false, false);
+  b := zc_pill(600, 10, 44, 22, 32, 25, false, true, false);
+  g := zc_motion_step(m[..], a, 0, false); #assert g.height == 49 && !zc_moving(m[..]);
+  g = zc_motion_step(m[..], b, 0.011, false);
+  #assert zc_moving(m[..]) && g.height > 49 && g.height < b.height && !g.expanded && g.text_left == a.text_left;
+  for i: 0..<30 { g = zc_motion_step(m[..], b, 0.011, false); }
+  #assert !zc_moving(m[..]) && g.height == b.height && g.expanded && g.text_left == 16;
+  g = zc_motion_step(m[..], a, 0.011, true); #assert g.height == 49 && !zc_moving(m[..]);
+}
+
 // ---------------------------------------------------------------- checks
 
 // Every glyph 8 wide (14 for a grapheme the atlas lacks, once "measured").

@@ -40,6 +40,12 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
   if s[0].budget_override { n = json_raw(out, n, ",\"budget_override\":true"); }
   n = json_raw(out, n, ",\"model\":");
   n = json_write_string(out, n, cp_model_id(s, cp_model_index(s)));
+  if s[0].ctx_in > 0 {
+    n = json_raw(out, n, ",\"ctx_in\":"); n = json_write_int(out, n, s[0].ctx_in);
+    n = json_raw(out, n, ",\"ctx_cached\":"); n = json_write_int(out, n, s[0].ctx_cached);
+    n = json_raw(out, n, ",\"ctx_out\":"); n = json_write_int(out, n, s[0].ctx_out);
+    n = json_raw(out, n, ",\"ctx_window\":"); n = json_write_int(out, n, s[0].ctx_window);
+  }
   if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
     n = json_raw(out, n, ",\"goal_status\":"); n = json_write_int(out, n, s[0].goal_status);
     n = json_raw(out, n, ",\"goal_time\":"); n = json_write_int(out, n, s[0].goal_time_seconds);
@@ -178,6 +184,13 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
   s[0].model = cp_model_find(cl_str(mar[..], text, "model"));
   s[0].model_menu = false;
+  cp_ctx_reset(s);
+  ci := cl_int(text, "ctx_in");
+  if ci.ok && ci.value > 0 {
+    cc := cl_int(text, "ctx_cached"); co := cl_int(text, "ctx_out"); cwin := cl_int(text, "ctx_window");
+    s[0].ctx_in = ci.value; s[0].ctx_cached = ifx cc.ok && cc.value > 0 then cc.value else 0;
+    s[0].ctx_out = ifx co.ok && co.value > 0 then co.value else 0; s[0].ctx_window = ifx cwin.ok && cwin.value > 0 then cwin.value else 0;
+  }
   cp_goal_reset(s);
   gs := cl_int(text, "goal_status");
   if gs.ok && gs.value >= CP_GOAL_ACTIVE && gs.value <= CP_GOAL_BUDGET_LIMITED {
@@ -228,7 +241,7 @@ coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effect
 // host first moves that chat out of view (coder_page_take), where its run goes on.
 cp_new :: (s: [] CoderPage) -> bool {
   if cp_running(s) { s[0].ask = CP_ASK_NEW; return true; }
-  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0;
+  s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); s[0].cost_usd_micros = 0; s[0].kept_cost = 0; cp_ctx_reset(s);
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false; s[0].kept_budget = CP_BUDGET_DEFAULT; s[0].kept_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
   cp_goal_reset(s); s[0].kept_goal_status = CP_GOAL_NONE; s[0].kept_goal_n = 0; s[0].kept_goal_time = 0;
@@ -258,6 +271,7 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
   to[0].kept_budget = from[0].kept_budget; to[0].kept_override = from[0].kept_override; to[0].kept_model = from[0].kept_model;
   to[0].kept_goal_status = from[0].kept_goal_status; to[0].kept_goal_n = from[0].kept_goal_n; to[0].kept_goal_time = from[0].kept_goal_time;
+  to[0].ctx_in = from[0].ctx_in; to[0].ctx_cached = from[0].ctx_cached; to[0].ctx_out = from[0].ctx_out; to[0].ctx_window = from[0].ctx_window; cp_ctx_reset(from);
   to[0].cost_usd_micros = from[0].cost_usd_micros; to[0].budget_usd_micros = cp_budget(from); to[0].budget_override = from[0].budget_override; to[0].model = cp_model_index(from); to[0].model_menu = false;
   to[0].goal_status = from[0].goal_status; to[0].goal_time_seconds = from[0].goal_time_seconds; to[0].goal_turns = from[0].goal_turns; to[0].goal_prompt_kind = from[0].goal_prompt_kind; to[0].goal_turn_began = ifx from[0].goal_turn_began > 0 then from[0].goal_turn_began + shift else 0;
   to[0].goal_objective_n = cp_out(to[0].goal_objective[..], cast(string) from[0].goal_objective[0..<from[0].goal_objective_n]);

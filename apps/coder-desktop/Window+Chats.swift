@@ -15,7 +15,37 @@ extension CoderWindow {
         if keep { UserDefaults.standard.set(folder.path, forKey: "folder") }
         let home = FileManager.default.homeDirectoryForCurrentUser.path, path = folder.path
         cd_folder(page, path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path)
+        refreshBranch()
         wake()
+    }
+    /// The working folder's Git branch for the composer's foot (#13743): HEAD's branch, a detached
+    /// HEAD's short commit, "" outside a repository. Read again when a reply ends.
+    func refreshBranch() {
+        cd_branch(page, CoderWindow.gitBranch(folder))
+    }
+    static func gitBranch(_ folder: URL) -> String {
+        var dir = folder.standardizedFileURL
+        let fm = FileManager.default
+        while true {
+            let dot = dir.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dot.path, isDirectory: &isDir) {
+                var gitDir = dot
+                if !isDir.boolValue {   // a worktree's or a submodule's .git file: "gitdir: <path>"
+                    guard let line = try? String(contentsOf: dot, encoding: .utf8), line.hasPrefix("gitdir:") else { return "" }
+                    let p = line.dropFirst(7).trimmingCharacters(in: .whitespacesAndNewlines)
+                    gitDir = p.hasPrefix("/") ? URL(fileURLWithPath: p) : dir.appendingPathComponent(p)
+                }
+                guard let head = try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8) else { return "" }
+                let h = head.trimmingCharacters(in: .whitespacesAndNewlines)
+                if h.hasPrefix("ref: refs/heads/") { return String(h.dropFirst(16)) }
+                return String(h.prefix(7))
+            }
+            if dir.path == "/" || dir.path.isEmpty { return "" }
+            let up = dir.deletingLastPathComponent().standardizedFileURL
+            if up.path == dir.path { return "" }
+            dir = up
+        }
     }
     struct BinaryIdentity: Equatable {
         let path: String

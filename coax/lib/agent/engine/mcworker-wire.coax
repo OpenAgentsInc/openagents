@@ -401,6 +401,7 @@ MwwLine :: struct {
   ticket: JsonInt;               // ask, delegate
   tasks: string;                 // delegate: the tasks' JSON list
   gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt; provider_cost_usd_micros: JsonInt;   // attempt, what an owner shows
+  model: string; input_tokens: JsonInt; cached_tokens: JsonInt; output_tokens: JsonInt;   // attempt: the context it used
   values: string;                // embedding: the list's JSON text, "" when there is none
   error: string;                 // embedding: the error member's JSON text, "" when there is none
   why: string;                   // embedding: the error's words
@@ -432,6 +433,8 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
     l[0].outcome = cl_str(ar, line, "outcome");
     l[0].gateway = cl_str(ar, line, "gateway");
     l[0].status = cl_int(line, "status");
+    l[0].model = cl_str(ar, line, "model");
+    l[0].input_tokens = cl_int(line, "input_tokens"); l[0].cached_tokens = cl_int(line, "cached_tokens"); l[0].output_tokens = cl_int(line, "output_tokens");
   }
   else if kind == "command" {
     k = MWW_COMMAND;
@@ -569,6 +572,9 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert l[0].gateway == "vertex" && l[0].outcome == "rate_limited" && l[0].status.value == 429 && l[0].usd_micros.ok && l[0].usd_micros.value == 12 && !l[0].provider_cost_usd_micros.ok;
   #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"gateway\":\"openrouter\",\"outcome\":\"done\",\"status\":200,\"provider_cost_usd_micros\":345,\"usd_micros\":400}", l[..]) == MWW_ATTEMPT;
   #assert l[0].provider_cost_usd_micros.ok && l[0].provider_cost_usd_micros.value == 345 && l[0].usd_micros.ok && l[0].usd_micros.value == 400;
+  #assert !l[0].input_tokens.ok && l[0].model == "";
+  #assert mww_read(ar[..], "{\"kind\":\"attempt\",\"model\":\"gemini-4-neon\",\"input_tokens\":1200,\"cached_tokens\":800,\"output_tokens\":90}", l[..]) == MWW_ATTEMPT;
+  #assert l[0].model == "gemini-4-neon" && l[0].input_tokens.value == 1200 && l[0].cached_tokens.value == 800 && l[0].output_tokens.value == 90;
   back: [2048] u8;
   m := mww_attempt_again(ar[..], cast(string) o[0..<n], back[..]);
   #assert m == n && cast(string) back[0..<m] == cast(string) o[0..<n] && cl_raw(cast(string) back[0..<m], "engine") == "null";

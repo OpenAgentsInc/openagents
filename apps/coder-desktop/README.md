@@ -21,7 +21,9 @@ desktop, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals
 - **Send** (or Return) starts one Microcoder run. Shift-Return makes a new line.
 - **Stop** ends the run.
 - **New chat** (the top row of the sidebar, the top-right icon when the sidebar is hidden, or Command-N) clears the window and makes Microcoder forget the conversation.
-- **The working folder** shows as a chip in the composer's bottom-left toolbar. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
+- **The composer** is one row while your message fits on a line and grows into a box when it doesn't, when it has a new line, or in a new chat, where it stands in the middle of the window. Return sends; Shift-Return makes a new line. The **+** at its start chooses the working folder.
+- **Under the composer** are the working folder and its Git branch, the model (View > Choose Model, Command-/), a ring that shows how full the model's context was on its last call (hover it for the token counts), the chat's cost against its budget, and its goal. In a narrow window the goal goes first, then the cost, the ring and the branch.
+- **The working folder** shows as a chip under the composer. Commands start there. Press it (or File > Open Folder, Command-O) to choose another. Coder keeps the folder you chose; until you choose one, it is your home folder. You can't change it during a run.
 - **Command-plus** and **Command-minus** make the text bigger and smaller, in eight sizes from 80% to 200%. Command-0 is the usual size. Coder keeps the size you chose.
 - **Copy** on a code block puts its text on the clipboard.
 - **The copy icon under a message** copies that message: yours as you wrote it, a reply as its Markdown.

@@ -149,7 +149,7 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
 cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
   side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
-  bar := ifx s[0].box.height > 0 then s[0].box.height else 80.0f32;
+  bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h;   // what scrolls runs up to the follow-ups and the bar
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
@@ -160,12 +160,9 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   y += cp_bar(s);
   is_foreman := cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
   if is_foreman { y += cp_foreman_hud(s, f, x, y, cw, running, exceeded); }
-  if s[0].nturns == 0 {
-    if is_foreman {
-      _ := app_empty(f, "coder.empty", x, y + a.gap, cw, ICON_BOT, "Foreman is standing by", "Describe a goal or delegate work across managed chats.");
-    } else {
-      _ := app_empty(f, "coder.empty", x, top + s[0].view / 3, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
-    }
+  // an empty chat's heading stands over its composer (cp_composer); Foreman's here, its composer at the foot
+  if s[0].nturns == 0 && is_foreman {
+    _ := app_empty(f, "coder.empty", x, y + a.gap, cw, ICON_BOT, "Foreman is standing by", "Describe a goal or delegate work across managed chats.");
   }
   ib: [EL_ID] u8;
   // Every message stands at its height as last measured, or CP_ROW_ESTIMATE before that, and only
@@ -355,14 +352,13 @@ cp_foreman_hud :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, runn
   }
   return fhud_hud(f, x, y, cw, hud[..]) + a.gap;
 }
-// The buttons in the window's top corners: the chat's cost and goal, Copy chat, and with no sidebar
+// The buttons in the window's top corners (the chat's cost and goal are in the composer's foot): Copy chat, and with no sidebar
 // Show sidebar and New chat.
 cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32, exceeded: bool) {
   k := f[0].skin; a := k.app;
   side := a.icon_button;
   // the corners' buttons stand on the window's title bar, on its line, clear of its controls at the left
-  cy := cp_bar_y(s, side); chip_y := cy + (side - k.cmp.chip_h) / 2;
-  least := ifx left > 0 then left + CP_CORNER else cp_bar_clear(s) + CP_CORNER;
+  cy := cp_bar_y(s, side);
   // New chat floats in the window's top right corner, over what scrolls
   all := s[0].copied_kind == CP_COPIED_ALL;
   copy_x := ifx left > 0 then w - a.icon_button - CP_CORNER else w - 2 * a.icon_button - CP_CORNER;
@@ -373,33 +369,6 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
     shown := cp_review_shown(s);
     _ := app_icon_button(f, "coder.review", lead_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);
   }
-  {
-    cb: [32] u8; bb: [32] u8; lb: [64] u8;
-    cost := ifx s[0].cost_usd_micros > 0 then cp_cost(cb[..], s[0].cost_usd_micros) else "$0.00";
-    bud := cp_cost(bb[..], cp_budget(s));
-    ln := el_put(lb[..], 0, cost); ln = el_put(lb[..], ln, " / "); ln = el_put(lb[..], ln, bud);
-    label := sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
-    cw_cost := app_chip_width(f, -1, label, 0);
-    cx := lead_x - a.gap_small - cw_cost;
-    if cx > least {
-      _ := app_chip(f, "coder.cost", cx, chip_y, 0, -1, "Chat budget", label, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT);
-    }
-    if s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0 {
-      glb: [64] u8; gtb: [32] u8;
-      gln := el_put(glb[..], 0, "Goal · ");
-      gln = el_put(glb[..], gln, cp_goal_status_label(s[0].goal_status));
-      if s[0].goal_time_seconds > 0 {
-        gln = el_put(glb[..], gln, " · ");
-        gln = el_put(glb[..], gln, cp_goal_elapsed(gtb[..], s[0].goal_time_seconds));
-      }
-      glabel := sheet_pool(f[0].sheet, cast(string) glb[0..<gln]);
-      gw := app_chip_width(f, -1, glabel, 0);
-      gx := cx - a.gap_small - gw;
-      if gx > least {
-        _ := app_chip(f, "coder.goal", gx, chip_y, 0, -1, "Thread goal", glabel, ifx s[0].goal_status == CP_GOAL_ACTIVE then EL_S_CURRENT else 0, CP_GOAL_OPEN);
-      }
-    }
-  }
   _ := app_icon_button(f, "coder.copy", copy_x, cy, ifx all then k.icon_check else k.icon_copy, ifx all then "Copied" else "Copy chat", APP_BUTTON_QUIET,
                        ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_COPY_ALL);
   if left == 0 {
@@ -407,205 +376,311 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
                          ifx s[0].nturns == 0 then EL_S_DISABLED else 0, CP_NEW);
   }
 }
-// The composer at the window's foot, x and cw as the conversation: Zeron pill container,
-// working folder chip on the left, model chip beside Send, and the models' popover above it.
+// The composer, x and cw as the conversation (#13743): Zeron's pill (components/zeron/composer.coax's
+// zc_pill), compact on one 49 row while the draft fits and expanded over it, and its foot under it:
+// the working folder and its branch, the model (Command-/ opens its menu), how full the context is,
+// the chat's cost and its goal. A narrow foot folds the goal first, then the cost, the context and
+// the branch. An empty chat (not Foreman's) holds the composer, expanded, in the window's middle
+// under its heading; it grows down from there.
 cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
-  queues := s[0].fu[0].queue_first;   // while a reply runs Return steers it or queues a follow-up (#13717)
-  s[0].box = cp_zeron_composer(s, f, x, h - CP_BOTTOM, cw, running, full || exceeded);
-  // Zeron bottom toolbar inside the composer pill: working folder chip on the left,
-  // compact model selector chip beside the circular 28pt send/stop pill on the right,
-  // and Zeron-styled model picker popover above it.
-  th := cp_theme();
-  z_ink := th.text; z_sec := th.muted; z_ter := th.faint;   // text.primary, .secondary, .tertiary
-  z_hov := th.hover; z_prs := th.pressed;
-  glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
-  box_y := (h - CP_BOTTOM) - s[0].box.height;
+  is_foreman := cast(string) s[0].current[0..<s[0].current_n] == "chat.foreman";
+  centred := s[0].nturns == 0 && !is_foreman;
+  foot := k.cmp.chip_h + a.gap_small;
+  g := cp_pill_shape(s, f, cw);
+  box_y := h - cast(f32) CP_BOTTOM - foot - g.height;
+  if centred {
+    least := zc_pill(cw, 0, 0, k.cmp.line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, true, false, false).height;
+    top := (h - s[0].empty_h - a.gap - least - foot) / 2;
+    if top < cast(f32) CP_CORNER + a.icon_button { top = cast(f32) CP_CORNER + a.icon_button; }
+    eh := app_empty(f, "coder.empty", x, top, cw, ICON_THOUGHT, "What do you want to do?", "Microcoder answers on Gemini 4 Neon.");
+    if abs(eh - s[0].empty_h) > 0.5 { s[0].empty_h = eh; s[0].anim = true; }
+    if top + eh + a.gap < box_y { box_y = top + eh + a.gap; }
+  }
+  s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded);
+  s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
-  row_y := box_y + s[0].box.row_y;
-  chip_y := row_y + (s[0].box.send - k.cmp.chip_h) / 2;
-  chip_gap := 6.0f32;
-  m_label := cp_model_label(s, cp_model_index(s));
-  m_tw := measure_width(f[0].m, k.small.face, m_label);
-  m_chev := 12.0f32;
-  m_gap := 4.0f32;
-  m_w := m_tw + m_gap + m_chev + 2 * k.cmp.chip_pad;
-  m_max := s[0].box.send_x - k.cmp.action_inset - chip_gap;
-  if m_w > m_max { m_w = m_max; }
-  m_x := x + s[0].box.send_x - chip_gap - m_w;
-  if running {
-    // the folder can't change while a reply runs: its place says what Return does, and a press
-    // turns it the other way; with a draft, Steer and Queue beside it
-    fx := x + 8.0f32;
-    mode := ifx queues then "Return queues" else "Return steers";
-    mw := app_chip(f, "coder.fu.mode", fx, chip_y, m_x - fx - chip_gap, -1, "What Return does while the reply runs", mode, 0, CP_FU_MODE);
-    if eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0 {
-      bx := fx + mw + a.gap_small;
-      sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
-      if bx + sw + qw + a.gap_small <= m_x - a.gap_small {
-        _ := app_chip(f, "coder.fu.steer", bx, chip_y, 0, -1, "Steer the reply with the draft", "Steer", ifx queues then 0 else EL_S_CURRENT, CP_FU_DRAFT);
-        _ := app_chip(f, "coder.fu.queue", bx + sw + a.gap_small, chip_y, 0, -1, "Queue the draft for after the reply", "Queue", ifx queues then EL_S_CURRENT else 0, CP_FU_DRAFT);
-      }
-    }
-  } else if s[0].folder_n > 0 {
-    name := sheet_pool(f[0].sheet, cast(string) s[0].folder[0..<s[0].folder_n]);
-    fx := x + 8.0f32;
-    max_fw := m_x - fx - chip_gap;
-    cap := cast(f32) CP_FOLDER_MOST;
-    if max_fw > cap { max_fw = cap; }
-    if max_fw > 0 {
-      sh := f[0].sheet;
-      f_state := ifx running then EL_S_DISABLED else 0;
-      f_tw := measure_width(f[0].m, k.small.face, name);
-      f_w := k.cmp.chip_pad + k.cmp.chip_icon + k.cmp.chip_gap + f_tw + k.cmp.chip_pad;
-      if f_w > max_fw { f_w = max_fw; }
-      f_row := uiframe_semantic(f, "coder.folder", EL_BUTTON, "Working folder", fx, chip_y, f_w, k.cmp.chip_h, f_state, CP_FOLDER);
-      elt_value(f[0].rows, f_row, name);
-      f_hov := !running && uiframe_hovered(f, "coder.folder");
-      f_prs := !running && uiframe_pressed(f, "coder.folder");
-      if f_prs { sheet_fill(sh, fx, chip_y, f_w, k.cmp.chip_h, k.cmp.chip_radius, z_prs); }
-      else if f_hov { sheet_fill(sh, fx, chip_y, f_w, k.cmp.chip_h, k.cmp.chip_radius, z_hov); }
-      f_ink := ifx running then z_ter else ifx f_hov || f_prs then z_ink else z_sec;
-      sheet_icon(sh, ICON_FOLDER, fx + k.cmp.chip_pad, chip_y + (k.cmp.chip_h - k.cmp.chip_icon) / 2, k.cmp.chip_icon, f_ink);
-      f_text_max := f_w - 2 * k.cmp.chip_pad - k.cmp.chip_icon - k.cmp.chip_gap;
-      if f_text_max > 0 {
-        f_shown := app_fit(f, k.small.face, name, f_text_max);
-        _ := sheet_text(sh, f[0].m, -1, fx + k.cmp.chip_pad + k.cmp.chip_icon + k.cmp.chip_gap, chip_y + (k.cmp.chip_h - k.small.line) / 2, k.small.line, k.small.face, f_ink, f_shown);
-      }
-      sheet_hit(sh, UIFRAME_HIT, f_row, 0, fx, chip_y, f_w, k.cmp.chip_h);
-    }
+  m_x := cp_composer_foot(s, f, x, box_y + g.height + a.gap_small, cw, running, exceeded);
+  if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y); }
+}
+// The pill's shape this frame for a column cw wide: the draft's width on one line and its rows at
+// the expanded text width, the shape that makes, and the run toward it (220 ms, none with reduced
+// motion). A new chat keeps it expanded; a draft of lines expands it.
+cp_pill_shape :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> ZcPill {
+  k := f[0].skin; a := s[0].atlas[..];
+  text := eb_text(s[0].draft[..]);
+  lines := false; for c: text { if c == 10 { lines = true; break; } }
+  line := k.cmp.line;
+  wide: f32 = 0;
+  if !lines {
+    if !a[0].ready { wide = cast(f32) text.count * line / 2; }
+    else if text.count > CP_PILL_MEASURE { wide = cw; }   // far past a line: no need to measure it all
+    else { wide = text_width(a, CP_COMPOSER_FACE, text); }
   }
-  if m_w > 0 {
-    sh := f[0].sheet;
-    m_state := ifx s[0].model_menu then EL_S_CURRENT else 0;
-    m_row := uiframe_semantic(f, "coder.model", EL_BUTTON, "Model", m_x, chip_y, m_w, k.cmp.chip_h, m_state, CP_MODEL_MENU);
-    elt_value(f[0].rows, m_row, m_label);
-    m_hov := uiframe_hovered(f, "coder.model");
-    m_prs := uiframe_pressed(f, "coder.model");
-    if m_prs || s[0].model_menu { sheet_fill(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, ifx m_prs then z_prs else z_hov); }
-    else if m_hov { sheet_fill(sh, m_x, chip_y, m_w, k.cmp.chip_h, k.cmp.chip_radius, z_hov); }
-    m_ink := ifx s[0].model_menu || m_hov || m_prs then z_ink else z_sec;
-    shown := app_fit(f, k.small.face, m_label, m_w - 2 * k.cmp.chip_pad - m_gap - m_chev);
-    _ := sheet_text(sh, f[0].m, -1, m_x + k.cmp.chip_pad, chip_y + (k.cmp.chip_h - k.small.line) / 2, k.small.line, k.small.face, m_ink, shown);
-    sheet_icon(sh, ICON_CHEVRON, m_x + m_w - k.cmp.chip_pad - m_chev, chip_y + (k.cmp.chip_h - m_chev) / 2, m_chev, m_ink);
-    sheet_hit(sh, UIFRAME_HIT, m_row, 0, m_x, chip_y, m_w, k.cmp.chip_h);
-  }
-  if s[0].model_menu {
-    sh := f[0].sheet;
-    pw := 240.0f32;
-    if pw > cw { pw = cw; }
-    pad := 6.0f32;
-    rh := 42.0f32;
-    ph := pad * 2 + cast(f32) cp_models(s) * rh;
-    px := m_x + m_w - pw;
-    if px < x { px = x; }
-    py := box_y - ph - 6.0f32;
-    if py < 8.0f32 { py = 8.0f32; }
-    menu_r := 12.0f32;
-    // Paint the Zeron-styled popover card in the over list so it cleanly covers underlying transcript text.
-    // zeron.menu: its shadow (the skin's, 0 20 56), then, frosted, its solid over a blur of what is
-    // behind it, at 80% (Zeron's tint sits over macOS's popover frost, which this window has no layer of)
-    sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, k.shadows.menu));
-    if glass {
-      sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, px, py, px + pw, py + ph));
-      sheet_over_n(sh, prim_backdrop(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, cp_glass_blur(s)));
-    }
-    sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32, ifx glass then opacity(th.menu, 0.8) else th.menu, th.line));
-    card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
-    sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
-    mb: [32] u8;
-    for mi: 0..<cp_models(s) {
-      ry := py + pad + cast(f32) mi * rh;
-      mn := el_put(mb[..], 0, "coder.model."); mn = el_put_i(mb[..], mn, mi);
-      mid := sheet_pool(sh, cast(string) mb[0..<mn]);
-      sel := mi == cp_model_index(s);
-      hov := uiframe_hovered(f, mid);
-      label := cp_model_label(s, mi);
-      desc := cp_model_desc(s, mi);
-      mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
-      elt_value(f[0].rows, mrow, desc);
-      if hov || sel {
-        fill := ifx hov then z_hov else th.menu_selected;
-        sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1.0f32, pw - 2 * pad, rh - 2.0f32, k.cmp.chip_radius, 0, fill, Rgba.{}));
-      }
-      tx := px + pad + 10.0f32;
-      tw := pw - 2 * pad - 34.0f32;
-      _ := sheet_text(sh, f[0].m, -1, tx, ry + 4.0f32, k.label.line, k.label.face, z_ink, app_fit(f, k.label.face, label, tw));
-      _ := sheet_text(sh, f[0].m, -1, tx, ry + 22.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, desc, tw));
-      if sel {
-        ck := 14.0f32;
-        sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10.0f32 - ck, ry + (rh - ck) / 2, ck, ck, z_ink));
-      }
-      sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
-    }
-    if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
-  }
+  open_w := cw - cast(f32) (ZC_BORDER * 2 + ZC_TEXT_OPEN_SIDE * 2);
+  rows := cast(f32) cp_ed_lines(s, k, open_w) * line;
+  target := zc_pill(cw, wide, rows, line, cast(f32) ZC_TRAILING, k.cmp.radius - cast(f32) ZC_BORDER, s[0].nturns == 0, lines, s[0].pill_next);
+  s[0].pill_next = target.next_text;
+  g := zc_motion_step(s[0].pill[..], target, f[0].dt, s[0].reduced);
+  if zc_moving(s[0].pill[..]) { s[0].anim = true; }
+  return g;
 }
 
-// Exact pixel-perfect Zeron chat composer pill (ds/composer.luau + ds/composer_layout.luau +
-// ds/themes/zeron-dark.json): 26pt radius, the composer's solid and edge, its 0 12 32 shadow,
-// 14pt horizontal / 12pt top text padding, 22pt line height (14pt Geist), 40pt bottom action strip,
-// and a 28pt circular pill Send/Stop button at 6pt inset.
-cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, w: f32, running: bool, off: bool) -> ComposerBox {
-  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
-  radius := k.cmp.radius;                      // 26pt (zeron.composer.radius)
-  border_w := 1.0f32;
-  side_pad := 14.0f32;
-  top_pad := 12.0f32;
-  line_h := k.cmp.line;                        // 22pt
-  control := 28.0f32;                      // 28pt circular pill button
-  inset := 6.0f32;                         // Send's inset from the pill's edge
-  actions_h := 40.0f32;                    // 6pt top breathing + 28pt controls + 6pt bottom inset
-  max_text_h := line_h * 8.0f32;               // Zeron MAX_LINES = 8 (176pt)
+// Zeron's chat composer pill (ds/composer.luau, ds/composer_layout.luau) in the page's theme (cp_theme(), Coder Noir)
+// at (x, y), w wide, in shape g: its radius (26, at most half its height), the composer's solid and
+// edge (firmer with the keyboard), its 0 12 32 shadow, the 28 round + (a working folder) at its
+// start, the text, and the 32 round Send / Stop at its end. No microphone: there is no dictation.
+cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g: ZcPill, running: bool, off: bool) -> ComposerBox {
+  k := f[0].skin; sh := f[0].sheet;
+  border := cast(f32) ZC_BORDER;
+  radius := k.cmp.radius; if radius > g.height / 2 { radius = g.height / 2; }
   text := eb_text(s[0].draft[..]);
   editing := cp_composer_focused(s) && !s[0].model_menu;
-  text_w := w - 2.0f32 * side_pad;
-  if text_w < line_h { text_w = line_h; }
-  // the draft's own rows (the page's editor wraps it), 1 to 8; past 8 the field scrolls
-  text_h := cast(f32) cp_ed_lines(s, k, text_w) * line_h;
-  if text_h < line_h { text_h = line_h; }
-  if text_h > max_text_h { text_h = max_text_h; }
-  box_h := top_pad + text_h + actions_h;
-  box_y := bottom - box_h;
-  row_y := box_h - inset - control;
-  send_x := w - inset - control;
-  // The page's theme (cp_theme(), Coder Noir): the pill, its edge (firmer with the keyboard),
-  // the text and its tiers, and the primary button.
   th := cp_theme();
   z_solid := th.surface; z_edge := th.border; z_edge_focus := th.line_strong;
   z_pri_bg := th.primary; z_pri_hov := th.primary_hover; z_pri_prs := th.primary_active; z_pri_ink := th.bg;
   z_dis_bg := th.secondary; z_dis_ink := th.disabled;
-  // zeron.composer.shadow: the skin's, 0 12 32 under the pill.
-  sheet_under(sh, uiskin_shadow(sh[0].under, sh[0].nu, x, box_y, w, box_h, radius, k.shadows.composer));
-  // Main Zeron pill container.
+  sheet_under(sh, uiskin_shadow(sh[0].under, sh[0].nu, x, y, w, g.height, radius, k.shadows.composer));
   field_state := (ifx editing then EL_S_FOCUSED else 0) | (ifx off then EL_S_DISABLED else 0);
-  field_row := uiframe_semantic(f, "coder.composer", EL_FIELD, "Message", x, box_y, w, box_h, field_state, CP_FIELD);
+  field_row := uiframe_semantic(f, "coder.composer", EL_FIELD, "Message", x, y, w, g.height, field_state, CP_FIELD);
   elt_value(f[0].rows, field_row, text);
-  _ := sheet_box(sh, x, box_y, w, box_h, radius, border_w, z_solid, ifx editing then z_edge_focus else z_edge);
-  sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, box_y, w, box_h);
-  // The draft in the page's editor (editor.coax): its caret, selection and composition; empty, the
-  // placeholder, which while a reply runs says what Return does (#13717).
+  elt_value(f[0].rows, uiframe_semantic(f, "coder.composer.shape", EL_REGION, ifx g.expanded then "Expanded" else "Compact", x, y, w, g.height, 0, 0), ifx g.expanded then "expanded" else "compact");
+  _ := sheet_box(sh, x, y, w, g.height, radius, border, z_solid, ifx editing then z_edge_focus else z_edge);
+  sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
+  // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
+  // says what Return does (#13717)
   hint := ifx !running then "Do anything…" else ifx s[0].fu[0].queue_first then "Queue a follow-up · ⌘Return steers · Esc stops" else "Steer the reply · ⌘Return queues · Esc stops";
-  cp_ed_draw(s, f, CP_ED_COMPOSER, x + side_pad, box_y + top_pad, text_w, text_h, hint);
-  // Concentric 28pt circular pill Send / Stop button.
-  sx := x + send_x;
-  sy := box_y + row_y;
+  tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right;
+  if tw < g.line { tw = g.line; }
+  cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
+  // + : the working folder (not while a reply runs)
+  control := cast(f32) ZC_CONTROL;
+  lx := x + border + g.lead_left; ly := y + g.height - border - g.lead_bottom - control;
+  lead_off := running;
+  lead_row := uiframe_semantic(f, "coder.composer.add", EL_BUTTON, "Choose a working folder", lx, ly, control, control, ifx lead_off then EL_S_DISABLED else 0, ifx lead_off then 0 else CP_FOLDER);
+  lead_hov := !lead_off && uiframe_hovered(f, "coder.composer.add");
+  lead_prs := !lead_off && uiframe_pressed(f, "coder.composer.add");
+  if lead_prs || lead_hov { sheet_fill(sh, lx, ly, control, control, control / 2, ifx lead_prs then th.pressed else th.hover); }
+  lead_ink := ifx lead_off then th.faint else ifx lead_hov || lead_prs then th.text else th.muted;
+  arm := cast(f32) CP_PLUS; bar := cast(f32) CP_PLUS_STROKE;
+  sheet_fill(sh, lx + (control - arm) / 2, ly + (control - bar) / 2, arm, bar, bar / 2, lead_ink);
+  sheet_fill(sh, lx + (control - bar) / 2, ly + (control - arm) / 2, bar, arm, bar / 2, lead_ink);
+  if !lead_off { sheet_hit(sh, UIFRAME_HIT, lead_row, 0, lx, ly, control, control); }
+  // Send / Stop
+  send := cast(f32) ZC_TRAILING;
+  sx := x + w - border - g.trail_right - send; sy := y + g.height - border - g.trail_bottom - send;
   can_send := running || (!off && text.count > 0);
   send_label := ifx running then "Stop" else "Send";
-  send_state := ifx !can_send then EL_S_DISABLED else 0;
-  send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, control, control, send_state, CP_SEND);
+  send_row := uiframe_semantic(f, "coder.composer.send", EL_BUTTON, send_label, sx, sy, send, send, ifx !can_send then EL_S_DISABLED else 0, CP_SEND);
   send_hov := can_send && uiframe_hovered(f, "coder.composer.send");
   send_prs := can_send && uiframe_pressed(f, "coder.composer.send");
   send_bg := ifx !can_send then z_dis_bg else ifx send_prs then z_pri_prs else ifx send_hov then z_pri_hov else z_pri_bg;
   send_ink := ifx !can_send then z_dis_ink else z_pri_ink;
-  sheet_fill(sh, sx, sy, control, control, control / 2.0f32, send_bg);
+  sheet_fill(sh, sx, sy, send, send, send / 2, send_bg);
   if running {
-    sq := k.cmp.stop;                          // 10pt square, 3pt corner radius
-    sheet_fill(sh, sx + (control - sq) / 2.0f32, sy + (control - sq) / 2.0f32, sq, sq, k.cmp.stop_radius, send_ink);
+    sq := k.cmp.stop;
+    sheet_fill(sh, sx + (send - sq) / 2, sy + (send - sq) / 2, sq, sq, k.cmp.stop_radius, send_ink);
   } else {
-    ic := 14.0f32;                         // 14pt arrow-up icon
-    sheet_icon(sh, ICON_ARROW_UP, sx + (control - ic) / 2.0f32, sy + (control - ic) / 2.0f32, ic, send_ink);
+    ic := cast(f32) CP_SEND_ICON;
+    sheet_icon(sh, ICON_ARROW_UP, sx + (send - ic) / 2, sy + (send - ic) / 2, ic, send_ink);
   }
-  sheet_hit(sh, UIFRAME_HIT, send_row, 0, sx, sy, control, control);
-  return ComposerBox.{height = box_h, text_x = side_pad, text_y = top_pad, text_w = text_w, text_h = text_h, inset = 0.0f32, line = line_h, row_y = row_y, send_x = send_x, send = control};
+  sheet_hit(sh, UIFRAME_HIT, send_row, 0, sx, sy, send, send);
+  return ComposerBox.{height = g.height, text_x = tx, text_y = border + g.text_top, text_w = tw, text_h = g.text_h, inset = 0.0f32, line = g.line,
+                      row_y = sy - y, send_x = sx - x, send = send};
+}
+
+// A chip of the composer's foot (Zeron's quiet chip): no ground until hovered or pressed; an icon
+// (-1: none), its text cut to w, a chevron when it opens a menu. EL_S_CURRENT holds it lit,
+// EL_S_DISABLED dims it and takes no press. Returns its width.
+cp_foot_chip :: (f: [] UiFrame, id: string, label: string, x: f32, y: f32, w: f32, icon: int, text: string, chevron: bool, state: int, action: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme(); c := k.cmp;
+  off := (state & EL_S_DISABLED) != 0; on := (state & EL_S_CURRENT) != 0;
+  row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, c.chip_h, state, ifx off then 0 else action);
+  elt_value(f[0].rows, row, text);
+  hov := !off && uiframe_hovered(f, id); prs := !off && uiframe_pressed(f, id);
+  if prs || hov || on { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx prs then th.pressed else th.hover); }
+  ink := ifx off then th.faint else ifx on || hov || prs then th.text else th.muted;
+  tx := x + c.chip_pad; room := w - 2 * c.chip_pad;
+  if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += c.chip_icon + c.chip_gap; room -= c.chip_icon + c.chip_gap; }
+  chev := cast(f32) CP_CHEVRON;
+  if chevron { room -= chev + c.chip_gap; sheet_icon(sh, ICON_CHEVRON, x + w - c.chip_pad - chev, y + (c.chip_h - chev) / 2, chev, ink); }
+  if room > 0 { _ := sheet_text(sh, f[0].m, -1, tx, y + (c.chip_h - k.small.line) / 2, k.small.line, k.small.face, ink, app_fit(f, k.small.face, text, room)); }
+  if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, c.chip_h); }
+  return w;
+}
+cp_foot_chip_width :: (f: [] UiFrame, icon: int, text: string, chevron: bool) -> f32 {
+  k := f[0].skin; c := k.cmp;
+  w := 2 * c.chip_pad + measure_width(f[0].m, k.small.face, text);
+  if icon >= 0 { w += c.chip_icon + c.chip_gap; }
+  if chevron { w += cast(f32) CP_CHEVRON + c.chip_gap; }
+  return w;
+}
+// The composer's foot at y: on the left the working folder › its branch (while a reply runs, what
+// Return does, and Steer and Queue for a draft) and the model; on the right the chat's goal, its
+// cost and how full the context is. Too narrow, it folds the goal, then the cost, the context and
+// the branch. Returns the model chip's x, for its menu.
+cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, running: bool, exceeded: bool) -> f32 {
+  k := f[0].skin; a := k.app; c := k.cmp;
+  side := cast(f32) CP_FOOT_SIDE; gap := a.gap_small;
+  queues := s[0].fu[0].queue_first;
+  // what each part says
+  fb: [CP_FOLDER_TEXT + CP_BRANCH_TEXT + 8] u8;
+  fn := el_put(fb[..], 0, cast(string) s[0].folder[0..<s[0].folder_n]);
+  short_n := fn;
+  if s[0].branch_n > 0 { fn = el_put(fb[..], fn, " › "); fn = el_put(fb[..], fn, cast(string) s[0].branch[0..<s[0].branch_n]); }
+  m_label := cp_model_label(s, cp_model_index(s));
+  cb: [32] u8; bb: [32] u8; lb: [64] u8;
+  ln := el_put(lb[..], 0, ifx s[0].cost_usd_micros > 0 then cp_cost(cb[..], s[0].cost_usd_micros) else "$0.00");
+  ln = el_put(lb[..], ln, " / "); ln = el_put(lb[..], ln, cp_cost(bb[..], cp_budget(s)));
+  cost := sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
+  has_goal := s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0;
+  glb: [64] u8; gtb: [32] u8; gln := 0;
+  if has_goal {
+    gln = el_put(glb[..], 0, "Goal · "); gln = el_put(glb[..], gln, cp_goal_status_label(s[0].goal_status));
+    if s[0].goal_time_seconds > 0 { gln = el_put(glb[..], gln, " · "); gln = el_put(glb[..], gln, cp_goal_elapsed(gtb[..], s[0].goal_time_seconds)); }
+  }
+  goal := sheet_pool(f[0].sheet, cast(string) glb[0..<gln]);
+  // their widths, and what folds
+  w_folder := ifx running then app_chip_width(f, -1, ifx queues then "Return queues" else "Return steers", 0) else ifx s[0].folder_n > 0 then cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<fn], false) else 0.0f32;
+  w_short := ifx running || s[0].folder_n == 0 then w_folder else cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<short_n], false);
+  cap := cast(f32) CP_FOLDER_MOST;
+  if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
+  w_model := cp_foot_chip_width(f, -1, m_label, true);
+  w_ring := c.chip_h;
+  w_cost := cp_foot_chip_width(f, -1, cost, false);
+  w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
+  show_goal := has_goal; show_cost := true; show_ring := s[0].ctx_in > 0; show_branch := s[0].branch_n > 0 && !running;
+  room := cw - 2 * side;
+  for step: 0..<5 {
+    need := (ifx show_branch then w_folder else w_short) + (ifx w_folder > 0 then gap else 0.0f32) + w_model;
+    if show_ring { need += gap + w_ring; } if show_cost { need += gap + w_cost; } if show_goal { need += gap + w_goal; }
+    if need <= room { break; }
+    if show_goal { show_goal = false; } else if show_cost { show_cost = false; } else if show_ring { show_ring = false; } else { show_branch = false; }
+  }
+  // the right side, from the end
+  rx := x + cw - side;
+  if show_ring { rx -= w_ring; cp_context_ring(s, f, rx, y, x, cw); rx -= gap; }
+  if show_cost { rx -= w_cost; _ := cp_foot_chip(f, "coder.cost", "Chat budget", rx, y, w_cost, -1, cost, false, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT); rx -= gap; }
+  if show_goal { rx -= w_goal; _ := cp_foot_chip(f, "coder.goal", "Thread goal", rx, y, w_goal, -1, goal, false, ifx s[0].goal_status == CP_GOAL_ACTIVE then EL_S_CURRENT else 0, CP_GOAL_OPEN); rx -= gap; }
+  // the left side: the model after the folder, cut to what is left
+  fx := x + side;
+  fw := ifx show_branch then w_folder else w_short;
+  left := rx - fx;
+  mw := w_model; if mw > left { mw = left; }
+  if fw > left - mw - gap { fw = left - mw - gap; }
+  if running {
+    if fw > 0 {
+      mode := ifx queues then "Return queues" else "Return steers";
+      used := app_chip(f, "coder.fu.mode", fx, y, fw, -1, "What Return does while the reply runs", mode, 0, CP_FU_MODE);
+      fx += used + gap;
+      if eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0 {
+        sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
+        if fx + sw + qw + 2 * gap + mw <= rx {
+          _ := app_chip(f, "coder.fu.steer", fx, y, 0, -1, "Steer the reply with the draft", "Steer", ifx queues then 0 else EL_S_CURRENT, CP_FU_DRAFT);
+          _ := app_chip(f, "coder.fu.queue", fx + sw + gap, y, 0, -1, "Queue the draft for after the reply", "Queue", ifx queues then EL_S_CURRENT else 0, CP_FU_DRAFT);
+          fx += sw + qw + 2 * gap;
+        }
+      }
+    }
+  } else if fw > 0 && s[0].folder_n > 0 {
+    shown := sheet_pool(f[0].sheet, cast(string) fb[0..<(ifx show_branch then fn else short_n)]);
+    fx += cp_foot_chip(f, "coder.folder", "Working folder", fx, y, fw, ICON_FOLDER, shown, false, 0, CP_FOLDER) + gap;
+  }
+  m_x := fx;
+  if mw > 0 { _ := cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
+  return m_x;
+}
+// How full the context is, a ring at (x, y) in the foot; hovered, a card over it with the last
+// model call's tokens: its input of the model's window, then input, cached and output.
+cp_context_ring :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, col_x: f32, cw: f32) {
+  k := f[0].skin; c := k.cmp; sh := f[0].sheet; th := cp_theme();
+  side := c.chip_h; ring := c.chip_icon;
+  share := cp_ctx_share(s);
+  ub: [24] u8; wb: [24] u8; l1: [96] u8;
+  n1 := el_put(l1[..], 0, cp_tokens(ub[..], s[0].ctx_in + s[0].ctx_out));
+  if s[0].ctx_window > 0 {
+    n1 = el_put(l1[..], n1, " of "); n1 = el_put(l1[..], n1, cp_tokens(wb[..], s[0].ctx_window)); n1 = el_put(l1[..], n1, " tokens · ");
+    pct := cast(int) (share * 100 + 0.5);   // not a size
+    if pct == 0 && share > 0 { n1 = el_put(l1[..], n1, "<1"); } else { n1 = el_put_i(l1[..], n1, pct); }
+    n1 = el_put(l1[..], n1, "%");
+  } else { n1 = el_put(l1[..], n1, " tokens"); }
+  line1 := sheet_pool(sh, cast(string) l1[0..<n1]);
+  row := uiframe_semantic(f, "coder.context", EL_PROGRESS, "Context used", x, y, side, side, 0, 0);
+  elt_value_share(f[0].rows, row, share);
+  hov := uiframe_hovered(f, "coder.context");
+  if hov { sheet_fill(sh, x, y, side, side, c.chip_radius, th.hover); }
+  progress_ring(sh, k, x + (side - ring) / 2, y + (side - ring) / 2, ring, share);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, side, side);
+  if !hov { return; }
+  ib: [24] u8; cb: [24] u8; ob: [24] u8; l2: [128] u8;
+  n2 := el_put(l2[..], 0, "Input "); n2 = el_put(l2[..], n2, cp_tokens(ib[..], s[0].ctx_in));
+  n2 = el_put(l2[..], n2, " · Cached "); n2 = el_put(l2[..], n2, cp_tokens(cb[..], s[0].ctx_cached));
+  n2 = el_put(l2[..], n2, " · Output "); n2 = el_put(l2[..], n2, cp_tokens(ob[..], s[0].ctx_out));
+  line2 := sheet_pool(sh, cast(string) l2[0..<n2]);
+  pad := cast(f32) CP_CARD_PAD;
+  w1 := measure_width(f[0].m, k.label.face, line1); w2 := measure_width(f[0].m, k.small.face, line2);
+  pw := (ifx w1 > w2 then w1 else w2) + 2 * pad; if pw > cw { pw = cw; }
+  ph := 2 * pad + k.label.line + k.small.line;
+  px := x + side - pw; if px < col_x { px = col_x; }
+  py := y - ph - k.app.gap_small;
+  r := c.chip_radius;
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, r, k.shadows.menu));
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, r, 1.0f32, th.menu, th.line));
+  card := uiframe_semantic(f, "coder.context.card", EL_REGION, line1, px, py, pw, ph, 0, 0);
+  elt_value(f[0].rows, card, line2);
+  _ := sheet_text(sh, f[0].m, -1, px + pad, py + pad, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, line1, pw - 2 * pad));
+  _ := sheet_text(sh, f[0].m, -1, px + pad, py + pad + k.label.line, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, line2, pw - 2 * pad));
+}
+// The models' menu, over the composer at box_y, its start at the model chip's (m_x).
+cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box_y: f32) {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
+  glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
+  pw := 240.0f32;
+  if pw > cw { pw = cw; }
+  pad := 6.0f32;
+  rh := 42.0f32;
+  ph := pad * 2 + cast(f32) cp_models(s) * rh;
+  px := m_x;
+  if px + pw > x + cw { px = x + cw - pw; }
+  if px < x { px = x; }
+  py := box_y - ph - 6.0f32;
+  if py < 8.0f32 { py = 8.0f32; }
+  menu_r := 12.0f32;
+  // zeron.menu: its shadow (the skin's, 0 20 56), then, frosted, its solid over a blur of what is
+  // behind it, at 80% (Zeron's tint sits over macOS's popover frost, which this window has no layer of)
+  sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, k.shadows.menu));
+  if glass {
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, px, py, px + pw, py + ph));
+    sheet_over_n(sh, prim_backdrop(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, cp_glass_blur(s)));
+  }
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px, py, pw, ph, menu_r, 1.0f32, ifx glass then opacity(th.menu, 0.8) else th.menu, th.line));
+  card_row := uiframe_semantic(f, "coder.model.menu", EL_REGION, "Models", px, py, pw, ph, 0, 0);
+  sheet_hit(sh, UIFRAME_HIT, card_row, 0, px, py, pw, ph);
+  mb: [32] u8;
+  for mi: 0..<cp_models(s) {
+    ry := py + pad + cast(f32) mi * rh;
+    mn := el_put(mb[..], 0, "coder.model."); mn = el_put_i(mb[..], mn, mi);
+    mid := sheet_pool(sh, cast(string) mb[0..<mn]);
+    sel := mi == cp_model_index(s);
+    hov := uiframe_hovered(f, mid);
+    label := cp_model_label(s, mi);
+    desc := cp_model_desc(s, mi);
+    mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
+    elt_value(f[0].rows, mrow, desc);
+    if hov || sel {
+      fill := ifx hov then z_hov else th.menu_selected;
+      sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1.0f32, pw - 2 * pad, rh - 2.0f32, k.cmp.chip_radius, 0, fill, Rgba.{}));
+    }
+    tx := px + pad + 10.0f32;
+    tw := pw - 2 * pad - 34.0f32;
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + 4.0f32, k.label.line, k.label.face, z_ink, app_fit(f, k.label.face, label, tw));
+    _ := sheet_text(sh, f[0].m, -1, tx, ry + 22.0f32, k.small.line, k.small.face, z_sec, app_fit(f, k.small.face, desc, tw));
+    if sel {
+      ck := 14.0f32;
+      sheet_over_n(sh, prim_icon(sh[0].over, sh[0].no, ICON_CHECK, px + pw - pad - 10.0f32 - ck, ry + (rh - ck) / 2, ck, ck, z_ink));
+    }
+    sheet_hit(sh, UIFRAME_HIT, mrow, 0, px + pad, ry, pw - 2 * pad, rh);
+  }
+  if glass { sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no)); }
 }

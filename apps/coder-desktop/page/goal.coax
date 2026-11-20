@@ -228,6 +228,35 @@ cp_attempt_cost :: (l: MwwLine) -> int {
   if l.usd_micros.ok && l.usd_micros.value > 0 { return l.usd_micros.value; }
   return 0;
 }
+// The context a main model call used (#13743): the composer's ring shows its input against the
+// model's window (coax/lib/gateway/card.coax). A call without counts leaves the last one's.
+cp_ctx_take :: (s: [] CoderPage, l: MwwLine) {
+  if !l.input_tokens.ok || l.input_tokens.value <= 0 { return; }
+  s[0].ctx_in = l.input_tokens.value;
+  s[0].ctx_cached = ifx l.cached_tokens.ok && l.cached_tokens.value > 0 then l.cached_tokens.value else 0;
+  s[0].ctx_out = ifx l.output_tokens.ok && l.output_tokens.value > 0 then l.output_tokens.value else 0;
+  win := gw_window(l.model); if win > 0 { s[0].ctx_window = win; }
+}
+cp_ctx_reset :: (s: [] CoderPage) { s[0].ctx_in = 0; s[0].ctx_cached = 0; s[0].ctx_out = 0; s[0].ctx_window = 0; }
+// How full the context is, 0 to 1 (0 while the window is not known).
+cp_ctx_share :: (s: [] CoderPage) -> f32 {
+  if s[0].ctx_window <= 0 { return 0; }
+  p := cast(f32) (s[0].ctx_in + s[0].ctx_out) / cast(f32) s[0].ctx_window;
+  return ifx p > 1 then 1.0f32 else p;
+}
+// A count of tokens, short: 950, 12.3K, 128K, 1.05M.
+cp_tokens :: (out: [] u8, v: int) -> string {
+  n := 0;
+  if v < 1000 { n = el_put_i(out, 0, ifx v < 0 then 0 else v); }
+  else if v < 100000 { t := (v + 50) / 100; n = el_put_i(out, 0, t / 10); if t % 10 != 0 { n = el_put(out, n, "."); n = el_put_i(out, n, t % 10); } n = el_put(out, n, "K"); }
+  else if v < 1000000 { n = el_put_i(out, 0, (v + 500) / 1000); n = el_put(out, n, "K"); }
+  else {
+    h := (v + 5000) / 10000; n = el_put_i(out, 0, h / 100);
+    if h % 100 != 0 { n = el_put(out, n, "."); if h % 100 < 10 { n = el_put(out, n, "0"); } r := h % 100; if r % 10 == 0 { r = r / 10; } n = el_put_i(out, n, r); }
+    n = el_put(out, n, "M");
+  }
+  return cast(string) out[0..<n];
+}
 // Formats a microdollar total for the UI ($0.0007 under a cent, $0.12 at a cent and up).
 cp_cost :: (out: [] u8, micros: int) -> string {
   if micros <= 0 { return ""; }

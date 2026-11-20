@@ -1,0 +1,145 @@
+// Checks for the composer's Zeron layout (layout/conversation.coax's cp_composer, GitHub #13743):
+// compact and expanded pills, the + and Send, the foot under the pill and how it folds, the
+// context ring, and an empty chat's composer in the window's middle. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+// A frame w by h, the pointer at (px, py) when present.
+cp_test_pill_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, px: f32, py: f32, present: bool) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(px, py, present, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f, w, h);
+  return uiframe_end(f, s[0].surface[..]);
+}
+cp_test_pill_rows :: (s: [] CoderPage) -> ElTable { return surface_rows(s[0].surface[..]); }
+// A page with fonts and the keyboard; reduced motion, so a change of shape lands at once.
+cp_test_composing :: (s: [] CoderPage) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, true);
+  coder_page_folder(s, "~/work/app");
+}
+// One message sent and its reply finished: the chat is no longer new.
+cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
+  coder_page_ime_replace(s, -1, -1, "hi");
+  #assert cp_test_pill_frame(s, f, 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"hello\"}") == MWW_ENDED && !cp_running(s);
+}
+
+#test "an empty chat: the expanded composer in the window's middle under its heading, the foot under it, + chooses the folder" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  comp := elt_find(t[..], "coder.composer"); head := elt_find(t[..], "coder.empty"); model := elt_find(t[..], "coder.model");
+  #assert comp >= 0 && head >= 0 && model >= 0;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;   // 76 of text, 42 of controls, the border
+  #assert t[0].rows[head].y + t[0].rows[head].h <= t[0].rows[comp].y && t[0].rows[comp].y > 200 && t[0].rows[comp].y + t[0].rows[comp].h < 600;
+  #assert t[0].rows[model].y >= t[0].rows[comp].y + t[0].rows[comp].h;
+  // the cost moved from the top corner to the foot
+  cost := elt_find(t[..], "coder.cost"); #assert cost >= 0 && t[0].rows[cost].y >= t[0].rows[comp].y + t[0].rows[comp].h;
+  add := elt_find(t[..], "coder.composer.add"); send := elt_find(t[..], "coder.composer.send");
+  #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[send].x;
+  #assert cp_press(s, add) && coder_page_action(s) == CP_ASK_FOLDER;
+  // no microphone: there is no dictation
+  #assert elt_find(t[..], "coder.composer.mic") < 0;
+}
+#test "a chat with messages: one 49 row while the draft fits, expanded past it or with a new line, back once 32 narrower" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  comp := elt_find(t[..], "coder.composer");
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "compact" && t[0].rows[comp].h == 49;
+  // at the window's foot, the foot's chips under it
+  model := elt_find(t[..], "coder.model");
+  #assert t[0].rows[model].y >= t[0].rows[comp].y + t[0].rows[comp].h && t[0].rows[model].y + t[0].rows[model].h <= 800;
+  // a line wider than the room (8 a glyph in the checks' atlas)
+  long: [120] u8; for i: 0..<long.count { long[i] = 120; }
+  coder_page_ime_replace(s, -1, -1, cast(string) long[..]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[elt_find(t[..], "coder.composer")].h == 120;
+  // ten glyphs fewer still stays open (hysteresis); everything gone, it is compact again
+  for i: 0..<10 { #assert coder_page_key(s, KEY_BACKSPACE, 0); }
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded";
+  #assert coder_page_key(s, 97, MOD_CMD) && coder_page_key(s, KEY_BACKSPACE, 0);
+  coder_page_ime_replace(s, -1, -1, "a");
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "compact";
+  #assert coder_page_key(s, KEY_ENTER, MOD_SHIFT) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded";
+}
+#test "the pill moves to its new shape over 220 ms without reduced motion" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
+  coder_page_env(s, true, false);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && coder_page_key(s, KEY_ENTER, MOD_SHIFT) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  hh := t[0].rows[elt_find(t[..], "coder.composer")].h;
+  #assert hh > 49 && hh < 120 && zc_moving(s[0].pill[..]) && s[0].anim;
+  for i: 0..<20 { #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false); }
+  t[0] = cp_test_pill_rows(s); #assert t[0].rows[elt_find(t[..], "coder.composer")].h == 120 && !zc_moving(s[0].pill[..]);
+}
+// A chat with one finished message, a branch, a paused goal and the last model call's counts
+// (cp_ctx_take reads them from a worker's attempt line).
+cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_test_composing(s); cp_test_one_turn(s, f);
+  coder_page_branch(s, "main");
+  s[0].goal_status = CP_GOAL_PAUSED; s[0].goal_objective_n = cp_out(s[0].goal_objective[..], "ship the composer");
+  s[0].ctx_in = 52000; s[0].ctx_cached = 40000; s[0].ctx_out = 428; s[0].ctx_window = 1048576;
+}
+#test "the foot: folder › branch, the model, the context ring, cost and goal" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_footed(s, f[..]);
+  #assert cp_ctx_share(s) > 0.04 && cp_ctx_share(s) < 0.06;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app › main";
+  #assert elt_find(t[..], "coder.context") >= 0;
+  #assert elt_find(t[..], "coder.cost") >= 0;
+  #assert elt_find(t[..], "coder.goal") >= 0;
+  #assert elt_find(t[..], "coder.context.card") < 0;
+}
+#test "the context ring, hovered, shows the last call's tokens in a card over it" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_footed(s, f[..]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  ring := elt_find(t[..], "coder.context");
+  rx := t[0].rows[ring].x + t[0].rows[ring].w / 2; ry := t[0].rows[ring].y + t[0].rows[ring].h / 2;
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, rx, ry, true);
+  t[0] = cp_test_pill_rows(s);
+  card := elt_find(t[..], "coder.context.card");
+  #assert card >= 0;
+  #assert elt_label(t[..], card) == "52.4K of 1.05M tokens · 5%";
+  #assert elt_value_of(t[..], card) == "Input 52K · Cached 40K · Output 428";
+  #assert t[0].rows[card].y + t[0].rows[card].h <= t[0].rows[ring].y;
+}
+#test "a narrow foot folds the goal first, then the cost, the context and the branch" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_footed(s, f[..]);
+  #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  gap := cp_skin().app.gap_small;
+  wf := t[0].rows[elt_find(t[..], "coder.folder")].w; wm := t[0].rows[elt_find(t[..], "coder.model")].w;
+  wr := t[0].rows[elt_find(t[..], "coder.context")].w; wc := t[0].rows[elt_find(t[..], "coder.cost")].w; wg := t[0].rows[elt_find(t[..], "coder.goal")].w;
+  // the window's width for a column whose foot has `room` (its sides are 8 each)
+  #assert cp_test_pill_frame(s, f[..], 400, 800, 0, 0, false);
+  edge := 400 - s[0].col_w + 2 * cast(f32) CP_FOOT_SIDE;
+  all := wf + wm + wr + wc + wg + 4 * gap;
+  #assert cp_test_pill_frame(s, f[..], edge + all, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.goal") >= 0;
+  #assert cp_test_pill_frame(s, f[..], edge + all - 1, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.goal") < 0 && elt_find(t[..], "coder.cost") >= 0;
+  #assert cp_test_pill_frame(s, f[..], edge + all - wg - gap - 1, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.cost") < 0 && elt_find(t[..], "coder.context") >= 0;
+  #assert cp_test_pill_frame(s, f[..], edge + all - wg - wc - 2 * gap - 1, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.context") < 0;
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app › main";
+  #assert cp_test_pill_frame(s, f[..], edge + all - wg - wc - wr - 3 * gap - 1, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app" && elt_find(t[..], "coder.model") >= 0;
+}
+#test "the context's counts are kept with the chat and cleared by a new one; a token count is short" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_test_composing(s); cp_test_one_turn(s, f[..]);
+  s[0].ctx_in = 1200; s[0].ctx_cached = 800; s[0].ctx_out = 90; s[0].ctx_window = 1048576;
+  kept: [16384] u8; kn := coder_page_save(s, kept[..]); #assert kn > 0;
+  #assert cp_new(s) && s[0].ctx_in == 0 && s[0].ctx_window == 0;
+  #assert coder_page_load(s, cast(string) kept[0..<kn]) && s[0].ctx_in == 1200 && s[0].ctx_cached == 800 && s[0].ctx_out == 90 && s[0].ctx_window == 1048576;
+  b: [24] u8;
+  #assert cp_tokens(b[..], 950) == "950" && cp_tokens(b[..], 12345) == "12.3K" && cp_tokens(b[..], 52000) == "52K" && cp_tokens(b[..], 128000) == "128K";
+  #assert cp_tokens(b[..], 1048576) == "1.05M" && cp_tokens(b[..], 2000000) == "2M" && cp_tokens(b[..], 1500000) == "1.5M";
+}

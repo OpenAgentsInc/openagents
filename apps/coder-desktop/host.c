@@ -173,6 +173,7 @@ int cd_task(void *page, const char *session, const char *cwd, char *out, int cap
 }
 void cd_skills(void *page, const char *note) { CoderHost *c = page; if (c) coder_page_skills(cd_state(c), cd_string(note)); }
 void cd_folder(void *page, const char *shown) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_folder(cd_state(c), cd_string(shown)); } }
+void cd_branch(void *page, const char *name) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_branch(cd_state(c), cd_string(name)); } }
 int cd_answer_line(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_answer_line(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 int cd_agent_next(void *page) { CoderHost *c = page; return c ? (int)coder_page_agent_next(cd_state(c)) : -1; }
 int cd_agent_task(void *page, int agent, const char *session, const char *cwd, char *out, int cap) {
