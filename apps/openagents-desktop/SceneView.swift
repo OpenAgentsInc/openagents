@@ -382,8 +382,8 @@ private let pleSceneMetalShaderSource = """
 using namespace metal;
 
 struct PleVertex {
-    packed_float3 pos;
-    packed_float3 normal;
+    float3 pos;
+    float3 normal;
 };
 
 struct PleInstance {
@@ -462,7 +462,7 @@ fragment float4 ple_mesh_fs(MeshOut in [[stage_in]], constant PleUniforms &u [[b
 }
 
 struct GridVertex {
-    packed_float3 pos;
+    float3 pos;
     float4 color;
 };
 
