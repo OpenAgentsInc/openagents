@@ -35,6 +35,8 @@ struct AppPaired: Codable, Equatable {
     #endif
     private var sockets: [String: AppRelaySocket] = [:]
     private var suspended = false
+    /// Pairing exchanges asked while the app was in the background, sent when it is back (#13713).
+    private var held: [() -> Void] = []
     private var pathMonitor: NWPathMonitor?
     private var lastPathSignature: String?
     /// Pairing links opened before the core could take them.
@@ -60,6 +62,8 @@ struct AppPaired: Codable, Equatable {
         suspended = false
         startPathMonitorIfNeeded()
         for (_, socket) in sockets { socket.resume() }
+        let later = held; held = []
+        for go in later { go() }
     }
 
     private func startPathMonitorIfNeeded() {
@@ -130,7 +134,7 @@ struct AppPaired: Codable, Equatable {
             done(false, "That pairing link is not complete. Run the pairing again on your computer."); return
         }
         let shown = name.isEmpty ? "your computer" : name
-        exchange(op: 1, host: host, relay: relay, arg: "OpenAgents iPhone \(code)", epoch: -1, params: Data(), timeout: 20) { [weak self] result, _ in
+        exchange(op: 1, host: host, relay: relay, arg: "OpenAgents iPhone \(code)", epoch: -1, params: Data(), timeout: 20, hold: true) { [weak self] result, _ in
             guard let self, let answer = result.flatMap({ try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }), let pairing = answer["pairing"] as? String else {
                 done(false, "We could not reach \(shown). Check that it is on and still waiting to pair."); return
             }
@@ -153,7 +157,7 @@ struct AppPaired: Codable, Equatable {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.exchange(op: 2, host: host, relay: relay, arg: pairing, epoch: -1, params: Data(), timeout: 20) { result, _ in
+                self.exchange(op: 2, host: host, relay: relay, arg: pairing, epoch: -1, params: Data(), timeout: 20, hold: true) { result, _ in
                     let next = result.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? ["state": "asked"]
                     self.wait(host: host, relay: relay, pairing: pairing, name: name, until: until, answer: next, done: done)
                 }
@@ -173,7 +177,13 @@ struct AppPaired: Codable, Equatable {
     // ---------------------------------------------------------------- one sealed exchange
 
     /// Seals the request, sends it, and answers with its opened reply (nil: none in time) and whether the relay took it.
-    private func exchange(op: Int64, host: String, relay: String, arg: String, epoch: Int64, params: Data, timeout: TimeInterval, done: @escaping (Data?, Bool) -> Void) {
+    /// hold: a pairing exchange. A pairing link opened from another app arrives before the app is
+    /// active again, and a link's own launch can pass through the background; such an exchange
+    /// waits for the foreground, and one the background ended before the relay took it is sent
+    /// again then, instead of failing the pairing.
+    private func exchange(op: Int64, host: String, relay: String, arg: String, epoch: Int64, params: Data, timeout: TimeInterval, hold: Bool = false, done: @escaping (Data?, Bool) -> Void) {
+        let again: () -> Void = { [weak self] in self?.exchange(op: op, host: host, relay: relay, arg: arg, epoch: epoch, params: params, timeout: timeout, hold: hold, done: done) }
+        if hold && suspended { if held.count < 4 { held.append(again) } else { done(nil, false) }; return }
         guard let sk = secret(), let random = AppDeviceLink.random(96), let work = oa_device_work_open() else { done(nil, false); return }
         var event = [UInt8](repeating: 0, count: 131072)
         let p = [UInt8](params)
@@ -203,7 +213,12 @@ struct AppPaired: Codable, Equatable {
                        let m = oa_device_open(work, sk, host, e, Int64(e.count), AppDeviceLink.now, &out, Int64(out.count))
                        if m > 0 { finish(Data(out[0..<Int(m)]), true); return true }
                        return false
-                   }, ended: { sent in finish(nil, sent) })
+                   }, ended: { [weak self] sent in
+                       if hold, !sent, !finished, let self, self.suspended, self.held.count < 4 {
+                           finished = true; oa_device_work_close(work); self.held.append(again); return
+                       }
+                       finish(nil, sent)
+                   })
     }
 }
 
@@ -233,9 +248,12 @@ struct AppPaired: Codable, Equatable {
     }
 
     /// Allows new requests to reconnect cleanly when returning to the foreground.
+    /// Only a socket left over from a suspend is dropped: a dial begun before the app first became
+    /// active (a pairing link that launched it, #13713) is not stale and keeps its requests.
     func resume() {
+        let was = suspended
         suspended = false
-        if task != nil && !ready { drop() }
+        if was && task != nil && !ready { drop() }
     }
 
     /// Drops any existing socket after a Wi-Fi/cellular transition so the next request dials fresh.
