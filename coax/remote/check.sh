@@ -725,6 +725,7 @@ run() {   # mode arg: one check
         counts_since "$arg" ;;
     coder) coder ;;
     desktop-core) desktop_core ;;
+    desktop-units) desktop_units ;;
     desktop-linux) desktop_linux ;;
     *) return 2 ;;
   esac

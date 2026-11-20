@@ -25,11 +25,20 @@ cflags=(-mmacosx-version-min=14.0 -O2 -ffp-contract=off -fno-fast-math -w -I"$wo
 "$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/lab-sign.h" > "$work/c/lab-sign.c"
 /usr/bin/clang -std=gnu11 "${cflags[@]}" -DS_hash=oa_lab_S_hash -DS_hex=oa_lab_S_hex -c "$work/c/lab-sign.c" -o "$work/c/lab-sign-all.o"
 ld -r "$work/c/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -exported_symbol '_coaxial_account_*' -o "$work/c/lab-sign.o"
+"$coax" c "$here/desktop-core.coax" --library --header "$work/c/desktop-core.h" > "$work/c/desktop-core.generated.c"
+"$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy-policy.c"
+cp "$here/desktop-core-unit.c" "$work/c/desktop-core-unit.c"
+/usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/desktop-core-unit.c" -o "$work/c/desktop-core-all.o"
+/usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$work/c/entropy-policy.c" -o "$work/c/entropy-policy.o"
+for _dc_f in process-native.c store-file-native.c read-file-native.c socket-native.c entropy-native.c entropy-foreign.c; do
+  /usr/bin/clang -std=gnu11 "${cflags[@]}" -I"$repo/coax/platform" -c "$repo/coax/platform/$_dc_f" -o "$work/c/$_dc_f.o"
+done
+ld -r "$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/process-native.c.o" "$work/c/store-file-native.c.o" "$work/c/read-file-native.c.o" "$work/c/socket-native.c.o" "$work/c/entropy-native.c.o" "$work/c/entropy-foreign.c.o" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
-  "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/SceneView.swift" "$here/GymWorkbenchView.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/AppDelegate.swift" \
+  "$here/DesktopCore.swift" "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/SceneView.swift" "$here/GymWorkbenchView.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/AppDelegate.swift" \
   "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$here/Worktree.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" \
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift" \
-  "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/lab-sign.o" \
+  "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/lab-sign.o" "$work/c/desktop-core.o" \
   -framework AppKit -framework Metal -framework QuartzCore -framework CoreText -framework ImageIO -framework UniformTypeIdentifiers -framework CoreGraphics \
   -framework CryptoKit -framework Security -framework UserNotifications -framework AuthenticationServices \
   -o "$app/Contents/MacOS/OpenAgents.new"

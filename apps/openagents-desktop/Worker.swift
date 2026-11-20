@@ -1,16 +1,8 @@
-// Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
-// The worker: Microcoder's process or the daemon's run, the Claude key, the OpenRouter models and the skills note.
-import AppKit
-import Darwin
+// Firm reason: 6 (Swift-to-C host wrapper over coax/lib/agent/desktop/worker.coax and store.coax; GitHub #13794).
+import Foundation
 
-/// The Microcoder worker (coder/tui/mcworker.coax, built into the bundle): a process that reads
-/// one JSON line a message and writes one a line back. This class starts it, carries bytes each
-/// way and says when it went away. Every line is written and read by the page's Coax.
-///
-/// When the unified daemon (`coder host serve`, DaemonClient.swift) owns runs, the daemon starts
-/// the worker and keeps it (GitHub #13694): this class writes the run's ID.spec and appends lines
-/// to ID.in, and follows ID.out, so the run goes on after Coder quits and Coder attaches to it again
-/// when it opens. Without that daemon the worker is Coder's own child process, as before.
+/// Talks to the agent worker via coax/lib/agent/desktop/worker.coax when the daemon owns runs,
+/// or via a direct child process fallback when no daemon is running.
 final class CoderWorker {
     var line: ((String) -> Void)?      // a line it wrote, on the main queue
     var gone: (() -> Void)?            // it exited, on the main queue
@@ -18,70 +10,66 @@ final class CoderWorker {
     private var input: FileHandle?
     private var held = Data()
 
-    /// The daemon that owns runs, when there is one (set at launch).
+    /// The daemon that owns worker runs when one is running (GitHub #13694).
     static var daemon: CoderDaemonClient?
-    /// The most workers the daemon runs at once (host-runs.coax DR_MAX), and what Coder says at it.
+    /// The most workers Coder starts at once; also enforced by the daemon.
     static let runLimit = 12
     static let runLimitNote = "Coder runs up to \(runLimit) workers at once, sub-agents included. Stop a chat or wait for one to finish, then send again."
-    /// Why the last start failed, in words for the page; nil for the usual "could not start".
+    /// Why the last start() failed, when the daemon refused it.
     private(set) var failure: String?
-    /// The daemon run this worker is, while it is one.
+
     private(set) var runID: String?
-    private var runInput: FileHandle?
     private var tail: DispatchSourceTimer?
     private let tailQueue = DispatchQueue(label: "openagents.coder.worker-tail", qos: .userInitiated)
     private var tailHeld = Data()
-    /// Bytes of ID.out already read: where a turn's lines start (CoderTurn.offset).
     private(set) var offset: UInt64 = 0
     private var touched = Date.distantPast
 
     var alive: Bool { process?.isRunning == true || runID != nil }
     var isDaemonRun: Bool { runID != nil }
-
-    /// The bundled program it runs: Microcoder's worker, or the Claude Code worker for a Claude sub-agent.
     var program = "mcworker"
-    /// Additional environment variables injected only for this worker (used by the Foreman worker).
     var extraEnv: [String: String] = [:]
-    /// The folder it works in, set before start: its repository picks the worker's Cargo target folder.
     var folder = ""
-    /// The folders added to the system's short PATH for what the workers start.
+
     static var path: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let had = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(separator: ":").map(String.init)
-        let more = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"].filter { !had.contains($0) }
-        return (more + had).joined(separator: ":")
+        let had = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        return DesktopCore.withCoaxString(home) { ch in
+            DesktopCore.withCoaxString(had) { cp in
+                DesktopCore.callString(8192) { oa_dc_worker_path(ch, cp, $0) }
+            }
+        }
     }
-    /// Whether Claude Code is installed: a claude command on that PATH.
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
 
-    /// The variables the worker gets on top of what it inherits, and the ones it loses.
+    private func extraEnvLines() -> String {
+        extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
+    }
+
     private func environment() -> (set: [String: String], unset: [String]) {
         var env: [String: String] = ["PATH": CoderWorker.path]
-        // the build caches a repository's chats share (#13758, #13771), unless Coder's own environment sets them
-        for (k, v) in ChatWorktree.caches(for: folder) where ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
-        for (k, v) in extraEnv { env[k] = k == "PATH" ? v + ":" + CoderWorker.path : v }
-        // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
+        for (k, v) in extraEnv { env[k] = v }
+        for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
         return (env, ["CODER_CLAUDE_KEY"])
     }
 
     func start() -> Bool {
-        if alive { return true }
+        guard !alive else { return true }
         failure = nil
         guard let path = Bundle.main.path(forResource: program, ofType: nil) else { return false }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns { return startRun(path, daemon) }
         let p = Process(), into = Pipe(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
-        // An app opened from the Finder has the system's short PATH: the commands Microcoder runs also
-        // find what is installed for this person (gamebuilder is in ~/.local/bin).
+        p.standardInput = into
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
         var env = ProcessInfo.processInfo.environment
         let (set, unset) = environment()
         for (k, v) in set { env[k] = v }
-        for k in unset { env[k] = nil }
+        for k in unset { env.removeValue(forKey: k) }
         p.environment = env
-        p.standardInput = into; p.standardOutput = out; p.standardError = FileHandle.nullDevice
-        held = Data()
         out.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let bytes = handle.availableData
             if bytes.isEmpty { handle.readabilityHandler = nil; return }
@@ -91,37 +79,55 @@ final class CoderWorker {
             DispatchQueue.main.async { guard let self, self.process === ended else { return }; self.process = nil; self.input = nil; self.gone?() }
         }
         do { try p.run() } catch { return false }
-        process = p; input = into.fileHandleForWriting
+        process = p; input = into.fileHandleForWriting; held = Data()
         return true
     }
-    /// The daemon starts the worker: its spec (mode 600, as it may hold the Claude key), an empty
-    /// input, then StartRun. A refusal at the daemon's limit is said on the page (failure).
+
     private func startRun(_ path: String, _ daemon: CoderDaemonClient) -> Bool {
-        let fm = FileManager.default, dir = daemon.runsDir
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let (set, unset) = environment()
-        let spec: [String: Any] = ["program": path, "cwd": fm.homeDirectoryForCurrentUser.path,
-                                   "env": set.map { $0.key + "=" + $0.value }, "unset": unset]
-        guard let data = try? JSONSerialization.data(withJSONObject: spec) else { return false }
-        let specURL = dir.appendingPathComponent(id + ".spec")
-        guard fm.createFile(atPath: specURL.path, contents: data, attributes: [.posixPermissions: 0o600]),
-              fm.createFile(atPath: dir.appendingPathComponent(id + ".in").path, contents: nil, attributes: [.posixPermissions: 0o600]) else { return false }
-        attach(id, from: 0)
-        touch(force: true)
-        if let why = daemon.startRun(id) {
-            if why == "run-limit" { failure = CoderWorker.runLimitNote }
-            try? fm.removeItem(at: specURL)
-            detach(); return false
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let claudeKey = CoderKey.current ?? ""
+        let extra = extraEnvLines()
+        var idBuf = [UInt8](repeating: 0, count: 128)
+        var failBuf = [UInt8](repeating: 0, count: 512)
+        let ok = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(path) { cpath in
+                DesktopCore.withCoaxString(program) { cprog in
+                    DesktopCore.withCoaxString(folder) { cfolder in
+                        DesktopCore.withCoaxString(extra) { cextra in
+                            DesktopCore.withCoaxString(home) { chome in
+                                DesktopCore.withCoaxString(hadPath) { chad in
+                                    DesktopCore.withCoaxString(claudeKey) { ckey in
+                                        idBuf.withUnsafeMutableBufferPointer { ib in
+                                            failBuf.withUnsafeMutableBufferPointer { fb in
+                                                oa_dc_worker_start_run(
+                                                    cdir, cpath, cprog, cfolder, cextra, chome, chad, ckey,
+                                                    coax_v_u8(data: ib.baseAddress, count: Int64(ib.count)),
+                                                    coax_v_u8(data: fb.baseAddress, count: Int64(fb.count))
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+        let why = DesktopCore.cString(from: failBuf)
+        let id = DesktopCore.cString(from: idBuf)
+        guard ok == 1, !id.isEmpty else {
+            failure = why == "run_limit" ? Self.runLimitNote : (why.isEmpty ? "failed" : why)
+            return false
+        }
+        attach(id, from: 0)
         follow()
         return true
     }
-    /// Starts the worker without blocking the main thread on the daemon's StartRun RPC.
-    /// Calls `completion(true)` on the main thread when the worker is ready to receive input,
-    /// or `completion(false)` with `failure` set if it could not start.
+
     func startAsync(_ completion: @escaping (Bool) -> Void) {
-        if alive { completion(true); return }
+        guard !alive else { completion(true); return }
         failure = nil
         guard let path = Bundle.main.path(forResource: program, ofType: nil) else { completion(false); return }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
@@ -130,56 +136,82 @@ final class CoderWorker {
         }
         completion(start())
     }
+
     private func startRunAsync(_ path: String, _ daemon: CoderDaemonClient, completion: @escaping (Bool) -> Void) {
-        let fm = FileManager.default, dir = daemon.runsDir
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
-        let (set, unset) = environment()
-        let spec: [String: Any] = ["program": path, "cwd": fm.homeDirectoryForCurrentUser.path,
-                                   "env": set.map { $0.key + "=" + $0.value }, "unset": unset]
-        guard let data = try? JSONSerialization.data(withJSONObject: spec) else { completion(false); return }
-        let specURL = dir.appendingPathComponent(id + ".spec")
-        guard fm.createFile(atPath: specURL.path, contents: data, attributes: [.posixPermissions: 0o600]),
-              fm.createFile(atPath: dir.appendingPathComponent(id + ".in").path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-            completion(false); return
-        }
-        attach(id, from: 0)
-        touch(force: true)
-        daemon.startRunAsync(id) { [weak self] why in
-            guard let self else {
-                if why == nil { daemon.stopRun(id) }
-                return
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let hadPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+        let claudeKey = CoderKey.current ?? ""
+        let extra = extraEnvLines()
+        let prog = program
+        let fld = folder
+        let dir = daemon.hostDirPath
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var idBuf = [UInt8](repeating: 0, count: 128)
+            var failBuf = [UInt8](repeating: 0, count: 512)
+            let ok = DesktopCore.withCoaxString(dir) { cdir in
+                DesktopCore.withCoaxString(path) { cpath in
+                    DesktopCore.withCoaxString(prog) { cprog in
+                        DesktopCore.withCoaxString(fld) { cfolder in
+                            DesktopCore.withCoaxString(extra) { cextra in
+                                DesktopCore.withCoaxString(home) { chome in
+                                    DesktopCore.withCoaxString(hadPath) { chad in
+                                        DesktopCore.withCoaxString(claudeKey) { ckey in
+                                            idBuf.withUnsafeMutableBufferPointer { ib in
+                                                failBuf.withUnsafeMutableBufferPointer { fb in
+                                                    oa_dc_worker_start_run(
+                                                        cdir, cpath, cprog, cfolder, cextra, chome, chad, ckey,
+                                                        coax_v_u8(data: ib.baseAddress, count: Int64(ib.count)),
+                                                        coax_v_u8(data: fb.baseAddress, count: Int64(fb.count))
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            guard self.runID == id else {
-                if why == nil { daemon.stopRun(id) }
-                completion(false)
-                return
+            let why = DesktopCore.cString(from: failBuf)
+            let id = DesktopCore.cString(from: idBuf)
+            DispatchQueue.main.async {
+                guard let self else {
+                    if ok == 1, !id.isEmpty { daemon.stopRun(id) { daemon.forgetRun(id) } }
+                    completion(false)
+                    return
+                }
+                guard ok == 1, !id.isEmpty else {
+                    self.failure = why == "run_limit" ? Self.runLimitNote : (why.isEmpty ? "failed" : why)
+                    completion(false)
+                    return
+                }
+                self.attach(id, from: 0)
+                self.follow()
+                completion(true)
             }
-            if let why {
-                if why == "run-limit" { self.failure = CoderWorker.runLimitNote }
-                try? FileManager.default.removeItem(at: specURL)
-                self.detach()
-                completion(false)
-                return
-            }
-            self.follow()
-            completion(true)
         }
     }
-    /// This worker is the daemon's run `id` again, from byte `from` of its output (a reopened Coder).
+
     func attach(_ id: String, from: UInt64) {
-        guard let daemon = CoderWorker.daemon else { return }
+        guard CoderWorker.daemon != nil else { return }
         runID = id; offset = from; tailHeld = Data()
-        // O_APPEND: the daemon appends the paired phone's lines to the same file (host-desktop.coax,
-        // GitHub #13713), so every write lands at the end and no line overwrites another.
-        let fd = open(daemon.runsDir.appendingPathComponent(id + ".in").path, O_WRONLY | O_APPEND | O_CLOEXEC)
-        runInput = fd >= 0 ? FileHandle(fileDescriptor: fd, closeOnDealloc: true) : nil
+        touch(force: true)
     }
-    /// The whole lines of the run's output not read yet, read now (a reattached run's replay).
+
     func readAvailable() -> [String] {
         guard let id = runID, let daemon = CoderWorker.daemon else { return [] }
-        return tailQueue.sync { readLines(daemon.runsDir.appendingPathComponent(id + ".out")) }
+        let outPath = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(".out") { cext in
+                    DesktopCore.callString(4096) { oa_dc_run_file(cdir, cid, cext, $0) }
+                }
+            }
+        }
+        guard !outPath.isEmpty else { return [] }
+        return tailQueue.sync { readLines(URL(fileURLWithPath: outPath)) }
     }
+
     private func readLines(_ url: URL) -> [String] {
         guard let h = try? FileHandle(forReadingFrom: url) else { return [] }
         defer { try? h.close() }
@@ -194,23 +226,38 @@ final class CoderWorker {
         }
         return lines
     }
-    /// The run's state as the daemon keeps it: running, stopping, exited, stopped or lost.
+
     static func runState(_ id: String) -> String? {
-        guard let daemon, let data = try? Data(contentsOf: daemon.runsDir.appendingPathComponent(id + ".state")),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        return obj["state"] as? String
+        guard let daemon else { return nil }
+        let s = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.callString(128) { oa_dc_run_state(cdir, cid, $0) }
+            }
+        }
+        return s.isEmpty ? nil : s
     }
-    /// Coder is attached: the daemon leaves the worker's asks to it (host-runs.coax dr_detached).
+
     private func touch(force: Bool = false) {
         guard let id = runID, let daemon = CoderWorker.daemon, force || Date().timeIntervalSince(touched) > 1 else { return }
         touched = Date()
-        let url = daemon.runsDir.appendingPathComponent(id + ".attached")
-        if !FileManager.default.createFile(atPath: url.path, contents: Data("\(Int(touched.timeIntervalSince1970))".utf8), attributes: [.posixPermissions: 0o600]) { return }
+        DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                _ = oa_dc_worker_touch_run(cdir, cid, force ? 1 : 0)
+            }
+        }
     }
-    /// Lines as the worker writes them, every 30 ms, until it ends or Coder lets it go.
+
     func follow() {
         guard let id = runID, let daemon = CoderWorker.daemon, tail == nil else { return }
-        let out = daemon.runsDir.appendingPathComponent(id + ".out")
+        let outPath = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(".out") { cext in
+                    DesktopCore.callString(4096) { oa_dc_run_file(cdir, cid, cext, $0) }
+                }
+            }
+        }
+        guard !outPath.isEmpty else { return }
+        let out = URL(fileURLWithPath: outPath)
         let timer = DispatchSource.makeTimerSource(queue: tailQueue)
         var quiet = 0
         timer.schedule(deadline: .now(), repeating: .milliseconds(30))
@@ -225,12 +272,11 @@ final class CoderWorker {
             quiet += 1
             if quiet % 10 != 0 { return }
             DispatchQueue.main.async { [weak self] in self?.touch() }
-            // it ended: what it wrote is read, so the page hears it went away
             if let state = CoderWorker.runState(id), state != "running", state != "stopping" {
                 DispatchQueue.main.async { [weak self] in
                     guard let self, self.runID == id else { return }
                     self.tail?.cancel(); self.tail = nil
-                    self.runID = nil; try? self.runInput?.close(); self.runInput = nil
+                    self.runID = nil
                     self.gone?()
                 }
             }
@@ -238,13 +284,19 @@ final class CoderWorker {
         tail = timer
         timer.resume()
     }
-    /// Coder lets the run go without stopping it (Coder quits): the daemon keeps it running.
+
     func detach() {
         tail?.cancel(); tail = nil
-        try? runInput?.close(); runInput = nil
-        if let id = runID, let daemon = CoderWorker.daemon { try? FileManager.default.removeItem(at: daemon.runsDir.appendingPathComponent(id + ".attached")) }
+        if let id = runID, let daemon = CoderWorker.daemon {
+            DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+                DesktopCore.withCoaxString(id) { cid in
+                    _ = oa_dc_worker_detach_run(cdir, cid)
+                }
+            }
+        }
         runID = nil
     }
+
     private func read(_ bytes: Data) {
         held.append(bytes)
         while let end = held.firstIndex(of: 0x0a) {
@@ -253,20 +305,34 @@ final class CoderWorker {
             if let text = String(data: one, encoding: .utf8), !text.isEmpty { line?(text) }
         }
     }
+
     func write(_ bytes: [CChar], count: Int) {
         guard alive, count > 0 else { return }
         let data = bytes.prefix(count).withUnsafeBytes { Data($0) }
-        if let runInput { try? runInput.write(contentsOf: data); return }
+        if let id = runID, let daemon = CoderWorker.daemon {
+            let text = String(decoding: data, as: UTF8.self)
+            DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+                DesktopCore.withCoaxString(id) { cid in
+                    DesktopCore.withCoaxString(text) { ct in
+                        _ = oa_dc_worker_write_run(cdir, cid, ct)
+                    }
+                }
+            }
+            return
+        }
         guard let input else { return }
         try? input.write(contentsOf: data)
     }
-    /// Closes its input first: a worker ends on that and stops what it started (the Claude worker
-    /// kills the claude process group). Half a second later it is terminated if it is still there.
-    /// A daemon run is stopped by the daemon the same way; with `forget` its files go once it ends.
+
     func stop(forget: Bool = true) {
         if let id = runID, let daemon = CoderWorker.daemon {
-            detach()
-            daemon.stopRun(id) { if forget { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } }
+            tail?.cancel(); tail = nil
+            runID = nil
+            DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+                DesktopCore.withCoaxString(id) { cid in
+                    _ = oa_dc_worker_stop_run(cdir, cid, forget ? 1 : 0)
+                }
+            }
             return
         }
         let p = process, i = input
@@ -276,42 +342,41 @@ final class CoderWorker {
     }
 }
 
-/// The key Claude sub-agents use in place of this Mac's Claude Code login: an Anthropic API key, or
-/// a Claude Code token from `claude setup-token`. CODER_CLAUDE_KEY in Coder's launch environment
-/// wins; else the key set with Coder > Claude Key, kept in ~/Library/Application Support/Coder/claude-key,
-/// readable by this user only. nil: the login is used.
 enum CoderKey {
     static var file: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
-        return base.appendingPathComponent("Coder/claude-key")
+        let p = DesktopCore.withCoaxString("claude-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_coder_file(cn, $0) }
+        }
+        return URL(fileURLWithPath: p)
     }
     static var fromLaunch: String? {
         let key = (ProcessInfo.processInfo.environment["CODER_CLAUDE_KEY"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return key.isEmpty ? nil : key
     }
     static var saved: String? {
-        let key = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? nil : key
+        let s = DesktopCore.withCoaxString("claude-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
+        }
+        return s.isEmpty ? nil : s
     }
-    static var current: String? { fromLaunch ?? saved }
-    /// Keeps a key (mode 600), or removes the kept one when key is empty. False when it could not be written.
+    static var current: String? {
+        let s = DesktopCore.callString(4096) { oa_dc_claude_key($0) }
+        return s.isEmpty ? nil : s
+    }
     static func save(_ key: String) -> Bool {
-        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if key.isEmpty { try? FileManager.default.removeItem(at: file); return saved == nil }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard FileManager.default.createFile(atPath: file.path, contents: Data(key.utf8), attributes: [.posixPermissions: 0o600]) else { return false }
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-        return true
+        DesktopCore.withCoaxString("claude-key") { cn in
+            DesktopCore.withCoaxString(key) { ck in
+                oa_dc_key_save(cn, ck) == 1
+            }
+        }
     }
-    /// The end of a key, for showing which one is set: "…" and its last 4 characters.
-    static func tail(_ key: String) -> String { "…" + key.suffix(4) }
+    static func tail(_ key: String) -> String {
+        DesktopCore.withCoaxString(key) { ck in
+            DesktopCore.callString(64) { oa_dc_key_tail(ck, $0) }
+        }
+    }
 }
 
-/// The OpenRouter models Coder offers (Coder > OpenRouter Models): main is a composer picker entry
-/// for Microcoder, sub a sub-agent level. Each is an OpenRouter id (VENDOR/MODEL), kept in the
-/// app's defaults. The key is kept in ~/Library/Application Support/Coder/openrouter-key, readable by
-/// this user only; the Microcoder worker reads it there (coder/tui/microcoder_keys.coax) and puts it
-/// in curl's environment only. Without it the worker uses ~/work/.secrets/openrouter.env.
 enum CoderOpenRouter {
     static var main: String { UserDefaults.standard.string(forKey: "openRouterMain") ?? "" }
     static var sub: String { UserDefaults.standard.string(forKey: "openRouterSub") ?? "" }
@@ -319,28 +384,27 @@ enum CoderOpenRouter {
         UserDefaults.standard.set(main, forKey: "openRouterMain"); UserDefaults.standard.set(sub, forKey: "openRouterSub")
     }
     static var file: URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
-        return base.appendingPathComponent("Coder/openrouter-key")
+        let p = DesktopCore.withCoaxString("openrouter-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_coder_file(cn, $0) }
+        }
+        return URL(fileURLWithPath: p)
     }
     static var saved: String? {
-        let key = ((try? String(contentsOf: file, encoding: .utf8)) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? nil : key
+        let s = DesktopCore.withCoaxString("openrouter-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
+        }
+        return s.isEmpty ? nil : s
     }
-    /// Whether the worker finds a key: the one set here, or ~/work/.secrets/openrouter.env.
     static var hasKey: Bool {
         saved != nil || FileManager.default.fileExists(atPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("work/.secrets/openrouter.env").path)
     }
-    /// Keeps a key (mode 600), or removes the kept one when key is empty. False when it could not be written.
     static func save(_ key: String) -> Bool {
-        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        if key.isEmpty { try? FileManager.default.removeItem(at: file); return saved == nil }
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard FileManager.default.createFile(atPath: file.path, contents: Data(key.utf8), attributes: [.posixPermissions: 0o600]) else { return false }
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
-        return true
+        DesktopCore.withCoaxString("openrouter-key") { cn in
+            DesktopCore.withCoaxString(key) { ck in
+                oa_dc_key_save(cn, ck) == 1
+            }
+        }
     }
-    /// The models among ids that OpenRouter does not list as taking a strict JSON schema
-    /// (structured_outputs), which every Microcoder step sends. nil when the list could not be read.
     static func unfit(_ ids: [String], done: @escaping ([String]?) -> Void) {
         let wanted = ids.filter { !$0.isEmpty }
         guard !wanted.isEmpty, let url = URL(string: "https://openrouter.ai/api/v1/models") else { done([]); return }
@@ -356,11 +420,9 @@ enum CoderOpenRouter {
         }.resume()
     }
 }
-/// Gives a page the OpenRouter models set now.
+
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
-// The skills installed for this person (~/.claude/skills/NAME/SKILL.md), in words for Microcoder:
-// each one's name, its file and its description. The first 16 skills, 300 characters of each
-// description. "" when there are none.
+
 func coderSkillsNote() -> String {
     let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")
     let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()

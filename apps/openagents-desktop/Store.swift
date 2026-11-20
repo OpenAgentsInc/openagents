@@ -1,9 +1,7 @@
-// Firm reason: 6 (AppKit lifecycle, the window, the platform editor and the worker process over the compiled page).
-// The chats kept on this Mac: their list and their files.
+// Firm reason: 6 (Swift-to-C host wrapper over coax/lib/agent/desktop/store.coax; GitHub #13794).
 import AppKit
 
-/// One kept chat in the list: its id (its file's name), its title, when it was created, when it last changed,
-/// its working folder, and whether the user gave it a custom title that should not be overwritten on subsequent saves.
+/// One kept chat in the list.
 struct CoderChat: Codable {
     var id: String
     var title: String
@@ -13,8 +11,6 @@ struct CoderChat: Codable {
     var renamed: Bool? = nil
     var pinned: Int? = nil
     var managedBy: String? = nil
-    /// The chat's own worktree, when Coder made one for it (GitHub #13758): its folder, the main
-    /// checkout it came from, and its branch. folder is the worktree then.
     var worktreePath: String? = nil
     var worktreeBranch: String? = nil
     var repoRoot: String? = nil
@@ -31,69 +27,81 @@ struct CoderChat: Codable {
         return ChatWorktree(chat: id, path: worktreePath, source: repoRoot, branch: worktreeBranch)
     }
 }
-/// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
-/// the page's text) and index.json, the list, newest created first.
+
+/// The chats kept on this Mac, persisted and sorted by coax/lib/agent/desktop/store.coax.
 final class CoderStore {
+    private let dirPath: String
     private let dir: URL
     private(set) var list: [CoderChat] = []
+
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? FileManager.default.homeDirectoryForCurrentUser
-        dir = base.appendingPathComponent("Coder/chats")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        if let data = try? Data(contentsOf: dir.appendingPathComponent("index.json")), let kept = try? JSONDecoder().decode([CoderChat].self, from: data) {
-            list = kept.enumerated().sorted { a, b in
-                let ta = a.element.created ?? a.element.updated
-                let tb = b.element.created ?? b.element.updated
-                return ta != tb ? ta > tb : a.offset < b.offset
-            }.map(\.element)
-        }
+        let p = DesktopCore.callString(4096) { oa_dc_chats_dir($0) }
+        self.dirPath = p
+        self.dir = URL(fileURLWithPath: p, isDirectory: true)
+        reload()
     }
-    /// One-line title: collapses whitespace/tabs/newlines and clamps cleanly to 120 UTF-8 bytes (CP_CHAT_TITLE).
+
+    private func reload() {
+        let json = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.callString(512 * 1024) { out in oa_dc_store_index_read(d, out) }
+        }
+        guard !json.isEmpty, let data = json.data(using: .utf8),
+              let kept = try? JSONDecoder().decode([CoderChat].self, from: data) else {
+            list = []
+            return
+        }
+        list = kept.enumerated().sorted { a, b in
+            let ta = a.element.created ?? a.element.updated
+            let tb = b.element.created ?? b.element.updated
+            return ta != tb ? ta > tb : a.offset < b.offset
+        }.map(\.element)
+    }
+
     static func cleanTitle(_ raw: String) -> String {
-        let collapsed = raw.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
-        var out = ""
-        var bytes = 0
-        for ch in collapsed {
-            let n = ch.utf8.count
-            if bytes + n > 120 { break }
-            out.append(ch)
-            bytes += n
+        DesktopCore.withCoaxString(raw) { r in
+            DesktopCore.callString(512) { out in oa_dc_clean_title(r, out) }
         }
-        return out
     }
+
     private func saveIndex() {
-        if let data = try? JSONEncoder().encode(list) { try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic) }
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic)
+        }
     }
+
     var pinnedList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned != nil }.sorted { ($0.pinned ?? 0) < ($1.pinned ?? 0) } }
     var recentList: [CoderChat] { list.filter { $0.id != Foreman.chatID && $0.pinned == nil } }
     var orderedList: [CoderChat] { pinnedList + recentList }
-    /// The list as the page reads it: one chat a line, its id, a tab, its title.
     var lines: String { orderedList.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
-    func text(_ id: String) -> String? { try? String(contentsOf: dir.appendingPathComponent(id + ".json"), encoding: .utf8) }
+
+    func text(_ id: String) -> String? {
+        var buf = [UInt8](repeating: 0, count: 4 * 1024 * 1024)
+        let n: Int64 = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withMutableBytes(&buf) { out in
+                    oa_dc_store_text(d, cid, out)
+                }
+            }
+        }
+        if n < 0 { return nil }
+        return String(decoding: buf.prefix(Int(n)), as: UTF8.self)
+    }
+
     func folder(_ id: String) -> String? { list.first { $0.id == id }?.folder }
     func title(_ id: String) -> String? { list.first { $0.id == id }?.title }
     func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
-    private func normalizePins() {
-        let ids = pinnedList.map(\.id)
-        for (order, id) in ids.enumerated() {
-            if let i = list.firstIndex(where: { $0.id == id }) { list[i].pinned = order }
-        }
-    }
-    /// Pins or unpins a chat, persisting its state and order in index.json.
+
     func togglePin(_ id: String) {
-        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
-        if list[i].pinned != nil {
-            list[i].pinned = nil
-            normalizePins()
-        } else {
-            let next = (list.compactMap(\.pinned).max() ?? -1) + 1
-            list[i].pinned = next
+        _ = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                oa_dc_store_toggle_pin(d, cid)
+            }
         }
-        saveIndex()
+        reload()
     }
-    /// Reorders a pinned chat to the given 0-based index in the Pinned section.
+
     func movePinned(_ id: String, to index: Int) {
         var ids = pinnedList.map(\.id)
         guard let from = ids.firstIndex(of: id), !ids.isEmpty else { return }
@@ -106,55 +114,69 @@ final class CoderStore {
         }
         saveIndex()
     }
-    /// Renames a kept chat without changing its place in the list.
+
     func rename(_ id: String, to title: String) {
-        let clean = Self.cleanTitle(title)
-        guard !clean.isEmpty, let i = list.firstIndex(where: { $0.id == id }) else { return }
-        list[i].title = clean
-        list[i].renamed = true
-        saveIndex()
+        _ = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(title) { t in
+                    oa_dc_store_rename(d, cid, t)
+                }
+            }
+        }
+        reload()
     }
-    /// Deletes a chat: its file and its place in the list. It can't be brought back.
+
     func remove(_ id: String) {
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(id + ".json"))
-        list.removeAll { $0.id == id }
-        normalizePins()
-        saveIndex()
+        _ = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                oa_dc_store_remove(d, cid)
+            }
+        }
+        reload()
     }
-    /// Keeps a chat's text. A new chat joins the top of the list; an existing chat updates in place
-    /// so chats stay ordered chronologically by creation time (newest created first).
+
     func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil, worktree: ChatWorktree? = nil) {
-        guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
-        let now = Date().timeIntervalSince1970
-        if let i = list.firstIndex(where: { $0.id == id }) {
-            if list[i].created == nil { list[i].created = list[i].updated }
-            if list[i].renamed != true && id != Foreman.chatID { list[i].title = title }
-            list[i].updated = now
-            list[i].folder = folder
-            if let managedBy { list[i].managedBy = managedBy }
-        } else {
-            let effectiveTitle = id == Foreman.chatID ? Foreman.title : title
-            list.insert(CoderChat(id: id, title: effectiveTitle, created: now, updated: now, folder: folder, managedBy: managedBy), at: 0)
+        let wtPath = (worktree?.chat == id ? worktree?.path : nil) ?? ""
+        let wtBranch = (worktree?.chat == id ? worktree?.branch : nil) ?? ""
+        let repo = (worktree?.chat == id ? worktree?.source : nil) ?? ""
+        let managed = managedBy ?? ""
+        _ = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(title) { t in
+                    DesktopCore.withCoaxString(folder) { f in
+                        DesktopCore.withCoaxString(text) { tx in
+                            DesktopCore.withCoaxString(managed) { m in
+                                DesktopCore.withCoaxString(wtPath) { wp in
+                                    DesktopCore.withCoaxString(wtBranch) { wb in
+                                        DesktopCore.withCoaxString(repo) { rp in
+                                            oa_dc_store_keep(d, cid, t, f, tx, m, wp, wb, rp)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-        if let worktree, worktree.chat == id, let i = list.firstIndex(where: { $0.id == id }) {
-            list[i].worktreePath = worktree.path; list[i].repoRoot = worktree.source; list[i].worktreeBranch = worktree.branch
-        }
-        saveIndex()
+        reload()
     }
+
     func worktree(_ id: String) -> ChatWorktree? { list.first { $0.id == id }?.worktree }
+
     func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {
-        let now = Date().timeIntervalSince1970
-        let clean = Self.cleanTitle(title)
-        let effectiveTitle = clean.isEmpty ? "New chat" : clean
-        if let i = list.firstIndex(where: { $0.id == id }) {
-            list[i].title = effectiveTitle
-            list[i].renamed = true
-            list[i].updated = now
-            list[i].folder = folder
-            if let managedBy { list[i].managedBy = managedBy }
-        } else {
-            list.insert(CoderChat(id: id, title: effectiveTitle, created: now, updated: now, folder: folder, renamed: true, managedBy: managedBy), at: 0)
+        let managed = managedBy ?? ""
+        _ = DesktopCore.withCoaxString(dirPath) { d in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(title) { t in
+                    DesktopCore.withCoaxString(folder) { f in
+                        DesktopCore.withCoaxString(managed) { m in
+                            oa_dc_store_register(d, cid, t, f, m)
+                        }
+                    }
+                }
+            }
         }
-        saveIndex()
+        reload()
     }
 }

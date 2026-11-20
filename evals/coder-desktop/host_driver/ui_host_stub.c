@@ -100,3 +100,5 @@ void ui_stub_pointer(UiHost *h, float x, float y, int phase, int clicks, int mod
 void ui_stub_wheel(UiHost *h, float dy) {
   if (h && h->app.wheel) h->app.wheel(h->app.user, dy);
 }
+
+int ui_focused(UiHost *h) { (void)h; return 1; }

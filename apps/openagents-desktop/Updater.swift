@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-// MARK: - Signed Release Manifest Types (openagents.desktop.update.v1)
+// MARK: - Signed Release Manifest Types (verified by coax/lib/agent/desktop/update.coax)
 
 /// Outer signed envelope fetched from GitHub Releases (or CODER_UPDATE_URL).
 /// The Ed25519 signature is verified over the raw decoded `payload` bytes BEFORE
@@ -76,14 +76,10 @@ struct SemVer: Comparable, Equatable, CustomStringConvertible {
     }
 
     static func < (lhs: SemVer, rhs: SemVer) -> Bool {
-        if lhs.major != rhs.major { return lhs.major < rhs.major }
-        if lhs.minor != rhs.minor { return lhs.minor < rhs.minor }
-        if lhs.patch != rhs.patch { return lhs.patch < rhs.patch }
-        switch (lhs.prerelease, rhs.prerelease) {
-        case (nil, nil): return false
-        case (.some, nil): return true
-        case (nil, .some): return false
-        case let (.some(a), .some(b)): return a < b
+        DesktopCore.withCoaxString(lhs.description) { a in
+            DesktopCore.withCoaxString(rhs.description) { b in
+                oa_dc_semver_cmp(a, b) < 0
+            }
         }
     }
 }
@@ -184,12 +180,10 @@ enum UpdaterState: Equatable {
 // MARK: - Manifest Verifier (Pure, Testable)
 
 struct UpdateVerifier {
-    static let schemaVersion = "openagents.desktop.update.v1"
     static let pinnedBundleID = "com.openagents.desktop"
     static let pinnedTeamID = "HQWSG26L43"
 
-    /// Compiled-in Ed25519 release signing public keys (key ID -> base64 raw 32-byte public key).
-    /// Add rotated keys here alongside the active key before cutting a release.
+    /// Compiled-in Ed25519 release signing public keys (key ID -> hex raw 32-byte public key).
     static let defaultTrustedKeys: [String: String] = [
         "openagents-desktop-2026-v1": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
     ]
@@ -229,88 +223,102 @@ struct UpdateVerifier {
         return nil
     }
 
-    /// Verifies the Ed25519 signature over the raw payload bytes BEFORE JSON decoding the manifest.
+    /// Verifies the signed envelope via coax/lib/agent/desktop/update.coax BEFORE returning a manifest.
     func verifyAndDecode(
         envelopeData: Data,
         currentVersion: String,
         currentBuild: Int = 0,
         allowFileURL: Bool = false
     ) throws -> UpdateManifest {
-        let envelope: UpdateEnvelope
-        do {
-            envelope = try JSONDecoder().decode(UpdateEnvelope.self, from: envelopeData)
-        } catch {
-            throw UpdaterError.invalidEnvelope(error.localizedDescription)
-        }
-        if let s = envelope.schema, s != UpdateVerifier.schemaVersion {
-            throw UpdaterError.unsupportedSchema(s)
-        }
-        guard let pubBytes = trustedKeys[envelope.key] else {
-            throw UpdaterError.untrustedKey(envelope.key)
-        }
-        let publicKey: Curve25519.Signing.PublicKey
-        do {
-            publicKey = try Curve25519.Signing.PublicKey(rawRepresentation: pubBytes)
-        } catch {
-            throw UpdaterError.invalidPublicKey(envelope.key)
-        }
-        guard let payloadBytes = Data(base64Encoded: envelope.payload) else {
-            throw UpdaterError.invalidBase64("payload")
-        }
-        guard let sigBytes = Data(base64Encoded: envelope.signature), sigBytes.count == 64 else {
-            throw UpdaterError.invalidBase64("signature")
-        }
-        // Verify Ed25519 signature BEFORE decoding payload JSON.
-        guard publicKey.isValidSignature(sigBytes, for: payloadBytes) else {
-            throw UpdaterError.invalidSignature
+        let sortedKeys = trustedKeys.sorted { $0.key < $1.key }
+        let keyIDs = sortedKeys.map { $0.key }.joined(separator: "\n")
+        let keyHexes = sortedKeys.map { $0.value.map { String(format: "%02x", $0) }.joined() }.joined(separator: "\n")
+
+        var outVersion = [UInt8](repeating: 0, count: 128)
+        var outBuild: [Int64] = [0]
+        var outHasBuild: [Int64] = [0]
+        var outBundle = [UInt8](repeating: 0, count: 256)
+        var outTeam = [UInt8](repeating: 0, count: 64)
+        var outURL = [UInt8](repeating: 0, count: 2048)
+        var outSHA = [UInt8](repeating: 0, count: 128)
+        var outSize: [Int64] = [0]
+        var outNotes = [UInt8](repeating: 0, count: 4096)
+        var outErr = [UInt8](repeating: 0, count: 512)
+
+        let ok: Int64 = DesktopCore.withCoaxData(envelopeData) { env in
+            DesktopCore.withCoaxString(keyIDs) { kids in
+                DesktopCore.withCoaxString(keyHexes) { khex in
+                    DesktopCore.withCoaxString(currentVersion) { cur in
+                        DesktopCore.withMutableBytes(&outVersion) { vb in
+                            DesktopCore.withMutableS64(&outBuild) { bb in
+                                DesktopCore.withMutableS64(&outHasBuild) { hbb in
+                                    DesktopCore.withMutableBytes(&outBundle) { bunb in
+                                        DesktopCore.withMutableBytes(&outTeam) { tb in
+                                            DesktopCore.withMutableBytes(&outURL) { ub in
+                                                DesktopCore.withMutableBytes(&outSHA) { shab in
+                                                    DesktopCore.withMutableS64(&outSize) { szb in
+                                                        DesktopCore.withMutableBytes(&outNotes) { nb in
+                                                            DesktopCore.withMutableBytes(&outErr) { eb in
+                                                                oa_dc_update_verify(
+                                                                    env, kids, khex, cur, Int64(currentBuild),
+                                                                    allowFileURL ? 1 : 0,
+                                                                    vb, bb, hbb, bunb, tb, ub, shab, szb, nb, eb
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
-        let manifest: UpdateManifest
-        do {
-            manifest = try JSONDecoder().decode(UpdateManifest.self, from: payloadBytes)
-        } catch {
-            throw UpdaterError.invalidManifest(error.localizedDescription)
+        guard ok == 1 else {
+            let err = DesktopCore.cString(from: outErr)
+            if err.contains("signature") { throw UpdaterError.invalidSignature }
+            if err.contains("untrusted") || err.contains("unknown key") { throw UpdaterError.untrustedKey(err) }
+            if err.contains("schema") { throw UpdaterError.unsupportedSchema(err) }
+            if err.contains("downgrade") || err.contains("older") || err.contains("not newer") {
+                throw UpdaterError.versionNotNewer(current: currentVersion, candidate: err)
+            }
+            if err.contains("url") || err.contains("https") { throw UpdaterError.unsafeDownloadURL(err) }
+            throw UpdaterError.invalidManifest(err.isEmpty ? "update verification failed" : err)
         }
-        if let s = manifest.schema, s != UpdateVerifier.schemaVersion {
-            throw UpdaterError.unsupportedSchema(s)
-        }
-        guard manifest.bundleID == pinnedBundleID else {
-            throw UpdaterError.bundleIDMismatch(expected: pinnedBundleID, actual: manifest.bundleID)
-        }
-        guard manifest.teamID == pinnedTeamID else {
-            throw UpdaterError.teamIDMismatch(expected: pinnedTeamID, actual: manifest.teamID)
-        }
-        guard isNewer(candidateVersion: manifest.version, candidateBuild: manifest.build, currentVersion: currentVersion, currentBuild: currentBuild) else {
-            throw UpdaterError.versionNotNewer(current: currentVersion, candidate: manifest.version)
-        }
-        guard let url = URL(string: manifest.url) else {
-            throw UpdaterError.unsafeDownloadURL(manifest.url)
-        }
-        let scheme = url.scheme?.lowercased() ?? ""
-        if scheme != "https" && !(allowFileURL && scheme == "file") {
-            throw UpdaterError.unsafeDownloadURL(manifest.url)
-        }
-        guard manifest.size > 0 else {
-            throw UpdaterError.invalidManifest("size must be positive")
-        }
-        let normalizedHash = manifest.sha256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard normalizedHash.count == 64, Data(hexString: normalizedHash) != nil else {
-            throw UpdaterError.invalidManifest("sha256 must be 64 hex chars")
-        }
-        return manifest
-    }
 
-    func isNewer(candidateVersion: String, candidateBuild: Int?, currentVersion: String, currentBuild: Int) -> Bool {
-        guard let cand = SemVer(candidateVersion), let curr = SemVer(currentVersion) else {
-            return false
+        let version = DesktopCore.cString(from: outVersion)
+        let build: Int? = outHasBuild[0] != 0 ? Int(outBuild[0]) : nil
+        let bundle = DesktopCore.cString(from: outBundle)
+        let team = DesktopCore.cString(from: outTeam)
+        let url = DesktopCore.cString(from: outURL)
+        let sha = DesktopCore.cString(from: outSHA)
+        let notes = DesktopCore.cString(from: outNotes)
+
+        if !pinnedBundleID.isEmpty && bundle != pinnedBundleID {
+            throw UpdaterError.bundleIDMismatch(expected: pinnedBundleID, actual: bundle)
         }
-        if cand != curr { return cand > curr }
-        if let cb = candidateBuild, currentBuild > 0 { return cb > currentBuild }
-        return false
+        if !pinnedTeamID.isEmpty && !team.isEmpty && team != pinnedTeamID {
+            throw UpdaterError.teamIDMismatch(expected: pinnedTeamID, actual: team)
+        }
+
+        return UpdateManifest(
+            schema: nil,
+            version: version,
+            build: build,
+            bundleID: bundle,
+            teamID: team,
+            url: url,
+            sha256: sha,
+            size: outSize[0],
+            notes: notes.isEmpty ? nil : notes
+        )
     }
 }
-
-// MARK: - Archive Verification, Unpack, Codesign, Atomic Swap
 
 struct UpdateInstaller {
     let pinnedBundleID: String
@@ -327,25 +335,23 @@ struct UpdateInstaller {
         self.requireTeamID = requireTeamID
     }
 
-    /// Verifies exact byte size and SHA-256 digest of a downloaded archive.
+    /// Verifies exact byte size and SHA-256 digest of a downloaded archive via coax/lib/agent/desktop/update.coax.
     func verifyArchive(at url: URL, expectedSize: Int64, expectedSHA256: String) throws {
-        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
-        let actualSize = (attrs[.size] as? NSNumber)?.int64Value ?? -1
-        guard actualSize == expectedSize else {
-            throw UpdaterError.sizeMismatch(expected: expectedSize, actual: actualSize)
+        var outErr = [UInt8](repeating: 0, count: 512)
+        let ok: Int64 = DesktopCore.withCoaxString(url.path) { p in
+            DesktopCore.withCoaxString(expectedSHA256) { sha in
+                DesktopCore.withMutableBytes(&outErr) { eb in
+                    oa_dc_update_archive(p, expectedSize, sha, eb)
+                }
+            }
         }
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { try? handle.close() }
-        var hasher = SHA256()
-        while true {
-            let chunk = try handle.read(upToCount: 256 * 1024) ?? Data()
-            if chunk.isEmpty { break }
-            hasher.update(data: chunk)
-        }
-        let actualHash = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-        let expected = expectedSHA256.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard actualHash == expected else {
-            throw UpdaterError.sha256Mismatch(expected: expected, actual: actualHash)
+        guard ok == 1 else {
+            let msg = DesktopCore.cString(from: outErr)
+            if msg.contains("size") {
+                let actual = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? -1
+                throw UpdaterError.sizeMismatch(expected: expectedSize, actual: actual)
+            }
+            throw UpdaterError.sha256Mismatch(expected: expectedSHA256.lowercased(), actual: msg)
         }
     }
 

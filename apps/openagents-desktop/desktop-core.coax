@@ -1,0 +1,533 @@
+// macOS host bridge to the portable desktop core (GitHub #13794, #13787).
+// All store, settings, worktree, daemon, worker and signed update logic lives in
+// coax/lib/agent/desktop/; this file exports a flat C ABI for Swift.
+#load "../../coax/lib/agent/desktop/os-posix.coax";
+#load "../../coax/lib/agent/desktop/paths.coax";
+#load "../../coax/lib/agent/desktop/store.coax";
+#load "../../coax/lib/agent/desktop/worktree.coax";
+#load "../../coax/lib/agent/desktop/daemon.coax";
+#load "../../coax/lib/agent/desktop/worker.coax";
+#load "../../coax/lib/agent/desktop/update.coax";
+
+oa_dc_copy :: (s: string, out: [] u8) -> int {
+  if out.count <= 0 { return 0; }
+  n := ifx s.count < out.count - 1 then s.count else out.count - 1;
+  for i: 0..<n { out[i] = s[i]; }
+  out[n] = 0;
+  return n;
+}
+
+// --- Update verification (openagents.desktop.update.v1) ---
+
+oa_dc_update_verify :: (
+  envelope: string,
+  key_ids: string,
+  key_hexes: string,
+  current: string,
+  current_build: int,
+  allow_file: int,
+  out_version: [] u8,
+  out_build: [] int,
+  out_has_build: [] int,
+  out_bundle: [] u8,
+  out_team: [] u8,
+  out_url: [] u8,
+  out_sha256: [] u8,
+  out_size: [] int,
+  out_notes: [] u8,
+  out_err: [] u8
+) -> int #export_c #effects(all) {
+  keys: [8] DcKey;
+  kn := 0;
+  if key_ids.count > 0 && key_hexes.count > 0 {
+    // Parse tab-separated key_id and hex-encoded 32-byte key pairs.
+    pi := 0; ph := 0;
+    while kn < 8 && pi < key_ids.count && ph < key_hexes.count {
+      ei := pi; while ei < key_ids.count && key_ids[ei] != '\t' { ei += 1; }
+      eh := ph; while eh < key_hexes.count && key_hexes[eh] != '\t' { eh += 1; }
+      kid := cast(string) key_ids[pi..<ei];
+      khex := cast(string) key_hexes[ph..<eh];
+      if kid.count > 0 && khex.count == 64 {
+        k: DcKey;
+        k.id_n = dc_copy(k.id[..], kid);
+        ok := true;
+        for j: 0..<32 {
+          hi := dc_hex_nibble(khex[j * 2]);
+          lo := dc_hex_nibble(khex[j * 2 + 1]);
+          if hi < 0 || lo < 0 { ok = false; break; }
+          k.raw[j] = cast(u8) (hi * 16 + lo);
+        }
+        k.ok = ok;
+        if ok { keys[kn] = k; kn += 1; }
+      }
+      pi = ifx ei < key_ids.count then ei + 1 else ei;
+      ph = ifx eh < key_hexes.count then eh + 1 else eh;
+    }
+  }
+  m: [1] DcManifest;
+  code := dc_update_verify(envelope, keys[0..<kn], current, current_build, allow_file != 0, m[..]);
+  if code == DC_UPD_OK {
+    _ := oa_dc_copy(cast(string) m[0].version[0..<m[0].version_n], out_version);
+    if out_build.count > 0 { out_build[0] = m[0].build; }
+    if out_has_build.count > 0 { out_has_build[0] = ifx m[0].has_build then 1 else 0; }
+    _ := oa_dc_copy(cast(string) m[0].bundle[0..<m[0].bundle_n], out_bundle);
+    _ := oa_dc_copy(cast(string) m[0].team[0..<m[0].team_n], out_team);
+    _ := oa_dc_copy(cast(string) m[0].url[0..<m[0].url_n], out_url);
+    _ := oa_dc_copy(cast(string) m[0].sha[0..<64], out_sha256);
+    if out_size.count > 0 { out_size[0] = m[0].size; }
+    _ := oa_dc_copy(cast(string) m[0].notes[0..<m[0].notes_n], out_notes);
+    return 0;
+  }
+  _ := oa_dc_copy(dc_update_words(code), out_err);
+  return code;
+}
+
+dc_hex_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+
+oa_dc_update_newer :: (candidate: string, has_build: int, build: int, current: string, current_build: int) -> int #export_c #effects(all) {
+  return ifx dc_update_newer(candidate, has_build != 0, build, current, current_build) then 1 else 0;
+}
+
+oa_dc_update_archive :: (path: string, expected_size: int, expected_sha256: string, out_err: [] u8) -> int #export_c #effects(all) {
+  m: [1] DcManifest;
+  m[0].size = expected_size;
+  _ := dc_copy(m[0].sha[..], expected_sha256);
+  code := dc_update_archive(path, m[..]);
+  if code != DC_UPD_OK {
+    _ := oa_dc_copy(dc_update_words(code), out_err);
+  }
+  return code;
+}
+
+oa_dc_semver_cmp :: (a: string, b: string) -> int #export_c #effects(all) {
+  pa := dc_semver(a);
+  pb := dc_semver(b);
+  if !pa.ok || !pb.ok { return -2; }
+  if dc_semver_less(pa, pb) { return -1; }
+  if dc_semver_less(pb, pa) { return 1; }
+  return 0;
+}
+
+// --- Worktrees & Paths ---
+
+oa_dc_worktrees_on :: () -> int #export_c #effects(all) {
+  return ifx dc_worktrees_on() then 1 else 0;
+}
+
+oa_dc_wt_root :: (out: [] u8) -> int #export_c #effects(all) {
+  hb: [DC_PATH] u8; sb: [DC_PATH] u8; rb: [DC_PATH] u8;
+  home := dcos_getenv("HOME", hb[..]);
+  set := dcos_getenv("CODER_WORKTREES", sb[..]);
+  return oa_dc_copy(dc_worktree_root(home, set, rb[..]), out);
+}
+
+oa_dc_wt_slug :: (repo: string, out: [] u8) -> int #export_c #effects(all) {
+  rb: [DC_PATH] u8; sb: [256] u8;
+  r := dcos_real(repo, rb[..]);
+  return oa_dc_copy(dc_slug(ifx r.count > 0 then r else repo, sb[..]), out);
+}
+
+oa_dc_wt_real :: (path: string, out: [] u8) -> int #export_c #effects(all) {
+  rb: [DC_PATH] u8;
+  return oa_dc_copy(dcos_real(path, rb[..]), out);
+}
+
+oa_dc_wt_branch :: (chat: string, out: [] u8) -> int #export_c #effects(all) {
+  bb: [256] u8;
+  return oa_dc_copy(dc_branch(chat, bb[..]), out);
+}
+
+oa_dc_wt_shown :: (branch: string, out: [] u8) -> int #export_c #effects(all) {
+  sb: [256] u8;
+  return oa_dc_copy(dc_shown(branch), out);
+}
+
+oa_dc_wt_path :: (repo: string, chat: string, root: string, out: [] u8) -> int #export_c #effects(all) {
+  rb: [DC_PATH] u8; pb: [DC_PATH] u8;
+  r := dcos_real(repo, rb[..]);
+  return oa_dc_copy(dc_worktree_path(root, ifx r.count > 0 then r else repo, chat, pb[..]), out);
+}
+
+oa_dc_wt_main_checkout :: (folder: string, out: [] u8) -> int #export_c #effects(all) {
+  mb: [DC_PATH] u8;
+  return oa_dc_copy(dc_main_checkout(folder, mb[..]), out);
+}
+
+oa_dc_wt_repository :: (folder: string, out: [] u8) -> int #export_c #effects(all) {
+  rb: [DC_PATH] u8;
+  return oa_dc_copy(dc_repository(folder, rb[..]), out);
+}
+
+oa_dc_wt_cache_env :: (folder: string, out: [] u8) -> int #export_c #effects(all) {
+  cb: [DC_PATH] u8;
+  return oa_dc_copy(dc_cache_env(folder, cb[..]), out);
+}
+
+oa_dc_wt_create :: (repo: string, chat: string, root: string, out_path: [] u8, out_source: [] u8, out_branch: [] u8, out_why: [] u8) -> int #export_c #effects(all) {
+  w: [1] DcWorktree;
+  why := dc_wt_create(repo, chat, root, w[..], out_why);
+  if why.count > 0 {
+    _ := oa_dc_copy(why, out_why);
+    if why == "not a repository" { return 1; }
+    return -1;
+  }
+  _ := oa_dc_copy(dc_wt_path(w[..]), out_path);
+  _ := oa_dc_copy(dc_wt_source(w[..]), out_source);
+  _ := oa_dc_copy(dc_wt_branch(w[..]), out_branch);
+  return 0;
+}
+
+oa_dc_wt_make :: (chat: string, path: string, source: string, branch: string, out_path: [] u8, out_source: [] u8, out_branch: [] u8, out_why: [] u8) -> int #export_c #effects(all) {
+  w: [1] DcWorktree;
+  dc_wt_set(w[..], chat, path, source, branch);
+  why := dc_wt_make(w[..], out_why);
+  if why.count > 0 {
+    _ := oa_dc_copy(why, out_why);
+    if why == "not a repository" { return 1; }
+    return -1;
+  }
+  _ := oa_dc_copy(dc_wt_path(w[..]), out_path);
+  _ := oa_dc_copy(dc_wt_source(w[..]), out_source);
+  _ := oa_dc_copy(dc_wt_branch(w[..]), out_branch);
+  return 0;
+}
+
+oa_dc_wt_hydrate :: (chat: string, path: string, source: string, branch: string) -> int #export_c #effects(all) {
+  w: [1] DcWorktree;
+  dc_wt_set(w[..], chat, path, source, branch);
+  dc_wt_hydrate(w[..]);
+  return 0;
+}
+
+oa_dc_wt_changes :: (chat: string, path: string, source: string, branch: string) -> int #export_c #effects(all) {
+  w: [1] DcWorktree;
+  dc_wt_set(w[..], chat, path, source, branch);
+  return dc_wt_changes(w[..]);
+}
+
+oa_dc_wt_remove :: (chat: string, path: string, source: string, branch: string, out_changes: [] int) -> int #export_c #effects(all) {
+  w: [1] DcWorktree;
+  dc_wt_set(w[..], chat, path, source, branch);
+  r := dc_wt_remove(w[..]);
+  if out_changes.count > 0 { out_changes[0] = r.changes; }
+  return r.result;
+}
+
+// --- Daemon ---
+
+oa_dc_new_id :: (out: [] u8) -> int #export_c #effects(all) {
+  ib: [64] u8;
+  return oa_dc_copy(dc_new_id(ib[..]), out);
+}
+
+oa_dc_daemon_dir :: (out: [] u8) -> int #export_c #effects(all) {
+  db: [DC_PATH] u8;
+  return oa_dc_copy(dcos_daemon_dir(db[..]), out);
+}
+
+oa_dc_daemon_socket :: (dir: string, out: [] u8) -> int #export_c #effects(all) {
+  sb: [DC_PATH] u8;
+  return oa_dc_copy(dc_daemon_socket(dir, sb[..]), out);
+}
+
+oa_dc_daemon_available :: (dir: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_available(d[..]) then 1 else 0;
+}
+
+oa_dc_daemon_ensure :: (dir: string, program: string, wait_ms: int, out_pid: [] int) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_ensure(d[..], program, wait_ms, out_pid) then 1 else 0;
+}
+
+oa_dc_daemon_probe_runs :: (dir: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_probe_runs(d[..]) then 1 else 0;
+}
+
+oa_dc_daemon_start_run :: (dir: string, id: string, out_why: [] u8) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  why := dc_daemon_start_run(d[..], id, out_why);
+  if why.count > 0 {
+    _ := oa_dc_copy(why, out_why);
+    if why == "not a repository" { return 1; }
+    return -1;
+  }
+  return 0;
+}
+
+oa_dc_daemon_stop_run :: (dir: string, id: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_stop_run(d[..], id) then 1 else 0;
+}
+
+oa_dc_daemon_forget_run :: (dir: string, id: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_forget_run(d[..], id) then 1 else 0;
+}
+
+oa_dc_daemon_update_foreman :: (dir: string, tier: int, prompt: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_update_foreman(d[..], tier, prompt) then 1 else 0;
+}
+
+oa_dc_daemon_update_meta :: (dir: string, session: string, title: string, folder: string, pinned: int, archived: int) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], dir);
+  return ifx dc_daemon_update_meta(d[..], session, title, folder, pinned, archived) then 1 else 0;
+}
+
+// --- Raw socket RPC through desktop core's socket seam ---
+oa_dc_daemon_rpc :: (dir: string, req_json: string, out_resp: [] u8) -> int #export_c #effects(all) {
+  sb: [DC_PATH] u8;
+  sock := dc_daemon_socket(dir, sb[..]);
+  if sock.count == 0 { return -1; }
+  return dcos_unix_call(sock, req_json, out_resp, 5000);
+}
+
+// --- Worker ---
+
+oa_dc_run_spec :: (
+  program: string,
+  home: string,
+  env_set_lines: string,
+  env_unset_lines: string,
+  out_spec: [] u8
+) -> int #export_c #effects(all) {
+  e: [1] DcEnv;
+  // parse newline-separated K=V lines
+  p := 0;
+  while p < env_set_lines.count && e[0].set_n < DC_ENV_MAX {
+    end := p;
+    while end < env_set_lines.count && env_set_lines[end] != '\n' { end += 1; }
+    if end > p {
+      line := cast(string) env_set_lines[p..<end];
+      eq := -1;
+      for i: 0..<line.count { if line[i] == '=' { eq = i; break; } }
+      if eq > 0 {
+        dc_env_add(e[..], cast(string) line[0..<eq], cast(string) line[eq + 1..<line.count]);
+      }
+    }
+    p = ifx end < env_set_lines.count then end + 1 else end;
+  }
+  q := 0;
+  while q < env_unset_lines.count && e[0].unset_n < 2 {
+    end := q;
+    while end < env_unset_lines.count && env_unset_lines[end] != '\n' { end += 1; }
+    if end > q {
+      if e[0].unset_n < e[0].unset.count { e[0].unset[e[0].unset_n] = cast(string) env_unset_lines[q..<end]; e[0].unset_n += 1; }
+    }
+    q = ifx end < env_unset_lines.count then end + 1 else end;
+  }
+  return dc_run_spec(program, home, e[..], out_spec);
+}
+
+
+
+// --- Store, keys and settings ---
+
+oa_dc_chats_dir :: (out: [] u8) -> int #export_c #effects(all) {
+  b: [DC_PATH] u8;
+  return oa_dc_copy(dcos_chats_dir(b[..]), out);
+}
+
+oa_dc_coder_file :: (name: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [DC_PATH] u8;
+  return oa_dc_copy(dcos_coder_file(name, b[..]), out);
+}
+
+oa_dc_clean_title :: (raw: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [512] u8;
+  return oa_dc_copy(dk_clean_title(raw, b[..]), out);
+}
+
+oa_dc_store_text :: (dir: string, id: string, out: [] u8) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  t := dc_store_text(s[..], id, out);
+  if t.count == 0 {
+    // Check if file actually exists as empty or missing
+    fb: [DC_PATH] u8;
+    p := dc_store_file(s[..], id, ".json", fb[..]);
+    if p.count == 0 || dcos_kind(p) != FS_FILE { return -1; }
+  }
+  return t.count;
+}
+
+oa_dc_store_keep :: (
+  dir: string,
+  id: string,
+  title: string,
+  folder: string,
+  text: string,
+  managed: string,
+  wt_path: string,
+  wt_branch: string,
+  repo: string
+) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  return ifx dc_store_keep(s[..], id, title, folder, text, managed, wt_path, wt_branch, repo, dcos_now_us()) then 1 else 0;
+}
+
+oa_dc_store_register :: (
+  dir: string,
+  id: string,
+  title: string,
+  folder: string,
+  managed: string
+) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  return ifx dc_store_register(s[..], id, title, folder, managed, dcos_now_us()) then 1 else 0;
+}
+
+oa_dc_store_rename :: (dir: string, id: string, title: string) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  return ifx dc_store_rename(s[..], id, title) then 1 else 0;
+}
+
+oa_dc_store_toggle_pin :: (dir: string, id: string) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  return ifx dc_store_toggle_pin(s[..], id) then 1 else 0;
+}
+
+oa_dc_store_remove :: (dir: string, id: string) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  _ := dc_store_open(s[..], dir, chats[..]);
+  return ifx dc_store_remove(s[..], id) then 1 else 0;
+}
+
+oa_dc_store_index_read :: (dir: string, out: [] u8) -> int #export_c #effects(all) {
+  s: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
+  o: [1] Jo;
+  jo_start(o[..], out);
+  dk_index_write(s[0].x[..], o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+oa_dc_key_read :: (name: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [512] u8;
+  return oa_dc_copy(dc_key_read(name, b[..]), out);
+}
+
+oa_dc_key_save :: (name: string, key: string) -> int #export_c #effects(all) {
+  return ifx dc_key_save(name, key) then 1 else 0;
+}
+
+oa_dc_claude_key :: (out: [] u8) -> int #export_c #effects(all) {
+  b: [512] u8;
+  return oa_dc_copy(dc_claude_key(b[..]), out);
+}
+
+oa_dc_key_tail :: (key: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [64] u8;
+  return oa_dc_copy(dc_key_tail(key, b[..]), out);
+}
+
+// --- Worker helpers ---
+
+oa_dc_worker_path :: (home: string, had: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [4096] u8;
+  return oa_dc_copy(dc_worker_path(home, had, b[..]), out);
+}
+
+oa_dc_run_file :: (daemon_dir: string, id: string, ext: string, out: [] u8) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  b: [DC_PATH] u8;
+  return oa_dc_copy(dc_run_file(d[..], id, ext, b[..]), out);
+}
+
+oa_dc_run_state :: (daemon_dir: string, id: string, out: [] u8) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  b: [64] u8;
+  return oa_dc_copy(dc_run_state(d[..], id, b[..]), out);
+}
+
+oa_dc_worker_start_run :: (
+  daemon_dir: string,
+  program_path: string,
+  program_name: string,
+  folder: string,
+  extra_env: string,
+  home: string,
+  had_path: string,
+  claude_key: string,
+  out_run_id: [] u8,
+  out_failure: [] u8
+) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  d[0].owns_runs = true;
+  e: [1] DcEnv;
+  dc_worker_env(e[..], program_name, folder, extra_env, home, had_path, claude_key);
+  w: [1] DcWorker;
+  ok := dc_worker_start_run(w[..], d[..], program_path, home, e[..]);
+  _ := oa_dc_copy(dc_worker_run(w[..]), out_run_id);
+  _ := oa_dc_copy(dc_worker_failure(w[..]), out_failure);
+  return ifx ok then 1 else 0;
+}
+
+oa_dc_worker_write_run :: (daemon_dir: string, run_id: string, line: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  w: [1] DcWorker;
+  dc_worker_attach(w[..], run_id, 0);
+  return ifx dc_worker_write(w[..], d[..], line) then 1 else 0;
+}
+
+oa_dc_worker_touch_run :: (daemon_dir: string, run_id: string, force: int) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  w: [1] DcWorker;
+  dc_worker_attach(w[..], run_id, 0);
+  dc_worker_touch(w[..], d[..], force != 0);
+  return 1;
+}
+
+oa_dc_worker_detach_run :: (daemon_dir: string, run_id: string) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  w: [1] DcWorker;
+  dc_worker_attach(w[..], run_id, 0);
+  dc_worker_detach(w[..], d[..]);
+  return 1;
+}
+
+oa_dc_worker_stop_run :: (daemon_dir: string, run_id: string, forget: int) -> int #export_c #effects(all) {
+  d: [1] DcDaemon;
+  dc_daemon_open(d[..], daemon_dir);
+  w: [1] DcWorker;
+  dc_worker_attach(w[..], run_id, 0);
+  dc_worker_stop(w[..], d[..], forget != 0);
+  return 1;
+}
+
+oa_dc_wt_clone_paths :: (repo: string, out: [] u8) -> s64 #export_c #effects(all) {
+  return dc_clone_paths(repo, out).count;
+}
