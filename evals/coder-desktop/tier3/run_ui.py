@@ -195,6 +195,26 @@ class App:
         self.proc = subprocess.Popen([str(binary), *args], env=env, stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL)
         self.conn: socket.socket | None = None
         self.reader = None
+        try:
+            self._await_probe()
+        except BaseException:
+            # The flow never gets this App, so its cleanup cannot quit it: a Coder hung at launch
+            # (2026-11-19: 8 of them, 12-26 GB each) must be killed here, by the PID this runner started.
+            self._kill_launch()
+            raise
+
+    def _kill_launch(self) -> None:
+        if self.proc.poll() is None:
+            os.kill(self.proc.pid, signal.SIGKILL)
+            self.proc.wait(timeout=5)
+        if self.conn is not None:
+            self.conn.close()
+            self.conn = None
+        self.log.close()
+        if self.sock_path.exists():
+            self.sock_path.unlink()
+
+    def _await_probe(self) -> None:
         deadline = time.time() + 20
         while time.time() < deadline:
             if self.proc.poll() is not None:
