@@ -11,15 +11,13 @@ enum DesktopCore {
     // The thread keeps its block after it runs, so the block holds only this box; the caller's closure
     // sits in the box just while it runs and is dropped before the caller goes on.
     private final class Box<R>: @unchecked Sendable { var run: (() -> R)?; var value: R? }
-
-    /// One core call at a time, across the app. The Coax platform layer stages a file call's path
-    /// and bytes (and a socket's host, a process slot) in process-wide buffers, so two calls at
-    /// once wrote a worker's run spec over the chat list's index.json and an empty file over a chat.
-    private static let coreLock = NSLock()
+    // Core calls on different threads run at once: the Coax platform layer stages each call's path,
+    // bytes, socket host and random draw per thread and guards its process and socket slots, so a
+    // worktree being made or a run starting off the main thread no longer holds up the main thread's
+    // calls (a lock around every call here held a new chat's first reply back for seconds).
 
     static func onCoreStack<R>(_ body: () -> R) -> R {
         if Thread.current.threadDictionary[onCoreStackKey] != nil { return body() }
-        coreLock.lock(); defer { coreLock.unlock() }
         let box = Box<R>()
         withoutActuallyEscaping(body) { run in
             let done = DispatchSemaphore(value: 0)

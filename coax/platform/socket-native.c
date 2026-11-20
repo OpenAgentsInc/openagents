@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,16 +34,22 @@ typedef struct {
 
 static cxsock_slot cxsock_slots[CXSOCK_MAX];
 static int cxsock_ready = 0;
-static char cxsock_host[CXSOCK_MAX_HOST + 1];
-static int cxsock_host_len = 0;
-static int cxsock_host_bad = 0;
+static pthread_mutex_t cxsock_mu = PTHREAD_MUTEX_INITIALIZER;
+static _Thread_local char cxsock_host[CXSOCK_MAX_HOST + 1];
+static _Thread_local int cxsock_host_len = 0;
+static _Thread_local int cxsock_host_bad = 0;
 
 static void cxsock_init(void) {
-  if (cxsock_ready) return;
-  for (int i = 0; i < CXSOCK_MAX; i++) { cxsock_slots[i].fd = -1; cxsock_slots[i].out = NULL; }
-  signal(SIGPIPE, SIG_IGN);
-  cxsock_ready = 1;
+  pthread_mutex_lock(&cxsock_mu);
+  if (!cxsock_ready) {
+    for (int i = 0; i < CXSOCK_MAX; i++) { cxsock_slots[i].fd = -1; cxsock_slots[i].out = NULL; }
+    signal(SIGPIPE, SIG_IGN);
+    cxsock_ready = 1;
+  }
+  pthread_mutex_unlock(&cxsock_mu);
 }
+
+static int64_t cxsock_take(int fd, int port);
 
 static cxsock_slot *cxsock_get(int64_t h) {
   cxsock_init();
@@ -96,11 +103,9 @@ int64_t cxsock_connect_unix(int64_t timeout_ms) {
   if (!bad) memcpy(addr.sun_path, cxsock_host, (size_t)cxsock_host_len);
   cxsock_host_len = 0; cxsock_host_bad = 0;
   if (bad) return CXSOCK_ERROR;
-  int slot = -1;
-  for (int i = 0; i < CXSOCK_MAX; i++) if (cxsock_slots[i].fd < 0) { slot = i; break; }
-  if (slot < 0) return CXSOCK_FULL;
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0) return CXSOCK_ERROR;
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
 #ifdef SO_NOSIGPIPE
@@ -113,19 +118,12 @@ int64_t cxsock_connect_unix(int64_t timeout_ms) {
     if (w != 0) { close(fd); return w; }
     if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len) != 0 || err != 0) { close(fd); return CXSOCK_REFUSED; }
   }
-  cxsock_slot *s = &cxsock_slots[slot];
-  if (s->out == NULL) s->out = (unsigned char *)malloc(CXSOCK_MAX_OUT);
-  if (s->out == NULL) { close(fd); return CXSOCK_ERROR; }
-  s->fd = fd; s->in_count = 0; s->out_count = 0;
-  return slot;
+  return cxsock_take(fd, 0);
 }
 
 int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms) {
   cxsock_init();
   if (!host || !*host || strlen(host) > CXSOCK_MAX_HOST || port < 1 || port > 65535 || timeout_ms < 0) return CXSOCK_ERROR;
-  int slot = -1;
-  for (int i = 0; i < CXSOCK_MAX; i++) if (cxsock_slots[i].fd < 0) { slot = i; break; }
-  if (slot < 0) return CXSOCK_FULL;
   char service[8];
   snprintf(service, sizeof service, "%d", (int)port);
   struct addrinfo hints, *list = NULL;
@@ -138,6 +136,7 @@ int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms) 
   for (struct addrinfo *a = list; a != NULL; a = a->ai_next) {
     fd = socket(a->ai_family, a->ai_socktype, a->ai_protocol);
     if (fd < 0) { result = CXSOCK_ERROR; continue; }
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); fd = -1; result = CXSOCK_ERROR; continue; }
 #ifdef SO_NOSIGPIPE
@@ -154,21 +153,19 @@ int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms) 
   }
   freeaddrinfo(list);
   if (fd < 0) return result;
-  cxsock_slot *s = &cxsock_slots[slot];
-  if (s->out == NULL) s->out = (unsigned char *)malloc(CXSOCK_MAX_OUT);
-  if (s->out == NULL) { close(fd); return CXSOCK_ERROR; }
-  s->fd = fd; s->in_count = 0; s->out_count = 0;
-  return slot;
+  return cxsock_take(fd, 0);
 }
 
 static int64_t cxsock_take(int fd, int port) {
+  pthread_mutex_lock(&cxsock_mu);
   int slot = -1;
   for (int i = 0; i < CXSOCK_MAX; i++) if (cxsock_slots[i].fd < 0) { slot = i; break; }
-  if (slot < 0) { close(fd); return CXSOCK_FULL; }
+  if (slot < 0) { pthread_mutex_unlock(&cxsock_mu); close(fd); return CXSOCK_FULL; }
   cxsock_slot *s = &cxsock_slots[slot];
   if (port == 0 && s->out == NULL) s->out = (unsigned char *)malloc(CXSOCK_MAX_OUT);
-  if (port == 0 && s->out == NULL) { close(fd); return CXSOCK_ERROR; }
+  if (port == 0 && s->out == NULL) { pthread_mutex_unlock(&cxsock_mu); close(fd); return CXSOCK_ERROR; }
   s->fd = fd; s->in_count = 0; s->out_count = 0; s->port = port;
+  pthread_mutex_unlock(&cxsock_mu);
   return slot;
 }
 
@@ -229,6 +226,7 @@ int64_t cxsock_accept(int64_t h, int64_t timeout_ms) {
   for (;;) {
     int fd = accept(s->fd, NULL, NULL);
     if (fd >= 0) {
+      fcntl(fd, F_SETFD, FD_CLOEXEC);
       int flags = fcntl(fd, F_GETFL, 0);
       if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) { close(fd); return CXSOCK_ERROR; }
 #ifdef SO_NOSIGPIPE
@@ -306,8 +304,11 @@ int cxsock_fd(int64_t h) {
 int64_t cxsock_close(int64_t h) {
   cxsock_slot *s = cxsock_get(h);
   if (s == NULL) return CXSOCK_ERROR;
-  close(s->fd);
+  pthread_mutex_lock(&cxsock_mu);
+  int fd = s->fd;
   s->fd = -1; s->in_count = 0; s->out_count = 0; s->port = 0;
+  pthread_mutex_unlock(&cxsock_mu);
+  if (fd >= 0) close(fd);
   return 0;
 }
 
@@ -318,15 +319,26 @@ typedef struct {
   unsigned char in[CXUDP_MAX_BYTES], out[CXUDP_MAX_BYTES];
 } cxudp_slot;
 static cxudp_slot cxudp_slots[CXUDP_MAX];
+static int cxudp_open(int64_t port);
 static cxudp_slot *cxudp_get(int64_t h) {
   if (h < 0 || h >= CXUDP_MAX || !cxudp_slots[h].used) return NULL;
   return &cxudp_slots[h];
 }
 int64_t cxudp_bind(int64_t port) {
+  if (port < 0 || port > 65535) return CXSOCK_ERROR;
+  pthread_mutex_lock(&cxsock_mu);
   int h = -1;
   for (int i = 0; i < CXUDP_MAX; i++) if (!cxudp_slots[i].used) { h = i; break; }
+  if (h >= 0) cxudp_slots[h].used = 1; /* held while the socket is made, so no other thread takes it */
+  pthread_mutex_unlock(&cxsock_mu);
   if (h < 0) return CXSOCK_FULL;
-  if (port < 0 || port > 65535) return CXSOCK_ERROR;
+  int fd = cxudp_open(port);
+  if (fd < 0) { pthread_mutex_lock(&cxsock_mu); cxudp_slots[h].used = 0; pthread_mutex_unlock(&cxsock_mu); return fd; }
+  cxudp_slot *s = &cxudp_slots[h];
+  s->fd = fd; s->from = 0; s->in_count = 0; s->out_count = 0;
+  return h;
+}
+static int cxudp_open(int64_t port) {
   int fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (fd < 0) return CXSOCK_ERROR;
   struct sockaddr_in a; memset(&a, 0, sizeof a);
@@ -334,9 +346,7 @@ int64_t cxudp_bind(int64_t port) {
   if (bind(fd, (struct sockaddr *)&a, sizeof a)) { close(fd); return CXSOCK_REFUSED; }
   fcntl(fd, F_SETFL, O_NONBLOCK); fcntl(fd, F_SETFD, FD_CLOEXEC);
   int big = 4 << 20; setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &big, sizeof big); setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &big, sizeof big);
-  cxudp_slot *s = &cxudp_slots[h];
-  s->used = 1; s->fd = fd; s->from = 0; s->in_count = 0; s->out_count = 0;
-  return h;
+  return fd;
 }
 int64_t cxudp_port(int64_t h) {
   cxudp_slot *s = cxudp_get(h);
@@ -379,6 +389,7 @@ int64_t cxudp_send(int64_t h, int64_t port) {
 int64_t cxudp_close(int64_t h) {
   cxudp_slot *s = cxudp_get(h);
   if (!s) return CXSOCK_ERROR;
-  close(s->fd); s->used = 0; s->fd = -1;
+  close(s->fd);
+  pthread_mutex_lock(&cxsock_mu); s->used = 0; s->fd = -1; pthread_mutex_unlock(&cxsock_mu);
   return 0;
 }

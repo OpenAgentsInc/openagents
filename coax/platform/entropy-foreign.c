@@ -3,9 +3,11 @@
 #include "entropy-native.h"
 #include <string.h>
 
-static uint8_t cxrand_out[CXRAND_MAX];
-static uint8_t cxrand_scratch[CXRAND_MAX];
-static int64_t cxrand_have = 0;
+/* Per thread: two threads drawing at once through one scratch could each get the other's bytes,
+   the same bytes twice. */
+static _Thread_local uint8_t cxrand_out[CXRAND_MAX];
+static _Thread_local uint8_t cxrand_scratch[CXRAND_MAX];
+static _Thread_local int64_t cxrand_have = 0;
 
 int64_t cxrand_fill(int64_t n) {
   cxrand_have = 0;

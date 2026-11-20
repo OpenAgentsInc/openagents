@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <poll.h>
+#include <pthread.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -47,6 +48,23 @@ typedef struct {
 } Proc;
 
 static Proc procs[CXPROC_MAX];
+/* procs_mu guards taking and freeing a slot; a slot then belongs to the thread that holds its handle.
+   spawn_mu is held from a spawn's first pipe until the parent has closed the child's ends: every pipe
+   is close-on-exec from the moment it exists, and no other thread forks in between, so a child never
+   inherits another spawn's pipe (which would hold that one's stdout open, and its reader waiting,
+   until the wrong child ended). */
+static pthread_mutex_t procs_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t spawn_mu = PTHREAD_MUTEX_INITIALIZER;
+/* In the child: fd becomes to, open across exec. dup2 clears close-on-exec on the copy, but when the
+   pipe already is that number (this process had it closed) there is no copy, so clear it here. */
+static void onto(int fd, int to) {
+  if (fd == to) fcntl(to, F_SETFD, 0); else dup2(fd, to);
+}
+static int pipe_cloexec(int fds[2]) {
+  if (pipe(fds)) return -1;
+  fcntl(fds[0], F_SETFD, FD_CLOEXEC); fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+  return 0;
+}
 
 /* Each child runs in its own process group (so a kill takes its helpers too),
    which also means it doesn't get a signal meant for this process's group.
@@ -75,8 +93,10 @@ static void take_children(int sig) {
 }
 static void guard_children(void) {
   static int guarded;
-  if (guarded) return;
+  pthread_mutex_lock(&procs_mu);
+  if (guarded) { pthread_mutex_unlock(&procs_mu); return; }
   guarded = 1;
+  pthread_mutex_unlock(&procs_mu);
   const int sigs[] = {SIGINT, SIGTERM, SIGHUP};
   for (int i = 0; i < 3; i++) {
     struct sigaction old;
@@ -187,11 +207,14 @@ int64_t cxproc_local_stamp(coax_v_u8 out) {
 }
 
 int64_t cxproc_new(void) {
+  pthread_mutex_lock(&procs_mu);
   for (int i = 0; i < CXPROC_MAX; i++) if (!procs[i].used) {
     memset(&procs[i], 0, sizeof procs[i]);
     procs[i].used = 1; procs[i].in = procs[i].out = procs[i].err = -1;
+    pthread_mutex_unlock(&procs_mu);
     return i;
   }
+  pthread_mutex_unlock(&procs_mu);
   return -1;
 }
 
@@ -280,9 +303,17 @@ int64_t cxproc_pty_resize(int64_t h, int64_t cols, int64_t rows) {
   return ioctl(p->out, TIOCSWINSZ, &ws) == 0 ? 0 : -1;
 }
 
+static int64_t spawn_pty_locked(Proc *p, const char *path, char **argv, char *cwd);
 static int64_t spawn_pty(Proc *p, const char *path, char **argv, char *cwd) {
+  pthread_mutex_lock(&spawn_mu);
+  int64_t e = spawn_pty_locked(p, path, argv, cwd);
+  pthread_mutex_unlock(&spawn_mu);
+  return e;
+}
+static int64_t spawn_pty_locked(Proc *p, const char *path, char **argv, char *cwd) {
   int master = posix_openpt(O_RDWR | O_NOCTTY);
   if (master < 0) return errno;
+  fcntl(master, F_SETFD, FD_CLOEXEC);
   if (grantpt(master) || unlockpt(master)) { int e = errno; close(master); return e; }
   char *name = ptsname(master);
   if (!name) { int e = errno; close(master); return e; }
@@ -292,8 +323,7 @@ static int64_t spawn_pty(Proc *p, const char *path, char **argv, char *cwd) {
   ioctl(master, TIOCSWINSZ, &ws);
   signal(SIGPIPE, SIG_IGN);
   int report[2];
-  if (pipe(report)) { int e = errno; close(master); return e; }
-  fcntl(report[1], F_SETFD, FD_CLOEXEC);
+  if (pipe_cloexec(report)) { int e = errno; close(master); return e; }
   pid_t pid = fork();
   if (pid < 0) { int e = errno; close(master); close(report[0]); close(report[1]); return e; }
   if (pid == 0) {
@@ -330,8 +360,7 @@ static int64_t spawn_pty(Proc *p, const char *path, char **argv, char *cwd) {
   ssize_t got;
   do got = read(report[0], &e, sizeof e); while (got < 0 && errno == EINTR);
   close(report[0]);
-  p->started = 1; p->pid = pid; p->out = master; p->in = dup(master); p->err = -1;
-  fcntl(p->in, F_SETFD, FD_CLOEXEC); fcntl(p->out, F_SETFD, FD_CLOEXEC);
+  p->started = 1; p->pid = pid; p->out = master; p->in = fcntl(master, F_DUPFD_CLOEXEC, 0); p->err = -1;
   if (got == (ssize_t)sizeof e && e) { waitpid(pid, &p->status, 0); p->reaped = 1; return e; }
   return 0;
 }
@@ -347,17 +376,17 @@ int64_t cxproc_spawn(int64_t h) {
   char *cwd = p->cwd.count ? cstr(&p->cwd) : NULL;
   if (p->pty) { int64_t e = spawn_pty(p, path, argv, cwd); free(argv); return e; }
   int in[2], out[2], err[2];
-  if (pipe(in)) { free(argv); return errno; }
-  if (pipe(out)) { int e = errno; close(in[0]); close(in[1]); free(argv); return e; }
-  if (pipe(err)) { int e = errno; close(in[0]); close(in[1]); close(out[0]); close(out[1]); free(argv); return e; }
+  pthread_mutex_lock(&spawn_mu);
+  if (pipe_cloexec(in)) { int e = errno; pthread_mutex_unlock(&spawn_mu); free(argv); return e; }
+  if (pipe_cloexec(out)) { int e = errno; pthread_mutex_unlock(&spawn_mu); close(in[0]); close(in[1]); free(argv); return e; }
+  if (pipe_cloexec(err)) { int e = errno; pthread_mutex_unlock(&spawn_mu); close(in[0]); close(in[1]); close(out[0]); close(out[1]); free(argv); return e; }
   /* A child that exits early must not kill the host with SIGPIPE. */
   signal(SIGPIPE, SIG_IGN);
   int report[2];
-  if (pipe(report)) { int e = errno; free(argv); close(in[0]); close(in[1]); close(out[0]); close(out[1]); close(err[0]); close(err[1]); return e; }
-  fcntl(report[1], F_SETFD, FD_CLOEXEC);
+  if (pipe_cloexec(report)) { int e = errno; pthread_mutex_unlock(&spawn_mu); free(argv); close(in[0]); close(in[1]); close(out[0]); close(out[1]); close(err[0]); close(err[1]); return e; }
   pid_t pid = fork();
   if (pid < 0) {
-    int e = errno; free(argv);
+    int e = errno; pthread_mutex_unlock(&spawn_mu); free(argv);
     int fds[] = {in[0], in[1], out[0], out[1], err[0], err[1], report[0], report[1]};
     for (int i = 0; i < 8; i++) close(fds[i]);
     return e;
@@ -372,11 +401,11 @@ int64_t cxproc_spawn(int64_t h) {
 #if defined(__linux__)
       prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
-      dup2(in[0], 0);
+      onto(in[0], 0);
       if (p->outnull) { /* stdout to /dev/null, stderr left as this process's */
         int null = open("/dev/null", O_WRONLY);
         if (null >= 0) { dup2(null, 1); if (null > 2) close(null); }
-      } else { dup2(out[1], 1); if (p->errtoout) dup2(out[1], 2); else if (!p->errours) dup2(err[1], 2); }
+      } else { onto(out[1], 1); if (p->errtoout) onto(out[1], 2); else if (!p->errours) onto(err[1], 2); }
     }
     signal(SIGPIPE, SIG_DFL);
     /* a detached child is stopped by a signal from a later run, so an ignored SIGINT (a command
@@ -401,14 +430,14 @@ int64_t cxproc_spawn(int64_t h) {
   }
   free(argv);
   if (!p->detach) setpgid(pid, pid); /* also from the parent, so the group exists before any kill */
-  guard_children();
   close(in[0]); close(out[1]); close(err[1]); close(report[1]);
+  pthread_mutex_unlock(&spawn_mu);
+  guard_children();
   int e = 0;
   ssize_t got;
   do got = read(report[0], &e, sizeof e); while (got < 0 && errno == EINTR);
   close(report[0]);
   p->started = 1; p->pid = pid; p->in = in[1]; p->out = out[0]; p->err = err[0];
-  fcntl(p->in, F_SETFD, FD_CLOEXEC); fcntl(p->out, F_SETFD, FD_CLOEXEC); fcntl(p->err, F_SETFD, FD_CLOEXEC);
   fcntl(p->err, F_SETFL, fcntl(p->err, F_GETFL) | O_NONBLOCK);
 #if defined(F_SETNOSIGPIPE)
   fcntl(p->in, F_SETNOSIGPIPE, 1);
@@ -677,12 +706,14 @@ int64_t cxproc_release(int64_t h) {
   if (p->err >= 0) close(p->err);
   drop_list(&p->args); drop_list(&p->env); drop_list(&p->unset);
   drop(&p->cwd); drop(&p->buf); drop(&p->wbuf);
+  pthread_mutex_lock(&procs_mu);
   memset(p, 0, sizeof *p);
+  pthread_mutex_unlock(&procs_mu);
   return 0;
 }
 
-static Bytes env_name;
-static const char *env_value;
+static _Thread_local Bytes env_name;
+static _Thread_local const char *env_value;
 int64_t cxproc_getenv_push(int64_t byte) {
   if (byte <= 0 || byte > 255) return -1;
   return put(&env_name, (char)byte);
@@ -690,7 +721,7 @@ int64_t cxproc_getenv_push(int64_t byte) {
 int64_t cxproc_getenv(void) {
   char *name = cstr(&env_name);
   env_value = name ? getenv(name) : NULL;
-  env_name.count = 0;
+  drop(&env_name); /* nothing kept past the call: a thread that ends leaves no buffer behind */
   return env_value ? (int64_t)strlen(env_value) : -1;
 }
 int64_t cxproc_getenv_byte(int64_t i) {

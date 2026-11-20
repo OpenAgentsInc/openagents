@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <ftw.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <sys/file.h>
 #include <sys/stat.h>
@@ -141,16 +142,47 @@ int64_t cxstore_size(void) {
 
 /* ---- general file effects for Coax tools (store-file-native.h) ---- */
 
-static char fs_path[CXFS_PATH_MAX + 1];
-static size_t fs_path_n;
-static int fs_path_bad;
-static unsigned char *fs_data;
-static int64_t fs_data_n;
-static unsigned char *fs_out;
-static size_t fs_out_n, fs_out_cap;
-static char fs_name[CXFS_PATH_MAX + 1];
-static char **fs_entries;
-static int64_t fs_entries_n;
+/* Each thread stages its own call: OpenAgents Desktop runs core calls on several threads at once, and
+   a process-wide path or byte buffer let one call's path meet another call's bytes (a run spec
+   written over the chat list's index.json). The thread's buffers are freed when the thread ends. */
+typedef struct {
+  char path[CXFS_PATH_MAX + 1]; size_t path_n; int path_bad;
+  unsigned char *data; int64_t data_n;
+  unsigned char *out; size_t out_n, out_cap;
+  char name[CXFS_PATH_MAX + 1];
+  char **entries; int64_t entries_n;
+  char held[CXFS_PATH_MAX + 1]; int held_ok;
+} FsStage;
+static pthread_key_t fs_key;
+static pthread_once_t fs_key_once = PTHREAD_ONCE_INIT;
+static _Thread_local FsStage *fs_mine;
+static void fs_stage_free(void *v) {
+  FsStage *st = v;
+  free(st->data); free(st->out);
+  for (int64_t i = 0; i < st->entries_n; i++) free(st->entries[i]);
+  free(st->entries); free(st);
+}
+static void fs_key_make(void) { if (pthread_key_create(&fs_key, fs_stage_free) != 0) abort(); }
+static FsStage *fs_stage(void) {
+  if (fs_mine) return fs_mine;
+  pthread_once(&fs_key_once, fs_key_make);
+  FsStage *st = calloc(1, sizeof *st);
+  if (!st || pthread_setspecific(fs_key, st) != 0) abort();
+  return fs_mine = st;
+}
+#define fs_path (fs_stage()->path)
+#define fs_path_n (fs_stage()->path_n)
+#define fs_path_bad (fs_stage()->path_bad)
+#define fs_data (fs_stage()->data)
+#define fs_data_n (fs_stage()->data_n)
+#define fs_out (fs_stage()->out)
+#define fs_out_n (fs_stage()->out_n)
+#define fs_out_cap (fs_stage()->out_cap)
+#define fs_name (fs_stage()->name)
+#define fs_entries (fs_stage()->entries)
+#define fs_entries_n (fs_stage()->entries_n)
+#define fs_held (fs_stage()->held)
+#define fs_held_ok (fs_stage()->held_ok)
 
 int64_t cxfs_path_push(int64_t byte) {
   if (byte <= 0 || byte > 255 || fs_path_n >= CXFS_PATH_MAX) { fs_path_bad = 1; return -1; }
@@ -308,8 +340,6 @@ int64_t cxfs_write(int64_t mode) {
 /* rename(2) in two steps: cxfs_hold keeps the pushed path as the source, then the next pushed path
    is the destination of cxfs_rename. Within one file system the replacement is atomic, so a reader
    sees the old file or the new one, never part of either. */
-static char fs_held[sizeof fs_path];
-static int fs_held_ok;
 int64_t cxfs_hold(void) {
   const char *p = take_path();
   fs_held_ok = p != NULL;
