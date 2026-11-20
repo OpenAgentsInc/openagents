@@ -91,7 +91,7 @@ ChatPage :: struct {
   drawer: bool; share: f32;
   thread_menu:bool;thread_details:bool;
   // a drawer row's own actions (Zeron's row swipe and long-press): the touch's start, and the row the menu acts on
-  held:f32;row_menu:bool;row_y:f32;row_h:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
+  held:f32;row_menu:bool;backing:bool;back_dx:f32;row_y:f32;row_h:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
   library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
   menu_content:f32;menu_viewport:f32;
   search:[128]u8;search_n:int;
@@ -757,8 +757,11 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   if !a[0].ready { return v; }
   live := ch_layer(s);
   shift := app_sidebar_shift(w, s[0].share);
+  // a pushed page follows the finger of an edge swipe back, and eases home when the swipe is let go short
+  if !s[0].backing && s[0].back_dx > 0 { s[0].back_dx *= 1 - (ifx dt * 14 > 1 then 1.0f32 else dt * 14); if s[0].back_dx < 0.5 || s[0].reduced { s[0].back_dx = 0; } }
+  shift += s[0].back_dx;
   ch_take_flow_focus(s);
-  moving := s[0].share != (ifx s[0].drawer then 1.0f32 else 0.0f32);
+  moving := s[0].share != (ifx s[0].drawer then 1.0f32 else 0.0f32) || s[0].back_dx > 0;
   for layer: 0..<2 {
     f: [1] UiFrame;
     // only the layer that took the press sees it, so the focus rule runs once
@@ -795,6 +798,19 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
 // The edge swipe's Back: the shown page's own Back button, pressed as a tap would (false: no page is pushed,
 // or its Back is held, as while a project saves).
 CH_BACKS :: [6]string.["workspace.back", "subagent.back", "foreman.back", "usage.back", "settings.back", "project.back"];
+// A pushed page shows a Back that takes a press.
+ch_can_back :: (s: [] ChatPage) -> bool {
+  t := [1] ElTable.[surface_rows(ch_live(s))];
+  for id: CH_BACKS { i := elt_find(t[..], id); if i >= 0 && !elt_has(t[..], i, EL_S_DISABLED) && elt_visible(t[..], i).visible { return true; } }
+  return false;
+}
+// The edge swipe let go: past a third of the page (or CH_BACK_GO) it goes back; short of it the page eases home.
+CH_BACK_GO :: 90.0;
+ch_back_release :: (s: [] ChatPage, up: bool) -> bool {
+  s[0].backing = false;
+  if up && (s[0].back_dx > CH_BACK_GO || s[0].back_dx > s[0].page_w / 3) && ch_edge_back(s) { s[0].back_dx = 0; ch_step(s); return true; }
+  ch_step(s); return false;
+}
 ch_edge_back :: (s: [] ChatPage) -> bool {
   sf := ch_live(s); t := [1] ElTable.[surface_rows(sf)];
   for id: CH_BACKS { i := elt_find(t[..], id); if i >= 0 && !elt_has(t[..], i, EL_S_DISABLED) && elt_visible(t[..], i).visible { return ch_press(s, surface_find(sf, id)); } }
@@ -824,12 +840,15 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on a pushed page (Workspace, a sub-agent, Foreman, Usage, Settings, Projects) it goes back, as a navigation stack's edge swipe does
-    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE && ch_edge_back(s) { s[0].swiped = true; s[0].pressed_n = 0; ch_step(s); }
-    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
+    // the page follows the finger; the release decides (ch_back_release)
+    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_MOVE && (s[0].backing || ch_can_back(s)) {
+      s[0].backing = true; s[0].back_dx = ux - s[0].down_x; s[0].pressed_n = 0; s[0].scrolling = false;
+    }
+    if !s[0].swiped && !s[0].backing && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the login page the same swipe goes back to the chat
     if !s[0].swiped && s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { _ := ch_login_close(s); s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the page, a touch that travels up or down scrolls the transcript (up: toward the latest message)
-    if !s[0].swiped && (ch_layer(s) == 0 || s[0].thread_menu || s[0].thread_details || s[0].filter_menu) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
+    if !s[0].swiped && !s[0].backing && (ch_layer(s) == 0 || s[0].thread_menu || s[0].thread_details || s[0].filter_menu) && (s[0].scrolling || abs(uy - s[0].down_y) > CH_MOVE) {
       s[0].scrolling = true; s[0].pressed_n = 0;
       if !s[0].native_scroll {chat_scroll_to(s,ch_scroll_offset(s)+s[0].last_y-uy);}
     }
@@ -841,6 +860,7 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     s[0].last_y = uy;
     return true;
   }
+  if s[0].backing { s[0].touching = false; s[0].pressed_n = 0; return ch_back_release(s, phase == 2); }
   captured:=uiframe_field_capture(sf,was,ch_focus(s),ux-s[0].down_x,uy-s[0].down_y,CH_MOVE);
   held := s[0].pressed_n > 0 && (was == id || captured);
   if captured {row=surface_find(sf,was);}
@@ -1014,7 +1034,7 @@ chat_style :: (out: [] f32) -> bool #export_c #effects(all) {
   return true;
 }
 // Whether the next frame differs with no input: kit motion.
-chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].render_staged || s[0].again || s[0].touching && s[0].drawer && s[0].pressed_n > 0 && !s[0].row_menu || !s[0].reduced && s[0].moving); }
+chat_moving :: (s: [] ChatPage) -> bool #export_c #effects(all) { return s.count > 0 && (!s[0].ready || s[0].render_staged || s[0].again || s[0].back_dx > 0 || s[0].touching && s[0].drawer && s[0].pressed_n > 0 && !s[0].row_menu || !s[0].reduced && s[0].moving); }
 chat_refused :: (s: [] ChatPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } return s[0].refused; }
 chat_access_capacity :: ()->int #export_c #effects(all) {return CH_P_ROWS;}
 chat_max_vertices :: () -> int #export_c #effects(all) { return CH_MAX_VERTICES; }
@@ -1350,9 +1370,14 @@ chat_render_commit :: (s:[]ChatPage,accepted:bool) #export_c #effects(all) {
   #assert ch_test_text(s[..], "Nostr keys") == 1 && ch_test_has(s[..], "settings.experimental");
   #assert chat_activate(s[..], "settings.experimental") && !chat_experimental(s[..]) && core[0].local_only; _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_text(s[..], "Nostr keys") == 0 && ch_test_text(s[..], "Settings") == 1;
-  // a swipe right from the left edge goes back, as Back does, and opens no drawer
-  _ := chat_pointer(s[..], 3, 900, 0); _ := chat_pointer(s[..], 200, 900, 1); _ := chat_pointer(s[..], 200, 900, 2); _ = ch_test_frame(s[..], o[..]);
-  #assert !ch_test_has(s[..], "settings.back") && !s[0].drawer;
+  // a swipe right from the left edge: the page follows the finger; let go short, it eases home and stays
+  _ := chat_pointer(s[..], 3, 900, 0); _ := chat_pointer(s[..], 200, 900, 1);
+  #assert s[0].backing && s[0].back_dx > 50 && !s[0].drawer; _ = chat_pointer(s[..], 200, 900, 2); _ = ch_test_frame(s[..], o[..]);
+  #assert ch_test_has(s[..], "settings.back") && !s[0].backing && s[0].back_dx < 55; for i: 0..<20 { _ = ch_test_frame(s[..], o[..]); }
+  #assert s[0].back_dx == 0 && ch_test_has(s[..], "settings.back");
+  // carried past a third of the page it goes back, as Back does, and opens no drawer
+  _ = chat_pointer(s[..], 3, 900, 0); _ = chat_pointer(s[..], 600, 900, 1); _ = chat_pointer(s[..], 600, 900, 2); _ = ch_test_frame(s[..], o[..]);
+  #assert !ch_test_has(s[..], "settings.back") && !s[0].drawer && s[0].back_dx == 0;
   // on the chat itself it opens the drawer
   _ = chat_pointer(s[..], 3, 900, 0); _ = chat_pointer(s[..], 200, 900, 1); _ = chat_pointer(s[..], 200, 900, 2);
   #assert s[0].drawer;
