@@ -1258,6 +1258,7 @@ np_agy_ends :: (s: []NextPanel, id: int, reason: string) {
   np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c1\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"git push\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\",\"Cwd\":\"/w\"},\"status\":\"in_progress\"}}}");
   np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"agy-standin-1\",\"toolCall\":{\"toolCallId\":\"c1\",\"name\":\"run_command\",\"kind\":\"execute\",\"title\":\"git push\",\"rawInput\":{\"CommandLine\":\"git push origin HEAD:main\",\"Cwd\":\"/w\"}},\"options\":[{\"optionId\":\"allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"kind\":\"reject_once\"}]}}");
   #assert np_agy_sent(s[..], "\"optionId\":\"allow\"") && np_text_has(s[..], "> $ git push origin HEAD:main");
+  np_agy_feed(s[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"agy-standin-1\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"c1\",\"status\":\"completed\"}}}");
   np_agy_says(s[..], "Pushed **abc123** and closed the issue.\n");
   np_agy_says(s[..], "REPORT: done abc123, #13193 closed");
   np_agy_ends(s[..], 4, "end_turn");
