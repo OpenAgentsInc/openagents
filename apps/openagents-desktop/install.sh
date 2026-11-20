@@ -16,8 +16,9 @@
 # already read, so the list can't miss one.)
 # The installed app carries its commit (OACommit in Info.plist) and commit count (CFBundleVersion).
 # The resident daemon (`coder host serve`, the program behind ~/.openagents/bin/openagents-environment and
-# the login service com.openagents.coax.environment) is kept at the installed Coder's coder-host too: one
-# binary, one resident service. It is restarted only while it runs no work (GitHub #13757).
+# the login service com.openagents.coax.environment) is kept at the newest built Coder's coder-host: the
+# installed one's, or a build waiting for OpenAgents to quit, so a paired phone never waits on that quit.
+# One binary, one resident service. It is restarted only while it runs no work (GitHub #13757).
 set -euo pipefail
 export LC_ALL=C BROWSER=/usr/bin/true
 state="${CODER_RELEASE_HOME:-$HOME/.cache/openagents/coder-release}"
@@ -69,10 +70,13 @@ host_sock="$HOME/.openagents/coder/host/service.sock"
 sock_pid() { lsof -U 2>/dev/null | awk -v s="$host_sock" '$NF == s {print $2; exit}'; }
 # The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
 daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
+# It runs the given app's coder-host (the installed app's by default): a newer build waiting for
+# OpenAgents to quit hands its daemon over first, so a paired phone gets it without that quit.
 sync_resident() {
-  local bundled="$app/Contents/Resources/coder-host" commit dir want
+  local from="${1:-$app}"
+  local bundled="$from/Contents/Resources/coder-host" commit dir want
   [[ -x "$bundled" ]] || return 0
-  commit="$(commit_of "$app" | cut -c1-16)"; [[ -n "$commit" ]] || return 0
+  commit="$(commit_of "$from" | cut -c1-16)"; [[ -n "$commit" ]] || return 0
   dir="$HOME/.openagents/environment/bin/$commit"
   if ! cmp -s "$bundled" "$dir/openagents-environment" 2>/dev/null; then
     mkdir -p "$dir" && cp "$bundled" "$dir/openagents-environment.new" && mv "$dir/openagents-environment.new" "$dir/openagents-environment"
@@ -245,7 +249,7 @@ fi
 
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
-  if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; retire_legacy_agent; exit 0; fi
+  if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
   if inside_app $pids; then say "${target:0:10} is built; this run is inside OpenAgents, so it installs when you quit OpenAgents (the next check)"; retire_legacy_agent; exit 0; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
