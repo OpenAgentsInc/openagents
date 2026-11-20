@@ -43,7 +43,8 @@ Third-party material in the Zeron-fork UI (zeron/, ../backend/gpu-shader.coax, f
    icons/wrap-text.svg: Zeron's own icons (MIT, above). icons/claude-mark.svg: Zeron's port of
    the Claude mark. icons/command.svg (the Command key's sign) is OpenAgents' own, drawn for
    the settings search's key cap. icons/sim-home.svg, icons/sim-rotate.svg, icons/sim-camera.svg,
-   icons/sim-zoom-out.svg, icons/sim-zoom-in.svg, icons/sim-fit.svg and icons/sim-more.svg (the iOS
+   icons/sim-zoom-out.svg, icons/sim-zoom-in.svg, icons/sim-fit.svg, icons/sim-more.svg and
+   icons/sim-record.svg (the iOS
    Simulator pane's) are OpenAgents' own too, drawn in Solar's Linear style.
 
 5. icons/file-rust.svg: from miguelsolorio/vscode-symbols (commit 296ef1b6) as Zeron bundles

@@ -14,6 +14,11 @@
 //   IndigoHIDMessageForMouseNSEvent (the point as a fraction of the screen, target 0x32, NSEvent
 //   types 1 down, 2 up; a move is another down: type 6 makes no message), IndigoHIDMessageForKeyboardArbitrary (HID usage, 1 down / 2 up),
 //   IndigoHIDMessageForButton (source, 1 down / 2 up, target 0x33).
+//   describe: AccessibilityPlatformTranslation's AXPTranslator +sharedInstance, -setBridgeTokenDelegate:
+//   (its -accessibilityTranslationDelegateBridgeCallbackWithToken: answered through -[SimDevice
+//   sendAccessibilityRequestAsync:completionQueue:completionHandler:]),
+//   -frontmostApplicationWithDisplayId:bridgeDelegateToken: and -macPlatformElementFromTranslation:,
+//   whose elements' accessibilityRole/Label/Value/Frame/Children are in device points.
 #import <Foundation/Foundation.h>
 #import <IOSurface/IOSurface.h>
 #import <CoreGraphics/CoreGraphics.h>
@@ -22,6 +27,7 @@
 #include <dlfcn.h>
 #include <mach/mach.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #ifndef COAX_coax_v_u8_DEFINED
 #define COAX_coax_v_u8_DEFINED
@@ -286,5 +292,96 @@ int64_t simshim_pbcopy(coax_v_u8 udid, coax_v_u8 text) {
     [in.fileHandleForWriting closeFile];
     [t waitUntilExit];
     return t.terminationStatus == 0 ? 1 : 0;
+  }
+}
+
+// ---- describe: the screen's accessibility tree (Phase 3), as idb reads it: AXPTranslator
+// (macOS's AccessibilityPlatformTranslation) turns the device's accessibility into macOS
+// accessibility elements, asking the device through -[SimDevice
+// sendAccessibilityRequestAsync:completionQueue:completionHandler:] on each request it needs.
+
+typedef id (^SsAxCallback)(id request);
+@interface SsAxBridge : NSObject
+@property (strong) id device;
+@property (strong) dispatch_queue_t queue;
+@end
+@implementation SsAxBridge
+- (SsAxCallback)accessibilityTranslationDelegateBridgeCallbackWithToken:(NSString *)token {
+  id dev = self.device; dispatch_queue_t q = self.queue;
+  return ^id(id request) {
+    __block id answer = nil;
+    dispatch_semaphore_t done = dispatch_semaphore_create(0);
+    SEL send = sel_registerName("sendAccessibilityRequestAsync:completionQueue:completionHandler:");
+    if (!request || ![dev respondsToSelector:send]) return nil;
+    ((void(*)(id, SEL, id, dispatch_queue_t, void (^)(id)))objc_msgSend)(dev, send, request, q, ^(id r) { answer = r; dispatch_semaphore_signal(done); });
+    if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) != 0) {
+      Class rc = NSClassFromString(@"AXPTranslatorResponse");
+      return rc ? ((id(*)(id, SEL))objc_msgSend)(rc, sel_registerName("emptyResponse")) : nil;
+    }
+    return answer;
+  };
+}
+- (CGRect)accessibilityTranslationConvertPlatformFrameToSystem:(CGRect)rect withToken:(NSString *)token { return rect; }
+- (id)accessibilityTranslationRootParentWithToken:(NSString *)token { return nil; }
+@end
+
+static SsAxBridge *ss_ax;
+static id ss_ax_value(id el, const char *sel) { id v = ss_send0(el, sel); return v; }
+static void ss_ax_put(NSMutableString *out, id el, NSString *token, int depth, int *count) {
+  if (*count >= 600 || depth > 40) return;
+  (*count)++;
+  id tr = ss_send0(el, "translation");
+  if (tr && [tr respondsToSelector:sel_registerName("setBridgeDelegateToken:")]) ((void(*)(id, SEL, id))objc_msgSend)(tr, sel_registerName("setBridgeDelegateToken:"), token);
+  NSString *role = ss_ax_value(el, "accessibilityRole");
+  id label = ss_ax_value(el, "accessibilityLabel"), value = ss_ax_value(el, "accessibilityValue");
+  CGRect f = CGRectZero;
+  if ([el respondsToSelector:sel_registerName("accessibilityFrame")]) f = ((CGRect(*)(id, SEL))objc_msgSend)(el, sel_registerName("accessibilityFrame"));
+  BOOL enabled = YES;
+  if ([el respondsToSelector:sel_registerName("isAccessibilityEnabled")]) enabled = ((BOOL(*)(id, SEL))objc_msgSend)(el, sel_registerName("isAccessibilityEnabled"));
+  NSString *r = [role isKindOfClass:NSString.class] ? ([role hasPrefix:@"AX"] ? [role substringFromIndex:2] : role) : @"Element";
+  for (int i = 0; i < depth; i++) [out appendString:@"  "];
+  [out appendString:r];
+  if ([label isKindOfClass:NSString.class] && [label length]) [out appendFormat:@" \"%@\"", [[label stringByReplacingOccurrencesOfString:@"\n" withString:@" "] stringByReplacingOccurrencesOfString:@"\"" withString:@"'"]];
+  if (value && ![value isKindOfClass:NSNull.class]) {
+    NSString *v = [value description];
+    if (v.length && v.length < 200) [out appendFormat:@" = %@", [v stringByReplacingOccurrencesOfString:@"\n" withString:@" "]];
+  }
+  [out appendFormat:@" (%.0f, %.0f, %.0f, %.0f)%@\n", f.origin.x, f.origin.y, f.size.width, f.size.height, enabled ? @"" : @" disabled"];
+  NSArray *kids = ss_ax_value(el, "accessibilityChildren");
+  if ([kids isKindOfClass:NSArray.class]) for (id k in kids) ss_ax_put(out, k, token, depth + 1, count);
+}
+
+// The frontmost app's accessibility tree into out, one element a line, indented by depth:
+// `Role "label" = value (x, y, w, h)` in device points. The bytes written; -1 when the
+// accessibility translation is not there, -2 when the device did not answer.
+int64_t simshim_describe(coax_v_u8 udid, coax_v_u8 out) {
+  @autoreleasepool {
+    id dev = ss_device(ss_str(udid));
+    if (!dev || ![dev respondsToSelector:sel_registerName("sendAccessibilityRequestAsync:completionQueue:completionHandler:")]) return -1;
+    if (!dlopen("/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.framework/AccessibilityPlatformTranslation", RTLD_NOW)) return -1;
+    Class tc = NSClassFromString(@"AXPTranslator");
+    id tr = tc ? ((id(*)(id, SEL))objc_msgSend)(tc, sel_registerName("sharedInstance")) : nil;
+    SEL front = sel_registerName("frontmostApplicationWithDisplayId:bridgeDelegateToken:");
+    SEL mac = sel_registerName("macPlatformElementFromTranslation:");
+    if (!tr || ![tr respondsToSelector:front] || ![tr respondsToSelector:mac]) return -1;
+    if (!ss_ax) { ss_ax = [SsAxBridge new]; ss_ax.queue = dispatch_queue_create("oasim.ax", DISPATCH_QUEUE_SERIAL); }
+    ss_ax.device = dev;
+    ((void(*)(id, SEL, id))objc_msgSend)(tr, sel_registerName("setBridgeTokenDelegate:"), ss_ax);
+    if ([tr respondsToSelector:sel_registerName("setSupportsDelegateTokens:")]) ((void(*)(id, SEL, BOOL))objc_msgSend)(tr, sel_registerName("setSupportsDelegateTokens:"), YES);
+    if ([tr respondsToSelector:sel_registerName("setAccessibilityEnabled:")]) ((void(*)(id, SEL, BOOL))objc_msgSend)(tr, sel_registerName("setAccessibilityEnabled:"), YES);
+    NSString *token = [[NSUUID UUID] UUIDString];
+    id t = ((id(*)(id, SEL, uint32_t, id))objc_msgSend)(tr, front, 0, token);
+    if (!t) { usleep(400000); t = ((id(*)(id, SEL, uint32_t, id))objc_msgSend)(tr, front, 0, token); }   // an app coming up answers a moment later
+    if (!t) return -2;
+    if ([t respondsToSelector:sel_registerName("setBridgeDelegateToken:")]) ((void(*)(id, SEL, id))objc_msgSend)(t, sel_registerName("setBridgeDelegateToken:"), token);
+    id el = ((id(*)(id, SEL, id))objc_msgSend)(tr, mac, t);
+    if (!el) return -2;
+    NSMutableString *s = [NSMutableString string]; int count = 0;
+    ss_ax_put(s, el, token, 0, &count);
+    NSData *d = [s dataUsingEncoding:NSUTF8StringEncoding];
+    NSUInteger n = MIN(d.length, (NSUInteger)out.count);
+    while (n > 0 && n < d.length && (((const uint8_t *)d.bytes)[n] & 0xC0) == 0x80) n--;   // whole characters
+    memcpy(out.data, d.bytes, n);
+    return (int64_t)n;
   }
 }

@@ -33,7 +33,8 @@ CP_SIM_CLOSE :: 90; CP_SIM_PICK :: 91; CP_SIM_BOOT :: 92; CP_SIM_SHUTDOWN_ACT ::
 CP_SIM_APPEARANCE :: 95; CP_SIM_STOP :: 96; CP_SIM_ALLOW_CHAT :: 97; CP_SIM_ALLOW_ONCE :: 98; CP_SIM_DENY :: 99;
 CP_SIM_HOME :: 101; CP_SIM_LOCK :: 102; CP_SIM_ROTATE :: 103;
 CP_SIM_ROW :: 104;          // a transcript row of an oasim command that went: the pane comes to the front (spec 7.5)
-CP_SIM_ZOOM_OUT :: 105; CP_SIM_ZOOM_IN :: 106; CP_SIM_FIT :: 107; CP_SIM_MORE :: 108;
+CP_SIM_ZOOM_OUT :: 105; CP_SIM_ZOOM_IN :: 106; CP_SIM_FIT :: 107; CP_SIM_MORE :: 108; CP_SIM_RECORD :: 109;
+CP_SIM_TAB :: 110;          // the device tab strip: CP_SIM_TAB + the device's place in the list (to 125)
 CP_SIM_ZOOM_STEP :: 0.8;    // a zoom out: the device this much smaller; zoom in undoes it, up to the fit
 CP_SIM_ZOOM_MIN :: 0.4;
 CP_SIM_TIPS :: 12;          // the icon buttons' tooltips the host shows (coder_page_sim_tips)
@@ -42,6 +43,7 @@ CP_ASK_SIM :: 46;
 CP_SIM_OP_NONE :: 0; CP_SIM_OP_MENU :: 1; CP_SIM_OP_SAVED :: 2; CP_SIM_OP_CLOSED :: 3; CP_SIM_OP_OPENED :: 4;
 // what a request waits for
 CP_SIM_R_HELLO :: 1; CP_SIM_R_LIST :: 2; CP_SIM_R_BOOT :: 3; CP_SIM_R_STILL :: 4; CP_SIM_R_SHOT :: 5; CP_SIM_R_APPEARANCE :: 6; CP_SIM_R_OTHER :: 7;
+CP_SIM_R_RECORD :: 8; CP_SIM_R_RECORDED :: 9;
 
 CpSimDevice :: struct { udid: [40] u8; udid_n: int; name: [64] u8; name_n: int; runtime: [24] u8; runtime_n: int; state: int; }
 CpSimAsk :: struct { chat: [64] u8; chat_n: int; engine: [48] u8; engine_n: int; device: [40] u8; device_n: int; name: [64] u8; name_n: int; op: [24] u8; op_n: int; }
@@ -68,6 +70,7 @@ CpSimPane :: struct {
   body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the screen rect, logical points, top-left
   bezel: f32;                 // the device's frame round it, the same points
   zoom: f32;                  // the device's size as a share of the fit (0 or 1: fit)
+  recording: bool;            // the shown device's screen is being recorded (Record, again to stop)
   more: bool;                 // the menu the host shows is More's (Shut Down, the look, Lock), not the devices
   more_acts: [4] int; nmore: int;
   tips: [CP_SIM_TIPS] CpSimTip; ntips: int;
@@ -113,6 +116,7 @@ cp_sim_yield :: (s: [] CoderPage, act: int) -> bool {
   m[0].front = false;
   return false;   // the press goes on to do what it does
 }
+cp_sim_booted_count :: (s: [] CoderPage) -> int { m := cp_sim(s); n := 0; for i: 0..<m[0].ndevices { if m[0].devices[i].state == CP_SIM_BOOTED { n += 1; } } return n; }
 cp_sim_device :: (s: [] CoderPage) -> int { m := cp_sim(s); return ifx m[0].pick >= 0 && m[0].pick < m[0].ndevices then m[0].pick else -1; }
 cp_sim_udid :: (s: [] CoderPage) -> string { m := cp_sim(s); d := cp_sim_device(s); return ifx d >= 0 then cp_sim_s(m[0].devices[d].udid[..], m[0].devices[d].udid_n) else ""; }
 cp_sim_name :: (s: [] CoderPage) -> string { m := cp_sim(s); d := cp_sim_device(s); return ifx d >= 0 then cp_sim_s(m[0].devices[d].name[..], m[0].devices[d].name_n) else "iOS Simulator"; }
@@ -235,6 +239,13 @@ cp_sim_reply :: (s: [] CoderPage, m: [] SwMsg) {
     if m[0].has[SW_F_SIZE] { p[0].screen_w = cast(f32) m[0].size_w; p[0].screen_h = cast(f32) m[0].size_h; }
     return;
   }
+  if kind == CP_SIM_R_RECORD { if !ok { p[0].recording = false; } return; }
+  if kind == CP_SIM_R_RECORDED {
+    p[0].recording = false;
+    if !ok { return; }
+    p[0].saved_n = cp_out(p[0].saved[..], sw_str(m, SW_F_PATH)); p[0].op = CP_SIM_OP_SAVED; s[0].ask = CP_ASK_SIM;
+    return;
+  }
   if kind == CP_SIM_R_SHOT {
     if !ok { cp_sim_failed(s, sw_str(m, SW_F_WHY)); return; }
     p[0].saved_n = cp_out(p[0].saved[..], sw_str(m, SW_F_PATH)); p[0].op = CP_SIM_OP_SAVED; s[0].ask = CP_ASK_SIM;
@@ -326,6 +337,13 @@ cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
   if act == CP_SIM_CLOSE { p[0].closed_by_person = true; cp_sim_hide(s); return true; }
   if act == CP_SIM_PICK { p[0].more = false; p[0].op = CP_SIM_OP_MENU; s[0].ask = CP_ASK_SIM; return true; }
   if act == CP_SIM_FIT { p[0].zoom = 1; return true; }
+  if act >= CP_SIM_TAB && act < CP_SIM_TAB + CP_SIM_DEVICES {
+    if act - CP_SIM_TAB == p[0].pick { return false; }
+    // a recording stops (and is kept) before the pane leaves its device
+    if p[0].recording { cp_sim_req(m[..], "record_stop"); cp_sim_with_device(s, m[..]); _ = cp_sim_send(s, m[..], CP_SIM_R_RECORDED); p[0].recording = false; }
+    p[0].more = false;
+    return coder_page_sim_pick(s, act - CP_SIM_TAB);
+  }
   if act == CP_SIM_ZOOM_OUT { z := cp_sim_zoom(s) * CP_SIM_ZOOM_STEP; p[0].zoom = ifx z < CP_SIM_ZOOM_MIN then CP_SIM_ZOOM_MIN else z; return true; }
   if act == CP_SIM_ZOOM_IN { z := cp_sim_zoom(s) / CP_SIM_ZOOM_STEP; p[0].zoom = ifx z > 0.999f32 then 1.0f32 else z; return true; }
   if act == CP_SIM_MORE {
@@ -362,6 +380,15 @@ cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
     n = el_put(b[..], n, "/simulator-"); n = el_put_i(b[..], n, cast(int) s[0].now); n = el_put(b[..], n, "-"); n = el_put_i(b[..], n, p[0].next_id + 1); n = el_put(b[..], n, ".png");
     cp_sim_req(m[..], "screenshot"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_OUT, cast(string) b[0..<n]);
     _ = cp_sim_send(s, m[..], CP_SIM_R_SHOT);
+    return true;
+  }
+  if act == CP_SIM_RECORD {
+    if p[0].recording { cp_sim_req(m[..], "record_stop"); cp_sim_with_device(s, m[..]); _ = cp_sim_send(s, m[..], CP_SIM_R_RECORDED); return true; }
+    if p[0].shots_dir_n == 0 { return false; }
+    b: [CP_SIM_PATH] u8; n := el_put(b[..], 0, cp_sim_s(p[0].shots_dir[..], p[0].shots_dir_n));
+    n = el_put(b[..], n, "/simulator-"); n = el_put_i(b[..], n, cast(int) s[0].now); n = el_put(b[..], n, "-"); n = el_put_i(b[..], n, p[0].next_id + 1); n = el_put(b[..], n, ".mp4");
+    cp_sim_req(m[..], "record_start"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_OUT, cast(string) b[0..<n]);
+    _ = cp_sim_send(s, m[..], CP_SIM_R_RECORD); p[0].recording = true;
     return true;
   }
   if act == CP_SIM_APPEARANCE {
@@ -453,6 +480,19 @@ cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     if p[0].ntips < CP_SIM_TIPS { p[0].tips[p[0].ntips] = CpSimTip.{x = x, y = y, w = bw, h = ch, text = "Choose a Device"}; p[0].ntips += 1; }
   }
   y += ch + a.gap_small;
+  // with two or more devices booted, a tab for each, so the person flips between them
+  if cp_sim_booted_count(s) >= 2 {
+    tx := x; tch := k.cmp.chip_h;
+    for i: 0..<p[0].ndevices {
+      if p[0].devices[i].state != CP_SIM_BOOTED { continue; }
+      v := cp_sim_s(p[0].devices[i].name[..], p[0].devices[i].name_n);
+      tw := app_chip_width(f, ICON_SET_PHONE, v, cw / 2);
+      if tx + tw > x + cw { break; }
+      ib2: [24] u8; il := el_put(ib2[..], 0, "coder.sim.tab."); il = el_put_i(ib2[..], il, i);
+      tx += app_chip(f, sheet_pool(sh, cast(string) ib2[0..<il]), tx, y, cw / 2, ICON_SET_PHONE, "Device", v, ifx i == d then EL_S_CURRENT else 0, CP_SIM_TAB + i) + a.gap_small;
+    }
+    y += tch + a.gap_small;
+  }
   // an agent's badge, above the screen (never over the native view)
   if p[0].agent != CP_SIM_AGENT_NONE && p[0].nasks == 0 {
     eb: [200] u8; en := el_put(eb[..], 0, ifx p[0].agent_engine_n > 0 then cp_sim_s(p[0].agent_engine[..], p[0].agent_engine_n) else "An agent");
@@ -503,7 +543,7 @@ cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   p[0].body_x = r[0]; p[0].body_y = r[1]; p[0].body_w = r[2]; p[0].body_h = r[3]; p[0].bezel = r[4];
   if !(r[2] > 0) || !(r[3] > 0) { return; }
   _ := uiframe_semantic(f, "coder.sim.screen", EL_REGION, cp_sim_name(s), r[0], r[1], r[2], r[3], 0, 0);
-  n := 2 + (ifx p[0].input then 2 else 0);
+  n := 3 + (ifx p[0].input then 2 else 0);
   tw := cast(f32) n * ib + 2 * pad;
   tx := px + (pw - tw) / 2; ty := r[1] + r[3] + r[4] + a.gap;
   _ := sheet_box(sh, tx, ty, tw, th, th / 2, k.border, k.raised, k.field_edge);
@@ -513,6 +553,8 @@ cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     bx += cp_sim_icon(s, f, "coder.sim.rotate", bx, by, ICON_SIM_ROTATE, "Rotate", 0, CP_SIM_ROTATE);
   }
   bx += cp_sim_icon(s, f, "coder.sim.shot", bx, by, ICON_SIM_CAMERA, "Screenshot", ifx p[0].shots_dir_n > 0 then 0 else EL_S_DISABLED, CP_SIM_SHOT);
+  bx += cp_sim_icon(s, f, "coder.sim.record", bx, by, ifx p[0].recording then ICON_STOP else ICON_SIM_RECORD, ifx p[0].recording then "Stop Recording" else "Record",
+                    ifx p[0].recording then EL_S_CURRENT else ifx p[0].shots_dir_n > 0 then 0 else EL_S_DISABLED, CP_SIM_RECORD);
   bx += cp_sim_icon(s, f, "coder.sim.more", bx, by, ICON_SIM_MORE, "More", 0, CP_SIM_MORE);
 }
 
@@ -801,11 +843,17 @@ cp_sim_cmd :: (text: string, tb: [] u8) -> CpSimWords {
     return CpSimWords.{verb = ifx v == "build" then "Built" else "Built and ran", target = ifx sch.count > 0 then sch else "the app"};
   }
   if v == "list" { return CpSimWords.{verb = "Listed", target = "the simulators"}; }
+  if v == "describe" { return CpSimWords.{verb = "Read", target = "the screen's accessibility"}; }
+  if v == "logs" { return CpSimWords.{verb = "Read", target = "the simulator's log"}; }
+  if v == "rotate" { return CpSimWords.{verb = "Turned the simulator", target = cp_sim_word_at(text, 2)}; }
+  if v == "record" { return CpSimWords.{verb = ifx cp_sim_word_at(text, 2) == "stop" then "Stopped recording" else "Started recording", target = "the simulator"}; }
   return CpSimWords.{verb = "Ran oasim", target = cp_sim_rest(text, 1)};
 }
 #test "oasim commands in the transcript say what they did" {
   tb: [256] u8;
   w := cp_sim_cmd("oasim tap 201 640", tb[..]); #assert w.verb == "Tapped" && w.target == "(201, 640)";
+  #assert cp_sim_cmd("oasim describe", tb[..]).target == "the screen's accessibility" && cp_sim_cmd("oasim logs --bundle a", tb[..]).target == "the simulator's log";
+  #assert cp_sim_cmd("oasim record stop", tb[..]).verb == "Stopped recording" && cp_sim_cmd("oasim record start", tb[..]).verb == "Started recording" && cp_sim_cmd("oasim rotate left", tb[..]).target == "left";
   w = cp_sim_cmd("/x/Resources/oasim swipe 10 700 10 200 --device U", tb[..]); #assert w.verb == "Swiped" && w.target == "(10, 700) to (10, 200)";
   w = cp_sim_cmd("oasim screenshot --out /t/a.png", tb[..]); #assert w.verb == "Took a screenshot";
   w = cp_sim_cmd("oasim text hello  there", tb[..]); #assert w.verb == "Typed" && w.target == "hello  there";
@@ -819,7 +867,7 @@ cp_sim_cmd :: (text: string, tb: [] u8) -> CpSimWords {
   w = cp_sim_cmd("oasim build --project P --scheme OpenAgents", tb[..]); #assert w.verb == "Built" && w.target == "OpenAgents";
   w = cp_sim_cmd("oasim run --project P", tb[..]); #assert w.verb == "Built and ran" && w.target == "the app";
   w = cp_sim_cmd("oasim list", tb[..]); #assert w.verb == "Listed";
-  w = cp_sim_cmd("oasim describe", tb[..]); #assert w.verb == "Ran oasim" && w.target == "describe";
+  w = cp_sim_cmd("oasim quit", tb[..]); #assert w.verb == "Ran oasim" && w.target == "quit";
   #assert cp_sim_cmd("ls oasim", tb[..]).verb == "" && cp_sim_cmd("oasimx tap 1 2", tb[..]).verb == "" && cp_sim_cmd("", tb[..]).verb == "";
   #assert cp_sim_word_at(" a  b ", 1) == "b" && cp_sim_word_at("a", 3) == "" && cp_sim_rest("a b c", 1) == "b c" && cp_sim_rest("a", 2) == "";
 }

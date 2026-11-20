@@ -60,11 +60,11 @@ ICON_SET_GENERAL :: 41; ICON_SET_MODELS :: 42; ICON_SET_FOREMAN :: 43; ICON_SET_
 ICON_SET_BACK :: 46; ICON_SET_SEARCH :: 47; ICON_SETTINGS :: 48; ICON_SET_CHEVRON :: 49; ICON_SET_TAG :: 50; ICON_SET_PHONE :: 51;
 ICON_SET_COMMAND :: 52;   // the Command key's sign on a key cap (a display face has no ⌘)
 // the iOS Simulator pane's (apps/openagents-desktop/page/simpane.coax): Home, Rotate, Screenshot,
-// the zoom's out, in and fit, and More; OpenAgents' own, drawn in Solar's Linear style
+// the zoom's out, in and fit, More and Record; OpenAgents' own, drawn in Solar's Linear style
 ICON_SIM_HOME :: 53; ICON_SIM_ROTATE :: 54; ICON_SIM_CAMERA :: 55; ICON_SIM_ZOOM_OUT :: 56; ICON_SIM_ZOOM_IN :: 57;
-ICON_SIM_FIT :: 58; ICON_SIM_MORE :: 59;
-ICON_COUNT :: 60;
-ICON_NAMES :: [60] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+ICON_SIM_FIT :: 58; ICON_SIM_MORE :: 59; ICON_SIM_RECORD :: 60;
+ICON_COUNT :: 61;
+ICON_NAMES :: [61] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
@@ -72,11 +72,11 @@ ICON_NAMES :: [60] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-do
                            "compose-edit-square", "chats", "image-square", "pin", "archive", "share", "flag", "x",
                            "settings-minimalistic", "widget", "bot", "user-rounded", "info-square",
                            "arrow-left", "magnifer", "settings", "alt-arrow-right", "tag", "smartphone", "command",
-                           "sim-home", "sim-rotate", "sim-camera", "sim-zoom-out", "sim-zoom-in", "sim-fit", "sim-more"];
-ICON_SIZES :: [60] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                           "sim-home", "sim-rotate", "sim-camera", "sim-zoom-out", "sim-zoom-in", "sim-fit", "sim-more", "sim-record"];
+ICON_SIZES :: [61] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
                         14, 14, 14, 14, 14, 10, 14, 14, 16, 14, 20, 20, 20, 20, 20, 20, 20, 20, 18,
                         16, 16, 16, 16, 16, 16, 14, 16, 14, 16, 16, 11,
-                        16, 16, 16, 16, 16, 16, 16];
+                        16, 16, 16, 16, 16, 16, 16, 16];
 
 // Zeron Dark: zgx's themes/zeron-dark.json (Zeron e393c4a8), the one source of its colours. A
 // skin reads its roles from here, and so does a page that draws a part the skin has no role for

@@ -39,6 +39,8 @@ ShClient :: struct {
   folder: [SH_PATH] u8; folder_n: int;
 }
 SH_JOB_SIMPLE :: 1; SH_JOB_BOOT :: 2; SH_JOB_SHOT :: 3; SH_JOB_LAUNCH :: 4; SH_JOB_APPEARANCE :: 5; SH_JOB_SHUTDOWN :: 6;
+SH_JOB_LOGS :: 7; SH_JOB_RECORD :: 8;
+SH_RECORD_MS :: 600000;   // a recording stops itself after ten minutes
 ShJob :: struct {
   live: bool; kind: int; step: int;
   client: int; id: int;            // who waits, and the request's id (0: no reply)
@@ -50,6 +52,7 @@ ShJob :: struct {
   bundle: [256] u8; bundle_n: int;
   scale: f64;
   started_ms: int;
+  stopping: bool;                  // a recording told to stop (SIGINT): its end is the stop's reply
 }
 // A request parked until the person answers the permission card.
 ShAsk :: struct { live: bool; client: int; line: [8192] u8; n: int; chat: [64] u8; chat_n: int; udid: [64] u8; udid_n: int; until_ms: int; }
@@ -277,6 +280,7 @@ sh_job_new :: (h: [] ShHost, kind: int, ci: int, id: int, udid: string) -> int {
       h[0].jobs[j].live = true; h[0].jobs[j].kind = kind; h[0].jobs[j].step = 0; h[0].jobs[j].client = ci; h[0].jobs[j].id = id;
       h[0].jobs[j].proc = -1; h[0].jobs[j].out_n = 0; h[0].jobs[j].path_n = 0; h[0].jobs[j].tmp_n = 0; h[0].jobs[j].bundle_n = 0;
       h[0].jobs[j].udid_n = sd_put(h[0].jobs[j].udid[..], udid); h[0].jobs[j].scale = 1.0; h[0].jobs[j].started_ms = proc_now_ms();
+      h[0].jobs[j].stopping = false;
       return j;
     }
   }
@@ -313,14 +317,20 @@ sh_job_poll :: (h: [] ShHost, j: int) {
     if k == PROC_EOF || k == PROC_ERROR { break; }
     if k < 0 { continue; }
     o := h[0].jobs[j].out_n;
+    if h[0].jobs[j].kind == SH_JOB_LOGS && o + k + 1 > h[0].jobs[j].out.count { o = sw_keep_tail(h[0].jobs[j].out[..], o); }
     o = sh_put(h[0].jobs[j].out[..], o, cast(string) line[0..<k]); o = sh_put(h[0].jobs[j].out[..], o, "\n");
     h[0].jobs[j].out_n = o;
   }
   status := proc_wait(p, 0);
   if status == PROC_RUNNING {
+    if h[0].jobs[j].kind == SH_JOB_RECORD {
+      if !h[0].jobs[j].stopping && proc_now_ms() - h[0].jobs[j].started_ms > SH_RECORD_MS { _ = proc_kill(p, 2); h[0].jobs[j].stopping = true; }
+      return;
+    }
     if proc_now_ms() - h[0].jobs[j].started_ms > 200000 { _ = proc_kill(p, PROC_SIGKILL); sh_job_end(h, j, "timeout", "the simulator did not answer within 200 s"); }
     return;
   }
+  if h[0].jobs[j].kind == SH_JOB_RECORD && h[0].jobs[j].stopping { _ = proc_release(p); h[0].jobs[j].proc = -1; sh_job_next(h, j); return; }
   eb: [1024] u8; err := proc_stderr(p, eb[..]);
   _ = proc_release(p); h[0].jobs[j].proc = -1;
   if status != 0 {
@@ -375,6 +385,27 @@ sh_job_next :: (h: [] ShHost, j: int) {
     _ = fs_remove(cast(string) h[0].jobs[j].tmp[0..<h[0].jobs[j].tmp_n]);
     sh_shot_reply(h, ci, id, udid, cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n], -1);
     sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_LOGS && step == 1 && h[0].jobs[j].bundle_n > 0 {
+    // the app's executable, from simctl appinfo: its log lines are its process's
+    exe := sw_plist_value(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n], "CFBundleExecutable");
+    pb: [600] u8; pn := sh_put(pb[..], 0, "subsystem BEGINSWITH \""); pn = sh_put(pb[..], pn, cast(string) h[0].jobs[j].bundle[0..<h[0].jobs[j].bundle_n]); pn = sh_put(pb[..], pn, "\"");
+    if exe.count > 0 && sw_word_ok(exe) { pn = sh_put(pb[..], pn, " OR process == \""); pn = sh_put(pb[..], pn, exe); pn = sh_put(pb[..], pn, "\""); }
+    sb: [24] u8; sn := sh_put(sb[..], 0, sh_int(cast(int) h[0].jobs[j].scale, sb[..])); sn = sh_put(sb[..], sn, "s");
+    argv := [12] string.["xcrun", "simctl", "spawn", udid, "log", "show", "--style", "compact", "--last", cast(string) sb[0..<sn], "--predicate", cast(string) pb[0..<pn]];
+    h[0].jobs[j].out_n = 0;
+    _ = sh_job_run(h, j, argv[..]); return;
+  }
+  if kind == SH_JOB_LOGS {
+    m := h[0].reply[..]; sw_reply_ok(m, id);
+    _ = sw_set_str(m, SW_F_LINES, sw_tail_lines(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n]));
+    sh_answer(h, ci, id, m); sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_RECORD {
+    path := cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n];
+    if fs_kind(path) != FS_FILE { sh_job_end(h, j, "bad_args", "the recording was not written"); return; }
+    m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_PATH, path);
+    sh_answer(h, ci, id, m); sh_job_end(h, j, "", ""); return;
   }
   if kind == SH_JOB_APPEARANCE {
     m := h[0].reply[..]; sw_reply_ok(m, id);
@@ -580,9 +611,48 @@ sh_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, booted: boo
     sh_simple(h, ci, id, udid, SH_JOB_SIMPLE, "terminate", b, ""); return;
   }
   if op == "launch" || op == "install" { sh_launch(h, ci, id, op, udid, m); return; }
+  if op == "logs" { sh_logs(h, ci, id, udid, m); return; }
+  if op == "record_start" || op == "record_stop" { sh_record(h, ci, id, op, udid, m); return; }
   if shim_run(h, ci, id, op, udid, m) { return; }
   if sp_class(op) == SP_CONTROL { sh_fail(h, ci, id, "input_unavailable", "this helper can't send touches or keys to the simulator with this Xcode"); return; }
   sh_fail(h, ci, id, "bad_args", "this helper does not do that op yet");
+}
+// logs: the device's log of the last since_s seconds (60 by default, at most 600), the app's
+// alone when bundle_id is given, its newest lines.
+sh_logs :: (h: [] ShHost, ci: int, id: int, udid: string, m: [] SwMsg) {
+  b := sw_str(m, SW_F_BUNDLE);
+  if b.count > 0 && !sw_word_ok(b) { sh_fail(h, ci, id, "bad_args", "bundle_id is letters, digits, dots, dashes and underscores"); return; }
+  since := sw_int(m, SW_F_SINCE, 60);
+  if since < 1 || since > 600 { sh_fail(h, ci, id, "bad_args", "since_s is 1 to 600"); return; }
+  j := sh_job_new(h, SH_JOB_LOGS, ci, id, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  h[0].jobs[j].scale = cast(f64) since; h[0].jobs[j].bundle_n = sd_put(h[0].jobs[j].bundle[..], b);
+  if b.count > 0 { argv := [5] string.["xcrun", "simctl", "appinfo", udid, b]; _ = sh_job_run(h, j, argv[..]); return; }
+  h[0].jobs[j].step = 1; h[0].jobs[j].bundle_n = 0;
+  sb: [24] u8; sn := sh_put(sb[..], 0, sh_int(since, sb[..])); sn = sh_put(sb[..], sn, "s");
+  argv := [10] string.["xcrun", "simctl", "spawn", udid, "log", "show", "--style", "compact", "--last", cast(string) sb[0..<sn]];
+  _ = sh_job_run(h, j, argv[..]);
+}
+// record_start: the screen recorded (simctl io recordVideo, H.264) to out, an absolute .mp4 or
+// .mov path, until record_stop, whose reply carries the path; one recording a device.
+sh_record :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwMsg) {
+  at := -1;
+  for j: 0..<SH_JOBS { if h[0].jobs[j].live && h[0].jobs[j].kind == SH_JOB_RECORD && sh_job_udid(h, j) == udid { at = j; } }
+  if op == "record_stop" {
+    if at < 0 || h[0].jobs[at].stopping { sh_fail(h, ci, id, "bad_args", "the simulator is not recording"); return; }
+    if !proc_kill(h[0].jobs[at].proc, 2) { sh_fail(h, ci, id, "bad_args", "the recording could not be stopped"); return; }
+    h[0].jobs[at].stopping = true; h[0].jobs[at].client = ci; h[0].jobs[at].id = id;
+    return;
+  }
+  if at >= 0 { sh_fail(h, ci, id, "bad_args", "the simulator is already recording; stop it first"); return; }
+  out := sw_str(m, SW_F_OUT);
+  if out.count == 0 || out[0] != '/' || !(sw_ends(out, ".mp4") || sw_ends(out, ".mov")) { sh_fail(h, ci, id, "bad_args", "out is an absolute .mp4 or .mov path"); return; }
+  j := sh_job_new(h, SH_JOB_RECORD, -1, 0, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  h[0].jobs[j].path_n = sd_put(h[0].jobs[j].path[..], out);
+  argv := [8] string.["xcrun", "simctl", "io", udid, "recordVideo", "--codec=h264", "--force", out];
+  if !sh_job_run(h, j, argv[..]) { sh_fail(h, ci, id, "helper_down", "the helper could not start xcrun"); return; }
+  r := h[0].reply[..]; sw_reply_ok(r, id); _ = sw_set_str(r, SW_F_PATH, out); sh_answer(h, ci, id, r);
 }
 sh_simple :: (h: [] ShHost, ci: int, id: int, udid: string, kind: int, verb: string, a1: string, a2: string) {
   j := sh_job_new(h, kind, ci, id, udid);

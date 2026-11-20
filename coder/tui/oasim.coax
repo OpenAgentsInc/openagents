@@ -11,7 +11,7 @@
 //   touch2_path POINTS2_JSON | text TEXT | press_key KEY [--count N] | button NAME
 //   set_appearance light|dark | appearance | set_keyboard show|hide | rotate left|right
 //   open_url URL | launch [--app PATH] [--bundle ID] | install APP | terminate BUNDLE
-//   describe | logs [--bundle ID] [--since S] | status | quit
+//   describe | logs [--bundle ID] [--since S] | record start [--out PATH] | record stop | status | quit
 //   build (--project P | --workspace W) --scheme S [--configuration C] | build_status ID
 //   run (--project P | --workspace W) --scheme S [--configuration C]: build, launch, screenshot
 // Every verb takes --device NAME|UDID (default: the booted simulator).
@@ -143,6 +143,8 @@ os_call :: (m: [] SwMsg, wait_ms: int, out: [] u8) -> int {
     if k < 0 { return os_print_error("timeout", "the simulator helper did not answer in time"); }
     if !sw_read(cast(string) out[0..<k], got[..], why[..]) || sw_has(got[..], SW_F_EVENT) { continue; }
     if sw_int(got[..], SW_F_ID, -1) != 2 { continue; }
+    // describe's tree and logs' lines print as they are, not as a JSON string
+    if sw_bool(got[..], SW_F_OK) && sw_has(got[..], SW_F_LINES) { l := sw_str(got[..], SW_F_LINES); if l.count > 0 && l[l.count - 1] == '\n' { l = l[0..<l.count - 1]; } os_outln(l); return 0; }
     os_outln(cast(string) out[0..<k]);
     return ifx sw_bool(got[..], SW_F_OK) then 0 else 1;
   }
@@ -223,12 +225,37 @@ os_request :: (verb: string, a: [] Args, m: [] SwMsg) -> string {
     return "";
   }
   if verb == "terminate" { if w0.count == 0 { return "terminate needs a bundle id"; } _ = sw_set_str(m, SW_F_BUNDLE, w0); return ""; }
+  if verb == "record" {
+    // start: to --out (default .openagents/recordings in this folder), until stop
+    if w0 != "start" && w0 != "stop" { return "record needs start or stop"; }
+    _ = sw_set_str(m, SW_F_OP, ifx w0 == "start" then "record_start" else "record_stop");
+    if w0 == "stop" { return ""; }
+    out := args_value(a, "--out", "");
+    rb: [OS_PATH] u8; cw: [OS_PATH] u8;
+    if out.count == 0 {
+      nb: [96] u8; nn := sh_put(nb[..], 0, ".openagents/recordings/simulator-"); ib: [24] u8; nn = sh_put(nb[..], nn, sh_int(proc_now_ms(), ib[..])); nn = sh_put(nb[..], nn, ".mp4");
+      out = fs_join(fs_cwd(cw[..]), cast(string) nb[0..<nn], rb[..]);
+    } else if out[0] != '/' { out = fs_join(fs_cwd(cw[..]), out, rb[..]); }
+    _ = sw_set_str(m, SW_F_OUT, out);
+    return "";
+  }
   if verb == "logs" {
     b := args_value(a, "--bundle", ""); if b.count > 0 { _ = sw_set_str(m, SW_F_BUNDLE, b); }
     s := args_value(a, "--since", ""); if s.count > 0 { if !os_num(s, v[..]) { return "--since is seconds"; } sw_set_num(m, SW_F_SINCE, v[0]); }
     return "";
   }
   return "unknown verb";
+}
+#test "record, logs and describe become requests" {
+  m: [1] SwMsg; out: [4096] u8;
+  a: [1] Args; _ = args_add(a[..], "record"); _ = args_add(a[..], "start"); _ = args_add(a[..], "--out"); _ = args_add(a[..], "/w/r.mp4");
+  #assert os_request("record", a[..], m[..]) == "" && cast(string) out[0..<sw_write(m[..], out[..])] == "{\"op\":\"record_start\",\"out\":\"/w/r.mp4\"}";
+  b: [1] Args; _ = args_add(b[..], "record"); _ = args_add(b[..], "stop");
+  #assert os_request("record", b[..], m[..]) == "" && cast(string) out[0..<sw_write(m[..], out[..])] == "{\"op\":\"record_stop\"}";
+  c: [1] Args; _ = args_add(c[..], "record"); #assert os_request("record", c[..], m[..]) == "record needs start or stop";
+  e: [1] Args; _ = args_add(e[..], "logs"); _ = args_add(e[..], "--bundle"); _ = args_add(e[..], "com.a.b"); _ = args_add(e[..], "--since"); _ = args_add(e[..], "30");
+  #assert os_request("logs", e[..], m[..]) == "" && cast(string) out[0..<sw_write(m[..], out[..])] == "{\"op\":\"logs\",\"bundle_id\":\"com.a.b\",\"since_s\":30}";
+  f: [1] Args; _ = args_add(f[..], "describe"); #assert os_request("describe", f[..], m[..]) == "";
 }
 #test "verbs and their words become requests" {
   a: [1] Args; m: [1] SwMsg; out: [4096] u8;
@@ -389,7 +416,7 @@ os_usage :: () -> int {
   tool_errln("usage: oasim list | boot DEVICE | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S] [--settle MS] | tap X Y | swipe X Y X2 Y2");
   tool_errln("       | touch_path JSON | touch2_path JSON | text TEXT | press_key KEY [--count N] | button NAME | set_appearance light|dark");
   tool_errln("       | appearance | set_keyboard show|hide | rotate left|right | open_url URL | launch [--app PATH] [--bundle ID] | install APP");
-  tool_errln("       | terminate BUNDLE | describe | logs | build (--project P|--workspace W) --scheme S | build_status ID | run ... | serve | status | quit | mcp");
+  tool_errln("       | terminate BUNDLE | describe | logs [--bundle ID] [--since S] | record start|stop | build (--project P|--workspace W) --scheme S | build_status ID | run ... | serve | status | quit | mcp");
   tool_errln("       every verb takes --device NAME|UDID; replies are one JSON object (docs/desktop/ios-simulator-spec.md)");
   return 2;
 }
@@ -426,6 +453,7 @@ tool_main :: () -> int #export_c #effects(all) {
     sv: [1] f64; if st.count > 0 { if !os_num(st, sv[..]) || sv[0] < 0.0 || sv[0] > 5000.0 { return os_print_error("bad_args", "--settle is milliseconds, 0 to 5000"); } proc_sleep(cast(int) sv[0]); }
     _ = fs_mkdir_all(fs_dir(sw_str(m[..], SW_F_OUT)));
   }
+  if verb == "record" && sw_str(m[..], SW_F_OP) == "record_start" { _ = fs_mkdir_all(fs_dir(sw_str(m[..], SW_F_OUT))); }
   out: [SW_LINE] u8;
   wait := ifx verb == "boot" then 240000 else 150000;
   return os_call(m[..], wait, out[..]);

@@ -91,11 +91,35 @@
   },
   {
    "name": "text",
-   "note": "typed key by key (printable ASCII, tabs and newlines; at most 4,096 bytes, never a known secret)"
+   "note": "typed key by key (US keyboard ASCII, tabs and newlines); other text goes through the device pasteboard and a Command-V; at most 4,096 bytes, never a known secret"
   },
   {
    "name": "touch2_path",
-   "note": "two fingers along points2; this helper answers input_unavailable for now"
+   "note": "two fingers along points2 (pinch, rotate), through SimulatorKit's two-finger Indigo touches"
+  },
+  {
+   "name": "rotate",
+   "note": "turns the device a quarter turn, direction left or right (a GSEvent to the device's purple port)"
+  },
+  {
+   "name": "set_keyboard",
+   "note": "shows or hides the software keyboard, state show or hide (the Simulator preference the device reads)"
+  },
+  {
+   "name": "describe",
+   "note": "the frontmost app's accessibility tree through AccessibilityPlatformTranslation, as a text outline in lines: Role \"label\" = value (x, y, w, h) in device points, two spaces a level (at most 600 elements)"
+  },
+  {
+   "name": "logs",
+   "note": "the device's unified log for the last since seconds (1 to 600, 60 by default), narrowed to bundle's subsystem and process when given; the tail in lines"
+  },
+  {
+   "name": "record_start",
+   "note": "simctl io recordVideo of the device into out (an absolute .mp4 or .mov); one recording a device, ten minutes at most"
+  },
+  {
+   "name": "record_stop",
+   "note": "ends the device's recording (SIGINT); the reply carries the file's path"
   },
   {
    "name": "touch",
@@ -131,7 +155,7 @@
  "runs": [
   {
    "name": "simhost-check",
-   "what": "hello as the app and as an agent; list; boot; screenshots; a parked ask refused, then a chat grant; set_appearance and appearance; open_url; launch refused outside the chat's folders; an agent's shutdown of the person's device refused; Phase 1 input: HOME, launch Settings, a tap that opens General, a tap off the screen refused, a swipe that scrolls, touch_path, press_key, text, touch2_path unavailable, the person's touch interrupting an agent's swipe and holding its next op, an unchanged frame not written again; contested under a dev.sh lock; revoke and a second refusal; the helper killed and started again by oasim; shutdown by the person; quit",
+   "what": "hello as the app and as an agent; list; boot; screenshots; a parked ask refused, then a chat grant; set_appearance and appearance; open_url; launch refused outside the chat's folders; an agent's shutdown of the person's device refused; Phase 1 input: HOME, launch Settings, a tap that opens General, a tap off the screen refused, a swipe that scrolls, touch_path, press_key, text, touch2_path (two fingers), the person's touch interrupting an agent's swipe and holding its next op, Phase 3: describe, logs of Settings, set_keyboard, rotate left and back, record_start and record_stop; an unchanged frame not written again; contested under a dev.sh lock; revoke and a second refusal; the helper killed and started again by oasim; shutdown by the person; quit",
    "lines": [
     {
      "from": "app",
@@ -141,7 +165,7 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":65581,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":75007,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":true},\"xcode\":\"26.6\"}"
     },
     {
      "from": "app",
@@ -161,37 +185,37 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"name\":\"oa-simhost-check-62862\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}"
+     "line": "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"name\":\"oa-simhost-check-74918\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":4,\"op\":\"boot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"id\":4,\"op\":\"boot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"state\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"state\":\"booting\"}"
+     "line": "{\"event\":\"state\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"booting\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"state\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"state\":\"booted\"}"
+     "line": "{\"event\":\"state\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"booted\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":4,\"ok\":true,\"udid\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"scale\":3,\"points\":{\"w\":402,\"h\":874}}"
+     "line": "{\"id\":4,\"ok\":true,\"udid\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"scale\":3,\"points\":{\"w\":402,\"h\":874}}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":5,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/one.png\"}"
+     "line": "{\"id\":5,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/one.png\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":5,\"ok\":true,\"gen\":2171,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/one.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":389887}"
+     "line": "{\"id\":5,\"ok\":true,\"gen\":871,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/one.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":9617}"
     },
     {
      "from": "agent",
@@ -201,22 +225,22 @@
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":65581,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":75007,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":true},\"xcode\":\"26.6\"}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":10,\"op\":\"set_appearance\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"state\":\"dark\"}"
+     "line": "{\"id\":10,\"op\":\"set_appearance\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"dark\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"name\":\"oa-simhost-check-62862\"}"
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"name\":\"oa-simhost-check-74918\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":6,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"scope\":\"once\"}"
+     "line": "{\"id\":6,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"scope\":\"once\"}"
     },
     {
      "from": "helper",
@@ -231,7 +255,7 @@
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"scope\":\"chat\"}"
+     "line": "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"scope\":\"chat\"}"
     },
     {
      "from": "helper",
@@ -241,7 +265,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":11,\"op\":\"set_appearance\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"state\":\"dark\"}"
+     "line": "{\"id\":11,\"op\":\"set_appearance\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"dark\"}"
     },
     {
      "from": "helper",
@@ -251,12 +275,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"event\":\"agent\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":12,\"op\":\"appearance\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"id\":12,\"op\":\"appearance\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",
@@ -266,17 +290,17 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":13,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"scale\":0.5,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/two.png\"}"
+     "line": "{\"id\":13,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"scale\":0.5,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/two.png\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":13,\"ok\":true,\"gen\":2225,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/two.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":108800}"
+     "line": "{\"id\":13,\"ok\":true,\"gen\":930,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/two.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":96582}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":14,\"op\":\"open_url\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"url\":\"https://example.com\"}"
+     "line": "{\"id\":14,\"op\":\"open_url\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"url\":\"https://example.com\"}"
     },
     {
      "from": "helper",
@@ -286,7 +310,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":15,\"op\":\"launch\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"app_path\":\"/Applications/Safari.app\"}"
+     "line": "{\"id\":15,\"op\":\"launch\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"app_path\":\"/Applications/Safari.app\"}"
     },
     {
      "from": "helper",
@@ -296,7 +320,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":16,\"op\":\"shutdown\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"id\":16,\"op\":\"shutdown\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",
@@ -306,7 +330,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":30,\"op\":\"button\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"name\":\"HOME\"}"
+     "line": "{\"id\":30,\"op\":\"button\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"name\":\"HOME\"}"
     },
     {
      "from": "helper",
@@ -316,27 +340,27 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":31,\"op\":\"launch\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"bundle_id\":\"com.apple.Preferences\"}"
+     "line": "{\"id\":31,\"op\":\"launch\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"bundle_id\":\"com.apple.Preferences\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":31,\"ok\":true,\"bundle_id\":\"com.apple.Preferences\",\"pid\":80294}"
+     "line": "{\"id\":31,\"ok\":true,\"bundle_id\":\"com.apple.Preferences\",\"pid\":76146}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":32,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/settings.png\"}"
+     "line": "{\"id\":32,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/settings.png\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":32,\"ok\":true,\"gen\":2471,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/settings.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":98681}"
+     "line": "{\"id\":32,\"ok\":true,\"gen\":1205,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/settings.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":98685}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":33,\"op\":\"tap\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":101,\"y\":406}"
+     "line": "{\"id\":33,\"op\":\"tap\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":101,\"y\":406}"
     },
     {
      "from": "helper",
@@ -346,17 +370,17 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":34,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/general.png\"}"
+     "line": "{\"id\":34,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/general.png\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":34,\"ok\":true,\"gen\":2579,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/general.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":95037}"
+     "line": "{\"id\":34,\"ok\":true,\"gen\":1298,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/general.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":95057}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":35,\"op\":\"tap\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":9999,\"y\":1}"
+     "line": "{\"id\":35,\"op\":\"tap\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":9999,\"y\":1}"
     },
     {
      "from": "helper",
@@ -366,7 +390,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":36,\"op\":\"swipe\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":200,\"y\":700,\"x2\":200,\"y2\":300,\"duration\":0.3}"
+     "line": "{\"id\":36,\"op\":\"swipe\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":200,\"y\":700,\"x2\":200,\"y2\":300,\"duration\":0.3}"
     },
     {
      "from": "helper",
@@ -376,17 +400,17 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":45,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/scrolled.png\"}"
+     "line": "{\"id\":45,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/scrolled.png\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":45,\"ok\":true,\"gen\":2700,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/scrolled.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":96500}"
+     "line": "{\"id\":45,\"ok\":true,\"gen\":1402,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/scrolled.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":96520}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":37,\"op\":\"touch_path\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"points\":[{\"x\":200,\"y\":300,\"dt_ms\":0},{\"x\":200,\"y\":400,\"dt_ms\":16},{\"x\":200,\"y\":500,\"dt_ms\":16}]}"
+     "line": "{\"id\":37,\"op\":\"touch_path\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"points\":[{\"x\":200,\"y\":300,\"dt_ms\":0},{\"x\":200,\"y\":400,\"dt_ms\":16},{\"x\":200,\"y\":500,\"dt_ms\":16}]}"
     },
     {
      "from": "helper",
@@ -396,7 +420,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":38,\"op\":\"press_key\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"key\":\"return\",\"count\":2}"
+     "line": "{\"id\":38,\"op\":\"press_key\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"key\":\"return\",\"count\":2}"
     },
     {
      "from": "helper",
@@ -406,7 +430,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":39,\"op\":\"text\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"text\":\"Hello, simulator!\"}"
+     "line": "{\"id\":39,\"op\":\"text\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"text\":\"Hello, simulator!\"}"
     },
     {
      "from": "helper",
@@ -416,27 +440,27 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":40,\"op\":\"touch2_path\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"points2\":[{\"x1\":100,\"y1\":100,\"x2\":200,\"y2\":200,\"dt_ms\":0}]}"
+     "line": "{\"id\":40,\"op\":\"touch2_path\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"points2\":[{\"x1\":100,\"y1\":100,\"x2\":200,\"y2\":200,\"dt_ms\":0}]}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":40,\"ok\":false,\"code\":\"input_unavailable\",\"why\":\"this helper can't send two-finger paths yet\"}"
+     "line": "{\"id\":40,\"ok\":true}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":41,\"op\":\"swipe\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":200,\"y\":300,\"x2\":200,\"y2\":700,\"duration\":3}"
+     "line": "{\"id\":41,\"op\":\"swipe\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":200,\"y\":300,\"x2\":200,\"y2\":700,\"duration\":3}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":0,\"op\":\"touch\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"phase\":\"down\",\"pointer\":0,\"x\":300,\"y\":300}"
+     "line": "{\"id\":0,\"op\":\"touch\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"phase\":\"down\",\"pointer\":0,\"x\":300,\"y\":300}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":0,\"op\":\"touch\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"phase\":\"up\",\"pointer\":0,\"x\":300,\"y\":300}"
+     "line": "{\"id\":0,\"op\":\"touch\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"phase\":\"up\",\"pointer\":0,\"x\":300,\"y\":300}"
     },
     {
      "from": "helper",
@@ -446,7 +470,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":42,\"op\":\"tap\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":10,\"y\":10}"
+     "line": "{\"id\":42,\"op\":\"tap\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":10,\"y\":10}"
     },
     {
      "from": "helper",
@@ -454,89 +478,184 @@
      "line": "{\"id\":42,\"ok\":false,\"code\":\"interrupted\",\"why\":\"the person is using the simulator; try again in a moment\"}"
     },
     {
-     "from": "app",
+     "from": "agent",
      "to": "helper",
-     "line": "{\"id\":43,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/frame.png\"}"
+     "line": "{\"id\":46,\"op\":\"describe\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"open_url\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"button\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":101,\"y\":406}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":9999,\"y\":1}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"swipe\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":200,\"y\":700}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"touch_path\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"press_key\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"text\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"touch2_path\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"swipe\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"x\":200,\"y\":300}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"id\":43,\"ok\":true,\"gen\":2776,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/frame.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":93286}"
-    },
-    {
-     "from": "app",
-     "to": "helper",
-     "line": "{\"id\":44,\"op\":\"screenshot\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"gen\":2776,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-62862/frame.png\"}"
-    },
-    {
-     "from": "helper",
-     "to": "app",
-     "line": "{\"id\":44,\"ok\":true,\"gen\":2776}"
+     "to": "agent",
+     "line": "{\"id\":46,\"ok\":true,\"lines\":\"Application \\\"Settings\\\" (0, 0, 402, 874)\\n  Group (0, 0, 402, 874)\\n    Heading \\\"General\\\" (36, 224, 80, 26)\\n    Heading \\\"Manage your overall setup and preferences for iPhone, such as software updates, device language, CarPlay, AirDrop, and more.\\\" (36, 255, 330, 86)\\n    Button \\\"About\\\" (20, 391, 362, 53)\\n    Button \\\"Screen Capture\\\" (20, 444, 362, 53)\\n    Button \\\"AutoFill & Passwords\\\" (20, 532, 362, 53)\\n    Button \\\"Dictionary\\\" (20, 585, 362, 53)\\n    Button \\\"Fonts\\\" (20, 638, 362, 53)\\n    Button \\\"Keyboard\\\" (20, 691, 362, 53)\\n    Button \\\"Language & Region\\\" (20, 744, 362, 53)\\n    Button \\\"VPN & Device Management\\\" (20, 832, 362, 53)\\n  Button \\\"Settings\\\" (16, 62, 44, 44)\\n\"}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":17,\"op\":\"open_url\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"url\":\"https://example.com\"}"
+     "line": "{\"id\":47,\"op\":\"logs\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"bundle_id\":\"com.apple.Preferences\",\"since_s\":60}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":47,\"ok\":true,\"lines\":\"2026-11-20 16:39:29.494 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.494 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.494 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.510 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.510 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.510 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.511 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.527 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.527 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.527 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.527 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.544 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.544 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.544 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.544 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.560 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.560 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.560 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.560 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.577 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.577 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.577 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.577 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.594 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.594 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.594 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.594 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.610 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.610 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.610 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.610 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.627 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.627 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.627 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.627 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.628 Df Preferences[76146:a03c11] [com.apple.UIKit:UIPointerArbiter] Ignoring endScrollingWithRegion: <UIPointerRegion: 0x152458870; rect = (0 0; 402 874); identifier = UIScrollView.scrollingPointerRegion> because scrollingRegion does not match: (null)\\n2026-11-20 16:39:29.628 Df Preferences[76146:a03c11] [com.apple.KeyboardArbiter:Client] TX focusApplication (peekAppEvent) stealKB:Y scene:com.apple.Preferences-default\\n2026-11-20 16:39:29.628 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.628 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.628 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.629 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 1; ignoreInteractionEvents: 0, systemGestureStateChange: 0\\n2026-11-20 16:39:29.629 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to windows: 1\\n2026-11-20 16:39:29.629 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Sending UIEvent type: 0; subtype: 0; to window: <UIWindow: 0x109ed0400>; contextId: 0xCA02F355\\n2026-11-20 16:39:29.638 Df Preferences[76146:a03c11] [com.apple.Settings.HostUI:Navigation] Controller load style PSSpecifierControllerLoadStyle(rawValue: 4) is unsupported, defer to default implementation.\\n2026-11-20 16:39:29.638 Df Preferences[76146:a03c11] [com.apple.preferences:Navigation] PSGGeneralController: selectSpecifier: Was called with { specifier: <PSSpecifier 0x11c7f5b20: ID PLACARD, Name 'General' target <PSGGeneralController: 0x14d244000>>, window of viewIfLoaded: <UIWindow: 0x109ed0400; frame = (0 0; 402 874); autoresize = W+H; gestureRecognizers = <NSArray: 0x14d06e0c0>; layer = <UIWindowLayer: 0x109f19480>>, navigationController: <SwiftUI.UIKitNavigationController: 0x109ef9c00>, parentViewController: <_TtGC7SwiftUI32NavigationStackHostingControllerVS_7AnyView_: 0x109e39400>, parentPreferencesController: (null) }.\\n2026-11-20 16:39:29.644 Df Preferences[76146:a03c11] [com.apple.UIKit:EventDispatch] Evaluating dispatch of UIEvent: 0x152178000; type: 0; subtype: 0; backing type: 11; shouldSend: 0; ignoreInteractionEvents: 0, systemGestureStateChange: 1\\n2026-11-20 16:39:29.644 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.644 Df Preferences[76146:a03c11] [com.apple.UIKit:UIPointerArbiter] Ignoring beginScrollingWithRegion: <UIPointerRegion: 0x152458b40; rect = (0 0; 402 874); identifier = UIScrollView.scrollingPointerRegion> because pointer state is disabled\\n2026-11-20 16:39:29.644 A  Preferences[76146:a03c11] (UIKitCore) send gesture actions\\n2026-11-20 16:39:29.745 Df Preferences[76146:a03c11] [com.apple.KeyboardArbiter:Client] RX sceneBecameFocused:(null)\\n2026-11-20 16:39:29.961 Df Preferences[76146:a03c11] [com.apple.UIKit:UIPointerArbiter] Ignoring endScrollingWithRegion: <UIPointerRegion: 0x152458b40; rect = (0 0; 402 874); identifier = UIScrollView.scrollingPointerRegion> because scrollingRegion does not match: (null)\\n2026-11-20 16:39:30.002 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x11913a080] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()\\n2026-11-20 16:39:30.656 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x1193d0f00] activating connection: mach=true listener=false peer=false name=com.apple.linkd.autoShortcut\\n2026-11-20 16:39:31.105 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x1193d0f00] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()\\n2026-11-20 16:39:31.520 A  Preferences[76146:a03d10] (CoreFoundation) Updating Key-Value Observers Of Preferences\\n2026-11-20 16:39:31.602 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x1193d26c0] activating connection: mach=true listener=false peer=false name=com.apple.linkd.autoShortcut\\n2026-11-20 16:39:32.921 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x1193d26c0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()\\n2026-11-20 16:39:33.079 E  Preferences[76146:a03c11] [com.apple.UIKit:TraitCollection] Class CKBrowserSwitcherViewController overrides the -traitCollection getter, which is not supported. If you're trying to override traits, you must use the appropriate API.\\n2026-11-20 16:39:33.857 Df Preferences[76146:a03c11] [com.apple.BackBoard:Display] [FBSDisplaySource 1-1] silently connecting raw configuration: <FBSDisplayConfiguration: 0x109e1f900; Main; mode: \\\"402x874@3x 60Hz p3 SDR\\\">\\n2026-11-20 16:39:34.136 Df Preferences[76146:a03d65] [com.apple.Settings.Host:Search Indexing] …completed delete operation for domain 'OpenCameraSettingsDeepLinks.CameraSettingsDeepLink'.\\n2026-11-20 16:39:34.161 Df Preferences[76146:a03d65] [com.apple.Settings.Host:Search Indexing] Performing index operation for domain 'OpenCameraSettingsDeepLinks.CameraSettingsDeepLink'…\\n2026-11-20 16:39:34.170 A  Preferences[76146:a03d65] (CoreSpotlight) index-items\\n2026-11-20 16:39:34.171 Df Preferences[76146:a03d10] [com.apple.corespotlight:index] CSInlineDonation:com.apple.Preferences: Skipping donation (feature flag disabled)\\n2026-11-20 16:39:34.425 Df Preferences[76146:a03c11] [com.apple.Accessibility:AXCommon] Loading PDFKit\\n2026-11-20 16:39:34.537 Df Preferences[76146:a03c11] (libMobileGestalt.dylib) Property isp[camera-front] found (null)\\n2026-11-20 16:39:34.916 Df Preferences[76146:a03d0f] [com.apple.appintents:Execution] Prepared target to SettingsNavigationLocationEntity(nil))\\n2026-11-20 16:39:35.575 Df Preferences[76146:a03d0f] [com.apple.appintents:Transcript] Donating action com.apple.Preferences/SettingsNavigationEventDonationIntent with identifier 50E23799-B0A8-428D-B9E1-F5AE38C8F92C: 9.65 kB\\n2026-11-20 16:39:35.577 Df Preferences[76146:a03d0f] [com.apple.xpc:connection] [0x15249fe80] activating connection: mach=true listener=false peer=false name=com.apple.linkd.transcript\\n\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":48,\"op\":\"set_keyboard\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"show\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":48,\"ok\":true}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":49,\"op\":\"rotate\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"direction\":\"left\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":49,\"ok\":true,\"points\":{\"w\":874,\"h\":402}}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":50,\"op\":\"rotate\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"direction\":\"right\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":50,\"ok\":true,\"points\":{\"w\":402,\"h\":874}}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":51,\"op\":\"record_start\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/check.mp4\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":51,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/check.mp4\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":52,\"op\":\"record_stop\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":52,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/check.mp4\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":43,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/frame.png\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"open_url\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"button\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":101,\"y\":406}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":9999,\"y\":1}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"swipe\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":200,\"y\":700}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"touch_path\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"press_key\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"text\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"touch2_path\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"swipe\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"x\":200,\"y\":300}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"set_keyboard\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"rotate\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"rotate\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"record_start\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"record_stop\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":43,\"ok\":true,\"gen\":1490,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/frame.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":93321}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":44,\"op\":\"screenshot\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"gen\":1490,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-74918/frame.png\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":44,\"ok\":true,\"gen\":1490}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":17,\"op\":\"open_url\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"url\":\"https://example.com\"}"
     },
     {
      "from": "helper",
@@ -546,7 +665,7 @@
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",
@@ -561,7 +680,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":18,\"op\":\"set_appearance\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"state\":\"light\"}"
+     "line": "{\"id\":18,\"op\":\"set_appearance\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"state\":\"light\"}"
     },
     {
      "from": "helper",
@@ -571,12 +690,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"name\":\"oa-simhost-check-62862\"}"
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"name\":\"oa-simhost-check-74918\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":9,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\",\"scope\":\"once\"}"
+     "line": "{\"id\":9,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\",\"scope\":\"once\"}"
     },
     {
      "from": "helper",
@@ -596,12 +715,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":86025,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":76522,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":true},\"xcode\":\"26.6\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":20,\"op\":\"shutdown\",\"device\":\"E71AEE6F-6FEF-45E4-BAC4-C5169F35C462\"}"
+     "line": "{\"id\":20,\"op\":\"shutdown\",\"device\":\"D32AF3E7-5070-42B7-AE92-63F0982F88A3\"}"
     },
     {
      "from": "helper",

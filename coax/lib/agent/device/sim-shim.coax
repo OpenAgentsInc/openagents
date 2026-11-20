@@ -16,6 +16,7 @@ simshim_button :: (udid: [] u8, source: int, down: int) -> int #foreign #effects
 simshim_touch2 :: (udid: [] u8, x1: f64, y1: f64, x2: f64, y2: f64, w: f64, h: f64, phase: int) -> int #foreign #effects(all);
 simshim_orient :: (udid: [] u8, orientation: int) -> int #foreign #effects(all);
 simshim_keyboard :: (udid: [] u8, show: int) -> int #foreign #effects(all);
+simshim_describe :: (udid: [] u8, out: [] u8) -> int #foreign #effects(all);
 simshim_pbcopy :: (udid: [] u8, text: [] u8) -> int #foreign #effects(all);
 
 SS_DISPLAY :: 1; SS_TOUCH :: 2; SS_KEYS :: 4;
@@ -23,7 +24,7 @@ shim_caps :: () -> int { return simshim_start(); }
 shim_start :: () -> bool { return shim_caps() != 0; }
 shim_display :: () -> bool { return (shim_caps() & SS_DISPLAY) != 0; }
 shim_input :: () -> bool { return (shim_caps() & SS_TOUCH) != 0; }
-shim_describe :: () -> bool { return false; }
+shim_describe :: () -> bool { return shim_caps() != 0; }   // the describe op says input_unavailable when the translator is missing
 shim_screen_size :: (udid: string, s: [] ShScreen) -> bool { return false; }   // the device type's profile says it, with its scale
 // A string as the bytes a foreign call takes.
 shim_bytes :: (s: string, b: [] u8) -> [] u8 { n := 0; for c: s { if n < b.count { b[n] = c; n += 1; } } return b[0..<n]; }
@@ -112,6 +113,16 @@ shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwM
     r := h[0].reply[..]; sw_reply_ok(r, id);
     sc := sh_screen(h, udid); pw := cast(f64) sc.px_w / sc.scale; ph := cast(f64) sc.px_h / sc.scale;
     if sc.px_w > 0 { if sg_sideways(to) { sw_set_size(r, ph, pw); } else { sw_set_size(r, pw, ph); } }
+    sh_answer(h, ci, id, r);
+    return true;
+  }
+  if op == "describe" {
+    // the frontmost app's accessibility tree, cut to what a line's strings hold
+    tb: [SW_LINES_MOST] u8;
+    n := simshim_describe(u, tb[..]);
+    if n == -1 { sh_fail(h, ci, id, "input_unavailable", "this Xcode has no accessibility translation for the simulator"); return true; }
+    if n < 0 { sh_fail(h, ci, id, "timeout", "the simulator's accessibility did not answer; try again when the screen is still"); return true; }
+    r := h[0].reply[..]; sw_reply_ok(r, id); _ = sw_set_str(r, SW_F_LINES, sw_cut_lines(cast(string) tb[0..<n]));
     sh_answer(h, ci, id, r);
     return true;
   }

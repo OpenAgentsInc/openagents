@@ -77,9 +77,10 @@ cp_sim_test_up :: (s: [] CoderPage) {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
   cp_sim_test_up(s); s[0].sim[0].input = true;
   #assert cp_test_draw_side(s, f[..]);
-  for id: [8] string.["coder.sim.pick", "coder.sim.zoom_out", "coder.sim.fit", "coder.sim.zoom_in", "coder.sim.home", "coder.sim.rotate", "coder.sim.shot", "coder.sim.more"] { #assert cp_sim_test_find(s, id) >= 0; }
+  for id: [9] string.["coder.sim.pick", "coder.sim.zoom_out", "coder.sim.fit", "coder.sim.zoom_in", "coder.sim.home", "coder.sim.rotate", "coder.sim.shot", "coder.sim.record", "coder.sim.more"] { #assert cp_sim_test_find(s, id) >= 0; }
   tb: [1024] u8; t := cast(string) tb[0..<coder_page_sim_tips(s, tb[..])];
-  #assert cp_find(t, "\tChoose a Device\n") >= 0 && cp_find(t, "\tZoom Out\n") >= 0 && cp_find(t, "\tHome\n") >= 0 && cp_find(t, "\tRotate\n") >= 0 && cp_find(t, "\tScreenshot\n") >= 0 && cp_find(t, "\tMore\n") >= 0;
+  #assert cp_find(t, "\tChoose a Device\n") >= 0 && cp_find(t, "\tZoom Out\n") >= 0 && cp_find(t, "\tHome\n") >= 0 && cp_find(t, "\tRotate\n") >= 0 && cp_find(t, "\tScreenshot\n") >= 0 && cp_find(t, "\tRecord\n") >= 0 && cp_find(t, "\tMore\n") >= 0;
+  #assert cp_sim_test_find(s, "coder.sim.tab.0") < 0;   // one device booted: no tabs
   r: [6] f32; #assert coder_page_sim_rect(s, r[..]); w0 := r[2];
   // fit is where it starts: zoom in and fit do nothing; zoom out to its least, then back
   #assert cp_sim_test_press(s, "coder.sim.zoom_out") && cp_test_draw_side(s, f[..]) && coder_page_sim_rect(s, r[..]) && cp_abs(r[2] - w0 * 0.8f32) < 0.5f32;
@@ -273,4 +274,24 @@ cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
   #assert coder_page_sim_command(s, 1, "s", false) && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"screenshot\"") >= 0;
   // a key with an accent goes as text (the helper pastes it)
   #assert coder_page_sim_key(s, 0, "é") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"text\"") >= 0;
+}
+
+#test "Record: start into the working folder, the button turns to Stop, the stop saves; two booted devices get tabs" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  cp_sim_test_up(s); out: [4096] u8; _ = cp_sim_test_out(s, out[..]);
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "coder.sim.record") && s[0].sim[0].recording;
+  #assert cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"record_start\",\"device\":\"U1\",\"out\":\"/w/app/.openagents/shots/simulator-") >= 0;
+  id := s[0].sim[0].next_id; lb: [256] u8; ln := el_put(lb[..], 0, "{\"id\":"); ln = el_put_i(lb[..], ln, id); ln = el_put(lb[..], ln, ",\"ok\":true}");
+  #assert coder_page_sim_line(s, cast(string) lb[0..<ln]) && s[0].sim[0].recording;
+  tb: [1024] u8; #assert cp_test_draw_side(s, f[..]) && cp_find(cast(string) tb[0..<coder_page_sim_tips(s, tb[..])], "\tStop Recording\n") >= 0;
+  _ = coder_page_action(s); _ = coder_page_sim_op(s);
+  #assert cp_sim_test_press(s, "coder.sim.record") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"record_stop\",\"device\":\"U1\"") >= 0;
+  id = s[0].sim[0].next_id; ln = el_put(lb[..], 0, "{\"id\":"); ln = el_put_i(lb[..], ln, id); ln = el_put(lb[..], ln, ",\"ok\":true,\"path\":\"/w/app/.openagents/shots/r.mp4\"}");
+  #assert coder_page_sim_line(s, cast(string) lb[0..<ln]) && !s[0].sim[0].recording && coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_SAVED;
+  sv: [256] u8; #assert cast(string) sv[0..<coder_page_sim_saved(s, sv[..])] == "/w/app/.openagents/shots/r.mp4";
+  // a second device boots: a tab each; the other's tab moves the pane to it
+  s[0].sim[0].devices[1].state = CP_SIM_BOOTED;   // as the next list says
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_find(s, "coder.sim.tab.0") >= 0 && cp_sim_test_find(s, "coder.sim.tab.1") >= 0;
+  #assert !cp_sim_test_press(s, "coder.sim.tab.0") && cp_sim_udid(s) == "U1";
+  #assert cp_sim_test_press(s, "coder.sim.tab.1") && cp_sim_udid(s) == "U2";
 }

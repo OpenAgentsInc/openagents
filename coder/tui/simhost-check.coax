@@ -337,7 +337,7 @@ sk_input :: (r: [] SkRun, app: [] SkConn, ag: [] SkConn, dir: string, frames: bo
   sk_ask(m[..], 39, "text"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_TEXT, "Hello, simulator!");
   sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 39, 10000) && sk_ok(r), "text typed key by key");
   sk_ask(m[..], 40, "touch2_path"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_add_point(m[..], SW_F_POINTS2, SwPoint.{x = 100.0, y = 100.0, x2 = 200.0, y2 = 200.0});
-  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 40, 10000) && sk_code(r) == "input_unavailable", "touch2_path says it can't yet");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 40, 10000) && sk_ok(r), "touch2_path, two fingers");
   // the person's finger stops an agent's gesture and holds agent input for 1.5 s
   sk_ask(m[..], 41, "swipe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
   sw_set_num(m[..], SW_F_X, 200.0); sw_set_num(m[..], SW_F_Y, 300.0); sw_set_num(m[..], SW_F_X2, 200.0); sw_set_num(m[..], SW_F_Y2, 700.0); sw_set_num(m[..], SW_F_DURATION, 3.0);
@@ -351,6 +351,26 @@ sk_input :: (r: [] SkRun, app: [] SkConn, ag: [] SkConn, dir: string, frames: bo
   sk_check(r, ok && sk_reply(r, ag, 41, 5000) && !sk_ok(r) && sk_code(r) == "interrupted" && sw_has(r[0].m[..], SW_F_INTERRUPTED), "the person's touch interrupts the agent's swipe");
   sk_ask(m[..], 42, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 10.0); sw_set_num(m[..], SW_F_Y, 10.0);
   sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 42, 5000) && sk_code(r) == "interrupted", "and holds the agent's next op");
+  // Phase 3: the screen's accessibility, the log, the keyboard, a quarter turn and back, a recording
+  proc_sleep(1600);   // the person's hold ends
+  sk_ask(m[..], 46, "describe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 46, 15000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES);
+  if !ok { proc_sleep(500); ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 46, 15000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES); }
+  sk_check(r, ok, "describe: the screen's accessibility as lines");
+  sk_ask(m[..], 47, "logs"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_BUNDLE, "com.apple.Preferences"); sw_set_int(m[..], SW_F_SINCE, 60);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 47, 60000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_LINES), "logs of Settings");
+  sk_ask(m[..], 48, "set_keyboard"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_STATE, "show");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 48, 10000) && sk_ok(r), "set_keyboard show");
+  sk_ask(m[..], 49, "rotate"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_DIRECTION, "left");
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 49, 10000) && sk_ok(r);
+  sk_ask(m[..], 50, "rotate"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_DIRECTION, "right");
+  sk_check(r, ok && sk_send(r, ag, m[..]) && sk_reply(r, ag, 50, 10000) && sk_ok(r), "rotate left and back");
+  rn := sk_put(pb[..], 0, sk_s(r[0].home[..], r[0].home_n)); rn = sk_put(pb[..], rn, "/check.mp4");
+  sk_ask(m[..], 51, "record_start"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<rn]);
+  ok = sk_send(r, ag, m[..]) && sk_reply(r, ag, 51, 10000) && sk_ok(r);
+  proc_sleep(2000);
+  sk_ask(m[..], 52, "record_stop"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sk_check(r, ok && sk_send(r, ag, m[..]) && sk_reply(r, ag, 52, 30000) && sk_ok(r) && sw_str(r[0].m[..], SW_F_PATH) == cast(string) pb[0..<rn] && fs_size(cast(string) pb[0..<rn]) > 0, "record start and stop: a video");
   if frames {
     // a frame the pane already has is not written again
     proc_sleep(1600);

@@ -589,6 +589,87 @@ sw_round :: (line: string, out: [] u8) -> string {
   #assert sw_parse_num("123456789012345678901234", v[..]) && !sw_parse_num("1234567890123456789012345", v[..]) && !sw_parse_num("-123456789012345678901234", v[..]);
   #assert sw_parse_num("-0.5", v[..]) && v[0] == -0.5 && sw_parse_num("9", v[..]) && v[0] == 9.0 && sw_parse_num("0.9", v[..]) && v[0] == 0.9;
 }
+// ---- the helper's text: a reply's lines, a log predicate's word, appinfo's plist
+
+SW_LINES_MOST :: 12000;   // the bytes of a describe or logs reply's lines (a line's strings hold SW_ARENA)
+// s cut at its last whole line within SW_LINES_MOST bytes.
+sw_cut_lines :: (s: string) -> string {
+  if s.count <= SW_LINES_MOST { return s; }
+  k := SW_LINES_MOST;
+  while k > 0 && s[k - 1] != '\n' { k -= 1; }
+  return s[0..<k];
+}
+#test "lines are cut whole" {
+  #assert sw_cut_lines("a\nb\n") == "a\nb\n";
+  b: [SW_LINES_MOST + 10] u8; for i: 0..<b.count { b[i] = ifx i % 10 == 9 then '\n' else 'x'; }
+  c := sw_cut_lines(cast(string) b[..]); #assert c.count == SW_LINES_MOST && c[c.count - 1] == '\n';
+}
+// The last lines of s within SW_LINES_MOST bytes (a log's newest).
+sw_tail_lines :: (s: string) -> string {
+  if s.count <= SW_LINES_MOST { return s; }
+  k := s.count - SW_LINES_MOST;
+  while k < s.count && s[k - 1] != '\n' { k += 1; }
+  return s[k..<s.count];
+}
+// Keeps the newer half of out[0..<n] (whole lines) at its start; the new length.
+sw_keep_tail :: (out: [] u8, n: int) -> int {
+  k := n / 2;
+  while k < n && out[k - 1] != '\n' { k += 1; }
+  for i: k..<n { out[i - k] = out[i]; }
+  return n - k;
+}
+sw_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
+// A word safe inside a log predicate's quotes: letters, digits, dot, dash, underscore.
+sw_word_ok :: (s: string) -> bool {
+  if s.count == 0 || s.count > 200 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// key's value in simctl appinfo's old-style plist ("    CFBundleExecutable = Preferences;"), or "".
+sw_plist_value :: (s: string, key: string) -> string {
+  at := sd_find(s, key, 0);
+  if at < 0 { return ""; }
+  i := at + key.count;
+  while i < s.count && (s[i] == ' ' || s[i] == '=') { i += 1; }
+  if i < s.count && s[i] == '"' { i += 1; }
+  e := i;
+  while e < s.count && s[e] != ';' && s[e] != '"' && s[e] != '\n' { e += 1; }
+  return s[i..<e];
+}
+#test "logs: the newest lines, a safe predicate word, appinfo's executable" {
+  #assert sw_tail_lines("a\nb\n") == "a\nb\n";
+  b: [SW_LINES_MOST + 30] u8; for i: 0..<b.count { b[i] = ifx i % 10 == 9 then '\n' else 'x'; }
+  t := sw_tail_lines(cast(string) b[..]); #assert t.count <= SW_LINES_MOST && t.count > SW_LINES_MOST - 10 && t[t.count - 1] == '\n';
+  k: [12] u8; for c, i: "ab\ncd\nef\ngh\n" { k[i] = c; }
+  n := sw_keep_tail(k[..], 12); #assert cast(string) k[0..<n] == "ef\ngh\n";
+  #assert sw_ends("/a/b.mp4", ".mp4") && !sw_ends("mp4", ".mp4x") && !sw_ends("/a/b.mp4x", ".mp4");
+  #assert sw_word_ok("com.apple.Preferences") && sw_word_ok("My_App-2") && !sw_word_ok("a\"b") && !sw_word_ok("a b") && !sw_word_ok("");
+  #assert sw_plist_value("{\n    CFBundleExecutable = Preferences;\n    CFBundleName = \"Settings\";\n}", "CFBundleExecutable") == "Preferences";
+  #assert sw_plist_value("CFBundleName = \"My App\";", "CFBundleName") == "My App" && sw_plist_value("x", "CFBundleExecutable") == "";
+}
+#test "lines cut and kept at their edges: the limit exactly, one past it, no line feed at all, every byte a line feed" {
+  b: [SW_LINES_MOST + 50] u8;
+  for i: 0..<b.count { b[i] = 'x'; }
+  #assert sw_cut_lines(cast(string) b[0..<SW_LINES_MOST]).count == SW_LINES_MOST && sw_cut_lines(cast(string) b[0..<SW_LINES_MOST + 1]) == "";
+  #assert sw_tail_lines(cast(string) b[0..<SW_LINES_MOST]).count == SW_LINES_MOST && sw_tail_lines(cast(string) b[0..<SW_LINES_MOST + 1]) == "";
+  for i: 0..<b.count { b[i] = ifx i % 10 == 0 then '\n' else 'x'; }
+  #assert sw_cut_lines(cast(string) b[0..<SW_LINES_MOST + 10]).count == 11991;
+  for i: 0..<b.count { b[i] = ifx i % 7 == 3 then '\n' else 'x'; }
+  #assert sw_cut_lines(cast(string) b[..]).count == 11995 && sw_tail_lines(cast(string) b[..]).count == 11997;
+  for i: 0..<b.count { b[i] = '\n'; }
+  #assert sw_tail_lines(cast(string) b[0..<SW_LINES_MOST + 5]).count == SW_LINES_MOST;
+  // the newer half: from the first line that starts at or past the middle
+  k: [12] u8; for c, i: "abcd\nefghij\n" { k[i] = c; } #assert sw_keep_tail(k[..], 12) == 0;
+  for c, i: "abcdefghijkl" { k[i] = c; } #assert sw_keep_tail(k[..], 12) == 0;
+  for c, i: "ab\ncdefghij\n" { k[i] = c; } #assert sw_keep_tail(k[..], 12) == 0;
+  for c, i: "abcdef\nghij\n" { k[i] = c; } n := sw_keep_tail(k[..], 12); #assert cast(string) k[0..<n] == "ghij\n";
+  #assert sw_ends(".mp4", ".mp4") && sw_ends("a", "");
+  w: [201] u8; for i: 0..<201 { w[i] = 'a'; }
+  #assert sw_word_ok(cast(string) w[0..<200]) && !sw_word_ok(cast(string) w[..]);
+  #assert sw_word_ok("azAZ09") && !sw_word_ok("{") && !sw_word_ok("[") && !sw_word_ok("/") && !sw_word_ok(":") && !sw_word_ok("`") && !sw_word_ok("@");
+  #assert sw_plist_value("K = V", "K") == "V" && sw_plist_value("K =", "K") == "" && sw_plist_value("K = \"", "K") == "" && sw_plist_value("K = V\nX", "K") == "V";
+}
+
 // A number at the start of s ("3.000000\n", "1206\n"): its value. False when s starts with no digit.
 sw_parse_lead :: (s: string, out: [] f64) -> bool {
   v := 0.0; e := 0; any := false;

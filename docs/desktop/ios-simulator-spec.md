@@ -312,7 +312,12 @@ Under the framed device a floating rounded toolbar of icon buttons: Home and Rot
 helper's input), Screenshot, and More, a menu with Shut Down, Dark or Light Appearance and Lock.
 Every button has its accessibility label, and a tooltip AppKit shows from the page's
 `cd_sim_tips` rects. The glyphs are the Zeron icon set's (`components/zeron/icons`), the new ones
-(`sim-*.svg`) drawn in its Solar Linear style. Record joins the toolbar with recording (Phase 3).
+(`sim-*.svg`) drawn in its Solar Linear style. Record (Phase 3) sits between Screenshot and More:
+it starts `record_start` into the working folder's `.openagents/shots/simulator-NOW-ID.mp4`, turns
+to a filled Stop Recording while it runs, and its stop saves and reveals the file as a screenshot
+does; leaving the device for another stops it first. With two or more devices booted a strip of
+device tabs (chips, the device's name) stands under the header, and a tab moves the pane to its
+device. Annotate is not built: the app has no markup surface to send it to.
 
 ## 6. The helper (`oa-simhost`)
 
@@ -469,8 +474,9 @@ model sees is a point it can tap.
 | `open_url` | `url` | | control |
 | `launch` | `app_path?` (a built `.app`), `bundle_id?`, `args?` | `bundle_id, pid` | control; `app_path` must pass the install rule (9.2) |
 | `terminate` | `bundle_id` | | control |
-| `describe` (Phase 3) | `device?` | the accessibility tree: `[{role, label, value, frame:{x,y,w,h}, enabled}]` in points | none |
-| `logs` (Phase 3) | `bundle_id?`, `since_s?`, `max_lines?` | log lines from `simctl spawn log show` | none |
+| `describe` (Phase 3) | `device?` | `lines`: the frontmost app's accessibility tree as a text outline, one element a line, `Role "label" = value (x, y, w, h)` in points with ` disabled` when it is, two spaces a level, at most 600 elements | none |
+| `logs` (Phase 3) | `bundle_id?`, `since_s?` (1 to 600, default 60) | `lines`: the tail of `simctl spawn log show --style compact`, narrowed to the bundle's subsystem and executable when given | none |
+| `record_start` / `record_stop` (Phase 3) | `device?`, `out` (start: an absolute `.mp4` or `.mov`) | stop: `path` | control |
 
 Errors are one shape: `{"ok":false,"code":"...","why":"one sentence a person can read"}` with codes
 `no_xcode`, `no_device`, `not_booted`, `contested`, `denied`, `no_grant`, `interrupted`,
@@ -576,7 +582,9 @@ the command's (one JSON line). A step with an op that can change the screen ends
 image is attached with no view step; a `screenshot` op asks for that closing screenshot (taken once,
 with no settling when nothing moved) rather than running on its own. When the 4 image slots are full
 a device screenshot drops the oldest device screenshot, never an image the person attached
-(`mc_image_drop_oldest`). `describe` is left out of the enum until Phase 3. Checked live on
+(`mc_image_drop_oldest`). Phase 3 adds `describe` and `logs` to the
+enum (`logs` takes `bundle_id`); neither moves the screen, so neither asks for the closing screenshot, and the prompt says to
+read the outline's frames (points) before tapping. Checked live on
 2026-11-20: a real mcworker run on Vertex Gemini, on a throwaway iPhone 17 Pro, opened Settings,
 then General and About, and read the iOS version from the screenshots.
 
@@ -779,6 +787,20 @@ the drive `shot` composite.
 **Phase 3 — understanding the screen.** `describe` (accessibility tree), `logs`, screen recording
 (`simctl io recordVideo` to the working folder), several devices (a device tab strip), the pane on
 the phone (later).
+
+*As built (Phase 3).* `describe` asks macOS's AccessibilityPlatformTranslation for the frontmost
+app, as idb does: the shim is the translator's bridge delegate and sends each request to the device
+with `-[SimDevice sendAccessibilityRequestAsync:completionQueue:completionHandler:]`; the answer is a
+text outline, not the JSON array first planned, because an outline is what a model reads best and
+fits one line's strings (`SH_DESCRIBE`, 12,000 bytes). The first ask after a launch can come back
+empty; the shim asks once more after 400 ms, and the error says to try again when the screen is
+still. `logs` runs `simctl spawn log show` (no `max_lines`: the reply keeps the tail that fits).
+`record_start` runs `simctl io recordVideo --codec=h264 --force` as a helper job (one a device, ten
+minutes at most), and `record_stop` ends it with SIGINT and answers when the file is written. The
+verbs are `oasim describe`, `oasim logs [--bundle B] [--since S]`, `oasim record start|stop [--out P]`
+(default `.openagents/recordings/`), and `simulator_describe`, `simulator_logs`, `simulator_record`
+(with `simulator_rotate` and `simulator_set_keyboard`) in `oasim mcp`. The helper check covers each
+on a throwaway device, and its lines are in `proto/coder/sim-host-lines-v1.json`.
 
 **Then Android** on the same library, pane and tools: [android-emulator-vision.md](android-emulator-vision.md).
 
