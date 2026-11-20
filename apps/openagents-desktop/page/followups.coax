@@ -148,7 +148,7 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
     at := f[0].steers[i].at;
     if st == CP_STEER_APPLIED && was != CP_STEER_APPLIED && at >= 0 && at < s[0].nturns {
       s[0].turns[at].h = 0;
-      cp_fu_steered_add(s, at, cp_fu_str(f[0].steers[i].text[..], f[0].steers[i].ntext));
+      cp_fu_steered_add(s, at, cp_fu_str(f[0].steers[i].text[..], f[0].steers[i].ntext), s[0].turns[at].early_cmds + s[0].turns[at].ncmds);
     }
     f[0].steers[i].nreason = cp_out(f[0].steers[i].reason[..], l.reason);
     if l.turn.ok { f[0].steers[i].turn = l.turn.value; }
@@ -368,22 +368,36 @@ cp_fu_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32, run
   fu[0].tray_h = ifx h > 0 then h + f[0].skin.app.gap_small else 0.0f32;
 }
 // A steer turn i took in joins what it keeps with the chat: its first CP_FU_TEXT bytes, cut on a
-// character's start, and a zero byte; left out when the turn has no room for it.
-cp_fu_steered_add :: (s: [] CoderPage, i: int, text: string) {
+// character's start, and a zero byte; left out when the turn has no room for it. row is where it
+// was taken (#13809): the turn's next row then (early_cmds + ncmds), -1 when not known.
+cp_fu_steered_add :: (s: [] CoderPage, i: int, text: string, row: int) {
   n := ifx text.count < CP_FU_TEXT then text.count else CP_FU_TEXT;
   while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }
   m := s[0].turns[i].steered_n;
   if n == 0 || m + n + 1 > CP_STEERED { return; }
+  k0 := cp_fu_steers_in(s, i);
+  if k0 < CP_STEER_MARKS { s[0].turns[i].steer_rows[k0] = row; }
   for k: 0..<n { s[0].turns[i].steered[m + k] = text[k]; }
   s[0].turns[i].steered[m + n] = 0; s[0].turns[i].steered_n = m + n + 1;
 }
-// Turn i's steers that the reply took in, in the timeline at (x, y): their height.
-cp_fu_steered :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32) -> f32 {
+// How many steers turn i took in.
+cp_fu_steers_in :: (s: [] CoderPage, i: int) -> int { k := 0; for at: 0..<s[0].turns[i].steered_n { if s[0].turns[i].steered[at] == 0 { k += 1; } } return k; }
+// Steer k of turn i's place among its rows; -1 (after them all) when not known.
+cp_fu_steer_row :: (s: [] CoderPage, i: int, k: int) -> int { return ifx k < CP_STEER_MARKS then s[0].turns[i].steer_rows[k] else -1; }
+// Turn i's steers from the done[0]th on, in the timeline at (x, y), as far as those taken before
+// row `before` (#13809: a steer stands where it was taken, the work after it below it); before
+// < 0 draws every one left. done[0] moves past those drawn. Returns their height.
+cp_fu_steered :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32, before: int, done: [] int) -> f32 {
   h: f32 = 0; ib: [EL_ID] u8; from := 0; k := 0;
   for at: 0..<s[0].turns[i].steered_n {
     if s[0].turns[i].steered[at] != 0 { continue; }
-    nn := cp_id(ib[..], i, ".st").count; nn = el_put_i(ib[..], nn, k);
-    h += app_message_steer(f, sheet_pool(f[0].sheet, cast(string) ib[0..<nn]), x, y + h, cw, cast(string) s[0].turns[i].steered[from..<at]) + f[0].skin.app.gap;
+    if k >= done[0] {
+      row := cp_fu_steer_row(s, i, k);
+      if before >= 0 && (row < 0 || row > before) { return h; }
+      nn := cp_id(ib[..], i, ".st").count; nn = el_put_i(ib[..], nn, k);
+      h += app_message_steer(f, sheet_pool(f[0].sheet, cast(string) ib[0..<nn]), x, y + h, cw, cast(string) s[0].turns[i].steered[from..<at]) + f[0].skin.app.gap;
+      done[0] = k + 1;
+    }
     from = at + 1; k += 1;
   }
   return h;

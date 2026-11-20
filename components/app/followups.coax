@@ -169,11 +169,12 @@ app_fu_tray :: (f: [] UiFrame, id: string, x: f32, bottom: f32, w: f32, t: AppFu
   return h;
 }
 
-// A steer the reply took in, in the timeline at (x, y), w wide: "Steered" over the person's words
-// at the column's right edge, as their message is. Returns its height.
+// A steer the reply took in, in the timeline at (x, y), w wide, where it was taken (#13809): the
+// person's words at the column's right edge, as their message is, under a small "Steer" badge.
+// Returns its height.
 app_message_steer :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, text: string) -> f32 {
   s := f[0].skin; a := s.app; m := f[0].m;
-  label := "Steered into the reply";
+  label := "Steer";
   _ := sheet_text(f[0].sheet, m, -1, x + w - measure_width(m, s.small.face, label), y, s.small.line, s.small.face, s.faint, label);
   h := s.small.line + a.gap_small;
   return h + app_message_user(f, id, x, y + h, w, ifx text.count > 0 then text else "(steer)");

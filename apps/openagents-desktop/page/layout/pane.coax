@@ -51,9 +51,9 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f32) {
   f[0].skin.motion.enter = enter;
   // its work: one activity group, open while it runs or when the person opened it
   live := state == CP_RUNNING && !s[0].turns[i].agents[j].paused;
-  nb: [EL_ID] u8; name := cp_pane_id(nb[..], s, "", -1);
+  nb: [EL_ID] u8; name := cp_pane_id(nb[..], s, "", -1); none := [1] int.[0];
   gh := cp_act_group(s, f, name, s[0].turns[i].agents[j].head, s[0].turns[i].agents[j].nrows, s[0].turns[i].agents[j].early_rows, s[0].turns[i].agents[j].more_rows,
-                     i, 0, live, app_act_open(s[0].turns[i].agents[j].fold, state == CP_RUNNING), -1, x, y, cw, stop, h, CP_PANE_TOOL);
+                     i, 0, live, app_act_open(s[0].turns[i].agents[j].fold, state == CP_RUNNING), -1, x, y, cw, stop, h, CP_PANE_TOOL, -1, none[..]);
   if gh > 0 { y += gh + a.gap; }
   reply := cp_agent_reply(s, i, j);
   if state == CP_RUNNING && s[0].turns[i].agents[j].paused { y += app_meta(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cw, "Paused after 100 tool calls in a row with no file changed. Microcoder decides whether it goes on.", false) + a.gap; }

@@ -205,3 +205,29 @@
   n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
   #assert cp_find(line, "\"ticket\":4") >= 0 && cp_find(line, "Your note did not reach it: a Claude sub-agent takes no notes while it runs.") >= 0;
 }
+
+#test "a steer stands where it was taken: the rows before it above, the rows after it below, and it keeps its place across a relaunch (#13809)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  f: [1] UiFrame; out: [4096] u8;
+  #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
+  #assert coder_page_steer_line(s, "s1", "use b", out[..]) > 0;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"applied\",\"turn\":1,\"step\":2}") == MWW_STEERED;
+  #assert cp_fu_steer_row(s, 0, 0) == 1;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"pwd\",\"exit\":0,\"timed_out\":false,\"output\":\"/w\"}") == MWW_COMMAND;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  r0 := elt_find(t[..], "t0.x0"); st := elt_find(t[..], "t0.st0"); r1 := elt_find(t[..], "t0.x1");
+  #assert r0 >= 0 && st >= 0 && r1 >= 0;
+  #assert el_box(t[0].rows[r0]).y < el_box(t[0].rows[st]).y && el_box(t[0].rows[st]).y < el_box(t[0].rows[r1]).y;
+  // its badge is a small "Steer", not the old footer
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  kept: [16384] u8; n := coder_page_save(s, kept[..]);
+  #assert n > 0 && cp_find(cast(string) kept[0..<n], "\"steer_rows\":[1]") >= 0;
+  s[0].turns[0].steered_n = 0; s[0].turns[0].steer_rows[0] = -1;
+  #assert coder_page_load(s, cast(string) kept[0..<n]) && cp_fu_steer_row(s, 0, 0) == 1;
+  // a chat kept before #13809 has no places: its steers go after the rows
+  #assert coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"x\",\"reply\":\"y\",\"state\":2,\"steers\":[\"old\"]}]}") && cp_fu_steers_in(s, 0) == 1 && cp_fu_steer_row(s, 0, 0) == -1;
+  #assert cp_test_draw(s, f[..]) && surface_find(s[0].surface[..], "t0.st0") >= 0;
+}

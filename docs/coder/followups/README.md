@@ -4,7 +4,9 @@ Coder Desktop at 1200 by 800, captured from a built `Coder.app` in a temp `HOME`
 worker that speaks the follow-up wire (no model is called).
 
 - `tray_running.png`: a reply runs. "Also cover the empty string" was steered in and shows in the
-  message as "Steered into the reply". "And keep the old behaviour for ASCII" waits as a steer, with
+  message as "Steered into the reply" (that capture predates #13809: a steer now stands in the
+  transcript where it was taken, the work before it above and the work after it below, under a
+  small "Steer" badge). "And keep the old behaviour for ASCII" waits as a steer, with
   Send now. Two messages are queued, each with Move up, Edit, Remove and Steer. Return always steers
   and Shift-Return queues (File > Queue a Follow-up); Steer and Queue chips send the draft either way.
 - `tray_paused.png`: Esc stopped the reply, so the queue paused, with Resume and Clear.

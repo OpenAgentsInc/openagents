@@ -12,6 +12,7 @@ CP_GLIDE :: 0.38;           // seconds a send, or Jump to latest, glides to the 
 CP_AWAY :: 0.15;            // seconds away from the end before Jump to latest shows (a moment's leaving isn't)
 CP_REPLY :: 60000;          // bytes of a reply kept (the Markdown document holds 65,536)
 CP_NOTE :: 512;
+CP_STEER_MARKS :: 8;        // steers a message keeps its place among its rows for (#13809); more go after its rows
 CP_STEERED :: 1024;         // bytes of the steers a message took in, kept with the chat: each steer's text (as the page keeps it, CP_FU_TEXT) and a zero byte
 CP_SKILLS :: 4096;          // bytes of the note on installed skills / Foreman instructions that goes ahead of each message
 CP_CMD :: 400;              // bytes of a command or a tool call shown
@@ -200,7 +201,8 @@ CpTurn :: struct {
   took: f32;                  // seconds it worked, once it ended; -1 not known
   seen_h: f32;                // its height when last measured, kept when that goes stale (0: never measured)
   note: [CP_NOTE] u8; note_n: int;
-  steered: [CP_STEERED] u8; steered_n: int;   // the steers it took in (#13718): "Steered into the reply", kept with the chat
+  steered: [CP_STEERED] u8; steered_n: int;   // the steers it took in (#13718), kept with the chat
+  steer_rows: [CP_STEER_MARKS] int;          // where each was taken (#13809): the row it came before, counted as the activity group counts, -1 after them all
   refs_at: int; refs_n: int;                  // its attachments' paths and the files it mentions, as the note its task carries: CoderPage.long_buf[refs_at..<refs_at + refs_n] (#13699)
   state: int; stopping: bool;
   model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)

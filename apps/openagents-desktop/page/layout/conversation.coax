@@ -80,8 +80,16 @@ cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, t
   nb: [EL_ID] u8; name := cp_named(nb[..], "t", "", i);
   live := s[0].turns[i].state == CP_RUNNING;
   worked := ifx live || s[0].turns[i].took < 0 then -1 else cp_whole(s[0].turns[i].took);
-  return cp_act_group(s, f, name, s[0].turns[i].head, s[0].turns[i].ncmds, s[0].turns[i].early_cmds, s[0].turns[i].more_cmds,
-                      i, s[0].turns[i].nagents, live, app_act_open(s[0].turns[i].fold, live), worked, x, y0, cw, top, bottom, CP_TOOL);
+  done := [1] int.[0];
+  h := cp_act_group(s, f, name, s[0].turns[i].head, s[0].turns[i].ncmds, s[0].turns[i].early_cmds, s[0].turns[i].more_cmds,
+                    i, s[0].turns[i].nagents, live, app_act_open(s[0].turns[i].fold, live), worked, x, y0, cw, top, bottom, CP_TOOL, i, done[..]);
+  // the steers taken after its last row, or all of them while it is folded, under it (#13809)
+  if s[0].turns[i].steered_n > 0 {
+    gap := ifx h > 0 then f[0].skin.app.gap else 0.0f32;
+    sh := cp_fu_steered(s, f, i, x, y0 + h + gap, cw, -1, done[..]);
+    if sh > 0 { h += gap + sh - f[0].skin.app.gap; }   // the caller adds the gap after the group
+  }
+  return h;
 }
 // One activity group at (x, y0), cw wide, as the conversation and a sub-agent's pane both draw
 // it (#13731, #13744): the summary over the nrows rows from call head on (a place in the page's
@@ -91,9 +99,10 @@ cp_group :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y0: f32, cw: f32, t
 // summary ("Worked for 42s · Ran 3 commands"). Its parts are named under `name`: name + ".grp" the summary (CP_GROUP),
 // name + ".x" + k each row (`row` its action), name + ".g" + j each sub-agent (CP_AGENT). Rows
 // out of view between top and bottom keep their place and are not drawn. Returns its height,
-// 0 when it did nothing.
+// 0 when it did nothing. steers, when not negative, is the turn whose steers stand among the rows
+// where each was taken (#13809), done[0] counting those drawn; the caller draws the rest.
 cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows: int, early: int, more: int, i: int, nagents: int,
-                 live: bool, open: bool, worked: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int) -> f32 {
+                 live: bool, open: bool, worked: int, x: f32, y0: f32, cw: f32, top: f32, bottom: f32, row: int, steers: int, done: [] int) -> f32 {
   a := f[0].skin.act; sh := f[0].sheet;
   if nrows + nagents + early + more == 0 { return 0; }
   // the summary: every kind it did, counted
@@ -136,6 +145,8 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
       drawn += 1; pos += 1; continue;
     }
     nx := s[0].calls[q].next - 1;
+    // a steer taken before this row stands above it, as the person's message (#13809)
+    if steers >= 0 { sth := cp_fu_steered(s, f, steers, x, y, cw, at, done); if sth > 0 { y += sth; } }
     // a row out of view keeps its place and is not drawn, so a long run costs what shows
     rh := s[0].calls[q].h;
     if rh > 0 && (y + rh < top - CP_PANE_MARGIN || y > bottom + CP_PANE_MARGIN) { y += rh; q = nx; at += 1; pos += 1; continue; }
@@ -225,8 +236,6 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       // what it did on its way to the reply: one activity group (#13731)
       gh := cp_group(s, f, i, x, y, cw, top, bottom);
       if gh > 0 { y += gh + a.gap; }
-      // what the person steered it with as it ran (#13717)
-      y += cp_fu_steered(s, f, i, x, y, cw);
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
         f[0].skin.motion.enter = 0;

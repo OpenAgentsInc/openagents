@@ -50,5 +50,5 @@
   #assert app_test_end(t[..]);
   #assert app_test_pressable(t[..], "fu.s0.queue") && app_test_pressable(t[..], "fu.s0.dismiss") && app_test_texts(t[..], "Not taken") == 1;
   #assert app_test_find(t[..], "fu.q0.send") < 0 && app_test_texts(t[..], "Editing · Return saves · Esc cancels") == 1 && app_test_texts(t[..], "3 more queued") == 1;
-  #assert h > 0 && app_test_texts(t[..], "Steered into the reply") == 1;
+  #assert h > 0 && app_test_texts(t[..], "Steer") == 1 && app_test_texts(t[..], "Steered into the reply") == 0;
 }
