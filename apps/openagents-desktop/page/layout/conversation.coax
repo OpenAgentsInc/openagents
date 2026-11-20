@@ -570,7 +570,7 @@ cp_foot_chip_width :: (f: [] UiFrame, icon: int, text: string, chevron: bool) ->
 }
 // The composer's foot at y: on the left the working folder › its branch (while a reply runs, what
 // Return does, and Steer and Queue for a draft) and the model; on the right the chat's goal, its
-// cost and how full the context is. Too narrow, it folds the goal, then the cost, the context and
+// cost (in an empty chat, the backend that will run it: cp_backend_label) and how full the context is. Too narrow, it folds the goal, then the cost, the context and
 // the branch. Returns the model chip's x, for its menu.
 cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, running: bool, exceeded: bool) -> f32 {
   k := f[0].skin; a := k.app; c := k.cmp;
@@ -584,7 +584,10 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   cb: [32] u8; bb: [32] u8; lb: [64] u8;
   ln := el_put(lb[..], 0, ifx s[0].cost_usd_micros > 0 then cp_cost(cb[..], s[0].cost_usd_micros) else "$0.00");
   ln = el_put(lb[..], ln, " / "); ln = el_put(lb[..], ln, cp_cost(bb[..], cp_budget(s)));
-  cost := sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
+  // an empty chat (the home screen, not Foreman's) names what will run the first message instead
+  home := s[0].nturns == 0 && cast(string) s[0].current[0..<s[0].current_n] != "chat.foreman";
+  backend := ifx home then cp_backend_label(s) else "";
+  cost := ifx home then backend else sheet_pool(f[0].sheet, cast(string) lb[0..<ln]);
   has_goal := s[0].goal_status != CP_GOAL_NONE && s[0].goal_objective_n > 0;
   glb: [64] u8; gtb: [32] u8; gln := 0;
   if has_goal {
@@ -602,7 +605,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   w_ring := c.chip_h;
   w_cost := cp_foot_chip_width(f, -1, cost, false);
   w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
-  show_goal := has_goal; show_cost := true; show_ring := s[0].ctx_in > 0; show_branch := s[0].branch_n > 0 && !running;
+  show_goal := has_goal; show_cost := !home || backend.count > 0; show_ring := s[0].ctx_in > 0; show_branch := s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<5 {
     need := (ifx show_branch then w_folder else w_short) + (ifx w_folder > 0 then gap else 0.0f32) + w_model;
@@ -613,7 +616,8 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   // the right side, from the end
   rx := x + cw - side;
   if show_ring { rx -= w_ring; cp_context_ring(s, f, rx, y, x, cw); rx -= gap; }
-  if show_cost { rx -= w_cost; _ := cp_foot_chip(f, "coder.cost", "Chat budget", rx, y, w_cost, -1, cost, false, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT); rx -= gap; }
+  if show_cost && home { rx -= w_cost; _ := cp_foot_chip(f, "coder.backend", "Runs on", rx, y, w_cost, -1, cost, false, 0, CP_MODEL_MENU); rx -= gap; }
+  else if show_cost { rx -= w_cost; _ := cp_foot_chip(f, "coder.cost", "Chat budget", rx, y, w_cost, -1, cost, false, ifx exceeded then EL_S_CURRENT else 0, CP_BUDGET_EDIT); rx -= gap; }
   if show_goal { rx -= w_goal; _ := cp_foot_chip(f, "coder.goal", "Thread goal", rx, y, w_goal, -1, goal, false, ifx s[0].goal_status == CP_GOAL_ACTIVE then EL_S_CURRENT else 0, CP_GOAL_OPEN); rx -= gap; }
   // the left side: the model after the folder, cut to what is left
   fx := x + side;

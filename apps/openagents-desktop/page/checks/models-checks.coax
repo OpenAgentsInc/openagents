@@ -230,3 +230,24 @@
   coder_page_set_cloud_authed(s, false);
   #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
 }
+
+#test "the backend label names what runs the next message: Antigravity CLI, OpenRouter, the Gemini API, nothing with no model" {
+  st := [1] CoderPage.[CoderPage.{}];
+  s := st[..];
+  coder_page_init(s);
+  // no Gemini key, not signed in, no agy: no model, no label
+  coder_page_experimental_set(s, false); coder_page_set_cloud_authed(s, false);
+  #assert cp_model_index(s) < 0 && cp_backend_label(s) == "";
+  // agy installed and the only entry
+  coder_page_set_agy(s, true);
+  #assert cp_backend_label(s) == "Antigravity CLI";
+  // a Gemini key set in Settings: Gemini models run on Microcoder through the Gemini API
+  s[0].set_gemini_n = cp_out(s[0].set_gemini[..], "Ends 1a2b"); s[0].model = cp_model_index(s);
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
+  #assert coder_page_pick_model(s, "agy") && cp_backend_label(s) == "Antigravity CLI";
+  coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
+  #assert coder_page_pick_model(s, "openrouter") && cp_backend_label(s) == "OpenRouter";
+  // no key, signed in with Experimental features: still Gemini
+  s[0].set_gemini_n = 0; coder_page_experimental_set(s, true); coder_page_set_cloud_authed(s, true);
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
+}

@@ -136,6 +136,18 @@ coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(al
   if was_agy { s[0].model = cp_agy_idx(s); }
   s[0].model = cp_model_index(s);
 }
+// The name of what runs the next message, which an empty chat's foot shows where the cost goes
+// (conversation.coax's cp_composer_foot): the Antigravity CLI (agyworker), or Microcoder (mcworker)
+// on OpenRouter or the Gemini API for the picked entry; "" with no model. Every backend and auth mode
+// is one line here, in the order Window+Runs.swift's sendTask picks the program.
+cp_backend_label :: (s: [] CoderPage) -> string {
+  idx := cp_model_index(s);
+  if idx < 0 { return ""; }
+  if cp_is_agy(s, idx) { return "Antigravity CLI"; }
+  if cp_is_or(s, idx) { return "OpenRouter"; }
+  if s[0].set_gemini_n > 0 { return "Gemini API"; }          // the key set in Settings > Models
+  return "Gemini API";                                         // signed in with Experimental features: Microcoder's own Gemini credentials
+}
 coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return cp_cloud_ok(s);
 }
