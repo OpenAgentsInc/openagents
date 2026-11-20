@@ -67,6 +67,8 @@ CpSimPane :: struct {
   pend: [CP_SIM_PEND] CpSimPend; npend: int; next_id: int;
   out: [CP_SIM_OUT] u8; out_n: int;
   op: int;                    // CP_SIM_OP_*: what CP_ASK_SIM asks
+  soft_kbd: bool;             // Command-K showed the software keyboard
+  scroll_on: bool; scroll_x: f32; scroll_y: f32;   // the finger a two-finger scroll moves, in view points
 }
 
 cp_sim :: (s: [] CoderPage) -> [] CpSimPane { return s[0].sim[..]; }
@@ -522,6 +524,60 @@ coder_page_sim_touch :: (s: [] CoderPage, phase: int, vx: f32, vy: f32, vw: f32,
   cp_sim_send0(s, m[..]);
   return true;
 }
+// Characters a key types: no control bytes (an accent or another script goes by the pasteboard).
+cp_sim_printable :: (t: string) -> bool { for c: t { if c < 32 || c == 127 { return false; } } return true; }
+// The person's Option-drag (spec 4.3): two fingers, the pointer's and its mirror through the
+// screen's centre, as Simulator.app pinches. Phases as coder_page_sim_touch.
+coder_page_sim_pinch :: (s: [] CoderPage, phase: int, vx: f32, vy: f32, vw: f32, vh: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  p := cp_sim(s);
+  if !p[0].input || p[0].state != CP_SIM_BOOTED || !(p[0].screen_w > 0.0) || phase < 0 || phase > 2 { return false; }
+  d := sg_view_to_device(cast(f64) vx, cast(f64) vy, cast(f64) vw, cast(f64) vh, cast(f64) p[0].screen_w, cast(f64) p[0].screen_h);
+  m: [1] SwMsg; cp_sim_req(m[..], "touch"); cp_sim_with_device(s, m[..]);
+  _ = sw_set_str(m[..], SW_F_PHASE, ifx phase == 0 then "down" else ifx phase == 2 then "up" else "move");
+  sw_set_int(m[..], SW_F_POINTER, 0); sw_set_num(m[..], SW_F_X, d.x); sw_set_num(m[..], SW_F_Y, d.y);
+  sw_set_num(m[..], SW_F_X2, cast(f64) p[0].screen_w - d.x); sw_set_num(m[..], SW_F_Y2, cast(f64) p[0].screen_h - d.y);
+  cp_sim_send0(s, m[..]);
+  return true;
+}
+// The person's scroll on the view (a trackpad's two fingers, a mouse's wheel) as a finger that
+// drags the content: down where the scroll began, moved by each delta (view points, content
+// following the fingers), up when it ends. phase 0 began, 1 changed, 2 ended. A wheel with no
+// phases sends all three at once.
+coder_page_sim_scroll :: (s: [] CoderPage, phase: int, vx: f32, vy: f32, dx: f32, dy: f32, vw: f32, vh: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  p := cp_sim(s);
+  if !p[0].input || p[0].state != CP_SIM_BOOTED || phase < 0 || phase > 2 { return false; }
+  if phase == 0 { p[0].scroll_on = true; p[0].scroll_x = vx; p[0].scroll_y = vy; return coder_page_sim_touch(s, 0, vx, vy, vw, vh); }
+  if !p[0].scroll_on { return false; }
+  p[0].scroll_x = cp_sim_clampf(p[0].scroll_x + dx, 0.0f32, vw); p[0].scroll_y = cp_sim_clampf(p[0].scroll_y + dy, 0.0f32, vh);
+  if phase == 2 { p[0].scroll_on = false; }
+  return coder_page_sim_touch(s, phase, p[0].scroll_x, p[0].scroll_y, vw, vh);
+}
+cp_sim_clampf :: (v: f32, lo: f32, hi: f32) -> f32 { return ifx v < lo then lo else ifx v > hi then hi else v; }
+// A Command shortcut while the view has the keyboard, as Simulator.app's: Shift-Command-H home,
+// Command-L lock, Command-Left and Command-Right turn, Command-K the software keyboard, Command-S a
+// screenshot into the working folder. False for any other (it stays the app's).
+coder_page_sim_command :: (s: [] CoderPage, code: int, chars: string, shift: bool) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  p := cp_sim(s);
+  if p[0].state != CP_SIM_BOOTED { return false; }
+  if chars == "s" && !shift { return cp_sim_press(s, CP_SIM_SHOT); }
+  if !p[0].input { return false; }
+  m: [1] SwMsg;
+  if (chars == "h" || chars == "H") && shift { return cp_sim_press(s, CP_SIM_HOME); }
+  if chars == "l" && !shift { return cp_sim_press(s, CP_SIM_LOCK); }
+  if code == 123 || code == 124 {
+    cp_sim_req(m[..], "rotate"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_DIRECTION, ifx code == 123 then "left" else "right");
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER); return true;
+  }
+  if chars == "k" && !shift {
+    p[0].soft_kbd = !p[0].soft_kbd;
+    cp_sim_req(m[..], "set_keyboard"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_STATE, ifx p[0].soft_kbd then "show" else "hide");
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER); return true;
+  }
+  return false;
+}
 // A Mac key code's name for press_key ("" when it types a character instead).
 cp_sim_mac_key :: (code: int) -> string {
   codes := [13] int.[36, 76, 51, 117, 53, 48, 123, 124, 125, 126, 115, 119, 116];
@@ -545,7 +601,7 @@ coder_page_sim_key :: (s: [] CoderPage, code: int, chars: string) -> bool #expor
   m: [1] SwMsg;
   name := cp_sim_mac_key(code);
   if name.count > 0 { cp_sim_req(m[..], "press_key"); _ = sw_set_str(m[..], SW_F_KEY, name); }
-  else if chars.count > 0 && sg_typeable(chars) { cp_sim_req(m[..], "text"); _ = sw_set_str(m[..], SW_F_TEXT, chars); }
+  else if chars.count > 0 && cp_sim_printable(chars) { cp_sim_req(m[..], "text"); _ = sw_set_str(m[..], SW_F_TEXT, chars); }
   else { return false; }
   cp_sim_with_device(s, m[..]);
   cp_sim_send0(s, m[..]);

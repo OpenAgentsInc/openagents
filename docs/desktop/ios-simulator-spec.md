@@ -198,8 +198,19 @@ on each agent action. The pane says "Live view unavailable with this Xcode; show
   makes it first responder; Escape or a click on the page gives the keyboard back to the composer.
   *As built (Phase 1):* one finger (`touch`, id 0, mapped by the page's `coder_page_sim_touch` with
   `sg_view_to_device`), and keys while the view has the keyboard: a named key by its Mac key code as
-  `press_key`, a typeable character as `text` (`coder_page_sim_key`). Option-drag, the scroll wheel
-  and the Command shortcuts into the device are not built yet; Command keys stay the app's.
+  `press_key`, a typeable character as `text` (`coder_page_sim_key`; one with an accent or not in
+  ASCII goes as `text` too, which the helper pastes). Option-drag is two fingers, the pointer and its
+  mirror through the screen's centre, as one `touch` with `x2`/`y2` (`coder_page_sim_pinch`). A
+  trackpad scroll is a drag that follows its phases (began, changed, ended; momentum is ignored); a
+  mouse wheel's notches are one drag that ends 150 ms after the last (a down, move and up in the same
+  instant is no swipe to iOS), each notch ten points (`coder_page_sim_scroll`). Command shortcuts go
+  to the device only while the view has the keyboard, through `performKeyEquivalent`
+  (`coder_page_sim_command`): Shift-Command-H Home, Command-L lock, Command-Left/Right turn,
+  Command-K the software keyboard, Command-S a screenshot into the working folder; every other
+  Command key (Command-V included: paste with the `text` the page sends) stays the app's.
+  Verified in a test launch driven by the Tier 3 probe: Shift-Command-H went home,
+  Command-Left turned Safari to landscape and the pane with it, wheel notches scrolled Settings down
+  and back, and an Option-drag zoomed Maps in.
 - **Agent:** the same ops through `oasim`, plus composite ones the helper expands in Coax
   (`tap` = down+up; `swipe` = an eased path over `duration`; `touch_path`/`touch2_path` = sampled
   paths with `dt_ms`; `text` = per-character key events, or the pasteboard plus Command-V for long or
@@ -362,11 +373,23 @@ helper's loop, so a gesture never blocks the other clients. What the real system
   helper answers with no `path` when the screen is unchanged, so an idle device costs one seed read
   per tick. The Mach-port surface rendezvous (4.2) is not built; frames reach the glass in under
   about 70 ms, which is enough for the person's taps and an agent's gestures.
-- Not yet: `rotate` (no Indigo message turns the device), `set_keyboard`, `touch2_path` (the
-  two-finger Indigo message), and non-ASCII `text` (the pasteboard path). Each answers
-  `input_unavailable` (or `bad_args` for text) with a sentence saying so. The CoreDevice input path
-  and the surface and damage callbacks are not used.
-- Confinement (9.4) is not built: the helper runs as the user, like `oasim build`.
+- `rotate`: no Indigo message turns the device; a **purple GSEvent** does (as idb's
+  `SimulatorPurpleHID`): a 112-byte Mach message (`msgh_bits` 0x13, size 108, id 0x7B, event type
+  50 | 0x20000 at 0x18, record size 4 at 0x48 and the `UIDeviceOrientation` at 0x4C) sent with
+  `mach_msg` to the port `-[SimDevice lookup:@"PurpleWorkspacePort" error:]` gives back. Left
+  (counter-clockwise) goes 1 → 3 → 2 → 4 → 1. The framebuffer stays portrait after a turn: the
+  helper turns stills upright (`simshim_shot`'s `turns`) and reports their sideways size in
+  `points`, and maps the upright points of a tap or a person's touch back to the portrait screen
+  (`sg_unturn`). The iPhone home screen does not turn; apps do. Verified: Safari in landscape
+  (874×402), a tap there closing its popup, and back.
+- `set_keyboard`: `-[SimDevice setHardwareKeyboardEnabled:keyboardType:error:]`; show is the
+  hardware keyboard off (the software one comes up with a focused field), hide is it on.
+- `touch2_path` and the person's pinch: `IndigoHIDMessageForMouseNSEvent(&a, &b, 0x32, ...)`, the
+  second point the second finger. Verified by a pinch that zooms Safari and Maps.
+- Non-ASCII `text`: `xcrun simctl pbcopy UDID` (run with `LANG`/`LC_ALL=en_US.UTF-8`, or "é"
+  arrives as "√©"), then Command-V (usage 0x19 with left Command 0xE3). Verified with "café 日本 ✓".
+- The CoreDevice input path and the surface and damage callbacks are not used.
+- Confinement (9.4) is not built; see there for why.
 
 ### 6.3 Boot
 
@@ -603,6 +626,17 @@ and `mach-register` for CoreSimulator, the surface rendezvous and `IOSurface`; `
 network. If the profile can't be applied on a macOS release, the helper runs unconfined and logs it
 once; the pane's info says so. `oasim build` runs `xcodebuild` as the user, unconfined, like any
 command the agent runs.
+
+*As built: not done, on purpose.* A profile tight enough to mean something does not fit what the
+helper must do. CoreSimulator's services are per device and per runtime (`mach-lookup` of names that
+carry the UDID, and `PurpleWorkspacePort` for a turn), so the lookups have to be wide open; the
+helper runs `xcrun simctl` (`io`, `pbcopy`, `boot`) whose children inherit the profile and reach
+`CoreSimulatorService` and the device's own processes; and screenshots go to each chat's working
+folder, which is anywhere the person keeps a project, so file writes have to cover their home.
+`sandbox-exec` is deprecated and fails closed in ways that show only as a dead input path on the next
+Xcode. What is left to deny (network, writes outside home) is not where the risk is: the policy
+that matters is `sim-policy.coax` (9.1), the shared socket's secret and the helper's
+`OA_SIM_ONLY`, all of which are built and tested.
 
 ## 10. File-by-file changes
 

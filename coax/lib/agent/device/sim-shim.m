@@ -20,6 +20,7 @@
 #import <ImageIO/ImageIO.h>
 #import <objc/message.h>
 #include <dlfcn.h>
+#include <mach/mach.h>
 #include <stdint.h>
 
 #ifndef COAX_coax_v_u8_DEFINED
@@ -126,8 +127,10 @@ int64_t simshim_seed(coax_v_u8 udid) {
   }
 }
 
-// The screen as a PNG at path, w by h pixels (scaled from the framebuffer). Its bytes, or -1.
-int64_t simshim_shot(coax_v_u8 udid, coax_v_u8 path, int64_t w, int64_t h) {
+// The screen as a PNG at path, w by h pixels (scaled from the framebuffer), turned counter-clockwise
+// by `turns` quarter turns (the framebuffer stays portrait when the device is turned: 1 for
+// landscape left, 2 upside down, 3 landscape right). Its bytes, or -1.
+int64_t simshim_shot(coax_v_u8 udid, coax_v_u8 path, int64_t w, int64_t h, int64_t turns) {
   @autoreleasepool {
     if (!ss_set || w <= 0 || h <= 0) return -1;
     IOSurfaceRef s = ss_surface(ss_device(ss_str(udid)));
@@ -141,10 +144,16 @@ int64_t simshim_shot(coax_v_u8 udid, coax_v_u8 path, int64_t w, int64_t h) {
     if (src) CGContextRelease(src);
     if (!full) { CGColorSpaceRelease(cs); return -1; }
     CGImageRef img = full;
-    if ((size_t)w != sw || (size_t)h != sh) {
+    turns = ((turns % 4) + 4) % 4;
+    if ((size_t)w != sw || (size_t)h != sh || turns != 0) {
       CGContextRef dst = CGBitmapContextCreate(NULL, (size_t)w, (size_t)h, 8, 0, cs, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
       CGContextSetInterpolationQuality(dst, kCGInterpolationHigh);
-      CGContextDrawImage(dst, CGRectMake(0, 0, w, h), full);
+      // the picture before turning is w by h, or h by w for a quarter turn
+      double iw = (double)w, ih = (double)h;
+      if (turns == 1) { CGContextTranslateCTM(dst, w, 0); CGContextRotateCTM(dst, M_PI_2); iw = (double)h; ih = (double)w; }
+      if (turns == 2) { CGContextTranslateCTM(dst, w, h); CGContextRotateCTM(dst, M_PI); }
+      if (turns == 3) { CGContextTranslateCTM(dst, 0, h); CGContextRotateCTM(dst, -M_PI_2); iw = (double)h; ih = (double)w; }
+      CGContextDrawImage(dst, CGRectMake(0, 0, iw, ih), full);
       img = CGBitmapContextCreateImage(dst); CGContextRelease(dst); CGImageRelease(full);
     }
     CGColorSpaceRelease(cs);
@@ -206,5 +215,76 @@ int64_t simshim_button(coax_v_u8 udid, int64_t source, int64_t down) {
   @autoreleasepool {
     if (!(ss_caps & 4)) return 0;
     return ss_post(ss_str(udid), ss_button((uint32_t)source, down ? 1 : 2, 0x33));
+  }
+}
+
+// Two fingers at (x1, y1) and (x2, y2) device points: phase 0 down, 1 moved, 2 up (the mouse
+// builder's second point is the second finger, as Simulator.app's Option-drag pinch sends it).
+int64_t simshim_touch2(coax_v_u8 udid, double x1, double y1, double x2, double y2, double w, double h, int64_t phase) {
+  @autoreleasepool {
+    if (!(ss_caps & 2)) return 0;
+    if (w <= 0 || h <= 0) return 0;
+    CGPoint a = CGPointMake(x1 / w, y1 / h), b = CGPointMake(x2 / w, y2 / h);
+    uint64_t type = phase == 2 ? 2 : 1;
+    return ss_post(ss_str(udid), ss_mouse(&a, &b, 0x32, type, CGSizeMake(1, 1), 0));
+  }
+}
+
+// The device's orientation (UIDeviceOrientation: 1 portrait, 2 upside down, 3 landscape left, 4
+// landscape right) as a GSEvent to SpringBoard's PurpleWorkspacePort, the message Simulator.app's
+// Rotate sends (type 50 | host flag 0x20000, msgh_id 0x7B, 108 bytes; as idb's SimulatorPurpleHID).
+// 1 when it was sent.
+int64_t simshim_orient(coax_v_u8 udid, int64_t orientation) {
+  @autoreleasepool {
+    if (orientation < 1 || orientation > 4) return 0;
+    id dev = ss_device(ss_str(udid));
+    SEL look = sel_registerName("lookup:error:");
+    if (!dev || ![dev respondsToSelector:look]) return 0;
+    NSError *err = nil;
+    mach_port_t port = ((mach_port_t(*)(id, SEL, id, NSError **))objc_msgSend)(dev, look, @"PurpleWorkspacePort", &err);
+    if (port == MACH_PORT_NULL) return 0;
+    uint8_t buf[112] = {0};
+    uint32_t *w = (uint32_t *)buf;
+    w[0] = 0x13; w[1] = 108; w[2] = port; w[5] = 0x7B;
+    *(uint32_t *)(buf + 0x18) = 50 | 0x20000;
+    *(uint32_t *)(buf + 0x48) = 4;
+    *(uint32_t *)(buf + 0x4C) = (uint32_t)orientation;
+    kern_return_t kr = mach_msg((mach_msg_header_t *)buf, MACH_SEND_MSG | MACH_SEND_TIMEOUT, 108, 0, MACH_PORT_NULL, 2000, MACH_PORT_NULL);
+    return kr == KERN_SUCCESS ? 1 : 0;
+  }
+}
+
+// The software keyboard: show (1) by disconnecting the simulated hardware keyboard, hide (0) by
+// connecting it (SimDevice -setHardwareKeyboardEnabled:keyboardType:error:, Simulator.app's
+// I/O > Keyboard). 1 when the device took it.
+int64_t simshim_keyboard(coax_v_u8 udid, int64_t show) {
+  @autoreleasepool {
+    id dev = ss_device(ss_str(udid));
+    SEL set = sel_registerName("setHardwareKeyboardEnabled:keyboardType:error:");
+    if (!dev || ![dev respondsToSelector:set]) return 0;
+    NSError *err = nil;
+    BOOL ok = ((BOOL(*)(id, SEL, BOOL, uint8_t, NSError **))objc_msgSend)(dev, set, show ? NO : YES, 0, &err);
+    return ok ? 1 : 0;
+  }
+}
+
+// text on the device's pasteboard (xcrun simctl pbcopy), for a paste: how the helper types what
+// the hardware keyboard has no keys for. 1 when simctl took it.
+int64_t simshim_pbcopy(coax_v_u8 udid, coax_v_u8 text) {
+  @autoreleasepool {
+    NSTask *t = [NSTask new];
+    t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/xcrun"];
+    t.arguments = @[@"simctl", @"pbcopy", ss_str(udid)];
+    // simctl reads its input in the locale's encoding: without a UTF-8 one, "é" arrives as "√©"
+    NSMutableDictionary *env = [NSProcessInfo.processInfo.environment mutableCopy];
+    env[@"LANG"] = @"en_US.UTF-8"; env[@"LC_ALL"] = @"en_US.UTF-8"; t.environment = env;
+    NSPipe *in = [NSPipe pipe]; t.standardInput = in;
+    t.standardOutput = [NSFileHandle fileHandleWithNullDevice]; t.standardError = [NSFileHandle fileHandleWithNullDevice];
+    NSError *err = nil;
+    if (![t launchAndReturnError:&err]) return 0;
+    [in.fileHandleForWriting writeData:[NSData dataWithBytes:text.data length:(NSUInteger)text.count]];
+    [in.fileHandleForWriting closeFile];
+    [t waitUntilExit];
+    return t.terminationStatus == 0 ? 1 : 0;
   }
 }

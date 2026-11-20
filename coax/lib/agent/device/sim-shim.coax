@@ -9,10 +9,14 @@
 simshim_start :: () -> int #foreign #effects(all);
 simshim_size :: (udid: [] u8, out: [] f64) -> int #foreign #effects(all);
 simshim_seed :: (udid: [] u8) -> int #foreign #effects(all);
-simshim_shot :: (udid: [] u8, path: [] u8, w: int, h: int) -> int #foreign #effects(all);
+simshim_shot :: (udid: [] u8, path: [] u8, w: int, h: int, turns: int) -> int #foreign #effects(all);
 simshim_touch :: (udid: [] u8, x: f64, y: f64, w: f64, h: f64, phase: int) -> int #foreign #effects(all);
 simshim_key :: (udid: [] u8, usage: int, down: int) -> int #foreign #effects(all);
 simshim_button :: (udid: [] u8, source: int, down: int) -> int #foreign #effects(all);
+simshim_touch2 :: (udid: [] u8, x1: f64, y1: f64, x2: f64, y2: f64, w: f64, h: f64, phase: int) -> int #foreign #effects(all);
+simshim_orient :: (udid: [] u8, orientation: int) -> int #foreign #effects(all);
+simshim_keyboard :: (udid: [] u8, show: int) -> int #foreign #effects(all);
+simshim_pbcopy :: (udid: [] u8, text: [] u8) -> int #foreign #effects(all);
 
 SS_DISPLAY :: 1; SS_TOUCH :: 2; SS_KEYS :: 4;
 shim_caps :: () -> int { return simshim_start(); }
@@ -34,14 +38,22 @@ shim_shot :: (s: ShScreen, udid: string, out: string, scale: f64, unchanged: int
   if unchanged >= 0 && seed == unchanged { return seed; }
   pb: [SH_PATH] u8;
   w := cast(int) (cast(f64) s.px_w / s.scale * scale + 0.5); h := cast(int) (cast(f64) s.px_h / s.scale * scale + 0.5);
-  if simshim_shot(u, shim_bytes(out, pb[..]), w, h) < 0 { return -1; }
+  // turned, the picture is upright: landscape is h by w
+  if sg_sideways(s.orient) { t := w; w = h; h = t; }
+  if simshim_shot(u, shim_bytes(out, pb[..]), w, h, sg_turns(s.orient)) < 0 { return -1; }
   return seed;
 }
 
 // One event of a plan, sent now. Whether the device took it.
 shim_send :: (h: [] ShHost, e: SgEv) -> bool {
   ub: [64] u8; u := shim_bytes(cast(string) h[0].gq_udid[0..<h[0].gq_udid_n], ub[..]);
-  if e.kind == SG_EV_TOUCH { return simshim_touch(u, e.x, e.y, h[0].gq_w, h[0].gq_h, e.a) == 1; }
+  // a plan's points are the upright screen's; the framebuffer's are portrait (gq_w by gq_h)
+  p := sg_unturn(h[0].gq_orient, e.x, e.y, h[0].gq_w, h[0].gq_h);
+  if e.kind == SG_EV_TOUCH { return simshim_touch(u, p.x, p.y, h[0].gq_w, h[0].gq_h, e.a) == 1; }
+  if e.kind == SG_EV_TOUCH2 {
+    q := sg_unturn(h[0].gq_orient, e.x2, e.y2, h[0].gq_w, h[0].gq_h);
+    return simshim_touch2(u, p.x, p.y, q.x, q.y, h[0].gq_w, h[0].gq_h, e.a) == 1;
+  }
   if e.kind == SG_EV_BUTTON { return simshim_button(u, e.a, e.b) == 1; }
   ok := true;
   if e.b > 0 { ok = ok && simshim_key(u, e.b, 1) == 1; }
@@ -55,7 +67,7 @@ shim_send :: (h: [] ShHost, e: SgEv) -> bool {
 shim_end :: (h: [] ShHost, code: string, why: string) {
   if !h[0].gq_live { return; }
   h[0].gq_live = false;
-  if h[0].gq_down { _ = shim_send(h, SgEv.{kind = SG_EV_TOUCH, a = 2, x = h[0].gq_x, y = h[0].gq_y}); h[0].gq_down = false; }
+  if h[0].gq_down { _ = shim_send(h, SgEv.{kind = ifx h[0].gq_two then SG_EV_TOUCH2 else SG_EV_TOUCH, a = 2, x = h[0].gq_x, y = h[0].gq_y, x2 = h[0].gq_x2, y2 = h[0].gq_y2}); h[0].gq_down = false; }
   if h[0].gq_id == 0 { return; }
   if code.count == 0 { sh_ok(h, h[0].gq_client, h[0].gq_id); return; }
   m := h[0].reply[..]; sw_reply_error(m, h[0].gq_id, code, why);
@@ -66,7 +78,7 @@ shim_end :: (h: [] ShHost, code: string, why: string) {
 shim_begin :: (h: [] ShHost, ci: int, id: int, udid: string, n: int) {
   s := sh_screen(h, udid);
   h[0].gq_w = cast(f64) s.px_w / s.scale; h[0].gq_h = cast(f64) s.px_h / s.scale;
-  h[0].gq_udid_n = sd_put(h[0].gq_udid[..], udid);
+  h[0].gq_udid_n = sd_put(h[0].gq_udid[..], udid); h[0].gq_orient = s.orient;
   h[0].gq_n = n; h[0].gq_i = 0; h[0].gq_client = ci; h[0].gq_id = id; h[0].gq_live = true; h[0].gq_down = false;
   h[0].gq_t0 = proc_now_ms();
   _ = shim_poll(h);
@@ -78,7 +90,7 @@ shim_poll :: (h: [] ShHost) -> bool {
   while h[0].gq_i < h[0].gq_n && h[0].plan[h[0].gq_i].at_ms <= now {
     e := h[0].plan[h[0].gq_i];
     if !shim_send(h, e) { shim_end(h, "input_unavailable", "the simulator did not take the event"); return false; }
-    if e.kind == SG_EV_TOUCH { h[0].gq_down = e.a != 2; h[0].gq_x = e.x; h[0].gq_y = e.y; }
+    if e.kind == SG_EV_TOUCH || e.kind == SG_EV_TOUCH2 { h[0].gq_down = e.a != 2; h[0].gq_two = e.kind == SG_EV_TOUCH2; h[0].gq_x = e.x; h[0].gq_y = e.y; h[0].gq_x2 = e.x2; h[0].gq_y2 = e.y2; }
     h[0].gq_i += 1;
   }
   if h[0].gq_i >= h[0].gq_n { shim_end(h, "", ""); return false; }
@@ -90,18 +102,33 @@ shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwM
   caps := shim_caps();
   touch := (caps & SS_TOUCH) != 0; keys := (caps & SS_KEYS) != 0;
   if op == "touch" && touch { shim_person_touch(h, udid, m); if id != 0 { sh_ok(h, ci, id); } return true; }
-  if op == "rotate" || op == "set_keyboard" || op == "touch2_path" {
-    why := ifx op == "rotate" then "this helper can't turn the simulator yet; use Simulator.app's Device > Rotate"
-      else ifx op == "set_keyboard" then "this helper can't show or hide the software keyboard yet" else "this helper can't send two-finger paths yet";
-    sh_fail(h, ci, id, "input_unavailable", why);
+  ub: [64] u8; u := shim_bytes(udid, ub[..]);
+  if op == "rotate" {
+    dir := sw_str(m, SW_F_DIRECTION);
+    to := sg_rotate(sh_orient(h, udid), dir);
+    if to == 0 { sh_fail(h, ci, id, "bad_args", "rotate needs left or right"); return true; }
+    if simshim_orient(u, to) != 1 { sh_fail(h, ci, id, "input_unavailable", "the simulator did not take the rotation"); return true; }
+    sh_set_orient(h, udid, to);
+    r := h[0].reply[..]; sw_reply_ok(r, id);
+    sc := sh_screen(h, udid); pw := cast(f64) sc.px_w / sc.scale; ph := cast(f64) sc.px_h / sc.scale;
+    if sc.px_w > 0 { if sg_sideways(to) { sw_set_size(r, ph, pw); } else { sw_set_size(r, pw, ph); } }
+    sh_answer(h, ci, id, r);
     return true;
   }
-  is_touch := op == "tap" || op == "swipe" || op == "touch_path";
+  if op == "set_keyboard" {
+    st := sw_str(m, SW_F_STATE);
+    if st != "show" && st != "hide" { sh_fail(h, ci, id, "bad_args", "set_keyboard needs show or hide"); return true; }
+    if simshim_keyboard(u, ifx st == "show" then 1 else 0) != 1 { sh_fail(h, ci, id, "input_unavailable", "the simulator did not take the keyboard setting"); return true; }
+    sh_ok(h, ci, id);
+    return true;
+  }
+  is_touch := op == "tap" || op == "swipe" || op == "touch_path" || op == "touch2_path";
   is_key := op == "text" || op == "press_key" || op == "button";
   if !(is_touch && touch) && !(is_key && keys) { return false; }
   if h[0].gq_live { sh_fail(h, ci, id, "timeout", "another gesture is running on the simulator; try again when it ends"); return true; }
   s := sh_screen(h, udid);
   w := cast(f64) s.px_w / s.scale; ht := cast(f64) s.px_h / s.scale;
+  if sg_sideways(s.orient) { t := w; w = ht; ht = t; }   // the upright screen's points
   n := 0;
   if op == "tap" {
     x := sw_num(m, SW_F_X); y := sw_num(m, SW_F_Y);
@@ -123,12 +150,27 @@ shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwM
     }
     if !sp_path_ok(k, sg_path_ms(dts[0..<k])) { sh_fail(h, ci, id, "bad_args", "a path has 1 to 2,000 samples over at most 30 s"); return true; }
     n = sg_plan_path(ss[0..<k], h[0].plan[..]);
+  } else if op == "touch2_path" {
+    k := m[0].npts; dts: [SW_SAMPLES] f64; ss: [SW_SAMPLES] SgSample2;
+    for i: 0..<k {
+      p := m[0].pts[i];
+      if !sp_in_screen(p.x, p.y, w, ht) || !sp_in_screen(p.x2, p.y2, w, ht) { sh_fail(h, ci, id, "out_of_bounds", "a point is off the screen"); return true; }
+      ss[i] = SgSample2.{x = p.x, y = p.y, x2 = p.x2, y2 = p.y2, dt_ms = p.dt_ms}; dts[i] = p.dt_ms;
+    }
+    if !sp_path_ok(k, sg_path_ms(dts[0..<k])) { sh_fail(h, ci, id, "bad_args", "a path has 1 to 2,000 samples over at most 30 s"); return true; }
+    n = sg_plan_path2(ss[0..<k], h[0].plan[..]);
   } else if op == "text" {
     t := sw_str(m, SW_F_TEXT);
     no := sp_text_refused(t, cast(string) h[0].secret[0..<h[0].secret_n]);
     if no.count > 0 { sh_fail(h, ci, id, "denied", no); return true; }
     n = sg_plan_text(t, h[0].plan[..]);
-    if n == 0 { sh_fail(h, ci, id, "bad_args", "text is typed key by key: printable ASCII, tabs and newlines only, for now"); return true; }
+    if n == 0 && t.count > 0 && t.count <= SP_TEXT {
+      // what the keys can't type (accents, other scripts, emoji) goes through the pasteboard
+      tb: [SP_TEXT] u8;
+      if simshim_pbcopy(u, shim_bytes(t, tb[..])) != 1 { sh_fail(h, ci, id, "input_unavailable", "the simulator's pasteboard did not take the text"); return true; }
+      n = sg_plan_paste(h[0].plan[..]);
+    }
+    if n == 0 { sh_fail(h, ci, id, "bad_args", "text is 1 to 4,096 bytes"); return true; }
   } else if op == "press_key" {
     n = sg_plan_key(sw_str(m, SW_F_KEY), sw_int(m, SW_F_COUNT, 1), h[0].plan[..]);
     if n == 0 { sh_fail(h, ci, id, "bad_args", "key is return, delete, forward_delete, escape, tab, space, an arrow, home, end, page_up, page_down, select_all, undo or redo; count 1 to 20"); return true; }
@@ -147,6 +189,13 @@ shim_person_touch :: (h: [] ShHost, udid: string, m: [] SwMsg) {
   h[0].touched_ms = proc_now_ms();
   if phase == 0 && h[0].gq_live { shim_end(h, "interrupted", "the person touched the simulator"); }
   s := sh_screen(h, udid);
-  ub: [64] u8;
-  _ = simshim_touch(shim_bytes(udid, ub[..]), sw_num(m, SW_F_X), sw_num(m, SW_F_Y), cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale, phase);
+  ub: [64] u8; w := cast(f64) s.px_w / s.scale; ht := cast(f64) s.px_h / s.scale;
+  p := sg_unturn(s.orient, sw_num(m, SW_F_X), sw_num(m, SW_F_Y), w, ht);
+  if sw_has(m, SW_F_X2) && sw_has(m, SW_F_Y2) {
+    // Option-drag: two fingers
+    q := sg_unturn(s.orient, sw_num(m, SW_F_X2), sw_num(m, SW_F_Y2), w, ht);
+    _ = simshim_touch2(shim_bytes(udid, ub[..]), p.x, p.y, q.x, q.y, w, ht, phase);
+    return;
+  }
+  _ = simshim_touch(shim_bytes(udid, ub[..]), p.x, p.y, w, ht, phase);
 }

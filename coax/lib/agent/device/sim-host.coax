@@ -54,7 +54,7 @@ ShJob :: struct {
 // A request parked until the person answers the permission card.
 ShAsk :: struct { live: bool; client: int; line: [8192] u8; n: int; chat: [64] u8; chat_n: int; udid: [64] u8; udid_n: int; until_ms: int; }
 // A device's screen: its size in pixels and its scale (points = pixels / scale).
-ShScreen :: struct { udid: [64] u8; udid_n: int; px_w: int; px_h: int; scale: f64; }
+ShScreen :: struct { udid: [64] u8; udid_n: int; px_w: int; px_h: int; scale: f64; orient: int; }   // orient: the last rotate's (sg_rotate), 0 before one
 ShChat :: struct { chat: [64] u8; chat_n: int; rate: [1] SpRate; }
 ShHost :: struct {
   home: [SH_PATH] u8; home_n: int;            // ~/.openagents/sim
@@ -75,6 +75,7 @@ ShHost :: struct {
   // an agent's gesture in flight (sim-shim.coax): its plan, the next event, who waits
   plan: [SH_PLAN] SgEv; gq_n: int; gq_i: int; gq_t0: int; gq_live: bool; gq_client: int; gq_id: int;
   gq_udid: [64] u8; gq_udid_n: int; gq_w: f64; gq_h: f64; gq_down: bool; gq_x: f64; gq_y: f64;
+  gq_two: bool; gq_x2: f64; gq_y2: f64; gq_orient: int;   // the finger left down is two (touch2_path)
   last_client_ms: int;
   quit: bool;
   secret: [256] u8; secret_n: int;            // a key text may not hold (OA_SIM_SECRET)
@@ -180,6 +181,11 @@ sh_screen :: (h: [] ShHost, udid: string) -> ShScreen {
   if !shim_screen_size(udid, s[..]) { sh_profile_size(udid, s[..]); }
   if s[0].px_w > 0 && h[0].nscreens < SH_SCREENS { h[0].screens[h[0].nscreens] = s[0]; h[0].nscreens += 1; }
   return s[0];
+}
+// The orientation the helper last turned udid to (1 portrait before any rotate), and setting it.
+sh_orient :: (h: [] ShHost, udid: string) -> int { o := sh_screen(h, udid).orient; return ifx o == 0 then 1 else o; }
+sh_set_orient :: (h: [] ShHost, udid: string, o: int) {
+  for i: 0..<h[0].nscreens { if cast(string) h[0].screens[i].udid[0..<h[0].screens[i].udid_n] == udid { h[0].screens[i].orient = o; } }
 }
 // The device type's profile.plist (public files, read with plutil): its pixels and scale.
 sh_profile_size :: (udid: string, s: [] ShScreen) {
@@ -403,7 +409,8 @@ sh_job_next :: (h: [] ShHost, j: int) {
 sh_shot_reply :: (h: [] ShHost, ci: int, id: int, udid: string, path: string, gen: int) {
   s := sh_screen(h, udid);
   m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_PATH, path);
-  if s.px_w > 0 { sw_set_size(m, cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale); }
+  if s.px_w > 0 && sg_sideways(s.orient) { sw_set_size(m, cast(f64) s.px_h / s.scale, cast(f64) s.px_w / s.scale); }
+  else if s.px_w > 0 { sw_set_size(m, cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale); }
   sw_set_int(m, SW_F_BYTES, fs_size(path));
   if gen >= 0 { sw_set_int(m, SW_F_GEN, gen); }
   sh_answer(h, ci, id, m);

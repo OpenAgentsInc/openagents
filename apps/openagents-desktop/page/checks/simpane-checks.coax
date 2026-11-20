@@ -176,7 +176,7 @@ cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
   #assert !coder_page_sim_touch(s, 3, 1.0, 1.0, 201.0, 437.0);
   #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"down\",\"pointer\":0,\"x\":201,\"y\":400}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"move\",\"pointer\":0,\"x\":0,\"y\":0}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"up\",\"pointer\":0,\"x\":402,\"y\":874}\n";
   // keys: a named one by its Mac code, a character as text, anything else not taken
-  #assert coder_page_sim_key(s, 36, "\r") && coder_page_sim_key(s, 0, "a") && !coder_page_sim_key(s, 0, "é") && !coder_page_sim_key(s, 0, "");
+  #assert coder_page_sim_key(s, 36, "\r") && coder_page_sim_key(s, 0, "a") && !coder_page_sim_key(s, 0, "");
   #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"press_key\",\"device\":\"U1\",\"key\":\"return\"}\n{\"id\":0,\"op\":\"text\",\"device\":\"U1\",\"text\":\"a\"}\n";
   // shut down: nothing goes
   s[0].sim[0].state = CP_SIM_SHUTDOWN;
@@ -214,4 +214,34 @@ cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
   // closed by the person, a press opens it again
   s[0].sim[0].closed_by_person = true; cp_sim_hide(s);
   #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "t0.x0") && s[0].sim[0].open && !s[0].sim[0].closed_by_person;
+}
+
+#test "the person's Option-drag pinches, a scroll drags, Simulator.app's Command shortcuts; an accent types" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  out: [4096] u8;
+  cp_sim_test_up(s); _ = cp_sim_test_out(s, out[..]);
+  #assert coder_page_sim_line(s, "{\"id\":4,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-0.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34754}");
+  #assert !coder_page_sim_pinch(s, 0, 50.0, 100.0, 201.0, 437.0) && !coder_page_sim_scroll(s, 0, 1.0, 1.0, 0.0, 0.0, 201.0, 437.0) && !coder_page_sim_command(s, 37, "l", false);
+  s[0].sim[0].input = true;
+  // the pointer at (100, 200) device points, its mirror at (302, 674)
+  #assert coder_page_sim_pinch(s, 0, 50.0, 100.0, 201.0, 437.0);
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"down\",\"pointer\":0,\"x\":100,\"y\":200,\"x2\":302,\"y2\":674}\n";
+  #assert !coder_page_sim_pinch(s, 3, 50.0, 100.0, 201.0, 437.0);
+  // a scroll: down where it began, moved by its deltas (kept on the view), up
+  #assert !coder_page_sim_scroll(s, 1, 0.0, 0.0, 5.0, 5.0, 201.0, 437.0);
+  #assert coder_page_sim_scroll(s, 0, 100.0, 200.0, 0.0, 0.0, 201.0, 437.0) && coder_page_sim_scroll(s, 1, 0.0, 0.0, 0.5, -300.0, 201.0, 437.0) && coder_page_sim_scroll(s, 2, 0.0, 0.0, 0.0, 0.0, 201.0, 437.0);
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"down\",\"pointer\":0,\"x\":200,\"y\":400}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"move\",\"pointer\":0,\"x\":201,\"y\":0}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"up\",\"pointer\":0,\"x\":201,\"y\":0}\n";
+  #assert !coder_page_sim_scroll(s, 1, 0.0, 0.0, 1.0, 1.0, 201.0, 437.0);
+  // shortcuts: home, lock, turn each way, the software keyboard on and off; others stay the app's
+  #assert coder_page_sim_command(s, 4, "h", true) && coder_page_sim_command(s, 37, "l", false) && coder_page_sim_command(s, 123, "", false) && coder_page_sim_command(s, 124, "", false);
+  #assert coder_page_sim_command(s, 40, "k", false) && s[0].sim[0].soft_kbd && coder_page_sim_command(s, 40, "k", false) && !s[0].sim[0].soft_kbd;
+  #assert !coder_page_sim_command(s, 4, "h", false) && !coder_page_sim_command(s, 9, "v", false) && !coder_page_sim_command(s, 37, "l", true);
+  q := cp_sim_test_out(s, out[..]);
+  #assert cp_find(q, "\"op\":\"button\",\"device\":\"U1\",\"name\":\"HOME\"") >= 0 && cp_find(q, "\"name\":\"LOCK\"") >= 0;
+  #assert cp_find(q, "\"op\":\"rotate\",\"device\":\"U1\",\"direction\":\"left\"") >= 0 && cp_find(q, "\"direction\":\"right\"") >= 0;
+  #assert cp_find(q, "\"op\":\"set_keyboard\",\"device\":\"U1\",\"state\":\"show\"") >= 0 && cp_find(q, "\"state\":\"hide\"") >= 0;
+  // Command-S: a screenshot into the working folder
+  #assert coder_page_sim_command(s, 1, "s", false) && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"screenshot\"") >= 0;
+  // a key with an accent goes as text (the helper pastes it)
+  #assert coder_page_sim_key(s, 0, "é") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"text\"") >= 0;
 }

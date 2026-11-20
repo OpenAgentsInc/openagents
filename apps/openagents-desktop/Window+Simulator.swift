@@ -84,12 +84,17 @@ final class SimHostClient {
 
 /// The device's screen over the page: a layer whose contents are the newest frame. The person's
 /// mouse is a finger on the device and, once a click gives it the keyboard, keys go to the device
-/// (Command-key shortcuts stay the app's; Escape gives the keyboard back). The page maps both
+/// (Simulator.app's Command shortcuts are the device's, any other the app's; Escape gives the keyboard
+/// back); Option-drag pinches and a scroll drags. The page maps them
 /// (coder_page_sim_touch, coder_page_sim_key).
 final class SimulatorPaneView: NSView {
     var onTouch: ((Int32, NSPoint, NSSize) -> Bool)?
     var onKey: ((Int32, String) -> Bool)?
+    var onPinch: ((Int32, NSPoint, NSSize) -> Bool)?
+    var onScroll: ((Int32, NSPoint, CGFloat, CGFloat, NSSize) -> Bool)?
+    var onCommand: ((Int32, String, Bool) -> Bool)?
     var onDone: (() -> Void)?
+    private var pinching = false
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -102,13 +107,47 @@ final class SimulatorPaneView: NSView {
     func show(_ image: CGImage) { layer?.contents = image }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    private func touch(_ phase: Int32, _ e: NSEvent) {
+    private func top(_ e: NSEvent) -> NSPoint {
         let p = convert(e.locationInWindow, from: nil)
-        _ = onTouch?(phase, NSPoint(x: p.x, y: bounds.height - p.y), bounds.size)   // from the top left
+        return NSPoint(x: p.x, y: bounds.height - p.y)   // from the top left
+    }
+    // Option held at the press: two fingers (a pinch) until the button comes up
+    private func touch(_ phase: Int32, _ e: NSEvent) {
+        if phase == 0 { pinching = e.modifierFlags.contains(.option) }
+        if pinching { _ = onPinch?(phase, top(e), bounds.size) } else { _ = onTouch?(phase, top(e), bounds.size) }
+        if phase == 2 { pinching = false }
     }
     override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); touch(0, e) }
     override func mouseDragged(with e: NSEvent) { touch(1, e) }
     override func mouseUp(with e: NSEvent) { touch(2, e) }
+    // A trackpad's scroll by its phases (momentum is left out); a wheel's notch as one short drag.
+    override func scrollWheel(with e: NSEvent) {
+        let dx = e.scrollingDeltaX * (e.hasPreciseScrollingDeltas ? 1 : 10)
+        let dy = e.scrollingDeltaY * (e.hasPreciseScrollingDeltas ? 1 : 10)
+        if !e.momentumPhase.isEmpty { return }
+        if e.phase.contains(.began) { _ = onScroll?(0, top(e), 0, 0, bounds.size) }
+        else if e.phase.contains(.changed) { _ = onScroll?(1, top(e), dx, dy, bounds.size) }
+        else if e.phase.contains(.ended) || e.phase.contains(.cancelled) { _ = onScroll?(2, top(e), 0, 0, bounds.size) }
+        else if e.phase.isEmpty {
+            // A mouse wheel has no phases: its notches are one drag that ends when they stop (a down,
+            // a move and an up in the same instant is no swipe to the device).
+            if wheelEnd == nil { _ = onScroll?(0, top(e), 0, 0, bounds.size) }
+            _ = onScroll?(1, top(e), dx, dy, bounds.size)
+            wheelEnd?.invalidate()
+            wheelEnd = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.wheelEnd = nil; _ = self.onScroll?(2, .zero, 0, 0, self.bounds.size)
+            }
+        }
+    }
+    private var wheelEnd: Timer?
+    // Command shortcuts the simulator has (Shift-Command-H, Command-L, -K, -S, -Left, -Right) while
+    // the view has the keyboard; any other stays the app's menu's.
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        guard window?.firstResponder === self, e.type == .keyDown, e.modifierFlags.contains(.command) else { return super.performKeyEquivalent(with: e) }
+        if onCommand?(Int32(e.keyCode), e.charactersIgnoringModifiers?.lowercased() ?? "", e.modifierFlags.contains(.shift)) == true { return true }
+        return super.performKeyEquivalent(with: e)
+    }
     override func keyDown(with e: NSEvent) {
         if e.modifierFlags.contains(.command) { super.keyDown(with: e); return }
         if e.keyCode == 53 { onDone?(); return }   // Escape: the keyboard goes back to the composer
@@ -253,6 +292,24 @@ extension CoderWindow {
                 guard let self else { return false }
                 let ok = cd_sim_key(self.page, code, chars) != 0
                 if ok { self.pumpSimulator() }
+                return ok
+            }
+            view.onPinch = { [weak self] phase, p, size in
+                guard let self else { return false }
+                let ok = cd_sim_pinch(self.page, phase, Float(p.x), Float(p.y), Float(size.width), Float(size.height)) != 0
+                if ok { self.pumpSimulator() }
+                return ok
+            }
+            view.onScroll = { [weak self] phase, p, dx, dy, size in
+                guard let self else { return false }
+                let ok = cd_sim_scroll(self.page, phase, Float(p.x), Float(p.y), Float(dx), Float(dy), Float(size.width), Float(size.height)) != 0
+                if ok { self.pumpSimulator() }
+                return ok
+            }
+            view.onCommand = { [weak self] code, chars, shift in
+                guard let self else { return false }
+                let ok = cd_sim_command(self.page, code, chars, shift ? 1 : 0) != 0
+                if ok { self.pumpSimulator(); self.act(cd_action(self.page)) }
                 return ok
             }
             view.onDone = { [weak self] in self?.window.makeFirstResponder(self?.canvas) }

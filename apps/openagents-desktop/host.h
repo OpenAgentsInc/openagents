@@ -156,6 +156,12 @@ int cd_sim_device(void *page, char *out, int cap);
 // characters it types). Each queues a request (cd_sim_out); 0 when the helper has no input.
 int cd_sim_touch(void *page, int phase, float x, float y, float w, float h);
 int cd_sim_key(void *page, int code, const char *chars);
+// cd_sim_pinch two fingers (the pointer and its mirror through the screen's centre: Option-drag);
+// cd_sim_scroll a scroll as a dragging finger (phase 0 began, 1 changed, 2 ended; dx, dy view
+// points the content follows); cd_sim_command a Command shortcut (1 when it was the simulator's).
+int cd_sim_pinch(void *page, int phase, float x, float y, float w, float h);
+int cd_sim_scroll(void *page, int phase, float x, float y, float dx, float dy, float w, float h);
+int cd_sim_command(void *page, int code, const char *chars, int shift);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

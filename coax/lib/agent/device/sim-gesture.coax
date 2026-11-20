@@ -223,8 +223,10 @@ sg_button :: (name: string) -> int {
 // A planned event, at_ms after the op began. SG_EV_TOUCH: a finger at (x, y), phase a (0 down,
 // 1 moved, 2 up). SG_EV_CHORD: key a pressed and let go with modifiers b and c held (0 none).
 // SG_EV_BUTTON: button source a, b 1 down or 0 up.
-SG_EV_TOUCH :: 1; SG_EV_CHORD :: 2; SG_EV_BUTTON :: 3;
-SgEv :: struct { kind: int; a: int; b: int; c: int; x: f64; y: f64; at_ms: f64; }
+SG_EV_TOUCH :: 1; SG_EV_CHORD :: 2; SG_EV_BUTTON :: 3; SG_EV_TOUCH2 :: 4;
+// a: a touch's phase (0 down, 1 moved, 2 up), a chord's key, a button's source; b, c: a chord's
+// modifiers, a button's down; x, y the (first) finger; x2, y2 a two-finger touch's second
+SgEv :: struct { kind: int; a: int; b: int; c: int; x: f64; y: f64; at_ms: f64; x2: f64; y2: f64; }
 SG_KEY_MS :: 12.0;        // between typed keys
 SG_PRESS_MS :: 100.0;     // how long a button is held by default
 
@@ -239,6 +241,76 @@ sg_plan_path :: (s: [] SgSample, out: [] SgEv) -> int {
   last := s[s.count - 1];
   out[s.count] = SgEv.{kind = SG_EV_TOUCH, a = 2, x = last.x, y = last.y, at_ms = t};
   return s.count + 1;
+}
+// Two fingers along their samples (touch2_path, a pinch): both down at the first, moved at each
+// next after its dt_ms, both up at the last. 0 when there is none or it won't fit.
+SgSample2 :: struct { x: f64; y: f64; x2: f64; y2: f64; dt_ms: f64; }
+sg_plan_path2 :: (s: [] SgSample2, out: [] SgEv) -> int {
+  if s.count == 0 || out.count < s.count + 1 { return 0; }
+  t := 0.0;
+  for i: 0..<s.count {
+    if i > 0 { t += s[i].dt_ms; }
+    out[i] = SgEv.{kind = SG_EV_TOUCH2, a = ifx i == 0 then 0 else 1, x = s[i].x, y = s[i].y, x2 = s[i].x2, y2 = s[i].y2, at_ms = t};
+  }
+  last := s[s.count - 1];
+  out[s.count] = SgEv.{kind = SG_EV_TOUCH2, a = 2, x = last.x, y = last.y, x2 = last.x2, y2 = last.y2, at_ms = t};
+  return s.count + 1;
+}
+// A paste: Command-V, for text the keys can't type once it is on the device's pasteboard.
+sg_plan_paste :: (out: [] SgEv) -> int {
+  if out.count < 1 { return 0; }
+  out[0] = SgEv.{kind = SG_EV_CHORD, a = 0x19, b = SG_COMMAND, at_ms = 0.0};
+  return 1;
+}
+// The orientation (UIDeviceOrientation: 1 portrait, 2 upside down, 3 landscape left, 4 landscape
+// right) after a quarter turn of the device: "left" counter-clockwise, "right" clockwise. 0 for
+// another direction; an orientation it does not know turns from portrait.
+sg_rotate :: (now: int, direction: string) -> int {
+  o := ifx now >= 1 && now <= 4 then now else 1;
+  // counter-clockwise: portrait, landscape left (home on the right), upside down, landscape right
+  ccw := [4] int.[1, 3, 2, 4];
+  at := 0; for v, i: ccw { if v == o { at = i; } }
+  if direction == "left" { return ccw[(at + 1) % 4]; }
+  if direction == "right" { return ccw[(at + 3) % 4]; }
+  return 0;
+}
+// A point in the turned screen's own frame (upright as the person sees it: what screenshots show
+// and agents name) as the framebuffer's portrait point, for a screen w by h in portrait. The
+// framebuffer stays portrait when the device turns: landscape left (3) shows it turned clockwise.
+SgPt :: struct { x: f64; y: f64; }
+sg_unturn :: (o: int, x: f64, y: f64, w: f64, h: f64) -> SgPt {
+  if o == 3 { return SgPt.{x = w - y, y = x}; }
+  if o == 4 { return SgPt.{x = y, y = h - x}; }
+  if o == 2 { return SgPt.{x = w - x, y = h - y}; }
+  return SgPt.{x = x, y = y};
+}
+// The quarter turns counter-clockwise that make the portrait framebuffer upright for o.
+sg_turns :: (o: int) -> int { return ifx o == 3 then 1 else ifx o == 2 then 2 else ifx o == 4 then 3 else 0; }
+// Whether o is a landscape one (the upright screen is h by w).
+sg_sideways :: (o: int) -> bool { return o == 3 || o == 4; }
+#test "a turned screen's points become the portrait framebuffer's" {
+  // a 402 by 874 screen: in landscape left the upright screen is 874 by 402
+  p := sg_unturn(3, 773.0, 201.0, 402.0, 874.0); #assert p.x == 201.0 && p.y == 773.0;
+  p = sg_unturn(3, 0.0, 0.0, 402.0, 874.0); #assert p.x == 402.0 && p.y == 0.0;
+  p = sg_unturn(4, 0.0, 0.0, 402.0, 874.0); #assert p.x == 0.0 && p.y == 874.0;
+  p = sg_unturn(4, 874.0, 402.0, 402.0, 874.0); #assert p.x == 402.0 && p.y == 0.0;
+  p = sg_unturn(2, 10.0, 20.0, 402.0, 874.0); #assert p.x == 392.0 && p.y == 854.0;
+  p = sg_unturn(1, 10.0, 20.0, 402.0, 874.0); #assert p.x == 10.0 && p.y == 20.0;
+  p = sg_unturn(0, 10.0, 20.0, 402.0, 874.0); #assert p.x == 10.0 && p.y == 20.0;
+  #assert sg_turns(3) == 1 && sg_turns(2) == 2 && sg_turns(4) == 3 && sg_turns(1) == 0 && sg_turns(0) == 0;
+  #assert sg_sideways(3) && sg_sideways(4) && !sg_sideways(1) && !sg_sideways(2) && !sg_sideways(0);
+}
+#test "two fingers along a path, a paste, a quarter turn each way" {
+  s: [2] SgSample2; s[0] = SgSample2.{x = 100.0, y = 400.0, x2 = 300.0, y2 = 400.0}; s[1] = SgSample2.{x = 150.0, y = 400.0, x2 = 250.0, y2 = 400.0, dt_ms = 16.0};
+  e: [4] SgEv;
+  #assert sg_plan_path2(s[..], e[..]) == 3;
+  #assert e[0].kind == SG_EV_TOUCH2 && e[0].a == 0 && e[0].x == 100.0 && e[0].x2 == 300.0 && e[0].at_ms == 0.0;
+  #assert e[1].a == 1 && e[1].x == 150.0 && e[1].y2 == 400.0 && e[1].at_ms == 16.0 && e[2].a == 2 && e[2].x2 == 250.0 && e[2].at_ms == 16.0;
+  #assert sg_plan_path2(s[0..<0], e[..]) == 0 && sg_plan_path2(s[..], e[0..<2]) == 0;
+  #assert sg_plan_paste(e[..]) == 1 && e[0].kind == SG_EV_CHORD && e[0].a == 0x19 && e[0].b == SG_COMMAND && sg_plan_paste(e[0..<0]) == 0;
+  #assert sg_rotate(1, "left") == 3 && sg_rotate(3, "left") == 2 && sg_rotate(2, "left") == 4 && sg_rotate(4, "left") == 1;
+  #assert sg_rotate(1, "right") == 4 && sg_rotate(4, "right") == 2 && sg_rotate(2, "right") == 3 && sg_rotate(3, "right") == 1;
+  #assert sg_rotate(0, "left") == 3 && sg_rotate(9, "right") == 4 && sg_rotate(1, "up") == 0;
 }
 // A tap: down, and up after duration_ms (SG_TAP_MS when 0 or less; over 500 is a long press).
 sg_plan_tap :: (x: f64, y: f64, duration_ms: f64, out: [] SgEv) -> int {
