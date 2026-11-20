@@ -40,6 +40,7 @@
 //        {"kind":"steer","id":"I","status":"accepted|rejected|applied|queued|resubmitted","turn":N,...}
 //        {"kind":"queue","paused":B,"reason":"R","active":"I","items":[...]}   the whole queue, after each change
 //        {"kind":"queue_refused","op":"O","id":"I","reason":"R"}
+//        {"kind":"stop_agent","agent":N}             the run stops sub-agent N (a delegated task with resume and stop)
 //
 // Follow-ups (GitHub #13715, #13716). A steer goes into the running turn: the loop takes it before
 // its next model call, as a step of its own (steer.coax), and a turn about to finish with one held
@@ -54,6 +55,9 @@
 // A running command holds none of these up (GitHub #13750): the run reads a command between
 // polls (run.coax), so this loop reads its input while the command runs, a steer or queue op is
 // answered at once, and an interrupt kills the command's process group and ends the turn.
+// A steer that comes while the run waits on its sub-agents' results (GitHub #13766) is held as
+// any is; its owner sees it accepted and answers the delegate line at once, each sub-agent as it
+// is, and the run's next step takes the steer.
 //
 // Every line each way is written and read by coax/lib/agent/engine/mcworker-wire.coax, the one
 // codec the owners load too (Protocol C11, GitHub #13250; proto/coder/microcoder-worker-lines-v1.json).
@@ -106,6 +110,7 @@ mw_event :: (e: McRunEvent, o: [] u8) {
   else if e.kind == MR_VIEW { n = mww_view(o, e.text, e.found); }
   else if e.kind == MR_ASK { n = mww_ask(o, e.text, e.ticket); }
   else if e.kind == MR_DELEGATE { n = mww_delegate(o, e.text, e.ticket); }
+  else if e.kind == MR_STOP_AGENT { n = mww_stop_agent(o, e.agent); }
   else if e.kind == MR_THOUGHT { n = mww_thought(o, e.text); }
   else if e.kind == MR_ENDED { n = mww_ended(o, mc_ending_name(e.ending), e.text); }
   else { return; }

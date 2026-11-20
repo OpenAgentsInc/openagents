@@ -29,6 +29,14 @@
 //     {"kind":"steer","id":I,"status":S,"turn":N[,"reason":R][,"step":K][,"text":T]}   mww_steered
 //     {"kind":"queue","paused":B,"reason":R,"active":I,"items":[{"id":I,"text":T}]}   mww_queue_begin/item/end
 //     {"kind":"queue_refused","op":O,"id":I,"reason":R}                            mww_queue_refused
+//     {"kind":"stop_agent","agent":N}   stop sub-agent N (the run's own choice)     mww_stop_agent
+//
+// Sub-agents that do not block (GitHub #13766): the owner answers a delegate line as soon as one
+// sub-agent ends, fails or is stopped, or a steer for the run is accepted, not only when all have
+// ended; each one still running is reported as such in its result (its output says so and
+// gives its number) and keeps running. A stop_agent line names a sub-agent the run chose to stop
+// (a delegated task with resume and stop): the owner stops that one alone; nothing waits on it.
+// An owner that does not know the kind skips it, as it skips any.
 //
 // Follow-ups (GitHub #13715, #13716; after Codex's turn/steer, turn/interrupt and t3code's queue):
 // the worker numbers its turns (turn) and says each one's start, with where it came from: source
@@ -62,6 +70,8 @@ MWW_RECALL :: 17;              // {"recall":[{"task":T,"reply":R}]}: the owner's
 // follow-ups (GitHub #13715): the owner's lines, then the worker's
 MWW_STEER :: 19; MWW_INTERRUPT :: 20; MWW_QUEUE :: 21;
 MWW_TURN :: 22; MWW_STEERED :: 23; MWW_QUEUED :: 24; MWW_QUEUE_REFUSED :: 25;
+// sub-agents that do not block (GitHub #13766): the worker's lines
+MWW_STOP_AGENT :: 26;
 // queue ops
 MWW_QUEUE_OPS :: [10] string.["open", "add", "update", "delete", "move", "promote", "pause", "resume", "clear", "list"];
 
@@ -320,6 +330,11 @@ mww_delegate :: (o: [] u8, tasks: string, ticket: int) -> int {
   n = json_raw(o, n, ",\"ticket\":"); n = json_write_int(o, n, ticket);
   return json_raw(o, n, "}");
 }
+// Stop sub-agent number agent (its place among the turn's sub-agents, from 1), and only it.
+mww_stop_agent :: (o: [] u8, agent: int) -> int {
+  n := json_raw(o, 0, "{\"kind\":\"stop_agent\",\"agent\":"); n = json_write_int(o, n, agent);
+  return json_raw(o, n, "}");
+}
 // ending: finished, asked, stopped, failed, no_capacity, bad_replies or idle (mc_ending_name).
 mww_ended :: (o: [] u8, ending: string, text: string) -> int {
   n := json_raw(o, 0, "{\"kind\":\"ended\",\"ending\":"); n = json_write_string(o, n, ending);
@@ -399,6 +414,7 @@ MwwLine :: struct {
   timed_out: ClBool;             // command
   found: ClBool;                 // view
   ticket: JsonInt;               // ask, delegate
+  agent: JsonInt;                // stop_agent: the sub-agent's number, from 1
   tasks: string;                 // delegate: the tasks' JSON list
   gateway: string; outcome: string; status: JsonInt; usd_micros: JsonInt; provider_cost_usd_micros: JsonInt;   // attempt, what an owner shows
   model: string; input_tokens: JsonInt; cached_tokens: JsonInt; output_tokens: JsonInt;   // attempt: the context it used
@@ -455,6 +471,7 @@ mww_read :: (ar: [] ClArena, line: string, l: [] MwwLine) -> int {
   }
   // the items are left as JSON: a long queue's text would not fit an owner's arena at once
   else if kind == "queue" { k = MWW_QUEUED; l[0].paused = cl_bool(line, "paused"); l[0].reason = cl_str(ar, line, "reason"); l[0].active = cl_str(ar, line, "active"); l[0].items = cl_raw(line, "items"); }
+  else if kind == "stop_agent" { k = MWW_STOP_AGENT; l[0].agent = cl_int(line, "agent"); }
   else if kind == "queue_refused" { k = MWW_QUEUE_REFUSED; l[0].op = cl_str(ar, line, "op"); l[0].id = cl_str(ar, line, "id"); l[0].reason = cl_str(ar, line, "reason"); }
   l[0].kind = k;
   return k;
@@ -618,6 +635,17 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   n = mww_results(o[..], 4, "[{\"exit\":0,\"output\":\"ok\"}]");
   #assert cast(string) o[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"ok\"}],\"ticket\":4}\n";
   #assert mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_RESULTS && r[0].ticket.value == 4 && r[0].results == "[{\"exit\":0,\"output\":\"ok\"}]";
+}
+
+#test "sub-agents that do not block: the stop_agent line, written and read" {
+  o: [256] u8; ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..]; l: [1] MwwLine; r: [1] MwwRequest;
+  n := mww_stop_agent(o[..], 2);
+  #assert cast(string) o[0..<n] == "{\"kind\":\"stop_agent\",\"agent\":2}";
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STOP_AGENT && l[0].agent.ok && l[0].agent.value == 2 && !l[0].ticket.ok;
+  // one with no number reads with none; the worker takes neither as an owner's line
+  #assert mww_read(ar[..], "{\"kind\":\"stop_agent\"}", l[..]) == MWW_STOP_AGENT && !l[0].agent.ok;
+  #assert mww_request(ar[..], "{\"kind\":\"stop_agent\",\"agent\":2}", r[..]) == MWW_NONE;
+  small: [20] u8; #assert mww_stop_agent(small[..], 2) < 0;
 }
 
 #test "follow-ups: the steer, interrupt and queue lines, each way" {

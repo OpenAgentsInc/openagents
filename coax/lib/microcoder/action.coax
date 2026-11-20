@@ -41,14 +41,14 @@ MC_MAX_DELEGATES :: 6;
 // tasks, each with a level (hydrogen, carbon or neon). mc_schema_delegate adds it to a run's schema.
 // An owner that also runs Claude Code sub-agents (GitHub #13660) has four more levels, one for
 // each Claude model: haiku, sonnet, opus and fable (MC_SCHEMA_DELEGATE_CLAUDE).
-MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
-MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"},\"stop\":{\"type\":\"boolean\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE_CLAUDE :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\",\"haiku\",\"sonnet\",\"opus\",\"fable\"]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"},\"stop\":{\"type\":\"boolean\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 // An owner with an OpenRouter model for sub-agents has one more level, openrouter (after the
 // Claude levels when both are on). mc_schema_delegate writes the enum from these pieces.
 MC_SCHEMA_DELEGATE_HEAD :: ",\"delegate\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"level\":{\"type\":\"string\",\"enum\":[\"hydrogen\",\"carbon\",\"neon\"";
 MC_SCHEMA_DELEGATE_CLAUDE_LEVELS :: ",\"haiku\",\"sonnet\",\"opus\",\"fable\"";
 MC_SCHEMA_DELEGATE_OPENROUTER_LEVEL :: ",\"openrouter\"";
-MC_SCHEMA_DELEGATE_TAIL :: "]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
+MC_SCHEMA_DELEGATE_TAIL :: "]},\"task\":{\"type\":\"string\"},\"resume\":{\"type\":\"integer\"},\"stop\":{\"type\":\"boolean\"}},\"required\":[\"level\",\"task\"],\"additionalProperties\":false}}";
 MC_SCHEMA_RATIONALE :: "\"rationale\":{\"type\":\"string\"}";
 MC_SCHEMA_REQUIRED :: "\"required\":[\"rationale\"";
 mc_schema_find :: (text: string, needle: string) -> int {
@@ -118,8 +118,11 @@ McEdit :: struct { path: string; old: string; text: string; seen: string; name: 
 
 // A task handed to a sub-agent, and its level: hydrogen, carbon, neon, or a Claude model (haiku, sonnet, opus, fable).
 // resume (GitHub #13676): the number of a paused sub-agent this task lets go on, with the task as a
-// note to it; 0 or less for a new sub-agent.
-McDelegate :: struct { level: string; task: string; resume: int; }
+// note to it; 0 or less for a new sub-agent. A running one it waits for; an ended one gives its
+// result again (GitHub #13766).
+// stop (GitHub #13766): with resume, stop that sub-agent instead (the task is then not read): the
+// run tells its owner at once (MR_STOP_AGENT) and does not wait on it.
+McDelegate :: struct { level: string; task: string; resume: int; stop: bool; }
 
 McAction :: struct {
   rationale: string;
@@ -206,9 +209,10 @@ mc_action_delegates :: (ar: [] ClArena, text: string, a: [] McAction, claude: bo
   if nd > MC_MAX_DELEGATES { return "the reply delegates more than 6 tasks"; }
   for i: 0..<nd {
     d := cl_json(ds, cl_item(ds, i));
-    resume := cl_int(d, "resume");
-    a[0].delegates[i] = McDelegate.{level = cl_str(ar, d, "level"), task = cl_str(ar, d, "task"), resume = ifx resume.ok then resume.value else 0};
-    if a[0].delegates[i].task.count == 0 { return "a delegated task is empty"; }
+    resume := cl_int(d, "resume"); stop := cl_bool(d, "stop");
+    a[0].delegates[i] = McDelegate.{level = cl_str(ar, d, "level"), task = cl_str(ar, d, "task"), resume = ifx resume.ok then resume.value else 0,
+                                    stop = stop.ok && stop.value && resume.ok && resume.value > 0};
+    if a[0].delegates[i].task.count == 0 && !a[0].delegates[i].stop { return "a delegated task is empty"; }
   }
   if ar[0].full { return "the reply does not fit its buffer"; }
   a[0].nd = nd;
@@ -278,7 +282,12 @@ mc_question :: (q: string) -> McQuestion {
   // resume names a paused sub-agent by its number; left out, zero or less, the task is a new sub-agent's
   #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"write it now\",\"resume\":3},{\"level\":\"carbon\",\"task\":\"y\",\"resume\":0},{\"level\":\"carbon\",\"task\":\"z\",\"resume\":-2}]}", a[..], false, false) == "" && a[0].nd == 3;
   #assert a[0].delegates[0].resume == 3 && a[0].delegates[1].resume == 0 && a[0].delegates[2].resume == -2;
-  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"z\"}]}", a[..], false, false) == "" && a[0].delegates[0].resume == 0;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"z\"}]}", a[..], false, false) == "" && a[0].delegates[0].resume == 0 && !a[0].delegates[0].stop;
+  // stop with resume stops that sub-agent (its task may be empty); stop with no number is no stop
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"\",\"resume\":2,\"stop\":true},{\"level\":\"carbon\",\"task\":\"w\",\"stop\":true}]}", a[..], false, false) == "" && a[0].nd == 2;
+  #assert a[0].delegates[0].stop && a[0].delegates[0].resume == 2 && !a[0].delegates[1].stop;
+  #assert mc_action_delegates(ar[..], "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"\",\"stop\":true}]}", a[..], false, false) == "a delegated task is empty";
+  #assert cl_raw(mc_schema_delegate(MC_SCHEMA, d[..], false, false), "properties.delegate.items.properties.stop.type") == "\"boolean\"";
   // six tasks are the most
   six := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"}]}";
   seven := "{\"delegate\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"carbon\",\"task\":\"c\"},{\"level\":\"carbon\",\"task\":\"d\"},{\"level\":\"carbon\",\"task\":\"e\"},{\"level\":\"carbon\",\"task\":\"f\"},{\"level\":\"carbon\",\"task\":\"g\"}]}";

@@ -21,6 +21,9 @@ calls a model and nothing touches real Coder data. Every case drives the worker'
   during_command       a steer, a queue op and an interrupt while a 30 s command runs are answered
                        at once (GitHub #13750): the interrupt kills the command's process group and
                        ends the turn in under a second, and the same for an approved command
+  delegate_stop        a steer while the run waits on its sub-agents is accepted; results with one
+                       sub-agent still running go in early, the next step takes the steer; a step
+                       that stops one sub-agent says so (stop_agent) and waits on nothing (#13766)
   page_host            the same through the desktop's real host.c and page (host_driver): the
                        page's steer statuses, the queue it shows, and a turn the worker starts
 
@@ -561,7 +564,34 @@ def page_host(w_bin: Path) -> None:
         h.close(); box.close()
 
 
-CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, restart_restores, approvals_separate, during_command, page_host]
+def delegate_stop(w_bin: Path) -> None:
+    split = {"rationale": "split", "delegate": [{"level": "hydrogen", "task": "count the files"}, {"level": "carbon", "task": "find the bug"}],
+             "edits": [], "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}
+    stop = {"rationale": "enough", "delegate": [{"level": "carbon", "task": "", "resume": 2, "stop": True}],
+            "edits": [], "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}
+    box = Box([split, stop, act("counted, and the bug search was stopped")])
+    w = Worker(w_bin, box)
+    try:
+        w.send(box.task("count and find", agents=True))
+        d = w.wait(kind("delegate"))
+        assert d["ticket"] > 0 and len(d["tasks"]) == 2, d
+        w.send({"steer": "and stop the bug search", "id": "st1", "turn": 1})
+        w.wait(kind("steer", id="st1", status="accepted"))
+        # the owner answers at once: one finished, one still running
+        w.send({"results": [{"exit": 0, "output": "3 files"}, {"exit": 1, "output": "still running: sub-agent number 2"}], "ticket": d["ticket"]})
+        a = w.wait(kind("steer", id="st1", status="applied"))
+        assert a["step"] > 0, a
+        s = w.wait(kind("stop_agent"))
+        assert s["agent"] == 2, s
+        e = w.wait(ended())
+        assert e["ending"] == "finished" and e["text"] == "counted, and the bug search was stopped", e
+        # the stop waited on nothing: one delegate line in all
+        assert len(w.kinds("delegate")) == 1, w.lines
+    finally:
+        w.close(); box.close()
+
+
+CASES = [steer_applied, steer_rejections, queue_fifo, error_pauses, interrupt_resubmit, interrupt_pauses, promote_now, restart_restores, approvals_separate, during_command, delegate_stop, page_host]
 
 
 def main() -> int:

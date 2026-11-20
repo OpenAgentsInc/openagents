@@ -419,6 +419,8 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
         one := cl_json(tasks, cl_item(tasks, i));
         ta: [32768] u8; tar := [1] ClArena.[ClArena.{buf = ta[..]}];
         task := cl_str(tar[..], one, "task");
+        // a task with resume goes on with (or waits for) a sub-agent the turn already started: no new call (#13766)
+        resume := cl_int(one, "resume"); if resume.ok && resume.value > 0 { continue; }
         k := dk_tool(s, "Task", TK_AGENT, task);
         if k < 0 || ncall >= calls.count { continue; }
         j := dk_sub_for(subs[..], nsub, task); if j >= 0 { subs[j].used = true; }

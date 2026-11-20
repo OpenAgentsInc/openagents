@@ -11,6 +11,8 @@ writes it back.
   followups-steer-queue   a thought, turns, steers (accepted, applied, rejected), queue lines,
                           queue_refused, a queued turn
   followups-delegate      the recall line, a run with sub-agents: delegate and the results
+  followups-delegate-stop a steer while the run waits on its sub-agents, results with one still
+                          running, then a step that stops one sub-agent: stop_agent (GitHub #13766)
   followups-interrupt     interrupt with resubmit: the steer resubmitted as a turn of its own
   followups-page          the desktop's host.c and page (host_driver) on the same worker: the
                           queue, steer and interrupt lines as the page writes them
@@ -18,7 +20,7 @@ writes it back.
 An owner's line this script wrote itself (the first three runs) is marked read_only: the profile
 reads it as the worker does and does not write it back. The page's lines are written back.
 
-Usage: python3 evals/coder-desktop/followups/capture_wire.py [--worker BIN] [--write]
+Usage: python3 evals/coder-desktop/followups/capture_wire.py [--worker BIN] [--write] [--only NAME]
 """
 from __future__ import annotations
 
@@ -109,6 +111,27 @@ def delegate(w_bin: Path) -> list[dict]:
         w.close(); box.close()
 
 
+def delegate_stop(w_bin: Path) -> list[dict]:
+    split = {"rationale": "split", "delegate": [{"level": "hydrogen", "task": "count the files"}, {"level": "carbon", "task": "find the bug"}],
+             "edits": [], "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}
+    stop = {"rationale": "enough", "delegate": [{"level": "carbon", "task": "", "resume": 2, "stop": True}],
+            "edits": [], "commands": [], "view": [], "finished": False, "reply": "", "ask": "none"}
+    box = rf.Box([split, stop, rf.act("counted; the bug search is stopped")])
+    w = rf.Worker(w_bin, box)
+    try:
+        w.send(box.task("count and find", agents=True))
+        d = w.wait(rf.kind("delegate"))
+        w.send({"steer": "and stop the bug search", "id": "st1", "turn": 1})
+        w.wait(rf.kind("steer", id="st1", status="accepted"))
+        w.send({"results": [{"exit": 0, "output": "3 files"}, {"exit": 1, "output": "still running: sub-agent number 2"}], "ticket": d["ticket"]})
+        w.wait(rf.kind("stop_agent"))
+        e = w.wait(rf.ended())
+        assert e["text"] == "counted; the bug search is stopped", e
+        return w.wire
+    finally:
+        w.close(); box.close()
+
+
 def interrupt(w_bin: Path) -> list[dict]:
     box = rf.Box([rf.act(commands=["sleep 3"], finished=False), rf.act("answered the steer")])
     w = rf.Worker(w_bin, box)
@@ -177,6 +200,8 @@ RUNS = [
      "the worker on a temp HOME with GW_REPLAY answers: a step's thought; turn 1 from a message; a steer accepted then applied, one for another turn rejected; a follow-up queued and an unknown id refused; turn 2 from the queue"),
     ("followups-delegate", delegate, True,
      "the recall line, then a task with agents: the worker delegates one task and takes the owner's results"),
+    ("followups-delegate-stop", delegate_stop, True,
+     "a task with agents: a steer while the run waits on its two sub-agents is accepted; the owner answers at once with one still running; the next step takes the steer and stops sub-agent 2 (stop_agent), waiting on nothing"),
     ("followups-interrupt", interrupt, True,
      "a steer accepted, then interrupt with resubmit: the turn stops and the steer starts turn 2"),
     ("followups-page", page, False,
@@ -192,10 +217,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--worker")
     ap.add_argument("--write", action="store_true", help="put the runs in the profile")
+    ap.add_argument("--only", default="", help="capture only the runs whose name contains this")
     a = ap.parse_args()
     w_bin = Path(a.worker).resolve() if a.worker else rf.build_worker()
     runs = []
     for name, fn, read_only, what in RUNS:
+        if a.only and a.only not in name:
+            continue
         lines = keep(fn(w_bin), read_only)
         runs.append({"name": name, "what": what, "from": FROM_DRIVER if read_only else FROM_PAGE, "lines": lines})
         print(f"ok   {name}: {len(lines)} lines, kinds {sorted({l['kind'] for l in lines})}")

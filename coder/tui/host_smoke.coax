@@ -388,13 +388,14 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   sm_check_or(s,listed && busy && generation>0,"the phone lists the running Coder Desktop chat (ListSessions surface coder-desktop, busy)",sm_text(rp));
   ti:=sm_session_at(rp,desk);
   sm_check_or(s,ti>=0 && rp_is(rp,sm_session_field(ti,"title",fb[..]),SM_CHAT_TITLE),"the phone shows the chat under the title Coder shows, not its first message",sm_text(rp));
-  task_id:[128]u8;ntask:=0;thought:=false;counted:=false;started:=false;
+  task_id:[128]u8;ntask:=0;thought:=false;counted:=false;started:=false;tasks:=0;
   for attempt:0..<30 {
-    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);tasks=0;
     thought=rp_count(rp,"thoughts")>0 && sm_has(sm_text(rp),"A sub-agent can survey the tests.");
     for i:0..<(ifx rp_count(rp,"items")>0 then rp_count(rp,"items") else 0) {
       pb:[32]u8;pn:=sm_cat(pb[..],0,"items.");ib:[8]u8;pn=sm_cat(pb[..],pn,sm_itoa(i,ib[..]));base:=cast(string)pb[0..<pn];
       kb:[64]u8;kn:=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".tool_name");if !rp_is(rp,cast(string)kb[0..<kn],"Task") {continue;}
+      tasks+=1;
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".item_id");tb:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)kb[0..<kn],tb[..]));
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".subagent_calls");counted=rp_i(rp,cast(string)kb[0..<kn])>=1;
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".started_at_ms");started=rp_i(rp,cast(string)kb[0..<kn])>1700000000000;
@@ -404,6 +405,7 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   }
   sm_check_or(s,thought && sm_has(sm_text(rp),"Please survey the tests"),"the phone reads the chat's message and thinking from its worker's lines (ReadSession)",sm_text(rp));
   sm_check_or(s,ntask>0 && counted && started,"the chat's sub-agent call counts its agent's calls and says when it began",sm_text(rp));
+  sm_check_or(s,tasks==1,"a delegated task that resumes the chat's sub-agent (waits for it again) is no new sub-agent call (#13766)",sm_text(rp));
   sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
   sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_FALSE && sm_has(sm_text(rp),"Looking at the tests first.") && sm_has(sm_text(rp),"\"tool_name\":\"Bash\"") && sm_has(sm_text(rp),"a_test.coax"),"the phone reads the chat's running sub-agent's own transcript (ReadSubagent)",sm_text(rp));
   // a steer for the running turn

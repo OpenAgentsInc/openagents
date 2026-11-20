@@ -3,7 +3,7 @@
  "check": "coax/web/tool.sh coax/lib/agent/engine/mcworker-profile.coax proto/coder/microcoder-worker-lines-v1.json",
  "codec": "coax/lib/agent/engine/mcworker-wire.coax",
  "scope": "What Microcoder's worker process (coder/tui/mcworker.coax) and its owner say to each other over the worker's standard input and output: one JSON object a line each way, with no spaces. The owners are Coder's terminal (coder/tui/microcoder.coax), the turn runner (coax/lib/agent/engine/run.coax), both through mcworker-client.coax, Coder's memory (coder/tui/memory.coax) for embeddings, and Coder Desktop's page (apps/coder-desktop/page/followups.coax and persist.coax, through host.c) for messages, steers, the follow-up queue and interrupts.",
- "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time). The runs named followups-* (GitHub #13718) were captured on 2026-11-19 by evals/coder-desktop/followups/capture_wire.py from the worker built from this tree, on scripted GW_REPLAY answers; followups-page through the desktop's host.c and page (host_driver's WIRE_LOG).",
+ "captured": "2026-11-13, in a throwaway home, from the worker and the Coder CLI built from this tree before the codec (commit 21f7b9ada1). No hosted model was called: the model's and Vertex's answers were replayed with GW_REPLAY from recordings in the repository or from scripted answers. The same runs with both programs built on the codec gave the same bytes each way, apart from the journal file's name (its start time). The runs named followups-* (GitHub #13718) were captured on 2026-11-19 by evals/coder-desktop/followups/capture_wire.py from the worker built from this tree, on scripted GW_REPLAY answers; followups-page through the desktop's host.c and page (host_driver's WIRE_LOG). The run followups-delegate-stop (GitHub #13766) was captured the same way on 2026-11-19.",
  "framing": "A line ends with one line feed. A string is escaped as coax/lib/nostr/json.coax json_write_string does: a quote and a backslash behind a backslash, \\n \\r \\t \\b \\f, any other byte under 32 as \\u00XX, every other byte as it is. Members are written in the order given here; the readers find them by name in any order and skip members they do not know. The worker takes an owner's line as the first of stop, forget, embed, recall, results, answer, steer, interrupt, queue, task that fits; a line that fits none is skipped. An owner skips a worker's line of a kind it does not know. Two kinds share a line kind with an owner's line: the profile calls the worker's {\"kind\":\"steer\"} steered and its {\"kind\":\"queue\"} queued (line_kind gives the kind the line carries). After ended, a run with intel or memory also writes {\"kind\":\"aware\",...}: that line is coax/lib/microcoder/aware.coax's (mc_aw_report), not this codec's, and the owners here skip it, so the runs leave it out.",
  "endings": {
   "finished": "the reply is whole",
@@ -194,7 +194,7 @@
     {
      "name": "results",
      "type": "array",
-     "note": "the sub-agents' results for the waiting delegate line, one {\"exit\":N,\"output\":TEXT} for each task, in order"
+     "note": "the sub-agents' results for the waiting delegate line, one {\"exit\":N,\"output\":TEXT} for each task, in order; given as soon as one sub-agent ends, fails or is stopped, or a steer for the run is accepted, a sub-agent still running has an output that says so with its number (GitHub #13766)"
     },
     {
      "name": "ticket",
@@ -598,7 +598,7 @@
     {
      "name": "tasks",
      "type": "array",
-     "note": "the step's delegated tasks, [{\"level\":L,\"task\":T[,\"resume\":N]}]; L is hydrogen, carbon, neon, openrouter or a Claude model"
+     "note": "the step's delegated tasks, [{\"level\":L,\"task\":T[,\"resume\":N]}]; L is hydrogen, carbon, neon, openrouter or a Claude model; a sub-agent the run stops is a stop_agent line, never a task here"
     },
     {
      "name": "ticket",
@@ -789,6 +789,24 @@
      "name": "reason",
      "type": "string",
      "note": "unknown_id, invalid, full, dispatched (a started id) or no_key"
+    }
+   ]
+  },
+  {
+   "kind": "stop_agent",
+   "from": "worker",
+   "writer": "mww_stop_agent",
+   "reader": "mww_read",
+   "members": [
+    {
+     "name": "kind",
+     "type": "string",
+     "note": "the line's kind"
+    },
+    {
+     "name": "agent",
+     "type": "integer",
+     "note": "the number of the turn's sub-agent the run stops (a delegated task with resume and stop); the owner stops that one alone, its siblings and the turn go on, and nothing waits on it (GitHub #13766)"
     }
    ]
   }
@@ -2139,6 +2157,91 @@
      "from": "worker",
      "kind": "queued",
      "line": "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}"
+    }
+   ]
+  },
+  {
+   "name": "followups-delegate-stop",
+   "what": "a task with agents: a steer while the run waits on its two sub-agents is accepted; the owner answers at once with one still running; the next step takes the steer and stops sub-agent 2 (stop_agent), waiting on nothing",
+   "from": "capture_wire.py (evals/coder-desktop/followups/) on the worker built from this tree; nothing called a model. Each end's lines in the order they were sent, interleaved as the driver saw them. The owner's lines here were written by the driver: read_only.",
+   "lines": [
+    {
+     "from": "worker",
+     "kind": "journal",
+     "line": "{\"kind\":\"journal\",\"path\":\"/tmp/cw13766/coder-fu-ez_5r7n5/home/.openagents/coder/sessions/worker-1795144801305340.ajr\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "ready",
+     "line": "{\"kind\":\"ready\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "task",
+     "line": "{\"task\":\"count and find\",\"cwd\":\"/tmp/cw13766/coder-fu-ez_5r7n5/work\",\"sandbox\":\"danger-full-access\",\"session\":\"fu\",\"agents\":true}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "turn",
+     "line": "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "delegate",
+     "line": "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count the files\"},{\"level\":\"carbon\",\"task\":\"find the bug\"}],\"ticket\":1}"
+    },
+    {
+     "from": "owner",
+     "kind": "steer",
+     "line": "{\"steer\":\"and stop the bug search\",\"id\":\"st1\",\"turn\":1}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"accepted\",\"turn\":1,\"text\":\"and stop the bug search\"}"
+    },
+    {
+     "from": "owner",
+     "kind": "results",
+     "line": "{\"results\":[{\"exit\":0,\"output\":\"3 files\"},{\"exit\":1,\"output\":\"still running: sub-agent number 2\"}],\"ticket\":1}",
+     "read_only": true
+    },
+    {
+     "from": "worker",
+     "kind": "steered",
+     "line": "{\"kind\":\"steer\",\"id\":\"st1\",\"status\":\"applied\",\"turn\":1,\"step\":2}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "stop_agent",
+     "line": "{\"kind\":\"stop_agent\",\"agent\":2}"
+    },
+    {
+     "from": "worker",
+     "kind": "reply",
+     "line": "{\"kind\":\"reply\",\"text\":\"counted; the bug search is stopped\"}"
+    },
+    {
+     "from": "worker",
+     "kind": "attempt",
+     "line": "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"vertex\",\"model\":\"google/gemini-4-hydrogen\",\"model_source\":\"attempt_configuration\",\"requested_effort\":\"low\",\"outcome\":\"done\",\"status\":200,\"input_tokens\":null,\"output_tokens\":null,\"cached_tokens\":null,\"reasoning_tokens\":null,\"cache_write_tokens\":null,\"provider_cost_usd_micros\":null,\"card_estimate_usd_micros\":0,\"usd_micros\":0}"
+    },
+    {
+     "from": "worker",
+     "kind": "ended",
+     "line": "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"counted; the bug search is stopped\"}"
     }
    ]
   }

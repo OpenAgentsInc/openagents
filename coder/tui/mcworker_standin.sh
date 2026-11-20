@@ -56,7 +56,9 @@ while IFS= read -r line; do
           text=$(printf '%s' "$line" | sed -n 's/^{"task":"\([^"]*\)".*/\1/p')
           say "{\"kind\":\"turn\",\"turn\":$turn,\"source\":\"message\",\"id\":\"\",\"text\":\"$text\"}"
           say '{"kind":"thought","text":"A sub-agent can survey the tests."}'
-          say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Survey the tests"}],"ticket":1}' ;;
+          say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Survey the tests"}],"ticket":1}'
+          # the round answered early, the chat waits on its still-running sub-agent again (#13766): no new call
+          say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Wait for the survey","resume":1}],"ticket":2}' ;;
       esac ;;
   esac
 done

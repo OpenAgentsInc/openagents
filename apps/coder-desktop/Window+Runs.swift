@@ -20,7 +20,8 @@ extension CoderWindow {
     /// Cancel a single running sub-agent without stopping the parent turn or sibling sub-agents (#13766).
     func cancelAgent(_ r: CoderRun, _ j: Int) {
         guard cd_agent_cancel(r.page, Int32(j)) != 0 else { return }
-        if let w = r.agents.removeValue(forKey: Int32(j)) { w.stop() }
+        // kept until the message ends, as pump keeps any ended sub-agent's run (a reopened Coder and the phone read it)
+        if let w = r.agents.removeValue(forKey: Int32(j)) { w.gone = nil; w.line = nil; w.stop(forget: false) }
         pump(r)
         wake()
     }
