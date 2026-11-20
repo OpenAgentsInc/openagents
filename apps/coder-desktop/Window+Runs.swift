@@ -295,7 +295,10 @@ extension CoderWindow {
     /// The shown chat's reply goes on out of view: its run moves to a page with no window and the
     /// window gets a new run. True when nothing runs in the window now.
     @discardableResult func detach() -> Bool {
-        guard cd_running(page) != 0 else { return true }
+        if cd_running(page) == 0 {
+            if !run.preparingWorktree, cd_save_due(page) != 0 { keep() }
+            return true
+        }
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
         coderApplyOpenRouter(back)

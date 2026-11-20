@@ -98,16 +98,49 @@
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "done";
 }
 
-#test "loading a saved chat with historical sub-agents leaves the sidebar closed" {
+#test "saving and loading a chat remembers whether the sub-agent sidebar is open or closed" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"},{\"level\":\"carbon\",\"task\":\"second\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 0;
+  #assert coder_page_pane(s, 2) && s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1 && s[0].pane_manual;
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a\"}") == MWW_ENDED;
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"b\"}") == MWW_ENDED;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
-  kept: [8192] u8; kn := coder_page_save(s, kept[..]);
-  #assert kn > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept[0..<kn]) && !s[0].pane_open && !s[0].pane_manual;
+  #assert coder_page_save_due(s);
+  #assert !coder_page_save_due(s);
+  kept_open: [8192] u8; ko := coder_page_save(s, kept_open[..]);
+  #assert ko > 0 && coder_page_new(s) && !s[0].pane_open && !s[0].pane_manual;
+  #assert coder_page_load(s, cast(string) kept_open[0..<ko]);
+  #assert s[0].pane_open && s[0].pane_turn == 0 && s[0].pane_agent == 1 && s[0].pane_manual;
+  #assert !coder_page_save_due(s);
+  // closing the sidebar marks the chat dirty so switching away persists the closed state
+  s[0].pane_open = false; s[0].pane_manual = true;
+  #assert coder_page_save_due(s);
+  kept_closed: [8192] u8; kc := coder_page_save(s, kept_closed[..]);
+  #assert kc > 0 && coder_page_new(s) && coder_page_load(s, cast(string) kept_closed[0..<kc]);
+  #assert !s[0].pane_open && s[0].pane_manual;
+  // legacy saved JSON without pane_open fields loads with the sidebar closed
+  #assert coder_page_load(s, "{\"v\":1,\"turns\":[{\"ask\":\"hi\",\"reply\":\"ok\",\"state\":2,\"agents\":[{\"level\":\"hydrogen\",\"task\":\"t\",\"state\":2,\"reply\":\"r\"}]}]}");
+  #assert !s[0].pane_open && !s[0].pane_manual;
+}
+
+#test "moving a running chat out of view and back preserves its sub-agent sidebar state" {
+  a: [1] CoderPage; a_st: [1] CpCheckStore; sa := cp_check_page(a[..], a_st[..]);
+  b: [1] CoderPage; b_st: [1] CpCheckStore; sb := cp_check_page(b[..], b_st[..]);
+  cp_init(sa); cp_init(sb);
+  #assert coder_page_set_text(sa, "run") && coder_page_submit(sa);
+  #assert coder_page_line(sa, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"},{\"level\":\"carbon\",\"task\":\"second\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_pane(sa, 2) && sa[0].pane_open && sa[0].pane_turn == 0 && sa[0].pane_agent == 1 && sa[0].pane_manual;
+  // detach to background page, then switch back
+  #assert coder_page_take(sb, sa) && !sa[0].pane_open && !sa[0].pane_manual;
+  #assert sb[0].pane_open && sb[0].pane_turn == 0 && sb[0].pane_agent == 1 && sb[0].pane_manual;
+  #assert coder_page_take(sa, sb) && sa[0].pane_open && sa[0].pane_turn == 0 && sa[0].pane_agent == 1 && sa[0].pane_manual;
+  // manually closing and switching away and back keeps it closed
+  sa[0].pane_open = false; sa[0].pane_manual = true;
+  #assert coder_page_take(sb, sa) && !sb[0].pane_open && sb[0].pane_manual;
+  #assert coder_page_take(sa, sb) && !sa[0].pane_open && sa[0].pane_manual;
 }
 
 #test "the recall line cuts a long message on a character, says it was cut, and the worker takes it" #steps 400000000 {
