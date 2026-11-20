@@ -1,0 +1,302 @@
+// Coder Desktop's signed release manifest, openagents.desktop.update.v1, in the desktop core
+// (GitHub #13787): the one Coax codec for what the Mac app's UpdateVerifier checks in Swift
+// (apps/coder-desktop/Updater.swift). The release publishes an envelope
+//   {"schema":"openagents.desktop.update.v1","key":KEY_ID,"payload":BASE64,"signature":BASE64}
+// whose payload is the manifest's bytes
+//   {"schema","version","build","bundle_id","team_id","url","sha256","size","notes"}
+// The Ed25519 signature (coax/lib/crypto/ed25519.coax) is checked over the payload's raw bytes
+// before the manifest is read at all, with a key the build trusts by id; then, in the app's order:
+// the schema, the pinned bundle and team ids, a version newer than the running one, an https URL
+// (file: only when allowed, for tests), a positive size and a 64-hex SHA-256. dc_update_archive
+// checks a downloaded archive's size and SHA-256. Unpacking, code signatures and swapping the app
+// are each platform's own (codesign on a Mac), outside the core.
+// Pinned: proto/coder/desktop-update-v1.json (signed with CryptoKit, the app's verifier library).
+//   coax/bin/coax test coax/lib/agent/desktop/update.coax --library
+#load "os.coax";
+#load "../../crypto/ed25519.coax";
+#load "../../crypto/sha256.coax";
+#load "../../text/base64.coax";
+
+DC_UPDATE_SCHEMA :: "openagents.desktop.update.v1";
+DC_UPDATE_BUNDLE :: "com.openagents.coder";     // UpdateVerifier.pinnedBundleID
+DC_UPDATE_TEAM :: "HQWSG26L43";                 // UpdateVerifier.pinnedTeamID
+DC_UPDATE_KEY_ID :: "openagents-desktop-2026-v1";   // UpdateVerifier.defaultTrustedKeys
+DC_UPDATE_KEY :: "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+DC_UPDATE_URL :: "https://github.com/OpenAgentsInc/openagents/releases/latest/download/coder-desktop-update.json";
+DC_UPDATE_MAX :: 65536;
+
+// What went wrong, as UpdaterError's cases.
+DC_UPD_OK :: 0; DC_UPD_ENVELOPE :: 1; DC_UPD_UNTRUSTED_KEY :: 2; DC_UPD_BAD_KEY :: 3; DC_UPD_BASE64 :: 4;
+DC_UPD_SIGNATURE :: 5; DC_UPD_MANIFEST :: 6; DC_UPD_SCHEMA :: 7; DC_UPD_BUNDLE :: 8; DC_UPD_TEAM :: 9;
+DC_UPD_NOT_NEWER :: 10; DC_UPD_URL :: 11; DC_UPD_SIZE :: 12; DC_UPD_SHA :: 13; DC_UPD_UNREADABLE :: 14;
+
+// A trusted key: its id and its 32 raw bytes.
+DcKey :: struct { id: [64] u8; id_n: int; raw: [32] u8; ok: bool; }
+DcManifest :: struct {
+  version: [64] u8; version_n: int;
+  build: int; has_build: bool;
+  bundle: [128] u8; bundle_n: int;
+  team: [32] u8; team_n: int;
+  url: [2048] u8; url_n: int;
+  sha: [64] u8;               // lowercase hex
+  size: int;
+  notes: [4096] u8; notes_n: int;
+}
+dc_manifest_version :: (m: [] DcManifest) -> string { return cast(string) m[0].version[0..<m[0].version_n]; }
+dc_manifest_url :: (m: [] DcManifest) -> string { return cast(string) m[0].url[0..<m[0].url_n]; }
+dc_manifest_sha :: (m: [] DcManifest) -> string { return cast(string) m[0].sha[..]; }
+dc_manifest_notes :: (m: [] DcManifest) -> string { return cast(string) m[0].notes[0..<m[0].notes_n]; }
+
+dc_hexval :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+dc_space :: (c: u8) -> bool { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; }
+dc_trim :: (s: string) -> string {
+  t := s; while t.count > 0 && dc_space(t[0]) { t = t[1..<t.count]; }
+  while t.count > 0 && dc_space(t[t.count - 1]) { t = t[0..<t.count - 1]; }
+  return t;
+}
+// Key material as the app reads it (UpdateVerifier.decodeKeyMaterial): 64 hex digits, or base64
+// of 32 bytes. False when it is neither.
+dc_key_material :: (text: string, out: [] u8) -> bool {
+  t := dc_trim(text);
+  if t.count == 64 {
+    good := true;
+    for i: 0..<32 { a := dc_hexval(t[2 * i]); b := dc_hexval(t[2 * i + 1]); if a < 0 || b < 0 { good = false; break; } out[i] = cast(u8) (a * 16 + b); }
+    if good { return true; }
+  }
+  b: [64] u8; n := b64_decode(t, b[..]);
+  if n != 32 { return false; }
+  for i: 0..<32 { out[i] = b[i]; }
+  return true;
+}
+dc_key :: (k: [] DcKey, id: string, material: string) { k[0].id_n = dc_copy(k[0].id[..], id); k[0].ok = dc_key_material(material, k[0].raw[..]); }
+// The keys a release build trusts (UpdateVerifier.defaultTrustedKeys).
+dc_update_default_keys :: (keys: [] DcKey) -> int { dc_key(keys[0..<1], DC_UPDATE_KEY_ID, DC_UPDATE_KEY); return 1; }
+
+// ---- versions (SemVer) ----
+DcSemVer :: struct { ok: bool; major: int; minor: int; patch: int; pre: [64] u8; pre_n: int; }
+dc_int_part :: (s: string) -> int {   // Int(s) for s >= 0, or -1
+  t := s; if t.count > 0 && t[0] == '+' { t = t[1..<t.count]; }
+  if t.count == 0 || t.count > 18 { return -1; }
+  v := 0; for c: t { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+dc_semver :: (raw: string) -> DcSemVer {
+  r: DcSemVer; s := dc_trim(raw);
+  if s.count > 0 && (s[0] == 'v' || s[0] == 'V') { s = s[1..<s.count]; }
+  plus := 0; while plus < s.count && s[plus] != '+' { plus += 1; }
+  main := s[0..<plus];
+  dash := 0; while dash < main.count && main[dash] != '-' { dash += 1; }
+  core := main[0..<dash];
+  parts: [4] int; count := 0; at := 0;
+  while at <= core.count {
+    e := at; while e < core.count && core[e] != '.' { e += 1; }
+    if count >= 4 { return r; }
+    parts[count] = dc_int_part(core[at..<e]); count += 1;
+    at = e + 1;
+  }
+  if count < 2 || count > 3 || parts[0] < 0 || parts[1] < 0 { return r; }
+  if count == 3 && parts[2] < 0 { return r; }
+  r.major = parts[0]; r.minor = parts[1]; r.patch = ifx count == 3 then parts[2] else 0;
+  if dash + 1 < main.count { r.pre_n = dc_copy(r.pre[..], main[dash + 1..<main.count]); }
+  r.ok = true;
+  return r;
+}
+dc_semver_same :: (x: DcSemVer, y: DcSemVer) -> bool {
+  a := x; b := y;
+  return a.major == b.major && a.minor == b.minor && a.patch == b.patch && cast(string) a.pre[0..<a.pre_n] == cast(string) b.pre[0..<b.pre_n];
+}
+dc_semver_less :: (x: DcSemVer, y: DcSemVer) -> bool {
+  a := x; b := y;
+  if a.major != b.major { return a.major < b.major; }
+  if a.minor != b.minor { return a.minor < b.minor; }
+  if a.patch != b.patch { return a.patch < b.patch; }
+  if a.pre_n == 0 { return false; }
+  if b.pre_n == 0 { return true; }
+  return dc_bytes_less(cast(string) a.pre[0..<a.pre_n], cast(string) b.pre[0..<b.pre_n]);
+}
+dc_bytes_less :: (a: string, b: string) -> bool {
+  for i: 0..<(ifx a.count < b.count then a.count else b.count) { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+// UpdateVerifier.isNewer: a higher version, or the same version with a higher build when both are known.
+dc_update_newer :: (candidate: string, has_build: bool, build: int, current: string, current_build: int) -> bool {
+  c := dc_semver(candidate); r := dc_semver(current);
+  if !c.ok || !r.ok { return false; }
+  if !dc_semver_same(c, r) { return dc_semver_less(r, c); }
+  return has_build && current_build > 0 && build > current_build;
+}
+
+// ---- the envelope ----
+dc_member_str :: (j: Jv, key: string, out: [] u8) -> int {   // a string member's bytes, -1 when absent or not a string
+  at := jv_get(j, 0, key);
+  if jv_kind(j, at) != JV_STRING { return -1; }
+  n := jv_str(j, at, out);
+  return ifx n >= 0 && n <= out.count then n else -1;
+}
+// Verifies an envelope and reads its manifest into m (UpdateVerifier.verifyAndDecode). DC_UPD_OK, or what failed.
+dc_update_verify :: (envelope: string, keys: [] DcKey, current: string, current_build: int, allow_file: bool, m: [] DcManifest) -> int {
+  m[0] = DcManifest.{};
+  j: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(j[..], envelope, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return DC_UPD_ENVELOPE; }
+  sb: [128] u8; sch := jv_get(j[0], 0, "schema");
+  if jv_kind(j[0], sch) != 0 && jv_kind(j[0], sch) != JV_NULL {
+    if jv_kind(j[0], sch) != JV_STRING { return DC_UPD_ENVELOPE; }
+    k := jv_str(j[0], sch, sb[..]); if k < 0 || cast(string) sb[0..<k] != DC_UPDATE_SCHEMA { return DC_UPD_SCHEMA; }
+  }
+  kb: [128] u8; kn := dc_member_str(j[0], "key", kb[..]);
+  pb: [DC_UPDATE_MAX] u8; pn := dc_member_str(j[0], "payload", pb[..]);
+  gb: [256] u8; gn := dc_member_str(j[0], "signature", gb[..]);
+  if kn < 0 || pn < 0 || gn < 0 { return DC_UPD_ENVELOPE; }
+  key := -1;
+  for i: 0..<keys.count { if cast(string) keys[i].id[0..<keys[i].id_n] == cast(string) kb[0..<kn] { key = i; break; } }
+  if key < 0 { return DC_UPD_UNTRUSTED_KEY; }
+  if !keys[key].ok || !ed25519_public_key_ok(keys[key].raw[..]) { return DC_UPD_BAD_KEY; }
+  payload: [DC_UPDATE_MAX] u8; n := b64_decode(cast(string) pb[0..<pn], payload[..]);
+  if n < 0 { return DC_UPD_BASE64; }
+  sig: [96] u8; sn := b64_decode(cast(string) gb[0..<gn], sig[..]);
+  if sn != 64 { return DC_UPD_BASE64; }
+  // the signature, over the payload's raw bytes, before anything reads them
+  if !ed25519_verify(sig[0..<64], payload[0..<n], keys[key].raw[..]) { return DC_UPD_SIGNATURE; }
+  return dc_manifest_read(cast(string) payload[0..<n], current, current_build, allow_file, m);
+}
+// The manifest's checks, in the app's order, once its signature holds.
+dc_manifest_read :: (text: string, current: string, current_build: int, allow_file: bool, m: [] DcManifest) -> int {
+  j: [1] Jv; nodes: [64] JvNode;
+  if !jv_parse(j[..], text, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return DC_UPD_MANIFEST; }
+  d := j[0];
+  sch := jv_get(d, 0, "schema");
+  if jv_kind(d, sch) != 0 && jv_kind(d, sch) != JV_NULL {
+    sb: [128] u8; if jv_kind(d, sch) != JV_STRING { return DC_UPD_MANIFEST; }
+    k := jv_str(d, sch, sb[..]); if k < 0 || cast(string) sb[0..<k] != DC_UPDATE_SCHEMA { return DC_UPD_SCHEMA; }
+  }
+  m[0].version_n = dc_member_str(d, "version", m[0].version[..]);
+  m[0].bundle_n = dc_member_str(d, "bundle_id", m[0].bundle[..]);
+  m[0].team_n = dc_member_str(d, "team_id", m[0].team[..]);
+  m[0].url_n = dc_member_str(d, "url", m[0].url[..]);
+  hb: [256] u8; hn := dc_member_str(d, "sha256", hb[..]);
+  sz := jv_get(d, 0, "size");
+  if m[0].version_n < 0 || m[0].bundle_n < 0 || m[0].team_n < 0 || m[0].url_n < 0 || hn < 0 || jv_kind(d, sz) != JV_NUMBER || !dc_whole(jv_raw(d, sz)) { return DC_UPD_MANIFEST; }
+  m[0].size = jv_int(d, sz, 0);
+  bd := jv_get(d, 0, "build");
+  if jv_kind(d, bd) == JV_NUMBER { if !dc_whole(jv_raw(d, bd)) { return DC_UPD_MANIFEST; } m[0].build = jv_int(d, bd, 0); m[0].has_build = true; }
+  else if jv_kind(d, bd) != 0 && jv_kind(d, bd) != JV_NULL { return DC_UPD_MANIFEST; }
+  nt := jv_get(d, 0, "notes");
+  if jv_kind(d, nt) == JV_STRING { m[0].notes_n = dc_member_str(d, "notes", m[0].notes[..]); if m[0].notes_n < 0 { m[0].notes_n = 0; } }
+  else if jv_kind(d, nt) != 0 && jv_kind(d, nt) != JV_NULL { return DC_UPD_MANIFEST; }
+  if cast(string) m[0].bundle[0..<m[0].bundle_n] != DC_UPDATE_BUNDLE { return DC_UPD_BUNDLE; }
+  if cast(string) m[0].team[0..<m[0].team_n] != DC_UPDATE_TEAM { return DC_UPD_TEAM; }
+  if !dc_update_newer(dc_manifest_version(m), m[0].has_build, m[0].build, current, current_build) { return DC_UPD_NOT_NEWER; }
+  sc: [16] u8; scheme := dc_url_scheme(dc_manifest_url(m), sc[..]);
+  if scheme != "https" && !(allow_file && scheme == "file") { return DC_UPD_URL; }
+  if m[0].size <= 0 { return DC_UPD_SIZE; }
+  h := dc_trim(cast(string) hb[0..<hn]);
+  if h.count != 64 { return DC_UPD_SHA; }
+  for i: 0..<64 {
+    c := h[i]; if dc_hexval(c) < 0 { return DC_UPD_SHA; }
+    m[0].sha[i] = ifx c >= 'A' && c <= 'F' then c + 32 else c;
+  }
+  return DC_UPD_OK;
+}
+// A JSON number with no fraction or exponent (an Int64 the app decodes).
+dc_whole :: (raw: string) -> bool { for c: raw { if c == '.' || c == 'e' || c == 'E' { return false; } } return raw.count > 0; }
+// A URL's scheme, lowercased ("" when it has none: letters first, then letters, digits, + - .).
+dc_url_scheme :: (url: string, out: [] u8) -> string {
+  n := 0;
+  for c: url {
+    if c == ':' { return ifx n > 0 then cast(string) out[0..<n] else ""; }
+    l := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    ok := (l >= 'a' && l <= 'z') || (n > 0 && ((l >= '0' && l <= '9') || l == '+' || l == '-' || l == '.'));
+    if !ok || n >= out.count { return ""; }
+    out[n] = l; n += 1;
+  }
+  return "";
+}
+// What a result code means, in the app's words.
+dc_update_words :: (code: int) -> string {
+  if code == DC_UPD_OK { return ""; }
+  if code == DC_UPD_ENVELOPE { return "Invalid update envelope"; }
+  if code == DC_UPD_UNTRUSTED_KEY { return "Untrusted update signing key"; }
+  if code == DC_UPD_BAD_KEY { return "Malformed trusted public key"; }
+  if code == DC_UPD_BASE64 { return "Invalid base64 in the envelope"; }
+  if code == DC_UPD_SIGNATURE { return "Update manifest signature verification failed"; }
+  if code == DC_UPD_SCHEMA { return "Unsupported manifest schema"; }
+  if code == DC_UPD_BUNDLE { return "Bundle ID mismatch"; }
+  if code == DC_UPD_TEAM { return "Team ID mismatch"; }
+  if code == DC_UPD_NOT_NEWER { return "The update is not newer than this version"; }
+  if code == DC_UPD_URL { return "Refused unsafe update URL"; }
+  if code == DC_UPD_SIZE { return "Invalid update manifest: size must be positive"; }
+  if code == DC_UPD_SHA { return "Invalid update manifest: sha256 must be 64 hex chars"; }
+  if code == DC_UPD_UNREADABLE { return "The downloaded archive could not be read"; }
+  return "Invalid update manifest";
+}
+
+// A downloaded archive at path against the manifest: its exact size and SHA-256 (UpdateInstaller.verifyArchive).
+dc_update_archive :: (path: string, m: [] DcManifest) -> int {
+  size := dcos_size(path);
+  if size < 0 { return DC_UPD_UNREADABLE; }
+  if size != m[0].size { return DC_UPD_SIZE; }
+  state: [112] u8; if sha256_init(state[..]) != SHA_OK { return DC_UPD_UNREADABLE; }
+  chunk: [262144] u8; at := 0;
+  while at < size {
+    n := dcos_read_at(path, at, chunk[..]);
+    if n <= 0 { return DC_UPD_UNREADABLE; }
+    if sha256_update_checked(state[..], chunk[0..<n], false) != SHA_OK { return DC_UPD_UNREADABLE; }
+    at += n;
+  }
+  digest: [32] u8; if sha256_final_checked(state[..], digest[..], false) != SHA_OK { return DC_UPD_UNREADABLE; }
+  hex: [64] u8; hexd := "0123456789abcdef";
+  for i: 0..<32 { hex[2 * i] = hexd[cast(int) (digest[i] >> 4)]; hex[2 * i + 1] = hexd[cast(int) (digest[i] & 15)]; }
+  return ifx cast(string) hex[..] == dc_manifest_sha(m) then DC_UPD_OK else DC_UPD_SHA;
+}
+
+// The pinned envelope (proto/coder/desktop-update-v1.json), for the checks.
+DC_UPDATE_TEST_KEY_ID :: "openagents-desktop-test";
+DC_UPDATE_TEST_KEY :: "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664";
+DC_UPDATE_TEST_ENVELOPE :: "{\"schema\":\"openagents.desktop.update.v1\",\"key\":\"openagents-desktop-test\",\"payload\":\"eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5jb2RlciIsInRlYW1faWQiOiJIUVdTRzI2TDQzIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL09wZW5BZ2VudHNJbmMvb3BlbmFnZW50cy9yZWxlYXNlcy9kb3dubG9hZC9jb2Rlci1kZXNrdG9wLXYxLjIuMy9Db2Rlci56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=\",\"signature\":\"KWsQuBIqq/bqUq0+FxcBv/+sg4j4wu0hp7GCaShFpHXGSuS/pRN5gNBh7l8AUopnFGAXsIDu4C1fYRTAECAkAw==\"}";
+
+#test "desktop core update: versions compare as the app's SemVer" {
+  #assert dc_semver("v1.2.3").ok && dc_semver("1.2").patch == 0 && !dc_semver("1").ok && !dc_semver("1.2.3.4").ok && !dc_semver("a.b").ok && !dc_semver("1.-2").ok;
+  #assert dc_semver("1.2.3-beta+77").pre_n == 4 && dc_semver(" 2.0.0 \n").major == 2;
+  #assert dc_update_newer("1.2.4", false, 0, "1.2.3", 0) && !dc_update_newer("1.2.3", false, 0, "1.2.3", 0) && !dc_update_newer("1.2.2", false, 0, "1.2.3", 0);
+  #assert dc_update_newer("1.2.3", false, 0, "1.2.3-beta", 0) && !dc_update_newer("1.2.3-beta", false, 0, "1.2.3", 0) && dc_update_newer("1.2.3-beta.2", false, 0, "1.2.3-beta.1", 0);
+  #assert dc_update_newer("1.2.3", true, 9, "1.2.3", 8) && !dc_update_newer("1.2.3", true, 9, "1.2.3", 0) && !dc_update_newer("1.2.3", true, 8, "1.2.3", 8);
+  #assert dc_update_newer("1.10.0", false, 0, "1.9.9", 0) && !dc_update_newer("x", false, 0, "1.0.0", 0);
+  b: [16] u8; #assert dc_url_scheme("HTTPS://x", b[..]) == "https" && dc_url_scheme("file:///a", b[..]) == "file" && dc_url_scheme("/no", b[..]) == "" && dc_url_scheme("1a:b", b[..]) == "";
+}
+#test "desktop core update: the pinned envelope verifies, and every change to it is refused" {
+  keys: [1] DcKey; dc_key(keys[..], DC_UPDATE_TEST_KEY_ID, DC_UPDATE_TEST_KEY); #assert keys[0].ok;
+  m: [1] DcManifest;
+  #assert dc_update_verify(DC_UPDATE_TEST_ENVELOPE, keys[..], "1.2.2", 0, false, m[..]) == DC_UPD_OK;
+  #assert dc_manifest_version(m[..]) == "1.2.3" && m[0].build == 42 && m[0].size == 39 && dc_manifest_notes(m[..]) == "A test release.";
+  #assert dc_manifest_sha(m[..]) == "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
+  #assert dc_update_verify(DC_UPDATE_TEST_ENVELOPE, keys[..], "1.2.3", 42, false, m[..]) == DC_UPD_NOT_NEWER;
+  #assert dc_update_verify(DC_UPDATE_TEST_ENVELOPE, keys[..], "1.2.3", 41, false, m[..]) == DC_UPD_OK;
+  release: [1] DcKey; #assert dc_update_default_keys(release[..]) == 1 && release[0].ok;
+  #assert dc_update_verify(DC_UPDATE_TEST_ENVELOPE, release[..], "1.0.0", 0, false, m[..]) == DC_UPD_UNTRUSTED_KEY;
+  // one payload byte changed: the base64 still decodes, the signature no longer holds
+  t: [2048] u8; n := dc_copy(t[..], DC_UPDATE_TEST_ENVELOPE); at := 0;
+  for i: 0..<n - 10 { if cast(string) t[i..<i + 10] == "\"payload\":" { at = i + 12; break; } }
+  t[at] = ifx t[at] == 'J' then cast(u8) 'K' else cast(u8) 'J';
+  #assert dc_update_verify(cast(string) t[0..<n], keys[..], "1.0.0", 0, false, m[..]) == DC_UPD_SIGNATURE;
+  other: [1] DcKey; dc_key(other[..], DC_UPDATE_TEST_KEY_ID, "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");   // RFC 8032 test 1's key
+  #assert dc_update_verify(DC_UPDATE_TEST_ENVELOPE, other[..], "1.0.0", 0, false, m[..]) == DC_UPD_SIGNATURE;
+  #assert dc_update_verify("{}", keys[..], "1.0.0", 0, false, m[..]) == DC_UPD_ENVELOPE && dc_update_verify("nope", keys[..], "1.0.0", 0, false, m[..]) == DC_UPD_ENVELOPE;
+}
+#test "desktop core update: the manifest's own checks" {
+  m: [1] DcManifest; s := "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x/a.zip\",\"sha256\":\"998BD549D62C42009C48934A061918DE9E32499483A0315257E2D8A3BDB4314C\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_OK && dc_manifest_sha(m[..]) == s;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.other\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_BUNDLE;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"NOPE\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_TEAM;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"http://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, true, m[..]) == DC_UPD_SHA;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":0}", "1.0.0", 0, false, m[..]) == DC_UPD_SIZE;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\"}", "1.0.0", 0, false, m[..]) == DC_UPD_MANIFEST;
+  #assert dc_manifest_read("{\"schema\":\"v9\",\"version\":\"2.0.0\"}", "1.0.0", 0, false, m[..]) == DC_UPD_SCHEMA;
+  k: [32] u8; #assert dc_key_material("eWVz", k[..]) == false && dc_key_material(DC_UPDATE_TEST_KEY, k[..]) && k[0] == 0x79;
+}

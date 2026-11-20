@@ -1,0 +1,23 @@
+{
+  "note": "Coder Desktop's signed release manifest (openagents.desktop.update.v1), pinned for coax/lib/agent/desktop/update.coax. The key is a test key (Ed25519 seed 01..20 hex, never a release key); the envelope was signed with CryptoKit, the library the Mac app verifies with. archive is the bytes the manifest's sha256 and size name.",
+  "key_id": "openagents-desktop-test",
+  "public_key": "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664",
+  "archive": "openagents desktop update test archive\n",
+  "envelope": {
+    "schema": "openagents.desktop.update.v1",
+    "key": "openagents-desktop-test",
+    "payload": "eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5jb2RlciIsInRlYW1faWQiOiJIUVdTRzI2TDQzIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL09wZW5BZ2VudHNJbmMvb3BlbmFnZW50cy9yZWxlYXNlcy9kb3dubG9hZC9jb2Rlci1kZXNrdG9wLXYxLjIuMy9Db2Rlci56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=",
+    "signature": "KWsQuBIqq/bqUq0+FxcBv/+sg4j4wu0hp7GCaShFpHXGSuS/pRN5gNBh7l8AUopnFGAXsIDu4C1fYRTAECAkAw=="
+  },
+  "manifest": {
+    "schema": "openagents.desktop.update.v1",
+    "version": "1.2.3",
+    "build": 42,
+    "bundle_id": "com.openagents.coder",
+    "team_id": "HQWSG26L43",
+    "url": "https://github.com/OpenAgentsInc/openagents/releases/download/coder-desktop-v1.2.3/Coder.zip",
+    "sha256": "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c",
+    "size": 39,
+    "notes": "A test release."
+  }
+}
