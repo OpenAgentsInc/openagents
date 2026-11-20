@@ -43,4 +43,5 @@
 #load "overlay.coax";
 #load "palette.coax";
 #load "attach.coax";
+#load "shows.coax";
 #load "mention.coax";

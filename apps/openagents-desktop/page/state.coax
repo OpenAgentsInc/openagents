@@ -336,6 +336,7 @@ CoderPage :: struct {
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
   cargo: [1] Attachments; open_cargo: int; add_x: f32; add_y: f32; carrying: bool;
+  open_show: int;             // the picture of open_turn a press asked to open (shows.coax), -1 none
   mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int;
   files: [] u8; nfiles: int; files_gen: int; files_got: bool; files_due: bool;   // one path a line, in the host's buffer (it keeps it until it lists again)
   arena: [] u8;               // CP_ARENA bytes in the page's store
@@ -450,7 +451,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
-  s[0].open_cargo = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
+  s[0].open_cargo = -1; s[0].open_show = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
 }
 

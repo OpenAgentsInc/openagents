@@ -1,0 +1,41 @@
+// Checks for the pictures a command shows inline (shows.coax, GitHub #13792 chat slice): which
+// lines ask for a picture, the card under the message's activity, and what a press opens. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "shows: OA-SHOW lines name pictures, with their captions and what a press opens; others are passed over" {
+  out: [CP_SHOWS] CpShow;
+  text := "Routed 4 feeders\nOA-SHOW: /r/before.jpg\nOA-SHOW-CAPTION: Before  \nOA-SHOW-OPEN: /r/step_000.ple-scene.json\nOA-SHOW: relative.jpg\nOA-SHOW: /r/notes.txt\nOA-SHOW: /r/after.png\nOA-SHOW-OPEN: not/whole\n";
+  n := cp_shows_parse(text, out[..], 0);
+  #assert n == 2;
+  #assert out[0].pic == "/r/before.jpg" && out[0].caption == "Before" && out[0].open == "/r/step_000.ple-scene.json";
+  #assert out[1].pic == "/r/after.png" && out[1].caption.count == 0 && out[1].open.count == 0;
+  // a caption with no picture before it in its own output is not some other command's
+  #assert cp_shows_parse("OA-SHOW-CAPTION: stray\n", out[..], 2) == 2 && out[1].caption.count == 0;
+  // past CP_SHOWS the newest are kept
+  many := "OA-SHOW: /a.jpg\nOA-SHOW: /b.jpg\nOA-SHOW: /c.jpg\nOA-SHOW: /d.jpg\nOA-SHOW: /e.jpg\n";
+  #assert cp_shows_parse(many, out[..], 0) == CP_SHOWS && out[0].pic == "/b.jpg" && out[CP_SHOWS - 1].pic == "/e.jpg";
+  #assert cp_show_scene("/r/run.ple-scene.json") && !cp_show_scene("/r/after.jpg");
+}
+
+#test "shows: a command's pictures stand over the reply, and a press opens the run's scene" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  f: [1] UiFrame;
+  #assert coder_page_set_text(s, "trigger a run and show me") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ple-run feeders\",\"exit\":0,\"timed_out\":false,\"output\":\"Routed 4\\nOA-SHOW: /r/before.jpg\\nOA-SHOW-CAPTION: Before\\nOA-SHOW-OPEN: /r/step_000.ple-scene.json\\nOA-SHOW: /r/after.jpg\\nOA-SHOW-CAPTION: After\\nOA-SHOW-OPEN: /r/run.ple-scene.json\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Here it is.\"}") > 0;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Here it is.\"}") == MWW_ENDED;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  a := elt_find(t[..], "t0.show0"); b := elt_find(t[..], "t0.show1");
+  #assert a >= 0 && b >= 0 && el_box(t[0].rows[a]).y < el_box(t[0].rows[b]).y;
+  // shown while the activity group is folded, and above the reply
+  #assert s[0].turns[0].ay > el_box(t[0].rows[b]).y;
+  // the host is asked to decode each picture
+  #assert s[0].cmp_gpu[0].img_state[0] == CP_IMG_PENDING || s[0].cmp_gpu[0].img_state[1] == CP_IMG_PENDING;
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.show1")) && coder_page_action(s) == CP_ASK_OPEN_FILE;
+  #assert cp_open_path(s) == "/r/run.ple-scene.json";
+  // a file a reply names still opens as before once a picture was pressed
+  #assert cp_open_file(s, -1, 0, 0) == (cp_open_path(s).count > 0) && s[0].open_show == -1;
+}

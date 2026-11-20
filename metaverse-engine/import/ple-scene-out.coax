@@ -1,0 +1,336 @@
+// A ple-scene.v1 scene going out of the engine (GitHub #13792, the chat slice): back to its JSON,
+// and as a picture. The picture is ray cast on the CPU with ple-scene.coax's own ray tests, so a
+// command-line tool with no window and no GPU (apps/openagents-desktop/ple-run.coax) can show a
+// run in a chat's transcript: each pixel's nearest element, lit by one sun and a sky, the
+// architecture layer see-through over what is behind it, clash points as red balls, an outline
+// where one element meets another, and the elements whose id starts with a prefix drawn in the
+// Gym's "added" green. The caller gives every buffer; nothing is allocated.
+//   coax/bin/coax test metaverse-engine/import/ple-scene-out.coax --library
+#load "ple-scene.coax";
+#load "../../coax/lib/text/ph_num.coax";
+
+PLE_SHOT_FOV :: 0.7853982;      // the vertical field of view, 45 degrees, as the Gym's viewport
+PLE_SHOT_BALL :: 0.3;           // a clash point's ball, in metres
+PLE_SHOT_SKY :: 0;              // what a pixel's id is when it hits nothing
+PLE_SHOT_BALL_ID :: 100000;     // a clash ball's id: this plus its index
+
+PleShotStats :: struct { hit: int; clash: int; picked: int; }   // pixels on an element, on a clash ball, in the prefix's green
+
+// ---- JSON
+
+ple_out_f :: (o: [] Jo, v: f32) { b: [64] u8; jo_raw(o, pn_fixed_text(cast(f64) v, 3, b[..])); }
+ple_out_v3 :: (o: [] Jo, p: Point) { jo_arr(o); ple_out_f(o, p.x); ple_out_f(o, p.y); ple_out_f(o, p.z); jo_end(o); }
+ple_out_t64 :: (o: [] Jo, t: PleText64) { b: [64] u8; jo_str(o, ple_text64_str(t, b[..])); }
+
+// The scene as ple-scene.v1 JSON into o; `router`, when not empty, is said in run.router (who
+// made the run, since a scene's score is otherwise read as a grade). Layers go out by their
+// engine names (racks, busway, chw_pipe, ...), which ple_scene_parse and the Gym both read.
+ple_scene_write :: (o: [] Jo, sc: [] PleScene, router: string) {
+  jo_obj(o);
+  jo_key(o, "version"); jo_str(o, PLE_SCENE_VERSION);
+  jo_key(o, "task"); ple_out_t64(o, sc[0].task);
+  jo_key(o, "units"); ple_out_t64(o, sc[0].units);
+  jo_key(o, "bounds"); jo_obj(o);
+  jo_key(o, "min"); ple_out_v3(o, sc[0].bounds.min);
+  jo_key(o, "max"); ple_out_v3(o, sc[0].bounds.max);
+  jo_end(o);
+  jo_key(o, "run"); jo_obj(o);
+  jo_key(o, "score"); ple_out_f(o, sc[0].run.score);
+  jo_key(o, "gates"); jo_obj(o);
+  jo_key(o, "schema"); jo_bool(o, sc[0].run.gates.schema);
+  jo_key(o, "clash"); jo_bool(o, sc[0].run.gates.clash);
+  jo_key(o, "connectivity"); jo_bool(o, sc[0].run.gates.connectivity);
+  jo_end(o);
+  jo_key(o, "total_length_m"); ple_out_f(o, sc[0].run.total_length_m);
+  if router.count > 0 { jo_key(o, "router"); jo_str(o, router); }
+  jo_end(o);
+  jo_key(o, "elements"); jo_arr(o);
+  for i: 0..<sc[0].element_count {
+    e := sc[0].elements[i];
+    jo_obj(o);
+    jo_key(o, "id"); ple_out_t64(o, e.id);
+    jo_key(o, "layer"); jo_str(o, ple_layer_name(e.layer));
+    jo_key(o, "ifc_class"); ple_out_t64(o, e.ifc_class);
+    jo_key(o, "shape"); jo_str(o, ifx e.shape == PleShape.cylinder then "cylinder" else "box");
+    jo_key(o, "center"); ple_out_v3(o, e.center);
+    jo_key(o, "size"); ple_out_v3(o, e.size);
+    jo_key(o, "rot_z"); ple_out_f(o, e.rot_z);
+    // meta goes out when it is an object, as read (ple_scene_parse keeps its raw JSON)
+    mb: [128] u8; m := ple_text128_str(e.meta, mb[..]);
+    if m.count > 1 && m[0] == '{' { jo_key(o, "meta"); jo_raw(o, m); }   // mutant: equivalent (a one-byte "{" is not JSON, so > 1 and > 0 differ on nothing ple_scene_parse keeps)
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "clashes"); jo_arr(o);
+  for k: 0..<sc[0].clash_count {
+    c := sc[0].clashes[k];
+    jo_obj(o);
+    jo_key(o, "a"); ple_out_t64(o, c.a);
+    jo_key(o, "b"); ple_out_t64(o, c.b);
+    jo_key(o, "point"); ple_out_v3(o, c.point);
+    jo_key(o, "penetration_mm"); ple_out_f(o, c.penetration_mm);
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+
+// ---- the picture
+
+// The outward normal of element e where p lies on its surface.
+ple_hit_normal :: (e: PleElement, p: Point) -> Point {
+  l := ple_local_xy(p, e.center, e.rot_z);
+  h := times(e.size, 0.5);
+  n := v3(0.0, 0.0, 1.0);
+  if e.shape == PleShape.cylinder {
+    if abs(l.z) >= h.z - 0.001 { n = v3(0.0, 0.0, ifx l.z > 0 then 1.0 else -1.0); }   // mutant: equivalent (>= and > differ only at exactly the tolerance; l.z is never 0 on a cap)
+    else { n = unit_or(v3(l.x / (h.x * h.x), l.y / (h.y * h.y), 0.0), v3(1.0, 0.0, 0.0)); }
+  } else {
+    // the face p is nearest to, measured against each half size
+    dx := abs(abs(l.x) - h.x); dy := abs(abs(l.y) - h.y); dz := abs(abs(l.z) - h.z);
+    if dx <= dy && dx <= dz { n = v3(ifx l.x > 0 then 1.0 else -1.0, 0.0, 0.0); }   // mutant: equivalent (l.x > 0 and >= 0 differ only at l.x == 0, on no x face; so for y and z below)
+    else if dy <= dz { n = v3(0.0, ifx l.y > 0 then 1.0 else -1.0, 0.0); }   // mutant: equivalent (as above)
+    else { n = v3(0.0, 0.0, ifx l.z > 0 then 1.0 else -1.0); }   // mutant: equivalent (as above)
+  }
+  if e.rot_z == 0.0 { return n; }
+  c := cos(e.rot_z); s := sin(e.rot_z);
+  return v3(n.x * c - n.y * s, n.x * s + n.y * c, n.z);
+}
+
+// Distance along a unit ray to a ball, or -1.
+ple_ray_ball :: (center: Point, r: f32, origin: Point, dir: Point) -> f32 {
+  oc := sub(origin, center);
+  b := dot(oc, dir); c := dot(oc, oc) - r * r;
+  disc := b * b - c;
+  if disc < 0.0 { return -1.0; }   // mutant: equivalent (disc == 0 is a grazing ray: its one hit is -b either way)
+  root := sqrt(disc);
+  t := -b - root;
+  if t < 0.0 { t = -b + root; }
+  return ifx t >= 0.0 then t else -1.0;
+}
+
+ple_starts :: (t: PleText64, prefix: string) -> bool {
+  if prefix.count == 0 || t.n < prefix.count { return false; }
+  for k: 0..<prefix.count { if t.bytes[k] != prefix[k] { return false; } }
+  return true;
+}
+
+// A colour lit by the sun from normal n: a sky term and a sun term, as the Gym's shader.
+ple_lit :: (c: PleRgba, n: Point) -> Point {
+  sun := unit_or(v3(0.35, 0.55, 0.76), v3(0.0, 0.0, 1.0));
+  k := 0.38 + 0.62 * hi(dot(n, sun), 0.0) + 0.08 * hi(n.z, 0.0);
+  return v3(clamp01(c.r * k), clamp01(c.g * k), clamp01(c.b * k));
+}
+
+ple_shot_byte :: (v: f32) -> u8 { return cast,trunc(u8) cast(int) (clamp01(v) * 255.0 + 0.5); }
+
+// Scene sc from camera cam into px (w*h RGB, rows top first); ids (w*h) is each pixel's element
+// plus 1, PLE_SHOT_BALL_ID plus a clash's index, or PLE_SHOT_SKY. Elements on hidden layers
+// (mask, PLE_ALL_LAYERS_VISIBLE for all) are not drawn; those whose id starts with `picked` are
+// drawn green; stats[0] says what was drawn. False when a buffer is short.
+ple_shot :: (sc: [] PleScene, cam: PleCamera, mask: u32, picked: string, w: int, h: int, px: [] u8, ids: [] int, stats: [] PleShotStats) -> bool {
+  n := w * h;
+  if w < 2 || h < 2 || px.count < n * 3 || ids.count < n || sc.count < 1 || stats.count < 1 { return false; }
+  eye := ple_camera_eye(cam);
+  fwd := unit_or(sub(cam.target, eye), v3(0.0, 1.0, 0.0));
+  right := unit_or(cross(fwd, v3(0.0, 0.0, 1.0)), v3(1.0, 0.0, 0.0));
+  up := cross(right, fwd);
+  half: f32 = PLE_SHOT_FOV * 0.5;
+  tan_y := sin(half) / cos(half);
+  tan_x := tan_y * cast(f32) w / cast(f32) h;
+  green := PleRgba.{r = 0.18, g = 0.90, b = 0.45, a = 1.0};
+  clash_c := ple_layer_color(PleLayer.clashes);
+  st := PleShotStats.{};
+  for y: 0..<h {
+    for x: 0..<w {
+      sx := (2.0 * (cast(f32) x + 0.5) / cast(f32) w - 1.0) * tan_x;
+      sy := (1.0 - 2.0 * (cast(f32) y + 0.5) / cast(f32) h) * tan_y;
+      dir := unit_or(add(fwd, add(times(right, sx), times(up, sy))), fwd);
+      // the nearest solid hit, and the nearest see-through one before it
+      best := PLE_PICK_INF; bi := -1;
+      glass := PLE_PICK_INF; gi := -1;   // mutant: equivalent (gi is read only with glass < best, which no hit leaves PLE_PICK_INF)
+      for i: 0..<sc[0].element_count {
+        e := sc[0].elements[i];
+        if !ple_layer_visible(mask, e.layer) { continue; }
+        t := ple_ray_element(e, eye, dir);
+        if t < 0.0 { continue; }   // mutant: equivalent (t is 0 only with the eye inside an element, which the cameras never are)
+        if ple_layer_color(e.layer).a < 1.0 { if t < glass { glass = t; gi = i; } }   // mutant: equivalent (< and <= differ only for two elements at exactly one distance: either is drawn)
+        else if t < best { best = t; bi = i; }   // mutant: equivalent (as above)
+      }
+      id := ifx bi >= 0 then bi + 1 else PLE_SHOT_SKY;
+      if ple_layer_visible(mask, PleLayer.clashes) {
+        for k: 0..<sc[0].clash_count {
+          t := ple_ray_ball(sc[0].clashes[k].point, PLE_SHOT_BALL, eye, dir);
+          if t >= 0.0 && t < best { best = t; bi = -1; id = PLE_SHOT_BALL_ID + k; }   // mutant: equivalent (t is 0 only with the eye on a ball; a tie with an element draws either)
+        }
+      }
+      // the sky: a dark gradient, lighter toward the top
+      g := cast(f32) y / cast(f32) h;
+      col := v3(0.13 - 0.06 * g, 0.14 - 0.06 * g, 0.17 - 0.06 * g);
+      if id >= PLE_SHOT_BALL_ID {
+        k := id - PLE_SHOT_BALL_ID; p := add(eye, times(dir, best));
+        col = ple_lit(clash_c, unit_or(sub(p, sc[0].clashes[k].point), v3(0.0, 0.0, 1.0)));
+        st.clash += 1;
+      } else if bi >= 0 {
+        e := sc[0].elements[bi];
+        base := ple_layer_color(e.layer);
+        if ple_starts(e.id, picked) { base = green; st.picked += 1; }
+        col = ple_lit(base, ple_hit_normal(e, add(eye, times(dir, best))));
+        st.hit += 1;
+      }
+      if gi >= 0 && glass < best {   // mutant: equivalent (glass == best is a see-through face on a solid one: blended or not, one pixel)
+        e := sc[0].elements[gi];
+        a := ple_layer_color(e.layer).a;
+        if id == PLE_SHOT_SKY { id = gi + 1; }
+        gl := ple_lit(ple_layer_color(e.layer), ple_hit_normal(e, add(eye, times(dir, glass))));
+        col = mix(col, gl, a);
+      }
+      at := y * w + x;
+      ids[at] = id;
+      px[at * 3] = ple_shot_byte(col.x); px[at * 3 + 1] = ple_shot_byte(col.y); px[at * 3 + 2] = ple_shot_byte(col.z);
+    }
+  }
+  ple_outline(px, ids, w, h);
+  stats[0] = st;
+  return true;
+}
+
+// An outline: a pixel not on the sky whose element is not its right or lower neighbour's is darkened.
+ple_outline :: (px: [] u8, ids: [] int, w: int, h: int) {
+  for y: 0..<h {
+    for x: 0..<w {
+      at := y * w + x;
+      edge := (x + 1 < w && ids[at + 1] != ids[at]) || (y + 1 < h && ids[at + w] != ids[at]);
+      if edge && ids[at] != PLE_SHOT_SKY {
+        for c: 0..<3 { px[at * 3 + c] = cast,trunc(u8) (cast(int) px[at * 3 + c] * 3 / 5); }
+      }
+    }
+  }
+}
+
+// ---- checks
+
+PLE_OUT_SAMPLE :: "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":false,\"connectivity\":true},\"total_length_m\":12.5},\"elements\":[{\"id\":\"floor\",\"layer\":\"architecture\",\"ifc_class\":\"IfcSlab\",\"shape\":\"box\",\"center\":[5,5,0.1],\"size\":[10,10,0.2],\"rot_z\":0},{\"id\":\"rack-1\",\"layer\":\"racks\",\"ifc_class\":\"IfcFurniture\",\"shape\":\"box\",\"center\":[5,5,1.2],\"size\":[2,2,2.2],\"rot_z\":0,\"meta\":{\"row\":1}},{\"id\":\"feeder_1\",\"layer\":\"power\",\"ifc_class\":\"IfcCableSegment\",\"shape\":\"box\",\"center\":[5,8,3.0],\"size\":[6,0.4,0.3],\"rot_z\":0},{\"id\":\"pipe\",\"layer\":\"cooling\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[2,2,1],\"size\":[0.4,0.4,2],\"rot_z\":1.571}],\"clashes\":[{\"a\":\"pipe\",\"b\":\"rack-1\",\"point\":[8,2,1],\"penetration_mm\":12.5}]}";
+
+#test "ple-scene-out writes a scene that reads back the same" {
+  a: [1] PleScene; b: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, a[..]);
+  buf: [8192] u8; o: [1] Jo; jo_start(o[..], buf[..]);
+  ple_scene_write(o[..], a[..], "local feeder router");
+  #assert !o[0].bad;
+  text := jo_text(o[..]);
+  #assert ple_scene_parse(text, b[..]);
+  #assert ple_has_substr(text, "\"router\":\"local feeder router\"") && ple_has_substr(text, "\"meta\":{\"row\":1}");
+  #assert b[0].element_count == 4 && b[0].clash_count == 1;
+  #assert b[0].elements[2].layer == PleLayer.busway && b[0].elements[3].layer == PleLayer.chw_pipe && b[0].elements[3].shape == PleShape.cylinder;
+  #assert same(b[0].elements[2].center, v3(5.0, 8.0, 3.0), 0.001) && near(b[0].elements[3].rot_z, 1.571, 0.001);
+  #assert near(b[0].run.score, 0.5, 0.001) && b[0].run.gates.schema && !b[0].run.gates.clash && near(b[0].run.total_length_m, 12.5, 0.001);
+  #assert ple_clash_b_eq(b[0].clashes[0], "rack-1") && near(b[0].clashes[0].penetration_mm, 12.5, 0.001);
+  // a buffer too small says so, never a cut scene
+  small: [64] u8; jo_start(o[..], small[..]); ple_scene_write(o[..], a[..], "");
+  #assert o[0].bad;
+}
+
+#test "ple-scene-out normals face out of boxes and cylinders" {
+  box := PleElement.{shape = PleShape.box, center = v3(0.0, 0.0, 0.0), size = v3(2.0, 2.0, 2.0)};
+  #assert same(ple_hit_normal(box, v3(1.0, 0.2, 0.1)), v3(1.0, 0.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(box, v3(0.1, -1.0, 0.3)), v3(0.0, -1.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(box, v3(0.1, 0.3, 1.0)), v3(0.0, 0.0, 1.0), 0.001);
+  turned := box; turned.rot_z = 1.5707963;
+  #assert same(ple_hit_normal(turned, v3(1.0, 0.2, 0.1)), v3(1.0, 0.0, 0.0), 0.001);
+  cyl := PleElement.{shape = PleShape.cylinder, center = v3(0.0, 0.0, 0.0), size = v3(1.0, 1.0, 2.0)};
+  #assert same(ple_hit_normal(cyl, v3(0.5, 0.0, 0.2)), v3(1.0, 0.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(cyl, v3(0.1, 0.1, 1.0)), v3(0.0, 0.0, 1.0), 0.001);
+  #assert near(ple_ray_ball(v3(5.0, 0.0, 0.0), 1.0, v3(0.0, 0.0, 0.0), v3(1.0, 0.0, 0.0)), 4.0, 0.001);
+  #assert ple_ray_ball(v3(5.0, 3.0, 0.0), 1.0, v3(0.0, 0.0, 0.0), v3(1.0, 0.0, 0.0)) < 0.0;
+}
+
+PLE_OUT_W :: 48; PLE_OUT_H :: 30;
+
+#test "ple-scene-out draws the rack, the picked feeder, the clash ball and the sky" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, sc[..]);
+  px: [PLE_OUT_W * PLE_OUT_H * 3] u8; ids: [PLE_OUT_W * PLE_OUT_H] int; st: [1] PleShotStats;
+  cam := ple_camera_preset(sc[0].bounds, PleCameraPreset.plan);
+  #assert ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "feeder_", PLE_OUT_W, PLE_OUT_H, px[..], ids[..], st[..]);
+  // the plan view looks straight down at the middle: the rack
+  mid := (PLE_OUT_H / 2) * PLE_OUT_W + PLE_OUT_W / 2;
+  #assert ids[mid] == 2;
+  #assert cast(int) px[mid * 3 + 2] > cast(int) px[mid * 3];   // the racks' slate blue
+  #assert st[0].hit > 0 && st[0].picked > 0 && st[0].clash > 0;
+  // the corners are past the hall: sky, untouched by the outline
+  #assert ids[0] == PLE_SHOT_SKY && ids[PLE_OUT_W * PLE_OUT_H - 1] == PLE_SHOT_SKY;
+  // a feeder pixel is green; hidden layers are not drawn
+  green := -1;
+  for i: 0..<PLE_OUT_W * PLE_OUT_H { if ids[i] == 3 && green < 0 { green = i; } }
+  #assert green >= 0 && cast(int) px[green * 3 + 1] > cast(int) px[green * 3] && cast(int) px[green * 3 + 1] > cast(int) px[green * 3 + 2];
+  hidden := ple_layer_toggle(ple_layer_toggle(PLE_ALL_LAYERS_VISIBLE, PleLayer.racks), PleLayer.clashes);
+  #assert ple_shot(sc[..], cam, hidden, "", PLE_OUT_W, PLE_OUT_H, px[..], ids[..], st[..]);
+  #assert ids[mid] != 2 && st[0].picked == 0 && st[0].clash == 0;
+  // short buffers are refused
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", PLE_OUT_W, PLE_OUT_H, px[0..<10], ids[..], st[..]);
+}
+
+PLE_OUT_GOLDEN :: "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0.000,0.000,0.000],\"max\":[10.000,10.000,4.000]},\"run\":{\"score\":0.500,\"gates\":{\"schema\":true,\"clash\":false,\"connectivity\":true},\"total_length_m\":12.500,\"router\":\"r\"},\"elements\":[{\"id\":\"floor\",\"layer\":\"architecture\",\"ifc_class\":\"IfcSlab\",\"shape\":\"box\",\"center\":[5.000,5.000,0.100],\"size\":[10.000,10.000,0.200],\"rot_z\":0.000},{\"id\":\"rack-1\",\"layer\":\"racks\",\"ifc_class\":\"IfcFurniture\",\"shape\":\"box\",\"center\":[5.000,5.000,1.200],\"size\":[2.000,2.000,2.200],\"rot_z\":0.000,\"meta\":{\"row\":1}},{\"id\":\"feeder_1\",\"layer\":\"busway\",\"ifc_class\":\"IfcCableSegment\",\"shape\":\"box\",\"center\":[5.000,8.000,3.000],\"size\":[6.000,0.400,0.300],\"rot_z\":0.000},{\"id\":\"pipe\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[2.000,2.000,1.000],\"size\":[0.400,0.400,2.000],\"rot_z\":1.571}],\"clashes\":[{\"a\":\"pipe\",\"b\":\"rack-1\",\"point\":[8.000,2.000,1.000],\"penetration_mm\":12.500}]}";
+
+ple_out_digest :: (px: [] u8, ids: [] int) -> int { h := 7; for b: px { h = (h * 131 + cast(int) b) % 1000000007; } for v: ids { h = (h * 131 + v) % 1000000007; } return h; }
+
+#test "ple-scene-out writes every field as recorded, and draws each view as recorded" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, sc[..]);
+  buf: [8192] u8; o: [1] Jo; jo_start(o[..], buf[..]); ple_scene_write(o[..], sc[..], "r");
+  #assert jo_text(o[..]) == PLE_OUT_GOLDEN;
+  // the pictures, by a digest of every byte and id, recorded from this file on 2026-11-20;
+  // a change to the lighting, the outline or the camera changes them and needs a new record
+  px: [PLE_OUT_W * PLE_OUT_H * 3] u8; ids: [PLE_OUT_W * PLE_OUT_H] int; st: [1] PleShotStats;
+  want := [4] int.[213659956, 795829799, 977406442, 598556213];
+  hits := [4] int.[47, 58, 180, 248]; balls := [4] int.[4, 3, 0, 71]; picked := [4] int.[10, 20, 30, 29];
+  for v: 0..<4 {
+    #assert ple_shot(sc[..], ple_camera_preset(sc[0].bounds, cast(PleCameraPreset) v), PLE_ALL_LAYERS_VISIBLE, "feeder_", PLE_OUT_W, PLE_OUT_H, px[..], ids[..], st[..]);
+    #assert ple_out_digest(px[..], ids[..]) == want[v] && st[0].hit == hits[v] && st[0].clash == balls[v] && st[0].picked == picked[v];
+  }
+  // close in, the picture's edges cross elements, so its first and last columns are outlined too
+  #assert ple_shot(sc[..], ple_camera_zoom(ple_camera_preset(sc[0].bounds, PleCameraPreset.iso), 0.2), PLE_ALL_LAYERS_VISIBLE, "feeder_", PLE_OUT_W, PLE_OUT_H, px[..], ids[..], st[..]);
+  #assert ple_out_digest(px[..], ids[..]) == 730802590 && st[0].hit == 590;
+}
+
+#test "ple-scene-out's edges: a meta that is not an object, no router, corner normals, a ball from inside, a prefix, short buffers" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, sc[..]);
+  sc[0].elements[2].meta = ple_make_text128("[1]");
+  buf: [8192] u8; o: [1] Jo; jo_start(o[..], buf[..]); ple_scene_write(o[..], sc[..], "");
+  #assert !ple_has_substr(jo_text(o[..]), "router") && !ple_has_substr(jo_text(o[..]), "[1]") && ple_has_substr(jo_text(o[..]), "\"meta\":{\"row\":1}");
+  box := PleElement.{shape = PleShape.box, center = v3(0.0, 0.0, 0.0), size = v3(2.0, 2.0, 2.0)};
+  #assert same(ple_hit_normal(box, v3(1.0, 1.0, 0.1)), v3(1.0, 0.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(box, v3(1.0, 0.2, 1.0)), v3(1.0, 0.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(box, v3(0.1, 1.0, 1.0)), v3(0.0, 1.0, 0.0), 0.001);
+  cyl := PleElement.{shape = PleShape.cylinder, center = v3(0.0, 0.0, 0.0), size = v3(1.0, 1.0, 2.0)};
+  #assert same(ple_hit_normal(cyl, v3(0.1, 0.1, -1.0)), v3(0.0, 0.0, -1.0), 0.001);
+  // from the ball's centre the hit is its radius ahead; from its surface, 0 either way in
+  #assert near(ple_ray_ball(v3(5.0, 0.0, 0.0), 1.0, v3(5.0, 0.0, 0.0), v3(1.0, 0.0, 0.0)), 1.0, 0.001);
+  #assert near(ple_ray_ball(v3(5.0, 0.0, 0.0), 1.0, v3(6.0, 0.0, 0.0), v3(1.0, 0.0, 0.0)), 0.0, 0.001);
+  #assert near(ple_ray_ball(v3(5.0, 0.0, 0.0), 1.0, v3(4.0, 0.0, 0.0), v3(1.0, 0.0, 0.0)), 0.0, 0.001);
+  #assert ple_starts(ple_make_text64("feeder_"), "feeder_") && !ple_starts(ple_make_text64("xeeder_1"), "feeder_") && !ple_starts(ple_make_text64("feeder_1"), "");
+  // an opaque element first in the list is drawn (its id is 1)
+  first: [1] PleScene; first[0] = sc[0];
+  first[0].elements[0] = sc[0].elements[1]; first[0].elements[1] = sc[0].elements[0];
+  px: [PLE_OUT_W * PLE_OUT_H * 3] u8; ids: [PLE_OUT_W * PLE_OUT_H] int; st: [1] PleShotStats;
+  #assert ple_shot(first[..], ple_camera_preset(first[0].bounds, PleCameraPreset.plan), PLE_ALL_LAYERS_VISIBLE, "", PLE_OUT_W, PLE_OUT_H, px[..], ids[..], st[..]);
+  mid := (PLE_OUT_H / 2) * PLE_OUT_W + PLE_OUT_W / 2;
+  #assert ids[mid] == 1 && cast(int) px[mid * 3 + 2] > 60 && st[0].hit > 0;   // lit rack, not the sky (about 36)
+  // the outline: each pixel whose right or lower neighbour is another element, the sky's never
+  ob := [12] u8.[100,100,100, 100,100,100, 100,100,100, 100,100,100];
+  oi := [4] int.[1, 2, 1, PLE_SHOT_SKY];
+  ple_outline(ob[..], oi[..], 2, 2);
+  #assert ob[0] == 60 && ob[3] == 60 && ob[6] == 60 && ob[9] == 100;
+  // sizes: 2 by 2 is the smallest picture; one side under 2, or a buffer short by a byte, is refused
+  cam := ple_camera_preset(sc[0].bounds, PleCameraPreset.iso);
+  #assert ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[0..<12], ids[0..<4], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 1, 5, px[..], ids[..], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 5, 1, px[..], ids[..], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[0..<10], ids[..], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 3, px[..], ids[0..<5], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 3, px[0..<17], ids[..], st[..]);
+  #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[..], ids[..], st[0..<0]);
+  #assert !ple_shot(sc[0..<0], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[..], ids[..], st[..]);
+}

@@ -1,0 +1,107 @@
+// Coder Desktop page (../page.coax): pictures a command showed, inline in the transcript (GitHub
+// #13792, the chat slice; docs/desktop/steer-ple-from-chat.md). A command a message ran may end
+// its output with lines that ask for a picture:
+//   OA-SHOW: /abs/path/picture.jpg       the picture (an absolute path to a png, jpg, gif, webp ...)
+//   OA-SHOW-CAPTION: words               under it (optional; it follows its OA-SHOW)
+//   OA-SHOW-OPEN: /abs/path/file          what a press on it opens (optional; a .ple-scene.json
+//                                         opens in the 3D pane, as a file a reply names does)
+// The pictures stand under the message's activity group and over its reply, so they show while
+// the group is folded; at most CP_SHOWS a message, the newest kept. ple-run (../ple-run.coax)
+// prints them; any command may. The host decodes a picture as it does an attachment's
+// (cp_image_request), and until it has, the card holds its place with an icon.
+
+CP_SHOWS :: 4;                 // pictures a message shows at most
+CP_SHOW_W :: 560.0f32;         // a picture's widest
+CP_SHOW_RATIO :: 0.625f32;     // its height over its width until the host has decoded it
+CP_SHOW_R :: 10.0f32;
+CP_SHOW :: 73;                 // a press on a picture: its OA-SHOW-OPEN, else the picture itself
+
+CpShow :: struct { pic: string; caption: string; open: string; }
+
+// After prefix at the start of line: the rest, trimmed; "" when line does not start with it.
+cp_show_field :: (line: string, prefix: string) -> string {
+  if line.count <= prefix.count || cast(string) line[0..<prefix.count] != prefix { return ""; }
+  a := prefix.count; b := line.count;
+  while a < b && line[a] == ' ' { a += 1; }
+  while b > a && (line[b - 1] == ' ' || line[b - 1] == 13) { b -= 1; }
+  return cast(string) line[a..<b];
+}
+// The pictures text asks for, appended to out from n (the oldest dropped past out's room). Returns the count.
+cp_shows_parse :: (text: string, out: [] CpShow, n0: int) -> int {
+  n := n0; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := cast(string) text[i..<e];
+    i = e + 1;
+    pic := cp_show_field(line, "OA-SHOW:");
+    if pic.count > 0 {
+      if pic[0] != '/' || !at_is_image_name(pic) || pic.count > CP_IMG_PATH { continue; }
+      if n >= out.count { for k: 1..<out.count { out[k - 1] = out[k]; } n = out.count - 1; }
+      out[n] = CpShow.{pic = pic}; n += 1;
+      continue;
+    }
+    if n == n0 { continue; }   // a caption or an open belongs to a picture this text asked for
+    cap := cp_show_field(line, "OA-SHOW-CAPTION:");
+    if cap.count > 0 { out[n - 1].caption = cap; continue; }
+    op := cp_show_field(line, "OA-SHOW-OPEN:");
+    if op.count > 0 && op[0] == '/' { out[n - 1].open = op; }
+  }
+  return n;
+}
+// Turn i's pictures, from its own commands that ended (not a sub-agent's), oldest first.
+cp_shows :: (s: [] CoderPage, i: int, out: [] CpShow) -> int {
+  n := 0; q := s[0].turns[i].head - 1;
+  while q >= 0 {
+    c := s[0].calls[q];
+    if !c.read && !c.thought && !c.said && !c.running { n = cp_shows_parse(cp_call_text(s, q), out, n); }
+    q = c.next - 1;
+  }
+  return n;
+}
+// Turn i's pictures at (x, y), cw wide: each a card the picture fits, its caption under it. Returns their height.
+cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f32) -> f32 {
+  shows: [CP_SHOWS] CpShow;
+  n := cp_shows(s, i, shows[..]);
+  if n == 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme(); a := k.app;
+  w := ifx cw < CP_SHOW_W then cw else CP_SHOW_W;
+  yy := y;
+  ib: [EL_ID] u8; cb: [EL_ID] u8;
+  for j: 0..<n {
+    img := cp_image_request(s, shows[j].pic);
+    ready := img.id > 0 && img.w > 0 && img.h > 0;
+    h := ifx ready then w * cast(f32) img.h / cast(f32) img.w else w * CP_SHOW_RATIO;
+    if h > w { h = w; }
+    nn := cp_id(ib[..], i, ".show").count; nn = el_put_i(ib[..], nn, j);
+    id := sheet_pool(sh, cast(string) ib[0..<nn]);
+    label := ifx shows[j].caption.count > 0 then shows[j].caption else at_base_name(shows[j].pic);
+    row := uiframe_semantic(f, id, EL_BUTTON, label, x, yy, w, h, 0, CP_SHOW);
+    sheet_under(sh, prim_box(sh[0].under, sh[0].nu, x, yy, w, h, CP_SHOW_R, 1, th.surface, th.border));
+    if ready {
+      sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, x + 1, yy + 1, x + w - 1, yy + h - 1));
+      sheet_under(sh, prim_image(sh[0].under, sh[0].nu, img.id, x, yy, w, h));
+      sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+      sheet_under(sh, prim_box(sh[0].under, sh[0].nu, x, yy, w, h, CP_SHOW_R, 1, Rgba.{}, th.border));
+    } else {
+      ic := 24.0f32;
+      sheet_icon(sh, ICON_GALLERY, x + (w - ic) * 0.5f32, yy + (h - ic) * 0.5f32, ic, th.muted);
+    }
+    sheet_hit(sh, UIFRAME_HIT, row, 0, x, yy, w, h);
+    yy += h + a.gap_small;
+    // the caption, and what a press opens
+    tb: [512] u8; tn := el_put(tb[..], 0, label);
+    if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
+    cn := cp_id(cb[..], i, ".showc").count; cn = el_put_i(cb[..], cn, j);
+    yy += app_meta(f, sheet_pool(sh, cast(string) cb[0..<cn]), x, yy, w, sheet_pool(sh, cast(string) tb[0..<tn]), false) + a.gap;
+  }
+  return yy - y;
+}
+cp_show_scene :: (path: string) -> bool { return path.count > 15 && cast(string) path[path.count - 15..<path.count] == ".ple-scene.json"; }
+// What a press on turn i's nth picture opens: its OA-SHOW-OPEN, else the picture.
+cp_show_open_path :: (s: [] CoderPage, i: int, n: int) -> string {
+  if i < 0 || i >= s[0].nturns || n < 0 { return ""; }
+  shows: [CP_SHOWS] CpShow;
+  c := cp_shows(s, i, shows[..]);
+  if n >= c { return ""; }
+  return ifx shows[n].open.count > 0 then shows[n].open else shows[n].pic;
+}

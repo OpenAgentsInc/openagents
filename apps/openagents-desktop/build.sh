@@ -61,6 +61,9 @@ cp "$repo/coax/web/build/tools/gitguard-$(shasum -a 256 "$coax" | cut -d " " -f 
 # owns the worker runs so they go on after Coder quits (GitHub #13694). An unknown verb only builds it.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/host-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/coder-host"
+# ple-run (ple-run.coax): a PLE run a chat starts and the pictures it shows inline (docs/desktop/steer-ple-from-chat.md).
+COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null 2>&1 || true
+cp "$repo/coax/web/build/tools/ple-run-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/ple-run"
 cp "$here/foreman-ctl" "$res/foreman-ctl"
 chmod +x "$res/foreman-ctl"
 rm -rf "$res/Components/fonts" "$res/Components/icons"

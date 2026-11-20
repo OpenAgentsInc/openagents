@@ -13,7 +13,7 @@
 #endif
 
 #define CD_IMAGES 16
-#define CD_IMAGE_MAX_SIDE 512
+#define CD_IMAGE_MAX_SIDE 1024   // a picture a command shows inline is up to 560 points wide (page/shows.coax)
 
 typedef struct {
   uint8_t *rgba;

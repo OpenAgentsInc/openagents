@@ -460,6 +460,11 @@ oa_dc_worker_path :: (home: string, had: string, out: [] u8) -> int #export_c #e
   return oa_dc_copy(dc_worker_path(home, had, b[..]), out);
 }
 
+oa_dc_tools_note :: (ple_run: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [4096] u8;
+  return oa_dc_copy(dc_tools_note(ple_run, b[..]), out);
+}
+
 oa_dc_run_file :: (daemon_dir: string, id: string, ext: string, out: [] u8) -> int #export_c #effects(all) {
   d: [1] DcDaemon;
   dc_daemon_open(d[..], daemon_dir);

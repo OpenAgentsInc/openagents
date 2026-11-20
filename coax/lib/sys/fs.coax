@@ -154,6 +154,13 @@ fs_mtime_ns :: (path: string) -> int { return ifx fs_push(path) then cxfs_mtime_
 fs_mkdir :: (path: string) -> bool { return fs_push(path) && cxfs_mkdir() == 0; }
 // Owner-only directories, rejecting a symlink at the final component.
 fs_mkdir_private :: (path:string)->bool {return fs_push(path) && cxfs_mkdir_private()==0;}
+// dir and every folder above it that is missing (mkdir -p); true when dir is a folder after.
+fs_mkdir_all :: (dir: string) -> bool {
+  if dir.count == 0 || fs_kind(dir) == FS_DIR { return true; }
+  up := fs_dir(dir);
+  if up.count > 0 && up != dir && !fs_mkdir_all(up) { return false; }
+  return fs_mkdir(dir) || fs_kind(dir) == FS_DIR;
+}
 // One nonblocking exclusive lock per process. It survives until unlock or
 // process exit, never exec. A nested acquisition fails without changing it.
 fs_try_lock :: (path: string) -> bool { return fs_push(path) && cxfs_try_lock() == 0; }

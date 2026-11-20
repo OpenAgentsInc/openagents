@@ -109,7 +109,7 @@ cp_cargo_press :: (s: [] CoderPage, id: string, drop: bool) -> bool {
   j := app_cargo_pressed("coder.cargo", id, cross[..]);
   if j < 0 || j >= cp_cargo_n(s) { return false; }
   if drop { at_remove(s[0].cargo[..], j); return true; }
-  s[0].open_call = -1; s[0].open_turn = -1; s[0].open_cargo = j;
+  s[0].open_call = -1; s[0].open_turn = -1; s[0].open_cargo = j; s[0].open_show = -1;
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
 }

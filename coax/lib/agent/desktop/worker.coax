@@ -47,6 +47,18 @@ dc_worker_path :: (home: string, had: string, out: [] u8) -> string {
   n = dc_cat(out, n, given);
   return dc_fits(out, n);
 }
+// What a chat is told about the tools the app ships (docs/desktop/steer-ple-from-chat.md): ple_run is
+// the shipped ple-run's whole path, "" when the app has none (then nothing is said). It goes ahead of
+// each message with the skills note, so "trigger a PLE run and show me" is one command Microcoder knows.
+dc_tools_note :: (ple_run: string, out: [] u8) -> string {
+  if ple_run.count == 0 { return ""; }
+  n := dc_cat(out, 0, "Tools OpenAgents Desktop ships:\n- `");
+  n = dc_cat(out, n, ple_run);
+  n = dc_cat(out, n, " feeders` starts a PLE routing run on the bundled data-hall sample (or `--scene FILE`) and writes its snapshots under ~/.openagents/ple/runs/, where the Gym lists them; `");
+  n = dc_cat(out, n, ple_run);
+  n = dc_cat(out, n, " show FILE.ple-scene.json [--view iso|plan|overhead|under_floor]` pictures any PLE scene. Run it when asked to run, show or picture a PLE run or scene. Its OA-SHOW lines put the pictures inline in this chat, and a press on one opens the scene in the 3D pane, so don't repeat the paths: say what the run did. Any command can show a picture inline the same way: print `OA-SHOW: /absolute/picture.png`, then optionally `OA-SHOW-CAPTION: words` and `OA-SHOW-OPEN: /absolute/file`.\n\n");
+  return dc_fits(out, n);
+}
 dc_path_has :: (path: string, dir: string) -> bool { return dc_list_has(path, dir, ':'); }
 // What the worker gets on top of what it inherits ("K=V" lines in set) and the names it loses
 // (unset): CoderWorker.environment. extra is "K=V" lines (a PATH there goes in front of the
@@ -229,6 +241,19 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
     return;
   }
   dcos_close(w[0].h); w[0].h = -1;
+}
+
+#test "desktop core worker: the tools note names the shipped ple-run, and says nothing without it" {
+  b: [4096] u8;
+  note := dc_tools_note("/A/Resources/ple-run", b[..]);
+  #assert dc_starts(note, "Tools OpenAgents Desktop ships:\n- `/A/Resources/ple-run feeders` starts a PLE routing run") && dc_ends(note, "`OA-SHOW-OPEN: /absolute/file`.\n\n");
+  // both verbs name the whole path
+  shows := false; want := "; `/A/Resources/ple-run show FILE";
+  for k: 0..<note.count - want.count { if cast(string) note[k..<k + want.count] == want { shows = true; } }
+  #assert shows;
+  #assert dc_tools_note("", b[..]) == "";
+  small: [16] u8;
+  #assert dc_tools_note("/A/Resources/ple-run", small[..]) == "";
 }
 
 #test "desktop core worker: PATH, environment and the run spec" {

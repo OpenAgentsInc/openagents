@@ -1,0 +1,378 @@
+// ple-run: a PLE run a chat can start, and a picture of it the chat shows inline (GitHub #13792,
+// the chat slice; docs/desktop/steer-ple-from-chat.md). OpenAgents Desktop ships it beside the
+// workers (Contents/Resources/ple-run) and tells every chat where it is (dc_tools_note), so
+// "trigger a run and show me" is one command Microcoder runs:
+//
+//   ple-run feeders [--scene FILE] [--name NAME] [--out DIR]
+//       A routing run on a data-hall scene (the bundled data-hall-mep-routing sample by default):
+//       a feeder from every PDU up into the overhead plenum and along its row toward the hall's
+//       middle, each try checked for clashes against every element, a clashing try moved to the
+//       next lane. Every try is a snapshot (step_NNN.ple-scene.json) the Gym's timeline plays,
+//       the last is run.ple-scene.json, the log trial.log; before.jpg and after.jpg are pictures.
+//       The router is local and deterministic: no model, and its numbers are not a PLE grade.
+//   ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]
+//       A picture of any ple-scene.v1 file (FILE.ple-scene.json gives FILE.VIEW.jpg beside it).
+//
+// What it prints ends with the lines the transcript reads (page/shows.coax): `OA-SHOW: PICTURE`
+// draws the picture under the message's activity, `OA-SHOW-CAPTION: TEXT` names it, and
+// `OA-SHOW-OPEN: FILE` is what a press on it opens (a scene opens in the 3D pane).
+//   coax/web/tool.sh apps/openagents-desktop/ple-run.coax feeders
+//   coax/bin/coax test apps/openagents-desktop/ple-run.coax
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/image/jpeg_enc.coax";
+#load "../../metaverse-engine/import/ple-scene-out.coax";
+
+PR_SCENE_BYTES :: 2097152;      // a scene file read at most
+PR_OUT_BYTES :: 2097152;        // a scene written at most
+PR_SHOT_W :: 960; PR_SHOT_H :: 600;
+PR_FEEDERS :: 16;               // PDUs a run routes at most
+PR_SEGS :: 3;                   // a feeder's riser, jog and run
+PR_W :: 0.2; PR_H :: 0.18;      // a feeder's width and depth, metres (a busway's)
+PR_LANES :: [4] f32.[3.65, 3.35, 3.05, 4.0];        // plenum heights tried, in order
+PR_SHIFTS :: [5] f32.[0.0, 0.45, -0.45, 0.9, -0.9]; // offsets from the PDU's row tried at each height
+PR_ROUTER :: "ple-run feeders: local deterministic router (no model; not a PLE grade)";
+PR_SAMPLE :: "ple-data-hall-sample.ple-scene.json";
+
+// A run's state between its steps.
+PrRun :: struct {
+  pdus: [PR_FEEDERS] int; n: int;    // the PDUs, as places in the scene's elements
+  at: int;                           // the feeder being routed
+  lane: int; shift: int;             // its next try
+  routed: int; failed: int; steps: int;
+  keep: int;                         // elements kept: the scene's own and the feeders routed so far
+  base_clashes: int;                 // the scene's own clashes, kept as they were
+  base_len: f32; added: f32;         // the scene's routed length; the feeders' kept so far
+  base_score: f32; base_clash_gate: bool; base_conn: bool;
+  said: [256] u8; said_n: int;       // what the last step did, one line
+}
+
+pr_text :: (s: string) -> PleText64 { return ple_make_text64(s); }
+pr_cat :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+pr_num :: (out: [] u8, n: int, v: f32, places: int) -> int { b: [64] u8; return pr_cat(out, n, pn_fixed_text(cast(f64) v, places, b[..])); }
+pr_int :: (out: [] u8, n: int, v: int) -> int { b: [32] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_int(o[..], v); return pr_cat(out, n, jo_text(o[..])); }
+
+// Element e's box in the world, turned by its rot_z.
+pr_box :: (e: PleElement) -> PleBounds {
+  c := abs(cos(e.rot_z)); s := abs(sin(e.rot_z));
+  hx := (e.size.x * c + e.size.y * s) * 0.5; hy := (e.size.x * s + e.size.y * c) * 0.5; hz := e.size.z * 0.5;
+  return PleBounds.{min = v3(e.center.x - hx, e.center.y - hy, e.center.z - hz), max = v3(e.center.x + hx, e.center.y + hy, e.center.z + hz)};
+}
+// What a feeder may pass through: the floor slab it stands over, other clash markers.
+pr_ignored :: (e: PleElement) -> bool {
+  if e.layer == PleLayer.clashes { return true; }
+  b: [64] u8;
+  return e.layer == PleLayer.architecture && ple_text64_str(e.ifc_class, b[..]) == "IfcSlab";
+}
+pr_is_pdu :: (e: PleElement) -> bool {
+  b: [64] u8;
+  return e.layer == PleLayer.pdu && ple_text64_str(e.ifc_class, b[..]) == "IfcElectricDistributionBoard";
+}
+
+pr_seg :: (id: string, center: Point, size: Point) -> PleElement {
+  return PleElement.{id = pr_text(id), layer = PleLayer.busway, ifc_class = pr_text("IfcCableSegment"), shape = PleShape.box, center = center, size = size, meta = ple_make_text128("{\"made_by\":\"ple-run feeders\"}")};
+}
+// The segments of PDU p's feeder at plenum height z, dy off its row, toward x_end: a riser from
+// its top, a jog when dy is not 0, and the run. Returns how many, into segs.
+pr_feeder :: (sc: [] PleScene, p: int, z: f32, dy: f32, x_end: f32, segs: [] PleElement) -> int {
+  e := sc[0].elements[p];
+  bb := pr_box(e);
+  ib: [64] u8; nb: [96] u8;
+  pid := ple_text64_str(e.id, ib[..]);
+  top := bb.max.z; rise := z + PR_H * 0.5 - top;
+  n := 0;
+  k := pr_cat(nb[..], 0, "feeder_"); k = pr_cat(nb[..], k, pid); k = pr_cat(nb[..], k, "_riser");
+  segs[n] = pr_seg(cast(string) nb[0..<k], v3(e.center.x, e.center.y, top + rise * 0.5), v3(PR_W, PR_W, hi(rise, 0.05))); n += 1;
+  y := e.center.y + dy;
+  if dy != 0.0 {
+    k = pr_cat(nb[..], 0, "feeder_"); k = pr_cat(nb[..], k, pid); k = pr_cat(nb[..], k, "_jog");
+    segs[n] = pr_seg(cast(string) nb[0..<k], v3(e.center.x, (e.center.y + y) * 0.5, z), v3(PR_W, abs(dy) + PR_W, PR_H)); n += 1;
+  }
+  k = pr_cat(nb[..], 0, "feeder_"); k = pr_cat(nb[..], k, pid); k = pr_cat(nb[..], k, "_run");
+  segs[n] = pr_seg(cast(string) nb[0..<k], v3((e.center.x + x_end) * 0.5, y, z), v3(abs(x_end - e.center.x) + PR_W, PR_W, PR_H)); n += 1;
+  return n;
+}
+// The clashes of segs against the scene's first `upto` elements but `skip` (the PDU they leave),
+// into out from at; returns the new count. A clash is an overlap deeper than a millimetre on every axis.
+pr_clashes :: (sc: [] PleScene, upto: int, skip: int, segs: [] PleElement, nseg: int, out: [] PleClash, at: int) -> int {
+  n := at;
+  for s: 0..<nseg {
+    a := pr_box(segs[s]);
+    for i: 0..<upto {
+      if i == skip || pr_ignored(sc[0].elements[i]) { continue; }
+      b := pr_box(sc[0].elements[i]);
+      ox := lo(a.max.x, b.max.x) - hi(a.min.x, b.min.x);
+      oy := lo(a.max.y, b.max.y) - hi(a.min.y, b.min.y);
+      oz := lo(a.max.z, b.max.z) - hi(a.min.z, b.min.z);
+      if ox <= 0.001 || oy <= 0.001 || oz <= 0.001 || n >= out.count { continue; }
+      mid := v3((hi(a.min.x, b.min.x) + lo(a.max.x, b.max.x)) * 0.5, (hi(a.min.y, b.min.y) + lo(a.max.y, b.max.y)) * 0.5, (hi(a.min.z, b.min.z) + lo(a.max.z, b.max.z)) * 0.5);
+      out[n] = PleClash.{a = segs[s].id, b = sc[0].elements[i].id, point = mid, penetration_mm = lo(ox, lo(oy, oz)) * 1000.0};
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// Starts a run on scene sc: finds its PDUs. False when it has none to route.
+pr_start :: (r: [] PrRun, sc: [] PleScene) -> bool {
+  r[0] = PrRun.{};
+  for i: 0..<sc[0].element_count { if pr_is_pdu(sc[0].elements[i]) && r[0].n < PR_FEEDERS { r[0].pdus[r[0].n] = i; r[0].n += 1; } }
+  r[0].keep = sc[0].element_count; r[0].base_clashes = sc[0].clash_count;
+  r[0].base_len = sc[0].run.total_length_m; r[0].base_score = sc[0].run.score;
+  r[0].base_clash_gate = sc[0].run.gates.clash; r[0].base_conn = sc[0].run.gates.connectivity;
+  return r[0].n > 0;
+}
+pr_done :: (r: [] PrRun) -> bool { return r[0].at >= r[0].n; }
+pr_said :: (r: [] PrRun) -> string { return cast(string) r[0].said[0..<r[0].said_n]; }
+
+// One try: the last try's segments and clashes go unless it was kept, the next feeder's next
+// lane goes in, and the run's numbers follow. False when the run is done.
+pr_step :: (r: [] PrRun, sc: [] PleScene) -> bool {
+  if pr_done(r) { return false; }
+  sc[0].element_count = r[0].keep; sc[0].clash_count = r[0].base_clashes;
+  p := r[0].pdus[r[0].at];
+  mid := (sc[0].bounds.min.x + sc[0].bounds.max.x) * 0.5;
+  x_end := ifx sc[0].elements[p].center.x < mid then mid - 0.5 else mid + 0.5;
+  lanes := PR_LANES; shifts := PR_SHIFTS;
+  z := lanes[r[0].lane]; dy := shifts[r[0].shift];
+  segs: [PR_SEGS] PleElement;
+  ns := pr_feeder(sc, p, z, dy, x_end, segs[..]);
+  if sc[0].element_count + ns > PLE_MAX_ELEMENTS { r[0].failed += 1; r[0].at += 1; r[0].lane = 0; r[0].shift = 0; return true; }
+  upto := sc[0].element_count;
+  for k: 0..<ns { sc[0].elements[upto + k] = segs[k]; }
+  sc[0].element_count = upto + ns;
+  nc := pr_clashes(sc, upto, p, segs[..], ns, sc[0].clashes[..], sc[0].clash_count) - sc[0].clash_count;
+  sc[0].clash_count += nc;
+  length: f32 = 0.0;
+  for k: 0..<ns { length += hi(segs[k].size.x, hi(segs[k].size.y, segs[k].size.z)); }
+  r[0].steps += 1;
+  ib: [64] u8; b := r[0].said[..]; n := 0;
+  n = pr_cat(b, 0, "step "); n = pr_int(b, n, r[0].steps); n = pr_cat(b, n, ": feeder from ");
+  n = pr_cat(b, n, ple_text64_str(sc[0].elements[p].id, ib[..])); n = pr_cat(b, n, " at z ");
+  n = pr_num(b, n, z, 2); n = pr_cat(b, n, " m, row offset "); n = pr_num(b, n, dy, 2); n = pr_cat(b, n, " m: ");
+  if nc == 0 {
+    r[0].routed += 1; r[0].keep = sc[0].element_count; r[0].added += length;
+    n = pr_cat(b, n, "clear, kept ("); n = pr_num(b, n, length, 1); n = pr_cat(b, n, " m)");
+    r[0].at += 1; r[0].lane = 0; r[0].shift = 0;
+  } else {
+    n = pr_int(b, n, nc); n = pr_cat(b, n, ifx nc == 1 then " clash, with " else " clashes, first with ");
+    n = pr_cat(b, n, ple_text64_str(sc[0].clashes[sc[0].clash_count - nc].b, ib[..]));
+    r[0].shift += 1;
+    if r[0].shift >= shifts.count { r[0].shift = 0; r[0].lane += 1; }
+    if r[0].lane >= lanes.count { r[0].failed += 1; r[0].at += 1; r[0].lane = 0; n = pr_cat(b, n, "; no lane left, not routed"); }
+  }
+  r[0].said_n = n;
+  // the scene's own grade stays; the gates say what the feeders changed
+  sc[0].run.score = r[0].base_score;
+  extra := ifx nc == 0 then 0.0f32 else length;
+  sc[0].run.total_length_m = r[0].base_len + r[0].added + extra;
+  sc[0].run.gates.clash = r[0].base_clash_gate && nc == 0;
+  sc[0].run.gates.connectivity = r[0].base_conn && pr_done(r) && r[0].failed == 0;
+  return true;
+}
+// The run's end: the last try's clashing segments go, so the scene holds what was routed.
+pr_finish :: (r: [] PrRun, sc: [] PleScene) {
+  sc[0].element_count = r[0].keep; sc[0].clash_count = r[0].base_clashes;
+  sc[0].run.total_length_m = r[0].base_len + r[0].added;
+  sc[0].run.gates.clash = r[0].base_clash_gate;
+  sc[0].run.gates.connectivity = r[0].base_conn && r[0].failed == 0;
+}
+
+// ---- files
+
+pr_join :: (dir: string, name: string, out: [] u8) -> string { n := pr_cat(out, 0, dir); if n > 0 && out[n - 1] != '/' { n = pr_cat(out, n, "/"); } n = pr_cat(out, n, name); return cast(string) out[0..<n]; }
+
+pr_log :: (path: string, s: string, first: bool) { ok := ifx first then fs_write(path, s) else fs_append(path, s); }
+pr_write_scene :: (path: string, sc: [] PleScene, buf: [] u8) -> bool {
+  o: [1] Jo; jo_start(o[..], buf);
+  ple_scene_write(o[..], sc, PR_ROUTER);
+  return !o[0].bad && fs_write(path, jo_text(o[..]));
+}
+pr_read_scene :: (path: string, sc: [] PleScene, buf: [] u8) -> bool {
+  n := fs_read(path, buf);
+  return n > 0 && ple_scene_parse(cast(string) buf[0..<n], sc);
+}
+// A picture of sc from view into path, as a JPEG.
+pr_picture :: (sc: [] PleScene, view: PleCameraPreset, picked: string, path: string) -> bool {
+  px: [PR_SHOT_W * PR_SHOT_H * 3] u8; ids: [PR_SHOT_W * PR_SHOT_H] int; st: [1] PleShotStats;
+  if !ple_shot(sc, ple_camera_preset(sc[0].bounds, view), PLE_ALL_LAYERS_VISIBLE, picked, PR_SHOT_W, PR_SHOT_H, px[..], ids[..], st[..]) { return false; }
+  jb: [PR_SHOT_W * PR_SHOT_H * 3] u8;
+  n := jpe_encode(px[..], PR_SHOT_W, PR_SHOT_H, 3, 88, false, true, jb[..]);
+  return n > 0 && fs_write(path, cast(string) jb[0..<n]);
+}
+// The bundled sample: beside this program (Resources/fixtures), else in the checkout it runs from.
+pr_sample :: (out: [] u8) -> string {
+  sb: [4096] u8; self := tool_self(sb[..]);
+  if self.count > 0 {
+    fb: [4096] u8;
+    p := pr_join(pr_join(fs_dir(self), "fixtures", fb[..]), PR_SAMPLE, out);
+    if fs_kind(p) == FS_FILE { return p; }
+  }
+  cb: [4096] u8; dir := fs_cwd(cb[..]);
+  for up: 0..<8 {
+    fb: [4096] u8;
+    p := pr_join(pr_join(dir, "metaverse-engine/fixtures", fb[..]), PR_SAMPLE, out);
+    if fs_kind(p) == FS_FILE { return p; }
+    if dir == "/" || dir == "." { break; }
+    dir = fs_dir(dir);
+  }
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  if home.count > 0 {
+    fb: [4096] u8;
+    p := pr_join(pr_join(home, "work/openagents/metaverse-engine/fixtures", fb[..]), PR_SAMPLE, out);
+    if fs_kind(p) == FS_FILE { return p; }
+  }
+  return "";
+}
+pr_show :: (picture: string, caption: string, open: string) {
+  print("OA-SHOW: %\n", picture);
+  if caption.count > 0 { print("OA-SHOW-CAPTION: %\n", caption); }
+  if open.count > 0 { print("OA-SHOW-OPEN: %\n", open); }
+}
+
+pr_feeders :: (a: [] Args) -> int {
+  sb: [4096] u8;
+  scene_path := args_value(a, "--scene", "");
+  if scene_path.count == 0 { scene_path = pr_sample(sb[..]); }
+  if scene_path.count == 0 { tool_errln("ple-run: no scene. Pass --scene FILE (a ple-scene.v1 JSON file)."); return 2; }
+  buf: [PR_SCENE_BYTES] u8;
+  sc: [1] PleScene;
+  if !pr_read_scene(scene_path, sc[..], buf[..]) { tool_errln("ple-run: could not read a ple-scene.v1 scene from that file."); return 2; }
+  nb: [128] u8; name := args_value(a, "--name", "");
+  if name.count == 0 { k := pr_cat(nb[..], 0, "feeders-"); k = pr_int(nb[..], k, proc_now_ms()); name = cast(string) nb[0..<k]; }
+  db: [4096] u8; dir := args_value(a, "--out", "");
+  if dir.count == 0 {
+    hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+    rb: [4096] u8;
+    dir = pr_join(pr_join(home, ".openagents/ple/runs", rb[..]), name, db[..]);
+  }
+  if !fs_mkdir_all(dir) { tool_errln("ple-run: could not make the run's folder."); return 2; }
+  out: [PR_OUT_BYTES] u8;
+  pb: [4096] u8; pb2: [4096] u8; lb: [4096] u8; kb: [32] u8;
+  before := pr_join(dir, "before.jpg", pb[..]);
+  if !pr_picture(sc[..], PleCameraPreset.iso, "", before) { tool_errln("ple-run: could not write the before picture."); return 1; }
+  r: [1] PrRun;
+  if !pr_start(r[..], sc[..]) { tool_errln("ple-run: the scene has no PDU (IfcElectricDistributionBoard) to route feeders from."); return 2; }
+  trial := pr_join(dir, "trial.log", lb[..]);
+  pr_log(trial, "ple-run feeders: local deterministic router (no model; not a PLE grade)\n", true);
+  pr_log(trial, "scene: ", false); pr_log(trial, scene_path, false); pr_log(trial, "\n", false);
+  step0 := pr_join(dir, "step_000.ple-scene.json", pb2[..]);
+  if !pr_write_scene(step0, sc[..], out[..]) { tool_errln("ple-run: could not write a snapshot."); return 1; }
+  sp: [4096] u8;
+  while pr_step(r[..], sc[..]) {
+    k := pr_cat(kb[..], 0, "step_"); s := r[0].steps;
+    k = pr_cat(kb[..], k, ifx s < 10 then "00" else ifx s < 100 then "0" else ""); k = pr_int(kb[..], k, s); k = pr_cat(kb[..], k, ".ple-scene.json");
+    if !pr_write_scene(pr_join(dir, cast(string) kb[0..<k], sp[..]), sc[..], out[..]) { tool_errln("ple-run: could not write a snapshot."); return 1; }
+    pr_log(trial, pr_said(r[..]), false); pr_log(trial, "\n", false);
+  }
+  pr_finish(r[..], sc[..]);
+  fb: [4096] u8; final := pr_join(dir, "run.ple-scene.json", fb[..]);
+  if !pr_write_scene(final, sc[..], out[..]) { tool_errln("ple-run: could not write the run's scene."); return 1; }
+  ab: [4096] u8; after := pr_join(dir, "after.jpg", ab[..]);
+  if !pr_picture(sc[..], PleCameraPreset.iso, "feeder_", after) { tool_errln("ple-run: could not write the after picture."); return 1; }
+  // what it did, short: the transcript keeps a command's first 2,000 bytes
+  wb: [512] u8; n := 0;
+  n = pr_cat(wb[..], 0, "Routed "); n = pr_int(wb[..], n, r[0].routed); n = pr_cat(wb[..], n, " of "); n = pr_int(wb[..], n, r[0].n);
+  n = pr_cat(wb[..], n, " PDU feeders in "); n = pr_int(wb[..], n, r[0].steps); n = pr_cat(wb[..], n, " steps, ");
+  n = pr_num(wb[..], n, r[0].added, 1); n = pr_cat(wb[..], n, " m added; clashing tries moved to the next lane.");
+  summary := cast(string) wb[0..<n];
+  pr_log(trial, summary, false); pr_log(trial, "\n", false);
+  print("ple-run feeders (local deterministic router: no model, not a PLE grade)\n%\n", summary);
+  print("Run folder: % (the Gym lists it; step_*.ple-scene.json are its timeline)\n", dir);
+  cb: [256] u8; c := pr_cat(cb[..], 0, "Before: "); ib: [64] u8; c = pr_cat(cb[..], c, ple_text64_str(sc[0].task, ib[..]));
+  pr_show(before, cast(string) cb[0..<c], step0);
+  c = pr_cat(cb[..], 0, "After: "); c = pr_int(cb[..], c, r[0].routed); c = pr_cat(cb[..], c, " feeders routed (green) in "); c = pr_int(cb[..], c, r[0].steps); c = pr_cat(cb[..], c, " steps");
+  pr_show(after, cast(string) cb[0..<c], final);
+  return ifx r[0].failed == 0 then 0 else 1;
+}
+
+pr_view :: (name: string, out: [] PleCameraPreset) -> bool { return ple_camera_preset_from_name(name, out); }
+
+pr_show_cmd :: (a: [] Args) -> int {
+  path := args_at(a, 1);
+  if path.count == 0 || path[0] == '-' { tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]"); return 2; }
+  buf: [PR_SCENE_BYTES] u8; sc: [1] PleScene;
+  if !pr_read_scene(path, sc[..], buf[..]) { tool_errln("ple-run: could not read a ple-scene.v1 scene from that file."); return 2; }
+  view: [1] PleCameraPreset; vname := args_value(a, "--view", "iso");
+  if !pr_view(vname, view[..]) { tool_errln("ple-run: --view is iso, plan, overhead or under_floor."); return 2; }
+  ob: [4096] u8; picture := args_value(a, "--out", "");
+  if picture.count == 0 {
+    stem := path;
+    if stem.count > 15 && cast(string) stem[stem.count - 15..<stem.count] == ".ple-scene.json" { stem = stem[0..<stem.count - 15]; }
+    else if stem.count > 5 && cast(string) stem[stem.count - 5..<stem.count] == ".json" { stem = stem[0..<stem.count - 5]; }
+    k := pr_cat(ob[..], 0, stem); k = pr_cat(ob[..], k, "."); k = pr_cat(ob[..], k, vname); k = pr_cat(ob[..], k, ".jpg");
+    picture = cast(string) ob[0..<k];
+  }
+  if !pr_picture(sc[..], view[0], "feeder_", picture) { tool_errln("ple-run: could not write the picture."); return 1; }
+  cb: [256] u8; ib: [64] u8; c := pr_cat(cb[..], 0, ple_text64_str(sc[0].task, ib[..]));
+  c = pr_cat(cb[..], c, " · "); c = pr_int(cb[..], c, sc[0].element_count); c = pr_cat(cb[..], c, " elements, ");
+  c = pr_int(cb[..], c, sc[0].clash_count); c = pr_cat(cb[..], c, " clashes, score "); c = pr_num(cb[..], c, sc[0].run.score, 2);
+  print("Picture of % (% view)\n", path, vname);
+  pr_show(picture, cast(string) cb[0..<c], path);
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("ple-run: the arguments are too long."); return 2; }
+  verb := args_at(a[..], 0);
+  if verb == "feeders" { return pr_feeders(a[..]); }
+  if verb == "show" { return pr_show_cmd(a[..]); }
+  tool_errln("ple-run feeders [--scene FILE] [--name NAME] [--out DIR]   a routing run, pictures before and after");
+  tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]   a picture of a scene");
+  return 2;
+}
+
+// ---- checks
+
+PR_HALL :: "{\"version\":\"ple-scene.v1\",\"task\":\"data-hall-mep-routing\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[20,10,4.5]},\"run\":{\"score\":0.8,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":40},\"elements\":[{\"id\":\"floor\",\"layer\":\"architecture\",\"ifc_class\":\"IfcSlab\",\"shape\":\"box\",\"center\":[10,5,0.3],\"size\":[20,10,0.6],\"rot_z\":0},{\"id\":\"pdu_01\",\"layer\":\"power\",\"ifc_class\":\"IfcElectricDistributionBoard\",\"shape\":\"box\",\"center\":[1.5,5,1.6],\"size\":[1,1,2],\"rot_z\":0},{\"id\":\"busway_01\",\"layer\":\"power\",\"ifc_class\":\"IfcCableSegment\",\"shape\":\"box\",\"center\":[10,5,3.65],\"size\":[16,0.2,0.18],\"rot_z\":0},{\"id\":\"pdu_02\",\"layer\":\"power\",\"ifc_class\":\"IfcElectricDistributionBoard\",\"shape\":\"box\",\"center\":[18.5,2,1.6],\"size\":[1,1,2],\"rot_z\":0}]}";
+
+#test "a feeder run moves a clashing try to the next lane and keeps the clear one" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PR_HALL, sc[..]);
+  r: [1] PrRun;
+  #assert pr_start(r[..], sc[..]) && r[0].n == 2 && r[0].pdus[0] == 1 && r[0].pdus[1] == 3;
+  // pdu_01's first try runs inside busway_01
+  #assert pr_step(r[..], sc[..]);
+  #assert sc[0].clash_count == 1 && ple_clash_b_eq(sc[0].clashes[0], "busway_01") && !sc[0].run.gates.clash;
+  #assert sc[0].clashes[0].penetration_mm > 100.0 && sc[0].element_count == 6;
+  #assert ple_has_substr(pr_said(r[..]), "1 clash, with busway_01");
+  // the next, 0.45 m off the row, is clear: riser, jog and run kept
+  #assert pr_step(r[..], sc[..]);
+  #assert sc[0].clash_count == 0 && sc[0].element_count == 7 && r[0].routed == 1 && sc[0].run.gates.clash;
+  #assert ple_element_id_eq(sc[0].elements[4], "feeder_pdu_01_riser") && ple_element_id_eq(sc[0].elements[5], "feeder_pdu_01_jog") && ple_element_id_eq(sc[0].elements[6], "feeder_pdu_01_run");
+  #assert sc[0].elements[6].layer == PleLayer.busway && near(sc[0].elements[6].center.y, 5.45, 0.001) && near(sc[0].elements[6].center.z, 3.65, 0.001);
+  // the riser stands on the PDU's top and reaches the run
+  #assert near(pr_box(sc[0].elements[4]).min.z, 2.6, 0.001) && near(pr_box(sc[0].elements[4]).max.z, 3.74, 0.001);
+  #assert !sc[0].run.gates.connectivity;
+  // pdu_02 has nothing above it: clear at once, and the run is done and connected
+  #assert pr_step(r[..], sc[..]);
+  #assert pr_done(r[..]) && r[0].routed == 2 && r[0].failed == 0 && r[0].steps == 3 && sc[0].run.gates.connectivity;
+  #assert !pr_step(r[..], sc[..]);
+  pr_finish(r[..], sc[..]);
+  #assert sc[0].element_count == 9 && near(sc[0].run.score, 0.8, 0.001) && sc[0].run.total_length_m > 40.0 + 15.0;
+  // and the scene with its feeders writes and reads back
+  buf: [16384] u8; o: [1] Jo; jo_start(o[..], buf[..]);
+  ple_scene_write(o[..], sc[..], PR_ROUTER);
+  back: [1] PleScene;
+  #assert !o[0].bad && ple_scene_parse(jo_text(o[..]), back[..]) && back[0].element_count == 9 && ple_has_substr(jo_text(o[..]), "not a PLE grade");
+}
+
+#test "a feeder with no clear lane is not routed, and a scene with no PDU has no run" {
+  sc: [1] PleScene;
+  #assert ple_scene_parse(PR_HALL, sc[..]);
+  // a wall over the whole plenum: every lane clashes
+  sc[0].elements[sc[0].element_count] = PleElement.{id = pr_text("roof"), layer = PleLayer.architecture, ifc_class = pr_text("IfcWall"), shape = PleShape.box, center = v3(10.0, 5.0, 3.6), size = v3(20.0, 10.0, 1.2)};
+  sc[0].element_count += 1;
+  r: [1] PrRun;
+  #assert pr_start(r[..], sc[..]);
+  steps := 0;
+  while pr_step(r[..], sc[..]) { steps += 1; }
+  #assert r[0].routed == 0 && r[0].failed == 2 && steps == 2 * PR_LANES.count * PR_SHIFTS.count;
+  pr_finish(r[..], sc[..]);
+  #assert sc[0].element_count == 5 && sc[0].clash_count == 0 && !sc[0].run.gates.connectivity;
+  none: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, none[..]) && !pr_start(r[..], none[..]);
+}

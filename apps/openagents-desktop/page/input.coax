@@ -3,13 +3,14 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
-  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1;
+  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
 }
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
+  if s[0].open_show >= 0 { return cp_show_open_path(s, i, s[0].open_show); }   // a picture a command showed (shows.coax)
   if s[0].open_cargo >= 0 && s[0].open_cargo < cp_cargo_n(s) { return at_path(s[0].cargo[0].files[..], s[0].open_cargo); }   // an attachment's chip (attach.coax)
   if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
   if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_file); }
@@ -51,6 +52,15 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     }
     s[0].turns[turn].h = 0;
     return app_act_press(s[0].keyed[..], rid, id);
+  }
+  if act == CP_SHOW {
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); n := cp_number(id, ".show");
+    if turn < 0 || turn >= s[0].nturns || n < 0 { return false; }
+    s[0].open_call = -1; s[0].open_turn = turn; s[0].open_file = -1; s[0].open_cargo = -1; s[0].open_show = n;
+    if cp_open_path(s).count == 0 { s[0].open_show = -1; return false; }
+    s[0].ask = CP_ASK_OPEN_FILE;
+    return true;
   }
   if act == CP_PATH {
     id := surface_id(s[0].surface[..], row);

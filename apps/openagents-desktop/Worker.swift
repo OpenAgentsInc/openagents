@@ -771,7 +771,17 @@ enum CoderAntigravity {
     }
 }
 
+/// What a chat is told about the tools the app ships (ple-run; docs/desktop/steer-ple-from-chat.md):
+/// the words are Coax's (dc_tools_note); this finds the program. Gym is experimental, and so is this.
+func coderToolsNote() -> String {
+    guard Experimental.on, let res = Bundle.main.resourcePath else { return "" }
+    let tool = (res as NSString).appendingPathComponent("ple-run")
+    guard FileManager.default.isExecutableFile(atPath: tool) else { return "" }
+    return DesktopCore.withCoaxString(tool) { t in DesktopCore.callString(4096) { oa_dc_tools_note(t, $0) } }
+}
+
 func coderSkillsNote() -> String {
+    let tools = coderToolsNote()
     let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")
     let names = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).sorted()
     var rows: [String] = []
@@ -785,6 +795,6 @@ func coderSkillsNote() -> String {
         }
         rows.append("- \(name) (\(file.path)): \(description.prefix(300))")
     }
-    if rows.isEmpty { return "" }
-    return "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
+    if rows.isEmpty { return tools.isEmpty ? "" : tools + "The message:\n" }
+    return tools + "Skills installed on this computer. When a message is about one, read its file with cat first, then do what it says:\n" + rows.joined(separator: "\n") + "\n\nThe message:\n"
 }

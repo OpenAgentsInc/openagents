@@ -110,12 +110,6 @@ pg_write :: (path: string, text: string) -> bool {
   ok := fs_remove(tmp);
   return false;
 }
-fs_mkdir_all :: (dir: string) -> bool {
-  if dir.count == 0 || fs_kind(dir) == FS_DIR { return true; }
-  up := fs_dir(dir);
-  if up.count > 0 && up != dir && !fs_mkdir_all(up) { return false; }
-  return fs_mkdir(dir) || fs_kind(dir) == FS_DIR;
-}
 // Whether path was written less than minutes ago (--if-older).
 pg_fresh :: (path: string, minutes: int) -> bool {
   if minutes <= 0 { return false; }

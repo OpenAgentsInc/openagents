@@ -236,6 +236,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       // what it did on its way to the reply: one activity group (#13731)
       gh := cp_group(s, f, i, x, y, cw, top, bottom);
       if gh > 0 { y += gh + a.gap; }
+      // the pictures its commands showed (shows.coax), over the reply
+      y += cp_shows_draw(s, f, i, x, y, cw);
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
         f[0].skin.motion.enter = 0;
