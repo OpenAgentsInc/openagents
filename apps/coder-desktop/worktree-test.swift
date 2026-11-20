@@ -24,6 +24,11 @@ struct WorktreeTest {
         check(slug.hasPrefix("my-repo-") && slug.count == 16, "a repository's folder is its name and 8 hex digits: \(slug)")
         check(ChatWorktree.slug("/a/x/openagents") != ChatWorktree.slug("/b/openagents"), "two repositories with one name get two folders")
         check(ChatWorktree.slug("/w/.Hidden Repo!") .hasPrefix("hidden-repo-"), "a repository's name keeps letters, digits, dots and dashes")
+        // one repository reached two ways gets one name: /tmp and /private/tmp, and a linked folder (#13771)
+        let viaTmp = ChatWorktree.run("/usr/bin/mktemp", ["-d", "/tmp/wt-real.XXXXXX"]).output
+        check(viaTmp.hasPrefix("/tmp/") && ChatWorktree.slug(viaTmp) == ChatWorktree.slug("/private" + viaTmp), "/tmp/X and /private/tmp/X name one folder: \(ChatWorktree.slug(viaTmp))")
+        check(ChatWorktree.real(viaTmp) == "/private" + viaTmp, "the real path of /tmp/X is /private/tmp/X")
+        try? fm.removeItem(atPath: viaTmp)
         check(ChatWorktree.branch(id) == "coder/" + id && ChatWorktree.branch("../x Y") == "coder/xy", "the branch is coder/ and the chat id, cleaned")
         check(ChatWorktree.path(repo: repo, chat: id, root: root) == root + "/" + slug + "/" + id, "the worktree is ROOT/REPO/CHAT")
         check(ChatWorktree.shown("coder/" + id) == "coder/3f2a9c1e" && ChatWorktree.shown("main") == "main", "the composer shows coder/ and 8 characters of the id")
@@ -60,8 +65,11 @@ struct WorktreeTest {
         check(ChatWorktree.repository(of: tmp + "/home") == nil && ChatWorktree.repository(of: "relative") == nil, "a folder outside a repository is in none")
         let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
         let cargo = ChatWorktree.caches(for: w.path)["CARGO_TARGET_DIR"]
-        check(cargo == home + "/.cache/coder/cargo-target/" + slug, "a worktree's Cargo target folder is its repository's: \(cargo ?? "none")")
+        check(cargo == home + "/.cache/coder/cargo-target/" + ChatWorktree.slug(repo) && cargo?.hasSuffix("/" + (w.path as NSString).deletingLastPathComponent.split(separator: "/").last.map(String.init)!) == true, "a worktree's Cargo target folder is its repository's: \(cargo ?? "none")")
         check(ChatWorktree.caches(for: repo + "/sub")["CARGO_TARGET_DIR"] == cargo, "the main checkout builds into the same folder")
+        try? fm.createSymbolicLink(atPath: tmp + "/link", withDestinationPath: tmp + "/work")
+        check(ChatWorktree.caches(for: tmp + "/link/my repo/sub")["CARGO_TARGET_DIR"] == cargo, "the repository reached through a link builds into the same folder")
+        check(ChatWorktree.path(repo: tmp + "/link/my repo", chat: id, root: root) == w.path, "and its chat's worktree has the same path")
         let other = tmp + "/work/other"
         _ = sh("mkdir -p other && git init -q -b main other", in: tmp + "/work")
         check(ChatWorktree.caches(for: other)["CARGO_TARGET_DIR"].map { $0 != cargo && $0.hasSuffix("/" + ChatWorktree.slug(other)) } == true, "another repository builds into its own folder")

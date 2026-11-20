@@ -62,10 +62,13 @@ struct ChatWorktree: Codable, Equatable {
         return nil
     }
 
-    /// A repository's folder name in the worktrees folder: its last path part in lowercase letters,
-    /// digits, dots and dashes, then 8 hex digits of its whole path, so two repositories with one
-    /// name never share a folder.
-    static func slug(_ repo: String) -> String {
+    /// A repository's folder name in the worktrees folder (and its Cargo target folder): its last
+    /// path part in lowercase letters, digits, dots and dashes, then 8 hex digits of its whole path,
+    /// so two repositories with one name never share a folder. The path is the real one (realpath),
+    /// so one repository reached two ways (/tmp and /private/tmp, a linked folder) gets one name
+    /// (GitHub #13771). A chat kept under an older name keeps its stored worktree_path.
+    static func slug(_ given: String) -> String {
+        let repo = real(given)
         let name = (repo as NSString).lastPathComponent.lowercased()
         var out = ""
         for u in name.unicodeScalars {
@@ -77,6 +80,13 @@ struct ChatWorktree: Codable, Equatable {
         var hash: UInt64 = 0xcbf29ce484222325   // FNV-1a
         for b in repo.utf8 { hash = (hash ^ UInt64(b)) &* 0x100000001b3 }
         return String(out.prefix(48)) + "-" + String(String(hash, radix: 16).suffix(8)).leftPadded(8)
+    }
+    /// path with every symbolic link resolved (realpath(3)); as written, its . and .. worked out,
+    /// when it doesn't exist.
+    static func real(_ path: String) -> String {
+        guard let r = realpath(path, nil) else { return (path as NSString).standardizingPath }
+        defer { free(r) }
+        return String(cString: r)
     }
     /// The chat id as a branch and folder name: lowercase letters, digits and dashes only.
     static func clean(_ chat: String) -> String {
