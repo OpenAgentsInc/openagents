@@ -931,7 +931,14 @@ ps_count :: (text: string, needle: string) -> int {
 #test "with the simulator a step's device ops run first as oasim commands, with a screenshot viewed; every mode fits" {
   l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   mc_init(l[..], sb[..], lb[..], "{}", "open settings", "{}", 1.0);
-  #assert mc_aware(l[..], lb[..], true, true) && mc_agents(l[..], lb[..], true, "a/model") && mc_no_ask(l[..], lb[..]) && mc_device(l[..], lb[..]) && l[0].device;
+  #assert mc_aware(l[..], lb[..], true, true) && mc_agents(l[..], lb[..], true, "a/model") && mc_no_ask(l[..], lb[..]);
+  was: [16384] u8; wn := json_raw(was[..], 0, l[0].system); wn = json_raw(was[..], wn, MC_DEVICE);
+  #assert !l[0].device && mc_device(l[..], lb[..]) && l[0].device && wn > 0 && l[0].system == cast(string) was[0..<wn];
+  // a schema it can't add to: refused, nothing changed
+  k: [1] McLoop; sk: [1] McStateBuffers; lk: [1] McLoopBuffers;
+  mc_init(k[..], sk[..], lk[..], "{}", "x", "{}", 1.0);
+  sys := k[0].system; k[0].schema = "{}";
+  #assert !mc_device(k[..], lk[..]) && !k[0].device && k[0].system == sys && k[0].schema == "{}";
   #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.device").count > 0 && cl_raw(l[0].schema, "properties.delegate").count > 0 && ps_count(l[0].system, "You can use an iOS Simulator.") == 1;
   s := mc_take(l[..], "{\"rationale\":\"look\",\"notes\":[],\"device\":[{\"op\":\"tap\",\"x\":10,\"y\":20}],\"edits\":[],\"questions\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
   a := mc_pending(l[..]);

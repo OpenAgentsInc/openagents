@@ -1,5 +1,7 @@
 // openagents mcp: the realm commands as MCP tools, over stdio (#12636).
 //   openagents mcp [--read-only] [--all] [--domains realm] [--profile NAME] [--origin URL]
+//   openagents mcp --domains device       the iOS Simulator's tools (simulator_*), as `oasim mcp`
+//                                         serves them (coder/tui/oasim-mcp.coax; GitHub #13811)
 //   claude mcp add openagents -- openagents mcp
 // Requests and answers are JSON-RPC 2.0, one JSON object a line. Each tool is
 // one row of REALM_COMMANDS (commands.coax): its name is realm_VERB, its
@@ -13,6 +15,8 @@
 // with their definitions, and realm_call calls any row by its name. --all lists every row as before.
 // realm_find matches fields exactly and never matches words in a row's help.
 // Not here: Anime Lab tools (#12634), resources, prompts and paging.
+
+#load "../../coder/tui/oasim-mcp.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -627,12 +631,36 @@ mcp_handle :: (line: string, cfg: McpCfg, out: [] u8, run: bool) -> string {
   #assert acct_has(s, "unknown tool") && acct_has(s, "\"isError\":true");
 }
 
+// Where oasim is: OA_SIMHOST when set, else beside this program (the app's Contents/Resources),
+// else the first PATH folder that holds it; "" when none is a file. In out.
+mcp_oasim :: (named: string, self: string, path: string, out: [] u8) -> string {
+  if named.count > 0 { return ifx fs_kind(named) == FS_FILE then named else ""; }
+  n := copy(fs_dir(self), out); n += copy("/oasim", out[n..<out.count]);
+  if n < out.count && fs_kind(cast(string) out[0..<n]) == FS_FILE { return cast(string) out[0..<n]; }
+  i := 0;
+  while i < path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    if j > i {
+      n = copy(path[i..<j], out); n += copy("/oasim", out[n..<out.count]);
+      if n < out.count && fs_kind(cast(string) out[0..<n]) == FS_FILE { return cast(string) out[0..<n]; }
+    }
+    i = j + 1;
+  }
+  return "";
+}
 // The server: one request a line on stdin, one answer a line on stdout, until stdin ends.
 mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
   domains := args_value(a, "--domains", "realm");
-  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm (labs tools come with #12634)"); }
   exe: [4096] u8; en := cxcli_exe_path(exe[..]);
   if en <= 0 { return fail(r, EXIT_FAIL, "could not find this program's own path"); }
+  if domains == "device" {
+    // the simulator's tools: each call runs oasim, found as the app's workers find it
+    pb: [4096] u8; eb: [8192] u8;
+    oasim := mcp_oasim(proc_getenv("OA_SIMHOST", pb[..]), cast(string) exe[0..<en], proc_getenv("PATH", eb[..]), pb[..]);
+    if oasim.count == 0 { return fail(r, EXIT_FAIL, "mcp --domains device needs oasim (OpenAgents for Mac with Xcode): it is not beside this program or on PATH"); }
+    return om_main(oasim);
+  }
+  if domains != "realm" { return fail(r, EXIT_USAGE, "mcp --domains realm|device (labs tools come with #12634)"); }
   cfg := McpCfg.{read_only = args_has(a, "--read-only"), all = args_has(a, "--all"), exe = cast(string) exe[0..<en], origin = args_value(a, "--origin", "")};
   if args_has(a, "--profile") || profile != "default" { cfg.profile = profile; }
   line: [MCP_LINE] u8; out: [MCP_OUT] u8; wb: [MCP_OUT + 1] u8;
@@ -661,6 +689,7 @@ mcp_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
 mcp_usage :: () {
   print("%\n", "Agents:");
   print("%\n", "  mcp [--read-only] [--all] [--domains realm] [--origin URL]  the realm commands as MCP tools on stdio: the common ones, realm_find and realm_call (--all: every one)");
+  print("%\n", "  mcp --domains device                                the iOS Simulator's tools (simulator_*) on stdio, as oasim mcp serves them");
   print("%\n", "  skill realm [--install]                             the realm commands as a Claude skill (.claude/skills)");
   print("%\n", "");
 }

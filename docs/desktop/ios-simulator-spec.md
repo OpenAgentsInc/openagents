@@ -394,8 +394,10 @@ rather than two tools with an `action` member: each has a typed schema the model
 a call runs `oasim VERB WORDS...` as a child, so it is the command with the same grants (the child's
 hello carries the worker's `OA_SIM_CHAT`). `_screenshot` answers with the PNG as image content.
 `claudeworker` passes it to Claude Code in `--mcp-config` (server `simulator`) when `oasim` is beside
-it or `OA_SIMHOST` names one. The Microcoder `device` member is built (7.6, as built);
-`openagents mcp --domains device` is not built yet.
+it or `OA_SIMHOST` names one. The Microcoder `device` member is built (7.6, as built).
+`openagents mcp --domains device` serves the same sixteen tools: `mcp.coax` loads `oasim-mcp.coax`
+and runs its server with `oasim`'s path (`OA_SIMHOST`, else beside the CLI, else on `PATH`), so a
+call is still `oasim VERB ...` and needs no second implementation.
 
 ### 7.2 `control` ops (verbs, arguments, replies)
 
@@ -649,7 +651,7 @@ Changed:
 | `coax/lib/agent/engine/mcworker-wire.coax`, `coder/tui/mcworker.coax` (Phase 2) | `"device":true` in, the `device` line out |
 | `apps/openagents-cli/mcp.coax`, `commands.coax` | `--domains device` serves the same tools (through `oasim`'s library); `openagents sim ...` as an alias of `oasim` |
 | `apps/shared/app/preview/loop.coax` | Load `sim-devices.coax` instead of its own `simctl list` parsing |
-| `apps/shared/host/drive.c` / desktop drive | `shot` composites the simulator view's current still into the window picture (11) |
+| `apps/shared/host/drive.c` / desktop drive | `shot` composites the simulator view's current still into the window picture (11). *As built:* nothing to composite. The Swift app's drive (the Tier 3 probe, `evals/coder-desktop/tier3/probe/probe.m`) takes its pictures with WindowServer capture of the window (`screencapture -l WINDOW`), which already holds the native simulator view over the page; checked in the Phase 1 test launch, whose shots show the device screen. The offscreen `coax drive` host (`host-main.c`) draws no native views at all, so it shows the pane's frame and notices only, as it does for the 3D scene view |
 | `docs/reuse.md` | The device library as the one place for simulator control |
 
 ## 11. Test plan

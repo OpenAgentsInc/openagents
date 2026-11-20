@@ -5,7 +5,8 @@
 // its arguments become the verb's own words, and a call runs this same program as a child,
 // `oasim VERB WORDS...`, so a tool does exactly what the command does, with the same grants (the
 // child's hello carries OA_SIM_CHAT and OA_SIM_ENGINE from this server's environment). A
-// screenshot also answers with the PNG as an image.
+// screenshot also answers with the PNG as an image. `openagents mcp --domains device` serves the same
+// tools (apps/openagents-cli/mcp.coax loads this file and runs om_main with oasim's path).
 
 OM_LINE :: 262144;
 OM_OUT :: 4194304;
@@ -188,7 +189,11 @@ om_handle :: (line: string, exe: string, out: [] u8, run: bool) -> string {
   jo_end(o[..]);
   return jo_text(o[..]);
 }
-om_has :: (s: string, part: string) -> bool { return sd_find(s, part, 0) >= 0; }
+om_has :: (s: string, part: string) -> bool {
+  if part.count == 0 || part.count > s.count { return part.count == 0; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
 #test "mcp: initialize, the tool list, and what is not a method" {
   out: [65536] u8;
   s := om_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", "oasim", out[..], false);
