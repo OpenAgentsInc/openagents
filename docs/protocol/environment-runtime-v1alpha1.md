@@ -253,6 +253,8 @@ the agent's reply. Older computers send none; readers still draw a `notice`
 item as a notice.
 
 A chat that fell back from the engine the phone asked for (Claude Code missing,
-say) shows one `notice` item of kind `note` under the message it fell back at,
-in plain words: "Claude Code isn't set up on this computer, so this chat runs
-on Gemini 4 Neon." Readers draw it as a quiet line, not a problem.
+say) carries the session's `note`, in plain words: "Claude Code isn't set up on
+this computer, so this chat runs on Gemini 4 Neon." Readers draw it as a quiet
+line at the chat's head, not a problem. It is never an item: TestFlight 1413
+(01bb7aec48) draws every non-user item as the agent's reply, and skips a
+session member it doesn't know, so it shows the chat without the note.

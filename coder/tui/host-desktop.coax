@@ -303,9 +303,12 @@ dk_summary :: (r: [] DkInfo, chats: [] DkChat, nc: int, s: [] EaSession) {
   if dk_phone(r) { s[0].nc = ea_copy(s[0].control[..], "available"); g := ph_generation(cast(string) r[0].id[..]); if g > 0 { s[0].generation = g; } }
   // and names the model that runs it (Microcoder's at its low effort), not the one the phone asked for
   if dk_phone(r) {
-    mb: [1024] u8; ob: [64] u8; m := ph_model_in(ph_meta_read(cast(string) r[0].id[..], mb[..]), ob[..]);
+    mb: [1024] u8; ob: [64] u8; pm := ph_meta_read(cast(string) r[0].id[..], mb[..]); m := ph_model_in(pm, ob[..]);
     if m.count > 0 { s[0].nmo = ea_copy(s[0].model[..], m); if s[0].nmo < 0 { s[0].nmo = 0; } }
     if pa_engine_of(m) == PA_MICRO { s[0].nef = ea_copy(s[0].effort[..], PA_MICRO_EFFORT); }
+    // and, when it fell back, says so on the session (never as an item: TestFlight 1413 would draw it as the reply)
+    nb: [EA_NOTE] u8; note := ph_note_in(pm, nb[..]);
+    if note.count > 0 { s[0].nno = ea_copy(s[0].note[..], note); if s[0].nno < 0 { s[0].nno = 0; } }
   }
 }
 // The session `id` names (a Coder Desktop chat, or a phone's run) into v's sessions, when it is the grant's.
@@ -465,10 +468,6 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
   // phone's message alone, so each such turn shows its task's words (the newest ones line up)
   asks: [DK_ASKS] string; nasks := 0; inb: [DK_IN_TAIL] u8; tab: [DK_IN_TAIL] u8; skip := [1] int.[0];
   if dk_phone(r) { nasks = dk_phone_asks(id, t, asks[..], inb[..], tab[..], ab, skip[..]); }
-  // the plain-words line a phone's chat that fell back shows once, under the message turn it moved at
-  nmb: [1024] u8; nob: [256] u8; note_at := [1] int.[-1]; note := "";
-  if dk_phone(r) { note = ph_note_in(ph_meta_read(id, nmb[..]), nob[..], note_at[..]); }
-  turns := 0;
   while true {
     line := dk_line(t, next[..]);
     if line.count == 0 { if next[0] >= t.count { break; } continue; }
@@ -477,7 +476,6 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
     if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && skip[0] > 0 { skip[0] -= 1; s_user(s, "(follow-up)"); open = true; text_since = false; ask = -1; }
     else if kind == MWW_TURN && l[0].text.count == 0 && l[0].source == "message" && nasks > 0 { s_user(s, asks[asks.count - nasks]); nasks -= 1; open = true; text_since = false; ask = -1; }
     else if kind == MWW_TURN { s_user(s, ifx l[0].text.count > 0 then l[0].text else "(follow-up)"); open = true; text_since = false; ask = -1; }
-    if kind == MWW_TURN { if note.count > 0 && turns == note_at[0] { s_notice(s, N_META, note); } turns += 1; }
     else if kind == MWW_THOUGHT { k := s_part(s, P_THINK); if k >= 0 { s_append(s, k, l[0].text); } }
     else if kind == MWW_REPLY { s_delta(s, P_TEXT, l[0].text); text_since = true; }
     else if kind == MWW_ASK { ask = dk_tool(s, "Bash", TK_EXEC, l[0].command); }

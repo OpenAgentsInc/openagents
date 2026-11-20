@@ -10,10 +10,10 @@
 // session "phone-ID". host-desktop.coax reads and writes such a run as it does a Coder Desktop
 // chat, under the phone's own id (no "desktop-" in front), so the phone keeps the session it
 // opened:
-//   ID.phone   {"generation":G,"engine":"micro"|"antigravity","model":M[,"note":N,"note_at":T]}:
-//              written when the phone opens it, and again when a restart moves it to another engine;
-//              model is what runs (the session summary's model), note the plain-words line a chat
-//              that fell back shows once, under its message turn T (0 the first)
+//   ID.phone   {"generation":G,"engine":"micro"|"antigravity","model":M[,"note":N]}: written when
+//              the phone opens it, and again when a restart moves it to another engine; model is
+//              what runs (the session summary's model), note the plain-words line of a chat that
+//              fell back (the summary's note)
 //   ID.in      the worker's task lines (one per message), steers and stops
 // A follow-up while the worker runs is a task line; after the worker ended (Coder Desktop's sweep
 // stops an idle run no chat of its own holds, a daemon restart loses it) the run starts again
@@ -117,20 +117,19 @@ ph_generation :: (id: string) -> int {
   if n < 1 { return -1; }
   return cl_int(cast(string) b[0..<n], "generation").value;
 }
-// The run's ID.phone: its generation, the engine and model that run, and the note a fallback shows
-// under message turn note_at.
-ph_meta_text :: (generation: int, p: PaPick, note_at: int, mo: [] Jo, mb: [] u8) -> string {
+// The run's ID.phone: its generation, the engine and model that run, and the note a fallback shows.
+ph_meta_text :: (generation: int, p: PaPick, mo: [] Jo, mb: [] u8) -> string {
   jo_start(mo, mb); jo_obj(mo);
   jo_key(mo, "generation"); jo_int(mo, generation); jo_key(mo, "engine"); jo_str(mo, ifx p.engine == PA_AGY then PA_AGY_ID else "micro");
   jo_key(mo, "model"); jo_str(mo, ifx p.engine == PA_AGY then PA_AGY_ID else p.model);
   nb: [256] u8; note := pa_note(p, nb[..]);
-  if note.count > 0 { jo_key(mo, "note"); jo_str(mo, note); jo_key(mo, "note_at"); jo_int(mo, note_at); }
+  if note.count > 0 { jo_key(mo, "note"); jo_str(mo, note); }
   jo_end(mo);
   return jo_text(mo);
 }
-ph_meta :: (id: string, generation: int, p: PaPick, note_at: int) -> bool {
+ph_meta :: (id: string, generation: int, p: PaPick) -> bool {
   pp: [1400] u8; mb: [1024] u8; mo: [1] Jo;
-  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text(generation, p, note_at, mo[..], mb[..]));
+  return fs_replace_durable(ph_file(id, pp[..]), ph_meta_text(generation, p, mo[..], mb[..]));
 }
 ph_meta_read :: (id: string, b: [] u8) -> string { p: [1400] u8; n := fs_read(ph_file(id, p[..]), b); return ifx n < 1 then "" else cast(string) b[0..<n]; }
 // The model ID.phone's text says runs, into out; "" when none is kept.
@@ -139,13 +138,11 @@ ph_model_in :: (text: string, out: [] u8) -> string {
   k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "model"), 64));
   return cast(string) out[0..<k];
 }
-// The note ID.phone's text says a fallback shows, into out, and the message turn it goes under in at; "" when none.
-ph_note_in :: (text: string, out: [] u8, at: [] int) -> string {
-  at[0] = -1;
+// The note ID.phone's text says a fallback shows, into out; "" when none.
+ph_note_in :: (text: string, out: [] u8) -> string {
   ar_b: [512] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
-  k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "note"), 256)); w := cl_int(text, "note_at");
-  if k == 0 || !w.ok || w.value < 0 { return ""; }
-  at[0] = w.value; return cast(string) out[0..<k];
+  k := hs_cat(out, 0, hs_cut(cl_str(ar[..], text, "note"), out.count));
+  return cast(string) out[0..<k];
 }
 ph_engine :: (id: string) -> int {
   p: [1400] u8; b: [1024] u8; n := fs_read(ph_file(id, p[..]), b[..]);
@@ -187,7 +184,7 @@ ph_open :: (h: [] HsHost, q: [] EaRequest, grant: string, id: string, pick: PaPi
   line: [EX_INPUT_MAX + 8192] u8; ln := ph_task(cast(string) q[0].text[0..<q[0].nt], id, cwd, pick.engine, pick.model, line[..]);
   if ln < 2 { es_refuse(v, "malformed"); return; }
   ip: [1400] u8;
-  if !fs_replace_durable(file, command) || !ph_meta(id, generation, pick, 0) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
+  if !fs_replace_durable(file, command) || !ph_meta(id, generation, pick) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
   why := ph_spec(id, pick.engine, cwd, 0);
   if why.count == 0 { why = dr_start(h[0].runs[..], id); }
   if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
@@ -234,7 +231,7 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
   id := cast(string) r[0].id[..];
   engine := ph_engine(id); if engine == PA_NONE { return "not_found"; }
   // the engine it ran on is gone (agy removed, the Gemini sign-in lost): the chat goes on where it
-  // can, on that engine's default model, and says so under the message that moved it
+  // can, on that engine's default model, and says so
   moved := PaPick.{engine = PA_NONE};
   if !pa_usable(ph_facts(h), engine) {
     pick := pa_pick(ph_facts(h), "");
@@ -255,10 +252,7 @@ ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: str
     ids := PA_MICRO_ID; t[0].model = ifx engine == PA_MICRO then ids[0] else ""; t[0].effort = ifx engine == PA_MICRO then PA_MICRO_EFFORT else "";
     w = mww_task(lines[at..<lines.count], t[0]); if w < 1 { return "malformed"; }
   }
-  if moved.engine != PA_NONE {
-    turns := 0; for k: 0..<ses[0].n { if ses[0].parts[k].kind == P_USER { turns += 1; } }
-    if !ph_meta(id, ph_generation(id), moved, turns) { return "storage_unavailable"; }
-  }
+  if moved.engine != PA_NONE && !ph_meta(id, ph_generation(id), moved) { return "storage_unavailable"; }
   ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); skip := fs_size(inp); if skip < 0 { return "storage_unavailable"; }
   why := ph_spec(id, engine, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
   if why.count > 0 { return why; }
@@ -308,14 +302,14 @@ ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all
   #assert ph_worker_path("/Users/a", "", b[..]) == "/Users/a/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
 }
 
-#test "a phone's run keeps what runs it and the note a fallback shows, under the turn it moved at" {
-  mo: [1] Jo; mb: [1024] u8; out: [64] u8; nb: [256] u8; at := [1] int.[0];
-  t := ph_meta_text(42, pa_pick(PaFacts.{gemini = true}, "default"), 0, mo[..], mb[..]);
+#test "a phone's run keeps what runs it and the note a fallback shows" {
+  mo: [1] Jo; mb: [1024] u8; out: [64] u8; nb: [256] u8;
+  t := ph_meta_text(42, pa_pick(PaFacts.{gemini = true}, "default"), mo[..], mb[..]);
   #assert cl_int(t, "generation").value == 42 && ph_model_in(t, out[..]) == "gemini-4-neon";
-  #assert ph_note_in(t, nb[..], at[..]) == "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon." && at[0] == 0;
-  t = ph_meta_text(42, pa_pick(PaFacts.{gemini = true, agy = true}, "antigravity"), 0, mo[..], mb[..]);
-  #assert ph_model_in(t, out[..]) == "antigravity" && ph_note_in(t, nb[..], at[..]) == "" && at[0] == -1;
-  t = ph_meta_text(7, PaPick.{engine = PA_AGY, fell_back = true, asked = PA_MICRO}, 3, mo[..], mb[..]);
-  #assert ph_note_in(t, nb[..], at[..]) == "Microcoder on Gemini isn't set up on this computer, so this chat runs on Antigravity." && at[0] == 3;
-  #assert ph_model_in("{}", out[..]) == "" && ph_note_in("{\"note\":\"x\"}", nb[..], at[..]) == "";
+  #assert ph_note_in(t, nb[..]) == "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon.";
+  t = ph_meta_text(42, pa_pick(PaFacts.{gemini = true, agy = true}, "antigravity"), mo[..], mb[..]);
+  #assert ph_model_in(t, out[..]) == "antigravity" && ph_note_in(t, nb[..]) == "";
+  t = ph_meta_text(7, PaPick.{engine = PA_AGY, fell_back = true, asked = PA_MICRO}, mo[..], mb[..]);
+  #assert ph_note_in(t, nb[..]) == "Microcoder on Gemini isn't set up on this computer, so this chat runs on Antigravity.";
+  #assert ph_model_in("{}", out[..]) == "" && ph_note_in("{}", nb[..]) == "";
 }
