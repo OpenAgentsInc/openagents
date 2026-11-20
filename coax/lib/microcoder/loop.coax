@@ -71,7 +71,7 @@ McLoopBuffers :: struct {
   raw: [MC_REPLY_BYTES] u8;
   arena: [MC_REPLY_BYTES] u8;
   norm: [MC_REPLY_BYTES] u8;     // a text reply's action, rewritten whole
-  system: [16384] u8;            // the system prompt and schema of a run with a mode on (mc_aware)
+  system: [24576] u8;            // the system prompt and schema of a run with modes and workspace instructions
   schema: [4096] u8;
 }
 
@@ -169,6 +169,18 @@ mc_no_ask :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
   l[0].no_ask = true;
+  return true;
+}
+
+// Appends workspace instructions (e.g. AGENTS.md or CLAUDE.md fallback) to the loop's system
+// prompt after mc_aware/mc_agents/mc_no_ask. Empty text is a no-op and returns true.
+// False when the combined system prompt does not fit b[0].system (leaving l[0].system unchanged).
+mc_instructions :: (l: [] McLoop, b: [] McLoopBuffers, text: string) -> bool {
+  if text.count == 0 { return true; }
+  n := json_raw(b[0].system[..], 0, l[0].system);
+  n = json_raw(b[0].system[..], n, text);
+  if n < 0 { return false; }
+  l[0].system = cast(string) b[0].system[0..<n];
   return true;
 }
 
@@ -933,4 +945,18 @@ ps_count :: (text: string, needle: string) -> int {
     st1 := mc_take(l[..], "{\"rationale\":\"decide\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"Done.\",\"ask\":\"none\"}");
     #assert st1 == MC_ENDED && l[0].ending == MC_END_FINISHED && l[0].reply == "Done.";
   }
+}
+
+#test "mc_instructions appends workspace instructions to system prompt and leaves empty text as no-op" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{\"os\":\"macOS\"}", "do it", "{\"local_work\":0.9}", 0.9);
+  #assert mc_instructions(l[..], lb[..], "");
+  #assert l[0].system == MC_SYSTEM;
+  instr := "\n\nWorkspace instructions (loaded automatically):\n\n--- AGENTS.md ---\nAlways run tests.\n";
+  #assert mc_instructions(l[..], lb[..], instr);
+  #assert l[0].system.count == MC_SYSTEM.count + instr.count;
+  #assert l[0].system[0..<MC_SYSTEM.count] == MC_SYSTEM;
+  #assert l[0].system[MC_SYSTEM.count..<l[0].system.count] == instr;
+  req := mc_request(l[..]);
+  #assert req.system == l[0].system;
 }

@@ -1,0 +1,301 @@
+// Automatic workspace instruction loading for Microcoder: AGENTS.md with CLAUDE.md fallback.
+//
+// Discovery rules:
+//   - Walk from git/repo root (nearest ancestor containing .git) down to cwd.
+//     If cwd is not inside a git repo, check cwd only.
+//   - Pass 1: Look for AGENTS.md (or agents.md) in each directory from root to cwd.
+//   - Pass 2 (fallback): ONLY if no AGENTS.md/agents.md was found anywhere in the
+//     hierarchy, look for CLAUDE.md (or claude.md) in each directory from root to cwd.
+//   - Deduplicate files by canonical realpath (handles symlinks and case-insensitive FS).
+//   - Cap total output bytes so huge files never blow up the context window or the
+//     durable journal's context frame (AJ_PAYLOAD = 32768).
+//
+// Checks:
+//   coax test coax/lib/microcoder/instructions.coax --library
+//   coax/web/tool.sh coax/lib/microcoder/instructions-selftest.coax
+
+#load "../sys/fs.coax";
+
+MC_INSTR_MAX_DIRS :: 32;
+MC_INSTR_MAX_BYTES :: 12288;
+MC_INSTR_FILE_BUF :: 16384;
+MC_INSTR_TRUNC_NOTE :: "\n[... truncated; read the file for more ...]";
+MC_INSTR_HEADER :: "\n\nWorkspace instructions (loaded automatically):\n";
+
+// Strip trailing slashes from a directory path (keeping "/" as "/").
+mc_instr_norm_dir :: (path: string) -> string {
+  end := path.count;
+  while end > 1 && path[end - 1] == '/' { end -= 1; }
+  return path[0..<end];
+}
+
+// Back up n bytes to a valid UTF-8 character boundary so truncation never splits a code point.
+mc_instr_utf8_cut :: (s: string, limit: int) -> int {
+  n := limit;
+  if n < 0 { return 0; }
+  if n >= s.count { return s.count; }
+  while n > 0 && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+
+// Append src to out[at..], returning new offset (or out.count if full).
+mc_instr_put :: (out: [] u8, at: int, src: string) -> int {
+  if at < 0 || at >= out.count { return out.count; }
+  n := src.count;
+  if at + n > out.count { n = out.count - at; }
+  for i: 0..<n { out[at + i] = src[i]; }
+  return at + n;
+}
+
+// Trim leading/trailing ASCII whitespace to check if an instruction file is effectively empty.
+mc_instr_is_blank :: (s: string) -> bool {
+  for c: s {
+    if c != ' ' && c != '\n' && c != '\r' && c != '\t' { return false; }
+  }
+  return true;
+}
+
+// Check whether a directory contains a .git entry (directory or gitfile for worktrees).
+mc_instr_has_git :: (dir: string) -> bool {
+  pb: [1024] u8;
+  p := fs_join(dir, ".git", pb[..]);
+  return p.count > 0 && fs_exists(p);
+}
+
+// Collect directories from repo root down to cwd (inclusive), ordered root-first.
+// If no ancestor has .git, only cwd is returned.
+McInstrDirs :: struct {
+  buf: [16384] u8;
+  from: [MC_INSTR_MAX_DIRS] int;
+  to: [MC_INSTR_MAX_DIRS] int;
+  n: int;
+}
+
+mc_instr_dir_at :: (d: [] McInstrDirs, i: int) -> string {
+  if i < 0 || i >= d[0].n { return ""; }
+  return cast(string) d[0].buf[d[0].from[i]..<d[0].to[i]];
+}
+
+mc_instr_collect_dirs :: (cwd: string, out: [] McInstrDirs) {
+  out[0].n = 0;
+  if cwd.count == 0 { return; }
+  rb: [1024] u8;
+  cur := fs_realpath(cwd, rb[..]);
+  if cur.count == 0 { cur = mc_instr_norm_dir(cwd); }
+  else { cur = mc_instr_norm_dir(cur); }
+  if cur.count == 0 { return; }
+
+  // Walk up from cwd until we find .git or hit filesystem root.
+  rev: [1] McInstrDirs;
+  pos := 0;
+  found_git := false;
+  for step: 0..<MC_INSTR_MAX_DIRS {
+    if pos + cur.count > rev[0].buf.count { break; }
+    rev[0].from[rev[0].n] = pos;
+    for i: 0..<cur.count { rev[0].buf[pos + i] = cur[i]; }
+    pos += cur.count;
+    rev[0].to[rev[0].n] = pos;
+    rev[0].n += 1;
+    if mc_instr_has_git(cur) { found_git = true; break; }
+    parent := fs_dir(cur);
+    if parent.count == 0 || parent == cur || parent == "." { break; }
+    cur = parent;
+  }
+
+  // If not inside a git repository, only inspect cwd itself.
+  if !found_git && rev[0].n > 1 { rev[0].n = 1; }
+
+  // Reverse into out so order is root -> ... -> cwd.
+  opos := 0;
+  i := rev[0].n - 1;
+  while i >= 0 {
+    s := mc_instr_dir_at(rev[..], i);
+    if opos + s.count <= out[0].buf.count && out[0].n < MC_INSTR_MAX_DIRS {
+      out[0].from[out[0].n] = opos;
+      for j: 0..<s.count { out[0].buf[opos + j] = s[j]; }
+      opos += s.count;
+      out[0].to[out[0].n] = opos;
+      out[0].n += 1;
+    }
+    i -= 1;
+  }
+}
+
+// Track seen canonical file paths to deduplicate symlinks and case-insensitive FS matches.
+McInstrSeen :: struct {
+  buf: [8192] u8;
+  from: [MC_INSTR_MAX_DIRS] int;
+  to: [MC_INSTR_MAX_DIRS] int;
+  n: int;
+  pos: int;
+}
+
+mc_instr_seen_add :: (seen: [] McInstrSeen, path: string) -> bool {
+  for i: 0..<seen[0].n {
+    existing := cast(string) seen[0].buf[seen[0].from[i]..<seen[0].to[i]];
+    if existing == path { return false; }
+  }
+  if seen[0].n >= MC_INSTR_MAX_DIRS || seen[0].pos + path.count > seen[0].buf.count { return true; }
+  seen[0].from[seen[0].n] = seen[0].pos;
+  for i: 0..<path.count { seen[0].buf[seen[0].pos + i] = path[i]; }
+  seen[0].pos += path.count;
+  seen[0].to[seen[0].n] = seen[0].pos;
+  seen[0].n += 1;
+  return true;
+}
+
+// Try primary name, then lowercase fallback name in dir. Returns path (in pb) if regular file, else "".
+mc_instr_find_in_dir :: (dir: string, upper: string, lower: string, pb: [] u8) -> string {
+  p := fs_join(dir, upper, pb);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  p = fs_join(dir, lower, pb);
+  if p.count > 0 && fs_kind(p) == FS_FILE { return p; }
+  return "";
+}
+
+// Compute a clean display label relative to root (or basename if equal).
+mc_instr_label :: (root: string, path: string, lb: [] u8) -> string {
+  if root.count > 0 && path.count > root.count + 1 && path[0..<root.count] == root && path[root.count] == '/' {
+    return path[root.count + 1..<path.count];
+  }
+  return fs_base(path);
+}
+
+// Read one instruction file (up to MC_INSTR_FILE_BUF bytes) and append it to out within cap.
+// Returns new offset in out, and sets appended[0] = true if any non-empty content was added.
+mc_instr_append_file :: (out: [] u8, at: int, cap: int, label: string, path: string, appended: [] bool) -> int {
+  if at >= cap { return at; }
+  fb: [MC_INSTR_FILE_BUF] u8;
+  n := fs_read_at(path, 0, fb[..]);
+  if n <= 0 { return at; }
+  raw := cast(string) fb[0..<n];
+  if mc_instr_is_blank(raw) { return at; }
+
+  // Check if file had more bytes beyond MC_INSTR_FILE_BUF.
+  extra: [1] u8;
+  has_more := n == MC_INSTR_FILE_BUF && fs_read_at(path, n, extra[..]) > 0;
+
+  // Section header: "\n--- <label> ---\n"
+  hdr_len := 10 + label.count;
+  if at + hdr_len + 16 > cap { return at; }
+  p := at;
+  p = mc_instr_put(out, p, "\n--- ");
+  p = mc_instr_put(out, p, label);
+  p = mc_instr_put(out, p, " ---\n");
+
+  avail := cap - p;
+  trunc := has_more || raw.count > avail;
+  take := raw.count;
+  if trunc {
+    room := avail - MC_INSTR_TRUNC_NOTE.count;
+    if room < 0 { room = 0; }
+    take = mc_instr_utf8_cut(raw, room);
+  }
+  p = mc_instr_put(out, p, raw[0..<take]);
+  if trunc {
+    p = mc_instr_put(out, p, MC_INSTR_TRUNC_NOTE);
+  }
+  if p > 0 && p < cap && out[p - 1] != '\n' {
+    p = mc_instr_put(out, p, "\n");
+  }
+  appended[0] = true;
+  return p;
+}
+
+// Load workspace instructions for cwd into out, capped at min(out.count, MC_INSTR_MAX_BYTES).
+// Loads AGENTS.md (or agents.md) walking from repo root to cwd.
+// ONLY if no AGENTS.md/agents.md is found anywhere in that hierarchy, falls back to
+// CLAUDE.md (or claude.md). Returns "" when nothing is found.
+mc_instructions_load :: (cwd: string, out: [] u8) -> string {
+  if cwd.count == 0 || out.count == 0 { return ""; }
+  cap := out.count;
+  if cap > MC_INSTR_MAX_BYTES { cap = MC_INSTR_MAX_BYTES; }
+
+  dirs: [1] McInstrDirs;
+  mc_instr_collect_dirs(cwd, dirs[..]);
+  if dirs[0].n == 0 { return ""; }
+  root := mc_instr_dir_at(dirs[..], 0);
+
+  // Pass 1: check for any AGENTS.md / agents.md in the hierarchy.
+  seen: [1] McInstrSeen;
+  any_agents := false;
+  at := mc_instr_put(out, 0, MC_INSTR_HEADER);
+  wrote_any := false;
+  for i: 0..<dirs[0].n {
+    dir := mc_instr_dir_at(dirs[..], i);
+    pb: [1024] u8;
+    p := mc_instr_find_in_dir(dir, "AGENTS.md", "agents.md", pb[..]);
+    if p.count == 0 { continue; }
+    any_agents = true;
+    rb: [1024] u8;
+    canon := fs_realpath(p, rb[..]);
+    if canon.count == 0 { canon = p; }
+    if !mc_instr_seen_add(seen[..], canon) { continue; }
+    lb: [1024] u8;
+    label := mc_instr_label(root, p, lb[..]);
+    added: [1] bool;
+    at = mc_instr_append_file(out, at, cap, label, p, added[..]);
+    if added[0] { wrote_any = true; }
+  }
+  if any_agents {
+    if !wrote_any { return ""; }
+    return cast(string) out[0..<at];
+  }
+
+  // Pass 2 (fallback): only when NO AGENTS.md/agents.md existed anywhere in the hierarchy.
+  for i: 0..<dirs[0].n {
+    dir := mc_instr_dir_at(dirs[..], i);
+    pb: [1024] u8;
+    p := mc_instr_find_in_dir(dir, "CLAUDE.md", "claude.md", pb[..]);
+    if p.count == 0 { continue; }
+    rb: [1024] u8;
+    canon := fs_realpath(p, rb[..]);
+    if canon.count == 0 { canon = p; }
+    if !mc_instr_seen_add(seen[..], canon) { continue; }
+    lb: [1024] u8;
+    label := mc_instr_label(root, p, lb[..]);
+    added: [1] bool;
+    at = mc_instr_append_file(out, at, cap, label, p, added[..]);
+    if added[0] { wrote_any = true; }
+  }
+  if !wrote_any { return ""; }
+  return cast(string) out[0..<at];
+}
+
+#test "mc_instr_norm_dir strips trailing slashes but preserves root" {
+  #assert mc_instr_norm_dir("/a/b/") == "/a/b";
+  #assert mc_instr_norm_dir("/a/b///") == "/a/b";
+  #assert mc_instr_norm_dir("/") == "/";
+  #assert mc_instr_norm_dir("/a/b") == "/a/b";
+}
+
+#test "mc_instr_utf8_cut never splits a multi-byte UTF-8 sequence" {
+  s := "a—b"; // a + em-dash (3 bytes) + b
+  #assert mc_instr_utf8_cut(s, 5) == 5;
+  #assert mc_instr_utf8_cut(s, 4) == 4;
+  #assert mc_instr_utf8_cut(s, 3) == 1;
+  #assert mc_instr_utf8_cut(s, 2) == 1;
+  #assert mc_instr_utf8_cut(s, 1) == 1;
+  #assert mc_instr_utf8_cut(s, 0) == 0;
+}
+
+#test "mc_instr_is_blank distinguishes whitespace from content" {
+  #assert mc_instr_is_blank("");
+  #assert mc_instr_is_blank("  \n\t\r ");
+  #assert !mc_instr_is_blank("  x  ");
+}
+
+#test "mc_instr_seen_add deduplicates canonical paths" {
+  seen: [1] McInstrSeen;
+  #assert mc_instr_seen_add(seen[..], "/repo/AGENTS.md");
+  #assert !mc_instr_seen_add(seen[..], "/repo/AGENTS.md");
+  #assert mc_instr_seen_add(seen[..], "/repo/sub/AGENTS.md");
+  #assert seen[0].n == 2;
+}
+
+#test "mc_instr_label computes repo-relative path or basename" {
+  lb: [128] u8;
+  #assert mc_instr_label("/repo", "/repo/AGENTS.md", lb[..]) == "AGENTS.md";
+  #assert mc_instr_label("/repo", "/repo/sub/AGENTS.md", lb[..]) == "sub/AGENTS.md";
+  #assert mc_instr_label("/other", "/repo/AGENTS.md", lb[..]) == "AGENTS.md";
+}

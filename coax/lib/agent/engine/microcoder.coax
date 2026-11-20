@@ -232,6 +232,7 @@ lab_mc_start :: (m: [] LabMc, task: string, effort: int, level: int, local_work:
   if en < 0 || rn < 0 { return "The Lab's facts for Microcoder don't fit."; }
   r := m[0].run[..];
   mc_init(r[0].l[..], m[0].sb[..], m[0].lb[..], e_str(m[0].env[..], en), task, e_str(m[0].route[..], rn), local_work);
+  _ = mc_run_load_instructions(r[0].l[..], m[0].lb[..], cwd);
   m[0].v[0] = LmcView.{running = true};
   mc_run_start(r, m[0].plan[..], m[0].bench[..], cwd, e);
   return "";

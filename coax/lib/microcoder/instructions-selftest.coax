@@ -1,0 +1,161 @@
+// End-to-end filesystem selftest for automatic AGENTS.md / CLAUDE.md loading.
+// Run: COAX=coax/bin/coax coax/web/tool.sh coax/lib/microcoder/instructions-selftest.coax
+
+#import "Basic";
+#load "instructions.coax";
+
+St :: struct {
+  pass: int;
+  fail: int;
+}
+
+st_check :: (s: [] St, ok: bool, name: string, detail: string) {
+  if ok {
+    s[0].pass += 1;
+  } else {
+    s[0].fail += 1;
+    print("FAIL: %\n  detail: %\n", name, detail);
+  }
+}
+
+st_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+st_index :: (hay: string, needle: string) -> int {
+  if needle.count == 0 { return 0; }
+  if hay.count < needle.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 {
+    if hay[i..<i + needle.count] == needle { return i; }
+  }
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] St;
+  tb: [FS_PATH_MAX] u8;
+  root := fs_temp("oa-mc-instr-selftest", tb[..]);
+  if root.count == 0 {
+    print("instructions selftest: could not create temp dir\n");
+    return 1;
+  }
+  out: [MC_INSTR_MAX_BYTES] u8;
+  p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8; p3: [FS_PATH_MAX] u8; p4: [FS_PATH_MAX] u8;
+
+  // 1. Empty directory -> empty output
+  d1 := fs_join(root, "t1-empty", p1[..]);
+  x := fs_mkdir(d1);
+  r1 := mc_instructions_load(d1, out[..]);
+  st_check(s[..], r1.count == 0, "empty dir returns empty string", r1);
+
+  // 2. AGENTS.md alone
+  d2 := fs_join(root, "t2-agents-upper", p1[..]);
+  x = fs_mkdir(d2);
+  x = fs_mkdir(fs_join(d2, ".git", p2[..]));
+  x = fs_write(fs_join(d2, "AGENTS.md", p2[..]), "Upper AGENTS rule");
+  r2 := mc_instructions_load(d2, out[..]);
+  st_check(s[..], st_has(r2, "Upper AGENTS rule") && st_has(r2, "AGENTS.md"), "loads AGENTS.md", r2);
+
+  // 3. Lowercase agents.md alone
+  d3 := fs_join(root, "t3-agents-lower", p1[..]);
+  x = fs_mkdir(d3);
+  x = fs_mkdir(fs_join(d3, ".git", p2[..]));
+  x = fs_write(fs_join(d3, "agents.md", p2[..]), "Lower agents rule");
+  r3 := mc_instructions_load(d3, out[..]);
+  st_check(s[..], st_has(r3, "Lower agents rule"), "loads lowercase agents.md", r3);
+
+  // 4. CLAUDE.md fallback when no AGENTS.md exists
+  d4 := fs_join(root, "t4-claude-upper", p1[..]);
+  x = fs_mkdir(d4);
+  x = fs_mkdir(fs_join(d4, ".git", p2[..]));
+  x = fs_write(fs_join(d4, "CLAUDE.md", p2[..]), "Claude fallback rule");
+  r4 := mc_instructions_load(d4, out[..]);
+  st_check(s[..], st_has(r4, "Claude fallback rule") && st_has(r4, "CLAUDE.md"), "falls back to CLAUDE.md when no AGENTS.md", r4);
+
+  // 5. Lowercase claude.md fallback when no AGENTS.md exists
+  d5 := fs_join(root, "t5-claude-lower", p1[..]);
+  x = fs_mkdir(d5);
+  x = fs_mkdir(fs_join(d5, ".git", p2[..]));
+  x = fs_write(fs_join(d5, "claude.md", p2[..]), "Lower claude fallback");
+  r5 := mc_instructions_load(d5, out[..]);
+  st_check(s[..], st_has(r5, "Lower claude fallback"), "falls back to lowercase claude.md", r5);
+
+  // 6. Same directory has both AGENTS.md and CLAUDE.md -> ONLY AGENTS.md loaded
+  d6 := fs_join(root, "t6-agents-beats-claude", p1[..]);
+  x = fs_mkdir(d6);
+  x = fs_mkdir(fs_join(d6, ".git", p2[..]));
+  x = fs_write(fs_join(d6, "AGENTS.md", p2[..]), "AGENTS wins");
+  x = fs_write(fs_join(d6, "CLAUDE.md", p2[..]), "CLAUDE must be ignored");
+  r6 := mc_instructions_load(d6, out[..]);
+  st_check(s[..], st_has(r6, "AGENTS wins") && !st_has(r6, "CLAUDE must be ignored"), "AGENTS.md suppresses CLAUDE.md in same dir", r6);
+
+  // 7. Hierarchy walk: repo root -> subdir -> cwd, stops at .git root
+  d7_outer := fs_join(root, "t7-outer", p1[..]);
+  d7_repo := fs_join(d7_outer, "repo", p2[..]);
+  d7_a := fs_join(d7_repo, "a", p3[..]);
+  d7_sub := fs_join(d7_a, "b", p4[..]);
+  x = fs_mkdir(d7_outer);
+  x = fs_mkdir(d7_repo);
+  x = fs_mkdir(d7_a);
+  x = fs_mkdir(d7_sub);
+  pb: [FS_PATH_MAX] u8;
+  x = fs_mkdir(fs_join(d7_repo, ".git", pb[..]));
+  x = fs_write(fs_join(d7_outer, "AGENTS.md", pb[..]), "OUTER MUST NOT LOAD");
+  x = fs_write(fs_join(d7_repo, "AGENTS.md", pb[..]), "ROOT_RULE");
+  x = fs_write(fs_join(d7_sub, "agents.md", pb[..]), "SUB_RULE");
+  x = fs_write(fs_join(d7_sub, "CLAUDE.md", pb[..]), "SUB_CLAUDE_IGNORED");
+  r7 := mc_instructions_load(d7_sub, out[..]);
+  i_root := st_index(r7, "ROOT_RULE");
+  i_sub := st_index(r7, "SUB_RULE");
+  st_check(s[..], i_root >= 0 && i_sub > i_root && !st_has(r7, "OUTER MUST NOT LOAD") && !st_has(r7, "SUB_CLAUDE_IGNORED"), "walks repo root to cwd in order, stops at .git, ignores CLAUDE.md", r7);
+
+  // 8. Cross-hierarchy suppression: AGENTS.md at repo root suppresses CLAUDE.md in subdir
+  d8_repo := fs_join(root, "t8-cross", p1[..]);
+  d8_sub := fs_join(d8_repo, "sub", p2[..]);
+  x = fs_mkdir(d8_repo);
+  x = fs_mkdir(d8_sub);
+  x = fs_mkdir(fs_join(d8_repo, ".git", pb[..]));
+  x = fs_write(fs_join(d8_repo, "AGENTS.md", pb[..]), "ROOT_AGENTS_ONLY");
+  x = fs_write(fs_join(d8_sub, "CLAUDE.md", pb[..]), "SUB_CLAUDE_MUST_NOT_LOAD");
+  r8 := mc_instructions_load(d8_sub, out[..]);
+  st_check(s[..], st_has(r8, "ROOT_AGENTS_ONLY") && !st_has(r8, "SUB_CLAUDE_MUST_NOT_LOAD"), "AGENTS.md at root suppresses CLAUDE.md in subdir", r8);
+
+  // 9. Cross-hierarchy suppression reverse: AGENTS.md in subdir suppresses CLAUDE.md at root
+  d9_repo := fs_join(root, "t9-cross-rev", p1[..]);
+  d9_sub := fs_join(d9_repo, "sub", p2[..]);
+  x = fs_mkdir(d9_repo);
+  x = fs_mkdir(d9_sub);
+  x = fs_mkdir(fs_join(d9_repo, ".git", pb[..]));
+  x = fs_write(fs_join(d9_repo, "CLAUDE.md", pb[..]), "ROOT_CLAUDE_MUST_NOT_LOAD");
+  x = fs_write(fs_join(d9_sub, "AGENTS.md", pb[..]), "SUB_AGENTS_ONLY");
+  r9 := mc_instructions_load(d9_sub, out[..]);
+  st_check(s[..], st_has(r9, "SUB_AGENTS_ONLY") && !st_has(r9, "ROOT_CLAUDE_MUST_NOT_LOAD"), "AGENTS.md in subdir suppresses CLAUDE.md at root", r9);
+
+  // 10. Huge file truncation within cap
+  d10 := fs_join(root, "t10-huge", p1[..]);
+  x = fs_mkdir(d10);
+  x = fs_mkdir(fs_join(d10, ".git", pb[..]));
+  big: [24000] u8;
+  for i: 0..<big.count { big[i] = cast(u8) (ifx i % 80 == 79 then '\n' else 'A'); }
+  x = fs_write(fs_join(d10, "AGENTS.md", pb[..]), cast(string) big[..]);
+  r10 := mc_instructions_load(d10, out[..]);
+  st_check(s[..], r10.count > 0 && r10.count <= MC_INSTR_MAX_BYTES && st_has(r10, "[... truncated;"), "huge file is cleanly truncated within cap", "");
+
+  // 11. Real repo test: this worktree itself has agents.md and loads cleanly
+  cwdb: [FS_PATH_MAX] u8;
+  cwd := fs_cwd(cwdb[..]);
+  r11 := mc_instructions_load(cwd, out[..]);
+  st_check(s[..], r11.count > 0 && r11.count <= MC_INSTR_MAX_BYTES && st_has(r11, "OpenAgents"), "loads real repo agents.md cleanly", "");
+
+  print("instructions selftest: % passed, % failed\n", s[0].pass, s[0].fail);
+  if s[0].fail == 0 {
+    print("instructions selftest: ok\n");
+    return 0;
+  }
+  return 1;
+}

@@ -16,6 +16,7 @@
 // Checks: coax test coax/lib/microcoder/run.coax --library (no main of its own).
 
 #load "tools.coax";
+#load "instructions.coax";
 #load "image.coax";
 #load "aware.coax";
 #load "steer.coax";
@@ -258,6 +259,16 @@ mc_run_keep :: (r: [] McRun, s: string) -> string {
 // A journaled run's time budget: 15 minutes, as long as an unattended task gets (GitHub #13231:
 // at 5 minutes Argon's run of a five-file change ended mid-task as "run budget exhausted").
 MC_RUN_MS :: 900000;
+
+// Loads workspace instructions (AGENTS.md / agents.md, with CLAUDE.md / claude.md fallback)
+// from cwd's repo hierarchy and appends them to l's system prompt.
+mc_run_load_instructions :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string) -> bool {
+  if cwd.count == 0 { return true; }
+  ib: [MC_INSTR_MAX_BYTES] u8;
+  text := mc_instructions_load(cwd, ib[..]);
+  if text.count == 0 { return true; }
+  return mc_instructions(l, b, text);
+}
 
 // Starts a run of the loop already set up in r.l (mc_init) through plan p
 // (gw_plan_add its attempts first); effort "" leaves it to the provider.
