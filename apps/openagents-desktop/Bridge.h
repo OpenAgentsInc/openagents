@@ -2,3 +2,4 @@
 #include "host.h"
 #include "account-mac.h"
 #include "desktop-core-mac.h"
+#include "../shared/native/tailnet-codec.h"

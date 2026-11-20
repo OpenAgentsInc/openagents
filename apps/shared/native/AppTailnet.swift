@@ -24,8 +24,6 @@ enum AppTailnet {
     static let version = "1"
     /// NIP-HOST's default admission port; a Mac that cannot have it advertises the one it got.
     static let port: UInt16 = 47109
-    static let requestSchema = "openagents.host-tailnet-admission-request.v1"
-    static let answerSchema = "openagents.host-tailnet-admission.v1"
     /// The request line's bytes at most (NIP-HOST), and the answer's.
     static let requestMax = 1024
     static let answerMax = 4096
@@ -121,37 +119,94 @@ enum AppTailnet {
         return nil
     }
 
-    // ------------------------------------------------------------------ the two lines
+    // ------------------------------------------------------------------ the wire lines (Coax codec)
 
-    /// The phone's request line.
-    static func requestLine() -> Data { Data("{\"v\":\"\(requestSchema)\",\"requires\":[],\"chats\":false}\n".utf8) }
-    /// Whether `line` (without its newline) is a request this Mac serves.
-    static func isRequest(_ line: Data) -> Bool {
-        guard line.count <= requestMax, let r = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-              r["v"] as? String == requestSchema, let requires = r["requires"] as? [Any], requires.isEmpty else { return false }
-        let known: Set<String> = ["v", "requires", "chats"]
-        return Set(r.keys).isSubset(of: known) && (r["chats"] == nil || r["chats"] is Bool)
-    }
-
-    struct Answer: Equatable { var host: String; var label: String; var invitation: String?; var refused: String? }
-    /// The Mac's answer line: a pairing link, or why not.
-    static func answerLine(_ a: Answer) -> Data {
-        var o: [String: Any] = ["v": answerSchema, "host": a.host, "label": a.label, "chats": NSNull()]
-        o["invitation"] = a.invitation ?? NSNull(); o["refused"] = a.refused ?? NSNull()
-        var d = (try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes])) ?? Data()
+    /// The phone's admission request line (encoded by coax/lib/nostr/host/tailnet.coax).
+    static func requestLine() -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_request_write(0, &buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
         d.append(0x0A)
         return d
     }
-    /// The answer read on the phone, checked against the host key the TXT record named: an
-    /// invitation must be a pairing link to that same host.
+    /// Whether `line` (without its newline) is an admission request this Mac serves.
+    static func isRequest(_ line: Data) -> Bool {
+        guard line.count <= requestMax else { return false }
+        return line.withUnsafeBytes { raw in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_request_read(p, Int64(line.count)) >= 0
+        }
+    }
+
+    struct Answer: Equatable { var host: String; var label: String; var invitation: String?; var refused: String? }
+    /// The Mac's admission answer line: a pairing link, or why not.
+    static func answerLine(_ a: Answer) -> Data {
+        var buf = [UInt8](repeating: 0, count: answerMax)
+        let n = oa_tailnet_answer_write(a.host, a.label, a.invitation ?? "", a.refused ?? "", &buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+    /// The admission answer read on the phone, checked against the host key the TXT record named.
     static func answer(_ line: Data, host: String) -> Answer? {
-        guard line.count <= answerMax, let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-              o["v"] as? String == answerSchema, let h = o["host"] as? String, h == host else { return nil }
-        let label = String(((o["label"] as? String) ?? "").prefix(80))
-        if let refused = o["refused"] as? String { return Answer(host: h, label: label, invitation: nil, refused: refused) }
-        guard let link = o["invitation"] as? String, link.hasPrefix(linkPrefix), link.utf8.count <= 1024,
+        guard line.count <= answerMax else { return nil }
+        var val = [UInt8](repeating: 0, count: answerMax)
+        var lbl = [UInt8](repeating: 0, count: 128)
+        var ln: Int64 = 0
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_answer_read(p, Int64(line.count), host, &val, Int64(val.count), &lbl, Int64(lbl.count), &ln)
+        }
+        guard rc != -1 else { return nil }
+        let label = ln > 0 ? String(decoding: lbl[0..<Int(ln)], as: UTF8.self) : ""
+        if rc <= -2 {
+            let rn = Int(-rc - 2)
+            let refused = String(decoding: val[0..<rn], as: UTF8.self)
+            return Answer(host: host, label: label, invitation: nil, refused: refused)
+        }
+        let link = String(decoding: val[0..<Int(rc)], as: UTF8.self)
+        guard link.hasPrefix(linkPrefix), link.utf8.count <= 1024,
               let parts = URLComponents(string: link), parts.queryItems?.first(where: { $0.name == "host" })?.value == host else { return nil }
-        return Answer(host: h, label: label, invitation: link, refused: nil)
+        return Answer(host: host, label: label, invitation: link, refused: nil)
+    }
+
+    /// NIP-SESS direct transport handshake line.
+    static func directHelloLine() -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_direct_hello_write(&buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+    static func isDirectHello(_ line: Data) -> Bool {
+        guard line.count <= requestMax else { return false }
+        return line.withUnsafeBytes { raw in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_direct_hello_read(p, Int64(line.count)) != 0
+        }
+    }
+    static func directAckLine(refused: String?) -> Data {
+        var buf = [UInt8](repeating: 0, count: requestMax)
+        let n = oa_tailnet_direct_ack_write(refused ?? "", &buf, Int64(buf.count))
+        guard n > 0 else { return Data() }
+        var d = Data(buf[0..<Int(n)])
+        d.append(0x0A)
+        return d
+    }
+    /// Parses a NIP-SESS direct ack line. Returns (ok: true, refused: nil) when admitted, (ok: false, refused: code) when refused, or (ok: false, refused: nil) when malformed.
+    static func directAck(_ line: Data) -> (ok: Bool, refused: String?) {
+        guard line.count <= requestMax else { return (false, nil) }
+        var buf = [UInt8](repeating: 0, count: 64)
+        let rc = line.withUnsafeBytes { raw -> Int64 in
+            let p = raw.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            return oa_tailnet_direct_ack_read(p, Int64(line.count), &buf, Int64(buf.count))
+        }
+        if rc == 0 { return (true, nil) }
+        if rc > 0 { return (false, String(decoding: buf[0..<Int(rc)], as: UTF8.self)) }
+        return (false, nil)
     }
 }
 

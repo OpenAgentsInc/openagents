@@ -84,8 +84,8 @@ expect(AppTailnet.decide(remote: "100.100.2.70", whois: whois(ip: "100.100.2.70"
 // ---------------------------------------------------------------- the two lines
 let request = AppTailnet.requestLine()
 expect(request.last == 0x0A && AppTailnet.isRequest(request.dropLast()), "the phone's request is one line the Mac serves")
-expect(!AppTailnet.isRequest(json(["v": AppTailnet.requestSchema, "requires": ["x"]])) && !AppTailnet.isRequest(json(["v": "other", "requires": []])), "a request naming a feature or another version is refused")
-expect(!AppTailnet.isRequest(json(["v": AppTailnet.requestSchema, "requires": [], "extra": 1])) && !AppTailnet.isRequest(Data(repeating: 0x20, count: 2000)), "an unknown field or a long line is refused")
+expect(!AppTailnet.isRequest(json(["v": (try! JSONSerialization.jsonObject(with: request.dropLast()) as! [String: Any])["v"] as! String, "requires": ["x"]])) && !AppTailnet.isRequest(json(["v": "other", "requires": []])), "a request naming a feature or another version is refused")
+expect(!AppTailnet.isRequest(json(["v": (try! JSONSerialization.jsonObject(with: request.dropLast()) as! [String: Any])["v"] as! String, "requires": [], "extra": 1])) && !AppTailnet.isRequest(Data(repeating: 0x20, count: 2000)), "an unknown field or a long line is refused")
 let link = "openagents://pair?host=\(host)&relay=wss%3A%2F%2Frelay.openagents.com&code=ABCDEFGH&name=Mac" + AppTailnet.linkMark
 let invited = AppTailnet.answerLine(.init(host: host, label: "Mac", invitation: link, refused: nil))
 expect(invited.last == 0x0A && AppTailnet.answer(invited.dropLast(), host: host) == .init(host: host, label: "Mac", invitation: link, refused: nil), "an invitation reads back")
@@ -186,5 +186,17 @@ expect(AppTailnetBook.wantsAdmission(expires: 1000 + 3600, lastAsked: 100, now: 
 
 MainActor.assumeIsolated { linkChecks() }
 try? FileManager.default.removeItem(at: work)
+// ---------------------------------------------------------------- NIP-SESS direct handshake & transport
+let hello = AppTailnet.directHelloLine()
+expect(hello.last == 0x0A, "direct hello ends in a newline")
+expect(AppTailnet.isDirectHello(hello.dropLast()), "direct hello reads back")
+expect(!AppTailnet.isDirectHello(request.dropLast()), "admission request is not a direct hello")
+let ackOk = AppTailnet.directAckLine(refused: nil)
+expect(AppTailnet.directAck(ackOk.dropLast()).ok == true && AppTailnet.directAck(ackOk.dropLast()).refused == nil, "direct ack ok reads back")
+let ackRef = AppTailnet.directAckLine(refused: "not_owner")
+let parsedRef = AppTailnet.directAck(ackRef.dropLast())
+expect(parsedRef.ok == false && parsedRef.refused == "not_owner", "direct ack refusal reads back")
+expect(AppTailnet.directAck(Data("not-json".utf8)) == (false, nil), "malformed direct ack is rejected")
+
 if failures > 0 { FileHandle.standardError.write(Data("tailnet-check: \(failures) failed\n".utf8)); exit(1) }
 print("tailnet-check: ok")

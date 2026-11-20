@@ -207,32 +207,54 @@ struct AppPaired: Codable, Equatable {
         guard n > 0, fn > 0, oa_device_event_id(work, &id) == 64 else { oa_device_work_close(work); done(nil, false); return }
         startPathMonitorIfNeeded()
         if suspended { oa_device_work_close(work); done(nil, false); return }
-        let socket = sockets[relay] ?? AppRelaySocket(url: relay, sign: { challenge in
-            guard let sk = self.secret(), let aux = AppDeviceLink.random(32) else { return nil }
-            var out = [UInt8](repeating: 0, count: 4096); let c = [UInt8](challenge.utf8)
-            let m = oa_device_auth(sk, relay, c, Int64(c.count), AppDeviceLink.now, aux, &out, Int64(out.count))
-            return m > 0 ? String(decoding: out[0..<Int(m)], as: UTF8.self) : nil
-        })
-        sockets[relay] = socket
         var finished = false
         let finish = { (result: Data?, sent: Bool) in
             if finished { return }
             finished = true; oa_device_work_close(work); done(result, sent)
         }
-        socket.ask(filter: String(decoding: filter[0..<Int(fn)], as: UTF8.self), event: String(decoding: event[0..<Int(n)], as: UTF8.self),
-                   eventID: String(decoding: id, as: UTF8.self), timeout: timeout,
-                   reply: { [weak self] raw in
-                       guard self != nil, !finished, let sk = self?.secret() else { return false }
-                       var out = [UInt8](repeating: 0, count: 262144); let e = [UInt8](raw.utf8)
-                       let m = oa_device_open(work, sk, host, e, Int64(e.count), AppDeviceLink.now, &out, Int64(out.count))
-                       if m > 0 { finish(Data(out[0..<Int(m)]), true); return true }
-                       return false
-                   }, ended: { [weak self] sent in
-                       if hold, !sent, !finished, let self, self.suspended, self.held.count < 4 {
-                           finished = true; oa_device_work_close(work); self.held.append(again); return
-                       }
-                       finish(nil, sent)
-                   })
+        let openReply: (String) -> Bool = { [weak self] raw in
+            guard self != nil, !finished, let sk = self?.secret() else { return false }
+            var out = [UInt8](repeating: 0, count: 262144); let e = [UInt8](raw.utf8)
+            let m = oa_device_open(work, sk, host, e, Int64(e.count), AppDeviceLink.now, &out, Int64(out.count))
+            if m > 0 { finish(Data(out[0..<Int(m)]), true); return true }
+            return false
+        }
+        let eventText = String(decoding: event[0..<Int(n)], as: UTF8.self)
+        let filterText = String(decoding: filter[0..<Int(fn)], as: UTF8.self)
+        let eventIDText = String(decoding: id, as: UTF8.self)
+        let askRelay = {
+            if finished { return }
+            if self.suspended {
+                if hold, self.held.count < 4 { finished = true; oa_device_work_close(work); self.held.append(again); return }
+                finish(nil, false); return
+            }
+            let socket = self.sockets[relay] ?? AppRelaySocket(url: relay, sign: { challenge in
+                guard let sk = self.secret(), let aux = AppDeviceLink.random(32) else { return nil }
+                var out = [UInt8](repeating: 0, count: 4096); let c = [UInt8](challenge.utf8)
+                let m = oa_device_auth(sk, relay, c, Int64(c.count), AppDeviceLink.now, aux, &out, Int64(out.count))
+                return m > 0 ? String(decoding: out[0..<Int(m)], as: UTF8.self) : nil
+            })
+            self.sockets[relay] = socket
+            socket.ask(filter: filterText, event: eventText, eventID: eventIDText, timeout: timeout,
+                       reply: openReply, ended: { [weak self] sent in
+                           if hold, !sent, !finished, let self, self.suspended, self.held.count < 4 {
+                               finished = true; oa_device_work_close(work); self.held.append(again); return
+                           }
+                           finish(nil, sent)
+                       })
+        }
+        #if os(iOS)
+        // NIP-SESS direct transport over the tailnet (#13795): try the paired Mac's listener first,
+        // and fall back to the relay seamlessly if direct is unavailable or times out.
+        if tailnet.book.computers.contains(where: { $0.host == host }) {
+            tailnet.sendDirect(host: host, event: Data(event[0..<Int(n)]), timeout: min(timeout, 5)) { replyLine in
+                if let replyLine, openReply(String(decoding: replyLine, as: UTF8.self)) { return }
+                askRelay()
+            }
+            return
+        }
+        #endif
+        askRelay()
     }
 }
 

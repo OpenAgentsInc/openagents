@@ -716,7 +716,7 @@ hs_serve :: (args: [] Args) -> int {
   retry_at := 0;
   while end_at == 0 || hs_now() < end_at {
     es_tick(h);pa_tick(h);xt_tick(h);xo_tick(h);dr_tick(h);
-    es_local_tick(h,local_listener);
+    es_local_tick(h,local_listener,w_b[..],st_b[..],statebuf[..],file[..],out[..]);
     // while a worker run is going its lines reach Coder within a few tens of milliseconds
     busy_ms := ifx dr_active(h) > 0 then 20 else 250;
     now_ms := cxsock_now_ms();

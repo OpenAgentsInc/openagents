@@ -38,16 +38,25 @@ es_agent :: (slot:[]EsSlot)->Agent #effects(all) {
 es_local_listen :: ()->int #effects(all) {
   path:[1400]u8;p:=es_path("service.sock",path[..]);for c:p {_ = cxsock_host_push(cast(int)c);}return cxsock_listen_unix();
 }
-es_local_tick :: (h:[]HsHost,listener:int) #effects(all) {
+es_local_tick :: (h:[]HsHost,listener:int,w:[]HbWork,st:[]HsState,statebuf:[]u8,file:[]u8,reply_out:[]u8) #effects(all) {
   connection:=cxsock_accept(listener,0);if connection<0 {return;}defer {_ = cxsock_close(connection);}
   if cxsock_peer_self(connection)!=1 {return;}
-  input:[24576]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
+  input:[65536]u8;n:=0;done:=false;deadline:=cxsock_now_ms()+1000;
   while cxsock_now_ms()<deadline && !done {
     got:=cxsock_read(connection,50);if got== -2 {continue;}if got<0 {break;}
     for i:0..<got {c:=cxsock_byte(connection,i);if c==10 {done=true;break;}if n>=input.count {return;}input[n]=cast(u8)c;n+=1;}
   }
   defer {for i:0..<input.count {input[i]=0;}}
-  if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);if kind==0 {return;}
+  if !done {return;}raw:=cast(string)input[0..<n];kind:=ea_local_kind(raw);
+  if kind==0 {
+    // NIP-SESS direct transport (#13795): a sealed kind-25004 Nostr event forwarded by the local tailnet listener.
+    dm := hs_handle(h, raw, w, st, statebuf, file, reply_out);
+    if dm < 1 { return; }
+    for i:0..<dm {_ = cxsock_write(connection, cast(int)reply_out[i]);}
+    _ = cxsock_write(connection, 10);
+    _ = cxsock_flush(connection, 2000);
+    return;
+  }
   out:[HB_BODY_MAX]u8;made:= -1;
   if kind==4 {q:[1]DmRequest;if !dm_read(raw,q[..]) {return;}v:[1]DmView;dm_fill_common(h,q[..],v[..]);if dm_is_run(cast(string)q[0].method[0..<q[0].nm]) {dr_execute(h,q[..],v[..]);} else {dm_execute(h,q[..],v[..]);}made=dm_view_write(v[..],out[..]);}
   else {

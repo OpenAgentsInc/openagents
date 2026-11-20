@@ -17,6 +17,7 @@
 // service (apps/shared/native/AppDeviceLink.swift) calls them through core-host.c with the device
 // key for one call. Their secp256k1 tables are built at compile time.
 #load "../shared/app/device/seal.coax";
+#load "../../coax/lib/nostr/host/tailnet.coax";
 
 // The installed CLI supplies this public key; use the shared canonical hex
 // check before a native adapter advertises it as this computer.

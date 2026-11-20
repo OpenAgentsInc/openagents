@@ -4,6 +4,7 @@
 // code and the one generated library. It holds no behaviour.
 #include "host.h"
 #include "core-host.h"
+#include "../shared/native/tailnet-codec.c"
 #include "../shared/host/apple/phone-drive.h"
 #include "../shared/host/focus-ring.h"
 

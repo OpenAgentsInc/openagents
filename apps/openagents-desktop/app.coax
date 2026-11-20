@@ -4,3 +4,4 @@
 // carrier.c, host.c and App.swift are its host.
 #load "../../components/raster/host-tables.coax";
 #load "page.coax";
+#load "../../coax/lib/nostr/host/tailnet.coax";

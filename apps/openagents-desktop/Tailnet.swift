@@ -157,23 +157,79 @@ final class CoderTailnet: NSObject {
         guard AppTailnet.isTailnet(remote) else { refuse(.notTailnet); return }
         // one line within ten seconds (NIP-HOST)
         queue.asyncAfter(deadline: .now() + 10) { if !answered { answered = true; conn.cancel() } }
-        CoderTailnet.readLine(conn, Data()) { [weak self] line in
+        CoderTailnet.readLine(conn, Data(), maxBytes: AppTailnet.requestMax) { [weak self] line in
             guard let self, !answered else { return }
-            guard let line, AppTailnet.isRequest(line) else { refuse(.malformed); return }
+            guard let line else { refuse(.malformed); return }
+            let isDirect = AppTailnet.isDirectHello(line)
+            if !isDirect && !AppTailnet.isRequest(line) { refuse(.malformed); return }
             let whois = CoderTailnet.cli.flatMap { CoderTailnet.output($0, ["whois", "--json", remote]) }
-            if let why = AppTailnet.decide(remote: remote, whois: whois, owner: owner) { refuse(why); return }
+            if let why = AppTailnet.decide(remote: remote, whois: whois, owner: owner) {
+                if isDirect {
+                    answered = true
+                    conn.send(content: AppTailnet.directAckLine(refused: why.rawValue), completion: .contentProcessed { _ in conn.cancel() })
+                } else {
+                    refuse(why)
+                }
+                return
+            }
+            if isDirect {
+                answered = true
+                guard CoderDaemonClient().ensureDaemon() else {
+                    conn.send(content: AppTailnet.directAckLine(refused: AppTailnet.Refusal.unavailable.rawValue), completion: .contentProcessed { _ in conn.cancel() })
+                    return
+                }
+                conn.send(content: AppTailnet.directAckLine(refused: nil), completion: .contentProcessed { [weak self] err in
+                    if err != nil { conn.cancel(); return }
+                    self?.serveDirectLoop(conn, buffer: Data())
+                })
+                return
+            }
             guard let link = self.invitation(label: label) else { refuse(.unavailable); return }
             answer(.init(host: key, label: label, invitation: link + AppTailnet.linkMark, refused: nil))
         }
     }
 
-    static func readLine(_ conn: NWConnection, _ have: Data, _ done: @escaping (Data?) -> Void) {
-        conn.receive(minimumIncompleteLength: 1, maximumLength: AppTailnet.requestMax + 1) { data, _, complete, error in
+    /// Serves sealed NIP-SESS NDJSON request events over an admitted direct tailnet TCP connection (#13795).
+    private func serveDirectLoop(_ conn: NWConnection, buffer: Data) {
+        CoderTailnet.readFrame(conn, buffer, maxBytes: 65536) { [weak self] line, rest in
+            guard let self, let line else { conn.cancel(); return }
+            let client = CoderDaemonClient()
+            if var reply = client.forwardDirect(line) {
+                reply.append(0x0A)
+                conn.send(content: reply, completion: .contentProcessed { [weak self] err in
+                    if err != nil { conn.cancel(); return }
+                    self?.serveDirectLoop(conn, buffer: rest)
+                })
+            } else {
+                // Expired or silent requests produce no reply; keep reading.
+                self.serveDirectLoop(conn, buffer: rest)
+            }
+        }
+    }
+
+    static func readLine(_ conn: NWConnection, _ have: Data, maxBytes: Int = AppTailnet.requestMax, _ done: @escaping (Data?) -> Void) {
+        readFrame(conn, have, maxBytes: maxBytes) { line, _ in done(line) }
+    }
+
+    static func readFrame(_ conn: NWConnection, _ have: Data, maxBytes: Int, _ done: @escaping (Data?, Data) -> Void) {
+        if let nl = have.firstIndex(of: 0x0A) {
+            let line = Data(have[have.startIndex..<nl])
+            let rest = Data(have[have.index(after: nl)...])
+            done(line, rest)
+            return
+        }
+        if have.count > maxBytes { done(nil, Data()); return }
+        conn.receive(minimumIncompleteLength: 1, maximumLength: min(maxBytes + 1, 65536)) { data, _, complete, error in
             var got = have
             if let data { got.append(data) }
-            if let nl = got.firstIndex(of: 0x0A) { done(got[got.startIndex..<nl]); return }
-            if got.count > AppTailnet.requestMax || error != nil || complete { done(nil); return }
-            readLine(conn, got, done)
+            if let nl = got.firstIndex(of: 0x0A) {
+                let line = Data(got[got.startIndex..<nl])
+                let rest = Data(got[got.index(after: nl)...])
+                done(line, rest)
+                return
+            }
+            if got.count > maxBytes || error != nil || complete { done(nil, Data()); return }
+            readFrame(conn, got, maxBytes: maxBytes, done)
         }
     }
 

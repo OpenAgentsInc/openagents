@@ -3,6 +3,7 @@
 // carrier (components/gallery/linux/main.c), so it shares that file's App and atlas code and the
 // one generated library. It holds no behaviour: frames, clicks and lines go to page.coax.
 #include "host.h"
+#include "../shared/native/tailnet-codec.c"
 #include <time.h>
 #include <sys/stat.h>
 #ifdef __APPLE__

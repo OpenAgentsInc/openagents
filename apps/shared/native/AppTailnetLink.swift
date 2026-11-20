@@ -17,6 +17,12 @@ import Network
     let book: AppTailnetBook
     private var browser: NWBrowser?
     private var connections: [String: NWConnection] = [:]
+    /// Active NIP-SESS direct transport connections keyed by host public key (#13795).
+    private var directConns: [String: NWConnection] = [:]
+    private var directReady: Set<String> = []
+    private var directBuffers: [String: Data] = [:]
+    private var directWaiters: [String: [(Data?) -> Void]] = [:]
+    private var directQueued: [String: [(Data, (Data?) -> Void)]] = [:]
     private var lastAsked: [String: Int64] = [:]
     private var active = false
     /// The grant's end for a paired host, if the phone holds one (AppDeviceLink's store).
@@ -46,10 +52,12 @@ import Network
         browser?.cancel(); browser = nil
         for (_, c) in connections { c.cancel() }
         connections = [:]
+        dropAllDirect()
     }
     /// Wi-Fi to cellular or back: the saved tailnet addresses are tried again, no discovery needed.
     func networkChanged() {
         guard active else { return }
+        dropAllDirect()
         for host in Array(lastAsked.keys) where connections[host] == nil { lastAsked[host] = nil }
         askSaved()
     }
@@ -128,6 +136,146 @@ import Network
         }
         conn.start(queue: .main)
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { MainActor.assumeIsolated { finish(nil) } }
+    }
+
+
+    // ------------------------------------------------------------------ NIP-SESS direct transport (#13795)
+
+    /// Whether a paired Mac has a saved tailnet endpoint we can try directly.
+    func canDirect(host: String) -> Bool {
+        active && book.computers.contains(where: { $0.host == host })
+    }
+
+    /// Sends one sealed NIP-SESS request event straight to the Mac's tailnet listener.
+    /// Calls `completion(replyEventBytes)` on success or `completion(nil)` on failure so the
+    /// caller can fall back to the relay.
+    func sendDirect(host: String, event: Data, timeout: TimeInterval, completion: @escaping (Data?) -> Void) {
+        guard active, let c = book.computers.first(where: { $0.host == host }) else {
+            completion(nil); return
+        }
+        var finished = false
+        let finish: (Data?) -> Void = { data in
+            guard !finished else { return }
+            finished = true
+            completion(data)
+        }
+        // Bound direct wait so relay fallback is prompt when the tailnet peer is unreachable.
+        let directTimeout = min(timeout, 4.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + directTimeout) {
+            MainActor.assumeIsolated { finish(nil) }
+        }
+        if directReady.contains(host), let conn = directConns[host] {
+            sendDirectFrame(host: host, conn: conn, event: event, finish: finish)
+            return
+        }
+        directQueued[host, default: []].append((event, finish))
+        if directConns[host] == nil {
+            dialDirect(c, order: c.dialOrder)
+        }
+    }
+
+    private func sendDirectFrame(host: String, conn: NWConnection, event: Data, finish: @escaping (Data?) -> Void) {
+        var line = event
+        line.append(0x0A)
+        directWaiters[host, default: []].append(finish)
+        conn.send(content: line, completion: .contentProcessed { [weak self] error in
+            if error != nil {
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.dropDirect(host) } }
+            }
+        })
+    }
+
+    private func dialDirect(_ c: AppTailnetComputer, order: [String]) {
+        guard active, let first = order.first, let port = NWEndpoint.Port(rawValue: c.port) else {
+            dropDirect(c.host); return
+        }
+        let rest = Array(order.dropFirst())
+        let conn = NWConnection(host: NWEndpoint.Host(first), port: port, using: .tcp)
+        directConns[c.host] = conn
+        var settled = false
+        let fail: () -> Void = { [weak self] in
+            guard let self, !settled else { return }
+            settled = true
+            conn.cancel()
+            guard self.directConns[c.host] === conn else { return }
+            self.directConns[c.host] = nil
+            if !rest.isEmpty && self.active {
+                self.dialDirect(c, order: rest)
+            } else {
+                self.dropDirect(c.host)
+            }
+        }
+        conn.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                conn.send(content: AppTailnet.directHelloLine(), completion: .contentProcessed { _ in })
+                AppTailnetLink.readLine(conn, Data()) { line in
+                    DispatchQueue.main.async {
+                        MainActor.assumeIsolated {
+                            guard let self, !settled, self.directConns[c.host] === conn else { return }
+                            guard let line, AppTailnet.directAck(line).ok else { fail(); return }
+                            settled = true
+                            self.directReady.insert(c.host)
+                            self.directBuffers[c.host] = Data()
+                            self.receiveDirect(host: c.host, conn: conn)
+                            let queued = self.directQueued.removeValue(forKey: c.host) ?? []
+                            for (ev, cb) in queued {
+                                self.sendDirectFrame(host: c.host, conn: conn, event: ev, finish: cb)
+                            }
+                        }
+                    }
+                }
+            case .failed, .cancelled, .waiting:
+                DispatchQueue.main.async { MainActor.assumeIsolated { fail() } }
+            default: break
+            }
+        }
+        conn.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            MainActor.assumeIsolated { if !settled { fail() } }
+        }
+    }
+
+    private func receiveDirect(host: String, conn: NWConnection) {
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, complete, error in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.directConns[host] === conn else { return }
+                    if let data, !data.isEmpty {
+                        var buf = self.directBuffers[host] ?? Data()
+                        buf.append(data)
+                        while let nl = buf.firstIndex(of: 0x0A) {
+                            let line = Data(buf[buf.startIndex..<nl])
+                            buf.removeSubrange(buf.startIndex...nl)
+                            if var waiters = self.directWaiters[host], !waiters.isEmpty {
+                                let next = waiters.removeFirst()
+                                self.directWaiters[host] = waiters
+                                next(line)
+                            }
+                        }
+                        if buf.count > 262144 { self.dropDirect(host); return }
+                        self.directBuffers[host] = buf
+                    }
+                    if error != nil || complete { self.dropDirect(host); return }
+                    self.receiveDirect(host: host, conn: conn)
+                }
+            }
+        }
+    }
+
+    private func dropDirect(_ host: String) {
+        directConns.removeValue(forKey: host)?.cancel()
+        directReady.remove(host)
+        directBuffers.removeValue(forKey: host)
+        let waiters = directWaiters.removeValue(forKey: host) ?? []
+        let queued = directQueued.removeValue(forKey: host) ?? []
+        for cb in waiters { cb(nil) }
+        for (_, cb) in queued { cb(nil) }
+    }
+
+    private func dropAllDirect() {
+        let hosts = Set(directConns.keys).union(directWaiters.keys).union(directQueued.keys)
+        for h in hosts { dropDirect(h) }
     }
 
     /// Reads up to one newline (the answer), at most AppTailnet.answerMax bytes.

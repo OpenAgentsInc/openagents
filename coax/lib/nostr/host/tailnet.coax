@@ -1,0 +1,351 @@
+// NIP-HOST tailnet admission & NIP-SESS direct transport wire codec (GitHub #13795, follow-up to #13778):
+//   openagents.host-tailnet-admission-request.v1
+//   openagents.host-tailnet-admission.v1
+//   openagents.history-observer-direct.v1
+//
+// One Coax codec for both ends of zero-config pairing and direct transport over
+// Tailscale (Coder Desktop, the daemon, and OpenAgents iOS).
+//
+// Reference:
+//   nostr/nips/openagents/NIP-HOST.md (Tailnet admission)
+//   nostr/nips/openagents/NIP-SESS.md (Direct transport over a tailnet)
+
+#load "../../json/json.coax";
+
+HT_REQUEST_SCHEMA :: "openagents.host-tailnet-admission-request.v1";
+HT_ANSWER_SCHEMA  :: "openagents.host-tailnet-admission.v1";
+HT_DIRECT_SCHEMA  :: "openagents.history-observer-direct.v1";
+
+HT_LINE_MAX   :: 1024;
+HT_ANSWER_MAX :: 2048;
+HT_FRAME_MAX  :: 262144;
+
+HtAdmissionRequest :: struct {
+  chats: bool;
+}
+
+HtAdmissionAnswer :: struct {
+  host: [64] u8;        nhost: int;
+  label: [128] u8;      nlabel: int;
+  invitation: [512] u8; ninv: int;
+  refused: [32] u8;     nref: int;
+}
+
+HtDirectAck :: struct {
+  refused: [32] u8; nref: int;
+}
+
+ht_copy :: (dst: [] u8, src: string) -> int {
+  if src.count > dst.count { return -1; }
+  for i: 0..<src.count { dst[i] = src[i]; }
+  return src.count;
+}
+
+ht_hex64 :: (s: string) -> bool {
+  if s.count != 64 { return false; }
+  for i: 0..<64 {
+    c := s[i];
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+ht_refusal_ok :: (s: string) -> bool {
+  return s == "not_tailnet" || s == "unavailable" || s == "tagged" || s == "not_owner" || s == "not_serving" || s == "busy";
+}
+
+ht_requires_empty :: (d: Jv, root: int) -> bool {
+  req := jv_get(d, root, "requires");
+  if jv_kind(d, req) != JV_ARRAY { return false; }
+  return d.nodes[req].first < 0;
+}
+
+// ------------------------------------------------------------------ admission request
+
+ht_request_write :: (chats: bool, out: [] u8) -> int {
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_REQUEST_SCHEMA);
+  jo_key(o[..], "requires"); jo_open(o[..], '['); jo_end(o[..]);
+  jo_key(o[..], "chats"); jo_bool(o[..], chats);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_request_read :: (raw: string, out: [] HtAdmissionRequest) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_LINE_MAX { return false; }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  for i: 0..<jv_len(d[0], 0) {
+    k := jv_key(d[0], jv_at(d[0], 0, i));
+    if k != "v" && k != "requires" && k != "chats" { return false; }
+  }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_REQUEST_SCHEMA { return false; }
+  if !ht_requires_empty(d[0], 0) { return false; }
+  out[0].chats = false;
+  chats_at := jv_get(d[0], 0, "chats");
+  if chats_at >= 0 {
+    k := jv_kind(d[0], chats_at);
+    if k == JV_TRUE { out[0].chats = true; }
+    else if k == JV_FALSE { out[0].chats = false; }
+    else if k != JV_NULL { return false; }
+  }
+  return true;
+}
+
+// ------------------------------------------------------------------ admission answer
+
+ht_answer_write :: (ap: [] HtAdmissionAnswer, out: [] u8) -> int {
+  if ap.count < 1 { return -1; }
+  has_inv := ap[0].ninv > 0;
+  has_ref := ap[0].nref > 0;
+  if has_inv == has_ref { return -1; }
+  if has_inv {
+    if ap[0].nhost != 64 || !ht_hex64(cast(string) ap[0].host[0..<64]) { return -1; }
+    if ap[0].nlabel < 1 || ap[0].nlabel > 128 { return -1; }
+  } else {
+    if !ht_refusal_ok(cast(string) ap[0].refused[0..<ap[0].nref]) { return -1; }
+    if ap[0].nhost != 0 && (ap[0].nhost != 64 || !ht_hex64(cast(string) ap[0].host[0..<64])) { return -1; }
+  }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_ANSWER_SCHEMA);
+  jo_key(o[..], "host"); jo_str(o[..], cast(string) ap[0].host[0..<ap[0].nhost]);
+  jo_key(o[..], "label"); jo_str(o[..], cast(string) ap[0].label[0..<ap[0].nlabel]);
+  if has_inv {
+    jo_key(o[..], "invitation"); jo_str(o[..], cast(string) ap[0].invitation[0..<ap[0].ninv]);
+    jo_key(o[..], "refused"); jo_null(o[..]);
+  } else {
+    jo_key(o[..], "invitation"); jo_null(o[..]);
+    jo_key(o[..], "refused"); jo_str(o[..], cast(string) ap[0].refused[0..<ap[0].nref]);
+  }
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_ANSWER_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_answer_read :: (raw: string, out: [] HtAdmissionAnswer) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_ANSWER_MAX { return false; }
+  out[0].nhost = 0; out[0].nlabel = 0; out[0].ninv = 0; out[0].nref = 0;
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_ANSWER_SCHEMA { return false; }
+  h_at := jv_get(d[0], 0, "host");
+  if jv_kind(d[0], h_at) != JV_STRING { return false; }
+  hn := jv_str(d[0], h_at, out[0].host[..]);
+  if hn < 0 { return false; }
+  out[0].nhost = hn;
+  l_at := jv_get(d[0], 0, "label");
+  if l_at >= 0 && jv_kind(d[0], l_at) != JV_NULL {
+    if jv_kind(d[0], l_at) != JV_STRING { return false; }
+    ln := jv_str(d[0], l_at, out[0].label[..]);
+    if ln < 0 { return false; }
+    out[0].nlabel = ln;
+  }
+  inv_at := jv_get(d[0], 0, "invitation");
+  ref_at := jv_get(d[0], 0, "refused");
+  has_inv := inv_at >= 0 && jv_kind(d[0], inv_at) == JV_STRING;
+  has_ref := ref_at >= 0 && jv_kind(d[0], ref_at) == JV_STRING;
+  if inv_at >= 0 && !has_inv && jv_kind(d[0], inv_at) != JV_NULL { return false; }
+  if ref_at >= 0 && !has_ref && jv_kind(d[0], ref_at) != JV_NULL { return false; }
+  if has_inv == has_ref { return false; }
+  if has_inv {
+    if hn != 64 || !ht_hex64(cast(string) out[0].host[0..<64]) { return false; }
+    in_n := jv_str(d[0], inv_at, out[0].invitation[..]);
+    if in_n < 1 { return false; }
+    out[0].ninv = in_n;
+    return true;
+  }
+  rn := jv_str(d[0], ref_at, out[0].refused[..]);
+  if rn < 1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  if hn != 0 && (hn != 64 || !ht_hex64(cast(string) out[0].host[0..<64])) { return false; }
+  out[0].nref = rn;
+  return true;
+}
+
+// ------------------------------------------------------------------ NIP-SESS direct handshake
+
+ht_direct_hello_write :: (out: [] u8) -> int {
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_DIRECT_SCHEMA);
+  jo_key(o[..], "requires"); jo_open(o[..], '['); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_direct_hello_read :: (raw: string) -> bool {
+  if raw.count < 2 || raw.count > HT_LINE_MAX { return false; }
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_DIRECT_SCHEMA { return false; }
+  return ht_requires_empty(d[0], 0);
+}
+
+ht_direct_ack_write :: (refused: string, out: [] u8) -> int {
+  if refused.count > 0 && !ht_refusal_ok(refused) { return -1; }
+  o: [1] Jo; o[0].buf = out;
+  jo_open(o[..], '{');
+  jo_key(o[..], "v"); jo_str(o[..], HT_DIRECT_SCHEMA);
+  jo_key(o[..], "refused");
+  if refused.count > 0 { jo_str(o[..], refused); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+  if o[0].bad || o[0].n > HT_LINE_MAX { return -1; }
+  return o[0].n;
+}
+
+ht_direct_ack_read :: (raw: string, out: [] HtDirectAck) -> bool {
+  if out.count < 1 || raw.count < 2 || raw.count > HT_LINE_MAX { return false; }
+  out[0].nref = 0;
+  nodes: [64] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], raw, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  vb: [64] u8; vn := jv_str(d[0], jv_get(d[0], 0, "v"), vb[..]);
+  if vn < 0 || cast(string) vb[0..<vn] != HT_DIRECT_SCHEMA { return false; }
+  ref_at := jv_get(d[0], 0, "refused");
+  if ref_at < 0 || jv_kind(d[0], ref_at) == JV_NULL { return true; }
+  if jv_kind(d[0], ref_at) != JV_STRING { return false; }
+  rn := jv_str(d[0], ref_at, out[0].refused[..]);
+  if rn < 1 || !ht_refusal_ok(cast(string) out[0].refused[0..<rn]) { return false; }
+  out[0].nref = rn;
+  return true;
+}
+
+// ------------------------------------------------------------------ C ABI exports for Swift/C hosts
+
+oa_ht_request_write :: (chats: bool, out: [] u8) -> int #export_c #effects(all) {
+  return ht_request_write(chats, out);
+}
+
+// Returns 1 (chats=true), 0 (chats=false), or -1 (invalid).
+oa_ht_request_read :: (raw: string) -> int #export_c #effects(all) {
+  q: [1] HtAdmissionRequest;
+  if !ht_request_read(raw, q[..]) { return -1; }
+  return ifx q[0].chats then 1 else 0;
+}
+
+oa_ht_answer_write :: (host: string, label: string, invitation: string, refused: string, out: [] u8) -> int #export_c #effects(all) {
+  a: [1] HtAdmissionAnswer;
+  if host.count > 0 { nh := ht_copy(a[0].host[..], host); if nh < 0 { return -1; } a[0].nhost = nh; }
+  if label.count > 0 { nl := ht_copy(a[0].label[..], label); if nl < 0 { return -1; } a[0].nlabel = nl; }
+  if invitation.count > 0 { ni := ht_copy(a[0].invitation[..], invitation); if ni < 0 { return -1; } a[0].ninv = ni; }
+  if refused.count > 0 { nr := ht_copy(a[0].refused[..], refused); if nr < 0 { return -1; } a[0].nref = nr; }
+  return ht_answer_write(a[..], out);
+}
+
+// Parses an admission answer line. Writes invitation (returns >= 0: its length, and fills label) or
+// refuses (returns -2 - refused_len, writing refused into out), or -1 on invalid/host mismatch.
+oa_ht_answer_read :: (raw: string, expected_host: string, out: [] u8, label_out: [] u8, label_n: [] int) -> int #export_c #effects(all) {
+  a: [1] HtAdmissionAnswer;
+  if !ht_answer_read(raw, a[..]) { return -1; }
+  if a[0].ninv > 0 {
+    if expected_host.count == 64 && cast(string) a[0].host[0..<a[0].nhost] != expected_host { return -1; }
+    n := ht_copy(out, cast(string) a[0].invitation[0..<a[0].ninv]);
+    if n < 0 { return -1; }
+    if label_n.count > 0 {
+      ln := ifx a[0].nlabel > 0 then ht_copy(label_out, cast(string) a[0].label[0..<a[0].nlabel]) else 0;
+      label_n[0] = ifx ln >= 0 then ln else 0;
+    }
+    return n;
+  }
+  rn := ht_copy(out, cast(string) a[0].refused[0..<a[0].nref]);
+  if rn < 1 { return -1; }
+  if label_n.count > 0 { label_n[0] = 0; }
+  return -2 - rn;
+}
+
+oa_ht_direct_hello_write :: (out: [] u8) -> int #export_c #effects(all) {
+  return ht_direct_hello_write(out);
+}
+
+oa_ht_direct_hello_read :: (raw: string) -> bool #export_c #effects(all) {
+  return ht_direct_hello_read(raw);
+}
+
+oa_ht_direct_ack_write :: (refused: string, out: [] u8) -> int #export_c #effects(all) {
+  return ht_direct_ack_write(refused, out);
+}
+
+// Returns 0 if admitted (refused == null), > 0 (refused length written to out) if refused, or -1 if invalid.
+oa_ht_direct_ack_read :: (raw: string, out: [] u8) -> int #export_c #effects(all) {
+  a: [1] HtDirectAck;
+  if !ht_direct_ack_read(raw, a[..]) { return -1; }
+  if a[0].nref == 0 { return 0; }
+  return ht_copy(out, cast(string) a[0].refused[0..<a[0].nref]);
+}
+
+// ------------------------------------------------------------------ tests
+
+#test "tailnet admission request round-trips and enforces requires and bounds" {
+  buf: [HT_LINE_MAX] u8;
+  n := ht_request_write(true, buf[..]);
+  #assert n > 0;
+  q: [1] HtAdmissionRequest;
+  #assert ht_request_read(cast(string) buf[0..<n], q[..]);
+  #assert q[0].chats;
+
+  m := ht_request_write(false, buf[..]);
+  #assert m > 0;
+  #assert ht_request_read(cast(string) buf[0..<m], q[..]);
+  #assert !q[0].chats;
+
+  // chats omitted defaults to false
+  #assert ht_request_read("{\"v\":\"openagents.host-tailnet-admission-request.v1\",\"requires\":[]}", q[..]);
+  #assert !q[0].chats;
+
+  // non-empty requires, wrong schema, or non-bool chats are refused
+  #assert !ht_request_read("{\"v\":\"openagents.host-tailnet-admission-request.v1\",\"requires\":[\"x\"]}", q[..]);
+  #assert !ht_request_read("{\"v\":\"openagents.other.v1\",\"requires\":[]}", q[..]);
+  #assert !ht_request_read("{\"v\":\"openagents.host-tailnet-admission-request.v1\",\"requires\":[],\"chats\":\"yes\"}", q[..]);
+}
+
+#test "tailnet admission answer round-trips admit and refuse and rejects malformed shapes" {
+  host := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  a: [1] HtAdmissionAnswer;
+  a[0].nhost = ht_copy(a[0].host[..], host);
+  a[0].nlabel = ht_copy(a[0].label[..], "Studio Mac");
+  a[0].ninv = ht_copy(a[0].invitation[..], "openagents://pair?host=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef&relay=wss://relay.openagents.com&code=ABCD1234");
+  buf: [HT_ANSWER_MAX] u8;
+  n := ht_answer_write(a[..], buf[..]);
+  #assert n > 0;
+  got: [1] HtAdmissionAnswer;
+  #assert ht_answer_read(cast(string) buf[0..<n], got[..]);
+  #assert got[0].nhost == 64 && cast(string) got[0].host[0..<64] == host;
+  #assert cast(string) got[0].label[0..<got[0].nlabel] == "Studio Mac";
+  #assert got[0].ninv == a[0].ninv && got[0].nref == 0;
+
+  r: [1] HtAdmissionAnswer;
+  r[0].nref = ht_copy(r[0].refused[..], "not_owner");
+  m := ht_answer_write(r[..], buf[..]);
+  #assert m > 0;
+  #assert ht_answer_read(cast(string) buf[0..<m], got[..]);
+  #assert got[0].ninv == 0 && cast(string) got[0].refused[0..<got[0].nref] == "not_owner";
+
+  // unknown refusal code, both invitation and refused, or bad host key are rejected
+  #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"\",\"label\":\"\",\"refused\":\"bogus\"}", got[..]);
+  #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"label\":\"Mac\",\"invitation\":\"openagents://pair\",\"refused\":\"not_owner\"}", got[..]);
+  #assert !ht_answer_read("{\"v\":\"openagents.host-tailnet-admission.v1\",\"host\":\"not-a-host\",\"label\":\"Mac\",\"refused\":\"not_owner\"}", got[..]);
+}
+
+#test "NIP-SESS direct handshake round-trips and enforces requires and refusal codes" {
+  buf: [HT_LINE_MAX] u8;
+  n := ht_direct_hello_write(buf[..]);
+  #assert n > 0;
+  #assert ht_direct_hello_read(cast(string) buf[0..<n]);
+  #assert !ht_direct_hello_read("{\"v\":\"openagents.history-observer-direct.v1\",\"requires\":[\"x\"]}");
+  #assert !ht_direct_hello_read("{\"v\":\"openagents.host-tailnet-admission-request.v1\",\"requires\":[]}");
+
+  ack: [1] HtDirectAck;
+  m := ht_direct_ack_write("", buf[..]);
+  #assert m > 0;
+  #assert ht_direct_ack_read(cast(string) buf[0..<m], ack[..]) && ack[0].nref == 0;
+
+  m2 := ht_direct_ack_write("not_owner", buf[..]);
+  #assert m2 > 0;
+  #assert ht_direct_ack_read(cast(string) buf[0..<m2], ack[..]) && cast(string) ack[0].refused[0..<ack[0].nref] == "not_owner";
+  #assert ht_direct_ack_write("bogus", buf[..]) < 0;
+}
