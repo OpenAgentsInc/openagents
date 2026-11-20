@@ -273,7 +273,8 @@ tests for what you touched, not everything.
 
 ## Git
 
-- Work on `main`. Commit only the files you changed, and push to `main`.
+- Work on `main`. **Anytime you make changes at a user's request, always commit only the files you changed, rebase onto `origin/main`, push to `main` (`git push origin HEAD:main`), and clean up any temporary worktrees and branches when finished.** Never leave user-requested changes sitting unpushed or only on a side branch.
+- **Desktop app installs (`/Applications/OpenAgents.app`).** Use `apps/openagents-desktop/install.sh` to install the macOS app and sync the resident daemon (`~/.openagents/bin/openagents-environment`). Because `install.sh` always builds from `origin/main` (in its own checkout under `~/.cache/openagents/coder-release`), **always commit and push your changes to `main` first**, then run `apps/openagents-desktop/install.sh` (do not hand-copy a branch build into `/Applications/OpenAgents.app` instead of landing on `main`).
 - This section is for team agents. A contributor outside the team works
   from a fork and opens a pull request ([CONTRIBUTING.md](CONTRIBUTING.md));
   their one check is `scripts/check.sh`, the pre-push check's local checks
