@@ -275,12 +275,18 @@ extension CoderWindow {
         }
         // the page's rects are top-left points; the canvas's, bottom-left
         let canvasH = canvas.bounds.height
-        let clip = NSRect(x: CGFloat(r[4]), y: canvasH - CGFloat(r[5]) - CGFloat(r[7]), width: CGFloat(r[6]), height: CGFloat(r[7])).integral
-        let card = NSRect(x: CGFloat(r[0]) - clip.minX, y: canvasH - CGFloat(r[1]) - CGFloat(r[3]) - clip.minY, width: CGFloat(r[2]), height: CGFloat(r[3])).integral
+        let clip = Self.snapped(CGFloat(r[4]), canvasH - CGFloat(r[5]) - CGFloat(r[7]), CGFloat(r[6]), CGFloat(r[7]))
+        let card = Self.snapped(CGFloat(r[0]) - clip.minX, canvasH - CGFloat(r[1]) - CGFloat(r[3]) - clip.minY, CGFloat(r[2]), CGFloat(r[3]))
         if box.frame != clip { box.frame = clip }
         if panel.frame != card { panel.frame = card }
         panel.setHoles(pageOverRects(in: panel))
         if box.isHidden { box.isHidden = false }
+    }
+
+    /// A rect with each edge on the nearest whole point (not grown, as NSRect.integral is).
+    static func snapped(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
+        let x0 = x.rounded(), y0 = y.rounded()
+        return NSRect(x: x0, y: y0, width: (x + w).rounded() - x0, height: (y + h).rounded() - y0)
     }
 
     /// Loads path into the live card's viewport when it is a new file or the file changed; a file
