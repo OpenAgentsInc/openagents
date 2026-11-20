@@ -329,6 +329,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 27: attachMenu()
         case 28: listFiles()
         case 29: zoom(nil)
+        case 30: let j = Int(cd_stop_agent(run.page)); if j >= 0 { cancelAgent(run, j) }
         case 40...43: fileAsked(what)
         default: break
         }

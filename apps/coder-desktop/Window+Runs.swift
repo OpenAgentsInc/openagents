@@ -17,6 +17,13 @@ extension CoderWindow {
     /// stop the workers of those that have ended. Microcoder hands tasks over in one line; each runs
     /// on a worker of its own, all at once, and the run's page reads every line. (Each count is
     /// taken before its write: see act.)
+    /// Cancel a single running sub-agent without stopping the parent turn or sibling sub-agents (#13766).
+    func cancelAgent(_ r: CoderRun, _ j: Int) {
+        guard cd_agent_cancel(r.page, Int32(j)) != 0 else { return }
+        if let w = r.agents.removeValue(forKey: j) { w.stop() }
+        pump(r)
+        wake()
+    }
     func stopRun(_ r: CoderRun) {
         var out = [CChar](repeating: 0, count: 4096)
         let n = cd_stop_line(&out, Int32(out.count))

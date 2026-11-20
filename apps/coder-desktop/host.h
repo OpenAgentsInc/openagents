@@ -57,6 +57,8 @@ void cd_agent_line(void *page, int agent, const char *line);
 void cd_agent_failed(void *page, int agent, const char *why);
 int cd_agent_answer_line(void *page, int agent, char *out, int cap);
 int cd_agent_running(void *page, int agent);
+int cd_agent_cancel(void *page, int agent);
+int cd_stop_agent(void *page);
 // Kept chats. cd_chats: the list for the sidebar, most recent first, one chat a line (its id, a
 // tab, its title). cd_current: the id of the chat that is shown ("" for one not kept yet).
 // cd_open_id: the id a press in the sidebar asked for (cd_action 7). cd_save_due: the chat changed

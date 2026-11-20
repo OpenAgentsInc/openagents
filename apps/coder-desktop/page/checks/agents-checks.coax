@@ -151,7 +151,7 @@
   p: [1] CoderPage; s := p[..];
   cp_init(s);
   #assert coder_page_set_text(s, "ship it") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
-  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"build it\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 2 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Neon" && !coder_page_agent_claude(s, 0) && coder_page_agent_claude(s, 1);
@@ -168,7 +168,7 @@
   p: [1] CoderPage; s := p[..];
   cp_init(s);
   #assert coder_page_set_text(s, "do two things") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
-  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && back[0].edits && back[0].gated && back[0].unlimited;
   #assert coder_page_agent_next(s) == -1;
@@ -206,7 +206,7 @@
 #test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {
   p: [1] CoderPage; s := p[..];
   cp_init(s);
-  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   #assert coder_page_set_text(s, "ask claude") && coder_page_submit(s);
   n := coder_page_task(s, "s", "/w", out[..]);
   #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].agents && !back[0].claude;
@@ -425,6 +425,57 @@
     n = coder_page_agent_task(s, j, "s-a", wt, out[..]);
     #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].cwd == wt;
   }
+
+#test "early failure wakes parent while sibling sub-agent stays running (#13766)" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "run two") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":9,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"one\"},{\"level\":\"hydrogen\",\"task\":\"two\"}]}") == MWW_DELEGATE;
+  #assert coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && !s[0].results_due;
+  coder_page_agent_failed(s, 0, "worker crashed");
+  #assert !coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && s[0].results_due;
+  out: [2048] u8;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "\"ticket\":9") >= 0;
+  #assert cp_find(line, "worker crashed") >= 0;
+  #assert cp_find(line, "still running in the background (sub-agent #2)") >= 0;
+  #assert cp_find(line, "\"exit\":0,\"output\":\"still running in the background (sub-agent #2)") >= 0;
+  #assert coder_page_agent_running(s, 1) && !s[0].results_due;
+}
+
+#test "mid-delegation accepted steer wakes parent with still-running sub-agent status (#13766)" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "delegate work") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":12,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"long task\"}]}") == MWW_DELEGATE;
+  #assert coder_page_agent_running(s, 0) && !s[0].results_due;
+  #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"s1\",\"status\":\"accepted\",\"turn\":1,\"text\":\"change direction\"}") == MWW_STEERED;
+  #assert s[0].results_due && coder_page_agent_running(s, 0);
+  out: [2048] u8;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "\"ticket\":12") >= 0;
+  #assert cp_find(line, "still running in the background (sub-agent #1)") >= 0;
+  #assert coder_page_agent_running(s, 0);
+}
+
+#test "per-subagent cancel stops only the chosen sub-agent and wakes parent (#13766)" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  #assert coder_page_set_text(s, "run two") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":15,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"alpha\"},{\"level\":\"hydrogen\",\"task\":\"beta\"}]}") == MWW_DELEGATE;
+  #assert coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1);
+  #assert coder_page_agent_cancel(s, 0);
+  #assert !coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1);
+  #assert s[0].turns[0].agents[0].state == CP_STOPPED;
+  #assert s[0].results_due;
+  #assert !coder_page_agent_cancel(s, 0);
+  out: [2048] u8;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert n > 0 && cp_find(line, "\"ticket\":15") >= 0;
+  #assert cp_find(line, "Stopped by user.") >= 0;
+  #assert cp_find(line, "still running in the background (sub-agent #2)") >= 0;
+  #assert coder_page_agent_running(s, 1);
 }
 
 #test "a sub-agent's pane keeps the conversation's copy lane under its task, so its work stands level with the message's (#13770)" {

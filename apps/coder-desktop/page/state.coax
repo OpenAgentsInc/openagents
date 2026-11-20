@@ -97,6 +97,7 @@ CP_ASK_PALETTE :: 26;       // the command palette opened (the host watches it) 
 CP_ASK_ADD :: 27;           // the composer's + was pressed: the host opens its menu at coder_page_add_at (Attach Files…, Change Folder…; attach.coax, #13699)
 CP_ASK_FILES :: 28;         // the @ popover wants the working folder's files listed (coder_page_files)
 CP_ASK_ZOOM_RESET :: 29;    // reset the text size to the usual 100% row
+CP_ASK_STOP_AGENT :: 30;    // stop one running sub-agent (coder_page_stop_agent; #13766)
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
@@ -111,6 +112,7 @@ CP_JUMP :: 62;             // Jump to latest (New reply): the transcript glides 
 CP_PALETTE :: 51;          // the sidebar's Search: the command palette opens on Sessions (#13700)
 // the draft's attachments and its mentions (#13699): a chip of the strip (it opens), its ×, a row of the @ or / popover
 CP_CARGO :: 63; CP_CARGO_REMOVE :: 64; CP_MENTION :: 65; CP_ASK_ADD_PRESS :: 66;   // and the composer's +
+CP_PANE_STOP :: 67;         // stop button in the sub-agent pane (#13766)
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -270,6 +272,7 @@ CoderPage :: struct {
   copied_turn: int; copied_block: int; copied_kind: int; copied_at: f32;
   copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
   open_call: int; open_turn: int; open_file: int;   // the file a press asked to open (CP_ASK_OPEN_FILE): row open_call's, else the open_file'th the reply of open_turn names
+  stop_agent: int;            // 0-based sub-agent to stop for CP_ASK_STOP_AGENT (-1: none; #13766)
   update_state: int;
   update_label: [64] u8; update_label_n: int;
   update_detail: [48] u8; update_detail_n: int;
@@ -312,7 +315,7 @@ cp_init :: (s: [] CoderPage) {
   s[0].zoom = CP_ZOOM_USUAL;
   s[0].budget_usd_micros = CP_BUDGET_DEFAULT; s[0].budget_override = false;
   s[0].model = CP_MODEL_DEFAULT; s[0].kept_model = CP_MODEL_DEFAULT; s[0].model_menu = false;
-  s[0].open_cargo = -1; s[0].mn[0].shut = -1;
+  s[0].open_cargo = -1; s[0].stop_agent = -1; s[0].mn[0].shut = -1;
   s[0].goal_status = CP_GOAL_NONE; s[0].goal_objective_n = 0; s[0].goal_time_seconds = 0; s[0].goal_turns = 0; s[0].goal_prompt_kind = CP_GOAL_PROMPT_NONE; s[0].goal_notice_n = 0;
 }
 

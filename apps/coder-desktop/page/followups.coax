@@ -141,6 +141,11 @@ cp_fu_line :: (s: [] CoderPage, kind: int, l: MwwLine) -> bool {
     if f[0].steers[i].ntext == 0 && l.text.count > 0 { f[0].steers[i].ntext = cp_fu_cut(f[0].steers[i].text[..], l.text); }
     was := f[0].steers[i].status;
     f[0].steers[i].status = st;
+    // Mid-delegation steer (#13766): wake the parent turn with partial/still-running subagent results
+    // so the steer reaches the model on the next step without cancelling running subagents.
+    if st == CP_STEER_ACCEPTED && cp_running(s) && s[0].turns[s[0].nturns - 1].waiting {
+      s[0].results_due = true;
+    }
     at := f[0].steers[i].at;
     if st == CP_STEER_APPLIED && was != CP_STEER_APPLIED && at >= 0 && at < s[0].nturns {
       s[0].turns[at].h = 0;
