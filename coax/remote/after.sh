@@ -95,7 +95,8 @@
 # Settings: OA_AFTER_PARTS (6), OA_AFTER_MODULE_PARTS (3), OA_AFTER_FAST_PARTS
 # (3), OA_AFTER_API_PARTS (2), OA_AFTER_MUTATE (1: the mutation report; 0: none),
 # OA_AFTER_MUTATE_PARTS (3), OA_AFTER_MUTATE_TIMEOUT (4200: a mutation job's command), OA_AFTER_MUTATE_RECHECK (6: suites the report rechecks),
-# OA_AFTER_MUTATE_PART_RECHECK (6: parts it runs again), OA_AFTER_MUTATE_SPLIT_MAX (96: the finest part, I/96), OA_AFTER_GAP (10800: seconds between full
+# OA_AFTER_MUTATE_PART_RECHECK (6: parts it runs again), OA_AFTER_MUTATE_SPLIT_MAX (96: the finest part, I/96),
+# OA_AFTER_MUTATE_TOOLS (471f518c4b: the oldest commit a part runs again at), OA_AFTER_GAP (10800: seconds between full
 # runs), OA_AFTER_FAST_GAP (0: seconds between fast runs), OA_AFTER_COMPILER (auto, always or never),
 # OA_BISECT_WIDTH (4), OA_BISECT_CHECKS (4: failing checks bisected one by
 # one; the rest wait for the next run), OA_AFTER_TIMEOUT (3000 s a job's command),
@@ -713,6 +714,20 @@ mutate_limit="${OA_AFTER_MUTATE_TIMEOUT:-4200}"
 # A part that ran out of time runs again as two parts of half its suites, I/N as I/2N and (I+N)/2N
 # (tool.sh suites --part I/N takes suites I, I+N, ...), up to N = OA_AFTER_MUTATE_SPLIT_MAX (96).
 split_max="${OA_AFTER_MUTATE_SPLIT_MAX:-96}"
+# The oldest commit whose mutation tools a part's recheck may run on (#13610): 471f518c4b has
+# #13614's fix (a generated procedure is changed only when its #import_proto is) and mutate-range.
+mutate_tools="${OA_AFTER_MUTATE_TOOLS:-471f518c4b1e5a192b2fcb58e431b4f3946dc38d}"
+# The commit a part's recheck runs at: its own head TOP when TOP has those tools, so it mutates what
+# changed from BASE to TOP and nothing later; that commit when TOP is older; else this head. At this
+# head, `--changed BASE` mutates every procedure changed since BASE, hundreds of commits on: the
+# parts of 5dd368..7a2d5b at dc1bdc86bd (956 commits on) had suites still running after 60 minutes.
+mutants_part_at() {   # top head
+  local floor
+  floor="$(git rev-parse -q --verify "$mutate_tools^{commit}" 2> /dev/null)" || { echo "$2"; return; }
+  if git merge-base --is-ancestor "$floor" "$1" 2> /dev/null; then echo "$1"
+  elif git merge-base --is-ancestor "$1" "$floor" 2> /dev/null && git merge-base --is-ancestor "$floor" "$2" 2> /dev/null; then echo "$floor"
+  else echo "$2"; fi
+}
 mutants_title="Mutation report: survivors and tool problems after landing"
 mutants_pid=""
 mutants_path() {   # dir rel: DIR/REL with "." and ".." taken out
@@ -824,7 +839,8 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
 # (check.sh mutate-only SUITE BASE [FILE]: only FILE's mutants when the suite's items are all in
 # one file), one job a suite, at most OA_AFTER_MUTATE_RECHECK (6) suites;
 # what that finds in other files is not an item. And up to OA_AFTER_MUTATE_PART_RECHECK (6) parts
-# the hosts could not finish, again at this head (check.sh mutate-range). A part that ran out of
+# the hosts could not finish, again at their own head once it has tools that can finish them, else
+# at the oldest commit that has (check.sh mutate-range, mutants_part_at). A part that ran out of
 # time is never run again as it is: it becomes two parts of half its suites (mutants_split), and
 # a mutation job whose command ran out of the host's time isn't retried. An item a recheck no
 # longer finds is cleared; one it can't judge stays. The issue is open while OUTSTANDING has a row: the same steps as the nightly sweep's
@@ -941,12 +957,13 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   done 3< "$dir/plan.tsv"
   np=$k
   # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PART_RECHECK (6) of them,
-  # again: the same part of the suites BASE..TOP touched, at this head, so the compiler and tools are
-  # this head's (an earlier head's tools could be why the part never finished: #13614's swollen
-  # mutants at 7a2d5b2d5b). A part that runs out of time again is split (mutants_split), not rerun as it is.
-  awk -F'\t' -v h="$head" -v n="$pmax" '$1 == "P" && $8 != h && k++ < n { print $2 "\t" $7 "\t" $8 }' "$mutants_out" > "$dir/parts.tsv"
-  while IFS=$'\t' read -r pp pb ph <&3; do
-    j=$((j + 1)); check "$head" "$dir/recheck-part-$j" mutate-range "$pb" "$ph" "${pp#part }" < /dev/null & pids+=($!)
+  # again: the same part of the suites BASE..TOP touched, at TOP once TOP has tools that can finish
+  # it (mutants_part_at: an earlier head's tools could be why the part never finished, #13614's
+  # swollen mutants at 7a2d5b2d5b). A part that runs out of time again is split (mutants_split), not rerun as it is.
+  awk -F'\t' -v h="$head" -v n="$pmax" '$1 == "P" && $8 != h && k++ < n { print $2 "\t" $7 "\t" $8 }' "$mutants_out" |
+    while IFS=$'\t' read -r pp pb ph; do printf '%s\t%s\t%s\t%s\n' "$pp" "$pb" "$ph" "$(mutants_part_at "$ph" "$head")"; done > "$dir/parts.tsv"
+  while IFS=$'\t' read -r pp pb ph pa <&3; do
+    j=$((j + 1)); check "$pa" "$dir/recheck-part-$j" mutate-range "$pb" "$ph" "${pp#part }" < /dev/null & pids+=($!)
   done 3< "$dir/parts.tsv"
   for i in ${pids[@]+"${pids[@]}"}; do wait "$i"; st+=($?); done
   i=0
@@ -980,7 +997,7 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   # A part: cleared once the hosts finish it, and what it found joins the items; one that ran out of
   # time again becomes two parts of half its suites each (it stays as it is past split_max).
   j=0
-  while IFS=$'\t' read -r pp pb ph <&3; do
+  while IFS=$'\t' read -r pp pb ph pa <&3; do
     j=$((j + 1))
     if [[ "${st[$((np + j - 1))]}" == 97 ]]; then
       ran_out "$dir/recheck-part-$j/out" || continue
@@ -993,9 +1010,10 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
     awk -F'\t' -v p="$pp" -v b="$pb" -v h="$ph" -v kept="$dir/kept.tsv.new" -v cleared="$dir/cleared.part" '!($1 == "P" && $2 == p && $7 == b && $8 == h) { print > kept; next } { print > cleared }' "$dir/kept.tsv"
     [[ -f "$dir/kept.tsv.new" ]] || : > "$dir/kept.tsv.new"
     mv "$dir/kept.tsv.new" "$dir/kept.tsv"; cat "$dir/cleared.part" >> "$dir/cleared.tsv" 2> /dev/null; rm -f "$dir/cleared.part"
-    # Its survivors only in files BASE..TOP touched; their lines and procedures are this head's.
+    # Its survivors only in files BASE..TOP touched; their lines and procedures are those of the
+    # commit it ran at, and so is their head: a later recheck runs them again at its own head.
     mutants_records "$dir/recheck-part-$j/build/pipeline/mutate-range.log" > "$dir/recheck-part-$j.tsv"
-    mutants_items "$head" "$pb" "$dir/recheck-part-$j.tsv" "$ph" >> "$dir/kept.tsv"
+    mutants_items "$pa" "$pb" "$dir/recheck-part-$j.tsv" "$ph" >> "$dir/kept.tsv"
   done 3< "$dir/parts.tsv"
 }
 mutants_lifecycle() {   # head base dir: OUTSTANDING after this report, and the one issue to match it

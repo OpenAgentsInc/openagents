@@ -43,6 +43,8 @@
 #      changed the item's file, mutating only that file (check.sh mutate-only SUITE BASE FILE), and
 #      what it finds in another file is not an item; the fixed item clears
 #  25. a procedure's survivors several suites reported are rechecked once and clear in all of them
+#  26. with OA_AFTER_MUTATE_TOOLS set, a part runs again at the oldest commit with those tools when
+#      its own head is older, and at its own head when that has them, not at the newest head
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -113,6 +115,7 @@ case "$1" in
       [[ "$1" != mutate-range ]] || { pt="${4:-}"; echo "$commit $2 $3 $pt" >> "$OA_TEST_W/ranges"; }
       has mutate-host-down && [[ "$pt" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
       has mutate-old-tools && [[ "$pt" == 2/* ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
+      has mutate-down-once && [[ "$pt" == 2/* && -e "$OA_TEST_W/down26" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
       # a part listed in slow-parts runs out of the host's time (host-job.sh's status 124)
       grep -qxF "$pt" "$OA_TEST_W/slow-parts" 2> /dev/null && { echo "$1 $pt" >> "$OA_TEST_W/slow-runs"; echo "remote: oa-x slot 1: checkout and compiler 1 s, command 4140 s, status 124"; exit 124; }
       [[ "$pt" == 1/* ]] || exit 0
@@ -442,6 +445,20 @@ awk -F'\t' -v OFS='\t' -v old="$c24b" '$1 == "S" { $6 = "lib/z.coax"; $8 = old; 
 rm -f "$w/repo/mutant-survives"; echo 'twentyeight :: 28;' >> "$w/repo/lib/a.coax"; push agent-mut "killed everywhere"; : > "$w/onlys"; s="$(run15)"
 [[ -s "$w/z.tsv" && "$(out_n)" == 0 ]] && issue_is CLOSED && [[ "$(cat "$w/onlys")" == "$(g rev-parse HEAD) lib/a.coax $c24b lib/b.coax" ]] &&
   ok "25: survivors two suites reported are rechecked once, in the newest report's suite, and clear in both" || { bad "25: $(out_n) outstanding"; cat "$w/onlys" "$o25"; }
+
+# 26: a part runs again at its own head once that head has the tools (OA_AFTER_MUTATE_TOOLS), so it
+# mutates what changed in its range and nothing later (#13610)
+touch "$w/repo/mutate-old-tools"; echo 'twentynine :: 29;' >> "$w/repo/lib/a.coax"; push agent-mut "a part before the tools"; c26="$(g rev-parse HEAD)"; s="$(run15)"
+rm -f "$w/repo/mutate-old-tools"; echo 'thirty :: 30;' >> "$w/repo/lib/a.coax"; push agent-mut "the tools"; t26="$(g rev-parse HEAD)"
+export OA_AFTER_MUTATE_TOOLS="$t26"
+echo 'thirtyone :: 31;' >> "$w/repo/lib/a.coax"; push agent-mut "after the tools"; : > "$w/ranges"; s="$(run15)"
+issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qE "^$t26 [0-9a-f]+ $c26 2/3\$" "$w/ranges" &&
+  ok "26: a part whose head is older than the tools runs again at the tools' commit and clears" || { bad "26: the floor"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
+touch "$w/down26" "$w/repo/mutate-down-once"; echo 'thirtytwo :: 32;' >> "$w/repo/lib/a.coax"; push agent-mut "a part with the tools"; c26b="$(g rev-parse HEAD)"; s="$(run15)"
+outstanding P "part 2/3" '' && rm -f "$w/down26" "$w/repo/mutate-down-once"; echo 'thirtythree :: 33;' >> "$w/repo/lib/a.coax"; push agent-mut "later"; : > "$w/ranges"; s="$(run15)"
+issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qE "^$c26b [0-9a-f]+ $c26b 2/3\$" "$w/ranges" &&
+  ok "26: a part whose head has the tools runs again at its own head, not the newest" || { bad "26: own head"; cat "$w/ranges" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/run.log" 2> /dev/null; }
+unset OA_AFTER_MUTATE_TOOLS
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

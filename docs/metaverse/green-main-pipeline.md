@@ -636,12 +636,19 @@ item, so a fixed item clears and the recheck doesn't keep adding items:
   items (the report lists at most 39 a suite).
 
 It also runs again up to `OA_AFTER_MUTATE_PART_RECHECK` (6) parts that the
-hosts could not finish. A part runs again at the report's head, not at its own
-(`check.sh mutate-range BASE TOP I/N`: the same part of the suites that
-`BASE..TOP` touched), so it gets the newest compiler and tools. The parts at
-7a2d5b2d5b never finished on their own head's tools, which mutated every
-`#import_proto` procedure (#13614). What a part finds when it finishes joins
-the items. A recheck runs in the report job, after its parts, and never in a
+hosts could not finish (`check.sh mutate-range BASE TOP I/N`: the same part of
+the suites that `BASE..TOP` touched). A part runs again at its own head TOP,
+so it mutates what changed from BASE to TOP and nothing later. A TOP older
+than `OA_AFTER_MUTATE_TOOLS` (471f518c4b, the first commit with #13614's fix
+and `mutate-range`) runs at that commit instead: the parts at 7a2d5b2d5b never
+finished on their own head's tools, which mutated every `#import_proto`
+procedure (#13614). Only when neither works (TOP isn't on `main`'s line from
+that commit) does it run at the report's head. Before this, every part ran at
+the report's head, and `--changed BASE` there mutates every procedure changed
+since BASE: at dc1bdc86bd, 956 commits after 5dd368e30b, the parts of
+5dd368..7a2d5b had suites still running after 60 minutes. What a part finds
+when it finishes joins the items, at the commit it ran at, so the next report
+rechecks them at its own head. A recheck runs in the report job, after its parts, and never in a
 verdict job. An item that the recheck no longer finds is cleared: it is
 killed, marked equivalent, or the tool now finishes it. An item that the
 recheck can't judge stays, for example when the tool again gives no summary.
@@ -693,7 +700,9 @@ runs once, becomes two parts of half its suites, splits again when a half runs
 out, and clears when the finer parts finish. Case 24 checks that a recheck runs
 the item's suite from the parent of the commit that changed the item's file,
 clears the fixed item, and adds nothing from another file. Case 25 checks
-that survivors two suites reported are rechecked once and clear in both.
+that survivors two suites reported are rechecked once and clear in both. Case 26
+checks that a part runs again at the tools' commit when its head is older, and
+at its own head when that head has the tools.
 
 Before this, the `since` jobs ran the mutants themselves (#13583). A slow
 mutate run then held the whole job past its time limit, so the run was
