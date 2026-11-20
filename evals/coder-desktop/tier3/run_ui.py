@@ -465,12 +465,24 @@ class Flow:
         self.app.do("key return")
 
 
-# Points in a 1200 by 800 window's content (top-left), from the goldens: the sidebar's New chat
-# row, its right edge and the first Recents row. A control the page names is pressed by its id
-# (Flow.press), where it is drawn.
-NEW_CHAT = (70, 26)
-SIDE_EDGE_X = 270
-FIRST_CHAT = (100, 126)
+# Controls are pressed where the page draws them, by their row ids (Flow.press, the probe's `box`,
+# coder_page_box): no fixed points, so a layout change moves the click with the control.
+NEW_CHAT = "coder.new"   # the sidebar's New chat row (the first row with that id)
+
+
+def side_edge_x(f: Flow) -> float:
+    """The chats' sidebar's right edge: its rows are inset the same at both sides (app_side_action)."""
+    assert f.app is not None
+    b = f.app.do("box coder.search")
+    return 2 * b["x"] + b["w"]
+
+
+def press_chat(f: Flow) -> None:
+    """A click on the one kept chat's sidebar row: its id is "chat." and the chat's id, its file's name (page/chats.coax)."""
+    kept = f.chats()
+    if len(kept) != 1:
+        raise FlowFailed(f"{len(kept)} kept chats, want 1")
+    f.press("chat." + kept[0].stem)
 
 
 def flow_idle_layouts(f: Flow) -> str:
@@ -505,7 +517,7 @@ def flow_send_stream(f: Flow) -> str:
     f.expect(len(tasks) == 1 and tasks[0]["msg"]["task"] == "Explain the layout", f"worker tasks {tasks}")
     f.check("replied_1200x800")
     f.expect(len(f.chats()) == 1, f"{len(f.chats())} chats kept, want 1")
-    app.do("click %d %d" % NEW_CHAT)
+    f.press(NEW_CHAT)
     st = app.wait("a new chat", lambda s: s["title"] == "", 3)
     c = app.do("composer")
     f.expect(c["text"] == "" and c["focused"], f"composer after New chat: {c}")
@@ -520,12 +532,13 @@ def flow_stop(f: Flow) -> str:
     app.wait("the reply to run", lambda s: s["running"] == 1, 5)
     time.sleep(0.5)
     # the sidebar row's spinner, the thought's spinner and the working line's spinner and clock move
-    f.check("streaming_1200x800", masks=[[232, 138, 44, 40], [400, 140, 30, 30], [385, 240, 140, 35]])
+    # (window points: the page fills the window under its transparent title bar since #13741)
+    f.check("streaming_1200x800", masks=[[230, 170, 34, 32], [400, 126, 28, 28], [400, 228, 130, 26]])
     f.press("coder.composer.send")
     app.wait("the reply to stop", lambda s: s["running"] == 0, 5)
     stops = [r for r in f.records("main") if r["kind"] == "stop"]
     f.expect(len(stops) == 1, f"{len(stops)} stop lines reached the worker, want 1")
-    f.check("stopped_1200x800")
+    f.check("stopped_1200x800", masks=[WORKED_FOR])
     return "stop"
 
 
@@ -546,10 +559,12 @@ def flow_sidebar_resize(f: Flow) -> str:
     """Dragging the sidebar's edge widens it, and the width is kept"""
     app = f.launch()
     before = app.state()["side_width"]
-    app.do(f"drag {SIDE_EDGE_X} 400 {SIDE_EDGE_X + 90} 400 15")
+    edge = side_edge_x(f)
+    app.do(f"drag {edge:.0f} 400 {edge + 90:.0f} 400 15")
     st = app.wait("the width to be kept", lambda s: s["side_width"] > 0, 3)
-    # kept in the page's units, points since #13737: the edge at 270 dragged 90 further is about 360
-    f.expect(before == 0 and 345 <= st["side_width"] <= 375, f"side width {before} -> {st['side_width']}, want about 360")
+    # kept in the page's units, points since #13737: the edge dragged 90 further
+    want = edge + 90
+    f.expect(before == 0 and abs(st["side_width"] - want) <= 15, f"side width {before} -> {st['side_width']}, want about {want:.0f} (edge at {edge:.0f})")
     f.check("sidebar_resized_1200x800")
     return "sidebar resize"
 
@@ -586,10 +601,15 @@ def flow_quit_reopen(f: Flow) -> str:
     st = app.state()
     f.expect(st["title"] == "", f"reopened on {st['title']!r}, want a new chat")
     f.check("reopen_1200x800")
-    app.do("click %d %d" % FIRST_CHAT)
+    press_chat(f)
     st = app.wait("the kept chat to open", lambda s: s["title"] == "Explain the layout", 3)
     f.check("reopened_chat_1200x800")
     return "quit and reopen"
+
+
+# A first turn's "Worked for Ns" head, at the conversation's left under the ask: its seconds depend
+# on the machine.
+WORKED_FOR = [400, 130, 90, 20]
 
 
 def act(reply: str = "", commands: list[str] | None = None) -> dict:
@@ -605,9 +625,9 @@ FOLLOWUPS = {"real": {"answers": [act(commands=["sleep 4"]), act("Fixed the pars
                                   act(commands=['touch "$CODER_T3_RECORD/%s"; sleep 3' % FU_STARTED]), act("Added the changelog entry.")]}}
 FU_ASK, FU_STEER = "Fix the parser", "Also cover the empty string"
 FU_QUEUED = ["Then update the docs", "And add a changelog"]
-# Turn 2's activity row says "Ran 1 command", or "1 failed" when the command was stopped as it
-# started (a slow machine): masked.
-FU_MASK = [[380, 395, 420, 25]]
+# Turn 1's "Worked for Ns" (its command sleeps 4 s) and turn 2's activity row, which says "Ran 1
+# command", or "1 failed" when the command was stopped as it started (a slow machine): masked.
+FU_MASK = [WORKED_FOR, [380, 382, 440, 22]]
 
 
 def flow_followups(f: Flow) -> str:
@@ -678,7 +698,7 @@ def flow_followups(f: Flow) -> str:
     f.app = None
     # the kept chat opens again with no worker on it: its queue is back from the file, paused
     app = f.relaunch()
-    app.do("click %d %d" % FIRST_CHAT)
+    press_chat(f)
     app.wait("the kept chat to open", lambda s: s["title"] == FU_ASK, 5)
     time.sleep(0.5)
     fu = app.do("followups")

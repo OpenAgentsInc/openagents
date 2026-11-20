@@ -23,7 +23,7 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-deskto
 | 1 | Follow-ups (`followups/run_followups.py`): steer, queue and interrupt on the real `mcworker` with generated `GW_REPLAY` replies in a temp `HOME`, and once through `host_driver` (GitHub #13715, #13716). `followups/capture_wire.py --write` records the follow-up lines each way into `proto/coder/microcoder-worker-lines-v1.json` (#13718) | free (no model is called) |
 | compaction | `compaction/` C1-C12 | free |
 | 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
-| 3 | 7 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 15 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
+| 3 | 8 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 18 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
 | 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | about $1.20 a run |
 
 ## Tier 2 and Tier 4 are opt-in
@@ -163,10 +163,21 @@ test copies grew to 12–26 GB each and the Mac ran out of memory).
   `CODER_TEST_LAUNCH` and counts as the driver on every command; a launch with no probe quits that
   long after it starts. `/Applications/Coder.app` never does either.
 
+Controls are pressed where the page draws them: the probe's `box ID` asks the page for that row's
+drawn box (`cd_box`, `coder_page_box`) and the runner clicks its middle. New chat is `coder.new`,
+Stop is `coder.composer.send`, Resume is `coder.fu.resume`, a kept chat's sidebar row is `chat.` and
+the chat's id (its file's name), and the sidebar's edge is found from the `coder.search` row (inset
+the same at both sides). No flow clicks a fixed point, so a layout change moves the click with the
+control.
+
+The window has a transparent title bar with its content under it (`fullSizeContentView`, #13741), so
+`size W H` makes the whole window W by H points and a 1200 by 800 capture is 2400 by 1600 pixels.
+Masks are in the window's points, the 38-point title bar included.
+
 Captures use `screencapture -l` on the window, so the terminal needs Screen Recording. A capture is
 taken once the frame stops changing and compared with `tier3/goldens/NAME.png`: a pixel differs when
 a channel moves more than 24 (`--pixel-tolerance`); a capture fails when more than 0.2% of pixels
-differ (`--max-diff`). Spinners and the About page's version are masked. On a failure the run
+differ (`--max-diff`). Spinners, elapsed seconds ("Worked for Ns", "Thinking… Ns") and the About page's version are masked. On a failure the run
 folder's `cases/FLOW/` holds the capture, `NAME.golden.png` and `NAME.diff.png` (changed pixels in
 red over the dimmed golden). Goldens are 2x captures from a Retina Mac; on another backing scale
 the sizes differ and the flow fails, so regenerate them there.
