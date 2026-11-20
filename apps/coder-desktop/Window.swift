@@ -18,6 +18,7 @@ final class CoderRun {
     var turn: CoderTurn?               // the running message, kept so a reopened Coder attaches to it
     var queued: [String: String] = [:] // the whole text of each message this Coder queued, by id (the page keeps previews)
     var steered: [String: String] = [:] // the whole text of each steer this Coder sent, by id
+    var bound: String?                 // the chat id keep() last bound its worker's queue to
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()

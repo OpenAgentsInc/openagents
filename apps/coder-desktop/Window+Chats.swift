@@ -227,6 +227,9 @@ extension CoderWindow {
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
+        // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
+        // chat's first message and a Foreman chat start before they have an id (#13755)
+        if r.bound != id { r.bound = id; bindQueue(r) }
         cd_chats(page, chatLines); syncForemanUI()
     }
 }
