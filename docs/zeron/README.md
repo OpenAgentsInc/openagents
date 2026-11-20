@@ -23,6 +23,7 @@
 | [`audit.md`](./audit.md) | Senior-advisor codebase audit: strengths, design decisions, and concrete findings across reliability, security, performance, testing/CI, and tech debt with `file:line` evidence. |
 | [`ported-components.md`](./ported-components.md) | Catalog of all Zeron-styled Coax components, skin tokens (`zeron_skin()`), desktop/web/iOS integrations, parity tests, and goldens already ported into OpenAgents. |
 | [`2026-11-19-coder-desktop-ui-gap-analysis.md`](./2026-11-19-coder-desktop-ui-gap-analysis.md) | UI gap analysis between Coder Desktop (`apps/coder-desktop`) and Zeron's zgx desktop app: rendering, scale, tokens, layout, composer, transcript, panel, verification, and an ordered plan. |
+| [`animations.md`](./animations.md) | Complete read-only audit of all animations across Zeron (`crates/orb`, `crates/veil`, `crates/proto`, `crates/visual`, `crates/visual-gpu`, `crates/ui`, `apps/ios`, `apps/android`, `apps/landing`, `apps/card-web`). |
 
 ## Tech Stack
 
