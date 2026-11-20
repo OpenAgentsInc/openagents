@@ -41,6 +41,7 @@
 #      suites (I/N as I/2N and (I+N)/2N), again when one of those runs out, and they clear
 #  24. a recheck is scoped to its item: the item's suite from the parent of the first commit that
 #      changed the item's file, and what it finds in another file is not an item; the fixed item clears
+#  25. a procedure's survivors several suites reported are rechecked once and clear in all of them
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
 #      none for staging, no second when the watcher's memory is gone, a new one after its alert
@@ -432,6 +433,14 @@ issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qxF "$c24b lib/a.coax $c24a" "
   awk -F'\t' '$2 == "lib/b.coax"' "$w/pl/releases/after/$c24b/mutants/cleared.tsv" | grep -q . && ! grep -q "c.coax" "$w/pl/releases/after/$c24b/mutants/comment.md" &&
   ok "24: the recheck runs the item's suite from the parent of the commit that changed its file, clears the killed item and adds nothing from c.coax" || { bad "24: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/onlys" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c24b/mutants/comment.md" 2> /dev/null; echo "want $c24b lib/a.coax $c24a"; }
 rm -f "$w/repo/mutant-elsewhere"
+# 25: a procedure's survivors reported by several suites are rechecked once, in the suite of the
+# newest report, and clear in all of them
+printf 'bee :: (x: int) -> int {\n  y := x - 2;\n  return y * 6;\n}\n' > "$w/repo/lib/b.coax"; touch "$w/repo/mutant-survives"; push agent-mut "survivors in two suites"; c25="$(g rev-parse HEAD)"; s="$(run15)"
+o25="$w/pl/releases/after/mutants-outstanding.tsv"
+awk -F'\t' -v OFS='\t' -v old="$c24b" '$1 == "S" { $6 = "lib/z.coax"; $8 = old; print }' "$o25" > "$w/z.tsv"; cat "$w/z.tsv" >> "$o25"
+rm -f "$w/repo/mutant-survives"; echo 'twentyeight :: 28;' >> "$w/repo/lib/a.coax"; push agent-mut "killed everywhere"; : > "$w/onlys"; s="$(run15)"
+[[ -s "$w/z.tsv" && "$(out_n)" == 0 ]] && issue_is CLOSED && [[ "$(cat "$w/onlys")" == "$(g rev-parse HEAD) lib/a.coax $c24b" ]] &&
+  ok "25: survivors two suites reported are rechecked once, in the newest report's suite, and clear in both" || { bad "25: $(out_n) outstanding"; cat "$w/onlys" "$o25"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"
 exit $(( fails > 0 ))

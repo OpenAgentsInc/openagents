@@ -616,6 +616,10 @@ item, so a fixed item clears and the recheck doesn't keep adding items:
 
 - It runs the item's own suite (`check.sh mutate-only SUITE BASE`), one job a
   suite, at most `OA_AFTER_MUTATE_RECHECK` (6) suites, the oldest items first.
+  A survivor's file runs in one suite: the file itself when it is a suite,
+  else the suite of its newest report. A procedure's survivors are one item
+  whichever suites reported them (`components/kit/frames.coax` had the same
+  four in 11 app suites), so they clear together.
 - BASE is the parent of the first commit after the item's base that changed
   the item's file (a survivor's file, else the suite). So the recheck mutates
   what changed in that file and as little else as it can. A suite with
@@ -681,7 +685,8 @@ head's tools, and clears when they finish it. Case 23 checks that a part that ru
 runs once, becomes two parts of half its suites, splits again when a half runs
 out, and clears when the finer parts finish. Case 24 checks that a recheck runs
 the item's suite from the parent of the commit that changed the item's file,
-clears the fixed item, and adds nothing from another file.
+clears the fixed item, and adds nothing from another file. Case 25 checks
+that survivors two suites reported are rechecked once and clear in both.
 
 Before this, the `since` jobs ran the mutants themselves (#13583). A slow
 mutate run then held the whole job past its time limit, so the run was

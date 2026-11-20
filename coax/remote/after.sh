@@ -907,18 +907,30 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   while IFS=$'\t' read -r f b ph <&3; do
     c="$(git rev-list --reverse --first-parent "$b..$ph" -- "$f" 2> /dev/null | head -n 1)"
     rb="$b"; [[ -z "$c" ]] || rb="$(git rev-parse -q --verify "$c^" 2> /dev/null || echo "$b")"
-    printf '%s\t%s\t%s\t%s\t%s\n' "$f" "$b" "$ph" "$rb" "$(git log -1 --format=%ct "$rb" 2> /dev/null || echo 0)"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$f" "$b" "$ph" "$rb" "$(git log -1 --format=%ct "$rb" 2> /dev/null || echo 0)" "$(git log -1 --format=%ct "$ph" 2> /dev/null || echo 0)"
   done 3< "$dir/files.tsv" > "$dir/rebased.tsv"
   # Each row with the base its suite's recheck runs from (column 9, "-": not rechecked now), and the
   # plan: at most max suites, the oldest item's first.
-  awk -F'\t' -v h="$head" -v max="$max" '
-    FILENAME == ARGV[1] { rb[$1 "\t" $2 "\t" $3] = $4; ct[$1 "\t" $2 "\t" $3] = $5 + 0; next }
-    $8 != h && ($1 == "S" || $1 == "U" || $1 == "T") { s = $6; a = (($1 == "S") ? $2 : $6) "\t" $7 "\t" $8
+  # A survivor's file is rechecked in one suite: the file itself when it is a suite, else the suite
+  # of its newest report (a procedure's survivors are one item whichever suites reached them, and the
+  # newest report's suite is the one that still loads the file).
+  for f in o1 o2 o3; do cp "$mutants_out" "$dir/$f.tsv"; done
+  awk -F'\t' -v h="$head" -v max="$max" -v OFS='\t' -v ann="$dir/annotated.tsv" '
+    function due() { return $8 != h && ($1 == "S" || $1 == "U" || $1 == "T") }
+    FILENAME == ARGV[1] { rb[$1 "\t" $2 "\t" $3] = $4; ct[$1 "\t" $2 "\t" $3] = $5 + 0; hct[$1 "\t" $2 "\t" $3] = $6 + 0; next }
+    FILENAME == ARGV[2] { if (due() && $1 == "S" && pick[$2] != $2) { t = hct[$2 "\t" $7 "\t" $8]
+        if ($6 == $2 || !($2 in pick) || t > pt[$2]) { pick[$2] = $6; pt[$2] = t } }
+      next }
+    FILENAME == ARGV[3] { if (!due()) next
+      s = ($1 == "S") ? pick[$2] : $6; a = (($1 == "S") ? $2 : $6) "\t" $7 "\t" $8
       if (!(s in best)) { if (m < max) { o[++m] = s; best[s] = rb[a]; bct[s] = ct[a] } }
-      else if (ct[a] < bct[s]) { best[s] = rb[a]; bct[s] = ct[a] } }
-    END { for (i = 1; i <= m; i++) printf "%s\t%s\n", best[o[i]], o[i] }' "$dir/rebased.tsv" "$mutants_out" > "$dir/plan.tsv"
-  awk -F'\t' -v OFS='\t' -v h="$head" 'FILENAME == ARGV[1] { best[$2] = $1; next }
-    { print $1, $2, $3, $4, $5, $6, $7, $8, (($8 != h && ($1 == "S" || $1 == "U" || $1 == "T") && ($6 in best)) ? best[$6] : "-") }' "$dir/plan.tsv" "$mutants_out" > "$dir/annotated.tsv"
+      else if (ct[a] < bct[s]) { best[s] = rb[a]; bct[s] = ct[a] }
+      next }
+    # each row with the base and the suite of its recheck (columns 9 and 10, "-": not rechecked now)
+    { s = ($1 == "S") ? pick[$2] : $6
+      print $1, $2, $3, $4, $5, $6, $7, $8, ((due() && (s in best)) ? best[s] OFS s : "-" OFS "-") > ann }
+    END { for (i = 1; i <= m; i++) printf "%s\t%s\n", best[o[i]], o[i] }' "$dir/rebased.tsv" "$dir/o1.tsv" "$dir/o2.tsv" "$dir/o3.tsv" > "$dir/plan.tsv"
+  [[ -f "$dir/annotated.tsv" ]] || : > "$dir/annotated.tsv"
   [[ -f "$dir/plan.tsv" ]] || : > "$dir/plan.tsv"
   while IFS=$'\t' read -r b list <&3; do
     k=$((k + 1)); check "$head" "$dir/recheck-$k" mutate-only "$list" "$b" < /dev/null & pids+=($!)
@@ -950,11 +962,11 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   awk -F'\t' -v OFS='\t' -v kept="$dir/kept.tsv" -v cleared="$dir/cleared.tsv" -v found="$dir/found.tsv" "$mutants_key_awk"'
     function row() { return $1 OFS $2 OFS $3 OFS $4 OFS $5 OFS $6 OFS $7 OFS $8 }
     FILENAME == ARGV[1] { j[$1 "\t" $2] = 1; next }
-    FILENAME == ARGV[2] { if ($9 != "-" && (($6 "\t" $9) in j)) { if ($1 == "S") file[$6 "\t" $9 "\t" $2] = 1; else kind[$6 "\t" $9 "\t" $1] = 1 }; next }
+    FILENAME == ARGV[2] { if ($9 != "-" && (($10 "\t" $9) in j)) { if ($1 == "S") file[$10 "\t" $9 "\t" $2] = 1; else kind[$10 "\t" $9 "\t" $1] = 1 }; next }
     FILENAME == ARGV[3] { p = $6 "\t" $7
       if ($1 == "S" ? !((p "\t" $2) in file) : !((p "\t" $1) in kind)) next
       k = key(); if (!(k in again)) o[++m] = k; again[k] = again[k] row() "\n"; next }
-    { if ($9 == "-" || !(($6 "\t" $9) in j)) { print row() > kept; next }
+    { if ($9 == "-" || !(($10 "\t" $9) in j)) { print row() > kept; next }
       k = key(); if (k in again) { if (!(k in done)) { printf "%s", again[k] > kept; done[k] = 1 } } else print row() > cleared }
     # survivors the report could not list before (it lists 39 a suite), in the same files
     END { for (i = 1; i <= m; i++) if (!(o[i] in done)) printf "%s", again[o[i]] > found }' \
