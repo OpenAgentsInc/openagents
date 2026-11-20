@@ -63,6 +63,16 @@ eu_folder :: (e:[]EnvironmentApp)->string #effects(all) {
   for i:0..<e[0].nfolders {if cast(string)e[0].folders[i].path[0..<e[0].folders[i].np]==want {return want;}}return "";
 }
 eu_take_folders :: (e:[]EnvironmentApp,v:[]EaView) #effects(all) {e[0].nfolders=v[0].nfolders;for i:0..<v[0].nfolders {e[0].folders[i]=v[0].folders[i];}e[0].nroot=v[0].nroot;for i:0..<v[0].nroot {e[0].root[i]=v[0].root[i];}}
+#test "a computer's workspace name and folders replace the ones it offered before, each from its first byte" {
+ e:[1]EnvironmentApp;e[0].nfolders=1;e[0].folders[0].np=ea_copy(e[0].folders[0].path[..],"old");e[0].nroot=ea_copy(e[0].root[..],"zip");
+ v:[1]EaView;v[0].nroot=ea_copy(v[0].root[..],"work");v[0].nfolders=2;
+ v[0].folders[0].np=ea_copy(v[0].folders[0].path[..],"apps");v[0].folders[1].np=ea_copy(v[0].folders[1].path[..],"docs");
+ eu_take_folders(e[..],v[..]);
+ #assert e[0].nroot==4 && cast(string)e[0].root[0..<4]=="work" && e[0].nfolders==2;
+ #assert cast(string)e[0].folders[0].path[0..<e[0].folders[0].np]=="apps" && cast(string)e[0].folders[1].path[0..<e[0].folders[1].np]=="docs";
+ // an older computer names none and offers none: the old ones go
+ z:[1]EaView;eu_take_folders(e[..],z[..]);#assert e[0].nroot==0 && e[0].nfolders==0;
+}
 #test "a new session names the chosen folder only while the computer offers it" {
  e:[1]EnvironmentApp;e[0].active=true;e[0].nd=ea_copy(e[0].draft[..],"hello");e[0].nfo=ea_copy(e[0].folder[..],"apps");
  eu_mutate(e[..],"OpenSession",false);#assert e[0].request[0].nf==0;   // an older computer offered none: no folder

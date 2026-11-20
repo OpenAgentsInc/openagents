@@ -1,0 +1,72 @@
+// Checks for the runtime view's optional tail (wire.coax): the offer, the workspace's name and the
+// folders a computer offers, each at its bounds and each refused byte (GitHub #13610). Loaded by
+// wire.coax with #test, so no compile ships these helpers.
+
+EWC_HOST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+// base, its closing brace replaced by `,EXTRA}`, in out
+ewc_splice :: (base:string,extra:string,out:[]u8)->string #effects(all) {
+  n:=0;for c,i:base {if i<base.count-1 {out[n]=c;n+=1;}}
+  out[n]=',';n+=1;for c:extra {out[n]=c;n+=1;}out[n]='}';n+=1;
+  return cast(string)out[0..<n];
+}
+ewc_has :: (s:string,part:string)->bool #effects(all) {
+  if part.count>s.count {return false;}
+  for i:0..<s.count-part.count+1 {if s[i..<i+part.count]==part {return true;}}
+  return false;
+}
+// "workspace_name":"NAME" with NAME n copies of c
+ewc_name :: (n:int,c:u8,out:[]u8)->string #effects(all) {
+  k:=ea_copy(out,"\"workspace_name\":\"");for i:0..<n {out[k]=c;k+=1;}out[k]='"';k+=1;
+  return cast(string)out[0..<k];
+}
+// "folders":[...] with n one-letter folders a, b, c...
+ewc_folders :: (n:int,out:[]u8)->string #effects(all) {
+  k:=ea_copy(out,"\"folders\":[");
+  for i:0..<n {if i>0 {out[k]=',';k+=1;}out[k]='"';out[k+1]=cast(u8)('a'+i);out[k+2]='"';k+=3;}
+  out[k]=']';k+=1;return cast(string)out[0..<k];
+}
+
+#test "a view writes no offer, workspace or folders it doesn't have, keeps its method whole, and refuses a short buffer" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],EWC_HOST);v[0].nm=ea_copy(v[0].method[..],"DescribeEnvironment");
+  out:[8192]u8;n:=ea_view_write(v[..],out[..]);base:=cast(string)out[0..<n];
+  #assert n>0 && !ewc_has(base,"\"models\"") && !ewc_has(base,"\"efforts\"") && !ewc_has(base,"workspace_name") && !ewc_has(base,"\"folders\"");
+  w:[1]EaView;#assert ea_view_read(base,w[..]) && cast(string)w[0].method[0..<w[0].nm]=="DescribeEnvironment";
+  #assert ea_view_write(v[..],out[0..<12])== -1;
+  // one of each is written: a one-model offer, a one-letter workspace, one folder
+  v[0].offer.nv=1;v[0].offer.levels[0].ni=ea_copy(v[0].offer.levels[0].id[..],"low");v[0].offer.levels[0].nl=ea_copy(v[0].offer.levels[0].label[..],"Low");
+  v[0].offer.n=1;v[0].offer.models[0].ni=ea_copy(v[0].offer.models[0].id[..],"x");v[0].offer.models[0].nl=ea_copy(v[0].offer.models[0].label[..],"X");v[0].offer.models[0].ladder=1;
+  v[0].nroot=ea_copy(v[0].root[..],"w");v[0].nfolders=1;v[0].folders[0].np=ea_copy(v[0].folders[0].path[..],"apps");
+  n=ea_view_write(v[..],out[..]);
+  #assert n>0 && ea_view_read(cast(string)out[0..<n],w[..]) && w[0].offer.n==1 && w[0].offer.models[0].ladder==1;
+  #assert w[0].nroot==1 && w[0].root[0]=='w' && w[0].nfolders==1 && cast(string)w[0].folders[0].path[0..<w[0].folders[0].np]=="apps";
+}
+
+#test "a workspace name is 1 to 80 bytes of text without a slash; every other one refuses the view" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],EWC_HOST);v[0].nm=ea_copy(v[0].method[..],"DescribeEnvironment");
+  out:[8192]u8;n:=ea_view_write(v[..],out[..]);base:=cast(string)out[0..<n];
+  buf:[16384]u8;x:[512]u8;w:[1]EaView;
+  #assert ea_view_read(ewc_splice(base,ewc_name(1,'a',x[..]),buf[..]),w[..]) && w[0].nroot==1 && w[0].root[0]=='a';
+  #assert ea_view_read(ewc_splice(base,ewc_name(80,'a',x[..]),buf[..]),w[..]) && w[0].nroot==80;
+  #assert !ea_view_read(ewc_splice(base,ewc_name(81,'a',x[..]),buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,ewc_name(0,'a',x[..]),buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":5",buf[..]),w[..]);
+  // a space and a digit are text; a control byte, DEL and a slash (also first) are not
+  #assert ea_view_read(ewc_splice(base,"\"workspace_name\":\"my work 09\"",buf[..]),w[..]) && cast(string)w[0].root[0..<w[0].nroot]=="my work 09";
+  #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":\"a\\u001fb\"",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":\"a\\u007fb\"",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":\"a/b\"",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"workspace_name\":\"/x\"",buf[..]),w[..]);
+}
+
+#test "a computer offers at most 24 folders, each a plain relative path, the first checked like the rest" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],EWC_HOST);v[0].nm=ea_copy(v[0].method[..],"DescribeEnvironment");
+  out:[8192]u8;n:=ea_view_write(v[..],out[..]);base:=cast(string)out[0..<n];
+  buf:[16384]u8;x:[512]u8;w:[1]EaView;
+  #assert ea_view_read(ewc_splice(base,ewc_folders(24,x[..]),buf[..]),w[..]) && w[0].nfolders==24;
+  #assert w[0].folders[0].np==1 && w[0].folders[0].path[0]=='a' && w[0].folders[23].np==1 && w[0].folders[23].path[0]=='x';
+  #assert !ea_view_read(ewc_splice(base,ewc_folders(25,x[..]),buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"folders\":\"apps\"",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"folders\":[\".git\"]",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"folders\":[\".git\",\"apps\"]",buf[..]),w[..]);
+  #assert !ea_view_read(ewc_splice(base,"\"folders\":[5]",buf[..]),w[..]);
+}

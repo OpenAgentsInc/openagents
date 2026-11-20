@@ -279,9 +279,9 @@ ea_offer_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
 // The folders a computer offers are optional (an older one sends none); each is a plain relative path.
 // A computer that names its workspace ("workspace_name") offers its projects in it, not subfolders.
 ea_folders_read :: (j:Jv,v:[]EaView)->bool #effects(all) {
-  v[0].nroot=0;k:=jv_get(j,0,"workspace_name");
-  if k>=0 {n:=jv_str(j,k,v[0].root[..]);if n<1 || n>80 {return false;}for c:cast(string)v[0].root[0..<n] {if c<32 || c==127 || c=='/' {return false;}}v[0].nroot=n;}
-  list:=jv_get(j,0,"folders");if list<0 {return true;}
+  v[0].nroot=0;k:=jv_get(j,0,"workspace_name"); // mutant: equivalent (the one caller, ea_view_read, zeroes the view first)
+  if k>=0 {n:=jv_str(j,k,v[0].root[..]);if n<1 || n>80 {return false;}for c:cast(string)v[0].root[0..<n] {if c<32 || c==127 || c=='/' {return false;}}v[0].nroot=n;} // mutant: equivalent (k is -1 or a member node, never 0 (the root), so k>=0, k>0 and k>=1 agree)
+  list:=jv_get(j,0,"folders");if list<0 {return true;} // mutant: equivalent (list is -1 or a member node, never 0, so list<0, list<=0 and list<1 agree)
   if jv_kind(j,list)!=JV_ARRAY || jv_len(j,list)>EA_FOLDERS {return false;}
   for i:0..<jv_len(j,list) {f:=v[0].folders[i..<i+1];f[0].np=jv_str(j,jv_at(j,list,i),f[0].path[..]);if f[0].np<1 || !ea_folder_ok(cast(string)f[0].path[0..<f[0].np]) {return false;}}
   v[0].nfolders=jv_len(j,list);return true;
@@ -492,3 +492,4 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   // a read without an item is unchanged on the wire
   q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"ReadSession");q[0].nw=ea_copy(q[0].workspace[..],"default");n=ea_write(q[..],out[..]);found:=false;for i:0..<(ifx n>7 then n-7 else 0) {if cast(string)out[i..<i+7]=="item_id" {found=true;}}#assert n>0 && !found;
 }
+#load "wire-view-checks.coax" #test;   // the view's optional tail at its bounds (#13610)
