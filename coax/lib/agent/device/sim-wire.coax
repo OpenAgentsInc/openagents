@@ -76,8 +76,8 @@ SwText :: struct { b: [512] u8; n: int; }
 sw_why :: (w: [] SwText) -> string { return cast(string) w[0].b[0..<w[0].n]; }
 sw_fail :: (w: [] SwText, a: string, b: string) -> bool {
   w[0].n = 0;
-  for c: a { if w[0].n < w[0].b.count { w[0].b[w[0].n] = c; w[0].n += 1; } }
-  for c: b { if w[0].n < w[0].b.count { w[0].b[w[0].n] = c; w[0].n += 1; } }
+  for c: a { if w[0].n < w[0].b.count { w[0].b[w[0].n] = c; w[0].n += 1; } }  // mutant: equivalent (b is a fixed [512] u8: its count is 512 in any element)
+  for c: b { if w[0].n < w[0].b.count { w[0].b[w[0].n] = c; w[0].n += 1; } }  // mutant: equivalent (b is a fixed [512] u8: its count is 512 in any element)
   return false;
 }
 
@@ -90,7 +90,7 @@ sw_clear :: (m: [] SwMsg) {
 }
 sw_has :: (m: [] SwMsg, f: int) -> bool { return f >= 0 && f < SW_FIELDS && m[0].has[f]; }
 sw_str :: (m: [] SwMsg, f: int) -> string {
-  if !sw_has(m, f) || sw_kind(f) != SW_K_STR { return ""; }
+  if !sw_has(m, f) || sw_kind(f) != SW_K_STR { return ""; }  // mutant: equivalent (len is 0 but where sw_set_str or a read set has with it, and only for a string member)
   return cast(string) m[0].arena[m[0].at[f]..<m[0].at[f] + m[0].len[f]];
 }
 sw_num :: (m: [] SwMsg, f: int) -> f64 { return ifx sw_has(m, f) then m[0].num[f] else 0.0; }
@@ -150,14 +150,14 @@ sw_add_point :: (m: [] SwMsg, f: int, p: SwPoint) -> bool {
 // of this wire needs one). False when s is anything else.
 sw_parse_num :: (s: string, out: [] f64) -> bool {
   i := 0; neg := false;
-  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }
-  if i >= s.count || s.count > 24 { return false; }
+  if s.count > 0 && s[0] == '-' { neg = true; i = 1; }  // mutant: equivalent (a lone "-" has no digit and is refused either way)
+  if i >= s.count || s.count > 24 { return false; }  // mutant: equivalent (an empty or bare "-" s has no digit, refused below either way)
   v := 0.0; digits := 0;
-  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10.0 + cast(f64) cast(int) (s[i] - '0'); i += 1; digits += 1; }
+  while i < s.count && s[i] >= '0' && s[i] <= '9' { v = v * 10.0 + cast(f64) cast(int) (s[i] - '0'); i += 1; digits += 1; }  // mutant: equivalent (digits is only asked whether it is 0)
   if digits == 0 { return false; }
   if i < s.count && s[i] == '.' {
     i += 1; scale := 0.1; fd := 0;
-    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += scale * cast(f64) cast(int) (s[i] - '0'); scale /= 10.0; i += 1; fd += 1; }
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { v += scale * cast(f64) cast(int) (s[i] - '0'); scale /= 10.0; i += 1; fd += 1; }  // mutant: equivalent (fd is only asked whether it is 0)
     if fd == 0 { return false; }
   }
   if i != s.count { return false; }
@@ -167,12 +167,12 @@ sw_parse_num :: (s: string, out: [] f64) -> bool {
 // v as JSON: a whole number with no point, else up to four decimals with no trailing zeros.
 sw_num_text :: (v: f64, out: [] u8) -> string {
   n := 0;
-  a := v; neg := v < 0.0;
+  a := v; neg := v < 0.0;  // mutant: equivalent (at 0 neither a minus nor a digit changes: the minus needs whole or frac above 0)
   if neg { a = -v; }
-  if a > 1.0e15 { a = 1.0e15; }
+  if a > 1.0e15 { a = 1.0e15; }  // mutant: equivalent (at the cap a is set to what it is)
   whole := cast(int) a;
   frac := cast(int) ((a - cast(f64) whole) * 10000.0 + 0.5);
-  if frac >= 10000 { whole += 1; frac -= 10000; }
+  if frac >= 10000 { whole += 1; frac -= 10000; }  // mutant: equivalent (frac is at most 10000, so it is 0 after either and no fraction is written)
   if neg && (whole > 0 || frac > 0) && n < out.count { out[n] = '-'; n += 1; }
   d: [24] u8; k := 0; x := whole;
   while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
@@ -207,12 +207,6 @@ sw_field :: (key: string) -> int {
   for f: 0..<SW_FIELDS { if sw_name(f) == key && f != SW_F_POINTS { return f; } }
   return -1;
 }
-sw_read_str :: (v: Jv, at: int, out: [] u8, n: [] int) -> bool {
-  k := jv_str(v, at, out);
-  if k < 0 { return false; }
-  n[0] = k;
-  return true;
-}
 sw_read_point :: (v: Jv, at: int, two: bool, p: [] SwPoint, w: [] SwText) -> bool {
   if jv_kind(v, at) != JV_OBJECT { return sw_fail(w, "a path sample is not an object", ""); }
   c := v.nodes[at].first; seen := 0;
@@ -234,7 +228,7 @@ sw_read_point :: (v: Jv, at: int, two: bool, p: [] SwPoint, w: [] SwText) -> boo
 sw_read_member :: (v: Jv, c: int, m: [] SwMsg, w: [] SwText) -> bool {
   key := jv_key(v, c);
   f := sw_field(key);
-  if key == "points" && jv_kind(v, c) == JV_OBJECT { f = SW_F_SIZE; }
+  if key == "points" && jv_kind(v, c) == JV_OBJECT { f = SW_F_SIZE; }  // mutant: equivalent (sw_field("points") is SW_F_SIZE already)
   else if key == "points" { f = SW_F_POINTS; }
   if f < 0 { return sw_fail(w, "unknown member: ", key); }
   if m[0].has[f] { return sw_fail(w, "a member twice: ", key); }
@@ -398,7 +392,7 @@ sw_round :: (line: string, out: [] u8) -> string {
   m: [1] SwMsg; w: [1] SwText;
   if !sw_read(line, m[..], w[..]) { k := sd_put(out, sw_why(w[..])); return cast(string) out[0..<k]; }
   n := sw_write(m[..], out);
-  return ifx n < 0 then "" else cast(string) out[0..<n];
+  return ifx n < 0 then "" else cast(string) out[0..<n];  // mutant: equivalent (a line written is never shorter than "{}", so n is -1 or at least 2)
 }
 #test "the spec's lines read and write back to the same bytes" {
   out: [8192] u8;
@@ -453,6 +447,148 @@ sw_round :: (line: string, out: [] u8) -> string {
   #assert !sw_set_str(m[..], SW_F_TEXT, cast(string) big[..]) && !sw_set_str(m[..], SW_F_X, "1");
 }
 
+#test "every member, each of its kind, reads and writes back; a whole-number member refuses a fraction" {
+  out: [8192] u8;
+  all := "{\"id\":7,\"event\":\"s1\",\"op\":\"s2\",\"code\":\"s4\",\"why\":\"s5\",\"interrupted\":true,\"client\":\"s7\",\"version\":7,\"helper_pid\":7,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":true},\"xcode\":\"s11\",\"chat\":\"s12\",\"engine\":\"s13\",\"device\":\"s14\",\"udid\":\"s15\",\"scope\":\"s16\",\"grant\":\"s17\",\"expires_s\":7,\"state\":\"s19\",\"phase\":\"s20\",\"pointer\":7,\"x\":1.25,\"y\":1.25,\"x2\":1.25,\"y2\":1.25,\"duration\":1.25,\"text\":\"s27\",\"key\":\"s28\",\"count\":7,\"name\":\"s30\",\"direction\":\"s31\",\"url\":\"s32\",\"app_path\":\"s33\",\"bundle_id\":\"s34\",\"project_path\":\"s35\",\"workspace_path\":\"s36\",\"scheme\":\"s37\",\"configuration\":\"s38\",\"build_id\":\"s39\",\"pid\":7,\"gen\":7,\"w\":7,\"h\":7,\"scale\":1.25,\"format\":\"s45\",\"out\":\"s46\",\"path\":\"s47\",\"points\":{\"w\":1.5,\"h\":2},\"points2\":[{\"x1\":1,\"y1\":2,\"x2\":3,\"y2\":4,\"dt_ms\":0.5}],\"bytes\":7,\"corner\":7,\"surface_service\":\"s53\",\"appearance\":\"s54\",\"elapsed_s\":7,\"errors\":[{\"file\":\"F\",\"line\":3,\"col\":4,\"message\":\"M\"}],\"log_path\":\"s57\",\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"state\":\"booted\",\"booted_by_us\":false}],\"since_s\":7,\"lines\":\"s60\",\"folder\":\"s61\"}";
+  #assert sw_round(all, out[..]) == all;
+  ints := [14] string.["id", "version", "helper_pid", "expires_s", "pointer", "count", "pid", "gen", "w", "h", "bytes", "corner", "elapsed_s", "since_s"];
+  for k: ints {
+    lb: [128] u8; n := sd_put(lb[..], "{\"op\":\"t\",\""); n += sd_put(lb[n..<lb.count], k); n += sd_put(lb[n..<lb.count], "\":1.5}");
+    wb: [128] u8; wn := sd_put(wb[..], "not a whole number: "); wn += sd_put(wb[wn..<wb.count], k);
+    #assert sw_round(cast(string) lb[0..<n], out[..]) == cast(string) wb[0..<wn];
+  }
+}
+#test "a member's shape: each part a capability, device, error, size or sample needs, and nothing more" {
+  out: [8192] u8;
+  bad := [24] string.[
+    "{\"ok\":true,\"capabilities\":{\"input\":\"x\",\"describe\":true}}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"x\",\"describe\":true}}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"x\",\"input\":\"y\",\"describe\":1}}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"x\",\"input\":\"y\",\"describe\":true,\"z\":1}}",
+    "{\"ok\":true,\"devices\":[{\"name\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":1}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":true,\"z\":1}]}",
+    "{\"ok\":true,\"errors\":[{\"line\":1,\"col\":2,\"message\":\"M\"}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"line\":1,\"col\":2}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"col\":2,\"message\":\"M\"}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"line\":1,\"message\":\"M\"}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"line\":1,\"col\":2,\"message\":\"M\",\"z\":1}]}",
+    "{\"ok\":true,\"points\":{\"w\":1,\"h\":2,\"z\":3}}",
+    "{\"ok\":true,\"points\":{\"h\":2,\"z\":3}}",
+    "{\"op\":\"t\",\"points\":[{\"y\":1}]}",
+    "{\"op\":\"t\",\"points2\":[{\"y1\":1,\"x2\":2,\"y2\":3}]}",
+    "{\"op\":\"t\",\"points2\":[{\"x1\":1,\"x2\":2,\"y2\":3}]}",
+    "{\"op\":\"t\",\"points2\":[{\"x1\":1,\"y1\":2,\"y2\":3}]}",
+    "{\"op\":\"t\",\"points2\":[{\"x1\":1,\"y1\":2,\"x2\":3}]}",
+    "{\"op\":\"t\",\"points\":[{\"x\":1,\"y\":2}],\"points2\":[{\"x1\":1,\"y1\":2,\"x2\":3,\"y2\":4}]}",
+    "{\"\":1}"];
+  whys := [24] string.[
+    "capabilities is not {display, input, describe}", "capabilities is not {display, input, describe}",
+    "capabilities is not {display, input, describe}", "capabilities is not {display, input, describe}",
+    "a device is not {udid, name, runtime, state, booted_by_us}", "a device is not {udid, name, runtime, state, booted_by_us}",
+    "a device is not {udid, name, runtime, state, booted_by_us}", "a device is not {udid, name, runtime, state, booted_by_us}",
+    "a device is not {udid, name, runtime, state, booted_by_us}", "a device is not {udid, name, runtime, state, booted_by_us}",
+    "an error is not {file, line, col, message}", "an error is not {file, line, col, message}", "an error is not {file, line, col, message}",
+    "an error is not {file, line, col, message}", "an error is not {file, line, col, message}",
+    "points is not {w, h}", "points is not {w, h}",
+    "a path sample lacks a coordinate", "a path sample lacks a coordinate", "a path sample lacks a coordinate",
+    "a path sample lacks a coordinate", "a path sample lacks a coordinate", "points and points2 together", "unknown member: "];
+  for l, i: bad { #assert sw_round(l, out[..]) == whys[i]; }
+  // empty lists and an empty string are members still
+  good := [5] string.["{\"ok\":true,\"devices\":[]}", "{\"ok\":true,\"errors\":[]}", "{\"op\":\"t\",\"points2\":[]}", "{\"op\":\"\"}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false}}"];
+  for l: good { #assert sw_round(l, out[..]) == l; }
+  // a part's place taken by another name is refused as one missing; empty strings are strings
+  swapped := [11] string.[
+    "{\"ok\":true,\"capabilities\":{\"z\":\"x\",\"input\":\"y\",\"describe\":true}}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"x\",\"z\":\"y\",\"describe\":true}}",
+    "{\"ok\":true,\"capabilities\":{\"display\":\"x\",\"input\":\"y\",\"z\":true}}",
+    "{\"ok\":true,\"devices\":[{\"z\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"z\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"z\":\"R\",\"state\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"z\":\"S\",\"booted_by_us\":true}]}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"A\",\"name\":\"N\",\"runtime\":\"R\",\"state\":\"S\",\"z\":true}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"line\":1,\"col\":2,\"z\":\"M\"}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"z\":1,\"col\":2,\"message\":\"M\"}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"F\",\"line\":1,\"z\":2,\"message\":\"M\"}]}"];
+  for l, i: swapped { #assert sw_round(l, out[..]) == ifx i < 3 then "capabilities is not {display, input, describe}" else ifx i < 8 then "a device is not {udid, name, runtime, state, booted_by_us}" else "an error is not {file, line, col, message}"; }
+  empty := [3] string.["{\"ok\":true,\"capabilities\":{\"display\":\"\",\"input\":\"\",\"describe\":false}}",
+    "{\"ok\":true,\"devices\":[{\"udid\":\"\",\"name\":\"\",\"runtime\":\"\",\"state\":\"\",\"booted_by_us\":false}]}",
+    "{\"ok\":true,\"errors\":[{\"file\":\"\",\"line\":0,\"col\":0,\"message\":\"\"}]}"];
+  for l: empty { #assert sw_round(l, out[..]) == l; }
+}
+#test "the limits: a line's bytes, its strings, a path's samples, a list's devices and errors, a whole number's size" {
+  m: [1] SwMsg; w: [1] SwText;
+  // a line of SW_LINE bytes is read (its one string is too long for the arena); one more is not JSON
+  big: [SW_LINE + 1] u8; n := sd_put(big[..], "{\"op\":\""); while n < SW_LINE - 2 { big[n] = 'a'; n += 1; } big[n] = '"'; big[n + 1] = '}';
+  #assert !sw_read(cast(string) big[0..<SW_LINE], m[..], w[..]) && sw_why(w[..]) == "the line's text is too long at op";
+  big[SW_LINE - 2] = 'a'; big[SW_LINE - 1] = '"'; big[SW_LINE] = '}';   // the same, one byte longer
+  #assert !sw_read(cast(string) big[0..<SW_LINE + 1], m[..], w[..]) && sw_why(w[..]) == "the line is not JSON";
+  // a string that fills the arena to its last byte (its raw text less the quotes), and one byte more
+  n = sd_put(big[..], "{\"op\":\""); for i: 0..<SW_ARENA { big[n] = 'b'; n += 1; } n += sd_put(big[n..<big.count], "\"}");
+  #assert sw_read(cast(string) big[0..<n], m[..], w[..]) && sw_str(m[..], SW_F_OP).count == SW_ARENA;
+  n = sd_put(big[..], "{\"op\":\""); for i: 0..<SW_ARENA + 1 { big[n] = 'b'; n += 1; } n += sd_put(big[n..<big.count], "\"}");
+  #assert !sw_read(cast(string) big[0..<n], m[..], w[..]) && sw_why(w[..]) == "the line's text is too long at op";
+  // a path of SW_SAMPLES samples, and one more
+  n = sd_put(big[..], "{\"op\":\"t\",\"points\":[");
+  for i: 0..<SW_SAMPLES { if i > 0 { big[n] = ','; n += 1; } n += sd_put(big[n..<big.count], "{\"x\":1,\"y\":2}"); }
+  k := n; n += sd_put(big[n..<big.count], "]}");
+  #assert sw_read(cast(string) big[0..<n], m[..], w[..]) && m[0].npts == SW_SAMPLES;
+  n = k + sd_put(big[k..<big.count], ",{\"x\":1,\"y\":2}]}");
+  #assert !sw_read(cast(string) big[0..<n], m[..], w[..]) && sw_why(w[..]) == "more samples than a path holds: points";
+  // whole numbers to 9e15
+  #assert sw_read("{\"op\":\"t\",\"id\":9000000000000000}", m[..], w[..]) && sw_read("{\"op\":\"t\",\"id\":-9000000000000000}", m[..], w[..]);
+  #assert !sw_read("{\"op\":\"t\",\"id\":9000000000000001}", m[..], w[..]) && !sw_read("{\"op\":\"t\",\"id\":-9000000000000001}", m[..], w[..]) && sw_why(w[..]) == "not a whole number: id";
+  // what a message holds when set by hand
+  sw_clear(m[..]);
+  for i: 0..<SD_MOST { #assert sw_add_dev(m[..], "U", "N", "R", "booted", false); }
+  #assert !sw_add_dev(m[..], "U", "N", "R", "booted", false) && m[0].ndevs == SD_MOST && sw_has(m[..], SW_F_DEVICES);
+  for i: 0..<SW_ERRORS { #assert sw_add_err(m[..], "F", 1, 2, "M"); }
+  #assert !sw_add_err(m[..], "F", 1, 2, "M") && m[0].nerrs == SW_ERRORS && sw_has(m[..], SW_F_ERRORS);
+  #assert !sw_add_point(m[..], SW_F_X, SwPoint.{}) && !sw_has(m[..], SW_F_X) && m[0].npts == 0;
+  for i: 0..<SW_SAMPLES { #assert sw_add_point(m[..], SW_F_POINTS2, SwPoint.{x = 1.0}); }
+  #assert !sw_add_point(m[..], SW_F_POINTS2, SwPoint.{}) && m[0].npts == SW_SAMPLES && sw_has(m[..], SW_F_POINTS2);
+  sw_clear(m[..]);
+  fill: [SW_ARENA + 1] u8;
+  #assert !sw_set_str(m[..], SW_F_TEXT, cast(string) fill[..]) && !sw_has(m[..], SW_F_TEXT) && sw_set_str(m[..], SW_F_TEXT, cast(string) fill[0..<SW_ARENA]) && sw_has(m[..], SW_F_TEXT);
+  #assert !sw_has(m[..], -1) && !sw_has(m[..], SW_FIELDS) && sw_num(m[..], SW_FIELDS) == 0.0;
+  sw_set_num(m[..], SW_F_X, 2.5); #assert sw_num(m[..], SW_F_X) == 2.5 && sw_num(m[..], SW_F_Y) == 0.0;
+}
+#test "a message cleared, read again or answered holds nothing from before" {
+  m: [1] SwMsg; w: [1] SwText; out: [8192] u8;
+  #assert sw_read("{\"id\":3,\"op\":\"t\",\"x\":2.5,\"text\":\"hi\",\"points\":[{\"x\":1,\"y\":2}]}", m[..], w[..]);
+  sw_set_size(m[..], 3.0, 4.0); sw_set_caps(m[..], "frames", "indigo", true); _ = sw_add_dev(m[..], "U", "N", "R", "S", true); _ = sw_add_err(m[..], "F", 1, 2, "M");
+  sw_clear(m[..]);
+  #assert sw_write(m[..], out[..]) == 2 && m[0].used == 0 && m[0].npts == 0 && m[0].ndevs == 0 && m[0].nerrs == 0 && m[0].display_n == 0 && m[0].input_n == 0 && !m[0].describe;
+  #assert m[0].size_w == 0.0 && m[0].size_h == 0.0 && m[0].num[SW_F_X] == 0.0 && m[0].len[SW_F_TEXT] == 0 && m[0].num[SW_F_ID] == 0.0;
+  #assert sw_read("{\"id\":3,\"op\":\"t\",\"x\":2.5}", m[..], w[..]) && sw_read("{\"op\":\"u\"}", m[..], w[..]) && !sw_has(m[..], SW_F_X) && !sw_has(m[..], SW_F_ID);
+  #assert !sw_read("nope", m[..], w[..]) && sw_read("{\"op\":\"u\"}", m[..], w[..]) && sw_why(w[..]) == "";
+  #assert sw_read("{\"op\":\"t\",\"text\":\"abc\"}", m[..], w[..]);
+  sw_reply_ok(m[..], 5); #assert cast(string) out[0..<sw_write(m[..], out[..])] == "{\"id\":5,\"ok\":true}";
+  #assert sw_read("{\"op\":\"t\",\"text\":\"abc\"}", m[..], w[..]);
+  sw_reply_error(m[..], 6, "c", "w"); #assert cast(string) out[0..<sw_write(m[..], out[..])] == "{\"id\":6,\"ok\":false,\"code\":\"c\",\"why\":\"w\"}";
+  // a one-finger path set by hand beside a two-finger one is written as points2 alone
+  sw_clear(m[..]); _ = sw_set_str(m[..], SW_F_OP, "t");
+  _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 1.0, y = 2.0}); _ = sw_add_point(m[..], SW_F_POINTS2, SwPoint.{x = 1.0, y = 2.0, x2 = 3.0, y2 = 4.0});
+  #assert cast(string) out[0..<sw_write(m[..], out[..])] == "{\"op\":\"t\",\"points2\":[{\"x1\":1,\"y1\":2,\"x2\":0,\"y2\":0,\"dt_ms\":0},{\"x1\":1,\"y1\":2,\"x2\":3,\"y2\":4,\"dt_ms\":0}]}";
+  // why is cut to what it holds
+  long: [600] u8; for i: 0..<600 { long[i] = 'w'; }
+  _ = sw_fail(w[..], cast(string) long[..], ""); #assert w[0].n == 512;
+  _ = sw_fail(w[..], cast(string) long[0..<500], cast(string) long[0..<20]); #assert w[0].n == 512;
+  _ = sw_fail(w[..], "a", "b"); #assert sw_why(w[..]) == "ab";
+}
+#test "numbers at their edges: signs, the cap, a digit's neighbours, a short buffer" {
+  b: [32] u8; v: [1] f64;
+  #assert sw_num_text(-1.0, b[..]) == "-1" && sw_num_text(-0.5, b[..]) == "-0.5" && sw_num_text(2.0e15, b[..]) == "1000000000000000" && sw_num_text(-0.0001, b[..]) == "-0.0001";
+  #assert sw_num_text(-12.5, b[0..<0]) == "" && sw_num_text(-12.5, b[0..<1]) == "-" && sw_num_text(-12.5, b[0..<3]) == "-12" && sw_num_text(-12.5, b[0..<4]) == "-12." && sw_num_text(-12.5, b[0..<5]) == "-12.5";
+  #assert sw_num_text(0.125, b[0..<4]) == "0.12";
+  #assert !sw_parse_num("1:", v[..]) && !sw_parse_num("1.2:", v[..]) && !sw_parse_num("1/", v[..]) && !sw_parse_num("1./", v[..]);
+  #assert sw_parse_num("123456789012345678901234", v[..]) && !sw_parse_num("1234567890123456789012345", v[..]) && !sw_parse_num("-123456789012345678901234", v[..]);
+  #assert sw_parse_num("-0.5", v[..]) && v[0] == -0.5 && sw_parse_num("9", v[..]) && v[0] == 9.0 && sw_parse_num("0.9", v[..]) && v[0] == 0.9;
+}
 // A number at the start of s ("3.000000\n", "1206\n"): its value. False when s starts with no digit.
 sw_parse_lead :: (s: string, out: [] f64) -> bool {
   v := 0.0; e := 0; any := false;

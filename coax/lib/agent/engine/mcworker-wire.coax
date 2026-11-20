@@ -671,6 +671,14 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   #assert mww_device_of(o[..], "oasim screenshot", 0, "not json") > 0 && cl_raw(cast(string) o[0..<mww_device_of(o[..], "oasim screenshot", 0, "not json")], "shot") == "";
   #assert mww_device_of(o[..], "ls oasim", 0, "") == 0 && mww_device_of(o[..], "oasimx tap 1 2", 0, "") == 0 && mww_device_of(o[..], "oasim", 0, "") == 0 && mww_device_of(o[..], "", 0, "") == 0;
   #assert mww_device_of(o[..], "/x/my-oasim tap 1 2", 0, "") == 0 && mww_device_of(o[..], "oasim   ", 0, "") == 0;
+  // one space before it, three; a one-letter shot; a shot whose JSON escapes a quote
+  #assert mww_device_of(o[..], " oasim tap 1 2", 0, "") > 0 && mww_device_of(o[..], "   oasim tap 1 2", 0, "") > 0;
+  n = mww_device(o[..], "screenshot", true, "x"); #assert cast(string) o[0..<n] == "{\"kind\":\"device\",\"op\":\"screenshot\",\"ok\":true,\"shot\":\"x\"}";
+  n = mww_device_of(o[..], "oasim screenshot", 0, "{\"ok\":true,\"path\":\"/w/a\\\"b.png\"}");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DEVICE && l[0].kind == MWW_DEVICE && l[0].shot == "/w/a\"b.png";
+  // a line read after another holds nothing of the one before
+  n = mww_steered(o[..], "s-1", "applied", 2, "", 0, ""); #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].id == "s-1";
+  n = mww_device(o[..], "tap", true, ""); #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_DEVICE && l[0].shot == "" && l[0].id == "" && !l[0].turn.ok;
 }
 
 #test "sub-agents: a task's agents and edits, the delegate line and the results line, each way" {
@@ -762,10 +770,14 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   n = mww_steered(o[..], "s-3", "accepted", 2, "", 0, "use b");
   #assert cast(string) o[0..<n] == "{\"kind\":\"steer\",\"id\":\"s-3\",\"status\":\"accepted\",\"turn\":2,\"text\":\"use b\"}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].text == "use b" && l[0].steer_status == "accepted";
+  n = mww_steered(o[..], "s-4", "applied", 7, "", 0, "");
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_STEERED && l[0].id == "s-4" && l[0].turn.value == 7;
   n = mww_queue_begin(o[..], true, "error", "");
   n = mww_queue_item(o[..], n, 0, "q-1", "a"); n = mww_queue_item(o[..], n, 1, "q-2", "b"); n = mww_queue_end(o[..], n);
   #assert cast(string) o[0..<n] == "{\"kind\":\"queue\",\"paused\":true,\"reason\":\"error\",\"active\":\"\",\"items\":[{\"id\":\"q-1\",\"text\":\"a\"},{\"id\":\"q-2\",\"text\":\"b\"}]}";
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_QUEUED && l[0].paused.value && l[0].reason == "error" && cl_count(l[0].items) == 2 && cl_str(ar[..], l[0].items, "1.id") == "q-2";
+  n = mww_queue_begin(o[..], false, "", "q-1"); n = mww_queue_end(o[..], n);
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_QUEUED && l[0].active == "q-1" && !l[0].paused.value;
   n = mww_queue_refused(o[..], "delete", "q-9", "unknown_id");
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_QUEUE_REFUSED && l[0].op == "delete" && l[0].id == "q-9" && l[0].reason == "unknown_id";
   // a stop still comes first, and a steer that is no string is no steer

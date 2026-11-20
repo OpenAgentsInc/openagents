@@ -22,17 +22,17 @@ sd_find :: (s: string, part: string, from: int) -> int {
 SdSim :: struct { found: bool; udid: string; booted: bool; }
 sd_sim_find :: (list: string, name: string) -> SdSim {
   i := 0;
-  while i < list.count {
+  while i < list.count {  // mutant: equivalent (at the end, an empty line names no simulator)
     e := i;
     while e < list.count && list[e] != '\n' { e += 1; }
     line := list[i..<e];
     k := 0;
     while k < line.count && line[k] == ' ' { k += 1; }
     rest := line[k..<line.count];
-    if k > 0 && name.count > 0 && rest.count > name.count + 2 && sd_starts(rest, name) && rest[name.count..<name.count + 2] == " (" {
+    if k > 0 && name.count > 0 && rest.count > name.count + 2 && sd_starts(rest, name) && rest[name.count..<name.count + 2] == " (" {  // mutant: equivalent (a name is no shorter than 1 and rest never starts with a space; rest just 2 past the name holds no ")" after its " (")
       u := name.count + 2; v := u;
       while v < rest.count && rest[v] != ')' { v += 1; }
-      if v < rest.count { return SdSim.{found = true, udid = rest[u..<v], booted = sd_find(rest, "(Booted)", v) >= 0}; }
+      if v < rest.count { return SdSim.{found = true, udid = rest[u..<v], booted = sd_find(rest, "(Booted)", v) >= 0}; }  // mutant: equivalent ("(Booted)" is past v, which is past 0)
     }
     i = e + 1;
   }
@@ -65,11 +65,11 @@ sd_after_word :: (cmd: string) -> string {
 // install or launch that names it or, while it is booted, "booted". Only the program counts, so a
 // shell whose script mentions xcodebuild does not.
 sd_targets :: (cmd: string, name: string, udid: string, booted: bool) -> bool {
-  names_it := (name.count > 0 && sd_find(cmd, name, 0) >= 0) || (udid.count > 0 && sd_find(cmd, udid, 0) >= 0);
+  names_it := (name.count > 0 && sd_find(cmd, name, 0) >= 0) || (udid.count > 0 && sd_find(cmd, udid, 0) >= 0);  // mutant: equivalent (sd_find of an empty name or UDID is -1)
   prog := sd_program(cmd);
   if prog == "xcodebuild" { return names_it; }
-  if (prog == "simctl" || (prog == "xcrun" && sd_starts(sd_after_word(cmd), "simctl "))) && (sd_find(cmd, " install ", 0) >= 0 || sd_find(cmd, " launch ", 0) >= 0) {
-    return names_it || (booted && sd_find(cmd, " booted", 0) >= 0);
+  if (prog == "simctl" || (prog == "xcrun" && sd_starts(sd_after_word(cmd), "simctl "))) && (sd_find(cmd, " install ", 0) >= 0 || sd_find(cmd, " launch ", 0) >= 0) {  // mutant: equivalent (the line starts with its program, so " install " and " launch " are never at 0)
+    return names_it || (booted && sd_find(cmd, " booted", 0) >= 0);  // mutant: equivalent (the line starts with its program, so " booted" is never at 0)
   }
   return false;
 }
@@ -91,7 +91,7 @@ sd_targets :: (cmd: string, name: string, udid: string, booted: bool) -> bool {
 // The first line of ps (`ps -axo command=`) whose process targets the simulator, "" when none.
 sd_targeted_by :: (ps: string, name: string, udid: string, booted: bool) -> string {
   i := 0;
-  while i < ps.count {
+  while i < ps.count {  // mutant: equivalent (at the end, an empty line targets nothing)
     e := i;
     while e < ps.count && ps[e] != '\n' { e += 1; }
     if sd_targets(ps[i..<e], name, udid, booted) { return ps[i..<e]; }
@@ -109,7 +109,7 @@ sd_targeted_by :: (ps: string, name: string, udid: string, booted: bool) -> stri
 // "UIKitApplication:BUNDLE[...]" entries (a slice of list). "" when none.
 sd_other_app :: (list: string, ours: string) -> string {
   at := 0;
-  while at < list.count {
+  while at < list.count {  // mutant: equivalent (sd_find from the end finds nothing)
     i := sd_find(list, "UIKitApplication:", at);
     if i < 0 { return ""; }
     b := i + 17; e := b;
@@ -202,7 +202,7 @@ sd_parse :: (text: string, out: [] SdList) -> bool {
   while rt != -1 {
     rb: [48] u8;
     runtime := sd_runtime_name(jv_key(v, rt), rb[..]);
-    if runtime.count > 0 && jv_kind(v, rt) == JV_ARRAY {
+    if runtime.count > 0 && jv_kind(v, rt) == JV_ARRAY {  // mutant: equivalent (a runtime name starts "iOS ", so it is never 1 long)
       e := v.nodes[rt].first;
       while e != -1 && out[0].n < SD_MOST {
         if jv_kind(v, jv_get(v, e, "isAvailable")) != JV_FALSE {
@@ -211,7 +211,7 @@ sd_parse :: (text: string, out: [] SdList) -> bool {
           dv.udid_n = jv_str(v, jv_get(v, e, "udid"), dv.udid[..]);
           dv.name_n = jv_str(v, jv_get(v, e, "name"), dv.name[..]);
           sb: [32] u8; sn := jv_str(v, jv_get(v, e, "state"), sb[..]);
-          dv.state = ifx sn > 0 then sd_state(cast(string) sb[0..<sn]) else SD_NONE;
+          dv.state = ifx sn > 0 then sd_state(cast(string) sb[0..<sn]) else SD_NONE;  // mutant: equivalent (sd_state of "" or one letter is SD_NONE)
           dv.runtime_n = sd_put(dv.runtime[..], runtime);
           if dv.udid_n > 0 && dv.name_n > 0 { out[0].d[x] = dv; out[0].n += 1; }
         }
@@ -315,4 +315,51 @@ sd_keep :: (l: [] SdList, only: string) {
   #assert l[0].n == 2 && sd_udid(l[..], 0) == "A1" && sd_udid(l[..], 1) == "C3";
   sd_keep(l[..], "Z9");
   #assert l[0].n == 0;
+}
+#test "the text helpers at their edges: whole matches, the first place, no trailing line feed, short buffers" {
+  #assert sd_starts("ab", "ab") && !sd_starts("a", "ab") && sd_starts("ab", "");
+  #assert sd_find("abc", "b", 0) == 1 && sd_find("ab", "ab", 0) == 0 && sd_find("a", "", 0) == -1 && sd_find("a", "abc", 0) == -1 && sd_find("abc", "a", 1) == -1;
+  // a simulator's line without the list's last line feed; one space of indent; a one-letter name
+  #assert sd_sim_find("    Phone (AAAA) (Booted)", "Phone").udid == "AAAA" && sd_sim_find("    Phone (AAAA) (Booted)", "Phone").booted;
+  a := sd_sim_find(" P (B1) (Shutdown) ", "P"); #assert a.found && a.udid == "B1" && !a.booted;
+  #assert !sd_sim_find("Phone (AAAA) (Booted)", "Phone").found && !sd_sim_find("    Phone", "Phone").found && !sd_sim_find("    Phone (AAAA", "Phone").found;
+  b := sd_sim_find("    N ()", "N"); #assert b.found && b.udid == "";
+  #assert !sd_sim_find("XPhone (AAAA) (Booted)", "Phone").found && !sd_sim_find("", "P").found && !sd_sim_find("    ", "P").found;
+  #assert sd_sim_find("    P (ABC) (Booted)", "P").udid == "ABC" && sd_sim_find("x\n P (B1)", "P").udid == "B1";
+  #assert sd_sim_find("    Other (BBBB) (Booted)\n    Phone (AAAA) (Shutdown)", "Phone").udid == "AAAA";
+  #assert sd_after_word(" a") == "a" && sd_after_word("a ") == "";
+  // ps's lines: the first line is a target, the last has no line feed
+  #assert sd_targeted_by("xcodebuild -destination id=AAAA", "X", "AAAA", true) == "xcodebuild -destination id=AAAA";
+  #assert sd_targeted_by("/sbin/launchd\nxcodebuild -destination id=AAAA", "X", "AAAA", true) == "xcodebuild -destination id=AAAA";
+  #assert sd_targeted_by("/sbin/launchd", "X", "AAAA", true) == "";
+  // a one-letter name or UDID; a name the program's own path starts with
+  #assert sd_targets("xcodebuild -destination id=Q", "", "Q", false) && sd_targets("xcodebuild -destination name=P", "P", "", false) && !sd_targets("xcodebuild build", "", "", true);
+  #assert sd_targets("/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build", "/Applications", "", false);
+  #assert sd_targets("/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build", "", "/Applications", false);
+  #assert !sd_targets("sh simctl install booted /x.app", "X", "AAAA", true) && sd_targets("simctl install booted /x.app", "X", "AAAA", true) && !sd_targets("xcrun simctl install booted /x.app", "X", "AAAA", false);
+  // launchctl's list: an entry at the very start, each end of a bundle, an empty and a one-letter bundle
+  #assert sd_other_app("UIKitApplication:com.x.game[1]", "ours") == "com.x.game";
+  #assert sd_other_app("1 UIKitApplication:com.x.y\n", "ours") == "com.x.y" && sd_other_app("1 UIKitApplication:com.x.y z", "ours") == "com.x.y" && sd_other_app("1 UIKitApplication:com.x.y\tz", "ours") == "com.x.y";
+  #assert sd_other_app("1 UIKitApplication:com.x.y", "ours") == "com.x.y" && sd_other_app("1 UIKitApplication:com.x.yz[", "ours") == "com.x.yz";
+  #assert sd_other_app("UIKitApplication:[1]\nUIKitApplication:com.x.z[2]", "ours") == "com.x.z" && sd_other_app("UIKitApplication:q[1]", "ours") == "q";
+  #assert sd_other_app("UIKitApplication:com.apple.x[1]\nUIKitApplication:ours[2]", "ours") == "";
+  // file names: each letter range's ends and their neighbours
+  s: [16] u8; #assert sd_slug("azAZ09`{@[/:", s[..]) == "azAZ09------" && sd_slug("abc", s[0..<2]) == "ab";
+  p: [4] u8; #assert sd_put(p[0..<2], "abc") == 2 && cast(string) p[0..<2] == "ab" && sd_put(p[..], "") == 0;
+  r: [8] u8; #assert sd_runtime_name("com.apple.CoreSimulator.SimRuntime.iOS-26-5", r[..]) == "iOS 26.5" && sd_runtime_name("com.apple.CoreSimulator.SimRuntime.iOS-26-5", r[0..<6]) == "iOS 26";
+}
+#test "the JSON list at its edges: a failed parse after a good one, a device lacking its UDID, name or state, the most it holds" {
+  l: [1] SdList;
+  #assert sd_parse("{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A\",\"name\":\"N\",\"state\":\"Booted\"}]}}", l[..]) && l[0].ok && l[0].d[0].state == SD_BOOTED;
+  #assert !sd_parse("{}", l[..]) && !l[0].ok;
+  j := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"name\":\"N\"},{\"udid\":\"A\"},{\"udid\":\"\",\"name\":\"N\"},{\"udid\":\"B\",\"name\":\"\"},{\"udid\":\"C\",\"name\":\"M\"}]}}";
+  #assert sd_parse(j, l[..]) && l[0].n == 1 && sd_udid(l[..], 0) == "C" && l[0].d[0].state == SD_NONE;
+  // more than the list holds: the first SD_MOST
+  b: [8192] u8; n := sd_put(b[..], "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[");
+  for i: 0..<SD_MOST + 1 { if i > 0 { b[n] = ','; n += 1; } n += sd_put(b[n..<b.count], "{\"udid\":\"U\",\"name\":\"N\",\"state\":\"Booted\"}"); }
+  n += sd_put(b[n..<b.count], "]}}");
+  #assert sd_parse(cast(string) b[0..<n], l[..]) && l[0].n == SD_MOST;
+  // a pick and the first booted at the list's first place; a one-letter device
+  k := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"Z\",\"name\":\"Y\",\"state\":\"Booted\"},{\"udid\":\"B\",\"name\":\"Two\",\"state\":\"Booted\"}]}}";
+  #assert sd_parse(k, l[..]) && sd_pick(l[..], "Z") == 0 && sd_pick(l[..], "Y") == 0 && sd_first_booted(l[..]) == 0;
 }
