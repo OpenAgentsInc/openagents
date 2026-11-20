@@ -15,6 +15,26 @@ struct PleGymRunItem: Equatable {
     let modifiedAt: Date?
 }
 
+/// Stage 4: A single timeline snapshot (discovered on disk, captured during live tailing, or manually pinned).
+struct PleGymSnapshot {
+    let id: String
+    let label: String
+    let url: URL?
+    let isIfc: Bool
+    var scene: PleScene?
+    var score: Double?
+    let isPinned: Bool
+    let isLiveCapture: Bool
+    let capturedAt: Date
+}
+
+/// Stage 4: A discovered diagnostics/log artifact next to a run file.
+struct PleGymLogFile {
+    let name: String
+    let url: URL?
+    let syntheticContent: String?
+}
+
 enum PleGymDiscovery {
     static let cacheDir = URL(fileURLWithPath: "/tmp/ple-scenes", isDirectory: true)
 
@@ -180,6 +200,102 @@ enum PleGymDiscovery {
     }
 
     /// Load a scene or convert an .ifc file on demand via tools/ple-ifc-to-scene.py into /tmp/ple-scenes/.
+    /// Stage 4: Discover sibling step_*.ple-scene.json, iter_*.ple-scene.json, snapshots/*.ple-scene.json, or snapshots/*.ifc sorted naturally.
+    static func discoverSnapshots(for item: PleGymRunItem) -> [PleGymSnapshot] {
+        let fm = FileManager.default
+        let dir = item.url.deletingLastPathComponent()
+        var foundURLs: [URL] = []
+        var seen = Set<String>()
+
+        func addIfValid(_ url: URL) {
+            let canon = url.standardizedFileURL.path
+            guard !seen.contains(canon) else { return }
+            seen.insert(canon)
+            foundURLs.append(url)
+        }
+
+        if let siblings = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
+            for u in siblings {
+                let name = u.lastPathComponent.lowercased()
+                if (name.hasPrefix("step_") || name.hasPrefix("iter_")) && (name.hasSuffix(".ple-scene.json") || name.hasSuffix(".ifc")) {
+                    addIfValid(u)
+                }
+            }
+        }
+
+        let snapDir = dir.appendingPathComponent("snapshots", isDirectory: true)
+        var isDir: ObjCBool = false
+        if fm.fileExists(atPath: snapDir.path, isDirectory: &isDir), isDir.boolValue,
+           let snapFiles = try? fm.contentsOfDirectory(at: snapDir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
+            for u in snapFiles {
+                let name = u.lastPathComponent.lowercased()
+                if name.hasSuffix(".ple-scene.json") || name.hasSuffix(".ifc") {
+                    addIfValid(u)
+                }
+            }
+        }
+
+        foundURLs.sort { a, b in
+            a.lastPathComponent.localizedStandardCompare(b.lastPathComponent) == .orderedAscending
+        }
+
+        var snapshots: [PleGymSnapshot] = foundURLs.map { u in
+            let name = u.lastPathComponent
+            let label = name
+                .replacingOccurrences(of: ".ple-scene.json", with: "")
+                .replacingOccurrences(of: ".ifc", with: "")
+            let mtime = (try? fm.attributesOfItem(atPath: u.path)[.modificationDate]) as? Date ?? Date()
+            return PleGymSnapshot(
+                id: u.standardizedFileURL.path,
+                label: label,
+                url: u,
+                isIfc: name.lowercased().hasSuffix(".ifc"),
+                scene: nil,
+                score: nil,
+                isPinned: false,
+                isLiveCapture: false,
+                capturedAt: mtime
+            )
+        }
+
+        let itemCanon = item.url.standardizedFileURL.path
+        if !seen.contains(itemCanon) {
+            let mtime = item.modifiedAt ?? Date()
+            snapshots.append(PleGymSnapshot(
+                id: itemCanon,
+                label: snapshots.isEmpty ? "Current" : "Latest",
+                url: item.url,
+                isIfc: item.isIfc,
+                scene: nil,
+                score: nil,
+                isPinned: false,
+                isLiveCapture: false,
+                capturedAt: mtime
+            ))
+        }
+        return snapshots
+    }
+
+    /// Stage 4: Discover sibling trial.log, harbor.log, reconciliation.json, or verifier.json next to the selected run.
+    static func discoverLogs(for item: PleGymRunItem) -> [PleGymLogFile] {
+        let fm = FileManager.default
+        let names = ["verifier.json", "reconciliation.json", "trial.log", "harbor.log"]
+        let dirs = [item.url.deletingLastPathComponent(), item.url.deletingLastPathComponent().deletingLastPathComponent()]
+        var seen = Set<String>()
+        var out: [PleGymLogFile] = []
+        for d in dirs {
+            for n in names {
+                let u = d.appendingPathComponent(n)
+                let canon = u.standardizedFileURL.path
+                guard !seen.contains(canon), fm.fileExists(atPath: canon) else { continue }
+                seen.insert(canon)
+                let prefix = (d == dirs[0]) ? "" : "../"
+                out.append(PleGymLogFile(name: prefix + n, url: u, syntheticContent: nil))
+            }
+        }
+        return out
+    }
+
     static func loadScene(for item: PleGymRunItem, workingFolder: URL?, forceReconvert: Bool = false) throws -> PleScene {
         if !item.isIfc {
             return try PleSceneLoader.load(from: item.url)
@@ -464,14 +580,43 @@ final class GymWorkbenchView: NSView {
     private let stackView = NSStackView()
     private var rowViews: [PleGymRowButton] = []
 
-    // Stage 3: Clash Inspector section
+    // Stage 3 + Stage 4: Bottom rail drawer (Clashes | Diagnostics & Logs)
     private let clashDivider = NSView()
+    private let railTabControl = NSSegmentedControl(labels: ["Clashes (0)", "Diagnostics"], trackingMode: .selectOne, target: nil, action: nil)
     private let clashHeaderLabel = NSTextField(labelWithString: "Clashes (0)")
     private let clashScrollView = NSScrollView()
     private let clashStackView = NSStackView()
     private let clashEmptyLabel = NSTextField(labelWithString: "No clashes detected ✓")
     private var clashRowViews: [PleGymClashRowButton] = []
     private var selectedClashId: String?
+
+    // Stage 4: Diagnostics & Log Drawer
+    private let diagContainer = NSView()
+    private let diagMetricsLabel = NSTextField(labelWithString: "No run metadata")
+    private let diagGatesScroll = NSScrollView()
+    private let diagGatesStack = NSStackView()
+    private let diagFilePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let diagCopyButton = NSButton(title: "Copy", target: nil, action: nil)
+    private let diagLogScroll = NSScrollView()
+    private let diagLogTextView = NSTextView()
+    private var discoveredLogs: [PleGymLogFile] = []
+    private var showingDiagnostics = false
+
+    // Stage 4: Timeline Scrubber & Snapshot Playback bar
+    private let timelineBar = NSView()
+    private let timelineTopDivider = NSView()
+    private let playPauseButton = NSButton(title: "▶", target: nil, action: nil)
+    private let prevSnapButton = NSButton(title: "◀", target: nil, action: nil)
+    private let nextSnapButton = NSButton(title: "▶", target: nil, action: nil)
+    private let timelineSlider = NSSlider(value: 0, minValue: 0, maxValue: 0, target: nil, action: nil)
+    private let timelineLabel = NSTextField(labelWithString: "1/1 • Current")
+    private let pinSnapshotButton = NSButton(title: "Pin", target: nil, action: nil)
+    private var snapshots: [PleGymSnapshot] = []
+    private var currentSnapshotIndex: Int = 0
+    private var isPlayingTimeline = false
+    private var playbackTimer: Timer?
+    private var snapshotLoadGeneration: Int = 0
+    private var pinCounter: Int = 0
 
     private let statusLabel = NSTextField(labelWithString: "")
     private let emptyLabel = NSTextField(labelWithString: "Select a PLE run or click Open… to inspect a .ple-scene.json or .ifc model")
@@ -491,12 +636,14 @@ final class GymWorkbenchView: NSView {
 
     deinit {
         liveTimer?.invalidate()
+        playbackTimer?.invalidate()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window == nil {
             stopLiveTimer()
+            stopPlayback()
         } else if liveEnabled {
             startLiveTimer()
         }
@@ -604,10 +751,16 @@ final class GymWorkbenchView: NSView {
         clashDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.10).cgColor
         railView.addSubview(clashDivider)
 
+        railTabControl.translatesAutoresizingMaskIntoConstraints = false
+        railTabControl.controlSize = .small
+        railTabControl.segmentStyle = .rounded
+        railTabControl.selectedSegment = 0
+        railTabControl.target = self
+        railTabControl.action = #selector(railTabChanged)
+        railView.addSubview(railTabControl)
+
         clashHeaderLabel.translatesAutoresizingMaskIntoConstraints = false
-        clashHeaderLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        clashHeaderLabel.textColor = NSColor(white: 0.90, alpha: 1)
-        railView.addSubview(clashHeaderLabel)
+        clashHeaderLabel.isHidden = true
 
         clashStackView.orientation = .vertical
         clashStackView.alignment = .leading
@@ -638,6 +791,172 @@ final class GymWorkbenchView: NSView {
         clashEmptyLabel.textColor = NSColor(calibratedRed: 0.42, green: 0.82, blue: 0.54, alpha: 0.9)
         railView.addSubview(clashEmptyLabel)
 
+        // Stage 4: Diagnostics & Log Drawer container
+        diagContainer.translatesAutoresizingMaskIntoConstraints = false
+        diagContainer.isHidden = true
+        railView.addSubview(diagContainer)
+
+        diagMetricsLabel.translatesAutoresizingMaskIntoConstraints = false
+        diagMetricsLabel.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .medium)
+        diagMetricsLabel.textColor = NSColor(white: 0.78, alpha: 1)
+        diagMetricsLabel.lineBreakMode = .byTruncatingTail
+        diagContainer.addSubview(diagMetricsLabel)
+
+        diagGatesStack.orientation = .horizontal
+        diagGatesStack.alignment = .centerY
+        diagGatesStack.spacing = 4
+        diagGatesStack.edgeInsets = NSEdgeInsets(top: 0, left: 2, bottom: 0, right: 2)
+        diagGatesStack.translatesAutoresizingMaskIntoConstraints = false
+
+        let gatesDoc = NSView()
+        gatesDoc.translatesAutoresizingMaskIntoConstraints = false
+        gatesDoc.addSubview(diagGatesStack)
+        NSLayoutConstraint.activate([
+            diagGatesStack.topAnchor.constraint(equalTo: gatesDoc.topAnchor),
+            diagGatesStack.bottomAnchor.constraint(equalTo: gatesDoc.bottomAnchor),
+            diagGatesStack.leadingAnchor.constraint(equalTo: gatesDoc.leadingAnchor),
+            diagGatesStack.trailingAnchor.constraint(lessThanOrEqualTo: gatesDoc.trailingAnchor)
+        ])
+
+        diagGatesScroll.translatesAutoresizingMaskIntoConstraints = false
+        diagGatesScroll.drawsBackground = false
+        diagGatesScroll.hasHorizontalScroller = false
+        diagGatesScroll.hasVerticalScroller = false
+        diagGatesScroll.borderType = .noBorder
+        diagGatesScroll.documentView = gatesDoc
+        diagContainer.addSubview(diagGatesScroll)
+
+        diagFilePopup.translatesAutoresizingMaskIntoConstraints = false
+        diagFilePopup.controlSize = .small
+        diagFilePopup.font = NSFont.systemFont(ofSize: 10.5)
+        diagFilePopup.target = self
+        diagFilePopup.action = #selector(diagFileChanged)
+        diagContainer.addSubview(diagFilePopup)
+
+        diagCopyButton.translatesAutoresizingMaskIntoConstraints = false
+        diagCopyButton.bezelStyle = .rounded
+        diagCopyButton.controlSize = .small
+        diagCopyButton.target = self
+        diagCopyButton.action = #selector(copyDiagLogPressed)
+        diagContainer.addSubview(diagCopyButton)
+
+        diagLogTextView.isEditable = false
+        diagLogTextView.isSelectable = true
+        diagLogTextView.drawsBackground = true
+        diagLogTextView.backgroundColor = NSColor(red: 0.05, green: 0.055, blue: 0.07, alpha: 1)
+        diagLogTextView.textColor = NSColor(white: 0.84, alpha: 1)
+        diagLogTextView.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .regular)
+        diagLogTextView.textContainerInset = NSSize(width: 6, height: 6)
+        diagLogTextView.isHorizontallyResizable = false
+        diagLogTextView.isVerticallyResizable = true
+        diagLogTextView.autoresizingMask = [.width]
+        diagLogTextView.textContainer?.widthTracksTextView = true
+
+        diagLogScroll.translatesAutoresizingMaskIntoConstraints = false
+        diagLogScroll.drawsBackground = true
+        diagLogScroll.backgroundColor = NSColor(red: 0.05, green: 0.055, blue: 0.07, alpha: 1)
+        diagLogScroll.hasVerticalScroller = true
+        diagLogScroll.autohidesScrollers = true
+        diagLogScroll.borderType = .noBorder
+        diagLogScroll.wantsLayer = true
+        diagLogScroll.layer?.cornerRadius = 5
+        diagLogScroll.layer?.borderWidth = 1
+        diagLogScroll.layer?.borderColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        diagLogScroll.documentView = diagLogTextView
+        diagContainer.addSubview(diagLogScroll)
+
+        NSLayoutConstraint.activate([
+            diagMetricsLabel.topAnchor.constraint(equalTo: diagContainer.topAnchor, constant: 2),
+            diagMetricsLabel.leadingAnchor.constraint(equalTo: diagContainer.leadingAnchor, constant: 10),
+            diagMetricsLabel.trailingAnchor.constraint(equalTo: diagContainer.trailingAnchor, constant: -10),
+
+            diagGatesScroll.topAnchor.constraint(equalTo: diagMetricsLabel.bottomAnchor, constant: 4),
+            diagGatesScroll.leadingAnchor.constraint(equalTo: diagContainer.leadingAnchor, constant: 8),
+            diagGatesScroll.trailingAnchor.constraint(equalTo: diagContainer.trailingAnchor, constant: -8),
+            diagGatesScroll.heightAnchor.constraint(equalToConstant: 22),
+            gatesDoc.heightAnchor.constraint(equalTo: diagGatesScroll.heightAnchor),
+
+            diagFilePopup.topAnchor.constraint(equalTo: diagGatesScroll.bottomAnchor, constant: 5),
+            diagFilePopup.leadingAnchor.constraint(equalTo: diagContainer.leadingAnchor, constant: 8),
+            diagFilePopup.trailingAnchor.constraint(equalTo: diagCopyButton.leadingAnchor, constant: -6),
+
+            diagCopyButton.centerYAnchor.constraint(equalTo: diagFilePopup.centerYAnchor),
+            diagCopyButton.trailingAnchor.constraint(equalTo: diagContainer.trailingAnchor, constant: -8),
+
+            diagLogScroll.topAnchor.constraint(equalTo: diagFilePopup.bottomAnchor, constant: 5),
+            diagLogScroll.leadingAnchor.constraint(equalTo: diagContainer.leadingAnchor, constant: 8),
+            diagLogScroll.trailingAnchor.constraint(equalTo: diagContainer.trailingAnchor, constant: -8),
+            diagLogScroll.bottomAnchor.constraint(equalTo: diagContainer.bottomAnchor),
+        ])
+
+        // Stage 4: Timeline Scrubber bar at the bottom of the 3D viewport
+        timelineBar.translatesAutoresizingMaskIntoConstraints = false
+        timelineBar.wantsLayer = true
+        timelineBar.layer?.backgroundColor = NSColor(red: 0.07, green: 0.078, blue: 0.098, alpha: 1).cgColor
+        addSubview(timelineBar)
+
+        timelineTopDivider.translatesAutoresizingMaskIntoConstraints = false
+        timelineTopDivider.wantsLayer = true
+        timelineTopDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.09).cgColor
+        timelineBar.addSubview(timelineTopDivider)
+
+        func styleTimelineBtn(_ b: NSButton, title: String, action: Selector) {
+            b.translatesAutoresizingMaskIntoConstraints = false
+            b.bezelStyle = .rounded
+            b.controlSize = .small
+            b.title = title
+            b.target = self
+            b.action = action
+            timelineBar.addSubview(b)
+        }
+        styleTimelineBtn(playPauseButton, title: "▶", action: #selector(playPausePressed))
+        styleTimelineBtn(prevSnapButton, title: "◀", action: #selector(prevSnapshotPressed))
+        styleTimelineBtn(nextSnapButton, title: "▶|", action: #selector(nextSnapshotPressed))
+        styleTimelineBtn(pinSnapshotButton, title: "Pin", action: #selector(pinSnapshotPressed))
+
+        timelineSlider.translatesAutoresizingMaskIntoConstraints = false
+        timelineSlider.controlSize = .small
+        timelineSlider.isContinuous = true
+        timelineSlider.target = self
+        timelineSlider.action = #selector(timelineSliderChanged)
+        timelineBar.addSubview(timelineSlider)
+
+        timelineLabel.translatesAutoresizingMaskIntoConstraints = false
+        timelineLabel.font = NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        timelineLabel.textColor = NSColor(white: 0.82, alpha: 1)
+        timelineLabel.lineBreakMode = .byTruncatingMiddle
+        timelineBar.addSubview(timelineLabel)
+
+        NSLayoutConstraint.activate([
+            timelineTopDivider.topAnchor.constraint(equalTo: timelineBar.topAnchor),
+            timelineTopDivider.leadingAnchor.constraint(equalTo: timelineBar.leadingAnchor),
+            timelineTopDivider.trailingAnchor.constraint(equalTo: timelineBar.trailingAnchor),
+            timelineTopDivider.heightAnchor.constraint(equalToConstant: 1),
+
+            playPauseButton.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            playPauseButton.leadingAnchor.constraint(equalTo: timelineBar.leadingAnchor, constant: 10),
+            playPauseButton.widthAnchor.constraint(equalToConstant: 30),
+
+            prevSnapButton.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            prevSnapButton.leadingAnchor.constraint(equalTo: playPauseButton.trailingAnchor, constant: 4),
+            prevSnapButton.widthAnchor.constraint(equalToConstant: 28),
+
+            nextSnapButton.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            nextSnapButton.leadingAnchor.constraint(equalTo: prevSnapButton.trailingAnchor, constant: 4),
+            nextSnapButton.widthAnchor.constraint(equalToConstant: 32),
+
+            timelineSlider.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            timelineSlider.leadingAnchor.constraint(equalTo: nextSnapButton.trailingAnchor, constant: 10),
+            timelineSlider.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+
+            timelineLabel.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            timelineLabel.leadingAnchor.constraint(equalTo: timelineSlider.trailingAnchor, constant: 10),
+            timelineLabel.trailingAnchor.constraint(lessThanOrEqualTo: pinSnapshotButton.leadingAnchor, constant: -10),
+
+            pinSnapshotButton.centerYAnchor.constraint(equalTo: timelineBar.centerYAnchor),
+            pinSnapshotButton.trailingAnchor.constraint(equalTo: timelineBar.trailingAnchor, constant: -10),
+        ])
+
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
         statusLabel.textColor = NSColor(white: 0.55, alpha: 1)
@@ -656,9 +975,14 @@ final class GymWorkbenchView: NSView {
             dividerView.widthAnchor.constraint(equalToConstant: 1),
 
             scenePanel.topAnchor.constraint(equalTo: topAnchor),
-            scenePanel.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scenePanel.bottomAnchor.constraint(equalTo: timelineBar.topAnchor),
             scenePanel.leadingAnchor.constraint(equalTo: dividerView.trailingAnchor),
             scenePanel.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            timelineBar.leadingAnchor.constraint(equalTo: dividerView.trailingAnchor),
+            timelineBar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            timelineBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            timelineBar.heightAnchor.constraint(equalToConstant: 38),
 
             emptyLabel.centerXAnchor.constraint(equalTo: scenePanel.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scenePanel.centerYAnchor),
@@ -709,20 +1033,25 @@ final class GymWorkbenchView: NSView {
             clashDivider.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -8),
             clashDivider.heightAnchor.constraint(equalToConstant: 1),
 
-            clashHeaderLabel.topAnchor.constraint(equalTo: clashDivider.bottomAnchor, constant: 8),
-            clashHeaderLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
-            clashHeaderLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
+            railTabControl.topAnchor.constraint(equalTo: clashDivider.bottomAnchor, constant: 6),
+            railTabControl.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 10),
+            railTabControl.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
 
-            clashScrollView.topAnchor.constraint(equalTo: clashHeaderLabel.bottomAnchor, constant: 4),
+            clashScrollView.topAnchor.constraint(equalTo: railTabControl.bottomAnchor, constant: 6),
             clashScrollView.leadingAnchor.constraint(equalTo: railView.leadingAnchor),
             clashScrollView.trailingAnchor.constraint(equalTo: railView.trailingAnchor),
-            clashScrollView.heightAnchor.constraint(equalToConstant: 196),
+            clashScrollView.heightAnchor.constraint(equalToConstant: 210),
             clashScrollView.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -6),
 
             clashDoc.widthAnchor.constraint(equalTo: clashScrollView.widthAnchor),
 
-            clashEmptyLabel.topAnchor.constraint(equalTo: clashHeaderLabel.bottomAnchor, constant: 10),
+            clashEmptyLabel.topAnchor.constraint(equalTo: railTabControl.bottomAnchor, constant: 12),
             clashEmptyLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
+
+            diagContainer.topAnchor.constraint(equalTo: railTabControl.bottomAnchor, constant: 6),
+            diagContainer.leadingAnchor.constraint(equalTo: railView.leadingAnchor),
+            diagContainer.trailingAnchor.constraint(equalTo: railView.trailingAnchor),
+            diagContainer.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -6),
 
             statusLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
             statusLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -12),
@@ -789,7 +1118,10 @@ final class GymWorkbenchView: NSView {
             clearBaseline()
         }
         rebuildCompareMenu()
+        stopPlayback()
         lastObservedSignature = PleFileSignature.read(from: item.url)
+        refreshTimelineSnapshots(for: item)
+        refreshDiagnosticsFiles(for: item)
         loadActiveItem(item, preserveView: false, forceReconvert: false, isLiveUpdate: false)
     }
 
@@ -813,14 +1145,18 @@ final class GymWorkbenchView: NSView {
                     self.activeScene = scene
                     self.scenePanel.loadScene(scene, preserveView: preserveView)
                     self.rebuildClashRows(for: scene)
+                    self.updateDiagnostics(for: scene, item: item)
                     self.recomputeDiff()
-                    let clashCount = scene.resolvedClashes.count
-                    self.statusLabel.stringValue = "\(item.title) • \(scene.elements.count) elems • \(clashCount) clash\(clashCount == 1 ? "" : "es")"
                     if isLiveUpdate {
+                        self.appendLiveSnapshot(scene: scene)
                         let df = DateFormatter()
                         df.dateFormat = "HH:mm:ss"
                         self.liveStatusLabel.stringValue = "Updated \(df.string(from: Date()))"
+                    } else {
+                        self.attachLoadedSceneToCurrentSnapshot(scene: scene, item: item)
                     }
+                    let clashCount = scene.resolvedClashes.count
+                    self.statusLabel.stringValue = "\(item.title) • \(scene.elements.count) elems • \(clashCount) clash\(clashCount == 1 ? "" : "es")"
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -919,7 +1255,8 @@ final class GymWorkbenchView: NSView {
         clashRowViews.removeAll()
         let clashes = scene.resolvedClashes
         clashHeaderLabel.stringValue = "Clashes (\(clashes.count))"
-        clashEmptyLabel.isHidden = !clashes.isEmpty
+        railTabControl.setLabel("Clashes (\(clashes.count))", forSegment: 0)
+        clashEmptyLabel.isHidden = showingDiagnostics || !clashes.isEmpty
         selectedClashId = nil
 
         for clash in clashes {
@@ -1051,5 +1388,376 @@ final class GymWorkbenchView: NSView {
             rebuildCompareMenu()
         }
         selectItem(item)
+    }
+
+    // MARK: - Stage 4: Timeline Scrubbing & Snapshot Playback
+
+    private func refreshTimelineSnapshots(for item: PleGymRunItem) {
+        snapshots = PleGymDiscovery.discoverSnapshots(for: item)
+        currentSnapshotIndex = max(0, snapshots.count - 1)
+        updateTimelineUI()
+    }
+
+    private func attachLoadedSceneToCurrentSnapshot(scene: PleScene, item: PleGymRunItem) {
+        if snapshots.isEmpty {
+            snapshots = [PleGymSnapshot(
+                id: item.id,
+                label: "Current",
+                url: item.url,
+                isIfc: item.isIfc,
+                scene: scene,
+                score: scene.run?.score,
+                isPinned: false,
+                isLiveCapture: false,
+                capturedAt: Date()
+            )]
+            currentSnapshotIndex = 0
+        } else {
+            let idx = min(currentSnapshotIndex, snapshots.count - 1)
+            snapshots[idx].scene = scene
+            snapshots[idx].score = scene.run?.score
+        }
+        updateTimelineUI()
+    }
+
+    private func appendLiveSnapshot(scene: PleScene) {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm:ss"
+        let label = "Live \(df.string(from: Date()))"
+        let snap = PleGymSnapshot(
+            id: "live-\(UUID().uuidString)",
+            label: label,
+            url: selectedItem?.url,
+            isIfc: selectedItem?.isIfc ?? false,
+            scene: scene,
+            score: scene.run?.score,
+            isPinned: false,
+            isLiveCapture: true,
+            capturedAt: Date()
+        )
+        snapshots.append(snap)
+        currentSnapshotIndex = snapshots.count - 1
+        updateTimelineUI()
+    }
+
+    @objc private func pinSnapshotPressed() {
+        guard let scene = activeScene else { return }
+        pinCounter += 1
+        let label = "Pin #\(pinCounter)"
+        let snap = PleGymSnapshot(
+            id: "pin-\(UUID().uuidString)",
+            label: label,
+            url: nil,
+            isIfc: false,
+            scene: scene,
+            score: scene.run?.score,
+            isPinned: true,
+            isLiveCapture: false,
+            capturedAt: Date()
+        )
+        snapshots.append(snap)
+        currentSnapshotIndex = snapshots.count - 1
+        updateTimelineUI()
+    }
+
+    @objc private func playPausePressed() {
+        if isPlayingTimeline {
+            stopPlayback()
+        } else {
+            startPlayback()
+        }
+    }
+
+    private func startPlayback() {
+        guard snapshots.count > 1 else { return }
+        isPlayingTimeline = true
+        playPauseButton.title = "⏸"
+        playbackTimer?.invalidate()
+        let t = Timer(timeInterval: 0.9, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard self.snapshots.count > 1 else {
+                self.stopPlayback()
+                return
+            }
+            let nextIdx = (self.currentSnapshotIndex + 1) % self.snapshots.count
+            self.scrubToSnapshot(index: nextIdx)
+        }
+        RunLoop.main.add(t, forMode: .common)
+        playbackTimer = t
+    }
+
+    private func stopPlayback() {
+        isPlayingTimeline = false
+        playPauseButton.title = "▶"
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
+
+    @objc private func prevSnapshotPressed() {
+        guard !snapshots.isEmpty else { return }
+        stopPlayback()
+        scrubToSnapshot(index: max(0, currentSnapshotIndex - 1))
+    }
+
+    @objc private func nextSnapshotPressed() {
+        guard !snapshots.isEmpty else { return }
+        stopPlayback()
+        scrubToSnapshot(index: min(snapshots.count - 1, currentSnapshotIndex + 1))
+    }
+
+    @objc private func timelineSliderChanged() {
+        guard !snapshots.isEmpty else { return }
+        stopPlayback()
+        let idx = max(0, min(snapshots.count - 1, Int(timelineSlider.doubleValue.rounded()))) 
+        if idx != currentSnapshotIndex {
+            scrubToSnapshot(index: idx)
+        }
+    }
+
+    func scrubToSnapshot(index: Int) {
+        guard index >= 0, index < snapshots.count else { return }
+        currentSnapshotIndex = index
+        updateTimelineUI()
+        let snap = snapshots[index]
+        if let cached = snap.scene {
+            applyScrubbedScene(cached)
+            return
+        }
+        guard let url = snap.url else { return }
+        snapshotLoadGeneration += 1
+        let gen = snapshotLoadGeneration
+        let wf = workingFolderProvider?()
+        let isIfc = snap.isIfc
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let scene: PleScene
+                if isIfc {
+                    scene = try PleGymDiscovery.convertAndLoadIfc(from: url, workingFolder: wf, forceReconvert: false)
+                } else {
+                    scene = try PleSceneLoader.load(from: url)
+                }
+                DispatchQueue.main.async {
+                    guard let self, self.snapshotLoadGeneration == gen else { return }
+                    if index < self.snapshots.count {
+                        self.snapshots[index].scene = scene
+                        self.snapshots[index].score = scene.run?.score
+                    }
+                    if self.currentSnapshotIndex == index {
+                        self.applyScrubbedScene(scene)
+                        self.updateTimelineUI()
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self, self.snapshotLoadGeneration == gen else { return }
+                    self.statusLabel.stringValue = "Snapshot load error: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func applyScrubbedScene(_ scene: PleScene) {
+        activeScene = scene
+        scenePanel.loadScene(scene, preserveView: true)
+        rebuildClashRows(for: scene)
+        if let item = selectedItem {
+            updateDiagnostics(for: scene, item: item)
+        }
+        recomputeDiff()
+    }
+
+    private func updateTimelineUI() {
+        let count = snapshots.count
+        let hasMulti = count > 1
+        timelineSlider.minValue = 0
+        timelineSlider.maxValue = Double(max(0, count - 1))
+        timelineSlider.integerValue = currentSnapshotIndex
+        timelineSlider.isEnabled = hasMulti
+        playPauseButton.isEnabled = hasMulti
+        prevSnapButton.isEnabled = hasMulti && currentSnapshotIndex > 0
+        nextSnapButton.isEnabled = hasMulti && currentSnapshotIndex < count - 1
+        pinSnapshotButton.isEnabled = activeScene != nil
+        if count == 0 {
+            timelineLabel.stringValue = "0/0 • No snapshots"
+            return
+        }
+        let snap = snapshots[min(currentSnapshotIndex, count - 1)]
+        let prefix = snap.isPinned ? "★ " : (snap.isLiveCapture ? "● " : "")
+        var text = "\(currentSnapshotIndex + 1)/\(count) • \(prefix)\(snap.label)"
+        if let sc = snap.score {
+            text += String(format: " • score %.2f", sc)
+        }
+        timelineLabel.stringValue = text
+    }
+
+    // MARK: - Stage 4: Run Diagnostics & Log Drawer
+
+    @objc private func railTabChanged() {
+        showingDiagnostics = (railTabControl.selectedSegment == 1)
+        clashScrollView.isHidden = showingDiagnostics
+        let hasClashes = !(activeScene?.resolvedClashes.isEmpty ?? true)
+        clashEmptyLabel.isHidden = showingDiagnostics || hasClashes
+        diagContainer.isHidden = !showingDiagnostics
+    }
+
+    private func refreshDiagnosticsFiles(for item: PleGymRunItem) {
+        discoveredLogs = PleGymDiscovery.discoverLogs(for: item)
+        rebuildDiagFileMenu(scene: activeScene)
+    }
+
+    private func updateDiagnostics(for scene: PleScene, item: PleGymRunItem) {
+        // Metrics line
+        var parts: [String] = []
+        if let r = scene.run {
+            if let sc = r.score { parts.append(String(format: "Score %.2f", sc)) }
+            if let len = r.total_length_m { parts.append(String(format: "Len %.1fm", len)) }
+        }
+        parts.append("\(scene.elements.count) elems")
+        parts.append("\(scene.resolvedClashes.count) clashes")
+        diagMetricsLabel.stringValue = parts.joined(separator: " • ")
+
+        // Per-gate badges
+        for v in diagGatesStack.arrangedSubviews {
+            diagGatesStack.removeArrangedSubview(v)
+            v.removeFromSuperview()
+        }
+        if let gates = scene.run?.gates, !gates.isEmpty {
+            for key in gates.keys.sorted() {
+                let val = gates[key]!
+                let passed: Bool
+                switch val {
+                case .bool(let b): passed = b
+                case .number(let n): passed = n != 0
+                case .string(let s):
+                    let low = s.lowercased()
+                    passed = (low == "pass" || low == "passed" || low == "ok" || low == "true")
+                case .null, .array, .object: passed = false
+                }
+                diagGatesStack.addArrangedSubview(makeGateBadge(name: key, passed: passed))
+            }
+        } else {
+            let lbl = NSTextField(labelWithString: "No gate data")
+            lbl.font = NSFont.systemFont(ofSize: 10)
+            lbl.textColor = NSColor(white: 0.55, alpha: 1)
+            diagGatesStack.addArrangedSubview(lbl)
+        }
+
+        if discoveredLogs.isEmpty {
+            discoveredLogs = PleGymDiscovery.discoverLogs(for: item)
+        }
+        rebuildDiagFileMenu(scene: scene)
+    }
+
+    private func makeGateBadge(name: String, passed: Bool) -> NSView {
+        let pill = NSView()
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.wantsLayer = true
+        pill.layer?.cornerRadius = 4
+        pill.layer?.borderWidth = 1
+        if passed {
+            pill.layer?.backgroundColor = NSColor(calibratedRed: 0.14, green: 0.52, blue: 0.28, alpha: 0.32).cgColor
+            pill.layer?.borderColor = NSColor(calibratedRed: 0.28, green: 0.85, blue: 0.48, alpha: 0.75).cgColor
+        } else {
+            pill.layer?.backgroundColor = NSColor(calibratedRed: 0.65, green: 0.16, blue: 0.16, alpha: 0.35).cgColor
+            pill.layer?.borderColor = NSColor(calibratedRed: 0.95, green: 0.34, blue: 0.34, alpha: 0.85).cgColor
+        }
+        let lbl = NSTextField(labelWithString: "\(passed ? "✓" : "✕") \(name)")
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        lbl.font = NSFont.monospacedSystemFont(ofSize: 9.5, weight: .semibold)
+        lbl.textColor = passed
+            ? NSColor(calibratedRed: 0.72, green: 1.0, blue: 0.80, alpha: 1)
+            : NSColor(calibratedRed: 1.0, green: 0.74, blue: 0.74, alpha: 1)
+        pill.addSubview(lbl)
+        NSLayoutConstraint.activate([
+            lbl.leadingAnchor.constraint(equalTo: pill.leadingAnchor, constant: 5),
+            lbl.trailingAnchor.constraint(equalTo: pill.trailingAnchor, constant: -5),
+            lbl.topAnchor.constraint(equalTo: pill.topAnchor, constant: 2),
+            lbl.bottomAnchor.constraint(equalTo: pill.bottomAnchor, constant: -2),
+        ])
+        return pill
+    }
+
+    private func rebuildDiagFileMenu(scene: PleScene?) {
+        let prevTitle = diagFilePopup.selectedItem?.title
+        diagFilePopup.removeAllItems()
+        var entries = discoveredLogs
+        let summary = formatSceneDiagnosticsSummary(scene: scene)
+        entries.append(PleGymLogFile(name: "Scene Summary (parsed)", url: nil, syntheticContent: summary))
+        for entry in entries {
+            diagFilePopup.addItem(withTitle: entry.name)
+            diagFilePopup.lastItem?.representedObject = entry
+        }
+        if let prev = prevTitle, let idx = diagFilePopup.itemArray.firstIndex(where: { $0.title == prev }) {
+            diagFilePopup.selectItem(at: idx)
+        } else {
+            diagFilePopup.selectItem(at: 0)
+        }
+        loadSelectedDiagLog()
+    }
+
+    private func formatSceneDiagnosticsSummary(scene: PleScene?) -> String {
+        guard let scene else { return "No scene loaded." }
+        var lines: [String] = []
+        lines.append("Scene: \(scene.task ?? "PLE Scene")")
+        lines.append("Elements: \(scene.elements.count)")
+        lines.append("Clashes: \(scene.resolvedClashes.count)")
+        if let r = scene.run {
+            if let sc = r.score { lines.append(String(format: "Score: %.4f", sc)) }
+            if let len = r.total_length_m { lines.append(String(format: "Total Length: %.2f m", len)) }
+            if let gates = r.gates, !gates.isEmpty {
+                lines.append("")
+                lines.append("Gates:")
+                for k in gates.keys.sorted() {
+                    lines.append("  \(k): \(gates[k]!)")
+                }
+            }
+        }
+        if !scene.resolvedClashes.isEmpty {
+            lines.append("")
+            lines.append("Top Clashes:")
+            for c in scene.resolvedClashes.prefix(12) {
+                let pen = c.penetrationMM.map { String(format: "%.1fmm", $0) } ?? "?"
+                lines.append("  • \(c.pairLabel) (\(pen))")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    @objc private func diagFileChanged() {
+        loadSelectedDiagLog()
+    }
+
+    private func loadSelectedDiagLog() {
+        guard let entry = diagFilePopup.selectedItem?.representedObject as? PleGymLogFile else {
+            diagLogTextView.string = ""
+            return
+        }
+        if let synthetic = entry.syntheticContent {
+            diagLogTextView.string = synthetic
+            return
+        }
+        guard let url = entry.url else {
+            diagLogTextView.string = ""
+            return
+        }
+        do {
+            let data = try Data(contentsOf: url)
+            let maxBytes = 128 * 1024
+            let slice = data.count > maxBytes ? data.suffix(maxBytes) : data
+            let prefix = data.count > maxBytes ? "[showing last 128 KB of \(data.count) bytes]\n" : ""
+            let text = String(data: slice, encoding: .utf8) ?? String(decoding: slice, as: UTF8.self)
+            diagLogTextView.string = prefix + text
+        } catch {
+            diagLogTextView.string = "Failed to read \(entry.name): \(error.localizedDescription)"
+        }
+    }
+
+    @objc private func copyDiagLogPressed() {
+        let text = diagLogTextView.string
+        guard !text.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        statusLabel.stringValue = "Copied diagnostics to clipboard"
     }
 }

@@ -7,6 +7,8 @@
 //   layer visibility toggles, and selected-element inspector).
 import AppKit
 import Metal
+import ImageIO
+import UniformTypeIdentifiers
 import QuartzCore
 import simd
 
@@ -547,6 +549,7 @@ private struct PleUniforms {
     var cameraPos: SIMD4<Float>
     var keyLightDir: SIMD4<Float>
     var fillLightDir: SIMD4<Float>
+    var clipPlane: SIMD4<Float> // x: maxZ, y: enabled (1 or 0), z/w: reserved
 }
 
 private struct PleGridVertex {
@@ -579,6 +582,7 @@ struct PleUniforms {
     float4 cameraPos;
     float4 keyLightDir;
     float4 fillLightDir;
+    float4 clipPlane;
 };
 
 struct MeshOut {
@@ -616,6 +620,9 @@ vertex MeshOut ple_mesh_vs(
 }
 
 fragment float4 ple_mesh_fs(MeshOut in [[stage_in]], constant PleUniforms &u [[buffer(2)]]) {
+    if (u.clipPlane.y > 0.5 && in.worldPos.z > u.clipPlane.x) {
+        discard_fragment();
+    }
     float3 N = normalize(in.worldNormal);
     float3 L1 = normalize(u.keyLightDir.xyz);
     float3 L2 = normalize(u.fillLightDir.xyz);
@@ -924,6 +931,22 @@ final class PleSceneMetalView: NSView {
         renderTimer = t
     }
 
+    // MARK: - Stage 4 Viewport Controls (Wireframe, Grid, Z-Clip)
+
+    var wireframeMode: Bool = false {
+        didSet { needsRedraw = true; renderFrame() }
+    }
+    var showGrid: Bool = true {
+        didSet { needsRedraw = true; renderFrame() }
+    }
+    var clipZEnabled: Bool = false {
+        didSet { needsRedraw = true; renderFrame() }
+    }
+    var clipZMax: Float = 10.0 {
+        didSet { if clipZEnabled { needsRedraw = true; renderFrame() } }
+    }
+    var onSceneBoundsChanged: ((PleSceneBounds) -> Void)?
+
     // MARK: - Scene Loading & Camera Presets
 
     func setScene(_ newScene: PleScene, preserveView: Bool = false) {
@@ -944,6 +967,10 @@ final class PleSceneMetalView: NSView {
                 onSelectElement?(nil)
             }
         }
+        if !preserveView {
+            clipZMax = newScene.bounds.maxVec.z + 0.05
+        }
+        onSceneBoundsChanged?(newScene.bounds)
         rebuildGrid(bounds: newScene.bounds)
         needsRedraw = true
         renderFrame()
@@ -1071,6 +1098,7 @@ final class PleSceneMetalView: NSView {
         for elem in resolvedElements {
             let sem = elem.semanticLayer
             guard visibleLayers.contains(sem) else { continue }
+            if clipZEnabled && (elem.centerVec.z - elem.sizeVec.z * 0.5) > clipZMax { continue }
             var color = sem.rgba
             var translucent = sem.isTranslucent
             var highlight: Float = (elem.id == selectedElementId) ? 1.0 : 0.0
@@ -1133,11 +1161,12 @@ final class PleSceneMetalView: NSView {
             viewProj: vp,
             cameraPos: SIMD4<Float>(camera.eye, 1.0),
             keyLightDir: SIMD4<Float>(simd_normalize(SIMD3<Float>(0.55, 0.35, 0.75)), 0),
-            fillLightDir: SIMD4<Float>(simd_normalize(SIMD3<Float>(-0.6, -0.4, 0.5)), 0)
+            fillLightDir: SIMD4<Float>(simd_normalize(SIMD3<Float>(-0.6, -0.4, 0.5)), 0),
+            clipPlane: SIMD4<Float>(clipZMax, clipZEnabled ? 1.0 : 0.0, 0, 0)
         )
 
         // 1. Ground reference grid
-        if let gPipe = gridPipeline, let gBuf = gridVertexBuffer, gridVertexCount > 0 {
+        if showGrid, let gPipe = gridPipeline, let gBuf = gridVertexBuffer, gridVertexCount > 0 {
             enc.setRenderPipelineState(gPipe)
             enc.setDepthStencilState(dTr)
             enc.setVertexBuffer(gBuf, offset: 0, index: 0)
@@ -1159,6 +1188,7 @@ final class PleSceneMetalView: NSView {
         }
 
         // 2. Opaque geometry
+        enc.setTriangleFillMode(wireframeMode ? .lines : .fill)
         enc.setRenderPipelineState(opPipe)
         enc.setDepthStencilState(dOp)
         drawBatch(opBoxes, verts: boxVertexBuffer, vCount: boxVertexCount)
@@ -1235,6 +1265,35 @@ final class PleSceneMetalView: NSView {
             }
         }
         return pixels
+    }
+
+    /// Renders the current 3D viewport to PNG data at the requested resolution.
+    func renderPNGData(width: Int = 1920, height: Int = 1080) -> Data? {
+        guard let pixels = renderOffscreen(width: width, height: height) else { return nil }
+        let bytesPerRow = width * 4
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let provider = CGDataProvider(data: pixels as CFData),
+              let cgImage = CGImage(
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bitsPerPixel: 32,
+                bytesPerRow: bytesPerRow,
+                space: colorSpace,
+                bitmapInfo: bitmapInfo,
+                provider: provider,
+                decode: nil,
+                shouldInterpolate: true,
+                intent: .defaultIntent
+              ) else { return nil }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out as CFMutableData, UTType.png.identifier as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(dest, cgImage, nil)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return out as Data
     }
 
     // MARK: - Mouse / Scroll Interaction & Raycast Picking
@@ -1403,6 +1462,16 @@ final class PleScenePanelView: NSView {
 
     private let errorBanner = NSTextField(wrappingLabelWithString: "")
 
+    // Stage 4: Viewport tools bar (Wireframe, Grid, Z-Clip slice, PNG Export)
+    private let toolsContainer = NSView()
+    private let wireButton = NSButton(title: "Wire", target: nil, action: nil)
+    private let gridButton = NSButton(title: "Grid", target: nil, action: nil)
+    private let clipButton = NSButton(title: "Slice Z", target: nil, action: nil)
+    private let clipSlider = NSSlider(value: 10.0, minValue: 0.0, maxValue: 10.0, target: nil, action: nil)
+    private let clipValueLabel = NSTextField(labelWithString: "")
+    private let exportPngButton = NSButton(title: "PNG", target: nil, action: nil)
+    var onStatusMessage: ((String) -> Void)?
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
@@ -1512,6 +1581,67 @@ final class PleScenePanelView: NSView {
             presetStack.topAnchor.constraint(equalTo: presetContainer.topAnchor, constant: 5),
             presetStack.bottomAnchor.constraint(equalTo: presetContainer.bottomAnchor, constant: -5),
         ])
+
+        // Top-right (below presets): Stage 4 Viewport Tools (Wireframe, Grid, Z-Slice, PNG Export)
+        styleOverlay(toolsContainer)
+        let toolsStack = NSStackView()
+        toolsStack.orientation = .horizontal
+        toolsStack.alignment = .centerY
+        toolsStack.spacing = 5
+        toolsStack.translatesAutoresizingMaskIntoConstraints = false
+
+        func configureToolButton(_ b: NSButton, title: String, action: Selector, tip: String) {
+            b.title = title
+            b.target = self
+            b.action = action
+            b.toolTip = tip
+            b.bezelStyle = .recessed
+            b.isBordered = false
+            b.wantsLayer = true
+            b.layer?.cornerRadius = 5
+            b.layer?.borderWidth = 1
+            b.font = .systemFont(ofSize: 10.5, weight: .medium)
+        }
+
+        configureToolButton(wireButton, title: " Wire ", action: #selector(wirePressed), tip: "Toggle wireframe rendering")
+        configureToolButton(gridButton, title: " Grid ", action: #selector(gridPressed), tip: "Toggle ground reference grid")
+        configureToolButton(clipButton, title: " Slice Z ", action: #selector(clipToggled), tip: "Toggle horizontal Z section cut plane")
+        configureToolButton(exportPngButton, title: " PNG ", action: #selector(exportPngPressed), tip: "Export 3D viewport snapshot as PNG")
+
+        clipSlider.target = self
+        clipSlider.action = #selector(clipSliderChanged)
+        clipSlider.isContinuous = true
+        clipSlider.controlSize = .mini
+        clipSlider.translatesAutoresizingMaskIntoConstraints = false
+        clipSlider.widthAnchor.constraint(equalToConstant: 82).isActive = true
+        clipSlider.isHidden = true
+
+        clipValueLabel.font = .monospacedSystemFont(ofSize: 10, weight: .medium)
+        clipValueLabel.textColor = NSColor(calibratedRed: 0.72, green: 0.88, blue: 1.0, alpha: 1.0)
+        clipValueLabel.isHidden = true
+
+        toolsStack.addArrangedSubview(wireButton)
+        toolsStack.addArrangedSubview(gridButton)
+        toolsStack.addArrangedSubview(clipButton)
+        toolsStack.addArrangedSubview(clipSlider)
+        toolsStack.addArrangedSubview(clipValueLabel)
+        toolsStack.addArrangedSubview(exportPngButton)
+        toolsContainer.addSubview(toolsStack)
+        addSubview(toolsContainer)
+
+        NSLayoutConstraint.activate([
+            toolsContainer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            toolsContainer.topAnchor.constraint(equalTo: presetContainer.bottomAnchor, constant: 6),
+            toolsStack.leadingAnchor.constraint(equalTo: toolsContainer.leadingAnchor, constant: 6),
+            toolsStack.trailingAnchor.constraint(equalTo: toolsContainer.trailingAnchor, constant: -6),
+            toolsStack.topAnchor.constraint(equalTo: toolsContainer.topAnchor, constant: 4),
+            toolsStack.bottomAnchor.constraint(equalTo: toolsContainer.bottomAnchor, constant: -4),
+        ])
+
+        refreshViewportToolButtons()
+        metalView.onSceneBoundsChanged = { [weak self] bounds in
+            self?.syncClipBounds(bounds)
+        }
 
         // Bottom-left: Layer visibility toggles
         let layerContainer = NSView()
@@ -1665,6 +1795,97 @@ final class PleScenePanelView: NSView {
     func loadScene(from url: URL) throws {
         let scene = try PleScene.load(from: url)
         loadScene(scene)
+    }
+
+    private func syncClipBounds(_ bounds: PleSceneBounds) {
+        let minZ = Double(bounds.minVec.z)
+        let maxZ = Double(max(bounds.maxVec.z + 0.05, bounds.minVec.z + 0.5))
+        clipSlider.minValue = minZ
+        clipSlider.maxValue = maxZ
+        if !metalView.clipZEnabled {
+            clipSlider.doubleValue = maxZ
+            metalView.clipZMax = Float(maxZ)
+        } else {
+            let clamped = min(max(Double(metalView.clipZMax), minZ), maxZ)
+            clipSlider.doubleValue = clamped
+            metalView.clipZMax = Float(clamped)
+        }
+        clipValueLabel.stringValue = String(format: "Z≤%.1fm", clipSlider.doubleValue)
+    }
+
+    private func refreshViewportToolButtons() {
+        func styleToggle(_ b: NSButton, title: String, active: Bool, accent: NSColor) {
+            b.layer?.backgroundColor = active
+                ? accent.withAlphaComponent(0.30).cgColor
+                : NSColor(calibratedWhite: 1.0, alpha: 0.07).cgColor
+            b.layer?.borderColor = active
+                ? accent.withAlphaComponent(0.85).cgColor
+                : NSColor(calibratedWhite: 1.0, alpha: 0.14).cgColor
+            b.attributedTitle = NSAttributedString(string: title, attributes: [
+                .foregroundColor: active ? NSColor.white : NSColor(calibratedWhite: 0.78, alpha: 1.0),
+                .font: NSFont.systemFont(ofSize: 10.5, weight: active ? .semibold : .medium),
+            ])
+        }
+        let blue = NSColor(calibratedRed: 0.30, green: 0.65, blue: 1.0, alpha: 1.0)
+        let teal = NSColor(calibratedRed: 0.24, green: 0.85, blue: 0.68, alpha: 1.0)
+        styleToggle(wireButton, title: " Wire ", active: metalView.wireframeMode, accent: blue)
+        styleToggle(gridButton, title: " Grid ", active: metalView.showGrid, accent: blue)
+        styleToggle(clipButton, title: " Slice Z ", active: metalView.clipZEnabled, accent: teal)
+        styleToggle(exportPngButton, title: " PNG ", active: false, accent: blue)
+        clipSlider.isHidden = !metalView.clipZEnabled
+        clipValueLabel.isHidden = !metalView.clipZEnabled
+        clipValueLabel.stringValue = String(format: "Z≤%.1fm", clipSlider.doubleValue)
+    }
+
+    @objc private func wirePressed() {
+        metalView.wireframeMode.toggle()
+        refreshViewportToolButtons()
+    }
+
+    @objc private func gridPressed() {
+        metalView.showGrid.toggle()
+        refreshViewportToolButtons()
+    }
+
+    @objc private func clipToggled() {
+        metalView.clipZEnabled.toggle()
+        if metalView.clipZEnabled && clipSlider.doubleValue >= clipSlider.maxValue - 0.01 {
+            let mid = (clipSlider.minValue + clipSlider.maxValue) * 0.65
+            clipSlider.doubleValue = mid
+            metalView.clipZMax = Float(mid)
+        }
+        refreshViewportToolButtons()
+    }
+
+    @objc private func clipSliderChanged() {
+        metalView.clipZMax = Float(clipSlider.doubleValue)
+        clipValueLabel.stringValue = String(format: "Z≤%.1fm", clipSlider.doubleValue)
+    }
+
+    @objc private func exportPngPressed() {
+        guard let pngData = metalView.renderPNGData(width: 1920, height: 1080) else {
+            onStatusMessage?("PNG export failed: Metal viewport not ready")
+            return
+        }
+        let panel = NSSavePanel()
+        panel.title = "Export 3D PLE Viewport Snapshot"
+        panel.allowedContentTypes = [.png]
+        panel.nameFieldStringValue = "ple-viewport.png"
+        panel.canCreateDirectories = true
+        let finish: (NSApplication.ModalResponse) -> Void = { [weak self] resp in
+            guard resp == .OK, let url = panel.url else { return }
+            do {
+                try pngData.write(to: url, options: .atomic)
+                self?.onStatusMessage?("Saved PNG snapshot: \(url.lastPathComponent)")
+            } catch {
+                self?.onStatusMessage?("PNG save failed: \(error.localizedDescription)")
+            }
+        }
+        if let win = window {
+            panel.beginSheetModal(for: win, completionHandler: finish)
+        } else {
+            finish(panel.runModal())
+        }
     }
 
     func showError(_ message: String) {
