@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenAgents
+GenericName=AI Coding Agent
+Comment=OpenAgents Desktop (Microcoder + Foreman)
+Exec=openagents-desktop %U
+Icon=openagents-desktop
+Terminal=false
+Categories=Development;IDE;
+StartupWMClass=openagents-desktop
+StartupNotify=true

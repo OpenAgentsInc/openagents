@@ -1,0 +1,248 @@
+// Linux host bridge to the portable desktop core (GitHub #13781, #13787).
+// All store, settings, worktree, daemon, worker and signed update logic lives in
+// coax/lib/agent/desktop/; this file exposes a small C ABI for linux/main.c.
+#load "../../../coax/lib/agent/desktop/os-posix.coax";
+#load "../../../coax/lib/agent/desktop/worker.coax";
+#load "../../../coax/lib/agent/desktop/update.coax";
+
+OA_MAX_SUBAGENTS :: 8;
+
+OaCore :: struct {
+  store: [1] DcStore;
+  chats: [DC_CHATS] DkChat;
+  daemon: [1] DcDaemon;
+  worker: [1] DcWorker;
+  subagents: [OA_MAX_SUBAGENTS] DcWorker;
+  wt: [1] DcWorktree;
+  has_wt: bool;
+  store_open: bool;
+  daemon_open: bool;
+}
+
+oa_copy_out :: (s: string, out: [] u8) -> int {
+  if out.count <= 0 { return 0; }
+  n := ifx s.count < out.count - 1 then s.count else out.count - 1;
+  for i: 0..<n { out[i] = s[i]; }
+  out[n] = 0;
+  return n;
+}
+
+oa_core_init :: (c: [] OaCore, store_dir: string, daemon_dir: string) -> int #export_c #effects(all) {
+  sb: [DC_PATH] u8;
+  sdir := ifx store_dir.count > 0 then store_dir else dcos_chats_dir(sb[..]);
+  c[0].store_open = dc_store_open(c[0].store[..], sdir, c[0].chats[..]);
+  db: [DC_PATH] u8;
+  ddir := ifx daemon_dir.count > 0 then daemon_dir else dcos_daemon_dir(db[..]);
+  dc_daemon_open(c[0].daemon[..], ddir);
+  c[0].daemon_open = true;
+  c[0].worker[0].h = -1;
+  for i: 0..<OA_MAX_SUBAGENTS { c[0].subagents[i].h = -1; }
+  return ifx c[0].store_open then 1 else 0;
+}
+
+oa_core_daemon_ensure :: (c: [] OaCore, program: string, wait_ms: int) -> int #export_c #effects(all) {
+  if !c[0].daemon_open { return 0; }
+  started: [1] int;
+  if dc_daemon_ensure(c[0].daemon[..], program, wait_ms, started[..]) { return 1; }
+  return 0;
+}
+
+oa_core_daemon_available :: (c: [] OaCore) -> int #export_c #effects(all) {
+  if !c[0].daemon_open { return 0; }
+  return ifx dc_daemon_available(c[0].daemon[..]) then 1 else 0;
+}
+
+oa_core_daemon_owns_runs :: (c: [] OaCore) -> int #export_c #effects(all) {
+  if !c[0].daemon_open { return 0; }
+  return ifx c[0].daemon[0].owns_runs then 1 else 0;
+}
+
+oa_core_new_id :: (out: [] u8) -> int #export_c #effects(all) {
+  b: [64] u8;
+  return oa_copy_out(dc_new_id(b[..]), out);
+}
+
+oa_core_now_ms :: () -> int #export_c #effects(all) {
+  return dcos_now_ms();
+}
+
+oa_core_store_lines :: (c: [] OaCore, out: [] u8) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  return oa_copy_out(dc_store_lines(c[0].store[..], out), out);
+}
+
+oa_core_store_count :: (c: [] OaCore) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  return c[0].store[0].x[0].n;
+}
+
+oa_core_store_id :: (c: [] OaCore, idx: int, out: [] u8) -> int #export_c #effects(all) {
+  if !c[0].store_open || idx < 0 || idx >= c[0].store[0].x[0].n { return 0; }
+  return oa_copy_out(dk_id(c[0].store[0].x[..], idx), out);
+}
+
+oa_core_store_folder :: (c: [] OaCore, id: string, out: [] u8) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  i := dk_find(c[0].store[0].x[..], id);
+  if i < 0 { return 0; }
+  return oa_copy_out(dk_folder(c[0].store[0].x[..], i), out);
+}
+
+oa_core_store_text :: (c: [] OaCore, id: string, out: [] u8) -> int #export_c #effects(all) {
+  if !c[0].store_open || out.count <= 1 { return 0; }
+  t := dc_store_text(c[0].store[..], id, out[0..<out.count - 1]);
+  out[t.count] = 0;
+  return t.count;
+}
+
+oa_core_store_keep :: (c: [] OaCore, id: string, title: string, folder: string, text: string, wt_path: string, wt_branch: string, repo: string) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  now := dcos_now_ms() / 1000;
+  ok := dc_store_keep(c[0].store[..], id, title, folder, text, "", wt_path, wt_branch, repo, now);
+  return ifx ok then 1 else 0;
+}
+
+oa_core_store_rename :: (c: [] OaCore, id: string, title: string) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  return ifx dc_store_rename(c[0].store[..], id, title) then 1 else 0;
+}
+
+oa_core_store_toggle_pin :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  return ifx dc_store_toggle_pin(c[0].store[..], id) then 1 else 0;
+}
+
+oa_core_store_remove :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
+  if !c[0].store_open { return 0; }
+  return ifx dc_store_remove(c[0].store[..], id) then 1 else 0;
+}
+
+oa_core_key_read :: (name: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [8192] u8;
+  return oa_copy_out(dc_key_read(name, b[..]), out);
+}
+
+oa_core_key_save :: (name: string, key: string) -> int #export_c #effects(all) {
+  return ifx dc_key_save(name, key) then 1 else 0;
+}
+
+oa_core_worktrees_on :: () -> int #export_c #effects(all) {
+  return ifx dc_worktrees_on() then 1 else 0;
+}
+
+oa_core_wt_create :: (c: [] OaCore, folder: string, chat_id: string, out_path: [] u8, out_branch: [] u8, out_repo: [] u8, out_why: [] u8) -> int #export_c #effects(all) {
+  rb: [DC_PATH] u8;
+  repo := dc_repository(folder, rb[..]);
+  if repo.count == 0 { return 0; }
+  hb: [DC_PATH] u8; wb: [DC_PATH] u8;
+  root := dc_worktree_root(dcos_home(hb[..]), "", wb[..]);
+  why := dc_wt_create(repo, chat_id, root, c[0].wt[..], out_why);
+  if why.count > 0 { return -1; }
+  c[0].has_wt = true;
+  _ := oa_copy_out(dc_wt_path(c[0].wt[..]), out_path);
+  _ := oa_copy_out(dc_wt_branch(c[0].wt[..]), out_branch);
+  _ := oa_copy_out(dc_wt_source(c[0].wt[..]), out_repo);
+  return 1;
+}
+
+oa_core_worker_start :: (c: [] OaCore, program: string, folder: string, extra_env: string, err_out: [] u8) -> int #export_c #effects(all) {
+  hb: [DC_PATH] u8; home := dcos_home(hb[..]);
+  pb: [DC_PATH] u8; had_path := dcos_getenv("PATH", pb[..]);
+  kb: [4096] u8; key := dc_claude_key(kb[..]);
+  e: [1] DcEnv;
+  dc_worker_env(e[..], program, folder, extra_env, home, had_path, key);
+  ok := dc_worker_start(c[0].worker[..], c[0].daemon[..], program, folder, e[..]);
+  if !ok {
+    _ := oa_copy_out(dc_worker_failure(c[0].worker[..]), err_out);
+    return 0;
+  }
+  return 1;
+}
+
+oa_core_worker_alive :: (c: [] OaCore) -> int #export_c #effects(all) {
+  return ifx dc_worker_alive(c[0].worker[..]) then 1 else 0;
+}
+
+oa_core_worker_write :: (c: [] OaCore, line: string) -> int #export_c #effects(all) {
+  return ifx dc_worker_write(c[0].worker[..], c[0].daemon[..], line) then 1 else 0;
+}
+
+oa_core_worker_read :: (c: [] OaCore, timeout_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  if out.count <= 1 { return -1; }
+  n := dc_worker_read(c[0].worker[..], c[0].daemon[..], timeout_ms, out[0..<out.count - 1]);
+  if n >= 0 { out[n] = 0; }
+  return n;
+}
+
+oa_core_worker_stop :: (c: [] OaCore, forget: int) #export_c #effects(all) {
+  dc_worker_stop(c[0].worker[..], c[0].daemon[..], forget != 0);
+}
+
+oa_core_subagent_start :: (c: [] OaCore, slot: int, program: string, folder: string, extra_env: string, err_out: [] u8) -> int #export_c #effects(all) {
+  if slot < 0 || slot >= OA_MAX_SUBAGENTS { return 0; }
+  hb: [DC_PATH] u8; home := dcos_home(hb[..]);
+  pb: [DC_PATH] u8; had_path := dcos_getenv("PATH", pb[..]);
+  kb: [4096] u8; key := dc_claude_key(kb[..]);
+  e: [1] DcEnv;
+  dc_worker_env(e[..], program, folder, extra_env, home, had_path, key);
+  ok := dc_worker_start(c[0].subagents[slot..<slot + 1], c[0].daemon[..], program, folder, e[..]);
+  if !ok {
+    _ := oa_copy_out(dc_worker_failure(c[0].subagents[slot..<slot + 1]), err_out);
+    return 0;
+  }
+  return 1;
+}
+
+oa_core_subagent_alive :: (c: [] OaCore, slot: int) -> int #export_c #effects(all) {
+  if slot < 0 || slot >= OA_MAX_SUBAGENTS { return 0; }
+  return ifx dc_worker_alive(c[0].subagents[slot..<slot + 1]) then 1 else 0;
+}
+
+oa_core_subagent_write :: (c: [] OaCore, slot: int, line: string) -> int #export_c #effects(all) {
+  if slot < 0 || slot >= OA_MAX_SUBAGENTS { return 0; }
+  return ifx dc_worker_write(c[0].subagents[slot..<slot + 1], c[0].daemon[..], line) then 1 else 0;
+}
+
+oa_core_subagent_read :: (c: [] OaCore, slot: int, timeout_ms: int, out: [] u8) -> int #export_c #effects(all) {
+  if slot < 0 || slot >= OA_MAX_SUBAGENTS || out.count <= 1 { return -1; }
+  n := dc_worker_read(c[0].subagents[slot..<slot + 1], c[0].daemon[..], timeout_ms, out[0..<out.count - 1]);
+  if n >= 0 { out[n] = 0; }
+  return n;
+}
+
+oa_core_subagent_stop :: (c: [] OaCore, slot: int, forget: int) #export_c #effects(all) {
+  if slot < 0 || slot >= OA_MAX_SUBAGENTS { return; }
+  dc_worker_stop(c[0].subagents[slot..<slot + 1], c[0].daemon[..], forget != 0);
+}
+
+oa_core_update_verify :: (envelope: string, current: string, current_build: int, allow_file: int, version_out: [] u8, url_out: [] u8, notes_out: [] u8, err_out: [] u8) -> int #export_c #effects(all) {
+  keys: [1] DcKey;
+  _ := dc_update_default_keys(keys[..]);
+  m: [1] DcManifest;
+  code := dc_update_verify(envelope, keys[..], current, current_build, allow_file != 0, m[..]);
+  if code == DC_UPD_OK {
+    _ := oa_copy_out(dc_manifest_version(m[..]), version_out);
+    _ := oa_copy_out(dc_manifest_url(m[..]), url_out);
+    _ := oa_copy_out(dc_manifest_notes(m[..]), notes_out);
+    return 1;
+  }
+  if code == DC_UPD_NOT_NEWER { return 0; }
+  _ := oa_copy_out(dc_update_words(code), err_out);
+  return -1;
+}
+
+oa_core_update_verify_with_key :: (envelope: string, key_id: string, key_material: string, current: string, current_build: int, allow_file: int, version_out: [] u8, url_out: [] u8, notes_out: [] u8, err_out: [] u8) -> int #export_c #effects(all) {
+  keys: [1] DcKey;
+  dc_key(keys[0..<1], key_id, key_material);
+  m: [1] DcManifest;
+  code := dc_update_verify(envelope, keys[..], current, current_build, allow_file != 0, m[..]);
+  if code == DC_UPD_OK {
+    _ := oa_copy_out(dc_manifest_version(m[..]), version_out);
+    _ := oa_copy_out(dc_manifest_url(m[..]), url_out);
+    _ := oa_copy_out(dc_manifest_notes(m[..]), notes_out);
+    return 1;
+  }
+  if code == DC_UPD_NOT_NEWER { return 0; }
+  _ := oa_copy_out(dc_update_words(code), err_out);
+  return -1;
+}

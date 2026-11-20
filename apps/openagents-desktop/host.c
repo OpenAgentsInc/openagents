@@ -179,8 +179,12 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   if ((mods & 8) && !(mods & 6) && (key == 'c' || key == 'x' || key == 'v') && coder_page_wants_text(cd_state(c))) {
     if (key == 'v') {
       // files or a picture on the pasteboard join the draft's attachments (cd_on_file); else its text
+#ifdef __APPLE__
       int n = coder_page_takes_files(cd_state(c)) ? ui_paste_files(c->app.host) : 0;
       if (n == 0) n = ui_paste_text(c->app.host, cd_clip, sizeof cd_clip); else n = 0;
+#else
+      int n = 0;
+#endif
       if (n > 0) (void)coder_page_paste(cd_state(c), (coax_string){cd_clip, n});
     } else {
       int n = (int)coder_page_copy(cd_state(c), key == 'x', (coax_v_u8){(uint8_t *)cd_clip, (int64_t)sizeof cd_clip - 1});
@@ -216,23 +220,31 @@ static const UiIme cd_ime = {cd_ime_replace, cd_ime_mark, cd_ime_unmark, cd_ime_
 static void cd_on_wheel(void *user, float dy) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, 0, 1); cd_woke(c); return; } coder_page_wheel(cd_state(c), dy); cd_woke(c); }
 static void cd_on_scroll(void *user, float dy, int precise, int phase, int momentum, double time) { CoderHost *c = user; if (coder_page_overlay_open(cd_state(c))) { coder_page_overlay_scroll(cd_state(c), dy, precise != 0, 0); cd_woke(c); return; } coder_page_scroll(cd_state(c), dy, precise != 0, phase, momentum, time); cd_woke(c); }
 
-void *cd_open(const char *resources) {
+void *cd_open_ex(const char *resources, int offscreen, int width, int height) {
   CoderHost *c = calloc(1, sizeof *c);
   if (!c) return NULL;
   App *a = &c->app;
   snprintf(a->resources, sizeof a->resources, "%s", resources);
-  char shader[PATH_MAX + 32]; snprintf(shader, sizeof shader, "%s/components.metal", resources);
+  char shader[PATH_MAX + 32];
+#ifdef __APPLE__
+  snprintf(shader, sizeof shader, "%s/components.metal", resources);
   snprintf(c->composition_shader, sizeof c->composition_shader, "%s/composition.metal", resources);
+  const int embedded = 1;
+#else
+  snprintf(shader, sizeof shader, "%s/components.spv", resources);
+  snprintf(c->composition_shader, sizeof c->composition_shader, "%s/composition.spv", resources);
+  const int embedded = 0;
+#endif
   FILE *composition = fopen(c->composition_shader, "rb");
   if (composition) fclose(composition);
   if (!cd_alloc(c)) { free(c); return NULL; }
   a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
-  UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
+  UiApp app = {.title = "OpenAgents", .width = width > 0 ? width : 1120, .height = height > 0 ? height : 760, .embedded = embedded, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
                .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .image = composition ? cd_image : NULL, .presented = cd_presented};
-  a->host = ui_open(&app, 0);
+  a->host = ui_open(&app, offscreen != 0);
   if (!a->host) { free(c->s); free(c->st); free(c); return NULL; }
   c->composition = composition != NULL;
   coder_page_compose(cd_state(c), c->composition);
@@ -261,8 +273,20 @@ static int cd_rescale(CoderHost *c, int row) {
 }
 int cd_zoom(void *page, int by) { CoderHost *c = page; return c ? cd_rescale(c, (int)coder_page_zoom(cd_state(c), by)) : 2; }
 int cd_zoom_set(void *page, int row) { CoderHost *c = page; return c ? cd_rescale(c, (int)coder_page_zoom_set(cd_state(c), row)) : 2; }
-void *cd_view(void *page) { return page ? ui_view(((CoderHost *)page)->app.host) : NULL; }
+void *cd_open(const char *resources) { return cd_open_ex(resources, 0, 900, 640); }
+void *cd_view(void *page) {
+#ifdef __APPLE__
+  return page ? ui_view(((CoderHost *)page)->app.host) : NULL;
+#else
+  (void)page; return NULL;
+#endif
+}
 void cd_frame(void *page) { if (page) ui_frame(((CoderHost *)page)->app.host); }
+int cd_step(void *page) { return page ? ui_frame(((CoderHost *)page)->app.host) : 0; }
+int cd_shot_frame(void *page, uint32_t w, uint32_t h, float dt) { return page ? ui_shot_frame(((CoderHost *)page)->app.host, w, h, dt) : 0; }
+int cd_shot_write(void *page, const char *png) { return page ? ui_shot_write(((CoderHost *)page)->app.host, png) : 0; }
+int cd_copy(void *page, const char *bytes, int n) { return page && bytes && n > 0 ? ui_copy(((CoderHost *)page)->app.host, bytes, (size_t)n) : 0; }
+int cd_focused(void *page) { return page ? ui_focused(((CoderHost *)page)->app.host) : 0; }
 int cd_moving(void *page) { CoderHost *c = page; return c && (c->settle > 0 || coder_page_moving(cd_state(c))); }
 void cd_on_change(void *page, void (*changed)(void *context), void *context) { CoderHost *c = page; if (c) { c->changed = changed; c->context = context; } }
 void cd_env(void *page, int active, int reduced) {

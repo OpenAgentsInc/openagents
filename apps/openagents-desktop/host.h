@@ -6,7 +6,16 @@
 #include <stdint.h>
 // resources: the folder holding the component shader, fonts and icons. NULL when it cannot open.
 void *cd_open(const char *resources);
+// Open with explicit offscreen mode (1 = no window, for --shot / --smoke) and initial size.
+void *cd_open_ex(const char *resources, int offscreen, int width, int height);
 void *cd_view(void *page);
+// One frame on Linux/Wayland (returns 0 once the window is closed).
+int cd_step(void *page);
+// Offscreen render and PNG output (when opened with offscreen=1).
+int cd_shot_frame(void *page, uint32_t w, uint32_t h, float dt);
+int cd_shot_write(void *page, const char *png);
+int cd_copy(void *page, const char *bytes, int n);
+int cd_focused(void *page);
 // One frame. Call it while cd_moving says 1, and after anything changes.
 void cd_frame(void *page);
 int cd_moving(void *page);

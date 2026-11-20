@@ -81,6 +81,7 @@
 #                                         Coder Desktop (apps/coder-desktop, evals/coder-desktop,
 #                                         components) runs only its evals; a change that reaches
 #                                         the desktop core (coax/lib/agent/desktop) runs its smoke
+#   coax/remote/check.sh desktop-linux    the consolidated Linux desktop host's build and headless smoke (#13781)
 #   coax/remote/check.sh desktop-core     the portable desktop core's headless smoke (#13787:
 #                                         coax/lib/agent/desktop/smoke.coax; its unit checks are suites)
 #
@@ -223,10 +224,12 @@ desktop_evals() {
   # every page check file in the evaluator under 85% of the value slots (#13767): a run of one
   # check, or a host whose native checks fall back, needs the page to fit there
   step coder-desktop-page-slots apps/openagents-desktop/page-slots.sh || status=1
+  desktop_linux
 }
 # The portable desktop core (#13787): its #test checks are suites (coax/lib); its smoke runs the
 # modules against this host's real files, git, processes and local sockets, in a temporary folder.
 desktop_core() { step desktop-core-smoke coax/web/tool.sh coax/lib/agent/desktop/smoke.coax || status=1; }
+desktop_linux() { if [[ "$(uname)" == Linux ]]; then step desktop-linux-smoke apps/openagents-desktop/linux/build.sh --smoke || status=1; fi; }
 desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
 desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
@@ -722,6 +725,7 @@ run() {   # mode arg: one check
         counts_since "$arg" ;;
     coder) coder ;;
     desktop-core) desktop_core ;;
+    desktop-linux) desktop_linux ;;
     *) return 2 ;;
   esac
   return 0
