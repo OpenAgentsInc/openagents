@@ -22,12 +22,23 @@ static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c
 static coax_string cd_string(const char *text) { return (coax_string){text ? text : "", text ? (int64_t)strlen(text) : 0}; }
 static void cd_changed(CoderHost *c) { c->settle = 3; }
 static void cd_woke(CoderHost *c) { cd_changed(c); if (c->changed) c->changed(c->context); }
+// The system's uptime in seconds: NSEvent.timestamp's clock on macOS; CLOCK_MONOTONIC (also
+// stopped while asleep) on Linux, where there is no CLOCK_UPTIME_RAW.
+static double cd_uptime(void) {
+#ifdef __APPLE__
+  return (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9;
+#else
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+#endif
+}
 
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
   coder_page_env(cd_state(c), c->active != 0, c->reduced != 0);
   // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
-  coder_page_now(cd_state(c), (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9);
+  coder_page_now(cd_state(c), cd_uptime());
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
   if (atlas_serve(&c->app)) cd_changed(c);
   if (c->settle > 0) c->settle--;

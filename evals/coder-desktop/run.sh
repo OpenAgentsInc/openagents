@@ -285,7 +285,7 @@ PY
 if [ "$TIER" = "0" ] || [ "$TIER" = "all" ]; then
   run_case 0 "page_coax_tests" coax/bin/coax test apps/coder-desktop/page.coax --library
   run_case 0 "mcworker_wire_tests" coax/bin/coax test coax/lib/agent/engine/mcworker-wire.coax --library
-  run_case 0 "microcoder_tools_smoke" sh coax/lib/microcoder/tools_smoke.sh
+  run_case 0 "microcoder_tools_smoke" bash coax/lib/microcoder/tools_smoke.sh
 fi
 
 if [ "$TIER" = "1" ] || [ "$TIER" = "all" ]; then

@@ -16,8 +16,8 @@
 #       coax/remote/mutation-sweep.sh install does on a Mac); it changes nothing itself. It makes
 #       the checkout those lines run from (STATE/checkout, moved to origin/main before each run).
 #
-# It needs a Mac with the model credentials Tier 2 links (see README.md), not a build host: the
-# host scenarios and Tier 3 run only on macOS (#13734). It never touches the checkout it is
+# It needs a Mac with the model credentials Tier 2 links (see README.md), not a build host:
+# Tier 3 runs only on macOS. It never touches the checkout it is
 # called from: it checks REV (default origin/main-green, the newest head the green-main pipeline
 # passed; origin/main when there is none) out into its own worktree under the state folder,
 # builds the compiler there, runs, keeps the run folders and removes the worktree.

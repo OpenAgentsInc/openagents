@@ -27,9 +27,11 @@ if [ "$need_coax" -eq 1 ]; then
   "$coax" c "$repo/apps/coder-desktop/app.coax" --library --header "$work/gallery.h" > "$work/gallery.c"
 fi
 
-cflags=(-O2 -ffp-contract=off -fno-fast-math -w -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/coder-desktop" -I"$here")
+# No warnings for the generated code, but an undeclared call stays an error: its pointer result
+# would be cut to an int (ui_view on Linux, #13734). -w would hide it on older clang.
+cflags=(-O2 -ffp-contract=off -fno-fast-math -Wno-everything -Werror=implicit-function-declaration -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/coder-desktop" -I"$here")
 
-clang -std=gnu11 "${cflags[@]}" -c "$repo/apps/coder-desktop/carrier.c" -o "$work/carrier.o"
+clang -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/coder-desktop/carrier.c" -o "$work/carrier.o"
 clang -std=gnu11 "${cflags[@]}" -c "$work/gallery.c" -o "$work/gallery.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/ui_host_stub.c" -o "$work/ui_host_stub.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/host_driver.c" -o "$work/host_driver.o"

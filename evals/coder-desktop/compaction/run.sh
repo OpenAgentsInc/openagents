@@ -17,4 +17,4 @@ coax/bin/coax test evals/coder-desktop/compaction/compaction_scenarios_test.coax
 c16="$(coax/web/tool.sh coder/tests/aware-worker.coax 2>/dev/null)"
 echo "$c16"
 echo "ok   #test compaction C16: the worker gives every run the working memory (1 case, process, 0 ms)"
-coax/bin/coax run evals/coder-desktop/compaction/report.coax
+coax/web/tool.sh evals/coder-desktop/compaction/report.coax

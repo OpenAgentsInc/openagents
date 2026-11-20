@@ -1,12 +1,14 @@
 // Prints the long-horizon compaction scenarios' numbers (scenarios.coax), one line each, for
 // evals/coder-desktop/compaction/run.sh and docs/coder/compaction-theory.md. No model is called.
-//   coax/bin/coax run evals/coder-desktop/compaction/report.coax
+// The scenarios load the worker's transports, whose process natives tool.sh links: with `coax run`
+// gcc at -O0 keeps their unused callers and the link fails on Linux (GitHub #13734).
+//   coax/web/tool.sh evals/coder-desktop/compaction/report.coax
 #import "Basic";
 #load "scenarios.coax";
 
 CS_REPORT_STEPS :: 200;
 
-main :: () {
+tool_main :: () -> int #export_c #effects(all) {
   z: [1] CsBufs;
   windows := CS_WINDOWS;
   for w: windows {
@@ -16,4 +18,5 @@ main :: () {
         w, cs_name(kind), r.steps, r.compactions, r.evictions, r.left_out, r.nearly, r.nacts, r.earlier_cap, r.request_max, r.max_prompt, r.prompt_bytes / r.steps, cs_shared_permille(r), r.overs, r.breaks, r.gaps, r.invalid, r.memory_kept);
     }
   }
+  return 0;
 }

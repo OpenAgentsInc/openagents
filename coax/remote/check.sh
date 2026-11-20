@@ -206,11 +206,16 @@ api() { step api coax/web/api/test.sh --part "$1" || status=1; }
 coder() {
   step coder-checks coax/bin/coax test coder/tui/coder.coax || status=1
   step coder-smoke python3 coder/tui/smoke.py || status=1
-  # Coder Desktop's evals that need no model, window or worker (#13705): replay_test.coax loads
-  # page.coax, so this runs the page's own tests too. The host scenarios and compaction run on Macs.
+  # Coder Desktop's evals that need no model or window (#13705): replay_test.coax loads page.coax,
+  # so this runs the page's own tests too; the host scenarios drive the real page headless on the
+  # mock worker, and the compaction suite needs no model (#13734).
   desktop_evals
 }
-desktop_evals() { step coder-desktop-evals coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library || status=1; }
+desktop_evals() {
+  step coder-desktop-evals coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library || status=1
+  step coder-desktop-scenarios python3 evals/coder-desktop/tier1/run_scenarios.py || status=1
+  step coder-desktop-compaction sh evals/coder-desktop/compaction/run.sh || status=1
+}
 desktop_touched() { grep -Eq '^(apps/coder-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
   grep -Eq '^coder/' "$out/changed" && return 0
