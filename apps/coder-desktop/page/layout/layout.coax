@@ -19,20 +19,34 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
   shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
-  left := ifx shell.side.persistent then shell.side.width else 0.0f32;
-  right := shell.pane.w;
-  s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
+  // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
+  // which keeps its width while it is shut, and the conversation's column follows them
+  kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");
+  docked := shell.pane.open && shell.pane.mode == APP_PANE_SIDE;
+  if shell.side.persistent { keyed_slot_set(kd, sk, 0, shell.side.width); }
+  if docked { keyed_slot_set(kd, pk, 0, shell.pane.w); }
+  side_w := ifx shell.side.persistent then shell.side.width else keyed_slot(kd, sk, 0);
+  pane_w := ifx docked then shell.pane.w else keyed_slot(kd, pk, 0);
+  left := side_w * app_presence(f, sk, shell.side.persistent);
+  right := pane_w * app_presence(f, pk, docked);
+  if left < 0.5 { left = 0; }
+  if right < 0.5 { right = 0; }
+  s[0].side = left; s[0].pane_w = ifx right > 0 then pane_w else 0.0f32; s[0].pane_x = window_w - right;
   // the sidebar's toggle on the title bar while the window has room to show the sidebar
   toggle := left > 0 || (s[0].side_collapsed && window_w >= cast(f32) CP_SIDE_FROM);
-  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); cp_title_bar(s, f, 0, toggle); return; }
-  if shell.pane.open && right > 0 { cp_side_pane(s, f, shell.pane.x, right, h); }
+  if shell.pane.open && shell.pane.mode == APP_PANE_FULL { s[0].side = 0; s[0].pane_w = shell.pane.w; s[0].pane_x = shell.pane.x; s[0].col_w = 0; cp_side_pane(s, f, 0, window_w, h); cp_title_bar(s, f, 0, toggle); return; }
+  // a pane comes in from the window's right edge at its whole width; one shutting leaves its edge behind
+  if docked && right > 0 { cp_side_pane(s, f, window_w - right, pane_w, h); }
+  else if right > 0 { sheet_fill(f[0].sheet, window_w - right, 0, f[0].skin.border, h, 0, f[0].skin.menu_divider); }
   w := window_w - right;   // from here w is where the conversation's side ends
-  cw := shell.col_w; x := shell.col_x;
+  col := app_shell_column(left, w, CP_COLUMN, CP_PAD);
+  cw := col.w; x := col.x;
   s[0].col_x = x; s[0].col_w = cw;
   running := cp_running(s); full := cp_full(s); exceeded := cp_budget_exceeded(s);
   cp_conversation(s, f, left, w, x, cw, h, running, full, exceeded);
   cp_corners(s, f, left, w, window_w, exceeded);
-  if left > 0 { cp_sidebar(s, f, left, h, running); }
+  // the sidebar at its whole width, slid out to the left as it shuts
+  if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
   cp_title_bar(s, f, left, toggle);
   cp_composer(s, f, x, cw, h, running, full, exceeded);
   cp_drop_overlay(s, f, window_w, h);

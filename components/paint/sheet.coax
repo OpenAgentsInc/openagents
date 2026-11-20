@@ -74,6 +74,10 @@ sheet_icon :: (sh: [] Sheet, icon: int, x: f32, y: f32, size: f32, color: Rgba) 
 sheet_elbow :: (sh: [] Sheet, x: f32, y: f32, radius: f32, end_x: f32, joined: bool, color: Rgba) {
   sheet_under(sh, prim_elbow(sh[0].under, sh[0].nu, x, y, radius, end_x, joined, color));
 }
+// Hit regions from..<nh moved by dx, dy (a part already painted that slides).
+sheet_hits_move :: (sh: [] Sheet, from: int, dx: f32, dy: f32) {
+  for i: (ifx from < 0 then 0 else from)..<sh[0].nh { sh[0].hits[i].x += dx; sh[0].hits[i].y += dy; }
+}
 sheet_hit :: (sh: [] Sheet, kind: int, a: int, b: int, x: f32, y: f32, w: f32, h: f32) {
   if sh[0].nh >= sh[0].hits.count { sh[0].lost += 1; return; }
   sh[0].hits[sh[0].nh] = SheetHit.{x = x, y = y, w = w, h = h, kind = kind, a = a, b = b};

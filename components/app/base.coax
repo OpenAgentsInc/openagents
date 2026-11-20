@@ -43,6 +43,31 @@ app_enter :: (f: [] UiFrame, k: int, from: AppMark) {
   prim_opacity(f[0].sheet[0].under, from.nu, f[0].sheet[0].nu, e);
   prim_opacity(f[0].sheet[0].over, from.no, f[0].sheet[0].no, e);
 }
+// Where the sheet, its hit regions and its rows stand before a part paints, so the whole part can
+// slide once it is laid out (a panel opening).
+AppSlideMark :: struct { nu: int; no: int; nh: int; nr: int; }
+app_slide_mark :: (f: [] UiFrame) -> AppSlideMark {
+  return AppSlideMark.{nu = f[0].sheet[0].nu, no = f[0].sheet[0].no, nh = f[0].sheet[0].nh, nr = ifx f[0].rows.count > 0 then f[0].rows[0].n else 0};
+}
+// What was painted since `from` moved by (dx, dy), its hit regions and rows with it, so a press
+// lands where the part shows.
+app_slide :: (f: [] UiFrame, from: AppSlideMark, dx: f32, dy: f32) {
+  if dx == 0 && dy == 0 { return; }
+  sh := f[0].sheet;
+  prim_move(sh[0].under, from.nu, sh[0].nu, dx, dy); prim_move(sh[0].over, from.no, sh[0].no, dx, dy);
+  sheet_hits_move(sh, from.nh, dx, dy);
+  elt_move(f[0].rows, from.nr, dx, dy);
+}
+// How present a part that opens and shuts is, 0 to 1 (a sidebar, a pane): it glides toward `on`
+// over the skin's panel time on the keyed row id, critically damped so it never overshoots. One
+// that just appeared stands where `on` says; with reduced motion, or without a row, it is there or
+// not at once. k is its keyed row (uiframe_key), which must be seen every frame, open or shut, or
+// it retires; its slots stay the caller's (the panel's width while it is shut).
+app_presence :: (f: [] UiFrame, k: int, on: bool) -> f32 {
+  t := ifx on then 1.0f32 else 0.0f32;
+  return keyed_glide(f[0].keyed, k, t, f[0].skin.motion.panel, t);
+}
+
 // Text cut to a width: the text itself when it fits, else its longest start
 // that fits with an ellipsis after it, kept in the sheet's pool.
 app_fit :: (f: [] UiFrame, face: int, text: string, w: f32) -> string {

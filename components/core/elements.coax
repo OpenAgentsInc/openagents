@@ -290,6 +290,16 @@ elt_focus_step :: (t: [] ElTable, from: int, back: bool) -> int {
   if edge >= 0 { return edge; }
   return ifx placed then from else -1;
 }
+// Rows from..<n moved by dx, dy where they stand, with their clips and polygons: a part already laid
+// out that slides (a panel opening).
+elt_move :: (t: [] ElTable, from: int, dx: f32, dy: f32) {
+  if t.count == 0 { return; }
+  for i: (ifx from < 0 then 0 else from)..<t[0].n {
+    t[0].rows[i].x += dx; t[0].rows[i].y += dy;
+    if t[0].rows[i].clipped { t[0].rows[i].cl += dx; t[0].rows[i].cr += dx; t[0].rows[i].ct += dy; t[0].rows[i].cb += dy; }
+    if t[0].rows[i].transformed { for k: 0..<t[0].rows[i].polygon_n { t[0].rows[i].polygon[k * 2] += dx; t[0].rows[i].polygon[k * 2 + 1] += dy; } }
+  }
+}
 // The rows of another table (a part laid out at its own origin), moved by dx, dy, with their
 // state, value, action, focus place and clip. A top row of `from` becomes a child of the open
 // row; a focus place follows the ones already handed out.
@@ -461,6 +471,14 @@ elt_detail :: (t: [] ElTable, out: [] u8) -> int {
   #assert v[0].n == 3 && elt_hit(v[..], 290, 70) == 1 && elt_find(v[..], "composer.send-2") == 2 && el_at(e[..], 290, 70) == "composer.send";
   none: [1] ElTable; #assert elt_row(none[..], "a", EL_ITEM, "", 0, 0, 1, 1) == -1 && none[0].lost == 1 && elt_row(none[0..<0], "a", EL_ITEM, "", 0, 0, 1, 1) == -1;
   #assert elt_find(none[0..<0], "a") == -1 && elt_hit(none[0..<0], 0, 0) == -1 && elt_focus_step(none[0..<0], -1, false) == -1 && elt_capacity(none[0..<0]) == 0;
+}
+#test "rows moved where they stand keep their clips with them" {
+  rows: [3] El; t := [1] ElTable.[elt_over(rows[..])];
+  _ := elt_row(t[..], "a", EL_BUTTON, "A", 0, 0, 10, 10);
+  elt_clip(t[..], 0, 0, 20, 20); _ := elt_row(t[..], "b", EL_BUTTON, "B", 15, 0, 10, 10); elt_unclip(t[..]);
+  elt_move(t[..], 1, 100, 5);
+  #assert rows[0].x == 0 && rows[1].x == 115 && rows[1].y == 5 && rows[1].cl == 100 && rows[1].cr == 120 && rows[1].ct == 5;
+  #assert elt_hit(t[..], 117, 7) == 1 && elt_hit(t[..], 122, 7) == -1;
 }
 #test "a row carries state, value, action and parent, and the detail lines show them" {
   rows: [8] El; t := [1] ElTable.[elt_over(rows[..])]; elt_begin(t[..]);

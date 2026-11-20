@@ -73,7 +73,9 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
   #assert cp_fp_test_press(s, "coder.file.close") && coder_page_action(s) == CP_ASK_FILE_CLOSE && s[0].fp[0].open;
   coder_page_file_close(s);
   #assert !s[0].fp[0].open && coder_page_file_mode(s) == CP_FP_NONE && s[0].fld[0].kb == CP_KB_COMPOSER;
-  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w == 0 && cp_fp_test_find(s, "coder.file.body") < 0;
+  // the pane slides shut (#13773): its content is gone at once, its room once it has slid
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0 && cp_fp_test_find(s, "coder.file.body") < 0;
+  #assert cp_test_settle(s, f[..], 1200.0f32, 800.0f32) <= 16 && s[0].pane_w == 0;
   #assert cp_ed_which(s) == CP_ED_COMPOSER;
 }
 

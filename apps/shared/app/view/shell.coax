@@ -46,13 +46,22 @@ app_shell_layout :: (
   if main_w < 0 { main_w = 0; }
   out.main_x = left_w;
   out.main_w = main_w;
-  if main_w > 0 {
-    cw := main_w - 2 * pad;
-    if cw > col_max { cw = col_max; }
-    if cw < 0 { cw = 0; }
-    out.col_w = cw;
-    out.col_x = left_w + (main_w - cw) / 2;
-  }
+  col := app_shell_column(left_w, left_w + main_w, col_max, pad);
+  out.col_w = col.w; out.col_x = col.x;
+  return out;
+}
+
+// The centred column between left and right (where the sidebar ends and the pane begins), at most
+// col_max wide inside pad: its x and width (0 wide when there is no room).
+AppShellColumn :: struct { x: f32; w: f32; }
+app_shell_column :: (left: f32, right: f32, col_max: f32, pad: f32) -> AppShellColumn {
+  out: AppShellColumn;
+  main_w := right - left;
+  if main_w <= 0 { return out; }
+  cw := main_w - 2 * pad;
+  if cw > col_max { cw = col_max; }
+  if cw < 0 { cw = 0; }
+  out.w = cw; out.x = left + (main_w - cw) / 2;
   return out;
 }
 

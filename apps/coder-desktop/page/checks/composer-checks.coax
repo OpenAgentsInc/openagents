@@ -6,7 +6,7 @@
 
 // A frame w by h, the pointer at (px, py) when present.
 cp_test_pill_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, px: f32, py: f32, present: bool) -> bool {
-  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(px, py, present, false, "", ""), 0, 0.016, false, false);
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(px, py, present, false, "", ""), 0, 0.016, s[0].reduced, false);
   cp_layout(s, f, w, h);
   return uiframe_end(f, s[0].surface[..]);
 }

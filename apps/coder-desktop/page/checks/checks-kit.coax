@@ -24,6 +24,19 @@ cp_test_draw_over :: (s: [] CoderPage, f: [] UiFrame, dt: f32) -> bool {
   _ := cp_overlay(s, f, 1200.0f32, 800.0f32, dt);
   return uiframe_end(f, s[0].surface[..]);
 }
+// frames at w by h until nothing keyed moves (a sidebar or a pane has slid open or shut, #13773):
+// how many it took, 60 at most
+cp_test_settle :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> int {
+  n := 0; moving := true;
+  while moving && n < 60 {
+    uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+    cp_layout(s, f, w, h);
+    moving = uiframe_moving(f);
+    _ := uiframe_end(f, s[0].surface[..]);
+    n += 1;
+  }
+  return n;
+}
 // a frame wide enough for the sidebar
 cp_test_draw_side :: (s: [] CoderPage, f: [] UiFrame) -> bool {
   uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);

@@ -212,7 +212,10 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.032, 0.016, false, false);
   cp_layout(s, f[..], 1400.0f32, 900.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
-  #assert s[0].side == 0;
+  // it slides out (#13773), then the window goes idle with no sidebar
+  full := cast(f32) CP_SIDE;
+  #assert s[0].side > 0 && s[0].side < full;
+  #assert cp_test_settle(s, f[..], 1400.0f32, 900.0f32) <= 16 && s[0].side == 0;
   row2 := surface_find(s[0].surface[..], "coder.side.toggle");
   #assert row2 >= 0 && surface_action(s[0].surface[..], row2) == CP_SIDE_TOGGLE;
   // Pressing again restores the persistent sidebar
@@ -220,7 +223,13 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.048, 0.016, false, false);
   cp_layout(s, f[..], 1400.0f32, 900.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
-  #assert s[0].side > 0;
+  #assert s[0].side > 0 && s[0].side < full;
+  #assert cp_test_settle(s, f[..], 1400.0f32, 900.0f32) <= 16 && s[0].side == full;
+  // with reduced motion it is gone at once
+  #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.064, 0.016, true, false);
+  cp_layout(s, f[..], 1400.0f32, 900.0f32);
+  #assert !uiframe_moving(f[..]) && uiframe_end(f[..], s[0].surface[..]) && s[0].side == 0;
 }
 #test "a trackpad flick coasts the transcript, a gesture stays with its view, and the system's momentum goes unused" {
   p: [1] CoderPage; s := p[..];
@@ -283,7 +292,7 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert !coder_page_bar_drags(s, 700, 38) && !coder_page_bar_drags(s, s[0].side, 10);
   // collapsed: the toggle stays where it was, Show sidebar, with the island behind it and the lights
   #assert cp_press(s, surface_find(s[0].surface[..], "coder.side.toggle")) && s[0].side_collapsed;
-  #assert cp_bar_draw(s, f[..], 1400, 900) && s[0].side == 0;
+  #assert cp_bar_draw(s, f[..], 1400, 900) && cp_test_settle(s, f[..], 1400, 900) < 60 && s[0].side == 0;
   t = cp_bar_row(s, "coder.side.toggle");
   #assert t.x == 88 && abs(t.y + t.h / 2 - 20) < 0.01 && cast(string) t.label[0..<t.label_n] == "Show sidebar";
   i := cp_island(s, true);
