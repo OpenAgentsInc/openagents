@@ -94,6 +94,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             item.title = cd_followup_queues(w.page) != 0 ? "Steer the Reply" : "Queue a Follow-up"
             return cd_running(w.page) != 0
         }
+        if item.action == #selector(openForeman(_:)) { return main?.isForemanEnabled == true }
         if item.action == #selector(setForemanTier(_:)) {
             let current = main?.foremanTier ?? .managed
             let matches = (senderTag: item.tag, tier: current)
@@ -220,8 +221,12 @@ enum TestLaunch {
         edit.addItem(.separator())
         edit.addItem(withTitle: "Find in Settings", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
-        let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "0")
+        // Command-` is also heard in Window.swift before macOS window cycling; Command-0 stays as a hidden alias.
+        let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "`")
         openForemanItem.target = delegate; openForemanItem.keyEquivalentModifierMask = [.command]
+        let openForemanZero = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "0")
+        openForemanZero.target = delegate; openForemanZero.keyEquivalentModifierMask = [.command]
+        openForemanZero.isHidden = true; openForemanZero.allowsKeyEquivalentWhenHidden = true
         foremanMenu.addItem(.separator())
         let t0 = foremanMenu.addItem(withTitle: "Tier 0: Observe (Read-Only)", action: #selector(CoderDelegate.setForemanTier(_:)), keyEquivalent: "")
         t0.target = delegate; t0.tag = 0

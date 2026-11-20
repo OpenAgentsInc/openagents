@@ -3,6 +3,8 @@
 import AppKit
 
 extension CoderWindow {
+    /// Whether Foreman is enabled and reachable via shortcut/menu.
+    var isForemanEnabled: Bool { true }
     func setForemanTier(_ tier: ForemanTier) {
         let previous = foremanTier
         foremanTier = tier
@@ -52,6 +54,7 @@ extension CoderWindow {
         NSWorkspace.shared.open(url)
     }
     func openForeman() {
+        guard isForemanEnabled else { return }
         if chat == Foreman.chatID { cd_current(page, Foreman.chatID); syncForemanUI(); focusComposer(); wake(); return }
         guard detach() else { return }
         if let back = runs[Foreman.chatID] {

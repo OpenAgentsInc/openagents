@@ -31,7 +31,7 @@ desktop, see [`docs/coder/desktop-evals-spec.md`](../../docs/coder/desktop-evals
 - **Click a reply** to see who wrote it (Microcoder and its model), beside the reply's copy icon. Click again to hide it.
 - **A message of yours** longer than five lines folds; **Show more** opens it and **Show less** folds it again.
 - **Away from the end** of the chat, **Jump to latest** (or **New reply** while one is written) floats above the composer. It glides to the end, as sending does when you have scrolled up.
-- **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top. See [Saved chats](#saved-chats).
+- **The sidebar** on the left lists your chats in chronological order, newest created at the top. Click one to open it, or press **Command-1** through **Command-9** to open the first nine chats from the top (and **Command-\`** to open Foreman when enabled). See [Saved chats](#saved-chats).
 - **Sub-agents** take work Microcoder hands over. See [Sub-agents](#sub-agents).
 
 Limits, all shown on screen when you reach them:

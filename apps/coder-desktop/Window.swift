@@ -169,6 +169,15 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncSettingsInfo()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
+            // Command-` opens Foreman when enabled (heard before macOS window cycling).
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if flags.contains(.command) && !flags.contains(.shift) && !flags.contains(.option) && !flags.contains(.control) && event.charactersIgnoringModifiers == "`" && (!self.overlay.dialogOpen || self.overlay.paletteUp) {
+                if self.isForemanEnabled {
+                    if cd_palette_open(self.page) != 0 { _ = cd_palette_toggle(self.page, 0) }
+                    self.openForeman()
+                }
+                return nil
+            }
             // the editing chords go to the field with the keyboard before the menu bar sees them
             if self.window.firstResponder === self.canvas && cd_wants_text(self.page) != 0, let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }

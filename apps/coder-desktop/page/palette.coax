@@ -26,7 +26,7 @@ cp_palette_fill :: (s: [] CoderPage) {
   cur := cast(string) s[0].current[0..<s[0].current_n];
   kb: [APP_PAL_KEY] u8;
   // the chats: Foreman, then the sidebar's (most recent first; the pinned ones pinned)
-  _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ 0", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN);
+  _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Sessions", "Foreman", "manager", ifx cur == "chat.foreman" then "Current" else "", "⌘ `", "chat.foreman", ICON_BOT, true, false, 0, CP_PAL_FOREMAN);
   for q: 0..<s[0].nchats {
     id := cast(string) s[0].chats[q].id[0..<s[0].chats[q].id_n];
     title := cast(string) s[0].chats[q].title[0..<s[0].chats[q].title_n];
@@ -37,7 +37,7 @@ cp_palette_fill :: (s: [] CoderPage) {
   // the commands that work now
   running := cp_running(s); shown := !s[0].set_open;
   cp_pal_cmd(p, "New chat", "new start fresh", "⌘ N", ICON_COMPOSE, CP_PC_NEW, 0);
-  cp_pal_cmd(p, "Open Foreman", "manager", "⌘ 0", ICON_BOT, CP_PC_FOREMAN, 0);
+  cp_pal_cmd(p, "Open Foreman", "manager", "⌘ `", ICON_BOT, CP_PC_FOREMAN, 0);
   if !running { cp_pal_cmd(p, "Open folder…", "working folder directory project cwd", "⌘ O", ICON_FOLDER, CP_PC_FOLDER, 0); }
   if shown { cp_pal_cmd(p, ifx s[0].side_collapsed then "Show sidebar" else "Hide sidebar", "toggle sidebar chats", "⌘ B", ICON_SIDEBAR, CP_PC_SIDEBAR, 0); }
   cp_pal_cmd(p, "Switch model", "model gemini openrouter", "⌘ /", -1, CP_PC_MODEL, CP_PAL_PAGE_MODEL);
