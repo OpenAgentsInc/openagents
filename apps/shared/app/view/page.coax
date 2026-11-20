@@ -44,6 +44,8 @@ VIEW_A_TOOL :: 8;       // a tool row, or its pager
 VIEW_A_COPY :: 9;       // Copy on a code block
 VIEW_A_MESSAGE_COPY :: 10;
 VIEW_A_ACT :: 11;       // a turn's activity group (the conversation look): its summary, or one of its rows
+VIEW_A_FOLD :: 12;      // a long message's Show more or Show less (Zeron's 5-line fold)
+VIEW_FOLDS :: 16;       // the long messages the page keeps open (the most recent opened)
 
 // What view_press found.
 VIEW_P_NONE :: 0;       // not the page's
@@ -95,12 +97,25 @@ ChatView :: struct {
   measure_keys:[64]Keyed;measure_store:[1]KeyedStore;
   dev: [] EnvironmentApp; dev_name: string;   // this frame's conversation on a paired computer (empty: none)
   working_from: f32;                          // the frame clock the working line appeared at (-1: none shows)
+  unfolded: [VIEW_FOLDS][EL_ID] u8; unfolded_n: [VIEW_FOLDS] int; unfolded_next: int;   // the long messages opened, by row id (a ring)
 }
 
 view_init :: (v: [] ChatView) {
   if v[0].made { return; }
   v[0].list[0] = vlist_over(v[0].a[..], v[0].b[..], VIEW_ESTIMATE);
   v[0].copied_block = -1; v[0].working_from = -1; v[0].made = true;
+}
+
+// Whether the message row `id` was opened past its fold.
+view_unfolded :: (v: [] ChatView, id: string) -> bool {
+  for i: 0..<VIEW_FOLDS { if v[0].unfolded_n[i] == id.count && id.count > 0 && cast(string) v[0].unfolded[i][0..<id.count] == id { return true; } }
+  return false;
+}
+// Opens a folded message, or folds an open one again. The most recent VIEW_FOLDS stay open.
+view_fold_toggle :: (v: [] ChatView, id: string) {
+  for i: 0..<VIEW_FOLDS { if v[0].unfolded_n[i] == id.count && id.count > 0 && cast(string) v[0].unfolded[i][0..<id.count] == id { v[0].unfolded_n[i] = 0; return; } }
+  if id.count == 0 || id.count > EL_ID { return; }
+  k := v[0].unfolded_next % VIEW_FOLDS; v[0].unfolded_n[k] = el_copy(v[0].unfolded[k][..], id); v[0].unfolded_next = k + 1;
 }
 
 // ---------------------------------------------------------------- text
@@ -357,7 +372,8 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
         cid:[EL_ID]u8;h+=s.app.gap_small;
         h+=app_message_actions(f,app_id(cid[..],id,".copy"),x,y+h,v[0].copied_n>0 && cast(string)v[0].copied[0..<v[0].copied_n]==id && v[0].copied_block== -2,VIEW_A_MESSAGE_COPY);
       }
-    } else { h = app_message_user(f, id, x, y, w, text); }
+    } else if s.chat.enabled { h = app_message_user_fold(f, id, x, y, w, text, view_unfolded(v, id), VIEW_A_FOLD); }
+    else { h = app_message_user(f, id, x, y, w, text); }
   } else if r.kind == VK_TYPING {
     if s.chat.enabled { secs := ifx v[0].working_from >= 0 then cast(int) (f[0].clock - v[0].working_from) else 0; h = app_working(f, id, x, y, secs, ""); }
     else { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
@@ -536,6 +552,13 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
   }
   if action == VIEW_A_RETRY { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RETRY}; }
   if action == VIEW_A_RECONNECT { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RECONNECT}; }
+  if action == VIEW_A_FOLD {
+    // "<row>.more": the message opens or folds again, and stays where it is on screen while it eases
+    tail := ".more"; if pressed.count <= tail.count || cast(string) pressed[pressed.count - tail.count..<pressed.count] != tail { return ViewPress.{}; }
+    id := cast(string) pressed[0..<pressed.count - tail.count];
+    view_fold_toggle(v, id); vlist_pin(v[0].list[..], id);
+    return ViewPress.{kind = VIEW_P_LOCAL};
+  }
   if action == VIEW_A_JUMP { vlist_jump(v[0].list[..]); return ViewPress.{kind = VIEW_P_LOCAL}; }
   if action == VIEW_A_TOOL {
     i := view_owner(vm, pressed, VK_TOOL); if i < 0 { i = view_owner(vm, pressed, VK_DEVICE_TOOL); }

@@ -285,3 +285,19 @@ VIEW_PT_PAGE :: "{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"
  #assert app_test_find(t,"dev.p0.call.0.diff")>=0 && app_test_find(t,"dev.p0.call.0.output")>=0;
  q:=view_pt_press(p[..],c[..],"dev.p0.call.0.path");#assert q.kind==VIEW_P_DISPATCH && q.what==VIEW_C_FILE && view_code(q.what)==0;
 }
+
+#test "a computer chat's long message folds at five lines with Show more, opens and folds again, and the page keeps it open" #steps 4000000000 {
+ c:[1]AppCore;p:[1]ViewPageTest;lane:[1]DeviceLane;app_test_init(p[0].t[..]);app_init(c[..]);#assert app_device_attach(c[..],lane[..]);lane[0].on=true;
+ e:=lane[0].e[..];e[0].active=true;e[0].ns=el_copy(e[0].session[..],"coder");v:=e[0].view[..];v[0].ok=true;v[0].ns=1;
+ v[0].sessions[0].ni=el_copy(v[0].sessions[0].id[..],"coder");v[0].sessions[0].managed=true;
+ long:="one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine";
+ m:=v[0].items[0];m.ni=el_copy(m.id[..],"u0");m.nr=el_copy(m.role[..],"user");m.text_at=ea_text_put(v,long);m.nt=long.count;m.complete=true;v[0].items[0]=m;v[0].ni=1;
+ view_pt_conversation(p[..],c[..]);t:=p[0].t[..];
+ #assert app_test_pressable(t,"dev.u0.more") && app_test_label(t,"dev.u0.more")=="Show more" && app_test_texts(t,"nine")==0;
+ #assert view_pt_press(p[..],c[..],"dev.u0.more").kind==VIEW_P_LOCAL && view_unfolded(p[0].v[..],"dev.u0");
+ view_pt_conversation(p[..],c[..]);#assert app_test_label(t,"dev.u0.more")=="Show less";
+ #assert view_pt_press(p[..],c[..],"dev.u0.more").kind==VIEW_P_LOCAL && !view_unfolded(p[0].v[..],"dev.u0");
+ // a short one has no fold
+ m2:=v[0].items[1];m2.ni=el_copy(m2.id[..],"u1");m2.nr=el_copy(m2.role[..],"user");m2.text_at=ea_text_put(v,"hi");m2.nt=2;m2.complete=true;v[0].items[1]=m2;v[0].ni=2;
+ view_pt_conversation(p[..],c[..]);#assert app_test_find(t,"dev.u1.more")<0;
+}
