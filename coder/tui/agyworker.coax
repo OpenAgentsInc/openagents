@@ -78,7 +78,11 @@ AgywState :: struct {
   turn_effort: [32] u8; turn_effort_n: int;
   ran: [128] u8; ran_n: int;              // the model agy runs the open session on (agy_effective_model)
   ran_name: [128] u8; ran_name_n: int;    // and agy's name for it
+  compact: bool;                                // the turn is a /compact, which may end with no words
+  denied: [AGYW_LABEL] u8; denied_n: int;       // why this worker denied a tool call this turn ("" none)
+  denied_id: [AGYW_ID] u8; denied_id_n: int;    // ... and that call's toolCallId
   out: [AGYW_LINE] u8;
+  sink: bool; log: [16384] u8; log_n: int;      // checks: lines go here instead of stdout
 }
 
 agyw_copy :: (dst: [] u8, src: string) -> int {
@@ -150,6 +154,10 @@ agyw_load_env :: (s: [] AgywState) {
 agyw_write_line :: (s: [] AgywState, n: int) {
   if n <= 0 || n >= s[0].out.count { return; }
   s[0].out[n] = '\n';
+  if s[0].sink {
+    s[0].log_n += agyw_copy(s[0].log[s[0].log_n..<s[0].log.count], cast(string) s[0].out[0..<n + 1]);
+    return;
+  }
   _ = cxterm_write(s[0].out[0..<n + 1]);
 }
 
@@ -239,26 +247,61 @@ agyw_tool_output :: (ar: [] ClArena, update: string, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
+// A finished tool call's exit code: agy marks a command that exited non-zero "completed" and
+// gives its code in rawOutput.exit_code (agy 1.5.13); a call that failed or was cancelled is 1.
+agyw_exit_code :: (update: string, status: string) -> int {
+  if status != "completed" { return 1; }
+  ec := cl_int(update, "rawOutput.exit_code");
+  return ifx ec.ok then ec.value else 0;
+}
+
 // ---------------------------------------------------------------- permissions & /compact & rollback
 
 // Permission policy for agyworker:
 // - In plan mode: deny writes and command execution, allow reads.
-// - Outside workspace (".."): deny.
-// - Otherwise: allow (Auto/Default non-interactive worker, matching claudeworker).
-agyw_decide_permission :: (c: [] CuClient, params: string, mode: string) -> int {
+// - A path agy names with ".." (rawInput Path, Cwd, ...): deny.
+// - Otherwise: allow (a non-interactive worker, matching claudeworker's bypassed permissions).
+// Why the tool call in params is denied, or "" when it is allowed.
+agyw_deny_reason :: (c: [] CuClient, params: string, mode: string) -> string {
   tool := cl_raw(params, "toolCall");
-  if agy_outside(tool, c[0].ar[..]) { return CU_DISP_DENY; }
+  if agy_outside(tool, c[0].ar[..]) { return "it names a path outside the workspace"; }
   if mode == "plan" {
     kind := cl_str(c[0].ar[..], tool, "kind");
     eff := cu_kind_effect(kind);
-    if eff == CU_EFFECT_WRITE || eff == CU_EFFECT_RUN { return CU_DISP_DENY; }
+    if eff == CU_EFFECT_WRITE || eff == CU_EFFECT_RUN { return "plan mode runs no edits or commands"; }
   }
-  return CU_DISP_ALLOW;
+  return "";
 }
 
-agyw_apply_permission :: (c: [] CuClient, params: string, mode: string) -> int {
-  disp := agyw_decide_permission(c, params, mode);
-  return cu_permission_disposition(c, disp);
+agyw_decide_permission :: (c: [] CuClient, params: string, mode: string) -> int {
+  return ifx agyw_deny_reason(c, params, mode).count > 0 then CU_DISP_DENY else CU_DISP_ALLOW;
+}
+
+// Answer agy's session/request_permission. It must be answered here: a request left open is
+// declined by the client on its next poll (cu_settle), and agy cancels the whole turn when any
+// tool call is denied (measured on agy 1.5.13: "Tool confirmation ... approved=false", then
+// "CancelCascadeInvocation", then session/prompt answered end_turn with no words). So every
+// denial is kept, and the turn that ends after it says so.
+agyw_answer_permission :: (s: [] AgywState, c: [] CuClient, params: string, mode: string) -> int {
+  why := agyw_deny_reason(c, params, mode);
+  if why.count == 0 {
+    id := cu_allow_option(c);
+    if id.count > 0 { cu_permit(c, id); return CU_DISP_ALLOW; }
+    why = "Antigravity offered no option to allow it";
+  }
+  tool := cl_raw(params, "toolCall");
+  nb: [AGYW_LABEL] u8;
+  label := cu_tool_display_name(tool, c[0].ar[..], nb[..]);
+  if label.count == 0 { label = "a tool call"; }
+  n := agyw_copy(s[0].denied[..], "OpenAgents denied ");
+  n += agyw_copy(s[0].denied[n..<s[0].denied.count], label);
+  n += agyw_copy(s[0].denied[n..<s[0].denied.count], ": ");
+  n += agyw_copy(s[0].denied[n..<s[0].denied.count], why);
+  n += agyw_copy(s[0].denied[n..<s[0].denied.count], ".");
+  s[0].denied_n = n;
+  s[0].denied_id_n = agyw_copy(s[0].denied_id[..], cl_str(c[0].ar[..], tool, "toolCallId"));
+  cu_decline(c);
+  return CU_DISP_DENY;
 }
 
 // True when a prompt is a /compact slash command.
@@ -331,7 +374,8 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
       if cmd.count == 0 { cmd = "tool"; }
       ob: [AGYW_OUTPUT] u8;
       out_txt := agyw_tool_output(ar, update, ob[..]);
-      exit_code := ifx status == "completed" then 0 else 1;
+      if out_txt.count == 0 && status != "completed" { out_txt = agyw_no_output(s, id, status); }
+      exit_code := agyw_exit_code(update, status);
       if emit { agyw_emit_command(s, cmd, exit_code, out_txt); }
       agyw_call_close(s, at);
       return;
@@ -342,12 +386,50 @@ agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bo
   }
 }
 
+// What a tool call that failed or was cancelled with no output of its own says instead.
+agyw_no_output :: (s: [] AgywState, id: string, status: string) -> string {
+  if s[0].denied_n > 0 {
+    if id.count > 0 && id == agyw_str(s[0].denied_id[..], s[0].denied_id_n) { return agyw_str(s[0].denied[..], s[0].denied_n); }
+    return "Not finished: Antigravity cancelled the turn after a tool call was denied.";
+  }
+  if status == "cancelled" { return "Cancelled."; }
+  return "Antigravity reported that this tool call failed and gave no output.";
+}
+
 agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) {
   s[0].turn_active = false;
   s[0].stopping = false;
   agyw_calls_clear(s);
   if emit { agyw_emit_ended(s, ending, text); }
   s[0].reply_n = 0;
+  s[0].denied_n = 0; s[0].denied_id_n = 0;
+  s[0].compact = false;
+}
+
+// The turn agy answered (result: session/prompt's result, "" for a held turn's end) ended:
+// finished with its words, or failed saying why. Never a silent empty reply.
+agyw_turn_end :: (s: [] AgywState, ar: [] ClArena, result: string, emit: bool) {
+  if s[0].denied_n > 0 {
+    nb: [AGYW_LABEL + 128] u8;
+    n := agyw_copy(nb[..], agyw_str(s[0].denied[..], s[0].denied_n));
+    n += agyw_copy(nb[n..<nb.count], " Antigravity ends its turn when a tool call is denied.");
+    agyw_finish_turn(s, "failed", cast(string) nb[0..<n], emit);
+    return;
+  }
+  reply := agyw_str(s[0].reply[..], s[0].reply_n);
+  if agyw_trim(reply).count > 0 || s[0].compact { agyw_finish_turn(s, "finished", reply, emit); return; }
+  why := agyw_no_reply(cl_str(ar, result, "stopReason"));
+  wb: [160] u8; wn := agyw_copy(wb[..], why);
+  agyw_finish_turn(s, "failed", cast(string) wb[0..<wn], emit);
+}
+
+// Why a turn ended with no words, from session/prompt's stopReason.
+agyw_no_reply :: (stop: string) -> string {
+  if stop == "max_tokens" { return "Antigravity ended the turn without a reply: the model reached its output limit."; }
+  if stop == "max_turn_requests" { return "Antigravity ended the turn without a reply: it reached its limit of model requests."; }
+  if stop == "refusal" { return "Antigravity ended the turn without a reply: the model refused."; }
+  if stop == "cancelled" { return "Antigravity cancelled the turn without a reply."; }
+  return "Antigravity ended the turn without a reply.";
 }
 
 // The model the session just opened runs on (never "default"): kept, and told to the owner as an
@@ -439,7 +521,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
         agyw_finish_turn(s, "failed", notice, emit);
         return;
       }
-      agyw_finish_turn(s, "finished", agyw_str(s[0].reply[..], s[0].reply_n), emit);
+      agyw_turn_end(s, x[0].c[0].ar[..], ev.result, emit);
       return;
     }
     return;
@@ -470,7 +552,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
   }
   if ev.kind == CuEventKind.permission {
     mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-    _ = agyw_apply_permission(x[0].c, ev.params, mode);
+    _ = agyw_answer_permission(s, x[0].c, ev.params, mode);
     return;
   }
   if ev.kind == CuEventKind.question { cu_question(x[0].c, true); return; }
@@ -548,6 +630,8 @@ tool_main :: () -> int #export_c #effects(all) {
           s[0].respawned = false;
           s[0].retried_sig = false;
           s[0].reply_n = 0;
+          s[0].denied_n = 0; s[0].denied_id_n = 0;
+          s[0].compact = agyw_is_compact(req[0].task);
           agyw_calls_clear(s);
 
           mod := agyw_resolve_model(req[0].model, agyw_str(s[0].cfg.model[..], s[0].cfg.model_n));
@@ -600,7 +684,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if x[0].live && s[0].turn_active {
         w := cue_watch(x, cxproc_now_ms());
         if w == CUE_WATCH_BG_DONE {
-          agyw_finish_turn(s, "finished", agyw_str(s[0].reply[..], s[0].reply_n), true);
+          agyw_turn_end(s, x[0].c[0].ar[..], "", true);
         } else if w == CUE_WATCH_ENDED {
           agyw_finish_turn(s, "failed", "Antigravity stopped responding and was closed.", true);
         }
@@ -705,4 +789,89 @@ tool_main :: () -> int #export_c #effects(all) {
   n := mww_attempt(o[..], "antigravity", "gemini-4-carbon-low", "", "configured", 0, none[..]);
   ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; l: [1] MwwLine;
   #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT && l[0].model == "gemini-4-carbon-low" && l[0].gateway == "antigravity";
+}
+
+// agy 1.5.13's own lines, captured 2026-11-20 through a tee around `agy acp` while agyworker ran
+// "read a.txt, then ../outside.txt" (the workspace's path shortened to /w, the session id kept).
+// agy names absolute paths, reports no file contents for read_file, asks before a read outside
+// the workspace, and answers session/prompt end_turn with usage and no words once it is denied.
+AGYW_FX_READ :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_15035010722467532092\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/ws/a.txt\"},\"status\":\"in_progress\",\"kind\":\"read\",\"title\":\"File a.txt\",\"locations\":[{\"path\":\"/w/ws/a.txt\"}],\"rawInput\":{\"Path\":\"/w/ws/a.txt\"}}}}";
+AGYW_FX_READ_DONE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_15035010722467532092\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/ws/a.txt\"},\"status\":\"completed\",\"kind\":\"read\",\"title\":\"File a.txt\",\"locations\":[{\"path\":\"/w/ws/a.txt\"}],\"rawInput\":{\"Path\":\"/w/ws/a.txt\"}}}}";
+AGYW_FX_OUT :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_15035010722467529939\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/outside.txt\"},\"status\":\"in_progress\",\"kind\":\"read\",\"title\":\"File ../outside.txt\",\"locations\":[{\"path\":\"/w/outside.txt\"}],\"rawInput\":{\"Path\":\"/w/outside.txt\"}}}}";
+AGYW_FX_OUT_PENDING :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_15035010722467529939\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/outside.txt\"},\"status\":\"pending\",\"kind\":\"read\",\"title\":\"File ../outside.txt\",\"locations\":[{\"path\":\"/w/outside.txt\"}],\"rawInput\":{\"Path\":\"/w/outside.txt\"}}}}";
+AGYW_FX_OUT_ASKS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"toolCall\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_15035010722467529939\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/outside.txt\"},\"status\":\"pending\",\"kind\":\"read\",\"title\":\"File ../outside.txt\",\"locations\":[{\"path\":\"/w/outside.txt\"}],\"rawInput\":{\"Path\":\"/w/outside.txt\"}},\"options\":[{\"optionId\":\"allow\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]},\"id\":\"1\"}";
+AGYW_FX_OUT_FAILED :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_15035010722467529939\",\"name\":\"read_file\",\"args\":{\"Path\":\"/w/outside.txt\"},\"status\":\"failed\",\"kind\":\"read\",\"title\":\"File ../outside.txt\",\"locations\":[{\"path\":\"/w/outside.txt\"}],\"rawInput\":{\"Path\":\"/w/outside.txt\"}}}}";
+AGYW_FX_ENDED :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\",\"usage\":{\"inputTokens\":10095,\"outputTokens\":344,\"cachedReadTokens\":0,\"cachedWriteTokens\":0,\"thoughtTokens\":0,\"totalTokens\":10439}},\"id\":3}";
+
+// A worker whose session is open and whose turn was sent (session/prompt is request 3).
+agyw_fx_turn :: (s: [] AgywState, x: [] CuEngine) {
+  s[0].sink = true; s[0].turn_active = true;
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\"}}");
+  #assert cue_send(x, "read a.txt, then ../outside.txt");
+}
+agyw_fx_feed :: (s: [] AgywState, x: [] CuEngine, line: string) { agyw_handle_event(s, x, cue_feed(x, line), true); }
+agyw_logged :: (s: [] AgywState, part: string) -> bool { return agy_has(agyw_str(s[0].log[..], s[0].log_n), part); }
+
+#test "agyworker: agy's permission request is answered allow, and the read finishes with agy's words" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+  agyw_fx_feed(s, x, AGYW_FX_READ);
+  agyw_fx_feed(s, x, AGYW_FX_READ_DONE);
+  #assert agyw_logged(s, "{\"kind\":\"command\",\"command\":\"File a.txt\",\"exit\":0");
+  agyw_fx_feed(s, x, AGYW_FX_OUT);
+  agyw_fx_feed(s, x, AGYW_FX_OUT_PENDING);
+  agyw_fx_feed(s, x, AGYW_FX_OUT_ASKS);
+  // Answered here, in the same poll: allow (a request left open is declined on the next poll).
+  #assert agy_out_has(x, "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"outcome\":{\"outcome\":\"selected\",\"optionId\":\"allow\"}}}");
+  #assert s[0].denied_n == 0 && cb[0].asking == 0;
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"hello outside\"}}}}");
+  agyw_fx_feed(s, x, AGYW_FX_ENDED);
+  #assert !s[0].turn_active && agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"hello outside\"}");
+}
+
+#test "agyworker: a denied tool call fails the turn agy then cancels, saying why" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+  // The captured request, naming the path with ".." as a tool may: OpenAgents denies it.
+  asks := "{\"jsonrpc\":\"2.0\",\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"d374a3b5-6498-4a4a-821a-ae285564bcec\",\"toolCall\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_15035010722467529939\",\"name\":\"read_file\",\"status\":\"pending\",\"kind\":\"read\",\"title\":\"File ../outside.txt\",\"rawInput\":{\"Path\":\"/w/ws/../outside.txt\"}},\"options\":[{\"optionId\":\"allow\",\"name\":\"Allow\",\"kind\":\"allow_once\"},{\"optionId\":\"deny\",\"name\":\"Deny\",\"kind\":\"reject_once\"}]},\"id\":\"1\"}";
+  agyw_fx_feed(s, x, AGYW_FX_OUT);
+  agyw_fx_feed(s, x, asks);
+  #assert agy_out_has(x, "\"optionId\":\"deny\"") && s[0].denied_n > 0;
+  agyw_fx_feed(s, x, AGYW_FX_OUT_FAILED);
+  #assert agyw_logged(s, "{\"kind\":\"command\",\"command\":\"File ../outside.txt\",\"exit\":1,\"timed_out\":false,\"output\":\"OpenAgents denied File ../outside.txt: it names a path outside the workspace.\"}");
+  agyw_fx_feed(s, x, AGYW_FX_ENDED);
+  #assert !s[0].turn_active && agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"OpenAgents denied File ../outside.txt: it names a path outside the workspace. Antigravity ends its turn when a tool call is denied.\"}");
+  #assert !agyw_logged(s, "\"ending\":\"finished\"") && s[0].denied_n == 0;
+}
+
+#test "agyworker: a turn agy ends with no words fails saying so, never a silent empty reply" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+  agyw_fx_feed(s, x, AGYW_FX_READ);
+  agyw_fx_feed(s, x, AGYW_FX_READ_DONE);
+  agyw_fx_feed(s, x, AGYW_FX_ENDED);
+  #assert agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"Antigravity ended the turn without a reply.\"}");
+  #assert agyw_no_reply("max_tokens") != agyw_no_reply("end_turn") && agyw_no_reply("cancelled") != agyw_no_reply("");
+  // A tool call that failed or was cancelled with nothing to show says so.
+  s[0].denied_n = 0;
+  #assert agyw_no_output(s, "t", "cancelled") == "Cancelled." && agyw_no_output(s, "t", "failed").count > 0;
+  // A command agy calls completed with a non-zero exit code (captured from agy 1.5.13, trimmed).
+  ran := "{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_5502546541690535549\",\"name\":\"run_command\",\"status\":\"completed\",\"kind\":\"execute\",\"title\":\"git log -n 2 --stat\",\"rawOutput\":{\"output\":\"Command exited with code 128.\",\"exit_code\":128}}";
+  #assert agyw_exit_code(ran, "completed") == 128 && agyw_exit_code(ran, "failed") == 1;
+  #assert agyw_exit_code("{\"status\":\"completed\"}", "completed") == 0;
+  // A /compact may end with no words.
+  s[0].log_n = 0; agyw_fx_turn(s, x); s[0].compact = true;
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\"},\"id\":4}");
+  agyw_handle_event(s, x, ev, true);
+  #assert agyw_logged(s, "\"ending\":\"finished\"");
 }
