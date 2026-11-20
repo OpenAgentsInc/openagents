@@ -1,0 +1,141 @@
+// The checks of schema.coax, which schema.coax loads as tests so that every suite
+// reaching the schema owner (coax/lib/gateway/tool-arguments.coax) runs them (#13586).
+// Each check states the flat tool-schema profile at its edges: 16 properties, 64-byte
+// names, 16 enum values and 1,024-byte texts.
+
+scc_rep :: (out:[]u8,c:u8,n:int)->string #effects(all) {for i:0..<n {out[i]=c;}return cast(string)out[0..<n];}
+scc_cat :: (out:[]u8,a:string,b:string,c:string)->string #effects(all) {n:=json_raw(out,0,a);n=json_raw(out,n,b);n=json_raw(out,n,c);if n<0 {return "";}return cast(string)out[0..<n];}
+scc_schema :: (text:string)->bool #effects(all) {
+    nodes:[256]RsNode;arena:[8192]u8;r:=rs_json(text,nodes[..],arena[..]);if !r.ok {return false;}return rs_schema(nodes[..],0);
+}
+// {"type":"object","properties":{ count properties named a, b, c, ... of type string }}
+scc_props :: (out:[]u8,count:int)->string #effects(all) {
+    n:=json_raw(out,0,"{\"type\":\"object\",\"properties\":{");
+    for i:0..<count {if i>0 {n=json_raw(out,n,",");}name:=[1]u8.[cast(u8)('a'+i)];n=json_raw(out,n,"\"");n=json_raw(out,n,cast(string)name[..]);n=json_raw(out,n,"\":{\"type\":\"string\"}");}
+    n=json_raw(out,n,"}}");return cast(string)out[0..<n];
+}
+// A string property whose enum holds count values v0..: "a","b",...
+scc_enum :: (out:[]u8,count:int)->string #effects(all) {
+    n:=json_raw(out,0,"{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[");
+    for i:0..<count {if i>0 {n=json_raw(out,n,",");}name:=[1]u8.[cast(u8)('a'+i)];n=json_raw(out,n,"\"");n=json_raw(out,n,cast(string)name[..]);n=json_raw(out,n,"\"");}
+    n=json_raw(out,n,"]}}}");return cast(string)out[0..<n];
+}
+
+#test "schema top level: only its five keys, type object, an object of properties" {
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{},\"x\":1}");
+    #assert !scc_schema("{\"properties\":{}}") && !scc_schema("{\"type\":\"array\",\"properties\":{}}") && !scc_schema("{\"type\":1,\"properties\":{}}");
+    #assert !scc_schema("{\"type\":\"object\"}") && !scc_schema("{\"type\":\"object\",\"properties\":[]}") && !scc_schema("[]");
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":true}");
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":1}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":null}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":{}}");
+}
+#test "schema properties: at most 16, names of 1 to 64 bytes, three keys, four types" {
+    buf:[1024]u8;
+    #assert scc_schema(scc_props(buf[..],1)) && scc_schema(scc_props(buf[..],16)) && !scc_schema(scc_props(buf[..],17));
+    name:[80]u8;text:[256]u8;
+    #assert scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"",scc_rep(name[..],'k',64),"\":{\"type\":\"string\"}}}"));
+    #assert !scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"",scc_rep(name[..],'k',65),"\":{\"type\":\"string\"}}}"));
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"\":{\"type\":\"string\"}}}");
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"number\"},\"b\":{\"type\":\"integer\"},\"c\":{\"type\":\"boolean\"},\"d\":{\"type\":\"string\"}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"object\"}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{}}}") && !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":1}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"minLength\":1}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":\"string\"}}");
+    // the walk reaches the property after one with an enum and a description
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"enum\":[\"x\",\"y\"],\"description\":\"d\"},\"b\":{\"type\":\"array\"}}}");
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"enum\":[\"x\",\"y\"],\"description\":\"d\"},\"b\":{\"type\":\"integer\"}}}");
+}
+#test "schema enums: strings only, 1 to 16 distinct values of at most 1,024 bytes" {
+    buf:[1024]u8;
+    #assert scc_schema(scc_enum(buf[..],1)) && scc_schema(scc_enum(buf[..],2)) && scc_schema(scc_enum(buf[..],16));
+    #assert !scc_schema(scc_enum(buf[..],0)) && !scc_schema(scc_enum(buf[..],17));
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"number\",\"enum\":[\"a\"]}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":\"a\"}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"a\",1]}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"a\",\"a\"]}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"a\",\"b\",\"a\"]}}}");
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"\",\"b\"]}}}");
+    long:[1100]u8;text:[1200]u8;
+    #assert scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"",scc_rep(long[..],'v',1024),"\"]}}}"));
+    #assert !scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"",scc_rep(long[..],'v',1025),"\"]}}}"));
+}
+#test "schema descriptions: a string of at most 1,024 bytes, on a property or the top" {
+    long:[1100]u8;text:[1200]u8;
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":\"d\"}},\"description\":\"t\"}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":1}}}");
+    #assert !scc_schema("{\"type\":\"object\",\"properties\":{},\"description\":1}");
+    #assert scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":\"",scc_rep(long[..],'d',1024),"\"}}}"));
+    #assert !scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\",\"description\":\"",scc_rep(long[..],'d',1025),"\"}}}"));
+    #assert scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{},\"description\":\"",scc_rep(long[..],'d',1024),"\"}"));
+    #assert !scc_schema(scc_cat(text[..],"{\"type\":\"object\",\"properties\":{},\"description\":\"",scc_rep(long[..],'d',1025),"\"}"));
+}
+#test "schema required: an array of distinct names the properties hold" {
+    p:="{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"},\"b\":{\"type\":\"string\"}},\"required\":";
+    text:[256]u8;
+    #assert scc_schema(scc_cat(text[..],p,"[]}","")) && scc_schema(scc_cat(text[..],p,"[\"a\",\"b\"]}","")) && scc_schema(scc_cat(text[..],p,"[\"b\"]}",""));
+    #assert !scc_schema(scc_cat(text[..],p,"\"a\"}","")) && !scc_schema(scc_cat(text[..],p,"{}}","")) && !scc_schema(scc_cat(text[..],p,"[1]}",""));
+    #assert !scc_schema(scc_cat(text[..],p,"[\"z\"]}","")) && !scc_schema(scc_cat(text[..],p,"[\"a\",\"z\"]}",""));
+    #assert !scc_schema(scc_cat(text[..],p,"[\"a\",\"a\"]}","")) && !scc_schema(scc_cat(text[..],p,"[\"b\",\"a\",\"b\"]}",""));
+}
+#test "required lookup finds each listed name and nothing else" {
+    nodes:[64]RsNode;arena:[512]u8;
+    #assert rs_json("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"},\"b\":{\"type\":\"string\"},\"c\":{\"type\":\"string\"}},\"required\":[\"a\",\"b\"]}",nodes[..],arena[..]).ok;
+    #assert rs_required(nodes[..],0,"a") && rs_required(nodes[..],0,"b") && !rs_required(nodes[..],0,"c");
+    #assert rs_json("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}}}",nodes[..],arena[..]).ok && !rs_required(nodes[..],0,"a");
+}
+scc_args :: (schema:string,body:string)->bool #effects(all) {
+    nodes:[128]RsNode;arena:[2048]u8;a:[64]RsNode;b:[9000]u8;if !rs_json(schema,nodes[..],arena[..]).ok {return false;}return rs_arguments(nodes[..],0,body,a[..],b[..]);
+}
+#test "arguments: every kind, enum value, required name and the body limit" {
+    s:="{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\"},\"n\":{\"type\":\"number\"},\"i\":{\"type\":\"integer\"},\"b\":{\"type\":\"boolean\"},\"e\":{\"type\":\"string\",\"enum\":[\"x\",\"y\"]}},\"required\":[\"s\",\"i\"]}";
+    #assert scc_args(s,"{\"s\":\"a\",\"i\":2}") && scc_args(s,"{\"i\":2,\"s\":\"a\"}");
+    #assert !scc_args(s,"{\"s\":\"a\"}") && !scc_args(s,"{\"i\":2}") && !scc_args(s,"[]") && !scc_args(s,"{") && !scc_args(s,"");
+    #assert scc_args(s,"{\"s\":\"a\",\"i\":2,\"extra\":1}");
+    #assert !scc_args(s,"{\"s\":1,\"i\":2}") && !scc_args(s,"{\"s\":null,\"i\":2}");
+    #assert scc_args(s,"{\"s\":\"a\",\"i\":2,\"n\":1.5}") && !scc_args(s,"{\"s\":\"a\",\"i\":2,\"n\":\"1\"}") && !scc_args(s,"{\"s\":\"a\",\"i\":2,\"n\":true}");
+    #assert !scc_args(s,"{\"s\":\"a\",\"i\":1.5}") && !scc_args(s,"{\"s\":\"a\",\"i\":\"2\"}");
+    #assert scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":true}") && scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":false}");
+    #assert !scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":1}") && !scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":null}") && !scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":\"true\"}");
+    #assert scc_args(s,"{\"s\":\"a\",\"i\":2,\"e\":\"x\"}") && scc_args(s,"{\"s\":\"a\",\"i\":2,\"e\":\"y\"}") && !scc_args(s,"{\"s\":\"a\",\"i\":2,\"e\":\"z\"}");
+    #assert !scc_args(s,"{\"s\":\"a\",\"i\":2,\"b\":1,\"e\":\"x\"}");
+    open:="{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\"}},\"additionalProperties\":true}";
+    shut:="{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\"}},\"additionalProperties\":false}";
+    #assert scc_args(open,"{\"s\":\"a\",\"x\":1}") && !scc_args(shut,"{\"s\":\"a\",\"x\":1}") && scc_args(shut,"{\"s\":\"a\"}");
+    pad:[8300]u8;text:[8400]u8;
+    #assert scc_args(open,scc_cat(text[..],"{\"s\":\"",scc_rep(pad[..],'a',8184),"\"}"));
+    #assert !scc_args(open,scc_cat(text[..],"{\"s\":\"",scc_rep(pad[..],'a',8185),"\"}"));
+}
+#test "tool prompt: descriptions, optional marks, kinds, enums, tools in turn, exact capacity" {
+    nodes:[64]RsNode;arena:[512]u8;out:[512]u8;
+    text:="[{\"type\":\"object\",\"properties\":{\"p\":{\"type\":\"integer\"},\"n\":{\"type\":\"number\"},\"q\":{\"type\":\"boolean\"},\"r\":{\"type\":\"string\",\"enum\":[\"u\",\"v\",\"w\"]}},\"required\":[\"p\"]},{\"type\":\"object\",\"properties\":{}}]";
+    #assert rs_json(text,nodes[..],arena[..]).ok;second:=nodes[1].next;
+    tools:=[2]RsTool.[RsTool.{name="a",schema=1,description="x\ry\nz"},RsTool.{name="b",schema=second}];
+    want:="# Tools\n\n## functions\n\nnamespace functions {\n\n// x y z\ntype a = (_: {\n\"p\": number,\n\"n\"?: number,\n\"q\"?: boolean,\n\"r\"?: \"u\" | \"v\" | \"w\",\n}) => any;\n\ntype b = (_: {\n}) => any;\n\n} // namespace functions";
+    n:=rs_tool_prompt(tools[..],nodes[..],out[..]);#assert n==want.count && cast(string)out[0..<n]==want;
+    #assert rs_tool_prompt(tools[..],nodes[..],out[0..<want.count])==want.count && rs_tool_prompt(tools[..],nodes[..],out[0..<want.count-1])== -1;
+}
+// {"type":"object","properties":{ a..p of type string },"required":[ a..p ]}: 16 names, each required
+scc_all_required :: (out:[]u8)->string #effects(all) {
+    props:=scc_props(out,16);n:=props.count-1;n=json_raw(out,n,",\"required\":[");
+    for i:0..<16 {if i>0 {n=json_raw(out,n,",");}name:=[1]u8.[cast(u8)('a'+i)];n=json_raw(out,n,"\"");n=json_raw(out,n,cast(string)name[..]);n=json_raw(out,n,"\"");}
+    n=json_raw(out,n,"]}");return cast(string)out[0..<n];
+}
+#test "schema required: all 16 names, and duplicates found only inside the list" {
+    buf:[1024]u8;#assert scc_schema(scc_all_required(buf[..]));
+    // the node just before the list holds the text "a"; it is no earlier entry of the list
+    #assert scc_schema("{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"string\"}},\"description\":\"a\",\"required\":[\"a\"]}");
+}
+#test "arguments: a broken body, an enum's end, the schema's last node, a one-byte description" {
+    open:="{\"type\":\"object\",\"properties\":{\"s\":{\"type\":\"string\"}}}";
+    #assert !scc_args(open,"{") && !scc_args(open,"{\"s\":") && scc_args(open,"{}");
+    // the description after the enum is not one of its values
+    #assert !scc_args("{\"type\":\"object\",\"properties\":{\"e\":{\"type\":\"string\",\"enum\":[\"x\"],\"description\":\"z\"}}}","{\"e\":\"z\"}");
+    // a schema whose properties are its last node, read from a node array of exactly its size
+    nodes:[64]RsNode;arena:[256]u8;a:[16]RsNode;b:[256]u8;
+    r:=rs_json(open,nodes[..],arena[..]);#assert r.ok && rs_arguments(nodes[0..<r.count],0,"{\"s\":\"x\"}",a[..],b[..]);
+    out:[256]u8;tools:=[1]RsTool.[RsTool.{name="t",schema=0,description="d"}];n:=rs_tool_prompt(tools[..],nodes[..],out[..]);
+    #assert cast(string)out[0..<n]=="# Tools\n\n## functions\n\nnamespace functions {\n\n// d\ntype t = (_: {\n\"s\"?: string,\n}) => any;\n\n} // namespace functions";
+}

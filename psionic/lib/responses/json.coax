@@ -58,3 +58,7 @@ rs_raw :: (text:string,nodes:[]RsNode,index:int)->string #effects(all) {if index
     r:=rs_json(cast(string)big[0..<65536],nodes[..],arena[..]);#assert r.ok && r.count==1 && r.bytes==65534;
     big[65535]='a';big[65536]='"';#assert !rs_json(cast(string)big[..],nodes[..],arena[..]).ok;
 }
+#test "an empty string value parses to empty text inside its quotes" {
+    nodes:[4]RsNode;arena:[8]u8;text:="[\"\"]";r:=rs_json(text,nodes[..],arena[..]);
+    #assert r.ok && r.count==2 && r.bytes==0 && nodes[1].text=="" && rs_raw(text,nodes[..],1)=="\"\"";
+}
