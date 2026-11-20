@@ -19,7 +19,9 @@ extension CoderWindow {
     func rightClick(_ event: NSEvent) -> Bool {
         guard event.window === window else { return false }
         if overlay.dialogOpen { return true }
-        let at = canvas.convert(event.locationInWindow, from: nil), scale = window.backingScaleFactor
+        let at = canvas.convert(event.locationInWindow, from: nil)
+        guard canvas.bounds.contains(at) else { return false }
+        let scale = window.backingScaleFactor
         let y = canvas.isFlipped ? at.y : canvas.bounds.height - at.y
         let px = Float(at.x * scale), py = Float(y * scale)
         typealias Item = CoderOverlay.MenuItem

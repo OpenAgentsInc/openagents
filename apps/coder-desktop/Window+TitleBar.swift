@@ -13,13 +13,14 @@ final class CoderTitleBar {
     static let buttons: [NSWindow.ButtonType] = [.closeButton, .miniaturizeButton, .zoomButton]
     static let first: CGFloat = 21, pitch: CGFloat = 23, line: CGFloat = 20   // Zeron's, in points
     private weak var window: NSWindow?
+    private weak var canvas: NSView?
     private let page: UnsafeMutableRawPointer
     private var observers: [NSObjectProtocol] = []
     private var monitor: Any?
     private var placing = false
 
-    init(window: NSWindow, page: UnsafeMutableRawPointer) {
-        self.window = window; self.page = page
+    init(window: NSWindow, canvas: NSView, page: UnsafeMutableRawPointer) {
+        self.window = window; self.canvas = canvas; self.page = page
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.titlebarSeparatorStyle = .none
@@ -69,11 +70,11 @@ final class CoderTitleBar {
     /// A press in the window: on the bar where the page has nothing, it moves the window (true: the
     /// press is the window's, not the page's).
     private func press(_ event: NSEvent) -> Bool {
-        guard let window, event.window === window, window.attachedSheet == nil, let content = window.contentView else { return false }
-        // the traffic lights and the editors over the page keep their presses
-        guard let frame = content.superview, frame.hitTest(frame.convert(event.locationInWindow, from: nil)) === content else { return false }
-        let p = content.convert(event.locationInWindow, from: nil)
-        let x = p.x, y = content.isFlipped ? p.y : content.bounds.height - p.y
+        guard let window, event.window === window, window.attachedSheet == nil, let canvas, let content = window.contentView else { return false }
+        // the traffic lights, the file pane and the editors over the page keep their presses
+        guard let frame = content.superview, frame.hitTest(frame.convert(event.locationInWindow, from: nil)) === canvas else { return false }
+        let p = canvas.convert(event.locationInWindow, from: nil)
+        let x = p.x, y = canvas.isFlipped ? p.y : canvas.bounds.height - p.y
         guard cd_bar_drags(page, Float(x), Float(y)) != 0 else { return false }
         if event.clickCount == 2 { doubleClick(window) } else { window.performDrag(with: event) }
         return true

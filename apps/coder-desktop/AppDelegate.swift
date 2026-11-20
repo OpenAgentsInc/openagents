@@ -5,6 +5,7 @@ import AppKit
 final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
     private var statusItem: NSStatusItem?
+    private var pendingOpenURLs: [URL] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
             fputs("Coder: the GPU surface could not start.\n", stderr); exit(1)
@@ -26,6 +27,22 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
         self.statusItem = statusItem
         NSApp.activate(ignoringOtherApps: true)
+        if !pendingOpenURLs.isEmpty {
+            let urls = pendingOpenURLs
+            pendingOpenURLs.removeAll()
+            for url in urls { main.openFileInPane(url) }
+        }
+    }
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let fileURLs = urls.filter { $0.isFileURL }
+        guard !fileURLs.isEmpty else { return }
+        if let main {
+            NSApp.activate(ignoringOtherApps: true)
+            main.show()
+            for url in fileURLs { main.openFileInPane(url) }
+        } else {
+            pendingOpenURLs.append(contentsOf: fileURLs)
+        }
     }
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
@@ -57,6 +74,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
+    @objc func saveOpenFile(_ sender: Any?) { main?.saveOpenFile() }
+    @objc func closeFilePane(_ sender: Any?) { main?.closeFilePane() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
     @objc func followUpOther(_ sender: Any?) { main?.followUpOther() }
@@ -89,6 +108,8 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
+        if item.action == #selector(saveOpenFile(_:)) { return main?.canSaveOpenFile == true }
+        if item.action == #selector(closeFilePane(_:)) { return main?.filePaneOpen == true }
         if item.action == #selector(followUpOther(_:)) {
             guard let w = main else { return false }
             item.title = cd_followup_queues(w.page) != 0 ? "Steer the Reply" : "Queue a Follow-up"
@@ -169,6 +190,10 @@ enum TestLaunch {
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
         file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
+        file.addItem(.separator())
+        file.addItem(withTitle: "Save File", action: #selector(CoderDelegate.saveOpenFile(_:)), keyEquivalent: "s").target = delegate
+        let closePane = file.addItem(withTitle: "Close File Pane", action: #selector(CoderDelegate.closeFilePane(_:)), keyEquivalent: "w")
+        closePane.target = delegate; closePane.keyEquivalentModifierMask = [.command, .shift]
         file.addItem(.separator())
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")

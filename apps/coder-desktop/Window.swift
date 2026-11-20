@@ -88,6 +88,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     let page: UnsafeMutableRawPointer
     let canvas: NSView
+    let splitView: FilePaneSplitView
+    let filePane: FilePaneView
     var run: CoderRun                    // the shown chat's run, on the window's page
     var runs: [String: CoderRun] = [:]   // chats whose replies run out of view, by id
     var unread: Set<String> = []         // background chats with unread output or a completed turn
@@ -132,12 +134,24 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         let screen = NSScreen.main?.visibleFrame.size ?? NSSize(width: 1440, height: 900)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: min(1500, (screen.width * 0.86).rounded()), height: min(1000, (screen.height * 0.88).rounded())),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+        let contentSize = window.contentRect(forFrameRect: window.frame).size
+        splitView = FilePaneSplitView(frame: NSRect(origin: .zero, size: contentSize))
+        filePane = FilePaneView(frame: NSRect(x: 0, y: 0, width: 480, height: contentSize.height))
         super.init()
         window.title = "Coder"; window.titleVisibility = .hidden; window.minSize = NSSize(width: 420, height: 320); window.isReleasedWhenClosed = false; window.delegate = self
-        // the page fills the window, under its transparent title bar
-        canvas.frame = NSRect(origin: .zero, size: window.contentRect(forFrameRect: window.frame).size); canvas.autoresizingMask = [.width, .height]
-        window.contentView = canvas
-        titleBar = CoderTitleBar(window: window, page: page)
+        // the page fills the window, under its transparent title bar, beside the toggleable right-side file pane
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        splitView.autoresizingMask = [.width, .height]
+        splitView.delegate = self
+        canvas.frame = NSRect(origin: .zero, size: contentSize); canvas.autoresizingMask = [.width, .height]
+        filePane.isHidden = true
+        filePane.onClose = { [weak self] in self?.closeFilePane() }
+        filePane.onOpenExternally = { url in NSWorkspace.shared.open(url) }
+        splitView.addSubview(canvas)
+        splitView.addSubview(filePane)
+        window.contentView = splitView
+        titleBar = CoderTitleBar(window: window, canvas: canvas, page: page)
         cd_on_change(page, { raw in guard let raw else { return }; Unmanaged<CoderWindow>.fromOpaque(raw).takeUnretainedValue().wake() },
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
@@ -318,11 +332,11 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 22: checkForUpdates()
         case 23: focusSearch()
         case 24:
-            // a file a row or a reply names: opened from the working folder unless its path is whole
+            // a file a row or a reply names: opened in the right-side file pane (from the working folder unless whole)
             guard cd_open_path(page, &out, Int32(out.count)) > 0 else { return }
             let named = (String(cString: out) as NSString).expandingTildeInPath
             let url = named.hasPrefix("/") ? URL(fileURLWithPath: named) : folder.appendingPathComponent(named)
-            if FileManager.default.fileExists(atPath: url.path) { NSWorkspace.shared.open(url) }
+            if FileManager.default.fileExists(atPath: url.path) { openFileInPane(url) }
         case 25: followUp()
         case 26: paletteAsked()
         case 27: attachMenu()
