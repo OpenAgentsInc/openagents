@@ -23,9 +23,9 @@ if [[ ! -x "$coax" ]]; then "$repo/coax/build.sh"; fi
 work="$here/build"
 mkdir -p "$work/c" "$work/wl" "$work/resources"
 
-# 1. Compile page (app.coax), desktop core bridge (core.coax), entropy policy, and Wayland input/text.
+# 1. Compile page (app.coax), desktop core bridge (host-core.coax), entropy policy, and Wayland input/text.
 "$coax" c "$app_dir/app.coax" --library --header "$work/c/gallery.h" > "$work/c/gallery.c"
-"$coax" c "$here/core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
+"$coax" c "$app_dir/host-core.coax" --library --header "$work/c/core.h" > "$work/c/core.c"
 "$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/c/entropy-policy.h" > "$work/c/entropy.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-input.coax" --library --header "$work/c/wayland-input.h" > "$work/c/wayland-input.c"
 "$coax" c "$repo/metaverse-engine/host/wayland-text.coax" --library --header "$work/c/wayland-text.h" > "$work/c/wayland-text.c"

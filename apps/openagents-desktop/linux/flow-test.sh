@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper: makes a throwaway home and the mock worker, then runs the app's
-# --flow-test; every check is in linux/main.c run_flow)
+# --flow-test; every check is in host-main.c run_flow)
 # The OpenAgents Desktop chat flow test on Linux, headless: the app opens its page offscreen
 # (software Vulkan), sends a message to a real worker process (evals/coder-desktop/mock_worker,
 # never a model or a key), shows the reply, makes a new chat and sends another, and checks the

@@ -1,9 +1,10 @@
-// Linux host bridge to the portable desktop core (GitHub #13781, #13787).
-// All store, settings, worktree, daemon, worker and signed update logic lives in
-// coax/lib/agent/desktop/; this file exposes a small C ABI for linux/main.c.
-#load "../../../coax/lib/agent/desktop/os-posix.coax";
-#load "../../../coax/lib/agent/desktop/worker-env.coax";
-#load "../../../coax/lib/agent/desktop/update.coax";
+// The Linux and Windows hosts' bridge to the portable desktop core (GitHub #13781, #13782,
+// #13787). All store, settings, worktree, daemon, worker and signed update logic lives in
+// coax/lib/agent/desktop/; this file exposes a small C ABI for host-main.c (linux/main.c,
+// windows/main.c). The same code runs on both: the core's seam picks the system at run time.
+#load "../../coax/lib/agent/desktop/os-posix.coax";
+#load "../../coax/lib/agent/desktop/worker-env.coax";
+#load "../../coax/lib/agent/desktop/update.coax";
 
 OA_MAX_SUBAGENTS :: 8;
 
@@ -136,6 +137,17 @@ oa_core_store_toggle_pin :: (c: [] OaCore, id: string) -> int #export_c #effects
 oa_core_store_remove :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
   if !oa_store_fresh(c) { return 0; }
   return ifx dc_store_remove(c[0].store[..], id) then 1 else 0;
+}
+
+// The working folder's files the agent's @ list offers, one a line: git's list for a repository
+// (what Coder's folderFiles asks first), else none. Its length.
+oa_core_files :: (folder: string, out: [] u8) -> int #export_c #effects(all) {
+  if out.count <= 0 { return 0; }
+  argv := [4] string.["git", "-C", folder, "ls-files"]; none: [1] string;
+  r := dcos_run(argv[..], none[0..<0], out[0..<out.count - 1]);
+  n := ifx r.started == 0 && r.status == 0 then r.n else 0;
+  out[n] = 0;
+  return n;
 }
 
 oa_core_key_read :: (name: string, out: [] u8) -> int #export_c #effects(all) {

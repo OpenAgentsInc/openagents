@@ -1,6 +1,6 @@
 // The shared hosts' PNG writer (ui-host.h ui_shot_write): RGBA rows to a file, with no compression
-// library. The Linux host (../linux/ui-host.c) carries the same code inline; this copy serves
-// the hosts that have no platform image writer (Android).
+// library. The hosts with no platform image writer use it: the Vulkan hosts' shared drawing
+// (vulkan-ui.c: Linux and Windows) and Android's.
 #ifndef UI_PNG_H
 #define UI_PNG_H
 #include <stdint.h>
