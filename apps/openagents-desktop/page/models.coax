@@ -69,7 +69,13 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
   return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
 }
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) { return "Antigravity CLI"; }
+  if cp_is_agy(s, idx) {
+    // the model Settings names for agy ("gemini-4-hydrogen · high"); none set: agy's own default
+    if s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" { return "Antigravity CLI · default model"; }
+    n := cp_out(s[0].agy_meta[..], "Antigravity CLI · ");
+    n += cp_out(s[0].agy_meta[n..<s[0].agy_meta.count], cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n]);
+    return cast(string) s[0].agy_meta[0..<n];
+  }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
     n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));

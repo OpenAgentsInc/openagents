@@ -163,7 +163,9 @@
   #assert cp_model_label(s, CP_MODELS) == "Antigravity";
   #assert cp_model_id(s, CP_MODELS) == "antigravity";
   // the row names the CLI and the mode picked in Settings
-  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Auto" && cp_model_meta(s, CP_MODELS) == "Antigravity CLI";
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Auto" && cp_model_meta(s, CP_MODELS) == "Antigravity CLI · default model";
+  coder_page_settings_agy(s, "v1.5.12 (ready)", 0, "gemini-4-hydrogen · high", "Google sign-in");
+  #assert cp_model_meta(s, CP_MODELS) == "Antigravity CLI · gemini-4-hydrogen · high";
   s[0].set_agy_mode = 2;
   #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Plan";
   s[0].set_agy_mode = 1;

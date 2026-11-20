@@ -313,6 +313,7 @@ CoderPage :: struct {
   set_agy_status: [96] u8; set_agy_status_n: int;
   set_agy_model: [96] u8; set_agy_model_n: int;
   set_agy_auth: [96] u8; set_agy_auth_n: int;
+  agy_meta: [128] u8;         // cp_model_meta's Antigravity line: "Antigravity CLI · " and the model
   set_agy_mode: int;          // 0 Auto, 1 Default, 2 Plan
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   todos: [1] CpTodos;          // live agent to-do checklist (todos.coax)
