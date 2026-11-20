@@ -201,8 +201,13 @@ final class CoderDaemonClient {
         let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup($0.key + "=" + $0.value) } + [nil]
         defer { for e in envp { free(e) } }
         var pid: pid_t = 0
-        return posix_spawn(&pid, path, &actions, &attrs, argv, envp) == 0
+        guard posix_spawn(&pid, path, &actions, &attrs, argv, envp) == 0 else { return false }
+        Self.spawnedPID = pid
+        return true
     }
+    /// The `coder-host serve` this Coder started, if it started one: a scratch test launch stops it by
+    /// this PID when it quits (TestLaunch in AppDelegate.swift, GitHub #13752).
+    static var spawnedPID: pid_t = 0
     /// StartRun: the daemon starts the worker its ID.spec names. nil when it runs, else why not.
     func startRun(_ id: String) -> String? {
         guard let view = sendSync(["schema": Self.schema, "method": "StartRun", "run_id": id,

@@ -135,10 +135,33 @@ Each flow starts the copy's own binary with:
   through the window, Command keys through the main menu. `state` reads the page (`cd_running`,
   `cd_settings_page`, `cd_title`, cost) and the kept sidebar widths.
 
-Coder starts its run daemon (`coder-host serve`, #13694) in the temp `HOME`; the daemon starts the
-mock workers. After each flow the runner stops that daemon and any mock worker still running, by
-the PIDs the flow made (`daemon.json`, the record files' names), and deletes the copy's preference
-domain and the temp `HOME`.
+Coder starts its run daemon (`coder-host serve`, #13694) in the temp `HOME` (`CODER_HOME` is that
+`HOME`); the daemon starts the mock workers. After each launch quits, and again after each flow, the
+runner stops that daemon and any mock worker still running, by the PIDs the flow made
+(`daemon.json`, whoever holds `daemon.log` open, the record files' names), and deletes the copy's
+preference domain and the temp `HOME`.
+
+`send_stream_new_chat` also checks memory: it samples `footprint -p PID` after launch and after the
+streamed reply, prints both, and fails when the footprint grew more than 300 MB
+(`--footprint-limit-mb`).
+
+### Kill what you launch, including coder-host
+
+A scratch `Coder.app` you start for a test or a capture is yours to stop (#13752: eight leftover
+test copies grew to 12–26 GB each and the Mac ran out of memory).
+
+- Stop the Coder you started by its PID, never by name (`pkill` hits other agents' copies and the
+  installed `/Applications/Coder.app`).
+- Stop its `coder-host serve` too. Coder starts that daemon in a session of its own so it outlives
+  Coder; killing Coder alone leaves the daemon running under your temp `HOME`. Its PID is in
+  `$CODER_HOME/.openagents/coder/host/daemon.json` (`CODER_HOME` falls back to `HOME`); check that
+  the PID's command line is under your copy's bundle before you stop it.
+- Start the copy with a temp `HOME` and `CODER_HOME`, `BROWSER=/usr/bin/true` and
+  `CODER_TEST_LAUNCH=1`. A copy outside `/Applications` with `CODER_TEST_LAUNCH` set is a test
+  launch: it stops the daemon it started when it quits or gets SIGTERM, and it quits itself once no
+  driver has spoken for `CODER_TEST_IDLE_S` seconds (default 600). The Tier 3 probe sets
+  `CODER_TEST_LAUNCH` and counts as the driver on every command; a launch with no probe quits that
+  long after it starts. `/Applications/Coder.app` never does either.
 
 Captures use `screencapture -l` on the window, so the terminal needs Screen Recording. A capture is
 taken once the frame stops changing and compared with `tier3/goldens/NAME.png`: a pixel differs when
@@ -151,7 +174,7 @@ the sizes differ and the flow fails, so regenerate them there.
 | Flow | What it drives | Checks | Goldens |
 |---|---|---|---|
 | `idle_layouts` | launch, resize | the empty chat at 1200x800 and 820x700 | `idle_1200x800`, `narrow_820x700` |
-| `send_stream_new_chat` | type into the composer, Return, a click on New chat | the reply streams and ends, cost $0.015, title, one task line, one chat kept; New chat empties the page and focuses the composer | `replied_1200x800`, `new_chat_1200x800` |
+| `send_stream_new_chat` | type into the composer, Return, a click on New chat | the reply streams and ends, cost $0.015, title, one task line, one chat kept; New chat empties the page and focuses the composer; the footprint grows at most 300 MB | `replied_1200x800`, `new_chat_1200x800` |
 | `stop` | send, a click on Stop | the worker gets one stop line, the reply ends | `streaming_1200x800`, `stopped_1200x800` |
 | `subagent_pane` | send at 1440x900, `--agent 1` opens the first sub-agent's pane | both sub-agent workers start, the main worker gets its results | `subagent_pane_1440x900` |
 | `sidebar_resize` | a drag on the sidebar's edge | the width is kept (309 page units for +90 points) | `sidebar_resized_1200x800` |

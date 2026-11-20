@@ -11,6 +11,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         }
         self.main = main
         main.installPaletteKeys()
+        TestLaunch.start()
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Coder")
@@ -48,7 +49,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Quit")
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
-    func applicationWillTerminate(_ notification: Notification) { main?.retire() }
+    func applicationWillTerminate(_ notification: Notification) { main?.retire(); TestLaunch.stopHost() }
     @objc func newChat(_ sender: Any?) { main?.newChat() }
     @objc func search(_ sender: Any?) { main?.togglePalette() }
     @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
@@ -107,6 +108,53 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(stopAllChats(_:)) { return (main?.runningCount ?? 0) > 0 }
         if item.action == #selector(backToChats(_:)) || item.action == #selector(findInSettings(_:)) { return main?.settingsOpen == true }
         return true
+    }
+}
+
+/// A scratch test launch (GitHub #13752): a copy a test driver started with CODER_TEST_LAUNCH set (the
+/// Tier 3 probe sets it), never a Coder in /Applications. It cannot outlive its driver: it stops the
+/// `coder-host serve` it started (by that PID) when it quits or gets SIGTERM, and it quits itself when no
+/// driver has spoken for CODER_TEST_IDLE_S seconds (default 600). A driver speaks by posting
+/// CoderTestDriverActivity; a launch with no driver quits that long after it starts.
+enum TestLaunch {
+    static let active: Bool = {
+        guard let v = ProcessInfo.processInfo.environment["CODER_TEST_LAUNCH"], !v.isEmpty else { return false }
+        return !Bundle.main.bundlePath.hasPrefix("/Applications/")
+    }()
+    private static var lastDriver = Date()
+    private static var timer: Timer?
+    private static var sigterm: DispatchSourceSignal?
+
+    static func start() {
+        guard active, timer == nil else { return }
+        let idle = max(5, Double(ProcessInfo.processInfo.environment["CODER_TEST_IDLE_S"] ?? "") ?? 600)
+        NotificationCenter.default.addObserver(forName: Notification.Name("CoderTestDriverActivity"), object: nil, queue: .main) { _ in
+            lastDriver = Date()
+        }
+        timer = Timer.scheduledTimer(withTimeInterval: min(30, idle / 4), repeats: true) { _ in
+            guard Date().timeIntervalSince(lastDriver) > idle else { return }
+            fputs("Coder: test launch idle for \(Int(idle)) s with no driver; quitting (CODER_TEST_IDLE_S).\n", stderr)
+            stopHost()
+            exit(0)   // not terminate(): a running reply would ask first in a modal alert no one answers
+        }
+        // SIGTERM (a driver killing its launch): stop the daemon, then die of SIGTERM as before
+        signal(SIGTERM, SIG_IGN)
+        let src = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global(qos: .userInitiated))
+        src.setEventHandler {
+            stopHost()
+            signal(SIGTERM, SIG_DFL)
+            kill(getpid(), SIGTERM)
+        }
+        src.resume()
+        sigterm = src
+    }
+
+    static func stopHost() {
+        guard active else { return }
+        let pid = CoderDaemonClient.spawnedPID
+        guard pid > 0 else { return }
+        CoderDaemonClient.spawnedPID = 0
+        kill(pid, SIGTERM)
     }
 }
 

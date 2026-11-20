@@ -193,6 +193,8 @@ static NSString *t3_followups(void) {
 
 // ---- requests -------------------------------------------------------------------------------
 static NSString *t3_handle(NSString *line) {
+  // the driver spoke: Coder's test-launch watchdog (TestLaunch, AppDelegate.swift) starts over
+  [NSNotificationCenter.defaultCenter postNotificationName:@"CoderTestDriverActivity" object:nil];
   NSArray *parts = [line componentsSeparatedByString:@" "];
   NSString *op = parts.firstObject ?: @"";
   NSString *rest = parts.count > 1 ? [line substringFromIndex:op.length + 1] : @"";
@@ -335,6 +337,9 @@ __attribute__((constructor)) static void t3_init(void) {
   NSString *p = [NSString stringWithUTF8String:path];
   // The workers Coder starts inherit its environment: they get neither the probe nor its socket.
   unsetenv("DYLD_INSERT_LIBRARIES"); unsetenv("CODER_T3_SOCKET");
+  // a test launch (#13752): Coder stops the coder-host it starts when it quits, and quits itself when
+  // this driver goes quiet for CODER_TEST_IDLE_S seconds
+  setenv("CODER_TEST_LAUNCH", "tier3", 0);
   Class app = NSApplication.class;
   Method m1 = class_getInstanceMethod(app, @selector(activateIgnoringOtherApps:));
   if (m1) method_setImplementation(m1, (IMP)t3_noop_activate);

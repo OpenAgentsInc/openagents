@@ -24,8 +24,13 @@ What it does:
    pixels differ. On a failure it writes the capture, the golden and a difference image (changed
    pixels red over a dimmed golden) to the run folder.
 4. Quits the app (Command-Q through its menu; SIGTERM while a reply runs, as Coder would ask
-   first), stops the run daemon Coder started in the temp HOME and any mock worker left, by their
-   own PIDs, and deletes the copy's preference domain and the temp HOME.
+   first), stops the run daemon (`coder-host serve`) that launch started in the temp HOME and any
+   mock worker left, by their own PIDs (never by name), and deletes the copy's preference domain and
+   the temp HOME. The copy is a test launch (CODER_TEST_LAUNCH, #13752): it stops its own daemon when
+   it quits, and quits itself if no driver speaks for CODER_TEST_IDLE_S seconds, so a runner that dies
+   cannot leave it running.
+5. Checks memory: send_stream_new_chat samples `footprint -p PID` after launch and after the reply
+   streamed, prints both, and fails when it grew more than --footprint-limit-mb (default 300).
 
 Per run: results/tier3-<time>-<sha>/ with summary.json and, per flow, the captures, any
 difference images, the worker records (rec/) and app.log. One line per flow on stdout:
@@ -39,6 +44,7 @@ import argparse
 import json
 import os
 import plistlib
+import re
 import shutil
 import signal
 import socket
@@ -97,6 +103,68 @@ def forget_prefs() -> None:
     subprocess.run(["defaults", "delete", BUNDLE_ID], capture_output=True)
 
 
+def command_of(pid: int) -> str:
+    return subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
+
+
+def stop_pids(pids: list[int], wait_s: float = 3.0) -> None:
+    """SIGTERM these PIDs, then SIGKILL any still alive after wait_s."""
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    deadline = time.time() + wait_s
+    left = list(pids)
+    while left and time.time() < deadline:
+        time.sleep(0.1)
+        left = [p for p in left if alive(p)]
+    for pid in left:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def stop_coder_host(home: Path, marker: str) -> list[int]:
+    """Stop the `coder-host serve` a launch under this temp HOME started (#13694 keeps it running past
+    Coder's quit; #13752). Found by PID only: the pid in its daemon.json, and whoever holds its
+    daemon.log open (lsof on that one path), each kept only when its command line is under `marker`
+    (the staged Coder.app). Never by name. Returns the PIDs it stopped."""
+    host = home / ".openagents/coder/host"
+    pids: set[int] = set()
+    try:
+        pid = int(json.loads((host / "daemon.json").read_text()).get("pid") or 0)
+        if pid:
+            pids.add(pid)
+    except (OSError, ValueError):
+        pass
+    log = host / "daemon.log"
+    if log.exists():
+        out = subprocess.run(["lsof", "-t", str(log)], capture_output=True, text=True).stdout
+        pids.update(int(t) for t in out.split() if t.isdigit())
+    mine = sorted(p for p in pids if p != os.getpid() and marker in command_of(p))
+    stop_pids(mine)
+    return mine
+
+
+def footprint_mb(pid: int) -> float | None:
+    """The process's physical footprint in MB, as `footprint -p` reports it."""
+    out = subprocess.run(["footprint", "-p", str(pid)], capture_output=True, text=True).stdout
+    m = re.search(r"Footprint:\s*([\d.]+)\s*(B|KB|MB|GB)", out)
+    if not m:
+        return None
+    return float(m.group(1)) * {"B": 1 / 1048576, "KB": 1 / 1024, "MB": 1.0, "GB": 1024.0}[m.group(2)]
+
+
 class App:
     """One launch of the scratch Coder.app under a temp HOME, with the probe's socket."""
 
@@ -110,12 +178,17 @@ class App:
         env = {
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             "HOME": str(home), "CFFIXED_USER_HOME": str(home), "TMPDIR": os.environ.get("TMPDIR", "/tmp"),
-            "CODER_HOME": str(home / ".openagents/coder/host"), "CODER_RELEASE_HOME": str(home / ".cache/coder-release"),
+            # the daemon's rule is $CODER_HOME/.openagents/coder/host: CODER_HOME is the temp HOME itself
+            "CODER_HOME": str(home), "CODER_RELEASE_HOME": str(home / ".cache/coder-release"),
             "CODER_UPDATE_URL": "", "BROWSER": "/usr/bin/true", "LANG": "en_US.UTF-8",
             "CODER_T3_SOCKET": str(self.sock_path), "CODER_T3_WORKERS": str(wfile), "CODER_T3_RECORD": str(rec),
             "CODER_T3_REAL_WORKER": str(binary.parent.parent / "Resources/mcworker-real"),
             "DYLD_INSERT_LIBRARIES": str(dylib),
+            # a test launch (#13752): quits itself after this long with no driver command
+            "CODER_TEST_LAUNCH": "tier3", "CODER_TEST_IDLE_S": "300",
         }
+        self.home = home
+        self.marker = str(binary.parent.parent.parent)   # the staged Coder.app
         if self.sock_path.exists():
             self.sock_path.unlink()
         self.log = open(case_dir / "app.log", "ab")
@@ -211,6 +284,9 @@ class App:
         self.log.close()
         if self.sock_path.exists():
             self.sock_path.unlink()
+        # Coder stops the daemon it started as it quits; one left (SIGKILL, or a daemon an earlier
+        # launch on this HOME started) is stopped here, by its PID
+        stop_coder_host(self.home, self.marker)
 
 
 # ---- comparing ------------------------------------------------------------------------------
@@ -297,6 +373,7 @@ class Flow:
         self.workers: dict = WORKERS
         self.captures = 0
         self.problems: list[str] = []
+        self.notes: list[str] = []
 
     def launch(self, *args: str, size: tuple[int, int] = (1200, 800)) -> App:
         forget_prefs()
@@ -331,24 +408,14 @@ class Flow:
     def stop_daemon(self) -> None:
         """Coder starts the run daemon (`coder-host serve`, #13694) in the temp HOME and it outlives the
         app on purpose. Stop it and any mock worker still running: only the PIDs this flow made (the
-        daemon's own daemon.json, the workers' record file names)."""
+        daemon's own daemon.json and log, the workers' record file names), never by name."""
+        stop_coder_host(self.home, str(self.ctx.run_dir))
         pids = []
-        disc = self.home / ".openagents/coder/host/daemon.json"
-        try:
-            pid = int(json.loads(disc.read_text()).get("pid") or 0)
-            if pid and str(self.ctx.run_dir) in subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout:
-                pids.append(pid)
-        except (OSError, ValueError):
-            pass
         for rec in (self.case_dir / "rec").glob("*-*.jsonl"):
             pid = int(rec.stem.rsplit("-", 1)[1])
-            if "mock_router.py" in subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout:
+            if "mock_router.py" in command_of(pid):
                 pids.append(pid)
-        for pid in pids:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except OSError:
-                pass
+        stop_pids(pids)
 
     def expect(self, ok: bool, why: str) -> None:
         if not ok:
@@ -399,9 +466,19 @@ def flow_idle_layouts(f: Flow) -> str:
 def flow_send_stream(f: Flow) -> str:
     """New chat, type, Return, the reply streams in and is kept; New chat empties the page"""
     app = f.launch()
+    at_launch = footprint_mb(app.proc.pid)
     f.send("Explain the layout")
     app.wait("the reply to start", lambda s: s["running"] == 1 or s["cost_usd_micros"] > 0, 5)
     st = app.wait("the reply to end", lambda s: s["running"] == 0 and s["cost_usd_micros"] > 0, 10)
+    # memory (#13752): a leftover test Coder once grew 3.5 MB/s to 26 GB; the footprint after the
+    # streamed reply may be at most --footprint-limit-mb over the one at launch
+    after = footprint_mb(app.proc.pid)
+    limit = f.ctx.footprint_limit_mb
+    if at_launch is None or after is None:
+        f.problems.append(f"footprint -p {app.proc.pid} gave no number (launch {at_launch}, after {after})")
+    else:
+        f.notes.append(f"footprint {at_launch:.0f} MB at launch, {after:.0f} MB after the stream (limit +{limit:.0f} MB)")
+        f.expect(after - at_launch <= limit, f"footprint grew {after - at_launch:.0f} MB ({at_launch:.0f} -> {after:.0f} MB), limit {limit:.0f} MB")
     f.expect(st["title"] == "Explain the layout", f"chat title {st['title']!r}")
     f.expect(st["cost_usd_micros"] == 15000, f"cost {st['cost_usd_micros']}")
     tasks = [r for r in f.records("main") if r["kind"] == "task"]
@@ -616,8 +693,9 @@ FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
 
 
 class Ctx:
-    def __init__(self, run_dir: Path, binary: Path, dylib: Path, update: bool, tol: int, max_diff: float) -> None:
+    def __init__(self, run_dir: Path, binary: Path, dylib: Path, update: bool, tol: int, max_diff: float, footprint_limit_mb: float = 300.0) -> None:
         self.run_dir, self.binary, self.dylib, self.update, self.tol, self.max_diff = run_dir, binary, dylib, update, tol, max_diff
+        self.footprint_limit_mb = footprint_limit_mb
 
 
 def run_flow(ctx: Ctx, name: str, fn: Callable[[Flow], str]) -> dict[str, Any]:
@@ -638,7 +716,7 @@ def run_flow(ctx: Ctx, name: str, fn: Callable[[Flow], str]) -> dict[str, Any]:
         shutil.rmtree(f.home, ignore_errors=True)
     problems = f.problems + ([error] if error else [])
     return {"flow": name, "description": (fn.__doc__ or "").strip(), "passed": not problems, "problems": problems,
-            "wall_ms": int((time.time() - t0) * 1000), "captures": f.captures}
+            "wall_ms": int((time.time() - t0) * 1000), "captures": f.captures, "notes": f.notes}
 
 
 def main() -> int:
@@ -649,7 +727,10 @@ def main() -> int:
     ap.add_argument("--update-goldens", action="store_true", help="write the captures to tier3/goldens/")
     ap.add_argument("--pixel-tolerance", type=int, default=24, help="a channel may move this much (0-255)")
     ap.add_argument("--max-diff", type=float, default=0.002, help="fraction of pixels that may differ")
+    ap.add_argument("--footprint-limit-mb", type=float, default=300.0, help="how much Coder's footprint may grow over the streaming flow")
     args = ap.parse_args()
+    # a SIGTERM to this runner still runs each flow's cleanup (quit, stop the daemon), as Control-C does
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     if sys.platform != "darwin":
         print("Tier 3 runs on macOS only")
         return 2
@@ -664,7 +745,7 @@ def main() -> int:
     else:
         built = build_app(RESULTS / "tier3-build")
     binary, dylib = stage_app(built, run_dir)
-    ctx = Ctx(run_dir, binary, dylib, args.update_goldens, args.pixel_tolerance, args.max_diff)
+    ctx = Ctx(run_dir, binary, dylib, args.update_goldens, args.pixel_tolerance, args.max_diff, args.footprint_limit_mb)
 
     wanted = [w for w in args.filter.split(",") if w]
     results = []
@@ -676,6 +757,8 @@ def main() -> int:
         tag = "ok  " if r["passed"] else "FAIL"
         tail = "" if r["passed"] else " -- " + " | ".join(r["problems"])
         print(f"{tag} flow {name}: {r['description']} ({r['wall_ms']} ms, {r['captures']} captures){tail}", flush=True)
+        for note in r["notes"]:
+            print(f"     {note}", flush=True)
     shutil.rmtree(run_dir / "Coder.app", ignore_errors=True)
     passed = sum(1 for r in results if r["passed"])
     summary = {"run": run_dir.name, "update_goldens": args.update_goldens, "passed": passed, "failed": len(results) - passed, "flows": results}
