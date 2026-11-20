@@ -452,3 +452,28 @@ sw_round :: (line: string, out: [] u8) -> string {
   big: [SW_ARENA + 1] u8;
   #assert !sw_set_str(m[..], SW_F_TEXT, cast(string) big[..]) && !sw_set_str(m[..], SW_F_X, "1");
 }
+
+// A number at the start of s ("3.000000\n", "1206\n"): its value. False when s starts with no digit.
+sw_parse_lead :: (s: string, out: [] f64) -> bool {
+  v := 0.0; e := 0; any := false;
+  while e < s.count && s[e] >= '0' && s[e] <= '9' { v = v * 10.0 + cast(f64) (s[e] - '0'); e += 1; any = true; }
+  if e < s.count && s[e] == '.' {
+    e += 1; f := 0.1;
+    while e < s.count && s[e] >= '0' && s[e] <= '9' { v += f * cast(f64) (s[e] - '0'); f *= 0.1; e += 1; any = true; }
+  }
+  if !any { return false; }
+  out[0] = v;
+  return true;
+}
+#test "a number at the start of simctl's answer" {
+  v: [1] f64;
+  #assert sw_parse_lead("3.000000\n", v[..]) && v[0] == 3.0;
+  #assert sw_parse_lead("1206\n", v[..]) && v[0] == 1206.0;
+  #assert sw_parse_lead("09", v[..]) && v[0] == 9.0;
+  #assert sw_parse_lead("2.5x", v[..]) && v[0] == 2.5 && sw_parse_lead(".5", v[..]) && v[0] == 0.5;
+  #assert sw_parse_lead("1.25", v[..]) && v[0] > 1.2499 && v[0] < 1.2501;
+  #assert sw_parse_lead("7.", v[..]) && v[0] == 7.0;
+  #assert sw_parse_lead("1.05", v[..]) && v[0] > 1.0499 && v[0] < 1.0501 && sw_parse_lead("1.9", v[..]) && v[0] > 1.8999 && v[0] < 1.9001;
+  #assert sw_parse_lead("2.5:", v[..]) && v[0] == 2.5 && sw_parse_lead("2.5/", v[..]) && v[0] == 2.5;
+  v[0] = 4.0; #assert !sw_parse_lead("x", v[..]) && !sw_parse_lead("", v[..]) && !sw_parse_lead(".", v[..]) && !sw_parse_lead("/", v[..]) && !sw_parse_lead(":", v[..]) && v[0] == 4.0;
+}

@@ -139,11 +139,7 @@ sh_refresh :: (h: [] ShHost) -> bool {
   if !sd_parse(cast(string) out[0..<r.out_n], h[0].devices[..]) { return false; }
   // OA_SIM_ONLY (checks and test launches): only the devices it names, so a check never sees the person's
   ob: [4096] u8; only := proc_getenv("OA_SIM_ONLY", ob[..]);
-  if only.count > 0 {
-    l := h[0].devices[..]; k := 0;
-    for i: 0..<l[0].n { if sd_find(only, sd_udid(l, i), 0) >= 0 { l[0].d[k] = l[0].d[i]; k += 1; } }
-    l[0].n = k;
-  }
+  sd_keep(h[0].devices[..], only);
   return true;
 }
 sh_by_us :: (h: [] ShHost, udid: string) -> bool {
@@ -187,12 +183,12 @@ sh_profile_size :: (udid: string, s: [] ShScreen) {
   out: [524288] u8; err: [1024] u8;
   r := proc_run(argv[..], 20000, out[..], err[..]);
   if r.started != 0 || r.status != 0 { return; }
-  dt: [256] u8; dn := sh_device_type(cast(string) out[0..<r.out_n], udid, dt[..]);
+  dt: [256] u8; dn := sd_device_type(cast(string) out[0..<r.out_n], udid, dt[..]);
   if dn <= 0 { return; }
   targv := [5] string.["xcrun", "simctl", "list", "devicetypes", "-j"];
   r = proc_run(targv[..], 20000, out[..], err[..]);
   if r.started != 0 || r.status != 0 { return; }
-  bp: [SH_PATH] u8; bn := sh_type_bundle(cast(string) out[0..<r.out_n], cast(string) dt[0..<dn], bp[..]);
+  bp: [SH_PATH] u8; bn := sd_type_bundle(cast(string) out[0..<r.out_n], cast(string) dt[0..<dn], bp[..]);
   if bn <= 0 { return; }
   prof: [SH_PATH] u8; pn := sh_put(prof[..], 0, cast(string) bp[0..<bn]); pn = sh_put(prof[..], pn, "/Contents/Resources/profile.plist");
   keys := [3] string.["mainScreenWidth", "mainScreenHeight", "mainScreenScale"];
@@ -201,58 +197,11 @@ sh_profile_size :: (udid: string, s: [] ShScreen) {
     pargv := [5] string.["plutil", "-extract", keys[k], "raw", cast(string) prof[0..<pn]];
     o: [64] u8; r2 := proc_run(pargv[..], 5000, o[..], err[..]);
     v: [1] f64;
-    if r2.status != 0 || !sh_parse_lead(cast(string) o[0..<r2.out_n], v[..]) { return; }
+    if r2.status != 0 || !sw_parse_lead(cast(string) o[0..<r2.out_n], v[..]) { return; }
     vals[k] = v[0];
   }
   s[0].px_w = cast(int) vals[0]; s[0].px_h = cast(int) vals[1]; s[0].scale = vals[2];
 }
-// A number at the start of s ("3.000000\n"): its value.
-sh_parse_lead :: (s: string, out: [] f64) -> bool {
-  e := 0; while e < s.count && ((s[e] >= '0' && s[e] <= '9') || s[e] == '.') { e += 1; }
-  t := s[0..<e];
-  while t.count > 2 && t[t.count - 1] == '0' && sd_find(t, ".", 0) >= 0 { t = t[0..<t.count - 1]; }
-  if t.count > 0 && t[t.count - 1] == '.' { t = t[0..<t.count - 1]; }
-  return sw_parse_num(t, out);
-}
-// The deviceTypeIdentifier of the device udid in `simctl list devices -j`.
-sh_device_type :: (text: string, udid: string, out: [] u8) -> int {
-  nodes: [SD_NODES] JvNode; d: [1] Jv;
-  if !jv_parse(d[..], text, nodes[..]) { return -1; }
-  v := d[0]; devs := jv_get(v, 0, "devices"); rt := ifx jv_kind(v, devs) == JV_OBJECT then v.nodes[devs].first else -1;
-  while rt != -1 {
-    e := ifx jv_kind(v, rt) == JV_ARRAY then v.nodes[rt].first else -1;
-    while e != -1 {
-      u: [64] u8; un := jv_str(v, jv_get(v, e, "udid"), u[..]);
-      if un > 0 && cast(string) u[0..<un] == udid { return jv_str(v, jv_get(v, e, "deviceTypeIdentifier"), out); }
-      e = v.nodes[e].next;
-    }
-    rt = v.nodes[rt].next;
-  }
-  return -1;
-}
-// The bundlePath of a device type in `simctl list devicetypes -j`.
-sh_type_bundle :: (text: string, id: string, out: [] u8) -> int {
-  nodes: [SD_NODES] JvNode; d: [1] Jv;
-  if !jv_parse(d[..], text, nodes[..]) { return -1; }
-  v := d[0]; ts := jv_get(v, 0, "devicetypes"); e := ifx jv_kind(v, ts) == JV_ARRAY then v.nodes[ts].first else -1;
-  while e != -1 {
-    b: [256] u8; bn := jv_str(v, jv_get(v, e, "identifier"), b[..]);
-    if bn > 0 && cast(string) b[0..<bn] == id { return jv_str(v, jv_get(v, e, "bundlePath"), out); }
-    e = v.nodes[e].next;
-  }
-  return -1;
-}
-#test "a device's type and the type's bundle, from simctl's lists" {
-  devs := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A1\",\"deviceTypeIdentifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\",\"name\":\"x\"}]}}";
-  b: [256] u8;
-  n := sh_device_type(devs, "A1", b[..]);
-  #assert n > 0 && cast(string) b[0..<n] == "com.apple.CoreSimulator.SimDeviceType.iPhone-17" && sh_device_type(devs, "B2", b[..]) == -1;
-  types := "{\"devicetypes\":[{\"bundlePath\":\"\\/L\\/iPhone 17.simdevicetype\",\"identifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\"}]}";
-  k := sh_type_bundle(types, "com.apple.CoreSimulator.SimDeviceType.iPhone-17", b[..]);
-  #assert k > 0 && cast(string) b[0..<k] == "/L/iPhone 17.simdevicetype" && sh_type_bundle(types, "x", b[..]) == -1;
-  v: [1] f64; #assert sh_parse_lead("3.000000\n", v[..]) && v[0] == 3.0 && sh_parse_lead("1206\n", v[..]) && v[0] == 1206.0 && !sh_parse_lead("x", v[..]);
-}
-
 // ---- contested (spec 9.1 rule 4)
 
 // Why another tool holds the device ("" when none does): a dev.sh lock, or a build or install

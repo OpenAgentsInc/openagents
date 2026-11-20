@@ -253,3 +253,66 @@ sd_first_booted :: (l: [] SdList) -> int {
   #assert sd_first_booted(l[..]) == 1;
   e: [1] SdList; #assert sd_first_booted(e[..]) == -1;
 }
+
+// Whether the string at `at` is want (false when there is none).
+sd_is :: (v: Jv, at: int, want: string) -> bool { b: [256] u8; n := jv_str(v, at, b[..]); return n == want.count && cast(string) b[0..<n] == want; }
+// The deviceTypeIdentifier of the device udid in `simctl list devices -j`.
+sd_device_type :: (text: string, udid: string, out: [] u8) -> int {
+  nodes: [SD_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return -1; }
+  v := d[0]; devs := jv_get(v, 0, "devices"); rt := ifx jv_kind(v, devs) == JV_OBJECT then v.nodes[devs].first else -1;
+  while rt != -1 {
+    e := ifx jv_kind(v, rt) == JV_ARRAY then v.nodes[rt].first else -1;
+    while e != -1 {
+      if sd_is(v, jv_get(v, e, "udid"), udid) { return jv_str(v, jv_get(v, e, "deviceTypeIdentifier"), out); }
+      e = v.nodes[e].next;
+    }
+    rt = v.nodes[rt].next;
+  }
+  return -1;
+}
+// The bundlePath of a device type in `simctl list devicetypes -j`.
+sd_type_bundle :: (text: string, id: string, out: [] u8) -> int {
+  nodes: [SD_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return -1; }
+  v := d[0]; ts := jv_get(v, 0, "devicetypes"); e := ifx jv_kind(v, ts) == JV_ARRAY then v.nodes[ts].first else -1;
+  while e != -1 {
+    if sd_is(v, jv_get(v, e, "identifier"), id) { return jv_str(v, jv_get(v, e, "bundlePath"), out); }
+    e = v.nodes[e].next;
+  }
+  return -1;
+}
+#test "a device's type and the type's bundle, from simctl's lists" {
+  devs := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A1\",\"deviceTypeIdentifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\",\"name\":\"x\"}]}}";
+  b: [256] u8;
+  n := sd_device_type(devs, "A1", b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "com.apple.CoreSimulator.SimDeviceType.iPhone-17" && sd_device_type(devs, "B2", b[..]) == -1;
+  types := "{\"devicetypes\":[{\"bundlePath\":\"\\/L\\/iPhone 17.simdevicetype\",\"identifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\"}]}";
+  #assert sd_device_type("{", "A1", b[..]) == -1 && sd_device_type("{\"devices\":5,\"udid\":\"A1\",\"deviceTypeIdentifier\":\"t\"}", "A1", b[..]) == -1;
+  #assert sd_device_type("[{\"udid\":\"A1\",\"deviceTypeIdentifier\":\"t\"}]", "A1", b[..]) == -1 && sd_device_type("{\"devices\":{\"r\":5},\"udid\":\"A1\",\"deviceTypeIdentifier\":\"t\"}", "A1", b[..]) == -1;
+  #assert sd_type_bundle("{", "x", b[..]) == -1 && sd_type_bundle("{\"devicetypes\":5,\"identifier\":\"x\",\"bundlePath\":\"p\"}", "x", b[..]) == -1;
+  #assert sd_type_bundle("{\"devicetypes\":[{\"bundlePath\":\"p\"}]}", "", b[..]) == -1;
+  k := sd_type_bundle(types, "com.apple.CoreSimulator.SimDeviceType.iPhone-17", b[..]);
+  #assert k > 0 && cast(string) b[0..<k] == "/L/iPhone 17.simdevicetype" && sd_type_bundle(types, "x", b[..]) == -1;
+}
+
+
+// OA_SIM_ONLY (checks and test launches): keeps only the devices whose UDID only names (a
+// comma-separated list), so a check never sees the person's devices. "" keeps them all.
+sd_keep :: (l: [] SdList, only: string) {
+  if only.count == 0 { return; }
+  k := 0;
+  for i: 0..<l[0].n { if sd_find(only, sd_udid(l, i), 0) >= 0 { l[0].d[k] = l[0].d[i]; k += 1; } }
+  l[0].n = k;
+}
+#test "OA_SIM_ONLY keeps only the devices it names" {
+  t := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A1\",\"name\":\"a\",\"state\":\"Shutdown\",\"isAvailable\":true,\"deviceTypeIdentifier\":\"x\"},{\"udid\":\"B2\",\"name\":\"b\",\"state\":\"Booted\",\"isAvailable\":true,\"deviceTypeIdentifier\":\"x\"},{\"udid\":\"C3\",\"name\":\"c\",\"state\":\"Shutdown\",\"isAvailable\":true,\"deviceTypeIdentifier\":\"x\"}]}}";
+  l: [1] SdList;
+  #assert sd_parse(t, l[..]) && l[0].n == 3;
+  sd_keep(l[..], "");
+  #assert l[0].n == 3;
+  sd_keep(l[..], "C3,A1");
+  #assert l[0].n == 2 && sd_udid(l[..], 0) == "A1" && sd_udid(l[..], 1) == "C3";
+  sd_keep(l[..], "Z9");
+  #assert l[0].n == 0;
+}
