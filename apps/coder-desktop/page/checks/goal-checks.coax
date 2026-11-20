@@ -112,3 +112,22 @@
   #assert coder_page_goal_status(s) == CP_GOAL_NONE;
   #assert coder_page_goal_objective(s, obj[..]) == 0;
 }
+
+#test "setting a goal right after submitting a prompt attaches goal context without starting a duplicate turn" {
+  store: [1] CoderPage; s := store[..];
+  #assert coder_page_set_text(s, "[From Foreman]\nImplement the fix") && coder_page_submit(s);
+  #assert coder_page_running(s) && s[0].nturns == 1;
+  #assert coder_page_goal_set(s, "ship foreman goal fix cleanly");
+  #assert coder_page_running(s) && s[0].nturns == 1;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  obj: [256] u8;
+  on := coder_page_goal_objective(s, obj[..]);
+  #assert cast(string) obj[0..<on] == "ship foreman goal fix cleanly";
+  #assert coder_page_action(s) == CP_ASK_SEND;
+  buf: [8192] u8;
+  tn := coder_page_task(s, "sess-foreman-goal", "/tmp", buf[..]);
+  #assert tn > 0;
+  task := cast(string) buf[0..<tn];
+  #assert cp_contains(task, "<goal_objective>") && cp_contains(task, "ship foreman goal fix cleanly");
+  #assert cp_contains(task, "Implement the fix");
+}
