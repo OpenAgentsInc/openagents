@@ -38,9 +38,16 @@ app_side_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: stri
 // the right edge when neither current nor busy. It is washed while held.
 // Returns its height.
 app_side_row_draw :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, state: int, unread: bool, action: int) -> f32 {
+  return app_side_row_status(f, id, x, y, w, title, detail, "", false, state, unread, action);
+}
+// The same with Zeron's status at the right of the title (SessionCell): a time ("5m") in faint ink,
+// or, when `attention`, a word that wants the person ("Needs you") in full ink with the accent dot;
+// it gives way to the activity mark while a reply runs, unless the chat needs the person.
+app_side_row_status :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: string, detail: string, status: string, attention: bool, state: int, unread: bool, action: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m;
-  current := (state & EL_S_CURRENT) != 0; busy := (state & EL_S_BUSY) != 0; off := (state & EL_S_DISABLED) != 0;
-  mark_unread := unread && !busy && !current && !off;
+  current := (state & EL_S_CURRENT) != 0; off := (state & EL_S_DISABLED) != 0; busy := (state & EL_S_BUSY) != 0 && !(attention && status.count > 0);
+  word := ifx busy || off then "" else status;
+  mark_unread := (unread || attention && word.count > 0) && !busy && !current && !off;
   h := ifx detail.count > 0 then a.side_row_two else a.side_row;
   k := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, id);
@@ -50,15 +57,21 @@ app_side_row_draw :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: 
   else if hv > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.raised, 0.75 * hv)); }
   if p > 0 { sheet_fill(sh, x + a.row_inset, y, w - 2 * a.row_inset, h, a.row_radius, opacity(s.hover, p)); }
   row := uiframe_semantic(f, id, EL_ROW, title, x, y, w, h, state, ifx off then 0 else action);
-  elt_value(f[0].rows, row, detail);
+  elt_value(f[0].rows, row, ifx word.count == 0 then detail else ifx detail.count == 0 then word else app_side_said_pooled(sh, word, detail));
   dot := a.dot;
   dot_inset := ifx a.icon > dot then (a.icon + dot) / 2 else dot;
   room := w - 2 * a.side_pad - (ifx busy then a.icon + a.gap else ifx mark_unread then dot_inset + a.gap else 0.0f32);
+  ww := ifx word.count > 0 then measure_width(m, s.small.face, word) else 0.0f32;
+  if ww > 0 && ww + a.gap < room / 2 { room -= ww + a.gap; } else { ww = 0; }
   tf := ifx a.side_text.line > 0 then a.side_text else s.body;
   lines := tf.line + (ifx detail.count > 0 then s.small.line else 0.0f32); ty := y + (h - lines) / 2;
   ink := ifx off then s.faint else ifx current || mark_unread then s.ink else rgba_mix(opacity(s.ink, 0.95), s.ink, hv);
   _ := sheet_text(sh, m, -1, x + a.side_pad, ty, tf.line, tf.face, ink, app_fit(f, tf.face, title, room));
   if detail.count > 0 { _ := sheet_text(sh, m, -1, x + a.side_pad, ty + tf.line, s.small.line, s.small.face, s.faint, app_fit(f, s.small.face, detail, room)); }
+  if ww > 0 {
+    wx := x + w - a.side_pad - ww - (ifx mark_unread then dot_inset + a.gap else 0.0f32);
+    _ := sheet_text(sh, m, -1, wx, ty + (tf.line - s.small.line) / 2, s.small.line, s.small.face, ifx attention then s.ink else s.faint, word);
+  }
   if busy { activity(sh, s, x + w - a.side_pad - a.icon, y + (h - a.icon) / 2, a.icon, f[0].clock, f[0].reduced_motion); }
   else if mark_unread { sheet_fill(sh, x + w - a.side_pad - dot_inset, y + (h - dot) / 2, dot, dot, dot / 2, s.accent); }
   if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, h); }
@@ -101,6 +114,32 @@ AppSideRow :: struct {
   heading: bool;
   unread: bool;
   action: int= -1;             // -1 uses the list's action
+  status: string;             // at the right of its title: a time ("5m"), or a word when `attention` ("Needs you")
+  attention: bool;            // it waits for the person: the word in full ink with the accent dot
+}
+// "Needs you, MacBook Pro": the row's status and its second line, read together.
+app_side_said :: (status: string, detail: string, b: [] u8) -> string {
+  n := 0;
+  for i: 0..<status.count { if n < b.count { b[n] = status[i]; n += 1; } }
+  if n + 2 < b.count { b[n] = ','; b[n + 1] = ' '; n += 2; }
+  for i: 0..<detail.count { if n < b.count { b[n] = detail[i]; n += 1; } }
+  return cast(string) b[0..<n];
+}
+app_side_said_pooled :: (sh: [] Sheet, status: string, detail: string) -> string { b: [320] u8; return sheet_pool(sh, app_side_said(status, detail, b[..])); }
+// A short age for a list row, as Zeron's SessionCell writes it: "now", "5m", "3h", "2d", "6w", "1y".
+// `now` and `at` are milliseconds since 1970; an unknown time (`at` <= 0) is "".
+app_side_age :: (now: int, at: int, out: [] u8) -> string {
+  if at <= 0 || out.count < 8 { return ""; }
+  sec := (now - at) / 1000; if sec < 0 { sec = 0; }
+  if sec < 60 { out[0] = 'n'; out[1] = 'o'; out[2] = 'w'; return cast(string) out[0..<3]; }
+  v := sec / 60; u: u8 = 'm';
+  if sec >= 365 * 86400 { v = sec / (365 * 86400); u = 'y'; }
+  else if sec >= 14 * 86400 { v = sec / (7 * 86400); u = 'w'; }
+  else if sec >= 86400 { v = sec / 86400; u = 'd'; }
+  else if sec >= 3600 { v = sec / 3600; u = 'h'; }
+  d: [8] u8; k := 0; while v > 0 && k < 6 { d[k] = cast(u8) ('0' + v % 10); v /= 10; k += 1; }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  out[k] = u; return cast(string) out[0..<k + 1];
 }
 // A section of the sidebar at (x, y), w wide: its head (head_id, "" for no
 // head) and its rows, each under its own id, so a row keeps its state when
@@ -113,15 +152,16 @@ app_side_list :: (f: [] UiFrame, head_id: string, x: f32, y: f32, w: f32, head: 
 }
 
 // A bounded single-line history window. Realize only visible rows; the caller owns the offset.
-app_side_content :: (f:[]UiFrame,rows:[]AppSideRow)->f32 {n:f32=0;for r:rows {n+=ifx r.heading then f[0].skin.app.side_head else f[0].skin.app.side_row;}return n;}
+app_side_height :: (f:[]UiFrame,r:AppSideRow)->f32 {a:=f[0].skin.app;return ifx r.heading then a.side_head else a.side_row;}
+app_side_content :: (f:[]UiFrame,rows:[]AppSideRow)->f32 {n:f32=0;for r:rows {n+=app_side_height(f,r);}return n;}
 app_side_window :: (f:[]UiFrame,x:f32,top:f32,w:f32,viewport:f32,rows:[]AppSideRow,offset:f32,tail:f32,action:int)->f32 {return app_side_window_at(f,x,top,w,viewport,rows,offset,0,tail,action);}
 // The same, its rows moved `stretch` further (a rubber band past an end: components/core/scroll.coax's UiScroll.stretch).
 app_side_window_at :: (f:[]UiFrame,x:f32,top:f32,w:f32,viewport:f32,rows:[]AppSideRow,offset:f32,stretch:f32,tail:f32,action:int)->f32 {
  content:=app_side_content(f,rows)+(ifx tail>0 then tail else 0.0f32);at:=scroll_clamp(offset,content,viewport)+stretch;cursor:f32=0;
  uiframe_clip(f,x,top,x+w,top+viewport);
- for r:rows {h:=ifx r.heading then f[0].skin.app.side_head else f[0].skin.app.side_row;y:=top+cursor-at;cursor+=h;if y+h<=top || y>=top+viewport {continue;}
+ for r:rows {h:=app_side_height(f,r);y:=top+cursor-at;cursor+=h;if y+h<=top || y>=top+viewport {continue;}
   if r.heading {_:=app_side_head(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title));}
-  else {_:=app_side_row_draw(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),"",r.state,r.unread,ifx r.action>=0 then r.action else action);}
+  else {_:=app_side_row_status(f,r.id,x,y,w,sheet_single_line(f[0].sheet,r.title),"",r.status,r.attention,r.state,r.unread,ifx r.action>=0 then r.action else action);}
  }
  uiframe_unclip(f);return content;
 }

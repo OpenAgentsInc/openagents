@@ -157,6 +157,8 @@ ch_open_library :: (s:[]ChatPage,key:string)->bool {
  else {if app_dispatch(c,AppEvent.{kind=EV_ACTION,code=ACT_ENVIRONMENT,more="Default",mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})!=APP_OK {return false;}}
  if app_dispatch(c,AppEvent.{kind=EV_ACTION,code=code,text=text,mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})!=APP_OK {return false;}ch_main(s);s[0].section=0;s[0].drawer=false;ch_set_focus(s,"");ch_step(s);return true;
 }
+// A row's age ("5m"), pooled in the frame's sheet like its title.
+ch_age :: (f:[]UiFrame,now:int,at:int)->string {b:[8]u8;a:=app_side_age(now,at,b[..]);return ifx a.count>0 then sheet_pool(f[0].sheet,a) else "";}
 ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
  rows:[640]AppSideRow;ids:[640][64]u8;count:=0;h:=s[0].sc[0].devices[..];n:=h[0].nav[..];b:=n[0].browser[..];c:=s[0].core;
  query:=ifx s[0].section==2 && !s[0].drawer then cast(string)s[0].search[0..<s[0].search_n] else "";
@@ -177,7 +179,7 @@ ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
     title:=chlib_label(s[0].library[..],target_key,cast(string)n[0].rows[i].session.title[0..<r.session.nt]);if !text_contains_ascii(title,query) {continue;}
     shown_title:=ifx title.count>0 then title else "New chat";
     if multi {tb:[CHLIB_TITLE+96]u8;tn:=el_put(tb[..],0,shown_title);tn=el_put(tb[..],tn," · ");tn=el_put(tb[..],tn,cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl]);shown_title=sheet_pool(f[0].sheet,cast(string)tb[0..<tn]);}
-    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),action=343};count+=1;shown+=1;
+    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),action=343,status=ifx r.session.nr>0 then "Needs you" else ch_age(f,c[0].wall_ms,r.session.updated),attention=r.session.nr>0};count+=1;shown+=1;
    }
   }
   if shown==0 && pass==0 {count=head_at;}

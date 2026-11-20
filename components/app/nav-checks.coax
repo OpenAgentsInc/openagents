@@ -68,3 +68,16 @@
   _ := app_side_window(f, 0, 0, 120, 200, cur_rows[..], 0, 0, 5);
   #assert app_test_end(t[..]) && app_test_prims(t[..], PRIM_BOX) == 1;
 }
+
+#test "app nav: a window row carries Zeron's status at the right of its title: a short age, or Needs you with the accent dot, over the activity mark" {
+ b:[8]u8;
+ #assert app_side_age(1000000,0,b[..])=="" && app_side_age(1000000,990000,b[..])=="now" && app_side_age(10*60000,5*60000,b[..])=="5m";
+ #assert app_side_age(4*3600000,3600000,b[..])=="3h" && app_side_age(3*86400000,86400000,b[..])=="2d" && app_side_age(43*86400000,1,b[..])=="6w";
+ t:[1]AppTest;app_test_init(t[..]);
+ rows:=[3]AppSideRow.[AppSideRow.{id="r.a",title="Alpha",status="5m"},AppSideRow.{id="r.b",title="Beta",status="Needs you",attention=true,state=EL_S_BUSY},AppSideRow.{id="r.c",title="Gamma",status="2h",state=EL_S_BUSY}];
+ app_test_begin(t[..],"","",true);height:=t[0].f[0].skin.app.side_row;
+ #assert app_side_content(t[0].f[..],rows[..])==3*height;
+ _:=app_side_window(t[0].f[..],0,0,300,400,rows[..],0,0,5);
+ #assert app_test_end(t[..]) && app_test_texts(t[..],"5m")==1 && app_test_texts(t[..],"Needs you")==1 && app_test_texts(t[..],"2h")==0;
+ #assert app_test_row(t[..],"r.b").h==height && app_test_pressable(t[..],"r.a");
+}
