@@ -58,8 +58,18 @@ final class CoderWorker {
     func start() -> Bool {
         guard !alive else { return true }
         failure = nil
-        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { return false }
-        if let daemon = CoderWorker.daemon, daemon.ownsRuns { return startRun(path, daemon) }
+        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { failure = "This build of OpenAgents is missing its \(program)."; return false }
+        if let daemon = CoderWorker.daemon, daemon.ownsRuns {
+            if startRun(path, daemon) { return true }
+            if failure == Self.runLimitNote { return false }
+        }
+        return startChild(path)
+    }
+
+    /// The worker as this app's own child: when no daemon owns runs, or the daemon refused a run
+    /// for a reason other than the run limit (the send still goes through; the reason is logged).
+    private func startChild(_ path: String) -> Bool {
+        if let why = failure { NSLog("Coder: the background service did not start a worker (%@); starting it directly", why) }
         let p = Process(), into = Pipe(), out = Pipe()
         p.executableURL = URL(fileURLWithPath: path)
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
@@ -79,8 +89,8 @@ final class CoderWorker {
         p.terminationHandler = { [weak self] ended in
             DispatchQueue.main.async { guard let self, self.process === ended else { return }; self.process = nil; self.input = nil; self.gone?() }
         }
-        do { try p.run() } catch { return false }
-        process = p; input = into.fileHandleForWriting; held = Data()
+        do { try p.run() } catch { failure = failure ?? "The worker did not start: \(error.localizedDescription)"; return false }
+        process = p; input = into.fileHandleForWriting; held = Data(); failure = nil
         return true
     }
 
@@ -119,7 +129,7 @@ final class CoderWorker {
         let why = DesktopCore.cString(from: failBuf)
         let id = DesktopCore.cString(from: idBuf)
         guard ok == 1, !id.isEmpty else {
-            failure = why == "run_limit" ? Self.runLimitNote : (why.isEmpty ? "failed" : why)
+            failure = why.isEmpty ? "The background service didn't start the worker." : why
             return false
         }
         attach(id, from: 0)
@@ -130,7 +140,7 @@ final class CoderWorker {
     func startAsync(_ completion: @escaping (Bool) -> Void) {
         guard !alive else { completion(true); return }
         failure = nil
-        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { completion(false); return }
+        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { failure = "This build of OpenAgents is missing its \(program)."; completion(false); return }
         if let daemon = CoderWorker.daemon, daemon.ownsRuns {
             startRunAsync(path, daemon, completion: completion)
             return
@@ -183,8 +193,8 @@ final class CoderWorker {
                     return
                 }
                 guard ok == 1, !id.isEmpty else {
-                    self.failure = why == "run_limit" ? Self.runLimitNote : (why.isEmpty ? "failed" : why)
-                    completion(false)
+                    self.failure = why.isEmpty ? "The background service didn't start the worker." : why
+                    completion(self.failure != Self.runLimitNote && self.startChild(path))
                     return
                 }
                 self.attach(id, from: 0)

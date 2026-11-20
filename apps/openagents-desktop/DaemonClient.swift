@@ -158,7 +158,7 @@ final class CoderDaemonClient {
         }
         if rc == 0 { return nil }
         let why = DesktopCore.cString(from: whyBuf)
-        return why.isEmpty ? "failed" : why
+        return why.isEmpty ? "The background service didn't answer." : why
     }
 
     func startRunAsync(_ id: String, completion: @escaping (String?) -> Void) {
