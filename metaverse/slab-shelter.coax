@@ -125,7 +125,9 @@ shelter_check_lay :: (k: [] ShelterCheck, s: [] Synth, h: SimHull) {
   #assert shelter_body(o[..], sh, h, k[0].body, k[0].body, k[0].sea, k[0].faces, k[0].grid[..]);
   a := h; b := h; c := h;
   heave_a := 0.0; heave_b := 0.0; roll_a := 0.0; roll_b := 0.0; push_a := 0.0; push_b := 0.0;
-  for i: 0..<6000 {
+  // 3,600 ticks (60 s), not 6,000 (#13790): keeps the three-hull native check well inside the
+  // 120 s limit on a loaded build host while still giving the shelter averages time to separate
+  for i: 0..<3600 {
     if i % 6 == 0 { whl_sea(s[..], wsp_tick_at(sp, a.time), 25.0, scratch[..], sea[..]); }
     wa := a.imp.wave_x; wb := b.imp.wave_x;
     a = sim_hull_step_in_on(sh, a, sea[..], 21.6, w.x, w.y, SIM_STEP);

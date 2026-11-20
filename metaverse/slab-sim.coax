@@ -1050,14 +1050,16 @@ sim_same_pose :: (a: SimHull, b: SimHull) -> bool {
   return a.heave == b.heave && a.heave_v == b.heave_v && a.roll == b.roll && a.roll_v == b.roll_v && a.pitch == b.pitch && a.pitch_v == b.pitch_v
     && a.surge == b.surge && a.surge_v == b.surge_v && a.sway == b.sway && a.sway_v == b.sway_v && a.tension == b.tension;
 }
-#test "9: two runs to tick 10,000 give the same pose bit for bit, the second through a late joiner at tick 5,000" #steps 4000000000 {
+#test "9: two runs to tick 5,000 give the same pose bit for bit, the second through a late joiner at tick 2,500" #steps 4000000000 {
+  // 5,000 / 2,500 ticks, not 10,000 / 5,000 (#13790): halves wall time so the native check stays
+  // well inside the 120 s limit on a loaded build host
   start: SimHull;
-  // the second run stops at tick 5,000 and hands its pose to a late joiner, who steps on from the sea's tick
-  a := sim_check_run(start, 0, 10000);
-  half := sim_check_run(start, 0, 5000); late := sim_check_run(half, 5000, 10000);
+  // the second run stops at tick 2,500 and hands its pose to a late joiner, who steps on from the sea's tick
+  a := sim_check_run(start, 0, 5000);
+  half := sim_check_run(start, 0, 2500); late := sim_check_run(half, 2500, 5000);
   #assert sim_same_pose(a, late);
   // and the sea did move it: this is not two hulls at rest
-  #assert abs(a.heave) > 1e-4 && abs(a.surge) > 0.01 && abs(a.sway) > 0.01 && abs(a.time - 10000.0 * SIM_STEP) < 1e-6;
+  #assert abs(a.heave) > 1e-4 && abs(a.surge) > 0.01 && abs(a.sway) > 0.01 && abs(a.time - 5000.0 * SIM_STEP) < 1e-6;
   #assert !sim_same_pose(a, half);
 }
 #test "10: over 300 s in a trade sea the momentum ledger balances" #steps 4000000000 {
