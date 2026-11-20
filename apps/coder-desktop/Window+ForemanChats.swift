@@ -155,6 +155,11 @@ extension CoderWindow {
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
             _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
         }
+        let attributed = "[From Foreman]\n" + prompt
+        guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
+            cd_close(back)
+            return ForemanResponse(status: 500, body: ["error": "failed to submit prompt to new chat"])
+        }
         if let goalObj = (payload["goal"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !goalObj.isEmpty {
             _ = cd_goal_set(back, goalObj)
         }
@@ -168,11 +173,6 @@ extension CoderWindow {
         store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: Foreman.managedTag)
         if (payload["pin"] as? Bool) == true && !store.isPinned(id) {
             store.togglePin(id)
-        }
-        let attributed = "[From Foreman]\n" + prompt
-        guard cd_set_text(back, attributed) != 0, cd_submit(back) != 0 else {
-            moved.stop(); cd_close(back)
-            return ForemanResponse(status: 500, body: ["error": "failed to submit prompt to new chat"])
         }
         if cd_action(back) == 1 {
             var out = [CChar](repeating: 0, count: 262144)
