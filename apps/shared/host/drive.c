@@ -19,14 +19,27 @@
 // The socket speaks one operation a line; each answer is its length in decimal, a newline, then that
 // many bytes (coax/web/drive.coax's `drive native`).
 #include "drive.h"
+#ifdef _WIN32
+// Windows (windows/ui-host.c, GitHub #13782): the operations, through ui_drive, without a socket
+// yet; ui_drive_listen says it could not listen. A sixtieth of a second's nap in place of nanosleep.
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+struct ui_drive_nap { long tv_sec, tv_nsec; };
+static void ui_drive_sleep(const struct ui_drive_nap *t) { Sleep((DWORD)(t->tv_sec * 1000 + t->tv_nsec / 1000000)); }
+#define timespec ui_drive_nap
+#define nanosleep(t, rest) ui_drive_sleep(t)
+#else
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#endif
 
+#ifndef _WIN32
 static double ui_drive_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+#endif
 // The time a frame gets: its own, or under the agent clock what `clock` is giving it.
 static float ui_drive_dt(UiHost *h, float dt) { return h->drive.agent ? h->drive.giving : dt; }
 static void ui_drive_step(UiHost *h, float dt) {
@@ -95,6 +108,12 @@ int ui_drive(UiHost *h, const char *op, char *out, int cap) {
   return ui_drive_say(out, cap, "unknown operation '%s'; operations: clock, screenshot, quit%s", name, h->app.drive ? " and the app's (tree, tap ID, type ID TEXT ...)" : "");
 }
 
+#ifdef _WIN32
+int ui_drive_listen(UiHost *h, const char *path) { (void)h; (void)path; return 0; }
+static void ui_drive_poll(UiHost *h) { (void)h; }
+int ui_drive_serve(UiHost *h) { (void)h; return 0; }
+static void ui_drive_close(UiHost *h) { (void)h; }
+#else
 int ui_drive_listen(UiHost *h, const char *path) {
   struct sockaddr_un addr = {.sun_family = AF_UNIX};
   if (!path || strlen(path) >= sizeof addr.sun_path) return 0;
@@ -149,3 +168,4 @@ static void ui_drive_close(UiHost *h) {
   close(h->drive.listen_fd);
   h->drive.conn_fd = -1; h->drive.listen_fd = 0;
 }
+#endif

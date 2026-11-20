@@ -1,6 +1,7 @@
 // Microcoder's gateway plan and conversation for mcworker.coax: the
 // credentials this machine has (as the desktop Lab reads them: files under
-// ~/work/.secrets go into curl's child environment only, through
+// ~/work/.secrets, else OPENROUTER_API_KEY and GEMINI_API_KEY from the
+// environment, go into curl's child environment only, through
 // Gateway.key_value, and Vertex's token is minted by gcloud with the
 // service-account key file and a gcloud config of its own, set in gcloud's
 // environment only), the plan built from them (Vertex Gemini, then the
@@ -142,7 +143,10 @@ mk_keys :: (k: [] MkKeys) {
   if home.count == 0 { return; }
   k[0].nor = mk_coder_key(home, MK_CODER_OPENROUTER_KEY, k[0].or_key[..]);
   if k[0].nor == 0 { k[0].nor = mk_secret(home, "openrouter.env", GW_OPENROUTER_KEY_ENV, k[0].or_key[..]); }
+  // the desktop app on Linux and Windows hands its kept key over in the environment (GitHub #13782)
+  if k[0].nor == 0 { k[0].nor = cl_getenv(GW_OPENROUTER_KEY_ENV, k[0].or_key[..]).count; }
   k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]);
+  if k[0].ngm == 0 { k[0].ngm = cl_getenv("GEMINI_API_KEY", k[0].gm_key[..]).count; }
   ap: [1400] u8; ab: [4096] u8;
   na := fs_read(cast(string) ap[0..<mk_cat(ap[..], mk_cat(ap[..], 0, home), MK_AGY_ENV)], ab[..]);
   agy := cast(string) ab[0..<ifx na > 0 then na else 0];

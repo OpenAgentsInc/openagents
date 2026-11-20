@@ -19,12 +19,13 @@ DcRun :: struct { started: int; status: int = -1; n: int; cut: bool; }
 DC_RUN_MS :: 120000;          // a git or cp call that takes longer than this is killed
 DC_DEFAULTS_DOMAIN :: "com.openagents.coder";   // the Mac app's UserDefaults (ChatWorktree.enabled, CoderOpenRouter)
 
-// The system, from what is on disk (no build flag to ask): a Mac has /System/Library/CoreServices,
-// Linux /proc, Windows the folder SystemRoot names.
+// The system, from what is on disk (no build flag to ask): Windows the folder SystemRoot names, a
+// Mac /System/Library/CoreServices, Linux /proc. Windows is asked first: there "/proc" is a folder
+// on the current drive, which can exist (under wine it is the host's /proc).
 dcos_os :: () -> int {
+  if dcwin_is() { return DC_OS_WINDOWS; }
   if fs_kind("/System/Library/CoreServices") == FS_DIR { return DC_OS_MAC; }
-  if fs_kind("/proc") == FS_DIR { return DC_OS_LINUX; }
-  return ifx dcwin_is() then DC_OS_WINDOWS else 0;
+  return ifx fs_kind("/proc") == FS_DIR then DC_OS_LINUX else 0;
 }
 dcos_getenv :: (name: string, out: [] u8) -> string { return proc_getenv(name, out); }
 dcos_home :: (out: [] u8) -> string {

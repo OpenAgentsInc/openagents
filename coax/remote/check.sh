@@ -82,6 +82,8 @@
 #                                         components) runs only its evals; a change that reaches
 #                                         the desktop core (coax/lib/agent/desktop) runs its smoke
 #   coax/remote/check.sh desktop-linux    the consolidated Linux desktop host's build and headless smoke (#13781)
+#   coax/remote/check.sh windows-build    the Windows desktop app and worker cross-compiled with zig for
+#                                         x64 and arm64; any compile or link error fails it (#13782)
 #   coax/remote/check.sh desktop-core     the portable desktop core's headless smoke (#13787:
 #                                         coax/lib/agent/desktop/smoke.coax; its unit checks are suites)
 #
@@ -225,11 +227,14 @@ desktop_evals() {
   # check, or a host whose native checks fall back, needs the page to fit there
   step coder-desktop-page-slots apps/openagents-desktop/page-slots.sh || status=1
   desktop_linux
+  windows_build
 }
 # The portable desktop core (#13787): its #test checks are suites (coax/lib); its smoke runs the
 # modules against this host's real files, git, processes and local sockets, in a temporary folder.
 desktop_core() { step desktop-core-smoke coax/web/tool.sh coax/lib/agent/desktop/smoke.coax || status=1; }
 desktop_linux() { if [[ "$(uname)" == Linux ]]; then step desktop-linux-smoke apps/openagents-desktop/linux/build.sh --smoke --flow-test || status=1; fi; }
+# The Windows app (#13782): build.sh cross-compiles it and mcworker with zig (from nix on a host).
+windows_build() { step windows-build apps/openagents-desktop/windows/build.sh --check || status=1; }
 desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
 desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
@@ -727,6 +732,7 @@ run() {   # mode arg: one check
     desktop-core) desktop_core ;;
     desktop-units) desktop_units ;;
     desktop-linux) desktop_linux ;;
+    windows-build) windows_build ;;
     *) return 2 ;;
   esac
   return 0
@@ -778,7 +784,7 @@ case "$mode" in
     if grep -qvE '(\.md$|^docs/)' "$out/changed" && coder_touched; then coder
     elif grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_touched; then desktop_evals   # only Coder Desktop: no TUI smoke
     elif ! grep -qvE '(\.md$|^docs/)' "$out/changed" || ! desktop_core_touched; then echo "== coder: skipped, the change doesn't reach Coder" >> "$log"; fi
-    if grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_core_touched && ! coder_touched; then desktop_core; fi ;;
+    if grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_core_touched && ! coder_touched; then desktop_core; windows_build; fi ;;
   room-since)
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"

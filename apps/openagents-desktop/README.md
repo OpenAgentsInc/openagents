@@ -379,6 +379,14 @@ To build a second copy somewhere else, and leave a running Coder's files alone:
 CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh
 ```
 
+## Linux and Windows
+
+The same page and desktop core run on Linux (`linux/build.sh`, Wayland and Vulkan) and on
+Windows 10 and 11 (`windows/build.sh`, cross-compiled from the Mac with zig). Both share
+the entry logic in `host-main.c` and the core's C ABI in `host-core.coax`. See
+[`windows/README.md`](windows/README.md) for the Windows build, what it does not do yet, and
+how it is checked.
+
 ## Install in Applications
 
 To keep `/Applications/OpenAgents.app` at the newest `main`, run this once:
@@ -485,4 +493,7 @@ apps/openagents-desktop/foreman-control-test.sh --live   # also drives a built O
 | `ForemanOperator.swift` | The Foreman control API's two credentials, route policy and control file, for programs outside the Foreman chat |
 | `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |
 | `build.sh` | Coax to C and Metal, the two workers' images and the daemon's, then clang, swiftc and codesign |
+| `host-main.c`, `host-core.coax` | The Linux and Windows apps' entry logic, and their C calls into the desktop core |
+| `linux/` | The Linux build (`build.sh`) and its side of `host-main.c` |
+| `windows/` | The Windows build, its side of `host-main.c`, and its README |
 | `install.sh` | Builds `origin/main` and keeps `/Applications/OpenAgents.app` at it, every 15 minutes with `--agent` |

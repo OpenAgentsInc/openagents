@@ -479,7 +479,7 @@ tool_main :: () -> int #export_c #effects(all) {
       if why.count > 0 { mw_ended(out[..], "no_capacity", why); continue; }
     } else if mk_plan(k[..], plan[..], pb[..], req[0].model) == 0 {
       if mk_openrouter_model(req[0].model).count > 0 { mw_ended(out[..], "no_capacity", "There is no OpenRouter key. Set one with Coder > OpenRouter Models, or add ~/work/.secrets/openrouter.env."); continue; }
-      mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
+      mw_ended(out[..], "no_capacity", "Microcoder has no model to call here: set an OpenRouter key in settings, or add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env.");
       continue;
     }
     h[0].ncur = mk_keep(h[0].cur[..], tk);

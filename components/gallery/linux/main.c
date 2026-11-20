@@ -100,6 +100,10 @@ static int atlas_setup(App *a) {
     "/System/Library/Fonts/SFNSMono.ttf",
     "/System/Library/Fonts/SFNS.ttf",
     "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+#elif defined(_WIN32)
+    "C:/Windows/Fonts/consola.ttf",
+    "C:/Windows/Fonts/segoeui.ttf",
+    "C:/Windows/Fonts/seguisym.ttf",
 #else
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",

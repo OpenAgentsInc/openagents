@@ -180,7 +180,7 @@ static int cd_on_key(void *user, int key, int mods, int down) {
   if ((mods & 8) && !(mods & 6) && (key == 'c' || key == 'x' || key == 'v') && coder_page_wants_text(cd_state(c))) {
     if (key == 'v') {
       // files or a picture on the pasteboard join the draft's attachments (cd_on_file); else its text
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
       int n = coder_page_takes_files(cd_state(c)) ? ui_paste_files(c->app.host) : 0;
       if (n == 0) n = ui_paste_text(c->app.host, cd_clip, sizeof cd_clip); else n = 0;
 #else
@@ -286,6 +286,10 @@ void cd_frame(void *page) { if (page) ui_frame(((CoderHost *)page)->app.host); }
 int cd_step(void *page) { return page ? ui_frame(((CoderHost *)page)->app.host) : 0; }
 int cd_shot_frame(void *page, uint32_t w, uint32_t h, float dt) { return page ? ui_shot_frame(((CoderHost *)page)->app.host, w, h, dt) : 0; }
 int cd_shot_write(void *page, const char *png) { return page ? ui_shot_write(((CoderHost *)page)->app.host, png) : 0; }
+#ifdef _WIN32
+// The clipboard's text (Windows: the app reads a key the person copied, windows/main.c).
+int cd_paste_text(void *page, char *out, int cap) { return page && out && cap > 0 ? ui_paste_text(((CoderHost *)page)->app.host, out, (size_t)cap) : 0; }
+#endif
 int cd_copy(void *page, const char *bytes, int n) { return page && bytes && n > 0 ? ui_copy(((CoderHost *)page)->app.host, bytes, (size_t)n) : 0; }
 int cd_focused(void *page) { return page ? ui_focused(((CoderHost *)page)->app.host) : 0; }
 int cd_moving(void *page) { CoderHost *c = page; return c && (c->settle > 0 || coder_page_moving(cd_state(c))); }
