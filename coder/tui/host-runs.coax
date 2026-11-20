@@ -27,6 +27,8 @@ DR_CHUNK :: 65536;
 DR_KEEP_S :: 7 * 24 * 3600;    // a finished run's files are removed after a week
 DR_STOP_GRACE_MS :: 2000;      // a stopped run's worker gets this long after its stdin closes
 DR_DETACHED_MS :: 3000;        // no Coder has touched ID.attached for this long: the daemon answers asks
+DR_IDLE_MS :: 10000;           // a detached worker idle this long gives its slot to a new run at the limit
+DR_RECLAIM_GRACE_MS :: 1000;   // a reclaimed worker gets this long after its stdin closes
 
 DrRun :: struct {
   used: bool;
@@ -36,6 +38,8 @@ DrRun :: struct {
   in_off: int; pending: bool;   // pending: bytes still buffered for a worker that was not reading
   stopping: bool; stop_at: int;
   ask: int;                     // the ticket of the worker's ask that waits for its yes, 0 for none
+  idle: bool; idle_at: int;     // its last line said its turn ended and its queue is empty, at idle_at (ms)
+  reclaimed: bool;              // its slot went to a new run: it ends as exited, not stopped
 }
 DrHost :: struct { runs: [DR_MAX] DrRun; ready: bool; }
 
@@ -128,7 +132,7 @@ dr_start :: (d: [] DrHost, id: string) -> string {
   if !d[0].ready { dr_recover(d); }
   if !ea_id(id, 32) { return "invalid-run"; }
   if dr_find(d, id) >= 0 { return ""; }
-  if dr_count(d) >= DR_MAX { return "run-limit"; }
+  if dr_count(d) >= DR_MAX && !dr_reclaim(d) { return "run-limit"; }
   sp: [1400] u8; spec := dr_file(id, ".spec", sp[..]);
   raw: [32768] u8; n := fs_read(spec, raw[..]);
   if n < 1 { return "missing-spec"; }
@@ -222,6 +226,7 @@ dr_forward :: (r: [] DrRun) {
     if n < 1 { break; }
     for i: 0..<n { _ = cxproc_write(r[0].handle, cast(int) b[i]); }
     r[0].in_off += n;
+    dr_mark(r, false);
     // a worker busy with a step may not read for a while: the daemon never waits on it
     f := cxproc_flush_timeout(r[0].handle, 10);
     if f == CXPROC_TIMEOUT_V { r[0].pending = true; break; }
@@ -241,11 +246,13 @@ dr_drain :: (r: [] DrRun) -> bool {
     if n < b.count {
       for i: 0..<n { b[i] = cast(u8) cxproc_line_byte(r[0].handle, i); }
       r[0].ask = dr_ask_ticket(cast(string) b[0..<n]);
+      dr_mark(r, dr_idle_line(cast(string) b[0..<n]));
       b[n] = 10;
       _ = fs_append(out, cast(string) b[0..<n + 1]);
       continue;
     }
     r[0].ask = 0;
+    dr_mark(r, false);
     at := 0;
     for i: 0..<n {
       b[at] = cast(u8) cxproc_line_byte(r[0].handle, i); at += 1;
@@ -279,6 +286,42 @@ dr_answer :: (r: [] DrRun) {
   f := cxproc_flush_timeout(r[0].handle, 10);
   r[0].pending = f == CXPROC_TIMEOUT_V;
 }
+// A worker's line saying it has nothing to do: its queue line with no active item and no items.
+dr_idle_line :: (line: string) -> bool {
+  if !hs_prefix(line, "{\"kind\":\"queue\"") { return false; }
+  ab: [DR_CHUNK] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  l: [1] MwwLine;
+  if mww_read(ar[..], line, l[..]) != MWW_QUEUED { return false; }
+  return l[0].active.count == 0 && (l[0].items.count == 0 || l[0].items == "[]");
+}
+dr_mark :: (r: [] DrRun, idle: bool) {
+  if idle && !r[0].idle { r[0].idle_at = cxsock_now_ms(); }
+  r[0].idle = idle;
+}
+// A run whose slot a new run may take: idle for DR_IDLE_MS, nothing waiting on it, no Coder attached.
+dr_reclaimable :: (r: DrRun, detached: bool, now: int) -> bool {
+  return r.used && r.idle && !r.stopping && !r.pending && r.ask == 0 && detached && now - r.idle_at >= DR_IDLE_MS;
+}
+// At the limit, the run idle longest that no Coder watches ends so a new one can start
+// (workers wait on stdin for a follow-up, so a chat Coder let go of would hold its slot for ever).
+dr_reclaim :: (d: [] DrHost) -> bool {
+  now := cxsock_now_ms();
+  k := -1;
+  for i: 0..<DR_MAX {
+    r := d[0].runs[i];
+    if !r.used || !r.idle { continue; }
+    if !dr_reclaimable(r, dr_detached(cast(string) r.id[..]), now) { continue; }
+    if k < 0 || r.idle_at < d[0].runs[k].idle_at { k = i; }
+  }
+  if k < 0 { return false; }
+  r := d[0].runs[k..<k + 1];
+  _ = cxproc_close_stdin(r[0].handle);
+  r[0].stopping = true; r[0].reclaimed = true;
+  _ = cxproc_wait(r[0].handle, DR_RECLAIM_GRACE_MS);
+  r[0].stop_at = 0;
+  dr_finish(r);
+  return dr_count(d) < DR_MAX;
+}
 CXPROC_TIMEOUT_V :: -2;
 CXPROC_TOO_LONG_V :: -4;
 
@@ -299,7 +342,7 @@ dr_finish :: (r: [] DrRun) {
     for i: 0..<m { eb[i] = cast(u8) cxproc_stderr_byte(r[0].handle, nerr - m + i); }
     ep: [1400] u8; _ = fs_write(dr_file(id, ".err", ep[..]), cast(string) eb[0..<m]);
   }
-  dr_state_write(id, ifx r[0].stopping then "stopped" else "exited", r[0].pid, r[0].started, hs_now(), status);
+  dr_state_write(id, ifx r[0].stopping && !r[0].reclaimed then "stopped" else "exited", r[0].pid, r[0].started, hs_now(), status);
   _ = cxproc_release(r[0].handle);
   r[0] = DrRun.{};
 }
@@ -348,4 +391,25 @@ dr_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
   #assert dr_ask_ticket("{\"kind\":\"reply\",\"text\":\"{\\\"kind\\\":\\\"ask\\\"\"}") == 0;
   #assert dr_ask_ticket("{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == 0;
   #assert dr_ask_ticket("{\"kind\":\"ask\",\"command\":\"ls\"}") == 0;
+}
+
+#test "only an empty queue line says a worker is idle" {
+  #assert dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[]}");
+  #assert dr_idle_line("{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}");
+  #assert !dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"q-1\",\"items\":[]}");
+  #assert !dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q\",\"text\":\"t\"}]}");
+  #assert !dr_idle_line("{\"kind\":\"reply\",\"text\":\"{\\\"kind\\\":\\\"queue\\\"\"}");
+}
+
+#test "only an idle run no Coder watches gives up its slot" {
+  r := DrRun.{used = true, idle = true, idle_at = 1000};
+  now := 1000 + DR_IDLE_MS;
+  #assert dr_reclaimable(r, true, now);
+  #assert !dr_reclaimable(r, false, now);
+  #assert !dr_reclaimable(r, true, now - 1);
+  b := r; b.idle = false; #assert !dr_reclaimable(b, true, now);
+  b = r; b.ask = 3; #assert !dr_reclaimable(b, true, now);
+  b = r; b.pending = true; #assert !dr_reclaimable(b, true, now);
+  b = r; b.stopping = true; #assert !dr_reclaimable(b, true, now);
+  b = r; b.used = false; #assert !dr_reclaimable(b, true, now);
 }

@@ -331,7 +331,7 @@ phone writes to `ID.in` through the daemon, which checks the pairing's grant
 Limits:
 
 - On the phone, a chat shows its newest turns, about 190 KB of what Coder saved, then the turn running now. A longer chat starts with "Earlier messages are in Coder on this computer."
-- The daemon runs up to 12 workers at once, sub-agents included. Past that a message or a sub-agent does not start, and the chat says so: "Coder runs up to 12 workers at once, sub-agents included."
+- The daemon runs up to 12 workers at once, sub-agents included. Past that a message or a sub-agent does not start, and the chat says so: "Coder runs up to 12 workers at once, sub-agents included." A worker that has sat idle (its reply done, nothing queued) for 10 seconds with no Coder window following it counts only until then: at the limit, the daemon ends the one idle longest and starts the new one in its place. That chat's next message starts a fresh worker, which is told the chat so far.
 - While Coder is closed, the daemon answers each command's check with yes, as Coder does. A sub-agent's pause after 100 tool calls in a row (see [Sub-agents](#sub-agents)) is answered the same way, so a sub-agent goes on past it.
 - While Coder is closed, sub-agents that Microcoder hands work to don't start, and Microcoder waits for the results of sub-agents that finish. Both happen when you open Coder again.
 - The Foreman chat's `foreman-ctl` calls need Coder open: the address they use is Coder's.
