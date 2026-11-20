@@ -46,13 +46,19 @@ set_nav_head :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, title: strin
   return t.heading;
 }
 // A row of the list at (x, y), w wide: its icon (-1: none) and its label. A page's row is a tab,
-// the open one `chosen` (the flat selected wash, the primary ink); a `lead` row (Back to chats)
+// the open one `chosen` (the flat selected wash, gliding from the row chosen before, and the primary
+// ink); a `lead` row (Back to chats)
 // is a button. No wash under the pointer: the ink goes primary. Returns its height (28).
 set_nav_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, chosen: bool, lead: bool, action: int) -> f32 {
   t := f[0].skin.set; sh := f[0].sheet;
   h := t.row;
   hovered := uiframe_hovered(f, id);
-  if chosen { sheet_fill(sh, x, y, w, h, t.row_radius, t.selected); }
+  if chosen {
+    // the wash glides from the page left to this one (app_glide_box, GitHub #13774): one list, one wash
+    sel := 0; for c: id { sel = (sel * 31 + cast(int) c) & 8388607; }
+    g := app_glide_box(f, "set.nav.wash", sel, x, y, w, h);
+    sheet_fill(sh, g.x, g.y, g.w, g.h, t.row_radius, t.selected);
+  }
   row := uiframe_semantic(f, id, ifx lead then EL_BUTTON else EL_TAB, label, x, y, w, h, ifx chosen then EL_S_CURRENT else 0, action);
   ink := ifx chosen || hovered then t.text else t.secondary;
   tx := x + t.row_pad;
@@ -307,6 +313,18 @@ set_row :: (f: [] UiFrame, r: SetRow, x: f32, y: f32, w: f32) -> f32 {
   } else if r.kind == SET_ROW_CHOICE {
     // a segmented control: a well, the chosen option's thumb the flat selected wash
     sheet_fill(sh, cx, cy, cw, t.small_h, t.small_radius + t.list_gap, t.well);
+    // the thumb glides to the chosen option (app_glide_box, GitHub #13774)
+    gx := cx + t.list_gap;
+    for k: 0..<r.noptions {
+      gw := set_small_w(f, r.options[k]);
+      if gx + gw > cx + cw - t.list_gap { gw = cx + cw - t.list_gap - gx; }
+      if gw <= 0 { break; }
+      if k == r.chosen {
+        g := app_glide_box(f, app_id(ib[..], r.id, ".thumb"), r.chosen, gx, cy + t.list_gap, gw, t.small_h - 2 * t.list_gap);
+        sheet_fill(sh, g.x, g.y, g.w, g.h, t.small_radius, t.selected);
+      }
+      gx += gw + t.list_gap;
+    }
     ox := cx + t.list_gap;
     for k: 0..<r.noptions {
       ow := set_small_w(f, r.options[k]);
@@ -315,8 +333,7 @@ set_row :: (f: [] UiFrame, r: SetRow, x: f32, y: f32, w: f32) -> f32 {
       kb: [8] u8; kb[0] = '.'; kn := text_put_int(kb[..], 1, k);
       oid := sheet_pool(sh, app_id(ib[..], r.id, cast(string) kb[0..<kn]));
       on := k == r.chosen; hov := !off && uiframe_hovered(f, oid);
-      if on { sheet_fill(sh, ox, cy + t.list_gap, ow, t.small_h - 2 * t.list_gap, t.small_radius, t.selected); }
-      else if hov { sheet_fill(sh, ox, cy + t.list_gap, ow, t.small_h - 2 * t.list_gap, t.small_radius, t.hover); }
+      if !on && hov { sheet_fill(sh, ox, cy + t.list_gap, ow, t.small_h - 2 * t.list_gap, t.small_radius, t.hover); }
       orow := uiframe_semantic(f, oid, EL_TAB, r.options[k], ox, cy, ow, t.small_h, (ifx on then EL_S_CURRENT else 0) | (r.state & EL_S_DISABLED), ifx off then 0 else r.action);
       _ := set_line(f, ox + (ow - set_width(f, t.desc_face, r.options[k])) / 2, cy + (t.small_h - t.desc_line) / 2, ow, t.desc_face, t.desc_line, ifx on || hov then t.text else t.secondary, r.options[k]);
       if !off { sheet_hit(sh, UIFRAME_HIT, orow, 0, ox, cy, ow, t.small_h); }

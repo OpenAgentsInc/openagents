@@ -116,6 +116,34 @@ app_roll_text :: (f: [] UiFrame, k: int, x: f32, y: f32, line: f32, face: int, i
   return wn;
 }
 
+// Where a selection's wash is drawn: the chosen item's box, or on its way there.
+AppBox :: struct { x: f32; y: f32; w: f32; h: f32; }
+// A selection that glides (Zeron's SelectionSlide, GitHub #13774): the wash under the chosen item
+// of a set (a tab strip, a segmented control, a list of pages) slides from where it was to the
+// item `sel` at (x, y, w, h) over the skin's slide time when the choice changes, and stands on
+// the item otherwise, following it through layout. It keeps two keyed rows: id (the glide and the
+// box it left) and id + ".sel" (the choice and the box it was on). A set just shown, a refused
+// row and reduced motion put it on the item at once.
+app_glide_box :: (f: [] UiFrame, id: string, sel: int, x: f32, y: f32, w: f32, h: f32) -> AppBox {
+  ks := f[0].keyed; to := AppBox.{x = x, y = y, w = w, h = h};
+  sb: [EL_ID] u8;
+  ka := uiframe_key(f, id); kb := uiframe_key(f, app_id(sb[..], id, ".sel"));
+  if !keyed_ok(ks, ka) || !keyed_ok(ks, kb) { return to; }
+  if keyed_fresh(ks, ka) || keyed_fresh(ks, kb) {
+    keyed_spring_set(ks, ka, 1);
+  } else if cast(int) keyed_slot(ks, kb, 0) != sel {
+    // it leaves from where it was drawn last: its old box toward the item it was on
+    q := ks[0].rows[ka].spring[0].value;
+    for i: 0..<3 { keyed_slot_set(ks, ka, i, keyed_slot(ks, ka, i) + (keyed_slot(ks, kb, i + 1) - keyed_slot(ks, ka, i)) * q); }
+    keyed_spring_set(ks, ka, 0);
+  }
+  p := keyed_glide(ks, ka, 1, f[0].skin.motion.slide, 1);
+  keyed_slot_set(ks, kb, 0, cast(f32) sel); keyed_slot_set(ks, kb, 1, x); keyed_slot_set(ks, kb, 2, y); keyed_slot_set(ks, kb, 3, w);
+  if p >= 1 { keyed_slot_set(ks, ka, 0, x); keyed_slot_set(ks, ka, 1, y); keyed_slot_set(ks, ka, 2, w); return to; }
+  return AppBox.{x = keyed_slot(ks, ka, 0) + (x - keyed_slot(ks, ka, 0)) * p, y = keyed_slot(ks, ka, 1) + (y - keyed_slot(ks, ka, 1)) * p,
+    w = keyed_slot(ks, ka, 2) + (w - keyed_slot(ks, ka, 2)) * p, h = h};
+}
+
 // Text cut to a width: the text itself when it fits, else its longest start
 // that fits with an ellipsis after it, kept in the sheet's pool.
 app_fit :: (f: [] UiFrame, face: int, text: string, w: f32) -> string {

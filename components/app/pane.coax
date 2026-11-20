@@ -114,18 +114,18 @@ app_pane_tab_width :: (f: [] UiFrame, title: string, scale: f32) -> f32 {
 // slot, which dispatches close_action under close_id. Returns its width.
 app_pane_tab :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, close_id: string, close_action: int, scale: f32) -> f32 {
   tb: [EL_ID] u8;
-  return app_pane_chip(f, x, y, icon, title, app_id(tb[..], close_id, ".tab"), true, 0, close_id, close_action, scale);
+  return app_pane_chip(f, x, y, icon, title, app_id(tb[..], close_id, ".tab"), true, false, 0, close_id, close_action, scale);
 }
 // One tab chip of a panel's strip, as app_pane_tab draws it, under tab_id: the chosen one (on) on
 // the selected wash with Close in its end slot; another bare, washed under the pointer, its title
 // in the muted ink, and a press on it dispatches tab_action under tab_id. Returns its width.
-app_pane_chip :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, tab_id: string, on: bool, tab_action: int, close_id: string, close_action: int, scale: f32) -> f32 {
+app_pane_chip :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, tab_id: string, on: bool, washed: bool, tab_action: int, close_id: string, close_action: int, scale: f32) -> f32 {
   u := ifx scale > 0 then scale else 1.0f32; k := f[0].skin; sh := f[0].sheet; m := f[0].m;
   h := APP_PANE_TAB_H / u; slot := APP_PANE_TAB_SLOT / u; gap := APP_PANE_TAB_GAP / u; inset := (h - slot) / 2;
   w := app_pane_tab_width(f, title, scale);
   hovered_tab := uiframe_hover_on(f, KEYED_LAZY, tab_id, !on && uiframe_hovered(f, tab_id));   // eased (kit/frame.coax)
   wash := ifx k.set.selected.a > 0 then k.set.selected else k.hover;
-  if on { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, wash); }
+  if on { if !washed { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, wash); } }
   else if hovered_tab > 0 { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, opacity(k.hover, hovered_tab)); }
   // the tile and its icon
   tx := x + inset; ty := y + inset;
@@ -176,10 +176,21 @@ app_pane_tabs :: (f: [] UiFrame, x: f32, y: f32, w: f32, h: f32, icons: [] int, 
   if x > 0 { sheet_fill(sh, x, y, k.border, h, 0, k.menu_divider); }
   mid := y + corner + a.icon_button / 2; th := APP_PANE_TAB_H / u;
   cx := x + APP_PANE_TAB_EDGE / u; end := x + w - APP_PANE_TAB_EDGE / u;
+  // the chosen chip's wash glides to it when the choice changes (app_glide_box, GitHub #13774)
+  wx := cx;
+  for t, i: tabs {
+    tw := app_pane_tab_width(f, t, scale);
+    if wx + tw > end { break; }
+    if i == current {
+      gb: [EL_ID] u8; g := app_glide_box(f, app_id(gb[..], prefix, "wash"), current, wx, mid - th / 2, tw, th);
+      sheet_fill(sh, g.x, g.y, g.w, g.h, APP_PANE_TAB_RADIUS / u, ifx k.set.selected.a > 0 then k.set.selected else k.hover);
+    }
+    wx += tw + APP_PANE_TAB_GAP / u;
+  }
   for t, i: tabs {
     if cx + app_pane_tab_width(f, t, scale) > end { break; }
     ib: [EL_ID] u8; n := el_put_i(ib[..], el_put(ib[..], 0, prefix), i);
-    cx += app_pane_chip(f, cx, mid - th / 2, ifx i < icons.count then icons[i] else -1, t, cast(string) ib[0..<n], i == current, tab_action, close_id, close_action, scale) + APP_PANE_TAB_GAP / u;
+    cx += app_pane_chip(f, cx, mid - th / 2, ifx i < icons.count then icons[i] else -1, t, cast(string) ib[0..<n], i == current, true, tab_action, close_id, close_action, scale) + APP_PANE_TAB_GAP / u;
   }
   if meta.count > 0 && end - cx > a.gap {
     _ := app_meta(f, meta_id, cx + a.gap - APP_PANE_TAB_GAP / u, mid - k.small.line / 2, end - cx, meta, false);

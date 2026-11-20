@@ -1,0 +1,151 @@
+// Toasts (GitHub #13774): short notes about background events (a worktree made, the daemon back,
+// an update ready, a copy) stacked at a corner of the window, each leaving on its own after the
+// skin's toast time or when its Close is pressed. They arrive and leave with the overlay spec's
+// timings (Zeron's ds/motion: 200 ms out(3) with a small rise in, 130 ms in(2) out), and the ones
+// left glide into the room a leaving one gives up.
+//
+// The caller owns an AppToasts (a queue of APP_TOAST_MAX) and pushes and dismisses on it with its
+// own clock; APP_TOAST_SHOWN show at once and the rest wait their turn. app_toasts draws them
+// each frame and steps the queue: the frame moves only while one arrives, leaves or glides, and
+// app_toasts_wake says when the next one is due to leave, so a host that sleeps while nothing
+// moves wakes once for it instead of drawing every frame. Reduced motion: they appear and go at
+// once, and none glides.
+//   coax/bin/coax test components/app/toast.coax
+
+#load "overlay.coax";
+
+APP_TOAST_MAX :: 6;          // kept at once, shown or waiting; a push past it drops the oldest
+APP_TOAST_SHOWN :: 3;        // on screen at once
+APP_TOAST_TEXT :: 160;       // bytes of a toast's words
+APP_TOAST_W :: 320;          // a toast's most width
+APP_TOAST_GAP :: 8;          // between two toasts
+APP_TOAST_WAITING :: 0; APP_TOAST_IN :: 1; APP_TOAST_OUT :: 2;
+APP_TOAST_PLAIN :: 0; APP_TOAST_ERROR :: 1;
+
+AppToast :: struct {
+  id: int;                              // > 0, never reused by its queue
+  text: [APP_TOAST_TEXT] u8; text_n: int;
+  tone: int;                            // APP_TOAST_*
+  phase: int;                           // APP_TOAST_WAITING, _IN (shown), _OUT (leaving)
+  at: f32;                              // the caller's clock when it showed, or began to leave
+}
+AppToasts :: struct { items: [APP_TOAST_MAX] AppToast; n: int; next: int; }
+
+app_toast_remove :: (q: [] AppToasts, i: int) {
+  for j: i..<q[0].n - 1 { q[0].items[j] = q[0].items[j + 1]; }
+  q[0].n -= 1;
+}
+// A toast joins the queue (it shows when there is room; app_toasts_step). A full queue drops its
+// oldest first. Returns its id.
+app_toast_push :: (q: [] AppToasts, text: string, tone: int) -> int {
+  if q[0].n >= APP_TOAST_MAX { app_toast_remove(q, 0); }
+  q[0].next += 1;
+  t := AppToast.{id = q[0].next, tone = tone, phase = APP_TOAST_WAITING};
+  t.text_n = app_ov_put(t.text[..], text);
+  q[0].items[q[0].n] = t; q[0].n += 1;
+  return t.id;
+}
+// A toast is dismissed at `now`: a shown one leaves, a waiting one is dropped. Returns whether it was there.
+app_toast_dismiss :: (q: [] AppToasts, id: int, now: f32) -> bool {
+  for i: 0..<q[0].n {
+    if q[0].items[i].id != id { continue; }
+    if q[0].items[i].phase == APP_TOAST_WAITING { app_toast_remove(q, i); }
+    else if q[0].items[i].phase == APP_TOAST_IN { q[0].items[i].phase = APP_TOAST_OUT; q[0].items[i].at = now; }
+    return true;
+  }
+  return false;
+}
+// The queue at `now`: shown ones `life` seconds old begin to leave (life <= 0: they stay until
+// dismissed), ones `exit` seconds into leaving are gone, and waiting ones show while there is room.
+app_toasts_step :: (q: [] AppToasts, now: f32, life: f32, exit: f32) {
+  i := 0;
+  while i < q[0].n {
+    t := q[0].items[i];
+    if t.phase == APP_TOAST_IN && life > 0 && now - t.at >= life { q[0].items[i].phase = APP_TOAST_OUT; q[0].items[i].at = now; continue; }
+    if t.phase == APP_TOAST_OUT && now - t.at >= exit { app_toast_remove(q, i); continue; }
+    i += 1;
+  }
+  shown := 0;
+  for j: 0..<q[0].n { if q[0].items[j].phase != APP_TOAST_WAITING { shown += 1; } }
+  for j: 0..<q[0].n {
+    if shown >= APP_TOAST_SHOWN { break; }
+    if q[0].items[j].phase == APP_TOAST_WAITING { q[0].items[j].phase = APP_TOAST_IN; q[0].items[j].at = now; shown += 1; }
+  }
+}
+// Seconds from `now` until the queue next changes on its own (a toast due to leave, or one done
+// leaving), -1 when nothing is due: an empty queue, or toasts that stay until dismissed.
+app_toasts_wake :: (q: [] AppToasts, now: f32, life: f32, exit: f32) -> f32 {
+  due := -1.0f32;
+  for i: 0..<q[0].n {
+    t := q[0].items[i]; d := -1.0f32;
+    if t.phase == APP_TOAST_IN && life > 0 { d = t.at + life - now; }
+    if t.phase == APP_TOAST_OUT { d = t.at + exit - now; }
+    if d < 0 && d != -1 { d = 0; }
+    if d >= 0 && (due < 0 || d < due) { due = d; }
+  }
+  return due;
+}
+// The skin's toast life and the spec's exit, as app_toasts steps with them (no exit under reduced motion).
+app_toasts_life :: (f: [] UiFrame) -> f32 { return f[0].skin.motion.toast; }
+app_toasts_exit :: (f: [] UiFrame, o: AppOverlaySpec) -> f32 { return ifx f[0].reduced_motion then 0.0f32 else o.exit; }
+
+// The shown toasts, the newest lowest, stacked up from (right, bottom) and at most w wide, over
+// the page. A toast's Close presses `dismiss` with its id in the pressed id ("toast.<id>.close";
+// app_toast_pressed reads it back). Steps the queue at `now` first.
+app_toasts :: (f: [] UiFrame, o: AppOverlaySpec, q: [] AppToasts, now: f32, right: f32, bottom: f32, w: f32, dismiss: int) {
+  app_toasts_step(q, now, app_toasts_life(f), app_toasts_exit(f, o));
+  s := f[0].skin; sh := f[0].sheet; m := f[0].m; ks := f[0].keyed;
+  tw := ifx w < APP_TOAST_W then w else cast(f32) APP_TOAST_W;
+  slot := o.menu_row; pad := o.menu_pad_x; inset := o.menu_inset;
+  th := slot + 2 * inset;
+  x := right - tw;
+  off := 0.0f32;   // how far up from bottom the next toast's foot stands
+  for r: 0..<q[0].n {
+    i := q[0].n - 1 - r;
+    t := q[0].items[i];
+    if t.phase == APP_TOAST_WAITING { continue; }
+    ib: [EL_ID] u8; id := sheet_pool(sh, cast(string) ib[0..<el_put_i(ib[..], el_put(ib[..], 0, "toast."), t.id)]);
+    k := uiframe_key(f, id);
+    at := keyed_glide(ks, k, off, o.enter, off);   // a new one stands in its place; the others glide to theirs
+    p := 1.0f32;
+    if !f[0].reduced_motion {
+      if t.phase == APP_TOAST_IN { p = app_ov_out3((now - t.at) / o.enter); if now - t.at < o.enter { uiframe_tick(f); } }
+      else { p = 1 - app_ov_in2((now - t.at) / o.exit); uiframe_tick(f); }
+    }
+    y := bottom - at - th + (ifx t.phase == APP_TOAST_IN then o.rise * (1 - p) else 0.0f32);
+    off += th + APP_TOAST_GAP;
+    text := cast(string) q[0].items[i].text[0..<t.text_n];
+    sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, p));
+    frosted := app_overlay_paint_panel(f, o, x, y, tw, th, o.menu_radius, s.shadows.menu);
+    row := uiframe_semantic(f, id, EL_NOTICE, text, x, y, tw, th, EL_S_LIVE, 0);
+    uiframe_open(f, row);
+    lx := x + pad;
+    if t.tone == APP_TOAST_ERROR {
+      ai := s.app.notice_icon;
+      sheet_icon(sh, s.app.icon_alert, lx, y + (th - ai) / 2, ai, s.danger);
+      lx += ai + pad;
+    }
+    cx := x + tw - inset - slot;
+    _ := sheet_text(sh, m, -1, lx, y + (th - s.label.line) / 2, s.label.line, s.label.face, s.ink, app_fit(f, s.label.face, text, cx - pad - lx));
+    cb: [EL_ID] u8; cid := sheet_pool(sh, app_id(cb[..], id, ".close"));
+    hv := uiframe_hover(f, KEYED_LAZY, cid);
+    if hv > 0 { sheet_fill(sh, cx, y + inset, slot, slot, o.menu_item_radius, opacity(s.hover, hv)); }
+    ci := s.app.notice_icon;
+    sheet_icon(sh, ICON_CLOSE, cx + (slot - ci) / 2, y + inset + (slot - ci) / 2, ci, rgba_mix(s.muted, s.ink, hv));
+    close := uiframe_semantic(f, cid, EL_BUTTON, "Close", cx, y + inset, slot, slot, 0, dismiss);
+    sheet_hit(sh, UIFRAME_HIT, close, 0, cx, y + inset, slot, slot);
+    uiframe_close(f);
+    app_overlay_end_panel(f, frosted);
+    sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
+  }
+}
+// The toast a pressed id names ("toast.12.close"), or -1.
+app_toast_pressed :: (pressed: string) -> int {
+  if pressed.count < 13 || cast(string) pressed[0..<6] != "toast." { return -1; }
+  n := 0; i := 6;
+  while i < pressed.count && pressed[i] >= '0' && pressed[i] <= '9' { n = n * 10 + cast(int) (pressed[i] - '0'); i += 1; }
+  if i == 6 || cast(string) pressed[i..<pressed.count] != ".close" { return -1; }
+  return n;
+}
+
+#load "toast-checks.coax" #test;

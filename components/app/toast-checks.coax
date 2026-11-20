@@ -1,0 +1,68 @@
+// Checks for the toasts (toast.coax).
+#load "checks-kit.coax";
+
+#test "toasts queue: three show, the rest wait; each leaves after its life and the next shows; a full queue drops its oldest" {
+  q: [1] AppToasts;
+  for i: 0..<5 { _ := app_toast_push(q[..], "note", APP_TOAST_PLAIN); }
+  app_toasts_step(q[..], 0, 4, 0.13);
+  #assert q[0].n == 5 && q[0].items[0].phase == APP_TOAST_IN && q[0].items[2].phase == APP_TOAST_IN && q[0].items[3].phase == APP_TOAST_WAITING;
+  #assert app_toasts_wake(q[..], 1, 4, 0.13) == 3;
+  app_toasts_step(q[..], 4, 4, 0.13);
+  #assert q[0].items[0].phase == APP_TOAST_OUT && q[0].items[3].phase == APP_TOAST_WAITING;   // leaving ones keep their place
+  #assert app_toasts_wake(q[..], 4, 4, 0.13) > 0.12 && app_toasts_wake(q[..], 4, 4, 0.13) < 0.14;
+  app_toasts_step(q[..], 4.2, 4, 0.13);
+  #assert q[0].n == 2 && q[0].items[0].id == 4 && q[0].items[0].phase == APP_TOAST_IN && q[0].items[1].phase == APP_TOAST_IN;
+  for i: 0..<6 { _ := app_toast_push(q[..], "more", APP_TOAST_PLAIN); }
+  #assert q[0].n == APP_TOAST_MAX && q[0].items[0].id == 6;
+}
+#test "a dismissed toast leaves at once; a waiting one is dropped; an empty queue wants no wakeup" {
+  q: [1] AppToasts;
+  a := app_toast_push(q[..], "Worktree made", APP_TOAST_PLAIN);
+  for i: 0..<3 { _ := app_toast_push(q[..], "x", APP_TOAST_PLAIN); }
+  app_toasts_step(q[..], 0, 4, 0.13);
+  #assert app_toast_dismiss(q[..], a, 1) && q[0].items[0].phase == APP_TOAST_OUT;
+  #assert app_toast_dismiss(q[..], 4, 1) && q[0].n == 3 && !app_toast_dismiss(q[..], 99, 1);
+  app_toasts_step(q[..], 1.2, 4, 0.13);
+  #assert q[0].n == 2;
+  #assert app_toast_dismiss(q[..], 2, 2) && app_toast_dismiss(q[..], 3, 2);
+  app_toasts_step(q[..], 2.2, 4, 0.13);
+  #assert q[0].n == 0 && app_toasts_wake(q[..], 3, 4, 0.13) == -1;
+  #assert app_toast_pressed("toast.12.close") == 12 && app_toast_pressed("toast.x.close") == -1 && app_toast_pressed("toast.3.closed") == -1;
+}
+#test "toasts arrive, stand still, leave and glide; the frame idles while they stand and when they are gone; reduced motion is instant" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  o := app_overlay_zeron(); q: [1] AppToasts;
+  a := app_toast_push(q[..], "Update ready", APP_TOAST_PLAIN);
+  _ := app_toast_push(q[..], "Daemon reconnected", APP_TOAST_ERROR);
+  now := 0.0f32; moving := true;
+  app_test_begin(t[..], "", "", false);
+  app_toasts(f, o, q[..], now, 800, 600, 800, 7);
+  #assert uiframe_moving(f) && app_test_end(t[..]);
+  #assert app_test_find(t[..], "toast.1") >= 0 && app_test_find(t[..], "toast.2") >= 0 && app_test_row(t[..], "toast.2.close").action == 7;
+  lower := app_test_row(t[..], "toast.2").y; upper := app_test_row(t[..], "toast.1").y;
+  #assert upper < lower;   // the newest lowest
+  frames := 0;
+  while moving && frames < 40 { now += 0.016; app_test_begin(t[..], "", "", false); app_toasts(f, o, q[..], now, 800, 600, 800, 7); moving = uiframe_moving(f); _ := app_test_end(t[..]); frames += 1; }
+  #assert !moving && frames <= 16;   // standing: idle until it is due to leave
+  lower = app_test_row(t[..], "toast.2").y; upper = app_test_row(t[..], "toast.1").y;
+  // the lower one is dismissed: it fades out, then the upper one glides down into its room
+  #assert app_toast_dismiss(q[..], 2, now);
+  frames = 0; moving = true; glided := false;
+  while moving && frames < 60 {
+    now += 0.016; app_test_begin(t[..], "", "", false); app_toasts(f, o, q[..], now, 800, 600, 800, 7); moving = uiframe_moving(f); _ := app_test_end(t[..]); frames += 1;
+    if q[0].n == 1 && app_test_find(t[..], "toast.1") >= 0 { y := app_test_row(t[..], "toast.1").y; if y > upper && y < lower { glided = true; } }
+  }
+  #assert !moving; #assert q[0].n == 1; #assert glided; #assert app_test_row(t[..], "toast.1").y == lower;
+  // past its life it leaves on its own, and an empty stack leaves the frame idle
+  now += app_toasts_wake(q[..], now, app_toasts_life(f), app_toasts_exit(f, o));
+  frames = 0; moving = true;
+  while (moving || q[0].n > 0) && frames < 60 { now += 0.016; app_test_begin(t[..], "", "", false); app_toasts(f, o, q[..], now, 800, 600, 800, 7); moving = uiframe_moving(f); _ := app_test_end(t[..]); frames += 1; }
+  #assert q[0].n == 0 && !moving && app_test_find(t[..], "toast.1") < 0 && a == 1;
+  // reduced motion: shown in the frame it is pushed, gone in the frame it is dismissed
+  b := app_toast_push(q[..], "Copied", APP_TOAST_PLAIN);
+  app_test_begin(t[..], "", "", true); app_toasts(f, o, q[..], now, 800, 600, 800, 7);
+  #assert !uiframe_moving(f) && app_test_end(t[..]) && app_test_find(t[..], "toast.3") >= 0;
+  #assert app_toast_dismiss(q[..], b, now);
+  app_test_begin(t[..], "", "", true); app_toasts(f, o, q[..], now, 800, 600, 800, 7);
+  #assert !uiframe_moving(f) && app_test_end(t[..]) && app_test_find(t[..], "toast.3") < 0 && q[0].n == 0;
+}
