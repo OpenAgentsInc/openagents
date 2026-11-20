@@ -16,6 +16,7 @@
 		43F923AC9E6B0E0FBEB39C71 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 776F82566A59AA4CF6654437 /* Assets.xcassets */; };
 		49F3566FC81ECCAD96DE2801 /* AppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 012A4331BDB6873356052670 /* AppRuntime.swift */; };
 		4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9389244D4DF6F9694B96642C /* AppWake.swift */; };
+		4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA188800B3779561759002D1 /* AppTailnet.swift */; };
 		4F98D1706FADE33ADACD9EF8 /* KitAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6814741495C5632686563D9 /* KitAccess.swift */; };
 		5DDDFC88C8FA34C1DF663BB1 /* DevGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9738192D7078650DA6AC16FA /* DevGallery.swift */; };
 		6EBCAD7693B6953906E65EA1 /* AppAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0AAC9508FA4369A9715A69 /* AppAuth.swift */; };
@@ -26,6 +27,7 @@
 		8272F32C6A50CB835148EF7E /* AppLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3005C49112F55B0BAEDB29B5 /* AppLibrary.swift */; };
 		93EB5486574ED467A074D84B /* KitPasskey.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */; };
 		A09F60FB92403B2A4A5AEC6D /* AppCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2375370987EB21F55CB7A476 /* AppCore.swift */; };
+		A1B6A8EF5D874122631C8B0B /* AppTailnetLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DEE9721DA0575EE03A612B /* AppTailnetLink.swift */; };
 		AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */ = {isa = PBXBuildFile; fileRef = C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */; };
 		B0F7117A6675BF891B1CB0FB /* AppDeviceLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5917C68CA930E40796E53DAF /* AppDeviceLink.swift */; };
 		B61823AB74CF8C1851C01744 /* SidebarTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D8DA13526DFAEC039E7C83B /* SidebarTests.swift */; };
@@ -70,6 +72,7 @@
 		622F619CBCEF6832010BC386 /* AppCoreC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreC.swift; sourceTree = "<group>"; };
 		62E49DA00EF0AD739FE0E712 /* OpenAgentsSidebarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OpenAgentsSidebarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		62F39B1A4B1714CD2CBBCE87 /* AppEffects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEffects.swift; sourceTree = "<group>"; };
+		74DEE9721DA0575EE03A612B /* AppTailnetLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTailnetLink.swift; sourceTree = "<group>"; };
 		776F82566A59AA4CF6654437 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		77B22B57F0B9827AF4F47864 /* AppCoreBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoreBridge.swift; sourceTree = "<group>"; };
 		80EE9FF1AF051301ABB49FD9 /* AppProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProvider.swift; sourceTree = "<group>"; };
@@ -84,6 +87,7 @@
 		BB401C7AEDFAADE5726A7289 /* KitPasskey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KitPasskey.swift; sourceTree = "<group>"; };
 		BF0AAC9508FA4369A9715A69 /* AppAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAuth.swift; sourceTree = "<group>"; };
 		C6F4AFFB9B751E6D6F603036 /* ComponentsHost.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ComponentsHost.m; sourceTree = "<group>"; };
+		CA188800B3779561759002D1 /* AppTailnet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTailnet.swift; sourceTree = "<group>"; };
 		D53AE5A2D45A0A6B3D45B8D4 /* phone-drive.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "phone-drive.c"; sourceTree = "<group>"; };
 		D5407582BAF7BC2C3A6DCCB2 /* IdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdentityTests.swift; sourceTree = "<group>"; };
 		F76D38DB61717639D91263A1 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
@@ -150,6 +154,8 @@
 				3005C49112F55B0BAEDB29B5 /* AppLibrary.swift */,
 				80EE9FF1AF051301ABB49FD9 /* AppProvider.swift */,
 				012A4331BDB6873356052670 /* AppRuntime.swift */,
+				CA188800B3779561759002D1 /* AppTailnet.swift */,
+				74DEE9721DA0575EE03A612B /* AppTailnetLink.swift */,
 				9389244D4DF6F9694B96642C /* AppWake.swift */,
 				4EEECAEF138A04137F8818BD /* AppWorkspace.swift */,
 				A6814741495C5632686563D9 /* KitAccess.swift */,
@@ -337,6 +343,8 @@
 				8272F32C6A50CB835148EF7E /* AppLibrary.swift in Sources */,
 				7C178F9B599D1D5BF54179D4 /* AppProvider.swift in Sources */,
 				49F3566FC81ECCAD96DE2801 /* AppRuntime.swift in Sources */,
+				4ECFED6148E9991057C9B489 /* AppTailnet.swift in Sources */,
+				A1B6A8EF5D874122631C8B0B /* AppTailnetLink.swift in Sources */,
 				4BD534419A18D33EAA0A7955 /* AppWake.swift in Sources */,
 				1B2A1E469F45CF1B446A3C46 /* AppWorkspace.swift in Sources */,
 				AD751202F9DD8187E36837E4 /* ComponentsHost.m in Sources */,
@@ -407,6 +415,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds Coder on your Mac nearby, so you can pair with it without a code.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -527,6 +536,7 @@
 				INFOPLIST_FILE = OpenAgents/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAgents;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "OpenAgents finds Coder on your Mac nearby, so you can pair with it without a code.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

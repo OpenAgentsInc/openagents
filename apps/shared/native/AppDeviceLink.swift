@@ -34,6 +34,11 @@ struct AppPaired: Codable, Equatable {
     private let pairStore = FileDeviceKeyStore(url: AppDeviceLink.folder.appendingPathComponent("own-computer-paired-v1"))
     #endif
     private var sockets: [String: AppRelaySocket] = [:]
+    #if os(iOS)
+    /// Zero-config pairing with Coder on a Mac over Tailscale (AppTailnetLink.swift, #13778).
+    private lazy var tailnet = AppTailnetLink(expires: { [unowned self] host in self.paired.first(where: { $0.host == host })?.expires },
+                                              open: { [unowned self] link in self.opened(link) })
+    #endif
     private var suspended = false
     /// Pairing exchanges asked while the app was in the background, sent when it is back (#13713).
     private var held: [() -> Void] = []
@@ -54,6 +59,9 @@ struct AppPaired: Codable, Equatable {
     func suspendForBackground() {
         suspended = true
         for (_, socket) in sockets { socket.suspend() }
+        #if os(iOS)
+        tailnet.suspend()   // zero-config pairing with a Mac over Tailscale (#13778)
+        #endif
     }
 
     /// Resumes relay connectivity on foreground return, re-arming network path monitoring and
@@ -64,6 +72,9 @@ struct AppPaired: Codable, Equatable {
         for (_, socket) in sockets { socket.resume() }
         let later = held; held = []
         for go in later { go() }
+        #if os(iOS)
+        tailnet.resume()
+        #endif
     }
 
     private func startPathMonitorIfNeeded() {
@@ -81,6 +92,9 @@ struct AppPaired: Codable, Equatable {
                     // proactively recycle open relay sockets so the next request reconnects cleanly.
                     if let prev, prev != sig, !self.suspended {
                         for (_, socket) in self.sockets { socket.resetForNetworkChange() }
+                        #if os(iOS)
+                        self.tailnet.networkChanged()
+                        #endif
                     }
                 }
             }

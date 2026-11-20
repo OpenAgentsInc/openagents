@@ -54,6 +54,9 @@ targets:
       - ../shared/native/AppCoreBridge.swift
       # The phone's own computers, with no account: the device key, pairing and the relay.
       - ../shared/native/AppDeviceLink.swift
+      # Zero-config pairing with Coder Desktop over Tailscale: Bonjour, then the Mac's tailnet address (#13778).
+      - ../shared/native/AppTailnet.swift
+      - ../shared/native/AppTailnetLink.swift
       - ../shared/host/apple/AppAuth.swift
       - ../shared/host/apple/DeviceKey.swift
       - OpenAgents/Assets.xcassets
@@ -68,6 +71,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: OpenAgents/OpenAgents.entitlements
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_CFBundleDisplayName: OpenAgents
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "OpenAgents finds Coder on your Mac nearby, so you can pair with it without a code."
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: NO
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIUserInterfaceStyle: Dark

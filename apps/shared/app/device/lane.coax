@@ -136,9 +136,12 @@ dl_pair :: (c: [] AppCore, link: string) -> int {
   if d[0].pair_op != 0 { return APP_R_BLOCKED; }
   op := fx_request(c[0].out[..], OWN_DEVICE, FX_DEVICE_PAIR, DL_P_PAIR, 0, "", "", link, 0, 0);
   if op == 0 { return APP_R_FULL; }
-  d[0].pair_op = op; dl_say_pair(c, DL_PAIR_ASKING, "Asking your computer to pair. Its window shows the same code.");
+  // a link the phone's Mac handed it over Tailscale (AppTailnet.swift, #13778) shows no code on the Mac
+  d[0].pair_op = op; dl_say_pair(c, DL_PAIR_ASKING, ifx dl_auto_link(link) then "Pairing with your Mac." else "Asking your computer to pair. Its window shows the same code.");
   return APP_OK;
 }
+// Whether a pairing link ends with the zero-config mark the Mac adds ("&auto=1").
+dl_auto_link :: (link: string) -> bool { m := "&auto=1"; return link.count > m.count && cast(string) link[link.count - m.count..<link.count] == m; }
 
 // ---------------------------------------------------------------- the conversation
 
