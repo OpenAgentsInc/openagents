@@ -298,7 +298,12 @@ coder_page_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, m
   return coder_page_pointer(s, x, y, phase);
 }
 // Seconds until the caret next blinks, after the last frame; -1 when nothing blinks.
-coder_page_blink :: (s: [] CoderPage) -> f32 #export_c #effects(all) { return ifx s.count > 0 && s[0].fld[0].active then s[0].fld[0].blink else -1.0f32; }
+coder_page_blink :: (s: [] CoderPage) -> f32 #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  b := ifx s[0].fld[0].active then s[0].fld[0].blink else -1.0f32;
+  t := cp_toast_wake(s);   // a toast due to leave wakes the host too (overlay.coax)
+  return ifx t >= 0 && (b < 0 || t < b) then t else b;
+}
 // The composer's draft (its committed text): its length in out, 0 when out does not hold it.
 coder_page_draft :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }

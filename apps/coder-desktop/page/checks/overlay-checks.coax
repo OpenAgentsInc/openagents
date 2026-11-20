@@ -67,3 +67,30 @@ cp_test_budget :: (s: [] CoderPage) {
   coder_page_settings_open(s, 0, ""); #assert cp_test_draw_over(s, f[..], 0.016) && cp_test_press_field(s, CP_ED_SEARCH) && cp_ed_which(s) == CP_ED_SEARCH;
   cp_test_budget(s); #assert cp_ed_which(s) != CP_ED_SEARCH && !cp_test_press_field(s, CP_ED_SEARCH);
 }
+
+#test "a toast shows at the window's foot, idles while it stands, wakes the host when due, and Close sends it away (#13774)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  #assert cp_test_draw_over(s, f[..], 0.016) && coder_page_blink(s) < 0;   // nothing due
+  coder_page_update(s, CP_UPD_READY, "", "");
+  coder_page_update(s, CP_UPD_READY, "", "");   // ready once, one toast
+  #assert s[0].toasts[0].n == 1;
+  #assert cp_test_draw_over(s, f[..], 0.016);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  r := elt_find(t[..], "toast.1");
+  #assert r >= 0 && t[0].rows[r].x + t[0].rows[r].w <= 1200 && t[0].rows[r].y + t[0].rows[r].h <= 800 && t[0].rows[r].y > 600;
+  // it stands still: no frame runs, and the host is told when it is due to leave
+  for i: 0..<30 { s[0].clock += 0.016; #assert cp_test_draw_over(s, f[..], 0.016); }
+  #assert !uiframe_moving(f[..]);
+  due := coder_page_blink(s);
+  #assert due > 0 && due <= cp_skin().motion.toast;
+  // Close sends it away, and once it is gone nothing is due
+  c := elt_find(t[..], "toast.1.close");
+  t[0] = surface_rows(s[0].surface[..]); c = elt_find(t[..], "toast.1.close");
+  #assert c >= 0 && cp_press(s, c);
+  for i: 0..<20 { s[0].clock += 0.016; #assert cp_test_draw_over(s, f[..], 0.016); }
+  #assert s[0].toasts[0].n == 0 && coder_page_blink(s) < 0;
+  t[0] = surface_rows(s[0].surface[..]); #assert elt_find(t[..], "toast.1") < 0;
+  // a host's toast about a failure joins the stack
+  coder_page_toast(s, "Couldn't make this chat's worktree", 1);
+  #assert s[0].toasts[0].n == 1 && s[0].toasts[0].items[0].tone == APP_TOAST_ERROR;
+}

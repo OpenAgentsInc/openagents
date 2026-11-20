@@ -237,6 +237,7 @@ static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0
 void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }
 void cd_current(void *page, const char *id) { CoderHost *c = page; if (c) { coder_page_current(cd_state(c), cd_string(id)); cd_changed(c); } }
 void cd_foreman(void *page, int busy, int tier) { CoderHost *c = page; if (c) { coder_page_foreman(cd_state(c), busy != 0, tier); cd_changed(c); } }
+void cd_toast(void *page, const char *text, int tone) { CoderHost *c = page; if (c) { coder_page_toast(cd_state(c), cd_string(text), tone); cd_changed(c); } }
 void cd_update(void *page, int state, const char *label, const char *detail) { CoderHost *c = page; if (c) { coder_page_update(cd_state(c), state, cd_string(label), cd_string(detail)); cd_changed(c); } }
 int cd_open_path(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_open_path(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_open_id(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_open_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }

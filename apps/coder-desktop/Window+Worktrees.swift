@@ -36,6 +36,7 @@ extension CoderWindow {
                 } else {
                     r.worktreeSkip = true
                     if case .failure(.git(let why)) = made { NSLog("Coder: a chat worktree could not be made in %@: %@", repo, why) }
+                    cd_toast(self.page, "Couldn't make this chat's worktree, so it runs in the folder you chose", 1); self.wake()
                 }
                 self.act(1)
             }

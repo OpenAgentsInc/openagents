@@ -7,6 +7,7 @@
 #load "../../../components/app/followups.coax";
 #load "../../../components/app/overlay.coax";
 #load "../../../components/app/palette.coax";
+#load "../../../components/app/toast.coax";
 #load "../../../components/app/cargo.coax";
 #load "../../../components/app/mention.coax";
 #load "../../shared/app/view/shell.coax";

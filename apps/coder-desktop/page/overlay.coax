@@ -20,6 +20,9 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
   if cp_glass(s) { o.blur = cp_glass_blur(s); }
   moving := app_dialog_step(d, dt, s[0].reduced, o) || app_menu_step(mn, dt, s[0].reduced, o);
   if app_palette_step(pal, dt, s[0].reduced, cp_pal_spec()) { moving = true; }
+  // toasts at the window's foot, right of the column, under the palette, menus and dialogs (#13774)
+  app_toasts(f, o, s[0].toasts[..], s[0].clock, w - 2 * o.margin, h - 2 * o.margin, w - 4 * o.margin, CP_TOAST_CLOSE);
+  if uiframe_moving(f) { moving = true; }
   // the palette's words are the page's fourth editor once it is at rest (editor.coax)
   pbox: [4] f32;
   pal[0].editing = cp_ed_which(s) == CP_ED_PALETTE && app_palette_field_box(pal, f[0].skin, cp_pal_spec(), pbox[..]);
@@ -42,6 +45,16 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
 }
 
 // ---------------------------------------------------------------- the host's calls
+
+// A toast about a background event (a worktree made, the daemon back): tone 0 plain, 1 a failure.
+coder_page_toast :: (s: [] CoderPage, text: string, tone: int) #export_c #effects(all) {
+  if s.count < 1 || text.count == 0 { return; }
+  _ := app_toast_push(s[0].toasts[..], text, ifx tone == 1 then APP_TOAST_ERROR else APP_TOAST_PLAIN);
+}
+// Seconds until a toast is due to leave on its own (-1: none): the host wakes then (coder_page_blink).
+cp_toast_wake :: (s: [] CoderPage) -> f32 {
+  return app_toasts_wake(s[0].toasts[..], s[0].clock, cp_skin().motion.toast, ifx s[0].reduced then 0.0f32 else cp_ov_spec().exit);
+}
 
 // A dialog: begin with its size (0 sm 380, 1 md 460, 2 lg 560), title and words; then its fields
 // (label, text, hint, secure, lines: 1 one line, more a box of that many) and its buttons in the

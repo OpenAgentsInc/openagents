@@ -113,6 +113,7 @@ CP_PALETTE :: 51;          // the sidebar's Search: the command palette opens on
 // the draft's attachments and its mentions (#13699): a chip of the strip (it opens), its ×, a row of the @ or / popover
 CP_CARGO :: 63; CP_CARGO_REMOVE :: 64; CP_MENTION :: 65; CP_ASK_ADD_PRESS :: 66;   // and the composer's +
 CP_PANE_STOP :: 67;         // stop button in the sub-agent pane (#13766)
+CP_TOAST_CLOSE :: 68;       // a toast's Close (overlay.coax; #13774)
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -291,6 +292,7 @@ CoderPage :: struct {
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
+  toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
   fp: [1] CpFilePane;          // a file in the pane on the right (filepane.coax; GitHub #13760)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
