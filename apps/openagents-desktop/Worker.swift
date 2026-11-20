@@ -585,14 +585,17 @@ enum CoderAntigravity {
         }
         let home = fm.homeDirectoryForCurrentUser.path
         var candidates = [
+            "\(home)/.local/bin/agy",
             "\(home)/.antigravity/antigravity/bin/agy",
             "/Applications/Antigravity.app/Contents/Resources/app/bin/agy",
             "/opt/homebrew/bin/agy", "/usr/local/bin/agy", "/usr/bin/agy"
         ]
-        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
-            for dir in pathEnv.split(separator: ":") where !dir.isEmpty {
-                candidates.append("\(dir)/agy")
-            }
+        // The workers' own PATH (~/.local/bin, Homebrew, ...), not only this process's: an app opened
+        // from the Dock or Finder gets launchd's bare PATH, and the official installer puts agy in
+        // ~/.local/bin, so the model picker showed "No model" with agy installed.
+        let launchPath = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        for dir in (CoderWorker.path + ":" + launchPath).split(separator: ":") where !dir.isEmpty {
+            candidates.append("\(dir)/agy")
         }
         for p in candidates where fm.isExecutableFile(atPath: p) { return p }
         return nil
