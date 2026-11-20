@@ -1,0 +1,71 @@
+// The user instructions' file rules (user-instructions.coax, GitHub #13808), on a real file
+// system: a temporary HOME, never the person's own ~/.openagents/instructions.md.
+//   coax/web/tool.sh coax/lib/agent/user-instructions-selftest.coax
+
+#import "Basic";
+#load "user-instructions.coax";
+
+UiSt :: struct { pass: int; fail: int; }
+ui_check :: (s: [] UiSt, ok: bool, name: string) {
+  if ok { s[0].pass += 1; } else { s[0].fail += 1; print("FAIL: %\n", name); }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  s: [1] UiSt;
+  tb: [FS_PATH_MAX] u8;
+  home := fs_temp("oa-user-instr-", tb[..]);
+  if home.count == 0 { print("user instructions selftest: no temp dir\n"); return 1; }
+  pb: [FS_PATH_MAX] u8;
+  path := uinstr_path_for(home, "", pb[..]);
+  rb: [UINSTR_MAX_BYTES + 1] u8; bb: [UINSTR_BLOCK_BYTES] u8;
+
+  // no file, no folder: the default, and Settings says Default
+  ui_check(s[..], fs_kind(path) == FS_NONE, "a fresh HOME has no instructions file");
+  ui_check(s[..], uinstr_read(path, rb[..]) == UINSTR_DEFAULT, "no file reads as the default");
+  ui_check(s[..], uinstr_state(path) == UINSTR_MISSING, "no file is MISSING");
+  blk := uinstr_load(path, "\n\n", bb[..]);
+  ui_check(s[..], uinstr_find(blk, UINSTR_HEADER) == 2 && uinstr_find(blk, "push the commit") > 0, "no file still gives the default block");
+
+  // first run: seeded with the default, ~/.openagents made
+  ui_check(s[..], uinstr_seed(path), "seed writes the file");
+  ui_check(s[..], fs_kind(fs_dir(path)) == FS_DIR, "seed makes ~/.openagents");
+  n := fs_read_at(path, 0, rb[..]);
+  ui_check(s[..], n == UINSTR_DEFAULT.count && cast(string) rb[0..<n] == UINSTR_DEFAULT, "the seeded file is the default");
+  ui_check(s[..], uinstr_state(path) == UINSTR_STOCK, "a seeded file is STOCK");
+
+  // an edit is kept: seeding again never overwrites it
+  ui_check(s[..], uinstr_write(path, "Always run make check.\n"), "an edit is written");
+  ui_check(s[..], uinstr_seed(path), "seed with a file there");
+  ui_check(s[..], uinstr_read(path, rb[..]) == "Always run make check.\n", "seed never replaces an existing file");
+  ui_check(s[..], uinstr_state(path) == UINSTR_EDITED, "an edited file is EDITED");
+  blk = uinstr_load(path, "", bb[..]);
+  ui_check(s[..], uinstr_find(blk, "Always run make check.") > 0 && uinstr_find(blk, "push the commit") < 0, "the block is the edit, not the default");
+
+  // emptied: the agents are told nothing
+  ui_check(s[..], uinstr_write(path, "\n  \n"), "an emptied file is written");
+  ui_check(s[..], uinstr_read(path, rb[..]) == "" && uinstr_load(path, "\n\n", bb[..]) == "", "a blank file tells nothing");
+  ui_check(s[..], uinstr_state(path) == UINSTR_EMPTY, "a blank file is EMPTY");
+
+  // too long: the block is cut, and Settings says so
+  big: [UINSTR_MAX_BYTES + 100] u8;
+  for i: 0..<big.count { big[i] = ifx i % 64 == 63 then '\n' else 'x'; }
+  ui_check(s[..], uinstr_write(path, cast(string) big[..]), "a long file is written");
+  ui_check(s[..], uinstr_state(path) == UINSTR_LARGE, "a long file is LARGE");
+  blk = uinstr_load(path, "", bb[..]);
+  ui_check(s[..], blk.count > 0 && blk.count <= UINSTR_BLOCK_BYTES && uinstr_find(blk, "[... truncated;") > 0, "a long file's block is cut with a note");
+
+  // reset to default
+  ui_check(s[..], uinstr_reset(path), "reset writes the default");
+  ui_check(s[..], uinstr_read(path, rb[..]) == UINSTR_DEFAULT && uinstr_state(path) == UINSTR_STOCK, "after reset the file is the default");
+
+  // the override names another file
+  ob: [FS_PATH_MAX] u8; other := fs_join(home, "elsewhere/mine.md", ob[..]);
+  p2b: [FS_PATH_MAX] u8;
+  ui_check(s[..], uinstr_path_for(home, other, p2b[..]) == other, "the override is used as it is");
+  ui_check(s[..], uinstr_seed(other) && uinstr_read(other, rb[..]) == UINSTR_DEFAULT, "seed makes the override's folders");
+
+  x := fs_remove(home);
+  print("user instructions selftest: % passed, % failed\n", s[0].pass, s[0].fail);
+  if s[0].fail == 0 { print("user instructions selftest: ok\n"); return 0; }
+  return 1;
+}

@@ -1,0 +1,237 @@
+// The person's own agent instructions (GitHub #13808): one Markdown file, ~/.openagents/instructions.md
+// (or the file OPENAGENTS_USER_INSTRUCTIONS_PATH names), that every agent OpenAgents runs is told in
+// every workspace: Microcoder (coax/lib/microcoder/run.coax mc_run_load_instructions), Claude Code
+// (coder/tui/claudeworker.coax, --append-system-prompt) and Antigravity (coder/tui/agyworker.coax,
+// ahead of a session's first prompt). OpenAgents Desktop edits it in Settings > General > Agent
+// instructions and resets it to UINSTR_DEFAULT (apps/openagents-desktop/desktop-core.coax).
+//
+// The rules:
+//   - No file: the agents are told UINSTR_DEFAULT, and Desktop writes it there on first run
+//     (uinstr_seed, which never replaces a file that exists).
+//   - A file: they are told what it says. A file with only whitespace in it tells them nothing,
+//     so a person who empties it turns the instructions off.
+//   - They are told at most UINSTR_MAX_BYTES of it, cut at a character's edge with a note.
+//   - Each run reads the file again, so an edit applies to the next run without a restart.
+//
+//   coax/bin/coax test coax/lib/agent/user-instructions.coax --library
+//   coax/web/tool.sh coax/lib/agent/user-instructions-selftest.coax   (the file rules, in a temp HOME)
+
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+
+UINSTR_ENV :: "OPENAGENTS_USER_INSTRUCTIONS_PATH";
+UINSTR_DIR :: ".openagents";
+UINSTR_FILE :: "instructions.md";
+UINSTR_MAX_BYTES :: 4096;      // what an agent is told of the file, at most (Desktop's editor holds as much)
+UINSTR_BLOCK_BYTES :: 4608;    // the block: its header, the text and the cut note
+UINSTR_HEADER :: "User instructions (the person's own, from Settings > Agent instructions; they apply in every workspace, and a repository's own instructions win where they differ):\n";
+UINSTR_TRUNC_NOTE :: "\n[... truncated; the rest of ~/.openagents/instructions.md is not shown ...]\n";
+UINSTR_DEFAULT :: "When you work in a git repository:\n- When you have finished a change and its checks pass, commit it: only the files you changed, with a message that says what changed and why.\n- Then push the commit to its branch's upstream. If the push is refused because the remote moved, fetch, rebase onto it, run the checks again and push again. Never force-push and never skip the repository's hooks.\n- Don't leave finished work uncommitted or unpushed, unless the person asked you not to commit or push, or the repository's own instructions say otherwise.\n";
+
+UINSTR_MISSING :: 0; UINSTR_EDITED :: 1; UINSTR_STOCK :: 2; UINSTR_EMPTY :: 3; UINSTR_LARGE :: 4;
+
+uinstr_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 { return -1; }
+  if at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+
+// Where needle first is in s, or -1.
+uinstr_find :: (s: string, needle: string) -> int {
+  if needle.count == 0 { return 0; }
+  if needle.count > s.count { return -1; }
+  for i: 0..<s.count - needle.count + 1 { if cast(string) s[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+
+// Whether s has nothing but spaces, tabs and line ends.
+uinstr_blank :: (s: string) -> bool {
+  for c: s { if c != ' ' && c != '\n' && c != '\r' && c != '\t' { return false; } }
+  return true;
+}
+
+// Back from limit to the start of a UTF-8 character, so a cut never splits one.
+uinstr_cut :: (s: string, limit: int) -> int {
+  if limit <= 0 { return 0; }
+  if limit >= s.count { return s.count; }
+  n := limit;
+  while n > 0 && (s[n] & 0xC0) == 0x80 { n -= 1; }
+  return n;
+}
+
+// Where the file is: the override when one is given, else HOME/.openagents/instructions.md;
+// "" when neither is known or it doesn't fit out.
+uinstr_path_for :: (home: string, override: string, out: [] u8) -> string {
+  if override.count > 0 {
+    n := uinstr_put(out, 0, override);
+    return ifx n < 0 then "" else cast(string) out[0..<n];
+  }
+  h := home;
+  while h.count > 1 && h[h.count - 1] == '/' { h = h[0..<h.count - 1]; }
+  if h.count == 0 { return ""; }
+  n := uinstr_put(out, 0, h);
+  if h != "/" { n = uinstr_put(out, n, "/"); }
+  n = uinstr_put(out, n, UINSTR_DIR); n = uinstr_put(out, n, "/"); n = uinstr_put(out, n, UINSTR_FILE);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The file for this process: OPENAGENTS_USER_INSTRUCTIONS_PATH, else under HOME.
+uinstr_path :: (out: [] u8) -> string {
+  hb: [FS_PATH_MAX] u8; ob: [FS_PATH_MAX] u8;
+  return uinstr_path_for(proc_getenv("HOME", hb[..]), proc_getenv(UINSTR_ENV, ob[..]), out);
+}
+
+// What the agents are told, from what the file holds (`exists` false: there is no file).
+uinstr_text_of :: (exists: bool, raw: string) -> string {
+  if !exists { return UINSTR_DEFAULT; }
+  if uinstr_blank(raw) { return ""; }
+  return raw;
+}
+
+// The file's text into out (up to out.count bytes; a longer file is read to that much), or
+// UINSTR_DEFAULT when there is no file; "" when it is blank or can't be read.
+uinstr_read :: (path: string, out: [] u8) -> string {
+  if path.count == 0 { return UINSTR_DEFAULT; }
+  k := fs_kind(path);
+  if k == FS_NONE { return UINSTR_DEFAULT; }
+  if k != FS_FILE { return ""; }
+  n := fs_read_at(path, 0, out);
+  if n < 0 { return ""; }
+  return uinstr_text_of(true, cast(string) out[0..<n]);
+}
+
+// The block an agent's system prompt gains: lead, UINSTR_HEADER, then text cut to
+// UINSTR_MAX_BYTES with a note. "" for blank text, or when out can't hold it.
+uinstr_block :: (lead: string, text: string, out: [] u8) -> string {
+  if uinstr_blank(text) { return ""; }
+  trunc := text.count > UINSTR_MAX_BYTES;
+  take := ifx trunc then uinstr_cut(text, UINSTR_MAX_BYTES) else text.count;
+  n := uinstr_put(out, 0, lead);
+  n = uinstr_put(out, n, UINSTR_HEADER);
+  n = uinstr_put(out, n, text[0..<take]);
+  if trunc { n = uinstr_put(out, n, UINSTR_TRUNC_NOTE); }
+  else if take > 0 && text[take - 1] != '\n' { n = uinstr_put(out, n, "\n"); }
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// The block for the file at path ("" for this process's file, uinstr_path), into out.
+uinstr_load :: (path: string, lead: string, out: [] u8) -> string {
+  pb: [FS_PATH_MAX] u8;
+  p := ifx path.count > 0 then path else uinstr_path(pb[..]);
+  tb: [UINSTR_MAX_BYTES + 1] u8;
+  return uinstr_block(lead, uinstr_read(p, tb[..]), out);
+}
+
+// The folders above path, made when missing (the file's own folder last).
+uinstr_mkdirs :: (path: string) -> bool {
+  dir := fs_dir(path);
+  if dir.count == 0 || dir == "." { return true; }
+  for i: 1..<dir.count + 1 {
+    if i == dir.count || dir[i] == '/' {
+      part := dir[0..<i];
+      if fs_kind(part) == FS_NONE { _ := fs_mkdir(part); }
+    }
+  }
+  return fs_kind(dir) == FS_DIR;
+}
+
+// Writes text as the whole file, at once (a new file beside it, renamed over it).
+uinstr_write :: (path: string, text: string) -> bool {
+  if path.count == 0 || !uinstr_mkdirs(path) { return false; }
+  return fs_replace_durable(path, text);
+}
+
+// First run: UINSTR_DEFAULT into the file when there is none. A file that exists, whatever it
+// holds, is never replaced. True when the file is there afterwards.
+uinstr_seed :: (path: string) -> bool {
+  if path.count == 0 { return false; }
+  k := fs_kind(path);
+  if k == FS_FILE { return true; }
+  if k != FS_NONE { return false; }
+  return uinstr_write(path, UINSTR_DEFAULT);
+}
+
+// Reset to default: the file holds UINSTR_DEFAULT again.
+uinstr_reset :: (path: string) -> bool { return uinstr_write(path, UINSTR_DEFAULT); }
+
+// Which of UINSTR_MISSING, UINSTR_STOCK (the default as it is), UINSTR_EDITED, UINSTR_EMPTY or
+// UINSTR_LARGE (more than an agent is told) the file is, for Settings' row.
+uinstr_state_of :: (exists: bool, raw: string, size: int) -> int {
+  if !exists { return UINSTR_MISSING; }
+  if size > UINSTR_MAX_BYTES { return UINSTR_LARGE; }
+  if uinstr_blank(raw) { return UINSTR_EMPTY; }
+  return ifx raw == UINSTR_DEFAULT then UINSTR_STOCK else UINSTR_EDITED;
+}
+uinstr_state :: (path: string) -> int {
+  k := fs_kind(path);
+  if k != FS_FILE { return UINSTR_MISSING; }
+  size := fs_size(path);
+  tb: [UINSTR_MAX_BYTES] u8;
+  n := ifx size > UINSTR_MAX_BYTES then 0 else fs_read_at(path, 0, tb[..]);
+  return uinstr_state_of(true, ifx n > 0 then cast(string) tb[0..<n] else "", size);
+}
+// The words Settings shows for a state.
+uinstr_state_words :: (state: int) -> string {
+  if state == UINSTR_STOCK { return "Default"; }
+  if state == UINSTR_EDITED { return "Edited"; }
+  if state == UINSTR_EMPTY { return "Off (empty)"; }
+  if state == UINSTR_LARGE { return "Edited (over 4 KB)"; }
+  return "Default";
+}
+
+#test "the file is under HOME, or where the override says" {
+  b: [256] u8;
+  #assert uinstr_path_for("/Users/me", "", b[..]) == "/Users/me/.openagents/instructions.md";
+  #assert uinstr_path_for("/Users/me//", "", b[..]) == "/Users/me/.openagents/instructions.md";
+  #assert uinstr_path_for("/", "", b[..]) == "/.openagents/instructions.md";
+  #assert uinstr_path_for("/Users/me", "/tmp/x.md", b[..]) == "/tmp/x.md";
+  #assert uinstr_path_for("", "", b[..]) == "";
+  small: [8] u8;
+  #assert uinstr_path_for("/Users/me", "", small[..]) == "";
+}
+
+#test "no file means the default; a blank file means nothing; else the file" {
+  #assert uinstr_text_of(false, "") == UINSTR_DEFAULT;
+  #assert uinstr_text_of(true, " \n\t\r\n") == "";
+  #assert uinstr_text_of(true, "Always rebase.") == "Always rebase.";
+  #assert uinstr_text_of(true, "") == "";
+}
+
+#test "the default asks for commit and push in a git repository" {
+  #assert uinstr_find(UINSTR_DEFAULT, "git repository") >= 0;
+  #assert uinstr_find(UINSTR_DEFAULT, "commit it") >= 0;
+  #assert uinstr_find(UINSTR_DEFAULT, "push the commit") >= 0;
+  #assert uinstr_find(UINSTR_DEFAULT, "Never force-push") >= 0;
+  #assert UINSTR_DEFAULT.count < UINSTR_MAX_BYTES;
+}
+
+#test "the block has its own header, ends with a line end and is cut at a character's edge" {
+  b: [UINSTR_BLOCK_BYTES] u8;
+  #assert uinstr_block("\n\n", "", b[..]) == "";
+  #assert uinstr_block("\n\n", "  \n", b[..]) == "";
+  got := uinstr_block("\n\n", "Push.", b[..]);
+  #assert got.count == 2 + UINSTR_HEADER.count + 6 && cast(string) got[0..<2] == "\n\n" && cast(string) got[2..<2 + UINSTR_HEADER.count] == UINSTR_HEADER && cast(string) got[got.count - 6..<got.count] == "Push.\n";
+  got2 := uinstr_block("", "Push.\n", b[..]);
+  #assert got2.count == UINSTR_HEADER.count + 6 && cast(string) got2[0..<UINSTR_HEADER.count] == UINSTR_HEADER;
+  big: [UINSTR_MAX_BYTES + 10] u8;
+  for i: 0..<big.count { big[i] = 'a'; }
+  big[UINSTR_MAX_BYTES - 1] = 0xE2; big[UINSTR_MAX_BYTES] = 0x80; big[UINSTR_MAX_BYTES + 1] = 0x94;   // an em dash across the edge
+  cut := uinstr_block("", cast(string) big[..], b[..]);
+  #assert cut.count == UINSTR_HEADER.count + UINSTR_MAX_BYTES - 1 + UINSTR_TRUNC_NOTE.count;
+  #assert cast(string) cut[cut.count - UINSTR_TRUNC_NOTE.count..<cut.count] == UINSTR_TRUNC_NOTE;
+  #assert UINSTR_HEADER.count + UINSTR_MAX_BYTES + UINSTR_TRUNC_NOTE.count + 2 <= UINSTR_BLOCK_BYTES;
+  tiny: [16] u8;
+  #assert uinstr_block("", "Push.", tiny[..]) == "";
+}
+
+#test "Settings names the file's state" {
+  #assert uinstr_state_of(false, "", -1) == UINSTR_MISSING;
+  #assert uinstr_state_of(true, UINSTR_DEFAULT, UINSTR_DEFAULT.count) == UINSTR_STOCK;
+  #assert uinstr_state_of(true, "Mine.", 5) == UINSTR_EDITED;
+  #assert uinstr_state_of(true, "\n", 1) == UINSTR_EMPTY;
+  #assert uinstr_state_of(true, "", UINSTR_MAX_BYTES + 1) == UINSTR_LARGE;
+  #assert uinstr_state_words(UINSTR_STOCK) == "Default" && uinstr_state_words(UINSTR_EDITED) == "Edited";
+  #assert uinstr_state_words(UINSTR_EMPTY) == "Off (empty)" && uinstr_state_words(UINSTR_MISSING) == "Default";
+  #assert uinstr_state_words(UINSTR_LARGE) == "Edited (over 4 KB)";
+}
