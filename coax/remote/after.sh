@@ -821,7 +821,8 @@ mutants_report() {   # head base dir status...: the report (markdown); status 1 
 # finish; P a part the hosts could not finish, FILE and SUITE "part I/N"). Each report first
 # rechecks the earlier heads' items, each scoped to its item: its suite's mutants again at this
 # head from the parent of the first commit after the item's base that changed the item's file
-# (check.sh mutate-only SUITE BASE), one job a suite, at most OA_AFTER_MUTATE_RECHECK (6) suites;
+# (check.sh mutate-only SUITE BASE [FILE]: only FILE's mutants when the suite's items are all in
+# one file), one job a suite, at most OA_AFTER_MUTATE_RECHECK (6) suites;
 # what that finds in other files is not an item. And up to OA_AFTER_MUTATE_PART_RECHECK (6) parts
 # the hosts could not finish, again at this head (check.sh mutate-range). A part that ran out of
 # time is never run again as it is: it becomes two parts of half its suites (mutants_split), and
@@ -925,15 +926,18 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
       s = ($1 == "S") ? pick[$2] : $6; a = (($1 == "S") ? $2 : $6) "\t" $7 "\t" $8
       if (!(s in best)) { if (m < max) { o[++m] = s; best[s] = rb[a]; bct[s] = ct[a] } }
       else if (ct[a] < bct[s]) { best[s] = rb[a]; bct[s] = ct[a] }
+      f = ($1 == "S") ? $2 : $6; if (!((s "\t" f) in fs)) { fs[s "\t" f] = 1; nf[s]++; one[s] = f }
       next }
     # each row with the base and the suite of its recheck (columns 9 and 10, "-": not rechecked now)
     { s = ($1 == "S") ? pick[$2] : $6
       print $1, $2, $3, $4, $5, $6, $7, $8, ((due() && (s in best)) ? best[s] OFS s : "-" OFS "-") > ann }
-    END { for (i = 1; i <= m; i++) printf "%s\t%s\n", best[o[i]], o[i] }' "$dir/rebased.tsv" "$dir/o1.tsv" "$dir/o2.tsv" "$dir/o3.tsv" > "$dir/plan.tsv"
+    # and the one file to mutate (coax mutate --unit) when every item of the suite is in one file
+    END { for (i = 1; i <= m; i++) printf "%s\t%s\t%s\n", best[o[i]], o[i], (nf[o[i]] == 1 ? one[o[i]] : "-") }' "$dir/rebased.tsv" "$dir/o1.tsv" "$dir/o2.tsv" "$dir/o3.tsv" > "$dir/plan.tsv"
   [[ -f "$dir/annotated.tsv" ]] || : > "$dir/annotated.tsv"
   [[ -f "$dir/plan.tsv" ]] || : > "$dir/plan.tsv"
-  while IFS=$'\t' read -r b list <&3; do
-    k=$((k + 1)); check "$head" "$dir/recheck-$k" mutate-only "$list" "$b" < /dev/null & pids+=($!)
+  while IFS=$'\t' read -r b list f <&3; do
+    k=$((k + 1)); f="${f/#-/}"
+    check "$head" "$dir/recheck-$k" mutate-only "$list" "$b" ${f:+"$f"} < /dev/null & pids+=($!)
   done 3< "$dir/plan.tsv"
   np=$k
   # And the oldest parts the hosts could not finish, at most OA_AFTER_MUTATE_PART_RECHECK (6) of them,
@@ -946,7 +950,7 @@ mutants_recheck() {   # head dir: recheck the earlier heads' items; the rows sti
   done 3< "$dir/parts.tsv"
   for i in ${pids[@]+"${pids[@]}"}; do wait "$i"; st+=($?); done
   i=0
-  while IFS=$'\t' read -r b list <&3; do
+  while IFS=$'\t' read -r b list _ <&3; do
     i=$((i + 1)); rd="$dir/recheck-$i"; rlog="$rd/build/pipeline/mutate-only.log"
     # Judged: the hosts finished it, the suite ran to its end, and the tool finished the suite.
     if [[ "${st[$((i - 1))]}" != 97 ]] && grep -q '^suites: ' "$rlog" 2> /dev/null; then

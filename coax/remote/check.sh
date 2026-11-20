@@ -17,10 +17,10 @@
 #                                         the I-th of N parts of the mutants of what changed
 #                                         since BASE in those suites (after.sh's mutation
 #                                         job: a report, never a verdict)
-#   coax/remote/check.sh mutate-only PATH,PATH BASE
+#   coax/remote/check.sh mutate-only PATH,PATH BASE [UNIT]
 #                                         those suites' mutants of what changed since BASE,
 #                                         alone (the mutation report's recheck of what it
-#                                         still lists, #13610)
+#                                         still lists, #13610); with UNIT, that file's only
 #   coax/remote/check.sh mutate-range BASE TOP I/N
 #                                         the I-th of N parts of the mutants of what changed
 #                                         since BASE in the suites BASE..TOP touched, with this
@@ -740,8 +740,8 @@ case "$mode" in
     if grep -qvE '(\.md$|^docs/)' "$out/changed"; then suites --since "$arg" --mutate-changed "$arg" --mutate-only --part "$part" || status=1
     else echo "== suites: skipped, the change is only documents" >> "$log"; fi ;;
   mutate-only)
-    [[ -n "$arg" && -n "${also[0]:-}" ]] || { echo "check.sh: mutate-only PATH,PATH BASE" >&2; exit 2; }
-    suites --only "$arg" --mutate-changed "${also[0]}" --mutate-only || status=1 ;;
+    [[ -n "$arg" && -n "${also[0]:-}" ]] || { echo "check.sh: mutate-only PATH,PATH BASE [UNIT]" >&2; exit 2; }
+    suites --only "$arg" --mutate-changed "${also[0]}" --mutate-only ${also[1]:+--mutate-unit "${also[1]}"} || status=1 ;;
   mutate-range)
     # The mutation report's recheck of a part the hosts could not finish (#13610): the part's own
     # suites (those BASE..TOP touched), run with this commit's compiler and tools, not TOP's.

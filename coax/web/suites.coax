@@ -24,6 +24,8 @@
 //                                              # unit (a file the suite reaches only through `#load "x-checks.coax" #test;`,
 //                                              # whose procedures only checks reach, su_check_units) is counted, one line a
 //                                              # file ("check-only: PATH: N mutant(s) ..."), not listed (#13610)
+//   coax/web/tool.sh suites --mutate-changed REF --mutate-unit PATH  # only PATH's mutants (coax mutate --unit; not with
+//                                              # a --root-only suite): the mutation report's recheck of one file (#13610)
 //   coax test coax/web/suites.coax --library   # its own checks
 //
 // The convention. A suite is a .coax file under apps/openagents-web/,

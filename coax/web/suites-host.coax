@@ -11,6 +11,10 @@ tool_main :: () -> int #export_c #effects(all) {
   mutate_ref := args_value(a[..], "--mutate-changed", "");
   mutate_only := args_has(a[..], "--mutate-only");
   if mutate_only && mutate_ref.count == 0 { tool_errln("suites: --mutate-only needs --mutate-changed REF"); return 2; }
+  // --mutate-unit PATH: the mutants of that one file only (coax mutate --unit), for the mutation
+  // report's recheck of a survivor's file (#13610); every check still runs.
+  mutate_unit := args_value(a[..], "--mutate-unit", "");
+  if mutate_unit.count > 0 && mutate_ref.count == 0 { tool_errln("suites: --mutate-unit needs --mutate-changed REF"); return 2; }
   list_only := args_has(a[..], "--list");
   jobs := SU_JOBS;
   if args_has(a[..], "--jobs") { j := args_number(args_value(a[..], "--jobs", "")); if !j.ok || j.value < 1 { tool_errln("suites: --jobs N"); return 2; } jobs = cast(int) j.value; }
@@ -392,6 +396,7 @@ tool_main :: () -> int #export_c #effects(all) {
           if s.traversal.count > 0 { ok = ok && proc_arg(h, "--traversal") && proc_arg(h, s.traversal); }
           if s.library { ok = ok && proc_arg(h, "--library"); }
           if s.root_only { ok = ok && proc_arg(h, "--root-only"); }
+          else if mutate_unit.count > 0 { ub: [1024] u8; ok = ok && proc_arg(h, "--unit") && proc_arg(h, fs_join(root, mutate_unit, ub[..])); }
         } else {
           h = proc_new();
           ok = h >= 0 && proc_cwd(h, dir) && proc_arg(h, coax) && proc_arg(h, "test") && proc_arg(h, su_base(s.path));

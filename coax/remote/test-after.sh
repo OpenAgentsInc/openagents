@@ -40,7 +40,8 @@
 #  23. a part that runs out of time is not run again as it is: it becomes two parts of half its
 #      suites (I/N as I/2N and (I+N)/2N), again when one of those runs out, and they clear
 #  24. a recheck is scoped to its item: the item's suite from the parent of the first commit that
-#      changed the item's file, and what it finds in another file is not an item; the fixed item clears
+#      changed the item's file, mutating only that file (check.sh mutate-only SUITE BASE FILE), and
+#      what it finds in another file is not an item; the fixed item clears
 #  25. a procedure's survivors several suites reported are rechecked once and clear in all of them
 # And the service watch (#13379):
 #  13. a production crash alert's bucket gets one GitHub issue: none while GitHub can't be asked,
@@ -107,7 +108,7 @@ case "$1" in
   suites|only) has full-break && fail "$1" "suite lib/a.coax" ;;
   mutate-since|mutate-only|mutate-range)
     log="$dir/build/pipeline/$1.log"; : > "$log"; mb="$2"; pt="${3:-}"
-    if [[ "$1" == mutate-only ]]; then mb="$3"; echo "$commit $2 $3" >> "$OA_TEST_W/onlys"
+    if [[ "$1" == mutate-only ]]; then mb="$3"; echo "$commit $2 $3${4:+ $4}" >> "$OA_TEST_W/onlys"
     else
       [[ "$1" != mutate-range ]] || { pt="${4:-}"; echo "$commit $2 $3 $pt" >> "$OA_TEST_W/ranges"; }
       has mutate-host-down && [[ "$pt" == 2/* && ! -e "$OA_TEST_W/hosts-back" ]] && { echo "remote: oa-x slot 1: the command ran past its time"; exit 97; }
@@ -429,9 +430,9 @@ echo 'twentyseven :: 27;' >> "$w/repo/lib/a.coax"; push agent-a "before the surv
 printf 'bee :: (x: int) -> int {\n  y := x - 1;\n  return y * 5;\n}\n' > "$w/repo/lib/b.coax"; touch "$w/repo/mutant-survives"; push agent-mut "survivors to recheck"; c24="$(g rev-parse HEAD)"; s="$(run15)"
 outstanding S lib/b.coax '^bee$' && issue_is OPEN && ok "24: survivors in lib/b.coax are outstanding" || { bad "24: no survivors"; cat "$w/pl/releases/after/mutants-outstanding.tsv"; }
 rm -f "$w/repo/mutant-survives"; touch "$w/repo/mutant-elsewhere"; echo 'cee :: 3;' > "$w/repo/lib/c.coax"; push agent-mut "the checks kill them; c.coax changes"; c24b="$(g rev-parse HEAD)"; : > "$w/onlys"; s="$(run15)"
-issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qxF "$c24b lib/a.coax $c24a" "$w/onlys" && [[ "$(wc -l < "$w/onlys" | tr -d ' ')" == 1 ]] &&
+issue_is CLOSED && [[ "$(out_n)" == 0 ]] && grep -qxF "$c24b lib/a.coax $c24a lib/b.coax" "$w/onlys" && [[ "$(wc -l < "$w/onlys" | tr -d ' ')" == 1 ]] &&
   awk -F'\t' '$2 == "lib/b.coax"' "$w/pl/releases/after/$c24b/mutants/cleared.tsv" | grep -q . && ! grep -q "c.coax" "$w/pl/releases/after/$c24b/mutants/comment.md" &&
-  ok "24: the recheck runs the item's suite from the parent of the commit that changed its file, clears the killed item and adds nothing from c.coax" || { bad "24: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/onlys" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c24b/mutants/comment.md" 2> /dev/null; echo "want $c24b lib/a.coax $c24a"; }
+  ok "24: the recheck runs the item's suite from the parent of the commit that changed its file, clears the killed item and adds nothing from c.coax" || { bad "24: state $(cat "$w/gh15-state"), $(out_n) outstanding"; cat "$w/onlys" "$w/pl/releases/after/mutants-outstanding.tsv" "$w/pl/releases/after/$c24b/mutants/comment.md" 2> /dev/null; echo "want $c24b lib/a.coax $c24a lib/b.coax"; }
 rm -f "$w/repo/mutant-elsewhere"
 # 25: a procedure's survivors reported by several suites are rechecked once, in the suite of the
 # newest report, and clear in all of them
@@ -439,7 +440,7 @@ printf 'bee :: (x: int) -> int {\n  y := x - 2;\n  return y * 6;\n}\n' > "$w/rep
 o25="$w/pl/releases/after/mutants-outstanding.tsv"
 awk -F'\t' -v OFS='\t' -v old="$c24b" '$1 == "S" { $6 = "lib/z.coax"; $8 = old; print }' "$o25" > "$w/z.tsv"; cat "$w/z.tsv" >> "$o25"
 rm -f "$w/repo/mutant-survives"; echo 'twentyeight :: 28;' >> "$w/repo/lib/a.coax"; push agent-mut "killed everywhere"; : > "$w/onlys"; s="$(run15)"
-[[ -s "$w/z.tsv" && "$(out_n)" == 0 ]] && issue_is CLOSED && [[ "$(cat "$w/onlys")" == "$(g rev-parse HEAD) lib/a.coax $c24b" ]] &&
+[[ -s "$w/z.tsv" && "$(out_n)" == 0 ]] && issue_is CLOSED && [[ "$(cat "$w/onlys")" == "$(g rev-parse HEAD) lib/a.coax $c24b lib/b.coax" ]] &&
   ok "25: survivors two suites reported are rechecked once, in the newest report's suite, and clear in both" || { bad "25: $(out_n) outstanding"; cat "$w/onlys" "$o25"; }
 
 (( fails == 0 )) && echo "test-after: every case passed" || echo "test-after: $fails case(s) failed"

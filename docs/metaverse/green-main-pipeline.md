@@ -624,6 +624,13 @@ item, so a fixed item clears and the recheck doesn't keep adding items:
   the item's file (a survivor's file, else the suite). So the recheck mutates
   what changed in that file and as little else as it can. A suite with
   several items runs once, from the oldest of their bases.
+- When every item of the suite is in one file, the recheck mutates only that
+  file (`check.sh mutate-only SUITE BASE FILE`, which passes `--unit FILE` to
+  `coax mutate`). A big suite since an old base otherwise mutates every
+  procedure changed since then: `coax/native/starter/app.coax` since
+  a506f14382 had 968 mutants and 443 survivors in other files, and a suite
+  lists only 39, so the frames survivors could not be seen. With the unit it
+  is 89 mutants, all killed.
 - What the recheck finds in other files is not an item: those changes were in
   the reports that covered them. New survivors in the item's own file are
   items (the report lists at most 39 a suite).
