@@ -463,6 +463,259 @@ coder_page_agent_task :: (s: [] CoderPage, j: int, session: string, cwd: string,
   }
   return mww_task(out, t);
 }
+// Whether a shell command that succeeded changed a file (for the sub-agent CP_QUIET counter).
+cp_str_has :: (s: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if s.count < needle.count { return false; }
+  for i: 0..<(s.count - needle.count + 1) {
+    if cast(string) s[i..<(i + needle.count)] == needle { return true; }
+  }
+  return false;
+}
+cp_str_starts :: (s: string, head: string) -> bool {
+  return s.count >= head.count && cast(string) s[0..<head.count] == head;
+}
+cp_cmd_base :: (s: string) -> string {
+  i := s.count;
+  while i > 0 && s[i - 1] != '/' { i -= 1; }
+  return cast(string) s[i..<s.count];
+}
+cp_cmd_unquote :: (s: string) -> string {
+  if s.count >= 2 && (s[0] == '"' || s[0] == '\'') && s[s.count - 1] == s[0] {
+    return cast(string) s[1..<(s.count - 1)];
+  }
+  return s;
+}
+cp_cmd_assign :: (s: string) -> bool {
+  if s.count < 2 || s[0] == '=' { return false; }
+  for i: 0..<s.count {
+    c := s[i];
+    if c == '=' { return i > 0; }
+    if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; }
+  }
+  return false;
+}
+cp_py_writes :: (code: string) -> bool {
+  if cp_str_has(code, "write_text(") || cp_str_has(code, "write_bytes(") ||
+     cp_str_has(code, ".write(") || cp_str_has(code, "writelines(") ||
+     cp_str_has(code, "shutil.copy") || cp_str_has(code, "shutil.move") || cp_str_has(code, "shutil.rmtree") ||
+     cp_str_has(code, "os.replace(") || cp_str_has(code, "os.rename(") ||
+     cp_str_has(code, "os.remove(") || cp_str_has(code, "os.unlink(") ||
+     cp_str_has(code, "os.mkdir(") || cp_str_has(code, "os.makedirs(") ||
+     cp_str_has(code, ".unlink(") || cp_str_has(code, ".replace(") ||
+     cp_str_has(code, ".rename(") || cp_str_has(code, ".mkdir(") ||
+     cp_str_has(code, ".truncate(") || cp_str_has(code, "inplace=True") { return true; }
+  if cp_str_has(code, "open(") && (
+     cp_str_has(code, "'w'") || cp_str_has(code, "\"w\"") || cp_str_has(code, "'wb'") || cp_str_has(code, "\"wb\"") ||
+     cp_str_has(code, "'a'") || cp_str_has(code, "\"a\"") || cp_str_has(code, "'ab'") || cp_str_has(code, "\"ab\"") ||
+     cp_str_has(code, "'r+'") || cp_str_has(code, "\"r+\"") || cp_str_has(code, "'w+'") || cp_str_has(code, "\"w+\"") ||
+     cp_str_has(code, "'x'") || cp_str_has(code, "\"x\"") || cp_str_has(code, "mode='w") || cp_str_has(code, "mode=\"w") ||
+     cp_str_has(code, "mode='a") || cp_str_has(code, "mode=\"a")) { return true; }
+  return false;
+}
+cp_script_writes :: (code: string) -> bool {
+  return cp_str_has(code, "writeFile") || cp_str_has(code, "appendFile") ||
+         cp_str_has(code, "renameSync") || cp_str_has(code, "unlinkSync") ||
+         cp_str_has(code, "mkdirSync") || cp_str_has(code, "copyFile") ||
+         cp_str_has(code, "File.write") || cp_str_has(code, "File.open");
+}
+// Checks one simple command (words wa[0..<nw]..wb[0..<nw] in cmd).
+cp_simple_edits_file :: (cmd: string, wa: [] int, wb: [] int, nw: int) -> bool {
+  i := 0;
+  while i < nw {
+    w := cp_cmd_unquote(cast(string) cmd[wa[i]..<wb[i]]);
+    if cp_cmd_assign(w) || w == "env" || w == "time" || w == "nice" || w == "nohup" || w == "command" || w == "sudo" { i += 1; continue; }
+    if w == "timeout" { i += 2; continue; }
+    if cp_cmd_base(w) == "remote.sh" {
+      k := i + 1;
+      while k < nw && cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]) != "--" { k += 1; }
+      i = k + 1; continue;
+    }
+    break;
+  }
+  if i >= nw { return false; }
+  prog := cp_cmd_base(cp_cmd_unquote(cast(string) cmd[wa[i]..<wb[i]]));
+  if prog == "tee" || prog == "cp" || prog == "mv" || prog == "rm" || prog == "mkdir" ||
+     prog == "touch" || prog == "install" || prog == "ln" || prog == "patch" ||
+     prog == "truncate" || prog == "dd" || prog == "chmod" || prog == "chown" || prog == "rsync" {
+    return true;
+  }
+  if prog == "sed" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-i" || a == "--in-place" || cp_str_starts(a, "-i") || cp_str_starts(a, "--in-place=") { return true; }
+    }
+    return false;
+  }
+  if prog == "awk" || prog == "gawk" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-i" && k + 1 < nw && cp_cmd_unquote(cast(string) cmd[wa[k + 1]..<wb[k + 1]]) == "inplace" { return true; }
+    }
+    return false;
+  }
+  if prog == "perl" || prog == "ruby" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-i" || cp_str_starts(a, "-i") || a == "-pi" || cp_str_starts(a, "-pi") || a == "-pni" { return true; }
+    }
+    return cp_script_writes(cmd);
+  }
+  if cp_str_starts(prog, "python") {
+    if cp_py_writes(cmd) { return true; }
+    return false;
+  }
+  if prog == "node" || prog == "bun" || prog == "deno" {
+    return cp_script_writes(cmd);
+  }
+  if prog == "git" {
+    k := i + 1;
+    while k < nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-C" || a == "-c" { k += 2; continue; }
+      if cp_str_starts(a, "-") { k += 1; continue; }
+      break;
+    }
+    if k >= nw { return false; }
+    sub := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+    if sub == "apply" || sub == "checkout" || sub == "restore" || sub == "cherry-pick" ||
+       sub == "revert" || sub == "merge" || sub == "rebase" || sub == "reset" ||
+       sub == "rm" || sub == "mv" || sub == "am" || sub == "clean" || sub == "switch" {
+      return true;
+    }
+    return false;
+  }
+  if prog == "gofmt" || prog == "prettier" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-w" || a == "--write" { return true; }
+    }
+    return false;
+  }
+  if prog == "clang-format" || prog == "swift-format" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "-i" || a == "--in-place" { return true; }
+    }
+    return false;
+  }
+  if prog == "rustfmt" || prog == "black" { return true; }
+  if prog == "ruff" || prog == "eslint" {
+    for k: (i + 1)..<nw {
+      a := cp_cmd_unquote(cast(string) cmd[wa[k]..<wb[k]]);
+      if a == "format" || a == "--fix" { return true; }
+    }
+    return false;
+  }
+  return false;
+}
+cp_cmd_edits_file :: (cmd: string) -> bool {
+  n := cmd.count;
+  i := 0;
+  wa: [32] int; wb: [32] int; nw := 0;
+  hd_a := 0; hd_b := 0;
+  while i <= n {
+    // skip spaces and tabs
+    while i < n && (cmd[i] == ' ' || cmd[i] == '\t') { i += 1; }
+    // end of simple command?
+    if i == n || cmd[i] == ';' || cmd[i] == '\n' || cmd[i] == '|' || cmd[i] == '&' {
+      if nw > 0 && cp_simple_edits_file(cmd, wa[..], wb[..], nw) { return true; }
+      nw = 0;
+      if i == n { break; }
+      if cmd[i] == '\n' && hd_b > hd_a {
+        delim := cast(string) cmd[hd_a..<hd_b];
+        hd_a = 0; hd_b = 0;
+        i += 1;
+        while i < n {
+          la := i;
+          while i < n && cmd[i] != '\n' { i += 1; }
+          lb := i;
+          while la < lb && (cmd[la] == '\t' || cmd[la] == ' ') { la += 1; }
+          while lb > la && cmd[lb - 1] == '\r' { lb -= 1; }
+          if i < n { i += 1; }
+          if cast(string) cmd[la..<lb] == delim { break; }
+        }
+        continue;
+      }
+      if (cmd[i] == '|' || cmd[i] == '&') && i + 1 < n && cmd[i + 1] == cmd[i] { i += 2; } else { i += 1; }
+      continue;
+    }
+    // heredoc (<<DELIM or <<-DELIM): remember delimiter to skip body after newline
+    if cmd[i] == '<' && i + 1 < n && cmd[i + 1] == '<' && !(i + 2 < n && cmd[i + 2] == '<') {
+      i += 2;
+      if i < n && cmd[i] == '-' { i += 1; }
+      while i < n && (cmd[i] == ' ' || cmd[i] == '\t') { i += 1; }
+      da := i;
+      while i < n && cmd[i] != ' ' && cmd[i] != '\t' && cmd[i] != ';' && cmd[i] != '\n' && cmd[i] != '|' && cmd[i] != '&' && cmd[i] != '>' {
+        if cmd[i] == '\'' || cmd[i] == '"' {
+          q := cmd[i]; i += 1;
+          while i < n && cmd[i] != q { i += 1; }
+          if i < n { i += 1; }
+        } else {
+          i += 1;
+        }
+      }
+      db := i;
+      if db - da >= 2 && (cmd[da] == '\'' || cmd[da] == '"') && cmd[db - 1] == cmd[da] { da += 1; db -= 1; }
+      if db > da && hd_b == hd_a { hd_a = da; hd_b = db; }
+      continue;
+    }
+    // output redirection (> or >>) outside quotes, ignoring fd dups (>&) and /dev/null
+    is_redir := false;
+    rj := i;
+    if cmd[rj] >= '0' && cmd[rj] <= '9' && rj + 1 < n && cmd[rj + 1] == '>' { rj += 1; }
+    if cmd[rj] == '>' { is_redir = true; }
+    if is_redir {
+      rj += 1;
+      if rj < n && cmd[rj] == '>' { rj += 1; }
+      if rj < n && cmd[rj] == '&' {
+        // fd dup like 2>&1, skip token
+        rj += 1;
+        while rj < n && cmd[rj] != ' ' && cmd[rj] != '\t' && cmd[rj] != ';' && cmd[rj] != '\n' && cmd[rj] != '|' && cmd[rj] != '&' { rj += 1; }
+        i = rj;
+        continue;
+      }
+      while rj < n && (cmd[rj] == ' ' || cmd[rj] == '\t') { rj += 1; }
+      ta := rj;
+      while rj < n && cmd[rj] != ' ' && cmd[rj] != '\t' && cmd[rj] != ';' && cmd[rj] != '\n' && cmd[rj] != '|' && cmd[rj] != '&' {
+        if cmd[rj] == '\'' || cmd[rj] == '"' {
+          q := cmd[rj]; rj += 1;
+          while rj < n && cmd[rj] != q {
+            if q == '"' && cmd[rj] == '\\' && rj + 1 < n { rj += 2; continue; }
+            rj += 1;
+          }
+          if rj < n { rj += 1; }
+        } else {
+          rj += 1;
+        }
+      }
+      target := cp_cmd_unquote(cast(string) cmd[ta..<rj]);
+      if target.count > 0 && target != "/dev/null" { return true; }
+      i = rj;
+      continue;
+    }
+    // read one word
+    start := i;
+    while i < n && cmd[i] != ' ' && cmd[i] != '\t' && cmd[i] != ';' && cmd[i] != '\n' && cmd[i] != '|' && cmd[i] != '&' && cmd[i] != '>' {
+      if cmd[i] == '\'' || cmd[i] == '"' {
+        q := cmd[i]; i += 1;
+        while i < n && cmd[i] != q {
+          if q == '"' && cmd[i] == '\\' && i + 1 < n { i += 2; continue; }
+          i += 1;
+        }
+        if i < n { i += 1; }
+      } else if cmd[i] == '\\' && i + 1 < n {
+        i += 2;
+      } else {
+        i += 1;
+      }
+    }
+    if i > start && nw < 32 {
+      wa[nw] = start; wb[nw] = i; nw += 1;
+    }
+  }
+  return false;
+}
 // One line from sub-agent j's worker. Returns its kind (MWW_*).
 coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -498,7 +751,9 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   } else if kind == MWW_COMMAND {
     failed := l[0].timed_out.value || l[0].exit.value != 0;
     // an edit, or a command the worker ran before the first call, was not asked about
-    if !cp_call_done(s, i, j, l[0].command, l[0].output, failed) && !claude && !s[0].turns[i].agents[j].now_running {
+    if cp_call_done(s, i, j, l[0].command, l[0].output, failed) {
+      if !claude && !failed && cp_cmd_edits_file(l[0].command) { s[0].turns[i].agents[j].quiet = 0; }
+    } else if !claude && !s[0].turns[i].agents[j].now_running {
       s[0].turns[i].agents[j].quiet = ifx failed then s[0].turns[i].agents[j].quiet + 1 else 0;   // an edit that took changed a file
       s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].calls += 1;
       _ = cp_call_add(s, i, j, l[0].command, l[0].output, false, failed, false);

@@ -579,3 +579,48 @@
   #assert s[0].agent_n == 17 && cp_agent_reply(s, 0, 1) == "second" && cp_agent_reply(s, 0, 0) == "first again";
   #assert s[0].turns[0].agents[1].reply_at == 0 && s[0].turns[0].agents[0].reply_at == 6;
 }
+
+#test "a sub-agent editing files via Python or shell commands resets the 100-tool-call quiet counter; read-only or failed commands do not" {
+  // direct unit checks on cp_cmd_edits_file
+  #assert cp_cmd_edits_file("python3 -c \"from pathlib import Path; Path('/tmp/oa-agent-todos/a.txt').write_text('ok')\"");
+  #assert cp_cmd_edits_file("python3 - <<'PY'\nwith open('/tmp/oa-agent-todos/a.txt', 'w') as f:\n  f.write('ok')\nPY");
+  #assert cp_cmd_edits_file("cd /tmp/oa-agent-todos && python3 -c \"open('a.txt', 'a').write('x')\"");
+  #assert cp_cmd_edits_file("sed -i '' 's/foo/bar/g' /tmp/oa-agent-todos/a.txt");
+  #assert cp_cmd_edits_file("echo hello > /tmp/oa-agent-todos/a.txt");
+  #assert cp_cmd_edits_file("cat <<'EOF' > /tmp/oa-agent-todos/a.txt\nhello\nEOF");
+  #assert cp_cmd_edits_file("printf 'x' | tee /tmp/oa-agent-todos/a.txt");
+  #assert cp_cmd_edits_file("git -C /tmp/oa-agent-todos apply patch.diff");
+  #assert cp_cmd_edits_file("cp a.txt b.txt");
+  // read-only commands must not reset the counter
+  #assert !cp_cmd_edits_file("ls -la");
+  #assert !cp_cmd_edits_file("ls 2>/dev/null");
+  #assert !cp_cmd_edits_file("git status >/dev/null 2>&1");
+  #assert !cp_cmd_edits_file("python3 -c \"print(open('a.txt').read())\"");
+  #assert !cp_cmd_edits_file("python3 - <<'PY'\nx = 2\nif x > 1:\n  print('ok')\nPY");
+  #assert !cp_cmd_edits_file("python3 -m pytest tests/");
+  #assert !cp_cmd_edits_file("sed -n '1,10p' a.txt");
+  #assert !cp_cmd_edits_file("git diff");
+
+  // end-to-end sub-agent quiet counter behavior
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "edit") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"update files\"}],\"ticket\":1}") == MWW_DELEGATE;
+  out: [4096] u8;
+  s[0].turns[0].agents[0].quiet = 50;
+  // a read-only Python command increments quiet and does not reset it
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"python3 -c 'print(1)'\",\"ticket\":1}") == MWW_ASK && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"python3 -c 'print(1)'\",\"exit\":0,\"timed_out\":false,\"output\":\"1\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 51;
+  // a failed Python file-editing command does not reset quiet
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"python3 -c 'open(p, \\\"w\\\").write(x)'\",\"ticket\":2}") == MWW_ASK && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"python3 -c 'open(p, \\\"w\\\").write(x)'\",\"exit\":1,\"timed_out\":false,\"output\":\"NameError\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 52;
+  // a successful Python file-editing command resets quiet to 0
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"python3 -c 'from pathlib import Path; Path(\\\"/tmp/oa-agent-todos/a.txt\\\").write_text(\\\"ok\\\")'\",\"ticket\":3}") == MWW_ASK && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"python3 -c 'from pathlib import Path; Path(\\\"/tmp/oa-agent-todos/a.txt\\\").write_text(\\\"ok\\\")'\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 0;
+  // a successful shell redirection command resets quiet to 0
+  s[0].turns[0].agents[0].quiet = CP_QUIET - 1;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"echo hi > /tmp/oa-agent-todos/b.txt\",\"ticket\":4}") == MWW_ASK && coder_page_agent_answer_line(s, 0, out[..]) > 0;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"echo hi > /tmp/oa-agent-todos/b.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"\"}") == MWW_COMMAND && s[0].turns[0].agents[0].quiet == 0;
+  // subsequent ask is not paused because quiet was reset
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"ls\",\"ticket\":5}") == MWW_ASK && !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].quiet == 1;
+}
