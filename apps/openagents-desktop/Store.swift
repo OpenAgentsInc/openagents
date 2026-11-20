@@ -41,13 +41,21 @@ final class CoderStore {
         reload()
     }
 
+    /// Every store call, in every window, one at a time: two saves at once shared index.json's
+    /// temp file, so a read met a half-written index and a save wrote back one chat (the list wiped).
+    private static let lock = NSRecursiveLock()
+    private func core<R>(_ body: (coax_string) -> R) -> R {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        return DesktopCore.withCoaxString(dirPath, body)
+    }
+
     private func reload() {
-        let json = DesktopCore.withCoaxString(dirPath) { d in
+        let json = core { d in
             DesktopCore.callString(512 * 1024) { out in oa_dc_store_index_read(d, out) }
         }
         guard !json.isEmpty, let data = json.data(using: .utf8),
               let kept = try? JSONDecoder().decode([CoderChat].self, from: data) else {
-            list = []
+            NSLog("Coder: the chat list could not be read; keeping the %d chats shown", list.count)
             return
         }
         list = kept.enumerated().sorted { a, b in
@@ -64,7 +72,8 @@ final class CoderStore {
     }
 
     private func saveIndex() {
-        if let data = try? JSONEncoder().encode(list) {
+        Self.lock.lock(); defer { Self.lock.unlock() }
+        if !list.isEmpty, let data = try? JSONEncoder().encode(list) {
             try? data.write(to: dir.appendingPathComponent("index.json"), options: .atomic)
         }
     }
@@ -76,7 +85,7 @@ final class CoderStore {
 
     func text(_ id: String) -> String? {
         var buf = [UInt8](repeating: 0, count: 4 * 1024 * 1024)
-        let n: Int64 = DesktopCore.withCoaxString(dirPath) { d in
+        let n: Int64 = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 DesktopCore.withMutableBytes(&buf) { out in
                     oa_dc_store_text(d, cid, out)
@@ -94,7 +103,7 @@ final class CoderStore {
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
 
     func togglePin(_ id: String) {
-        _ = DesktopCore.withCoaxString(dirPath) { d in
+        _ = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 oa_dc_store_toggle_pin(d, cid)
             }
@@ -116,7 +125,7 @@ final class CoderStore {
     }
 
     func rename(_ id: String, to title: String) {
-        _ = DesktopCore.withCoaxString(dirPath) { d in
+        _ = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 DesktopCore.withCoaxString(title) { t in
                     oa_dc_store_rename(d, cid, t)
@@ -127,7 +136,7 @@ final class CoderStore {
     }
 
     func remove(_ id: String) {
-        _ = DesktopCore.withCoaxString(dirPath) { d in
+        _ = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 oa_dc_store_remove(d, cid)
             }
@@ -140,7 +149,7 @@ final class CoderStore {
         let wtBranch = (worktree?.chat == id ? worktree?.branch : nil) ?? ""
         let repo = (worktree?.chat == id ? worktree?.source : nil) ?? ""
         let managed = managedBy ?? ""
-        _ = DesktopCore.withCoaxString(dirPath) { d in
+        _ = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 DesktopCore.withCoaxString(title) { t in
                     DesktopCore.withCoaxString(folder) { f in
@@ -166,7 +175,7 @@ final class CoderStore {
 
     func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {
         let managed = managedBy ?? ""
-        _ = DesktopCore.withCoaxString(dirPath) { d in
+        _ = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 DesktopCore.withCoaxString(title) { t in
                     DesktopCore.withCoaxString(folder) { f in
