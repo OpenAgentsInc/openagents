@@ -301,3 +301,14 @@ VIEW_PT_PAGE :: "{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"
  m2:=v[0].items[1];m2.ni=el_copy(m2.id[..],"u1");m2.nr=el_copy(m2.role[..],"user");m2.text_at=ea_text_put(v,"hi");m2.nt=2;m2.complete=true;v[0].items[1]=m2;v[0].ni=2;
  view_pt_conversation(p[..],c[..]);#assert app_test_find(t,"dev.u1.more")<0;
 }
+
+#test "a computer's running turn names the engine the computer reports, never a hard-coded Claude Code" {
+ lane:[1]DeviceLane;e:=lane[0].e[..];e[0].ns=el_copy(e[0].session[..],"s");v:=e[0].view[..];v[0].ns=1;v[0].sessions[0].ni=el_copy(v[0].sessions[0].id[..],"s");
+ #assert view_device_engine(e)=="";
+ v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"gemini-4-neon");#assert view_device_engine(e)=="gemini-4-neon";
+ o:=e[0].offer[..];o[0].n=1;o[0].models[0].ni=el_copy(o[0].models[0].id[..],"gemini-4-neon");o[0].models[0].nl=el_copy(o[0].models[0].label[..],"Gemini 4 Neon");
+ #assert view_device_engine(e)=="Gemini 4 Neon";
+ v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"antigravity");#assert view_device_engine(e)=="Antigravity";
+ v[0].sessions[0].nmo=el_copy(v[0].sessions[0].model[..],"claude-opus-5-5");#assert view_device_engine(e)=="Claude Code";
+ #assert view_device_engine(e[0..<0])=="";
+}

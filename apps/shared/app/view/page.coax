@@ -141,6 +141,19 @@ view_parse :: (v: [] ChatView, source: string) -> int {
 view_engine :: (engine: string) -> string {
   return ifx engine == "codex" then "Codex" else ifx engine == "claude" || engine == "claude_code" || engine == "claude-code" then "Claude Code" else engine;
 }
+// What a computer's chat runs on, as the computer reports it: the offered model's label for the
+// conversation's model (Gemini 4 Neon, Antigravity, a Claude model), else the engine its model id
+// names; "" when the computer said nothing. Never a name the computer did not give (a phone's chat
+// runs on whatever agent that computer has, coax/lib/agent/environment/phone-agent-policy.coax).
+view_device_engine :: (e: [] EnvironmentApp) -> string {
+  if e.count != 1 { return ""; }
+  c := eu_current(e); if c < 0 { return ""; }
+  ss := e[0].view[0].sessions[c]; id := cast(string) e[0].view[0].sessions[c].model[0..<ss.nmo];
+  if id.count == 0 { return ""; }
+  o := e[0].offer[..];
+  for i: 0..<o[0].n { m := o[0].models[i]; if cast(string) o[0].models[i].id[0..<m.ni] == id && m.nl > 0 { return cast(string) o[0].models[i].label[0..<m.nl]; } }
+  return ifx id == "antigravity" then "Antigravity" else ifx id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") then "Claude Code" else id;
+}
 view_app_task :: (d: [] DurableChat, f: ViewFacts) -> AppTask {
   n := d[0].native[..]; st := n[0].status[0]; b := n[0].b[0];
   t: AppTask;
@@ -388,7 +401,7 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
   else if r.kind == VK_DEVICE_TOOL && v[0].dev.count == 1 {if r.group_count>1 {h=view_group_row(f,v,d,facts,r,id,x,y,w,open);}else {h = app_tool(f, id, x, y, w, view_device_app_tool(v[0].dev, r.index), open, VIEW_A_TOOL);} gap = s.app.gap_small; }
   else if r.kind == VK_DEVICE_PERMISSION { h = app_permission(f, id, x, y, w, view_device_permission(facts), VIEW_A_ALLOW, VIEW_A_DENY); gap = s.app.gap; }
   else if r.kind == VK_DEVICE_STATE {
-    t := AppTask.{computer = v[0].dev_name, engine = "Claude Code", state = APP_TASK_RUNNING, stopping = facts.stop == VIEW_STOP_ASKED || facts.stop == VIEW_STOP_SEEN};
+    t := AppTask.{computer = v[0].dev_name, engine = view_device_engine(v[0].dev), state = APP_TASK_RUNNING, stopping = facts.stop == VIEW_STOP_ASKED || facts.stop == VIEW_STOP_SEEN};
     h = app_task_state(f, id, x, y, w, t); gap = s.app.gap;
   }
   else if r.kind == VK_NOTICE {
