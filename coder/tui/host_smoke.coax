@@ -250,10 +250,12 @@ tool_main :: () -> int #export_c #effects(all) {
   sob: [8192] u8; son := fs_read(sout, sob[..]);
   sm_check(s, son > 0 && sm_has(cast(string) sob[0..<son], "\"interrupted\":true"), "the engine was interrupted, not left running");
   // The phone's view of a Coder session on this computer (GitHub #13713), sent as the phone sends
-  // it (coder host rpc and daemon-rpc over the relay with the paired key): the folders a session
+  // it (coder host rpc and daemon-rpc over the relay with the paired key): the projects a session
   // may open in, one opened in a folder, its thinking, its running sub-agent call with when it
   // began and its calls counted, the sub-agent's own transcript, Foreman, and the end of the turn.
   apps_b:[1300]u8;apps_dir:=sm_in_tmp(s,"execution-workspace/apps",apps_b[..]);ok=fs_mkdir(apps_dir);
+  // the folders are the projects Coder's chats work in (chats/index.json, bc5d4bce66): one chat in apps
+  ix:[4096]u8;sm_coder_chats(s,"index.json",sm_chat_index(apps_dir,ix[..]));
   rq_b:[1200]u8;rq_file:=sm_in_tmp(s,"environment-request.json",rq_b[..]);er:[1]EaRequest;
   sm_ea(er[..],"DescribeEnvironment","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
   has_apps:=false;for i:0..<(ifx rp_count(rp,"folders")>0 then rp_count(rp,"folders") else 0) {fb3:[64]u8;pb3:[24]u8;pn3:=sm_cat(pb3[..],0,"folders.");ib3:[8]u8;pn3=sm_cat(pb3[..],pn3,sm_itoa(i,ib3[..]));if rp_s(rp,cast(string)pb3[0..<pn3],fb3[..])=="apps" {has_apps=true;}}
