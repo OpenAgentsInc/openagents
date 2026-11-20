@@ -54,6 +54,10 @@
 #load "host-daemon.coax";
 #load "host-runs.coax";
 #load "host-desktop.coax";
+#load "../../coax/lib/agent/environment/phone-agent-policy.coax";
+#load "../../coax/lib/agent/desktop/paths.coax";        // dc_join, dc_cat: ph_worker_path
+#load "../../coax/lib/agent/desktop/os-windows.coax";   // dc_list_has: ph_worker_path
+#load "host-phone.coax";
 
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
 #load "../../coax/lib/sys/clock.coax";
@@ -476,6 +480,7 @@ HsHost :: struct {
   started_at: int;
   environment:[1]EsHost;providers:[1]PaManager;station:[1]StCache;offers:[1]XoHost;
   runs:[1]DrHost;   // Coder Desktop's worker runs (host-runs.coax)
+  phone:[1]PhHost;  // what this computer runs for a phone's chat (host-phone.coax)
 }
 hs_relay_of :: (h: [] HsHost) -> string { return cast(string) h[0].relay[0..<h[0].nrelay]; }
 hs_seen :: (h: [] HsHost, id: string) -> bool {

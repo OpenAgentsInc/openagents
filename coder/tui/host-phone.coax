@@ -1,0 +1,271 @@
+// A chat a paired phone starts runs on an agent this computer can run (owner, 2026-11-20): the
+// model the phone picked when this computer runs it, else its working default, never an engine
+// whose CLI is missing (the rule is coax/lib/agent/environment/phone-agent-policy.coax). Before,
+// every phone chat ran on the host's own Claude engine (host-environment.coax's slot), so on a
+// Mac without Claude Code the only reply was the "install it" line.
+//
+// Claude Code keeps the slot it always had. Microcoder on Gemini and Antigravity run as the
+// workers Coder Desktop runs (mcworker, agyworker), as daemon runs (host-runs.coax) that this
+// host starts itself: the run's id is the phone's session id, and its task lines name the
+// session "phone-ID". host-desktop.coax reads and writes such a run as it does a Coder Desktop
+// chat, under the phone's own id (no "desktop-" in front), so the phone keeps the session it
+// opened:
+//   ID.phone   {"generation":G,"engine":"micro"|"antigravity"}: written when the phone opens it
+//   ID.in      the worker's task lines (one per message), steers and stops
+// A follow-up while the worker runs is a task line; after the worker ended (Coder Desktop's sweep
+// stops an idle run no chat of its own holds, a daemon restart loses it) the run starts again
+// under the same id with the conversation's turns recalled, so a phone chat never goes read-only.
+// The worker's asks are answered by the daemon, as for any run no Coder watches.
+
+PH_FACTS_MS :: 60000;          // what this computer runs is asked again after a minute
+PH_SESSION :: "phone-";
+// where Claude Code's installer and package managers put it (the Claude engine's probe looks there too)
+PH_CLAUDE_PLACES :: [4] string.["/.local/bin/claude", "/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"];
+PH_RECALL_TURNS :: 6;          // earlier turns a restarted worker is told (mcworker keeps as many)
+PH_RECALL_TEXT :: 8000;        // bytes of each
+
+PhHost :: struct { facts: PaFacts; at: int; known: bool; }
+
+// ---------------------------------------------------------------- what this computer runs
+
+// name on PATH (as the daemon's PATH has it), or at one of the home-relative or absolute places.
+ph_on_path :: (name: string) -> bool {
+  pb: [8192] u8; path := proc_getenv("PATH", pb[..]); at := 0;
+  while at < path.count {
+    e := at; while e < path.count && path[e] != ':' { e += 1; }
+    if e > at { fb: [4200] u8; n := hs_cat(fb[..], 0, cast(string) path[at..<e]); n = hs_cat(fb[..], n, "/"); n = hs_cat(fb[..], n, name); if fs_kind(cast(string) fb[0..<n]) == FS_FILE { return true; } }
+    at = e + 1;
+  }
+  return false;
+}
+// The person's own home, never $CODER_HOME (which moves only the host's files): where CLIs are installed.
+ph_home :: (out: [] u8) -> string { return proc_getenv("HOME", out); }
+ph_claude_found :: () -> bool {
+  if ph_on_path("claude") { return true; }
+  hb: [1024] u8; home := ph_home(hb[..]);
+  for p, i: PH_CLAUDE_PLACES {
+    if i < 2 && home.count == 0 { continue; }
+    b: [1400] u8; n := ifx i < 2 then hs_cat(b[..], 0, home) else 0; n = hs_cat(b[..], n, p);
+    if fs_kind(cast(string) b[0..<n]) == FS_FILE { return true; }
+  }
+  return false;
+}
+ph_agy_found :: () -> bool {
+  b: [1024] u8; set := proc_getenv("CODER_AGY_BIN", b[..]);
+  if set.count > 0 { return fs_kind(set) == FS_FILE; }
+  if ph_on_path("agy") { return true; }
+  hb: [1024] u8; home := ph_home(hb[..]); if home.count == 0 { return false; }
+  p: [1400] u8; n := hs_cat(p[..], 0, home); n = hs_cat(p[..], n, "/.local/bin/agy");
+  return fs_kind(cast(string) p[0..<n]) == FS_FILE;
+}
+// A bundled worker beside this program (the app's Resources), or in $CODER_WORKER_DIR: its path, "" when absent.
+ph_worker :: (name: string, out: [] u8) -> string {
+  db: [1024] u8; dir := proc_getenv("CODER_WORKER_DIR", db[..]);
+  exe: [4096] u8;
+  if dir.count == 0 { n := cxproc_self_path(exe[..]); if n < 1 || n > exe.count { return ""; } dir = fs_dir(cast(string) exe[0..<n]); }
+  p := fs_join(dir, name, out);
+  return ifx dr_program_ok(p) && fs_kind(p) == FS_FILE then p else "";
+}
+// Whether Microcoder has a Gemini sign-in here: `mcworker --auth` says vertex or key (as Coder Desktop asks).
+ph_gemini_ready :: () -> bool {
+  wb: [1400] u8; mc := ph_worker("mcworker", wb[..]); if mc.count == 0 { return false; }
+  argv := [2] string.[mc, "--auth"]; out: [1024] u8; err: [1024] u8;
+  r := proc_run(argv[..], 10000, out[..], err[..]);
+  line := cast(string) out[0..<r.out_n];
+  return r.started == 0 && !r.timed_out && (hs_prefix(line, "vertex\t") || hs_prefix(line, "key\t"));
+}
+ph_facts :: (h: [] HsHost) -> PaFacts {
+  p := h[0].phone[..]; now := cxproc_now_ms();
+  if p[0].known && now - p[0].at < PH_FACTS_MS && now >= p[0].at { return p[0].facts; }
+  wb: [1400] u8;
+  f := PaFacts.{claude = ph_claude_found(), gemini = ph_gemini_ready(), agy = ph_agy_found() && ph_worker("agyworker", wb[..]).count > 0};
+  p[0].facts = f; p[0].at = now; p[0].known = true;
+  return f;
+}
+
+// ---------------------------------------------------------------- the offer
+
+// What a new conversation can start on: the engines this computer runs, its working default first
+// (Microcoder's models at low effort, as Coder Desktop runs them; Antigravity at its own; Claude
+// Code's catalog with its levels). The levels are Claude's list; each model's ladder picks from it.
+ph_offer :: (h: [] HsHost, v: [] EaView) {
+  es_offer(v);
+  claude := v[0].offer; o := EaOffer.{}; o.nv = claude.nv; o.default_level = claude.default_level; o.levels = claude.levels;
+  low := 0; for k: 0..<o.nv { if cast(string) o.levels[k].id[0..<o.levels[k].ni] == PA_MICRO_EFFORT { low = 1 << k; } }
+  engines: [3] int; n := pa_offer(ph_facts(h), engines[..]);
+  ids := PA_MICRO_ID; labels := PA_MICRO_LABEL;
+  for i: 0..<n {
+    e := engines[i];
+    if e == PA_MICRO { for k: 0..<PA_MICRO_MODELS { if o.n >= EA_MODELS { break; } m := EaModel.{}; m.ni = ea_copy(m.id[..], ids[k]); m.nl = ea_copy(m.label[..], labels[k]); m.ladder = low; o.models[o.n] = m; o.n += 1; } }
+    if e == PA_AGY && o.n < EA_MODELS { m := EaModel.{}; m.ni = ea_copy(m.id[..], PA_AGY_ID); m.nl = ea_copy(m.label[..], PA_AGY_LABEL); o.models[o.n] = m; o.n += 1; }
+    if e == PA_CLAUDE { for k: 0..<claude.n { if o.n >= EA_MODELS { break; } o.models[o.n] = claude.models[k]; o.n += 1; } }
+  }
+  v[0].offer = o;
+}
+
+// ---------------------------------------------------------------- the phone's runs
+
+ph_file :: (id: string, out: [] u8) -> string { return dr_file(id, ".phone", out); }
+// The session id names a run this host started for a phone.
+ph_is :: (id: string) -> bool { p: [1400] u8; return ea_id(id, 32) && fs_exists(ph_file(id, p[..])); }
+// The run's generation as the phone was told it when it opened it (it stays across restarts), -1 when none.
+ph_generation :: (id: string) -> int {
+  p: [1400] u8; b: [256] u8; n := fs_read(ph_file(id, p[..]), b[..]);
+  if n < 1 { return -1; }
+  return cl_int(cast(string) b[0..<n], "generation").value;
+}
+ph_engine :: (id: string) -> int {
+  p: [1400] u8; b: [256] u8; n := fs_read(ph_file(id, p[..]), b[..]);
+  if n < 1 { return PA_NONE; }
+  ar_b: [256] u8; ar := [1] ClArena.[ClArena.{buf = ar_b[..]}];
+  e := cl_str(ar[..], cast(string) b[0..<n], "engine");
+  return ifx e == "micro" then PA_MICRO else ifx e == PA_AGY_ID then PA_AGY else PA_NONE;
+}
+// The task line of a phone's message: Coder Desktop's settings for a chat of its own (host-api.coax
+// cp_task_message), with no sub-agents (a run this host starts has no owner to run them).
+ph_task :: (text: string, id: string, cwd: string, engine: int, model: string, out: [] u8) -> int {
+  sb: [64] u8; sn := hs_cat(sb[..], 0, PH_SESSION); sn = hs_cat(sb[..], sn, id);
+  t := McTask.{task = text, session = cast(string) sb[0..<sn], cwd = cwd, sandbox = "danger-full-access", ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true,
+               model = ifx engine == PA_MICRO then model else "", effort = ifx engine == PA_MICRO then PA_MICRO_EFFORT else ""};
+  return mww_task(out, t);
+}
+// What the worker starts with: the bundled program, the folder, and Coder Desktop's PATH for its
+// workers (coax/lib/agent/desktop/worker.coax), with no Claude key. "" when it was written, else why not.
+ph_spec :: (id: string, engine: int, cwd: string, skip: int) -> string {
+  wb: [1400] u8; program := ph_worker(ifx engine == PA_AGY then "agyworker" else "mcworker", wb[..]);
+  if program.count == 0 { return "invalid-program"; }
+  hb: [1024] u8; home := ph_home(hb[..]); had: [8192] u8; pb: [2 * DC_PATH] u8;
+  path := ph_worker_path(home, proc_getenv("PATH", had[..]), pb[..]);
+  eb: [9000] u8; en := hs_cat(eb[..], 0, "PATH="); en = hs_cat(eb[..], en, path);
+  b: [16384] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "program"); jo_str(o[..], program); jo_key(o[..], "cwd"); jo_str(o[..], cwd);
+  jo_key(o[..], "env"); jo_arr(o[..]); jo_str(o[..], cast(string) eb[0..<en]); jo_end(o[..]);
+  jo_key(o[..], "unset"); jo_arr(o[..]); jo_str(o[..], "CODER_CLAUDE_KEY"); jo_end(o[..]);
+  if skip > 0 { jo_key(o[..], "skip"); jo_int(o[..], skip); }
+  jo_end(o[..]);
+  sp: [1400] u8; return ifx dr_dir() && fs_write(dr_file(id, ".spec", sp[..]), jo_text(o[..])) then "" else "storage_unavailable";
+}
+
+// OpenSession on Microcoder or Antigravity: the run is the session. Its intent (file, the command's
+// bytes) is kept first, as for any command (es_dispatch), and the view says it was accepted.
+ph_open :: (h: [] HsHost, q: [] EaRequest, grant: string, id: string, pick: PaPick, cwd: string, file: string, command: string, v: [] EaView) {
+  if !dr_dir() { es_refuse(v, "storage_unavailable"); return; }
+  pp: [1400] u8; mb: [256] u8; mo: [1] Jo; jo_start(mo[..], mb[..]); jo_obj(mo[..]);
+  generation := cxproc_wall_us() / 1000;
+  jo_key(mo[..], "generation"); jo_int(mo[..], generation); jo_key(mo[..], "engine"); jo_str(mo[..], ifx pick.engine == PA_AGY then PA_AGY_ID else "micro"); jo_end(mo[..]);
+  line: [EX_INPUT_MAX + 8192] u8; ln := ph_task(cast(string) q[0].text[0..<q[0].nt], id, cwd, pick.engine, pick.model, line[..]);
+  if ln < 2 { es_refuse(v, "malformed"); return; }
+  ip: [1400] u8;
+  if !fs_replace_durable(file, command) || !fs_replace_durable(ph_file(id, pp[..]), jo_text(mo[..])) || !fs_write(dr_file(id, ".in", ip[..]), cast(string) line[0..<ln]) { es_refuse(v, "storage_unavailable"); return; }
+  why := ph_spec(id, pick.engine, cwd, 0);
+  if why.count == 0 { why = dr_start(h[0].runs[..], id); }
+  if why.count > 0 { es_refuse(v, ifx why == "run-limit" then "capacity" else "storage_unavailable"); return; }
+  v[0].ns = 0; dk_read_summary(h, id, v);
+  v[0].nq = ea_copy(v[0].command[..], cast(string) q[0].command[..]); v[0].nt = ea_copy(v[0].status[..], "accepted");
+}
+
+// The conversation's turns from the run's own lines, as the worker's recall line takes them
+// ([{"task":T,"reply":R}], the newest PH_RECALL_TURNS): its length in out, 0 for none.
+ph_recall :: (s: [] Session, out: [] u8) -> int {
+  users: [64] int; nu := 0;
+  for k: 0..<s[0].n { if s[0].parts[k].kind == P_USER && nu < users.count { users[nu] = k; nu += 1; } }
+  if nu == 0 { return 0; }
+  b: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + 64] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_arr(o[..]);
+  from := ifx nu > PH_RECALL_TURNS then nu - PH_RECALL_TURNS else 0;
+  for i: from..<nu {
+    k := users[i]; end := ifx i + 1 < nu then users[i + 1] else s[0].n;
+    reply := ""; for j: k + 1..<end { if s[0].parts[j].kind == P_TEXT { reply = s_text_of(s, j); } }
+    jo_obj(o[..]); jo_key(o[..], "task"); jo_str(o[..], hs_cut(s_text_of(s, k), PH_RECALL_TEXT)); jo_key(o[..], "reply"); jo_str(o[..], hs_cut(reply, PH_RECALL_TEXT)); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  return mww_recall(out, jo_text(o[..]));
+}
+
+// The lines a phone's SendMessage or StopTurn writes into its run: a steer while a turn runs, else
+// the message as a task line with the run's own settings (both workers take one; agyworker keeps no
+// queue). -1 when they don't fit.
+ph_lines :: (r: [] DkInfo, method: string, command: string, text: string, out: [] u8) -> int {
+  if method == "StopTurn" { return ifx r[0].busy then mww_interrupt(out, false) else 0; }
+  if r[0].busy { return mww_steer(out, command, text, 0); }
+  id := cast(string) r[0].id[..];
+  tb: [32768] u8; tn: [1] int; kb: [128] u8; kn: [1] int;
+  dk_last_task(id, tb[..], tn[..], kb[..], kn[..]);
+  defer { for i: 0..<tb.count { tb[i] = 0; } }
+  if tn[0] < 1 { return -1; }
+  ab: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; t: [1] McTask;
+  if !mww_task_read(ar[..], cast(string) tb[0..<tn[0]], t[..]) { return -1; }
+  t[0].task = text;
+  return mww_task(out, t[0]);
+}
+// A message to a phone's run whose worker ended: the worker starts again under the same id, told
+// the conversation so far, with only the new lines (the earlier input is kept, not sent again).
+ph_restart :: (h: [] HsHost, r: [] DkInfo, runs: [] DkInfo, n: int, command: string, text: string) -> string {
+  id := cast(string) r[0].id[..];
+  engine := ph_engine(id); if engine == PA_NONE { return "not_found"; }
+  // the engine it ran on is gone (agy removed, the Gemini sign-in lost): the chat goes on where it can
+  if !pa_usable(ph_facts(h), engine) {
+    pick := pa_pick(ph_facts(h), "");
+    if pick.engine != PA_MICRO && pick.engine != PA_AGY { return "no_agent"; }
+    engine = pick.engine;
+  }
+  ses: [1] Session; pool: [524288] u8; s_init(ses[..], pool[..]);
+  stamps: [S_PARTS] int; file: [DK_FILE] u8; ab: [DK_ARENA] u8; none: [1] DkSub;
+  _ = dk_session(r, runs, n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
+  lines: [PH_RECALL_TURNS * (2 * PH_RECALL_TEXT + 64) + EX_INPUT_MAX + 16384] u8;
+  at := ph_recall(ses[..], lines[..]); if at < 0 { return "malformed"; }
+  w := ph_lines(r, "SendMessage", command, text, lines[at..<lines.count]); if w < 1 { return "malformed"; }
+  // a recovered engine runs its own default model
+  if engine != ph_engine(id) {
+    ab2: [65536] u8; ar := [1] ClArena.[ClArena.{buf = ab2[..]}]; t: [1] McTask;
+    if !mww_task_read(ar[..], cast(string) lines[at..<at + w - 1], t[..]) { return "malformed"; }
+    ids := PA_MICRO_ID; t[0].model = ifx engine == PA_MICRO then ids[0] else ""; t[0].effort = ifx engine == PA_MICRO then PA_MICRO_EFFORT else "";
+    w = mww_task(lines[at..<lines.count], t[0]); if w < 1 { return "malformed"; }
+  }
+  ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); skip := fs_size(inp); if skip < 0 { return "storage_unavailable"; }
+  why := ph_spec(id, engine, cast(string) r[0].cwd[0..<r[0].ncwd], skip);
+  if why.count > 0 { return why; }
+  if !fs_append(inp, cast(string) lines[0..<at + w]) { return "storage_unavailable"; }
+  why = dr_start(h[0].runs[..], id);
+  return ifx why.count == 0 then "" else ifx why == "run-limit" then "capacity" else "storage_unavailable";
+}
+
+#test "a phone's recall carries its newest turns, each task with its last reply" {
+  s: [1] Session; pool: [65536] u8; s_init(s[..], pool[..]);
+  s_user(s[..], "first"); s_delta(s[..], P_TEXT, "one");
+  s_user(s[..], "second"); s_delta(s[..], P_TEXT, "two");
+  out: [65536] u8; n := ph_recall(s[..], out[..]);
+  #assert cast(string) out[0..<n] == "{\"recall\":[{\"task\":\"first\",\"reply\":\"one\"},{\"task\":\"second\",\"reply\":\"two\"}]}\n";
+  e: [1] Session; epool: [1024] u8; s_init(e[..], epool[..]); #assert ph_recall(e[..], out[..]) == 0;
+}
+#test "a phone's message is Coder Desktop's task line, its folder and model, with no sub-agents" {
+  out: [8192] u8; n := ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_MICRO, "gemini-4-neon", out[..]);
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; t: [1] McTask;
+  #assert n > 1 && out[n - 1] == 10 && mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]);
+  #assert t[0].task == "hi" && t[0].session == "phone-0123456789abcdef0123456789abcdef" && t[0].cwd == "/w/repo" && t[0].model == "gemini-4-neon" && t[0].effort == "low" && !t[0].agents && t[0].gated && t[0].no_ask;
+  n = ph_task("hi", "0123456789abcdef0123456789abcdef", "/w/repo", PA_AGY, "", out[..]);
+  ar[0].at = 0; #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], t[..]) && t[0].model == "" && t[0].effort == "";
+}
+
+// The PATH Coder Desktop gives the workers it starts (dc_worker_path in
+// coax/lib/agent/desktop/worker.coax, CoderWorker.path), which this host can't load beside
+// desktop-store: the folders a program opened from the desktop lacks put in front, each once.
+ph_worker_path :: (home: string, had: string, out: [] u8) -> string #effects(all) {
+  given := ifx had.count > 0 then had else "/usr/bin:/bin:/usr/sbin:/sbin";
+  more: [3] string; mb0: [DC_PATH] u8;
+  more[0] = dc_join(home, ".local/bin", mb0[..]); more[1] = "/opt/homebrew/bin"; more[2] = "/usr/local/bin";
+  n := 0;
+  for m: more {
+    if m.count == 0 || dc_list_has(given, m, ':') { continue; }
+    if n > 0 { n = dc_cat(out, n, ":"); }
+    n = dc_cat(out, n, m);
+  }
+  if n > 0 { n = dc_cat(out, n, ":"); }
+  n = dc_cat(out, n, given);
+  return dc_fits(out, n);
+}
+#test "a phone's worker gets Coder Desktop's PATH: the desktop's missing folders first, each once" {
+  b: [512] u8;
+  #assert ph_worker_path("/Users/a", "/usr/bin:/bin", b[..]) == "/Users/a/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  #assert ph_worker_path("/Users/a", "/opt/homebrew/bin:/usr/bin", b[..]) == "/Users/a/.local/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin";
+  #assert ph_worker_path("/Users/a", "", b[..]) == "/Users/a/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+}

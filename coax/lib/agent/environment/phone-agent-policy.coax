@@ -1,0 +1,139 @@
+// Which agent answers a chat that a paired phone starts on this computer, and what the phone is
+// offered to pick from (owner, 2026-11-20). The rule: the model the phone picked when this computer
+// can run it, else this computer's working default, and never an engine whose CLI is missing. A
+// phone chat never dead-ends on "install Claude Code" while another agent here works.
+//
+// The engines, in the order the computer falls back through (Coder Desktop's own order,
+// apps/openagents-desktop/page/models.coax cp_model_index: Microcoder on Gemini first, then
+// Antigravity), with Claude Code last, since Coder Desktop itself never runs a chat on it:
+//   PA_MICRO   Microcoder (mcworker) on Gemini: needs a Gemini sign-in (mcworker --auth)
+//   PA_AGY     the Antigravity CLI (agyworker): needs agy installed
+//   PA_CLAUDE  Claude Code, the host's own engine: needs the claude CLI
+// A model id names its engine: Microcoder's Gemini models (PA_MICRO_ID), "antigravity", and
+// "default" or "claude-*" (the Claude catalog's ids). Anything else names none: no preference.
+//
+// The phone's offer lists only the engines this computer can run, the default first, so a phone
+// that sends the offer's first model (the iOS app with its model picker hidden) asks for the
+// working default.
+//   coax/bin/coax test coax/lib/agent/environment/phone-agent-policy.coax
+#authority;
+
+PA_NONE :: -1; PA_CLAUDE :: 0; PA_MICRO :: 1; PA_AGY :: 2;
+PA_ORDER :: [3] int.[PA_MICRO, PA_AGY, PA_CLAUDE];
+// Microcoder's main models, Neon the default (the same list as Coder Desktop's composer picker,
+// apps/openagents-desktop/page/state.coax CP_MODEL_ID, which names these).
+PA_MICRO_MODELS :: 4;
+PA_MICRO_ID :: [PA_MICRO_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
+PA_MICRO_LABEL :: [PA_MICRO_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
+PA_AGY_ID :: "antigravity";
+PA_AGY_LABEL :: "Antigravity";
+// Coder Desktop runs Microcoder at low effort; the phone's offer gives its models that level only.
+PA_MICRO_EFFORT :: "low";
+
+// What this computer can run now.
+PaFacts :: struct { claude: bool; gemini: bool; agy: bool; }
+// A chat's agent: the engine, its model ("" for the engine's own default) and whether it is not
+// the one the phone asked for.
+PaPick :: struct { engine: int; model: string; fell_back: bool; }
+
+#test "a model id names its engine, and an unknown one names none" {
+  #assert pa_engine_of("gemini-4-neon") == PA_MICRO && pa_engine_of("gemini-4-argon") == PA_MICRO;
+  #assert pa_engine_of("antigravity") == PA_AGY;
+  #assert pa_engine_of("default") == PA_CLAUDE && pa_engine_of("claude-opus-5-5") == PA_CLAUDE && pa_engine_of("claude-") == PA_NONE && pa_engine_of("claude-x") == PA_CLAUDE;
+  #assert pa_engine_of("") == PA_NONE && pa_engine_of("gemini-4-xenon") == PA_NONE && pa_engine_of("gpt-5") == PA_NONE && pa_engine_of("Claude-opus") == PA_NONE;
+}
+#test "an engine is usable only when what it needs is here" {
+  none := PaFacts.{}; all := PaFacts.{claude = true, gemini = true, agy = true};
+  for e: [3] int.[PA_CLAUDE, PA_MICRO, PA_AGY] { #assert !pa_usable(none, e) && pa_usable(all, e); }
+  #assert pa_usable(PaFacts.{claude = true}, PA_CLAUDE) && !pa_usable(PaFacts.{claude = true}, PA_MICRO) && !pa_usable(PaFacts.{claude = true}, PA_AGY);
+  #assert pa_usable(PaFacts.{gemini = true}, PA_MICRO) && !pa_usable(PaFacts.{gemini = true}, PA_CLAUDE);
+  #assert pa_usable(PaFacts.{agy = true}, PA_AGY) && !pa_usable(PaFacts.{agy = true}, PA_MICRO);
+  #assert !pa_usable(all, PA_NONE) && !pa_usable(all, 3);
+}
+#test "the owner's Mac: Claude Code removed, Gemini and Antigravity working; the phone's Claude default runs on Gemini" {
+  mac := PaFacts.{claude = false, gemini = true, agy = true};
+  p := pa_pick(mac, "default");
+  #assert p.engine == PA_MICRO && p.model == "gemini-4-neon" && p.fell_back;
+  p = pa_pick(mac, "claude-opus-5-5"); #assert p.engine == PA_MICRO && p.fell_back;
+  // what the phone picked, when the Mac runs it
+  p = pa_pick(mac, "gemini-4-carbon"); #assert p.engine == PA_MICRO && p.model == "gemini-4-carbon" && !p.fell_back;
+  p = pa_pick(mac, "antigravity"); #assert p.engine == PA_AGY && p.model == "" && !p.fell_back;
+  // no preference: the working default, not a fallback
+  p = pa_pick(mac, ""); #assert p.engine == PA_MICRO && p.model == "gemini-4-neon" && !p.fell_back;
+  p = pa_pick(mac, "gpt-5"); #assert p.engine == PA_MICRO && !p.fell_back;
+}
+#test "a missing engine is never picked, whatever was asked" {
+  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 {
+    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1};
+    for want: [9] string.["", "default", "claude-opus-5-5", "gemini-4-neon", "gemini-4-hydrogen", "antigravity", "gpt-5", "gemini-4-xenon", "claude-"] {
+      p := pa_pick(f, want);
+      #assert (p.engine == PA_NONE) == (!f.claude && !f.gemini && !f.agy);
+      if p.engine != PA_NONE { #assert pa_usable(f, p.engine); }
+      w := pa_engine_of(want);
+      if w != PA_NONE && pa_usable(f, w) { #assert p.engine == w && !p.fell_back; }
+      if w != PA_NONE && !pa_usable(f, w) { #assert p.fell_back == (p.engine != PA_NONE); }
+      if w == PA_NONE { #assert !p.fell_back; }
+      if p.engine == PA_MICRO { #assert pa_engine_of(p.model) == PA_MICRO; }
+      if p.engine == PA_AGY { #assert p.model == ""; }
+      if p.engine == PA_CLAUDE { #assert pa_engine_of(p.model) == PA_CLAUDE; }
+    }
+  } } }
+}
+#test "the fallback order is Gemini, then Antigravity, then Claude Code" {
+  #assert pa_pick(PaFacts.{claude = true, gemini = true, agy = true}, "").engine == PA_MICRO;
+  #assert pa_pick(PaFacts.{claude = true, agy = true}, "").engine == PA_AGY;
+  #assert pa_pick(PaFacts.{claude = true}, "gemini-4-neon").engine == PA_CLAUDE && pa_pick(PaFacts.{claude = true}, "gemini-4-neon").model == "default";
+  #assert pa_pick(PaFacts.{agy = true}, "default").engine == PA_AGY && pa_pick(PaFacts.{agy = true}, "default").fell_back;
+  #assert pa_pick(PaFacts.{}, "default").engine == PA_NONE && !pa_pick(PaFacts.{}, "default").fell_back;
+  // Claude Code here and asked for: its own model
+  p := pa_pick(PaFacts.{claude = true, gemini = true}, "claude-opus-5-5"); #assert p.engine == PA_CLAUDE && p.model == "claude-opus-5-5" && !p.fell_back;
+}
+#test "the offer lists only the engines this computer runs, the working default first" {
+  o: [3] int;
+  #assert pa_offer(PaFacts.{claude = false, gemini = true, agy = true}, o[..]) == 2 && o[0] == PA_MICRO && o[1] == PA_AGY;
+  #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true}, o[..]) == 3 && o[0] == PA_MICRO && o[2] == PA_CLAUDE;
+  #assert pa_offer(PaFacts.{claude = true}, o[..]) == 1 && o[0] == PA_CLAUDE;
+  #assert pa_offer(PaFacts.{agy = true}, o[..]) == 1 && o[0] == PA_AGY;
+  #assert pa_offer(PaFacts.{}, o[..]) == 0;
+  small: [1] int; #assert pa_offer(PaFacts.{claude = true, gemini = true, agy = true}, small[..]) == 1 && small[0] == PA_MICRO;
+  // the first model offered is the one a phone with no choice of its own runs on, unchanged
+  for c: 0..<2 { for g: 0..<2 { for a: 0..<2 {
+    f := PaFacts.{claude = c == 1, gemini = g == 1, agy = a == 1};
+    n := pa_offer(f, o[..]);
+    if n > 0 { #assert o[0] == pa_pick(f, "").engine; for i: 0..<n { #assert pa_usable(f, o[i]); } }
+  } } }
+}
+
+pa_usable :: (f: PaFacts, engine: int) -> bool #effects(all) {
+  if engine == PA_CLAUDE { return f.claude; }
+  if engine == PA_MICRO { return f.gemini; }
+  if engine == PA_AGY { return f.agy; }
+  return false;
+}
+pa_micro_model :: (id: string) -> bool #effects(all) {
+  for m: PA_MICRO_ID { if id == m { return true; } }
+  return false;
+}
+pa_engine_of :: (id: string) -> int #effects(all) {
+  if pa_micro_model(id) { return PA_MICRO; }
+  if id == PA_AGY_ID { return PA_AGY; }
+  if id == "default" || (id.count > 7 && cast(string) id[0..<7] == "claude-") { return PA_CLAUDE; }
+  return PA_NONE;
+}
+pa_pick :: (f: PaFacts, want: string) -> PaPick #effects(all) {
+  asked := pa_engine_of(want);
+  engine := PA_NONE;
+  if asked != PA_NONE && pa_usable(f, asked) { engine = asked; }
+  else { for e: PA_ORDER { if pa_usable(f, e) { engine = e; break; } } }
+  ids := PA_MICRO_ID;
+  model := "";
+  if engine == PA_MICRO { model = ifx asked == PA_MICRO then want else ids[0]; }
+  if engine == PA_CLAUDE { model = ifx asked == PA_CLAUDE then want else "default"; }
+  return PaPick.{engine = engine, model = model, fell_back = asked != PA_NONE && engine != PA_NONE && engine != asked};
+}
+// The engines the phone is offered, in order, into out: how many.
+pa_offer :: (f: PaFacts, out: [] int) -> int #effects(all) {
+  n := 0;
+  for e: PA_ORDER { if n < out.count && pa_usable(f, e) { out[n] = e; n += 1; } }
+  return n;
+}

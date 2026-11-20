@@ -8,6 +8,7 @@
 //        {"recall":"..."}                                           conversation history / Edit-from-here rollback
 //        {"stop":true} / {"interrupt":true}                         stop current turn (session/cancel)
 //   out  {"kind":"ready"}
+//        {"kind":"turn","turn":N,"source":"message","id":"","text":""}   a task line's turn starts
 //        {"kind":"ask","command":"...","ticket":N}                  tool call started (no answer owed)
 //        {"kind":"command","command":"...","exit":0,"timed_out":false,"output":"..."}   tool call ended
 //        {"kind":"thought","text":"..."}                            agent thought chunk
@@ -67,6 +68,7 @@ AgywState :: struct {
   calls: [AGYW_OPEN] AgywCall;
   next_ticket: int;
   turn_active: bool;
+  turn: int;                              // the turns started, as the turn lines number them
   stopping: bool;
   respawned: bool;
   retried_sig: bool;
@@ -639,6 +641,8 @@ tool_main :: () -> int #export_c #effects(all) {
         }
       } else if rk == MWW_TASK {
         if req[0].task.count > 0 {
+          // the turn's start, as mcworker says it (source message: the owner's task line)
+          s[0].turn += 1; agyw_write_line(s, mww_turn(s[0].out[..], s[0].turn, "message", "", ""));
           s[0].turn_active = true;
           s[0].stopping = false;
           s[0].respawned = false;

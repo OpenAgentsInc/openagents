@@ -408,7 +408,7 @@ es_rpc_exchange :: (args:[]Args,method:string,raw:string,response:[]u8)->EsRpcRe
   return EsRpcResult.{n=-3};
 }
 es_snapshot :: (h:[]HsHost,q:[]EaRequest,grant:string,v:[]EaView) #effects(all) {
-  e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);es_offer(v);
+  e:=h[0].environment[..];v[0]=EaView.{};v[0].nh=ea_copy(v[0].host[..],cast(string)h[0].xhex[..]);ph_offer(h,v);
   c:=e[0].configuration[..];v[0].nl=ea_copy(v[0].label[..],cast(string)c[0].label[0..<c[0].nl]);v[0].nm=ea_copy(v[0].method[..],cast(string)q[0].method[0..<q[0].nm]);v[0].complete=true;
   for i:0..<ES_SLOTS {if e[0].slots[i].occupied && !e[0].slots[i].probing && !e[0].slots[i].execution[0].active && es_slot_matches(e,i,grant) {v[0].sessions[v[0].ns]=e[0].slots[i].summary;v[0].ns+=1;}}
   id:=cast(string)q[0].session[0..<q[0].ns];k:=es_find(e,id,grant);if k<0 || e[0].slots[k].execution[0].active {return;}
@@ -443,7 +443,9 @@ es_project_at :: (s:[]Session,stamps:[]int,q:[]EaRequest,v:[]EaView) #effects(al
     m.nr=ea_copy(m.role[..],ifx p.kind==P_USER then "user" else ifx p.kind==P_TOOL then "tool" else ifx p.kind==P_TEXT then "assistant" else ifx p.kind==P_THINK then EA_ROLE_THOUGHT else "notice");m.nk=ea_copy(m.tool[..],hs_cut(p.name,128));
     if p.kind==P_TOOL && !p.resolved && s[0].live && part<stamps.count && stamps[part]>0 {m.started=stamps[part];}
     if p.kind==P_TOOL && p.subcalls>0 {m.calls=p.subcalls;m.nn=ea_copy(m.now[..],hs_cut(p.subnow,160));if m.nn<0 {m.nn=0;}}
-    m.np=0;m.ndiff=0;m.diff_cut=false;
+    m.np=0;m.ndiff=0;m.diff_cut=false;m.nnk=0;
+    // a setup notice says its kind, so the phone draws it as one, never as the agent's reply
+    if p.kind==P_NOTICE {nk:=es_notice_kind(p.notice);if nk.count>0 {m.nnk=ea_copy(m.notice[..],nk);}}
     // an edit's or a write's file, and what it changed while the page has room (GitHub #13713)
     if p.kind==P_TOOL && (p.tk==TK_EDIT || p.tk==TK_WRITE) && p.arg.count>0 && p.arg.count<=512 {
       m.np=ea_copy(m.path[..],p.arg);
@@ -545,6 +547,19 @@ es_project_sub :: (s:[]Session,q:[]EaRequest,v:[]EaView) #effects(all) {
   q[0].nit=ea_copy(q[0].item[..],"1:0");q[0].before=99;v[0]=EaView.{};es_project_sub(s,q[..],v[..]);#assert v[0].ne>0;
 }
 
+// A notice part's kind on the wire (EA_NOTICE_*): a CLI missing here, signed out, its limit; "" for any other.
+es_notice_kind :: (n:int)->string #effects(all) {
+  if n==N_INSTALL || n==N_CODEX_INSTALL {return EA_NOTICE_INSTALL;}
+  if n==N_SIGNED_OUT {return EA_NOTICE_LOGIN;}
+  if n==N_LIMIT {return EA_NOTICE_LIMIT;}
+  return "";
+}
+#test "a Claude Code install line reaches the phone as an install notice, not a reply" {
+  s:[1]Session;pool:[8192]u8;s_init(s[..],pool[..]);s_user(s[..],"Testing, are you here?");s_notice(s[..],N_INSTALL,INSTALL_TEXT);
+  q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);
+  #assert v[0].ni==2 && cast(string)v[0].items[1].role[0..<v[0].items[1].nr]=="notice" && cast(string)v[0].items[1].notice[0..<v[0].items[1].nnk]=="install" && v[0].items[0].nnk==0;
+  #assert es_notice_kind(N_SIGNED_OUT)=="login" && es_notice_kind(N_LIMIT)=="limit" && es_notice_kind(N_CODEX_INSTALL)=="install" && es_notice_kind(N_STOPPED)=="" && es_notice_kind(N_ERROR)=="";
+}
 es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}
 // What a new conversation can start on: the engine's own catalog (the one a
 // fresh slot starts with), its unnamed CLI default named "default".
@@ -653,7 +668,8 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if cast(string)q[0].workspace[0..<q[0].nw]!="default" {es_refuse(v,"workspace_refused");return;}
   // Coder Desktop's chats, whose workers the daemon runs (host-desktop.coax, GitHub #13713)
   if method=="ListSessions" {if q[0].before==0 {dk_list(h,v);es_saved_list(h,grant,v);es_folders(h,v);}else {v[0].ns=0;}es_native_list(h,q,v);return;}
-  id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);
+  // a phone's chat on Microcoder or Antigravity is a run of its own (host-phone.coax)
+  id:=cast(string)q[0].session[0..<q[0].ns];if dk_is(id) || (ph_is(id) && method!="OpenSession") {dk_dispatch(h,q,grant,v);return;}k:=es_find(e,id,grant);
   if k>=0 && e[0].slots[k].execution[0].active {es_refuse(v,"unsupported_profile");return;}
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
   // a sub-agent's transcript is kept while its session is resident; a saved or terminal one has none
@@ -666,12 +682,23 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   path:[1400]u8;file:=es_path(cast(string)name[0..<name_n],path[..]);
   if fs_exists(file) {
     previous:[24576]u8;got:=fs_read(file,previous[..]);if got!=n || cast(string)previous[0..<ifx got>0 then got else 0]!=cast(string)command[0..<n] {es_refuse(v,"idempotency_conflict");return;}
-    v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],ifx k>=0 then "accepted" else "unknown");return;
+    if k<0 && ph_is(id) {v[0].ns=0;dk_read_summary(h,id,v);}
+    v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],ifx k>=0 || ph_is(id) then "accepted" else "unknown");return;
   }
   if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
   if method=="OpenSession" {
     if xt_claimed_session(grant,id) {es_refuse(v,"conflict");return;}
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
+    // the agent that answers: the phone's pick when this computer runs it, else its working default,
+    // never an engine whose CLI is missing (phone-agent-policy.coax)
+    pick:=pa_pick(ph_facts(h),cast(string)q[0].model[0..<q[0].nmo]);
+    if pick.engine==PA_NONE {es_refuse(v,"no_agent");return;}
+    if pick.engine!=PA_CLAUDE {
+      c:=e[0].configuration[..];real:[1024]u8;cwd:=cast(string)c[0].workspace[0..<c[0].nw];
+      if q[0].nf>0 {cwd=es_folder_path(cast(string)c[0].workspace[0..<c[0].nw],cast(string)q[0].folder[0..<q[0].nf],real[..]);if cwd.count==0 {es_refuse(v,"folder_refused");return;}}
+      ph_open(h,q,grant,id,pick,cwd,file,cast(string)command[0..<n],v);return;
+    }
+    if pick.fell_back {q[0].nmo=ea_copy(q[0].model[..],pick.model);q[0].nef=0;}
     k=es_take_slot(h);
     if k<0 {es_refuse(v,"capacity");return;}
     slot:=e[0].slots[k..<k+1];es_occupy(h,slot,grant,device);engine:=slot[0].engine[..];

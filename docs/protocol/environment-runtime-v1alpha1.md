@@ -224,3 +224,28 @@ never transmitted. The exact existing request is retained in protected storage
 before a mutation. Reopening exposes only its public metadata for an explicit
 same-command retry; a correlated but unknown receipt cannot release ownership.
 This internal ABI is not a change to any published Runtime or provider profile.
+
+## The agent a phone's new chat runs on (2026-11-20)
+
+A phone's `OpenSession` runs on an agent this computer can run, never on an
+engine whose CLI is missing (`coax/lib/agent/environment/phone-agent-policy.coax`,
+`coder/tui/host-phone.coax`). The offer lists only the engines the computer
+runs, its working default first: Microcoder's Gemini models when `mcworker
+--auth` finds a sign-in, `antigravity` when the Antigravity CLI is installed,
+then Claude Code's catalog when `claude` is installed. The request's `model`
+picks its engine when the computer runs it; otherwise the chat runs on the
+default in that order. With none of them the computer refuses `no_agent`.
+
+Claude Code chats keep the managed slot above. A Microcoder or Antigravity
+chat is a daemon run the host starts itself, whose run id is the phone's
+session id: the phone keeps the session it opened (no `desktop-` prefix), and
+it is read and written as a Coder Desktop chat is, with `"surface":
+"coder-desktop"`. `RUN.phone` keeps its generation and engine. A follow-up is
+a task line; after its worker ended the run starts again under the same id,
+told the conversation so far (the worker's `recall` line), so the chat stays
+`available`.
+
+A notice item may say its kind in `notice_kind` (`install`, `login`,
+`limit`), and readers draw it as a setup notice about the computer, never as
+the agent's reply. Older computers send none; readers still draw a `notice`
+item as a notice.

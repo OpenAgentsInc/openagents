@@ -5,7 +5,7 @@
 //
 // A run lives in ~/.openagents/coder/host/runs/ (mode 700) as files named by
 // its 32-hex id:
-//   ID.spec   what to start: {"program","cwd","env":["K=V"],"unset":["K"]}; Coder
+//   ID.spec   what to start: {"program","cwd","env":["K=V"],"unset":["K"][,"skip":N]}; Coder
 //             writes it (mode 600) and the daemon removes it once the worker runs
 //   ID.in     lines for the worker; Coder appends, the daemon forwards to stdin
 //   ID.out    the worker's mcworker-wire lines, each with its newline, as written
@@ -152,6 +152,10 @@ dr_start :: (d: [] DrHost, id: string) -> string {
   if un >= 0 && jv_kind(j[0], un) == JV_ARRAY {
     for k: 0..<jv_len(j[0], un) { e: [256] u8; en := jv_str(j[0], jv_at(j[0], un, k), e[..]); ok = ok && en > 0 && dr_push(h, 2, cast(string) e[0..<en]); }
   }
+  // skip: bytes of ID.in an earlier worker of the run already had (a phone's chat started again, host-phone.coax)
+  sk := jv_get(j[0], 0, "skip"); skip := ifx sk >= 0 then jv_int(j[0], sk, -1) else 0;
+  ip0: [1400] u8; have := fs_size(dr_file(id, ".in", ip0[..]));
+  if skip < 0 || (skip > 0 && skip > have) { _ = fs_remove(spec); r := cxproc_release(h); return "invalid-spec"; }
   cb: [1024] u8; cn := jv_str(j[0], jv_get(j[0], 0, "cwd"), cb[..]);
   if cn > 0 && fs_kind(cast(string) cb[0..<cn]) == FS_DIR { ok = ok && dr_push(h, 3, cast(string) cb[0..<cn]); }
   _ = fs_remove(spec);   // it may hold a key; the worker has what it needs once it runs
@@ -160,7 +164,7 @@ dr_start :: (d: [] DrHost, id: string) -> string {
   k := -1; for i: 0..<DR_MAX { if !d[0].runs[i].used { k = i; break; } }
   r := d[0].runs[k..<k + 1];
   r[0] = DrRun.{};
-  r[0].used = true; _ = hs_set(r[0].id[..], id); r[0].handle = h; r[0].pid = cxproc_pid(h); r[0].started = hs_now();
+  r[0].used = true; _ = hs_set(r[0].id[..], id); r[0].handle = h; r[0].pid = cxproc_pid(h); r[0].started = hs_now(); r[0].in_off = skip;
   // lines Coder wrote before the start are forwarded; the log starts empty
   op: [1400] u8; out := dr_file(id, ".out", op[..]); if !fs_exists(out) { _ = fs_write(out, ""); }
   ip: [1400] u8; inp := dr_file(id, ".in", ip[..]); if !fs_exists(inp) { _ = fs_write(inp, ""); }

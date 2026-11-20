@@ -129,6 +129,7 @@ eu_error :: (code:string)->string #effects(all) {
   if code=="stale_cursor" {return "History expired. Refresh.";}
   if code=="not_found" {return "Chat unavailable on this computer.";}
   if code=="model_unavailable" {return "Model/effort unavailable. Choose another.";}
+  if code=="no_agent" {return "No agent can run on this computer. Set one up on it first.";}
   return "Request failed. Refresh to check.";
 }
 eu_note :: (e:[]EnvironmentApp,text:string) #effects(all) {e[0].nn=ea_copy(e[0].note[..],text);}
