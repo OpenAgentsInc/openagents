@@ -691,10 +691,10 @@ invitations; it does not revoke grants already issued.
 ### Coder Desktop and the phone
 
 Coder Desktop serves this admission for the phone's own computers
-(`apps/coder-desktop/Tailnet.swift`, `apps/shared/native/AppTailnet.swift`,
+(`apps/openagents-desktop/Tailnet.swift`, `apps/shared/native/AppTailnet.swift`,
 GitHub #13778). Installing and running Coder is the operator's opt-in: it is
 on while Coder runs and Tailscale is up, and
-`defaults write com.openagents.coder tailnetPairing -bool false` turns it off.
+`defaults write com.openagents.desktop tailnetPairing -bool false` turns it off.
 Without Tailscale nothing listens and nothing is advertised.
 
 - The listener is bound to the Mac's own tailnet IPv4 address, port 47109,
