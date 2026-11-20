@@ -92,7 +92,7 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
   cy := top - s[0].scroll;
   if env {
     chosen := es_chosen(s); paired := es_chosen_paired(s);
-    cy += es_v_choice(f, "env.default", inside.x, cy, inside.w, "Default", ifx s[0].in then "We choose where each task runs" else "Log in to let us choose", chosen < 0 && paired < 0, s[0].in, check);
+    if !s[0].local { cy += es_v_choice(f, "env.default", inside.x, cy, inside.w, "Default", ifx s[0].in then "We choose where each task runs" else "Log in to let us choose", chosen < 0 && paired < 0, s[0].in, check); }
     b: [ES_EL_ID] u8;
     // the computers this phone is paired with: choosable with no account
     for i: 0..<s[0].paired[0].n {

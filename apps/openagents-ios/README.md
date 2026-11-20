@@ -2,9 +2,17 @@
 
 The iOS app uses the compiled chat page, the shared transcript over the
 composer (apps/shared/app/view/page.coax). The navigation button at the top left opens the sidebar,
-which pushes the page right; it holds New chat, Log in while logged out, and the account and Log out
-once logged in. Log in pushes a full login page with a Back button; a Send on Default while logged out
-opens the same page (a paired computer needs no account). The page is compiled Coax drawn
+which pushes the page right. It matches the desktop's sidebar
+(`apps/openagents-desktop/page/layout/sidebar.coax`): New chat and Search at the top, Pinned and
+Recents with every paired computer's chats together (each row names its computer when there are
+several), and the "Local" row with its gear (Settings) at the foot.
+
+**Experimental features** (Settings, off unless turned on, as on the desktop; UserDefaults
+`experimentalFeatures`) are log in and the account, Projects, Foreman and the Nostr keys. Off, the app
+has no login anywhere and no Default: the environment chip starts on the first paired computer, and a
+Send with no paired computer says to pair one instead of asking for a login. On, the sidebar adds
+Projects, Foreman and Log in or Log out, Log in pushes a full login page with a Back button, and a Send
+on Default while logged out opens the same page. The page is compiled Coax drawn
 by the shared GPU component kit in one Metal view. The app compiles nothing
 to JavaScript or WebAssembly, has no web view and no Updates path. The plan
 is in [components/gpu-components.md](../../components/gpu-components.md#the-ios-app-grown-screen-by-screen):
@@ -12,10 +20,6 @@ the app grows one screen at a time from this page.
 
 Bundle ID `com.openagents.app`, team `HQWSG26L43`, version 1.0.0.
 
-Settings → **Renderer** opens the shared GPU specimens: an RGBA image,
-a transformed group with isolated opacity, backdrop blur with a sharp button,
-and source blur. It is compiled Coax and Metal, with no WebView. The component
-contract and bounds are in [composition-v1](../../components/backend/composition.md).
 
 ## Files
 
@@ -62,7 +66,7 @@ longer part of the product. UIKit supplies active text entry, accessibility,
 scroll physics and system credential ceremonies.
 
 Conversation options provide Share excerpt, Copy messages, Pin, Rename,
-Archive/Restore and feedback. Recents has All/Pinned/Archived filters and
+Archive/Restore and Workspace. Recents has All/Pinned/Archived filters and
 paged title search across account and connected-computer history. Library
 pin/rename/archive metadata syncs through the signed-in account, independently
 of source transcripts. Changes merge per field across native clients and exact

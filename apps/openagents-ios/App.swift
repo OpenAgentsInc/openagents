@@ -63,6 +63,7 @@ import UIKit
             services.bridge.changed={ [weak self] in self?.wake() }
             oc_attach(owner,services.core.raw,AppServices.keptDraft)
             oc_env_restore(owner,AppServices.keptEnvironment)
+            oc_experimental_set(owner,AppServices.experimental ? 1:0)
             // after every call into the core: the login flow follows it, and the page draws what changed
             services.core.after={[weak self] in oc_step(owner);self?.wake()}
             services.launch()
@@ -198,6 +199,8 @@ import UIKit
         oc_transparency(owner,UIAccessibility.isReduceTransparencyEnabled ? 1:0)
         restoreLibraryPartition()
         oc_frame(owner)
+        // the Settings switch: Experimental features, kept for the next launch
+        let experimental=oc_experimental(owner) != 0;if experimental != AppServices.experimental {AppServices.experimental=experimental}
         syncScroll()
         services?.pump()
         if oc_action(owner)==1 {_ = focus()}

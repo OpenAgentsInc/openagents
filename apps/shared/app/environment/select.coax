@@ -97,6 +97,7 @@ EsChoice :: struct {
 
 EnvSelect :: struct {
   in: bool;                    // logged in
+  local: bool;                 // local only (the phone's experimental features off): no Default, no account's computers; a new draft takes the first paired computer
   generation: int;             // the login's; logging out starts the next
   next_op: int;
   manual_ready: bool;          // a request can carry a chosen computer
@@ -265,7 +266,7 @@ es_env_value :: (s: [] EnvSelect) -> string #effects(all) {
   p := es_chosen_paired(s);
   if p >= 0 { return es_paired_name(s, p); }
   i := es_chosen(s);
-  return ifx i >= 0 then es_computer_name(s, i) else "Default";
+  return ifx i >= 0 then es_computer_name(s, i) else ifx s[0].local then "No computer" else "Default";
 }
 // The paired computer's folders, as the device lane last had them.
 es_folders_set :: (s: [] EnvSelect, host: string, list: [] EaFolder, n: int, open: bool) #effects(all) {

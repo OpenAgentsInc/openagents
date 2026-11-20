@@ -63,6 +63,14 @@ import UIKit
         if now.isEmpty { UserDefaults.standard.removeObject(forKey: AppServices.rejoinKey) } else { UserDefaults.standard.set(now, forKey: AppServices.rejoinKey) }
     }
 
+    /// Experimental features (Settings), as on the desktop (UserDefaults `experimentalFeatures`, off
+    /// unless set): log in, the account, Projects, Foreman and the Nostr keys. Off, the phone is local
+    /// only: it works with the computers it is paired with, and never asks for a login.
+    ///   defaults write com.openagents.app experimentalFeatures -bool YES   (Simulator: xcrun simctl spawn booted defaults write ...)
+    private static let experimentalKey = "experimentalFeatures"
+    static var experimental: Bool = UserDefaults.standard.bool(forKey: experimentalKey) {
+        didSet { if experimental != oldValue { UserDefaults.standard.set(experimental, forKey: experimentalKey) } }
+    }
     /// The login card's typed email, kept between launches (no secret: app preferences).
     private static let draftKey = "openagents.login-draft"
     static var keptDraft: String { UserDefaults.standard.string(forKey: draftKey) ?? "" }

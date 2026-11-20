@@ -22,7 +22,7 @@ final class SidebarTests:XCTestCase {
         let search=app.textFields["history.search"];XCTAssertTrue(search.waitForExistence(timeout:10));search.typeText("mobile")
         XCTAssertEqual(search.value as? String,"mobile")
         let picture=XCTAttachment(screenshot:app.screenshot());picture.name="GPU Recents and native search editor";picture.lifetime = .keepAlways;add(picture)
-        menu.tap();let chat=app.buttons["drawer.chat"];XCTAssertTrue(chat.waitForExistence(timeout:10));chat.tap()
+        menu.tap();let chat=app.buttons["drawer.new"];XCTAssertTrue(chat.waitForExistence(timeout:10));chat.tap()
         XCTAssertTrue(options.waitForExistence(timeout:10));XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout:10))
         let composer=app.textViews["chat.composer"];XCTAssertTrue(composer.waitForExistence(timeout:10));composer.tap();composer.typeText("A local draft")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout:10));options.tap()
@@ -56,9 +56,10 @@ final class SidebarTests:XCTestCase {
         let app=XCUIApplication()
         // Foundation's launch-argument domain overrides only this fixture's
         // saved email. Repeated runs start empty without editing app storage.
-        app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-openagents.login-draft",""]
+        // Log in and Projects are experimental features: the argument domain turns them on for this run.
+        app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-openagents.login-draft","","-experimentalFeatures","YES"]
         app.launch()
-        let menu=app.buttons["nav.menu"],settings=app.buttons["drawer.settings"]
+        let menu=app.buttons["nav.menu"],settings=app.buttons["drawer.me.settings"]
         XCTAssertTrue(menu.waitForExistence(timeout:20))
         for _ in 0..<2 {
             menu.tap()
@@ -94,15 +95,16 @@ final class SidebarTests:XCTestCase {
         menu.tap();XCTAssertTrue(settings.waitForExistence(timeout:10))
         let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Sidebar opened by a real UIKit tap";picture.lifetime = .keepAlways;add(picture)
     }
-    @MainActor func testRendererCompositionAndBack() {
-        let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES"]
+    @MainActor func testExperimentalFeaturesOffDrawerAndSettingsMatchDesktop() {
+        let app=XCUIApplication();app.launchArguments=["-OAAPIOrigin","http://127.0.0.1:9","-OAReduceMotion","YES","-experimentalFeatures","NO"]
         app.launch();let menu=app.buttons["nav.menu"];XCTAssertTrue(menu.waitForExistence(timeout:20));menu.tap()
-        let settings=app.buttons["drawer.settings"];XCTAssertTrue(settings.waitForExistence(timeout:10));settings.tap()
-        let renderer=app.buttons["renderer.open"];XCTAssertTrue(renderer.waitForExistence(timeout:10));renderer.tap()
-        let transformed=app.buttons["renderer.transformed"];XCTAssertTrue(transformed.waitForExistence(timeout:15));transformed.tap();XCTAssertEqual(transformed.label,"Tapped")
-        XCTAssertTrue(app.buttons["renderer.sharp"].exists)
-        let picture=XCTAttachment(screenshot:app.screenshot());picture.name="Native GPU images affine isolated opacity and blur";picture.lifetime = .keepAlways;add(picture)
-        app.buttons["renderer.back"].tap();XCTAssertTrue(renderer.waitForExistence(timeout:10))
+        XCTAssertTrue(app.buttons["drawer.new"].waitForExistence(timeout:10));XCTAssertTrue(app.buttons["drawer.search"].exists);XCTAssertTrue(app.buttons["drawer.me"].exists)
+        for gone in ["drawer.chat","drawer.projects","drawer.foreman","drawer.login","drawer.logout","drawer.settings"] {XCTAssertFalse(app.buttons[gone].exists,gone)}
+        let drawer=XCTAttachment(screenshot:app.screenshot());drawer.name="Drawer with Experimental features off";drawer.lifetime = .keepAlways;add(drawer)
+        app.buttons["drawer.me.settings"].tap()
+        XCTAssertTrue(app.switches["settings.experimental"].waitForExistence(timeout:10)||app.buttons["settings.experimental"].waitForExistence(timeout:1))
+        XCTAssertFalse(app.buttons["settings.login"].exists);XCTAssertFalse(app.buttons["renderer.open"].exists)
+        let settings=XCTAttachment(screenshot:app.screenshot());settings.name="Settings with Experimental features off";settings.lifetime = .keepAlways;add(settings)
     }
 
 }

@@ -75,3 +75,10 @@ esb_take :: (c: [] AppCore, t: int, path: [] u8) -> int #effects(all) {
  // a session is open: the folder is the session's, the chip takes no press
  e[0].ns=ea_copy(e[0].session[..],"s1");es_bridge_sync(c[..],b[..],s[..]);#assert !es_folder_on(s[..]);
 }
+#test "local only, there is no Default: a draft takes the first paired computer, and the account is never asked" #steps 2000000000 {
+ c:[1]AppCore;lane:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],lane[..]);c[0].foreground=true;c[0].auth=AUTH_IN;
+ b:[1]EsBridge;s:=[1]EnvSelect.[es_new()];s[0].local=true;es_bridge_sync(c[..],b[..],s[..]);
+ #assert !s[0].in && es_env_value(s[..])=="No computer" && !app_device_on(c[..]);
+ h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";lane[0].np=1;_:=ea_copy(lane[0].paired[0].host[..],h);lane[0].paired[0].nn=ea_copy(lane[0].paired[0].name[..],"Mac");lane[0].list_rev+=1;
+ es_bridge_sync(c[..],b[..],s[..]);#assert es_chosen_paired(s[..])==0 && es_env_value(s[..])=="Mac" && app_device_on(c[..]) && app_environment(c[..])==h;
+}

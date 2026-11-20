@@ -44,7 +44,7 @@ es_b_end :: (s: [] EnvSelect, r: EsSent, outcome: int, status: int, body: string
 
 // The login fact, the current draft, the core's slots and the waiting reads.
 es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all) {
-  es_login(s, c[0].auth == AUTH_IN);
+  es_login(s, c[0].auth == AUTH_IN && !s[0].local);
   // Only read-only picker discovery repeats. Hidden/background pickers sleep;
   // no Send, permission answer or other command enters this loop.
   visible:=s[0].sheet!=ES_SHEET_NONE && c[0].foreground && s[0].in;
@@ -64,6 +64,13 @@ es_bridge_sync :: (c: [] AppCore, b: [] EsBridge, s: [] EnvSelect) #effects(all)
     es_paired_end(s);
   }
   es_paired_note(s, app_device_pair_words(c));
+  // local only: there is no Default, so a draft that chose nothing runs on the first paired computer
+  if s[0].local && s[0].paired[0].n > 0 {
+    d := es_now(s);
+    if !s[0].drafts[d].manual || es_paired_find(s, cast(string) s[0].drafts[d].host[..]) < 0 {
+      s[0].drafts[d].manual = true; for i: 0..<64 { s[0].drafts[d].host[i] = s[0].paired[0].entries[0].host[i]; } s[0].drafts[d].nr = 0;
+    }
+  }
   // the paired computer's folders, and the folder a new session there opens in (GitHub #13713)
   if app_device_on(c) {
     e := c[0].device[0].e[..]; host := cast(string) c[0].device[0].host[..];

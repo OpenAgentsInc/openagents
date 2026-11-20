@@ -66,6 +66,8 @@ AppCore :: struct {
   mono_ms: int; wall_ms: int; foreground: bool;
   // the account
   auth: int; login: int; login_wanted: bool; account_op: int; account_purpose: int;
+  // the phone's experimental features are off: no account, no login; a send goes to a paired computer only
+  local_only: bool;
   email: [APP_EMAIL] u8; email_n: int; words: [APP_WORDS] u8; words_n: int;
   // conversations: the current one, its drafts and the selections sent with a request
   chat: [1] DurableChat;

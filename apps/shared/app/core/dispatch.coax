@@ -121,6 +121,8 @@ app_action :: (c: [] AppCore, e: AppEvent) -> int {
     app_mark(c, SURF_COMPOSER); return APP_OK;
   }
   if a == ACT_SEND {
+    // local only (experimental features off): a send never asks for a login; it needs a paired computer
+    if c[0].local_only { if app_draft(c).count == 0 { return APP_R_EMPTY; } app_say(c, "Pair this phone with your Mac to send."); app_mark(c, SURF_COMPOSER); return APP_R_BLOCKED; }
     if c[0].auth == AUTH_OUT && app_draft(c).count > 0 { c[0].login_wanted = true; app_mark(c, SURF_ACCOUNT); return APP_LOGIN; }
     state := app_send_state(c);
     if state == SEND_EMPTY { return APP_R_EMPTY; }

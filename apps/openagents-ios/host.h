@@ -37,6 +37,10 @@ void oc_on_change(void *chat, void (*changed)(void *context), void *context);
 // The window's facts in points, the platform editor (whether it holds the keyboard, its own text
 // height) and reduced motion.
 void oc_transparency(void *chat,int reduced);
+// Experimental features (log in, the account, Projects, Foreman, Nostr keys): the host sets them from
+// UserDefaults experimentalFeatures at launch and keeps oc_experimental after a change.
+void oc_experimental_set(void *chat,int on);
+int oc_experimental(void *chat);
 void oc_env(void *chat, float safe_top, float safe_bottom, float keyboard, int focused, float editor_height, int reduced);
 // The action asked for, once: 0 none, 1 the composer's text wants the keyboard.
 int oc_action(void *chat);

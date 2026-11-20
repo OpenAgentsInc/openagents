@@ -215,6 +215,8 @@ int oc_shot_write(void *chat,const char *path) {return chat && path && ui_shot_w
 int oc_moving(void *chat) { Chat *c = chat; return c && (c->settle > 0 || chat_moving(oc_state(c))); }
 void oc_on_change(void *chat, void (*changed)(void *context), void *context) { Chat *c = chat; if (c) { c->changed = changed; c->context = context; } }
 void oc_transparency(void *chat,int reduced) {Chat*c=chat;if(c)chat_transparency(oc_state(c),reduced!=0);}
+void oc_experimental_set(void *chat,int on) {Chat*c=chat;if(c){chat_experimental_set(oc_state(c),on!=0);if(c->changed)c->changed(c->context);}}
+int oc_experimental(void *chat) {Chat*c=chat;return c&&chat_experimental(oc_state(c))?1:0;}
 void oc_env(void *chat, float safe_top, float safe_bottom, float keyboard, int focused, float editor_height, int reduced) {
   Chat *c = chat;
   if (!c) return;
