@@ -26,7 +26,9 @@ extension CoderWindow {
     static func gitBranch(_ folder: URL) -> String {
         var dir = folder.standardizedFileURL
         let fm = FileManager.default
-        while true {
+        // At most 256 folders up: past "/" a directory URL's parent is "/../", whose path never
+        // repeats, and an unbounded walk on the main thread hung launch and grew without end (#13752).
+        for _ in 0..<256 {
             let dot = dir.appendingPathComponent(".git")
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: dot.path, isDirectory: &isDir) {
@@ -46,6 +48,7 @@ extension CoderWindow {
             if up.path == dir.path { return "" }
             dir = up
         }
+        return ""
     }
     struct BinaryIdentity: Equatable {
         let path: String
