@@ -387,6 +387,16 @@ A device already booted by someone else is attached, not rebooted.
 
 All three call the same library (`coax/lib/agent/device/`), the same helper ops and the same policy.
 
+*As built (Phase 2, `coder/tui/oasim-mcp.coax`):* `oasim mcp` offers one tool a verb
+(`simulator_list`, `_boot`, `_shutdown`, `_screenshot`, `_tap`, `_swipe`, `_text`, `_press_key`,
+`_button`, `_launch`, `_terminate`, `_open_url`, `_set_appearance`, `_build`, `_build_status`, `_run`)
+rather than two tools with an `action` member: each has a typed schema the model can't get wrong, and
+a call runs `oasim VERB WORDS...` as a child, so it is the command with the same grants (the child's
+hello carries the worker's `OA_SIM_CHAT`). `_screenshot` answers with the PNG as image content.
+`claudeworker` passes it to Claude Code in `--mcp-config` (server `simulator`) when `oasim` is beside
+it or `OA_SIMHOST` names one. `openagents mcp --domains device` and the Microcoder `device` member are
+not built yet.
+
 ### 7.2 `control` ops (verbs, arguments, replies)
 
 Arguments and names follow Claude's `control` tool. Coordinates are **device points, origin top-left,

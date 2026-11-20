@@ -1,0 +1,257 @@
+// oasim mcp: the simulator's verbs as MCP tools over stdio (docs/desktop/ios-simulator-spec.md 7.1,
+// the third door; GitHub #13811). Loaded by oasim.coax.
+//   claude mcp add simulator -- oasim mcp       (claudeworker puts it in --mcp-config)
+// Requests and answers are JSON-RPC 2.0, one JSON object a line. Each tool is one row of OM_TOOLS:
+// its arguments become the verb's own words, and a call runs this same program as a child,
+// `oasim VERB WORDS...`, so a tool does exactly what the command does, with the same grants (the
+// child's hello carries OA_SIM_CHAT and OA_SIM_ENGINE from this server's environment). A
+// screenshot also answers with the PNG as an image.
+
+OM_LINE :: 262144;
+OM_OUT :: 4194304;
+OM_PNG :: 2097152;
+OM_PROTOCOL :: "2025-06-18";
+
+// A tool: its name, the verb it runs, what it does, and its arguments, each "name:kind:place"
+// with kind n (number), i (whole number) or s (string), place p (a word in order) or f (--name
+// VALUE), and a ! when it must be given.
+OmTool :: struct { name: string; verb: string; about: string; args: string; }
+OM_DEV :: " device:s:f";
+OM_TOOLS :: [16] OmTool.[
+  OmTool.{name = "simulator_list", verb = "list", about = "The iOS simulators Xcode has: udid, name, runtime, state and whether an agent booted it.", args = ""},
+  OmTool.{name = "simulator_boot", verb = "boot", about = "Boot a simulator by name or UDID. Asks the person the first time this chat controls it.", args = "device:s:p!"},
+  OmTool.{name = "simulator_shutdown", verb = "shutdown", about = "Shut down a simulator an agent booted.", args = "device:s:f"},
+  OmTool.{name = "simulator_screenshot", verb = "screenshot", about = "The screen as a PNG at 1x points (a pixel is a point to tap), returned as an image. scale 0.25 to 1.", args = "scale:n:f device:s:f"},
+  OmTool.{name = "simulator_tap", verb = "tap", about = "Tap at x, y in device points (origin top left). duration over 0.5 s is a long press.", args = "x:n:p! y:n:p! duration:n:f device:s:f"},
+  OmTool.{name = "simulator_swipe", verb = "swipe", about = "Swipe from x, y to x2, y2 in device points over duration seconds (0.3 by default).", args = "x:n:p! y:n:p! x2:n:p! y2:n:p! duration:n:f device:s:f"},
+  OmTool.{name = "simulator_text", verb = "text", about = "Type text into the focused field (printable ASCII, tabs and newlines).", args = "text:s:p! device:s:f"},
+  OmTool.{name = "simulator_press_key", verb = "press_key", about = "Press a key: return, delete, forward_delete, escape, tab, space, left, right, up, down, home, end, page_up, page_down, select_all, undo or redo; count 1 to 20.", args = "key:s:p! count:i:f device:s:f"},
+  OmTool.{name = "simulator_button", verb = "button", about = "Press a hardware button: HOME, LOCK, SIDE_BUTTON, SIRI or APPLE_PAY.", args = "name:s:p! device:s:f"},
+  OmTool.{name = "simulator_launch", verb = "launch", about = "Launch an app: app (a built .app under the chat's folder or OpenAgents's DerivedData) or bundle (an installed one's id).", args = "app:s:f bundle:s:f device:s:f"},
+  OmTool.{name = "simulator_terminate", verb = "terminate", about = "Quit an app by its bundle id.", args = "bundle_id:s:p! device:s:f"},
+  OmTool.{name = "simulator_open_url", verb = "open_url", about = "Open a URL on the simulator (a web page in Safari, or an app's deep link).", args = "url:s:p! device:s:f"},
+  OmTool.{name = "simulator_set_appearance", verb = "set_appearance", about = "Set the simulator to light or dark.", args = "state:s:p! device:s:f"},
+  OmTool.{name = "simulator_build", verb = "build", about = "Start xcodebuild for a simulator in the background; answers with an id for simulator_build_status.", args = "project:s:f workspace:s:f scheme:s:f! configuration:s:f"},
+  OmTool.{name = "simulator_build_status", verb = "build_status", about = "A build's state, elapsed seconds, its errors and, when it succeeded, the .app's path.", args = "id:s:p!"},
+  OmTool.{name = "simulator_run", verb = "run", about = "Build, install and launch an app, then take a screenshot.", args = "project:s:f workspace:s:f scheme:s:f! configuration:s:f device:s:f"},
+];
+
+om_find :: (name: string) -> int { for t, i: OM_TOOLS { if t.name == name { return i; } } return -1; }
+// The i-th spec of args ("" past the end), and its parts.
+om_spec :: (args: string, i: int) -> string { return om_word(args, i); }
+om_word :: (t: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < t.count {
+    while i < t.count && t[i] == ' ' { i += 1; }
+    if i >= t.count { break; }
+    j := i; while j < t.count && t[j] != ' ' { j += 1; }
+    if n == k { return t[i..<j]; }
+    n += 1; i = j;
+  }
+  return "";
+}
+om_part :: (spec: string, k: int) -> string {
+  i := 0; n := 0; s := 0;
+  while i <= spec.count {
+    if i == spec.count || spec[i] == ':' { if n == k { e := i; if e > s && spec[e - 1] == '!' { e -= 1; } return spec[s..<e]; } n += 1; s = i + 1; }
+    i += 1;
+  }
+  return "";
+}
+om_required :: (spec: string) -> bool { return spec.count > 0 && spec[spec.count - 1] == '!'; }
+
+om_schema :: (o: [] Jo, t: OmTool) {
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  i := 0;
+  while om_spec(t.args, i).count > 0 {
+    sp := om_spec(t.args, i); k := om_part(sp, 1);
+    jo_key(o, om_part(sp, 0)); jo_obj(o); jo_key(o, "type"); jo_str(o, ifx k == "n" then "number" else ifx k == "i" then "integer" else "string"); jo_end(o);
+    i += 1;
+  }
+  jo_end(o);
+  jo_key(o, "required"); jo_arr(o);
+  i = 0; while om_spec(t.args, i).count > 0 { sp := om_spec(t.args, i); if om_required(sp) { jo_str(o, om_part(sp, 0)); } i += 1; }
+  jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+}
+
+// The child's words for a call of tool t with arguments args (an object in d), into words; their
+// count, or -1 with why.
+OM_WORDS :: 24;
+om_argv :: (d: Jv, args: int, t: OmTool, words: [] [1024] u8, wn: [] int, why: [] string) -> int {
+  n := 0;
+  // the verb first
+  wn[0] = om_copy(t.verb, words[0][..]); n = 1;
+  // every argument named is known
+  if args >= 0 && jv_kind(d, args) != JV_OBJECT { why[0] = "arguments is an object"; return -1; }
+  e := ifx args >= 0 then d.nodes[args].first else -1;
+  while e != -1 {
+    known := false; i := 0;
+    while om_spec(t.args, i).count > 0 { if om_part(om_spec(t.args, i), 0) == jv_key(d, e) { known = true; } i += 1; }
+    if !known { why[0] = "unknown argument"; return -1; }
+    e = d.nodes[e].next;
+  }
+  for pass: 0..<2 {
+    i := 0;
+    while om_spec(t.args, i).count > 0 {
+      sp := om_spec(t.args, i); i += 1;
+      name := om_part(sp, 0); kind := om_part(sp, 1); place := om_part(sp, 2);
+      if (pass == 0) != (place == "p") { continue; }
+      v := ifx args >= 0 then jv_get(d, args, name) else -1;
+      if v < 0 { if om_required(sp) { why[0] = "a required argument is missing"; return -1; } continue; }
+      vk := jv_kind(d, v);
+      if (kind == "s" && vk != JV_STRING) || (kind != "s" && vk != JV_NUMBER) { why[0] = "an argument has the wrong type"; return -1; }
+      if n + 2 > words.count { why[0] = "too many arguments"; return -1; }
+      if place == "f" { k := om_copy("--", words[n][..]); for c: name { if k < 1024 { words[n][k] = c; k += 1; } } wn[n] = k; n += 1; }
+      if kind == "s" { k := jv_str(d, v, words[n][..]); if k < 0 { why[0] = "an argument is too long"; return -1; } wn[n] = k; }
+      else { wn[n] = om_copy(jv_raw(d, v), words[n][..]); }
+      n += 1;
+    }
+  }
+  return n;
+}
+om_copy :: (s: string, out: [] u8) -> int { n := 0; for c: s { if n < out.count { out[n] = c; n += 1; } } return n; }
+
+// One JSON-RPC line in, its answer out ("" for a notification). run false: a call answers with the
+// command it would run (for checks), not its output.
+om_handle :: (line: string, exe: string, out: [] u8, run: bool) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  nodes: [4096] JvNode; dd: [1] Jv;
+  if !jv_parse(dd[..], line, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT {
+    jo_put(o[..], "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"not JSON\"}}"); return jo_text(o[..]);
+  }
+  d := dd[0];
+  id := jv_get(d, 0, "id");
+  mb: [64] u8; mn := jv_str(d, jv_get(d, 0, "method"), mb[..]); method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  if id < 0 { return ""; }   // a notification (initialized, cancelled): no answer
+  jo_obj(o[..]); jo_key(o[..], "jsonrpc"); jo_str(o[..], "2.0"); jo_key(o[..], "id");
+  if jv_kind(d, id) == JV_STRING { ib: [256] u8; k := jv_str(d, id, ib[..]); jo_str(o[..], ifx k > 0 then cast(string) ib[0..<k] else ""); } else { jo_raw(o[..], jv_raw(d, id)); }
+  if method == "initialize" {
+    jo_key(o[..], "result"); jo_obj(o[..]);
+    jo_key(o[..], "protocolVersion"); jo_str(o[..], OM_PROTOCOL);
+    jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
+    jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "oasim"); jo_key(o[..], "version"); jo_str(o[..], "1"); jo_end(o[..]);
+    jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+  }
+  if method == "ping" { jo_key(o[..], "result"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]); }
+  if method == "tools/list" {
+    jo_key(o[..], "result"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_arr(o[..]);
+    for t: OM_TOOLS {
+      jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], t.name); jo_key(o[..], "description"); jo_str(o[..], t.about);
+      jo_key(o[..], "inputSchema"); om_schema(o[..], t); jo_end(o[..]);
+    }
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]);
+  }
+  if method != "tools/call" {
+    jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "code"); jo_int(o[..], -32601); jo_key(o[..], "message"); jo_str(o[..], "unknown method"); jo_end(o[..]);
+    jo_end(o[..]); return jo_text(o[..]);
+  }
+  params := jv_get(d, 0, "params");
+  nb: [64] u8; nn := jv_str(d, jv_get(d, params, "name"), nb[..]);
+  ti := ifx nn > 0 then om_find(cast(string) nb[0..<nn]) else -1;
+  words: [OM_WORDS] [1024] u8; wn: [OM_WORDS] int; why: [1] string;
+  n := -1;
+  if ti < 0 { why[0] = "unknown tool"; } else { n = om_argv(d, jv_get(d, params, "arguments"), OM_TOOLS[ti], words[..], wn[..], why[..]); }
+  text := ""; failed := true; tb: [OM_LINE] u8; png := "";
+  pb: [OM_PNG] u8;
+  if n < 0 { text = why[0]; }
+  else if !run {
+    k := om_copy(exe, tb[..]);
+    for i: 0..<n { if k < tb.count { tb[k] = ' '; k += 1; } k += om_copy(cast(string) words[i][0..<wn[i]], tb[k..<tb.count]); }
+    text = cast(string) tb[0..<k]; failed = false;
+  } else {
+    argv: [OM_WORDS + 1] string; argv[0] = exe;
+    for i: 0..<n { argv[i + 1] = cast(string) words[i][0..<wn[i]]; }
+    err: [4096] u8;
+    r := proc_run(argv[0..<n + 1], 600000, tb[..], err[..]);
+    text = cast(string) tb[0..<r.out_n]; failed = r.started != 0 || r.status != 0;
+    if text.count == 0 { text = cast(string) err[0..<r.err_n]; }
+    if !failed && OM_TOOLS[ti].verb == "screenshot" {
+      // the PNG the reply names, as an image
+      pn: [256] JvNode; pd: [1] Jv; path: [1024] u8;
+      if jv_parse(pd[..], text, pn[..]) {
+        k := jv_str(pd[0], jv_get(pd[0], 0, "path"), path[..]);
+        if k > 0 { m := fs_read(cast(string) path[0..<k], pb[..]); if m > 0 { png = cast(string) pb[0..<m]; } }
+      }
+    }
+  }
+  jo_key(o[..], "result"); jo_obj(o[..]); jo_key(o[..], "content"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "text"); jo_key(o[..], "text"); jo_str(o[..], text); jo_end(o[..]);
+  if png.count > 0 {
+    b64: [OM_PNG / 3 * 4 + 8] u8;
+    e := base64_encode_checked(png, b64[..], false);
+    if e.error == 0 { jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "image"); jo_key(o[..], "data"); jo_str(o[..], cast(string) b64[0..<e.written]); jo_key(o[..], "mimeType"); jo_str(o[..], "image/png"); jo_end(o[..]); }
+  }
+  jo_end(o[..]); jo_key(o[..], "isError"); jo_bool(o[..], failed); jo_end(o[..]);
+  jo_end(o[..]);
+  return jo_text(o[..]);
+}
+om_has :: (s: string, part: string) -> bool { return sd_find(s, part, 0) >= 0; }
+#test "mcp: initialize, the tool list, and what is not a method" {
+  out: [65536] u8;
+  s := om_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}", "oasim", out[..], false);
+  #assert om_has(s, "\"protocolVersion\":\"2025-06-18\"") && om_has(s, "\"serverInfo\":{\"name\":\"oasim\"") && om_has(s, "\"id\":1");
+  #assert om_handle("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", "oasim", out[..], false) == "";
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", "oasim", out[..], false);
+  for t: OM_TOOLS { nb: [96] u8; k := om_copy("\"name\":\"", nb[..]); k += om_copy(t.name, nb[k..<nb.count]); #assert om_has(s, cast(string) nb[0..<k]); }
+  #assert om_has(s, "\"name\":\"simulator_tap\",\"description\":\"Tap at x, y") && om_has(s, "\"properties\":{\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"duration\":{\"type\":\"number\"},\"device\":{\"type\":\"string\"}},\"required\":[\"x\",\"y\"],\"additionalProperties\":false");
+  #assert om_has(s, "\"count\":{\"type\":\"integer\"}") && om_has(s, "\"name\":\"simulator_list\",\"description\":\"The iOS simulators Xcode has: udid, name, runtime, state and whether an agent booted it.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{},\"required\":[]");
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":\"a\",\"method\":\"resources/list\"}", "oasim", out[..], false);
+  #assert om_has(s, "\"id\":\"a\"") && om_has(s, "-32601");
+  #assert om_has(om_handle("nope", "oasim", out[..], false), "-32700") && om_has(om_handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"ping\"}", "oasim", out[..], false), "\"result\":{}");
+}
+#test "mcp: a call becomes the verb's own words" {
+  out: [65536] u8;
+  s := om_handle("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"simulator_tap\",\"arguments\":{\"x\":201,\"y\":640.5,\"device\":\"U1\"}}}", "/r/oasim", out[..], false);
+  #assert om_has(s, "\"text\":\"/r/oasim tap 201 640.5 --device U1\"") && om_has(s, "\"isError\":false");
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"simulator_text\",\"arguments\":{\"text\":\"hello there\"}}}", "oasim", out[..], false);
+  #assert om_has(s, "\"text\":\"oasim text hello there\"");
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"simulator_run\",\"arguments\":{\"scheme\":\"OpenAgents\",\"project\":\"a.xcodeproj\"}}}", "oasim", out[..], false);
+  #assert om_has(s, "\"text\":\"oasim run --project a.xcodeproj --scheme OpenAgents\"");
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"simulator_list\"}}", "oasim", out[..], false);
+  #assert om_has(s, "\"text\":\"oasim list\"") && om_has(s, "\"isError\":false");
+  s = om_handle("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"simulator_press_key\",\"arguments\":{\"key\":\"return\",\"count\":3}}}", "oasim", out[..], false);
+  #assert om_has(s, "\"text\":\"oasim press_key return --count 3\"");
+  // refused: what is not a tool, an argument that is not its, a missing one, the wrong type
+  bad := [6] string.[
+    "{\"name\":\"simulator_erase\",\"arguments\":{}}",
+    "{\"name\":\"simulator_tap\",\"arguments\":{\"x\":1,\"y\":2,\"z\":3}}",
+    "{\"name\":\"simulator_tap\",\"arguments\":{\"x\":1}}",
+    "{\"name\":\"simulator_tap\",\"arguments\":{\"x\":\"1\",\"y\":2}}",
+    "{\"name\":\"simulator_text\",\"arguments\":{\"text\":5}}",
+    "{\"name\":\"simulator_tap\",\"arguments\":[1,2]}"];
+  whys := [6] string.["unknown tool", "unknown argument", "a required argument is missing", "an argument has the wrong type", "an argument has the wrong type", "arguments is an object"];
+  for b, i: bad {
+    line: [512] u8; n := om_copy("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":", line[..]);
+    n += om_copy(b, line[n..<line.count]); n += om_copy("}", line[n..<line.count]);
+    s = om_handle(cast(string) line[0..<n], "oasim", out[..], false);
+    #assert om_has(s, "\"isError\":true") && om_has(s, whys[i]);
+  }
+}
+
+// The server: one request a line on stdin, one answer a line on stdout, until stdin ends.
+om_main :: (exe: string) -> int {
+  line: [OM_LINE] u8; out: [OM_OUT] u8; wb: [OM_OUT + 1] u8;
+  n := 0; quiet := 0; long := false;
+  while true {
+    b := cxterm_byte(-1);
+    if b == -2 { break; }
+    if b == -1 { quiet += 1; if quiet > 1000 { break; } continue; }
+    quiet = 0;
+    if b != '\n' {
+      if n < line.count { line[n] = cast(u8) b; n += 1; } else { long = true; }
+      continue;
+    }
+    text := cast(string) line[0..<n];
+    answer := ifx long then "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32600,\"message\":\"request too long\"}}" else om_handle(text, exe, out[..], true);
+    n = 0; long = false;
+    if answer.count == 0 { continue; }
+    m := om_copy(answer, wb[..]);
+    if m >= wb.count { continue; }
+    wb[m] = '\n';
+    if cxterm_write(wb[0..<m + 1]) != 0 { break; }
+  }
+  return 0;
+}

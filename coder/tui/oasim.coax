@@ -25,10 +25,13 @@
 #load "../../coax/lib/sys/args.coax";
 #load "../../coax/lib/agent/device/sim-host.coax";
 #load "../../coax/lib/agent/device/sim-build.coax";
+#load "../../coax/lib/nostr/base64.coax";
+#load "oasim-mcp.coax";
 
 cxproc_self_pid :: () -> int #foreign #effects(all);
 cxproc_self_path :: (out: [] u8) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 
 OS_PATH :: 1024;
 os_out :: (s: string) {
@@ -386,7 +389,7 @@ os_usage :: () -> int {
   tool_errln("usage: oasim list | boot DEVICE | shutdown [DEVICE] | attach | screenshot [--out PATH] [--scale S] | tap X Y | swipe X Y X2 Y2");
   tool_errln("       | touch_path JSON | touch2_path JSON | text TEXT | press_key KEY [--count N] | button NAME | set_appearance light|dark");
   tool_errln("       | appearance | set_keyboard show|hide | rotate left|right | open_url URL | launch [--app PATH] [--bundle ID] | install APP");
-  tool_errln("       | terminate BUNDLE | describe | logs | build (--project P|--workspace W) --scheme S | build_status ID | run ... | serve | status | quit");
+  tool_errln("       | terminate BUNDLE | describe | logs | build (--project P|--workspace W) --scheme S | build_status ID | run ... | serve | status | quit | mcp");
   tool_errln("       every verb takes --device NAME|UDID; replies are one JSON object (docs/desktop/ios-simulator-spec.md)");
   return 2;
 }
@@ -407,6 +410,12 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "build_status" { m: [1] SwMsg; return os_build_status(args_at(a[..], 1), false, m[..]); }
   if verb == "run" { return os_run(a[..]); }
   if verb == "help" || verb == "--help" { _ = os_usage(); return 0; }
+  if verb == "mcp" {
+    // the verbs as MCP tools on stdio (oasim-mcp.coax); each call runs this program
+    eb: [OS_PATH] u8; en := cxproc_self_path(eb[..]);
+    if en <= 0 { tool_errln("oasim mcp: could not find this program's own path"); return 1; }
+    return om_main(cast(string) eb[0..<en]);
+  }
   m: [1] SwMsg;
   why := os_request(verb, a[..], m[..]);
   if why == "unknown verb" { return os_usage(); }
