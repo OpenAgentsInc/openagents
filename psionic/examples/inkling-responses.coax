@@ -1,0 +1,24 @@
+// Chapter 270 example: Inkling 2 Mini reasoning/tool-call parser and /v1/responses SSE events.
+#import "Basic";
+#load "../lib/inkling-responses.coax";
+
+// book:begin example
+main :: () {
+    raw := "<think>check file</think><tool_call>{\"name\":\"read\"}</tool_call>Ready.";
+    events: [8]InklingParsedEvent;
+    res := inkling_parse_stream(raw, events[..]);
+    #assert res.status == InklingRespStatus.ok && res.count == 3;
+    print("parsed % events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
+        res.count, events[0].len, events[1].len, events[2].len);
+
+    bad := "<tool_call>not_json</tool_call>";
+    #assert inkling_parse_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
+    print("malformed tool JSON refused\n");
+
+    sse: [256]u8;
+    n := inkling_format_sse_event(InklingEventKind.reasoning, "check file", sse[..], 0);
+    n = inkling_format_sse_usage(120, 45, 3, sse[..], n);
+    #assert n > 0;
+    print("/v1/responses SSE frame formatted: % bytes\n", n);
+}
+// book:end example

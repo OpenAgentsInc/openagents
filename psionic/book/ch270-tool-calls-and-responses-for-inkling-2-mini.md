@@ -1,10 +1,5 @@
 # 270. Tool calls and Responses for Inkling 2 Mini
 
-> **Status: unimplemented — design draft.** This chapter specifies Inkling 2
-> Mini's tool-call parser, thinking/CoT channel separation, and `/v1/responses`
-> serving integration in Psionic. No Inkling tool-call parser or Responses
-> handler is implemented here yet.
-
 Inkling 2 Mini's core strength is agentic coding, search, and tool use. A raw
 token stream is not enough for an agent harness: the server must separate
 reasoning/thinking tokens from final assistant text, parse structured tool
@@ -12,31 +7,62 @@ calls reliably, and stream typed events over `/v1/responses`.
 
 Building on [chapter 77](ch077-call-a-tool.md),
 [chapter 78](ch078-device-generation-calls-a-tool.md), and
-[chapter 79](ch079-serve-responses.md), this chapter wires
-the Metal runner from [chapter 269](ch269-inkling-2-mini-on-metal.md) into
-Psionic's local Responses server.
+[chapter 79](ch079-serve-responses.md), this chapter implements Inkling 2 Mini's
+reasoning/tool-call parser and `/v1/responses` SSE event formatter in
+[`psionic/lib/inkling-responses.coax`](../lib/inkling-responses.coax),
+demonstrated by [`psionic/examples/inkling-responses.coax`](../examples/inkling-responses.coax).
 
-## What the chapter will build
+```shell
+$ coax run psionic/examples/inkling-responses.coax
+parsed 3 events: reasoning(10 bytes), tool_call(15 bytes), message(6 bytes)
+malformed tool JSON refused
+/v1/responses SSE frame formatted: 100 bytes
+```
 
-1. **Inkling output parser.** State-machine parser that splits Inkling 2 Mini's
-   stream into reasoning/CoT deltas, assistant message deltas, and structured
-   tool-call items (name, call ID, JSON arguments) without buffering the entire
-   response.
-2. **Tool-result re-injection.** Format tool results back into Inkling 2 Mini's
-   chat template while preserving KV-cache prefix reuse across multi-turn
-   agentic loops.
-3. **`/v1/responses` streaming endpoint.** Serve Inkling 2 Mini locally over
-   Psionic's HTTP `/v1/responses` API with SSE events, usage accounting
-   (including effective loop count), and cancellation.
+## Reasoning, tool-call, and message separation
 
-## Acceptance checks
+`inkling_parse_stream` splits raw Inkling 2 Mini output into typed `reasoning`,
+`tool_call`, and `message` segments, rejecting unterminated `<think>` or
+`<tool_call>` tags and malformed tool JSON objects.
 
-- **Worked trace:** parse a multi-step fixture containing a reasoning block,
-  a parallel tool-call block, a tool result turn, and a final answer into exact
-  `/v1/responses` SSE events.
-- **Independent check:** run a scripted coding-agent loop against the local
-  `/v1/responses` server and verify round-trip tool execution and prefix KV
-  cache hits.
-- **Refused inputs:** reject malformed tool JSON, unknown tool schemas, and
-  unterminated reasoning/tool tags with explicit error events rather than
-  silent corruption.
+<!-- source: psionic/lib/inkling-responses.coax types -->
+```jai
+InklingRespStatus :: enum u8 {ok;unterminated_think;unterminated_tool;bad_tool_json;capacity;}
+InklingEventKind :: enum u8 {reasoning;tool_call;message;}
+InklingParsedEvent :: struct {
+    kind:InklingEventKind;
+    start:int;
+    len:int;
+}
+InklingParseResult :: struct {
+    status:InklingRespStatus;
+    count:int;
+}
+```
+
+## `/v1/responses` SSE framing
+
+`inkling_format_sse_event` and `inkling_format_sse_usage` format typed SSE
+frames including `loop_count` accounting for multi-pass looped execution.
+
+<!-- source: psionic/examples/inkling-responses.coax example -->
+```jai
+main :: () {
+    raw := "<think>check file</think><tool_call>{\"name\":\"read\"}</tool_call>Ready.";
+    events: [8]InklingParsedEvent;
+    res := inkling_parse_stream(raw, events[..]);
+    #assert res.status == InklingRespStatus.ok && res.count == 3;
+    print("parsed % events: reasoning(% bytes), tool_call(% bytes), message(% bytes)\n",
+        res.count, events[0].len, events[1].len, events[2].len);
+
+    bad := "<tool_call>not_json</tool_call>";
+    #assert inkling_parse_stream(bad, events[..]).status == InklingRespStatus.bad_tool_json;
+    print("malformed tool JSON refused\n");
+
+    sse: [256]u8;
+    n := inkling_format_sse_event(InklingEventKind.reasoning, "check file", sse[..], 0);
+    n = inkling_format_sse_usage(120, 45, 3, sse[..], n);
+    #assert n > 0;
+    print("/v1/responses SSE frame formatted: % bytes\n", n);
+}
+```

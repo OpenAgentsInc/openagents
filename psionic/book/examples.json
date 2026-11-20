@@ -3731,6 +3731,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/inkling-responses.coax",
+      "chapter": "psionic/book/ch270-tool-calls-and-responses-for-inkling-2-mini.md",
+      "stdout": "psionic/fixtures/inkling-responses.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

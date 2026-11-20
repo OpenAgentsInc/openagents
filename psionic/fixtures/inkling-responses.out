@@ -1,0 +1,3 @@
+parsed 3 events: reasoning(10 bytes), tool_call(15 bytes), message(6 bytes)
+malformed tool JSON refused
+/v1/responses SSE frame formatted: 100 bytes
