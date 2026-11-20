@@ -1,0 +1,96 @@
+// Thin CLI around coax/lib/agent/desktop/update.coax for release.sh / sign-update-feed.swift (#13785).
+// Emits the manifest payload JSON and signed envelope JSON through the one Coax codec.
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/agent/desktop/update.coax";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || a[0].n < 1 {
+    tool_errln("usage: update-feed.coax manifest|envelope ...");
+    return 2;
+  }
+  cmd := a[0].v[0];
+  if cmd == "manifest" { return run_manifest(a[0]); }
+  if cmd == "envelope" { return run_envelope(a[0]); }
+  tool_errln("update-feed: unknown subcommand");
+  return 2;
+}
+
+run_manifest :: (a: Args) -> int #effects(all) {
+  version := "";
+  has_build := false;
+  build := 0;
+  bundle := DC_UPDATE_BUNDLE;
+  team := DC_UPDATE_TEAM;
+  url := "";
+  notes := "";
+  archive := "";
+  out_path := "";
+  i := 1;
+  while i + 1 < a.n {
+    k := a.v[i]; v := a.v[i + 1]; i += 2;
+    if k == "--version" { version = v; }
+    else if k == "--build" {
+      b := dc_int_part(v);
+      if b < 0 { tool_errln("update-feed: invalid --build"); return 1; }
+      build = b; has_build = true;
+    }
+    else if k == "--bundle-id" { bundle = v; }
+    else if k == "--team-id" { team = v; }
+    else if k == "--url" { url = v; }
+    else if k == "--notes" { notes = v; }
+    else if k == "--archive" { archive = v; }
+    else if k == "--out" { out_path = v; }
+    else { tool_errln("update-feed: unknown option"); return 2; }
+  }
+  if version.count == 0 || url.count == 0 || archive.count == 0 || out_path.count == 0 {
+    tool_errln("update-feed: manifest requires --version, --url, --archive, --out");
+    return 2;
+  }
+  size: [1] int; sha: [64] u8;
+  if !dc_update_file_sha(archive, size[..], sha[..]) {
+    tool_errln("update-feed: cannot hash archive");
+    return 1;
+  }
+  out: [DC_UPDATE_MAX] u8;
+  n := dc_manifest_write(version, has_build, build, bundle, team, url, cast(string) sha[..], size[0], notes, out[..]);
+  if n < 0 { tool_errln("update-feed: manifest encoding failed"); return 1; }
+  if !dcos_write(out_path, cast(string) out[0..<n]) {
+    tool_errln("update-feed: cannot write manifest");
+    return 1;
+  }
+  return 0;
+}
+
+run_envelope :: (a: Args) -> int #effects(all) {
+  key_id := DC_UPDATE_KEY_ID;
+  payload_path := "";
+  sig_path := "";
+  out_path := "";
+  i := 1;
+  while i + 1 < a.n {
+    k := a.v[i]; v := a.v[i + 1]; i += 2;
+    if k == "--key-id" { key_id = v; }
+    else if k == "--payload-file" { payload_path = v; }
+    else if k == "--sig-file" { sig_path = v; }
+    else if k == "--out" { out_path = v; }
+    else { tool_errln("update-feed: unknown option"); return 2; }
+  }
+  if payload_path.count == 0 || sig_path.count == 0 || out_path.count == 0 {
+    tool_errln("update-feed: envelope requires --payload-file, --sig-file, --out");
+    return 2;
+  }
+  payload: [DC_UPDATE_MAX] u8; pn := dcos_read(payload_path, payload[..]);
+  if pn <= 0 { tool_errln("update-feed: cannot read payload"); return 1; }
+  sig: [128] u8; sn := dcos_read(sig_path, sig[..]);
+  if sn != 64 { tool_errln("update-feed: signature must be 64 bytes"); return 1; }
+  out: [DC_UPDATE_MAX] u8;
+  n := dc_update_envelope_write(key_id, cast(string) payload[0..<pn], cast(string) sig[0..<64], out[..]);
+  if n < 0 { tool_errln("update-feed: envelope encoding failed"); return 1; }
+  if n + 1 <= out.count { out[n] = '\n'; n += 1; }
+  if !dcos_write(out_path, cast(string) out[0..<n]) {
+    tool_errln("update-feed: cannot write envelope");
+    return 1;
+  }
+  return 0;
+}

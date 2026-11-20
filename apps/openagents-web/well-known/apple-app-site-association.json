@@ -1,4 +1,4 @@
-{"applinks": {"details": [{"appIDs": ["HQWSG26L43.com.openagents.app"], "components": [
+{"applinks": {"details": [{"appIDs": ["HQWSG26L43.com.openagents.app", "HQWSG26L43.com.openagents.desktop"], "components": [
   {"/": "/login", "#": "c=*"},
   {"/": "/login", "#": "link=*"},
   {"/": "/signin", "#": "c=*"},

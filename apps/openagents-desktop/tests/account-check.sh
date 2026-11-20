@@ -14,7 +14,7 @@ export BROWSER=/usr/bin/true
 "$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/lab-sign.h" > "$work/lab-sign.c"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$work" -c "$work/lab-sign.c" -o "$work/lab-sign.o"
 xcrun -sdk macosx swiftc -O -suppress-warnings -parse-as-library -import-objc-header "$here/account-mac.h" \
-  "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$here/tests/account-check.swift" \
+  "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift" "$here/tests/account-check.swift" \
   "$work/lab-sign.o" -o "$work/account-check" 2> "$work/build.log" || { cat "$work/build.log" >&2; exit 1; }
 if nm -u "$work/account-check" | grep -E '_SecItem(Add|CopyMatching|Update|Delete)$'; then echo "account-check: the Mac's login links the Keychain" >&2; exit 1; fi
 mkdir -p "$work/offline" "$work/live"

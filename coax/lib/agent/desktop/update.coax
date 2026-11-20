@@ -254,6 +254,58 @@ dc_update_archive :: (path: string, m: [] DcManifest) -> int {
   return ifx cast(string) hex[..] == dc_manifest_sha(m) then DC_UPD_OK else DC_UPD_SHA;
 }
 
+// SHA-256 of a file as 64 lowercase hex bytes, and its size in size_out[0].
+dc_update_file_sha :: (path: string, size_out: [] int, hex_out: [] u8) -> bool {
+  if size_out.count < 1 || hex_out.count < 64 { return false; }
+  size := dcos_size(path);
+  if size < 0 { return false; }
+  state: [112] u8; if sha256_init(state[..]) != SHA_OK { return false; }
+  chunk: [262144] u8; at := 0;
+  while at < size {
+    n := dcos_read_at(path, at, chunk[..]);
+    if n <= 0 { return false; }
+    if sha256_update_checked(state[..], chunk[0..<n], false) != SHA_OK { return false; }
+    at += n;
+  }
+  digest: [32] u8; if sha256_final_checked(state[..], digest[..], false) != SHA_OK { return false; }
+  hexd := "0123456789abcdef";
+  for i: 0..<32 { hex_out[2 * i] = hexd[cast(int) (digest[i] >> 4)]; hex_out[2 * i + 1] = hexd[cast(int) (digest[i] & 15)]; }
+  size_out[0] = size;
+  return true;
+}
+// Encodes the manifest payload JSON with keys sorted. Returns bytes written, or -1 on overflow.
+dc_manifest_write :: (version: string, has_build: bool, build: int, bundle: string, team: string, url: string, sha256: string, size: int, notes: string, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  if has_build { jo_key(o[..], "build"); jo_int(o[..], build); }
+  jo_key(o[..], "bundle_id"); jo_str(o[..], bundle);
+  if notes.count > 0 { jo_key(o[..], "notes"); jo_str(o[..], notes); }
+  jo_key(o[..], "schema"); jo_str(o[..], DC_UPDATE_SCHEMA);
+  jo_key(o[..], "sha256"); jo_str(o[..], sha256);
+  jo_key(o[..], "size"); jo_int(o[..], size);
+  jo_key(o[..], "team_id"); jo_str(o[..], team);
+  jo_key(o[..], "url"); jo_str(o[..], url);
+  jo_key(o[..], "version"); jo_str(o[..], version);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// Encodes the signed envelope JSON for raw payload bytes and a 64-byte Ed25519 signature.
+dc_update_envelope_write :: (key_id: string, payload_bytes: string, sig_bytes: string, out: [] u8) -> int {
+  if sig_bytes.count != 64 { return -1; }
+  pb64: [DC_UPDATE_MAX] u8; pn := b64_encode(payload_bytes, pb64[..]);
+  if pn < 0 { return -1; }
+  sb64: [128] u8; sn := b64_encode(sig_bytes, sb64[..]);
+  if sn < 0 { return -1; }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "key"); jo_str(o[..], key_id);
+  jo_key(o[..], "payload"); jo_str(o[..], cast(string) pb64[0..<pn]);
+  jo_key(o[..], "schema"); jo_str(o[..], DC_UPDATE_SCHEMA);
+  jo_key(o[..], "signature"); jo_str(o[..], cast(string) sb64[0..<sn]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
 // The pinned envelope (proto/coder/desktop-update-v1.json), for the checks.
 DC_UPDATE_TEST_KEY_ID :: "openagents-desktop-test";
 DC_UPDATE_TEST_KEY :: "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664";
@@ -299,4 +351,28 @@ DC_UPDATE_TEST_ENVELOPE :: "{\"schema\":\"openagents.desktop.update.v1\",\"key\"
   #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\"}", "1.0.0", 0, false, m[..]) == DC_UPD_MANIFEST;
   #assert dc_manifest_read("{\"schema\":\"v9\",\"version\":\"2.0.0\"}", "1.0.0", 0, false, m[..]) == DC_UPD_SCHEMA;
   k: [32] u8; #assert dc_key_material("eWVz", k[..]) == false && dc_key_material(DC_UPDATE_TEST_KEY, k[..]) && k[0] == 0x79;
+}
+
+#test "desktop core update: manifest and envelope writers round-trip" {
+  sha := "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
+  mb: [4096] u8;
+  mn := dc_manifest_write("2.1.0", true, 7, DC_UPDATE_BUNDLE, DC_UPDATE_TEAM, "https://example.com/OpenAgents.zip", sha, 1234, "Release notes.", mb[..]);
+  #assert mn > 0;
+  m: [1] DcManifest;
+  #assert dc_manifest_read(cast(string) mb[0..<mn], "2.0.0", 0, false, m[..]) == DC_UPD_OK;
+  #assert dc_manifest_version(m[..]) == "2.1.0" && m[0].has_build && m[0].build == 7 && m[0].size == 1234 && dc_manifest_notes(m[..]) == "Release notes.";
+  sig: [64] u8; sig[0] = 0x42; sig[63] = 0x24;
+  eb: [8192] u8;
+  en := dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, cast(string) mb[0..<mn], cast(string) sig[..], eb[..]);
+  #assert en > 0;
+  release: [1] DcKey; #assert dc_update_default_keys(release[..]) == 1;
+  #assert dc_update_verify(cast(string) eb[0..<en], release[..], "2.0.0", 0, false, m[..]) == DC_UPD_UNTRUSTED_KEY;
+  j: [1] Jv; nodes: [64] JvNode;
+  #assert jv_parse(j[..], cast(string) eb[0..<en], nodes[..]);
+  kb: [64] u8; kn := dc_member_str(j[0], "key", kb[..]);
+  #assert kn > 0 && cast(string) kb[0..<kn] == DC_UPDATE_TEST_KEY_ID;
+  pb: [DC_UPDATE_MAX] u8; pn := dc_member_str(j[0], "payload", pb[..]);
+  raw: [DC_UPDATE_MAX] u8; rn := b64_decode(cast(string) pb[0..<pn], raw[..]);
+  #assert rn == mn && cast(string) raw[0..<rn] == cast(string) mb[0..<mn];
+  #assert dc_update_envelope_write(DC_UPDATE_TEST_KEY_ID, "{}", "short", eb[..]) == -1;
 }

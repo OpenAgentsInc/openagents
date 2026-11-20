@@ -174,6 +174,7 @@ final class MacAccount: @unchecked Sendable {
         email.setAccessibilityIdentifier("account.email")
         alert.accessoryView = email
         alert.addButton(withTitle: "Send Code")
+        alert.addButton(withTitle: "Log In with Passkey")
         alert.addButton(withTitle: "Log In with This Mac's Key")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = email
@@ -186,6 +187,8 @@ final class MacAccount: @unchecked Sendable {
                 await askCode(address: address, pending: pending)
             } catch { say(error) }
         case .alertSecondButtonReturn:
+            await loginWithPasskey()
+        case .alertThirdButtonReturn:
             await loginWithKey()
         default: return
         }
@@ -229,6 +232,61 @@ final class MacAccount: @unchecked Sendable {
             MacKey.wipe(&made)
             try await keyLogin()
         } catch { say(error) }
+    }
+
+    @MainActor func loginWithPasskey() async {
+        do {
+            let challenge = try await auth.passkeyChallenge()
+            let anchor = NSApp?.keyWindow ?? NSApp?.mainWindow
+            let assertion = try await PasskeyAsk(anchor: anchor).assert(challenge)
+            _ = try await auth.passkeyLogin(challenge, assertion)
+            forgetShown()
+            await look()
+        } catch {
+            if case AppAuth.Failure.said(let msg) = error, msg.hasPrefix("No passkey was used") { return }
+            say(error)
+        }
+    }
+
+    /// Links this Mac's Nostr key (~/.openagents/nostr/key) to the signed-in OpenAgents account.
+    @MainActor func linkDeviceKey() async {
+        guard loggedIn else { return await showLogin() }
+        do {
+            if !FileManager.default.fileExists(atPath: keyFile.path) {
+                var made = try MacKey.make(keyFile)
+                MacKey.wipe(&made)
+            }
+            let url = try await auth.proofChallenge(purpose: "link")
+            let proof = try MacKey.signer(keyFile)(url, "", Date())
+            try await auth.linkNostr(url: url, proof: proof, label: "app")
+            note("This Mac's key is now linked to your OpenAgents account.")
+        } catch { say(error) }
+    }
+
+    /// Handles universal links matched by apple-app-site-association:
+    /// /login#c=..., /login#link=..., /projects/...#invite=...
+    @discardableResult
+    func handleUniversalLink(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased(),
+              host == "openagents.com" || host == "staging.openagents.com" else { return false }
+        let path = url.path
+        let fragment = url.fragment ?? ""
+        if path == "/login" && (fragment.hasPrefix("c=") || fragment.hasPrefix("link=")) {
+            Task { @MainActor in
+                NSApp?.activate(ignoringOtherApps: true)
+                if !self.loggedIn { await self.showLogin() }
+                else { await self.look() }
+            }
+            return true
+        }
+        if path.hasPrefix("/projects/") && fragment.hasPrefix("invite=") {
+            Task { @MainActor in
+                NSApp?.activate(ignoringOtherApps: true)
+                await self.look()
+            }
+            return true
+        }
+        return false
     }
 
     @MainActor private func say(_ error: Error) {
@@ -289,7 +347,7 @@ extension MacAccount {
     @MainActor func registerForPush() {
         guard loggedIn, Bundle.main.bundleIdentifier != nil, ProcessInfo.processInfo.environment["OPENAGENTS_PUSH"] != "0", let app = NSApp else { return }
         if app.delegate == nil { app.delegate = MacPush.shared }
-        guard app.delegate === MacPush.shared else { return }
+        guard app.delegate === MacPush.shared || MacPush.delegateForwards else { return }
         UNUserNotificationCenter.current().delegate = MacPush.shared
         app.registerForRemoteNotifications()
     }
@@ -299,6 +357,8 @@ extension MacAccount {
 /// (`AppAuth.pushTarget`), and a clicked notice opens the Security sheet.
 final class MacPush: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     static let shared = MacPush()
+    /// Set true by CoderDelegate when it forwards didRegisterForRemoteNotificationsWithDeviceToken to MacPush.shared.
+    static var delegateForwards = false
     func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Task {
             // Once the server keeps the token for this Mac, macOS asks (once) whether notices may show.

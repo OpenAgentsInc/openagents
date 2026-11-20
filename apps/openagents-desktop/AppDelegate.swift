@@ -6,6 +6,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
     private var statusItem: NSStatusItem?
     private var opened: [URL] = []   // files the Mac asked Coder to open before its window was up
+    var accountStatusItem: NSMenuItem?
     func applicationDidFinishLaunching(_ notification: Notification) {
         DefaultsMigration.migrateIfNeeded()
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
@@ -15,6 +16,11 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         main.installPaletteKeys()
         TestLaunch.start()
         CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
+        MacPush.delegateForwards = true
+        MacAccount.shared.changed = { [weak self] in
+            DispatchQueue.main.async { self?.refreshAccountMenu() }
+        }
+        Task.detached { await MacAccount.shared.look() }
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "OpenAgents")
@@ -35,6 +41,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // A .coax file (or another text file) opened with Coder from the Finder or `open` (#13759): it
     // opens in the pane on the window's right. Several go one after another; the last one shows.
     func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where !url.isFileURL {
+            _ = MacAccount.shared.handleUniversalLink(url)
+        }
         let files = urls.filter { $0.isFileURL }
         guard !files.isEmpty else { return }
         guard let main else { opened += files; return }
@@ -42,6 +51,24 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         main.show()
         for url in files { main.openFileInPane(url) }
     }
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity, restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb, let url = userActivity.webpageURL else { return false }
+        return MacAccount.shared.handleUniversalLink(url)
+    }
+    func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        MacPush.shared.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+    }
+    func application(_ application: NSApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        MacPush.shared.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+    }
+    @MainActor func refreshAccountMenu() {
+        let title = MacAccount.shared.title
+        accountStatusItem?.title = title.isEmpty ? "Log In to OpenAgents…" : title
+    }
+    @objc func accountLogin(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.showLogin() } }
+    @objc func accountSecurity(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.showSecurity() } }
+    @objc func accountLinkDevice(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.linkDeviceKey() } }
+    @objc func accountLogout(_ sender: Any?) { Task.detached { await MacAccount.shared.logout() } }
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
         main?.show()
@@ -115,6 +142,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(accountSecurity(_:)) || item.action == #selector(accountLinkDevice(_:)) || item.action == #selector(accountLogout(_:)) {
+            return MacAccount.shared.loggedIn
+        }
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
@@ -235,6 +265,13 @@ enum TestLaunch {
         view.addItem(withTitle: "Back to Chats", action: #selector(CoderDelegate.backToChats(_:)), keyEquivalent: "[").target = delegate
         viewItem.submenu = view
         appMenu.addItem(withTitle: "Settings…", action: #selector(CoderDelegate.openSettings(_:)), keyEquivalent: ",").target = delegate
+        appMenu.addItem(.separator())
+        let acctItem = appMenu.addItem(withTitle: "Log In to OpenAgents…", action: #selector(CoderDelegate.accountLogin(_:)), keyEquivalent: "")
+        acctItem.target = delegate
+        delegate.accountStatusItem = acctItem
+        appMenu.addItem(withTitle: "Account Security…", action: #selector(CoderDelegate.accountSecurity(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Link This Mac's Key…", action: #selector(CoderDelegate.accountLinkDevice(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "Log Out", action: #selector(CoderDelegate.accountLogout(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Claude Key…", action: #selector(CoderDelegate.claudeKey(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate

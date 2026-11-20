@@ -31,10 +31,40 @@ sign_prepare() {
 sign_bundle() {
   if [[ -n "$push_env" ]]; then
     cp "$OA_MAC_PROFILE" "$1/Contents/embedded.provisionprofile"
-    codesign --force --options runtime --entitlements "$2/OpenAgents.entitlements" --sign "$OA_MAC_SIGN_IDENTITY" "$1" >/dev/null
+    local extra=()
+    if [[ "$OA_MAC_SIGN_IDENTITY" == *"Developer ID"* || "${OA_MAC_NOTARIZE:-0}" == "1" ]]; then
+      extra+=(--timestamp)
+    fi
+    codesign --force --options runtime "${extra[@]}" --entitlements "$2/OpenAgents.entitlements" --sign "$OA_MAC_SIGN_IDENTITY" "$1" >/dev/null
     echo "signed for push ($push_env) with $OA_MAC_SIGN_IDENTITY"
+    if [[ "${OA_MAC_NOTARIZE:-0}" == "1" ]]; then
+      sign_notarize "$1" "$2"
+    fi
   else
     rm -f "$1/Contents/embedded.provisionprofile"
     codesign --force --sign - "$1" >/dev/null
   fi
+}
+
+# Notarize and staple a Developer ID signed OpenAgents.app (#13785).
+# Requires OA_NOTARY_PROFILE (an `xcrun notarytool store-credentials` profile)
+# or OA_APPLE_ID + OA_APPLE_TEAM_ID + OA_APPLE_APP_PASSWORD.
+sign_notarize() {
+  local app="${1:?sign_notarize APP WORK}" work="${2:?sign_notarize APP WORK}"
+  local zip="$work/notarize.zip"
+  rm -f "$zip"
+  ditto -c -k --keepParent "$app" "$zip"
+  if [[ -n "${OA_NOTARY_PROFILE:-}" ]]; then
+    xcrun notarytool submit "$zip" --keychain-profile "$OA_NOTARY_PROFILE" --wait
+  elif [[ -n "${OA_APPLE_ID:-}" && -n "${OA_APPLE_TEAM_ID:-}" && -n "${OA_APPLE_APP_PASSWORD:-}" ]]; then
+    xcrun notarytool submit "$zip" --apple-id "$OA_APPLE_ID" --team-id "$OA_APPLE_TEAM_ID" --password "$OA_APPLE_APP_PASSWORD" --wait
+  else
+    echo "sign.sh: notarization requires OA_NOTARY_PROFILE (or OA_APPLE_ID + OA_APPLE_TEAM_ID + OA_APPLE_APP_PASSWORD)" >&2
+    rm -f "$zip"
+    return 1
+  fi
+  rm -f "$zip"
+  xcrun stapler staple "$app"
+  spctl -a -vv --type exec "$app"
+  echo "notarized and stapled $app"
 }
