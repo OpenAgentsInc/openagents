@@ -75,6 +75,7 @@
 #                                         offline smoke (coder/tui/smoke.py, about 10 minutes) and
 #                                         Coder Desktop's Tier 0 and Tier 1 replay evals (the page's
 #                                         tests and evals/coder-desktop/tier1/replay_test.coax, #13705)
+#                                         and its page checks under 85% of the value slots (page-slots.sh, #13767)
 #   coax/remote/check.sh coder-since BASE the same, when the change since BASE reaches Coder
 #                                         (a fast run; its own job); a change that reaches only
 #                                         Coder Desktop (apps/coder-desktop, evals/coder-desktop,
@@ -215,6 +216,9 @@ desktop_evals() {
   step coder-desktop-evals coax/bin/coax test evals/coder-desktop/tier1/replay_test.coax --library || status=1
   step coder-desktop-scenarios python3 evals/coder-desktop/tier1/run_scenarios.py || status=1
   step coder-desktop-compaction sh evals/coder-desktop/compaction/run.sh || status=1
+  # every page check file in the evaluator under 85% of the value slots (#13767): a run of one
+  # check, or a host whose native checks fall back, needs the page to fit there
+  step coder-desktop-page-slots apps/coder-desktop/page-slots.sh || status=1
 }
 desktop_touched() { grep -Eq '^(apps/coder-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)

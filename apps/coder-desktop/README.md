@@ -418,8 +418,9 @@ it runs in the evaluator, as a run of one check does (#13767):
 apps/coder-desktop/page-slots.sh
 ```
 
-That runs every check file in the evaluator with the slot limit at 85%, and fails when a check
-needs more.
+That runs every check file in the evaluator with the slot limit at 85%, a few at once, and fails
+when a check needs more. `coax/remote/check.sh` runs it as the `coder-desktop-page-slots` step on
+every change to Coder Desktop (`coder` and `coder-since`).
 
 The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
