@@ -30,6 +30,7 @@ step openagents-mac-account "$repo/apps/openagents-desktop/tests/account-check.s
 step openagents-mac-signing "$repo/apps/openagents-desktop/tests/sign-check.sh"
 step device-key "$here/device-key-check.sh"
 step crash-reports "$here/crash-reports-check.sh"
+step tailnet "$here/tailnet-check.sh"   # zero-config pairing over Tailscale (#13778)
 cd "$repo/apps/openagents-ios"
 step openagents-iphone-generate ./generate.sh
 step openagents-iphone-project xcodegen generate

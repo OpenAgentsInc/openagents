@@ -688,9 +688,33 @@ only while it is still the same Tailscale user's untagged device on the
 tailnet and the operator keeps admission on. Turning admission off stops new
 invitations; it does not revoke grants already issued.
 
-`crates/coder-host/src/tailnet.rs` implements the listener and the client
-request; `crates/openagents-mobile` probes each device on the tailnet and
-redeems what it receives.
+### Coder Desktop and the phone
+
+Coder Desktop serves this admission for the phone's own computers
+(`apps/coder-desktop/Tailnet.swift`, `apps/shared/native/AppTailnet.swift`,
+GitHub #13778). Installing and running Coder is the operator's opt-in: it is
+on while Coder runs and Tailscale is up, and
+`defaults write com.openagents.coder tailnetPairing -bool false` turns it off.
+Without Tailscale nothing listens and nothing is advertised.
+
+- The listener is bound to the Mac's own tailnet IPv4 address, port 47109,
+  or any free port when that one is taken. `chats` is ignored and answered
+  `null`.
+- Discovery: the Mac advertises `_openagents-coder._tcp` on the local
+  network with a TXT record `{v: "1", ts_ip, ts_dns, port, host_id, name}`:
+  its tailnet address, MagicDNS name, the listener's port, its host key, and
+  a display name. The phone reads it once on the same Wi-Fi and keeps it. It
+  then dials `ts_ip:port` (then `ts_dns:port`) over the tailnet from
+  anywhere, when it holds no grant for that host or its grant ends within a
+  day, on coming to the front and on a network change. A record grants
+  nothing.
+- `invitation` is the device-pairing link `coder host pair --workspace`
+  prints (`openagents://pair?host=...&relay=...&code=...&name=...`, plus
+  `&auto=1`), with the grant scoped to Coder's working folder. The phone
+  opens it as a scanned link: the code travels sealed over the relay and the
+  daemon signs the grant, so the relay pairing, epochs and revocation are
+  unchanged. The phone refuses an answer whose `host`, or whose link's
+  host, is not the `host_id` it dialed.
 
 Tailnet admission is kept as an optional admission path alongside
 [nearby approval](#nearby-approval-planned) and QR pairing; see the
