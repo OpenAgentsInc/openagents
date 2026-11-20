@@ -276,7 +276,7 @@ int cd_zoom(void *page, int by) { CoderHost *c = page; return c ? cd_rescale(c, 
 int cd_zoom_set(void *page, int row) { CoderHost *c = page; return c ? cd_rescale(c, (int)coder_page_zoom_set(cd_state(c), row)) : 2; }
 void *cd_open(const char *resources) { return cd_open_ex(resources, 0, 900, 640); }
 void *cd_view(void *page) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(UI_HOST_STUB_H)
   return page ? ui_view(((CoderHost *)page)->app.host) : NULL;
 #else
   (void)page; return NULL;
