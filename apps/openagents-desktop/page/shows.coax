@@ -5,6 +5,11 @@
 //   OA-SHOW-CAPTION: words               under it (optional; it follows its OA-SHOW)
 //   OA-SHOW-OPEN: /abs/path/file          what a press on it opens (optional; a .ple-scene.json
 //                                         opens in the 3D pane, as a file a reply names does)
+//   OA-SHOW-LIVE: on                      the card is the scene itself (optional; with a
+//                                         .ple-scene.json OA-SHOW-OPEN, while Experimental is on)
+// A live card (#13812): the newest one on screen gets the host's 3D viewport over it
+// (coder_page_live_scene), which follows the file as it changes; the picture is under it, and
+// shows wherever the host has no viewport.
 // The pictures stand under the message's activity group and over its reply, so they show while
 // the group is folded; at most CP_SHOWS a message, the newest kept. ple-run (../ple-run.coax)
 // prints them; any command may. The host decodes a picture as it does an attachment's
@@ -16,7 +21,7 @@ CP_SHOW_RATIO :: 0.625f32;     // its height over its width until the host has d
 CP_SHOW_R :: 10.0f32;
 CP_SHOW :: 73;                 // a press on a picture: its OA-SHOW-OPEN, else the picture itself
 
-CpShow :: struct { pic: string; caption: string; open: string; }
+CpShow :: struct { pic: string; caption: string; open: string; live: bool; }
 
 // After prefix at the start of line: the rest, trimmed; "" when line does not start with it.
 cp_show_field :: (line: string, prefix: string) -> string {
@@ -44,7 +49,8 @@ cp_shows_parse :: (text: string, out: [] CpShow, n0: int) -> int {
     cap := cp_show_field(line, "OA-SHOW-CAPTION:");
     if cap.count > 0 { out[n - 1].caption = cap; continue; }
     op := cp_show_field(line, "OA-SHOW-OPEN:");
-    if op.count > 0 && op[0] == '/' { out[n - 1].open = op; }
+    if op.count > 0 && op[0] == '/' { out[n - 1].open = op; continue; }
+    if cp_show_field(line, "OA-SHOW-LIVE:") == "on" { out[n - 1].live = true; }
   }
   return n;
 }
@@ -87,14 +93,29 @@ cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
       sheet_icon(sh, ICON_GALLERY, x + (w - ic) * 0.5f32, yy + (h - ic) * 0.5f32, ic, th.muted);
     }
     sheet_hit(sh, UIFRAME_HIT, row, 0, x, yy, w, h);
+    live := cp_show_live(s, shows[j], x, yy, w, h);
     yy += h + a.gap_small;
     // the caption, and what a press opens
     tb: [512] u8; tn := el_put(tb[..], 0, label);
-    if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
+    if live { tn = el_put(tb[..], tn, " · live 3D: drag to turn it, Option-scroll to zoom"); }
+    else if shows[j].open.count > 0 { tn = el_put(tb[..], tn, ifx cp_show_scene(shows[j].open) then " · press to open it in 3D" else " · press to open"); }
     cn := cp_id(cb[..], i, ".showc").count; cn = el_put_i(cb[..], cn, j);
     yy += app_meta(f, sheet_pool(sh, cast(string) cb[0..<cn]), x, yy, w, sheet_pool(sh, cast(string) tb[0..<tn]), false) + a.gap;
   }
   return yy - y;
+}
+// Whether show, drawn at (x, y) w by h, is the live 3D card: a live scene, while Experimental is on,
+// at least partly in the conversation's clip (cp_conversation keeps it in live_r[4..8]). It then
+// becomes the one the host mounts its viewport over; a later card on screen takes it.
+cp_show_live :: (s: [] CoderPage, show: CpShow, x: f32, y: f32, w: f32, h: f32) -> bool {
+  if !show.live || !s[0].experimental || !cp_show_scene(show.open) || show.open.count > CP_IMG_PATH { return false; }
+  sc := cp_scale(s);
+  if y * sc >= s[0].live_r[5] + s[0].live_r[7] || (y + h) * sc <= s[0].live_r[5] { return false; }
+  s[0].live_r[0] = x * sc; s[0].live_r[1] = y * sc; s[0].live_r[2] = w * sc; s[0].live_r[3] = h * sc;
+  for k: 0..<show.open.count { s[0].live_path[k] = show.open[k]; }
+  s[0].live_path_n = show.open.count;
+  s[0].live_on = true;
+  return true;
 }
 cp_show_scene :: (path: string) -> bool { return path.count > 15 && cast(string) path[path.count - 15..<path.count] == ".ple-scene.json"; }
 // What a press on turn i's nth picture opens: its OA-SHOW-OPEN, else the picture.

@@ -125,6 +125,9 @@ int cd_file_shown(void *page);
 int cd_file_name(void *page, char *out, int cap);
 int cd_file_open_scene(void *page, const char *path);
 int cd_file_scene_rect(void *page, float out[4]);
+// The live 3D card on screen (page/shows.coax, #13812): its rect then the conversation's clip (x, y, w, h each,
+// points from the top left) into out, its scene's path into path. Returns the path's length; 0 when none shows.
+int cd_live_scene(void *page, float out[8], char *path, int cap);
 // The iOS Simulator in the pane (page/simpane.coax, GitHub #13811). cd_sim_setup: where stills
 // and the person's screenshots go. cd_sim_show: View > iOS Simulator (1 open, 0 close).
 // cd_sim_connected: the host reached the helper's socket (1) or could not (0, why). cd_sim_line:

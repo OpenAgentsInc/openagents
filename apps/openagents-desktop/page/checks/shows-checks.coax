@@ -39,3 +39,56 @@
   // a file a reply names still opens as before once a picture was pressed
   #assert cp_open_file(s, -1, 0, 0) == (cp_open_path(s).count > 0) && s[0].open_show == -1;
 }
+
+#test "shows: a live card is the scene the host mounts its 3D viewport over, the newest on screen" {
+  out: [CP_SHOWS] CpShow;
+  #assert cp_shows_parse("OA-SHOW: /r/a.jpg\nOA-SHOW-OPEN: /r/run.ple-scene.json\nOA-SHOW-LIVE: on\nOA-SHOW: /r/b.jpg\nOA-SHOW-LIVE: off\n", out[..], 0) == 2;
+  #assert out[0].live && out[0].open == "/r/run.ple-scene.json" && !out[1].live;
+  #assert cp_shows_parse("OA-SHOW-LIVE: on\n", out[..], 0) == 0;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  f: [1] UiFrame;
+  #assert coder_page_set_text(s, "show me the run live") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ple-run show\",\"exit\":0,\"timed_out\":false,\"output\":\"OA-SHOW: /r/before.jpg\\nOA-SHOW-OPEN: /r/step_000.ple-scene.json\\nOA-SHOW-LIVE: on\\nOA-SHOW: /r/after.jpg\\nOA-SHOW-OPEN: /r/run.ple-scene.json\\nOA-SHOW-LIVE: on\\nOA-SHOW: /r/x.jpg\\nOA-SHOW-OPEN: /r/x.txt\\nOA-SHOW-LIVE: on\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  r: [8] f32; pb: [256] u8;
+  // off while Experimental features are: the cards are pictures, as any other
+  s[0].experimental = false;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert coder_page_live_scene(s, r[..], pb[..]) == 0;
+  s[0].experimental = true;
+  #assert cp_test_draw(s, f[..]);
+  n := coder_page_live_scene(s, r[..], pb[..]);
+  #assert n > 0 && cast(string) pb[0..<n] == "/r/run.ple-scene.json";
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  b := elt_find(t[..], "t0.show1");
+  sc := cp_scale(s);
+  #assert b >= 0 && r[0] == el_box(t[0].rows[b]).x * sc && r[1] == el_box(t[0].rows[b]).y * sc && r[2] == el_box(t[0].rows[b]).w * sc && r[3] == el_box(t[0].rows[b]).h * sc;
+  // the clip is the conversation's, which holds the card
+  #assert r[5] <= r[1] && r[1] + r[3] <= r[5] + r[7] && r[4] <= r[0] && r[0] + r[2] <= r[4] + r[6];
+  // too small a path buffer, and a card scrolled out of the conversation, give none
+  small: [8] u8;
+  #assert coder_page_live_scene(s, r[..], small[..]) == 0;
+  s[0].live_r[5] = r[1] + r[3]; s[0].live_r[7] = 10;
+  #assert !cp_show_live(s, out[0], 0, r[1] / sc, 10, r[3] / sc);
+  s[0].live_r[5] = 0; s[0].live_r[7] = r[1];
+  #assert !cp_show_live(s, out[0], 0, r[1] / sc, 10, r[3] / sc);
+  #assert cp_show_live(s, out[0], 0, r[1] / sc - 1, 10, r[3] / sc);
+  // a card inside a clip that does not start at the top
+  s[0].live_r[5] = 100 * sc; s[0].live_r[7] = 50 * sc;
+  #assert cp_show_live(s, out[0], 0, 120, 10, 10) && !cp_show_live(s, out[0], 0, 150, 10, 10) && !cp_show_live(s, out[0], 0, 90, 10, 10);
+  // a scene path past what the page keeps is a picture
+  lp: [CP_IMG_PATH + 1] u8;
+  for k: 0..<lp.count { lp[k] = 'a'; }
+  lp[0] = '/'; tail := ".ple-scene.json";
+  for k: 0..<tail.count { lp[lp.count - tail.count + k] = tail[k]; }
+  long := out[0]; long.open = cast(string) lp[..];
+  #assert !cp_show_live(s, long, 0, 120, 10, 10);
+  long.open = cast(string) lp[1..<lp.count];   // CP_IMG_PATH bytes: kept whole
+  #assert cp_show_live(s, long, 0, 120, 10, 10) && s[0].live_path_n == CP_IMG_PATH && s[0].live_path[CP_IMG_PATH - 1] == 'n';
+  long.open = cast(string) lp[0..<lp.count - 1];
+  #assert !cp_show_live(s, long, 0, 120, 10, 10);   // not a scene's name
+  // with Settings open the conversation is not drawn, so no card is live
+  s[0].set_open = true;
+  #assert cp_test_draw(s, f[..]) && coder_page_live_scene(s, r[..], pb[..]) == 0;
+}

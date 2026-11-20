@@ -247,4 +247,76 @@ extension CoderWindow {
             panel.isHidden = false
         }
     }
+
+    // MARK: - The live 3D card in the transcript (page/shows.coax, GitHub #13812)
+
+    /// Mounts a compact PleScenePanelView over the live card the page drew last frame (a command's
+    /// `OA-SHOW-LIVE: on` card, while Experimental is on), cut to the conversation's clip, and reloads
+    /// it, keeping the camera, when the file changes (checked twice a second). With no live card on
+    /// screen it hides; the card's picture is under it either way.
+    func syncLiveScene() {
+        var r = [Float](repeating: 0, count: 8)
+        var buf = [CChar](repeating: 0, count: 4096)
+        let n = cd_live_scene(page, &r, &buf, Int32(buf.count))
+        guard n > 0, r[2] > 1, r[3] > 1, r[6] > 1, r[7] > 1 else {
+            if let box = liveSceneBox, !box.isHidden { box.isHidden = true }
+            return
+        }
+        let path = String(cString: buf)
+        let now = CACurrentMediaTime()
+        if path != liveScenePath || now - liveSceneCheckedAt > 0.5 {
+            liveSceneCheckedAt = now
+            loadLiveScene(path)
+        }
+        guard liveSceneStamp != nil, let panel = liveScenePanel, let box = liveSceneBox else {
+            liveSceneBox?.isHidden = true
+            return
+        }
+        // the page's rects are top-left points; the canvas's, bottom-left
+        let canvasH = canvas.bounds.height
+        let clip = NSRect(x: CGFloat(r[4]), y: canvasH - CGFloat(r[5]) - CGFloat(r[7]), width: CGFloat(r[6]), height: CGFloat(r[7])).integral
+        let card = NSRect(x: CGFloat(r[0]) - clip.minX, y: canvasH - CGFloat(r[1]) - CGFloat(r[3]) - clip.minY, width: CGFloat(r[2]), height: CGFloat(r[3])).integral
+        if box.frame != clip { box.frame = clip }
+        if panel.frame != card { panel.frame = card }
+        if box.isHidden { box.isHidden = false }
+    }
+
+    /// Loads path into the live card's viewport when it is a new file or the file changed; a file
+    /// that fails to load leaves the picture showing until it changes.
+    private func loadLiveScene(_ path: String) {
+        let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        let size = (attrs?[.size] as? NSNumber)?.doubleValue ?? -1
+        let time = (attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
+        let same = path == liveScenePath
+        if same, let st = liveSceneStamp, st == [size, time] { return }
+        if same, liveSceneStamp == nil, liveSceneFailedAt == [size, time] { return }
+        liveScenePath = path
+        let panel = ensureLiveScenePanel()
+        do {
+            let doc = try PleSceneLoader.load(from: URL(fileURLWithPath: path))
+            panel.loadScene(doc, preserveView: same && liveSceneStamp != nil)
+            liveSceneStamp = [size, time]
+        } catch {
+            liveSceneStamp = nil
+            liveSceneFailedAt = [size, time]
+        }
+    }
+
+    private func ensureLiveScenePanel() -> PleScenePanelView {
+        if let panel = liveScenePanel, let box = liveSceneBox {
+            if box.superview !== canvas { canvas.addSubview(box) }
+            return panel
+        }
+        let box = NSView(frame: .zero)
+        box.wantsLayer = true
+        box.layer?.masksToBounds = true
+        box.isHidden = true
+        let panel = PleScenePanelView(frame: .zero)
+        panel.makeCompact()
+        box.addSubview(panel)
+        canvas.addSubview(box)
+        liveSceneBox = box
+        liveScenePanel = panel
+        return panel
+    }
 }

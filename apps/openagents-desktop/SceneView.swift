@@ -1383,7 +1383,11 @@ final class PleSceneMetalView: NSView {
         dragMode = .none
     }
 
+    /// A card's viewport in the transcript (#13812): the wheel scrolls the chat, Option-wheel zooms.
+    var passesScroll = false
+
     override func scrollWheel(with event: NSEvent) {
+        if passesScroll && !event.modifierFlags.contains(.option) { super.scrollWheel(with: event); return }
         cameraAnim = nil
         let delta = Float(event.scrollingDeltaY)
         let scale: Float = event.hasPreciseScrollingDeltas ? 0.004 : 0.06
@@ -1785,6 +1789,16 @@ final class PleScenePanelView: NSView {
         let nowOn = !metalView.visibleLayers.contains(sem)
         metalView.setLayerVisible(sem, visible: nowOn)
         refreshLayerButton(sem)
+    }
+
+    /// Makes this the live 3D card in the transcript (page/shows.coax, #13812): the scene and its
+    /// summary, without the tool bars, the layer list or the inspector; the wheel scrolls the chat.
+    /// Once made compact a panel stays so.
+    func makeCompact() {
+        for v in subviews where v !== metalView && v !== summaryBox && v !== errorBanner { v.isHidden = true }
+        metalView.passesScroll = true
+        layer?.cornerRadius = 10
+        layer?.masksToBounds = true
     }
 
     func loadScene(_ scene: PleScene, preserveView: Bool = false) {

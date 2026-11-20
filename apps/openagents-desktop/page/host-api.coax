@@ -311,6 +311,15 @@ coder_page_gym_set :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
 coder_page_gym_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && s[0].gym_open;
 }
+// The live 3D card on screen (shows.coax, #13812): out gets its rect, then the conversation's clip
+// the host cuts its viewport to (x, y, w, h each, host points from the top left), and path the
+// scene file. Returns the path's length; 0 when no live card showed in the last frame.
+coder_page_live_scene :: (s: [] CoderPage, out: [] f32, path: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || out.count < 8 || !s[0].live_on || s[0].live_path_n > path.count { return 0; }
+  for k: 0..<8 { out[k] = s[0].live_r[k]; }
+  for k: 0..<s[0].live_path_n { path[k] = s[0].live_path[k]; }
+  return s[0].live_path_n;
+}
 coder_page_gym_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
   if s.count < 1 || out.count < 4 || s[0].set_open || !s[0].gym_open || !(s[0].gym_w > 0) || !(s[0].gym_h > 0) { return false; }
   out[0] = s[0].gym_x; out[1] = s[0].gym_y; out[2] = s[0].gym_w; out[3] = s[0].gym_h;

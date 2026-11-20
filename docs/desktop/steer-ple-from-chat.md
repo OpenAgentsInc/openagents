@@ -19,7 +19,8 @@ chat (with Experimental features on). Microcoder runs `ple-run feeders`, and the
 after pictures of the run appear in the transcript under the message's activity, over the
 reply. Press a picture and that run's scene opens in the right-hand 3D pane (the Metal
 viewport from Stage 1), where you can orbit, slice and toggle layers. The run also shows up in
-the Gym with its timeline.
+the Gym with its timeline. The After card is itself a live 3D view of the run's scene, which
+you can turn in the chat ("A live 3D card inline" below).
 
 ## How a chat steered the Gym before this
 
@@ -151,11 +152,31 @@ over 4096 device pixels a side, or after the GPU refused a composed frame) is dr
 flat shader has no picture source, so there each card shows its icon and caption rather than an
 empty frame (`cp_image_request` hands a picture only to a frame that composes).
 
-## What is not done yet (#13812)
+## A live 3D card inline (#13812)
 
-- **A live view inline.** The 3D viewport embedded in the transcript, or frames streaming
-  while a run is going, instead of pictures at its end. Today, live means pressing the picture
-  (3D pane) or the Gym's Live mode.
+A card can be the scene itself rather than its picture. Add a fourth line after its
+`OA-SHOW-OPEN`:
+
+```
+OA-SHOW-LIVE: on                    (optional: with a .ple-scene.json OA-SHOW-OPEN)
+```
+
+`ple-run feeders` marks its After card live, `ple-run kit status` its run's model, and
+`ple-run show FILE --live` any scene. While Experimental features are on, the newest live card
+that is on screen records its rect and its scene each frame (`cp_show_live` in
+`page/shows.coax`), along with the conversation's clip, and `coder_page_live_scene`
+(`cd_live_scene`) hands them to the host. The host (`syncLiveScene` in `Window+Files.swift`,
+called each tick beside the 3D pane's sync) mounts a compact `PleScenePanelView` over the card
+inside a view cut to the clip, so it scrolls with the chat and never covers the composer or the
+title bar. Compact means the scene and its summary only, no tool bars, layers or inspector. Drag
+turns it; the wheel scrolls the chat and Option-wheel zooms. Twice a second the host checks the
+file's size and time, and it reloads a changed file keeping the camera, so a run that rewrites
+its scene is seen live in the chat. The picture stays under the viewport. It shows when
+Experimental is off, for every other live card, when the file fails to load, and with Settings
+or the Gym open, since the conversation isn't drawn then.
+
+Not covered: page menus and popovers that open over a live card are drawn under the viewport (the
+3D pane has the same limit), and only one card at a time is live.
 
 ## A Gym route for programs
 

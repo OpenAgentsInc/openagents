@@ -309,6 +309,9 @@ CoderPage :: struct {
   cloud_authed: bool;         // signed into an OpenAgents account; cloud/Microcoder models require experimental && cloud_authed
   gym_open: bool;             // the 3D PLE Gym Workbench is open beside the sidebar (#13792)
   gym_x: f32; gym_y: f32; gym_w: f32; gym_h: f32;  // its host viewport rect in logical points
+  // the live 3D card (shows.coax, #13812) the last frame drew: the card's rect and the conversation's
+  // clip (x, y, w, h each, host points), and the scene the host mounts a viewport over it for
+  live_on: bool; live_r: [8] f32; live_path: [CP_IMG_PATH] u8; live_path_n: int;
   set_scroll: f32; set_content: f32; set_view: f32; set_target_y: f32;
   set_list_scroll: f32; set_list_content: f32; set_list_view: f32;
   set_query: [64] u8; set_query_n: int;

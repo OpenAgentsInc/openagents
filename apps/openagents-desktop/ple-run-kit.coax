@@ -143,7 +143,7 @@ pr_ifc_out :: (sc: [] PleScene, scene_path: string, caption: string) -> bool {
   jb: [4096] u8; k := pr_cat(jb[..], 0, stem); k = pr_cat(jb[..], k, ".iso.jpg");
   picture := cast(string) jb[0..<k];
   if !pr_picture(sc, PleCameraPreset.iso, "", picture) { tool_errln("ple-run: could not write the picture."); return false; }
-  pr_show(picture, caption, scene_path);
+  pr_show(picture, caption, scene_path, false);
   return true;
 }
 
@@ -277,7 +277,7 @@ pr_kit_status :: (a: [] Args) -> int {
   sb: [4096] u8; scene_path := pr_join(dir, "model.ple-scene.json", sb[..]);
   if fs_kind(scene_path) == FS_FILE && fs_mtime_ns(scene_path) >= when[0] {
     jb: [4096] u8; k := pr_cat(jb[..], 0, scene_path); k = pr_cat(jb[..], k - 15, ".iso.jpg");
-    pr_show(cast(string) jb[0..<k], "The run's model", scene_path);
+    pr_show(cast(string) jb[0..<k], "The run's model", scene_path, true);
     return 0;
   }
   sc: [1] PleScene; st: [1] PleIfcStats;

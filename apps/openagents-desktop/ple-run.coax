@@ -10,8 +10,9 @@
 //       next lane. Every try is a snapshot (step_NNN.ple-scene.json) the Gym's timeline plays,
 //       the last is run.ple-scene.json, the log trial.log; before.jpg and after.jpg are pictures.
 //       The router is local and deterministic: no model, and its numbers are not a PLE grade.
-//   ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]
-//       A picture of any ple-scene.v1 file (FILE.ple-scene.json gives FILE.VIEW.jpg beside it).
+//   ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE] [--live]
+//       A picture of any ple-scene.v1 file (FILE.ple-scene.json gives FILE.VIEW.jpg beside it);
+//       --live makes its card the scene itself, a 3D view in the chat that follows the file.
 //   ple-run kit start | status | stop, ple-run ifc FILE.ifc
 //       A real ple-kit eval in the background, how it goes, and its IFC model shown (ple-run-kit.coax).
 //   ple-run gym [RUN|latest] [--camera VIEW] [--only|--show|--hide L,L] [--step N|last] [--select ID] [--live on|off]
@@ -19,7 +20,8 @@
 //
 // What it prints ends with the lines the transcript reads (page/shows.coax): `OA-SHOW: PICTURE`
 // draws the picture under the message's activity, `OA-SHOW-CAPTION: TEXT` names it, and
-// `OA-SHOW-OPEN: FILE` is what a press on it opens (a scene opens in the 3D pane).
+// `OA-SHOW-OPEN: FILE` is what a press on it opens (a scene opens in the 3D pane), and
+// `OA-SHOW-LIVE: on` makes the card that scene, live (feeders' After card, kit status's model).
 //   coax/web/tool.sh apps/openagents-desktop/ple-run.coax feeders
 //   coax/bin/coax test apps/openagents-desktop/ple-run.coax
 #import "Basic";
@@ -234,10 +236,12 @@ pr_sample :: (out: [] u8) -> string {
   }
   return "";
 }
-pr_show :: (picture: string, caption: string, open: string) {
+// live: the card is the scene itself, a 3D view in the chat that follows the file (#13812).
+pr_show :: (picture: string, caption: string, open: string, live: bool) {
   print("OA-SHOW: %\n", picture);
   if caption.count > 0 { print("OA-SHOW-CAPTION: %\n", caption); }
   if open.count > 0 { print("OA-SHOW-OPEN: %\n", open); }
+  if live { print("OA-SHOW-LIVE: on\n"); }
 }
 
 pr_feeders :: (a: [] Args) -> int {
@@ -290,9 +294,9 @@ pr_feeders :: (a: [] Args) -> int {
   print("ple-run feeders (local deterministic router: no model, not a PLE grade)\n%\n", summary);
   print("Run folder: % (the Gym lists it; step_*.ple-scene.json are its timeline)\n", dir);
   cb: [256] u8; c := pr_cat(cb[..], 0, "Before: "); ib: [64] u8; c = pr_cat(cb[..], c, ple_text64_str(sc[0].task, ib[..]));
-  pr_show(before, cast(string) cb[0..<c], step0);
+  pr_show(before, cast(string) cb[0..<c], step0, false);
   c = pr_cat(cb[..], 0, "After: "); c = pr_int(cb[..], c, r[0].routed); c = pr_cat(cb[..], c, " feeders routed (green) in "); c = pr_int(cb[..], c, r[0].steps); c = pr_cat(cb[..], c, " steps");
-  pr_show(after, cast(string) cb[0..<c], final);
+  pr_show(after, cast(string) cb[0..<c], final, true);
   return ifx r[0].failed == 0 then 0 else 1;
 }
 
@@ -300,7 +304,7 @@ pr_view :: (name: string, out: [] PleCameraPreset) -> bool { return ple_camera_p
 
 pr_show_cmd :: (a: [] Args) -> int {
   path := args_at(a, 1);
-  if path.count == 0 || path[0] == '-' { tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]"); return 2; }
+  if path.count == 0 || path[0] == '-' { tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE] [--live]"); return 2; }
   buf: [PR_SCENE_BYTES] u8; sc: [1] PleScene;
   if !pr_read_scene(path, sc[..], buf[..]) { tool_errln("ple-run: could not read a ple-scene.v1 scene from that file."); return 2; }
   view: [1] PleCameraPreset; vname := args_value(a, "--view", "iso");
@@ -318,7 +322,7 @@ pr_show_cmd :: (a: [] Args) -> int {
   c = pr_cat(cb[..], c, " · "); c = pr_int(cb[..], c, sc[0].element_count); c = pr_cat(cb[..], c, " elements, ");
   c = pr_int(cb[..], c, sc[0].clash_count); c = pr_cat(cb[..], c, " clashes, score "); c = pr_num(cb[..], c, sc[0].run.score, 2);
   print("Picture of % (% view)\n", path, vname);
-  pr_show(picture, cast(string) cb[0..<c], path);
+  pr_show(picture, cast(string) cb[0..<c], path, args_has(a, "--live"));
   return 0;
 }
 
@@ -334,7 +338,7 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "ifc" { return pr_ifc_cmd(a[..]); }
   if verb == "gym" { return pr_gym(a[..]); }
   tool_errln("ple-run feeders [--scene FILE] [--name NAME] [--out DIR]   a routing run, pictures before and after");
-  tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]   a picture of a scene");
+  tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE] [--live]   a picture of a scene, or it live");
   tool_errln("ple-run kit start [--task TASK] [--kit DIR] [--harness DIR] [--env-file FILE] [--name NAME]   a real ple-kit eval, in the background");
   tool_errln("ple-run status NAME|DIR   how a kit run is going; its model, shown, once it has one");
   tool_errln("ple-run stop NAME|DIR   stop a kit run");

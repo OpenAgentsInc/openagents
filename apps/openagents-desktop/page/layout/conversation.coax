@@ -217,6 +217,9 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   s[0].frame_n += 1; s[0].anim = false;
   cp_follow(s, f[0].dt);
   uiframe_clip(f, left, top, w, bottom);
+  // what scrolls, where a live 3D card's viewport is cut off (shows.coax)
+  sc := cp_scale(s);
+  s[0].live_r[4] = left * sc; s[0].live_r[5] = top * sc; s[0].live_r[6] = (w - left) * sc; s[0].live_r[7] = (bottom - top) * sc;
   in_view := s[0].px >= x && s[0].px <= x + cw && s[0].py >= top && s[0].py < bottom;
   y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
   // the first message starts under the window's title bar, which holds the corners' buttons (titlebar.coax)

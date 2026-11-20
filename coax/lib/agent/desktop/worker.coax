@@ -64,7 +64,7 @@ dc_tools_note :: (ple_run: string, out: [] u8) -> string {
   n = dc_cat(out, n, ple_run);
   n = dc_cat(out, n, " ifc FILE.ifc` pictures any IFC model; `");
   n = dc_cat(out, n, ple_run);
-  n = dc_cat(out, n, " gym [RUN|latest] [--camera plan] [--only racks,pdu] [--step N|last] [--select ID]` shows a run in the Gym, the app's 3D workbench, and says what it shows. Run it when asked to run, show or picture a PLE run or scene. Its OA-SHOW lines put the pictures inline in this chat, and a press on one opens the scene in the 3D pane, so don't repeat the paths: say what the run did. Any command can show a picture inline the same way: print `OA-SHOW: /absolute/picture.png`, then optionally `OA-SHOW-CAPTION: words` and `OA-SHOW-OPEN: /absolute/file`.\n\n");
+  n = dc_cat(out, n, " gym [RUN|latest] [--camera plan] [--only racks,pdu] [--step N|last] [--select ID]` shows a run in the Gym, the app's 3D workbench, and says what it shows. Run it when asked to run, show or picture a PLE run or scene. Its OA-SHOW lines put the pictures inline in this chat, and a press on one opens the scene in the 3D pane, so don't repeat the paths: say what the run did. Any command can show a picture inline the same way: print `OA-SHOW: /absolute/picture.png`, then optionally `OA-SHOW-CAPTION: words`, `OA-SHOW-OPEN: /absolute/file` and, to make a .ple-scene.json file's card a live 3D view, `OA-SHOW-LIVE: on`.\n\n");
   return dc_fits(out, n);
 }
 dc_path_has :: (path: string, dir: string) -> bool { return dc_list_has(path, dir, ':'); }
@@ -254,7 +254,7 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
 #test "desktop core worker: the tools note names the shipped ple-run, and says nothing without it" {
   b: [4096] u8;
   note := dc_tools_note("/A/Resources/ple-run", b[..]);
-  #assert dc_starts(note, "Tools OpenAgents Desktop ships:\n- `/A/Resources/ple-run feeders` starts a PLE routing run") && dc_ends(note, "`OA-SHOW-OPEN: /absolute/file`.\n\n");
+  #assert dc_starts(note, "Tools OpenAgents Desktop ships:\n- `/A/Resources/ple-run feeders` starts a PLE routing run") && dc_ends(note, "a live 3D view, `OA-SHOW-LIVE: on`.\n\n");
   // both verbs name the whole path
   shows := false; want := "; `/A/Resources/ple-run show FILE";
   for k: 0..<note.count - want.count { if cast(string) note[k..<k + want.count] == want { shows = true; } }
