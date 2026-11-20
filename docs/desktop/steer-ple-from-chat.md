@@ -123,10 +123,23 @@ script can use the markers. Nothing is PLE-specific in the page.
   chat or from `foreman-ctl`.
 - **Pictures in the flat path.** Pictures, like attachment thumbnails, draw only when the
   window composes (composition-v1). With Reduce Transparency on, a card shows its icon.
-- **The sample's chilled-water pipes.** The bundled sample's `chw_pipe` cylinders are
-  `[0.25, 0.25, 22]` with `rot_z` 1.571. Both the Gym and `ple_shot` draw a cylinder upright,
-  so they stand 22 m tall. The exporter means them to lie along x. The scene format needs a
-  cylinder axis.
+## The cylinder axis (ple-scene.v1)
+
+A cylinder element may say which local axis its length runs along, before `rot_z`:
+
+```json
+{"id": "chw_pipe_01", "shape": "cylinder", "center": [13.5, 4.0, 3.9], "size": [22.0, 0.25, 0.25], "rot_z": 0.0, "axis": "x"}
+```
+
+`axis` is `"x"`, `"y"` or `"z"`. A missing field means `"z"` (upright), as every scene before
+the field was read. `size` is the cylinder's box in its own frame, so the size on the axis is its
+length and the other two are its diameters. Any other value refuses the scene. The engine reads
+it (`PleAxis`, `ple_axis_in` and `ple_axis_out` in `metaverse-engine/import/ple-scene.coax`) for
+picking, `ple_shot` and its normals, and `ple_scene_write` writes it back when it is not `"z"`.
+The Gym's Metal viewport turns its unit cylinder the same way (`pleModelMatrix` in
+`SceneView.swift`). The sample's chilled-water pipes used to be `[0.25, 0.25, 22]` with `rot_z`
+1.571, which drew as 22 m poles. They are now `[22, 0.25, 0.25]` along `"x"`
+(`tools/ple-ifc-to-scene.py --sample`, which wrote the fixture).
 
 ## Checks
 

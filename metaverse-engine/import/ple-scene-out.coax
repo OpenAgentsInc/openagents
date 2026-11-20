@@ -55,6 +55,7 @@ ple_scene_write :: (o: [] Jo, sc: [] PleScene, router: string) {
     jo_key(o, "center"); ple_out_v3(o, e.center);
     jo_key(o, "size"); ple_out_v3(o, e.size);
     jo_key(o, "rot_z"); ple_out_f(o, e.rot_z);
+    if e.axis != PleAxis.z { jo_key(o, "axis"); jo_str(o, ifx e.axis == PleAxis.x then "x" else "y"); }   // upright, the default, goes out as it came: no field
     // meta goes out when it is an object, as read (ple_scene_parse keeps its raw JSON)
     mb: [128] u8; m := ple_text128_str(e.meta, mb[..]);
     if m.count > 1 && m[0] == '{' { jo_key(o, "meta"); jo_raw(o, m); }   // mutant: equivalent (a one-byte "{" is not JSON, so > 1 and > 0 differ on nothing ple_scene_parse keeps)
@@ -83,8 +84,11 @@ ple_hit_normal :: (e: PleElement, p: Point) -> Point {
   h := times(e.size, 0.5);
   n := v3(0.0, 0.0, 1.0);
   if e.shape == PleShape.cylinder {
-    if abs(l.z) >= h.z - 0.001 { n = v3(0.0, 0.0, ifx l.z > 0 then 1.0 else -1.0); }   // mutant: equivalent (>= and > differ only at exactly the tolerance; l.z is never 0 on a cap)
-    else { n = unit_or(v3(l.x / (h.x * h.x), l.y / (h.y * h.y), 0.0), v3(1.0, 0.0, 0.0)); }
+    // in the frame where its axis is z (ple_axis_in), then back
+    q := ple_axis_in(l, e.axis); hq := ple_axis_in(h, e.axis);
+    if abs(q.z) >= hq.z - 0.001 { n = v3(0.0, 0.0, ifx q.z > 0 then 1.0 else -1.0); }   // mutant: equivalent (>= and > differ only at exactly the tolerance; q.z is never 0 on a cap)
+    else { n = unit_or(v3(q.x / (hq.x * hq.x), q.y / (hq.y * hq.y), 0.0), v3(1.0, 0.0, 0.0)); }
+    n = ple_axis_out(n, e.axis);
   } else {
     // the face p is nearest to, measured against each half size
     dx := abs(abs(l.x) - h.x); dy := abs(abs(l.y) - h.y); dz := abs(abs(l.z) - h.z);
@@ -333,4 +337,21 @@ ple_out_digest :: (px: [] u8, ids: [] int) -> int { h := 7; for b: px { h = (h *
   #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 3, px[0..<17], ids[..], st[..]);
   #assert !ple_shot(sc[..], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[..], ids[..], st[0..<0]);
   #assert !ple_shot(sc[0..<0], cam, PLE_ALL_LAYERS_VISIBLE, "", 2, 2, px[..], ids[..], st[..]);
+}
+
+#test "ple-scene-out keeps a cylinder's axis and faces its normals out of a lying one" {
+  a: [1] PleScene; b: [1] PleScene;
+  #assert ple_scene_parse(PLE_OUT_SAMPLE, a[..]);
+  a[0].elements[3].axis = PleAxis.x; a[0].elements[1].axis = PleAxis.y;   // a box's axis goes out too, and reads back
+  buf: [8192] u8; o: [1] Jo; jo_start(o[..], buf[..]); ple_scene_write(o[..], a[..], "");
+  text := jo_text(o[..]);
+  #assert ple_has_substr(text, "\"rot_z\":1.571,\"axis\":\"x\"}") && ple_has_substr(text, "\"axis\":\"y\"");
+  #assert ple_scene_parse(text, b[..]) && b[0].elements[3].axis == PleAxis.x && b[0].elements[1].axis == PleAxis.y && b[0].elements[0].axis == PleAxis.z;
+  along_x := PleElement.{shape = PleShape.cylinder, center = v3(0.0, 0.0, 0.0), size = v3(2.0, 1.0, 1.0), axis = PleAxis.x};
+  #assert same(ple_hit_normal(along_x, v3(0.2, 0.0, 0.5)), v3(0.0, 0.0, 1.0), 0.001);   // its side
+  #assert same(ple_hit_normal(along_x, v3(0.3, -0.5, 0.0)), v3(0.0, -1.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(along_x, v3(1.0, 0.1, 0.1)), v3(1.0, 0.0, 0.0), 0.001);   // its end
+  along_y := PleElement.{shape = PleShape.cylinder, center = v3(0.0, 0.0, 0.0), size = v3(1.0, 2.0, 1.0), axis = PleAxis.y};
+  #assert same(ple_hit_normal(along_y, v3(0.5, 0.2, 0.0)), v3(1.0, 0.0, 0.0), 0.001);
+  #assert same(ple_hit_normal(along_y, v3(0.1, -1.0, 0.1)), v3(0.0, -1.0, 0.0), 0.001);
 }

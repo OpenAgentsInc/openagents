@@ -27,6 +27,15 @@ PleShape :: enum u8 {
   cylinder;
 }
 
+// The local axis a cylinder's length runs along (before rot_z), from its "axis" field: "z"
+// (upright, the default when the field is missing), "x" or "y". size is the cylinder's box in its
+// own frame, so the size along the axis is its length and the other two its diameters.
+PleAxis :: enum u8 {
+  z;
+  x;
+  y;
+}
+
 PleCameraPreset :: enum u8 {
   iso;
   plan;
@@ -76,6 +85,7 @@ PleElement :: struct {
   center: Point;
   size: Point;
   rot_z: f32;
+  axis: PleAxis;
   meta: PleText128;
 }
 
@@ -386,6 +396,16 @@ ple_scene_parse_with_nodes :: (json_text: string, scene: [] PleScene, nodes: [] 
     rot_node := jv_get(d[0], ek, "rot_z");
     if rot_node == -1 { rot_v[0] = 0.0; }
     else if !ple_jv_f32(d[0], rot_node, rot_v[..]) { return false; }
+    axis_val := PleAxis.z;
+    axis_node := jv_get(d[0], ek, "axis");
+    if axis_node != -1 {
+      axis_t: [1] PleText64; abuf: [64] u8;
+      if !ple_jv_text64(d[0], axis_node, axis_t[..]) { return false; }
+      axis_str := ple_text64_str(axis_t[0], abuf[..]);
+      if axis_str == "x" { axis_val = PleAxis.x; }
+      else if axis_str == "y" { axis_val = PleAxis.y; }
+      else if axis_str != "z" { return false; }
+    }
     meta_node := jv_get(d[0], ek, "meta");
     meta_t: PleText128;
     if meta_node != -1 { meta_t = ple_make_text128(jv_raw(d[0], meta_node)); }
@@ -397,6 +417,7 @@ ple_scene_parse_with_nodes :: (json_text: string, scene: [] PleScene, nodes: [] 
       center = center_v[0],
       size = size_v[0],
       rot_z = rot_v[0],
+      axis = axis_val,
       meta = meta_t,
     };
     ei += 1;
@@ -574,6 +595,20 @@ ple_local_dir_xy :: (d: Point, rot_z: f32) -> Point {
   return v3(d.x * c - d.y * s, d.x * s + d.y * c, d.z);
 }
 
+// p in a cylinder's own frame turned so its axis is z: for x, (y, z, x); for y, (z, x, y). A
+// turn of the axes keeps lengths, so a ray's t is the same in either frame.
+ple_axis_in :: (p: Point, axis: PleAxis) -> Point {
+  if axis == PleAxis.x { return v3(p.y, p.z, p.x); }
+  if axis == PleAxis.y { return v3(p.z, p.x, p.y); }
+  return p;
+}
+// Back from that frame: ple_axis_out(ple_axis_in(p, a), a) == p.
+ple_axis_out :: (q: Point, axis: PleAxis) -> Point {
+  if axis == PleAxis.x { return v3(q.z, q.x, q.y); }
+  if axis == PleAxis.y { return v3(q.y, q.z, q.x); }
+  return q;
+}
+
 // Closest non-negative hit distance t along origin + t * dir against box [bmin, bmax], or -1.
 ple_ray_aabb :: (bmin: Point, bmax: Point, origin: Point, dir: Point) -> f32 {
   ov := [3] f32.[origin.x, origin.y, origin.z];
@@ -662,7 +697,7 @@ ple_ray_element :: (elem: PleElement, origin: Point, dir: Point) -> f32 {
       return ple_ray_aabb(times(half, -1.0), half, lo_origin, lo_dir);
     }
     case PleShape.cylinder {
-      return ple_ray_cylinder(v3(0.0, 0.0, 0.0), elem.size, lo_origin, lo_dir);
+      return ple_ray_cylinder(v3(0.0, 0.0, 0.0), ple_axis_in(elem.size, elem.axis), ple_axis_in(lo_origin, elem.axis), ple_axis_in(lo_dir, elem.axis));
     }
   }
 }
@@ -720,4 +755,25 @@ ple_pick :: (scene: [] PleScene, visible_mask: u32, origin: Point, dir: Point) -
   #assert ple_pick(sc[..], mask, v3(0.0, 4.2, 1.1), v3(1.0, 0.0, 0.0)) == -1;
   // Ray along +X at y=4.2, z=4.1 hits cylinder sprinkler-001 (index 1).
   #assert ple_pick(sc[..], PLE_ALL_LAYERS_VISIBLE, v3(0.0, 4.2, 4.1), v3(1.0, 0.0, 0.0)) == 1;
+}
+
+#test "ple-scene cylinders lie along their axis" {
+  p := v3(1.0, 2.0, 3.0);
+  #assert same(ple_axis_in(p, PleAxis.x), v3(2.0, 3.0, 1.0), 0.0001) && same(ple_axis_in(p, PleAxis.y), v3(3.0, 1.0, 2.0), 0.0001) && same(ple_axis_in(p, PleAxis.z), p, 0.0001);
+  #assert same(ple_axis_out(ple_axis_in(p, PleAxis.x), PleAxis.x), p, 0.0001) && same(ple_axis_out(ple_axis_in(p, PleAxis.y), PleAxis.y), p, 0.0001) && same(ple_axis_out(p, PleAxis.z), p, 0.0001);
+  // a 10 m pipe along x at (5, 5, 3), 0.4 across: a ray up at x 9.9, y 5.15 meets its underside
+  pipe := PleElement.{shape = PleShape.cylinder, center = v3(5.0, 5.0, 3.0), size = v3(10.0, 0.4, 0.4), axis = PleAxis.x};
+  #assert near(ple_ray_element(pipe, v3(9.9, 5.15, 0.0), v3(0.0, 0.0, 1.0)), 2.8677, 0.002);
+  #assert ple_ray_element(pipe, v3(10.1, 5.0, 0.0), v3(0.0, 0.0, 1.0)) < 0.0;   // past its end
+  upright := pipe; upright.axis = PleAxis.z;   // the same size upright is a flat disc there: missed
+  #assert ple_ray_element(upright, v3(9.9, 5.15, 0.0), v3(0.0, 0.0, 1.0)) < 0.0;
+  along_y := PleElement.{shape = PleShape.cylinder, center = v3(5.0, 5.0, 3.0), size = v3(0.4, 10.0, 0.4), axis = PleAxis.y};
+  #assert near(ple_ray_element(along_y, v3(5.15, 9.9, 0.0), v3(0.0, 0.0, 1.0)), 2.8677, 0.002);
+  // the field: x, y or z (and missing is z); anything else refuses the scene
+  sc: [1] PleScene;
+  #assert ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4],\"axis\":\"x\"}]}", sc[..]) && sc[0].elements[0].axis == PleAxis.x;
+  #assert ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4],\"axis\":\"y\"}]}", sc[..]) && sc[0].elements[0].axis == PleAxis.y;
+  #assert ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4],\"axis\":\"z\"}]}", sc[..]) && sc[0].elements[0].axis == PleAxis.z;
+  #assert ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4]}]}", sc[..]) && sc[0].elements[0].axis == PleAxis.z;
+  #assert !ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4],\"axis\":\"w\"}]}", sc[..]) && !ple_scene_parse("{\"version\":\"ple-scene.v1\",\"task\":\"t\",\"units\":\"meters\",\"bounds\":{\"min\":[0,0,0],\"max\":[10,10,4]},\"run\":{\"score\":0.5,\"gates\":{\"schema\":true,\"clash\":true,\"connectivity\":true},\"total_length_m\":10},\"elements\":[{\"id\":\"p\",\"layer\":\"chw_pipe\",\"ifc_class\":\"IfcPipeSegment\",\"shape\":\"cylinder\",\"center\":[5,5,3],\"size\":[10,0.4,0.4],\"axis\":3}]}", sc[..]);
 }

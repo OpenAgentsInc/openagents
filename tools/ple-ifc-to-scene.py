@@ -33,12 +33,15 @@ def _make_element(
     size: List[float],
     rot_z: float = 0.0,
     meta: Optional[Dict[str, Any]] = None,
+    axis: str = "z",
 ) -> Dict[str, Any]:
     if layer not in LAYERS:
         raise ValueError(f"Invalid layer: {layer}")
     if shape not in ("box", "cylinder"):
         raise ValueError(f"Invalid shape: {shape}")
-    return {
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"Invalid axis: {axis}")
+    element = {
         "id": elem_id,
         "layer": layer,
         "ifc_class": ifc_class,
@@ -48,6 +51,11 @@ def _make_element(
         "rot_z": _round3(rot_z),
         "meta": meta or {},
     }
+    # A cylinder's length runs along its local axis (before rot_z); size is its box, so the size
+    # on that axis is the length and the other two its diameters. Upright ("z") is the default.
+    if shape == "cylinder" and axis != "z":
+        element["axis"] = axis
+    return element
 
 
 def build_sample_scene(task: str = "data-hall-mep-routing") -> Dict[str, Any]:
@@ -185,7 +193,7 @@ def build_sample_scene(task: str = "data-hall-mep-routing") -> Dict[str, Any]:
             )
         )
 
-    # Chilled-water pipe cylinders (cooling)
+    # Chilled-water pipe cylinders (cooling), lying along x under the plenum
     for idx, py in enumerate([4.0, 17.0], start=1):
         elements.append(
             _make_element(
@@ -194,9 +202,10 @@ def build_sample_scene(task: str = "data-hall-mep-routing") -> Dict[str, Any]:
                 "IfcPipeSegment",
                 "cylinder",
                 [13.5, py, 3.9],
-                [0.25, 0.25, 22.0],
-                1.571,
+                [22.0, 0.25, 0.25],
+                0.0,
                 {"medium": "chilled_water"},
+                axis="x",
             )
         )
 

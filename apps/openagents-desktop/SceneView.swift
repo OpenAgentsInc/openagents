@@ -177,6 +177,7 @@ struct PleSceneElement: Decodable {
     let center: [Float]
     let size: [Float]
     let rot_z: Float?
+    var axis: String? = nil
     let meta: [String: PleJSONValue]?
 
     var centerVec: SIMD3<Float> {
@@ -189,6 +190,15 @@ struct PleSceneElement: Decodable {
     }
     var rotZ: Float { rot_z ?? 0 }
     var isCylinder: Bool { shape.lowercased() == "cylinder" }
+    /// The local axis a cylinder's length runs along (ple-scene.v1 "axis": "x", "y", or "z", the
+    /// default). size is its box in its own frame, so a pipe along x is [length, d, d].
+    var axisIndex: Int {
+        switch (axis ?? "z").lowercased() {
+        case "x": return 0
+        case "y": return 1
+        default: return 2
+        }
+    }
     var semanticLayer: PleSemanticLayer {
         PleSemanticLayer.classify(layer: layer, id: id, ifcClass: ifc_class)
     }
@@ -216,6 +226,7 @@ struct PleSceneClash: Decodable {
             center: point,
             size: [d, d, d],
             rot_z: 0,
+            axis: nil,
             meta: meta
         )
     }
@@ -374,7 +385,7 @@ struct PleSceneDiff {
             let dp = simd_length(el.centerVec - prev.centerVec)
             let ds = simd_length(el.sizeVec - prev.sizeVec)
             let dr = abs(el.rotZ - prev.rotZ)
-            if dp > posEps || ds > sizeEps || dr > rotEps || el.shape.lowercased() != prev.shape.lowercased() {
+            if dp > posEps || ds > sizeEps || dr > rotEps || el.shape.lowercased() != prev.shape.lowercased() || el.axisIndex != prev.axisIndex {
                 moved.insert(el.id)
             }
         }
@@ -518,14 +529,25 @@ private struct PleCamera {
     }
 }
 
-private func pleModelMatrix(center: SIMD3<Float>, size: SIMD3<Float>, rotZ: Float) -> simd_float4x4 {
+private func pleModelMatrix(center: SIMD3<Float>, size: SIMD3<Float>, rotZ: Float, axis: Int = 2) -> simd_float4x4 {
     let c = cos(rotZ), s = sin(rotZ)
-    return simd_float4x4(
+    let m = simd_float4x4(
         SIMD4<Float>(c * size.x, s * size.x, 0, 0),
         SIMD4<Float>(-s * size.y, c * size.y, 0, 0),
         SIMD4<Float>(0, 0, size.z, 0),
         SIMD4<Float>(center.x, center.y, center.z, 1)
     )
+    // The unit cylinder stands on z. A cylinder along x or y is turned first so its z lies on that
+    // axis (ple_axis_out in metaverse-engine/import/ple-scene.coax): x takes (a, b, c) to (c, a, b),
+    // y to (b, c, a). A box is the same box turned this way, so only cylinders pass an axis.
+    switch axis {
+    case 0:
+        return m * simd_float4x4(SIMD4<Float>(0, 1, 0, 0), SIMD4<Float>(0, 0, 1, 0), SIMD4<Float>(1, 0, 0, 0), SIMD4<Float>(0, 0, 0, 1))
+    case 1:
+        return m * simd_float4x4(SIMD4<Float>(0, 0, 1, 0), SIMD4<Float>(1, 0, 0, 0), SIMD4<Float>(0, 1, 0, 0), SIMD4<Float>(0, 0, 0, 1))
+    default:
+        return m
+    }
 }
 
 // MARK: - GPU Vertex / Instance / Uniform Layouts
@@ -1120,7 +1142,7 @@ final class PleSceneMetalView: NSView {
             }
 
             let inst = PleInstance(
-                model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ),
+                model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ, axis: elem.isCylinder ? elem.axisIndex : 2),
                 color: color,
                 highlight: highlight
             )
@@ -1137,7 +1159,7 @@ final class PleSceneMetalView: NSView {
                 let sem = elem.semanticLayer
                 guard visibleLayers.contains(sem) else { continue }
                 let inst = PleInstance(
-                    model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ),
+                    model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ, axis: elem.isCylinder ? elem.axisIndex : 2),
                     color: SIMD4<Float>(0.95, 0.24, 0.30, 0.42),
                     highlight: 0.0
                 )
