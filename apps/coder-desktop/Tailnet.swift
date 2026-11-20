@@ -11,7 +11,7 @@
 //
 // Without Tailscale (not installed, stopped, logged out, or this Mac a tagged device) nothing
 // listens and nothing is advertised, and Coder says nothing about it. It is on unless turned off:
-//   defaults write com.openagents.coder tailnetPairing -bool false
+//   defaults write com.openagents.desktop tailnetPairing -bool false
 // Pairing over Tailscale gives the phone the working folder Coder uses (your home folder until
 // you choose one), as `coder host pair --workspace` does.
 import AppKit

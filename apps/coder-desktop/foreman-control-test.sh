@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 tmp="$(mktemp -d /tmp/foreman-control-test.XXXXXX)"
 pid=""
 app=""
-domain=com.openagents.coder
+domain=com.openagents.desktop
 tier_was=skip   # skip: the live check did not run; unset: no tier was chosen; else the tier's number
 cleanup() {
   if [[ -n "$pid" ]]; then kill "$pid" 2>/dev/null || true; fi
@@ -32,9 +32,9 @@ xcrun -sdk macosx swiftc -swift-version 5 -suppress-warnings -parse-as-library -
 
 [[ "${1:-}" == --live ]] || exit 0
 
-app="${CODER_BUILD:-$here/build}/Coder.app"
-app="$(cd "$(dirname "$app")" 2>/dev/null && pwd)/Coder.app"
-[[ -x "$app/Contents/MacOS/Coder" ]] || { echo "no $app: build it with apps/coder-desktop/build.sh"; exit 1; }
+app="${CODER_BUILD:-$here/build}/OpenAgents.app"
+app="$(cd "$(dirname "$app")" 2>/dev/null && pwd)/OpenAgents.app"
+[[ -x "$app/Contents/MacOS/OpenAgents" ]] || { echo "no $app: build it with apps/coder-desktop/build.sh"; exit 1; }
 export CODER_FOREMAN_CONTROL_FILE="$tmp/foreman-control.json"
 unset CODER_FOREMAN_URL CODER_FOREMAN_TOKEN
 mkdir -p "$tmp/home"
@@ -42,7 +42,7 @@ tier_was="$(defaults read "$domain" foremanTier 2>/dev/null || echo unset)"
 # CODER_HOME keeps the daemon's state in the throwaway home; CODER_TEST_LAUNCH makes this copy stop its
 # coder-host when it quits and quit itself if this script dies (TestLaunch, AppDelegate.swift)
 CFFIXED_USER_HOME="$tmp/home" CODER_HOME="$tmp/home" CODER_TEST_LAUNCH=foreman-control-test CODER_TEST_IDLE_S=300 \
-  BROWSER=/usr/bin/true "$app/Contents/MacOS/Coder" > "$tmp/coder.log" 2>&1 &
+  BROWSER=/usr/bin/true "$app/Contents/MacOS/OpenAgents" > "$tmp/coder.log" 2>&1 &
 pid=$!
 for _ in $(seq 1 100); do [[ -s "$CODER_FOREMAN_CONTROL_FILE" ]] && break; sleep 0.1; done
 [[ -s "$CODER_FOREMAN_CONTROL_FILE" ]] || { echo "FAIL Coder wrote no control file"; exit 1; }

@@ -7,8 +7,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var opened: [URL] = []   // files the Mac asked Coder to open before its window was up
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DefaultsMigration.migrateIfNeeded()
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
-            fputs("Coder: the GPU surface could not start.\n", stderr); exit(1)
+            fputs("OpenAgents: the GPU surface could not start.\n", stderr); exit(1)
         }
         self.main = main
         main.installPaletteKeys()
@@ -16,15 +17,15 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Coder")
+            let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "OpenAgents")
             image?.isTemplate = true
             button.image = image
         }
         let menu = NSMenu()
-        let showItem = menu.addItem(withTitle: "Show Coder", action: #selector(showWindow), keyEquivalent: "")
+        let showItem = menu.addItem(withTitle: "Show OpenAgents", action: #selector(showWindow), keyEquivalent: "")
         showItem.target = self
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
         self.statusItem = statusItem
         NSApp.activate(ignoringOtherApps: true)
@@ -70,7 +71,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = count == 1 ? "An agent task is still running" : "\(count) agent tasks are still running"
-        alert.informativeText = "Quitting Coder will stop all running tasks. Close the window instead to keep them running in the background."
+        alert.informativeText = "Quitting OpenAgents will stop all running tasks. Close the window instead to keep them running in the background."
         alert.addButton(withTitle: "Cancel")
         alert.addButton(withTitle: "Quit")
         return alert.runModal() == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
@@ -237,9 +238,9 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "OpenRouter Models…", action: #selector(CoderDelegate.openRouterModels(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Hide Coder", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Hide OpenAgents", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Coder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
         edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
         edit.addItem(.separator())

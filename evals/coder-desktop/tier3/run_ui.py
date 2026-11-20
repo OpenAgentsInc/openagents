@@ -60,7 +60,7 @@ REPO = Path(__file__).resolve().parents[3]
 HERE = REPO / "evals/coder-desktop/tier3"
 GOLDENS = HERE / "goldens"
 RESULTS = REPO / "evals/coder-desktop/results"
-BUNDLE_ID = "com.openagents.coder.evals-t3"
+BUNDLE_ID = "com.openagents.desktop.evals-t3"
 
 
 class FlowFailed(Exception):
@@ -75,12 +75,12 @@ def build_app(build_dir: Path) -> Path:
     if res.returncode != 0:
         sys.stderr.write(res.stdout[-4000:] + res.stderr[-4000:])
         raise SystemExit(f"build.sh failed with exit {res.returncode}")
-    return build_dir / "Coder.app"
+    return build_dir / "OpenAgents.app"
 
 
 def stage_app(built: Path, run_dir: Path) -> tuple[Path, Path]:
     """The copy the flows run: own bundle id, mock workers, re-signed. Returns (binary, probe dylib)."""
-    app = run_dir / "Coder.app"
+    app = run_dir / "OpenAgents.app"
     shutil.copytree(built, app, symlinks=True)
     plist = app / "Contents/Info.plist"
     info = plistlib.loads(plist.read_bytes())
@@ -96,7 +96,7 @@ def stage_app(built: Path, run_dir: Path) -> tuple[Path, Path]:
     dylib = run_dir / "probe.dylib"
     subprocess.run(["clang", "-dynamiclib", "-fobjc-arc", "-mmacosx-version-min=14.0", "-framework", "AppKit",
                     "-o", str(dylib), str(HERE / "probe/probe.m")], check=True)
-    return app / "Contents/MacOS/Coder", dylib
+    return app / "Contents/MacOS/OpenAgents", dylib
 
 
 def forget_prefs() -> None:
@@ -859,8 +859,8 @@ def main() -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     if args.app:
         built = Path(args.app)
-    elif args.no_build and (RESULTS / "tier3-build/Coder.app").exists():
-        built = RESULTS / "tier3-build/Coder.app"
+    elif args.no_build and (RESULTS / "tier3-build/OpenAgents.app").exists():
+        built = RESULTS / "tier3-build/OpenAgents.app"
     else:
         built = build_app(RESULTS / "tier3-build")
     binary, dylib = stage_app(built, run_dir)
@@ -878,7 +878,7 @@ def main() -> int:
         print(f"{tag} flow {name}: {r['description']} ({r['wall_ms']} ms, {r['captures']} captures){tail}", flush=True)
         for note in r["notes"]:
             print(f"     {note}", flush=True)
-    shutil.rmtree(run_dir / "Coder.app", ignore_errors=True)
+    shutil.rmtree(run_dir / "OpenAgents.app", ignore_errors=True)
     passed = sum(1 for r in results if r["passed"])
     summary = {"run": run_dir.name, "update_goldens": args.update_goldens, "passed": passed, "failed": len(results) - passed, "flows": results}
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")

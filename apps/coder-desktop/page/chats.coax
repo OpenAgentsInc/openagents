@@ -91,7 +91,7 @@ coder_page_foreman :: (s: [] CoderPage, busy: bool, tier: int) #export_c #effect
 // Update the sidebar footer auto-updater pill state, optional label, and detail text.
 coder_page_update :: (s: [] CoderPage, state: int, label: string, detail: string) #export_c #effects(all) {
   if s.count < 1 { return; }
-  if state == CP_UPD_READY && s[0].update_state != CP_UPD_READY { _ := app_toast_push(s[0].toasts[..], "Update ready: restart Coder to use it", APP_TOAST_PLAIN); }
+  if state == CP_UPD_READY && s[0].update_state != CP_UPD_READY { _ := app_toast_push(s[0].toasts[..], "Update ready: restart OpenAgents to use it", APP_TOAST_PLAIN); }
   s[0].update_state = ifx state < CP_UPD_HIDDEN then CP_UPD_HIDDEN else ifx state > CP_UPD_ERROR then CP_UPD_ERROR else state;
   s[0].update_label_n = cp_out(s[0].update_label[..], label);
   s[0].update_detail_n = cp_out(s[0].update_detail[..], detail);

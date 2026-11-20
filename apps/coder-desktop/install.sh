@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Firm reason: 5 (thin wrapper around git, build.sh, PlistBuddy, codesign and launchctl; holds no logic)
-# Keeps /Applications/Coder.app at the newest origin/main.
-#   apps/coder-desktop/install.sh                 build origin/main and install it now; a Coder open from
-#                                                 /Applications is quit first and opened again after
+# Keeps /Applications/OpenAgents.app at the newest origin/main.
+#   apps/coder-desktop/install.sh                 build origin/main and install it now; an OpenAgents (or legacy
+#                                                 Coder) open from /Applications is quit first and opened again after
 #   apps/coder-desktop/install.sh --agent         also check every 15 minutes (a LaunchAgent), and run once now
 #   apps/coder-desktop/install.sh --remove-agent  stop the checks
 #   apps/coder-desktop/install.sh --check         what the LaunchAgent runs: build when main moved, install
-#                                                 only while Coder is closed (the build waits beside it until then)
+#                                                 only while OpenAgents is closed (the build waits beside it until then)
 #   apps/coder-desktop/install.sh --status        what is installed, what waits, what main is at
 # It builds in a checkout of its own under ~/.cache/openagents/coder-release, never in yours.
 # Each build records what it read: the Coax sources of the page, the shader and the two workers
@@ -24,9 +24,12 @@ state="${CODER_RELEASE_HOME:-$HOME/.cache/openagents/coder-release}"
 src="$state/src"
 stage="$state/stage"
 dest="${CODER_APP_DIR:-/Applications}"
-app="$dest/Coder.app"
-label="com.openagents.coder-update"
+app="$dest/OpenAgents.app"
+legacy_app="$dest/Coder.app"
+label="com.openagents.desktop-update"
+legacy_label="com.openagents.coder-update"
 agent_plist="$HOME/Library/LaunchAgents/$label.plist"
+legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
 # What every build reads besides the Coax sources coax deps lists: the compiler's inputs (as
 # coax/provenance.sh lists them), what coax/web/tool.sh links into the workers, and the app's
 # hosts and assets.
@@ -39,7 +42,10 @@ mkdir -p "$state"
 
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
 commit_of() { /usr/libexec/PlistBuddy -c "Print :OACommit" "$1/Contents/Info.plist" 2>/dev/null || true; }
-coder_pids() { pgrep -f "^$app/Contents/MacOS/Coder" || true; }
+coder_pids() {
+  { pgrep -f "^$app/Contents/MacOS/OpenAgents" || true;
+    pgrep -f "^$legacy_app/Contents/MacOS/Coder" || true; } | sort -u
+}
 
 # The resident daemon: one program (coder/tui/host.coax), shipped in Coder as coder-host and run at login
 # by com.openagents.coax.environment from ~/.openagents/bin/openagents-environment.
@@ -100,25 +106,7 @@ else
   clone="$(cat "$state/clone")"
 fi
 
-if [[ "$mode" == --remove-agent ]]; then
-  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
-  rm -f "$agent_plist"
-  say "checks stopped; $app stays"
-  exit 0
-fi
-
-if [[ "$mode" == --status ]]; then
-  git -C "$clone" fetch -q origin main 2>/dev/null || true
-  echo "main:      $(git -C "$clone" rev-parse --short origin/main)"
-  echo "installed: $(commit_of "$app" | cut -c1-10) ($app)"
-  echo "waiting:   $(commit_of "$stage/Coder.app" | cut -c1-10)"
-  echo "checked:   $(cut -c1-10 "$state/current" 2>/dev/null || true)"
-  launchctl print "gui/$(id -u)/$label" > /dev/null 2>&1 && echo "checks:    every 15 minutes (log: $state/log)" || echo "checks:    off"
-  exit 0
-fi
-
-if [[ "$mode" == --agent ]]; then
-  cp "$0" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"
+write_agent_plist() {
   mkdir -p "$HOME/Library/LaunchAgents"
   cat > "$agent_plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -139,6 +127,42 @@ if [[ "$mode" == --agent ]]; then
   <key>StandardErrorPath</key><string>$state/log</string>
 </dict></plist>
 PLIST
+}
+
+retire_legacy_agent() {
+  [[ -f "$legacy_agent_plist" ]] || return 0
+  if [[ ! -f "$agent_plist" ]]; then
+    write_agent_plist
+    launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+    launchctl bootstrap "gui/$(id -u)" "$agent_plist" 2>/dev/null || true
+  fi
+  rm -f "$legacy_agent_plist"
+  launchctl bootout "gui/$(id -u)/$legacy_label" 2>/dev/null || true
+}
+
+if [[ "$mode" == --remove-agent ]]; then
+  launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+  launchctl bootout "gui/$(id -u)/$legacy_label" 2>/dev/null || true
+  rm -f "$agent_plist" "$legacy_agent_plist"
+  say "checks stopped; $app stays"
+  exit 0
+fi
+
+if [[ "$mode" == --status ]]; then
+  git -C "$clone" fetch -q origin main 2>/dev/null || true
+  echo "main:      $(git -C "$clone" rev-parse --short origin/main)"
+  echo "installed: $(commit_of "$app" | cut -c1-10) ($app)"
+  echo "waiting:   $(commit_of "$stage/OpenAgents.app" | cut -c1-10)"
+  echo "checked:   $(cut -c1-10 "$state/current" 2>/dev/null || true)"
+  launchctl print "gui/$(id -u)/$label" > /dev/null 2>&1 && echo "checks:    every 15 minutes (log: $state/log)" || echo "checks:    off"
+  exit 0
+fi
+
+if [[ "$mode" == --agent ]]; then
+  cp "$0" "$state/install.sh.new" && mv "$state/install.sh.new" "$state/install.sh"
+  write_agent_plist
+  launchctl bootout "gui/$(id -u)/$legacy_label" 2>/dev/null || true
+  rm -f "$legacy_agent_plist"
   launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$agent_plist"
   say "checks every 15 minutes; log at $state/log"
@@ -160,7 +184,7 @@ fi
 git -C "$clone" fetch -q origin main
 target="$(git -C "$clone" rev-parse origin/main)"
 installed="$(commit_of "$app")"
-staged="$(commit_of "$stage/Coder.app")"
+staged="$(commit_of "$stage/OpenAgents.app")"
 
 # Built already, or nothing Coder's build reads changed since the build we have.
 have="$staged"; [[ -n "$have" ]] || have="$installed"
@@ -178,12 +202,14 @@ if [[ "$staged" != "$target" && "$installed" != "$target" ]]; then
   fi
   git -C "$src" checkout -q --force --detach "$target"
   (cd "$src" && coax/build.sh) > "$state/build.log" 2>&1 || { say "coax build failed: $state/build.log"; exit 1; }
-  CODER_BUILD="$stage" "$src/apps/coder-desktop/build.sh" >> "$state/build.log" 2>&1 || { say "Coder build failed: $state/build.log"; exit 1; }
-  plist="$stage/Coder.app/Contents/Info.plist"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(git -C "$src" rev-list --count HEAD)" "$plist"
+  CODER_BUILD="$stage" "$src/apps/coder-desktop/build.sh" >> "$state/build.log" 2>&1 || { say "OpenAgents build failed: $state/build.log"; exit 1; }
+  plist="$stage/OpenAgents.app/Contents/Info.plist"
+  rev_count="$(git -C "$src" rev-list --count HEAD)"
+  (( rev_count < 28830 )) && rev_count=28830
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $rev_count" "$plist"
   /usr/libexec/PlistBuddy -c "Delete :OACommit" "$plist" 2>/dev/null || true
   /usr/libexec/PlistBuddy -c "Add :OACommit string $target" "$plist"
-  codesign --force --sign - "$stage/Coder.app" 2> /dev/null
+  codesign --force --sign - "$stage/OpenAgents.app" 2> /dev/null
   # What this build read, relative to the checkout, for the next check.
   { printf '%s\n' "${fixed[@]}"
     for r in "${roots[@]}"; do "$src/coax/bin/coax" deps "$src/$r"; done \
@@ -200,26 +226,32 @@ for line in sys.stdin:
   staged="$target"
 fi
 
-[[ "$installed" == "$target" ]] && { say "up to date at ${target:0:10}"; sync_resident; exit 0; }
+[[ "$installed" == "$target" && ! -e "$legacy_app" ]] && { say "up to date at ${target:0:10}"; sync_resident; retire_legacy_agent; exit 0; }
 
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
-  if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit Coder"; exit 0; fi
+  if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; retire_legacy_agent; exit 0; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
   if [[ -n "$(coder_pids)" ]]; then
-    say "Coder is still running; quit it before installing so its bundle is not removed out from under it"
+    say "OpenAgents is still running; quit it before installing so its bundle is not removed out from under it"
     exit 1
   fi
 fi
 
 # Swap it in whole: the new copy lands beside the old one, then takes its name.
-ditto "$stage/Coder.app" "$dest/Coder.app.new"
-[[ -e "$app" ]] && mv "$app" "$dest/.Coder.app.old"
-mv "$dest/Coder.app.new" "$app"
-rm -rf "$dest/.Coder.app.old"
+ditto "$stage/OpenAgents.app" "$dest/OpenAgents.app.new"
+[[ -e "$app" ]] && mv "$app" "$dest/.OpenAgents.app.old"
+mv "$dest/OpenAgents.app.new" "$app"
+rm -rf "$dest/.OpenAgents.app.old"
+# Cleanly remove legacy /Applications/Coder.app after OpenAgents.app is in place.
+if [[ -e "$legacy_app" ]]; then
+  mv "$legacy_app" "$dest/.Coder.app.old"
+  rm -rf "$dest/.Coder.app.old"
+fi
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" 2>/dev/null || true
 say "installed ${target:0:10} at $app"
 sync_resident
 [[ -n "$pids" || "$mode" == now ]] && open "$app"
+retire_legacy_agent
 exit 0

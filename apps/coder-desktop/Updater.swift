@@ -185,7 +185,7 @@ enum UpdaterState: Equatable {
 
 struct UpdateVerifier {
     static let schemaVersion = "openagents.desktop.update.v1"
-    static let pinnedBundleID = "com.openagents.coder"
+    static let pinnedBundleID = "com.openagents.desktop"
     static let pinnedTeamID = "HQWSG26L43"
 
     /// Compiled-in Ed25519 release signing public keys (key ID -> base64 raw 32-byte public key).
@@ -539,7 +539,7 @@ struct LocalStagedUpdateDetector {
             .appendingPathComponent(".cache/openagents/coder-release", isDirectory: true)
     }
 
-    /// Checks both the `install.sh` stage directory (`$CODER_RELEASE_HOME/stage/Coder.app`)
+    /// Checks both the `install.sh` stage directory (`$CODER_RELEASE_HOME/stage/OpenAgents.app`)
     /// and whether the running `.app` on disk was already replaced with a newer commit.
     func detect(runningAppURL: URL, launchMetadata: BundleMetadata?) -> UpdateSource? {
         // 1. Check if the running app on disk was already swapped out from under us.
@@ -553,8 +553,8 @@ struct LocalStagedUpdateDetector {
             }
         }
 
-        // 2. Check install.sh staged build at ~/.cache/openagents/coder-release/stage/Coder.app
-        let stagedApp = releaseHome.appendingPathComponent("stage/Coder.app", isDirectory: true)
+        // 2. Check install.sh staged build at ~/.cache/openagents/coder-release/stage/OpenAgents.app
+        let stagedApp = releaseHome.appendingPathComponent("stage/OpenAgents.app", isDirectory: true)
         guard FileManager.default.fileExists(atPath: stagedApp.path),
               let staged = BundleMetadata.read(from: stagedApp),
               staged.bundleID == pinnedBundleID else {
@@ -576,7 +576,7 @@ struct LocalStagedUpdateDetector {
 // MARK: - CoderUpdater Coordinator
 
 final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
-    static let defaultManifestURLString = "https://github.com/OpenAgentsInc/openagents/releases/latest/download/coder-desktop-update.json"
+    static let defaultManifestURLString = "https://github.com/OpenAgentsInc/openagents/releases/latest/download/openagents-desktop-update.json"
 
     var onStateChange: ((UpdaterState) -> Void)?
     private(set) var state: UpdaterState = .hidden {
@@ -596,7 +596,7 @@ final class CoderUpdater: NSObject, URLSessionDownloadDelegate {
     private let launchMetadata: BundleMetadata?
     private let manifestURL: URL?
     private let cacheDir: URL
-    private let queue = DispatchQueue(label: "com.openagents.coder.updater", qos: .utility)
+    private let queue = DispatchQueue(label: "com.openagents.desktop.updater", qos: .utility)
     private var pollTimer: Timer?
     private var downloadSession: URLSession?
     private var activeManifest: UpdateManifest?

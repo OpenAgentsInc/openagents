@@ -15,7 +15,7 @@ struct ChatWorktree: Codable, Equatable {
     var source: String     // the main checkout it was made from
     var branch: String     // coder/CHAT
 
-    /// Off with `defaults write com.openagents.coder chatWorktrees -bool NO`: new chats then run in the folder chosen.
+    /// Off with `defaults write com.openagents.desktop chatWorktrees -bool NO`: new chats then run in the folder chosen.
     static var enabled: Bool { UserDefaults.standard.object(forKey: "chatWorktrees") as? Bool ?? true }
 
     static var home: String {
