@@ -72,7 +72,7 @@ where they were.
 - Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`). Each repository has one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target/REPO-HASH`, named from its real path, as its worktrees folder is, so `/tmp` and `/private/tmp` give one name), which its main checkout and all its chats' worktrees share. Outside a repository, Cargo builds where it always does. Coder's own environment wins over both. `apps/openagents-desktop/build.sh` builds into the worktree's own `build/`.
 - Opening a chat goes back to its worktree. One removed by hand is made again from its branch.
 - Deleting a chat removes its worktree when it has no changes, and its branch when everything on it is in another branch. A worktree with changed or new files is never removed: Coder says where it is and leaves it.
-- `defaults write com.openagents.coder chatWorktrees -bool NO` turns this off; `CODER_WORKTREES=DIR` puts worktrees somewhere else.
+- `defaults write com.openagents.desktop chatWorktrees -bool NO` turns this off; `CODER_WORKTREES=DIR` puts worktrees somewhere else.
 
 In a main checkout, Microcoder refuses the git commands that would take other
 chats' work away before they start (`coax/lib/microcoder/git-guard.coax`):
@@ -344,7 +344,7 @@ apps/openagents-desktop/build.sh --open
 ```
 
 The app is `apps/openagents-desktop/build/OpenAgents.app`, signed ad hoc. Its bundle
-identifier is `com.openagents.coder`.
+identifier is `com.openagents.desktop`.
 
 To send a message at launch, with no typing:
 
