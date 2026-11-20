@@ -32,7 +32,7 @@ extension CoderWindow {
         for (_, one) in r.agents { one.write(out, count: Int(n)) }
     }
     private func pump(_ r: CoderRun) {
-        var out = [CChar](repeating: 0, count: 300_000)
+        var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
         let page = r.page, cwd = (r === run ? folder : r.folder).path
         if r !== run && cd_action(page) == 3 { stopRun(r) }
         if cd_budget_exceeded(page) == 0 {
@@ -90,7 +90,7 @@ extension CoderWindow {
             }
             coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
             syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
-            var out = [CChar](repeating: 0, count: 300_000)
+            var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {
                 cd_close(back); CoderTurn.remove(t.run); continue
             }
@@ -117,7 +117,7 @@ extension CoderWindow {
     /// The run's lines since the message was sent go to its page as they came. A line after one
     /// that owed the worker an answer means the answer was given, so it is not given again.
     private func replay(_ r: CoderRun) {
-        var out = [CChar](repeating: 0, count: 300_000)
+        var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
         var started = r.turn?.agents ?? []
         for (k, text) in r.worker.readAvailable().enumerated() {
             if k > 0 { _ = cd_answer_line(r.page, &out, Int32(out.count)) }

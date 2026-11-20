@@ -55,7 +55,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   gh := cp_act_group(s, f, name, s[0].turns[i].agents[j].head, s[0].turns[i].agents[j].nrows, s[0].turns[i].agents[j].early_rows, s[0].turns[i].agents[j].more_rows,
                      i, 0, live, app_act_open(s[0].turns[i].agents[j].fold, state == CP_RUNNING), -1, x, y, cw, stop, h, CP_PANE_TOOL);
   if gh > 0 { y += gh + a.gap; }
-  reply := cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n];
+  reply := cp_agent_reply(s, i, j);
   if state == CP_RUNNING && s[0].turns[i].agents[j].paused { y += app_meta(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cw, "Paused after 100 tool calls in a row with no file changed. Microcoder decides whether it goes on.", false) + a.gap; }
   else if state == CP_RUNNING {
     wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);

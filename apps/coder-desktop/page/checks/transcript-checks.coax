@@ -246,9 +246,12 @@ CpCheckLong :: struct {
   calls: [64] CpCall;
   docs: [CP_CHECK_DOCS] MdDoc;
   long_buf: [4096] u8;
+  agent_buf: [1] u8;
+  arena: [65536] u8;
+  scratch: [4096] u8;
 }
 cp_check_long :: (p: [] CoderPage, st: [] CpCheckLong) -> [] CoderPage {
-  cp_store_bind(p, st[0].turns[..], st[0].agents[0..<0], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  cp_store_bind(p, st[0].turns[..], st[0].agents[0..<0], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[0..<0], st[0].arena[..], st[0].scratch[..]);
   return p;
 }
 cp_test_turns :: (s: [] CoderPage, n: int, ask: string) -> bool {

@@ -1049,7 +1049,7 @@ mc_run_delegated :: (r: [] McRun, ticket: int, results: string, out: [] McRunEve
 mc_run_delegated_record :: (r: [] McRun, results: string) {
   l := r[0].l[..]; a := mc_pending(l);
   have := ifx results.count > 1 && results[0] == '[' && json_valid(results) then cl_count(results) else 0;
-  rb: [32768] u8; lb: [MC_DELEGATE_LABEL + 32] u8;
+  lb: [MC_DELEGATE_LABEL + 32] u8;
   q := 0;
   for i: 0..<a.nd {
     if a.delegates[i].stop {
@@ -1057,14 +1057,75 @@ mc_run_delegated_record :: (r: [] McRun, results: string) {
       mc_action_command(l[0].st[..], ifx sn < 0 then "agent: stop" else cast(string) lb[0..<sn], 0, false, "Its owner was told to stop it. A sub-agent that had already ended is left as it was.");
       continue;
     }
-    ar: [1] ClArena; ar[0] = ClArena.{buf = rb[..]};
+    ar: [1] ClArena; ar[0] = ClArena.{buf = r[0].spill_buf[..]};
     label := mc_run_delegate_label(a.delegates[i], lb[..]);
     at := q; q += 1;
     if at >= have { mc_action_command(l[0].st[..], label, 1, false, "the sub-agent did not run"); continue; }
     one := cl_json(results, cl_item(results, at));
-    exit := cl_int(one, "exit"); text := cl_str(ar[..], one, "output");
-    mc_action_command(l[0].st[..], label, ifx exit.ok then exit.value else 1, false, ifx text.count > 0 then text else "the sub-agent gave no reply");
+    exit := cl_int(one, "exit"); v := cl_at(one, "output"); text := cl_text(ar[..], one, v);
+    code := ifx exit.ok then exit.value else 1;
+    if text.count == 0 && ar[0].full && v.ok {
+      // past the buffer a reply is read back in: it is saved as the JSON string it came as
+      raw := cast(string) one[v.from..<v.to]; sp := mc_run_spill_path(r);
+      if sp.count > 0 && fs_write(sp, raw) { mc_action_reply(l[0].st[..], label, code, mc_reply_raw_note(raw.count, sp, r[0].obuf[..])); }
+      else { mc_action_reply(l[0].st[..], label, code, "[the sub-agent's reply was too long to read back here, and could not be saved]"); }
+      continue;
+    }
+    if text.count == 0 { mc_action_command(l[0].st[..], label, code, false, "the sub-agent gave no reply"); continue; }
+    mc_action_reply(l[0].st[..], label, code, mc_run_reply_shown(r, label, text));
   }
+}
+
+// A sub-agent's reply as the state holds it (GitHub #13325's spill, for replies): whole whenever it fits
+// the step's room. It is also saved whole to its own file, which its last line names, so the reply can
+// be read again after the step is compacted. A reply past the room keeps its head and tail, and the
+// line between them names the file and the lines left out.
+mc_run_reply_shown :: (r: [] McRun, label: string, text: string) -> string {
+  sp := mc_run_spill_path(r);
+  saved := sp.count > 0 && fs_write(sp, text);
+  room := mc_result_room(r[0].l[0].st[..], label);
+  return mc_reply_shown(text, room, ifx saved then sp else "", r[0].obuf[..]);
+}
+mc_reply_shown :: (text: string, room: int, path: string, out: [] u8) -> string {
+  ends := mc_line_ends(text); if text.count > 0 && text[text.count - 1] != '\n' { ends += 1; }
+  // whole, with the line naming its file
+  n := mc_put(out, 0, text);
+  if path.count > 0 { n = mc_put(out, n, ifx text.count > 0 && text[text.count - 1] != '\n' then "\n[saved whole: " else "[saved whole: "); n = mc_put(out, n, path); n = mc_put(out, n, "]"); }
+  if text.count + path.count + 32 <= out.count && mc_escaped_size(cast(string) out[0..<n]) <= room { return cast(string) out[0..<n]; }
+  if path.count == 0 { return text; }     // nowhere to save it: the state keeps what fits, and says what it held back
+  half := (room - 320 - 2 * path.count) / 2;
+  if half < 0 { half = 0; }
+  if 2 * half + 4096 > out.count { half = (out.count - 4096) / 2; }
+  h := mc_fit_head(text, half);
+  t := mc_fit_tail(cast(string) text[h..<text.count], half) + h;
+  first := mc_line_ends(cast(string) text[0..<h]) + 1;
+  last := mc_line_ends(cast(string) text[0..<t]) + 1;
+  if last < first { last = first; }
+  n = mc_put(out, 0, cast(string) text[0..<h]);
+  if h > 0 && text[h - 1] != '\n' { n = mc_put(out, n, "\n"); }
+  n = mc_put(out, n, "[... "); n = mc_put_int(out, n, t - h); n = mc_put(out, n, " bytes of the reply (lines "); n = mc_put_int(out, n, first); n = mc_put(out, n, "-");
+  n = mc_put_int(out, n, last); n = mc_put(out, n, ") left out here: this step's results have 32 KB. The whole reply, "); n = mc_put_int(out, n, ends);
+  n = mc_put(out, n, " lines, is saved: view "); n = mc_put(out, n, path); n = mc_put(out, n, ":"); n = mc_put_int(out, n, first); n = mc_put(out, n, "-");
+  n = mc_put_int(out, n, ifx last < first + MC_VIEW_LINES - 1 then last else first + MC_VIEW_LINES - 1); n = mc_put(out, n, " to read them]\n");
+  n = mc_put(out, n, cast(string) text[t..<text.count]);
+  return cast(string) out[0..<n];
+}
+mc_reply_raw_note :: (bytes: int, path: string, out: [] u8) -> string {
+  n := mc_put(out, 0, "[the sub-agent's reply, "); n = mc_put_int(out, n, bytes); n = mc_put(out, n, " bytes, is too long to show here. It is saved whole, as a JSON string: view ");
+  n = mc_put(out, n, path); n = mc_put(out, n, ":1-"); n = mc_put_int(out, n, MC_VIEW_LINES); n = mc_put(out, n, "]");
+  return cast(string) out[0..<n];
+}
+#test "a sub-agent's reply is whole when it fits, names its saved file, and past the room keeps head and tail with the file's lines" {
+  out: [131072] u8;
+  #assert mc_reply_shown("two files", 32000, "/s/1-2-1.txt", out[..]) == "two files\n[saved whole: /s/1-2-1.txt]";
+  #assert mc_reply_shown("two files", 32000, "", out[..]) == "two files";
+  big: [20000] u8; for k: 0..<20000 { big[k] = ifx k % 100 == 99 then '\n' else ifx k < 100 then 'H' else ifx k >= 19900 then 'T' else 'm'; }
+  text := cast(string) big[..];
+  #assert mc_reply_shown(text, 32000, "/s/x.txt", out[..]).count == 20000 + "[saved whole: /s/x.txt]".count;
+  cut := mc_reply_shown(text, 4000, "/s/x.txt", out[..]);
+  #assert cut.count < 4000 && cut[0] == 'H' && cut[cut.count - 2] == 'T' && mc_escaped_size(cut) <= 4000;
+  saw := false; for k: 0..<cut.count - 8 { if cut[k] == '/' && cut[k + 1] == 's' && cut[k + 2] == '/' && cut[k + 3] == 'x' { saw = true; } }
+  #assert saw;
 }
 
 // STOP: the running call's curl goes, or the running command's process group is killed (its

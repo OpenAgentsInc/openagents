@@ -70,12 +70,12 @@
   #assert s[0].turns[0].agents[0].nrows == 2;
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"A ok\"}") == MWW_ENDED;
   #assert s[0].turns[0].agents[0].nrows == 1 && s[0].calls[cp_nth(s, 0, 0, 0)].thought;
-  #assert cast(string) s[0].turns[0].agents[0].reply[0..<s[0].turns[0].agents[0].reply_n] == "A ok";
+  #assert cp_agent_reply(s, 0, 0) == "A ok";
   // no ended text: what it streamed is the reply
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"reply\",\"text\":\"B is fine. \"}") == MWW_REPLY;
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"\"}") == MWW_ENDED;
   #assert s[0].turns[0].agents[1].nrows == 0 && s[0].turns[0].agents[1].state == CP_DONE;
-  #assert cast(string) s[0].turns[0].agents[1].reply[0..<s[0].turns[0].agents[1].reply_n] == "B is fine.";
+  #assert cp_agent_reply(s, 0, 1) == "B is fine.";
 }
 
 #test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
@@ -546,4 +546,36 @@
   #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"B ok\"}") == MWW_ENDED;
   #assert coder_page_pane(s, 2) && cp_test_draw_wide(s, f[..]);
   #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "coder.pane.took")) == "5s";
+}
+
+#test "a sub-agent's long reply is kept whole, shown whole and handed back to Microcoder whole: no 8,000-byte cut" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"audit\"}],\"ticket\":3}") == MWW_DELEGATE;
+  lb: [20200] u8; n := cp_out(lb[..], "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"");
+  for k: 0..<20000 { lb[n] = ifx k == 19999 then 'Z' else ifx k % 80 == 79 then 'n' else 'a'; n += 1; }
+  n += cp_out(lb[n..<lb.count], "\"}");
+  #assert coder_page_agent_line(s, 0, cast(string) lb[0..<n]) == MWW_ENDED;
+  r := cp_agent_reply(s, 0, 0);
+  #assert r.count == 20000 && r[19999] == 'Z';
+  out: [24000] u8; m := coder_page_answer_line(s, out[..]);
+  #assert m > 20000;
+  line := cast(string) out[0..<m]; z := 0;
+  for c: line { if c == 'Z' { z += 1; } }
+  #assert z == 1;
+}
+
+#test "the chat's pool of sub-agent replies squeezes out superseded replies and keeps the rest whole" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"neon\",\"task\":\"a\"},{\"level\":\"neon\",\"task\":\"b\"}],\"ticket\":4}") == MWW_DELEGATE;
+  cp_agent_reply_set(s, 0, 0, "first");
+  cp_agent_reply_set(s, 0, 1, "second");
+  cp_agent_reply_set(s, 0, 0, "first again");
+  #assert s[0].agent_n == 22;
+  cp_agent_pack(s);
+  #assert s[0].agent_n == 17 && cp_agent_reply(s, 0, 1) == "second" && cp_agent_reply(s, 0, 0) == "first again";
+  #assert s[0].turns[0].agents[1].reply_at == 0 && s[0].turns[0].agents[0].reply_at == 6;
 }

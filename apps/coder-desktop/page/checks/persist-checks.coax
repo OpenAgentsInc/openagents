@@ -29,7 +29,7 @@
   #assert s[0].nturns == 1 && cast(string) s[0].turns[0].ask[0..<s[0].turns[0].ask_n] == "List  the\nfiles" && s[0].turns[0].state == CP_DONE && s[0].turns[0].blocks == 1;
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "There are **two** files." && s[0].turns[0].ncmds == 1 && cast(string) s[0].calls[cp_nth(s, 0, -1, 0)].out[0..<s[0].calls[cp_nth(s, 0, -1, 0)].out_n] == "a\nb";
   #assert s[0].turns[0].nagents == 1 && CP_LEVEL_NAME[s[0].turns[0].agents[0].level] == "Claude Opus" && s[0].turns[0].agents[0].state == CP_DONE && s[0].turns[0].agents[0].took == 9 && s[0].turns[0].agents[0].calls == 1;
-  #assert cast(string) s[0].turns[0].agents[0].reply[0..<s[0].turns[0].agents[0].reply_n] == "two files" && coder_page_agent_next(s) == -1;
+  #assert cp_agent_reply(s, 0, 0) == "two files" && coder_page_agent_next(s) == -1;
   // kept again, it is the same text
   again: [16384] u8; an := coder_page_save(s, again[..]);
   #assert cast(string) again[0..<an] == cast(string) kept[0..<kn];

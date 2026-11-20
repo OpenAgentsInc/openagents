@@ -48,7 +48,8 @@ Limits, all shown on screen when you reach them:
 - A chat's title in the sidebar is its first message, up to 120 bytes.
 - When you open a chat, Microcoder is told its newest 6 messages and replies, up to 8,000 bytes of each; a longer one is cut on a character and says it was cut.
 - A message runs up to 12 sub-agents, 6 in one step. Microcoder is told when a task is not run for this reason.
-- A sub-agent's task is cut at 1,500 bytes and its reply at 8,000 bytes.
+- A sub-agent's task is cut at 1,500 bytes. Its reply is never cut on its own: the app keeps, shows and hands back the whole reply, up to 32 MB of sub-agent replies in a chat. One step's results reach Microcoder in one 1 MB line; only past that does each reply get an equal share, with a line that says how much was left out and to resume the sub-agent for the rest.
+- In Microcoder's memory, a sub-agent's reply is whole when it fits the step's 32 KB of results. Each reply is also saved whole to a file, and its last line names that file. A longer reply keeps its start and end, and the line between them names the file and the lines left out, so Microcoder can read the rest.
 - A sub-agent's transcript follows its rows as they arrive. Rows out of view are not drawn, so a long transcript costs what shows.
 - The model's thinking arrives as a summary of each step, up to 32,768 bytes a step. Thinking past that is cut, and the row says so.
 - You can drag the edge of either sidebar to resize it: the chats' sidebar from 180 to 480 points, a sub-agent's transcript from 320 to 900 points. A drag stops where it would leave the conversation under 380 points. Coder keeps the widths you chose.

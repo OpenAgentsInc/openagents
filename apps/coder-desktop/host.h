@@ -51,7 +51,7 @@ int cd_answer_line(void *page, char *out, int cap);
 // task line. cd_agent_line: a line its worker wrote. cd_agent_failed: its worker could not start
 // or went away. cd_agent_answer_line: the yes its worker is owed, 0 for none. cd_agent_running:
 // 0 once it has ended (stop its worker). When every one has ended, cd_answer_line gives the
-// results line for Microcoder's worker (give it 300,000 bytes).
+// results line for Microcoder's worker (give it 1,048,576 bytes: the worker's line).
 int cd_agent_next(void *page);
 int cd_agent_task(void *page, int agent, const char *session, const char *cwd, char *out, int cap);
 void cd_agent_line(void *page, int agent, const char *line);

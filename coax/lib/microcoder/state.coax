@@ -516,6 +516,37 @@ mc_action_command_checked :: (st: [] McState, command: string, exit: int, timed_
   x := mc_result_end(st, n, c);
 }
 
+// A sub-agent's reply as a delegate step's result: whole when it fits the step's room (no 6,000 + 6,000
+// cut, which is for a command's output); the caller shapes a longer one and saves it whole first.
+mc_action_reply :: (st: [] McState, command: string, exit: int, output: string) {
+  at := mc_result_start(st);
+  if at < 0 { return; }
+  room := mc_room(st);
+  n := json_raw(room, at, "{\"command\":");
+  n = mc_write_cut(room, n, command, 1000, 0);
+  n = json_raw(room, n, ",\"exit\":");
+  n = json_write_int(room, n, exit);
+  n = json_raw(room, n, ",\"output\":");
+  n = mc_write_budget(room, n, output, output.count, output.count, mc_result_room(st, command));
+  n = json_raw(room, n, "}");
+  if n < 0 {
+    n = json_raw(room, at, "{\"command\":");
+    n = mc_write_cut(room, n, command, 200, 0);
+    n = json_raw(room, n, ",\"exit\":");
+    n = json_write_int(room, n, exit);
+    n = json_raw(room, n, ",\"output\":\"[left out: this step's results filled its space]\"}");
+  }
+  cr := mc_croom(st);
+  c := json_raw(cr, mc_cresult_start(st), "{\"command\":");
+  c = mc_write_cut(cr, c, command, 300, 0);
+  c = json_raw(cr, c, ",\"exit\":");
+  c = json_write_int(cr, c, exit);
+  c = json_raw(cr, c, ",\"output\":");
+  c = mc_write_cut(cr, c, output, MC_BRIEF_OUTPUT, MC_BRIEF_OUTPUT);
+  c = json_raw(cr, c, "}");
+  x := mc_result_end(st, n, c);
+}
+
 // A command the loop refused to run (why says so).
 mc_action_refused :: (st: [] McState, command: string, why: string) {
   at := mc_result_start(st);

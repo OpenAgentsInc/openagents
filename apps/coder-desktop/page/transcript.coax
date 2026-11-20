@@ -226,7 +226,7 @@ cp_said_drop_reply :: (s: [] CoderPage, i: int, j: int, keep: bool) -> int {
   q := s[0].turns[i].agents[j].tail - 1;
   if q < 0 || !s[0].calls[q].said { return 0; }
   kept := 0;
-  if keep { kept = cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], cp_trimmed(cp_call_text(s, q))); s[0].turns[i].agents[j].reply_n = kept; }
+  if keep { cp_agent_reply_set(s, i, j, cp_trimmed(cp_call_text(s, q))); kept = s[0].turns[i].agents[j].reply_n; }
   prev := -1; at := s[0].turns[i].agents[j].head - 1;
   while at >= 0 && at != q { prev = at; at = s[0].calls[at].next - 1; }
   if at != q { return 0; }
@@ -259,7 +259,7 @@ cp_nth :: (s: [] CoderPage, i: int, j: int, n: int) -> int {
   return q;
 }
 // A chat's calls are all let go, as the chat is.
-cp_calls_reset :: (s: [] CoderPage) { s[0].calls_n = 0; s[0].calls_free = 0; s[0].calls_order = 0; s[0].long_n = 0; }
+cp_calls_reset :: (s: [] CoderPage) { s[0].calls_n = 0; s[0].calls_free = 0; s[0].calls_order = 0; s[0].long_n = 0; s[0].agent_n = 0; }
 cp_call_out :: (s: [] CoderPage, q: int, output: string) {
   // an edit's diff is kept whole (up to 64 KB), so its row and the review show every line
   if output.count > CP_CMD_OUT && cp_edit_at(cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]) > 0 && app_is_diff(output) { cp_long_set(s, q, output); return; }
@@ -372,13 +372,58 @@ cp_round_check :: (s: [] CoderPage, i: int) {
   }
   if all_ready { s[0].results_due = true; }
 }
+// Sub-agent j's reply, whole, from the page's pool of sub-agent replies.
+cp_agent_reply :: (s: [] CoderPage, i: int, j: int) -> string {
+  at := s[0].turns[i].agents[j].reply_at; n := s[0].turns[i].agents[j].reply_n;
+  if n <= 0 || at < 0 || at + n > s[0].agent_n { return ""; }
+  return cast(string) s[0].agent_buf[at..<at + n];
+}
+// Keeps text whole as sub-agent j's reply: added to the end of the chat's pool. A reply is never cut
+// to a size of its own. When the pool is full, the replies superseded since (a resumed sub-agent's
+// earlier one) are squeezed out first; only a chat past CP_AGENT_POOL in all loses the end of one,
+// and the reply says so. text must not be in the pool itself.
+CP_AGENT_FULL :: "\n[This chat's sub-agent replies filled the app's 32 MB for them: the rest of this reply is not kept here.]";
+cp_agent_reply_set :: (s: [] CoderPage, i: int, j: int, text: string) {
+  s[0].turns[i].agents[j].reply_at = 0; s[0].turns[i].agents[j].reply_n = 0;
+  if text.count == 0 { return; }
+  if s[0].agent_n + text.count > s[0].agent_buf.count { cp_agent_pack(s); }
+  at := s[0].agent_n; room := s[0].agent_buf.count - at;
+  n := text.count; cut := false;
+  if n > room {
+    cut = true; n = room - CP_AGENT_FULL.count;
+    if n < 0 { n = 0; }
+    while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  }
+  for k: 0..<n { s[0].agent_buf[at + k] = text[k]; }
+  if cut && room - n >= CP_AGENT_FULL.count { for c, k: CP_AGENT_FULL { s[0].agent_buf[at + n + k] = c; } n += CP_AGENT_FULL.count; }
+  s[0].turns[i].agents[j].reply_at = at; s[0].turns[i].agents[j].reply_n = n; s[0].agent_n = at + n;
+}
+// The pool holds only the replies some sub-agent still has, in their order, from its start.
+cp_agent_pack :: (s: [] CoderPage) {
+  to := 0; last := -1;
+  while true {
+    bi := -1; bj := -1; best := -1;
+    for ti: 0..<s[0].nturns { for tj: 0..<s[0].turns[ti].nagents {
+      a := s[0].turns[ti].agents[tj].reply_at;
+      if s[0].turns[ti].agents[tj].reply_n > 0 && a > last && (best < 0 || a < best) { best = a; bi = ti; bj = tj; }
+    } }
+    if bi < 0 { break; }
+    n := s[0].turns[bi].agents[bj].reply_n;
+    if best != to { for k: 0..<n { s[0].agent_buf[to + k] = s[0].agent_buf[best + k]; } }
+    s[0].turns[bi].agents[bj].reply_at = to; to += n; last = best;
+  }
+  s[0].agent_n = to;
+}
 cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
+  cp_agent_reply_set(s, i, j, text);
+  cp_agent_finish(s, i, j, state);
+}
+// Sub-agent j ended with the reply it already has.
+cp_agent_finish :: (s: [] CoderPage, i: int, j: int, state: int) {
   s[0].turns[i].agents[j].state = state; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
   s[0].turns[i].agents[j].now_running = false; s[0].turns[i].agents[j].answer_due = false; s[0].turns[i].agents[j].paused = false; s[0].turns[i].agents[j].deny_due = false;
   cp_calls_end(s, i, j, state != CP_DONE);
-  n := cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], text);
-  if n < text.count { n += cp_out(s[0].turns[i].agents[j].reply[n..<CP_AGENT_REPLY], "\n[The reply is cut at 8,000 bytes.]"); }
-  s[0].turns[i].agents[j].reply_n = n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
+  n := s[0].turns[i].agents[j].reply_n; if n > 0 && s[0].pane_open && s[0].pane_turn == i && s[0].pane_agent == j { s[0].live_pane = i * CP_AGENTS + j; } s[0].turns[i].h = 0;
   cp_round_check(s, i);
 }
 // The next sub-agent the host is to start a worker for (once each), -1 for none.
@@ -470,9 +515,9 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     done := l[0].ending == "finished" || l[0].ending == "asked";
     sn := 0;
     if done { sn = cp_said_drop_reply(s, i, j, l[0].text.count == 0); }
-    // the reply it streamed stands as written (cp_agent_end copies it onto itself)
-    text := ifx sn > 0 then cast(string) s[0].turns[i].agents[j].reply[0..<sn] else cp_ended_why(l[0].ending, l[0].text, true);
-    cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, text);
+    // the reply it streamed stands as written: it is its reply already
+    if sn > 0 { cp_agent_finish(s, i, j, ifx done then CP_DONE else CP_FAILED); }
+    else { cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, cp_ended_why(l[0].ending, l[0].text, true)); }
   }
   return kind;
 }
@@ -541,9 +586,36 @@ cp_running_bg :: (s: [] CoderPage, i: int, j: int) -> string {
   n += cp_out(b[n..<b.count], ". To stop it, delegate resume "); n = el_put_i(b, n, j + 1); n += cp_out(b[n..<b.count], " with stop true. It is stopped when you finish.");
   return cast(string) b[0..<n];
 }
-// The round's results as the worker's line: each sub-agent's reply, or why it has none.
+// The round's results as the worker's line: each sub-agent's reply, whole, or why it has none. Only
+// when the replies together pass the worker's line (CP_SCRATCH, 1 MB) does each get an equal share,
+// with a line saying how much was left out and that resuming the sub-agent gets the rest.
 cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
-  b := s[0].scratch[..]; n := json_raw(b, 0, "[");
+  b := s[0].scratch[..]; n := cp_results_list(s, i, b, -1);
+  if n < 0 {
+    k := ifx s[0].turns[i].round_asked > 0 then s[0].turns[i].round_asked else 1;
+    n = cp_results_list(s, i, b, (b.count - 65536) / (2 * k));
+  }
+  if n < 0 { return 0; }
+  return mww_results(out, s[0].turns[i].ticket, cast(string) b[0..<n]);
+}
+// A reply cut to most bytes (on a character), with the line that says so; whole when most < 0 or it fits.
+cp_results_reply :: (s: [] CoderPage, i: int, j: int, b: [] u8, n: int, most: int) -> int {
+  text := cp_agent_reply(s, i, j);
+  if most < 0 || text.count <= most { return json_write_string(b, n, text); }
+  k := most; while k > 0 && (text[k] & 0xC0) == 0x80 { k -= 1; }
+  nb: [256] u8; m := cp_out(nb[..], "\n[The rest of this reply, "); m = el_put_i(nb[..], m, text.count - k);
+  m += cp_out(nb[m..<nb.count], " bytes, did not fit: one step's results reach Microcoder in one 1 MB line. Resume sub-agent ");
+  m = el_put_i(nb[..], m, j + 1); m += cp_out(nb[m..<nb.count], " and ask it for the part you need.]");
+  w := json_write_string(b, n, cast(string) text[0..<k]);
+  if w < 0 { return -1; }
+  // the note goes on the same string: written over the closing quote, its own opening quote dropped
+  e := json_write_string(b, w - 1, cast(string) nb[0..<m]);
+  if e < 0 { return -1; }
+  for q: w - 1..<e - 1 { b[q] = b[q + 1]; }
+  return e - 1;
+}
+cp_results_list :: (s: [] CoderPage, i: int, b: [] u8, most: int) -> int {
+  n := json_raw(b, 0, "[");
   for q: 0..<s[0].turns[i].round_asked {
     n = json_raw(b, n, ifx q > 0 then ",{\"exit\":" else "{\"exit\":");
     w := s[0].turns[i].round_who[q];
@@ -554,14 +626,12 @@ cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
     } else if w > 0 {
       j := w - 1;
       n = json_raw(b, n, ifx s[0].turns[i].agents[j].state == CP_DONE then "0" else "1"); n = json_raw(b, n, ",\"output\":");
-      n = json_write_string(b, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
+      n = cp_results_reply(s, i, j, b, n, most);
     } else if w < 0 { n = json_raw(b, n, "1,\"output\":\"not run: no sub-agent has that number\""); }
     else { n = json_raw(b, n, "1,\"output\":\"not run: one message starts at most 12 sub-agents\""); }
     n = json_raw(b, n, "}");
   }
-  n = json_raw(b, n, "]");
-  if n < 0 { return 0; }
-  return mww_results(out, s[0].turns[i].ticket, cast(string) b[0..<n]);
+  return json_raw(b, n, "]");
 }
 
 // Stop one running sub-agent without stopping the parent turn or sibling sub-agents (#13766).

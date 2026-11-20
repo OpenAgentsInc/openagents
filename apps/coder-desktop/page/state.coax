@@ -18,16 +18,16 @@ CP_CMD :: 400;              // bytes of a command or a tool call shown
 CP_CMD_OUT :: 2000;         // bytes of a command's or a tool call's output shown; the row says when it is cut
 CP_THOUGHT_MAX :: 65536;    // bytes of a single thought or sub-agent note kept in one row (matches MdDoc's 65,536-byte capacity)
 CP_LONG_POOL :: 2097152;    // page-level buffer for thoughts and sub-agent notes longer than CP_CMD_OUT
-CP_ARENA :: 131072;         // a worker line's strings
+CP_ARENA :: 1048576;        // a worker line's strings: a sub-agent's whole reply comes in one line, so as much as Microcoder's worker reads (MW_LINE)
 CP_AGENTS :: 12;            // sub-agents one message may start; a task past that is answered as not run
 CP_AGENT_TASK :: 1500;      // bytes of a sub-agent's task kept (a longer task is cut, and the sub-agent gets the cut one)
-CP_AGENT_REPLY :: 8000;     // bytes of a sub-agent's reply kept, shown and handed back to Microcoder
+CP_AGENT_POOL :: 33554432;  // bytes of sub-agent replies a chat keeps in all: each reply whole, shown and handed back to Microcoder (never cut on its own)
 CP_AGENT_CALLS :: 6000;     // commands, tool calls and thoughts a chat keeps in all (#13670, #13671). Past it the oldest in the chat goes, and its message or transcript says how many went
 CP_QUIET :: 100;            // tool calls a sub-agent makes in a row with no file changed before it pauses and Microcoder decides (#13676)
 CP_ROUND :: 6;              // tasks Microcoder hands over in one step
 CP_PANE :: 520;             // the sub-agent transcript's width, on the window's right (Zeron's panel), in points as every measure here
 CP_PANE_MAIN :: 456;        // the conversation's least width beside it: under that the chats' sidebar goes, then the transcript takes the window
-CP_SCRATCH :: 262144;       // the sub-agents' results as one line for the worker
+CP_SCRATCH :: 1048448;      // the sub-agents' results as one line for the worker: its line (MW_LINE, 1,048,576 bytes) less the results line's frame
 CP_MODEL_SIMPLE :: "gemini-4-hydrogen";     // a level hydrogen task's model
 CP_MODEL_COMPLEX :: "gemini-4-carbon";      // a level carbon task's model
 CP_MODEL_NEON :: "gemini-4-neon";          // a level neon task's model: Gemini 4 Neon, frontier work that finishes fast (2026-11-18)
@@ -152,7 +152,7 @@ CpAgent :: struct {
   state: int;                 // CP_RUNNING, CP_DONE, CP_FAILED, CP_STOPPED
   start_due: bool;            // the host has not started its worker yet
   answer: int; answer_due: bool;   // its worker's ask that is owed a yes
-  reply: [CP_AGENT_REPLY] u8; reply_n: int;   // its reply, or why it failed
+  reply_at: int; reply_n: int;   // its reply, or why it failed: CoderPage.agent_buf[reply_at..<reply_at + reply_n], whole
   head: int; tail: int; nrows: int;   // its tool calls, oldest first: the first's and last's places in the page's calls, plus 1
   early_rows: int;            // how many of its oldest calls went to make room
   more_rows: int;             // in a chat kept before #13670: how many ran past the 40 it kept
@@ -252,9 +252,10 @@ CoderPage :: struct {
   // transcript's) or under the pointer; the window's width as last drawn; the host owes keeping them
   calls: [] CpCall; calls_n: int; calls_free: int; calls_order: int;   // every sub-agent's tool calls: how many places were ever used, the first free one plus 1
   long_buf: [] u8; long_n: int;   // CP_LONG_POOL bytes in the page's store
+  agent_buf: [] u8; agent_n: int; // CP_AGENT_POOL bytes in the page's store: the sub-agents' replies
   side_w: f32; pane_user: f32; drag: int; hover: int; win_w: f32; sides_due: bool; side_collapsed: bool; cmd_hints: bool;
   clock: f32;                 // seconds the page has been drawn, for how long a tool call took
-  scratch: [CP_SCRATCH] u8;
+  scratch: [] u8;             // CP_SCRATCH bytes in the page's store
   zoom: int;                  // the text size, a row of CP_ZOOMS
   px: f32; py: f32; touching: bool; pressed: [EL_ID] u8; pressed_n: int;
   scroll: f32; content: f32; view: f32; stick: bool;
@@ -301,7 +302,7 @@ CoderPage :: struct {
   cargo: [1] Attachments; open_cargo: int; add_x: f32; add_y: f32; carrying: bool;
   mn: [1] AppMention; mn_owner: u64; mn_gen: int; mn_files: int;
   files: [] u8; nfiles: int; files_gen: int; files_got: bool; files_due: bool;   // one path a line, in the host's buffer (it keeps it until it lists again)
-  arena: [CP_ARENA] u8;
+  arena: [] u8;               // CP_ARENA bytes in the page's store
 }
 
 // The page's large storage, held apart from the page (#13767): the chat's turns with their
@@ -317,10 +318,13 @@ CpStore :: struct {
   calls: [CP_AGENT_CALLS] CpCall;
   docs: [CP_DOCS] MdDoc;
   long_buf: [CP_LONG_POOL] u8;
+  agent_buf: [CP_AGENT_POOL] u8;
+  arena: [CP_ARENA] u8;
+  scratch: [CP_SCRATCH] u8;
 }
 // The page's storage: turns, and for each turn an equal share of agents, asks and replies; calls,
 // docs (at most CP_DOCS) and the long-text pool. A page holds no turn until this.
-cp_store_bind :: (s: [] CoderPage, turns: [] CpTurn, agents: [] CpAgent, asks: [] u8, replies: [] u8, calls: [] CpCall, docs: [] MdDoc, long_buf: [] u8) {
+cp_store_bind :: (s: [] CoderPage, turns: [] CpTurn, agents: [] CpAgent, asks: [] u8, replies: [] u8, calls: [] CpCall, docs: [] MdDoc, long_buf: [] u8, agent_buf: [] u8, arena: [] u8, scratch: [] u8) {
   n := turns.count;
   ka := ifx n > 0 then agents.count / n else 0; kq := ifx n > 0 then asks.count / n else 0; kr := ifx n > 0 then replies.count / n else 0;
   for i: 0..<n {
@@ -328,16 +332,16 @@ cp_store_bind :: (s: [] CoderPage, turns: [] CpTurn, agents: [] CpAgent, asks: [
     turns[i].ask = asks[i * kq..<(i + 1) * kq];
     turns[i].reply = replies[i * kr..<(i + 1) * kr];
   }
-  s[0].turns = turns; s[0].calls = calls; s[0].long_buf = long_buf;
+  s[0].turns = turns; s[0].calls = calls; s[0].long_buf = long_buf; s[0].agent_buf = agent_buf; s[0].arena = arena; s[0].scratch = scratch;
   s[0].docs = docs[0..<(ifx docs.count > CP_DOCS then CP_DOCS else docs.count)];
 }
 // The host hands the page its storage, once, before anything else.
 coder_page_store :: (s: [] CoderPage, st: [] CpStore) #export_c #effects(all) {
   if s.count < 1 || st.count < 1 { return; }
-  cp_store_bind(s, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  cp_store_bind(s, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
 }
 // A check's storage: room for what a check's chat holds. A check that needs more binds its own.
-CP_CHECK_TURNS :: 8; CP_CHECK_CALLS :: 256; CP_CHECK_DOCS :: 8; CP_CHECK_LONG :: 262144;
+CP_CHECK_TURNS :: 8; CP_CHECK_CALLS :: 256; CP_CHECK_DOCS :: 8; CP_CHECK_LONG :: 262144; CP_CHECK_REPLIES :: 65536;
 CpCheckStore :: struct {
   turns: [CP_CHECK_TURNS] CpTurn;
   agents: [CP_CHECK_TURNS * CP_AGENTS] CpAgent;
@@ -346,9 +350,12 @@ CpCheckStore :: struct {
   calls: [CP_CHECK_CALLS] CpCall;
   docs: [CP_CHECK_DOCS] MdDoc;
   long_buf: [CP_CHECK_LONG] u8;
+  agent_buf: [CP_CHECK_REPLIES] u8;
+  arena: [131072] u8;
+  scratch: [262144] u8;
 }
 cp_check_page :: (p: [] CoderPage, st: [] CpCheckStore) -> [] CoderPage {
-  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   return p;
 }
 // A second page's storage in a check that holds two (a chat taken or read back): a few turns.
@@ -361,9 +368,12 @@ CpCheckLean :: struct {
   calls: [64] CpCall;
   docs: [CP_CHECK_LEAN] MdDoc;
   long_buf: [16384] u8;
+  agent_buf: [16384] u8;
+  arena: [131072] u8;
+  scratch: [65536] u8;
 }
 cp_check_lean :: (p: [] CoderPage, st: [] CpCheckLean) -> [] CoderPage {
-  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   return p;
 }
 // A chat of one message with 600 rows (a kept chat over 1 MiB): room for its tool calls.
@@ -375,9 +385,12 @@ CpCheckRows :: struct {
   calls: [640] CpCall;
   docs: [2] MdDoc;
   long_buf: [16384] u8;
+  agent_buf: [16384] u8;
+  arena: [131072] u8;
+  scratch: [65536] u8;
 }
 cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
-  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..], st[0].agent_buf[..], st[0].arena[..], st[0].scratch[..]);
   return p;
 }
 

@@ -80,7 +80,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
       n = json_raw(out, n, ifx j > 0 then ",{\"level\":" else "{\"level\":"); n = json_write_string(out, n, CP_LEVEL[s[0].turns[i].agents[j].level]);
       n = json_raw(out, n, ",\"task\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].task[0..<s[0].turns[i].agents[j].task_n]);
       n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].state);
-      n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].agents[j].reply[0..<s[0].turns[i].agents[j].reply_n]);
+      n = json_raw(out, n, ",\"reply\":"); n = json_write_string(out, n, cp_agent_reply(s, i, j));
       n = json_raw(out, n, ",\"more\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].more_rows);
       n = json_raw(out, n, ",\"earlier\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].early_rows);
       n = json_raw(out, n, ",\"after\":"); n = json_write_int(out, n, s[0].turns[i].agents[j].after);
@@ -156,7 +156,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
       ar[0].at = 0;
       s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], g, "task"));
       ar[0].at = 0;
-      s[0].turns[i].agents[j].reply_n = cp_out(s[0].turns[i].agents[j].reply[..], cl_str(ar[..], g, "reply"));
+      cp_agent_reply_set(s, i, j, cl_str(ar[..], g, "reply"));
       // its tool calls; a chat kept before 2026-11-17 has them as a list of lines, with no output
       rows := cl_raw(g, "rows"); nr := ifx rows.count > 0 then cl_count(rows) else 0; 
       for at: 0..<nr { cp_load_row(s, i, j, cl_json(rows, cl_item(rows, at))); }
@@ -289,6 +289,9 @@ coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #eff
   }
   for q: 0..<from[0].calls_n { to[0].calls[q] = from[0].calls[q]; to[0].calls[q].began += shift; }
   for k: 0..<from[0].long_n { to[0].long_buf[k] = from[0].long_buf[k]; }
+  ka := ifx from[0].agent_n < to[0].agent_buf.count then from[0].agent_n else to[0].agent_buf.count;
+  for k: 0..<ka { to[0].agent_buf[k] = from[0].agent_buf[k]; }
+  to[0].agent_n = ka;   // a reply past a smaller pool (a check's) is dropped by cp_agent_reply
   to[0].nturns = from[0].nturns; to[0].calls_n = from[0].calls_n; to[0].calls_free = from[0].calls_free; to[0].calls_order = from[0].calls_order; to[0].long_n = from[0].long_n;
   to[0].current_n = cp_out(to[0].current[..], cast(string) from[0].current[0..<from[0].current_n]);
   to[0].kept_turns = from[0].kept_turns; to[0].kept_running = from[0].kept_running; to[0].kept_cost = from[0].kept_cost;
