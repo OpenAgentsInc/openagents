@@ -16,18 +16,25 @@ def ac_signed(keyfile, method, path, body=None):
     # event's own created_at, not this clock's before signing: the signer can read its clock in
     # the next second, and a busy machine makes that likelier.
     same = (keyfile, method, path, body)
-    while int(time.time()) <= AC_SIGNED_AT.get(same, -1):
-        time.sleep(0.05)
+    prev = AC_SIGNED_AT.get(same, -1)
     args = [AC_SIGN, "--key", keyfile, method, API + path]
     tmp = None
     if body is not None:
         tmp = tempfile.NamedTemporaryFile(delete=False)
         tmp.write(body); tmp.close()
         args.append(tmp.name)
-    auth = subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
-    if tmp: os.unlink(tmp.name)
-    AC_SIGNED_AT[same] = json.loads(base64.b64decode(auth))["created_at"]
-    return "Nostr " + auth
+    try:
+        while prev >= 0 and time.time() < prev + 1.02:
+            time.sleep(0.02)
+        while True:
+            auth = subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
+            created_at = json.loads(base64.b64decode(auth))["created_at"]
+            if created_at > prev:
+                AC_SIGNED_AT[same] = created_at
+                return "Nostr " + auth
+            time.sleep(0.02)
+    finally:
+        if tmp: os.unlink(tmp.name)
 
 
 AC_PK = {}

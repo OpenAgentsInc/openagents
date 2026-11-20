@@ -102,7 +102,9 @@ int main(int argc, char **argv) {
   }
   char url[4096], method[32];
   esc(argv[4], url, sizeof url); esc(argv[3], method, sizeof method);
-  long long now = (long long)time(NULL);
+  struct timespec ts;
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) die("clock");
+  long long now = (long long)ts.tv_sec;
   if (getenv("SIGN_AGE")) now -= atoll(getenv("SIGN_AGE"));   // tests: an event this many seconds old
   char tags[4400];
   snprintf(tags, sizeof tags, "[[\"u\",\"%s\"],[\"method\",\"%s\"]%s%s%s]", url, method,

@@ -2,6 +2,7 @@
 # read and write, that nobody else learns anything, sign-in links and
 # sessions, CSRF and rate limits, and that nothing private reaches the log.
 # test.py runs this file; call, check, sql, API and SIGN come from it.
+import base64
 import copy
 import statistics
 import time
@@ -26,27 +27,38 @@ SLUG = "test-proj"
 ME = {"Origin": API}
 
 
-def signed(keyfile, method, path, body=None):
-    args = [SIGN_BIN, "--key", keyfile, method, API + path]
-    if body is not None:
-        f = _t.NamedTemporaryFile(delete=False)
-        f.write(body)
-        f.close()
-        args.append(f.name)
-    return "Nostr " + subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
-
-
 last_signed = {}
+
+
+def signed(keyfile, method, path, body=None):
+    # The same request signed twice in one second is the same event, and an event is good once.
+    same = (keyfile, method, path, body)
+    prev = last_signed.get(same, -1)
+    args = [SIGN_BIN, "--key", keyfile, method, API + path]
+    tmp = None
+    if body is not None:
+        tmp = _t.NamedTemporaryFile(delete=False)
+        tmp.write(body)
+        tmp.close()
+        args.append(tmp.name)
+    try:
+        while prev >= 0 and time.time() < prev + 1.02:
+            time.sleep(0.02)
+        while True:
+            auth = subprocess.run(args, capture_output=True, text=True, check=True).stdout.strip()
+            created_at = json.loads(base64.b64decode(auth))["created_at"]
+            if created_at > prev:
+                last_signed[same] = created_at
+                return "Nostr " + auth
+            time.sleep(0.02)
+    finally:
+        if tmp:
+            os.unlink(tmp.name)
 
 
 def agent(keyfile, method, op, body=None, slug=SLUG, xff="10.0.0.1"):
     path = f"/api/private/{slug}/{op}"
     raw = None if body is None else json.dumps(body).encode()
-    # The same request signed twice in one second is the same event, and an event is good once.
-    same = (keyfile, method, path, raw)
-    if time.time() - last_signed.get(same, 0) < 1.1:
-        time.sleep(1.1)
-    last_signed[same] = time.time()
     h = {"Authorization": signed(keyfile, method, path, raw), "X-Forwarded-For": xff}
     if raw is not None:
         h["Content-Type"] = "application/json"
