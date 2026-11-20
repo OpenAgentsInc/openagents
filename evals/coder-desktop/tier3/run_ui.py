@@ -797,6 +797,127 @@ def flow_worktree_first_message(f: Flow) -> str:
     return "worktree before the first message"
 
 
+EXPERIMENTAL = ("-experimentalFeatures", "YES")
+
+
+def ple_tool(f: Flow, *args: str) -> tuple[int, str]:
+    """A tool from the staged app's Resources (ple-run, foreman-ctl), under the flow's temp HOME"""
+    res = f.ctx.binary.parent.parent / "Resources"
+    env = dict(os.environ, HOME=str(f.home), CFFIXED_USER_HOME=str(f.home))
+    r = subprocess.run([str(res / args[0]), *args[1:]], env=env, capture_output=True, text=True, timeout=60)
+    return r.returncode, r.stdout + r.stderr
+
+
+def ple_feeders(f: Flow) -> str:
+    code, text = ple_tool(f, "ple-run", "feeders")
+    assert code == 0, text
+    return text
+
+
+def native_views(app: Any, cls: str) -> list[dict]:
+    return [v for v in app.do("views")["views"] if v["class"].split(".")[-1] == cls]
+
+
+def flow_live_card(f: Flow) -> str:
+    """A command's live 3D card in a chat: the viewport over the card, scrolling with it, a palette above it"""
+    shows = "\n".join(ln for ln in ple_feeders(f).splitlines() if ln.startswith("OA-SHOW"))
+    f.notes.append("card lines: " + " | ".join(shows.splitlines()[-4:]))
+    script = {"turns": [{"steps": [
+        {"emit": {"kind": "command", "command": "ple-run feeders", "exit": 0, "timed_out": False, "output": "Routed 4 feeders\n" + shows}},
+        {"emit": {"kind": "reply", "text": "The run is in the card above."}},
+        {"emit": {"kind": "ended", "ending": "finished", "text": "The run is in the card above."}}]}]}
+    f.workers = {"main": [{"match": "live", "script": script}], "default": reply_script("ok")}
+    # a stand-in Gemini key in the temp HOME, so the app starts the (mock) worker; no model is called
+    kd = f.home / "Library/Application Support/Coder"; kd.mkdir(parents=True, exist_ok=True)
+    (kd / "gemini-key").write_text("t3-stand-in-not-a-key\n"); os.chmod(kd / "gemini-key", 0o600)
+    # the message goes with Experimental off (the mock worker's model); the chat is then reopened with it on
+    app = f.launch(size=(1200, 900))
+    f.send("show me the run live")
+    app.wait("the reply to end", lambda s: s["running"] == 0 and s["title"] != "", 15)
+    time.sleep(1.0)
+    app.capture(f.case_dir / "card_experimental_off.png")
+    off = [p for p in native_views(app, "PleScenePanelView") if p["shown"]]
+    f.expect(not off, f"no viewport while Experimental is off: {off}")
+    app.quit()
+    app = f.relaunch(*EXPERIMENTAL, size=(1200, 900))
+    time.sleep(1.0)
+    press_chat(f)
+    time.sleep(2.0)
+    card = app.do("box t0.show1")
+    panels = native_views(app, "PleScenePanelView"); boxes = native_views(app, "PassThroughView")
+    f.notes.append(f"card row {card}; live box {boxes}; panels {panels}")
+    shown = [p for p in panels if p["shown"]]
+    f.expect(len(boxes) == 1 and boxes[0]["shown"], f"the live card's clip is shown: {boxes}")
+    f.expect(len(shown) == 1, f"one viewport shown: {panels}")
+    if shown:
+        p = shown[0]
+        f.expect(abs(p["x"] - card["x"]) <= 1 and abs(p["y"] - card["y"]) <= 1 and abs(p["w"] - card["w"]) <= 1 and abs(p["h"] - card["h"]) <= 1,
+                 f"viewport {p} over the card {card}")
+        hit = app.do("hit %d %d" % (card["x"] + card["w"] / 2, card["y"] + card["h"] / 2))["class"]
+        f.expect(hit.split(".")[-1] in ("PleSceneMetalView", "PleScenePanelView"), f"a press on the card goes to the viewport: {hit}")
+    app.capture(f.case_dir / "live_card.png")
+    # the window made smaller: the chat keeps its foot in view, so the card moves; the viewport follows
+    # (the probe's wheel events don't reach this page, so the move is a resize, not a scroll)
+    app.do("size 1000 700")
+    time.sleep(1.0)
+    card2 = app.do("box t0.show1")
+    p2 = [p for p in native_views(app, "PleScenePanelView") if p["shown"]]
+    f.expect(abs(card2["y"] - card["y"]) > 20 or abs(card2["x"] - card["x"]) > 20, f"the card moved: {card} -> {card2}")
+    f.notes.append(f"after the scroll: card {card2}, viewport {p2}")
+    if p2:
+        f.expect(abs(p2[0]["y"] - card2["y"]) <= 1 and abs(p2[0]["x"] - card2["x"]) <= 1, f"viewport {p2[0]} follows the card {card2}")
+        f.expect(any(b["shown"] and b["y"] <= p2[0]["y"] for b in native_views(app, "PassThroughView")), "the clip still holds it")
+    app.capture(f.case_dir / "live_card_small.png")
+    # the palette over the card: cut out of the viewport, and a press there is the page's
+    app.do("key cmd+k")
+    time.sleep(1.2)
+    p3 = [p for p in native_views(app, "PleScenePanelView") if p["shown"]]
+    f.notes.append(f"palette open: viewport {p3}")
+    f.expect(bool(p3) and p3[0]["masked"], f"the viewport is cut while the palette is up: {p3}")
+    if p3:
+        hit = app.do("hit %d %d" % (p3[0]["x"] + p3[0]["w"] / 2, p3[0]["y"] + 40))["class"]
+        f.notes.append(f"a press on the card under the palette goes to {hit}")
+        f.expect(hit.split(".")[-1] == "UiView", f"a press in the cut goes to the page: {hit}")
+    app.capture(f.case_dir / "live_card_palette.png")
+    app.do("key escape")
+    time.sleep(1.2)
+    p4 = [p for p in native_views(app, "PleScenePanelView") if p["shown"]]
+    f.expect(bool(p4) and not p4[0]["masked"], f"no cut once it closed: {p4}")
+    # past 4096 device pixels the frame is flat: the Before card's picture must still show (#13817)
+    app.do("size 2150 800")
+    time.sleep(2.0)
+    w = app.do("window"); f.notes.append(f"wide window {w['w']}x{w['h']} points at scale {w['scale']}")
+    app.capture(f.case_dir / "flat_wide.png")
+    return "live card"
+
+
+def flow_gym_route(f: Flow) -> str:
+    """The Gym route in the app: ple-run gym and foreman-ctl gym steer the Workbench"""
+    ple_feeders(f)
+    app = f.launch(*EXPERIMENTAL, size=(1200, 900))
+    time.sleep(1.0)
+    code, text = ple_tool(f, "ple-run", "gym", "latest", "--camera", "plan", "--only", "racks,pdu", "--step", "last", "--wait", "15")
+    f.notes.append(f"ple-run gym -> {code}: {text.strip()}")
+    f.expect(code == 0 and text.startswith("The Gym shows "), f"ple-run gym answered: {text}")
+    time.sleep(1.0)
+    gyms = native_views(app, "GymWorkbenchView")
+    f.notes.append(f"gym views {gyms}")
+    f.expect(any(g["shown"] for g in gyms), f"the Gym is on screen: {gyms}")
+    app.capture(f.case_dir / "gym_plan.png")
+    code, text = ple_tool(f, "foreman-ctl", "gym")
+    f.notes.append(f"foreman-ctl gym -> {code}: {text.strip()[:600]}")
+    f.expect(code == 0 and '"ok":true' in text.replace(" ", ""), f"foreman-ctl gym: {text}")
+    code, text = ple_tool(f, "foreman-ctl", "gym", "--camera", "iso", "--hide", "racks")
+    f.notes.append(f"foreman-ctl gym --camera iso --hide racks -> {code}: {text.strip()[:600]}")
+    f.expect(code == 0 and '"ok":true' in text.replace(" ", ""), f"foreman-ctl gym post: {text}")
+    code, text = ple_tool(f, "ple-run", "gym", "no-such-run", "--wait", "10")
+    f.notes.append(f"ple-run gym no-such-run -> {code}: {text.strip()}")
+    f.expect(code == 1 and "refused" in text, f"an unknown run is refused: {text}")
+    time.sleep(0.8)
+    app.capture(f.case_dir / "gym_iso.png")
+    return "gym"
+
+
 FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("idle_layouts", flow_idle_layouts),
     ("send_stream_new_chat", flow_send_stream),
@@ -808,6 +929,8 @@ FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("followups", flow_followups),
     ("file_pane", flow_file_pane),
     ("worktree_first_message", flow_worktree_first_message),
+    ("live_card", flow_live_card),
+    ("gym_route", flow_gym_route),
 ]
 
 

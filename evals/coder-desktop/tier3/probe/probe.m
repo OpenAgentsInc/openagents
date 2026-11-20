@@ -29,6 +29,9 @@
 //                                 what a person sees: {"ok":true,"x":..,"y":..,"w":..,"h":..}
 //      followups                  the follow-ups as the page holds them (#13718): the queue's texts,
 //                                 whether it is paused and why, each steer's status, the worker's turn
+//      views                      the native views over the page (3D pane, live card, Gym): class, frame,
+//                                 shown, masked (a page menu cut out of it)
+//      hit X Y                    the class of the view a press at X,Y would reach
 //      quit                       NSApp terminate
 // Events are real NSEvents: keys go through the window (NSWindow sendEvent:, Command keys through
 // the main menu first), mouse events to the view under the point. Nothing moves the system
@@ -81,6 +84,27 @@ static NSString *t3_err(NSString *why) { return t3_json(@{@"ok": @NO, @"error": 
 static NSPoint t3_window_point(CGFloat x, CGFloat y) {   // content top-left points -> window base coordinates
   NSView *v = t3_canvas();
   return [v convertPoint:NSMakePoint(x, v.bounds.size.height - y) toView:nil];
+}
+// ---- the native views over the page (the 3D pane, a live 3D card, the Gym; #13817): class, frame in
+// content top-left points, shown, and whether a layer mask cuts it (the page's menus over it)
+static void t3_views_into(NSView *v, NSMutableArray *out) {
+  for (NSView *c in v.subviews) {
+    NSString *name = NSStringFromClass(c.class);
+    if ([name containsString:@"Ple"] || [name containsString:@"PassThrough"] || [name containsString:@"Gym"]) {
+      NSView *content = t3_window().contentView;
+      NSRect r = [c convertRect:c.bounds toView:content];
+      CGFloat top = content.bounds.size.height - NSMaxY(r);
+      [out addObject:@{@"class": name, @"x": @(r.origin.x), @"y": @(top), @"w": @(r.size.width), @"h": @(r.size.height),
+                       @"shown": @(!c.isHiddenOrHasHiddenAncestor), @"masked": @(c.layer.mask != nil)}];
+    }
+    t3_views_into(c, out);
+  }
+}
+static NSString *t3_hit(CGFloat x, CGFloat y) {
+  NSView *content = t3_window().contentView;
+  NSPoint wp = t3_window_point(x, y);
+  NSView *hit = [content hitTest:[content.superview convertPoint:wp fromView:nil]];
+  return t3_json(@{@"ok": @YES, @"class": hit ? NSStringFromClass(hit.class) : @""});
 }
 static NSInteger t3_event_number = 1;
 static void t3_mouse(NSEventType type, CGFloat x, CGFloat y, NSInteger clicks) {
@@ -215,6 +239,8 @@ static NSString *t3_handle(NSString *line) {
     return t3_json(@{@"ok": @YES});
   }
   if ([op isEqualToString:@"state"]) return t3_state();
+  if ([op isEqualToString:@"views"]) { NSMutableArray *a = [NSMutableArray array]; t3_views_into(t3_window().contentView.superview ?: t3_window().contentView, a); return t3_json(@{@"ok": @YES, @"views": a}); }
+  if ([op isEqualToString:@"hit"] && parts.count >= 3) return t3_hit([parts[1] doubleValue], [parts[2] doubleValue]);
   if ([op isEqualToString:@"box"] && rest.length) {
     void *page = t3_page();
     int (*box)(void *, const char *, float *) = dlsym(RTLD_DEFAULT, "cd_box");
