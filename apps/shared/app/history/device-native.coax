@@ -5,8 +5,25 @@ dh_answer :: (h:[]DeviceHistory,c:[]AppCore,host:string,id:string,cursor:string)
  v:[1]EaView;v[0].ok=true;v[0].nh=ea_copy(v[0].host[..],host);v[0].nm=ea_copy(v[0].method[..],"ListSessions");v[0].ns=1;v[0].complete=cursor.count==0;v[0].nc=ea_copy(v[0].cursor[..],cursor);
  s:=v[0].sessions[..];s[0].ni=ea_copy(s[0].id[..],id);s[0].nw=ea_copy(s[0].workspace[..],"default");s[0].nt=ea_copy(s[0].title[..],"Same title\nwith a line break");s[0].nc=ea_copy(s[0].control[..],"observe-only");
  raw:[65536]u8;n:=ea_view_write(v[..],raw[..]);#assert n>0;op:=h[0].op;gen:=fx_generation(c[0].out[..],DH_OWNER);#assert fx_take(c[0].out[..],op);
- #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=200,text=cast(string)raw[0..<n],mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})==APP_GUEST;
+ #assert app_dispatch(c,AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_DONE,status=0,text=cast(string)raw[0..<n],mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})==APP_GUEST;
  #assert dh_guest(h,c,cast(string)raw[0..<n]);
+}
+// The native bridge answers a device call with status 0 (AppCoreBridge.complete): dh_answer sends
+// exactly that, so a reader that wants an HTTP 200 leaves every paired computer "Unavailable" (#13713).
+// A call that did not complete still marks the computer unavailable, and so does a view from another one.
+// The clock moves on until the drawer's next read goes out.
+dh_due :: (h:[]DeviceHistory,c:[]AppCore) {for k:0..<4 {dh_sync(h,c,true);if h[0].op>0 {return;}c[0].mono_ms+=DH_INTERVAL;}}
+dh_status :: () {
+ c:[1]AppCore;d:[1]DeviceLane;h:[1]DeviceHistory;app_init(c[..]);#assert app_device_attach(c[..],d[..]);c[0].foreground=true;
+ a:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";b:="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+ dl_list_read(c[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tMac\n");dh_sync(h[..],c[..],true);
+ dh_answer(h[..],c[..],a,"desktop-0123456789abcdef0123456789abcdef","");
+ #assert h[0].nav[0].groups[0].loaded && !h[0].nav[0].groups[0].failed && h[0].nav[0].n==1;
+ dh_due(h[..],c[..]);op:=h[0].op;gen:=fx_generation(c[0].out[..],DH_OWNER);#assert op>0 && fx_take(c[0].out[..],op);
+ #assert app_dispatch(c[..],AppEvent.{kind=EV_DONE,op=op,generation=gen,outcome=FXO_UNKNOWN,status=0,text="",mono_ms=c[0].mono_ms,wall_ms=c[0].wall_ms})==APP_GUEST && dh_guest(h[..],c[..],"");
+ #assert h[0].nav[0].groups[0].failed;
+ dh_due(h[..],c[..]);#assert h[0].op>0;
+ dh_answer(h[..],c[..],b,"other","");#assert h[0].nav[0].groups[0].failed;
 }
 dh_checks :: () {
  c:[1]AppCore;d:[1]DeviceLane;h:[1]DeviceHistory;app_init(c[..]);#assert app_device_attach(c[..],d[..]);c[0].foreground=true;
@@ -63,5 +80,6 @@ native_check :: (i:int,run:bool)->int #export_c #effects(all) {
  if i==1 {if run {dh_pages();}else {print("paired history preserves earlier pages across automatic refresh");}}
  if i==2 {if run {dh_fences();}else {print("paired history rejects writes, deduplicates hosts and recovers from account fencing");}}
  if i==3 {if run {dh_search_pages();}else {print("computer title search scans pages and cancels stale queries");}}
- return 4;
+ if i==4 {if run {dh_status();}else {print("a paired computer's answer loads its chats with the status the native bridge sends");}}
+ return 5;
 }

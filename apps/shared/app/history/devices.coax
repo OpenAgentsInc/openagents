@@ -48,9 +48,12 @@ dh_sync :: (h:[]DeviceHistory,c:[]AppCore,visible:bool) {
 }
 dh_guest :: (h:[]DeviceHistory,c:[]AppCore,raw:string)->bool {
  g:=c[0].guest;if !g.waiting || g.owner!=DH_OWNER {return false;}
- if g.op==h[0].op {h[0].op=0;n:=h[0].nav[..];b:=n[0].browser[..];
-  if h[0].nq==0 {nav_reply(n,g.status,raw,g.outcome!=FXO_DONE);}else {
-   host:=b[0].selected;before:=b[0].request[0].before;eu_reply(b,4,g.status,raw,g.outcome!=FXO_DONE);v:=b[0].view[..];
+ // A device call's answer carries no HTTP status (the native bridge sends 0): a done call is the
+ // computer's view, as the device lane reads it (lane.coax), and the view itself must still match
+ // the host and the method. Passing the bare status made every paired computer "Unavailable" (#13713).
+ if g.op==h[0].op {h[0].op=0;n:=h[0].nav[..];b:=n[0].browser[..];status:=ifx g.outcome==FXO_DONE then 200 else 0;
+  if h[0].nq==0 {nav_reply(n,status,raw,g.outcome!=FXO_DONE);}else {
+   host:=b[0].selected;before:=b[0].request[0].before;eu_reply(b,4,status,raw,g.outcome!=FXO_DONE);v:=b[0].view[..];
    if b[0].uncertain || v[0].ne>0 {n[0].groups[host].loaded=true;n[0].groups[host].failed=true;n[0].next=host+1;}
    else {to:=0;for i:0..<v[0].ns {r:=v[0].sessions[i];key:[CHLIB_KEY]u8;target:=chlib_device_key(cast(string)b[0].catalog[0].entries[host].host[..],cast(string)r.id[0..<r.ni],key[..]);title:=chlib_label(h[0].library,target,cast(string)r.title[0..<r.nt]);if text_contains_ascii(title,cast(string)h[0].query[0..<h[0].nq]) {v[0].sessions[to]=r;to+=1;}}
     v[0].ns=to;nav_accept(n,before);h[0].scan_pages+=1;group:=n[0].groups[host];
