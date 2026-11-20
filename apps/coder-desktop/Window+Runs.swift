@@ -33,9 +33,6 @@ extension CoderWindow {
                 if j < 0 { break }
                 let one = CoderWorker()
                 if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
-                let wtPath = r.worktreeInfo?.path ?? (CoderWorktree.isManagedWorktree(cwd) ? cwd : nil)
-                let wtRoot = r.worktreeInfo?.repoRoot ?? CoderWorktree.primaryRepoRoot(for: URL(fileURLWithPath: cwd))
-                one.extraEnv = CoderWorktree.sharedCacheEnv(worktreePath: wtPath, repoRoot: wtRoot)
                 wireAgent(r, j, one)
                 guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
@@ -203,14 +200,13 @@ extension CoderWindow {
         }
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
-        let cwd = (r === run ? folder : r.folder)
-        let wtPath = r.worktreeInfo?.path ?? (CoderWorktree.isManagedWorktree(cwd.path) ? cwd.path : nil)
-        let wtRoot = r.worktreeInfo?.repoRoot ?? CoderWorktree.primaryRepoRoot(for: cwd)
-        var env = CoderWorktree.sharedCacheEnv(worktreePath: wtPath, repoRoot: wtRoot)
+        var env: [String: String] = [:]
         if isForeman && foremanServer.port > 0 {
-            env["CODER_FOREMAN_URL"] = foremanServer.baseURL
-            env["CODER_FOREMAN_TOKEN"] = foremanServer.token
-            env["CODER_FOREMAN_TIER"] = foremanTier.wireName
+            env = [
+                "CODER_FOREMAN_URL": foremanServer.baseURL,
+                "CODER_FOREMAN_TOKEN": foremanServer.token,
+                "CODER_FOREMAN_TIER": foremanTier.wireName
+            ]
             if let res = Bundle.main.resourcePath {
                 env["PATH"] = res
             }
@@ -241,6 +237,7 @@ extension CoderWindow {
     /// window gets a new run. True when nothing runs in the window now.
     @discardableResult func detach() -> Bool {
         guard cd_running(page) != 0 else { return true }
+        guard !run.preparingWorktree else { return false }   // its first message waits on its worktree (#13758)
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
         coderApplyOpenRouter(back)
@@ -248,14 +245,7 @@ extension CoderWindow {
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id
         runs[id] = moved
-        let nextFolder: URL = {
-            if let root = moved.worktreeInfo?.repoRoot, FileManager.default.fileExists(atPath: root) {
-                return URL(fileURLWithPath: root)
-            }
-            return folder
-        }()
-        run = CoderRun(page: page, folder: nextFolder); wire(run)
-        if nextFolder.path != folder.path { setFolder(nextFolder, keep: false) }
+        run = CoderRun(page: page, folder: folder); wire(run)
         chat = nil; recallDue = false; cd_current(page, "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)

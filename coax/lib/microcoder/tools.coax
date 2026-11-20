@@ -14,10 +14,10 @@
 // into the loop.
 
 #load "loop.coax";
+#load "git-guard.coax";
 #load "../agent/native-profile.coax";
 #load "../sys/fs.coax";
 #load "../repo/lines.coax";
-#load "guardrail.coax";
 cxproc_platform :: ()->int #foreign #effects(all);
 cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 
@@ -176,12 +176,45 @@ MC_STEP_LINES :: 4096;           // lines one mc_cmd_step takes at most, so a lo
 
 mc_cmd_say :: (o: [] McOutput, s: string) { for c: s { mc_output_byte(o, c); } }
 
-// Spawns command; done at once (with why in the output) when it could not start.
+// Whether dir is in a repository's main checkout, the one other chats share: walking up from it,
+// the first .git found is a folder (a worktree's .git is a file). False outside a repository.
+mc_git_shared :: (dir: string) -> bool {
+  d := dir;
+  for up: 0..<256 {
+    if d.count == 0 || d[0] != '/' { return false; }
+    b: [4200] u8;
+    k := fs_kind(fs_join(d, ".git", b[..]));
+    if k == FS_DIR { return true; }
+    if k > 0 { return false; }
+    if d == "/" { return false; }
+    d = fs_dir(d);
+  }
+  return false;
+}
+
+// Why the shared-checkout guard refuses command in cwd (git-guard.coax), into out; "" when it runs.
+// A folder the guard can't tell counts as shared when cwd is in a main checkout or is unknown.
+mc_git_refusal :: (cwd: string, command: string, out: [] u8) -> string {
+  h: [1] McGitHits;
+  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
+  mc_gg_check(command, cwd, home, h[..]);
+  for i: 0..<h[0].n {
+    d := mc_gg_dir(h[..], h[0].dir[i]);
+    if (d.count == 0 && (cwd.count == 0 || mc_git_shared(cwd))) || (d.count > 0 && mc_git_shared(d)) { return mc_gg_refusal(h[0].why[i], d, out); }
+  }
+  if h[0].over && mc_git_shared(cwd) {
+    return "Refused: this command is too long for the shared-checkout check to read whole (1,024 words), and this folder is a shared checkout. Nothing ran. Split it into shorter commands.";
+  }
+  return "";
+}
+
+// Spawns command; done at once (with why in the output) when it could not start, or when the
+// shared-checkout guard refuses it (exit 126, as a refused command's, GitHub #13758).
 mc_cmd_start :: (p: [] McCommandProc, cwd: string, command: string, seconds: int, o: [] McOutput, profile: string) {
   mc_output_reset(o);
   p[0] = McCommandProc.{h = -1, seconds = seconds, eof_at = -1, exit = -1};
-  guard_err := mc_guard_command(cwd, command);
-  if guard_err.count > 0 { mc_cmd_say(o, guard_err); p[0].exit = 126; p[0].done = true; return; }
+  rb: [2048] u8; refused := mc_git_refusal(cwd, command, rb[..]);
+  if refused.count > 0 { mc_cmd_say(o, refused); p[0].exit = 126; p[0].done = true; return; }
   h := cxproc_new();
   if h < 0 { mc_cmd_say(o, "no process slot is free"); p[0].done = true; return; }
   ok:=mc_profile_args(h,cwd,profile);

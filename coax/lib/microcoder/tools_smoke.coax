@@ -142,5 +142,29 @@ main :: () {
   ok = ok && ps_count(w, "Files left changed or untracked (git status --short):\n?? new.txt") == 1;
   // outside a git checkout: the reason alone
   ok = ok && mc_git_head("/", "danger-full-access", b[0].out[..], hb[..]) == "" && mc_work_list("/", "", "danger-full-access", b[0].out[..], "time limit reached", wb[..]) == "time limit reached";
+  // the shared-checkout guard (GitHub #13758): the folder is a main checkout now (its .git is a folder), so
+  // git stash and reset --hard are refused there before they start, and a read runs; in a worktree of it
+  // (its .git a file) the same stash runs, and a -C back into the main checkout is refused again
+  r = mc_run_command(dir, "echo changed >> c.swift && git stash", 30, b[0].out[..]);
+  print("guard stash: exit % [%]\n", r.exit, r.output);
+  ok = ok && r.exit == 126 && ps_count(r.output, "Refused: `git stash` would change the files of a shared checkout (") == 1;
+  r = mc_run_command(dir, "git stash list | wc -l | tr -d ' '; git diff --stat | wc -l | tr -d ' '", 30, b[0].out[..]);
+  ok = ok && r.exit == 0 && r.output == "0\n0\n";     // nothing ran: no stash, c.swift unchanged
+  r = mc_run_command(dir, "git reset --hard", 30, b[0].out[..]);
+  ok = ok && r.exit == 126;
+  gn = json_raw(gb[..], 0, "git worktree add -q ../wt -b wt && "); gn = json_raw(gb[..], gn, g); gn = json_raw(gb[..], gn, " -C ../wt status --short | wc -l | tr -d ' '");
+  r = mc_run_command(dir, cast(string) gb[0..<gn], 30, b[0].out[..]);
+  ok = ok && r.exit == 0 && r.output == "0\n";
+  wtb: [600] u8; wn := json_raw(wtb[..], 0, dir); wn = json_raw(wtb[..], wn, "/../wt");
+  wt := cast(string) wtb[0..<wn];
+  gn = json_raw(gb[..], 0, "echo mine >> c.swift && "); gn = json_raw(gb[..], gn, g); gn = json_raw(gb[..], gn, " stash -q && git stash list | wc -l | tr -d ' '");
+  r = mc_run_command(wt, cast(string) gb[0..<gn], 30, b[0].out[..]);
+  print("guard worktree stash: exit % [%]\n", r.exit, r.output);
+  ok = ok && r.exit == 0 && r.output == "1\n";
+  gn = json_raw(gb[..], 0, "git -C "); gn = json_raw(gb[..], gn, dir); gn = json_raw(gb[..], gn, " reset --hard");
+  r = mc_run_command(wt, cast(string) gb[0..<gn], 30, b[0].out[..]);
+  ok = ok && r.exit == 126;
+  r = mc_run_command(wt, "cd .. && git stash", 30, b[0].out[..]);
+  ok = ok && r.exit != 126;                               // the scratch folder holding both is no repository
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

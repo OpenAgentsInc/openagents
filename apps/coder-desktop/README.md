@@ -55,6 +55,31 @@ Limits, all shown on screen when you reach them:
 - A sub-agent's transcript is 440 points wide until you drag it. In a window where that leaves the conversation under 380 points, the chats' sidebar is hidden while the transcript is open. In a narrower window still, the transcript takes the whole window until you close it.
 - A command has 120 seconds. A run has no limit on its time, its model calls, its commands or its file reads (#13667): it ends when it replies or you press Stop. The same goes for every sub-agent.
 
+### Each chat in its own worktree
+
+A new chat whose working folder is in a Git repository's main checkout gets a
+worktree of its own before its first message runs (#13758):
+`~/.openagents/worktrees/REPO/CHAT`, on the branch `coder/CHAT`, made from
+`origin/main` (or `HEAD` when the repository has no `origin/main`). The chat,
+its sub-agents and every later message work there, so two chats in one
+repository never edit, stash or reset each other's files. Chats Foreman
+creates get one too; the Foreman chat itself and chats kept before this work
+where they were.
+
+- The branch shows under the composer as `coder/` and the first 8 characters of the chat's id.
+- Making a worktree takes as long as checking the repository out. The folders the repository lists in `.coder/worktree.json` (`{"clone": ["coax/bin", ...]}`) are then cloned in from the main checkout with APFS copy-on-write (`cp -c`), so the Coax compiler and built tools are there at once. Each worktree's copy is its own: a rebuild in one changes nothing in another, and a link back into the main checkout is removed.
+- Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`) and one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target`), unless Coder's own environment sets them. `apps/coder-desktop/build.sh` builds into the worktree's own `build/`.
+- Opening a chat goes back to its worktree. One removed by hand is made again from its branch.
+- Deleting a chat removes its worktree when it has no changes, and its branch when everything on it is in another branch. A worktree with changed or new files is never removed: Coder says where it is and leaves it.
+- `defaults write com.openagents.coder chatWorktrees -bool NO` turns this off; `CODER_WORKTREES=DIR` puts worktrees somewhere else.
+
+In a main checkout, Microcoder refuses the git commands that would take other
+chats' work away before they start (`coax/lib/microcoder/git-guard.coax`):
+`git stash` (all but `list` and `show`), `--autostash` on pull, rebase or
+merge, `git reset --hard`, `git checkout .` or `git restore .` on the whole
+tree, `checkout`/`switch` with `--force`, and `git clean -f`. The refusal says
+to work in a worktree.
+
 Microcoder runs shell commands as you, starting in the working folder, with
 the `danger-full-access` profile: nothing confines them, and a command can
 reach outside the folder. The worker's other
@@ -415,6 +440,8 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `Window.swift` | A chat's run and its kept turn, the window's state, the page and its keyboard, the clock, what the page asks for, and quitting |
 | `Window+Runs.swift` | Workers wired to pages, the daemon's runs reattached after a relaunch, replies out of view, and syncing with the daemon |
 | `Window+Chats.swift` | Opening, keeping, renaming and deleting chats, the working folder and text size |
+| `Worktree.swift`, `Window+Worktrees.swift` | Each chat's own worktree: its path and branch, making and cloning it, and removing it only when clean |
+| `worktree-test.sh`, `worktree-test.swift` | The checks of that, under a throwaway home folder |
 | `Window+Settings.swift`, `Window+Dialogs.swift` | The settings screen's wiring, and the budget, goal, Claude key and OpenRouter dialogs |
 | `Window+Menus.swift` | Right-click menus |
 | `Window+Update.swift` | Checking for updates, the update pill, install and relaunch |

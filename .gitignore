@@ -5,7 +5,9 @@ target/
 /target-mc/
 /target-voyager/
 /target-coder-one/
-/.coder/
+/.coder/*
+# the folders a chat's worktree clones in from the main checkout (apps/coder-desktop/Worktree.swift, #13758)
+!/.coder/worktree.json
 
 # Local build products; measurement records and fixtures stay tracked.
 # Scratch of remote builds (coax/remote/remote.sh never sends it, #13181).

@@ -55,6 +55,8 @@ final class CoderWorker {
     /// The variables the worker gets on top of what it inherits, and the ones it loses.
     private func environment() -> (set: [String: String], unset: [String]) {
         var env: [String: String] = ["PATH": CoderWorker.path]
+        // the build caches every chat's worktree shares (#13758), unless Coder's own environment sets them
+        for (k, v) in ChatWorktree.sharedCaches where ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         for (k, v) in extraEnv { env[k] = k == "PATH" ? v + ":" + CoderWorker.path : v }
         // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }

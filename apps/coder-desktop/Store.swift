@@ -13,6 +13,8 @@ struct CoderChat: Codable {
     var renamed: Bool? = nil
     var pinned: Int? = nil
     var managedBy: String? = nil
+    /// The chat's own worktree, when Coder made one for it (GitHub #13758): its folder, the main
+    /// checkout it came from, and its branch. folder is the worktree then.
     var worktreePath: String? = nil
     var worktreeBranch: String? = nil
     var repoRoot: String? = nil
@@ -23,6 +25,10 @@ struct CoderChat: Codable {
         case worktreePath = "worktree_path"
         case worktreeBranch = "worktree_branch"
         case repoRoot = "repo_root"
+    }
+    var worktree: ChatWorktree? {
+        guard let worktreePath, let repoRoot, let worktreeBranch else { return nil }
+        return ChatWorktree(chat: id, path: worktreePath, source: repoRoot, branch: worktreeBranch)
     }
 }
 /// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
@@ -69,17 +75,6 @@ final class CoderStore {
     func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
-    func worktreePath(_ id: String) -> String? { list.first { $0.id == id }?.worktreePath }
-    func worktreeBranch(_ id: String) -> String? { list.first { $0.id == id }?.worktreeBranch }
-    func repoRoot(_ id: String) -> String? { list.first { $0.id == id }?.repoRoot }
-    func setWorktree(_ id: String, path: String?, branch: String?, repoRoot: String?) {
-        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
-        list[i].worktreePath = path
-        list[i].worktreeBranch = branch
-        list[i].repoRoot = repoRoot
-        if let path, !path.isEmpty { list[i].folder = path }
-        saveIndex()
-    }
     private func normalizePins() {
         let ids = pinnedList.map(\.id)
         for (order, id) in ids.enumerated() {
@@ -128,7 +123,7 @@ final class CoderStore {
     }
     /// Keeps a chat's text. A new chat joins the top of the list; an existing chat updates in place
     /// so chats stay ordered chronologically by creation time (newest created first).
-    func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil) {
+    func keep(id: String, title: String, folder: String, text: String, managedBy: String? = nil, worktree: ChatWorktree? = nil) {
         guard (try? text.write(to: dir.appendingPathComponent(id + ".json"), atomically: true, encoding: .utf8)) != nil else { return }
         let now = Date().timeIntervalSince1970
         if let i = list.firstIndex(where: { $0.id == id }) {
@@ -141,8 +136,12 @@ final class CoderStore {
             let effectiveTitle = id == Foreman.chatID ? Foreman.title : title
             list.insert(CoderChat(id: id, title: effectiveTitle, created: now, updated: now, folder: folder, managedBy: managedBy), at: 0)
         }
+        if let worktree, worktree.chat == id, let i = list.firstIndex(where: { $0.id == id }) {
+            list[i].worktreePath = worktree.path; list[i].repoRoot = worktree.source; list[i].worktreeBranch = worktree.branch
+        }
         saveIndex()
     }
+    func worktree(_ id: String) -> ChatWorktree? { list.first { $0.id == id }?.worktree }
     func registerChat(id: String, title: String, folder: String, managedBy: String? = nil) {
         let now = Date().timeIntervalSince1970
         let clean = Self.cleanTitle(title)

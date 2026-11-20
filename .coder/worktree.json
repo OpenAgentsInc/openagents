@@ -1,0 +1,3 @@
+{
+  "clone": ["coax/bin", "coax/web/build/tools"]
+}

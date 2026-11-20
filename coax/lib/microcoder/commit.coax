@@ -102,29 +102,88 @@ mc_cmd_assign :: (s: string) -> bool {
   return false;
 }
 
-MC_CMD_WORDS :: 64;
+// A shell command cut into simple commands (mc_cmd_cut): every word in order, where each simple
+// command's words end, and what ended it. Quotes and backslashes keep their bytes in one word; a
+// heredoc's body (<<WORD to the line that is WORD) is passed over, as the shell reads it as text.
+MC_CUT_WORDS :: 1024;
+MC_CUT_CMDS :: 256;
+McCmdCut :: struct {
+  w: [MC_CUT_WORDS] McWord; nw: int;
+  end: [MC_CUT_CMDS] int;          // simple command k is words end[k - 1] (0 for the first) ..< end[k]
+  op: [MC_CUT_CMDS] u8;            // what ended it: ; & | ( ) ` or a line end, 0 at the end of the text
+  n: int;
+  over: bool;                      // more words or simple commands than fit: the rest is not cut
+}
 
-// What a shell command is: MC_CMD_CHECK, MC_CMD_COMMIT, both, or 0 (the bits of its simple commands).
-mc_cmd_kind :: (c: string) -> int {
-  w: [MC_CMD_WORDS] McWord; n := 0;
-  kind := 0;
+mc_cut_word :: (k: [] McCmdCut, a: int, b: int) {
+  if k[0].nw < MC_CUT_WORDS { k[0].w[k[0].nw] = McWord.{a = a, b = b}; k[0].nw += 1; } else { k[0].over = true; }
+}
+
+// Where a heredoc's body ends: past the line after at that is delim (tabs before it dropped with
+// <<-), or the text's end.
+mc_cut_heredoc :: (c: string, at: int, delim: string, tabs: bool) -> int {
+  p := at;
+  while p < c.count {
+    e := p;
+    while e < c.count && c[e] != '\n' { e += 1; }
+    s := p;
+    if tabs { while s < e && c[s] == '\t' { s += 1; } }
+    if cast(string) c[s..<e] == delim { return e; }
+    p = e + 1;
+  }
+  return c.count;
+}
+
+mc_cmd_cut :: (c: string, k: [] McCmdCut) {
+  k[0].nw = 0; k[0].n = 0; k[0].over = false;
   i := 0; q: u8 = 0; start := -1;
+  hd := 0; hd_word := -1; hd_tabs := false;     // a heredoc: 1 its word comes next, 2 its body starts at the next line
   while i <= c.count {
-    ch: u8 = ifx i < c.count then c[i] else '\n';
+    ch: u8 = ifx i < c.count then c[i] else 0;
     if q != 0 {
+      if i == c.count { break; }               // an open quote: the shell refuses it, so nothing runs
+      if q == '"' && ch == '\\' { i += 2; continue; }
       if ch == q { q = 0; }
       i += 1; continue;
     }
+    if i < c.count && ch == '\\' { if start < 0 { start = i; } i = ifx i + 2 < c.count then i + 2 else c.count; continue; }
     if ch == '"' || ch == '\'' { if start < 0 { start = i; } q = ch; i += 1; continue; }
-    space := ch == ' ' || ch == '\t';
-    op := ch == ';' || ch == '&' || ch == '|' || ch == '\n' || ch == '(' || ch == ')';
+    space := ch == ' ' || ch == '\t' || ch == '\r';
+    op := i == c.count || ch == ';' || ch == '&' || ch == '|' || ch == '\n' || ch == '(' || ch == ')' || ch == '`';
     if (space || op) && start >= 0 {
-      if n < MC_CMD_WORDS { w[n] = McWord.{a = start, b = i}; n += 1; }
+      mc_cut_word(k, start, i);
+      wd := cast(string) c[start..<i];
+      if hd == 1 { hd_word = k[0].nw - 1; hd = 2; }
+      else if mc_cmd_starts(wd, "<<") && !mc_cmd_starts(wd, "<<<") {
+        hd_tabs = mc_cmd_starts(wd, "<<-");
+        rest := ifx hd_tabs then 3 else 2;
+        if wd.count > rest { k[0].w[k[0].nw - 1].a = start + rest; hd_word = k[0].nw - 1; hd = 2; } else { hd = 1; }
+      }
       start = -1;
     }
-    if op { kind = kind | mc_cmd_simple(c, w[..], n); n = 0; }
+    if op {
+      if k[0].n < MC_CUT_CMDS { k[0].end[k[0].n] = k[0].nw; k[0].op[k[0].n] = ch; k[0].n += 1; } else { k[0].over = true; }
+      if ch == '\n' && hd == 2 && hd_word >= 0 {
+        delim := mc_cmd_word(c, k[0].w[hd_word]);
+        hd = 0; hd_word = -1;
+        i = mc_cut_heredoc(c, i + 1, delim, hd_tabs);
+        continue;
+      }
+    }
     else if !space && start < 0 { start = i; }
     i += 1;
+  }
+}
+
+// What a shell command is: MC_CMD_CHECK, MC_CMD_COMMIT, both, or 0 (the bits of its simple commands).
+mc_cmd_kind :: (c: string) -> int {
+  k: [1] McCmdCut;
+  mc_cmd_cut(c, k[..]);
+  kind := 0; from := 0;
+  for j: 0..<k[0].n {
+    to := k[0].end[j];
+    kind = kind | mc_cmd_simple(c, k[0].w[from..<to], to - from);
+    from = to;
   }
   return kind;
 }

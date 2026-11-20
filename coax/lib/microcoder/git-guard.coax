@@ -1,0 +1,421 @@
+// The shared-checkout guard (GitHub #13758): git commands that would change or stash the files of a
+// checkout other chats also work in are refused there, before they start.
+//
+// Coder Desktop gives each new chat a worktree of its own (~/.openagents/worktrees/REPO/CHAT, on
+// the branch coder/CHAT), but a chat started before that, Foreman, the terminal Coder and a chat
+// that cds out of its worktree can still be in a repository's main checkout, where one chat's
+// `git stash` or `git pull --rebase --autostash` takes another chat's unsaved work away. So a
+// command is read the way the shell will run it, and refused when one of its git commands is one
+// of these and its folder is a main checkout (its .git is a folder, not a worktree's .git file):
+//
+//   git stash [push|pop|apply|drop|clear|save|...]    every form but `git stash list` and `git stash show`
+//   git pull|rebase|merge --autostash                 or -c rebase.autoStash=true / merge.autoStash=true
+//   git reset --hard
+//   git checkout|restore . (or :/, *)                 the whole tree; restore --staged alone only unstages
+//   git checkout|switch -f, --force, --discard-changes
+//   git clean -f                                      not with -n or --dry-run
+//
+// The rule reads words, not prose: the command is cut into simple commands (mc_cmd_cut, the one
+// cutter commit.coax reads commits with), a simple command's program is found past VAR=value words
+// and the wrappers env, sudo, time, nice, nohup, exec, command, timeout N, xargs, `{`, `!` and the
+// shell's keywords, and git's own options (-C DIR, -c K=V, --work-tree, --git-dir) are read before its
+// subcommand. A cd or pushd moves the folder later commands run in, and a subshell's moves end with
+// it. `sh -c SCRIPT` (bash, zsh, dash, ksh) and `eval` are read as the script they run, two levels
+// deep. A folder that can't be told ($VAR, ~user, cd -, --git-dir) counts as a shared one. A heredoc's
+// body and a quoted message are text, never commands.
+//
+// mc_gg_check is pure: it lists each refused git command with the folder it would run in. The
+// caller asks the filesystem which of those folders are main checkouts (tools.coax mc_git_refusal).
+
+#load "commit.coax";
+
+MC_GG_HITS :: 8;
+MC_GG_ARENA :: 16384;
+MC_GG_DEPTH :: 2;                // sh -c / eval levels read inside a command
+MC_GG_NEST :: 8;                 // subshells deep whose folder is remembered
+
+// A folder as the guard knows it: bytes at..<at+size of the arena, size -1 when it can't be told.
+McGgDir :: struct { at: int; size: int; }
+
+McGitHits :: struct {
+  n: int;
+  why: [MC_GG_HITS] string;      // the refused form, as the refusal names it
+  dir: [MC_GG_HITS] McGgDir;     // the folder it would run in
+  arena: [MC_GG_ARENA] u8; na: int;
+  over: bool;                    // the command is longer than the guard reads whole
+}
+
+MC_GG_UNKNOWN :: McGgDir.{at = 0, size = -1};
+
+mc_gg_dir :: (h: [] McGitHits, d: McGgDir) -> string {
+  if d.size < 0 { return ""; }
+  return cast(string) h[0].arena[d.at..<d.at + d.size];
+}
+
+// One path's parts onto the folder being built at the arena's end (size bytes of it so far):
+// "." stays, ".." goes up one, an empty part (//) is nothing. -1 when the arena is full.
+mc_gg_push_parts :: (h: [] McGitHits, start: int, size: int, path: string) -> int {
+  n := size; i := 0;
+  while i <= path.count {
+    j := i;
+    while j < path.count && path[j] != '/' { j += 1; }
+    part := cast(string) path[i..<j];
+    if part == ".." {
+      while n > 0 && h[0].arena[start + n - 1] != '/' { n -= 1; }
+      if n > 0 { n -= 1; }
+    } else if part.count > 0 && part != "." {
+      if start + n + 1 + part.count > MC_GG_ARENA { return -1; }
+      h[0].arena[start + n] = '/'; n += 1;
+      for b: part { h[0].arena[start + n] = b; n += 1; }
+    }
+    i = j + 1;
+  }
+  return n;
+}
+
+// Where `cd arg` from dir lands: an absolute path, ~ or ~/x (home), or a path under dir, its . and ..
+// worked out. Unknown when the word has an expansion in it, names another user's home, is cd -, or
+// dir itself is unknown.
+mc_gg_resolve :: (h: [] McGitHits, dir: McGgDir, arg: string, home: string) -> McGgDir {
+  for b: arg { if b == '$' || b == '`' || b == '*' || b == '?' || b == '[' || b == '{' || b == '\\' { return MC_GG_UNKNOWN; } }
+  if arg == "-" { return MC_GG_UNKNOWN; }
+  start := h[0].na; n := 0;
+  if arg.count == 0 || arg == "~" || mc_cmd_starts(arg, "~/") {
+    if home.count == 0 || home[0] != '/' { return MC_GG_UNKNOWN; }
+    n = mc_gg_push_parts(h, start, 0, home);
+    if n >= 0 && arg.count > 1 { n = mc_gg_push_parts(h, start, n, cast(string) arg[2..<arg.count]); }
+  } else if arg[0] == '~' {
+    return MC_GG_UNKNOWN;
+  } else if arg[0] == '/' {
+    n = mc_gg_push_parts(h, start, 0, arg);
+  } else {
+    if dir.size < 0 { return MC_GG_UNKNOWN; }
+    base := mc_gg_dir(h, dir);
+    if base.count == 0 || base[0] != '/' { return MC_GG_UNKNOWN; }
+    // the base is a folder this guard worked out already, so it is copied as it is ("/" as nothing)
+    if base != "/" { for b: base { if start + n >= MC_GG_ARENA { return MC_GG_UNKNOWN; } h[0].arena[start + n] = b; n += 1; } }
+    n = mc_gg_push_parts(h, start, n, arg);
+  }
+  if n < 0 { return MC_GG_UNKNOWN; }
+  if n == 0 { if start >= MC_GG_ARENA { return MC_GG_UNKNOWN; } h[0].arena[start] = '/'; n = 1; }
+  h[0].na = start + n;
+  return McGgDir.{at = start, size = n};
+}
+
+mc_gg_hit :: (h: [] McGitHits, why: string, dir: McGgDir) {
+  if h[0].n >= MC_GG_HITS { h[0].over = true; return; }
+  h[0].why[h[0].n] = why; h[0].dir[h[0].n] = dir; h[0].n += 1;
+}
+
+mc_gg_lower_starts :: (s: string, head: string) -> bool {
+  if s.count < head.count { return false; }
+  for i: 0..<head.count {
+    b := s[i];
+    if b >= 'A' && b <= 'Z' { b = b + 32; }
+    if b != head[i] { return false; }
+  }
+  return true;
+}
+
+// Whether a -c value turns autostash on: rebase.autostash or merge.autostash, set to anything but false.
+mc_gg_autostash_config :: (kv: string) -> bool {
+  key := 0;
+  if mc_gg_lower_starts(kv, "rebase.autostash") { key = 16; }
+  else if mc_gg_lower_starts(kv, "merge.autostash") { key = 15; }
+  if key == 0 { return false; }
+  if kv.count == key { return true; }                        // -c rebase.autoStash: a bare key is true
+  if kv[key] != '=' { return false; }
+  v := cast(string) kv[key + 1..<kv.count];
+  return !(mc_gg_lower_starts(v, "false") || mc_gg_lower_starts(v, "no") || mc_gg_lower_starts(v, "off") || v == "0");
+}
+
+// A pathspec that names the whole tree.
+mc_gg_whole :: (s: string) -> bool { return s == "." || s == "./" || s == ":/" || s == ":/." || s == "*" || s == ":(top)" || s == ":(top)."; }
+
+// A short option group (-xyz, not --x) that holds flag.
+mc_gg_short :: (s: string, flag: u8) -> bool {
+  if s.count < 2 || s[0] != '-' || s[1] == '-' { return false; }
+  for i: 1..<s.count { if s[i] == flag { return true; } }
+  return false;
+}
+
+// One git command, its words from k (past "git") to n: why it is refused, or "".
+mc_gg_git :: (c: string, w: [] McWord, k0: int, n: int, h: [] McGitHits, dir0: McGgDir, home: string) {
+  k := k0; dir := dir0; autostash := false;
+  while k < n {
+    o := mc_cmd_word(c, w[k]);
+    if o == "-C" { if k + 1 < n { dir = mc_gg_resolve(h, dir, mc_cmd_word(c, w[k + 1]), home); } k += 2; continue; }
+    if o == "-c" || o == "--config-env" { if k + 1 < n && mc_gg_autostash_config(mc_cmd_word(c, w[k + 1])) { autostash = true; } k += 2; continue; }
+    if mc_cmd_starts(o, "--config-env=") { if mc_gg_autostash_config(cast(string) o[13..<o.count]) { autostash = true; } k += 1; continue; }
+    if o == "--work-tree" { if k + 1 < n { dir = mc_gg_resolve(h, dir, mc_cmd_word(c, w[k + 1]), home); } k += 2; continue; }
+    if mc_cmd_starts(o, "--work-tree=") { dir = mc_gg_resolve(h, dir, cast(string) o[12..<o.count], home); k += 1; continue; }
+    if o == "--git-dir" || o == "--namespace" || o == "--super-prefix" { if o == "--git-dir" { dir = MC_GG_UNKNOWN; } k += 2; continue; }
+    if mc_cmd_starts(o, "--git-dir=") { dir = MC_GG_UNKNOWN; k += 1; continue; }
+    if mc_cmd_starts(o, "-") { k += 1; continue; }
+    break;
+  }
+  if k >= n { return; }
+  sb: [64] u8;
+  sub := mc_gg_unquote(mc_cmd_word(c, w[k]), sb[..]);
+  first := ifx k + 1 < n then mc_cmd_word(c, w[k + 1]) else "";
+  if sub == "stash" {
+    if first != "list" && first != "show" { mc_gg_hit(h, "git stash", dir); }
+    return;
+  }
+  if sub == "pull" || sub == "rebase" || sub == "merge" {
+    on := autostash;
+    for j: k + 1..<n {
+      a := mc_cmd_word(c, w[j]);
+      if a == "--autostash" { on = true; }
+      if a == "--no-autostash" { on = false; }
+    }
+    if on { mc_gg_hit(h, ifx sub == "pull" then "git pull --autostash" else ifx sub == "rebase" then "git rebase --autostash" else "git merge --autostash", dir); }
+    return;
+  }
+  if sub == "reset" {
+    for j: k + 1..<n { if mc_cmd_word(c, w[j]) == "--hard" { mc_gg_hit(h, "git reset --hard", dir); return; } }
+    return;
+  }
+  if sub == "checkout" || sub == "switch" || sub == "restore" {
+    whole := false; force := false; staged := false; worktree := false;
+    for j: k + 1..<n {
+      a := mc_cmd_word(c, w[j]);
+      if mc_gg_whole(a) { whole = true; }
+      if a == "-f" || a == "--force" || a == "--discard-changes" { force = true; }
+      if a == "--staged" || mc_gg_short(a, 'S') { staged = true; }
+      if a == "--worktree" || mc_gg_short(a, 'W') { worktree = true; }
+    }
+    if sub != "restore" && force { mc_gg_hit(h, ifx sub == "switch" then "git switch --discard-changes" else "git checkout --force", dir); return; }
+    if sub == "checkout" && whole { mc_gg_hit(h, "git checkout .", dir); return; }
+    if sub == "restore" && whole && (!staged || worktree) { mc_gg_hit(h, "git restore .", dir); }
+    return;
+  }
+  if sub == "clean" {
+    force := false; dry := false;
+    for j: k + 1..<n {
+      a := mc_cmd_word(c, w[j]);
+      if a == "--force" || mc_gg_short(a, 'f') { force = true; }
+      if a == "--dry-run" || mc_gg_short(a, 'n') { dry = true; }
+    }
+    if force && !dry { mc_gg_hit(h, "git clean -f", dir); }
+  }
+}
+
+mc_gg_shell :: (s: string) -> bool { return s == "sh" || s == "bash" || s == "zsh" || s == "dash" || s == "ksh"; }
+
+// The shell's keywords, which the next word's command follows.
+mc_gg_keyword :: (s: string) -> bool {
+  return s == "{" || s == "}" || s == "!" || s == "if" || s == "then" || s == "else" || s == "elif" || s == "do" || s == "while" || s == "until";
+}
+// The wrappers that run the command after their options.
+mc_gg_wrapper :: (s: string) -> bool {
+  return s == "env" || s == "sudo" || s == "time" || s == "nice" || s == "nohup" || s == "exec" || s == "command" || s == "builtin" || s == "xargs" || s == "timeout";
+}
+// Whether a wrapper's option takes the next word as its value.
+mc_gg_takes_value :: (wrapper: string, o: string) -> bool {
+  if wrapper == "env" { return o == "-u" || o == "-C" || o == "-S"; }
+  if wrapper == "sudo" { return o == "-u" || o == "-g" || o == "-h" || o == "-p" || o == "-C" || o == "-D" || o == "-r" || o == "-t" || o == "-U" || o == "-T"; }
+  if wrapper == "nice" { return o == "-n"; }
+  if wrapper == "xargs" { return o == "-n" || o == "-L" || o == "-I" || o == "-P" || o == "-s" || o == "-E" || o == "-d" || o == "-a"; }
+  if wrapper == "timeout" { return o == "-s" || o == "-k"; }
+  if wrapper == "exec" { return o == "-a"; }
+  return false;
+}
+
+// A word as the shell passes it on: its quotes and backslashes taken out, into out ("" when it doesn't fit).
+mc_gg_unquote :: (s: string, out: [] u8) -> string {
+  n := 0; i := 0; q: u8 = 0;
+  while i < s.count {
+    b := s[i];
+    if q == 0 && (b == '"' || b == '\'') { q = b; i += 1; continue; }
+    if q != 0 && b == q { q = 0; i += 1; continue; }
+    if b == '\\' && q != '\'' && i + 1 < s.count { i += 1; b = s[i]; }
+    if n >= out.count { return ""; }
+    out[n] = b; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// One simple command, words w[0..<n] of c, run in dir: its refused git command, if any, is listed;
+// the folder later commands run in is given back (a cd moves it).
+mc_gg_simple :: (c: string, w: [] McWord, n: int, h: [] McGitHits, dir: McGgDir, home: string, depth: int) -> McGgDir {
+  i := 0; here := dir;
+  while i < n {
+    s := mc_cmd_word(c, w[i]);
+    if mc_cmd_assign(s) || mc_gg_keyword(s) { i += 1; continue; }
+    if mc_gg_wrapper(s) {
+      i += 1;
+      while i < n && mc_cmd_starts(mc_cmd_word(c, w[i]), "-") {
+        o := mc_cmd_word(c, w[i]);
+        if mc_gg_takes_value(s, o) {
+          if s == "env" && o == "-C" && i + 1 < n { here = mc_gg_resolve(h, here, mc_cmd_word(c, w[i + 1]), home); }
+          i += 2;
+        } else { i += 1; }
+      }
+      if s == "timeout" { i += 1; }                // its duration
+      continue;
+    }
+    if mc_cmd_base(s) == "remote.sh" {
+      k := i + 1;
+      while k < n && mc_cmd_word(c, w[k]) != "--" { k += 1; }
+      i = k + 1; continue;
+    }
+    break;
+  }
+  if i >= n { return dir; }
+  pb: [256] u8;
+  prog := mc_cmd_base(mc_gg_unquote(mc_cmd_word(c, w[i]), pb[..]));
+  if prog == "cd" || prog == "pushd" {
+    k := i + 1;
+    while k < n && mc_cmd_starts(mc_cmd_word(c, w[k]), "-") && mc_cmd_word(c, w[k]) != "-" { k += 1; }
+    return mc_gg_resolve(h, dir, ifx k < n then mc_cmd_word(c, w[k]) else "", home);
+  }
+  if prog == "popd" { return MC_GG_UNKNOWN; }
+  if prog == "git" { mc_gg_git(c, w, i + 1, n, h, here, home); return dir; }
+  if depth >= MC_GG_DEPTH { return dir; }
+  if mc_gg_shell(prog) {
+    for k: i + 1..<n - 1 {
+      a := mc_cmd_word(c, w[k]);
+      if mc_gg_short(a, 'c') { mc_gg_scan(mc_cmd_word(c, w[k + 1]), h, here, home, depth + 1); break; }
+    }
+    return dir;
+  }
+  if prog == "eval" && i + 1 < n {
+    script := ifx i + 2 == n then mc_cmd_word(c, w[i + 1]) else cast(string) c[w[i + 1].a..<w[n - 1].b];
+    mc_gg_scan(script, h, here, home, depth + 1);
+  }
+  return dir;
+}
+
+// Every simple command of c, run from dir: a cd moves the folder for the commands after it, a
+// subshell's ( or ` keeps the folder it started from for when it ends.
+mc_gg_scan :: (c: string, h: [] McGitHits, dir: McGgDir, home: string, depth: int) {
+  k: [1] McCmdCut;
+  mc_cmd_cut(c, k[..]);
+  if k[0].over { h[0].over = true; }
+  cur := dir;
+  nest: [MC_GG_NEST] McGgDir; sp := 0; tick := false;
+  from := 0;
+  for j: 0..<k[0].n {
+    to := k[0].end[j];
+    cur = mc_gg_simple(c, k[0].w[from..<to], to - from, h, cur, home, depth);
+    from = to;
+    op := k[0].op[j];
+    open := op == '(' || (op == '`' && !tick);
+    if op == '`' { tick = !tick; }
+    if open { if sp < MC_GG_NEST { nest[sp] = cur; } sp += 1; }
+    else if op == ')' || op == '`' {
+      if sp > 0 { sp -= 1; cur = ifx sp < MC_GG_NEST then nest[sp] else MC_GG_UNKNOWN; }
+    }
+  }
+}
+
+// The refused git commands in command, run from cwd (home for ~), each with its folder.
+mc_gg_check :: (command: string, cwd: string, home: string, h: [] McGitHits) {
+  h[0].n = 0; h[0].na = 0; h[0].over = false;
+  start := mc_gg_resolve(h, MC_GG_UNKNOWN, ifx cwd.count > 0 && cwd[0] == '/' then cwd else "$", home);
+  mc_gg_scan(command, h, start, home, 0);
+}
+
+// The refusal a command gets in a shared checkout, naming the form and the folder.
+mc_gg_refusal :: (why: string, dir: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "Refused: `");
+  n = json_raw(out, n, why);
+  n = json_raw(out, n, "` would change the files of a shared checkout");
+  if dir.count > 0 { n = json_raw(out, n, " ("); n = json_raw(out, n, dir); n = json_raw(out, n, ")"); }
+  n = json_raw(out, n, ", where other chats may have unsaved work. Nothing ran. Work in your own worktree instead: this chat's folder when Coder made one for it, or `git worktree add ../NAME origin/main` and run it there.");
+  return ifx n < 0 then "Refused: this git command would change the files of a shared checkout. Nothing ran." else cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- checks
+
+gg_first :: (command: string, cwd: string, out: [] u8) -> string {
+  h: [1] McGitHits;
+  mc_gg_check(command, cwd, "/home/u", h[..]);
+  if h[0].n == 0 { return ""; }
+  n := json_raw(out, 0, h[0].why[0]); n = json_raw(out, n, " @ ");
+  d := h[0].dir[0];
+  n = json_raw(out, n, ifx d.size < 0 then "?" else mc_gg_dir(h[..], d));
+  return cast(string) out[0..<n];
+}
+gg_count :: (command: string) -> int { h: [1] McGitHits; mc_gg_check(command, "/r", "/home/u", h[..]); return h[0].n; }
+
+#test "the guard refuses stash, autostash, reset --hard, whole-tree checkout and restore, and clean -f" {
+  b: [512] u8;
+  #assert gg_first("git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("git stash push -m wip", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("git stash pop", "/r", b[..]) == "git stash @ /r" && gg_first("git stash -p", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("git stash >/dev/null", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("git pull --rebase --autostash", "/r", b[..]) == "git pull --autostash @ /r";
+  #assert gg_first("git pull --autostash origin main", "/r", b[..]) == "git pull --autostash @ /r";
+  #assert gg_first("git -c rebase.autoStash=true pull --rebase", "/r", b[..]) == "git pull --autostash @ /r";
+  #assert gg_first("git rebase --autostash origin/main", "/r", b[..]) == "git rebase --autostash @ /r";
+  #assert gg_first("git reset --hard", "/r", b[..]) == "git reset --hard @ /r";
+  #assert gg_first("git reset --hard origin/main", "/r", b[..]) == "git reset --hard @ /r";
+  #assert gg_first("git checkout -- .", "/r", b[..]) == "git checkout . @ /r" && gg_first("git checkout .", "/r", b[..]) == "git checkout . @ /r";
+  #assert gg_first("git checkout -f main", "/r", b[..]) == "git checkout --force @ /r";
+  #assert gg_first("git switch --discard-changes main", "/r", b[..]) == "git switch --discard-changes @ /r";
+  #assert gg_first("git restore .", "/r", b[..]) == "git restore . @ /r" && gg_first("git restore --staged --worktree :/", "/r", b[..]) == "git restore . @ /r";
+  #assert gg_first("git clean -fd", "/r", b[..]) == "git clean -f @ /r" && gg_first("git clean -x --force", "/r", b[..]) == "git clean -f @ /r";
+}
+
+#test "the guard finds git past wrappers, in chains, subshells, nested shells and eval, by its path" {
+  b: [512] u8;
+  #assert gg_first("ls; git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("make && git stash || true", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("echo $(git stash)", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("echo `git reset --hard`", "/r", b[..]) == "git reset --hard @ /r";
+  #assert gg_first("FOO=1 env -i GIT_X=2 git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("sudo -u me nice timeout 30 /usr/bin/git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("sh -c 'git stash'", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("bash -lc \"cd sub && git reset --hard\"", "/r", b[..]) == "git reset --hard @ /r/sub";
+  #assert gg_first("eval git stash", "/r", b[..]) == "git stash @ /r" && gg_first("eval 'git stash'", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("if true; then git stash; fi", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("{ git stash; }", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("git \"stash\"", "/r", b[..]) == "git stash @ /r" && gg_first("g\\it 'sta'sh", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("env -C /a git stash; git status", "/r", b[..]) == "git stash @ /a" && gg_first("xargs -n 1 git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_count("git stash; git reset --hard; git clean -f") == 3;
+}
+
+#test "the guard knows the folder each git command runs in: cd, -C, --work-tree, subshells, ~ and unknowns" {
+  b: [512] u8;
+  #assert gg_first("cd /tmp/x && git stash", "/r", b[..]) == "git stash @ /tmp/x";
+  #assert gg_first("cd sub/../other/./a && git stash", "/r/w", b[..]) == "git stash @ /r/w/other/a";
+  #assert gg_first("git -C ../other stash", "/r/a", b[..]) == "git stash @ /r/other";
+  #assert gg_first("git --work-tree=/x/y reset --hard", "/r", b[..]) == "git reset --hard @ /x/y";
+  #assert gg_first("cd ~/w && git stash", "/r", b[..]) == "git stash @ /home/u/w" && gg_first("cd && git stash", "/r", b[..]) == "git stash @ /home/u";
+  #assert gg_first("cd .. && cd .. && cd .. && git stash", "/r/a", b[..]) == "git stash @ /";
+  #assert gg_first("(cd /a; true); git stash", "/r", b[..]) == "git stash @ /r";
+  #assert gg_first("(cd /a; git stash)", "/r", b[..]) == "git stash @ /a";
+  #assert gg_first("cd $X && git stash", "/r", b[..]) == "git stash @ ?" && gg_first("cd - && git stash", "/r", b[..]) == "git stash @ ?";
+  #assert gg_first("cd ~bob && git stash", "/r", b[..]) == "git stash @ ?" && gg_first("pushd /a && popd && git stash", "/r", b[..]) == "git stash @ ?";
+  #assert gg_first("git --git-dir=/x/.git stash", "/r", b[..]) == "git stash @ ?" && gg_first("git stash", "", b[..]) == "git stash @ ?";
+  #assert gg_first("sh -c 'cd /a'; git stash", "/r", b[..]) == "git stash @ /r";
+}
+
+#test "the guard lets reads, safe forms, other folders' text and quoted words through" {
+  #assert gg_count("git stash list") == 0 && gg_count("git stash show -p stash@{0}") == 0;
+  #assert gg_count("git status --short && git diff") == 0 && gg_count("git log --grep stash --oneline") == 0;
+  #assert gg_count("git pull --rebase") == 0 && gg_count("git pull --rebase --autostash --no-autostash") == 0;
+  #assert gg_count("git -c rebase.autoStash=false pull --rebase") == 0 && gg_count("git -c user.name=x commit -m stash") == 0;
+  #assert gg_count("git reset --soft HEAD~1") == 0 && gg_count("git reset HEAD a.txt") == 0;
+  #assert gg_count("git checkout -- a.txt") == 0 && gg_count("git checkout -b mine origin/main") == 0 && gg_count("git switch main") == 0;
+  #assert gg_count("git restore --staged .") == 0 && gg_count("git restore a.txt") == 0;
+  #assert gg_count("git clean -nf") == 0 && gg_count("git clean -f --dry-run") == 0 && gg_count("git clean -d") == 0;
+  #assert gg_count("echo 'git stash'") == 0 && gg_count("grep -rn \"git reset --hard\" docs") == 0;
+  #assert gg_count("git commit -m 'git stash; git reset --hard'") == 0 && gg_count("ls git stash") == 0;
+  #assert gg_count("cat > notes.md <<'EOF'\ngit stash\ngit reset --hard\nEOF\nls") == 0;
+  #assert gg_count("cat <<-END\n\tgit stash\n\tEND\ngit stash") == 1;
+  #assert gg_count("git worktree add ../w origin/main && git -C ../w status") == 0;
+}
+
+#test "a refusal names the form and the folder, and a long command says it is read only so far" {
+  b: [1024] u8;
+  r := mc_gg_refusal("git stash", "/w/repo", b[..]);
+  #assert mc_cmd_starts(r, "Refused: `git stash` would change the files of a shared checkout (/w/repo), where other chats may have unsaved work. Nothing ran.");
+  #assert mc_cmd_starts(mc_gg_refusal("git stash", "", b[..]), "Refused: `git stash` would change the files of a shared checkout, where");
+  long: [4200] u8; for i: 0..<long.count { long[i] = ifx i % 2 == 0 then 'a' else ' '; }
+  h: [1] McGitHits;
+  mc_gg_check(cast(string) long[..], "/r", "/h", h[..]);
+  #assert h[0].over && h[0].n == 0;
+}

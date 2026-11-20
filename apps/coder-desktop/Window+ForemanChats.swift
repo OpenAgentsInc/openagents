@@ -166,31 +166,28 @@ extension CoderWindow {
         let id = UUID().uuidString.lowercased()
         let rawTitle = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = rawTitle.isEmpty ? String(prompt.prefix(60)) : rawTitle
-        let requestedFolderURL = URL(fileURLWithPath: folderPath)
-        let wtInfo = CoderWorktree.ensureWorktree(chatID: id, folder: requestedFolderURL)
-        let folderURL = wtInfo.map { URL(fileURLWithPath: $0.path) } ?? requestedFolderURL
+        let folderURL = URL(fileURLWithPath: folderPath)
         let moved = CoderRun(page: back, folder: folderURL)
         moved.chat = id
-        moved.worktreeInfo = wtInfo
-        configureWorkerEnv(moved, isForeman: false)
         wire(moved)
         store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: Foreman.managedTag)
-        if let wtInfo {
-            store.setWorktree(id, path: wtInfo.path, branch: wtInfo.branch, repoRoot: wtInfo.repoRoot)
-        }
         if (payload["pin"] as? Bool) == true && !store.isPinned(id) {
             store.togglePin(id)
         }
-        if cd_action(back) == 1 {
+        // the chat's first message runs in its own worktree once that is made (#13758)
+        let start = { [weak self] in
+            // moved.page: the chat may have been opened meanwhile, and its page is the window's then
+            guard let self, cd_running(moved.page) != 0 else { return }
             var out = [CChar](repeating: 0, count: 262144)
             if moved.worker.start() {
-                let n = cd_task(back, moved.session, moved.folder.path, &out, Int32(out.count))
+                let n = cd_task(moved.page, moved.session, moved.folder.path, &out, Int32(out.count))
                 moved.worker.write(out, count: Int(n))
                 beginTurn(moved, from: 0)
             } else {
-                cd_failed(back, moved.worker.failure ?? "Microcoder could not start.")
+                cd_failed(moved.page, moved.worker.failure ?? "Microcoder could not start.")
             }
         }
+        if cd_action(back) == 1 && !holdRunForWorktree(moved, then: start) { start() }
         runs[id] = moved
         keep(moved)
         _ = foremanEvents.emit(type: "chat.created", chatID: id, data: ["title": store.title(id) ?? title, "folder": folderURL.path])
@@ -348,6 +345,7 @@ extension CoderWindow {
                 return ForemanResponse(status: 400, body: ["error": "cannot delete a running chat; stop it first"])
             }
             if id == chat { chat = nil; _ = cd_new(page); cd_current(page, "") }
+            if let w = store.worktree(id) { removeWorktree(w, title: store.title(id) ?? "New chat") }
             store.remove(id)
             _ = foremanEvents.emit(type: "chat.deleted", chatID: id)
             foremanAudit.record(action: "control_delete", tier: foremanTier, chatID: id)

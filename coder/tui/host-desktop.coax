@@ -203,13 +203,42 @@ dk_all :: (runs: [] DkInfo) -> int {
   return count;
 }
 
-// Whether the run's folder is the grant's workspace or inside it.
+// Whether the run's folder is the grant's workspace or inside it, or a chat's own worktree of a
+// repository that is (GitHub #13758): Coder Desktop runs a new chat in
+// ~/.openagents/worktrees/REPO/CHAT, whose .git file names the main checkout's .git/worktrees/NAME.
 dk_scoped :: (h: [] HsHost, r: [] DkInfo) -> bool { return dk_inside(h, cast(string) r[0].cwd[0..<r[0].ncwd]); }
 dk_inside :: (h: [] HsHost, folder: string) -> bool {
   c := h[0].environment[0].configuration[..];
   root := cast(string) c[0].workspace[0..<c[0].nw];
   real: [1024] u8; at := fs_realpath(folder, real[..]);
-  return root.count > 0 && at.count > 0 && (at == root || es_folder_inside(root, at));
+  if root.count == 0 || at.count == 0 { return false; }
+  if at == root || es_folder_inside(root, at) { return true; }
+  hb: [1024] u8; home := hs_home(hb[..]);
+  if home.count == 0 { return false; }
+  wb: [1200] u8; n := hs_cat(wb[..], 0, home); n = hs_cat(wb[..], n, "/.openagents/worktrees");
+  wr: [1024] u8; worktrees := ifx n > 0 then fs_realpath(cast(string) wb[0..<n], wr[..]) else "";
+  if worktrees.count == 0 || !es_folder_inside(worktrees, at) { return false; }
+  gb: [1100] u8; gf: [2048] u8; g := fs_read(fs_join(at, ".git", gb[..]), gf[..]);
+  if g < 1 { return false; }
+  sr: [1024] u8; source := dk_worktree_source(cast(string) gf[0..<g]);
+  src := ifx source.count > 0 then fs_realpath(source, sr[..]) else "";
+  return src.count > 0 && (src == root || es_folder_inside(root, src));
+}
+// The main checkout a worktree's .git file names ("gitdir: /w/repo/.git/worktrees/NAME"): "/w/repo",
+// or "" when the file says anything else.
+dk_worktree_source :: (gitfile: string) -> string {
+  if gitfile.count < 9 || cast(string) gitfile[0..<9] != "gitdir: /" { return ""; }
+  e := gitfile.count;
+  while e > 0 && (gitfile[e - 1] == '\n' || gitfile[e - 1] == '\r' || gitfile[e - 1] == ' ') { e -= 1; }
+  dir := cast(string) gitfile[8..<e];
+  mark := "/.git/worktrees/";
+  at := -1;
+  for i: 0..<dir.count - mark.count + 1 { if cast(string) dir[i..<i + mark.count] == mark { at = i; } }
+  if at < 1 { return ""; }
+  rest := cast(string) dir[at + mark.count..<dir.count];
+  if rest.count == 0 { return ""; }
+  for b: rest { if b == '/' { return ""; } }
+  return cast(string) dir[0..<at];
 }
 
 // The run as the phone's session: its id, the chat's title (the one Coder shows, else the name
@@ -642,6 +671,13 @@ dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   method := cast(string) q[0].method[0..<q[0].nm];
   if method == "ReadSession" || method == "ReadSubagent" { dk_read(h, q, v); return; }
   dk_write(h, q, grant, v);
+}
+
+#test "a chat's worktree names the main checkout it was made from" {
+  #assert dk_worktree_source("gitdir: /w/repo/.git/worktrees/3f2a\n") == "/w/repo";
+  #assert dk_worktree_source("gitdir: /w/a/.git/worktrees/b/.git/worktrees/c") == "/w/a/.git/worktrees/b";
+  #assert dk_worktree_source("gitdir: /w/repo/.git/modules/sub\n") == "" && dk_worktree_source("gitdir: ../repo/.git/worktrees/x") == "";
+  #assert dk_worktree_source("gitdir: /w/repo/.git/worktrees/\n") == "" && dk_worktree_source("gitdir: /w/repo/.git/worktrees/x/y") == "" && dk_worktree_source("") == "";
 }
 
 #test "a Coder Desktop chat's session id names its run" {
