@@ -28,6 +28,7 @@
 // and any other press takes it away. The host shows the platform editor over
 // the focused field (chat_focus) and hides the keyboard when there is none.
 //   coax/bin/coax test apps/openagents-ios/chat.coax
+#run_steps 250000000;   // secp256k1's tables, built at compile time (as app.coax)
 
 #load "../shared/app/view/page.coax";
 #load "../../components/app/nav.coax";
