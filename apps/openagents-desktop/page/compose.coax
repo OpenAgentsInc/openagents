@@ -4,7 +4,10 @@
 // Mac host draws when the page hands it a plan (host.c coder_page_plan). A frame with no backdrop,
 // or one the planner refuses (a window past 4096 device pixels, the resource budget), draws flat
 // as before, and the surface falls back to its solid fill. So does every frosted surface when the Mac
-// asks for reduced transparency: the host then says it cannot compose (host.c cd_on_frame).
+// asks for reduced transparency: the host then says there is no frost (coder_page_frost, host.c
+// cd_on_frame). Pictures still compose then (an attachment's thumbnail, a command's OA-SHOW card),
+// since reduced transparency asks for no blur, not for no pictures. A frame the planner can't take
+// (cp_composes false) has no picture: its cards show their icon (shows.coax, attach.coax).
 #load "../../../coax/native/gpu-composition.coax";
 
 CP_BLUR_DEVICE :: 31.5;       // the planner's bounded kernel: at most 32 device pixels (sigma a third of it)
@@ -29,12 +32,15 @@ CpCompose :: struct {
   img_next: int;              // next slot to evict when all CP_IMAGES slots are full
   on: bool;                   // the host has composition-v1's shader (coder_page_compose)
   off: bool;                  // the host refused a composed frame: draw flat from now on
+  opaque: bool;               // reduced transparency: no frost, but pictures still compose
   used: bool;                 // this frame is the plan's
   w: f32; h: f32;             // the frame's device pixels
 }
 
 // Whether this frame can blur behind a surface: the host draws composition-v1 and the window fits it.
-cp_glass :: (s: [] CoderPage) -> bool {
+cp_glass :: (s: [] CoderPage) -> bool { return cp_composes(s) && !s[0].cmp_gpu[0].opaque; }
+// Whether this frame can be composition-v1's plan at all (frost or not): the pictures' path.
+cp_composes :: (s: [] CoderPage) -> bool {
   c := s[0].cmp_gpu[0];
   return c.on && !c.off && uc_extent(cast(int) c.w, cast(int) c.h);
 }
@@ -50,11 +56,17 @@ cp_has_image :: (list: [] Prim) -> bool {
   return false;
 }
 cp_needs_compose :: (s: [] CoderPage, under: [] Prim, over: [] Prim) -> bool {
-  return cp_glass(s) && (cp_has_layer(over) || cp_has_image(under) || cp_has_image(over));
+  return cp_glass(s) && cp_has_layer(over) || cp_composes(s) && (cp_has_image(under) || cp_has_image(over));
 }
 // Look up a file path in the image slot table, queuing it for the host to decode if not yet seen.
-// Returns UcImage.{id = slot + 1, w, h} when ready, or zero UcImage while pending or failed.
+// Returns UcImage.{id = slot + 1, w, h} when ready, or zero UcImage while pending or failed, and
+// while this frame can't compose (cp_composes): a flat frame draws no picture, so its card keeps
+// its icon instead of an empty frame.
 cp_image_request :: (s: [] CoderPage, path: string) -> UcImage {
+  img := cp_image_slot(s, path);
+  return ifx cp_composes(s) then img else UcImage.{};
+}
+cp_image_slot :: (s: [] CoderPage, path: string) -> UcImage {
   if path.count == 0 || path.count > CP_IMG_PATH { return UcImage.{}; }
   c := s[0].cmp_gpu[..];
   for i: 0..<CP_IMAGES {
@@ -115,6 +127,8 @@ cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32
 
 // The host: whether it can draw composition-v1 (its shader loaded), and that it refused a composed frame.
 coder_page_compose :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].on = on; } }
+// The host: whether surfaces may frost (false under reduced transparency). Pictures compose either way.
+coder_page_frost :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].opaque = !on; } }
 coder_page_compose_refused :: (s: [] CoderPage) #export_c #effects(all) {
   if s.count > 0 && s[0].cmp_gpu[0].used { s[0].cmp_gpu[0].off = true; s[0].cmp_gpu[0].used = false; }
 }
@@ -157,8 +171,32 @@ coder_page_image_slot :: (s: [] CoderPage, index: int) -> int #export_c #effects
   s[0].cmp_gpu[0].w = 2400; s[0].cmp_gpu[0].used = true; coder_page_compose_refused(s[..]);
   #assert !cp_glass(s[..]) && !coder_page_composed(s[..]);
   s[0].d = 2; #assert cp_glass_blur(s[..]) * 2 <= 32;
-  // reduced transparency: the host says it cannot compose, so solid, until the system says otherwise
+  // reduced transparency: no frost, so solid, until the system says otherwise; pictures still compose
   s[0].cmp_gpu[0].off = false; #assert cp_glass(s[..]);
-  coder_page_compose(s[..], false); #assert !cp_glass(s[..]);
+  coder_page_frost(s[..], false); #assert !cp_glass(s[..]) && cp_composes(s[..]);
+  coder_page_frost(s[..], true); #assert cp_glass(s[..]);
+  coder_page_compose(s[..], false); #assert !cp_glass(s[..]) && !cp_composes(s[..]);
   coder_page_compose(s[..], true); #assert cp_glass(s[..]);
+}
+
+#test "a picture composes under reduced transparency; a frosted layer does not" {
+  s: [1] CoderPage;
+  s[0].cmp_gpu[0].w = 1200; s[0].cmp_gpu[0].h = 800; coder_page_compose(s[..], true);
+  pic: [2] Prim; np := prim_image(pic[..], 0, 1, 0, 0, 10, 10);
+  box: [2] Prim; nb := prim_box(box[..], 0, 0, 0, 10, 10, 0, 0, Rgba.{}, Rgba.{});
+  lay: [4] Prim; nl := prim_backdrop(lay[..], 0, 0, 0, 10, 10, 0, 4);
+  #assert np == 1 && nb == 1 && nl > 0;
+  #assert cp_needs_compose(s[..], pic[0..<np], box[0..<0]) && cp_needs_compose(s[..], box[0..<nb], pic[0..<np]) && cp_needs_compose(s[..], box[0..<nb], lay[0..<nl]);
+  #assert !cp_needs_compose(s[..], box[0..<nb], box[0..<nb]);
+  coder_page_frost(s[..], false);
+  #assert cp_needs_compose(s[..], pic[0..<np], box[0..<0]) && cp_needs_compose(s[..], box[0..<nb], pic[0..<np]) && !cp_needs_compose(s[..], box[0..<nb], lay[0..<nl]);
+  s[0].cmp_gpu[0].w = 5120;   // past what the planner takes: flat, no picture
+  #assert !cp_needs_compose(s[..], pic[0..<np], box[0..<0]);
+  // a decoded picture is handed out only to a frame that composes; a flat one gets the icon
+  s[0].cmp_gpu[0].w = 1200;
+  #assert cp_image_request(s[..], "/p/a.png").id == 0;   // queued for the host
+  coder_page_image_loaded(s[..], 0, 64, 32, true);
+  #assert cp_image_request(s[..], "/p/a.png").id == 1 && cp_image_request(s[..], "/p/a.png").w == 64;
+  s[0].cmp_gpu[0].w = 5120;
+  #assert cp_image_request(s[..], "/p/a.png").id == 0 && cp_image_slot(s[..], "/p/a.png").id == 1;
 }

@@ -131,8 +131,10 @@ static int cd_image(void *user, int index, UiImage *out) {
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
   coder_page_env(cd_state(c), c->active != 0, (c->reduced & 1) != 0);
-  // reduced transparency: no frost, so the page draws its frosted surfaces solid (page/compose.coax)
-  coder_page_compose(cd_state(c), c->composition && (c->reduced & 2) == 0);
+  // reduced transparency: no frost, so the page draws its frosted surfaces solid; pictures still
+  // compose (page/compose.coax)
+  coder_page_compose(cd_state(c), c->composition);
+  coder_page_frost(cd_state(c), (c->reduced & 2) == 0);
   // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
   coder_page_now(cd_state(c), cd_uptime());
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);

@@ -28,7 +28,7 @@ cp_test_budget :: (s: [] CoderPage) {
   s[0].cmp_gpu[0].w = 1200; s[0].cmp_gpu[0].h = 800; coder_page_compose(s, true);
   #assert cp_test_draw_over(s, f[..], 0.016);
   sh := surface_sheet(s[0].surface[..]); #assert cp_has_layer(sh.over[0..<sh.no]);
-  coder_page_compose(s, false);   // what the host says under reduced transparency
+  coder_page_frost(s, false);   // what the host says under reduced transparency
   #assert cp_test_draw_over(s, f[..], 0.016);
   sh = surface_sheet(s[0].surface[..]); #assert !cp_has_layer(sh.over[0..<sh.no]);
 }

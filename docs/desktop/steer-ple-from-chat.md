@@ -111,6 +111,13 @@ per message (the newest). The markers live in the command's output, which is kep
 chat, so a reopened chat shows its pictures again while the files exist. Any command or
 script can use the markers. Nothing is PLE-specific in the page.
 
+Pictures draw through composition-v1, the path the frosted menu uses. Reduce Transparency turns
+off the frost but not the pictures: the host says so with `coder_page_frost`, apart from
+`coder_page_compose`, so a card still shows its picture. A frame the planner can't take (a window
+over 4096 device pixels a side, or after the GPU refused a composed frame) is drawn flat, and the
+flat shader has no picture source, so there each card shows its icon and caption rather than an
+empty frame (`cp_image_request` hands a picture only to a frame that composes).
+
 ## What is not done yet (#13812)
 
 - **A live view inline.** The 3D viewport embedded in the transcript, or frames streaming
@@ -121,8 +128,7 @@ script can use the markers. Nothing is PLE-specific in the page.
   `ple-run show` already pictures any scene once it exists.
 - **A Gym route for programs.** Selecting a run, a layer or a camera in the Workbench from a
   chat or from `foreman-ctl`.
-- **Pictures in the flat path.** Pictures, like attachment thumbnails, draw only when the
-  window composes (composition-v1). With Reduce Transparency on, a card shows its icon.
+
 ## The cylinder axis (ple-scene.v1)
 
 A cylinder element may say which local axis its length runs along, before `rot_z`:
