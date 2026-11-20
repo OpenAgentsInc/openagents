@@ -21,6 +21,7 @@
 // ("`Model Selection` from None to Gemini 3.8 Flash (Low)").
 
 #load "../claude/claude.coax";
+#load "../../sys/fs.coax";
 
 AGR_OTHER :: 0; AGR_USER :: 1; AGR_MODEL :: 2; AGR_RESULT :: 3;
 AGR_NEW :: 0; AGR_OPEN :: 1; AGR_TOOL :: 2; AGR_ENDED :: 3;
@@ -135,4 +136,158 @@ agr_turn :: (turn: int, s: AgrStep) -> int {
   #assert agr_model("no change") == "" && agr_model("`Model Selection` from A to B.") == "B" && agr_model("`Model Selection` from None to Gemini 4 Carbon (High)\nmore") == "Gemini 4 Carbon (High)";
   #assert agr_model("`Model Selection` from Gemini 3.8 Flash to Gemini 4.1 Pro. Next") == "Gemini 4.1 Pro";
   #assert agr_unquote("\"x\"") == "x" && agr_unquote("5000") == "5000" && agr_unquote("\"") == "\"";
+}
+
+// ---------------------------------------------------------------- detached subagents
+
+// Antigravity 1.5+ writes detached subagent state files under:
+//   <brain>/<rootSessionId>/.system_generated/subagents/<childSessionId>.json
+// Each file records the child's state (including SUBAGENT_STATE_KILLED when a
+// subagent is terminated), prompt/task, summary/result, error, and timestamps.
+
+AGR_SUB_UNKNOWN :: 0;
+AGR_SUB_RUNNING :: 1;
+AGR_SUB_DONE :: 2;
+AGR_SUB_FAILED :: 3;
+AGR_SUB_KILLED :: 4;
+
+AgrSubagent :: struct {
+  id: string;
+  name: string;
+  state: int;          // AGR_SUB_*
+  state_raw: string;
+  prompt: string;
+  summary: string;
+  error: string;
+  created_at: int;     // UTC seconds, or 0
+  updated_at: int;     // UTC seconds, or 0
+}
+
+agr_subagent_state :: (raw: string) -> int {
+  if raw == "SUBAGENT_STATE_RUNNING" || raw == "RUNNING" || raw == "running" { return AGR_SUB_RUNNING; }
+  if raw == "SUBAGENT_STATE_COMPLETED" || raw == "COMPLETED" || raw == "completed" || raw == "DONE" || raw == "done" { return AGR_SUB_DONE; }
+  if raw == "SUBAGENT_STATE_FAILED" || raw == "FAILED" || raw == "failed" || raw == "ERROR" || raw == "error" { return AGR_SUB_FAILED; }
+  if raw == "SUBAGENT_STATE_KILLED" || raw == "KILLED" || raw == "killed" || raw == "CANCELLED" || raw == "cancelled" || raw == "STOPPED" || raw == "stopped" { return AGR_SUB_KILLED; }
+  return AGR_SUB_UNKNOWN;
+}
+
+agr_subagent_live :: (s: AgrSubagent) -> bool { return s.state == AGR_SUB_RUNNING; }
+
+agr_subagents_running :: (subs: [] AgrSubagent, n: int) -> int {
+  k := 0;
+  limit := ifx n < subs.count then n else subs.count;
+  for i: 0..<limit { if subs[i].state == AGR_SUB_RUNNING { k += 1; } }
+  return k;
+}
+
+agr_first_str :: (ar: [] ClArena, obj: string, a: string, b: string, c: string) -> string {
+  v := cl_str(ar, obj, a);
+  if v.count > 0 { return v; }
+  if b.count > 0 { v = cl_str(ar, obj, b); if v.count > 0 { return v; } }
+  if c.count > 0 { return cl_str(ar, obj, c); }
+  return "";
+}
+
+agr_subagent_parse :: (json: string, fallback_id: string, ar: [] ClArena) -> AgrSubagent {
+  s: [1] AgrSubagent;
+  i := 0;
+  while i < json.count && json[i] <= 32 { i += 1; }
+  if i >= json.count || json[i] != '{' { return s[0]; }
+  s[0].id = agr_first_str(ar, json, "id", "sessionId", "childSessionId");
+  if s[0].id.count == 0 { s[0].id = fallback_id; }
+  s[0].name = agr_first_str(ar, json, "name", "agentName", "title");
+  s[0].state_raw = agr_first_str(ar, json, "state", "status", "");
+  s[0].state = agr_subagent_state(s[0].state_raw);
+  s[0].prompt = agr_first_str(ar, json, "prompt", "task", "");
+  s[0].summary = agr_first_str(ar, json, "summary", "result", "output");
+  s[0].error = cl_str(ar, json, "error");
+  s[0].created_at = agr_time(agr_first_str(ar, json, "createdAt", "created_at", ""));
+  s[0].updated_at = agr_time(agr_first_str(ar, json, "updatedAt", "updated_at", ""));
+  return s[0];
+}
+
+// Path to <brain_dir>/<root_id>/.system_generated/subagents.
+agr_subagents_dir :: (brain_dir: string, root_id: string, out: [] u8) -> string {
+  if brain_dir.count == 0 || root_id.count == 0 { return ""; }
+  b1: [1024] u8; p1 := fs_join(brain_dir, root_id, b1[..]);
+  if p1.count == 0 { return ""; }
+  return fs_join(p1, ".system_generated/subagents", out);
+}
+
+agr_stem_json :: (name: string) -> string {
+  if name.count <= 5 { return ""; }
+  if cast(string) name[name.count - 5..<name.count] != ".json" { return ""; }
+  return cast(string) name[0..<name.count - 5];
+}
+
+// Reads one subagent JSON state file into AgrSubagent (strings allocated in ar).
+agr_subagent_file :: (path: string, fallback_id: string, ar: [] ClArena) -> AgrSubagent {
+  empty: [1] AgrSubagent;
+  if ar[0].at >= ar[0].buf.count { ar[0].full = true; return empty[0]; }
+  at := ar[0].at;
+  n := fs_read(path, ar[0].buf[at..<ar[0].buf.count]);
+  if n <= 0 { return empty[0]; }
+  ar[0].at += n;
+  return agr_subagent_parse(cast(string) ar[0].buf[at..<at + n], fallback_id, ar);
+}
+
+// Reads all detached subagent state files under <brain_dir>/<root_id>/.system_generated/subagents/*.json.
+// Returns the number of parsed subagents stored into out (0 when the directory is absent or empty).
+agr_subagents_read :: (brain_dir: string, root_id: string, out: [] AgrSubagent, ar: [] ClArena) -> int {
+  db: [2048] u8; dir := agr_subagents_dir(brain_dir, root_id, db[..]);
+  if dir.count == 0 { return 0; }
+  list: [1] FsList;
+  n := fs_list(dir, list[..]);
+  if n <= 0 { return 0; }
+  k := 0;
+  for i: 0..<n {
+    if k >= out.count { break; }
+    name := fs_entry(list[..], i);
+    stem := agr_stem_json(name);
+    if stem.count == 0 { continue; }
+    pb: [2048] u8; path := fs_join(dir, name, pb[..]);
+    if path.count == 0 { continue; }
+    // Copy stem into arena so fallback_id outlives list.
+    fb := "";
+    if ar[0].at + stem.count <= ar[0].buf.count {
+      at := ar[0].at;
+      for j: 0..<stem.count { ar[0].buf[at + j] = stem[j]; }
+      ar[0].at += stem.count;
+      fb = cast(string) ar[0].buf[at..<ar[0].at];
+    }
+    sub := agr_subagent_file(path, fb, ar);
+    if sub.id.count == 0 && sub.state == AGR_SUB_UNKNOWN { continue; }
+    out[k] = sub;
+    k += 1;
+  }
+  return k;
+}
+
+#test "antigravity subagents: parses running, completed, failed and SUBAGENT_STATE_KILLED states" {
+  ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  r := agr_subagent_parse("{\"id\":\"child-1\",\"name\":\"explorer\",\"state\":\"SUBAGENT_STATE_RUNNING\",\"prompt\":\"Scan tests\",\"createdAt\":\"2026-11-20T10:00:00Z\"}", "fallback", ar[..]);
+  #assert r.id == "child-1" && r.name == "explorer" && r.state == AGR_SUB_RUNNING && agr_subagent_live(r);
+  #assert r.prompt == "Scan tests" && r.created_at == 1795168800;
+  k := agr_subagent_parse("{\"state\":\"SUBAGENT_STATE_KILLED\",\"error\":\"terminated by parent\",\"updated_at\":\"2026-11-20T10:01:00Z\"}", "child-2", ar[..]);
+  #assert k.id == "child-2" && k.state == AGR_SUB_KILLED && !agr_subagent_live(k);
+  #assert k.error == "terminated by parent" && k.updated_at == 1795168860;
+  d := agr_subagent_parse("{\"sessionId\":\"child-3\",\"status\":\"SUBAGENT_STATE_COMPLETED\",\"summary\":\"All green\"}", "fb", ar[..]);
+  #assert d.id == "child-3" && d.state == AGR_SUB_DONE && d.summary == "All green";
+  f := agr_subagent_parse("{\"status\":\"SUBAGENT_STATE_FAILED\",\"error\":\"boom\"}", "child-4", ar[..]);
+  #assert f.state == AGR_SUB_FAILED && f.error == "boom";
+  #assert agr_subagent_parse("not json", "x", ar[..]).state == AGR_SUB_UNKNOWN;
+}
+
+#test "antigravity subagents: path construction, filename stems and running count" {
+  db: [256] u8;
+  #assert agr_subagents_dir("/home/me/.gemini/antigravity-cli/brain", "root-42", db[..]) == "/home/me/.gemini/antigravity-cli/brain/root-42/.system_generated/subagents";
+  #assert agr_subagents_dir("", "root-42", db[..]) == "" && agr_subagents_dir("/b", "", db[..]) == "";
+  #assert agr_stem_json("child-a.json") == "child-a" && agr_stem_json("notes.txt") == "" && agr_stem_json(".json") == "";
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  subs: [3] AgrSubagent;
+  subs[0] = agr_subagent_parse("{\"name\":\"worker-a\",\"state\":\"SUBAGENT_STATE_RUNNING\"}", "child-a", ar[..]);
+  subs[1] = agr_subagent_parse("{\"name\":\"worker-b\",\"state\":\"SUBAGENT_STATE_KILLED\"}", "child-b", ar[..]);
+  subs[2] = agr_subagent_parse("{\"name\":\"worker-c\",\"state\":\"SUBAGENT_STATE_COMPLETED\"}", "child-c", ar[..]);
+  #assert agr_subagents_running(subs[..], 3) == 1;
+  #assert subs[0].id == "child-a" && subs[1].state == AGR_SUB_KILLED && subs[2].state == AGR_SUB_DONE;
 }
