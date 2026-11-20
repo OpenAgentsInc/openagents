@@ -1,0 +1,156 @@
+// Chapter 268: Execute Inkling 2 Mini on CPU (chat template, streaming checkpoint admission, and greedy decode).
+#authority;
+#load "inkling-weights.coax";
+#load "inkling-loop.coax";
+
+INKLING_TOK_IM_START   :: 151644;
+INKLING_TOK_IM_END     :: 151645;
+INKLING_TOK_THINK_OPEN :: 151667;
+INKLING_TOK_THINK_END  :: 151668;
+INKLING_TOK_TOOL_OPEN  :: 151657;
+INKLING_TOK_TOOL_END   :: 151658;
+
+// book:begin types
+InklingCpuStatus :: enum u8 {ok;shape;truncated;bad_loop;capacity;unknown_role;}
+InklingRole :: enum u8 {system;user;assistant;tool;}
+InklingCheckpointSpec :: struct {
+    total_layers:int;
+    prelude_layers:int;
+    loop_layers:int;
+    postlude_layers:int;
+    loop_count:int;
+    dim:int;
+    vocab_size:int;
+    experts:int;
+    top_k:int;
+    shard_bytes:int;
+    min_shard_bytes:int;
+}
+InklingDecodeStep :: struct {
+    status:InklingCpuStatus;
+    token_id:int;
+    top_logit:f32;
+}
+// book:end types
+
+#test "checkpoint admission rejects truncated shards and invalid loop counts" {
+    good := InklingCheckpointSpec.{
+        total_layers=24, prelude_layers=2, loop_layers=18, postlude_layers=4,
+        loop_count=3, dim=4, vocab_size=8, experts=4, top_k=2,
+        shard_bytes=2048, min_shard_bytes=1024
+    };
+    #assert inkling_cpu_admit(good) == InklingCpuStatus.ok;
+
+    trunc := good; trunc.shard_bytes = 512;
+    #assert inkling_cpu_admit(trunc) == InklingCpuStatus.truncated;
+
+    bad_loop := good; bad_loop.loop_count = 0;
+    #assert inkling_cpu_admit(bad_loop) == InklingCpuStatus.bad_loop;
+
+    bad_layers := good; bad_layers.prelude_layers = 3;
+    #assert inkling_cpu_admit(bad_layers) == InklingCpuStatus.shape;
+}
+
+#test "chat template formats system, user, and assistant turns with special tokens" {
+    out: [128]u8;
+    n := inkling_format_turn(InklingRole.system, "You are helpful.", out[..], 0);
+    #assert n > 0;
+    n = inkling_format_turn(InklingRole.user, "Hi", out[..], n);
+    #assert n > 0;
+    n = inkling_format_assistant_prefix(true, out[..], n);
+    #assert n > 40;
+}
+
+#test "miniature CPU forward pass produces deterministic greedy decode" {
+    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=8};
+    // 4-token vocab embedding table (vocab_size=4, dim=4)
+    embed := [16]f32.[
+        1.0f32, 0.2f32, -0.1f32, 0.4f32,
+        -0.3f32, 1.1f32, 0.5f32, -0.2f32,
+        0.4f32, -0.5f32, 1.2f32, 0.3f32,
+        -0.2f32, 0.3f32, -0.4f32, 1.3f32
+    ];
+    router_w := [16]f32.[
+        0.5f32, -0.2f32, 0.1f32, 0.3f32,
+        -0.4f32, 0.6f32, 0.2f32, -0.1f32,
+        0.2f32, 0.1f32, -0.5f32, 0.4f32,
+        -0.1f32, -0.3f32, 0.7f32, 0.2f32
+    ];
+    expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
+    prompt := [2]int.[0, 1];
+    kv: [256]f32;
+    s1 := inkling_cpu_prefill_and_next(cfg, 4, prompt[..], embed[..], router_w[..], expert_scale[..], kv[..]);
+    s2 := inkling_cpu_prefill_and_next(cfg, 4, prompt[..], embed[..], router_w[..], expert_scale[..], kv[..]);
+    #assert s1.status == InklingCpuStatus.ok && s2.status == InklingCpuStatus.ok;
+    #assert s1.token_id == s2.token_id && s1.token_id >= 0 && s1.token_id < 4;
+}
+
+// book:begin cpu
+inkling_cpu_admit :: (spec:InklingCheckpointSpec)->InklingCpuStatus #export_c #effects(all) {
+    if spec.loop_count < 1 || spec.loop_count > INKLING_LOOP_MAX_PASSES { return InklingCpuStatus.bad_loop; }
+    if spec.shard_bytes < spec.min_shard_bytes || spec.min_shard_bytes <= 0 { return InklingCpuStatus.truncated; }
+    if spec.prelude_layers + spec.loop_layers + spec.postlude_layers != spec.total_layers { return InklingCpuStatus.shape; }
+    if spec.dim < 1 || spec.vocab_size < 1 || spec.experts < 1 || spec.top_k < 1 || spec.top_k > spec.experts { return InklingCpuStatus.shape; }
+    return InklingCpuStatus.ok;
+}
+
+inkling_append_str :: (s:string, dst:[]u8, pos:int)->int #effects(all) {
+    if pos < 0 || pos + s.count > dst.count { return -1; }
+    for i: 0..<s.count { dst[pos + i] = s[i]; }
+    return pos + s.count;
+}
+
+inkling_format_turn :: (role:InklingRole, content:string, dst:[]u8, pos:int)->int #effects(all) {
+    r := "";
+    if role == InklingRole.system { r = "system"; }
+    else if role == InklingRole.user { r = "user"; }
+    else if role == InklingRole.assistant { r = "assistant"; }
+    else if role == InklingRole.tool { r = "tool"; }
+    else { return -1; }
+    p := inkling_append_str("<|im_start|>", dst, pos);
+    p = inkling_append_str(r, dst, p);
+    p = inkling_append_str("\n", dst, p);
+    p = inkling_append_str(content, dst, p);
+    p = inkling_append_str("<|im_end|>\n", dst, p);
+    return p;
+}
+
+inkling_format_assistant_prefix :: (enable_thinking:bool, dst:[]u8, pos:int)->int #effects(all) {
+    p := inkling_append_str("<|im_start|>assistant\n", dst, pos);
+    if enable_thinking {
+        p = inkling_append_str("<think>\n", dst, p);
+    }
+    return p;
+}
+
+inkling_cpu_greedy_next :: (hidden:[]f32, lm_head:[]f32, vocab_size:int, dim:int)->InklingDecodeStep #export_c #effects(all) {
+    if vocab_size < 1 || dim < 1 || hidden.count < dim || lm_head.count < vocab_size * dim {
+        return InklingDecodeStep.{status=InklingCpuStatus.shape};
+    }
+    best_id := 0;
+    best_val: f32 = -1.0e30f32;
+    for v: 0..<vocab_size {
+        dot: f32 = 0.0f32;
+        base := v * dim;
+        for d: 0..<dim { dot += hidden[d] * lm_head[base + d]; }
+        if dot > best_val {
+            best_val = dot;
+            best_id = v;
+        }
+    }
+    return InklingDecodeStep.{status=InklingCpuStatus.ok, token_id=best_id, top_logit=best_val};
+}
+
+inkling_cpu_prefill_and_next :: (cfg:InklingLoopConfig, vocab_size:int, prompt_tokens:[]int, embed:[]f32, router_w:[]f32, expert_scale:[]f32, kv_cache:[]f32)->InklingDecodeStep #export_c #effects(all) {
+    if prompt_tokens.count < 1 || prompt_tokens.count > cfg.max_seq { return InklingDecodeStep.{status=InklingCpuStatus.shape}; }
+    if embed.count < vocab_size * cfg.dim { return InklingDecodeStep.{status=InklingCpuStatus.capacity}; }
+    hidden: [INKLING_LOOP_MAX_DIM]f32;
+    for pos: 0..<prompt_tokens.count {
+        tid := prompt_tokens[pos];
+        if tid < 0 || tid >= vocab_size { return InklingDecodeStep.{status=InklingCpuStatus.shape}; }
+        st := inkling_loop_decode_token(cfg, pos, embed[tid*cfg.dim..<(tid+1)*cfg.dim], router_w, expert_scale, kv_cache, hidden[0..<cfg.dim]);
+        if st != InklingLoopStatus.ok { return InklingDecodeStep.{status=InklingCpuStatus.shape}; }
+    }
+    return inkling_cpu_greedy_next(hidden[0..<cfg.dim], embed, vocab_size, cfg.dim);
+}
+// book:end cpu

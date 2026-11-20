@@ -3711,6 +3711,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/inkling-cpu.coax",
+      "chapter": "psionic/book/ch268-execute-inkling-2-mini-on-cpu.md",
+      "stdout": "psionic/fixtures/inkling-cpu.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

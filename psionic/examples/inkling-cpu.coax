@@ -1,0 +1,42 @@
+#import "Basic";
+#load "../lib/inkling-cpu.coax";
+
+// book:begin example
+main :: () {
+    spec := InklingCheckpointSpec.{
+        total_layers=24, prelude_layers=2, loop_layers=18, postlude_layers=4,
+        loop_count=3, dim=4, vocab_size=4, experts=4, top_k=2,
+        shard_bytes=20480, min_shard_bytes=20000
+    };
+    #assert inkling_cpu_admit(spec) == InklingCpuStatus.ok;
+    print("Inkling 2 Mini checkpoint admitted: % layers (% prelude + %x% loop + % postlude)\n",
+        spec.total_layers, spec.prelude_layers, spec.loop_layers, spec.loop_count, spec.postlude_layers);
+
+    buf: [128]u8;
+    n := inkling_format_turn(InklingRole.system, "You are Inkling.", buf[..], 0);
+    n = inkling_format_turn(InklingRole.user, "Hello", buf[..], n);
+    n = inkling_format_assistant_prefix(true, buf[..], n);
+    #assert n > 0;
+    print("chat template formatted: % bytes\n", n);
+
+    cfg := InklingLoopConfig.{prelude_layers=1,loop_layers=1,postlude_layers=1,loop_count=3,dim=4,experts=4,top_k=2,max_seq=8};
+    embed := [16]f32.[
+        1.0f32, 0.2f32, -0.1f32, 0.4f32,
+        -0.3f32, 1.1f32, 0.5f32, -0.2f32,
+        0.4f32, -0.5f32, 1.2f32, 0.3f32,
+        -0.2f32, 0.3f32, -0.4f32, 1.3f32
+    ];
+    router_w := [16]f32.[
+        0.5f32, -0.2f32, 0.1f32, 0.3f32,
+        -0.4f32, 0.6f32, 0.2f32, -0.1f32,
+        0.2f32, 0.1f32, -0.5f32, 0.4f32,
+        -0.1f32, -0.3f32, 0.7f32, 0.2f32
+    ];
+    expert_scale := [4]f32.[0.25f32, -0.20f32, 0.30f32, -0.15f32];
+    prompt := [2]int.[0, 1];
+    kv: [256]f32;
+    step := inkling_cpu_prefill_and_next(cfg, 4, prompt[..], embed[..], router_w[..], expert_scale[..], kv[..]);
+    #assert step.status == InklingCpuStatus.ok;
+    print("CPU greedy next token: %\n", step.token_id);
+}
+// book:end example
