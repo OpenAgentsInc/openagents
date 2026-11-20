@@ -17,6 +17,7 @@
 #load "../agent/native-profile.coax";
 #load "../sys/fs.coax";
 #load "../repo/lines.coax";
+#load "guardrail.coax";
 cxproc_platform :: ()->int #foreign #effects(all);
 cxproc_flush_timeout :: (h:int,ms:int)->int #foreign #effects(all);
 
@@ -179,6 +180,8 @@ mc_cmd_say :: (o: [] McOutput, s: string) { for c: s { mc_output_byte(o, c); } }
 mc_cmd_start :: (p: [] McCommandProc, cwd: string, command: string, seconds: int, o: [] McOutput, profile: string) {
   mc_output_reset(o);
   p[0] = McCommandProc.{h = -1, seconds = seconds, eof_at = -1, exit = -1};
+  guard_err := mc_guard_command(cwd, command);
+  if guard_err.count > 0 { mc_cmd_say(o, guard_err); p[0].exit = 126; p[0].done = true; return; }
   h := cxproc_new();
   if h < 0 { mc_cmd_say(o, "no process slot is free"); p[0].done = true; return; }
   ok:=mc_profile_args(h,cwd,profile);

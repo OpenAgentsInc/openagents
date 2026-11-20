@@ -166,11 +166,18 @@ extension CoderWindow {
         let id = UUID().uuidString.lowercased()
         let rawTitle = (payload["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = rawTitle.isEmpty ? String(prompt.prefix(60)) : rawTitle
-        let folderURL = URL(fileURLWithPath: folderPath)
+        let requestedFolderURL = URL(fileURLWithPath: folderPath)
+        let wtInfo = CoderWorktree.ensureWorktree(chatID: id, folder: requestedFolderURL)
+        let folderURL = wtInfo.map { URL(fileURLWithPath: $0.path) } ?? requestedFolderURL
         let moved = CoderRun(page: back, folder: folderURL)
         moved.chat = id
+        moved.worktreeInfo = wtInfo
+        configureWorkerEnv(moved, isForeman: false)
         wire(moved)
         store.registerChat(id: id, title: title, folder: folderURL.path, managedBy: Foreman.managedTag)
+        if let wtInfo {
+            store.setWorktree(id, path: wtInfo.path, branch: wtInfo.branch, repoRoot: wtInfo.repoRoot)
+        }
         if (payload["pin"] as? Bool) == true && !store.isPinned(id) {
             store.togglePin(id)
         }
