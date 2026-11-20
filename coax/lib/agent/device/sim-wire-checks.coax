@@ -1,0 +1,92 @@
+// Hold the simulator helper's lines (proto/coder/sim-host-lines-v1.json, GitHub #13811) to their
+// one codec, sim-wire.coax. The profile names every op and event, and holds runs: the lines a helper
+// and its clients wrote, byte for byte, captured by coder/tui/simhost-check.coax. For each line
+// this check reads it through the codec and writes it again from what was read, and requires the
+// same bytes. Every op and event the profile names must be in some run; every line under
+// "skipped" must be refused.
+//   coax/web/tool.sh coax/lib/agent/device/sim-wire-checks.coax proto/coder/sim-host-lines-v1.json
+#import "Basic";
+#load "sim-wire.coax";
+#load "../../sys/tool.coax";
+#load "../../sys/args.coax";
+#load "../../sys/fs.coax";
+
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+SC_FILE :: 1048576;
+SC_NAMES :: 96;
+ScWork :: struct {
+  file: [SC_FILE] u8; nodes: [65536] JvNode; line: [SW_LINE] u8; back: [SW_LINE] u8; word: [256] u8;
+  m: [1] SwMsg; why: [1] SwText;
+  names: [SC_NAMES] [48] u8; names_n: [SC_NAMES] int; seen: [SC_NAMES] bool; n: int;
+  failed: int; lines: int;
+}
+sc_say :: (a: string, b: string) { o: [SW_LINE] u8; n := 0; for c: a { if n < o.count { o[n] = c; n += 1; } } for c: b { if n < o.count { o[n] = c; n += 1; } } if n < o.count { o[n] = '\n'; n += 1; } _ = cxterm_write(o[0..<n]); }
+sc_str :: (d: Jv, at: int, out: [] u8) -> string { n := jv_str(d, at, out); return ifx n >= 0 then cast(string) out[0..<n] else ""; }
+// The op or event a line is: "event:NAME" or "op:NAME" or "reply".
+sc_kind :: (m: [] SwMsg, out: [] u8) -> string {
+  n := 0;
+  pre := ifx sw_has(m, SW_F_EVENT) then "event:" else ifx sw_has(m, SW_F_OP) then "op:" else "reply";
+  for c: pre { out[n] = c; n += 1; }
+  name := ifx sw_has(m, SW_F_EVENT) then sw_str(m, SW_F_EVENT) else ifx sw_has(m, SW_F_OP) then sw_str(m, SW_F_OP) else "";
+  for c: name { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+sc_mark :: (w: [] ScWork, kind: string) {
+  for i: 0..<w[0].n { if cast(string) w[0].names[i][0..<w[0].names_n[i]] == kind { w[0].seen[i] = true; } }
+}
+sc_run :: (w: [] ScWork, path: string) -> int {
+  n := fs_read(path, w[0].file[..]);
+  if n <= 0 { sc_say("can't read ", path); return 1; }
+  dd: [1] Jv;
+  if !jv_parse(dd[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) { sc_say("not JSON: ", path); return 1; }
+  d := dd[0];
+  // the names: "ops" and "events"
+  for list: 0..<2 {
+    at := jv_get(d, 0, ifx list == 0 then "ops" else "events");
+    for i: 0..<jv_len(d, at) {
+      e := jv_at(d, at, i);
+      nm := sc_str(d, jv_get(d, e, "name"), w[0].word[..]);
+      if nm.count == 0 || w[0].n >= SC_NAMES { continue; }
+      k := 0; pre := ifx list == 0 then "op:" else "event:";
+      for c: pre { w[0].names[w[0].n][k] = c; k += 1; }
+      for c: nm { if k < 48 { w[0].names[w[0].n][k] = c; k += 1; } }
+      w[0].names_n[w[0].n] = k; w[0].n += 1;
+    }
+  }
+  if w[0].n == 0 { sc_say("the profile names no ops", ""); return 1; }
+  runs := jv_get(d, 0, "runs");
+  for r: 0..<jv_len(d, runs) {
+    lines := jv_get(d, jv_at(d, runs, r), "lines");
+    for i: 0..<jv_len(d, lines) {
+      e := jv_at(d, lines, i);
+      ln := jv_str(d, jv_get(d, e, "line"), w[0].line[..]);
+      if ln < 0 { sc_say("a run's line is no string", ""); w[0].failed += 1; continue; }
+      t := cast(string) w[0].line[0..<ln];
+      w[0].lines += 1;
+      if !sw_read(t, w[0].m[..], w[0].why[..]) { sc_say("refused: ", t); sc_say("  ", sw_why(w[0].why[..])); w[0].failed += 1; continue; }
+      k := sw_write(w[0].m[..], w[0].back[..]);
+      if k < 0 || cast(string) w[0].back[0..<k] != t { sc_say("written back differently: ", t); if k > 0 { sc_say("                       as: ", cast(string) w[0].back[0..<k]); } w[0].failed += 1; continue; }
+      kb: [64] u8; sc_mark(w, sc_kind(w[0].m[..], kb[..]));
+    }
+  }
+  for i: 0..<w[0].n { if !w[0].seen[i] { sc_say("in no run: ", cast(string) w[0].names[i][0..<w[0].names_n[i]]); w[0].failed += 1; } }
+  sk := jv_get(d, 0, "skipped");
+  for i: 0..<jv_len(d, sk) {
+    ln := jv_str(d, jv_at(d, sk, i), w[0].line[..]);
+    if ln < 0 { continue; }
+    if sw_read(cast(string) w[0].line[0..<ln], w[0].m[..], w[0].why[..]) { sc_say("read, but should be refused: ", cast(string) w[0].line[0..<ln]); w[0].failed += 1; }
+  }
+  b: [96] u8; bn := 0; x: [24] u8;
+  v := w[0].lines; nb := 0; if v == 0 { x[0] = '0'; nb = 1; } while v > 0 { x[nb] = cast(u8) ('0' + v % 10); v /= 10; nb += 1; }
+  for i: 0..<nb { b[bn] = x[nb - 1 - i]; bn += 1; }
+  sc_say(cast(string) b[0..<bn], ifx w[0].failed == 0 then " lines read and written back to the same bytes" else " lines; some failed");
+  return ifx w[0].failed == 0 then 0 else 1;
+}
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  path := "proto/coder/sim-host-lines-v1.json";
+  if args_load(a[..]) && args_count(a[..]) > 0 { path = args_at(a[..], 0); }
+  w: [1] ScWork;
+  return sc_run(w[..], path);
+}

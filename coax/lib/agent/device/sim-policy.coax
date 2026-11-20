@@ -1,0 +1,295 @@
+// What the simulator helper lets an agent do (docs/desktop/ios-simulator-spec.md section 9.1;
+// GitHub #13811). The helper (sim-host.coax) asks this file before every op; nothing else decides.
+//   1. Only a simulator the helper's device set lists; never a physical device.
+//   2. An op that changes a device needs a live grant for (chat, device), unless it comes from the
+//      person's own pane. Read-only ops need none.
+//   3. Agents never shut down a device the person booted (nor erase, delete or reset one: no op).
+//   4. A contested device (another dev.sh, build or install holds it) is refused.
+//   5. launch and install take only an .app under the chat's folders or our DerivedData.
+//   6. text at most 4,096 bytes; a path at most 30 s and 2,000 samples; at most 20 ops a second a
+//      chat; a gesture's points inside the screen.
+//   7. The person's input wins: an agent op within 1.5 s of the person's touch is refused.
+//   8. text that holds a secret the app knows (a model key) is refused.
+// Grants, the person-only ops (grant, revoke, deny) and Stop are the person's alone.
+#authority;
+#load "sim-devices.coax";
+
+// What an op is.
+SP_UNKNOWN :: 0; SP_READ :: 1; SP_CONTROL :: 2; SP_PERSON :: 3;
+sp_class :: (op: string) -> int #effects(all) {
+  reads := [12] string.["hello", "list", "screenshot", "appearance", "describe", "logs", "attach", "subscribe", "unsubscribe", "build_status", "status", "quit"];
+  for r: reads { if op == r { return SP_READ; } }
+  controls := [21] string.["boot", "shutdown", "tap", "swipe", "touch", "touch_path", "touch2_path", "text", "press_key", "key",
+    "button", "set_appearance", "set_keyboard", "rotate", "open_url", "launch", "install", "terminate", "build", "record_start", "record_stop"];
+  for c: controls { if op == c { return SP_CONTROL; } }
+  if op == "grant" || op == "revoke" || op == "deny" { return SP_PERSON; }
+  return SP_UNKNOWN;
+}
+#test "every op has its class" {
+  #assert sp_class("list") == SP_READ && sp_class("screenshot") == SP_READ && sp_class("hello") == SP_READ && sp_class("quit") == SP_READ;
+  #assert sp_class("tap") == SP_CONTROL && sp_class("boot") == SP_CONTROL && sp_class("record_stop") == SP_CONTROL && sp_class("touch") == SP_CONTROL;
+  #assert sp_class("grant") == SP_PERSON && sp_class("revoke") == SP_PERSON && sp_class("deny") == SP_PERSON;
+  #assert sp_class("erase") == SP_UNKNOWN && sp_class("") == SP_UNKNOWN && sp_class("Tap") == SP_UNKNOWN;
+}
+// Whether an op names a device (and so needs one the helper lists).
+sp_needs_device :: (op: string) -> bool #effects(all) {
+  c := sp_class(op);
+  if c == SP_CONTROL { return op != "build"; }
+  return op == "screenshot" || op == "appearance" || op == "describe" || op == "logs" || op == "subscribe";
+}
+#test "the ops that need a device" {
+  #assert sp_needs_device("tap") && sp_needs_device("screenshot") && sp_needs_device("subscribe") && sp_needs_device("logs") && sp_needs_device("describe") && sp_needs_device("appearance");
+  #assert !sp_needs_device("build") && !sp_needs_device("list") && !sp_needs_device("hello") && !sp_needs_device("grant") && !sp_needs_device("attach");
+}
+
+// What the helper knows when it asks.
+SP_GRANT_NONE :: 0; SP_GRANT_ONCE :: 1; SP_GRANT_CHAT :: 2; SP_GRANT_DENIED :: 3;
+SpAsk :: struct {
+  op: string;
+  from_person: bool;       // the app's own pane: the person's hand
+  listed: bool;            // the device is a simulator in the helper's device set
+  grant: int;              // SP_GRANT_* for (chat, device)
+  booted_by_person: bool;  // the device was booted by someone other than OpenAgents
+  contested: bool;         // sim-devices.coax's rules hold it
+  rate_ok: bool;           // the chat's last second had fewer than SP_RATE ops
+  held: bool;              // the person touched within SP_HOLD_MS
+}
+// The answer: "" to go ahead, else the error code (spec 7.2) the op is refused with.
+sp_decide :: (a: SpAsk) -> string #effects(all) {
+  c := sp_class(a.op);
+  if c == SP_UNKNOWN { return "bad_args"; }
+  if c == SP_PERSON { return ifx a.from_person then "" else "denied"; }
+  if sp_needs_device(a.op) && !a.listed { return "no_device"; }
+  if c == SP_READ || a.from_person { return ""; }
+  if a.contested { return "contested"; }
+  if a.op == "shutdown" && a.booted_by_person { return "denied"; }
+  if a.grant == SP_GRANT_DENIED { return "denied"; }
+  if a.grant != SP_GRANT_ONCE && a.grant != SP_GRANT_CHAT { return "no_grant"; }
+  if a.held { return "interrupted"; }
+  if !a.rate_ok { return "denied"; }
+  return "";
+}
+#test "an agent's control op needs a listed, free device and a grant" {
+  ok := SpAsk.{op = "tap", listed = true, grant = SP_GRANT_CHAT, rate_ok = true};
+  #assert sp_decide(ok) == "";
+  once := ok; once.grant = SP_GRANT_ONCE; #assert sp_decide(once) == "";
+  none := ok; none.grant = SP_GRANT_NONE; #assert sp_decide(none) == "no_grant";
+  no := ok; no.grant = SP_GRANT_DENIED; #assert sp_decide(no) == "denied";
+  odd := ok; odd.grant = 7; #assert sp_decide(odd) == "no_grant";
+  gone := ok; gone.listed = false; #assert sp_decide(gone) == "no_device";
+  held := ok; held.contested = true; #assert sp_decide(held) == "contested";
+  touched := ok; touched.held = true; #assert sp_decide(touched) == "interrupted";
+  fast := ok; fast.rate_ok = false; #assert sp_decide(fast) == "denied";
+  // a contested device is refused before the grant is asked about
+  both := none; both.contested = true; #assert sp_decide(both) == "contested";
+  // the grant is asked about before the person's hold and the rate
+  ask := none; ask.held = true; ask.rate_ok = false; #assert sp_decide(ask) == "no_grant";
+  hr := ok; hr.held = true; hr.rate_ok = false; #assert sp_decide(hr) == "interrupted";
+}
+#test "the person's pane needs no grant, but still a listed device" {
+  p := SpAsk.{op = "tap", from_person = true, listed = true, contested = true, held = true};
+  #assert sp_decide(p) == "";
+  q := p; q.listed = false; #assert sp_decide(q) == "no_device";
+  r := SpAsk.{op = "shutdown", from_person = true, listed = true, booted_by_person = true};
+  #assert sp_decide(r) == "";
+}
+#test "agents never shut down the person's device, and never grant themselves" {
+  s := SpAsk.{op = "shutdown", listed = true, grant = SP_GRANT_CHAT, rate_ok = true, booted_by_person = true};
+  #assert sp_decide(s) == "denied";
+  t := s; t.booted_by_person = false; #assert sp_decide(t) == "";
+  #assert sp_decide(SpAsk.{op = "grant", listed = true}) == "denied" && sp_decide(SpAsk.{op = "revoke"}) == "denied" && sp_decide(SpAsk.{op = "deny"}) == "denied";
+  #assert sp_decide(SpAsk.{op = "grant", from_person = true}) == "" && sp_decide(SpAsk.{op = "revoke", from_person = true}) == "";
+  #assert sp_decide(SpAsk.{op = "erase", from_person = true, listed = true}) == "bad_args";
+  // a booted device of the person's can still be tapped with a grant
+  u := s; u.op = "tap"; #assert sp_decide(u) == "";
+}
+#test "read-only ops need no grant" {
+  #assert sp_decide(SpAsk.{op = "screenshot", listed = true}) == "" && sp_decide(SpAsk.{op = "screenshot"}) == "no_device";
+  #assert sp_decide(SpAsk.{op = "list"}) == "" && sp_decide(SpAsk.{op = "hello"}) == "" && sp_decide(SpAsk.{op = "build_status"}) == "";
+  #assert sp_decide(SpAsk.{op = "screenshot", listed = true, contested = true, held = true}) == "";
+  // build needs a grant but no device
+  #assert sp_decide(SpAsk.{op = "build", rate_ok = true}) == "no_grant" && sp_decide(SpAsk.{op = "build", grant = SP_GRANT_CHAT, rate_ok = true}) == "";
+}
+
+// ---- grants (spec section 8): per chat and device, kept by the helper
+
+SP_GRANTS :: 64;
+SpGrant :: struct {
+  chat: [64] u8; chat_n: int;
+  device: [64] u8; device_n: int;
+  scope: int;              // SP_GRANT_ONCE, SP_GRANT_CHAT, or SP_GRANT_DENIED (the person said no)
+  until_ms: int;           // 0: until revoked
+}
+SpGrants :: struct { g: [SP_GRANTS] SpGrant; n: int; }
+sp_same :: (b: [] u8, n: int, s: string) -> bool #effects(all) { return n == s.count && cast(string) b[0..<n] == s; }
+// The grant for (chat, device) at now: SP_GRANT_*, SP_GRANT_NONE when there is none or it ran out.
+sp_grant_for :: (gs: [] SpGrants, chat: string, device: string, now_ms: int) -> int #effects(all) {
+  // no grant has an empty chat (sp_grant_set refuses one), so an empty chat finds none
+  for i: 0..<gs[0].n {
+    if sp_same(gs[0].g[i].chat[..], gs[0].g[i].chat_n, chat) && sp_same(gs[0].g[i].device[..], gs[0].g[i].device_n, device) {
+      if gs[0].g[i].until_ms > 0 && now_ms >= gs[0].g[i].until_ms { return SP_GRANT_NONE; }
+      return gs[0].g[i].scope;
+    }
+  }
+  return SP_GRANT_NONE;
+}
+// The person's answer for (chat, device) replaces any earlier one. False when the table is full
+// or a name is too long.
+sp_grant_set :: (gs: [] SpGrants, chat: string, device: string, scope: int, until_ms: int) -> bool #effects(all) {
+  if chat.count == 0 || chat.count > 64 || device.count == 0 || device.count > 64 { return false; }
+  at := gs[0].n;
+  for i: 0..<gs[0].n {
+    if sp_same(gs[0].g[i].chat[..], gs[0].g[i].chat_n, chat) && sp_same(gs[0].g[i].device[..], gs[0].g[i].device_n, device) { at = i; }
+  }
+  if at >= SP_GRANTS { return false; }
+  x := SpGrant.{scope = scope, until_ms = until_ms};
+  x.chat_n = sd_put(x.chat[..], chat); x.device_n = sd_put(x.device[..], device);
+  gs[0].g[at] = x;
+  if at == gs[0].n { gs[0].n += 1; }
+  return true;
+}
+// Stop: every grant of chat ends at once (device "" for all its devices). How many ended.
+sp_revoke :: (gs: [] SpGrants, chat: string, device: string) -> int #effects(all) {
+  k := 0; ended := 0;
+  for i: 0..<gs[0].n {
+    g := gs[0].g[i];
+    match := g.chat_n == chat.count && cast(string) gs[0].g[i].chat[0..<g.chat_n] == chat && (device.count == 0 || cast(string) gs[0].g[i].device[0..<g.device_n] == device);
+    if match { ended += 1; continue; }
+    gs[0].g[k] = g; k += 1;
+  }
+  gs[0].n = k;
+  return ended;
+}
+#test "grants: set, replaced, run out, revoked" {
+  gs: [1] SpGrants;
+  #assert sp_grant_for(gs[..], "c1", "D1", 0) == SP_GRANT_NONE;
+  #assert sp_grant_set(gs[..], "c1", "D1", SP_GRANT_ONCE, 0) && sp_grant_for(gs[..], "c1", "D1", 5) == SP_GRANT_ONCE;
+  #assert sp_grant_set(gs[..], "c1", "D1", SP_GRANT_CHAT, 0) && gs[0].n == 1 && sp_grant_for(gs[..], "c1", "D1", 5) == SP_GRANT_CHAT;
+  #assert sp_grant_for(gs[..], "c1", "D2", 5) == SP_GRANT_NONE && sp_grant_for(gs[..], "c2", "D1", 5) == SP_GRANT_NONE && sp_grant_for(gs[..], "", "D1", 5) == SP_GRANT_NONE;
+  #assert sp_grant_for(gs[..], "c", "D1", 5) == SP_GRANT_NONE && sp_grant_for(gs[..], "c1", "D", 5) == SP_GRANT_NONE;
+  #assert sp_grant_set(gs[..], "c2", "D1", SP_GRANT_CHAT, 100) && sp_grant_for(gs[..], "c2", "D1", 99) == SP_GRANT_CHAT && sp_grant_for(gs[..], "c2", "D1", 100) == SP_GRANT_NONE;
+  #assert sp_grant_set(gs[..], "c3", "D1", SP_GRANT_ONCE, 1) && sp_grant_for(gs[..], "c3", "D1", 0) == SP_GRANT_ONCE && sp_grant_for(gs[..], "c3", "D1", 1) == SP_GRANT_NONE && sp_revoke(gs[..], "c3", "") == 1;
+  #assert sp_grant_set(gs[..], "c1", "D2", SP_GRANT_DENIED, 0) && sp_grant_for(gs[..], "c1", "D2", 0) == SP_GRANT_DENIED && gs[0].n == 3;
+  #assert sp_revoke(gs[..], "c1", "D2") == 1 && gs[0].n == 2 && sp_grant_for(gs[..], "c1", "D1", 0) == SP_GRANT_CHAT;
+  #assert sp_grant_set(gs[..], "c1", "D2", SP_GRANT_ONCE, 0) && sp_revoke(gs[..], "c1", "") == 2 && gs[0].n == 1 && sp_grant_for(gs[..], "c2", "D1", 0) == SP_GRANT_CHAT;
+  #assert sp_revoke(gs[..], "c9", "") == 0 && sp_revoke(gs[..], "c", "") == 0 && gs[0].n == 1;
+  #assert !sp_grant_set(gs[..], "", "D1", SP_GRANT_CHAT, 0) && !sp_grant_set(gs[..], "c", "", SP_GRANT_CHAT, 0);
+  long: [65] u8; for i: 0..<65 { long[i] = 'a'; }
+  #assert !sp_grant_set(gs[..], cast(string) long[..], "D", SP_GRANT_CHAT, 0) && !sp_grant_set(gs[..], "c", cast(string) long[..], SP_GRANT_CHAT, 0);
+  #assert sp_grant_set(gs[..], cast(string) long[0..<64], cast(string) long[0..<64], SP_GRANT_CHAT, 0) && gs[0].n == 2;
+}
+#test "the grant table holds 64 and refuses the next" {
+  gs: [1] SpGrants; b: [8] u8;
+  for i: 0..<SP_GRANTS { b[0] = cast(u8) ('A' + i / 26); b[1] = cast(u8) ('a' + i % 26); #assert sp_grant_set(gs[..], cast(string) b[0..<2], "D", SP_GRANT_CHAT, 0); }
+  #assert gs[0].n == SP_GRANTS && !sp_grant_set(gs[..], "zz", "D", SP_GRANT_CHAT, 0);
+  // replacing one still works when full
+  #assert sp_grant_set(gs[..], "Aa", "D", SP_GRANT_ONCE, 0) && sp_grant_for(gs[..], "Aa", "D", 0) == SP_GRANT_ONCE;
+}
+// What a person's answer word means: "chat", "once" or "deny"; SP_GRANT_NONE for anything else.
+sp_scope :: (word: string) -> int #effects(all) {
+  if word == "chat" { return SP_GRANT_CHAT; }
+  if word == "once" { return SP_GRANT_ONCE; }
+  if word == "deny" { return SP_GRANT_DENIED; }
+  return SP_GRANT_NONE;
+}
+sp_scope_word :: (scope: int) -> string #effects(all) {
+  if scope == SP_GRANT_CHAT { return "chat"; }
+  if scope == SP_GRANT_ONCE { return "once"; }
+  if scope == SP_GRANT_DENIED { return "deny"; }
+  return "";
+}
+#test "grant scopes as words" {
+  #assert sp_scope("chat") == SP_GRANT_CHAT && sp_scope("once") == SP_GRANT_ONCE && sp_scope("deny") == SP_GRANT_DENIED && sp_scope("all") == SP_GRANT_NONE;
+  #assert sp_scope_word(SP_GRANT_CHAT) == "chat" && sp_scope_word(SP_GRANT_ONCE) == "once" && sp_scope_word(SP_GRANT_DENIED) == "deny" && sp_scope_word(SP_GRANT_NONE) == "";
+}
+
+// ---- rate and the person's hold (rules 6 and 7)
+
+SP_RATE :: 20;            // ops a chat may send in a second
+SP_HOLD_MS :: 1500;       // agent input waits this long after the person's touch
+SpRate :: struct { at: [SP_RATE] int; n: int; next: int; }
+// Takes one op at now: true when fewer than SP_RATE ops came in the second before it.
+sp_rate_take :: (r: [] SpRate, now_ms: int) -> bool #effects(all) {
+  if r[0].n < SP_RATE { r[0].at[r[0].n] = now_ms; r[0].n += 1; return true; }
+  oldest := r[0].at[r[0].next];
+  if now_ms - oldest < 1000 { return false; }
+  r[0].at[r[0].next] = now_ms;
+  r[0].next = (r[0].next + 1) % SP_RATE;
+  return true;
+}
+#test "twenty ops a second, then the twenty-first waits for the oldest to be a second old" {
+  z: [1] SpRate;
+  for i: 0..<SP_RATE { #assert sp_rate_take(z[..], i); }
+  #assert !sp_rate_take(z[..], 999) && sp_rate_take(z[..], 1000);
+  r: [1] SpRate;
+  for i: 0..<SP_RATE { #assert sp_rate_take(r[..], 1000 + i); }
+  #assert !sp_rate_take(r[..], 1500) && !sp_rate_take(r[..], 1999);
+  #assert sp_rate_take(r[..], 2000) && !sp_rate_take(r[..], 2000) && sp_rate_take(r[..], 2001);
+  #assert r[0].next == 2;
+  for i: 0..<SP_RATE - 2 { #assert sp_rate_take(r[..], 3000 + i); }
+  #assert r[0].next == 0 && sp_rate_take(r[..], 3001) && sp_rate_take(r[..], 3001) && !sp_rate_take(r[..], 3002);
+}
+// Whether the person's last touch (at touched_ms; 0: never) still holds agent input at now.
+sp_held :: (touched_ms: int, now_ms: int) -> bool #effects(all) { return touched_ms > 0 && now_ms - touched_ms < SP_HOLD_MS; }
+#test "the person's touch holds agent input for 1.5 s" {
+  #assert sp_held(1000, 1000) && sp_held(1000, 2499) && !sp_held(1000, 2500) && !sp_held(0, 10) && sp_held(1, 2);
+}
+
+// ---- arguments (rules 5, 6, 8)
+
+SP_TEXT :: 4096; SP_PATH_MS :: 30000; SP_PATH_SAMPLES :: 2000;
+// A gesture point inside the screen (w x h points, edges included).
+sp_in_screen :: (x: f64, y: f64, w: f64, h: f64) -> bool #effects(all) { return x >= 0.0 && y >= 0.0 && x <= w && y <= h; }
+#test "points inside the screen, edges included" {
+  #assert sp_in_screen(0.0, 0.0, 402.0, 874.0) && sp_in_screen(402.0, 874.0, 402.0, 874.0) && sp_in_screen(201.0, 640.5, 402.0, 874.0);
+  #assert !sp_in_screen(-0.5, 1.0, 402.0, 874.0) && !sp_in_screen(1.0, -0.5, 402.0, 874.0) && !sp_in_screen(402.5, 1.0, 402.0, 874.0) && !sp_in_screen(1.0, 874.5, 402.0, 874.0);
+}
+// A path's size and length within the limits.
+sp_path_ok :: (samples: int, total_ms: f64) -> bool #effects(all) { return samples > 0 && samples <= SP_PATH_SAMPLES && total_ms >= 0.0 && total_ms <= cast(f64) SP_PATH_MS; }
+#test "paths: at least one sample, at most 2,000, at most 30 s" {
+  #assert sp_path_ok(1, 0.0) && sp_path_ok(SP_PATH_SAMPLES, 30000.0) && !sp_path_ok(0, 0.0) && !sp_path_ok(SP_PATH_SAMPLES + 1, 0.0);
+  #assert !sp_path_ok(5, 30000.5) && !sp_path_ok(5, -1.0);
+}
+SP_SECRET_LEAST :: 12;    // a known secret shorter than this is not looked for (it would match ordinary text)
+// Why text may not be typed ("" when it may): too long, or it holds the secret (a key the app knows).
+sp_text_refused :: (text: string, secret: string) -> string #effects(all) {
+  if text.count > SP_TEXT { return "text is longer than 4,096 bytes"; }
+  if secret.count >= SP_SECRET_LEAST && sd_find(text, secret, 0) >= 0 { return "text holds a key OpenAgents knows; the simulator never gets the person's secrets"; }
+  return "";
+}
+#test "text: at most 4,096 bytes, and never a known key" {
+  big: [SP_TEXT + 1] u8; for i: 0..<big.count { big[i] = 'a'; }
+  #assert sp_text_refused(cast(string) big[0..<SP_TEXT], "") == "" && sp_text_refused(cast(string) big[..], "") == "text is longer than 4,096 bytes";
+  #assert sp_text_refused("my key is sk-ant-0123456789 ok", "sk-ant-0123456789") == "text holds a key OpenAgents knows; the simulator never gets the person's secrets";
+  #assert sp_text_refused("sk-ant-0123456789", "sk-ant-0123456789") != "" && sp_text_refused("sk-ant-012345678", "sk-ant-0123456789") == "";
+  // a short "secret" is not looked for
+  #assert sp_text_refused("abcdefghijk", "abcdefghijk") == "" && sp_text_refused("abcdefghijkl", "abcdefghijkl") != "";
+}
+// Whether an .app may be installed (rule 5): app is a real path (symlinks followed) ending in
+// ".app", under one of the roots (each a real folder path) at a folder boundary.
+sp_under :: (path: string, root: string) -> bool #effects(all) {
+  if root.count < 2 || root[0] != '/' { return false; }
+  r := ifx root[root.count - 1] == '/' then root[0..<root.count - 1] else root;
+  return path.count > r.count + 1 && path[0..<r.count] == r && path[r.count] == '/';
+}
+sp_app_allowed :: (app: string, roots: [] string) -> bool #effects(all) {
+  under := false;
+  for r: roots { if sp_under(app, r) { under = true; } }
+  if !under || sd_find(app, "/../", 0) >= 0 || sd_find(app, "/./", 0) >= 0 { return false; }
+  // under a root, app starts with "/", so an app ending ".app" has a byte before it
+  n := app.count;
+  return app[n - 4..<n] == ".app" && app[n - 5] != '/';
+}
+#test "an .app only from the chat's folders or our DerivedData" {
+  roots := [2] string.["/Users/me/work/app", "/Users/me/.cache/openagents/sim-dd/"];
+  #assert sp_app_allowed("/Users/me/work/app/build/X.app", roots[..]) && sp_app_allowed("/Users/me/.cache/openagents/sim-dd/ab/Build/Products/Debug-iphonesimulator/A.app", roots[..]);
+  #assert !sp_app_allowed("/Users/me/work/apple/X.app", roots[..]) && !sp_app_allowed("/Users/me/work/app", roots[..]) && !sp_app_allowed("/Users/me/Downloads/X.app", roots[..]);
+  #assert !sp_app_allowed("/Users/me/work/app/build/X.ipa", roots[..]) && !sp_app_allowed("/Users/me/work/app/../../Downloads/X.app", roots[..]) && !sp_app_allowed("/Users/me/work/app/./X.app", roots[..]);
+  e := [1] string.[""]; slash := [1] string.["/"]; a := [1] string.["/a"]; a2 := [1] string.["/a/"]; rel := [1] string.["a"];
+  #assert !sp_app_allowed(".app", roots[..]) && !sp_app_allowed("/Users/me/work/app/x.app", e[..]) && !sp_app_allowed("/Users/me/work/app/x.app", slash[..]);
+  #assert sp_app_allowed("/a/b.app", a[..]) && !sp_app_allowed("/a/.app", a2[..]) && !sp_app_allowed("/ab/c.app", a[..]) && !sp_app_allowed("/a/b.app", rel[..]);
+  dots := [1] string.["/.."]; dot := [1] string.["/."];
+  #assert !sp_app_allowed("/../x.app", dots[..]) && !sp_app_allowed("/./x.app", dot[..]) && sp_app_allowed("/../x.app", slash[..]) == false;
+  ab := [1] string.["/a/b"]; #assert !sp_app_allowed("/a/b/c", ab[..]) && !sp_app_allowed("/a/b/.app", ab[..]) && sp_app_allowed("/a/b/c.app", ab[..]);
+  #assert sp_under("/a/b", "/a/") && !sp_under("/a", "/a") && !sp_under("/a/", "/a") && sp_under("/a/b/c", "/a/b");
+}

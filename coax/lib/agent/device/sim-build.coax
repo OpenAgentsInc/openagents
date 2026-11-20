@@ -1,0 +1,108 @@
+// Building an Xcode project for the simulator (docs/desktop/ios-simulator-spec.md section 7.3;
+// GitHub #13811): the xcodebuild command line, where its DerivedData goes, and the errors read
+// from its log. `oasim build` runs it detached and keeps its state as a build_status reply line
+// (sim-wire.coax) in ~/.openagents/sim/builds/ID.state; `oasim build_status` reads that back.
+// No private API: xcodebuild and simctl only. -skipMacroValidation is never passed here.
+#load "../../crypto/sha256-memory.coax";
+#load "sim-wire.coax";
+
+SB_ARGS :: 24;
+SbArgv :: struct { v: [SB_ARGS] string; n: int; text: [4096] u8; used: int; }
+sb_a :: (c: [] SbArgv, s: string) { if c[0].n < SB_ARGS { c[0].v[c[0].n] = s; c[0].n += 1; } }
+// s kept in c's own bytes, so it lives as long as c does.
+sb_keep :: (c: [] SbArgv, a: string, b: string) -> string {
+  at := c[0].used;
+  for x: a { if c[0].used < c[0].text.count { c[0].text[c[0].used] = x; c[0].used += 1; } }
+  for x: b { if c[0].used < c[0].text.count { c[0].text[c[0].used] = x; c[0].used += 1; } }
+  return cast(string) c[0].text[at..<c[0].used];
+}
+// The DerivedData folder for a project and scheme: dd_root/HEX, HEX the first 16 hex digits of
+// the SHA-256 of "PATH\nSCHEME".
+sb_dd :: (dd_root: string, project: string, scheme: string, out: [] u8) -> string {
+  b: [4096] u8; n := 0;
+  for x: project { if n < b.count { b[n] = x; n += 1; } }
+  if n < b.count { b[n] = '\n'; n += 1; }
+  for x: scheme { if n < b.count { b[n] = x; n += 1; } }
+  raw: [32] u8; _ = sha256_hash(b[0..<n], raw[..]);
+  return sb_dd_name(dd_root, raw[..], out);
+}
+// dd_root/HEX from a digest's first 8 bytes.
+sb_dd_name :: (dd_root: string, raw: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  k := sd_put(out, dd_root);
+  if k < out.count { out[k] = '/'; k += 1; }
+  for i: 0..<8 {
+    if k + 2 <= out.count { out[k] = digits[cast(int) (raw[i] >> 4)]; out[k + 1] = digits[cast(int) (raw[i] & 15)]; k += 2; }
+  }
+  return cast(string) out[0..<k];
+}
+#test "a DerivedData folder is named by the digest's first 8 bytes" {
+  a: [256] u8; raw: [32] u8; for i: 0..<8 { raw[i] = cast(u8) (i * 17); }
+  #assert sb_dd_name("/h/sim-dd", raw[..], a[..]) == "/h/sim-dd/0011223344556677";
+}
+// The xcodebuild command (spec 7.3): exactly one of project and workspace (absolute paths), a
+// scheme, a configuration ("" is Debug), the simulator's UDID ("" builds for any simulator).
+// "" when the arguments can't make one; else why not, into why.
+sb_command :: (c: [] SbArgv, project: string, workspace: string, scheme: string, configuration: string, udid: string, dd: string) -> string {
+  c[0].n = 0; c[0].used = 0;
+  if (project.count > 0) == (workspace.count > 0) { return "give exactly one of project_path and workspace_path"; }
+  path := ifx project.count > 0 then project else workspace;
+  if path[0] != '/' { return "project_path and workspace_path are absolute paths"; }
+  if scheme.count == 0 { return "a build needs a scheme"; }
+  sb_a(c, "xcodebuild");
+  sb_a(c, ifx project.count > 0 then "-project" else "-workspace"); sb_a(c, path);
+  sb_a(c, "-scheme"); sb_a(c, scheme);
+  sb_a(c, "-configuration"); sb_a(c, ifx configuration.count > 0 then configuration else "Debug");
+  sb_a(c, "-destination");
+  sb_a(c, ifx udid.count > 0 then sb_keep(c, "platform=iOS Simulator,id=", udid) else "generic/platform=iOS Simulator");
+  sb_a(c, "-derivedDataPath"); sb_a(c, dd);
+  sb_a(c, "build");
+  return "";
+}
+#test "the xcodebuild command for a project, a workspace, with and without a device" {
+  c: [1] SbArgv;
+  #assert sb_command(c[..], "/w/A.xcodeproj", "", "A", "", "U1", "/dd/x") == "";
+  #assert c[0].n == 12 && c[0].v[0] == "xcodebuild" && c[0].v[1] == "-project" && c[0].v[2] == "/w/A.xcodeproj" && c[0].v[4] == "A";
+  #assert c[0].v[6] == "Debug" && c[0].v[8] == "platform=iOS Simulator,id=U1" && c[0].v[10] == "/dd/x" && c[0].v[11] == "build";
+  #assert sb_command(c[..], "", "/w/A.xcworkspace", "A", "Release", "", "/dd/x") == "";
+  #assert c[0].v[1] == "-workspace" && c[0].v[6] == "Release" && c[0].v[8] == "generic/platform=iOS Simulator";
+  #assert sb_command(c[..], "/w/A.xcodeproj", "/w/A.xcworkspace", "A", "", "", "/d") == "give exactly one of project_path and workspace_path";
+  #assert sb_command(c[..], "", "", "A", "", "", "/d") == "give exactly one of project_path and workspace_path";
+  #assert sb_command(c[..], "w/A.xcodeproj", "", "A", "", "", "/d") == "project_path and workspace_path are absolute paths";
+  #assert sb_command(c[..], "/w/A.xcodeproj", "", "", "", "", "/d") == "a build needs a scheme";
+}
+// The errors in an xcodebuild log ("FILE:LINE:COL: error: MESSAGE" lines), at most SW_ERRORS,
+// each once, into m's errors.
+sb_errors :: (text: string, m: [] SwMsg) -> int {
+  i := 0; found := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != '\n' { e += 1; }
+    line := text[i..<e];
+    k := sd_find(line, ": error: ", 0);
+    if k > 0 {
+      // FILE:LINE:COL before it
+      c2 := k - 1; while c2 > 0 && line[c2] >= '0' && line[c2] <= '9' { c2 -= 1; }
+      if c2 > 0 && line[c2] == ':' && c2 < k - 1 {
+        c1 := c2 - 1; while c1 > 0 && line[c1] >= '0' && line[c1] <= '9' { c1 -= 1; }
+        if c1 > 0 && line[c1] == ':' && c1 < c2 - 1 {
+          file := line[0..<c1]; ln := sb_digits(line[c1 + 1..<c2]); col := sb_digits(line[c2 + 1..<k]);
+          msg := line[k + 9..<line.count];
+          seen := false;
+          for j: 0..<m[0].nerrs { if sw_err_file(m, j) == file && m[0].errs[j].line == ln && m[0].errs[j].col == col && sw_err_message(m, j) == msg { seen = true; } }
+          if !seen && sw_add_err(m, file, ln, col, msg) { found += 1; }
+        }
+      }
+    }
+    i = e + 1;
+  }
+  return found;
+}
+sb_digits :: (s: string) -> int { v := 0; for c: s { v = v * 10 + cast(int) (c - '0'); } return v; }
+#test "errors read from an xcodebuild log, each once" {
+  lg := "CompileSwift normal arm64 /w/A.swift\n/w/A.swift:3:9: error: cannot find 'x' in scope\n        x = 1\n        ^\n/w/B.swift:12:1: warning: unused\n/w/A.swift:3:9: error: cannot find 'x' in scope\nld: error: linker failed\nerror: no:1: error: x\n** BUILD FAILED **\n";
+  m: [1] SwMsg; sw_clear(m[..]);
+  #assert sb_errors(lg, m[..]) == 1 && m[0].nerrs == 1;
+  #assert sw_err_file(m[..], 0) == "/w/A.swift" && m[0].errs[0].line == 3 && m[0].errs[0].col == 9 && sw_err_message(m[..], 0) == "cannot find 'x' in scope";
+  sw_clear(m[..]); #assert sb_errors("", m[..]) == 0 && sb_errors(":1:2: error: x\n/a:b:2: error: y\n/a:1:: error: z\n", m[..]) == 0;
+}

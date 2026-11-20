@@ -1,0 +1,255 @@
+// Which iOS simulators there are, and whether one is contested (docs/desktop/ios-simulator-spec.md
+// sections 3 and 9.1 rule 4; GitHub #13811). The one place that reads `xcrun simctl list` and
+// decides that another tool holds a simulator: the phone app's dev loop
+// (apps/shared/app/preview/loop.coax) and the simulator helper (sim-host.coax, oasim) both load it.
+//   list := "...";                                   // `xcrun simctl list devices -j`
+//   ds: [1] SdList; sd_parse(list, ds[..]);           // ds[0].d[0..<ds[0].n]: udid, name, runtime, state
+//   s := sd_sim_find(text, "Coax Native Starter");    // `xcrun simctl list devices` (text), by exact name
+//   if sd_targets(ps_line, name, s.udid, s.booted) { ... }   // a build or install from elsewhere holds it
+#load "../../json/json.coax";
+
+sd_starts :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+sd_find :: (s: string, part: string, from: int) -> int {
+  if part.count == 0 || part.count > s.count { return -1; }
+  for i: from..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+
+// ---- the text list (`xcrun simctl list devices`), as dev.sh reads it
+
+// A simulator in `xcrun simctl list devices`, whose line is "    NAME (UDID) (State) ".
+// The UDID is a slice of list.
+SdSim :: struct { found: bool; udid: string; booted: bool; }
+sd_sim_find :: (list: string, name: string) -> SdSim {
+  i := 0;
+  while i < list.count {
+    e := i;
+    while e < list.count && list[e] != '\n' { e += 1; }
+    line := list[i..<e];
+    k := 0;
+    while k < line.count && line[k] == ' ' { k += 1; }
+    rest := line[k..<line.count];
+    if k > 0 && name.count > 0 && rest.count > name.count + 2 && sd_starts(rest, name) && rest[name.count..<name.count + 2] == " (" {
+      u := name.count + 2; v := u;
+      while v < rest.count && rest[v] != ')' { v += 1; }
+      if v < rest.count { return SdSim.{found = true, udid = rest[u..<v], booted = sd_find(rest, "(Booted)", v) >= 0}; }
+    }
+    i = e + 1;
+  }
+  return SdSim.{};
+}
+#test "a simulator by its exact name: its UDID and whether it is booted" {
+  list := "== Devices ==\n-- iOS 26.0 --\n    Coax Native Starter 2 (BBBB) (Shutdown) \n    Coax Native Starter (AAAA) (Booted) \n    OpenAgents Dev (CCCC) (Shutdown) \n";
+  a := sd_sim_find(list, "Coax Native Starter");
+  #assert a.found && a.udid == "AAAA" && a.booted;
+  b := sd_sim_find(list, "OpenAgents Dev");
+  #assert b.found && b.udid == "CCCC" && !b.booted;
+  #assert !sd_sim_find(list, "OpenAgents").found && !sd_sim_find(list, "").found && !sd_sim_find("", "OpenAgents Dev").found;
+}
+
+// The program a command line runs: its first word's last path part ("/usr/bin/xcrun -x" is "xcrun").
+sd_program :: (cmd: string) -> string {
+  e := 0;
+  while e < cmd.count && cmd[e] != ' ' { e += 1; }
+  b := e;
+  while b > 0 && cmd[b - 1] != '/' { b -= 1; }
+  return cmd[b..<e];
+}
+// The command line after its first word.
+sd_after_word :: (cmd: string) -> string {
+  e := 0;
+  while e < cmd.count && cmd[e] != ' ' { e += 1; }
+  return ifx e < cmd.count then cmd[e + 1..<cmd.count] else "";
+}
+// Whether a process's command line targets the simulator: an xcodebuild that names it, or a simctl
+// install or launch that names it or, while it is booted, "booted". Only the program counts, so a
+// shell whose script mentions xcodebuild does not.
+sd_targets :: (cmd: string, name: string, udid: string, booted: bool) -> bool {
+  names_it := (name.count > 0 && sd_find(cmd, name, 0) >= 0) || (udid.count > 0 && sd_find(cmd, udid, 0) >= 0);
+  prog := sd_program(cmd);
+  if prog == "xcodebuild" { return names_it; }
+  if (prog == "simctl" || (prog == "xcrun" && sd_starts(sd_after_word(cmd), "simctl "))) && (sd_find(cmd, " install ", 0) >= 0 || sd_find(cmd, " launch ", 0) >= 0) {
+    return names_it || (booted && sd_find(cmd, " booted", 0) >= 0);
+  }
+  return false;
+}
+#test "an xcodebuild or simctl install or launch that targets the simulator" {
+  #assert sd_targets("xcodebuild -scheme OpenAgents -destination platform=iOS Simulator,name=Coax Native Starter build", "Coax Native Starter", "AAAA", true);
+  #assert sd_targets("xcodebuild -destination id=AAAA build", "Coax Native Starter", "AAAA", false);
+  #assert !sd_targets("xcodebuild -destination id=CCCC build", "Coax Native Starter", "AAAA", true);
+  #assert sd_targets("xcrun simctl install booted /x/OpenAgents.app", "Coax Native Starter", "AAAA", true);
+  #assert !sd_targets("xcrun simctl install booted /x/OpenAgents.app", "OpenAgents Dev", "CCCC", false);
+  #assert sd_targets("xcrun simctl launch --terminate-running-process AAAA com.x", "Coax Native Starter", "AAAA", false);
+  #assert !sd_targets("xcrun simctl io AAAA screenshot a.png", "Coax Native Starter", "AAAA", true);
+  #assert !sd_targets("vim Coax Native Starter.txt", "Coax Native Starter", "AAAA", true);
+  #assert !sd_targets("/bin/zsh -c xcodebuild -destination name=Coax Native Starter", "Coax Native Starter", "AAAA", true);
+  #assert sd_targets("/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -destination id=AAAA", "Coax Native Starter", "AAAA", true);
+  #assert sd_targets("/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/simctl launch AAAA com.x", "X", "AAAA", false);
+  #assert sd_program("/usr/bin/xcrun simctl") == "xcrun" && sd_program("xcodebuild") == "xcodebuild" && sd_program("") == "";
+  #assert sd_after_word("xcrun simctl list") == "simctl list" && sd_after_word("xcrun") == "";
+}
+// The first line of ps (`ps -axo command=`) whose process targets the simulator, "" when none.
+sd_targeted_by :: (ps: string, name: string, udid: string, booted: bool) -> string {
+  i := 0;
+  while i < ps.count {
+    e := i;
+    while e < ps.count && ps[e] != '\n' { e += 1; }
+    if sd_targets(ps[i..<e], name, udid, booted) { return ps[i..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+#test "the process that holds a simulator, from ps" {
+  ps := "/sbin/launchd\nxcrun simctl io AAAA screenshot a.png\nxcodebuild -destination id=AAAA build\n";
+  #assert sd_targeted_by(ps, "X", "AAAA", true) == "xcodebuild -destination id=AAAA build";
+  #assert sd_targeted_by(ps, "X", "BBBB", true) == "" && sd_targeted_by("", "X", "AAAA", true) == "";
+}
+
+// The first app running on the simulator that is neither Apple's nor ours, from launchctl list's
+// "UIKitApplication:BUNDLE[...]" entries (a slice of list). "" when none.
+sd_other_app :: (list: string, ours: string) -> string {
+  at := 0;
+  while at < list.count {
+    i := sd_find(list, "UIKitApplication:", at);
+    if i < 0 { return ""; }
+    b := i + 17; e := b;
+    while e < list.count && list[e] != '[' && list[e] != '\n' && list[e] != ' ' && list[e] != '\t' { e += 1; }
+    bundle := list[b..<e];
+    if bundle.count > 0 && bundle != ours && !sd_starts(bundle, "com.apple.") { return bundle; }
+    at = e;
+  }
+  return "";
+}
+#test "another app session on the simulator, past Apple's and ours" {
+  l := "37453\t0\tUIKitApplication:com.apple.Spotlight[79e5][rb-legacy]\n82288\t0\tUIKitApplication:com.openagents.app[242f][rb-legacy]\n";
+  #assert sd_other_app(l, "com.openagents.app") == "";
+  m := "1\t0\tUIKitApplication:com.openagents.app[242f]\n2\t0\tUIKitApplication:com.example.game[11]\n";
+  #assert sd_other_app(m, "com.openagents.app") == "com.example.game" && sd_other_app("", "x") == "";
+}
+
+// A simulator's name as a file name: letters and digits, the rest "-".
+sd_slug :: (name: string, out: [] u8) -> string {
+  n := 0;
+  for c: name {
+    if n >= out.count { break; }
+    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    out[n] = c; if !ok { out[n] = cast(u8) '-'; }
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "simulator names as file names" { b: [64] u8; #assert sd_slug("Coax Native Starter", b[..]) == "Coax-Native-Starter" && sd_slug("", b[..]) == ""; }
+
+// ---- the JSON list (`xcrun simctl list devices -j`), as the helper reads it
+
+SD_MOST :: 64;          // simulators listed at most
+SD_NONE :: 0; SD_SHUTDOWN :: 1; SD_BOOTING :: 2; SD_BOOTED :: 3; SD_SHUTTING :: 4;   // a simulator's state
+SdDevice :: struct {
+  udid: [64] u8; udid_n: int;
+  name: [128] u8; name_n: int;
+  runtime: [48] u8; runtime_n: int;     // "iOS 26.5"
+  state: int;                            // SD_*
+}
+SdList :: struct { d: [SD_MOST] SdDevice; n: int; ok: bool; }
+sd_udid :: (l: [] SdList, i: int) -> string { return cast(string) l[0].d[i].udid[0..<l[0].d[i].udid_n]; }
+sd_name :: (l: [] SdList, i: int) -> string { return cast(string) l[0].d[i].name[0..<l[0].d[i].name_n]; }
+sd_runtime :: (l: [] SdList, i: int) -> string { return cast(string) l[0].d[i].runtime[0..<l[0].d[i].runtime_n]; }
+sd_put :: (out: [] u8, s: string) -> int { n := 0; for c: s { if n < out.count { out[n] = c; n += 1; } } return n; }
+
+// A runtime's identifier as a person reads it: "com.apple.CoreSimulator.SimRuntime.iOS-26-5" is
+// "iOS 26.5". "" for a runtime that is not iOS (v1 shows iOS only: spec, Non-goals).
+sd_runtime_name :: (id: string, out: [] u8) -> string {
+  p := "com.apple.CoreSimulator.SimRuntime.iOS-";
+  if !sd_starts(id, p) || id.count == p.count { return ""; }
+  n := sd_put(out, "iOS ");
+  for c: id[p.count..<id.count] {
+    if n >= out.count { break; }
+    out[n] = ifx c == '-' then cast(u8) '.' else c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "runtimes as a person reads them, iOS only" {
+  b: [48] u8;
+  #assert sd_runtime_name("com.apple.CoreSimulator.SimRuntime.iOS-26-5", b[..]) == "iOS 26.5";
+  #assert sd_runtime_name("com.apple.CoreSimulator.SimRuntime.iOS-18-0", b[..]) == "iOS 18.0";
+  #assert sd_runtime_name("com.apple.CoreSimulator.SimRuntime.watchOS-11-0", b[..]) == "" && sd_runtime_name("com.apple.CoreSimulator.SimRuntime.iOS-", b[..]) == "";
+}
+sd_state :: (s: string) -> int {
+  if s == "Shutdown" { return SD_SHUTDOWN; }
+  if s == "Booting" { return SD_BOOTING; }
+  if s == "Booted" { return SD_BOOTED; }
+  if s == "Shutting Down" { return SD_SHUTTING; }
+  return SD_NONE;
+}
+sd_state_word :: (st: int) -> string {
+  if st == SD_SHUTDOWN { return "shutdown"; }
+  if st == SD_BOOTING { return "booting"; }
+  if st == SD_BOOTED { return "booted"; }
+  if st == SD_SHUTTING { return "shutting_down"; }
+  return "unknown";
+}
+// `xcrun simctl list devices -j` into out: every available iOS simulator, in the order listed.
+// False when the text is not the list.
+SD_NODES :: 16384;
+sd_parse :: (text: string, out: [] SdList) -> bool {
+  out[0].n = 0; out[0].ok = false;
+  nodes: [SD_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return false; }
+  v := d[0];
+  devs := jv_get(v, 0, "devices");
+  if jv_kind(v, devs) != JV_OBJECT { return false; }
+  rt := v.nodes[devs].first;
+  while rt != -1 {
+    rb: [48] u8;
+    runtime := sd_runtime_name(jv_key(v, rt), rb[..]);
+    if runtime.count > 0 && jv_kind(v, rt) == JV_ARRAY {
+      e := v.nodes[rt].first;
+      while e != -1 && out[0].n < SD_MOST {
+        if jv_kind(v, jv_get(v, e, "isAvailable")) != JV_FALSE {
+          x := out[0].n;
+          dv := SdDevice.{};
+          dv.udid_n = jv_str(v, jv_get(v, e, "udid"), dv.udid[..]);
+          dv.name_n = jv_str(v, jv_get(v, e, "name"), dv.name[..]);
+          sb: [32] u8; sn := jv_str(v, jv_get(v, e, "state"), sb[..]);
+          dv.state = ifx sn > 0 then sd_state(cast(string) sb[0..<sn]) else SD_NONE;
+          dv.runtime_n = sd_put(dv.runtime[..], runtime);
+          if dv.udid_n > 0 && dv.name_n > 0 { out[0].d[x] = dv; out[0].n += 1; }
+        }
+        e = v.nodes[e].next;
+      }
+    }
+    rt = v.nodes[rt].next;
+  }
+  out[0].ok = true;
+  return true;
+}
+#test "the JSON list: iOS simulators that are available, their runtime and state" {
+  j := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.watchOS-11-0\":[{\"udid\":\"W1\",\"name\":\"Watch\",\"state\":\"Shutdown\",\"isAvailable\":true}],\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"lastBootedAt\":\"x\",\"udid\":\"A1\",\"isAvailable\":true,\"name\":\"iPhone 17\",\"state\":\"Booted\"},{\"udid\":\"B2\",\"isAvailable\":false,\"name\":\"Gone\",\"state\":\"Shutdown\"},{\"udid\":\"C3\",\"isAvailable\":true,\"name\":\"iPad \\\"Air\\\"\",\"state\":\"Shutdown\"}]}}";
+  l: [1] SdList;
+  #assert sd_parse(j, l[..]) && l[0].ok && l[0].n == 2;
+  #assert sd_udid(l[..], 0) == "A1" && sd_name(l[..], 0) == "iPhone 17" && sd_runtime(l[..], 0) == "iOS 26.5" && l[0].d[0].state == SD_BOOTED;
+  #assert sd_udid(l[..], 1) == "C3" && sd_name(l[..], 1) == "iPad \"Air\"" && l[0].d[1].state == SD_SHUTDOWN;
+  #assert !sd_parse("{}", l[..]) && l[0].n == 0 && !sd_parse("not json", l[..]);
+  #assert sd_state("Booting") == SD_BOOTING && sd_state("Shutting Down") == SD_SHUTTING && sd_state("x") == SD_NONE;
+  #assert sd_state_word(SD_BOOTED) == "booted" && sd_state_word(SD_SHUTDOWN) == "shutdown" && sd_state_word(SD_BOOTING) == "booting" && sd_state_word(SD_SHUTTING) == "shutting_down" && sd_state_word(9) == "unknown";
+}
+// A simulator by UDID or exact name; -1 when the list has none. A UDID wins over a name.
+sd_pick :: (l: [] SdList, device: string) -> int {
+  if device.count == 0 { return -1; }
+  for i: 0..<l[0].n { if sd_udid(l, i) == device { return i; } }
+  for i: 0..<l[0].n { if sd_name(l, i) == device { return i; } }
+  return -1;
+}
+// The first booted simulator, -1 when none is.
+sd_first_booted :: (l: [] SdList) -> int {
+  for i: 0..<l[0].n { if l[0].d[i].state == SD_BOOTED { return i; } }
+  return -1;
+}
+#test "a simulator by UDID or name, and the first booted one" {
+  l: [1] SdList;
+  j := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A1\",\"name\":\"B2\",\"state\":\"Shutdown\"},{\"udid\":\"B2\",\"name\":\"Two\",\"state\":\"Booted\"}]}}";
+  #assert sd_parse(j, l[..]);
+  #assert sd_pick(l[..], "B2") == 1 && sd_pick(l[..], "A1") == 0 && sd_pick(l[..], "Two") == 1 && sd_pick(l[..], "Three") == -1 && sd_pick(l[..], "") == -1;
+  #assert sd_first_booted(l[..]) == 1;
+  e: [1] SdList; #assert sd_first_booted(e[..]) == -1;
+}

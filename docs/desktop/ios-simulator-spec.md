@@ -271,6 +271,21 @@ New host calls (`host.h`/`host.c`, each a `coder_page_sim_*` export in `simpane.
 
 ## 6. The helper (`oa-simhost`)
 
+**As built (Phase 0, #13811).** The helper is `oasim serve`: the same Coax program as the CLI,
+its loop in `coax/lib/agent/device/sim-host.coax` (socket, clients, policy, grants, parked asks,
+`simctl` jobs polled without threads). There is no Swift helper and no `sim-core` C unit: the
+wire, the policy and the gestures are called directly from Coax. The private-framework effects
+(live display, input) go in one Objective-C file, `simhost/shim.m`, compiled into `oasim` and
+reached through `#foreign` calls from `sim-shim.coax` (a stub that reports `display: stills`,
+`input: none` until it lands). It still runs as its own process, started detached by the first
+client, so a CoreSimulator crash never takes the window down. The table below is the original
+plan; read `Server.swift` as `sim-host.coax` and `Simctl.swift` as its `simctl` jobs.
+
+The person: a connection whose `hello` says `"client":"app"` may send `grant`, `deny` and
+`revoke` and is never asked for a grant. An agent's control op with no grant, while an app is
+subscribed, is parked (two minutes) and the app hears `{"event":"ask",...}`; the person's
+answer runs or refuses it. With no app connected it is refused `no_grant` at once.
+
 `apps/openagents-desktop/simhost/`, Swift with an Objective-C shim where the private API needs it.
 `Firm reason: 6 (CoreSimulator and SimulatorKit are private Objective-C frameworks)` on each file.
 It links one generated Coax unit, `sim-core` (section 10), and does effects only.
@@ -474,7 +489,8 @@ screen you have not seen; prefer `describe` when it exists.
    device by any other name.
 2. An op that changes the device needs a live grant for (chat, device), except ops from the app's own
    pane (the person). Read-only ops need none.
-3. `shutdown` of a device the person booted, `erase`, deleting a device and changing a device's
+3. `shutdown` of a device the person booted (any device an agent did not boot through this helper
+   since it started; a helper restart forgets, so every device then counts as the person's), `erase`, deleting a device and changing a device's
    language, region or privacy settings are never agent ops in v1.
 4. A device is **contested** (refuse with `contested`) when `loop.coax`'s rules say so: another
    `dev.sh` holds its lock, an `xcodebuild` or `simctl install`/`launch` from elsewhere targets it, or
@@ -527,7 +543,8 @@ New:
 | `coax/lib/agent/device/sim-gesture.coax` | View-to-device mapping (aspect fit, rotation), tap/swipe/path expansion with easing, key names and ASCII to HID usages, `#forall` checks (mapping round trip, paths stay in bounds and end where asked) |
 | `coax/lib/agent/device/sim-devices.coax` | `simctl list` parsing and the contested rules, moved from `apps/shared/app/preview/loop.coax` (which then loads it; no second copy) |
 | `coax/lib/agent/device/sim-build.coax` | The xcodebuild command line, the build state files, `error:` parsing |
-| `coax/lib/agent/device/sim-core.coax` | The helper's Coax core as `#export_c` calls: `sim_core_request(line) -> decision`, `sim_core_reply`, `sim_core_event`, `sim_core_expand(op) -> HID steps` |
+| `coax/lib/agent/device/sim-host.coax` | (As built, instead of `sim-core`.) The helper's loop: socket, clients, policy calls, grants and parked asks, `simctl` jobs; `oasim serve` runs it |
+| `coax/lib/agent/device/sim-shim.coax` | The helper's private-framework effects as `#foreign` calls into `simhost/shim.m` (Phase 1; a stills-only stub before) |
 | `coax/lib/agent/device/README.md` | What the library is, its doors and checks |
 | `coder/tui/oasim.coax` | The tool: CLI verbs (7.2, 7.3, `run`), `oasim mcp`, helper start, the shell door's JSON output |
 | `apps/openagents-desktop/simhost/*` | The helper (6.1) |
@@ -584,6 +601,10 @@ Fast (every change; `coax/bin/coax test` / `coax/remote/check.sh only`):
 
 Helper (on a Mac with Xcode; `coder/tui/simhost-check.coax`, run with `coax/web/tool.sh`):
 
+- (As built, Phase 0: `coax/web/tool.sh coder/tui/simhost-check.coax OASIM [--project P --scheme S]`
+  covers hello, list, boot, point-size screenshots, a parked ask refused and then granted,
+  appearance, `open_url`, the install rule, the shutdown rule, contested, revoke, the helper killed
+  and restarted by `oasim`, `oasim run`, shutdown and delete; `--wire-log` captured the fixture.)
 - Creates its own device (`simctl create oa-simhost-check-RAND "iPhone 17" RUNTIME`), never uses
   the person's, starts a helper from the worktree build with `--home` in a throwaway folder and its
   own socket, then: hello and capabilities; boot (under 180 s); subscribe and receive a surface of the

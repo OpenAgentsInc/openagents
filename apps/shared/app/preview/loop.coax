@@ -19,6 +19,7 @@
 #load "../../../../coax/lib/sys/args.coax";
 #load "../../../../coax/lib/crypto/sha256-memory.coax";
 #load "../../../../coax/lib/sys/clock.coax";
+#load "../../../../coax/lib/agent/device/sim-devices.coax";
 
 // ---- the page (the one place that names today's app; INTEGRATION.md)
 LP_IOS :: "apps/openagents-ios";
@@ -470,98 +471,7 @@ lp_watch :: (l: [] Lp, a: [] Args) -> int {
 // worktree's dev.sh within LP_SESSION_US. Then the spares, made and booted when missing.
 // --sim NAME (or --device NAME) takes that one simulator only.
 
-// A simulator in `xcrun simctl list devices`, whose line is "    NAME (UDID) (State) ".
-// The UDID is a slice of list.
-LpSim :: struct { found: bool; udid: string; booted: bool; }
-lp_sim_find :: (list: string, name: string) -> LpSim {
-  i := 0;
-  while i < list.count {
-    e := i;
-    while e < list.count && list[e] != '\n' { e += 1; }
-    line := list[i..<e];
-    k := 0;
-    while k < line.count && line[k] == ' ' { k += 1; }
-    rest := line[k..<line.count];
-    if k > 0 && name.count > 0 && rest.count > name.count + 2 && lp_starts(rest, name) && rest[name.count..<name.count + 2] == " (" {
-      u := name.count + 2; v := u;
-      while v < rest.count && rest[v] != ')' { v += 1; }
-      if v < rest.count { return LpSim.{found = true, udid = rest[u..<v], booted = lp_find(rest, "(Booted)", v) >= 0}; }
-    }
-    i = e + 1;
-  }
-  return LpSim.{};
-}
-#test "a simulator by its exact name: its UDID and whether it is booted" {
-  list := "== Devices ==\n-- iOS 26.0 --\n    Coax Native Starter 2 (BBBB) (Shutdown) \n    Coax Native Starter (AAAA) (Booted) \n    OpenAgents Dev (CCCC) (Shutdown) \n";
-  a := lp_sim_find(list, "Coax Native Starter");
-  #assert a.found && a.udid == "AAAA" && a.booted;
-  b := lp_sim_find(list, "OpenAgents Dev");
-  #assert b.found && b.udid == "CCCC" && !b.booted;
-  #assert !lp_sim_find(list, "OpenAgents").found && !lp_sim_find(list, "").found && !lp_sim_find("", "OpenAgents Dev").found;
-}
-
-// The program a command line runs: its first word's last path part ("/usr/bin/xcrun -x" is "xcrun").
-lp_program :: (cmd: string) -> string {
-  e := 0;
-  while e < cmd.count && cmd[e] != ' ' { e += 1; }
-  b := e;
-  while b > 0 && cmd[b - 1] != '/' { b -= 1; }
-  return cmd[b..<e];
-}
-// Whether a process's command line targets the simulator: an xcodebuild that names it, or a simctl
-// install or launch that names it or, while it is booted, "booted". Only the program counts, so a
-// shell whose script mentions xcodebuild does not.
-lp_targets :: (cmd: string, name: string, udid: string, booted: bool) -> bool {
-  names_it := (name.count > 0 && lp_find(cmd, name, 0) >= 0) || (udid.count > 0 && lp_find(cmd, udid, 0) >= 0);
-  prog := lp_program(cmd);
-  if prog == "xcodebuild" { return names_it; }
-  if (prog == "simctl" || (prog == "xcrun" && lp_starts(lp_after_word(cmd), "simctl "))) && (lp_find(cmd, " install ", 0) >= 0 || lp_find(cmd, " launch ", 0) >= 0) {
-    return names_it || (booted && lp_find(cmd, " booted", 0) >= 0);
-  }
-  return false;
-}
-#test "an xcodebuild or simctl install or launch that targets the simulator" {
-  #assert lp_targets("xcodebuild -scheme OpenAgents -destination platform=iOS Simulator,name=Coax Native Starter build", "Coax Native Starter", "AAAA", true);
-  #assert lp_targets("xcodebuild -destination id=AAAA build", "Coax Native Starter", "AAAA", false);
-  #assert !lp_targets("xcodebuild -destination id=CCCC build", "Coax Native Starter", "AAAA", true);
-  #assert lp_targets("xcrun simctl install booted /x/OpenAgents.app", "Coax Native Starter", "AAAA", true);
-  #assert !lp_targets("xcrun simctl install booted /x/OpenAgents.app", "OpenAgents Dev", "CCCC", false);
-  #assert lp_targets("xcrun simctl launch --terminate-running-process AAAA com.x", "Coax Native Starter", "AAAA", false);
-  #assert !lp_targets("xcrun simctl io AAAA screenshot a.png", "Coax Native Starter", "AAAA", true);
-  #assert !lp_targets("vim Coax Native Starter.txt", "Coax Native Starter", "AAAA", true);
-  #assert !lp_targets("/bin/zsh -c xcodebuild -destination name=Coax Native Starter", "Coax Native Starter", "AAAA", true);
-  #assert lp_targets("/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -destination id=AAAA", "Coax Native Starter", "AAAA", true);
-  #assert lp_targets("/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Resources/bin/simctl launch AAAA com.x", "X", "AAAA", false);
-  #assert lp_program("/usr/bin/xcrun simctl") == "xcrun" && lp_program("xcodebuild") == "xcodebuild" && lp_program("") == "";
-}
-// The command line after its first word.
-lp_after_word :: (cmd: string) -> string {
-  e := 0;
-  while e < cmd.count && cmd[e] != ' ' { e += 1; }
-  return ifx e < cmd.count then cmd[e + 1..<cmd.count] else "";
-}
-
-// The first app running on the simulator that is neither Apple's nor ours, from launchctl list's
-// "UIKitApplication:BUNDLE[...]" entries (a slice of list). "" when none.
-lp_other_app :: (list: string, ours: string) -> string {
-  at := 0;
-  while at < list.count {
-    i := lp_find(list, "UIKitApplication:", at);
-    if i < 0 { return ""; }
-    b := i + 17; e := b;
-    while e < list.count && list[e] != '[' && list[e] != '\n' && list[e] != ' ' && list[e] != '\t' { e += 1; }
-    bundle := list[b..<e];
-    if bundle.count > 0 && bundle != ours && !lp_starts(bundle, "com.apple.") { return bundle; }
-    at = e;
-  }
-  return "";
-}
-#test "another app session on the simulator, past Apple's and ours" {
-  l := "37453\t0\tUIKitApplication:com.apple.Spotlight[79e5][rb-legacy]\n82288\t0\tUIKitApplication:com.openagents.app[242f][rb-legacy]\n";
-  #assert lp_other_app(l, "com.openagents.app") == "";
-  m := "1\t0\tUIKitApplication:com.openagents.app[242f]\n2\t0\tUIKitApplication:com.example.game[11]\n";
-  #assert lp_other_app(m, "com.openagents.app") == "com.example.game" && lp_other_app("", "x") == "";
-}
+// Which simulators there are, and what holds one: coax/lib/agent/device/sim-devices.coax (sd_*).
 
 // How long our app counts as another worktree's session after its dev.sh launched it.
 LP_SESSION_US :: 900000000;
@@ -594,39 +504,21 @@ lp_owned_elsewhere :: (owner: string, repo: string, now_us: int) -> bool {
   #assert !lp_owned_elsewhere(o, "/w/other", 1000000000) && !lp_owned_elsewhere("", "/w/mine", 5) && !lp_owned_elsewhere("/w/other\nx", "/w/mine", 5);
   b: [24] u8; #assert lp_int(1763270000000000, b[..]) == "1763270000000000" && lp_whole("1763270000000000") == 1763270000000000 && lp_int(0, b[..]) == "0";
 }
-// A simulator's name as a file name: letters and digits, the rest "-".
-lp_slug :: (name: string, out: [] u8) -> string {
-  n := 0;
-  for c: name {
-    if n >= out.count { break; }
-    ok := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-    out[n] = c; if !ok { out[n] = cast(u8) '-'; }
-    n += 1;
-  }
-  return cast(string) out[0..<n];
-}
-#test "simulator names as file names" { b: [64] u8; #assert lp_slug("Coax Native Starter", b[..]) == "Coax-Native-Starter" && lp_slug("", b[..]) == ""; }
-
 // Why the simulator is contested ("" when it is not), into why. ps holds `ps -axo command=`.
-lp_contested :: (l: [] Lp, name: string, sim: LpSim, ps: string, base: string, why: [] LpText) -> string {
+lp_contested :: (l: [] Lp, name: string, sim: SdSim, ps: string, base: string, why: [] LpText) -> string {
   why[0].n = 0;
   if !sim.found { return ""; }
-  i := 0;
-  while i < ps.count {
-    e := i;
-    while e < ps.count && ps[e] != '\n' { e += 1; }
-    if lp_targets(ps[i..<e], name, sim.udid, sim.booted) { return lp_set(why, "a process targets it: ", ps[i..<e], ""); }
-    i = e + 1;
-  }
+  held := sd_targeted_by(ps, name, sim.udid, sim.booted);
+  if held.count > 0 { return lp_set(why, "a process targets it: ", held, ""); }
   if !sim.booted { return ""; }
   c: [1] LpArgv; lp_a(c[..], "xcrun"); lp_a(c[..], "simctl"); lp_a(c[..], "spawn"); lp_a(c[..], sim.udid); lp_a(c[..], "launchctl"); lp_a(c[..], "list");
   if lp_run(c[..], lp_repo(l), "", false, l[0].out[..]) != 0 { return ""; }
   apps := lp_text(l[0].out[..]);
-  other := lp_other_app(apps, LP_BUNDLE);
+  other := sd_other_app(apps, LP_BUNDLE);
   if other.count > 0 { return lp_set(why, other, " is running on it", ""); }
   t: [1] LpText; slug: [128] u8; own: [8192] u8;
   if lp_find(apps, lp_set(t[..], "UIKitApplication:", LP_BUNDLE, "["), 0) >= 0 {
-    n := fs_read(lp_sim_file(t[..], base, lp_slug(name, slug[..]), ".owner"), own[..]);
+    n := fs_read(lp_sim_file(t[..], base, sd_slug(name, slug[..]), ".owner"), own[..]);
     if n > 0 && lp_owned_elsewhere(cast(string) own[0..<n], lp_repo(l), cxproc_wall_us()) { return lp_set(why, "another worktree's dev.sh launched OpenAgents on it in the last 15 minutes", "", ""); }
   }
   return "";
@@ -664,12 +556,12 @@ lp_ios :: (l: [] Lp, a: [] Args) -> int {
   device := ""; slug: [128] u8; slug_s := ""; udid: [64] u8; udid_n := 0; found := false;
   for k: 0..<count {
     name := sims[k];
-    sl := lp_slug(name, slug[..]);
+    sl := sd_slug(name, slug[..]);
     if !fs_try_lock(lp_sim_file(t[..], lp_str(base[..]), sl, ".lock")) {
       tool_err("dev: "); tool_err(name); tool_errln(" is in use by another dev.sh");
       continue;
     }
-    sim := lp_sim_find(lp_text(list[..]), name);
+    sim := sd_sim_find(lp_text(list[..]), name);
     why: [1] LpText;
     w := lp_contested(l, name, sim, lp_text(ps[..]), lp_str(base[..]), why[..]);
     if w.count > 0 && forced.count == 0 {
@@ -695,7 +587,7 @@ lp_ios :: (l: [] Lp, a: [] Args) -> int {
       return 1;
     }
     if lp_run(ls[..], repo, "", false, list[..]) != 0 { return lp_ios_fail(l, "xcrun simctl list devices failed"); }
-    made := lp_sim_find(lp_text(list[..]), device);
+    made := sd_sim_find(lp_text(list[..]), device);
     if !made.found { return lp_ios_fail(l, "the new simulator is not in xcrun simctl list devices"); }
     udid_n = lp_put(udid[..], 0, made.udid);
   }

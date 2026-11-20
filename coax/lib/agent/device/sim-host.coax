@@ -1,0 +1,773 @@
+// The simulator helper (docs/desktop/ios-simulator-spec.md section 4; GitHub #13811): one process
+// per user (`oasim serve`) that owns the simulators for every client. The app's pane and every
+// agent tool connect to its socket (~/.openagents/sim/simhost.sock, 0600 in a 0700 folder) and
+// speak simhost-lines-v1 (sim-wire.coax). Each request is read, held to the policy
+// (sim-policy.coax) and then run: through `xcrun simctl` and sips (the public tools), or through the
+// platform shim (sim-shim.coax: CoreSimulator's display and HID, when the build links it).
+// A control op from an agent without a grant asks the person through the app's pane (an "ask"
+// event) and waits for the answer; with no pane connected it fails with no_grant.
+//
+// The loop is single-threaded: it accepts, reads each client's lines, runs slow commands as
+// child processes it polls (a boot, a screenshot, an install), and sleeps a few milliseconds
+// when nothing moved. It exits after SH_IDLE_MS with no client.
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+#load "../../net/socket_foreign.coax";
+#load "sim-wire.coax";
+#load "sim-policy.coax";
+#load "sim-gesture.coax";
+#load "sim-shim.coax";
+
+SH_VERSION :: 1;
+SH_CLIENTS :: 10;
+SH_JOBS :: 8;
+SH_ASKS :: 8;
+SH_SCREENS :: 16;
+SH_CHATS :: 16;
+SH_IDLE_MS :: 600000;      // exits after 10 minutes with no client
+SH_ASK_MS :: 120000;       // how long an op waits for the person's answer
+SH_PATH :: 1024;
+
+ShClient :: struct {
+  live: bool; h: int;
+  buf: [SW_LINE] u8; n: int;
+  app: bool;                       // the app's pane: the person
+  subscribed: bool;                // takes events
+  chat: [64] u8; chat_n: int;
+  engine: [32] u8; engine_n: int;
+  folder: [SH_PATH] u8; folder_n: int;
+}
+SH_JOB_SIMPLE :: 1; SH_JOB_BOOT :: 2; SH_JOB_SHOT :: 3; SH_JOB_LAUNCH :: 4; SH_JOB_APPEARANCE :: 5; SH_JOB_SHUTDOWN :: 6;
+ShJob :: struct {
+  live: bool; kind: int; step: int;
+  client: int; id: int;            // who waits, and the request's id (0: no reply)
+  proc: int;                       // the running child
+  out: [65536] u8; out_n: int;     // its stdout
+  udid: [64] u8; udid_n: int;
+  path: [SH_PATH] u8; path_n: int; // the screenshot's file, the .app
+  tmp: [SH_PATH] u8; tmp_n: int;
+  bundle: [256] u8; bundle_n: int;
+  scale: f64;
+  started_ms: int;
+}
+// A request parked until the person answers the permission card.
+ShAsk :: struct { live: bool; client: int; line: [8192] u8; n: int; chat: [64] u8; chat_n: int; udid: [64] u8; udid_n: int; until_ms: int; }
+// A device's screen: its size in pixels and its scale (points = pixels / scale).
+ShScreen :: struct { udid: [64] u8; udid_n: int; px_w: int; px_h: int; scale: f64; }
+ShChat :: struct { chat: [64] u8; chat_n: int; rate: [1] SpRate; }
+ShHost :: struct {
+  home: [SH_PATH] u8; home_n: int;            // ~/.openagents/sim
+  sock: [SH_PATH] u8; sock_n: int;
+  pid: int;
+  xcode: [32] u8; xcode_n: int;
+  listener: int;
+  clients: [SH_CLIENTS] ShClient;
+  jobs: [SH_JOBS] ShJob;
+  asks: [SH_ASKS] ShAsk;
+  screens: [SH_SCREENS] ShScreen; nscreens: int;
+  chats: [SH_CHATS] ShChat; nchats: int;
+  devices: [1] SdList; listed_ms: int;
+  by_us: [SD_MOST] [64] u8; by_us_n: [SD_MOST] int; nby_us: int;
+  by_agent: [SD_MOST] [64] u8; by_agent_n: [SD_MOST] int; nby_agent: int;   // booted by an agent (it may shut them down)
+  grants: [1] SpGrants;
+  touched_ms: int;                            // the person's last touch
+  last_client_ms: int;
+  quit: bool;
+  secret: [256] u8; secret_n: int;            // a key text may not hold (OA_SIM_SECRET)
+  msg: [1] SwMsg; reply: [1] SwMsg; why: [1] SwText;
+  line: [SW_LINE] u8;
+}
+
+sh_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+sh_int :: (v: int, out: [] u8) -> string {
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0;
+  if v < 0 && n < out.count { out[n] = '-'; n += 1; }
+  while k > 0 { k -= 1; if n < out.count { out[n] = d[k]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+sh_home :: (h: [] ShHost) -> string { return cast(string) h[0].home[0..<h[0].home_n]; }
+sh_join :: (dir: string, name: string, out: [] u8) -> string { return fs_join(dir, name, out); }
+
+// ---- writing to clients
+
+sh_send :: (h: [] ShHost, ci: int, line: string) {
+  if ci < 0 || ci >= SH_CLIENTS || !h[0].clients[ci].live { return; }
+  c := h[0].clients[ci].h;
+  for b: line { _ = cxsock_write(c, cast(int) b); }
+  _ = cxsock_write(c, 10);
+  if cxsock_flush(c, 2000) < 0 { sh_drop(h, ci); }
+}
+sh_send_msg :: (h: [] ShHost, ci: int, m: [] SwMsg) {
+  n := sw_write(m, h[0].line[..]);
+  if n > 0 { sh_send(h, ci, cast(string) h[0].line[0..<n]); }
+}
+// A reply to the request id (none for id 0, a fire-and-forget op).
+sh_answer :: (h: [] ShHost, ci: int, id: int, m: [] SwMsg) { if id != 0 { sh_send_msg(h, ci, m); } }
+sh_fail :: (h: [] ShHost, ci: int, id: int, code: string, why: string) {
+  sw_reply_error(h[0].reply[..], id, code, why);
+  sh_answer(h, ci, id, h[0].reply[..]);
+}
+sh_ok :: (h: [] ShHost, ci: int, id: int) { sw_reply_ok(h[0].reply[..], id); sh_answer(h, ci, id, h[0].reply[..]); }
+// An event to every subscribed client (the app's panes).
+sh_emit :: (h: [] ShHost, m: [] SwMsg) {
+  n := sw_write(m, h[0].line[..]);
+  if n <= 0 { return; }
+  for i: 0..<SH_CLIENTS { if h[0].clients[i].live && h[0].clients[i].subscribed { sh_send(h, i, cast(string) h[0].line[0..<n]); } }
+}
+sh_any_app :: (h: [] ShHost) -> bool {
+  for i: 0..<SH_CLIENTS { if h[0].clients[i].live && h[0].clients[i].app && h[0].clients[i].subscribed { return true; } }
+  return false;
+}
+sh_drop :: (h: [] ShHost, ci: int) {
+  if !h[0].clients[ci].live { return; }
+  _ = cxsock_close(h[0].clients[ci].h);
+  h[0].clients[ci].live = false;
+  for j: 0..<SH_JOBS { if h[0].jobs[j].live && h[0].jobs[j].client == ci { h[0].jobs[j].client = -1; } }
+  for a: 0..<SH_ASKS { if h[0].asks[a].live && h[0].asks[a].client == ci { h[0].asks[a].live = false; } }
+}
+
+// ---- devices
+
+sh_refresh :: (h: [] ShHost) -> bool {
+  argv := [5] string.["xcrun", "simctl", "list", "devices", "-j"];
+  out: [524288] u8; err: [1024] u8;
+  r := proc_run(argv[..], 20000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { return false; }
+  h[0].listed_ms = proc_now_ms();
+  return sd_parse(cast(string) out[0..<r.out_n], h[0].devices[..]);
+}
+sh_by_us :: (h: [] ShHost, udid: string) -> bool {
+  for i: 0..<h[0].nby_us { if cast(string) h[0].by_us[i][0..<h[0].by_us_n[i]] == udid { return true; } }
+  return false;
+}
+sh_mark_by_us :: (h: [] ShHost, udid: string) {
+  if sh_by_us(h, udid) || h[0].nby_us >= SD_MOST { return; }
+  h[0].by_us_n[h[0].nby_us] = sd_put(h[0].by_us[h[0].nby_us][..], udid); h[0].nby_us += 1;
+}
+// Booted by an agent, not the person: rule 3 lets an agent shut down only these.
+sh_by_agent :: (h: [] ShHost, udid: string) -> bool {
+  for i: 0..<h[0].nby_agent { if cast(string) h[0].by_agent[i][0..<h[0].by_agent_n[i]] == udid { return true; } }
+  return false;
+}
+sh_mark_by_agent :: (h: [] ShHost, udid: string, agent: bool) {
+  for i: 0..<h[0].nby_agent {
+    if cast(string) h[0].by_agent[i][0..<h[0].by_agent_n[i]] != udid { continue; }
+    if !agent { h[0].nby_agent -= 1; h[0].by_agent[i] = h[0].by_agent[h[0].nby_agent]; h[0].by_agent_n[i] = h[0].by_agent_n[h[0].nby_agent]; }
+    return;
+  }
+  if agent && h[0].nby_agent < SD_MOST { h[0].by_agent_n[h[0].nby_agent] = sd_put(h[0].by_agent[h[0].nby_agent][..], udid); h[0].nby_agent += 1; }
+}
+// The device a request names, or the first booted one when it names none. -1 when there is none.
+sh_pick :: (h: [] ShHost, device: string) -> int {
+  if device.count == 0 { return sd_first_booted(h[0].devices[..]); }
+  return sd_pick(h[0].devices[..], device);
+}
+// A device's screen size: the shim's when it has the display, else the device type's profile.
+sh_screen :: (h: [] ShHost, udid: string) -> ShScreen {
+  for i: 0..<h[0].nscreens { if cast(string) h[0].screens[i].udid[0..<h[0].screens[i].udid_n] == udid { return h[0].screens[i]; } }
+  s: [1] ShScreen; s[0].scale = 3.0;
+  s[0].udid_n = sd_put(s[0].udid[..], udid);
+  if !shim_screen_size(udid, s[..]) { sh_profile_size(udid, s[..]); }
+  if s[0].px_w > 0 && h[0].nscreens < SH_SCREENS { h[0].screens[h[0].nscreens] = s[0]; h[0].nscreens += 1; }
+  return s[0];
+}
+// The device type's profile.plist (public files, read with plutil): its pixels and scale.
+sh_profile_size :: (udid: string, s: [] ShScreen) {
+  argv := [5] string.["xcrun", "simctl", "list", "devices", "-j"];
+  out: [524288] u8; err: [1024] u8;
+  r := proc_run(argv[..], 20000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { return; }
+  dt: [256] u8; dn := sh_device_type(cast(string) out[0..<r.out_n], udid, dt[..]);
+  if dn <= 0 { return; }
+  targv := [5] string.["xcrun", "simctl", "list", "devicetypes", "-j"];
+  r = proc_run(targv[..], 20000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { return; }
+  bp: [SH_PATH] u8; bn := sh_type_bundle(cast(string) out[0..<r.out_n], cast(string) dt[0..<dn], bp[..]);
+  if bn <= 0 { return; }
+  prof: [SH_PATH] u8; pn := sh_put(prof[..], 0, cast(string) bp[0..<bn]); pn = sh_put(prof[..], pn, "/Contents/Resources/profile.plist");
+  keys := [3] string.["mainScreenWidth", "mainScreenHeight", "mainScreenScale"];
+  vals: [3] f64;
+  for k: 0..<3 {
+    pargv := [5] string.["plutil", "-extract", keys[k], "raw", cast(string) prof[0..<pn]];
+    o: [64] u8; r2 := proc_run(pargv[..], 5000, o[..], err[..]);
+    v: [1] f64;
+    if r2.status != 0 || !sh_parse_lead(cast(string) o[0..<r2.out_n], v[..]) { return; }
+    vals[k] = v[0];
+  }
+  s[0].px_w = cast(int) vals[0]; s[0].px_h = cast(int) vals[1]; s[0].scale = vals[2];
+}
+// A number at the start of s ("3.000000\n"): its value.
+sh_parse_lead :: (s: string, out: [] f64) -> bool {
+  e := 0; while e < s.count && ((s[e] >= '0' && s[e] <= '9') || s[e] == '.') { e += 1; }
+  t := s[0..<e];
+  while t.count > 2 && t[t.count - 1] == '0' && sd_find(t, ".", 0) >= 0 { t = t[0..<t.count - 1]; }
+  if t.count > 0 && t[t.count - 1] == '.' { t = t[0..<t.count - 1]; }
+  return sw_parse_num(t, out);
+}
+// The deviceTypeIdentifier of the device udid in `simctl list devices -j`.
+sh_device_type :: (text: string, udid: string, out: [] u8) -> int {
+  nodes: [SD_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return -1; }
+  v := d[0]; devs := jv_get(v, 0, "devices"); rt := ifx jv_kind(v, devs) == JV_OBJECT then v.nodes[devs].first else -1;
+  while rt != -1 {
+    e := ifx jv_kind(v, rt) == JV_ARRAY then v.nodes[rt].first else -1;
+    while e != -1 {
+      u: [64] u8; un := jv_str(v, jv_get(v, e, "udid"), u[..]);
+      if un > 0 && cast(string) u[0..<un] == udid { return jv_str(v, jv_get(v, e, "deviceTypeIdentifier"), out); }
+      e = v.nodes[e].next;
+    }
+    rt = v.nodes[rt].next;
+  }
+  return -1;
+}
+// The bundlePath of a device type in `simctl list devicetypes -j`.
+sh_type_bundle :: (text: string, id: string, out: [] u8) -> int {
+  nodes: [SD_NODES] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) { return -1; }
+  v := d[0]; ts := jv_get(v, 0, "devicetypes"); e := ifx jv_kind(v, ts) == JV_ARRAY then v.nodes[ts].first else -1;
+  while e != -1 {
+    b: [256] u8; bn := jv_str(v, jv_get(v, e, "identifier"), b[..]);
+    if bn > 0 && cast(string) b[0..<bn] == id { return jv_str(v, jv_get(v, e, "bundlePath"), out); }
+    e = v.nodes[e].next;
+  }
+  return -1;
+}
+#test "a device's type and the type's bundle, from simctl's lists" {
+  devs := "{\"devices\":{\"com.apple.CoreSimulator.SimRuntime.iOS-26-5\":[{\"udid\":\"A1\",\"deviceTypeIdentifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\",\"name\":\"x\"}]}}";
+  b: [256] u8;
+  n := sh_device_type(devs, "A1", b[..]);
+  #assert n > 0 && cast(string) b[0..<n] == "com.apple.CoreSimulator.SimDeviceType.iPhone-17" && sh_device_type(devs, "B2", b[..]) == -1;
+  types := "{\"devicetypes\":[{\"bundlePath\":\"\\/L\\/iPhone 17.simdevicetype\",\"identifier\":\"com.apple.CoreSimulator.SimDeviceType.iPhone-17\"}]}";
+  k := sh_type_bundle(types, "com.apple.CoreSimulator.SimDeviceType.iPhone-17", b[..]);
+  #assert k > 0 && cast(string) b[0..<k] == "/L/iPhone 17.simdevicetype" && sh_type_bundle(types, "x", b[..]) == -1;
+  v: [1] f64; #assert sh_parse_lead("3.000000\n", v[..]) && v[0] == 3.0 && sh_parse_lead("1206\n", v[..]) && v[0] == 1206.0 && !sh_parse_lead("x", v[..]);
+}
+
+// ---- contested (spec 9.1 rule 4)
+
+// Why another tool holds the device ("" when none does): a dev.sh lock, or a build or install
+// from elsewhere naming it.
+sh_contested :: (h: [] ShHost, udid: string, name: string, booted: bool, why: [] u8) -> string {
+  hb: [SH_PATH] u8; home := proc_getenv("HOME", hb[..]);
+  lk: [SH_PATH] u8; slug: [128] u8;
+  n := sh_put(lk[..], 0, home); n = sh_put(lk[..], n, "/.openagents/ios-dev/sim-"); n = sh_put(lk[..], n, sd_slug(name, slug[..])); n = sh_put(lk[..], n, ".lock");
+  lock := cast(string) lk[0..<n];
+  if fs_exists(lock) {
+    if !fs_try_lock(lock) { k := sh_put(why, 0, "apps/openagents-ios/dev.sh is using it"); return cast(string) why[0..<k]; }
+    _ = fs_unlock();
+  }
+  argv := [3] string.["ps", "-axo", "command="];
+  ps: [262144] u8; err: [256] u8;
+  r := proc_run(argv[..], 5000, ps[..], err[..]);
+  if r.status != 0 { return ""; }
+  held := sd_targeted_by(cast(string) ps[0..<r.out_n], name, udid, booted);
+  if held.count == 0 { return ""; }
+  k := sh_put(why, 0, "another tool is using it: "); k = sh_put(why, k, held);
+  return cast(string) why[0..<k];
+}
+
+// ---- grants, kept in ~/.openagents/sim/grants as grant lines
+
+sh_grants_path :: (h: [] ShHost, out: [] u8) -> string { return sh_join(sh_home(h), "grants", out); }
+sh_grants_save :: (h: [] ShHost) {
+  file: [65536] u8; n := 0;
+  m: [1] SwMsg; one: [1024] u8;
+  for i: 0..<h[0].grants[0].n {
+    g := h[0].grants[0].g[i];
+    sw_clear(m[..]); sw_set_int(m[..], SW_F_ID, 0); _ = sw_set_str(m[..], SW_F_OP, "grant");
+    _ = sw_set_str(m[..], SW_F_CHAT, cast(string) h[0].grants[0].g[i].chat[0..<g.chat_n]);
+    _ = sw_set_str(m[..], SW_F_DEVICE, cast(string) h[0].grants[0].g[i].device[0..<g.device_n]);
+    _ = sw_set_str(m[..], SW_F_SCOPE, sp_scope_word(g.scope));
+    k := sw_write(m[..], one[..]);
+    if k > 0 && n + k + 1 <= file.count { n = sh_put(file[..], n, cast(string) one[0..<k]); file[n] = 10; n += 1; }
+  }
+  pb: [SH_PATH] u8;
+  _ = fs_write(sh_grants_path(h, pb[..]), cast(string) file[0..<n]);
+}
+sh_grants_load :: (h: [] ShHost) {
+  pb: [SH_PATH] u8; file: [65536] u8;
+  n := fs_read(sh_grants_path(h, pb[..]), file[..]);
+  i := 0;
+  while i < n {
+    e := i; while e < n && file[e] != 10 { e += 1; }
+    if sw_read(cast(string) file[i..<e], h[0].msg[..], h[0].why[..]) && sw_str(h[0].msg[..], SW_F_OP) == "grant" {
+      m := h[0].msg[..];
+      sc := sp_scope(sw_str(m, SW_F_SCOPE));
+      // "once" ends with the run that had it: it does not come back with the helper
+      if sc == SP_GRANT_CHAT || sc == SP_GRANT_DENIED { _ = sp_grant_set(h[0].grants[..], sw_str(m, SW_F_CHAT), sw_str(m, SW_F_DEVICE), sc, 0); }
+    }
+    i = e + 1;
+  }
+}
+
+// ---- jobs: slow commands run as children, polled by the loop
+
+sh_job_new :: (h: [] ShHost, kind: int, ci: int, id: int, udid: string) -> int {
+  for j: 0..<SH_JOBS {
+    if !h[0].jobs[j].live {
+      h[0].jobs[j].live = true; h[0].jobs[j].kind = kind; h[0].jobs[j].step = 0; h[0].jobs[j].client = ci; h[0].jobs[j].id = id;
+      h[0].jobs[j].proc = -1; h[0].jobs[j].out_n = 0; h[0].jobs[j].path_n = 0; h[0].jobs[j].tmp_n = 0; h[0].jobs[j].bundle_n = 0;
+      h[0].jobs[j].udid_n = sd_put(h[0].jobs[j].udid[..], udid); h[0].jobs[j].scale = 1.0; h[0].jobs[j].started_ms = proc_now_ms();
+      return j;
+    }
+  }
+  return -1;
+}
+// Starts argv for job j. False (and the job ended with why) when it can't start.
+sh_job_run :: (h: [] ShHost, j: int, argv: [] string) -> bool {
+  p := proc_new();
+  ok := p >= 0;
+  for a: argv { ok = ok && proc_arg(p, a); }
+  if ok { ok = proc_start(p) == 0; }
+  if !ok {
+    if p >= 0 { _ = proc_release(p); }
+    sh_job_end(h, j, "helper_down", "the helper could not start xcrun");
+    return false;
+  }
+  h[0].jobs[j].proc = p; h[0].jobs[j].out_n = 0;
+  return true;
+}
+sh_job_end :: (h: [] ShHost, j: int, code: string, why: string) {
+  if code.count > 0 { sh_fail(h, h[0].jobs[j].client, h[0].jobs[j].id, code, why); }
+  if h[0].jobs[j].proc >= 0 { _ = proc_release(h[0].jobs[j].proc); }
+  h[0].jobs[j].live = false; h[0].jobs[j].proc = -1;
+}
+sh_job_udid :: (h: [] ShHost, j: int) -> string { return cast(string) h[0].jobs[j].udid[0..<h[0].jobs[j].udid_n]; }
+// Polls job j: reads what its child wrote; at the child's end, the next step or the reply.
+sh_job_poll :: (h: [] ShHost, j: int) {
+  p := h[0].jobs[j].proc;
+  if p < 0 { return; }
+  line: [65536] u8;
+  while true {
+    k := proc_line(p, 0, line[..]);
+    if k == PROC_TIMEOUT { return; }
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k < 0 { continue; }
+    o := h[0].jobs[j].out_n;
+    o = sh_put(h[0].jobs[j].out[..], o, cast(string) line[0..<k]); o = sh_put(h[0].jobs[j].out[..], o, "\n");
+    h[0].jobs[j].out_n = o;
+  }
+  status := proc_wait(p, 0);
+  if status == PROC_RUNNING {
+    if proc_now_ms() - h[0].jobs[j].started_ms > 200000 { _ = proc_kill(p, PROC_SIGKILL); sh_job_end(h, j, "timeout", "the simulator did not answer within 200 s"); }
+    return;
+  }
+  eb: [1024] u8; err := proc_stderr(p, eb[..]);
+  _ = proc_release(p); h[0].jobs[j].proc = -1;
+  if status != 0 {
+    why: [1200] u8; w := sh_put(why[..], 0, "xcrun simctl failed: "); w = sh_put(why[..], w, sh_trim(err));
+    if err.count == 0 { w = sh_put(why[..], w, sh_trim(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n])); }
+    sh_job_end(h, j, ifx h[0].jobs[j].kind == SH_JOB_BOOT then "timeout" else "bad_args", cast(string) why[0..<w]);
+    return;
+  }
+  sh_job_next(h, j);
+}
+sh_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\n') { b -= 1; }
+  return s[a..<b];
+}
+// The step after a child's good end.
+sh_job_next :: (h: [] ShHost, j: int) {
+  udid := sh_job_udid(h, j);
+  kind := h[0].jobs[j].kind;
+  h[0].jobs[j].step += 1; step := h[0].jobs[j].step;
+  ci := h[0].jobs[j].client; id := h[0].jobs[j].id;
+  if kind == SH_JOB_BOOT && step == 1 {
+    argv := [5] string.["xcrun", "simctl", "bootstatus", udid, "-b"];
+    _ = sh_job_run(h, j, argv[..]); return;
+  }
+  if kind == SH_JOB_BOOT {
+    _ = sh_refresh(h);
+    sh_state_event(h, udid, "booted");
+    s := sh_screen(h, udid);
+    m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_UDID, udid);
+    if s.px_w > 0 { sw_set_num(m, SW_F_SCALE, s.scale); sw_set_size(m, cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale); }
+    sh_answer(h, ci, id, m); sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_SHUTDOWN {
+    _ = sh_refresh(h); sh_state_event(h, udid, "shutdown");
+    sh_ok(h, ci, id); sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_SHOT && step == 1 {
+    // the picture at its pixels; the agent's is at points times scale
+    s := sh_screen(h, udid);
+    w := ifx s.px_w > 0 then cast(int) (cast(f64) s.px_w / s.scale * h[0].jobs[j].scale + 0.5) else 0;
+    if w <= 0 || w == s.px_w {
+      if !fs_rename(cast(string) h[0].jobs[j].tmp[0..<h[0].jobs[j].tmp_n], cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n]) { sh_job_end(h, j, "bad_args", "the screenshot could not be written there"); return; }
+      sh_job_next(h, j); return;
+    }
+    wb: [24] u8;
+    argv := [6] string.["sips", "--resampleWidth", sh_int(w, wb[..]), cast(string) h[0].jobs[j].tmp[0..<h[0].jobs[j].tmp_n], "--out", cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n]];
+    _ = sh_job_run(h, j, argv[..]); return;
+  }
+  if kind == SH_JOB_SHOT {
+    _ = fs_remove(cast(string) h[0].jobs[j].tmp[0..<h[0].jobs[j].tmp_n]);
+    sh_shot_reply(h, ci, id, udid, cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n]);
+    sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_APPEARANCE {
+    m := h[0].reply[..]; sw_reply_ok(m, id);
+    _ = sw_set_str(m, SW_F_APPEARANCE, sh_trim(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n]));
+    sh_answer(h, ci, id, m); sh_job_end(h, j, "", ""); return;
+  }
+  if kind == SH_JOB_LAUNCH {
+    app := cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n];
+    if app.count > 0 && step == 1 {
+      // the .app's bundle id, from its Info.plist
+      ib: [SH_PATH] u8; ip := sh_put(ib[..], 0, app); ip = sh_put(ib[..], ip, "/Info.plist");
+      argv := [5] string.["plutil", "-extract", "CFBundleIdentifier", "raw", cast(string) ib[0..<ip]];
+      _ = sh_job_run(h, j, argv[..]); return;
+    }
+    if app.count > 0 && step == 2 {
+      h[0].jobs[j].bundle_n = sd_put(h[0].jobs[j].bundle[..], sh_trim(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n]));
+    }
+    bundle := cast(string) h[0].jobs[j].bundle[0..<h[0].jobs[j].bundle_n];
+    if (app.count == 0 && step == 1) || (app.count > 0 && step == 2) {
+      argv := [6] string.["xcrun", "simctl", "launch", "--terminate-running-process", udid, bundle];
+      _ = sh_job_run(h, j, argv[..]); return;
+    }
+    // "BUNDLE: PID"
+    out := sh_trim(cast(string) h[0].jobs[j].out[0..<h[0].jobs[j].out_n]);
+    c := sd_find(out, ": ", 0); pid := 0;
+    if c > 0 { for ch: out[c + 2..<out.count] { if ch >= '0' && ch <= '9' { pid = pid * 10 + cast(int) (ch - '0'); } } }
+    m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_BUNDLE, bundle); if pid > 0 { sw_set_int(m, SW_F_PID, pid); }
+    sh_answer(h, ci, id, m); sh_job_end(h, j, "", ""); return;
+  }
+  sh_ok(h, ci, id); sh_job_end(h, j, "", "");
+}
+sh_shot_reply :: (h: [] ShHost, ci: int, id: int, udid: string, path: string) {
+  s := sh_screen(h, udid);
+  m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_PATH, path);
+  if s.px_w > 0 { sw_set_size(m, cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale); }
+  sw_set_int(m, SW_F_BYTES, fs_size(path));
+  sh_answer(h, ci, id, m);
+}
+sh_state_event :: (h: [] ShHost, udid: string, state: string) {
+  m := h[0].reply[..]; sw_clear(m); _ = sw_set_str(m, SW_F_EVENT, "state"); _ = sw_set_str(m, SW_F_DEVICE, udid); _ = sw_set_str(m, SW_F_STATE, state);
+  sh_emit(h, m);
+}
+
+// ---- one request
+
+sh_client_chat :: (h: [] ShHost, ci: int) -> string { return cast(string) h[0].clients[ci].chat[0..<h[0].clients[ci].chat_n]; }
+sh_client_engine :: (h: [] ShHost, ci: int) -> string { return cast(string) h[0].clients[ci].engine[0..<h[0].clients[ci].engine_n]; }
+sh_rate :: (h: [] ShHost, chat: string) -> bool {
+  for i: 0..<h[0].nchats { if cast(string) h[0].chats[i].chat[0..<h[0].chats[i].chat_n] == chat { return sp_rate_take(h[0].chats[i].rate[..], proc_now_ms()); } }
+  at := ifx h[0].nchats < SH_CHATS then h[0].nchats else SH_CHATS - 1;
+  h[0].chats[at] = ShChat.{}; h[0].chats[at].chat_n = sd_put(h[0].chats[at].chat[..], chat);
+  if at == h[0].nchats { h[0].nchats += 1; }
+  return sp_rate_take(h[0].chats[at].rate[..], proc_now_ms());
+}
+// A request line from client ci: read, held to the policy, run (or parked for the person's answer).
+sh_request :: (h: [] ShHost, ci: int, line: string) {
+  m := h[0].msg[..];
+  if !sw_read(line, m, h[0].why[..]) {
+    // a line that can't be read has no id to answer to: the answer carries id 0
+    sw_reply_error(h[0].reply[..], 0, "bad_args", sw_why(h[0].why[..])); sh_send_msg(h, ci, h[0].reply[..]); return;
+  }
+  id := sw_int(m, SW_F_ID, 0);
+  if !sw_has(m, SW_F_OP) { sh_fail(h, ci, id, "bad_args", "a request names an op"); return; }
+  op := sw_str(m, SW_F_OP);
+  // who asks: the hello's chat and engine, or the request's own
+  if op == "hello" { sh_hello(h, ci, id); return; }
+  chat := ifx sw_has(m, SW_F_CHAT) then sw_str(m, SW_F_CHAT) else sh_client_chat(h, ci);
+  cb: [64] u8; chat = cast(string) cb[0..<sd_put(cb[..], chat)];
+  if h[0].listed_ms == 0 || proc_now_ms() - h[0].listed_ms > 2000 { _ = sh_refresh(h); }
+  di := sh_pick(h, sw_str(m, SW_F_DEVICE));
+  udid := ""; name := ""; booted := false;
+  ub: [64] u8; nb: [128] u8;
+  if di >= 0 {
+    udid = cast(string) ub[0..<sd_put(ub[..], sd_udid(h[0].devices[..], di))];
+    name = cast(string) nb[0..<sd_put(nb[..], sd_name(h[0].devices[..], di))];
+    booted = h[0].devices[0].d[di].state == SD_BOOTED;
+  }
+  a := SpAsk.{op = op, from_person = h[0].clients[ci].app, listed = di >= 0, booted_by_person = di >= 0 && !sh_by_agent(h, udid), rate_ok = true};
+  a.grant = sp_grant_for(h[0].grants[..], chat, udid, proc_now_ms());
+  a.held = !a.from_person && sp_held(h[0].touched_ms, proc_now_ms());
+  why: [1200] u8;
+  held_by := "";
+  if !a.from_person && sp_class(op) == SP_CONTROL && di >= 0 { held_by = sh_contested(h, udid, name, booted, why[..]); a.contested = held_by.count > 0; }
+  if !a.from_person && sp_class(op) == SP_CONTROL { a.rate_ok = sh_rate(h, chat); }
+  code := sp_decide(a);
+  if code == "no_grant" && sh_any_app(h) && chat.count > 0 { sh_park(h, ci, line, chat, udid, name); return; }
+  if code.count > 0 { sh_fail(h, ci, id, code, sh_why(code, held_by, op)); return; }
+  if !a.from_person && sp_class(op) == SP_CONTROL && udid.count > 0 { sh_agent_event(h, ci, chat, udid, m); }
+  sh_run(h, ci, id, op, udid, booted, m);
+}
+sh_why :: (code: string, held: string, op: string) -> string {
+  if code == "no_grant" { return "OpenAgents has not allowed this chat to control the simulator; open OpenAgents to allow it."; }
+  if code == "denied" { return "the person, or the simulator's rules, refused it."; }
+  if code == "contested" { return ifx held.count > 0 then held else "another tool is using this simulator"; }
+  if code == "no_device" { return "no such simulator, or none is booted"; }
+  if code == "interrupted" { return "the person is using the simulator; try again in a moment"; }
+  if code == "bad_args" { return "unknown op"; }
+  return code;
+}
+sh_park :: (h: [] ShHost, ci: int, line: string, chat: string, udid: string, name: string) {
+  for k: 0..<SH_ASKS {
+    if h[0].asks[k].live || line.count > h[0].asks[k].line.count { continue; }
+    h[0].asks[k].live = true; h[0].asks[k].client = ci; h[0].asks[k].n = sh_put(h[0].asks[k].line[..], 0, line);
+    h[0].asks[k].chat_n = sd_put(h[0].asks[k].chat[..], chat); h[0].asks[k].udid_n = sd_put(h[0].asks[k].udid[..], udid);
+    h[0].asks[k].until_ms = proc_now_ms() + SH_ASK_MS;
+    e := h[0].reply[..]; sw_clear(e);
+    _ = sw_set_str(e, SW_F_EVENT, "ask"); _ = sw_set_str(e, SW_F_OP, sw_str(h[0].msg[..], SW_F_OP)); _ = sw_set_str(e, SW_F_CHAT, chat);
+    _ = sw_set_str(e, SW_F_ENGINE, sh_client_engine(h, ci)); _ = sw_set_str(e, SW_F_DEVICE, udid); _ = sw_set_str(e, SW_F_NAME, name);
+    sh_emit(h, e);
+    return;
+  }
+  sh_fail(h, ci, sw_int(h[0].msg[..], SW_F_ID, 0), "no_grant", "too many requests wait for the person's answer");
+}
+// The person answered for (chat, device): the parked requests run, or are refused.
+sh_unpark :: (h: [] ShHost, chat: string, udid: string) {
+  for k: 0..<SH_ASKS {
+    if !h[0].asks[k].live { continue; }
+    if cast(string) h[0].asks[k].chat[0..<h[0].asks[k].chat_n] != chat || (udid.count > 0 && cast(string) h[0].asks[k].udid[0..<h[0].asks[k].udid_n] != udid) { continue; }
+    h[0].asks[k].live = false;
+    ln: [8192] u8; n := sh_put(ln[..], 0, cast(string) h[0].asks[k].line[0..<h[0].asks[k].n]);
+    sh_request(h, h[0].asks[k].client, cast(string) ln[0..<n]);
+  }
+}
+sh_asks_poll :: (h: [] ShHost) {
+  now := proc_now_ms();
+  for k: 0..<SH_ASKS {
+    if !h[0].asks[k].live || now < h[0].asks[k].until_ms { continue; }
+    h[0].asks[k].live = false;
+    if sw_read(cast(string) h[0].asks[k].line[0..<h[0].asks[k].n], h[0].msg[..], h[0].why[..]) {
+      sh_fail(h, h[0].asks[k].client, sw_int(h[0].msg[..], SW_F_ID, 0), "no_grant", "the person did not answer within two minutes");
+    }
+  }
+}
+sh_agent_event :: (h: [] ShHost, ci: int, chat: string, udid: string, m: [] SwMsg) {
+  e := h[0].reply[..]; sw_clear(e);
+  _ = sw_set_str(e, SW_F_EVENT, "agent"); _ = sw_set_str(e, SW_F_OP, sw_str(m, SW_F_OP)); _ = sw_set_str(e, SW_F_CHAT, chat);
+  _ = sw_set_str(e, SW_F_ENGINE, sh_client_engine(h, ci)); _ = sw_set_str(e, SW_F_DEVICE, udid);
+  if sw_has(m, SW_F_X) { sw_set_num(e, SW_F_X, sw_num(m, SW_F_X)); sw_set_num(e, SW_F_Y, sw_num(m, SW_F_Y)); }
+  sh_emit(h, e);
+}
+sh_hello :: (h: [] ShHost, ci: int, id: int) {
+  m := h[0].msg[..];
+  h[0].clients[ci].app = sw_str(m, SW_F_CLIENT) == "app";
+  h[0].clients[ci].chat_n = sd_put(h[0].clients[ci].chat[..], sw_str(m, SW_F_CHAT));
+  h[0].clients[ci].engine_n = sd_put(h[0].clients[ci].engine[..], sw_str(m, SW_F_ENGINE));
+  h[0].clients[ci].folder_n = sd_put(h[0].clients[ci].folder[..], sw_str(m, SW_F_FOLDER));
+  r := h[0].reply[..]; sw_reply_ok(r, id); sw_set_int(r, SW_F_VERSION, SH_VERSION); sw_set_int(r, SW_F_HELPER_PID, h[0].pid);
+  sw_set_caps(r, ifx shim_display() then "surface" else "stills", ifx shim_input() then "indigo" else "none", shim_describe());
+  _ = sw_set_str(r, SW_F_XCODE, cast(string) h[0].xcode[0..<h[0].xcode_n]);
+  sh_answer(h, ci, id, r);
+}
+// Runs an op the policy let through.
+sh_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, booted: bool, m: [] SwMsg) {
+  if op == "list" {
+    _ = sh_refresh(h);
+    r := h[0].reply[..]; sw_reply_ok(r, id);
+    for i: 0..<h[0].devices[0].n { _ = sw_add_dev(r, sd_udid(h[0].devices[..], i), sd_name(h[0].devices[..], i), sd_runtime(h[0].devices[..], i), sd_state_word(h[0].devices[0].d[i].state), sh_by_us(h, sd_udid(h[0].devices[..], i))); }
+    r[0].has[SW_F_DEVICES] = true;
+    sh_answer(h, ci, id, r); return;
+  }
+  if op == "subscribe" || op == "unsubscribe" { h[0].clients[ci].subscribed = op == "subscribe"; sh_ok(h, ci, id); return; }
+  if op == "quit" { sh_ok(h, ci, id); h[0].quit = true; return; }
+  if op == "status" {
+    r := h[0].reply[..]; sw_reply_ok(r, id); sw_set_int(r, SW_F_HELPER_PID, h[0].pid); sw_set_int(r, SW_F_COUNT, h[0].grants[0].n);
+    sh_answer(h, ci, id, r); return;
+  }
+  if op == "attach" {
+    e := h[0].reply[..]; sw_clear(e); _ = sw_set_str(e, SW_F_EVENT, "attach"); _ = sw_set_str(e, SW_F_CHAT, sh_client_chat(h, ci));
+    _ = sw_set_str(e, SW_F_ENGINE, sh_client_engine(h, ci)); if udid.count > 0 { _ = sw_set_str(e, SW_F_DEVICE, udid); }
+    sh_emit(h, e);
+    r := h[0].reply[..]; sw_reply_ok(r, id); if udid.count > 0 { _ = sw_set_str(r, SW_F_UDID, udid); }
+    sh_answer(h, ci, id, r); return;
+  }
+  if op == "grant" || op == "deny" || op == "revoke" { sh_person(h, ci, id, op, m); return; }
+  if op == "boot" {
+    if booted { r := h[0].reply[..]; sw_reply_ok(r, id); _ = sw_set_str(r, SW_F_UDID, udid); sh_answer(h, ci, id, r); return; }
+    j := sh_job_new(h, SH_JOB_BOOT, ci, id, udid);
+    if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+    sh_mark_by_us(h, udid); sh_mark_by_agent(h, udid, !h[0].clients[ci].app); sh_state_event(h, udid, "booting");
+    argv := [4] string.["xcrun", "simctl", "boot", udid];
+    _ = sh_job_run(h, j, argv[..]); return;
+  }
+  if !booted && op != "build" { sh_fail(h, ci, id, "not_booted", "the simulator is not booted; boot it first"); return; }
+  if op == "shutdown" { sh_simple(h, ci, id, udid, SH_JOB_SHUTDOWN, "shutdown", "", ""); return; }
+  if op == "screenshot" { sh_shot(h, ci, id, udid, m); return; }
+  if op == "set_appearance" {
+    st := sw_str(m, SW_F_STATE);
+    if st != "light" && st != "dark" { sh_fail(h, ci, id, "bad_args", "state is light or dark"); return; }
+    sh_simple4(h, ci, id, udid, SH_JOB_SIMPLE, "ui", "appearance", st); return;
+  }
+  if op == "appearance" { sh_simple4(h, ci, id, udid, SH_JOB_APPEARANCE, "ui", "appearance", ""); return; }
+  if op == "open_url" {
+    url := sw_str(m, SW_F_URL);
+    if url.count == 0 || sd_find(url, ":", 0) <= 0 { sh_fail(h, ci, id, "bad_args", "url is a URL with a scheme"); return; }
+    sh_simple(h, ci, id, udid, SH_JOB_SIMPLE, "openurl", url, ""); return;
+  }
+  if op == "terminate" {
+    b := sw_str(m, SW_F_BUNDLE);
+    if b.count == 0 { sh_fail(h, ci, id, "bad_args", "terminate needs bundle_id"); return; }
+    sh_simple(h, ci, id, udid, SH_JOB_SIMPLE, "terminate", b, ""); return;
+  }
+  if op == "launch" || op == "install" { sh_launch(h, ci, id, op, udid, m); return; }
+  if shim_input() || shim_display() { if shim_run(h, ci, id, op, udid, m) { return; } }
+  if sp_class(op) == SP_CONTROL { sh_fail(h, ci, id, "input_unavailable", "this helper can't send touches or keys to the simulator with this Xcode"); return; }
+  sh_fail(h, ci, id, "bad_args", "this helper does not do that op yet");
+}
+sh_simple :: (h: [] ShHost, ci: int, id: int, udid: string, kind: int, verb: string, a1: string, a2: string) {
+  j := sh_job_new(h, kind, ci, id, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  if a1.count == 0 { argv := [4] string.["xcrun", "simctl", verb, udid]; _ = sh_job_run(h, j, argv[..]); return; }
+  if a2.count == 0 { argv := [5] string.["xcrun", "simctl", verb, udid, a1]; _ = sh_job_run(h, j, argv[..]); return; }
+  argv := [6] string.["xcrun", "simctl", verb, udid, a1, a2]; _ = sh_job_run(h, j, argv[..]);
+}
+// `simctl ui UDID appearance [STATE]`: the subcommand comes before the device.
+sh_simple4 :: (h: [] ShHost, ci: int, id: int, udid: string, kind: int, verb: string, what: string, state: string) {
+  j := sh_job_new(h, kind, ci, id, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  if state.count == 0 { argv := [5] string.["xcrun", "simctl", verb, udid, what]; _ = sh_job_run(h, j, argv[..]); return; }
+  argv := [6] string.["xcrun", "simctl", verb, udid, what, state]; _ = sh_job_run(h, j, argv[..]);
+}
+sh_shot :: (h: [] ShHost, ci: int, id: int, udid: string, m: [] SwMsg) {
+  out := sw_str(m, SW_F_OUT);
+  if out.count == 0 || out[0] != '/' { sh_fail(h, ci, id, "bad_args", "screenshot needs out, an absolute path for the picture"); return; }
+  scale := ifx sw_has(m, SW_F_SCALE) then sw_num(m, SW_F_SCALE) else 1.0;
+  if scale < 0.25 || scale > 1.0 { sh_fail(h, ci, id, "bad_args", "scale is from 0.25 to 1"); return; }
+  if shim_display() && shim_shot(udid, out, scale) { sh_shot_reply(h, ci, id, udid, out); return; }
+  j := sh_job_new(h, SH_JOB_SHOT, ci, id, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  h[0].jobs[j].scale = scale; h[0].jobs[j].path_n = sd_put(h[0].jobs[j].path[..], out);
+  tb: [SH_PATH] u8; n := sh_put(tb[..], 0, out); n = sh_put(tb[..], n, ".full.png");
+  h[0].jobs[j].tmp_n = sd_put(h[0].jobs[j].tmp[..], cast(string) tb[0..<n]);
+  argv := [7] string.["xcrun", "simctl", "io", udid, "screenshot", "--type=png", cast(string) tb[0..<n]];
+  _ = sh_job_run(h, j, argv[..]);
+}
+sh_launch :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwMsg) {
+  app := sw_str(m, SW_F_APP_PATH); bundle := sw_str(m, SW_F_BUNDLE);
+  if app.count == 0 && (op == "install" || bundle.count == 0) { sh_fail(h, ci, id, "bad_args", "give app_path (a built .app) or bundle_id"); return; }
+  rb: [SH_PATH] u8; real := "";
+  if app.count > 0 {
+    real = fs_realpath(app, rb[..]);
+    if !sh_install_ok(h, ci, real) { sh_fail(h, ci, id, "install_refused", "an .app is installed only from the chat's working folder or OpenAgents's DerivedData (~/.cache/openagents/sim-dd)"); return; }
+  }
+  j := sh_job_new(h, SH_JOB_LAUNCH, ci, id, udid);
+  if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
+  h[0].jobs[j].path_n = sd_put(h[0].jobs[j].path[..], real); h[0].jobs[j].bundle_n = sd_put(h[0].jobs[j].bundle[..], bundle);
+  if app.count > 0 {
+    if op == "install" { h[0].jobs[j].kind = SH_JOB_SIMPLE; }
+    argv := [5] string.["xcrun", "simctl", "install", udid, real]; _ = sh_job_run(h, j, argv[..]); return;
+  }
+  h[0].jobs[j].step = 0; sh_job_next(h, j);
+}
+// Rule 5: the .app is under the client's folder (its hello's, real) or our DerivedData.
+sh_install_ok :: (h: [] ShHost, ci: int, real: string) -> bool {
+  if real.count == 0 { return false; }
+  hb: [SH_PATH] u8; home := proc_getenv("HOME", hb[..]);
+  dd: [SH_PATH] u8; dn := sh_put(dd[..], 0, home); dn = sh_put(dd[..], dn, "/.cache/openagents/sim-dd");
+  ddr: [SH_PATH] u8; ddreal := fs_realpath(cast(string) dd[0..<dn], ddr[..]);
+  fr: [SH_PATH] u8; folder := fs_realpath(cast(string) h[0].clients[ci].folder[0..<h[0].clients[ci].folder_n], fr[..]);
+  roots := [2] string.[ifx ddreal.count > 0 then ddreal else cast(string) dd[0..<dn], folder];
+  return sp_app_allowed(real, roots[..]);
+}
+// grant, deny and revoke: the person's answers, from the app's pane only (the policy saw to that).
+sh_person :: (h: [] ShHost, ci: int, id: int, op: string, m: [] SwMsg) {
+  chat := sw_str(m, SW_F_CHAT); device := sw_str(m, SW_F_DEVICE);
+  cb: [64] u8; chat = cast(string) cb[0..<sd_put(cb[..], chat)];
+  db: [64] u8; device = cast(string) db[0..<sd_put(db[..], device)];
+  if chat.count == 0 { sh_fail(h, ci, id, "bad_args", "name the chat"); return; }
+  if op == "revoke" {
+    n := sp_revoke(h[0].grants[..], chat, device);
+    sh_grants_save(h);
+    r := h[0].reply[..]; sw_reply_ok(r, id); sw_set_int(r, SW_F_COUNT, n); sh_answer(h, ci, id, r);
+    e := h[0].reply[..]; sw_clear(e); _ = sw_set_str(e, SW_F_EVENT, "revoked"); _ = sw_set_str(e, SW_F_CHAT, chat); sh_emit(h, e);
+    // and to the chat's own clients, so an agent hears it before its next op
+    k := sw_write(e, h[0].line[..]);
+    for i: 0..<SH_CLIENTS { if k > 0 && h[0].clients[i].live && !h[0].clients[i].subscribed && sh_client_chat(h, i) == chat { sh_send(h, i, cast(string) h[0].line[0..<k]); } }
+    return;
+  }
+  scope := ifx op == "deny" then SP_GRANT_DENIED else sp_scope(sw_str(m, SW_F_SCOPE));
+  if scope == SP_GRANT_NONE || device.count == 0 { sh_fail(h, ci, id, "bad_args", "a grant names a device and a scope: chat, once or deny"); return; }
+  until := ifx sw_int(m, SW_F_EXPIRES, 0) > 0 then proc_now_ms() + 1000 * sw_int(m, SW_F_EXPIRES, 0) else 0;
+  if !sp_grant_set(h[0].grants[..], chat, device, scope, until) { sh_fail(h, ci, id, "bad_args", "too many grants"); return; }
+  sh_grants_save(h);
+  sh_ok(h, ci, id);
+  sh_unpark(h, chat, device);
+}
+
+// ---- the loop
+
+sh_accept :: (h: [] ShHost, wait_ms: int) -> bool {
+  c := cxsock_accept(h[0].listener, wait_ms);
+  if c < 0 { return false; }
+  for i: 0..<SH_CLIENTS {
+    if !h[0].clients[i].live {
+      h[0].clients[i] = ShClient.{live = true, h = c};
+      h[0].last_client_ms = proc_now_ms();
+      return true;
+    }
+  }
+  _ = cxsock_close(c);
+  return true;
+}
+// Reads what client ci sent; each whole line is a request. True when something came.
+sh_read :: (h: [] ShHost, ci: int) -> bool {
+  c := h[0].clients[ci].h;
+  got := cxsock_read(c, 0);
+  if got == -2 { return false; }
+  if got < 0 { sh_drop(h, ci); return true; }
+  for i: 0..<got {
+    b := cxsock_byte(c, i);
+    if b == 10 {
+      n := h[0].clients[ci].n; h[0].clients[ci].n = 0;
+      ln: [SW_LINE] u8; k := sh_put(ln[..], 0, cast(string) h[0].clients[ci].buf[0..<n]);
+      sh_request(h, ci, cast(string) ln[0..<k]);
+      if !h[0].clients[ci].live { return true; }
+      continue;
+    }
+    if h[0].clients[ci].n < SW_LINE { h[0].clients[ci].buf[h[0].clients[ci].n] = cast(u8) b; h[0].clients[ci].n += 1; }
+  }
+  return true;
+}
+sh_live_clients :: (h: [] ShHost) -> int { n := 0; for i: 0..<SH_CLIENTS { if h[0].clients[i].live { n += 1; } } return n; }
+sh_live_jobs :: (h: [] ShHost) -> int { n := 0; for j: 0..<SH_JOBS { if h[0].jobs[j].live { n += 1; } } return n; }
+// Serves until quit or SH_IDLE_MS with no client. 0 when it ended well.
+sh_serve :: (h: [] ShHost) -> int {
+  h[0].last_client_ms = proc_now_ms();
+  quiet := 0;
+  while !h[0].quit {
+    moved := sh_accept(h, ifx quiet > 50 then 20 else 2);
+    for i: 0..<SH_CLIENTS { if h[0].clients[i].live && sh_read(h, i) { moved = true; } }
+    for j: 0..<SH_JOBS { if h[0].jobs[j].live { sh_job_poll(h, j); } }
+    sh_asks_poll(h);
+    if shim_display() { shim_poll(h); }
+    if sh_live_clients(h) > 0 { h[0].last_client_ms = proc_now_ms(); }
+    else if sh_live_jobs(h) == 0 && proc_now_ms() - h[0].last_client_ms > SH_IDLE_MS { break; }
+    quiet = ifx moved then 0 else quiet + 1;
+  }
+  for i: 0..<SH_CLIENTS { sh_drop(h, i); }
+  return 0;
+}
+// Prepares the helper: its folder, the lock (one helper a user), the socket, the grants.
+// "" when it is ready, else why not.
+sh_start :: (h: [] ShHost, home: string, sock: string, pid: int) -> string {
+  h[0].home_n = sd_put(h[0].home[..], home);
+  h[0].sock_n = sd_put(h[0].sock[..], sock);
+  h[0].pid = pid;
+  if !fs_exists(home) && !fs_mkdir_private(home) { return "the helper's folder could not be made"; }
+  lb: [SH_PATH] u8;
+  if !fs_try_lock(sh_join(home, "simhost.lock", lb[..])) { return "another helper is running"; }
+  _ = fs_remove(sock);
+  for c: sock { _ = cxsock_host_push(cast(int) c); }
+  h[0].listener = cxsock_listen_unix();
+  if h[0].listener < 0 { return "the helper's socket could not be made"; }
+  argv := [2] string.["xcodebuild", "-version"];
+  out: [1024] u8; err: [256] u8;
+  r := proc_run(argv[..], 20000, out[..], err[..]);
+  v := cast(string) out[0..<r.out_n];
+  if r.status == 0 && sd_starts(v, "Xcode ") { e := 6; while e < v.count && v[e] != '\n' { e += 1; } h[0].xcode_n = sd_put(h[0].xcode[..], v[6..<e]); }
+  sb: [256] u8; h[0].secret_n = sd_put(h[0].secret[..], proc_getenv("OA_SIM_SECRET", sb[..]));
+  sh_grants_load(h);
+  _ = sh_refresh(h);
+  _ = shim_start();
+  return "";
+}

@@ -1,0 +1,219 @@
+// Gestures and keys for the simulator (docs/desktop/ios-simulator-spec.md sections 4.3 and 7.2;
+// GitHub #13811): where a point in the pane's view lands on the device's screen, the samples of a
+// tap, a swipe and a touch path, and the HID usage of each key. The helper (sim-host.coax) turns
+// an agent's op into these steps; the app's view (SimulatorPaneView.swift) maps the person's mouse
+// with the same arithmetic, through the page (coder_page_sim_map).
+// Points are the device's points, origin top-left, in the orientation the screen is shown in.
+
+// The screen's rect inside a view of vw x vh: the device's dw x dh points scaled to fit, centred.
+SgFit :: struct { x: f64; y: f64; w: f64; h: f64; scale: f64; }
+sg_fit :: (vw: f64, vh: f64, dw: f64, dh: f64) -> SgFit {
+  if !(vw > 0.0) || !(vh > 0.0) || !(dw > 0.0) || !(dh > 0.0) { return SgFit.{}; }
+  s := vw / dw;
+  if vh / dh < s { s = vh / dh; }
+  w := dw * s; h := dh * s;
+  return SgFit.{x = (vw - w) / 2.0, y = (vh - h) / 2.0, w = w, h = h, scale = s};
+}
+sg_clamp :: (v: f64, lo: f64, hi: f64) -> f64 { return ifx v < lo then lo else ifx v > hi then hi else v; }
+// A view point (top-left origin) to a device point, clamped to the screen.
+SgPoint :: struct { x: f64; y: f64; }
+sg_view_to_device :: (vx: f64, vy: f64, vw: f64, vh: f64, dw: f64, dh: f64) -> SgPoint {
+  f := sg_fit(vw, vh, dw, dh);
+  if !(f.scale > 0.0) { return SgPoint.{}; }
+  return SgPoint.{x = sg_clamp((vx - f.x) / f.scale, 0.0, dw), y = sg_clamp((vy - f.y) / f.scale, 0.0, dh)};
+}
+sg_device_to_view :: (x: f64, y: f64, vw: f64, vh: f64, dw: f64, dh: f64) -> SgPoint {
+  f := sg_fit(vw, vh, dw, dh);
+  return SgPoint.{x = f.x + x * f.scale, y = f.y + y * f.scale};
+}
+#test "the screen fits the view, centred" {
+  f := sg_fit(420.0, 874.0, 402.0, 874.0);
+  #assert f.x == 9.0 && f.w == 402.0 && f.scale == 1.0 && f.y == 0.0;
+  g := sg_fit(201.0, 2000.0, 402.0, 874.0);
+  #assert g.scale == 0.5 && g.x == 0.0 && g.h == 437.0;
+  #assert sg_fit(0.0, 10.0, 1.0, 1.0).scale == 0.0 && sg_fit(10.0, 10.0, 0.0, 1.0).scale == 0.0;
+  p := sg_view_to_device(0.0, 0.0, 420.0, 1000.0, 402.0, 874.0);
+  #assert p.x == 0.0 && p.y == 0.0;
+  q := sg_view_to_device(420.0, 1000.0, 420.0, 1000.0, 402.0, 874.0);
+  #assert q.x == 402.0 && q.y == 874.0;
+  z := sg_view_to_device(5.0, 5.0, 0.0, 0.0, 402.0, 874.0); #assert z.x == 0.0 && z.y == 0.0;
+}
+#forall "a view point inside the screen maps to the device and back within half a point" vx: 0..<64, vy: 0..<64, wide: bool {
+  vw := ifx wide then 900.0 else 300.0; vh := 640.0;
+  dw := ifx wide then 874.0 else 402.0; dh := ifx wide then 402.0 else 874.0;
+  f := sg_fit(vw, vh, dw, dh);
+  px := f.x + f.w * cast(f64) vx / 63.0; py := f.y + f.h * cast(f64) vy / 63.0;
+  d := sg_view_to_device(px, py, vw, vh, dw, dh);
+  #assert d.x >= 0.0 && d.x <= dw && d.y >= 0.0 && d.y <= dh;
+  b := sg_device_to_view(d.x, d.y, vw, vh, dw, dh);
+  #assert b.x - px < 0.5 && px - b.x < 0.5 && b.y - py < 0.5 && py - b.y < 0.5;
+}
+
+// Rotation: the device's framebuffer is portrait; a screen shown turned r quarter turns to the
+// left (1: landscape left) has its point (x, y) at another place on the framebuffer.
+// pw x ph: the portrait size in points.
+sg_to_portrait :: (x: f64, y: f64, pw: f64, ph: f64, r: int) -> SgPoint {
+  q := ((r % 4) + 4) % 4;
+  if q == 1 { return SgPoint.{x = pw - y, y = x}; }
+  if q == 2 { return SgPoint.{x = pw - x, y = ph - y}; }
+  if q == 3 { return SgPoint.{x = y, y = ph - x}; }
+  return SgPoint.{x = x, y = y};
+}
+sg_from_portrait :: (x: f64, y: f64, pw: f64, ph: f64, r: int) -> SgPoint {
+  q := ((r % 4) + 4) % 4;
+  if q == 1 { return SgPoint.{x = y, y = pw - x}; }
+  if q == 2 { return SgPoint.{x = pw - x, y = ph - y}; }
+  if q == 3 { return SgPoint.{x = ph - y, y = x}; }
+  return SgPoint.{x = x, y = y};
+}
+#forall "a point turned to the framebuffer and back is where it was, and stays on it" x: 0..<41, y: 0..<88, r: 0..<4 {
+  pw := 402.0; ph := 874.0;
+  sw := ifx r % 2 == 1 then ph else pw; sh := ifx r % 2 == 1 then pw else ph;
+  px := sw * cast(f64) x / 40.0; py := sh * cast(f64) y / 87.0;
+  p := sg_to_portrait(px, py, pw, ph, r);
+  #assert p.x >= 0.0 && p.x <= pw && p.y >= 0.0 && p.y <= ph;
+  b := sg_from_portrait(p.x, p.y, pw, ph, r);
+  #assert b.x - px < 0.000001 && px - b.x < 0.000001 && b.y - py < 0.000001 && py - b.y < 0.000001;
+}
+#test "rotation: the corners land where a turned phone puts them" {
+  a := sg_to_portrait(0.0, 0.0, 402.0, 874.0, 1); #assert a.x == 402.0 && a.y == 0.0;
+  b := sg_to_portrait(874.0, 402.0, 402.0, 874.0, 1); #assert b.x == 0.0 && b.y == 874.0;
+  c := sg_to_portrait(0.0, 0.0, 402.0, 874.0, 3); #assert c.x == 0.0 && c.y == 874.0;
+  d := sg_to_portrait(1.0, 2.0, 402.0, 874.0, 2); #assert d.x == 401.0 && d.y == 872.0;
+  e := sg_to_portrait(1.0, 2.0, 402.0, 874.0, -4); #assert e.x == 1.0 && e.y == 2.0;
+}
+
+// ---- paths
+
+SG_FRAME_MS :: 16.0;      // samples of a moving finger, one a display frame
+SG_TAP_MS :: 60.0;        // how long a tap's finger rests
+SG_SAMPLES :: 2000;
+// A sample of a one-finger path: where, and how long after the one before.
+SgSample :: struct { x: f64; y: f64; dt_ms: f64; }
+// Smoothstep from 0 to 1: the finger eases in and out.
+sg_ease :: (t: f64) -> f64 { u := sg_clamp(t, 0.0, 1.0); return u * u * (3.0 - 2.0 * u); }
+// A swipe from (x, y) to (x2, y2) over duration_ms: a sample at the start and one a frame, the
+// last exactly at the end. The count of samples written.
+sg_swipe :: (x: f64, y: f64, x2: f64, y2: f64, duration_ms: f64, out: [] SgSample) -> int {
+  if out.count < 2 { return 0; }
+  d := ifx duration_ms > 0.0 then duration_ms else 0.0;
+  steps := cast(int) (d / SG_FRAME_MS);
+  if steps < 1 { steps = 1; }
+  if steps > out.count - 1 { steps = out.count - 1; }
+  dt := d / cast(f64) steps;
+  out[0] = SgSample.{x = x, y = y, dt_ms = 0.0};
+  for i: 1..<steps + 1 {
+    e := sg_ease(cast(f64) i / cast(f64) steps);
+    out[i] = SgSample.{x = x + (x2 - x) * e, y = y + (y2 - y) * e, dt_ms = dt};
+  }
+  out[steps] = SgSample.{x = x2, y = y2, dt_ms = dt};
+  return steps + 1;
+}
+#test "a swipe starts and ends where asked, a sample a frame" {
+  s: [64] SgSample;
+  n := sg_swipe(10.0, 20.0, 110.0, 420.0, 300.0, s[..]);
+  #assert n == 19 && s[0].x == 10.0 && s[0].y == 20.0 && s[0].dt_ms == 0.0 && s[n - 1].x == 110.0 && s[n - 1].y == 420.0;
+  total := 0.0; for i: 0..<n { total += s[i].dt_ms; }
+  #assert total > 299.99 && total < 300.01;
+  #assert sg_swipe(1.0, 1.0, 2.0, 2.0, 0.0, s[..]) == 2 && s[1].x == 2.0 && s[1].dt_ms == 0.0;
+  #assert sg_swipe(1.0, 1.0, 2.0, 2.0, 100000.0, s[..]) == 64 && s[63].x == 2.0;
+  one: [1] SgSample; #assert sg_swipe(1.0, 1.0, 2.0, 2.0, 50.0, one[..]) == 0;
+  #assert sg_ease(-1.0) == 0.0 && sg_ease(0.5) == 0.5 && sg_ease(2.0) == 1.0;
+}
+#forall "every swipe sample lies between its ends" a: 0..<12, b: 0..<12, ms: 0..<8 {
+  s: [SG_SAMPLES] SgSample;
+  x := cast(f64) a * 33.0; y := cast(f64) b * 70.0; x2 := 402.0 - x; y2 := 874.0 - y;
+  n := sg_swipe(x, y, x2, y2, cast(f64) ms * 150.0, s[..]);
+  lox := ifx x < x2 then x else x2; hix := ifx x < x2 then x2 else x;
+  loy := ifx y < y2 then y else y2; hiy := ifx y < y2 then y2 else y;
+  for i: 0..<n { #assert s[i].x >= lox && s[i].x <= hix && s[i].y >= loy && s[i].y <= hiy; }
+  #assert s[n - 1].x == x2 && s[n - 1].y == y2;
+}
+// The total time of a path's samples.
+sg_path_ms :: (dts: [] f64) -> f64 { t := 0.0; for d: dts { t += d; } return t; }
+
+// ---- keys (HID usages, page 7)
+
+SG_SHIFT :: 0xE1; SG_COMMAND :: 0xE3;
+// A named key: its usage, and the modifier held with it (0 none). -1 when the name is unknown.
+SgKey :: struct { usage: int; mod: int; mod2: int; }
+sg_named_key :: (name: string) -> SgKey {
+  if name == "return" || name == "enter" { return SgKey.{usage = 0x28}; }
+  if name == "delete" || name == "backspace" { return SgKey.{usage = 0x2A}; }
+  if name == "forward_delete" { return SgKey.{usage = 0x4C}; }
+  if name == "escape" { return SgKey.{usage = 0x29}; }
+  if name == "tab" { return SgKey.{usage = 0x2B}; }
+  if name == "space" { return SgKey.{usage = 0x2C}; }
+  if name == "right" { return SgKey.{usage = 0x4F}; }
+  if name == "left" { return SgKey.{usage = 0x50}; }
+  if name == "down" { return SgKey.{usage = 0x51}; }
+  if name == "up" { return SgKey.{usage = 0x52}; }
+  if name == "home" { return SgKey.{usage = 0x4A}; }
+  if name == "page_up" { return SgKey.{usage = 0x4B}; }
+  if name == "end" { return SgKey.{usage = 0x4D}; }
+  if name == "page_down" { return SgKey.{usage = 0x4E}; }
+  if name == "select_all" { return SgKey.{usage = 0x04, mod = SG_COMMAND}; }
+  if name == "undo" { return SgKey.{usage = 0x1D, mod = SG_COMMAND}; }
+  if name == "redo" { return SgKey.{usage = 0x1D, mod = SG_COMMAND, mod2 = SG_SHIFT}; }
+  return SgKey.{usage = -1};
+}
+// A printable ASCII byte as a US keyboard types it; usage -1 for any other byte.
+sg_ascii_key :: (c: u8) -> SgKey {
+  if c >= 'a' && c <= 'z' { return SgKey.{usage = 0x04 + cast(int) (c - 'a')}; }
+  if c >= 'A' && c <= 'Z' { return SgKey.{usage = 0x04 + cast(int) (c - 'A'), mod = SG_SHIFT}; }
+  if c >= '1' && c <= '9' { return SgKey.{usage = 0x1E + cast(int) (c - '1')}; }
+  if c == '0' { return SgKey.{usage = 0x27}; }
+  if c == '\n' { return SgKey.{usage = 0x28}; }
+  if c == '\t' { return SgKey.{usage = 0x2B}; }
+  plain := " -=[]\\;'`,./";
+  plain_u := [12] int.[0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38];
+  for i: 0..<plain.count { if plain[i] == c { return SgKey.{usage = plain_u[i]}; } }
+  shifted := "!@#$%^&*()_+{}|:\"~<>?";
+  shifted_u := [21] int.[0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38];
+  for i: 0..<shifted.count { if shifted[i] == c { return SgKey.{usage = shifted_u[i], mod = SG_SHIFT}; } }
+  return SgKey.{usage = -1};
+}
+#test "named keys and their modifiers" {
+  #assert sg_named_key("return").usage == 0x28 && sg_named_key("delete").usage == 0x2A && sg_named_key("forward_delete").usage == 0x4C;
+  #assert sg_named_key("left").usage == 0x50 && sg_named_key("right").usage == 0x4F && sg_named_key("up").usage == 0x52 && sg_named_key("down").usage == 0x51;
+  #assert sg_named_key("home").usage == 0x4A && sg_named_key("end").usage == 0x4D && sg_named_key("page_up").usage == 0x4B && sg_named_key("page_down").usage == 0x4E;
+  #assert sg_named_key("escape").usage == 0x29 && sg_named_key("tab").usage == 0x2B && sg_named_key("space").usage == 0x2C;
+  #assert sg_named_key("enter").usage == 0x28 && sg_named_key("backspace").usage == 0x2A;
+  a := sg_named_key("select_all"); #assert a.usage == 0x04 && a.mod == SG_COMMAND && a.mod2 == 0;
+  u := sg_named_key("undo"); #assert u.usage == 0x1D && u.mod == SG_COMMAND && u.mod2 == 0;
+  r := sg_named_key("redo"); #assert r.usage == 0x1D && r.mod == SG_COMMAND && r.mod2 == SG_SHIFT;
+  #assert sg_named_key("Return").usage == -1 && sg_named_key("").usage == -1;
+}
+#forall "every printable ASCII byte has a key, and nothing else does" c: 0..<256 {
+  k := sg_ascii_key(cast(u8) c);
+  printable := (c >= 32 && c <= 126) || c == 10 || c == 9;
+  #assert (k.usage >= 0) == printable;
+  if printable { #assert k.usage >= 0x04 && k.usage <= 0x38 && (k.mod == 0 || k.mod == SG_SHIFT); }
+}
+#test "ASCII as a US keyboard types it" {
+  #assert sg_ascii_key('a').usage == 0x04 && sg_ascii_key('z').usage == 0x1D && sg_ascii_key('A').mod == SG_SHIFT && sg_ascii_key('a').mod == 0;
+  #assert sg_ascii_key('1').usage == 0x1E && sg_ascii_key('0').usage == 0x27 && sg_ascii_key('!').usage == 0x1E && sg_ascii_key('!').mod == SG_SHIFT;
+  #assert sg_ascii_key(' ').usage == 0x2C && sg_ascii_key('/').usage == 0x38 && sg_ascii_key('?').usage == 0x38 && sg_ascii_key('?').mod == SG_SHIFT;
+  #assert sg_ascii_key('"').usage == 0x34 && sg_ascii_key('\'').usage == 0x34 && sg_ascii_key('@').usage == 0x1F && sg_ascii_key('~').usage == 0x35;
+}
+// Whether text can be typed key by key (all printable ASCII); else the helper pastes it.
+sg_typeable :: (text: string) -> bool {
+  for c: text { if sg_ascii_key(c).usage < 0 { return false; } }
+  return true;
+}
+#test "text that can be typed key by key" { #assert sg_typeable("Hello, world!\n") && !sg_typeable("café") && sg_typeable(""); }
+
+// The hardware buttons (spec 7.2) as the helper's numbers.
+SG_BUTTON_HOME :: 0; SG_BUTTON_LOCK :: 1; SG_BUTTON_SIDE :: 2; SG_BUTTON_SIRI :: 3; SG_BUTTON_PAY :: 4;
+sg_button :: (name: string) -> int {
+  if name == "HOME" { return SG_BUTTON_HOME; }
+  if name == "LOCK" { return SG_BUTTON_LOCK; }
+  if name == "SIDE_BUTTON" { return SG_BUTTON_SIDE; }
+  if name == "SIRI" { return SG_BUTTON_SIRI; }
+  if name == "APPLE_PAY" { return SG_BUTTON_PAY; }
+  return -1;
+}
+#test "hardware buttons by name" {
+  #assert sg_button("HOME") == SG_BUTTON_HOME && sg_button("LOCK") == SG_BUTTON_LOCK && sg_button("SIDE_BUTTON") == SG_BUTTON_SIDE;
+  #assert sg_button("SIRI") == SG_BUTTON_SIRI && sg_button("APPLE_PAY") == SG_BUTTON_PAY && sg_button("home") == -1;
+}

@@ -1,0 +1,395 @@
+{
+ "identity": "simhost-lines-v1",
+ "check": "coax/web/tool.sh coax/lib/agent/device/sim-wire-checks.coax proto/coder/sim-host-lines-v1.json",
+ "codec": "coax/lib/agent/device/sim-wire.coax",
+ "scope": "What the iOS Simulator helper (oasim serve, coax/lib/agent/device/sim-host.coax) and its clients say over its Unix socket (~/.openagents/sim/simhost.sock, mode 0600): one JSON object a line each way. The clients are OpenAgents Desktop's pane (client app, the person) and oasim's verbs (client oasim: an agent's shell; later oasim mcp). docs/desktop/ios-simulator-spec.md section 7.4; GitHub #13811.",
+ "captured": "2026-11-20, by coder/tui/simhost-check.coax (--wire-log) against a helper built from this tree, on a throwaway iPhone 17 (iOS 26.5, Xcode 26.6) the check created and deleted. Every line is what a program wrote; the check's two connections (app and agent) are kept in the order each end wrote or read them.",
+ "framing": "A line ends with one line feed. Requests carry an id the reply echoes (id 0: no reply is wanted; a line the helper can't read gets an id-0 bad_args reply); events carry event and no id, and may carry op (the op they are about). Strings are escaped as coax/lib/json/json.coax jo_str writes them. A number is written bare when whole, else with up to four decimals, never with an exponent. Members are written in the codec's order (sim-wire.coax SW_F_*); the reader takes them in any order but refuses a member it does not know or one given twice.",
+ "codes": [
+  "no_xcode",
+  "no_device",
+  "not_booted",
+  "contested",
+  "denied",
+  "no_grant",
+  "interrupted",
+  "out_of_bounds",
+  "input_unavailable",
+  "bad_args",
+  "helper_down",
+  "timeout",
+  "install_refused"
+ ],
+ "ops": [
+  {
+   "name": "hello",
+   "note": "the first line of every connection: client (app, oasim or mcp), version, and for an agent its chat, engine and working folder"
+  },
+  {
+   "name": "subscribe",
+   "note": "the app's connection hears events (ask, agent, state, revoked; in Phase 1 surface)"
+  },
+  {
+   "name": "list",
+   "note": "the iOS devices simctl lists, each with booted_by_us"
+  },
+  {
+   "name": "boot",
+   "note": "simctl boot then bootstatus -b; the reply carries udid, points and scale"
+  },
+  {
+   "name": "screenshot",
+   "note": "simctl io screenshot, then sips to scale x points; the reply carries path, points and bytes"
+  },
+  {
+   "name": "set_appearance",
+   "note": "simctl ui appearance light|dark"
+  },
+  {
+   "name": "deny",
+   "note": "the person: Don't allow (parked requests end denied)"
+  },
+  {
+   "name": "grant",
+   "note": "the person: allow a chat on a device, scope chat or once"
+  },
+  {
+   "name": "appearance",
+   "note": "the device's appearance"
+  },
+  {
+   "name": "open_url",
+   "note": "simctl openurl"
+  },
+  {
+   "name": "launch",
+   "note": "install (an .app under the chat's folder or our DerivedData), then simctl launch --terminate-running-process"
+  },
+  {
+   "name": "shutdown",
+   "note": "simctl shutdown; an agent may shut down only a device an agent booted"
+  },
+  {
+   "name": "revoke",
+   "note": "the person: Stop (the chat's grants end; its clients hear revoked)"
+  },
+  {
+   "name": "quit",
+   "note": "the helper exits after its reply"
+  }
+ ],
+ "events": [
+  {
+   "name": "state",
+   "note": "a device's state changed (booting, booted, shutting_down, shutdown)"
+  },
+  {
+   "name": "ask",
+   "note": "an agent's op is parked until the person answers in the app (two minutes)"
+  },
+  {
+   "name": "agent",
+   "note": "an agent's control op ran, for the badge and the transcript"
+  },
+  {
+   "name": "revoked",
+   "note": "the person stopped a chat"
+  }
+ ],
+ "runs": [
+  {
+   "name": "simhost-check",
+   "what": "hello as the app and as an agent; list; boot; screenshots; a parked ask refused, then a chat grant; set_appearance and appearance; open_url; launch refused outside the chat's folders; an agent's shutdown of the person's device refused; contested under a dev.sh lock; revoke and a second refusal; the helper killed and started again by oasim; shutdown by the person; quit",
+   "lines": [
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":1,\"op\":\"hello\",\"client\":\"app\",\"version\":1}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":53735,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":2,\"op\":\"subscribe\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":2,\"ok\":true}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":3,\"op\":\"list\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"A5513C02-25DD-42CE-B446-305A8A9CF840\",\"name\":\"Chat Review\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"70AFCA67-95F4-4591-B944-3053FA1226BF\",\"name\":\"Coax Native Balance\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"E05572F4-80EE-4A27-A672-688527A30D5E\",\"name\":\"Coax Native Starter\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"E0BAC963-2F8E-41F4-AB42-9FF73D0B02E5\",\"name\":\"Everglade iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"2E850DA1-BAED-444D-92E4-9044D7F4BA90\",\"name\":\"GameBuilder iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"9B1115C1-5AC4-4E4F-AF9B-243EFA3E167E\",\"name\":\"GameBuilder Player iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"86AFF935-9643-4734-BDD6-F50DE6462AA2\",\"name\":\"OpenAgents Dev\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"91ACDEF7-2F0C-437F-8170-C747E3251342\",\"name\":\"OpenAgents Dev 2\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"FD38ED32-4BA6-4EA3-B8BA-347374640E32\",\"name\":\"OpenAgents GPU Identity\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"7F93D6CE-E8CE-40AC-BB57-D1670F01F8CD\",\"name\":\"OpenAgents Sidebar Regression\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"C8F7D7EA-1680-4465-B50E-0FB47F8C94F1\",\"name\":\"OA Vault iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"937049EC-7B55-4202-8B43-CA9752D5F346\",\"name\":\"oa-simhost-probe-9341\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"48B1D39E-75E2-4D18-A51C-7A2B59F84E11\",\"name\":\"GameBuilder Player iPad\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":4,\"op\":\"boot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"state\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"booting\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"state\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"booted\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":4,\"ok\":true,\"udid\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scale\":3,\"points\":{\"w\":402,\"h\":874}}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":5,\"op\":\"screenshot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/one.png\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":5,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/one.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":384508}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":1,\"op\":\"hello\",\"client\":\"oasim\",\"version\":1,\"chat\":\"check-chat\",\"engine\":\"Microcoder\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":53735,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":10,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"dark\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":6,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"once\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":6,\"ok\":true}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":10,\"ok\":false,\"code\":\"denied\",\"why\":\"the person, or the simulator's rules, refused it.\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"chat\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":7,\"ok\":true}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":11,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"dark\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":11,\"ok\":true}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":12,\"op\":\"appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":12,\"ok\":true,\"appearance\":\"dark\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":13,\"op\":\"screenshot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scale\":0.5,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/two.png\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":13,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/two.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":109335}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":14,\"op\":\"open_url\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"url\":\"https://example.com\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":14,\"ok\":true}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":15,\"op\":\"launch\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"app_path\":\"/Applications/Safari.app\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":15,\"ok\":false,\"code\":\"install_refused\",\"why\":\"an .app is installed only from the chat's working folder or OpenAgents's DerivedData (~/.cache/openagents/sim-dd)\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":16,\"op\":\"shutdown\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":16,\"ok\":false,\"code\":\"denied\",\"why\":\"the person, or the simulator's rules, refused it.\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":17,\"op\":\"open_url\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"url\":\"https://example.com\"}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":17,\"ok\":false,\"code\":\"contested\",\"why\":\"apps/openagents-ios/dev.sh is using it\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"open_url\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":8,\"ok\":true,\"count\":1}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"event\":\"revoked\",\"chat\":\"check-chat\"}"
+    },
+    {
+     "from": "agent",
+     "to": "helper",
+     "line": "{\"id\":18,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"light\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"revoked\",\"chat\":\"check-chat\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":9,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"once\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":9,\"ok\":true}"
+    },
+    {
+     "from": "helper",
+     "to": "agent",
+     "line": "{\"id\":18,\"ok\":false,\"code\":\"denied\",\"why\":\"the person, or the simulator's rules, refused it.\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":1,\"op\":\"hello\",\"client\":\"app\",\"version\":1}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":54317,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":19,\"op\":\"grant\",\"chat\":\"check-chat-2\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"chat\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":19,\"ok\":true}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":20,\"op\":\"shutdown\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":20,\"ok\":true}"
+    },
+    {
+     "from": "app",
+     "to": "helper",
+     "line": "{\"id\":21,\"op\":\"quit\"}"
+    },
+    {
+     "from": "helper",
+     "to": "app",
+     "line": "{\"id\":21,\"ok\":true}"
+    }
+   ]
+  }
+ ],
+ "skipped": [
+  "",
+  "{}",
+  "not json",
+  "[1]",
+  "{\"id\":1}",
+  "{\"id\":1,\"op\":\"tap\",\"ok\":true}",
+  "{\"id\":1,\"op\":\"tap\",\"x\":1,\"x\":2}",
+  "{\"id\":1,\"op\":\"tap\",\"wat\":1}",
+  "{\"id\":\"1\",\"op\":\"list\"}",
+  "{\"id\":1,\"op\":7}",
+  "{\"id\":1,\"ok\":true,\"points\":{\"w\":1}}"
+ ]
+}

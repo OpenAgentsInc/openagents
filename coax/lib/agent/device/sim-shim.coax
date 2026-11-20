@@ -1,0 +1,11 @@
+// The simulator helper's platform shim (docs/desktop/ios-simulator-spec.md sections 4.2, 4.3 and
+// 6.2; GitHub #13811), as the helper sees it. This build has none: the helper runs on the public
+// tools only (simctl and sips), so the pane shows stills and touch ops answer input_unavailable.
+shim_start :: () -> bool { return false; }
+shim_display :: () -> bool { return false; }
+shim_input :: () -> bool { return false; }
+shim_describe :: () -> bool { return false; }
+shim_screen_size :: (udid: string, s: [] ShScreen) -> bool { return false; }
+shim_shot :: (udid: string, out: string, scale: f64) -> bool { return false; }
+shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwMsg) -> bool { return false; }
+shim_poll :: (h: [] ShHost) {}
