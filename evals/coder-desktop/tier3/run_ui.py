@@ -533,7 +533,7 @@ def flow_stop(f: Flow) -> str:
     time.sleep(0.5)
     # the sidebar row's spinner, the thought's spinner and the working line's spinner and clock move
     # (window points: the page fills the window under its transparent title bar since #13741)
-    f.check("streaming_1200x800", masks=[[230, 170, 34, 32], [400, 126, 28, 28], [400, 228, 130, 26]])
+    f.check("streaming_1200x800", masks=[[230, 170, 34, 32], [400, 118, 28, 36], [400, 220, 130, 34]])
     f.press("coder.composer.send")
     app.wait("the reply to stop", lambda s: s["running"] == 0, 5)
     stops = [r for r in f.records("main") if r["kind"] == "stop"]
@@ -609,7 +609,7 @@ def flow_quit_reopen(f: Flow) -> str:
 
 # A first turn's "Worked for Ns" head, at the conversation's left under the ask: its seconds depend
 # on the machine.
-WORKED_FOR = [400, 130, 90, 20]
+WORKED_FOR = [400, 122, 90, 28]
 
 
 def act(reply: str = "", commands: list[str] | None = None) -> dict:
@@ -627,7 +627,7 @@ FU_ASK, FU_STEER = "Fix the parser", "Also cover the empty string"
 FU_QUEUED = ["Then update the docs", "And add a changelog"]
 # Turn 1's "Worked for Ns" (its command sleeps 4 s) and turn 2's activity row, which says "Ran 1
 # command", or "1 failed" when the command was stopped as it started (a slow machine): masked.
-FU_MASK = [WORKED_FOR, [380, 382, 440, 22]]
+FU_MASK = [WORKED_FOR, [380, 370, 440, 36]]
 
 
 def flow_followups(f: Flow) -> str:
