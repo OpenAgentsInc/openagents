@@ -243,9 +243,188 @@ struct PleScene: Decodable {
         return max(top + elemClashes, run?.clash_count ?? 0)
     }
 
+    /// Unified list of clashes from both top-level `clashes` and clash-layer elements.
+    var resolvedClashes: [PleResolvedClash] {
+        var out: [PleResolvedClash] = []
+        if let top = clashes {
+            for (i, c) in top.enumerated() {
+                let pt = SIMD3<Float>(
+                    c.point.count > 0 ? c.point[0] : 0,
+                    c.point.count > 1 ? c.point[1] : 0,
+                    c.point.count > 2 ? c.point[2] : 0
+                )
+                out.append(PleResolvedClash(
+                    id: "clash_\(i + 1)",
+                    elementId: "clash_\(i + 1)",
+                    a: c.a,
+                    b: c.b,
+                    point: pt,
+                    penetrationMM: c.penetration_mm,
+                    severity: nil
+                ))
+            }
+        }
+        for elem in elements where elem.semanticLayer == .clashes {
+            var aName = elem.id
+            var bName = "clash"
+            var penMM: Double? = nil
+            var sev: String? = nil
+            if let meta = elem.meta {
+                if case .array(let arr)? = meta["pair"], arr.count >= 2 {
+                    aName = arr[0].description
+                    bName = arr[1].description
+                } else {
+                    if let av = meta["a"] { aName = av.description }
+                    if let bv = meta["b"] { bName = bv.description }
+                }
+                if case .number(let n)? = meta["penetration_mm"] {
+                    penMM = n
+                }
+                if case .string(let s)? = meta["severity"] {
+                    sev = s
+                }
+            }
+            out.append(PleResolvedClash(
+                id: elem.id,
+                elementId: elem.id,
+                a: aName,
+                b: bName,
+                point: elem.centerVec,
+                penetrationMM: penMM,
+                severity: sev
+            ))
+        }
+        return out
+    }
+
     static func load(from url: URL) throws -> PleScene {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(PleScene.self, from: data)
+    }
+}
+
+/// Normalized clash item used by the Stage 3 Clash Inspector and 3D camera focus.
+struct PleResolvedClash: Equatable {
+    let id: String
+    let elementId: String
+    let a: String
+    let b: String
+    let point: SIMD3<Float>
+    let penetrationMM: Double?
+    let severity: String?
+
+    var pairLabel: String {
+        "\(a) ↔ \(b)"
+    }
+
+    var detailLabel: String {
+        var parts: [String] = []
+        if let pen = penetrationMM {
+            parts.append(String(format: "%.1f mm", pen))
+        } else if let sev = severity, !sev.isEmpty {
+            parts.append(sev)
+        }
+        parts.append(String(format: "(%.1f, %.1f, %.1f)", point.x, point.y, point.z))
+        return parts.joined(separator: " • ")
+    }
+}
+
+/// Element-level classification when comparing an active run against a baseline run.
+enum PleDiffStatus {
+    case unchanged
+    case added
+    case moved
+    case removed
+}
+
+struct PleSceneDiff {
+    let baselineTitle: String
+    let addedIds: Set<String>
+    let movedIds: Set<String>
+    let removedElements: [PleSceneElement]
+    let scoreDelta: Double?
+    let lengthDelta: Double?
+    let clashDelta: Int
+
+    var addedCount: Int { addedIds.count }
+    var movedCount: Int { movedIds.count }
+    var removedCount: Int { removedElements.count }
+
+    static func compute(active: PleScene, baseline: PleScene, baselineTitle: String) -> PleSceneDiff {
+        var baseById: [String: PleSceneElement] = [:]
+        for el in baseline.allElements {
+            baseById[el.id] = el
+        }
+        var activeIds = Set<String>()
+        var added = Set<String>()
+        var moved = Set<String>()
+
+        let posEps: Float = 0.015
+        let sizeEps: Float = 0.015
+        let rotEps: Float = 0.01
+
+        for el in active.allElements {
+            activeIds.insert(el.id)
+            guard let prev = baseById[el.id] else {
+                added.insert(el.id)
+                continue
+            }
+            let dp = simd_length(el.centerVec - prev.centerVec)
+            let ds = simd_length(el.sizeVec - prev.sizeVec)
+            let dr = abs(el.rotZ - prev.rotZ)
+            if dp > posEps || ds > sizeEps || dr > rotEps || el.shape.lowercased() != prev.shape.lowercased() {
+                moved.insert(el.id)
+            }
+        }
+
+        var removed: [PleSceneElement] = []
+        for el in baseline.allElements where !activeIds.contains(el.id) {
+            removed.append(el)
+        }
+
+        let scoreDelta: Double?
+        if let a = active.run?.score, let b = baseline.run?.score {
+            scoreDelta = a - b
+        } else {
+            scoreDelta = nil
+        }
+        let lengthDelta: Double?
+        if let a = active.run?.total_length_m, let b = baseline.run?.total_length_m {
+            lengthDelta = a - b
+        } else {
+            lengthDelta = nil
+        }
+        let clashDelta = active.totalClashCount - baseline.totalClashCount
+
+        return PleSceneDiff(
+            baselineTitle: baselineTitle,
+            addedIds: added,
+            movedIds: moved,
+            removedElements: removed,
+            scoreDelta: scoreDelta,
+            lengthDelta: lengthDelta,
+            clashDelta: clashDelta
+        )
+    }
+
+    func summaryText() -> String {
+        var parts: [String] = []
+        parts.append("vs \(baselineTitle)")
+        parts.append("+\(addedCount) new")
+        parts.append("~\(movedCount) moved")
+        parts.append("-\(removedCount) removed")
+        if let sd = scoreDelta {
+            parts.append(String(format: "score %+.2f", sd))
+        }
+        if let ld = lengthDelta {
+            parts.append(String(format: "len %+.1fm", ld))
+        }
+        if clashDelta != 0 {
+            parts.append(String(format: "clashes %+d", clashDelta))
+        } else {
+            parts.append("clashes ±0")
+        }
+        return parts.joined(separator: " • ")
     }
 }
 
@@ -570,6 +749,19 @@ final class PleSceneMetalView: NSView {
     private var gridVertexCount: Int = 0
 
     private var camera = PleCamera()
+    private struct CameraAnim {
+        let startTime: CFTimeInterval
+        let duration: CFTimeInterval
+        let fromTarget: SIMD3<Float>
+        let toTarget: SIMD3<Float>
+        let fromDistance: Float
+        let toDistance: Float
+        let fromAzimuth: Float
+        let toAzimuth: Float
+        let fromElevation: Float
+        let toElevation: Float
+    }
+    private var cameraAnim: CameraAnim?
     private var renderTimer: Timer?
     private var needsRedraw = true
 
@@ -582,6 +774,9 @@ final class PleSceneMetalView: NSView {
 
     private(set) var scene: PleScene?
     private var resolvedElements: [PleSceneElement] = []
+    private(set) var activeDiff: PleSceneDiff? {
+        didSet { needsRedraw = true }
+    }
     var visibleLayers: Set<PleSemanticLayer> = Set(PleSemanticLayer.allCases) {
         didSet { needsRedraw = true }
     }
@@ -722,6 +917,7 @@ final class PleSceneMetalView: NSView {
         renderTimer?.invalidate()
         let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self = self, !self.isHiddenOrHasHiddenAncestor, self.window != nil else { return }
+            self.stepCameraAnimation()
             self.renderFrame()
         }
         RunLoop.main.add(t, forMode: .common)
@@ -730,19 +926,88 @@ final class PleSceneMetalView: NSView {
 
     // MARK: - Scene Loading & Camera Presets
 
-    func setScene(_ newScene: PleScene) {
+    func setScene(_ newScene: PleScene, preserveView: Bool = false) {
+        let prevSelectedId = preserveView ? selectedElementId : nil
         self.scene = newScene
         self.resolvedElements = newScene.allElements
-        self.selectedElementId = nil
-        self.camera.frame(bounds: newScene.bounds, preset: .iso)
+        if !preserveView {
+            self.cameraAnim = nil
+            self.selectedElementId = nil
+            self.camera.frame(bounds: newScene.bounds, preset: .iso)
+            onSelectElement?(nil)
+        } else if let prevId = prevSelectedId {
+            if let match = self.resolvedElements.first(where: { $0.id == prevId }) {
+                self.selectedElementId = prevId
+                onSelectElement?(match)
+            } else {
+                self.selectedElementId = nil
+                onSelectElement?(nil)
+            }
+        }
         rebuildGrid(bounds: newScene.bounds)
-        onSelectElement?(nil)
         needsRedraw = true
         renderFrame()
     }
 
+    func setDiff(_ diff: PleSceneDiff?) {
+        self.activeDiff = diff
+        needsRedraw = true
+        renderFrame()
+    }
+
+    /// Smoothly animates the camera target and distance to focus on a 3D world point (e.g. a clash).
+    func focusOn(point: SIMD3<Float>, distance: Float = 4.5, highlightElementId: String? = nil, animated: Bool = true) {
+        if let id = highlightElementId {
+            self.selectedElementId = id
+            if let elem = resolvedElements.first(where: { $0.id == id }) {
+                onSelectElement?(elem)
+            }
+        }
+        let clampedDist = max(1.5, min(40.0, distance))
+        let targetElev: Float = max(0.35, min(0.85, camera.elevation))
+        if !animated {
+            cameraAnim = nil
+            camera.target = point
+            camera.distance = clampedDist
+            camera.elevation = targetElev
+            needsRedraw = true
+            renderFrame()
+            return
+        }
+        cameraAnim = CameraAnim(
+            startTime: CACurrentMediaTime(),
+            duration: 0.35,
+            fromTarget: camera.target,
+            toTarget: point,
+            fromDistance: camera.distance,
+            toDistance: clampedDist,
+            fromAzimuth: camera.azimuth,
+            toAzimuth: camera.azimuth,
+            fromElevation: camera.elevation,
+            toElevation: targetElev
+        )
+        needsRedraw = true
+    }
+
+    private func stepCameraAnimation() {
+        guard let anim = cameraAnim else { return }
+        let elapsed = CACurrentMediaTime() - anim.startTime
+        let rawT = Float(max(0.0, min(1.0, elapsed / max(0.001, anim.duration))))
+        // Cubic ease-out
+        let t = 1.0 - pow(1.0 - rawT, 3.0)
+        camera.target = anim.fromTarget + (anim.toTarget - anim.fromTarget) * t
+        camera.distance = anim.fromDistance + (anim.toDistance - anim.fromDistance) * t
+        camera.azimuth = anim.fromAzimuth + (anim.toAzimuth - anim.fromAzimuth) * t
+        camera.elevation = anim.fromElevation + (anim.toElevation - anim.fromElevation) * t
+        needsRedraw = true
+        if rawT >= 1.0 {
+            cameraAnim = nil
+        }
+    }
+
     func applyPreset(_ preset: PleCameraPreset) {
         guard let b = scene?.bounds else { return }
+        cameraAnim = nil
         camera.frame(bounds: b, preset: preset)
         needsRedraw = true
     }
@@ -800,20 +1065,58 @@ final class PleSceneMetalView: NSView {
         var opCyls: [PleInstance] = []
         var trBoxes: [PleInstance] = []
         var trCyls: [PleInstance] = []
+
+        let diff = activeDiff
+
         for elem in resolvedElements {
             let sem = elem.semanticLayer
             guard visibleLayers.contains(sem) else { continue }
+            var color = sem.rgba
+            var translucent = sem.isTranslucent
+            var highlight: Float = (elem.id == selectedElementId) ? 1.0 : 0.0
+
+            if let diff = diff {
+                if diff.addedIds.contains(elem.id) {
+                    color = SIMD4<Float>(0.18, 0.90, 0.45, 1.0) // green: added in active
+                    translucent = false
+                    highlight = max(highlight, 0.25)
+                } else if diff.movedIds.contains(elem.id) {
+                    color = SIMD4<Float>(0.98, 0.62, 0.14, 1.0) // orange: moved/changed
+                    translucent = false
+                    highlight = max(highlight, 0.22)
+                } else if sem != .clashes {
+                    // Dim unchanged elements so diff stands out clearly
+                    color = SIMD4<Float>(color.x * 0.48, color.y * 0.48, color.z * 0.52, sem.isTranslucent ? 0.16 : 0.36)
+                    translucent = true
+                }
+            }
+
             let inst = PleInstance(
                 model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ),
-                color: sem.rgba,
-                highlight: (elem.id == selectedElementId) ? 1.0 : 0.0
+                color: color,
+                highlight: highlight
             )
-            if sem.isTranslucent {
+            if translucent {
                 if elem.isCylinder { trCyls.append(inst) } else { trBoxes.append(inst) }
             } else {
                 if elem.isCylinder { opCyls.append(inst) } else { opBoxes.append(inst) }
             }
         }
+
+        // Ghost removed baseline elements in translucent crimson
+        if let diff = diff {
+            for elem in diff.removedElements {
+                let sem = elem.semanticLayer
+                guard visibleLayers.contains(sem) else { continue }
+                let inst = PleInstance(
+                    model: pleModelMatrix(center: elem.centerVec, size: elem.sizeVec, rotZ: elem.rotZ),
+                    color: SIMD4<Float>(0.95, 0.24, 0.30, 0.42),
+                    highlight: 0.0
+                )
+                if elem.isCylinder { trCyls.append(inst) } else { trBoxes.append(inst) }
+            }
+        }
+
         return (opBoxes, opCyls, trBoxes, trCyls)
     }
 
@@ -937,6 +1240,7 @@ final class PleSceneMetalView: NSView {
     // MARK: - Mouse / Scroll Interaction & Raycast Picking
 
     override func mouseDown(with event: NSEvent) {
+        cameraAnim = nil
         window?.makeFirstResponder(self)
         let pt = convert(event.locationInWindow, from: nil)
         lastMouse = pt
@@ -990,6 +1294,7 @@ final class PleSceneMetalView: NSView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        cameraAnim = nil
         let delta = Float(event.scrollingDeltaY)
         let scale: Float = event.hasPreciseScrollingDeltas ? 0.004 : 0.06
         let factor = exp(-delta * scale)
@@ -998,6 +1303,7 @@ final class PleSceneMetalView: NSView {
     }
 
     override func magnify(with event: NSEvent) {
+        cameraAnim = nil
         let factor = Float(1.0 / max(0.2, 1.0 + event.magnification))
         camera.distance = max(0.8, min(250.0, camera.distance * factor))
         needsRedraw = true
@@ -1082,6 +1388,9 @@ final class PleScenePanelView: NSView {
     private let summaryTitle = NSTextField(labelWithString: "3D PLE Scene")
     private let summaryDetail = NSTextField(labelWithString: "")
 
+    private let diffBox = NSView()
+    private let diffLabel = NSTextField(labelWithString: "")
+
     private let presetStack = NSStackView()
     private var presetButtons: [PleCameraPreset: NSButton] = [:]
 
@@ -1141,6 +1450,24 @@ final class PleScenePanelView: NSView {
         summaryBox.addSubview(summaryTitle)
         summaryBox.addSubview(summaryDetail)
         addSubview(summaryBox)
+        styleOverlay(diffBox)
+        diffBox.layer?.borderColor = NSColor(calibratedRed: 0.24, green: 0.85, blue: 0.48, alpha: 0.55).cgColor
+        diffLabel.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        diffLabel.textColor = NSColor(calibratedRed: 0.82, green: 0.96, blue: 0.86, alpha: 1)
+        diffLabel.translatesAutoresizingMaskIntoConstraints = false
+        diffBox.addSubview(diffLabel)
+        diffBox.isHidden = true
+        addSubview(diffBox)
+
+        NSLayoutConstraint.activate([
+            diffBox.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            diffBox.topAnchor.constraint(equalTo: summaryBox.bottomAnchor, constant: 8),
+            diffLabel.leadingAnchor.constraint(equalTo: diffBox.leadingAnchor, constant: 10),
+            diffLabel.trailingAnchor.constraint(equalTo: diffBox.trailingAnchor, constant: -10),
+            diffLabel.topAnchor.constraint(equalTo: diffBox.topAnchor, constant: 6),
+            diffLabel.bottomAnchor.constraint(equalTo: diffBox.bottomAnchor, constant: -6),
+        ])
+
         NSLayoutConstraint.activate([
             summaryBox.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             summaryBox.topAnchor.constraint(equalTo: topAnchor, constant: 12),
@@ -1287,9 +1614,9 @@ final class PleScenePanelView: NSView {
         refreshLayerButton(sem)
     }
 
-    func loadScene(_ scene: PleScene) {
+    func loadScene(_ scene: PleScene, preserveView: Bool = false) {
         errorBanner.isHidden = true
-        metalView.setScene(scene)
+        metalView.setScene(scene, preserveView: preserveView)
         summaryTitle.stringValue = scene.task ?? "PLE 3D Scene"
         var parts: [String] = []
         if let score = scene.run?.score { parts.append(String(format: "score %.2f", score)) }
@@ -1300,7 +1627,39 @@ final class PleScenePanelView: NSView {
         if clashes > 0 { parts.append("\(clashes) clashes") }
         summaryDetail.stringValue = parts.joined(separator: " • ")
         for sem in PleSemanticLayer.allCases { refreshLayerButton(sem) }
-        updateInspector(nil)
+        if !preserveView {
+            updateInspector(nil)
+        }
+    }
+
+    /// Focuses the 3D camera smoothly onto a clash and highlights it in the inspector strip.
+    func focusClash(_ clash: PleResolvedClash) {
+        if !metalView.visibleLayers.contains(.clashes) {
+            metalView.setLayerVisible(.clashes, visible: true)
+            refreshLayerButton(.clashes)
+        }
+        metalView.focusOn(point: clash.point, distance: 4.5, highlightElementId: clash.elementId, animated: true)
+        inspectorTitle.stringValue = "CLASH: \(clash.pairLabel)"
+        var lines: [String] = []
+        if let pen = clash.penetrationMM {
+            lines.append(String(format: "penetration: %.1f mm", pen))
+        } else if let sev = clash.severity {
+            lines.append("severity: \(sev)")
+        }
+        lines.append(String(format: "point: (%.2f, %.2f, %.2f) m", clash.point.x, clash.point.y, clash.point.z))
+        inspectorBody.stringValue = lines.joined(separator: "  •  ")
+    }
+
+    /// Updates the visual diff overlay and diff summary HUD.
+    func setDiff(_ diff: PleSceneDiff?) {
+        metalView.setDiff(diff)
+        if let diff = diff {
+            diffLabel.stringValue = "DIFF  " + diff.summaryText() + "   [green=new, orange=moved, red=removed]"
+            diffBox.isHidden = false
+        } else {
+            diffBox.isHidden = true
+            diffLabel.stringValue = ""
+        }
     }
 
     func loadScene(from url: URL) throws {
@@ -1369,7 +1728,7 @@ enum PleSceneLoader {
         defer { try? fm.removeItem(at: tmp) }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        proc.arguments = ["python3", script.path, "--ifc", url.path, "--out", tmp.path]
+        proc.arguments = ["python3", script.path, url.path, "-o", tmp.path]
         let errPipe = Pipe()
         proc.standardError = errPipe
         try proc.run()

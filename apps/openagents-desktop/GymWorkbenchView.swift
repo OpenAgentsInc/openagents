@@ -180,14 +180,14 @@ enum PleGymDiscovery {
     }
 
     /// Load a scene or convert an .ifc file on demand via tools/ple-ifc-to-scene.py into /tmp/ple-scenes/.
-    static func loadScene(for item: PleGymRunItem, workingFolder: URL?) throws -> PleScene {
+    static func loadScene(for item: PleGymRunItem, workingFolder: URL?, forceReconvert: Bool = false) throws -> PleScene {
         if !item.isIfc {
             return try PleSceneLoader.load(from: item.url)
         }
-        return try convertAndLoadIfc(from: item.url, workingFolder: workingFolder)
+        return try convertAndLoadIfc(from: item.url, workingFolder: workingFolder, forceReconvert: forceReconvert)
     }
 
-    static func convertAndLoadIfc(from url: URL, workingFolder: URL?) throws -> PleScene {
+    static func convertAndLoadIfc(from url: URL, workingFolder: URL?, forceReconvert: Bool = false) throws -> PleScene {
         let fm = FileManager.default
         let repoRoot = findRepoRoot(workingFolder: workingFolder)
         var candidates: [URL] = []
@@ -222,12 +222,12 @@ enum PleGymDiscovery {
         // Reuse cached conversion if newer than the source .ifc file.
         let srcDate = (try? fm.attributesOfItem(atPath: url.path)[.modificationDate]) as? Date
         let dstDate = (try? fm.attributesOfItem(atPath: outURL.path)[.modificationDate]) as? Date
-        let cacheValid = fm.fileExists(atPath: outURL.path) && (srcDate == nil || dstDate == nil || dstDate! >= srcDate!)
+        let cacheValid = !forceReconvert && fm.fileExists(atPath: outURL.path) && (srcDate == nil || dstDate == nil || dstDate! >= srcDate!)
 
         if !cacheValid {
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            proc.arguments = ["python3", script.path, "--ifc", url.path, "--out", outURL.path]
+            proc.arguments = ["python3", script.path, url.path, "-o", outURL.path]
             let errPipe = Pipe()
             proc.standardError = errPipe
             try proc.run()
@@ -322,29 +322,163 @@ private final class PleGymRowButton: NSView {
     }
 }
 
+// MARK: - Clash List Row View (Stage 3)
+
+private final class PleGymClashRowButton: NSView {
+    let clash: PleResolvedClash
+    var onSelect: (() -> Void)?
+    private let titleLabel = NSTextField(labelWithString: "")
+    private let detailLabel = NSTextField(labelWithString: "")
+    private var hovered = false
+    private var selected = false
+
+    init(clash: PleResolvedClash) {
+        self.clash = clash
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 6
+
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
+        titleLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.72, blue: 0.72, alpha: 1.0)
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.stringValue = "\(clash.a) ↔ \(clash.b)"
+
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        detailLabel.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
+        detailLabel.textColor = NSColor(white: 0.68, alpha: 1.0)
+        detailLabel.lineBreakMode = .byTruncatingTail
+        var parts: [String] = []
+        if let pen = clash.penetrationMM {
+            parts.append(String(format: "%.1f mm", pen))
+        } else if let sev = clash.severity, !sev.isEmpty {
+            parts.append(sev)
+        }
+        let p = clash.point
+        parts.append(String(format: "(%.1f, %.1f, %.1f)", p.x, p.y, p.z))
+        detailLabel.stringValue = parts.joined(separator: " • ")
+
+        addSubview(titleLabel)
+        addSubview(detailLabel)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 38),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            titleLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            detailLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 1),
+            detailLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            detailLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            detailLabel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
+        ])
+        updateStyle()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true; updateStyle() }
+    override func mouseExited(with event: NSEvent) { hovered = false; updateStyle() }
+    override func mouseDown(with event: NSEvent) { onSelect?() }
+
+    func setSelected(_ flag: Bool) {
+        selected = flag
+        updateStyle()
+    }
+
+    private func updateStyle() {
+        if selected {
+            layer?.backgroundColor = NSColor(calibratedRed: 0.60, green: 0.14, blue: 0.18, alpha: 0.42).cgColor
+            layer?.borderWidth = 1
+            layer?.borderColor = NSColor(calibratedRed: 1.0, green: 0.34, blue: 0.38, alpha: 0.90).cgColor
+        } else if hovered {
+            layer?.backgroundColor = NSColor(calibratedRed: 0.95, green: 0.25, blue: 0.28, alpha: 0.14).cgColor
+            layer?.borderWidth = 0
+        } else {
+            layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.03).cgColor
+            layer?.borderWidth = 0
+        }
+    }
+}
+
+// MARK: - Live File Signature (Stage 3)
+
+struct PleFileSignature: Equatable {
+    let modifiedAt: Date?
+    let size: UInt64?
+
+    static func read(from url: URL) -> PleFileSignature? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        let mtime = attrs[.modificationDate] as? Date
+        let size = (attrs[.size] as? NSNumber)?.uint64Value
+        return PleFileSignature(modifiedAt: mtime, size: size)
+    }
+}
+
 // MARK: - GymWorkbenchView
 
+/// Full-content Gym / 3D PLE Workbench view hosted beside the sidebar when Gym mode is active.
+/// Stage 3 adds Live Run Tailing, Clash Inspector & Camera Focus, and Run Diff Overlay.
 final class GymWorkbenchView: NSView {
-    private let railWidth: CGFloat = 264
+    var workingFolderProvider: (() -> URL?)?
+
     private let railView = NSView()
     private let dividerView = NSView()
-    private let headerLabel = NSTextField(labelWithString: "PLE Gym Workbench")
-    private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
-    private let openFileButton = NSButton(title: "Open…", target: nil, action: nil)
-    private let scrollView = NSScrollView()
-    private let stackView = NSStackView()
-    private let statusLabel = NSTextField(labelWithString: "")
-    private let emptyLabel = NSTextField(labelWithString: "Select a PLE scene or run to inspect in 3D.")
-
     let scenePanel = PleScenePanelView(frame: .zero)
 
-    var workingFolderProvider: (() -> URL)?
+    private let headerLabel = NSTextField(labelWithString: "PLE Gym Runs")
+    private let refreshButton = NSButton(title: "Refresh", target: nil, action: nil)
+    private let openFileButton = NSButton(title: "Open…", target: nil, action: nil)
+
+    // Stage 3: Live Run Tailing controls
+    private let liveToggleButton = NSButton(title: "Live", target: nil, action: nil)
+    private let liveIndicatorDot = NSView()
+    private let liveStatusLabel = NSTextField(labelWithString: "Live off")
+    private var liveEnabled = false
+    private var liveTimer: Timer?
+    private var lastObservedSignature: PleFileSignature?
+    private var liveReloadInFlight = false
+
+    // Stage 3: Run Diff Overlay controls
+    private let compareLabel = NSTextField(labelWithString: "Compare:")
+    private let comparePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private var activeScene: PleScene?
+    private var baselineId: String?
+    private var baselineScene: PleScene?
+    private var baselineLabel: String?
+    private var baselineGeneration: Int = 0
+
+    // Runs list
+    private let scrollView = NSScrollView()
+    private let stackView = NSStackView()
+    private var rowViews: [PleGymRowButton] = []
+
+    // Stage 3: Clash Inspector section
+    private let clashDivider = NSView()
+    private let clashHeaderLabel = NSTextField(labelWithString: "Clashes (0)")
+    private let clashScrollView = NSScrollView()
+    private let clashStackView = NSStackView()
+    private let clashEmptyLabel = NSTextField(labelWithString: "No clashes detected ✓")
+    private var clashRowViews: [PleGymClashRowButton] = []
+    private var selectedClashId: String?
+
+    private let statusLabel = NSTextField(labelWithString: "")
+    private let emptyLabel = NSTextField(labelWithString: "Select a PLE run or click Open… to inspect a .ple-scene.json or .ifc model")
 
     private var items: [PleGymRunItem] = []
-    private var rowViews: [PleGymRowButton] = []
-    private var selectedId: String? = nil
+    private var selectedId: String?
     private var loadGeneration: Int = 0
-    private var hasLoadedInitial = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -354,6 +488,19 @@ final class GymWorkbenchView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    deinit {
+        liveTimer?.invalidate()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil {
+            stopLiveTimer()
+        } else if liveEnabled {
+            startLiveTimer()
+        }
+    }
 
     private func setupUI() {
         railView.translatesAutoresizingMaskIntoConstraints = false
@@ -376,6 +523,7 @@ final class GymWorkbenchView: NSView {
         emptyLabel.isHidden = true
         addSubview(emptyLabel)
 
+        // Header row 1: Title + Refresh + Open
         headerLabel.translatesAutoresizingMaskIntoConstraints = false
         headerLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
         headerLabel.textColor = NSColor(white: 0.94, alpha: 1)
@@ -391,6 +539,41 @@ final class GymWorkbenchView: NSView {
             railView.addSubview(btn)
         }
 
+        // Header row 2 (Stage 3): Live toggle + status dot + status label
+        liveToggleButton.translatesAutoresizingMaskIntoConstraints = false
+        liveToggleButton.isBordered = false
+        liveToggleButton.wantsLayer = true
+        liveToggleButton.layer?.cornerRadius = 5
+        liveToggleButton.target = self
+        liveToggleButton.action = #selector(liveToggled)
+        railView.addSubview(liveToggleButton)
+
+        liveIndicatorDot.translatesAutoresizingMaskIntoConstraints = false
+        liveIndicatorDot.wantsLayer = true
+        liveIndicatorDot.layer?.cornerRadius = 4
+        railView.addSubview(liveIndicatorDot)
+
+        liveStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+        liveStatusLabel.font = NSFont.monospacedSystemFont(ofSize: 10.0, weight: .regular)
+        liveStatusLabel.textColor = NSColor(white: 0.60, alpha: 1)
+        liveStatusLabel.lineBreakMode = .byTruncatingTail
+        railView.addSubview(liveStatusLabel)
+        updateLiveControlsUI()
+
+        // Header row 3 (Stage 3): Compare baseline picker
+        compareLabel.translatesAutoresizingMaskIntoConstraints = false
+        compareLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        compareLabel.textColor = NSColor(white: 0.72, alpha: 1)
+        railView.addSubview(compareLabel)
+
+        comparePopup.translatesAutoresizingMaskIntoConstraints = false
+        comparePopup.controlSize = .small
+        comparePopup.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        comparePopup.target = self
+        comparePopup.action = #selector(compareChanged)
+        railView.addSubview(comparePopup)
+
+        // Runs scroll list
         stackView.orientation = .vertical
         stackView.alignment = .leading
         stackView.spacing = 4
@@ -415,6 +598,46 @@ final class GymWorkbenchView: NSView {
         scrollView.documentView = clipDoc
         railView.addSubview(scrollView)
 
+        // Stage 3: Clash Inspector section
+        clashDivider.translatesAutoresizingMaskIntoConstraints = false
+        clashDivider.wantsLayer = true
+        clashDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.10).cgColor
+        railView.addSubview(clashDivider)
+
+        clashHeaderLabel.translatesAutoresizingMaskIntoConstraints = false
+        clashHeaderLabel.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        clashHeaderLabel.textColor = NSColor(white: 0.90, alpha: 1)
+        railView.addSubview(clashHeaderLabel)
+
+        clashStackView.orientation = .vertical
+        clashStackView.alignment = .leading
+        clashStackView.spacing = 4
+        clashStackView.edgeInsets = NSEdgeInsets(top: 4, left: 8, bottom: 6, right: 8)
+        clashStackView.translatesAutoresizingMaskIntoConstraints = false
+
+        let clashDoc = NSView()
+        clashDoc.translatesAutoresizingMaskIntoConstraints = false
+        clashDoc.addSubview(clashStackView)
+        NSLayoutConstraint.activate([
+            clashStackView.topAnchor.constraint(equalTo: clashDoc.topAnchor),
+            clashStackView.leadingAnchor.constraint(equalTo: clashDoc.leadingAnchor),
+            clashStackView.trailingAnchor.constraint(equalTo: clashDoc.trailingAnchor),
+            clashStackView.bottomAnchor.constraint(lessThanOrEqualTo: clashDoc.bottomAnchor)
+        ])
+
+        clashScrollView.translatesAutoresizingMaskIntoConstraints = false
+        clashScrollView.drawsBackground = false
+        clashScrollView.hasVerticalScroller = true
+        clashScrollView.autohidesScrollers = true
+        clashScrollView.borderType = .noBorder
+        clashScrollView.documentView = clashDoc
+        railView.addSubview(clashScrollView)
+
+        clashEmptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        clashEmptyLabel.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        clashEmptyLabel.textColor = NSColor(calibratedRed: 0.42, green: 0.82, blue: 0.54, alpha: 0.9)
+        railView.addSubview(clashEmptyLabel)
+
         statusLabel.translatesAutoresizingMaskIntoConstraints = false
         statusLabel.font = NSFont.systemFont(ofSize: 10.5, weight: .regular)
         statusLabel.textColor = NSColor(white: 0.55, alpha: 1)
@@ -425,7 +648,7 @@ final class GymWorkbenchView: NSView {
             railView.topAnchor.constraint(equalTo: topAnchor),
             railView.bottomAnchor.constraint(equalTo: bottomAnchor),
             railView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            railView.widthAnchor.constraint(equalToConstant: railWidth),
+            railView.widthAnchor.constraint(equalToConstant: 268),
 
             dividerView.topAnchor.constraint(equalTo: topAnchor),
             dividerView.bottomAnchor.constraint(equalTo: bottomAnchor),
@@ -439,42 +662,92 @@ final class GymWorkbenchView: NSView {
 
             emptyLabel.centerXAnchor.constraint(equalTo: scenePanel.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scenePanel.centerYAnchor),
+            emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scenePanel.widthAnchor, constant: -48),
 
+            // Row 1: Header + Refresh + Open
             headerLabel.topAnchor.constraint(equalTo: railView.topAnchor, constant: 12),
             headerLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
-            headerLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -12),
 
-            refreshButton.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 8),
-            refreshButton.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
+            openFileButton.centerYAnchor.constraint(equalTo: headerLabel.centerYAnchor),
+            openFileButton.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
 
-            openFileButton.centerYAnchor.constraint(equalTo: refreshButton.centerYAnchor),
-            openFileButton.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: 6),
+            refreshButton.centerYAnchor.constraint(equalTo: headerLabel.centerYAnchor),
+            refreshButton.trailingAnchor.constraint(equalTo: openFileButton.leadingAnchor, constant: -6),
 
-            scrollView.topAnchor.constraint(equalTo: refreshButton.bottomAnchor, constant: 8),
+            // Row 2: Live toggle + dot + status
+            liveToggleButton.topAnchor.constraint(equalTo: headerLabel.bottomAnchor, constant: 8),
+            liveToggleButton.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
+            liveToggleButton.heightAnchor.constraint(equalToConstant: 22),
+
+            liveIndicatorDot.centerYAnchor.constraint(equalTo: liveToggleButton.centerYAnchor),
+            liveIndicatorDot.leadingAnchor.constraint(equalTo: liveToggleButton.trailingAnchor, constant: 8),
+            liveIndicatorDot.widthAnchor.constraint(equalToConstant: 8),
+            liveIndicatorDot.heightAnchor.constraint(equalToConstant: 8),
+
+            liveStatusLabel.centerYAnchor.constraint(equalTo: liveToggleButton.centerYAnchor),
+            liveStatusLabel.leadingAnchor.constraint(equalTo: liveIndicatorDot.trailingAnchor, constant: 6),
+            liveStatusLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
+
+            // Row 3: Compare picker
+            compareLabel.topAnchor.constraint(equalTo: liveToggleButton.bottomAnchor, constant: 8),
+            compareLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
+
+            comparePopup.centerYAnchor.constraint(equalTo: compareLabel.centerYAnchor),
+            comparePopup.leadingAnchor.constraint(equalTo: compareLabel.trailingAnchor, constant: 6),
+            comparePopup.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
+
+            // Runs list
+            scrollView.topAnchor.constraint(equalTo: comparePopup.bottomAnchor, constant: 8),
             scrollView.leadingAnchor.constraint(equalTo: railView.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: railView.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -6),
+            scrollView.bottomAnchor.constraint(equalTo: clashDivider.topAnchor, constant: -4),
 
-            clipDoc.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            clipDoc.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+
+            // Clash Inspector section
+            clashDivider.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 8),
+            clashDivider.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -8),
+            clashDivider.heightAnchor.constraint(equalToConstant: 1),
+
+            clashHeaderLabel.topAnchor.constraint(equalTo: clashDivider.bottomAnchor, constant: 8),
+            clashHeaderLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
+            clashHeaderLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -10),
+
+            clashScrollView.topAnchor.constraint(equalTo: clashHeaderLabel.bottomAnchor, constant: 4),
+            clashScrollView.leadingAnchor.constraint(equalTo: railView.leadingAnchor),
+            clashScrollView.trailingAnchor.constraint(equalTo: railView.trailingAnchor),
+            clashScrollView.heightAnchor.constraint(equalToConstant: 196),
+            clashScrollView.bottomAnchor.constraint(equalTo: statusLabel.topAnchor, constant: -6),
+
+            clashDoc.widthAnchor.constraint(equalTo: clashScrollView.widthAnchor),
+
+            clashEmptyLabel.topAnchor.constraint(equalTo: clashHeaderLabel.bottomAnchor, constant: 10),
+            clashEmptyLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
 
             statusLabel.leadingAnchor.constraint(equalTo: railView.leadingAnchor, constant: 12),
             statusLabel.trailingAnchor.constraint(equalTo: railView.trailingAnchor, constant: -12),
-            statusLabel.bottomAnchor.constraint(equalTo: railView.bottomAnchor, constant: -10)
+            statusLabel.bottomAnchor.constraint(equalTo: railView.bottomAnchor, constant: -8),
         ])
+
+        rebuildCompareMenu()
     }
 
-    func refreshRuns(autoSelectFirst: Bool = false) {
+    // MARK: - Discovery & Run Selection
+
+    func refreshRuns(autoSelectFirst: Bool) {
         let wf = workingFolderProvider?()
         let discovered = PleGymDiscovery.discover(workingFolder: wf)
-        self.items = discovered
+        items = discovered
         rebuildRows()
-        statusLabel.stringValue = "\(discovered.count) scene\(discovered.count == 1 ? "" : "s") available"
+        rebuildCompareMenu()
+        statusLabel.stringValue = discovered.isEmpty
+            ? "No runs found"
+            : "\(discovered.count) run\(discovered.count == 1 ? "" : "s")"
 
-        if (autoSelectFirst || !hasLoadedInitial), let first = discovered.first {
-            hasLoadedInitial = true
-            selectItem(first)
-        } else if let cur = selectedId, let existing = discovered.first(where: { $0.id == cur }) {
+        if let sel = selectedId, let existing = discovered.first(where: { $0.id == sel }) {
             updateSelectionHighlight(existing.id)
+        } else if autoSelectFirst, let first = discovered.first {
+            selectItem(first)
         } else if discovered.isEmpty {
             emptyLabel.isHidden = false
         }
@@ -504,30 +777,249 @@ final class GymWorkbenchView: NSView {
         }
     }
 
+    private var selectedItem: PleGymRunItem? {
+        guard let id = selectedId else { return nil }
+        return items.first(where: { $0.id == id })
+    }
+
     func selectItem(_ item: PleGymRunItem) {
         updateSelectionHighlight(item.id)
+        // If the newly selected item was the baseline, clear baseline diff.
+        if baselineId == item.id {
+            clearBaseline()
+        }
+        rebuildCompareMenu()
+        lastObservedSignature = PleFileSignature.read(from: item.url)
+        loadActiveItem(item, preserveView: false, forceReconvert: false, isLiveUpdate: false)
+    }
+
+    private func loadActiveItem(_ item: PleGymRunItem, preserveView: Bool, forceReconvert: Bool, isLiveUpdate: Bool) {
         loadGeneration += 1
         let gen = loadGeneration
         let wf = workingFolderProvider?()
         emptyLabel.isHidden = true
-        statusLabel.stringValue = item.isIfc ? "Converting \(item.url.lastPathComponent)…" : "Loading \(item.title)…"
+        if !isLiveUpdate {
+            statusLabel.stringValue = item.isIfc ? "Converting \(item.url.lastPathComponent)…" : "Loading \(item.title)…"
+        } else {
+            liveStatusLabel.stringValue = "Reloading…"
+        }
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             do {
-                let scene = try PleGymDiscovery.loadScene(for: item, workingFolder: wf)
+                let scene = try PleGymDiscovery.loadScene(for: item, workingFolder: wf, forceReconvert: forceReconvert)
                 DispatchQueue.main.async {
                     guard let self, self.loadGeneration == gen else { return }
-                    self.scenePanel.loadScene(scene)
-                    self.statusLabel.stringValue = "\(item.title) • \(scene.elements.count) elems"
+                    self.liveReloadInFlight = false
+                    self.activeScene = scene
+                    self.scenePanel.loadScene(scene, preserveView: preserveView)
+                    self.rebuildClashRows(for: scene)
+                    self.recomputeDiff()
+                    let clashCount = scene.resolvedClashes.count
+                    self.statusLabel.stringValue = "\(item.title) • \(scene.elements.count) elems • \(clashCount) clash\(clashCount == 1 ? "" : "es")"
+                    if isLiveUpdate {
+                        let df = DateFormatter()
+                        df.dateFormat = "HH:mm:ss"
+                        self.liveStatusLabel.stringValue = "Updated \(df.string(from: Date()))"
+                    }
                 }
             } catch {
                 DispatchQueue.main.async {
                     guard let self, self.loadGeneration == gen else { return }
-                    self.statusLabel.stringValue = "Error: \(error.localizedDescription)"
+                    self.liveReloadInFlight = false
+                    if isLiveUpdate {
+                        self.liveStatusLabel.stringValue = "Reload error"
+                    } else {
+                        self.statusLabel.stringValue = "Error: \(error.localizedDescription)"
+                    }
                 }
             }
         }
     }
+
+    // MARK: - Stage 3: Live Run Tailing
+
+    func setLiveTailingEnabled(_ enabled: Bool) {
+        liveEnabled = enabled
+        updateLiveControlsUI()
+        if enabled {
+            if let item = selectedItem {
+                lastObservedSignature = PleFileSignature.read(from: item.url)
+            } else {
+                lastObservedSignature = nil
+            }
+            startLiveTimer()
+        } else {
+            stopLiveTimer()
+        }
+    }
+
+    @objc private func liveToggled() {
+        setLiveTailingEnabled(!liveEnabled)
+    }
+
+    private func updateLiveControlsUI() {
+        if liveEnabled {
+            liveToggleButton.layer?.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.62, blue: 0.34, alpha: 0.35).cgColor
+            liveToggleButton.layer?.borderWidth = 1
+            liveToggleButton.layer?.borderColor = NSColor(calibratedRed: 0.28, green: 0.88, blue: 0.48, alpha: 0.85).cgColor
+            let attr = NSAttributedString(string: " Live ", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor(calibratedRed: 0.72, green: 1.0, blue: 0.80, alpha: 1.0),
+            ])
+            liveToggleButton.attributedTitle = attr
+            liveIndicatorDot.layer?.backgroundColor = NSColor(calibratedRed: 0.24, green: 0.88, blue: 0.46, alpha: 1.0).cgColor
+            liveStatusLabel.stringValue = "Watching (1.5s)"
+            liveStatusLabel.textColor = NSColor(calibratedRed: 0.66, green: 0.92, blue: 0.74, alpha: 1.0)
+        } else {
+            liveToggleButton.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.06).cgColor
+            liveToggleButton.layer?.borderWidth = 1
+            liveToggleButton.layer?.borderColor = NSColor(white: 1.0, alpha: 0.14).cgColor
+            let attr = NSAttributedString(string: " Live ", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: NSColor(white: 0.78, alpha: 1.0),
+            ])
+            liveToggleButton.attributedTitle = attr
+            liveIndicatorDot.layer?.backgroundColor = NSColor(white: 0.40, alpha: 1.0).cgColor
+            liveStatusLabel.stringValue = "Live off"
+            liveStatusLabel.textColor = NSColor(white: 0.55, alpha: 1.0)
+        }
+    }
+
+    private func startLiveTimer() {
+        stopLiveTimer()
+        guard window != nil else { return }
+        let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
+            self?.pollActiveRunForChanges()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        liveTimer = timer
+    }
+
+    private func stopLiveTimer() {
+        liveTimer?.invalidate()
+        liveTimer = nil
+    }
+
+    /// Checks the currently selected run's source file for mtime/size changes and reloads while preserving camera & layers.
+    func pollActiveRunForChanges() {
+        guard liveEnabled, !isHiddenOrHasHiddenAncestor, !liveReloadInFlight, let item = selectedItem else { return }
+        guard let currentSig = PleFileSignature.read(from: item.url) else { return }
+        if let prev = lastObservedSignature, prev == currentSig {
+            return
+        }
+        lastObservedSignature = currentSig
+        liveReloadInFlight = true
+        loadActiveItem(item, preserveView: true, forceReconvert: item.isIfc, isLiveUpdate: true)
+    }
+
+    // MARK: - Stage 3: Clash Inspector & Camera Focus
+
+    private func rebuildClashRows(for scene: PleScene) {
+        for v in clashRowViews { v.removeFromSuperview() }
+        clashRowViews.removeAll()
+        let clashes = scene.resolvedClashes
+        clashHeaderLabel.stringValue = "Clashes (\(clashes.count))"
+        clashEmptyLabel.isHidden = !clashes.isEmpty
+        selectedClashId = nil
+
+        for clash in clashes {
+            let row = PleGymClashRowButton(clash: clash)
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.onSelect = { [weak self] in
+                self?.focusClash(clash)
+            }
+            clashStackView.addArrangedSubview(row)
+            row.widthAnchor.constraint(equalTo: clashStackView.widthAnchor, constant: -16).isActive = true
+            clashRowViews.append(row)
+        }
+    }
+
+    func focusClash(_ clash: PleResolvedClash) {
+        selectedClashId = clash.id
+        for row in clashRowViews {
+            row.setSelected(row.clash.id == clash.id)
+        }
+        scenePanel.focusClash(clash)
+    }
+
+    // MARK: - Stage 3: Run Diff Overlay (Compare Two Runs)
+
+    private func rebuildCompareMenu() {
+        comparePopup.removeAllItems()
+        comparePopup.addItem(withTitle: "None")
+        comparePopup.lastItem?.representedObject = nil
+        for item in items where item.id != selectedId {
+            comparePopup.addItem(withTitle: item.title)
+            comparePopup.lastItem?.representedObject = item.id
+        }
+        if let baseId = baselineId, let idx = comparePopup.itemArray.firstIndex(where: { ($0.representedObject as? String) == baseId }) {
+            comparePopup.selectItem(at: idx)
+        } else {
+            comparePopup.selectItem(at: 0)
+            if baselineId != nil {
+                clearBaseline()
+            }
+        }
+    }
+
+    private func clearBaseline() {
+        baselineId = nil
+        baselineScene = nil
+        baselineLabel = nil
+        scenePanel.setDiff(nil)
+    }
+
+    private func recomputeDiff() {
+        guard let active = activeScene, let base = baselineScene, let label = baselineLabel else {
+            scenePanel.setDiff(nil)
+            return
+        }
+        let diff = PleSceneDiff.compute(active: active, baseline: base, baselineTitle: label)
+        scenePanel.setDiff(diff)
+    }
+
+    @objc private func compareChanged() {
+        let selectedBaselineId = comparePopup.selectedItem?.representedObject as? String
+        setBaselineRun(id: selectedBaselineId)
+    }
+
+    func setBaselineRun(id: String?) {
+        baselineId = id
+        baselineGeneration += 1
+        let gen = baselineGeneration
+        guard let id = id, let item = items.first(where: { $0.id == id }) else {
+            clearBaseline()
+            return
+        }
+        let wf = workingFolderProvider?()
+        statusLabel.stringValue = "Comparing against \(item.title)…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            do {
+                let baseScene = try PleGymDiscovery.loadScene(for: item, workingFolder: wf)
+                DispatchQueue.main.async {
+                    guard let self, self.baselineGeneration == gen else { return }
+                    self.baselineScene = baseScene
+                    self.baselineLabel = item.title
+                    if let active = self.activeScene {
+                        let diff = PleSceneDiff.compute(active: active, baseline: baseScene, baselineTitle: item.title)
+                        self.scenePanel.setDiff(diff)
+                        self.statusLabel.stringValue = "Diff vs \(item.title): +\(diff.addedCount) ~\(diff.movedCount) -\(diff.removedCount)"
+                    } else {
+                        self.scenePanel.setDiff(nil)
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    guard let self, self.baselineGeneration == gen else { return }
+                    self.statusLabel.stringValue = "Compare error: \(error.localizedDescription)"
+                    self.clearBaseline()
+                    self.rebuildCompareMenu()
+                }
+            }
+        }
+    }
+
+    // MARK: - Actions
 
     @objc private func refreshClicked() {
         refreshRuns(autoSelectFirst: false)
@@ -556,6 +1048,7 @@ final class GymWorkbenchView: NSView {
         if !items.contains(where: { $0.id == item.id }) {
             items.insert(item, at: min(1, items.count))
             rebuildRows()
+            rebuildCompareMenu()
         }
         selectItem(item)
     }
