@@ -70,3 +70,123 @@ ewc_folders :: (n:int,out:[]u8)->string #effects(all) {
   #assert !ea_view_read(ewc_splice(base,"\"folders\":[\".git\",\"apps\"]",buf[..]),w[..]);
   #assert !ea_view_read(ewc_splice(base,"\"folders\":[5]",buf[..]),w[..]);
 }
+
+// ---------------------------------------------------------------- reading a view, field by field
+// A view as ea_view_write lays it out: every optional member present, each one byte where it can be.
+EWC_FULL :: "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"M\",\"method\":\"R\",\"sessions\":[{\"session_id\":\"s\",\"workspace_id\":\"w\",\"title\":\"t\",\"origin\":\"managed\",\"control\":\"c\",\"generation\":3,\"revision\":4,\"busy\":true,\"interaction_id\":\"i\",\"updated_at_ms\":5,\"model\":\"m\",\"effort\":\"e\",\"note\":\"n\"}],\"items\":[{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"y\",\"tool_name\":\"k\",\"complete\":true,\"started_at_ms\":1,\"subagent_calls\":1,\"subagent_now\":\"z\",\"path\":\"p\",\"diff\":\"d\"}],\"error\":\"E\",\"complete\":true,\"next_cursor\":\"C\",\"command_id\":\"Q\",\"command_status\":\"S\",\"source_epoch\":\"P\"}";
+// and with none of them: empty strings, zeros and false
+EWC_BARE :: "{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"R\",\"sessions\":[{\"session_id\":\"s\",\"workspace_id\":\"\",\"title\":\"\",\"origin\":\"observed-native\",\"control\":\"c\",\"generation\":0,\"revision\":0,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":0}],\"items\":[{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"\",\"tool_name\":\"\",\"complete\":false}],\"error\":\"\",\"complete\":false,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}";
+// base with its first `from` replaced by `to`, in out
+ewc_swap :: (base:string,from:string,to:string,out:[]u8)->string #effects(all) {
+  at:= -1;for i:0..<base.count-from.count+1 {if at<0 && base[i..<i+from.count]==from {at=i;}}
+  if at<0 {return "";}
+  n:=0;for c:base[0..<at] {out[n]=c;n+=1;}for c:to {out[n]=c;n+=1;}for c:base[at+from.count..<base.count] {out[n]=c;n+=1;}
+  return cast(string)out[0..<n];
+}
+// a view of up to four items whose texts are t0..t3 bytes long (-1: no item); the last one has a
+// diff of diff bytes, when diff>0
+ewc_texts :: (t0:int,t1:int,t2:int,t3:int,diff:int,out:[]u8)->string #effects(all) {
+  all:=[4]int.[t0,t1,t2,t3];count:=0;for t:all {if t>=0 {count+=1;}}texts:=all[0..<count];
+  n:=ea_copy(out,"{\"schema\":\"openagents.environment.runtime.v1alpha1\",\"host_pubkey\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"display_name\":\"\",\"method\":\"R\",\"sessions\":[],\"items\":[");
+  for t,i:texts {
+    if i>0 {out[n]=',';n+=1;}
+    n+=ea_copy(out[n..<out.count],"{\"item_id\":\"x\",\"role\":\"r\",\"tool_name\":\"\",\"complete\":true,\"text\":\"");
+    for k:0..<t {out[n]='a';n+=1;}out[n]='"';n+=1;
+    if diff>0 && i==texts.count-1 {n+=ea_copy(out[n..<out.count],",\"diff\":\"");for k:0..<diff {out[n]='d';n+=1;}out[n]='"';n+=1;}
+    out[n]='}';n+=1;
+  }
+  n+=ea_copy(out[n..<out.count],"],\"error\":\"\",\"complete\":true,\"next_cursor\":\"\",\"command_id\":\"\",\"command_status\":\"\",\"source_epoch\":\"\"}");
+  return cast(string)out[0..<n];
+}
+// "sessions":[...] or "items":[...] of n copies of row
+ewc_rows :: (key:string,row:string,n:int,out:[]u8)->string #effects(all) {
+  k:=ea_copy(out,key);out[k]='[';k+=1;
+  for i:0..<n {if i>0 {out[k]=',';k+=1;}k+=ea_copy(out[k..<out.count],row);}
+  out[k]=']';k+=1;return cast(string)out[0..<k];
+}
+// base with from swapped for to (which must be in it) is refused
+ewc_refuses :: (base:string,from:string,to:string,b:[]u8,r:[]EaView)->bool #effects(all) {
+  raw:=ewc_swap(base,from,to,b);return raw.count>0 && !ea_view_read(raw,r);
+}
+ewc_same :: (raw:string)->bool #effects(all) {
+  r:[1]EaView;if !ea_view_read(raw,r[..]) {return false;}
+  out:[8192]u8;n:=ea_view_write(r[..],out[..]);return n>0 && cast(string)out[0..<n]==raw;
+}
+
+#test "a view reads back to the bytes it was written from, every optional member present or none" {
+  #assert ewc_same(EWC_FULL) && ewc_same(EWC_BARE);
+  r:[1]EaView;#assert ea_view_read(EWC_FULL,r[..]);
+  #assert cast(string)r[0].label[0..<r[0].nl]=="M" && cast(string)r[0].method[0..<r[0].nm]=="R" && cast(string)r[0].error[0..<r[0].ne]=="E";
+  #assert cast(string)r[0].cursor[0..<r[0].nc]=="C" && cast(string)r[0].command[0..<r[0].nq]=="Q" && cast(string)r[0].status[0..<r[0].nt]=="S" && cast(string)r[0].epoch[0..<r[0].np]=="P";
+  s:=r[0].sessions[0];
+  #assert cast(string)s.id[0..<s.ni]=="s" && cast(string)s.workspace[0..<s.nw]=="w" && cast(string)s.title[0..<s.nt]=="t" && s.managed && cast(string)s.control[0..<s.nc]=="c";
+  #assert s.generation==3 && s.revision==4 && s.busy && cast(string)s.interaction[0..<s.nr]=="i" && s.updated==5;
+  #assert cast(string)s.model[0..<s.nmo]=="m" && cast(string)s.effort[0..<s.nef]=="e" && cast(string)s.note[0..<s.nno]=="n";
+  m:=r[0].items[0];
+  #assert cast(string)m.id[0..<m.ni]=="x" && cast(string)m.role[0..<m.nr]=="r" && ea_item_text(r[..],0)=="y" && cast(string)m.tool[0..<m.nk]=="k" && m.complete;
+  #assert m.started==1 && m.calls==1 && cast(string)m.now[0..<m.nn]=="z" && cast(string)m.path[0..<m.np]=="p" && ea_item_diff(r[..],0)=="d" && !m.diff_cut;
+  b:[8192]u8;
+  #assert ea_view_read(ewc_swap(EWC_FULL,"\"diff\":\"d\"","\"diff\":\"d\",\"diff_cut\":false",b[..]),r[..]) && !r[0].items[0].diff_cut;  // a count without a newest call writes no newest call; a notice's kind is written whatever its length
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],EWC_HOST);v[0].nm=ea_copy(v[0].method[..],"R");v[0].ni=1;
+  v[0].items[0].ni=ea_copy(v[0].items[0].id[..],"x");v[0].items[0].nr=ea_copy(v[0].items[0].role[..],"notice");v[0].items[0].calls=1;
+  v[0].items[0].nnk=ea_copy(v[0].items[0].notice[..],"n");
+  n:=ea_view_write(v[..],b[..]);#assert n>0 && !ewc_has(cast(string)b[0..<n],"subagent_now") && ewc_has(cast(string)b[0..<n],"\"notice_kind\":\"n\"");
+}
+
+#test "a view refuses each malformed member: its header, a session's fields, an item's" {
+  b:[8192]u8;r:[1]EaView;
+  #assert !ea_view_read("{",r[..]) && ewc_refuses(EWC_FULL,"\"method\":\"R\"","\"method\":\"\"",b[..],r[..]);
+  #assert ewc_refuses(EWC_FULL,"aaaaaaaa\",","aaaaaaa\",",b[..],r[..]);   // a 63-byte host
+  #assert ewc_refuses(EWC_FULL,"\"host_pubkey\":\"a","\"host_pubkey\":\"g",b[..],r[..]);   // not hex
+  heads:=[6]string.["\"display_name\":\"M\"","\"error\":\"E\"","\"next_cursor\":\"C\"","\"command_id\":\"Q\"","\"command_status\":\"S\"","\"source_epoch\":\"P\""];
+  for h:heads {k:=h[0..<h.count-3];w:[64]u8;n:=ea_copy(w[..],k);n+=ea_copy(w[n..<64],"5");#assert ewc_refuses(EWC_FULL,h,cast(string)w[0..<n],b[..],r[..]);}
+  #assert ewc_refuses(EWC_BARE,"\"sessions\":[{\"session_id\":\"s\",\"workspace_id\":\"\",\"title\":\"\",\"origin\":\"observed-native\",\"control\":\"c\",\"generation\":0,\"revision\":0,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":0}]","\"sessions\":{}",b[..],r[..]);
+  #assert ewc_refuses(EWC_FULL,"\"items\":[{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"y\",\"tool_name\":\"k\",\"complete\":true,\"started_at_ms\":1,\"subagent_calls\":1,\"subagent_now\":\"z\",\"path\":\"p\",\"diff\":\"d\"}]","\"items\":{}",b[..],r[..]);
+  // a session's: an unknown origin, an empty id or control, a missing or negative number, a non-string, a bad choice or note
+  bad:=[19]string.["\"origin\":\"managed\"","\"origin\":\"other\"", "\"session_id\":\"s\"","\"session_id\":\"\"", "\"control\":\"c\"","\"control\":\"\"",
+    "\"generation\":3,","", "\"revision\":4,","", "\"updated_at_ms\":5,","", "\"workspace_id\":\"w\"","\"workspace_id\":5", "\"title\":\"t\"","\"title\":5", "\"interaction_id\":\"i\"","\"interaction_id\":5", ""];
+  for i:0..<9 {#assert ewc_refuses(EWC_FULL,bad[2*i],bad[2*i+1],b[..],r[..]);}
+  more:=[16]string.["\"generation\":3","\"generation\":-1", "\"revision\":4","\"revision\":-1", "\"updated_at_ms\":5","\"updated_at_ms\":-1", "\"model\":\"m\"","\"model\":\"M\"",
+    "\"effort\":\"e\"","\"effort\":\"E\"", "\"note\":\"n\"","\"note\":\"\"", "\"note\":\"n\"","\"note\":\"\\u0000n\"", "\"note\":\"n\"","\"note\":5"];
+  for i:0..<8 {#assert ewc_refuses(EWC_FULL,more[2*i],more[2*i+1],b[..],r[..]);}
+  // an item's: an empty id or role, a non-string text, tool or path, a bad count, a newest call without a count
+  item:=[14]string.["\"item_id\":\"x\"","\"item_id\":\"\"", "\"role\":\"r\"","\"role\":\"\"", "\"text\":\"y\"","\"text\":5", "\"tool_name\":\"k\"","\"tool_name\":5",
+    "\"path\":\"p\"","\"path\":5", "\"subagent_calls\":1,\"subagent_now\":\"z\"","\"subagent_calls\":\"x\"", "\"subagent_calls\":1,",""];
+  for i:0..<7 {#assert ewc_refuses(EWC_FULL,item[2*i],item[2*i+1],b[..],r[..]);}
+}
+
+#test "a view holds at most 128 sessions and 64 items" {
+  b:[65536]u8;x:[49152]u8;r:[1]EaView;
+  row:="{\"session_id\":\"s\",\"workspace_id\":\"\",\"title\":\"\",\"origin\":\"managed\",\"control\":\"c\",\"generation\":0,\"revision\":0,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":0}";
+  old:="\"sessions\":[{\"session_id\":\"s\",\"workspace_id\":\"\",\"title\":\"\",\"origin\":\"observed-native\",\"control\":\"c\",\"generation\":0,\"revision\":0,\"busy\":false,\"interaction_id\":\"\",\"updated_at_ms\":0}]";
+  #assert ea_view_read(ewc_swap(EWC_BARE,old,ewc_rows("\"sessions\":",row,128,x[..]),b[..]),r[..]) && r[0].ns==128;
+  #assert ewc_refuses(EWC_BARE,old,ewc_rows("\"sessions\":",row,129,x[..]),b[..],r[..]);
+  irow:="{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"\",\"tool_name\":\"\",\"complete\":false}";
+  iold:="\"items\":[{\"item_id\":\"x\",\"role\":\"r\",\"text\":\"\",\"tool_name\":\"\",\"complete\":false}]";
+  #assert ea_view_read(ewc_swap(EWC_BARE,iold,ewc_rows("\"items\":",irow,64,x[..]),b[..]),r[..]) && r[0].ni==64;
+  #assert ewc_refuses(EWC_BARE,iold,ewc_rows("\"items\":",irow,65,x[..]),b[..],r[..]);
+}
+
+#test "an item's text is at most 16384 bytes and a change at most 4000, inside one 49152-byte arena" {
+  b:[65536]u8;r:[1]EaView;
+  #assert ea_view_read(ewc_texts(16384,-1,-1,-1,0,b[..]),r[..]) && ea_item_text(r[..],0).count==16384;
+  #assert !ea_view_read(ewc_texts(16385,-1,-1,-1,0,b[..]),r[..]);
+  // the third text starts at byte 32767: 16384 bytes are left for it, not 16385
+  #assert ea_view_read(ewc_texts(16384,16383,16384,-1,0,b[..]),r[..]);
+  #assert !ea_view_read(ewc_texts(16384,16383,16385,-1,0,b[..]),r[..]);
+  // near the arena's end a text has only what is left
+  #assert ea_view_read(ewc_texts(16384,16384,16000,10,0,b[..]),r[..]) && ea_item_text(r[..],3).count==10;
+  #assert !ea_view_read(ewc_texts(16384,16384,16000,385,0,b[..]),r[..]);
+  // a change: 4000 bytes, not 4001, and only what is left near the end
+  #assert ea_view_read(ewc_texts(10,-1,-1,-1,4000,b[..]),r[..]) && ea_item_diff(r[..],0).count==4000;
+  #assert !ea_view_read(ewc_texts(10,-1,-1,-1,4001,b[..]),r[..]);
+  #assert ea_view_read(ewc_texts(16384,16384,12383,-1,4000,b[..]),r[..]) && !ea_view_read(ewc_texts(16384,16384,12383,-1,4001,b[..]),r[..]);
+  #assert ea_view_read(ewc_texts(16384,16384,13232,-1,100,b[..]),r[..]) && !ea_view_read(ewc_texts(16384,16384,13232,-1,3153,b[..]),r[..]);
+}
+
+#test "a view is at most 1 MiB" {
+  big:[1048577]u8;n:=ea_copy(big[..],EWC_BARE);
+  for i:n-1..<1048575 {big[i]=' ';}big[1048575]='}';
+  r:[1]EaView;#assert ea_view_read(cast(string)big[0..<1048576],r[..]);
+  big[1048575]=' ';big[1048576]='}';#assert !ea_view_read(cast(string)big[..],r[..]);
+}

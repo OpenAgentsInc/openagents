@@ -142,6 +142,13 @@ eu_error :: (code:string)->string #effects(all) {
   if code=="no_agent" {return "No agent can run on this computer. Set one up on it first.";}
   return "Request failed. Refresh to check.";
 }
+#test "each refusal code a computer sends has its own words, and an unknown one asks for a refresh" {
+  codes:=[10]string.["forbidden","conflict","capacity","record_limit","storage_unavailable","expired","stale_cursor","not_found","model_unavailable","no_agent"];
+  // each code's words, and no two codes share them
+  for c,i:codes {#assert eu_error(c)!="Request failed. Refresh to check.";for d,k:codes {if k!=i {#assert eu_error(c)!=eu_error(d);}}}
+  #assert eu_error("forbidden")=="Connection revoked. Reconnect on desktop." && eu_error("no_agent")=="No agent can run on this computer. Set one up on it first.";
+  #assert eu_error("")=="Request failed. Refresh to check." && eu_error("other")=="Request failed. Refresh to check.";
+}
 eu_note :: (e:[]EnvironmentApp,text:string) #effects(all) {e[0].nn=ea_copy(e[0].note[..],text);}
 // The open conversation's summary, or -1.
 eu_current :: (e:[]EnvironmentApp)->int #effects(all) {

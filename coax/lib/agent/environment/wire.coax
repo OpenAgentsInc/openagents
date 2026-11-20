@@ -303,22 +303,22 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
     s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);s.desktop=jv_raw(j,jv_get(j,row,"surface"))==EA_SURFACE_DESKTOP;
-    nn:=jv_get(j,row,"note");s.nno=ifx nn<0 then 0 else jv_str(j,nn,s.note[..]);if nn>=0 && (s.nno<1 || !ea_text(cast(string)s.note[0..<s.nno])) {return false;}
+    nn:=jv_get(j,row,"note");s.nno=ifx nn<0 then 0 else jv_str(j,nn,s.note[..]);if nn>=0 && (s.nno<1 || !ea_text(cast(string)s.note[0..<s.nno])) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
-    m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete"));
-    at:=jv_get(j,row,"started_at_ms");m.started=ifx at<0 then 0 else jv_int(j,at,-1);
-    sc:=jv_get(j,row,"subagent_calls");m.calls=ifx sc<0 then 0 else jv_int(j,sc,-1);
-    sn:=jv_get(j,row,"subagent_now");m.nn=ifx sn<0 then 0 else jv_str(j,sn,m.now[..]);
+    m.ni=jv_str(j,jv_get(j,row,"item_id"),m.id[..]);m.nr=jv_str(j,jv_get(j,row,"role"),m.role[..]);m.text_at=v[0].text_n;end:=ifx v[0].text_n+16384<v[0].text.count then v[0].text_n+16384 else v[0].text.count;m.nt=jv_str(j,jv_get(j,row,"text"),v[0].text[v[0].text_n..<end]);m.nk=jv_str(j,jv_get(j,row,"tool_name"),m.tool[..]);m.complete=jv_bool(j,jv_get(j,row,"complete")); // mutant: equivalent (at text_n+16384 == the arena both arms are the same end; text.count is the array's fixed length, the same whichever view it is read through)
+    at:=jv_get(j,row,"started_at_ms");m.started=ifx at<0 then 0 else jv_int(j,at,-1); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    sc:=jv_get(j,row,"subagent_calls");m.calls=ifx sc<0 then 0 else jv_int(j,sc,-1); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree; the -1 fallback is pinned by a check)
+    sn:=jv_get(j,row,"subagent_now");m.nn=ifx sn<0 then 0 else jv_str(j,sn,m.now[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     if m.ni<1 || m.nr<1 || m.nt<0 || m.nk<0 || m.started<0 || m.calls<0 || m.nn<0 || (m.nn>0 && m.calls==0) {return false;}v[0].text_n+=m.nt;
-    pk:=jv_get(j,row,"path");m.np=ifx pk<0 then 0 else jv_str(j,pk,m.path[..]);
-    dk:=jv_get(j,row,"diff");m.diff_at=v[0].text_n;m.ndiff=0;
-    if dk>=0 {dend:=ifx v[0].text_n+EA_DIFF<v[0].text.count then v[0].text_n+EA_DIFF else v[0].text.count;m.ndiff=jv_str(j,dk,v[0].text[v[0].text_n..<dend]);}
-    ck:=jv_get(j,row,"diff_cut");m.diff_cut=ck>=0 && jv_bool(j,ck);
+    pk:=jv_get(j,row,"path");m.np=ifx pk<0 then 0 else jv_str(j,pk,m.path[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    dk:=jv_get(j,row,"diff");m.diff_at=v[0].text_n;m.ndiff=0; // mutant: equivalent (m is a copy of an item of a view ea_view_read just zeroed, so ndiff is 0 already)
+    if dk>=0 {dend:=ifx v[0].text_n+EA_DIFF<v[0].text.count then v[0].text_n+EA_DIFF else v[0].text.count;m.ndiff=jv_str(j,dk,v[0].text[v[0].text_n..<dend]);} // mutant: equivalent (at text_n+EA_DIFF == the arena both arms are the same end; text.count is the array's fixed length, the same whichever view it is read through; a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    ck:=jv_get(j,row,"diff_cut");m.diff_cut=ck>=0 && jv_bool(j,ck); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     if m.np<0 || m.ndiff<0 || (m.diff_cut && m.ndiff==0) {return false;}v[0].text_n+=m.ndiff;
-    nk:=jv_get(j,row,"notice_kind");m.nnk=ifx nk<0 then 0 else jv_str(j,nk,m.notice[..]);
-    if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_ok(cast(string)m.notice[0..<m.nnk]))) {return false;}
+    nk:=jv_get(j,row,"notice_kind");m.nnk=ifx nk<0 then 0 else jv_str(j,nk,m.notice[..]); // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
+    if m.nnk<0 || (nk>=0 && (cast(string)m.role[0..<m.nr]!="notice" || !ea_notice_ok(cast(string)m.notice[0..<m.nnk]))) {return false;} // mutant: equivalent (a jv_get member is -1 or a node after the root, never 0, so <0, <=0 and <1 agree, as do >=0, >0 and >=1)
     v[0].items[i]=m;
   }
   if !ea_thoughts_read(j,v) || !ea_offer_read(j,v) || !ea_folders_read(j,v) {return false;}
