@@ -6,7 +6,7 @@ target/
 /target-voyager/
 /target-coder-one/
 /.coder/*
-# the folders a chat's worktree clones in from the main checkout (apps/coder-desktop/Worktree.swift, #13758)
+# the folders a chat's worktree clones in from the main checkout (apps/openagents-desktop/Worktree.swift, #13758)
 !/.coder/worktree.json
 
 # Local build products; measurement records and fixtures stay tracked.

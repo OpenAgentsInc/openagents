@@ -71,7 +71,7 @@ class FlowFailed(Exception):
 
 def build_app(build_dir: Path) -> Path:
     env = dict(os.environ, CODER_BUILD=str(build_dir))
-    res = subprocess.run(["bash", str(REPO / "apps/coder-desktop/build.sh")], cwd=REPO, env=env, capture_output=True, text=True)
+    res = subprocess.run(["bash", str(REPO / "apps/openagents-desktop/build.sh")], cwd=REPO, env=env, capture_output=True, text=True)
     if res.returncode != 0:
         sys.stderr.write(res.stdout[-4000:] + res.stderr[-4000:])
         raise SystemExit(f"build.sh failed with exit {res.returncode}")

@@ -14,7 +14,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 built="${CODER_BUILD:-$here/build}/OpenAgents.app"
-[[ -x "$built/Contents/MacOS/OpenAgents" ]] || { echo "sign-check: build the app first (apps/coder-desktop/build.sh)" >&2; exit 1; }
+[[ -x "$built/Contents/MacOS/OpenAgents" ]] || { echo "sign-check: build the app first (apps/openagents-desktop/build.sh)" >&2; exit 1; }
 work="$(mktemp -d "${TMPDIR:-/tmp}/sign-check.XXXXXX")"; trap 'rm -rf "$work"' EXIT
 fail() { echo "sign-check: $1" >&2; exit 1; }
 profile() {   # NAME APS: a throwaway profile, CMS-signed by a key made here; APS "" leaves push out

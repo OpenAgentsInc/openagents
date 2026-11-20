@@ -33,7 +33,7 @@
 CC_FILE :: 4194304;
 CC_SELF :: "coax/web/components-check.coax";
 CC_SHADER :: "components/backend/gpu-shader.coax";
-CC_CODER_PAGE :: "apps/coder-desktop/page/";   // rule 5: a page that takes every colour from Zeron Dark
+CC_CODER_PAGE :: "apps/openagents-desktop/page/";   // rule 5: a page that takes every colour from Zeron Dark
 
 // The layers, in the order they may load each other.
 CC_CORE :: 0; CC_LAYOUT :: 1; CC_PAINT :: 2; CC_SKIN :: 3; CC_BACKEND :: 4; CC_KIT :: 5;
@@ -50,9 +50,8 @@ CcMove :: struct { path: string; does: int; }
 // Still to move, as of 2026-11-10. Each reads Markdown's marks itself, wraps
 // text itself or keeps its own edit buffer. Take a line out when its file
 // uses components/ instead.
-CC_TO_MOVE :: [22] CcMove.[
+CC_TO_MOVE :: [21] CcMove.[
   CcMove.{path = "metaverse-engine/ui/hud-menu.coax", does = CC_WRAP},
-  CcMove.{path = "apps/openagents-desktop/zeron/desk.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/builder.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/old/v1/everglade-events.coax", does = CC_WRAP},
   CcMove.{path = "apps/openagents-web/old/v1/everglade-room.coax", does = CC_WRAP},
@@ -385,7 +384,7 @@ tool_main :: () -> int #export_c #effects(all) {
 #test "Coder Desktop's page makes no colour: rgba( and hex( fail, a role or a comment does not" {
   #assert cc_makes_a_colour("  z := rgba(0.93f32, 0.93f32, 0.94f32, 1.0f32);") && cc_makes_a_colour("c := hex(0xededef, 1);");
   #assert !cc_makes_a_colour("  z_ink := th.text;") && !cc_makes_a_colour(cc_code("x := k.ink;   // was rgba(1, 1, 1, 1)")) && !cc_makes_a_colour("prim_box(l, n, x, y, w, h, r, 0, fill, Rgba.{});");
-  #assert cc_starts("apps/coder-desktop/page/layout/conversation.coax", CC_CODER_PAGE) && !cc_starts("apps/coder-desktop/host.c", CC_CODER_PAGE);
+  #assert cc_starts("apps/openagents-desktop/page/layout/conversation.coax", CC_CODER_PAGE) && !cc_starts("apps/openagents-desktop/host.c", CC_CODER_PAGE);
 }
 #test "a look in a component: colours made or written out and a skin's faces; a comment or a role is none" {
   #assert cc_names_a_look("  fill := hex(0x27272a, 1);") && cc_names_a_look("c := rgba(1, 1, 1, 0.1);") && cc_names_a_look("x := 0xe8e8ea;") && cc_names_a_look("f := FONT_BOLD;");

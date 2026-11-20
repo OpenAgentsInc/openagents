@@ -1,7 +1,7 @@
 # Desktop core
 
 The portable core of the OpenAgents desktop apps (GitHub #13787, master #13786). It holds the
-logic that `apps/coder-desktop` keeps in Swift today, written once in Coax, so the macOS, Linux and
+logic that `apps/openagents-desktop` keeps in Swift today, written once in Coax, so the macOS, Linux and
 Windows hosts call the same code. The on-disk formats and paths match the Swift app's, so the
 Swift app and the core can each read what the other writes.
 

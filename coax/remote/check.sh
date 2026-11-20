@@ -222,13 +222,13 @@ desktop_evals() {
   step coder-desktop-compaction sh evals/coder-desktop/compaction/run.sh || status=1
   # every page check file in the evaluator under 85% of the value slots (#13767): a run of one
   # check, or a host whose native checks fall back, needs the page to fit there
-  step coder-desktop-page-slots apps/coder-desktop/page-slots.sh || status=1
+  step coder-desktop-page-slots apps/openagents-desktop/page-slots.sh || status=1
 }
 # The portable desktop core (#13787): its #test checks are suites (coax/lib); its smoke runs the
 # modules against this host's real files, git, processes and local sockets, in a temporary folder.
 desktop_core() { step desktop-core-smoke coax/web/tool.sh coax/lib/agent/desktop/smoke.coax || status=1; }
 desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
-desktop_touched() { grep -Eq '^(apps/coder-desktop|evals/coder-desktop|components)/' "$out/changed"; }
+desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
   grep -Eq '^coder/' "$out/changed" && return 0
   affected_files || return 0
@@ -424,7 +424,7 @@ frame_plan_walk() { step frame-plan-walk metaverse-engine/host/core/check-frame-
 # reactor and runs coax/web/pack-host.js in bun over a fixture it writes).
 pack_cells() { step pack-cells coax/web/tool.sh metaverse-engine/host/check-pack-cells.coax "$PWD" coax/web/build/pack-cells || status=1; }
 # the native hosts have no look of their own: every control is the component library's, in the mono skin (#13580)
-native_style() { step native-style coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift apps/openagents-desktop/native/*.swift || status=1; }
+native_style() { step native-style coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift || status=1; }
 app_realms() { step app-realms coax/web/tool.sh metaverse/native/app-realms.coax "$PWD" coax/web/build/app-realms || status=1; }
 # Every realm in realms.json has its link-preview card (#13144): a release refuses a realm without
 # one, so it shows at landing, not at release.
@@ -654,7 +654,7 @@ reports_since() {
   fi
   if grep -Eq '^coax/web/(api/(migrations/|migrations\.sha256|schema\.sql|migration-check\.coax)|tool\.sh)' "$out/changed"; then migrations "$arg"; fi
   # a native host's source, the check, or the skin they draw from (#13580)
-  if grep -Eq '^(apps/shared/native/|apps/openagents-desktop/native/.*\.swift|coax/native/stock-style\.coax|components/skin/mono-native\.coax)' "$out/changed"; then native_style; fi
+  if grep -Eq '^(apps/shared/native/|coax/native/stock-style\.coax|components/skin/mono-native\.coax)' "$out/changed"; then native_style; fi
   # the pre-push check still refuses the historical clobbers and passes their fixes (#13265)
   if grep -Eq '^coax/(web/prepush\.coax|remote/hooks/)' "$out/changed"; then step prepush-replay coax/web/tool.sh prepush --replay-check || status=1; fi
   if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs"; then

@@ -11,7 +11,7 @@ repo="$(cd "$here/../.." && pwd)"
 coax="${COAX:-$repo/coax/bin/coax}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/account-check.XXXXXX")"; trap 'rm -rf "$work"' EXIT
 export BROWSER=/usr/bin/true
-"$coax" c "$here/lab-sign.coax" --run-steps 250000000 --library --header "$work/lab-sign.h" > "$work/lab-sign.c"
+"$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/lab-sign.h" > "$work/lab-sign.c"
 /usr/bin/clang -std=gnu11 -O2 -w -I"$work" -c "$work/lab-sign.c" -o "$work/lab-sign.o"
 xcrun -sdk macosx swiftc -O -suppress-warnings -parse-as-library -import-objc-header "$here/account-mac.h" \
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$here/tests/account-check.swift" \

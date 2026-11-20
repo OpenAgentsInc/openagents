@@ -3,8 +3,8 @@
 # Builds OpenAgents.app for this Mac: the page (app.coax, page.coax) compiled to C on the shared
 # component carrier (carrier.c, host.c) and Mac host (apps/shared/host/apple/ui-host.m), with the
 # component shader emitted as Metal, the Microcoder worker (coder/tui/mcworker.coax) it talks to, and the daemon (coder/tui/host.coax) that runs it.
-#   apps/coder-desktop/build.sh [--open]
-#   CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh   builds into another folder
+#   apps/openagents-desktop/build.sh [--open]
+#   CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh   builds into another folder
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"

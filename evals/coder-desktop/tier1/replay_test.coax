@@ -1,8 +1,8 @@
 // Tier 1 deterministic transcript replay harness for Coder Desktop.
 // Replays the 10 golden JSONL fixtures in evals/coder-desktop/tier1/fixtures/
-// through apps/coder-desktop/page.coax, checking layout, state, cost, and
+// through apps/openagents-desktop/page.coax, checking layout, state, cost, and
 // save/load round-trip invariants.
-#load "../../../apps/coder-desktop/page.coax";
+#load "../../../apps/openagents-desktop/page.coax";
 #load "fixtures_data.coax";
 
 t1_is_finite :: (v: f32) -> bool { return v == v && v > -1.0e30f32 && v < 1.0e30f32; }

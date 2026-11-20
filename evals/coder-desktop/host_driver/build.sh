@@ -18,20 +18,20 @@ fi
 need_coax=0
 if [ ! -f "$work/gallery.c" ] || [ ! -f "$work/gallery.h" ]; then
   need_coax=1
-elif [ -n "$(find "$repo/apps/coder-desktop" "$repo/coax/lib/agent/engine" -name '*.coax' -newer "$work/gallery.c" 2>/dev/null | head -1)" ]; then
+elif [ -n "$(find "$repo/apps/openagents-desktop" "$repo/coax/lib/agent/engine" -name '*.coax' -newer "$work/gallery.c" 2>/dev/null | head -1)" ]; then
   # the page is page.coax and its parts (page/*.coax, page/layout/*.coax) and the worker codec
   need_coax=1
 fi
 
 if [ "$need_coax" -eq 1 ]; then
-  "$coax" c "$repo/apps/coder-desktop/app.coax" --library --header "$work/gallery.h" > "$work/gallery.c"
+  "$coax" c "$repo/apps/openagents-desktop/app.coax" --library --header "$work/gallery.h" > "$work/gallery.c"
 fi
 
 # No warnings for the generated code, but an undeclared call stays an error: its pointer result
 # would be cut to an int (ui_view on Linux, #13734). -w would hide it on older clang.
-cflags=(-O2 -ffp-contract=off -fno-fast-math -Wno-everything -Werror=implicit-function-declaration -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/coder-desktop" -I"$here")
+cflags=(-O2 -ffp-contract=off -fno-fast-math -Wno-everything -Werror=implicit-function-declaration -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/openagents-desktop" -I"$here")
 
-clang -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/coder-desktop/carrier.c" -o "$work/carrier.o"
+clang -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/openagents-desktop/carrier.c" -o "$work/carrier.o"
 clang -std=gnu11 "${cflags[@]}" -c "$work/gallery.c" -o "$work/gallery.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/ui_host_stub.c" -o "$work/ui_host_stub.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/host_driver.c" -o "$work/host_driver.o"
