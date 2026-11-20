@@ -722,6 +722,14 @@ chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, d
   return v;
 }
 // A touch, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A press is routed through the committed rows.
+// The edge swipe's Back: the shown page's own Back button, pressed as a tap would (false: no page is pushed,
+// or its Back is held, as while a project saves).
+CH_BACKS :: [6]string.["workspace.back", "subagent.back", "foreman.back", "usage.back", "settings.back", "project.back"];
+ch_edge_back :: (s: [] ChatPage) -> bool {
+  sf := ch_live(s); t := [1] ElTable.[surface_rows(sf)];
+  for id: CH_BACKS { i := elt_find(t[..], id); if i >= 0 && !elt_has(t[..], i, EL_S_DISABLED) && elt_visible(t[..], i).visible { return ch_press(s, surface_find(sf, id)); } }
+  return false;
+}
 chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return false; }
   ux := x / s[0].d; uy := y / s[0].d;
@@ -743,6 +751,8 @@ chat_pointer :: (s: [] ChatPage, x: f32, y: f32, phase: int) -> bool #export_c #
     if was != id && !uiframe_field_capture(sf,was,ch_focus(s),ux-s[0].down_x,uy-s[0].down_y,CH_MOVE) { s[0].pressed_n = 0; }
     // a swipe left closes the open drawer; a swipe right from the left edge opens it
     if !s[0].swiped && s[0].drawer && ux - s[0].down_x < -CH_SWIPE { s[0].drawer = false; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
+    // on a pushed page (Workspace, a sub-agent, Foreman, Usage, Settings, Projects) it goes back, as a navigation stack's edge swipe does
+    if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE && ch_edge_back(s) { s[0].swiped = true; s[0].pressed_n = 0; ch_step(s); }
     if !s[0].swiped && !s[0].drawer && !s[0].lf[0].open && !ch_picking(s) && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { s[0].drawer = true; s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
     // on the login page the same swipe goes back to the chat
     if !s[0].swiped && s[0].lf[0].open && s[0].down_x < CH_EDGE && ux - s[0].down_x > CH_SWIPE { _ := ch_login_close(s); s[0].swiped = true; s[0].pressed_n = 0;ch_step(s); }
@@ -1257,7 +1267,7 @@ chat_render_commit :: (s:[]ChatPage,accepted:bool) #export_c #effects(all) {
   #assert !s[0].lf[0].open && !ch_test_has(s[..], "login.page") && !core[0].login_wanted && app_draft(core[..]) == "Fix the build";
   #assert es_env_value(s[0].env[..]) == "No computer";
 }
-#test "Settings: off, no Log in, no Nostr keys, no Renderer; the Experimental features switch brings log in and the keys back" #steps 2000000000 {
+#test "Settings: off, no Log in, no Nostr keys, no Renderer; the Experimental features switch brings log in and the keys back; an edge swipe goes back" #steps 2000000000 {
   s: [1] ChatPage; o: [1] ChOut; ch_test_atlas(s[0].atlas[..]);
   core: [1] AppCore; app_init(core[..]); chat_attach(s[..], core[..], "");
   core[0].auth = AUTH_IN; chat_step(s[..]); _ := ch_test_frame(s[..], o[..]);
@@ -1268,6 +1278,12 @@ chat_render_commit :: (s:[]ChatPage,accepted:bool) #export_c #effects(all) {
   #assert ch_test_text(s[..], "Nostr keys") == 1 && ch_test_has(s[..], "settings.experimental");
   #assert chat_activate(s[..], "settings.experimental") && !chat_experimental(s[..]) && core[0].local_only; _ := ch_test_frame(s[..], o[..]);
   #assert ch_test_text(s[..], "Nostr keys") == 0 && ch_test_text(s[..], "Settings") == 1;
+  // a swipe right from the left edge goes back, as Back does, and opens no drawer
+  _ := chat_pointer(s[..], 3, 900, 0); _ := chat_pointer(s[..], 200, 900, 1); _ := chat_pointer(s[..], 200, 900, 2); _ = ch_test_frame(s[..], o[..]);
+  #assert !ch_test_has(s[..], "settings.back") && !s[0].drawer;
+  // on the chat itself it opens the drawer
+  _ = chat_pointer(s[..], 3, 900, 0); _ = chat_pointer(s[..], 200, 900, 1); _ = chat_pointer(s[..], 200, 900, 2);
+  #assert s[0].drawer;
 }
 chat_transparency :: (s:[]ChatPage,reduced:bool) #export_c #effects(all) {if s.count>0 {s[0].reduced_transparency=reduced;}}
 // Experimental features on or off (the host reads experimentalFeatures at launch, and keeps what
