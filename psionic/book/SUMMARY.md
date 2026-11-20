@@ -329,6 +329,15 @@
 - [264. Run the policy on a real robot](ch264-run-the-policy-on-a-real-robot.md) — design draft
 - [265. A course, a flock and a repeatable result](ch265-a-course-a-flock-and-a-repeatable-result.md) — design draft
 
+**XXVII. Looped transformers: Inkling 2 Mini**
+
+- [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) — design draft
+- [267. A looped MoE transformer](ch267-a-looped-moe-transformer.md) — design draft
+- [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) — design draft
+- [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) — design draft
+- [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) — design draft
+- [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) — design draft
+
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific

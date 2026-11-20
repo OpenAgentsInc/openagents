@@ -42,7 +42,7 @@ are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/boo
   uses it to choose an engine, and
   [Everglade](../../everglade/book/README.md)'s guard uses it in a game.
 - **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library. The
-  [contents](SUMMARY.md) name all 26 parts.
+  [contents](SUMMARY.md) name all 27 parts.
 
 ## Chapter status
 
@@ -382,6 +382,12 @@ run examples directly without the check command.
 | [263. Export a policy and supervise its steps](ch263-export-a-policy-and-supervise-its-steps.md) | Unimplemented: design draft | Native/ONNX policy package, normalization identity and local fake-device supervision. |
 | [264. Run the policy on a real robot](ch264-run-the-policy-on-a-real-robot.md) | Unimplemented: design draft | Authorized commissioning, measured timing/fault/stop behavior and physical repeatability. |
 | [265. A course, a flock and a repeatable result](ch265-a-course-a-flock-and-a-repeatable-result.md) | Unimplemented: design draft | The final owned pipeline with explicit evaluation, four-robot coordination and reproducible release evidence. |
+| [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) | Unimplemented: design draft | Authenticated loading and exact CPU dequantization of Inkling 2 Mini's native NVFP4 and MXFP8 weight tensors. |
+| [267. A looped MoE transformer](ch267-a-looped-moe-transformer.md) | Unimplemented: design draft | Three-pass middle-layer MoE recurrence (and variable loop count for `TML-d24-varloop-research`) with per-pass KV-cache indexing. |
+| [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) | Unimplemented: design draft | Full CPU execution of the original ~20 GB Inkling 2 Mini checkpoint with tokenizer, chat template and reference logit parity. |
+| [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) | Unimplemented: design draft | Coax-generated Metal NVFP4/MXFP8 kernels, looped MoE dispatch and ≥32 GB unified-memory residency planning. |
+| [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) | Unimplemented: design draft | Inkling 2 Mini reasoning/tool-call parser and local `/v1/responses` streaming server integration. |
+| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Unimplemented: design draft | End-to-end OpenAgents Desktop integration: verified model download, memory guardrails, resident local runner and streaming tool-use UI. |
 
 The selected robotics capstone is [chapter 256](ch256-build-and-teach-a-small-robot.md),
 following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).

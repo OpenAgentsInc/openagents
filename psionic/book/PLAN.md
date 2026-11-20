@@ -953,6 +953,21 @@ accelerate development, while offline operation and a complete non-NVIDIA
 execution profile are explicit goals. Every additional training backend needs
 its own quality, timing and memory evidence.
 
+### Part XXVII. Looped transformers: Inkling 2 Mini
+
+Target: [Inkling 2 Mini](../docs/targets/inkling.md) (26.4B total / 3.4B active
+MoE, 3-pass middle-layer loop, native NVFP4 weights with MXFP8 last four layers,
+~20GB footprint, plus the variable-loop `TML-d24-varloop-research` checkpoint).
+
+| Chapter | What it proves |
+| --- | --- |
+| [266. Original NVFP4 and MXFP8 weights](ch266-original-nvfp4-and-mxfp8-weights.md) — design draft | Authenticate and decode native NVFP4 and MXFP8 checkpoint tensors with exact CPU reference dequantization. |
+| [267. A looped MoE transformer](ch267-a-looped-moe-transformer.md) — design draft | Execute the 3-pass middle-layer recurrence (and variable loop counts) with per-loop KV-cache/state layout against a tiny hand-checked reference. |
+| [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) — design draft | Load the original ~20GB checkpoint, apply its tokenizer/chat template, and verify logits and greedy decode against an independent reference. |
+| [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) — design draft | Coax-generated Metal kernels for NVFP4/MXFP8 matvec/matmul, looped MoE prefill/decode, and residency planning for >=32GB Macs. |
+| [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) — design draft | Wire Inkling 2 Mini's tool-calling format and thinking/CoT output into Psionic's `/v1/responses` server. |
+| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) — design draft | Connect the resident local Psionic Metal runner into `apps/openagents-desktop/` with discovery/download, residency guardrails, model picker, and streaming tool-use sessions. |
+
 ## A framework, not only engines
 
 Most of this plan teaches how to run and train particular architectures. To
