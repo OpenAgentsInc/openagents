@@ -4,6 +4,59 @@ What every agent working in this repository needs to know. Read
 [INVARIANTS.md](INVARIANTS.md) before changing anything it covers, and follow
 the [root glossary](docs/books/glossary.md) for new identifiers, tables, registry IDs and wire fields.
 
+## Git
+
+- Work on `main`. **Anytime you make changes at a user's request, always commit only the files you changed, rebase onto `origin/main`, push to `main` (`git push origin HEAD:main`), and clean up any temporary worktrees and branches when finished.** Never leave user-requested changes sitting unpushed or only on a side branch.
+- **Desktop app installs (`/Applications/OpenAgents.app`).** Use `apps/openagents-desktop/install.sh` to install the macOS app and sync the resident daemon (`~/.openagents/bin/openagents-environment`). Because `install.sh` always builds from `origin/main` (in its own checkout under `~/.cache/openagents/coder-release`), **always commit and push your changes to `main` first**, then run `apps/openagents-desktop/install.sh` (do not hand-copy a branch build into `/Applications/OpenAgents.app` instead of landing on `main`).
+- This section is for team agents. A contributor outside the team works
+  from a fork and opens a pull request ([CONTRIBUTING.md](CONTRIBUTING.md));
+  their one check is `scripts/check.sh`, the pre-push check's local checks
+  with nothing that needs a secret or a team host.
+- **Never edit files in the main checkout**
+  (`/Users/christopherdavid/work/openagents`). It stays clean on `main` so
+  anyone can `git pull --ff-only` it. Do every edit, build and test in your
+  own worktree: `git worktree add ../oa-<topic> origin/main`, then push
+  `HEAD:main` from there and remove the worktree when you finish.
+- If you find uncommitted changes in the main checkout, they are another
+  agent's. Never stash, reset or check out over them; ask that agent to
+  move them to a worktree.
+- Rebase on `origin/main` before pushing. When you change something that
+  another change also touched (a version number, error codes, the grammar),
+  merge both changes; don't overwrite theirs.
+- End commit messages with a `Co-Authored-By` line for the model that
+  wrote them, and an `Agent: <id>` line with your agent ID (the one your
+  brief gives you), so a failure on `main` reaches the agent that caused it
+  ([docs/metaverse/green-main-pipeline.md](docs/metaverse/green-main-pipeline.md)).
+- A pre-push check runs on every push to `main` (it is not a queue: about
+  10 to 20 seconds, never more than two minutes). It refuses a commit that
+  undoes another agent's work of the last 24 hours (a tree written from a
+  stale snapshot), a commit with no `Agent:` line, and a failing
+  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test, `agent-reference --check`, `drive-hit-check` (a push that changes `coax drive`), `wgsl-module --site --check` (a push that changes Coax or a shader) or touched
+  suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
+  once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
+  has it, so every worktree gets it). When a refusal is right, fix the
+  commit; when you mean to delete or restore another agent's file, name the
+  file (or its folder/, or the commit you undo) in the message. Emergency
+  only: `OA_PREPUSH_BYPASS="why" git push ...`, which is logged. Never use
+  `--no-verify` ([the pre-push check](docs/metaverse/green-main-pipeline.md#the-pre-push-check)).
+- `coax/remote/after.sh state` shows whether `main` is green: `main`,
+  `main-green` (the newest head that passed the after-landing check), the last
+  runs and the red list. When `main-green` is behind and you need a base that
+  passes, start from it: `git worktree add ../oa-<topic> origin/main-green`.
+- The allowlist counts (`coax/remote/counts.sh show`: parity known and gaps,
+  components to move, the wire allowlist, `tools-port.txt`, layer-check per
+  rule) only fall: a head that raises one is red and names its commit. A
+  commit that must add a line also says why in a trailer,
+  `Rebaseline: NAME: why`. A head worse than production in Everglade II's
+  room pair (`check.sh e2`) is red too
+  ([the comparing gates](docs/metaverse/green-main-pipeline.md#the-comparing-gates)).
+- Before you investigate a failure on `main`, check the red list (in that
+  output). A failure listed there is already owned. When an entry names your
+  commit, fixing it comes before new work: a culprit still failing 30 minutes
+  after it is reported is reverted.
+- Owner actions (taps, keys, payments, sign-offs) go in the workspace's
+  `NEEDS_OWNER.md`, not only in chat.
+
 ## What is here
 
 The repository was reset (the Nuke, `0b401561a0`, 2026-10-27). The old
@@ -270,56 +323,3 @@ shard split; on a change, mutate what it touched (`--changed`, or several
 The full iOS test command and TestFlight steps are in
 [apps/openagents-ios/README.md](apps/openagents-ios/README.md). Run the
 tests for what you touched, not everything.
-
-## Git
-
-- Work on `main`. **Anytime you make changes at a user's request, always commit only the files you changed, rebase onto `origin/main`, push to `main` (`git push origin HEAD:main`), and clean up any temporary worktrees and branches when finished.** Never leave user-requested changes sitting unpushed or only on a side branch.
-- **Desktop app installs (`/Applications/OpenAgents.app`).** Use `apps/openagents-desktop/install.sh` to install the macOS app and sync the resident daemon (`~/.openagents/bin/openagents-environment`). Because `install.sh` always builds from `origin/main` (in its own checkout under `~/.cache/openagents/coder-release`), **always commit and push your changes to `main` first**, then run `apps/openagents-desktop/install.sh` (do not hand-copy a branch build into `/Applications/OpenAgents.app` instead of landing on `main`).
-- This section is for team agents. A contributor outside the team works
-  from a fork and opens a pull request ([CONTRIBUTING.md](CONTRIBUTING.md));
-  their one check is `scripts/check.sh`, the pre-push check's local checks
-  with nothing that needs a secret or a team host.
-- **Never edit files in the main checkout**
-  (`/Users/christopherdavid/work/openagents`). It stays clean on `main` so
-  anyone can `git pull --ff-only` it. Do every edit, build and test in your
-  own worktree: `git worktree add ../oa-<topic> origin/main`, then push
-  `HEAD:main` from there and remove the worktree when you finish.
-- If you find uncommitted changes in the main checkout, they are another
-  agent's. Never stash, reset or check out over them; ask that agent to
-  move them to a worktree.
-- Rebase on `origin/main` before pushing. When you change something that
-  another change also touched (a version number, error codes, the grammar),
-  merge both changes; don't overwrite theirs.
-- End commit messages with a `Co-Authored-By` line for the model that
-  wrote them, and an `Agent: <id>` line with your agent ID (the one your
-  brief gives you), so a failure on `main` reaches the agent that caused it
-  ([docs/metaverse/green-main-pipeline.md](docs/metaverse/green-main-pipeline.md)).
-- A pre-push check runs on every push to `main` (it is not a queue: about
-  10 to 20 seconds, never more than two minutes). It refuses a commit that
-  undoes another agent's work of the last 24 hours (a tree written from a
-  stale snapshot), a commit with no `Agent:` line, and a failing
-  `tools-check`, `everglade-parity`, `wire-check`, `layer-check`, state-keep test, `agent-reference --check`, `drive-hit-check` (a push that changes `coax drive`), `wgsl-module --site --check` (a push that changes Coax or a shader) or touched
-  suite. The hooks are tracked in `coax/remote/hooks/`; a clone turns them on
-  once with `git config core.hooksPath coax/remote/hooks` (this Mac's clone
-  has it, so every worktree gets it). When a refusal is right, fix the
-  commit; when you mean to delete or restore another agent's file, name the
-  file (or its folder/, or the commit you undo) in the message. Emergency
-  only: `OA_PREPUSH_BYPASS="why" git push ...`, which is logged. Never use
-  `--no-verify` ([the pre-push check](docs/metaverse/green-main-pipeline.md#the-pre-push-check)).
-- `coax/remote/after.sh state` shows whether `main` is green: `main`,
-  `main-green` (the newest head that passed the after-landing check), the last
-  runs and the red list. When `main-green` is behind and you need a base that
-  passes, start from it: `git worktree add ../oa-<topic> origin/main-green`.
-- The allowlist counts (`coax/remote/counts.sh show`: parity known and gaps,
-  components to move, the wire allowlist, `tools-port.txt`, layer-check per
-  rule) only fall: a head that raises one is red and names its commit. A
-  commit that must add a line also says why in a trailer,
-  `Rebaseline: NAME: why`. A head worse than production in Everglade II's
-  room pair (`check.sh e2`) is red too
-  ([the comparing gates](docs/metaverse/green-main-pipeline.md#the-comparing-gates)).
-- Before you investigate a failure on `main`, check the red list (in that
-  output). A failure listed there is already owned. When an entry names your
-  commit, fixing it comes before new work: a culprit still failing 30 minutes
-  after it is reported is reverted.
-- Owner actions (taps, keys, payments, sign-offs) go in the workspace's
-  `NEEDS_OWNER.md`, not only in chat.
