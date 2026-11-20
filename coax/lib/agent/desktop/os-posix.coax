@@ -1,0 +1,263 @@
+// The desktop core's seam on macOS and Linux (os.coax lists it): coax/lib/sys's files and
+// processes and coax/lib/net's local sockets, over the POSIX C effects in coax/platform
+// (store-file-native.c, process-native.c, socket-native.c). The two systems differ here only in
+// where the Coder folder is (paths.coax dc_coder_dir), how a folder is cloned (APFS's cp -c, or
+// GNU cp's --reflink=auto) and where settings live (the app's defaults domain on a Mac, the
+// Coder folder's settings.json elsewhere).
+#load "paths.coax";
+#load "../../sys/fs.coax";
+#load "../../sys/proc.coax";
+#load "../../sys/clock.coax";
+#load "../../net/socket_foreign.coax";
+#load "../../crypto/rand_foreign.coax";
+#load "../../json/json.coax";
+
+DcRun :: struct { started: int; status: int = -1; n: int; cut: bool; }
+DC_RUN_MS :: 120000;          // a git or cp call that takes longer than this is killed
+DC_DEFAULTS_DOMAIN :: "com.openagents.coder";   // the Mac app's UserDefaults (ChatWorktree.enabled, CoderOpenRouter)
+
+// The system, from what is on disk (no build flag to ask): a Mac has /System/Library/CoreServices.
+dcos_os :: () -> int {
+  if fs_kind("/System/Library/CoreServices") == FS_DIR { return DC_OS_MAC; }
+  return ifx fs_kind("/proc") == FS_DIR then DC_OS_LINUX else 0;
+}
+dcos_getenv :: (name: string, out: [] u8) -> string { return proc_getenv(name, out); }
+dcos_home :: (out: [] u8) -> string { return dc_trim_slash(proc_getenv("HOME", out)); }
+dcos_now_ms :: () -> int { return cxproc_wall_us() / 1000; }
+dcos_now_us :: () -> int { return cxproc_wall_us(); }
+dcos_real :: (path: string, out: [] u8) -> string {
+  r := fs_realpath(path, out);
+  return ifx r.count > 0 then r else dc_standard(path, out);
+}
+// out filled with random bytes from the system (/dev/urandom); false when it could not be read.
+// The system's entropy (coax/platform/entropy-foreign.c), at most 64 bytes a draw.
+dcos_random :: (out: [] u8) -> bool {
+  at := 0;
+  while at < out.count {
+    n := ifx out.count - at < 64 then out.count - at else 64;
+    if cxrand_draw(out[at..<at + n], n) != 0 { return false; }
+    at += n;
+  }
+  return true;
+}
+dcos_kind :: (path: string) -> int { return fs_kind(path); }
+dcos_read :: (path: string, out: [] u8) -> int { return fs_read(path, out); }
+dcos_read_at :: (path: string, offset: int, out: [] u8) -> int { return fs_read_at(path, offset, out); }
+dcos_size :: (path: string) -> int { return fs_size(path); }
+dcos_write :: (path: string, data: string) -> bool {
+  tb: [DC_PATH] u8; n := dc_copy(tb[..], path); n = dc_cat(tb[..], n, ".new");
+  t := dc_fits(tb[..], n);
+  return t.count > 0 && fs_write(t, data) && fs_rename(t, path);
+}
+dcos_write_private :: (path: string, data: string) -> bool { return fs_replace_durable(path, data); }
+dcos_append :: (path: string, data: string) -> bool { return fs_append(path, data); }
+dcos_mkdirs :: (path: string) -> bool {
+  if path.count == 0 { return false; }
+  for i: 1..<path.count + 1 {
+    if i == path.count || path[i] == '/' {
+      part := path[0..<i];
+      if fs_kind(part) == FS_NONE { _ := fs_mkdir(part); }
+    }
+  }
+  return fs_kind(path) == FS_DIR;
+}
+dcos_mkdir_private :: (path: string) -> bool {
+  if fs_kind(path) == FS_NONE { _ := fs_mkdir_private(path); }
+  return fs_kind(path) == FS_DIR;
+}
+dcos_remove :: (path: string) -> bool { return fs_remove(path); }
+dcos_list :: (dir: string, l: [] FsList) -> int { return fs_list(dir, l); }
+
+// argv to its end with env ("K=V") added: stdin empty, stderr in stdout's place, lines joined by
+// newlines into out. Killed at DC_RUN_MS.
+dcos_run :: (argv: [] string, env: [] string, out: [] u8) -> DcRun {
+  r: DcRun;
+  h := proc_new();
+  if h < 0 { r.started = PROC_ERROR; return r; }
+  ok := argv.count > 0;
+  for a: argv { ok = ok && proc_arg(h, a); }
+  for e: env { ok = ok && proc_env(h, e); }
+  ok = ok && proc_err_to_out(h);
+  if !ok { _ := proc_release(h); r.started = PROC_ERROR; return r; }
+  r.started = proc_start(h);
+  if r.started != 0 { _ := proc_release(h); return r; }
+  _ := proc_close_stdin(h);
+  deadline := proc_deadline(DC_RUN_MS, proc_now_ms());
+  line: [65536] u8; timed := false;
+  while true {
+    k := proc_line(h, proc_left(deadline, proc_now_ms()), line[..]);
+    if k == PROC_EOF || k == PROC_ERROR { break; }
+    if k == PROC_TIMEOUT { timed = true; break; }
+    if k == PROC_TOO_LONG { r.cut = true; continue; }
+    if r.n > 0 { if r.n < out.count { out[r.n] = '\n'; r.n += 1; } else { r.cut = true; } }
+    for i: 0..<k { if r.n < out.count { out[r.n] = line[i]; r.n += 1; } else { r.cut = true; } }
+  }
+  if timed { _ := proc_kill(h, PROC_SIGKILL); }
+  r.status = proc_wait(h, ifx timed then 2000 else proc_left(deadline, proc_now_ms()));
+  if r.status == PROC_RUNNING { _ := proc_kill(h, PROC_SIGKILL); r.status = proc_wait(h, 2000); }
+  _ := proc_release(h);
+  return r;
+}
+dcos_status :: (argv: [] string) -> int { none: [1] string; out: [4096] u8; r := dcos_run(argv, none[0..<0], out[..]); return ifx r.started == 0 then r.status else -1; }
+
+// The folder from cloned to to: APFS clones on a Mac (cp -c, a plain copy when the volume isn't
+// APFS), reflinks where Linux's file system has them (GNU cp --reflink=auto).
+dcos_clone_tree :: (from: string, to: string) -> bool {
+  if dcos_os() == DC_OS_MAC {
+    a2 := [6] string.["/bin/cp", "-c", "-R", "-p", from, to];
+    if dcos_status(a2[..]) == 0 { return true; }
+    _ := fs_remove(to);
+    b := [5] string.["/bin/cp", "-R", "-p", from, to];
+    return dcos_status(b[..]) == 0;
+  }
+  c := [6] string.["cp", "--reflink=auto", "-R", "-p", from, to];
+  return dcos_status(c[..]) == 0;
+}
+// Removes each symbolic link under dir whose target is source or inside it, so nothing in a
+// worktree writes through to the main checkout (ChatWorktree.cutLinks). How many it removed.
+dcos_cut_links :: (dir: string, source: string) -> int {
+  argv := [5] string.["find", dir, "-type", "l", "-print"]; none: [1] string;
+  out: [1048576] u8; r := dcos_run(argv[..], none[0..<0], out[..]);
+  if r.started != 0 || r.status != 0 { return 0; }
+  rs: [DC_PATH] u8; real_source := dcos_real(source, rs[..]);
+  text := cast(string) out[0..<r.n]; cut := 0; at := 0;
+  while at < text.count {
+    e := at; while e < text.count && text[e] != '\n' { e += 1; }
+    link := text[at..<e]; at = e + 1;
+    if link.count == 0 { continue; }
+    tb: [DC_PATH] u8; t := fs_realpath(link, tb[..]);
+    if t.count == 0 { continue; }
+    if dc_under(t, source) || dc_under(t, real_source) { if fs_remove(link) { cut += 1; } }
+  }
+  return cut;
+}
+// Whether path is folder or inside it.
+dc_under :: (path: string, folder: string) -> bool {
+  f := dc_trim_slash(folder);
+  if f.count == 0 { return false; }
+  return path == f || (path.count > f.count && dc_starts(path, f) && path[f.count] == '/');
+}
+
+// A worker: program in cwd, env ("K=V") added and unset (names) removed from what it inherits,
+// its stdin and stdout pipes, its stderr kept apart. A handle, or -1.
+dcos_spawn :: (program: string, cwd: string, env: [] string, unset: [] string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, program);
+  if cwd.count > 0 { ok = ok && proc_cwd(h, cwd); }
+  for u: unset { ok = ok && proc_unset(h, u); }
+  for e: env { ok = ok && proc_env(h, e); }
+  if !ok || proc_start(h) != 0 { _ := proc_release(h); return -1; }
+  return h;
+}
+dcos_send :: (h: int, data: string) -> bool { return h >= 0 && proc_send(h, data); }
+// The worker's next line (without its newline): its length, or PROC_EOF, PROC_TIMEOUT, PROC_ERROR, PROC_TOO_LONG.
+dcos_line :: (h: int, timeout_ms: int, out: [] u8) -> int { return ifx h < 0 then PROC_ERROR else proc_line(h, timeout_ms, out); }
+dcos_alive :: (h: int) -> bool { return h >= 0 && proc_wait(h, 0) == PROC_RUNNING; }
+// Its input closed (a worker ends on that and stops what it started); killed when it is still there after 500 ms.
+dcos_close :: (h: int) {
+  if h < 0 { return; }
+  _ := proc_close_stdin(h);
+  if proc_wait(h, 500) == PROC_RUNNING { _ := proc_kill(h, PROC_SIGTERM); if proc_wait(h, 2000) == PROC_RUNNING { _ := proc_kill(h, PROC_SIGKILL); } }
+  _ := proc_release(h);
+}
+// program with args in a session of its own that outlives this one: stdin /dev/null, stdout and
+// stderr appended to log (CoderDaemonClient.spawnDetached). Its pid, or -1.
+dcos_spawn_detached :: (program: string, args: [] string, log_file: string) -> int {
+  h := proc_new();
+  if h < 0 { return -1; }
+  ok := proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, "log=\"$1\"; shift; exec \"$@\" >>\"$log\" 2>&1 </dev/null") && proc_arg(h, "sh") && proc_arg(h, log_file) && proc_arg(h, program);
+  for a: args { ok = ok && proc_arg(h, a); }
+  ok = ok && proc_env(h, "BROWSER=/usr/bin/true") && proc_detach(h) && proc_quiet(h);
+  if !ok || proc_start(h) != 0 { _ := proc_release(h); return -1; }
+  pid := proc_pid(h);
+  _ := proc_release(h);
+  return pid;
+}
+
+// One line to the owner-only local socket at path and its one reply line into out: the reply's
+// length, or -1 (no socket, refused, not this user's peer, no whole reply by timeout_ms).
+dcos_unix_call :: (path: string, line: string, out: [] u8, timeout_ms: int) -> int {
+  for c: path { _ := cxsock_host_push(cast(int) c); }
+  s := cxsock_connect_unix(timeout_ms);
+  if s < 0 { return -1; }
+  defer { _ := cxsock_close(s); }
+  if cxsock_peer_self(s) != 1 { return -1; }
+  for c: line { if cxsock_write(s, cast(int) c) < 0 { return -1; } }
+  if cxsock_write(s, 10) < 0 || cxsock_flush(s, timeout_ms) < 0 { return -1; }
+  deadline := cxsock_now_ms() + timeout_ms; at := 0;
+  while cxsock_now_ms() < deadline {
+    got := cxsock_read(s, 100);
+    if got == -2 { continue; }
+    if got < 0 { return -1; }
+    for i: 0..<got {
+      c := cxsock_byte(s, i);
+      if c == 10 { return at; }
+      if at >= out.count { return -1; }
+      out[at] = cast,trunc(u8) c; at += 1;
+    }
+  }
+  return -1;
+}
+
+// ---- settings ----
+// A Mac keeps them in the app's defaults domain (UserDefaults: the Mac app reads the same
+// values), read and written with /usr/bin/defaults; CODER_SETTINGS_DOMAIN names another domain
+// or a plist path (a test's). Elsewhere they are the Coder folder's settings.json, one string a
+// name ({"chatWorktrees":"1","openRouterMain":"vendor/model"}), or CODER_SETTINGS_FILE.
+// Booleans read "1" or "0" on both.
+DC_SET_STRING :: 0; DC_SET_BOOL :: 1;
+dcos_settings_file :: (out: [] u8) -> string {
+  eb: [DC_PATH] u8; set := dcos_getenv("CODER_SETTINGS_FILE", eb[..]);
+  if set.count > 0 { return dc_fits(out, dc_copy(out, set)); }
+  hb: [DC_PATH] u8; xb: [DC_PATH] u8; cb: [DC_PATH] u8;
+  d := dc_coder_dir(dcos_os(), dcos_home(hb[..]), dcos_getenv("XDG_DATA_HOME", xb[..]), "", cb[..]);
+  return dc_join(d, "settings.json", out);
+}
+dcos_domain :: (out: [] u8) -> string {
+  d := dcos_getenv("CODER_SETTINGS_DOMAIN", out);
+  return ifx d.count > 0 then d else DC_DEFAULTS_DOMAIN;
+}
+dcos_setting :: (name: string, out: [] u8) -> string {
+  if dcos_os() == DC_OS_MAC {
+    db: [DC_PATH] u8; argv := [4] string.["/usr/bin/defaults", "read", dcos_domain(db[..]), name]; none: [1] string;
+    r := dcos_run(argv[..], none[0..<0], out);
+    if r.started != 0 || r.status != 0 { return ""; }
+    return cast(string) out[0..<r.n];
+  }
+  fb: [DC_PATH] u8; text: [65536] u8; n := fs_read(dcos_settings_file(fb[..]), text[..]);
+  if n < 1 { return ""; }
+  j: [1] Jv; nodes: [512] JvNode;
+  if !jv_parse(j[..], cast(string) text[0..<n], nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return ""; }
+  at := jv_get(j[0], 0, name);
+  if jv_kind(j[0], at) != JV_STRING { return ""; }
+  k := jv_str(j[0], at, out);
+  return ifx k >= 0 && k <= out.count then cast(string) out[0..<k] else "";
+}
+dcos_set_setting :: (name: string, value: string, kind: int) -> bool {
+  if dcos_os() == DC_OS_MAC {
+    db: [DC_PATH] u8; none: [1] string; out: [4096] u8;
+    if kind == DC_SET_BOOL {
+      argv := [6] string.["/usr/bin/defaults", "write", dcos_domain(db[..]), name, "-bool", ifx value == "1" then "YES" else "NO"];
+      r := dcos_run(argv[..], none[0..<0], out[..]); return r.started == 0 && r.status == 0;
+    }
+    argv := [6] string.["/usr/bin/defaults", "write", dcos_domain(db[..]), name, "-string", value];
+    r := dcos_run(argv[..], none[0..<0], out[..]); return r.started == 0 && r.status == 0;
+  }
+  fb: [DC_PATH] u8; path := dcos_settings_file(fb[..]);
+  if path.count == 0 { return false; }
+  text: [65536] u8; n := fs_read(path, text[..]);
+  j: [1] Jv; nodes: [512] JvNode;
+  had := n > 0 && jv_parse(j[..], cast(string) text[0..<n], nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT;
+  ob: [131072] u8; o: [1] Jo; jo_start(o[..], ob[..]); jo_obj(o[..]);
+  if had {
+    for i: 0..<jv_len(j[0], 0) {
+      member := jv_at(j[0], 0, i); key := jv_key(j[0], member);
+      if key == name { continue; }
+      jo_key(o[..], key); jv_write(j[0], member, o[..]);
+    }
+  }
+  jo_key(o[..], name); jo_str(o[..], value); jo_end(o[..]);
+  if o[0].bad || !dcos_mkdirs(dc_parent(path)) { return false; }
+  return dcos_write(path, jo_text(o[..]));
+}

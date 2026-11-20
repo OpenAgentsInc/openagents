@@ -1,0 +1,235 @@
+// The desktop core's paths and names (GitHub #13787): where a chat's worktree goes, its branch,
+// the folder and Cargo target a repository's chats share, where the chat store and the daemon
+// are. Pure: the caller passes HOME and the environment's values, so `coax test` checks every
+// rule. Each rule is the Mac app's, byte for byte (apps/coder-desktop/Worktree.swift
+// ChatWorktree, DaemonClient.swift CoderDaemonClient, Store.swift CoderStore), so the app and a
+// host on the core find the same folders and names.
+//   coax/bin/coax test coax/lib/agent/desktop/paths.coax --library
+
+DC_PATH :: 4096;
+DC_OS_MAC :: 1; DC_OS_LINUX :: 2; DC_OS_WINDOWS :: 3;   // dcos_os() (os.coax)
+
+dc_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+dc_copy :: (dst: [] u8, s: string) -> int { return dc_cat(dst, 0, s); }
+dc_fits :: (out: [] u8, n: int) -> string { return ifx n < out.count then cast(string) out[0..<n] else ""; }
+dc_ends :: (s: string, tail: string) -> bool { return s.count >= tail.count && cast(string) s[s.count - tail.count..<s.count] == tail; }
+dc_starts :: (s: string, head: string) -> bool { return s.count >= head.count && cast(string) s[0..<head.count] == head; }
+// s without the slashes it ends with ("/" stays "/").
+dc_trim_slash :: (s: string) -> string { t := s; while t.count > 1 && t[t.count - 1] == '/' { t = t[0..<t.count - 1]; } return t; }
+// dir + "/" + leaf ("" when it does not fit or dir is empty).
+dc_join :: (dir: string, leaf: string, out: [] u8) -> string {
+  if dir.count == 0 { return ""; }
+  d := dc_trim_slash(dir);
+  n := dc_cat(out, 0, d);
+  if d != "/" { n = dc_cat(out, n, "/"); }
+  n = dc_cat(out, n, leaf);
+  return dc_fits(out, n);
+}
+// The decimal text of v.
+dc_num :: (v: int, out: [] u8) -> string {
+  if out.count < 21 { return ""; }
+  neg := v < 0; x := ifx neg then -v else v; tmp: [24] u8; k := 0;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  n := 0; if neg { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n] = tmp[k - 1 - i]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// ---- worktrees (ChatWorktree) ----
+
+// Where worktrees go: $CODER_WORKTREES when it is absolute, else HOME/.openagents/worktrees.
+dc_worktree_root :: (home: string, set: string, out: [] u8) -> string {
+  if set.count > 0 && set[0] == '/' { return dc_fits(out, dc_copy(out, set)); }
+  return dc_join(home, ".openagents/worktrees", out);
+}
+// The chat id as a branch and folder name: lowercase letters, digits and dashes only, at most 64; "chat" when none is left.
+dc_clean :: (chat: string, out: [] u8) -> string {
+  n := 0;
+  for c: chat {
+    l := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    if ((l >= 'a' && l <= 'z') || (l >= '0' && l <= '9') || l == '-') && n < 64 && n < out.count { out[n] = l; n += 1; }
+  }
+  if n == 0 { return dc_fits(out, dc_copy(out, "chat")); }
+  return cast(string) out[0..<n];
+}
+dc_branch :: (chat: string, out: [] u8) -> string {
+  cb: [80] u8; n := dc_copy(out, "coder/"); n = dc_cat(out, n, dc_clean(chat, cb[..]));
+  return dc_fits(out, n);
+}
+// The branch as the composer shows it: coder/ and the chat id's first 8 characters.
+dc_shown :: (branch: string) -> string {
+  if !dc_starts(branch, "coder/") || branch.count <= 14 { return branch; }
+  return branch[0..<14];
+}
+// FNV-1a 64 of s.
+dc_fnv :: (s: string) -> u64 {
+  h: u64 = 14695981039346656037;
+  for c: s { h = mul_wrap(h ^ cast(u64) c, 1099511628211); }
+  return h;
+}
+// A repository's folder name in the worktrees folder and its Cargo target folder (ChatWorktree.slug):
+// its last path part in lowercase letters, digits, dots, dashes and underscores (any other
+// character one dash), without leading dots and dashes, at most 48, then a dash and the last 8 hex
+// digits of FNV-1a over its whole path. repo must be the real path already (dcos_real).
+dc_slug :: (repo: string, out: [] u8) -> string {
+  r := dc_trim_slash(repo);
+  start := r.count; while start > 0 && r[start - 1] != '/' { start -= 1; }
+  name := r[start..<r.count];
+  if r == "/" { name = r; }
+  part: [4096] u8; m := 0;
+  for c: name {
+    if c >= 0x80 && c < 0xC0 { continue; }            // a UTF-8 continuation byte: the scalar has its dash
+    l := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    ok := (l >= 'a' && l <= 'z') || (l >= '0' && l <= '9') || l == '.' || l == '-' || l == '_';
+    if m < part.count { part[m] = ifx ok then l else '-'; m += 1; }
+  }
+  from := 0; while from < m && (part[from] == '.' || part[from] == '-') { from += 1; }
+  n := 0;
+  if from == m { n = dc_copy(out, "repo"); }
+  else { for i: from..<m { if i - from < 48 { n = dc_cat(out, n, cast(string) part[i..<i + 1]); } } }
+  n = dc_cat(out, n, "-");
+  h := dc_fnv(repo);
+  hex := "0123456789abcdef"; tail: [8] u8;
+  for i: 0..<8 { tail[7 - i] = hex[cast(int) ((h >> cast(u64) (4 * i)) & 15)]; }
+  n = dc_cat(out, n, cast(string) tail[..]);
+  return dc_fits(out, n);
+}
+// root/SLUG/CLEAN: a chat's worktree of the repository whose real path is repo.
+dc_worktree_path :: (root: string, repo: string, chat: string, out: [] u8) -> string {
+  sb: [128] u8; cb: [80] u8; a: [DC_PATH] u8;
+  return dc_join(dc_join(root, dc_slug(repo, sb[..]), a[..]), dc_clean(chat, cb[..]), out);
+}
+// The build caches a worker in a repository uses (ChatWorktree.caches): every worker's Coax tools,
+// and one Cargo target folder per repository, which its main checkout and all its chats share.
+dc_tool_cache :: (home: string, out: [] u8) -> string { return dc_join(home, ".cache/coax-tools", out); }
+dc_cargo_target :: (home: string, repo: string, out: [] u8) -> string {
+  sb: [128] u8; a: [DC_PATH] u8;
+  return dc_join(dc_join(home, ".cache/coder/cargo-target", a[..]), dc_slug(repo, sb[..]), out);
+}
+// The main checkout a worktree's .git file names: its "gitdir: MAIN/.git/worktrees/NAME" line.
+// "" when the text has no such line; dir is where the file is (a relative gitdir is under it).
+dc_gitdir_main :: (git_file: string, dir: string, out: [] u8) -> string {
+  at := 0;
+  while at < git_file.count {
+    e := at; while e < git_file.count && git_file[e] != '\n' { e += 1; }
+    line := git_file[at..<e];
+    if dc_starts(line, "gitdir:") {
+      g := line[7..<line.count];
+      while g.count > 0 && (g[0] == ' ' || g[0] == '\t') { g = g[1..<g.count]; }
+      while g.count > 0 && (g[g.count - 1] == ' ' || g[g.count - 1] == '\t' || g[g.count - 1] == '\r') { g = g[0..<g.count - 1]; }
+      full: [DC_PATH] u8; fn := 0;
+      if g.count > 0 && g[0] != '/' { fn = dc_cat(full[..], 0, dir); fn = dc_cat(full[..], fn, "/"); }
+      fn = dc_cat(full[..], fn, g);
+      std: [DC_PATH] u8; s := dc_standard(cast(string) full[0..<fn], std[..]);
+      k := s.count - 16;
+      while k >= 0 { if cast(string) s[k..<k + 16] == "/.git/worktrees/" { return dc_fits(out, dc_copy(out, s[0..<k])); } k -= 1; }
+      return "";
+    }
+    at = e + 1;
+  }
+  return "";
+}
+// An absolute path with its "." and ".." parts worked out and doubled slashes dropped (standardizingPath).
+dc_standard :: (path: string, out: [] u8) -> string {
+  if path.count == 0 || path[0] != '/' { return dc_fits(out, dc_copy(out, path)); }
+  starts: [512] int; depth := 0; n := 0; i := 0;
+  while i < path.count {
+    while i < path.count && path[i] == '/' { i += 1; }
+    e := i; while e < path.count && path[e] != '/' { e += 1; }
+    part := path[i..<e];
+    if part.count == 0 || part == "." { i = e; continue; }
+    if part == ".." { if depth > 0 { depth -= 1; n = starts[depth]; } i = e; continue; }
+    if depth >= starts.count { return ""; }
+    starts[depth] = n; depth += 1;
+    n = dc_cat(out, n, "/"); n = dc_cat(out, n, part);
+    i = e;
+  }
+  if n == 0 { n = dc_copy(out, "/"); }
+  return dc_fits(out, n);
+}
+// The parent folder of an absolute path ("/" for "/x"; "" for "/").
+dc_parent :: (path: string) -> string {
+  p := dc_trim_slash(path);
+  if p == "/" || p.count == 0 { return ""; }
+  k := p.count - 1; while k > 0 && p[k] != '/' { k -= 1; }
+  return ifx k == 0 then "/" else p[0..<k];
+}
+// A worktree.json "clone" entry the core may clone in: relative, no "..", no NUL.
+dc_clone_ok :: (p: string) -> bool {
+  if p.count == 0 || p[0] == '/' { return false; }
+  at := 0;
+  while at <= p.count {
+    e := at; while e < p.count && p[e] != '/' { e += 1; }
+    if cast(string) p[at..<e] == ".." { return false; }
+    at = e + 1;
+  }
+  for c: p { if c == 0 { return false; } }
+  return true;
+}
+
+// ---- the store (CoderStore) and the app's own files ----
+
+// The Coder folder: macOS's Application Support (FileManager's applicationSupportDirectory),
+// Linux's XDG data home (XDG_DATA_HOME when absolute, else HOME/.local/share), Windows' APPDATA;
+// then "Coder". The chats are its "chats", the keys its "claude-key" and "openrouter-key".
+dc_coder_dir :: (os: int, home: string, xdg: string, appdata: string, out: [] u8) -> string {
+  a: [DC_PATH] u8;
+  if os == DC_OS_MAC { return dc_join(dc_join(home, "Library/Application Support", a[..]), "Coder", out); }
+  if os == DC_OS_LINUX {
+    if xdg.count > 0 && xdg[0] == '/' { return dc_join(xdg, "Coder", out); }
+    return dc_join(dc_join(home, ".local/share", a[..]), "Coder", out);
+  }
+  if os == DC_OS_WINDOWS && appdata.count > 0 { return dc_join(appdata, "Coder", out); }
+  return "";
+}
+// The chats folder: CODER_DESKTOP_DIR when set (as `coder desktop` reads it), else the Coder folder's chats.
+dc_chats_dir :: (coder_dir: string, set: string, out: [] u8) -> string {
+  if set.count > 0 { return dc_fits(out, dc_copy(out, dc_trim_slash(set))); }
+  return dc_join(coder_dir, "chats", out);
+}
+
+// ---- the daemon (CoderDaemonClient) ----
+
+// The daemon's folder (its hs_path rule): $CODER_HOME, else HOME, then .openagents/coder/host.
+dc_daemon_dir :: (home: string, coder_home: string, out: [] u8) -> string {
+  return dc_join(ifx coder_home.count > 0 then coder_home else home, ".openagents/coder/host", out);
+}
+
+#test "desktop core paths: worktree names and folders are the app's" {
+  b: [DC_PATH] u8;
+  #assert dc_worktree_root("/Users/me", "", b[..]) == "/Users/me/.openagents/worktrees";
+  #assert dc_worktree_root("/Users/me", "/tmp/wt", b[..]) == "/tmp/wt" && dc_worktree_root("/Users/me", "rel", b[..]) == "/Users/me/.openagents/worktrees";
+  #assert dc_clean("AB-12_x.y", b[..]) == "ab-12xy" && dc_clean("__", b[..]) == "chat" && dc_clean("", b[..]) == "chat";
+  long: [100] u8; for i: 0..<100 { long[i] = 'a'; }
+  #assert dc_clean(cast(string) long[..], b[..]).count == 64;
+  #assert dc_branch("ABC", b[..]) == "coder/abc";
+  #assert dc_shown("coder/0123456789abcdef") == "coder/01234567" && dc_shown("coder/0123") == "coder/0123" && dc_shown("main") == "main";
+  // ChatWorktree.slug: FNV-1a 64 over the real path, its last 8 hex digits
+  #assert dc_fnv("") == 14695981039346656037 && dc_fnv("a") == 12638187200555641996;
+  #assert dc_slug("/a", b[..]) == "a-b49cd92d";
+  // the Swift rule's own answers (slug() run on these paths)
+  #assert dc_slug("/Users/me/work/OpenAgents", b[..]) == "openagents-3f87407a" && dc_slug("/x/.hidden repo", b[..]) == "hidden-repo-8775d949";
+  #assert dc_slug("/x/...", b[..]) == "repo-e7dcff63" && dc_slug("/x/aé", b[..]) == "a--a1bb897e" && dc_slug("/x/é!", b[..]) == "repo-839b05da";
+  #assert dc_worktree_path("/w", "/a", "Chat1", b[..]) == "/w/a-b49cd92d/chat1";
+  #assert dc_cargo_target("/h", "/a", b[..]) == "/h/.cache/coder/cargo-target/a-b49cd92d" && dc_tool_cache("/h", b[..]) == "/h/.cache/coax-tools";
+}
+#test "desktop core paths: a worktree's .git file names its main checkout" {
+  b: [DC_PATH] u8;
+  #assert dc_gitdir_main("gitdir: /r/main/.git/worktrees/chat1\n", "/w/x/chat1", b[..]) == "/r/main";
+  #assert dc_gitdir_main("gitdir: ../../main/.git/worktrees/c\n", "/w/x/c", b[..]) == "/w/main";
+  #assert dc_gitdir_main("gitdir: /r/main/.git/modules/sub\n", "/r/main/sub", b[..]) == "" && dc_gitdir_main("nothing", "/r", b[..]) == "";
+  #assert dc_standard("/a//b/./c/../d/", b[..]) == "/a/b/d" && dc_standard("/..", b[..]) == "/" && dc_standard("/", b[..]) == "/";
+  #assert dc_parent("/a/b") == "/a" && dc_parent("/a") == "/" && dc_parent("/") == "";
+  #assert dc_clone_ok("coax/bin") && dc_clone_ok("a/b.c") && !dc_clone_ok("/abs") && !dc_clone_ok("a/../b") && !dc_clone_ok("..") && !dc_clone_ok("");
+}
+#test "desktop core paths: the store, the keys and the daemon" {
+  b: [DC_PATH] u8; c: [DC_PATH] u8;
+  #assert dc_coder_dir(DC_OS_MAC, "/Users/me", "", "", b[..]) == "/Users/me/Library/Application Support/Coder";
+  #assert dc_coder_dir(DC_OS_LINUX, "/home/me", "", "", b[..]) == "/home/me/.local/share/Coder";
+  #assert dc_coder_dir(DC_OS_LINUX, "/home/me", "/data", "", b[..]) == "/data/Coder" && dc_coder_dir(DC_OS_LINUX, "/home/me", "rel", "", b[..]) == "/home/me/.local/share/Coder";
+  #assert dc_coder_dir(DC_OS_WINDOWS, "", "", "C:\\Users\\me\\AppData\\Roaming", b[..]) == "C:\\Users\\me\\AppData\\Roaming/Coder" && dc_coder_dir(0, "/h", "", "", b[..]) == "";
+  d := dc_coder_dir(DC_OS_MAC, "/Users/me", "", "", c[..]);
+  #assert dc_chats_dir(d, "", b[..]) == "/Users/me/Library/Application Support/Coder/chats" && dc_chats_dir(d, "/tmp/s//", b[..]) == "/tmp/s";
+  #assert dc_daemon_dir("/Users/me", "", b[..]) == "/Users/me/.openagents/coder/host" && dc_daemon_dir("/Users/me", "/alt", b[..]) == "/alt/.openagents/coder/host";
+  #assert dc_join("/", "x", b[..]) == "/x" && dc_join("", "x", b[..]) == "" && dc_num(-42, b[..]) == "-42" && dc_num(0, b[..]) == "0";
+}

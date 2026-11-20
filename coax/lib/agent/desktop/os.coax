@@ -1,0 +1,35 @@
+// The desktop core's platform seam (GitHub #13787). Everything the core asks of the operating
+// system goes through the procedures below, and nothing else in coax/lib/agent/desktop calls a
+// #foreign. One file per platform defines them all; this file loads the one for this build.
+// macOS and Linux share os-posix.coax (it picks the few Mac/Linux differences at run time with
+// dcos_os). A Windows port writes os-windows.coax with the same procedures, over its own C
+// effects, and loads it here in place of os-posix.coax. README.md lists the seam with what each
+// procedure must do.
+//
+//   dcos_os () -> int                                   DC_OS_MAC, DC_OS_LINUX or DC_OS_WINDOWS (paths.coax)
+//   dcos_getenv (name, out) -> string                   an environment variable, "" when unset
+//   dcos_home (out) -> string                           the user's home folder
+//   dcos_now_ms () -> int  dcos_now_us () -> int         wall-clock milli- and microseconds since 1970
+//   dcos_random (out) -> bool                           random bytes from the system (ids for runs and commands)
+//   dcos_real (path, out) -> string                     symbolic links resolved; standardized when it does not exist
+//   dcos_kind (path) -> int                             FS_NONE, FS_FILE, FS_DIR or FS_OTHER
+//   dcos_read (path, out) -> int                        a whole file's bytes, -1 when unreadable
+//   dcos_read_at (path, offset, out) -> int             bytes from offset on
+//   dcos_size (path) -> int                             bytes, -1 when missing
+//   dcos_write (path, data) -> bool                     replace the file atomically
+//   dcos_write_private (path, data) -> bool             the same, readable by this user only (keys, run specs)
+//   dcos_append (path, data) -> bool                    add to the end (a run's input: O_APPEND)
+//   dcos_mkdirs (path) -> bool                          the folder and its parents
+//   dcos_mkdir_private (path) -> bool                   one folder, this user only (the daemon's runs)
+//   dcos_remove (path) -> bool                          a file, or a folder with everything in it
+//   dcos_list (dir, l) -> int                           a folder's names, sorted
+//   dcos_run (argv, env, out) -> DcRun                  a program to its end: stdin empty, stderr joined to stdout
+//   dcos_clone_tree (from, to) -> bool                  copy a folder, copy-on-write where the file system can
+//   dcos_cut_links (dir, source) -> int                 remove the symbolic links under dir that resolve into source
+//   dcos_spawn (program, cwd, env, unset) -> int        a worker: pipes to its stdin and stdout, stderr dropped; a handle
+//   dcos_spawn_detached (program, args, log) -> int     a program that outlives this one (the daemon); its pid or -1
+//   dcos_send (h, data) -> bool  dcos_line (h, timeout_ms, out) -> int  dcos_close (h)  dcos_alive (h) -> bool
+//   dcos_unix_call (path, line, out, timeout_ms) -> int one request line over a local socket, one reply line back
+//   dcos_setting (name, out) -> string                  an app setting (macOS: the app's defaults domain)
+//   dcos_set_setting (name, value) -> bool
+#load "os-posix.coax";
