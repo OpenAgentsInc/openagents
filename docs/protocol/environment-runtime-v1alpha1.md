@@ -180,6 +180,18 @@ GUI first-run enrollment, general workspace configuration and Windows are
 still separate qualification work; the owner's two machines are configured
 through the same local CLI boundary in this slice.
 
+On a Mac with Coder Desktop, one binary is the resident daemon (GitHub #13757).
+`openagents-environment` and Coder's bundled `coder-host` are the same program,
+`coder/tui/host.coax`. `apps/coder-desktop/install.sh` copies the installed
+Coder's `coder-host` to `~/.openagents/environment/bin/COMMIT/` and points
+`~/.openagents/bin/openagents-environment` at it. It also sets the login service
+to run that link as `serve --standby`. A standby that finds another daemon
+holding `service.lock` waits and takes over when that daemon stops; it doesn't
+exit for launchd to restart it every 10 seconds. A plain `serve` still exits
+with status 4. The script restarts the daemon after an install, and on each
+15-minute check, only while the daemon has no worker running. Otherwise it waits
+for a later check. Coder starts its own `coder-host` only when no daemon answers.
+
 Checks include authority mutation, exact-byte golden records, real filesystem
 durability, the API's delivered-email/account isolation tests, generated
 Wasm/JavaScript frame parity, native UIKit reducer/composer tests and actual

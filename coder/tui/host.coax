@@ -674,7 +674,15 @@ hs_publish :: (h: [] HsHost, p: [] CliRelay, event: string) -> bool {
 hs_serve :: (args: [] Args) -> int {
   h_b: [1] HsHost; h := h_b[..];
   if !hs_key(h[0].secret[..], h[0].x[..], h[0].xhex[..]) { tool_errln("coder host: could not read or make the host key in ~/.openagents/coder/host"); return 1; }
-  lock:[1400]u8;if !fs_try_lock(hs_path("service.lock",lock[..])) {tool_errln("coder host: this host already has a resident service");return 4;}
+  lock:[1400]u8;
+  if !fs_try_lock(hs_path("service.lock",lock[..])) {
+    // A plain serve leaves; a standby (the login service, `serve --standby`) waits and takes over
+    // when the resident one stops, instead of exiting for launchd to restart every 10 s (GitHub #13757).
+    if !args_has(args, "--standby") {tool_errln("coder host: this host already has a resident service");return 4;}
+    tool_errln("coder host: another resident service runs; this standby takes over when it stops");
+    while !fs_try_lock(hs_path("service.lock",lock[..])) { x := cxproc_sleep_ms(2000); }
+    tool_errln("coder host: the resident service stopped; this one serves now");
+  }
   defer {_ = fs_unlock();}
   configured:=es_load_configuration(h[0].environment[..]);
   local_listener:=es_local_listen();if local_listener<0 {tool_errln("Could not open the protected local environment socket.");return 1;}
@@ -917,7 +925,7 @@ hs_cmd_call :: (args: [] Args, op_name: string) -> int {
   return 3;
 }
 
-HS_USAGE :: "usage: coder host [serve] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key | station [--in DIR]\n       coder host pair --workspace DIR [--label NAME]   (a phone, with no account)\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\n       coder host execution-rpc --host KEY --browser-key FILE --grant G --epoch E --request-file FILE\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.\nexecution-rpc prepares input and starts, reads, stops or answers a task under an explicitly enabled environment grant.";
+HS_USAGE :: "usage: coder host [serve] [--standby] [--relay URL] [--engine claude|codex|cursor|micro|psionic|echo] [--for SECONDS]\n       coder host list [--json] | allow ID | deny ID | forget ID | key | station [--in DIR]\n       coder host pair --workspace DIR [--label NAME]   (a phone, with no account)\n       coder host call OP --host KEY --browser-key FILE [--label L] [--request ID] [--text T --realm R] [--thread T] [--after N] [--grant G --epoch E]\n       coder host execution-rpc --host KEY --browser-key FILE --grant G --epoch E --request-file FILE\nA browser on openagents.com pairs with this computer over the relay (wss://relay.openagents.com, or $OPENAGENTS_NIP_HOST_RELAY);\nonly you allow it, here. An allowed browser runs realm jobs on your engine: read access and the realm tools, no shell, no writes.\nexecution-rpc prepares input and starts, reads, stops or answers a task under an explicitly enabled environment grant.";
 
 tool_main :: () -> int #export_c #effects(all) {
   args_b: [1] Args; args := args_b[..];

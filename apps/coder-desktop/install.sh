@@ -15,6 +15,9 @@
 # installed Coder is already that commit's Coder. (A new #load needs an edit to a file the build
 # already read, so the list can't miss one.)
 # The installed app carries its commit (OACommit in Info.plist) and commit count (CFBundleVersion).
+# The resident daemon (`coder host serve`, the program behind ~/.openagents/bin/openagents-environment and
+# the login service com.openagents.coax.environment) is kept at the installed Coder's coder-host too: one
+# binary, one resident service. It is restarted only while it runs no work (GitHub #13757).
 set -euo pipefail
 export LC_ALL=C BROWSER=/usr/bin/true
 state="${CODER_RELEASE_HOME:-$HOME/.cache/openagents/coder-release}"
@@ -37,6 +40,56 @@ mkdir -p "$state"
 say() { echo "$(date '+%Y-%m-%d %H:%M:%S') coder-release: $*"; }
 commit_of() { /usr/libexec/PlistBuddy -c "Print :OACommit" "$1/Contents/Info.plist" 2>/dev/null || true; }
 coder_pids() { pgrep -f "^$app/Contents/MacOS/Coder" || true; }
+
+# The resident daemon: one program (coder/tui/host.coax), shipped in Coder as coder-host and run at login
+# by com.openagents.coax.environment from ~/.openagents/bin/openagents-environment.
+env_label="${CODER_ENV_LABEL:-com.openagents.coax.environment}"
+env_plist="$HOME/Library/LaunchAgents/$env_label.plist"
+env_link="$HOME/.openagents/bin/openagents-environment"
+host_sock="$HOME/.openagents/coder/host/service.sock"
+sock_pid() { lsof -U 2>/dev/null | awk -v s="$host_sock" '$NF == s {print $2; exit}'; }
+# The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
+daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
+sync_resident() {
+  local bundled="$app/Contents/Resources/coder-host" commit dir want
+  [[ -x "$bundled" ]] || return 0
+  commit="$(commit_of "$app" | cut -c1-16)"; [[ -n "$commit" ]] || return 0
+  dir="$HOME/.openagents/environment/bin/$commit"
+  if ! cmp -s "$bundled" "$dir/openagents-environment" 2>/dev/null; then
+    mkdir -p "$dir" && cp "$bundled" "$dir/openagents-environment.new" && mv "$dir/openagents-environment.new" "$dir/openagents-environment"
+  fi
+  mkdir -p "$(dirname "$env_link")"
+  [[ "$(readlink "$env_link" 2>/dev/null)" == "$dir/openagents-environment" ]] || ln -sfn "$dir/openagents-environment" "$env_link"
+  # Which binary answers now: the login service's (through the link) or a coder-host Coder started.
+  local p exe; p="$(sock_pid)"; exe="$( [[ -n "$p" ]] && ps -o comm= -p "$p" || true)"
+  local stale=0; [[ -n "$p" ]] && ! cmp -s "$exe" "$bundled" && stale=1
+  local restart=0
+  if [[ -f "$env_plist" ]]; then
+    # The login service runs the link, as a standby, so it never crash-loops while another serves.
+    want="$env_link serve --standby"
+    if [[ "$(/usr/libexec/PlistBuddy -c 'Print :ProgramArguments' "$env_plist" 2>/dev/null | sed -n '2,$p' | sed '$d' | xargs)" != "$want" ]]; then
+      /usr/libexec/PlistBuddy -c 'Delete :ProgramArguments' "$env_plist"
+      /usr/libexec/PlistBuddy -c 'Add :ProgramArguments array' -c "Add :ProgramArguments:0 string $env_link" \
+        -c 'Add :ProgramArguments:1 string serve' -c 'Add :ProgramArguments:2 string --standby' "$env_plist"
+      restart=1
+    fi
+  fi
+  (( stale || restart )) || return 0
+  if daemon_busy; then say "the resident daemon runs work; it moves to ${commit:0:10} at a later check"; return 0; fi
+  if [[ -f "$env_plist" ]]; then
+    # The login service stops (launchd would restart it otherwise), then whatever still holds the
+    # socket (a coder-host Coder started; only that PID), then the service starts from the new plist.
+    launchctl bootout "gui/$(id -u)/$env_label" 2>/dev/null || true
+    [[ -n "$p" ]] && { kill "$p" 2>/dev/null || true; for _ in $(seq 1 40); do kill -0 "$p" 2>/dev/null || break; sleep 0.25; done; }
+    launchctl bootstrap "gui/$(id -u)" "$env_plist"
+    say "resident daemon at ${commit:0:10} ($env_label)"
+  elif [[ -n "$p" ]]; then
+    # No login service: Coder starts its own coder-host when none answers, so the old one only stops.
+    kill "$p" 2>/dev/null || true
+    for _ in $(seq 1 40); do kill -0 "$p" 2>/dev/null || break; sleep 0.25; done
+    say "stopped the old resident daemon; Coder starts ${commit:0:10}'s when it opens"
+  fi
+}
 
 # The clone this checkout belongs to (the LaunchAgent's copy of this script reads it from $state/clone).
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -147,7 +200,7 @@ for line in sys.stdin:
   staged="$target"
 fi
 
-[[ "$installed" == "$target" ]] && { say "up to date at ${target:0:10}"; exit 0; }
+[[ "$installed" == "$target" ]] && { say "up to date at ${target:0:10}"; sync_resident; exit 0; }
 
 pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
@@ -167,5 +220,6 @@ mv "$dest/Coder.app.new" "$app"
 rm -rf "$dest/.Coder.app.old"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app" 2>/dev/null || true
 say "installed ${target:0:10} at $app"
+sync_resident
 [[ -n "$pids" || "$mode" == now ]] && open "$app"
 exit 0
