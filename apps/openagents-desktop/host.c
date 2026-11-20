@@ -509,6 +509,22 @@ int cd_file_shown(void *page) { CoderHost *c = page; return c && coder_page_file
 int cd_file_name(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_file_name(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_file_open_scene(void *page, const char *path) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_open_scene(cd_state(c), cd_string(path)); if (ok) { free(c->file); c->file = NULL; cd_woke(c); } return ok; }
 int cd_file_scene_rect(void *page, float out[4]) { CoderHost *c = page; return c && out && coder_page_file_scene_rect(cd_state(c), (coax_v_f32){out, 4}); }
+// The iOS Simulator in the pane (page/simpane.coax, GitHub #13811): the page speaks the helper's
+// wire itself; the host moves its lines and shows the screen.
+void cd_sim_setup(void *page, const char *stills, const char *shots) { CoderHost *c = page; if (c) coder_page_sim_setup(cd_state(c), cd_string(stills), cd_string(shots)); }
+void cd_sim_show(void *page, int open) { CoderHost *c = page; if (c) { coder_page_sim_show(cd_state(c), open != 0); cd_woke(c); } }
+int cd_sim_open(void *page) { CoderHost *c = page; return c && coder_page_sim_open(cd_state(c)); }
+void cd_sim_connected(void *page, int ok, const char *why) { CoderHost *c = page; if (c) { coder_page_sim_connected(cd_state(c), ok != 0, cd_string(why)); cd_woke(c); } }
+int cd_sim_line(void *page, const char *line, int len) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_sim_line(cd_state(c), (coax_string){line, len}); cd_woke(c); return ok; }
+int cd_sim_out(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_sim_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+void cd_sim_tick(void *page) { CoderHost *c = page; if (c) coder_page_sim_tick(cd_state(c)); }
+int cd_sim_rect(void *page, float out[5]) { CoderHost *c = page; return c && out && coder_page_sim_rect(cd_state(c), (coax_v_f32){out, 5}); }
+int cd_sim_still(void *page, char *out, int cap) { CoderHost *c = page; if (!c || cap < 2) return 0; out[0] = 0; return (int)coder_page_sim_still(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}); }
+int cd_sim_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_sim_op(cd_state(c)) : 0; }
+int cd_sim_saved(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_saved(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_sim_menu(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_menu(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_sim_pick(void *page, int i) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_sim_pick(cd_state(c), i); cd_woke(c); return ok; }
+int cd_sim_device(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_device(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;

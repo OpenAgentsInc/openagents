@@ -50,6 +50,8 @@ final class CoderWorker {
     private func environment() -> (set: [String: String], unset: [String]) {
         var env: [String: String] = ["PATH": CoderWorker.path]
         for (k, v) in extraEnv { env[k] = v }
+        // oasim (the iOS Simulator's command, #13811) is in Contents/Resources: on the PATH after the person's own
+        if let res = Bundle.main.resourcePath, FileManager.default.isExecutableFile(atPath: res + "/oasim"), let p = env["PATH"], !p.split(separator: ":").contains(Substring(res)) { env["PATH"] = p + ":" + res }
         for (k, v) in ChatWorktree.caches(for: folder) where env[k] == nil && ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }
         return (env, ["CODER_CLAUDE_KEY"])

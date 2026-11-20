@@ -35,7 +35,7 @@ for _dc_f in process-native.c store-file-native.c read-file-native.c socket-nati
 done
 ld -r "$work/c/desktop-core-all.o" "$work/c/entropy-policy.o" "$work/c/process-native.c.o" "$work/c/store-file-native.c.o" "$work/c/read-file-native.c.o" "$work/c/socket-native.c.o" "$work/c/entropy-native.c.o" "$work/c/entropy-foreign.c.o" -exported_symbol '_oa_dc_*' -o "$work/c/desktop-core.o"
 xcrun -sdk macosx swiftc -O -swift-version 5 -suppress-warnings -parse-as-library -target arm64-apple-macos14.0 ${swift_defs[@]+"${swift_defs[@]}"} -import-objc-header "$here/Bridge.h" \
-  "$here/DesktopCore.swift" "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/SceneView.swift" "$here/GymWorkbenchView.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/AppDelegate.swift" \
+  "$here/DesktopCore.swift" "$here/Worker.swift" "$here/Store.swift" "$here/DefaultsMigration.swift" "$here/Window.swift" "$here/Window+Runs.swift" "$here/Window+FollowUps.swift" "$here/Window+Update.swift" "$here/Window+Foreman.swift" "$here/Window+Chats.swift" "$here/Window+Settings.swift" "$here/Window+TitleBar.swift" "$here/Window+Dialogs.swift" "$here/Window+Menus.swift" "$here/Window+Palette.swift" "$here/Window+Attach.swift" "$here/Window+Files.swift" "$here/Window+Simulator.swift" "$here/SceneView.swift" "$here/GymWorkbenchView.swift" "$here/Window+Gym.swift" "$here/Window+ForemanAPI.swift" "$here/Window+ForemanChats.swift" "$here/Window+Worktrees.swift" "$here/AppDelegate.swift" \
   "$here/Foreman.swift" "$here/ForemanOperator.swift" "$here/Updater.swift" "$here/DaemonClient.swift" "$here/Worktree.swift" "$here/Tailnet.swift" "$repo/apps/shared/native/AppTailnet.swift" \
   "$here/Account.swift" "$repo/apps/shared/host/apple/AppAuth.swift" "$repo/apps/shared/host/apple/DeviceKey.swift" "$repo/apps/shared/native/KitPasskey.swift" \
   "$work/c/carrier.o" "$work/c/gallery.o" "$work/c/ui-host.o" "$work/c/lab-sign.o" "$work/c/desktop-core.o" \
@@ -57,6 +57,10 @@ cp "$repo/coax/web/build/tools/agyworker-$(shasum -a 256 "$coax" | cut -d " " -f
 # Its git guard (coder/tui/gitguard.coax), the PreToolUse hook claudeworker finds beside it (GitHub #13771).
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/gitguard-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/gitguard"
+# oasim, the iOS Simulator's command and its helper (coder/tui/oasim.coax, GitHub #13811): agents run it
+# from their shell (the workers' PATH ends in Contents/Resources) and the pane starts it as the helper.
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/oasim.coax" help < /dev/null > /dev/null 2>&1 || true
+cp "$repo/coax/web/build/tools/oasim-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/oasim"
 # The unified daemon (coder/tui/host.coax, `coder host serve`): Coder starts it when none answers, and it
 # owns the worker runs so they go on after Coder quits (GitHub #13694). An unknown verb only builds it.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/host.coax" build-only < /dev/null > /dev/null 2>&1 || true

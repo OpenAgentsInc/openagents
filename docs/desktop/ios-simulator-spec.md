@@ -262,7 +262,16 @@ it closes. The pane's default width when the simulator is in front is the width 
 screen at 0.5 x device points plus the toolbar (about 420 points for a 402-point-wide phone), never
 less than `CP_PANE_LEAST`; the person's own drag wins (`pane_user`).
 
-New host calls (`host.h`/`host.c`, each a `coder_page_sim_*` export in `simpane.coax`):
+**As built (Phase 0).** The page speaks the helper's wire itself: the host hands it every line the
+helper writes (`cd_sim_line`) and writes what it queues (`cd_sim_out`), so grants, Stop, boot and the
+stills are Coax. The host calls are `cd_sim_setup` (stills and shots folders), `cd_sim_show`,
+`cd_sim_open`, `cd_sim_connected`, `cd_sim_line`, `cd_sim_out`, `cd_sim_tick` (4 Hz while shown),
+`cd_sim_rect(out[5])`, `cd_sim_still`, `cd_sim_menu`/`cd_sim_pick` (the device menu is a native
+`NSMenu`), `cd_sim_saved` and `cd_sim_device`; the page asks with one `CP_ASK_SIM` (46) and
+`cd_sim_op` says which (menu, saved, closed, opened). The person's Screenshot is revealed in Finder.
+A helper used by checks and test launches lists only `OA_SIM_ONLY`'s devices.
+
+New host calls as planned (`host.h`/`host.c`, each a `coder_page_sim_*` export in `simpane.coax`):
 `cd_sim_open`, `cd_sim_close`, `cd_sim_devices(json)`, `cd_sim_state(state, why)`,
 `cd_sim_surface(w, h, live)`, `cd_sim_agent(state, op_text)`, `cd_sim_still(image_id)`,
 `cd_sim_rect(out[5])`, `cd_sim_ask_permission(chat, device_name, engine)`. New page asks

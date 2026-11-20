@@ -1,0 +1,138 @@
+// Checks for the iOS Simulator in the pane (simpane.coax, GitHub #13811): the page says hello
+// and asks for the list when the host reaches the helper; a booted device shows its screen
+// aspect-fit (portrait and landscape, narrow and wide) and asks for stills; an overlay covers
+// it; an agent's ask opens the pane with the card and each answer writes its line; Stop revokes;
+// the pane's precedence with a file and a sub-agent; the notices. The helper's lines are ones
+// proto/coder/sim-host-lines-v1.json holds, or shaped as they are.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_sim_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].surface[..], id); }
+cp_sim_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_sim_test_find(s, id); return r >= 0 && cp_press(s, r); }
+cp_sim_test_page :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  coder_page_sim_setup(s, "/h/.openagents/sim/stills", "/w/app/.openagents/shots");
+  #assert cp_test_draw_side(s, f);
+}
+// What the page queued for the helper, as text (and taken off the queue).
+cp_sim_test_out :: (s: [] CoderPage, out: [] u8) -> string { n := coder_page_sim_out(s, out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+CP_SIM_TEST_LIST :: "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"U1\",\"name\":\"iPhone 17\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"U2\",\"name\":\"iPad Air\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}";
+// connected, hello answered, the list in
+cp_sim_test_up :: (s: [] CoderPage) {
+  out: [4096] u8;
+  coder_page_sim_show(s, true);
+  coder_page_sim_connected(s, true, "");
+  q := cp_sim_test_out(s, out[..]);
+  #assert q == "{\"id\":1,\"op\":\"hello\",\"client\":\"app\",\"version\":1}\n{\"id\":2,\"op\":\"subscribe\"}\n{\"id\":3,\"op\":\"list\"}\n";
+  #assert coder_page_sim_line(s, "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":7,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}");
+  #assert coder_page_sim_line(s, "{\"id\":2,\"ok\":true}");
+  #assert coder_page_sim_line(s, CP_SIM_TEST_LIST);
+}
+
+#test "the host reaches the helper: hello, subscribe, list; a booted device shows and asks for stills" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  #assert coder_page_action(s) == CP_ASK_NONE;
+  cp_sim_test_up(s);
+  #assert coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_OPENED && coder_page_sim_open(s);
+  #assert s[0].sim[0].state == CP_SIM_BOOTED && cp_sim_udid(s) == "U1";
+  out: [4096] u8;
+  // booted: a still and the appearance are asked for
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":4,\"op\":\"screenshot\",\"device\":\"U1\",\"out\":\"/h/.openagents/sim/stills/still-0.png\"}\n{\"id\":5,\"op\":\"appearance\",\"device\":\"U1\"}\n";
+  // one still at a time
+  coder_page_sim_tick(s); #assert cp_sim_test_out(s, out[..]) == "";
+  #assert coder_page_sim_line(s, "{\"id\":4,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-0.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34754}");
+  #assert coder_page_sim_line(s, "{\"id\":5,\"ok\":true,\"appearance\":\"dark\"}") && s[0].sim[0].dark;
+  pb: [256] u8; #assert coder_page_sim_still(s, pb[..]) == 1 && cast(string) pb[0..<cp_find(cast(string) pb[..], "\0")] == "/h/.openagents/sim/stills/still-0.png";
+  coder_page_sim_tick(s); #assert cp_find(cp_sim_test_out(s, out[..]), "still-1.png") >= 0;
+  // the screen: aspect-fit, on screen, the tab names the device
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
+  r: [5] f32; #assert coder_page_sim_rect(s, r[..]) && r[4] == 0;
+  #assert r[2] > 0 && r[3] > 0 && cp_abs(r[2] / r[3] - 402.0f32 / 874.0f32) < 0.001f32;
+  #assert r[0] >= s[0].pane_x && r[0] + r[2] <= s[0].pane_x + s[0].pane_w + 0.5f32;
+  #assert cp_sim_test_find(s, "coder.sim.screen") >= 0 && cp_sim_test_find(s, "coder.sim.shot") >= 0 && cp_sim_test_find(s, "coder.sim.home") < 0;
+  // an overlay over the page covers the screen: the host hides its view
+  s[0].ov[0].menu[0].open = true; #assert coder_page_sim_rect(s, r[..]) && r[4] == 1; s[0].ov[0].menu[0].open = false;
+}
+
+#test "the fit: portrait and landscape, narrow and wide, centred with room round it" {
+  r: [4] f32;
+  cp_sim_fit(402, 874, 100, 50, 300, 900, r[..]);
+  #assert cp_abs(r[2] / r[3] - 402.0f32 / 874.0f32) < 0.001f32 && cp_abs(r[2] - 276) < 0.01f32 && r[0] > 100 && r[0] + r[2] < 400;
+  cp_sim_fit(874, 402, 100, 50, 300, 900, r[..]);
+  #assert cp_abs(r[2] / r[3] - 874.0f32 / 402.0f32) < 0.001f32 && cp_abs(r[2] - 276) < 0.01f32;
+  cp_sim_fit(402, 874, 0, 0, 1200, 400, r[..]);
+  #assert cp_abs(r[3] - 376) < 0.01f32 && cp_abs(r[0] + r[2] / 2 - 600) < 0.01f32;
+  cp_sim_fit(402, 874, 0, 0, 10, 10, r[..]); #assert r[2] == 0 && r[3] == 0;
+}
+
+#test "an agent's ask opens the pane with the card; each answer writes its line" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  cp_sim_test_up(s); out: [4096] u8; _ = cp_sim_test_out(s, out[..]);
+  coder_page_sim_show(s, false); _ = coder_page_action(s); _ = coder_page_sim_op(s);
+  #assert !coder_page_sim_open(s);
+  #assert coder_page_sim_line(s, "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"U1\",\"name\":\"iPhone 17\"}");
+  #assert coder_page_sim_open(s) && cp_sim_shown(s);
+  r: [5] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]);   // the card stands where the screen would
+  #assert cp_sim_test_find(s, "coder.sim.ask") >= 0 && cp_sim_test_find(s, "coder.sim.allow") >= 0 && cp_sim_test_find(s, "coder.sim.deny") >= 0;
+  _ = cp_sim_test_out(s, out[..]);   // the list it asked for as it opened
+  #assert cp_sim_test_press(s, "coder.sim.allow");
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"U1\",\"scope\":\"chat\"}\n";
+  #assert s[0].sim[0].nasks == 0 && s[0].sim[0].agent == CP_SIM_AGENT_ALLOWED;
+  // the agent's op: the badge with Stop; Stop revokes the chat
+  #assert coder_page_sim_line(s, "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"U1\",\"x\":201,\"y\":640}");
+  #assert cp_sim_s(s[0].sim[0].agent_op[..], s[0].sim[0].agent_op_n) == "Tapping (201, 640)";
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_find(s, "coder.sim.badge") >= 0 && cp_sim_word(s) == "Agent";
+  #assert cp_sim_test_press(s, "coder.sim.stop") && cp_sim_test_out(s, out[..]) == "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\"}\n";
+  #assert s[0].sim[0].agent == CP_SIM_AGENT_NONE;
+  // Allow once and Don't allow
+  #assert coder_page_sim_line(s, "{\"event\":\"ask\",\"op\":\"open_url\",\"chat\":\"c2\",\"engine\":\"Claude\",\"device\":\"U1\",\"name\":\"iPhone 17\"}");
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "coder.sim.once") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"grant\",\"chat\":\"c2\",\"device\":\"U1\",\"scope\":\"once\"") >= 0;
+  #assert coder_page_sim_line(s, "{\"event\":\"ask\",\"op\":\"open_url\",\"chat\":\"c3\",\"engine\":\"Claude\",\"device\":\"U1\",\"name\":\"iPhone 17\"}");
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "coder.sim.deny") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"deny\",\"chat\":\"c3\"") >= 0;
+  // Close: an agent's op doesn't open the pane again
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "coder.sim.close.tab") || cp_sim_test_press(s, "coder.sim.close");
+  #assert !coder_page_sim_open(s);
+  #assert coder_page_sim_line(s, "{\"event\":\"agent\",\"op\":\"tap\",\"chat\":\"c2\",\"engine\":\"Claude\",\"device\":\"U1\",\"x\":1,\"y\":2}") && !coder_page_sim_open(s);
+}
+
+#test "the person's controls: boot, screenshot into the working folder, appearance, the device menu" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  cp_sim_test_up(s); out: [4096] u8; _ = cp_sim_test_out(s, out[..]);
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_press(s, "coder.sim.shot");
+  q := cp_sim_test_out(s, out[..]);
+  #assert cp_find(q, "\"op\":\"screenshot\",\"device\":\"U1\",\"out\":\"/w/app/.openagents/shots/simulator-") >= 0;
+  id := s[0].sim[0].next_id; lb: [256] u8; ln := el_put(lb[..], 0, "{\"id\":"); ln = el_put_i(lb[..], ln, id); ln = el_put(lb[..], ln, ",\"ok\":true,\"path\":\"/w/app/.openagents/shots/s.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":9}");
+  _ = coder_page_action(s); _ = coder_page_sim_op(s);
+  #assert coder_page_sim_line(s, cast(string) lb[0..<ln]) && coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_SAVED;
+  sv: [256] u8; #assert cast(string) sv[0..<coder_page_sim_saved(s, sv[..])] == "/w/app/.openagents/shots/s.png";
+  #assert cp_sim_test_press(s, "coder.sim.appearance") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"set_appearance\",\"device\":\"U1\",\"state\":\"dark\"") >= 0;
+  // the menu: the host shows the rows; picking the shut-down iPad shows Boot
+  #assert cp_sim_test_press(s, "coder.sim.pick") && coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_MENU;
+  mb: [512] u8; #assert cast(string) mb[0..<coder_page_sim_menu(s, mb[..])] == "iPhone 17 · iOS 26.5\tBooted\t1\niPad Air · iOS 26.5\tShut down\t0\n";
+  #assert coder_page_sim_pick(s, 1) && s[0].sim[0].state == CP_SIM_SHUTDOWN;
+  r: [5] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]) && cp_sim_test_find(s, "coder.sim.notice") >= 0;
+  #assert cp_sim_test_press(s, "coder.sim.boot") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"boot\",\"device\":\"U2\"}\n") >= 0 && s[0].sim[0].state == CP_SIM_BOOTING;
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_word(s) == "Booting";
+  bt: [256] u8; bn := el_put(bt[..], 0, "{\"id\":"); bn = el_put_i(bt[..], bn, s[0].sim[0].next_id); bn = el_put(bt[..], bn, ",\"ok\":false,\"code\":\"timeout\",\"why\":\"the simulator did not finish booting in 180 s\"}");
+  #assert coder_page_sim_line(s, cast(string) bt[0..<bn]) && s[0].sim[0].state == CP_SIM_FAILED;
+}
+
+#test "precedence: the one brought forward last shows; the notices when there is no screen" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  cp_sim_test_up(s);
+  b: [64] u8; src := "one\n";
+  #assert coder_page_file_open(s, "~/a.txt", b[0..<cp_out(b[..], src)], src.count);
+  #assert coder_page_file_shown(s) && !cp_sim_shown(s);
+  coder_page_sim_show(s, true); #assert cp_sim_shown(s) && !coder_page_file_shown(s);
+  #assert coder_page_file_front(s) && coder_page_file_shown(s) && !cp_sim_shown(s);
+  coder_page_file_close(s); #assert cp_sim_shown(s);
+  // the helper down; no Xcode
+  coder_page_sim_connected(s, false, "the simulator helper could not be started");
+  #assert cp_test_draw_side(s, f[..]) && cp_sim_test_find(s, "coder.sim.notice") >= 0 && s[0].sim[0].state == CP_SIM_DOWN;
+  coder_page_sim_connected(s, true, ""); out: [4096] u8; _ = cp_sim_test_out(s, out[..]);
+  hb: [256] u8; hn := el_put(hb[..], 0, "{\"id\":"); hn = el_put_i(hb[..], hn, s[0].sim[0].pend[0].id); hn = el_put(hb[..], hn, ",\"ok\":true,\"version\":1,\"helper_pid\":7,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false}}");
+  #assert coder_page_sim_line(s, cast(string) hb[0..<hn]) && s[0].sim[0].state == CP_SIM_NO_XCODE;
+  #assert !coder_page_sim_line(s, "not json");
+}
+cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }

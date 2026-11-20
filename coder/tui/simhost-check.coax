@@ -126,7 +126,7 @@ sk_oasim :: (r: [] SkRun, words: [] string, out: [] u8) -> int {
   ok := p >= 0 && proc_arg(p, sk_s(r[0].oasim[..], r[0].oasim_n));
   for w: words { ok = ok && proc_arg(p, w); }
   ok = ok && proc_arg(p, "--device") && proc_arg(p, sk_udid(r));
-  ok = ok && proc_env(p, cast(string) hb[0..<hn]) && proc_env(p, cast(string) sb[0..<sn]) && proc_env(p, "OA_SIM_CHAT=check-chat-2") && proc_start(p) == 0;
+  ob: [128] u8; ok = ok && proc_env(p, cast(string) hb[0..<hn]) && proc_env(p, cast(string) sb[0..<sn]) && proc_env(p, sk_only(r, ob[..])) && proc_env(p, "OA_SIM_CHAT=check-chat-2") && proc_start(p) == 0;
   if !ok { if p >= 0 { _ = proc_release(p); } return -1; }
   n := 0;
   while true {
@@ -138,6 +138,8 @@ sk_oasim :: (r: [] SkRun, words: [] string, out: [] u8) -> int {
   st := proc_wait(p, 60000); _ = proc_release(p);
   return st;
 }
+// OA_SIM_ONLY=UDID: the helper lists this check's device alone, never the person's
+sk_only :: (r: [] SkRun, out: [] u8) -> string { n := sk_put(out, 0, "OA_SIM_ONLY="); n = sk_put(out, n, sk_udid(r)); return cast(string) out[0..<n]; }
 sk_simctl :: (a: [] string, out: [] u8) -> ProcRun { err: [4096] u8; return proc_run(a, 240000, out, err[..]); }
 sk_png_size :: (path: string, w: [] int, h: [] int) -> bool {
   b: [32] u8; n := fs_read_at(path, 0, b[..]);
@@ -175,9 +177,10 @@ sk_main :: (r: [] SkRun, a: [] Args) {
   }
 
   // the helper, from the given oasim
+  ob: [128] u8;
   hp := proc_new();
   ok := hp >= 0 && proc_arg(hp, sk_s(r[0].oasim[..], r[0].oasim_n)) && proc_arg(hp, "serve") && proc_arg(hp, "--home") && proc_arg(hp, sk_s(r[0].home[..], r[0].home_n))
-        && proc_arg(hp, "--socket") && proc_arg(hp, sk_s(r[0].sock[..], r[0].sock_n)) && proc_start(hp) == 0;
+        && proc_arg(hp, "--socket") && proc_arg(hp, sk_s(r[0].sock[..], r[0].sock_n)) && proc_env(hp, sk_only(r, ob[..])) && proc_start(hp) == 0;
   sk_check(r, ok, "the helper started");
   if !ok { return; }
   defer { _ = proc_kill(hp, PROC_SIGKILL); _ = proc_wait(hp, 5000); _ = proc_release(hp); }

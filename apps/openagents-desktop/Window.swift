@@ -21,6 +21,7 @@ final class CoderRun {
     var bound: String?                 // the chat id keep() last bound its worker's queue to
     var worktree: ChatWorktree?        // the worktree made for its chat's first message (Window+Worktrees.swift)
     var pendingChat: String?           // chat id reserved while its worktree is being created
+    let simChat = "run-" + UUID().uuidString.lowercased()   // who asks the simulator helper while it has no chat id (OA_SIM_CHAT, #13811)
     var preparingWorktree = false, worktreeSkip = false, startingWorker = false
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
@@ -122,6 +123,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
     var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
+    // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
+    var simView: SimulatorPaneView?
+    let simClient = SimHostClient()
+    var simTimer: Timer?
+    var simGen = 0
+    var simStarting = false
+    var simRetryAt: Date?
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -355,6 +363,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 37: forkShown()
         case 38: chooseGeminiKey()
         case 44: editInstructions()
+        case 46: simAsked()
         case 45: resetInstructions()
         case 40...43: fileAsked(what)
         default: break
@@ -415,6 +424,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         syncScenePanelFrame()
         syncGymPanelFrame()
+        syncSimulatorFrame()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.

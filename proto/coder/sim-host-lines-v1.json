@@ -109,7 +109,7 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":53735,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":17087,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
     },
     {
      "from": "app",
@@ -129,37 +129,37 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"A5513C02-25DD-42CE-B446-305A8A9CF840\",\"name\":\"Chat Review\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"70AFCA67-95F4-4591-B944-3053FA1226BF\",\"name\":\"Coax Native Balance\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"E05572F4-80EE-4A27-A672-688527A30D5E\",\"name\":\"Coax Native Starter\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"E0BAC963-2F8E-41F4-AB42-9FF73D0B02E5\",\"name\":\"Everglade iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"2E850DA1-BAED-444D-92E4-9044D7F4BA90\",\"name\":\"GameBuilder iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"9B1115C1-5AC4-4E4F-AF9B-243EFA3E167E\",\"name\":\"GameBuilder Player iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"86AFF935-9643-4734-BDD6-F50DE6462AA2\",\"name\":\"OpenAgents Dev\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"91ACDEF7-2F0C-437F-8170-C747E3251342\",\"name\":\"OpenAgents Dev 2\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"FD38ED32-4BA6-4EA3-B8BA-347374640E32\",\"name\":\"OpenAgents GPU Identity\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"7F93D6CE-E8CE-40AC-BB57-D1670F01F8CD\",\"name\":\"OpenAgents Sidebar Regression\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"C8F7D7EA-1680-4465-B50E-0FB47F8C94F1\",\"name\":\"OA Vault iPhone\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false},{\"udid\":\"937049EC-7B55-4202-8B43-CA9752D5F346\",\"name\":\"oa-simhost-probe-9341\",\"runtime\":\"iOS 26.5\",\"state\":\"booted\",\"booted_by_us\":false},{\"udid\":\"48B1D39E-75E2-4D18-A51C-7A2B59F84E11\",\"name\":\"GameBuilder Player iPad\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}"
+     "line": "{\"id\":3,\"ok\":true,\"devices\":[{\"udid\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"name\":\"oa-simhost-check-17065\",\"runtime\":\"iOS 26.5\",\"state\":\"shutdown\",\"booted_by_us\":false}]}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":4,\"op\":\"boot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"id\":4,\"op\":\"boot\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"state\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"booting\"}"
+     "line": "{\"event\":\"state\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"state\":\"booting\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"state\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"booted\"}"
+     "line": "{\"event\":\"state\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"state\":\"booted\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":4,\"ok\":true,\"udid\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scale\":3,\"points\":{\"w\":402,\"h\":874}}"
+     "line": "{\"id\":4,\"ok\":true,\"udid\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scale\":3,\"points\":{\"w\":402,\"h\":874}}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":5,\"op\":\"screenshot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/one.png\"}"
+     "line": "{\"id\":5,\"op\":\"screenshot\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-17065/one.png\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":5,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/one.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":384508}"
+     "line": "{\"id\":5,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-17065/one.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":366908}"
     },
     {
      "from": "agent",
@@ -169,22 +169,22 @@
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":53735,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":17087,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":10,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"dark\"}"
+     "line": "{\"id\":10,\"op\":\"set_appearance\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"state\":\"dark\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\"}"
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"name\":\"oa-simhost-check-17065\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":6,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"once\"}"
+     "line": "{\"id\":6,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scope\":\"once\"}"
     },
     {
      "from": "helper",
@@ -199,7 +199,7 @@
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"chat\"}"
+     "line": "{\"id\":7,\"op\":\"grant\",\"chat\":\"check-chat\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scope\":\"chat\"}"
     },
     {
      "from": "helper",
@@ -209,7 +209,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":11,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"dark\"}"
+     "line": "{\"id\":11,\"op\":\"set_appearance\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"state\":\"dark\"}"
     },
     {
      "from": "helper",
@@ -219,12 +219,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"event\":\"agent\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":12,\"op\":\"appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"id\":12,\"op\":\"appearance\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
@@ -234,17 +234,17 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":13,\"op\":\"screenshot\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scale\":0.5,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/two.png\"}"
+     "line": "{\"id\":13,\"op\":\"screenshot\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scale\":0.5,\"out\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-17065/two.png\"}"
     },
     {
      "from": "helper",
      "to": "agent",
-     "line": "{\"id\":13,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-53657/two.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":109335}"
+     "line": "{\"id\":13,\"ok\":true,\"path\":\"/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/oa-simhost-check-17065/two.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":107511}"
     },
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":14,\"op\":\"open_url\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"url\":\"https://example.com\"}"
+     "line": "{\"id\":14,\"op\":\"open_url\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"url\":\"https://example.com\"}"
     },
     {
      "from": "helper",
@@ -254,7 +254,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":15,\"op\":\"launch\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"app_path\":\"/Applications/Safari.app\"}"
+     "line": "{\"id\":15,\"op\":\"launch\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"app_path\":\"/Applications/Safari.app\"}"
     },
     {
      "from": "helper",
@@ -264,7 +264,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":16,\"op\":\"shutdown\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"id\":16,\"op\":\"shutdown\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
@@ -274,7 +274,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":17,\"op\":\"open_url\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"url\":\"https://example.com\"}"
+     "line": "{\"id\":17,\"op\":\"open_url\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"url\":\"https://example.com\"}"
     },
     {
      "from": "helper",
@@ -284,17 +284,17 @@
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"id\":8,\"op\":\"revoke\",\"chat\":\"check-chat\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"open_url\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"event\":\"agent\",\"op\":\"open_url\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"event\":\"agent\",\"op\":\"launch\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",
@@ -309,7 +309,7 @@
     {
      "from": "agent",
      "to": "helper",
-     "line": "{\"id\":18,\"op\":\"set_appearance\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"state\":\"light\"}"
+     "line": "{\"id\":18,\"op\":\"set_appearance\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"state\":\"light\"}"
     },
     {
      "from": "helper",
@@ -319,12 +319,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"name\":\"oa-simhost-check-53657\"}"
+     "line": "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"name\":\"oa-simhost-check-17065\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":9,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"once\"}"
+     "line": "{\"id\":9,\"op\":\"deny\",\"chat\":\"check-chat\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scope\":\"once\"}"
     },
     {
      "from": "helper",
@@ -344,12 +344,12 @@
     {
      "from": "helper",
      "to": "app",
-     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":54317,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
+     "line": "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":17540,\"capabilities\":{\"display\":\"stills\",\"input\":\"none\",\"describe\":false},\"xcode\":\"26.6\"}"
     },
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":19,\"op\":\"grant\",\"chat\":\"check-chat-2\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\",\"scope\":\"chat\"}"
+     "line": "{\"id\":19,\"op\":\"grant\",\"chat\":\"check-chat-2\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\",\"scope\":\"chat\"}"
     },
     {
      "from": "helper",
@@ -359,7 +359,7 @@
     {
      "from": "app",
      "to": "helper",
-     "line": "{\"id\":20,\"op\":\"shutdown\",\"device\":\"63C795A4-801E-4755-AD43-BBEA331DAA56\"}"
+     "line": "{\"id\":20,\"op\":\"shutdown\",\"device\":\"CD2627AC-45B1-4B1B-8799-BCA0EB0B5D87\"}"
     },
     {
      "from": "helper",

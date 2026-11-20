@@ -339,6 +339,21 @@ Limits:
 - A daemon from an older Coder that doesn't run workers leaves them to Coder, as before: quitting Coder then stops them, and Coder asks first.
 - A finished run's files are removed when Coder sees it end, and after a week otherwise.
 
+## iOS Simulator
+
+View > iOS Simulator (Option-Command-S, or "Show iOS Simulator" in the palette) puts a simulated
+iPhone in the pane on the right (docs/desktop/ios-simulator-spec.md; GitHub #13811). The pane shows
+the device's screen (stills, up to 4 a second, in Phase 0), its name and runtime, Device… (a menu of
+the iOS simulators Xcode has), Boot or Shut Down, Screenshot (into the working folder's
+`.openagents/shots/`, shown in Finder) and Light or Dark.
+
+Agents use it through `oasim` (in `Contents/Resources`, on every worker's `PATH`): `oasim list`,
+`boot`, `screenshot`, `launch`, `open_url`, `set_appearance`, `build`, `build_status`, `run` and the
+rest, each answering one JSON line. The first op that changes a device in a chat opens the pane with
+a card: Allow for this chat, Allow once, Don't allow. While a chat drives the device a badge says so,
+with Stop. The page speaks the helper's wire itself (`page/simpane.coax`); `Window+Simulator.swift`
+only moves its lines, starts the helper (`oasim serve`) when none answers and shows the screen.
+
 ## Build and open
 
 ```sh
@@ -467,6 +482,7 @@ apps/openagents-desktop/foreman-control-test.sh --live   # also drives a built O
 | `page/transcript.coax` | Turns and their rows: sending, the reply, commands, tool calls, thoughts, sub-agents and their workers |
 | `page/chats.coax`, `page/persist.coax` | The kept chats' list, pins and the Foreman row; keeping and reading back a chat, the recall line, a new chat |
 | `page/input.coax`, `page/host-api.coax` | Presses, the pointer, the wheel and the sidebars' edges; the rest of the host's `coder_page_*` calls |
+| `page/simpane.coax`, `Window+Simulator.swift` | The iOS Simulator in the pane: its state and the helper's lines (Coax); the socket, the device menu and the screen's view (Swift) |
 | `page/layout/layout.coax` | `cp_layout`: the shell's regions, then the parts below in a fixed draw order |
 | `page/layout/conversation.coax` | A message's activity group, the conversation, the Foreman HUD, the corner buttons and the composer |
 | `page/layout/sidebar.coax`, `page/layout/pane.coax` | The chats' sidebar and its foot; a sub-agent's transcript and the shared tool row |

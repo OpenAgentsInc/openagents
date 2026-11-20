@@ -328,6 +328,9 @@ extension CoderWindow {
                 env["PATH"] = res
             }
         }
+        // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
+        env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat
+        env["OA_SIM_ENGINE"] = r.worker.program == "claudeworker" ? "Claude" : r.worker.program == "agyworker" ? "Antigravity" : "Microcoder"
         let cwd = (r === run ? folder : r.folder).path
         let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
         r.worker.extraEnv = env

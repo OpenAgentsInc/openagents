@@ -42,7 +42,7 @@ CpFilePane :: struct {
 // ---------------------------------------------------------------- what the rest of the page asks
 
 // Whether the pane draws the file: it is open, in front, or nothing else wants the pane.
-cp_fp_shown :: (s: [] CoderPage) -> bool { fp := s[0].fp[..]; return fp[0].open && (fp[0].front || !(s[0].pane_open || s[0].review)); }
+cp_fp_shown :: (s: [] CoderPage) -> bool { fp := s[0].fp[..]; return fp[0].open && !cp_sim_front(s) && (fp[0].front || !(s[0].pane_open || s[0].review)); }
 // Whether the file's editor is on screen: the keyboard can go to it.
 cp_fp_editing :: (s: [] CoderPage) -> bool { return cp_fp_shown(s) && s[0].fp[0].mode == CP_FP_EDIT && !s[0].set_open; }
 cp_fp_name :: (s: [] CoderPage) -> string {
@@ -268,6 +268,7 @@ cp_fp_begin :: (s: [] CoderPage, path: string) {
   ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);   // a new file is a new field: no undo into the last one
   fp[0] = CpFilePane.{};
   fp[0].open = true; fp[0].front = true;
+  s[0].sim[0].front = false;   // the file comes in front of the simulator
   fp[0].path_n = cp_out(fp[0].path[..], path);
 }
 // The editor's text, to be saved: its length in out, -1 when out does not hold it or nothing is edited.
@@ -301,7 +302,7 @@ coder_page_file_close :: (s: [] CoderPage) #export_c #effects(all) {
 // The open file comes forward in the pane (it was open behind another). False when none is open.
 coder_page_file_front :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].fp[0].open { return false; }
-  s[0].fp[0].front = true; return true;
+  s[0].fp[0].front = true; s[0].sim[0].front = false; return true;
 }
 // What the pane holds (CP_FP_*: 0 none, 1 edited here, 2 read-only, 3 could not be read).
 coder_page_file_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then s[0].fp[0].mode else CP_FP_NONE; }

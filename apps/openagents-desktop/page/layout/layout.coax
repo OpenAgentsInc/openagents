@@ -11,6 +11,7 @@ cp_pane_spec :: () -> AppPaneSpec {
 // The right sidebar: the file pane or the code review when it shows, else the task list at the top
 // with any sub-agent's transcript underneath.
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  if cp_sim_shown(s) { cp_simpane(s, f, px, pw, h); return; }
   if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); return; }
   if cp_review_shown(s) { cp_review(s, f, px, pw, h); return; }
   py: f32 = 0.0f32;
@@ -35,7 +36,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open || todos_side, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].sim[0].open || todos_side, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
   kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");

@@ -11,7 +11,7 @@
 CP_PAL_CHAT :: 1000; CP_PAL_FOREMAN :: 999; CP_PAL_SET :: 2000; CP_PAL_MODEL :: 3000; CP_PAL_TIER :: 4000;
 CP_PC_NEW :: 1; CP_PC_FOREMAN :: 2; CP_PC_FOLDER :: 3; CP_PC_SIDEBAR :: 4; CP_PC_MODEL :: 5; CP_PC_TIER :: 6; CP_PC_SETTINGS :: 7;
 CP_PC_BUDGET :: 8; CP_PC_GOAL :: 9; CP_PC_COPY :: 10; CP_PC_STOP :: 11; CP_PC_REVIEW :: 12; CP_PC_BIGGER :: 13; CP_PC_SMALLER :: 14;
-CP_PC_UPDATES :: 15; CP_PC_RENAME :: 16; CP_PC_DELETE :: 17; CP_PC_STOP_ALL :: 18; CP_PC_NEXT :: 19; CP_PC_PREV :: 20; CP_PC_AUDIT :: 21; CP_PC_ACTUAL :: 22; CP_PC_FORK :: 23;
+CP_PC_UPDATES :: 15; CP_PC_RENAME :: 16; CP_PC_DELETE :: 17; CP_PC_STOP_ALL :: 18; CP_PC_NEXT :: 19; CP_PC_PREV :: 20; CP_PC_AUDIT :: 21; CP_PC_ACTUAL :: 22; CP_PC_FORK :: 23; CP_PC_SIM :: 24;
 // the palette's own pages
 CP_PAL_PAGE_MODEL :: 1; CP_PAL_PAGE_TIER :: 2;
 CP_TIER_NAME :: [3] string.["Observe (read-only)", "Managed", "Autonomous"];
@@ -58,6 +58,7 @@ cp_palette_fill :: (s: [] CoderPage) {
     if running { cp_pal_cmd(p, "Stop reply", "stop cancel interrupt", "", ICON_STOP, CP_PC_STOP, 0); }
     if cp_has_edits(s) { cp_pal_cmd(p, ifx cp_review_shown(s) then "Hide changes" else "Show changes", "review diff edits changes", "", -1, CP_PC_REVIEW, 0); }
   }
+  cp_pal_cmd(p, ifx cp_sim_shown(s) then "Hide iOS Simulator" else "Show iOS Simulator", "ios iphone simulator device phone", "⌥ ⌘ S", ICON_SET_PHONE, CP_PC_SIM, 0);
   cp_pal_cmd(p, "Bigger text", "zoom in larger font", "⌘ +", -1, CP_PC_BIGGER, 0);
   cp_pal_cmd(p, "Smaller text", "zoom out font", "⌘ -", -1, CP_PC_SMALLER, 0);
   cp_pal_cmd(p, "Actual size", "reset zoom default normal font", "⌘ 0", -1, CP_PC_ACTUAL, 0);
@@ -142,6 +143,7 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_COPY { if s[0].nturns == 0 { return false; } s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true; }
   if c == CP_PC_FORK { cur := cast(string) s[0].current[0..<s[0].current_n]; if s[0].nturns == 0 || cur == "chat.foreman" { return false; } s[0].ask = CP_ASK_FORK; return true; }
   if c == CP_PC_STOP { if !cp_running(s) { return false; } s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }
+  if c == CP_PC_SIM { if cp_sim_shown(s) { cp_sim_hide(s); } else { s[0].sim[0].closed_by_person = false; cp_sim_show(s); } return true; }
   if c == CP_PC_REVIEW { if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }
   if c == CP_PC_BIGGER { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   if c == CP_PC_SMALLER { s[0].ask = CP_ASK_ZOOM_OUT; return true; }

@@ -1,0 +1,531 @@
+// Coder Desktop page (../page.coax): the iOS Simulator in the pane on the window's right
+// (docs/desktop/ios-simulator-spec.md section 5; GitHub #13811). The page holds the pane's state
+// and speaks to the simulator helper (oasim serve) itself: the host hands it every line the
+// helper writes (coder_page_sim_line) and writes to the helper what the page queues
+// (coder_page_sim_out), both through coax/lib/agent/device/sim-wire.coax. The host does only
+// effects: the socket, starting the helper, the device menu, and the native view that shows the
+// device's screen over coder_page_sim_rect (a still in Phase 0, the live surface after).
+//
+// The pane: a tab (the device's name and runtime, its state, Close); a toolbar (the device menu,
+// Boot or Shut Down, Screenshot, Light or Dark; Home, Lock and Rotate once input works); the
+// screen, aspect-fit, or what stands in for it (no simulator, booting, no Xcode, a failure); an
+// agent's badge with Stop over the screen while a chat drives it; and the permission card when an
+// agent first asks to control a device in a chat. The pane takes the window's right side over a
+// sub-agent's transcript, the code review and a file, whichever came to the front last.
+
+CP_SIM_DEVICES :: 16;
+CP_SIM_ASKS :: 4;            // permission cards waiting, the first shown
+CP_SIM_PEND :: 16;           // requests waiting for their replies
+CP_SIM_OUT :: 16384;         // bytes of queued request lines
+CP_SIM_PATH :: 1024;
+CP_SIM_PAD :: 12;            // room round the screen
+CP_SIM_DRIVE_S :: 2.0;       // an agent's op is "driving" this long
+
+// what the pane says it is
+CP_SIM_NONE :: 0; CP_SIM_STARTING :: 1; CP_SIM_DOWN :: 2; CP_SIM_NO_XCODE :: 3; CP_SIM_NO_DEVICE :: 4;
+CP_SIM_SHUTDOWN :: 5; CP_SIM_BOOTING :: 6; CP_SIM_BOOTED :: 7; CP_SIM_FAILED :: 8;
+// an agent on the shown device
+CP_SIM_AGENT_NONE :: 0; CP_SIM_AGENT_ALLOWED :: 1; CP_SIM_AGENT_DRIVING :: 2;
+// what its controls dispatch (rows' actions)
+CP_SIM_CLOSE :: 90; CP_SIM_PICK :: 91; CP_SIM_BOOT :: 92; CP_SIM_SHUTDOWN_ACT :: 93; CP_SIM_SHOT :: 94;
+CP_SIM_APPEARANCE :: 95; CP_SIM_STOP :: 96; CP_SIM_ALLOW_CHAT :: 97; CP_SIM_ALLOW_ONCE :: 98; CP_SIM_DENY :: 99;
+CP_SIM_HOME :: 101; CP_SIM_LOCK :: 102; CP_SIM_ROTATE :: 103;
+// what the page asks of the host (CP_ASK_SIM, with coder_page_sim_op saying which)
+CP_ASK_SIM :: 46;
+CP_SIM_OP_NONE :: 0; CP_SIM_OP_MENU :: 1; CP_SIM_OP_SAVED :: 2; CP_SIM_OP_CLOSED :: 3; CP_SIM_OP_OPENED :: 4;
+// what a request waits for
+CP_SIM_R_HELLO :: 1; CP_SIM_R_LIST :: 2; CP_SIM_R_BOOT :: 3; CP_SIM_R_STILL :: 4; CP_SIM_R_SHOT :: 5; CP_SIM_R_APPEARANCE :: 6; CP_SIM_R_OTHER :: 7;
+
+CpSimDevice :: struct { udid: [40] u8; udid_n: int; name: [64] u8; name_n: int; runtime: [24] u8; runtime_n: int; state: int; }
+CpSimAsk :: struct { chat: [64] u8; chat_n: int; engine: [48] u8; engine_n: int; device: [40] u8; device_n: int; name: [64] u8; name_n: int; op: [24] u8; op_n: int; }
+CpSimPend :: struct { id: int; kind: int; }
+CpSimPane :: struct {
+  open: bool;
+  front: bool;                // in front of a sub-agent's transcript, the review and a file
+  closed_by_person: bool;     // Close was pressed: an agent's op doesn't open it again
+  connected: bool;
+  devices: [CP_SIM_DEVICES] CpSimDevice; ndevices: int;
+  pick: int;                  // the device shown, -1 none
+  state: int;                 // CP_SIM_*
+  why: [512] u8; why_n: int;  // the last failure, as the helper said it
+  display_live: bool; input: bool; xcode: [24] u8; xcode_n: int;   // the helper's capabilities
+  agent: int;                 // CP_SIM_AGENT_*
+  agent_op: [96] u8; agent_op_n: int;   // "Tapping (201, 640)"
+  agent_engine: [48] u8; agent_engine_n: int;
+  agent_chat: [64] u8; agent_chat_n: int;
+  agent_at: f64;              // the page's clock at its last op
+  asks: [CP_SIM_ASKS] CpSimAsk; nasks: int;
+  dark: bool;
+  screen_w: f32; screen_h: f32;   // device points
+  body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the screen rect, logical points, top-left
+  still: [CP_SIM_PATH] u8; still_n: int; still_gen: int; still_flip: int;
+  saved: [CP_SIM_PATH] u8; saved_n: int;   // the person's last Screenshot
+  stills_dir: [CP_SIM_PATH] u8; stills_dir_n: int;
+  shots_dir: [CP_SIM_PATH] u8; shots_dir_n: int;
+  pend: [CP_SIM_PEND] CpSimPend; npend: int; next_id: int;
+  out: [CP_SIM_OUT] u8; out_n: int;
+  op: int;                    // CP_SIM_OP_*: what CP_ASK_SIM asks
+}
+
+cp_sim :: (s: [] CoderPage) -> [] CpSimPane { return s[0].sim[..]; }
+cp_sim_s :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+cp_sim_put :: (b: [] u8, n: [] int, s: string) { n[0] = cp_out(b, s); }
+
+// ---------------------------------------------------------------- what the rest of the page asks
+
+// Whether the pane draws the simulator: open, in front, or nothing else wants the pane.
+cp_sim_shown :: (s: [] CoderPage) -> bool { m := cp_sim(s); return m[0].open && (m[0].front || !(s[0].pane_open || s[0].review || s[0].fp[0].open)); }
+cp_sim_front :: (s: [] CoderPage) -> bool { return s[0].sim[0].open && s[0].sim[0].front; }
+// The simulator comes to the front (View > iOS Simulator, the palette, an agent's op).
+cp_sim_show :: (s: [] CoderPage) {
+  m := cp_sim(s);
+  was := m[0].open;
+  m[0].open = true; m[0].front = true; s[0].fp[0].front = false;
+  if !was { m[0].op = CP_SIM_OP_OPENED; s[0].ask = CP_ASK_SIM; }
+  if m[0].connected { cp_sim_queue_list(s); }
+}
+cp_sim_hide :: (s: [] CoderPage) {
+  m := cp_sim(s);
+  if !m[0].open { return; }
+  m[0].open = false; m[0].front = false;
+  m[0].op = CP_SIM_OP_CLOSED; s[0].ask = CP_ASK_SIM;
+}
+// A press on a sub-agent's row or Review while the simulator is in front: that pane comes forward.
+cp_sim_yield :: (s: [] CoderPage, act: int) -> bool {
+  m := cp_sim(s);
+  if !m[0].open || !m[0].front || act != CP_REVIEW && act != CP_AGENT { return false; }
+  m[0].front = false;
+  return false;   // the press goes on to do what it does
+}
+cp_sim_device :: (s: [] CoderPage) -> int { m := cp_sim(s); return ifx m[0].pick >= 0 && m[0].pick < m[0].ndevices then m[0].pick else -1; }
+cp_sim_udid :: (s: [] CoderPage) -> string { m := cp_sim(s); d := cp_sim_device(s); return ifx d >= 0 then cp_sim_s(m[0].devices[d].udid[..], m[0].devices[d].udid_n) else ""; }
+cp_sim_name :: (s: [] CoderPage) -> string { m := cp_sim(s); d := cp_sim_device(s); return ifx d >= 0 then cp_sim_s(m[0].devices[d].name[..], m[0].devices[d].name_n) else "iOS Simulator"; }
+// The tab's word: Booting, Shut down, Agent, or nothing.
+cp_sim_word :: (s: [] CoderPage) -> string {
+  m := cp_sim(s);
+  if m[0].agent == CP_SIM_AGENT_DRIVING && s[0].now - m[0].agent_at < CP_SIM_DRIVE_S { return "Agent"; }
+  if m[0].state == CP_SIM_BOOTING { return "Booting"; }
+  if m[0].state == CP_SIM_SHUTDOWN { return "Shut down"; }
+  if m[0].state == CP_SIM_STARTING { return "Starting"; }
+  return "";
+}
+
+// ---------------------------------------------------------------- requests to the helper
+
+cp_sim_send :: (s: [] CoderPage, m: [] SwMsg, kind: int) -> int {
+  p := cp_sim(s);
+  p[0].next_id += 1; id := p[0].next_id;
+  sw_set_int(m, SW_F_ID, id);
+  line: [8192] u8; n := sw_write(m, line[..]);
+  if n < 0 || p[0].out_n + n + 1 > CP_SIM_OUT { return -1; }
+  for i: 0..<n { p[0].out[p[0].out_n + i] = line[i]; }
+  p[0].out_n += n; p[0].out[p[0].out_n] = 10; p[0].out_n += 1;
+  if kind != CP_SIM_R_OTHER {
+    if p[0].npend == CP_SIM_PEND { for i: 1..<CP_SIM_PEND { p[0].pend[i - 1] = p[0].pend[i]; } p[0].npend -= 1; }
+    p[0].pend[p[0].npend] = CpSimPend.{id = id, kind = kind}; p[0].npend += 1;
+  }
+  return id;
+}
+cp_sim_req :: (m: [] SwMsg, op: string) { sw_clear(m); _ = sw_set_str(m, SW_F_OP, op); }
+cp_sim_waiting :: (s: [] CoderPage, kind: int) -> bool { p := cp_sim(s); for i: 0..<p[0].npend { if p[0].pend[i].kind == kind { return true; } } return false; }
+cp_sim_take :: (s: [] CoderPage, id: int) -> int {
+  p := cp_sim(s);
+  for i: 0..<p[0].npend {
+    if p[0].pend[i].id != id { continue; }
+    k := p[0].pend[i].kind;
+    for j: i + 1..<p[0].npend { p[0].pend[j - 1] = p[0].pend[j]; }
+    p[0].npend -= 1;
+    return k;
+  }
+  return 0;
+}
+cp_sim_queue_list :: (s: [] CoderPage) {
+  if cp_sim_waiting(s, CP_SIM_R_LIST) { return; }
+  m: [1] SwMsg; cp_sim_req(m[..], "list"); _ = cp_sim_send(s, m[..], CP_SIM_R_LIST);
+}
+cp_sim_with_device :: (s: [] CoderPage, m: [] SwMsg) { u := cp_sim_udid(s); if u.count > 0 { _ = sw_set_str(m, SW_F_DEVICE, u); } }
+// A still of the shown device for the view, into one of two files (the host reads one while the
+// next is written).
+cp_sim_queue_still :: (s: [] CoderPage) {
+  p := cp_sim(s);
+  if p[0].state != CP_SIM_BOOTED || p[0].stills_dir_n == 0 || cp_sim_waiting(s, CP_SIM_R_STILL) { return; }
+  b: [CP_SIM_PATH] u8; n := el_put(b[..], 0, cp_sim_s(p[0].stills_dir[..], p[0].stills_dir_n));
+  n = el_put(b[..], n, ifx p[0].still_flip == 0 then "/still-0.png" else "/still-1.png");
+  m: [1] SwMsg; cp_sim_req(m[..], "screenshot"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_OUT, cast(string) b[0..<n]);
+  _ = cp_sim_send(s, m[..], CP_SIM_R_STILL);
+}
+
+// ---------------------------------------------------------------- the helper's lines
+
+cp_sim_state_of :: (word: string) -> int {
+  if word == "booted" { return CP_SIM_BOOTED; }
+  if word == "booting" { return CP_SIM_BOOTING; }
+  if word == "shutting_down" || word == "shutdown" { return CP_SIM_SHUTDOWN; }
+  return CP_SIM_NONE;
+}
+cp_sim_failed :: (s: [] CoderPage, why: string) { p := cp_sim(s); p[0].state = CP_SIM_FAILED; p[0].why_n = cp_out(p[0].why[..], why); }
+cp_sim_follow :: (s: [] CoderPage) {
+  // the pane's state follows the shown device's
+  p := cp_sim(s); d := cp_sim_device(s);
+  if p[0].state == CP_SIM_NO_XCODE { return; }
+  if d < 0 { p[0].state = ifx p[0].ndevices == 0 then CP_SIM_NO_DEVICE else CP_SIM_SHUTDOWN; return; }
+  was := p[0].state;
+  p[0].state = p[0].devices[d].state;
+  if p[0].state == CP_SIM_BOOTED && was != CP_SIM_BOOTED {
+    cp_sim_queue_still(s);
+    m: [1] SwMsg; cp_sim_req(m[..], "appearance"); cp_sim_with_device(s, m[..]); _ = cp_sim_send(s, m[..], CP_SIM_R_APPEARANCE);
+  }
+}
+cp_sim_list :: (s: [] CoderPage, m: [] SwMsg) {
+  p := cp_sim(s);
+  keep := cp_sim_udid(s); kb: [40] u8; keep = cast(string) kb[0..<cp_out(kb[..], keep)];
+  p[0].ndevices = 0; p[0].pick = -1;
+  for i: 0..<m[0].ndevs {
+    if p[0].ndevices == CP_SIM_DEVICES { break; }
+    d := p[0].devices[p[0].ndevices..<p[0].ndevices + 1];
+    d[0].udid_n = cp_out(d[0].udid[..], sw_dev_udid(m, i)); d[0].name_n = cp_out(d[0].name[..], sw_dev_name(m, i));
+    d[0].runtime_n = cp_out(d[0].runtime[..], sw_dev_runtime(m, i)); d[0].state = cp_sim_state_of(sw_dev_state(m, i));
+    if sw_dev_udid(m, i) == keep { p[0].pick = p[0].ndevices; }
+    p[0].ndevices += 1;
+  }
+  // else the first booted one
+  if p[0].pick < 0 { for i: 0..<p[0].ndevices { if p[0].devices[i].state == CP_SIM_BOOTED { p[0].pick = i; break; } } }
+  if p[0].pick < 0 && p[0].ndevices > 0 && keep.count == 0 { p[0].pick = 0; }
+  cp_sim_follow(s);
+}
+cp_sim_reply :: (s: [] CoderPage, m: [] SwMsg) {
+  p := cp_sim(s);
+  kind := cp_sim_take(s, sw_int(m, SW_F_ID, 0));
+  ok := sw_bool(m, SW_F_OK);
+  if kind == CP_SIM_R_HELLO {
+    if !ok { cp_sim_failed(s, sw_str(m, SW_F_WHY)); return; }
+    p[0].display_live = sw_display(m) == "surface"; p[0].input = sw_input(m).count > 0 && sw_input(m) != "none";
+    p[0].xcode_n = cp_out(p[0].xcode[..], sw_str(m, SW_F_XCODE));
+    if p[0].xcode_n == 0 { p[0].state = CP_SIM_NO_XCODE; }
+    return;
+  }
+  if kind == CP_SIM_R_LIST { if ok { cp_sim_list(s, m); } return; }
+  if kind == CP_SIM_R_BOOT {
+    if !ok { cp_sim_failed(s, sw_str(m, SW_F_WHY)); return; }
+    if m[0].has[SW_F_SIZE] { p[0].screen_w = cast(f32) m[0].size_w; p[0].screen_h = cast(f32) m[0].size_h; }
+    cp_sim_queue_list(s); return;
+  }
+  if kind == CP_SIM_R_STILL {
+    if !ok { if sw_str(m, SW_F_CODE) == "not_booted" { cp_sim_queue_list(s); } return; }
+    p[0].still_n = cp_out(p[0].still[..], sw_str(m, SW_F_PATH)); p[0].still_gen += 1; p[0].still_flip = 1 - p[0].still_flip;
+    if m[0].has[SW_F_SIZE] { p[0].screen_w = cast(f32) m[0].size_w; p[0].screen_h = cast(f32) m[0].size_h; }
+    return;
+  }
+  if kind == CP_SIM_R_SHOT {
+    if !ok { cp_sim_failed(s, sw_str(m, SW_F_WHY)); return; }
+    p[0].saved_n = cp_out(p[0].saved[..], sw_str(m, SW_F_PATH)); p[0].op = CP_SIM_OP_SAVED; s[0].ask = CP_ASK_SIM;
+    return;
+  }
+  if kind == CP_SIM_R_APPEARANCE { if ok { p[0].dark = sw_str(m, SW_F_APPEARANCE) == "dark"; } return; }
+}
+// An agent's op, as the badge says it.
+cp_sim_doing :: (op: string, m: [] SwMsg, out: [] u8) -> int {
+  n := 0;
+  if op == "tap" { n = el_put(out, 0, "Tapping ("); n = el_put_i(out, n, sw_int(m, SW_F_X, 0)); n = el_put(out, n, ", "); n = el_put_i(out, n, sw_int(m, SW_F_Y, 0)); return el_put(out, n, ")"); }
+  if op == "swipe" || op == "touch_path" || op == "touch2_path" { return el_put(out, 0, "Swiping"); }
+  if op == "text" { return el_put(out, 0, "Typing"); }
+  if op == "launch" || op == "install" { return el_put(out, 0, "Launching an app"); }
+  if op == "open_url" { return el_put(out, 0, "Opening a link"); }
+  if op == "boot" { return el_put(out, 0, "Booting"); }
+  if op == "set_appearance" { return el_put(out, 0, "Changing the appearance"); }
+  n = el_put(out, 0, "Running "); return el_put(out, n, op);
+}
+cp_sim_event :: (s: [] CoderPage, m: [] SwMsg) {
+  p := cp_sim(s);
+  ev := sw_str(m, SW_F_EVENT);
+  if ev == "state" {
+    for i: 0..<p[0].ndevices {
+      if cp_sim_s(p[0].devices[i].udid[..], p[0].devices[i].udid_n) == sw_str(m, SW_F_DEVICE) { p[0].devices[i].state = cp_sim_state_of(sw_str(m, SW_F_STATE)); }
+    }
+    cp_sim_follow(s); cp_sim_queue_list(s); return;
+  }
+  if ev == "ask" {
+    if p[0].nasks == CP_SIM_ASKS { return; }   // the helper refuses it when its two minutes pass
+    a := p[0].asks[p[0].nasks..<p[0].nasks + 1];
+    a[0].chat_n = cp_out(a[0].chat[..], sw_str(m, SW_F_CHAT)); a[0].engine_n = cp_out(a[0].engine[..], sw_str(m, SW_F_ENGINE));
+    a[0].device_n = cp_out(a[0].device[..], sw_str(m, SW_F_DEVICE)); a[0].name_n = cp_out(a[0].name[..], sw_str(m, SW_F_NAME));
+    a[0].op_n = cp_out(a[0].op[..], sw_str(m, SW_F_OP));
+    p[0].nasks += 1;
+    // the card is seen: the pane opens and comes forward, on the device asked about
+    for i: 0..<p[0].ndevices { if cp_sim_s(p[0].devices[i].udid[..], p[0].devices[i].udid_n) == sw_str(m, SW_F_DEVICE) { p[0].pick = i; } }
+    cp_sim_show(s); cp_sim_follow(s);
+    return;
+  }
+  if ev == "agent" {
+    if sw_str(m, SW_F_DEVICE) != cp_sim_udid(s) && p[0].ndevices > 0 { cp_sim_queue_list(s); }
+    p[0].agent = CP_SIM_AGENT_DRIVING; p[0].agent_at = s[0].now;
+    p[0].agent_chat_n = cp_out(p[0].agent_chat[..], sw_str(m, SW_F_CHAT));
+    p[0].agent_engine_n = cp_out(p[0].agent_engine[..], sw_str(m, SW_F_ENGINE));
+    p[0].agent_op_n = cp_sim_doing(sw_str(m, SW_F_OP), m, p[0].agent_op[..]);
+    if !p[0].closed_by_person && !p[0].open { cp_sim_show(s); }
+    if sw_str(m, SW_F_OP) == "boot" || sw_str(m, SW_F_OP) == "shutdown" { cp_sim_queue_list(s); }
+    if sw_str(m, SW_F_OP) == "set_appearance" && !cp_sim_waiting(s, CP_SIM_R_APPEARANCE) {
+      // its answer is not ours to see: ask the device, so Light or Dark says the other one
+      r: [1] SwMsg; cp_sim_req(r[..], "appearance"); cp_sim_with_device(s, r[..]); _ = cp_sim_send(s, r[..], CP_SIM_R_APPEARANCE);
+    }
+    return;
+  }
+  if ev == "revoked" {
+    if sw_str(m, SW_F_CHAT) == cp_sim_s(p[0].agent_chat[..], p[0].agent_chat_n) { p[0].agent = CP_SIM_AGENT_NONE; }
+    return;
+  }
+}
+
+// ---------------------------------------------------------------- presses
+
+cp_sim_grant :: (s: [] CoderPage, op: string, scope: string) {
+  p := cp_sim(s);
+  if p[0].nasks == 0 { return; }
+  a := p[0].asks[0..<1];
+  m: [1] SwMsg; cp_sim_req(m[..], op);
+  _ = sw_set_str(m[..], SW_F_CHAT, cp_sim_s(a[0].chat[..], a[0].chat_n)); _ = sw_set_str(m[..], SW_F_DEVICE, cp_sim_s(a[0].device[..], a[0].device_n));
+  _ = sw_set_str(m[..], SW_F_SCOPE, scope);
+  _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER);
+  if op == "grant" {
+    p[0].agent = CP_SIM_AGENT_ALLOWED; p[0].agent_chat_n = cp_out(p[0].agent_chat[..], cp_sim_s(a[0].chat[..], a[0].chat_n));
+    p[0].agent_engine_n = cp_out(p[0].agent_engine[..], cp_sim_s(a[0].engine[..], a[0].engine_n));
+  }
+  // the answer is for the chat on that device: the cards that ask the same go too
+  ch: [64] u8; chn := cp_out(ch[..], cp_sim_s(a[0].chat[..], a[0].chat_n)); dv: [40] u8; dvn := cp_out(dv[..], cp_sim_s(a[0].device[..], a[0].device_n));
+  k := 0;
+  for i: 0..<p[0].nasks {
+    same := cp_sim_s(p[0].asks[i].chat[..], p[0].asks[i].chat_n) == cast(string) ch[0..<chn] && cp_sim_s(p[0].asks[i].device[..], p[0].asks[i].device_n) == cast(string) dv[0..<dvn];
+    if !same { p[0].asks[k] = p[0].asks[i]; k += 1; }
+  }
+  p[0].nasks = k;
+}
+cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
+  p := cp_sim(s);
+  if !p[0].open { return false; }
+  m: [1] SwMsg;
+  if act == CP_SIM_CLOSE { p[0].closed_by_person = true; cp_sim_hide(s); return true; }
+  if act == CP_SIM_PICK { p[0].op = CP_SIM_OP_MENU; s[0].ask = CP_ASK_SIM; return true; }
+  if act == CP_SIM_ALLOW_CHAT { cp_sim_grant(s, "grant", "chat"); return true; }
+  if act == CP_SIM_ALLOW_ONCE { cp_sim_grant(s, "grant", "once"); return true; }
+  if act == CP_SIM_DENY { cp_sim_grant(s, "deny", "once"); return true; }
+  if act == CP_SIM_STOP {
+    if p[0].agent_chat_n == 0 { return false; }
+    cp_sim_req(m[..], "revoke"); _ = sw_set_str(m[..], SW_F_CHAT, cp_sim_s(p[0].agent_chat[..], p[0].agent_chat_n));
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER); p[0].agent = CP_SIM_AGENT_NONE;
+    return true;
+  }
+  if cp_sim_device(s) < 0 { return false; }
+  if act == CP_SIM_BOOT {
+    cp_sim_req(m[..], "boot"); cp_sim_with_device(s, m[..]); _ = cp_sim_send(s, m[..], CP_SIM_R_BOOT);
+    p[0].state = CP_SIM_BOOTING; p[0].why_n = 0;
+    return true;
+  }
+  if act == CP_SIM_SHUTDOWN_ACT {
+    cp_sim_req(m[..], "shutdown"); cp_sim_with_device(s, m[..]); _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER);
+    return true;
+  }
+  if p[0].state != CP_SIM_BOOTED { return false; }
+  if act == CP_SIM_SHOT {
+    if p[0].shots_dir_n == 0 { return false; }
+    b: [CP_SIM_PATH] u8; n := el_put(b[..], 0, cp_sim_s(p[0].shots_dir[..], p[0].shots_dir_n));
+    n = el_put(b[..], n, "/simulator-"); n = el_put_i(b[..], n, cast(int) s[0].now); n = el_put(b[..], n, "-"); n = el_put_i(b[..], n, p[0].next_id + 1); n = el_put(b[..], n, ".png");
+    cp_sim_req(m[..], "screenshot"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_OUT, cast(string) b[0..<n]);
+    _ = cp_sim_send(s, m[..], CP_SIM_R_SHOT);
+    return true;
+  }
+  if act == CP_SIM_APPEARANCE {
+    p[0].dark = !p[0].dark;
+    cp_sim_req(m[..], "set_appearance"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_STATE, ifx p[0].dark then "dark" else "light");
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER);
+    return true;
+  }
+  if p[0].input && (act == CP_SIM_HOME || act == CP_SIM_LOCK) {
+    cp_sim_req(m[..], "button"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_NAME, ifx act == CP_SIM_HOME then "HOME" else "LOCK");
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER); return true;
+  }
+  if p[0].input && act == CP_SIM_ROTATE {
+    cp_sim_req(m[..], "rotate"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_DIRECTION, "left");
+    _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER); return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- drawing
+
+// The screen's rect: device points aspect-fit inside (x, y, w, h) with CP_SIM_PAD round it.
+cp_sim_fit :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, out: [] f32) {
+  aw := w - 2 * CP_SIM_PAD; ah := h - 2 * CP_SIM_PAD;
+  out[0] = x; out[1] = y; out[2] = 0; out[3] = 0;
+  if !(aw > 0) || !(ah > 0) || !(sw > 0) || !(sh > 0) { return; }
+  k := aw / sw; if ah / sh < k { k = ah / sh; }
+  out[2] = sw * k; out[3] = sh * k;
+  out[0] = x + (w - out[2]) / 2; out[1] = y + CP_SIM_PAD + (ah - out[3]) / 2;
+}
+cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; p := cp_sim(s); sh := f[0].sheet;
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  rb: [160] u8; rn := el_put(rb[..], 0, cp_sim_name(s));
+  d := cp_sim_device(s);
+  if d >= 0 && p[0].devices[d].runtime_n > 0 { rn = el_put(rb[..], rn, " · "); rn = el_put(rb[..], rn, cp_sim_s(p[0].devices[d].runtime[..], p[0].devices[d].runtime_n)); }
+  title := sheet_pool(sh, cast(string) rb[0..<rn]);
+  y := app_pane_tab_shell(f, px, top, pw, h, ICON_SET_PHONE, title, "coder.sim.state", cp_sim_word(s), "coder.sim.close", CP_SIM_CLOSE, CP_CORNER, 1.0f32);
+  // the toolbar
+  x := px + a.gap; cw := pw - 2 * a.gap; y += a.gap_small;
+  bx := x; ch := k.control_h;
+  bw := app_button_width(f, -1, "Device…");
+  _ := app_button(f, "coder.sim.pick", bx, y, bw, -1, "Device…", APP_BUTTON_DEFAULT, ifx p[0].ndevices > 0 then 0 else EL_S_DISABLED, CP_SIM_PICK); bx += bw + a.gap_small;
+  booted := p[0].state == CP_SIM_BOOTED;
+  if booted {
+    bw = app_button_width(f, -1, "Shut Down"); _ := app_button(f, "coder.sim.shutdown", bx, y, bw, -1, "Shut Down", APP_BUTTON_QUIET, 0, CP_SIM_SHUTDOWN_ACT); bx += bw + a.gap_small;
+    bw = app_button_width(f, -1, "Screenshot"); _ := app_button(f, "coder.sim.shot", bx, y, bw, -1, "Screenshot", APP_BUTTON_QUIET, ifx p[0].shots_dir_n > 0 then 0 else EL_S_DISABLED, CP_SIM_SHOT); bx += bw + a.gap_small;
+    look := ifx p[0].dark then "Light" else "Dark";
+    bw = app_button_width(f, -1, look); _ := app_button(f, "coder.sim.appearance", bx, y, bw, -1, look, APP_BUTTON_QUIET, 0, CP_SIM_APPEARANCE); bx += bw + a.gap_small;
+    if p[0].input {
+      bw = app_button_width(f, -1, "Home"); _ := app_button(f, "coder.sim.home", bx, y, bw, -1, "Home", APP_BUTTON_QUIET, 0, CP_SIM_HOME); bx += bw + a.gap_small;
+      bw = app_button_width(f, -1, "Lock"); _ := app_button(f, "coder.sim.lock", bx, y, bw, -1, "Lock", APP_BUTTON_QUIET, 0, CP_SIM_LOCK); bx += bw + a.gap_small;
+      bw = app_button_width(f, -1, "Rotate"); _ := app_button(f, "coder.sim.rotate", bx, y, bw, -1, "Rotate", APP_BUTTON_QUIET, 0, CP_SIM_ROTATE); bx += bw + a.gap_small;
+    }
+  }
+  y += ch + a.gap_small;
+  // an agent's badge, above the screen (never over the native view)
+  if p[0].agent != CP_SIM_AGENT_NONE && p[0].nasks == 0 {
+    eb: [200] u8; en := el_put(eb[..], 0, ifx p[0].agent_engine_n > 0 then cp_sim_s(p[0].agent_engine[..], p[0].agent_engine_n) else "An agent");
+    en = el_put(eb[..], en, " is using the simulator");
+    if p[0].agent == CP_SIM_AGENT_DRIVING && s[0].now - p[0].agent_at < CP_SIM_DRIVE_S && p[0].agent_op_n > 0 { en = el_put(eb[..], en, ": "); en = el_put(eb[..], en, cp_sim_s(p[0].agent_op[..], p[0].agent_op_n)); }
+    sw := app_button_width(f, ICON_STOP, "Stop");
+    _ := app_button(f, "coder.sim.stop", x + cw - sw, y, sw, ICON_STOP, "Stop", APP_BUTTON_DEFAULT, 0, CP_SIM_STOP);
+    _ := app_meta(f, "coder.sim.badge", x, y + (ch - k.body.line) / 2, cw - sw - a.gap, sheet_pool(sh, cast(string) eb[0..<en]), false);
+    y += ch + a.gap_small;
+  }
+  bh := h - y;
+  p[0].body_w = 0; p[0].body_h = 0;
+  // the permission card stands where the screen would
+  if p[0].nasks > 0 {
+    q := p[0].asks[0..<1];
+    cb: [256] u8; cn := el_put(cb[..], 0, ifx q[0].engine_n > 0 then cp_sim_s(q[0].engine[..], q[0].engine_n) else "An agent");
+    cn = el_put(cb[..], cn, " wants to control "); cn = el_put(cb[..], cn, ifx q[0].name_n > 0 then cp_sim_s(q[0].name[..], q[0].name_n) else "the simulator");
+    cy := y + a.gap;
+    cy += app_notice(f, "coder.sim.ask", x, cy, cw, sheet_pool(sh, cast(string) cb[0..<cn]), APP_NOTICE_INFO) + a.gap_small;
+    w1 := app_button_width(f, -1, "Allow for this chat"); w2 := app_button_width(f, -1, "Allow once"); w3 := app_button_width(f, -1, "Don't allow");
+    _ := app_button(f, "coder.sim.allow", x, cy, w1, -1, "Allow for this chat", APP_BUTTON_PRIMARY, 0, CP_SIM_ALLOW_CHAT);
+    _ := app_button(f, "coder.sim.once", x + w1 + a.gap_small, cy, w2, -1, "Allow once", APP_BUTTON_DEFAULT, 0, CP_SIM_ALLOW_ONCE);
+    _ := app_button(f, "coder.sim.deny", x + w1 + w2 + 2 * a.gap_small, cy, w3, -1, "Don't allow", APP_BUTTON_QUIET, 0, CP_SIM_DENY);
+    return;
+  }
+  // what stands in for the screen while there is none
+  if !booted || !p[0].connected {
+    msg := "";
+    if !p[0].connected { msg = ifx p[0].state == CP_SIM_DOWN then cp_sim_s(p[0].why[..], p[0].why_n) else "Starting the simulator helper…"; }
+    else if p[0].state == CP_SIM_NO_XCODE { msg = "Xcode is not installed. Install Xcode from the App Store, then choose it with xcode-select -s /Applications/Xcode.app."; }
+    else if p[0].state == CP_SIM_NO_DEVICE { msg = "No iOS simulator. Install an iOS runtime in Xcode > Settings > Components."; }
+    else if p[0].state == CP_SIM_BOOTING { mb: [128] u8; mn := el_put(mb[..], 0, "Booting "); mn = el_put(mb[..], mn, cp_sim_name(s)); mn = el_put(mb[..], mn, "…"); msg = sheet_pool(sh, cast(string) mb[0..<mn]); }
+    else if p[0].state == CP_SIM_FAILED { msg = cp_sim_s(p[0].why[..], p[0].why_n); }
+    else { msg = "No simulator booted."; }
+    ny := y + a.gap;
+    ny += app_notice(f, "coder.sim.notice", x, ny, cw, msg, ifx p[0].state == CP_SIM_FAILED || p[0].state == CP_SIM_DOWN then APP_NOTICE_ERROR else APP_NOTICE_INFO) + a.gap_small;
+    if p[0].connected && d >= 0 && (p[0].state == CP_SIM_SHUTDOWN || p[0].state == CP_SIM_FAILED) {
+      w := app_button_width(f, -1, "Boot");
+      _ := app_button(f, "coder.sim.boot", x, ny, w, -1, "Boot", APP_BUTTON_PRIMARY, 0, CP_SIM_BOOT);
+    }
+    return;
+  }
+  r: [4] f32;
+  cp_sim_fit(ifx p[0].screen_w > 0 then p[0].screen_w else 402.0f32, ifx p[0].screen_h > 0 then p[0].screen_h else 874.0f32, px, y, pw, bh, r[..]);
+  p[0].body_x = r[0]; p[0].body_y = r[1]; p[0].body_w = r[2]; p[0].body_h = r[3];
+  if r[2] > 0 && r[3] > 0 { _ := uiframe_semantic(f, "coder.sim.screen", EL_REGION, cp_sim_name(s), r[0], r[1], r[2], r[3], 0, 0); }
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// Where stills go (the host's own folder) and where the person's screenshots go (the working
+// folder's .openagents/shots).
+coder_page_sim_setup :: (s: [] CoderPage, stills: string, shots: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  p := cp_sim(s); p[0].stills_dir_n = cp_out(p[0].stills_dir[..], stills); p[0].shots_dir_n = cp_out(p[0].shots_dir[..], shots);
+}
+// View > iOS Simulator and the palette: shown (true) or closed.
+coder_page_sim_show :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  if open { s[0].sim[0].closed_by_person = false; cp_sim_show(s); } else { cp_sim_hide(s); }
+}
+coder_page_sim_open :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].sim[0].open; }
+// The host reached the helper (ok) or could not (why): the page says hello and asks for the list.
+coder_page_sim_connected :: (s: [] CoderPage, ok: bool, why: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  p := cp_sim(s);
+  p[0].connected = ok; p[0].npend = 0; p[0].out_n = 0;
+  if !ok { p[0].state = CP_SIM_DOWN; p[0].why_n = cp_out(p[0].why[..], why); p[0].nasks = 0; p[0].agent = CP_SIM_AGENT_NONE; return; }
+  if p[0].state == CP_SIM_DOWN || p[0].state == CP_SIM_NONE { p[0].state = CP_SIM_STARTING; }
+  m: [1] SwMsg; cp_sim_req(m[..], "hello"); _ = sw_set_str(m[..], SW_F_CLIENT, "app"); sw_set_int(m[..], SW_F_VERSION, 1);
+  _ = cp_sim_send(s, m[..], CP_SIM_R_HELLO);
+  cp_sim_req(m[..], "subscribe"); _ = cp_sim_send(s, m[..], CP_SIM_R_OTHER);
+  cp_sim_queue_list(s);
+}
+// A line the helper wrote. False when it could not be read.
+coder_page_sim_line :: (s: [] CoderPage, line: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  m: [1] SwMsg; w: [1] SwText;
+  if !sw_read(line, m[..], w[..]) { return false; }
+  if sw_has(m[..], SW_F_EVENT) { cp_sim_event(s, m[..]); } else { cp_sim_reply(s, m[..]); }
+  return true;
+}
+// The request lines the page queued for the helper, each ending in a line feed, into out (and
+// taken off the queue). Their length, 0 for none, -1 when out is too short.
+coder_page_sim_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  p := cp_sim(s);
+  if p[0].out_n > out.count { return -1; }
+  n := p[0].out_n;
+  for i: 0..<n { out[i] = p[0].out[i]; }
+  p[0].out_n = 0;
+  return n;
+}
+// The host's clock while the screen shows (up to 4 a second): the next still is asked for.
+coder_page_sim_tick :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 && cp_sim_shown(s) && !s[0].set_open { cp_sim_queue_still(s); } }
+// The screen's rect (x, y, w, h in logical points, top-left) and whether something covers it
+// (an overlay, settings: the host then hides its view). False while no screen shows.
+coder_page_sim_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
+  if s.count < 1 || out.count < 5 { return false; }
+  p := cp_sim(s);
+  if !cp_sim_shown(s) || !(p[0].body_w > 0) || !(p[0].body_h > 0) || p[0].state != CP_SIM_BOOTED || p[0].nasks > 0 { return false; }
+  out[0] = p[0].body_x; out[1] = p[0].body_y; out[2] = p[0].body_w; out[3] = p[0].body_h;
+  out[4] = ifx s[0].set_open || cp_overlay_open(s) then 1.0f32 else 0.0f32;
+  return true;
+}
+// The newest still: its path into out; the count of stills so far (a new one when it grows).
+coder_page_sim_still :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  p := cp_sim(s); _ = cp_out(out, cp_sim_s(p[0].still[..], p[0].still_n));
+  if p[0].still_n < out.count { out[p[0].still_n] = 0; }
+  return p[0].still_gen;
+}
+// What CP_ASK_SIM asks: CP_SIM_OP_MENU (the device menu), _SAVED (a screenshot was saved:
+// coder_page_sim_saved), _CLOSED and _OPENED (the pane).
+coder_page_sim_op :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } o := s[0].sim[0].op; s[0].sim[0].op = CP_SIM_OP_NONE; return o; }
+coder_page_sim_saved :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_out(out, cp_sim_s(s[0].sim[0].saved[..], s[0].sim[0].saved_n)) else 0; }
+// The device menu's rows, one a line: "name · runtime\tstate word\t1 when shown".
+coder_page_sim_menu :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  p := cp_sim(s); n := 0;
+  words := [9] string.["", "", "", "", "", "Shut down", "Booting", "Booted", ""];
+  for i: 0..<p[0].ndevices {
+    d := p[0].devices[i..<i + 1];
+    n = el_put(out, n, cp_sim_s(d[0].name[..], d[0].name_n));
+    if d[0].runtime_n > 0 { n = el_put(out, n, " · "); n = el_put(out, n, cp_sim_s(d[0].runtime[..], d[0].runtime_n)); }
+    n = el_put(out, n, "\t"); n = el_put(out, n, words[d[0].state]); n = el_put(out, n, ifx i == p[0].pick then "\t1\n" else "\t0\n");
+  }
+  return n;
+}
+// The person picked row i of the device menu.
+coder_page_sim_pick :: (s: [] CoderPage, i: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || i < 0 || i >= s[0].sim[0].ndevices { return false; }
+  p := cp_sim(s);
+  p[0].pick = i; p[0].still_n = 0; p[0].screen_w = 0; p[0].screen_h = 0; p[0].state = CP_SIM_NONE;
+  cp_sim_follow(s);
+  return true;
+}
+// The device the pane shows (its UDID into out), for the chat's run.
+coder_page_sim_device :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_out(out, cp_sim_udid(s)) else 0; }

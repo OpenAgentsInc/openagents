@@ -35,10 +35,10 @@ sp_class :: (op: string) -> int #effects(all) {
 sp_needs_device :: (op: string) -> bool #effects(all) {
   c := sp_class(op);
   if c == SP_CONTROL { return op != "build"; }
-  return op == "screenshot" || op == "appearance" || op == "describe" || op == "logs" || op == "subscribe";
+  return op == "screenshot" || op == "appearance" || op == "describe" || op == "logs";   // subscribe is the whole helper's events: it needs none
 }
 #test "the ops that need a device" {
-  #assert sp_needs_device("tap") && sp_needs_device("screenshot") && sp_needs_device("subscribe") && sp_needs_device("logs") && sp_needs_device("describe") && sp_needs_device("appearance");
+  #assert sp_needs_device("tap") && sp_needs_device("screenshot") && !sp_needs_device("subscribe") && sp_needs_device("logs") && sp_needs_device("describe") && sp_needs_device("appearance");
   #assert !sp_needs_device("build") && !sp_needs_device("list") && !sp_needs_device("hello") && !sp_needs_device("grant") && !sp_needs_device("attach");
 }
 
