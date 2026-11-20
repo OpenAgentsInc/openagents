@@ -79,7 +79,10 @@
 #   coax/remote/check.sh coder-since BASE the same, when the change since BASE reaches Coder
 #                                         (a fast run; its own job); a change that reaches only
 #                                         Coder Desktop (apps/coder-desktop, evals/coder-desktop,
-#                                         components) runs only its evals
+#                                         components) runs only its evals; a change that reaches
+#                                         the desktop core (coax/lib/agent/desktop) runs its smoke
+#   coax/remote/check.sh desktop-core     the portable desktop core's headless smoke (#13787:
+#                                         coax/lib/agent/desktop/smoke.coax; its unit checks are suites)
 #
 # It writes build/pipeline/: MODE.log (the output), status, failed (one line
 # per failing suite or step), limits.txt (each compile-time limit note:
@@ -207,6 +210,7 @@ api() { step api coax/web/api/test.sh --part "$1" || status=1; }
 coder() {
   step coder-checks coax/bin/coax test coder/tui/coder.coax || status=1
   step coder-smoke python3 coder/tui/smoke.py || status=1
+  desktop_core
   # Coder Desktop's evals that need no model or window (#13705): replay_test.coax loads page.coax,
   # so this runs the page's own tests too; the host scenarios drive the real page headless on the
   # mock worker, and the compaction suite needs no model (#13734).
@@ -220,6 +224,10 @@ desktop_evals() {
   # check, or a host whose native checks fall back, needs the page to fit there
   step coder-desktop-page-slots apps/coder-desktop/page-slots.sh || status=1
 }
+# The portable desktop core (#13787): its #test checks are suites (coax/lib); its smoke runs the
+# modules against this host's real files, git, processes and local sockets, in a temporary folder.
+desktop_core() { step desktop-core-smoke coax/web/tool.sh coax/lib/agent/desktop/smoke.coax || status=1; }
+desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
 desktop_touched() { grep -Eq '^(apps/coder-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)
   grep -Eq '^coder/' "$out/changed" && return 0
@@ -713,6 +721,7 @@ run() {   # mode arg: one check
     counts) [[ -n "$arg" ]] || return 2
         counts_since "$arg" ;;
     coder) coder ;;
+    desktop-core) desktop_core ;;
     *) return 2 ;;
   esac
   return 0
@@ -763,7 +772,8 @@ case "$mode" in
     changed_since
     if grep -qvE '(\.md$|^docs/)' "$out/changed" && coder_touched; then coder
     elif grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_touched; then desktop_evals   # only Coder Desktop: no TUI smoke
-    else echo "== coder: skipped, the change doesn't reach Coder" >> "$log"; fi ;;
+    elif ! grep -qvE '(\.md$|^docs/)' "$out/changed" || ! desktop_core_touched; then echo "== coder: skipped, the change doesn't reach Coder" >> "$log"; fi
+    if grep -qvE '(\.md$|^docs/)' "$out/changed" && desktop_core_touched && ! coder_touched; then desktop_core; fi ;;
   room-since)
     changed_since
     if grep -v '\.md$' "$out/changed" | grep -Eq "$web_inputs" && room_touched; then room "${also[0]:-}"

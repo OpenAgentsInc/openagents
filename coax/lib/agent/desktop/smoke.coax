@@ -1,0 +1,379 @@
+// The desktop core's headless smoke (GitHub #13787): every module against the real system, in a
+// temporary folder, with nothing of the user's touched. It runs itself again with HOME,
+// CODER_HOME, XDG_DATA_HOME and the settings domain (or file) pointed into that folder, then:
+//   - worktree: a chat's worktree made from a fresh repository (branch, cloned folder, cut link),
+//     kept while it has a change, removed once clean;
+//   - store: an index.json the Mac app's JSONEncoder wrote (SWIFT_INDEX below, keys in Swift's
+//     order, \/ escapes) read, kept, renamed, pinned and read back with nothing lost;
+//   - settings: written and read back (the defaults domain on a Mac, settings.json elsewhere);
+//   - daemon: the core starts a stand-in daemon (this tool again) and talks to it on its
+//     owner-only socket with the daemon codec: health, session meta, runs, a refused run with the
+//     app's words for it, and a run whose output the core follows by file;
+//   - worker: a child-process worker's lines both ways and its end;
+//   - update: the pinned signed manifest (proto/coder/desktop-update-v1.json) verified and its
+//     archive's size and SHA-256 checked, and a changed archive refused.
+// It never starts the real daemon, the app or a browser, and never writes outside its folder.
+//   coax/web/tool.sh coax/lib/agent/desktop/smoke.coax       (from the repository's root)
+#load "../../sys/tool.coax";
+#load "worker.coax";
+#load "update.coax";
+
+// What the Mac app's CoderStore writes (Swift's JSONEncoder, generated from CoderChat's shape).
+SWIFT_INDEX :: "[{\"id\":\"c0ffee01\",\"folder\":\"\\/w\\/openagents-3f87407a\\/c0ffee01\",\"created\":1763500200.125,\"repo_root\":\"\\/Users\\/me\\/work\\/OpenAgents\",\"worktree_path\":\"\\/w\\/openagents-3f87407a\\/c0ffee01\",\"worktree_branch\":\"coder\\/c0ffee01\",\"title\":\"Fix the \\\"login\\\" page \\/ é\",\"updated\":1763500300.5},{\"managed_by\":\"foreman\",\"title\":\"Foreman\",\"id\":\"foreman\",\"folder\":\"\\/Users\\/me\",\"updated\":1763500000},{\"created\":1763400000,\"title\":\"Pinned one\",\"pinned\":0,\"folder\":\"\\/tmp\\/two\",\"updated\":1763400010.75,\"renamed\":true,\"id\":\"b0b0b0b0\"}]";
+SMOKE_HOST :: "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
+
+tool_main :: () -> int #export_c #effects(all) {
+  rb: [64] u8; role := dcos_getenv("DC_SMOKE_ROLE", rb[..]);
+  if role == "standin" { return standin(); }
+  if role == "run" { return smoke(); }
+  return drive();
+}
+
+// ---- the driver: a folder of its own, and the smoke run inside it ----
+drive :: () -> int {
+  sb: [DC_PATH] u8; self := tool_self(sb[..]);
+  if self.count == 0 { print("desktop core smoke: start it with coax/web/tool.sh\n"); return 1; }
+  cb: [DC_PATH] u8; cwd := fs_cwd(cb[..]);
+  tb: [DC_PATH] u8; t := fs_temp("dcs-", tb[..]);
+  if t.count == 0 { print("desktop core smoke: no temporary folder\n"); return 1; }
+  rt: [DC_PATH] u8; root := dcos_real(t, rt[..]);
+  hb: [DC_PATH] u8; home := dc_join(root, "home", hb[..]); _ := dcos_mkdirs(home);
+  e: [1] DcEnv;
+  dc_env_add(e[..], "DC_SMOKE_ROLE", "run");
+  dc_env_add(e[..], "DC_SMOKE_ROOT", root);
+  dc_env_add(e[..], "DC_SMOKE_SELF", self);
+  dc_env_add(e[..], "DC_SMOKE_REPO", cwd);
+  dc_env_add(e[..], "HOME", home);
+  // the daemon's socket path must fit a sockaddr_un (104 bytes on a Mac): its home is a short /tmp folder
+  hx: [32] u8; ch: [DC_PATH] u8; cn := dc_copy(ch[..], "/tmp/dcs-"); cn = dc_cat(ch[..], cn, dc_new_id(hx[..])[0..<12]);
+  short := cast(string) ch[0..<cn];
+  if !dcos_mkdir_private(short) { print("desktop core smoke: no folder in /tmp\n"); _ := fs_remove(t); return 1; }
+  dc_env_add(e[..], "CODER_HOME", short);
+  xb: [DC_PATH] u8; dc_env_add(e[..], "XDG_DATA_HOME", dc_join(root, "xdg", xb[..]));
+  db: [DC_PATH] u8; dc_env_add(e[..], "CODER_SETTINGS_DOMAIN", dc_join(root, "settings", db[..]));
+  fb: [DC_PATH] u8; dc_env_add(e[..], "CODER_SETTINGS_FILE", dc_join(root, "settings.json", fb[..]));
+  dc_env_add(e[..], "CODER_WORKTREES", "");
+  dc_env_add(e[..], "CODER_DESKTOP_DIR", "");
+  dc_env_add(e[..], "BROWSER", "/usr/bin/true");
+  dc_env_add(e[..], "GIT_CONFIG_NOSYSTEM", "1");
+  argv := [1] string.[self];
+  out: [262144] u8; r := dcos_run(argv[..], e[0].set[0..<e[0].set_n], out[..]);
+  print("%", cast(string) out[0..<r.n]); print("\n");
+  sp: [DC_PATH] u8; _ := dcos_write(dc_join(root, "stop", sp[..]), "1");   // a stand-in still there goes
+  proc_sleep(300);
+  _ := fs_remove(short);
+  kb: [8] u8; if dcos_getenv("DC_SMOKE_KEEP", kb[..]).count > 0 { print("kept %\n", root); } else { _ := fs_remove(t); }
+  if r.started != 0 || r.status != 0 { print("desktop core smoke: FAILED\n"); return 1; }
+  print("desktop core smoke: ok\n");
+  return 0;
+}
+
+say :: (what: string) { print("  %\n", what); }
+fail :: (what: string) -> int { print("FAIL %\n", what); return 1; }
+
+// ---- the smoke run ----
+smoke :: () -> int {
+  rb: [DC_PATH] u8; root := dcos_getenv("DC_SMOKE_ROOT", rb[..]);
+  if root.count == 0 { return fail("no folder"); }
+  os := dcos_os(); print("%", ifx os == DC_OS_MAC then "desktop core smoke on macOS\n" else ifx os == DC_OS_LINUX then "desktop core smoke on Linux\n" else "desktop core smoke\n");
+  if smoke_worktree(root) != 0 { return 1; }
+  if smoke_store(root) != 0 { return 1; }
+  if smoke_settings() != 0 { return 1; }
+  if smoke_daemon(root) != 0 { return 1; }
+  if smoke_worker(root) != 0 { return 1; }
+  if smoke_update(root) != 0 { return 1; }
+  return 0;
+}
+
+git_in :: (dir: string, args: [] string) -> bool { return dc_git_ok(dir, args); }
+
+smoke_worktree :: (root: string) -> int {
+  rp: [DC_PATH] u8; repo := dc_join(root, "repo", rp[..]); _ := dcos_mkdirs(repo);
+  f1: [DC_PATH] u8; f2: [DC_PATH] u8; f3: [DC_PATH] u8; f4: [DC_PATH] u8;
+  _ := dcos_write(dc_join(repo, "README", f1[..]), "smoke\n");
+  _ := dcos_write(dc_join(repo, ".gitignore", f2[..]), "deps/\n");
+  cd: [DC_PATH] u8; _ := dcos_mkdirs(dc_join(repo, ".coder", cd[..]));
+  _ := dcos_write(dc_join(repo, ".coder/worktree.json", f3[..]), "{\"clone\":[\"deps\",\"/etc\",\"../out\"]}");
+  dd: [DC_PATH] u8; _ := dcos_mkdirs(dc_join(repo, "deps/pkg", dd[..]));
+  _ := dcos_write(dc_join(repo, "deps/pkg/index.js", f4[..]), "module.exports = 1;\n");
+  lk: [DC_PATH] u8; rd: [DC_PATH] u8; ln := [4] string.["ln", "-s", dc_join(repo, "README", rd[..]), dc_join(repo, "deps/pkg/back", lk[..])];   // an absolute link into the main checkout
+  if dcos_status(ln[..]) != 0 { return fail("worktree: a link in the clone folder"); }
+  init := [4] string.["init", "--quiet", "--initial-branch=main", "."];
+  add := [3] string.["add", "-A", "."];
+  commit := [9] string.["-c", "user.name=smoke", "-c", "user.email=smoke@example.invalid", "-c", "commit.gpgsign=false", "commit", "--quiet", "-m"];
+  if !git_in(repo, init[..]) || !git_in(repo, add[..]) { return fail("worktree: git init"); }
+  cm := [10] string.[commit[0], commit[1], commit[2], commit[3], commit[4], commit[5], commit[6], commit[7], commit[8], "first"];
+  if !git_in(repo, cm[..]) { return fail("worktree: first commit"); }
+  mb: [DC_PATH] u8; sb: [DC_PATH] u8;
+  if dc_main_checkout(repo, mb[..]) != dc_standard(repo, sb[..]) { return fail("worktree: the repository is not its own main checkout"); }
+
+  wr: [DC_PATH] u8; wroot := dc_join(root, "worktrees", wr[..]);
+  w: [1] DcWorktree; why: [4096] u8;
+  r := dc_wt_create(repo, "Smoke_Chat-1", wroot, w[..], why[..]);
+  if r.count > 0 { print("%", r); print("\n"); return fail("worktree: made"); }
+  path := dc_wt_path(w[..]);
+  // the path is the app's: ROOT/SLUG/CHAT, SLUG from the repository's real path
+  rr: [DC_PATH] u8; pb: [DC_PATH] u8;
+  if path != dc_worktree_path(wroot, dcos_real(repo, rr[..]), "Smoke_Chat-1", pb[..]) || dc_wt_branch(w[..]) != "coder/smokechat-1" {
+    print("%", path); print(" "); print("%", dc_wt_branch(w[..])); print("\n"); return fail("worktree: path and branch");
+  }
+  gf: [DC_PATH] u8; if dcos_kind(dc_join(path, ".git", gf[..])) != FS_FILE { return fail("worktree: .git file"); }
+  gm: [DC_PATH] u8; m2: [DC_PATH] u8; if dc_main_checkout(path, gm[..]) != "" || dc_repository(path, m2[..]) != repo { return fail("worktree: names its main checkout"); }
+  br: [4096] u8; cur := [3] string.["rev-parse", "--abbrev-ref", "HEAD"]; g := dc_git(path, cur[..], br[..]);
+  if g.status != 0 || cast(string) br[0..<g.n] != dc_wt_branch(w[..]) { return fail("worktree: on its branch"); }
+  c1: [DC_PATH] u8; if dcos_kind(dc_join(path, "deps/pkg/index.js", c1[..])) != FS_FILE { return fail("worktree: the listed folder is cloned in"); }
+  c2: [DC_PATH] u8; if dcos_kind(dc_join(path, "deps/pkg/back", c2[..])) != FS_NONE { return fail("worktree: the link back into the main checkout is cut"); }
+  say("worktree: made on its branch, deps cloned in, the link back cut");
+  // made again: found where it is
+  w2: [1] DcWorktree; if dc_wt_create(repo, "Smoke_Chat-1", wroot, w2[..], why[..]).count > 0 || dc_wt_path(w2[..]) != path { return fail("worktree: found again"); }
+  if dc_wt_changes(w[..]) != 0 { return fail("worktree: clean at first"); }
+  nf: [DC_PATH] u8; _ := dcos_write(dc_join(path, "new.txt", nf[..]), "work\n");
+  k := dc_wt_remove(w[..]);
+  if k.result != DC_WT_KEPT || k.changes != 1 { return fail("worktree: kept with a change"); }
+  _ := dcos_remove(dc_join(path, "new.txt", nf[..]));
+  k = dc_wt_remove(w[..]);
+  if k.result != DC_WT_REMOVED || dcos_kind(path) != FS_NONE { return fail("worktree: removed when clean"); }
+  hb: [4096] u8; has := [4] string.["rev-parse", "--verify", "--quiet", "refs/heads/coder/smokechat-1"];
+  if dc_git_ok(repo, has[..]) { return fail("worktree: its merged branch goes with it"); }
+  if dc_wt_remove(w[..]).result != DC_WT_GONE { return fail("worktree: gone"); }
+  say("worktree: kept while changed, removed once clean, branch gone");
+  return 0;
+}
+
+smoke_store :: (root: string) -> int {
+  cb: [DC_PATH] u8; dir := dcos_chats_dir(cb[..]);
+  hb: [DC_PATH] u8; home := dcos_home(hb[..]);
+  if !dc_starts(dir, root) { return fail("store: the folder is inside the smoke's home"); }
+  _ := dcos_mkdirs(dir);
+  ib: [DC_PATH] u8; if !dcos_write(dc_join(dir, "index.json", ib[..]), SWIFT_INDEX) { return fail("store: index written"); }
+  chats: [16] DkChat; s: [1] DcStore;
+  if !dc_store_open(s[..], dir, chats[..]) { return fail("store: the app's index.json reads"); }
+  x := s[0].x[..];
+  if x[0].n != 3 || dk_id(x, 0) != "c0ffee01" || dk_id(x, 1) != "foreman" || dk_id(x, 2) != "b0b0b0b0" { return fail("store: newest created first"); }
+  if dk_title(x, 0) != "Fix the \"login\" page / é" || dk_folder(x, 0) != "/w/openagents-3f87407a/c0ffee01" || dk_wt_branch(x, 0) != "coder/c0ffee01" || dk_repo(x, 0) != "/Users/me/work/OpenAgents" { return fail("store: titles, folders and worktrees"); }
+  if !x[0].chats[2].renamed || x[0].chats[2].pinned != 0 || dk_managed(x, 1) != "foreman" { return fail("store: renamed, pinned and managed"); }
+  lb: [4096] u8; if dc_store_lines(s[..], lb[..]) != "b0b0b0b0\tPinned one\nc0ffee01\tFix the \"login\" page / é" { print("%", dc_store_lines(s[..], lb[..])); print("\n"); return fail("store: the list the app shows"); }
+  say("store: the Mac app's index.json read: order, titles, pins and worktrees");
+  now := dcos_now_us();
+  if !dc_store_keep(s[..], "d00d0001", "A new chat", home, "<p>hi</p>", "", "", "", "", now) { return fail("store: keep a new chat"); }
+  if !dc_store_keep(s[..], "c0ffee01", "Retitled", "/w/openagents-3f87407a/c0ffee01", "<p>more</p>", "", "", "", "", now) { return fail("store: keep a known chat"); }
+  if !dc_store_rename(s[..], "d00d0001", "  Named \n chat ") || !dc_store_toggle_pin(s[..], "d00d0001") { return fail("store: rename and pin"); }
+  // read again from disk, as the app would on its next start
+  chats2: [16] DkChat; s2: [1] DcStore;
+  if !dc_store_open(s2[..], dir, chats2[..]) { return fail("store: reads back"); }
+  y := s2[0].x[..];
+  if y[0].n != 4 || dk_id(y, 0) != "d00d0001" || dk_title(y, 0) != "Named chat" || !y[0].chats[0].renamed || y[0].chats[0].pinned != 1 { return fail("store: the new chat on top, named and pinned"); }
+  c := dk_find(y, "c0ffee01");
+  if c < 0 || dk_title(y, c) != "Retitled" || dk_wt_path(y, c) != "/w/openagents-3f87407a/c0ffee01" || dk_repo(y, c) != "/Users/me/work/OpenAgents" || dk_created(y, c) != "1763500200.125" { return fail("store: the kept chat keeps its worktree and created time"); }
+  tb: [256] u8; if dc_store_text(s2[..], "c0ffee01", tb[..]) != "<p>more</p>" { return fail("store: the chat's text"); }
+  if !dc_store_remove(s2[..], "d00d0001") || dc_store_text(s2[..], "d00d0001", tb[..]).count != 0 { return fail("store: remove"); }
+  // keys: 0600 files in the Coder folder, never the Keychain
+  if !dc_key_save(DC_KEY_OPENROUTER, " sk-or-test-1234 \n") { return fail("store: key saved"); }
+  kb: [256] u8; if dc_key_read(DC_KEY_OPENROUTER, kb[..]) != "sk-or-test-1234" { return fail("store: key read"); }
+  st: [512] u8; ls := [3] string.["ls", "-l", dcos_coder_file(DC_KEY_OPENROUTER, ib[..])]; none: [1] string;
+  lr := dcos_run(ls[..], none[0..<0], st[..]);
+  if lr.status != 0 || !dc_starts(cast(string) st[0..<lr.n], "-rw-------") { return fail("store: the key file is this user's only"); }
+  say("store: kept, renamed, pinned, removed and read back; a key kept 0600");
+  return 0;
+}
+
+smoke_settings :: () -> int {
+  b: [256] u8;
+  if !dc_worktrees_on() { return fail("settings: worktrees on when unset"); }
+  if !dcos_set_setting(DC_SET_WORKTREES, "0", DC_SET_BOOL) || dc_worktrees_on() { return fail("settings: worktrees off"); }
+  if !dcos_set_setting(DC_SET_OR_MAIN, "vendor/model-1", DC_SET_STRING) || dcos_setting(DC_SET_OR_MAIN, b[..]) != "vendor/model-1" { return fail("settings: a string"); }
+  if !dcos_set_setting(DC_SET_WORKTREES, "1", DC_SET_BOOL) || dcos_setting(DC_SET_WORKTREES, b[..]) != "1" || dcos_setting(DC_SET_OR_MAIN, b[..]) != "vendor/model-1" { return fail("settings: on again, the others kept"); }
+  say(ifx dcos_os() == DC_OS_MAC then "settings: a defaults domain written and read" else "settings: settings.json written and read");
+  return 0;
+}
+
+smoke_daemon :: (root: string) -> int {
+  db: [DC_PATH] u8; dir := dcos_daemon_dir(db[..]);
+  if !dc_starts(dir, "/tmp/dcs-") { return fail("daemon: its folder is the smoke's"); }
+  d: [1] DcDaemon; dc_daemon_open(d[..], dir);
+  v: [1] DmView;
+  if dc_daemon_available(d[..]) || dc_daemon_health(d[..], v[..]) { return fail("daemon: none at first"); }
+  // the stand-in, started the way the app starts `coder-host serve`
+  sb: [DC_PATH] u8; self := dcos_getenv("DC_SMOKE_SELF", sb[..]);
+  pb: [DC_PATH] u8; prog := dc_join(root, "coder-host", pb[..]);
+  sc: [8192] u8; n := dc_copy(sc[..], "#!/bin/sh\nDC_SMOKE_ROLE=standin exec '"); n = dc_cat(sc[..], n, self); n = dc_cat(sc[..], n, "' \"$@\"\n");
+  if !dcos_write(prog, cast(string) sc[0..<n]) { return fail("daemon: stand-in script"); }
+  cm := [3] string.["chmod", "755", prog]; _ := dcos_status(cm[..]);
+  started: [1] int;
+  if !dc_daemon_ensure(d[..], prog, 10000, started[..]) || started[0] <= 0 || !d[0].owns_runs { return fail("daemon: started and owns runs"); }
+  if !dc_daemon_available(d[..]) { return fail("daemon: its socket"); }
+  if !dc_daemon_health(d[..], v[..]) || !v[0].ok || cast(string) v[0].method[0..<v[0].nm] != "DaemonHealth" || cast(string) v[0].host[0..<v[0].nh] != SMOKE_HOST { return fail("daemon: health"); }
+  say("daemon: started from its program, health over the owner-only socket");
+  if !dc_daemon_update_meta(d[..], "c0ffee01", "From the app", "", 1, -1) { return fail("daemon: session meta written"); }
+  if !dc_daemon_list_meta(d[..], v[..]) || v[0].nmeta != 1 || cast(string) v[0].meta[0].title[0..<v[0].meta[0].nt] != "From the app" || !v[0].meta[0].pinned { return fail("daemon: session meta read back"); }
+  say("daemon: session meta written and listed");
+  // a run refused at the limit, in the app's words, and its spec gone
+  e: [1] DcEnv; hb: [DC_PATH] u8; home := dcos_home(hb[..]);
+  wp: [DC_PATH] u8; worker := smoke_worker_program(root, wp[..]);
+  if worker.count == 0 { return fail("daemon: worker stand-in"); }
+  dc_worker_env(e[..], worker, home, "", home, "/usr/bin:/bin", "");
+  w: [1] DcWorker;
+  if dc_worker_start(w[..], d[..], worker, home, e[..]) || dc_worker_failure(w[..]) != DC_RUN_LIMIT_NOTE || dc_worker_is_run(w[..]) { return fail("daemon: a run refused at the limit"); }
+  // as the app does: the refused run's spec goes (its empty input file stays)
+  rl: [1] FsList; rd: [DC_PATH] u8; ln := dcos_list(dc_join(dir, "runs", rd[..]), rl[..]);
+  for i: 0..<ln { if dc_ends(fs_entry(rl[..], i), ".spec") || dc_ends(fs_entry(rl[..], i), ".attached") { return fail("daemon: a refused run leaves no spec"); } }
+  // a run the stand-in keeps: its spec, input and output files
+  if !dc_worker_start(w[..], d[..], worker, home, e[..]) || !dc_worker_is_run(w[..]) { print("%", dc_worker_failure(w[..])); print("\n"); return fail("daemon: a run started"); }
+  spec: [32768] u8; sp: [DC_PATH] u8; sn := dcos_read(dc_run_file(d[..], dc_worker_run(w[..]), ".spec", sp[..]), spec[..]);
+  if sn < 1 || !dc_starts(cast(string) spec[0..<sn], "{\"program\":") { return fail("daemon: the run's spec"); }
+  line: [65536] u8; k := dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || cast(string) line[0..<k] != "{\"kind\":\"ready\"}" { return fail("daemon: the run's first line"); }
+  if !dc_worker_write(w[..], d[..], "{\"kind\":\"user\",\"text\":\"hi\"}\n") || !dc_worker_write(w[..], d[..], "bye\n") { return fail("daemon: lines to the run"); }
+  k = dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || cast(string) line[0..<k] != "{\"kind\":\"user\",\"text\":\"hi\"}" { return fail("daemon: the run's reply"); }
+  k = dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || cast(string) line[0..<k] != "bye" { return fail("daemon: the run's last line"); }
+  if dc_worker_read(w[..], d[..], 5000, line[..]) != DC_LINE_GONE || dc_worker_is_run(w[..]) { return fail("daemon: the run ended"); }
+  say("daemon: a run refused at the limit, then a run followed through its files to its end");
+  return 0;
+}
+// A worker stand-in: says it is ready, then sends back each line until its input ends.
+smoke_worker_program :: (root: string, out: [] u8) -> string {
+  bd: [DC_PATH] u8; bin := dc_join(root, "bin", bd[..]); _ := dcos_mkdirs(bin);
+  p := dc_join(bin, "mcworker", out);
+  if !dcos_write(p, "#!/bin/sh\nprintf '%s\\n' '{\"kind\":\"ready\"}'\nwhile IFS= read -r l; do printf '%s\\n' \"$l\"; [ \"$l\" = bye ] && exit 0; done\n") { return ""; }
+  cm := [3] string.["chmod", "755", p]; if dcos_status(cm[..]) != 0 { return ""; }
+  return p;
+}
+
+smoke_worker :: (root: string) -> int {
+  wp: [DC_PATH] u8; worker := smoke_worker_program(root, wp[..]);
+  hb: [DC_PATH] u8; home := dcos_home(hb[..]);
+  e: [1] DcEnv; dc_worker_env(e[..], worker, home, "SMOKE=1", home, "/usr/bin:/bin", "secret");
+  d: [1] DcDaemon; nb: [DC_PATH] u8; dc_daemon_open(d[..], dc_join(root, "no-daemon", nb[..]));
+  w: [1] DcWorker;
+  if !dc_worker_start(w[..], d[..], worker, home, e[..]) || dc_worker_is_run(w[..]) || !dc_worker_alive(w[..]) { return fail("worker: a child process"); }
+  line: [65536] u8; k := dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || cast(string) line[0..<k] != "{\"kind\":\"ready\"}" { return fail("worker: ready"); }
+  if dc_worker_read(w[..], d[..], 100, line[..]) != DC_LINE_NONE { return fail("worker: nothing more yet"); }
+  if !dc_worker_write(w[..], d[..], "{\"kind\":\"user\",\"text\":\"é\"}\n") { return fail("worker: a line to it"); }
+  k = dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || cast(string) line[0..<k] != "{\"kind\":\"user\",\"text\":\"é\"}" { return fail("worker: its reply"); }
+  _ := dc_worker_write(w[..], d[..], "bye\n");
+  k = dc_worker_read(w[..], d[..], 5000, line[..]);
+  if k <= 0 || dc_worker_read(w[..], d[..], 5000, line[..]) != DC_LINE_GONE || dc_worker_alive(w[..]) { return fail("worker: its end"); }
+  // stopped while running: its input closed and it is gone
+  w2: [1] DcWorker;
+  if !dc_worker_start(w2[..], d[..], worker, home, e[..]) || dc_worker_read(w2[..], d[..], 5000, line[..]) <= 0 { return fail("worker: a second one"); }
+  dc_worker_stop(w2[..], d[..], false);
+  if dc_worker_alive(w2[..]) { return fail("worker: stopped"); }
+  say("worker: a child process's lines both ways, its end, and a stop");
+  return 0;
+}
+
+smoke_update :: (root: string) -> int {
+  rb: [DC_PATH] u8; repo := dcos_getenv("DC_SMOKE_REPO", rb[..]);
+  fp: [DC_PATH] u8; text: [65536] u8; n := dcos_read(dc_join(repo, "proto/coder/desktop-update-v1.json", fp[..]), text[..]);
+  if n < 1 { return fail("update: proto/coder/desktop-update-v1.json (run from the repository's root)"); }
+  j: [1] Jv; nodes: [256] JvNode;
+  if !jv_parse(j[..], cast(string) text[0..<n], nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return fail("update: the fixture reads"); }
+  eb: [16384] u8; o: [1] Jo; jo_start(o[..], eb[..]); jv_write(j[0], jv_get(j[0], 0, "envelope"), o[..]);
+  envelope := jo_text(o[..]);
+  kb: [128] u8; kn := dc_member_str(j[0], "key_id", kb[..]); pk: [128] u8; pn := dc_member_str(j[0], "public_key", pk[..]);
+  ab: [4096] u8; an := dc_member_str(j[0], "archive", ab[..]);
+  if kn < 1 || pn < 1 || an < 1 { return fail("update: the fixture's key and archive"); }
+  keys: [2] DcKey; _ := dc_update_default_keys(keys[0..<1]); dc_key(keys[1..<2], cast(string) kb[0..<kn], cast(string) pk[0..<pn]);
+  m: [1] DcManifest;
+  r := dc_update_verify(envelope, keys[..], "1.2.2", 7, false, m[..]);
+  if r != DC_UPD_OK { print("%", dc_update_words(r)); print("\n"); return fail("update: the signed manifest verifies"); }
+  if dc_manifest_version(m[..]) != "1.2.3" || dc_manifest_url(m[..]) != "https://github.com/OpenAgentsInc/openagents/releases/download/coder-desktop-v1.2.3/Coder.zip" { return fail("update: its version and url"); }
+  if dc_update_verify(envelope, keys[0..<1], "1.2.2", 7, false, m[..]) != DC_UPD_UNTRUSTED_KEY { return fail("update: refused without its key"); }
+  if dc_update_verify(envelope, keys[..], "1.2.3", 42, false, m[..]) != DC_UPD_NOT_NEWER { return fail("update: not newer"); }
+  _ := dc_update_verify(envelope, keys[..], "1.2.2", 7, false, m[..]);
+  zp: [DC_PATH] u8; zip := dc_join(root, "Coder.zip", zp[..]);
+  if !dcos_write(zip, cast(string) ab[0..<an]) || dc_update_archive(zip, m[..]) != DC_UPD_OK { return fail("update: the archive's size and SHA-256"); }
+  ab[0] = ab[0] ^ 1;
+  if !dcos_write(zip, cast(string) ab[0..<an]) || dc_update_archive(zip, m[..]) != DC_UPD_SHA { return fail("update: a changed archive refused"); }
+  if !dcos_write(zip, "short") || dc_update_archive(zip, m[..]) != DC_UPD_SIZE { return fail("update: a short archive refused"); }
+  say("update: the signed manifest verified, untrusted and stale ones refused, the archive checked");
+  return 0;
+}
+
+// ---- the stand-in daemon ----
+// Serves the daemon codec on HOST/service.sock for the smoke: health, session meta, runs. The
+// first StartRun is refused at the run limit; a started run "runs" by sending back each line of
+// its ID.in into ID.out after a ready line, and ends on "bye". It goes when its socket or the
+// smoke's folder does, or after a minute.
+StandinRun :: struct { id: [32] u8; n: int; offset: int; done: bool; }
+standin :: () -> int {
+  db: [DC_PATH] u8; dir := dcos_daemon_dir(db[..]);
+  rt: [DC_PATH] u8; root := dcos_getenv("DC_SMOKE_ROOT", rt[..]);
+  sb: [DC_PATH] u8; sock := dc_join(dir, "service.sock", sb[..]);
+  for c: sock { _ := cxsock_host_push(cast(int) c); }
+  server := cxsock_listen_unix();
+  if server < 0 { return 1; }
+  defer { _ := cxsock_close(server); _ := fs_remove(sock); }
+  meta: [1] DmSessionMeta; has_meta := false;
+  refused := false; run: [1] StandinRun;
+  stop: [DC_PATH] u8; stop_file := dc_join(root, "stop", stop[..]);
+  until := dcos_now_ms() + 60000;
+  while dcos_now_ms() < until {
+    if dcos_kind(sock) == FS_NONE || dcos_kind(stop_file) != FS_NONE { return 0; }
+    standin_tick(dir, run[..]);
+    peer := cxsock_accept(server, 50);
+    if peer < 0 { continue; }
+    line: [16384] u8; n := 0; got_line := false;
+    deadline := dcos_now_ms() + 2000;
+    while !got_line && dcos_now_ms() < deadline {
+      k := cxsock_read(peer, 100);
+      if k == -2 { continue; }
+      if k < 0 { break; }
+      for i: 0..<k { c := cxsock_byte(peer, i); if c == 10 { got_line = true; break; } if n < line.count { line[n] = cast,trunc(u8) c; n += 1; } }
+    }
+    if got_line {
+      q: [1] DmRequest; v: [1] DmView;
+      v[0].nh = dc_copy(v[0].host[..], SMOKE_HOST); v[0].nl = dc_copy(v[0].label[..], "smoke stand-in");
+      if dm_read(cast(string) line[0..<n], q[..]) {
+        m := cast(string) q[0].method[0..<q[0].nm];
+        v[0].nm = dc_copy(v[0].method[..], m); v[0].ok = true;
+        if q[0].nc > 0 { v[0].nq = dc_copy(v[0].command[..], cast(string) q[0].command[0..<q[0].nc]); }
+        if m == "UpdateSessionMeta" {
+          meta[0].ni = dc_copy(meta[0].id[..], cast(string) q[0].session[0..<q[0].ns]);
+          if q[0].ntl > 0 { meta[0].nt = dc_copy(meta[0].title[..], cast(string) q[0].title[0..<q[0].ntl]); }
+          if q[0].has_pinned { meta[0].pinned = q[0].pinned; }
+          meta[0].updated = dcos_now_ms(); has_meta = true;
+        }
+        if m == "ListSessionMeta" && has_meta { v[0].meta[0] = meta[0]; v[0].nmeta = 1; }
+        if m == "StartRun" {
+          id := cast(string) q[0].run[0..<q[0].nr];
+          if !refused { refused = true; v[0].ok = false; v[0].ne = dc_copy(v[0].error[..], "run-limit"); }
+          else { run[0] = StandinRun.{}; run[0].n = dc_copy(run[0].id[..], id); standin_state(dir, id, "running"); standin_out(dir, id, "{\"kind\":\"ready\"}\n"); }
+        }
+      } else { v[0].ok = false; v[0].ne = dc_copy(v[0].error[..], "bad request"); }
+      reply: [262144] u8; rn := dm_view_write(v[..], reply[..]);
+      for i: 0..<rn { _ := cxsock_write(peer, cast(int) reply[i]); }
+      _ := cxsock_write(peer, 10); _ := cxsock_flush(peer, 1000);
+    }
+    _ := cxsock_close(peer);
+  }
+  return 0;
+}
+standin_file :: (dir: string, id: string, ext: string, out: [] u8) -> string {
+  d: [1] DcDaemon; dc_daemon_open(d[..], dir); return dc_run_file(d[..], id, ext, out);
+}
+standin_state :: (dir: string, id: string, state: string) {
+  pb: [DC_PATH] u8; t: [128] u8; n := dc_copy(t[..], "{\"state\":\""); n = dc_cat(t[..], n, state); n = dc_cat(t[..], n, "\"}");
+  _ := dcos_write_private(standin_file(dir, id, ".state", pb[..]), cast(string) t[0..<n]);
+}
+standin_out :: (dir: string, id: string, text: string) { pb: [DC_PATH] u8; _ := dcos_append(standin_file(dir, id, ".out", pb[..]), text); }
+// The started run's new whole input lines, sent back; "bye" ends it.
+standin_tick :: (dir: string, run: [] StandinRun) {
+  if run[0].n == 0 || run[0].done { return; }
+  id := cast(string) run[0].id[0..<run[0].n];
+  pb: [DC_PATH] u8; buf: [65536] u8; got := dcos_read_at(standin_file(dir, id, ".in", pb[..]), run[0].offset, buf[..]);
+  if got <= 0 { return; }
+  at := 0;
+  while true {
+    e := at; while e < got && buf[e] != '\n' { e += 1; }
+    if e >= got { break; }
+    l := cast(string) buf[at..<e + 1];
+    standin_out(dir, id, l);
+    run[0].offset += e + 1 - at; at = e + 1;
+    if l == "bye\n" { run[0].done = true; standin_state(dir, id, "exited"); return; }
+  }
+}
