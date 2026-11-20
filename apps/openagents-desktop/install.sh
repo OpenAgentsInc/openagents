@@ -92,7 +92,9 @@ sync_resident() {
   mkdir -p "$(dirname "$env_link")"
   [[ "$(readlink "$env_link" 2>/dev/null)" == "$dir/openagents-environment" ]] || ln -sfn "$dir/openagents-environment" "$env_link"
   # Which binary answers now: the login service's (through the link) or a coder-host Coder started.
-  local p exe; p="$(sock_pid)"; exe="$( [[ -n "$p" ]] && ps -o comm= -p "$p" || true)"
+  # The file it runs, from lsof: ps names the link it started through, which may point elsewhere now.
+  local p exe; p="$(sock_pid)"
+  exe="$( [[ -n "$p" ]] && lsof -a -p "$p" -d txt -Fn 2>/dev/null | awk 'NR > 0 && /^n/ && e == "" {e = substr($0, 2)} END {print e}' || true)"
   local stale=0; [[ -n "$p" ]] && ! cmp -s "$exe" "$bundled" && stale=1
   local restart=0
   if [[ -f "$env_plist" ]]; then
