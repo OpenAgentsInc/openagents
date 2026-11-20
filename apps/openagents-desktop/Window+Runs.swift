@@ -80,16 +80,39 @@ extension CoderWindow {
             needsRecall = false
         }
         let useAgy = cd_model_agy(r.page) != 0
+        let useInkling = cd_model_inkling(r.page) != 0
         // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
         // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
         let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
-        if !useAgy && !cloudOk {
+        if !useAgy && !useInkling && !cloudOk {
             cd_failed(r.page, CoderWorker.hasAntigravity
                 ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
                 : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
             wake()
             return
         }
+        if useInkling {
+            if !LocalModelStore.isSelectable {
+                cd_failed(r.page, "Inkling 2 Mini is not downloaded. Open Settings → Models → Local Models to download it.")
+                wake()
+                return
+            }
+            r.startingWorker = true
+            LocalModelServer.shared.ensureRunning { [weak self, weak r] err in
+                guard let self, let r else { return }
+                r.startingWorker = false
+                if let err {
+                    cd_failed(r.page, err)
+                    self.wake()
+                    return
+                }
+                self.launchWorker(r, useAgy: false, needsRecall: needsRecall)
+            }
+            return
+        }
+        launchWorker(r, useAgy: useAgy, needsRecall: needsRecall)
+    }
+    private func launchWorker(_ r: CoderRun, useAgy: Bool, needsRecall: Bool) {
         let wantProgram = useAgy ? "agyworker" : "mcworker"
         if r.worker.program != wantProgram {
             if r.worker.alive { r.worker.stop(forget: false) }
@@ -327,6 +350,10 @@ extension CoderWindow {
             if let res = Bundle.main.resourcePath {
                 env["PATH"] = res
             }
+        }
+        if cd_model_inkling(r.page) != 0 {
+            env["PSIONIC_BASE_URL"] = LocalModelServer.baseURL
+            env["PSIONIC_MODEL"] = "inkling-2-mini"
         }
         // the simulator helper's oasim (Window+Simulator.swift): which chat asks, and the engine the card names
         env["OA_SIM_CHAT"] = (r === run ? chat : r.chat) ?? r.simChat

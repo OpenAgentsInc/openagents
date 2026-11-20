@@ -167,26 +167,180 @@ enum LocalModelStore {
             .appendingPathComponent("models", isDirectory: true)
     }
     static var inklingDir: URL { rootDir.appendingPathComponent("inkling-2-mini", isDirectory: true) }
+    static var weightsURL: URL { inklingDir.appendingPathComponent("Inkling-2-Mini-IQ4_NL.gguf") }
+    static var partialURL: URL { inklingDir.appendingPathComponent("Inkling-2-Mini-IQ4_NL.gguf.part") }
     static var manifestURL: URL { inklingDir.appendingPathComponent("manifest.json") }
+    static let downloadURL = "https://huggingface.co/ggml-org/Inkling-2-Mini-GGUF/resolve/main/Inkling-2-Mini-IQ4_NL.gguf"
+    static let expectedBytes: Int64 = 17_627_940_768
+    static let minValidBytes: Int64 = 16_000_000_000
     static var physicalMemoryGB: Int { Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)) }
     static var hardwareSupported: Bool { physicalMemoryGB >= 32 }
-    static var isInstalled: Bool { FileManager.default.fileExists(atPath: manifestURL.path) }
+    static var weightsBytes: Int64 {
+        (try? FileManager.default.attributesOfItem(atPath: weightsURL.path)[.size] as? Int64) ?? 0
+    }
+    static var partialBytes: Int64 {
+        (try? FileManager.default.attributesOfItem(atPath: partialURL.path)[.size] as? Int64) ?? 0
+    }
+    static var isInstalled: Bool { weightsBytes >= minValidBytes }
     static var isSelectable: Bool { hardwareSupported && isInstalled }
+    private static var downloadProcess: Process?
+    static var isDownloading: Bool { downloadProcess?.isRunning == true }
+    static var lastError: String?
+
     static func statusSummary() -> String {
         if !hardwareSupported { return "Requires 32 GB RAM" }
-        if isInstalled { return "Installed (~20 GB)" }
-        return "Not downloaded (~20 GB)"
+        if isDownloading {
+            let gb = Double(partialBytes) / 1_073_741_824.0
+            let pct = Int(min(99, max(0, (Double(partialBytes) / Double(expectedBytes)) * 100.0)))
+            return String(format: "Downloading %.1f / 16.4 GB (%d%%)", gb, pct)
+        }
+        if isInstalled { return "Installed (16.4 GB · Metal)" }
+        return "Not downloaded (16.4 GB)"
     }
-    static func installManifest() -> Bool {
+    static func writeManifest() {
+        try? FileManager.default.createDirectory(at: inklingDir, withIntermediateDirectories: true)
+        let manifest = "{\"model_id\":\"inkling-2-mini\",\"weights\":\"Inkling-2-Mini-IQ4_NL.gguf\",\"bytes\":\(weightsBytes),\"loops\":3}\n"
+        try? manifest.write(to: manifestURL, atomically: true, encoding: .utf8)
+    }
+    static func startDownload(onUpdate: @escaping () -> Void) {
+        guard !isDownloading else { return }
+        lastError = nil
         do {
             try FileManager.default.createDirectory(at: inklingDir, withIntermediateDirectories: true)
-            let manifest = "{\"model_id\":\"inkling-2-mini\",\"format\":\"nvfp4+mxfp8\",\"size_gb\":20,\"loops\":3}\n"
-            try manifest.write(to: manifestURL, atomically: true, encoding: .utf8)
-            return true
-        } catch { return false }
+        } catch {
+            lastError = "Could not create " + inklingDir.path
+            onUpdate()
+            return
+        }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        proc.arguments = ["-fSL", "-C", "-", "-o", partialURL.path, downloadURL]
+        proc.standardOutput = FileHandle.nullDevice
+        proc.standardError = FileHandle.nullDevice
+        proc.terminationHandler = { p in
+            DispatchQueue.main.async {
+                downloadProcess = nil
+                if p.terminationStatus == 0 && partialBytes >= minValidBytes {
+                    try? FileManager.default.removeItem(at: weightsURL)
+                    try? FileManager.default.moveItem(at: partialURL, to: weightsURL)
+                    writeManifest()
+                } else if p.terminationStatus != 0 && p.terminationReason != .uncaughtSignal {
+                    lastError = "Download failed (curl exit \(p.terminationStatus))."
+                }
+                onUpdate()
+            }
+        }
+        do {
+            try proc.run()
+            downloadProcess = proc
+            onUpdate()
+        } catch {
+            lastError = "Could not launch curl: \(error.localizedDescription)"
+            onUpdate()
+        }
+    }
+    static func cancelDownload() {
+        downloadProcess?.terminate()
+        downloadProcess = nil
     }
     static func removeInkling() {
+        cancelDownload()
+        LocalModelServer.shared.stop()
         try? FileManager.default.removeItem(at: inklingDir)
+    }
+}
+
+/// Resident local Metal inference server for Inkling 2 Mini on 127.0.0.1:18794.
+final class LocalModelServer {
+    static let shared = LocalModelServer()
+    static let host = "127.0.0.1"
+    static let port = 18794
+    static var baseURL: String { "http://\(host):\(port)" }
+    private var process: Process?
+    private let queue = DispatchQueue(label: "openagents.local-model-server")
+
+    static func findLlamaServer() -> String? {
+        let candidates = [
+            "/opt/homebrew/bin/llama-server",
+            "/usr/local/bin/llama-server",
+            Bundle.main.resourcePath.map { $0 + "/llama-server" } ?? "",
+        ]
+        for path in candidates where !path.isEmpty && FileManager.default.isExecutableFile(atPath: path) {
+            return path
+        }
+        return nil
+    }
+
+    private func isHealthy() -> Bool {
+        guard let url = URL(string: Self.baseURL + "/v1/models") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 1.0
+        let sem = DispatchSemaphore(value: 0)
+        var ok = false
+        URLSession.shared.dataTask(with: req) { _, resp, _ in
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 { ok = true }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 1.5)
+        return ok
+    }
+
+    func ensureRunning(completion: @escaping (String?) -> Void) {
+        queue.async {
+            if self.isHealthy() {
+                DispatchQueue.main.async { completion(nil) }
+                return
+            }
+            guard LocalModelStore.isInstalled else {
+                DispatchQueue.main.async { completion("Inkling 2 Mini weights are not downloaded.") }
+                return
+            }
+            guard let bin = Self.findLlamaServer() else {
+                DispatchQueue.main.async { completion("llama-server not found. Install it with: brew install llama.cpp") }
+                return
+            }
+            if self.process?.isRunning != true {
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: bin)
+                p.arguments = [
+                    "--model", LocalModelStore.weightsURL.path,
+                    "--alias", "inkling-2-mini",
+                    "--host", Self.host,
+                    "--port", String(Self.port),
+                    "--ctx-size", "32768",
+                    "--n-gpu-layers", "99",
+                    "--flash-attn", "on",
+                ]
+                p.standardOutput = FileHandle.nullDevice
+                p.standardError = FileHandle.nullDevice
+                do {
+                    try p.run()
+                    self.process = p
+                } catch {
+                    DispatchQueue.main.async { completion("Could not start llama-server: \(error.localizedDescription)") }
+                    return
+                }
+            }
+            for _ in 0..<90 {
+                if self.isHealthy() {
+                    DispatchQueue.main.async { completion(nil) }
+                    return
+                }
+                if self.process?.isRunning != true {
+                    DispatchQueue.main.async { completion("Local Metal server exited before becoming ready.") }
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            DispatchQueue.main.async { completion("Timed out waiting for Inkling 2 Mini Metal server on \(Self.baseURL).") }
+        }
+    }
+
+    func stop() {
+        queue.async {
+            self.process?.terminate()
+            self.process = nil
+        }
     }
 }
 
@@ -310,24 +464,37 @@ extension CoderWindow {
         let ramGB = LocalModelStore.physicalMemoryGB
         let supported = LocalModelStore.hardwareSupported
         let installed = LocalModelStore.isInstalled
-        var about = "Inkling 2 Mini (26.4B total / 3.4B active looped MoE, NVFP4 + MXFP8, ~20 GB).\n"
+        let downloading = LocalModelStore.isDownloading
+        var about = "Inkling 2 Mini (26.4B total / 3.4B active looped MoE, IQ4_NL GGUF, 16.4 GB).\n"
         about += "Storage: " + LocalModelStore.inklingDir.path + "\n"
         about += "Hardware: " + String(ramGB) + " GB unified memory"
         if !supported {
             about += " (requires >= 32 GB RAM)."
+        } else if downloading {
+            about += " · " + LocalModelStore.statusSummary()
         } else if installed {
-            about += " · Installed and ready in the composer model picker."
+            about += " · Installed and ready in the composer model picker (Metal GPU)."
         } else {
-            about += " · Ready to download (~20 GB)."
+            about += " · Ready to download from Hugging Face (16.4 GB, resumable)."
+        }
+        if let err = LocalModelStore.lastError {
+            about += "\nLast error: " + err
         }
         var d = CoderDialog(size: .md, title: "Local Models — Inkling 2 Mini", body: about)
         var removeIdx = -9
         var downloadIdx = -9
+        var cancelDlIdx = -9
         if installed {
             removeIdx = d.buttons.count
             d.buttons.append(.init(title: "Remove", kind: .danger, aside: true))
             let done = d.buttons.count
             d.buttons.append(.init(title: "Done", kind: .primary))
+            d.confirm = done; d.cancel = done
+        } else if downloading {
+            cancelDlIdx = d.buttons.count
+            d.buttons.append(.init(title: "Cancel Download", kind: .danger, aside: true))
+            let done = d.buttons.count
+            d.buttons.append(.init(title: "Close", kind: .primary))
             d.confirm = done; d.cancel = done
         } else if supported {
             d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
@@ -340,7 +507,12 @@ extension CoderWindow {
         present(d) { [weak self] answer, _ in
             guard let self else { return }
             if answer == downloadIdx {
-                _ = LocalModelStore.installManifest()
+                LocalModelStore.startDownload { [weak self] in
+                    self?.syncLocalModels()
+                }
+                self.syncLocalModels()
+            } else if answer == cancelDlIdx {
+                LocalModelStore.cancelDownload()
                 self.syncLocalModels()
             } else if answer == removeIdx {
                 LocalModelStore.removeInkling()

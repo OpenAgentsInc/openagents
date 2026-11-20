@@ -184,6 +184,7 @@ int cd_recall_line(void *page, char *out, int cap);
 void cd_claude(void *page, int on);
 void cd_agy(void *page, int on);
 int cd_model_agy(void *page);
+int cd_model_inkling(void *page);
 // cd_openrouter: the OpenRouter models set with Coder > OpenRouter Models ("" for none): main is a
 // composer picker entry for Microcoder, sub is a sub-agent level (openrouter).
 void cd_openrouter(void *page, const char *main, const char *sub);

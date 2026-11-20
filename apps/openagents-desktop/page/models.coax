@@ -221,6 +221,7 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   idx := cp_model_index(s);
   if idx < 0 { return ""; }
   if cp_is_agy(s, idx) { return "Antigravity CLI"; }
+  if cp_is_inkling(s, idx) { return "Local Metal"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   if s[0].gauth_vertex { return "Vertex AI"; }                // Microcoder tries Vertex before any key (microcoder_keys.coax mk_plan)
   return "Gemini API";                                         // a Gemini API key, or Microcoder's own credentials with Experimental features
@@ -230,6 +231,9 @@ coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 }
 coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_agy(s, cp_model_index(s));
+}
+coder_page_model_inkling :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_is_inkling(s, cp_model_index(s));
 }
 
 // ---------------------------------------------------------------- effort

@@ -344,6 +344,7 @@ int cd_agent_answer_line(void *page, int agent, char *out, int cap) { CoderHost 
 void cd_claude(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_claude(cd_state(c), on != 0); }
 void cd_agy(void *page, int on) { CoderHost *c = page; if (c) coder_page_set_agy(cd_state(c), on != 0); }
 int cd_model_agy(void *page) { CoderHost *c = page; return c && coder_page_model_agy(cd_state(c)) ? 1 : 0; }
+int cd_model_inkling(void *page) { CoderHost *c = page; return c && coder_page_model_inkling(cd_state(c)) ? 1 : 0; }
 void cd_openrouter(void *page, const char *main, const char *sub) { CoderHost *c = page; if (c) { cd_changed(c); coder_page_set_openrouter(cd_state(c), cd_string(main), cd_string(sub)); } }
 int cd_pick_model(void *page, const char *name) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_pick_model(cd_state(c), cd_string(name)); }
 // The sidebars' widths as dragged: read (1 once after a drag, when they are to be kept) and set.
