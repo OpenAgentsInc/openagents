@@ -1,0 +1,187 @@
+// Each chat's own git worktree (GitHub #13758), in the desktop core (GitHub #13787): the Mac app's
+// ChatWorktree (apps/coder-desktop/Worktree.swift) over the seam (os.coax). A new chat started in
+// a repository's main checkout runs in ROOT/SLUG/CHAT (paths.coax: ~/.openagents/worktrees, or
+// $CODER_WORKTREES) on the branch coder/CHAT, made from origin/main (HEAD when the repository has
+// no origin/main). The folders the repository lists in .coder/worktree.json ("clone") are cloned
+// in from the main checkout copy-on-write. A worktree is removed only when git says it is clean.
+// The paths, branch and folder names are the app's, so either one finds the other's worktrees.
+//   coax/bin/coax test coax/lib/agent/desktop/worktree.coax --library
+#load "os.coax";
+
+DcWorktree :: struct {
+  chat: [128] u8; chat_n: int;      // the chat's id
+  path: [DC_PATH] u8; path_n: int;  // the worktree
+  source: [DC_PATH] u8; source_n: int;   // the main checkout it was made from
+  branch: [96] u8; branch_n: int;   // coder/CHAT
+}
+dc_wt_path :: (w: [] DcWorktree) -> string { return cast(string) w[0].path[0..<w[0].path_n]; }
+dc_wt_source :: (w: [] DcWorktree) -> string { return cast(string) w[0].source[0..<w[0].source_n]; }
+dc_wt_branch :: (w: [] DcWorktree) -> string { return cast(string) w[0].branch[0..<w[0].branch_n]; }
+dc_wt_chat :: (w: [] DcWorktree) -> string { return cast(string) w[0].chat[0..<w[0].chat_n]; }
+// A worktree record from its parts (a kept chat's worktree_path, repo_root and worktree_branch).
+dc_wt_set :: (w: [] DcWorktree, chat: string, path: string, source: string, branch: string) {
+  w[0].chat_n = dc_copy(w[0].chat[..], chat); w[0].path_n = dc_copy(w[0].path[..], path);
+  w[0].source_n = dc_copy(w[0].source[..], source); w[0].branch_n = dc_copy(w[0].branch[..], branch);
+}
+
+DC_WT_REMOVED :: 1; DC_WT_GONE :: 2; DC_WT_KEPT :: 3;
+DcRemoval :: struct { result: int; changes: int; }   // changes: -1 when git could not tell
+
+// The main checkout folder is in: walking up, the first .git found is a folder. "" outside a
+// repository, and for a folder in a worktree already (its .git is a file).
+dc_main_checkout :: (folder: string, out: [] u8) -> string {
+  sb: [DC_PATH] u8; dir := dc_standard(folder, sb[..]);
+  for guard: 0..<256 {
+    gb: [DC_PATH] u8; k := dcos_kind(dc_join(dir, ".git", gb[..]));
+    if k == FS_DIR { return dc_fits(out, dc_copy(out, dir)); }
+    if k != FS_NONE { return ""; }
+    if dir == "/" || dir.count == 0 { return ""; }
+    dir = dc_parent(dir);
+  }
+  return "";
+}
+// The repository folder is in, as its main checkout (ChatWorktree.repository): the first .git
+// found walking up is that checkout's folder, or a worktree's file naming the main checkout.
+dc_repository :: (folder: string, out: [] u8) -> string {
+  if folder.count == 0 || folder[0] != '/' { return ""; }
+  sb: [DC_PATH] u8; dir := dc_standard(folder, sb[..]);
+  for guard: 0..<256 {
+    gb: [DC_PATH] u8; git := dc_join(dir, ".git", gb[..]); k := dcos_kind(git);
+    if k == FS_DIR { return dc_fits(out, dc_copy(out, dir)); }
+    if k == FS_FILE {
+      text: [4096] u8; n := dcos_read(git, text[..]);
+      if n > 0 { m := dc_gitdir_main(cast(string) text[0..<n], dir, out); if m.count > 0 { return m; } }
+      return dc_fits(out, dc_copy(out, dir));   // a submodule or another layout: the folder holding the .git file
+    }
+    if dir == "/" || dir.count == 0 { return ""; }
+    dir = dc_parent(dir);
+  }
+  return "";
+}
+// The variables a worker in folder gets for its build caches, unless already set: "K=V" lines.
+dc_cache_env :: (folder: string, out: [] u8) -> string {
+  hb: [DC_PATH] u8; home := dcos_home(hb[..]); n := 0; eb: [DC_PATH] u8;
+  if dcos_getenv("COAX_TOOL_CACHE", eb[..]).count == 0 { pb: [DC_PATH] u8; n = dc_cat(out, n, "COAX_TOOL_CACHE="); n = dc_cat(out, n, dc_tool_cache(home, pb[..])); }
+  rb: [DC_PATH] u8; repo := dc_repository(folder, rb[..]);
+  if repo.count > 0 && dcos_getenv("CARGO_TARGET_DIR", eb[..]).count == 0 {
+    real: [DC_PATH] u8; pb: [DC_PATH] u8;
+    if n > 0 { n = dc_cat(out, n, "\n"); }
+    n = dc_cat(out, n, "CARGO_TARGET_DIR="); n = dc_cat(out, n, dc_cargo_target(home, dcos_real(repo, real[..]), pb[..]));
+  }
+  return dc_fits(out, n);
+}
+
+dc_git :: (dir: string, args: [] string, out: [] u8) -> DcRun {
+  argv: [16] string; argv[0] = "git"; argv[1] = "-C"; argv[2] = dir; k := 3;
+  for a: args { if k < argv.count { argv[k] = a; k += 1; } }
+  env := [1] string.["GIT_TERMINAL_PROMPT=0"];
+  return dcos_run(argv[0..<k], env[..], out);
+}
+dc_git_ok :: (dir: string, args: [] string) -> bool { out: [65536] u8; r := dc_git(dir, args, out[..]); return r.started == 0 && r.status == 0; }
+
+// Makes chat's worktree of repo, or finds the one made before: "" and w, or why not (git's words in why).
+dc_wt_create :: (repo: string, chat: string, root: string, w: [] DcWorktree, why: [] u8) -> string {
+  mb: [DC_PATH] u8; sb: [DC_PATH] u8;
+  if repo.count == 0 || dc_main_checkout(repo, mb[..]) != dc_standard(repo, sb[..]) { return "not a repository"; }
+  rb: [DC_PATH] u8; real := dcos_real(repo, rb[..]);
+  pb: [DC_PATH] u8; bb: [96] u8;
+  dc_wt_set(w, chat, dc_worktree_path(root, real, chat, pb[..]), repo, dc_branch(chat, bb[..]));
+  return dc_wt_make(w, why);
+}
+// Makes w where it says, on its branch (made from origin/main, else HEAD, when it isn't there
+// yet), or finds it there. A kept chat's worktree comes back this way at the path and branch it had.
+dc_wt_make :: (w: [] DcWorktree, why: [] u8) -> string {
+  repo := dc_wt_source(w); path := dc_wt_path(w); branch := dc_wt_branch(w);
+  mb: [DC_PATH] u8; sb: [DC_PATH] u8;
+  if dc_main_checkout(repo, mb[..]) != dc_standard(repo, sb[..]) { return "not a repository"; }
+  gb: [DC_PATH] u8; if dcos_kind(dc_join(path, ".git", gb[..])) != FS_NONE { return ""; }
+  _ := dcos_mkdirs(dc_parent(path));
+  verify := [4] string.["rev-parse", "--verify", "--quiet", "origin/main^{commit}"];
+  base := ifx dc_git_ok(repo, verify[..]) then "origin/main" else "HEAD";
+  prune := [2] string.["worktree", "prune"]; _ := dc_git_ok(repo, prune[..]);
+  rf: [160] u8; ref := dc_fits(rf[..], dc_cat(rf[..], dc_copy(rf[..], "refs/heads/"), branch));
+  has := [4] string.["rev-parse", "--verify", "--quiet", ref];
+  out := why; r: DcRun;
+  if dc_git_ok(repo, has[..]) { add := [5] string.["worktree", "add", "--quiet", path, branch]; r = dc_git(repo, add[..], out); }
+  else { add := [8] string.["worktree", "add", "--quiet", "--no-track", "-b", branch, path, base]; r = dc_git(repo, add[..], out); }
+  if r.started != 0 { return "git did not start"; }
+  if r.status != 0 { return ifx r.n > 0 then cast(string) out[0..<r.n] else "git worktree add failed"; }
+  dc_wt_hydrate(w);
+  return "";
+}
+// The folders repo's .coder/worktree.json lists under "clone" that may be cloned in, one a line.
+dc_clone_paths :: (repo: string, out: [] u8) -> string {
+  pb: [DC_PATH] u8; text: [65536] u8; n := dcos_read(dc_join(repo, ".coder/worktree.json", pb[..]), text[..]);
+  if n < 1 { return ""; }
+  return dc_clone_list(cast(string) text[0..<n], out);
+}
+dc_clone_list :: (json: string, out: [] u8) -> string {
+  j: [1] Jv; nodes: [1024] JvNode;
+  if !jv_parse(j[..], json, nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return ""; }
+  list := jv_get(j[0], 0, "clone");
+  if jv_kind(j[0], list) != JV_ARRAY { return ""; }
+  n := 0;
+  for i: 0..<jv_len(j[0], list) {
+    e := jv_at(j[0], list, i);
+    if jv_kind(j[0], e) != JV_STRING { continue; }
+    vb: [DC_PATH] u8; k := jv_str(j[0], e, vb[..]);
+    if k < 0 || k > vb.count { continue; }
+    p := cast(string) vb[0..<k];
+    if !dc_clone_ok(p) { continue; }
+    if n > 0 { n = dc_cat(out, n, "\n"); }
+    n = dc_cat(out, n, p);
+  }
+  return dc_fits(out, n);
+}
+// Clones each listed folder from the main checkout into the worktree (ChatWorktree.hydrate): a
+// folder already there is left alone, and the symbolic links that point back into the main
+// checkout are removed, so nothing in the worktree writes through to it.
+dc_wt_hydrate :: (w: [] DcWorktree) {
+  lb: [65536] u8; list := dc_clone_paths(dc_wt_source(w), lb[..]); at := 0;
+  while at < list.count {
+    e := at; while e < list.count && list[e] != '\n' { e += 1; }
+    rel := list[at..<e]; at = e + 1;
+    fb: [DC_PATH] u8; tb: [DC_PATH] u8;
+    from := dc_join(dc_wt_source(w), rel, fb[..]); to := dc_join(dc_wt_path(w), rel, tb[..]);
+    if dcos_kind(from) == FS_NONE || dcos_kind(to) != FS_NONE { continue; }
+    _ := dcos_mkdirs(dc_parent(to));
+    if !dcos_clone_tree(from, to) { _ := dcos_remove(to); continue; }
+    _ := dcos_cut_links(to, dc_wt_source(w));
+  }
+}
+// How many files in the worktree are changed or new and not ignored (git status --porcelain); -1
+// when git could not tell, which counts as changed.
+dc_wt_changes :: (w: [] DcWorktree) -> int {
+  out: [1048576] u8; st := [3] string.["status", "--porcelain", "--untracked-files=normal"];
+  r := dc_git(dc_wt_path(w), st[..], out[..]);
+  if r.started != 0 || r.status != 0 { return -1; }
+  return dc_lines(cast(string) out[0..<r.n]);
+}
+dc_lines :: (text: string) -> int {
+  n := 0; at := 0;
+  while at < text.count { e := at; while e < text.count && text[e] != '\n' { e += 1; } if e > at { n += 1; } at = e + 1; }
+  return n;
+}
+// Removes a clean worktree (git worktree remove, then prune; ChatWorktree.remove). One with
+// changes, or one git can't read, is never removed: it stays, and the caller says so. The branch
+// goes too when everything on it is in another branch; else it is kept with its commits.
+dc_wt_remove :: (w: [] DcWorktree) -> DcRemoval {
+  prune := [2] string.["worktree", "prune"];
+  if dcos_kind(dc_wt_path(w)) == FS_NONE { _ := dc_git_ok(dc_wt_source(w), prune[..]); return DcRemoval.{result = DC_WT_GONE}; }
+  left := dc_wt_changes(w);
+  if left != 0 { return DcRemoval.{result = DC_WT_KEPT, changes = left}; }
+  rm := [3] string.["worktree", "remove", dc_wt_path(w)];
+  if !dc_git_ok(dc_wt_source(w), rm[..]) { return DcRemoval.{result = DC_WT_KEPT, changes = -1}; }
+  _ := dc_git_ok(dc_wt_source(w), prune[..]);
+  del := [4] string.["branch", "-d", "--quiet", dc_wt_branch(w)]; _ := dc_git_ok(dc_wt_source(w), del[..]);
+  return DcRemoval.{result = DC_WT_REMOVED};
+}
+
+#test "desktop core worktree: the clone list keeps only paths inside the repository" {
+  b: [1024] u8;
+  #assert dc_clone_list("{\"clone\":[\"coax/bin\",\"/etc\",\"a/../b\",7,\"build\"]}", b[..]) == "coax/bin\nbuild";
+  #assert dc_clone_list("{\"clone\":\"x\"}", b[..]) == "" && dc_clone_list("[]", b[..]) == "" && dc_clone_list("nope", b[..]) == "";
+  #assert dc_lines(" M a\n?? b\n") == 2 && dc_lines("") == 0;
+  w: [1] DcWorktree; dc_wt_set(w[..], "c1", "/w/r-1/c1", "/r", "coder/c1");
+  #assert dc_wt_path(w[..]) == "/w/r-1/c1" && dc_wt_source(w[..]) == "/r" && dc_wt_branch(w[..]) == "coder/c1" && dc_wt_chat(w[..]) == "c1";
+}

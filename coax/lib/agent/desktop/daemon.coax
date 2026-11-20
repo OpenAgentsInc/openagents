@@ -1,0 +1,138 @@
+// The desktop core's client of the unified daemon (`coder host serve`, GitHub #13787): the Mac
+// app's CoderDaemonClient (apps/coder-desktop/DaemonClient.swift) over the seam (os.coax). One
+// newline-framed openagents.environment.daemon.v1alpha1 request a connection on the owner-only
+// socket HOST/service.sock (or the socket daemon.json names), HOST being $CODER_HOME or HOME, then
+// .openagents/coder/host. Every request and reply is written and read by the one codec,
+// coax/lib/agent/environment/daemon-wire.coax, which the daemon serves with.
+//   coax/bin/coax test coax/lib/agent/desktop/daemon.coax --library
+#load "os.coax";
+#load "../environment/daemon-wire.coax";
+
+DC_DAEMON_MS :: 2000;            // the app's socket timeouts (SO_RCVTIMEO, SO_SNDTIMEO)
+DC_REPLY_MAX :: 1048576;         // the app reads at most this much of a reply
+DC_RUN_LIMIT :: 12;              // host-runs.coax DR_MAX
+DC_RUN_LIMIT_NOTE :: "Coder runs up to 12 workers at once, sub-agents included. Stop a chat or wait for one to finish, then send again.";
+
+// The daemon's folder for this user.
+dcos_daemon_dir :: (out: [] u8) -> string {
+  hb: [DC_PATH] u8; cb: [DC_PATH] u8;
+  return dc_daemon_dir(dcos_home(hb[..]), dcos_getenv("CODER_HOME", cb[..]), out);
+}
+// The socket a daemon.json text names, else dir/service.sock.
+dc_socket_from :: (discovery: string, dir: string, out: [] u8) -> string {
+  if discovery.count > 0 {
+    j: [1] Jv; nodes: [64] JvNode;
+    if jv_parse(j[..], discovery, nodes[..]) && jv_kind(j[0], 0) == JV_OBJECT {
+      at := jv_get(j[0], 0, "socket");
+      if jv_kind(j[0], at) == JV_STRING { k := jv_str(j[0], at, out); if k > 0 && k < out.count { return cast(string) out[0..<k]; } }
+    }
+  }
+  return dc_join(dir, "service.sock", out);
+}
+dc_daemon_socket :: (dir: string, out: [] u8) -> string {
+  pb: [DC_PATH] u8; text: [8192] u8; n := dcos_read(dc_join(dir, "daemon.json", pb[..]), text[..]);
+  return dc_socket_from(ifx n > 0 then cast(string) text[0..<n] else "", dir, out);
+}
+// 32 lowercase hex digits from the system's random bytes (a command or run id).
+dc_new_id :: (out: [] u8) -> string {
+  r: [16] u8; if !dcos_random(r[..]) || out.count < 32 { return ""; }
+  return dc_hex(r[..], out);
+}
+dc_hex :: (b: [] u8, out: [] u8) -> string {
+  hex := "0123456789abcdef";
+  if out.count < 2 * b.count { return ""; }
+  for i: 0..<b.count { out[2 * i] = hex[cast(int) (b[i] >> 4)]; out[2 * i + 1] = hex[cast(int) (b[i] & 15)]; }
+  return cast(string) out[0..<2 * b.count];
+}
+
+// A request to the daemon in folder dir: its reply in v. False when no daemon answered with a reply the codec reads.
+DcDaemon :: struct { dir: [DC_PATH] u8; dir_n: int; owns_runs: bool; }
+dc_daemon_open :: (d: [] DcDaemon, dir: string) { d[0].dir_n = dc_copy(d[0].dir[..], dc_trim_slash(dir)); d[0].owns_runs = false; }
+dc_daemon_path :: (d: [] DcDaemon) -> string { return cast(string) d[0].dir[0..<d[0].dir_n]; }
+dc_daemon_available :: (d: [] DcDaemon) -> bool { sb: [DC_PATH] u8; return dcos_kind(dc_daemon_socket(dc_daemon_path(d), sb[..])) != FS_NONE; }
+dc_daemon_call :: (d: [] DcDaemon, q: [] DmRequest, v: [] DmView) -> bool {
+  sb: [DC_PATH] u8; sock := dc_daemon_socket(dc_daemon_path(d), sb[..]);
+  if dcos_kind(sock) == FS_NONE { return false; }
+  line: [16384] u8; n := dm_write(q, line[..]);
+  if n < 1 { return false; }
+  reply: [DC_REPLY_MAX] u8; k := dcos_unix_call(sock, cast(string) line[0..<n], reply[..], DC_DAEMON_MS);
+  if k < 1 { return false; }
+  return dm_view_read(cast(string) reply[0..<k], v);
+}
+// A request for method, with a fresh command id and a minute to act when it writes.
+dc_request :: (q: [] DmRequest, method: string) {
+  q[0] = DmRequest.{};
+  q[0].nm = dc_copy(q[0].method[..], method);
+  if dm_is_write(method) {
+    ib: [32] u8; q[0].nc = dc_copy(q[0].command[..], dc_new_id(ib[..]));
+    now := dcos_now_ms(); q[0].issued = now; q[0].expires = now + 60000;
+  }
+}
+dc_daemon_health :: (d: [] DcDaemon, v: [] DmView) -> bool { q: [1] DmRequest; dc_request(q[..], "DaemonHealth"); return dc_daemon_call(d, q[..], v); }
+dc_daemon_read_foreman :: (d: [] DcDaemon, v: [] DmView) -> bool { q: [1] DmRequest; dc_request(q[..], "ReadForeman"); return dc_daemon_call(d, q[..], v); }
+dc_daemon_update_foreman :: (d: [] DcDaemon, tier: int, prompt: string) -> bool {
+  q: [1] DmRequest; dc_request(q[..], "UpdateForeman"); q[0].has_tier = true; q[0].tier = tier;
+  q[0].nt = dc_copy(q[0].text[..], prompt);
+  v: [1] DmView; return dc_daemon_call(d, q[..], v[..]) && v[0].ok;
+}
+dc_daemon_list_meta :: (d: [] DcDaemon, v: [] DmView) -> bool { q: [1] DmRequest; dc_request(q[..], "ListSessionMeta"); return dc_daemon_call(d, q[..], v); }
+// UpdateSessionMeta: title or folder "" leaves it; pinned and archived -1 leave them, 0 or 1 set them.
+dc_daemon_update_meta :: (d: [] DcDaemon, session: string, title: string, folder: string, pinned: int, archived: int) -> bool {
+  if session.count == 0 { return false; }
+  q: [1] DmRequest; dc_request(q[..], "UpdateSessionMeta");
+  q[0].ns = dc_copy(q[0].session[..], session); q[0].ntl = dc_copy(q[0].title[..], title); q[0].nf = dc_copy(q[0].folder[..], folder);
+  if pinned >= 0 { q[0].has_pinned = true; q[0].pinned = pinned == 1; }
+  if archived >= 0 { q[0].has_archived = true; q[0].archived = archived == 1; }
+  v: [1] DmView; return dc_daemon_call(d, q[..], v[..]) && v[0].ok;
+}
+
+// ---- worker runs (GitHub #13694) ----
+
+// Whether the daemon owns worker runs: it answered ListRuns (remembered in d).
+dc_daemon_probe_runs :: (d: [] DcDaemon) -> bool {
+  q: [1] DmRequest; dc_request(q[..], "ListRuns"); v: [1] DmView;
+  d[0].owns_runs = dc_daemon_call(d, q[..], v[..]) && v[0].ok;
+  return d[0].owns_runs;
+}
+dc_daemon_list_runs :: (d: [] DcDaemon, v: [] DmView) -> bool { q: [1] DmRequest; dc_request(q[..], "ListRuns"); return dc_daemon_call(d, q[..], v) && v[0].ok; }
+// StartRun: the daemon starts the worker the run's ID.spec names. "" when it runs, else why not
+// ("unreachable", "run-limit", the daemon's error).
+dc_daemon_start_run :: (d: [] DcDaemon, id: string, why: [] u8) -> string {
+  q: [1] DmRequest; dc_request(q[..], "StartRun"); q[0].nr = dc_copy(q[0].run[..], id);
+  v: [1] DmView;
+  if !dc_daemon_call(d, q[..], v[..]) { return "unreachable"; }
+  if v[0].ok { return ""; }
+  return ifx v[0].ne > 0 then dc_fits(why, dc_copy(why, cast(string) v[0].error[0..<v[0].ne])) else "failed";
+}
+dc_daemon_run_call :: (d: [] DcDaemon, method: string, id: string) -> bool {
+  q: [1] DmRequest; dc_request(q[..], method); q[0].nr = dc_copy(q[0].run[..], id);
+  v: [1] DmView; return dc_daemon_call(d, q[..], v[..]) && v[0].ok;
+}
+dc_daemon_stop_run :: (d: [] DcDaemon, id: string) -> bool { return dc_daemon_run_call(d, "StopRun", id); }
+dc_daemon_forget_run :: (d: [] DcDaemon, id: string) -> bool { return dc_daemon_run_call(d, "ForgetRun", id); }
+// A daemon that owns runs, started from program (`coder-host serve`) when none answers; waits up
+// to wait_ms for one it started (CoderDaemonClient.ensureDaemon). Its pid in started when it started one.
+dc_daemon_ensure :: (d: [] DcDaemon, program: string, wait_ms: int, started: [] int) -> bool {
+  started[0] = 0;
+  if dc_daemon_probe_runs(d) { return true; }
+  if program.count == 0 || !dcos_mkdirs(dc_daemon_path(d)) { return false; }
+  lb: [DC_PATH] u8; args := [1] string.["serve"];
+  pid := dcos_spawn_detached(program, args[..], dc_join(dc_daemon_path(d), "daemon.log", lb[..]));
+  if pid <= 0 { return false; }
+  started[0] = pid;
+  until := dcos_now_ms() + wait_ms;
+  while dcos_now_ms() < until { proc_sleep(100); if dc_daemon_probe_runs(d) { return true; } }
+  return false;
+}
+
+#test "desktop core daemon: the socket, ids and requests" {
+  b: [DC_PATH] u8;
+  #assert dc_socket_from("", "/h/.openagents/coder/host", b[..]) == "/h/.openagents/coder/host/service.sock";
+  #assert dc_socket_from("{\"schema\":\"x\",\"socket\":\"/tmp/s.sock\"}", "/h", b[..]) == "/tmp/s.sock";
+  #assert dc_socket_from("{\"socket\":\"\"}", "/h", b[..]) == "/h/service.sock" && dc_socket_from("nope", "/h", b[..]) == "/h/service.sock";
+  r := [3] u8.[0, 0xab, 0x7f]; #assert dc_hex(r[..], b[..]) == "00ab7f";
+  q: [1] DmRequest; dc_request(q[..], "ListRuns"); #assert q[0].nc == 0 && q[0].issued == 0;
+  q[0].nr = dc_copy(q[0].run[..], "0123456789abcdef0123456789abcdef");
+  line: [4096] u8; n := dm_write(q[..], line[..]);
+  #assert cast(string) line[0..<n] == "{\"schema\":\"openagents.environment.daemon.v1alpha1\",\"method\":\"ListRuns\",\"run_id\":\"0123456789abcdef0123456789abcdef\"}";
+}

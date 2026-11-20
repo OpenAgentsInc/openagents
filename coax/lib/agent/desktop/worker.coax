@@ -1,0 +1,244 @@
+// The Microcoder worker in the desktop core (GitHub #13787): the Mac app's CoderWorker
+// (apps/coder-desktop/Worker.swift) over the seam (os.coax). The worker (coder/tui/mcworker.coax,
+// or claudeworker for a Claude sub-agent) reads one JSON line a message and writes one a line
+// back; every line is coax/lib/agent/engine/mcworker-wire.coax's. This file starts it, carries
+// the lines each way and says when it went away. Two ways, as the app does it:
+//   - when the unified daemon owns runs (daemon.coax), the daemon starts the worker and keeps it
+//     (GitHub #13694): the core writes the run's ID.spec (mode 600), appends lines to ID.in,
+//     follows ID.out by byte offset, reads ID.state and touches ID.attached, all under
+//     DAEMON/runs, the files coder/tui/host-runs.coax keeps; the run outlives the app;
+//   - without one, the worker is the host's own child process with pipes.
+// The environment the worker gets is the app's: PATH with ~/.local/bin, /opt/homebrew/bin and
+// /usr/local/bin added, the shared build caches (worktree.coax), extra variables, and the Claude
+// key for the Claude worker only (every other worker has CODER_CLAUDE_KEY removed).
+//   coax/bin/coax test coax/lib/agent/desktop/worker.coax --library
+#load "worktree.coax";
+#load "store.coax";
+#load "daemon.coax";
+
+DC_ENV_MAX :: 16;
+DC_LINE_MAX :: 4194304;
+
+DcWorker :: struct {
+  h: int = -1;                         // the child process, -1 none
+  run: [32] u8; run_n: int;            // the daemon run this worker is, while it is one
+  offset: int;                         // bytes of ID.out already read
+  held: [65536] u8; held_n: int;       // a line of ID.out not yet whole
+  touched: int;                        // when ID.attached was last written (ms)
+  failure: [256] u8; failure_n: int;   // why the last start failed, in words for the page
+}
+dc_worker_run :: (w: [] DcWorker) -> string { return cast(string) w[0].run[0..<w[0].run_n]; }
+dc_worker_failure :: (w: [] DcWorker) -> string { return cast(string) w[0].failure[0..<w[0].failure_n]; }
+dc_worker_is_run :: (w: [] DcWorker) -> bool { return w[0].run_n > 0; }
+dc_worker_alive :: (w: [] DcWorker) -> bool { return dc_worker_is_run(w) || dcos_alive(w[0].h); }
+
+// PATH with the folders a program opened from the desktop lacks put in front, each once (CoderWorker.path).
+dc_worker_path :: (home: string, had: string, out: [] u8) -> string {
+  given := ifx had.count > 0 then had else "/usr/bin:/bin:/usr/sbin:/sbin";
+  more: [3] string; mb0: [DC_PATH] u8; mb1: [DC_PATH] u8;
+  more[0] = dc_join(home, ".local/bin", mb0[..]); more[1] = "/opt/homebrew/bin"; more[2] = "/usr/local/bin";
+  n := 0;
+  for m: more {
+    if m.count == 0 || dc_path_has(given, m) { continue; }
+    if n > 0 { n = dc_cat(out, n, ":"); }
+    n = dc_cat(out, n, m);
+  }
+  if n > 0 { n = dc_cat(out, n, ":"); }
+  n = dc_cat(out, n, given);
+  return dc_fits(out, n);
+}
+dc_path_has :: (path: string, dir: string) -> bool {
+  at := 0;
+  while at <= path.count {
+    e := at; while e < path.count && path[e] != ':' { e += 1; }
+    if cast(string) path[at..<e] == dir { return true; }
+    at = e + 1;
+  }
+  return false;
+}
+// What the worker gets on top of what it inherits ("K=V" lines in set) and the names it loses
+// (unset): CoderWorker.environment. extra is "K=V" lines (a PATH there goes in front of the
+// worker's PATH); key is the Claude key, given to claudeworker only.
+DcEnv :: struct { set: [DC_ENV_MAX] string; set_n: int; unset: [2] string; unset_n: int; bytes: [16384] u8; used: int; }
+dc_env_add :: (e: [] DcEnv, k: string, v: string) {
+  if e[0].set_n >= DC_ENV_MAX { return; }
+  for i: 0..<e[0].set_n { s := e[0].set[i]; if s.count > k.count && dc_starts(s, k) && s[k.count] == '=' { e[0].set[i] = dc_env_put(e, k, v); return; } }
+  e[0].set[e[0].set_n] = dc_env_put(e, k, v); e[0].set_n += 1;
+}
+dc_env_put :: (e: [] DcEnv, k: string, v: string) -> string {
+  from := e[0].used; n := dc_cat(e[0].bytes[..], from, k); n = dc_cat(e[0].bytes[..], n, "="); n = dc_cat(e[0].bytes[..], n, v);
+  e[0].used = n; return cast(string) e[0].bytes[from..<n];
+}
+dc_worker_env :: (e: [] DcEnv, program: string, folder: string, extra: string, home: string, had_path: string, key: string) {
+  e[0].set_n = 0; e[0].unset_n = 0; e[0].used = 0;
+  pb: [DC_PATH] u8; path := dc_worker_path(home, had_path, pb[..]);
+  dc_env_add(e, "PATH", path);
+  cb: [8192] u8; caches := dc_cache_env(folder, cb[..]);
+  dc_env_lines(e, caches, path);
+  dc_env_lines(e, extra, path);
+  if dc_ends(program, "claudeworker") && key.count > 0 { dc_env_add(e, "CODER_CLAUDE_KEY", key); return; }
+  e[0].unset[0] = "CODER_CLAUDE_KEY"; e[0].unset_n = 1;
+}
+dc_env_lines :: (e: [] DcEnv, lines: string, path: string) {
+  at := 0;
+  while at < lines.count {
+    l := at; while l < lines.count && lines[l] != '\n' { l += 1; }
+    line := lines[at..<l]; at = l + 1;
+    eq := 0; while eq < line.count && line[eq] != '=' { eq += 1; }
+    if eq == 0 || eq >= line.count { continue; }
+    k := line[0..<eq]; v := line[eq + 1..<line.count];
+    if k == "PATH" { vb: [DC_PATH] u8; n := dc_copy(vb[..], v); n = dc_cat(vb[..], n, ":"); n = dc_cat(vb[..], n, path); dc_env_add(e, k, dc_fits(vb[..], n)); }
+    else { dc_env_add(e, k, v); }
+  }
+}
+
+// The run's spec as host-runs.coax reads it: {"program","cwd","env":["K=V"],"unset":["K"]}.
+dc_run_spec :: (program: string, cwd: string, e: [] DcEnv, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "program"); jo_str(o[..], program);
+  jo_key(o[..], "cwd"); jo_str(o[..], cwd);
+  jo_key(o[..], "env"); jo_arr(o[..]); for i: 0..<e[0].set_n { jo_str(o[..], e[0].set[i]); } jo_end(o[..]);
+  jo_key(o[..], "unset"); jo_arr(o[..]); for i: 0..<e[0].unset_n { jo_str(o[..], e[0].unset[i]); } jo_end(o[..]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+dc_run_file :: (d: [] DcDaemon, id: string, ext: string, out: [] u8) -> string {
+  rb: [DC_PATH] u8; nb: [64] u8; n := dc_copy(nb[..], id); n = dc_cat(nb[..], n, ext);
+  return dc_join(dc_join(dc_daemon_path(d), "runs", rb[..]), cast(string) nb[0..<n], out);
+}
+
+// Starts the worker program in home: as a daemon run when d owns runs, else as a child. False
+// with the reason in failure when it did not start (the daemon's run limit says so in words).
+dc_worker_start :: (w: [] DcWorker, d: [] DcDaemon, program: string, home: string, e: [] DcEnv) -> bool {
+  w[0].failure_n = 0;
+  if dc_worker_alive(w) { return true; }
+  if d[0].owns_runs { return dc_worker_start_run(w, d, program, home, e); }
+  w[0].h = dcos_spawn(program, home, e[0].set[0..<e[0].set_n], e[0].unset[0..<e[0].unset_n]);
+  w[0].held_n = 0;
+  if w[0].h < 0 { w[0].failure_n = dc_copy(w[0].failure[..], "the worker did not start"); return false; }
+  return true;
+}
+dc_worker_start_run :: (w: [] DcWorker, d: [] DcDaemon, program: string, home: string, e: [] DcEnv) -> bool {
+  rb: [DC_PATH] u8; if !dcos_mkdir_private(dc_join(dc_daemon_path(d), "runs", rb[..])) { return false; }
+  ib: [32] u8; id := dc_new_id(ib[..]);
+  if id.count != 32 { return false; }
+  spec: [32768] u8; n := dc_run_spec(program, home, e, spec[..]);
+  sb: [DC_PATH] u8; inb: [DC_PATH] u8; specf := dc_run_file(d, id, ".spec", sb[..]);
+  if n < 1 || !dcos_write_private(specf, cast(string) spec[0..<n]) || !dcos_write_private(dc_run_file(d, id, ".in", inb[..]), "") { return false; }
+  dc_worker_attach(w, id, 0);
+  dc_worker_touch(w, d, true);
+  why: [128] u8; r := dc_daemon_start_run(d, id, why[..]);
+  if r.count > 0 {
+    if r == "run-limit" { w[0].failure_n = dc_copy(w[0].failure[..], DC_RUN_LIMIT_NOTE); }
+    _ := dcos_remove(specf);
+    dc_worker_detach(w, d);
+    return false;
+  }
+  return true;
+}
+// This worker is the daemon's run id again, from byte from of its output (a reopened app).
+dc_worker_attach :: (w: [] DcWorker, id: string, from: int) { w[0].run_n = dc_copy(w[0].run[..], id); w[0].offset = from; w[0].held_n = 0; }
+// The app is attached: the daemon leaves the worker's asks to it (host-runs.coax dr_detached).
+dc_worker_touch :: (w: [] DcWorker, d: [] DcDaemon, force: bool) {
+  if !dc_worker_is_run(w) { return; }
+  now := dcos_now_ms();
+  if !force && now - w[0].touched <= 1000 { return; }
+  w[0].touched = now;
+  ab: [DC_PATH] u8; tb: [32] u8;
+  _ := dcos_write_private(dc_run_file(d, dc_worker_run(w), ".attached", ab[..]), dc_num(now / 1000, tb[..]));
+}
+// Lets the run go without stopping it (the app quits): the daemon keeps it running.
+dc_worker_detach :: (w: [] DcWorker, d: [] DcDaemon) {
+  if dc_worker_is_run(w) { ab: [DC_PATH] u8; _ := dcos_remove(dc_run_file(d, dc_worker_run(w), ".attached", ab[..])); }
+  w[0].run_n = 0;
+}
+// The run's state as the daemon keeps it (running, stopping, exited, stopped, lost), or "".
+dc_run_state :: (d: [] DcDaemon, id: string, out: [] u8) -> string {
+  pb: [DC_PATH] u8; text: [512] u8; n := dcos_read(dc_run_file(d, id, ".state", pb[..]), text[..]);
+  if n < 1 { return ""; }
+  j: [1] Jv; nodes: [32] JvNode;
+  if !jv_parse(j[..], cast(string) text[0..<n], nodes[..]) || jv_kind(j[0], 0) != JV_OBJECT { return ""; }
+  k := jv_str(j[0], jv_get(j[0], 0, "state"), out);
+  return ifx k > 0 && k <= out.count then cast(string) out[0..<k] else "";
+}
+// Writes a line (it ends with its newline, as the owner's lines do) to the worker.
+dc_worker_write :: (w: [] DcWorker, d: [] DcDaemon, line: string) -> bool {
+  if line.count == 0 { return false; }
+  if dc_worker_is_run(w) { ib: [DC_PATH] u8; return dcos_append(dc_run_file(d, dc_worker_run(w), ".in", ib[..]), line); }
+  return dcos_send(w[0].h, line);
+}
+DC_LINE_NONE :: 0; DC_LINE_GONE :: -1;
+// The worker's next whole line into out, waiting up to timeout_ms: its length, DC_LINE_NONE when
+// none came, DC_LINE_GONE when the worker went away (a run that ended, with every line read).
+dc_worker_read :: (w: [] DcWorker, d: [] DcDaemon, timeout_ms: int, out: [] u8) -> int {
+  if dc_worker_is_run(w) {
+    until := dcos_now_ms() + timeout_ms;
+    while true {
+      n := dc_worker_take(w, out);
+      if n > 0 { return n; }
+      ob: [DC_PATH] u8; chunk: [65536] u8; got := dcos_read_at(dc_run_file(d, dc_worker_run(w), ".out", ob[..]), w[0].offset, chunk[..]);
+      if got > 0 {
+        w[0].offset += got;
+        for i: 0..<got { if w[0].held_n < w[0].held.count { w[0].held[w[0].held_n] = chunk[i]; w[0].held_n += 1; } }
+        continue;
+      }
+      dc_worker_touch(w, d, false);
+      sb: [32] u8; st := dc_run_state(d, dc_worker_run(w), sb[..]);
+      if st.count > 0 && st != "running" && st != "stopping" { w[0].run_n = 0; return DC_LINE_GONE; }
+      if dcos_now_ms() >= until { return DC_LINE_NONE; }
+      proc_sleep(30);
+    }
+  }
+  if w[0].h < 0 { return DC_LINE_GONE; }
+  for guard: 0..<1000 {
+    n := dcos_line(w[0].h, timeout_ms, out);
+    if n == PROC_TIMEOUT { return DC_LINE_NONE; }
+    if n == PROC_TOO_LONG { continue; }
+    if n < 0 { dcos_close(w[0].h); w[0].h = -1; return DC_LINE_GONE; }
+    if n > 0 { return n; }
+  }
+  return DC_LINE_NONE;
+}
+// A whole line from what is held, without its newline (empty lines skipped): its length, or 0.
+dc_worker_take :: (w: [] DcWorker, out: [] u8) -> int {
+  while true {
+    nl := -1; for i: 0..<w[0].held_n { if w[0].held[i] == '\n' { nl = i; break; } }
+    if nl < 0 { return 0; }
+    n := ifx nl <= out.count then nl else out.count;
+    for i: 0..<n { out[i] = w[0].held[i]; }
+    rest := w[0].held_n - nl - 1;
+    for i: 0..<rest { w[0].held[i] = w[0].held[nl + 1 + i]; }
+    w[0].held_n = rest;
+    if nl > 0 { return n; }
+  }
+  return 0;
+}
+// Stops the worker: its input closed (it ends on that); a daemon run is stopped by the daemon the
+// same way and, with forget, its files go.
+dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
+  if dc_worker_is_run(w) {
+    rb: [32] u8; id := dc_fits(rb[..], dc_copy(rb[..], dc_worker_run(w)));
+    dc_worker_detach(w, d);
+    _ := dc_daemon_stop_run(d, id);
+    if forget { _ := dc_daemon_forget_run(d, id); }
+    return;
+  }
+  dcos_close(w[0].h); w[0].h = -1;
+}
+
+#test "desktop core worker: PATH, environment and the run spec" {
+  b: [DC_PATH] u8;
+  #assert dc_worker_path("/h", "/usr/bin:/bin", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  #assert dc_worker_path("/h", "/usr/local/bin:/usr/bin", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin";
+  #assert dc_worker_path("/h", "", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+  e: [1] DcEnv; e[0].used = 0;
+  dc_env_add(e[..], "PATH", "/a"); dc_env_lines(e[..], "X=1\nPATH=/extra\nbad\nX=2", "/a");
+  #assert e[0].set_n == 2 && e[0].set[0] == "PATH=/extra:/a" && e[0].set[1] == "X=2";
+  e[0].unset[0] = "CODER_CLAUDE_KEY"; e[0].unset_n = 1;
+  out: [1024] u8; n := dc_run_spec("/app/mcworker", "/h", e[..], out[..]);
+  #assert cast(string) out[0..<n] == "{\"program\":\"/app/mcworker\",\"cwd\":\"/h\",\"env\":[\"PATH=/extra:/a\",\"X=2\"],\"unset\":[\"CODER_CLAUDE_KEY\"]}";
+  w: [1] DcWorker; t := "{\"kind\":\"ready\"}\n\n{\"kind\":\"reply\"";
+  for c, i: t { w[0].held[i] = c; } w[0].held_n = t.count;
+  lb: [64] u8; k := dc_worker_take(w[..], lb[..]);
+  #assert k == 16 && cast(string) lb[0..<k] == "{\"kind\":\"ready\"}" && dc_worker_take(w[..], lb[..]) == 0 && w[0].held_n == 15;
+}

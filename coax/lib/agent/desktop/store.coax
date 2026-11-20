@@ -1,0 +1,214 @@
+// The desktop core's chat store and settings (GitHub #13787): the files the Mac app's CoderStore
+// keeps (apps/coder-desktop/Store.swift), so the app and a host on the core read each other's
+// chats. The folder is the Coder folder's chats (paths.coax dc_chats_dir: macOS Application
+// Support, Linux's XDG data home): index.json, the list, newest created first, and ID.json, one
+// chat's page text. The list's rules (pins, renames, titles) are coder/tui/desktop-store.coax's,
+// which `coder desktop` uses too; this file moves the bytes through the seam (os.coax) and adds
+// what the app does on a save (CoderStore.keep). The keys the app keeps beside the chats
+// (claude-key, openrouter-key: mode 600, one trimmed line) and its settings are here as well.
+//   coax/bin/coax test coax/lib/agent/desktop/store.coax --library
+#load "os.coax";
+#load "../../../../coder/tui/desktop-store.coax";
+
+DC_CHATS :: 1024;
+DC_INDEX_MAX :: 2097152;
+DC_FOREMAN_TITLE :: "Foreman";      // Foreman.title
+DC_KEY_CLAUDE :: "claude-key";      // CoderKey.file
+DC_KEY_OPENROUTER :: "openrouter-key";   // CoderOpenRouter.file
+DC_SET_WORKTREES :: "chatWorktrees";     // ChatWorktree.enabled (true when unset)
+DC_SET_OR_MAIN :: "openRouterMain"; DC_SET_OR_SUB :: "openRouterSub";
+
+// The store: its folder and the list read from it.
+DcStore :: struct { dir: [DC_PATH] u8; dir_n: int; x: [1] DkIndex; }
+dc_store_dir :: (s: [] DcStore) -> string { return cast(string) s[0].dir[0..<s[0].dir_n]; }
+
+// This user's store folder, as the app finds it (CODER_DESKTOP_DIR when set).
+dcos_chats_dir :: (out: [] u8) -> string {
+  hb: [DC_PATH] u8; xb: [DC_PATH] u8; ab: [DC_PATH] u8; sb: [DC_PATH] u8; cb: [DC_PATH] u8;
+  coder := dc_coder_dir(dcos_os(), dcos_home(hb[..]), dcos_getenv("XDG_DATA_HOME", xb[..]), dcos_getenv("APPDATA", ab[..]), cb[..]);
+  return dc_chats_dir(coder, dcos_getenv("CODER_DESKTOP_DIR", sb[..]), out);
+}
+dcos_coder_file :: (name: string, out: [] u8) -> string {
+  hb: [DC_PATH] u8; xb: [DC_PATH] u8; ab: [DC_PATH] u8; cb: [DC_PATH] u8;
+  return dc_join(dc_coder_dir(dcos_os(), dcos_home(hb[..]), dcos_getenv("XDG_DATA_HOME", xb[..]), dcos_getenv("APPDATA", ab[..]), cb[..]), name, out);
+}
+
+dc_store_file :: (s: [] DcStore, name: string, suffix: string, out: [] u8) -> string {
+  n := dc_copy(out, dc_store_dir(s)); n = dc_cat(out, n, "/"); n = dc_cat(out, n, name); n = dc_cat(out, n, suffix);
+  return dc_fits(out, n);
+}
+// Opens the store at dir (made when missing) and reads its list. False when index.json is there
+// but is not a list of chats, or holds more than chats has room for.
+dc_store_open :: (s: [] DcStore, dir: string, chats: [] DkChat) -> bool {
+  s[0].dir_n = dc_copy(s[0].dir[..], dc_trim_slash(dir));
+  s[0].x[0] = DkIndex.{chats = chats};
+  if !dcos_mkdirs(dc_store_dir(s)) { return false; }
+  return dc_store_reload(s);
+}
+dc_store_reload :: (s: [] DcStore) -> bool {
+  pb: [DC_PATH] u8; path := dc_store_file(s, "index", ".json", pb[..]);
+  s[0].x[0].n = 0; s[0].x[0].full = false;
+  if dcos_kind(path) == FS_NONE { return true; }
+  buf: [DC_INDEX_MAX] u8; n := dcos_read(path, buf[..]);
+  if n < 0 || !dk_index_parse(s[0].x[..], cast(string) buf[0..<n]) { return false; }
+  dc_store_sort(s[0].x[..]);
+  return !s[0].x[0].full;
+}
+// Newest created first (an entry with no created time counts its updated time), ties kept in
+// the file's order: CoderStore.init's sort.
+dc_store_sort :: (x: [] DkIndex) {
+  for i: 1..<x[0].n {
+    j := i;
+    while j > 0 && dc_when(x, j) > dc_when(x, j - 1) { t := x[0].chats[j]; x[0].chats[j] = x[0].chats[j - 1]; x[0].chats[j - 1] = t; j -= 1; }
+  }
+}
+// A list entry's created (or updated) seconds in microseconds, from its raw JSON number.
+dc_when :: (x: [] DkIndex, i: int) -> int {
+  raw := ifx x[0].chats[i].created_n > 0 then dk_created(x, i) else dk_updated(x, i);
+  return dc_micros(raw);
+}
+dc_micros :: (raw: string) -> int {
+  whole := 0; frac := 0; digits := 0; i := 0; neg := false;
+  if i < raw.count && raw[i] == '-' { neg = true; i += 1; }
+  while i < raw.count && raw[i] >= '0' && raw[i] <= '9' { whole = whole * 10 + cast(int) (raw[i] - '0'); i += 1; }
+  if i < raw.count && raw[i] == '.' {
+    i += 1;
+    while i < raw.count && raw[i] >= '0' && raw[i] <= '9' { if digits < 6 { frac = frac * 10 + cast(int) (raw[i] - '0'); digits += 1; } i += 1; }
+  }
+  while digits < 6 { frac *= 10; digits += 1; }
+  v := whole * 1000000 + frac;
+  return ifx neg then -v else v;
+}
+dc_store_save :: (s: [] DcStore) -> bool {
+  out: [DC_INDEX_MAX] u8; o: [1] Jo; jo_start(o[..], out[..]); dk_index_write(s[0].x[..], o[..]);
+  if o[0].bad { return false; }
+  pb: [DC_PATH] u8;
+  return dcos_write(dc_store_file(s, "index", ".json", pb[..]), jo_text(o[..]));
+}
+// A chat's page text into buf, or "" when it has none.
+dc_store_text :: (s: [] DcStore, id: string, buf: [] u8) -> string {
+  if !dk_id_ok(id) { return ""; }
+  pb: [DC_PATH] u8; n := dcos_read(dc_store_file(s, id, ".json", pb[..]), buf);
+  return ifx n < 0 then "" else cast(string) buf[0..<n];
+}
+// The list as the page reads it (CoderStore.lines): one chat a line, its id, a tab, its title;
+// Pinned in order, then the rest; the Foreman's chat left out.
+dc_store_lines :: (s: [] DcStore, out: [] u8) -> string {
+  o: [DC_CHATS] int; k := dk_ordered(s[0].x[..], o[..], false); n := 0;
+  for j: 0..<k {
+    if j > 0 { n = dc_cat(out, n, "\n"); }
+    n = dc_cat(out, n, dk_id(s[0].x[..], o[j])); n = dc_cat(out, n, "\t"); n = dc_cat(out, n, dk_title(s[0].x[..], o[j]));
+  }
+  return dc_fits(out, n);
+}
+// CoderStore.keep: the chat's text written, then its list entry: a known chat keeps its place
+// (its title follows unless the user renamed it; the Foreman's stays), a new one goes on top. With
+// a worktree (path not ""), the entry records it. now is wall-clock microseconds.
+dc_store_keep :: (s: [] DcStore, id: string, title: string, folder: string, text: string, managed: string, wt_path: string, wt_branch: string, repo: string, now: int) -> bool {
+  if !dk_id_ok(id) { return false; }
+  pb: [DC_PATH] u8;
+  if !dcos_write(dc_store_file(s, id, ".json", pb[..]), text) { return false; }
+  x := s[0].x[..]; tb: [64] u8; when := dk_time_json(now, tb[..]);
+  i := dk_find(x, id);
+  if i >= 0 {
+    c := x[0].chats[i];
+    if c.created_n == 0 { c.created_n = dk_copy(c.created[..], dk_updated(x, i)); }
+    if !c.renamed && id != DK_FOREMAN_ID { c.title_n = dk_copy(c.title[..], title); }
+    c.updated_n = dk_copy(c.updated[..], when);
+    c.folder_n = dk_copy(c.folder[..], folder);
+    if managed.count > 0 { c.managed_n = dk_copy(c.managed[..], managed); }
+    x[0].chats[i] = c;
+  } else {
+    if x[0].n >= x[0].chats.count { return false; }
+    for j: 0..<x[0].n { x[0].chats[x[0].n - j] = x[0].chats[x[0].n - 1 - j]; }
+    c: DkChat;
+    c.id_n = dk_copy(c.id[..], id);
+    c.title_n = dk_copy(c.title[..], ifx id == DK_FOREMAN_ID then DC_FOREMAN_TITLE else title);
+    c.created_n = dk_copy(c.created[..], when); c.updated_n = dk_copy(c.updated[..], when);
+    c.folder_n = dk_copy(c.folder[..], folder);
+    c.managed_n = dk_copy(c.managed[..], managed);
+    x[0].chats[0] = c; x[0].n += 1; i = 0;
+  }
+  if wt_path.count > 0 {
+    x[0].chats[i].wt_path_n = dk_copy(x[0].chats[i].wt_path[..], wt_path);
+    x[0].chats[i].wt_branch_n = dk_copy(x[0].chats[i].wt_branch[..], wt_branch);
+    x[0].chats[i].repo_n = dk_copy(x[0].chats[i].repo[..], repo);
+  }
+  return dc_store_save(s);
+}
+// CoderStore.registerChat: a titled chat ("New chat" when the title cleans to nothing) the app keeps as named.
+dc_store_register :: (s: [] DcStore, id: string, title: string, folder: string, managed: string, now: int) -> bool {
+  if !dk_id_ok(id) { return false; }
+  x := s[0].x[..]; tb: [64] u8; when := dk_time_json(now, tb[..]);
+  cb: [512] u8; clean := dk_clean_title(title, cb[..]);
+  i := dk_find(x, id);
+  if i < 0 { return dk_add(x, id, title, folder, when, managed) && dc_store_save(s); }
+  x[0].chats[i].title_n = dk_copy(x[0].chats[i].title[..], ifx clean.count > 0 then clean else "New chat");
+  x[0].chats[i].renamed = true;
+  x[0].chats[i].updated_n = dk_copy(x[0].chats[i].updated[..], when);
+  x[0].chats[i].folder_n = dk_copy(x[0].chats[i].folder[..], folder);
+  if managed.count > 0 { x[0].chats[i].managed_n = dk_copy(x[0].chats[i].managed[..], managed); }
+  return dc_store_save(s);
+}
+dc_store_rename :: (s: [] DcStore, id: string, title: string) -> bool { i := dk_find(s[0].x[..], id); return i >= 0 && dk_rename(s[0].x[..], i, title) && dc_store_save(s); }
+dc_store_toggle_pin :: (s: [] DcStore, id: string) -> bool {
+  i := dk_find(s[0].x[..], id);
+  if i < 0 { return false; }
+  if s[0].x[0].chats[i].pinned >= 0 { dk_unpin(s[0].x[..], i); } else { dk_pin(s[0].x[..], i); }
+  return dc_store_save(s);
+}
+// CoderStore.remove: the chat's file and its place in the list; it can't be brought back.
+dc_store_remove :: (s: [] DcStore, id: string) -> bool {
+  i := dk_find(s[0].x[..], id);
+  if i < 0 || !dk_id_ok(id) { return false; }
+  pb: [DC_PATH] u8; _ := dcos_remove(dc_store_file(s, id, ".json", pb[..]));
+  dk_remove(s[0].x[..], i);
+  return dc_store_save(s);
+}
+
+// ---- keys and settings ----
+
+// A key file's text as the app reads it: the whole file, whitespace and newlines trimmed.
+dc_key_trim :: (raw: string) -> string {
+  t := raw;
+  while t.count > 0 && dk_space(t[0]) { t = t[1..<t.count]; }
+  while t.count > 0 && dk_space(t[t.count - 1]) { t = t[0..<t.count - 1]; }
+  return t;
+}
+// The key kept in the Coder folder's file name ("" for none).
+dc_key_read :: (name: string, out: [] u8) -> string {
+  pb: [DC_PATH] u8; raw: [8192] u8; n := dcos_read(dcos_coder_file(name, pb[..]), raw[..]);
+  if n < 1 { return ""; }
+  t := dc_key_trim(cast(string) raw[0..<n]);
+  return dc_fits(out, dc_copy(out, t));
+}
+// Keeps a key (this user only), or removes the kept one when key is empty.
+dc_key_save :: (name: string, key: string) -> bool {
+  pb: [DC_PATH] u8; path := dcos_coder_file(name, pb[..]);
+  t := dc_key_trim(key);
+  if t.count == 0 { _ := dcos_remove(path); return dcos_kind(path) == FS_NONE; }
+  return dcos_mkdirs(dc_parent(path)) && dcos_write_private(path, t);
+}
+// The Claude key a Claude sub-agent gets (CoderKey.current): CODER_CLAUDE_KEY when set, else the kept one.
+dc_claude_key :: (out: [] u8) -> string {
+  eb: [8192] u8; launch := dc_key_trim(dcos_getenv("CODER_CLAUDE_KEY", eb[..]));
+  if launch.count > 0 { return dc_fits(out, dc_copy(out, launch)); }
+  return dc_key_read(DC_KEY_CLAUDE, out);
+}
+// The end of a key, for showing which one is set: "…" and its last 4 characters (bytes).
+dc_key_tail :: (key: string, out: [] u8) -> string {
+  n := dc_copy(out, "…"); from := ifx key.count > 4 then key.count - 4 else 0;
+  return dc_fits(out, dc_cat(out, n, key[from..<key.count]));
+}
+// Whether new chats get their own worktree (ChatWorktree.enabled: on unless set off).
+dc_worktrees_on :: () -> bool { b: [64] u8; v := dcos_setting(DC_SET_WORKTREES, b[..]); return v != "0"; }
+
+#test "desktop core store: times, keys and order" {
+  #assert dc_micros("1763500000.5") == 1763500000500000 && dc_micros("5") == 5000000 && dc_micros("1.0000019") == 1000001 && dc_micros("") == 0;
+  #assert dc_key_trim("  sk-abc \n") == "sk-abc" && dc_key_trim("\n\t") == "";
+  b: [64] u8; #assert dc_key_tail("sk-ant-12345678", b[..]) == "…5678" && dc_key_tail("ab", b[..]) == "…ab";
+  chats: [8] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  #assert dk_index_parse(x[..], DK_FIXTURE_INDEX) && x[0].n == 4;
+  dc_store_sort(x[..]);   // created or updated, newest first: aaa (1763500000.5), bbb (1763400000), ccc (5), foreman (1)
+  #assert dk_id(x[..], 0) == "aaa" && dk_id(x[..], 1) == "bbb" && dk_id(x[..], 2) == "ccc" && dk_id(x[..], 3) == "foreman";
+}
