@@ -410,6 +410,17 @@ That runs every page check. A check file under `page/checks/` also runs on its
 own, for example
 `coax/bin/coax test apps/coder-desktop/page/checks/transcript-checks.coax --library`.
 
+A check holds a page and a check-sized store (`CpCheckStore` in `page/state.coax`); the app's
+page gets its full store (`CpStore`) from the host. So a check fits the compiler's value slots when
+it runs in the evaluator, as a run of one check does (#13767):
+
+```sh
+apps/coder-desktop/page-slots.sh
+```
+
+That runs every check file in the evaluator with the slot limit at 85%, and fails when a check
+needs more.
+
 The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
 
@@ -424,7 +435,7 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | --- | --- |
 | `page.coax` | The page's entry: it loads `page/parts.coax` and the checks |
 | `page/parts.coax` | The page's parts, in one namespace; a check file loads it alone |
-| `page/state.coax` | Capacities, ids and actions, the `CoderPage` struct, `cp_init` and the small helpers |
+| `page/state.coax` | Capacities, ids and actions, the `CoderPage` struct, its store (`CpStore`, `CpCheckStore`), `cp_init` and the small helpers |
 | `page/skin.coax`, `page/models.coax` | The page's skin and scale; the model picker's list and the OpenRouter models |
 | `page/goal.coax` | The chat's cost and budget, the thread goal and `/goal` |
 | `page/transcript.coax` | Turns and their rows: sending, the reply, commands, tool calls, thoughts, sub-agents and their workers |
@@ -445,6 +456,7 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `Window+Chats.swift` | Opening, keeping, renaming and deleting chats, the working folder and text size |
 | `Worktree.swift`, `Window+Worktrees.swift` | Each chat's own worktree: its path and branch, making and cloning it, and removing it only when clean |
 | `worktree-test.sh`, `worktree-test.swift` | The checks of that, under a throwaway home folder |
+| `page-slots.sh` | The page's checks in the evaluator with the value-slot limit at 85% (#13767) |
 | `Window+Settings.swift`, `Window+Dialogs.swift` | The settings screen's wiring, and the budget, goal, Claude key and OpenRouter dialogs |
 | `Window+Menus.swift` | Right-click menus |
 | `Window+Update.swift` | Checking for updates, the update pill, install and relaunch |

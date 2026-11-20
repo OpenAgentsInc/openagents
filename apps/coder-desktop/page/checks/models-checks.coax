@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "OpenRouter: the set model is a picker entry and a sub-agent level, routed as openrouter: ids, kept by save/load" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p2: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert cp_models(s) == CP_MODELS;                              // none set: no entry, no level offered
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
@@ -30,7 +30,7 @@
   #assert cp_agent_wait(s, 1, 0, wb[..]) == "waiting on OpenRouter · 4s";
   // saved by its id, found again as the OpenRouter entry; clearing the setting goes back to Neon
   saved: [65536] u8; sn := coder_page_save(s, saved[..]);
-  p2: [1] CoderPage; s2 := p2[..]; cp_init(s2);
+  p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]); cp_init(s2);
   coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
   #assert sn > 0 && coder_page_load(s2, cast(string) saved[0..<sn]) && s2[0].model == CP_MODEL_OR && s2[0].turns[1].model == CP_MODEL_OR && s2[0].turns[1].agents[0].level == CP_LEVEL_OR;
   coder_page_set_openrouter(s2, "", "");
@@ -42,7 +42,7 @@
 }
 
 #test "composer model picker defaults to Neon, switches models per chat, routes tasks, and persists across save/load/take/new" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p2: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
@@ -95,13 +95,12 @@
   saved: [16384] u8;
   sn := coder_page_save(s, saved[..]);
   #assert sn > 0;
-  p2: [1] CoderPage; s2 := p2[..];
+  p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
   cp_init(s2);
   #assert coder_page_load(s2, cast(string) saved[0..<sn]);
   #assert s2[0].model == 1 && s2[0].turns[0].model == 0 && s2[0].turns[1].model == 1;
   // coder_page_take transfers selected model and resets source to Neon.
-  p3: [1] CoderPage; s3 := p3[..];
-  cp_init(s3);
+  s3 := s;   // the chat in s goes; s2's takes its place
   #assert coder_page_take(s3, s2);
   #assert s3[0].model == 1 && s2[0].model == CP_MODEL_DEFAULT;
   // New chat resets selected model to Neon.
@@ -113,7 +112,7 @@
 }
 
 #test "OpenRouter model picker popover clears the composer, keeps presses from the composer's editor while open, and receives clicks" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); test_atlas(s[0].atlas[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
   s[0].d = 1.0f32;
   coder_page_set_openrouter(s, "anthropic/claude-sonnet-4", "");
   #assert cp_models(s) == 5;

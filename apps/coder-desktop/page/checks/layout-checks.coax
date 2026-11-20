@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "the page lays out in points: its scale is the text size alone" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_zoom(s, 0) == 2 && abs(coder_page_scale(s) - 1.0) < 0.001;
   #assert coder_page_zoom(s, 1) == 3 && abs(coder_page_scale(s) - 1.1) < 0.001;
@@ -71,7 +71,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   keys: [16] Keyed; ks: [1] KeyedStore; ks[0] = KeyedStore.{rows = keys[..]};
   k := cp_skin();
   f: [1] UiFrame;
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   h: f32 = 660.0f32;
@@ -114,7 +114,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
 }
 
 #test "sidebar collapses below CP_SIDE_FROM and yields to transcript pane under CP_PANE_MAIN" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   f: [1] UiFrame;
@@ -144,7 +144,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
 }
 
 #test "zoom and pane resize clamp to configured bounds" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   #assert coder_page_zoom_set(s, -5) == 0 && cp_scale(s) == CP_ZOOMS[0];
@@ -177,7 +177,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
 }
 
 #test "foreman chat renders GPU Foreman HUD with clickable managed worker nodes and compact toggle" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
@@ -198,7 +198,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
 }
 
 #test "sidebar collapse toggle hides and restores the persistent sidebar on wide windows" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   f: [1] UiFrame;
   // Wide window starts with persistent sidebar and a Hide sidebar toggle
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
@@ -232,7 +232,7 @@ cp_pt :: (t: UiType) -> f32 { return coder_page_font_size(t.face); }
   #assert !uiframe_moving(f[..]) && uiframe_end(f[..], s[0].surface[..]) && s[0].side == 0;
 }
 #test "a trackpad flick coasts the transcript, a gesture stays with its view, and the system's momentum goes unused" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   coder_page_now(s, 100);
   sc := cp_scale(s);
@@ -273,7 +273,7 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   return uiframe_end(f, s[0].surface[..]);
 }
 #test "the title bar: 38 points, the toggle 88 in on the lights' line whether the sidebar shows or not, everything else under it" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   #assert cp_bar(s) == 38 && cp_bar_line(s) == 20 && cp_bar_toggle_x(s) == 88;
   #assert coder_page_set_text(s, "check the bar") && coder_page_submit(s);
@@ -310,7 +310,7 @@ cp_bar_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32) -> bool {
   #assert coder_page_zoom_set(s, 7) == 7 && abs(cp_bar(s) * cp_scale(s) - 38) < 0.01 && abs(cp_bar_toggle_x(s) * cp_scale(s) - 88) < 0.01;
 }
 #test "settings start under the title bar, and a press on its empty part moves the window" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   coder_page_settings_open(s, CP_PG_GENERAL, "");
   #assert cp_bar_draw(s, f[..], 1200, 700);

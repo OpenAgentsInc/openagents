@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "a chat is kept and read back whole; the list names the chats; a reopened chat's turns go to the worker" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert !coder_page_save_due(s) && coder_page_set_text(s, "List  the\nfiles") && coder_page_submit(s) && coder_page_save_due(s) && !coder_page_save_due(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"opus\",\"task\":\"look\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -46,7 +46,7 @@
 }
 
 #test "a running chat moves out of view and back with its run; a new chat and another chat open while it runs; the list marks it" {
-  p: [2] CoderPage; s := p[0..<1]; b := p[1..<2];
+  p: [2] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[0..<1], p_st[..]); b_st: [1] CpCheckLean; b := cp_check_lean(p[1..<2], b_st[..]);
   cp_init(s); coder_page_init(b);
   coder_page_current(s, "a1");
   #assert coder_page_set_text(s, "look around") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND && coder_page_save_due(s);
@@ -72,8 +72,19 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED && !cp_running(s) && coder_page_save_due(s);
 }
 
-#test "a kept chat larger than 1 MiB (CL_LINE_MAX) loads back" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+// A chat of one message with 600 rows: room for its tool calls.
+CpCheckRows :: struct {
+  turns: [2] CpTurn;
+  agents: [2 * CP_AGENTS] CpAgent;
+  asks: [2 * EB_TEXT] u8;
+  replies: [2 * CP_REPLY] u8;
+  calls: [640] CpCall;
+  docs: [2] MdDoc;
+  long_buf: [16384] u8;
+}
+#test "a kept chat larger than 1 MiB (CL_LINE_MAX) loads back" #steps 1000000000 {
+  p: [1] CoderPage; p_st: [1] CpCheckRows; s := p[..];
+  cp_store_bind(s, p_st[0].turns[..], p_st[0].agents[..], p_st[0].asks[..], p_st[0].replies[..], p_st[0].calls[..], p_st[0].docs[..], p_st[0].long_buf[..]); cp_init(s);
   #assert coder_page_set_text(s, "big chat") && coder_page_submit(s);
   out_buf: [CP_CMD_OUT] u8;
   for k: 0..<CP_CMD_OUT { out_buf[k] = 'x'; }
@@ -94,7 +105,7 @@
 }
 
 #test "loading a saved chat with historical sub-agents leaves the sidebar closed" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"first\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -106,7 +117,7 @@
 }
 
 #test "the recall line cuts a long message on a character, says it was cut, and the worker takes it" #steps 400000000 {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   // an em dash straddles where the cut falls: CP_RECALL_TEXT less the marker
   at := CP_RECALL_TEXT - CP_RECALL_CUT.count;
   r := s[0].turns[0].reply[..]; for k: 0..<at + 100 { r[k] = 'a'; } r[at - 1] = 0xE2; r[at] = 0x80; r[at + 1] = 0x94;

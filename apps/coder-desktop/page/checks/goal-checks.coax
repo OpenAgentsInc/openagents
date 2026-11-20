@@ -19,7 +19,7 @@
 }
 
 #test "per-thread max budget defaults to $50, persists across save/load/take, auto-stops on exceed, and requires manual approval or budget increase" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_budget_usd_micros(s) == 50000000 && !coder_page_budget_exceeded(s);
   #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_usd_micros(s) == 100000;
@@ -50,7 +50,7 @@
 }
 
 #test "per-thread max budget and override transfer across coder_page_take and reset the source page" {
-  p: [1] CoderPage; s := p[..]; q: [1] CoderPage; b := q[..];
+  p: [1] CoderPage; q: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); q_st: [1] CpCheckLean; b := cp_check_lean(q[..], q_st[..]);
   cp_init(s); cp_init(b);
   #assert coder_page_set_budget_usd_micros(s, 100000) && coder_page_budget_approve(s);
   #assert coder_page_set_text(s, "run") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
@@ -62,7 +62,7 @@
 }
 
 #test "/goal slash commands manage lifecycle, prompt injection, continuation, and persistence" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   // Bare /goal with no active goal opens the goal editor.
   #assert coder_page_set_text(s, "/goal") && coder_page_submit(s);
@@ -114,7 +114,7 @@
 }
 
 #test "setting a goal right after submitting a prompt attaches goal context without starting a duplicate turn" {
-  store: [1] CoderPage; s := store[..];
+  store: [1] CoderPage; store_st: [1] CpCheckStore; s := cp_check_page(store[..], store_st[..]);
   #assert coder_page_set_text(s, "[From Foreman]\nImplement the fix") && coder_page_submit(s);
   #assert coder_page_running(s) && s[0].nturns == 1;
   #assert coder_page_goal_set(s, "ship foreman goal fix cleanly");

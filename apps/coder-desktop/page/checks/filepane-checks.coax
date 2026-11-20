@@ -20,7 +20,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "a file opens in the pane with its name, path and numbered lines, editable" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "main :: () {\n  print(\"hi\");\n}\n";
   #assert coder_page_file_open(s, "~/work/app/main.coax", b[0..<cp_out(b[..], src)], src.count);
   #assert coder_page_file_mode(s) == CP_FP_EDIT && coder_page_file_shown(s) && !coder_page_file_dirty(s);
@@ -37,7 +37,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "an edit makes the file Edited with Save; Save asks the host and the saved text clears it" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "one\ntwo\n";
   #assert coder_page_file_open(s, "~/notes.txt", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
   // a press in its text gives it the keyboard; the host is asked to keep the keyboard on the view
@@ -64,7 +64,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "Close asks the host, and the closed pane gives the window and the keyboard back" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   b: [256] u8; src := "x\n";
   #assert coder_page_file_open(s, "~/a.coax", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
   #assert cp_test_press_field(s, CP_ED_FILE) && s[0].fld[0].kb == CP_KB_FILE;
@@ -80,7 +80,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "a file the host could not read says why, with nothing to edit or save" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   coder_page_file_failed(s, "~/pic.bin", "pic.bin isn't text, so Coder can't show it here.");
   #assert coder_page_file_mode(s) == CP_FP_FAILED && coder_page_file_shown(s);
   #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.close.tab") == "pic.bin";
@@ -92,7 +92,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "a file past the editor's size is shown read-only, says so, and scrolls" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   big: [EB_TEXT + 4000] u8; n := 0;
   while n + 40 < big.count { n = el_put(big[..], n, "a line of the long file, to be numbered\n"); }
   #assert coder_page_file_open(s, "~/long.txt", big[0..<n], n) && coder_page_file_mode(s) == CP_FP_READ;
@@ -107,7 +107,7 @@ cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
 }
 
 #test "the review comes forward over the file, and the file comes back when it closes" {
-  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_fp_test_page(s, f[..]);
   #assert coder_page_set_text(s, "update foo") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"edit src/foo.coax\",\"exit\":0,\"timed_out\":false,\"output\":\"@@ -1,1 +1,1 @@\\n-old\\n+new\\n\"}") == MWW_COMMAND;
   b: [256] u8; src := "new\n";

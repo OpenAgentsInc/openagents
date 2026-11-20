@@ -23,7 +23,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
 }
 
 #test "⌘K opens it on All with the chats, the commands that work and settings; ⌘K again closes it" {
-  pg: [1] CoderPage; s := pg[..]; f: [1] UiFrame; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame; cp_pal_test_page(s);
   #assert coder_page_palette_toggle(s, APP_PAL_ALL) && coder_page_overlay_open(s) && coder_page_action(s) == CP_ASK_NONE;
   p := cp_pal(s);
   #assert app_palette_count(p, APP_PAL_SESSIONS) == 4 && app_palette_count(p, APP_PAL_SETTINGS) == CP_SET_ENTRIES;
@@ -37,7 +37,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert !coder_page_palette_toggle(s, APP_PAL_ALL) && !coder_page_palette_open(s);
 }
 #test "the sidebar's Search opens it on Sessions and asks the host to watch it" {
-  pg: [1] CoderPage; s := pg[..]; f: [1] UiFrame; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame; cp_pal_test_page(s);
   #assert cp_pal_test_draw(s, f[..], 0.016);
   t := [1] ElTable.[surface_rows(s[0].surface[..])];
   #assert elt_label(t[..], elt_find(t[..], "coder.search")) == "Search";
@@ -47,7 +47,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_palette_open(s) && cp_pal(s)[0].scope == APP_PAL_SESSIONS;
 }
 #test "the field is the page's fourth editor: typing narrows, Backspace edits, Return opens the chat" {
-  pg: [1] CoderPage; s := pg[..]; f: [1] UiFrame; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame; cp_pal_test_page(s);
   test_atlas(s[0].atlas[..]); coder_page_env(s, true, false);
   // the first frame at rest places the field; the next draws the editor in it
   #assert coder_page_palette_toggle(s, APP_PAL_ALL) && cp_pal_test_draw(s, f[..], 1) && cp_pal_test_draw(s, f[..], 0.016);
@@ -62,7 +62,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;
 }
 #test "Switch model drills in with the model lit; Backspace goes back; a model chosen is the chat's" {
-  pg: [1] CoderPage; s := pg[..]; f: [1] UiFrame; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame; cp_pal_test_page(s);
   #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS) && cp_pal_test_draw(s, f[..], 1);
   p := cp_pal(s);
   coder_page_ime_replace(s, -1, -1, "model"); #assert app_palette_query(p) == "model";
@@ -77,7 +77,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert !coder_page_palette_open(s) && s[0].model == 1;
 }
 #test "a setting opens settings at its row; rename asks the host; Escape closes with nothing done" {
-  pg: [1] CoderPage; s := pg[..]; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
   #assert coder_page_palette_toggle(s, APP_PAL_SETTINGS) && cp_pal_test_type(s, "text size");
   #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_SETTINGS;
   #assert coder_page_settings_page(s) == CP_PG_GENERAL && cast(string) s[0].set_target[0..<s[0].set_target_n] == "set.zoom";
@@ -86,7 +86,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_palette_toggle(s, APP_PAL_ALL) && coder_page_overlay_key(s, APP_OV_ESCAPE, 0) && coder_page_action(s) == CP_ASK_NONE;
 }
 #test "Bigger text, Smaller text and Actual size show ⌘ +, ⌘ - and ⌘ 0 and ask zoom in, out and reset" {
-  pg: [1] CoderPage; s := pg[..]; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
   #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
   p := cp_pal(s);
   bi := p[0].rows[cp_pal_test_row(s, "Bigger text")].item;
@@ -103,7 +103,7 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_ZOOM_RESET;
 }
 #test "⌃Tab and ⌃⇧Tab step through Foreman, the pinned chats and the rest, round the ends" {
-  pg: [1] CoderPage; s := pg[..]; cp_pal_test_page(s);
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
   #assert coder_page_chat_step(s, 1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;
   #assert coder_page_chat_step(s, -1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 0;
   coder_page_current(s, "r2");

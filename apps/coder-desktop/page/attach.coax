@@ -90,7 +90,7 @@ cp_refs_take :: (s: [] CoderPage, i: int, text: string) {
 cp_refs_set :: (s: [] CoderPage, i: int, note: string) -> bool {
   s[0].turns[i].refs_at = s[0].long_n; s[0].turns[i].refs_n = 0;
   if note.count == 0 { return true; }
-  if s[0].long_n + note.count > CP_LONG_POOL { return false; }
+  if s[0].long_n + note.count > s[0].long_buf.count { return false; }
   for c, k: note { s[0].long_buf[s[0].long_n + k] = c; }
   s[0].turns[i].refs_n = note.count; s[0].long_n += note.count;
   return true;

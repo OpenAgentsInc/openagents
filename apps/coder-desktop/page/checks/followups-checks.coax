@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "follow-ups: a steer goes out for the worker's turn and its statuses come back to the page" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   out: [8192] u8;
   #assert coder_page_steer_line(s, "s1", "also b", out[..]) == 0;     // no turn runs here
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
@@ -26,7 +26,7 @@
 }
 
 #test "follow-ups: a steer this page did not send (the paired phone's, #13713) shows with the words the worker gave" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
   #assert coder_page_line(s, "{\"kind\":\"steer\",\"id\":\"0123456789abcdef0123456789abcdef\",\"status\":\"accepted\",\"turn\":1,\"text\":\"use b\"}") == MWW_STEERED;
@@ -37,7 +37,7 @@
 }
 
 #test "follow-ups: a queued follow-up carries the task object its message would send" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   out: [2048] u8;
   n := coder_page_queue_message_line(s, "add", "q1", "then fix b", "sess", "/w", out[..]);
   ar: [1] ClArena; ab: [2048] u8; ar[0].buf = ab[..]; req: [1] MwwRequest; back: [1] McTask;
@@ -47,7 +47,7 @@
 }
 
 #test "follow-ups: the queue's lines, its whole state as the worker sends it, and a turn the worker starts from it" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   out: [1024] u8;
   #assert coder_page_queue_line(s, "add", "q1", 0, false, "", out[..]) == 0;
   n := coder_page_queue_line(s, "move", "q1", 2, false, "", out[..]);
@@ -61,7 +61,7 @@
 }
 
 #test "follow-ups: a turn the worker starts from the queue is a turn of the page, with nothing to send" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   t: [64] u8; m := 0;
   // the worker starts the head on its own: the page has a turn for it, and nothing to send
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"queue\",\"id\":\"q1\",\"text\":\"then fix b\"}") == MWW_TURN;
@@ -75,12 +75,12 @@
 }
 
 #test "follow-ups: a refused queue op is kept for the tray" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   #assert coder_page_line(s, "{\"kind\":\"queue_refused\",\"op\":\"delete\",\"id\":\"q9\",\"reason\":\"unknown_id\"}") == MWW_QUEUE_REFUSED && cp_fu_str(s[0].fu[0].refused[..], s[0].fu[0].nrefused) == "unknown_id";
 }
 
 #test "follow-ups: while a reply runs Return steers and Command-Return queues (or the other way round); editing a queued one, Return saves; Esc gives up the edit, then stops the reply" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   #assert !coder_page_followup_submit(s, false);                        // nothing written, nothing runs
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert !coder_page_followup_submit(s, false);                        // the draft went
@@ -103,7 +103,7 @@
 }
 
 #test "follow-ups: the tray shows the waiting steer and the queue over the composer, its presses reach the host, and a steer taken in shows in its message" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); f: [1] UiFrame;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
   out: [1024] u8;
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
@@ -137,7 +137,7 @@
   #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]) && surface_find(sf, "coder.fu") < 0 && s[0].fu[0].tray_h == 0;
 }
 #test "follow-ups: a steer the reply took in is kept with the chat and shows again after a reload (#13718)" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); f: [1] UiFrame;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
   out: [1024] u8;
   #assert coder_page_set_text(s, "fix a") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;

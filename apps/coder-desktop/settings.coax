@@ -387,7 +387,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   return surface_rows(s[0].surface[..]).rows[i];
 }
 #test "settings: the gear opens the list in the sidebar's place at its width, Back closes it, and the chat stays" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_sides_set(s, 300, 0);
   h: f32 = 700;
@@ -414,7 +414,7 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert coder_page_settings_page(s) == -1;
 }
 #test "settings: every page draws its rows, the search opens a row's page, and Account keeps its card beside or over the rows" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32;
   coder_page_settings_info(s, "Ends 1a2b", "", "0.1.0 (1)");
   coder_page_settings_open(s, CP_PG_MODELS, "");

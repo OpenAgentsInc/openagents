@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "a draft becomes a running turn, the worker's task names it, and its lines fill the reply" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert !coder_page_submit(s) && coder_page_set_text(s, "What is 2+2?") && coder_page_submit(s);
   #assert s[0].nturns == 1 && cp_running(s) && eb_text(s[0].draft[..]) == "" && coder_page_action(s) == CP_ASK_SEND && coder_page_action(s) == CP_ASK_NONE;
@@ -18,7 +18,7 @@
 }
 
 #test "a run that ends another way says why, a stopped one says Stopped, and a lost worker fails the turn" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "a") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"failed\",\"text\":\"a limit\"}") == MWW_ENDED;
@@ -32,7 +32,7 @@
 }
 
 #test "a turn stopped from elsewhere is saved stopped: after a reply it keeps the reply, before one it has none, never a failure note" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   // the paired phone stops it: the worker says "stopped" and this page set no stopping (#13756)
   #assert coder_page_set_text(s, "Please survey the tests") && coder_page_submit(s);
@@ -54,7 +54,7 @@
 }
 
 #test "a reply that streams a code block in pieces ends with the whole block" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "hello world") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"2 + 2 = 4\\n\\n```python\\nprint(\\\"Hello\"}") == MWW_REPLY;
@@ -65,7 +65,7 @@
 }
 
 #test "a command the worker ran and a file it read join the running turn, and every one is kept" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "list it") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\\nb\"}") == MWW_COMMAND;
@@ -78,7 +78,7 @@
 }
 
 #test "the note on installed skills goes ahead of the message in the task, and the message shown stays the person's" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   coder_page_skills(s, "Skills: gamebuilder.\n\n");
   #assert coder_page_set_text(s, "List my games") && coder_page_submit(s);
@@ -89,7 +89,7 @@
 }
 
 #test "after a reply and a new chat, the next message still makes a task" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   coder_page_skills(s, "Skills: gamebuilder.\n\n");
   #assert coder_page_set_text(s, "Write three paragraphs") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
@@ -103,7 +103,7 @@
 }
 
 #test "text a request wrote before its commands gives way to the next request's text" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "open my game") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Opened it. \"}") == MWW_REPLY && coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Look there.\"}") == MWW_REPLY;
@@ -114,7 +114,7 @@
 }
 
 #test "a command shows as running when the worker asks, is answered yes, and takes its output when it ends" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "find it") && coder_page_submit(s);
   out: [4096] u8; n := coder_page_task(s, "s-1", "/w", out[..]);
@@ -132,7 +132,7 @@
 }
 
 #test "the working folder is kept as the host shows it, up to 512 bytes" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert s[0].folder_n == 0;
   coder_page_folder(s, "~/work/app");
@@ -143,7 +143,7 @@
 }
 
 #test "Copy takes a message, a reply, or the whole chat with its commands" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "List files") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ls\",\"exit\":0,\"timed_out\":false,\"output\":\"a\"}") == MWW_COMMAND;
@@ -158,8 +158,8 @@
   #assert coder_page_new(s) && s[0].copied_kind == CP_COPIED_NONE;
 }
 
-#test "thinking is a row in its place, named by its first line, kept whole, saved with the chat and left out of a copy" {
-  p: [1] CoderPage; s := p[..];
+#test "thinking is a row in its place, named by its first line, kept whole, saved with the chat and left out of a copy" #steps 150000000 {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"**Reading the plan**\\n\\nI will list the files first.\"}") == MWW_THOUGHT;
@@ -213,7 +213,7 @@
 }
 
 #test "a click on a reply shows who wrote it and another hides it; a drag does not; the corner icons are one size" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "hi") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Hello.\"}") == MWW_ENDED;
@@ -236,6 +236,21 @@ cp_test_frame :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, reduced: bool)
   return ok;
 }
 // n finished turns, each asking `ask` and answered "ok N".
+// A long chat's storage: many turns with short messages and replies, and no sub-agents.
+CP_CHECK_LONG_TURNS :: 320;
+CpCheckLong :: struct {
+  turns: [CP_CHECK_LONG_TURNS] CpTurn;
+  agents: [1] CpAgent;        // none of it is bound: no turn has room for a sub-agent
+  asks: [CP_CHECK_LONG_TURNS * 64] u8;
+  replies: [CP_CHECK_LONG_TURNS * 64] u8;
+  calls: [64] CpCall;
+  docs: [CP_CHECK_DOCS] MdDoc;
+  long_buf: [4096] u8;
+}
+cp_check_long :: (p: [] CoderPage, st: [] CpCheckLong) -> [] CoderPage {
+  cp_store_bind(p, st[0].turns[..], st[0].agents[0..<0], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  return p;
+}
 cp_test_turns :: (s: [] CoderPage, n: int, ask: string) -> bool {
   for i: 0..<n {
     if !coder_page_set_text(s, ask) || !coder_page_submit(s) || coder_page_action(s) != CP_ASK_SEND { return false; }
@@ -247,7 +262,7 @@ cp_test_turns :: (s: [] CoderPage, n: int, ask: string) -> bool {
 cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surface[..], id); tb := surface_rows(s[0].surface[..]); return ifx i >= 0 then tb.rows[i] else El.{}; }
 
 #test "a chat holds far more than 24 messages, and a frame lays out only the ones near the view" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckLong; s := cp_check_long(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert cp_test_turns(s, 300, "turn");
   #assert s[0].nturns == 300 && !cp_full(s) && CP_TURNS >= 1000;
@@ -265,13 +280,13 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   #assert cp_id(ib[..], 300, ".u") == "t300.u" && cp_number("t300.u.more", "t") == 300;
 }
 
-#test "rows measured above the view do not move what is read" {
-  p: [1] CoderPage; s := p[..];
+#test "rows measured above the view do not move what is read" #steps 200000000 {
+  p: [1] CoderPage; q: [1] CoderPage; p_st: [1] CpCheckLong; s := cp_check_long(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   #assert cp_test_turns(s, 60, "turn");
   out: [200000] u8; n := coder_page_save(s, out[..]);
   // read back: no message is measured yet
-  q: [1] CoderPage; r := q[..]; cp_init(r); r[0].d = 1.0f32; r[0].ready = true; f: [1] UiFrame;
+  q_st: [1] CpCheckLong; r := cp_check_long(q[..], q_st[..]); cp_init(r); r[0].d = 1.0f32; r[0].ready = true; f: [1] UiFrame;
   #assert n > 0 && coder_page_load(r, cast(string) out[0..<n]) && r[0].nturns == 60 && r[0].turns[30].seen_h == 0;
   for k: 0..<5 { #assert cp_test_frame(r, f[..], 1200, 800, true); }
   r[0].stick = false;
@@ -295,7 +310,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a person's message past five lines folds with Show more, eases open, and Show less folds it again" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert cp_test_turns(s, 1, "1\n2\n3\n4\n5\n6\n7\n8\n9\n10") && cp_test_turns(s, 1, "hi");
   #assert cp_test_frame(s, f[..], 1200, 800, true);
@@ -318,7 +333,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "the working row says Sending… before the turn begins, and a settled group says how long it worked" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; q: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert cp_test_frame(s, f[..], 1200, 800, true);
@@ -335,13 +350,13 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   // kept with the chat
   out: [8192] u8; n := coder_page_save(s, out[..]);
   #assert cp_find(cast(string) out[0..<n], "\"worked\":41") > 0;
-  q: [1] CoderPage; r := q[..]; cp_init(r); r[0].d = 1.0f32; r[0].ready = true;
+  q_st: [1] CpCheckLean; r := cp_check_lean(q[..], q_st[..]); cp_init(r); r[0].d = 1.0f32; r[0].ready = true;
   #assert coder_page_load(r, cast(string) out[0..<n]) && cp_test_frame(r, f[..], 1200, 800, true);
   #assert surface_say(r[0].surface[..], surface_find(r[0].surface[..], "t0.grp")) == "Worked for 41s · Ran 1 command";
 }
 
-#test "away from the end Jump to latest floats over the transcript's foot, New reply while one is written; a press glides to the end" {
-  p: [1] CoderPage; s := p[..];
+#test "away from the end Jump to latest floats over the transcript's foot, New reply while one is written; a press glides to the end" #steps 60000000 {
+  p: [1] CoderPage; p_st: [1] CpCheckLong; s := cp_check_long(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert cp_test_turns(s, 40, "turn");
   for q: 0..<5 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
@@ -377,7 +392,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a sent message glides the view to the end when it was a little way up" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckLong; s := cp_check_long(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert cp_test_turns(s, 30, "turn");
   for q: 0..<5 { #assert cp_test_frame(s, f[..], 1200, 800, false); }
@@ -389,16 +404,17 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a long chat keeps few reply documents: one scrolled away is parsed again when it is needed" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckLong; s := cp_check_long(p[..], p_st[..]);
   cp_init(s);
-  #assert cp_test_turns(s, CP_DOCS + 20, "turn");
+  #assert cp_test_turns(s, s[0].docs.count + 20, "turn");
   d := cp_doc(s, 0);
   #assert s[0].turns[0].blocks == 1 && md_block_text(d, 0) == "ok 0";
-  #assert md_block_text(cp_doc(s, CP_DOCS + 19), 0) == "ok 67" && md_block_text(cp_doc(s, 0), 0) == "ok 0";
+  last := s[0].docs.count + 19; eb: [16] u8; want := cast(string) eb[0..<el_put_i(eb[..], el_put(eb[..], 0, "ok "), last)];
+  #assert md_block_text(cp_doc(s, last), 0) == want && md_block_text(cp_doc(s, 0), 0) == "ok 0";
 }
 
 #test "malformed and truncated wire JSON lines do not corrupt a running turn" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "resilience") && coder_page_submit(s);
   #assert coder_page_line(s, "") == 0;
@@ -414,7 +430,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a message's work is one activity group: open while it runs, its summary counted, folded when done until a press opens it" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Plan the look\"}") > 0;
@@ -436,7 +452,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a row says how long it has run; a file a row reads or a reply names opens through the host" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"view\",\"path\":\"apps/coder-desktop/page.coax\",\"found\":true}") == MWW_VIEW;
@@ -459,7 +475,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "coder desktop tasks disable interactive asking for main and sub-agent workers" {
-  p: [1] CoderPage; s := p[..]; cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
   coder_page_set_claude(s, true);
   #assert coder_page_set_text(s, "ship it") && coder_page_submit(s);
   #assert coder_page_action(s) == CP_ASK_SEND;
@@ -476,7 +492,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "message copy buttons follow Zeron's hover lane: hidden until hovered, flush to edge, and reset Copied after 1.2s" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "hello") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"world\"}") == MWW_ENDED;
@@ -517,7 +533,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
 }
 
 #test "a thought's words are a step smaller than a reply's, as Zeron's: 14 point plain and bold, 13 point code (#13770)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   k := cp_skin();
   #assert coder_page_font_size(k.body.face) == 15 && coder_page_font_size(k.act.thought_face) == 14;

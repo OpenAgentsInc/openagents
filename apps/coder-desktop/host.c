@@ -9,6 +9,7 @@
 typedef struct {
   App app;
   coax_t_CoderPage *s;
+  coax_t_CpStore *st;   // the page's turns, tool calls and long text (page/state.coax, coder_page_store)
   int edge;
   int active, reduced;   // the view has the keyboard (its window key, it first responder); reduced motion (bit 1) and transparency (bit 2)
   float screen;   // the screen's own scale
@@ -23,6 +24,13 @@ typedef struct {
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
+// The page and its storage, zeroed, the storage handed to the page. False when either can't be had.
+static int cd_alloc(CoderHost *c) {
+  c->s = calloc(1, sizeof *c->s); c->st = calloc(1, sizeof *c->st);
+  if (!c->s || !c->st) { free(c->s); free(c->st); return 0; }
+  coder_page_store(cd_state(c), (coax_v_t_CpStore){c->st, 1});
+  return 1;
+}
 static coax_string cd_string(const char *text) { return (coax_string){text ? text : "", text ? (int64_t)strlen(text) : 0}; }
 static void cd_changed(CoderHost *c) { c->settle = 3; }
 static void cd_woke(CoderHost *c) { cd_changed(c); if (c->changed) c->changed(c->context); }
@@ -135,8 +143,7 @@ void *cd_open(const char *resources) {
   snprintf(c->composition_shader, sizeof c->composition_shader, "%s/composition.metal", resources);
   FILE *composition = fopen(c->composition_shader, "rb");
   if (composition) fclose(composition);
-  c->s = calloc(1, sizeof *c->s);
-  if (!c->s) { free(c); return NULL; }
+  if (!cd_alloc(c)) { free(c); return NULL; }
   a->icon_size = cd_icon_size; a->font_size = cd_font_size;
   a->atlas = c->s->atlas.e; a->max_vertices = (uint32_t)coder_page_max_vertices();
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
@@ -144,14 +151,14 @@ void *cd_open(const char *resources) {
                .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
-  if (!a->host) { free(c->s); free(c); return NULL; }
+  if (!a->host) { free(c->s); free(c->st); free(c); return NULL; }
   c->composition = composition != NULL;
   coder_page_compose(cd_state(c), c->composition);
   // the atlas at the scale the page draws its units at
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   c->screen = a->dpr;
   a->dpr *= coder_page_scale(cd_state(c));
-  if (!atlas_setup(a)) { gallery_free(a); free(c->s); free(c); return NULL; }
+  if (!atlas_setup(a)) { gallery_free(a); free(c->s); free(c->st); free(c); return NULL; }
   cd_changed(c);
   return c;
 }
@@ -317,8 +324,7 @@ int cd_box(void *page, const char *id, float box[4]) { CoderHost *c = page; retu
 void *cd_headless(void) {
   CoderHost *c = calloc(1, sizeof *c);
   if (!c) return NULL;
-  c->s = calloc(1, sizeof *c->s);
-  if (!c->s) { free(c); return NULL; }
+  if (!cd_alloc(c)) { free(c); return NULL; }
   c->headless = 1;
   coder_page_init(cd_state(c));
   return c;
@@ -388,7 +394,7 @@ void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
-  free(c->files); free(c->file); free(c->s); free(c);
+  free(c->files); free(c->file); free(c->s); free(c->st); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.

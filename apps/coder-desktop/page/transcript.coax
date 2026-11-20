@@ -18,7 +18,7 @@ cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
   prev_n := ifx s[0].turns[i].state == CP_RUNNING && more && was > 0 then cp_doc(s, i)[0].n else 0;
   n := ifx more then was else 0;
   if was == 0 && text.count > 0 { s[0].live_reply = i; }
-  for c: text { if n >= CP_REPLY { s[0].turns[i].cut = true; break; } s[0].turns[i].reply[n] = c; n += 1; }
+  for c: text { if n >= s[0].turns[i].reply.count { s[0].turns[i].cut = true; break; } s[0].turns[i].reply[n] = c; n += 1; }
   s[0].turns[i].reply_n = n; s[0].turns[i].h = 0;
   s[0].rev_n += 1; s[0].turns[i].rev = s[0].rev_n;
   if !s[0].at_end && text.count > 0 { s[0].unseen = true; }   // Jump to latest says New reply
@@ -87,7 +87,7 @@ cp_head :: (s: [] CoderPage, i: int, j: int) -> int { return ifx j < 0 then s[0]
 cp_call_add :: (s: [] CoderPage, i: int, j: int, text: string, output: string, read: bool, failed: bool, running: bool) -> int {
   q := -1;
   if s[0].calls_free > 0 { q = s[0].calls_free - 1; s[0].calls_free = s[0].calls[q].next; }
-  else if s[0].calls_n < CP_AGENT_CALLS { q = s[0].calls_n; s[0].calls_n += 1; }
+  else if s[0].calls_n < s[0].calls.count { q = s[0].calls_n; s[0].calls_n += 1; }
   else {
     // the oldest row in the chat is the head of its list
     for ti: 0..<s[0].nturns {
@@ -145,7 +145,7 @@ cp_long_set :: (s: [] CoderPage, q: int, text: string) {
   if limit < text.count {
     while limit > 1 && text[limit] >= 128 && text[limit] < 192 { limit -= 1; }
   }
-  if s[0].long_n + limit <= CP_LONG_POOL {
+  if s[0].long_n + limit <= s[0].long_buf.count {
     at := s[0].long_n;
     for k: 0..<limit { s[0].long_buf[at + k] = text[k]; }
     s[0].long_n = at + limit;
@@ -199,7 +199,7 @@ cp_said_add :: (s: [] CoderPage, i: int, j: int, piece: string) {
   if c.long_n == 0 && c.out_n + take <= CP_CMD_OUT {
     for k: 0..<take { s[0].calls[q].out[c.out_n + k] = piece[k]; }
     s[0].calls[q].out_n = c.out_n + take;
-  } else if c.long_n > 0 && c.long_at + c.long_n == s[0].long_n && s[0].long_n + take <= CP_LONG_POOL {
+  } else if c.long_n > 0 && c.long_at + c.long_n == s[0].long_n && s[0].long_n + take <= s[0].long_buf.count {
     for k: 0..<take { s[0].long_buf[s[0].long_n + k] = piece[k]; }
     s[0].long_n += take; s[0].calls[q].long_n = c.long_n + take;
   } else {
@@ -337,7 +337,7 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
       continue;
     }
     j := s[0].turns[i].nagents;
-    if j >= CP_AGENTS { continue; }
+    if j >= s[0].turns[i].agents.count { continue; }
     s[0].turns[i].agents[j] = CpAgent.{};
     s[0].turns[i].agents[j].task_n = cp_out(s[0].turns[i].agents[j].task[..], cl_str(ar[..], one, "task"));
     level := cl_str(ar[..], one, "level");

@@ -112,7 +112,7 @@ cp_load_row :: (s: [] CoderPage, i: int, j: int, c: string) {
 coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 || cp_running(s) || cl_at(text, "turns").tok != JSON_ARRAY { return false; }
   turns := cl_raw(text, "turns");
-  count := cl_count(turns); if count > CP_TURNS { count = CP_TURNS; }
+  count := cl_count(turns); if count > s[0].turns.count { count = s[0].turns.count; }
   ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
   s[0].nturns = 0; cp_calls_reset(s); cp_fu_reset(s); cp_docs_reset(s);
   for i: 0..<count {
@@ -145,7 +145,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false;
     cmds := cl_raw(t, "cmds"); nc := ifx cmds.count > 0 then cl_count(cmds) else 0;
     for at: 0..<nc { cp_load_row(s, i, -1, cl_json(cmds, cl_item(cmds, at))); }
-    agents := cl_raw(t, "agents"); na := ifx agents.count > 0 then cl_count(agents) else 0; if na > CP_AGENTS { na = CP_AGENTS; }
+    agents := cl_raw(t, "agents"); na := ifx agents.count > 0 then cl_count(agents) else 0; if na > s[0].turns[i].agents.count { na = s[0].turns[i].agents.count; }
     for j: 0..<na {
       g := cl_json(agents, cl_item(agents, j));
       s[0].turns[i].agents[j] = CpAgent.{}; s[0].turns[i].nagents = j + 1;
@@ -259,12 +259,25 @@ coder_page_tick :: (s: [] CoderPage, dt: f32) #export_c #effects(all) { if s.cou
 // The chat in `from` moves to `to`, run and all: its turns, sub-agents, tool calls and what the
 // worker is owed. `from` is left a new chat, with nothing to ask the host. False when `to` holds a
 // running chat. The clock's times shift to `to`'s clock.
+// Turn i of `from` becomes turn i of `to`: its fields, and its message, reply and sub-agents copied
+// into `to`'s own storage.
+cp_turn_copy :: (to: [] CoderPage, i: int, from: [] CoderPage) {
+  ag := to[0].turns[i].agents; ak := to[0].turns[i].ask; rp := to[0].turns[i].reply;
+  to[0].turns[i] = from[0].turns[i];
+  to[0].turns[i].agents = ag; to[0].turns[i].ask = ak; to[0].turns[i].reply = rp;
+  t := from[0].turns[i];
+  to[0].turns[i].ask_n = cp_out(ak, cast(string) t.ask[0..<t.ask_n]);
+  to[0].turns[i].reply_n = cp_out(rp, cast(string) t.reply[0..<t.reply_n]);
+  if t.reply_n > rp.count { to[0].turns[i].cut = true; }
+  if t.nagents > ag.count { to[0].turns[i].nagents = ag.count; }
+  for j: 0..<to[0].turns[i].nagents { ag[j] = t.agents[j]; }
+}
 coder_page_take :: (to: [] CoderPage, from: [] CoderPage) -> bool #export_c #effects(all) {
   if to.count < 1 || from.count < 1 || cp_running(to) { return false; }
   if !to[0].ready { cp_init(to); }
   shift := to[0].clock - from[0].clock;
   for i: 0..<from[0].nturns {
-    to[0].turns[i] = from[0].turns[i];
+    cp_turn_copy(to, i, from);
     for j: 0..<to[0].turns[i].nagents { to[0].turns[i].agents[j].began += shift; to[0].turns[i].agents[j].heard += shift; }
   }
   for q: 0..<from[0].calls_n { to[0].calls[q] = from[0].calls[q]; to[0].calls[q].began += shift; }

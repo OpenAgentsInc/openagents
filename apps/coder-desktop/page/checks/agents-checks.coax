@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "a sub-agent that makes 100 tool calls with no file changed pauses; Microcoder is told and lets it go on with a note, or names no one" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"carbon\",\"task\":\"read\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -42,7 +42,7 @@
 }
 
 #test "a sub-agent's reply streamed a few bytes at a time is one row, and the reply it ends with shows once" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -61,7 +61,7 @@
 }
 
 #test "a sub-agent's last words are its reply, not a thought: the ended text takes their place, or they are the reply when it has none (#13754)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -79,7 +79,7 @@
 }
 
 #test "what a sub-agent says between its tool calls is a row in its place, saved with the chat, left out of a copy; its code copies" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -105,7 +105,7 @@
 }
 
 #test "a sub-agent shows after the rows Microcoder had when it handed the task over, in a kept chat too" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "do phase 0") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"thought\",\"text\":\"Prioritizing the method doc\"}") == MWW_THOUGHT;
@@ -118,7 +118,7 @@
 }
 
 #test "a sub-agent waiting on its model says so and for how long, and a call sent again says why until it moves on" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "go") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"phase 0\"},{\"level\":\"opus\",\"task\":\"review\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -148,7 +148,7 @@
 }
 
 #test "sub-agents: a neon task runs on Gemini 4 Neon, its row and wait line name Neon, and it is not a Claude level" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "ship it") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
@@ -165,7 +165,7 @@
 }
 
 #test "sub-agents: tasks start once each, a complex one on Carbon; their tool calls show; when all end the worker gets the results" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "do two things") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
@@ -204,7 +204,7 @@
 }
 
 #test "Claude sub-agents: offered only where Claude Code is installed; a level is a model; a tool call needs no answer" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   out: [2048] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
   #assert coder_page_set_text(s, "ask claude") && coder_page_submit(s);
@@ -228,26 +228,26 @@
 }
 
 #test "a chat keeps 6,000 sub-agent tool calls: past that the oldest in the chat goes, and its sub-agent counts it" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   s[0].nturns = 1; s[0].turns[0].nagents = 2; s[0].turns[0].state = CP_DONE;
-  s[0].calls_n = CP_AGENT_CALLS - 4;   // as if all but four places were taken
+  s[0].calls_n = s[0].calls.count - 4;   // as if all but four places were taken
   _ = cp_call_add(s, 0, 0, "a", "", false, false, false);
   _ = cp_call_add(s, 0, 0, "b", "", false, false, false);
   for q: 0..<2 { _ = cp_call_add(s, 0, 1, "x", "", false, false, false); }
-  #assert s[0].calls_n == CP_AGENT_CALLS && s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[1].nrows == 2;
+  #assert s[0].calls_n == s[0].calls.count && s[0].turns[0].agents[0].nrows == 2 && s[0].turns[0].agents[1].nrows == 2;
   _ = cp_call_add(s, 0, 1, "y", "", false, false, false);
   #assert s[0].turns[0].agents[0].nrows == 1 && s[0].turns[0].agents[0].early_rows == 1 && cast(string) s[0].calls[cp_nth(s, 0, 0, 0)].text[0..<1] == "b";
   _ = cp_call_add(s, 0, 1, "y", "", false, false, false);
   #assert s[0].turns[0].agents[0].nrows == 0 && s[0].turns[0].agents[0].head == 0 && s[0].turns[0].agents[0].tail == 0 && cp_nth(s, 0, 0, 0) == -1;
   _ = cp_call_add(s, 0, 1, "newest", "", false, false, false);
-  #assert s[0].turns[0].agents[1].nrows == 4 && s[0].turns[0].agents[1].early_rows == 1 && s[0].turns[0].agents[0].early_rows == 2 && s[0].calls_n == CP_AGENT_CALLS;
+  #assert s[0].turns[0].agents[1].nrows == 4 && s[0].turns[0].agents[1].early_rows == 1 && s[0].turns[0].agents[0].early_rows == 2 && s[0].calls_n == s[0].calls.count;
   #assert cast(string) s[0].calls[s[0].turns[0].agents[1].tail - 1].text[0..<6] == "newest" && cast(string) s[0].calls[cp_nth(s, 0, 1, 0)].text[0..<1] == "x";
   // a new chat lets them all go
   #assert coder_page_new(s) && s[0].calls_n == 0 && s[0].calls_free == 0;
 }
 
 #test "a sub-agent's tool calls are rows with their output; a press opens its transcript and another closes it; a kept chat has them" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"count\"},{\"level\":\"fable\",\"task\":\"read it\"}],\"ticket\":1}") == MWW_DELEGATE;
@@ -301,7 +301,7 @@
 }
 
 #test "delegating to sub-agents auto-opens the first one in the sidebar without hijacking manual changes" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
@@ -336,7 +336,7 @@
 }
 
 #test "sub-agent delegation caps at CP_AGENTS without overflow and ignores out-of-range agent lines" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "fan out") && coder_page_submit(s);
   // Delegate 12 sub-agents across two batches of 6, then attempt a 13th.
@@ -362,7 +362,7 @@
 }
 
 #test "a sub-agent's task stands level with the conversation's message (#13754)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;
@@ -375,7 +375,7 @@
 }
 
 #test "a sub-agent's pane draws its work as the conversation's activity group: open while it runs, folded when done, rows open (#13744)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;
@@ -411,7 +411,7 @@
 }
 
 #test "sub-agents: a chat in its own worktree hands that folder to every sub-agent it starts (GitHub #13758)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "split it up") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
   out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
@@ -428,7 +428,7 @@
 }
 
 #test "early failure wakes parent while sibling sub-agent stays running (#13766)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "run two") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":9,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"one\"},{\"level\":\"hydrogen\",\"task\":\"two\"}]}") == MWW_DELEGATE;
@@ -445,7 +445,7 @@
 }
 
 #test "mid-delegation accepted steer wakes parent with still-running sub-agent status (#13766)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "delegate work") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\"}") == MWW_TURN;
@@ -461,7 +461,7 @@
 }
 
 #test "per-subagent cancel stops only the chosen sub-agent and wakes parent (#13766)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   #assert coder_page_set_text(s, "run two") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":15,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"alpha\"},{\"level\":\"hydrogen\",\"task\":\"beta\"}]}") == MWW_DELEGATE;
@@ -480,7 +480,7 @@
 }
 
 #test "a sub-agent's pane keeps the conversation's copy lane under its task, so its work stands level with the message's (#13770)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"count\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;
@@ -494,7 +494,7 @@
 }
 
 #test "a sub-agent's pane says how long it ran, and nothing when it ended inside a second, never 0s (#13770)" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
   #assert coder_page_set_text(s, "look") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;

@@ -6,7 +6,7 @@ cp_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].
 cp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_test_find(s, id); return r >= 0 && cp_press(s, r); }
 
 #test "an edit's row says Edited and its lines, opens onto its diff, and the review lists the file with its hunks" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   f: [1] UiFrame;
   #assert coder_page_set_text(s, "update foo") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"edit src/foo.coax\",\"exit\":0,\"timed_out\":false,\"output\":\"@@ -4,2 +4,3 @@\\n context\\n-old\\n+new1\\n+new2\\n\"}") == MWW_COMMAND;
@@ -39,7 +39,7 @@ cp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_test_find(s, id
 }
 
 #test "with a sub-agent open the pane's tabs choose between its transcript and the review" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   f: [1] UiFrame;
   #assert coder_page_set_text(s, "check repo") && coder_page_submit(s);
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"fix it\"}],\"ticket\":1}") == MWW_DELEGATE && s[0].pane_open;
@@ -61,7 +61,7 @@ cp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_test_find(s, id
 }
 
 #test "an edit's diff past 2,000 bytes is kept whole, and kept chats load it whole" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   #assert coder_page_set_text(s, "big edit") && coder_page_submit(s);
   body: [8192] u8; n := el_put(body[..], 0, "{\"kind\":\"command\",\"command\":\"edit big.txt\",\"exit\":0,\"timed_out\":false,\"output\":\"@@ -1,0 +1,400 @@\\n");
   for i: 0..<400 { n = el_put(body[..], n, "+line\\n"); }

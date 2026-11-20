@@ -3,7 +3,7 @@
 #load "checks-kit.coax";
 
 #test "pinned chats parse, stay distinct from recents, and reorder by drag" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   coder_page_chats(s, "p1\tAlpha\t0\t1\np2\tBeta\t0\t1\np3\tGamma\t0\t1\nr1\tRecent one\nr2\tRecent two\n");
@@ -51,7 +51,7 @@
 }
 
 #test "sidebar unread chats parse in Pinned and Recents, clear on select, and do not keep the page moving" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
@@ -77,7 +77,7 @@
 }
 
 #test "the sidebar says how many older chats are left out only when some are" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true;
   f: [1] UiFrame;
   // one chat: no "0 older chats" line
@@ -101,7 +101,7 @@
 }
 
 #test "a busy sidebar chat keeps the page moving while idle" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
@@ -144,7 +144,7 @@
 }
 
 #test "foreman sidebar row sits above pinned and recents, dispatches CP_ASK_FOREMAN, and parses managed chats" {
-  p: [1] CoderPage; s := p[..];
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s);
   s[0].d = 1.0f32;
   s[0].ready = true;
