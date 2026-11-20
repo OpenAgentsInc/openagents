@@ -30,7 +30,7 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 23;
+CP_SET_ENTRIES :: 25;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
@@ -55,7 +55,9 @@ cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
     CpSetEntry.{page = CP_PG_ABOUT, id = "set.version", name = "Version", terms = "about build"},
     CpSetEntry.{page = CP_PG_ABOUT, id = "set.update", name = "Check for updates", terms = "update upgrade release install restart"},
     CpSetEntry.{page = CP_PG_ABOUT, id = "", name = "About & updates", terms = "about"},
-    CpSetEntry.{page = CP_PG_GENERAL, id = "set.exp", name = "Experimental features", terms = "experimental labs flag account login gym foreman"}];
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.exp", name = "Experimental features", terms = "experimental labs flag account login gym foreman"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr", name = "Agent instructions", terms = "system prompt instructions rules commit push git agents.md claude.md default"},
+    CpSetEntry.{page = CP_PG_GENERAL, id = "set.instr.reset", name = "Reset agent instructions", terms = "default restore instructions system prompt"}];
 }
 // Whether a page shows: Foreman's and Account's are experimental features (General's last row).
 cp_set_page_ok :: (experimental: bool, page: int) -> bool { return experimental || (page != CP_PG_FOREMAN && page != CP_PG_ACCOUNT); }
@@ -132,6 +134,8 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.zoom.b" { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   ex := cp_number(id, "set.exp.");
   if ex == 0 || ex == 1 { coder_page_experimental_set(s, ex == 1); s[0].ask = CP_ASK_EXPERIMENTAL; return true; }
+  if id == "set.instr.a" { s[0].ask = CP_ASK_INSTRUCTIONS; return true; }
+  if id == "set.instr.reset.a" { s[0].ask = CP_ASK_INSTRUCTIONS_RESET; return true; }
   if id == "set.gemini.a" { s[0].ask = CP_ASK_GEMINI_KEY; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
   if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
@@ -256,7 +260,16 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     rows[2] = SetRow.{id = "set.exp", name = "Experimental features", desc = "Log in, account, Gym and Foreman.",
       kind = SET_ROW_CHOICE, noptions = 2, chosen = ifx s[0].experimental then 1 else 0, action = CP_SET_ACT};
     rows[2].options[0] = "Off"; rows[2].options[1] = "On";
-    y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]);
+    y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]) + t.block_gap;
+    // what every agent is told in every chat (~/.openagents/instructions.md, GitHub #13808)
+    y += set_section_head(f, "set.instr.head", x, y, w, "Agent instructions", "What Microcoder, Claude and Antigravity are told in every chat, in every folder. A repository's own AGENTS.md wins where they differ.") + t.section_gap;
+    instr := ifx s[0].set_instr_n > 0 then sheet_pool(sh, cast(string) s[0].set_instr[0..<s[0].set_instr_n]) else "Default";
+    irows: [2] SetRow;
+    irows[0] = SetRow.{id = "set.instr", name = "Agent instructions", desc = "Kept in ~/.openagents/instructions.md. The default: commit finished work and push it in a git repository.",
+      value = instr, kind = SET_ROW_BUTTON, button = "Edit…", action = CP_SET_ACT};
+    irows[1] = SetRow.{id = "set.instr.reset", name = "Reset to default", desc = "Puts OpenAgents' default instructions back in place of yours.",
+      kind = SET_ROW_BUTTON, button = "Reset…", action = CP_SET_ACT, danger = true};
+    y += cp_set_group(s, f, "set.instr.group", x, y, w, irows[..]);
   } else if page == CP_PG_MODELS {
     y += set_page_head(f, "set.title", x, y, w, names[page], "The keys and models Microcoder and its sub-agents run on.") + t.block_gap;
     gemini := ifx s[0].set_gemini_n > 0 then sheet_pool(sh, cast(string) s[0].set_gemini[0..<s[0].set_gemini_n]) else "Not set";
@@ -403,6 +416,11 @@ coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effec
   if was_agy { s[0].model = cp_agy_idx(s); }
   s[0].model = cp_model_index(s);
 }
+// The agent instructions' state for General's row ("Default", "Edited", "Off (empty)"; #13808).
+coder_page_settings_instructions :: (s: [] CoderPage, words: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].set_instr_n = cp_out(s[0].set_instr[..], words);
+}
 // Antigravity status, review mode (0 Auto, 1 Default, 2 Plan), model/effort and auth/profile summary (#13803).
 coder_page_settings_agy :: (s: [] CoderPage, status: string, mode: int, model: string, auth: string) #export_c #effects(all) {
   if s.count < 1 { return; }
@@ -515,6 +533,26 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert s[0].set_box[2] > 0 && cp_ed_which(s) == -1;   // the search's box; the keyboard with neither field until a press or Command-F
   coder_page_settings_open(s, -2, "");
   #assert !s[0].set_open && s[0].set_query_n == 0 && cp_ed_which(s) == CP_ED_COMPOSER;
+}
+#test "settings: General's Agent instructions rows show their state, ask for the editor and the reset, and the search finds them" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  coder_page_settings_open(s, CP_PG_GENERAL, "");
+  #assert cp_set_test_frame(s, 1200, 900);
+  #assert cp_set_test_row(s, "set.instr.a").action == CP_SET_ACT && cp_set_test_row(s, "set.instr.reset.a").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.instr.head").w > 0;
+  #assert cp_set_test_row(s, "set.instr.a").y > cp_set_test_row(s, "set.exp.1").y;   // under the general rows
+  coder_page_settings_instructions(s, "Edited");
+  #assert cast(string) s[0].set_instr[0..<s[0].set_instr_n] == "Edited";
+  #assert cp_settings_press(s, CP_SET_ACT, "set.instr.a") && coder_page_action(s) == CP_ASK_INSTRUCTIONS;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.instr.reset.a") && coder_page_action(s) == CP_ASK_INSTRUCTIONS_RESET;
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  n := cp_set_hits_in("instructions", hits[..], false);
+  #assert n == 2 && es[hits[0]].id == "set.instr" && es[hits[1]].id == "set.instr.reset";
+  n = cp_set_hits_in("push", hits[..], false);
+  #assert n >= 1 && es[hits[0]].id == "set.instr" && es[hits[0]].page == CP_PG_GENERAL;
+  coder_page_search_set(s, "agent instructions");
+  #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_GENERAL;
 }
 #test "settings: Antigravity rows render under Models, dispatch actions, and match search for antigravity and agy" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);

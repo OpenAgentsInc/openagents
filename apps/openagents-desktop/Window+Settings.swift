@@ -10,7 +10,86 @@ enum Experimental {
     static var on: Bool { UserDefaults.standard.bool(forKey: key) }
 }
 
+/// The person's agent instructions (~/.openagents/instructions.md, GitHub #13808), told to Microcoder,
+/// Claude and Antigravity in every chat. Every rule (where the file is, the default, seeding, reset)
+/// is the desktop core's (coax/lib/agent/user-instructions.coax); this only calls it.
+enum AgentInstructions {
+    static var path: String { DesktopCore.callString(4096) { oa_dc_instructions_path($0) } }
+    static var limit: Int { Int(DesktopCore.onCoreStack { oa_dc_instructions_max() }) }
+    /// First run: the default, unless a file is there.
+    @discardableResult static func seed() -> Bool { DesktopCore.onCoreStack { oa_dc_instructions_seed() } == 1 }
+    static func reset() -> Bool { DesktopCore.onCoreStack { oa_dc_instructions_reset() } == 1 }
+    /// The file's text (the default when there is none); nil when it is longer than the editor holds.
+    static func read() -> String? {
+        var buf = [UInt8](repeating: 0, count: limit + 1)
+        let n = DesktopCore.withByteBuf(&buf) { oa_dc_instructions_read($0) }
+        if n < 0 { return nil }
+        return String(decoding: buf[0..<min(Int(n), buf.count)], as: UTF8.self)
+    }
+    static func write(_ text: String) -> Bool { DesktopCore.withCoaxString(text) { oa_dc_instructions_write($0) } == 1 }
+    /// What General's row shows: "Default", "Edited", "Off (empty)".
+    static var words: String { DesktopCore.callString(64) { oa_dc_instructions_words($0) } }
+}
+
 extension CoderWindow {
+    /// Settings > General > Agent instructions > Edit…: the file in a box; Save writes it whole, and
+    /// the next message of every chat is told it. A file too long for the box opens in the editor.
+    func editInstructions() {
+        guard let current = AgentInstructions.read() else {
+            var d = CoderDialog(size: .md, title: "Agent Instructions", body: "The file is longer than " + String(AgentInstructions.limit / 1024) + " KB, more than this box holds, and agents are told only its start. Open it in your text editor to change it:\n\n" + AgentInstructions.path)
+            d.buttons = [.init(title: "Open File", aside: true)]
+            d.cancel = d.buttons.count; d.buttons.append(.init(title: "OK", kind: .primary)); d.confirm = d.cancel
+            present(d) { [weak self] answer, _ in
+                if answer == 0 { NSWorkspace.shared.open(URL(fileURLWithPath: AgentInstructions.path)) }
+                self?.refocus()
+            }
+            return
+        }
+        var d = CoderDialog(size: .lg, title: "Agent Instructions", body: "Microcoder, Claude and Antigravity are told these in every chat, in every folder; a repository's own AGENTS.md wins where they differ. Edits apply from the next message. Empty the box to turn them off. Kept in ~/.openagents/instructions.md.")
+        // a box of fourteen lines: Return makes a new line, Command-Return saves
+        d.fields = [.init(value: current, lines: 14)]
+        d.buttons = [.init(title: "Reset to Default", kind: .danger, aside: true)]
+        let reset = 0
+        d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+        let save = d.buttons.count; d.buttons.append(.init(title: "Save", kind: .primary))
+        d.confirm = save
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            switch answer {
+            case save:
+                var text = values.first ?? ""
+                if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+                if !AgentInstructions.write(text) {
+                    self.present(.notice("The instructions could not be saved.", "Coder could not write " + AgentInstructions.path + "."))
+                    return
+                }
+            case reset:
+                self.resetInstructions()
+                return
+            default:
+                self.refocus()
+                return
+            }
+            self.syncSettingsInfo()
+            self.refocus()
+        }
+    }
+    /// Settings > General > Agent instructions > Reset…: OpenAgents' default in place of the file.
+    func resetInstructions() {
+        var d = CoderDialog(size: .sm, title: "Reset Agent Instructions?", body: "Your instructions are replaced with OpenAgents' default: in a git repository, commit finished work and push it.")
+        d.buttons = [.init(title: "Cancel"), .init(title: "Reset", kind: .danger)]
+        d.cancel = 0; d.confirm = 0   // a destructive dialog: Return presses Cancel
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == 1 && !AgentInstructions.reset() {
+                self.present(.notice("The instructions could not be reset.", "Coder could not write " + AgentInstructions.path + "."))
+                return
+            }
+            self.syncSettingsInfo()
+            self.refocus()
+        }
+    }
+
     /// The page's Experimental features row was pressed (CP_ASK_EXPERIMENTAL): keep it, then show or
     /// hide what it covers here and in the menu bar.
     func experimentalChanged() {
@@ -105,6 +184,7 @@ extension CoderWindow {
         let gemini = CoderGemini.saved.map { ends($0) } ?? ""
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
+        cd_settings_instructions(page, AgentInstructions.words)
         syncAntigravitySettings()
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }

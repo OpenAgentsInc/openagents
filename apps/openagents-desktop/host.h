@@ -255,6 +255,8 @@ void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
 void cd_settings_gemini(void *page, const char *gemini);
+// cd_settings_instructions: the agent instructions' state General shows ("Default", "Edited"; #13808).
+void cd_settings_instructions(void *page, const char *words);
 // The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its words.
 void cd_settings_gauth(void *page, const char *kind, const char *text);
 // The model agy opens a session on with the current settings (agyworker --probe): its id and name.

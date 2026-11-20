@@ -70,3 +70,10 @@ int64_t oa_dc_worker_write_run(coax_string daemon_dir, coax_string run_id, coax_
 int64_t oa_dc_worker_touch_run(coax_string daemon_dir, coax_string run_id, int64_t force);
 int64_t oa_dc_worker_detach_run(coax_string daemon_dir, coax_string run_id);
 int64_t oa_dc_worker_stop_run(coax_string daemon_dir, coax_string run_id, int64_t forget);
+int64_t oa_dc_instructions_path(coax_v_u8 out);
+int64_t oa_dc_instructions_seed(void);
+int64_t oa_dc_instructions_reset(void);
+int64_t oa_dc_instructions_read(coax_v_u8 out);
+int64_t oa_dc_instructions_write(coax_string text);
+int64_t oa_dc_instructions_words(coax_v_u8 out);
+int64_t oa_dc_instructions_max(void);

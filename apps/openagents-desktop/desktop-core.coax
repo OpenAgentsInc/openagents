@@ -8,6 +8,7 @@
 #load "../../coax/lib/agent/desktop/daemon.coax";
 #load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
+#load "../../coax/lib/agent/user-instructions.coax";
 
 oa_dc_copy :: (s: string, out: [] u8) -> int {
   if out.count <= 0 { return 0; }
@@ -541,3 +542,48 @@ oa_dc_worker_stop_run :: (daemon_dir: string, run_id: string, forget: int) -> in
 oa_dc_wt_clone_paths :: (repo: string, out: [] u8) -> s64 #export_c #effects(all) {
   return dc_clone_paths(repo, out).count;
 }
+
+// --- The person's agent instructions (~/.openagents/instructions.md, GitHub #13808) ---
+// Settings > General > Agent instructions edits them; coax/lib/agent/user-instructions.coax holds
+// every rule (where the file is, the default, seeding and reset). Each returns 1 when it worked.
+
+oa_dc_instructions_path :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return oa_dc_copy(uinstr_path(pb[..]), out);
+}
+// First run: the default into the file when there is none; an existing file is never replaced.
+oa_dc_instructions_seed :: () -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return ifx uinstr_seed(uinstr_path(pb[..])) then 1 else 0;
+}
+// Reset to default.
+oa_dc_instructions_reset :: () -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return ifx uinstr_reset(uinstr_path(pb[..])) then 1 else 0;
+}
+// The file's text for the editor into out (the default when there is no file), its length; -1 when
+// the file is longer than out holds (out keeps a byte for its end).
+oa_dc_instructions_read :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8; p := uinstr_path(pb[..]);
+  if fs_kind(p) == FS_FILE && fs_size(p) >= out.count { return -1; }
+  tb: [UINSTR_MAX_BYTES + 1] u8;
+  k := fs_kind(p);
+  if k == FS_FILE {
+    n := fs_read_at(p, 0, tb[..]);
+    if n < 0 { return -1; }
+    return oa_dc_copy(cast(string) tb[0..<n], out);
+  }
+  return oa_dc_copy(UINSTR_DEFAULT, out);
+}
+// The editor's text as the whole file.
+oa_dc_instructions_write :: (text: string) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return ifx uinstr_write(uinstr_path(pb[..]), text) then 1 else 0;
+}
+// What Settings' row shows: "Default", "Edited", "Off (empty)" or "Edited (over 4 KB)".
+oa_dc_instructions_words :: (out: [] u8) -> int #export_c #effects(all) {
+  pb: [FS_PATH_MAX] u8;
+  return oa_dc_copy(uinstr_state_words(uinstr_state(uinstr_path(pb[..]))), out);
+}
+// The most the editor holds (and an agent is told), in bytes.
+oa_dc_instructions_max :: () -> int #export_c #effects(all) { return UINSTR_MAX_BYTES; }

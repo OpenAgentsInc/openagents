@@ -167,6 +167,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_experimental_set(page, Experimental.on ? 1 : 0)
         cd_cloud_authed_set(page, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
         cd_settings_gemini(page, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
+        // the agent instructions every agent is told (~/.openagents/instructions.md): the default on first run, never over a file there (#13808)
+        AgentInstructions.seed()
+        cd_settings_instructions(page, AgentInstructions.words)
         CoderProbes.apply(page)
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
@@ -351,6 +354,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 36: experimentalChanged()
         case 37: forkShown()
         case 38: chooseGeminiKey()
+        case 44: editInstructions()
+        case 45: resetInstructions()
         case 40...43: fileAsked(what)
         default: break
         }
