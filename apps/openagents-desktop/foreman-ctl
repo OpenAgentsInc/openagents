@@ -90,6 +90,7 @@ def parse_flags(args):
 
 def main():
     usage = ("usage: foreman-ctl <status|list-chats|read-chat|create-chat|send-chat|control-chat|wait|events|audit|stop-all|search-repo|search-chats|tier> [args...]\n"
+             "       foreman-ctl gym [status | RUN] [--camera iso|plan|overhead|under_floor] [--only L,L] [--show L,L] [--hide L,L] [--step N|last] [--select ID] [--live on|off] [--no-open]\n"
              "       foreman-ctl <info|config|set-tier TIER|foreman status|open|prompt TEXT [--steer]|stop|reset|wait [--timeout S]>   (from outside the Foreman chat)")
     if len(sys.argv) < 2:
         die(usage)
@@ -239,6 +240,27 @@ def main():
         if "date-to" in flags:
             payload["date_to"] = str(flags["date-to"])
         call("POST", "/v1/search/chats", payload)
+    elif cmd == "gym":
+        if pos == ["status"] or (not pos and not flags):
+            call("GET", "/v1/gym")
+            return
+        payload = {}
+        if pos:
+            payload["run"] = pos[0]
+        for key in ("camera", "select"):
+            if key in flags and flags[key] is not True:
+                payload[key] = str(flags[key])
+        for key in ("only", "show", "hide"):
+            if key in flags and flags[key] is not True:
+                payload[key] = [x for x in str(flags[key]).split(",") if x]
+        if "step" in flags and flags["step"] is not True:
+            step = str(flags["step"])
+            payload["step"] = "last" if step == "last" else (int(step) if step.lstrip("-").isdigit() else step)
+        if "live" in flags:
+            payload["live"] = str(flags["live"]) in ("on", "true", "1") or flags["live"] is True
+        if flags.get("no-open", False):
+            payload["open"] = False
+        call("POST", "/v1/gym", payload)
     else:
         die(f"foreman-ctl: unknown command '{cmd}'")
 

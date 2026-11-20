@@ -1066,6 +1066,15 @@ final class PleSceneMetalView: NSView {
         needsRedraw = true
     }
 
+    /// Selects an element by id and turns the camera to it (a program's request): false when the
+    /// scene has none by that id.
+    func selectElement(id: String) -> Bool {
+        guard let elem = resolvedElements.first(where: { $0.id == id }) else { return false }
+        let reach = max(elem.sizeVec.x, max(elem.sizeVec.y, elem.sizeVec.z))
+        focusOn(point: elem.centerVec, distance: max(4.5, reach * 1.6), highlightElementId: id, animated: true)
+        return true
+    }
+
     private func rebuildGrid(bounds: PleSceneBounds) {
         guard let dev = device else { return }
         let minV = bounds.minVec
@@ -1749,6 +1758,18 @@ final class PleScenePanelView: NSView {
         attr.addAttribute(.foregroundColor, value: on ? sem.nsColor : NSColor(calibratedWhite: 0.4, alpha: 1), range: NSRange(location: 1, length: 1))
         b.attributedTitle = attr
     }
+
+    /// A camera preset, as its button does (a program's request).
+    func applyCamera(_ preset: PleCameraPreset) { metalView.applyPreset(preset) }
+
+    /// Shows or hides a layer, as its button does, and keeps the button in step.
+    func setLayer(_ layer: PleSemanticLayer, visible: Bool) {
+        metalView.setLayerVisible(layer, visible: visible)
+        refreshLayerButton(layer)
+    }
+
+    /// Selects an element and turns to it; false when the scene has none by that id.
+    func selectElement(id: String) -> Bool { metalView.selectElement(id: id) }
 
     @objc private func presetPressed(_ sender: NSButton) {
         for (preset, btn) in presetButtons where btn === sender {

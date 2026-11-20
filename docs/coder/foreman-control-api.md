@@ -109,6 +109,24 @@ These routes act as Foreman, within the current tier.
 | `POST /v1/search/chats` | `{query, limit?, folder?, date_from?, date_to?}` |
 | `POST /v1/search/repo` | `{query, folder?, glob?, max?}` |
 
+### The Gym (either principal)
+
+The Gym is OpenAgents Desktop's 3D PLE Workbench, an experimental feature. These routes answer
+400 with an `error` while Experimental features are off.
+
+| Route | Body | Returns |
+|---|---|---|
+| `GET /v1/gym` | | `open`, `run`, `title`, `runs`, `step`, `steps`, `layers` (shown), `selected`, `live`, `elements`, `clashes`, `score`, `status` |
+| `POST /v1/gym` | `{run?, camera?, only?, show?, hide?, step?, select?, live?, open?, id?}` | The same, once the request is carried out, with `ok` and `error` when it was refused or went wrong |
+
+`run` is `"latest"`, a run's name under `~/.openagents/ple/runs`, or a run's folder or scene file.
+`camera` is `iso`, `plan`, `overhead` or `under_floor`. `only`, `show` and `hide` are lists of
+layers (`architecture racks crah pdu sprinklers tray busway chw_pipe clashes`, or `all`). `step`
+counts from 1, or is `"last"`. `select` is an element's id. `open: false` leaves the Gym off
+screen. The desktop core checks the request (`coax/lib/agent/desktop/gym.coax`); a key it does not
+know refuses it. `ple-run gym` sends the same request through a file
+(docs/desktop/steer-ple-from-chat.md, "A Gym route for programs").
+
 ## Command line
 
 `foreman-ctl` is in the app at `Coder.app/Contents/Resources/foreman-ctl`.
@@ -127,6 +145,8 @@ $ctl foreman wait --timeout 300
 $ctl foreman stop
 $ctl foreman reset
 $ctl list-chats --managed-only
+$ctl gym                           # what the Gym shows
+$ctl gym latest --camera plan --only racks,pdu --step last --select pdu_01
 ```
 
 ## Audit

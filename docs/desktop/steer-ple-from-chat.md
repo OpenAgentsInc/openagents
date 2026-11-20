@@ -64,6 +64,7 @@ ple-run kit start [--task TASK] [--kit DIR] [--harness DIR] [--env-file FILE] [-
 ple-run status NAME|DIR
 ple-run stop NAME|DIR
 ple-run ifc FILE.ifc [--out SCENE] [--task TASK]
+ple-run gym [RUN|latest] [--camera VIEW] [--only|--show|--hide L,L] [--step N|last] [--select ID] [--live on|off] [--no-open]
 ```
 
 - `feeders` is a routing run on a data-hall scene. By default it uses the bundled
@@ -155,8 +156,37 @@ empty frame (`cp_image_request` hands a picture only to a frame that composes).
 - **A live view inline.** The 3D viewport embedded in the transcript, or frames streaming
   while a run is going, instead of pictures at its end. Today, live means pressing the picture
   (3D pane) or the Gym's Live mode.
-- **A Gym route for programs.** Selecting a run, a layer or a camera in the Workbench from a
-  chat or from `foreman-ctl`.
+
+## A Gym route for programs
+
+A chat (`ple-run gym`) or a program (`POST /v1/gym`, `foreman-ctl gym`) steers the Gym: which run
+it shows, the step, the camera, the layers, the selected element and Live. Both send one request,
+`ple-gym-request.v1`:
+
+```json
+{"id": "r1", "run": "latest", "camera": "plan", "only": ["racks", "pdu"], "step": "last", "select": "pdu_01", "live": false}
+```
+
+Every field is optional. `run` is `"latest"` (the newest run's `run.ple-scene.json` or
+`model.ple-scene.json`, else its newest scene), a run's name under `~/.openagents/ple/runs`, or a
+run's folder or scene file. `only` hides every other layer; `show` and `hide` then change the
+ones they name (short names such as `arch`, `pipes` and `all` work too). `step` counts from 1.
+`open: false` leaves the Gym off screen. A key it does not know refuses the request.
+
+The desktop core checks a request and words it as a plan (`dc_gym_plan`,
+`coax/lib/agent/desktop/gym.coax`, exported as `oa_dc_gym_plan`). The Swift Gym carries it out
+(`GymWorkbenchView.applyPlan`): it opens the Gym, selects the run and waits for its scene, moves to
+the step and waits for that, then sets the camera, layers, element and Live through the same
+calls its buttons make. The answer is the Gym's state, `ple-gym-state.v1`: `ok`, `error`, `open`,
+`run`, `title`, `runs`, `step`, `steps`, `layers` (shown), `selected`, `live`, `elements`,
+`clashes`, `score`.
+
+`ple-run gym` writes the request to `~/.openagents/ple/gym-request.json`. While Experimental
+features are on, the app takes that file twice a second (and removes it) and writes its answer to
+`gym-state.json` beside it with the request's `id`. `ple-run gym` waits up to 20 s
+(`--wait SECONDS`) for its answer and says what the Gym shows. If the app does not answer, it
+removes the request so nothing acts on it later. `POST /v1/gym` answers on the connection, and
+`GET /v1/gym` gives the state (docs/coder/foreman-control-api.md).
 
 ## The cylinder axis (ple-scene.v1)
 
@@ -184,6 +214,7 @@ coax/bin/coax test apps/openagents-desktop/ple-run.coax                    # the
 coax/bin/coax test apps/openagents-desktop/page/checks/shows-checks.coax --library   # markers, cards over the reply, press opens the scene
 coax/bin/coax test coax/lib/agent/desktop/worker.coax                      # the tools note
 coax/bin/coax test metaverse-engine/import/ple-ifc.coax --library          # the IFC reader: scanner, numbers, shapes, products
+coax/bin/coax test coax/lib/agent/desktop/gym.coax --library               # a Gym request checked and worded as a plan
 coax/web/tool.sh apps/openagents-desktop/ple-run.coax ifc MODEL.ifc --out /tmp/model.ple-scene.json
 # a stand-in kit (no real eval): PLE_UV a script running "python3 eval/run.py ...", a stub run.py writing results.json and a model.ifc
 HOME=/tmp/h PLE_UV=/tmp/stub/uv coax/web/tool.sh apps/openagents-desktop/ple-run.coax kit start --kit /tmp/stub --harness /tmp/stub/harness

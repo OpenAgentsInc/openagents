@@ -130,7 +130,9 @@ extension CoderWindow {
         }
         if on {
             startForemanServer()
+            startGymRequests()
         } else {
+            stopGymRequests()
             closeGym()
             if isForemanShown { newChat() }
             foremanServer.stop()

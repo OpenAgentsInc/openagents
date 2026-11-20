@@ -1,0 +1,145 @@
+// ple-run gym (GitHub #13812; docs/desktop/steer-ple-from-chat.md, "A Gym route for programs"): a
+// chat steers the Gym, OpenAgents Desktop's 3D PLE Workbench.
+//
+//   ple-run gym [RUN] [--camera iso|plan|overhead|under_floor] [--only L,L] [--show L,L] [--hide L,L]
+//               [--step N|last] [--select ELEMENT] [--live on|off] [--no-open] [--wait SECONDS]
+//
+// RUN is "latest", a run's name under ~/.openagents/ple/runs, or a run's folder or scene file. It
+// writes the request (ple-gym-request.v1) to ~/.openagents/ple/gym-request.json, which the app
+// takes twice a second while Experimental features are on and answers in gym-state.json beside it
+// (ple-gym-state.v1, with the request's id); it waits for that answer (20 s unless --wait) and
+// says what the Gym shows. The app checks the request (coax/lib/agent/desktop/gym.coax): the
+// words here are only carried. POST /v1/gym (foreman-ctl gym) takes the same request.
+// ple-run.coax, the tool, loads what this needs.
+
+PR_GYM_WAIT_S :: 20;
+
+// A comma list into a JSON list of its words.
+pr_gym_list :: (o: [] Jo, key: string, words: string) {
+  jo_key(o, key); jo_arr(o);
+  from := 0;
+  for k: 0..<words.count + 1 {
+    if k == words.count || words[k] == ',' {
+      if k > from { jo_str(o, cast(string) words[from..<k]); }
+      from = k + 1;
+    }
+  }
+  jo_end(o);
+}
+// The request ple-run gym's arguments make (id names it in the answer).
+pr_gym_request :: (a: [] Args, id: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "version"); jo_str(o[..], "ple-gym-request.v1");
+  jo_key(o[..], "id"); jo_str(o[..], id);
+  run := args_at(a, 1);
+  if run.count > 0 && run[0] != '-' { jo_key(o[..], "run"); jo_str(o[..], run); }
+  keys := [2] string.["camera", "select"];
+  flags := [2] string.["--camera", "--select"];
+  for k: 0..<2 { if args_has(a, flags[k]) { jo_key(o[..], keys[k]); jo_str(o[..], args_value(a, flags[k], "")); } }
+  lists := [3] string.["only", "show", "hide"];
+  lflags := [3] string.["--only", "--show", "--hide"];
+  for k: 0..<3 { if args_has(a, lflags[k]) { pr_gym_list(o[..], lists[k], args_value(a, lflags[k], "")); } }
+  if args_has(a, "--step") {
+    step := args_value(a, "--step", "");
+    jo_key(o[..], "step");
+    // a whole number goes as one; anything else as said, for the app to refuse in words
+    if args_whole(step) > 0 { jo_int(o[..], args_whole(step)); } else { jo_str(o[..], step); }
+  }
+  if args_has(a, "--live") {
+    live := args_value(a, "--live", "");
+    jo_key(o[..], "live");
+    if live == "on" || live == "off" { jo_bool(o[..], live == "on"); } else { jo_str(o[..], live); }
+  }
+  if args_has(a, "--no-open") { jo_key(o[..], "open"); jo_bool(o[..], false); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// What the answer says, in a line or two (into out): the run, step, layers, element and Live; or
+// why it went wrong.
+pr_gym_said :: (state: string, out: [] u8) -> string {
+  nodes: [256] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], state, nodes[..]) { return "The Gym's answer is not JSON."; }
+  v := d[0];
+  n := 0;
+  sb: [1024] u8;
+  if !jv_bool(v, jv_get(v, 0, "ok")) {
+    k := jv_str(v, jv_get(v, 0, "error"), sb[..]);
+    n = pr_cat(out, n, "The Gym refused: ");
+    n = pr_cat(out, n, ifx k > 0 then cast(string) sb[0..<k] else "no reason given");
+    n = pr_cat(out, n, ".");
+    return cast(string) out[0..<n];
+  }
+  k := jv_str(v, jv_get(v, 0, "run"), sb[..]);
+  if k <= 0 { return "The Gym is open with no run in it."; }
+  n = pr_cat(out, n, "The Gym shows "); n = pr_cat(out, n, cast(string) sb[0..<k]);
+  steps := jv_int(v, jv_get(v, 0, "steps"), 0);
+  if steps > 1 {
+    n = pr_cat(out, n, ", step "); n = pr_int(out, n, jv_int(v, jv_get(v, 0, "step"), 0));
+    n = pr_cat(out, n, " of "); n = pr_int(out, n, steps);
+  }
+  layers := jv_get(v, 0, "layers");
+  n = pr_cat(out, n, ".\nLayers shown: ");
+  for i: 0..<jv_len(v, layers) {
+    lb: [32] u8; m := jv_str(v, jv_at(v, layers, i), lb[..]);
+    if i > 0 { n = pr_cat(out, n, ", "); }
+    if m > 0 { n = pr_cat(out, n, cast(string) lb[0..<m]); }
+  }
+  if jv_len(v, layers) == 0 { n = pr_cat(out, n, "none"); }
+  eb: [256] u8; e := jv_str(v, jv_get(v, 0, "selected"), eb[..]);
+  if e > 0 { n = pr_cat(out, n, ". Selected: "); n = pr_cat(out, n, cast(string) eb[0..<e]); }
+  n = pr_cat(out, n, ifx jv_bool(v, jv_get(v, 0, "live")) then ". Live on." else ".");
+  if !jv_bool(v, jv_get(v, 0, "open")) { n = pr_cat(out, n, " (The Gym is not on screen.)"); }
+  return cast(string) out[0..<n];
+}
+
+// ---- effects
+
+pr_gym :: (a: [] Args) -> int {
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  db: [4096] u8; dir := pr_join(home, ".openagents/ple", db[..]);
+  if !fs_mkdir_all(dir) { tool_errln("ple-run: could not make ~/.openagents/ple."); return 1; }
+  ib: [64] u8; id := cast(string) ib[0..<pr_int(ib[..], pr_cat(ib[..], 0, "ple-run-"), cxproc_wall_us())];
+  rb: [16384] u8; req := pr_gym_request(a, id, rb[..]);
+  if req.count == 0 { tool_errln("ple-run gym: the request is too long."); return 2; }
+  qb: [4096] u8; qp := pr_join(dir, "gym-request.json", qb[..]);
+  tb: [4096] u8; tp := pr_join(dir, "gym-request.json.tmp", tb[..]);
+  sp_b: [4096] u8; sp := pr_join(dir, "gym-state.json", sp_b[..]);
+  if !fs_write(tp, req) || !fs_rename(tp, qp) { tool_errln("ple-run: could not write the Gym request."); return 1; }
+  wait_s := args_whole(args_value(a, "--wait", ""));
+  if wait_s <= 0 { wait_s = PR_GYM_WAIT_S; }
+  until := proc_now_ms() + wait_s * 1000;
+  while proc_now_ms() < until {
+    proc_sleep(200);
+    st: [65536] u8; n := fs_read(sp, st[..]);
+    if n <= 0 { continue; }
+    nodes: [256] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], cast(string) st[0..<n], nodes[..]) { continue; }
+    gb: [64] u8; g := jv_str(d[0], jv_get(d[0], 0, "id"), gb[..]);
+    if g < 0 || cast(string) gb[0..<g] != id { continue; }
+    ob: [4096] u8; said := pr_gym_said(cast(string) st[0..<n], ob[..]);
+    print("%\n", said);
+    return ifx jv_bool(d[0], jv_get(d[0], 0, "ok")) then 0 else 1;
+  }
+  _r := fs_remove(qp);   // not taken: nothing should act on it later
+  print("The Gym did not answer in % s: is OpenAgents Desktop running, with Experimental features on (Settings > General)?\n", wait_s);
+  return 1;
+}
+
+#test "ple-run gym: the request its words make, and what an answer says" {
+  a: [1] Args; b: [4096] u8;
+  words := [17] string.["gym", "feeders-1", "--camera", "plan", "--only", "racks,,pdu", "--hide", "clashes", "--step", "3", "--select", "pdu_01", "--live", "on", "--no-open", "--show", "tray"];
+  for w: words { #assert args_add(a[..], w); }
+  #assert pr_gym_request(a[..], "r1", b[..]) == "{\"version\":\"ple-gym-request.v1\",\"id\":\"r1\",\"run\":\"feeders-1\",\"camera\":\"plan\",\"select\":\"pdu_01\",\"only\":[\"racks\",\"pdu\"],\"show\":[\"tray\"],\"hide\":[\"clashes\"],\"step\":3,\"live\":true,\"open\":false}";
+  c: [1] Args;
+  more := [6] string.["gym", "--step", "last", "--live", "maybe", "--show"];
+  for w: more { #assert args_add(c[..], w); }
+  #assert pr_gym_request(c[..], "r2", b[..]) == "{\"version\":\"ple-gym-request.v1\",\"id\":\"r2\",\"show\":[],\"step\":\"last\",\"live\":\"maybe\"}";
+  small: [16] u8;
+  #assert pr_gym_request(c[..], "r2", small[..]) == "";
+  o: [512] u8;
+  #assert pr_gym_said("{\"ok\":true,\"open\":true,\"run\":\"/r/run.ple-scene.json\",\"steps\":8,\"step\":3,\"layers\":[\"racks\",\"pdu\"],\"selected\":\"pdu_01\",\"live\":true}", o[..]) == "The Gym shows /r/run.ple-scene.json, step 3 of 8.\nLayers shown: racks, pdu. Selected: pdu_01. Live on.";
+  #assert pr_gym_said("{\"ok\":true,\"open\":false,\"run\":\"/r/a.json\",\"steps\":1,\"step\":1,\"layers\":[],\"selected\":\"\",\"live\":false}", o[..]) == "The Gym shows /r/a.json.\nLayers shown: none. (The Gym is not on screen.)";
+  #assert pr_gym_said("{\"ok\":false,\"error\":\"no run x in the Gym\"}", o[..]) == "The Gym refused: no run x in the Gym." && pr_gym_said("{\"ok\":false}", o[..]) == "The Gym refused: no reason given.";
+  #assert pr_gym_said("{\"ok\":true,\"run\":\"\"}", o[..]) == "The Gym is open with no run in it." && pr_gym_said("nope", o[..]) == "The Gym's answer is not JSON.";
+}

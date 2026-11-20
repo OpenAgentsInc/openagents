@@ -14,6 +14,8 @@
 //       A picture of any ple-scene.v1 file (FILE.ple-scene.json gives FILE.VIEW.jpg beside it).
 //   ple-run kit start | status | stop, ple-run ifc FILE.ifc
 //       A real ple-kit eval in the background, how it goes, and its IFC model shown (ple-run-kit.coax).
+//   ple-run gym [RUN|latest] [--camera VIEW] [--only|--show|--hide L,L] [--step N|last] [--select ID] [--live on|off]
+//       The Gym steered: its run, step, camera, layers, element and Live (ple-run-gym.coax).
 //
 // What it prints ends with the lines the transcript reads (page/shows.coax): `OA-SHOW: PICTURE`
 // draws the picture under the message's activity, `OA-SHOW-CAPTION: TEXT` names it, and
@@ -29,6 +31,7 @@
 #load "../../metaverse-engine/import/ple-ifc.coax";
 #load "../../coax/lib/sys/clock.coax";
 #load "ple-run-kit.coax";
+#load "ple-run-gym.coax";
 
 PR_SCENE_BYTES :: 2097152;      // a scene file read at most
 PR_OUT_BYTES :: 2097152;        // a scene written at most
@@ -329,12 +332,14 @@ tool_main :: () -> int #export_c #effects(all) {
   if verb == "status" { return pr_kit_status(a[..]); }
   if verb == "stop" { return pr_kit_stop(a[..]); }
   if verb == "ifc" { return pr_ifc_cmd(a[..]); }
+  if verb == "gym" { return pr_gym(a[..]); }
   tool_errln("ple-run feeders [--scene FILE] [--name NAME] [--out DIR]   a routing run, pictures before and after");
   tool_errln("ple-run show FILE [--view iso|plan|overhead|under_floor] [--out PICTURE]   a picture of a scene");
   tool_errln("ple-run kit start [--task TASK] [--kit DIR] [--harness DIR] [--env-file FILE] [--name NAME]   a real ple-kit eval, in the background");
   tool_errln("ple-run status NAME|DIR   how a kit run is going; its model, shown, once it has one");
   tool_errln("ple-run stop NAME|DIR   stop a kit run");
   tool_errln("ple-run ifc FILE.ifc [--out SCENE] [--task TASK]   an IFC model as a scene, and its picture");
+  tool_errln("ple-run gym [RUN|latest] [--camera iso|plan|overhead|under_floor] [--only L,L] [--show L,L] [--hide L,L] [--step N|last] [--select ID] [--live on|off] [--no-open]   steer the Gym");
   return 2;
 }
 

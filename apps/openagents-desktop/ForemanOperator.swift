@@ -53,7 +53,9 @@ enum ForemanAPI {
         ForemanRoute(method: "POST", path: "/v1/chats/control", operatorOnly: false, summary: "Stop, rename, pin, delete, budget or goal: {chat_id, action, ...}"),
         ForemanRoute(method: "POST", path: "/v1/chats/stop-all", operatorOnly: false, summary: "Stop running managed chats: {all?}"),
         ForemanRoute(method: "POST", path: "/v1/search/chats", operatorOnly: false, summary: "Search kept chats: {query, limit?, folder?, date_from?, date_to?}"),
-        ForemanRoute(method: "POST", path: "/v1/search/repo", operatorOnly: false, summary: "Search the repository: {query, folder?, glob?, max?}")
+        ForemanRoute(method: "POST", path: "/v1/search/repo", operatorOnly: false, summary: "Search the repository: {query, folder?, glob?, max?}"),
+        ForemanRoute(method: "GET", path: "/v1/gym", operatorOnly: false, summary: "The Gym (3D PLE Workbench): open, run, step, layers, selected element, Live"),
+        ForemanRoute(method: "POST", path: "/v1/gym", operatorOnly: false, summary: "Steer the Gym: {run?, camera?, only?, show?, hide?, step?, select?, live?, open?, id?}")
     ]
 
     /// A token of 48 hex characters from the system's random source.

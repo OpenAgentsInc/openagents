@@ -1,0 +1,164 @@
+// A program's request to the Gym (GitHub #13812; docs/desktop/steer-ple-from-chat.md, "A Gym route
+// for programs"). `ple-run gym` writes one to ~/.openagents/ple/gym-request.json and POST /v1/gym
+// (`foreman-ctl gym`) carries one; both go through dc_gym_plan, which checks it and words it the
+// way the Swift Gym (GymWorkbenchView.applyPlan) takes it. A request (ple-gym-request.v1), every
+// field optional:
+//   {"id": "r1", "open": true, "run": "latest" | "NAME" | "/path/file-or-folder",
+//    "camera": "iso" | "plan" | "overhead" | "under_floor",
+//    "only": [LAYER...], "show": [LAYER...], "hide": [LAYER...],
+//    "step": N | "last", "select": "ELEMENT_ID", "live": true | false}
+// LAYER is a scene layer (architecture racks crah pdu sprinklers tray busway chw_pipe clashes), a
+// short name (arch rack cooling power sprinkler comms pipes clash) or "all". "only" hides every
+// other layer; "show" and "hide" then change the ones they name. Steps count from 1. A key it
+// does not know refuses the request, so a misspelt one is said rather than skipped.
+// The plan: {"ok": true, "id", "open", "run", "camera": Swift's preset name or "", "layers": nine
+// of 1 (show), 0 (hide) or -1 (as it is) in DC_GYM_LAYERS' order, "step": 0 (as it is), -1 (the
+// last) or N, "select", "live": 1, 0 or -1}; or {"ok": false, "error": "..."}.
+//   coax/bin/coax test coax/lib/agent/desktop/gym.coax --library
+#load "../../json/json.coax";
+
+// Swift's PleSemanticLayer raw values, in its order.
+DC_GYM_LAYERS :: [9] string.["architecture", "racks", "crah", "pdu", "sprinklers", "tray", "busway", "chw_pipe", "clashes"];
+DC_GYM_LAYER_NAMES :: [17] string.["architecture", "arch", "racks", "rack", "crah", "cooling", "pdu", "power", "sprinklers", "sprinkler", "tray", "comms", "busway", "chw_pipe", "pipes", "clashes", "clash"];
+DC_GYM_LAYER_OF :: [17] int.[0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 7, 8, 8];
+// Swift's PleCameraPreset raw values, and the names a request may use.
+DC_GYM_CAMERAS :: [4] string.["Iso", "Plan", "Overhead", "Under-Floor"];
+DC_GYM_CAMERA_NAMES :: [6] string.["iso", "plan", "overhead", "under_floor", "under-floor", "underfloor"];
+DC_GYM_CAMERA_OF :: [6] int.[0, 1, 2, 3, 3, 3];
+DC_GYM_KEYS :: [11] string.["version", "id", "open", "run", "camera", "only", "show", "hide", "step", "select", "live"];
+
+// A layer's index in DC_GYM_LAYERS, 9 for "all", or -1.
+dc_gym_layer :: (name: string) -> int {
+  if name == "all" { return 9; }
+  for k: 0..<DC_GYM_LAYER_NAMES.count { if name == DC_GYM_LAYER_NAMES[k] { return DC_GYM_LAYER_OF[k]; } }
+  return -1;
+}
+// A camera's index in DC_GYM_CAMERAS, or -1.
+dc_gym_camera :: (name: string) -> int {
+  for k: 0..<DC_GYM_CAMERA_NAMES.count { if name == DC_GYM_CAMERA_NAMES[k] { return DC_GYM_CAMERA_OF[k]; } }
+  return -1;
+}
+dc_gym_known :: (key: string) -> bool {
+  for k: 0..<DC_GYM_KEYS.count { if key == DC_GYM_KEYS[k] { return true; } }
+  return false;
+}
+// Sets the layers a list (at) names to v: true when it is absent, false when it is not a list of
+// known layer names (raw, so an escaped name is not one).
+dc_gym_mark :: (d: Jv, at: int, v: int, layers: [] int) -> bool {
+  if jv_kind(d, at) == 0 { return true; }
+  if jv_kind(d, at) != JV_ARRAY { return false; }
+  for i: 0..<jv_len(d, at) {
+    item := jv_at(d, at, i);
+    l := ifx jv_kind(d, item) == JV_STRING then dc_gym_layer(jv_raw(d, item)) else -1;
+    if l < 0 { return false; }
+    for k: 0..<9 { if l == 9 || k == l { layers[k] = v; } }
+  }
+  return true;
+}
+// A true/false member: 1 or 0; -1 when absent; -2 when it is something else.
+dc_gym_flag :: (d: Jv, key: string) -> int {
+  k := jv_kind(d, jv_get(d, 0, key));
+  if k == JV_TRUE { return 1; }
+  if k == JV_FALSE { return 0; }
+  return ifx k == 0 then -1 else -2;
+}
+dc_gym_error :: (out: [] u8, why: string) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], false); jo_key(o[..], "error"); jo_str(o[..], why); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+// A string member (unescaped into buf) or "" when absent; ok[0] false when present but not a string.
+dc_gym_str :: (d: Jv, key: string, buf: [] u8, ok: [] bool) -> string {
+  at := jv_get(d, 0, key);
+  if jv_kind(d, at) == 0 { return ""; }
+  n := jv_str(d, at, buf);
+  if n < 0 { ok[0] = false; return ""; }
+  return cast(string) buf[0..<n];
+}
+// The plan for request req, into out (see the top of the file).
+dc_gym_plan :: (req: string, out: [] u8) -> string {
+  nodes: [256] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], req, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return dc_gym_error(out, "the request is not a JSON object"); }
+  d := jd[0];
+  for i: 0..<jv_len(d, 0) {
+    if !dc_gym_known(jv_key(d, jv_at(d, 0, i))) { return dc_gym_error(out, "a key the Gym does not know (it takes id, open, run, camera, only, show, hide, step, select, live)"); }
+  }
+  ok := [1] bool.[true];
+  ib: [128] u8; id := dc_gym_str(d, "id", ib[..], ok[..]);
+  rb: [4096] u8; run := dc_gym_str(d, "run", rb[..], ok[..]);
+  sb: [256] u8; sel := dc_gym_str(d, "select", sb[..], ok[..]);
+  cb: [32] u8; cam_name := dc_gym_str(d, "camera", cb[..], ok[..]);
+  if !ok[0] { return dc_gym_error(out, "id, run, select and camera are strings (an id under 128 bytes, an element id under 256)"); }
+  cam := -1;
+  if cam_name.count > 0 {
+    cam = dc_gym_camera(cam_name);
+    if cam < 0 { return dc_gym_error(out, "camera is iso, plan, overhead or under_floor"); }
+  }
+  layers: [9] int; for k: 0..<9 { layers[k] = -1; }
+  only := jv_get(d, 0, "only");
+  if jv_kind(d, only) == JV_ARRAY { for k: 0..<9 { layers[k] = 0; } }
+  if !dc_gym_mark(d, only, 1, layers[..]) || !dc_gym_mark(d, jv_get(d, 0, "show"), 1, layers[..]) || !dc_gym_mark(d, jv_get(d, 0, "hide"), 0, layers[..]) {
+    return dc_gym_error(out, "only, show and hide are lists of layers: architecture racks crah pdu sprinklers tray busway chw_pipe clashes (or arch rack cooling power sprinkler comms pipes clash, or all)");
+  }
+  step := 0;
+  st := jv_get(d, 0, "step");
+  if jv_kind(d, st) != 0 {
+    step = ifx jv_raw(d, st) == "last" && jv_kind(d, st) == JV_STRING then -1 else jv_int(d, st, 0);
+    if step == 0 || step < -1 || step == -1 && jv_kind(d, st) == JV_NUMBER { return dc_gym_error(out, "step is a number from 1, or \"last\""); }
+  }
+  live := dc_gym_flag(d, "live"); open := dc_gym_flag(d, "open");
+  if live < -1 || open < -1 { return dc_gym_error(out, "live and open are true or false"); }
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "id"); jo_str(o[..], id);
+  jo_key(o[..], "open"); jo_bool(o[..], open != 0);
+  jo_key(o[..], "run"); jo_str(o[..], run);
+  jo_key(o[..], "camera"); jo_str(o[..], ifx cam < 0 then "" else DC_GYM_CAMERAS[cam]);
+  jo_key(o[..], "layers"); jo_arr(o[..]); for k: 0..<9 { jo_int(o[..], layers[k]); } jo_end(o[..]);
+  jo_key(o[..], "step"); jo_int(o[..], step);
+  jo_key(o[..], "select"); jo_str(o[..], sel);
+  jo_key(o[..], "live"); jo_int(o[..], live);
+  jo_end(o[..]);
+  return ifx o[0].bad then dc_gym_error(out, "the plan is longer than its room") else jo_text(o[..]);
+}
+
+#test "desktop gym: a full request, its plan" {
+  b: [8192] u8;
+  r := "{\"version\":\"ple-gym-request.v1\",\"id\":\"r1\",\"run\":\"feeders-1\",\"camera\":\"under-floor\",\"only\":[\"pipes\",\"clash\"],\"show\":[\"rack\"],\"hide\":[\"clashes\"],\"step\":3,\"select\":\"chw_pipe_01\",\"live\":true,\"open\":false}";
+  #assert dc_gym_plan(r, b[..]) == "{\"ok\":true,\"id\":\"r1\",\"open\":false,\"run\":\"feeders-1\",\"camera\":\"Under-Floor\",\"layers\":[0,1,0,0,0,0,0,1,0],\"step\":3,\"select\":\"chw_pipe_01\",\"live\":1}";
+  #assert dc_gym_plan("{\"id\":\"\",\"camera\":\"\",\"only\":[\"architecture\"]}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"run\":\"\",\"camera\":\"\",\"layers\":[1,0,0,0,0,0,0,0,0],\"step\":0,\"select\":\"\",\"live\":-1}";
+  #assert dc_gym_plan("{}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"run\":\"\",\"camera\":\"\",\"layers\":[-1,-1,-1,-1,-1,-1,-1,-1,-1],\"step\":0,\"select\":\"\",\"live\":-1}";
+  #assert dc_gym_plan("{\"step\":\"last\",\"live\":false,\"open\":true,\"hide\":[\"all\"],\"show\":[\"arch\",\"tray\"],\"camera\":\"plan\"}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"run\":\"\",\"camera\":\"Plan\",\"layers\":[0,0,0,0,0,0,0,0,0],\"step\":-1,\"select\":\"\",\"live\":0}";
+  // show comes before hide: hide all wins over show
+  #assert dc_gym_plan("{\"show\":[\"all\"],\"camera\":\"iso\"}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"run\":\"\",\"camera\":\"Iso\",\"layers\":[1,1,1,1,1,1,1,1,1],\"step\":0,\"select\":\"\",\"live\":-1}";
+  #assert dc_gym_plan("{\"only\":[],\"camera\":\"overhead\",\"step\":1}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"run\":\"\",\"camera\":\"Overhead\",\"layers\":[0,0,0,0,0,0,0,0,0],\"step\":1,\"select\":\"\",\"live\":-1}";
+}
+
+#test "desktop gym: names, aliases and what a request may not say" {
+  for k: 0..<DC_GYM_LAYERS.count { #assert dc_gym_layer(DC_GYM_LAYERS[k]) == k; }
+  aliases := [8] string.["arch", "rack", "cooling", "power", "sprinkler", "comms", "pipes", "clash"];
+  want := [8] int.[0, 1, 2, 3, 4, 5, 7, 8];
+  for k: 0..<8 { #assert dc_gym_layer(aliases[k]) == want[k]; }
+  #assert dc_gym_layer("all") == 9 && dc_gym_layer("Racks") == -1 && dc_gym_layer("") == -1;
+  for k: 0..<4 { #assert dc_gym_camera(DC_GYM_CAMERA_NAMES[k]) == k; }
+  #assert dc_gym_camera("under-floor") == 3 && dc_gym_camera("underfloor") == 3 && dc_gym_camera("Iso") == -1;
+  for k: 0..<DC_GYM_KEYS.count { #assert dc_gym_known(DC_GYM_KEYS[k]); }
+  #assert !dc_gym_known("cam") && !dc_gym_known("");
+  b: [8192] u8;
+  bad := [29] string.["", "[]", "{\"cam\":\"iso\"}", "{\"camera\":\"side\"}", "{\"camera\":1}", "{\"run\":7}", "{\"id\":[]}", "{\"select\":null}",
+    "{\"only\":\"racks\"}", "{\"only\":[\"rackz\"]}", "{\"show\":[1]}", "{\"hide\":[\"tray\",\"x\"]}", "{\"step\":0}", "{\"step\":-1}", "{\"step\":-2}",
+    "{\"step\":\"first\"}", "{\"step\":1.5}", "{\"live\":1}", "{\"open\":\"yes\"}", "{\"live\":null}", "{\"step\":true}",
+    "{\"camera\":\"x\"}", "{\"step\":\"next\"}", "{\"step\":null}", "{\"only\":null}", "{\"show\":null}", "{\"hide\":null}", "{\"open\":null}", "{\"show\":[\"arc\\u0068\"]}"];
+  for k: 0..<bad.count {
+    p := dc_gym_plan(bad[k], b[..]);
+    #assert p.count > 21 && cast(string) p[0..<21] == "{\"ok\":false,\"error\":\"";
+  }
+  // long ids and element ids are refused, not cut
+  long: [300] u8; long[0] = '{'; long[1] = '"'; long[2] = 's'; long[3] = 'e'; long[4] = 'l'; long[5] = 'e'; long[6] = 'c'; long[7] = 't'; long[8] = '"'; long[9] = ':'; long[10] = '"';
+  for k: 11..<298 { long[k] = 'x'; } long[298] = '"'; long[299] = '}';
+  #assert cast(string) dc_gym_plan(cast(string) long[..], b[..])[0..<12] == "{\"ok\":false,";
+  // a plan longer than its room
+  small: [64] u8;
+  #assert dc_gym_plan("{\"run\":\"/a/very/long/path/that/does/not/fit/in/sixty/four/bytes\"}", small[..]) == "{\"ok\":false,\"error\":\"the plan is longer than its room\"}";
+}

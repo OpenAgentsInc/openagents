@@ -123,6 +123,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
     var scenePanel: PleScenePanelView?   // the embedded Metal 3D PLE scene viewport (SceneView.swift)
     var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
+    var gymRequestTimer: Timer?          // takes ple-run gym's requests (Window+Gym.swift, #13812)
     // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
     var simView: SimulatorPaneView?
     let simClient = SimHostClient()
@@ -181,7 +182,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         CoderProbes.apply(page)
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
         CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
-        if Experimental.on { startForemanServer() }
+        if Experimental.on { startForemanServer(); startGymRequests() }
         // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
         CoderWorker.daemon = daemonClient
         daemonClient.ensureDaemon()
