@@ -31,6 +31,22 @@
   #assert s[0].turns[2].state == CP_FAILED && !cp_running(s);
 }
 
+#test "a turn stopped from elsewhere is saved stopped: after a reply it keeps the reply, before one it has none, never a failure note" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s);
+  // the paired phone stops it: the worker says "stopped" and this page set no stopping (#13756)
+  #assert coder_page_set_text(s, "Please survey the tests") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"reply\",\"text\":\"Taking that into account.\"}") == MWW_REPLY;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
+  #assert s[0].turns[0].state == CP_STOPPED && s[0].turns[0].note_n == 0 && cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Taking that into account.";
+  #assert coder_page_set_text(s, "b") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
+  #assert s[0].turns[1].state == CP_STOPPED && s[0].turns[1].note_n == 0 && s[0].turns[1].reply_n == 0;
+  // what Coder keeps: both stopped, the first with its reply
+  out: [65536] u8; n := coder_page_save(s, out[..]); kept := cast(string) out[0..<n];
+  #assert n > 0 && !el_has(kept, "ended before a reply") && el_has(kept, "\"reply\":\"Taking that into account.\",\"cut\":false,\"state\":3");
+}
+
 #test "a code block's Copy id names its turn and block" {
   #assert cp_number("t12.a.code.6.copy", "t") == 12 && cp_number("t12.a.code.6.copy", ".code.") == 6 && cp_number("coder.new", ".code.") == -1;
   ib: [EL_ID] u8;

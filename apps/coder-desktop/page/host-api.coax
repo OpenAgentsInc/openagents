@@ -172,7 +172,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
     if l[0].ending == "finished" || l[0].ending == "asked" {
       if l[0].text.count > 0 { cp_reply_set(s, i, l[0].text, false); }
       s[0].turns[i].state = CP_DONE;
-    } else if s[0].turns[i].stopping { s[0].turns[i].state = CP_STOPPED; }
+    } else if s[0].turns[i].stopping || l[0].ending == "stopped" { s[0].turns[i].state = CP_STOPPED; }   // a stop from the paired phone sets no stopping here (#13756)
     else {
       s[0].turns[i].note_n = cp_out(s[0].turns[i].note[..], cp_ended_why(l[0].ending, l[0].text, false));
       s[0].turns[i].state = CP_FAILED;
