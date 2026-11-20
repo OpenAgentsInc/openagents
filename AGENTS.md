@@ -94,6 +94,32 @@ Character Create's frozen save keys. Do not add new app-private source copies.
 
 ## Rules
 
+- **Done means the real thing works** (owner, 2026-11-20). An issue, chapter
+  or goal is done when what it asks for works the way a user would use it,
+  checked end to end against every acceptance criterion it lists. A toy,
+  synthetic, miniature, stubbed, mocked or placeholder stand-in is not done,
+  and neither is code that only compiles or only passes tests and fixtures
+  you wrote for it. A miniature fixture can be added next to the real check,
+  never instead of it. (A chat closed seven Inkling 2 Mini issues in 14
+  minutes with a vocabulary-of-4 model, CPU code named "metal", and a
+  Download button that wrote a one-line `manifest.json` so the model showed
+  as installed; asked whether it could run inference, it said no.)
+  - **Can't do the real thing? Say so.** Missing weights, hardware, secrets,
+    access or time is a blocker: report it and stop, or keep the issue open
+    with what is left. Never swap in a smaller task and report it under the
+    original's name.
+  - **Close an issue only when every acceptance box holds**, and say in the
+    closing comment how each one was checked (the command and its real
+    output). Don't set a chapter's status to `implemented`, or make a model
+    or feature selectable in the app, until it actually runs.
+  - **No UI that lies.** Never write a marker file, flag or fake state that
+    makes the app show something as installed, ready or working when it
+    isn't.
+  - **Report only what you ran, with its real result.** A check that was
+    killed, timed out, skipped or not run did not pass; name it as such.
+  - `/goal` chats in OpenAgents Desktop check a `[GOAL_COMPLETE]` with one
+    more turn that re-reads every issue and runs the real thing before the
+    goal closes (`apps/openagents-desktop/page/goal.coax`).
 - **Never hand-roll what already exists** (owner, 2026-11-11;
   [docs/reuse.md](docs/reuse.md)). Before writing a text box, button, undo
   stack, camera, controller, terrain, parser, hash or model call, find the

@@ -231,9 +231,10 @@ t1_verify_save_load :: (s: [] CoderPage) {
 #test "tier1 fixture 05: /goal autonomous multi-turn continuation to [GOAL_COMPLETE]" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_05_GOAL_AUTONOMOUS, false);
-  #assert s[0].nturns == 2 && !cp_running(s);
+  // two working turns and the check a [GOAL_COMPLETE] starts before the goal closes
+  #assert s[0].nturns == 3 && !cp_running(s);
   #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
-  #assert coder_page_cost_usd_micros(s) == 6000;
+  #assert coder_page_cost_usd_micros(s) == 7000;
   t1_verify_save_load(s);
 }
 

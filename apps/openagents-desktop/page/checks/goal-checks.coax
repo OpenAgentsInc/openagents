@@ -94,8 +94,26 @@
   #assert coder_page_set_text(s, "/goal resume") && coder_page_submit(s);
   #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
   #assert coder_page_action(s) == CP_ASK_SEND;
-  // Marking [GOAL_COMPLETE] ends the autonomous loop.
+  // Every goal turn says what done means: the real thing, not a stand-in.
+  #assert cp_contains(task1, "A toy, synthetic, miniature, stubbed, mocked, placeholder or hard-coded stand-in is not done");
+  #assert cp_contains(task1, "a check that was killed, timed out or skipped did not pass");
+  // A first [GOAL_COMPLETE] does not close the goal: it starts a turn that checks the work.
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"All tests pass.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE;
+  #assert coder_page_running(s);
+  tn3 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  task3 := cast(string) task_buf[0..<tn3];
+  #assert tn3 > 0 && cp_contains(task3, "check the work as a skeptical reviewer who did not write it");
+  #assert cp_contains(task3, "gh issue view each one") && cp_contains(task3, "reopen any issue closed too early");
+  // The check finds a stand-in and keeps working: the goal stays open and the next turn continues.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"The CPU run is a toy model. Reopened the issue.\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  tn4 := coder_page_task(s, "s1", "/tmp", task_buf[..]);
+  #assert tn4 > 0 && cp_contains(cast(string) task_buf[0..<tn4], "Continue working toward the active thread goal above.");
+  // A new claim of done is checked again, and only the check's [GOAL_COMPLETE] closes the goal.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Real run works.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
+  #assert coder_page_goal_status(s) == CP_GOAL_ACTIVE && coder_page_running(s);
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Every criterion holds, evidence above.\\n[GOAL_COMPLETE]\"}") == MWW_ENDED;
   #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
   #assert !coder_page_running(s);
   // Goal state round-trips through save and load.

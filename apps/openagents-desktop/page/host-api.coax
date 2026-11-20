@@ -99,6 +99,10 @@ coder_page_action :: (s: [] CoderPage) -> int #export_c #effects(all) {
   ask := s[0].ask; s[0].ask = CP_ASK_NONE;
   return ask;
 }
+// What done means, sent with every goal turn: the real thing, not a stand-in that passes its own tests.
+CP_GOAL_DONE_TEXT :: "Done means the real thing works for the user as the goal and every requirement or acceptance criterion it names say. A toy, synthetic, miniature, stubbed, mocked, placeholder or hard-coded stand-in is not done, and neither is code that only compiles or only passes tests and fixtures written for it. If the real thing cannot be done here (missing weights, hardware, secrets, access or time), say so plainly and end with [GOAL_BLOCKED]; never swap in a smaller task and report it as the original. Do not close an issue or mark work implemented until every one of its acceptance criteria holds. Report only checks you ran, with their real result: a check that was killed, timed out or skipped did not pass.\n\n";
+// The turn a [GOAL_COMPLETE] starts (goal.coax): a skeptical check of the work before the goal closes.
+CP_GOAL_AUDIT_TEXT :: "You said the goal above is done. Before it closes, check the work as a skeptical reviewer who did not write it. Re-read the goal and every issue, spec or request it names (gh issue view each one) and list every requirement and acceptance criterion. For each, run the real thing end to end the way the user would use it, and quote the command and its actual output. Anything that is a stand-in (toy sizes, synthetic data, a stub, a mock, a placeholder file, a fixture you wrote) or that only compiles is not done: say so plainly, reopen any issue closed too early, and keep working on it in this turn, or end with [GOAL_BLOCKED] naming exactly what is missing if it cannot be done here. End with [GOAL_COMPLETE] only if every criterion holds for real, with the evidence above it.\n\n";
 // The newest message as the worker's task line (mcworker-wire.coax): its length in out, 0 for none.
 coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !cp_running(s) { return 0; }
@@ -110,19 +114,22 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
 cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, session: string, cwd: string, out: [] u8) -> int {
   // the note on installed skills, optional active thread goal context, then the message and the
   // note on its attachments and the files it mentions (attach.coax)
-  whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + CP_REFS + 2048] u8;
+  whole: [CP_SKILLS + CP_GOAL_TEXT + EB_TEXT + CP_REFS + 4096] u8;
   n := cp_out(whole[..], cast(string) s[0].skills[0..<s[0].skills_n]);
   if s[0].goal_status == CP_GOAL_ACTIVE && s[0].goal_objective_n > 0 {
     n += cp_out(whole[n..<whole.count], "<goal_objective>\n");
     n += cp_out(whole[n..<whole.count], cast(string) s[0].goal_objective[0..<s[0].goal_objective_n]);
     n += cp_out(whole[n..<whole.count], "\n</goal_objective>\n");
-    if s[0].goal_prompt_kind == CP_GOAL_PROMPT_CONTINUE {
+    if s[0].goal_prompt_kind == CP_GOAL_PROMPT_AUDIT {
+      n += cp_out(whole[n..<whole.count], CP_GOAL_AUDIT_TEXT);
+    } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_CONTINUE {
       n += cp_out(whole[n..<whole.count], "Continue working toward the active thread goal above. Make concrete, verified progress without stopping early. Do not ask the user for permission to continue. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED] and explain what is needed.\n\n");
     } else if s[0].goal_prompt_kind == CP_GOAL_PROMPT_UPDATED {
       n += cp_out(whole[n..<whole.count], "The user updated the active thread goal above. Realign your work to the updated objective. When the updated goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If blocked on user input, include [GOAL_BLOCKED].\n\n");
     } else {
       n += cp_out(whole[n..<whole.count], "Work autonomously toward the active thread goal above. Make concrete, verified progress across turns until finished. When the goal is completely achieved and verified, include [GOAL_COMPLETE] at the end of your reply. If you are truly blocked and need user input, include [GOAL_BLOCKED].\n\n");
     }
+    n += cp_out(whole[n..<whole.count], CP_GOAL_DONE_TEXT);
   }
   for c: ask { if n < whole.count { whole[n] = c; n += 1; } }
   if refs.count > 0 { n += cp_out(whole[n..<whole.count], "\n\n"); n += cp_out(whole[n..<whole.count], refs); }

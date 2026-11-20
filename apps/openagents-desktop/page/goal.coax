@@ -168,8 +168,27 @@ cp_goal_on_turn_end :: (s: [] CoderPage, i: int, ending: string, text: string) {
   }
   reply := ifx text.count > 0 then text else cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n];
   if cp_contains(reply, "[GOAL_COMPLETE]") {
-    s[0].goal_status = CP_GOAL_COMPLETE;
-    cp_goal_set_notice(s, "Goal completed.");
+    // A claim of done is checked before it closes the goal: one more turn re-reads the goal and every
+    // issue it names and runs the real thing, and only a [GOAL_COMPLETE] from that check counts. A
+    // model's first "done" closed seven issues on toy stand-ins (an Inkling 2 Mini with a vocabulary
+    // of 4) and asked once, "can it run inference?", it said no; the check asks that every time.
+    if s[0].goal_prompt_kind == CP_GOAL_PROMPT_AUDIT {
+      s[0].goal_status = CP_GOAL_COMPLETE;
+      cp_goal_set_notice(s, "Goal completed and checked.");
+      return;
+    }
+    if cp_budget_exceeded(s) {
+      s[0].goal_status = CP_GOAL_BUDGET_LIMITED;
+      cp_goal_set_notice(s, "The agent says the goal is done, but the chat budget is reached before the work was checked. Approve or increase budget, then run /goal resume.");
+      return;
+    }
+    if cp_full(s) {
+      s[0].goal_status = CP_GOAL_PAUSED;
+      cp_goal_set_notice(s, "The agent says the goal is done, but this chat is full, so the work was not checked. Check it, then run /goal complete.");
+      return;
+    }
+    cp_goal_set_notice(s, "The agent says the goal is done. Checking the work before the goal closes.");
+    _ := cp_start_turn(s, "Check the work against the goal before it closes.", CP_GOAL_PROMPT_AUDIT);
     return;
   }
   if cp_contains(reply, "[GOAL_BLOCKED]") {
