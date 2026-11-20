@@ -54,6 +54,9 @@ DeviceLane :: struct {
   // Send before the computer was read (a new chat, a read in flight): the message waits in
   // sent_text and goes once the read lands (dl_step), never dropped by a tap that does nothing.
   queued: bool;
+  // Queued behind a running turn (Zeron's Queue): the words left the composer for the queue panel,
+  // and come back to it if they never reach the computer (dl_unlift).
+  lifted: bool;
   // The computer refused the last message: nothing ran, the text is back in the composer,
   // and Try again sends it as a new request.
   refused: bool;
@@ -92,6 +95,20 @@ app_device_pairable :: (c: [] AppCore) -> bool { return dl_has(c); }
 app_device_pairing :: (c: [] AppCore) -> int { return ifx dl_has(c) then c[0].device[0].pair else DL_PAIR_NONE; }
 app_device_pair_words :: (c: [] AppCore) -> string { if !dl_has(c) { return ""; } d := dl_lane(c); return cast(string) d[0].pair_words[0..<d[0].pair_wn]; }
 // The message being sent while the computer does not have it yet ("" when none).
+// The message queued behind the running turn ("": none), for the queue panel above the composer.
+app_device_queued :: (c: [] AppCore) -> string { if !app_device_on(c) { return ""; } d := dl_lane(c); return ifx d[0].queued && d[0].lifted && d[0].sent_n > 0 then cast(string) d[0].sent_text[0..<d[0].sent_n] else ""; }
+// Take the queued message back: it leaves the queue for the composer (when the composer is empty) and never goes.
+app_device_unqueue :: (c: [] AppCore) -> bool {
+  if !app_device_on(c) { return false; } d := dl_lane(c);
+  if !d[0].queued || !d[0].lifted { return false; }
+  d[0].queued = false; dl_unlift(c); d[0].sent_n = 0; app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return true;
+}
+// A lifted message that will not reach the computer goes back to the composer, unless new words are there.
+dl_unlift :: (c: [] AppCore) {
+  d := dl_lane(c);
+  if d[0].lifted && d[0].sent_n > 0 && app_draft(c).count == 0 { _ := app_draft_keep(c, "", cast(string) d[0].sent_text[0..<d[0].sent_n]); }
+  d[0].lifted = false;
+}
 app_device_sent :: (c: [] AppCore) -> string { if !app_device_on(c) { return ""; } d := dl_lane(c); return cast(string) d[0].sent_text[0..<d[0].sent_n]; }
 // Whether the computer refused the last message (it was not sent; Try again sends it).
 app_device_refused :: (c: [] AppCore) -> bool { return app_device_on(c) && c[0].device[0].refused; }
@@ -165,7 +182,7 @@ dl_leave :: (c: [] AppCore) {
   if !dl_has(c) { return; }
   d := dl_lane(c);
   if d[0].op != 0 { _ := fx_cancel(c[0].out[..], OWN_DEVICE); d[0].op = 0; d[0].purpose = 0; d[0].list_op = 0; d[0].pair_op = 0; }
-  d[0].on = false; d[0].e[0] = EnvironmentApp.{}; d[0].wake_at = 0; d[0].sent_n = 0; d[0].queued = false; d[0].refused = false;
+  d[0].on = false; d[0].e[0] = EnvironmentApp.{}; d[0].wake_at = 0; d[0].sent_n = 0; d[0].queued = false; d[0].lifted = false; d[0].refused = false;
   app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
 }
 // A new chat on the same computer.
@@ -321,6 +338,8 @@ dl_action :: (c: [] AppCore, a: int) -> int {
     if (s == SEND_WAIT || (s == SEND_READY && dl_queues(c))) && dl_can_queue(c) {
       // the computer is still being read: the message waits for it and shows as sending
       d[0].queued = true; d[0].refused = false; d[0].sent_n = js_copy(d[0].sent_text[..], text);
+      // behind a running turn it leaves the composer for the queue panel, so the next words can be written
+      if dl_queues(c) { d[0].lifted = true; _ = app_draft_keep(c, "", ""); }
       app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;
     }
     if s != SEND_READY { return APP_R_BLOCKED; }
@@ -364,7 +383,7 @@ dl_step :: (c: [] AppCore) {
   // a message sent before the read landed goes now
   if d[0].queued && d[0].op == 0 && (dl_free(c) || (dl_busy(c) && dl_steerable(c) && dl_free_steer(c))) {
     d[0].queued = false;
-    if !dl_send_now(c, cast(string) d[0].sent_text[0..<d[0].sent_n]) { d[0].sent_n = 0; }
+    if !dl_send_now(c, cast(string) d[0].sent_text[0..<d[0].sent_n]) { dl_unlift(c); d[0].sent_n = 0; }
     app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER);
   }
   if d[0].wake_at > 0 && now >= d[0].wake_at && d[0].op == 0 && c[0].foreground {
@@ -433,7 +452,7 @@ dl_done :: (c: [] AppCore, op: int, purpose: int, ev: AppEvent) {
   if op != d[0].op { return; }
   d[0].op = 0; d[0].purpose = 0;
   if purpose == DL_P_IDS {
-    if !ok || ev.text.count != 32 || ev.more.count != 32 { eu_reply(e, 11, 0, "", true); d[0].sent_n = 0; return; }
+    if !ok || ev.text.count != 32 || ev.more.count != 32 { eu_reply(e, 11, 0, "", true); dl_unlift(c); d[0].sent_n = 0; return; }
     j: [160] u8; n := dl_cat(j[..], 0, "{\"command_id\":\""); n = dl_cat(j[..], n, ev.text); n = dl_cat(j[..], n, "\",\"session_id\":\""); n = dl_cat(j[..], n, ev.more);
     n = dl_cat(j[..], n, "\",\"now_ms\":"); n = dl_put_int(j[..], n, ev.value); n = dl_cat(j[..], n, "}");
     eu_reply(e, 11, 0, cast(string) j[0..<n], false);
@@ -444,11 +463,12 @@ dl_done :: (c: [] AppCore, op: int, purpose: int, ev: AppEvent) {
     eu_reply(e, 14, ifx ok then 200 else 0, ev.text, !ok);
     // the computer refused the message: nothing ran, so it is not shown as sent and its text stays in the composer
     refused := (method == "OpenSession" || method == "SendMessage") && ok && !e[0].uncertain && e[0].view[0].ne > 0;
-    if refused { d[0].refused = true; d[0].sent_n = 0; }
+    if refused { d[0].refused = true; dl_unlift(c); d[0].sent_n = 0; }
     if e[0].nn > 0 { app_say(c, ifx refused then dl_refused_words(cast(string) e[0].view[0].error[0..<e[0].view[0].ne], cast(string) e[0].note[0..<e[0].nn]) else dl_words(cast(string) e[0].note[0..<e[0].nn])); } else { app_say(c, ""); }
     // the computer has the message: the composer starts over
-    if (method == "OpenSession" || method == "SendMessage") && e[0].nd == 0 { _ := app_draft_keep(c, "", ""); d[0].sent_n = 0; }
-    if !ok && ev.outcome == FXO_FAILED && !e[0].uncertain { d[0].sent_n = 0; }
+    // (a queued message left the composer already: the words written since stay)
+    if (method == "OpenSession" || method == "SendMessage") && e[0].nd == 0 { if !d[0].lifted { _ := app_draft_keep(c, "", ""); } d[0].lifted = false; d[0].sent_n = 0; }
+    if !ok && ev.outcome == FXO_FAILED && !e[0].uncertain { dl_unlift(c); d[0].sent_n = 0; }
   }
   app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER | SURF_TASK);
 }

@@ -85,6 +85,7 @@ ViewFacts :: struct {
   reading: bool;        // device: a kept conversation is not read yet
   readonly:bool;        // an observed native transcript, not an owned session
   sent: string;         // device: the message on its way ("": none)
+  queued: string;       // device: the message queued behind the running turn, shown in the queue panel ("": none)
   send_refused: bool;   // device: the computer refused the message; nothing was sent, Try again sends it
   deliver: int;         // device, a turn running and words in the composer: VIEW_DELIVER_STEER or _QUEUE (0: a plain Send)
 }
@@ -320,7 +321,7 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
       if role == "user" && f.sent.count > 0 && ea_item_text(v, i) == f.sent { sent_seen = true; }
     }
   }
-  if f.sent.count > 0 && !sent_seen { r := view_add(vm, VK_DEVICE_SENT, "dev.sent", -1, f.sent.count); if r >= 0 { vm[0].rows[r].text = f.sent; } }
+  if f.sent.count > 0 && !sent_seen && f.queued.count == 0 { r := view_add(vm, VK_DEVICE_SENT, "dev.sent", -1, f.sent.count); if r >= 0 { vm[0].rows[r].text = f.sent; } }
   if f.permit != VIEW_PERMIT_NONE { _ := view_add(vm, VK_DEVICE_PERMISSION, "dev.permission", -1, f.permit); }
   if busy && !last_agent && f.permit == VIEW_PERMIT_NONE { _ := view_add(vm, VK_TYPING, "chat.typing", -1, 0); }
   if busy { _ := view_add(vm, VK_DEVICE_STATE, "dev.state", -1, f.stop); }

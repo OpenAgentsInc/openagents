@@ -266,14 +266,19 @@ lc_queue :: (r: [] LcRun) {
   lc_ok(r, ok && lc_done(c, r, q[..], FXO_DONE, false, raw, "", 0) == APP_OK && app_send_state(c) == SEND_STOP && dl_queues(c), "the chat runs and takes no steer: an empty composer shows Stop");
   lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_DRAFT, false, "then the tests", "") == APP_OK && app_send_state(c) == SEND_READY, "words in the composer can queue behind the running turn");
   r[0].t += 1;
-  // as with a Send that waits for a read, the words stay in the composer until the computer has them
-  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_SEND, false, "", "") == APP_OK && dl[0].queued && app_draft(c) == "then the tests" && app_device_sent(c) == "then the tests" && !lc_next(c, q[..]), "Queue keeps the message, shows it as sending and sends nothing yet");
+  // the words leave the composer for the queue panel, so the next ones can be written
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_SEND, false, "", "") == APP_OK && dl[0].queued && app_draft(c).count == 0 && app_device_queued(c) == "then the tests" && !lc_next(c, q[..]), "Queue moves the message to the queue panel and sends nothing yet");
   r[0].t += 1;
+  lc_ok(r, app_device_unqueue(c) && !dl[0].queued && app_draft(c) == "then the tests" && app_device_queued(c).count == 0 && app_device_sent(c).count == 0, "× takes it back into the composer");
+  lc_ok(r, app_host_action(c, r[0].t + 1, 1300, ACT_SEND, false, "", "") == APP_OK && app_device_queued(c) == "then the tests", "and Queue queues it again");
+  r[0].t += 1;
+  _ = app_host_action(c, r[0].t + 1, 1300, ACT_DRAFT, false, "and the lint", ""); r[0].t += 1;
   lc_ok(r, app_send_state(c) == SEND_STOP && app_stop_state(c) == STOP_READY, "the running turn can still be stopped");
   // the turn ends: the queued message goes as the next one
   e := dl[0].e[..]; for i: 0..<e[0].view[0].ns { e[0].view[0].sessions[i].busy = false; }
   dl_step(c);
-  lc_ok(r, !dl[0].queued && lc_next(c, q[..]) && q[0].kind == FX_IDS, "once the turn ends the queued message goes");
+  lc_ok(r, !dl[0].queued && lc_next(c, q[..]) && q[0].kind == FX_IDS && app_device_queued(c).count == 0 && app_device_sent(c) == "then the tests", "once the turn ends the queued message goes, shown as sending");
+  lc_ok(r, app_draft(c) == "and the lint", "and the words written since stay in the composer");
 }
 
 lc_bridge :: (r: [] LcRun) {

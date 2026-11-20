@@ -33,7 +33,7 @@ view_facts :: (c: [] AppCore) -> ViewFacts {
     f.send_unsure = dl_unsure(c) && (dl_method(c) == "OpenSession" || dl_method(c) == "SendMessage");
     e := app_device_env(c); f.reading = e[0].ns > 0 && eu_current(e) < 0;
     current:=eu_current(e);f.readonly=current>=0 && !e[0].view[0].sessions[current].managed;
-    f.sent = app_device_sent(c); f.send_refused = app_device_refused(c);
+    f.sent = app_device_sent(c); f.queued = app_device_queued(c); f.send_refused = app_device_refused(c);
     if f.send == VIEW_SEND_READY && dl_busy(c) { f.deliver = ifx dl_queues(c) then VIEW_DELIVER_QUEUE else VIEW_DELIVER_STEER; }
   }
   return f;

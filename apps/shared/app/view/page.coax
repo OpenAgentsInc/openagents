@@ -44,6 +44,7 @@ VIEW_A_TOOL :: 8;       // a tool row, or its pager
 VIEW_A_COPY :: 9;       // Copy on a code block
 VIEW_A_MESSAGE_COPY :: 10;
 VIEW_A_ACT :: 11;       // a turn's activity group (the conversation look): its summary, or one of its rows
+VIEW_A_UNQUEUE :: 13;   // the queue panel's ×: the queued message comes back to the composer
 VIEW_A_FOLD :: 12;      // a long message's Show more or Show less (Zeron's 5-line fold)
 VIEW_FOLDS :: 16;       // the long messages the page keeps open (the most recent opened)
 
@@ -437,6 +438,18 @@ view_composer_state :: (d: [] DurableChat, facts: ViewFacts) -> int {
   return APP_COMPOSER_READY;
 }
 
+// The queue panel with its foot at `bottom`: "Queued", the message's first line, and ×. Returns its height.
+view_queue_panel :: (f: [] UiFrame, x: f32, bottom: f32, w: f32, text: string) -> f32 {
+  s := f[0].skin; a := s.app; side := a.icon_button; pad := s.chat.inset;
+  h := side + a.gap; y := bottom - h;
+  sheet_fill(f[0].sheet, x, y, w, h, h / 2.5, s.raised);
+  row := uiframe_semantic(f, "chat.queue", EL_TEXT, "Queued", x, y, w, h, 0, 0); elt_value(f[0].rows, row, text);
+  room := w - 2 * pad - side; lines := s.small.line + s.body.line; ty := y + (h - lines) / 2;
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x + pad, ty, s.small.line, s.small.face, s.muted, "Queued · sends when this turn ends");
+  _ := sheet_text(f[0].sheet, f[0].m, -1, x + pad, ty + s.small.line, s.body.line, s.body.face, s.ink, app_fit(f, s.body.face, sheet_single_line(f[0].sheet, text), room));
+  _ := app_icon_button(f, "chat.queue.cancel", x + w - side - a.gap / 2, y + (h - side) / 2, ICON_CLOSE, "Take back the queued message", APP_BUTTON_QUIET, 0, VIEW_A_UNQUEUE);
+  return h;
+}
 // One frame of the chat page.
 view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> ViewOut {
   view_init(v);
@@ -471,6 +484,8 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     if look.deliver.count > 0 && out.chips_w > 0 { pw := ceil(measure_width(f[0].m, s.label.face, look.deliver)) + 2 * s.cmp.chip_pad - b.send; if pw > 0 { out.chips_w -= pw; } if out.chips_w < 0 { out.chips_w = 0; } }
     out.chips_y = out.composer_y + b.row_y + (b.send - lay.chips_h) / 2; above = out.composer_y;
   }
+  // Zeron's queue panel: the message that waits for the running turn, over the composer, with × to take it back
+  if s.chat.enabled && !out.readonly && facts.queued.count > 0 { above -= view_queue_panel(f, lay.x + pad, above - a.gap, lay.w - 2 * pad, facts.queued) + a.gap; }
   // the transcript fills what is left
   top := lay.top; bottom := above - a.gap;
   viewport := ifx bottom > top then bottom - top else 0.0f32;
@@ -563,6 +578,7 @@ view_press :: (v: [] ChatView, c: [] AppCore, keyed: [] KeyedStore, pressed: str
     return ViewPress.{kind = VIEW_P_DISPATCH, what = what};
   }
   if action == VIEW_A_RETRY { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RETRY}; }
+  if action == VIEW_A_UNQUEUE { _ := app_device_unqueue(c); return ViewPress.{}; }
   if action == VIEW_A_RECONNECT { return ViewPress.{kind = VIEW_P_DISPATCH, what = VIEW_C_RECONNECT}; }
   if action == VIEW_A_FOLD {
     // "<row>.more": the message opens or folds again, and stays where it is on screen while it eases
