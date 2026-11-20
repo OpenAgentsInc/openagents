@@ -20,7 +20,8 @@ final class CoderRun {
     var steered: [String: String] = [:] // the whole text of each steer this Coder sent, by id
     var bound: String?                 // the chat id keep() last bound its worker's queue to
     var worktree: ChatWorktree?        // the worktree made for its chat's first message (Window+Worktrees.swift)
-    var preparingWorktree = false, worktreeSkip = false
+    var pendingChat: String?           // chat id reserved while its worktree is being created
+    var preparingWorktree = false, worktreeSkip = false, startingWorker = false
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -262,21 +263,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         switch what {
         case 1:
             if holdForWorktree() { return }   // a new chat's own worktree first (#13758)
-            configureWorkerEnv(run, isForeman: isForemanShown)
-            syncSkillsNote(for: page, isForeman: isForemanShown)
-            guard run.worker.start() else { cd_failed(page, run.worker.failure ?? "Microcoder could not start."); return }
-            let from = run.worker.offset
-            if recallDue {
-                // an opened chat's turns, or nothing to remember when it has none that ended
-                recallDue = false
-                var n = cd_recall_line(page, &out, Int32(out.count))
-                if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
-                run.worker.write(out, count: Int(n))
-            }
-            let n = cd_task(page, run.session, folder.path, &out, Int32(out.count))
-            run.worker.write(out, count: Int(n))
-            beginTurn(run, from: from)
-            bindQueue(run)
+            sendTask(run)
         case 2: focusComposer()
         // The line is written into out first: Swift copies an argument before a later one's call fills it.
         case 3: stopRun(run)
@@ -356,17 +343,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             cd_tick(back.page, dt)
             let bgAct = cd_action(back.page)
             if bgAct == 1 {
-                var out = [CChar](repeating: 0, count: 262144)
-                back.worker.folder = back.folder.path
-                if back.worker.start() {
-                    let from = back.worker.offset
-                    let n = cd_task(back.page, back.session, back.folder.path, &out, Int32(out.count))
-                    back.worker.write(out, count: Int(n))
-                    beginTurn(back, from: from)
-                    bindQueue(back)
-                } else {
-                    cd_failed(back.page, back.worker.failure ?? "Microcoder could not start.")
-                }
+                sendTask(back)
             } else if bgAct == 3 {
                 stopRun(back)
             }

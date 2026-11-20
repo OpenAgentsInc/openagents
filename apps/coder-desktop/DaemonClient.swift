@@ -214,6 +214,15 @@ final class CoderDaemonClient {
                                    "command_id": Self.newCommandID()]) else { return "unreachable" }
         return view.ok == true ? nil : (view.error ?? "failed")
     }
+    /// StartRun without blocking the main thread: calls `completion` on the main queue with nil
+    /// when it runs, or the reason it didn't.
+    func startRunAsync(_ id: String, completion: @escaping (String?) -> Void) {
+        sendAsync(["schema": Self.schema, "method": "StartRun", "run_id": id,
+                   "command_id": Self.newCommandID()]) { view in
+            guard let view else { completion("unreachable"); return }
+            completion(view.ok == true ? nil : (view.error ?? "failed"))
+        }
+    }
     func stopRun(_ id: String, then: (() -> Void)? = nil) {
         sendAsync(["schema": Self.schema, "method": "StopRun", "run_id": id, "command_id": Self.newCommandID()]) { _ in then?() }
     }

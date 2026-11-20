@@ -64,6 +64,53 @@ extension CoderWindow {
         one.line = { [weak self, weak r] text in guard let self, let r, r.agents[j] === one else { return }; cd_agent_line(r.page, j, text); self.markUnread(r); self.pump(r) }
         one.gone = { [weak self, weak r] in guard let self, let r, r.agents[j] === one else { return }; r.agents[j] = nil; cd_agent_failed(r.page, j, "The sub-agent's worker stopped running."); self.markUnread(r); self.pump(r) }
     }
+    /// Starts `r`'s worker without blocking the main thread on daemon RPCs, then writes the pending
+    /// recall/task lines and records the turn. Works whether `r` stays shown or is detached while starting.
+    func sendTask(_ r: CoderRun) {
+        guard !r.startingWorker else { return }
+        let shown = r === run
+        let needsRecall: Bool
+        if shown {
+            configureWorkerEnv(r, isForeman: isForemanShown)
+            syncSkillsNote(for: r.page, isForeman: isForemanShown)
+            needsRecall = recallDue
+            if needsRecall { recallDue = false }
+        } else {
+            r.worker.folder = r.folder.path
+            needsRecall = false
+        }
+        r.startingWorker = true
+        r.worker.startAsync { [weak self, weak r] ok in
+            guard let self, let r else { return }
+            r.startingWorker = false
+            let stillShown = r === self.run
+            let stillBackground = !stillShown && r.chat != nil && self.runs[r.chat!] === r
+            guard stillShown || stillBackground else {
+                if ok { r.worker.stop() }
+                return
+            }
+            guard cd_running(r.page) != 0 else { return }
+            guard ok else {
+                cd_failed(r.page, r.worker.failure ?? "Microcoder could not start.")
+                self.wake()
+                return
+            }
+            var out = [CChar](repeating: 0, count: 262144)
+            let cwd = (stillShown ? self.folder : r.folder).path
+            let from = r.worker.offset
+            if needsRecall {
+                // an opened chat's turns, or nothing to remember when it has none that ended
+                var n = cd_recall_line(r.page, &out, Int32(out.count))
+                if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
+                r.worker.write(out, count: Int(n))
+            }
+            let n = cd_task(r.page, r.session, cwd, &out, Int32(out.count))
+            r.worker.write(out, count: Int(n))
+            self.beginTurn(r, from: from)
+            self.bindQueue(r)
+            self.wake()
+        }
+    }
     /// A message sent on a daemon run is kept (CoderTurn) with the chat as it is now, so a Coder
     /// that quits and opens again attaches to it. `from` is where its lines start in the run's output.
     func beginTurn(_ r: CoderRun, from: UInt64) {
@@ -249,7 +296,6 @@ extension CoderWindow {
     /// window gets a new run. True when nothing runs in the window now.
     @discardableResult func detach() -> Bool {
         guard cd_running(page) != 0 else { return true }
-        guard !run.preparingWorktree else { return false }   // its first message waits on its worktree (#13758)
         keep()
         guard let id = chat, let back = cd_headless() else { return false }
         coderApplyOpenRouter(back)

@@ -18,6 +18,7 @@ extension CoderWindow {
         if let w = r.worktree, store.meta(w.chat) == nil, folder.path == URL(fileURLWithPath: w.path).standardizedFileURL.path { return false }
         guard let repo = ChatWorktree.mainCheckout(of: worktreeSource(folder.path) ?? folder.path) else { return false }
         let id = UUID().uuidString.lowercased()
+        r.pendingChat = id
         r.preparingWorktree = true
         DispatchQueue.global(qos: .userInitiated).async {
             let made = ChatWorktree.create(repo: repo, chat: id)
@@ -25,20 +26,30 @@ extension CoderWindow {
                 r.preparingWorktree = false
                 guard let self else { return }
                 let w = try? made.get()
-                // the message was stopped, or the window moved on, while the worktree was made: a fresh one goes again
-                guard r === self.run, self.chat == nil, cd_running(self.page) != 0 else {
+                let stillShown = r === self.run
+                let stillBackground = !stillShown && r.chat != nil && self.runs[r.chat!] === r
+                // the message was stopped, or the run was discarded while the worktree was made: remove the unused worktree
+                guard (stillShown || stillBackground), cd_running(r.page) != 0 else {
                     if let w { DispatchQueue.global(qos: .utility).async { _ = ChatWorktree.remove(w) } }
                     return
                 }
                 if let w {
                     r.worktree = w
-                    self.setFolder(URL(fileURLWithPath: w.path, isDirectory: true), keep: false)
+                    r.folder = URL(fileURLWithPath: w.path, isDirectory: true)
+                    if stillShown {
+                        self.setFolder(r.folder, keep: false)
+                        if self.chat != nil { self.keep() }
+                    } else {
+                        self.keep(r)
+                    }
                 } else {
                     r.worktreeSkip = true
                     if case .failure(.git(let why)) = made { NSLog("Coder: a chat worktree could not be made in %@: %@", repo, why) }
-                    cd_toast(self.page, "Couldn't make this chat's worktree, so it runs in the folder you chose", 1); self.wake()
+                    if stillShown {
+                        cd_toast(self.page, "Couldn't make this chat's worktree, so it runs in the folder you chose", 1); self.wake()
+                    }
                 }
-                self.act(1)
+                self.sendTask(r)
             }
         }
         return true
@@ -80,10 +91,11 @@ extension CoderWindow {
         guard let w = r.worktree, w.chat == id else { return nil }
         return w
     }
-    /// The id a new chat is kept under: its worktree's, when one was made for its first message.
+    /// The id a new chat is kept under: its worktree's, when one was made or is being made for its first message.
     func pendingChatID(_ r: CoderRun) -> String? {
-        guard let w = r.worktree, store.meta(w.chat) == nil else { return nil }
-        return w.chat
+        if let w = r.worktree, store.meta(w.chat) == nil { return w.chat }
+        if let id = r.pendingChat, store.meta(id) == nil { return id }
+        return nil
     }
 
     /// An opened chat whose worktree folder is gone (removed by hand) gets it back from its branch

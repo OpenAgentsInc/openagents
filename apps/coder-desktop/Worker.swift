@@ -117,6 +117,55 @@ final class CoderWorker {
         follow()
         return true
     }
+    /// Starts the worker without blocking the main thread on the daemon's StartRun RPC.
+    /// Calls `completion(true)` on the main thread when the worker is ready to receive input,
+    /// or `completion(false)` with `failure` set if it could not start.
+    func startAsync(_ completion: @escaping (Bool) -> Void) {
+        if alive { completion(true); return }
+        failure = nil
+        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { completion(false); return }
+        if let daemon = CoderWorker.daemon, daemon.ownsRuns {
+            startRunAsync(path, daemon, completion: completion)
+            return
+        }
+        completion(start())
+    }
+    private func startRunAsync(_ path: String, _ daemon: CoderDaemonClient, completion: @escaping (Bool) -> Void) {
+        let fm = FileManager.default, dir = daemon.runsDir
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let (set, unset) = environment()
+        let spec: [String: Any] = ["program": path, "cwd": fm.homeDirectoryForCurrentUser.path,
+                                   "env": set.map { $0.key + "=" + $0.value }, "unset": unset]
+        guard let data = try? JSONSerialization.data(withJSONObject: spec) else { completion(false); return }
+        let specURL = dir.appendingPathComponent(id + ".spec")
+        guard fm.createFile(atPath: specURL.path, contents: data, attributes: [.posixPermissions: 0o600]),
+              fm.createFile(atPath: dir.appendingPathComponent(id + ".in").path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+            completion(false); return
+        }
+        attach(id, from: 0)
+        touch(force: true)
+        daemon.startRunAsync(id) { [weak self] why in
+            guard let self else {
+                if why == nil { daemon.stopRun(id) }
+                return
+            }
+            guard self.runID == id else {
+                if why == nil { daemon.stopRun(id) }
+                completion(false)
+                return
+            }
+            if let why {
+                if why == "run-limit" { self.failure = CoderWorker.runLimitNote }
+                try? FileManager.default.removeItem(at: specURL)
+                self.detach()
+                completion(false)
+                return
+            }
+            self.follow()
+            completion(true)
+        }
+    }
     /// This worker is the daemon's run `id` again, from byte `from` of its output (a reopened Coder).
     func attach(_ id: String, from: UInt64) {
         guard let daemon = CoderWorker.daemon else { return }
