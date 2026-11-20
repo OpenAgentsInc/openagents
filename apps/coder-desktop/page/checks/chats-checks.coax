@@ -171,3 +171,43 @@
   coder_page_chats(s, "p1\tPinned\t0\t1\t0\nm1\tManaged task\t0\t0\t1\n");
   #assert !cp_side_busy(s) && s[0].foreman_tier == CP_FOREMAN_TIER_OBSERVE;
 }
+
+#test "cmd_hints renders shortcut keycap badges for foreman and first 9 sidebar chats without breaking hits" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  s[0].ready = true;
+  coder_page_chats(s, "p1\tPinned 1\t0\t1\t0\np2\tPinned 2\t0\t1\t0\nr1\tRecent 1\nr2\tRecent 2\nr3\tRecent 3\nr4\tRecent 4\nr5\tRecent 5\nr6\tRecent 6\nr7\tRecent 7\nr8\tRecent 8\n");
+  coder_page_foreman(s, false, CP_FOREMAN_TIER_OBSERVE);
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  sf0 := s[0].surface[0].front;
+  base_u := s[0].surface[0].sheet[sf0].nu;
+  base_o := s[0].surface[0].sheet[sf0].no;
+
+  coder_page_cmd_hints(s, true);
+  #assert s[0].cmd_hints;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 1, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  sf1 := s[0].surface[0].front;
+  // 10 badges total: ` for Foreman + 1..9 for the first 9 chats (10th chat has no shortcut).
+  // Each badge adds 2 `over` prims (pill box + key text), plus 2 clip/unclip prims around the list.
+  #assert s[0].surface[0].sheet[sf1].no == base_o + 22;
+  // Badges are non-interactive overlays: clicking Foreman row still hits Foreman.
+  fx := 40.0f32;
+  fy := cp_bar(s) + cp_skin().app.side_row * 2.5f32;
+  #assert coder_page_foreman_at(s, fx, fy);
+
+  // Turning cmd_hints off immediately removes all shortcut badges.
+  coder_page_cmd_hints(s, false);
+  #assert !s[0].cmd_hints;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 2, 0.016, false, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  sf2 := s[0].surface[0].front;
+  #assert s[0].surface[0].sheet[sf2].nu == base_u;
+  #assert s[0].surface[0].sheet[sf2].no == base_o;
+}

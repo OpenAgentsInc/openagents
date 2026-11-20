@@ -8,6 +8,11 @@ coder_page_env :: (s: [] CoderPage, active: bool, reduced: bool) #export_c #effe
   if s.count < 1 { return; }
   s[0].fld[0].active = active; s[0].reduced = reduced;
 }
+// Whether to show the sidebar keyboard shortcut badges (held Command > 1s).
+coder_page_cmd_hints :: (s: [] CoderPage, shown: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].cmd_hints = shown;
+}
 // The draft set from the host (a follow-up taken back to edit). One longer than a draft may be is refused.
 coder_page_set_text :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 || text.count > EB_TEXT { return false; }

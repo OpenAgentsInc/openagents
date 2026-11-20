@@ -64,6 +64,25 @@ cp_sidebar :: (s: [] CoderPage, f: [] UiFrame, left: f32, h: f32, running: bool)
   bottom_pad := 16.0f32;
   tail := ifx s[0].nchats == 0 || s[0].chats_more > 0 then k.small.line + 2 * a.gap + bottom_pad else bottom_pad;
   s[0].side_content = app_side_window_at(f, 0, stop, sw, s[0].side_view, rows[0..<nrows], s[0].side_scroll, s[0].side_scr[0].stretch, tail, CP_CHAT);
+  if s[0].cmd_hints && s[0].side_view > 0 {
+    at := scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) + s[0].side_scr[0].stretch;
+    uiframe_clip(f, 0, stop, sw, stop + s[0].side_view);
+    cursor: f32 = 0;
+    slot := 0;
+    for r: rows[0..<nrows] {
+      rh := ifx r.heading then a.side_head else a.side_row;
+      ry := stop + cursor - at;
+      cursor += rh;
+      if r.heading { continue; }
+      slot += 1;
+      if slot > 9 { break; }
+      if ry + rh <= stop || ry >= stop + s[0].side_view { continue; }
+      kb: [4] u8;
+      kn := el_put_i(kb[..], 0, slot);
+      cp_side_key_badge(f, sw - a.side_pad, ry, rh, sheet_pool(f[0].sheet, cast(string) kb[0..<kn]));
+    }
+    uiframe_unclip(f);
+  }
   app_scroll_rail(f, s[0].side_scr[..], sw, stop, scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), s[0].side_content, s[0].side_view, s[0].side_view, s[0].now, s[0].reduced);
   s[0].pin_row_h = a.side_row;
   s[0].pin_top = stop + a.side_head - scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view) - s[0].side_scr[0].stretch;
@@ -137,8 +156,25 @@ cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: strin
     tw := measure_width(f[0].m, k.small.face, tier_lbl);
     _ := sheet_text(f[0].sheet, f[0].m, -1, sw - a.side_pad - tw, sy + (fh - k.small.line) / 2, k.small.line, k.small.face, ifx managed_busy > 0 then k.muted else k.faint, tier_lbl);
   }
+  if s[0].cmd_hints {
+    cp_side_key_badge(f, sw - a.side_pad, sy, fh, "`");
+  }
   sheet_hit(f[0].sheet, UIFRAME_HIT, frow, 0, 0, sy, sw, fh);
   return fh;
+}
+// Subtle floating keycap badge on the right side of a sidebar row while Command is held (>1s).
+cp_side_key_badge :: (f: [] UiFrame, right: f32, y: f32, row_h: f32, key: string) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bh := 18.0f32;
+  pad := 5.0f32;
+  tw := measure_width(m, k.small.face, key);
+  bw := ceil(tw) + 2.0f32 * pad;
+  if bw < bh { bw = bh; }
+  bx := right - bw;
+  by := y + (row_h - bh) / 2.0f32;
+  // Paint the pill in `over` so it floats cleanly above any long chat title or tier label.
+  sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, bx, by, bw, bh, 5.0f32, k.border, k.surface, k.field_edge));
+  _ := sheet_text(sh, m, -1, bx + (bw - tw) / 2.0f32, by + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, k.ink, key);
 }
 
 // Bottom-of-sidebar desktop auto-updater pill (hidden when no update is active).

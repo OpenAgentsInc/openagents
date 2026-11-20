@@ -119,6 +119,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var fileURL: URL?                    // the file in the pane on the right (Window+Files.swift)
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
+    private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
+    private var cmdHoldTimer: Timer?
+    private var cmdHintsShown = false
     private var titleBar: CoderTitleBar?   // the transparent title bar and the traffic lights' places (Window+TitleBar.swift)
 
     init?(resources: String) {
@@ -170,7 +173,12 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             setFolder(URL(fileURLWithPath: kept), keep: false)
         } else { setFolder(folder, keep: false) }
         syncSettingsInfo()
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleModifierFlags(event.modifierFlags)
+            return event
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.cancelCmdHold()
             guard let self, event.window === self.window, self.window.attachedSheet == nil else { return event }
             // Command-` opens Foreman when enabled (heard before macOS window cycling).
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -404,7 +412,40 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         (cd_running(page) != 0 ? 1 : 0) + runs.values.filter { cd_running($0.page) != 0 }.count
     }
     func show() { window.makeKeyAndOrderFront(nil); wake() }
-    func windowShouldClose(_ sender: NSWindow) -> Bool { window.orderOut(nil); return false }
+    func windowShouldClose(_ sender: NSWindow) -> Bool { cancelCmdHold(); window.orderOut(nil); return false }
+    func windowDidResignKey(_ notification: Notification) { cancelCmdHold() }
+    private func setCmdHints(_ shown: Bool) {
+        guard cmdHintsShown != shown else { return }
+        cmdHintsShown = shown
+        cd_cmd_hints(page, shown ? 1 : 0)
+        wake()
+    }
+    private func cancelCmdHold() {
+        cmdHoldTimer?.invalidate()
+        cmdHoldTimer = nil
+        setCmdHints(false)
+    }
+    private func handleModifierFlags(_ flags: NSEvent.ModifierFlags) {
+        let mods = flags.intersection(.deviceIndependentFlagsMask)
+        let cmdOnly = mods.contains(.command) && !mods.contains(.shift) && !mods.contains(.option) && !mods.contains(.control)
+        guard cmdOnly, window.isKeyWindow, window.attachedSheet == nil else {
+            cancelCmdHold()
+            return
+        }
+        if !cmdHintsShown && cmdHoldTimer == nil {
+            cmdHoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.cmdHoldTimer = nil
+                let live = NSEvent.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                let stillCmd = live.contains(.command) && !live.contains(.shift) && !live.contains(.option) && !live.contains(.control)
+                if stillCmd && self.window.isKeyWindow && self.window.attachedSheet == nil {
+                    self.setCmdHints(true)
+                } else {
+                    self.cancelCmdHold()
+                }
+            }
+        }
+    }
     var retired = false
 
     func retire() {
@@ -419,6 +460,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         runs = [:]
         if run.turn != nil && cd_running(page) != 0 { run.detach() } else { run.stop() }
         if let monitor { NSEvent.removeMonitor(monitor) }; monitor = nil; link?.invalidate(); link = nil; watchdog?.invalidate(); watchdog = nil
+        cmdHoldTimer?.invalidate(); cmdHoldTimer = nil
+        if let flagsMonitor { NSEvent.removeMonitor(flagsMonitor) }; flagsMonitor = nil
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }; keyMonitor = nil
         titleBar?.stop(); titleBar = nil
         cd_on_change(page, nil, nil); cd_close(page)
