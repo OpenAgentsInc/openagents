@@ -27,7 +27,7 @@
 //   CODER_AGY_PROFILE   optional isolated --gemini-dir profile directory
 //   CODER_AGY_MODE      auto | default | plan (default: auto)
 //   CODER_AGY_MODEL     optional default model id
-//   CODER_AGY_EFFORT    low | medium | high
+//   CODER_AGY_EFFORT    low | medium | high (default: AGYW_EFFORT, medium)
 //
 //   coax/web/tool.sh coder/tui/agyworker.coax
 
@@ -113,6 +113,18 @@ agyw_resolve_mode :: (raw: string) -> string {
   return AGY_MODE_AUTO;
 }
 
+// The thought level a chat's turn runs at when neither the task line nor Settings
+// (CODER_AGY_EFFORT) names one. Not the engine's AGY_EFFORT (low, for Coder and the Workshop):
+// at low, Carbon (agy's default model) and Flash think not at all, so session/prompt reports
+// thoughtTokens 0, agy sends no agent_thought_chunk, and a chat showed only its tool calls.
+// Measured 2026-11-20 on agy 1.5.13 through a tee around agy acp, an LRU-cache task, 3 runs each:
+//   Carbon low:     no thoughts; first byte 3 to 20 s, longest quiet 14 to 39 s, done in 46 to 120 s
+//   Carbon medium:  4 to 6 thoughts; the first at 4 s, longest quiet 12 to 16 s, done in 47 to 60 s
+//   Carbon high:    20 thoughts; longest quiet 59 s, done in 194 s (1 run)
+// At medium every model tried (Carbon, Neon, Argon, Flash) streamed thoughts in every run, the
+// first within 3 to 9 s. A thought arrives every few seconds while the model thinks, so a long
+// think (#13227) reads as thinking, not as a stall.
+AGYW_EFFORT :: "medium";
 // Resolve effort from task or CODER_AGY_EFFORT: low | medium | high (else empty).
 agyw_resolve_effort :: (task_effort: string, env_effort: string) -> string {
   e := agyw_trim(task_effort);
@@ -452,7 +464,7 @@ agyw_no_reply :: (stop: string) -> string {
 // attempt line with no counts, so the message it answers names the model that wrote it.
 agyw_ran :: (s: [] AgywState, x: [] CuEngine, result: string, model: string, effort: string, emit: bool) {
   ar := x[0].c[0].ar[..];
-  ob: [128] u8; id := agy_effective_model(result, model, effort, ar, ob[..]);
+  ob: [128] u8; id := agy_effective_at(result, model, effort, AGYW_EFFORT, ar, ob[..]);
   s[0].ran_n = agyw_copy(s[0].ran[..], id);
   s[0].ran_name_n = agyw_copy(s[0].ran_name[..], agy_model_shown(result, id, ar));
   if !emit || id.count == 0 { return; }
@@ -512,7 +524,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       mod := agyw_str(s[0].turn_model[..], s[0].turn_model_n);
       eff := agyw_str(s[0].turn_effort[..], s[0].turn_effort_n);
       mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
-      _ = agy_configure_mode(x, ev.result, mod, eff, mode);
+      _ = agy_configure_at(x, ev.result, mod, eff, mode, AGYW_EFFORT);
       agyw_ran(s, x, ev.result, mod, eff, emit);
       cue_owed(x, s[0].turn_active);
       return;
@@ -811,7 +823,13 @@ tool_main :: () -> int #export_c #effects(all) {
   agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
   ev := CuEvent.{kind = CuEventKind.answered, of = CU_SESSION_NEW, result = AGY_OPENED_DEFAULT};
   agyw_handle_event(s, x, ev, false);
+  // nothing named: agy's default model at the chat's level (AGYW_EFFORT, medium)
+  #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-carbon-medium" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "Gemini 4 Carbon (Medium)";
+  // an effort set in Settings (CODER_AGY_EFFORT) wins over it
+  s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], "low");
+  agyw_handle_event(s, x, ev, false);
   #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-carbon-low" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "Gemini 4 Carbon (Low)";
+  s[0].turn_effort_n = 0;
   // a model set in Settings is the one named
   s[0].turn_model_n = agyw_copy(s[0].turn_model[..], "gemini-4-argon-high");
   agyw_handle_event(s, x, ev, false);
@@ -906,4 +924,58 @@ agyw_logged :: (s: [] AgywState, part: string) -> bool { return agy_has(agyw_str
   ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\"},\"id\":4}");
   agyw_handle_event(s, x, ev, true);
   #assert agyw_logged(s, "\"ending\":\"finished\"");
+}
+
+// agy 1.5.13's own lines, captured 2026-11-20 through a tee around `agy acp` while agyworker ran an
+// LRU-cache task (the workspace's path shortened to /w, a written file's text cut). At medium agy
+// streams the model's thinking as agent_thought_chunk, a bold title and a paragraph each, and
+// reports it as thoughtTokens; at low, on Carbon, it sends tool calls and words but no thought
+// chunk at all, and reports thoughtTokens 0. No other update kind carries thinking.
+AGYW_FX_SESSION_NEW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"sessionId\":\"63a19ef3-e900-4141-912a-4f727455dd5b\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\",\"name\":\"Gemini 4 Carbon (Medium)\"},{\"modelId\":\"gemini-4-carbon-high\",\"name\":\"Gemini 4 Carbon (High)\"},{\"modelId\":\"gemini-4-carbon-low\",\"name\":\"Gemini 4 Carbon (Low)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"configOptions\":[{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-carbon\",\"name\":\"Gemini 4 Carbon\"}]},{\"id\":\"thought_level\",\"name\":\"Thinking Level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\",\"name\":\"Low\"},{\"value\":\"medium\",\"name\":\"Medium\"},{\"value\":\"high\",\"name\":\"High\"}]}]},\"id\":2}";
+AGYW_FX_THOUGHT :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"63a19ef3-e900-4141-912a-4f727455dd5b\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"**Drafting LRUCache Implementation**\\n\\nI'm focusing on implementing the `LRUCache` class within `lru.py`, ensuring it correctly handles `get` and `put` operations, including the crucial least-recently-used eviction logic based on capacity. Testing will follow closely.\\n\\n\"}}}}";
+AGYW_FX_ENDED_MEDIUM :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\",\"usage\":{\"inputTokens\":20482,\"outputTokens\":4146,\"cachedReadTokens\":39899,\"cachedWriteTokens\":0,\"thoughtTokens\":1587,\"totalTokens\":64527}},\"id\":4}";
+AGYW_FX_LOW_WRITE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fa0f9160-ca80-4307-8513-393054de5060\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"call_13351050124385443137\",\"name\":\"write_file\",\"args\":{\"Content\":\"from collections import OrderedDict\\n\",\"TargetFile\":\"/w/lru.py\",\"toolSummary\":\"Create lru.py with LRUCache\"},\"status\":\"in_progress\",\"kind\":\"edit\",\"title\":\"File lru.py\",\"locations\":[{\"path\":\"/w/lru.py\"}]}}}";
+AGYW_FX_LOW_WRITE_DONE :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fa0f9160-ca80-4307-8513-393054de5060\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"call_13351050124385443137\",\"name\":\"write_file\",\"status\":\"completed\",\"kind\":\"edit\",\"title\":\"File lru.py\",\"locations\":[{\"path\":\"/w/lru.py\"}]}}}";
+AGYW_FX_LOW_WORDS :: "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fa0f9160-ca80-4307-8513-393054de5060\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Created lru.py.\"}}}}";
+AGYW_FX_ENDED_LOW :: "{\"jsonrpc\":\"2.0\",\"result\":{\"stopReason\":\"end_turn\",\"usage\":{\"inputTokens\":15896,\"outputTokens\":1793,\"cachedReadTokens\":18171,\"cachedWriteTokens\":0,\"thoughtTokens\":0,\"totalTokens\":35860}},\"id\":3}";
+
+#test "agyworker: a new chat session thinks at medium, and agy's thought chunks become thought lines" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].sink = true; s[0].turn_active = true;
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  cu_outbox_clear(x[0].c);
+  // the captured session/new: no model or effort named, so the chat's medium; agy's default model
+  agyw_fx_feed(s, x, AGYW_FX_SESSION_NEW);
+  #assert agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"medium\"") && !agy_out_has(x, "\"value\":\"low\"");
+  #assert agyw_logged(s, "\"gateway\":\"antigravity\",\"model\":\"gemini-4-carbon-medium\"");
+  agyw_fx_feed(s, x, "{\"jsonrpc\":\"2.0\",\"result\":{},\"id\":3}");   // the thought level, answered
+  #assert cue_send(x, "Create lru.py ...");
+  agyw_fx_feed(s, x, AGYW_FX_THOUGHT);
+  #assert agyw_logged(s, "{\"kind\":\"thought\",\"text\":\"**Drafting LRUCache Implementation**\\n\\nI'm focusing on implementing the `LRUCache` class");
+  agyw_fx_feed(s, x, AGYW_FX_LOW_WORDS);
+  agyw_fx_feed(s, x, AGYW_FX_ENDED_MEDIUM);
+  #assert !s[0].turn_active && agyw_logged(s, "\"ending\":\"finished\"");
+}
+
+#test "agyworker: a low-effort turn on Carbon, as agy sent it, has its tool call and reply and no thought" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [8192] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  agyw_fx_turn(s, x);
+  agyw_fx_feed(s, x, AGYW_FX_LOW_WRITE);
+  agyw_fx_feed(s, x, AGYW_FX_LOW_WRITE_DONE);
+  agyw_fx_feed(s, x, AGYW_FX_LOW_WORDS);
+  agyw_fx_feed(s, x, AGYW_FX_ENDED_LOW);
+  #assert agyw_logged(s, "{\"kind\":\"ask\",\"command\":\"File lru.py\"") && agyw_logged(s, "{\"kind\":\"command\",\"command\":\"File lru.py\",\"exit\":0");
+  #assert agyw_logged(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Created lru.py.\"}") && !agyw_logged(s, "\"kind\":\"thought\"");
+  // the same turn at medium: its thought, then the same end
+  s[0].log_n = 0; agyw_fx_turn(s, x);
+  agyw_fx_feed(s, x, AGYW_FX_THOUGHT);
+  agyw_fx_feed(s, x, AGYW_FX_LOW_WORDS);
+  agyw_fx_feed(s, x, AGYW_FX_ENDED_MEDIUM);
+  #assert agyw_logged(s, "\"kind\":\"thought\"") && agyw_logged(s, "\"ending\":\"finished\"");
 }

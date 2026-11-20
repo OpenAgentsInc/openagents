@@ -284,15 +284,21 @@ agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
 // set as its -low variant when agy lists one, else set as named with thought_level low; no model
 // is agy's own with thought_level low. At medium, Flash and Carbon spent 7 to 15 s thinking before
 // a call's first byte, and Carbon's long calls thought for 5 to 6 minutes (#13227).
+//
+// A caller with another default passes it as fallback (agy_configure_at): OpenAgents Desktop's
+// chats think at medium (coder/tui/agyworker.coax, AGYW_EFFORT), where the owner reads the thoughts.
 AGY_EFFORT :: "low";
 agy_configure_mode :: (x: [] CuEngine, result: string, model: string, effort: string, want_mode: string) -> int {
+  return agy_configure_at(x, result, model, effort, want_mode, AGY_EFFORT);
+}
+agy_configure_at :: (x: [] CuEngine, result: string, model: string, effort: string, want_mode: string, fallback: string) -> int {
   ar := x[0].c[0].ar[..];
   x[0].hold = 0;
   missed := 0;
-  level := effort;                 // the thought level to set: the owner's, else ours unless the model carries one
-  if level.count == 0 { level = AGY_EFFORT; }
+  level := effort;                 // the thought level to set: the owner's, else the fallback unless the model carries one
+  if level.count == 0 { level = fallback; }
   if model.count > 0 {
-    lb: [160] u8; ln := cl_copy(lb[..], model); ln += cl_copy(lb[ln..<lb.count], "-"); ln += cl_copy(lb[ln..<lb.count], AGY_EFFORT);
+    lb: [160] u8; ln := cl_copy(lb[..], model); ln += cl_copy(lb[ln..<lb.count], "-"); ln += cl_copy(lb[ln..<lb.count], fallback);
     if cu_model_has(result, model, ar) { cue_set_model(x, model); if effort.count == 0 { level = ""; } }
     else if effort.count == 0 && ln < lb.count && cu_model_has(result, cast(string) lb[0..<ln], ar) { cue_set_model(x, cast(string) lb[0..<ln]); level = ""; }
     else {
@@ -319,7 +325,11 @@ agy_configure_mode :: (x: [] CuEngine, result: string, model: string, effort: st
 // listed; no model is agy's default (the model config option's currentValue, else
 // models.currentModelId) at the thought level set. "" only when agy named nothing at all.
 agy_effective_model :: (result: string, model: string, effort: string, ar: [] ClArena, out: [] u8) -> string {
-  level := ifx effort.count > 0 then effort else AGY_EFFORT;
+  return agy_effective_at(result, model, effort, AGY_EFFORT, ar, out);
+}
+// The same, for a caller whose default level is fallback (agy_configure_at).
+agy_effective_at :: (result: string, model: string, effort: string, fallback: string, ar: [] ClArena, out: [] u8) -> string {
+  level := ifx effort.count > 0 then effort else fallback;
   base := model;
   if model.count > 0 {
     if cu_model_has(result, model, ar) && effort.count == 0 { return cast(string) out[0..<cl_copy(out, model)]; }
@@ -559,6 +569,35 @@ AGY_OPENED_DEFAULT :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{
   // our default unoffered is quiet; an owner's effort unoffered is reported
   #assert agy_configure(x, "{\"models\":{\"availableModels\":[]}}", "", "") == 0 && x[0].hold == 0;
   #assert agy_configure(x, "{\"models\":{\"availableModels\":[]}}", "", "high") == AGY_EFFORT_NOT_APPLIED;
+}
+
+#test "antigravity: a caller's own default level (agyworker's medium) is set as the low one is" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [8192] u8; out: [4096] u8;
+  x := xb[..]; agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  r := AGY_OPENED_DEFAULT;
+  agy_t_reset(x);
+  // no model: agy's own, at thought_level medium
+  #assert agy_configure_at(x, r, "", "", "", "medium") == 0 && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"medium\"") && !agy_out_has(x, "set_model");
+  agy_t_reset(x);
+  // a base model with a listed -medium variant: that variant, and no thought level besides
+  #assert agy_configure_at(x, r, "gemini-4-carbon", "", "", "medium") == 0 && agy_out_has(x, "\"modelId\":\"gemini-4-carbon-medium\"") && !agy_out_has(x, "thought_level");
+  agy_t_reset(x);
+  // a base model with none listed: as named, at thought_level medium
+  #assert agy_configure_at(x, r, "gemini-4-argon", "", "", "medium") == 0 && agy_out_has(x, "\"configId\":\"model\",\"value\":\"gemini-4-argon\"") && agy_out_has(x, "\"value\":\"medium\"");
+  agy_t_reset(x);
+  // a model named with its level, or an effort the owner set, is kept
+  #assert agy_configure_at(x, r, "gemini-4-argon-low", "", "", "medium") == 0 && agy_out_has(x, "\"modelId\":\"gemini-4-argon-low\"") && !agy_out_has(x, "thought_level");
+  agy_t_reset(x);
+  #assert agy_configure_at(x, r, "", "low", "", "medium") == 0 && agy_out_has(x, "\"configId\":\"thought_level\",\"value\":\"low\"");
+  agy_t_reset(x);
+  // and the model it names follows the same choices
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; o: [128] u8;
+  #assert agy_effective_at(r, "", "", "medium", ar[..], o[..]) == "gemini-4-carbon-medium";
+  #assert agy_effective_at(r, "", "low", "medium", ar[..], o[..]) == "gemini-4-carbon-low";
+  #assert agy_effective_at(r, "gemini-4-argon-high", "", "medium", ar[..], o[..]) == "gemini-4-argon-high";
+  o2: [128] u8;
+  #assert agy_effective_at(r, "", "", AGY_EFFORT, ar[..], o[..]) == agy_effective_model(r, "", "", ar[..], o2[..]) && cast(string) o2[0..<19] == "gemini-4-carbon-low";
 }
 
 #test "antigravity: a session in another mode is set back to default" {

@@ -300,3 +300,19 @@
   _ = coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"antigravity\",\"model\":\"gemini-4-carbon-low\",\"outcome\":\"configured\",\"status\":0}");
   #assert cp_turn_meta(s, 0) == "Antigravity CLI · Gemini 4 Carbon (Low)";
 }
+
+#test "an Antigravity turn's task line names no effort, so Settings or agyworker's medium decides; Microcoder's names low" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "gemini-4-neon" && back[0].effort == "low";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  coder_page_set_agy(s, true);
+  #assert coder_page_pick_model(s, "antigravity");
+  #assert coder_page_set_text(s, "fix the test") && coder_page_submit(s);
+  ar[0].at = 0;
+  n = coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "antigravity" && back[0].effort == "";
+  #assert !cp_contains(cast(string) out[0..<n], "\"effort\"");
+}

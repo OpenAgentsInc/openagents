@@ -99,6 +99,10 @@ coder_page_task :: (s: [] CoderPage, session: string, cwd: string, out: [] u8) -
   i := s[0].nturns - 1;
   return cp_task_message(s, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], cp_refs(s, i), s[0].turns[i].model, session, cwd, out);
 }
+// The effort a task line names for the model at index model: none for Antigravity, so the effort
+// set in Settings (CODER_AGY_EFFORT), else agyworker's own default (medium, which streams its
+// thoughts), decides; a forced low there made agy think not at all. Microcoder's models: low.
+cp_task_effort :: (s: [] CoderPage, model: int) -> string { return ifx cp_is_agy(s, model) then "" else "low"; }
 // ask as the worker's task line, with the model at index model: what a message sends, and what a
 // queued follow-up carries (followups.coax).
 cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, session: string, cwd: string, out: [] u8) -> int {
@@ -121,7 +125,7 @@ cp_task_message :: (s: [] CoderPage, ask: string, refs: string, model: int, sess
   for c: ask { if n < whole.count { whole[n] = c; n += 1; } }
   if refs.count > 0 { n += cp_out(whole[n..<whole.count], "\n\n"); n += cp_out(whole[n..<whole.count], refs); }
   t := McTask.{task = cast(string) whole[0..<n], session = session, cwd = cwd, sandbox = "danger-full-access",
-               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, model), effort = "low", openrouter = cp_or_sub(s)};
+               ceiling = 3, gated = true, edits = true, unlimited = true, no_ask = true, agents = true, claude = s[0].claude, model = cp_model_id(s, model), effort = cp_task_effort(s, model), openrouter = cp_or_sub(s)};
   // the simulator pane open and its helper there: the run may drive the device (GitHub #13811)
   t.device = cp_sim(s)[0].open && cp_sim(s)[0].connected;
   return mww_task(out, t);
