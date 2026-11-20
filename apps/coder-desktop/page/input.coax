@@ -78,6 +78,13 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
+  if act == CP_AGENT_STOP {
+    // the same stop as the pane's, for the sub-agent the row names
+    id := surface_id(s[0].surface[..], row);
+    turn := cp_number(id, "t"); j := cp_number(id, ".s");
+    if cp_running(s) && turn == s[0].nturns - 1 && j >= 0 && j < s[0].turns[turn].nagents && s[0].turns[turn].agents[j].state == CP_RUNNING { s[0].stop_agent = j; s[0].ask = CP_ASK_STOP_AGENT; }
+    return true;
+  }
   if act == CP_PANE_STOP { if cp_running(s) && s[0].pane_turn == s[0].nturns - 1 && s[0].pane_agent >= 0 && s[0].pane_agent < s[0].turns[s[0].pane_turn].nagents && s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].state == CP_RUNNING { s[0].stop_agent = s[0].pane_agent; s[0].ask = CP_ASK_STOP_AGENT; } return true; }
   if act == CP_REVIEW {
     // the code review opens in the pane, its tab in front; a press while it shows closes it

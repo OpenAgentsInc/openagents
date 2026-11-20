@@ -128,6 +128,11 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   while q >= 0 || drawn < nagents {
     if drawn < nagents && (q < 0 || s[0].turns[i].agents[drawn].after <= at) {
       y += app_act_row(f, cp_named(tb[..], name, ".g", drawn), x, y, cw, cp_act_agent(s, f, i, drawn), pos < last, CP_AGENT);
+      // a running sub-agent of the running message can be stopped alone, as from its pane (#13766)
+      if nagents > 0 && cp_running(s) && i == s[0].nturns - 1 && s[0].turns[i].agents[drawn].state == CP_RUNNING {
+        sw := app_button_width(f, -1, "Stop sub-agent");
+        y += app_button(f, cp_named(tb[..], name, ".s", drawn), x + a.gutter, y, sw, -1, "Stop sub-agent", APP_BUTTON_DEFAULT, 0, CP_AGENT_STOP) + f[0].skin.app.gap;
+      }
       drawn += 1; pos += 1; continue;
     }
     nx := s[0].calls[q].next - 1;

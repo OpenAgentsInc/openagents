@@ -506,6 +506,20 @@
   #assert cp_find(line, "\"ticket\":5") >= 0 && cp_find(line, "a done") >= 0;
 }
 
+#test "a running sub-agent's activity row has its own Stop, which stops it alone, as the pane's does (#13766)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "look") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"}],\"ticket\":1}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"A ok\"}") == MWW_ENDED;
+  #assert cp_test_draw_wide(s, f[..]);
+  // only the running one has a Stop
+  #assert surface_find(s[0].surface[..], "t0.s0") < 0 && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.s1")) == "Stop sub-agent";
+  #assert cp_press(s, surface_find(s[0].surface[..], "t0.s1")) && coder_page_action(s) == CP_ASK_STOP_AGENT && coder_page_stop_agent(s) == 1;
+  #assert coder_page_agent_cancel(s, 1) && !coder_page_agent_running(s, 1) && cp_running(s);
+  #assert cp_test_draw_wide(s, f[..]) && surface_find(s[0].surface[..], "t0.s1") < 0;
+}
+
 #test "a sub-agent's pane keeps the conversation's copy lane under its task, so its work stands level with the message's (#13770)" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
   cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
