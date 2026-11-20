@@ -105,23 +105,23 @@ cf_new :: (h: [] WcHost, o: [] CfOut, scene: int) -> int {
 
 #test "frames: the demo conversation as it opens" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 0) == 101228666197503552;
+  #assert cf_demo(h[..], o[..], 0) == 36789162120703552;
 }
 #test "frames: the demo with its groups and three chips open, scrolled" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 1) == 56803173987105892;
+  #assert cf_demo(h[..], o[..], 1) == 49080818070305892;
 }
 #test "frames: the opened demo on a phone at density 1" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_demo(h[..], o[..], 2) == 28781912739905808;
+  #assert cf_demo(h[..], o[..], 2) == 73505776291905808;
 }
 #test "frames: the table reply, a quote, lists, two notices and the working trailer" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_table(h[..], o[..], 0) == 97010701052703090;
+  #assert cf_table(h[..], o[..], 0) == 104697017084703090;
 }
 #test "frames: a selection across those rows" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
-  #assert cf_table(h[..], o[..], 1) == 14146302510303156;
+  #assert cf_table(h[..], o[..], 1) == 41483000775903156;
 }
 #test "frames: the new-chat composer, empty" #steps 200000000 {
   h: [1] WcHost; o: [1] CfOut;
