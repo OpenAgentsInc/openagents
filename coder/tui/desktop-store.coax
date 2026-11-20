@@ -236,6 +236,9 @@ DkChat :: struct {
   title: [256] u8; title_n: int;
   folder: [1024] u8; folder_n: int;
   managed: [64] u8; managed_n: int;
+  wt_path: [1024] u8; wt_path_n: int;       // worktree_path: the chat's own worktree (GitHub #13758), "" for none
+  wt_branch: [128] u8; wt_branch_n: int;    // worktree_branch
+  repo: [1024] u8; repo_n: int;             // repo_root: the main checkout it came from
   created: [40] u8; created_n: int;   // raw number; 0 when the entry has none
   updated: [40] u8; updated_n: int;   // raw number
   renamed: bool;
@@ -247,6 +250,9 @@ dk_id :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].i
 dk_title :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].title[0..<x[0].chats[i].title_n]; }
 dk_folder :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].folder[0..<x[0].chats[i].folder_n]; }
 dk_managed :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].managed[0..<x[0].chats[i].managed_n]; }
+dk_wt_path :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].wt_path[0..<x[0].chats[i].wt_path_n]; }
+dk_wt_branch :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].wt_branch[0..<x[0].chats[i].wt_branch_n]; }
+dk_repo :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].repo[0..<x[0].chats[i].repo_n]; }
 dk_created :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].created[0..<x[0].chats[i].created_n]; }
 dk_updated :: (x: [] DkIndex, i: int) -> string { return cast(string) x[0].chats[i].updated[0..<x[0].chats[i].updated_n]; }
 
@@ -269,6 +275,9 @@ dk_index_parse :: (x: [] DkIndex, text: string) -> bool {
     c.title_n = dk_copy(c.title[..], dk_text(dk_get(e, "title"), tb[..]));
     c.folder_n = dk_copy(c.folder[..], dk_text(dk_get(e, "folder"), tb[..]));
     c.managed_n = dk_copy(c.managed[..], dk_text(dk_get(e, "managed_by"), tb[..]));
+    c.wt_path_n = dk_copy(c.wt_path[..], dk_text(dk_get(e, "worktree_path"), tb[..]));
+    c.wt_branch_n = dk_copy(c.wt_branch[..], dk_text(dk_get(e, "worktree_branch"), tb[..]));
+    c.repo_n = dk_copy(c.repo[..], dk_text(dk_get(e, "repo_root"), tb[..]));
     cr := dk_get(e, "created"); if cr != "null" { c.created_n = dk_copy(c.created[..], cr); }
     c.updated_n = dk_copy(c.updated[..], dk_get(e, "updated"));
     if c.updated_n == 0 { c.updated_n = dk_copy(c.updated[..], "0"); }
@@ -295,6 +304,9 @@ dk_index_write :: (x: [] DkIndex, o: [] Jo) {
     if x[0].chats[i].renamed { jo_key(o, "renamed"); jo_bool(o, true); }
     if x[0].chats[i].pinned >= 0 { jo_key(o, "pinned"); jo_int(o, x[0].chats[i].pinned); }
     if x[0].chats[i].managed_n > 0 { jo_key(o, "managed_by"); jo_str(o, dk_managed(x, i)); }
+    if x[0].chats[i].wt_path_n > 0 { jo_key(o, "worktree_path"); jo_str(o, dk_wt_path(x, i)); }
+    if x[0].chats[i].wt_branch_n > 0 { jo_key(o, "worktree_branch"); jo_str(o, dk_wt_branch(x, i)); }
+    if x[0].chats[i].repo_n > 0 { jo_key(o, "repo_root"); jo_str(o, dk_repo(x, i)); }
     jo_end(o);
   }
   jo_end(o);
@@ -705,6 +717,14 @@ DK_FIXTURE_CHAT :: "{\"v\":1,\"cost_usd_micros\":2000000,\"budget_usd_micros\":3
   #assert !dk_index_parse(y[..], "{}") && !dk_index_parse(y[..], "[1]") && !dk_index_parse(y[..], "[{\"id\":\"a\"}");
   small: [2] DkChat; z := [1] DkIndex.[DkIndex.{chats = small[..]}];
   #assert dk_index_parse(z[..], DK_FIXTURE_INDEX) && z[0].n == 2 && z[0].full;
+}
+
+#test "desktop store: a chat's worktree survives a rewrite" {
+  t := "[{\"id\":\"w1\",\"title\":\"T\",\"created\":2,\"updated\":3,\"folder\":\"\\/w\\/r-1\\/w1\",\"managed_by\":\"foreman\",\"worktree_path\":\"\\/w\\/r-1\\/w1\",\"worktree_branch\":\"coder\\/w1\",\"repo_root\":\"\\/r\"}]";
+  chats: [2] DkChat; x := [1] DkIndex.[DkIndex.{chats = chats[..]}];
+  #assert dk_index_parse(x[..], t) && x[0].n == 1 && dk_wt_path(x[..], 0) == "/w/r-1/w1" && dk_wt_branch(x[..], 0) == "coder/w1" && dk_repo(x[..], 0) == "/r";
+  buf: [2048] u8; w: [1] Jo; jo_start(w[..], buf[..]); dk_index_write(x[..], w[..]);
+  #assert jo_text(w[..]) == "[{\"id\":\"w1\",\"title\":\"T\",\"created\":2,\"updated\":3,\"folder\":\"/w/r-1/w1\",\"managed_by\":\"foreman\",\"worktree_path\":\"/w/r-1/w1\",\"worktree_branch\":\"coder/w1\",\"repo_root\":\"/r\"}]";
 }
 
 #test "desktop store: pin, unpin, rename, folder, delete and create" {
