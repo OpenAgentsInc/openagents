@@ -84,7 +84,10 @@ final class CoderStore {
     var lines: String { orderedList.map { $0.id + "\t" + $0.title }.joined(separator: "\n") }
 
     func text(_ id: String) -> String? {
-        var buf = [UInt8](repeating: 0, count: 4 * 1024 * 1024)
+        // sized from the file: a long chat outgrew a fixed 4 MB and could not be opened
+        let path = dir.appendingPathComponent(id + ".json").path
+        let size = ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? NSNumber)?.intValue ?? 0
+        var buf = [UInt8](repeating: 0, count: max(4 * 1024 * 1024, size + 64 * 1024))
         let n: Int64 = core { d in
             DesktopCore.withCoaxString(id) { cid in
                 DesktopCore.withMutableBytes(&buf) { out in
