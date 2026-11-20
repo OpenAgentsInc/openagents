@@ -64,7 +64,7 @@ VK_DEVICE_THOUGHT :: 17;    // the computer's thinking; index: its item in the v
 VIEW_DO_NONE :: 0;
 VIEW_DO_RETRY :: 1;       // send the kept request again, byte for byte
 VIEW_DO_RECONNECT :: 2;   // read the conversation and its task again
-VIEW_DO_QUIET :: 3;       // nothing: a quiet line about the chat (the agent it fell back to), not a problem
+VIEW_DO_QUIET :: 3;       // nothing: a quiet line about the chat (the agent it fell back to, earlier turns), not a problem
 
 // The composer's Send (the core's app_send_state).
 VIEW_SEND_EMPTY :: 0; VIEW_SEND_LOGIN :: 1; VIEW_SEND_WAIT :: 2; VIEW_SEND_STOP :: 3; VIEW_SEND_READY :: 4;
@@ -305,6 +305,8 @@ view_build_device :: (vm: [] ViewModel, e: [] EnvironmentApp, f: ViewFacts) {
   busy := k >= 0 && v[0].sessions[k].busy;
   id: [EL_ID] u8; last_agent := false; sent_seen := false;
   if k >= 0 || e[0].ns == 0 {
+    // the chat's own note (the agent it fell back to) heads it as a quiet line
+    if k >= 0 && v[0].sessions[k].nno > 0 { view_notice(vm, "dev.note", cast(string) v[0].sessions[k].note[0..<v[0].sessions[k].nno], VIEW_DO_QUIET); }
     for i: 0..<v[0].ni {
       m := v[0].items[i]; role := cast(string) m.role[0..<m.nr];
       n := view_device_id(id[..], e, i);

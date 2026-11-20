@@ -78,7 +78,12 @@ ea_folder_ok :: (p:string)->bool #effects(all) {
 // is busy steers the turn, and one while it is idle starts a follow-up. An older reader skips the
 // member and still reads and stops it; an older computer sends none.
 EA_SURFACE_DESKTOP :: "coder-desktop";
-EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;}
+// note: a plain-words line about the chat itself, optional on the wire as the session's "note": the
+// agent it runs on when that is not the one asked for ("Claude Code isn't set up on this computer,
+// so this chat runs on Gemini 4 Neon."). It rides on the session, never as an item, so a reader that
+// predates it (TestFlight 1413, which draws every non-user item as the agent's reply) skips it.
+EA_NOTE :: 256;
+EaSession :: struct {id:[128]u8;ni:int;workspace:[64]u8;nw:int;title:[256]u8;nt:int;managed:bool;control:[32]u8;nc:int;generation:int;revision:int;busy:bool;interaction:[128]u8;nr:int;updated:int;model:[64]u8;nmo:int;effort:[16]u8;nef:int;desktop:bool;note:[EA_NOTE]u8;nno:int;}
 // What the computer's Claude offers a turn: its models and effort levels.
 // Bit k of a model's ladder is level k; a model with no ladder takes no effort.
 // The default model's id is "default" (the CLI's own choice, no --model).
@@ -196,7 +201,8 @@ ea_summary :: (o:[]Jo,s_in:EaSession) #effects(all) {
   jo_key(o,"control");jo_str(o,cast(string)s.control[0..<s.nc]);jo_key(o,"generation");jo_int(o,s.generation);jo_key(o,"revision");jo_int(o,s.revision);
   jo_key(o,"busy");jo_bool(o,s.busy);jo_key(o,"interaction_id");jo_str(o,cast(string)s.interaction[0..<s.nr]);jo_key(o,"updated_at_ms");jo_int(o,s.updated);
   if s.nmo>0 {jo_key(o,"model");jo_str(o,cast(string)s.model[0..<s.nmo]);}if s.nef>0 {jo_key(o,"effort");jo_str(o,cast(string)s.effort[0..<s.nef]);}
-  if s.desktop {jo_key(o,"surface");jo_str(o,EA_SURFACE_DESKTOP);}jo_end(o);
+  if s.desktop {jo_key(o,"surface");jo_str(o,EA_SURFACE_DESKTOP);}
+  if s.nno>0 {jo_key(o,"note");jo_str(o,cast(string)s.note[0..<s.nno]);}jo_end(o);
 }
 ea_item :: (o:[]Jo,m_in:EaItem,text:string,diff:string) #effects(all) {
   m:=m_in;
@@ -297,6 +303,7 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
     s.nc=jv_str(j,jv_get(j,row,"control"),s.control[..]);s.nr=jv_str(j,jv_get(j,row,"interaction_id"),s.interaction[..]);
     s.generation=jv_int(j,jv_get(j,row,"generation"),-1);s.revision=jv_int(j,jv_get(j,row,"revision"),-1);s.updated=jv_int(j,jv_get(j,row,"updated_at_ms"),-1);s.busy=jv_bool(j,jv_get(j,row,"busy"));
     s.nmo=ea_optional(j,row,"model",s.model[..]);s.nef=ea_optional(j,row,"effort",s.effort[..]);s.desktop=jv_raw(j,jv_get(j,row,"surface"))==EA_SURFACE_DESKTOP;
+    nn:=jv_get(j,row,"note");s.nno=ifx nn<0 then 0 else jv_str(j,nn,s.note[..]);if nn>=0 && (s.nno<1 || !ea_text(cast(string)s.note[0..<s.nno])) {return false;}
     if s.ni<1 || s.nw<0 || s.nt<0 || s.nc<1 || s.nr<0 || s.generation<0 || s.revision<0 || s.updated<0 || s.nmo<0 || s.nef<0 {return false;}v[0].sessions[i]=s;
   }
   for i:0..<v[0].ni {m:=v[0].items[i];row:=jv_at(j,items,i);
@@ -375,6 +382,17 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   #assert n>0 && found && ea_view_read(cast(string)out[0..<n],r[..]) && r[0].sessions[0].desktop && !r[0].sessions[1].desktop;
 }
 
+#test "a chat's note rides on its session, never as an item, and a session without one has none" {
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");v[0].ns=2;
+  for i:0..<2 {v[0].sessions[i].ni=ea_copy(v[0].sessions[i].id[..],ifx i==0 then "0123456789abcdef0123456789abcdef" else "s1");v[0].sessions[i].nc=ea_copy(v[0].sessions[i].control[..],"available");v[0].sessions[i].managed=true;}
+  note:="Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon.";v[0].sessions[0].nno=ea_copy(v[0].sessions[0].note[..],note);
+  out:[16384]u8;n:=ea_view_write(v[..],out[..]);r:[1]EaView;
+  #assert n>0 && ea_view_read(cast(string)out[0..<n],r[..]) && cast(string)r[0].sessions[0].note[0..<r[0].sessions[0].nno]==note && r[0].sessions[1].nno==0 && r[0].ni==0;
+  // an empty or broken note is refused
+  text:=cast(string)out[0..<n];b:[16384]u8;at:=0;for k:0..<n-8 {if text[k..<k+8]=="\"note\":\"" {at=k;break;}}#assert at>0;
+  m:=0;for c:text[0..<at+8] {b[m]=c;m+=1;}rest:=text[at+8+note.count..<n];for c:rest {b[m]=c;m+=1;}
+  #assert !ea_view_read(cast(string)b[0..<m],r[..]);
+}
 #test "a thought travels beside items at its place, so a v1alpha1 reader never sees it as a reply" {
   v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nm=ea_copy(v[0].method[..],"ReadSession");
   roles:=[5]string.["user","thought","tool","thought","assistant"];texts:=[5]string.["Fix it","Look first","ls","Then edit","Done"];

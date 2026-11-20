@@ -83,6 +83,20 @@ view_test_kinds :: (vm: [] ViewModel, kinds: [] int) -> bool {
   v[0].items[1].nnk = ea_copy(v[0].items[1].notice[..], EA_NOTICE_NOTE); view_build_device(vm[..], e[..], ViewFacts.{device = true});
   #assert vm[0].rows[1].kind == VK_NOTICE && vm[0].rows[1].act == VIEW_DO_QUIET && vm[0].rows[1].text.count == 86 && vm[0].rows[3].act == VIEW_DO_NONE;
 }
+#test "a chat that fell back says so once at its head, as a quiet line, from its session's note" #steps 2000000000 {
+  e: [1] EnvironmentApp; vm: [1] ViewModel; v := e[0].view[..];
+  v[0].nh = ea_copy(v[0].host[..], "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  sid := "0123456789abcdef0123456789abcdef"; e[0].ns = ea_copy(e[0].session[..], sid);
+  v[0].ns = 1; v[0].sessions[0].ni = ea_copy(v[0].sessions[0].id[..], sid);
+  note := "Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon."; v[0].sessions[0].nno = ea_copy(v[0].sessions[0].note[..], note);
+  m := v[0].items[0]; m.ni = ea_copy(m.id[..], "0:0"); m.nr = ea_copy(m.role[..], "user"); m.text_at = ea_text_put(v, "Are you here?"); m.nt = 13; m.complete = true; v[0].items[0] = m;
+  m = v[0].items[1]; m.ni = ea_copy(m.id[..], "1:0"); m.nr = ea_copy(m.role[..], "assistant"); m.text_at = ea_text_put(v, "Yes."); m.nt = 4; m.complete = true; v[0].items[1] = m; v[0].ni = 2;
+  view_build_device(vm[..], e[..], ViewFacts.{device = true});
+  #assert vm[0].n == 3 && vm[0].rows[0].kind == VK_NOTICE && vm[0].rows[0].act == VIEW_DO_QUIET && vm[0].rows[0].text == note;
+  #assert vm[0].rows[1].kind == VK_DEVICE_MESSAGE && !vm[0].rows[1].assistant && vm[0].rows[2].assistant;
+  // a chat that runs what it asked for has no note
+  v[0].sessions[0].nno = 0; view_build_device(vm[..], e[..], ViewFacts.{device = true}); #assert vm[0].n == 2 && vm[0].rows[0].kind == VK_DEVICE_MESSAGE;
+}
 #test "saved messages come in order under stable ids, and a streaming answer follows the turn's message" #steps 2000000000 {
   t: [1] ViewTestChat; view_test_open(t[..]); view_test_turn(t[..], CT_RUNNING, "Working on");
   vm := t[0].vm[..];

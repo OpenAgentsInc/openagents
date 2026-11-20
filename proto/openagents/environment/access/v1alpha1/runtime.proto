@@ -85,6 +85,10 @@ message RuntimeSession {
   // On one, SendMessage steers a running turn or starts a follow-up, StopTurn stops it, and
   // StopSubagent stops one of its sub-agents.
   optional string surface = 13 [json_name = "surface"];
+  // A plain-words line about the chat itself: the agent it runs on when that is not the one asked
+  // for ("Claude Code isn't set up on this computer, so this chat runs on Gemini 4 Neon."). It is on
+  // the session, never an item, so a reader that predates it skips it; absent otherwise.
+  optional string note = 14 [json_name = "note"];
 }
 // One effort level the computer's Claude takes.
 message RuntimeEffort {
