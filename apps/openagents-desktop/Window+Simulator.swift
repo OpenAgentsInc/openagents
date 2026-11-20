@@ -4,7 +4,7 @@
 // (coax/lib/agent/device/sim-wire.coax) itself. This file does effects only: the socket to the
 // helper (oasim serve, started through `oasim status` the way any client starts it), moving its
 // lines both ways, the device menu, revealing a saved screenshot, and the view that shows the
-// device's screen over the page's rect (stills in Phase 0).
+// device's screen over the page's rect (frames from the helper), and the person's mouse and keys on it.
 import AppKit
 
 /// The socket to the simulator helper: whole lines in, bytes out.
@@ -82,9 +82,14 @@ final class SimHostClient {
     }
 }
 
-/// The device's screen over the page: a layer whose contents are the newest still (Phase 0) or,
-/// later, the device's IOSurface.
+/// The device's screen over the page: a layer whose contents are the newest frame. The person's
+/// mouse is a finger on the device and, once a click gives it the keyboard, keys go to the device
+/// (Command-key shortcuts stay the app's; Escape gives the keyboard back). The page maps both
+/// (coder_page_sim_touch, coder_page_sim_key).
 final class SimulatorPaneView: NSView {
+    var onTouch: ((Int32, NSPoint, NSSize) -> Bool)?
+    var onKey: ((Int32, String) -> Bool)?
+    var onDone: (() -> Void)?
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -95,8 +100,20 @@ final class SimulatorPaneView: NSView {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
     func show(_ image: CGImage) { layer?.contents = image }
-    // a press goes to the page beneath until input lands (Phase 1)
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var acceptsFirstResponder: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    private func touch(_ phase: Int32, _ e: NSEvent) {
+        let p = convert(e.locationInWindow, from: nil)
+        _ = onTouch?(phase, NSPoint(x: p.x, y: bounds.height - p.y), bounds.size)   // from the top left
+    }
+    override func mouseDown(with e: NSEvent) { window?.makeFirstResponder(self); touch(0, e) }
+    override func mouseDragged(with e: NSEvent) { touch(1, e) }
+    override func mouseUp(with e: NSEvent) { touch(2, e) }
+    override func keyDown(with e: NSEvent) {
+        if e.modifierFlags.contains(.command) { super.keyDown(with: e); return }
+        if e.keyCode == 53 { onDone?(); return }   // Escape: the keyboard goes back to the composer
+        if onKey?(Int32(e.keyCode), e.characters ?? "") != true { super.keyDown(with: e) }
+    }
 }
 
 extension CoderWindow {
@@ -129,7 +146,7 @@ extension CoderWindow {
         cd_sim_setup(page, stills.path, shots.path)
         connectSimulator()
         if simTimer == nil {
-            let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.simClock() }
+            let t = Timer(timeInterval: 1.0 / 15.0, repeats: true) { [weak self] _ in self?.simClock() }
             RunLoop.main.add(t, forMode: .common)
             simTimer = t
         }
@@ -180,7 +197,8 @@ extension CoderWindow {
         let n = out.withUnsafeMutableBufferPointer { p in p.baseAddress!.withMemoryRebound(to: CChar.self, capacity: p.count) { cd_sim_out(page, $0, Int32(p.count)) } }
         if n > 0 { simClient.write(Array(out[0..<Int(n)])) }
     }
-    /// Four times a second while the pane is open: the next still, a reconnect when the helper went.
+    /// Fifteen times a second while the pane is open: the next frame (the page asks for one only when
+    /// it may have changed), a reconnect when the helper went.
     private func simClock() {
         guard cd_sim_open(page) != 0 else { return }
         if !simClient.isOpen {
@@ -223,7 +241,22 @@ extension CoderWindow {
             return
         }
         let view: SimulatorPaneView
-        if let v = simView { view = v } else { view = SimulatorPaneView(frame: .zero); canvas.addSubview(view); simView = view }
+        if let v = simView { view = v } else {
+            view = SimulatorPaneView(frame: .zero); canvas.addSubview(view); simView = view
+            view.onTouch = { [weak self] phase, p, size in
+                guard let self else { return false }
+                let ok = cd_sim_touch(self.page, phase, Float(p.x), Float(p.y), Float(size.width), Float(size.height)) != 0
+                if ok { self.pumpSimulator() }
+                return ok
+            }
+            view.onKey = { [weak self] code, chars in
+                guard let self else { return false }
+                let ok = cd_sim_key(self.page, code, chars) != 0
+                if ok { self.pumpSimulator() }
+                return ok
+            }
+            view.onDone = { [weak self] in self?.window.makeFirstResponder(self?.canvas) }
+        }
         let h = canvas.bounds.height
         let w = CGFloat(rect[2]).rounded(), ht = CGFloat(rect[3]).rounded()
         let target = NSRect(x: CGFloat(rect[0]).rounded(), y: max(0, (h - CGFloat(rect[1]) - ht).rounded()), width: max(1, w), height: max(1, ht))

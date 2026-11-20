@@ -1,11 +1,152 @@
 // The simulator helper's platform shim (docs/desktop/ios-simulator-spec.md sections 4.2, 4.3 and
-// 6.2; GitHub #13811), as the helper sees it. This build has none: the helper runs on the public
-// tools only (simctl and sips), so the pane shows stills and touch ops answer input_unavailable.
-shim_start :: () -> bool { return false; }
-shim_display :: () -> bool { return false; }
-shim_input :: () -> bool { return false; }
+// 6.2; GitHub #13811), as the helper sees it. The private-framework calls are sim-shim.m's (linked
+// into oasim through coax/web/tool.sh's `objc` line); this file runs an op's plan
+// (sim-gesture.coax) through them, one event at a time as its moment comes, so a gesture never
+// stops the helper serving its other clients. When CoreSimulator or SimulatorKit lack a name
+// sim-shim.m probes for, the capability it carries is off and the helper falls back to simctl
+// stills and input_unavailable.
+
+simshim_start :: () -> int #foreign #effects(all);
+simshim_size :: (udid: [] u8, out: [] f64) -> int #foreign #effects(all);
+simshim_seed :: (udid: [] u8) -> int #foreign #effects(all);
+simshim_shot :: (udid: [] u8, path: [] u8, w: int, h: int) -> int #foreign #effects(all);
+simshim_touch :: (udid: [] u8, x: f64, y: f64, w: f64, h: f64, phase: int) -> int #foreign #effects(all);
+simshim_key :: (udid: [] u8, usage: int, down: int) -> int #foreign #effects(all);
+simshim_button :: (udid: [] u8, source: int, down: int) -> int #foreign #effects(all);
+
+SS_DISPLAY :: 1; SS_TOUCH :: 2; SS_KEYS :: 4;
+shim_caps :: () -> int { return simshim_start(); }
+shim_start :: () -> bool { return shim_caps() != 0; }
+shim_display :: () -> bool { return (shim_caps() & SS_DISPLAY) != 0; }
+shim_input :: () -> bool { return (shim_caps() & SS_TOUCH) != 0; }
 shim_describe :: () -> bool { return false; }
-shim_screen_size :: (udid: string, s: [] ShScreen) -> bool { return false; }
-shim_shot :: (udid: string, out: string, scale: f64) -> bool { return false; }
-shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwMsg) -> bool { return false; }
-shim_poll :: (h: [] ShHost) {}
+shim_screen_size :: (udid: string, s: [] ShScreen) -> bool { return false; }   // the device type's profile says it, with its scale
+// A string as the bytes a foreign call takes.
+shim_bytes :: (s: string, b: [] u8) -> [] u8 { n := 0; for c: s { if n < b.count { b[n] = c; n += 1; } } return b[0..<n]; }
+
+// The screen from the framebuffer as a PNG at out, scale (0.25 to 1) of its points. The
+// framebuffer's seed (it changes when the screen does), or -1 when there is no framebuffer. When
+// the seed is still `unchanged`, nothing is written.
+shim_shot :: (s: ShScreen, udid: string, out: string, scale: f64, unchanged: int) -> int {
+  ub: [64] u8; u := shim_bytes(udid, ub[..]);
+  seed := simshim_seed(u);
+  if seed < 0 || s.px_w <= 0 || !(s.scale > 0.0) { return -1; }
+  if unchanged >= 0 && seed == unchanged { return seed; }
+  pb: [SH_PATH] u8;
+  w := cast(int) (cast(f64) s.px_w / s.scale * scale + 0.5); h := cast(int) (cast(f64) s.px_h / s.scale * scale + 0.5);
+  if simshim_shot(u, shim_bytes(out, pb[..]), w, h) < 0 { return -1; }
+  return seed;
+}
+
+// One event of a plan, sent now. Whether the device took it.
+shim_send :: (h: [] ShHost, e: SgEv) -> bool {
+  ub: [64] u8; u := shim_bytes(cast(string) h[0].gq_udid[0..<h[0].gq_udid_n], ub[..]);
+  if e.kind == SG_EV_TOUCH { return simshim_touch(u, e.x, e.y, h[0].gq_w, h[0].gq_h, e.a) == 1; }
+  if e.kind == SG_EV_BUTTON { return simshim_button(u, e.a, e.b) == 1; }
+  ok := true;
+  if e.b > 0 { ok = ok && simshim_key(u, e.b, 1) == 1; }
+  if e.c > 0 { ok = ok && simshim_key(u, e.c, 1) == 1; }
+  ok = ok && simshim_key(u, e.a, 1) == 1 && simshim_key(u, e.a, 0) == 1;
+  if e.c > 0 { _ = simshim_key(u, e.c, 0); }
+  if e.b > 0 { _ = simshim_key(u, e.b, 0); }
+  return ok;
+}
+// An agent's gesture in flight ends: its reply, and a finger it left down is lifted.
+shim_end :: (h: [] ShHost, code: string, why: string) {
+  if !h[0].gq_live { return; }
+  h[0].gq_live = false;
+  if h[0].gq_down { _ = shim_send(h, SgEv.{kind = SG_EV_TOUCH, a = 2, x = h[0].gq_x, y = h[0].gq_y}); h[0].gq_down = false; }
+  if h[0].gq_id == 0 { return; }
+  if code.count == 0 { sh_ok(h, h[0].gq_client, h[0].gq_id); return; }
+  m := h[0].reply[..]; sw_reply_error(m, h[0].gq_id, code, why);
+  if code == "interrupted" { sw_set_bool(m, SW_F_INTERRUPTED, true); }
+  sh_answer(h, h[0].gq_client, h[0].gq_id, m);
+}
+// Starts the plan of n events in h.plan on udid, for client ci's request id.
+shim_begin :: (h: [] ShHost, ci: int, id: int, udid: string, n: int) {
+  s := sh_screen(h, udid);
+  h[0].gq_w = cast(f64) s.px_w / s.scale; h[0].gq_h = cast(f64) s.px_h / s.scale;
+  h[0].gq_udid_n = sd_put(h[0].gq_udid[..], udid);
+  h[0].gq_n = n; h[0].gq_i = 0; h[0].gq_client = ci; h[0].gq_id = id; h[0].gq_live = true; h[0].gq_down = false;
+  h[0].gq_t0 = proc_now_ms();
+  _ = shim_poll(h);
+}
+// Sends what is due. Whether a gesture is still in flight (the helper then serves without resting).
+shim_poll :: (h: [] ShHost) -> bool {
+  if !h[0].gq_live { return false; }
+  now := cast(f64) (proc_now_ms() - h[0].gq_t0);
+  while h[0].gq_i < h[0].gq_n && h[0].plan[h[0].gq_i].at_ms <= now {
+    e := h[0].plan[h[0].gq_i];
+    if !shim_send(h, e) { shim_end(h, "input_unavailable", "the simulator did not take the event"); return false; }
+    if e.kind == SG_EV_TOUCH { h[0].gq_down = e.a != 2; h[0].gq_x = e.x; h[0].gq_y = e.y; }
+    h[0].gq_i += 1;
+  }
+  if h[0].gq_i >= h[0].gq_n { shim_end(h, "", ""); return false; }
+  return true;
+}
+
+// The ops the shim does. True when it answered (or will, when the plan ends).
+shim_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, m: [] SwMsg) -> bool {
+  caps := shim_caps();
+  touch := (caps & SS_TOUCH) != 0; keys := (caps & SS_KEYS) != 0;
+  if op == "touch" && touch { shim_person_touch(h, udid, m); if id != 0 { sh_ok(h, ci, id); } return true; }
+  if op == "rotate" || op == "set_keyboard" || op == "touch2_path" {
+    why := ifx op == "rotate" then "this helper can't turn the simulator yet; use Simulator.app's Device > Rotate"
+      else ifx op == "set_keyboard" then "this helper can't show or hide the software keyboard yet" else "this helper can't send two-finger paths yet";
+    sh_fail(h, ci, id, "input_unavailable", why);
+    return true;
+  }
+  is_touch := op == "tap" || op == "swipe" || op == "touch_path";
+  is_key := op == "text" || op == "press_key" || op == "button";
+  if !(is_touch && touch) && !(is_key && keys) { return false; }
+  if h[0].gq_live { sh_fail(h, ci, id, "timeout", "another gesture is running on the simulator; try again when it ends"); return true; }
+  s := sh_screen(h, udid);
+  w := cast(f64) s.px_w / s.scale; ht := cast(f64) s.px_h / s.scale;
+  n := 0;
+  if op == "tap" {
+    x := sw_num(m, SW_F_X); y := sw_num(m, SW_F_Y);
+    if !sw_has(m, SW_F_X) || !sw_has(m, SW_F_Y) { sh_fail(h, ci, id, "bad_args", "tap needs x and y"); return true; }
+    if !sp_in_screen(x, y, w, ht) { sh_fail(h, ci, id, "out_of_bounds", "the point is off the screen"); return true; }
+    n = sg_plan_tap(x, y, sw_num(m, SW_F_DURATION) * 1000.0, h[0].plan[..]);
+  } else if op == "swipe" {
+    x := sw_num(m, SW_F_X); y := sw_num(m, SW_F_Y); x2 := sw_num(m, SW_F_X2); y2 := sw_num(m, SW_F_Y2);
+    if !sp_in_screen(x, y, w, ht) || !sp_in_screen(x2, y2, w, ht) { sh_fail(h, ci, id, "out_of_bounds", "a point is off the screen"); return true; }
+    d := ifx sw_has(m, SW_F_DURATION) then sw_num(m, SW_F_DURATION) * 1000.0 else 300.0;
+    if d > cast(f64) SP_PATH_MS { sh_fail(h, ci, id, "bad_args", "a swipe lasts at most 30 s"); return true; }
+    n = sg_plan_swipe(x, y, x2, y2, d, h[0].plan[..]);
+  } else if op == "touch_path" {
+    k := m[0].npts; dts: [SW_SAMPLES] f64; ss: [SW_SAMPLES] SgSample;
+    for i: 0..<k {
+      p := m[0].pts[i];
+      if !sp_in_screen(p.x, p.y, w, ht) { sh_fail(h, ci, id, "out_of_bounds", "a point is off the screen"); return true; }
+      ss[i] = SgSample.{x = p.x, y = p.y, dt_ms = p.dt_ms}; dts[i] = p.dt_ms;
+    }
+    if !sp_path_ok(k, sg_path_ms(dts[0..<k])) { sh_fail(h, ci, id, "bad_args", "a path has 1 to 2,000 samples over at most 30 s"); return true; }
+    n = sg_plan_path(ss[0..<k], h[0].plan[..]);
+  } else if op == "text" {
+    t := sw_str(m, SW_F_TEXT);
+    no := sp_text_refused(t, cast(string) h[0].secret[0..<h[0].secret_n]);
+    if no.count > 0 { sh_fail(h, ci, id, "denied", no); return true; }
+    n = sg_plan_text(t, h[0].plan[..]);
+    if n == 0 { sh_fail(h, ci, id, "bad_args", "text is typed key by key: printable ASCII, tabs and newlines only, for now"); return true; }
+  } else if op == "press_key" {
+    n = sg_plan_key(sw_str(m, SW_F_KEY), sw_int(m, SW_F_COUNT, 1), h[0].plan[..]);
+    if n == 0 { sh_fail(h, ci, id, "bad_args", "key is return, delete, forward_delete, escape, tab, space, an arrow, home, end, page_up, page_down, select_all, undo or redo; count 1 to 20"); return true; }
+  } else {
+    n = sg_plan_button(sw_str(m, SW_F_NAME), sw_num(m, SW_F_DURATION) * 1000.0, h[0].plan[..]);
+    if n == 0 { sh_fail(h, ci, id, "bad_args", "name is HOME, LOCK, SIDE_BUTTON, SIRI or APPLE_PAY"); return true; }
+  }
+  shim_begin(h, ci, id, udid, n);
+  return true;
+}
+// The person's finger from the pane, sent at once. A touch down stops an agent's gesture in flight
+// (it answers interrupted), and every touch holds agent input for SP_HOLD_MS (sim-policy.coax).
+shim_person_touch :: (h: [] ShHost, udid: string, m: [] SwMsg) {
+  ph := sw_str(m, SW_F_PHASE);
+  phase := ifx ph == "down" then 0 else ifx ph == "up" then 2 else 1;
+  h[0].touched_ms = proc_now_ms();
+  if phase == 0 && h[0].gq_live { shim_end(h, "interrupted", "the person touched the simulator"); }
+  s := sh_screen(h, udid);
+  ub: [64] u8;
+  _ = simshim_touch(shim_bytes(udid, ub[..]), sw_num(m, SW_F_X), sw_num(m, SW_F_Y), cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale, phase);
+}

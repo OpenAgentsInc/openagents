@@ -191,6 +191,7 @@ sk_main :: (r: [] SkRun, a: [] Args) {
   if !up { return; }
   sk_check(r, sk_hello(r, app[..], "app", ""), "hello as the app");
   sk_check(r, sw_display(r[0].m[..]).count > 0 && sw_str(r[0].m[..], SW_F_XCODE).count > 0, "hello names capabilities and Xcode");
+  indigo := sw_input(r[0].m[..]) == "indigo"; frames := sw_display(r[0].m[..]) == "frames";
   m: [1] SwMsg;
   sk_ask(m[..], 2, "subscribe"); sk_check(r, sk_send(r, app[..], m[..]) && sk_reply(r, app[..], 2, 5000) && sk_ok(r), "subscribe");
   sk_ask(m[..], 3, "list");
@@ -245,6 +246,8 @@ sk_main :: (r: [] SkRun, a: [] Args) {
   sk_ask(m[..], 16, "shutdown"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
   sk_check(r, sk_send(r, ag[..], m[..]) && sk_reply(r, ag[..], 16, 10000) && !sk_ok(r) && sk_code(r) == "denied", "an agent can't shut down a device the person booted");
 
+  if indigo { sk_input(r, app[..], ag[..], cast(string) sb[0..<sn], frames); }
+
   // contested: a fake dev.sh lock on the device's name
   hb: [SK_PATH] u8; home := proc_getenv("HOME", hb[..]);
   lb: [SK_PATH] u8; ln := sk_put(lb[..], 0, home); ln = sk_put(lb[..], ln, "/.openagents/ios-dev");
@@ -294,6 +297,71 @@ sk_main :: (r: [] SkRun, a: [] Args) {
     sk_ask(m[..], 21, "quit"); _ = sk_send(r, re[..], m[..]); _ = sk_reply(r, re[..], 21, 5000);
     _ = cxsock_close(re[0].h);
   } else { sk_check(r, false, "the restarted helper answers the app"); }
+}
+// A screenshot by client c into the check's folder: its bytes, or -1.
+sk_shot :: (r: [] SkRun, c: [] SkConn, id: int, name: string, pb: [] u8) -> int {
+  n := sk_put(pb, 0, sk_s(r[0].home[..], r[0].home_n)); n = sk_put(pb, n, name);
+  mm: [1] SwMsg; sk_ask(mm[..], id, "screenshot"); _ = sw_set_str(mm[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(mm[..], SW_F_OUT, cast(string) pb[0..<n]);
+  if !(sk_send(r, c, mm[..]) && sk_reply(r, c, id, 30000) && sk_ok(r)) { return -1; }
+  return fs_size(cast(string) pb[0..<n]);
+}
+// Phase 1: the agent's touches and keys, and the person's finger (spec 4.3, 7.2), when the helper
+// has SimulatorKit's input. Settings' rows are where an iPhone 17 on iOS 26 draws them.
+sk_input :: (r: [] SkRun, app: [] SkConn, ag: [] SkConn, dir: string, frames: bool) {
+  m: [1] SwMsg; w: [1] int; h: [1] int;
+  pb: [SK_PATH] u8;
+  sk_ask(m[..], 30, "button"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_NAME, "HOME");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 30, 10000) && sk_ok(r), "button HOME");
+  sk_ask(m[..], 31, "launch"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_BUNDLE, "com.apple.Preferences");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 31, 60000) && sk_ok(r), "launch Settings by its bundle");
+  proc_sleep(2500);
+  before := sk_shot(r, ag, 32, "/settings.png", pb[..]);
+  sk_ask(m[..], 33, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 101.0); sw_set_num(m[..], SW_F_Y, 406.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 33, 10000) && sk_ok(r), "tap Settings' General row");
+  proc_sleep(1500);
+  after := sk_shot(r, ag, 34, "/general.png", pb[..]);
+  sk_check(r, before > 0 && after > 0 && before != after, "the tap opened another page");
+  sk_ask(m[..], 35, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 9999.0); sw_set_num(m[..], SW_F_Y, 1.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 35, 10000) && !sk_ok(r) && sk_code(r) == "out_of_bounds", "a tap off the screen is refused");
+  sk_ask(m[..], 36, "swipe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sw_set_num(m[..], SW_F_X, 200.0); sw_set_num(m[..], SW_F_Y, 700.0); sw_set_num(m[..], SW_F_X2, 200.0); sw_set_num(m[..], SW_F_Y2, 300.0); sw_set_num(m[..], SW_F_DURATION, 0.3);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 36, 10000) && sk_ok(r), "swipe");
+  proc_sleep(1500);
+  scrolled := sk_shot(r, ag, 45, "/scrolled.png", pb[..]);
+  sk_check(r, scrolled > 0 && scrolled != after, "the swipe scrolled the page");
+  sk_ask(m[..], 37, "touch_path"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 300.0}); _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 400.0, dt_ms = 16.0}); _ = sw_add_point(m[..], SW_F_POINTS, SwPoint.{x = 200.0, y = 500.0, dt_ms = 16.0});
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 37, 10000) && sk_ok(r), "touch_path");
+  sk_ask(m[..], 38, "press_key"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_KEY, "return"); sw_set_int(m[..], SW_F_COUNT, 2);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 38, 10000) && sk_ok(r), "press_key return twice");
+  sk_ask(m[..], 39, "text"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_TEXT, "Hello, simulator!");
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 39, 10000) && sk_ok(r), "text typed key by key");
+  sk_ask(m[..], 40, "touch2_path"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_add_point(m[..], SW_F_POINTS2, SwPoint.{x = 100.0, y = 100.0, x2 = 200.0, y2 = 200.0});
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 40, 10000) && sk_code(r) == "input_unavailable", "touch2_path says it can't yet");
+  // the person's finger stops an agent's gesture and holds agent input for 1.5 s
+  sk_ask(m[..], 41, "swipe"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r));
+  sw_set_num(m[..], SW_F_X, 200.0); sw_set_num(m[..], SW_F_Y, 300.0); sw_set_num(m[..], SW_F_X2, 200.0); sw_set_num(m[..], SW_F_Y2, 700.0); sw_set_num(m[..], SW_F_DURATION, 3.0);
+  ok := sk_send(r, ag, m[..]);
+  proc_sleep(400);
+  for ph: 0..<2 {
+    sk_ask(m[..], 0, "touch"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_PHASE, ifx ph == 0 then "down" else "up");
+    sw_set_int(m[..], SW_F_POINTER, 0); sw_set_num(m[..], SW_F_X, 300.0); sw_set_num(m[..], SW_F_Y, 300.0);
+    ok = ok && sk_send(r, app, m[..]);
+  }
+  sk_check(r, ok && sk_reply(r, ag, 41, 5000) && !sk_ok(r) && sk_code(r) == "interrupted" && sw_has(r[0].m[..], SW_F_INTERRUPTED), "the person's touch interrupts the agent's swipe");
+  sk_ask(m[..], 42, "tap"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); sw_set_num(m[..], SW_F_X, 10.0); sw_set_num(m[..], SW_F_Y, 10.0);
+  sk_check(r, sk_send(r, ag, m[..]) && sk_reply(r, ag, 42, 5000) && sk_code(r) == "interrupted", "and holds the agent's next op");
+  if frames {
+    // a frame the pane already has is not written again
+    proc_sleep(1600);
+    n := sk_put(pb[..], 0, sk_s(r[0].home[..], r[0].home_n)); n = sk_put(pb[..], n, "/frame.png");
+    sk_ask(m[..], 43, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<n]);
+    ok = sk_send(r, app, m[..]) && sk_reply(r, app, 43, 10000) && sk_ok(r) && sw_has(r[0].m[..], SW_F_GEN) && sw_has(r[0].m[..], SW_F_PATH);
+    gen := sw_int(r[0].m[..], SW_F_GEN, -1);
+    sk_ask(m[..], 44, "screenshot"); _ = sw_set_str(m[..], SW_F_DEVICE, sk_udid(r)); _ = sw_set_str(m[..], SW_F_OUT, cast(string) pb[0..<n]); sw_set_int(m[..], SW_F_GEN, gen);
+    ok = ok && sk_send(r, app, m[..]) && sk_reply(r, app, 44, 10000) && sk_ok(r) && sw_int(r[0].m[..], SW_F_GEN, -1) == gen && !sw_has(r[0].m[..], SW_F_PATH);
+    sk_check(r, ok, "a frame from the framebuffer names its gen, and an unchanged one is not written");
+  }
 }
 cstr_len :: (b: [] u8) -> int { n := 0; while n < b.count && b[n] != 0 { n += 1; } return n; }
 

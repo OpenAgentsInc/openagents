@@ -129,7 +129,7 @@ int cd_file_scene_rect(void *page, float out[4]);
 // and the person's screenshots go. cd_sim_show: View > iOS Simulator (1 open, 0 close).
 // cd_sim_connected: the host reached the helper's socket (1) or could not (0, why). cd_sim_line:
 // a line the helper wrote (no line feed); cd_sim_out: the lines the page queued for the helper
-// (each ending in a line feed), their length. cd_sim_tick: up to 4 a second while the screen
+// (each ending in a line feed), their length. cd_sim_tick: 15 a second while the screen
 // shows. cd_sim_rect: the screen's x, y, w, h (top-left points) and covered (1: hide the view).
 // cd_sim_still: the newest still's path (NUL-ended), and how many there have been. cd_action 46
 // asks; cd_sim_op says what: 1 the device menu (cd_sim_menu rows "title\tstate\tshown", then
@@ -148,6 +148,11 @@ int cd_sim_saved(void *page, char *out, int cap);
 int cd_sim_menu(void *page, char *out, int cap);
 int cd_sim_pick(void *page, int i);
 int cd_sim_device(void *page, char *out, int cap);
+// The person's hand on the screen's view: cd_sim_touch a finger (phase 0 down, 1 moved, 2 up) at
+// x, y from the view's top left in a view w x h; cd_sim_key a key (its Mac key code and the
+// characters it types). Each queues a request (cd_sim_out); 0 when the helper has no input.
+int cd_sim_touch(void *page, int phase, float x, float y, float w, float h);
+int cd_sim_key(void *page, int code, const char *chars);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

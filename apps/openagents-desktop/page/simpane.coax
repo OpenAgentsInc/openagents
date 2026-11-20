@@ -59,6 +59,7 @@ CpSimPane :: struct {
   screen_w: f32; screen_h: f32;   // device points
   body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the screen rect, logical points, top-left
   still: [CP_SIM_PATH] u8; still_n: int; still_gen: int; still_flip: int;
+  frame: int; frame_known: bool; ticks: int;   // the framebuffer's gen the still shows ("frames" display)
   saved: [CP_SIM_PATH] u8; saved_n: int;   // the person's last Screenshot
   stills_dir: [CP_SIM_PATH] u8; stills_dir_n: int;
   shots_dir: [CP_SIM_PATH] u8; shots_dir_n: int;
@@ -152,6 +153,7 @@ cp_sim_queue_still :: (s: [] CoderPage) {
   b: [CP_SIM_PATH] u8; n := el_put(b[..], 0, cp_sim_s(p[0].stills_dir[..], p[0].stills_dir_n));
   n = el_put(b[..], n, ifx p[0].still_flip == 0 then "/still-0.png" else "/still-1.png");
   m: [1] SwMsg; cp_sim_req(m[..], "screenshot"); cp_sim_with_device(s, m[..]); _ = sw_set_str(m[..], SW_F_OUT, cast(string) b[0..<n]);
+  if p[0].display_live && p[0].frame_known { sw_set_int(m[..], SW_F_GEN, p[0].frame); }   // nothing is written when the screen is unchanged
   _ = cp_sim_send(s, m[..], CP_SIM_R_STILL);
 }
 
@@ -199,7 +201,7 @@ cp_sim_reply :: (s: [] CoderPage, m: [] SwMsg) {
   ok := sw_bool(m, SW_F_OK);
   if kind == CP_SIM_R_HELLO {
     if !ok { cp_sim_failed(s, sw_str(m, SW_F_WHY)); return; }
-    p[0].display_live = sw_display(m) == "surface"; p[0].input = sw_input(m).count > 0 && sw_input(m) != "none";
+    p[0].display_live = sw_display(m) == "surface" || sw_display(m) == "frames"; p[0].input = sw_input(m).count > 0 && sw_input(m) != "none";
     p[0].xcode_n = cp_out(p[0].xcode[..], sw_str(m, SW_F_XCODE));
     if p[0].xcode_n == 0 { p[0].state = CP_SIM_NO_XCODE; }
     return;
@@ -212,6 +214,8 @@ cp_sim_reply :: (s: [] CoderPage, m: [] SwMsg) {
   }
   if kind == CP_SIM_R_STILL {
     if !ok { if sw_str(m, SW_F_CODE) == "not_booted" { cp_sim_queue_list(s); } return; }
+    if sw_has(m, SW_F_GEN) { p[0].frame = sw_int(m, SW_F_GEN, 0); p[0].frame_known = true; }
+    if !sw_has(m, SW_F_PATH) { return; }   // the screen is as the still shows it
     p[0].still_n = cp_out(p[0].still[..], sw_str(m, SW_F_PATH)); p[0].still_gen += 1; p[0].still_flip = 1 - p[0].still_flip;
     if m[0].has[SW_F_SIZE] { p[0].screen_w = cast(f32) m[0].size_w; p[0].screen_h = cast(f32) m[0].size_h; }
     return;
@@ -484,7 +488,67 @@ coder_page_sim_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(al
   return n;
 }
 // The host's clock while the screen shows (up to 4 a second): the next still is asked for.
-coder_page_sim_tick :: (s: [] CoderPage) #export_c #effects(all) { if s.count > 0 && cp_sim_shown(s) && !s[0].set_open { cp_sim_queue_still(s); } }
+// The host's clock, fifteen times a second while the pane is open: a still each tick when the
+// helper has the framebuffer ("frames": it writes one only when the screen changed), else four a second.
+coder_page_sim_tick :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 || !cp_sim_shown(s) || s[0].set_open { return; }
+  p := cp_sim(s); p[0].ticks += 1;
+  if p[0].display_live || p[0].ticks % 4 == 0 { cp_sim_queue_still(s); }
+}
+
+// ---------------------------------------------------------------- the person's hand on the screen
+
+// A request with no id: the helper answers nothing (a finger's moves never wait on a reply).
+cp_sim_send0 :: (s: [] CoderPage, m: [] SwMsg) {
+  p := cp_sim(s);
+  sw_set_int(m, SW_F_ID, 0);
+  line: [8192] u8; n := sw_write(m, line[..]);
+  if n < 0 || p[0].out_n + n + 1 > CP_SIM_OUT { return; }
+  for i: 0..<n { p[0].out[p[0].out_n + i] = line[i]; }
+  p[0].out_n += n; p[0].out[p[0].out_n] = 10; p[0].out_n += 1;
+}
+// The person's finger on the screen's view (vw x vh, its point vx, vy from the top left): phase
+// 0 down, 1 moved, 2 up, as a touch in device points. False when the helper has no input.
+coder_page_sim_touch :: (s: [] CoderPage, phase: int, vx: f32, vy: f32, vw: f32, vh: f32) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  p := cp_sim(s);
+  if !p[0].input || p[0].state != CP_SIM_BOOTED || !(p[0].screen_w > 0.0) || phase < 0 || phase > 2 { return false; }
+  d := sg_view_to_device(cast(f64) vx, cast(f64) vy, cast(f64) vw, cast(f64) vh, cast(f64) p[0].screen_w, cast(f64) p[0].screen_h);
+  m: [1] SwMsg; cp_sim_req(m[..], "touch"); cp_sim_with_device(s, m[..]);
+  _ = sw_set_str(m[..], SW_F_PHASE, ifx phase == 0 then "down" else ifx phase == 2 then "up" else "move");
+  sw_set_int(m[..], SW_F_POINTER, 0); sw_set_num(m[..], SW_F_X, d.x); sw_set_num(m[..], SW_F_Y, d.y);
+  cp_sim_send0(s, m[..]);
+  return true;
+}
+// A Mac key code's name for press_key ("" when it types a character instead).
+cp_sim_mac_key :: (code: int) -> string {
+  codes := [13] int.[36, 76, 51, 117, 53, 48, 123, 124, 125, 126, 115, 119, 116];
+  names := [13] string.["return", "enter", "delete", "forward_delete", "escape", "tab", "left", "right", "down", "up", "home", "end", "page_up"];
+  for i: 0..<codes.count { if codes[i] == code { return names[i]; } }
+  if code == 121 { return "page_down"; }
+  return "";
+}
+#test "Mac key codes to the helper's key names" {
+  #assert cp_sim_mac_key(36) == "return" && cp_sim_mac_key(76) == "enter" && cp_sim_mac_key(51) == "delete" && cp_sim_mac_key(117) == "forward_delete";
+  #assert cp_sim_mac_key(53) == "escape" && cp_sim_mac_key(48) == "tab" && cp_sim_mac_key(123) == "left" && cp_sim_mac_key(124) == "right";
+  #assert cp_sim_mac_key(125) == "down" && cp_sim_mac_key(126) == "up" && cp_sim_mac_key(115) == "home" && cp_sim_mac_key(119) == "end";
+  #assert cp_sim_mac_key(116) == "page_up" && cp_sim_mac_key(121) == "page_down" && cp_sim_mac_key(0) == "" && cp_sim_mac_key(49) == "";
+}
+// A key the person pressed while the screen's view has the keyboard: its Mac key code and the
+// characters it types. A named key goes as press_key, typeable text as text. False when neither.
+coder_page_sim_key :: (s: [] CoderPage, code: int, chars: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  p := cp_sim(s);
+  if !p[0].input || p[0].state != CP_SIM_BOOTED { return false; }
+  m: [1] SwMsg;
+  name := cp_sim_mac_key(code);
+  if name.count > 0 { cp_sim_req(m[..], "press_key"); _ = sw_set_str(m[..], SW_F_KEY, name); }
+  else if chars.count > 0 && sg_typeable(chars) { cp_sim_req(m[..], "text"); _ = sw_set_str(m[..], SW_F_TEXT, chars); }
+  else { return false; }
+  cp_sim_with_device(s, m[..]);
+  cp_sim_send0(s, m[..]);
+  return true;
+}
 // The screen's rect (x, y, w, h in logical points, top-left) and whether something covers it
 // (an overlay, settings: the host then hides its view). False while no screen shows.
 coder_page_sim_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {

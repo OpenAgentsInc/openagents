@@ -19,6 +19,7 @@
 // OA_SIM_SOCKET and OA_SIM_HOME (another helper, for checks), OA_SIM_SPILL (where screenshots go),
 // OA_SIMHOST (the program to start as the helper; default this one).
 //   coax/web/tool.sh coder/tui/oasim.coax list
+// tool.sh: objc coax/lib/agent/device/sim-shim.m Foundation IOSurface CoreGraphics ImageIO
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/args.coax";

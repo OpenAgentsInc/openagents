@@ -343,13 +343,15 @@ Limits:
 
 View > iOS Simulator (Option-Command-S, or "Show iOS Simulator" in the palette) puts a simulated
 iPhone in the pane on the right (docs/desktop/ios-simulator-spec.md; GitHub #13811). The pane shows
-the device's screen (stills, up to 4 a second, in Phase 0), its name and runtime, Device… (a menu of
+the device's screen (live: a frame from the device's framebuffer whenever it changes, up to 15 a
+second; stills, 4 a second, when this Xcode's SimulatorKit can't be used), its name and runtime, Device… (a menu of
 the iOS simulators Xcode has), Boot or Shut Down, Screenshot (into the working folder's
-`.openagents/shots/`, shown in Finder) and Light or Dark.
+`.openagents/shots/`, shown in Finder) and Light or Dark. Click and drag on the screen to touch it;
+after a click, keys type into the device (Escape gives the keyboard back).
 
 Agents use it through `oasim` (in `Contents/Resources`, on every worker's `PATH`): `oasim list`,
-`boot`, `screenshot`, `launch`, `open_url`, `set_appearance`, `build`, `build_status`, `run` and the
-rest, each answering one JSON line. The first op that changes a device in a chat opens the pane with
+`boot`, `screenshot`, `tap`, `swipe`, `text`, `press_key`, `button`, `launch`, `open_url`,
+`set_appearance`, `build`, `build_status`, `run` and the rest, each answering one JSON line. The first op that changes a device in a chat opens the pane with
 a card: Allow for this chat, Allow once, Don't allow. While a chat drives the device a badge says so,
 with Stop. The page speaks the helper's wire itself (`page/simpane.coax`); `Window+Simulator.swift`
 only moves its lines, starts the helper (`oasim serve`) when none answers and shows the screen.

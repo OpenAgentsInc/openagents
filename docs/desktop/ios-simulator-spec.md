@@ -196,6 +196,10 @@ on each agent action. The pane says "Live view unavailable with this Xcode; show
   device as `text`, Command-Shift-H is Home, Command-L lock, Command-Left/Right rotate, as in
   Simulator.app); every other key goes to the device while the view has focus. A click in the view
   makes it first responder; Escape or a click on the page gives the keyboard back to the composer.
+  *As built (Phase 1):* one finger (`touch`, id 0, mapped by the page's `coder_page_sim_touch` with
+  `sg_view_to_device`), and keys while the view has the keyboard: a named key by its Mac key code as
+  `press_key`, a typeable character as `text` (`coder_page_sim_key`). Option-drag, the scroll wheel
+  and the Command shortcuts into the device are not built yet; Command keys stay the app's.
 - **Agent:** the same ops through `oasim`, plus composite ones the helper expands in Coax
   (`tap` = down+up; `swipe` = an eased path over `duration`; `touch_path`/`touch2_path` = sampled
   paths with `dt_ms`; `text` = per-character key events, or the pasteboard plus Command-V for long or
@@ -338,6 +342,31 @@ Xcode releases, so `shim.m` is the one place that knows them):
 The helper is checked against the installed Xcode at every start, and the test suite (section 11)
 runs on every Xcode the team uses. A new Xcode that breaks a selector shows in the pane as "Input
 unavailable with Xcode 27.0" with stills still working, never as a crash.
+
+**As built (Phase 1, Xcode 26.6, 2026-11-20).** `coax/lib/agent/device/sim-shim.m` (linked into
+`oasim` by `coax/web/tool.sh`'s `// tool.sh: objc` line) holds every private name; `sim-shim.coax`
+runs an op's plan (`sim-gesture.coax`'s `sg_plan_*`, tested) through it one event at a time from the
+helper's loop, so a gesture never blocks the other clients. What the real system said:
+
+- `IndigoHIDMessageForMouseNSEvent(&point, NULL, 0x32, type, ...)` takes the point as a **fraction of
+  the screen** (0..1), and builds nothing for a drag (NSEvent type 6): a moved finger is sent as
+  another down (type 1) at the new place, as idb does; up is type 2. Verified by tapping Settings'
+  rows and by a swipe that scrolls a list.
+- Buttons: `IndigoHIDMessageForButton(source, 1 down / 2 up, 0x33)` with sources home 0x0, lock 0x1,
+  side 0xBB8, Siri 0x400002, Apple Pay 0x1F4. Keys: `IndigoHIDMessageForKeyboardArbitrary(usage,
+  1 / 2)`.
+- The framebuffer is the port descriptor's `framebufferSurface` (BGRA, device pixels). Reading it
+  and writing a point-size PNG takes 12–18 ms, and `IOSurfaceGetSeed` changes only when the screen
+  does. The live view is therefore built as **frames** (capability `"display":"frames"`): the page
+  asks for a still on each of the host's fifteen ticks a second, naming the `gen` (seed) it has; the
+  helper answers with no `path` when the screen is unchanged, so an idle device costs one seed read
+  per tick. The Mach-port surface rendezvous (4.2) is not built; frames reach the glass in under
+  about 70 ms, which is enough for the person's taps and an agent's gestures.
+- Not yet: `rotate` (no Indigo message turns the device), `set_keyboard`, `touch2_path` (the
+  two-finger Indigo message), and non-ASCII `text` (the pasteboard path). Each answers
+  `input_unavailable` (or `bad_args` for text) with a sentence saying so. The CoreDevice input path
+  and the surface and damage callbacks are not used.
+- Confinement (9.4) is not built: the helper runs as the user, like `oasim build`.
 
 ### 6.3 Boot
 
@@ -684,6 +713,10 @@ the phone (later).
 | Xcode updated under a running helper | The helper notices the developer dir changed and restarts itself | ops in flight fail `helper_down` |
 
 ## 14. Open questions for the implementer
+
+(Answered for Xcode 26.6 in 6.2's "As built (Phase 1)": the selectors are as listed, the touch
+point is a fraction of the screen, and a drag is repeated downs. Question 2 is open: the live view
+shipped as damage-gated frames instead of a surface over Mach, so no rendezvous is needed yet.)
 
 1. The exact private selectors on the installed Xcode: confirm each with `class-dump`-style
    inspection of the frameworks (read-only), record the Xcode version in `shim.m`'s header.

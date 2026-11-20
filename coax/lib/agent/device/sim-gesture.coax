@@ -217,3 +217,125 @@ sg_button :: (name: string) -> int {
   #assert sg_button("HOME") == SG_BUTTON_HOME && sg_button("LOCK") == SG_BUTTON_LOCK && sg_button("SIDE_BUTTON") == SG_BUTTON_SIDE;
   #assert sg_button("SIRI") == SG_BUTTON_SIRI && sg_button("APPLE_PAY") == SG_BUTTON_PAY && sg_button("home") == -1;
 }
+
+// ---- plans: an op as the timed events the helper sends (sim-shim.coax sends them)
+
+// A planned event, at_ms after the op began. SG_EV_TOUCH: a finger at (x, y), phase a (0 down,
+// 1 moved, 2 up). SG_EV_CHORD: key a pressed and let go with modifiers b and c held (0 none).
+// SG_EV_BUTTON: button source a, b 1 down or 0 up.
+SG_EV_TOUCH :: 1; SG_EV_CHORD :: 2; SG_EV_BUTTON :: 3;
+SgEv :: struct { kind: int; a: int; b: int; c: int; x: f64; y: f64; at_ms: f64; }
+SG_KEY_MS :: 12.0;        // between typed keys
+SG_PRESS_MS :: 100.0;     // how long a button is held by default
+
+// A finger along samples: down at the first, moved at each after, up at the last. The count written.
+sg_plan_path :: (s: [] SgSample, out: [] SgEv) -> int {
+  if s.count == 0 || out.count < s.count + 1 { return 0; }
+  t := 0.0;
+  for i: 0..<s.count {
+    if i > 0 { t += s[i].dt_ms; }
+    out[i] = SgEv.{kind = SG_EV_TOUCH, a = ifx i == 0 then 0 else 1, x = s[i].x, y = s[i].y, at_ms = t};
+  }
+  last := s[s.count - 1];
+  out[s.count] = SgEv.{kind = SG_EV_TOUCH, a = 2, x = last.x, y = last.y, at_ms = t};
+  return s.count + 1;
+}
+// A tap: down, and up after duration_ms (SG_TAP_MS when 0 or less; over 500 is a long press).
+sg_plan_tap :: (x: f64, y: f64, duration_ms: f64, out: [] SgEv) -> int {
+  if out.count < 2 { return 0; }
+  d := ifx duration_ms > 0.0 then duration_ms else SG_TAP_MS;
+  out[0] = SgEv.{kind = SG_EV_TOUCH, a = 0, x = x, y = y, at_ms = 0.0};
+  out[1] = SgEv.{kind = SG_EV_TOUCH, a = 2, x = x, y = y, at_ms = d};
+  return 2;
+}
+// A swipe: sg_swipe's samples as a path.
+sg_plan_swipe :: (x: f64, y: f64, x2: f64, y2: f64, duration_ms: f64, out: [] SgEv) -> int {
+  s: [SG_SAMPLES] SgSample;
+  n := sg_swipe(x, y, x2, y2, duration_ms, s[..]);
+  return sg_plan_path(s[0..<n], out);
+}
+// Text typed key by key (sg_typeable text only), SG_KEY_MS apart. 0 when it can't be typed or won't fit.
+sg_plan_text :: (text: string, out: [] SgEv) -> int {
+  if text.count == 0 || text.count > out.count || !sg_typeable(text) { return 0; }
+  for i: 0..<text.count {
+    k := sg_ascii_key(text[i]);
+    out[i] = SgEv.{kind = SG_EV_CHORD, a = k.usage, b = k.mod, at_ms = SG_KEY_MS * cast(f64) i};
+  }
+  return text.count;
+}
+// A named key count times (1 to 20). 0 when the name is unknown or count is out of range.
+sg_plan_key :: (name: string, count: int, out: [] SgEv) -> int {
+  k := sg_named_key(name);
+  if k.usage < 0 || count < 1 || count > 20 || count > out.count { return 0; }
+  for i: 0..<count { out[i] = SgEv.{kind = SG_EV_CHORD, a = k.usage, b = k.mod, c = k.mod2, at_ms = SG_KEY_MS * cast(f64) i}; }
+  return count;
+}
+// A hardware button pressed for duration_ms (SG_PRESS_MS when 0 or less). 0 when the name is unknown.
+sg_plan_button :: (name: string, duration_ms: f64, out: [] SgEv) -> int {
+  src := sg_button_source(sg_button(name));
+  if src < 0 || out.count < 2 { return 0; }
+  d := ifx duration_ms > 0.0 then duration_ms else SG_PRESS_MS;
+  out[0] = SgEv.{kind = SG_EV_BUTTON, a = src, b = 1, at_ms = 0.0};
+  out[1] = SgEv.{kind = SG_EV_BUTTON, a = src, b = 0, at_ms = d};
+  return 2;
+}
+// A button's Indigo source, as SimulatorKit names them; -1 for none.
+sg_button_source :: (b: int) -> int {
+  if b == SG_BUTTON_HOME { return 0x0; }
+  if b == SG_BUTTON_LOCK { return 0x1; }
+  if b == SG_BUTTON_SIDE { return 0xBB8; }
+  if b == SG_BUTTON_SIRI { return 0x400002; }
+  if b == SG_BUTTON_PAY { return 0x1F4; }
+  return -1;
+}
+#test "a tap is a finger down and up, a long press longer" {
+  e: [4] SgEv;
+  #assert sg_plan_tap(10.0, 20.0, 0.0, e[..]) == 2;
+  #assert e[0].kind == SG_EV_TOUCH && e[0].a == 0 && e[0].x == 10.0 && e[0].y == 20.0 && e[0].at_ms == 0.0;
+  #assert e[1].kind == SG_EV_TOUCH && e[1].a == 2 && e[1].x == 10.0 && e[1].y == 20.0 && e[1].at_ms == SG_TAP_MS;
+  #assert sg_plan_tap(1.0, 2.0, 800.0, e[..]) == 2 && e[1].at_ms == 800.0;
+  #assert sg_plan_tap(1.0, 2.0, -5.0, e[..]) == 2 && e[1].at_ms == SG_TAP_MS;
+  one: [1] SgEv; #assert sg_plan_tap(1.0, 2.0, 0.0, one[..]) == 0;
+  two: [2] SgEv; #assert sg_plan_tap(1.0, 2.0, 0.0, two[..]) == 2;
+}
+#test "a path: down, moves, up at the last sample, at the summed times" {
+  s := [3] SgSample.[SgSample.{x = 1.0, y = 2.0, dt_ms = 5.0}, SgSample.{x = 3.0, y = 4.0, dt_ms = 16.0}, SgSample.{x = 5.0, y = 6.0, dt_ms = 20.0}];
+  e: [8] SgEv;
+  #assert sg_plan_path(s[..], e[..]) == 4;
+  #assert e[0].a == 0 && e[0].at_ms == 0.0 && e[0].x == 1.0 && e[0].y == 2.0;
+  #assert e[1].a == 1 && e[1].at_ms == 16.0 && e[1].x == 3.0 && e[1].y == 4.0;
+  #assert e[2].a == 1 && e[2].at_ms == 36.0 && e[2].x == 5.0;
+  #assert e[3].a == 2 && e[3].at_ms == 36.0 && e[3].x == 5.0 && e[3].y == 6.0 && e[3].kind == SG_EV_TOUCH;
+  short: [3] SgEv; #assert sg_plan_path(s[..], short[..]) == 0;
+  fits: [4] SgEv; #assert sg_plan_path(s[..], fits[..]) == 4;
+  #assert sg_plan_path(s[0..<0], e[..]) == 0;
+}
+#test "a swipe plans its samples between a down and an up" {
+  e: [64] SgEv;
+  n := sg_plan_swipe(0.0, 0.0, 100.0, 200.0, 160.0, e[..]);
+  #assert n == 12 && e[0].a == 0 && e[0].x == 0.0 && e[n - 1].a == 2 && e[n - 1].x == 100.0 && e[n - 1].y == 200.0 && e[n - 1].at_ms > 159.9 && e[n - 1].at_ms < 160.1;
+}
+#test "text as keys, a key's time apart; what can't be typed plans nothing" {
+  e: [8] SgEv;
+  #assert sg_plan_text("aB", e[..]) == 2;
+  #assert e[0].kind == SG_EV_CHORD && e[0].a == 0x04 && e[0].b == 0 && e[0].at_ms == 0.0;
+  #assert e[1].kind == SG_EV_CHORD && e[1].a == 0x05 && e[1].b == SG_SHIFT && e[1].at_ms == SG_KEY_MS;
+  #assert sg_plan_text("", e[..]) == 0 && sg_plan_text("é", e[..]) == 0;
+  two: [2] SgEv; #assert sg_plan_text("abc", two[..]) == 0 && sg_plan_text("ab", two[..]) == 2;
+}
+#test "a named key, count times, with its modifiers" {
+  e: [24] SgEv;
+  #assert sg_plan_key("redo", 2, e[..]) == 2 && e[0].a == 0x1D && e[0].b == SG_COMMAND && e[0].c == SG_SHIFT && e[1].at_ms == SG_KEY_MS && e[1].kind == SG_EV_CHORD;
+  #assert sg_plan_key("return", 20, e[..]) == 20 && sg_plan_key("return", 21, e[..]) == 0 && sg_plan_key("return", 0, e[..]) == 0 && sg_plan_key("nope", 1, e[..]) == 0;
+  #assert sg_plan_key("return", 1, e[..]) == 1 && e[0].a == 0x28 && e[0].b == 0 && e[0].c == 0 && e[0].at_ms == 0.0;
+  three: [3] SgEv; #assert sg_plan_key("up", 4, three[..]) == 0 && sg_plan_key("up", 3, three[..]) == 3;
+}
+#test "a button: its Indigo source down, then up" {
+  e: [2] SgEv;
+  #assert sg_plan_button("HOME", 0.0, e[..]) == 2 && e[0].kind == SG_EV_BUTTON && e[0].a == 0 && e[0].b == 1 && e[0].at_ms == 0.0 && e[1].a == 0 && e[1].b == 0 && e[1].at_ms == SG_PRESS_MS && e[1].kind == SG_EV_BUTTON;
+  #assert sg_plan_button("SIDE_BUTTON", 2000.0, e[..]) == 2 && e[0].a == 0xBB8 && e[1].at_ms == 2000.0;
+  #assert sg_plan_button("LOCK", -1.0, e[..]) == 2 && e[0].a == 1 && e[1].at_ms == SG_PRESS_MS;
+  #assert sg_plan_button("home", 0.0, e[..]) == 0;
+  one: [1] SgEv; #assert sg_plan_button("HOME", 0.0, one[..]) == 0;
+  #assert sg_button_source(SG_BUTTON_SIRI) == 0x400002 && sg_button_source(SG_BUTTON_PAY) == 0x1F4 && sg_button_source(99) == -1 && sg_button_source(-1) == -1;
+}

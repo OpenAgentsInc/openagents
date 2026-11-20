@@ -44,6 +44,9 @@ cp_sim_test_up :: (s: [] CoderPage) {
   #assert coder_page_sim_line(s, "{\"id\":4,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-0.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34754}");
   #assert coder_page_sim_line(s, "{\"id\":5,\"ok\":true,\"appearance\":\"dark\"}") && s[0].sim[0].dark;
   pb: [256] u8; #assert coder_page_sim_still(s, pb[..]) == 1 && cast(string) pb[0..<cp_find(cast(string) pb[..], "\0")] == "/h/.openagents/sim/stills/still-0.png";
+  // stills (no framebuffer): one each fourth tick of the host's fifteen a second
+  coder_page_sim_tick(s); #assert cp_sim_test_out(s, out[..]) == "";
+  coder_page_sim_tick(s); #assert cp_sim_test_out(s, out[..]) == "";
   coder_page_sim_tick(s); #assert cp_find(cp_sim_test_out(s, out[..]), "still-1.png") >= 0;
   // the screen: aspect-fit, on screen, the tab names the device
   #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
@@ -136,3 +139,46 @@ cp_sim_test_up :: (s: [] CoderPage) {
   #assert !coder_page_sim_line(s, "not json");
 }
 cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
+
+#test "frames: a still each tick, naming the gen it has; an unchanged screen keeps the still" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  out: [4096] u8;
+  coder_page_sim_show(s, true); coder_page_sim_connected(s, true, ""); _ = cp_sim_test_out(s, out[..]);
+  #assert coder_page_sim_line(s, "{\"id\":1,\"ok\":true,\"version\":1,\"helper_pid\":7,\"capabilities\":{\"display\":\"frames\",\"input\":\"indigo\",\"describe\":false},\"xcode\":\"26.6\"}");
+  #assert s[0].sim[0].display_live && s[0].sim[0].input;
+  #assert coder_page_sim_line(s, CP_SIM_TEST_LIST);
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":4,\"op\":\"screenshot\",\"device\":\"U1\",\"out\":\"/h/.openagents/sim/stills/still-0.png\"}\n{\"id\":5,\"op\":\"appearance\",\"device\":\"U1\"}\n";
+  #assert coder_page_sim_line(s, "{\"id\":4,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-0.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34754,\"gen\":91}");
+  pb: [256] u8; #assert coder_page_sim_still(s, pb[..]) == 1;
+  coder_page_sim_tick(s);
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":6,\"op\":\"screenshot\",\"device\":\"U1\",\"gen\":91,\"out\":\"/h/.openagents/sim/stills/still-1.png\"}\n";
+  // unchanged: the same still, and the next asks for the same file
+  #assert coder_page_sim_line(s, "{\"id\":6,\"ok\":true,\"gen\":91}");
+  #assert coder_page_sim_still(s, pb[..]) == 1 && cast(string) pb[0..<cp_find(cast(string) pb[..], "\0")] == "/h/.openagents/sim/stills/still-0.png";
+  coder_page_sim_tick(s); #assert cp_find(cp_sim_test_out(s, out[..]), "\"gen\":91,\"out\":\"/h/.openagents/sim/stills/still-1.png\"") >= 0;
+  // changed: the new still and its gen
+  #assert coder_page_sim_line(s, "{\"id\":7,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-1.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34000,\"gen\":92}");
+  #assert coder_page_sim_still(s, pb[..]) == 2 && s[0].sim[0].frame == 92;
+  coder_page_sim_tick(s); #assert cp_find(cp_sim_test_out(s, out[..]), "\"gen\":92,\"out\":\"/h/.openagents/sim/stills/still-0.png\"") >= 0;
+}
+
+#test "the person's finger and keys: device points, no reply wanted; nothing without input" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  out: [4096] u8;
+  cp_sim_test_up(s); _ = cp_sim_test_out(s, out[..]);
+  // "input":"none": the view's mouse goes nowhere
+  #assert !coder_page_sim_touch(s, 0, 10.0, 10.0, 201.0, 437.0) && !coder_page_sim_key(s, 0, "a") && cp_sim_test_out(s, out[..]) == "";
+  #assert coder_page_sim_line(s, "{\"id\":4,\"ok\":true,\"path\":\"/h/.openagents/sim/stills/still-0.png\",\"points\":{\"w\":402,\"h\":874},\"bytes\":34754}");
+  s[0].sim[0].input = true;
+  // a view half the device's size: (100.5, 200) is the device's (201, 400)
+  #assert coder_page_sim_touch(s, 0, 100.5, 200.0, 201.0, 437.0);
+  #assert coder_page_sim_touch(s, 1, 0.0, 0.0, 201.0, 437.0) && coder_page_sim_touch(s, 2, 201.0, 437.0, 201.0, 437.0);
+  #assert !coder_page_sim_touch(s, 3, 1.0, 1.0, 201.0, 437.0);
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"down\",\"pointer\":0,\"x\":201,\"y\":400}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"move\",\"pointer\":0,\"x\":0,\"y\":0}\n{\"id\":0,\"op\":\"touch\",\"device\":\"U1\",\"phase\":\"up\",\"pointer\":0,\"x\":402,\"y\":874}\n";
+  // keys: a named one by its Mac code, a character as text, anything else not taken
+  #assert coder_page_sim_key(s, 36, "\r") && coder_page_sim_key(s, 0, "a") && !coder_page_sim_key(s, 0, "é") && !coder_page_sim_key(s, 0, "");
+  #assert cp_sim_test_out(s, out[..]) == "{\"id\":0,\"op\":\"press_key\",\"device\":\"U1\",\"key\":\"return\"}\n{\"id\":0,\"op\":\"text\",\"device\":\"U1\",\"text\":\"a\"}\n";
+  // shut down: nothing goes
+  s[0].sim[0].state = CP_SIM_SHUTDOWN;
+  #assert !coder_page_sim_touch(s, 0, 1.0, 1.0, 201.0, 437.0) && !coder_page_sim_key(s, 36, "");
+}

@@ -27,6 +27,7 @@ SH_CHATS :: 16;
 SH_IDLE_MS :: 600000;      // exits after 10 minutes with no client
 SH_ASK_MS :: 120000;       // how long an op waits for the person's answer
 SH_PATH :: 1024;
+SH_PLAN :: 4100;           // a plan's events at most: 4,096 typed keys, or a 2,000-sample path
 
 ShClient :: struct {
   live: bool; h: int;
@@ -71,6 +72,9 @@ ShHost :: struct {
   by_agent: [SD_MOST] [64] u8; by_agent_n: [SD_MOST] int; nby_agent: int;   // booted by an agent (it may shut them down)
   grants: [1] SpGrants;
   touched_ms: int;                            // the person's last touch
+  // an agent's gesture in flight (sim-shim.coax): its plan, the next event, who waits
+  plan: [SH_PLAN] SgEv; gq_n: int; gq_i: int; gq_t0: int; gq_live: bool; gq_client: int; gq_id: int;
+  gq_udid: [64] u8; gq_udid_n: int; gq_w: f64; gq_h: f64; gq_down: bool; gq_x: f64; gq_y: f64;
   last_client_ms: int;
   quit: bool;
   secret: [256] u8; secret_n: int;            // a key text may not hold (OA_SIM_SECRET)
@@ -363,7 +367,7 @@ sh_job_next :: (h: [] ShHost, j: int) {
   }
   if kind == SH_JOB_SHOT {
     _ = fs_remove(cast(string) h[0].jobs[j].tmp[0..<h[0].jobs[j].tmp_n]);
-    sh_shot_reply(h, ci, id, udid, cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n]);
+    sh_shot_reply(h, ci, id, udid, cast(string) h[0].jobs[j].path[0..<h[0].jobs[j].path_n], -1);
     sh_job_end(h, j, "", ""); return;
   }
   if kind == SH_JOB_APPEARANCE {
@@ -396,11 +400,12 @@ sh_job_next :: (h: [] ShHost, j: int) {
   }
   sh_ok(h, ci, id); sh_job_end(h, j, "", "");
 }
-sh_shot_reply :: (h: [] ShHost, ci: int, id: int, udid: string, path: string) {
+sh_shot_reply :: (h: [] ShHost, ci: int, id: int, udid: string, path: string, gen: int) {
   s := sh_screen(h, udid);
   m := h[0].reply[..]; sw_reply_ok(m, id); _ = sw_set_str(m, SW_F_PATH, path);
   if s.px_w > 0 { sw_set_size(m, cast(f64) s.px_w / s.scale, cast(f64) s.px_h / s.scale); }
   sw_set_int(m, SW_F_BYTES, fs_size(path));
+  if gen >= 0 { sw_set_int(m, SW_F_GEN, gen); }
   sh_answer(h, ci, id, m);
 }
 sh_state_event :: (h: [] ShHost, udid: string, state: string) {
@@ -433,7 +438,8 @@ sh_request :: (h: [] ShHost, ci: int, line: string) {
   if op == "hello" { sh_hello(h, ci, id); return; }
   chat := ifx sw_has(m, SW_F_CHAT) then sw_str(m, SW_F_CHAT) else sh_client_chat(h, ci);
   cb: [64] u8; chat = cast(string) cb[0..<sd_put(cb[..], chat)];
-  if h[0].listed_ms == 0 || proc_now_ms() - h[0].listed_ms > 2000 { _ = sh_refresh(h); }
+  // (the person's finger moves sixty times a second: it never waits on simctl's list)
+  if h[0].listed_ms == 0 || (op != "touch" && proc_now_ms() - h[0].listed_ms > 2000) { _ = sh_refresh(h); }
   di := sh_pick(h, sw_str(m, SW_F_DEVICE));
   udid := ""; name := ""; booted := false;
   ub: [64] u8; nb: [128] u8;
@@ -512,7 +518,7 @@ sh_hello :: (h: [] ShHost, ci: int, id: int) {
   h[0].clients[ci].engine_n = sd_put(h[0].clients[ci].engine[..], sw_str(m, SW_F_ENGINE));
   h[0].clients[ci].folder_n = sd_put(h[0].clients[ci].folder[..], sw_str(m, SW_F_FOLDER));
   r := h[0].reply[..]; sw_reply_ok(r, id); sw_set_int(r, SW_F_VERSION, SH_VERSION); sw_set_int(r, SW_F_HELPER_PID, h[0].pid);
-  sw_set_caps(r, ifx shim_display() then "surface" else "stills", ifx shim_input() then "indigo" else "none", shim_describe());
+  sw_set_caps(r, ifx shim_display() then "frames" else "stills", ifx shim_input() then "indigo" else "none", shim_describe());
   _ = sw_set_str(r, SW_F_XCODE, cast(string) h[0].xcode[0..<h[0].xcode_n]);
   sh_answer(h, ci, id, r);
 }
@@ -567,7 +573,7 @@ sh_run :: (h: [] ShHost, ci: int, id: int, op: string, udid: string, booted: boo
     sh_simple(h, ci, id, udid, SH_JOB_SIMPLE, "terminate", b, ""); return;
   }
   if op == "launch" || op == "install" { sh_launch(h, ci, id, op, udid, m); return; }
-  if shim_input() || shim_display() { if shim_run(h, ci, id, op, udid, m) { return; } }
+  if shim_run(h, ci, id, op, udid, m) { return; }
   if sp_class(op) == SP_CONTROL { sh_fail(h, ci, id, "input_unavailable", "this helper can't send touches or keys to the simulator with this Xcode"); return; }
   sh_fail(h, ci, id, "bad_args", "this helper does not do that op yet");
 }
@@ -590,7 +596,13 @@ sh_shot :: (h: [] ShHost, ci: int, id: int, udid: string, m: [] SwMsg) {
   if out.count == 0 || out[0] != '/' { sh_fail(h, ci, id, "bad_args", "screenshot needs out, an absolute path for the picture"); return; }
   scale := ifx sw_has(m, SW_F_SCALE) then sw_num(m, SW_F_SCALE) else 1.0;
   if scale < 0.25 || scale > 1.0 { sh_fail(h, ci, id, "bad_args", "scale is from 0.25 to 1"); return; }
-  if shim_display() && shim_shot(udid, out, scale) { sh_shot_reply(h, ci, id, udid, out); return; }
+  if shim_display() {
+    // from the framebuffer; a client that names the gen it has is told when nothing changed
+    was := sw_int(m, SW_F_GEN, -1);
+    seed := shim_shot(sh_screen(h, udid), udid, out, scale, was);
+    if seed >= 0 && seed == was { r := h[0].reply[..]; sw_reply_ok(r, id); sw_set_int(r, SW_F_GEN, seed); sh_answer(h, ci, id, r); return; }
+    if seed >= 0 { sh_shot_reply(h, ci, id, udid, out, seed); return; }
+  }
   j := sh_job_new(h, SH_JOB_SHOT, ci, id, udid);
   if j < 0 { sh_fail(h, ci, id, "timeout", "the helper is busy; try again"); return; }
   h[0].jobs[j].scale = scale; h[0].jobs[j].path_n = sd_put(h[0].jobs[j].path[..], out);
@@ -696,7 +708,7 @@ sh_serve :: (h: [] ShHost) -> int {
     for i: 0..<SH_CLIENTS { if h[0].clients[i].live && sh_read(h, i) { moved = true; } }
     for j: 0..<SH_JOBS { if h[0].jobs[j].live { sh_job_poll(h, j); } }
     sh_asks_poll(h);
-    if shim_display() { shim_poll(h); }
+    if shim_poll(h) { moved = true; }
     if sh_live_clients(h) > 0 { h[0].last_client_ms = proc_now_ms(); }
     else if sh_live_jobs(h) == 0 && proc_now_ms() - h[0].last_client_ms > SH_IDLE_MS { break; }
     quiet = ifx moved then 0 else quiet + 1;

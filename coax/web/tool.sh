@@ -40,8 +40,17 @@ sources="$bin.sources"
 # and apps/openagents-web/demos/hud/check.coax are both "check"), so each image records the entry file it
 # was built from, and another entry with the same name rebuilds it rather than running the wrong program.
 entry="$bin.entry"
+# `// tool.sh: objc FILE.m FRAMEWORK...` (macOS): one Objective-C unit (repo-relative) for platform
+# effects only a private Objective-C framework offers (the iOS Simulator shim, #13811), linked with
+# those frameworks. A change to it rebuilds the tool. Elsewhere the line is ignored.
+objc_src=""; objc_fw=()
+if [[ "$(uname -s)" == Darwin ]]; then
+  read -r objc_src objc_rest < <(sed -n 's|^// tool.sh: objc \(.*\)$|\1|p' "$src" | head -n 1) || true
+  if [[ -n "$objc_src" ]]; then objc_src="$repo/$objc_src"; for f in ${objc_rest:-}; do objc_fw+=(-framework "$f"); done; fi
+fi
 why=""
 if [[ ! -x "$bin" ]]; then why="first build"
+elif [[ -n "$objc_src" && "$objc_src" -nt "$bin" ]]; then why="${objc_src#"$repo/"} changed"
 elif [[ "$(cat "$entry" 2>/dev/null)" != "$src" ]]; then why="another ${name}.coax was built here last"
 elif changed="$(find "$coax" "$p" "$here/tool.sh" "$repo/coax/lib/crypto/entropy.coax" -newer "$bin" -print -quit)"; [[ -n "$changed" ]]; then why="$changed changed"
 elif [[ -s "$sources" ]]; then
@@ -83,13 +92,17 @@ if [[ -n "$why" ]]; then
   # 14 days after their last use.
   cache="${COAX_TOOL_CACHE:-$HOME/.cache/coax-tools}"; key=""
   if [[ "$cache" != 0 ]]; then
-    key="$({ cat "$work/$name.c" "$work/entropy.c" "$work/entropy-policy.h" "$p"/*.c "$p"/*.h "$p"/*.inc
-             printf '%s\n' "$name" "${build[@]}" "${units[@]##*/}" ${tls[@]+"${tls[@]}"} "${libs[@]}"; "${cc[0]}" --version; uname -sm; } 2> /dev/null | shasum -a 256 | cut -d ' ' -f 1)"
+    key="$({ cat "$work/$name.c" "$work/entropy.c" "$work/entropy-policy.h" "$p"/*.c "$p"/*.h "$p"/*.inc ${objc_src:+"$objc_src"}
+             printf '%s\n' "$name" "${build[@]}" "${units[@]##*/}" ${tls[@]+"${tls[@]}"} "${libs[@]}" ${objc_fw[@]+"${objc_fw[@]}"}; "${cc[0]}" --version; uname -sm; } 2> /dev/null | shasum -a 256 | cut -d ' ' -f 1)"
   fi
   if [[ -n "$key" && -x "$cache/$key" ]] && cp "$cache/$key" "$work/$name" 2> /dev/null; then
     touch "$cache/$key" 2> /dev/null || true
   else
-    "${build[@]}" -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "${units[@]}" "$work/entropy.c" ${tls[@]+"${tls[@]}"} "${libs[@]}" -lm
+    objc_o=()
+    if [[ -n "$objc_src" ]]; then
+      /usr/bin/clang -c -O2 -fobjc-arc -Wall -I"$p" -o "$work/objc-unit.o" "$objc_src"; objc_o=("$work/objc-unit.o" "${objc_fw[@]}")
+    fi
+    "${build[@]}" -I"$work" -I"$p" -o "$work/$name" "$work/$name.c" "${units[@]}" "$work/entropy.c" ${tls[@]+"${tls[@]}"} ${objc_o[@]+"${objc_o[@]}"} "${libs[@]}" -lm
     if [[ -n "$key" ]] && mkdir -p "$cache" 2> /dev/null && cp "$work/$name" "$cache/$key.$$" 2> /dev/null; then
       mv -f "$cache/$key.$$" "$cache/$key" 2> /dev/null || rm -f "$cache/$key.$$"
       find "$cache" -type f -atime +14 -mtime +14 -delete 2> /dev/null || true

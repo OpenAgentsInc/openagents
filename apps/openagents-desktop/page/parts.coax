@@ -18,6 +18,7 @@
 #load "../../../components/backend/gpu.coax";
 #load "../../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../../coax/lib/agent/device/sim-wire.coax";
+#load "../../../coax/lib/agent/device/sim-gesture.coax";
 #load "../../../coax/lib/gateway/card.coax";
 #load "../settings.coax";
 
