@@ -33,6 +33,9 @@ extension CoderWindow {
                 if j < 0 { break }
                 let one = CoderWorker()
                 if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+                let wtPath = r.worktreeInfo?.path ?? (CoderWorktree.isManagedWorktree(cwd) ? cwd : nil)
+                let wtRoot = r.worktreeInfo?.repoRoot ?? CoderWorktree.primaryRepoRoot(for: URL(fileURLWithPath: cwd))
+                one.extraEnv = CoderWorktree.sharedCacheEnv(worktreePath: wtPath, repoRoot: wtRoot)
                 wireAgent(r, j, one)
                 guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
@@ -200,13 +203,14 @@ extension CoderWindow {
         }
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
-        var env: [String: String] = [:]
+        let cwd = (r === run ? folder : r.folder)
+        let wtPath = r.worktreeInfo?.path ?? (CoderWorktree.isManagedWorktree(cwd.path) ? cwd.path : nil)
+        let wtRoot = r.worktreeInfo?.repoRoot ?? CoderWorktree.primaryRepoRoot(for: cwd)
+        var env = CoderWorktree.sharedCacheEnv(worktreePath: wtPath, repoRoot: wtRoot)
         if isForeman && foremanServer.port > 0 {
-            env = [
-                "CODER_FOREMAN_URL": foremanServer.baseURL,
-                "CODER_FOREMAN_TOKEN": foremanServer.token,
-                "CODER_FOREMAN_TIER": foremanTier.wireName
-            ]
+            env["CODER_FOREMAN_URL"] = foremanServer.baseURL
+            env["CODER_FOREMAN_TOKEN"] = foremanServer.token
+            env["CODER_FOREMAN_TIER"] = foremanTier.wireName
             if let res = Bundle.main.resourcePath {
                 env["PATH"] = res
             }
@@ -244,7 +248,14 @@ extension CoderWindow {
         let moved = run
         moved.page = back; moved.folder = folder; moved.chat = id
         runs[id] = moved
-        run = CoderRun(page: page, folder: folder); wire(run)
+        let nextFolder: URL = {
+            if let root = moved.worktreeInfo?.repoRoot, FileManager.default.fileExists(atPath: root) {
+                return URL(fileURLWithPath: root)
+            }
+            return folder
+        }()
+        run = CoderRun(page: page, folder: nextFolder); wire(run)
+        if nextFolder.path != folder.path { setFolder(nextFolder, keep: false) }
         chat = nil; recallDue = false; cd_current(page, "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)

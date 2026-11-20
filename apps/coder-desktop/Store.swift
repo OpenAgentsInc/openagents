@@ -13,10 +13,16 @@ struct CoderChat: Codable {
     var renamed: Bool? = nil
     var pinned: Int? = nil
     var managedBy: String? = nil
+    var worktreePath: String? = nil
+    var worktreeBranch: String? = nil
+    var repoRoot: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, title, created, updated, folder, renamed, pinned
         case managedBy = "managed_by"
+        case worktreePath = "worktree_path"
+        case worktreeBranch = "worktree_branch"
+        case repoRoot = "repo_root"
     }
 }
 /// The chats kept on this Mac: ~/Library/Application Support/Coder/chats, one file a chat (ID.json,
@@ -63,6 +69,17 @@ final class CoderStore {
     func meta(_ id: String) -> CoderChat? { list.first { $0.id == id } }
     func isPinned(_ id: String) -> Bool { list.first { $0.id == id }?.pinned != nil }
     func isManagedByForeman(_ id: String) -> Bool { list.first { $0.id == id }?.managedBy == Foreman.managedTag }
+    func worktreePath(_ id: String) -> String? { list.first { $0.id == id }?.worktreePath }
+    func worktreeBranch(_ id: String) -> String? { list.first { $0.id == id }?.worktreeBranch }
+    func repoRoot(_ id: String) -> String? { list.first { $0.id == id }?.repoRoot }
+    func setWorktree(_ id: String, path: String?, branch: String?, repoRoot: String?) {
+        guard let i = list.firstIndex(where: { $0.id == id }) else { return }
+        list[i].worktreePath = path
+        list[i].worktreeBranch = branch
+        list[i].repoRoot = repoRoot
+        if let path, !path.isEmpty { list[i].folder = path }
+        saveIndex()
+    }
     private func normalizePins() {
         let ids = pinnedList.map(\.id)
         for (order, id) in ids.enumerated() {

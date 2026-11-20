@@ -153,7 +153,15 @@ extension CoderWindow {
         syncForemanUI()
         if clearedUnread { cd_chats(page, chatLines) }
         var isFolder: ObjCBool = false
-        if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue { setFolder(URL(fileURLWithPath: kept), keep: false) }
+        if let wtPath = store.worktreePath(id), FileManager.default.fileExists(atPath: wtPath, isDirectory: &isFolder), isFolder.boolValue {
+            run.worktreeInfo = CoderWorktreeInfo(path: wtPath, branch: store.worktreeBranch(id) ?? "", repoRoot: store.repoRoot(id) ?? wtPath)
+            setFolder(URL(fileURLWithPath: wtPath), keep: false)
+            configureWorkerEnv(run, isForeman: false)
+        } else if let kept = store.folder(id), FileManager.default.fileExists(atPath: kept, isDirectory: &isFolder), isFolder.boolValue {
+            run.worktreeInfo = nil
+            setFolder(URL(fileURLWithPath: kept), keep: false)
+            configureWorkerEnv(run, isForeman: false)
+        }
         showKeptQueue(id)
         focusComposer()
         wake()
@@ -189,18 +197,36 @@ extension CoderWindow {
     /// reply is running in it.
     func delete(_ id: String) {
         if busy(id) { return }
+        let wtPath = store.worktreePath(id)
+        let wtRepoRoot = store.repoRoot(id)
+        let wtDirty = wtPath.map { CoderWorktree.isDirty($0) } ?? false
+        var body = "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this."
+        if wtDirty {
+            body += "\n\nIts git worktree has uncommitted changes that will be permanently discarded."
+        }
         // destructive: Return stays on Cancel
-        var d = CoderDialog(title: "Delete this chat?", body: "“" + (store.title(id) ?? "New chat") + "” will be deleted from this Mac. You can't undo this.")
+        var d = CoderDialog(title: "Delete this chat?", body: body)
         d.buttons = [.init(title: "Cancel"), .init(title: "Delete", kind: .danger)]
         d.confirm = 0; d.cancel = 0
         present(d) { [weak self] answer, _ in
             guard let self else { return }
             guard answer == 1 else { self.refocus(); return }
-            if id == self.chat { guard cd_running(self.page) == 0 else { return }; self.chat = nil; _ = cd_new(self.page); cd_current(self.page, ""); self.syncForemanUI() }
+            if id == self.chat {
+                guard cd_running(self.page) == 0 else { return }
+                self.chat = nil; _ = cd_new(self.page); cd_current(self.page, "")
+                self.restorePrimaryFolderIfWorktree()
+                self.run.worktreeInfo = nil
+                self.syncForemanUI()
+            }
             guard !self.busy(id) else { return }
             self.unread.remove(id)
             self.store.remove(id)
             self.daemonClient.updateSessionMeta(sessionID: id, archived: true)
+            if let wtPath {
+                DispatchQueue.global(qos: .utility).async {
+                    _ = CoderWorktree.removeWorktree(path: wtPath, repoRoot: wtRepoRoot, force: wtDirty)
+                }
+            }
             cd_chats(self.page, self.chatLines)
             self.refocus(); self.wake()
         }
@@ -226,10 +252,52 @@ extension CoderWindow {
         var name = [CChar](repeating: 0, count: 256)
         let title = cd_title(r.page, &name, Int32(name.count)) > 0 ? String(cString: name) : "New chat"
         store.keep(id: id, title: title, folder: (shown ? folder : r.folder).path, text: text)
+        if let wt = r.worktreeInfo {
+            store.setWorktree(id, path: wt.path, branch: wt.branch, repoRoot: wt.repoRoot)
+        }
         if shown { chat = id; cd_current(page, id) } else { r.chat = id; if id != chat { unread.insert(id) } }
         // the worker's queue binds to the chat once it is kept, so its run names the chat: a new
         // chat's first message and a Foreman chat start before they have an id (#13755)
         if r.bound != id { r.bound = id; bindQueue(r) }
         cd_chats(page, chatLines); syncForemanUI()
+    }
+
+    /// Ensures a non-Foreman foreground chat inside a git repo has an isolated per-chat worktree (#13758).
+    func ensureWorktreeForShownChat() {
+        guard !isForemanShown else { return }
+        let id = chat ?? UUID().uuidString.lowercased()
+        if chat == nil {
+            chat = id
+            cd_current(page, id)
+        }
+        if let existing = run.worktreeInfo, FileManager.default.fileExists(atPath: existing.path) {
+            if folder.path != existing.path {
+                setFolder(URL(fileURLWithPath: existing.path), keep: false)
+            }
+            return
+        }
+        if let savedPath = store.worktreePath(id), FileManager.default.fileExists(atPath: savedPath) {
+            let info = CoderWorktreeInfo(path: savedPath, branch: store.worktreeBranch(id) ?? "", repoRoot: store.repoRoot(id) ?? savedPath)
+            run.worktreeInfo = info
+            if folder.path != savedPath {
+                setFolder(URL(fileURLWithPath: savedPath), keep: false)
+            }
+            return
+        }
+        guard let info = CoderWorktree.ensureWorktree(chatID: id, folder: folder) else { return }
+        run.worktreeInfo = info
+        run.folder = URL(fileURLWithPath: info.path)
+        setFolder(URL(fileURLWithPath: info.path), keep: false)
+        store.setWorktree(id, path: info.path, branch: info.branch, repoRoot: info.repoRoot)
+    }
+    /// When leaving a worktree chat for a fresh chat, return the window folder to the primary repo root.
+    func restorePrimaryFolderIfWorktree() {
+        guard CoderWorktree.isManagedWorktree(folder.path) else { return }
+        if let root = run.worktreeInfo?.repoRoot ?? CoderWorktree.primaryRepoRoot(for: folder) {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: root, isDirectory: &isDir), isDir.boolValue {
+                setFolder(URL(fileURLWithPath: root), keep: false)
+            }
+        }
     }
 }

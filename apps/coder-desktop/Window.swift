@@ -19,6 +19,7 @@ final class CoderRun {
     var queued: [String: String] = [:] // the whole text of each message this Coder queued, by id (the page keeps previews)
     var steered: [String: String] = [:] // the whole text of each steer this Coder sent, by id
     var bound: String?                 // the chat id keep() last bound its worker's queue to
+    var worktreeInfo: CoderWorktreeInfo? // isolated git worktree for this chat (#13758)
     init(page: UnsafeMutableRawPointer, folder: URL) { self.page = page; self.folder = folder }
     func stop() {
         endTurn()
@@ -241,6 +242,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         var out = [CChar](repeating: 0, count: 262144)
         switch what {
         case 1:
+            ensureWorktreeForShownChat()
             configureWorkerEnv(run, isForeman: isForemanShown)
             syncSkillsNote(for: page, isForeman: isForemanShown)
             guard run.worker.start() else { cd_failed(page, run.worker.failure ?? "Microcoder could not start."); return }
@@ -263,6 +265,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             // a new chat: one whose reply is running goes on out of view
             guard detach() else { return }
             chat = nil; recallDue = false; cd_current(page, "")
+            restorePrimaryFolderIfWorktree()
+            run.worktreeInfo = nil
             configureWorkerEnv(run, isForeman: false)
             syncSkillsNote(for: page, isForeman: false)
             syncForemanUI()
