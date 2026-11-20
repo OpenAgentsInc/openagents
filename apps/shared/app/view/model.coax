@@ -85,7 +85,9 @@ ViewFacts :: struct {
   readonly:bool;        // an observed native transcript, not an owned session
   sent: string;         // device: the message on its way ("": none)
   send_refused: bool;   // device: the computer refused the message; nothing was sent, Try again sends it
+  deliver: int;         // device, a turn running and words in the composer: VIEW_DELIVER_STEER or _QUEUE (0: a plain Send)
 }
+VIEW_DELIVER_STEER :: 1; VIEW_DELIVER_QUEUE :: 2;   // Zeron's DeliveryMode: into the running turn, or after it
 
 // The words of the notices the model makes up.
 VIEW_W_SEND_UNSURE :: "We could not confirm that your message was sent.";

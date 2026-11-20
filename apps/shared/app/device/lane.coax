@@ -242,12 +242,17 @@ dl_steerable :: (c: [] AppCore) -> bool { return dl_e_steerable(c[0].device[0].e
 dl_send_state :: (c: [] AppCore) -> int {
   // a Coder Desktop chat's running turn: words in the composer steer it, an empty one stops it
   if dl_busy(c) && dl_steerable(c) && app_draft(c).count > 0 { return ifx dl_free_steer(c) then SEND_READY else SEND_WAIT; }
+  // any other chat's running turn: words in the composer queue behind it (Zeron's Queue), and go
+  // once the turn ends (dl_step); an empty composer stops it
+  if dl_busy(c) && app_draft(c).count > 0 && dl_can_queue(c) { return SEND_READY; }
   if dl_busy(c) { return SEND_STOP; }
   if c[0].device[0].queued { return SEND_WAIT; }
   if app_draft(c).count == 0 { return SEND_EMPTY; }
   if !dl_free(c) { return SEND_WAIT; }
   return SEND_READY;
 }
+// A Send now waits behind the running turn of a chat that takes no steer (Queue, not Steer).
+dl_queues :: (c: [] AppCore) -> bool { return dl_busy(c) && !dl_steerable(c); }
 // Nothing is on its way to the computer or waits for it: a message can go now.
 dl_free :: (c: [] AppCore) -> bool {
   e := c[0].device[0].e[..];
@@ -313,7 +318,7 @@ dl_action :: (c: [] AppCore, a: int) -> int {
     if s == SEND_EMPTY { return APP_R_EMPTY; }
     text := app_draft(c);
     if text.count > e[0].draft.count { return APP_R_INVALID; }
-    if s == SEND_WAIT && dl_can_queue(c) {
+    if (s == SEND_WAIT || (s == SEND_READY && dl_queues(c))) && dl_can_queue(c) {
       // the computer is still being read: the message waits for it and shows as sending
       d[0].queued = true; d[0].refused = false; d[0].sent_n = js_copy(d[0].sent_text[..], text);
       app_say(c, ""); app_mark(c, SURF_TRANSCRIPT | SURF_COMPOSER); return APP_OK;

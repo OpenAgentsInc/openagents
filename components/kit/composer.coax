@@ -37,6 +37,7 @@ ComposerLook :: struct {
   enabled: bool;                // the action can be pressed
   locked: bool;                 // the text can't be edited now (a turn is being sent)
   compact: bool;                // at rest (no keyboard, no draft): Zeron's one-line capsule, the text beside the action
+  label: string;                // the action's word instead of the arrow ("Steer", "Queue" while a turn runs; "": the arrow)
   unit: f32;                    // points per layout unit: the layout is in points
 }
 // Where its parts are, in layout units from its own top left, and how tall it wants to be.
@@ -177,12 +178,20 @@ ctx_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32
   send_r := ifx s.cmp.radius > 0 && s.cmp.chip_radius > 0 && s.cmp.chip_radius < circle / 2 then s.cmp.chip_radius else circle / 2;
   send_hovered := look.enabled && uiframe_hovered(f, send_id);
   ax := x + box.send_x + box.send / 2;
-  if look.enabled { sheet_fill(sh, ax - circle / 2, mid - circle / 2, circle, circle, send_r, ifx send_hovered then opacity(s.accent, 0.88) else s.accent); }
-  else { _ := sheet_box(sh, ax - circle / 2, mid - circle / 2, circle, circle, send_r, s.border, ifx send_r < circle / 2 then opacity(s.raised, 0.6) else s.clear, s.hairline); }
-  composer_action_mark(sh, s, ax, mid, turn, ifx look.enabled then s.on_accent else s.faint);
-  action := uiframe_semantic(f, send_id, EL_BUTTON, ifx look.stop then "Stop generating" else "Send message", x + box.send_x, row, box.send, box.send,
-                             ifx look.enabled then 0 else EL_S_DISABLED, send_action);
-  sheet_hit(sh, UIFRAME_HIT, action, 0, x + box.send_x, row, box.send, box.send);
+  // a labelled action (Zeron's Steer / Queue pill) grows left from the action's right edge
+  pill := look.label.count > 0 && !look.stop; aw := box.send; lx := x + box.send_x;
+  if pill { aw = ceil(measure_width(m, s.label.face, look.label)) + 2 * s.cmp.chip_pad; if aw < box.send { aw = box.send; } lx = x + box.send_x + box.send - aw; }
+  if pill {
+    sheet_fill(sh, lx, mid - circle / 2, aw, circle, circle / 2, ifx look.enabled then (ifx send_hovered then opacity(s.accent, 0.88) else s.accent) else s.raised);
+    _ := sheet_text(sh, m, -1, lx + (aw - measure_width(m, s.label.face, look.label)) / 2, mid - s.label.line / 2, s.label.line, s.label.face, ifx look.enabled then s.on_accent else s.faint, look.label);
+  } else {
+    if look.enabled { sheet_fill(sh, ax - circle / 2, mid - circle / 2, circle, circle, send_r, ifx send_hovered then opacity(s.accent, 0.88) else s.accent); }
+    else { _ := sheet_box(sh, ax - circle / 2, mid - circle / 2, circle, circle, send_r, s.border, ifx send_r < circle / 2 then opacity(s.raised, 0.6) else s.clear, s.hairline); }
+    composer_action_mark(sh, s, ax, mid, turn, ifx look.enabled then s.on_accent else s.faint);
+  }
+  said := ifx look.stop then "Stop generating" else ifx look.label == "Steer" then "Steer the running turn" else ifx look.label == "Queue" then "Queue after the running turn" else ifx pill then look.label else "Send message";
+  action := uiframe_semantic(f, send_id, EL_BUTTON, said, lx, row, aw, box.send, ifx look.enabled then 0 else EL_S_DISABLED, send_action);
+  sheet_hit(sh, UIFRAME_HIT, action, 0, lx, row, aw, box.send);
   out := box; out.height = h; out.row_y = box.row_y + grown;
   return out;
 }
@@ -254,6 +263,24 @@ composer_test_texts :: (sh: Sheet, text: string) -> int {
   moving := uiframe_moving(f[..]);
   #assert uiframe_end(f[..], sf[..]) && box.height > 52 && box.height < 94 && moving;
   t[0] = surface_rows(sf[..]);#assert abs(t[0].rows[elt_find(t[..], "c.send")].y - (400 - 48)) < 0.01;
+}
+
+#test "while a turn runs its action is Zeron's labelled pill: Queue or Steer grows left from the action's right edge, and Stop keeps the circle" {
+  st: [1] ComposerStore; sf := [1] UiSurface.[composer_test_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  m := measure_cells(); s := composer_test_skin(); f: [1] UiFrame;
+  look := ComposerLook.{placeholder = "Message", unit = 1, enabled = true, label = "Queue"};
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box := ctx_composer(f[..], "c", "c.send", 0, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]);
+  t := [1] ElTable.[surface_rows(sf[..])]; j := elt_find(t[..], "c.send");
+  #assert j >= 0 && elt_label(t[..], j) == "Queue after the running turn" && t[0].rows[j].w >= box.send;
+  #assert abs(t[0].rows[j].x + t[0].rows[j].w - (box.send_x + box.send)) < 0.01 && composer_test_texts(surface_sheet(sf[..]), "Queue") == 1;
+  look.label = "Steer"; look.stop = true;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box = ctx_composer(f[..], "c", "c.send", 0, 800, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]);
+  t[0] = surface_rows(sf[..]); j = elt_find(t[..], "c.send");
+  #assert elt_label(t[..], j) == "Stop generating" && t[0].rows[j].w == box.send;
 }
 
 #test "a composer records its field, its action and its model as rows, paints its text unless the editor has it, and turns to Stop" {

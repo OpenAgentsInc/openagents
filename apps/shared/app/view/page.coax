@@ -453,7 +453,8 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   // with its chips in the action row once it holds the keyboard or a draft, or the chat is new
   draft := view_draft_of(c);
   compact := s.chat.enabled && !vm[0].empty && !lay.editing && draft.count == 0;
-  look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = draft, state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit, compact = compact};
+  look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = draft, state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit, compact = compact,
+    deliver = ifx facts.deliver == VIEW_DELIVER_STEER then "Steer" else ifx facts.deliver == VIEW_DELIVER_QUEUE then "Queue" else ""};
   pad := ifx s.chat.enabled then s.chat.inset else a.gap * 2;
   out.readonly=facts.readonly;
   if s.chat.enabled && lay.archived && facts.stop==VIEW_STOP_NONE && facts.permit==VIEW_PERMIT_NONE {out.readonly=true;out.composer.height=s.control_h;_=app_button(f,"chat.restore",lay.x+pad,lay.bottom-s.control_h,lay.w-2*pad,ICON_ARCHIVE,"Archived · Restore",APP_BUTTON_QUIET,0,lay.restore_action);}
@@ -467,6 +468,7 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     // the chips ride in the card's action row, left of the action (Zeron's toolbar); the capsule has none
     b := out.composer; inset := s.cmp.action_inset + (b.send - s.cmp.chip_h) / 2;
     out.chips_x = lay.x + pad + inset; out.chips_w = ifx compact || lay.chips_h <= 0 then 0.0f32 else b.send_x - inset - s.app.gap;
+    if look.deliver.count > 0 && out.chips_w > 0 { pw := ceil(measure_width(f[0].m, s.label.face, look.deliver)) + 2 * s.cmp.chip_pad - b.send; if pw > 0 { out.chips_w -= pw; } if out.chips_w < 0 { out.chips_w = 0; } }
     out.chips_y = out.composer_y + b.row_y + (b.send - lay.chips_h) / 2; above = out.composer_y;
   }
   // the transcript fills what is left
