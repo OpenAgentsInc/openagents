@@ -90,6 +90,7 @@ struct UiHost {
   id<MTLRenderPipelineState> compose_pipe;
   id<MTLTexture> compose_targets[16], images[16];
   uint64_t image_generations[16];
+  int flat_pictures;   // this flat frame has pictures (GP_IMAGE vertices) drawn through compose_pipe
   UiComposition composition;
   int composed;
   id<MTLCommandBuffer> flight; // one immutable frame; reserve before calling the producer
@@ -784,6 +785,47 @@ void ui_clip(UiHost *h, float x, float y, float w, float rows) {
 }
 void *ui_device(UiHost *h) { return (__bridge void *)h->dev; }
 void *ui_queue(UiHost *h) { return (__bridge void *)h->queue; }
+// The app's picture at index (composition-v1's source 64 + index) as a texture, uploaded again
+// only when its bytes changed. 0 when the app has none there or it can't be made.
+static int ui_image_texture(UiHost *h, int index) {
+  if (index < 0 || index >= 16) return 0;
+  UiImage image = {0};
+  if (!h->app.image || !h->app.image(h->app.user, index, &image) || !image.rgba || !image.width || !image.height || image.width > 4096 || image.height > 4096) return 0;
+  if (!h->images[index] || h->image_generations[index] != image.generation || h->images[index].width != image.width || h->images[index].height != image.height) {
+    MTLTextureDescriptor *d = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:image.width height:image.height mipmapped:NO];
+    d.usage = MTLTextureUsageShaderRead;
+    id<MTLTexture> t = [h->dev newTextureWithDescriptor:d];
+    if (!t) return 0;
+    [t replaceRegion:MTLRegionMake2D(0, 0, image.width, image.height) mipmapLevel:0 withBytes:image.rgba bytesPerRow:image.width * 4];
+    h->images[index] = t; h->image_generations[index] = image.generation; h->stale = 1;
+  }
+  return 1;
+}
+static int ui_flat_kind_image(const float *v) { return v[2] > 10.5f && v[2] < 11.5f; }
+// A flat frame's pictures (components/backend/gpu.coax GP_IMAGE: the blur field is the picture's
+// index): their textures ready and the composition shader's pipeline loaded, the frame then draws
+// through it (it draws every flat kind as the component shader does, premultiplied). A frame the
+// host can't do so draws as before, its picture quads covering nothing. Pictures it no longer
+// shows are let go.
+static void ui_flat_prepare(UiHost *h) {
+  int used[16] = {0}, any = 0, ok = 1;
+  if (h->app.image && h->app.composition_shader && !(h->layered && h->layer_of.depth) && h->mono && h->color) {
+    for (uint32_t i = 0; i < h->count; i++) {
+      const float *v = h->frame + (size_t)i * 28;
+      if (!ui_flat_kind_image(v)) continue;
+      int index = (int)v[3];
+      if (index < 0 || index >= 16) { ok = 0; break; }
+      if (!used[index] && !ui_image_texture(h, index)) { ok = 0; break; }
+      used[index] = 1; any = 1;
+    }
+    if (any && ok && !h->compose_pipe) {
+      id<MTLLibrary> lib = ui_library(h->dev, h->app.composition_shader);
+      if (!lib || !(h->compose_pipe = ui_pipeline_named(h->dev, lib, 0, 1))) ok = 0;
+    }
+  }
+  h->flat_pictures = any && ok;
+  for (int i = 0; i < 16; i++) if (!used[i] || !h->flat_pictures) { h->images[i] = nil; h->image_generations[i] = 0; }
+}
 // One frame into a texture: the background is the shell's colour, the app's own layer, then the vertices.
 static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
   int depth = h->layered && h->layer_of.depth;
@@ -825,7 +867,25 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
       NSUInteger x = (NSUInteger)fmax(0, fmin(h->clip[0], into.width)), y = (NSUInteger)fmax(0, fmin(h->clip[1], into.height));
       [e setScissorRect:(MTLScissorRect){x, y, (NSUInteger)fmin(h->clip[2], into.width - x), (NSUInteger)fmin(h->clip[3], into.height - y)}];
     }
-    [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:h->count];
+    if (h->flat_pictures) {
+      // runs of vertices with one source: the color atlas for every flat kind, a picture for its quads
+      // (a run ends where a primitive starts, so on a whole triangle)
+      [e setRenderPipelineState:h->compose_pipe];
+      uint32_t from = 0;
+      while (from < h->count) {
+        const float *v = h->frame + (size_t)from * 28;
+        int pic = ui_flat_kind_image(v) ? (int)v[3] : -1;
+        uint32_t to = from + 1;
+        while (to < h->count) {
+          const float *w = h->frame + (size_t)to * 28;
+          if ((ui_flat_kind_image(w) ? (int)w[3] : -1) != pic) break;
+          to++;
+        }
+        [e setFragmentTexture:pic < 0 ? h->color : h->images[pic] atIndex:2];
+        [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:from vertexCount:to - from];
+        from = to;
+      }
+    } else [e drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:h->count];
   }
   [e endEncoding];
 }
@@ -835,7 +895,8 @@ static void ui_draw(UiHost *h, id<MTLTexture> into, id<MTLCommandBuffer> cmd) {
 // a new device/host by the same upload callback.
 static int ui_compose_prepare(UiHost *h) {
   h->composed=h->app.composition ? h->app.composition(h->app.user,&h->composition):0;
-  if (!h->composed) {for(int i=0;i<16;i++){h->compose_targets[i]=nil;h->images[i]=nil;h->image_generations[i]=0;}return 1;}
+  h->flat_pictures=0;
+  if (!h->composed) {for(int i=0;i<16;i++)h->compose_targets[i]=nil;ui_flat_prepare(h);return 1;}
   if (h->composed<0 || h->layered || !h->mono || !h->color || !h->app.composition_shader) return 0;
   if (!h->compose_pipe) {
     UiApp spec=h->app;spec.shader=h->app.composition_shader;

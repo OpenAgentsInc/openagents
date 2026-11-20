@@ -58,16 +58,21 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   if !uiframe_end(f[..], s[0].surface[..]) { s[0].refused += 1; }
   cp_clamp(s);
   sh := surface_sheet(s[0].surface[..]);
-  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
-  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  // a flat frame's pictures, where the host draws them (compose.coax)
+  ids: [CP_IMAGES] int;
+  s[0].cmp_gpu[0].flat_used = false;
+  ni := ifx cp_composes(s) then 0 else cp_flat_images(s, sh.under[0..<sh.nu], sh.over[0..<sh.no], ids[..]);
+  v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
+  v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
   // a frosted surface on screen: the same frame as composition-v1's plan (compose.coax), else flat
   composed := cp_compose(s, out, a, d, w, h, k.canvas, sh.under[0..<sh.nu], sh.over[0..<sh.no], v);
   if composed >= 0 { v = composed; }
   else if cp_needs_compose(s, sh.under[0..<sh.nu], sh.over[0..<sh.no]) {
-    // a refused plan wrote over the flat frame: draw it again
+    // a refused plan wrote over the flat frame: draw it again, with its pictures where the host draws them
+    ni = cp_flat_images(s, sh.under[0..<sh.nu], sh.over[0..<sh.no], ids[..]);
     v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
-    v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
-    v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+    v = gpu_draw_with(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8, ids[0..<ni]);
+    v = gpu_draw_with(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8, ids[0..<ni]);
   }
   gpu_monochrome(out, v);
   return v;

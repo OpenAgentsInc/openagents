@@ -28,6 +28,9 @@
 
 GP_VERTEX_FLOATS :: 28;
 GP_QUAD :: 0.0; GP_SHADOW :: 1.0; GP_SPRITE :: 2.0; GP_COLOR_SPRITE :: 3.0; GP_ELBOW :: 4.0; GP_GRADIENT :: 5.0; GP_INSET :: 6.0; GP_SEGMENT :: 7.0;
+// A picture in a flat frame (gpu_draw_with): composition-v1's image kind, drawn by a host that binds
+// the picture as composition-shader.coax's source (the vertex's blur field is its index in images).
+GP_IMAGE :: 11.0;
 GP_NO_CLIP :: 1000000.0;
 
 // Monochrome presentation profile. Preserve value/alpha and geometry; texture
@@ -426,8 +429,8 @@ paint_arc :: (out:[]f32,at:int,d:f32,x:f32,y:f32,w:f32,h:f32,width:f32,start:f32
  return v;
 }
 
-// Arcs lower through the shared antialiased segment path. Images still need
-// an explicit texture owner; they are not admitted by this backend yet.
+// Arcs lower through the shared antialiased segment path. Images need a texture
+// owner: gpu_draw_with draws the ones its host binds, composition-v1 the rest.
 gpu_draws :: (p: Prim) -> bool {
   if p.kind == PRIM_IMAGE || p.kind == PRIM_LAYER { return false; }
   return p.kind >= 0 && p.kind < PRIM_KINDS;
@@ -455,6 +458,12 @@ gpu_draws :: (p: Prim) -> bool {
 }
 GP_CLIP_DEPTH :: EL_DEPTH;   // paint and semantic masks have the same nesting budget
 gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, oy: f32, y0: f32, y1: f32) -> int {
+  none: [1] int;
+  return gpu_draw_with(out, at, a, d, list, ox, oy, y0, y1, none[0..<0]);
+}
+// gpu_draw, and the pictures images names (PRIM_IMAGE ids, in the order the host binds them) as
+// GP_IMAGE quads under the same clips, fades and opacity; a picture images does not hold draws nothing.
+gpu_draw_with :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, oy: f32, y0: f32, y1: f32, images: [] int) -> int {
   v := at;
   clip := false; cl: f32 = 0; ct: f32 = 0; cr: f32 = 0; cb: f32 = 0;
   // clips nest as the semantic rows' do (elt_clip): a clip inside another draws in both, and its end
@@ -471,13 +480,13 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
         son[depth] = clip; sl[depth] = cl; st[depth] = ct; sr[depth] = cr; sb[depth] = cb;
         depth += 1;
         if clip {
-          if p.x > cl { cl = p.x; } if p.y > ct { ct = p.y; } if p.a < cr { cr = p.a; } if p.b < cb { cb = p.b; }
+          if p.x > cl { cl = p.x; } if p.y > ct { ct = p.y; } if p.a < cr { cr = p.a; } if p.b < cb { cb = p.b; }   // mutant: equivalent (at an equal edge either side keeps the same value)
         } else { cl = p.x; ct = p.y; cr = p.a; cb = p.b; }
         clip = true;
       } else if depth > 0 {
         depth -= 1;
         if depth < GP_CLIP_DEPTH { clip = son[depth]; cl = sl[depth]; ct = st[depth]; cr = sr[depth]; cb = sb[depth]; }
-      } else { clip = false; }
+      } else { clip = false; }   // mutant: equivalent (with no clip open clip is already false)
       continue;
     }
     if p.kind == PRIM_FADE { fade = p.on; ft = p.y; fa = p.a; fb = p.b; fc = p.c; continue; }
@@ -490,7 +499,7 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
     if ga <= 0 { continue; }
     x := p.x + ox; y := p.y + oy;
     if y > y1 || y + prim_extent(p) < y0 { continue; }
-    if clip && cr < PRIM_OPEN && p.x >= cr { continue; }
+    if clip && cr < PRIM_OPEN && p.x >= cr { continue; }   // mutant: equivalent (no primitive starts at PRIM_OPEN or past it)
     v0 := v;
     if p.kind == PRIM_BOX { v = paint_quad(out, v, d, x, y, p.w, p.h, p.radius, p.border, p.fill, p.edge); }
     else if p.kind == PRIM_TEXT { v = paint_text(out, v, a, d, p.id, p.text, x, y, p.h, p.fill); }
@@ -500,23 +509,35 @@ gpu_draw :: (out: [] f32, at: int, a: [] Atlas, d: f32, list: [] Prim, ox: f32, 
     else if p.kind == PRIM_INSET { v = paint_inset(out, v, d, x, y, p.w, p.h, p.radius, p.b, p.fill); }
     else if p.kind == PRIM_GRADIENT { v = paint_gradient(out, v, d, x, y, p.w, p.h, p.radius, p.fill, p.edge); }
     else if p.kind == PRIM_RING {
-      r := (ifx p.w < p.h then p.w else p.h) / 2;
+      r := (ifx p.w < p.h then p.w else p.h) / 2;   // mutant: equivalent (at w == h either side is the radius)
       v = paint_quad(out, v, d, x, y, p.w, p.h, r, p.border, rgba(0, 0, 0, 0), p.fill);
     } else if p.kind == PRIM_ARC {
       v = paint_arc(out,v,d,x,y,p.w,p.h,p.border,p.a,p.b,p.fill);
     } else if p.kind == PRIM_LINE && gpu_draws(p) {
       // a level or an upright line: a box as wide as the line is thick, centred on it; a slanted one, its band
       x1 := p.a + ox; y1e := p.b + oy; half := p.border / 2;
-      lx := ifx x < x1 then x else x1; ly := ifx y < y1e then y else y1e;
+      lx := ifx x < x1 then x else x1; ly := ifx y < y1e then y else y1e;   // mutant: equivalent (at x == x1 or y == y1e either side is the same)
       if p.y == p.b { v = paint_quad(out, v, d, lx, y - half, abs(x1 - x), p.border, 0, 0, p.fill, p.fill); }
       else if p.x == p.a { v = paint_quad(out, v, d, x - half, ly, p.border, abs(y1e - y), 0, 0, p.fill, p.fill); }
       else { v = paint_segment(out, v, d, x, y, x1, y1e, p.border, p.fill); }
     } else if p.kind == PRIM_POLY {
       v = paint_poly(out, v, d, p.pts, ox, oy, p.fill);
+    } else if p.kind == PRIM_IMAGE {
+      v = paint_image(out, v, d, x, y, p.w, p.h, p.id, images);
     }
-    if clip { gp_clip_edges(out, v0, v, d, ifx cl > -PRIM_OPEN then cl + ox else cl, ifx ct > -PRIM_OPEN then ct + oy else ct, ifx cr < PRIM_OPEN then cr + ox else cr, ifx cb < PRIM_OPEN then cb + oy else cb); }
+    if clip { gp_clip_edges(out, v0, v, d, ifx cl > -PRIM_OPEN then cl + ox else cl, ifx ct > -PRIM_OPEN then ct + oy else ct, ifx cr < PRIM_OPEN then cr + ox else cr, ifx cb < PRIM_OPEN then cb + oy else cb); }   // mutant: equivalent (an edge at PRIM_OPEN or past it is open in gp_clip_edges whether moved or not)
     if fade { gp_fade(out, v0, v, d, ft + oy, fa, fb + oy, fc); }
-    if ga < 1 { gp_opacity(out, v0, v, ga); }
+    if ga < 1 { gp_opacity(out, v0, v, ga); }   // mutant: equivalent (opacity 1 leaves every alpha as it is)
+  }
+  return v;
+}
+// A picture: six GP_IMAGE vertices over its box with the whole picture's uv and its index in
+// images in the blur field, white at full opacity (composition-v1's image op); none when images
+// does not hold id or the box is empty.
+paint_image :: (out: [] f32, v: int, d: f32, x: f32, y: f32, w: f32, h: f32, id: int, images: [] int) -> int {
+  if !(w > 0) || !(h > 0) { return v; }
+  for i: 0..<images.count {
+    if images[i] == id { return emit(out, v, x * d, y * d, (x + w) * d, (y + h) * d, GP_IMAGE, cast(f32) i, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, rgba(1, 1, 1, 1), rgba(0, 0, 0, 0)); }
   }
   return v;
 }
@@ -550,6 +571,75 @@ gp_t_near :: (x: f32, y: f32) -> bool { return abs(x - y) < 0.0001; }
   #assert gp_t_near(out[15], 0.8) && gp_t_near(out[6 * GP_VERTEX_FLOATS + 15], 0.4) && gp_t_near(out[12 * GP_VERTEX_FLOATS + 15], 0.2) && gp_t_near(out[18 * GP_VERTEX_FLOATS + 15], 0.4);
   // an entering part fades with prim_opacity over what it painted
   prim_opacity(list[..], 0, 1, 0.25); #assert gp_t_near(list[0].fill.a, 0.2) && list[2].fill.a == 0.8;
+}
+#test "a flat frame draws the pictures its host binds, clipped and faded as the rest, and no others" {
+  list: [8] Prim; n := 0;
+  n = prim_clip(list[..], n, 0, 0, 50, 40);
+  n = prim_alpha(list[..], n, 0.5);
+  n = prim_image(list[..], n, 7, 10, 20, 100, 60);
+  n = prim_unalpha(list[..], n);
+  n = prim_image(list[..], n, 9, 0, 0, 10, 10);
+  n = prim_unclip(list[..], n);
+  n = prim_image(list[..], n, 3, 1, 2, 0, 10);
+  a: [1] Atlas; out: [3 * 6 * GP_VERTEX_FLOATS] f32;
+  #assert gpu_draw(out[..], 0, a[..], 2, list[0..<n], 0, 0, -8, 200) == 0;
+  ids := [2] int.[9, 7];
+  #assert gpu_draw_with(out[..], 0, a[..], 2, list[0..<n], 5, 0, -8, 200, ids[..]) == 12;
+  // the first is picture 7, index 1: its box at density 2 from (15, 20), the whole picture, half opacity, the clip
+  #assert out[2] == GP_IMAGE && out[3] == 1 && out[0] == 30 && out[1] == 40 && out[10] == 0 && out[11] == 0 && out[15] == 0.5 && out[12] == 1;
+  #assert out[2 * GP_VERTEX_FLOATS] == 230 && out[2 * GP_VERTEX_FLOATS + 1] == 160 && out[2 * GP_VERTEX_FLOATS + 10] == 1 && out[2 * GP_VERTEX_FLOATS + 11] == 1;
+  #assert out[20] == 10 && out[21] == 0 && out[22] == 110 && out[23] == 80;
+  #assert out[6 * GP_VERTEX_FLOATS + 3] == 0 && out[6 * GP_VERTEX_FLOATS + 15] == 1 && out[6 * GP_VERTEX_FLOATS] == 10;
+  // an empty box, and no room, draw nothing
+  #assert paint_image(out[..], 0, 1, 0, 0, 10, 0, 9, ids[..]) == 0 && paint_image(out[..], 0, 1, 0, 0, 0, 10, 9, ids[..]) == 0;
+  #assert paint_image(out[0..<GP_VERTEX_FLOATS], 0, 1, 0, 0, 10, 10, 9, ids[..]) == 0;
+}
+#test "gpu_draw: nested clips intersect and restore every edge, unbalanced ends change nothing, and the band keeps what touches it" {
+  w := rgba(1, 1, 1, 1); a: [1] Atlas; out: [40 * 6 * GP_VERTEX_FLOATS] f32;
+  // an inner clip narrower on every side, then the outer one back on all four edges
+  l: [8] Prim; n := 0;
+  n = prim_clip(l[..], n, 0, 0, 100, 100); n = prim_clip(l[..], n, 10, 20, 90, 80);
+  n = prim_fill(l[..], n, 30, 30, 10, 10, 0, w); n = prim_unclip(l[..], n);
+  n = prim_fill(l[..], n, 30, 30, 10, 10, 0, w); n = prim_unclip(l[..], n);
+  #assert gpu_draw(out[..], 0, a[..], 1, l[0..<n], 0, 0, -100, 200) == 12;
+  #assert out[20] == 10 && out[21] == 20 && out[22] == 90 && out[23] == 80;
+  o := 6 * GP_VERTEX_FLOATS;
+  #assert out[o + 20] == 0 && out[o + 21] == 0 && out[o + 22] == 100 && out[o + 23] == 100;
+  // ends with nothing open: no clip, no opacity, still drawn
+  u: [6] Prim; m := 0;
+  m = prim_unclip(u[..], m); m = prim_unalpha(u[..], m); m = prim_fill(u[..], m, 10, 10, 10, 10, 0, w);
+  #assert gpu_draw(out[..], 0, a[..], 1, u[0..<m], 0, 0, -100, 200) == 6 && out[20] == -GP_NO_CLIP && out[15] == 1;
+  // a clip opened and shut leaves the whole nesting depth to the clips after it
+  deep: [2 * EL_DEPTH + 8] Prim; k := 0;
+  k = prim_clip(deep[..], k, 0, 0, 100, 100); k = prim_unclip(deep[..], k);
+  for i: 0..<EL_DEPTH { k = prim_clip(deep[..], k, 0, 0, 100, 100); }
+  k = prim_fill(deep[..], k, 10, 10, 10, 10, 0, w);
+  #assert gpu_draw(out[..], 0, a[..], 1, deep[0..<k], 0, 0, -100, 200) == 6;
+  // the band y0..y1 keeps a primitive starting at y1 and one ending at y0
+  b: [4] Prim; nb := 0;
+  nb = prim_fill(b[..], nb, 0, 50, 10, 10, 0, w); nb = prim_fill(b[..], nb, 0, -10, 10, 10, 0, w);
+  #assert gpu_draw(out[..], 0, a[..], 1, b[0..<nb], 0, 0, -10 + prim_extent(b[1]), 50) == 12;
+  // a picture with id 0 is no picture gpu_draw binds
+  im: [2] Prim; ni := prim_image(im[..], 0, 0, 0, 0, 10, 10);
+  #assert gpu_draw(out[..], 0, a[..], 1, im[0..<ni], 0, 0, -100, 200) == 0;
+}
+#test "gpu_draw: an offset moves clips and lines, and an open clip edge stays open" {
+  w := rgba(1, 1, 1, 1); a: [1] Atlas; out: [4 * 6 * GP_VERTEX_FLOATS] f32;
+  l: [6] Prim; n := 0;
+  n = prim_clip(l[..], n, 0, 10, 50, 40); n = prim_fill(l[..], n, 5, 15, 10, 10, 0, w); n = prim_unclip(l[..], n);
+  #assert gpu_draw(out[..], 0, a[..], 1, l[0..<n], 3, 7, -100, 200) == 6;
+  #assert out[20] == 3 && out[21] == 17 && out[22] == 53 && out[23] == 47;
+  o: [6] Prim; m := 0;
+  m = prim_clip(o[..], m, -PRIM_OPEN, -PRIM_OPEN, PRIM_OPEN, PRIM_OPEN); m = prim_fill(o[..], m, 5, 15, 10, 10, 0, w); m = prim_unclip(o[..], m);
+  #assert gpu_draw(out[..], 0, a[..], 1, o[0..<m], 3, 7, -100, 200) == 6;
+  #assert out[20] == -GP_NO_CLIP && out[21] == -GP_NO_CLIP && out[22] == GP_NO_CLIP && out[23] == GP_NO_CLIP;
+  // a level line and an upright one from (x, y) to (a, b), offset
+  ln: [4] Prim; k := 0;
+  k = prim_line(ln[..], k, 10, 20, 30, 20, 2, w); k = prim_line(ln[..], k, 10, 20, 10, 50, 2, w);
+  #assert gpu_draw(out[..], 0, a[..], 1, ln[0..<k], 3, 7, -100, 200) == 12;
+  #assert out[4] == 13 && out[5] == 26 && out[6] == 20 && out[7] == 2;
+  q := 6 * GP_VERTEX_FLOATS;
+  #assert out[q + 4] == 12 && out[q + 5] == 27 && out[q + 6] == 2 && out[q + 7] == 30;
 }
 #test "a browser's fewer dilation levels fold the five" {
   a: [1] Atlas;

@@ -148,9 +148,15 @@ script can use the markers. Nothing is PLE-specific in the page.
 Pictures draw through composition-v1, the path the frosted menu uses. Reduce Transparency turns
 off the frost but not the pictures: the host says so with `coder_page_frost`, apart from
 `coder_page_compose`, so a card still shows its picture. A frame the planner can't take (a window
-over 4096 device pixels a side, or after the GPU refused a composed frame) is drawn flat, and the
-flat shader has no picture source, so there each card shows its icon and caption rather than an
-empty frame (`cp_image_request` hands a picture only to a frame that composes).
+over 4096 device pixels a side, a plan past its budget, or after the GPU refused a composed frame)
+is drawn flat, and the flat frame carries its pictures too (#13817): `gpu_draw_with`
+(`components/backend/gpu.coax`) lowers each picture to a `GP_IMAGE` quad, kind 11 as
+composition-v1's image op, with its index in the blur field, under the same clips, fades and
+opacity as the rest. The Mac host (`ui_flat_prepare` in `apps/shared/host/apple/ui-host.m`)
+uploads those pictures and draws that frame through the composition shader, which draws every flat
+kind as the component shader does, binding each picture for its quad. The page asks for this only
+from a host that says it can (`coder_page_flat_pictures`, the Mac's). If the GPU refuses such a
+frame, or on a host without it (Linux, Windows), the cards show their icon and caption as before.
 
 ## A live 3D card inline (#13812)
 

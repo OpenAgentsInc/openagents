@@ -13,6 +13,12 @@
 #endif
 
 #define CD_IMAGES 16
+// The Mac's host (apps/shared/host/apple/ui-host.m) draws a flat frame's pictures (page/compose.coax)
+#ifdef __APPLE__
+#define CD_FLAT_PICTURES 1
+#else
+#define CD_FLAT_PICTURES 0
+#endif
 #define CD_IMAGE_MAX_SIDE 1024   // a picture a command shows inline is up to 560 points wide (page/shows.coax)
 
 typedef struct {
@@ -134,6 +140,7 @@ static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr,
   // reduced transparency: no frost, so the page draws its frosted surfaces solid; pictures still
   // compose (page/compose.coax)
   coder_page_compose(cd_state(c), c->composition);
+  coder_page_flat_pictures(cd_state(c), CD_FLAT_PICTURES && c->composition);
   coder_page_frost(cd_state(c), (c->reduced & 2) == 0);
   // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
   coder_page_now(cd_state(c), cd_uptime());

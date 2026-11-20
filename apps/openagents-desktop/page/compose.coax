@@ -7,7 +7,10 @@
 // asks for reduced transparency: the host then says there is no frost (coder_page_frost, host.c
 // cd_on_frame). Pictures still compose then (an attachment's thumbnail, a command's OA-SHOW card),
 // since reduced transparency asks for no blur, not for no pictures. A frame the planner can't take
-// (cp_composes false) has no picture: its cards show their icon (shows.coax, attach.coax).
+// (a window past 4096 device pixels, a plan the GPU refused, one past the planner's budget) draws
+// its pictures flat where the host can (coder_page_flat_pictures, the Mac's): GP_IMAGE quads in the
+// flat vertices (gpu_draw_with) the host draws through composition-v1's shader with each picture
+// bound. Elsewhere, or once the GPU refused such a frame too, its cards show their icon.
 #load "../../../coax/native/gpu-composition.coax";
 
 CP_BLUR_DEVICE :: 31.5;       // the planner's bounded kernel: at most 32 device pixels (sigma a third of it)
@@ -34,6 +37,9 @@ CpCompose :: struct {
   off: bool;                  // the host refused a composed frame: draw flat from now on
   opaque: bool;               // reduced transparency: no frost, but pictures still compose
   used: bool;                 // this frame is the plan's
+  flat_pics: bool;            // the host draws pictures in a flat frame (coder_page_flat_pictures)
+  flat_off: bool;             // it refused a flat frame with pictures: no pictures flat from now on
+  flat_used: bool;            // this flat frame has pictures
   w: f32; h: f32;             // the frame's device pixels
 }
 
@@ -64,7 +70,34 @@ cp_needs_compose :: (s: [] CoderPage, under: [] Prim, over: [] Prim) -> bool {
 // its icon instead of an empty frame.
 cp_image_request :: (s: [] CoderPage, path: string) -> UcImage {
   img := cp_image_slot(s, path);
-  return ifx cp_composes(s) then img else UcImage.{};
+  return ifx cp_composes(s) || cp_flat_ok(s) then img else UcImage.{};
+}
+// Whether a flat frame can hold pictures: the host draws them and has not refused one.
+cp_flat_ok :: (s: [] CoderPage) -> bool { return s[0].cmp_gpu[0].flat_pics && !s[0].cmp_gpu[0].flat_off; }
+// The decoded pictures, packed for the host (active, active_slot: coder_page_image_slot maps an
+// index back to its slot), their ids into ids. Returns how many.
+cp_pack_images :: (s: [] CoderPage, ids: [] int) -> int {
+  c := s[0].cmp_gpu[..];
+  na := 0;
+  for i: 0..<CP_IMAGES {
+    if c[0].img_state[i] == CP_IMG_READY && c[0].images[i].id > 0 && c[0].images[i].w > 0 && c[0].images[i].h > 0 {
+      c[0].active[na] = c[0].images[i];
+      c[0].active_slot[na] = i;
+      ids[na] = c[0].images[i].id;
+      na += 1;
+    }
+  }
+  c[0].active_n = na;
+  return na;
+}
+// The pictures a flat frame draws (into ids, for gpu_draw_with): the decoded ones while the host
+// draws pictures flat and the lists hold one; none otherwise. Marks the frame as having them.
+cp_flat_images :: (s: [] CoderPage, under: [] Prim, over: [] Prim, ids: [] int) -> int {
+  s[0].cmp_gpu[0].flat_used = false;
+  if !cp_flat_ok(s) || !(cp_has_image(under) || cp_has_image(over)) { return 0; }
+  n := cp_pack_images(s, ids);
+  s[0].cmp_gpu[0].flat_used = n > 0;
+  return n;
 }
 cp_image_slot :: (s: [] CoderPage, path: string) -> UcImage {
   if path.count == 0 || path.count > CP_IMG_PATH { return UcImage.{}; }
@@ -108,15 +141,8 @@ cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32
     }
   }
   // pack only ready image slots so uc_lease never sees empty 0x0 entries
-  na := 0;
-  for i: 0..<CP_IMAGES {
-    if c[0].img_state[i] == CP_IMG_READY && c[0].images[i].id > 0 && c[0].images[i].w > 0 && c[0].images[i].h > 0 {
-      c[0].active[na] = c[0].images[i];
-      c[0].active_slot[na] = i;
-      na += 1;
-    }
-  }
-  c[0].active_n = na;
+  ids: [CP_IMAGES] int;
+  na := cp_pack_images(s, ids[..]);
   // charge the planner only for the vertices this frame can need, so the targets fit its budget
   cap := (flat * 2 + 4096) * GP_VERTEX_FLOATS;
   if cap > out.count { cap = out.count; }
@@ -129,9 +155,15 @@ cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32
 coder_page_compose :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].on = on; } }
 // The host: whether surfaces may frost (false under reduced transparency). Pictures compose either way.
 coder_page_frost :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].opaque = !on; } }
+// A refused frame: a composed one turns composing off, a flat one with pictures the flat pictures.
 coder_page_compose_refused :: (s: [] CoderPage) #export_c #effects(all) {
-  if s.count > 0 && s[0].cmp_gpu[0].used { s[0].cmp_gpu[0].off = true; s[0].cmp_gpu[0].used = false; }
+  if s.count < 1 { return; }
+  c := s[0].cmp_gpu[..];
+  if c[0].used { c[0].off = true; c[0].used = false; }
+  else if c[0].flat_used { c[0].flat_off = true; c[0].flat_used = false; }
 }
+// The host: whether it draws a flat frame's pictures (GP_IMAGE quads, components/backend/gpu.coax).
+coder_page_flat_pictures :: (s: [] CoderPage, on: bool) #export_c #effects(all) { if s.count > 0 { s[0].cmp_gpu[0].flat_pics = on; } }
 // Whether the last frame is the plan's (host.c reads cmp_gpu.plan then).
 coder_page_composed :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].cmp_gpu[0].used && s[0].cmp_gpu[0].plan[0].ok; }
 // If image slot is pending host decode, copies its path into out and returns its length; else 0.
