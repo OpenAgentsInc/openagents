@@ -147,3 +147,46 @@ cu_test_client :: (c: [] CuClient, b: [] CuTest) { cu_init(c[..], b[0].line[..],
   #assert cu_version_newer("2026.10.14-941492e", "2026.06.24-00-45-58-9f61de7");
   #assert !cu_version_newer("2026.10.01-e373342", "2026.10.14-941492e");
 }
+
+#test "cursor: agentInfo.version, auto mode, permission coercion, slash commands, and MCP display names" {
+  c: [1] CuClient;
+  line: [2048] u8; arena: [2048] u8; out: [4096] u8;
+  cu_init(c[..], line[..], arena[..], out[..]);
+  #assert cu_initialize(c[..], "coder", "0.1") == 1;
+  ev := cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":1,\"agentInfo\":{\"name\":\"agy\",\"version\":\"agy_acp_server_1.5.12\"}}}");
+  #assert ev.kind == CuEventKind.initialized;
+  #assert cu_version(c[..]) == "agy_acp_server_1.5.12";
+  #assert cu_agent_version(ev.result, c[0].ar[..]) == "agy_acp_server_1.5.12";
+
+  #assert cu_session_new(c[..], "/tmp/demo") == 2;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"s-auto\",\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]}}}");
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_NEW;
+  #assert cu_has_auto_mode(c[..]) && !cu_is_auto_mode(c[..]) && cu_runtime_mode(c[..]) == "default";
+  #assert cu_permission_disposition(c[..], CU_DISP_ALLOW) == CU_DISP_ALLOW;
+  #assert cu_permission_disposition(c[..], CU_DISP_DENY) == CU_DISP_DENY;
+
+  #assert cu_set_mode(c[..], "auto") == 3;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{}}");
+  #assert ev.kind == CuEventKind.answered && ev.of == CU_SESSION_SET_MODE;
+  #assert cu_is_auto_mode(c[..]) && cu_runtime_mode(c[..]) == "auto";
+  #assert cu_permission_disposition(c[..], CU_DISP_ALLOW) == CU_DISP_ASK;
+  #assert cu_permission_disposition(c[..], CU_DISP_ASK) == CU_DISP_ASK;
+  #assert cu_permission_disposition(c[..], CU_DISP_DENY) == CU_DISP_DENY;
+
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-auto\",\"update\":{\"sessionUpdate\":\"current_mode_update\",\"currentModeId\":\"default\"}}}");
+  #assert ev.kind == CuEventKind.notification && !cu_is_auto_mode(c[..]) && cu_runtime_mode(c[..]) == "default";
+
+  #assert !cu_has_command(c[..], "compact");
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s-auto\",\"update\":{\"sessionUpdate\":\"available_commands_update\",\"availableCommands\":[{\"name\":\"compact\"},{\"name\":\"/clear\"}]}}}");
+  #assert ev.kind == CuEventKind.notification;
+  #assert cu_has_command(c[..], "compact") && cu_has_command(c[..], "/compact") && cu_has_command(c[..], "clear") && !cu_has_command(c[..], "review");
+
+  #assert cu_session_new(c[..], "/tmp/demo") == 4;
+  ev = cu_feed(c[..], "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"sessionId\":\"s-2\"}}");
+  #assert !cu_has_command(c[..], "compact") && !cu_has_auto_mode(c[..]);
+
+  nb: [128] u8;
+  #assert cu_tool_display_name("{\"title\":\"call_mcp_tool\",\"rawInput\":{\"ServerName\":\"github\",\"ToolName\":\"list_issues\"}}", c[0].ar[..], nb[..]) == "github/list_issues";
+  #assert cu_tool_display_name("{\"title\":\"call_mcp_tool\",\"rawInput\":{\"tool_name\":\"search_docs\"}}", c[0].ar[..], nb[..]) == "search_docs";
+  #assert cu_tool_display_name("{\"title\":\"Read file\",\"rawInput\":{\"Path\":\"/w/a.coax\"}}", c[0].ar[..], nb[..]) == "Read file";
+}

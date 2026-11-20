@@ -15,6 +15,7 @@
 CU_PENDING :: 16;
 CU_ID :: 128;
 CU_OPTS :: 8192;
+CU_CMD_BUF :: 1024;
 
 CU_INITIALIZE :: 1; CU_AUTHENTICATE :: 2; CU_SESSION_NEW :: 3; CU_SESSION_PROMPT :: 4;
 CU_SESSION_LOAD :: 5; CU_SESSION_CANCEL :: 6; CU_SESSION_SET_MODE :: 7; CU_SESSION_SET_CONFIG :: 8;
@@ -23,6 +24,8 @@ CU_OTHER :: 9; CU_SESSION_RESUME :: 10; CU_SESSION_SET_MODEL :: 11;
 CU_ASK_PERMISSION :: 1; CU_ASK_QUESTION :: 2; CU_ASK_PLAN :: 3;
 
 CU_EFFECT_READ :: 0; CU_EFFECT_NETWORK :: 1; CU_EFFECT_WRITE :: 2; CU_EFFECT_RUN :: 3;
+
+CU_DISP_ALLOW :: 0; CU_DISP_ASK :: 1; CU_DISP_DENY :: 2;
 
 CuEventKind :: enum u8 {
   none;
@@ -64,7 +67,12 @@ CuClient :: struct {
   ask_opts: [CU_OPTS] u8; ask_opts_n: int;
   completed: bool;
   error: [512] u8; error_len: int;
-  agent: [48] u8; agent_n: int;   // the agent's name in errors (cu_start); "" is Cursor's
+  agent: [48] u8; agent_n: int;          // the agent's name in errors (cu_start); "" is Cursor's
+  agent_ver: [64] u8; agent_ver_n: int;  // agentInfo.version from initialize
+  has_auto_mode: bool;                   // "auto" advertised in modes.availableModes
+  runtime_mode: [32] u8; runtime_mode_n: int;  // active session mode id
+  pending_mode: [32] u8; pending_mode_n: int;  // mode requested by cu_set_mode
+  cmds: [CU_CMD_BUF] u8; cmds_n: int;    // newline-delimited advertised command names
 }
 
 cu_init :: (c: [] CuClient, line: [] u8, arena: [] u8, out: [] u8) {
@@ -72,6 +80,45 @@ cu_init :: (c: [] CuClient, line: [] u8, arena: [] u8, out: [] u8) {
   c[0].next_id = 1;
 }
 cu_session_id :: (c: [] CuClient) -> string { return cast(string) c[0].session[0..<c[0].session_n]; }
+cu_version :: (c: [] CuClient) -> string { return cast(string) c[0].agent_ver[0..<c[0].agent_ver_n]; }
+cu_has_auto_mode :: (c: [] CuClient) -> bool { return c[0].has_auto_mode; }
+cu_runtime_mode :: (c: [] CuClient) -> string { return cast(string) c[0].runtime_mode[0..<c[0].runtime_mode_n]; }
+cu_is_auto_mode :: (c: [] CuClient) -> bool { return cu_runtime_mode(c) == "auto"; }
+cu_command_count :: (c: [] CuClient) -> int {
+  s := cast(string) c[0].cmds[0..<c[0].cmds_n];
+  if s.count == 0 { return 0; }
+  n := 1;
+  for i: 0..<s.count { if s[i] == '\n' { n += 1; } }
+  return n;
+}
+cu_command_at :: (c: [] CuClient, index: int) -> string {
+  if index < 0 || c[0].cmds_n == 0 { return ""; }
+  s := cast(string) c[0].cmds[0..<c[0].cmds_n];
+  cur := 0; start := 0;
+  for i: 0..<s.count {
+    if s[i] == '\n' {
+      if cur == index { return cast(string) c[0].cmds[start..<i]; }
+      cur += 1; start = i + 1;
+    }
+  }
+  if cur == index { return cast(string) c[0].cmds[start..<c[0].cmds_n]; }
+  return "";
+}
+cu_has_command :: (c: [] CuClient, name: string) -> bool {
+  want := name;
+  if want.count > 0 && want[0] == '/' { want = cast(string) want[1..<want.count]; }
+  if want.count == 0 || c[0].cmds_n == 0 { return false; }
+  s := cast(string) c[0].cmds[0..<c[0].cmds_n];
+  start := 0;
+  for i: 0..<s.count {
+    if s[i] == '\n' {
+      if cast(string) s[start..<i] == want { return true; }
+      start = i + 1;
+    }
+  }
+  return cast(string) s[start..<s.count] == want;
+}
+cu_can_compact :: (c: [] CuClient) -> bool { return cu_has_command(c, "compact"); }
 cu_error :: (c: [] CuClient) -> string { return cast(string) c[0].error[0..<c[0].error_len]; }
 cu_outbox :: (c: [] CuClient) -> string { return cast(string) c[0].out[0].buf[0..<c[0].out[0].len]; }
 cu_outbox_clear :: (c: [] CuClient) { c[0].out[0].len = 0; c[0].out[0].failed = false; }
@@ -185,7 +232,7 @@ cu_model_has :: (result: string, model: string, ar: [] ClArena) -> bool {
   return false;
 }
 
-// True when session/new or session/load advertised this mode id.
+// True when session/new, session/load or session/resume advertised this mode id.
 cu_mode_has :: (result: string, mode: string, ar: [] ClArena) -> bool {
   modes := cl_raw(result, "modes.availableModes");
   n := cl_count(modes);
@@ -194,6 +241,49 @@ cu_mode_has :: (result: string, mode: string, ar: [] ClArena) -> bool {
     if cl_str(ar, item, "id") == mode { return true; }
   }
   return false;
+}
+
+// agentInfo.version from an initialize result, or "" when absent.
+cu_agent_version :: (result: string, ar: [] ClArena) -> string {
+  return cl_str(ar, result, "agentInfo.version");
+}
+
+// In auto review mode, coerce any non-deny permission disposition to ask so
+// escalated approvals are shown to the user rather than silently auto-approved.
+cu_permission_disposition :: (c: [] CuClient, disposition: int) -> int {
+  if cu_is_auto_mode(c) && disposition != CU_DISP_DENY { return CU_DISP_ASK; }
+  return disposition;
+}
+
+// Unwrap call_mcp_tool display names to the underlying MCP server/tool name when
+// present in rawInput, else return the tool's title.
+cu_tool_display_name :: (tool: string, ar: [] ClArena, out: [] u8) -> string {
+  title := cl_str(ar, tool, "title");
+  name := cl_str(ar, tool, "name");
+  raw := cl_raw(tool, "rawInput");
+  is_mcp := title == "call_mcp_tool" || name == "call_mcp_tool" || title == "Ran command" || title.count == 0;
+  if is_mcp && raw.count > 0 {
+    mcp_tool := cl_str(ar, raw, "ToolName");
+    if mcp_tool.count == 0 { mcp_tool = cl_str(ar, raw, "toolName"); }
+    if mcp_tool.count == 0 { mcp_tool = cl_str(ar, raw, "tool_name"); }
+    if mcp_tool.count == 0 { mcp_tool = cl_str(ar, raw, "tool"); }
+    if mcp_tool.count == 0 && (title == "call_mcp_tool" || name == "call_mcp_tool") { mcp_tool = cl_str(ar, raw, "name"); }
+    if mcp_tool.count > 0 {
+      server := cl_str(ar, raw, "ServerName");
+      if server.count == 0 { server = cl_str(ar, raw, "serverName"); }
+      if server.count == 0 { server = cl_str(ar, raw, "server_name"); }
+      if server.count == 0 { server = cl_str(ar, raw, "server"); }
+      n := 0;
+      if server.count > 0 {
+        n = cl_copy(out, server);
+        n += cl_copy(out[n..<out.count], "/");
+      }
+      n += cl_copy(out[n..<out.count], mcp_tool);
+      return cast(string) out[0..<n];
+    }
+  }
+  n := cl_copy(out, title);
+  return cast(string) out[0..<n];
 }
 
 // ---------------------------------------------------------------- requests
@@ -277,6 +367,7 @@ cu_set_mode :: (c: [] CuClient, mode: string) -> int {
   cl_put(o, "{\"sessionId\":"); cl_put_string(o, cu_session_id(c));
   cl_put(o, ",\"modeId\":"); cl_put_string(o, mode); cl_put(o, "}");
   cu_close(c);
+  c[0].pending_mode_n = cu_keep(c[0].pending_mode[..], mode);
   return id;
 }
 
@@ -360,8 +451,46 @@ cu_take_pending :: (c: [] CuClient, id: int) -> int {
 }
 
 cu_remember_session :: (c: [] CuClient, result: string) {
-  t := cl_str(c[0].ar[..], result, "sessionId");
+  ar := c[0].ar[..];
+  t := cl_str(ar, result, "sessionId");
   if t.count > 0 && t.count < CU_ID { c[0].session_n = cu_keep(c[0].session[..], t); }
+  c[0].has_auto_mode = cu_mode_has(result, "auto", ar);
+  m := cl_str(ar, result, "modes.currentModeId");
+  c[0].runtime_mode_n = ifx m.count > 0 then cu_keep(c[0].runtime_mode[..], m) else 0;
+  c[0].pending_mode_n = 0;
+  c[0].cmds_n = 0;
+}
+
+cu_parse_commands :: (ar: [] ClArena, update: string, dst: [] u8) -> int {
+  used := 0;
+  cmds := cl_raw(update, "availableCommands");
+  n := cl_count(cmds);
+  for i: 0..<n {
+    item := cl_json(cmds, cl_item(cmds, i));
+    name := cl_str(ar, item, "name");
+    if name.count > 0 && name[0] == '/' { name = cast(string) name[1..<name.count]; }
+    if name.count == 0 { continue; }
+    need := name.count + ifx used > 0 then 1 else 0;
+    if used + need > dst.count { break; }
+    if used > 0 { dst[used] = '\n'; used += 1; }
+    used += cl_copy(dst[used..<dst.count], name);
+  }
+  return used;
+}
+
+cu_remember_update :: (c: [] CuClient, params: string) {
+  update := cl_raw(params, "update");
+  if update.count == 0 { return; }
+  ar := c[0].ar[..];
+  kind := cl_str(ar, update, "sessionUpdate");
+  if kind == "available_commands_update" {
+    c[0].cmds_n = cu_parse_commands(ar, update, c[0].cmds[..]);
+    return;
+  }
+  if kind == "current_mode_update" {
+    m := cl_str(ar, update, "currentModeId");
+    if m.count > 0 { c[0].runtime_mode_n = cu_keep(c[0].runtime_mode[..], m); }
+  }
 }
 
 cu_ask :: (c: [] CuClient, kind: int, id_json: string, options: string) -> bool {
@@ -384,7 +513,10 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
   if m.ok && m.tok == JSON_STRING {
     method := cl_text(ar, line, m);
     params := cl_raw(line, "params");
-    if !idv.ok { return CuEvent.{kind = CuEventKind.notification, method = method, params = params, line = line}; }
+    if !idv.ok {
+      if method == "session/update" { cu_remember_update(c, params); }
+      return CuEvent.{kind = CuEventKind.notification, method = method, params = params, line = line};
+    }
     id_json := cl_json(line, idv);
     if method == "session/request_permission" {
       if !cu_ask(c, CU_ASK_PERMISSION, id_json, cl_raw(line, "params.options")) { return CuEvent.{kind = CuEventKind.invalid, line = line}; }
@@ -417,8 +549,17 @@ cu_feed :: (c: [] CuClient, line: string) -> CuEvent {
   }
   r := cl_find(line, "result");
   result := cl_json(line, r);
-  if of == CU_INITIALIZE { c[0].initialized = true; c[0].init_wait = false; return CuEvent.{kind = CuEventKind.initialized, of = of, result = result, line = line}; }
+  if of == CU_INITIALIZE {
+    c[0].initialized = true; c[0].init_wait = false;
+    v := cu_agent_version(result, ar);
+    c[0].agent_ver_n = ifx v.count > 0 then cu_keep(c[0].agent_ver[..], v) else 0;
+    return CuEvent.{kind = CuEventKind.initialized, of = of, result = result, line = line};
+  }
   if of == CU_SESSION_NEW || of == CU_SESSION_LOAD || of == CU_SESSION_RESUME { cu_remember_session(c, result); }
+  if of == CU_SESSION_SET_MODE && c[0].pending_mode_n > 0 {
+    c[0].runtime_mode_n = cu_keep(c[0].runtime_mode[..], cast(string) c[0].pending_mode[0..<c[0].pending_mode_n]);
+    c[0].pending_mode_n = 0;
+  }
   if of == 0 { return CuEvent.{kind = CuEventKind.none, line = line}; }
   return CuEvent.{kind = CuEventKind.answered, of = of, result = result, line = line};
 }

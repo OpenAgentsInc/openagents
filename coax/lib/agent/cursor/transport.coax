@@ -6,7 +6,8 @@
 #load "client.coax";
 #load "../../sys/fs.coax";
 
-CU_ENV :: 8;
+CU_ENV :: 16;
+CU_ARGS :: 8;
 
 // An ACP agent program and its quirks, so Cursor and Antigravity share one
 // client: its name in errors, the program looked up when the host found none
@@ -18,6 +19,8 @@ CuAgent :: struct {
   program: string;
   login: string;
   resume: int;
+  defer_finalize_background: bool;
+  steers_with_prompt: bool;
   unset: [CU_ENV] string; unset_n: int;
 }
 
@@ -31,6 +34,7 @@ cu_agent_cursor :: () -> CuAgent {
 
 CuLaunch :: struct {
   program: string;                 // a path the host found; "" is looked up
+  args: [CU_ARGS] string; args_n: int; // extra arguments appended after `acp`
   env: [CU_ENV] string; env_n: int;
   unset: [CU_ENV] string; unset_n: int;
   cwd: string;
@@ -144,6 +148,7 @@ cu_start :: (c: [] CuClient, p: [] ClProcess, l: CuLaunch) -> string {
   program := l.program;
   if program.count == 0 { program = ag.program; }
   ok := cl_push(h, CL_FIELD_ARG, program) && cl_push(h, CL_FIELD_ARG, "acp");
+  for i: 0..<l.args_n { ok = ok && cl_push(h, CL_FIELD_ARG, l.args[i]); }
   for i: 0..<ag.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, ag.unset[i]); }
   for i: 0..<l.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, l.unset[i]); }
   ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1");

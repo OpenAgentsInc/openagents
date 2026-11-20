@@ -28,15 +28,20 @@
 
 AGY_INSTALL :: "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 AGY_MISSING :: "The Antigravity CLI (agy) was not found. Install it with: curl -fsSL https://antigravity.google/cli/install.sh | bash";
+AGY_OLD_VERSION :: "The Antigravity CLI (agy) is too old (requires >= 1.5.0). Upgrade it with: curl -fsSL https://antigravity.google/cli/install.sh | bash";
 AGY_SIGNED_OUT :: "Antigravity is not signed in. Run agy once to sign in, or name Google Cloud credentials in ~/.openagents/coder/antigravity.env (AGY_ADC_AUTH=1, GOOGLE_APPLICATION_CREDENTIALS=PATH, GOOGLE_CLOUD_PROJECT=ID).";
 AGY_ENV_FILE :: "/.openagents/coder/antigravity.env";
 AGY_ENV_NAMES :: [4] string.["AGY_ADC_AUTH", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"];
 AGY_MODE :: "default";
+AGY_MODE_AUTO :: "auto";
+AGY_APP_DATA_DIR :: "antigravity-acp";
+AGY_VERSION_PREFIX :: "agy_acp_server_";
 AGY_MODEL_NOT_APPLIED :: 1; AGY_EFFORT_NOT_APPLIED :: 2;
 
 agy_agent :: () -> CuAgent {
   a: [1] CuAgent;
   a[0].name = "agy"; a[0].program = "agy"; a[0].login = ""; a[0].resume = CU_SESSION_RESUME;
+  a[0].defer_finalize_background = true; a[0].steers_with_prompt = true;
   return a[0];
 }
 
@@ -117,20 +122,121 @@ agy_env_load :: (e: [] AgyEnv) -> bool {
   return true;
 }
 
-// agy started in cwd with the credentials file's variables, initialize sent: "" or why it did not start.
-agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
-  cue_agent(x, agy_agent());
-  e: [1] AgyEnv; r := agy_env_load(e[..]);
-  l: [1] CuLaunch; l[0].program = program; l[0].cwd = cwd;
+agy_env_push :: (e: [] AgyEnv, entry: string) {
+  if entry.count == 0 || e[0].nvars >= CU_ENV || e[0].n + entry.count > e[0].buf.count { return; }
+  from := e[0].n;
+  e[0].n += cl_copy(e[0].buf[from..<e[0].buf.count], entry);
+  e[0].vars[e[0].nvars] = cast(string) e[0].buf[from..<e[0].n];
+  e[0].nvars += 1;
+}
+
+agy_env_push_kv :: (e: [] AgyEnv, key: string, value: string) {
+  need := key.count + 1 + value.count;
+  if key.count == 0 || value.count == 0 || e[0].nvars >= CU_ENV || e[0].n + need > e[0].buf.count { return; }
+  from := e[0].n;
+  e[0].n += cl_copy(e[0].buf[from..<e[0].buf.count], key);
+  e[0].buf[e[0].n] = '='; e[0].n += 1;
+  e[0].n += cl_copy(e[0].buf[e[0].n..<e[0].buf.count], value);
+  e[0].vars[e[0].nvars] = cast(string) e[0].buf[from..<e[0].n];
+  e[0].nvars += 1;
+}
+
+// Prepare CuLaunch with credentials, AGY_CLI_DISABLE_AUTO_UPDATE=1, and optional
+// isolated profile flags (--gemini-dir <dir> --app-data-dir antigravity-acp) and env.
+agy_prepare_launch :: (l: [] CuLaunch, e: [] AgyEnv, program: string, cwd: string, profile_dir: string, has_auto_update: bool, has_gemini_home: bool, has_ssh_conn: bool) {
+  l[0] = CuLaunch.{};
+  l[0].program = program; l[0].cwd = cwd;
+  if !has_auto_update && !agy_env_has(e, "AGY_CLI_DISABLE_AUTO_UPDATE") {
+    agy_env_push(e, "AGY_CLI_DISABLE_AUTO_UPDATE=1");
+  }
+  if profile_dir.count > 0 {
+    l[0].args[0] = "--gemini-dir";
+    l[0].args[1] = profile_dir;
+    l[0].args[2] = "--app-data-dir";
+    l[0].args[3] = AGY_APP_DATA_DIR;
+    l[0].args_n = 4;
+    if !has_gemini_home && !agy_env_has(e, "GEMINI_HOME") {
+      agy_env_push_kv(e, "GEMINI_HOME", profile_dir);
+    }
+    if !has_ssh_conn && !agy_env_has(e, "SSH_CONNECTION") {
+      agy_env_push(e, "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0");
+    }
+  }
   for i: 0..<e[0].nvars { l[0].env[i] = e[0].vars[i]; }
   l[0].env_n = e[0].nvars;
+}
+
+// Parse an Antigravity agentInfo.version (stripping any agy_acp_server_ prefix).
+// Accepts >= 1.5.0 < 2.0.0 (and empty/absent version); refuses explicit < 1.5.0 or >= 2.0.0.
+agy_version_ok :: (version: string) -> bool {
+  if version.count == 0 { return true; }
+  s := version;
+  if s.count >= AGY_VERSION_PREFIX.count && cast(string) s[0..<AGY_VERSION_PREFIX.count] == AGY_VERSION_PREFIX {
+    s = cast(string) s[AGY_VERSION_PREFIX.count..<s.count];
+  }
+  if s.count > 0 && (s[0] == 'v' || s[0] == 'V') { s = cast(string) s[1..<s.count]; }
+  if s.count == 0 || s[0] < '0' || s[0] > '9' { return false; }
+  i := 0; major := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    if major > 100000 { return false; }
+    major = major * 10 + cast(int) (s[i] - '0'); i += 1;
+  }
+  if i >= s.count || s[i] != '.' { return false; }
+  i += 1;
+  if i >= s.count || s[i] < '0' || s[i] > '9' { return false; }
+  minor := 0;
+  while i < s.count && s[i] >= '0' && s[i] <= '9' {
+    if minor > 100000 { return false; }
+    minor = minor * 10 + cast(int) (s[i] - '0'); i += 1;
+  }
+  if i < s.count && s[i] == '.' {
+    i += 1;
+    if i >= s.count || s[i] < '0' || s[i] > '9' { return false; }
+    while i < s.count && s[i] >= '0' && s[i] <= '9' { i += 1; }
+  }
+  if i < s.count && s[i] != '-' && s[i] != '+' { return false; }
+  return major == 1 && minor >= 5;
+}
+
+// Empty when the reported version is acceptable, else an actionable upgrade message naming AGY_INSTALL.
+agy_check_version :: (version: string) -> string {
+  if agy_version_ok(version) { return ""; }
+  return AGY_OLD_VERSION;
+}
+
+// agy started in cwd with the credentials file's variables and optional isolated profile dir.
+agy_launch_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string) -> string {
+  cue_agent(x, agy_agent());
+  e: [1] AgyEnv; r := agy_env_load(e[..]);
+  ab: [8] u8; gb: [8] u8; sb: [8] u8;
+  has_au := cl_getenv("AGY_CLI_DISABLE_AUTO_UPDATE", ab[..]).count > 0;
+  has_gh := cl_getenv("GEMINI_HOME", gb[..]).count > 0;
+  has_sc := cl_getenv("SSH_CONNECTION", sb[..]).count > 0;
+  l: [1] CuLaunch;
+  agy_prepare_launch(l[..], e[..], program, cwd, profile_dir, has_au, has_gh, has_sc);
   why := cue_start(x, l[0], name, version);
   if why.count == 0 {
-    sb: [32] u8; rb: [32] u8;
-    w := agy_watch_limits(cl_getenv("CODER_AGY_STALL_S", sb[..]), cl_getenv("CODER_AGY_RECOVER", rb[..]));
+    stb: [32] u8; rb: [32] u8;
+    w := agy_watch_limits(cl_getenv("CODER_AGY_STALL_S", stb[..]), cl_getenv("CODER_AGY_RECOVER", rb[..]));
     cue_watch_set(x, w.stall_ms, w.recoveries);
   }
   return why;
+}
+
+// agy started in cwd with the credentials file's variables, initialize sent: "" or why it did not start.
+agy_launch :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
+  pb: [1024] u8; prof := cl_getenv("CODER_AGY_PROFILE_DIR", pb[..]);
+  return agy_launch_with(x, program, cwd, name, version, prof);
+}
+
+// Respawn agy after an unexpected exit and resume the previous session.
+agy_respawn_with :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string, profile_dir: string) -> string {
+  _ = cue_prepare_restart(x);
+  return agy_launch_with(x, program, cwd, name, version, profile_dir);
+}
+agy_respawn :: (x: [] CuEngine, program: string, cwd: string, name: string, version: string) -> string {
+  pb: [1024] u8; prof := cl_getenv("CODER_AGY_PROFILE_DIR", pb[..]);
+  return agy_respawn_with(x, program, cwd, name, version, prof);
 }
 
 // ---------------------------------------------------------------- the stall watchdog's limits
@@ -179,7 +285,7 @@ agy_watch_limits :: (stall_word: string, recover_word: string) -> AgyWatch {
 // is agy's own with thought_level low. At medium, Flash and Carbon spent 7 to 15 s thinking before
 // a call's first byte, and Carbon's long calls thought for 5 to 6 minutes (#13227).
 AGY_EFFORT :: "low";
-agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string) -> int {
+agy_configure_mode :: (x: [] CuEngine, result: string, model: string, effort: string, want_mode: string) -> int {
   ar := x[0].c[0].ar[..];
   x[0].hold = 0;
   missed := 0;
@@ -199,9 +305,16 @@ agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string)
     if idn > 0 { cue_set(x, cast(string) ib[0..<idn], level); }
     else if effort.count > 0 { missed = missed | AGY_EFFORT_NOT_APPLIED; }   // our default is quiet when not offered
   }
+  target := want_mode;
+  if target.count == 0 { target = AGY_MODE; }
+  if target == AGY_MODE_AUTO && !cu_mode_has(result, AGY_MODE_AUTO, ar) { target = AGY_MODE; }
   mode := cl_str(ar, result, "modes.currentModeId");
-  if mode.count > 0 && mode != AGY_MODE && cu_mode_has(result, AGY_MODE, ar) { cue_set_mode(x, AGY_MODE); }
+  if cu_mode_has(result, target, ar) && mode != target { cue_set_mode(x, target); }
   return missed;
+}
+
+agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string) -> int {
+  return agy_configure_mode(x, result, model, effort, AGY_MODE);
 }
 
 agy_has :: (text: string, part: string) -> bool {
@@ -221,6 +334,17 @@ agy_provider :: (message: string) -> bool {
   marks := [8] string.["RESOURCE_EXHAUSTED", "quota", "Quota", "rate limit", "Rate limit", "429", "unavailable", "overloaded"];
   for m: marks { if agy_has(message, m) { return true; } }
   return agy_has(message, "UNAVAILABLE") || agy_has(message, "503");
+}
+
+// Lost or invalid thinking signature on a resumed session: caller should recover via cue_fresh_session().
+agy_lost_thinking_signature :: (message: string) -> bool {
+  marks := [8] string.[
+    "thought_signature", "thinking_signature", "thinking signature",
+    "thought signature", "invalid signature in thinking", "Invalid signature in thinking",
+    "missing thought signature", "corrupted thought signature",
+  ];
+  for m: marks { if agy_has(message, m) { return true; } }
+  return false;
 }
 
 #test "antigravity: a provider's refusal is told from a sign-in's" {
@@ -482,4 +606,73 @@ cue_stall_why :: (x: [] CuEngine, out: [] u8) -> string {
   #assert !agy_is(xb[..]) && cue_title(xb[..]) == "Cursor";
   cue_agent(xb[..], agy_agent());
   #assert agy_is(xb[..]) && cue_title(xb[..]) == "Antigravity";
+}
+
+#test "antigravity: version gate accepts >= 1.5.0 < 2.0.0 and refuses older versions with upgrade instructions" {
+  #assert agy_version_ok("");
+  #assert agy_version_ok("1.5.0") && agy_version_ok("1.5.12") && agy_version_ok("1.9.0-rc1");
+  #assert agy_version_ok("agy_acp_server_1.5.0") && agy_version_ok("agy_acp_server_1.5.12") && agy_version_ok("v1.6.1");
+  #assert !agy_version_ok("1.4.9") && !agy_version_ok("agy_acp_server_1.4.9") && !agy_version_ok("0.9.0");
+  #assert !agy_version_ok("2.0.0") && !agy_version_ok("agy_acp_server_2.0.0") && !agy_version_ok("not-a-version");
+  #assert agy_check_version("agy_acp_server_1.5.12") == "";
+  why := agy_check_version("agy_acp_server_1.4.9");
+  #assert why.count > 0 && agy_has(why, AGY_INSTALL);
+}
+
+#test "antigravity: launch sets AGY_CLI_DISABLE_AUTO_UPDATE and optional isolated profile flags and env" {
+  e: [1] AgyEnv; l: [1] CuLaunch;
+  agy_prepare_launch(l[..], e[..], "agy", "/w", "", false, false, false);
+  #assert l[0].args_n == 0 && l[0].env_n == 1 && l[0].env[0] == "AGY_CLI_DISABLE_AUTO_UPDATE=1";
+
+  e2: [1] AgyEnv; l2: [1] CuLaunch;
+  agy_prepare_launch(l2[..], e2[..], "agy", "/w", "", true, false, false);
+  #assert l2[0].args_n == 0 && l2[0].env_n == 0;
+
+  e3: [1] AgyEnv; l3: [1] CuLaunch;
+  agy_prepare_launch(l3[..], e3[..], "agy", "/w", "/tmp/agy-prof", false, false, false);
+  #assert l3[0].args_n == 4 && l3[0].args[0] == "--gemini-dir" && l3[0].args[1] == "/tmp/agy-prof";
+  #assert l3[0].args[2] == "--app-data-dir" && l3[0].args[3] == "antigravity-acp";
+  #assert l3[0].env_n == 3;
+  #assert l3[0].env[0] == "AGY_CLI_DISABLE_AUTO_UPDATE=1";
+  #assert l3[0].env[1] == "GEMINI_HOME=/tmp/agy-prof";
+  #assert l3[0].env[2] == "SSH_CONNECTION=127.0.0.1 0 127.0.0.1 0";
+
+  e4: [1] AgyEnv; l4: [1] CuLaunch;
+  agy_prepare_launch(l4[..], e4[..], "agy", "/w", "/tmp/agy-prof", true, true, true);
+  #assert l4[0].args_n == 4 && l4[0].env_n == 0;
+}
+
+#test "antigravity: configure_mode selects auto when advertised and falls back to default otherwise" {
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; c := cb[..]; agy_test(x, c, pb[..], line[..], arena[..], out[..]);
+  c[0].session_n = cu_keep(c[0].session[..], "g-1");
+  cu_outbox_clear(c);
+  r_auto := "{\"modes\":{\"currentModeId\":\"default\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"auto\"}]}}";
+  #assert agy_configure_mode(x, r_auto, "", "", AGY_MODE_AUTO) == 0 && x[0].hold == 1;
+  #assert agy_out_has(x, "\"method\":\"session/set_mode\",\"params\":{\"sessionId\":\"g-1\",\"modeId\":\"auto\"}");
+  cu_outbox_clear(c);
+  r_no_auto := "{\"modes\":{\"currentModeId\":\"plan\",\"availableModes\":[{\"id\":\"default\"},{\"id\":\"plan\"}]}}";
+  #assert agy_configure_mode(x, r_no_auto, "", "", AGY_MODE_AUTO) == 0 && x[0].hold == 1;
+  #assert agy_out_has(x, "\"method\":\"session/set_mode\",\"params\":{\"sessionId\":\"g-1\",\"modeId\":\"default\"}");
+}
+
+#test "antigravity: capability flags, lost thinking-signature detection, and held-turn steering" {
+  a := agy_agent();
+  #assert a.defer_finalize_background && a.steers_with_prompt;
+  #assert agy_lost_thinking_signature("Invalid signature in thinking block") && agy_lost_thinking_signature("missing thought_signature on resumed turn");
+  #assert agy_lost_thinking_signature("corrupted thought signature") && !agy_lost_thinking_signature("RESOURCE_EXHAUSTED") && !agy_lost_thinking_signature("");
+
+  xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [2048] u8; out: [4096] u8;
+  x := xb[..]; c := cb[..]; agy_test(x, c, pb[..], line[..], arena[..], out[..]);
+  ev := cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}");
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"g-bg\"}}");
+  #assert ev.kind == CuEventKind.answered && x[0].ready && cue_last_session(x) == "g-bg";
+  #assert cue_send(x, "start bg");
+  ev = cue_feed(x, CUE_T_BG_EXEC);
+  ev = cue_feed(x, "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}");
+  #assert ev.kind == CuEventKind.none && cue_held_bg(x);
+  cu_outbox_clear(c);
+  // Mid-turn steer while held sends session/prompt directly without session/cancel.
+  #assert cue_steer(x, "follow up") && !cue_held_bg(x);
+  #assert agy_out_has(x, "session/prompt") && !agy_out_has(x, "session/cancel");
 }
