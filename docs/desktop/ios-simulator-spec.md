@@ -1,6 +1,6 @@
 # iOS Simulator in OpenAgents Desktop
 
-Status: Spec, ready to build (2026-11-20)
+Status: Spec, ready to build (2026-11-20; GitHub #13811)
 Scope: `apps/openagents-desktop/` (Swift host and Coax page), a new helper `apps/openagents-desktop/simhost/`,
 a new library `coax/lib/agent/device/`, a new tool `coder/tui/oasim.coax`, `apps/openagents-cli/`,
 `coax/lib/microcoder/`, `coder/tui/claudeworker.coax`, `proto/`.

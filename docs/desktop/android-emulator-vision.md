@@ -1,6 +1,6 @@
 # Android Emulator in OpenAgents Desktop (vision)
 
-Status: Vision, after the iOS Simulator ships (2026-11-20)
+Status: Vision, after the iOS Simulator ships (2026-11-20; iOS is GitHub #13811)
 Builds on: [ios-simulator-spec.md](ios-simulator-spec.md). Read that first: this document says what
 is the same, what differs, and how the Android side is built. Where it says "as iOS", the iOS spec's
 section applies unchanged.
