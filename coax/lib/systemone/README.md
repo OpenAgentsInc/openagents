@@ -102,7 +102,7 @@ HTTP request:
 
 ```shell
 python3 coax/tests/systemone-outcomes.py --compiler /path/to/coax --out /tmp/new-outcomes-proof
-python3 apps/openagents-desktop/tests/lab-consumer.py --coax /path/to/coax --out /tmp/new-lab-proof
+python3 coax/tests/lab-consumer.py --coax /path/to/coax --out /tmp/new-lab-proof
 ```
 
 The [consumer record](../../../docs/verification/coax-request-consumer-2026-11-02/README.md)

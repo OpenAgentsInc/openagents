@@ -151,8 +151,8 @@ unit_systemone() {
      python3 tests/systemone-owner.py --compiler "$PWD/$COAX" --out "$systemone_output/owner" && \
      python3 tests/systemone-owned-process.py --generated-dir "$systemone_output/owner" --out "$systemone_output/owner-process" && \
      python3 tests/systemone-outcomes.py --compiler "$PWD/$COAX" --out "$systemone_output/outcomes" && \
-     python3 ../apps/openagents-desktop/tests/lab-consumer.py --coax "$PWD/$COAX" --out "$systemone_output/lab" --emit-only && \
-     python3 ../apps/openagents-desktop/tests/lab-consumer-process.py --generated-dir "$systemone_output/lab" --out "$systemone_output/lab-process"; then
+     python3 tests/lab-consumer.py --coax "$PWD/$COAX" --out "$systemone_output/lab" --emit-only && \
+     python3 tests/lab-consumer-process.py --generated-dir "$systemone_output/lab" --out "$systemone_output/lab-process"; then
     return 0
   fi
   echo "System One gate failed; evidence: $systemone_output" >&2
