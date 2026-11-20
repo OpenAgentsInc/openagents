@@ -60,16 +60,7 @@ dcos_write :: (path: string, data: string) -> bool {
 }
 dcos_write_private :: (path: string, data: string) -> bool { return fs_replace_durable(path, data); }
 dcos_append :: (path: string, data: string) -> bool { return fs_append(path, data); }
-dcos_mkdirs :: (path: string) -> bool {
-  if path.count == 0 { return false; }
-  for i: 1..<path.count + 1 {
-    if i == path.count || path[i] == '/' {
-      part := path[0..<i];
-      if fs_kind(part) == FS_NONE { _ := fs_mkdir(part); }
-    }
-  }
-  return fs_kind(path) == FS_DIR;
-}
+dcos_mkdirs :: (path: string) -> bool { return path.count > 0 && fs_mkdir_all(path); }
 dcos_mkdir_private :: (path: string) -> bool {
   if fs_kind(path) == FS_NONE { _ := fs_mkdir_private(path); }
   return fs_kind(path) == FS_DIR;
