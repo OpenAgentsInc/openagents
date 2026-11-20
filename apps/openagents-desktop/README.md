@@ -69,7 +69,7 @@ where they were.
 
 - The branch shows under the composer as `coder/` and the first 8 characters of the chat's id.
 - Making a worktree takes as long as checking the repository out. The folders the repository lists in `.coder/worktree.json` (`{"clone": ["coax/bin", ...]}`) are then cloned in from the main checkout with APFS copy-on-write (`cp -c`), so the Coax compiler and built tools are there at once. Each worktree's copy is its own: a rebuild in one changes nothing in another, and a link back into the main checkout is removed.
-- Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`). Each repository has one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target/REPO-HASH`, named from its real path, as its worktrees folder is, so `/tmp` and `/private/tmp` give one name), which its main checkout and all its chats' worktrees share. Outside a repository, Cargo builds where it always does. Coder's own environment wins over both. `apps/coder-desktop/build.sh` builds into the worktree's own `build/`.
+- Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`). Each repository has one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target/REPO-HASH`, named from its real path, as its worktrees folder is, so `/tmp` and `/private/tmp` give one name), which its main checkout and all its chats' worktrees share. Outside a repository, Cargo builds where it always does. Coder's own environment wins over both. `apps/openagents-desktop/build.sh` builds into the worktree's own `build/`.
 - Opening a chat goes back to its worktree. One removed by hand is made again from its branch.
 - Deleting a chat removes its worktree when it has no changes, and its branch when everything on it is in another branch. A worktree with changed or new files is never removed: Coder says where it is and leaves it.
 - `defaults write com.openagents.coder chatWorktrees -bool NO` turns this off; `CODER_WORKTREES=DIR` puts worktrees somewhere else.
@@ -186,7 +186,7 @@ billed to its Console account; a token counts against the plan it came from.
 - **For one launch**, pass it in the environment. It wins over a key set in the menu:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --env CODER_CLAUDE_KEY="$ANTHROPIC_API_KEY"
+open -n apps/openagents-desktop/build/OpenAgents.app --env CODER_CLAUDE_KEY="$ANTHROPIC_API_KEY"
 ```
 
 A key applies to the next Claude sub-agent; one that is running keeps what it
@@ -221,7 +221,7 @@ against the chat's budget.
 To pick it for one launch, add `--model openrouter` (or a Gemini name such as `Carbon`):
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --model openrouter --send "What is 2+2?"
+open -n apps/openagents-desktop/build/OpenAgents.app --args --model openrouter --send "What is 2+2?"
 ```
 
 ## Saved chats
@@ -258,14 +258,14 @@ in it.
 To open the Nth chat from the top at launch (1 is the newest):
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --chat 1
+open -n apps/openagents-desktop/build/OpenAgents.app --args --chat 1
 ```
 
 To open a sub-agent's transcript at launch, add `--agent N`. It opens the Nth
 sub-agent of the newest message that has that many:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --chat 1 --agent 1
+open -n apps/openagents-desktop/build/OpenAgents.app --args --chat 1 --agent 1
 ```
 
 ## Skills and installed commands
@@ -340,49 +340,49 @@ Limits:
 ## Build and open
 
 ```sh
-apps/coder-desktop/build.sh --open
+apps/openagents-desktop/build.sh --open
 ```
 
-The app is `apps/coder-desktop/build/Coder.app`, signed ad hoc. Its bundle
+The app is `apps/openagents-desktop/build/OpenAgents.app`, signed ad hoc. Its bundle
 identifier is `com.openagents.coder`.
 
 To send a message at launch, with no typing:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --send "What is 2+2?"
+open -n apps/openagents-desktop/build/OpenAgents.app --args --send "What is 2+2?"
 ```
 
 Add `--folder PATH` to use a working folder for this launch only:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --folder ~/work/app --send "Run pwd."
+open -n apps/openagents-desktop/build/OpenAgents.app --args --folder ~/work/app --send "Run pwd."
 ```
 
 Add `--then TEXT` to start a new chat once that reply ends and send `TEXT` in it:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --send "Say hi." --then "What is 2+2?"
+open -n apps/openagents-desktop/build/OpenAgents.app --args --send "Say hi." --then "What is 2+2?"
 ```
 
 Add `--new TEXT` to start a new chat while that reply runs and send `TEXT` in
 it. The first reply goes on out of view:
 
 ```sh
-open -n apps/coder-desktop/build/Coder.app --args --send "Run sleep 20, then say hi." --new "What is 2+2?"
+open -n apps/openagents-desktop/build/OpenAgents.app --args --send "Run sleep 20, then say hi." --new "What is 2+2?"
 ```
 
 To build a second copy somewhere else, and leave a running Coder's files alone:
 
 ```sh
-CODER_BUILD=/tmp/coder apps/coder-desktop/build.sh
+CODER_BUILD=/tmp/coder apps/openagents-desktop/build.sh
 ```
 
 ## Install in Applications
 
-To keep `/Applications/Coder.app` at the newest `main`, run this once:
+To keep `/Applications/OpenAgents.app` at the newest `main`, run this once:
 
 ```sh
-apps/coder-desktop/install.sh --agent
+apps/openagents-desktop/install.sh --agent
 ```
 
 It builds `origin/main` in a checkout of its own under
@@ -394,9 +394,9 @@ its turn when the Mac is busy or has under 10 GB free.
 
 | Command | What it does |
 | --- | --- |
-| `apps/coder-desktop/install.sh` | Build and install now. A Coder open from Applications is quit and opened again |
-| `apps/coder-desktop/install.sh --status` | The commit of `main`, of the installed Coder and of a build that waits |
-| `apps/coder-desktop/install.sh --remove-agent` | Stop the checks. The installed Coder stays |
+| `apps/openagents-desktop/install.sh` | Build and install now. A Coder open from Applications is quit and opened again |
+| `apps/openagents-desktop/install.sh --status` | The commit of `main`, of the installed Coder and of a build that waits |
+| `apps/openagents-desktop/install.sh --remove-agent` | Stop the checks. The installed Coder stays |
 
 The installed app's `Info.plist` names its commit (`OACommit`) and its commit
 count (`CFBundleVersion`). The log is `~/.cache/openagents/coder-release/log`.
@@ -404,19 +404,19 @@ count (`CFBundleVersion`). The log is `~/.cache/openagents/coder-release/log`.
 ## Checks
 
 ```sh
-coax/bin/coax test apps/coder-desktop/page.coax --library
+coax/bin/coax test apps/openagents-desktop/page.coax --library
 ```
 
 That runs every page check. A check file under `page/checks/` also runs on its
 own, for example
-`coax/bin/coax test apps/coder-desktop/page/checks/transcript-checks.coax --library`.
+`coax/bin/coax test apps/openagents-desktop/page/checks/transcript-checks.coax --library`.
 
 A check holds a page and a check-sized store (`CpCheckStore` in `page/state.coax`); the app's
 page gets its full store (`CpStore`) from the host. So a check fits the compiler's value slots when
 it runs in the evaluator, as a run of one check does (#13767):
 
 ```sh
-apps/coder-desktop/page-slots.sh
+apps/openagents-desktop/page-slots.sh
 ```
 
 That runs every check file in the evaluator with the slot limit at 85%, a few at once, and fails
@@ -427,8 +427,8 @@ The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
 
 ```sh
-apps/coder-desktop/foreman-control-test.sh          # credentials, route policy, control file, server
-apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.app through foreman-ctl
+apps/openagents-desktop/foreman-control-test.sh          # credentials, route policy, control file, server
+apps/openagents-desktop/foreman-control-test.sh --live   # also drives a built OpenAgents.app through foreman-ctl
 ```
 
 ## Files
@@ -469,4 +469,4 @@ apps/coder-desktop/foreman-control-test.sh --live   # also drives a built Coder.
 | `ForemanOperator.swift` | The Foreman control API's two credentials, route policy and control file, for programs outside the Foreman chat |
 | `foreman-control-test.sh`, `foreman-control-test.swift` | The checks of that API |
 | `build.sh` | Coax to C and Metal, the two workers' images and the daemon's, then clang, swiftc and codesign |
-| `install.sh` | Builds `origin/main` and keeps `/Applications/Coder.app` at it, every 15 minutes with `--agent` |
+| `install.sh` | Builds `origin/main` and keeps `/Applications/OpenAgents.app` at it, every 15 minutes with `--agent` |
