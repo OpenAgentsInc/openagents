@@ -281,7 +281,7 @@ smoke_update :: (root: string) -> int {
   m: [1] DcManifest;
   r := dc_update_verify(envelope, keys[..], "1.2.2", 7, false, m[..]);
   if r != DC_UPD_OK { print("%", dc_update_words(r)); print("\n"); return fail("update: the signed manifest verifies"); }
-  if dc_manifest_version(m[..]) != "1.2.3" || dc_manifest_url(m[..]) != "https://github.com/OpenAgentsInc/openagents/releases/download/coder-desktop-v1.2.3/Coder.zip" { return fail("update: its version and url"); }
+  if dc_manifest_version(m[..]) != "1.2.3" || dc_manifest_url(m[..]) != "https://github.com/OpenAgentsInc/openagents/releases/download/openagents-desktop-v1.2.3/OpenAgents.zip" { return fail("update: its version and url"); }
   if dc_update_verify(envelope, keys[0..<1], "1.2.2", 7, false, m[..]) != DC_UPD_UNTRUSTED_KEY { return fail("update: refused without its key"); }
   if dc_update_verify(envelope, keys[..], "1.2.3", 42, false, m[..]) != DC_UPD_NOT_NEWER { return fail("update: not newer"); }
   _ := dc_update_verify(envelope, keys[..], "1.2.2", 7, false, m[..]);

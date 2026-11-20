@@ -35,4 +35,8 @@ clang -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/c
 clang -std=gnu11 "${cflags[@]}" -c "$work/gallery.c" -o "$work/gallery.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/ui_host_stub.c" -o "$work/ui_host_stub.o"
 clang -std=gnu11 "${cflags[@]}" -c "$here/host_driver.c" -o "$work/host_driver.o"
-clang "${cflags[@]}" "$work/carrier.o" "$work/gallery.o" "$work/ui_host_stub.o" "$work/host_driver.o" -lm -o "$work/host_driver"
+ldflags=(-lm)
+if [ "$(uname -s)" = "Darwin" ]; then
+  ldflags+=(-framework CoreFoundation -framework CoreGraphics -framework ImageIO)
+fi
+clang "${cflags[@]}" "$work/carrier.o" "$work/gallery.o" "$work/ui_host_stub.o" "$work/host_driver.o" "${ldflags[@]}" -o "$work/host_driver"

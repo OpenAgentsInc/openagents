@@ -6,16 +6,16 @@
   "envelope": {
     "schema": "openagents.desktop.update.v1",
     "key": "openagents-desktop-test",
-    "payload": "eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5jb2RlciIsInRlYW1faWQiOiJIUVdTRzI2TDQzIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL09wZW5BZ2VudHNJbmMvb3BlbmFnZW50cy9yZWxlYXNlcy9kb3dubG9hZC9jb2Rlci1kZXNrdG9wLXYxLjIuMy9Db2Rlci56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=",
-    "signature": "KWsQuBIqq/bqUq0+FxcBv/+sg4j4wu0hp7GCaShFpHXGSuS/pRN5gNBh7l8AUopnFGAXsIDu4C1fYRTAECAkAw=="
+    "payload": "eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5kZXNrdG9wIiwidGVhbV9pZCI6IkhRV1NHMjZMNDMiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vT3BlbkFnZW50c0luYy9vcGVuYWdlbnRzL3JlbGVhc2VzL2Rvd25sb2FkL29wZW5hZ2VudHMtZGVza3RvcC12MS4yLjMvT3BlbkFnZW50cy56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=",
+    "signature": "Qeh8sv8ojRp0wdufpPI05J6Jw1H8jGQi6acllf7TtdZ4ARoU8EgveswABCcmTpbGp0Q4EylQXEKJQrvbipyzCQ=="
   },
   "manifest": {
     "schema": "openagents.desktop.update.v1",
     "version": "1.2.3",
     "build": 42,
-    "bundle_id": "com.openagents.coder",
+    "bundle_id": "com.openagents.desktop",
     "team_id": "HQWSG26L43",
-    "url": "https://github.com/OpenAgentsInc/openagents/releases/download/coder-desktop-v1.2.3/Coder.zip",
+    "url": "https://github.com/OpenAgentsInc/openagents/releases/download/openagents-desktop-v1.2.3/OpenAgents.zip",
     "sha256": "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c",
     "size": 39,
     "notes": "A test release."

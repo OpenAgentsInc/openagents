@@ -18,11 +18,11 @@
 #load "../../text/base64.coax";
 
 DC_UPDATE_SCHEMA :: "openagents.desktop.update.v1";
-DC_UPDATE_BUNDLE :: "com.openagents.coder";     // UpdateVerifier.pinnedBundleID
+DC_UPDATE_BUNDLE :: "com.openagents.desktop";   // UpdateVerifier.pinnedBundleID
 DC_UPDATE_TEAM :: "HQWSG26L43";                 // UpdateVerifier.pinnedTeamID
 DC_UPDATE_KEY_ID :: "openagents-desktop-2026-v1";   // UpdateVerifier.defaultTrustedKeys
 DC_UPDATE_KEY :: "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
-DC_UPDATE_URL :: "https://github.com/OpenAgentsInc/openagents/releases/latest/download/coder-desktop-update.json";
+DC_UPDATE_URL :: "https://github.com/OpenAgentsInc/openagents/releases/latest/download/openagents-desktop-update.json";
 DC_UPDATE_MAX :: 65536;
 
 // What went wrong, as UpdaterError's cases.
@@ -257,7 +257,7 @@ dc_update_archive :: (path: string, m: [] DcManifest) -> int {
 // The pinned envelope (proto/coder/desktop-update-v1.json), for the checks.
 DC_UPDATE_TEST_KEY_ID :: "openagents-desktop-test";
 DC_UPDATE_TEST_KEY :: "79b5562e8fe654f94078b112e8a98ba7901f853ae695bed7e0e3910bad049664";
-DC_UPDATE_TEST_ENVELOPE :: "{\"schema\":\"openagents.desktop.update.v1\",\"key\":\"openagents-desktop-test\",\"payload\":\"eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5jb2RlciIsInRlYW1faWQiOiJIUVdTRzI2TDQzIiwidXJsIjoiaHR0cHM6Ly9naXRodWIuY29tL09wZW5BZ2VudHNJbmMvb3BlbmFnZW50cy9yZWxlYXNlcy9kb3dubG9hZC9jb2Rlci1kZXNrdG9wLXYxLjIuMy9Db2Rlci56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=\",\"signature\":\"KWsQuBIqq/bqUq0+FxcBv/+sg4j4wu0hp7GCaShFpHXGSuS/pRN5gNBh7l8AUopnFGAXsIDu4C1fYRTAECAkAw==\"}";
+DC_UPDATE_TEST_ENVELOPE :: "{\"schema\":\"openagents.desktop.update.v1\",\"key\":\"openagents-desktop-test\",\"payload\":\"eyJzY2hlbWEiOiJvcGVuYWdlbnRzLmRlc2t0b3AudXBkYXRlLnYxIiwidmVyc2lvbiI6IjEuMi4zIiwiYnVpbGQiOjQyLCJidW5kbGVfaWQiOiJjb20ub3BlbmFnZW50cy5kZXNrdG9wIiwidGVhbV9pZCI6IkhRV1NHMjZMNDMiLCJ1cmwiOiJodHRwczovL2dpdGh1Yi5jb20vT3BlbkFnZW50c0luYy9vcGVuYWdlbnRzL3JlbGVhc2VzL2Rvd25sb2FkL29wZW5hZ2VudHMtZGVza3RvcC12MS4yLjMvT3BlbkFnZW50cy56aXAiLCJzaGEyNTYiOiI5OThiZDU0OWQ2MmM0MjAwOWM0ODkzNGEwNjE5MThkZTllMzI0OTk0ODNhMDMxNTI1N2UyZDhhM2JkYjQzMTRjIiwic2l6ZSI6MzksIm5vdGVzIjoiQSB0ZXN0IHJlbGVhc2UuIn0=\",\"signature\":\"Qeh8sv8ojRp0wdufpPI05J6Jw1H8jGQi6acllf7TtdZ4ARoU8EgveswABCcmTpbGp0Q4EylQXEKJQrvbipyzCQ==\"}";
 
 #test "desktop core update: versions compare as the app's SemVer" {
   #assert dc_semver("v1.2.3").ok && dc_semver("1.2").patch == 0 && !dc_semver("1").ok && !dc_semver("1.2.3.4").ok && !dc_semver("a.b").ok && !dc_semver("1.-2").ok;
@@ -289,14 +289,14 @@ DC_UPDATE_TEST_ENVELOPE :: "{\"schema\":\"openagents.desktop.update.v1\",\"key\"
 }
 #test "desktop core update: the manifest's own checks" {
   m: [1] DcManifest; s := "998bd549d62c42009c48934a061918de9e32499483a0315257e2d8a3bdb4314c";
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x/a.zip\",\"sha256\":\"998BD549D62C42009C48934A061918DE9E32499483A0315257E2D8A3BDB4314C\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_OK && dc_manifest_sha(m[..]) == s;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x/a.zip\",\"sha256\":\"998BD549D62C42009C48934A061918DE9E32499483A0315257E2D8A3BDB4314C\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_OK && dc_manifest_sha(m[..]) == s;
   #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.other\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_BUNDLE;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"NOPE\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_TEAM;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"http://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, true, m[..]) == DC_UPD_SHA;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":0}", "1.0.0", 0, false, m[..]) == DC_UPD_SIZE;
-  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.coder\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\"}", "1.0.0", 0, false, m[..]) == DC_UPD_MANIFEST;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"NOPE\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_TEAM;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"http://x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, false, m[..]) == DC_UPD_URL;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"file:///x\",\"sha256\":\"x\",\"size\":1}", "1.0.0", 0, true, m[..]) == DC_UPD_SHA;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\",\"size\":0}", "1.0.0", 0, false, m[..]) == DC_UPD_SIZE;
+  #assert dc_manifest_read("{\"version\":\"2.0.0\",\"bundle_id\":\"com.openagents.desktop\",\"team_id\":\"HQWSG26L43\",\"url\":\"https://x\",\"sha256\":\"x\"}", "1.0.0", 0, false, m[..]) == DC_UPD_MANIFEST;
   #assert dc_manifest_read("{\"schema\":\"v9\",\"version\":\"2.0.0\"}", "1.0.0", 0, false, m[..]) == DC_UPD_SCHEMA;
   k: [32] u8; #assert dc_key_material("eWVz", k[..]) == false && dc_key_material(DC_UPDATE_TEST_KEY, k[..]) && k[0] == 0x79;
 }
