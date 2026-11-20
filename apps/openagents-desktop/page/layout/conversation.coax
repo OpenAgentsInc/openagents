@@ -30,6 +30,12 @@ cp_act_row :: (s: [] CoderPage, f: [] UiFrame, q: int, w: f32) -> AppActRow {
                       timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q), path = ifx s[0].calls[q].failed then "" else text};
   }
   if cp_edit_at(text) > 0 { return cp_act_edit(s, f, q); }
+  // an oasim command says what it did to the simulator (spec 7.5): "Tapped (201, 640)"
+  stb: [256] u8; sim := cp_sim_cmd(text, stb[..]);
+  if sim.verb.count > 0 {
+    return AppActRow.{kind = APP_ACT_EXEC, verb = sim.verb, target = sheet_single_line(sh, sim.target), call = text, output = output,
+                      failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
+  }
   return AppActRow.{kind = APP_ACT_EXEC, verb = "Ran", target = sheet_single_line(sh, text), call = text, output = output,
                     failed = s[0].calls[q].failed, running = s[0].calls[q].running, timed = cp_call_timed(s, q), secs = cast(int) cp_call_took(s, q)};
 }

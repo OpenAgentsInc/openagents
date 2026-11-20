@@ -593,3 +593,81 @@ coder_page_sim_pick :: (s: [] CoderPage, i: int) -> bool #export_c #effects(all)
 }
 // The device the pane shows (its UDID into out), for the chat's run.
 coder_page_sim_device :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_out(out, cp_sim_udid(s)) else 0; }
+
+// ---------------------------------------------------------------- oasim in the transcript
+
+// An `oasim` command row's words (spec 7.5): the verb ("Tapped") into vb and what it was done to
+// ("(201, 640)") into tb, from the command's text. False when the command is not oasim's.
+CpSimWords :: struct { verb: string; target: string; }
+cp_sim_word_at :: (t: string, k: int) -> string {
+  // the k-th space-separated word of t ("" when there is none)
+  i := 0; n := 0;
+  while i < t.count {
+    while i < t.count && t[i] == ' ' { i += 1; }
+    if i >= t.count { break; }
+    j := i; while j < t.count && t[j] != ' ' { j += 1; }
+    if n == k { return t[i..<j]; }
+    n += 1; i = j;
+  }
+  return "";
+}
+cp_sim_rest :: (t: string, k: int) -> string {
+  // t from its k-th word on
+  i := 0; n := 0;
+  while i < t.count {
+    while i < t.count && t[i] == ' ' { i += 1; }
+    if i >= t.count { break; }
+    if n == k { return t[i..<t.count]; }
+    while i < t.count && t[i] != ' ' { i += 1; }
+    n += 1;
+  }
+  return "";
+}
+cp_sim_cmd :: (text: string, tb: [] u8) -> CpSimWords {
+  prog := cp_sim_word_at(text, 0);
+  base := 0; for c, ci: prog { if c == '/' { base = ci + 1; } }
+  if prog[base..<prog.count] != "oasim" { return CpSimWords.{}; }
+  v := cp_sim_word_at(text, 1);
+  n := 0;
+  if v == "tap" || v == "swipe" {
+    n = el_put(tb, 0, "("); n = el_put(tb, n, cp_sim_word_at(text, 2)); n = el_put(tb, n, ", "); n = el_put(tb, n, cp_sim_word_at(text, 3)); n = el_put(tb, n, ")");
+    if v == "swipe" { n = el_put(tb, n, " to ("); n = el_put(tb, n, cp_sim_word_at(text, 4)); n = el_put(tb, n, ", "); n = el_put(tb, n, cp_sim_word_at(text, 5)); n = el_put(tb, n, ")"); }
+    return CpSimWords.{verb = ifx v == "tap" then "Tapped" else "Swiped", target = cast(string) tb[0..<n]};
+  }
+  if v == "screenshot" { return CpSimWords.{verb = "Took a screenshot", target = "of the simulator"}; }
+  if v == "text" { return CpSimWords.{verb = "Typed", target = cp_sim_rest(text, 2)}; }
+  if v == "press_key" || v == "button" { return CpSimWords.{verb = "Pressed", target = cp_sim_word_at(text, 2)}; }
+  if v == "boot" { return CpSimWords.{verb = "Booted", target = cp_sim_rest(text, 2)}; }
+  if v == "shutdown" { return CpSimWords.{verb = "Shut down", target = "the simulator"}; }
+  if v == "launch" { return CpSimWords.{verb = "Launched", target = cp_sim_rest(text, 2)}; }
+  if v == "open_url" { return CpSimWords.{verb = "Opened", target = cp_sim_word_at(text, 2)}; }
+  if v == "set_appearance" { return CpSimWords.{verb = "Set the simulator to", target = cp_sim_word_at(text, 2)}; }
+  if v == "build" || v == "run" {
+    // the scheme names what was built
+    sch := ""; i := 2;
+    while cp_sim_word_at(text, i).count > 0 { if cp_sim_word_at(text, i) == "--scheme" { sch = cp_sim_word_at(text, i + 1); } i += 1; }
+    return CpSimWords.{verb = ifx v == "build" then "Built" else "Built and ran", target = ifx sch.count > 0 then sch else "the app"};
+  }
+  if v == "list" { return CpSimWords.{verb = "Listed", target = "the simulators"}; }
+  return CpSimWords.{verb = "Ran oasim", target = cp_sim_rest(text, 1)};
+}
+#test "oasim commands in the transcript say what they did" {
+  tb: [256] u8;
+  w := cp_sim_cmd("oasim tap 201 640", tb[..]); #assert w.verb == "Tapped" && w.target == "(201, 640)";
+  w = cp_sim_cmd("/x/Resources/oasim swipe 10 700 10 200 --device U", tb[..]); #assert w.verb == "Swiped" && w.target == "(10, 700) to (10, 200)";
+  w = cp_sim_cmd("oasim screenshot --out /t/a.png", tb[..]); #assert w.verb == "Took a screenshot";
+  w = cp_sim_cmd("oasim text hello  there", tb[..]); #assert w.verb == "Typed" && w.target == "hello  there";
+  w = cp_sim_cmd("oasim press_key return", tb[..]); #assert w.verb == "Pressed" && w.target == "return";
+  w = cp_sim_cmd("oasim button HOME", tb[..]); #assert w.verb == "Pressed" && w.target == "HOME";
+  w = cp_sim_cmd("oasim boot iPhone 17", tb[..]); #assert w.verb == "Booted" && w.target == "iPhone 17";
+  w = cp_sim_cmd("oasim shutdown", tb[..]); #assert w.verb == "Shut down";
+  w = cp_sim_cmd("oasim launch --bundle com.a.b", tb[..]); #assert w.verb == "Launched" && w.target == "--bundle com.a.b";
+  w = cp_sim_cmd("oasim open_url https://x.y", tb[..]); #assert w.verb == "Opened" && w.target == "https://x.y";
+  w = cp_sim_cmd("oasim set_appearance dark", tb[..]); #assert w.verb == "Set the simulator to" && w.target == "dark";
+  w = cp_sim_cmd("oasim build --project P --scheme OpenAgents", tb[..]); #assert w.verb == "Built" && w.target == "OpenAgents";
+  w = cp_sim_cmd("oasim run --project P", tb[..]); #assert w.verb == "Built and ran" && w.target == "the app";
+  w = cp_sim_cmd("oasim list", tb[..]); #assert w.verb == "Listed";
+  w = cp_sim_cmd("oasim describe", tb[..]); #assert w.verb == "Ran oasim" && w.target == "describe";
+  #assert cp_sim_cmd("ls oasim", tb[..]).verb == "" && cp_sim_cmd("oasimx tap 1 2", tb[..]).verb == "" && cp_sim_cmd("", tb[..]).verb == "";
+  #assert cp_sim_word_at(" a  b ", 1) == "b" && cp_sim_word_at("a", 3) == "" && cp_sim_rest("a b c", 1) == "b c" && cp_sim_rest("a", 2) == "";
+}
