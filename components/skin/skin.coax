@@ -337,7 +337,11 @@ UiActivity :: struct {
   detail_lines: f32 = 10; detail_wash: f32 = 0.05;     // an output folds past this many lines
   working_h: f32 = 26; working_gap: f32 = 8;   // the working line: its height and its gap
 }
-UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;}
+// The conversation header (Zeron's SessionTitleView): the title over its place, leading after the
+// navigation button (title_gap), as two tight lines (title_line, subtitle_line, a line_gap apart);
+// the transcript fades out under the bar over `fade`.
+UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;
+  title_gap:f32=16;title_line:f32=20;subtitle_line:f32=15;line_gap:f32=1;fade:f32=52;}
 // One drop shadow as CSS writes it (offset x, y; blur; spread; colour), as
 // Zeron's tokens give them (zgx ui/ds/themes/zeron-dark.json). Draw one with
 // uiskin_shadow: the blur is CSS's, twice the gaussian's sigma.

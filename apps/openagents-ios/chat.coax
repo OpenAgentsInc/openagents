@@ -269,7 +269,7 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
   // the composer docks over the keyboard (or the safe area); the transcript starts under the navigation button
   under := ifx s[0].keyboard > s[0].safe_bottom then s[0].keyboard else s[0].safe_bottom;
   bottom := h - under / u - 6 / u;
-  nav_y := top + 4 / u;
+  nav_y := top;   // the bar's buttons stand at the top of the safe area, as a navigation bar's do
   s[0].again=false;
   if s[0].sc[0].workspaces[0].open {
     s[0].menu_side=0;nav:=k.app.icon_button;
@@ -361,21 +361,31 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     // one, or one it can pair with): that needs no account. Logged out, only Default asks for a login.
     chips := s[0].core[0].auth == AUTH_IN || app_device_pairable(s[0].core) || app_device_count(s[0].core) > 0;
     keybuf:[CHLIB_KEY]u8;target_key:=ch_library_key(s,keybuf[..]);
-    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
+    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, fade_top = top + 18 / u, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);
     s[0].box = out.composer; s[0].again = out.again;
-    if chips && !out.readonly {
+    if chips && !out.readonly && out.chips_w > 0 {
       e := es_chips(s[0].env[..]);
       _ := app_composer_chips(f, "composer.environment", "composer.repo", out.chips_x, out.chips_y, out.chips_w, ICON_GLOBAL, e.environment, ICON_FOLDER, e.repository,
         0, CH_HIT_ENV, ifx e.repository_on then CH_HIT_REPO else 0);
     }
   }
   // the navigation button at the top left opens the drawer
-  s[0].menu_x = 12 / u; s[0].menu_y = nav_y; s[0].menu_side = k.app.nav;
+  s[0].menu_x = k.chat.header_pad; s[0].menu_y = nav_y; s[0].menu_side = k.app.nav;
+  bar := f[0].sheet[0].nu;
   if s[0].core.count>0 {c:=s[0].core;title:=sheet_pool(f[0].sheet,ch_conversation_title(s));subtitle:=sheet_pool(f[0].sheet,ifx app_device_on(c) then view_device_name(c) else ifx app_conversation(c).count>0 then "Account chat" else "");
     app_conversation_header(f,0,nav_y,w,title,subtitle,s[0].view[0].model[0].rejoining,450,451);}
   if s[0].native { ch_menu_row(s, f, s[0].menu_x, nav_y); } else { _ := app_nav_button(f, "nav.menu", s[0].menu_x, nav_y, s[0].drawer, 0, CH_HIT_MENU); }
+  ch_lift(f, bar);
+}
+// The bar's grounds and marks over the transcript's words: a sheet paints all its fills and icons
+// (under) before any text (over), so the glass buttons would show the words fading under the bar
+// through them. What the bar put under since `from` moves to the end of over, in order.
+ch_lift :: (f: [] UiFrame, from: int) {
+  sh := f[0].sheet; n := sh[0].no;
+  for i: from..<sh[0].nu { if n >= sh[0].over.count { sh[0].lost += 1; break; } sh[0].over[n] = sh[0].under[i]; n += 1; }
+  sh[0].no = n; sh[0].nu = from;
 }
 // The menu button's row and hit with no paint: the host's system button stands over it.
 ch_menu_row :: (s: [] ChatPage, f: [] UiFrame, x: f32, y: f32) {

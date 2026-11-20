@@ -70,6 +70,7 @@ ViewLayout :: struct {
   editing: bool;              // the platform editor holds the keyboard over the composer's text
   editor_h: f32;              // its text height, layout units
   archived:bool;restore_action:int; // local library presentation; never execution authority
+  fade_top: f32;              // the transcript fades out toward this edge, under a transparent bar over top (0: it ends at top)
   unit: f32;                  // points a layout unit (the composer's layout is in points)
 }
 ViewOut :: struct {
@@ -419,7 +420,11 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   if !typing { v[0].working_from = -1; } else if v[0].working_from < 0 { v[0].working_from = f[0].clock; }
   out: ViewOut;
   // the composer docks at the bottom, the chip slot over it
-  look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = view_draft_of(c), state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit};
+  // Zeron's composer: a one-line capsule at rest in a conversation (no keyboard, no draft), the card
+  // with its chips in the action row once it holds the keyboard or a draft, or the chat is new
+  draft := view_draft_of(c);
+  compact := s.chat.enabled && !vm[0].empty && !lay.editing && draft.count == 0;
+  look := AppComposer.{placeholder = VIEW_PLACEHOLDER, text = draft, state = view_composer_state(d, facts), editing = lay.editing, editor_h = lay.editor_h, unit = lay.unit, compact = compact};
   pad := ifx s.chat.enabled then s.chat.inset else a.gap * 2;
   out.readonly=facts.readonly;
   if s.chat.enabled && lay.archived && facts.stop==VIEW_STOP_NONE && facts.permit==VIEW_PERMIT_NONE {out.readonly=true;out.composer.height=s.control_h;_=app_button(f,"chat.restore",lay.x+pad,lay.bottom-s.control_h,lay.w-2*pad,ICON_ARCHIVE,"Archived · Restore",APP_BUTTON_QUIET,0,lay.restore_action);}
@@ -428,8 +433,15 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
   out.composer_y = lay.bottom - out.composer.height;
   out.chips_x = lay.x + pad; out.chips_w = lay.w - 2 * pad;
   out.chips_y = out.composer_y - (ifx lay.chips_h > 0 && !out.readonly then lay.chips_h + a.gap else 0.0f32);
+  above := out.chips_y;
+  if s.chat.enabled && !out.readonly {
+    // the chips ride in the card's action row, left of the action (Zeron's toolbar); the capsule has none
+    b := out.composer; inset := s.cmp.action_inset + (b.send - s.cmp.chip_h) / 2;
+    out.chips_x = lay.x + pad + inset; out.chips_w = ifx compact || lay.chips_h <= 0 then 0.0f32 else b.send_x - inset - s.app.gap;
+    out.chips_y = out.composer_y + b.row_y + (b.send - lay.chips_h) / 2; above = out.composer_y;
+  }
   // the transcript fills what is left
-  top := lay.top; bottom := out.chips_y - a.gap;
+  top := lay.top; bottom := above - a.gap;
   viewport := ifx bottom > top then bottom - top else 0.0f32;
   cx := lay.x + pad; cw := lay.w - 2 * pad;
   if v[0].viewport > 0 && viewport != v[0].viewport { vlist_viewport(l, viewport); }
@@ -445,8 +457,20 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     vlist_place(l, viewport, VIEW_OVERSCAN);
     guard += 1;
   }
-  uiframe_clip(f, lay.x, top, lay.x + lay.w, bottom);
+  // Under a transparent bar (lay.fade_top), the rows scrolled past the top keep drawing up to the
+  // bar's top, fading out over the bar as Zeron's soft edge does; what can be pressed still ends at top.
+  faded := lay.fade_top > 0 && lay.fade_top < top;
+  if faded {
+    sh := f[0].sheet;
+    sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, lay.x, lay.fade_top, lay.x + lay.w, bottom));
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, lay.x, lay.fade_top, lay.x + lay.w, bottom));
+    sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0));
+    sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0));
+    elt_clip(f[0].rows, lay.x, top, lay.x + lay.w, bottom);
+  } else { uiframe_clip(f, lay.x, top, lay.x + lay.w, bottom); }
   for i: l[0].first..<l[0].last {
+    // a row's own fade (a folded bubble, an activity group) ends the bar's: each row starts it again
+    if faded { sh := f[0].sheet; sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0)); sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0)); }
     y := top + vlist_y(l, i);
     h := view_row(f, v, d, facts, i, cx, y, cw, false);
     if h != vlist_height(l, i) { vlist_measured(l, i, h); out.again = true; }
@@ -457,6 +481,10 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     else {ey := top + (viewport - s.title.line) / 2;
       th := app_centred(f, s.title, s.ink, cx, ey, cw, VIEW_EMPTY_TITLE);
       _ := uiframe_semantic(f, "chat.empty", EL_HEADING, VIEW_EMPTY_TITLE, cx, ey, cw, th, 0, 0);}
+  }
+  if faded {
+    sh := f[0].sheet;
+    sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
   }
   uiframe_unclip(f);
   vlist_settle(l, VIEW_SLACK);

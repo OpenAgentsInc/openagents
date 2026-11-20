@@ -24,6 +24,7 @@
 #load "../layout/native-composer.coax";
 
 COMPOSER_WRAP_LINES :: 64;      // rows of text a draft is wrapped into (the box shows four)
+COMPOSER_CAPSULE_PAD :: 4;      // points between the resting capsule's edge and its action (Zeron's ComposerBar)
 
 // What a composer shows this frame.
 ComposerLook :: struct {
@@ -35,6 +36,7 @@ ComposerLook :: struct {
   stop: bool;                   // a reply runs: the action is Stop
   enabled: bool;                // the action can be pressed
   locked: bool;                 // the text can't be edited now (a turn is being sent)
+  compact: bool;                // at rest (no keyboard, no draft): Zeron's one-line capsule, the text beside the action
   unit: f32;                    // points per layout unit: the layout is in points
 }
 // Where its parts are, in layout units from its own top left, and how tall it wants to be.
@@ -83,6 +85,14 @@ composer_box :: (m: TextMeasure, s: UiSkin, w: f32, look: ComposerLook) -> Compo
   if look.editing && look.editor_h > 0 { text_h = look.editor_h; }
   g := nc_layout(cast(f64) (w * u), cast(f64) (text_h * u), 1, look.text.count > 0);
   radius := ifx s.cmp.radius > 0 then s.cmp.radius else cast(f32) g.radius / u;
+  if look.compact {
+    // Zeron's resting capsule (ComposerBar's rest state): one line beside the action, the action
+    // COMPOSER_CAPSULE_PAD in from the capsule's edge, the text at the card's own left inset
+    pad := COMPOSER_CAPSULE_PAD / u; send := cast(f32) g.send_size / u; ch := send + 2 * pad;
+    tx := cast(f32) g.editor_x / u; tw := w - tx - send - 2 * pad;
+    return ComposerBox.{height = ch, radius = ch / 2, text_x = tx, text_y = (ch - line) / 2 - s.cmp.text_inset, text_w = tw, text_h = line,
+      line = line, inset = s.cmp.text_inset, row_y = pad, send_x = w - pad - send, send = send, lines = 1};
+  }
   return ComposerBox.{height = cast(f32) g.height / u, radius = radius,
     text_x = cast(f32) g.editor_x / u, text_y = cast(f32) g.editor_y / u, text_w = text_w, text_h = cast(f32) g.editor_h / u,
     line = line, inset = s.cmp.text_inset,
@@ -127,9 +137,12 @@ ctx_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32
   // the text: its row first, then its paint unless the platform editor has it
   tx := x + box.text_x; ty := y + box.text_y; view_h := box.text_h + grown;
   if view_h < box.line { view_h = box.line; }
-  field := uiframe_semantic(f, id, EL_FIELD, look.placeholder, x, y, w, box.row_y + grown, ifx look.locked then EL_S_DISABLED else 0, field_action);
+  // the capsule holds its line beside the action, from its bottom while it morphs; all of it left of the action is the field
+  fw := w; fh := box.row_y + grown;
+  if look.compact { ty = y + grown + box.text_y; view_h = box.line; fw = box.send_x; fh = h; }
+  field := uiframe_semantic(f, id, EL_FIELD, look.placeholder, x, y, fw, fh, ifx look.locked then EL_S_DISABLED else 0, field_action);
   elt_value(f[0].rows, field, look.text);
-  sheet_hit(sh, UIFRAME_HIT, field, 0, x, y, w, box.row_y + grown);
+  sheet_hit(sh, UIFRAME_HIT, field, 0, x, y, fw, fh);
   if !look.editing {
     first := ty + box.inset;
     if look.text.count == 0 { _ := sheet_text(sh, m, -1, tx, first, box.line, s.body.face, s.faint, look.placeholder); }
@@ -219,6 +232,28 @@ composer_test_texts :: (sh: Sheet, text: string) -> int {
   ks := s; ks.cmp.line = 23 / 1.2; ks.cmp.text_inset = 6 / 1.2;
   e := composer_box(m, ks, 315, ComposerLook.{unit = 1.2});
   #assert abs(e.height - 94 / 1.2) < 0.01 && abs(e.send - 44 / 1.2) < 0.01;
+}
+
+#test "at rest it is Zeron's one-line capsule: the text beside the action, the whole left of it the field, and it grows into the card on its spring" {
+  m := measure_cells(); s := composer_test_skin();
+  a := composer_box(m, s, 378, ComposerLook.{placeholder = "Message", unit = 1, compact = true});
+  #assert a.height == 52 && a.radius == 26 && a.send == 44 && a.send_x == 330 && a.row_y == 4 && a.text_x == 14 && a.text_w == 378 - 14 - 52 && a.lines == 1;
+  #assert a.text_y + a.inset + a.line / 2 == a.height / 2;
+  st: [1] ComposerStore; sf := [1] UiSurface.[composer_test_surface(st[..])]; ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}]; f: [1] UiFrame;
+  look := ComposerLook.{placeholder = "Message", unit = 1, compact = true};
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  box := ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+  #assert uiframe_end(f[..], sf[..]) && box.height == 52;
+  t := [1] ElTable.[surface_rows(sf[..])];
+  #assert surface_id(sf[..], surface_hit(sf[..], 300, 400 - 26)) == "c" && surface_id(sf[..], surface_hit(sf[..], 352, 400 - 26)) == "c.send";
+  #assert t[0].rows[elt_find(t[..], "c.send")].y == 400 - 48 && composer_test_texts(surface_sheet(sf[..]), "Message") == 1;
+  // focused: the card, on its spring, the action held from the bottom
+  look.compact = false;
+  uiframe_begin(f[..], sf[..], ks[..], m, s, uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  box = ctx_composer(f[..], "c", "c.send", 0, 400, 378, look, 1, 2);
+  moving := uiframe_moving(f[..]);
+  #assert uiframe_end(f[..], sf[..]) && box.height > 52 && box.height < 94 && moving;
+  t[0] = surface_rows(sf[..]);#assert abs(t[0].rows[elt_find(t[..], "c.send")].y - (400 - 48)) < 0.01;
 }
 
 #test "a composer records its field, its action and its model as rows, paints its text unless the editor has it, and turns to Stop" {

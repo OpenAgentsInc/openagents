@@ -37,6 +37,8 @@ noir_phone_skin :: () -> UiSkin {
   s.name = "Coder Noir phone";
   // as the conversation skin does: inline code on the raised ground, a code block's header on the surface
   s.code_wash = s.raised; s.header_wash = s.surface;
+  // the accent is the ink here: a focused field's edge lights softly, as Zeron's glass card does, not in full white
+  s.chrome.field_focus = 0.22;
   return s;
 }
 

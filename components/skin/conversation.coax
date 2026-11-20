@@ -7,7 +7,10 @@ conversation_skin :: ()->UiSkin {
  s.sunk=hex(0x1b1b1b,1);s.hairline=hex(0x343434,1);s.field_edge=hex(0x393939,1);s.hover=hex(0x363636,1);
  s.ink=hex(0xeeeeee,1);s.muted=hex(0xa2a2a2,1);s.faint=hex(0x828282,1);
  s.accent=s.ink;s.on_accent=s.canvas;s.border=0.6/u;
- s.chat=UiConversation.{enabled=true,inset=14/u,action=44/u,header_pad=12/u,identity_radius=22/u,greeting_gap=16/u,mark=32/u,menu_w=246/u};
+ // the header's measures are Zeron's SessionTitleView (16 semibold over 12, 1 apart, beside a 44 glass
+ // button 16 in from the edge) in our faces; the transcript fades out under the bar over its height
+ s.chat=UiConversation.{enabled=true,inset=14/u,action=44/u,header_pad=16/u,identity_radius=22/u,greeting_gap=16/u,mark=32/u,menu_w=246/u,
+  title_gap=16/u,title_line=20/u,subtitle_line=15/u,line_gap=1/u,fade=52/u};
  s.app.nav=44/u;s.app.nav_icon=19/u;s.app.icon_button=44/u;s.app.icon_well=42/u;s.app.icon=18/u;
  s.app.bubble_radius=24/u;s.app.bubble_pad_x=16/u;s.app.bubble_pad_y=12/u;s.app.bubble_share=0.86;
  s.app.tool_h=44/u;s.app.tool_pad=2/u;s.app.tool_radius=8/u;s.app.tool_icon=17/u;

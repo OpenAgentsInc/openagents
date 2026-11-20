@@ -4,7 +4,7 @@
 #load "../../../openagents-ios/app.coax";
 conversation_fixture :: (s:[]ChatPage,c:[]AppCore,mode:int) #export_c #effects(all) {
  if mode>=2 {
-  c[0].auth=AUTH_IN;c[0].foreground=false;ws:=s[0].workspaces[..];_=wsc_open(ws,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",true);ws[0].loaded=true;ws[0].recovered=true;ws[0].tab=ifx mode<=5 then mode-2 else 3;
+  c[0].auth=AUTH_IN;c[0].foreground=false;ws:=s[0].sc[0].workspaces[..];_=wsc_open(ws,"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",true);ws[0].loaded=true;ws[0].recovered=true;ws[0].tab=ifx mode<=5 then mode-2 else 3;
   ws[0].catalog[0].n=1;_=js_copy(ws[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");ws[0].catalog[0].entries[0].nl=js_copy(ws[0].catalog[0].entries[0].label[..],"Studio Mac");v:=ws[0].view[..];_=js_copy(v[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");v[0].nw=js_copy(v[0].workspace[..],"default");v[0].npath=js_copy(v[0].path[..],"/work/openagents");v[0].nr=js_copy(v[0].repository[..],"example/openagents");v[0].nb=js_copy(v[0].branch[..],"feature/native-controls");v[0].nx=64;_=js_copy(v[0].revision[..],"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");v[0].page=ws[0].tab;
   v[0].ns=js_copy(v[0].status[..]," M apps/chat.coax\n M components/conversation.coax");v[0].nd=js_copy(v[0].diff[..],"@@ Native workspace controls @@\n+ Workspace picker\n+ Branch controls\n+ Pull requests");v[0].nbra=4;for i:0..<4 {branch:=ifx i==0 then "main" else ifx i==1 then "feature/native-controls" else ifx i==2 then "fix/account-sync" else "feature/a-long-branch-name-that-stays-on-one-line";v[0].branches[i].n=js_copy(v[0].branches[i].name[..],branch);}
   v[0].nt=2;for i:0..<2 {v[0].trees[i].np=js_copy(v[0].trees[i].path[..],ifx i==0 then "/work/openagents" else "/work/native-controls");v[0].trees[i].nb=js_copy(v[0].trees[i].branch[..],ifx i==0 then "main" else "feature/native-controls");}
@@ -26,5 +26,5 @@ conversation_fixture :: (s:[]ChatPage,c:[]AppCore,mode:int) #export_c #effects(a
  ses[0].parts[1]=SPart.{kind=P_TOOL,tk=TK_READ,name="Read",arg="components/app/chat.coax",input="Read the shared chat component",output="Shared message and composer components",resolved=true};
  ses[0].parts[2]=SPart.{kind=P_TOOL,tk=TK_EXEC,name="Bash",arg="coax test components/app/chat.coax",input="coax test components/app/chat.coax",output="All checks passed",resolved=true};
  ses[0].parts[3]=SPart.{kind=P_TOOL,tk=TK_EDIT,name="Edit",arg="components/skin/conversation.coax",input="Use the shared conversation skin",output="Updated",resolved=true};
- s[0].env[0].in=true;s[0].history[0].signed_in=true;s[0].history[0].loaded=true;hi:=s[0].history[0].page[..];hi[0].n=1;_=el_copy(hi[0].items[0].id[..],id);hi[0].items[0].title_n=el_copy(hi[0].items[0].title[..],"A calmer conversation");
+ s[0].env[0].in=true;s[0].sc[0].history[0].signed_in=true;s[0].sc[0].history[0].loaded=true;hi:=s[0].sc[0].history[0].page[..];hi[0].n=1;_=el_copy(hi[0].items[0].id[..],id);hi[0].items[0].title_n=el_copy(hi[0].items[0].title[..],"A calmer conversation");
 }

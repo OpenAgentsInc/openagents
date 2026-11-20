@@ -45,6 +45,7 @@ AppComposer :: struct {
   editing: bool;              // the platform's editor is over the text and draws it
   editor_h: f32;              // the editor's own text height, layout units (while editing; 0: wrap here)
   unit: f32;                  // points a layout unit (the shared composer layout is in points; 0: 1)
+  compact: bool;              // at rest: the one-line capsule (kit/composer.coax), never while editing
 }
 // A composer docked by its bottom edge at `bottom`, w wide (kit/composer.coax's
 // composer, with the app's states). Its rows are the field (id, the draft as
@@ -53,7 +54,7 @@ AppComposer :: struct {
 // on a spring. Returns its box at the height it is drawn at.
 app_composer :: (f: [] UiFrame, id: string, send_id: string, x: f32, bottom: f32, w: f32, c: AppComposer, field_action: int, send_action: int) -> ComposerBox {
   locked := c.state == APP_COMPOSER_SENDING || c.state == APP_COMPOSER_OFF;
-  look := ComposerLook.{placeholder = c.placeholder, text = c.text, model = c.model, editing = c.editing && !locked, editor_h = c.editor_h, unit = c.unit,
+  look := ComposerLook.{placeholder = c.placeholder, text = c.text, model = c.model, editing = c.editing && !locked, editor_h = c.editor_h, unit = c.unit, compact = c.compact && !c.editing,
     stop = c.state == APP_COMPOSER_RUNNING, locked = locked,
     enabled = c.state == APP_COMPOSER_RUNNING || (c.state == APP_COMPOSER_READY && c.text.count > 0)};
   return ctx_composer(f, id, send_id, x, bottom, w, look, ifx locked then 0 else field_action, ifx look.enabled then send_action else 0);

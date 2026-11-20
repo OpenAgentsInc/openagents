@@ -2,30 +2,45 @@
 // from the skin; the app supplies titles, facts and actions, never a service.
 #load "chat.coax";
 
+// The conversation's bar, Zeron's (SessionViewController's title view): no ground of its own, so
+// the transcript shows through it as it fades out underneath (the page's fade). The title (the skin's
+// title face) over where it runs ("project @ computer", muted, the small face) leads after the
+// navigation button, which the caller draws at (x + header_pad, y); the options button stands at the
+// right edge on the same glass. The title and its place are one button (`details`); a long one is cut
+// with an ellipsis and its row keeps the whole. Busy shows a passive mark beside the options.
 app_conversation_header :: (f:[]UiFrame,x:f32,y:f32,w:f32,title:string,subtitle:string,busy:bool,options:int,details:int) {
  s:=f[0].skin;a:=s.app;c:=s.chat;side:=a.nav;pad:=c.header_pad;
- // Equal reservations on both sides keep the identity on the screen centre.
- room:=w-2*(side+pad+2*a.gap+a.notice_icon);if room<0 {room=0;}
- text:=app_fit(f,s.title.face,title,room-2*pad);sub:=app_fit(f,s.small.face,subtitle,room-2*pad);
- iw:=measure_width(f[0].m,s.title.face,text);sw:=measure_width(f[0].m,s.small.face,sub);if sw>iw {iw=sw;}iw+=2*pad;if iw>room {iw=room;}
- if title.count>0 && iw>0 {
-  ix:=x+(w-iw)/2;
-  _:=sheet_box(f[0].sheet,ix,y,iw,side,c.identity_radius,s.border,s.surface,s.field_edge);
-  lines:=s.title.line+(ifx sub.count>0 then s.small.line else 0.0f32);ty:=y+(side-lines)/2;
-  _:=sheet_text(f[0].sheet,f[0].m,-1,x+(w-measure_width(f[0].m,s.title.face,text))/2,ty,s.title.line,s.title.face,s.ink,text);
-  if sub.count>0 {_:=sheet_text(f[0].sheet,f[0].m,-1,x+(w-sw)/2,ty+s.title.line,s.small.line,s.small.face,s.muted,sub);}
-  row:=uiframe_semantic(f,"chat.identity",EL_BUTTON,title,ix,y,iw,side,0,details);elt_value(f[0].rows,row,subtitle);
-  sheet_hit(f[0].sheet,UIFRAME_HIT,row,0,ix,y,iw,side);
- }
  ox:=x+w-pad-side;
- _:=app_icon_button(f,"chat.options",ox,y,-1,"Conversation options",APP_BUTTON_DEFAULT,0,options);
+ tx:=x+pad+side+c.title_gap;right:=ox-c.title_gap;
+ if busy {right-=a.notice_icon+a.gap_small;}
+ room:=right-tx;if room<0 {room=0;}
+ if title.count>0 && room>0 {
+  text:=app_fit(f,s.title.face,title,room);sub:=app_fit(f,s.small.face,subtitle,room);
+  iw:=measure_width(f[0].m,s.title.face,text);sw:=measure_width(f[0].m,s.small.face,sub);if sw>iw {iw=sw;}if iw>room {iw=room;}
+  lines:=c.title_line+(ifx sub.count>0 then c.line_gap+c.subtitle_line else 0.0f32);ty:=y+(side-lines)/2;
+  _:=sheet_text(f[0].sheet,f[0].m,-1,tx,ty,c.title_line,s.title.face,s.ink,text);
+  if sub.count>0 {_:=sheet_text(f[0].sheet,f[0].m,-1,tx,ty+c.title_line+c.line_gap,c.subtitle_line,s.small.face,s.muted,sub);}
+  row:=uiframe_semantic(f,"chat.identity",EL_BUTTON,title,tx,y,iw,side,0,details);elt_value(f[0].rows,row,subtitle);
+  sheet_hit(f[0].sheet,UIFRAME_HIT,row,0,tx,y,iw,side);
+ }
+ app_glass_button(f,"chat.options",ox,y,side,"Conversation options",options);
  dot:=s.app.dot/2;
  for i:0..<3 {sheet_fill(f[0].sheet,ox+side/2+cast(f32)(i-1)*(dot+s.border*3)-dot/2,y+(side-dot)/2,dot,dot,dot/2,s.ink);}
  // Status is passive, never a refresh button, and takes no title width.
- if busy {mark:=a.notice_icon;px:=x+pad+side+a.gap_small;
+ if busy {mark:=a.notice_icon;px:=ox-a.gap_small-mark;
   activity(f[0].sheet,s,px,y+(side-mark)/2,mark,f[0].clock,f[0].reduced_motion);
   _:=uiframe_semantic(f,"chat.activity",EL_PROGRESS,"Syncing conversation",px,y,mark,side,EL_S_BUSY|EL_S_LIVE,0);
  }
+}
+// A round glass button `side` wide at (x, y) with nothing drawn in it (the caller marks it): the
+// navigation bar's (Zeron's Glass.circleButton): a lifted surface with a lit rim, so the transcript
+// fading under the bar reads as passing beneath it.
+app_glass_button :: (f:[]UiFrame,id:string,x:f32,y:f32,side:f32,label:string,action:int) {
+ s:=f[0].skin;sh:=f[0].sheet;k:=uiframe_key(f,id);
+ row:=uiframe_semantic(f,id,EL_BUTTON,label,x,y,side,side,0,action);
+ sheet_under(sh,uiskin_float(sh[0].under,sh[0].nu,s,x,y,side,side,side/2));
+ _:=app_ground(f,id,k,x,y,side,side,side/2,APP_BUTTON_DEFAULT,action==0);
+ if action!=0 {sheet_hit(sh,UIFRAME_HIT,row,0,x,y,side,side);}
 }
 
 app_message_actions :: (f:[]UiFrame,id:string,x:f32,y:f32,copied:bool,action:int)->f32 {

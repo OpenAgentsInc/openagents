@@ -20,14 +20,17 @@
  #assert !uiframe_field_capture(t[0].sf[..],"find","find",0,7,6) && !uiframe_field_capture(t[0].sf[..],"find","other",0,0,6);
 }
 
-#test "conversation chrome: a long title stays centred and cannot cover either action" {
+#test "conversation chrome: the title leads after the navigation button over its place, and a long one cannot cover either action" {
  t:[1]AppTest;app_test_init(t[..]);app_test_begin(t[..],"","",true);f:=t[0].f[..];f[0].skin=conversation_skin();
  app_conversation_header(f,0,8,180,"A very long conversation title that must fit","Studio Mac",true,11,12);
- #assert app_test_end(t[..]);r:=app_test_row(t[..],"chat.identity");
- #assert abs(r.x+r.w/2-90)<0.01 && r.x>=f[0].skin.app.nav+f[0].skin.app.gap;
- #assert r.x+r.w<=app_test_row(t[..],"chat.options").x && app_test_pressable(t[..],"chat.options");
+ #assert app_test_end(t[..]);r:=app_test_row(t[..],"chat.identity");k:=f[0].skin;
+ #assert abs(r.x-(k.chat.header_pad+k.app.nav+k.chat.title_gap))<0.01;
+ #assert r.x+r.w<=app_test_row(t[..],"chat.activity").x && app_test_row(t[..],"chat.activity").x+app_test_row(t[..],"chat.activity").w<=app_test_row(t[..],"chat.options").x && app_test_pressable(t[..],"chat.options");
  #assert app_test_has(t[..],"chat.activity",EL_S_BUSY) && !app_test_pressable(t[..],"chat.activity");
- #assert app_test_texts(t[..],"A very long conversation title that must fit")==0;
+ #assert app_test_texts(t[..],"A very long conversation title that must fit")==0 && app_test_value(t[..],"chat.identity")=="Studio Mac";
+ // no ground under the title: the bar is the glass buttons and the words, the transcript shows through
+ app_test_begin(t[..],"","",true);f[0].skin=conversation_skin();app_conversation_header(f,0,8,393,"Short","",false,11,12);#assert app_test_end(t[..]);
+ q:=app_test_row(t[..],"chat.identity");#assert q.w<120 && abs(q.x-(k.chat.header_pad+k.app.nav+k.chat.title_gap))<0.01 && app_test_find(t[..],"chat.activity")<0;
 }
 
 #test "conversation reply actions keep a real copy target and an accessible confirmation" {
