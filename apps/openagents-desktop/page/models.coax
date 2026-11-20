@@ -196,3 +196,48 @@ coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
 coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_agy(s, cp_model_index(s));
 }
+
+// ---------------------------------------------------------------- effort
+
+// The chat's thinking level, beside the model in the composer's foot as Zeron and Claude Code show
+// it: CP_EFFORT_DEFAULT until the person picks one, then low, medium or high, kept with the chat.
+CP_EFFORT_DEFAULT :: 0; CP_EFFORT_LOW :: 1; CP_EFFORT_MEDIUM :: 2; CP_EFFORT_HIGH :: 3;
+CP_EFFORT_WORD :: [4] string.["", "low", "medium", "high"];
+CP_EFFORT_LABEL :: [4] string.["", "Low", "Medium", "High"];
+cp_effort_of :: (word: string) -> int {
+  words := CP_EFFORT_WORD;
+  for i: 1..<4 { if word == words[i] { return i; } }
+  return CP_EFFORT_DEFAULT;
+}
+// The level a model runs at when the chat names none: for Antigravity, the effort Settings sets
+// (its model summary, "MODEL · high"), else agyworker's own, medium; Microcoder's models, low.
+cp_effort_default :: (s: [] CoderPage, idx: int) -> int {
+  if !cp_is_agy(s, idx) { return CP_EFFORT_LOW; }
+  m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
+  dot := " · ";
+  if m.count > dot.count {
+    for i: 0..<m.count - dot.count + 1 {
+      if cast(string) m[i..<i + dot.count] == dot { e := cp_effort_of(cast(string) m[i + dot.count..<m.count]); if e != CP_EFFORT_DEFAULT { return e; } }
+    }
+  }
+  return CP_EFFORT_MEDIUM;
+}
+// The level the model at idx runs at in this chat: the one picked, else its default.
+cp_effort_at :: (s: [] CoderPage, idx: int) -> int {
+  e := s[0].effort;
+  return ifx e >= CP_EFFORT_LOW && e <= CP_EFFORT_HIGH then e else cp_effort_default(s, idx);
+}
+cp_effort_label :: (s: [] CoderPage, idx: int) -> string { labels := CP_EFFORT_LABEL; return labels[cp_effort_at(s, idx)]; }
+// The effort a task line names for the model at index model: the chat's pick; with none, nothing
+// for Antigravity, so Settings' effort (CODER_AGY_EFFORT) or agyworker's medium decides (a forced
+// low made agy think not at all), and low for Microcoder.
+cp_task_effort :: (s: [] CoderPage, model: int) -> string {
+  words := CP_EFFORT_WORD;
+  if s[0].effort >= CP_EFFORT_LOW && s[0].effort <= CP_EFFORT_HIGH { return words[s[0].effort]; }
+  return ifx cp_is_agy(s, model) then "" else "low";
+}
+// A press on the effort chip: the next level after the one shown, high wrapping to low.
+cp_effort_cycle :: (s: [] CoderPage) {
+  e := cp_effort_at(s, cp_model_index(s));
+  s[0].effort = ifx e >= CP_EFFORT_HIGH then CP_EFFORT_LOW else e + 1;
+}

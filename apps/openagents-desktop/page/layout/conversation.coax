@@ -610,6 +610,7 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   short_n := fn;
   if s[0].branch_n > 0 { fn = el_put(fb[..], fn, " › "); fn = el_put(fb[..], fn, cast(string) s[0].branch[0..<s[0].branch_n]); }
   m_label := cp_model_label(s, cp_model_index(s));
+  e_label := cp_effort_label(s, cp_model_index(s));   // the chat's thinking level, beside the model
   cb: [32] u8; bb: [32] u8; lb: [64] u8;
   ln := el_put(lb[..], 0, ifx s[0].cost_usd_micros > 0 then cp_cost(cb[..], s[0].cost_usd_micros) else "$0.00");
   ln = el_put(lb[..], ln, " / "); ln = el_put(lb[..], ln, cp_cost(bb[..], cp_budget(s)));
@@ -631,13 +632,14 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
   w_fu := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else 0.0f32;
   w_model := cp_foot_chip_width(f, -1, m_label, true);
+  w_effort := cp_foot_chip_width(f, -1, e_label, false);
   w_ring := c.chip_h;
   w_cost := cp_foot_chip_width(f, -1, cost, false);
   w_goal := ifx has_goal then cp_foot_chip_width(f, -1, goal, false) else 0.0f32;
   show_goal := has_goal; show_cost := !home; show_ring := s[0].ctx_in > 0; show_branch := show_folder && s[0].branch_n > 0 && !running;
   room := cw - 2 * side;
   for step: 0..<5 {
-    need := w_model;
+    need := w_model + gap + w_effort;
     if show_fu_draft { need += gap + w_fu; }
     if show_folder { need += gap + (ifx show_branch then w_folder else w_short); }
     if show_ring { need += gap + w_ring; } if show_cost { need += gap + w_cost; } if show_goal { need += gap + w_goal; }
@@ -660,6 +662,11 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   mw := w_model;
   if mw > end_x - m_x { mw = end_x - m_x; }
   if mw > 0 { fx += cp_foot_chip(f, "coder.model", "Model (⌘/)", m_x, y, mw, -1, m_label, true, ifx s[0].model_menu then EL_S_CURRENT else 0, CP_MODEL_MENU); }
+  // the effort, as Zeron and Claude Code show it next to the model: a press steps low, medium, high
+  if mw > 0 && fx + gap + w_effort <= end_x {
+    fx += gap;
+    fx += cp_foot_chip(f, "coder.effort", "Effort (low, medium, high)", fx, y, w_effort, -1, e_label, false, 0, CP_EFFORT_CYCLE);
+  }
   // the right side, from the end: working folder at the far right, then context ring, cost, and goal;
   // when space is tight, the working folder shrinks before the model chip ever truncates
   rx := end_x;

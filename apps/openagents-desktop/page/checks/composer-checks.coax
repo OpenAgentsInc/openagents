@@ -162,10 +162,11 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   gap := cp_skin().app.gap_small;
   wf := t[0].rows[elt_find(t[..], "coder.folder")].w; wm := t[0].rows[elt_find(t[..], "coder.model")].w;
   wr := t[0].rows[elt_find(t[..], "coder.context")].w; wc := t[0].rows[elt_find(t[..], "coder.cost")].w; wg := t[0].rows[elt_find(t[..], "coder.goal")].w;
+  we := t[0].rows[elt_find(t[..], "coder.effort")].w;   // the effort chip beside the model, kept whole
   // the window's width for a column whose foot has `room` (its sides are 8 each)
   #assert cp_test_pill_frame(s, f[..], 400, 800, 0, 0, false);
   edge := 400 - s[0].col_w + 2 * cast(f32) CP_FOOT_SIDE;
-  all := wf + wm + wr + wc + wg + 4 * gap;
+  all := wf + wm + we + wr + wc + wg + 5 * gap;
   #assert cp_test_pill_frame(s, f[..], edge + all, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s); #assert elt_find(t[..], "coder.goal") >= 0;
   #assert cp_test_pill_frame(s, f[..], edge + all - 1, 800, 0, 0, false);
@@ -187,4 +188,43 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   b: [24] u8;
   #assert cp_tokens(b[..], 950) == "950" && cp_tokens(b[..], 12345) == "12.3K" && cp_tokens(b[..], 52000) == "52K" && cp_tokens(b[..], 128000) == "128K";
   #assert cp_tokens(b[..], 1048576) == "1.05M" && cp_tokens(b[..], 2000000) == "2M" && cp_tokens(b[..], 1500000) == "1.5M";
+}
+
+#test "the foot's effort chip beside the model: Antigravity's default from Settings else Medium, Microcoder's Low; a press steps it, the task line names it, the chat keeps it" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
+  coder_page_set_agy(s, true);
+  #assert coder_page_pick_model(s, "agy") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t := [1] ElTable.[cp_test_pill_rows(s)];
+  model := elt_find(t[..], "coder.model"); eff := elt_find(t[..], "coder.effort");
+  #assert eff >= 0 && elt_value_of(t[..], eff) == "Medium";
+  // right of the model chip, on the same line
+  #assert t[0].rows[eff].x > t[0].rows[model].x + t[0].rows[model].w - 0.01 && abs(t[0].rows[eff].y - t[0].rows[model].y) < 0.01;
+  // the effort set in Settings is Antigravity's default
+  coder_page_settings_agy(s, "Installed", 0, "Default · high", "Isolated profile");
+  #assert cp_effort_label(s, cp_model_index(s)) == "High";
+  coder_page_settings_agy(s, "Installed", 0, "Default", "Isolated profile");
+  // a press steps Medium to High, then wraps to Low
+  #assert cp_press(s, eff) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  #assert elt_value_of(t[..], elt_find(t[..], "coder.effort")) == "High" && s[0].effort == CP_EFFORT_HIGH;
+  cp_effort_cycle(s); #assert s[0].effort == CP_EFFORT_LOW && cp_effort_label(s, cp_model_index(s)) == "Low";
+  // the task line names the picked effort
+  out: [8192] u8; ab: [8192] u8; ar: [1] ClArena; ar[0].buf = ab[..]; back: [1] McTask;
+  #assert coder_page_set_text(s, "fix it") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w", out[..]);
+  #assert mww_task_read(ar[..], cast(string) out[0..<n - 1], back[..]) && back[0].model == "antigravity" && back[0].effort == "low";
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
+  // kept with the chat, and read back
+  #assert coder_page_save_due(s);
+  sb: [65536] u8; sn := coder_page_save(s, sb[..]);
+  #assert sn > 0 && cp_find(cast(string) sb[0..<sn], "\"effort\":\"low\"") >= 0;
+  q: [1] CoderPage; q_st: [1] CpCheckStore; r := cp_check_page(q[..], q_st[..]); cp_init(r); coder_page_set_agy(r, true);
+  #assert coder_page_load(r, cast(string) sb[0..<sn]) && r[0].effort == CP_EFFORT_LOW && !coder_page_save_due(r);
+  // a change of effort alone is a change to keep
+  cp_effort_cycle(r); #assert coder_page_save_due(r);
+  // a new chat starts at the default; Microcoder's default is Low, and its task line says so
+  #assert cp_new(s) && s[0].effort == CP_EFFORT_DEFAULT;
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_effort_label(s, cp_model_index(s)) == "Low";
+  #assert cp_task_effort(s, cp_model_index(s)) == "low";
+  s[0].effort = CP_EFFORT_HIGH; #assert cp_task_effort(s, cp_model_index(s)) == "high";
 }
