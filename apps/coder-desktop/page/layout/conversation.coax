@@ -215,6 +215,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       y0 := y;
       enter := f[0].skin.motion.enter;
       if s[0].live_ask != i { f[0].skin.motion.enter = 0; }
+      y += cp_turn_images(s, f, i, x, y, cw);
       y += app_message_user_fold(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], s[0].turns[i].ask_open, CP_BUBBLE_FOLD);
       f[0].skin.motion.enter = enter; if s[0].live_ask == i { s[0].live_ask = -1; }
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;

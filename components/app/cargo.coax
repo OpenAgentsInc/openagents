@@ -73,8 +73,21 @@ app_cargo :: (f: [] UiFrame, id: string, t: [] Attachments, x: f32, y: f32, w: f
     _ := sheet_box(sh, cx, cy, cw, h, APP_CARGO_RADIUS, 1, ifx uiframe_pressed(f, cid) then s.hover else s.raised, s.hairline);
     slot := cast(f32) APP_CARGO_SLOT;
     if fl.image {
-      sheet_fill(sh, cx + 1, cy + 1, cw - 2, h - 2, APP_CARGO_RADIUS - 1, s.sunk);
-      sheet_icon(sh, ICON_GALLERY, cx + (cw - slot) / 2, cy + (h - slot) / 2, slot, s.muted);
+      if fl.img_id > 0 && fl.img_w > 0 && fl.img_h > 0 {
+        bx := cx + 1; by := cy + 1; bw := cw - 2; bh := h - 2;
+        // cover (aspect-fill) inside the chip's inner box
+        nat_w := cast(f32) fl.img_w; nat_h := cast(f32) fl.img_h;
+        sx := bw / nat_w; sy := bh / nat_h;
+        sc := ifx sx > sy then sx else sy;
+        iw := nat_w * sc; ih := nat_h * sc;
+        ix := bx + (bw - iw) / 2; iy := by + (bh - ih) / 2;
+        sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, bx, by, bx + bw, by + bh));
+        sheet_under(sh, prim_image(sh[0].under, sh[0].nu, fl.img_id, ix, iy, iw, ih));
+        sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+      } else {
+        sheet_fill(sh, cx + 1, cy + 1, cw - 2, h - 2, APP_CARGO_RADIUS - 1, s.sunk);
+        sheet_icon(sh, ICON_GALLERY, cx + (cw - slot) / 2, cy + (h - slot) / 2, slot, s.muted);
+      }
     } else {
       b: [8] u8; e := at_lower_ext(name, b[..]);
       icon := ifx e == "txt" || e == "md" || e == "log" then ICON_FILE_TEXT else ICON_FILE;

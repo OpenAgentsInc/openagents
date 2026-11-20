@@ -9,9 +9,24 @@
 
 CP_BLUR_DEVICE :: 31.5;       // the planner's bounded kernel: at most 32 device pixels (sigma a third of it)
 
+CP_IMAGES :: 16;              // matches UI_MAX_IMAGES in ui-host.h (slots 0..15 -> source 64..79)
+CP_IMG_PATH :: 512;
+CP_IMG_EMPTY :: 0;
+CP_IMG_PENDING :: 1;
+CP_IMG_READY :: 2;
+CP_IMG_FAILED :: 3;
+
 CpCompose :: struct {
   plan: [1] UcPlan;
   list: [CP_UNDER + CP_OVER + 2] Prim;
+  images: [CP_IMAGES] UcImage;
+  active: [CP_IMAGES] UcImage;
+  active_slot: [CP_IMAGES] int;
+  active_n: int;
+  img_path: [CP_IMAGES][CP_IMG_PATH] u8;
+  img_path_n: [CP_IMAGES] int;
+  img_state: [CP_IMAGES] int;
+  img_next: int;              // next slot to evict when all CP_IMAGES slots are full
   on: bool;                   // the host has composition-v1's shader (coder_page_compose)
   off: bool;                  // the host refused a composed frame: draw flat from now on
   used: bool;                 // this frame is the plan's
@@ -30,12 +45,43 @@ cp_has_layer :: (list: [] Prim) -> bool {
   for p: list { if p.kind == PRIM_LAYER { return true; } }
   return false;
 }
+cp_has_image :: (list: [] Prim) -> bool {
+  for p: list { if p.kind == PRIM_IMAGE { return true; } }
+  return false;
+}
+cp_needs_compose :: (s: [] CoderPage, under: [] Prim, over: [] Prim) -> bool {
+  return cp_glass(s) && (cp_has_layer(over) || cp_has_image(under) || cp_has_image(over));
+}
+// Look up a file path in the image slot table, queuing it for the host to decode if not yet seen.
+// Returns UcImage.{id = slot + 1, w, h} when ready, or zero UcImage while pending or failed.
+cp_image_request :: (s: [] CoderPage, path: string) -> UcImage {
+  if path.count == 0 || path.count > CP_IMG_PATH { return UcImage.{}; }
+  c := s[0].cmp_gpu[..];
+  for i: 0..<CP_IMAGES {
+    if c[0].img_state[i] != CP_IMG_EMPTY && c[0].img_path_n[i] == path.count {
+      same := true;
+      for j: 0..<path.count { if c[0].img_path[i][j] != path[j] { same = false; break; } }
+      if same {
+        if c[0].img_state[i] == CP_IMG_READY { return c[0].images[i]; }
+        return UcImage.{};
+      }
+    }
+  }
+  slot := -1;
+  for i: 0..<CP_IMAGES { if c[0].img_state[i] == CP_IMG_EMPTY { slot = i; break; } }
+  if slot < 0 { slot = c[0].img_next % CP_IMAGES; c[0].img_next += 1; }
+  for j: 0..<path.count { c[0].img_path[slot][j] = path[j]; }
+  c[0].img_path_n[slot] = path.count;
+  c[0].img_state[slot] = CP_IMG_PENDING;
+  c[0].images[slot] = UcImage.{};
+  return UcImage.{};
+}
 // The composed frame: the canvas and both lists, culled to the band the flat path draws, planned
 // into out. Returns the vertex count, or -1 when the frame draws flat. flat is the flat frame's.
 cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32, canvas: Rgba, under: [] Prim, over: [] Prim, flat: int) -> int {
   c := s[0].cmp_gpu[..];
   c[0].used = false;
-  if !cp_glass(s) || !cp_has_layer(over) { return -1; }
+  if !cp_needs_compose(s, under, over) { return -1; }
   l := c[0].list[..];
   n := prim_fill(l, 0, 0, 0, w, h, 0, canvas);
   y0: f32 = -8; y1 := h + 8;
@@ -49,11 +95,20 @@ cp_compose :: (s: [] CoderPage, out: [] f32, a: [] Atlas, d: f32, w: f32, h: f32
       n = k;
     }
   }
+  // pack only ready image slots so uc_lease never sees empty 0x0 entries
+  na := 0;
+  for i: 0..<CP_IMAGES {
+    if c[0].img_state[i] == CP_IMG_READY && c[0].images[i].id > 0 && c[0].images[i].w > 0 && c[0].images[i].h > 0 {
+      c[0].active[na] = c[0].images[i];
+      c[0].active_slot[na] = i;
+      na += 1;
+    }
+  }
+  c[0].active_n = na;
   // charge the planner only for the vertices this frame can need, so the targets fit its budget
   cap := (flat * 2 + 4096) * GP_VERTEX_FLOATS;
   if cap > out.count { cap = out.count; }
-  images: [1] UcImage;
-  if !uc_build(c[0].plan[..], out[0..<cap], a, l[0..<n], images[0..<0], cast(int) c[0].w, cast(int) c[0].h, d) { return -1; }
+  if !uc_build(c[0].plan[..], out[0..<cap], a, l[0..<n], c[0].active[0..<na], cast(int) c[0].w, cast(int) c[0].h, d) { return -1; }
   c[0].used = true;
   return c[0].plan[0].v;
 }
@@ -65,6 +120,33 @@ coder_page_compose_refused :: (s: [] CoderPage) #export_c #effects(all) {
 }
 // Whether the last frame is the plan's (host.c reads cmp_gpu.plan then).
 coder_page_composed :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].cmp_gpu[0].used && s[0].cmp_gpu[0].plan[0].ok; }
+// If image slot is pending host decode, copies its path into out and returns its length; else 0.
+coder_page_image_pending :: (s: [] CoderPage, slot: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= CP_IMAGES { return 0; }
+  c := s[0].cmp_gpu[..];
+  if c[0].img_state[slot] != CP_IMG_PENDING { return 0; }
+  n := c[0].img_path_n[slot];
+  if n <= 0 || n > out.count { return 0; }
+  for j: 0..<n { out[j] = c[0].img_path[slot][j]; }
+  return n;
+}
+// Host reports decode result for image slot: ok && w > 0 && h > 0 marks it ready with id = slot + 1.
+coder_page_image_loaded :: (s: [] CoderPage, slot: int, w: int, h: int, ok: bool) #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= CP_IMAGES { return; }
+  c := s[0].cmp_gpu[..];
+  if ok && w > 0 && h > 0 {
+    c[0].img_state[slot] = CP_IMG_READY;
+    c[0].images[slot] = UcImage.{id = slot + 1, w = w, h = h};
+  } else {
+    c[0].img_state[slot] = CP_IMG_FAILED;
+    c[0].images[slot] = UcImage.{};
+  }
+}
+// Map a dense composition-v1 image index (source - 64) back to its cache slot, or -1.
+coder_page_image_slot :: (s: [] CoderPage, index: int) -> int #export_c #effects(all) {
+  if s.count < 1 || index < 0 || index >= s[0].cmp_gpu[0].active_n { return -1; }
+  return s[0].cmp_gpu[0].active_slot[index];
+}
 
 #test "the glass needs the host's composition shader, a window that fits and no refusal" {
   s: [1] CoderPage;

@@ -16,8 +16,90 @@ cp_cargo_n :: (s: [] CoderPage) -> int { return s[0].cargo[0].n; }
 cp_cargo_height :: (s: [] CoderPage, f: [] UiFrame, cw: f32) -> f32 {
   return app_cargo_height(f, s[0].cargo[..], cw - cast(f32) (ZC_BORDER * 2 + ZC_TEXT_OPEN_SIDE * 2));
 }
+CP_THUMB_W :: 120.0f32;
+CP_THUMB_H :: 84.0f32;
+CP_THUMB_R :: 10.0f32;
+CP_THUMB_GAP :: 8.0f32;
+
+// Parse attached image paths from a turn's refs note and draw right-aligned thumbnails above the
+// user bubble (matching Zeron's user_message.luau: 120x84, radius 10, gap 8, max 80% width).
+cp_turn_images :: (s: [] CoderPage, f: [] UiFrame, turn: int, x: f32, y: f32, cw: f32) -> f32 {
+  refs := cp_refs(s, turn);
+  if refs.count <= 0 { return 0; }
+  paths: [AT_MAX] string;
+  np := 0;
+  in_attached := false;
+  i := 0;
+  while i < refs.count && np < AT_MAX {
+    e := i;
+    while e < refs.count && refs[e] != '\n' { e += 1; }
+    line := refs[i..<e];
+    i = ifx e < refs.count then e + 1 else e;
+    if line.count == 0 { in_attached = false; continue; }
+    if !in_attached {
+      if line.count >= 14 && line[0..<14] == "Attached files" { in_attached = true; }
+      continue;
+    }
+    if line.count < 3 || line[0] != '-' || line[1] != ' ' { in_attached = false; continue; }
+    p := line[2..<line.count];
+    // strip trailing " (an image: ..." note when present
+    for k: 0..<p.count {
+      if k + 11 <= p.count && p[k..<k + 11] == " (an image:" { p = p[0..<k]; break; }
+    }
+    if p.count > 0 && at_is_image_name(p) {
+      paths[np] = p;
+      np += 1;
+    }
+  }
+  if np == 0 { return 0; }
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  max_w := cw * 0.8f32;
+  if max_w < CP_THUMB_W { max_w = CP_THUMB_W; }
+  per_row := cast(int) ((max_w + CP_THUMB_GAP) / (CP_THUMB_W + CP_THUMB_GAP));
+  if per_row < 1 { per_row = 1; }
+  cy := y;
+  row_start := 0;
+  while row_start < np {
+    row_end := row_start + per_row;
+    if row_end > np { row_end = np; }
+    cnt := row_end - row_start;
+    row_w := cast(f32) cnt * CP_THUMB_W + cast(f32) (cnt - 1) * CP_THUMB_GAP;
+    cx := x + cw - row_w;
+    for idx: row_start..<row_end {
+      img := cp_image_request(s, paths[idx]);
+      sheet_under(sh, prim_box(sh[0].under, sh[0].nu, cx, cy, CP_THUMB_W, CP_THUMB_H, CP_THUMB_R, 1, th.surface, th.border));
+      if img.id > 0 && img.w > 0 && img.h > 0 {
+        iw := cast(f32) img.w; ih := cast(f32) img.h;
+        sc_w := CP_THUMB_W / iw; sc_h := CP_THUMB_H / ih;
+        sc := ifx sc_w > sc_h then sc_w else sc_h;
+        dw := iw * sc; dh := ih * sc;
+        dx := cx + (CP_THUMB_W - dw) * 0.5f32; dy := cy + (CP_THUMB_H - dh) * 0.5f32;
+        sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, cx + 1, cy + 1, cx + CP_THUMB_W - 1, cy + CP_THUMB_H - 1));
+        sheet_under(sh, prim_image(sh[0].under, sh[0].nu, img.id, dx, dy, dw, dh));
+        sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+        sheet_under(sh, prim_box(sh[0].under, sh[0].nu, cx, cy, CP_THUMB_W, CP_THUMB_H, CP_THUMB_R, 1, Rgba.{}, th.border));
+      } else {
+        ic := 20.0f32;
+        sheet_icon(sh, ICON_GALLERY, cx + (CP_THUMB_W - ic) * 0.5f32, cy + (CP_THUMB_H - ic) * 0.5f32, ic, th.muted);
+      }
+      cx += CP_THUMB_W + CP_THUMB_GAP;
+    }
+    cy += CP_THUMB_H + CP_THUMB_GAP;
+    row_start = row_end;
+  }
+  return cy - y;
+}
+
 // The strip at the pill's top (x, y), w wide.
 cp_cargo_draw :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
+  for j: 0..<s[0].cargo[0].n {
+    if s[0].cargo[0].files[j].image {
+      img := cp_image_request(s, at_path(s[0].cargo[0].files[..], j));
+      s[0].cargo[0].files[j].img_id = img.id;
+      s[0].cargo[0].files[j].img_w = img.w;
+      s[0].cargo[0].files[j].img_h = img.h;
+    }
+  }
   side := cast(f32) (ZC_BORDER + ZC_TEXT_OPEN_SIDE);
   _ := app_cargo(f, "coder.cargo", s[0].cargo[..], x + side, y + cast(f32) ZC_BORDER, w - 2 * side, CP_CARGO, CP_CARGO_REMOVE);
 }

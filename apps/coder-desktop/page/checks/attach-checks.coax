@@ -131,3 +131,27 @@ cp_test_draft_is :: (s: [] CoderPage, want: string) -> bool {
   t[0] = cp_test_pill_rows(s);
   #assert elt_find(t[..], "coder.drop") < 0;
 }
+#test "image attachments render real PRIM_IMAGE thumbnails in the input bar and inline in sent user turns" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
+  coder_page_compose(s, true);
+  #assert coder_page_attach(s, "/tmp/preview.png", "preview.png", 2048);
+  // first frame queues the image path for host decode
+  out: [65536] f32;
+  #assert coder_page_frame(s, out[..], 1200, 800, 1, 0) > 0;
+  pb: [256] u8;
+  pn := coder_page_image_pending(s, 0, pb[..]);
+  #assert pn > 0 && cast(string) pb[0..<pn] == "/tmp/preview.png";
+  // host decodes it and reports dimensions
+  coder_page_image_loaded(s, 0, 320, 200, true);
+  #assert coder_page_frame(s, out[..], 1200, 800, 1, 0) > 0;
+  #assert coder_page_composed(s) && coder_page_image_slot(s, 0) == 0;
+  sh := surface_sheet(s[0].surface[..]);
+  #assert cp_has_image(sh.under[0..<sh.nu]);
+  // sending the message moves the image into the user turn and renders it inline
+  coder_page_ime_replace(s, -1, -1, "see attached");
+  #assert coder_page_key(s, KEY_ENTER, 0) && s[0].nturns == 1 && coder_page_attached(s) == 0;
+  #assert coder_page_frame(s, out[..], 1200, 800, 1, 0) > 0;
+  #assert coder_page_composed(s) && coder_page_image_slot(s, 0) == 0;
+  sh = surface_sheet(s[0].surface[..]);
+  #assert cp_has_image(sh.under[0..<sh.nu]);
+}

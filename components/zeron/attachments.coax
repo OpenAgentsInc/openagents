@@ -37,6 +37,8 @@ AtFile :: struct {
   path: [AT_PATH] u8; pn: int;  // where it was staged
   at: int; n: int;              // its bytes in the store (n 0: not kept)
   size: int;                    // its size on disk in bytes, as the host read it (a staged cargo's; -1 not known)
+  img_id: int;                  // GPU image id (>0 when decoded for preview)
+  img_w: int; img_h: int;       // natural pixel size of the decoded image
 }
 Attachments :: struct {
   store: [] u8; used: int;      // the bytes, the host's buffer

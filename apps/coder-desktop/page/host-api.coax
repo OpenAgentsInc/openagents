@@ -63,7 +63,7 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   // a frosted surface on screen: the same frame as composition-v1's plan (compose.coax), else flat
   composed := cp_compose(s, out, a, d, w, h, k.canvas, sh.under[0..<sh.nu], sh.over[0..<sh.no], v);
   if composed >= 0 { v = composed; }
-  else if cp_glass(s) && cp_has_layer(sh.over[0..<sh.no]) {
+  else if cp_needs_compose(s, sh.under[0..<sh.nu], sh.over[0..<sh.no]) {
     // a refused plan wrote over the flat frame: draw it again
     v = paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
     v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);

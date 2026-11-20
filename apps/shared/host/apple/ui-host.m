@@ -1170,6 +1170,7 @@ UiHost *ui_open(const UiApp *app, int offscreen) {
     h->layer.opaque = !app->transparent;
     h->view = [[UiView alloc] initWithFrame:NSMakeRect(0, 0, app->width, app->height)];
     h->view.host = h; h->view.wantsLayer = YES;
+    if (app->file) [h->view registerForDraggedTypes:@[ NSPasteboardTypeFileURL, NSPasteboardTypePNG, NSPasteboardTypeTIFF ]];
     h->dpr = (float)(NSScreen.mainScreen ? NSScreen.mainScreen.backingScaleFactor : 1);
   } else if (!offscreen) {
     [NSApplication sharedApplication];

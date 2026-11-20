@@ -5,6 +5,20 @@
 #include "host.h"
 #include <time.h>
 #include <sys/stat.h>
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>
+#include <CoreGraphics/CoreGraphics.h>
+#include <ImageIO/ImageIO.h>
+#endif
+
+#define CD_IMAGES 16
+#define CD_IMAGE_MAX_SIDE 512
+
+typedef struct {
+  uint8_t *rgba;
+  uint32_t w, h;
+  uint64_t gen;
+} CdImage;
 
 typedef struct {
   App app;
@@ -18,6 +32,8 @@ typedef struct {
   int headless;   // a page with no window: a chat whose reply runs out of view
   char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
   int composition;   // the shader loaded: the page may compose
+  CdImage images[CD_IMAGES];   // decoded straight RGBA8 textures for composition-v1 image slots 0..15
+  uint64_t img_gen;
   void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
   char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
   char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
@@ -46,6 +62,71 @@ static double cd_uptime(void) {
 #endif
 }
 
+static int cd_decode_image(const char *path, CdImage *slot, uint64_t gen) {
+  free(slot->rgba); slot->rgba = NULL; slot->w = 0; slot->h = 0; slot->gen = 0;
+#ifdef __APPLE__
+  if (!path || !*path) return 0;
+  CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)path, (CFIndex)strlen(path), false);
+  if (!url) return 0;
+  CGImageSourceRef src = CGImageSourceCreateWithURL(url, NULL);
+  CFRelease(url);
+  if (!src) return 0;
+  int max_px = CD_IMAGE_MAX_SIDE;
+  CFNumberRef max_num = CFNumberCreate(NULL, kCFNumberIntType, &max_px);
+  const void *keys[3] = {kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceThumbnailMaxPixelSize, kCGImageSourceCreateThumbnailWithTransform};
+  const void *vals[3] = {kCFBooleanTrue, max_num, kCFBooleanTrue};
+  CFDictionaryRef opts = CFDictionaryCreate(NULL, keys, vals, 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+  CGImageRef img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts);
+  CFRelease(opts); CFRelease(max_num); CFRelease(src);
+  if (!img) return 0;
+  size_t w = CGImageGetWidth(img), h = CGImageGetHeight(img);
+  if (w < 1 || h < 1 || w > 4096 || h > 4096) { CGImageRelease(img); return 0; }
+  uint8_t *buf = calloc(w * h, 4);
+  if (!buf) { CGImageRelease(img); return 0; }
+  CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  if (!cs) cs = CGColorSpaceCreateDeviceRGB();
+  CGContextRef ctx = CGBitmapContextCreate(buf, w, h, 8, w * 4, cs, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+  CGColorSpaceRelease(cs);
+  if (!ctx) { free(buf); CGImageRelease(img); return 0; }
+  CGContextDrawImage(ctx, CGRectMake(0, 0, (CGFloat)w, (CGFloat)h), img);
+  CGContextRelease(ctx); CGImageRelease(img);
+  // composition-v1 image ops expect straight (non-premultiplied) RGBA8
+  for (size_t i = 0; i < w * h * 4; i += 4) {
+    uint8_t a = buf[i + 3];
+    if (a > 0 && a < 255) {
+      buf[i + 0] = (uint8_t)(((unsigned)buf[i + 0] * 255u + a / 2u) / a);
+      buf[i + 1] = (uint8_t)(((unsigned)buf[i + 1] * 255u + a / 2u) / a);
+      buf[i + 2] = (uint8_t)(((unsigned)buf[i + 2] * 255u + a / 2u) / a);
+    }
+  }
+  slot->rgba = buf; slot->w = (uint32_t)w; slot->h = (uint32_t)h; slot->gen = gen;
+  return 1;
+#else
+  (void)path; (void)gen;
+  return 0;
+#endif
+}
+static int cd_serve_images(CoderHost *c) {
+  int any = 0;
+  char path[PATH_MAX];
+  for (int i = 0; i < CD_IMAGES; i++) {
+    int n = (int)coder_page_image_pending(cd_state(c), i, (coax_v_u8){(uint8_t *)path, PATH_MAX - 1});
+    if (n <= 0) continue;
+    path[n] = 0;
+    int ok = cd_decode_image(path, &c->images[i], ++c->img_gen);
+    coder_page_image_loaded(cd_state(c), i, ok ? (int64_t)c->images[i].w : 0, ok ? (int64_t)c->images[i].h : 0, ok != 0);
+    any = 1;
+  }
+  return any;
+}
+static int cd_image(void *user, int index, UiImage *out) {
+  CoderHost *c = user;
+  if (!c || !out) return 0;
+  int slot = (int)coder_page_image_slot(cd_state(c), index);
+  if (slot < 0 || slot >= CD_IMAGES || !c->images[slot].rgba) return 0;
+  *out = (UiImage){c->images[slot].rgba, c->images[slot].w, c->images[slot].h, c->images[slot].gen};
+  return 1;
+}
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
   coder_page_env(cd_state(c), c->active != 0, (c->reduced & 1) != 0);
@@ -55,10 +136,11 @@ static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr,
   coder_page_now(cd_state(c), cd_uptime());
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
   if (atlas_serve(&c->app)) cd_changed(c);
+  if (cd_serve_images(c)) cd_changed(c);
   if (c->settle > 0) c->settle--;
   return n < 0 ? 0 : n;
 }
-// A frame with a frosted surface is composition-v1's plan (page/compose.coax); the rest are flat.
+// A frame with a frosted surface or image is composition-v1's plan (page/compose.coax); the rest are flat.
 static int cd_composition(void *user, UiComposition *out) {
   CoderHost *c = user;
   if (!coder_page_composed(cd_state(c))) return 0;
@@ -149,7 +231,7 @@ void *cd_open(const char *resources) {
   UiApp app = {.title = "Coder", .width = 900, .height = 640, .embedded = 1, .max_vertices = a->max_vertices, .shader = shader, .user = c,
                .frame = cd_on_frame, .pointer = cd_on_pointer, .wheel = cd_on_wheel, .scroll_gesture = cd_on_scroll,
                .key = cd_on_key, .wants_text = cd_on_wants_text, .ime = &cd_ime, .file = cd_on_file, .carrying = cd_on_carrying,
-               .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
+               .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .image = composition ? cd_image : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c->st); free(c); return NULL; }
   c->composition = composition != NULL;
@@ -396,6 +478,7 @@ void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
+  for (int i = 0; i < CD_IMAGES; i++) free(c->images[i].rgba);
   free(c->files); free(c->file); free(c->s); free(c->st); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
