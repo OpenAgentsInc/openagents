@@ -57,6 +57,19 @@ cp_cmd_done :: (s: [] CoderPage, i: int, text: string, output: string, failed: b
   if cp_call_done(s, i, -1, text, output, failed) { s[0].turns[i].h = 0; return; }
   cp_cmd_add(s, i, text, output, false, failed);
 }
+// The working line's word while turn i runs: Stopping… once asked to stop, Sending… before its
+// worker's first line, Working while one of its tool calls or sub-agents runs, and Thinking
+// between them. Between tool calls the model is at work, and a harness that streams no thoughts
+// there (Antigravity at low effort sends none) would show nothing else: the turn never looks dead.
+cp_working_word :: (s: [] CoderPage, i: int) -> string {
+  if s[0].turns[i].stopping { return "Stopping…"; }
+  if !s[0].turns[i].heard { return "Sending…"; }
+  if s[0].turns[i].waiting { return "Working"; }
+  for j: 0..<s[0].turns[i].nagents { if s[0].turns[i].agents[j].state == CP_RUNNING { return "Working"; } }
+  q := s[0].turns[i].head - 1;
+  while q >= 0 { if s[0].calls[q].running { return "Working"; } q = s[0].calls[q].next - 1; }
+  return "Thinking";
+}
 // The run is over: nothing is still running.
 cp_cmds_end :: (s: [] CoderPage, i: int) {
   cp_calls_end(s, i, -1, true);

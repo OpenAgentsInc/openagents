@@ -280,7 +280,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         // before its worker's first line the turn has not begun: Sending…, no clock (Zeron's sending bridge)
         sending := !s[0].turns[i].heard && !s[0].turns[i].stopping;
         y += app_working(f, cp_id(ib[..], i, ".t"), x, y, ifx sending then -1 else cast(int) (s[0].clock - s[0].turns[i].began),
-                         ifx s[0].turns[i].stopping then "Stopping…" else ifx sending then "Sending…" else "") + a.gap;
+                         cp_working_word(s, i)) + a.gap;
       }
       else if st == CP_FAILED {
         if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
