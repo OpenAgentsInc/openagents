@@ -13,7 +13,7 @@ Coder Desktop is already a native, GPU-rendered macOS app (`AppKit` + Coax UI) b
 However, comparing Coder Desktop's **everyday coding-agent workflow** against Claude Code's full source tree (`~/work/projects/repos/cc`) reveals clear parity gaps in six high-leverage areas:
 
 1. **Instruction & Memory Layer**: No automatic `CLAUDE.md` / `AGENTS.md` hierarchy loading in Microcoder, and no persistent cross-session auto-memory (`MEMORY.md` / `memdir`).
-2. **Safety, Modes & Approvals**: No interactive permission/approval UI in Desktop, no `plan` / `acceptEdits` / `auto` mode toggles, no macOS Seatbelt sandboxing (macOS runs unconfined `danger-full-access`), and no user-defined hooks beyond the built-in `gitguard`.
+2. **Safety, Modes & Approvals**: No interactive permission/approval UI in Desktop, no `acceptEdits` / `auto` mode toggles (note: **admin has ruled out adding Plan Mode**), no macOS Seatbelt sandboxing (macOS runs unconfined `danger-full-access`), and no user-defined hooks beyond the built-in `gitguard`.
 3. **Session Control & Recovery**: No turn-level undo/rewind (`fileHistory` snapshots), no session forking in Desktop UI (exists in `coax/lib/agent/session/fork.coax` for TUI), and no manual `/compact`.
 4. **Extensibility & Ecosystem**: MCP, plugins, and voice dictation exist in `coder/tui/` but are **not wired into Coder Desktop**; no LSP tool/diagnostics; no deferred tool discovery (`ToolSearch`).
 5. **Interactive UX & Multimodal**: Only 3 slash commands in Desktop (`/goal`, `/model`, `/new`) vs. ~100 in Claude Code; image attachments are path-only (`@path`) rather than true multimodal vision input; no `AskUserQuestion` structured prompt cards in Desktop; no top-level engine switch to run Claude Code directly as the primary session driver in Desktop (currently sub-agent only).
@@ -54,7 +54,7 @@ Status legend: **Implemented** (parity or ahead) · **Partial** (exists in TUI/S
 
 | Capability | Claude Code | Coder Desktop | Status |
 | --- | --- | --- | --- |
-| Permission modes | `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`, `auto` (2-stage LLM classifier in `yoloClassifier.ts`/`bashClassifier.ts`) | TUI/SDK have `--permission-mode`; Desktop sets `gated: true` only to render rows before auto-approving. No mode switcher | **Missing** |
+| Permission modes | `default`, `acceptEdits`, `plan`, `dontAsk`, `bypassPermissions`, `auto` (2-stage LLM classifier in `yoloClassifier.ts`/`bashClassifier.ts`) | TUI/SDK have `--permission-mode`; Desktop sets `gated: true` only to render rows before auto-approving. No mode switcher (**Note: admin has ruled out adding Plan Mode**) | **Missing** |
 | Interactive approval prompts | `PermissionRequest` UI, allow/deny/ask rules (`utils/permissions/permissions.ts`), `permissionExplainer.ts` | Exists in TUI (`coder/tui/approvals.coax`, `gate.coax`); **missing in Desktop UI** | **Partial** |
 | OS sandboxing | `utils/sandbox/sandbox-adapter.ts` (`@anthropic-ai/sandbox-runtime`: macOS Seatbelt + Linux `bwrap` + FS/domain allowlists) | Linux `bwrap` only (`coax/lib/microcoder/fence.coax`); **macOS Desktop runs unconfined (`danger-full-access`)** | **Partial** |
 | Git destructive-op guard | `dangerousPatterns.ts` + classifier | `git-guard.coax` / `coder/tui/gitguard.coax` (enforced in Microcoder + Claude `PreToolUse` hook) | **Implemented** |
@@ -146,57 +146,61 @@ This roadmap prioritizes **highest daily-driver leverage per unit of engineering
 ### Phase 1 — Safety, Modes & Trustworthy Autonomy (2–3 weeks)
 *Make Coder Desktop safe to run on real repositories without supervision.*
 
-4. **Permission Modes (`plan`, `acceptEdits`, `default`, `bypassPermissions`) + Interactive Approval Cards**
-   - **Why**: Today Desktop silently auto-approves gated commands and has no Plan Mode. Plan Mode is one of Claude Code's most-used features.
+4. **Agent To-Do / Task List UI (Live Checklist)**
+   - **Why**: Surfaces the agent's working plan and step-by-step progress directly in Desktop (like Claude Code's `TodoWrite` / `TaskCreate`–`TaskUpdate` list) without introducing a separate Plan Mode.
+   - **Where**: Add a structured `todos` / task-list field in Microcoder (`coax/lib/microcoder/loop.coax` & `coder/tui/mcworker-wire.coax`) and render a live collapsible checklist in `apps/coder-desktop/page/transcript.coax` (or pinned above the composer).
+5. **Permission Modes (`default`, `acceptEdits`, `bypassPermissions`) + Interactive Approval Cards** *(Plan Mode ruled out by admin)*
+   - **Why**: Today Desktop silently auto-approves gated commands. **Note: Admin has ruled out adding Plan Mode**—scope this strictly to approval modes and interactive approval cards.
    - **Where**: Wire `coder/tui/approvals.coax` & `gate.coax` over `mcworker-wire.coax` to a new approval card + mode chip in `apps/coder-desktop/page/input.coax` and `page/transcript.coax`.
-5. **macOS Seatbelt Sandboxing (`sandbox-exec`)**
+6. **macOS Seatbelt Sandboxing (`sandbox-exec`)**
    - **Why**: Linux has `bwrap` (`coax/lib/microcoder/fence.coax`), but macOS Desktop runs `danger-full-access`. Adding a Seatbelt profile restricting writes to the chat's worktree + `/tmp` + shared caches closes the biggest security gap.
    - **Where**: `coax/lib/microcoder/fence.coax` and `tools.coax`.
-6. **Per-Turn File History & `/rewind` (Undo)**
+7. **Per-Turn File History & `/rewind` (Undo)**
    - **Why**: Users need a one-click safety net to roll back a bad agent turn without manual `git` surgery.
    - **Where**: Snapshot touched files before each turn's `edits`/`commands` in `Store.swift` / `Worktree.swift` (or lightweight git tree/ref snapshots per turn inside the worktree) and expose a Rewind action on every turn in `page/transcript.coax`.
 
 ### Phase 2 — Ecosystem & Multimodal Parity (2–3 weeks)
 *Bring existing TUI/Claude capabilities into Desktop so users don't lose their tools.*
 
-7. **Wire MCP Client into Desktop & Microcoder**
+8. **Wire MCP Client into Desktop & Microcoder**
    - **Why**: `coder/tui/mcp.coax` and `mcp_http.coax` already exist. Exposing configured MCP servers (from `~/.claude.json` / `.mcp.json`) in Desktop settings and as callable Microcoder tools closes the biggest ecosystem gap.
    - **Where**: `apps/coder-desktop/settings.coax`, `coder/tui/mcworker.coax`, `coax/lib/microcoder/tools.coax`.
-8. **True Multimodal Image Attachments**
+9. **True Multimodal Image Attachments**
    - **Why**: Pasting screenshots of UI bugs is a core desktop coding workflow; `@path` text notes don't let Microcoder see pixels.
    - **Where**: `apps/coder-desktop/page/attach.coax`, `Window+Attach.swift`, `coax/lib/microcoder/loop.coax` (pass base64 image blocks to vision-capable models).
-9. **Native `WebSearch` / `WebFetch` + Effort Control (`/effort`)**
-   - **Why**: Avoid spawning a full Claude sub-agent just to fetch docs, and let users dial reasoning effort (`low`/`medium`/`high`/`max`) per chat.
-   - **Where**: `coax/lib/microcoder/tools.coax`, `apps/coder-desktop/page/input.coax`, `page/models.coax`.
-10. **Top-Level Engine Switcher in Desktop (Microcoder vs. Direct Claude Code)**
+10. **Native `WebSearch` / `WebFetch` + Effort Control (`/effort`)**
+    - **Why**: Avoid spawning a full Claude sub-agent just to fetch docs, and let users dial reasoning effort (`low`/`medium`/`high`/`max`) per chat.
+    - **Where**: `coax/lib/microcoder/tools.coax`, `apps/coder-desktop/page/input.coax`, `page/models.coax`.
+11. **Top-Level Engine Switcher in Desktop (Microcoder vs. Direct Claude Code)**
     - **Why**: TUI already supports driving Claude Code directly (`coder/tui/coder.coax`). Letting Desktop users pick Claude Code as the primary chat engine (not just sub-agent) gives instant 100% tool/MCP/hook parity for users who want it.
     - **Where**: `apps/coder-desktop/Worker.swift`, `page/models.coax`, `coder/tui/claudeworker.coax`.
 
 ### Phase 3 — Power-User Workflows & Persistence (2–4 weeks)
 *Match Claude Code's long-horizon memory, hooks, and interactive polish.*
 
-11. **Cross-Session Auto-Memory (`MEMORY.md` / `memdir`)**
+12. **Cross-Session Auto-Memory (`MEMORY.md` / `memdir`)**
     - **Where**: Persist distilled repo/user memories under `~/.openagents/coder/memory/<repo>/MEMORY.md`, inject into `Worker.swift`, and add a lightweight post-turn/end-of-session memory extractor.
-12. **User-Defined Hooks (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`)**
+13. **User-Defined Hooks (`PreToolUse`, `PostToolUse`, `Stop`, `SessionStart`)**
     - **Where**: Generalize `coder/tui/gitguard.coax` into a hook runner reading `.coder/hooks.json` (and optionally `.claude/settings.json` hooks) for both Microcoder and `claudeworker`.
-13. **Interactive `AskUserQuestion` Cards & Voice Dictation in Desktop**
+14. **Interactive `AskUserQuestion` Cards & Voice Dictation in Desktop**
     - **Where**: Enable `ask` structured question cards in `page/transcript.coax`; wire `coder/tui/dictate.coax` (or `apps/openagents-desktop` dictation) to a mic button in `page/input.coax`.
-14. **Remote Host Picker in Desktop (`--on ssh:|cloud|boat:`)**
+15. **Remote Host Picker in Desktop (`--on ssh:|cloud|boat:`)**
     - **Where**: Surface `coder/tui/remote.coax` targets in the new-chat / worktree picker (`Window+Worktrees.swift`).
 
 ### Phase 4 — Advanced / Optional Parity (Backlog)
 *High complexity, lower urgency for rough parity; build as demand warrants.*
 
-15. **LSP Integration** (`LSPTool` + passive diagnostics for non-Coax languages: TypeScript, Rust, Swift, Python).
-16. **Scheduled / Cron Agent Tasks** (local `coder-host` cron scheduler + UI tab).
-17. **Custom Agent Profiles (`.claude/agents/*.md`) & Deferred `ToolSearch`** (needed once MCP catalogs grow large).
-18. **Plugin Marketplace / WASM Plugins in Desktop** (wire `coder/tui/plugins.coax` into Desktop settings).
-19. **External IDE Bridges** (VS Code / JetBrains extension — lower priority since Coder Desktop has a built-in file editor & diff review pane).
+16. **LSP Integration** (`LSPTool` + passive diagnostics for non-Coax languages: TypeScript, Rust, Swift, Python).
+17. **Scheduled / Cron Agent Tasks** (local `coder-host` cron scheduler + UI tab).
+18. **Custom Agent Profiles (`.claude/agents/*.md`) & Deferred `ToolSearch`** (needed once MCP catalogs grow large).
+19. **Plugin Marketplace / WASM Plugins in Desktop** (wire `coder/tui/plugins.coax` into Desktop settings).
+20. **External IDE Bridges** (VS Code / JetBrains extension — lower priority since Coder Desktop has a built-in file editor & diff review pane).
 
 ---
 
 ## 4. What NOT to Copy Verbatim
 
+- **Plan Mode (`/plan`)**: **Ruled out by admin.** Instead of a separate read-only Plan Mode, surface the agent's live to-do / task checklist directly in the UI.
 - **Ink/Terminal TUI chrome**: Coder Desktop's native GPU-rendered AppKit + Coax UI (`apps/coder-desktop/`) is already superior for visual diff review, file editing, and multi-chat management.
 - **Claude Code's `TeamCreate` / `SendMessage` swarm**: Coder Desktop's **Foreman** (`Foreman.swift`, `foreman-ctl`) + parallel multi-vendor sub-agents already solve multi-chat and multi-agent orchestration more cleanly.
 - **Claude Code's `bridge/` / `teleport`**: Coder Desktop's `coder-host` daemon + `NIP-HOST` mobile bridge already provide persistent background runs and mobile steering without proprietary Anthropic relay infrastructure.
