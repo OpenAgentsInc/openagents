@@ -174,7 +174,9 @@ extension CoderWindow {
         if let live = daemon.listRuns() {
             for one in live where !named.contains(one.run_id) {
                 let id = one.run_id
-                if one.isLive { daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
+                // a run mid-reply is never stopped here: a lost turn file must not cost the work (#13810)
+                if one.isLive && !CoderWorker.runIdle(id) { CoderWorker.logStop(id, "left running at launch: busy, though no kept message names it"); continue }
+                if one.isLive { CoderWorker.logStop(id, "stopped at launch: idle, no kept message names it"); daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } } } else { daemon.forgetRun(id) }
             }
         }
         cd_chats(page, chatLines); syncForemanUI()
@@ -206,14 +208,15 @@ extension CoderWindow {
                 self.sweeping = false
                 guard let live else { return }
                 let held = self.heldRuns, now = Int(Date().timeIntervalSince1970)
-                for id in CoderWindow.orphans(live, held: held, now: now) {
-                    NSLog("Coder: stopping run %@, which no chat holds (#13810)", id)
+                for id in CoderWindow.orphans(live, held: held, now: now) where CoderWorker.runIdle(id) {
+                    CoderWorker.logStop(id, "stopped by the sweep: idle, no chat holds it")
                     daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } }
                 }
             }
         }
     }
-    /// The live runs to stop: none a chat holds, and none started less than sweepAge seconds ago.
+    /// The live runs to stop: none a chat holds, and none started less than sweepAge seconds ago
+    /// (sweepRuns also leaves any run mid-reply alone: only an idle one is stopped).
     static func orphans(_ live: [DaemonRun], held: Set<String>, now: Int) -> [String] {
         live.filter { $0.isLive && !held.contains($0.run_id) && now - ($0.started ?? now) >= sweepAge }.map { $0.run_id }
     }

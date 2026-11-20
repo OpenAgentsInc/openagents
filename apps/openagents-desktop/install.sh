@@ -78,6 +78,27 @@ sock_pid() {
 }
 # The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
 daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
+# True while a worker run is mid-reply: a running run whose last line is neither its empty queue
+# line nor its turn's ended line (host-runs.coax dr_idle_line). Quitting OpenAgents then could cost that reply, so an install waits (#13810).
+replies_running() {
+  python3 -I - "$HOME/.openagents/coder/host/runs" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+for f in (os.listdir(d) if os.path.isdir(d) else []):
+    if not f.endswith(".state"): continue
+    try:
+        st = json.load(open(os.path.join(d, f)))
+        if not isinstance(st, dict) or st.get("state") != "running": continue
+        with open(os.path.join(d, f[:-6] + ".out"), "rb") as h:
+            h.seek(0, 2); n = h.tell(); h.seek(max(0, n - 65536))
+            lines = [l for l in h.read().decode("utf-8", "replace").split("\n") if l.strip()]
+        q = json.loads(lines[-1]) if lines else {}
+        if isinstance(q, dict) and q.get("kind") == "ended": continue
+        if not isinstance(q, dict) or not (q.get("kind") == "queue" and q.get("active") == "" and q.get("items") == []): sys.exit(0)
+    except (OSError, ValueError): continue
+sys.exit(1)
+PY
+}
 # It runs the given app's coder-host (the installed app's by default): a newer build waiting for
 # OpenAgents to quit hands its daemon over first, so a paired phone gets it without that quit.
 sync_resident() {
@@ -261,6 +282,7 @@ pids="$(coder_pids)"
 if [[ -n "$pids" ]]; then
   if [[ "$mode" == --check ]]; then say "${target:0:10} is built and installs when you quit OpenAgents"; sync_resident "$stage/OpenAgents.app"; retire_legacy_agent; exit 0; fi
   if inside_app $pids; then say "${target:0:10} is built; this run is inside OpenAgents, so it installs when you quit OpenAgents (the next check)"; retire_legacy_agent; exit 0; fi
+  if [[ -z "${OA_INSTALL_FORCE:-}" ]] && replies_running; then say "${target:0:10} is built; a reply is running in OpenAgents, so it installs when you quit OpenAgents (the next check). OA_INSTALL_FORCE=1 quits it now"; retire_legacy_agent; exit 0; fi
   kill $pids 2>/dev/null || true
   for _ in $(seq 1 40); do [[ -z "$(coder_pids)" ]] && break; sleep 0.25; done
   if [[ -n "$(coder_pids)" ]]; then

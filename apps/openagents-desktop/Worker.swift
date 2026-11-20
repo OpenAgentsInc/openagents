@@ -238,6 +238,41 @@ final class CoderWorker {
         return lines
     }
 
+    /// The run's worker has nothing to do: the last line it wrote is its queue with no active item
+    /// and no items, or its turn's ended line (as host-runs.coax dr_idle_line reads it). False when that can't be read.
+    static func runIdle(_ id: String) -> Bool {
+        guard let daemon else { return false }
+        let path = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in
+            DesktopCore.withCoaxString(id) { cid in
+                DesktopCore.withCoaxString(".out") { cext in
+                    DesktopCore.callString(4096) { oa_dc_run_file(cdir, cid, cext, $0) }
+                }
+            }
+        }
+        guard !path.isEmpty, let h = FileHandle(forReadingAtPath: path) else { return false }
+        defer { try? h.close() }
+        let size = (try? h.seekToEnd()) ?? 0
+        try? h.seek(toOffset: size > 65536 ? size - 65536 : 0)
+        guard let data = try? h.readToEnd(), let text = String(data: data, encoding: .utf8),
+              let last = text.split(separator: "\n").last.map(String.init) else { return false }
+        return isIdleLine(last)
+    }
+    static func isIdleLine(_ line: String) -> Bool {
+        guard line.hasPrefix("{\"kind\":"), let data = line.data(using: .utf8),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        if o["kind"] as? String == "ended" { return true }   // agyworker writes no queue line after its turn
+        guard o["kind"] as? String == "queue" else { return false }
+        return (o["active"] as? String ?? "x").isEmpty && ((o["items"] as? [Any])?.isEmpty ?? false)
+    }
+    /// Every run Coder stops or leaves running when no chat holds it, one line each, so a lost reply
+    /// can be traced (Application Support/Coder/run-stops.log).
+    static func logStop(_ id: String, _ why: String) {
+        let url = CoderTurn.dir.deletingLastPathComponent().appendingPathComponent("run-stops.log")
+        let line = ISO8601DateFormatter().string(from: Date()) + " " + id + " " + why + "\n"
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+        else { try? Data(line.utf8).write(to: url) }
+    }
+
     static func runState(_ id: String) -> String? {
         guard let daemon else { return nil }
         let s = DesktopCore.withCoaxString(daemon.hostDirPath) { cdir in

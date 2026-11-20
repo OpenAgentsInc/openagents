@@ -286,12 +286,15 @@ dr_answer :: (r: [] DrRun) {
   f := cxproc_flush_timeout(r[0].handle, 10);
   r[0].pending = f == CXPROC_TIMEOUT_V;
 }
-// A worker's line saying it has nothing to do: its queue line with no active item and no items.
+// A worker's line saying it has nothing to do: its queue line with no active item and no items,
+// or its turn's ended line (agyworker writes no queue line after it).
 dr_idle_line :: (line: string) -> bool {
-  if !hs_prefix(line, "{\"kind\":\"queue\"") { return false; }
+  if !hs_prefix(line, "{\"kind\":\"queue\"") && !hs_prefix(line, "{\"kind\":\"ended\"") { return false; }
   ab: [DR_CHUNK] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
   l: [1] MwwLine;
-  if mww_read(ar[..], line, l[..]) != MWW_QUEUED { return false; }
+  k := mww_read(ar[..], line, l[..]);
+  if k == MWW_ENDED { return true; }
+  if k != MWW_QUEUED { return false; }
   return l[0].active.count == 0 && (l[0].items.count == 0 || l[0].items == "[]");
 }
 dr_mark :: (r: [] DrRun, idle: bool) {
@@ -398,6 +401,7 @@ dr_execute :: (h: [] HsHost, q: [] DmRequest, v: [] DmView) {
   #assert dr_idle_line("{\"kind\":\"queue\",\"paused\":true,\"reason\":\"interrupted\",\"active\":\"\",\"items\":[]}");
   #assert !dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"q-1\",\"items\":[]}");
   #assert !dr_idle_line("{\"kind\":\"queue\",\"paused\":false,\"reason\":\"\",\"active\":\"\",\"items\":[{\"id\":\"q\",\"text\":\"t\"}]}");
+  #assert dr_idle_line("{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"\"}");
   #assert !dr_idle_line("{\"kind\":\"reply\",\"text\":\"{\\\"kind\\\":\\\"queue\\\"\"}");
 }
 
