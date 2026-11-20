@@ -380,7 +380,8 @@ oa_dc_store_keep :: (
 ) -> int #export_c #effects(all) {
   s: [1] DcStore;
   chats: [DC_CHATS] DkChat;
-  _ := dc_store_open(s[..], dir, chats[..]);
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
   return ifx dc_store_keep(s[..], id, title, folder, text, managed, wt_path, wt_branch, repo, dcos_now_us()) then 1 else 0;
 }
 
@@ -393,28 +394,32 @@ oa_dc_store_register :: (
 ) -> int #export_c #effects(all) {
   s: [1] DcStore;
   chats: [DC_CHATS] DkChat;
-  _ := dc_store_open(s[..], dir, chats[..]);
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
   return ifx dc_store_register(s[..], id, title, folder, managed, dcos_now_us()) then 1 else 0;
 }
 
 oa_dc_store_rename :: (dir: string, id: string, title: string) -> int #export_c #effects(all) {
   s: [1] DcStore;
   chats: [DC_CHATS] DkChat;
-  _ := dc_store_open(s[..], dir, chats[..]);
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
   return ifx dc_store_rename(s[..], id, title) then 1 else 0;
 }
 
 oa_dc_store_toggle_pin :: (dir: string, id: string) -> int #export_c #effects(all) {
   s: [1] DcStore;
   chats: [DC_CHATS] DkChat;
-  _ := dc_store_open(s[..], dir, chats[..]);
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
   return ifx dc_store_toggle_pin(s[..], id) then 1 else 0;
 }
 
 oa_dc_store_remove :: (dir: string, id: string) -> int #export_c #effects(all) {
   s: [1] DcStore;
   chats: [DC_CHATS] DkChat;
-  _ := dc_store_open(s[..], dir, chats[..]);
+  // an index it could not read is never written over: that wiped a whole chat list to one chat
+  if !dc_store_open(s[..], dir, chats[..]) { return 0; }
   return ifx dc_store_remove(s[..], id) then 1 else 0;
 }
 
