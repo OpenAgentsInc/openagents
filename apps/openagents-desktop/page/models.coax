@@ -83,8 +83,11 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
   }
   if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy)"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
-  descs := CP_MODEL_DESC;
-  return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
+  // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
+  // buffer would give every row the last model's line
+  vx := CP_MODEL_DESC_VERTEX; api := CP_MODEL_DESC_API;
+  i := ifx idx >= 0 && idx < CP_MODELS then idx else CP_MODEL_DEFAULT;
+  return ifx s[0].gauth_vertex then vx[i] else api[i];
 }
 // The model Antigravity runs, never "default": what agy said it opens a session on with these
 // settings (agyworker --probe), else the model Settings names for it, else "" (not known yet).
@@ -176,10 +179,9 @@ coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(al
   if was_agy { s[0].model = cp_agy_idx(s); }
   s[0].model = cp_model_index(s);
 }
-// The name of what runs the next message, which an empty chat's foot shows where the cost goes
-// (conversation.coax's cp_composer_foot): the Antigravity CLI (agyworker), or Microcoder (mcworker)
-// on OpenRouter or the Gemini API for the picked entry; "" with no model. Every backend and auth mode
-// is one line here, in the order Window+Runs.swift's sendTask picks the program.
+// The name of what runs the next message: the Antigravity CLI (agyworker), or Microcoder (mcworker)
+// on OpenRouter or the Gemini API / Vertex AI for the picked entry; "" with no model. Shown inside
+// the model picker dropdown (cp_model_desc), never as a separate chip in the composer's foot.
 cp_backend_label :: (s: [] CoderPage) -> string {
   idx := cp_model_index(s);
   if idx < 0 { return ""; }

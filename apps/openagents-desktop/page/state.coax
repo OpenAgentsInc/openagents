@@ -77,7 +77,8 @@ CP_MODEL_DEFAULT :: 0;
 CP_MODEL_ID :: [CP_MODELS] string.["gemini-4-neon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-argon"];
 CP_MODEL_LABEL :: [CP_MODELS] string.["Gemini 4 Neon", "Gemini 4 Carbon", "Gemini 4 Hydrogen", "Gemini 4 Argon"];
 CP_MODEL_SHORT :: [CP_MODELS] string.["Neon", "Carbon", "Hydrogen", "Argon"];
-CP_MODEL_DESC :: [CP_MODELS] string.["Fast frontier", "Deep reasoning", "Fast & light", "Heavyweight"];
+CP_MODEL_DESC_VERTEX :: [CP_MODELS] string.["Fast frontier · Vertex AI", "Deep reasoning · Vertex AI", "Fast & light · Vertex AI", "Heavyweight · Vertex AI"];
+CP_MODEL_DESC_API :: [CP_MODELS] string.["Fast frontier · Gemini API", "Deep reasoning · Gemini API", "Fast & light · Gemini API", "Heavyweight · Gemini API"];
 CP_MODEL_META :: [CP_MODELS] string.["Microcoder · Gemini 4 Neon", "Microcoder · Gemini 4 Carbon", "Microcoder · Gemini 4 Hydrogen", "Microcoder · Gemini 4 Argon"];
 
 // Default per-chat-thread max budget in microdollars ($50.00).

@@ -249,20 +249,24 @@
   // agy installed and the only entry
   coder_page_set_agy(s, true);
   #assert cp_backend_label(s) == "Antigravity CLI";
-  // a Gemini key set in Settings: Gemini models run on Microcoder through the Gemini API
+  // a Gemini key set in Settings: Gemini models run on Microcoder through the Gemini API, shown in the dropdown
   s[0].set_gemini_n = cp_out(s[0].set_gemini[..], "Ends 1a2b"); s[0].model = cp_model_index(s);
-  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API" && cp_model_desc(s, 0) == "Fast frontier · Gemini API";
   #assert coder_page_pick_model(s, "agy") && cp_backend_label(s) == "Antigravity CLI";
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
-  #assert coder_page_pick_model(s, "openrouter") && cp_backend_label(s) == "OpenRouter";
+  #assert coder_page_pick_model(s, "openrouter") && cp_backend_label(s) == "OpenRouter" && cp_model_desc(s, CP_MODEL_OR) == "OpenRouter";
   // no key, signed in with Experimental features: still Gemini
   s[0].set_gemini_n = 0; coder_page_experimental_set(s, true); coder_page_set_cloud_authed(s, true);
   #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
-  // Microcoder will answer on Vertex AI (a service account on disk, mcworker --auth): the foot says so
+  // Microcoder will answer on Vertex AI (a service account on disk, mcworker --auth): the dropdown says so
   coder_page_settings_gauth(s, "vertex", "Vertex AI (service account, project openagentsgemini)");
-  #assert cp_backend_label(s) == "Vertex AI";
+  #assert cp_backend_label(s) == "Vertex AI" && cp_model_desc(s, 0) == "Fast frontier · Vertex AI";
   coder_page_settings_gauth(s, "key", "API key ending 1a2b (~/work/.secrets)");
-  #assert cp_backend_label(s) == "Gemini API";
+  #assert cp_backend_label(s) == "Gemini API" && cp_model_desc(s, 0) == "Fast frontier · Gemini API";
+  // the menu and the palette keep each row's line, so one row's line never becomes another's
+  d0 := cp_model_desc(s, 0); d1 := cp_model_desc(s, 1); da := cp_model_desc(s, CP_MODELS);
+  #assert d0 == "Fast frontier · Gemini API" && d1 == "Deep reasoning · Gemini API" && cp_model_desc(s, 3) == "Heavyweight · Gemini API";
+  #assert d0 != d1 && da.count > 0 && d0 != da;
 }
 
 #test "a Vertex AI or API key sign-in Microcoder finds on its own runs Gemini models with no key in Settings" {

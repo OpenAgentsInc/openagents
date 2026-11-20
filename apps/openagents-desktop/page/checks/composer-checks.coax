@@ -28,14 +28,14 @@ cp_test_one_turn :: (s: [] CoderPage, f: [] UiFrame) {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false) && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
-  comp := elt_find(t[..], "coder.composer"); head := elt_find(t[..], "coder.empty"); model := elt_find(t[..], "coder.model");
-  #assert comp >= 0 && head >= 0 && model >= 0;
+  comp := elt_find(t[..], "coder.composer"); head := elt_find(t[..], "coder.empty"); model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
+  #assert comp >= 0 && head >= 0 && model >= 0 && folder >= 0;
   #assert elt_value_of(t[..], elt_find(t[..], "coder.composer.shape")) == "expanded" && t[0].rows[comp].h == 120;   // 76 of text, 42 of controls, the border
   #assert t[0].rows[head].y + t[0].rows[head].h <= t[0].rows[comp].y && t[0].rows[comp].y > 200 && t[0].rows[comp].y + t[0].rows[comp].h < 600;
   #assert t[0].rows[model].y >= t[0].rows[comp].y + t[0].rows[comp].h;
-  // the home screen's foot names the backend where the cost goes, and the cost is not shown
-  be := elt_find(t[..], "coder.backend"); #assert be >= 0 && t[0].rows[be].y >= t[0].rows[comp].y + t[0].rows[comp].h;
-  #assert elt_value_of(t[..], be) == "Gemini API" && elt_find(t[..], "coder.cost") < 0;
+  // the model sits on the left, the working folder on the right, and no backend or cost chip shows on an empty chat
+  #assert t[0].rows[folder].x > t[0].rows[model].x + t[0].rows[model].w;
+  #assert elt_find(t[..], "coder.backend") < 0 && elt_find(t[..], "coder.cost") < 0;
   add := elt_find(t[..], "coder.composer.add"); send := elt_find(t[..], "coder.composer.send");
   #assert add >= 0 && t[0].rows[add].w == 28 && t[0].rows[send].w == 32 && t[0].rows[add].x < t[0].rows[send].x;
   #assert cp_press(s, add) && coder_page_action(s) == CP_ASK_ADD;
@@ -86,36 +86,59 @@ cp_test_footed :: (s: [] CoderPage, f: [] UiFrame) {
   s[0].goal_status = CP_GOAL_PAUSED; s[0].goal_objective_n = cp_out(s[0].goal_objective[..], "ship the composer");
   s[0].ctx_in = 52000; s[0].ctx_cached = 40000; s[0].ctx_out = 428; s[0].ctx_window = 1048576;
 }
-#test "the home screen's foot names the backend for the picked model; once the chat has a turn it shows the cost" {
+#test "the home screen's foot keeps the backend inside the model dropdown only, puts the working folder on the right, and never truncates the model chip from fractional glyph widths; once the chat has a turn it shows the cost" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_composing(s);
   coder_page_set_agy(s, true); coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash-1017", "");
   #assert coder_page_pick_model(s, "agy") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
-  be := elt_find(t[..], "coder.backend");
-  #assert be >= 0 && elt_value_of(t[..], be) == "Antigravity CLI" && elt_find(t[..], "coder.cost") < 0;
-  // it sits right of the model chip, and pressing it opens the model menu
-  #assert t[0].rows[be].x > t[0].rows[elt_find(t[..], "coder.model")].x;
-  #assert cp_press(s, be) && s[0].model_menu;
+  model := elt_find(t[..], "coder.model"); folder := elt_find(t[..], "coder.folder");
+  #assert model >= 0 && folder >= 0 && elt_find(t[..], "coder.backend") < 0 && elt_find(t[..], "coder.cost") < 0;
+  // model on the left, working folder flush to the right side of the composer's foot
+  comp := elt_find(t[..], "coder.composer");
+  #assert abs(t[0].rows[model].x - (t[0].rows[comp].x + cast(f32) CP_FOOT_SIDE)) < 0.01;
+  #assert abs(t[0].rows[folder].x + t[0].rows[folder].w - (t[0].rows[comp].x + t[0].rows[comp].w - cast(f32) CP_FOOT_SIDE)) < 0.01;
+  // "Antigravity CLI" only appears when the model dropdown is opened
+  sh0 := surface_sheet(s[0].surface[..]);
+  for qi: 0..<sh0.no { #assert sh0.over[qi].kind != PRIM_TEXT || cp_find(sh0.over[qi].text, "Antigravity CLI") < 0; }
+  #assert cp_press(s, model) && s[0].model_menu && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
+  t[0] = cp_test_pill_rows(s);
+  agy_opt := elt_find(t[..], "coder.model.5");
+  #assert agy_opt >= 0 && cp_find(elt_value_of(t[..], agy_opt), "Antigravity CLI") >= 0;
   s[0].model_menu = false;
-  #assert coder_page_pick_model(s, "openrouter") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.backend")) == "OpenRouter";
-  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
-  t[0] = cp_test_pill_rows(s); #assert elt_value_of(t[..], elt_find(t[..], "coder.backend")) == "Gemini API";
-  // one message sent: the cost and budget come back in its place
+  // fractional glyph advances in a proportional font must not truncate "Antigravity" into "Antigravi…"
+  fa: [1] Atlas; k := cp_skin();
+  for g: 0..<GP_GLYPHS { fa[0].fonts[k.small.face].advance[g] = 6.73f32; fa[0].fonts[k.label.face].advance[g] = 7.31f32; }
+  fa[0].ready = true;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(fa[..]), k, uiinput(0, 0, false, false, "", ""), 0, 0.016, true, false);
+  cp_layout(s, f[..], 1200, 800);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  sh := surface_sheet(s[0].surface[..]);
+  saw_full := false;
+  for qi: 0..<sh.no {
+    if sh.over[qi].kind == PRIM_TEXT {
+      #assert sh.over[qi].text != "Antigravi…";
+      if sh.over[qi].text == "Antigravity" { saw_full = true; }
+    }
+  }
+  #assert saw_full;
+  // one message sent: the cost and budget come back on the right, before the working folder
   cp_test_one_turn(s, f[..]);
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t[0] = cp_test_pill_rows(s);
-  #assert elt_find(t[..], "coder.backend") < 0 && elt_value_of(t[..], elt_find(t[..], "coder.cost")) == "$0.00 / $50.00";
+  cost := elt_find(t[..], "coder.cost"); folder = elt_find(t[..], "coder.folder"); model = elt_find(t[..], "coder.model");
+  #assert elt_find(t[..], "coder.backend") < 0 && cost >= 0 && elt_value_of(t[..], cost) == "$0.00 / $50.00";
+  #assert t[0].rows[model].x < t[0].rows[cost].x && t[0].rows[cost].x < t[0].rows[folder].x;
 }
-#test "the foot: folder › branch, the model, the context ring, cost and goal" {
+#test "the foot: the model on the left, goal, cost, context ring and folder › branch on the right" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_test_footed(s, f[..]);
   #assert cp_ctx_share(s) > 0.04 && cp_ctx_share(s) < 0.06;
   #assert cp_test_pill_frame(s, f[..], 1200, 800, 0, 0, false);
   t := [1] ElTable.[cp_test_pill_rows(s)];
-  #assert elt_value_of(t[..], elt_find(t[..], "coder.folder")) == "~/work/app › main";
-  #assert elt_find(t[..], "coder.context") >= 0;
-  #assert elt_find(t[..], "coder.cost") >= 0;
-  #assert elt_find(t[..], "coder.goal") >= 0;
+  model := elt_find(t[..], "coder.model"); goal := elt_find(t[..], "coder.goal"); cost := elt_find(t[..], "coder.cost");
+  ring := elt_find(t[..], "coder.context"); folder := elt_find(t[..], "coder.folder");
+  #assert model >= 0 && goal >= 0 && cost >= 0 && ring >= 0 && folder >= 0;
+  #assert elt_value_of(t[..], folder) == "~/work/app › main";
+  #assert t[0].rows[model].x < t[0].rows[goal].x && t[0].rows[goal].x < t[0].rows[cost].x && t[0].rows[cost].x < t[0].rows[ring].x && t[0].rows[ring].x < t[0].rows[folder].x;
   #assert elt_find(t[..], "coder.context.card") < 0;
 }
 #test "the context ring, hovered, shows the last call's tokens in a card over it" {
