@@ -240,7 +240,9 @@ Claude Code chats keep the managed slot above. A Microcoder or Antigravity
 chat is a daemon run the host starts itself, whose run id is the phone's
 session id: the phone keeps the session it opened (no `desktop-` prefix), and
 it is read and written as a Coder Desktop chat is, with `"surface":
-"coder-desktop"`. `RUN.phone` keeps its generation and engine. A follow-up is
+"coder-desktop"`. `RUN.phone` keeps its generation, engine and model; the
+session summary's `model` (and `effort`, `low` for Microcoder) names what runs,
+not what the phone asked for. A follow-up is
 a task line; after its worker ended the run starts again under the same id,
 told the conversation so far (the worker's `recall` line), so the chat stays
 `available`.
@@ -249,3 +251,8 @@ A notice item may say its kind in `notice_kind` (`install`, `login`,
 `limit`), and readers draw it as a setup notice about the computer, never as
 the agent's reply. Older computers send none; readers still draw a `notice`
 item as a notice.
+
+A chat that fell back from the engine the phone asked for (Claude Code missing,
+say) shows one `notice` item of kind `note` under the message it fell back at,
+in plain words: "Claude Code isn't set up on this computer, so this chat runs
+on Gemini 4 Neon." Readers draw it as a quiet line, not a problem.

@@ -552,13 +552,14 @@ es_notice_kind :: (n:int)->string #effects(all) {
   if n==N_INSTALL || n==N_CODEX_INSTALL {return EA_NOTICE_INSTALL;}
   if n==N_SIGNED_OUT {return EA_NOTICE_LOGIN;}
   if n==N_LIMIT {return EA_NOTICE_LIMIT;}
+  if n==N_META {return EA_NOTICE_NOTE;}
   return "";
 }
 #test "a Claude Code install line reaches the phone as an install notice, not a reply" {
   s:[1]Session;pool:[8192]u8;s_init(s[..],pool[..]);s_user(s[..],"Testing, are you here?");s_notice(s[..],N_INSTALL,INSTALL_TEXT);
   q:[1]EaRequest;v:[1]EaView;es_project(s[..],q[..],v[..]);
   #assert v[0].ni==2 && cast(string)v[0].items[1].role[0..<v[0].items[1].nr]=="notice" && cast(string)v[0].items[1].notice[0..<v[0].items[1].nnk]=="install" && v[0].items[0].nnk==0;
-  #assert es_notice_kind(N_SIGNED_OUT)=="login" && es_notice_kind(N_LIMIT)=="limit" && es_notice_kind(N_CODEX_INSTALL)=="install" && es_notice_kind(N_STOPPED)=="" && es_notice_kind(N_ERROR)=="";
+  #assert es_notice_kind(N_SIGNED_OUT)=="login" && es_notice_kind(N_LIMIT)=="limit" && es_notice_kind(N_CODEX_INSTALL)=="install" && es_notice_kind(N_META)=="note" && es_notice_kind(N_STOPPED)=="" && es_notice_kind(N_ERROR)=="";
 }
 es_refuse :: (v:[]EaView,code:string) #effects(all) {v[0].ne=ea_copy(v[0].error[..],code);v[0].complete=false;}
 // What a new conversation can start on: the engine's own catalog (the one a
@@ -686,6 +687,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     v[0].nq=ea_copy(v[0].command[..],cast(string)q[0].command[..]);v[0].nt=ea_copy(v[0].status[..],ifx k>=0 || ph_is(id) then "accepted" else "unknown");return;
   }
   if !ea_fresh(q[0].issued,q[0].expires,cxproc_wall_us()/1000) {es_refuse(v,"expired");return;}
+  fall:[256]u8;note:="";
   if method=="OpenSession" {
     if xt_claimed_session(grant,id) {es_refuse(v,"conflict");return;}
     if k>=0 || !ea_text(cast(string)q[0].text[0..<q[0].nt]) {es_refuse(v,"conflict");return;}
@@ -698,7 +700,7 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
       if q[0].nf>0 {cwd=es_folder_path(cast(string)c[0].workspace[0..<c[0].nw],cast(string)q[0].folder[0..<q[0].nf],real[..]);if cwd.count==0 {es_refuse(v,"folder_refused");return;}}
       ph_open(h,q,grant,id,pick,cwd,file,cast(string)command[0..<n],v);return;
     }
-    if pick.fell_back {q[0].nmo=ea_copy(q[0].model[..],pick.model);q[0].nef=0;}
+    if pick.fell_back {q[0].nmo=ea_copy(q[0].model[..],pick.model);q[0].nef=0;note=pa_note(pick,fall[..]);}
     k=es_take_slot(h);
     if k<0 {es_refuse(v,"capacity");return;}
     slot:=e[0].slots[k..<k+1];es_occupy(h,slot,grant,device);engine:=slot[0].engine[..];
@@ -734,6 +736,8 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
     engine:=slot[0].engine[..];m:=[1]int.[engine[0].model];l:=[1]int.[engine[0].effort];
     if es_choice(engine[0].cat[..],q,m[..],l[..]) {if m[0]!=engine[0].model {e_set_model(engine,m[0]);}engine[0].effort=l[0];}
     es_mark(slot);text:=cast(string)q[0].text[0..<q[0].nt];ag_send(es_agent(slot),text,text);
+    // a chat that fell back to Claude Code says so once, under its first message
+    if note.count>0 {s_notice(slot[0].s[..],N_META,note);}
   }
   else if method=="StopTurn" {ag_stop(es_agent(slot));}
   else if method=="RespondInteraction" {ag_answer(es_agent(slot),q[0].allow);}
