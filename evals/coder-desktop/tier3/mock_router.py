@@ -20,7 +20,9 @@ as recorded responses. Every worker of the flow shares it, so a worker started l
 relaunch) takes the next answer. The router starts it at once (Resume sends no task line) and only
 passes Coder's lines on; the worker writes straight to Coder.
 
-Every line from Coder is recorded to CODER_T3_RECORD/<role>-<pid>.jsonl.
+Every line from Coder is recorded to CODER_T3_RECORD/<role>-<pid>.jsonl. When the task line comes,
+what the worker sees then goes to CODER_T3_RECORD/seen-<role>-<pid>.json: the task's folder, whether
+it holds a .git (a file in a worktree) and the worker's CARGO_TARGET_DIR (GitHub #13771).
 """
 
 from __future__ import annotations
@@ -109,6 +111,11 @@ def main() -> int:
         if isinstance(obj, dict) and "task" in obj:
             task = obj
     role, script = pick(spec, task)
+    cwd = str(task.get("cwd", ""))
+    git = Path(cwd, ".git") if cwd else None
+    seen = {"cwd": cwd, "git": "file" if git and git.is_file() else "dir" if git and git.is_dir() else "",
+            "cargo_target_dir": os.environ.get("CARGO_TARGET_DIR", "")}
+    (record_dir / f"seen-{role}-{os.getpid()}.json").write_text(json.dumps(seen), encoding="utf-8")
     worker = mock_worker.MockWorker(script, str(record_dir / f"{role}-{os.getpid()}.jsonl"))
     for raw, obj in held:
         worker.record(raw, obj)

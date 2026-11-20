@@ -7,8 +7,8 @@ import Foundation
 /// repository has no origin/main), so two chats never edit, stash or reset each other's files.
 /// The folders a repository lists in .coder/worktree.json ("clone") are cloned in from the main
 /// checkout with APFS copy-on-write (cp -c): the Coax compiler and built tools are there at once,
-/// each worktree's copy its own the moment it is rebuilt. The workers share one tool cache and one
-/// Cargo target folder (sharedCaches); apps/coder-desktop/build.sh builds into the worktree's own build/.
+/// each worktree's copy its own the moment it is rebuilt. The workers share one tool cache, and one
+/// Cargo target folder per repository (caches(for:)); apps/coder-desktop/build.sh builds into the worktree's own build/.
 struct ChatWorktree: Codable, Equatable {
     var chat: String       // the chat's id, the worktree folder's name
     var path: String       // the worktree
@@ -27,10 +27,39 @@ struct ChatWorktree: Codable, Equatable {
         let set = ProcessInfo.processInfo.environment["CODER_WORKTREES"] ?? ""
         return set.hasPrefix("/") ? set : home + "/.openagents/worktrees"
     }
-    /// The caches every worker shares, whatever folder it works in: compiled Coax tools
-    /// (coax/web/tool.sh) and Rust builds. A value already in Coder's environment wins.
-    static var sharedCaches: [String: String] {
-        ["COAX_TOOL_CACHE": home + "/.cache/coax-tools", "CARGO_TARGET_DIR": home + "/.cache/coder/cargo-target"]
+    /// The caches a worker in folder uses: compiled Coax tools (coax/web/tool.sh), one folder for
+    /// every worker, and Rust builds, one folder per repository (GitHub #13771), which the main
+    /// checkout and all its chats' worktrees share: ~/.cache/coder/cargo-target/REPO-HASH, named as
+    /// the worktrees folder names it (slug). Outside a repository Cargo builds where it always does.
+    /// A value already in Coder's environment wins.
+    static func caches(for folder: String) -> [String: String] {
+        var c = ["COAX_TOOL_CACHE": home + "/.cache/coax-tools"]
+        if let repo = repository(of: folder) { c["CARGO_TARGET_DIR"] = home + "/.cache/coder/cargo-target/" + slug(repo) }
+        return c
+    }
+    /// The repository folder is in, as its main checkout: walking up, the first .git found is that
+    /// checkout's folder, or a worktree's file, whose gitdir (MAIN/.git/worktrees/NAME) names the
+    /// main checkout it was made from. Nil outside a repository.
+    static func repository(of folder: String) -> String? {
+        guard folder.hasPrefix("/") else { return nil }
+        var dir = (folder as NSString).standardizingPath
+        let fm = FileManager.default
+        for _ in 0..<256 {
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: dir + "/.git", isDirectory: &isDir) {
+                if isDir.boolValue { return dir }
+                guard let text = try? String(contentsOfFile: dir + "/.git", encoding: .utf8),
+                      let line = text.split(separator: "\n").first(where: { $0.hasPrefix("gitdir:") }) else { return dir }
+                var gitdir = line.dropFirst(7).trimmingCharacters(in: .whitespaces)
+                if !gitdir.hasPrefix("/") { gitdir = dir + "/" + gitdir }
+                gitdir = (gitdir as NSString).standardizingPath
+                if let r = gitdir.range(of: "/.git/worktrees/", options: .backwards) { return String(gitdir[..<r.lowerBound]) }
+                return dir   // a submodule or another layout: the folder holding the .git file
+            }
+            if dir == "/" || dir.isEmpty { return nil }
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+        return nil
     }
 
     /// A repository's folder name in the worktrees folder: its last path part in lowercase letters,

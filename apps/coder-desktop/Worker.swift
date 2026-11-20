@@ -42,6 +42,8 @@ final class CoderWorker {
     var program = "mcworker"
     /// Additional environment variables injected only for this worker (used by the Foreman worker).
     var extraEnv: [String: String] = [:]
+    /// The folder it works in, set before start: its repository picks the worker's Cargo target folder.
+    var folder = ""
     /// The folders added to the system's short PATH for what the workers start.
     static var path: String {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -55,8 +57,8 @@ final class CoderWorker {
     /// The variables the worker gets on top of what it inherits, and the ones it loses.
     private func environment() -> (set: [String: String], unset: [String]) {
         var env: [String: String] = ["PATH": CoderWorker.path]
-        // the build caches every chat's worktree shares (#13758), unless Coder's own environment sets them
-        for (k, v) in ChatWorktree.sharedCaches where ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
+        // the build caches a repository's chats share (#13758, #13771), unless Coder's own environment sets them
+        for (k, v) in ChatWorktree.caches(for: folder) where ProcessInfo.processInfo.environment[k] == nil { env[k] = v }
         for (k, v) in extraEnv { env[k] = k == "PATH" ? v + ":" + CoderWorker.path : v }
         // The Claude key goes to the Claude worker only: Microcoder's commands never see it.
         if program == "claudeworker", let key = CoderKey.current { env["CODER_CLAUDE_KEY"] = key; return (env, []) }

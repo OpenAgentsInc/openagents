@@ -24,10 +24,13 @@
 // deep. A folder that can't be told ($VAR, ~user, cd -, --git-dir) counts as a shared one. A heredoc's
 // body and a quoted message are text, never commands.
 //
-// mc_gg_check is pure: it lists each refused git command with the folder it would run in. The
-// caller asks the filesystem which of those folders are main checkouts (tools.coax mc_git_refusal).
+// mc_gg_check is pure: it lists each refused git command with the folder it would run in.
+// mc_gg_refuse then asks the filesystem which of those folders are main checkouts. Microcoder's shell
+// tool (tools.coax mc_git_refusal) and Claude sub-agents' Bash tool (coder/tui/gitguard.coax, a
+// Claude Code PreToolUse hook, GitHub #13771) both refuse through it.
 
 #load "commit.coax";
+#load "../sys/fs.coax";
 
 MC_GG_HITS :: 8;
 MC_GG_ARENA :: 16384;
@@ -325,6 +328,37 @@ mc_gg_refusal :: (why: string, dir: string, out: [] u8) -> string {
   if dir.count > 0 { n = json_raw(out, n, " ("); n = json_raw(out, n, dir); n = json_raw(out, n, ")"); }
   n = json_raw(out, n, ", where other chats may have unsaved work. Nothing ran. Work in your own worktree instead: this chat's folder when Coder made one for it, or `git worktree add ../NAME origin/main` and run it there.");
   return ifx n < 0 then "Refused: this git command would change the files of a shared checkout. Nothing ran." else cast(string) out[0..<n];
+}
+
+// Whether dir is in a repository's main checkout, the one other chats share: walking up from it,
+// the first .git found is a folder (a worktree's .git is a file). False outside a repository.
+mc_gg_shared :: (dir: string) -> bool {
+  d := dir;
+  for up: 0..<256 {
+    if d.count == 0 || d[0] != '/' { return false; }
+    b: [4200] u8;
+    k := fs_kind(fs_join(d, ".git", b[..]));
+    if k == FS_DIR { return true; }
+    if k > 0 { return false; }
+    if d == "/" { return false; }
+    d = fs_dir(d);
+  }
+  return false;
+}
+
+// Why command, run from cwd (home for ~), is refused, into out; "" when it runs. A folder the guard
+// can't tell counts as shared when cwd is in a main checkout or is unknown.
+mc_gg_refuse :: (cwd: string, command: string, home: string, out: [] u8) -> string {
+  h: [1] McGitHits;
+  mc_gg_check(command, cwd, home, h[..]);
+  for i: 0..<h[0].n {
+    d := mc_gg_dir(h[..], h[0].dir[i]);
+    if (d.count == 0 && (cwd.count == 0 || mc_gg_shared(cwd))) || (d.count > 0 && mc_gg_shared(d)) { return mc_gg_refusal(h[0].why[i], d, out); }
+  }
+  if h[0].over && mc_gg_shared(cwd) {
+    return "Refused: this command is too long for the shared-checkout check to read whole (1,024 words), and this folder is a shared checkout. Nothing ran. Split it into shorter commands.";
+  }
+  return "";
 }
 
 // ---------------------------------------------------------------- checks

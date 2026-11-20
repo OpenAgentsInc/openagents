@@ -40,6 +40,7 @@ extension CoderWindow {
                 if j < 0 { break }
                 let one = CoderWorker()
                 if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+                one.folder = cwd
                 wireAgent(r, j, one)
                 guard one.start() else { cd_agent_failed(page, j, one.failure ?? "The sub-agent's worker could not start."); continue }
                 r.agents[j] = one
@@ -132,6 +133,7 @@ extension CoderWindow {
             if j < 0 { break }
             let one = CoderWorker()
             if cd_agent_claude(page, j) != 0 { one.program = "claudeworker" }
+            one.folder = r.folder.path
             let n = cd_agent_task(page, j, r.session + "-agent-\(j)-" + UUID().uuidString.lowercased(), r.folder.path, &out, Int32(out.count))
             if !started.isEmpty {
                 one.attach(started.removeFirst(), from: 0)
@@ -218,8 +220,10 @@ extension CoderWindow {
                 env["PATH"] = res
             }
         }
-        let changed = r.worker.extraEnv != env
+        let cwd = (r === run ? folder : r.folder).path
+        let changed = r.worker.extraEnv != env || ChatWorktree.caches(for: r.worker.folder) != ChatWorktree.caches(for: cwd)
         r.worker.extraEnv = env
+        r.worker.folder = cwd
         if changed && r.worker.alive && cd_running(r.page) == 0 {
             r.worker.stop()
             if r === run { recallDue = true }

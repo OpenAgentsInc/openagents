@@ -9,9 +9,12 @@ CLAUDE_STUB_OUT names the file the answers go to, one JSON line each.
 CLAUDE_STUB_MODE=mcp calls Coder's in-process coder_ls tool instead, and
 CLAUDE_STUB_MODE=mcprun starts a child session with coder_run, and
 CLAUDE_STUB_MODE=hook sends two Bash calls through the PreToolUse hook, and
-CLAUDE_STUB_MODE=calls makes the tool calls listed in CLAUDE_STUB_CALLS.
+CLAUDE_STUB_MODE=calls makes the tool calls listed in CLAUDE_STUB_CALLS, and
+CLAUDE_STUB_MODE=settings runs the Bash commands listed in CLAUDE_STUB_BASH
+through the PreToolUse command hooks its --settings names, as Claude Code
+does, and records each hook's exit and stderr.
 CLAUDE_STUB_ARGV names a file each run's arguments are appended to."""
-import json, os, sys
+import json, os, subprocess, sys
 
 out = os.environ.get("CLAUDE_STUB_OUT", "/dev/null")
 cwd = os.getcwd()
@@ -64,6 +67,20 @@ if mode == "hook":
                 r = read()
             got = r["response"].get("response", {}) or {}
             f.write(json.dumps({"command": cmd, "decision": (got.get("hookSpecificOutput") or {}).get("permissionDecision", "allow"), "hook_id": hook_id}) + "\n")
+    asks = []
+if mode == "settings":
+    # each Bash command in CLAUDE_STUB_BASH through every PreToolUse command hook for Bash in --settings
+    args = sys.argv[1:]
+    raw = next((args[i + 1] for i, a in enumerate(args[:-1]) if a == "--settings"), None) or next((a[11:] for a in args if a.startswith("--settings=")), "{}")
+    hooks = [h["command"] for e in json.loads(raw).get("hooks", {}).get("PreToolUse", []) if e.get("matcher") in ("Bash", "*", "")
+             for h in e.get("hooks", []) if h.get("type") == "command"]
+    with open(out, "a") as f:
+        for cmd in json.loads(os.environ.get("CLAUDE_STUB_BASH", "[]")):
+            payload = json.dumps({"session_id": "stub", "hook_event_name": "PreToolUse", "cwd": cwd, "permission_mode": "bypassPermissions",
+                                  "tool_name": "Bash", "tool_input": {"command": cmd}})
+            ran = [subprocess.run(["/bin/sh", "-c", h], input=payload, capture_output=True, text=True, timeout=60) for h in hooks]
+            f.write(json.dumps({"command": cmd, "hooks": len(hooks), "exit": max([r.returncode for r in ran] or [0]),
+                                "stderr": "".join(r.stderr for r in ran)}) + "\n")
     asks = []
 if mode == "calls":
     # each call in CLAUDE_STUB_CALLS (a JSON list of {"name","arguments"}) to Coder's in-process server, in order

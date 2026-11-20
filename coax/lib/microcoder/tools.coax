@@ -176,36 +176,10 @@ MC_STEP_LINES :: 4096;           // lines one mc_cmd_step takes at most, so a lo
 
 mc_cmd_say :: (o: [] McOutput, s: string) { for c: s { mc_output_byte(o, c); } }
 
-// Whether dir is in a repository's main checkout, the one other chats share: walking up from it,
-// the first .git found is a folder (a worktree's .git is a file). False outside a repository.
-mc_git_shared :: (dir: string) -> bool {
-  d := dir;
-  for up: 0..<256 {
-    if d.count == 0 || d[0] != '/' { return false; }
-    b: [4200] u8;
-    k := fs_kind(fs_join(d, ".git", b[..]));
-    if k == FS_DIR { return true; }
-    if k > 0 { return false; }
-    if d == "/" { return false; }
-    d = fs_dir(d);
-  }
-  return false;
-}
-
-// Why the shared-checkout guard refuses command in cwd (git-guard.coax), into out; "" when it runs.
-// A folder the guard can't tell counts as shared when cwd is in a main checkout or is unknown.
+// Why the shared-checkout guard refuses command in cwd (git-guard.coax mc_gg_refuse), into out; "" when it runs.
 mc_git_refusal :: (cwd: string, command: string, out: [] u8) -> string {
-  h: [1] McGitHits;
-  hb: [4096] u8; home := cl_getenv("HOME", hb[..]);
-  mc_gg_check(command, cwd, home, h[..]);
-  for i: 0..<h[0].n {
-    d := mc_gg_dir(h[..], h[0].dir[i]);
-    if (d.count == 0 && (cwd.count == 0 || mc_git_shared(cwd))) || (d.count > 0 && mc_git_shared(d)) { return mc_gg_refusal(h[0].why[i], d, out); }
-  }
-  if h[0].over && mc_git_shared(cwd) {
-    return "Refused: this command is too long for the shared-checkout check to read whole (1,024 words), and this folder is a shared checkout. Nothing ran. Split it into shorter commands.";
-  }
-  return "";
+  hb: [4096] u8;
+  return mc_gg_refuse(cwd, command, cl_getenv("HOME", hb[..]), out);
 }
 
 // Spawns command; done at once (with why in the output) when it could not start, or when the

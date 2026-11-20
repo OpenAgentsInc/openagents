@@ -717,6 +717,8 @@ def main() -> int:
     build_driver()
     worker = build_worker("mcworker")
     claude_worker = build_worker("claudeworker") if args.claude else None
+    if args.claude:
+        build_worker("gitguard")   # the git guard hook claudeworker finds beside it (#13771)
 
     sha = sh(["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT).stdout.strip() or "nogit"
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())

@@ -54,6 +54,19 @@ struct WorktreeTest {
         check((try? String(contentsOfFile: repo + "/tools/bin/coax", encoding: .utf8)) == "compiler v1", "a rebuild in the worktree leaves the main checkout's copy alone")
         check(ChatWorktree.changes(w) == [], "the cloned, ignored tools are not changes")
 
+        // one Cargo target folder per repository, shared by its main checkout and its chats' worktrees (#13771)
+        check(ChatWorktree.repository(of: repo) == repo && ChatWorktree.repository(of: repo + "/sub") == repo, "a folder in a main checkout is in that repository")
+        check(ChatWorktree.repository(of: w.path) == repo && ChatWorktree.repository(of: w.path + "/tools/bin") == repo, "a chat's worktree is in the repository it was made from")
+        check(ChatWorktree.repository(of: tmp + "/home") == nil && ChatWorktree.repository(of: "relative") == nil, "a folder outside a repository is in none")
+        let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
+        let cargo = ChatWorktree.caches(for: w.path)["CARGO_TARGET_DIR"]
+        check(cargo == home + "/.cache/coder/cargo-target/" + slug, "a worktree's Cargo target folder is its repository's: \(cargo ?? "none")")
+        check(ChatWorktree.caches(for: repo + "/sub")["CARGO_TARGET_DIR"] == cargo, "the main checkout builds into the same folder")
+        let other = tmp + "/work/other"
+        _ = sh("mkdir -p other && git init -q -b main other", in: tmp + "/work")
+        check(ChatWorktree.caches(for: other)["CARGO_TARGET_DIR"].map { $0 != cargo && $0.hasSuffix("/" + ChatWorktree.slug(other)) } == true, "another repository builds into its own folder")
+        check(ChatWorktree.caches(for: tmp + "/home")["CARGO_TARGET_DIR"] == nil && ChatWorktree.caches(for: tmp + "/home")["COAX_TOOL_CACHE"] == home + "/.cache/coax-tools", "outside a repository Cargo is left alone; the Coax tool cache is shared")
+
         // found again on resume, and remade from its branch when its folder was removed by hand
         guard case .success(let again) = ChatWorktree.create(repo: repo, chat: id, root: root) else { check(false, "the worktree is found again"); exit(1) }
         check(again == w, "a chat that goes on finds its worktree")

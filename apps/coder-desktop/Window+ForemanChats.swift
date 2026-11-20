@@ -179,6 +179,7 @@ extension CoderWindow {
             // moved.page: the chat may have been opened meanwhile, and its page is the window's then
             guard let self, cd_running(moved.page) != 0 else { return }
             var out = [CChar](repeating: 0, count: 262144)
+            moved.worker.folder = moved.folder.path
             if moved.worker.start() {
                 let n = cd_task(moved.page, moved.session, moved.folder.path, &out, Int32(out.count))
                 moved.worker.write(out, count: Int(n))
@@ -277,6 +278,7 @@ extension CoderWindow {
         }
         if cd_action(back) == 1 {
             var out = [CChar](repeating: 0, count: 262144)
+            moved.worker.folder = moved.folder.path
             if moved.worker.start() {
                 var rn = cd_recall_line(back, &out, Int32(out.count))
                 if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }

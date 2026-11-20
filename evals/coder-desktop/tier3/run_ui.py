@@ -762,6 +762,41 @@ def flow_file_pane(f: Flow) -> str:
     return "file pane"
 
 
+def flow_worktree_first_message(f: Flow) -> str:
+    """The first message of a new chat in a repository (--folder REPO) runs in the chat's own worktree, made before the turn starts"""
+    repo = f.home / "work" / "proj"
+    repo.mkdir(parents=True)
+    git = ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
+    (repo / "a.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run(git + ["add", "a.txt"], check=True)
+    subprocess.run(git + ["commit", "-qm", "start"], check=True)
+    app = f.launch("--folder", str(repo))
+    f.send("Explain the layout")
+    app.wait("the reply to end", lambda s: s["running"] == 0 and s["cost_usd_micros"] > 0, 20)
+    tasks = [r for r in f.records("main") if r["kind"] == "task"]
+    f.expect(len(tasks) == 1, f"{len(tasks)} task lines reached the worker, want 1")
+    seen = [json.loads(p.read_text()) for p in sorted((f.case_dir / "rec").glob("seen-main-*.json"))]
+    if len(tasks) != 1 or len(seen) != 1:
+        raise FlowFailed(f"tasks {tasks}, seen {seen}")
+    cwd = Path(tasks[0]["msg"]["cwd"])
+    root = f.home / ".openagents" / "worktrees"
+    f.expect(cwd.parent.parent == root and cwd.parent.name.startswith("proj-"), f"the turn ran in {cwd}, not a worktree under {root}")
+    # when the task line reached the worker, its folder was a worktree already: a .git file, not a folder
+    f.expect(seen[0]["cwd"] == str(cwd) and seen[0]["git"] == "file", f"the worker saw {seen[0]} as the turn started")
+    branch = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f.expect(branch == "coder/" + cwd.name, f"the worktree is on {branch!r}, want coder/{cwd.name}")
+    main = subprocess.run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True).stdout.strip()
+    f.expect(main == "main", f"the main checkout moved to {main!r}")
+    # the worker builds Rust into its repository's own Cargo folder, named as its worktrees folder is
+    want = f.home / ".cache" / "coder" / "cargo-target" / cwd.parent.name
+    f.expect(seen[0]["cargo_target_dir"] == str(want), f"CARGO_TARGET_DIR {seen[0]['cargo_target_dir']!r}, want {want}")
+    kept = f.chats()
+    f.expect(len(kept) == 1 and kept[0].stem == cwd.name, f"kept chats {[p.stem for p in kept]}, want the worktree's chat {cwd.name}")
+    f.notes.append(f"worktree {cwd.relative_to(f.home)}, Cargo {want.relative_to(f.home)}")
+    return "worktree before the first message"
+
+
 FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("idle_layouts", flow_idle_layouts),
     ("send_stream_new_chat", flow_send_stream),
@@ -772,6 +807,7 @@ FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("quit_reopen", flow_quit_reopen),
     ("followups", flow_followups),
     ("file_pane", flow_file_pane),
+    ("worktree_first_message", flow_worktree_first_message),
 ]
 
 

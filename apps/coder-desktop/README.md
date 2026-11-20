@@ -68,7 +68,7 @@ where they were.
 
 - The branch shows under the composer as `coder/` and the first 8 characters of the chat's id.
 - Making a worktree takes as long as checking the repository out. The folders the repository lists in `.coder/worktree.json` (`{"clone": ["coax/bin", ...]}`) are then cloned in from the main checkout with APFS copy-on-write (`cp -c`), so the Coax compiler and built tools are there at once. Each worktree's copy is its own: a rebuild in one changes nothing in another, and a link back into the main checkout is removed.
-- Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`) and one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target`), unless Coder's own environment sets them. `apps/coder-desktop/build.sh` builds into the worktree's own `build/`.
+- Every worker shares one Coax tool cache (`COAX_TOOL_CACHE`, `~/.cache/coax-tools`). Each repository has one Cargo target folder (`CARGO_TARGET_DIR`, `~/.cache/coder/cargo-target/REPO-HASH`), which its main checkout and all its chats' worktrees share. Outside a repository, Cargo builds where it always does. Coder's own environment wins over both. `apps/coder-desktop/build.sh` builds into the worktree's own `build/`.
 - Opening a chat goes back to its worktree. One removed by hand is made again from its branch.
 - Deleting a chat removes its worktree when it has no changes, and its branch when everything on it is in another branch. A worktree with changed or new files is never removed: Coder says where it is and leaves it.
 - `defaults write com.openagents.coder chatWorktrees -bool NO` turns this off; `CODER_WORKTREES=DIR` puts worktrees somewhere else.
@@ -78,7 +78,10 @@ chats' work away before they start (`coax/lib/microcoder/git-guard.coax`):
 `git stash` (all but `list` and `show`), `--autostash` on pull, rebase or
 merge, `git reset --hard`, `git checkout .` or `git restore .` on the whole
 tree, `checkout`/`switch` with `--force`, and `git clean -f`. The refusal says
-to work in a worktree.
+to work in a worktree. A Claude sub-agent's Bash commands go through the same
+check: Claude Code runs `gitguard` (`coder/tui/gitguard.coax`, shipped beside
+`claudeworker`) as a PreToolUse hook before each one, and Claude is told why a
+command was refused.
 
 Microcoder runs shell commands as you, starting in the working folder, with
 the `danger-full-access` profile: nothing confines them, and a command can

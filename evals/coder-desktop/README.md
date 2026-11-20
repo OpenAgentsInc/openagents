@@ -23,7 +23,7 @@ Run `coax/build.sh` first in a fresh worktree. Results go to `evals/coder-deskto
 | 1 | Follow-ups (`followups/run_followups.py`): steer, queue and interrupt on the real `mcworker` with generated `GW_REPLAY` replies in a temp `HOME`, and once through `host_driver` (GitHub #13715, #13716). `followups/capture_wire.py --write` records the follow-up lines each way into `proto/coder/microcoder-worker-lines-v1.json` (#13718) | free (no model is called) |
 | compaction | `compaction/` C1-C12 | free |
 | 2 | 15 live tasks (`tier2/tasks/`): the real `host.c` and `page.coax` in `host_driver` against the real `mcworker` | about $0.50 a full run (Gemini 4 Neon, Hydrogen sub-agents) |
-| 3 | 9 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 20 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
+| 3 | 10 flows (`tier3/run_ui.py`) on the real built `Coder.app`, driven with real input events on the mock worker; 20 window captures compared with `tier3/goldens/` | free (macOS only; a build plus about 75 s) |
 | 4 | 4 golden trajectories from real desktop bugs and the 25-task coding benchmark slice (`tier4/slice.json`), through the Tier 2 harness, compared with `tier4/baseline/` | about $1.20 a run |
 
 ## Tier 2 and Tier 4 are opt-in
@@ -46,7 +46,7 @@ spend nothing.
 3. Starts `host_driver --worker mcworker` with that `HOME`. The page sends the task line the desktop
    sends: `gated`, `edits`, `agents`, `unlimited`, `danger-full-access`, the skills prefix (one
    skill is installed in the temp `HOME`), and the composer's default model (Gemini 4 Neon). With
-   `--claude`, `claudeworker` is built too, and tasks marked `"claude": true` turn on Claude levels.
+   `--claude`, `claudeworker` and its git guard `gitguard` are built too, and tasks marked `"claude": true` turn on Claude levels.
 4. Sets the chat budget from the task (default $0.10) and a wall-clock limit (default 300 s). At the
    limit it sends stop.
 5. Runs the steps: `send` (a message), `goal` (`/goal`), `reload` (save the chat, close the page and
@@ -193,6 +193,7 @@ the sizes differ and the flow fails, so regenerate them there.
 | `quit_reopen` | send, Command-Q, launch again on the same HOME, a click on the chat | clean exit, the chat kept and listed, a click loads it | `reopen_1200x800`, `reopened_chat_1200x800` |
 | `followups` | send, steer, queue two follow-ups, Esc, relaunch, a click on Resume | the steer lands in the reply, Esc stops the first follow-up and pauses the queue, the queue survives a relaunch and Resume runs it | `followups_{paused,restored,resumed}_1200x800` |
 | `file_pane` | open a `.coax` file with Coder, type, Command-S, a click on Close | the file shows in the right pane, typing makes it Edited, Command-S writes it, Close closes the pane | `file_pane_1200x800`, `file_pane_edited_1200x800` |
+| `worktree_first_message` | `--folder` a scratch repository, type, Return | the turn runs in `~/.openagents/worktrees/proj-HASH/CHAT` on `coder/CHAT`, which the worker finds made (a `.git` file) when the task line comes; the main checkout stays on `main`; the worker's `CARGO_TARGET_DIR` is `~/.cache/coder/cargo-target/proj-HASH`; the chat is kept under the worktree's id | none |
 
 After a deliberate UI change, run `run.sh --tier 3 --update-goldens`, look at the new
 `tier3/goldens/*.png` and commit them with the change. Transcript goldens (`replied`, `streaming`,

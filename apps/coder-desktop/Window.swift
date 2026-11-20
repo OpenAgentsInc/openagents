@@ -349,6 +349,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             let bgAct = cd_action(back.page)
             if bgAct == 1 {
                 var out = [CChar](repeating: 0, count: 262144)
+                back.worker.folder = back.folder.path
                 if back.worker.start() {
                     let from = back.worker.offset
                     let n = cd_task(back.page, back.session, back.folder.path, &out, Int32(out.count))
@@ -380,7 +381,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         if let text = also, chat != nil, cd_running(page) != 0 { also = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         if let n = showAgent, cd_pane(page, Int32(n)) != 0 { showAgent = nil; wake() }
-        if cd_save_due(page) != 0 { keep(); wake() }
+        // not while a new chat's first message waits on its worktree: kept now, the chat would take an id
+        // of its own and the worktree made for it would be thrown away with the message left running (#13771)
+        if !run.preparingWorktree, cd_save_due(page) != 0 { keep(); wake() }
         var sides = [Float](repeating: 0, count: 2)
         if cd_sides(page, &sides) != 0 { UserDefaults.standard.set(sides[0], forKey: "sideWidth"); UserDefaults.standard.set(sides[1], forKey: "paneWidth") }
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
