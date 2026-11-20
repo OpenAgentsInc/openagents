@@ -443,8 +443,9 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
   cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw);
-  m_x := cp_composer_foot(s, f, x, box_y + g.height + a.gap_small, cw, running, exceeded);
-  if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y); }
+  foot_y := box_y + g.height + a.gap_small;
+  m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
+  if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }
   // the @ and / popover at the draft's token (mention.coax, #13699)
   cp_mn_sync(s); cp_mn_due(s);
   if !s[0].model_menu { cp_mn_paint(s, f, x, cw); }
@@ -675,8 +676,9 @@ cp_context_ring :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, col_x: f32, 
   _ := sheet_text(sh, f[0].m, -1, px + pad, py + pad, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, line1, pw - 2 * pad));
   _ := sheet_text(sh, f[0].m, -1, px + pad, py + pad + k.label.line, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, line2, pw - 2 * pad));
 }
-// The models' menu, over the composer at box_y, its start at the model chip's (m_x).
-cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box_y: f32) {
+// The models' menu, anchored to the model chip at (m_x, foot_y): below the chip when there is room
+// (as on a centred new chat, matching Zeron's ModelPicker), else above the composer at box_y.
+cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box_y: f32, foot_y: f32, h: f32) {
   k := f[0].skin; sh := f[0].sheet; th := cp_theme();
   z_ink := th.text; z_sec := th.muted; z_hov := th.hover;
   glass := cp_glass(s);   // the models' menu frosted: a blur of what is behind it (compose.coax)
@@ -688,7 +690,8 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
   px := m_x;
   if px + pw > x + cw { px = x + cw - pw; }
   if px < x { px = x; }
-  py := box_y - ph - 6.0f32;
+  below_y := foot_y + k.cmp.chip_h + 6.0f32;
+  py := ifx below_y + ph <= h - 8.0f32 then below_y else box_y - ph - 6.0f32;
   if py < 8.0f32 { py = 8.0f32; }
   menu_r := 12.0f32;
   // zeron.menu: its shadow (the skin's, 0 20 56), then, frosted, its solid over a blur of what is

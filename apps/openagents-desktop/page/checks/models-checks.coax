@@ -135,7 +135,7 @@
   menu := elt_find(t[..], "coder.model.menu");
   or_opt := elt_find(t[..], "coder.model.4");
   #assert comp >= 0 && menu >= 0 && or_opt >= 0;
-  // Popover sits cleanly above the composer box without overlapping the text field.
+  // When docked at the bottom (s[0].d == 1), popover sits above the composer (no overlap).
   #assert t[0].rows[menu].y + t[0].rows[menu].h <= t[0].rows[comp].y;
   #assert t[0].rows[or_opt].y + t[0].rows[or_opt].h <= t[0].rows[comp].y;
   // Clicking the center of the OpenRouter option hits coder.model.4 and selects OpenRouter.
@@ -150,6 +150,27 @@
   cp_layout(s, f[..], 900.0f32, 700.0f32);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert cp_test_press_field(s, CP_ED_COMPOSER);
+}
+
+#test "Centred new chat opens the model picker popover below the model chip" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
+  s[0].d = 0.0f32;
+  f: [1] UiFrame;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.0, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  btn := surface_find(s[0].surface[..], "coder.model");
+  #assert btn >= 0 && cp_press(s, btn) && s[0].model_menu;
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0.016, 0.016, false, false);
+  cp_layout(s, f[..], 900.0f32, 700.0f32);
+  #assert uiframe_end(f[..], s[0].surface[..]);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  comp := elt_find(t[..], "coder.composer");
+  chip := elt_find(t[..], "coder.model");
+  menu := elt_find(t[..], "coder.model.menu");
+  #assert comp >= 0 && chip >= 0 && menu >= 0;
+  #assert t[0].rows[menu].y >= t[0].rows[chip].y + t[0].rows[chip].h;
+  #assert t[0].rows[menu].y >= t[0].rows[comp].y + t[0].rows[comp].h;
 }
 
 #test "Antigravity appears in the model picker when installed, is selectable, and persists" {
