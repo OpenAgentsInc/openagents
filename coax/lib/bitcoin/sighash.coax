@@ -169,6 +169,43 @@ BtTapWork :: struct {key:[1]SignScalar;point:[1]SignPoint;internal:[32]u8;tweake
   bt_annex_hash(a[0..<1],h[..]);
   d:[2]u8;d[0]=1;d[1]=0x50;bt_sha(d[..],e[..]);#assert bt_same(h[..],e[..]);
 }
+#test "the reader refuses a well-formed transaction with no inputs or no outputs" {
+  x:[64]u8;
+  // version 2, no inputs, one output of 0 sats with an empty script, locktime 0
+  #assert !bt_tx_read(bt_unhex("02000000000100000000000000000000000000",x[..])).ok;
+  // version 2, one input, no outputs, locktime 0
+  #assert !bt_tx_read(bt_unhex("020000000109090909090909090909090909090909090909090909090909090909090909090000000000ffffffff0000000000",x[..])).ok;
+  #assert bt_tx_read(bt_unhex("020000000109090909090909090909090909090909090909090909090909090909090909090000000000ffffffff0100000000000000000000000000",x[..])).ok;
+}
+#test "BIP-341 message parts: every refusal at its edge, and each byte it writes" #steps 50000000 {
+  h:[5][32]u8;v:[4]u8;l:[4]u8;prev:[36]u8;seq:[4]u8;spk:[34]u8;single:[9]u8;leaf:[32]u8;an:[2]u8;an[0]=0x50;an[1]=0x51;
+  m:[BT_SIGMSG]u8;none:=leaf[0..<0];
+  for ht:-1..<300 {
+    n:=bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],ht,none,none,BT_NO_CODESEP,m[..]);
+    #assert (n>0)==(ht==0 || ht==1 || ht==2 || ht==3 || ht==0x81 || ht==0x82 || ht==0x83) && (n>0 || n== -1);
+  }
+  n0:=bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,none,BT_NO_CODESEP,m[..]);#assert n0==175;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,none,BT_NO_CODESEP,m[0..<BT_SIGMSG-1])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],-1,spk[..],seq[..],single[..],0,none,none,BT_NO_CODESEP,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],0,spk[..],seq[..],single[..],0,none,none,BT_NO_CODESEP,m[..])==n0;
+  // SINGLE needs the output; one byte of it is enough, and ALL needs none
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],none,3,none,none,BT_NO_CODESEP,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],none,0x83,none,none,BT_NO_CODESEP,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[0..<1],3,none,none,BT_NO_CODESEP,m[..])>0;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],none,1,none,none,BT_NO_CODESEP,m[..])==n0;
+  // an annex of one byte is an annex: 0x50 adds sha_annex and the spend_type bit, anything else refuses
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,an[1..<2],none,BT_NO_CODESEP,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,an[0..<1],none,BT_NO_CODESEP,m[..])==n0+32 && m[170]==1;
+  // the leaf is 0 or 32 bytes; codesep is 0 to 0xffffffff
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,leaf[0..<31],BT_NO_CODESEP,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,leaf[..],-1,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,leaf[..],BT_NO_CODESEP+1,m[..])== -1;
+  #assert bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,leaf[..],0,m[..])==n0+37;
+  // over a buffer of 0xff: the epoch, the hash type and key_version are written as zeros
+  for i:0..<BT_SIGMSG {m[i]=255;}
+  n:=bt_sigmsg_taproot_parts(h[..],v[..],l[..],0,prev[..],1,spk[..],seq[..],single[..],0,none,leaf[..],BT_NO_CODESEP,m[..]);
+  #assert n==n0+37 && m[0]==0 && m[1]==0 && m[170]==2 && m[n-5]==0 && m[n-4]==255 && m[n-1]==255;
+}
 #test "taproot signing refuses a zero key and bad views, and clears" #steps 2000000000 {
   k:[32]u8;m:[33]u8;h:[32]u8;aux:[32]u8;w:[1]BtTapWork;sig:[65]u8;sig[0]=7;
   #assert !bt_taproot_sign(k[..],m[0..<0],h[..],aux[..],w[..],sig[0..<64],false) && sig[0]==7 && w[0].tweaked[0]==0;
@@ -197,7 +234,8 @@ bt_tx_read :: (b:[]u8)->BtTx #effects(all) {
   r:=[1]BtTx.[BtTx.{}];bad:BtTx;
   if b.count>BT_TX {return bad;}
   ins:[BT_IO]TxIn;outs:[BT_IO]TxOut;items:[1]TxItem;
-  t:=tx_read_vartime(b,false,ins[..],outs[..],items[0..<0]);
+  // Equivalent mutants on the next line: with no item slots a witness read can only refuse (an empty witness refuses as TX_NO_WITNESS, and any item needs a slot), so reading witnesses or giving one slot changes no result
+  t:=tx_read_vartime(b,false,ins[..],outs[..],items[0..<0]);  // mutant: equivalent
   if t.code!=TX_OK || t.nin==0 || t.nout==0 {return bad;}
   for k:0..<4 {r[0].version[k]=b[k];r[0].locktime[k]=b[t.locktime+k];}
   for k:0..<t.nin {
@@ -276,7 +314,8 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
   #assert sha256_init(st[..])==SHA_OK && sha256_update_checked(st[..],c[0..<bt_var_put(c[..],0,annex.count)],false)==SHA_OK;
   at:=0;
   while at<annex.count {
-    end:=at+65536;if end>annex.count {end=annex.count;}
+    // Equivalent mutants on the next line: the chunk size and the edge only change how the annex is split between updates; SHA-256 of the whole is the same
+    end:=at+65536;if end>annex.count {end=annex.count;}  // mutant: equivalent
     #assert sha256_update_checked(st[..],annex[at..<end],false)==SHA_OK;
     at=end;
   }
@@ -295,9 +334,11 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
 bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
   // A hash type that doesn't exist refuses before any hashing.
-  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}
+  // Equivalent mutants on the next line: bt_sigmsg_taproot_parts refuses the same hash types, and SINGLE with no output at index (single is then empty), so this early refusal only saves the hashing
+  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}  // mutant: equivalent
   h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return -1;}
-  single:=b[0..<0];if index<t.nout {single=b[t.out_at[index]..<t.out_at[index]+t.out_n[index]];}
+  // Equivalent mutants on the next line: single is read only for SINGLE, which the line above refuses when index >= nout; at index == nout the read output is out_at 0, out_n 0 (empty) in a read transaction
+  single:=b[0..<0];if index<t.nout {single=b[t.out_at[index]..<t.out_at[index]+t.out_n[index]];}  // mutant: equivalent
   return bt_sigmsg_taproot_parts(h[..],t.version[..],t.locktime[..],index,t.inputs[index].prev[..],amounts[index],
     spk[index].b[0..<spk[index].n],t.inputs[index].seq[..],single,hashtype,annex,leaf,codesep,m);
 }
@@ -325,8 +366,10 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
     n=bt_var_put(m,n,spk.count);n=bt_put(m,n,spk);
     n=bt_put(m,n,seq);
   } else {n=bt_le(m,n,index,4);}
-  if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}      // sha_annex
-  if base==BT_SINGLE {bt_sha(single,m[n..<n+32]);n+=32;}
+  // Equivalent mutants on the next line: the hash writes 32 bytes into a view of 32 or more; m holds BT_SIGMSG bytes, so a 33-byte view never passes its end here
+  if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}  // mutant: equivalent (sha_annex)
+  // Equivalent mutants on the next line: as for sha_annex above: 32 bytes written into a view of 32 or more, inside m
+  if base==BT_SINGLE {bt_sha(single,m[n..<n+32]);n+=32;}  // mutant: equivalent
   if ext==1 {n=bt_put(m,n,leaf);m[n]=0;n+=1;n=bt_le(m,n,codesep,4);}
   return n;
 }
@@ -335,7 +378,8 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
 bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool #effects(all) {
   if out.count!=32 {return false;}
   m:[BT_SIGMSG]u8;n:=bt_sigmsg_taproot(b,tp,index,amounts,spk,hashtype,annex,leaf,codesep,m[..]);
-  if n<0 {return false;}
+  // Equivalent mutants on the next line: bt_sigmsg_taproot returns -1 or a length of at least 2 (the epoch and hash type), never 0
+  if n<0 {return false;}  // mutant: equivalent
   bt_tagged(BH_TAPSIGHASH,m[0..<n],out);
   return true;
 }
