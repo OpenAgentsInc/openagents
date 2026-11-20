@@ -17,6 +17,44 @@ EnvironmentApp :: struct {
   // The folders the computer last offered (DescribeEnvironment, ListSessions) and the one a new
   // session opens in (nfo 0: the workspace itself). An older computer offers none and gets none.
   folders:[EA_FOLDERS]EaFolder;nfolders:int;folder:[EA_FOLDER]u8;nfo:int;
+  // The newest StopSubagent (GitHub #13776): the item of the call that started its sub-agent, where
+  // it stands (EU_SUB_*) and, refused, the computer's code. A sub-agent's page reads it.
+  stop_item:[128]u8;nstop_item:int;stop_state:int;stop_error:[32]u8;nstop_error:int;
+}
+EU_SUB_SENDING::1;EU_SUB_ACCEPTED::2;EU_SUB_UNSURE::3;EU_SUB_REFUSED::4;
+// Stops one sub-agent of the open Coder Desktop chat's running turn (StopSubagent, GitHub #13776):
+// item is the ReadSession item of the call that started it. The write has its own command
+// identity, as Stop does. False when nothing goes: another write is out or unsure, or the open
+// conversation is not a running Coder Desktop chat.
+eu_stop_subagent :: (e:[]EnvironmentApp,item:string)->bool #effects(all) {
+  if e[0].flight || e[0].random || e[0].uncertain || e[0].action!=0 || item.count<1 || item.count>128 {return false;}
+  k:=eu_current(e);if k<0 || !e[0].view[0].sessions[k].desktop || !e[0].view[0].sessions[k].busy {return false;}
+  eu_mutate(e,"StopSubagent",false);if !e[0].random {return false;}
+  e[0].request[0].nit=ea_copy(e[0].request[0].item[..],item);e[0].nstop_item=ea_copy(e[0].stop_item[..],item);e[0].stop_state=EU_SUB_SENDING;e[0].nstop_error=0;return true;
+}
+// Where the newest StopSubagent landed, when the request is one.
+eu_sub_settle :: (e:[]EnvironmentApp,state:int,code:string) #effects(all) {
+  if cast(string)e[0].request[0].method[0..<e[0].request[0].nm]!="StopSubagent" {return;}
+  e[0].stop_state=state;e[0].nstop_error=ea_copy(e[0].stop_error[..],ifx code.count>32 then cast(string)code[0..<32] else code);if e[0].nstop_error<0 {e[0].nstop_error=0;}
+}
+#test "a running Coder Desktop chat stops one sub-agent under its own command, and says where it landed (#13776)" {
+  e:[1]EnvironmentApp;e[0].active=true;e[0].page=2;e[0].selected=0;e[0].catalog[0].n=1;
+  h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";n:=ea_copy(e[0].catalog[0].entries[0].host[..],h);
+  e[0].ns=ea_copy(e[0].session[..],"desktop-0123456789abcdef0123456789abcdef");e[0].view[0].ns=1;row:=e[0].view[0].sessions[..];
+  row[0].ni=ea_copy(row[0].id[..],"desktop-0123456789abcdef0123456789abcdef");row[0].busy=true;row[0].desktop=false;row[0].generation=7;
+  #assert !eu_stop_subagent(e[..],"3:0") && !e[0].random;   // a chat that is not Coder Desktop's has no such stop
+  row[0].desktop=true;#assert !eu_stop_subagent(e[..],"") && eu_stop_subagent(e[..],"3:0");
+  q:=e[0].request[..];#assert e[0].random && e[0].action==11 && cast(string)q[0].method[0..<q[0].nm]=="StopSubagent" && cast(string)q[0].item[0..<q[0].nit]=="3:0" && q[0].generation==7 && e[0].stop_state==EU_SUB_SENDING;
+  #assert !eu_stop_subagent(e[..],"5:0");   // one write at a time
+  e[0].action=0;eu_reply(e[..],11,0,"{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"\",\"now_ms\":1700000000000}",false);
+  #assert e[0].flight && e[0].action==4 && e[0].request[0].nit==3;
+  // a lost reply leaves it unsure; the computer's refusal says why
+  e[0].action=0;eu_reply(e[..],4,0,"",true);#assert e[0].uncertain && e[0].stop_state==EU_SUB_UNSURE;
+  e[0].uncertain=false;e[0].flight=true;e[0].stop_state=EU_SUB_SENDING;
+  v:[1]EaView;v[0].nh=ea_copy(v[0].host[..],h);v[0].nm=ea_copy(v[0].method[..],"StopSubagent");v[0].ne=ea_copy(v[0].error[..],"conflict");b:[8192]u8;w:=ea_view_write(v[..],b[..]);
+  eu_reply(e[..],4,200,cast(string)b[0..<w],false);#assert e[0].stop_state==EU_SUB_REFUSED && cast(string)e[0].stop_error[0..<e[0].nstop_error]=="conflict" && e[0].view[0].ns==1;
+  e[0].flight=true;v[0].ne=0;v[0].nq=ea_copy(v[0].command[..],"11111111111111111111111111111111");v[0].nt=ea_copy(v[0].status[..],"accepted");w=ea_view_write(v[..],b[..]);
+  eu_reply(e[..],4,200,cast(string)b[0..<w],false);#assert e[0].stop_state==EU_SUB_ACCEPTED && e[0].nstop_error==0;
 }
 // The folder a new session asks for: the chosen one while the computer still offers it, else "".
 eu_folder :: (e:[]EnvironmentApp)->string #effects(all) {
@@ -116,6 +154,7 @@ eu_level :: (e:[]EnvironmentApp,m:int)->int #effects(all) {
 }
 eu_http :: (e:[]EnvironmentApp,catalog:bool) #effects(all) {
   if e[0].flight || e[0].action!=0 {return;}
+  if !catalog && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="StopSubagent" {e[0].stop_state=EU_SUB_SENDING;}
   if e[0].local {n:=ea_write(e[0].request[..],e[0].body[..]);if n>0 {e[0].nb=n;e[0].action=14;e[0].flight=true;}return;}
   path:[512]u8;n:=0;wire:[24576]u8;nw:=0;
   if catalog {n=el_put(path[..],0,"/api/chat/environments/v1");}
@@ -164,16 +203,16 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
   if op==11 {
     if !e[0].random {return;}e[0].random=false;
     nodes:[16]JvNode;d:[1]Jv;q:=e[0].request[..];
-    if failed || !jv_parse(d[..],raw,nodes[..]) {eu_note(e,"Could not create a command identity.");return;}
+    if failed || !jv_parse(d[..],raw,nodes[..]) {eu_note(e,"Could not create a command identity.");eu_sub_settle(e,EU_SUB_REFUSED,"identity");return;}
     q[0].nc=jv_str(d[0],jv_get(d[0],0,"command_id"),q[0].command[..]);
     q[0].issued=jv_int(d[0],jv_get(d[0],0,"now_ms"),0);q[0].expires=ea_deadline(q[0].issued);
     if cast(string)q[0].method[0..<q[0].nm]=="OpenSession" {q[0].ns=jv_str(d[0],jv_get(d[0],0,"session_id"),q[0].session[..]);}
-    if q[0].nc!=32 || !ea_id(cast(string)q[0].command[..],32) || q[0].ns<1 || q[0].expires<=0 {eu_note(e,"Invalid command identity.");return;}
+    if q[0].nc!=32 || !ea_id(cast(string)q[0].command[..],32) || q[0].ns<1 || q[0].expires<=0 {eu_note(e,"Invalid command identity.");eu_sub_settle(e,EU_SUB_REFUSED,"identity");return;}
     eu_http(e,false);return;
   }
   if (op!=4 && op!=14) || !e[0].flight {return;}e[0].flight=false;e[0].sync_requested=false;
   if failed || status!=200 {
-    e[0].uncertain=true;e[0].retry_wait=4;eu_note(e,ifx ea_right(cast(string)e[0].request[0].method[0..<e[0].request[0].nm])>0 then "Offline · command pending" else "Offline");return;
+    e[0].uncertain=true;e[0].retry_wait=4;eu_note(e,ifx ea_right(cast(string)e[0].request[0].method[0..<e[0].request[0].nm])>0 then "Offline · command pending" else "Offline");eu_sub_settle(e,EU_SUB_UNSURE,"");return;
   }
   if e[0].selected<0 {if !ea_catalog_read(raw,e[0].catalog[..]) {eu_note(e,"Unreadable environment list.");return;}e[0].uncertain=false;eu_note(e,"");return;}
   next:[1]EaView;
@@ -181,10 +220,13 @@ eu_reply :: (e:[]EnvironmentApp,op:int,status:int,raw:string,failed:bool) #effec
     e[0].catalog[0].entries[0].host=next[0].host;e[0].catalog[0].entries[0].nl=ea_copy(e[0].catalog[0].entries[0].label[..],"This computer");eu_take_folders(e,next[..]);
     eu_request(e,"ListSessions");eu_http(e,false);return;
   }
-  if !ea_view_read(raw,next[..]) || cast(string)next[0].host[..]!=cast(string)e[0].catalog[0].entries[e[0].selected].host[..] {eu_note(e,"The reply did not match this computer.");e[0].uncertain=true;return;}
-  if cast(string)next[0].method[0..<next[0].nm]!=cast(string)e[0].request[0].method[0..<e[0].request[0].nm] || (next[0].nt>0 && (next[0].nq!=e[0].request[0].nc || cast(string)next[0].command[0..<next[0].nq]!=cast(string)e[0].request[0].command[0..<e[0].request[0].nc])) {eu_note(e,"The reply did not match this request.");e[0].uncertain=true;return;}
+  if !ea_view_read(raw,next[..]) || cast(string)next[0].host[..]!=cast(string)e[0].catalog[0].entries[e[0].selected].host[..] {eu_note(e,"The reply did not match this computer.");e[0].uncertain=true;eu_sub_settle(e,EU_SUB_UNSURE,"");return;}
+  if cast(string)next[0].method[0..<next[0].nm]!=cast(string)e[0].request[0].method[0..<e[0].request[0].nm] || (next[0].nt>0 && (next[0].nq!=e[0].request[0].nc || cast(string)next[0].command[0..<next[0].nq]!=cast(string)e[0].request[0].command[0..<e[0].request[0].nc])) {eu_note(e,"The reply did not match this request.");e[0].uncertain=true;eu_sub_settle(e,EU_SUB_UNSURE,"");return;}
+  // a sub-agent's refused stop is its page's to say: the chat keeps what it shows and goes on being read
+  if next[0].ne>0 && cast(string)e[0].request[0].method[0..<e[0].request[0].nm]=="StopSubagent" {e[0].uncertain=false;eu_sub_settle(e,EU_SUB_REFUSED,cast(string)next[0].error[0..<next[0].ne]);eu_wait(e);return;}
   e[0].view[0]=next[0];e[0].uncertain=false;if next[0].offer.n>0 {e[0].offer[0]=next[0].offer;}
   if next[0].ne>0 {eu_note(e,eu_error(cast(string)next[0].error[0..<next[0].ne]));return;}
+  eu_sub_settle(e,EU_SUB_ACCEPTED,"");
   q:=e[0].request[..];method:=cast(string)q[0].method[0..<q[0].nm];
   if method=="DescribeEnvironment" || (method=="ListSessions" && q[0].before==0) {eu_take_folders(e,next[..]);}
   if method=="OpenSession" {e[0].ns=ea_copy(e[0].session[..],cast(string)q[0].session[0..<q[0].ns]);e[0].page=2;}

@@ -29,10 +29,14 @@ legacy realm grant alone does not enable it. Stop remote sharing by revoking
 the grant with `forget`; local operator access remains independent.
 
 The typed `app.rpc` methods are `DescribeEnvironment`, `ListSessions`,
-`ReadSession`, `ReadSubagent`, `OpenSession`, `SendMessage`, `StopTurn` and
-`RespondInteraction`. `ReadSubagent` is a read: it names the `item_id` of the
-call that started a sub-agent and pages that agent's own calls and words
-(newest first, 24 at most); a computer older than it refuses the request. They use the frozen HOST signed/encrypted kind3188
+`ReadSession`, `ReadSubagent`, `OpenSession`, `SendMessage`, `StopTurn`,
+`StopSubagent` and `RespondInteraction`. `ReadSubagent` is a read: it names the
+`item_id` of the call that started a sub-agent and pages that agent's own calls
+and words (newest first, 24 at most); a computer older than it refuses the
+request. `StopSubagent` is a write with the same right as `StopTurn`: it names
+that `item_id` too (required there) and stops that one sub-agent of a Coder
+Desktop chat's running turn (#13776). A computer older than it refuses the
+method, and a phone older than it never sends it. They use the frozen HOST signed/encrypted kind3188
 carriage and correlated replies. The optional projection lives above HOST
 in Coder's `environment/host-wire.coax`; the old browser decoder stays closed.
 There is no generic process or shell RPC.
@@ -123,9 +127,15 @@ chat reads as observe-only.
 On a running chat, `SendMessage` while a turn runs is a steer (the worker's
 `steer` line); while it is idle it is a follow-up: a queue item that carries
 the chat's last task with the new words, promoted at once, so Coder Desktop's
-queue shows it. `StopTurn` interrupts the turn and stops its sub-agents. Both
-check the run's generation and use the same idempotent command record as
-managed chats. The worker's accepted steer line carries its words, so Coder
+queue shows it. `StopTurn` interrupts the turn and stops its sub-agents.
+`StopSubagent` stops one sub-agent alone: the daemon finds the sub-agent run the
+item's call links to and writes the worker's stop line into its input, as Coder
+Desktop's own one-agent Stop stops its worker; its siblings and the turn go on,
+and Coder Desktop reads the worker's end, so the chat's run is told it stopped.
+It is refused `not_found` for an item that is no sub-agent call, `conflict` when
+that sub-agent has already ended or no turn runs, and `unsupported_profile` on
+any session that is not a Coder Desktop chat. All three check the run's
+generation and use the same idempotent command record as managed chats. The worker's accepted steer line carries its words, so Coder
 Desktop shows a steer it did not send. `StartRun`, `StopRun`, `ListRuns` and
 `ForgetRun` stay local-socket only.
 

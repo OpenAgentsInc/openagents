@@ -3,7 +3,9 @@
 // computer (coax/lib/agent/environment/wire.coax, served by coder/tui/host-environment.coax
 // es_project_sub): the agent's calls and words, a page of at most 24 back from the newest. While
 // the agent works and the newest page shows, the page reads again every SA_INTERVAL; Earlier
-// shows the page before and stops reading until Latest. It is read-only: nothing here writes.
+// shows the page before and stops reading until Latest. Its one write is Stop (GitHub #13776):
+// on a Coder Desktop chat's running turn it stops this sub-agent alone (StopSubagent), through
+// the device lane's write rules (one command identity, an unknown outcome sent again only on Stop).
 //   coax/bin/coax test apps/shared/app/subagent/flow.coax --run-steps 200000000
 #load "../core/core.coax";
 #load "../../../../coax/lib/agent/environment/wire.coax";
@@ -19,6 +21,10 @@ SubagentScreen :: struct {
   before: int;                  // the earlier page that shows (its cursor), 0: the newest, read again while the agent works
   loaded: bool; done: bool; view: [1] EaView;
   note: [160] u8; nnote: int;
+  can_stop: bool;               // a Coder Desktop chat's running turn: Stop stops this sub-agent (sa_sync keeps it)
+  stop_want: bool;              // Stop was pressed; it goes when the lane is free
+  stop: int;                    // where its Stop stands (EU_SUB_*), 0 for none
+  stop_note: [160] u8; nstop_note: int;
 }
 
 sa_note :: (s: [] SubagentScreen, words: string) { s[0].nnote = ea_copy(s[0].note[..], words); if s[0].nnote < 0 { s[0].nnote = 0; } }
@@ -46,7 +52,29 @@ sa_body :: (s: [] SubagentScreen, out: [] u8) -> int {
 // its newest page; never while a note asks for Try again.
 sa_reads :: (s: [] SubagentScreen) -> bool { return s[0].nnote == 0 && (!s[0].loaded || (s[0].before == 0 && !s[0].done)); }
 
+// Its Stop: whether it is offered, what the lane did with it, and the words for how it ended.
+sa_stop_sync :: (s: [] SubagentScreen, c: [] AppCore) {
+  if !app_device_on(c) || !dl_has(c) { s[0].can_stop = false; s[0].stop_want = false; return; }
+  session := cast(string) s[0].session[0..<s[0].ns]; item := cast(string) s[0].item[0..<s[0].nit];
+  e := c[0].device[0].e[..];
+  s[0].can_stop = cast(string) e[0].session[0..<e[0].ns] == session && dl_busy(c) && dl_steerable(c) && !s[0].done;
+  if s[0].stop_want {
+    r := ifx s[0].can_stop then dl_stop_subagent(c, session, item) else APP_R_INVALID;
+    if r != APP_R_BLOCKED { s[0].stop_want = false; }
+  }
+  was := s[0].stop; s[0].stop = dl_subagent_stop(c, item);
+  if s[0].stop == was { return; }
+  m := "";
+  if s[0].stop == EU_SUB_UNSURE { m = "Stop may not have reached your computer. Press Stop to send it again."; }
+  if s[0].stop == EU_SUB_REFUSED {
+    code := cast(string) e[0].stop_error[0..<e[0].nstop_error];
+    m = ifx code == "conflict" then "It had already ended, or the chat moved on." else ifx code == "identity" then "Stop did not go. Try again." else "Your computer did not stop it. Update Coder on it to stop one sub-agent.";
+  }
+  s[0].nstop_note = ea_copy(s[0].stop_note[..], m); if s[0].nstop_note < 0 { s[0].nstop_note = 0; }
+}
+
 sa_sync :: (s: [] SubagentScreen, c: [] AppCore, visible: bool) {
+  if s[0].open { sa_stop_sync(s, c); }
   if s[0].op > 0 && s[0].generation != fx_generation(c[0].out[..], OWN_SUBAGENT) { s[0].op = 0; }
   if !visible || !s[0].open || !c[0].foreground || s[0].host[0] == 0 { _ := app_guest_due(c, OWN_SUBAGENT, -1); return; }
   if s[0].op > 0 { return; }
@@ -92,6 +120,8 @@ sa_press :: (s: [] SubagentScreen, id: string) -> bool {
   if id == "subagent.earlier" { b := sa_earlier(s); if b <= 0 || s[0].op > 0 { return false; } s[0].before = b; s[0].due = 0; s[0].nnote = 0; return true; }
   if id == "subagent.latest" { if s[0].before == 0 || s[0].op > 0 { return false; } s[0].before = 0; s[0].due = 0; s[0].nnote = 0; return true; }
   if id == "subagent.retry" { if s[0].nnote == 0 || s[0].op > 0 { return false; } s[0].nnote = 0; s[0].due = 0; return true; }
+  // Stop goes with the next sync, once the lane is free; one on its way or taken is not sent again
+  if id == "subagent.stop" { if !s[0].can_stop || s[0].stop_want || s[0].stop == EU_SUB_SENDING || s[0].stop == EU_SUB_ACCEPTED { return false; } s[0].stop_want = true; s[0].nstop_note = 0; return true; }
   return false;
 }
 

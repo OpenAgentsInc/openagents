@@ -53,6 +53,9 @@ EaRequest :: struct {
 // started ("item_id", required there and refused anywhere else). Its view's items are the
 // agent's calls (role "tool") and words ("assistant"), newest page first; "next_cursor" names
 // the earlier rows, and "complete" says the agent has finished. An older computer refuses it.
+// StopSubagent (GitHub #13776): a write that stops that one sub-agent of a Coder Desktop chat's
+// running turn, as Coder Desktop's own one-agent Stop does; its siblings and the turn go on. It
+// names the same item_id, required there too. An older computer refuses the method.
 // A Coder session's working folder, relative to the workspace the grant binds: OpenSession may
 // name one of the folders the computer offers ("folder"; GitHub #13713). Optional both ways: an
 // older computer offers none and an older phone names none. A folder is plain relative segments,
@@ -148,7 +151,7 @@ ea_read :: (raw:string,q:[]EaRequest)->bool #export_c #effects(all) {
   if q[0].nm<1 || q[0].nw<0 || q[0].ns<0 || q[0].nc<0 || q[0].nt<0 || q[0].ni<0 || q[0].nmo<0 || q[0].nef<0 {return false;}
   // a folder only opens a session, and only one spelled as a plain relative path
   if seen[14] {q[0].nf=ea_field(v,"folder",q[0].folder[..]);if q[0].nf<1 || !ea_folder_ok(cast(string)q[0].folder[0..<q[0].nf]) || cast(string)q[0].method[0..<q[0].nm]!="OpenSession" {return false;}}
-  sub:=cast(string)q[0].method[0..<q[0].nm]=="ReadSubagent";
+  sub:=cast(string)q[0].method[0..<q[0].nm]=="ReadSubagent" || cast(string)q[0].method[0..<q[0].nm]=="StopSubagent";
   if seen[15] {q[0].nit=ea_field(v,"item_id",q[0].item[..]);if q[0].nit<1 || !sub {return false;}}else if sub {return false;}
   q[0].generation=jv_int(v,jv_get(v,0,"generation"),-1);q[0].revision=jv_int(v,jv_get(v,0,"expected_revision"),-1);
   q[0].before=jv_int(v,jv_get(v,0,"before"),-1);b:=jv_kind(v,jv_get(v,0,"allow"));
@@ -430,6 +433,11 @@ ea_view_read :: (raw:string,v:[]EaView)->bool #export_c #effects(all) {
   out:[2048]u8;n:=ea_write(r[..],out[..]);again:[1]EaRequest;#assert n>0 && ea_read(cast(string)out[0..<n],again[..]) && again[0].nit==3;
   #assert !ea_read("{\"method\":\"ReadSubagent\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0}",r[..]);
   #assert !ea_read("{\"method\":\"ReadSession\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"\",\"generation\":0,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":0,\"issued_at_ms\":0,\"item_id\":\"3:0\"}",r[..]);
+  // StopSubagent names its item the same way, and may not leave it out (#13776)
+  stop:="{\"method\":\"StopSubagent\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"0123456789abcdef0123456789abcdef\",\"generation\":7,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":2,\"issued_at_ms\":1,\"item_id\":\"3:0\"}";
+  #assert ea_read(stop,r[..]) && cast(string)r[0].item[0..<r[0].nit]=="3:0" && ea_right(cast(string)r[0].method[0..<r[0].nm])==1;
+  n=ea_write(r[..],out[..]);#assert n>0 && cast(string)out[0..<n]==stop;
+  #assert !ea_read("{\"method\":\"StopSubagent\",\"workspace_id\":\"default\",\"session_id\":\"s\",\"command_id\":\"0123456789abcdef0123456789abcdef\",\"generation\":7,\"expected_revision\":0,\"text\":\"\",\"interaction_id\":\"\",\"allow\":false,\"before\":0,\"expires_at_ms\":2,\"issued_at_ms\":1}",r[..]);
   // a read without an item is unchanged on the wire
   q:[1]EaRequest;q[0].nm=ea_copy(q[0].method[..],"ReadSession");q[0].nw=ea_copy(q[0].workspace[..],"default");n=ea_write(q[..],out[..]);found:=false;for i:0..<(ifx n>7 then n-7 else 0) {if cast(string)out[i..<i+7]=="item_id" {found=true;}}#assert n>0 && !found;
 }

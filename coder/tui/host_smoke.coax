@@ -366,6 +366,7 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   rdb:[1300]u8;ok=fs_mkdir_private(sm_in_home(s,".openagents/coder/host/runs",rdb[..]));
   pidb:[64]u8;parent:=sm_hex32(31,pidb[..]);
   sidb:[64]u8;sub:=sm_hex32(37,sidb[..]);
+  s2b:[64]u8;sub2:=sm_hex32(39,s2b[..]);
   t:[4096]u8;tn:=sm_cat(t[..],0,"{\"task\":\"Please survey the tests\",\"session\":\"coder-desktop-smoke\",\"cwd\":\"");tn=sm_cat(t[..],tn,apps_dir);
   tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"agents\":true}\n{\"queue\":\"open\",\"key\":\"");tn=sm_cat(t[..],tn,SM_CHAT);tn=sm_cat(t[..],tn,"\"}\n");
   sm_run(s,rp,parent,mcw,apps_dir,cast(string)t[0..<tn]);
@@ -374,6 +375,11 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"steerable\":false}\n");
   proc_sleep(300);
   sm_run(s,rp,sub,mcw,apps_dir,cast(string)t[0..<tn]);
+  // the second task's sub-agent, started after the first as Coder starts them in order
+  tn=sm_cat(t[..],0,"{\"task\":\"Skills note.\\nSurvey the docs\",\"session\":\"coder-desktop-smoke-agent-1-a2\",\"cwd\":\"");tn=sm_cat(t[..],tn,apps_dir);
+  tn=sm_cat(t[..],tn,"\",\"sandbox\":\"danger-full-access\",\"policy\":{\"enabled\":false,\"allow\":0,\"ceiling\":3,\"roots\":\"\"},\"steerable\":false}\n");
+  proc_sleep(300);
+  sm_run(s,rp,sub2,mcw,apps_dir,cast(string)t[0..<tn]);
   // the chat as Coder keeps it in its list (chats/index.json), under the title it shows
   sm_coder_chats(s,"index.json",sm_chat_index(apps_dir,t[..]));
   db:[64]u8;dn:=sm_cat(db[..],0,"desktop-");dn=sm_cat(db[..],dn,SM_CHAT_HEX);desk:=cast(string)db[0..<dn];
@@ -388,7 +394,7 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   sm_check_or(s,listed && busy && generation>0,"the phone lists the running Coder Desktop chat (ListSessions surface coder-desktop, busy)",sm_text(rp));
   ti:=sm_session_at(rp,desk);
   sm_check_or(s,ti>=0 && rp_is(rp,sm_session_field(ti,"title",fb[..]),SM_CHAT_TITLE),"the phone shows the chat under the title Coder shows, not its first message",sm_text(rp));
-  task_id:[128]u8;ntask:=0;thought:=false;counted:=false;started:=false;tasks:=0;
+  task_id:[128]u8;ntask:=0;thought:=false;counted:=false;started:=false;tasks:=0;first_id:[128]u8;nfirst:=0;
   for attempt:0..<30 {
     sm_ea(er[..],"ReadSession",desk);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);tasks=0;
     thought=rp_count(rp,"thoughts")>0 && sm_has(sm_text(rp),"A sub-agent can survey the tests.");
@@ -397,6 +403,7 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
       kb:[64]u8;kn:=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".tool_name");if !rp_is(rp,cast(string)kb[0..<kn],"Task") {continue;}
       tasks+=1;
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".item_id");tb:[128]u8;ntask=sm_cat(task_id[..],0,rp_s(rp,cast(string)kb[0..<kn],tb[..]));
+      if tasks==1 {nfirst=sm_cat(first_id[..],0,cast(string)task_id[0..<ntask]);}
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".subagent_calls");counted=rp_i(rp,cast(string)kb[0..<kn])>=1;
       kn=sm_cat(kb[..],0,base);kn=sm_cat(kb[..],kn,".started_at_ms");started=rp_i(rp,cast(string)kb[0..<kn])>1700000000000;
     }
@@ -405,9 +412,10 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   }
   sm_check_or(s,thought && sm_has(sm_text(rp),"Please survey the tests"),"the phone reads the chat's message and thinking from its worker's lines (ReadSession)",sm_text(rp));
   sm_check_or(s,ntask>0 && counted && started,"the chat's sub-agent call counts its agent's calls and says when it began",sm_text(rp));
-  sm_check_or(s,tasks==1,"a delegated task that resumes the chat's sub-agent (waits for it again) is no new sub-agent call (#13766)",sm_text(rp));
+  sm_check_or(s,tasks==2,"a delegated task that resumes the chat's sub-agent (waits for it again) is no new sub-agent call (#13766)",sm_text(rp));
   sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],cast(string)task_id[0..<ntask]);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
   sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_FALSE && sm_has(sm_text(rp),"Looking at the tests first.") && sm_has(sm_text(rp),"\"tool_name\":\"Bash\"") && sm_has(sm_text(rp),"a_test.coax"),"the phone reads the chat's running sub-agent's own transcript (ReadSubagent)",sm_text(rp));
+  sm_stop_one(s,rp,bk,grant,epoch,rq_file,desk,generation,cast(string)first_id[0..<nfirst],cast(string)task_id[0..<ntask],sub,sub2);
   // a steer for the running turn
   cb:[64]u8;cmd:=sm_hex32(41,cb[..]);
   sm_ea(er[..],"SendMessage",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nt=ea_copy(er[0].text[..],"Use the b fixtures too");er[0].generation=generation;
@@ -457,7 +465,56 @@ sm_desktop :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string
   inb:[65536]u8;inn:=fs_read(in_path,inb[..]);ins:=ifx inn>0 then cast(string)inb[0..<inn] else "";
   cwd_b:[1400]u8;cwn:=sm_cat(cwd_b[..],0,"\"cwd\":\"");cwn=sm_cat(cwd_b[..],cwn,apps_dir);
   sm_check_or(s,sm_has(ins,SM_CHAT_OPEN) && sm_has(ins,"\"message\":{\"task\":\"Run the tests again\",\"session\":\"coder-desktop-smoke\"") && sm_has(ins,cast(string)cwd_b[0..<cwn]) && sm_has(ins,"{\"queue\":\"promote\""),"the follow-up is the chat's queue item with the chat's own session and folder, so Coder Desktop shows it",ins);
+  sm_run_rpc(s,rp,"ForgetRun",sub2);
   sm_saved(s,rp,bk,grant,epoch,rq_file,apps_dir,parent,sub,desk);
+}
+
+// A run's state file names it running (or exited/stopped when done is set), within ten seconds.
+sm_run_state :: (s:[]Sm,id:string,done:bool)->bool {
+  fb:[1600]u8;fn:=sm_cat(fb[..],0,".openagents/coder/host/runs/");fn=sm_cat(fb[..],fn,id);fn=sm_cat(fb[..],fn,".state");pb:[1700]u8;path:=sm_in_home(s,cast(string)fb[0..<fn],pb[..]);
+  for attempt:0..<20 {
+    b:[512]u8;n:=fs_read(path,b[..]);t:=ifx n>0 then cast(string)b[0..<n] else "";
+    if done && (sm_has(t,"\"exited\"") || sm_has(t,"\"stopped\"")) {return true;}
+    if !done && sm_has(t,"\"running\"") {return true;}
+    proc_sleep(500);
+  }
+  return false;
+}
+// The phone stops one sub-agent of the running chat (StopSubagent, GitHub #13776): the second
+// task's (keep_item's sibling stop_item), while the first and the turn keep running.
+sm_stop_one :: (s:[]Sm,rp:[]Rp,bk:string,grant:string,epoch:string,rq_file:string,desk:string,generation:int,keep_item:string,stop_item:string,keep:string,stop:string) {
+  er:[1]EaRequest;cb:[64]u8;fb:[64]u8;
+  sm_check(s,keep_item.count>0 && stop_item.count>0 && keep_item!=stop_item && sm_run_state(s,keep,false) && sm_run_state(s,stop,false),"the chat runs two sub-agents, each its own call");
+  // an item that is no sub-agent call is refused, and nothing is written
+  cmd:=sm_hex32(57,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],"0:0");er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp_is(rp,"error","not_found"),"a StopSubagent naming the chat's message, not a sub-agent call, is refused not_found",sm_text(rp));
+  cmd=sm_hex32(59,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],stop_item);er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the phone's StopSubagent on the chat's second sub-agent is accepted",sm_text(rp));
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_is(rp,"command_status","accepted"),"the same StopSubagent again is answered, not sent twice",sm_text(rp));
+  sm_check(s,sm_run_state(s,stop,true),"that sub-agent's worker stops");
+  sm_check(s,sm_run_state(s,keep,false),"its sibling's worker keeps running");
+  // the phone reads the stopped one done, its sibling and the turn still running
+  done:=false;i:=0;
+  for attempt:0..<20 {
+    sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],stop_item);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+    if rp[0].ok && rp_kind(rp,"complete")==JV_TRUE {done=true;break;}
+    proc_sleep(500);
+  }
+  sm_check_or(s,done,"the phone reads the stopped sub-agent as done",sm_text(rp));
+  sm_ea(er[..],"ReadSubagent",desk);er[0].nit=ea_copy(er[0].item[..],keep_item);sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp[0].ok && rp_kind(rp,"complete")==JV_FALSE,"the phone reads its sibling still working",sm_text(rp));
+  sm_ea(er[..],"ListSessions","");sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);i=sm_session_at(rp,desk);
+  sm_check_or(s,i>=0 && rp_kind(rp,sm_session_field(i,"busy",fb[..]))==JV_TRUE,"the chat's turn keeps running",sm_text(rp));
+  // a sub-agent that has already ended is not stopped again: a new command is refused conflict
+  cmd=sm_hex32(61,cb[..]);
+  sm_ea(er[..],"StopSubagent",desk);er[0].nc=ea_copy(er[0].command[..],cmd);er[0].nit=ea_copy(er[0].item[..],stop_item);er[0].generation=generation;er[0].issued=cxproc_wall_us()/1000;er[0].expires=ea_deadline(er[0].issued);
+  sm_env_rpc(s,rp,bk,grant,epoch,rq_file,er[..]);
+  sm_check_or(s,rp_is(rp,"error","conflict"),"a StopSubagent for a sub-agent that has ended is refused conflict",sm_text(rp));
 }
 
 // ---------------------------------------------------------------- a Coder Desktop chat after its runs (GitHub #13755)

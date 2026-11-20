@@ -2,7 +2,8 @@
 // subagent pane draws it (apps/coder-desktop/page/layout/pane.coax, #13744): its calls as the
 // shared activity group (components/app/activity.coax, the summary then a row for each that
 // opens onto its call and output) and what it said between them as plain words. Earlier and
-// Latest page through it; a note with Try again says when the computer did not answer.
+// Latest page through it; a note with Try again says when the computer did not answer. On a Coder
+// Desktop chat's running turn, Stop this sub-agent stops it alone (GitHub #13776).
 //   coax/bin/coax test apps/shared/app/subagent/view.coax --run-steps 200000000
 #load "flow.coax";
 #load "../view/page.coax";   // view_act_item: a computer's item as the activity row the chat draws
@@ -30,6 +31,12 @@ sav_view :: (s: [] SubagentScreen, f: [] UiFrame, x: f32, origin: f32, w: f32) -
   if s[0].nnote > 0 {
     y += app_notice(f, "subagent.note", x, y, w, cast(string) s[0].note[0..<s[0].nnote], APP_NOTICE_ERROR) + gap;
     y += app_button(f, "subagent.retry", x, y, w, -1, "Try again", APP_BUTTON_PRIMARY, ifx s[0].op > 0 then EL_S_DISABLED else 0, SA_ACTION) + gap;
+  }
+  if s[0].nstop_note > 0 { y += app_notice(f, "subagent.stop.note", x, y, w, cast(string) s[0].stop_note[0..<s[0].nstop_note], APP_NOTICE_ERROR) + gap; }
+  if s[0].can_stop {
+    // asked: on its way, or taken and the agent not ended yet
+    asked := s[0].stop_want || s[0].stop == EU_SUB_SENDING || s[0].stop == EU_SUB_ACCEPTED;
+    y += app_button(f, "subagent.stop", x, y, w, -1, ifx asked then "Stopping…" else "Stop this sub-agent", APP_BUTTON_DESTRUCTIVE, ifx asked then EL_S_DISABLED else 0, SA_ACTION) + gap;
   }
   if !s[0].loaded { return y - origin + app_text(f, "subagent.loading", x, y, w, APP_TEXT_BODY, "Connecting…"); }
   if s[0].before > 0 { y += app_button(f, "subagent.latest", x, y, w, -1, "Latest", APP_BUTTON_QUIET, 0, SA_ACTION) + gap; }

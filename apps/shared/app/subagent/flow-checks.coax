@@ -74,3 +74,51 @@ sa_t_view :: (rows: int, cursor: string, done: bool, error: string, out: [] u8) 
   // no computer on: nothing opens
   lane[0].on = false; t: [1] SubagentScreen; #assert !sa_open(t[..], c[..], SA_T_SESSION, "3:0", "x") && !t[0].open;
 }
+
+// The lane's open conversation: Coder Desktop chat SA_T_SESSION, its turn running (busy) or not.
+sa_t_chat :: (lane: [] DeviceLane, busy: bool, desktop: bool) {
+  e := lane[0].e[..]; e[0].active = true; e[0].page = 2; e[0].selected = 0; e[0].catalog[0].n = 1;
+  _ := ea_copy(e[0].catalog[0].entries[0].host[..], SA_T_HOST); e[0].view[0].host = e[0].catalog[0].entries[0].host;
+  e[0].ns = ea_copy(e[0].session[..], SA_T_SESSION); e[0].view[0].ns = 1; row := e[0].view[0].sessions[..];
+  row[0].ni = ea_copy(row[0].id[..], SA_T_SESSION); row[0].busy = busy; row[0].desktop = desktop; row[0].generation = 7;
+  row[0].managed = true; row[0].nc = ea_copy(row[0].control[..], "available"); row[0].nw = ea_copy(row[0].workspace[..], "default");
+}
+
+#test "Stop on a Coder Desktop chat's running sub-agent stops it alone through the lane, and says how it landed (#13776)" #steps 2000000000 {
+  c: [1] AppCore; lane: [1] DeviceLane; sa_t_core(c[..], lane[..]); s: [1] SubagentScreen; b: [16384] u8;
+  e := lane[0].e[..];
+  // a chat that is not Coder Desktop's, or not running, offers no Stop
+  sa_t_chat(lane[..], true, false);
+  #assert sa_open(s[..], c[..], SA_T_SESSION, "3:0", "Survey the docs"); sa_sync(s[..], c[..], true);
+  #assert !s[0].can_stop && !sa_press(s[..], "subagent.stop");
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(1, "", false, "", b[..]));
+  sa_t_chat(lane[..], false, true); sa_sync(s[..], c[..], true); #assert !s[0].can_stop;
+  // its running turn: Stop is offered, and goes as StopSubagent for this agent's call when the lane is free
+  sa_t_chat(lane[..], true, true); e[0].flight = true; sa_sync(s[..], c[..], true);
+  #assert s[0].can_stop && sa_press(s[..], "subagent.stop") && s[0].stop_want && !sa_press(s[..], "subagent.stop");
+  sa_sync(s[..], c[..], true); #assert s[0].stop_want && !e[0].random;   // a read is out: it waits
+  e[0].flight = false; sa_sync(s[..], c[..], true);
+  q := e[0].request[..];
+  #assert !s[0].stop_want && e[0].random && cast(string) q[0].method[0..<q[0].nm] == "StopSubagent" && cast(string) q[0].item[0..<q[0].nit] == "3:0" && q[0].generation == 7;
+  #assert s[0].stop == EU_SUB_SENDING && !sa_press(s[..], "subagent.stop");
+  // the computer refuses it: the page says why, and Stop is offered again
+  e[0].action = 0; eu_reply(e, 11, 0, "{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"\",\"now_ms\":1700000000000}", false);
+  op := ifx e[0].local then 14 else 4; #assert e[0].flight;
+  v: [1] EaView; v[0].nh = ea_copy(v[0].host[..], SA_T_HOST); v[0].nm = ea_copy(v[0].method[..], "StopSubagent"); v[0].ne = ea_copy(v[0].error[..], "conflict");
+  w := ea_view_write(v[..], b[..]); e[0].action = 0; eu_reply(e, op, 200, cast(string) b[0..<w], false);
+  sa_sync(s[..], c[..], true);
+  #assert s[0].stop == EU_SUB_REFUSED && cast(string) s[0].stop_note[0..<s[0].nstop_note] == "It had already ended, or the chat moved on." && s[0].can_stop;
+  // again, lost on the way: unsure, and Stop sends the same command again
+  e[0].action = 0; e[0].timer = false; #assert sa_press(s[..], "subagent.stop") && s[0].nstop_note == 0; sa_sync(s[..], c[..], true); #assert e[0].random;
+  e[0].action = 0; eu_reply(e, 11, 0, "{\"command_id\":\"22222222222222222222222222222222\",\"session_id\":\"\",\"now_ms\":1700000000000}", false);
+  e[0].action = 0; eu_reply(e, op, 0, "", true); sa_sync(s[..], c[..], true);
+  #assert s[0].stop == EU_SUB_UNSURE && s[0].nstop_note > 0;
+  #assert sa_press(s[..], "subagent.stop"); e[0].action = 0; sa_sync(s[..], c[..], true);
+  #assert e[0].flight && cast(string) e[0].request[0].command[0..<e[0].request[0].nc] == "22222222222222222222222222222222" && s[0].stop == EU_SUB_SENDING;
+  // taken: Stopping… until the agent is done, then nothing to stop
+  v[0].ne = 0; v[0].nq = ea_copy(v[0].command[..], "22222222222222222222222222222222"); v[0].nt = ea_copy(v[0].status[..], "accepted"); v[0].ns = 1; v[0].sessions[0] = e[0].view[0].sessions[0];
+  w = ea_view_write(v[..], b[..]); e[0].action = 0; eu_reply(e, op, 200, cast(string) b[0..<w], false); sa_sync(s[..], c[..], true);
+  #assert s[0].stop == EU_SUB_ACCEPTED && s[0].can_stop && !sa_press(s[..], "subagent.stop");
+  c[0].mono_ms += SA_INTERVAL; sa_sync(s[..], c[..], true);
+  #assert sa_t_answer(s[..], c[..], FXO_DONE, sa_t_view(2, "", true, "", b[..])); sa_sync(s[..], c[..], true); #assert !s[0].can_stop;
+}

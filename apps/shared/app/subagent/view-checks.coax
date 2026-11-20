@@ -46,3 +46,16 @@ sav_t_item :: (v: [] EaView, i: int, id: string, role: string, tool: string, tex
   t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.note") && sav_has(t, "subagent.retry") && sav_has(t, "subagent.row.1");
   #assert !sav_press(s[..], ks[..], "subagent.nothing");
 }
+
+#test "a running Coder Desktop sub-agent's page offers Stop, shows Stopping… once it is asked, and says why a stop failed (#13776)" #steps 2000000000 {
+  st: [1] SavStore; s: [1] SubagentScreen; s[0].open = true; s[0].loaded = true;
+  sav_t_item(s[0].view[..], 0, "sub:0", "tool", "Bash", "ls", true);
+  t := sav_frame(st[..], s[..]); #assert !sav_has(t, "subagent.stop");   // no running Coder Desktop turn: no Stop
+  s[0].can_stop = true; t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.stop") && !sav_has(t, "subagent.stop.note");
+  ks := [1] KeyedStore.[KeyedStore.{rows = st[0].keys[..]}];
+  #assert sav_press(s[..], ks[..], "subagent.stop") && s[0].stop_want && !sav_press(s[..], ks[..], "subagent.stop");
+  t = sav_frame(st[..], s[..]); tt := [1] ElTable.[t]; #assert elt_find(tt[..], "subagent.stop") >= 0;
+  s[0].stop_want = false; s[0].stop = EU_SUB_REFUSED; s[0].nstop_note = ea_copy(s[0].stop_note[..], "It had already ended, or the chat moved on.");
+  t = sav_frame(st[..], s[..]); #assert sav_has(t, "subagent.stop.note") && sav_has(t, "subagent.stop");
+  s[0].can_stop = false; t = sav_frame(st[..], s[..]); #assert !sav_has(t, "subagent.stop") && sav_has(t, "subagent.stop.note");
+}

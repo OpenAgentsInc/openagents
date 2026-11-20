@@ -13,6 +13,9 @@
 //   SendMessage    while a turn runs, a steer for it (mww_steer); while none runs, a follow-up the
 //                  worker starts at once (mww_queue add, then promote now)
 //   StopTurn       ends the running turn (mww_interrupt) and stops its sub-agents' workers
+//   StopSubagent   stops one running sub-agent's worker, the one a ReadSession item's call started
+//                  (GitHub #13776): its siblings and the turn go on, and Coder Desktop reads that
+//                  sub-agent's worker end as it reads any, so the chat's run is told it stopped
 //
 // The phone never starts, stops or forgets a run: StartRun, StopRun, ListRuns and ForgetRun stay
 // on the local socket (daemon-wire.coax). Its lines go into the run's ID.in, which the daemon
@@ -388,7 +391,9 @@ dk_now :: (s: [] Session, k: int, name: string, arg: string) {
 
 // The chat's transcript from its run's lines, sub-agent calls with their own rows; stamps[k] is
 // when a still running sub-agent call began (wall ms). The parts' count of stamps.
-dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps: [] int, file: [] u8, ab: [] u8) -> int {
+// want, with found one long: the part of a sub-agent call whose run found[0] gets (its id empty
+// when that call has no run); -1 for none.
+dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps: [] int, file: [] u8, ab: [] u8, want: int, found: [] DkSub) -> int {
   for i: 0..<stamps.count { stamps[i] = 0; }
   subs: [32] DkSub; nsub := dk_subs(runs, nruns, cast(string) r[0].session[0..<r[0].nsession], subs[..]);
   // the delegated calls first (their rows are read after the chat's lines: file is reused)
@@ -425,6 +430,7 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
         if k < 0 || ncall >= calls.count { continue; }
         j := dk_sub_for(subs[..], nsub, task); if j >= 0 { subs[j].used = true; }
         calls[ncall] = k; call_sub[ncall] = j; ncall += 1;
+        if k == want && found.count == 1 && j >= 0 { found[0] = subs[j]; }
       }
     }
     else if kind == MWW_STEERED {
@@ -576,7 +582,7 @@ dk_read :: (h: [] HsHost, q: [] EaRequest, v: [] EaView) {
   }
   r := runs[k..<k + 1];
   if v[0].ns < 128 { dk_summary(r, chats[..], nc, v[0].sessions[v[0].ns..<v[0].ns + 1]); v[0].ns += 1; }
-  have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..]);
+  none: [1] DkSub; have := dk_session(r, runs[..], n, ses[..], stamps[..], file[..], ab[..], -1, none[0..<0]);
   if cast(string) q[0].method[0..<q[0].nm] == "ReadSubagent" { es_project_sub(ses[..], q, v); return; }
   es_project_at(ses[..], stamps[0..<have], q, v);
 }
@@ -627,11 +633,26 @@ dk_lines :: (r: [] DkInfo, runs: [] DkInfo, n: int, method: string, command: str
   return at + w;
 }
 
-// SendMessage and StopTurn on a Coder Desktop chat, under one command identity each: its intent is
-// kept before its lines go, and a retry of the same request is answered without writing again.
+// The sub-agent run a ReadSession item ("PART:START") of chat run r started: 1 with its id in
+// found[0] while it runs, 0 when it has ended, -1 when the item names no sub-agent call of a run.
+dk_sub_of :: (r: [] DkInfo, runs: [] DkInfo, n: int, item: string, found: [] DkSub) -> int {
+  part := 0; digits := 0;
+  for c: item { if c == ':' { break; } if c < '0' || c > '9' || digits > 6 { return -1; } part = part * 10 + cast(int) (c - '0'); digits += 1; }
+  if digits == 0 { return -1; }
+  ses: [1] Session; pool: [524288] u8; s_init(ses[..], pool[..]);
+  stamps: [S_PARTS] int; file: [DK_FILE] u8; ab: [DK_ARENA] u8;
+  found[0] = DkSub.{};
+  _ = dk_session(r, runs, n, ses[..], stamps[..], file[..], ab[..], part, found);
+  if found[0].id[0] == 0 { return -1; }
+  return ifx found[0].running then 1 else 0;
+}
+
+// SendMessage, StopTurn and StopSubagent on a Coder Desktop chat, under one command identity each:
+// its intent is kept before its lines go, and a retry of the same request is answered without
+// writing again.
 dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   method := cast(string) q[0].method[0..<q[0].nm];
-  if method != "SendMessage" && method != "StopTurn" { es_refuse(v, "unsupported_profile"); return; }
+  if method != "SendMessage" && method != "StopTurn" && method != "StopSubagent" { es_refuse(v, "unsupported_profile"); return; }
   command := cast(string) q[0].command[0..<q[0].nc];
   if !ea_id(command, 32) { es_refuse(v, "malformed"); return; }
   runs: [DK_RUNS] DkInfo; n := dk_all(runs[..]);
@@ -655,7 +676,14 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   if !dk_running(r) || q[0].generation != r[0].started * 1000 { es_refuse(v, "conflict"); return; }
   text := cast(string) q[0].text[0..<q[0].nt];
   if method == "SendMessage" && !ea_text(text) { es_refuse(v, "malformed"); return; }
-  lines: [98304] u8; ln := dk_lines(r, runs[..], n, method, command, text, lines[..]);
+  // one sub-agent of the running turn: its run, found before the intent is kept (#13776)
+  one: [1] DkSub;
+  if method == "StopSubagent" {
+    got := dk_sub_of(r, runs[..], n, cast(string) q[0].item[0..<q[0].nit], one[..]);
+    if got < 0 { es_refuse(v, "not_found"); return; }
+    if got == 0 || !r[0].busy { es_refuse(v, "conflict"); return; }
+  }
+  lines: [98304] u8; ln := ifx method == "StopSubagent" then 0 else dk_lines(r, runs[..], n, method, command, text, lines[..]);
   if ln < 0 { es_refuse(v, "conflict"); return; }
   if !fs_replace_durable(file, cast(string) raw[0..<rn]) { es_refuse(v, "storage_unavailable"); return; }
   ip: [1400] u8;
@@ -665,6 +693,8 @@ dk_write :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
     subs: [32] DkSub; ns := dk_subs(runs[..], n, cast(string) r[0].session[0..<r[0].nsession], subs[..]);
     for i: 0..<ns { if subs[i].running { sp: [1400] u8; _ = fs_append(dr_file(cast(string) subs[i].id[..], ".in", sp[..]), MWW_STOP_LINE); } }
   }
+  // that sub-agent alone stops, as Coder Desktop's one-agent Stop stops its worker
+  if method == "StopSubagent" { sp: [1400] u8; if !fs_append(dr_file(cast(string) one[0].id[..], ".in", sp[..]), MWW_STOP_LINE) { es_refuse(v, "storage_unavailable"); return; } }
   dk_summary(r, chats[..], nc, v[0].sessions[0..<1]); v[0].ns = 1;
   v[0].nq = ea_copy(v[0].command[..], command); v[0].nt = ea_copy(v[0].status[..], "accepted");
 }

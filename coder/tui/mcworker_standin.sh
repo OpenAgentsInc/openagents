@@ -3,7 +3,7 @@
 # A stand-in Microcoder worker (coder/tui/mcworker.coax's lines, coax/lib/agent/engine/mcworker-wire.coax)
 # for the Coder Desktop chat that coder/tui/host_smoke.coax shows on the paired phone (GitHub #13713).
 # The daemon runs it as a worker run under a name ending in /mcworker. It reads one line at a time:
-#   a task          a chat's turn: a thought, then a delegate line, and it keeps running;
+#   a task          a chat's turn: a thought, then a delegate line of two tasks, and it keeps running;
 #                   a sub-agent's task (its session has -agent-): a reply and a command, and it keeps running
 #   a steer         accepted with its words and applied, then a reply (rejected when no turn runs)
 #   an interrupt    the turn ends stopped
@@ -56,7 +56,7 @@ while IFS= read -r line; do
           text=$(printf '%s' "$line" | sed -n 's/^{"task":"\([^"]*\)".*/\1/p')
           say "{\"kind\":\"turn\",\"turn\":$turn,\"source\":\"message\",\"id\":\"\",\"text\":\"$text\"}"
           say '{"kind":"thought","text":"A sub-agent can survey the tests."}'
-          say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Survey the tests"}],"ticket":1}'
+          say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Survey the tests"},{"level":"hydrogen","task":"Survey the docs"}],"ticket":1}'
           # the round answered early, the chat waits on its still-running sub-agent again (#13766): no new call
           say '{"kind":"delegate","tasks":[{"level":"hydrogen","task":"Wait for the survey","resume":1}],"ticket":2}' ;;
       esac ;;

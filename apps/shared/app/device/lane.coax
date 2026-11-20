@@ -285,6 +285,26 @@ dl_permission_state :: (c: [] AppCore) -> int {
   return ifx dl_asking(c) then PERMIT_READY else PERMIT_NONE;
 }
 
+// One sub-agent of the open Coder Desktop chat's running turn stops (GitHub #13776): a sub-agent
+// page's Stop, for the call `item` of conversation `session`. A Stop whose outcome is unknown goes
+// again under the same command identity. APP_R_INVALID when that chat is not open or has no running
+// turn to stop one of; APP_R_BLOCKED while another write is out.
+dl_stop_subagent :: (c: [] AppCore, session: string, item: string) -> int {
+  e := c[0].device[0].e[..];
+  if cast(string) e[0].session[0..<e[0].ns] != session || !dl_busy(c) || !dl_steerable(c) { return APP_R_INVALID; }
+  if e[0].uncertain && dl_method(c) == "StopSubagent" && cast(string) e[0].stop_item[0..<e[0].nstop_item] == item {
+    if e[0].flight || e[0].random || e[0].action != 0 { return APP_R_BLOCKED; }
+    eu_press(e, "env.reconnect"); app_mark(c, SURF_TASK); return APP_OK;
+  }
+  if !eu_stop_subagent(e, item) { return APP_R_BLOCKED; }
+  app_mark(c, SURF_TASK); return APP_OK;
+}
+// Where the newest StopSubagent for `item` stands (EU_SUB_*), 0 when the newest is another's.
+dl_subagent_stop :: (c: [] AppCore, item: string) -> int {
+  e := c[0].device[0].e[..];
+  return ifx e[0].nstop_item > 0 && cast(string) e[0].stop_item[0..<e[0].nstop_item] == item then e[0].stop_state else 0;
+}
+
 // The person's actions on a conversation that runs on a computer.
 dl_action :: (c: [] AppCore, a: int) -> int {
   d := dl_lane(c); e := d[0].e[..];

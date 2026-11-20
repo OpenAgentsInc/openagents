@@ -666,6 +666,8 @@ es_dispatch :: (h:[]HsHost,q:[]EaRequest,device:string,grant:string,v:[]EaView) 
   if method=="ReadSession" {if k<0 {if ea_id(id,32) {es_read_saved(h,q,grant,v);}else {es_native_read(h,q,v);}}return;}
   // a sub-agent's transcript is kept while its session is resident; a saved or terminal one has none
   if method=="ReadSubagent" {if k<0 {es_refuse(v,"not_found");return;}slot:=e[0].slots[k..<k+1];es_project_sub(slot[0].s[..],q,v);return;}
+  // one sub-agent stops only in a Coder Desktop chat (host-desktop.coax, GitHub #13776)
+  if method=="StopSubagent" {es_refuse(v,"unsupported_profile");return;}
   if !ea_id(cast(string)q[0].command[0..<q[0].nc],32) || !ea_id(id,32) {es_refuse(v,"malformed");return;}
   command:[24576]u8;n:=ea_write(q,command[..]);if n<0 {es_refuse(v,"malformed");return;}
   name:[256]u8;name_n:=hs_cat(name[..],0,"command-");name_n=hs_cat(name[..],name_n,grant);name_n=hs_cat(name[..],name_n,"-");name_n=hs_cat(name[..],name_n,cast(string)q[0].command[..]);name_n=hs_cat(name[..],name_n,".json");
