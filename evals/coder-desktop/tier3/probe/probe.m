@@ -279,6 +279,26 @@ static NSString *t3_handle(NSString *line) {
     BOOL focused = w.firstResponder == (id)t3_canvas() && wants(page) && settings(page) < 0;
     return t3_json(@{@"ok": @YES, @"text": [NSString stringWithUTF8String:text] ?: @"", @"focused": @(focused), @"hidden": @(!shown)});
   }
+  if ([op isEqualToString:@"open"] && rest.length) {
+    // a file opened with Coder, as the Finder or `open` hands it over (application:openURLs:, #13759)
+    id<NSApplicationDelegate> d = NSApp.delegate;
+    if (![d respondsToSelector:@selector(application:openURLs:)]) return t3_err(@"no application:openURLs:");
+    [d application:NSApp openURLs:@[[NSURL fileURLWithPath:rest]]];
+    return t3_json(@{@"ok": @YES});
+  }
+  if ([op isEqualToString:@"file"]) {
+    // the file in the pane (page/filepane.coax, #13760): what it holds, its changes, its editor's text
+    void *page = t3_page();
+    int (*mode)(void *) = dlsym(RTLD_DEFAULT, "cd_file_mode");
+    int (*dirty)(void *) = dlsym(RTLD_DEFAULT, "cd_file_dirty");
+    int (*text)(void *, char *, int) = dlsym(RTLD_DEFAULT, "cd_file_text");
+    int (*name)(void *, char *, int) = dlsym(RTLD_DEFAULT, "cd_file_name");
+    if (!page || !mode || !dirty || !text || !name) return t3_err(@"no file cd_ symbols");
+    static char body[16385]; int n = text(page, body, (int)sizeof body - 1); body[n < 0 ? 0 : n] = 0;
+    char nb[1024]; int k = name(page, nb, (int)sizeof nb); nb[k < 0 ? 0 : k] = 0;
+    return t3_json(@{@"ok": @YES, @"mode": @(mode(page)), @"dirty": @(dirty(page)), @"name": [NSString stringWithUTF8String:nb] ?: @"",
+                     @"text": [NSString stringWithUTF8String:body] ?: @""});
+  }
   if ([op isEqualToString:@"quit"]) {
     dispatch_async(dispatch_get_main_queue(), ^{ [NSApp terminate:nil]; });
     return t3_json(@{@"ok": @YES});

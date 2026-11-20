@@ -1,0 +1,287 @@
+// Coder Desktop page (../page.coax): a file in the pane on the window's right (GitHub #13760),
+// as Zeron's file preview shows one (crates/ui/src/files): its name on the pane's tab, Edited
+// while it has changes that are not saved, Save, Open in Default App and Close; under them its
+// path, then its text in the code face with each line's number in a gutter. A file up to the
+// shared editor's size (EB_TEXT bytes, CP_FP_EDIT_LINES lines) is edited in place: it is the
+// page's fifth editor (editor.coax, CP_ED_FILE). A longer one, up to CP_FP_MOST bytes, is shown
+// read-only, and the pane says why. A file Coder could not read says that instead.
+//
+// The host reads and writes the file (Window+Files.swift): a press on a file a row or a reply names
+// opens it here, so does a .coax file the Mac opens with Coder (#13759). The page asks the host to
+// save (CP_ASK_FILE_SAVE), to open the file in the Mac's own app for it (CP_ASK_FILE_EXTERNAL) and
+// to close it (CP_ASK_FILE_CLOSE: the host asks first when it has changes). The pane takes the
+// window's right side over a sub-agent's transcript and the code review; a press on either of
+// those shows it, and the file comes back when it closes.
+
+CP_FP_MOST :: 262144;        // bytes the pane shows; a longer file is not read
+CP_FP_EDIT_LINES :: 512;     // lines a file may have to be edited here (the shared editor's rows, wrapped)
+CP_FP_PATH :: 1024;          // bytes of the path it shows
+CP_FP_NONE :: 0; CP_FP_EDIT :: 1; CP_FP_READ :: 2; CP_FP_FAILED :: 3;   // what the pane holds
+// what its controls dispatch, and what it asks of the host (coder_page_action)
+CP_FP_CLOSE :: 80; CP_FP_SAVE :: 81; CP_FP_EXTERNAL :: 82;
+CP_ASK_FILE_SAVE :: 40; CP_ASK_FILE_EXTERNAL :: 41; CP_ASK_FILE_CLOSE :: 42; CP_ASK_FILE_FOCUS :: 43;
+CP_KB_FILE :: 3;             // the file's editor has the keyboard (editor.coax's CP_KB_*)
+CP_SCR_FILE :: 5;            // the wheel over the pane (input.coax's CP_SCR_*)
+
+CpFilePane :: struct {
+  open: bool;
+  front: bool;                // in front of a sub-agent's transcript or the review
+  mode: int;                  // CP_FP_*
+  path: [CP_FP_PATH] u8; path_n: int;   // as the host shows it (~/work/app/a.coax)
+  src: [] u8;                 // the file as last read or saved, in the host's buffer (it keeps it until the next)
+  size: int;                  // its bytes on disk
+  why: [512] u8; why_n: int;  // why it could not be read, or why the last save failed
+  save_failed: bool;
+  text: [EB_TEXT] u8; text_n: int;   // what the editor holds, as it last published it
+  dirty: bool;                // text is not what the file holds
+  saved: bool;                // saved since it opened, with no change after
+  scroll: f32; content: f32; view: f32;   // the read-only view's scroll
+}
+
+// ---------------------------------------------------------------- what the rest of the page asks
+
+// Whether the pane draws the file: it is open, in front, or nothing else wants the pane.
+cp_fp_shown :: (s: [] CoderPage) -> bool { fp := s[0].fp[..]; return fp[0].open && (fp[0].front || !(s[0].pane_open || s[0].review)); }
+// Whether the file's editor is on screen: the keyboard can go to it.
+cp_fp_editing :: (s: [] CoderPage) -> bool { return cp_fp_shown(s) && s[0].fp[0].mode == CP_FP_EDIT && !s[0].set_open; }
+cp_fp_name :: (s: [] CoderPage) -> string {
+  p := cast(string) s[0].fp[0].path[0..<s[0].fp[0].path_n];
+  at := p.count;
+  while at > 0 && p[at - 1] != '/' { at -= 1; }
+  return cast(string) p[at..<p.count];
+}
+// What the tab says after the name: Edited, Saved, Read-only, or nothing.
+cp_fp_state :: (s: [] CoderPage) -> string {
+  fp := s[0].fp[..];
+  if fp[0].mode == CP_FP_READ { return "Read-only"; }
+  if fp[0].mode != CP_FP_EDIT { return ""; }
+  return ifx fp[0].dirty then "Edited" else ifx fp[0].saved then "Saved" else "";
+}
+// The editor's text, as the page keeps it (editor.coax opens the field on it).
+cp_fp_text :: (s: [] CoderPage) -> string { return cast(string) s[0].fp[0].text[0..<s[0].fp[0].text_n]; }
+// What the editor holds becomes the page's: changed when it is not the file's text.
+cp_fp_publish :: (s: [] CoderPage, text: string) {
+  fp := s[0].fp[..];
+  fp[0].text_n = cp_out(fp[0].text[..], text);
+  dirty := text != cast(string) fp[0].src;
+  if dirty { fp[0].saved = false; }
+  fp[0].dirty = dirty;
+}
+// The file editor's skin: the code face on its own line, no room above the text for a scroll.
+cp_fp_skin :: (k: UiSkin) -> UiSkin {
+  sk := k;
+  sk.body.face = k.mono.face; sk.body.line = k.mono.line; sk.cmp.line = k.mono.line; sk.cmp.pad_top = 0;
+  return sk;
+}
+// A press on a sub-agent's row or the Review button while the file is in front: that pane comes
+// forward (the file stays open behind it). True when the press did all it asked.
+cp_fp_yield :: (s: [] CoderPage, act: int, id: string) -> bool {
+  fp := s[0].fp[..];
+  if !fp[0].open || !fp[0].front || act != CP_REVIEW && act != CP_AGENT { return false; }
+  fp[0].front = false;
+  if act == CP_REVIEW && s[0].review { s[0].pane_tab = CP_TAB_CHANGES; return true; }
+  if act == CP_AGENT && s[0].pane_open && s[0].pane_turn == cp_number(id, "t") && s[0].pane_agent == cp_number(id, ".g") { s[0].pane_tab = CP_TAB_AGENT; return true; }
+  return false;
+}
+cp_fp_press :: (s: [] CoderPage, act: int) -> bool {
+  if !s[0].fp[0].open { return false; }
+  if act == CP_FP_CLOSE { s[0].ask = CP_ASK_FILE_CLOSE; return true; }
+  if act == CP_FP_SAVE { if !s[0].fp[0].dirty { return false; } s[0].ask = CP_ASK_FILE_SAVE; return true; }
+  if act == CP_FP_EXTERNAL { s[0].ask = CP_ASK_FILE_EXTERNAL; return true; }
+  return false;
+}
+// The wheel over the pane: the editor's rows move (and stop following the caret until it moves),
+// or the read-only text does.
+cp_fp_scroll :: (s: [] CoderPage, delta: f32) {
+  fp := s[0].fp[..];
+  if fp[0].mode == CP_FP_EDIT {
+    c := s[0].fld[0].ed[CP_ED_FILE].body[..];
+    c[0].follow = false; c[0].scroll += delta;
+    most := cast(f32) c[0].lines * composer_line(c) - c[0].view_h;
+    if c[0].scroll > most { c[0].scroll = most; }
+    if c[0].scroll < 0 { c[0].scroll = 0; }
+    return;
+  }
+  fp[0].scroll = scroll_clamp(fp[0].scroll + delta, fp[0].content, fp[0].view);
+}
+
+// ---------------------------------------------------------------- drawing
+
+// How many lines text has (one more than its newlines).
+cp_fp_lines :: (text: string) -> int { n := 1; for c: text { if c == '\n' { n += 1; } } return n; }
+// Line number n right-aligned to `right` on the row at y, in the gutter's face; the caret's line in the ink.
+cp_fp_number :: (f: [] UiFrame, n: int, right: f32, y: f32, line: f32, lit: bool) {
+  k := f[0].skin; sh := f[0].sheet;
+  b: [16] u8; t := sheet_pool(sh, cast(string) b[0..<text_put_int(b[..], 0, n)]);
+  w := measure_width(f[0].m, k.mono_tiny.face, t);
+  _ := sheet_text(sh, f[0].m, -1, right - w, y, line, k.mono_tiny.face, ifx lit then k.muted else k.faint, t);
+}
+// The pane: the tab with the file's name and state, Save while it has changes, Open in Default App;
+// its path; a notice when it could not be read or saved; then its lines.
+cp_filepane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; fp := s[0].fp[..];
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  side := a.icon_button; mid := top + CP_CORNER + side / 2;
+  // Open in Default App at the right end of the tab's line, Save before it while there are changes
+  ex := px + pw - CP_CORNER - side;
+  right := ex;
+  if fp[0].mode == CP_FP_EDIT && fp[0].dirty {
+    bw := app_button_width(f, -1, "Save"); right = ex - a.gap_small - bw;
+    _ := app_button(f, "coder.file.save", right, mid - k.control_h / 2, bw, -1, "Save", APP_BUTTON_PRIMARY, 0, CP_FP_SAVE);
+  }
+  _ := app_icon_button(f, "coder.file.external", ex, top + CP_CORNER, ICON_SHARE, "Open in Default App", APP_BUTTON_QUIET, 0, CP_FP_EXTERNAL);
+  stop := app_pane_tab_shell(f, px, top, right - px, h, ICON_FILE_TEXT, cp_fp_name(s), "coder.file.state", cp_fp_state(s), "coder.file.close", CP_FP_CLOSE, CP_CORNER, 1.0f32);
+  x := px + a.gap; cw := pw - 2 * a.gap; y := stop;
+  y += app_meta(f, "coder.file.path", x, y, cw, cast(string) fp[0].path[0..<fp[0].path_n], false) + a.gap_small;
+  why := cast(string) fp[0].why[0..<fp[0].why_n];
+  if fp[0].mode == CP_FP_FAILED { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap; return; }
+  if fp[0].save_failed { y += app_notice(f, "coder.file.error", x, y, cw, why, APP_NOTICE_ERROR) + a.gap_small; }
+  if fp[0].mode == CP_FP_READ {
+    b: [160] u8; n := el_put(b[..], 0, "Coder edits files up to 16 KB and 512 lines here; this one is ");
+    n = el_put_i(b[..], n, (fp[0].size + 1023) / 1024); n = el_put(b[..], n, " KB with ");
+    n = el_put_i(b[..], n, cp_fp_lines(cast(string) fp[0].src)); n = el_put(b[..], n, " lines.");
+    y += app_meta(f, "coder.file.readonly", x, y, cw, sheet_pool(f[0].sheet, cast(string) b[0..<n]), false) + a.gap_small;
+  }
+  // the gutter: as wide as the last line's number, then the text
+  src := ifx fp[0].mode == CP_FP_EDIT then cp_fp_text(s) else cast(string) fp[0].src;
+  digits := 2; d := cp_fp_lines(src); while d >= 100 { digits += 1; d /= 10; }
+  gw := cast(f32) digits * measure_width(f[0].m, k.mono_tiny.face, "0");
+  gx := x + gw; tx := gx + a.gap; tw := px + pw - a.gap - tx;
+  body := y; bh := h - a.gap_small - body;
+  if !(bh > 0) || !(tw > 0) { return; }
+  _ := uiframe_semantic(f, "coder.file.body", EL_TEXT, cp_fp_name(s), tx, body, tw, bh, 0, 0);
+  if fp[0].mode == CP_FP_EDIT { cp_fp_edit_view(s, f, px, gx, tx, body, tw, bh); return; }
+  cp_fp_read_view(s, f, src, px, gx, tx, body, tw, bh);
+}
+// The file in its editor: the field at (tx, body), and the number of each row that starts a line.
+cp_fp_edit_view :: (s: [] CoderPage, f: [] UiFrame, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
+  cp_ed_draw(s, f, CP_ED_FILE, tx, body, tw, bh, "");
+  c := s[0].fld[0].ed[CP_ED_FILE].body[..];
+  if !(c[0].text_w > 0) { return; }
+  t := typed(c); lh := composer_line(c); top := c[0].text_y - c[0].scroll;
+  // the caret's line, lit while the editor has the keyboard
+  lit := -1;
+  if c[0].focused { lit = 1; for i: 0..<(ifx c[0].ed[0].caret < t.count then c[0].ed[0].caret else t.count) { if t[i] == '\n' { lit += 1; } } }
+  uiframe_clip(f, px, body, tx, body + bh);
+  ln := 0;
+  for r: 0..<c[0].lines {
+    at := c[0].line_at[r];
+    starts := r == 0 || at > 0 && t[at - 1] == '\n';
+    if starts { ln += 1; }
+    ry := top + cast(f32) r * lh;
+    if !starts || ry + lh < body || ry > body + bh { continue; }
+    cp_fp_number(f, ln, gx, ry, lh, ln == lit);
+  }
+  uiframe_unclip(f);
+}
+// A file too long to edit here: its lines from body, each wrapped at tw on the code face's cells,
+// its number on its first row. Lines out of view are only counted.
+cp_fp_read_view :: (s: [] CoderPage, f: [] UiFrame, src: string, px: f32, gx: f32, tx: f32, body: f32, tw: f32, bh: f32) {
+  k := f[0].skin; sh := f[0].sheet; fp := s[0].fp[..];
+  face := k.mono.face; lh := k.mono.line;
+  cell := measure_width(f[0].m, face, "0");
+  cols := ifx cell > 0 then cast(int) floor(tw / cell) else 80;
+  if cols < 1 { cols = 1; }
+  fp[0].view = bh;
+  fp[0].scroll = scroll_clamp(fp[0].scroll, fp[0].content, fp[0].view);
+  uiframe_clip(f, px, body, tx + tw, body + bh);
+  y := body - fp[0].scroll; at := 0; ln := 1;
+  while true {
+    end := at; while end < src.count && src[end] != '\n' { end += 1; }
+    stop := ifx end > at && src[end - 1] == '\r' then end - 1 else end;
+    // its code points, and the rows they wrap to
+    n := 0; for i: at..<stop { if (src[i] & 0xC0) != 0x80 { n += 1; } }
+    rows := ifx n == 0 then 1 else (n + cols - 1) / cols;
+    if y + cast(f32) rows * lh > body && y < body + bh {
+      cp_fp_number(f, ln, gx, y, lh, false);
+      i := at;
+      for r: 0..<rows {
+        j := i; m := 0; while j < stop && m < cols { j += 1; while j < stop && (src[j] & 0xC0) == 0x80 { j += 1; } m += 1; }
+        ry := y + cast(f32) r * lh;
+        if ry + lh > body && ry < body + bh && j > i { _ := sheet_text(sh, f[0].m, -1, tx, ry, lh, face, k.ink, cast(string) src[i..<j]); }
+        i = j;
+      }
+    }
+    y += cast(f32) rows * lh; ln += 1;
+    if end >= src.count { break; }
+    at = end + 1;
+  }
+  uiframe_unclip(f);
+  fp[0].content = y + fp[0].scroll - body;
+}
+
+// ---------------------------------------------------------------- the host's calls
+
+// The bytes the pane shows at most: the host does not read a longer file.
+coder_page_file_most :: () -> int #export_c #effects(all) { return CP_FP_MOST; }
+// A file the host read: path as it shows it, its bytes (the host keeps them until the next file
+// or save), its size on disk. It comes forward in the pane; it is edited here when the shared
+// editor holds it, else shown read-only. False when it does not fit at all.
+coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || bytes.count > CP_FP_MOST { return false; }
+  if !s[0].ready { cp_init(s); }
+  cp_fp_begin(s, path);
+  fp := s[0].fp[..];
+  fp[0].src = bytes; fp[0].size = size;
+  text := cast(string) bytes;
+  if text.count <= EB_TEXT && cp_fp_lines(text) <= CP_FP_EDIT_LINES {
+    fp[0].mode = CP_FP_EDIT; fp[0].text_n = cp_out(fp[0].text[..], text);
+  } else { fp[0].mode = CP_FP_READ; }
+  return true;
+}
+// A file the host could not read (missing, a folder, not text, too long): the pane says why.
+coder_page_file_failed :: (s: [] CoderPage, path: string, why: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_fp_begin(s, path);
+  s[0].fp[0].mode = CP_FP_FAILED; s[0].fp[0].why_n = cp_out(s[0].fp[0].why[..], why);
+}
+cp_fp_begin :: (s: [] CoderPage, path: string) {
+  fp := s[0].fp[..];
+  if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
+  ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);   // a new file is a new field: no undo into the last one
+  fp[0] = CpFilePane.{};
+  fp[0].open = true; fp[0].front = true;
+  fp[0].path_n = cp_out(fp[0].path[..], path);
+}
+// The editor's text, to be saved: its length in out, -1 when out does not hold it or nothing is edited.
+coder_page_file_text :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open || s[0].fp[0].mode != CP_FP_EDIT { return -1; }
+  t := cp_fp_text(s);
+  if t.count > out.count { return -1; }
+  return cp_out(out, t);
+}
+// The host wrote the file: bytes are what it holds now (the host keeps them). Edits made since the
+// text was taken stay changes.
+coder_page_file_saved :: (s: [] CoderPage, bytes: [] u8) #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open { return; }
+  fp := s[0].fp[..];
+  fp[0].src = bytes; fp[0].size = bytes.count; fp[0].save_failed = false; fp[0].why_n = 0;
+  fp[0].dirty = cp_fp_text(s) != cast(string) bytes;
+  fp[0].saved = !fp[0].dirty;
+}
+// The host could not write the file: the pane says why, and the changes stay.
+coder_page_file_save_failed :: (s: [] CoderPage, why: string) #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open { return; }
+  s[0].fp[0].save_failed = true; s[0].fp[0].why_n = cp_out(s[0].fp[0].why[..], why);
+}
+// The pane closes; the composer takes the keyboard back if the file had it.
+coder_page_file_close :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if s[0].fld[0].kb == CP_KB_FILE { s[0].fld[0].kb = CP_KB_COMPOSER; }
+  ue_close(s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1]);
+  s[0].fp[0] = CpFilePane.{};
+}
+// The open file comes forward in the pane (it was open behind another). False when none is open.
+coder_page_file_front :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  if s.count < 1 || !s[0].fp[0].open { return false; }
+  s[0].fp[0].front = true; return true;
+}
+// What the pane holds (CP_FP_*: 0 none, 1 edited here, 2 read-only, 3 could not be read).
+coder_page_file_mode :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then s[0].fp[0].mode else CP_FP_NONE; }
+// Whether the open file has changes that are not saved.
+coder_page_file_dirty :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fp[0].open && s[0].fp[0].dirty; }
+// Whether the pane shows the file now (File > Save works then).
+coder_page_file_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_fp_shown(s); }
+// The open file's name, its length in out.
+coder_page_file_name :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 && s[0].fp[0].open then cp_out(out, cp_fp_name(s)) else 0; }

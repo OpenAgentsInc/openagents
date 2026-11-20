@@ -18,6 +18,7 @@ typedef struct {
   char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
   void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
   char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
+  char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -344,12 +345,44 @@ void cd_files(void *page, const char *lines) {
   free(c->files); c->files = keep;
   cd_woke(c);
 }
+// The file in the pane (page/filepane.coax): the page reads its bytes from the carrier's copy.
+static char *cd_keep(const char *bytes, int len) { char *keep = malloc(len > 0 ? (size_t)len : 1); if (keep && len > 0) memcpy(keep, bytes, (size_t)len); return keep; }
+int cd_file_most(void) { return (int)coder_page_file_most(); }
+int cd_file_open(void *page, const char *path, const char *bytes, int len, long long size) {
+  CoderHost *c = page;
+  if (!c || len < 0 || len > cd_file_most()) return 0;
+  char *keep = cd_keep(bytes, len);
+  if (!keep) return 0;
+  int ok = coder_page_file_open(cd_state(c), cd_string(path), (coax_v_u8){(uint8_t *)keep, len}, size);
+  if (!ok) { free(keep); return 0; }
+  free(c->file); c->file = keep;
+  cd_woke(c);
+  return 1;
+}
+void cd_file_failed(void *page, const char *path, const char *why) { CoderHost *c = page; if (c) { coder_page_file_failed(cd_state(c), cd_string(path), cd_string(why)); cd_woke(c); } }
+int cd_file_text(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_file_text(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : -1; }
+void cd_file_saved(void *page, const char *bytes, int len) {
+  CoderHost *c = page;
+  if (!c || len < 0) return;
+  char *keep = cd_keep(bytes, len);
+  if (!keep) return;
+  coder_page_file_saved(cd_state(c), (coax_v_u8){(uint8_t *)keep, len});
+  free(c->file); c->file = keep;
+  cd_woke(c);
+}
+void cd_file_save_failed(void *page, const char *why) { CoderHost *c = page; if (c) { coder_page_file_save_failed(cd_state(c), cd_string(why)); cd_woke(c); } }
+void cd_file_close(void *page) { CoderHost *c = page; if (c) { coder_page_file_close(cd_state(c)); free(c->file); c->file = NULL; cd_woke(c); } }
+int cd_file_front(void *page) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_file_front(cd_state(c)); cd_woke(c); return ok; }
+int cd_file_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_file_mode(cd_state(c)) : 0; }
+int cd_file_dirty(void *page) { CoderHost *c = page; return c && coder_page_file_dirty(cd_state(c)); }
+int cd_file_shown(void *page) { CoderHost *c = page; return c && coder_page_file_shown(cd_state(c)); }
+int cd_file_name(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_file_name(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
-  free(c->files); free(c->s); free(c);
+  free(c->files); free(c->file); free(c->s); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page
 // it shows (-1 closed); what its pages show; the tier a press chose; the search's text.

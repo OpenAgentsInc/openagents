@@ -85,6 +85,27 @@ void cd_attach_clear(void *page);
 int cd_draft_message(void *page, char *out, int cap);
 int cd_add_at(void *page, float out[2]);
 void cd_files(void *page, const char *lines);
+// The file in the pane on the right (page/filepane.coax, GitHub #13760). cd_file_most: the bytes it
+// shows at most. cd_file_open: a file read (its path as shown, its bytes, its size on disk; the
+// carrier keeps a copy for the page); cd_file_failed: one that could not be read, and why.
+// cd_file_text: the editor's text to save, its length (-1 when it does not fit or nothing is
+// edited); cd_file_saved: the bytes written; cd_file_save_failed: why a save failed; cd_file_close
+// closes the pane; cd_file_front brings the open file forward. cd_file_mode: 0 none, 1 edited
+// here, 2 read-only, 3 not read; cd_file_dirty: changes not saved; cd_file_shown: it shows now;
+// cd_file_name: its name, NUL-ended. cd_action asks 40 save, 41 open it in its own app, 42 close
+// (ask first when dirty), 43 keep the keyboard on the view for it.
+int cd_file_most(void);
+int cd_file_open(void *page, const char *path, const char *bytes, int len, long long size);
+void cd_file_failed(void *page, const char *path, const char *why);
+int cd_file_text(void *page, char *out, int cap);
+void cd_file_saved(void *page, const char *bytes, int len);
+void cd_file_save_failed(void *page, const char *why);
+void cd_file_close(void *page);
+int cd_file_front(void *page);
+int cd_file_mode(void *page);
+int cd_file_dirty(void *page);
+int cd_file_shown(void *page);
+int cd_file_name(void *page, char *out, int cap);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

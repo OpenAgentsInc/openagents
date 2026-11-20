@@ -720,6 +720,48 @@ def flow_followups(f: Flow) -> str:
     return "follow-ups"
 
 
+FILE_SRC = 'main :: () {\n  print("hello from the pane");\n}\n'
+
+
+def file_state(f: Flow, what: str, test: Callable[[dict], bool], timeout: float = 5.0) -> dict:
+    """The file in the pane (the probe's `file`), once test holds."""
+    assert f.app is not None
+    deadline = time.time() + timeout
+    st = f.app.do("file")
+    while not test(st):
+        if time.time() > deadline:
+            raise FlowFailed(f"timed out waiting for {what}; file {json.dumps(st)}")
+        time.sleep(0.1)
+        st = f.app.do("file")
+    return st
+
+
+def flow_file_pane(f: Flow) -> str:
+    """A .coax file opened with Coder shows in the right pane; typing makes it Edited, Command-S saves it, Close closes it"""
+    path = f.home / "work" / "hello.coax"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(FILE_SRC, encoding="utf-8")
+    app = f.launch()
+    app.do("open " + str(path))   # application(_:open:), as the Finder hands a file over (#13759)
+    st = file_state(f, "the file to open", lambda s: s["mode"] == 1)
+    f.expect(st["name"] == "hello.coax" and st["text"] == FILE_SRC and st["dirty"] == 0, f"opened file {st}")
+    f.check("file_pane_1200x800")
+    # a click in its text gives it the keyboard; typing goes in at the end
+    f.press("coder.file.body")
+    app.do("key cmd+down")
+    app.do("type // edited")
+    st = file_state(f, "the edit", lambda s: s["dirty"] == 1)
+    f.expect(st["text"] == FILE_SRC + "// edited", f"edited text {st['text']!r}")
+    f.expect(app.do("composer")["text"] == "", "the typing stayed out of the composer")
+    f.check("file_pane_edited_1200x800")
+    app.do("key cmd+s")
+    st = file_state(f, "the save", lambda s: s["dirty"] == 0)
+    f.expect(path.read_text(encoding="utf-8") == FILE_SRC + "// edited", f"on disk after Command-S: {path.read_text(encoding='utf-8')!r}")
+    f.press("coder.file.close")
+    file_state(f, "the pane to close", lambda s: s["mode"] == 0)
+    return "file pane"
+
+
 FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("idle_layouts", flow_idle_layouts),
     ("send_stream_new_chat", flow_send_stream),
@@ -729,6 +771,7 @@ FLOWS: list[tuple[str, Callable[[Flow], str]]] = [
     ("settings", flow_settings),
     ("quit_reopen", flow_quit_reopen),
     ("followups", flow_followups),
+    ("file_pane", flow_file_pane),
 ]
 
 

@@ -287,6 +287,7 @@ CoderPage :: struct {
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
+  fp: [1] CpFilePane;          // a file in the pane on the right (filepane.coax; GitHub #13760)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them

@@ -8,7 +8,7 @@
 // dialog's field with the keyboard (overlay.coax) is the third: a secure one draws dots. The
 // command palette's field (palette.coax, GitHub #13700) is the fourth.
 
-CP_ED_COMPOSER :: 0; CP_ED_SEARCH :: 1; CP_ED_DIALOG :: 2; CP_ED_PALETTE :: 3; CP_EDS :: 4;
+CP_ED_COMPOSER :: 0; CP_ED_SEARCH :: 1; CP_ED_DIALOG :: 2; CP_ED_PALETTE :: 3; CP_ED_FILE :: 4; CP_EDS :: 5;   // the file in the pane (filepane.coax, #13760)
 CP_KB_NONE :: 0; CP_KB_COMPOSER :: 1; CP_KB_SEARCH :: 2;   // which field has the keyboard
 
 CpFields :: struct {
@@ -28,6 +28,7 @@ cp_ed_which :: (s: [] CoderPage) -> int {
   if cp_overlay_open(s) { return ifx cp_ed_dialog_field(s) >= 0 then CP_ED_DIALOG else ifx cp_ed_palette_up(s) then CP_ED_PALETTE else -1; }
   k := s[0].fld[0].kb;
   if s[0].set_open { return ifx k == CP_KB_SEARCH then CP_ED_SEARCH else -1; }
+  if k == CP_KB_FILE { return ifx cp_fp_editing(s) then CP_ED_FILE else -1; }
   return ifx k == CP_KB_COMPOSER then CP_ED_COMPOSER else -1;
 }
 // The dialog's field with the keyboard while it is up at rest, -1 for none.
@@ -51,6 +52,7 @@ cp_composer_focused :: (s: [] CoderPage) -> bool { return s[0].fld[0].active && 
 cp_ed_text :: (s: [] CoderPage, which: int) -> string {
   if which == CP_ED_DIALOG { return app_dialog_value(s[0].ov[0].dlg[..], cp_ed_dialog_field(s)); }
   if which == CP_ED_PALETTE { return app_palette_query(s[0].ov[0].pal[..]); }
+  if which == CP_ED_FILE { return cp_fp_text(s); }
   return ifx which == CP_ED_COMPOSER then eb_text(s[0].draft[..]) else cp_set_query(s);
 }
 // Field `which`, opened again when what it committed is not the page's (a send emptied the draft).
@@ -75,18 +77,20 @@ cp_ed_publish :: (s: [] CoderPage, which: int) {
   if which == CP_ED_DIALOG { _ = app_dialog_set(s[0].ov[0].dlg[..], cp_ed_dialog_field(s), text); return; }
   if which == CP_ED_PALETTE { if text != app_palette_query(s[0].ov[0].pal[..]) { _ = app_palette_set_query(s[0].ov[0].pal[..], text); } return; }
   if which == CP_ED_COMPOSER { if text != eb_text(s[0].draft[..]) { eb_set(s[0].draft[..], text); } return; }
+  if which == CP_ED_FILE { if text != cp_fp_text(s) { cp_fp_publish(s, text); } return; }
   if text != cp_set_query(s) { coder_page_search_set(s, text); }
 }
 // The keyboard goes to a field (CP_KB_*), and the host is asked to give the view the keyboard.
 cp_ed_focus :: (s: [] CoderPage, kb: int) {
   s[0].fld[0].kb = kb;
-  s[0].ask = ifx kb == CP_KB_SEARCH then CP_ASK_SEARCH else CP_ASK_FOCUS;
+  s[0].ask = ifx kb == CP_KB_SEARCH then CP_ASK_SEARCH else ifx kb == CP_KB_FILE then CP_ASK_FILE_FOCUS else CP_ASK_FOCUS;
 }
 // The skin a field draws in: the composer's draft in Geist 14 on a 22 line, settings' search in
 // the settings' description face. The accent caret and selection are Zeron's.
 cp_ed_skin :: (s: [] CoderPage, k: UiSkin, which: int) -> UiSkin {
   sk := k;
   if which == CP_ED_COMPOSER { sk.body.face = CP_COMPOSER_FACE; return sk; }
+  if which == CP_ED_FILE { return cp_fp_skin(k); }
   if which == CP_ED_DIALOG || which == CP_ED_PALETTE { sk.body.face = k.label.face; sk.cmp.line = k.label.line; return sk; }
   sk.body.face = k.set.desc_face; sk.cmp.line = k.set.desc_line;
   sk.faint = Rgba.{};   // set_search draws the search's placeholder and key caps itself
@@ -139,12 +143,13 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
     for i: 0..<CP_EDS {
       if (i == CP_ED_DIALOG || i == CP_ED_PALETTE) && cp_ed_which(s) != i { continue; }
       if i == CP_ED_SEARCH && (over || !s[0].set_open) || i == CP_ED_COMPOSER && (over || s[0].set_open || s[0].model_menu) { continue; }
+      if i == CP_ED_FILE && (over || !cp_fp_editing(s)) { continue; }
       c := fl[0].ed[i].body[..];
       if ue_owner(fl[0].ed[i..<i + 1]) == 0 || !(c[0].text_w > 0) { continue; }
       if x >= c[0].text_x && x < c[0].text_x + c[0].text_w && y >= c[0].text_y && y < c[0].text_y + c[0].view_h { which = i; }
     }
     if which < 0 || which == CP_ED_COMPOSER && cp_mn_over(s, x, y) { return false; }
-    if which != CP_ED_DIALOG && which != CP_ED_PALETTE { cp_ed_focus(s, ifx which == CP_ED_SEARCH then CP_KB_SEARCH else CP_KB_COMPOSER); }
+    if which != CP_ED_DIALOG && which != CP_ED_PALETTE { cp_ed_focus(s, ifx which == CP_ED_SEARCH then CP_KB_SEARCH else ifx which == CP_ED_FILE then CP_KB_FILE else CP_KB_COMPOSER); }
     e := cp_ed(s, which);
     ue_unmark(e);
     e[0].body[0].focused = true;
@@ -201,6 +206,12 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
       cp_ed_publish(s, which); return true;
     }
     if key == KEY_ESCAPE && mods == 0 { return coder_page_followup_escape(s); }
+  } else if which == CP_ED_FILE {
+    // in the file Return and Tab write: a new line, two spaces
+    if (key == KEY_ENTER || key == -15) && mods == 0 {
+      if !ue_insert(e, ifx key == KEY_ENTER then "\n" else "  ") { return false; }
+      cp_ed_publish(s, which); return true;
+    }
   } else if which == CP_ED_SEARCH {
     if key == KEY_ENTER && mods == 0 { _ = coder_page_search_submit(s); return true; }
     if key == -15 { return true; }   // Tab stays in the search

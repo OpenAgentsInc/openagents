@@ -5,7 +5,7 @@ import AppKit
 final class CoderDelegate: NSObject, NSApplicationDelegate {
     var main: CoderWindow?
     private var statusItem: NSStatusItem?
-    private var pendingOpenURLs: [URL] = []
+    private var opened: [URL] = []   // files the Mac asked Coder to open before its window was up
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path, let main = CoderWindow(resources: resources) else {
             fputs("Coder: the GPU surface could not start.\n", stderr); exit(1)
@@ -27,22 +27,18 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
         self.statusItem = statusItem
         NSApp.activate(ignoringOtherApps: true)
-        if !pendingOpenURLs.isEmpty {
-            let urls = pendingOpenURLs
-            pendingOpenURLs.removeAll()
-            for url in urls { main.openFileInPane(url) }
-        }
+        let early = opened; opened = []
+        for url in early { main.openFileInPane(url) }
     }
+    // A .coax file (or another text file) opened with Coder from the Finder or `open` (#13759): it
+    // opens in the pane on the window's right. Several go one after another; the last one shows.
     func application(_ application: NSApplication, open urls: [URL]) {
-        let fileURLs = urls.filter { $0.isFileURL }
-        guard !fileURLs.isEmpty else { return }
-        if let main {
-            NSApp.activate(ignoringOtherApps: true)
-            main.show()
-            for url in fileURLs { main.openFileInPane(url) }
-        } else {
-            pendingOpenURLs.append(contentsOf: fileURLs)
-        }
+        let files = urls.filter { $0.isFileURL }
+        guard !files.isEmpty else { return }
+        guard let main else { opened += files; return }
+        NSApp.activate(ignoringOtherApps: true)
+        main.show()
+        for url in files { main.openFileInPane(url) }
     }
     @objc private func showWindow() {
         NSApp.activate(ignoringOtherApps: true)
@@ -54,6 +50,18 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if main?.openFileDirty == true, let main {
+            // the file in the pane has changes: Save, Don't Save or Cancel first
+            NSApp.activate(ignoringOtherApps: true)
+            main.show()
+            // the answer closes the file (or Cancel keeps Coder open); the quit then starts over
+            main.askToSave(then: {
+                main.dropFile()
+                NSApp.reply(toApplicationShouldTerminate: false)
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }, cancelled: { NSApp.reply(toApplicationShouldTerminate: false) })
+            return .terminateLater
+        }
         guard let count = main?.runningCount, count > 0 else { return .terminateNow }
         // the daemon keeps them running; the next Coder attaches to them (GitHub #13694)
         if main?.runsOutliveQuit == true { return .terminateNow }
@@ -74,8 +82,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
     @objc func openFolder(_ sender: Any?) { main?.chooseFolder() }
-    @objc func saveOpenFile(_ sender: Any?) { main?.saveOpenFile() }
-    @objc func closeFilePane(_ sender: Any?) { main?.closeFilePane() }
+    @objc func saveFile(_ sender: Any?) { main?.saveOpenFile() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
     @objc func followUpOther(_ sender: Any?) { main?.followUpOther() }
@@ -108,8 +115,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
-        if item.action == #selector(saveOpenFile(_:)) { return main?.canSaveOpenFile == true }
-        if item.action == #selector(closeFilePane(_:)) { return main?.filePaneOpen == true }
+        if item.action == #selector(saveFile(_:)) { return main?.canSaveOpenFile == true }
         if item.action == #selector(followUpOther(_:)) {
             guard let w = main else { return false }
             item.title = cd_followup_queues(w.page) != 0 ? "Steer the Reply" : "Queue a Follow-up"
@@ -190,10 +196,7 @@ enum TestLaunch {
         file.addItem(withTitle: "New Chat", action: #selector(CoderDelegate.newChat(_:)), keyEquivalent: "n").target = delegate
         file.addItem(withTitle: "Open Folder…", action: #selector(CoderDelegate.openFolder(_:)), keyEquivalent: "o").target = delegate
         file.addItem(withTitle: "Search…", action: #selector(CoderDelegate.search(_:)), keyEquivalent: "k").target = delegate
-        file.addItem(.separator())
-        file.addItem(withTitle: "Save File", action: #selector(CoderDelegate.saveOpenFile(_:)), keyEquivalent: "s").target = delegate
-        let closePane = file.addItem(withTitle: "Close File Pane", action: #selector(CoderDelegate.closeFilePane(_:)), keyEquivalent: "w")
-        closePane.target = delegate; closePane.keyEquivalentModifierMask = [.command, .shift]
+        file.addItem(withTitle: "Save", action: #selector(CoderDelegate.saveFile(_:)), keyEquivalent: "s").target = delegate
         file.addItem(.separator())
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")

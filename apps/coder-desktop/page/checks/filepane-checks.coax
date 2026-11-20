@@ -1,0 +1,119 @@
+// Checks for the file in the pane (filepane.coax, GitHub #13760): it opens, an edit makes it
+// Edited, Save asks the host and the saved text clears it, Close asks the host and the pane goes,
+// a file the host could not read says why, and a long one is shown read-only. Example data only.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_fp_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].surface[..], id); }
+cp_fp_test_label :: (s: [] CoderPage, id: string) -> string {
+  r := cp_fp_test_find(s, id);
+  if r < 0 { return ""; }
+  t := surface_rows(s[0].surface[..]);
+  return cast(string) t.rows[r].label[0..<t.rows[r].label_n];
+}
+cp_fp_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_fp_test_find(s, id); return r >= 0 && cp_press(s, r); }
+// A page with fonts, the view holding the keyboard, one frame drawn.
+cp_fp_test_page :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  #assert cp_test_draw_side(s, f);
+}
+
+#test "a file opens in the pane with its name, path and numbered lines, editable" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  b: [256] u8; src := "main :: () {\n  print(\"hi\");\n}\n";
+  #assert coder_page_file_open(s, "~/work/app/main.coax", b[0..<cp_out(b[..], src)], src.count);
+  #assert coder_page_file_mode(s) == CP_FP_EDIT && coder_page_file_shown(s) && !coder_page_file_dirty(s);
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
+  #assert cp_fp_test_label(s, "coder.file.close.tab") == "main.coax";
+  #assert cp_fp_test_label(s, "coder.file.path") == "~/work/app/main.coax";
+  #assert cp_fp_test_find(s, "coder.file.body") >= 0 && cp_fp_test_find(s, "coder.file.external") >= 0;
+  // nothing to save yet, so no Save; the tab says nothing after the name
+  #assert cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.file.state") < 0;
+  // the editor holds the file, wrapped into its four lines (the last one empty)
+  e := s[0].fld[0].ed[CP_ED_FILE..<CP_ED_FILE + 1];
+  #assert ue_value(e) == src && e[0].body[0].lines == 4;
+  name: [64] u8; #assert cast(string) name[0..<coder_page_file_name(s, name[..])] == "main.coax";
+}
+
+#test "an edit makes the file Edited with Save; Save asks the host and the saved text clears it" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  b: [256] u8; src := "one\ntwo\n";
+  #assert coder_page_file_open(s, "~/notes.txt", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
+  // a press in its text gives it the keyboard; the host is asked to keep the keyboard on the view
+  #assert cp_test_press_field(s, CP_ED_FILE) && s[0].fld[0].kb == CP_KB_FILE && coder_page_action(s) == CP_ASK_FILE_FOCUS;
+  #assert coder_page_wants_text(s) && cp_ed_which(s) == CP_ED_FILE;
+  // typing, Return and Tab go into the file
+  #assert coder_page_paste(s, "zero");
+  #assert coder_page_key(s, KEY_ENTER, 0) && coder_page_key(s, -15, 0);
+  #assert coder_page_file_dirty(s) && cp_find(cp_fp_text(s), "zero\n  ") >= 0 && s[0].nturns == 0;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.state") == "Edited" && cp_fp_test_find(s, "coder.file.save") >= 0;
+  // what the host is handed to save is what the editor holds
+  out: [64] u8; edited := cast(string) out[0..<coder_page_file_text(s, out[..])];
+  #assert edited == cp_fp_text(s) && edited != src;
+  // Save asks the host; the host writes what the editor holds and hands back the bytes it wrote
+  #assert cp_fp_test_press(s, "coder.file.save") && coder_page_action(s) == CP_ASK_FILE_SAVE;
+  kept: [64] u8; n := cp_out(kept[..], edited);
+  coder_page_file_saved(s, kept[0..<n]);
+  #assert !coder_page_file_dirty(s) && cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.state") == "Saved" && cp_fp_test_find(s, "coder.file.save") < 0;
+  // a save that fails says why, and the changes stay
+  #assert coder_page_paste(s, "!") && coder_page_file_dirty(s);
+  coder_page_file_save_failed(s, "Coder couldn't save notes.txt: the disk is full.");
+  #assert coder_page_file_dirty(s) && cp_test_draw_side(s, f[..]) && cp_find(cp_fp_test_label(s, "coder.file.error"), "disk is full") >= 0;
+  #assert cp_fp_test_label(s, "coder.file.state") == "Edited";
+}
+
+#test "Close asks the host, and the closed pane gives the window and the keyboard back" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  b: [256] u8; src := "x\n";
+  #assert coder_page_file_open(s, "~/a.coax", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]);
+  #assert cp_test_press_field(s, CP_ED_FILE) && s[0].fld[0].kb == CP_KB_FILE;
+  _ = coder_page_action(s);
+  // the tab's Close asks the host (it asks first when there are changes)
+  #assert cp_fp_test_press(s, "coder.file.close") && coder_page_action(s) == CP_ASK_FILE_CLOSE && s[0].fp[0].open;
+  coder_page_file_close(s);
+  #assert !s[0].fp[0].open && coder_page_file_mode(s) == CP_FP_NONE && s[0].fld[0].kb == CP_KB_COMPOSER;
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w == 0 && cp_fp_test_find(s, "coder.file.body") < 0;
+  #assert cp_ed_which(s) == CP_ED_COMPOSER;
+}
+
+#test "a file the host could not read says why, with nothing to edit or save" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  coder_page_file_failed(s, "~/pic.bin", "pic.bin isn't text, so Coder can't show it here.");
+  #assert coder_page_file_mode(s) == CP_FP_FAILED && coder_page_file_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.close.tab") == "pic.bin";
+  #assert cp_find(cp_fp_test_label(s, "coder.file.error"), "isn't text") >= 0;
+  #assert cp_fp_test_find(s, "coder.file.body") < 0 && cp_fp_test_find(s, "coder.file.save") < 0 && cp_fp_test_find(s, "coder.file.external") >= 0;
+  out: [16] u8; #assert coder_page_file_text(s, out[..]) == -1;
+  // a press where its text would be gives it no keyboard
+  #assert !cp_test_press_field(s, CP_ED_FILE) && cp_ed_which(s) == CP_ED_COMPOSER;
+}
+
+#test "a file past the editor's size is shown read-only, says so, and scrolls" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  big: [EB_TEXT + 4000] u8; n := 0;
+  while n + 40 < big.count { n = el_put(big[..], n, "a line of the long file, to be numbered\n"); }
+  #assert coder_page_file_open(s, "~/long.txt", big[0..<n], n) && coder_page_file_mode(s) == CP_FP_READ;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_label(s, "coder.file.state") == "Read-only";
+  #assert cp_find(cp_fp_test_label(s, "coder.file.readonly"), "up to 16 KB") >= 0;
+  #assert s[0].fp[0].content > s[0].fp[0].view && s[0].fp[0].view > 0;
+  // the wheel over the pane moves its text, not the conversation's
+  s[0].px = s[0].pane_x + 40; s[0].py = 400;
+  coder_page_wheel(s, 300);
+  #assert s[0].fp[0].scroll == 300 && s[0].scroll == 0;
+  out: [16] u8; #assert coder_page_file_text(s, out[..]) == -1;
+}
+
+#test "the review comes forward over the file, and the file comes back when it closes" {
+  p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_fp_test_page(s, f[..]);
+  #assert coder_page_set_text(s, "update foo") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"edit src/foo.coax\",\"exit\":0,\"timed_out\":false,\"output\":\"@@ -1,1 +1,1 @@\\n-old\\n+new\\n\"}") == MWW_COMMAND;
+  b: [256] u8; src := "new\n";
+  #assert coder_page_file_open(s, "~/src/foo.coax", b[0..<cp_out(b[..], src)], src.count) && cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.body") >= 0;
+  // Review shows the changes; the file stays open behind them
+  #assert cp_fp_test_press(s, "coder.review") && s[0].review && !cp_fp_shown(s) && s[0].fp[0].open;
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.review.head") >= 0 && cp_fp_test_find(s, "coder.file.body") < 0;
+  // closing the review shows the file again
+  #assert cp_fp_test_press(s, "coder.pane.close") && !s[0].review && cp_fp_shown(s);
+  #assert cp_test_draw_side(s, f[..]) && cp_fp_test_find(s, "coder.file.body") >= 0;
+}

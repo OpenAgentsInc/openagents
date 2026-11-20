@@ -10,7 +10,7 @@ cp_pane_spec :: () -> AppPaneSpec {
 }
 // The pane on the window's right: the code review when its tab shows (#13696), else a sub-agent's transcript.
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  if cp_review_shown(s) { cp_review(s, f, px, pw, h); } else { cp_pane(s, f, px, pw, h); }
+  if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); } else if cp_review_shown(s) { cp_review(s, f, px, pw, h); } else { cp_pane(s, f, px, pw, h); }
 }
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
@@ -18,7 +18,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   left := ifx shell.side.persistent then shell.side.width else 0.0f32;
   right := shell.pane.w;
   s[0].side = left; s[0].pane_w = right; s[0].pane_x = shell.pane.x;
