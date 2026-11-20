@@ -61,6 +61,10 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);
     if wait.count > 0 { y += app_meta(f, cp_pane_id(ib[..], s, ".w", -1), x, y, cw, sheet_pool(sh, wait), false) + a.gap_small; }
     y += app_working(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cast(int) (s[0].clock - s[0].turns[i].agents[j].began), "") + a.gap;
+    if cp_running(s) && i == s[0].nturns - 1 {
+      sw := app_button_width(f, -1, "Stop sub-agent");
+      y += app_button(f, cp_pane_id(ib[..], s, ".stop", -1), x, y, sw, -1, "Stop sub-agent", APP_BUTTON_DEFAULT, 0, CP_PANE_STOP) + a.gap;
+    }
   }
   else if state == CP_DONE && reply.count > 0 {
     if s[0].pane_parsed != reply.count {

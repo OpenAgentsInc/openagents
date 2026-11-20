@@ -219,6 +219,8 @@ void cd_sides_set(void *page, float left, float right) { CoderHost *c = page; if
 int cd_pane(void *page, int n) { CoderHost *c = page; return c && coder_page_pane(cd_state(c), n); }
 int cd_agent_claude(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_claude(cd_state(c), agent); }
 int cd_agent_running(void *page, int agent) { CoderHost *c = page; return c && coder_page_agent_running(cd_state(c), agent); }
+int cd_agent_cancel(void *page, int agent) { CoderHost *c = page; if (!c) return 0; cd_changed(c); return coder_page_agent_cancel(cd_state(c), agent); }
+int cd_stop_agent(void *page) { CoderHost *c = page; return c ? (int)coder_page_stop_agent(cd_state(c)) : -1; }
 // Kept chats (page.coax): the list, the chat that is shown, and a chat's text each way.
 static int cd_text_out(int n, char *out, int cap) { if (n < 0 || n >= cap) n = 0; out[n] = 0; return n; }
 void cd_chats(void *page, const char *list) { CoderHost *c = page; if (c) { coder_page_chats(cd_state(c), cd_string(list)); cd_changed(c); } }

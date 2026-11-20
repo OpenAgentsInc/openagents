@@ -355,14 +355,19 @@ cp_delegate :: (s: [] CoderPage, i: int, tasks: string, ticket: int) {
   s[0].turns[i].h = 0;
   cp_round_check(s, i);
 }
-// Every sub-agent of the round has ended or paused: the worker is owed their results.
+// Every sub-agent of the round has ended or paused, or any failed/stopped early: the worker is owed results.
 cp_round_check :: (s: [] CoderPage, i: int) {
   if !s[0].turns[i].waiting { return; }
+  all_ready := true;
   for q: 0..<s[0].turns[i].round_asked {
     w := s[0].turns[i].round_who[q];
-    if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && !s[0].turns[i].agents[w - 1].paused { return; }
+    if w > 0 {
+      st := s[0].turns[i].agents[w - 1].state;
+      if st == CP_FAILED || st == CP_STOPPED { s[0].results_due = true; return; }
+      if st == CP_RUNNING && !s[0].turns[i].agents[w - 1].paused { all_ready = false; }
+    }
   }
-  s[0].results_due = true;
+  if all_ready { s[0].results_due = true; }
 }
 cp_agent_end :: (s: [] CoderPage, i: int, j: int, state: int, text: string) {
   s[0].turns[i].agents[j].state = state; s[0].turns[i].agents[j].took = s[0].clock - s[0].turns[i].agents[j].began;
@@ -524,6 +529,13 @@ cp_paused :: (s: [] CoderPage, i: int, j: int) -> string {
   n += cp_out(b[n..<b.count], ", and as its task a note that tells it what to do next. To stop it, do not resume it.");
   return cast(string) b[0..<n];
 }
+// What Microcoder is told of a sibling sub-agent still running in the background on an early wakeup.
+cp_running_bg :: (s: [] CoderPage, i: int, j: int) -> string {
+  b := s[0].arena[..]; n := cp_out(b, "still running in the background (sub-agent #");
+  n = el_put_i(b, n, j + 1);
+  n += cp_out(b[n..<b.count], "). It was left running; you can continue without waiting for it.");
+  return cast(string) b[0..<n];
+}
 // The round's results as the worker's line: each sub-agent's reply, or why it has none.
 cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
   b := s[0].scratch[..]; n := json_raw(b, 0, "[");
@@ -532,6 +544,8 @@ cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
     w := s[0].turns[i].round_who[q];
     if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING && s[0].turns[i].agents[w - 1].paused {
       n = json_raw(b, n, "1,\"output\":"); n = json_write_string(b, n, cp_paused(s, i, w - 1));
+    } else if w > 0 && s[0].turns[i].agents[w - 1].state == CP_RUNNING {
+      n = json_raw(b, n, "0,\"output\":"); n = json_write_string(b, n, cp_running_bg(s, i, w - 1));
     } else if w > 0 {
       j := w - 1;
       n = json_raw(b, n, ifx s[0].turns[i].agents[j].state == CP_DONE then "0" else "1"); n = json_raw(b, n, ",\"output\":");
@@ -543,4 +557,20 @@ cp_results :: (s: [] CoderPage, i: int, out: [] u8) -> int {
   n = json_raw(b, n, "]");
   if n < 0 { return 0; }
   return mww_results(out, s[0].turns[i].ticket, cast(string) b[0..<n]);
+}
+
+// Stop one running sub-agent without stopping the parent turn or sibling sub-agents (#13766).
+coder_page_agent_cancel :: (s: [] CoderPage, agent: int) -> bool #export_c #effects(all) {
+  if s.count < 1 || !cp_running(s) { return false; }
+  i := s[0].nturns - 1;
+  if agent < 0 || agent >= s[0].turns[i].nagents { return false; }
+  if s[0].turns[i].agents[agent].state != CP_RUNNING { return false; }
+  cp_agent_end(s, i, agent, CP_STOPPED, "Stopped by user.");
+  return true;
+}
+// The 0-based sub-agent to cancel for CP_ASK_STOP_AGENT (-1 when none).
+coder_page_stop_agent :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  j := s[0].stop_agent; s[0].stop_agent = -1;
+  return j;
 }

@@ -78,6 +78,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     return true;
   }
   if act == CP_PANE_CLOSE { s[0].pane_open = false; s[0].pane_manual = true; return true; }
+  if act == CP_PANE_STOP { if cp_running(s) && s[0].pane_turn == s[0].nturns - 1 && s[0].pane_agent >= 0 && s[0].pane_agent < s[0].turns[s[0].pane_turn].nagents && s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].state == CP_RUNNING { s[0].stop_agent = s[0].pane_agent; s[0].ask = CP_ASK_STOP_AGENT; } return true; }
   if act == CP_REVIEW {
     // the code review opens in the pane, its tab in front; a press while it shows closes it
     if s[0].review && cp_review_shown(s) { s[0].review = false; return true; }
