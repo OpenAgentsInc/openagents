@@ -31,10 +31,10 @@ cp_review_edits :: (s: [] CoderPage, out: [] int) -> int {
 }
 // The pane's header: a sub-agent's model or "Changes", or both as tabs when both are open; meta
 // (how long the sub-agent ran) after the title, Close for what shows. Returns where its body starts.
-cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32, meta: string) -> f32 {
+cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f32, meta: string) -> f32 {
   changes := cp_review_shown(s);
   // on the title bar's line beside the conversation; taking the whole window, under the bar, clear of its controls
-  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  top := ifx py > 0 then py else ifx px > 0 then 0.0f32 else cp_bar(s);
   agent := ifx s[0].pane_open then CP_LEVEL_NAME[s[0].turns[s[0].pane_turn].agents[s[0].pane_agent].level] else "";
   if s[0].review && s[0].pane_open {
     tabs := [2] string.[agent, "Changes"]; icons := [2] int.[ICON_BOT, ICON_PEN];
@@ -48,7 +48,7 @@ cp_pane_head :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32, meta:
 // and each changed file's row over its edits' hunks while it is open. Rows out of view are not drawn.
 cp_review :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; d := app_diff_look(k);
-  stop := cp_pane_head(s, f, px, pw, h, "");
+  stop := cp_pane_head(s, f, px, 0.0f32, pw, h, "");
   s[0].pane_view = h - stop;
   s[0].review_scroll = scroll_clamp(s[0].review_scroll, s[0].review_content, s[0].pane_view);
   edits: [CP_REVIEW_EDITS] int; ne := cp_review_edits(s, edits[..]);

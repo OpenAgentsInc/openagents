@@ -61,6 +61,7 @@ cp_todos_take :: (s: [] CoderPage, raw: string) {
     k += 1;
   }
   td[0].n = k;
+  if k == 0 { td[0].tray_h = 0.0f32; }
 }
 
 cp_todos_toggle :: (s: [] CoderPage) -> bool {
@@ -86,17 +87,17 @@ coder_page_todo_text :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #
   return cp_out(out, cp_todo_str(s[0].todos[0].items[i].content[..], s[0].todos[0].items[i].ncontent));
 }
 
-// The checklist tray, docked by its bottom edge at `bottom` over the composer (and over follow-ups).
-cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32) {
+// The checklist section, docked at the top of the right sidebar starting at `top`.
+cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, top: f32, cw: f32) -> f32 {
   td := s[0].todos[..];
   n := td[0].n;
-  if n == 0 { td[0].tray_h = 0.0f32; return; }
+  if n == 0 { td[0].tray_h = 0.0f32; return 0.0f32; }
   sk := f[0].skin; a := sk.app; sh := f[0].sheet; m := f[0].m;
   rh := sk.body.line + 6.0f32;
   hh := sk.cmp.chip_h + 4.0f32;
   shown := ifx td[0].collapsed then 0 else n;
   h := 2 * a.gap_small + hh + cast(f32) shown * rh;
-  y := bottom - h;
+  y := top;
   uiframe_open(f, uiframe_semantic(f, "coder.todos", EL_REGION, "Tasks", x, y, cw, h, 0, 0));
   _ := sheet_box(sh, x, y, cw, h, a.card_radius, sk.border, sk.surface, sk.hover);
   pad := a.gap;
@@ -153,6 +154,7 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom: f32, cw: f32) 
   }
   uiframe_close(f);
   td[0].tray_h = h + a.gap_small;
+  return td[0].tray_h;
 }
 
 coder_page_todo_content :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {

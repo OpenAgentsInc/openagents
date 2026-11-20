@@ -230,7 +230,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if (s[0].pane_open || s[0].review || s[0].fp[0].open) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.

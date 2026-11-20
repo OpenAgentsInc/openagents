@@ -8,9 +8,20 @@ cp_sidebar_spec :: () -> AppSidebarSpec {
 cp_pane_spec :: () -> AppPaneSpec {
   return AppPaneSpec.{ default_w = cast(f32) CP_PANE, min_w = cast(f32) CP_PANE_LEAST, max_w = cast(f32) CP_PANE_MOST, main_min = cast(f32) CP_PANE_MAIN };
 }
-// The pane on the window's right: the code review when its tab shows (#13696), else a sub-agent's transcript.
+// The right sidebar: filepane or code review when active, else the task list at the top with any sub-agent transcript underneath.
 cp_side_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
-  if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); } else if cp_review_shown(s) { cp_review(s, f, px, pw, h); } else { cp_pane(s, f, px, pw, h); }
+  if cp_fp_shown(s) { cp_filepane(s, f, px, pw, h); return; }
+  if cp_review_shown(s) { cp_review(s, f, px, pw, h); return; }
+  py: f32 = 0.0f32;
+  if s[0].todos[0].n > 0 {
+    k := f[0].skin; a := k.app; sh := f[0].sheet;
+    if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
+    top := ifx px > 0 then cast(f32) CP_CORNER else cp_bar(s);
+    th := cp_todos_tray(s, f, px + CP_PAD, top, pw - 2 * CP_PAD);
+    py = top + th;
+    if s[0].pane_open { sheet_fill(sh, px, py, pw, k.border, 0, k.menu_divider); py += a.gap_small; }
+  }
+  if s[0].pane_open { cp_pane(s, f, px, py, pw, h); }
 }
 cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   s[0].win_w = window_w;
@@ -18,7 +29,7 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
   if s[0].pane_open && (s[0].pane_turn >= s[0].nturns || s[0].pane_agent >= s[0].turns[s[0].pane_turn].nagents) { s[0].pane_open = false; }
   // Unified 3-region responsive shell (apps/shared/app/view/shell.coax): persistent sidebar on
   // wide viewports, centered conversation column, and right sub-agent transcript pane.
-  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
+  shell := app_shell_layout(window_w, h, s[0].side_w, s[0].pane_user, s[0].side_collapsed, 0.0f32, s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].todos[0].n > 0, cp_sidebar_spec(), cp_pane_spec(), CP_COLUMN, CP_PAD);
   // the sidebar and the pane slide open and shut (#13773): each is present 0 to 1 on a keyed row,
   // which keeps its width while it is shut, and the conversation's column follows them
   kd := f[0].keyed; sk := uiframe_key(f, "coder.shell.side"); pk := uiframe_key(f, "coder.shell.pane");

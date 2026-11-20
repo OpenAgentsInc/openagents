@@ -25,7 +25,7 @@ cp_pane_id :: (out: [] u8, s: [] CoderPage, part: string, q: int) -> string {
 // are open, cp_pane_head); under it, scrolling, its
 // task as a message, its work as one activity group as the conversation draws a message's
 // (#13744: the summary, the tree, rows that open onto their call and output), and its reply.
-cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, py: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; sh := f[0].sheet;
   i := s[0].pane_turn; j := s[0].pane_agent;
   state := s[0].turns[i].agents[j].state;
@@ -34,7 +34,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   ran := s[0].turns[i].agents[j].took;
   took := ifx state == CP_RUNNING then cp_took(kb[..], s[0].clock - s[0].turns[i].agents[j].began) else ifx ran >= 1 then cp_took(kb[..], ran) else "";
   took_s := ifx took.count > 0 then sheet_pool(sh, took) else "";
-  stop := cp_pane_head(s, f, px, pw, h, took_s);
+  stop := cp_pane_head(s, f, px, py, pw, h - py, took_s);
   s[0].pane_view = h - stop;
   if s[0].pane_stick { s[0].pane_scroll = s[0].pane_content - s[0].pane_view; }
   s[0].pane_scroll = scroll_clamp(s[0].pane_scroll, s[0].pane_content, s[0].pane_view);
@@ -42,7 +42,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   // the task stands level with the conversation's first message, which starts under the title bar
   // (#13754): the body starts there when the head ends just past it
   body := stop; bar := cp_bar(s);
-  if px > 0 && stop > bar && stop - bar <= a.gap_small { body = bar; }
+  if py == 0 && px > 0 && stop > bar && stop - bar <= a.gap_small { body = bar; }
   x := px + CP_PAD; cw := pw - 2 * CP_PAD; y := body - s[0].pane_scroll - s[0].pane_scr[0].stretch + a.gap;
   enter := f[0].skin.motion.enter;
   f[0].skin.motion.enter = 0;
