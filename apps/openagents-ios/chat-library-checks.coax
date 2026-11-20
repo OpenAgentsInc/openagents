@@ -54,16 +54,16 @@ crow_t_rows :: (s:[]ChatPage,n:int) {
  h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";titles:=[3]string.["Alpha chat","Beta chat","Gamma chat"];ids:=[3]string.["alpha","beta","gamma"];
  nv:=s[0].sc[0].devices[0].nav[..];b:=nv[0].browser[..];b[0].catalog[0].n=1;_=ea_copy(b[0].catalog[0].entries[0].host[..],h);b[0].catalog[0].entries[0].nl=ea_copy(b[0].catalog[0].entries[0].label[..],"Mac");
  nv[0].groups[0].loaded=true;nv[0].groups[0].complete=true;
- for i:0..<n {r:=nv[0].rows[i];r.host=0;r.session.ni=el_copy(r.session.id[..],ids[i]);r.session.nt=el_copy(r.session.title[..],titles[i]);r.session.nc=el_copy(r.session.control[..],"x");nv[0].rows[i]=r;}
+ for i:0..<n {r:=nv[0].rows[i];r.host=0;r.session.ni=el_copy(r.session.id[..],ids[i]);r.session.nt=el_copy(r.session.title[..],titles[i]);r.session.nc=el_copy(r.session.control[..],"x");if i==1 {r.session.nw=el_copy(r.session.workspace[..],"openagents");}nv[0].rows[i]=r;}
  nv[0].n=n;
 }
 crow_t_id :: (s:[]ChatPage,i:int,buf:[]u8)->string {return dh_row_id(s[0].sc[0].devices[..],i,buf);}
-#test "a computer's chat in the drawer: a long press opens Pin, Rename and Archive for that row, and a swipe right along it pins it" #steps 2000000000 {
+#test "a computer's chat in the drawer: its project under its title; a long press opens Pin, Rename and Archive for that row, and a swipe right along it pins it" #steps 2000000000 {
  s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);c[0].auth=AUTH_IN;c[0].foreground=false;
  ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");_=ch_test_frame(s[..],o[..]);
  #assert chat_activate(s[..],"nav.menu");_=ch_test_frame(s[..],o[..]);crow_t_rows(s[..],3);_=ch_test_frame(s[..],o[..]);
  b0:[64]u8;b1:[64]u8;a:=crow_t_id(s[..],0,b0[..]);g:=crow_t_id(s[..],2,b1[..]);
- #assert ch_test_text(s[..],"Recents")==1;#assert ch_test_text(s[..],"Alpha chat")==1;i:=surface_find(ch_live(s[..]),a);#assert i>=0;r:=ch_rows(s[..]).rows[i];x:=(r.x+r.w/2)*s[0].d;y:=(r.y+r.h/2)*s[0].d;
+ #assert ch_test_text(s[..],"Recents")==1 && ch_test_text(s[..],"Alpha chat")==1 && ch_test_text(s[..],"openagents")==1;i:=surface_find(ch_live(s[..]),a);#assert i>=0;r:=ch_rows(s[..]).rows[i];x:=(r.x+r.w/2)*s[0].d;y:=(r.y+r.h/2)*s[0].d;
  // held still: the row's actions open, and the release opens no chat
  _=chat_pointer(s[..],x,y,0);#assert s[0].touching;#assert s[0].pressed_n>0;#assert ch_row_target(s[..],a);#assert !s[0].scrolling && !s[0].swiped;_=ch_test_frame(s[..],o[..]);
  #assert s[0].row_menu;_=chat_pointer(s[..],x,y,2);_=ch_test_frame(s[..],o[..]);

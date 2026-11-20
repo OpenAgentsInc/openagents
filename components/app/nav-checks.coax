@@ -38,16 +38,19 @@
   #assert app_test_end(t[..]) && app_test_label(t[..], "nav") == "Close sidebar" && app_test_has(t[..], "nav", EL_S_EXPANDED);
 }
 
-#test "app nav: a history window realizes only visible one-line rows and uses their stable IDs" {
+#test "app nav: a history window realizes only visible rows, two-line where a row has a detail, and uses their stable IDs" {
  t:[1]AppTest;app_test_init(t[..]);rows:=[4]AppSideRow.[AppSideRow.{id="h.a",title="First title",detail="Hidden detail"},AppSideRow.{id="h.b",title="A very long second title which is truncated"},AppSideRow.{id="h.c",title="Third",state=EL_S_CURRENT},AppSideRow.{id="h.d",title="Fourth"}];
- app_test_begin(t[..],"","",true);height:=t[0].f[0].skin.app.side_row;
- n:=app_side_window(t[0].f[..],0,20,40,height*2,rows[..],height,0,9);
- #assert app_test_end(t[..]) && n==4*height && t[0].sf[0].generation==1;
+ app_test_begin(t[..],"","",true);height:=t[0].f[0].skin.app.side_row;two:=t[0].f[0].skin.app.side_row_two;
+ n:=app_side_window(t[0].f[..],0,20,40,height*2,rows[..],two,0,9);
+ #assert app_test_end(t[..]) && n==two+3*height && t[0].sf[0].generation==1;
  #assert app_test_row(t[..],"h.b").h==height && app_test_row(t[..],"h.c").h==height && app_test_has(t[..],"h.c",EL_S_CURRENT);
  #assert app_test_texts(t[..],"Hidden detail")==0 && app_test_texts(t[..],"A very long second title which is truncated")==0;
  #assert !app_test_pressable(t[..],"h.a") && !app_test_pressable(t[..],"h.d");
- app_test_begin(t[..],"","",true);n=app_side_window(t[0].f[..],0,20,40,height*2,rows[..],height*3,height,9);
- #assert app_test_end(t[..]) && n==5*height && app_test_row(t[..],"h.d").y==20;
+ app_test_begin(t[..],"","",true);n=app_side_window(t[0].f[..],0,20,40,height*2,rows[..],two+height*2,height,9);
+ #assert app_test_end(t[..]) && n==two+4*height && app_test_row(t[..],"h.d").y==20;
+ // scrolled to the top, the first row shows its second line
+ app_test_begin(t[..],"","",true);_=app_side_window(t[0].f[..],0,20,200,two+height,rows[..],0,0,9);
+ #assert app_test_end(t[..]) && app_test_row(t[..],"h.a").h==two && app_test_texts(t[..],"Hidden detail")==1;
 
 }
 

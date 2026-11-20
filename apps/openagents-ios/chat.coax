@@ -91,7 +91,7 @@ ChatPage :: struct {
   drawer: bool; share: f32;
   thread_menu:bool;thread_details:bool;
   // a drawer row's own actions (Zeron's row swipe and long-press): the touch's start, and the row the menu acts on
-  held:f32;row_menu:bool;row_y:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
+  held:f32;row_menu:bool;row_y:f32;row_h:f32;row_key:[CHLIB_KEY]u8;row_nk:int;row_title:[CHLIB_TITLE]u8;row_nt:int;
   library:[1]ChatLibrary;library_sync:[1]ClSync;library_filter:int;rename:bool;workspace:bool;rename_text:[CHLIB_TITLE]u8;rename_n:int;target:[CHLIB_KEY]u8;target_n:int;library_note:bool;filter_menu:bool;
   menu_content:f32;menu_viewport:f32;
   search:[128]u8;search_n:int;
@@ -181,8 +181,11 @@ ch_history :: (s:[]ChatPage,f:[]UiFrame,x:f32,y:f32,w:f32,bottom:f32) {
     if (flags&2)!=0 || (ifx (flags&1)!=0 then 0 else 1)!=pass {continue;}
     title:=chlib_label(s[0].library[..],target_key,cast(string)n[0].rows[i].session.title[0..<r.session.nt]);if !text_contains_ascii(title,query) {continue;}
     shown_title:=ifx title.count>0 then title else "New chat";
-    if multi {tb:[CHLIB_TITLE+96]u8;tn:=el_put(tb[..],0,shown_title);tn=el_put(tb[..],tn," · ");tn=el_put(tb[..],tn,cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl]);shown_title=sheet_pool(f[0].sheet,cast(string)tb[0..<tn]);}
-    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),action=343,status=ifx r.session.nr>0 then "Needs you" else ch_age(f,c[0].wall_ms,r.session.updated),attention=r.session.nr>0};count+=1;shown+=1;
+    // Zeron's subline under the title: the project the chat works in, then its computer when there are several
+    detail:="";project:=cast(string)n[0].rows[i].session.workspace[0..<r.session.nw];if project=="default" {project="";}
+     db:[160]u8;dn:=el_put(db[..],0,project);if multi {if dn>0 {dn=el_put(db[..],dn," · ");}dn=el_put(db[..],dn,cast(string)b[0].catalog[0].entries[host].label[0..<entry.nl]);}
+     if dn>0 {detail=sheet_pool(f[0].sheet,cast(string)db[0..<dn]);}
+    key:=dh_row_id(h,i,ids[count][..]);rows[count]=AppSideRow.{id=key,title=shown_title,state=(ifx app_device_on(c) && app_environment(c)==cast(string)entry.host[..] && cast(string)app_device_env(c)[0].session[0..<app_device_env(c)[0].ns]==sid then EL_S_CURRENT else 0) | (ifx r.session.busy then EL_S_BUSY else 0),detail=detail,action=343,status=ifx r.session.nr>0 then "Needs you" else ch_age(f,c[0].wall_ms,r.session.updated),attention=r.session.nr>0};count+=1;shown+=1;
    }
   }
   if shown==0 && pass==0 {count=head_at;}
@@ -559,7 +562,7 @@ ch_row_menu :: (s:[]ChatPage,f:[]UiFrame,x:f32,top:f32,w:f32,foot:f32) {
  sheet_fill(f[0].sheet,x-2*k.app.gap,top,w+4*k.app.gap,foot-top,0,opacity(panel,0.78));
  sr:=uiframe_semantic(f,"drawer.row.scrim",EL_BUTTON,"Close",x,top,w,foot-top,0,473);sheet_hit(f[0].sheet,UIFRAME_HIT,sr,0,x,top,w,foot-top);
  mw:=ifx k.chat.menu_w<w-2*k.app.gap then k.chat.menu_w else w-2*k.app.gap;mh:=3*k.control_h+2*k.app.card_pad;
- my:=s[0].row_y+k.app.side_row;if my+mh>foot {my=s[0].row_y-mh;}if my<top {my=top;}
+ rh:=ifx s[0].row_h>0 then s[0].row_h else k.app.side_row;my:=s[0].row_y+rh;if my+mh>foot {my=s[0].row_y-mh;}if my<top {my=top;}
  ch_row_echo(s,f,x,w);
  in:=app_card(f,"drawer.row.menu",x+w-mw-k.app.gap,my,mw,mh,ifx s[0].row_nt>0 then cast(string)s[0].row_title[0..<s[0].row_nt] else "Chat");
  _:=app_icon_menu_row(f,"drawer.row.pin",in.x,in.y,in.w,ICON_PIN,ifx (flags&1)!=0 then "Unpin" else "Pin",0,470);
@@ -578,9 +581,9 @@ ch_row_target :: (s:[]ChatPage,id:string)->bool {
 }
 // The held row itself, lifted clear of the veil over the list (Zeron's context-menu preview).
 ch_row_echo :: (s:[]ChatPage,f:[]UiFrame,x:f32,w:f32) {
- k:=f[0].skin;a:=k.app;sheet_fill(f[0].sheet,x+a.row_inset,s[0].row_y,w-2*a.row_inset,a.side_row,a.row_radius,k.raised);
+ k:=f[0].skin;a:=k.app;rh:=ifx s[0].row_h>0 then s[0].row_h else a.side_row;sheet_fill(f[0].sheet,x+a.row_inset,s[0].row_y,w-2*a.row_inset,rh,a.row_radius,k.raised);
  tf:=ifx a.side_text.line>0 then a.side_text else k.body;
- _:=sheet_text(f[0].sheet,f[0].m,-1,x+a.side_pad,s[0].row_y+(a.side_row-tf.line)/2,tf.line,tf.face,k.ink,app_fit(f,tf.face,cast(string)s[0].row_title[0..<s[0].row_nt],w-2*a.side_pad));
+ _:=sheet_text(f[0].sheet,f[0].m,-1,x+a.side_pad,s[0].row_y+(rh-tf.line)/2,tf.line,tf.face,k.ink,app_fit(f,tf.face,cast(string)s[0].row_title[0..<s[0].row_nt],w-2*a.side_pad));
 }
 // Pin (bit 1) or archive (bit 2) the drawer row's chat, or take it back.
 ch_row_flip :: (s:[]ChatPage,bit:int)->bool {
@@ -729,7 +732,7 @@ ch_hold :: (s:[]ChatPage,dt:f32) {
  if abs(s[0].px-s[0].down_x)>CH_MOVE || abs(s[0].py-s[0].down_y)>CH_MOVE {return;}
  s[0].held+=dt;if s[0].held<CH_HOLD {return;}
  id:=cast(string)s[0].pressed[0..<s[0].pressed_n];if !ch_row_target(s,id) {return;}
- t:=[1]ElTable.[ch_rows(s)];i:=elt_find(t[..],id);s[0].row_y=ifx i>=0 then t[0].rows[i].y else s[0].py;
+ t:=[1]ElTable.[ch_rows(s)];i:=elt_find(t[..],id);s[0].row_y=ifx i>=0 then t[0].rows[i].y else s[0].py;s[0].row_h=ifx i>=0 then t[0].rows[i].h else 0.0f32;
  s[0].row_menu=true;s[0].swiped=true;s[0].pressed_n=0;ch_step(s);
 }
 chat_frame :: (s: [] ChatPage, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
