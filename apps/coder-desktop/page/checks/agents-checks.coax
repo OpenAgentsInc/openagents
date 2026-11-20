@@ -27,13 +27,13 @@
   #assert n > 0 && cp_find(line, "paused, not finished. Sub-agent number 1 has made 100 tool calls in a row without changing a file (") > 0;
   #assert cp_find(line, "- read a.txt") > 0 && cp_find(line, "- edit a.txt") > 0 && cp_find(line, "delegate one task with resume 1, level hydrogen,") > 0 && cp_find(line, "\"output\":\"read it\"") > 0;
   // resume lets it go on: the command that waited gets a no that carries the note, and the count starts again
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"write the file now\",\"resume\":1},{\"level\":\"hydrogen\",\"task\":\"x\",\"resume\":2},{\"level\":\"hydrogen\",\"task\":\"y\",\"resume\":9}],\"ticket\":2}") == MWW_DELEGATE;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"write the file now\",\"resume\":1},{\"level\":\"hydrogen\",\"task\":\"y\",\"resume\":9}],\"ticket\":2}") == MWW_DELEGATE;
   #assert s[0].turns[0].nagents == 2 && !s[0].turns[0].agents[0].paused && s[0].turns[0].agents[0].quiet == 0 && !s[0].results_due;
   n = coder_page_agent_answer_line(s, 0, out[..]); line = cast(string) out[0..<n];
   #assert n > 0 && cp_find(line, "\"answer\":false,\"ticket\":3") > 0 && cp_find(line, "Its note: write the file now") > 0 && coder_page_agent_answer_line(s, 0, out[..]) == 0;
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"wrote it\"}") == MWW_ENDED && s[0].results_due;
   n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
-  #assert cp_find(line, "{\"exit\":0,\"output\":\"wrote it\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"},{\"exit\":1,\"output\":\"not run: no paused sub-agent has that number\"}") > 0;
+  #assert cp_find(line, "{\"exit\":0,\"output\":\"wrote it\"},{\"exit\":1,\"output\":\"not run: no sub-agent has that number\"}") > 0;
   // a paused sub-agent that is not let go on is stopped when the run ends
   #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":3}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
   s[0].turns[0].agents[2].quiet = CP_QUIET;
@@ -187,16 +187,20 @@
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"command\",\"command\":\"ls | wc -l\",\"exit\":0,\"timed_out\":false,\"output\":\"12\"}") == MWW_COMMAND && !s[0].turns[0].agents[0].now_running && s[0].turns[0].agents[0].calls == 1;
   s[0].clock = 70;
   #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"12 files\"}") == MWW_ENDED;
-  #assert !coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && !s[0].results_due && coder_page_answer_line(s, out[..]) == 0;
+  // one ending wakes Microcoder at once (#13766): its result, and the other as still running
+  #assert !coder_page_agent_running(s, 0) && coder_page_agent_running(s, 1) && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]);
+  #assert cp_find(cast(string) out[0..<n], "{\"exit\":0,\"output\":\"12 files\"},{\"exit\":1,\"output\":\"still running in the background (sub-agent #2)") > 0 && !s[0].turns[0].waiting;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"wait\",\"resume\":2}],\"ticket\":4}") == MWW_DELEGATE && !s[0].results_due && s[0].turns[0].nagents == 2;
   kb: [24] u8;
   #assert cp_took(kb[..], s[0].turns[0].agents[0].took) == "1m 10s" && cp_took(kb[..], 9.7) == "9s" && cp_took(kb[..], 65) == "1m 05s" && cp_took(kb[..], -1) == "";
   coder_page_agent_failed(s, 1, "Its worker stopped.");
   #assert s[0].results_due && s[0].turns[0].agents[1].state == CP_FAILED;
   n = coder_page_answer_line(s, out[..]);
-  #assert cast(string) out[0..<n] == "{\"results\":[{\"exit\":0,\"output\":\"12 files\"},{\"exit\":1,\"output\":\"Its worker stopped.\"}],\"ticket\":3}\n";
+  #assert cast(string) out[0..<n] == "{\"results\":[{\"exit\":1,\"output\":\"Its worker stopped.\"}],\"ticket\":4}\n";
   #assert !s[0].turns[0].waiting && coder_page_answer_line(s, out[..]) == 0;
   // a second round, stopped: its sub-agent is stopped with the run and nothing is owed
-  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":4}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\"}],\"ticket\":5}") == MWW_DELEGATE && s[0].turns[0].nagents == 3;
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"stopped\",\"text\":\"\"}") == MWW_ENDED;
   #assert s[0].turns[0].agents[2].state == CP_STOPPED && !s[0].results_due && coder_page_agent_next(s) == -1;
   // a new chat's first message shows none of them
@@ -440,7 +444,7 @@
   #assert n > 0 && cp_find(line, "\"ticket\":9") >= 0;
   #assert cp_find(line, "worker crashed") >= 0;
   #assert cp_find(line, "still running in the background (sub-agent #2)") >= 0;
-  #assert cp_find(line, "\"exit\":0,\"output\":\"still running in the background (sub-agent #2)") >= 0;
+  #assert cp_find(line, "\"exit\":1,\"output\":\"still running in the background (sub-agent #2)") >= 0 && cp_find(line, "resume 2, level hydrogen") >= 0;
   #assert coder_page_agent_running(s, 1) && !s[0].results_due;
 }
 
@@ -477,6 +481,29 @@
   #assert cp_find(line, "Stopped by user.") >= 0;
   #assert cp_find(line, "still running in the background (sub-agent #2)") >= 0;
   #assert coder_page_agent_running(s, 1);
+}
+
+#test "one sub-agent finishing wakes the parent; resume waits for the running sibling, whose later result comes back; the run's stop_agent stops one (#13766)" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+  #assert coder_page_set_text(s, "run three") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":3,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"a\"},{\"level\":\"carbon\",\"task\":\"b\"},{\"level\":\"hydrogen\",\"task\":\"c\"}]}") == MWW_DELEGATE;
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"a done\"}") == MWW_ENDED;
+  #assert s[0].results_due && coder_page_agent_running(s, 1) && coder_page_agent_running(s, 2);
+  out: [4096] u8;
+  n := coder_page_answer_line(s, out[..]); line := cast(string) out[0..<n];
+  #assert cp_find(line, "\"exit\":0,\"output\":\"a done\"") >= 0 && cp_find(line, "\"exit\":1,\"output\":\"still running in the background (sub-agent #2)") >= 0 && cp_find(line, "resume 2, level carbon") >= 0;
+  // the run stops sub-agent 3 alone, then waits for 2 and asks for 1's result again
+  #assert coder_page_line(s, "{\"kind\":\"stop_agent\",\"agent\":3}") == MWW_STOP_AGENT;
+  #assert !coder_page_agent_running(s, 2) && s[0].turns[0].agents[2].state == CP_STOPPED && coder_page_agent_running(s, 1) && !s[0].results_due;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":4,\"tasks\":[{\"level\":\"carbon\",\"task\":\"wait\",\"resume\":2}]}") == MWW_DELEGATE;
+  #assert s[0].turns[0].nagents == 3 && !s[0].results_due && coder_page_agent_running(s, 1);
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"b done\"}") == MWW_ENDED && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "\"ticket\":4") >= 0 && cp_find(line, "\"exit\":0,\"output\":\"b done\"") >= 0;
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"ticket\":5,\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"again\",\"resume\":1}]}") == MWW_DELEGATE && s[0].results_due;
+  n = coder_page_answer_line(s, out[..]); line = cast(string) out[0..<n];
+  #assert cp_find(line, "\"ticket\":5") >= 0 && cp_find(line, "a done") >= 0;
 }
 
 #test "a sub-agent's pane keeps the conversation's copy lane under its task, so its work stands level with the message's (#13770)" {
