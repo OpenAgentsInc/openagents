@@ -22,6 +22,12 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Coder lets OpenAgents on your iPhone find this Mac nearby, so you can pair them without a code.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_openagents-coder._tcp</string>
+	</array>
 	<key>CFBundleIconFile</key>
 	<string>Coder</string>
 	<key>UTExportedTypeDeclarations</key>

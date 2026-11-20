@@ -13,6 +13,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         self.main = main
         main.installPaletteKeys()
         TestLaunch.start()
+        CoderTailnet.shared.start()   // a phone on your tailnet pairs with no code (Tailnet.swift, #13778)
         let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             let image = NSImage(systemSymbolName: "terminal", accessibilityDescription: "Coder")
