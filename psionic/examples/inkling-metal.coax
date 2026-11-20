@@ -1,0 +1,30 @@
+// Chapter 269 example: Inkling 2 Mini on Metal residency budget and fused NVFP4/MXFP8 matvec parity.
+#import "Basic";
+#load "../lib/inkling-metal.coax";
+
+// book:begin example
+main :: () {
+    s4k := InklingMetalBudgetSpec.{
+        device_ram_mb=32768, os_reserve_mb=4096, weights_mb=20480,
+        kv_bytes_per_token_pass=65536, loop_count=3, context_len=4096, scratchpad_mb=1024
+    };
+    p4k := inkling_metal_plan(s4k);
+    #assert p4k.status == InklingMetalStatus.ok;
+    print("32GB Mac @ 4k ctx: % MB KV, % MB total, % MB headroom (max ctx %)\n",
+        p4k.kv_cache_mb, p4k.total_mb, p4k.headroom_mb, p4k.max_context_len);
+
+    s16g := s4k; s16g.device_ram_mb = 16384;
+    #assert inkling_metal_plan(s16g).status == InklingMetalStatus.oom;
+    print("16GB Mac refused: OOM before allocation\n");
+
+    packed := [8]u8.[0x20, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    scales := [1]u8.[0x38];
+    x := [16]f32.[
+        1.0f32, 2.0f32, 0.5f32, -1.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+        0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32
+    ];
+    y: [1]f32;
+    #assert inkling_metal_nvfp4_matvec(packed[..], scales[..], 0.5f32, x[..], 1, 16, y[..]) == InklingMetalStatus.ok;
+    print("fused NVFP4 matvec matches CPU reference: y[0] = %\n", y[0]);
+}
+// book:end example

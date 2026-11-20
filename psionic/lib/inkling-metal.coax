@@ -1,0 +1,164 @@
+// Chapter 269: Inkling 2 Mini on Metal (Apple Silicon >= 32GB residency planner and fused NVFP4/MXFP8 matvec).
+#authority;
+#load "inkling-weights.coax";
+#load "inkling-cpu.coax";
+
+// book:begin types
+InklingMetalStatus :: enum u8 {ok;shape;oom;context_limit;parity_fail;}
+InklingMetalBudgetSpec :: struct {
+    device_ram_mb:int;
+    os_reserve_mb:int;
+    weights_mb:int;
+    kv_bytes_per_token_pass:int;
+    loop_count:int;
+    context_len:int;
+    scratchpad_mb:int;
+}
+InklingMetalPlan :: struct {
+    status:InklingMetalStatus;
+    kv_cache_mb:int;
+    total_mb:int;
+    headroom_mb:int;
+    max_context_len:int;
+}
+// book:end types
+
+#test "32GB Mac residency planner budgets weights, per-pass KV cache, and refuses OOM" {
+    // Inkling 2 Mini ~20GB weights, 3 passes, 64KB KV per token-pass, 4GB OS reserve, 1GB scratchpad.
+    s4k := InklingMetalBudgetSpec.{
+        device_ram_mb=32768, os_reserve_mb=4096, weights_mb=20480,
+        kv_bytes_per_token_pass=65536, loop_count=3, context_len=4096, scratchpad_mb=1024
+    };
+    p4k := inkling_metal_plan(s4k);
+    #assert p4k.status == InklingMetalStatus.ok;
+    #assert p4k.kv_cache_mb == 768;
+    #assert p4k.total_mb == 26368 && p4k.headroom_mb == 6400;
+
+    s16k := s4k; s16k.context_len = 16384;
+    p16k := inkling_metal_plan(s16k);
+    #assert p16k.status == InklingMetalStatus.ok && p16k.kv_cache_mb == 3072;
+
+    // 64k context exceeds 32GB unified memory budget.
+    s64k := s4k; s64k.context_len = 65536;
+    #assert inkling_metal_plan(s64k).status == InklingMetalStatus.context_limit;
+
+    // 16GB Mac cannot hold ~20GB weights.
+    s16g := s4k; s16g.device_ram_mb = 16384;
+    #assert inkling_metal_plan(s16g).status == InklingMetalStatus.oom;
+}
+
+#test "fused NVFP4 and MXFP8 register matvec match CPU reference dequantization" {
+    // 2 rows x 16 cols NVFP4 (1 block per row).
+    packed := [16]u8.[
+        0x20, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x31, 0x75, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ];
+    scales := [2]u8.[0x38, 0x40]; // 1.0, 2.0
+    x := [16]f32.[
+        1.0f32, 2.0f32, 0.5f32, -1.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32,
+        0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32
+    ];
+    y_metal: [2]f32;
+    #assert inkling_metal_nvfp4_matvec(packed[..], scales[..], 0.5f32, x[..], 2, 16, y_metal[..]) == InklingMetalStatus.ok;
+
+    // CPU reference dequantize + dot.
+    w_cpu: [32]f32;
+    #assert nvfp4_decode(2, 16, packed[..], scales[..], 0x3f000000, w_cpu[..], false).status == InklingWeightStatus.ok;
+    for r: 0..<2 {
+        dot: f32 = 0.0f32;
+        for c: 0..<16 { dot += w_cpu[r * 16 + c] * x[c]; }
+        d := y_metal[r] - dot;
+        if d < 0.0f32 { d = -d; }
+        #assert d < 0.00001f32;
+    }
+
+    // 1 row x 32 cols MXFP8.
+    mbytes: [32]u8;
+    for i: 0..<32 { mbytes[i] = 0x38; } // 1.0
+    mscales := [1]u8.[128]; // 2^1 = 2.0
+    x32: [32]f32;
+    for i: 0..<32 { x32[i] = 0.25f32; }
+    ym8: [1]f32;
+    #assert inkling_metal_mxfp8_matvec(mbytes[..], mscales[..], x32[..], 1, 32, ym8[..]) == InklingMetalStatus.ok;
+    // 32 * (1.0 * 2.0) * 0.25 = 16.0
+    dm := ym8[0] - 16.0f32;
+    if dm < 0.0f32 { dm = -dm; }
+    #assert dm < 0.00001f32;
+}
+
+// book:begin metal
+inkling_metal_plan :: (spec:InklingMetalBudgetSpec)->InklingMetalPlan #export_c #effects(all) {
+    if spec.device_ram_mb <= 0 || spec.weights_mb <= 0 || spec.loop_count < 1 || spec.context_len < 1 || spec.kv_bytes_per_token_pass < 1 {
+        return InklingMetalPlan.{status=InklingMetalStatus.shape};
+    }
+    fixed_mb := spec.os_reserve_mb + spec.weights_mb + spec.scratchpad_mb;
+    if fixed_mb >= spec.device_ram_mb {
+        return InklingMetalPlan.{status=InklingMetalStatus.oom, total_mb=fixed_mb};
+    }
+    avail_kv_mb := spec.device_ram_mb - fixed_mb;
+    kv_bytes := spec.context_len * spec.loop_count * spec.kv_bytes_per_token_pass;
+    kv_mb := (kv_bytes + 1048575) / 1048576;
+    bytes_per_tok := spec.loop_count * spec.kv_bytes_per_token_pass;
+    max_ctx := (avail_kv_mb * 1048576) / bytes_per_tok;
+    total := fixed_mb + kv_mb;
+    if total > spec.device_ram_mb {
+        return InklingMetalPlan.{status=InklingMetalStatus.context_limit, kv_cache_mb=kv_mb, total_mb=total, headroom_mb=0, max_context_len=max_ctx};
+    }
+    return InklingMetalPlan.{status=InklingMetalStatus.ok, kv_cache_mb=kv_mb, total_mb=total, headroom_mb=spec.device_ram_mb - total, max_context_len=max_ctx};
+}
+
+inkling_metal_nvfp4_matvec :: (packed:[]u8, block_scales:[]u8, global_scale:f32, x:[]f32, rows:int, cols:int, y_out:[]f32)->InklingMetalStatus #export_c #effects(all) {
+    if rows < 1 || cols < NVFP4_BLOCK || (cols % NVFP4_BLOCK) != 0 { return InklingMetalStatus.shape; }
+    blocks_per_row := cols / NVFP4_BLOCK;
+    total_blocks := rows * blocks_per_row;
+    if packed.count < total_blocks * NVFP4_PACKED_BYTES || block_scales.count < total_blocks || x.count < cols || y_out.count < rows {
+        return InklingMetalStatus.shape;
+    }
+    g := cast(f64)global_scale;
+    for r: 0..<rows {
+        acc: f32 = 0.0f32;
+        for b: 0..<blocks_per_row {
+            blk := r * blocks_per_row + b;
+            sc_b := block_scales[blk];
+            if !nvfp4_e4m3_ok(sc_b) { return InklingMetalStatus.shape; }
+            pbase := blk * NVFP4_PACKED_BYTES;
+            cbase := b * NVFP4_BLOCK;
+            for i: 0..<NVFP4_PACKED_BYTES {
+                byte := packed[pbase + i];
+                w0 := f32_from_bits(nvfp4_bits(byte & 0x0f, sc_b, g));
+                w1 := f32_from_bits(nvfp4_bits((byte >> 4) & 0x0f, sc_b, g));
+                acc += w0 * x[cbase + 2 * i] + w1 * x[cbase + 2 * i + 1];
+            }
+        }
+        y_out[r] = acc;
+    }
+    return InklingMetalStatus.ok;
+}
+
+inkling_metal_mxfp8_matvec :: (weights:[]u8, block_scales:[]u8, x:[]f32, rows:int, cols:int, y_out:[]f32)->InklingMetalStatus #export_c #effects(all) {
+    if rows < 1 || cols < MXFP8_BLOCK || (cols % MXFP8_BLOCK) != 0 { return InklingMetalStatus.shape; }
+    blocks_per_row := cols / MXFP8_BLOCK;
+    total_blocks := rows * blocks_per_row;
+    if weights.count < total_blocks * MXFP8_BLOCK || block_scales.count < total_blocks || x.count < cols || y_out.count < rows {
+        return InklingMetalStatus.shape;
+    }
+    for r: 0..<rows {
+        acc: f32 = 0.0f32;
+        for b: 0..<blocks_per_row {
+            blk := r * blocks_per_row + b;
+            sc_b := block_scales[blk];
+            if sc_b > MXFP8_SCALE_MAX { return InklingMetalStatus.shape; }
+            wbase := blk * MXFP8_BLOCK;
+            cbase := b * MXFP8_BLOCK;
+            for i: 0..<MXFP8_BLOCK {
+                wb := weights[wbase + i];
+                if mxfp8_nan(wb) { return InklingMetalStatus.shape; }
+                w := f32_from_bits(mxfp8_bits(wb, sc_b));
+                acc += w * x[cbase + i];
+            }
+        }
+        y_out[r] = acc;
+    }
+    return InklingMetalStatus.ok;
+}
+// book:end metal

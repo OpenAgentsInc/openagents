@@ -3721,6 +3721,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/inkling-metal.coax",
+      "chapter": "psionic/book/ch269-inkling-2-mini-on-metal.md",
+      "stdout": "psionic/fixtures/inkling-metal.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [
