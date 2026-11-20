@@ -11,7 +11,7 @@
 // hands it the frames, keys and presses, draws its picture under the Worlds button, and plays its
 // sound through the Apple audio host (metaverse-engine/host/apple/PageAudio.swift).
 //   Everglade [--chat]             opens the window (--chat: with the chat open in the Workshop)
-// The chat (Chat in the Everglade menu, Command-J) is the OpenAgents chat (apps/openagents-desktop/linux/
+// The chat (Chat in the Everglade menu, Command-J) is the Everglade chat panel (apps/everglade-desktop/chat/
 // chat.h), a panel on the Workshop's left drawn with the shared components; its sessions are kept in
 // ~/Library/Application Support/Everglade/chat/. A shot's --chat-demo opens it on the demo transcript.
 // Outside a realm --do's steps are coax drive operations (apps/shared/host/drive.c): `chat ; type composer
@@ -82,7 +82,7 @@ final class Workshop {
   var camera = [Float](repeating: 0, count: 24)
   var pu = [Float](repeating: 0, count: 24)
   var frameRealm: AEPageHost?
-  // The OpenAgents chat (apps/openagents-desktop/linux/chat.h), made the first time it is shown: a panel on the
+  // The Everglade chat panel (apps/everglade-desktop/chat/chat.h), made the first time it is shown: a panel on the
   // Workshop's left, drawn with the shared components. It has the keys after a press on it, until Escape or a
   // press on the scene. `chatDemo` is a shot's: the demo transcript, nothing kept.
   var chat: OpaquePointer?

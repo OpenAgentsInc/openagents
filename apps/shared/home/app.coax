@@ -1,0 +1,2 @@
+// Forwarding entry for coax/native/chat-task-integration.coax (Phase 0 decoupling).
+#load "../../openagents-desktop/home/app.coax";

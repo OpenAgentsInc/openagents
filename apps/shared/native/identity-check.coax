@@ -4,15 +4,28 @@
 #load "../../../coax/lib/sys/args.coax";
 #load "../../../coax/lib/text/regex.coax";
 tool_main :: ()->int #export_c #effects(all) {
- dir:="apps/openagents-desktop/build/gpu/IdentityNativeTests.xctest";out:[1048576]u8;
- if !fs_mkdir(dir) || !fs_mkdir("apps/openagents-desktop/build/gpu/IdentityNativeTests.xctest/Contents/MacOS") {return 2;}
- if !fs_write("apps/openagents-desktop/build/gpu/IdentityNativeTests.xctest/Contents/Info.plist","<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.openagents.identity-native-tests</string><key>CFBundleExecutable</key><string>IdentityNativeTests</string><key>CFBundlePackageType</key><string>BNDL</string></dict></plist>") {return 2;}
+ dir:="apps/shared/native/build/IdentityNativeTests.xctest";out:[1048576]u8;
+ if !fs_mkdir("apps/shared/native/build") || !fs_mkdir(dir) || !fs_mkdir("apps/shared/native/build/IdentityNativeTests.xctest/Contents/MacOS") {return 2;}
+ if !fs_exists("apps/openagents-ios/Generated/gallery.c") {
+  gen:=[2]string.["bash","apps/openagents-ios/generate.sh"];
+  if nc_run(gen[..],240,out[..])<0 {return 1;}
+ }
+ for unit:[3]string.["gallery","host","carrier"] {
+  c:[1]Args;
+  for flag:[10]string.["xcrun","clang","-O1","-w","-ffp-contract=off","-fno-fast-math","-Iapps/openagents-ios/Generated","-Iapps/shared/host/linux","-DCOMPONENTS_CHAT=1","-c"] {#assert args_add(c[..],flag);}
+  if unit=="host" {#assert args_add(c[..],"-fobjc-arc");}
+  #assert args_add(c[..],ifx unit=="gallery" then "apps/openagents-ios/Generated/gallery.c" else ifx unit=="host" then "apps/shared/host/apple/ui-host.m" else "apps/shared/native/tests/carrier.c");
+  #assert args_add(c[..],"-o");
+  #assert args_add(c[..],ifx unit=="gallery" then "apps/shared/native/build/gallery.o" else ifx unit=="host" then "apps/shared/native/build/host.o" else "apps/shared/native/build/carrier.o");
+  if nc_run(c[0].v[0..<c[0].n],240,out[..])<0 {return 1;}
+ }
+ if !fs_write("apps/shared/native/build/IdentityNativeTests.xctest/Contents/Info.plist","<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>com.openagents.identity-native-tests</string><key>CFBundleExecutable</key><string>IdentityNativeTests</string><key>CFBundlePackageType</key><string>BNDL</string></dict></plist>") {return 2;}
  a:[1]Args;
  for s:[14]string.["xcrun","swiftc","-emit-library","-swift-version","5","-module-name","IdentityNativeTests","-F/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks","-I/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-parse-as-library"] {#assert args_add(a[..],s);}
- for s:[28]string.["-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-lXCTestSwiftSupport","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-import-objc-header","apps/openagents-desktop/native/gpu/Bridge.h","apps/openagents-ios/Tests/IdentityTests.swift","apps/shared/native/AppIdentity.swift","apps/shared/native/AppProvider.swift","apps/shared/native/AppWorkspace.swift","apps/shared/native/tests/AppProviderTests.swift","apps/shared/native/AppPrivateFiles.swift","apps/shared/native/AppMacDevice.swift","apps/shared/native/AppDeviceLink.swift","apps/shared/native/tests/AppMacDeviceTests.swift","apps/shared/native/tests/AppPrivateFilesTests.swift","apps/shared/native/AppHTTP.swift","apps/shared/native/AppAccount.swift","apps/shared/native/KitPasskey.swift","apps/shared/native/AppEffects.swift","apps/shared/native/AppWake.swift","apps/shared/native/AppCoreBridge.swift","apps/shared/host/apple/AppAuth.swift","apps/shared/host/apple/DeviceKey.swift","apps/openagents-desktop/build/gpu/carrier.o","apps/openagents-desktop/build/gpu/gallery.o"] {#assert args_add(a[..],s);}
- #assert args_add(a[..],"apps/openagents-desktop/build/gpu/host.o");
+ for s:[28]string.["-L/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-lXCTestSwiftSupport","-Xlinker","-rpath","-Xlinker","/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib","-import-objc-header","apps/shared/native/tests/Bridge.h","apps/openagents-ios/Tests/IdentityTests.swift","apps/shared/native/AppIdentity.swift","apps/shared/native/AppProvider.swift","apps/shared/native/AppWorkspace.swift","apps/shared/native/tests/AppProviderTests.swift","apps/shared/native/AppPrivateFiles.swift","apps/shared/native/AppMacDevice.swift","apps/shared/native/AppDeviceLink.swift","apps/shared/native/tests/AppMacDeviceTests.swift","apps/shared/native/tests/AppPrivateFilesTests.swift","apps/shared/native/AppHTTP.swift","apps/shared/native/AppAccount.swift","apps/shared/native/KitPasskey.swift","apps/shared/native/AppEffects.swift","apps/shared/native/AppWake.swift","apps/shared/native/AppCoreBridge.swift","apps/shared/host/apple/AppAuth.swift","apps/shared/host/apple/DeviceKey.swift","apps/shared/native/build/carrier.o","apps/shared/native/build/gallery.o"] {#assert args_add(a[..],s);}
+ #assert args_add(a[..],"apps/shared/native/build/host.o");
  for f:[11]string.["AppKit","Metal","QuartzCore","ImageIO","UniformTypeIdentifiers","CoreGraphics","CryptoKit","Security","AuthenticationServices","LocalAuthentication","XCTest"] {#assert args_add(a[..],"-framework") && args_add(a[..],f);}
- #assert args_add(a[..],"-o") && args_add(a[..],"apps/openagents-desktop/build/gpu/IdentityNativeTests.xctest/Contents/MacOS/IdentityNativeTests");
+ #assert args_add(a[..],"-o") && args_add(a[..],"apps/shared/native/build/IdentityNativeTests.xctest/Contents/MacOS/IdentityNativeTests");
  if nc_run(a[0].v[0..<a[0].n],120,out[..])<0 {return 1;}
  run:=[3]string.["xcrun","xctest",dir];err:[65536]u8;r:=proc_run(run[..],60000,out[..],err[..]);
  print("%",cast(string)out[0..<r.out_n]);print("%",cast(string)err[0..<r.err_n]);

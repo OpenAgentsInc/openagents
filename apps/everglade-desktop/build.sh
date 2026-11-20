@@ -152,21 +152,21 @@ if (( ! units_only )); then
 "$coax" metal "$repo/components/backend/gpu-shader.coax" --vertex chat_fx_vs --fragment chat_fx_fs -o "$work/c/gpu-shader.metal" 2> "$work/c/gpu-shader.bind"
 xcrun -sdk macosx metal "$work/c/gpu-shader.metal" -o "$app/Contents/Resources/zeron.metallib"
 fi
-# The OpenAgents chat (apps/openagents-desktop/linux/chat.h), the Workshop's panel: the app's chat unit as C
-# (zeron/linux.coax and its NIP-98 signer, as that app builds them), the component, CoreText's atlas,
+# The Everglade chat panel (apps/everglade-desktop/chat/chat.h), the Workshop's panel: the chat unit as C
+# (chat/zeron/linux.coax and the shared NIP-98 signer), the component, CoreText's atlas,
 # and no dictation (dictation-none.c). Its fonts and icons go in Resources/chat, apart from Everglade's faces.
-oa="$repo/apps/openagents-desktop"
-chatflags=(-std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c/chat" -I"$oa" -I"$oa/linux" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -I"$repo/coax/platform" -I"$repo/psionic/platform")
+chat="$here/chat"
+chatflags=(-std=gnu11 -O2 -ffp-contract=off -fno-fast-math -w -I"$work/c/chat" -I"$chat" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -I"$repo/coax/platform" -I"$repo/psionic/platform")
 mkdir -p "$work/c/chat"
-"$coax" c "$oa/zeron/linux.coax" --library --header "$work/c/chat/zeron.h" > "$work/c/chat/zeron.c"
+"$coax" c "$chat/zeron/linux.coax" --library --header "$work/c/chat/zeron.h" > "$work/c/chat/zeron.c"
 /usr/bin/clang "${chatflags[@]}" -DS_hash=eg_zeron_S_hash -DS_hex=eg_zeron_S_hex -c "$work/c/chat/zeron.c" -o "$work/c/chat/zeron.o"
-"$coax" c "$oa/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/chat/lab-sign.h" > "$work/c/chat/lab-sign.c"
+"$coax" c "$repo/apps/shared/auth/lab-sign.coax" --run-steps 250000000 --library --header "$work/c/chat/lab-sign.h" > "$work/c/chat/lab-sign.c"
 /usr/bin/clang "${chatflags[@]}" -DS_hash=eg_lab_S_hash -DS_hex=eg_lab_S_hex -c "$work/c/chat/lab-sign.c" -o "$work/c/chat/lab-sign-all.o"
 ld -r "$work/c/chat/lab-sign-all.o" -exported_symbol _coaxial_lab_nip98 -o "$work/c/chat/lab-sign.o"
-for c in "$oa/linux/chat.c" "$oa/linux/dictation-none.c" "$oa/zeron-face.c" "$repo/coax/platform/store-file-native.c"; do
+for c in "$chat/chat.c" "$chat/dictation-none.c" "$chat/zeron-face.c" "$repo/coax/platform/store-file-native.c"; do
   /usr/bin/clang "${chatflags[@]}" -c "$c" -o "$work/c/chat/$(basename "$c" .c).o"
 done
-/usr/bin/clang -fobjc-arc -O2 -w -I"$work/c/chat" -I"$oa" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ct-atlas.m" -o "$work/c/chat/ct-atlas.o"
+/usr/bin/clang -fobjc-arc -O2 -w -I"$work/c/chat" -I"$chat" -I"$repo/apps/shared/host/linux" -I"$repo/apps/shared/host/apple" -c "$repo/apps/shared/host/apple/ct-atlas.m" -o "$work/c/chat/ct-atlas.o"
 if (( ! units_only )); then
 rm -rf "$app/Contents/Resources/chat"; mkdir -p "$app/Contents/Resources/chat"
 cp -R "$repo/components/zeron/fonts" "$repo/components/zeron/icons" "$repo/components/zeron/NOTICE" "$app/Contents/Resources/chat/"
@@ -175,7 +175,7 @@ if (( units_only )); then
   ld -r -o "$work/c/units.o" "$work/c"/{ui-host,page-host,engine-core-face,audio-host,native-audio,workshop,face,model,model-face,next-face,temple,place-face,process}.o "$work/c/chat"/{zeron,lab-sign,chat,dictation-none,zeron-face,store-file-native,ct-atlas}.o
   echo "linked the app's C units: $work/c/units.o"; exit 0
 fi
-printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$oa/linux/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
+printf '#include "%s"\n#import "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n#include "%s"\n' "$here/face.h" "$repo/metaverse-engine/host/apple/page-host.h" "$repo/metaverse-engine/host/apple/audio-host.h" "$repo/apps/shared/host/apple/ui-host-apple.h" "$chat/chat.h" "$repo/metaverse-engine/host/pack-table.h" > "$work/c/bridge.h"
 # A development build may play against a room on this Mac (local-room.sh, EVERGLADE_ROOM_ORIGIN); a release
 # build (EVERGLADE_RELEASE=1) leaves that out and plays only in the site's room.
 swift_dev=(-D EVERGLADE_DEV); [[ "${EVERGLADE_RELEASE:-}" != 1 ]] || swift_dev=()

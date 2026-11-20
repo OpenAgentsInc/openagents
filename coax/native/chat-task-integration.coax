@@ -1,6 +1,6 @@
 // Runtime generated-protobuf mapper and the actual mobile app transition/render
 // path. Pure task/control admission is separately mutation-qualified.
-#load "../../apps/openagents-desktop/home/app.coax";
+#load "../../apps/shared/home/app.coax";
 #load "chat-task-fixtures-checks.coax";
 NTI_IDS :: "{\"command_id\":\"11111111111111111111111111111111\",\"session_id\":\"22222222222222222222222222222222\",\"now_ms\":1000}";
 nti_ready :: (s:[]Starter) {

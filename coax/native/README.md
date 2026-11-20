@@ -6,8 +6,7 @@ compiler-generated Coax code in JavaScriptCore. No WebView or DOM is created.
 This is the native-control delivery profile of [Coax Native](../native.md).
 Builds 1068–1069 used the earlier WebKit profile.
 
-The reusable starter is `starter/app.coax`; OpenAgents builds its application
-surface from `apps/openagents-desktop/home/app.coax`. Its canonical resources live here and in
+The reusable starter is `starter/app.coax`. Its canonical resources live here and in
 `components/` and `coax/web/`; generated copies are ignored. The iOS target
 uses the existing bundle `com.openagents.app`, signing team, icons,
 entitlements and 1.0.0 version line. Old world/wallet screens were excluded
@@ -25,13 +24,10 @@ ones the browser turns into SVG, and a check holds the two equal.
 `apps/shared/native/NativeChrome.swift` is the one file that turns them into
 UIKit and AppKit views: `NativeButton` (primary, default, quiet, icon,
 destructive and row; rest, pressed, disabled, busy and current),
-`NativeField`, `NativeFrameView` and `NativeMenu`. GTK takes the same tokens
-as a style sheet (`apps/openagents-desktop/native/program.coax`, `nd_style`);
-it does not draw the frames' cut corners yet.
+`NativeField`, `NativeFrameView` and `NativeMenu`.
 
 ```sh
-coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift \
-  apps/openagents-desktop/native/*.swift
+coax/web/tool.sh coax/native/stock-style.coax apps/shared/native/*.swift
 ```
 
 That check fails a host file that uses a stock button style, a system colour,
@@ -115,10 +111,8 @@ both; remote hosts build C/Wasm, and the Mac uses its existing Binaryen SDK
 for the subsecond JavaScript emission. For example:
 
 ```sh
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-desktop/home/app.coax \
-  apps/openagents-desktop/home/face.c apps/openagents-ios/Starter/build/app.wasm
-coax/remote/remote.sh run -- coax/web/wasm.sh apps/openagents-desktop/extras/app.coax \
-  coax/native/starter/face.c apps/openagents-ios/Starter/build/extras.wasm
+coax/remote/remote.sh run -- coax/web/wasm.sh coax/native/starter/app.coax \
+  coax/native/starter/face.c coax/native/build/Starter/build/starter.wasm
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/app.wasm /tmp/app-mvp.wasm apps/openagents-ios/Starter/build/app.js
 coax/web/tool.sh coax/native/compile.coax apps/openagents-ios/Starter/build/extras.wasm /tmp/extras-mvp.wasm apps/openagents-ios/Starter/build/extras.js
 coax/web/tool.sh coax/native/prepare.coax
