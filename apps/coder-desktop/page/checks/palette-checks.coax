@@ -85,6 +85,23 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_PALETTE && coder_page_palette_command(s) == CP_PC_RENAME;
   #assert coder_page_palette_toggle(s, APP_PAL_ALL) && coder_page_overlay_key(s, APP_OV_ESCAPE, 0) && coder_page_action(s) == CP_ASK_NONE;
 }
+#test "Bigger text, Smaller text and Actual size show ⌘ +, ⌘ - and ⌘ 0 and ask zoom in, out and reset" {
+  pg: [1] CoderPage; s := pg[..]; cp_pal_test_page(s);
+  #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  p := cp_pal(s);
+  bi := p[0].rows[cp_pal_test_row(s, "Bigger text")].item;
+  sm := p[0].rows[cp_pal_test_row(s, "Smaller text")].item;
+  ac := p[0].rows[cp_pal_test_row(s, "Actual size")].item;
+  #assert p[0].items[bi].keys == "⌘ +" && p[0].items[sm].keys == "⌘ -" && p[0].items[ac].keys == "⌘ 0";
+  p[0].lit = cp_pal_test_row(s, "Bigger text");
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_ZOOM_IN;
+  #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  p[0].lit = cp_pal_test_row(s, "Smaller text");
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_ZOOM_OUT;
+  #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  p[0].lit = cp_pal_test_row(s, "Actual size");
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_ZOOM_RESET;
+}
 #test "⌃Tab and ⌃⇧Tab step through Foreman, the pinned chats and the rest, round the ends" {
   pg: [1] CoderPage; s := pg[..]; cp_pal_test_page(s);
   #assert coder_page_chat_step(s, 1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;

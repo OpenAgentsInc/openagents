@@ -208,7 +208,7 @@ enum TestLaunch {
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
         let actual = view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0")
-        actual.target = delegate; actual.keyEquivalentModifierMask = [.command, .option]
+        actual.target = delegate; actual.keyEquivalentModifierMask = [.command]
         view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "+").target = delegate
         // Command-= is Command-plus with no Shift
         let plain = view.addItem(withTitle: "Bigger Text", action: #selector(CoderDelegate.biggerText(_:)), keyEquivalent: "=")
@@ -249,12 +249,9 @@ enum TestLaunch {
         edit.addItem(.separator())
         edit.addItem(withTitle: "Find in Settings", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
-        // Command-` is also heard in Window.swift before macOS window cycling; Command-0 stays as a hidden alias.
+        // Command-` is also heard in Window.swift before macOS window cycling.
         let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "`")
         openForemanItem.target = delegate; openForemanItem.keyEquivalentModifierMask = [.command]
-        let openForemanZero = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "0")
-        openForemanZero.target = delegate; openForemanZero.keyEquivalentModifierMask = [.command]
-        openForemanZero.isHidden = true; openForemanZero.allowsKeyEquivalentWhenHidden = true
         foremanMenu.addItem(.separator())
         let t0 = foremanMenu.addItem(withTitle: "Tier 0: Observe (Read-Only)", action: #selector(CoderDelegate.setForemanTier(_:)), keyEquivalent: "")
         t0.target = delegate; t0.tag = 0

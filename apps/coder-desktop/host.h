@@ -225,7 +225,7 @@ void cd_close(void *page);
 // cd_settings_tier: the tier a press on Foreman's page chose (cd_action 18). cd_search_set: the
 // search's text. cd_search_submit: Return in it; 0 when it found nothing. cd_search_clear: Esc,
 // a search with words emptied (0 when it was empty).
-// cd_action asks: 13 settings opened or closed (move the keyboard), 14/15 text size up/down,
+// cd_action asks: 13 settings opened or closed (move the keyboard), 14/15/29 text size up/down/reset,
 // 16 the Claude key, 17 OpenRouter, 18 Foreman's tier, 19 its audit log, 20 clear its history,
 // 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard.
 void cd_settings_open(void *page, int which, const char *row);

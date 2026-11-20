@@ -11,7 +11,7 @@
 CP_PAL_CHAT :: 1000; CP_PAL_FOREMAN :: 999; CP_PAL_SET :: 2000; CP_PAL_MODEL :: 3000; CP_PAL_TIER :: 4000;
 CP_PC_NEW :: 1; CP_PC_FOREMAN :: 2; CP_PC_FOLDER :: 3; CP_PC_SIDEBAR :: 4; CP_PC_MODEL :: 5; CP_PC_TIER :: 6; CP_PC_SETTINGS :: 7;
 CP_PC_BUDGET :: 8; CP_PC_GOAL :: 9; CP_PC_COPY :: 10; CP_PC_STOP :: 11; CP_PC_REVIEW :: 12; CP_PC_BIGGER :: 13; CP_PC_SMALLER :: 14;
-CP_PC_UPDATES :: 15; CP_PC_RENAME :: 16; CP_PC_DELETE :: 17; CP_PC_STOP_ALL :: 18; CP_PC_NEXT :: 19; CP_PC_PREV :: 20; CP_PC_AUDIT :: 21;
+CP_PC_UPDATES :: 15; CP_PC_RENAME :: 16; CP_PC_DELETE :: 17; CP_PC_STOP_ALL :: 18; CP_PC_NEXT :: 19; CP_PC_PREV :: 20; CP_PC_AUDIT :: 21; CP_PC_ACTUAL :: 22;
 // the palette's own pages
 CP_PAL_PAGE_MODEL :: 1; CP_PAL_PAGE_TIER :: 2;
 CP_TIER_NAME :: [3] string.["Observe (read-only)", "Managed", "Autonomous"];
@@ -56,6 +56,7 @@ cp_palette_fill :: (s: [] CoderPage) {
   }
   cp_pal_cmd(p, "Bigger text", "zoom in larger font", "⌘ +", -1, CP_PC_BIGGER, 0);
   cp_pal_cmd(p, "Smaller text", "zoom out font", "⌘ -", -1, CP_PC_SMALLER, 0);
+  cp_pal_cmd(p, "Actual size", "reset zoom default normal font", "⌘ 0", -1, CP_PC_ACTUAL, 0);
   cp_pal_cmd(p, "Check for updates", "update upgrade version", "", -1, CP_PC_UPDATES, 0);
   if s[0].current_n > 0 && cur != "chat.foreman" {
     cp_pal_cmd(p, "Rename chat…", "rename title", "", -1, CP_PC_RENAME, 0);
@@ -137,6 +138,7 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_REVIEW { if s[0].review && cp_review_shown(s) { s[0].review = false; } else { s[0].review = true; s[0].pane_tab = CP_TAB_CHANGES; } return true; }
   if c == CP_PC_BIGGER { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   if c == CP_PC_SMALLER { s[0].ask = CP_ASK_ZOOM_OUT; return true; }
+  if c == CP_PC_ACTUAL { s[0].ask = CP_ASK_ZOOM_RESET; return true; }
   if c == CP_PC_UPDATES { s[0].ask = CP_ASK_CHECK_UPDATES; return true; }
   if c == CP_PC_AUDIT { s[0].ask = CP_ASK_AUDIT; return true; }
   if c == CP_PC_NEXT { return cp_chat_step(s, 1); }

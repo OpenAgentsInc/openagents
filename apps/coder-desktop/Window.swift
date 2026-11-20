@@ -328,6 +328,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 26: paletteAsked()
         case 27: attachMenu()
         case 28: listFiles()
+        case 29: zoom(nil)
         case 40...43: fileAsked(what)
         default: break
         }
