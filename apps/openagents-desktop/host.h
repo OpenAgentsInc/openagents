@@ -80,6 +80,7 @@ int cd_open_id(void *page, char *out, int cap);
 // The file a press on a row or a reply asked to open (cd_action 24), as it was named: a whole path,
 // ~/ and the home folder, or one from the working folder. Its length, 0 for none.
 int cd_open_path(void *page, char *out, int cap);
+int cd_open_url(void *page, char *out, int cap);
 // The draft's attachments (page/attach.coax, GitHub #13699): cd_attach a file chosen in the open
 // panel (1 when it joined); cd_attached how many the draft carries; cd_attach_clear takes them
 // away (a follow-up sent them); cd_draft_message the draft as a follow-up sends it, its words and
@@ -170,17 +171,18 @@ int cd_steer_count(void *page);
 int cd_steer_status(void *page, int i);
 int cd_steer_text(void *page, int i, char *out, int cap);
 int cd_steer_reason(void *page, int i, char *out, int cap);
-// The tray and the composer (GitHub #13717). cd_followup_submit: Return (other: Command-Return)
-// while a reply runs or a queued item is edited; 1 when it asked the host (cd_action 25), 0 when
-// Return sends the draft (cd_submit). cd_followup_escape: Esc gives up an edit or stops the reply;
-// 1 when it did. cd_followup_op / cd_followup_item: what cd_action 25 asks: 1 resume, 2 clear,
-// 3 delete, 4 move up, 5 edit, 6 send (steer it in while a reply runs, else promote now), 7 send
-// the waiting steer now (interrupt with resubmit), 9 queue a steer not taken; 20 steer the draft,
-// 21 queue the draft, 22 save the draft as the edited item, 23 give up the edit, 24 interrupt,
-// 25 Return's default changed (cd_followup_queues). item: the queued item's place, or the steer's.
-// cd_followup_editing: the queued item the composer holds (-1 none); cd_followup_edited reads it. cd_followup_mode: Return's
-// default while a reply runs (1 queue, 0 steer). cd_steer_id: steer i's id. cd_steer_dismiss:
-// steer i leaves the tray.
+// The tray and the composer (GitHub #13717). cd_followup_submit: Return (queue=0, steers) or
+// Shift-Return (queue=1, queues) while a reply runs or a queued item is edited; 1 when it asked
+// the host (cd_action 25), 0 when Return sends the draft (cd_submit) or Shift-Return inserts a
+// new line. cd_followup_escape: Esc gives up an edit or stops the reply; 1 when it did.
+// cd_followup_op / cd_followup_item: what cd_action 25 asks: 1 resume, 2 clear, 3 delete, 4 move
+// up, 5 edit, 6 send (steer it in while a reply runs, else promote now), 7 send the waiting steer
+// now (interrupt with resubmit), 9 queue a steer not taken; 20 steer the draft, 21 queue the
+// draft, 22 save the draft as the edited item, 23 give up the edit, 24 interrupt. item: the
+// queued item's place, or the steer's. cd_followup_editing: the queued item the composer holds
+// (-1 none); cd_followup_edited reads it. cd_followup_mode / cd_followup_queues: kept for ABI
+// compatibility (Return always steers). cd_steer_id: steer i's id. cd_steer_dismiss: steer i
+// leaves the tray.
 int cd_followup_submit(void *page, int other);
 int cd_followup_escape(void *page);
 int cd_followup_op(void *page);

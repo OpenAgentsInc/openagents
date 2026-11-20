@@ -134,12 +134,12 @@ extension CoderWindow {
         }
         return true
     }
-    /// Command-Return (the File menu's): while a reply runs the draft goes the other way from Return.
+    /// Shift-Return (the File menu's): while a reply runs the draft is queued.
     func followUpOther() {
         guard composerFocused, cd_followup_submit(page, 1) != 0 else { return }
         wake()
     }
-    /// A press on the tray, or Return, Command-Return or Esc in the composer (cd_action 25).
+    /// A press on the tray, or Return, Shift-Return or Esc in the composer (cd_action 25).
     func followUp() {
         let op = cd_followup_op(page), item = Int(cd_followup_item(page)), r = run
         switch op {
@@ -158,7 +158,6 @@ extension CoderWindow {
         case 23:       // the edit is given up
             setDraft(draftBeforeEdit); draftBeforeEdit = ""
         case 24: interrupt(resubmit: false)
-        case 25: UserDefaults.standard.set(cd_followup_queues(page) != 0, forKey: "followUpsQueueFirst")
         case 1, 2:     // Resume, Clear
             guard queueWorker() else { return }
             queueOp(op == 1 ? "resume" : "clear")

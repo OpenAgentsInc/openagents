@@ -239,10 +239,15 @@ app_message_agent_part :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, do
 // dispatches `path_action` (0: none, the code is only text).
 app_message_agent_linked :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int) -> f32 {
   vv: MdVeil;
-  return app_message_agent_linked_veiled(f, id, x, y, w, doc, block0, blocks, copied, copy_action, path_action, vv);
+  return app_message_agent_linked_veiled(f, id, x, y, w, doc, block0, blocks, copied, copy_action, path_action, 0, vv);
+}
+// The same, with both inline-code file paths (path_action, .path.N) and http(s) URLs (link_action, .url.N).
+app_message_agent_linked_urls :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int, link_action: int) -> f32 {
+  vv: MdVeil;
+  return app_message_agent_linked_veiled(f, id, x, y, w, doc, block0, blocks, copied, copy_action, path_action, link_action, vv);
 }
 // The same with an optional paint-only opacity veil (ignored under reduced motion).
-app_message_agent_linked_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int, veil_in: MdVeil) -> f32 {
+app_message_agent_linked_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int, link_action: int, veil_in: MdVeil) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m;
   vv: MdVeil;
   if !f[0].reduced_motion { vv = veil_in; }
@@ -251,7 +256,7 @@ app_message_agent_linked_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w
   row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, block0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
   for b: block0 + 1..<block0 + blocks { if doc[0].blocks[b].kind != MB_RULE { uiframe_say(f, row, md_block_text(doc, b)); } }
   uiframe_open(f, row);
-  h: f32 = 0; files := 0;
+  h: f32 = 0; files := 0; urls := 0;
   for b: block0..<block0 + blocks {
     if b > block0 { h += s.md.block_gap; }
     kind := doc[0].blocks[b].kind;
@@ -260,11 +265,12 @@ app_message_agent_linked_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w
       n := el_copy(part[..], ".code."); n = text_put_int(part[..], n, b - block0);
       h += app_code_veiled(f, app_id(cid[..], id, cast(string) part[0..<n]), x, y + h, w, md_lang(doc, b), md_block_text(doc, b), copied == b - block0, copy_action, vv, doc[0].blocks[b].at);
     } else if kind == MB_RULE { h += app_divider(f, x, y + h, w); }
-    else if path_action == 0 { h += markdown_block_veiled(sh, m, s, doc, b, x, y + h, w, vv); }
+    else if path_action == 0 && link_action == 0 { h += markdown_block_veiled(sh, m, s, doc, b, x, y + h, w, vv); }
     else {
-      ls := s; ls.md.link_paths = true; nh0 := sh[0].nh;
+      ls := s; ls.md.link_paths = path_action != 0; ls.md.link_urls = link_action != 0; nh0 := sh[0].nh;
       h += markdown_block_veiled(sh, m, ls, doc, b, x, y + h, w, vv);
-      files += app_message_paths(f, id, doc, b, nh0, files, path_action);
+      if path_action != 0 { files += app_message_paths(f, id, doc, b, nh0, files, path_action); }
+      if link_action != 0 { urls += app_message_links(f, id, doc, b, nh0, urls, link_action); }
     }
   }
   uiframe_close(f);
@@ -306,6 +312,57 @@ app_message_path :: (doc: [] MdDoc, block0: int, blocks: int, n: int) -> string 
     paths: [APP_MESSAGE_PATHS] MdPath; np := markdown_paths(doc, b, paths[..]);
     if n < seen + np { p := paths[n - seen]; return cast(string) p.text[p.from..<p.to]; }
     seen += np;
+  }
+  return "";
+}
+APP_MESSAGE_LINKS :: 64;    // http(s) links one block may carry
+// The link hits block b left on the sheet from hit nh0 on become link rows, numbered from
+// `first`; the block's other hits stay. A link wrapped across lines shares one semantic row.
+app_message_links :: (f: [] UiFrame, id: string, doc: [] MdDoc, b: int, nh0: int, first: int, action: int) -> int {
+  s := f[0].skin; sh := f[0].sheet;
+  links: [APP_MESSAGE_LINKS] MdLink; nl := markdown_links(doc, b, links[..]);
+  found: [APP_MESSAGE_LINKS * 4] SheetHit; at: [APP_MESSAGE_LINKS * 4] int; nf := 0;
+  keep := nh0; c := 0;
+  for q: nh0..<sh[0].nh {
+    hit := sh[0].hits[q];
+    if hit.kind != MARKDOWN_HIT_LINK { sh[0].hits[keep] = hit; keep += 1; continue; }
+    if c < nl && links[c].at == hit.a && links[c].n == hit.b {
+      if nf < found.count { found[nf] = hit; at[nf] = c; nf += 1; }
+      continue;
+    }
+    c2 := c + 1;
+    while c2 < nl && !(links[c2].at == hit.a && links[c2].n == hit.b) { c2 += 1; }
+    if c2 < nl {
+      c = c2;
+      if nf < found.count { found[nf] = hit; at[nf] = c; nf += 1; }
+    }
+  }
+  sh[0].nh = keep;
+  rows: [APP_MESSAGE_LINKS] int;
+  for q: 0..<nl { rows[q] = -1; }
+  for q: 0..<nf {
+    hit := found[q]; idx := at[q]; l := links[idx];
+    pb: [EL_ID] u8; pn := el_copy(pb[..], ".url."); pn = text_put_int(pb[..], pn, first + idx);
+    lb: [EL_ID] u8; lid := app_id(lb[..], id, cast(string) pb[0..<pn]);
+    url := cast(string) doc[0].links[l.at..<l.at + l.n];
+    if uiframe_hovered(f, lid) { sheet_rule(sh, hit.x, hit.y + hit.h - s.border, hit.w, s.border, s.accent); }
+    link := rows[idx];
+    if link < 0 {
+      link = uiframe_semantic(f, lid, EL_LINK, url, hit.x, hit.y, hit.w, hit.h, 0, action);
+      rows[idx] = link;
+    }
+    sheet_hit(sh, UIFRAME_HIT, link, 0, hit.x, hit.y, hit.w, hit.h);
+  }
+  return nl;
+}
+// The Nth http(s) link the message carries (app_message_agent_linked_urls's id + ".url.N"), "" for none.
+app_message_url :: (doc: [] MdDoc, block0: int, blocks: int, n: int) -> string {
+  if n < 0 { return ""; }
+  seen := 0;
+  for b: block0..<block0 + blocks {
+    links: [APP_MESSAGE_LINKS] MdLink; nl := markdown_links(doc, b, links[..]);
+    if n < seen + nl { l := links[n - seen]; return cast(string) doc[0].links[l.at..<l.at + l.n]; }
+    seen += nl;
   }
   return "";
 }

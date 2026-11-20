@@ -5,9 +5,8 @@ worker that speaks the follow-up wire (no model is called).
 
 - `tray_running.png`: a reply runs. "Also cover the empty string" was steered in and shows in the
   message as "Steered into the reply". "And keep the old behaviour for ASCII" waits as a steer, with
-  Send now. Two messages are queued, each with Move up, Edit, Remove and Steer. The composer's chip
-  says what Return does (a press turns it the other way); Steer and Queue send the draft either way.
-  Command-Return does what Return does not (File > Queue a Follow-up).
+  Send now. Two messages are queued, each with Move up, Edit, Remove and Steer. Return always steers
+  and Shift-Return queues (File > Queue a Follow-up); Steer and Queue chips send the draft either way.
 - `tray_paused.png`: Esc stopped the reply, so the queue paused, with Resume and Clear.
 - `tray_restored.png`: Coder opened again on the chat with no worker on it. The kept queue
   (`~/.openagents/coder/sessions/CHAT.queue.json`) shows as it was kept, paused (a queue kept

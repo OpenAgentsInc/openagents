@@ -194,7 +194,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if self.window.firstResponder === self.canvas && cd_wants_text(self.page) != 0, let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
             }
-            // in the composer Esc gives up an edit or stops the reply (#13717); Command-Return is the
+            // in the composer Esc gives up an edit or stops the reply (#13717); Shift-Return is the
             // File menu's (followUpOther)
             if self.composerFocused {
                 if event.keyCode == 53 && cd_followup_escape(self.page) != 0 { self.wake(); return nil }
@@ -202,7 +202,6 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             guard event.keyCode == 53, cd_settings_page(self.page) >= 0 else { return event }
             self.escape(); return nil
         }
-        cd_followup_mode(page, UserDefaults.standard.bool(forKey: "followUpsQueueFirst") ? 1 : 0)
         wire(run)
         reattach()
         canvas.postsFrameChangedNotifications = true
@@ -325,6 +324,14 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 28: listFiles()
         case 29: zoom(nil)
         case 30: let j = Int(cd_stop_agent(run.page)); if j >= 0 { cancelAgent(run, j) }
+        case 31:
+            // an http(s) link in a reply or sub-agent message: opened in the system browser
+            guard cd_open_url(page, &out, Int32(out.count)) > 0 else { return }
+            if let url = URL(string: String(cString: out)),
+               let scheme = url.scheme?.lowercased(),
+               scheme == "http" || scheme == "https" {
+                NSWorkspace.shared.open(url)
+            }
         case 40...43: fileAsked(what)
         default: break
         }

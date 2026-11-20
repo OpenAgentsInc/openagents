@@ -172,9 +172,9 @@ cp_ed_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods
 
 // A key while the view has the keyboard (ui-host.h's key: named keys below zero, a chord's
 // letter, mods 1 Shift, 2 Control, 4 Option, 8 Command). In the composer Return sends (while a
-// reply runs it steers or queues, editing a queued one it saves), Shift- and Option-Return make a
-// new line, Command-Return goes the other way, Esc gives an edit up or stops the reply. In the
-// search Return opens its best match. True when the page took it.
+// reply runs it steers, editing a queued one it saves), Shift-Return queues while a reply runs
+// (else makes a new line), Option-Return makes a new line, Esc gives an edit up or stops the
+// reply. In the search Return opens its best match. True when the page took it.
 coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return false; }
   if cp_overlay_open(s) {
@@ -200,8 +200,12 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
       if coder_page_followup_submit(s, false) { return true; }
       _ = cp_send(s); return true;
     }
-    if key == KEY_ENTER && mods == MOD_CMD { _ = coder_page_followup_submit(s, true); return true; }
-    if key == KEY_ENTER && (mods == MOD_SHIFT || mods == MOD_ALT) {
+    if key == KEY_ENTER && mods == MOD_SHIFT {
+      if coder_page_followup_submit(s, true) { return true; }
+      if !ue_insert(e, "\n") { return false; }
+      cp_ed_publish(s, which); return true;
+    }
+    if key == KEY_ENTER && mods == MOD_ALT {
       if !ue_insert(e, "\n") { return false; }
       cp_ed_publish(s, which); return true;
     }

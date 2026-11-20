@@ -35,6 +35,9 @@ MARKDOWN_HIT_WRAP :: 3; MARKDOWN_HIT_COPY :: 4;
 // With the skin's md.link_paths, inline code that names a file (md_path_like) drawn whole on
 // one line leaves this hit over it: a = where the code starts in its text, b = where it ends.
 MARKDOWN_HIT_PATH :: 6;
+// With the skin's md.link_urls, a link run leaves this hit over each wrapped piece:
+// a = link_at in doc.links, b = link_n.
+MARKDOWN_HIT_LINK :: 7;
 
 // Whether bytes i to j are one whole code run (not part of one wrapped over two lines).
 markdown_whole_code :: (runs: [] MdRun, i: int, j: int) -> bool {
@@ -62,6 +65,37 @@ markdown_paths_in :: (text: string, runs: [] MdRun, out: [] MdPath, n0: int) -> 
   return n;
 }
 
+// The index of the run covering byte pos that carries a link target, or -1.
+markdown_link_run_at :: (runs: [] MdRun, pos: int) -> int {
+  for k: 0..<runs.count {
+    if (runs[k].marks & MD_LINK) != 0 && runs[k].link_n > 0 && pos >= runs[k].from && pos < runs[k].to { return k; }
+  }
+  return -1;
+}
+// An http:// or https:// link in a block: its slice in doc.links.
+MdLink :: struct { at: int; n: int; }
+// The http(s) links in block b, in the order they are drawn, into out. Returns how many.
+markdown_links :: (doc: [] MdDoc, b: int, out: [] MdLink) -> int {
+  kind := doc[0].blocks[b].kind;
+  if kind == MB_CODE || kind == MB_RULE { return 0; }
+  if kind == MB_PARA {
+    return markdown_links_in(doc, md_block_runs(doc, b), out, 0);
+  }
+  n := 0; i0 := doc[0].blocks[b].item0;
+  for k: 0..<doc[0].blocks[b].items { n = markdown_links_in(doc, md_item_runs(doc, i0 + k), out, n); }
+  return n;
+}
+markdown_links_in :: (doc: [] MdDoc, runs: [] MdRun, out: [] MdLink, n0: int) -> int {
+  n := n0;
+  for k: 0..<runs.count {
+    r := runs[k];
+    if (r.marks & MD_LINK) == 0 || r.link_n <= 0 || r.link_at + r.link_n > doc[0].nlink || n >= out.count { continue; }
+    url := cast(string) doc[0].links[r.link_at..<r.link_at + r.link_n];
+    if md_url_http(url) { out[n] = MdLink.{at = r.link_at, n = r.link_n}; n += 1; }
+  }
+  return n;
+}
+
 // One wrapped line of styled text: each run in its face and colour, inline
 // code on its rounded wash (painted under the glyphs, past them by the
 // skin's pad, inset from the line box). A code run that ends the line leaves
@@ -75,8 +109,9 @@ markdown_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFac
   i := from; pen := x;
   while i < to {
     style := md_style_at(runs, i); marks := md_marks_at(runs, i);
+    link_k := ifx (marks & MD_LINK) != 0 then markdown_link_run_at(runs, i) else -1;
     j := i;
-    while j < to && md_style_at(runs, j) == style && md_marks_at(runs, j) == marks { j += 1; }
+    while j < to && md_style_at(runs, j) == style && md_marks_at(runs, j) == marks && (link_k < 0 || markdown_link_run_at(runs, j) == link_k) { j += 1; }
     if vv.veil.count > 0 {
       edge := md_veil_next(vv, base + i, base + j) - base;
       if edge > i && edge < j { j = edge; }
@@ -96,13 +131,21 @@ markdown_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFac
       ww := measure_width(m, face, cast(string) seg[0..<lit]);
       if lit > 0 { sheet_fill(sh, pen, y + s.md.code_inset_y, ww + pad_l + pad_r, lh - 2 * s.md.code_inset_y, s.md.code_radius, opacity(s.code_wash, a)); }
       w = sheet_text(sh, m, ln, pen + pad_l, y, lh, face, opacity(s.accent, a), seg);
-      if s.md.link_paths && lit > 0 && markdown_whole_code(runs, i, j) && md_path_like(cast(string) seg[0..<lit]) {
+      if s.md.link_urls && link_k >= 0 && lit > 0 {
+        sheet_hit(sh, MARKDOWN_HIT_LINK, runs[link_k].link_at, runs[link_k].link_n, pen, y, ww + pad_l + pad_r, lh);
+      } else if s.md.link_paths && lit > 0 && markdown_whole_code(runs, i, j) && md_path_like(cast(string) seg[0..<lit]) {
         sheet_hit(sh, MARKDOWN_HIT_PATH, i, j, pen, y, ww + pad_l + pad_r, lh);
       }
     } else {
-      // a link reads in the accent; struck text keeps its colour under a rule through its middle
+      // a link reads in the accent with an underline; struck text keeps its colour under a rule through its middle
       c := ifx (marks & MD_LINK) != 0 then s.accent else color;
       w = sheet_text(sh, m, ln, pen, y, lh, face, opacity(c, a), seg);
+      if (marks & MD_LINK) != 0 && w > 0 {
+        sheet_rule(sh, pen, y + lh - 2 * s.border, w, s.border, opacity(c, a * 0.55));
+        if s.md.link_urls && link_k >= 0 {
+          sheet_hit(sh, MARKDOWN_HIT_LINK, runs[link_k].link_at, runs[link_k].link_n, pen, y, w, lh);
+        }
+      }
     }
     if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen + pad_l, y + (lh - s.border) / 2, w, s.border, opacity(color, a)); }
     pen += pad_l + w + pad_r;

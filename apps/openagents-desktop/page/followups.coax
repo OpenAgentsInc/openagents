@@ -35,7 +35,7 @@ CpFollow :: struct {
   refused_op: [16] u8; nrefused_op: int; refused_id: [CP_FU_ID] u8; nrefused_id: int; refused: [32] u8; nrefused: int;
   began: bool;                   // the worker started a turn the page did not send: owed to the host once
   // the tray and the composer (#13717)
-  queue_first: bool;             // Return queues while a reply runs (else it steers); Command-Return does the other
+  queue_first: bool;             // kept for ABI compatibility; Return always steers, Shift-Return queues
   editing: int;                  // the queued item whose text the composer holds, from 1 (0: none)
   op: int; item: int;            // what a press or a key asked of the host (CP_ASK_FOLLOWUP): APP_FU_OP_* or CP_FUO_*, and its row
   tray_h: f32;                   // the tray's height last frame, with its gap: the conversation ends above it
@@ -47,7 +47,6 @@ CP_FUO_QUEUE :: 21;              // the draft goes last in the queue
 CP_FUO_SAVE :: 22;               // the draft is the edited item's new text
 CP_FUO_CANCEL :: 23;             // the edit is given up: the draft as it was before
 CP_FUO_INTERRUPT :: 24;          // Esc: the reply stops (its waiting steers head the queue, paused)
-CP_FUO_MODE :: 25;               // Return's default changed: the host keeps it
 
 cp_fu_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 // text into out, cut on a character's start when it does not fit.
@@ -251,11 +250,9 @@ coder_page_worker_turn :: (s: [] CoderPage) -> int #export_c #effects(all) { ret
 
 // ---------------------------------------------------------------- the tray and the composer (#13717)
 
-// A chat opened or begun: none of the last one's follow-ups stay; Return's default does.
+// A chat opened or begun: none of the last one's follow-ups stay.
 cp_fu_reset :: (s: [] CoderPage) {
-  first := s[0].fu[0].queue_first;
   s[0].fu[0] = CpFollow.{};
-  s[0].fu[0].queue_first = first;
 }
 // A steer that waits on the reply: sent, or taken but not yet in.
 cp_fu_pending :: (st: int) -> bool { return st == CP_STEER_SENT || st == CP_STEER_ACCEPTED; }
@@ -286,15 +283,15 @@ cp_fu_press :: (s: [] CoderPage, id: string) -> bool {
   return cp_fu_ask(s, op, item);
 }
 
-// Return in the composer while a reply runs, or while a queued item is edited: other is
-// Command-Return. The host then steers, queues or saves the draft (CP_ASK_FOLLOWUP). False when
-// Return sends the draft as a message (coder_page_submit).
-coder_page_followup_submit :: (s: [] CoderPage, other: bool) -> bool #export_c #effects(all) {
+// Return or Shift-Return in the composer while a reply runs, or while a queued item is edited:
+// queue is false for Return (steers) and true for Shift-Return (queues). The host then steers,
+// queues or saves the draft (CP_ASK_FOLLOWUP). False when Return sends the draft as a message
+// (coder_page_submit) or Shift-Return inserts a new line.
+coder_page_followup_submit :: (s: [] CoderPage, queue: bool) -> bool #export_c #effects(all) {
   if s.count < 1 || (eb_text(s[0].draft[..]).count == 0 && cp_cargo_n(s) == 0) { return false; }
   f := s[0].fu[..];
   if f[0].editing > 0 { return cp_fu_ask(s, CP_FUO_SAVE, f[0].editing - 1); }
   if !cp_running(s) { return false; }
-  queue := f[0].queue_first != other;
   return cp_fu_ask(s, ifx queue then CP_FUO_QUEUE else CP_FUO_STEER, -1);
 }
 // Esc in the composer: an edit is given up, else a running reply stops. False when it does neither.
@@ -317,9 +314,9 @@ coder_page_followup_editing :: (s: [] CoderPage, i: int) #export_c #effects(all)
 }
 // The queued item the composer holds, -1 for none.
 coder_page_followup_edited :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].fu[0].editing - 1 else -1; }
-// Return's default while a reply runs: true queues, false steers. coder_page_followup_queues reads it.
-coder_page_followup_mode :: (s: [] CoderPage, queue_first: bool) #export_c #effects(all) { if s.count > 0 { s[0].fu[0].queue_first = queue_first; } }
-coder_page_followup_queues :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].fu[0].queue_first; }
+// Return always steers while a reply runs (Shift-Return queues); kept for host ABI compatibility.
+coder_page_followup_mode :: (s: [] CoderPage, queue_first: bool) #export_c #effects(all) { _ = s; _ = queue_first; }
+coder_page_followup_queues :: (s: [] CoderPage) -> bool #export_c #effects(all) { _ = s; return false; }
 // Steer i's id into out: its length, -1 for none.
 coder_page_steer_id :: (s: [] CoderPage, i: int, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || i < 0 || i >= s[0].fu[0].nsteers { return -1; }

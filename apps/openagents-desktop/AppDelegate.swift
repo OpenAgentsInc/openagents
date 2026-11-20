@@ -120,7 +120,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
         if item.action == #selector(saveFile(_:)) { return main?.canSaveOpenFile == true }
         if item.action == #selector(followUpOther(_:)) {
             guard let w = main else { return false }
-            item.title = cd_followup_queues(w.page) != 0 ? "Steer the Reply" : "Queue a Follow-up"
+            item.title = "Queue a Follow-up"
             return cd_running(w.page) != 0
         }
         if item.action == #selector(openForeman(_:)) { return main?.isForemanEnabled == true }
@@ -203,10 +203,10 @@ enum TestLaunch {
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
         del.target = delegate; del.keyEquivalentModifierMask = [.command]
-        // while a reply runs, Command-Return does what Return does not: queue, or steer (#13717)
+        // while a reply runs, Return steers and Shift-Return queues (#13717)
         file.addItem(.separator())
         let other = file.addItem(withTitle: "Queue a Follow-up", action: #selector(CoderDelegate.followUpOther(_:)), keyEquivalent: "\r")
-        other.target = delegate; other.keyEquivalentModifierMask = [.command]
+        other.target = delegate; other.keyEquivalentModifierMask = [.shift]
         fileItem.submenu = file
         let viewItem = NSMenuItem(), view = NSMenu(title: "View")
         let actual = view.addItem(withTitle: "Actual Size", action: #selector(CoderDelegate.actualSize(_:)), keyEquivalent: "0")

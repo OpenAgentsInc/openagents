@@ -231,7 +231,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
         f[0].skin.motion.enter = 0;
         vv := ifx s[0].veil_turn == i then MdVeil.{ veil = s[0].veil[..], now = s[0].clock } else MdVeil.{};
         y += app_message_agent_linked_veiled(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
-                                             ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, vv);
+                                             ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, CP_URL, vv);
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
@@ -497,7 +497,7 @@ cp_zeron_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, g:
   sheet_hit(sh, UIFRAME_HIT, field_row, 0, x, y, w, g.height);
   // the draft in the page's editor (editor.coax); empty, the placeholder, which while a reply runs
   // says what Return does (#13717)
-  hint := ifx !running then "Do anything…" else ifx s[0].fu[0].queue_first then "Queue a follow-up · ⌘Return steers · Esc stops" else "Steer the reply · ⌘Return queues · Esc stops";
+  hint := ifx !running then "Do anything…" else "Steer the reply · ⇧Return queues · Esc stops";
   tx := border + g.text_left; tw := w - 2 * border - g.text_left - g.text_right;
   if tw < g.line { tw = g.line; }
   cp_ed_draw(s, f, CP_ED_COMPOSER, x + tx, y + border + g.text_top, tw, g.text_h, hint);
@@ -573,7 +573,6 @@ cp_foot_chip_width :: (f: [] UiFrame, icon: int, text: string, chevron: bool) ->
 cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, running: bool, exceeded: bool) -> f32 {
   k := f[0].skin; a := k.app; c := k.cmp;
   side := cast(f32) CP_FOOT_SIDE; gap := a.gap_small;
-  queues := s[0].fu[0].queue_first;
   // what each part says
   fb: [CP_FOLDER_TEXT + CP_BRANCH_TEXT + 8] u8;
   fn := el_put(fb[..], 0, cast(string) s[0].folder[0..<s[0].folder_n]);
@@ -592,8 +591,9 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   }
   goal := sheet_pool(f[0].sheet, cast(string) glb[0..<gln]);
   // their widths, and what folds
-  w_folder := ifx running then app_chip_width(f, -1, ifx queues then "Return queues" else "Return steers", 0) else ifx s[0].folder_n > 0 then cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<fn], false) else 0.0f32;
-  w_short := ifx running || s[0].folder_n == 0 then w_folder else cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<short_n], false);
+  show_fu_draft := running && eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0;
+  w_folder := ifx show_fu_draft then app_chip_width(f, -1, "Steer", 0) + gap + app_chip_width(f, -1, "Queue", 0) else ifx s[0].folder_n > 0 then cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<fn], false) else 0.0f32;
+  w_short := ifx show_fu_draft || s[0].folder_n == 0 then w_folder else cp_foot_chip_width(f, ICON_FOLDER, cast(string) fb[0..<short_n], false);
   cap := cast(f32) CP_FOLDER_MOST;
   if w_folder > cap { w_folder = cap; } if w_short > cap { w_short = cap; }
   w_model := cp_foot_chip_width(f, -1, m_label, true);
@@ -619,19 +619,12 @@ cp_composer_foot :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, cw: f32, ru
   left := rx - fx;
   mw := w_model; if mw > left { mw = left; }
   if fw > left - mw - gap { fw = left - mw - gap; }
-  if running {
-    if fw > 0 {
-      mode := ifx queues then "Return queues" else "Return steers";
-      used := app_chip(f, "coder.fu.mode", fx, y, fw, -1, "What Return does while the reply runs", mode, 0, CP_FU_MODE);
-      fx += used + gap;
-      if eb_text(s[0].draft[..]).count > 0 && s[0].fu[0].editing == 0 {
-        sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
-        if fx + sw + qw + 2 * gap + mw <= rx {
-          _ := app_chip(f, "coder.fu.steer", fx, y, 0, -1, "Steer the reply with the draft", "Steer", ifx queues then 0 else EL_S_CURRENT, CP_FU_DRAFT);
-          _ := app_chip(f, "coder.fu.queue", fx + sw + gap, y, 0, -1, "Queue the draft for after the reply", "Queue", ifx queues then EL_S_CURRENT else 0, CP_FU_DRAFT);
-          fx += sw + qw + 2 * gap;
-        }
-      }
+  if show_fu_draft {
+    sw := app_chip_width(f, -1, "Steer", 0); qw := app_chip_width(f, -1, "Queue", 0);
+    if fx + sw + qw + 2 * gap + mw <= rx {
+      _ := app_chip(f, "coder.fu.steer", fx, y, 0, -1, "Steer the reply with the draft (Return)", "Steer", EL_S_CURRENT, CP_FU_DRAFT);
+      _ := app_chip(f, "coder.fu.queue", fx + sw + gap, y, 0, -1, "Queue the draft for after the reply (⇧Return)", "Queue", 0, CP_FU_DRAFT);
+      fx += sw + qw + 2 * gap;
     }
   } else if fw > 0 && s[0].folder_n > 0 {
     shown := sheet_pool(f[0].sheet, cast(string) fb[0..<(ifx show_branch then fn else short_n)]);

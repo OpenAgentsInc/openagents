@@ -155,3 +155,24 @@ APP_TEST_MD :: "## Plan\n\nRead the **composer** and *fix* [the test](https://ex
   for q: 0..<20 { app_test_begin(t[..], "", "", false); going = app_jump_pill(f, "jump", 150, 500, "Jump to latest", false, false, 6); #assert app_test_end(t[..]); }
   #assert !going;
 }
+
+#test "app chat: markdown and bare http(s) links become clickable EL_LINK rows and ignore non-http schemes" {
+  t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
+  doc: [1] MdDoc;
+  blocks := md_parse(doc[..], "See [HF](https://huggingface.co/datasets/google/physical-engineerings-last-exam) and [bad](javascript:alert(1)).\n\n- https://example.com/a/b?x=1&y=2.", 0);
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_agent_linked_veiled(f, "m", 0, 0, 260, doc[..], 0, blocks, -1, 7, 11, 13, MdVeil.{});
+  #assert app_test_end(t[..]);
+  #assert app_test_row(t[..], "m.url.0").role == EL_LINK && app_test_pressable(t[..], "m.url.0") && app_test_row(t[..], "m.url.0").action == 13;
+  #assert app_test_row(t[..], "m.url.1").role == EL_LINK && app_test_label(t[..], "m.url.1") == "https://example.com/a/b?x=1&y=2" && app_test_pressable(t[..], "m.url.1") && app_test_row(t[..], "m.url.1").action == 13;
+  #assert app_test_find(t[..], "m.url.2") < 0;
+  #assert app_message_url(doc[..], 0, blocks, 0) == "https://huggingface.co/datasets/google/physical-engineerings-last-exam";
+  #assert app_message_url(doc[..], 0, blocks, 1) == "https://example.com/a/b?x=1&y=2";
+  #assert app_message_url(doc[..], 0, blocks, 2) == "";
+  // without a link action, no url rows or MARKDOWN_HIT_LINK hits are left on the sheet
+  app_test_begin(t[..], "", "", true);
+  _ := app_message_agent(f, "m", 0, 0, 260, doc[..], blocks, -1, 7);
+  #assert app_test_end(t[..]) && app_test_find(t[..], "m.url.0") < 0;
+  sh := surface_sheet(t[0].sf[..]);
+  for i: 0..<sh.nh { #assert sh.hits[i].kind != MARKDOWN_HIT_LINK; }
+}

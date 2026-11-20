@@ -114,6 +114,11 @@ coder_page_open_path :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(
   if s.count < 1 { return 0; }
   return cp_out(out, cp_open_path(s));
 }
+// The http(s) URL a press asked to open (after CP_ASK_OPEN_URL). Its length in out.
+coder_page_open_url :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cp_open_url_str(s));
+}
 // The id of the chat a press asked for (after CP_ASK_OPEN). Its length in out.
 coder_page_open_id :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || s[0].open < 0 || s[0].open >= s[0].nchats { return 0; }

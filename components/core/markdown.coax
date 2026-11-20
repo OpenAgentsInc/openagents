@@ -135,6 +135,43 @@ md_run_marked :: (doc: [] MdDoc, from: int, to: int, style: int, marks: int, lin
   doc[0].nr += 1;
 }
 
+// True when s is an http:// or https:// URL with something after the scheme.
+md_url_http :: (s: string) -> bool {
+  if s.count > 8 && cast(string) s[0..<8] == "https://" { return true; }
+  if s.count > 7 && cast(string) s[0..<7] == "http://" { return true; }
+  return false;
+}
+// Where a bare http:// or https:// URL starting at src[at] ends, or at for none.
+md_bare_url_end :: (src: string, at: int) -> int {
+  plen := 0;
+  if at + 8 <= src.count && cast(string) src[at..<at + 8] == "https://" { plen = 8; }
+  else if at + 7 <= src.count && cast(string) src[at..<at + 7] == "http://" { plen = 7; }
+  else { return at; }
+  u := at + plen;
+  while u < src.count {
+    ch := src[u];
+    if ch <= 32 || ch >= 0x7f || ch == 60 || ch == 62 || ch == 34 || ch == 39 || ch == 96 || ch == 92 { break; }
+    u += 1;
+  }
+  while u > at + plen {
+    last := src[u - 1];
+    if last == 46 || last == 44 || last == 59 || last == 58 || last == 33 || last == 63 { u -= 1; continue; }
+    if last == 41 {
+      opens := 0; closes := 0;
+      for q: at..<u { if src[q] == 40 { opens += 1; } else if src[q] == 41 { closes += 1; } }
+      if closes > opens { u -= 1; continue; }
+    }
+    if last == 93 {
+      opens := 0; closes := 0;
+      for q: at..<u { if src[q] == 91 { opens += 1; } else if src[q] == 93 { closes += 1; } }
+      if closes > opens { u -= 1; continue; }
+    }
+    break;
+  }
+  if u <= at + plen { return at; }
+  return u;
+}
+
 // A byte that is part of a word: a letter, a digit or any non-ASCII byte.
 md_word :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80; }
 
@@ -234,6 +271,20 @@ md_inline_mode :: (doc: [] MdDoc, src: string, base: int, finished: bool) -> int
           start = doc[0].n; i = u + 1;
           continue;
         }
+      }
+    }
+    if c == 'h' && (i == 0 || !md_word(src[i - 1])) {
+      u := md_bare_url_end(src, i);
+      if u > i {
+        md_span(doc, start, base, bold, italic, strike);
+        ls := doc[0].n;
+        for q: i..<u { md_put(doc, src[q]); }
+        la := doc[0].nlink;
+        for q: i..<u { if doc[0].nlink < MD_LINKS { doc[0].links[doc[0].nlink] = src[q]; doc[0].nlink += 1; } }
+        lm := MD_LINK | (ifx italic then MD_ITALIC else 0) | (ifx strike then MD_STRIKE else 0);
+        md_run_marked(doc, ls - base, doc[0].n - base, ifx bold then MD_BOLD else MD_PLAIN, lm, la, doc[0].nlink - la);
+        start = doc[0].n; i = u;
+        continue;
       }
     }
     md_put(doc, c); i += 1;
@@ -813,4 +864,13 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
 #test "inline code that names a file or folder is a path; a web address, a flag, a version or an identifier is not" {
   #assert md_path_like("apps/coder-desktop/page.coax") && md_path_like("README.md") && md_path_like("~/work/openagents") && md_path_like("src/") && md_path_like("/usr/bin/true");
   #assert !md_path_like("https://openagents.com") && !md_path_like("--force") && !md_path_like("1.2.3") && !md_path_like("s.md.line") && !md_path_like("a b/c") && !md_path_like("page.coax:12") && !md_path_like("x");
+}
+
+#test "bare http and https URLs parse as links with trailing punctuation trimmed" {
+  doc: [1] MdDoc;
+  md_inline_text(doc[..], "see https://huggingface.co/datasets/google/physical-engineerings-last-exam. and (http://example.com/a_(b))");
+  #assert md_str(doc[..], 0, doc[0].n) == "see https://huggingface.co/datasets/google/physical-engineerings-last-exam. and (http://example.com/a_(b))";
+  #assert doc[0].runs[1].marks == MD_LINK && md_link(doc[..], doc[0].runs[1]) == "https://huggingface.co/datasets/google/physical-engineerings-last-exam";
+  #assert doc[0].runs[3].marks == MD_LINK && md_link(doc[..], doc[0].runs[3]) == "http://example.com/a_(b)";
+  #assert md_url_http("https://a.b") && md_url_http("http://a.b") && !md_url_http("#a") && !md_url_http("javascript:alert(1)") && !md_url_http("https://");
 }

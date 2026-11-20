@@ -98,12 +98,12 @@ CP_ASK_ADD :: 27;           // the composer's + was pressed: the host opens its 
 CP_ASK_FILES :: 28;         // the @ popover wants the working folder's files listed (coder_page_files)
 CP_ASK_ZOOM_RESET :: 29;    // reset the text size to the usual 100% row
 CP_ASK_STOP_AGENT :: 30;    // stop one running sub-agent (coder_page_stop_agent; #13766)
+CP_ASK_OPEN_URL :: 31;      // a press on an http(s) link in a reply: coder_page_open_url is its URL
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)
 CP_PATH :: 42;             // a file a reply names in inline code (#13698)
 CP_FU :: 45;               // a button of the follow-ups tray (followups.coax, #13717)
-CP_FU_MODE :: 46;          // the composer's chip that says what Return does while a reply runs
 CP_FU_DRAFT :: 47;         // the composer's Steer or Queue while a reply runs: the draft goes that way
 // the code review beside the conversation (#13696): its corner button and Close, a tab of the pane, a file's row
 CP_REVIEW :: 48; CP_PANE_TAB :: 49; CP_REVIEW_FILE :: 50;
@@ -116,6 +116,7 @@ CP_PANE_STOP :: 67;         // stop button in the sub-agent pane (#13766)
 CP_TOAST_CLOSE :: 68;       // a toast's Close (overlay.coax; #13774)
 CP_AGENT_STOP :: 69;        // stop button under a running sub-agent's activity row: name + ".s" + j (#13766)
 CP_TODOS_TOGGLE :: 70;      // collapse or expand the live agent todo checklist tray
+CP_URL :: 71;               // an http(s) link a reply or sub-agent message carries
 CP_FILES :: 4000;           // files of the working folder the @ popover lists, at most (the host walks no further)
 CP_FILES_BYTES :: 262144;   // their paths' bytes (the host's buffer, coder_page_files)
 CP_REFS :: 4096;            // bytes of a message's attachments and mentioned files, as the note its task carries
@@ -277,6 +278,7 @@ CoderPage :: struct {
   copied_turn: int; copied_block: int; copied_kind: int; copied_at: f32;
   copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
   open_call: int; open_turn: int; open_file: int;   // the file a press asked to open (CP_ASK_OPEN_FILE): row open_call's, else the open_file'th the reply of open_turn names
+  open_url_turn: int; open_url: int; open_url_pane: bool;   // the http(s) link a press asked to open (CP_ASK_OPEN_URL)
   stop_agent: int;            // 0-based sub-agent to stop for CP_ASK_STOP_AGENT (-1: none; #13766)
   update_state: int;
   update_label: [64] u8; update_label_n: int;

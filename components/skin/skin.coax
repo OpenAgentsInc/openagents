@@ -54,6 +54,7 @@ UiMarkdown :: struct {
   bullet: string;           // a terminal's bullet (a pixel target draws a disc)
   task_open: string; task_done: string;             // and its task boxes (a pixel target draws them)
   link_paths: bool;         // inline code that names a file leaves a MARKDOWN_HIT_PATH where it is drawn, for its reader to open
+  link_urls: bool;          // http(s) links leave a MARKDOWN_HIT_LINK where they are drawn, for their reader to open
 }
 
 // A glass surface (a slider's track or thumb): a vertical gradient, a rim,

@@ -72,8 +72,8 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       s[0].pane_blocks = md_parse(s[0].pane_doc[..], reply, 0); s[0].pane_parsed = reply.count;
     }
     if s[0].live_pane != i * CP_AGENTS + j { f[0].skin.motion.enter = 0; }
-    y += app_message_agent(f, cp_pane_id(ib[..], s, ".a", -1), x, y, cw, s[0].pane_doc[..], s[0].pane_blocks,
-                           ifx s[0].copied_kind == CP_COPIED_PANE then s[0].copied_block else -1, CP_PANE_COPY) + a.gap;
+    y += app_message_agent_linked_urls(f, cp_pane_id(ib[..], s, ".a", -1), x, y, cw, s[0].pane_doc[..], 0, s[0].pane_blocks,
+                                       ifx s[0].copied_kind == CP_COPIED_PANE then s[0].copied_block else -1, CP_PANE_COPY, 0, CP_URL) + a.gap;
     f[0].skin.motion.enter = enter; if s[0].live_pane == i * CP_AGENTS + j { s[0].live_pane = -1; }
   }
   else if state == CP_FAILED {

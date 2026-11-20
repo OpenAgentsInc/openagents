@@ -15,6 +15,20 @@ cp_open_path :: (s: [] CoderPage) -> string {
   if q < 0 && i >= 0 && i < s[0].nturns { return app_message_path(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_file); }
   return "";
 }
+// An http(s) link a reply or sub-agent message carries: the host opens it in the browser
+// (CP_ASK_OPEN_URL, coder_page_open_url). False for none.
+cp_open_url :: (s: [] CoderPage, pane: bool, i: int, n: int) -> bool {
+  s[0].open_url_pane = pane; s[0].open_url_turn = i; s[0].open_url = n;
+  if cp_open_url_str(s).count == 0 { return false; }
+  s[0].ask = CP_ASK_OPEN_URL;
+  return true;
+}
+cp_open_url_str :: (s: [] CoderPage) -> string {
+  if s[0].open_url_pane { return app_message_url(s[0].pane_doc[..], 0, s[0].pane_blocks, s[0].open_url); }
+  i := s[0].open_url_turn;
+  if i >= 0 && i < s[0].nturns { return app_message_url(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_url); }
+  return "";
+}
 // Row k of turn i's own rows (cp_row_id's k, counted from the rows that went) as its place in the page's calls, -1 for none.
 cp_turn_call :: (s: [] CoderPage, i: int, k: int) -> int {
   q := s[0].turns[i].head - 1; at := s[0].turns[i].early_cmds;
@@ -43,6 +57,18 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     turn := cp_number(id, "t"); n := cp_number(id, ".path.");
     if turn < 0 || turn >= s[0].nturns || n < 0 { return false; }
     return cp_open_file(s, -1, turn, n);
+  }
+  if act == CP_URL {
+    id := surface_id(s[0].surface[..], row);
+    n := cp_number(id, ".url.");
+    if n < 0 { return false; }
+    if id.count > 0 && id[0] == 'p' {
+      if !s[0].pane_open { return false; }
+      return cp_open_url(s, true, s[0].pane_turn, n);
+    }
+    turn := cp_number(id, "t");
+    if turn < 0 || turn >= s[0].nturns { return false; }
+    return cp_open_url(s, false, turn, n);
   }
   if act == CP_GROUP {
     gid := surface_id(s[0].surface[..], row);
@@ -127,7 +153,6 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
     if !cp_running(s) || eb_text(s[0].draft[..]).count == 0 { return false; }
     return cp_fu_ask(s, ifx surface_id(s[0].surface[..], row) == "coder.fu.queue" then CP_FUO_QUEUE else CP_FUO_STEER, -1);
   }
-  if act == CP_FU_MODE { s[0].fu[0].queue_first = !s[0].fu[0].queue_first; return cp_fu_ask(s, CP_FUO_MODE, -1); }
   if act == CP_TODOS_TOGGLE { return cp_todos_toggle(s); }
   if act == CP_FIELD { cp_ed_focus(s, CP_KB_COMPOSER); return true; }
   if act == CP_SEND {
