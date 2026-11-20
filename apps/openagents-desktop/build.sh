@@ -51,6 +51,9 @@ cp "$repo/coax/web/build/tools/mcworker-$(shasum -a 256 "$coax" | cut -d " " -f 
 # The Claude Code worker (coder/tui/claudeworker.coax), for a sub-agent on a Claude model.
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/claudeworker.coax" < /dev/null > /dev/null
 cp "$repo/coax/web/build/tools/claudeworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/claudeworker"
+# The Antigravity worker (coder/tui/agyworker.coax), for Antigravity ACP runs (GitHub #13802).
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/agyworker.coax" < /dev/null > /dev/null
+cp "$repo/coax/web/build/tools/agyworker-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/agyworker"
 # Its git guard (coder/tui/gitguard.coax), the PreToolUse hook claudeworker finds beside it (GitHub #13771).
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/gitguard.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/gitguard-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/gitguard"

@@ -151,3 +151,23 @@
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert cp_test_press_field(s, CP_ED_COMPOSER);
 }
+
+#test "Antigravity appears in the model picker when installed, is selectable, and persists" {
+  st := [1] CoderPage.[CoderPage.{}];
+  s := st[..];
+  coder_page_init(s);
+  #assert !coder_page_model_agy(s) && cp_models(s) == CP_MODELS;
+  #assert !coder_page_pick_model(s, "antigravity");
+  coder_page_set_agy(s, true);
+  #assert cp_models(s) == CP_MODELS + 1;
+  #assert cp_model_label(s, CP_MODELS) == "Antigravity";
+  #assert cp_model_id(s, CP_MODELS) == "antigravity";
+  #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
+  // Also works alongside OpenRouter without shifting OpenRouter's index.
+  coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash", "");
+  #assert cp_models(s) == CP_MODELS + 2 && cp_is_or(s, CP_MODEL_OR) && cp_is_agy(s, CP_MODELS + 1);
+  #assert coder_page_pick_model(s, "agy") && coder_page_model_agy(s);
+  // Removing Antigravity resets the selection back to default.
+  coder_page_set_agy(s, false);
+  #assert !coder_page_model_agy(s) && s[0].model == CP_MODEL_DEFAULT;
+}

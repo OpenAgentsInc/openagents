@@ -143,7 +143,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     for k: 0..<ns { ar[0].at = 0; ar[0].full = false; cp_fu_steered_add(s, i, cl_text(ar[..], steers, cl_item(steers, k))); }
     ar[0].at = 0;
     tm := cl_str(ar[..], t, "model");
-    s[0].turns[i].model = ifx tm.count > 0 then cp_model_find(tm) else s[0].model;
+    s[0].turns[i].model = ifx tm.count > 0 then cp_model_find_s(s, tm) else s[0].model;
     state := cl_int(t, "state"); more := cl_int(t, "more");
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;
@@ -192,7 +192,7 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
   ov := cl_bool(text, "budget_override");
   s[0].budget_override = ov.ok && ov.value;
   mar := [1] ClArena.[ClArena.{buf = s[0].scratch[..]}];
-  s[0].model = cp_model_find(cl_str(mar[..], text, "model"));
+  s[0].model = cp_model_find_s(s, cl_str(mar[..], text, "model"));
   s[0].model_menu = false;
   cp_ctx_reset(s);
   ci := cl_int(text, "ctx_in");

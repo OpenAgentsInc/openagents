@@ -150,6 +150,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                      Unmanaged.passUnretained(self).toOpaque())
         cd_skills(page, coderSkillsNote())
         cd_claude(page, CoderWorker.hasClaude ? 1 : 0)
+        cd_agy(page, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(page)
         cd_chats(page, chatLines)
         syncForemanUI()

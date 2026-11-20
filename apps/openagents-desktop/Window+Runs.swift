@@ -79,6 +79,11 @@ extension CoderWindow {
             r.worker.folder = r.folder.path
             needsRecall = false
         }
+        let wantProgram = cd_model_agy(r.page) != 0 ? "agyworker" : "mcworker"
+        if r.worker.program != wantProgram {
+            if r.worker.alive { r.worker.stop(forget: false) }
+            r.worker.program = wantProgram
+        }
         r.startingWorker = true
         r.worker.startAsync { [weak self, weak r] ok in
             guard let self, let r else { return }
@@ -135,7 +140,7 @@ extension CoderWindow {
                   let kept = t.chatText, let sent = CoderTurn.withoutLast(kept), let back = cd_headless() else {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
-            coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+            coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
             syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {

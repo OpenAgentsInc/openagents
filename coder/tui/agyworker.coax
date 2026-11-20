@@ -1,0 +1,632 @@
+// Antigravity as a worker process (GitHub #13802): runs agy acp through the shared
+// Coax ACP / Antigravity engine (coax/lib/agent/engine/antigravity.coax), speaking the
+// Microcoder worker's JSON-line protocol (coax/lib/agent/engine/mcworker-wire.coax)
+// so apps/openagents-desktop/Worker.swift drives it like mcworker / claudeworker.
+//
+//   in   {"task":"...","cwd":"/path","model":"...","effort":"..."}   run a task
+//        {"steer":"...","id":"..."}                                 mid-turn steer (session/prompt without cancel)
+//        {"recall":"..."}                                           conversation history / Edit-from-here rollback
+//        {"stop":true} / {"interrupt":true}                         stop current turn (session/cancel)
+//   out  {"kind":"ready"}
+//        {"kind":"ask","command":"...","ticket":N}                  tool call started (no answer owed)
+//        {"kind":"command","command":"...","exit":0,"timed_out":false,"output":"..."}   tool call ended
+//        {"kind":"thought","text":"..."}                            agent thought chunk
+//        {"kind":"reply","text":"..."}                              agent message chunk
+//        {"kind":"steered","id":"...","status":"applied",...}       steer acknowledgement
+//        {"kind":"ended","ending":"finished","text":"..."}          turn ended (or stopped / failed)
+//
+// Environment variables:
+//   CODER_AGY_BIN       optional custom agy binary path (default: agy_program / agy on PATH)
+//   CODER_AGY_PROFILE   optional isolated --gemini-dir profile directory
+//   CODER_AGY_MODE      auto | default | plan (default: auto)
+//   CODER_AGY_MODEL     optional default model id
+//   CODER_AGY_EFFORT    low | medium | high
+//
+//   coax/web/tool.sh coder/tui/agyworker.coax
+
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/agent/engine/antigravity.coax";
+#load "../../coax/lib/agent/engine/mcworker-wire.coax";
+
+cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
+cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
+
+AGYW_LINE :: 1048576;
+AGYW_LABEL :: 300;
+AGYW_OUTPUT :: 4000;
+AGYW_OPEN :: 32;
+AGYW_ID :: 96;
+AGYW_RECALL :: 65536;
+AGYW_REPLY :: 65536;
+
+AgywCall :: struct {
+  id: [AGYW_ID] u8; id_n: int;
+  label: [AGYW_LABEL] u8; label_n: int;
+  used: bool;
+}
+
+AgywConfig :: struct {
+  program: [512] u8; program_n: int;
+  profile: [1024] u8; profile_n: int;
+  mode: [32] u8; mode_n: int;
+  model: [128] u8; model_n: int;
+  effort: [32] u8; effort_n: int;
+}
+
+AgywState :: struct {
+  cfg: AgywConfig;
+  calls: [AGYW_OPEN] AgywCall;
+  next_ticket: int;
+  turn_active: bool;
+  stopping: bool;
+  respawned: bool;
+  retried_sig: bool;
+  reply: [AGYW_REPLY] u8; reply_n: int;
+  last_prompt: [CUE_OWED] u8; last_prompt_n: int;
+  recall: [AGYW_RECALL] u8; recall_n: int;
+  has_recall: bool;
+  cwd: [1024] u8; cwd_n: int;
+  turn_model: [128] u8; turn_model_n: int;
+  turn_effort: [32] u8; turn_effort_n: int;
+  out: [AGYW_LINE] u8;
+}
+
+agyw_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+agyw_str :: (buf: [] u8, n: int) -> string {
+  m := ifx n < 0 then 0 else ifx n > buf.count then buf.count else n;
+  return cast(string) buf[0..<m];
+}
+
+agyw_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && s[a] <= 32 { a += 1; }
+  while b > a && s[b - 1] <= 32 { b -= 1; }
+  return ifx a < b then cast(string) s[a..<b] else "";
+}
+
+// Resolve mode from CODER_AGY_MODE: auto | default | plan (default: auto).
+agyw_resolve_mode :: (raw: string) -> string {
+  m := agyw_trim(raw);
+  if m == "auto" || m == "default" || m == "plan" { return m; }
+  return AGY_MODE_AUTO;
+}
+
+// Resolve effort from task or CODER_AGY_EFFORT: low | medium | high (else empty).
+agyw_resolve_effort :: (task_effort: string, env_effort: string) -> string {
+  e := agyw_trim(task_effort);
+  if e.count == 0 { e = agyw_trim(env_effort); }
+  if e == "low" || e == "medium" || e == "high" { return e; }
+  return "";
+}
+
+// Resolve model: task model overrides env model; sentinel "antigravity" / "agy" means use default.
+agyw_resolve_model :: (task_model: string, env_model: string) -> string {
+  m := agyw_trim(task_model);
+  if m == "antigravity" || m == "agy" { m = ""; }
+  if m.count == 0 { m = agyw_trim(env_model); }
+  if m == "antigravity" || m == "agy" { return ""; }
+  return m;
+}
+
+// Resolve binary path: CODER_AGY_BIN else agy_program().
+agyw_resolve_program :: (env_bin: string, out: [] u8) -> string {
+  b := agyw_trim(env_bin);
+  if b.count > 0 { n := agyw_copy(out, b); return cast(string) out[0..<n]; }
+  return agy_program(out);
+}
+
+agyw_load_env :: (s: [] AgywState) {
+  bb: [512] u8; pb: [1024] u8; mb: [64] u8; modb: [128] u8; eb: [64] u8;
+  prog := agyw_resolve_program(cl_getenv("CODER_AGY_BIN", bb[..]), s[0].cfg.program[..]);
+  s[0].cfg.program_n = prog.count;
+  prof := agyw_trim(cl_getenv("CODER_AGY_PROFILE", pb[..]));
+  if prof.count == 0 { prof = agyw_trim(cl_getenv("CODER_AGY_PROFILE_DIR", pb[..])); }
+  s[0].cfg.profile_n = agyw_copy(s[0].cfg.profile[..], prof);
+  mode := agyw_resolve_mode(cl_getenv("CODER_AGY_MODE", mb[..]));
+  s[0].cfg.mode_n = agyw_copy(s[0].cfg.mode[..], mode);
+  mod := agyw_trim(cl_getenv("CODER_AGY_MODEL", modb[..]));
+  s[0].cfg.model_n = agyw_copy(s[0].cfg.model[..], mod);
+  eff := agyw_resolve_effort("", cl_getenv("CODER_AGY_EFFORT", eb[..]));
+  s[0].cfg.effort_n = agyw_copy(s[0].cfg.effort[..], eff);
+}
+
+// ---------------------------------------------------------------- wire I/O
+
+agyw_write_line :: (s: [] AgywState, n: int) {
+  if n <= 0 || n >= s[0].out.count { return; }
+  s[0].out[n] = '\n';
+  _ = cxterm_write(s[0].out[0..<n + 1]);
+}
+
+agyw_emit_ready :: (s: [] AgywState) { agyw_write_line(s, mww_ready(s[0].out[..])); }
+agyw_emit_thought :: (s: [] AgywState, text: string) { if text.count > 0 { agyw_write_line(s, mww_thought(s[0].out[..], text)); } }
+agyw_emit_reply :: (s: [] AgywState, text: string) { if text.count > 0 { agyw_write_line(s, mww_reply(s[0].out[..], text)); } }
+agyw_emit_ask :: (s: [] AgywState, cmd: string, ticket: int) { agyw_write_line(s, mww_ask(s[0].out[..], cmd, ticket)); }
+agyw_emit_command :: (s: [] AgywState, cmd: string, exit_code: int, out_text: string) {
+  agyw_write_line(s, mww_command(s[0].out[..], cmd, exit_code, false, out_text));
+}
+agyw_emit_ended :: (s: [] AgywState, ending: string, text: string) { agyw_write_line(s, mww_ended(s[0].out[..], ending, text)); }
+agyw_emit_steered :: (s: [] AgywState, id: string, status: string, reason: string, text: string) {
+  agyw_write_line(s, mww_steered(s[0].out[..], id, status, 0, reason, 0, text));
+}
+
+// Read one line from stdin with timeout. Returns: >0 line length, 0 timeout, -1 EOF.
+agyw_read_line :: (buf: [] u8, nbuf: [] int, timeout_ms: int) -> int {
+  b := cxterm_byte(timeout_ms);
+  while b >= 0 {
+    if b == '\n' {
+      n := nbuf[0]; nbuf[0] = 0;
+      if n > 0 && buf[n - 1] == '\r' { n -= 1; }
+      return n;
+    }
+    if nbuf[0] < buf.count { buf[nbuf[0]] = cast(u8) b; nbuf[0] += 1; }
+    b = cxterm_byte(0);
+  }
+  if b == -2 { return -1; }
+  return 0;
+}
+
+// ---------------------------------------------------------------- tool call tracking
+
+agyw_call_find :: (s: [] AgywState, id: string) -> int {
+  if id.count == 0 { return -1; }
+  for i: 0..<AGYW_OPEN {
+    if s[0].calls[i].used && agyw_str(s[0].calls[i].id[..], s[0].calls[i].id_n) == id { return i; }
+  }
+  return -1;
+}
+
+agyw_call_open :: (s: [] AgywState, id: string, label: string) -> int {
+  at := agyw_call_find(s, id);
+  if at >= 0 {
+    if label.count > 0 { s[0].calls[at].label_n = agyw_copy(s[0].calls[at].label[..], label); }
+    return at;
+  }
+  for i: 0..<AGYW_OPEN {
+    if !s[0].calls[i].used {
+      s[0].calls[i].used = true;
+      s[0].calls[i].id_n = agyw_copy(s[0].calls[i].id[..], id);
+      s[0].calls[i].label_n = agyw_copy(s[0].calls[i].label[..], label);
+      return i;
+    }
+  }
+  return -1;
+}
+
+agyw_call_close :: (s: [] AgywState, at: int) {
+  if at >= 0 && at < AGYW_OPEN { s[0].calls[at].used = false; s[0].calls[at].id_n = 0; s[0].calls[at].label_n = 0; }
+}
+
+agyw_calls_clear :: (s: [] AgywState) {
+  for i: 0..<AGYW_OPEN { s[0].calls[i].used = false; s[0].calls[i].id_n = 0; s[0].calls[i].label_n = 0; }
+}
+
+// Extract textual output from a tool_call_update's content or rawOutput.
+agyw_tool_output :: (ar: [] ClArena, update: string, out: [] u8) -> string {
+  n := 0;
+  content := cl_raw(update, "content");
+  cnt := cl_count(content);
+  for i: 0..<cnt {
+    item := cl_json(content, cl_item(content, i));
+    txt := cl_str(ar, item, "content.text");
+    if txt.count == 0 { txt = cl_str(ar, item, "text"); }
+    if txt.count > 0 {
+      if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+      n += agyw_copy(out[n..<out.count], txt);
+    }
+  }
+  if n == 0 {
+    ro := cl_str(ar, update, "rawOutput");
+    if ro.count == 0 { ro = cl_str(ar, update, "rawOutput.output"); }
+    if ro.count == 0 { ro = cl_str(ar, update, "rawOutput.stdout"); }
+    if ro.count > 0 { n = agyw_copy(out, ro); }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---------------------------------------------------------------- permissions & /compact & rollback
+
+// Permission policy for agyworker:
+// - In plan mode: deny writes and command execution, allow reads.
+// - Outside workspace (".."): deny.
+// - Otherwise: allow (Auto/Default non-interactive worker, matching claudeworker).
+agyw_decide_permission :: (c: [] CuClient, params: string, mode: string) -> int {
+  tool := cl_raw(params, "toolCall");
+  if agy_outside(tool, c[0].ar[..]) { return CU_DISP_DENY; }
+  if mode == "plan" {
+    kind := cl_str(c[0].ar[..], tool, "kind");
+    eff := cu_kind_effect(kind);
+    if eff == CU_EFFECT_WRITE || eff == CU_EFFECT_RUN { return CU_DISP_DENY; }
+  }
+  return CU_DISP_ALLOW;
+}
+
+agyw_apply_permission :: (c: [] CuClient, params: string, mode: string) -> int {
+  disp := agyw_decide_permission(c, params, mode);
+  return cu_permission_disposition(c, disp);
+}
+
+// True when a prompt is a /compact slash command.
+agyw_is_compact :: (text: string) -> bool {
+  t := agyw_trim(text);
+  if t == "/compact" { return true; }
+  return t.count > 9 && cast(string) t[0..<9] == "/compact ";
+}
+
+// Compose a prompt with recalled conversation history (for Edit-from-here rollback / fresh session).
+agyw_compose_prompt :: (recall: string, prompt: string, out: [] u8) -> string {
+  if recall.count == 0 { n := agyw_copy(out, prompt); return cast(string) out[0..<n]; }
+  n := 0;
+  n += agyw_copy(out[n..<out.count], "Previous conversation context (rolled back / resumed):\n");
+  n += agyw_copy(out[n..<out.count], recall);
+  n += agyw_copy(out[n..<out.count], "\n\nUser message:\n");
+  n += agyw_copy(out[n..<out.count], prompt);
+  return cast(string) out[0..<n];
+}
+
+// Append text to the turn's accumulated reply buffer.
+agyw_reply_append :: (s: [] AgywState, text: string) {
+  if text.count == 0 { return; }
+  rem := s[0].reply.count - s[0].reply_n;
+  if rem <= 0 { return; }
+  s[0].reply_n += agyw_copy(s[0].reply[s[0].reply_n..<s[0].reply.count], text);
+}
+
+// ---------------------------------------------------------------- notification & event dispatch
+
+agyw_handle_update :: (s: [] AgywState, x: [] CuEngine, params: string, emit: bool) {
+  update := cl_raw(params, "update");
+  if update.count == 0 { return; }
+  ar := x[0].c[0].ar[..];
+  kind := cl_str(ar, update, "sessionUpdate");
+  if kind == "agent_thought_chunk" {
+    txt := cl_str(ar, update, "content.text");
+    if txt.count > 0 && emit { agyw_emit_thought(s, txt); }
+    return;
+  }
+  if kind == "agent_message_chunk" {
+    txt := cl_str(ar, update, "content.text");
+    if txt.count > 0 {
+      agy_chunk(x, txt);
+      agyw_reply_append(s, txt);
+      if emit { agyw_emit_reply(s, txt); }
+    }
+    return;
+  }
+  if kind == "tool_call" || kind == "tool_call_update" {
+    id := cl_str(ar, update, "toolCallId");
+    status := cl_str(ar, update, "status");
+    nb: [AGYW_LABEL] u8;
+    label := cu_tool_display_name(update, ar, nb[..]);
+    existing := agyw_call_find(s, id);
+    if existing < 0 && (status.count == 0 || status == "pending" || status == "in_progress") {
+      at := agyw_call_open(s, id, label);
+      if at >= 0 {
+        s[0].next_ticket += 1;
+        if emit { agyw_emit_ask(s, agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n), s[0].next_ticket); }
+      }
+      return;
+    }
+    if status == "completed" || status == "failed" || status == "cancelled" {
+      at := existing;
+      cmd := label;
+      if at >= 0 {
+        if cmd.count == 0 { cmd = agyw_str(s[0].calls[at].label[..], s[0].calls[at].label_n); }
+      }
+      if cmd.count == 0 { cmd = "tool"; }
+      ob: [AGYW_OUTPUT] u8;
+      out_txt := agyw_tool_output(ar, update, ob[..]);
+      exit_code := ifx status == "completed" then 0 else 1;
+      if emit { agyw_emit_command(s, cmd, exit_code, out_txt); }
+      agyw_call_close(s, at);
+      return;
+    }
+    if existing >= 0 && label.count > 0 {
+      s[0].calls[existing].label_n = agyw_copy(s[0].calls[existing].label[..], label);
+    }
+  }
+}
+
+agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) {
+  s[0].turn_active = false;
+  s[0].stopping = false;
+  agyw_calls_clear(s);
+  if emit { agyw_emit_ended(s, ending, text); }
+  s[0].reply_n = 0;
+}
+
+agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) {
+  if ev.kind == CuEventKind.none || ev.kind == CuEventKind.idle { return; }
+  if ev.kind == CuEventKind.initialized {
+    ver := cu_version(x[0].c);
+    why := agy_check_version(ver);
+    if why.count > 0 {
+      cue_close(x);
+      agyw_finish_turn(s, "failed", why, emit);
+    }
+    return;
+  }
+  if ev.kind == CuEventKind.answered {
+    if ev.of == CU_SESSION_NEW || ev.of == CU_SESSION_LOAD || ev.of == CU_SESSION_RESUME {
+      mod := agyw_str(s[0].turn_model[..], s[0].turn_model_n);
+      eff := agyw_str(s[0].turn_effort[..], s[0].turn_effort_n);
+      mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
+      _ = agy_configure_mode(x, ev.result, mod, eff, mode);
+      cue_owed(x, s[0].turn_active);
+      return;
+    }
+    if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
+      cue_owed(x, s[0].turn_active);
+      return;
+    }
+    if ev.of == CU_SESSION_PROMPT {
+      if !s[0].turn_active { return; }
+      if cue_held_bg(x) { return; }
+      if s[0].stopping {
+        agyw_finish_turn(s, "stopped", "Stopped.", emit);
+        return;
+      }
+      if cue_stalled(x) {
+        agyw_finish_turn(s, "failed", "Antigravity stopped responding and the stall watchdog gave up.", emit);
+        return;
+      }
+      notice := agy_turn_failed(x, ev.result);
+      if notice.count > 0 {
+        agyw_finish_turn(s, "failed", notice, emit);
+        return;
+      }
+      agyw_finish_turn(s, "finished", agyw_str(s[0].reply[..], s[0].reply_n), emit);
+      return;
+    }
+    return;
+  }
+  if ev.kind == CuEventKind.refused {
+    if ev.of == CU_SESSION_SET_CONFIG || ev.of == CU_SESSION_SET_MODEL || ev.of == CU_SESSION_SET_MODE {
+      cue_owed(x, s[0].turn_active);
+      return;
+    }
+    if ev.of == CU_SESSION_PROMPT {
+      if !s[0].turn_active { return; }
+      if agy_lost_thinking_signature(ev.message) && !s[0].retried_sig && s[0].last_prompt_n > 0 {
+        s[0].retried_sig = true;
+        s[0].reply_n = 0;
+        cue_fresh_session(x);
+        _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
+        return;
+      }
+      why := ifx ev.message.count > 0 then ev.message else "Antigravity refused the prompt.";
+      agyw_finish_turn(s, "failed", why, emit);
+      return;
+    }
+    return;
+  }
+  if ev.kind == CuEventKind.notification {
+    if ev.method == "session/update" { agyw_handle_update(s, x, ev.params, emit); }
+    return;
+  }
+  if ev.kind == CuEventKind.permission {
+    mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
+    _ = agyw_apply_permission(x[0].c, ev.params, mode);
+    return;
+  }
+  if ev.kind == CuEventKind.question { cu_question(x[0].c, true); return; }
+  if ev.kind == CuEventKind.plan { cu_plan(x[0].c, false); return; }
+  if ev.kind == CuEventKind.end || ev.kind == CuEventKind.failed {
+    if s[0].turn_active {
+      if x[0].restart_required && !s[0].respawned && s[0].last_prompt_n > 0 {
+        s[0].respawned = true;
+        why := agy_respawn_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), agyw_str(s[0].cwd[..], s[0].cwd_n), "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+        if why.count == 0 {
+          _ = cue_send(x, agyw_str(s[0].last_prompt[..], s[0].last_prompt_n));
+          return;
+        }
+      }
+      why := cue_why(x);
+      if why.count == 0 { why = "Antigravity process stopped unexpectedly."; }
+      agyw_finish_turn(s, "failed", why, emit);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- main loop
+
+tool_main :: () -> int #export_c #effects(all) {
+  sb: [1] AgywState; s := sb[..];
+  agyw_load_env(s);
+
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess;
+  cu_line: [65536] u8; cu_arena: [65536] u8; cu_out: [65536] u8;
+  cue_attach(x, cb[..], pb[..], cu_line[..], cu_arena[..], cu_out[..]);
+
+  in_buf: [AGYW_LINE] u8; in_len: [1] int;
+  req_ar_buf: [131072] u8; req_ar: [1] ClArena; req_ar[0].buf = req_ar_buf[..];
+
+  agyw_emit_ready(s);
+
+  while true {
+    // 1. Poll stdin for owner requests (short timeout when engine is live).
+    wait_ms := ifx x[0].live || s[0].turn_active then 10 else 50;
+    rn := agyw_read_line(in_buf[..], in_len[..], wait_ms);
+    if rn == -1 {
+      if x[0].live { cue_stop(x); cue_close(x); }
+      break;
+    }
+    if rn > 0 {
+      line := cast(string) in_buf[0..<rn];
+      req_ar[0].at = 0; req_ar[0].full = false;
+      req: [1] MwwRequest;
+      rk := mww_request(req_ar[..], line, req[..]);
+      if rk == MWW_RECALL {
+        s[0].recall_n = agyw_copy(s[0].recall[..], req[0].recall);
+        s[0].has_recall = s[0].recall_n > 0;
+        if x[0].live && x[0].ready { cue_fresh_session(x); }
+      } else if rk == MWW_STOP || rk == MWW_INTERRUPT {
+        if s[0].turn_active {
+          s[0].stopping = true;
+          if x[0].live { cue_stop(x); }
+          else { agyw_finish_turn(s, "stopped", "Stopped.", true); }
+        }
+      } else if rk == MWW_STEER {
+        if agyw_is_compact(req[0].text) && (!x[0].live || !cu_can_compact(x[0].c)) {
+          agyw_emit_steered(s, req[0].id, "refused", "compact_unavailable", req[0].text);
+        } else if x[0].live {
+          _ = cue_steer(x, req[0].text);
+          agyw_emit_steered(s, req[0].id, "applied", "", req[0].text);
+        } else {
+          agyw_emit_steered(s, req[0].id, "refused", "not_running", req[0].text);
+        }
+      } else if rk == MWW_TASK {
+        tb: [1] McTask;
+        if mww_task_read(req_ar[..], line, tb[..]) {
+          t := tb[0];
+          s[0].turn_active = true;
+          s[0].stopping = false;
+          s[0].respawned = false;
+          s[0].retried_sig = false;
+          s[0].reply_n = 0;
+          agyw_calls_clear(s);
+
+          mod := agyw_resolve_model(t.model, agyw_str(s[0].cfg.model[..], s[0].cfg.model_n));
+          eff := agyw_resolve_effort(t.effort, agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n));
+          s[0].turn_model_n = agyw_copy(s[0].turn_model[..], mod);
+          s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], eff);
+
+          // Check /compact support before sending.
+          if agyw_is_compact(t.task) && x[0].live && x[0].ready && !cu_can_compact(x[0].c) {
+            agyw_finish_turn(s, "failed", "Antigravity did not advertise /compact for this session.", true);
+          } else {
+            cwd := ifx t.cwd.count > 0 then t.cwd else ".";
+            cwd_changed := s[0].cwd_n > 0 && agyw_str(s[0].cwd[..], s[0].cwd_n) != cwd;
+            s[0].cwd_n = agyw_copy(s[0].cwd[..], cwd);
+            if cwd_changed && x[0].live { cue_close(x); }
+
+            prompt_buf: [CUE_OWED] u8;
+            prompt := t.task;
+            if s[0].has_recall {
+              prompt = agyw_compose_prompt(agyw_str(s[0].recall[..], s[0].recall_n), t.task, prompt_buf[..]);
+              s[0].has_recall = false;
+              s[0].recall_n = 0;
+            }
+            s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], prompt);
+
+            if !x[0].live {
+              why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+              if why.count > 0 {
+                agyw_finish_turn(s, "failed", why, true);
+              } else {
+                _ = cue_send(x, prompt);
+              }
+            } else {
+              _ = cue_send(x, prompt);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Poll the ACP engine and watchdog.
+    if x[0].live {
+      for step: 0..<64 {
+        ev: [1] CuEvent;
+        cue_poll(x, ev[..]);
+        if ev[0].kind == CuEventKind.idle { break; }
+        agyw_handle_event(s, x, ev[0], true);
+        if !x[0].live { break; }
+      }
+      if x[0].live && s[0].turn_active {
+        w := cue_watch(x, cxproc_now_ms());
+        if w == CUE_WATCH_BG_DONE {
+          agyw_finish_turn(s, "finished", agyw_str(s[0].reply[..], s[0].reply_n), true);
+        } else if w == CUE_WATCH_ENDED {
+          agyw_finish_turn(s, "failed", "Antigravity stopped responding and was closed.", true);
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "agyworker: env resolution for mode, effort, model, and /compact" {
+  #assert agyw_resolve_mode("") == "auto";
+  #assert agyw_resolve_mode("auto") == "auto";
+  #assert agyw_resolve_mode("default") == "default";
+  #assert agyw_resolve_mode("plan") == "plan";
+  #assert agyw_resolve_mode("bogus") == "auto";
+
+  #assert agyw_resolve_effort("high", "low") == "high";
+  #assert agyw_resolve_effort("", "medium") == "medium";
+  #assert agyw_resolve_effort("", "") == "";
+  #assert agyw_resolve_effort("invalid", "low") == "";
+
+  #assert agyw_resolve_model("gemini-4-hydrogen", "gemini-4-carbon") == "gemini-4-hydrogen";
+  #assert agyw_resolve_model("antigravity", "gemini-4-carbon") == "gemini-4-carbon";
+  #assert agyw_resolve_model("agy", "") == "";
+
+  #assert agyw_is_compact("/compact");
+  #assert agyw_is_compact("  /compact now ");
+  #assert !agyw_is_compact("/compactify") && !agyw_is_compact("please compact");
+}
+
+#test "agyworker: permissions deny outside workspace and deny writes in plan mode" {
+  cb: [1] CuClient; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  cu_init(cb[..], line[..], arena[..], out[..]);
+  p_write := "{\"toolCall\":{\"kind\":\"edit\",\"rawInput\":{\"TargetFile\":\"a.coax\"}}}";
+  p_read := "{\"toolCall\":{\"kind\":\"read\",\"rawInput\":{\"Path\":\"a.coax\"}}}";
+  p_out := "{\"toolCall\":{\"kind\":\"read\",\"rawInput\":{\"Path\":\"../secret\"}}}";
+  #assert agyw_decide_permission(cb[..], p_write, "auto") == CU_DISP_ALLOW;
+  #assert agyw_decide_permission(cb[..], p_write, "plan") == CU_DISP_DENY;
+  #assert agyw_decide_permission(cb[..], p_read, "plan") == CU_DISP_ALLOW;
+  #assert agyw_decide_permission(cb[..], p_out, "auto") == CU_DISP_DENY;
+}
+
+#test "agyworker: tool calls track lifecycle and reply chunks accumulate" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  s[0].turn_active = true;
+
+  u_start := "{\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"status\":\"in_progress\",\"title\":\"Read file\",\"rawInput\":{\"Path\":\"a.coax\"}}}";
+  agyw_handle_update(s, x, u_start, false);
+  #assert agyw_call_find(s, "t1") >= 0 && s[0].next_ticket == 1;
+
+  u_end := "{\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"t1\",\"status\":\"completed\",\"content\":[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"ok\"}}]}}";
+  agyw_handle_update(s, x, u_end, false);
+  #assert agyw_call_find(s, "t1") < 0;
+
+  u_msg := "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Hello from agy\"}}}";
+  agyw_handle_update(s, x, u_msg, false);
+  #assert agyw_str(s[0].reply[..], s[0].reply_n) == "Hello from agy";
+}
+
+#test "agyworker: rollback recall composes context into next prompt" {
+  ob: [1024] u8;
+  p := agyw_compose_prompt("user: hi\nassistant: hello", "try again", ob[..]);
+  #assert agy_has(p, "Previous conversation context") && agy_has(p, "user: hi") && agy_has(p, "try again");
+  p2 := agyw_compose_prompt("", "plain", ob[..]);
+  #assert p2 == "plain";
+}
+
+#test "agyworker: lost thinking signature triggers fresh session retry once" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [8192] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  x[0].live = true; x[0].ready = true; s[0].turn_active = true;
+  s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], "retry me");
+  ev := CuEvent.{kind = CuEventKind.refused, of = CU_SESSION_PROMPT, message = "invalid signature in thinking block"};
+  agyw_handle_event(s, x, ev, false);
+  #assert s[0].retried_sig && s[0].turn_active && !x[0].ready;
+  // A second failure ends the turn.
+  agyw_handle_event(s, x, ev, false);
+  #assert !s[0].turn_active;
+}

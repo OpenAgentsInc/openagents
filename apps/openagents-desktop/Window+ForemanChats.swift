@@ -151,6 +151,7 @@ extension CoderWindow {
         }
         cd_skills(back, coderSkillsNote())
         cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(back)
         if let budgetUSD = payload["budget_usd"] as? Double, budgetUSD > 0 {
             _ = cd_set_budget_usd_micros(back, Int64((budgetUSD * 1_000_000.0).rounded()))
@@ -263,6 +264,7 @@ extension CoderWindow {
         }
         cd_skills(back, coderSkillsNote())
         cd_claude(back, CoderWorker.hasClaude ? 1 : 0)
+        cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
         coderApplyOpenRouter(back)
         guard cd_load(back, saved) != 0 else {
             cd_close(back)
@@ -279,6 +281,7 @@ extension CoderWindow {
         if cd_action(back) == 1 {
             var out = [CChar](repeating: 0, count: 262144)
             moved.worker.folder = moved.folder.path
+            moved.worker.program = cd_model_agy(back) != 0 ? "agyworker" : "mcworker"
             if moved.worker.start() {
                 var rn = cd_recall_line(back, &out, Int32(out.count))
                 if rn == 0 { rn = cd_forget_line(&out, Int32(out.count)) }

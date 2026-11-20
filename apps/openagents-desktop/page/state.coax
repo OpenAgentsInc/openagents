@@ -214,6 +214,7 @@ CoderPage :: struct {
   reduced: bool;
   skills: [CP_SKILLS] u8; skills_n: int;
   claude: bool;               // Claude Code is installed here: Microcoder may hand tasks to it
+  agy: bool;                  // Antigravity (agy) is installed here: shown in the model picker
   chats: [CP_CHATS] CpChat; nchats: int; chats_more: int;   // the host's list of kept chats, most recent first, and how many it has past these
   current: [CP_CHAT_ID] u8; current_n: int;                 // the row id of the chat that is shown (none: not kept yet)
   open: int;                  // the row a press asked to open

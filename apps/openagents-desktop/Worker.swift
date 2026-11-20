@@ -41,6 +41,16 @@ final class CoderWorker {
         }
     }
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
+    static var hasAntigravity: Bool {
+        let fm = FileManager.default
+        if let custom = ProcessInfo.processInfo.environment["CODER_AGY_BIN"], !custom.isEmpty,
+           fm.isExecutableFile(atPath: custom) { return true }
+        if path.split(separator: ":").contains(where: { fm.isExecutableFile(atPath: $0 + "/agy") }) { return true }
+        let home = fm.homeDirectoryForCurrentUser.path
+        if fm.isExecutableFile(atPath: home + "/.antigravity/antigravity/bin/agy") { return true }
+        if fm.isExecutableFile(atPath: "/Applications/Antigravity.app/Contents/Resources/app/bin/agy") { return true }
+        return false
+    }
 
     private func extraEnvLines() -> String {
         extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
