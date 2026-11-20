@@ -10,7 +10,7 @@ struct ChatWorktree: Codable, Equatable {
 
     static var enabled: Bool {
         if let v = UserDefaults.standard.object(forKey: "chatWorktrees") as? Bool { return v }
-        return oa_dc_worktrees_on() != 0
+        return DesktopCore.onCoreStack { oa_dc_worktrees_on() != 0 }
     }
 
     static var home: String {

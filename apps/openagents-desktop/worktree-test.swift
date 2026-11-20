@@ -113,6 +113,21 @@ struct WorktreeTest {
         check(ChatWorktree.remove(fresh) == .removed && ChatWorktree.git(["rev-parse", "--verify", "--quiet", "refs/heads/coder/aaaa"], in: repo).status != 0, "a branch with nothing of its own goes with its worktree")
         check(ChatWorktree.create(repo: repo + "/sub", chat: "x", root: root) == .failure(.notARepository), "a folder that is not a main checkout's top gets no worktree")
 
+        // The app makes a chat's worktree on a dispatch queue, whose thread has a 512 KB stack; the core's
+        // hydrate and change count need more, so this crashed the app until core calls got their own stack.
+        let bg = DispatchSemaphore(value: 0)
+        var bgMade = false, bgClean = false, bgRemoved = false
+        DispatchQueue.global(qos: .userInitiated).async {
+            if case .success(let w) = ChatWorktree.create(repo: repo, chat: "bbbb", root: root) {
+                bgMade = true
+                bgClean = ChatWorktree.changes(w) == []
+                bgRemoved = ChatWorktree.remove(w) == .removed
+            }
+            bg.signal()
+        }
+        bg.wait()
+        check(bgMade && bgClean && bgRemoved, "a worktree is made, counted and removed from a dispatch queue")
+
         print(failed == 0 ? "worktree checks: ok" : "worktree checks: \(failed) FAILED")
         exit(failed == 0 ? 0 : 1)
     }
