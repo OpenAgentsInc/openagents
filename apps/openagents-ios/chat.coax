@@ -1038,6 +1038,26 @@ ch_test_has :: (s: [] ChatPage, id: string) -> bool { return surface_find(ch_sf(
  #assert s[0].section==0 && ch_draft(s[..])=="Kept draft" && ch_test_has(s[..],VIEW_COMPOSER_ID);
 }
 
+#test "a long chat scrolls through the phone's scroll view: back to its first message and down to its last" #steps 8000000000 {
+ s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");
+ raw:[16384]u8;j:[1]Jo;jo_start(j[..],raw[..]);
+ jo_put(j[..],"{\"schema\":\"openagents.chat.conversation.v2alpha1\",\"id\":\"cnv_0123456789abcdef0123456789abcdef\",\"revision\":2,\"project_id\":null,\"legacy_thread_id\":null,\"legacy_thread_revision\":null,\"messages\":[");
+ for k:0..<24 {if k>0 {jo_put(j[..],",");}jo_put(j[..],"{\"id\":\"cnv_0123456789abcdef0123456789abcdef.legacy.");jo_int(j[..],k);jo_put(j[..],"\",\"turn_id\":\"\",\"role\":\"");jo_put(j[..],ifx k%2==0 then "user" else "assistant");jo_put(j[..],"\",\"content\":[{\"type\":\"text\",\"text\":\"Line ");jo_int(j[..],k);jo_put(j[..],"\"}],\"created_at_ms\":10}");}
+ jo_put(j[..],"],\"active_turn_id\":null,\"created_at_ms\":1,\"updated_at_ms\":10,\"next_cursor\":null}");
+ d:=c[0].chat[..];d[0].id_n=el_copy(d[0].id[..],"cnv_0123456789abcdef0123456789abcdef");#assert ctr_history_read(jo_text(j[..]),d[0].history[..]);d[0].loaded=true;
+ chat_native_scroll(s[..],true);chat_env(s[..],59,34,0,false,0,true);_=chat_frame(s[..],o[0].v[..],1206,2622,3,0);_=chat_frame(s[..],o[0].v[..],1206,2622,3,0);
+ // the host's UIScrollView reads this: scrolling on, at the end, with room above
+ f:[3]f32;#assert chat_scroll_info(s[..],f[..]) && f[0]==1 && f[2]>0 && f[1]==f[2];
+ #assert ch_test_has(s[..],"m.legacy.23") && !ch_test_has(s[..],"m.legacy.0");
+ // drags to the top (the scroll view's offset 0; rows above are measured as they come into view)
+ // reach the first message
+ for k:0..<4 {chat_scroll_to(s[..],0);_=chat_frame(s[..],o[0].v[..],1206,2622,3,0);}
+ #assert chat_scroll_info(s[..],f[..]) && f[1]==0 && ch_test_has(s[..],"m.legacy.0") && !ch_test_has(s[..],"m.legacy.23");
+ // and back to the bottom shows the last
+ for k:0..<4 {chat_scroll_to(s[..],ch_scroll_max(s[..]));_=chat_frame(s[..],o[0].v[..],1206,2622,3,0);}
+ #assert ch_test_has(s[..],"m.legacy.23");
+}
+
 #test "conversation options scroll on a small phone at maximum text size" #steps 2000000000 {
  s:[1]ChatPage;c:[1]AppCore;o:[1]ChOut;app_init(c[..]);ch_test_atlas(s[0].atlas[..]);chat_attach(s[..],c[..],"");c[0].chat[0].id_n=el_copy(c[0].chat[0].id[..],"cnv_0123456789abcdef0123456789abcdef");c[0].chat[0].loaded=true;_=chat_text_zoom(s[..],CH_ZOOM_MAX);
  chat_env(s[..],20,20,0,false,0,true);_=chat_frame(s[..],o[0].v[..],960,1704,3,0);#assert chat_activate(s[..],"chat.options");

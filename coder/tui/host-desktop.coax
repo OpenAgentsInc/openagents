@@ -400,6 +400,9 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
   calls: [32] int; call_sub: [32] int; ncall := 0;
   steer_ids: [8 * 64] u8; steer_n: [8] int; steer_text: [8 * 2000] u8; steer_tn: [8] int; nsteer := 0;
   id := cast(string) r[0].id[..];
+  // the chat's turns before this run, from the chat Coder saved: a run's lines hold only the turns
+  // it ran, so a phone opening a long chat mid-turn would see that one turn and nothing to scroll
+  dk_earlier(r, s, file, ab);
   op: [1400] u8; t := dk_read_tail(dr_file(id, ".out", op[..]), file);
   next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine;
   ask := -1; open := false; text_since := false;
@@ -460,6 +463,39 @@ dk_session :: (r: [] DkInfo, runs: [] DkInfo, nruns: int, s: [] Session, stamps:
   return ifx s[0].n < stamps.count then s[0].n else stamps.count;
 }
 
+// The turns of run r's chat that Coder saved before the run's own: the saved chat holds every turn,
+// the run's too (a running one saved as running), so its last turns, as many as the run's lines
+// start, are left to those lines. Nothing when the run has no saved chat.
+dk_earlier :: (r: [] DkInfo, s: [] Session, file: [] u8, ab: [] u8) {
+  hx: [32] u8; hex := dk_hex(r, hx[..]);
+  if hex.count == 0 { return; }
+  chats: [DK_CHATS] DkChat; nc := dk_chats(chats[..]); c := -1;
+  for i: 0..<nc { if chats[i].has_hex && cast(string) chats[i].hex[..] == hex { c = i; break; } }
+  if c < 0 { return; }
+  // the run's turns, and whether its last is still open
+  op: [1400] u8; t := dk_read_tail(dr_file(cast(string) r[0].id[..], ".out", op[..]), file);
+  next := [1] int.[0]; ar := [1] ClArena.[ClArena.{buf = ab}]; l: [1] MwwLine; ran := 0; open := false;
+  while true {
+    line := dk_line(t, next[..]);
+    if line.count == 0 { if next[0] >= t.count { break; } continue; }
+    ar[0].at = 0; ar[0].full = false;
+    kind := mww_read(ar[..], line, l[..]);
+    if kind == MWW_TURN { ran += 1; open = true; } else if kind == MWW_ENDED { open = false; }
+  }
+  cut := [1] bool.[false];
+  text := dk_saved_read(chats[c..<c + 1], file, DK_SAVED, cut[..]);
+  if text.count < 2 { return; }
+  turns := cl_raw(text, "turns"); count := cl_count(turns);
+  if count < 1 { return; }
+  // a turn the run started but Coder has not saved yet is not among the saved ones
+  last := cl_int(cl_json(turns, cl_item(turns, count - 1)), "state");
+  drop := ran; if open && !(last.ok && last.value == DK_RUNNING) { drop -= 1; }
+  if drop < 0 { drop = 0; }
+  if drop >= count { return; }
+  if cut[0] { s_notice(s, N_META, DK_EARLIER); }
+  dk_saved_turns(text, s, ab, drop);
+}
+
 // The run the 32 hex digits name for this grant: the lead run of the chat with that id, else the
 // run with that id. -1 when none.
 dk_run_for :: (h: [] HsHost, runs: [] DkInfo, n: int, hex: string) -> int {
@@ -513,18 +549,60 @@ dk_saved_rows :: (s: [] Session, rows: string, k: int, ab: [] u8) {
   }
 }
 dk_saved_session :: (c: [] DkChat, s: [] Session, file: [] u8, ab: [] u8) {
+  cut := [1] bool.[false];
+  text := dk_saved_read(c, file, DK_SAVED, cut[..]);
+  if text.count < 2 { s_notice(s, N_ERROR, "Coder has not saved this chat yet."); return; }
+  if cut[0] { s_notice(s, N_META, DK_EARLIER); }
+  dk_saved_turns(text, s, ab, 0);
+}
+// Earlier turns than a long chat's newest the phone gets stay in Coder on the computer.
+DK_EARLIER :: "Earlier messages are in Coder on this computer.";
+// The bytes of a saved chat the phone reads: its newest turns, enough to scroll back through and
+// small enough for the transcript's pool and parts (the live run's rows come after them).
+DK_SAVED :: 196608;
+// A saved chat's text, or its newest whole turns rebuilt as {"turns":[...]} when the file is past
+// `most` bytes (cut[0] then true). A turn starts at {"ask": (a turn's first key; nothing nested in a
+// turn has an "ask" key, and a string's quote is escaped). "" when the file can't be read.
+dk_saved_read :: (c: [] DkChat, file: [] u8, most: int, cut: [] bool) -> string {
   nb: [128] u8; nn := hs_cat(nb[..], 0, cast(string) c[0].id[0..<c[0].ni]); nn = hs_cat(nb[..], nn, ".json");
   pb: [1400] u8; path := dk_chat_path(cast(string) nb[0..<nn], pb[..]);
-  size := fs_size(path);
-  if size > file.count { s_notice(s, N_ERROR, "This chat is too long to show here. Open it in Coder on this computer."); return; }
-  n := fs_read(path, file);
-  if n < 2 { s_notice(s, N_ERROR, "Coder has not saved this chat yet."); return; }
-  dk_saved_text(cast(string) file[0..<n], s, ab);
+  return dk_saved_tail(path, file, most, cut);
 }
-dk_saved_text :: (text: string, s: [] Session, ab: [] u8) {
+dk_saved_tail :: (path: string, file: [] u8, most: int, cut: [] bool) -> string {
+  cut[0] = false;
+  size := fs_size(path);
+  if size < 2 { return ""; }
+  room := ifx most < file.count then most else file.count;
+  if size <= room { n := fs_read(path, file[0..<room]); return ifx n >= 2 then cast(string) file[0..<n] else ""; }
+  if room <= DK_TURNS_N + 16 { return ""; }
+  n := fs_read_at(path, size - (room - DK_TURNS_N), file[DK_TURNS_N..<room]);
+  if n < 1 { return ""; }
+  m := dk_tail_turns(file, n);
+  cut[0] = m > 0;
+  return ifx m > 0 then cast(string) file[0..<m] else "";
+}
+DK_TURNS_HEAD :: "{\"turns\":["; DK_TURNS_N :: 10;
+// file[DK_TURNS_N..<+n] holds a saved chat's last bytes: they become {"turns":[ and the turns
+// from the first whole one on, in place. Their length, or 0 when no turn starts in them.
+dk_tail_turns :: (file: [] u8, n: int) -> int {
+  h := DK_TURNS_N; mark := "{\"ask\":"; at := -1;
+  for i: 0..<n - mark.count + 1 {
+    if cast(string) file[h + i..<h + i + mark.count] == mark { at = i; break; }
+  }
+  if at < 0 { return 0; }
+  for k: 0..<n - at { file[h + k] = file[h + at + k]; }
+  for k: 0..<h { file[k] = DK_TURNS_HEAD[k]; }
+  return h + n - at;
+}
+dk_saved_text :: (text: string, s: [] Session, ab: [] u8) { dk_saved_turns(text, s, ab, 0); }
+// The saved turns but the last `drop` (a live run's own turns, which its lines show), each one
+// whole while the parts leave room for the run's (S_PARTS - DK_LIVE_PARTS).
+DK_LIVE_PARTS :: 256;
+dk_saved_turns :: (text: string, s: [] Session, ab: [] u8, drop: int) {
   turns := cl_raw(text, "turns");
   ar := [1] ClArena.[ClArena.{buf = ab}];
-  for i: 0..<cl_count(turns) {
+  for i: 0..<cl_count(turns) - drop {
+    if s[0].n >= S_PARTS - DK_LIVE_PARTS || s[0].exhausted { break; }
     t := cl_json(turns, cl_item(turns, i));
     ar[0].at = 0; ar[0].full = false;
     ask := cl_str(ar[..], t, "ask");
@@ -737,6 +815,20 @@ dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   }
   #assert user == 2 && think == 1 && tool == 2 && task >= 0 && ses[0].parts[task].subcalls == 1 && ses[0].parts[task].resolved;
   #assert ses[0].nsubs == 2 && ses[0].subs[0].done && !ses[0].live;
+}
+#test "a long saved chat reads back as its newest whole turns, and a live run's turns are left to its lines" {
+  big := "{\"v\":1,\"turns\":[{\"ask\":\"first, with {\\\"ask\\\": inside\",\"reply\":\"one\",\"state\":1,\"cmds\":[],\"agents\":[]},{\"ask\":\"second\",\"reply\":\"two\",\"state\":1,\"cmds\":[],\"agents\":[]},{\"ask\":\"third\",\"reply\":\"\",\"state\":0,\"cmds\":[],\"agents\":[]}]}";
+  // the file's last bytes, from inside the first turn (past its own escaped {"ask": mark)
+  file: [4096] u8; from := 40; n := big.count - from;
+  for k: 0..<n { file[DK_TURNS_N + k] = big[from + k]; }
+  m := dk_tail_turns(file[..], n);
+  tail := cast(string) file[0..<m];
+  #assert m > 0 && cl_count(cl_raw(tail, "turns")) == 2;
+  none: [64] u8; #assert dk_tail_turns(none[..], 8) == 0;
+  ses: [1] Session; pool: [65536] u8; s_init(ses[..], pool[..]); ab: [65536] u8;
+  dk_saved_turns(big, ses[..], ab[..], 1);
+  users := 0; for k: 0..<ses[0].n { if ses[0].parts[k].kind == P_USER { users += 1; } }
+  #assert users == 2;
 }
 #test "a run's lines are read whole, never a line still being written" {
   b := "{\"a\":1}\n{\"b\":2}\n{\"c\":"; next := [1] int.[0];

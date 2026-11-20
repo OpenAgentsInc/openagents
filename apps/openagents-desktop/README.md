@@ -330,6 +330,7 @@ phone writes to `ID.in` through the daemon, which checks the pairing's grant
 
 Limits:
 
+- On the phone, a chat shows its newest turns, about 190 KB of what Coder saved, then the turn running now. A longer chat starts with "Earlier messages are in Coder on this computer."
 - The daemon runs up to 12 workers at once, sub-agents included. Past that a message or a sub-agent does not start, and the chat says so: "Coder runs up to 12 workers at once, sub-agents included."
 - While Coder is closed, the daemon answers each command's check with yes, as Coder does. A sub-agent's pause after 100 tool calls in a row (see [Sub-agents](#sub-agents)) is answered the same way, so a sub-agent goes on past it.
 - While Coder is closed, sub-agents that Microcoder hands work to don't start, and Microcoder waits for the results of sub-agents that finish. Both happen when you open Coder again.
