@@ -113,6 +113,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     let foremanAudit = ForemanAuditLog()
     let daemonClient = CoderDaemonClient()
     private var lastForegroundRunning = false
+    var sweptAt = CACurrentMediaTime()            // when runs no chat holds were last looked for (#13810)
+    var sweeping = false
     var foremanTier: ForemanTier = ForemanTier.load()
     let updater = CoderUpdater()
     /// The working folder: commands start there. The corner shows it with ~ for the home folder.
@@ -373,6 +375,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         let what = cd_action(page)
         if what != 0 { act(what); wake() }
+        if now - sweptAt >= CoderWindow.sweepEvery { sweepRuns() }
         let fgRunning = cd_running(page) != 0
         if fgRunning != lastForegroundRunning {
             lastForegroundRunning = fgRunning

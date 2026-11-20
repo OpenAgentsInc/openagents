@@ -105,6 +105,7 @@ extension CoderWindow {
             }
             guard cd_running(r.page) != 0 else { return }
             guard ok else {
+                if r.worker.failure == CoderWorker.runLimitNote { self.sweepRuns() }   // the next send finds the slots it frees
                 cd_failed(r.page, r.worker.failure ?? "Microcoder could not start.")
                 self.wake()
                 return
@@ -177,6 +178,44 @@ extension CoderWindow {
             }
         }
         cd_chats(page, chatLines); syncForemanUI()
+    }
+    /// Every daemon run this Coder holds: each chat's worker and sub-agents, in view or out, and the
+    /// runs its kept messages name.
+    var heldRuns: Set<String> {
+        var held = Set<String>()
+        for r in [run] + Array(runs.values) {
+            if let id = r.worker.runID { held.insert(id) }
+            for one in r.agents.values { if let id = one.runID { held.insert(id) } }
+            if let t = r.turn { held.insert(t.run); held.formUnion(t.agents) }
+        }
+        return held
+    }
+    static let sweepEvery: CFTimeInterval = 60
+    static let sweepAge = 60   // seconds a run is left alone after it starts: one still starting is not yet held
+    /// A live run no chat holds is stopped and forgotten while Coder runs, not only at launch
+    /// (reattach): a worker waits on stdin after its turn, so a run whose StopRun was lost would
+    /// otherwise keep one of the daemon's slots until every send is refused (#13810).
+    func sweepRuns() {
+        sweptAt = CACurrentMediaTime()
+        guard let daemon = CoderWorker.daemon, daemon.ownsRuns, !sweeping else { return }
+        sweeping = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let live = daemon.listRuns()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.sweeping = false
+                guard let live else { return }
+                let held = self.heldRuns, now = Int(Date().timeIntervalSince1970)
+                for id in CoderWindow.orphans(live, held: held, now: now) {
+                    NSLog("Coder: stopping run %@, which no chat holds (#13810)", id)
+                    daemon.stopRun(id) { DispatchQueue.main.asyncAfter(deadline: .now() + 4) { daemon.forgetRun(id) } }
+                }
+            }
+        }
+    }
+    /// The live runs to stop: none a chat holds, and none started less than sweepAge seconds ago.
+    static func orphans(_ live: [DaemonRun], held: Set<String>, now: Int) -> [String] {
+        live.filter { $0.isLive && !held.contains($0.run_id) && now - ($0.started ?? now) >= sweepAge }.map { $0.run_id }
     }
     /// The run's lines since the message was sent go to its page as they came. A line after one
     /// that owed the worker an answer means the answer was given, so it is not given again.
