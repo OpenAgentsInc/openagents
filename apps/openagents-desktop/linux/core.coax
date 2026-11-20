@@ -16,6 +16,7 @@ OaCore :: struct {
   wt: [1] DcWorktree;
   has_wt: bool;
   store_open: bool;
+  store_dir: bool;
   daemon_open: bool;
 }
 
@@ -31,6 +32,7 @@ oa_core_init :: (c: [] OaCore, store_dir: string, daemon_dir: string) -> int #ex
   sb: [DC_PATH] u8;
   sdir := ifx store_dir.count > 0 then store_dir else dcos_chats_dir(sb[..]);
   c[0].store_open = dc_store_open(c[0].store[..], sdir, c[0].chats[..]);
+  c[0].store_dir = true;   // the store's folder is set even when its index could not be read
   db: [DC_PATH] u8;
   ddir := ifx daemon_dir.count > 0 then daemon_dir else dcos_daemon_dir(db[..]);
   dc_daemon_open(c[0].daemon[..], ddir);
@@ -57,6 +59,25 @@ oa_core_daemon_owns_runs :: (c: [] OaCore) -> int #export_c #effects(all) {
   return ifx c[0].daemon[0].owns_runs then 1 else 0;
 }
 
+// Before every write the index is read again from disk, as the Mac host opens it for each write:
+// a chat another Coder process kept since this one started stays in the list, and an index that
+// can't be read (damaged, or longer than the store holds) is never written over. Writing over it
+// is what wiped a Mac owner's list of 74 chats to one (4b957c4de3).
+oa_store_fresh :: (c: [] OaCore) -> bool #effects(all) {
+  if !c[0].store_dir { return false; }
+  c[0].store_open = dc_store_reload(c[0].store[..]);
+  return c[0].store_open;
+}
+
+oa_core_store_path :: (c: [] OaCore, out: [] u8) -> int #export_c #effects(all) {
+  if !c[0].store_dir { return 0; }
+  return oa_copy_out(dc_store_dir(c[0].store[..]), out);
+}
+
+oa_core_store_ok :: (c: [] OaCore) -> int #export_c #effects(all) {
+  return ifx c[0].store_open then 1 else 0;
+}
+
 oa_core_new_id :: (out: [] u8) -> int #export_c #effects(all) {
   b: [64] u8;
   return oa_copy_out(dc_new_id(b[..]), out);
@@ -67,7 +88,7 @@ oa_core_now_ms :: () -> int #export_c #effects(all) {
 }
 
 oa_core_store_lines :: (c: [] OaCore, out: [] u8) -> int #export_c #effects(all) {
-  if !c[0].store_open { return 0; }
+  if !oa_store_fresh(c) { return 0; }
   return oa_copy_out(dc_store_lines(c[0].store[..], out), out);
 }
 
@@ -96,24 +117,24 @@ oa_core_store_text :: (c: [] OaCore, id: string, out: [] u8) -> int #export_c #e
 }
 
 oa_core_store_keep :: (c: [] OaCore, id: string, title: string, folder: string, text: string, wt_path: string, wt_branch: string, repo: string) -> int #export_c #effects(all) {
-  if !c[0].store_open { return 0; }
-  now := dcos_now_ms() / 1000;
-  ok := dc_store_keep(c[0].store[..], id, title, folder, text, "", wt_path, wt_branch, repo, now);
+  if !oa_store_fresh(c) { return 0; }
+  // dc_store_keep takes wall-clock microseconds (it wrote seconds here before: 1970 dates)
+  ok := dc_store_keep(c[0].store[..], id, title, folder, text, "", wt_path, wt_branch, repo, dcos_now_us());
   return ifx ok then 1 else 0;
 }
 
 oa_core_store_rename :: (c: [] OaCore, id: string, title: string) -> int #export_c #effects(all) {
-  if !c[0].store_open { return 0; }
+  if !oa_store_fresh(c) { return 0; }
   return ifx dc_store_rename(c[0].store[..], id, title) then 1 else 0;
 }
 
 oa_core_store_toggle_pin :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
-  if !c[0].store_open { return 0; }
+  if !oa_store_fresh(c) { return 0; }
   return ifx dc_store_toggle_pin(c[0].store[..], id) then 1 else 0;
 }
 
 oa_core_store_remove :: (c: [] OaCore, id: string) -> int #export_c #effects(all) {
-  if !c[0].store_open { return 0; }
+  if !oa_store_fresh(c) { return 0; }
   return ifx dc_store_remove(c[0].store[..], id) then 1 else 0;
 }
 

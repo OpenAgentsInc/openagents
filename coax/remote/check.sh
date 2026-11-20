@@ -229,7 +229,7 @@ desktop_evals() {
 # The portable desktop core (#13787): its #test checks are suites (coax/lib); its smoke runs the
 # modules against this host's real files, git, processes and local sockets, in a temporary folder.
 desktop_core() { step desktop-core-smoke coax/web/tool.sh coax/lib/agent/desktop/smoke.coax || status=1; }
-desktop_linux() { if [[ "$(uname)" == Linux ]]; then step desktop-linux-smoke apps/openagents-desktop/linux/build.sh --smoke || status=1; fi; }
+desktop_linux() { if [[ "$(uname)" == Linux ]]; then step desktop-linux-smoke apps/openagents-desktop/linux/build.sh --smoke --flow-test || status=1; fi; }
 desktop_core_touched() { grep -Eq '^(coax/lib/agent/desktop/|coax/lib/agent/environment/daemon-wire\.coax|coder/tui/desktop-store\.coax|coax/lib/(sys|net|json|text)/|coax/lib/crypto/(ed25519|sha256|entropy|rand_foreign)|coax/platform/|proto/coder/desktop-update)' "$out/changed"; }
 desktop_touched() { grep -Eq '^(apps/openagents-desktop|evals/coder-desktop|components)/' "$out/changed"; }
 coder_touched() {   # whether the change since $arg reaches Coder (yes when the graph can't tell)

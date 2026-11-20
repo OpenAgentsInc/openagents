@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -575,6 +576,183 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
   return 0;
 }
 
+
+// The chat flow test (scripts in apps/openagents-desktop/linux/flow-test.sh): the real app's
+// handlers (handle_action, pump_host, save_current_chat) on an offscreen page, a real worker
+// process (--worker; the test gives the mock worker, never a model), and the chat store at the
+// XDG data home. It sends a message, waits for the reply, makes a new chat and sends another,
+// and checks that the list holds both chats, that both survive a restart, and that an index the
+// store can't read is refused, never written over.
+#define FLOW_W 1100
+#define FLOW_H 760
+static int flow_fail(const char *step, const char *why) {
+  fprintf(stderr, "flow: FAIL %s: %s\n", step, why);
+  return 1;
+}
+static void flow_ok(const char *step, const char *detail) {
+  printf("flow: ok %s%s%s\n", step, detail && detail[0] ? ": " : "", detail ? detail : "");
+  fflush(stdout);
+}
+static void flow_sleep_ms(int ms) {
+  struct timespec ts = {ms / 1000, (long)(ms % 1000) * 1000000L};
+  nanosleep(&ts, NULL);
+}
+// Pumps the host and renders until the run has ended and its chat is kept (or ms passes).
+static int flow_until_idle(DesktopApp *a, int ms) {
+  int saw_running = 0;
+  for (int t = 0; t < ms / 10; t++) {
+    pump_host(a);
+    if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return 0;
+    if (cd_running(a->page)) saw_running = 1;
+    else if (saw_running || t > 20) {
+      for (int k = 0; k < 5; k++) { pump_host(a); cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f); }
+      return 1;
+    }
+    flow_sleep_ms(10);
+  }
+  return 0;
+}
+static int flow_send(DesktopApp *a, const char *text) {
+  if (!cd_set_text(a->page, text) || !cd_submit(a->page)) return 0;
+  return flow_until_idle(a, 15000);
+}
+static int flow_count_lines(const char *list) {
+  if (!list[0]) return 0;
+  int n = 1;
+  for (const char *p = list; *p; p++) if (*p == '\n') n++;
+  return n;
+}
+static int flow_read_file(const char *path, char *buf, int cap) {
+  FILE *f = fopen(path, "rb");
+  if (!f) return -1;
+  int n = (int)fread(buf, 1, (size_t)cap - 1, f);
+  fclose(f);
+  buf[n] = '\0';
+  return n;
+}
+static int flow_write_file(const char *path, const char *text) {
+  FILE *f = fopen(path, "wb");
+  if (!f) return 0;
+  size_t n = strlen(text);
+  int ok = fwrite(text, 1, n, f) == n;
+  fclose(f);
+  return ok;
+}
+static int run_flow(DesktopApp *a, const char *shot_out) {
+  char store[PATH_MAX] = {0}, detail[PATH_MAX + 128], list[65536];
+  if (!oa_core_init(vc(a), cs(""), cs(""))) return flow_fail("init", "the chat store did not open");
+  oa_core_store_path(vc(a), vu(store, (int)sizeof(store)));
+  const char *xdg = getenv("XDG_DATA_HOME");
+  if (!xdg || !xdg[0] || strncmp(store, xdg, strlen(xdg)) != 0) return flow_fail("store", "the store is not under XDG_DATA_HOME");
+  snprintf(detail, sizeof(detail), "store at %s, %d chats", store, (int)oa_core_store_count(vc(a)));
+  flow_ok("store", detail);
+  if (oa_core_store_count(vc(a)) != 0) return flow_fail("store", "the test store is not empty");
+
+  a->page = cd_open_ex(a->resources, 1, FLOW_W, FLOW_H);
+  if (!a->page) return flow_fail("page", "cd_open_ex(offscreen) failed");
+  set_folder(a, a->folder);
+  refresh_settings_info(a);
+  refresh_chats(a);
+  for (int i = 0; i < 4; i++) if (!cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f)) return flow_fail("page", "a frame did not render");
+  flow_ok("page", "rendered offscreen on Vulkan");
+
+  // 1. A message to the worker, and its reply.
+  if (!flow_send(a, "flow test first message")) return flow_fail("send-1", "the run did not end");
+  char first[128];
+  snprintf(first, sizeof(first), "%s", a->chat_id);
+  if (!first[0]) return flow_fail("send-1", "no chat id");
+  if (!oa_core_worker_alive(vc(a))) return flow_fail("send-1", "the worker is not running");
+  int n = (int)oa_core_store_text(vc(a), cs(first), vu(a->save_buf, OA_SAVE_CAP));
+  if (n <= 0 || !strstr(a->save_buf, "flow test first message")) return flow_fail("send-1", "the kept chat lacks the message");
+  if (!strstr(a->save_buf, "First reply from the worker")) return flow_fail("reply-1", "the kept chat lacks the worker's reply");
+  n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  if (n <= 0 || !strstr(a->save_buf, "First reply from the worker")) return flow_fail("reply-1", "the page does not show the reply");
+  flow_ok("chat-1", first);
+
+  // 2. A new chat (the New chat button), and a second message.
+  if (!cd_new(a->page)) return flow_fail("new-chat", "cd_new refused");
+  pump_host(a);
+  if (a->chat_id[0]) return flow_fail("new-chat", "the app kept the old chat id");
+  oa_core_store_lines(vc(a), vu(list, (int)sizeof(list)));
+  if (flow_count_lines(list) != 1) return flow_fail("new-chat", "the list lost the first chat");
+  if (!flow_send(a, "flow test second message")) return flow_fail("send-2", "the run did not end");
+  char second[128];
+  snprintf(second, sizeof(second), "%s", a->chat_id);
+  if (!second[0] || strcmp(first, second) == 0) return flow_fail("send-2", "the second message did not start a new chat");
+  n = (int)oa_core_store_text(vc(a), cs(second), vu(a->save_buf, OA_SAVE_CAP));
+  if (n <= 0 || !strstr(a->save_buf, "Second reply from the worker")) return flow_fail("reply-2", "the kept chat lacks the second reply");
+  if (strstr(a->save_buf, "First reply from the worker")) return flow_fail("reply-2", "the new chat carries the first chat's turns");
+  flow_ok("chat-2", second);
+
+  // 3. The list holds both, newest first.
+  oa_core_store_lines(vc(a), vu(list, (int)sizeof(list)));
+  if (flow_count_lines(list) != 2 || !strstr(list, first) || !strstr(list, second)) return flow_fail("list", "the list does not hold both chats");
+  if (strncmp(list, second, strlen(second)) != 0) return flow_fail("list", "the newest chat is not first");
+  // Kept times are wall-clock seconds (the Mac app reads them as dates), not 1970.
+  {
+    char ib[PATH_MAX + 16], idx[65536];
+    snprintf(ib, sizeof(ib), "%s/index.json", store);
+    const char *cr = flow_read_file(ib, idx, (int)sizeof(idx)) > 0 ? strstr(idx, "\"created\":") : NULL;
+    if (!cr || atof(cr + 10) < 1600000000.0) return flow_fail("list", "a chat's created time is not now");
+  }
+  flow_ok("list", "2 chats, newest first, created now");
+
+  // 4. Opening the first chat from the list shows its reply again.
+  open_chat_by_id(a, first);
+  for (int i = 0; i < 3; i++) cd_shot_frame(a->page, FLOW_W, FLOW_H, 1.0f / 60.0f);
+  n = cd_save(a->page, a->save_buf, OA_SAVE_CAP);
+  if (strcmp(a->chat_id, first) != 0 || n <= 0 || !strstr(a->save_buf, "First reply from the worker")) return flow_fail("open", "the first chat did not open with its reply");
+  flow_ok("open", "the first chat reopened with its reply");
+  if (shot_out && shot_out[0]) {
+    if (!cd_shot_write(a->page, shot_out)) return flow_fail("shot", shot_out);
+    flow_ok("shot", shot_out);
+  }
+
+  // 5. A restart reads both chats back from disk.
+  coax_t_OaCore *again = calloc(1, sizeof(coax_t_OaCore));
+  if (!again) return flow_fail("restart", "out of memory");
+  coax_v_t_OaCore va = {again, 1};
+  if (!oa_core_init(va, cs(""), cs("")) || oa_core_store_count(va) != 2) { free(again); return flow_fail("restart", "the store did not hold 2 chats after a restart"); }
+  free(again);
+  flow_ok("restart", "2 chats read back");
+
+  // 6. An index the store can't read is never written over (the Mac wipe of 4b957c4de3).
+  char index[PATH_MAX + 16], saved[65536], after[65536];
+  snprintf(index, sizeof(index), "%s/index.json", store);
+  if (flow_read_file(index, saved, (int)sizeof(saved)) <= 0) return flow_fail("refuse", "no index.json");
+  const char *damaged = "{\"chats\": [ this is not json";
+  if (!flow_write_file(index, damaged)) return flow_fail("refuse", "could not damage the index");
+  int kept = (int)oa_core_store_keep(vc(a), cs(first), cs("Overwrite"), cs(a->folder), cs("{}"), cs(""), cs(""), cs(""));
+  if (kept) return flow_fail("refuse", "a keep wrote over an index it could not read");
+  if (flow_read_file(index, after, (int)sizeof(after)) < 0 || strcmp(after, damaged) != 0) return flow_fail("refuse", "the damaged index was changed");
+  if (!flow_write_file(index, saved)) return flow_fail("refuse", "could not put the index back");
+  oa_core_store_lines(vc(a), vu(list, (int)sizeof(list)));
+  if (flow_count_lines(list) != 2) return flow_fail("refuse", "the list did not come back");
+  flow_ok("refuse", "a damaged index is left as it is; the list comes back when it reads again");
+
+  // 7. A chat another process keeps meanwhile is not dropped by this one's next save.
+  coax_t_OaCore *other = calloc(1, sizeof(coax_t_OaCore));
+  if (!other) return flow_fail("shared", "out of memory");
+  coax_v_t_OaCore vo = {other, 1};
+  char third[128] = {0};
+  oa_core_new_id(vu(third, (int)sizeof(third)));
+  int ok3 = oa_core_init(vo, cs(""), cs("")) &&
+            oa_core_store_keep(vo, cs(third), cs("Kept elsewhere"), cs(a->folder), cs("{}"), cs(""), cs(""), cs(""));
+  free(other);
+  if (!ok3) return flow_fail("shared", "the other store could not keep a chat");
+  save_current_chat(a);
+  oa_core_store_lines(vc(a), vu(list, (int)sizeof(list)));
+  if (flow_count_lines(list) != 3 || !strstr(list, third)) return flow_fail("shared", "this app's save dropped a chat kept elsewhere");
+  flow_ok("shared", "3 chats after a save beside another writer");
+
+  stop_all_subagents(a);
+  if (oa_core_worker_alive(vc(a))) oa_core_worker_stop(vc(a), 0);
+  cd_close(a->page);
+  a->page = NULL;
+  printf("openagents-desktop-linux flow: ok\n");
+  return 0;
+}
+
 int main(int argc, char **argv) {
   DesktopApp app;
   memset(&app, 0, sizeof(app));
@@ -596,11 +774,12 @@ int main(int argc, char **argv) {
 
   if (!getcwd(app.folder, sizeof(app.folder))) snprintf(app.folder, sizeof(app.folder), ".");
 
-  int smoke = 0;
+  int smoke = 0, flow = 0;
   const char *shot = NULL;
   const char *update_file = NULL;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--smoke") == 0) smoke = 1;
+    else if (strcmp(argv[i], "--flow-test") == 0) flow = 1;
     else if (strcmp(argv[i], "--shot") == 0 && i + 1 < argc) shot = argv[++i];
     else if (strcmp(argv[i], "--resources") == 0 && i + 1 < argc) snprintf(app.resources, sizeof(app.resources), "%s", argv[++i]);
     else if (strcmp(argv[i], "--worker") == 0 && i + 1 < argc) snprintf(app.worker_bin, sizeof(app.worker_bin), "%s", argv[++i]);
@@ -621,10 +800,16 @@ int main(int argc, char **argv) {
     return rc;
   }
 
-  if (!oa_core_init(vc(&app), cs(""), cs(""))) {
-    fprintf(stderr, "openagents-desktop: could not initialize desktop core\n");
-    return 1;
+  if (flow) {
+    int rc = run_flow(&app, shot);
+    free(app.core); free(app.line_buf); free(app.save_buf);
+    return rc;
   }
+
+  // An index it can't read leaves the app running with an empty list: every write refuses
+  // (core.coax oa_store_fresh) rather than saving a list of one chat over the user's chats.
+  int store_ok = (int)oa_core_init(vc(&app), cs(""), cs(""));
+  if (!store_ok) fprintf(stderr, "openagents-desktop: the chat list could not be read; chats are not saved until it can be\n");
   if (app.daemon_bin[0]) oa_core_daemon_ensure(vc(&app), cs(app.daemon_bin), 1500);
 
   app.page = cd_open_ex(app.resources, shot != NULL, 1200, 820);
@@ -636,6 +821,7 @@ int main(int argc, char **argv) {
   set_folder(&app, app.folder);
   refresh_settings_info(&app);
   refresh_chats(&app);
+  if (!store_ok) cd_toast(app.page, "Your chat list could not be read. New chats are not saved until it can be.", 1);
 
   int status = 0;
   if (shot) {

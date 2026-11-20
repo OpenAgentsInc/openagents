@@ -424,6 +424,20 @@ That runs every check file in the evaluator with the slot limit at 85%, a few at
 when a check needs more. `coax/remote/check.sh` runs it as the `coder-desktop-page-slots` step on
 every change to Coder Desktop (`coder` and `coder-since`).
 
+On Linux, the chat flow test runs the app headless (offscreen page on software Vulkan) with
+the mock worker (`evals/coder-desktop/mock_worker`, no model, no keys) and a throwaway home: it
+sends a message, checks the reply shows, makes a new chat and sends another, and checks the chat
+list at the XDG data home after a restart, that an index it can't read is never written over, and
+that a chat another process kept is not dropped:
+
+```sh
+apps/openagents-desktop/linux/flow-test.sh                                   # on a Linux host
+coax/remote/remote.sh run -- apps/openagents-desktop/linux/flow-test.sh     # from a Mac, on a build host
+```
+
+`coax/remote/check.sh` runs it with the Linux smoke (`build.sh --smoke --flow-test`) as the
+`desktop-linux-smoke` step.
+
 The Foreman control API (`docs/coder/foreman-control-api.md`), which lets a
 script or another agent manage Foreman in a running Coder:
 

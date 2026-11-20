@@ -2,7 +2,8 @@
 # Firm reason: 5 (thin wrapper around coax, cc, wayland-scanner and pkg-config; holds no logic)
 # Builds OpenAgents Desktop for Linux (GitHub #13781): page.coax + desktop core
 # (coax/lib/agent/desktop/) + shared Wayland/Vulkan host (apps/shared/host/linux/).
-#   apps/openagents-desktop/linux/build.sh [--smoke] [--open] [--no-worker]
+#   apps/openagents-desktop/linux/build.sh [--smoke] [--flow-test] [--open] [--no-worker]
+# --flow-test: the chat flow test (flow-test.sh) on the mock worker, headless.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -76,20 +77,28 @@ if [[ "$want_worker" == 1 && -f "$repo/coder/tui/mcworker.coax" ]]; then
   "$repo/coax/web/tool.sh" "$repo/coder/tui/mcworker.coax" --build-only >/dev/null 2>&1 || true
 fi
 
+# Headless runs draw on Mesa's software Vulkan (lavapipe) when no driver is set.
+software_vulkan() {
+  if [[ -z "${VK_DRIVER_FILES:-}" && -z "${VK_ICD_FILENAMES:-}" ]]; then
+    for d in $(echo "${NIX_PROFILES:-} ${XDG_DATA_DIRS:-} /usr/share /run/opengl-driver/share" | tr ':' ' '); do
+      for icd in "$d"/vulkan/icd.d/lvp_icd*.json "$d"/share/vulkan/icd.d/lvp_icd*.json; do
+        if [[ -f "$icd" ]]; then export VK_DRIVER_FILES="$icd"; return; fi
+      done
+    done
+    if [[ -d /nix/store ]]; then
+      icd="$(ls -1 /nix/store/*mesa*/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)"
+      if [[ -n "$icd" ]]; then export VK_DRIVER_FILES="$icd"; fi
+    fi
+  fi
+}
+
 for arg in "$@"; do
   if [[ "$arg" == --smoke ]]; then
-    if [[ -z "${VK_DRIVER_FILES:-}" && -z "${VK_ICD_FILENAMES:-}" ]]; then
-      for d in $(echo "${NIX_PROFILES:-} ${XDG_DATA_DIRS:-} /usr/share /run/opengl-driver/share" | tr ':' ' '); do
-        for icd in "$d"/vulkan/icd.d/lvp_icd*.json "$d"/share/vulkan/icd.d/lvp_icd*.json; do
-          if [[ -f "$icd" ]]; then export VK_DRIVER_FILES="$icd"; break 2; fi
-        done
-      done
-      if [[ -z "${VK_DRIVER_FILES:-}" && -d /nix/store ]]; then
-        icd="$(ls -1 /nix/store/*mesa*/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n 1 || true)"
-        if [[ -n "$icd" ]]; then export VK_DRIVER_FILES="$icd"; fi
-      fi
-    fi
+    software_vulkan
     "$work/OpenAgents" --smoke --resources "$work/resources"
+  elif [[ "$arg" == --flow-test ]]; then
+    software_vulkan
+    "$here/flow-test.sh" --no-build
   elif [[ "$arg" == --open ]]; then
     exec "$work/OpenAgents" --resources "$work/resources"
   fi
