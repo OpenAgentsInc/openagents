@@ -234,7 +234,7 @@ lab_mc_start :: (m: [] LabMc, task: string, effort: int, level: int, local_work:
   mc_init(r[0].l[..], m[0].sb[..], m[0].lb[..], e_str(m[0].env[..], en), task, e_str(m[0].route[..], rn), local_work);
   _ = mc_run_load_instructions(r[0].l[..], m[0].lb[..], cwd);
   m[0].v[0] = LmcView.{running = true};
-  mc_run_start(r, m[0].plan[..], m[0].bench[..], cwd, e);
+  mc_run_prepare(r, m[0].plan[..], m[0].bench[..], cwd, e);
   return "";
 }
 

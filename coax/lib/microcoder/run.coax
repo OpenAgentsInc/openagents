@@ -158,6 +158,7 @@ McRun :: struct {
   delegated: bool;               // this step's sub-agents have answered
   command_seconds: int;          // a command's time limit; 0 is MC_COMMAND_SECONDS (an unattended owner gives more, and tells the model in the facts)
   seed: bool;                    // before the first call, look up what the task names (mc_run_seed)
+  call_due: bool;                // first call deferred to the next poll (mc_run_prepare)
   seeded: bool;
   rbuf: [4096] u8;               // this poll's reply bytes
   think: [MC_THINK + 64] u8; nthink: int; think_cut: bool;   // the step's thinking so far, and whether it ran past the buffer
@@ -271,19 +272,28 @@ mc_run_load_instructions :: (l: [] McLoop, b: [] McLoopBuffers, cwd: string) -> 
   return mc_instructions(l, b, text);
 }
 
-// Starts a run of the loop already set up in r.l (mc_init) through plan p
-// (gw_plan_add its attempts first); effort "" leaves it to the provider.
-mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
+// Sets up a run of the loop in r.l (mc_init) through plan p without firing the first model call
+// yet: the next poll fires it when call_due is true. Callers that both start and poll a run in
+// the same procedure (the Lab's lab_pump) use this so mc_run_call's retained stores are not
+// carried twice into the caller's summary (checker 256-store limit, #13791, #13779).
+mc_run_prepare :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
   if r[0].cmd_on { mc_cmd_stop(r[0].cmd[..]); x := mc_cmd_result(r[0].cmd[..], r[0].tb[0].out[..]); r[0].cmd_on = false; }
   r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
   r[0].journal=p[0].journal;r[0].deadline=0;now:=cxproc_now_ms();if now>=0 && now<=9223372036854475807 {r[0].deadline=now+MC_RUN_MS;}r[0].effects=0;r[0].reads=0;r[0].refused="";
   r[0].seeded = false;
+  r[0].call_due = !r[0].seed;
   r[0].nstart = 0;
   r[0].runs += 1;
   if r[0].journal.count > 0 { r[0].nstart = mc_git_head(cwd, r[0].profile, r[0].tb[0].out[..], r[0].start[..]).count; }
   mc_run_attach_task_images(r);
   mc_window(r[0].l[..], mc_plan_window(p));       // the state's budgets from the model's window (GitHub #13730)
-  if !r[0].seed { mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
+}
+
+// Starts a run of the loop already set up in r.l (mc_init) through plan p
+// (gw_plan_add its attempts first); effort "" leaves it to the provider.
+mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
+  mc_run_prepare(r, p, bench, cwd, effort);
+  if r[0].call_due { r[0].call_due = false; mc_run_call(r); }       // a seeded run's first poll looks things up, then calls
 }
 
 // The smallest context window of the plan's attempts, in tokens (gateway card.coax gw_window): a
@@ -422,6 +432,7 @@ mc_run_hear :: (r: [] McRun, out: [] McRunEvent) -> McHeard {
   if r[0].cmd_on { return McHeard.{k = mc_run_cmd_poll(r, out)}; }
   if r[0].l[0].ending==MC_END_FAILED {return McHeard.{k = mc_run_end(r,out,0)};}
   if r[0].seed && !r[0].seeded { return McHeard.{k = mc_run_seed(r, out)}; }
+  if r[0].call_due { r[0].call_due = false; mc_run_call(r); return McHeard.{}; }
   if r[0].journal.count>0 && !r[0].unbounded && cxproc_now_ms()>=r[0].deadline {gw_plan_stop(r[0].p);r[0].refused="time limit reached: a run has 15 minutes";return McHeard.{k = mc_run_failed(r,out,0)};}
   ev: [8] GwEvent;
   n := gw_plan_poll(r[0].p, r[0].bench, ev[..]);
@@ -603,6 +614,16 @@ MC_RUN_EDIT :: "{\"rationale\":\"fix\",\"edits\":[{\"path\":\"a.txt\",\"old\":\"
   #assert r[0].ended && out[h.k - 1].kind == MR_ENDED && out[h.k - 1].ending == MC_END_FINISHED;
 }
 mc_test_str :: (j: string, key: string, b: [] u8) -> string { ar := [1] ClArena.[ClArena.{buf = b}]; return cl_str(ar[..], j, key); }
+
+#test "a deferred call (call_due) fires on the next poll" {
+  f: [1] McRunFixture; pb: [1] GwPlanBuffers; bench: [1] GwBench; out: [16] McRunEvent;
+  mc_run_fixture(f[..], "hi");
+  gw_plan_init(f[0].p[..], pb[..]);
+  f[0].r[0].bench = bench[..];
+  f[0].r[0].calling = false; f[0].r[0].call_due = true;
+  #assert mc_run_poll_plain(f[0].r[..], out[..]) == 0;
+  #assert !f[0].r[0].call_due && f[0].r[0].calling;
+}
 
 #test "a gated step's edit is refused for a command, and its first command waits for an answer" {
   for plain: [2] bool.[false, true] {
