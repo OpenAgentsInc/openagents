@@ -160,24 +160,33 @@ class HostProcessTests(RecordedTests):
 
     def test_eof_ready_after_wall_budget_is_still_observed_as_timeout(self):
         factory = self.process.selectors.DefaultSelector
+        budget_s = 1.0
+        delay_s = budget_s + 0.05
         class DelayedRealSelector:
             def __init__(self):
                 self.actual = factory()
+                self.delayed = False
             def __getattr__(self, name):
                 return getattr(self.actual, name)
             def select(self, timeout=None):
                 ready = self.actual.select(timeout)
-                if ready:
-                    time.sleep(0.08)
+                if ready and not self.delayed:
+                    self.delayed = True
+                    target = time.monotonic() + delay_s
+                    while True:
+                        remaining = target - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        time.sleep(remaining)
                     # Query real readiness again; no events or process outcomes are fabricated.
                     return self.actual.select(0)
                 return ready
         with mock.patch.object(self.process.selectors, 'DefaultSelector', DelayedRealSelector):
-            record = self.observe([shutil.which('true')], timeout_s=0.04)
+            record = self.observe([shutil.which('true')], timeout_s=budget_s)
         self.assertTrue(record['started'])
         self.assertEqual(record['returncode'], 0)
         self.assertTrue(record['stdout_eof'] and record['stderr_eof'])
-        self.assertGreaterEqual(record['elapsed_s'], 0.08)
+        self.assertGreaterEqual(record['elapsed_s'], delay_s)
         self.assertTrue(record['timeout'], 'Completion after the actual wall budget is inconclusive')
 
 
