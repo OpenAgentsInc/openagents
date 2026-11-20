@@ -164,12 +164,14 @@ cp_copy_lane :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, copi
   label := ifx copied then "Copied" else "Copy message";
   key := uiframe_key(f, id);
   p := uiframe_press(f, key, id);
-  hov := uiframe_hovered(f, id);
+  hov := uiframe_hover(f, key, id);   // the wash eases in and out (kit/frame.coax)
   row := uiframe_semantic(f, id, EL_BUTTON, label, bx, by, side, side, 0, action);
   if p > 0 { sheet_fill(sh, bx, by, side, side, rad, k.raised); }
-  else if hov { sheet_fill(sh, bx, by, side, side, rad, k.hover); }
-  ink := ifx (p > 0 || hov) then k.ink else k.muted;
-  sheet_icon(sh, ifx copied then k.icon_check else k.icon_copy, bx + (side - ico) / 2, by + (side - ico) / 2, ico, ink);
+  else if hov > 0 { sheet_fill(sh, bx, by, side, side, rad, opacity(k.hover, hov)); }
+  ink := ifx p > 0 then k.ink else rgba_mix(k.muted, k.ink, hov);
+  // Copy crossfades into its check and back (components/app/base.coax app_icon_swap)
+  mb: [EL_ID] u8;
+  app_icon_swap(f, app_id(mb[..], id, ".mark"), bx + (side - ico) / 2, by + (side - ico) / 2, ico, k.icon_copy, k.icon_check, copied, ink);
   sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
   return lane;
 }
@@ -705,13 +707,13 @@ cp_model_menu :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, m_x: f32, box
     mn := el_put(mb[..], 0, "coder.model."); mn = el_put_i(mb[..], mn, mi);
     mid := sheet_pool(sh, cast(string) mb[0..<mn]);
     sel := mi == cp_model_index(s);
-    hov := uiframe_hovered(f, mid);
+    hov := uiframe_hover(f, KEYED_LAZY, mid);   // the wash eases in and out (kit/frame.coax)
     label := cp_model_label(s, mi);
     desc := cp_model_desc(s, mi);
     mrow := uiframe_semantic(f, mid, EL_BUTTON, label, px + pad, ry, pw - 2 * pad, rh, ifx sel then EL_S_CURRENT else 0, CP_MODEL_PICK);
     elt_value(f[0].rows, mrow, desc);
-    if hov || sel {
-      fill := ifx hov then z_hov else th.menu_selected;
+    if hov > 0 || sel {
+      fill := ifx sel then rgba_mix(th.menu_selected, z_hov, hov) else opacity(z_hov, hov);
       sheet_over_n(sh, prim_box(sh[0].over, sh[0].no, px + pad, ry + 1.0f32, pw - 2 * pad, rh - 2.0f32, k.cmp.chip_radius, 0, fill, Rgba.{}));
     }
     tx := px + pad + 10.0f32;

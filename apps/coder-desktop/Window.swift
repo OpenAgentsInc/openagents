@@ -389,7 +389,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         else if let text = then, cd_running(page) == 0 { then = nil; newChat(); act(cd_action(page)); if cd_set_text(page, text) != 0 { _ = cd_submit(page) } }
         // the page's fields show a caret while the view has the keyboard
         let active = window.isKeyWindow && window.firstResponder === canvas
-        cd_env(page, active ? 1 : 0, NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 1 : 0)
+        let ws = NSWorkspace.shared
+        cd_env(page, active ? 1 : 0, (ws.accessibilityDisplayShouldReduceMotion ? 1 : 0) | (ws.accessibilityDisplayShouldReduceTransparency ? 2 : 0))
         if cd_moving(page) != 0 || owed > 0 {
             cd_frame(page); if owed > 0 { owed -= 1 }
             // the caret's next phase: one frame then (the page's clock is the system's uptime, as CACurrentMediaTime)

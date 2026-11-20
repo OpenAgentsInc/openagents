@@ -123,10 +123,10 @@ app_pane_chip :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, tab_i
   u := ifx scale > 0 then scale else 1.0f32; k := f[0].skin; sh := f[0].sheet; m := f[0].m;
   h := APP_PANE_TAB_H / u; slot := APP_PANE_TAB_SLOT / u; gap := APP_PANE_TAB_GAP / u; inset := (h - slot) / 2;
   w := app_pane_tab_width(f, title, scale);
-  hovered_tab := !on && uiframe_hovered(f, tab_id);
+  hovered_tab := uiframe_hover_on(f, KEYED_LAZY, tab_id, !on && uiframe_hovered(f, tab_id));   // eased (kit/frame.coax)
   wash := ifx k.set.selected.a > 0 then k.set.selected else k.hover;
   if on { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, wash); }
-  else if hovered_tab { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, k.hover); }
+  else if hovered_tab > 0 { sheet_fill(sh, x, y, w, h, APP_PANE_TAB_RADIUS / u, opacity(k.hover, hovered_tab)); }
   // the tile and its icon
   tx := x + inset; ty := y + inset;
   if icon >= 0 {
@@ -136,15 +136,15 @@ app_pane_chip :: (f: [] UiFrame, x: f32, y: f32, icon: int, title: string, tab_i
   }
   // the title, its end fading past the label's most
   lx := tx + slot + gap; right := x + w - inset - slot - gap;
-  _ := app_act_fade_text(sh, m, lx, y + (h - k.tool.line) / 2, k.tool.line, k.tool.face, ifx on || hovered_tab then k.ink else k.muted, title, right, APP_PANE_TAB_FADE / u);
+  _ := app_act_fade_text(sh, m, lx, y + (h - k.tool.line) / 2, k.tool.line, k.tool.face, ifx on then k.ink else rgba_mix(k.muted, k.ink, hovered_tab), title, right, APP_PANE_TAB_FADE / u);
   tab := uiframe_semantic(f, tab_id, EL_TAB, title, x, y, w, h, ifx on then EL_S_CURRENT else 0, ifx on then 0 else tab_action);
   if !on { sheet_hit(sh, UIFRAME_HIT, tab, 0, x, y, w, h); return w; }
   // Close in the end slot, its wash under the pointer
   cx := x + w - inset - slot;
-  hovered := uiframe_hovered(f, close_id);
-  if hovered { sheet_fill(sh, cx, ty, slot, slot, APP_PANE_TAB_TILE_RADIUS / u, k.hover); }
+  hovered := uiframe_hover(f, KEYED_LAZY, close_id);
+  if hovered > 0 { sheet_fill(sh, cx, ty, slot, slot, APP_PANE_TAB_TILE_RADIUS / u, opacity(k.hover, hovered)); }
   ci := APP_PANE_TAB_CLOSE / u;
-  sheet_icon(sh, ICON_CLOSE, cx + (slot - ci) / 2, ty + (slot - ci) / 2, ci, ifx hovered then k.ink else k.muted);
+  sheet_icon(sh, ICON_CLOSE, cx + (slot - ci) / 2, ty + (slot - ci) / 2, ci, rgba_mix(k.muted, k.ink, hovered));
   close := uiframe_semantic(f, close_id, EL_BUTTON, "Close", cx, ty, slot, slot, 0, close_action);
   sheet_hit(sh, UIFRAME_HIT, close, 0, cx, ty, slot, slot);
   return w;

@@ -136,3 +136,48 @@ ov_test_menu :: (mn: [] AppMenu) {
   #assert app_menu_step(mn[..], 0.06, false, o) && !app_menu_step(mn[..], 0.07, false, o) && mn[0].t == 1;
   app_menu_open(mn[..], 0, 0); #assert !app_menu_step(mn[..], 0.001, true, o) && mn[0].t == 1;
 }
+// The panels' layers in a list: backdrop groups opened, and whether every group closes.
+ov_test_layers :: (list: [] Prim) -> int {
+  n := 0; depth := 0;
+  for p: list { if p.kind == PRIM_LAYER { if p.on { depth += 1; if p.c == 1 { n += 1; } } else { depth -= 1; } } }
+  return ifx depth == 0 then n else -1;
+}
+#test "a frosted spec blurs behind the dialog, the menu and the palette; blur 0 and reduced transparency stay solid" {
+  t: [1] AppTest; app_test_init(t[..]); d: [1] AppDialog; ov_test_dialog(d[..]);
+  o := app_overlay_zeron(); glass := o; glass.blur = 10;
+  // solid by default: no backdrop, the opaque fill
+  #assert ov_test_paint_dialog(t[..], d[..], true) && ov_test_layers(surface_sheet(t[0].sf[..]).over) == 0;
+  app_test_begin(t[..], "", "", true); app_dialog_paint(t[0].f[..], d[..], 800, 600, glass); #assert app_test_end(t[..]);
+  sh := surface_sheet(t[0].sf[..]);
+  #assert ov_test_layers(sh.over[0..<sh.no]) == 1;
+  // the backdrop is the panel's own shape, and the fill over it is at the frost's opacity
+  b := -1; for i: 0..<sh.no { if sh.over[i].kind == PRIM_LAYER && sh.over[i].on && b < 0 { b = i; } }
+  #assert b > 0 && sh.over[b].x == d[0].x && sh.over[b].w == d[0].w && sh.over[b].radius == o.radius && sh.over[b].b == 10;
+  #assert sh.over[b + 1].kind == PRIM_BOX && abs(sh.over[b + 1].fill.a - o.frost) < 0.0001;
+  // reduced transparency: solid, whatever the spec says
+  uiframe_begin(t[0].f[..], t[0].sf[..], t[0].ks[..], measure_cells(), arcade_phone_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, true, true);
+  app_dialog_paint(t[0].f[..], d[..], 800, 600, glass); #assert app_test_end(t[..]);
+  #assert ov_test_layers(surface_sheet(t[0].sf[..]).over) == 0;
+  // the menu and the palette close their groups too
+  mn: [1] AppMenu; ov_test_menu(mn[..]); app_menu_open(mn[..], 100, 120);
+  app_test_begin(t[..], "", "", true); app_menu_paint(t[0].f[..], mn[..], 800, 600, glass); #assert app_test_end(t[..]);
+  sh = surface_sheet(t[0].sf[..]); #assert ov_test_layers(sh.over[0..<sh.no]) == 1;
+}
+#test "a menu's highlight eases in and out as it moves, then nothing moves" {
+  t: [1] AppTest; app_test_init(t[..]); mn: [1] AppMenu; ov_test_menu(mn[..]); o := app_overlay_zeron();
+  app_menu_open(mn[..], 100, 120); mn[0].t = 1; mn[0].lit = 0;
+  app_test_begin(t[..], "", "", false); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]);
+  #assert keyed_moving(t[0].ks[..]);
+  for i: 0..<20 { app_test_begin(t[..], "", "", false); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]); }
+  #assert !keyed_moving(t[0].ks[..]) && t[0].ks[0].live == 1;
+  // it moves to row 3: row 0 fades out as row 3 fades in, then row 0's state is given back
+  mn[0].lit = 3;
+  app_test_begin(t[..], "", "", false); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]);
+  #assert keyed_moving(t[0].ks[..]) && t[0].ks[0].live == 2;
+  for i: 0..<20 { app_test_begin(t[..], "", "", false); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]); }
+  #assert !keyed_moving(t[0].ks[..]) && t[0].ks[0].live == 1 && t[0].ks[0].refused == 0;
+  // reduced motion: there at once, nothing left moving
+  mn[0].lit = 0;
+  app_test_begin(t[..], "", "", true); app_menu_paint(t[0].f[..], mn[..], 800, 600, o); #assert app_test_end(t[..]);
+  #assert !keyed_moving(t[0].ks[..]);
+}

@@ -19,10 +19,20 @@ flatten :: (top: Rgba, under: Rgba) -> Rgba {
   return Rgba.{r = top.r * a + under.r * (1 - a), g = top.g * a + under.g * (1 - a), b = top.b * a + under.b * (1 - a), a = 1};
 }
 
+// A colour part of the way from a to b (t 0: a, 1: b; clamped), alpha too: what a hover or a
+// state change eases an ink or a wash through.
+rgba_mix :: (a: Rgba, b: Rgba, t: f32) -> Rgba {
+  u := ifx t < 0 then 0.0f32 else ifx t > 1 then 1.0f32 else t;
+  return Rgba.{r = a.r + (b.r - a.r) * u, g = a.g + (b.g - a.g) * u, b = a.b + (b.b - a.b) * u, a = a.a + (b.a - a.a) * u};
+}
+
 #test "colors, opacity and flattening are GPUI's" {
   c := hex(0xe8e8ea, 1);
   #assert abs(c.r - 232.0 / 255.0) < 0.0001 && c.a == 1;
   #assert opacity(c, 0.35).a == 0.35;
   w := flatten(rgba(1, 1, 1, 0.1), hex(0x000000, 1));
   #assert abs(w.r - 0.1) < 0.0001 && w.a == 1;
+  m := rgba_mix(rgba(0, 0.2, 1, 0), rgba(1, 0.4, 0, 1), 0.25);
+  #assert abs(m.r - 0.25) < 0.0001 && abs(m.g - 0.25) < 0.0001 && abs(m.b - 0.75) < 0.0001 && abs(m.a - 0.25) < 0.0001;
+  #assert rgba_mix(c, w, -1).r == c.r && abs(rgba_mix(c, w, 2).r - w.r) < 0.00001;
 }

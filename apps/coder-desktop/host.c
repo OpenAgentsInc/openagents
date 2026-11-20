@@ -10,12 +10,13 @@ typedef struct {
   App app;
   coax_t_CoderPage *s;
   int edge;
-  int active, reduced;   // the view has the keyboard (its window key, it first responder); reduced motion
+  int active, reduced;   // the view has the keyboard (its window key, it first responder); reduced motion (bit 1) and transparency (bit 2)
   float screen;   // the screen's own scale
   int settle;     // frames still owed after a change (glyphs asked for in one frame are drawn in the next)
   void (*changed)(void *context); void *context;
   int headless;   // a page with no window: a chat whose reply runs out of view
   char composition_shader[PATH_MAX + 32];   // composition-v1's shader, for the frosted menu (page/compose.coax)
+  int composition;   // the shader loaded: the page may compose
   void (*overlay)(void *context); void *overlay_context;   // told after the pointer reached a dialog or a menu
   char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
   char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
@@ -39,7 +40,9 @@ static double cd_uptime(void) {
 
 static int cd_on_frame(void *user, float *vertices, float w, float h, float dpr, float dt) {
   CoderHost *c = user;
-  coder_page_env(cd_state(c), c->active != 0, c->reduced != 0);
+  coder_page_env(cd_state(c), c->active != 0, (c->reduced & 1) != 0);
+  // reduced transparency: no frost, so the page draws its frosted surfaces solid (page/compose.coax)
+  coder_page_compose(cd_state(c), c->composition && (c->reduced & 2) == 0);
   // the clock scroll events are stamped on (NSEvent.timestamp: the system's uptime), for the coasts and the rails
   coder_page_now(cd_state(c), cd_uptime());
   int n = (int)coder_page_frame(cd_state(c), (coax_v_f32){vertices, (int64_t)c->app.max_vertices * coaxial_components_vertex_floats()}, w, h, dpr, dt);
@@ -142,7 +145,8 @@ void *cd_open(const char *resources) {
                .composition_shader = composition ? c->composition_shader : NULL, .composition = composition ? cd_composition : NULL, .presented = cd_presented};
   a->host = ui_open(&app, 0);
   if (!a->host) { free(c->s); free(c); return NULL; }
-  coder_page_compose(cd_state(c), composition != NULL);
+  c->composition = composition != NULL;
+  coder_page_compose(cd_state(c), c->composition);
   // the atlas at the scale the page draws its units at
   a->dpr = ui_dpr(a->host); if (a->dpr < 1) a->dpr = 1;
   c->screen = a->dpr;
@@ -175,8 +179,8 @@ void cd_on_change(void *page, void (*changed)(void *context), void *context) { C
 void cd_env(void *page, int active, int reduced) {
   CoderHost *c = page;
   if (!c) return;
-  if (c->active != (active != 0) || c->reduced != (reduced != 0)) cd_changed(c);
-  c->active = active != 0; c->reduced = reduced != 0;
+  if (c->active != (active != 0) || c->reduced != (reduced & 3)) cd_changed(c);
+  c->active = active != 0; c->reduced = reduced & 3;
 }
 void cd_focus(void *page, int field) { CoderHost *c = page; if (c) { coder_page_focus(cd_state(c), field); cd_woke(c); } }
 int cd_wants_text(void *page) { CoderHost *c = page; return c && coder_page_wants_text(cd_state(c)); }

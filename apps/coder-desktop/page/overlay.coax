@@ -16,6 +16,8 @@ cp_overlay_open :: (s: [] CoderPage) -> bool { return s[0].ov[0].dlg[0].shown ||
 cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool {
   o := cp_ov_spec(); d := s[0].ov[0].dlg[..]; mn := s[0].ov[0].menu[..];
   pal := s[0].ov[0].pal[..];
+  // the dialog, the menu and the palette frost what is behind them where the host composes (compose.coax)
+  if cp_glass(s) { o.blur = cp_glass_blur(s); }
   moving := app_dialog_step(d, dt, s[0].reduced, o) || app_menu_step(mn, dt, s[0].reduced, o);
   if app_palette_step(pal, dt, s[0].reduced, cp_pal_spec()) { moving = true; }
   // the palette's words are the page's fourth editor once it is at rest (editor.coax)

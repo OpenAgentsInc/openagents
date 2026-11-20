@@ -22,6 +22,15 @@ cp_test_budget :: (s: [] CoderPage) {
   #assert cp_test_draw_over(s, f[..], 0.016);
   #assert cp_ed_which(s) == CP_ED_DIALOG && s[0].ov[0].dlg[0].editing && s[0].fld[0].ed[CP_ED_DIALOG].body[0].text_w > 300;
   #assert ue_value(s[0].fld[0].ed[CP_ED_DIALOG..<CP_ED_DIALOG + 1]) == "50.00" && cp_ed_skin(s, cp_skin(), CP_ED_DIALOG).body.face == cp_skin().label.face;
+  // drawn flat it is solid; where the host composes, the panel frosts what is behind it (#13772),
+  // and reduced transparency takes it back to solid
+  fl := surface_sheet(s[0].surface[..]); #assert !cp_has_layer(fl.over[0..<fl.no]);
+  s[0].cmp_gpu[0].w = 1200; s[0].cmp_gpu[0].h = 800; coder_page_compose(s, true);
+  #assert cp_test_draw_over(s, f[..], 0.016);
+  sh := surface_sheet(s[0].surface[..]); #assert cp_has_layer(sh.over[0..<sh.no]);
+  coder_page_compose(s, false);   // what the host says under reduced transparency
+  #assert cp_test_draw_over(s, f[..], 0.016);
+  sh = surface_sheet(s[0].surface[..]); #assert !cp_has_layer(sh.over[0..<sh.no]);
 }
 #test "Return answers the dialog's confirm with the editor's text; Escape and a click on the dim cancel" {
   p: [1] CoderPage; s := p[..]; f: [1] UiFrame; cp_init(s); s[0].d = 1; out: [64] u8;

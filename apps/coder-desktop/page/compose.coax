@@ -3,7 +3,8 @@
 // is behind it through composition-v1 (coax/native/gpu-composition.coax, prim_backdrop), which the
 // Mac host draws when the page hands it a plan (host.c coder_page_plan). A frame with no backdrop,
 // or one the planner refuses (a window past 4096 device pixels, the resource budget), draws flat
-// as before, and the surface falls back to its solid fill.
+// as before, and the surface falls back to its solid fill. So does every frosted surface when the Mac
+// asks for reduced transparency: the host then says it cannot compose (host.c cd_on_frame).
 #load "../../../coax/native/gpu-composition.coax";
 
 CP_BLUR_DEVICE :: 31.5;       // the planner's bounded kernel: at most 32 device pixels (sigma a third of it)
@@ -74,4 +75,8 @@ coder_page_composed :: (s: [] CoderPage) -> bool #export_c #effects(all) { retur
   s[0].cmp_gpu[0].w = 2400; s[0].cmp_gpu[0].used = true; coder_page_compose_refused(s[..]);
   #assert !cp_glass(s[..]) && !coder_page_composed(s[..]);
   s[0].d = 2; #assert cp_glass_blur(s[..]) * 2 <= 32;
+  // reduced transparency: the host says it cannot compose, so solid, until the system says otherwise
+  s[0].cmp_gpu[0].off = false; #assert cp_glass(s[..]);
+  coder_page_compose(s[..], false); #assert !cp_glass(s[..]);
+  coder_page_compose(s[..], true); #assert cp_glass(s[..]);
 }

@@ -105,15 +105,15 @@ cp_side_foreman :: (s: [] CoderPage, f: [] UiFrame, sw: f32, sy: f32, cur: strin
   fh := a.side_row;
   fk := uiframe_key(f, "coder.foreman");
   fp := uiframe_press(f, fk, "coder.foreman");
-  fhov := uiframe_hovered(f, "coder.foreman");
+  fhov := uiframe_hover(f, fk, "coder.foreman");   // the wash eases in and out (kit/frame.coax)
   if f_cur { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, k.raised); }
-  else if fhov { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75)); }
+  else if fhov > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.raised, 0.75 * fhov)); }
   if fp > 0 { sheet_fill(f[0].sheet, a.row_inset, sy, sw - 2 * a.row_inset, fh, a.row_radius, opacity(k.hover, fp)); }
   frow := uiframe_semantic(f, "coder.foreman", EL_BUTTON, "Foreman", 0, sy, sw, fh, f_state, CP_FOREMAN);
   tf := a.side_text;
   tx := a.side_pad;
   mark := a.icon;
-  sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur || fhov then k.ink else k.muted);
+  sheet_icon(f[0].sheet, ICON_BOT, tx, sy + (fh - mark) / 2, mark, ifx f_cur then k.ink else rgba_mix(k.muted, k.ink, fhov));
   tx += mark + a.row_inset;
   managed_busy := 0;
   for q: 0..<s[0].nchats {
@@ -150,13 +150,13 @@ cp_side_footer_h :: (s: [] CoderPage, k: UiSkin) -> f32 {
 cp_side_pill :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, icon: int, label: string, detail: string, action: int, highlighted: bool) {
   k := f[0].skin; c := k.cmp; sh := f[0].sheet; m := f[0].m;
   h := c.chip_h; r := h / 2.0f32;
-  hovered := action != 0 && uiframe_hovered(f, id);
+  hv := uiframe_hover_on(f, KEYED_LAZY, id, action != 0 && uiframe_hovered(f, id));
   row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, h, 0, action);
   elt_value(f[0].rows, row, detail);
-  bg := ifx hovered then k.hover else k.raised;
+  bg := rgba_mix(k.raised, k.hover, hv);
   border := ifx highlighted then k.accent else k.hairline;
   _ := sheet_box(sh, x, y, w, h, r, k.border, bg, border);
-  ink := ifx hovered || highlighted then k.ink else k.muted;
+  ink := ifx highlighted then k.ink else rgba_mix(k.muted, k.ink, hv);
   icon_ink := ifx highlighted then k.accent else ink;
   pad := 10.0f32;
   tx := x + pad;

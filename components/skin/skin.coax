@@ -272,7 +272,9 @@ UiAnimated :: struct {
 // How long the kit's motion takes, in seconds (the times skin/arcade.coax's
 // scene has used since build 1087). Keyed components read them through the
 // frame context (kit/frame.coax).
-UiMotion :: struct { enter: f32 = 0.2; press: f32 = 0.1; focus: f32 = 0.2; menu: f32 = 0.3; }
+// hover: a wash or an ink easing in and out under the pointer (Zeron's HoverFade, 100 to 150 ms);
+// swap: one icon crossfading into another (a copy icon to its check and back).
+UiMotion :: struct { enter: f32 = 0.2; press: f32 = 0.1; focus: f32 = 0.2; menu: f32 = 0.3; hover: f32 = 0.12; swap: f32 = 0.14; }
 // The app set's measures (components/app/; GitHub #13645): the components the
 // native apps' screens are built from. Sizes are layout units; a skin may
 // override any of them. A `_wash` or `_ink` is a role's strength, 0 to 1.

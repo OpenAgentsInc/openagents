@@ -103,6 +103,18 @@ app_anchor_scroll :: (a: [] AppAnchor, rows: ElTable, scroll: f32) -> f32 {
   return t[0].rows[i].y - a[0].top;
 }
 
+// One icon crossfading into another (a copy icon into its check, and back) at (x, y), size square:
+// `from` while not `on`, `to` while on. The change eases over the skin's swap time on a keyed row
+// of its own (id): the old icon fades and shrinks a little as the new one fades in and grows to
+// size. A row that just appeared shows where `on` says; with reduced motion it changes at once.
+APP_SWAP_SHRINK :: 0.25;   // how much smaller an icon is at the far end of its fade
+app_icon_swap :: (f: [] UiFrame, id: string, x: f32, y: f32, size: f32, from: int, to: int, on: bool, ink: Rgba) {
+  sh := f[0].sheet;
+  t := keyed_toward(f[0].keyed, uiframe_key(f, id), on, f[0].skin.motion.swap, AM_OUT_QUAD);
+  if t < 1 { z := size * (1 - APP_SWAP_SHRINK * t); sheet_icon(sh, from, x + (size - z) / 2, y + (size - z) / 2, z, opacity(ink, 1 - t)); }
+  if t > 0 { z := size * (1 - APP_SWAP_SHRINK * (1 - t)); sheet_icon(sh, to, x + (size - z) / 2, y + (size - z) / 2, z, opacity(ink, t)); }
+}
+
 // ---------------------------------------------------------------- text styles
 
 APP_TEXT_TITLE :: 0; APP_TEXT_BODY :: 1; APP_TEXT_CAPTION :: 2; APP_TEXT_CODE :: 3;
@@ -214,15 +226,15 @@ app_chip :: (f: [] UiFrame, id: string, x: f32, y: f32, most: f32, icon: int, la
   shown := app_fit(f, s.small.face, value, w - 2 * c.chip_pad - lead);
   k := uiframe_key(f, id);
   p := ifx off then 0.0f32 else uiframe_press(f, k, id);
-  hovered := !off && uiframe_hovered(f, id);
+  hv := ifx off then 0.0f32 else uiframe_hover(f, k, id);   // eased (kit/frame.coax)
   row := uiframe_semantic(f, id, EL_BUTTON, label, x, y, w, c.chip_h, state, ifx off then 0 else action);
   elt_value(f[0].rows, row, value);
   if on { sheet_fill(sh, x, y, w, c.chip_h, c.chip_radius, ifx off then s.hover else s.accent); }
   else {
-    _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, ifx hovered then s.hover else s.raised, s.hairline);
+    _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, rgba_mix(s.raised, s.hover, hv), s.hairline);
     if p > 0 { _ := sheet_box(sh, x, y, w, c.chip_h, c.chip_radius, s.border, opacity(s.hover, p), s.hairline); }
   }
-  ink := ifx off then s.faint else ifx on then s.on_accent else ifx (p > 0 || hovered) then s.ink else s.muted;
+  ink := ifx off then s.faint else ifx on then s.on_accent else ifx p > 0 then s.ink else rgba_mix(s.muted, s.ink, hv);
   tx := x + c.chip_pad;
   if icon >= 0 { sheet_icon(sh, icon, tx, y + (c.chip_h - c.chip_icon) / 2, c.chip_icon, ink); tx += lead; }
   _ := sheet_text(sh, m, -1, tx, y + (c.chip_h - s.small.line) / 2, s.small.line, s.small.face, ink, shown);

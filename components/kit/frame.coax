@@ -274,6 +274,11 @@ uiframe_entry :: (f: [] UiFrame, k: int) -> f32 { return keyed_entry(f[0].keyed,
 uiframe_press :: (f: [] UiFrame, k: int, id: string) -> f32 { return keyed_press(f[0].keyed, k, uiframe_pressed(f, id), f[0].skin.motion.press, AM_IN_OUT_QUAD); }
 // A spring following a target (a switch's knob toward on or off).
 uiframe_spring :: (f: [] UiFrame, k: int, target: f32) -> f32 { return keyed_spring(f[0].keyed, k, target); }
+// How hovered id is, 0 to 1, easing over the skin's hover time (core/keyed.coax keyed_hover). k is
+// the component's own row (its spring is taken), or KEYED_LAZY: then the id holds a row only while
+// the wash is on screen. uiframe_hover_on takes what lights it (hovered, or held, or chosen).
+uiframe_hover :: (f: [] UiFrame, k: int, id: string) -> f32 { return keyed_hover(f[0].keyed, k, id, uiframe_hovered(f, id), f[0].skin.motion.hover); }
+uiframe_hover_on :: (f: [] UiFrame, k: int, id: string, on: bool) -> f32 { return keyed_hover(f[0].keyed, k, id, on, f[0].skin.motion.hover); }
 // Whether another frame is due for motion alone.
 uiframe_moving :: (f: [] UiFrame) -> bool { return keyed_moving(f[0].keyed); }
 

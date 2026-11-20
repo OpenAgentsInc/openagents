@@ -463,7 +463,7 @@ app_palette_paint :: (f: [] UiFrame, p: [] AppPalette, view_w: f32, view_h: f32,
   x := (view_w - w) / 2; cy := o.top; if cy + h > view_h - ov.margin { cy = view_h - ov.margin - h; } if cy < ov.margin { cy = ov.margin; }
   p[0].x = x; p[0].y = cy; p[0].w = w; p[0].h = h;
   sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, ph));
-  app_overlay_paint_panel(sh, s, ov, x, cy, w, h, o.radius, s.shadows.menu);
+  frosted := app_overlay_paint_panel(f, ov, x, cy, w, h, o.radius, s.shadows.menu);
   uiframe_open(f, uiframe_semantic(f, "palette", EL_REGION, "Command palette", x, cy, w, h, 0, 0));
   // the field: the search glyph, the page's chip, then the words (the caller's editor's while it is over them)
   sx := x + o.pad_x; p[0].search_y = cy;
@@ -586,6 +586,7 @@ app_palette_paint :: (f: [] UiFrame, p: [] AppPalette, view_w: f32, view_h: f32,
     _ := app_pal_legend(f, o, ex - ew - o.legend_gap - nw, fy, "up down", "Navigate", st.tertiary, true);
   }
   uiframe_close(f);
+  app_overlay_end_panel(f, frosted);
   sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
 }
 // A legend's width: its caps, then its words.

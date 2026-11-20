@@ -181,10 +181,11 @@ app_code_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: str
   word := ifx copied then "Copied" else "Copy";
   bw := 2 * a.code_copy_x + a.code_copy_icon + a.code_copy_gap + measure_width(m, s.small.face, word);
   bh := a.code_copy_h; bx := x + w - s.border - a.code_copy_edge - bw; by := y + (a.code_head - bh) / 2;
-  hovered := uiframe_hovered(f, cpid);
-  if hovered { sheet_fill(sh, bx, by, bw, bh, a.code_radius - a.code_copy_edge, s.hover); }
-  tone := ifx hovered then s.ink else s.muted;
-  sheet_icon(sh, ifx copied then s.icon_check else s.icon_copy, bx + a.code_copy_x, by + (bh - a.code_copy_icon) / 2, a.code_copy_icon, tone);
+  hovered := uiframe_hover(f, KEYED_LAZY, cpid);   // eased (kit/frame.coax)
+  if hovered > 0 { sheet_fill(sh, bx, by, bw, bh, a.code_radius - a.code_copy_edge, opacity(s.hover, hovered)); }
+  tone := rgba_mix(s.muted, s.ink, hovered);
+  mid: [EL_ID] u8;
+  app_icon_swap(f, app_id(mid[..], id, ".mark"), bx + a.code_copy_x, by + (bh - a.code_copy_icon) / 2, a.code_copy_icon, s.icon_copy, s.icon_check, copied, tone);
   _ := sheet_text(sh, m, -1, bx + a.code_copy_x + a.code_copy_icon + a.code_copy_gap, by + (bh - s.small.line) / 2, s.small.line, s.small.face, tone, word);
   crow := uiframe_semantic(f, cpid, EL_BUTTON, ifx copied then "Copied" else "Copy code", bx, by, bw, bh, 0, action);
   sheet_hit(sh, UIFRAME_HIT, crow, 0, bx, by, bw, bh);
@@ -394,10 +395,10 @@ app_jump_pill :: (f: [] UiFrame, id: string, cx: f32, bottom: f32, label: string
   tw := measure_width(m, s.tool.face, label);
   pw := ceil(a.pill_pad + dot + tw + a.pill_gap + a.pill_icon + a.pill_pad); ph := a.pill_h;
   px := cx - pw / 2; py := bottom - ph; r := ph / 2;
-  hovered := uiframe_hovered(f, id);
+  hovered := uiframe_hover(f, k, id);
   sheet_under(sh, uiskin_float(sh[0].under, sh[0].nu, s, px, py, pw, ph, r));
   sheet_under(sh, prim_box(sh[0].under, sh[0].nu, px, py, pw, ph, r, s.border, ifx s.float_ground.a > 0 then s.float_ground else s.surface, s.field_edge));
-  if hovered { sheet_fill(sh, px, py, pw, ph, r, s.hover); }
+  if hovered > 0 { sheet_fill(sh, px, py, pw, ph, r, opacity(s.hover, hovered)); }
   tx := px + a.pill_pad;
   if writing { sheet_fill(sh, tx, py + (ph - a.state_dot) / 2, a.state_dot, a.state_dot, a.state_dot / 2, s.ink); tx += dot; }
   _ := sheet_text(sh, m, -1, tx, py + (ph - s.tool.line) / 2, s.tool.line, s.tool.face, s.ink, label);

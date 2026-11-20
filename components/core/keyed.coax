@@ -171,6 +171,43 @@ keyed_spring :: (s: [] KeyedStore, k: int, target: f32) -> f32 {
   }
   return s[0].rows[k].spring[0].value;
 }
+// A value gliding toward `target` on the row's spring, critically damped so it settles in about
+// `duration` seconds without overshoot (Zeron's Glide: omega 12 / duration). An id that just
+// appeared starts at `from`. At the target at once with reduced motion; without a row it is the target.
+KEYED_GLIDE_OMEGA :: 12.0;
+keyed_glide :: (s: [] KeyedStore, k: int, target: f32, duration: f32, from: f32) -> f32 {
+  if !keyed_ok(s, k) { return target; }
+  w := cast(f32) KEYED_GLIDE_OMEGA / (ifx duration > 0.001 then duration else 0.001f32);
+  s[0].rows[k].spring[0].mass = 1; s[0].rows[k].spring[0].stiffness = w * w; s[0].rows[k].spring[0].damping = 2 * w;
+  s[0].rows[k].spring[0].target = target;
+  if s[0].rows[k].fresh && (s[0].rows[k].ticked & KEYED_T_SPRING) == 0 { s[0].rows[k].spring[0].value = from; s[0].rows[k].spring[0].velocity = 0; }
+  if (s[0].rows[k].ticked & KEYED_T_SPRING) == 0 {
+    s[0].rows[k].ticked |= KEYED_T_SPRING;
+    ui_spring_step(s[0].rows[k].spring[..], s[0].dt, s[0].reduced);
+  }
+  return s[0].rows[k].spring[0].value;
+}
+// Hover (Zeron's HoverFade): 0 to 1 while `on`, back to 0 when not, gliding over `duration`. k is
+// the component's own row, whose spring it takes (-1, a refused row, answers 1 or 0 at once), or
+// KEYED_LAZY when it keeps none: then the id holds a row only while it is hovered or still fading
+// out, and gives it back at rest, so a list of a hundred rows holds one or two.
+KEYED_LAZY :: -2;
+keyed_hover :: (s: [] KeyedStore, k: int, id: string, on: bool, duration: f32) -> f32 {
+  target := ifx on then 1.0f32 else 0.0f32;
+  r := k;
+  if r == -1 { return target; }
+  if r == KEYED_LAZY {
+    held := keyed_find(s, id);
+    if !on {
+      if held < 0 { return 0; }
+      sp := s[0].rows[held].spring[0];
+      if !s[0].rows[held].seen && sp.value == 0 && sp.velocity == 0 && sp.target == 0 { return 0; }   // at rest: it retires
+    }
+    r = keyed_see(s, id);
+    if r < 0 { return target; }
+  }
+  return keyed_glide(s, r, target, duration, 0);
+}
 // The spring's value moved to `value` at rest (a drag sets it; release lets it follow its target again).
 keyed_spring_set :: (s: [] KeyedStore, k: int, value: f32) {
   if !keyed_ok(s, k) { return; }
@@ -311,4 +348,44 @@ keyed_test_frame :: (s: [] KeyedStore, ids: [] string, dt: f32) -> int {
   keyed_begin(s, 0.016, true); k = keyed_see(s, "send");
   #assert keyed_press(s, k, true, 0.1, AM_LINEAR) == 1 && keyed_spring(s, k, 0) == 0 && keyed_entry(s, k, 1, AM_LINEAR) == 1 && !keyed_moving(s);
   keyed_spring_set(s, k, 0.5); #assert keyed_moving(s) && s[0].rows[k].spring[0].value == 0.5;
+}
+#test "a glide settles in its time without overshoot, and reduced motion lands at once" {
+  rows: [2] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  keyed_begin(s, 0.016, false); k := keyed_see(s, "row");
+  #assert keyed_glide(s, k, 1, 0.12, 0) > 0 && keyed_glide(s, k, 1, 0.12, 0) < 1;
+  _ = keyed_end(s);
+  frames := 1; v: f32 = 0;
+  while keyed_moving(s) && frames < 100 {
+    keyed_begin(s, 0.016, false); k = keyed_see(s, "row"); v = keyed_glide(s, k, 1, 0.12, 0); _ = keyed_end(s);
+    #assert v <= 1; frames += 1;
+  }
+  // settled, at the target, in about its time: nothing moves, so the window can go idle
+  #assert v == 1 && !keyed_moving(s) && frames * 16 <= 160;
+  keyed_begin(s, 0.016, true); k = keyed_see(s, "row");
+  #assert keyed_glide(s, k, 0, 0.12, 1) == 0 && !keyed_moving(s);
+  #assert keyed_glide(s, -1, 0.4, 0.12, 0) == 0.4;
+}
+#test "hover holds a row only while hovered or fading, and gives it back at rest" {
+  rows: [4] Keyed; st := [1] KeyedStore.[KeyedStore.{rows = rows[..]}]; s := st[..];
+  // not hovered and never was: no row
+  keyed_begin(s, 0.016, false); #assert keyed_hover(s, KEYED_LAZY, "chat.1", false, 0.12) == 0 && s[0].live == 0; _ = keyed_end(s);
+  // the pointer arrives: a row, starting from no wash
+  keyed_begin(s, 0.016, false); v := keyed_hover(s, KEYED_LAZY, "chat.1", true, 0.12);
+  #assert v > 0 && v < 1 && s[0].live == 1 && keyed_moving(s); _ = keyed_end(s);
+  for i: 0..<20 { keyed_begin(s, 0.016, false); v = keyed_hover(s, KEYED_LAZY, "chat.1", true, 0.12); _ = keyed_end(s); }
+  #assert v == 1 && !keyed_moving(s);
+  // it leaves: the wash fades out on the same row, then the row retires
+  keyed_begin(s, 0.016, false); v = keyed_hover(s, KEYED_LAZY, "chat.1", false, 0.12); #assert v < 1 && v > 0; _ = keyed_end(s);
+  for i: 0..<20 { keyed_begin(s, 0.016, false); v = keyed_hover(s, KEYED_LAZY, "chat.1", false, 0.12); _ = keyed_end(s); }
+  #assert v == 0 && s[0].live == 0 && !keyed_moving(s);
+  // a component's own row: its spring, seen once (no duplicate refusal)
+  keyed_begin(s, 0.016, false); k := keyed_see(s, "send");
+  #assert keyed_hover(s, k, "send", true, 0.12) > 0 && s[0].refused == 0;
+  #assert keyed_hover(s, -1, "gone", true, 0.12) == 1 && keyed_hover(s, -1, "gone", false, 0.12) == 0 && s[0].refused == 0; _ = keyed_end(s);
+  // reduced motion: there at once, and gone at once
+  keyed_begin(s, 0.016, true);
+  #assert keyed_hover(s, KEYED_LAZY, "chat.2", true, 0.12) == 1; _ = keyed_end(s);
+  keyed_begin(s, 0.016, true); #assert keyed_hover(s, KEYED_LAZY, "chat.2", false, 0.12) == 0 && !keyed_moving(s); _ = keyed_end(s);
+  keyed_begin(s, 0.016, true); _ = keyed_hover(s, KEYED_LAZY, "chat.2", false, 0.12); _ = keyed_end(s);
+  #assert keyed_find(s, "chat.2") < 0;
 }

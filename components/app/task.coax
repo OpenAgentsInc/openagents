@@ -212,10 +212,10 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   is_open := app_tool_is_open(f, k, open);
   shown := uiframe_spring(f, k, ifx is_open then 1.0f32 else 0.0f32);
   p := uiframe_press(f, k, id);
-  hovered := uiframe_hovered(f, id);
+  hb: [EL_ID] u8; hv := uiframe_hover_on(f, KEYED_LAZY, app_id(hb[..], id, ".hv"), uiframe_hovered(f, id));   // eased; k's spring opens the row
   flat := s.chat.enabled || t.note;
   ground := sheet_box(sh, x, y, w, head, a.tool_radius, ifx flat then 0.0f32 else s.border, ifx flat then s.clear else s.surface, ifx flat then s.clear else s.menu_divider);
-  if hovered { sheet_fill(sh, x, y, w, head, a.tool_radius, ifx flat then s.row_hover else opacity(s.raised, 0.55)); }
+  if hv > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(ifx flat then s.row_hover else opacity(s.raised, 0.55), hv)); }
   if p > 0 { sheet_fill(sh, x, y, w, head, a.tool_radius, opacity(s.hover, p)); }
   words := ifx t.state == APP_TOOL_FAILED then "Failed" else ifx t.state == APP_TOOL_PENDING then "Waiting" else "";
   row := uiframe_semantic(f, id, EL_BUTTON, t.title, x, y, w, head,
@@ -224,13 +224,13 @@ app_tool :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, t: AppTool, open
   sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, w, head);
   // the header: icon, title, argument, state, chevron
   pen := x + a.tool_pad; mid := y + head / 2;
-  icon_ink := ifx t.state == APP_TOOL_FAILED then s.danger else ifx hovered then s.ink else s.muted;
-  title_ink := ifx t.state == APP_TOOL_FAILED then s.danger else ifx flat then (ifx hovered || is_open then s.ink else s.muted) else s.ink;
+  icon_ink := ifx t.state == APP_TOOL_FAILED then s.danger else rgba_mix(s.muted, s.ink, hv);
+  title_ink := ifx t.state == APP_TOOL_FAILED then s.danger else ifx flat then (ifx is_open then s.ink else rgba_mix(s.muted, s.ink, hv)) else s.ink;
   if t.icon >= 0 { sheet_icon(sh, t.icon, pen, mid - a.tool_icon / 2, a.tool_icon, icon_ink); pen += a.tool_icon + a.gap; }
   title:=app_fit(f,s.tool.face,sheet_single_line(sh,t.title),w-a.tool_icon-2*a.tool_chevron-4*a.gap-2*a.tool_pad);
   pen += sheet_text(sh, m, -1, pen, mid - s.tool.line / 2, s.tool.line, s.tool.face, title_ink, title) + a.gap;
   right := x + w - a.tool_pad - a.tool_chevron;
-  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, ifx hovered then s.muted else s.faint);
+  sheet_icon(sh, ifx is_open then s.icon_chevron else a.icon_disclose, right, mid - a.tool_chevron / 2, a.tool_chevron, rgba_mix(s.faint, s.muted, hv));
   right -= a.gap;
   if t.took.count > 0 {
     tw := measure_width(m, s.small.face, t.took); right -= tw;

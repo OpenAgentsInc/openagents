@@ -121,6 +121,26 @@
   s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
   #assert uiframe_end(f[..], s[0].surface[..]);
   #assert s[0].side > 0 && !cp_side_busy(s) && !coder_page_moving(s);
+  // the pointer on a chat: its wash eases in (#13772), then nothing moves and the window goes idle
+  i := surface_find(s[0].surface[..], "chat.b2");
+  #assert i >= 0;
+  r := surface_rows(s[0].surface[..]).rows[i]; hx := r.x + r.w / 2; hy := r.y + r.h / 2;
+  n := 0; settled := false;
+  while n < 30 && !settled {
+    uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(hx, hy, true, false, "", ""), 0.032 + cast(f32) n * 0.016, 0.016, false, false);
+    cp_layout(s, f[..], 1200.0f32, 800.0f32);
+    s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+    #assert uiframe_end(f[..], s[0].surface[..]);
+    if n == 0 { #assert coder_page_moving(s); }
+    settled = !coder_page_moving(s); n += 1;
+  }
+  hk := keyed_find(s[0].keyed[..], "chat.b2");
+  #assert settled && n <= 12 && hk >= 0 && s[0].keyed[0].rows[hk].spring[0].value == 1;
+  // with reduced motion the wash leaves at once: idle on the first frame
+  uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 1, 0.016, true, false);
+  cp_layout(s, f[..], 1200.0f32, 800.0f32);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s);
+  #assert uiframe_end(f[..], s[0].surface[..]) && !coder_page_moving(s);
 }
 
 #test "foreman sidebar row sits above pinned and recents, dispatches CP_ASK_FOREMAN, and parses managed chats" {

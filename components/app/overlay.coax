@@ -26,9 +26,11 @@
 //
 // Each panel lays the skin's soft shadow under it (shadows.dialog 0 24 64,
 // shadows.menu 0 20 56). Zeron also frosts both panels (a 16 point backdrop
-// blur); here they stay solid (#1c1c1f) with a hairline, since the frost needs
-// the host's composition plan (Coder's page/compose.coax does it for the
-// models menu). app_overlay_paint_panel is the one place to change.
+// blur). The frost needs the host's composition plan (Coder's page/compose.coax),
+// so a caller whose host draws it sets the spec's `blur` (in its units): the panel
+// then blurs what is behind it inside its curve and lays its fill over that at
+// `frost`. With blur 0, or reduced transparency, it stays solid (#1c1c1f) with a
+// hairline. app_overlay_paint_panel is the one place to change.
 //   coax/bin/coax test components/app/overlay-checks.coax
 
 #load "base.coax";
@@ -48,6 +50,8 @@ AppOverlaySpec :: struct {
   menu_pad_x: f32; menu_check: f32; menu_item_radius: f32;
   enter: f32; exit: f32; menu_enter: f32;        // seconds
   backdrop: Rgba; fill: Rgba; lit: Rgba; field: Rgba;
+  blur: f32;                                     // the frost's blur, in the caller's units (0: solid; the caller sets it when its host composes)
+  frost: f32;                                    // the fill's opacity over the frost
 }
 app_overlay_zeron :: () -> AppOverlaySpec {
   return AppOverlaySpec.{sm = 380, md = 460, lg = 560, radius = 16, pad = 20, gap = 20, title_gap = 6,
@@ -60,7 +64,7 @@ app_overlay_zeron :: () -> AppOverlaySpec {
     backdrop = hex(0x000000, 0.349f32),          // zeron-dark backdrop #00000059
     fill = hex(0x1c1c1f, 1),                     // zeron.menu.solid
     lit = hex(0xebebeb, 0.09f32),                // zeron.menu.selected #ebebeb17
-    field = hex(0xffffff, 0.04f32)};
+    field = hex(0xffffff, 0.04f32), frost = 0.8};
 }
 // The lengths in a page's units (u points a unit); times and colours stay.
 app_overlay_scaled :: (o: AppOverlaySpec, u: f32) -> AppOverlaySpec {
@@ -107,10 +111,26 @@ app_ov_copy :: (sh: [] Sheet, m: TextMeasure, face: UiType, color: Rgba, x: f32,
   if paint { for i: 0..<n { _ := sheet_text(sh, m, -1, x, y + cast(f32) i * face.line, face.line, face.face, color, cast(string) text[lines[i].from..<lines[i].to]); } }
   return cast(f32) n * face.line;
 }
-// A panel's ground: the skin's shadow under it, then its fill and hairline (see the note at the top).
-app_overlay_paint_panel :: (sh: [] Sheet, s: UiSkin, o: AppOverlaySpec, x: f32, y: f32, w: f32, h: f32, radius: f32, shadow: UiShadow) {
+// A panel's ground: the skin's shadow under it, then its fill and hairline (see the note at the
+// top). Frosted (the spec's blur, and not reduced transparency) it opens a clip and a backdrop
+// group that blurs what is behind it inside its curve, and its fill is laid over that at `frost`;
+// the panel's content follows, and app_overlay_end_panel closes the group. Returns whether it is frosted.
+app_overlay_frosted :: (f: [] UiFrame, o: AppOverlaySpec) -> bool { return o.blur > 0 && !f[0].reduced_transparency; }
+app_overlay_paint_panel :: (f: [] UiFrame, o: AppOverlaySpec, x: f32, y: f32, w: f32, h: f32, radius: f32, shadow: UiShadow) -> bool {
+  s := f[0].skin; sh := f[0].sheet;
+  glass := app_overlay_frosted(f, o);
   sheet_over_n(sh, uiskin_shadow(sh[0].over, sh[0].no, x, y, w, h, radius, shadow));
-  app_ov_box(sh, x, y, w, h, radius, s.border, o.fill, s.hairline);
+  if glass {
+    sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, x, y, x + w, y + h));
+    sheet_over_n(sh, prim_backdrop(sh[0].over, sh[0].no, x, y, w, h, radius, o.blur));
+  }
+  app_ov_box(sh, x, y, w, h, radius, s.border, ifx glass then opacity(o.fill, o.frost) else o.fill, s.hairline);
+  return glass;
+}
+app_overlay_end_panel :: (f: [] UiFrame, frosted: bool) {
+  if !frosted { return; }
+  sh := f[0].sheet;
+  sheet_over_n(sh, prim_unlayer(sh[0].over, sh[0].no)); sheet_over_n(sh, prim_unclip(sh[0].over, sh[0].no));
 }
 
 // ---------------------------------------------------------------- dialog
@@ -256,7 +276,7 @@ app_dialog_paint :: (f: [] UiFrame, d: [] AppDialog, view_w: f32, view_h: f32, o
   y += o.rise * (1 - p);
   d[0].x = x; d[0].y = y; d[0].w = w; d[0].h = h;
   sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, p));
-  app_overlay_paint_panel(sh, s, o, x, y, w, h, o.radius, s.shadows.dialog);
+  frosted := app_overlay_paint_panel(f, o, x, y, w, h, o.radius, s.shadows.dialog);
   uiframe_open(f, uiframe_semantic(f, "dialog", EL_REGION, title, x, y, w, h, 0, 0));
   cx := x + o.pad; cy := y + o.pad;
   _ := uiframe_semantic(f, "dialog.title", EL_HEADING, title, cx, cy, cw, title_h, 0, 0);
@@ -278,9 +298,11 @@ app_dialog_paint :: (f: [] UiFrame, d: [] AppDialog, view_w: f32, view_h: f32, o
     fh := app_dialog_field_h(s, o, q);
     d[0].fields[i].x = cx; d[0].fields[i].y = cy; d[0].fields[i].w = cw; d[0].fields[i].h = fh;
     focused := d[0].open && d[0].focus == i;
-    app_ov_box(sh, cx, cy, cw, fh, o.field_radius, s.border, o.field, ifx focused then opacity(s.ink, 0.45f32) else s.hairline);
     n := el_put(idb[..], 0, "dialog.field."); n = el_put_i(idb[..], n, i);
     id := sheet_pool(sh, cast(string) idb[0..<n]);
+    // the focus ring eases in and out as the keyboard moves (kit/frame.coax uiframe_hover_on)
+    ring := uiframe_hover_on(f, KEYED_LAZY, id, focused);
+    app_ov_box(sh, cx, cy, cw, fh, o.field_radius, s.border, o.field, rgba_mix(s.hairline, opacity(s.ink, 0.45f32), ring));
     value := cast(string) d[0].fields[i].value[0..<d[0].fields[i].nv];
     row := uiframe_semantic(f, id, EL_FIELD, label, cx, cy, cw, fh, ifx focused then EL_S_FOCUSED else 0, 0);
     if !q.secure { elt_value(f[0].rows, row, value); }
@@ -324,6 +346,7 @@ app_dialog_paint :: (f: [] UiFrame, d: [] AppDialog, view_w: f32, view_h: f32, o
     }
   }
   uiframe_close(f);
+  app_overlay_end_panel(f, frosted);
   sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
 }
 // A key while it is shown: Escape cancels, Return presses the confirm button
@@ -438,7 +461,7 @@ app_menu_paint :: (f: [] UiFrame, mn: [] AppMenu, view_w: f32, view_h: f32, o: A
   x := mn[0].x; y := mn[0].y; w := mn[0].w; h := mn[0].h;
   p := ifx f[0].reduced_motion then 1.0f32 else app_ov_out3(mn[0].t);
   sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, p));
-  app_overlay_paint_panel(sh, s, o, x, y, w, h, o.menu_radius, s.shadows.menu);
+  frosted := app_overlay_paint_panel(f, o, x, y, w, h, o.menu_radius, s.shadows.menu);
   uiframe_open(f, uiframe_semantic(f, "menu", EL_REGION, "Menu", x, y, w, h, 0, 0));
   idb: [EL_ID] u8;
   rx := x + o.menu_inset; rw := w - 2 * o.menu_inset;
@@ -453,15 +476,19 @@ app_menu_paint :: (f: [] UiFrame, mn: [] AppMenu, view_w: f32, view_h: f32, o: A
       _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_HEADING, label, rx, ry, rw, q.h, 0, 0);
       continue;
     }
-    if i == mn[0].lit && !q.disabled { sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, rx, ry, rw, q.h, o.menu_item_radius, ifx q.danger then opacity(s.danger, 0.14f32) else o.lit)); }
+    n := el_put(idb[..], 0, "menu.row."); n = el_put_i(idb[..], n, i);
+    rid := sheet_pool(sh, cast(string) idb[0..<n]);
+    // the highlight eases in and out as it moves (kit/frame.coax uiframe_hover_on)
+    lit := uiframe_hover_on(f, KEYED_LAZY, rid, i == mn[0].lit && !q.disabled);
+    if lit > 0 { sheet_over_n(sh, prim_fill(sh[0].over, sh[0].no, rx, ry, rw, q.h, o.menu_item_radius, opacity(ifx q.danger then opacity(s.danger, 0.14f32) else o.lit, lit))); }
     ink := ifx q.disabled then s.faint else ifx q.danger then s.danger else s.ink;
     _ := sheet_text(sh, m, -1, rx + o.menu_pad_x, ry + (q.h - s.label.line) / 2, s.label.line, s.label.face, ink, app_fit(f, s.label.face, label, tw));
     if q.checked { app_ov_icon(sh, s.icon_check, rx + rw - o.menu_pad_x - o.menu_check, ry + (q.h - o.menu_check) / 2, o.menu_check, ink); }
-    n := el_put(idb[..], 0, "menu.row."); n = el_put_i(idb[..], n, i);
     state := (ifx q.disabled then EL_S_DISABLED else 0) | (ifx q.checked then EL_S_CHECKS | EL_S_CHECKED else 0) | (ifx i == mn[0].lit then EL_S_FOCUSED else 0);
-    _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<n]), EL_ROW, label, rx, ry, rw, q.h, state, 0);
+    _ := uiframe_semantic(f, rid, EL_ROW, label, rx, ry, rw, q.h, state, 0);
   }
   uiframe_close(f);
+  app_overlay_end_panel(f, frosted);
   sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
 }
 // The row at y (units) that can be chosen, -1 for none.

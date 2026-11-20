@@ -12,7 +12,8 @@ void cd_frame(void *page);
 int cd_moving(void *page);
 // Called when something changed without the app's doing (a click or the wheel on the page).
 void cd_on_change(void *page, void (*changed)(void *context), void *context);
-// Whether the view has the keyboard (its window key, it the first responder); reduced motion.
+// Whether the view has the keyboard (its window key, it the first responder); reduced motion (bit 1)
+// and reduced transparency (bit 2).
 void cd_env(void *page, int active, int reduced);
 // The page draws and edits its text fields itself (page/editor.coax): the view hands it every key
 // and the input method. cd_focus gives the keyboard to the composer (1), settings' search (2) or
