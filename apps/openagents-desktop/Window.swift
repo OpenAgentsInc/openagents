@@ -167,6 +167,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         cd_experimental_set(page, Experimental.on ? 1 : 0)
         cd_cloud_authed_set(page, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
         cd_settings_gemini(page, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
+        CoderProbes.apply(page)
+        CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
         if Experimental.on { startForemanServer() }
         // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
         CoderWorker.daemon = daemonClient

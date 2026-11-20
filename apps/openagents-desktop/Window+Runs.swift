@@ -80,11 +80,13 @@ extension CoderWindow {
             needsRecall = false
         }
         let useAgy = cd_model_agy(r.page) != 0
-        let cloudOk = CoderGemini.saved != nil || (Experimental.on && MacAccount.shared.loggedIn)
+        // a key set in Settings, or what Microcoder signs in with on its own (Vertex AI from a service
+        // account or ADC, a Gemini API key in ~/work/.secrets or the environment: mcworker --auth)
+        let cloudOk = CoderGemini.saved != nil || CoderProbes.geminiReady || (Experimental.on && MacAccount.shared.loggedIn)
         if !useAgy && !cloudOk {
             cd_failed(r.page, CoderWorker.hasAntigravity
-                ? "Add a Gemini API key in Settings → Models to run Gemini models, or switch to Antigravity."
-                : "Add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
+                ? "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or switch to Antigravity."
+                : "No Gemini sign-in found: set up Vertex AI (a Google Cloud service account) or add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
             wake()
             return
         }
@@ -154,6 +156,7 @@ extension CoderWindow {
             cd_experimental_set(back, Experimental.on ? 1 : 0)
             cd_cloud_authed_set(back, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
             cd_settings_gemini(back, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
+            CoderProbes.apply(back)
             syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {

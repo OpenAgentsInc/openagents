@@ -325,7 +325,26 @@ mw_queue_op :: (running: bool, req: [] MwwRequest, q: [] MwQueue, f: [] MwFollow
   return stop;
 }
 
+// mcworker --auth: the sign-in a Gemini model would run on (mk_auth), one line, and exit; the
+// desktop app's Settings > Models and its send check read it. Nothing is sent anywhere.
+mw_auth_asked :: () -> bool {
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--auth" { return true; } }
+  return false;
+}
+mw_auth :: () -> int {
+  k: [1] MkKeys; o: [512] u8;
+  t := mk_auth(k[..], o[..]);
+  n := t.count; o[n] = 10;
+  _ = cxterm_write(o[0..<n + 1]);
+  for i: 0..<k[0].gm_key.count { k[0].gm_key[i] = 0; }
+  for i: 0..<k[0].or_key.count { k[0].or_key[i] = 0; }
+  return 0;
+}
+
 tool_main :: () -> int #export_c #effects(all) {
+  if mw_auth_asked() { return mw_auth(); }
   run: [1] McRun; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
   aw: [1] McAware; mdirb: [4096] u8; coaxb: [4096] u8; homeb: [4096] u8; sbuf: [256] u8;   // the compiler's answers and the working memory (#13444, #13445)
   plan: [1] GwPlan; pb: [1] GwPlanBuffers; bench: [1] GwBench;

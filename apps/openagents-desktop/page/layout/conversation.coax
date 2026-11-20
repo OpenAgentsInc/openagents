@@ -239,7 +239,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
           a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
           // who wrote it, always beside Copy: the harness and its model
-          { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, cw - lane_btn - a.gap_small, cp_model_meta(s, s[0].turns[i].model), false); }
+          { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, cw - lane_btn - a.gap_small, cp_turn_meta(s, i), false); }
           y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, a_hov || did || s[0].turns[i].info, did, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else { s[0].turns[i].ah = 0; }

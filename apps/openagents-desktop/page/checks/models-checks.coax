@@ -186,13 +186,21 @@
   #assert cp_model_label(s, CP_MODELS) == "Antigravity";
   #assert cp_model_id(s, CP_MODELS) == "antigravity";
   // the row names the CLI and the mode picked in Settings
-  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Auto" && cp_model_meta(s, CP_MODELS) == "Antigravity CLI · default model";
+  // never "default model": before agy has said which model it runs, the row says so
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Auto" && cp_model_meta(s, CP_MODELS) == "Antigravity CLI · model not reported yet";
+  coder_page_settings_agy(s, "v1.5.12 (ready)", 0, "Default", "Google sign-in");
+  #assert cp_model_meta(s, CP_MODELS) == "Antigravity CLI · model not reported yet";
+  // what agy opens a session on with no model set (agyworker --probe): its real model
+  coder_page_agy_seen(s, "gemini-4-carbon-low", "Gemini 4 Carbon (Low)");
+  #assert cp_model_meta(s, CP_MODELS) == "Antigravity CLI · Gemini 4 Carbon (Low)" && cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Gemini 4 Carbon (Low) · Auto";
+  // a model set in Settings and not probed yet: that model
+  coder_page_agy_seen(s, "", "");
   coder_page_settings_agy(s, "v1.5.12 (ready)", 0, "gemini-4-hydrogen · high", "Google sign-in");
   #assert cp_model_meta(s, CP_MODELS) == "Antigravity CLI · gemini-4-hydrogen · high";
   s[0].set_agy_mode = 2;
-  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Plan";
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · gemini-4-hydrogen · high · Plan";
   s[0].set_agy_mode = 1;
-  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Default";
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · gemini-4-hydrogen · high · Default";
   s[0].set_agy_mode = 0;
   #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   // Also works alongside OpenRouter without shifting OpenRouter's index.
@@ -250,4 +258,41 @@
   // no key, signed in with Experimental features: still Gemini
   s[0].set_gemini_n = 0; coder_page_experimental_set(s, true); coder_page_set_cloud_authed(s, true);
   #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Gemini API";
+  // Microcoder will answer on Vertex AI (a service account on disk, mcworker --auth): the foot says so
+  coder_page_settings_gauth(s, "vertex", "Vertex AI (service account, project openagentsgemini)");
+  #assert cp_backend_label(s) == "Vertex AI";
+  coder_page_settings_gauth(s, "key", "API key ending 1a2b (~/work/.secrets)");
+  #assert cp_backend_label(s) == "Gemini API";
+}
+
+#test "a Vertex AI or API key sign-in Microcoder finds on its own runs Gemini models with no key in Settings" {
+  st := [1] CoderPage.[CoderPage.{}];
+  s := st[..];
+  coder_page_init(s);
+  coder_page_experimental_set(s, false); coder_page_set_cloud_authed(s, false);
+  coder_page_set_agy(s, true);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1;
+  // the owner's setup: ~/work/.secrets/vertex-sa-inference.json and gcloud, no key in Settings
+  coder_page_settings_gauth(s, "vertex", "Vertex AI (service account, project openagentsgemini)");
+  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_MODELS + 1 && coder_page_model_agy(s);
+  #assert coder_page_pick_model(s, "gemini-4-neon") && cp_backend_label(s) == "Vertex AI";
+  // a Gemini API key in ~/work/.secrets or the environment counts too
+  coder_page_settings_gauth(s, "key", "API key ending 1a2b (GEMINI_API_KEY)");
+  #assert coder_page_cloud_ok(s) && !s[0].gauth_vertex;
+  // none found: back to Antigravity alone
+  coder_page_settings_gauth(s, "none", "");
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
+}
+
+#test "a reply's label names the model Antigravity reported running, and keeps it with the chat" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  coder_page_set_agy(s, true);
+  #assert coder_page_pick_model(s, "antigravity");
+  coder_page_agy_seen(s, "gemini-4-carbon-low", "Gemini 4 Carbon (Low)");
+  #assert coder_page_set_text(s, "hi") && coder_page_submit(s);
+  _ = coder_page_line(s, "{\"kind\":\"attempt\",\"schema\":\"coder.observability.v2\",\"scope\":\"request_attempt\",\"engine\":null,\"gateway\":\"antigravity\",\"model\":\"gemini-4-argon-high\",\"model_source\":\"attempt_configuration\",\"requested_effort\":null,\"outcome\":\"configured\",\"status\":0,\"usd_micros\":-1}");
+  #assert cp_turn_meta(s, 0) == "Antigravity CLI · gemini-4-argon-high";
+  // the probe's model: its name
+  _ = coder_page_line(s, "{\"kind\":\"attempt\",\"gateway\":\"antigravity\",\"model\":\"gemini-4-carbon-low\",\"outcome\":\"configured\",\"status\":0}");
+  #assert cp_turn_meta(s, 0) == "Antigravity CLI · Gemini 4 Carbon (Low)";
 }

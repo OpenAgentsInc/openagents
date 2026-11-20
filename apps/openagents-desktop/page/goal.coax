@@ -57,7 +57,7 @@ cp_start_turn :: (s: [] CoderPage, ask_text: string, prompt_kind: int) -> bool {
   // a new chat uses the first turns again: nothing of the old ones may show (their sub-agents did, once)
   s[0].turns[i].nagents = 0; s[0].turns[i].round_asked = 0; s[0].turns[i].waiting = false; s[0].turns[i].info = false; s[0].results_due = false;
   s[0].turns[i].state = CP_RUNNING; s[0].turns[i].stopping = false; s[0].turns[i].fresh = false; s[0].turns[i].h = 0;
-  s[0].turns[i].model = s[0].model;
+  s[0].turns[i].model = s[0].model; s[0].turns[i].ran_n = 0;
   s[0].turns[i].began = s[0].clock; s[0].turns[i].fold = APP_ACT_UNCHOSEN;
   s[0].turns[i].heard = false; s[0].turns[i].took = -1; s[0].turns[i].ask_open = false; s[0].turns[i].seen_h = 0;
   s[0].rev_n += 1; s[0].turns[i].rev = s[0].rev_n;

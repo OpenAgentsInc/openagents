@@ -43,6 +43,7 @@ MkKeys :: struct {
   vx: [1] GwVertex;
   or_key: [512] u8; nor: int;
   gm_key: [512] u8; ngm: int;
+  gm_from: int;                  // where the Gemini API key came from: MK_KEY_SETTINGS, MK_KEY_SECRETS, MK_KEY_ENV (0: none)
   keyfile: [1200] u8; nkf: int;
   gcloud: [1200] u8; ngc: int;
   config: [1200] u8; ncf: int;
@@ -147,8 +148,9 @@ mk_keys :: (k: [] MkKeys) {
   // the desktop app on Linux and Windows hands its kept key over in the environment (GitHub #13782)
   if k[0].nor == 0 { k[0].nor = cl_getenv(GW_OPENROUTER_KEY_ENV, k[0].or_key[..]).count; }
   k[0].ngm = mk_coder_key(home, MK_CODER_GEMINI_KEY, k[0].gm_key[..]);
-  if k[0].ngm == 0 { k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]); }
-  if k[0].ngm == 0 { k[0].ngm = cl_getenv("GEMINI_API_KEY", k[0].gm_key[..]).count; }
+  if k[0].ngm > 0 { k[0].gm_from = MK_KEY_SETTINGS; }
+  if k[0].ngm == 0 { k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]); if k[0].ngm > 0 { k[0].gm_from = MK_KEY_SECRETS; } }
+  if k[0].ngm == 0 { k[0].ngm = cl_getenv("GEMINI_API_KEY", k[0].gm_key[..]).count; if k[0].ngm > 0 { k[0].gm_from = MK_KEY_ENV; } }
   ap: [1400] u8; ab: [4096] u8;
   na := fs_read(cast(string) ap[0..<mk_cat(ap[..], mk_cat(ap[..], 0, home), MK_AGY_ENV)], ab[..]);
   agy := cast(string) ab[0..<ifx na > 0 then na else 0];
@@ -167,6 +169,42 @@ mk_keys :: (k: [] MkKeys) {
     if mk_exists(cast(string) k[0].gcloud[0..<n]) { k[0].ngc = n; break; }
   }
   k[0].ncf = mk_cat(k[0].config[..], mk_cat(k[0].config[..], 0, home), MK_GCLOUD_CONFIG);
+}
+
+// ---------------------------------------------------------------- which sign-in Gemini runs on
+
+// Where a Gemini API key came from.
+MK_KEY_SETTINGS :: 1; MK_KEY_SECRETS :: 2; MK_KEY_ENV :: 3;
+// How Vertex would be reached: not at all, the environment's credentials (ADC), or the service
+// account key file through gcloud. The same tests mk_vertex makes, without minting a token.
+MK_VX_NONE :: 0; MK_VX_ADC :: 1; MK_VX_KEYFILE :: 2;
+mk_vertex_how :: (k: [] MkKeys) -> int {
+  t: [16] u8; c: [16] u8;
+  if cl_getenv("VERTEX_ACCESS_TOKEN", t[..]).count > 0 || cl_getenv("GOOGLE_APPLICATION_CREDENTIALS", c[..]).count > 0 { return MK_VX_ADC; }
+  if k[0].nkf > 0 && k[0].ngc > 0 { return MK_VX_KEYFILE; }
+  return MK_VX_NONE;
+}
+
+// The sign-in a Gemini model runs on, as mk_plan orders them (Vertex first, then a Gemini API
+// key), for a person: "vertex<TAB>Vertex AI (project P)", "key<TAB>API key ending 1a2b (Settings)",
+// or "none<TAB>". vx: MK_VX_*; tail: the key's last four bytes; from: MK_KEY_*. Into out.
+mk_auth_text :: (vx: int, project: string, from: int, tail: string, out: [] u8) -> string {
+  n := 0;
+  if vx != MK_VX_NONE {
+    n = mk_cat(out, n, "vertex\tVertex AI (");
+    n = mk_cat(out, n, ifx vx == MK_VX_ADC then "ADC, project " else "service account, project ");
+    n = mk_cat(out, n, project); n = mk_cat(out, n, ")");
+    return cast(string) out[0..<n];
+  }
+  if from == 0 || tail.count == 0 { return cast(string) out[0..<mk_cat(out, 0, "none\t")]; }
+  n = mk_cat(out, n, "key\tAPI key ending "); n = mk_cat(out, n, tail);
+  n = mk_cat(out, n, ifx from == MK_KEY_SETTINGS then " (Settings)" else ifx from == MK_KEY_SECRETS then " (~/work/.secrets)" else " (GEMINI_API_KEY)");
+  return cast(string) out[0..<n];
+}
+mk_auth :: (k: [] MkKeys, out: [] u8) -> string {
+  mk_keys(k);
+  tail := ifx k[0].ngm >= 4 then cast(string) k[0].gm_key[k[0].ngm - 4..<k[0].ngm] else "";
+  return mk_auth_text(mk_vertex_how(k), k[0].vx[0].project, k[0].gm_from, tail, out);
 }
 
 // Vertex's token: from the environment when it has one, else from the key file through gcloud.
@@ -397,4 +435,14 @@ mk_facts_from :: (h: [] MkTurns, first: int, os: string, cwd: string, command_se
   #assert mk_env_value("A=1\nexport KEY=\"v w\"\r\nB=2", "KEY") == "v w";
   #assert mk_env_value("KEYS=x\nKEY='y'", "KEY") == "y";
   #assert mk_env_value("OTHER=1", "KEY") == "";
+}
+
+#test "the sign-in Gemini runs on: Vertex first, then the API key and where it came from" {
+  o: [256] u8;
+  #assert mk_auth_text(MK_VX_KEYFILE, "openagentsgemini", MK_KEY_SECRETS, "1a2b", o[..]) == "vertex\tVertex AI (service account, project openagentsgemini)";
+  #assert mk_auth_text(MK_VX_ADC, "p", 0, "", o[..]) == "vertex\tVertex AI (ADC, project p)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_SETTINGS, "1a2b", o[..]) == "key\tAPI key ending 1a2b (Settings)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_SECRETS, "9z9z", o[..]) == "key\tAPI key ending 9z9z (~/work/.secrets)";
+  #assert mk_auth_text(MK_VX_NONE, "p", MK_KEY_ENV, "abcd", o[..]) == "key\tAPI key ending abcd (GEMINI_API_KEY)";
+  #assert mk_auth_text(MK_VX_NONE, "p", 0, "", o[..]) == "none\t";
 }

@@ -220,6 +220,29 @@ cu_config_id :: (result: string, category: string, value: string, ar: [] ClArena
   return "";
 }
 
+// configOptions entry of category's currentValue (the model agy runs when none is set: gemini-4-carbon), or "".
+cu_config_current :: (result: string, category: string, ar: [] ClArena) -> string {
+  opts := cl_raw(result, "configOptions");
+  n := cl_count(opts);
+  for i: 0..<n {
+    item := cl_json(opts, cl_item(opts, i));
+    if cl_str(ar, item, "category") == category { return cl_str(ar, item, "currentValue"); }
+  }
+  return "";
+}
+
+// The name session/new gave a model id in models.availableModels ("Gemini 4 Carbon (Low)"), or "".
+cu_model_name :: (result: string, model: string, ar: [] ClArena) -> string {
+  if model.count == 0 { return ""; }
+  models := cl_raw(result, "models.availableModels");
+  n := cl_count(models);
+  for i: 0..<n {
+    item := cl_json(models, cl_item(models, i));
+    if cl_str(ar, item, "modelId") == model { return cl_str(ar, item, "name"); }
+  }
+  return "";
+}
+
 // True when session/new, session/load or session/resume advertised this model id (models.availableModels).
 cu_model_has :: (result: string, model: string, ar: [] ClArena) -> bool {
   if model.count == 0 { return false; }

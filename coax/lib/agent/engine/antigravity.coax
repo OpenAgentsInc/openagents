@@ -313,6 +313,31 @@ agy_configure_mode :: (x: [] CuEngine, result: string, model: string, effort: st
   return missed;
 }
 
+// The model a session runs on once agy_configure_mode has set model and effort on it (result:
+// session/new's): agy's own id, the one `agy models` lists (gemini-4-carbon-low), into out. It
+// follows that function's choices: a listed model as named; a base model as its -low variant when
+// listed; no model is agy's default (the model config option's currentValue, else
+// models.currentModelId) at the thought level set. "" only when agy named nothing at all.
+agy_effective_model :: (result: string, model: string, effort: string, ar: [] ClArena, out: [] u8) -> string {
+  level := ifx effort.count > 0 then effort else AGY_EFFORT;
+  base := model;
+  if model.count > 0 {
+    if cu_model_has(result, model, ar) && effort.count == 0 { return cast(string) out[0..<cl_copy(out, model)]; }
+  } else {
+    base = cu_config_current(result, "model", ar);
+    if base.count == 0 { return cast(string) out[0..<cl_copy(out, cl_str(ar, result, "models.currentModelId"))]; }
+  }
+  // the base model at the level set, when agy lists that id
+  n := cl_copy(out, base); n += cl_copy(out[n..<out.count], "-"); n += cl_copy(out[n..<out.count], level);
+  if n < out.count && cu_model_has(result, cast(string) out[0..<n], ar) { return cast(string) out[0..<n]; }
+  return cast(string) out[0..<cl_copy(out, base)];
+}
+// What a person reads for that model: agy's name for it ("Gemini 4 Carbon (Low)"), else its id.
+agy_model_shown :: (result: string, id: string, ar: [] ClArena) -> string {
+  name := cu_model_name(result, id, ar);
+  return ifx name.count > 0 then name else id;
+}
+
 agy_configure :: (x: [] CuEngine, result: string, model: string, effort: string) -> int {
   return agy_configure_mode(x, result, model, effort, AGY_MODE);
 }
@@ -481,6 +506,28 @@ AGY_OPENED_MEDIUM :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\
 }
 
 agy_t_reset :: (x: [] CuEngine) { cu_outbox_clear(x[0].c); x[0].c[0].ar[0].at = 0; x[0].c[0].ar[0].full = false; }
+
+AGY_OPENED_DEFAULT :: "{\"sessionId\":\"g-1\",\"models\":{\"availableModels\":[{\"modelId\":\"gemini-4-carbon-medium\",\"name\":\"Gemini 4 Carbon (Medium)\"},{\"modelId\":\"gemini-4-carbon-low\",\"name\":\"Gemini 4 Carbon (Low)\"},{\"modelId\":\"gemini-4-argon-low\",\"name\":\"Gemini 4 Argon (Low)\"},{\"modelId\":\"gemini-4-argon-high\",\"name\":\"Gemini 4 Argon (High)\"}],\"currentModelId\":\"gemini-4-carbon-medium\"},\"configOptions\":[{\"id\":\"model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"gemini-4-carbon\",\"options\":[{\"value\":\"gemini-4-carbon\"},{\"value\":\"gemini-4-argon\"}]},{\"id\":\"thought_level\",\"category\":\"thought_level\",\"type\":\"select\",\"currentValue\":\"medium\",\"options\":[{\"value\":\"low\"},{\"value\":\"medium\"},{\"value\":\"high\"}]}]}";
+
+#test "antigravity: the model a session really runs on, never just 'default'" {
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; o: [128] u8;
+  r := AGY_OPENED_DEFAULT;
+  // nothing named: agy's default model (Carbon) at our thought level (low), with agy's own name
+  #assert agy_effective_model(r, "", "", ar[..], o[..]) == "gemini-4-carbon-low";
+  #assert agy_model_shown(r, "gemini-4-carbon-low", ar[..]) == "Gemini 4 Carbon (Low)";
+  // an effort named: the default model at that level, when listed; else the base model
+  #assert agy_effective_model(r, "", "medium", ar[..], o[..]) == "gemini-4-carbon-medium";
+  #assert agy_effective_model(r, "", "high", ar[..], o[..]) == "gemini-4-carbon";
+  // a listed model as named; a base model as its listed variant
+  #assert agy_effective_model(r, "gemini-4-argon-high", "", ar[..], o[..]) == "gemini-4-argon-high";
+  #assert agy_effective_model(r, "gemini-4-argon", "", ar[..], o[..]) == "gemini-4-argon-low";
+  #assert agy_effective_model(r, "gemini-4-argon", "high", ar[..], o[..]) == "gemini-4-argon-high";
+  #assert agy_effective_model(r, "gemini-4-argon-high", "low", ar[..], o[..]) == "gemini-4-argon-high";
+  // no config options: models.currentModelId; nothing at all: ""
+  #assert agy_effective_model("{\"models\":{\"currentModelId\":\"gemini-4-neon-medium\"}}", "", "", ar[..], o[..]) == "gemini-4-neon-medium";
+  #assert agy_effective_model("{}", "", "", ar[..], o[..]) == "";
+  #assert agy_model_shown(r, "nope", ar[..]) == "nope";
+}
 
 #test "antigravity: with no effort named a turn thinks low; a model named with its level, or an effort, is kept" {
   xb: [1] CuEngine; cb: [1] CuClient; pb: [1] ClProcess; line: [1024] u8; arena: [8192] u8; out: [4096] u8;

@@ -14,6 +14,12 @@
 //        {"kind":"reply","text":"..."}                              agent message chunk
 //        {"kind":"steered","id":"...","status":"applied",...}       steer acknowledgement
 //        {"kind":"ended","ending":"finished","text":"..."}          turn ended (or stopped / failed)
+//        {"kind":"attempt","gateway":"antigravity","model":"gemini-4-carbon-low",...,"outcome":"configured"}
+//                                                                    the model agy really runs this session on
+//
+//   agyworker --probe   opens one agy session (no prompt), prints the model it would run on as
+//                       "ID<TAB>NAME" (gemini-4-carbon-low	Gemini 4 Carbon (Low)) and exits; 1 and why on stderr
+//                       when agy did not open one. Same environment as a run (CODER_AGY_*).
 //
 // Environment variables:
 //   CODER_AGY_BIN       optional custom agy binary path (default: agy_program / agy on PATH)
@@ -26,6 +32,7 @@
 
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/proc.coax";        // proc_sleep: --probe waits on agy
 #load "../../coax/lib/agent/engine/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 
@@ -69,6 +76,8 @@ AgywState :: struct {
   cwd: [1024] u8; cwd_n: int;
   turn_model: [128] u8; turn_model_n: int;
   turn_effort: [32] u8; turn_effort_n: int;
+  ran: [128] u8; ran_n: int;              // the model agy runs the open session on (agy_effective_model)
+  ran_name: [128] u8; ran_name_n: int;    // and agy's name for it
   out: [AGYW_LINE] u8;
 }
 
@@ -341,6 +350,54 @@ agyw_finish_turn :: (s: [] AgywState, ending: string, text: string, emit: bool) 
   s[0].reply_n = 0;
 }
 
+// The model the session just opened runs on (never "default"): kept, and told to the owner as an
+// attempt line with no counts, so the message it answers names the model that wrote it.
+agyw_ran :: (s: [] AgywState, x: [] CuEngine, result: string, model: string, effort: string, emit: bool) {
+  ar := x[0].c[0].ar[..];
+  ob: [128] u8; id := agy_effective_model(result, model, effort, ar, ob[..]);
+  s[0].ran_n = agyw_copy(s[0].ran[..], id);
+  s[0].ran_name_n = agyw_copy(s[0].ran_name[..], agy_model_shown(result, id, ar));
+  if !emit || id.count == 0 { return; }
+  none := [7] int.[-1, -1, -1, -1, -1, -1, -1];
+  agyw_write_line(s, mww_attempt(s[0].out[..], "antigravity", agyw_str(s[0].ran[..], s[0].ran_n), effort, "configured", 0, none[..]));
+}
+
+// agyworker --probe: agy started with the run's settings, one session opened, its model printed.
+AGYW_PROBE_MS :: 45000;
+agyw_probe :: (s: [] AgywState, x: [] CuEngine) -> int {
+  s[0].turn_model_n = agyw_copy(s[0].turn_model[..], agyw_resolve_model("", agyw_str(s[0].cfg.model[..], s[0].cfg.model_n)));
+  s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], agyw_resolve_effort("", agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n)));
+  hb: [1024] u8; cwd := cl_getenv("HOME", hb[..]);
+  if cwd.count == 0 { cwd = "."; }
+  why := agy_launch_with(x, agyw_str(s[0].cfg.program[..], s[0].cfg.program_n), cwd, "openagents-agyworker", "1.0", agyw_str(s[0].cfg.profile[..], s[0].cfg.profile_n));
+  if why.count > 0 { tool_errln(why); return 1; }
+  until := cxproc_now_ms() + AGYW_PROBE_MS;
+  while x[0].live && s[0].ran_n == 0 && cxproc_now_ms() < until {
+    ev: [1] CuEvent;
+    cue_poll(x, ev[..]);
+    if ev[0].kind == CuEventKind.idle { proc_sleep(20); continue; }
+    agyw_handle_event(s, x, ev[0], false);
+  }
+  if s[0].ran_n == 0 {
+    w := ifx x[0].live then "Antigravity opened no session in time." else cue_why(x);
+    if x[0].live { cue_close(x); }
+    tool_errln(ifx w.count > 0 then w else "Antigravity stopped before it opened a session.");
+    return 1;
+  }
+  cue_close(x);
+  n := agyw_copy(s[0].out[..], agyw_str(s[0].ran[..], s[0].ran_n));
+  n += agyw_copy(s[0].out[n..<s[0].out.count], "\t");
+  n += agyw_copy(s[0].out[n..<s[0].out.count], agyw_str(s[0].ran_name[..], s[0].ran_name_n));
+  agyw_write_line(s, n);
+  return 0;
+}
+agyw_probe_asked :: () -> bool {
+  a: [1] Args;
+  if !args_load(a[..]) { return false; }
+  for i: 0..<args_count(a[..]) { if args_at(a[..], i) == "--probe" { return true; } }
+  return false;
+}
+
 agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) {
   if ev.kind == CuEventKind.none || ev.kind == CuEventKind.idle { return; }
   if ev.kind == CuEventKind.initialized {
@@ -358,6 +415,7 @@ agyw_handle_event :: (s: [] AgywState, x: [] CuEngine, ev: CuEvent, emit: bool) 
       eff := agyw_str(s[0].turn_effort[..], s[0].turn_effort_n);
       mode := agyw_str(s[0].cfg.mode[..], s[0].cfg.mode_n);
       _ = agy_configure_mode(x, ev.result, mod, eff, mode);
+      agyw_ran(s, x, ev.result, mod, eff, emit);
       cue_owed(x, s[0].turn_active);
       return;
     }
@@ -444,6 +502,7 @@ tool_main :: () -> int #export_c #effects(all) {
   cb: [1] CuClient; pb: [1] ClProcess;
   cu_line: [65536] u8; cu_arena: [65536] u8; cu_out: [65536] u8;
   cue_attach(x, cb[..], pb[..], cu_line[..], cu_arena[..], cu_out[..]);
+  if agyw_probe_asked() { return agyw_probe(s, x); }
 
   in_buf: [AGYW_LINE] u8; in_len: [1] int;
   req_ar_buf: [131072] u8; req_ar: [1] ClArena; req_ar[0].buf = req_ar_buf[..];
@@ -627,4 +686,23 @@ tool_main :: () -> int #export_c #effects(all) {
   // A second failure ends the turn.
   agyw_handle_event(s, x, ev, false);
   #assert !s[0].turn_active;
+}
+
+#test "agyworker: an opened session names the model it runs on, not 'default'" {
+  sb: [1] AgywState; s := sb[..];
+  xb: [1] CuEngine; x := xb[..];
+  cb: [1] CuClient; pb: [1] ClProcess; line: [4096] u8; arena: [16384] u8; out: [4096] u8;
+  agy_test(x, cb[..], pb[..], line[..], arena[..], out[..]);
+  ev := CuEvent.{kind = CuEventKind.answered, of = CU_SESSION_NEW, result = AGY_OPENED_DEFAULT};
+  agyw_handle_event(s, x, ev, false);
+  #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-carbon-low" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "Gemini 4 Carbon (Low)";
+  // a model set in Settings is the one named
+  s[0].turn_model_n = agyw_copy(s[0].turn_model[..], "gemini-4-argon-high");
+  agyw_handle_event(s, x, ev, false);
+  #assert agyw_str(s[0].ran[..], s[0].ran_n) == "gemini-4-argon-high" && agyw_str(s[0].ran_name[..], s[0].ran_name_n) == "Gemini 4 Argon (High)";
+  // what the owner reads: an attempt line with that model
+  o: [1024] u8; none := [7] int.[-1, -1, -1, -1, -1, -1, -1];
+  n := mww_attempt(o[..], "antigravity", "gemini-4-carbon-low", "", "configured", 0, none[..]);
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; l: [1] MwwLine;
+  #assert mww_read(ar[..], cast(string) o[0..<n], l[..]) == MWW_ATTEMPT && l[0].model == "gemini-4-carbon-low" && l[0].gateway == "antigravity";
 }

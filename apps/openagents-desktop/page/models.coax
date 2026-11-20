@@ -4,7 +4,9 @@
 // Cloud/Microcoder models (Gemini + OpenRouter) are available when the user has entered their own
 // Gemini API key in Settings, or when Experimental features are on and the user is signed into an
 // OpenAgents account. Otherwise the app is local-harness-only (Antigravity).
-cp_cloud_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && (s[0].set_gemini_n > 0 || (s[0].experimental && s[0].cloud_authed)); }
+// The sign-in mcworker --auth finds (Vertex AI from a service account or ADC, or a Gemini API key
+// in ~/work/.secrets or the environment) counts the same as a key set in Settings.
+cp_cloud_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && (s[0].set_gemini_n > 0 || s[0].set_gauth_n > 0 || (s[0].experimental && s[0].cloud_authed)); }
 // How many entries the picker has: cloud models when authed (Gemini + optional OpenRouter), and Antigravity when installed.
 cp_models :: (s: [] CoderPage) -> int {
   if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 1 else 0; }
@@ -72,22 +74,60 @@ cp_model_short :: (idx: int) -> string {
 cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
   // the Antigravity CLI and the review mode picked in Settings, never the protocol's name
   if cp_is_agy(s, idx) {
-    if s[0].set_agy_mode == 1 { return "Antigravity CLI · Default"; }
-    if s[0].set_agy_mode == 2 { return "Antigravity CLI · Plan"; }
-    return "Antigravity CLI · Auto";
+    mode := ifx s[0].set_agy_mode == 1 then "Default" else ifx s[0].set_agy_mode == 2 then "Plan" else "Auto";
+    n := cp_out(s[0].agy_desc[..], "Antigravity CLI · ");
+    m := cp_agy_shown(s);
+    if m.count > 0 { n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], m); n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], " · "); }
+    n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], mode);
+    return cast(string) s[0].agy_desc[0..<n];
   }
   if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy)"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   descs := CP_MODEL_DESC;
   return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
 }
+// The model Antigravity runs, never "default": what agy said it opens a session on with these
+// settings (agyworker --probe), else the model Settings names for it, else "" (not known yet).
+cp_agy_shown :: (s: [] CoderPage) -> string {
+  if s[0].agy_seen_name_n > 0 { return cast(string) s[0].agy_seen_name[0..<s[0].agy_seen_name_n]; }
+  if s[0].agy_seen_n > 0 { return cast(string) s[0].agy_seen[0..<s[0].agy_seen_n]; }
+  m := cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n];
+  return ifx m == "Default" then "" else m;
+}
+cp_agy_meta :: (s: [] CoderPage, model: string) -> string {
+  n := cp_out(s[0].agy_meta[..], "Antigravity CLI · ");
+  n += cp_out(s[0].agy_meta[n..<s[0].agy_meta.count], ifx model.count > 0 then model else "model not reported yet");
+  return cast(string) s[0].agy_meta[0..<n];
+}
+// Who wrote turn i's reply: its harness and the model it reported running on, else its entry's.
+cp_turn_meta :: (s: [] CoderPage, i: int) -> string {
+  t := s[0].turns[i].model;
+  if cp_is_agy(s, t) && s[0].turns[i].ran_n > 0 {
+    ran := cast(string) s[0].turns[i].ran[0..<s[0].turns[i].ran_n];
+    seen := cast(string) s[0].agy_seen[0..<s[0].agy_seen_n];
+    return cp_agy_meta(s, ifx ran == seen && s[0].agy_seen_name_n > 0 then cast(string) s[0].agy_seen_name[0..<s[0].agy_seen_name_n] else ran);
+  }
+  return cp_model_meta(s, t);
+}
+// The model the host's Antigravity probe found (id, name; "" not known), for the picker and Settings.
+coder_page_agy_seen :: (s: [] CoderPage, id: string, name: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].agy_seen_n = cp_out(s[0].agy_seen[..], id);
+  s[0].agy_seen_name_n = cp_out(s[0].agy_seen_name[..], name);
+}
+// The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its text.
+coder_page_settings_gauth :: (s: [] CoderPage, kind: string, text: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  was_agy := cp_is_agy(s, s[0].model);
+  ok := kind == "vertex" || kind == "key";
+  s[0].set_gauth_n = ifx ok then cp_out(s[0].set_gauth[..], text) else 0;
+  s[0].gauth_vertex = kind == "vertex";
+  if was_agy { s[0].model = cp_agy_idx(s); }
+  s[0].model = cp_model_index(s);
+}
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) {
-    // the model Settings names for agy ("gemini-4-hydrogen · high"); none set: agy's own default
-    if s[0].set_agy_model_n == 0 || cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n] == "Default" { return "Antigravity CLI · default model"; }
-    n := cp_out(s[0].agy_meta[..], "Antigravity CLI · ");
-    n += cp_out(s[0].agy_meta[n..<s[0].agy_meta.count], cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n]);
-    return cast(string) s[0].agy_meta[0..<n];
+    return cp_agy_meta(s, cp_agy_shown(s));
   }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
@@ -145,8 +185,8 @@ cp_backend_label :: (s: [] CoderPage) -> string {
   if idx < 0 { return ""; }
   if cp_is_agy(s, idx) { return "Antigravity CLI"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
-  if s[0].set_gemini_n > 0 { return "Gemini API"; }          // the key set in Settings > Models
-  return "Gemini API";                                         // signed in with Experimental features: Microcoder's own Gemini credentials
+  if s[0].gauth_vertex { return "Vertex AI"; }                // Microcoder tries Vertex before any key (microcoder_keys.coax mk_plan)
+  return "Gemini API";                                         // a Gemini API key, or Microcoder's own credentials with Experimental features
 }
 coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return cp_cloud_ok(s);

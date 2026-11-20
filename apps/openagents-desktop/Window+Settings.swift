@@ -31,6 +31,14 @@ extension CoderWindow {
             cd_cloud_authed_set(r.page, authed)
             cd_settings_gemini(r.page, gemini)
         }
+        // a key saved or removed in Settings can change which sign-in Microcoder uses
+        CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+        wake()
+    }
+    /// The Gemini sign-in and Antigravity's real model (CoderProbes) on the shown page and every run's.
+    func applyProbes() {
+        CoderProbes.apply(page)
+        for r in runs.values where r.page != page { CoderProbes.apply(r.page) }
         wake()
     }
     /// Shows or hides the experimental features: the page's rows, the Foreman control server, the menus.
@@ -98,6 +106,8 @@ extension CoderWindow {
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         syncAntigravitySettings()
+        applyProbes()
+        CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }
     func syncAntigravitySettings() {
         cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())
@@ -115,6 +125,9 @@ extension CoderWindow {
             configureWorkerEnv(r, isForeman: id == Foreman.chatID)
         }
         syncAntigravitySettings()
+        // the model agy runs depends on these settings: ask it again
+        applyProbes()
+        CoderProbes.refreshAgyModel { [weak self] in self?.applyProbes() }
         wake()
     }
 }

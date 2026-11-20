@@ -66,6 +66,7 @@ coder_page_save :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) 
     n = json_raw(out, n, ifx s[0].turns[i].cut then ",\"cut\":true" else ",\"cut\":false");
     n = json_raw(out, n, ",\"state\":"); n = json_write_int(out, n, s[0].turns[i].state);
     n = json_raw(out, n, ",\"model\":"); n = json_write_string(out, n, cp_model_id(s, s[0].turns[i].model));
+    if s[0].turns[i].ran_n > 0 { n = json_raw(out, n, ",\"ran\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].ran[0..<s[0].turns[i].ran_n]); }
     if s[0].turns[i].state != CP_RUNNING && s[0].turns[i].took >= 0 { n = json_raw(out, n, ",\"worked\":"); n = json_write_int(out, n, cp_whole(s[0].turns[i].took)); }
     n = json_raw(out, n, ",\"note\":"); n = json_write_string(out, n, cast(string) s[0].turns[i].note[0..<s[0].turns[i].note_n]);
     if s[0].turns[i].refs_n > 0 { n = json_raw(out, n, ",\"refs\":"); n = json_write_string(out, n, cp_refs(s, i)); }
@@ -144,6 +145,8 @@ coder_page_load :: (s: [] CoderPage, text: string) -> bool #export_c #effects(al
     ar[0].at = 0;
     tm := cl_str(ar[..], t, "model");
     s[0].turns[i].model = ifx tm.count > 0 then cp_model_find_s(s, tm) else s[0].model;
+    ar[0].at = 0;
+    s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], cl_str(ar[..], t, "ran"));
     state := cl_int(t, "state"); more := cl_int(t, "more");
     s[0].turns[i].state = ifx state.ok && state.value > CP_RUNNING && state.value <= CP_STOPPED then state.value else CP_STOPPED;
     s[0].turns[i].more_cmds = ifx more.ok && more.value > 0 then more.value else 0;

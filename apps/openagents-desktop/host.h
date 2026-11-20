@@ -255,6 +255,10 @@ void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
 void cd_settings_gemini(void *page, const char *gemini);
+// The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its words.
+void cd_settings_gauth(void *page, const char *kind, const char *text);
+// The model agy opens a session on with the current settings (agyworker --probe): its id and name.
+void cd_agy_seen(void *page, const char *id, const char *name);
 void cd_settings_agy(void *page, const char *status, int mode, const char *model, const char *auth);
 int cd_settings_agy_mode(void *page);
 int cd_settings_tier(void *page);

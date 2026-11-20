@@ -489,6 +489,89 @@ enum CoderGemini {
     }
 }
 
+/// What the bundled workers report about this Mac, asked of the workers themselves so the app and a
+/// run never disagree: the sign-in Gemini models run on (`mcworker --auth`: Vertex AI from a service
+/// account or ADC, else a Gemini API key) and the model Antigravity really opens a session on with
+/// the current settings (`agyworker --probe`), never "default".
+enum CoderProbes {
+    private static let d = UserDefaults.standard
+    private static var authKnown = false
+    private static var authValue = (kind: "none", text: "")
+    /// Runs a bundled worker with args and returns its first stdout line ("" when it failed).
+    static func ask(_ program: String, _ args: [String], env extra: [String: String] = [:], timeout: TimeInterval) -> String {
+        guard let path = Bundle.main.path(forResource: program, ofType: nil) else { return "" }
+        let p = Process(), out = Pipe()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = CoderWorker.path
+        for (k, v) in extra { env[k] = v }
+        p.environment = env
+        p.standardInput = FileHandle.nullDevice
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return "" }
+        let deadline = Date().addingTimeInterval(timeout)
+        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+        if p.isRunning { p.terminate(); return "" }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)?.split(separator: "\n").first.map(String.init) ?? ""
+    }
+    /// The sign-in Gemini models run on: ("vertex", "Vertex AI (service account, project P)"),
+    /// ("key", "API key ending 1a2b (Settings)") or ("none", ""). Asked once, then on refreshGeminiAuth.
+    static var geminiAuth: (kind: String, text: String) {
+        if !authKnown { authValue = readAuth(); authKnown = true }
+        return authValue
+    }
+    static var geminiReady: Bool { geminiAuth.kind == "vertex" || geminiAuth.kind == "key" }
+    private static func readAuth() -> (kind: String, text: String) {
+        let line = ask("mcworker", ["--auth"], timeout: 10)
+        let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+        guard let kind = parts.first, kind == "vertex" || kind == "key" else { return ("none", "") }
+        return (kind, parts.count > 1 ? parts[1] : "")
+    }
+    static func refreshGeminiAuth(_ done: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let v = readAuth()
+            DispatchQueue.main.async { authValue = v; authKnown = true; done() }
+        }
+    }
+    /// The settings a probe answered for: a different model, effort, binary or profile asks again.
+    private static var agySignature: String { [CoderAntigravity.model, CoderAntigravity.effort, CoderAntigravity.bin, CoderAntigravity.profile].joined(separator: "|") }
+    /// The model agy opens a session on with the current settings: (id, name), ("", "") not known yet.
+    static var agySeen: (id: String, name: String) {
+        guard d.string(forKey: "agy.seen.for") == agySignature else { return ("", "") }
+        return (d.string(forKey: "agy.seen.id") ?? "", d.string(forKey: "agy.seen.name") ?? "")
+    }
+    private static var probing = false
+    private static var probedFor: String?   // the settings asked about since launch (agy can change its default on update)
+    static func refreshAgyModel(_ done: @escaping () -> Void) {
+        let sig = agySignature
+        guard CoderWorker.hasAntigravity, !probing, probedFor != sig else { return }
+        probing = true; probedFor = sig
+        var env = CoderAntigravity.workerEnv()
+        if env["CODER_AGY_BIN"] == nil, let agy = CoderAntigravity.resolvedBinaryPath() { env["CODER_AGY_BIN"] = agy }   // the agy the picker found
+        DispatchQueue.global(qos: .utility).async {
+            let line = ask("agyworker", ["--probe"], env: env, timeout: 60)
+            let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+            DispatchQueue.main.async {
+                probing = false
+                if let id = parts.first, !id.isEmpty {
+                    d.set(sig, forKey: "agy.seen.for"); d.set(id, forKey: "agy.seen.id"); d.set(parts.count > 1 ? parts[1] : id, forKey: "agy.seen.name")
+                }
+                done()
+            }
+        }
+    }
+    /// Both told to a page.
+    static func apply(_ page: UnsafeMutableRawPointer?) {
+        let a = geminiAuth, seen = agySeen
+        cd_settings_gauth(page, a.kind, a.text)
+        cd_agy_seen(page, seen.id, seen.name)
+    }
+}
+
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
 
 /// Antigravity CLI (`agy`) detection, version check (>= 1.5.0), and persisted settings (#13803).

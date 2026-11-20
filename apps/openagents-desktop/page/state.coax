@@ -204,6 +204,7 @@ CpTurn :: struct {
   refs_at: int; refs_n: int;                  // its attachments' paths and the files it mentions, as the note its task carries: CoderPage.long_buf[refs_at..<refs_at + refs_n] (#13699)
   state: int; stopping: bool;
   model: int;                 // index into CP_MODEL_ID used for this turn (0: Neon)
+  ran: [64] u8; ran_n: int;   // the model its harness reported it ran on (Antigravity's attempt line: gemini-4-carbon-low); "" not reported
   info: bool;                 // a click on the reply shows who wrote it, beside its Copy
   ay: f32; ah: f32;           // the reply's place as last drawn (ah 0: not drawn)
   fresh: bool;                // a model request ended: the next reply text starts the reply again
@@ -311,12 +312,17 @@ CoderPage :: struct {
   set_box: [4] f32; set_due: bool; bar_full: bool;   // set_due: the page scrolled to a row, one more frame; bar_full: the window is in full screen (titlebar.coax)
   set_claude: [48] u8; set_claude_n: int;
   set_gemini: [48] u8; set_gemini_n: int;
+  set_gauth: [96] u8; set_gauth_n: int;   // the sign-in Gemini models run on, as mcworker --auth reports it ("Vertex AI (service account, project P)", "API key ending 1a2b (Settings)"); "" none
+  gauth_vertex: bool;                     // that sign-in is Vertex AI (Microcoder tries it before any API key)
   set_orkey: [48] u8; set_orkey_n: int;
   set_version: [48] u8; set_version_n: int;
   set_agy_status: [96] u8; set_agy_status_n: int;
   set_agy_model: [96] u8; set_agy_model_n: int;
   set_agy_auth: [96] u8; set_agy_auth_n: int;
   agy_meta: [128] u8;         // cp_model_meta's Antigravity line: "Antigravity CLI · " and the model
+  agy_desc: [160] u8;         // cp_model_desc's Antigravity line: "Antigravity CLI · " the model and the review mode
+  agy_seen: [64] u8; agy_seen_n: int;             // the model agy runs a new session on with these settings (agyworker --probe): its id
+  agy_seen_name: [64] u8; agy_seen_name_n: int;   // and agy's name for it ("Gemini 4 Carbon (Low)")
   set_agy_mode: int;          // 0 Auto, 1 Default, 2 Plan
   fu: [1] CpFollow;            // queued and steered follow-ups (followups.coax; GitHub #13715)
   todos: [1] CpTodos;          // live agent to-do checklist (todos.coax)
