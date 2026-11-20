@@ -71,16 +71,6 @@ ecdh_admit :: (secret_len:int,peer_len:int,capacity:int,present:bool,aligned:boo
   if secret_len!=32 || peer_len!=32 || capacity<32 || !present || !aligned || overlap {return EC_METADATA;}
   return EC_OK;
 }
-// Private: canonical finite point; zero is the canonical infinity encoding.
-ecdh_table :: (point:Sg32)->[9]Sg32 #effects(all) {
-  table:[9]Sg32;table[0]=sg32_infinity();table[1]=point;
-  for i:2..<9 {table[i]=ef_add(table[i-1],point);}
-  return table;
-}
-#test "table starts with infinity and the supplied point" {
-  point:=sg32_from_point(sg_generator());table:=ecdh_table(point);inf:=sg32_infinity();
-  #assert (sg32_mask_equal(table[0].x,inf.x)&sg32_mask_equal(table[0].y,inf.y)&sg32_mask_equal(table[0].z,inf.z)&sg32_mask_equal(table[1].x,point.x)&sg32_mask_equal(table[1].y,point.y)&sg32_mask_equal(table[1].z,point.z))==CB_MAX64;
-}
 #test "highest scalar window reaches its independent raw x" #steps 100000000 {
   key:[32]u8;key[0]=128;peer:=ECDH_TEST_PEER;
   want:=[4]u64.[0xb23790a42be63e1b,0x251ad6c94fdef072,0x71ec0aada31db6c3,0xe8bd32043f8be384];work:[1]EcdhScratch;
