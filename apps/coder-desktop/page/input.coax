@@ -164,7 +164,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act == CP_COPY_ASK || act == CP_COPY_REPLY {
     turn := cp_number(surface_id(s[0].surface[..], row), "t");
     if turn < 0 || turn >= s[0].nturns { return false; }
-    s[0].copied_turn = turn; s[0].copied_block = -1; s[0].copied_kind = ifx act == CP_COPY_ASK then CP_COPIED_ASK else CP_COPIED_REPLY; s[0].ask = CP_ASK_COPY; return true;
+    s[0].copied_turn = turn; s[0].copied_block = -1; s[0].copied_kind = ifx act == CP_COPY_ASK then CP_COPIED_ASK else CP_COPIED_REPLY; s[0].copied_at = s[0].clock; s[0].ask = CP_ASK_COPY; return true;
   }
   if act == CP_COPY_ALL {
     if s[0].nturns == 0 { return false; }

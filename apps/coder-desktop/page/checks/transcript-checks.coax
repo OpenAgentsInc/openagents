@@ -474,3 +474,44 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
     #assert an > 0 && mww_task_read(ar[..], cast(string) out[0..<an - 1], t[..]) && t[0].no_ask && t[0].sandbox == "danger-full-access";
   }
 }
+
+#test "message copy buttons follow Zeron's hover lane: hidden until hovered, flush to edge, and reset Copied after 1.2s" {
+  p: [1] CoderPage; s := p[..];
+  cp_init(s); s[0].d = 1.0f32; s[0].ready = true; f: [1] UiFrame;
+  #assert coder_page_set_text(s, "hello") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"world\"}") == MWW_ENDED;
+  // pointer outside the conversation column: neither message copy button is shown
+  s[0].px = 0; s[0].py = 0;
+  #assert cp_test_draw(s, f[..]);
+  #assert surface_find(s[0].surface[..], "t0.uc") < 0 && surface_find(s[0].surface[..], "t0.ac") < 0;
+  // hover over the user message: t0.uc appears at the right edge (24x24pt), t0.ac stays hidden
+  ur := surface_find(s[0].surface[..], "t0.u");
+  #assert ur >= 0;
+  ub := surface_rows(s[0].surface[..]).rows[ur];
+  s[0].px = ub.x + 10; s[0].py = ub.y + 4;
+  #assert cp_test_draw(s, f[..]);
+  uc := surface_find(s[0].surface[..], "t0.uc");
+  #assert uc >= 0 && surface_find(s[0].surface[..], "t0.ac") < 0;
+  uc_row := surface_rows(s[0].surface[..]).rows[uc];
+  btn := 24.0f32 / ARCADE_PHONE_SCALE;
+  #assert uc_row.w > btn - 0.1f32 && uc_row.w < btn + 0.1f32 && uc_row.h > btn - 0.1f32 && uc_row.h < btn + 0.1f32;
+  #assert uc_row.x + uc_row.w > s[0].col_x + s[0].col_w - 0.5f32 && uc_row.x + uc_row.w < s[0].col_x + s[0].col_w + 0.5f32;
+  // hover over the assistant reply: t0.ac appears flush left, t0.uc hides
+  s[0].px = s[0].col_x + 10; s[0].py = s[0].turns[0].ay + 4;
+  #assert cp_test_draw(s, f[..]);
+  ac := surface_find(s[0].surface[..], "t0.ac");
+  #assert ac >= 0 && surface_find(s[0].surface[..], "t0.uc") < 0;
+  ac_row := surface_rows(s[0].surface[..]).rows[ac];
+  #assert ac_row.x > s[0].col_x - 0.5f32 && ac_row.x < s[0].col_x + 0.5f32;
+  // pressing Copy shows "Copied" even after the pointer leaves, and clears after 1.2s
+  #assert cp_press(s, ac) && coder_page_action(s) == CP_ASK_COPY;
+  #assert s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == 0;
+  s[0].px = 0; s[0].py = 0;
+  #assert cp_test_draw(s, f[..]);
+  ac2 := surface_find(s[0].surface[..], "t0.ac");
+  #assert ac2 >= 0 && surface_say(s[0].surface[..], ac2) == "Copied";
+  s[0].clock += 1.3f32;
+  out: [64] f32;
+  _ := coder_page_frame(s, out[..], 900.0f32, 640.0f32, 1.0f32, 0.016f32);
+  #assert s[0].copied_kind == CP_COPIED_NONE && s[0].copied_turn == -1;
+}

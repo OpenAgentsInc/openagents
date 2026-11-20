@@ -144,17 +144,45 @@ cp_act_group :: (s: [] CoderPage, f: [] UiFrame, name: string, head: int, nrows:
   }
   return y - y0;
 }
+// Zeron's message hover lane (transcript.luau): 32pt tall (8pt top gap + 24pt button),
+// always reserved so nothing shifts; button shows only while the message or its lane is
+// hovered (or during the 1.2s Copied confirmation). 24x24 rounded-md (6pt) transparent
+// button with 14pt copy/check icon, flush with the message's edge (right for user, left for reply).
+cp_copy_lane :: (f: [] UiFrame, id: string, bx: f32, y: f32, visible: bool, copied: bool, action: int) -> f32 {
+  u: f32 = ARCADE_PHONE_SCALE;
+  lane := 32.0f32 / u;
+  if !visible { return lane; }
+  k := f[0].skin; sh := f[0].sheet;
+  side := 24.0f32 / u;
+  top := 8.0f32 / u;
+  rad := 6.0f32 / u;
+  ico := 14.0f32 / u;
+  by := y + top;
+  label := ifx copied then "Copied" else "Copy message";
+  key := uiframe_key(f, id);
+  p := uiframe_press(f, key, id);
+  hov := uiframe_hovered(f, id);
+  row := uiframe_semantic(f, id, EL_BUTTON, label, bx, by, side, side, 0, action);
+  if p > 0 { sheet_fill(sh, bx, by, side, side, rad, k.raised); }
+  else if hov { sheet_fill(sh, bx, by, side, side, rad, k.hover); }
+  ink := ifx (p > 0 || hov) then k.ink else k.muted;
+  sheet_icon(sh, ifx copied then k.icon_check else k.icon_copy, bx + (side - ico) / 2, by + (side - ico) / 2, ico, ink);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, side, side);
+  return lane;
+}
 // The conversation from x, cw wide, in the window up to w: the messages, their groups and replies,
 // the notices, the goal and the budget, scrolling above the composer.
 cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, cw: f32, h: f32, running: bool, full: bool, exceeded: bool) {
   k := f[0].skin; a := k.app;
-  side := a.icon_button; edge := (side - a.icon) / 2;   // a Copy's icon sits on its message's edge
+  u: f32 = ARCADE_PHONE_SCALE;
+  lane := 32.0f32 / u; lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h;   // what scrolls runs up to the follow-ups and the bar
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
   cp_follow(s, f[0].dt);
   uiframe_clip(f, left, top, w, bottom);
+  in_view := s[0].px >= x && s[0].px <= x + cw && s[0].py >= top && s[0].py < bottom;
   y := top - s[0].scroll - s[0].scr[0].stretch + a.gap;
   // the first message starts under the window's title bar, which holds the corners' buttons (titlebar.coax)
   y += cp_bar(s);
@@ -180,7 +208,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       y += app_message_user_fold(f, cp_id(ib[..], i, ".u"), x, y, cw, cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n], s[0].turns[i].ask_open, CP_BUBBLE_FOLD);
       f[0].skin.motion.enter = enter; if s[0].live_ask == i { s[0].live_ask = -1; }
       asked := s[0].copied_kind == CP_COPIED_ASK && s[0].copied_turn == i;
-      y += app_icon_button(f, cp_id(ib[..], i, ".uc"), x + cw - side + edge, y, ifx asked then k.icon_check else k.icon_copy, ifx asked then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_ASK) + a.gap_small;
+      u_hov := in_view && s[0].py >= y0 && s[0].py < y + lane;
+      y += cp_copy_lane(f, cp_id(ib[..], i, ".uc"), x + cw - lane_btn, y, u_hov || asked, asked, CP_COPY_ASK);
       // what it did on its way to the reply: one activity group (#13731)
       gh := cp_group(s, f, i, x, y, cw, top, bottom);
       if gh > 0 { y += gh + a.gap; }
@@ -188,16 +217,18 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       y += cp_fu_steered(s, f, i, x, y, cw);
       if s[0].turns[i].reply_n > 0 {
         s[0].turns[i].ay = y;
-        if s[0].live_reply != i { f[0].skin.motion.enter = 0; }
-        y += app_message_agent_linked(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
-                                      ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH);
+        f[0].skin.motion.enter = 0;
+        vv := ifx s[0].veil_turn == i then MdVeil.{ veil = s[0].veil[..], now = s[0].clock } else MdVeil.{};
+        y += app_message_agent_linked_veiled(f, cp_id(ib[..], i, ".a"), x, y, cw, cp_doc_drawn(s, i), 0, s[0].turns[i].blocks,
+                                             ifx s[0].copied_kind == CP_COPIED_BLOCK && s[0].copied_turn == i then s[0].copied_block else -1, CP_COPY, CP_PATH, vv);
         f[0].skin.motion.enter = enter; if s[0].live_reply == i { s[0].live_reply = -1; }
         s[0].turns[i].ah = y - s[0].turns[i].ay;
         if s[0].turns[i].state != CP_RUNNING {
           did := s[0].copied_kind == CP_COPIED_REPLY && s[0].copied_turn == i;
+          a_hov := in_view && s[0].py >= s[0].turns[i].ay && s[0].py < y + lane;
           // who wrote it, beside Copy, after a click on the reply
-          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x - edge + side, y + (side - k.small.line) / 2, cw - side, cp_model_meta(s, s[0].turns[i].model), false); }
-          y += app_icon_button(f, cp_id(ib[..], i, ".ac"), x - edge, y, ifx did then k.icon_check else k.icon_copy, ifx did then "Copied" else "Copy message", APP_BUTTON_QUIET, 0, CP_COPY_REPLY);
+          if s[0].turns[i].info { _ := app_meta(f, cp_id(ib[..], i, ".m"), x + lane_btn + a.gap_small, y + lane_top + (lane_btn - k.small.line) / 2, cw - lane_btn - a.gap_small, cp_model_meta(s, s[0].turns[i].model), false); }
+          y += cp_copy_lane(f, cp_id(ib[..], i, ".ac"), x, y, a_hov || did || s[0].turns[i].info, did, CP_COPY_REPLY);
         } else { y += a.gap; }
       } else { s[0].turns[i].ah = 0; }
       if s[0].turns[i].cut {

@@ -206,6 +206,98 @@ app_act_trunk :: (f: [] UiFrame, x: f32, y: f32, h: f32) {
   s := f[0].skin; if h <= 0 { return; }
   sheet_fill(f[0].sheet, x + s.act.trunk - 0.5, y, 1, h, 0, opacity(s.ink, s.act.tree_ink));
 }
+// Tree entrance timing: upper trunk draws down first, then the elbow sweeps around and out.
+APP_ACT_TREE_DUR :: 0.28f32;
+APP_ACT_TRUNK_SPLIT :: 0.34f32;
+APP_ACT_BEND_SPLIT :: 0.62f32;
+app_act_clamp01 :: (v: f32) -> f32 { return ifx v < 0 then 0.0f32 else ifx v > 1 then 1.0f32 else v; }
+// Entrance progress 0..1 for a newly arrived row's upper trunk and branch elbow. Historical
+// rows (frame 0) and older finished rows scrolled back into view settle at 1 immediately.
+app_act_tree_enter :: (f: [] UiFrame, k: int, below: bool, running: bool) -> f32 {
+  if !keyed_ok(f[0].keyed, k) { return 1; }
+  if f[0].keyed[0].frame == 0 || (keyed_fresh(f[0].keyed, k) && below && !running) {
+    f[0].keyed[0].rows[k].entry[0].value = 1;
+    f[0].keyed[0].rows[k].entry[0].phase = AM_ENTERED;
+    f[0].keyed[0].rows[k].ticked |= KEYED_T_ENTRY;
+    return 1;
+  }
+  return app_act_clamp01(keyed_entry(f[0].keyed, k, APP_ACT_TREE_DUR, AM_OUT_CUBIC));
+}
+// Lower trunk extension progress 0..1 when a new row arrives beneath this row. Starts at
+// target on fresh rows (so loaded/scrolled rows never replay) and grows smoothly on false->true.
+app_act_tree_below :: (f: [] UiFrame, k: int, below: bool) -> f32 {
+  if keyed_ok(f[0].keyed, k) {
+    f[0].keyed[0].rows[k].spring[0].stiffness = 220;
+    f[0].keyed[0].rows[k].spring[0].damping = 26;
+    f[0].keyed[0].rows[k].spring[0].clamp = true;
+  }
+  return app_act_clamp01(uiframe_spring(f, k, ifx below then 1.0f32 else 0.0f32));
+}
+// Animated trunk for a thought row: grows smoothly down when a row arrives beneath it.
+app_act_thought_trunk :: (f: [] UiFrame, k: int, x: f32, y: f32, h: f32, below: bool) {
+  lower := app_act_tree_below(f, k, below);
+  if lower <= 0.001 || h <= 0 { return; }
+  if lower >= 0.999 { app_act_trunk(f, x, y, h); return; }
+  s := f[0].skin; a := s.act; sh := f[0].sheet;
+  glow := 1.0f32 - lower;
+  ink_a := a.tree_ink * (1.0f32 + 1.35f32 * glow); if ink_a > 0.55f32 { ink_a = 0.55f32; }
+  low_h := h * lower;
+  sheet_fill(sh, x + a.trunk - 0.5, y, 1, low_h, 0, opacity(s.ink, ink_a));
+  sheet_fill(sh, x + a.trunk - 1, y + low_h - 1, 2, 2, 1, opacity(s.ink, a.tree_ink * 2.5f32 * glow));
+}
+// Animated trunk and branch elbow for a tool row: upper trunk draws down into the bend,
+// the elbow sweeps smoothly out to branch_end, and the lower trunk extends when a row follows.
+app_act_tree_branch :: (f: [] UiFrame, k: int, x: f32, y: f32, rh: f32, h: f32, below: bool, running: bool) {
+  s := f[0].skin; a := s.act; sh := f[0].sheet;
+  mid := rh / 2; bend_y := y + mid - a.bend;
+  sx := x + a.trunk; ex := x + a.branch_end;
+  enter := app_act_tree_enter(f, k, below, running);
+  lower := app_act_tree_below(f, k, below);
+  if enter >= 0.999 && (!below || lower >= 0.999) {
+    tree := opacity(s.ink, a.tree_ink);
+    if below { app_act_trunk(f, x, y, h); } else { app_act_trunk(f, x, y, mid - a.bend); }
+    sheet_elbow(sh, sx, bend_y, a.bend, ex, below, tree);
+    return;
+  }
+  up_p := app_act_clamp01(enter / APP_ACT_TRUNK_SPLIT);
+  br_p := app_act_clamp01((enter - APP_ACT_TRUNK_SPLIT) / (1.0f32 - APP_ACT_TRUNK_SPLIT));
+  e_glow := (1.0f32 - enter) * (1.0f32 - enter);
+  l_glow := ifx below then (1.0f32 - lower) else 0.0f32;
+  glow := ifx e_glow > l_glow then e_glow else l_glow;
+  ink_a := a.tree_ink * (1.0f32 + 1.35f32 * glow); if ink_a > 0.55f32 { ink_a = 0.55f32; }
+  tree := opacity(s.ink, ink_a);
+  up_h := (mid - a.bend) * up_p;
+  if up_h > 0 { sheet_fill(sh, sx - 0.5, y, 1, up_h, 0, tree); }
+  low_h := (h - (mid - a.bend)) * lower;
+  if low_h > 0 {
+    sheet_fill(sh, sx - 0.5, bend_y, 1, low_h, 0, tree);
+    if lower < 0.999 {
+      sheet_fill(sh, sx - 1, bend_y + low_h - 1, 2, 2, 1, opacity(s.ink, a.tree_ink * 2.5f32 * (1.0f32 - lower)));
+    }
+  }
+  if br_p <= 0.001 {
+    if up_h > 0 { sheet_fill(sh, sx - 1, y + up_h - 1, 2, 2, 1, opacity(s.ink, a.tree_ink * 2.8f32)); }
+    return;
+  }
+  if br_p >= 0.999 {
+    sheet_elbow(sh, sx, bend_y, a.bend, ex, lower > 0.001, tree);
+    return;
+  }
+  tip_x: f32 = sx; tip_y: f32 = bend_y;
+  if br_p <= APP_ACT_BEND_SPLIT {
+    t := br_p / APP_ACT_BEND_SPLIT;
+    tip_x = sx + a.bend * t * t;
+    tip_y = bend_y + a.bend * (2.0f32 * t - t * t);
+  } else {
+    u := (br_p - APP_ACT_BEND_SPLIT) / (1.0f32 - APP_ACT_BEND_SPLIT);
+    tip_x = sx + a.bend + (ex - (sx + a.bend)) * u;
+    tip_y = bend_y + a.bend;
+  }
+  sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, sx - 2, bend_y - 1, tip_x + 1.0, tip_y + 1.0));
+  sheet_elbow(sh, sx, bend_y, a.bend, ex, lower > 0.001, tree);
+  sheet_under(sh, prim_unclip(sh[0].under, sh[0].nu));
+  sheet_fill(sh, tip_x - 1, tip_y - 1, 2, 2, 1, opacity(s.ink, a.tree_ink * 2.8f32 * (1.0f32 - br_p)));
+}
 // A small quiet button on a faint ground ("Show all N lines"), at (x, y). Returns its width.
 app_act_fold_button :: (f: [] UiFrame, id: string, x: f32, y: f32, label: string, expanded: bool, action: int) -> f32 {
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m;
@@ -315,6 +407,8 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   line := a.thought_line; folded_h := a.thought_lines * line;
   k := uiframe_key(f, id);
   open := app_tool_is_open(f, k, false);
+  t := uiframe_spring(f, k, ifx open then 1.0f32 else 0.0f32);
+  if t < 0 { t = 0; } else if t > 1 { t = 1; }
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
   ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
   total: f32 = 0; lines := 0;
@@ -329,30 +423,35 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
     total = cast(f32) lines * line;
   }
   long := lines > cast(int) a.thought_lines;
-  clipped := long && !open;
+  shown := ifx !long then total else folded_h + (total - folded_h) * t;
+  clipped := long && t < 1.0f32;
+  fade_h := line * a.thought_fade * (1.0f32 - t);
   if clipped {
-    sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
-    sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
-    uiframe_clip(f, tx, ty, x + w, ty + folded_h);
+    if fade_h > 0 {
+      sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + shown, fade_h));
+      sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + shown, fade_h));
+    }
+    uiframe_clip(f, tx, ty, x + w, ty + shown);
   }
   if r.blocks > 0 {
     py: f32 = 0;
     for b: r.block0..<r.block0 + r.blocks {
       if b > r.block0 { py += a.thought_gap; }
-      if clipped && py >= folded_h { break; }
+      if clipped && py >= shown { break; }
       py += markdown_block(sh, m, ns, r.doc, b, tx, ty + py, tw);
     }
   } else {
     for q: 0..<lines {
-      if clipped && cast(f32) q * line >= folded_h { break; }
+      if clipped && cast(f32) q * line >= shown { break; }
       _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, s.body.face, s.muted, app_line(r.output, q), true);
     }
   }
   if clipped {
     uiframe_unclip(f);
-    sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
+    if fade_h > 0 {
+      sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
+    }
   }
-  shown := ifx open || !long then total else folded_h;
   wb: [EL_ID] u8;
   said := uiframe_semantic(f, app_id(wb[..], id, ".words"), EL_TEXT, "Thought process", tx, ty, tw, shown, 0, 0);
   elt_value(f[0].rows, said, r.output);
@@ -429,9 +528,7 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   h := rh;
   if open { h += app_act_detail(f, id, k, tx, y + rh, w - a.gutter, r, action); }
   // the branch: the trunk to the elbow (on down the row when a row follows), the elbow to its end
-  mid := rh / 2; tree := opacity(s.ink, a.tree_ink);
-  if below { app_act_trunk(f, x, y, h); } else { app_act_trunk(f, x, y, mid - a.bend); }
-  sheet_elbow(sh, x + a.trunk, y + mid - a.bend, a.bend, x + a.branch_end, below, tree);
+  app_act_tree_branch(f, k, x, y, rh, h, below, r.running);
   return h;
 }
 

@@ -164,6 +164,10 @@ app_code_lang :: (lang: string) -> string {
 // languages are highlighted in the skin's syntax roles. A line wider than the
 // block is cut with an ellipsis. Returns its height.
 app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, code: string, copied: bool, action: int) -> f32 {
+  vv: MdVeil;
+  return app_code_veiled(f, id, x, y, w, lang, code, copied, action, vv, 0);
+}
+app_code_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, code: string, copied: bool, action: int, vv: MdVeil, base: int) -> f32 {
   s := f[0].skin; a := s.app; sh := f[0].sheet; m := f[0].m; line := s.md.block_line;
   nl := 1;
   for i: 0..<code.count { if code[i] == '\n' && i + 1 < code.count { nl += 1; } }
@@ -195,8 +199,19 @@ app_code :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, lang: string, co
     j := i; while j < code.count && code[j] != '\n' { j += 1; }
     part := cast(string) code[i..<j]; ly := top + cast(f32) row * line;
     fits := measure_width(m, s.mono.face, part) <= room;
-    if colored && fits { markdown_syntax_line(sh, m, s, part, runs[..], x + a.code_pad, ly, line, s.mono.face, s.ink); }
-    else { _ := sheet_plain(sh, m, x + a.code_pad, ly, line, s.mono.face, s.ink, ifx fits then part else app_fit(f, s.mono.face, part, room), true); }
+    if colored && fits { markdown_syntax_line_veiled(sh, m, s, part, runs[..], x + a.code_pad, ly, line, s.mono.face, s.ink, base + i, vv); }
+    else if vv.veil.count > 0 && fits {
+      px := x + a.code_pad; q := 0;
+      while q < part.count {
+        n_to := md_veil_next(vv, base + i + q, base + j) - (base + i);
+        if n_to <= q { n_to = part.count; }
+        seg := cast(string) part[q..<n_to];
+        va := md_veil_alpha(vv, base + i + q);
+        if va > 0.001f32 { _ := sheet_plain(sh, m, px, ly, line, s.mono.face, opacity(s.ink, va), seg, true); }
+        px += measure_width(m, s.mono.face, seg);
+        q = n_to;
+      }
+    } else { _ := sheet_plain(sh, m, x + a.code_pad, ly, line, s.mono.face, opacity(s.ink, md_veil_alpha(vv, base + i)), ifx fits then part else app_fit(f, s.mono.face, part, room), true); }
     row += 1; i = j + 1;
   }
   uiframe_close(f);
@@ -222,7 +237,14 @@ app_message_agent_part :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, do
 // counted from block0 (app_message_path is its text), underlined under the pointer, that
 // dispatches `path_action` (0: none, the code is only text).
 app_message_agent_linked :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int) -> f32 {
+  vv: MdVeil;
+  return app_message_agent_linked_veiled(f, id, x, y, w, doc, block0, blocks, copied, copy_action, path_action, vv);
+}
+// The same with an optional paint-only opacity veil (ignored under reduced motion).
+app_message_agent_linked_veiled :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, doc: [] MdDoc, block0: int, blocks: int, copied: int, copy_action: int, path_action: int, veil_in: MdVeil) -> f32 {
   s := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  vv: MdVeil;
+  if !f[0].reduced_motion { vv = veil_in; }
   k := uiframe_key(f, id); from := app_sheet_mark(f);
   // a screen reader hears the whole message, block by block, and a new reply is announced (EL_S_LIVE)
   row := uiframe_semantic(f, id, EL_TEXT, ifx blocks > 0 then md_block_text(doc, block0) else "", x, y, w, s.md.line, EL_S_LIVE, 0);
@@ -235,12 +257,12 @@ app_message_agent_linked :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, 
     if kind == MB_CODE {
       part: [EL_ID] u8; cid: [EL_ID] u8;
       n := el_copy(part[..], ".code."); n = text_put_int(part[..], n, b - block0);
-      h += app_code(f, app_id(cid[..], id, cast(string) part[0..<n]), x, y + h, w, md_lang(doc, b), md_block_text(doc, b), copied == b - block0, copy_action);
+      h += app_code_veiled(f, app_id(cid[..], id, cast(string) part[0..<n]), x, y + h, w, md_lang(doc, b), md_block_text(doc, b), copied == b - block0, copy_action, vv, doc[0].blocks[b].at);
     } else if kind == MB_RULE { h += app_divider(f, x, y + h, w); }
-    else if path_action == 0 { h += markdown_block(sh, m, s, doc, b, x, y + h, w); }
+    else if path_action == 0 { h += markdown_block_veiled(sh, m, s, doc, b, x, y + h, w, vv); }
     else {
       ls := s; ls.md.link_paths = true; nh0 := sh[0].nh;
-      h += markdown_block(sh, m, ls, doc, b, x, y + h, w);
+      h += markdown_block_veiled(sh, m, ls, doc, b, x, y + h, w, vv);
       files += app_message_paths(f, id, doc, b, nh0, files, path_action);
     }
   }

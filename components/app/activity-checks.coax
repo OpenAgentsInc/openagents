@@ -95,6 +95,11 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   h := app_act_row(f, "th", 0, 0, 400, r, true, 9);
   #assert app_test_end(t[..]) && h == 4 + 6 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show all 8 lines" && app_test_texts(t[..], "seven") == 0;
   #assert app_act_press(t[0].ks[..], "th", "th");
+  // without reduced motion, expanding animates height on a spring between folded and full
+  app_test_begin(t[..], "", "", false);
+  mid := app_act_row(f, "th", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && mid > 4 + 6 * 20 + 4 + 26 && mid < 4 + 8 * 20 + 4 + 26 && keyed_moving(t[0].ks[..]);
+  // with reduced motion, it snaps immediately to full height
   app_test_begin(t[..], "", "", true);
   h = app_act_row(f, "th", 0, 0, 400, r, false, 9);
   #assert app_test_end(t[..]) && h == 4 + 8 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show fewer lines" && app_test_texts(t[..], "eight") == 1;

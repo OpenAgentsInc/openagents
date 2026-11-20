@@ -31,6 +31,9 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   if !s[0].now_host { s[0].now = cast(f64) s[0].clock; }
   cp_ed_tick(s, s[0].now);
   live := cp_scroll_step(s, s[0].now + cast(f64) (ifx t > 0.004 && t < 0.034 then t else 0.0083f32));
+  if (s[0].copied_kind == CP_COPIED_ASK || s[0].copied_kind == CP_COPIED_REPLY) && s[0].clock - s[0].copied_at >= 1.2f32 {
+    s[0].copied_kind = CP_COPIED_NONE; s[0].copied_turn = -1;
+  }
   a[0].frame += 1;
   k := cp_skin();
   v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.canvas, k.canvas);
@@ -41,7 +44,9 @@ coder_page_frame :: (s: [] CoderPage, out: [] f32, width: f32, height: f32, dpr:
   s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;
   uiframe_begin(f[..], s[0].surface[..], s[0].keyed[..], measure_font(a), k, input, s[0].time, t, s[0].reduced, false);
   cp_layout(s, f[..], w, h);
-  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due || s[0].anim;
+  copy_ticking := (s[0].copied_kind == CP_COPIED_ASK || s[0].copied_kind == CP_COPIED_REPLY) && s[0].clock - s[0].copied_at < 1.2f32;
+  veil_ticking := !s[0].reduced && s[0].veil_turn >= 0 && veil_is_fading(s[0].veil[..], s[0].clock);
+  s[0].moving = uiframe_moving(f[..]) || cp_running(s) || cp_side_busy(s) || s[0].set_due || s[0].anim || copy_ticking || veil_ticking;
   s[0].scr_live = live;
   s[0].set_due = false;
   if cp_overlay(s, f[..], w, h, t) { s[0].moving = true; }

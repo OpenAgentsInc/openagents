@@ -15,8 +15,20 @@
 //   coax/bin/coax test components/kit/markdown.coax
 
 #load "../core/syntax.coax";
+#load "../core/veil.coax";
 #load "../paint/sheet.coax";
 #load "../skin/skin.coax";
+
+// Optional paint-only opacity veil for streaming markdown (empty veil = full opacity).
+MdVeil :: struct { veil: [] Veil; now: f32; }
+md_veil_alpha :: (vv: MdVeil, pos: int) -> f32 {
+  if vv.veil.count == 0 { return 1.0f32; }
+  return veil_alpha_at(vv.veil, vv.now, pos);
+}
+md_veil_next :: (vv: MdVeil, pos: int, limit: int) -> int {
+  if vv.veil.count == 0 { return limit; }
+  return veil_next_edge(vv.veil, pos, limit);
+}
 
 // The hits a code block's header leaves on the sheet: a = the block.
 MARKDOWN_HIT_WRAP :: 3; MARKDOWN_HIT_COPY :: 4;
@@ -56,12 +68,20 @@ markdown_paths_in :: (text: string, runs: [] MdRun, out: [] MdPath, n0: int) -> 
 // its trailing spaces off the wash, so a chip broken at a space ends at its
 // last glyph, inside the column (text_wrap left room for the pad).
 markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, color: Rgba, hard: bool) {
+  markdown_line_veiled(sh, m, s, faces, text, runs, from, to, x, y, lh, color, hard, 0, MdVeil.{});
+}
+markdown_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, text: string, runs: [] MdRun, from: int, to: int, x: f32, y: f32, lh: f32, color: Rgba, hard: bool, base: int, vv: MdVeil) {
   ln := sheet_line(sh, x, y, lh, hard);
   i := from; pen := x;
   while i < to {
     style := md_style_at(runs, i); marks := md_marks_at(runs, i);
     j := i;
     while j < to && md_style_at(runs, j) == style && md_marks_at(runs, j) == marks { j += 1; }
+    if vv.veil.count > 0 {
+      edge := md_veil_next(vv, base + i, base + j) - base;
+      if edge > i && edge < j { j = edge; }
+    }
+    a := md_veil_alpha(vv, base + i);
     seg := cast(string) text[i..<j];
     face := text_face(faces, style);
     w: f32 = 0;
@@ -69,16 +89,17 @@ markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, tex
       lit := seg.count;
       if j == to { while lit > 0 && seg[lit - 1] == ' ' { lit -= 1; } }
       ww := measure_width(m, face, cast(string) seg[0..<lit]);
-      if lit > 0 { sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, ww + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, s.code_wash); }
-      w = sheet_text(sh, m, ln, pen, y, lh, face, s.accent, seg);
+      if lit > 0 { sheet_fill(sh, pen - s.md.code_pad_x, y + s.md.code_inset_y, ww + 2 * s.md.code_pad_x, lh - 2 * s.md.code_inset_y, s.md.code_radius, opacity(s.code_wash, a)); }
+      w = sheet_text(sh, m, ln, pen, y, lh, face, opacity(s.accent, a), seg);
       if s.md.link_paths && lit > 0 && markdown_whole_code(runs, i, j) && md_path_like(cast(string) seg[0..<lit]) {
         sheet_hit(sh, MARKDOWN_HIT_PATH, i, j, pen - s.md.code_pad_x, y, ww + 2 * s.md.code_pad_x, lh);
       }
     } else {
       // a link reads in the accent; struck text keeps its colour under a rule through its middle
-      w = sheet_text(sh, m, ln, pen, y, lh, face, ifx (marks & MD_LINK) != 0 then s.accent else color, seg);
+      c := ifx (marks & MD_LINK) != 0 then s.accent else color;
+      w = sheet_text(sh, m, ln, pen, y, lh, face, opacity(c, a), seg);
     }
-    if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen, y + (lh - s.border) / 2, w, s.border, color); }
+    if (marks & MD_STRIKE) != 0 { sheet_rule(sh, pen, y + (lh - s.border) / 2, w, s.border, opacity(color, a)); }
     pen += w;
     i = j;
   }
@@ -86,25 +107,47 @@ markdown_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, faces: TextFaces, tex
 
 // A wrapped styled text at (x, y), width w; returns its height.
 markdown_text :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba) -> f32 {
+  return markdown_text_veiled(sh, m, s, text, runs, x, y, w, lh, color, 0, MdVeil.{});
+}
+markdown_text_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, text: string, runs: [] MdRun, x: f32, y: f32, w: f32, lh: f32, color: Rgba, base: int, vv: MdVeil) -> f32 {
   lines: [64] TextLine;
   faces := uiskin_faces(s);
   n := text_wrap(m, faces, text, runs, w, lines[..]);
-  for k: 0..<n { markdown_line(sh, m, s, faces, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, color, k + 1 == n); }
+  for k: 0..<n { markdown_line_veiled(sh, m, s, faces, text, runs, lines[k].from, lines[k].to, x, y + cast(f32) k * lh, lh, color, k + 1 == n, base, vv); }
   return cast(f32) n * lh;
+}
+
+// Paint a slice of a code line, splitting at veil chunk boundaries.
+markdown_syntax_seg :: (sh: [] Sheet, m: TextMeasure, ln: int, line: string, from: int, to: int, pen: f32, y: f32, lh: f32, face: int, color: Rgba, base: int, vv: MdVeil) -> f32 {
+  p := pen; i := from;
+  while i < to {
+    j := to;
+    if vv.veil.count > 0 {
+      edge := md_veil_next(vv, base + i, base + to) - base;
+      if edge > i && edge < j { j = edge; }
+    }
+    a := md_veil_alpha(vv, base + i);
+    p += sheet_text(sh, m, ln, p, y, lh, face, opacity(color, a), cast(string) line[i..<j]);
+    i = j;
+  }
+  return p;
 }
 
 // A highlighted line of code as one selectable line (the spaces between
 // tokens included, in the plain colour).
 markdown_syntax_line :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, line: string, runs: [] MdRun, x: f32, y: f32, lh: f32, face: int, plain: Rgba) {
+  markdown_syntax_line_veiled(sh, m, s, line, runs, x, y, lh, face, plain, 0, MdVeil.{});
+}
+markdown_syntax_line_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, line: string, runs: [] MdRun, x: f32, y: f32, lh: f32, face: int, plain: Rgba, base: int, vv: MdVeil) {
   ln := sheet_line(sh, x, y, lh, true);
   n := syn_rust(line, runs);
   pen := x; i := 0;
   for k: 0..<n {
-    if runs[k].from > i { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) line[i..<runs[k].from]); }
-    pen += sheet_text(sh, m, ln, pen, y, lh, face, uiskin_syntax(s, runs[k].style, plain), cast(string) line[runs[k].from..<runs[k].to]);
+    if runs[k].from > i { pen = markdown_syntax_seg(sh, m, ln, line, i, runs[k].from, pen, y, lh, face, plain, base, vv); }
+    pen = markdown_syntax_seg(sh, m, ln, line, runs[k].from, runs[k].to, pen, y, lh, face, uiskin_syntax(s, runs[k].style, plain), base, vv);
     i = runs[k].to;
   }
-  if i < line.count { pen += sheet_text(sh, m, ln, pen, y, lh, face, plain, cast(string) line[i..<line.count]); }
+  if i < line.count { pen = markdown_syntax_seg(sh, m, ln, line, i, line.count, pen, y, lh, face, plain, base, vv); }
 }
 
 // A fenced code block's height at any width: its borders, header, padding and lines.
@@ -118,6 +161,9 @@ markdown_code_height :: (s: UiSkin, code: string) -> f32 {
 // with the language and its two actions (a skin with no header or no
 // actions draws none), the highlighted lines.
 markdown_code :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  return markdown_code_veiled(sh, m, s, doc, b, x, y, w, MdVeil.{});
+}
+markdown_code_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32, vv: MdVeil) -> f32 {
   code := md_block_text(doc, b);
   h := markdown_code_height(s, code);
   bd := s.md.block_border; head := s.md.block_header;
@@ -153,7 +199,7 @@ markdown_code :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int
   while i <= code.count {
     j := i; while j < code.count && code[j] != '\n' { j += 1; }
     line := cast(string) code[i..<j];
-    markdown_syntax_line(sh, m, s, line, runs[..], x + bd + s.md.block_pad_x, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink);
+    markdown_syntax_line_veiled(sh, m, s, line, runs[..], x + bd + s.md.block_pad_x, top + cast(f32) k * s.md.block_line, s.md.block_line, s.mono.face, s.ink, doc[0].blocks[b].at + i, vv);
     k += 1; i = j + 1;
   }
   return h;
@@ -225,6 +271,9 @@ markdown_table_measure :: (m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, w: 
 
 // A table wider than its column keeps each column's minimum and is cut at the column's right edge.
 markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  return markdown_table_veiled(sh, m, s, doc, b, x, y, w, MdVeil.{});
+}
+markdown_table_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32, vv: MdVeil) -> f32 {
   L := markdown_table_measure(m, s, doc, b, w);
   if L.cols == 0 || L.rows == 0 { return 0; }
   i0 := doc[0].blocks[b].item0;
@@ -260,7 +309,7 @@ markdown_table :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
           if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= text_run_width(m, faces, text, runs, lines[q].to - 1, lines[q].to); }
           lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
         }
-        markdown_line(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad_y + cast(f32) q * lh, lh, s.ink, q + 1 == n);
+        markdown_line_veiled(sh, m, s, faces, text, runs, lines[q].from, lines[q].to, lx, y + h + pad_y + cast(f32) q * lh, lh, s.ink, q + 1 == n, doc[0].items[k].at, vv);
       }
     }
     h += cast(f32) tall * lh + 2 * pad_y;
@@ -281,11 +330,14 @@ markdown_ordinal :: (sh: [] Sheet, number: int) -> string {
 
 // Lays out and paints block b of doc at (x, y), width w. Returns its height.
 markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32) -> f32 {
+  return markdown_block_veiled(sh, m, s, doc, b, x, y, w, MdVeil.{});
+}
+markdown_block_veiled :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: int, x: f32, y: f32, w: f32, vv: MdVeil) -> f32 {
   kind := doc[0].blocks[b].kind;
   lh := s.md.line;
-  if kind == MB_CODE { return markdown_code(sh, m, s, doc, b, x, y, w); }
-  if kind == MB_TABLE { return markdown_table(sh, m, s, doc, b, x, y, w); }
-  if kind == MB_PARA { return markdown_text(sh, m, s, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, lh, s.ink); }
+  if kind == MB_CODE { return markdown_code_veiled(sh, m, s, doc, b, x, y, w, vv); }
+  if kind == MB_TABLE { return markdown_table_veiled(sh, m, s, doc, b, x, y, w, vv); }
+  if kind == MB_PARA { return markdown_text_veiled(sh, m, s, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, lh, s.ink, doc[0].blocks[b].at, vv); }
   i0 := doc[0].blocks[b].item0;
   if kind == MB_QUOTE {
     // measure first, so the wash and rail go under the text
@@ -302,7 +354,7 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
     h: f32 = s.md.quote_pad_y;
     for k: 0..<doc[0].blocks[b].items {
       if k > 0 { h += s.md.quote_gap; }
-      h += markdown_text(sh, m, s, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), x + s.md.quote_pad_l, y + h, iw, lh, s.muted);
+      h += markdown_text_veiled(sh, m, s, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), x + s.md.quote_pad_l, y + h, iw, lh, s.muted, doc[0].items[i0 + k].at, vv);
     }
     return th_;
   }
@@ -328,7 +380,7 @@ markdown_block :: (sh: [] Sheet, m: TextMeasure, s: UiSkin, doc: [] MdDoc, b: in
     } else {
       q := sheet_text(sh, m, -1, ix_x, y + h, lh, s.body.face, s.accent, s.md.bullet);
     }
-    h += markdown_text(sh, m, s, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, lh, s.ink);
+    h += markdown_text_veiled(sh, m, s, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, lh, s.ink, doc[0].items[ix].at, vv);
   }
   return h;
 }

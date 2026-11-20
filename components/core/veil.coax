@@ -1,0 +1,153 @@
+// Paint-only opacity veil for streaming transcript text (ported from Zeron
+// crates/veil/src/lib.rs). Incoming text is committed and laid out at its final
+// geometry immediately; newly revealed byte ranges fade in via alpha without
+// shifting kerning, ligatures, or line wrapping.
+//   coax/bin/coax test components/core/veil.coax
+
+VEIL_CHUNKS :: 32;
+VEIL_EMA_SEED :: 0.160f32;    // 160 ms initial arrival-gap EMA
+VEIL_MIN_DUR :: 0.120f32;     // 120 ms minimum fade duration
+VEIL_MAX_DUR :: 0.400f32;     // 400 ms maximum fade duration
+VEIL_MAX_GAP :: 1.000f32;     // 1000 ms cap on arrival-gap samples
+
+VeilChunk :: struct { from: int; to: int; born: f32; dur: f32; }
+
+Veil :: struct {
+  chunks: [VEIL_CHUNKS] VeilChunk;
+  n: int;
+  ema: f32;
+  last_at: f32;
+  has_last: bool;
+}
+
+veil_clear :: (v: [] Veil) {
+  if v.count == 0 { return; }
+  v[0].n = 0;
+  v[0].ema = VEIL_EMA_SEED;
+  v[0].last_at = 0;
+  v[0].has_last = false;
+}
+
+// Zeron's veil_fade(p) = (1 - p)^1.6; alpha = 1 - veil_fade(p).
+veil_fade :: (p: f32) -> f32 {
+  if p <= 0.0f32 { return 1.0f32; }
+  if p >= 1.0f32 { return 0.0f32; }
+  return pow(1.0f32 - p, 1.6f32);
+}
+
+// Backlog catch-up multiplier when more than 2 chunks fade at once.
+veil_boost :: (active: int) -> f32 {
+  if active <= 2 { return 1.0f32; }
+  return 1.0f32 + 0.3f32 * cast(f32) (active - 2);
+}
+
+// Number of chunks still fading at time `now` (unboosted window).
+veil_active :: (v: [] Veil, now: f32) -> int {
+  if v.count == 0 { return 0; }
+  c := 0;
+  for k: 0..<v[0].n {
+    if now < v[0].chunks[k].born + v[0].chunks[k].dur { c += 1; }
+  }
+  return c;
+}
+
+veil_is_fading :: (v: [] Veil, now: f32) -> bool {
+  if v.count == 0 || v[0].n == 0 { return false; }
+  boost := veil_boost(veil_active(v, now));
+  for k: 0..<v[0].n {
+    ch := v[0].chunks[k];
+    if ch.dur > 0.0f32 && (now - ch.born) * boost < ch.dur { return true; }
+  }
+  return false;
+}
+
+// Drop chunks that have finished fading at `now`.
+veil_prune :: (v: [] Veil, now: f32) {
+  if v.count == 0 || v[0].n == 0 { return; }
+  boost := veil_boost(veil_active(v, now));
+  w := 0;
+  for k: 0..<v[0].n {
+    ch := v[0].chunks[k];
+    if ch.dur > 0.0f32 && (now - ch.born) * boost < ch.dur {
+      v[0].chunks[w] = ch;
+      w += 1;
+    }
+  }
+  v[0].n = w;
+}
+
+// Record a newly revealed byte range [from, to) at time `now`.
+veil_push :: (v: [] Veil, from: int, to: int, now: f32) {
+  if v.count == 0 || to <= from { return; }
+  veil_prune(v, now);
+  if v[0].has_last {
+    gap := now - v[0].last_at;
+    if gap < 0.0f32 { gap = 0.0f32; }
+    if gap > VEIL_MAX_GAP { gap = VEIL_MAX_GAP; }
+    v[0].ema = v[0].ema * 0.7f32 + gap * 0.3f32;
+  } else {
+    v[0].ema = VEIL_EMA_SEED;
+    v[0].has_last = true;
+  }
+  v[0].last_at = now;
+  dur := v[0].ema * 3.0f32;
+  if dur < VEIL_MIN_DUR { dur = VEIL_MIN_DUR; }
+  if dur > VEIL_MAX_DUR { dur = VEIL_MAX_DUR; }
+  if v[0].n >= VEIL_CHUNKS {
+    for k: 1..<VEIL_CHUNKS { v[0].chunks[k - 1] = v[0].chunks[k]; }
+    v[0].n = VEIL_CHUNKS - 1;
+  }
+  v[0].chunks[v[0].n] = VeilChunk.{from = from, to = to, born = now, dur = dur};
+  v[0].n += 1;
+}
+
+// Opacity [0, 1] for byte offset `pos` at time `now`.
+veil_alpha_at :: (v: [] Veil, now: f32, pos: int) -> f32 {
+  if v.count == 0 || v[0].n == 0 { return 1.0f32; }
+  boost := veil_boost(veil_active(v, now));
+  k := v[0].n - 1;
+  while k >= 0 {
+    ch := v[0].chunks[k];
+    if pos >= ch.from && pos < ch.to {
+      if ch.dur <= 0.0f32 { return 1.0f32; }
+      p := (now - ch.born) * boost / ch.dur;
+      return 1.0f32 - veil_fade(p);
+    }
+    k -= 1;
+  }
+  return 1.0f32;
+}
+
+// Next chunk boundary strictly after `pos` and before `limit`.
+veil_next_edge :: (v: [] Veil, pos: int, limit: int) -> int {
+  if v.count == 0 || v[0].n == 0 { return limit; }
+  best := limit;
+  for k: 0..<v[0].n {
+    a := v[0].chunks[k].from;
+    b := v[0].chunks[k].to;
+    if a > pos && a < best { best = a; }
+    if b > pos && b < best { best = b; }
+  }
+  return best;
+}
+
+#test "veil fades newly revealed ranges with adaptive duration and backlog boost" {
+  v: [1] Veil;
+  veil_clear(v[..]);
+  #assert !veil_is_fading(v[..], 0.0f32);
+  veil_push(v[..], 0, 10, 1.0f32);
+  #assert veil_is_fading(v[..], 1.0f32);
+  #assert veil_alpha_at(v[..], 1.0f32, 0) == 0.0f32;
+  #assert veil_alpha_at(v[..], 1.0f32, 10) == 1.0f32;
+  mid := veil_alpha_at(v[..], 1.2f32, 5);
+  #assert mid > 0.4f32 && mid < 0.9f32;
+  #assert veil_alpha_at(v[..], 1.5f32, 5) == 1.0f32;
+  #assert !veil_is_fading(v[..], 1.5f32);
+  // Backlog boost accelerates when > 2 chunks fade simultaneously.
+  veil_push(v[..], 10, 20, 2.0f32);
+  veil_push(v[..], 20, 30, 2.02f32);
+  veil_push(v[..], 30, 40, 2.04f32);
+  #assert veil_boost(veil_active(v[..], 2.05f32)) > 1.0f32;
+  #assert veil_next_edge(v[..], 5, 35) == 10;
+  #assert veil_next_edge(v[..], 10, 35) == 20;
+}
