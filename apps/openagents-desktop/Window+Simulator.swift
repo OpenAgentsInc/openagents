@@ -219,6 +219,12 @@ final class SimDeviceChrome {
     }
 }
 
+/// The pane's icon buttons' tooltips (cd_sim_tips): AppKit's own, over the canvas.
+final class SimTipOwner: NSObject, NSViewToolTipOwner {
+    var texts: [NSView.ToolTipTag: String] = [:]
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String { texts[tag] ?? "" }
+}
+
 /// The device's frame behind the screen's view: the chrome's composite scaled so its bezel is the
 /// page's (cd_sim_rect's sixth number), or a drawn bezel. It takes no clicks.
 final class SimulatorFrameView: NSView {
@@ -357,6 +363,24 @@ extension CoderWindow {
         let at = canvas.convert(window.mouseLocationOutsideOfEventStream, from: nil)
         menu.popUp(positioning: nil, at: at, in: canvas)
     }
+    /// The tooltips of the pane's icon buttons, again when the page drew them elsewhere.
+    func syncSimulatorTips() {
+        var out = [CChar](repeating: 0, count: 2048)
+        let n = cd_sim_tips(page, &out, Int32(out.count))
+        let text = n > 0 ? String(cString: out) : ""
+        let h = canvas.bounds.height
+        if text + "\(h)" == simTipsText { return }
+        simTipsText = text + "\(h)"
+        for t in simTips.texts.keys { canvas.removeToolTip(t) }
+        simTips.texts = [:]
+        for line in text.split(separator: "\n") {
+            let c = line.split(separator: "\t", omittingEmptySubsequences: false)
+            guard c.count == 5, let x = Double(c[0]), let y = Double(c[1]), let w = Double(c[2]), let ht = Double(c[3]) else { continue }
+            let r = NSRect(x: x, y: Double(h) - y - ht, width: w, height: ht)
+            let tag = canvas.addToolTip(r, owner: simTips, userData: nil)
+            simTips.texts[tag] = String(c[4])
+        }
+    }
     @objc func simPicked(_ sender: NSMenuItem) {
         _ = cd_sim_pick(page, Int32(sender.tag))
         simGen = -1
@@ -367,6 +391,7 @@ extension CoderWindow {
     /// and shows each new still.
     func syncSimulatorFrame() {
         pumpSimulator()   // what a press queued (Stop above all) goes out this frame, not on the next clock
+        syncSimulatorTips()
         var rect = [Float](repeating: 0, count: 6)
         guard cd_sim_rect(page, &rect) != 0, rect[2] > 1, rect[3] > 1, rect[4] == 0 else {
             if let v = simView, !v.isHidden { v.isHidden = true }

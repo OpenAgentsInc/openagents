@@ -152,6 +152,8 @@ int cd_sim_saved(void *page, char *out, int cap);
 int cd_sim_menu(void *page, char *out, int cap);
 int cd_sim_pick(void *page, int i);
 int cd_sim_device(void *page, char *out, int cap);
+// cd_sim_tips: the pane's icon buttons' tooltips, one a line "x\ty\tw\th\ttext" (top-left points).
+int cd_sim_tips(void *page, char *out, int cap);
 // The person's hand on the screen's view: cd_sim_touch a finger (phase 0 down, 1 moved, 2 up) at
 // x, y from the view's top left in a view w x h; cd_sim_key a key (its Mac key code and the
 // characters it types). Each queues a request (cd_sim_out); 0 when the helper has no input.

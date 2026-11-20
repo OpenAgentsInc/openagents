@@ -526,6 +526,7 @@ int cd_sim_saved(void *page, char *out, int cap) { CoderHost *c = page; return c
 int cd_sim_menu(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_menu(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_sim_pick(void *page, int i) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_sim_pick(cd_state(c), i); cd_woke(c); return ok; }
 int cd_sim_device(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_device(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_sim_tips(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_tips(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
 int cd_sim_touch(void *page, int phase, float x, float y, float w, float h) { CoderHost *c = page; return c && coder_page_sim_touch(cd_state(c), phase, x, y, w, h); }
 int cd_sim_key(void *page, int code, const char *chars) { CoderHost *c = page; return c && coder_page_sim_key(cd_state(c), code, cd_string(chars)); }
 int cd_sim_pinch(void *page, int phase, float x, float y, float w, float h) { CoderHost *c = page; return c && coder_page_sim_pinch(cd_state(c), phase, x, y, w, h); }

@@ -305,6 +305,15 @@ number; the screen's view, and so the touch mapping, is unchanged inside it. Wit
 frame is a drawn rounded black bezel and the corners a radius (`SimDeviceChrome`,
 `SimulatorFrameView` in `Window+Simulator.swift`).
 
+*As built (the controls).* No row of words: the tab says "Simulator"; under it a device chooser
+(the device's name, its iOS under it, a chevron; it opens the device menu) and, at the right, Zoom
+Out, Fit to Pane and Zoom In (the device from 40% of the fit up to the fit, by steps of 0.8).
+Under the framed device a floating rounded toolbar of icon buttons: Home and Rotate (with the
+helper's input), Screenshot, and More, a menu with Shut Down, Dark or Light Appearance and Lock.
+Every button has its accessibility label, and a tooltip AppKit shows from the page's
+`cd_sim_tips` rects. The glyphs are the Zeron icon set's (`components/zeron/icons`), the new ones
+(`sim-*.svg`) drawn in its Solar Linear style. Record joins the toolbar with recording (Phase 3).
+
 ## 6. The helper (`oa-simhost`)
 
 **As built (Phase 0, #13811).** The helper is `oasim serve`: the same Coax program as the CLI,

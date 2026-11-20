@@ -33,6 +33,10 @@ CP_SIM_CLOSE :: 90; CP_SIM_PICK :: 91; CP_SIM_BOOT :: 92; CP_SIM_SHUTDOWN_ACT ::
 CP_SIM_APPEARANCE :: 95; CP_SIM_STOP :: 96; CP_SIM_ALLOW_CHAT :: 97; CP_SIM_ALLOW_ONCE :: 98; CP_SIM_DENY :: 99;
 CP_SIM_HOME :: 101; CP_SIM_LOCK :: 102; CP_SIM_ROTATE :: 103;
 CP_SIM_ROW :: 104;          // a transcript row of an oasim command that went: the pane comes to the front (spec 7.5)
+CP_SIM_ZOOM_OUT :: 105; CP_SIM_ZOOM_IN :: 106; CP_SIM_FIT :: 107; CP_SIM_MORE :: 108;
+CP_SIM_ZOOM_STEP :: 0.8;    // a zoom out: the device this much smaller; zoom in undoes it, up to the fit
+CP_SIM_ZOOM_MIN :: 0.4;
+CP_SIM_TIPS :: 12;          // the icon buttons' tooltips the host shows (coder_page_sim_tips)
 // what the page asks of the host (CP_ASK_SIM, with coder_page_sim_op saying which)
 CP_ASK_SIM :: 46;
 CP_SIM_OP_NONE :: 0; CP_SIM_OP_MENU :: 1; CP_SIM_OP_SAVED :: 2; CP_SIM_OP_CLOSED :: 3; CP_SIM_OP_OPENED :: 4;
@@ -42,6 +46,7 @@ CP_SIM_R_HELLO :: 1; CP_SIM_R_LIST :: 2; CP_SIM_R_BOOT :: 3; CP_SIM_R_STILL :: 4
 CpSimDevice :: struct { udid: [40] u8; udid_n: int; name: [64] u8; name_n: int; runtime: [24] u8; runtime_n: int; state: int; }
 CpSimAsk :: struct { chat: [64] u8; chat_n: int; engine: [48] u8; engine_n: int; device: [40] u8; device_n: int; name: [64] u8; name_n: int; op: [24] u8; op_n: int; }
 CpSimPend :: struct { id: int; kind: int; }
+CpSimTip :: struct { x: f32; y: f32; w: f32; h: f32; text: string; }   // text: a literal
 CpSimPane :: struct {
   open: bool;
   front: bool;                // in front of a sub-agent's transcript, the review and a file
@@ -62,6 +67,10 @@ CpSimPane :: struct {
   screen_w: f32; screen_h: f32;   // device points
   body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the screen rect, logical points, top-left
   bezel: f32;                 // the device's frame round it, the same points
+  zoom: f32;                  // the device's size as a share of the fit (0 or 1: fit)
+  more: bool;                 // the menu the host shows is More's (Shut Down, the look, Lock), not the devices
+  more_acts: [4] int; nmore: int;
+  tips: [CP_SIM_TIPS] CpSimTip; ntips: int;
   still: [CP_SIM_PATH] u8; still_n: int; still_gen: int; still_flip: int;
   frame: int; frame_known: bool; ticks: int;   // the framebuffer's gen the still shows ("frames" display)
   saved: [CP_SIM_PATH] u8; saved_n: int;   // the person's last Screenshot
@@ -315,7 +324,18 @@ cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
   if !p[0].open { return false; }
   m: [1] SwMsg;
   if act == CP_SIM_CLOSE { p[0].closed_by_person = true; cp_sim_hide(s); return true; }
-  if act == CP_SIM_PICK { p[0].op = CP_SIM_OP_MENU; s[0].ask = CP_ASK_SIM; return true; }
+  if act == CP_SIM_PICK { p[0].more = false; p[0].op = CP_SIM_OP_MENU; s[0].ask = CP_ASK_SIM; return true; }
+  if act == CP_SIM_FIT { p[0].zoom = 1; return true; }
+  if act == CP_SIM_ZOOM_OUT { z := cp_sim_zoom(s) * CP_SIM_ZOOM_STEP; p[0].zoom = ifx z < CP_SIM_ZOOM_MIN then CP_SIM_ZOOM_MIN else z; return true; }
+  if act == CP_SIM_ZOOM_IN { z := cp_sim_zoom(s) / CP_SIM_ZOOM_STEP; p[0].zoom = ifx z > 0.999f32 then 1.0f32 else z; return true; }
+  if act == CP_SIM_MORE {
+    if p[0].state != CP_SIM_BOOTED { return false; }
+    p[0].nmore = 0;
+    p[0].more_acts[p[0].nmore] = CP_SIM_SHUTDOWN_ACT; p[0].nmore += 1;
+    p[0].more_acts[p[0].nmore] = CP_SIM_APPEARANCE; p[0].nmore += 1;
+    if p[0].input { p[0].more_acts[p[0].nmore] = CP_SIM_LOCK; p[0].nmore += 1; }
+    p[0].more = true; p[0].op = CP_SIM_OP_MENU; s[0].ask = CP_ASK_SIM; return true;
+  }
   if act == CP_SIM_ALLOW_CHAT { cp_sim_grant(s, "grant", "chat"); return true; }
   if act == CP_SIM_ALLOW_ONCE { cp_sim_grant(s, "grant", "once"); return true; }
   if act == CP_SIM_DENY { cp_sim_grant(s, "deny", "once"); return true; }
@@ -363,15 +383,33 @@ cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
 
 // ---------------------------------------------------------------- drawing
 
+cp_sim_zoom :: (s: [] CoderPage) -> f32 { z := s[0].sim[0].zoom; return ifx z > 0 && z <= 1 then z else 1.0f32; }
+cp_sim_more_title :: (s: [] CoderPage, act: int) -> string {
+  if act == CP_SIM_SHUTDOWN_ACT { return "Shut Down"; }
+  if act == CP_SIM_APPEARANCE { return ifx s[0].sim[0].dark then "Light Appearance" else "Dark Appearance"; }
+  if act == CP_SIM_LOCK { return "Lock"; }
+  return "";
+}
+// An icon button of the pane, with its tooltip for the host (coder_page_sim_tips).
+cp_sim_icon :: (s: [] CoderPage, f: [] UiFrame, id: string, x: f32, y: f32, icon: int, tip: string, state: int, act: int) -> f32 {
+  w := app_icon_button(f, id, x, y, icon, tip, APP_BUTTON_QUIET, state, act);
+  p := cp_sim(s);
+  if p[0].ntips < CP_SIM_TIPS { p[0].tips[p[0].ntips] = CpSimTip.{x = x, y = y, w = w, h = w, text = tip}; p[0].ntips += 1; }
+  return w;
+}
+
 // The screen's rect: the device, its screen sw x sh device points in a CP_SIM_BEZEL frame, aspect-fit
 // inside (x, y, w, h) with CP_SIM_PAD round it; out[4] is the frame's width round the screen, in
 // the same points as the rect (the host draws the device's chrome there).
-cp_sim_fit :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, out: [] f32) {
+cp_sim_fit :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, out: [] f32) { cp_sim_fit_z(sw, sh, x, y, w, h, 1, out); }
+// The same at z of the fit (0 < z <= 1), centred where the fit would be.
+cp_sim_fit_z :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, z: f32, out: [] f32) {
   aw := w - 2 * CP_SIM_PAD; ah := h - 2 * CP_SIM_PAD;
   out[0] = x; out[1] = y; out[2] = 0; out[3] = 0; out[4] = 0;
   if !(aw > 0) || !(ah > 0) || !(sw > 0) || !(sh > 0) { return; }
   fw := sw + 2 * CP_SIM_BEZEL; fh := sh + 2 * CP_SIM_BEZEL;
   k := aw / fw; if ah / fh < k { k = ah / fh; }
+  k *= z;
   out[4] = CP_SIM_BEZEL * k;
   out[2] = sw * k; out[3] = sh * k;
   out[0] = x + (w - out[2]) / 2; out[1] = y + CP_SIM_PAD + (ah - fh * k) / 2 + out[4];
@@ -379,27 +417,40 @@ cp_sim_fit :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, out: [] f32) {
 cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; p := cp_sim(s); sh := f[0].sheet;
   top := ifx px > 0 then 0.0f32 else cp_bar(s);
-  rb: [160] u8; rn := el_put(rb[..], 0, cp_sim_name(s));
   d := cp_sim_device(s);
-  if d >= 0 && p[0].devices[d].runtime_n > 0 { rn = el_put(rb[..], rn, " · "); rn = el_put(rb[..], rn, cp_sim_s(p[0].devices[d].runtime[..], p[0].devices[d].runtime_n)); }
-  title := sheet_pool(sh, cast(string) rb[0..<rn]);
-  y := app_pane_tab_shell(f, px, top, pw, h, ICON_SET_PHONE, title, "coder.sim.state", cp_sim_word(s), "coder.sim.close", CP_SIM_CLOSE, CP_CORNER, 1.0f32);
-  // the toolbar
+  y := app_pane_tab_shell(f, px, top, pw, h, ICON_SET_PHONE, "Simulator", "coder.sim.state", cp_sim_word(s), "coder.sim.close", CP_SIM_CLOSE, CP_CORNER, 1.0f32);
+  p[0].ntips = 0;
+  // the header: the device chooser (its name, its iOS under it, a chevron), the zoom at the right
   x := px + a.gap; cw := pw - 2 * a.gap; y += a.gap_small;
-  bx := x; ch := k.control_h;
-  bw := app_button_width(f, -1, "Device…");
-  _ := app_button(f, "coder.sim.pick", bx, y, bw, -1, "Device…", APP_BUTTON_DEFAULT, ifx p[0].ndevices > 0 then 0 else EL_S_DISABLED, CP_SIM_PICK); bx += bw + a.gap_small;
   booted := p[0].state == CP_SIM_BOOTED;
+  ib := a.icon_button; m := f[0].m;
+  ch := ib;
+  zx := x + cw;
   if booted {
-    bw = app_button_width(f, -1, "Shut Down"); _ := app_button(f, "coder.sim.shutdown", bx, y, bw, -1, "Shut Down", APP_BUTTON_QUIET, 0, CP_SIM_SHUTDOWN_ACT); bx += bw + a.gap_small;
-    bw = app_button_width(f, -1, "Screenshot"); _ := app_button(f, "coder.sim.shot", bx, y, bw, -1, "Screenshot", APP_BUTTON_QUIET, ifx p[0].shots_dir_n > 0 then 0 else EL_S_DISABLED, CP_SIM_SHOT); bx += bw + a.gap_small;
-    look := ifx p[0].dark then "Light" else "Dark";
-    bw = app_button_width(f, -1, look); _ := app_button(f, "coder.sim.appearance", bx, y, bw, -1, look, APP_BUTTON_QUIET, 0, CP_SIM_APPEARANCE); bx += bw + a.gap_small;
-    if p[0].input {
-      bw = app_button_width(f, -1, "Home"); _ := app_button(f, "coder.sim.home", bx, y, bw, -1, "Home", APP_BUTTON_QUIET, 0, CP_SIM_HOME); bx += bw + a.gap_small;
-      bw = app_button_width(f, -1, "Lock"); _ := app_button(f, "coder.sim.lock", bx, y, bw, -1, "Lock", APP_BUTTON_QUIET, 0, CP_SIM_LOCK); bx += bw + a.gap_small;
-      bw = app_button_width(f, -1, "Rotate"); _ := app_button(f, "coder.sim.rotate", bx, y, bw, -1, "Rotate", APP_BUTTON_QUIET, 0, CP_SIM_ROTATE); bx += bw + a.gap_small;
-    }
+    zx -= ib; _ := cp_sim_icon(s, f, "coder.sim.zoom_in", zx, y, ICON_SIM_ZOOM_IN, "Zoom In", ifx cp_sim_zoom(s) < 0.999f32 then 0 else EL_S_DISABLED, CP_SIM_ZOOM_IN);
+    zx -= ib; _ := cp_sim_icon(s, f, "coder.sim.fit", zx, y, ICON_SIM_FIT, "Fit to Pane", ifx cp_sim_zoom(s) < 0.999f32 then 0 else EL_S_DISABLED, CP_SIM_FIT);
+    zx -= ib; _ := cp_sim_icon(s, f, "coder.sim.zoom_out", zx, y, ICON_SIM_ZOOM_OUT, "Zoom Out", ifx cp_sim_zoom(s) > CP_SIM_ZOOM_MIN + 0.001f32 then 0 else EL_S_DISABLED, CP_SIM_ZOOM_OUT);
+  }
+  {
+    name := cp_sim_name(s);
+    ver := ifx d >= 0 && p[0].devices[d].runtime_n > 0 then cp_sim_s(p[0].devices[d].runtime[..], p[0].devices[d].runtime_n) else "";
+    lh := k.body.line + (ifx ver.count > 0 then k.small.line else 0.0f32);
+    most := zx - x - a.gap - a.icon;
+    shown := app_fit(f, k.body.face, name, most);
+    nw := measure_width(m, k.body.face, shown);
+    bw := nw + a.gap_small + a.icon;
+    off := p[0].ndevices == 0;
+    cid := "coder.sim.pick";
+    ck := uiframe_key(f, cid);
+    lb: [200] u8; ln := el_put(lb[..], 0, "Device: "); ln = el_put(lb[..], ln, name); if ver.count > 0 { ln = el_put(lb[..], ln, ", "); ln = el_put(lb[..], ln, ver); }
+    row := uiframe_semantic(f, cid, EL_BUTTON, sheet_pool(sh, cast(string) lb[0..<ln]), x, y, bw, ch, ifx off then EL_S_DISABLED else 0, ifx off then 0 else CP_SIM_PICK);
+    ink := app_ground(f, cid, ck, x - a.gap_small, y, bw + 2 * a.gap_small, ch, k.radius_control, APP_BUTTON_QUIET, off);
+    ty := y + (ch - lh) / 2;
+    _ := sheet_text(sh, m, -1, x, ty, k.body.line, k.body.face, ifx off then k.faint else k.ink, shown);
+    sheet_icon(sh, ICON_CHEVRON, x + nw + a.gap_small, ty + (k.body.line - a.icon) / 2, a.icon, ink);
+    if ver.count > 0 { _ := sheet_text(sh, m, -1, x, ty + k.body.line, k.small.line, k.small.face, k.faint, app_fit(f, k.small.face, ver, most)); }
+    if !off { sheet_hit(sh, UIFRAME_HIT, row, 0, x, y, bw, ch); }
+    if p[0].ntips < CP_SIM_TIPS { p[0].tips[p[0].ntips] = CpSimTip.{x = x, y = y, w = bw, h = ch, text = "Choose a Device"}; p[0].ntips += 1; }
   }
   y += ch + a.gap_small;
   // an agent's badge, above the screen (never over the native view)
@@ -444,10 +495,25 @@ cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     }
     return;
   }
+  // the device, with room under it for its toolbar: a floating pill of icon buttons
+  pad := a.gap_small / 2;
+  th := ib + 2 * pad;
   r: [5] f32;
-  cp_sim_fit(ifx p[0].screen_w > 0 then p[0].screen_w else 402.0f32, ifx p[0].screen_h > 0 then p[0].screen_h else 874.0f32, px, y, pw, bh, r[..]);
+  cp_sim_fit_z(ifx p[0].screen_w > 0 then p[0].screen_w else 402.0f32, ifx p[0].screen_h > 0 then p[0].screen_h else 874.0f32, px, y, pw, bh - th - a.gap, cp_sim_zoom(s), r[..]);
   p[0].body_x = r[0]; p[0].body_y = r[1]; p[0].body_w = r[2]; p[0].body_h = r[3]; p[0].bezel = r[4];
-  if r[2] > 0 && r[3] > 0 { _ := uiframe_semantic(f, "coder.sim.screen", EL_REGION, cp_sim_name(s), r[0], r[1], r[2], r[3], 0, 0); }
+  if !(r[2] > 0) || !(r[3] > 0) { return; }
+  _ := uiframe_semantic(f, "coder.sim.screen", EL_REGION, cp_sim_name(s), r[0], r[1], r[2], r[3], 0, 0);
+  n := 2 + (ifx p[0].input then 2 else 0);
+  tw := cast(f32) n * ib + 2 * pad;
+  tx := px + (pw - tw) / 2; ty := r[1] + r[3] + r[4] + a.gap;
+  _ := sheet_box(sh, tx, ty, tw, th, th / 2, k.border, k.raised, k.field_edge);
+  bx := tx + pad; by := ty + pad;
+  if p[0].input {
+    bx += cp_sim_icon(s, f, "coder.sim.home", bx, by, ICON_SIM_HOME, "Home", 0, CP_SIM_HOME);
+    bx += cp_sim_icon(s, f, "coder.sim.rotate", bx, by, ICON_SIM_ROTATE, "Rotate", 0, CP_SIM_ROTATE);
+  }
+  bx += cp_sim_icon(s, f, "coder.sim.shot", bx, by, ICON_SIM_CAMERA, "Screenshot", ifx p[0].shots_dir_n > 0 then 0 else EL_S_DISABLED, CP_SIM_SHOT);
+  bx += cp_sim_icon(s, f, "coder.sim.more", bx, by, ICON_SIM_MORE, "More", 0, CP_SIM_MORE);
 }
 
 // ---------------------------------------------------------------- the host's calls
@@ -636,10 +702,15 @@ coder_page_sim_still :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(
 // coder_page_sim_saved), _CLOSED and _OPENED (the pane).
 coder_page_sim_op :: (s: [] CoderPage) -> int #export_c #effects(all) { if s.count < 1 { return 0; } o := s[0].sim[0].op; s[0].sim[0].op = CP_SIM_OP_NONE; return o; }
 coder_page_sim_saved :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_out(out, cp_sim_s(s[0].sim[0].saved[..], s[0].sim[0].saved_n)) else 0; }
-// The device menu's rows, one a line: "name · runtime\tstate word\t1 when shown".
+// The menu's rows, one a line: the device menu's "name · runtime\tstate word\t1 when shown", or
+// More's "title\t\t0" (Shut Down, Dark or Light Appearance, Lock).
 coder_page_sim_menu :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   p := cp_sim(s); n := 0;
+  if p[0].more {
+    for i: 0..<p[0].nmore { n = el_put(out, n, cp_sim_more_title(s, p[0].more_acts[i])); n = el_put(out, n, "\t\t0\n"); }
+    return n;
+  }
   words := [9] string.["", "", "", "", "", "Shut down", "Booting", "Booted", ""];
   for i: 0..<p[0].ndevices {
     d := p[0].devices[i..<i + 1];
@@ -651,11 +722,26 @@ coder_page_sim_menu :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(a
 }
 // The person picked row i of the device menu.
 coder_page_sim_pick :: (s: [] CoderPage, i: int) -> bool #export_c #effects(all) {
-  if s.count < 1 || i < 0 || i >= s[0].sim[0].ndevices { return false; }
+  if s.count < 1 { return false; }
+  if s[0].sim[0].more { s[0].sim[0].more = false; return i >= 0 && i < s[0].sim[0].nmore && cp_sim_press(s, s[0].sim[0].more_acts[i]); }
+  if i < 0 || i >= s[0].sim[0].ndevices { return false; }
   p := cp_sim(s);
   p[0].pick = i; p[0].still_n = 0; p[0].screen_w = 0; p[0].screen_h = 0; p[0].state = CP_SIM_NONE;
   cp_sim_follow(s);
   return true;
+}
+// The pane's icon buttons' tooltips for the host to show, one a line: "x\ty\tw\th\ttext" (top-left
+// points), as the last frame drew them; none while the screen is covered.
+coder_page_sim_tips :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !cp_sim_shown(s) || s[0].set_open || cp_overlay_open(s) { return 0; }
+  p := cp_sim(s); n := 0;
+  for i: 0..<p[0].ntips {
+    t := p[0].tips[i];
+    n = el_put_i(out, n, cast(int) t.x); n = el_put(out, n, "\t"); n = el_put_i(out, n, cast(int) t.y); n = el_put(out, n, "\t");
+    n = el_put_i(out, n, cast(int) t.w); n = el_put(out, n, "\t"); n = el_put_i(out, n, cast(int) t.h); n = el_put(out, n, "\t");
+    n = el_put(out, n, t.text); n = el_put(out, n, "\n");
+  }
+  return n;
 }
 // The device the pane shows (its UDID into out), for the chat's run.
 coder_page_sim_device :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) { return ifx s.count > 0 then cp_out(out, cp_sim_udid(s)) else 0; }

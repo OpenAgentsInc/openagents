@@ -135,6 +135,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var simFrame: SimulatorFrameView?    // the device's frame behind it, its chrome for simChromeUdid
     var simChromeUdid = ""
     var simMaskKey = ""
+    let simTips = SimTipOwner()           // the pane's icon buttons' tooltips (cd_sim_tips)
+    var simTipsText = ""
     let simClient = SimHostClient()
     var simTimer: Timer?
     var simGen = 0
