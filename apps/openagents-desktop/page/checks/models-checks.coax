@@ -162,6 +162,13 @@
   #assert cp_models(s) == CP_MODELS + 1;
   #assert cp_model_label(s, CP_MODELS) == "Antigravity";
   #assert cp_model_id(s, CP_MODELS) == "antigravity";
+  // the row names the CLI and the mode picked in Settings
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Auto" && cp_model_meta(s, CP_MODELS) == "Antigravity CLI";
+  s[0].set_agy_mode = 2;
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Plan";
+  s[0].set_agy_mode = 1;
+  #assert cp_model_desc(s, CP_MODELS) == "Antigravity CLI · Default";
+  s[0].set_agy_mode = 0;
   #assert coder_page_pick_model(s, "antigravity") && coder_page_model_agy(s);
   // Also works alongside OpenRouter without shifting OpenRouter's index.
   coder_page_set_openrouter(s, "deepseek/deepseek-v4.1-flash", "");

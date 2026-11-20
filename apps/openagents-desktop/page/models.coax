@@ -58,13 +58,18 @@ cp_model_short :: (idx: int) -> string {
   return ifx idx >= 0 && idx < CP_MODELS then shorts[idx] else shorts[CP_MODEL_DEFAULT];
 }
 cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) { return "ACP · Auto"; }
+  // the Antigravity CLI and the review mode picked in Settings, never the protocol's name
+  if cp_is_agy(s, idx) {
+    if s[0].set_agy_mode == 1 { return "Antigravity CLI · Default"; }
+    if s[0].set_agy_mode == 2 { return "Antigravity CLI · Plan"; }
+    return "Antigravity CLI · Auto";
+  }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   descs := CP_MODEL_DESC;
   return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
 }
 cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
-  if cp_is_agy(s, idx) { return "Antigravity · ACP"; }
+  if cp_is_agy(s, idx) { return "Antigravity CLI"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
     n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
