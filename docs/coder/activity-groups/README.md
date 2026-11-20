@@ -25,7 +25,7 @@ worker in place of `mcworker` and its own home folder.
 - Glyph 15.5 right of the trunk (Zeron's 24 minus 8.5); the verb 40 right of
   it (Zeron's 48 minus 8.5, plus the R's side bearing).
 - Header to the thought's first line: 27 in Coder, 27 in Zeron.
-- Thought line height 20, folded past 4 lines under "Show all N lines".
+- Thought line height 20, folded past 6 lines under "Show all N lines".
 - Summary words and order ("Thought process · ran 2 commands"), the working
   word and seconds ("Pondering… 9s"), elbows of radius 6 to x 20, trunk 1 point
   at 0.12 of the ink.

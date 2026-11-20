@@ -324,7 +324,7 @@ UiActivity :: struct {
   verb_gap: f32 = 4; fade: f32 = 24;                   // the verb to its target; how far a line that runs over fades
   tree_ink: f32 = 0.12;                                // the trunk and elbows: the ink at this strength
   thought_line: f32 = 20; thought_gap: f32 = 12;       // a thought's prose: its line, the gap between its blocks
-  thought_lines: f32 = 4; thought_fade: f32 = 1.5;     // a thought folds past this many lines, its foot fading over this many
+  thought_lines: f32 = 6; thought_fade: f32 = 1.5;     // a thought folds past this many lines, its foot fading over this many
   fold_h: f32 = 20; fold_pad: f32 = 6; fold_radius: f32 = 4; fold_room: f32 = 26; fold_wash: f32 = 0.08;   // "Show all N lines"
   detail_pad_x: f32 = 12; detail_pad_y: f32 = 8; detail_radius: f32 = 6; detail_gap: f32 = 4;   // a row opened onto its call and output
   detail_lines: f32 = 10; detail_wash: f32 = 0.05;     // an output folds past this many lines

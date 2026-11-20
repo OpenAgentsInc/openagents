@@ -27,7 +27,7 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_act_open(APP_ACT_OPENED, false) && !app_act_open(APP_ACT_FOLDED, true);
   // Coder Desktop's 1.2: every size divided, strengths and counts kept
   a := app_act_scaled(2);
-  #assert a.trunk == 4.25 && a.row == 14 && a.gutter == 24 && a.tree_ink == 0.12 && a.thought_lines == 4 && a.rotate == 7;
+  #assert a.trunk == 4.25 && a.row == 14 && a.gutter == 24 && a.tree_ink == 0.12 && a.thought_lines == 6 && a.rotate == 7;
 }
 
 #test "app activity: the header, rows and the working line sit on Zeron's measures: trunk 8.5, elbow 6 to 20, glyph at 24, words at 48, rows 28, header 26" {
@@ -87,17 +87,22 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_test_end(t[..]) && gh == 28 && app_test_pressable(t[..], "t0.g0") && app_test_row(t[..], "t0.g0").action == 10 && !app_test_has(t[..], "t0.g0", EL_S_EXPANDS);
 }
 
-#test "app activity: a thought's words sit in the tree; past four lines they fold under Show all N lines, and open whole" {
+#test "app activity: a thought's words sit in the tree; past six lines they fold under Show all N lines, and open whole" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
-  words := "one\ntwo\nthree\nfour\nfive\nsix";
+  words := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
   r := AppActRow.{kind = APP_ACT_THOUGHT, verb = "Thought process", output = words};
   app_test_begin(t[..], "", "", true);
   h := app_act_row(f, "th", 0, 0, 400, r, true, 9);
-  #assert app_test_end(t[..]) && h == 4 + 4 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show all 6 lines" && app_test_texts(t[..], "five") == 0;
+  #assert app_test_end(t[..]) && h == 4 + 6 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show all 8 lines" && app_test_texts(t[..], "seven") == 0;
   #assert app_act_press(t[0].ks[..], "th", "th");
   app_test_begin(t[..], "", "", true);
   h = app_act_row(f, "th", 0, 0, 400, r, false, 9);
-  #assert app_test_end(t[..]) && h == 4 + 6 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show fewer lines" && app_test_texts(t[..], "six") == 1;
+  #assert app_test_end(t[..]) && h == 4 + 8 * 20 + 4 + 26 && app_test_label(t[..], "th") == "Show fewer lines" && app_test_texts(t[..], "eight") == 1;
+  // six lines or fewer show inline with no button and no fade
+  r.output = "one\ntwo\nthree\nfour\nfive\nsix";
+  app_test_begin(t[..], "", "", true);
+  h = app_act_row(f, "th6", 0, 0, 400, r, false, 9);
+  #assert app_test_end(t[..]) && h == 4 + 6 * 20 + 4 && app_test_find(t[..], "th6") < 0 && app_test_texts(t[..], "six") == 1;
   // a short one shows no button and no fade
   r.output = "just this";
   app_test_begin(t[..], "", "", true);

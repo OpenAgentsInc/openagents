@@ -308,7 +308,7 @@ app_act_detail :: (f: [] UiFrame, id: string, k: int, tx: f32, y: f32, tw: f32, 
 
 // A thought's row at (x, y), w wide: its words in the tree where a tool's line sits, as a
 // reply's Markdown a step smaller in the muted ink; no glyph, no branch, the trunk passing it
-// only on its way to a row below. Past four lines it folds, its foot fading, "Show all N lines"
+// only on its way to a row below. Past six lines it folds, its foot fading, "Show all N lines"
 // under it; opened, the whole thought and "Show fewer lines". Returns its height.
 app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow, below: bool, action: int) -> f32 {
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m;
@@ -317,34 +317,39 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   open := app_tool_is_open(f, k, false);
   tx := x + a.gutter; tw := w - a.gutter; pad := (a.row - line) / 2; ty := y + pad;
   ns := s; ns.ink = s.muted; ns.md.line = line; ns.md.block_gap = a.thought_gap; ns.body.line = line;
-  // the fade over the foot, taken back below if the words fit
-  fu := sh[0].nu; fo := sh[0].no;
-  if !open {
+  total: f32 = 0; lines := 0;
+  if r.blocks > 0 {
+    for b: r.block0..<r.block0 + r.blocks {
+      if b > r.block0 { total += a.thought_gap; }
+      total += markdown_height(sh, m, ns, r.doc, b, tw);
+    }
+    lines = cast(int) ((total - cast(f32) (r.blocks - 1) * a.thought_gap) / line + 0.5);
+  } else {
+    lines = app_lines(r.output);
+    total = cast(f32) lines * line;
+  }
+  long := lines > cast(int) a.thought_lines;
+  clipped := long && !open;
+  if clipped {
     sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
     sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + folded_h, line * a.thought_fade));
     uiframe_clip(f, tx, ty, x + w, ty + folded_h);
   }
-  total: f32 = 0; lines := 0;
   if r.blocks > 0 {
-    // painted while it shows; past the fold, laid out and taken back, to count its lines
+    py: f32 = 0;
     for b: r.block0..<r.block0 + r.blocks {
-      if b > r.block0 { total += a.thought_gap; }
-      if open || total < folded_h { total += markdown_block(sh, m, ns, r.doc, b, tx, ty + total, tw); }
-      else { total += markdown_height(sh, m, ns, r.doc, b, tw); }
+      if b > r.block0 { py += a.thought_gap; }
+      if clipped && py >= folded_h { break; }
+      py += markdown_block(sh, m, ns, r.doc, b, tx, ty + py, tw);
     }
-    lines = cast(int) ((total - cast(f32) (r.blocks - 1) * a.thought_gap) / line + 0.5);
   } else {
-    n := app_lines(r.output);
-    for q: 0..<n {
-      if !open && cast(f32) q * line >= folded_h { break; }
+    for q: 0..<lines {
+      if clipped && cast(f32) q * line >= folded_h { break; }
       _ := sheet_plain(sh, m, tx, ty + cast(f32) q * line, line, s.body.face, s.muted, app_line(r.output, q), true);
     }
-    total = cast(f32) n * line; lines = n;
   }
-  long := total > folded_h + 0.5;
-  if !open {
+  if clipped {
     uiframe_unclip(f);
-    if !long { sh[0].under[fu].on = false; sh[0].over[fo].on = false; }
     sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
   }
   shown := ifx open || !long then total else folded_h;
