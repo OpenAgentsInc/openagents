@@ -67,7 +67,15 @@ env_label="${CODER_ENV_LABEL:-com.openagents.coax.environment}"
 env_plist="$HOME/Library/LaunchAgents/$env_label.plist"
 env_link="$HOME/.openagents/bin/openagents-environment"
 host_sock="$HOME/.openagents/coder/host/service.sock"
-sock_pid() { lsof -U 2>/dev/null | awk -v s="$host_sock" '$NF == s {print $2; exit}'; }
+# The process that holds the socket and whose parent does not: a worker run inherits the descriptor.
+# awk reads all of lsof's output (an early exit would end lsof by SIGPIPE, which pipefail makes fatal).
+sock_pid() {
+  local all p
+  all="$(lsof -U 2>/dev/null | awk -v s="$host_sock" '$NF == s {print $2}' | sort -u)"
+  for p in $all; do
+    grep -qx "$(ps -o ppid= -p "$p" | tr -d ' ')" <<< "$all" || { echo "$p"; return 0; }
+  done
+}
 # The daemon is busy while it has a child (a worker run); a restart then waits for a later check.
 daemon_busy() { local p; p="$(sock_pid)"; [[ -n "$p" ]] && [[ -n "$(pgrep -P "$p" || true)" ]]; }
 # It runs the given app's coder-host (the installed app's by default): a newer build waiting for
