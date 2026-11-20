@@ -35,6 +35,11 @@
   #assert cast(string) again[0..<an] == cast(string) kept[0..<kn];
   out: [4096] u8; rn := coder_page_recall_line(s, out[..]);
   #assert cast(string) out[0..<rn] == "{\"recall\":[{\"task\":\"List  the\\nfiles\",\"reply\":\"There are **two** files.\"}]}\n";
+  // a turn stopped before any reply is still recalled, so "go" after it is read with its task
+  keep_n := s[0].turns[0].reply_n; s[0].turns[0].reply_n = 0; s[0].turns[0].state = CP_STOPPED;
+  rn = coder_page_recall_line(s, out[..]);
+  #assert cast(string) out[0..<rn] == "{\"recall\":[{\"task\":\"List  the\\nfiles\",\"reply\":\"[stopped by the user before a reply]\"}]}\n";
+  s[0].turns[0].reply_n = keep_n; s[0].turns[0].state = CP_DONE;
   // the list: 50 rows and how many more; the id a press asks for
   coder_page_chats(s, "a1\tFirst chat\nb2\t\nc3\tThird\n");
   #assert s[0].nchats == 3 && s[0].chats_more == 0 && cast(string) s[0].chats[0].id[0..<s[0].chats[0].id_n] == "chat.a1" && cast(string) s[0].chats[1].title[0..<s[0].chats[1].title_n] == "New chat";

@@ -281,6 +281,18 @@ mk_remember :: (h: [] MkTurns, reply: string) {
   h[0].turns += 1;
 }
 
+// Remembers a run that ended, however it ended: a stopped or failed turn keeps its task, so the
+// next message ("go", "try again") is read with it. With no reply text it says how it ended.
+mk_end_note :: (ending: string) -> string {
+  if ending == "stopped" { return "[stopped by the user before a reply]"; }
+  if ending == "failed" { return "[the run failed before a reply]"; }
+  return "[the run ended before a reply]";
+}
+mw_remember_end :: (h: [] MkTurns, ending: int, text: string) {
+  if text.count > 0 { mk_remember(h, text); return; }
+  mk_remember(h, mk_end_note(mc_ending_name(ending)));
+}
+
 // A command's time limit in a Coder run (GitHub #13325): 120 s, where the loop's own is 30 s.
 // A unit's checks often take a minute or more; in #13231's H6 the model spent 5 to 8 calls
 // starting them in the background and polling. STOP waits for a running command to end.

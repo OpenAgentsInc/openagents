@@ -357,7 +357,7 @@ tool_main :: () -> int #export_c #effects(all) {
       for i: 0..<n {
         if ev[i].kind == MR_ENDED {
           running = false; ended = mc_ending_name(ev[i].ending);
-          if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
+          mw_remember_end(h[..], ev[i].ending, ev[i].text);
         }
         mw_event(ev[i], out[..]);
         if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }
@@ -451,7 +451,7 @@ tool_main :: () -> int #export_c #effects(all) {
         for i: 0..<n {
           if ev[i].kind == MR_ENDED {
             running = false; e = mc_ending_name(ev[i].ending);
-            if ev[i].ending == MC_END_FINISHED || ev[i].ending == MC_END_ASKED { mk_remember(h[..], ev[i].text); }
+            mw_remember_end(h[..], ev[i].ending, ev[i].text);
           }
           mw_event(ev[i], out[..]);
           if ev[i].kind == MR_ENDED { mw_aware(run[..], out[..]); }

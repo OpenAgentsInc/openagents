@@ -225,15 +225,22 @@ cp_recall_text :: (t: [] u8, s: string) -> string {
   for i: 0..<CP_RECALL_CUT.count { t[k + i] = CP_RECALL_CUT[i]; }
   return cast(string) t[0..<k + CP_RECALL_CUT.count];
 }
+cp_recall_ended :: (state: int) -> string {
+  if state == CP_STOPPED { return "[stopped by the user before a reply]"; }
+  if state == CP_FAILED { return "[the run failed before a reply]"; }
+  return "[the run ended before a reply]";
+}
 coder_page_recall_line :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 { return 0; }
   b := s[0].scratch[..]; n := json_raw(b, 0, "["); some := false;
   first := ifx s[0].nturns > 6 then s[0].nturns - 6 else 0;
   for i: first..<s[0].nturns {
-    if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].reply_n == 0 { continue; }
+    if s[0].turns[i].state == CP_RUNNING || s[0].turns[i].ask_n == 0 { continue; }
     t: [CP_RECALL_TEXT] u8;
+    // a turn stopped or failed before a reply still counts: the next message ("go") is read with it
+    reply := ifx s[0].turns[i].reply_n > 0 then cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n] else cp_recall_ended(s[0].turns[i].state);
     n = json_raw(b, n, ifx some then ",{\"task\":" else "{\"task\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n]));
-    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cp_recall_text(t[..], cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n])); n = json_raw(b, n, "}");
+    n = json_raw(b, n, ",\"reply\":"); n = json_write_string(b, n, cp_recall_text(t[..], reply)); n = json_raw(b, n, "}");
     some = true;
   }
   n = json_raw(b, n, "]");
