@@ -1,7 +1,0 @@
-// The actual shared page/core on the Linux C/Wayland/Vulkan SDK.
-#import "Basic";
-#load "../../../../coax/native/linux-build.coax";
-tool_main :: ()->int #export_c #effects(all) {
- argv:[1]Args;if !args_load(argv[..]) {return 2;}
- return cnl_build(CnlBuild.{source="apps/openagents-desktop/native/gpu/tests/linux.coax",carrier="apps/openagents-desktop/native/gpu/carrier.c",entry="apps/openagents-desktop/native/gpu/tests/linux.c",parent="apps/openagents-desktop/build",folder="apps/openagents-desktop/build/GPU-Linux",sanitized=args_has(argv[..],"--sanitized")});
-}
