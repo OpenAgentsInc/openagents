@@ -1,8 +1,9 @@
 // Actual compiled page, including field focus, scrolling and navigation.
+// Projects and Usage are experimental features (off unless turned on); the setup turns them on.
 #import "Basic";
 #load "../../../openagents-ios/chat.coax";
 psn_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
- app_init(c);c[0].auth=AUTH_IN;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);
+ app_init(c);c[0].auth=AUTH_IN;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_experimental_set(s,true);chat_step(s);
  _:=ch_test_frame(s,o);#assert chat_activate(s,"nav.menu");_:=ch_test_frame(s,o);
  #assert chat_activate(s,"drawer.projects");_:=ch_test_frame(s,o);
  #assert s[0].section==1 && !s[0].drawer && !s[0].sc[0].identity[0].open && chat_layer(s)==0;

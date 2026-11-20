@@ -2,7 +2,7 @@
 #import "Basic";
 #load "../../../openagents-ios/chat.coax";
 usn_setup :: (s:[]ChatPage,c:[]AppCore,o:[]ChOut) {
- app_init(c);c[0].auth=AUTH_OUT;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_step(s);s[0].sc[0].identity[0].open=true;_=ch_test_frame(s,o);
+ app_init(c);c[0].auth=AUTH_OUT;ch_test_atlas(s[0].atlas[..]);chat_attach(s,c,"");chat_experimental_set(s,true);chat_step(s);s[0].sc[0].identity[0].open=true;_=ch_test_frame(s,o);
  #assert chat_activate(s,"usage.open");_=ch_test_frame(s,o);#assert ch_test_has(s,"usage.title") && ch_test_has(s,"usage.back") && s[0].sc[0].usage[0].open && chat_layer(s)==0;
  u:=s[0].sc[0].usage[..];u[0].loaded=true;u[0].catalog[0].n=1;_=pa_copy(u[0].catalog[0].entries[0].host[..],"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");u[0].catalog[0].entries[0].nl=pa_copy(u[0].catalog[0].entries[0].label[..],"Computer");u[0].recovered[0]=true;u[0].index=1;u[0].next=30000;
 }
