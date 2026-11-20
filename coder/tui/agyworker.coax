@@ -35,6 +35,7 @@
 #load "../../coax/lib/sys/proc.coax";        // proc_sleep: --probe waits on agy
 #load "../../coax/lib/agent/engine/antigravity.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
+#load "../../coax/lib/agent/user-instructions.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -309,6 +310,19 @@ agyw_is_compact :: (text: string) -> bool {
   t := agyw_trim(text);
   if t == "/compact" { return true; }
   return t.count > 9 && cast(string) t[0..<9] == "/compact ";
+}
+
+// A new session's first prompt with the person's own instructions ahead of it (~/.openagents/
+// instructions.md, GitHub #13808), as Microcoder and Claude Code get them in their system prompts:
+// ACP takes no system prompt, so they lead the session's first message. block is uinstr_block's;
+// the prompt alone when there is none or the two don't fit out.
+AGYW_TASK_HEAD :: "\nThe person's message:\n";
+agyw_with_instructions :: (block: string, prompt: string, out: [] u8) -> string {
+  if block.count == 0 || block.count + AGYW_TASK_HEAD.count + prompt.count > out.count { return prompt; }
+  n := agyw_copy(out, block);
+  n += agyw_copy(out[n..<out.count], AGYW_TASK_HEAD);
+  n += agyw_copy(out[n..<out.count], prompt);
+  return cast(string) out[0..<n];
 }
 
 // Compose a prompt with recalled conversation history (for Edit-from-here rollback / fresh session).
@@ -655,6 +669,11 @@ tool_main :: () -> int #export_c #effects(all) {
               s[0].has_recall = false;
               s[0].recall_n = 0;
             }
+            // a new session's first prompt carries the user instructions, read again for each session
+            ui_buf: [CUE_OWED] u8; uib: [UINSTR_BLOCK_BYTES] u8; uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
+            if !x[0].live && !agyw_is_compact(req[0].task) {
+              prompt = agyw_with_instructions(uinstr_block("", uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]), prompt, ui_buf[..]);
+            }
             s[0].last_prompt_n = agyw_copy(s[0].last_prompt[..], prompt);
 
             if !x[0].live {
@@ -747,6 +766,15 @@ tool_main :: () -> int #export_c #effects(all) {
   u_msg := "{\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Hello from agy\"}}}";
   agyw_handle_update(s, x, u_msg, false);
   #assert agyw_str(s[0].reply[..], s[0].reply_n) == "Hello from agy";
+}
+
+#test "agyworker: a new session's first prompt carries the user instructions" {
+  ob: [512] u8; bb: [UINSTR_BLOCK_BYTES] u8;
+  block := uinstr_block("", "Commit and push.", bb[..]);
+  p := agyw_with_instructions(block, "fix the bug", ob[..]);
+  #assert uinstr_find(p, UINSTR_HEADER) == 0 && uinstr_find(p, "Commit and push.\n\nThe person's message:\nfix the bug") > 0;
+  #assert agyw_with_instructions("", "fix the bug", ob[..]) == "fix the bug";
+  #assert agyw_with_instructions(block, "fix the bug", ob[0..<20]) == "fix the bug";   // doesn't fit: the prompt alone
 }
 
 #test "agyworker: rollback recall composes context into next prompt" {

@@ -37,6 +37,7 @@
 #load "../../coax/lib/agent/claude/claude.coax";
 #load "../../coax/lib/agent/engine/mcworker-wire.coax";
 #load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/agent/user-instructions.coax";
 
 cxterm_byte :: (timeout_ms: int) -> int #foreign #effects(all);
 cxterm_write :: (s: [] u8) -> int #foreign #effects(all);
@@ -147,6 +148,13 @@ cw_options :: (o: [] ClOptions, model: string, cwd: string) {
   if cwd.count > 0 { o[0].cwd = cwd; }
 }
 
+// The person's own instructions (~/.openagents/instructions.md, GitHub #13808) added to Claude
+// Code's system prompt (--append-system-prompt), as Microcoder gets them: text is the file's
+// (uinstr_read, read again for each run: coax/lib/agent/user-instructions.coax). out holds them.
+cw_user_instructions :: (o: [] ClOptions, text: string, out: [] u8) {
+  o[0].append_system_prompt = uinstr_block("", text, out);
+}
+
 // The guard hook beside the worker at self: gitguard for claudeworker, gitguard-HASH for
 // claudeworker-HASH, into out; "" when self is not named claudeworker.
 cw_guard_beside :: (self: string, out: [] u8) -> string {
@@ -196,6 +204,21 @@ cw_guard_settings :: (path: string, out: [] u8) -> string {
     if i + 1 < a[0].count && arg == "--permission-mode" && cl_arg_at(a[..], i + 1) == "bypassPermissions" { found_mode = true; }
   }
   #assert found_mode && found_disallow;
+}
+
+#test "the user instructions go to Claude Code as --append-system-prompt" {
+  o: [1] ClOptions; ub: [UINSTR_BLOCK_BYTES] u8;
+  cw_options(o[..], "sonnet", "/tmp/work");
+  cw_user_instructions(o[..], uinstr_text_of(false, ""), ub[..]);   // no file: the default
+  #assert uinstr_find(o[0].append_system_prompt, UINSTR_HEADER) == 0 && uinstr_find(o[0].append_system_prompt, "push the commit") > 0;
+  a: [1] ClArgs; abuf: [16384] u8; a[0].buf = abuf[..]; scratch: [256] u8;
+  cl_build_args(o[0], a[..], scratch[..]);
+  found := false;
+  for i: 0..<a[0].count {
+    arg := cl_arg_at(a[..], i);
+    if arg.count > 23 && cast(string) arg[0..<23] == "--append-system-prompt=" && cast(string) arg[23..<arg.count] == o[0].append_system_prompt { found = true; }
+  }
+  #assert found;
 }
 
 #test "a passed-in key goes to the right variable" {
@@ -251,6 +274,7 @@ tool_main :: () -> int #export_c #effects(all) {
   held: [65536] u8; held_n := 0;   // the newest thing Claude said, not sent yet
   keyb: [4096] u8; kentry: [4200] u8; keyed := false;   // a key passed in CODER_CLAUDE_KEY
   gpath: [4096] u8; selfb: [4096] u8; gsettings: [4400] u8;   // the guard hook (GitHub #13771)
+  uib: [UINSTR_BLOCK_BYTES] u8;   // the user instructions (GitHub #13808)
   running := false; ticket := 0;
   cw_send(out[..], mww_ready(out[..]));
   while true {
@@ -407,6 +431,8 @@ tool_main :: () -> int #export_c #effects(all) {
       return 0;
     }
     o[0].settings = hooks;
+    uipb: [FS_PATH_MAX] u8; uitb: [UINSTR_MAX_BYTES + 1] u8;
+    cw_user_instructions(o[..], uinstr_read(uinstr_path(uipb[..]), uitb[..]), uib[..]);
     q[0].options = o[0];
     problem := cl_start(q[..], p[..], cast(string) task[0..<tn], false, scratch[..]);
     if problem.count > 0 {
