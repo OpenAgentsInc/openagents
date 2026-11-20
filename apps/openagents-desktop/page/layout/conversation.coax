@@ -187,7 +187,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   u: f32 = ARCADE_PHONE_SCALE;
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
-  top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - s[0].todos[0].tray_h;   // what scrolls runs up to the trays and the bar
+  todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
+  top: f32 = 0; bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h;   // what scrolls runs up to the trays and the bar
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;
   cp_follow(s, f[0].dt);
@@ -443,7 +444,7 @@ cp_composer :: (s: [] CoderPage, f: [] UiFrame, x: f32, cw: f32, h: f32, running
   s[0].box = cp_zeron_composer(s, f, x, box_y, cw, g, running, full || exceeded);
   s[0].bar_h = h - cast(f32) CP_BOTTOM - box_y;
   cp_fu_tray(s, f, x, box_y - a.gap_small, cw, running);
-  cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw);
+  if !s[0].todos[0].docked { _ := cp_todos_tray(s, f, x, box_y - a.gap_small - s[0].fu[0].tray_h, cw, true); }
   foot_y := box_y + g.height + a.gap_small;
   m_x := cp_composer_foot(s, f, x, foot_y, cw, running, exceeded);
   if s[0].model_menu { cp_model_menu(s, f, x, cw, m_x, box_y, foot_y, h); }

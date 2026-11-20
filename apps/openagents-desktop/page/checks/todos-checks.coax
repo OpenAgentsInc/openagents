@@ -55,3 +55,37 @@
   #assert s[0].todos[0].n == 0;
   #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]) && s[0].todos[0].tray_h == 0 && surface_find(sf, "coder.todos") < 0;
 }
+
+#test "todos: renders in the right sidebar at the top, with any sub-agent transcript underneath" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  #assert coder_page_set_text(s, "ship sidebar") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"todos\",\"todos\":[{\"id\":\"1\",\"content\":\"Move tasks\",\"status\":\"in_progress\"},{\"id\":\"2\",\"content\":\"Verify layout\",\"status\":\"pending\"}]}") == MWW_TODOS;
+  #assert cp_test_settle(s, f[..], 1440.0f32, 900.0f32) > 0;
+  #assert s[0].pane_w > 0 && s[0].pane_x > 0;
+  tr: [8] f32;
+  ti := surface_find(sf, "coder.todos");
+  #assert ti >= 0 && surface_access_row(sf, ti, 1, tr[..]) && tr[0] >= s[0].pane_x;
+  // Open a sub-agent transcript alongside todos: both share the single right sidebar, todos above the transcript
+  #assert coder_page_line(s, "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"hydrogen\",\"task\":\"Check files\"}]}") == MWW_DELEGATE;
+  #assert s[0].pane_open;
+  #assert cp_test_draw_wide(s, f[..]) && cp_test_draw_wide(s, f[..]);
+  ti2 := surface_find(sf, "coder.todos");
+  ui := surface_find(sf, "p0.0.u");
+  tr2: [8] f32; ur: [8] f32;
+  #assert ti2 >= 0 && ui >= 0 && surface_access_row(sf, ti2, 1, tr2[..]) && surface_access_row(sf, ui, 1, ur[..]);
+  #assert tr2[0] >= s[0].pane_x && ur[0] >= s[0].pane_x;
+  #assert tr2[1] + tr2[3] <= ur[1];
+}
+
+#test "todos: a window too narrow for a sidebar keeps the task list over the composer, the conversation in view" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  #assert coder_page_set_text(s, "narrow") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"todos\",\"todos\":[{\"id\":\"1\",\"content\":\"Stay visible\",\"status\":\"in_progress\"}]}") == MWW_TODOS;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert !s[0].todos[0].docked && s[0].pane_w == 0 && s[0].col_w > 0;
+  tr: [8] f32;
+  ti := surface_find(sf, "coder.todos");
+  #assert ti >= 0 && surface_access_row(sf, ti, 1, tr[..]) && tr[0] >= s[0].col_x && tr[0] + tr[2] <= s[0].col_x + s[0].col_w + 1 && tr[1] > 1000.0f32;   // in the column, low in the 2000-high window over the composer
+}
