@@ -30,6 +30,12 @@ cp_test_draw_side :: (s: [] CoderPage, f: [] UiFrame) -> bool {
   cp_layout(s, f, 1200.0f32, 800.0f32);
   return uiframe_end(f, s[0].surface[..]);
 }
+// a frame wide enough for a pane beside the conversation, as Tier 3's 1440 by 900 window
+cp_test_draw_wide :: (s: [] CoderPage, f: [] UiFrame) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
+  cp_layout(s, f, 1440.0f32, 900.0f32);
+  return uiframe_end(f, s[0].surface[..]);
+}
 cp_test_draw :: (s: [] CoderPage, f: [] UiFrame) -> bool {
   uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, 0.016, false, false);
   s[0].think_at = 1 - s[0].think_at; s[0].think[s[0].think_at].n = 0; s[0].think[s[0].think_at].nb = 0; s[0].think[s[0].think_at].nr = 0; s[0].think[s[0].think_at].ni = 0; s[0].think[s[0].think_at].nlink = 0;

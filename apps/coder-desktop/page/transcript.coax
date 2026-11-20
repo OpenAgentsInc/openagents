@@ -210,20 +210,26 @@ cp_trimmed :: (t: string) -> string {
   while b > a && (t[b - 1] == 32 || t[b - 1] == 10 || t[b - 1] == 13 || t[b - 1] == 9) { b -= 1; }
   return cast(string) t[a..<b];
 }
-// Sub-agent j ended with reply: its newest row, when it is that same text said as the reply
-// streamed, goes, so the transcript shows the reply once.
-cp_said_drop_reply :: (s: [] CoderPage, i: int, j: int, reply: string) {
+// Sub-agent j finished: its newest row, when it is what the last model call said (nothing came
+// after it), was the reply as it streamed and goes, so the transcript shows the reply once and
+// the summary does not count it as a thought (#13754). The ended line's text is the whole reply
+// and takes its place, as it does in the conversation; with none, the words it streamed are the
+// reply: kept as its reply (keep), their length returned (0 when no row went).
+cp_said_drop_reply :: (s: [] CoderPage, i: int, j: int, keep: bool) -> int {
   q := s[0].turns[i].agents[j].tail - 1;
-  if q < 0 || !s[0].calls[q].said || reply.count == 0 || cp_trimmed(cp_call_text(s, q)) != cp_trimmed(reply) { return; }
+  if q < 0 || !s[0].calls[q].said { return 0; }
+  kept := 0;
+  if keep { kept = cp_out(s[0].turns[i].agents[j].reply[0..<CP_AGENT_REPLY - 48], cp_trimmed(cp_call_text(s, q))); s[0].turns[i].agents[j].reply_n = kept; }
   prev := -1; at := s[0].turns[i].agents[j].head - 1;
   while at >= 0 && at != q { prev = at; at = s[0].calls[at].next - 1; }
-  if at != q { return; }
+  if at != q { return 0; }
   if prev < 0 { s[0].turns[i].agents[j].head = 0; s[0].turns[i].agents[j].tail = 0; }
   else { s[0].calls[prev].next = 0; s[0].turns[i].agents[j].tail = prev + 1; }
   s[0].turns[i].agents[j].nrows -= 1;
   s[0].calls[q].next = s[0].calls_free; s[0].calls_free = q + 1;
   s[0].calls[q].said = false; s[0].calls[q].text_n = 0; s[0].calls[q].out_n = 0; s[0].calls[q].long_n = 0;
   if s[0].live_call == q { s[0].live_call = -1; }
+  return kept;
 }
 // Text with a new line wherever a line would pass `per` bytes, at a word's end where it has one.
 cp_wrap :: (out: [] u8, text: string, per: int) -> int {
@@ -447,8 +453,11 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
   } else if kind == MWW_REPLY { cp_said_add(s, i, j, l[0].text);   // said between tool calls; the reply comes in ended
   } else if kind == MWW_ENDED {
     done := l[0].ending == "finished" || l[0].ending == "asked";
-    if done { cp_said_drop_reply(s, i, j, l[0].text); }
-    cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, cp_ended_why(l[0].ending, l[0].text, true));
+    sn := 0;
+    if done { sn = cp_said_drop_reply(s, i, j, l[0].text.count == 0); }
+    // the reply it streamed stands as written (cp_agent_end copies it onto itself)
+    text := ifx sn > 0 then cast(string) s[0].turns[i].agents[j].reply[0..<sn] else cp_ended_why(l[0].ending, l[0].text, true);
+    cp_agent_end(s, i, j, ifx done then CP_DONE else CP_FAILED, text);
   }
   return kind;
 }

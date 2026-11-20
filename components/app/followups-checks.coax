@@ -29,6 +29,9 @@
   _ := app_fu_tray(f, "fu", 0, 400, 600, tray, rows[1..<3], 43);
   #assert app_test_end(t[..]);
   #assert app_test_pressable(t[..], "fu.resume") && app_test_label(t[..], "fu.q0.send") == "Send now";
+  // a queue of numbers keeps its text close to them, not where "Not taken" would end (#13754)
+  s := f[0].skin;
+  #assert app_test_text_x(t[..], "then fix c") - app_test_text_x(t[..], "1") <= measure_width(f[0].m, s.small.face, "2") + s.app.gap + 0.5;
   // nothing to show: no tray
   app_test_begin(t[..], "", "", true);
   #assert app_fu_tray(f, "fu", 0, 400, 600, AppFuTray.{}, rows[0..<0], 43) == 0;

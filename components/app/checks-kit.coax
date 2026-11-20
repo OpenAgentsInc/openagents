@@ -37,6 +37,12 @@ app_test_texts :: (t: [] AppTest, text: string) -> int {
   for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { n += 1; } }
   return n;
 }
+// The left edge of the first committed run of text reading exactly `text` (-1 for none).
+app_test_text_x :: (t: [] AppTest, text: string) -> f32 {
+  sh := surface_sheet(t[0].sf[..]);
+  for i: 0..<sh.no { if sh.over[i].kind == PRIM_TEXT && sh.over[i].text == text { return sh.over[i].x; } }
+  return -1;
+}
 app_test_hits :: (t: [] AppTest) -> int { return surface_sheet(t[0].sf[..]).nh; }
 // How many committed primitives under the text are of a kind.
 app_test_prims :: (t: [] AppTest, kind: int) -> int {

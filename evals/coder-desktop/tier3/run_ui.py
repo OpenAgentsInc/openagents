@@ -374,7 +374,7 @@ AGENT_A = {"turns": [{"steps": [
     {"emit": {"kind": "thought", "text": "Listing module A."}},
     {"emit": {"kind": "command", "command": "ls module_a", "exit": 0, "timed_out": False, "output": "a.coax\nb.coax"}},
     {"emit": {"kind": "reply", "text": "Module A has two files and both look fine."}},
-    {"emit": {"kind": "ended", "ending": "finished", "text": "Module A ok"}}]}]}
+    {"emit": {"kind": "ended", "ending": "finished", "text": "Module A has two files and both look fine."}}]}]}   # ended carries the whole reply
 AGENT_B = {"turns": [{"steps": [{"emit": {"kind": "ended", "ending": "finished", "text": "Module B ok"}}]}]}
 WORKERS = {"main": [{"match": "long analysis", "script": STOP_SCRIPT}, {"match": "all modules", "script": DELEGATE_SCRIPT}],
            "default": reply_script(REPLY), "agents": {"0": AGENT_A, "1": AGENT_B}}

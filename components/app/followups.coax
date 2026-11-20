@@ -59,6 +59,12 @@ app_fu_line :: (text: string) -> string {
   for c, i: text { if c == '\n' { return cast(string) text[0..<i]; } }
   return text;
 }
+// A row's badge: Steering, Not taken, or its place in the queue (written into nb).
+app_fu_badge :: (r: AppFuRow, nb: [] u8) -> string {
+  if r.kind == APP_FU_STEER { return "Steering"; }
+  if r.kind == APP_FU_REJECTED { return "Not taken"; }
+  return cast(string) nb[0..<el_put_i(nb, 0, r.place)];
+}
 // A row's height: a small button's with room around it.
 app_fu_row_h :: (f: [] UiFrame) -> f32 { a := f[0].skin.app.icon_button; c := f[0].skin.cmp.chip_h; return (ifx a > c then a else c) + 2; }
 // The tray's height for n rows shown.
@@ -97,7 +103,14 @@ app_fu_tray :: (f: [] UiFrame, id: string, x: f32, bottom: f32, w: f32, t: AppFu
   head := app_fit(f, s.label.face, t.head, bx - x - pad);
   _ := sheet_text(sh, m, -1, x + pad, hy + (rh - s.label.line) / 2, s.label.line, s.label.face, ifx t.paused then s.ink else s.muted, head);
   y = hy + rh;
-  badge_w := measure_width(m, s.small.face, "Not taken") + a.gap;
+  // the badge column is as wide as the widest badge shown, so a queue of numbers keeps its text close
+  badge_w: f32 = 0;
+  for i: 0..<n {
+    nb: [24] u8;
+    bw := measure_width(m, s.small.face, app_fu_badge(rows[i], nb[..]));
+    if bw > badge_w { badge_w = bw; }
+  }
+  badge_w += a.gap;
   for i: 0..<n {
     r := rows[i];
     ry := y + cast(f32) i * rh;
@@ -107,7 +120,7 @@ app_fu_tray :: (f: [] UiFrame, id: string, x: f32, bottom: f32, w: f32, t: AppFu
     _ := uiframe_semantic(f, r.id, EL_TEXT, text, x + pad, ry, w - 2 * pad, rh, 0, 0);
     // its badge
     nb: [24] u8;
-    badge := ifx r.kind == APP_FU_STEER then "Steering" else ifx r.kind == APP_FU_REJECTED then "Not taken" else cast(string) nb[0..<el_put_i(nb[..], 0, r.place)];
+    badge := app_fu_badge(r, nb[..]);
     _ := sheet_text(sh, m, -1, x + pad, ry + (rh - s.small.line) / 2, s.small.line, s.small.face, ifx r.kind == APP_FU_QUEUED then s.faint else s.ink, sheet_pool(sh, badge));
     // its actions, from the row's end
     ax := x + w - pad;
