@@ -342,6 +342,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 34: setAntigravityMode(Int(cd_settings_agy_mode(page)))
         case 35: chooseAntigravityAuth()
         case 36: experimentalChanged()
+        case 37: forkShown()
         case 40...43: fileAsked(what)
         default: break
         }

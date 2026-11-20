@@ -164,6 +164,52 @@ extension CoderWindow {
     /// The chat that is shown, when it is kept: File > Rename Chat acts on it.
     var canRename: Bool { chat != nil && chat != Foreman.chatID }
     func renameShown() { if let id = chat, id != Foreman.chatID { rename(id) } }
+    var canFork: Bool { chat != Foreman.chatID && (chat != nil || savedText(of: page) != nil) }
+    func forkShown() { guard canFork else { return }; fork(chat) }
+    /// Forks a chat (the shown chat when `id == nil` or `id == chat`, or a sidebar chat by id) into a
+    /// new independent chat with the same transcript and working folder, then opens it.
+    func fork(_ id: String?) {
+        if let id, id == Foreman.chatID { return }
+        let text: String
+        let baseTitle: String
+        let baseFolder: String
+        if id == nil || id == chat {
+            guard let saved = savedText(of: page) else { return }
+            text = saved
+            baseTitle = (chat.flatMap { store.title($0) }) ?? titleFromFirstTurn(saved) ?? "New chat"
+            baseFolder = (chat.flatMap { store.folder($0) }) ?? folder.path
+        } else if let id, let saved = store.text(id) {
+            text = saved
+            baseTitle = store.title(id) ?? "New chat"
+            baseFolder = store.folder(id) ?? folder.path
+        } else {
+            return
+        }
+        let newID = UUID().uuidString.lowercased()
+        let newTitle = baseTitle.hasSuffix(" (fork)") ? baseTitle : baseTitle + " (fork)"
+        store.keep(id: newID, title: newTitle, folder: baseFolder, text: text)
+        cd_chats(page, chatLines)
+        open(newID)
+    }
+    private func savedText(of p: UnsafeMutableRawPointer) -> String? {
+        var cap = 262144
+        while cap <= 128_000_000 {
+            var buf = [CChar](repeating: 0, count: cap)
+            let n = cd_save(p, &buf, Int32(buf.count))
+            if n <= 0 { return nil }
+            if n < Int32(cap) { return String(cString: buf) }
+            cap *= 2
+        }
+        return nil
+    }
+    private func titleFromFirstTurn(_ saved: String) -> String? {
+        guard let data = saved.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let turns = obj["turns"] as? [[String: Any]],
+              let first = turns.first?["ask"] as? String,
+              !first.isEmpty else { return nil }
+        return first
+    }
     /// The chat that is shown, when it is kept and no reply is running: File > Delete Chat acts on it.
     var canDelete: Bool { chat != nil && chat != Foreman.chatID && cd_running(page) == 0 }
     func deleteShown() { if let id = chat { delete(id) } }

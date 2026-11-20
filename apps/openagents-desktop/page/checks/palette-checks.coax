@@ -131,3 +131,20 @@ cp_pal_test_row :: (s: [] CoderPage, label: string) -> int {
   coder_page_current(s, "p1");
   #assert coder_page_chat_step(s, -1) && coder_page_action(s) == CP_ASK_OPEN && s[0].open == 2;
 }
+#test "Fork chat appears in the palette when a non-Foreman chat has turns and asks CP_ASK_FORK" {
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); cp_pal_test_page(s);
+  #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  #assert cp_pal_test_row(s, "Fork chat") < 0;
+  #assert !coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  s[0].nturns = 1;
+  #assert coder_page_palette_toggle(s, APP_PAL_COMMANDS);
+  p := cp_pal(s);
+  r := cp_pal_test_row(s, "Fork chat");
+  #assert r >= 0;
+  p[0].lit = r;
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0) && coder_page_action(s) == CP_ASK_FORK;
+}
+#test "CP_ASK_FORK is a distinct non-zero host action" {
+  #assert CP_ASK_FORK != CP_ASK_NONE;
+  #assert CP_ASK_FORK == 37;
+}

@@ -49,13 +49,14 @@ extension CoderWindow {
             return false
         }
         let id = String(cString: out)
-        let items = [Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"), Item(label: "Rename Chat…"), Item(kind: 2), Item(label: "Delete Chat…", disabled: busy(id), danger: true)]
+        let items = [Item(label: store.isPinned(id) ? "Unpin Chat" : "Pin Chat"), Item(label: "Rename Chat…"), Item(label: "Fork Chat"), Item(kind: 2), Item(label: "Delete Chat…", disabled: busy(id), danger: true)]
         overlay.presentMenu(items, x: px, y: py) { [weak self] chosen in
             guard let self else { return }
             switch chosen {
             case 0: self.togglePin(id)
             case 1: self.rename(id)
-            case 3: self.delete(id)
+            case 2: self.fork(id)
+            case 4: self.delete(id)
             default: break
             }
         }

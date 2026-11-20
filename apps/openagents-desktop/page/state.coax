@@ -104,6 +104,7 @@ CP_ASK_AGY :: 33;           // Antigravity CLI / model & effort settings dialog 
 CP_ASK_AGY_MODE :: 34;      // Antigravity review mode choice changed (coder_page_settings_agy_mode; #13803)
 CP_ASK_AGY_AUTH :: 35;      // Antigravity Google sign-in / isolated profile / antigravity.env dialog (#13803)
 CP_ASK_EXPERIMENTAL :: 36;  // Settings > General > Experimental features was turned on or off (coder_page_experimental)
+CP_ASK_FORK :: 37;          // fork the shown chat into a new independent copy (/fork or palette)
 // What a row dispatches.
 CP_FIELD :: 1; CP_SEND :: 2; CP_NEW :: 3; CP_COPY :: 4; CP_TOOL :: 5; CP_FOLDER :: 6; CP_COPY_ASK :: 7; CP_COPY_REPLY :: 8; CP_COPY_ALL :: 9; CP_AGENT :: 10; CP_CHAT :: 11; CP_PANE_CLOSE :: 12; CP_PANE_TOOL :: 13; CP_PANE_COPY :: 14; CP_SAID_COPY :: 15; CP_BUDGET_EDIT :: 16; CP_BUDGET_APPROVE :: 17; CP_GOAL_OPEN :: 18; CP_GOAL_TOGGLE :: 19; CP_GOAL_COMPLETE_ACT :: 20; CP_GOAL_CLEAR_ACT :: 21; CP_FOREMAN :: 22; CP_FOREMAN_HUD_TOGGLE :: 23; CP_FOREMAN_HUD_OPEN :: 24; CP_MODEL_MENU :: 25; CP_MODEL_PICK :: 26; CP_UPDATE :: 27; CP_SIDE_TOGGLE :: 28;
 CP_GROUP :: 41;            // a message's or the open sub-agent's activity group: a press on its summary opens or folds it (#13731, #13744)

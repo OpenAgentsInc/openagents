@@ -123,6 +123,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func openScene(_ sender: Any?) { main?.chooseSceneFile() }
     @objc func saveFile(_ sender: Any?) { main?.saveOpenFile() }
     @objc func renameChat(_ sender: Any?) { main?.renameShown() }
+    @objc func forkChat(_ sender: Any?) { main?.forkShown() }
     @objc func deleteChat(_ sender: Any?) { main?.deleteShown() }
     @objc func followUpOther(_ sender: Any?) { main?.followUpOther() }
     @objc func biggerText(_ sender: Any?) { main?.zoom(1) }
@@ -156,6 +157,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             return Experimental.on && MacAccount.shared.loggedIn
         }
         if item.action == #selector(renameChat(_:)) { return main?.canRename == true }
+        if item.action == #selector(forkChat(_:)) { return main?.canFork == true }
         if item.action == #selector(deleteChat(_:)) { return main?.canDelete == true }
         if item.action == #selector(openFolder(_:)) { return main?.canFolder == true }
         if item.action == #selector(saveFile(_:)) { return main?.canSaveOpenFile == true }
@@ -243,6 +245,7 @@ enum TestLaunch {
         file.addItem(withTitle: "Save", action: #selector(CoderDelegate.saveFile(_:)), keyEquivalent: "s").target = delegate
         file.addItem(.separator())
         file.addItem(withTitle: "Rename Chat…", action: #selector(CoderDelegate.renameChat(_:)), keyEquivalent: "").target = delegate
+        file.addItem(withTitle: "Fork Chat", action: #selector(CoderDelegate.forkChat(_:)), keyEquivalent: "").target = delegate
         let del = file.addItem(withTitle: "Delete Chat…", action: #selector(CoderDelegate.deleteChat(_:)), keyEquivalent: "\u{8}")
         del.target = delegate; del.keyEquivalentModifierMask = [.command]
         // while a reply runs, Return steers and Shift-Return queues (#13717)

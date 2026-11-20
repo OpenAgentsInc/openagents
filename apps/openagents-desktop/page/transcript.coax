@@ -1,11 +1,25 @@
 // Coder Desktop page (../page.coax): a chat's turns and their rows: sending, the reply, commands,
 // tool calls, thoughts and what sub-agents say, sub-agents and their workers, and the results.
 
+// /fork in the composer: forks the shown chat into a new independent copy.
+cp_fork_slash :: (s: [] CoderPage, text: string) -> bool {
+  a := 0; b := text.count;
+  while a < b && (text[a] == ' ' || text[a] == '\t' || text[a] == '\n' || text[a] == '\r') { a += 1; }
+  while b > a && (text[b - 1] == ' ' || text[b - 1] == '\t' || text[b - 1] == '\n' || text[b - 1] == '\r') { b -= 1; }
+  if b - a != 5 { return false; }
+  if text[a] != '/' || text[a + 1] != 'f' || text[a + 2] != 'o' || text[a + 3] != 'r' || text[a + 4] != 'k' { return false; }
+  cur := cast(string) s[0].current[0..<s[0].current_n];
+  if cur == "chat.foreman" || s[0].nturns == 0 { return false; }
+  eb_set(s[0].draft[..], "");
+  s[0].ask = CP_ASK_FORK;
+  return true;
+}
 // The draft becomes a turn. False when there is nothing to send or nowhere to put it.
 cp_send :: (s: [] CoderPage) -> bool {
   text := eb_text(s[0].draft[..]);
   if text.count == 0 && cp_cargo_n(s) == 0 { return false; }
   if text.count > 0 && cp_goal_slash(s, text) { return true; }
+  if text.count > 0 && cp_fork_slash(s, text) { return true; }
   if cp_running(s) || cp_full(s) || cp_budget_exceeded(s) { return false; }
   // the message takes the draft's attachments and the files it mentions (attach.coax, #13699)
   if !cp_start_turn(s, ifx text.count > 0 then text else CP_ATTACHED_ONLY, CP_GOAL_PROMPT_NONE) { return false; }
