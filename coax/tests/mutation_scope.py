@@ -217,6 +217,9 @@ main :: () {}
         self.assertEqual(same.returncode, 0, same.stdout + same.stderr)
         self.assertIn('mutation scope: changed since HEAD (0 of 3 procedures; every check retained)', same.stdout)
         self.assertIn('nothing to mutate', same.stdout)
+        # #13610: with no mutation site in scope the baseline is not run at all.
+        quiet = self.run_mutate('--changed', 'HEAD', '--mutation-stats')
+        self.assertEqual(quiet.stdout, same.stdout); self.assertNotIn('mutation-baseline', quiet.stderr)
         # A comment or layout edit is no change.
         self.dependency.write_text(self.dependency.read_text().replace('dep :: (x:int)->int #effects(all) {',
                                                                        '// a note\ndep :: (x:int)->int   #effects(all) {\n'))
@@ -225,6 +228,7 @@ main :: () {}
         self.dependency.write_text(self.dependency.read_text().replace('x-7', 'x-8'))
         one = self.run_mutate('--changed', 'HEAD')
         self.assertIn('(1 of 3 procedures', one.stdout)
+        self.assertIn('mutation-baseline', self.run_mutate('--changed', 'HEAD', '--mutation-stats').stderr)
         full = self.run_mutate()
         self.assertGreater(self.count(full)[0], self.count(one)[0])
         self.assertGreater(self.count(one)[2], 0)  # dep's x>100 branch has no check

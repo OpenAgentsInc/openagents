@@ -2758,8 +2758,30 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     if (!changed_procedures(file, opt.changed, &changed)) { g_evidence.infrastructure = true; return 1; }
     baseline.changed = &changed;
   }
+  // --changed with no mutation site in any unit's scope: nothing to measure
+  // the mutants against, so the baseline is skipped (#13610). The report is
+  // the same; apps/openagents-web/slab.coax spent over 60 minutes on a
+  // baseline whose change was only check bodies. The scope is mutate_unit's.
+  bool no_sites = false;
+  if (baseline.changed && !merging) {
+    Mutator probe{arena};
+    for (const CheckDecl *c : file->checks) probe.calls(c->proc->body);
+    for (const std::string &unit : units)
+      for (ProcDecl *p : file->procs) {
+        if (std::find(probe.reached.begin(), probe.reached.end(), p) == probe.reached.end()) continue;
+        if (!MS_include(opt.root_only, p->root_source)) continue;
+        if (!unit.empty() && source_point(file->src, p->loc).path != unit) continue;
+        if (!changed.count(p)) continue;
+        probe.stmt(p->body);
+      }
+    no_sites = probe.mutants.empty() && !probe.invalid_spatial;
+  }
+  if (no_sites) {
+    baseline.base.assign((size_t)file->checks.count, 0);
+    baseline.paths.assign((size_t)file->checks.count, {});
+  }
   bool unstable = false;
-  if (!merging) {
+  if (!merging && !no_sites) {
     const auto began = std::chrono::steady_clock::now();
     // `coax test` runs a check as native code when it can, with no step
     // budget; the baseline runs every check in the evaluator, where the

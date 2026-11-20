@@ -926,7 +926,10 @@ report says how many procedures the change left in scope:
 mutation scope: changed since origin/main (1 of 3 procedures; every check retained)
 ```
 
-A change with nothing to mutate passes and says so. A changed procedure that
+A change with nothing to mutate passes and says so, without running the
+baseline: with no mutant there is nothing to measure against, so a suite whose
+change was only check bodies costs seconds, not the hour its checks take in the
+evaluator (`coax test` is what runs them). A changed procedure that
 no check reaches still fails. `--changed` works with `--unit`, `--killers`,
 `--shard` and `--merge`, and a `REF` that isn't a commit is refused before
 the baseline runs.

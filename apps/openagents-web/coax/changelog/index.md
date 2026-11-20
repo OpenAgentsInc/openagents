@@ -110,6 +110,11 @@ Commit: [`09101c58f972b76c8fcdd6f9315d1026b6a95837`](https://github.com/OpenAgen
   every procedure `#import_proto` generates as changed. One is changed when its
   directive, comments and layout aside, is not in `REF`'s copy of the unit, or
   when the descriptor it reads differs from `REF`'s or is not in `REF`.
+- Follow-up 2026-11-20 (#13610): `coax mutate --changed REF` with no mutation
+  site in scope skips the baseline and reports "nothing to mutate" at once.
+  The after-landing report's `apps/openagents-web/slab.coax` ran past 60
+  minutes, and `metaverse/slab-shelter.coax` took 47, on baselines for changes
+  that were only check bodies. Failing checks are `coax test`'s to report.
 
 ## 0.51.2 — Phase Storage Accounting — 2026-11-05
 
