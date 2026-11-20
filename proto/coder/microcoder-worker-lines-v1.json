@@ -115,6 +115,11 @@
      "name": "steerable",
      "type": "false",
      "note": "written only as false: the turn takes no steers (a sub-agent's); a steer for it is rejected active_turn_not_steerable, except a parent's note (steer with parent true)"
+    },
+    {
+     "name": "device",
+     "type": "true",
+     "note": "written only when true: the iOS Simulator is open beside the chat, so a step may hold device ops (coax/lib/microcoder/device.coax), run as oasim commands (GitHub #13811)"
     }
    ]
   },

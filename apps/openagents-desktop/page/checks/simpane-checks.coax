@@ -182,3 +182,20 @@ cp_abs :: (v: f32) -> f32 { return ifx v < 0 then -v else v; }
   s[0].sim[0].state = CP_SIM_SHUTDOWN;
   #assert !coder_page_sim_touch(s, 0, 1.0, 1.0, 201.0, 437.0) && !coder_page_sim_key(s, 36, "");
 }
+
+#test "a message sent while the pane is open and its helper there may drive the device; otherwise not" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_sim_test_page(s, f[..]);
+  out: [8192] u8;
+  #assert coder_page_set_text(s, "tap Settings") && coder_page_submit(s);
+  n := coder_page_task(s, "s", "/w/app", out[..]);
+  #assert n > 0 && cp_find(cast(string) out[0..<n], "\"device\":true") < 0;
+  coder_page_sim_show(s, true);
+  n = coder_page_task(s, "s", "/w/app", out[..]);
+  #assert n > 0 && cp_find(cast(string) out[0..<n], "\"device\":true") < 0;
+  coder_page_sim_connected(s, true, "");
+  n = coder_page_task(s, "s", "/w/app", out[..]);
+  #assert n > 0 && cp_find(cast(string) out[0..<n], ",\"device\":true}") > 0;
+  coder_page_sim_show(s, false);
+  n = coder_page_task(s, "s", "/w/app", out[..]);
+  #assert n > 0 && cp_find(cast(string) out[0..<n], "\"device\":true") < 0;
+}

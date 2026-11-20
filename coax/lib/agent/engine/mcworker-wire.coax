@@ -98,6 +98,7 @@ McTask :: struct {
   no_ask: bool;                  // disable ask: "question" interactive prompting (GitHub #13701)
   openrouter: string;            // with agents: the OpenRouter model a task's level openrouter runs on ("" for none)
   no_steer: bool;                // the turn takes no steers ("steerable":false): a sub-agent's, which no person watches (GitHub #13715)
+  device: bool;                  // the iOS Simulator is there: a step may hold device ops (coax/lib/microcoder/device.coax, GitHub #13811)
 }
 mww_task :: (o: [] u8, t: McTask) -> int {
   n := json_raw(o, 0, "{\"task\":"); n = json_write_string(o, n, t.task);
@@ -119,6 +120,7 @@ mww_task :: (o: [] u8, t: McTask) -> int {
   if t.effort.count > 0 { n = json_raw(o, n, ",\"effort\":"); n = json_write_string(o, n, t.effort); }
   if t.openrouter.count > 0 { n = json_raw(o, n, ",\"openrouter\":"); n = json_write_string(o, n, t.openrouter); }
   if t.no_steer { n = json_raw(o, n, ",\"steerable\":false"); }
+  if t.device { n = json_raw(o, n, ",\"device\":true"); }
   n = json_raw(o, n, "}\n");
   return n;
 }
@@ -195,7 +197,7 @@ MwwRequest :: struct {
   allow: bool; ticket: JsonInt; why: string;       // answer
   task: string; cwd: string; session: string; sandbox: string; model: string; effort: string;
   openrouter: string;            // the OpenRouter model offered to sub-agents as level openrouter
-  local: bool; gated: bool; agents: bool; edits: bool; claude: bool; unlimited: bool; no_ask: bool;
+  local: bool; gated: bool; agents: bool; edits: bool; claude: bool; unlimited: bool; no_ask: bool; device: bool;
   results: string;               // results: the list's JSON text
   recall: string;                // recall: the turns' JSON text
   id: string;                    // steer, queue: the item's id
@@ -265,6 +267,7 @@ mww_request :: (ar: [] ClArena, msg: string, r: [] MwwRequest) -> int {
   unlimited := cl_bool(msg, "unlimited"); r[0].unlimited = unlimited.ok && unlimited.value;
   claude := cl_bool(msg, "claude"); r[0].claude = claude.ok && claude.value;
   no_ask := cl_bool(msg, "no_ask"); r[0].no_ask = no_ask.ok && no_ask.value;
+  device := cl_bool(msg, "device"); r[0].device = device.ok && device.value;
   r[0].sandbox = cl_str(ar, msg, "sandbox");
   on := cl_bool(msg, "policy.enabled");
   r[0].policy_on = on.ok && on.value;
@@ -295,6 +298,7 @@ mww_task_read :: (ar: [] ClArena, msg: string, t: [] McTask) -> bool {
   t[0].model = cl_str(ar, msg, "model"); t[0].effort = cl_str(ar, msg, "effort");
   t[0].openrouter = cl_str(ar, msg, "openrouter");
   steerable := cl_bool(msg, "steerable"); t[0].no_steer = steerable.ok && !steerable.value;
+  device := cl_bool(msg, "device"); t[0].device = device.ok && device.value;
   return !ar[0].full;
 }
 
@@ -641,6 +645,10 @@ mww_attempt_again :: (ar: [] ClArena, line: string, out: [] u8) -> int {
   t.no_steer = true; n = mww_task(o[..], t);
   #assert n > 0 && cl_raw(cast(string) o[0..<n - 1], "steerable") == "false" && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].no_steer;
   t.no_steer = false;
+  t.device = true; n = mww_task(o[..], t);
+  #assert n > 0 && cl_raw(cast(string) o[0..<n - 1], "device") == "true" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && r[0].device && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].device;
+  t.device = false; n = mww_task(o[..], t);
+  #assert cl_raw(cast(string) o[0..<n - 1], "device") == "" && mww_request(ar[..], cast(string) o[0..<n - 1], r[..]) == MWW_TASK && !r[0].device && mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && !back[0].device;
   t.unlimited = false; t.no_ask = false; n = mww_task(o[..], t);
   #assert mww_task_read(ar[..], cast(string) o[0..<n - 1], back[..]) && back[0].agents && back[0].edits;
   n = mww_task(o[..], McTask.{task = "do", cwd = "/w"});

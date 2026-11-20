@@ -1,0 +1,161 @@
+// Microcoder's device member (docs/desktop/ios-simulator-spec.md 7.6; GitHub #13811): with the iOS
+// Simulator on (mc_device: the worker has a simulator chat and oasim), a step may carry
+//   "device": [{"op":"tap","x":201,"y":640}, ...]     up to 8 ops
+// Each op becomes the `oasim` command that does it, run first among the step's commands (after its
+// edits), so it goes through the same command path, journal, fence and transcript row as any
+// command (oasim's rows are labelled "Tapped (201, 640)"). A step whose ops can change the screen
+// also takes a screenshot 300 ms after the last one into the working folder's
+// .openagents/shots/, viewed by the step, so the model sees the screen it left with no view step.
+
+#load "action.coax";
+
+MC_MAX_DEVICE :: 8;
+MC_DEVICE_OPS :: [16] string.["list", "boot", "screenshot", "tap", "swipe", "touch_path", "text", "press_key", "button", "set_appearance", "rotate", "open_url", "launch", "terminate", "build", "build_status"];
+MC_SCHEMA_DEVICE :: ",\"device\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"op\":{\"type\":\"string\",\"enum\":[\"list\",\"boot\",\"screenshot\",\"tap\",\"swipe\",\"touch_path\",\"text\",\"press_key\",\"button\",\"set_appearance\",\"rotate\",\"open_url\",\"launch\",\"terminate\",\"build\",\"build_status\"]},\"device\":{\"type\":\"string\"},\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"x2\":{\"type\":\"number\"},\"y2\":{\"type\":\"number\"},\"duration\":{\"type\":\"number\"},\"text\":{\"type\":\"string\"},\"key\":{\"type\":\"string\"},\"name\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"},\"app_path\":{\"type\":\"string\"},\"bundle_id\":{\"type\":\"string\"},\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"number\"},\"y\":{\"type\":\"number\"},\"dt_ms\":{\"type\":\"number\"}},\"required\":[\"x\",\"y\"],\"additionalProperties\":false}},\"project_path\":{\"type\":\"string\"},\"workspace_path\":{\"type\":\"string\"},\"scheme\":{\"type\":\"string\"},\"build_id\":{\"type\":\"string\"}},\"required\":[\"op\"],\"additionalProperties\":false}}";
+MC_DEVICE :: "\n- You can use an iOS Simulator. device is a list of up to 8 ops, run in order after your edits and before your commands: list; boot (device: a name or UDID); screenshot; tap (x, y; duration over 0.5 is a long press); swipe (x, y, x2, y2, duration); touch_path (points); text (text to type into the focused field); press_key (key: return, delete, tab, escape, an arrow, select_all, undo, redo); button (name: HOME, LOCK, SIDE_BUTTON, SIRI, APPLE_PAY); set_appearance (name: light or dark); rotate (name: left or right); open_url (url); launch (app_path of a built .app, or bundle_id); terminate (bundle_id); build (project_path or workspace_path, and scheme; it answers with a build_id); build_status (build_id). Coordinates are points in the last screenshot, origin top left. A step whose ops can change the screen ends with a screenshot of it, attached to your next turn; take a screenshot before acting on a screen you have not seen. The first op that changes the simulator asks the person, so an op can come back no_grant or denied: then say so and do not retry. Each op's result is a command's, `oasim VERB ...`, with one JSON line. Leave device empty when you don't use it.";
+
+// The schema with the device member after rationale, and in required. Into out; "" when it
+// doesn't fit or schema has no rationale.
+mc_schema_device :: (schema: string, out: [] u8) -> string {
+  a := mc_schema_find(schema, MC_SCHEMA_RATIONALE); b := mc_schema_find(schema, MC_SCHEMA_REQUIRED);
+  if a < 0 || b < a { return ""; }
+  a += MC_SCHEMA_RATIONALE.count; b += MC_SCHEMA_REQUIRED.count;
+  n := json_raw(out, 0, cast(string) schema[0..<a]); n = json_raw(out, n, MC_SCHEMA_DEVICE);
+  n = json_raw(out, n, cast(string) schema[a..<b]); n = json_raw(out, n, ",\"device\""); n = json_raw(out, n, cast(string) schema[b..<schema.count]);
+  if n < 0 { return ""; }
+  return cast(string) out[0..<n];
+}
+
+// s into the arena, quoted for /bin/sh when quote. "" (and ar full) when it doesn't fit.
+mc_dv_put :: (ar: [] ClArena, b: [] u8, n: int, s: string, quote: bool) -> int {
+  k := n;
+  if quote { if k < b.count { b[k] = '\''; k += 1; } }
+  for c: s {
+    if quote && c == '\'' { for q: "'\\''" { if k < b.count { b[k] = q; k += 1; } } continue; }
+    if k < b.count { b[k] = c; k += 1; }
+  }
+  if quote { if k < b.count { b[k] = '\''; k += 1; } }
+  return k;
+}
+// The `oasim` command for one op d (a JSON object), in the arena; "" with why when it is not one.
+mc_device_command :: (ar: [] ClArena, d: string, why: [] string) -> string {
+  op := cl_str(ar, d, "op");
+  known := false; for o: MC_DEVICE_OPS { if o == op { known = true; } }
+  if !known { why[0] = "a device op is not one of the ops"; return ""; }
+  b: [8192] u8; n := mc_dv_put(ar, b[..], 0, "oasim ", false); n = mc_dv_put(ar, b[..], n, op, false);
+  // the words each op takes, in its order: positional numbers and strings, then flags
+  pos := [4] string.["", "", "", ""]; np := 0;
+  if op == "tap" { pos[0] = "x"; pos[1] = "y"; np = 2; }
+  if op == "swipe" { pos[0] = "x"; pos[1] = "y"; pos[2] = "x2"; pos[3] = "y2"; np = 4; }
+  for i: 0..<np {
+    v := cl_num(d, pos[i]);
+    if !v.ok { why[0] = "a device op is missing a coordinate"; return ""; }
+    n = mc_dv_put(ar, b[..], n, " ", false); n = mc_dv_put(ar, b[..], n, cl_raw(d, pos[i]), false);
+  }
+  word := "";
+  if op == "boot" { word = cl_str(ar, d, "device"); }
+  if op == "text" { word = cl_str(ar, d, "text"); }
+  if op == "press_key" { word = cl_str(ar, d, "key"); }
+  if op == "button" || op == "set_appearance" || op == "rotate" { word = cl_str(ar, d, "name"); }
+  if op == "open_url" { word = cl_str(ar, d, "url"); }
+  if op == "terminate" { word = cl_str(ar, d, "bundle_id"); }
+  if op == "build_status" { word = cl_str(ar, d, "build_id"); }
+  needs := op == "boot" || op == "text" || op == "press_key" || op == "button" || op == "set_appearance" || op == "rotate" || op == "open_url" || op == "terminate" || op == "build_status";
+  if needs && word.count == 0 { why[0] = "a device op is missing what it acts on"; return ""; }
+  if word.count > 0 { n = mc_dv_put(ar, b[..], n, " ", false); n = mc_dv_put(ar, b[..], n, word, true); }
+  if op == "touch_path" {
+    pts := cl_raw(d, "points");
+    if pts.count == 0 { why[0] = "touch_path needs points"; return ""; }
+    n = mc_dv_put(ar, b[..], n, " ", false); n = mc_dv_put(ar, b[..], n, pts, true);
+  }
+  flags := [7] string.["duration", "app_path", "bundle_id", "project_path", "workspace_path", "scheme", "device"];
+  names := [7] string.["--duration", "--app", "--bundle", "--project", "--workspace", "--scheme", "--device"];
+  for f, i: flags {
+    if f == "device" && op == "boot" { continue; }
+    if f == "bundle_id" && op == "terminate" { continue; }
+    if (f == "app_path" || f == "bundle_id") && op != "launch" { continue; }
+    if (f == "project_path" || f == "workspace_path" || f == "scheme") && op != "build" { continue; }
+    raw := cl_raw(d, f);
+    if raw.count == 0 { continue; }
+    v := ifx f == "duration" then raw else cl_str(ar, d, f);
+    n = mc_dv_put(ar, b[..], n, " ", false); n = mc_dv_put(ar, b[..], n, names[i], false);
+    n = mc_dv_put(ar, b[..], n, " ", false); n = mc_dv_put(ar, b[..], n, v, f != "duration");
+  }
+  if n >= b.count || ar[0].at + n > ar[0].buf.count { ar[0].full = true; why[0] = "a device op does not fit"; return ""; }
+  for i: 0..<n { ar[0].buf[ar[0].at + i] = b[i]; }
+  s := cast(string) ar[0].buf[ar[0].at..<ar[0].at + n]; ar[0].at += n;
+  return s;
+}
+// Whether op can change what the screen shows (a step that ran one ends with a screenshot).
+mc_device_moves :: (op: string) -> bool { return op != "list" && op != "build" && op != "build_status"; }
+
+// The reply's device member (a run with the simulator on, after mc_action_parse_as) folded into
+// a: its ops' commands first among the step's commands, then, when one can change the screen,
+// a screenshot into .openagents/shots/device-STEP.png and that file first among the views.
+// What's wrong with the member, or "".
+mc_action_device :: (ar: [] ClArena, text: string, a: [] McAction, step: int) -> string {
+  if !cl_valid(text, "?a:device ?o:device.* ?s:device.*.op") { return "the reply's device does not match the next_action schema"; }
+  ds := cl_raw(text, "device");
+  nd := ifx ds.count > 0 then cl_count(ds) else 0;
+  if nd == 0 { return ""; }
+  if nd > MC_MAX_DEVICE { return "the reply has more than 8 device ops"; }
+  cmds: [MC_MAX_DEVICE + 1] string; why: [1] string; moves := false;
+  for i: 0..<nd {
+    d := cl_json(ds, cl_item(ds, i));
+    cmds[i] = mc_device_command(ar, d, why[..]);
+    if cmds[i].count == 0 { return why[0]; }
+    if mc_device_moves(cl_str(ar, d, "op")) { moves = true; }
+  }
+  k := nd;
+  shot := "";
+  if moves {
+    pb: [128] u8; pn := json_raw(pb[..], 0, ".openagents/shots/device-"); pn = json_write_int(pb[..], pn, step); pn = json_raw(pb[..], pn, ".png");
+    cb: [256] u8; cn := json_raw(cb[..], 0, "sleep 0.3; mkdir -p .openagents/shots && oasim screenshot --out "); cn = json_raw(cb[..], cn, cast(string) pb[0..<pn]);
+    if cn < 0 || ar[0].at + cn + pn > ar[0].buf.count { return "the reply does not fit its buffer"; }
+    for i: 0..<cn { ar[0].buf[ar[0].at + i] = cb[i]; }
+    cmds[k] = cast(string) ar[0].buf[ar[0].at..<ar[0].at + cn]; ar[0].at += cn; k += 1;
+    for i: 0..<pn { ar[0].buf[ar[0].at + i] = pb[i]; }
+    shot = cast(string) ar[0].buf[ar[0].at..<ar[0].at + pn]; ar[0].at += pn;
+  }
+  if a[0].nc + k > MC_MAX_COMMANDS { return "the step's device ops and commands are more than 32"; }
+  if shot.count > 0 && a[0].nv + 1 > MC_MAX_VIEWS { return "the step views more than 16 files"; }
+  i := a[0].nc - 1; while i >= 0 { a[0].commands[i + k] = a[0].commands[i]; i -= 1; }
+  for j: 0..<k { a[0].commands[j] = cmds[j]; }
+  a[0].nc += k;
+  if shot.count > 0 { j := a[0].nv - 1; while j >= 0 { a[0].view[j + 1] = a[0].view[j]; j -= 1; } a[0].view[0] = shot; a[0].nv += 1; }
+  return "";
+}
+
+#test "the device member: in the schema, its ops as oasim commands, a screenshot after a change" {
+  d: [8192] u8;
+  s := mc_schema_device(MC_SCHEMA, d[..]);
+  #assert json_valid(s) && cl_raw(s, "properties.device.items.properties.op.enum").count > 0 && cl_count(cl_raw(s, "required")) == 8;
+  #assert mc_schema_device("{}", d[..]) == "" && mc_schema_device(MC_SCHEMA, d[0..<64]) == "";
+  #assert cl_count(cl_raw(s, "properties.device.items.properties.op.enum")) == MC_DEVICE_OPS.count;
+  ab: [16384] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}]; a: [1] McAction;
+  a[0].commands[0] = "git status"; a[0].nc = 1; a[0].view[0] = "a.txt"; a[0].nv = 1;
+  t := "{\"device\":[{\"op\":\"tap\",\"x\":201,\"y\":640.5},{\"op\":\"text\",\"text\":\"it's here\"},{\"op\":\"swipe\",\"x\":1,\"y\":2,\"x2\":3,\"y2\":4,\"duration\":0.5,\"device\":\"iPhone 17\"}]}";
+  #assert mc_action_device(ar[..], t, a[..], 3) == "";
+  #assert a[0].nc == 5 && a[0].commands[0] == "oasim tap 201 640.5" && a[0].commands[1] == "oasim text 'it'\\''s here'";
+  #assert a[0].commands[2] == "oasim swipe 1 2 3 4 --duration 0.5 --device 'iPhone 17'";
+  #assert a[0].commands[3] == "sleep 0.3; mkdir -p .openagents/shots && oasim screenshot --out .openagents/shots/device-3.png" && a[0].commands[4] == "git status";
+  #assert a[0].nv == 2 && a[0].view[0] == ".openagents/shots/device-3.png" && a[0].view[1] == "a.txt";
+  // ops that change nothing take no screenshot; build's flags; touch_path's points
+  b: [1] McAction;
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"list\"},{\"op\":\"build\",\"project_path\":\"A.xcodeproj\",\"scheme\":\"A\"},{\"op\":\"build_status\",\"build_id\":\"b1\"}]}", b[..], 1) == "";
+  #assert b[0].nc == 3 && b[0].nv == 0 && b[0].commands[1] == "oasim build --project 'A.xcodeproj' --scheme 'A'" && b[0].commands[2] == "oasim build_status 'b1'";
+  c: [1] McAction;
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"touch_path\",\"points\":[{\"x\":1,\"y\":2}]},{\"op\":\"launch\",\"bundle_id\":\"com.apple.Preferences\"},{\"op\":\"button\",\"name\":\"HOME\"}]}", c[..], 2) == "";
+  #assert c[0].commands[0] == "oasim touch_path '[{\"x\":1,\"y\":2}]'" && c[0].commands[1] == "oasim launch --bundle 'com.apple.Preferences'" && c[0].commands[2] == "oasim button 'HOME'" && c[0].nc == 4;
+  e: [1] McAction; #assert mc_action_device(ar[..], "{\"device\":[]}", e[..], 1) == "" && e[0].nc == 0 && mc_action_device(ar[..], "{}", e[..], 1) == "";
+  // refused: an unknown op, a tap with no y, a text with nothing, nine ops, a member of the wrong shape
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"erase\"}]}", e[..], 1) == "a device op is not one of the ops";
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"tap\",\"x\":1}]}", e[..], 1) == "a device op is missing a coordinate";
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"text\"}]}", e[..], 1) == "a device op is missing what it acts on";
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"touch_path\"}]}", e[..], 1) == "touch_path needs points";
+  nine := "{\"device\":[{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"},{\"op\":\"list\"}]}";
+  #assert mc_action_device(ar[..], nine, e[..], 1) == "the reply has more than 8 device ops";
+  #assert mc_action_device(ar[..], "{\"device\":{\"op\":\"list\"}}", e[..], 1) != "" && mc_action_device(ar[..], "{\"device\":[{\"x\":1}]}", e[..], 1) != "";
+  full: [1] McAction; full[0].nc = MC_MAX_COMMANDS;
+  #assert mc_action_device(ar[..], "{\"device\":[{\"op\":\"list\"}]}", full[..], 1) == "the step's device ops and commands are more than 32";
+}

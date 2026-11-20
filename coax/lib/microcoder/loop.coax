@@ -22,6 +22,7 @@
 
 #load "text_action.coax";
 #load "commit.coax";
+#load "device.coax";
 
 MC_END_NONE :: 0;
 MC_END_FINISHED :: 1;
@@ -74,7 +75,7 @@ McLoopBuffers :: struct {
   system: [24576] u8;            // the system prompt of a run with modes, user and workspace instructions; no bigger, since
                                  // mcworker's journal context frame (AJ_PAYLOAD, 32 KB) carries it escaped with the schema
                                  // (run.coax mc_run_load_instructions gives the workspace's what is left, GitHub #13808)
-  schema: [4096] u8;
+  schema: [8192] u8;            // with every mode and the device member (device.coax) last
   todos: [8192] u8;              // latest serialized todos JSON array
 }
 
@@ -102,6 +103,7 @@ McLoop :: struct {
   memory: bool;                  // the action's notes are read, and a finish is held for the owner (MC_FINISH)
   finish_refused: int;           // finishes the owner refused
   agents: bool;                  // the action's delegate is read: the owner runs sub-agents (mc_agents)
+  device: bool;                  // the action's device is read: the iOS Simulator is on (mc_device)
   claude: bool;                  // its levels include the Claude models: the owner runs Claude Code too
   openrouter: bool;              // its levels include openrouter: the owner runs an OpenRouter model for sub-agents
   no_ask: bool;                  // interactive ask: question is disabled; never pause with MC_END_ASKED (GitHub #13701)
@@ -158,6 +160,20 @@ mc_agents :: (l: [] McLoop, b: [] McLoopBuffers, claude: bool, openrouter: strin
   for c, i: schema { b[0].schema[i] = c; }
   l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
   l[0].agents = true; l[0].claude = claude; l[0].openrouter = openrouter.count > 0;
+  return true;
+}
+
+// Turns on the iOS Simulator for a loop mc_init set up (device.coax; GitHub #13811): the schema
+// gains device and the system prompt MC_DEVICE. False when they don't fit b.
+mc_device :: (l: [] McLoop, b: [] McLoopBuffers) -> bool {
+  sb: [8192] u8;
+  schema := mc_schema_device(l[0].schema, sb[..]);
+  n := json_raw(b[0].system[..], 0, l[0].system);
+  n = json_raw(b[0].system[..], n, MC_DEVICE);
+  if n < 0 || schema.count == 0 || schema.count > b[0].schema.count { return false; }
+  for c, i: schema { b[0].schema[i] = c; }
+  l[0].system = cast(string) b[0].system[0..<n]; l[0].schema = cast(string) b[0].schema[0..<schema.count];
+  l[0].device = true;
   return true;
 }
 
@@ -315,6 +331,7 @@ mc_take :: (l: [] McLoop, text: string) -> int {
   }
   if why.count > 0 { return mc_bad(l, why); }
   if l[0].agents { why = mc_action_delegates(l[0].ar[..], text, l[0].pending[..], l[0].claude, l[0].openrouter); if why.count > 0 { return mc_bad(l, why); } }
+  if l[0].device { why = mc_action_device(l[0].ar[..], text, l[0].pending[..], l[0].steps + 1); if why.count > 0 { return mc_bad(l, why); } }
   l[0].steps += 1;
   l[0].bad = 0;
   // a finish that carries edits, commands or views is a working step: they are run, not
@@ -909,6 +926,22 @@ ps_count :: (text: string, needle: string) -> int {
   if needle.count == 0 || needle.count > text.count { return 0; }
   for i: 0..<text.count - needle.count + 1 { if cast(string) text[i..<i + needle.count] == needle { n += 1; } }
   return n;
+}
+
+#test "with the simulator a step's device ops run first as oasim commands, with a screenshot viewed; every mode fits" {
+  l: [1] McLoop; sb: [1] McStateBuffers; lb: [1] McLoopBuffers;
+  mc_init(l[..], sb[..], lb[..], "{}", "open settings", "{}", 1.0);
+  #assert mc_aware(l[..], lb[..], true, true) && mc_agents(l[..], lb[..], true, "a/model") && mc_no_ask(l[..], lb[..]) && mc_device(l[..], lb[..]) && l[0].device;
+  #assert json_valid(l[0].schema) && cl_raw(l[0].schema, "properties.device").count > 0 && cl_raw(l[0].schema, "properties.delegate").count > 0 && ps_count(l[0].system, "You can use an iOS Simulator.") == 1;
+  s := mc_take(l[..], "{\"rationale\":\"look\",\"notes\":[],\"device\":[{\"op\":\"tap\",\"x\":10,\"y\":20}],\"edits\":[],\"questions\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  a := mc_pending(l[..]);
+  #assert s == MC_TOOLS && a.nc == 3 && a.commands[0] == "oasim tap 10 20" && a.commands[2] == "true" && a.nv == 1 && a.view[0] == ".openagents/shots/device-1.png";
+  // a wrong device member is a bad reply; without the simulator the member is not read
+  #assert mc_take(l[..], "{\"rationale\":\"x\",\"notes\":[],\"device\":[{\"op\":\"erase\"}],\"edits\":[],\"questions\":[],\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}") != MC_TOOLS;
+  m: [1] McLoop; sm: [1] McStateBuffers; lm: [1] McLoopBuffers;
+  mc_init(m[..], sm[..], lm[..], "{}", "x", "{}", 1.0);
+  s = mc_take(m[..], "{\"rationale\":\"x\",\"device\":[{\"op\":\"tap\",\"x\":1,\"y\":2}],\"edits\":[],\"commands\":[\"true\"],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  #assert mc_pending(m[..]).nc <= 1;
 }
 
 #test "with sub-agents the schema and the system prompt gain delegate, with a mode or without, and a step's delegate is work" {
