@@ -132,6 +132,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var gymRequestTimer: Timer?          // takes ple-run gym's requests (Window+Gym.swift, #13812)
     // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
     var simView: SimulatorPaneView?
+    var simFrame: SimulatorFrameView?    // the device's frame behind it, its chrome for simChromeUdid
+    var simChromeUdid = ""
+    var simMaskKey = ""
     let simClient = SimHostClient()
     var simTimer: Timer?
     var simGen = 0

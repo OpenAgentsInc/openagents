@@ -293,6 +293,18 @@ New host calls as planned (`host.h`/`host.c`, each a `coder_page_sim_*` export i
 (`coder_page_action`): `CP_ASK_SIM_BOOT`, `_SHUTDOWN`, `_PICK`, `_HOME`, `_LOCK`, `_ROTATE`,
 `_SHOT`, `_APPEARANCE`, `_STOP_AGENT`, `_ALLOW_CHAT`, `_ALLOW_ONCE`, `_DENY`, `_CLOSE`.
 
+*As built (the device frame).* The device is drawn in its hardware frame, from Xcode's own files
+for its type: the device's `device.plist` names its `deviceType`; the matching `.simdevicetype`'s
+`profile.plist` names a `chromeIdentifier` (DeviceKit's `phone11.devicechrome` for an iPhone 17
+Pro), whose `chrome.json` composite is the body and bezel, drawn as a nine-slice (caps the corner
+pieces' width) so every size of phone gets its own; and a `framebufferMask` PDF, the screen's
+rounded corners, which masks the live frames at the view's pixel size (turned for a sideways
+device). The page fits the device with a 17-point bezel (`CP_SIM_BEZEL`: the composite is 436 x 908
+round a 402 x 874 screen) and gives the host the bezel in view points as `cd_sim_rect`'s sixth
+number; the screen's view, and so the touch mapping, is unchanged inside it. Without the files the
+frame is a drawn rounded black bezel and the corners a radius (`SimDeviceChrome`,
+`SimulatorFrameView` in `Window+Simulator.swift`).
+
 ## 6. The helper (`oa-simhost`)
 
 **As built (Phase 0, #13811).** The helper is `oasim serve`: the same Coax program as the CLI,

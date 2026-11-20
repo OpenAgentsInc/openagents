@@ -18,7 +18,9 @@ CP_SIM_ASKS :: 4;            // permission cards waiting, the first shown
 CP_SIM_PEND :: 16;           // requests waiting for their replies
 CP_SIM_OUT :: 16384;         // bytes of queued request lines
 CP_SIM_PATH :: 1024;
-CP_SIM_PAD :: 12;            // room round the screen
+CP_SIM_PAD :: 12;            // room round the device
+CP_SIM_BEZEL :: 17.0;        // the device's frame round its screen, device points: Xcode's phone chrome
+                             // (DeviceKit phone11's PhoneComposite, 436 x 908 round a 402 x 874 screen)
 CP_SIM_DRIVE_S :: 2.0;       // an agent's op is "driving" this long
 
 // what the pane says it is
@@ -59,6 +61,7 @@ CpSimPane :: struct {
   dark: bool;
   screen_w: f32; screen_h: f32;   // device points
   body_x: f32; body_y: f32; body_w: f32; body_h: f32;   // the screen rect, logical points, top-left
+  bezel: f32;                 // the device's frame round it, the same points
   still: [CP_SIM_PATH] u8; still_n: int; still_gen: int; still_flip: int;
   frame: int; frame_known: bool; ticks: int;   // the framebuffer's gen the still shows ("frames" display)
   saved: [CP_SIM_PATH] u8; saved_n: int;   // the person's last Screenshot
@@ -360,14 +363,18 @@ cp_sim_press :: (s: [] CoderPage, act: int) -> bool {
 
 // ---------------------------------------------------------------- drawing
 
-// The screen's rect: device points aspect-fit inside (x, y, w, h) with CP_SIM_PAD round it.
+// The screen's rect: the device, its screen sw x sh device points in a CP_SIM_BEZEL frame, aspect-fit
+// inside (x, y, w, h) with CP_SIM_PAD round it; out[4] is the frame's width round the screen, in
+// the same points as the rect (the host draws the device's chrome there).
 cp_sim_fit :: (sw: f32, sh: f32, x: f32, y: f32, w: f32, h: f32, out: [] f32) {
   aw := w - 2 * CP_SIM_PAD; ah := h - 2 * CP_SIM_PAD;
-  out[0] = x; out[1] = y; out[2] = 0; out[3] = 0;
+  out[0] = x; out[1] = y; out[2] = 0; out[3] = 0; out[4] = 0;
   if !(aw > 0) || !(ah > 0) || !(sw > 0) || !(sh > 0) { return; }
-  k := aw / sw; if ah / sh < k { k = ah / sh; }
+  fw := sw + 2 * CP_SIM_BEZEL; fh := sh + 2 * CP_SIM_BEZEL;
+  k := aw / fw; if ah / fh < k { k = ah / fh; }
+  out[4] = CP_SIM_BEZEL * k;
   out[2] = sw * k; out[3] = sh * k;
-  out[0] = x + (w - out[2]) / 2; out[1] = y + CP_SIM_PAD + (ah - out[3]) / 2;
+  out[0] = x + (w - out[2]) / 2; out[1] = y + CP_SIM_PAD + (ah - fh * k) / 2 + out[4];
 }
 cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   k := f[0].skin; a := k.app; p := cp_sim(s); sh := f[0].sheet;
@@ -437,9 +444,9 @@ cp_simpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     }
     return;
   }
-  r: [4] f32;
+  r: [5] f32;
   cp_sim_fit(ifx p[0].screen_w > 0 then p[0].screen_w else 402.0f32, ifx p[0].screen_h > 0 then p[0].screen_h else 874.0f32, px, y, pw, bh, r[..]);
-  p[0].body_x = r[0]; p[0].body_y = r[1]; p[0].body_w = r[2]; p[0].body_h = r[3];
+  p[0].body_x = r[0]; p[0].body_y = r[1]; p[0].body_w = r[2]; p[0].body_h = r[3]; p[0].bezel = r[4];
   if r[2] > 0 && r[3] > 0 { _ := uiframe_semantic(f, "coder.sim.screen", EL_REGION, cp_sim_name(s), r[0], r[1], r[2], r[3], 0, 0); }
 }
 
@@ -610,11 +617,12 @@ coder_page_sim_key :: (s: [] CoderPage, code: int, chars: string) -> bool #expor
 // The screen's rect (x, y, w, h in logical points, top-left) and whether something covers it
 // (an overlay, settings: the host then hides its view). False while no screen shows.
 coder_page_sim_rect :: (s: [] CoderPage, out: [] f32) -> bool #export_c #effects(all) {
-  if s.count < 1 || out.count < 5 { return false; }
+  if s.count < 1 || out.count < 6 { return false; }
   p := cp_sim(s);
   if !cp_sim_shown(s) || !(p[0].body_w > 0) || !(p[0].body_h > 0) || p[0].state != CP_SIM_BOOTED || p[0].nasks > 0 { return false; }
   out[0] = p[0].body_x; out[1] = p[0].body_y; out[2] = p[0].body_w; out[3] = p[0].body_h;
   out[4] = ifx s[0].set_open || cp_overlay_open(s) then 1.0f32 else 0.0f32;
+  out[5] = p[0].bezel;
   return true;
 }
 // The newest still: its path into out; the count of stills so far (a new one when it grows).

@@ -519,7 +519,7 @@ void cd_sim_connected(void *page, int ok, const char *why) { CoderHost *c = page
 int cd_sim_line(void *page, const char *line, int len) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_sim_line(cd_state(c), (coax_string){line, len}); cd_woke(c); return ok; }
 int cd_sim_out(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_sim_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
 void cd_sim_tick(void *page) { CoderHost *c = page; if (c) coder_page_sim_tick(cd_state(c)); }
-int cd_sim_rect(void *page, float out[5]) { CoderHost *c = page; return c && out && coder_page_sim_rect(cd_state(c), (coax_v_f32){out, 5}); }
+int cd_sim_rect(void *page, float out[6]) { CoderHost *c = page; return c && out && coder_page_sim_rect(cd_state(c), (coax_v_f32){out, 6}); }
 int cd_sim_still(void *page, char *out, int cap) { CoderHost *c = page; if (!c || cap < 2) return 0; out[0] = 0; return (int)coder_page_sim_still(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}); }
 int cd_sim_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_sim_op(cd_state(c)) : 0; }
 int cd_sim_saved(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_sim_saved(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }

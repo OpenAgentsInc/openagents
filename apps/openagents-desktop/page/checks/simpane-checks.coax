@@ -50,7 +50,7 @@ cp_sim_test_up :: (s: [] CoderPage) {
   coder_page_sim_tick(s); #assert cp_find(cp_sim_test_out(s, out[..]), "still-1.png") >= 0;
   // the screen: aspect-fit, on screen, the tab names the device
   #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
-  r: [5] f32; #assert coder_page_sim_rect(s, r[..]) && r[4] == 0;
+  r: [6] f32; #assert coder_page_sim_rect(s, r[..]) && r[4] == 0 && r[5] > 0 && cp_abs(r[5] / r[2] - 17.0f32 / 402.0f32) < 0.001f32;
   #assert r[2] > 0 && r[3] > 0 && cp_abs(r[2] / r[3] - 402.0f32 / 874.0f32) < 0.001f32;
   #assert r[0] >= s[0].pane_x && r[0] + r[2] <= s[0].pane_x + s[0].pane_w + 0.5f32;
   #assert cp_sim_test_find(s, "coder.sim.screen") >= 0 && cp_sim_test_find(s, "coder.sim.shot") >= 0 && cp_sim_test_find(s, "coder.sim.home") < 0;
@@ -58,15 +58,19 @@ cp_sim_test_up :: (s: [] CoderPage) {
   s[0].ov[0].menu[0].open = true; #assert coder_page_sim_rect(s, r[..]) && r[4] == 1; s[0].ov[0].menu[0].open = false;
 }
 
-#test "the fit: portrait and landscape, narrow and wide, centred with room round it" {
-  r: [4] f32;
+#test "the fit: the device in its frame, portrait and landscape, narrow and wide, centred with room round it" {
+  r: [5] f32;
+  // 300 wide less the room: 276 for the frame, 402 + 34 device points
   cp_sim_fit(402, 874, 100, 50, 300, 900, r[..]);
-  #assert cp_abs(r[2] / r[3] - 402.0f32 / 874.0f32) < 0.001f32 && cp_abs(r[2] - 276) < 0.01f32 && r[0] > 100 && r[0] + r[2] < 400;
+  k := 276.0f32 / 436.0f32;
+  #assert cp_abs(r[2] / r[3] - 402.0f32 / 874.0f32) < 0.001f32 && cp_abs(r[2] - 402 * k) < 0.01f32 && cp_abs(r[4] - 17 * k) < 0.01f32;
+  #assert cp_abs(r[0] - r[4] - 112) < 0.01f32 && r[0] + r[2] + r[4] < 388.01f32 && r[1] - r[4] >= 62;
   cp_sim_fit(874, 402, 100, 50, 300, 900, r[..]);
-  #assert cp_abs(r[2] / r[3] - 874.0f32 / 402.0f32) < 0.001f32 && cp_abs(r[2] - 276) < 0.01f32;
+  #assert cp_abs(r[2] / r[3] - 874.0f32 / 402.0f32) < 0.001f32 && cp_abs(r[2] + 2 * r[4] - 276) < 0.01f32;
+  // short and wide: the height decides; the device sits in the middle
   cp_sim_fit(402, 874, 0, 0, 1200, 400, r[..]);
-  #assert cp_abs(r[3] - 376) < 0.01f32 && cp_abs(r[0] + r[2] / 2 - 600) < 0.01f32;
-  cp_sim_fit(402, 874, 0, 0, 10, 10, r[..]); #assert r[2] == 0 && r[3] == 0;
+  #assert cp_abs(r[3] + 2 * r[4] - 376) < 0.01f32 && cp_abs(r[0] + r[2] / 2 - 600) < 0.01f32 && cp_abs(r[1] - r[4] - 12) < 0.01f32;
+  cp_sim_fit(402, 874, 0, 0, 10, 10, r[..]); #assert r[2] == 0 && r[3] == 0 && r[4] == 0;
 }
 
 #test "an agent's ask opens the pane with the card; each answer writes its line" {
@@ -76,7 +80,7 @@ cp_sim_test_up :: (s: [] CoderPage) {
   #assert !coder_page_sim_open(s);
   #assert coder_page_sim_line(s, "{\"event\":\"ask\",\"op\":\"set_appearance\",\"chat\":\"check-chat\",\"engine\":\"Microcoder\",\"device\":\"U1\",\"name\":\"iPhone 17\"}");
   #assert coder_page_sim_open(s) && cp_sim_shown(s);
-  r: [5] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]);   // the card stands where the screen would
+  r: [6] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]);   // the card stands where the screen would
   #assert cp_sim_test_find(s, "coder.sim.ask") >= 0 && cp_sim_test_find(s, "coder.sim.allow") >= 0 && cp_sim_test_find(s, "coder.sim.deny") >= 0;
   _ = cp_sim_test_out(s, out[..]);   // the list it asked for as it opened
   #assert cp_sim_test_press(s, "coder.sim.allow");
@@ -114,7 +118,7 @@ cp_sim_test_up :: (s: [] CoderPage) {
   #assert cp_sim_test_press(s, "coder.sim.pick") && coder_page_action(s) == CP_ASK_SIM && coder_page_sim_op(s) == CP_SIM_OP_MENU;
   mb: [512] u8; #assert cast(string) mb[0..<coder_page_sim_menu(s, mb[..])] == "iPhone 17 · iOS 26.5\tBooted\t1\niPad Air · iOS 26.5\tShut down\t0\n";
   #assert coder_page_sim_pick(s, 1) && s[0].sim[0].state == CP_SIM_SHUTDOWN;
-  r: [5] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]) && cp_sim_test_find(s, "coder.sim.notice") >= 0;
+  r: [6] f32; #assert cp_test_draw_side(s, f[..]) && !coder_page_sim_rect(s, r[..]) && cp_sim_test_find(s, "coder.sim.notice") >= 0;
   #assert cp_sim_test_press(s, "coder.sim.boot") && cp_find(cp_sim_test_out(s, out[..]), "\"op\":\"boot\",\"device\":\"U2\"}\n") >= 0 && s[0].sim[0].state == CP_SIM_BOOTING;
   #assert cp_test_draw_side(s, f[..]) && cp_sim_word(s) == "Booting";
   bt: [256] u8; bn := el_put(bt[..], 0, "{\"id\":"); bn = el_put_i(bt[..], bn, s[0].sim[0].next_id); bn = el_put(bt[..], bn, ",\"ok\":false,\"code\":\"timeout\",\"why\":\"the simulator did not finish booting in 180 s\"}");

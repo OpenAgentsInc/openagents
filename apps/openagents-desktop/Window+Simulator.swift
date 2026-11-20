@@ -155,6 +155,99 @@ final class SimulatorPaneView: NSView {
     }
 }
 
+/// The device's hardware look, from Xcode's own files for its device type: the profile
+/// (CoreSimulator's .simdevicetype, found by the device's deviceType) names a chrome
+/// (DeviceKit's .devicechrome, whose composite is the body and bezel, drawn as a nine-slice) and
+/// the screen's mask (framebufferMask: its rounded corners). Either may be missing; the frame then
+/// is a drawn rounded black bezel and the screen's corners a radius.
+final class SimDeviceChrome {
+    let composite: NSImage?
+    let caps: CGFloat           // the composite's corner pieces, its points (chrome.json sizing)
+    let mask: CGPDFPage?
+    init(udid: String) {
+        var composite: NSImage? = nil, caps: CGFloat = 0, mask: CGPDFPage? = nil
+        let home = String(cString: getpwuid(getuid()).pointee.pw_dir)
+        let fm = FileManager.default
+        if let d = NSDictionary(contentsOfFile: "\(home)/Library/Developer/CoreSimulator/Devices/\(udid)/device.plist"),
+           let type = d["deviceType"] as? String {
+            let roots = ["/Library/Developer/CoreSimulator/Profiles/DeviceTypes",
+                         "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Library/Developer/CoreSimulator/Profiles/DeviceTypes"]
+            var res: String? = nil
+            for r in roots where res == nil {
+                for b in (try? fm.contentsOfDirectory(atPath: r)) ?? [] where b.hasSuffix(".simdevicetype") {
+                    let info = NSDictionary(contentsOfFile: "\(r)/\(b)/Contents/Info.plist")
+                    if info?["CFBundleIdentifier"] as? String == type { res = "\(r)/\(b)/Contents/Resources"; break }
+                }
+            }
+            if let res, let profile = NSDictionary(contentsOfFile: "\(res)/profile.plist") {
+                if let m = profile["framebufferMask"] as? String, let doc = CGPDFDocument(URL(fileURLWithPath: "\(res)/\(m).pdf") as CFURL) { mask = doc.page(at: 1) }
+                if let id = profile["chromeIdentifier"] as? String, let name = id.split(separator: ".").last {
+                    for dir in ["/Library/Developer/DeviceKit/Chrome", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Library/Developer/DeviceKit/Chrome"] {
+                        let r = "\(dir)/\(name).devicechrome/Contents/Resources"
+                        guard let data = fm.contents(atPath: "\(r)/chrome.json"),
+                              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                              let images = j["images"] as? [String: Any], let c = images["composite"] as? String,
+                              let img = NSImage(contentsOfFile: "\(r)/\(c).pdf") else { continue }
+                        composite = img
+                        // the corner pieces (Phone TL) are as wide as the nine-slice's caps
+                        if let tl = images["topLeft"] as? String, let t = NSImage(contentsOfFile: "\(r)/\(tl).pdf") { caps = t.size.width } else { caps = min(img.size.width, img.size.height) / 4 }
+                        break
+                    }
+                }
+            }
+        }
+        self.composite = composite; self.caps = caps; self.mask = mask
+    }
+
+    /// The screen's mask at w x h points (sideways when wider than tall), at scale pixels a point.
+    func maskImage(_ size: NSSize, scale: CGFloat) -> CGImage? {
+        guard let page = mask else { return nil }
+        let box = page.getBoxRect(.mediaBox)
+        let pw = Int((size.width * scale).rounded()), ph = Int((size.height * scale).rounded())
+        guard pw > 0, ph > 0, box.width > 0, box.height > 0,
+              let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        if size.width > size.height {
+            ctx.translateBy(x: CGFloat(pw), y: 0); ctx.rotate(by: .pi / 2)
+            ctx.scaleBy(x: CGFloat(ph) / box.width, y: CGFloat(pw) / box.height)
+        } else {
+            ctx.scaleBy(x: CGFloat(pw) / box.width, y: CGFloat(ph) / box.height)
+        }
+        ctx.translateBy(x: -box.minX, y: -box.minY)
+        ctx.drawPDFPage(page)
+        return ctx.makeImage()
+    }
+}
+
+/// The device's frame behind the screen's view: the chrome's composite scaled so its bezel is the
+/// page's (cd_sim_rect's sixth number), or a drawn bezel. It takes no clicks.
+final class SimulatorFrameView: NSView {
+    var chrome: SimDeviceChrome?
+    var bezel: CGFloat = 0 { didSet { if bezel != oldValue { needsDisplay = true } } }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        guard bezel > 0, let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let k = bezel / 17   // view points per device point (the page's CP_SIM_BEZEL)
+        let side = bounds.width > bounds.height
+        if let c = chrome?.composite, let caps = chrome?.caps, caps > 0 {
+            ctx.saveGState()
+            if side {   // the chrome is drawn upright: turn it a quarter for a sideways device
+                ctx.translateBy(x: bounds.width, y: 0); ctx.rotate(by: .pi / 2)
+            }
+            ctx.scaleBy(x: k, y: k)
+            let w = (side ? bounds.height : bounds.width) / k, h = (side ? bounds.width : bounds.height) / k
+            c.capInsets = NSEdgeInsets(top: caps, left: caps, bottom: caps, right: caps)
+            c.resizingMode = .stretch
+            c.draw(in: NSRect(x: 0, y: 0, width: w, height: h))
+            ctx.restoreGState()
+            return
+        }
+        let r = 72 * k   // a modern iPhone's: its screen's corner and the bezel round it
+        NSColor(white: 0.24, alpha: 1).setFill(); NSBezierPath(roundedRect: bounds, xRadius: r, yRadius: r).fill()
+        NSColor.black.setFill(); NSBezierPath(roundedRect: bounds.insetBy(dx: 2 * k, dy: 2 * k), xRadius: r - 2 * k, yRadius: r - 2 * k).fill()
+    }
+}
+
 extension CoderWindow {
     /// View > iOS Simulator (Option-Command-S) and the palette's row.
     func toggleSimulator() {
@@ -170,7 +263,7 @@ extension CoderWindow {
         case 2:
             var out = [CChar](repeating: 0, count: 4096)
             if cd_sim_saved(page, &out, Int32(out.count)) > 0 { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: String(cString: out))]) }
-        case 3: simTimer?.invalidate(); simTimer = nil; simView?.isHidden = true
+        case 3: simTimer?.invalidate(); simTimer = nil; simView?.isHidden = true; simFrame?.isHidden = true
         case 4: startSimulator()
         default: break
         }
@@ -274,9 +367,10 @@ extension CoderWindow {
     /// and shows each new still.
     func syncSimulatorFrame() {
         pumpSimulator()   // what a press queued (Stop above all) goes out this frame, not on the next clock
-        var rect = [Float](repeating: 0, count: 5)
+        var rect = [Float](repeating: 0, count: 6)
         guard cd_sim_rect(page, &rect) != 0, rect[2] > 1, rect[3] > 1, rect[4] == 0 else {
             if let v = simView, !v.isHidden { v.isHidden = true }
+            if let v = simFrame, !v.isHidden { v.isHidden = true }
             return
         }
         let view: SimulatorPaneView
@@ -317,7 +411,30 @@ extension CoderWindow {
         let h = canvas.bounds.height
         let w = CGFloat(rect[2]).rounded(), ht = CGFloat(rect[3]).rounded()
         let target = NSRect(x: CGFloat(rect[0]).rounded(), y: max(0, (h - CGFloat(rect[1]) - ht).rounded()), width: max(1, w), height: max(1, ht))
-        if view.frame != target { view.frame = target; view.layer?.cornerRadius = min(w, ht) * 0.11 }
+        // the device's frame, its chrome found again when the device changes
+        var ub = [CChar](repeating: 0, count: 64)
+        let udid = cd_sim_device(page, &ub, Int32(ub.count)) > 0 ? String(cString: ub) : ""
+        let frame: SimulatorFrameView
+        if let f = simFrame { frame = f } else { frame = SimulatorFrameView(frame: .zero); canvas.addSubview(frame, positioned: .below, relativeTo: view); simFrame = frame }
+        if udid != simChromeUdid { simChromeUdid = udid; frame.chrome = udid.isEmpty ? nil : SimDeviceChrome(udid: udid); frame.needsDisplay = true; simMaskKey = "" }
+        let b = CGFloat(rect[5])
+        let outer = target.insetBy(dx: -b, dy: -b).integral
+        if frame.frame != outer { frame.frame = outer; frame.needsDisplay = true }
+        frame.bezel = b
+        if frame.isHidden { frame.isHidden = false }
+        if view.frame != target { view.frame = target }
+        // the screen's rounded corners: the profile's mask at the view's size, or a radius
+        let scale = window.backingScaleFactor
+        let key = "\(udid) \(target.width)x\(target.height)@\(scale)"
+        if key != simMaskKey {
+            simMaskKey = key
+            if let img = frame.chrome?.maskImage(target.size, scale: scale) {
+                let m = CALayer(); m.frame = CGRect(origin: .zero, size: target.size); m.contents = img; m.contentsScale = scale
+                view.layer?.mask = m; view.layer?.cornerRadius = 0
+            } else {
+                view.layer?.mask = nil; view.layer?.cornerRadius = min(w, ht) * 0.13
+            }
+        }
         var path = [CChar](repeating: 0, count: 4096)
         let gen = Int(cd_sim_still(page, &path, Int32(path.count)))
         if gen != simGen, path[0] != 0,

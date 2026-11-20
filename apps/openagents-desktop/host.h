@@ -133,7 +133,8 @@ int cd_live_scene(void *page, float out[8], char *path, int cap);
 // cd_sim_connected: the host reached the helper's socket (1) or could not (0, why). cd_sim_line:
 // a line the helper wrote (no line feed); cd_sim_out: the lines the page queued for the helper
 // (each ending in a line feed), their length. cd_sim_tick: 15 a second while the screen
-// shows. cd_sim_rect: the screen's x, y, w, h (top-left points) and covered (1: hide the view).
+// shows. cd_sim_rect: the screen's x, y, w, h (top-left points), covered (1: hide the view) and
+// the device frame's width round the screen (the host draws the device's chrome in it).
 // cd_sim_still: the newest still's path (NUL-ended), and how many there have been. cd_action 46
 // asks; cd_sim_op says what: 1 the device menu (cd_sim_menu rows "title\tstate\tshown", then
 // cd_sim_pick), 2 a screenshot saved (cd_sim_saved), 3 the pane closed, 4 it opened.
@@ -144,7 +145,7 @@ void cd_sim_connected(void *page, int ok, const char *why);
 int cd_sim_line(void *page, const char *line, int len);
 int cd_sim_out(void *page, char *out, int cap);
 void cd_sim_tick(void *page);
-int cd_sim_rect(void *page, float out[5]);
+int cd_sim_rect(void *page, float out[6]);
 int cd_sim_still(void *page, char *out, int cap);
 int cd_sim_op(void *page);
 int cd_sim_saved(void *page, char *out, int cap);
