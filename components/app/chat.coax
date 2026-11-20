@@ -119,8 +119,7 @@ app_message_user_fold :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, tex
   band := ifx cut then line * a.bubble_fade * (1 - p) else 0.0f32;
   if cut {
     if band > 0 {
-      sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + th, band));
-      sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + th, band));
+      uiframe_fade_foot(f, ty + th, band);
     }
     uiframe_clip(f, bx, ty, bx + bw, ty + th);
   }
@@ -131,7 +130,7 @@ app_message_user_fold :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, tex
   }
   if cut {
     uiframe_unclip(f);
-    if band > 0 { sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no)); }
+    if band > 0 { uiframe_fade_end(f); }
   }
   if folds {
     // the way to open it: a plain link under the text, at its left edge

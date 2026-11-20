@@ -346,3 +346,17 @@ SayStore :: struct { a: [1] CtlStore; b: [1] CtlStore; pa: [512] u8; pb: [512] u
   _ = uiframe_semantic(f[..], "cut", EL_BUTTON, "Cut", 0, 40, 100, 40, 0, 1);
   #assert uiframe_end(f[..], sf[..]) && surface_stamp(sf[..]) != before;
 }
+#test "a foot fade inside an outer edge fade keeps the edge, and ending it returns to the edge, then to none" {
+  st: [1] CtlStore; sh: [1] Sheet; sh[0] = ctl_sheet(st[..]); f := [1] UiFrame.[uiframe_over(sh[..], measure_cells(), uiskin(0))];
+  uiframe_fade_foot(f[..], 300, 20);
+  p := sh[0].over[sh[0].no - 1]; #assert p.kind == PRIM_FADE && p.y == -PRIM_OPEN && p.a == 0 && p.b == 300 && p.c == 20;
+  uiframe_fade_edge(f[..], 90, 30);
+  p = sh[0].over[sh[0].no - 1]; #assert p.kind == PRIM_FADE && p.on && p.y == 90 && p.a == 30 && p.b == PRIM_OPEN;
+  uiframe_fade_foot(f[..], 300, 20);
+  p = sh[0].over[sh[0].no - 1]; #assert p.y == 90 && p.a == 30 && p.b == 300 && p.c == 20;
+  q := sh[0].under[sh[0].nu - 1]; #assert q.y == 90 && q.b == 300;
+  uiframe_fade_end(f[..]);
+  p = sh[0].over[sh[0].no - 1]; #assert p.y == 90 && p.a == 30 && p.b == PRIM_OPEN;
+  uiframe_fade_edge(f[..], 0, 0);
+  p = sh[0].over[sh[0].no - 1]; #assert p.kind == PRIM_FADE && !p.on;
+}

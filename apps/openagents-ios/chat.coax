@@ -364,7 +364,7 @@ ch_layout :: (s: [] ChatPage, f: [] UiFrame, w: f32, h: f32) {
     // one, or one it can pair with): that needs no account. Logged out, only Default asks for a login.
     chips := s[0].core[0].auth == AUTH_IN || app_device_pairable(s[0].core) || app_device_count(s[0].core) > 0;
     keybuf:[CHLIB_KEY]u8;target_key:=ch_library_key(s,keybuf[..]);
-    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, fade_top = top + 18 / u, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
+    lay := ViewLayout.{archived=(chlib_flags(s[0].library[..],target_key)&2)!=0,restore_action=468,x = 0, top = nav_y + a.icon_button + a.gap, fade_top = nav_y + a.icon_button * 0.6, w = w, bottom = bottom, chips_h = ifx chips then k.cmp.chip_h else 0.0f32,
       editing = s[0].focused && ch_focus(s) == VIEW_COMPOSER_ID, editor_h = s[0].editor_h / u, unit = u};
     out := view_page(f, s[0].view[..], s[0].core, lay);
     s[0].box = out.composer; s[0].again = out.again;

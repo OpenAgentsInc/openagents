@@ -78,7 +78,25 @@ UiFrame :: struct {
   focus_moved: bool;           // this frame's press moved the keyboard (uiframe_focus_moved)
   clocked: bool;               // something drawn this frame moves with the clock alone (uiframe_tick)
   kept: Sheet;                 // the sheet committed last (on screen): its pool keeps last frame's text (uiframe_kept)
+  edge_top: f32; edge_band: f32;  // an outer fade at the top (a transcript under a transparent bar; band 0: none), kept by nested fades
 }
+// A fade at the foot (from `bottom`, over `band`) inside whatever outer top fade the frame holds: the GPU
+// keeps one fade, so a folded bubble under a transparent bar fades at both ends.
+uiframe_fade_foot :: (f: [] UiFrame, bottom: f32, band: f32) {
+  sh := f[0].sheet; t := ifx f[0].edge_band > 0 then f[0].edge_top else -PRIM_OPEN;
+  sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, t, f[0].edge_band, bottom, band));
+  sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, t, f[0].edge_band, bottom, band));
+}
+// The foot's fade ends: back to the outer fade, or to none.
+uiframe_fade_end :: (f: [] UiFrame) {
+  sh := f[0].sheet;
+  if f[0].edge_band > 0 {
+    sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, f[0].edge_top, f[0].edge_band, PRIM_OPEN, 0));
+    sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, f[0].edge_top, f[0].edge_band, PRIM_OPEN, 0));
+  } else { sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no)); }
+}
+// The outer top fade starts (band > 0) or ends (band 0).
+uiframe_fade_edge :: (f: [] UiFrame, top: f32, band: f32) { f[0].edge_top = top; f[0].edge_band = ifx band > 0 then band else 0.0f32; uiframe_fade_end(f); }
 
 // A context over a sheet, a measure and a skin alone: no rows, no keyed
 // state, no input. The adapter for code written before the context.

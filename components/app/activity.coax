@@ -377,13 +377,12 @@ app_act_detail :: (f: [] UiFrame, id: string, k: int, tx: f32, y: f32, tw: f32, 
     _ := sheet_box(sh, tx, y + h, tw, bh, a.detail_radius, ifx r.failed then 1.0f32 else 0.0f32, wash, ifx r.failed then opacity(s.danger, 0.5) else wash);
     if long && !whole {
       band := line * s.act.thought_fade; bottom := y + h + a.detail_pad_y + cast(f32) shown * line;
-      sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, bottom, band));
-      sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, bottom, band));
+      uiframe_fade_foot(f, bottom, band);
     }
     uiframe_clip(f, tx, y + h, tx + tw - a.detail_pad_x, y + h + bh);
     for q: 0..<shown { _ := sheet_plain(sh, m, tx + a.detail_pad_x, y + h + a.detail_pad_y + cast(f32) q * line, line, s.mono_small.face, s.muted, app_line(r.output, q), true); }
     uiframe_unclip(f);
-    if long && !whole { sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no)); }
+    if long && !whole { uiframe_fade_end(f); }
     row := uiframe_semantic(f, app_id(ib[..], id, ".output"), EL_TEXT, ifx r.failed then "Failed" else "Output", tx, y + h, tw, bh, 0, 0);
     elt_value(f[0].rows, row, r.output);
     h += bh;
@@ -431,8 +430,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   fade_h := line * a.thought_fade * (1.0f32 - t);
   if clipped {
     if fade_h > 0 {
-      sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, -PRIM_OPEN, 0, ty + shown, fade_h));
-      sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, -PRIM_OPEN, 0, ty + shown, fade_h));
+      uiframe_fade_foot(f, ty + shown, fade_h);
     }
     uiframe_clip(f, tx, ty, x + w, ty + shown);
   }
@@ -452,7 +450,7 @@ app_act_thought :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppAct
   if clipped {
     uiframe_unclip(f);
     if fade_h > 0 {
-      sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
+      uiframe_fade_end(f);
     }
   }
   wb: [EL_ID] u8;

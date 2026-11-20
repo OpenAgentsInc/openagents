@@ -495,13 +495,13 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
     sh := f[0].sheet;
     sheet_under(sh, prim_clip(sh[0].under, sh[0].nu, lay.x, lay.fade_top, lay.x + lay.w, bottom));
     sheet_over_n(sh, prim_clip(sh[0].over, sh[0].no, lay.x, lay.fade_top, lay.x + lay.w, bottom));
-    sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0));
-    sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0));
+    // the soft edge reaches s.chat.fade below the bar's top once the transcript has scrolled that far
+    // (at the very top nothing is under the bar, and the first row stays whole)
+    band := top - lay.fade_top; more := s.chat.fade - band; if more > l[0].top { more = l[0].top; } if more > 0 { band += more; }
+    uiframe_fade_edge(f, lay.fade_top, band);   // a row's own foot fade keeps it (uiframe_fade_foot)
     elt_clip(f[0].rows, lay.x, top, lay.x + lay.w, bottom);
   } else { uiframe_clip(f, lay.x, top, lay.x + lay.w, bottom); }
   for i: l[0].first..<l[0].last {
-    // a row's own fade (a folded bubble, an activity group) ends the bar's: each row starts it again
-    if faded { sh := f[0].sheet; sheet_under(sh, prim_fade(sh[0].under, sh[0].nu, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0)); sheet_over_n(sh, prim_fade(sh[0].over, sh[0].no, lay.fade_top, top - lay.fade_top, PRIM_OPEN, 0)); }
     y := top + vlist_y(l, i);
     h := view_row(f, v, d, facts, i, cx, y, cw, false);
     if h != vlist_height(l, i) { vlist_measured(l, i, h); out.again = true; }
@@ -513,10 +513,7 @@ view_page :: (f: [] UiFrame, v: [] ChatView, c: [] AppCore, lay: ViewLayout) -> 
       th := app_centred(f, s.title, s.ink, cx, ey, cw, VIEW_EMPTY_TITLE);
       _ := uiframe_semantic(f, "chat.empty", EL_HEADING, VIEW_EMPTY_TITLE, cx, ey, cw, th, 0, 0);}
   }
-  if faded {
-    sh := f[0].sheet;
-    sheet_under(sh, prim_unfade(sh[0].under, sh[0].nu)); sheet_over_n(sh, prim_unfade(sh[0].over, sh[0].no));
-  }
+  if faded { uiframe_fade_edge(f, 0, 0); }
   uiframe_unclip(f);
   vlist_settle(l, VIEW_SLACK);
   if vm[0].rejoining { _ := app_banner(f, "chat.banner", cx, top + a.gap, cw, APP_BANNER_RECONNECTING, 0); }
