@@ -137,6 +137,7 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.instr.a" { s[0].ask = CP_ASK_INSTRUCTIONS; return true; }
   if id == "set.instr.reset.a" { s[0].ask = CP_ASK_INSTRUCTIONS_RESET; return true; }
   if id == "set.gemini.a" { s[0].ask = CP_ASK_GEMINI_KEY; return true; }
+  if id == "set.local.a" { s[0].ask = CP_ASK_LOCAL_MODELS; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
   if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
   if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
@@ -313,7 +314,13 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
       value = agy_mod, kind = SET_ROW_LINK, action = CP_SET_ACT};
     arows[3] = SetRow.{id = "set.agy.auth", name = "Sign-in & profile", desc = "Google sign-in, isolated profile directory, or antigravity.env ADC.",
       value = agy_au, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
-    y += cp_set_group(s, f, "set.agy.group", x, y, w, arows[..]);
+    y += cp_set_group(s, f, "set.agy.group", x, y, w, arows[..]) + t.block_gap;
+    local_st := ifx s[0].set_local_status_n > 0 then sheet_pool(sh, cast(string) s[0].set_local_status[0..<s[0].set_local_status_n]) else "None downloaded";
+    y += set_section_head(f, "set.local.head", x, y, w, "Local Models", "Download, verify, and manage local Psionic Metal checkpoints (~/.openagents/models).") + t.section_gap;
+    lrows: [1] SetRow;
+    lrows[0] = SetRow.{id = "set.local", name = "Inkling 2 Mini (Local)", desc = "26.4B total / 3.4B active looped MoE (~20 GB NVFP4+MXFP8). Requires >= 32 GB Apple Silicon Mac.",
+      value = local_st, kind = SET_ROW_BUTTON, button = "Manage…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.local.group", x, y, w, lrows[..]);
   } else if page == CP_PG_FOREMAN {
     y += set_page_head(f, "set.title", x, y, w, names[page], "How much Foreman may do across your chats.") + t.block_gap;
     tier := s[0].foreman_tier;
@@ -412,9 +419,16 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
 coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effects(all) {
   if s.count < 1 { return; }
   was_agy := cp_is_agy(s, s[0].model);
+  was_inkling := cp_is_inkling(s, s[0].model);
   s[0].set_gemini_n = cp_out(s[0].set_gemini[..], gemini);
   if was_agy { s[0].model = cp_agy_idx(s); }
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
   s[0].model = cp_model_index(s);
+}
+// Local Models status in Settings > Models ("Inkling 2 Mini installed (~20 GB)", "None downloaded"; #13826).
+coder_page_settings_local :: (s: [] CoderPage, status: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].set_local_status_n = cp_out(s[0].set_local_status[..], status);
 }
 // The agent instructions' state for General's row ("Default", "Edited", "Off (empty)"; #13808).
 coder_page_settings_instructions :: (s: [] CoderPage, words: string) #export_c #effects(all) {

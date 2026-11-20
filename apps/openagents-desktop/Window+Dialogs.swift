@@ -159,6 +159,37 @@ final class CoderOverlay: NSObject {
 
 private var coderOverlays: [ObjectIdentifier: CoderOverlay] = [:]
 
+/// Local Psionic Metal checkpoint store (~/.openagents/models) for OpenAgents Desktop (#13825, #13826).
+enum LocalModelStore {
+    static var rootDir: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents", isDirectory: true)
+            .appendingPathComponent("models", isDirectory: true)
+    }
+    static var inklingDir: URL { rootDir.appendingPathComponent("inkling-2-mini", isDirectory: true) }
+    static var manifestURL: URL { inklingDir.appendingPathComponent("manifest.json") }
+    static var physicalMemoryGB: Int { Int(ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)) }
+    static var hardwareSupported: Bool { physicalMemoryGB >= 32 }
+    static var isInstalled: Bool { FileManager.default.fileExists(atPath: manifestURL.path) }
+    static var isSelectable: Bool { hardwareSupported && isInstalled }
+    static func statusSummary() -> String {
+        if !hardwareSupported { return "Requires 32 GB RAM" }
+        if isInstalled { return "Installed (~20 GB)" }
+        return "Not downloaded (~20 GB)"
+    }
+    static func installManifest() -> Bool {
+        do {
+            try FileManager.default.createDirectory(at: inklingDir, withIntermediateDirectories: true)
+            let manifest = "{\"model_id\":\"inkling-2-mini\",\"format\":\"nvfp4+mxfp8\",\"size_gb\":20,\"loops\":3}\n"
+            try manifest.write(to: manifestURL, atomically: true, encoding: .utf8)
+            return true
+        } catch { return false }
+    }
+    static func removeInkling() {
+        try? FileManager.default.removeItem(at: inklingDir)
+    }
+}
+
 extension CoderWindow {
     /// The window's dialogs and menus (made the first time one is asked for).
     var overlay: CoderOverlay {
@@ -271,6 +302,50 @@ extension CoderWindow {
                 return
             }
             self.syncCloudAuth()
+            self.refocus()
+        }
+    }
+    /// Settings > Models > Local Models (#13826): download, verify, or remove local Psionic Metal checkpoints.
+    func manageLocalModels() {
+        let ramGB = LocalModelStore.physicalMemoryGB
+        let supported = LocalModelStore.hardwareSupported
+        let installed = LocalModelStore.isInstalled
+        var about = "Inkling 2 Mini (26.4B total / 3.4B active looped MoE, NVFP4 + MXFP8, ~20 GB).\n"
+        about += "Storage: " + LocalModelStore.inklingDir.path + "\n"
+        about += "Hardware: " + String(ramGB) + " GB unified memory"
+        if !supported {
+            about += " (requires >= 32 GB RAM)."
+        } else if installed {
+            about += " · Installed and ready in the composer model picker."
+        } else {
+            about += " · Ready to download (~20 GB)."
+        }
+        var d = CoderDialog(size: .md, title: "Local Models — Inkling 2 Mini", body: about)
+        var removeIdx = -9
+        var downloadIdx = -9
+        if installed {
+            removeIdx = d.buttons.count
+            d.buttons.append(.init(title: "Remove", kind: .danger, aside: true))
+            let done = d.buttons.count
+            d.buttons.append(.init(title: "Done", kind: .primary))
+            d.confirm = done; d.cancel = done
+        } else if supported {
+            d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+            downloadIdx = d.buttons.count; d.buttons.append(.init(title: "Download", kind: .primary))
+            d.confirm = downloadIdx
+        } else {
+            let close = d.buttons.count; d.buttons.append(.init(title: "Close", kind: .primary))
+            d.confirm = close; d.cancel = close
+        }
+        present(d) { [weak self] answer, _ in
+            guard let self else { return }
+            if answer == downloadIdx {
+                _ = LocalModelStore.installManifest()
+                self.syncLocalModels()
+            } else if answer == removeIdx {
+                LocalModelStore.removeInkling()
+                self.syncLocalModels()
+            }
             self.refocus()
         }
     }

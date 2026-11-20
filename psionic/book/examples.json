@@ -3741,6 +3741,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/inkling-desktop.coax",
+      "chapter": "psionic/book/ch271-run-inkling-2-mini-in-openagents-desktop.md",
+      "stdout": "psionic/fixtures/inkling-desktop.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

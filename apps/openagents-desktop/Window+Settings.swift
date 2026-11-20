@@ -187,9 +187,20 @@ extension CoderWindow {
         cd_settings_info(page, claude, openrouter, version)
         cd_settings_gemini(page, gemini)
         cd_settings_instructions(page, AgentInstructions.words)
+        syncLocalModels()
         syncAntigravitySettings()
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
+    }
+    func syncLocalModels() {
+        let status = LocalModelStore.statusSummary()
+        let on: Int32 = LocalModelStore.isSelectable ? 1 : 0
+        cd_settings_local(page, status)
+        cd_inkling(page, on)
+        for r in runs.values where r.page != page {
+            cd_settings_local(r.page, status)
+            cd_inkling(r.page, on)
+        }
     }
     func syncAntigravitySettings() {
         cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())

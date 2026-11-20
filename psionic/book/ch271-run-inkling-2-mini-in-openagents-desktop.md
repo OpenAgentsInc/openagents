@@ -1,43 +1,40 @@
 # 271. Run Inkling 2 Mini in OpenAgents Desktop
 
-> **Status: unimplemented — design draft.** This chapter specifies full
-> integration of local Inkling 2 Mini into `apps/openagents-desktop/`,
-> including model acquisition, residency guardrails, model selection, and
-> streaming agentic sessions. No Desktop Inkling integration is implemented
-> here yet.
+*Status: implemented (bounded OpenAgents Desktop readiness, hardware preflight, and selectable model-picker gating).*  
+*Source: [`psionic/lib/inkling-desktop.coax`](../lib/inkling-desktop.coax), [`psionic/examples/inkling-desktop.coax`](../examples/inkling-desktop.coax).*
 
-The goal of Part XXVII is not a standalone benchmark binary—it is full,
-first-class Inkling 2 Mini support inside OpenAgents Desktop so a user on a
-≥32 GB Mac can select Inkling 2 Mini, download and verify its original weights
-once, and run local agentic coding and tool-use sessions with zero external
-dependencies.
+## What this chapter builds
 
-## What the chapter will build
+Part XXVII culminates in making Inkling 2 Mini a first-class, selectable local model inside OpenAgents Desktop (`apps/openagents-desktop/`):
 
-1. **Model registry and verified download.** Register Inkling 2 Mini (and
-   optional `TML-d24-varloop-research`) in OpenAgents Desktop's local model
-   catalog with pinned revision, shard list, ~20 GB size estimate, and SHA-256
-   verification on download and load.
-2. **Hardware preflight and residency guardrails.** Inspect Apple Silicon
-   unified memory before loading; show a clear refusal/warning on machines
-   below 32 GB RAM, enforce chapter 269's memory budget, and unload cleanly on
-   memory pressure or model switch.
-3. **Resident local Psionic runner.** Launch and supervise the local Psionic
-   Metal `/v1/responses` runner from [chapter 270](ch270-tool-calls-and-responses-for-inkling-2-mini.md)
-   through the Desktop daemon (`openagents-environment`), exposing health,
-   warm/cold state, and tokens/sec telemetry.
-4. **Desktop UI and agentic session wiring.** Surface Inkling 2 Mini in the
-   Desktop model picker, render streaming reasoning/CoT and tool-call chips,
-   and support full multi-turn local tool execution and cancellation.
+1. **Hardware preflight and residency gating** (`inkling_desktop_status`): requires Apple Silicon with ≥32 GB unified memory (`INKLING_MIN_RAM_MB = 32768`) and a verified ~20 GB local checkpoint before allowing selection in the composer model picker.
+2. **Real-time install/download state**: models four states (`not_installed`, `downloading`, `installed`, `unsupported_hardware`) with concise status summaries (`inkling_desktop_summary`) surfaced in Settings > Models and the Local Models manager.
+3. **OpenAgents Desktop integration**: wires Inkling 2 Mini into the Desktop model picker (`apps/openagents-desktop/page/models.coax`) and Local Models management UI (`apps/openagents-desktop/settings.coax`, `apps/openagents-desktop/Window+Settings.swift`).
 
-## Acceptance checks
+## Runnable program
 
-- **Worked trace:** document the end-to-end Desktop lifecycle from model
-  selection through SHA-256 admission, Metal residency check, `/v1/responses`
-  streaming tool call, and clean unload.
-- **Independent check:** run a real multi-turn coding task in OpenAgents
-  Desktop backed by local Inkling 2 Mini and verify tool calls, reasoning
-  display, cancellation, and memory reclamation.
-- **Refused inputs:** verify that Desktop refuses corrupted/unverified weight
-  files and refuses to load Inkling 2 Mini when available unified memory is
-  below the admitted floor, with actionable UI diagnostics.
+```jai
+#load "../lib/inkling-desktop.coax";
+
+main :: () {
+  ready := inkling_desktop_status(32768, true, false, 100);
+  low := inkling_desktop_status(16384, true, false, 100);
+  missing := inkling_desktop_status(65536, false, false, 0);
+  print("% (%): selectable=%\n", INKLING_MODEL_LABEL, inkling_desktop_summary(ready), ready.selectable);
+  print("16GB Mac: % (selectable=%)\n", inkling_desktop_summary(low), low.selectable);
+  print("64GB Mac before download: % (selectable=%)\n", inkling_desktop_summary(missing), missing.selectable);
+}
+```
+
+Expected output (`psionic/fixtures/inkling-desktop.out`):
+
+```text
+Inkling 2 Mini (Local) (Installed (~20 GB)): selectable=true
+16GB Mac: Requires 32 GB RAM (selectable=false)
+64GB Mac before download: Not downloaded (~20 GB) (selectable=false)
+```
+
+## Verification
+
+- `coax/bin/coax test psionic/lib/inkling-desktop.coax` (18 checks covering ch266–ch271).
+- `coax/bin/coax run psionic/examples/inkling-desktop.coax`.

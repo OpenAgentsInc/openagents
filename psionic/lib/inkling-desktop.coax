@@ -1,0 +1,107 @@
+// Inkling 2 Mini desktop model registry, hardware/install readiness, and
+// composer model-picker gating for OpenAgents Desktop (ch271, #13825).
+
+#authority;
+
+#load "inkling-responses.coax";
+
+INKLING_MODEL_ID :: "inkling-2-mini";
+INKLING_MODEL_LABEL :: "Inkling 2 Mini (Local)";
+INKLING_MIN_RAM_MB :: 32768;
+INKLING_FOOTPRINT_MB :: 20480;
+
+InklingLocalState :: enum u8 {
+  not_installed;
+  downloading;
+  installed;
+  unsupported_hardware;
+}
+
+InklingDesktopStatus :: struct {
+  state: InklingLocalState;
+  selectable: bool;
+  ram_mb: int;
+  footprint_mb: int;
+  download_pct: int;
+  status_code: int;
+}
+
+// Evaluate whether Inkling 2 Mini can be selected in OpenAgents Desktop.
+// Requires >= 32GB unified memory and a verified local checkpoint.
+inkling_desktop_status :: (ram_mb: int, installed: bool, downloading: bool, download_pct: int) -> InklingDesktopStatus #export_c #effects(all) {
+  if ram_mb < INKLING_MIN_RAM_MB {
+    return InklingDesktopStatus.{
+      state = InklingLocalState.unsupported_hardware,
+      selectable = false,
+      ram_mb = ram_mb,
+      footprint_mb = INKLING_FOOTPRINT_MB,
+      download_pct = 0,
+      status_code = 1
+    };
+  }
+  if installed {
+    return InklingDesktopStatus.{
+      state = InklingLocalState.installed,
+      selectable = true,
+      ram_mb = ram_mb,
+      footprint_mb = INKLING_FOOTPRINT_MB,
+      download_pct = 100,
+      status_code = 0
+    };
+  }
+  if downloading {
+    pct := ifx download_pct < 0 then 0 else ifx download_pct > 100 then 100 else download_pct;
+    return InklingDesktopStatus.{
+      state = InklingLocalState.downloading,
+      selectable = false,
+      ram_mb = ram_mb,
+      footprint_mb = INKLING_FOOTPRINT_MB,
+      download_pct = pct,
+      status_code = 2
+    };
+  }
+  return InklingDesktopStatus.{
+    state = InklingLocalState.not_installed,
+    selectable = false,
+    ram_mb = ram_mb,
+    footprint_mb = INKLING_FOOTPRINT_MB,
+    download_pct = 0,
+    status_code = 3
+  };
+}
+
+// Build the concise status summary shown in OpenAgents Desktop Settings > Models.
+inkling_desktop_summary :: (st: InklingDesktopStatus) -> string #effects(all) {
+  if st.state == InklingLocalState.unsupported_hardware { return "Requires 32 GB RAM"; }
+  if st.state == InklingLocalState.installed { return "Installed (~20 GB)"; }
+  if st.state == InklingLocalState.downloading { return "Downloading..."; }
+  return "Not downloaded (~20 GB)";
+}
+
+#test "32GB Mac with installed Inkling 2 Mini is selectable" {
+  st := inkling_desktop_status(32768, true, false, 100);
+  #assert st.selectable;
+  #assert st.state == InklingLocalState.installed;
+  #assert st.status_code == 0;
+  #assert inkling_desktop_summary(st) == "Installed (~20 GB)";
+}
+
+#test "16GB Mac is refused as unsupported hardware even if files exist" {
+  st := inkling_desktop_status(16384, true, false, 100);
+  #assert !st.selectable;
+  #assert st.state == InklingLocalState.unsupported_hardware;
+  #assert st.status_code == 1;
+  #assert inkling_desktop_summary(st) == "Requires 32 GB RAM";
+}
+
+#test "not installed and downloading states gate picker selection" {
+  s0 := inkling_desktop_status(65536, false, false, 0);
+  #assert !s0.selectable;
+  #assert s0.state == InklingLocalState.not_installed;
+  #assert inkling_desktop_summary(s0) == "Not downloaded (~20 GB)";
+  s1 := inkling_desktop_status(65536, false, true, 42);
+  #assert !s1.selectable;
+  #assert s1.state == InklingLocalState.downloading;
+  #assert s1.download_pct == 42;
+  #assert inkling_desktop_summary(s1) == "Downloading...";
+}

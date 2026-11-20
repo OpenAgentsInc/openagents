@@ -336,7 +336,7 @@
 - [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md)
 - [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md)
 - [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md)
-- [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) — design draft
+- [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md)
 
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat

@@ -39,6 +39,14 @@
   #assert !coder_page_pick_model(s2, "openrouter") && coder_page_pick_model(s2, "Carbon") && s2[0].model == 1 && !coder_page_pick_model(s2, "gpt");
   coder_page_set_openrouter(s2, "deepseek/deepseek-v4.1-flash-1017", "");
   #assert coder_page_pick_model(s2, "openrouter") && s2[0].model == CP_MODEL_OR && coder_page_pick_model(s2, "gemini-4-neon") && s2[0].model == CP_MODEL_DEFAULT;
+  // Inkling 2 Mini local model (#13825)
+  #assert !coder_page_pick_model(s2, "inkling-2-mini");
+  coder_page_set_inkling(s2, true);
+  #assert coder_page_pick_model(s2, "inkling-2-mini");
+  #assert cp_model_id(s2, s2[0].model) == "inkling-2-mini";
+  #assert cp_model_label(s2, s2[0].model) == "Inkling 2 Mini (Local)";
+  coder_page_set_inkling(s2, false);
+  #assert s2[0].model == CP_MODEL_DEFAULT;
 }
 
 #test "composer model picker defaults to Neon, switches models per chat, routes tasks, and persists across save/load/take/new" {

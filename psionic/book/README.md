@@ -387,7 +387,7 @@ run examples directly without the check command.
 | [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) | Runnable: bounded CPU Inkling 2 Mini checkpoint admission, chat template, and greedy decode | Full CPU execution of the original ~20 GB Inkling 2 Mini checkpoint with tokenizer, chat template and reference logit parity. |
 | [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) | Runnable: bounded Apple Silicon >= 32GB residency planner and fused NVFP4/MXFP8 matvec | Coax-generated Metal NVFP4/MXFP8 kernels, looped MoE dispatch and ≥32 GB unified-memory residency planning. |
 | [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) | Runnable: bounded Inkling 2 Mini reasoning/tool-call parser and /v1/responses SSE formatter | Inkling 2 Mini reasoning/tool-call parser and local `/v1/responses` streaming server integration. |
-| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Unimplemented: design draft | End-to-end OpenAgents Desktop integration: verified model download, memory guardrails, resident local runner and streaming tool-use UI. |
+| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Runnable: bounded OpenAgents Desktop readiness, hardware preflight, and selectable model-picker gating | End-to-end OpenAgents Desktop integration: verified model download, memory guardrails, resident local runner and streaming tool-use UI. |
 
 The selected robotics capstone is [chapter 256](ch256-build-and-teach-a-small-robot.md),
 following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).

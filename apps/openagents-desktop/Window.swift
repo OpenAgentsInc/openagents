@@ -377,6 +377,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 44: editInstructions()
         case 46: simAsked()
         case 45: resetInstructions()
+        case 47: manageLocalModels()
         case 40...43: fileAsked(what)
         default: break
         }

@@ -298,6 +298,8 @@ void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
 void cd_settings_gemini(void *page, const char *gemini);
+void cd_settings_local(void *page, const char *status);
+void cd_inkling(void *page, int on);
 // cd_settings_instructions: the agent instructions' state General shows ("Default", "Edited"; #13808).
 void cd_settings_instructions(void *page, const char *words);
 // The sign-in Gemini models run on, from mcworker --auth: kind "vertex", "key" or "none", and its words.

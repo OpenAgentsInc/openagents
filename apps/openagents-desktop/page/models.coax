@@ -9,10 +9,16 @@
 cp_cloud_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && (s[0].set_gemini_n > 0 || s[0].set_gauth_n > 0 || (s[0].experimental && s[0].cloud_authed)); }
 // How many entries the picker has: cloud models when authed (Gemini + optional OpenRouter), and Antigravity when installed.
 cp_models :: (s: [] CoderPage) -> int {
-  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 1 else 0; }
+  if !cp_cloud_ok(s) {
+    n := 0;
+    if s.count > 0 && s[0].agy { n += 1; }
+    if s.count > 0 && s[0].inkling { n += 1; }
+    return n;
+  }
   n := CP_MODELS;
   if s[0].or_main_n > 0 { n += 1; }
   if s[0].agy { n += 1; }
+  if s[0].inkling { n += 1; }
   return n;
 }
 cp_agy_idx :: (s: [] CoderPage) -> int {
@@ -21,10 +27,19 @@ cp_agy_idx :: (s: [] CoderPage) -> int {
   return ifx s[0].or_main_n > 0 then CP_MODELS + 1 else CP_MODELS;
 }
 cp_is_agy :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].agy && idx == cp_agy_idx(s); }
+cp_inkling_idx :: (s: [] CoderPage) -> int {
+  if s.count < 1 || !s[0].inkling { return -1; }
+  if !cp_cloud_ok(s) { return ifx s[0].agy then 1 else 0; }
+  n := CP_MODELS;
+  if s[0].or_main_n > 0 { n += 1; }
+  if s[0].agy { n += 1; }
+  return n;
+}
+cp_is_inkling :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].inkling && idx == cp_inkling_idx(s); }
 cp_model_index :: (s: [] CoderPage) -> int {
   n := cp_models(s);
   if s.count > 0 && s[0].model >= 0 && s[0].model < n { return s[0].model; }
-  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 0 else -1; }
+  if !cp_cloud_ok(s) { return ifx n > 0 then 0 else -1; }
   return CP_MODEL_DEFAULT;
 }
 // A kept model's entry: a Gemini id or short name, or any "openrouter:" id (CP_MODEL_OR).
@@ -41,7 +56,11 @@ cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
     if s.count > 0 && s[0].agy { return cp_agy_idx(s); }
     return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
-  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 0 else -1; }
+  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
+    if s.count > 0 && s[0].inkling { return cp_inkling_idx(s); }
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
+  }
+  if !cp_cloud_ok(s) { return ifx cp_models(s) > 0 then 0 else -1; }
   return cp_model_find(name);
 }
 cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
@@ -50,6 +69,7 @@ cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_cloud_ok(s) && idx =
 // The worker's model id for an entry: "openrouter:VENDOR/MODEL" for OpenRouter, "antigravity" for Antigravity.
 cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "antigravity"; }
+  if cp_is_inkling(s, idx) { return "inkling-2-mini"; }
   if !cp_cloud_ok(s) { return ""; }
   if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
   ids := CP_MODEL_ID;
@@ -58,6 +78,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
 // The OpenRouter entry's label is the model's name after its vendor (deepseek-v4.1-flash-1017).
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "Antigravity"; }
+  if cp_is_inkling(s, idx) { return "Inkling 2 Mini (Local)"; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     m := cp_or_main(s); at := 0;
@@ -81,7 +102,8 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].agy_desc[n..<s[0].agy_desc.count], mode);
     return cast(string) s[0].agy_desc[0..<n];
   }
-  if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy)"; }
+  if cp_is_inkling(s, idx) { return "Psionic Metal · Local · 26.4B/3.4B MoE"; }
+  if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy) or download a Local Model"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   // fixed strings per model and backend: the palette and the menu keep these strings, so one shared
   // buffer would give every row the last model's line
@@ -132,6 +154,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) {
     return cp_agy_meta(s, cp_agy_shown(s));
   }
+  if cp_is_inkling(s, idx) { return "Psionic Metal · Inkling 2 Mini"; }
   if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
@@ -152,6 +175,11 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
     s[0].model = cp_agy_idx(s);
     return true;
   }
+  if name == "inkling-2-mini" || name == "inkling" || name == "Inkling 2 Mini" {
+    if !s[0].inkling { return false; }
+    s[0].model = cp_inkling_idx(s);
+    return true;
+  }
   if !cp_cloud_ok(s) { return false; }
   idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
   if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
@@ -169,7 +197,14 @@ coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #expor
 }
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was_inkling := cp_is_inkling(s, s[0].model);
   s[0].agy = on;
+  if was_inkling { s[0].model = cp_inkling_idx(s); }
+  s[0].model = cp_model_index(s);
+}
+coder_page_set_inkling :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].inkling = on;
   s[0].model = cp_model_index(s);
 }
 coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {

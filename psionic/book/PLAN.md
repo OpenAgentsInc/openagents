@@ -966,7 +966,7 @@ MoE, 3-pass middle-layer loop, native NVFP4 weights with MXFP8 last four layers,
 | [268. Execute Inkling 2 Mini on CPU](ch268-execute-inkling-2-mini-on-cpu.md) | Load the original ~20GB checkpoint, apply its tokenizer/chat template, and verify logits and greedy decode against an independent reference. |
 | [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) | Coax-generated Metal kernels for NVFP4/MXFP8 matvec/matmul, looped MoE prefill/decode, and residency planning for >=32GB Macs. |
 | [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) | Wire Inkling 2 Mini's tool-calling format and thinking/CoT output into Psionic's `/v1/responses` server. |
-| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) — design draft | Connect the resident local Psionic Metal runner into `apps/openagents-desktop/` with discovery/download, residency guardrails, model picker, and streaming tool-use sessions. |
+| [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Connect the resident local Psionic Metal runner into `apps/openagents-desktop/` with discovery/download, residency guardrails, model picker, and streaming tool-use sessions. |
 
 ## A framework, not only engines
 
