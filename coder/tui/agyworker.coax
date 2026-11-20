@@ -483,9 +483,7 @@ tool_main :: () -> int #export_c #effects(all) {
           agyw_emit_steered(s, req[0].id, "refused", "not_running", req[0].text);
         }
       } else if rk == MWW_TASK {
-        tb: [1] McTask;
-        if mww_task_read(req_ar[..], line, tb[..]) {
-          t := tb[0];
+        if req[0].task.count > 0 {
           s[0].turn_active = true;
           s[0].stopping = false;
           s[0].respawned = false;
@@ -493,24 +491,24 @@ tool_main :: () -> int #export_c #effects(all) {
           s[0].reply_n = 0;
           agyw_calls_clear(s);
 
-          mod := agyw_resolve_model(t.model, agyw_str(s[0].cfg.model[..], s[0].cfg.model_n));
-          eff := agyw_resolve_effort(t.effort, agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n));
+          mod := agyw_resolve_model(req[0].model, agyw_str(s[0].cfg.model[..], s[0].cfg.model_n));
+          eff := agyw_resolve_effort(req[0].effort, agyw_str(s[0].cfg.effort[..], s[0].cfg.effort_n));
           s[0].turn_model_n = agyw_copy(s[0].turn_model[..], mod);
           s[0].turn_effort_n = agyw_copy(s[0].turn_effort[..], eff);
 
           // Check /compact support before sending.
-          if agyw_is_compact(t.task) && x[0].live && x[0].ready && !cu_can_compact(x[0].c) {
+          if agyw_is_compact(req[0].task) && x[0].live && x[0].ready && !cu_can_compact(x[0].c) {
             agyw_finish_turn(s, "failed", "Antigravity did not advertise /compact for this session.", true);
           } else {
-            cwd := ifx t.cwd.count > 0 then t.cwd else ".";
+            cwd := ifx req[0].cwd.count > 0 then req[0].cwd else ".";
             cwd_changed := s[0].cwd_n > 0 && agyw_str(s[0].cwd[..], s[0].cwd_n) != cwd;
             s[0].cwd_n = agyw_copy(s[0].cwd[..], cwd);
             if cwd_changed && x[0].live { cue_close(x); }
 
             prompt_buf: [CUE_OWED] u8;
-            prompt := t.task;
+            prompt := req[0].task;
             if s[0].has_recall {
-              prompt = agyw_compose_prompt(agyw_str(s[0].recall[..], s[0].recall_n), t.task, prompt_buf[..]);
+              prompt = agyw_compose_prompt(agyw_str(s[0].recall[..], s[0].recall_n), req[0].task, prompt_buf[..]);
               s[0].has_recall = false;
               s[0].recall_n = 0;
             }
