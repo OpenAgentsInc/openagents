@@ -366,6 +366,20 @@ cp_check_lean :: (p: [] CoderPage, st: [] CpCheckLean) -> [] CoderPage {
   cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
   return p;
 }
+// A chat of one message with 600 rows (a kept chat over 1 MiB): room for its tool calls.
+CpCheckRows :: struct {
+  turns: [2] CpTurn;
+  agents: [2 * CP_AGENTS] CpAgent;
+  asks: [2 * EB_TEXT] u8;
+  replies: [2 * CP_REPLY] u8;
+  calls: [640] CpCall;
+  docs: [2] MdDoc;
+  long_buf: [16384] u8;
+}
+cp_check_rows :: (p: [] CoderPage, st: [] CpCheckRows) -> [] CoderPage {
+  cp_store_bind(p, st[0].turns[..], st[0].agents[..], st[0].asks[..], st[0].replies[..], st[0].calls[..], st[0].docs[..], st[0].long_buf[..]);
+  return p;
+}
 
 cp_init :: (s: [] CoderPage) {
   s[0].ready = true;

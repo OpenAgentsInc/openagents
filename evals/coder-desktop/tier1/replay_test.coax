@@ -191,7 +191,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 01: simple Q&A streaming, cost accounting, and save/load" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_01_SIMPLE_QA, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert coder_page_cost_usd_micros(s) == 1250;
@@ -200,7 +200,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 02: multi-step view, edit, and command run" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_02_MULTI_STEP_EDIT, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert s[0].turns[0].ncmds >= 3;
@@ -209,7 +209,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 03: parallel sub-agent delegation and transcript rendering" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_03_SUBAGENT_PARALLEL, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert s[0].turns[0].nagents == 2;
@@ -218,8 +218,8 @@ t1_verify_save_load :: (s: [] CoderPage) {
   t1_verify_save_load(s);
 }
 
-#test "tier1 fixture 04: sub-agent 100-tool-call pause and resume" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+#test "tier1 fixture 04: sub-agent 100-tool-call pause and resume" #steps 200000000 {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_04_SUBAGENT_PAUSE_100, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert s[0].turns[0].nagents == 1;
@@ -229,7 +229,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 05: /goal autonomous multi-turn continuation to [GOAL_COMPLETE]" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_05_GOAL_AUTONOMOUS, false);
   #assert s[0].nturns == 2 && !cp_running(s);
   #assert coder_page_goal_status(s) == CP_GOAL_COMPLETE;
@@ -238,7 +238,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 06: budget exceeded auto-stop and override continuation" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_06_BUDGET_EXCEEDED, false);
   #assert s[0].nturns == 2 && !cp_running(s);
   #assert coder_page_cost_usd_micros(s) == 127000;
@@ -247,7 +247,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 07: mid-turn stop, worker crash, and clean recovery" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_07_STOP_AND_CRASH, false);
   #assert s[0].nturns == 3 && !cp_running(s);
   #assert s[0].turns[0].state == CP_STOPPED;
@@ -257,7 +257,7 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 08: running chat swaps to background, receives lines, and swaps back" {
-  p: [2] CoderPage; s := p[0..<1]; b := p[1..<2];
+  p: [2] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[0..<1], p_st[..]); b_st: [1] CpCheckLean; b := cp_check_lean(p[1..<2], b_st[..]);
   cp_init(s); coder_page_init(b); s[0].d = 1.0f32;
   t1_replay(s, b, FIX_08_BACKGROUND_CHAT_SWITCH, true);
   #assert s[0].nturns == 1 && !cp_running(s);
@@ -266,15 +266,15 @@ t1_verify_save_load :: (s: [] CoderPage) {
 }
 
 #test "tier1 fixture 09: malformed, unknown, truncated, and oversized wire lines" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_09_MALFORMED_WIRE, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert cast(string) s[0].turns[0].reply[0..<s[0].turns[0].reply_n] == "Valid reply survived malformed traffic.";
   t1_verify_save_load(s);
 }
 
-#test "tier1 fixture 10: large chat >1 MiB save/load round-trip" {
-  p: [1] CoderPage; s := p[..]; cp_init(s); s[0].d = 1.0f32;
+#test "tier1 fixture 10: large chat >1 MiB save/load round-trip" #steps 1000000000 {
+  p: [1] CoderPage; p_st: [1] CpCheckRows; s := cp_check_rows(p[..], p_st[..]); cp_init(s); s[0].d = 1.0f32;
   t1_replay(s, s, FIX_10_LARGE_SAVE_LOAD, false);
   #assert s[0].nturns == 1 && !cp_running(s);
   #assert s[0].turns[0].ncmds == 600;

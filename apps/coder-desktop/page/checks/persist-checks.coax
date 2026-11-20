@@ -77,19 +77,8 @@
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED && !cp_running(s) && coder_page_save_due(s);
 }
 
-// A chat of one message with 600 rows: room for its tool calls.
-CpCheckRows :: struct {
-  turns: [2] CpTurn;
-  agents: [2 * CP_AGENTS] CpAgent;
-  asks: [2 * EB_TEXT] u8;
-  replies: [2 * CP_REPLY] u8;
-  calls: [640] CpCall;
-  docs: [2] MdDoc;
-  long_buf: [16384] u8;
-}
 #test "a kept chat larger than 1 MiB (CL_LINE_MAX) loads back" #steps 1000000000 {
-  p: [1] CoderPage; p_st: [1] CpCheckRows; s := p[..];
-  cp_store_bind(s, p_st[0].turns[..], p_st[0].agents[..], p_st[0].asks[..], p_st[0].replies[..], p_st[0].calls[..], p_st[0].docs[..], p_st[0].long_buf[..]); cp_init(s);
+  p: [1] CoderPage; p_st: [1] CpCheckRows; s := cp_check_rows(p[..], p_st[..]); cp_init(s);
   #assert coder_page_set_text(s, "big chat") && coder_page_submit(s);
   out_buf: [CP_CMD_OUT] u8;
   for k: 0..<CP_CMD_OUT { out_buf[k] = 'x'; }
