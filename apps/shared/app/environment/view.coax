@@ -112,11 +112,12 @@ es_picker :: (f: [] UiFrame, s: [] EnvSelect, x: f32, y: f32, w: f32, h: f32, ch
     else if s[0].catalog[0].ok && s[0].catalog[0].n == 0 { cy += es_v_note(f, "env.note", inside.x, cy, inside.w, "No computers are connected to this account."); }
   } else if folder {
     picked := es_folder_name(s); b: [ES_EL_ID] u8;
-    cy += es_v_choice(f, "env.folder.none", inside.x, cy, inside.w, "Workspace", "The folder your computer shares", picked.count == 0, true, check);
+    // the computer's projects: its workspace, then the projects its chats work in inside it
+    cy += es_v_choice(f, "env.folder.none", inside.x, cy, inside.w, cast(string) s[0].root[0..<s[0].nroot], "", picked.count == 0, true, check);
     for i: 0..<s[0].nfolders {
       name := cast(string) s[0].folders[i].path[0..<s[0].folders[i].np];
       nb := es_index_put("env.folder.", i, b[..]);
-      cy += es_v_choice(f, cast(string) b[0..<nb], inside.x, cy, inside.w, name, "", name == picked, true, check);
+      cy += es_v_choice(f, cast(string) b[0..<nb], inside.x, cy, inside.w, es_base(name), ifx es_base(name) == name then "" else name, name == picked, true, check);
     }
   } else {
     es_repo_list(s, s[0].shown[..]);

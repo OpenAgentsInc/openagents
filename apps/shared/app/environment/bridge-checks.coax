@@ -63,13 +63,15 @@ esb_take :: (c: [] AppCore, t: int, path: [] u8) -> int #effects(all) {
   #assert !es_bridge_guest(c, b[..], s[..], "", 0) && c[0].guest.waiting;
 }
 
-#test "the paired computer's folders reach the chip, and the chosen folder reaches the next session" #steps 2000000000 {
+#test "the paired computer's projects reach the chip, and the chosen project reaches the next session" #steps 2000000000 {
  c:[1]AppCore;lane:[1]DeviceLane;app_init(c[..]);#assert app_device_attach(c[..],lane[..]);c[0].foreground=true;
  h:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";lane[0].np=1;_:=ea_copy(lane[0].paired[0].host[..],h);lane[0].paired[0].nn=ea_copy(lane[0].paired[0].name[..],"Mac");lane[0].list_rev+=1;
  b:[1]EsBridge;s:=[1]EnvSelect.[es_new()];es_bridge_sync(c[..],b[..],s[..]);
  es_open_env(s[..],1);#assert es_press(s[..],"env.device.0",1);es_bridge_sync(c[..],b[..],s[..]);#assert app_device_on(c[..]);
  e:=lane[0].e[..];e[0].nfolders=1;e[0].folders[0].np=ea_copy(e[0].folders[0].path[..],"apps");
- es_bridge_sync(c[..],b[..],s[..]);#assert s[0].nfolders==1 && es_folder_on(s[..]);
+ // subfolders from a computer that does not name its workspace are not projects
+ es_bridge_sync(c[..],b[..],s[..]);#assert s[0].nfolders==1 && !es_folder_on(s[..]);
+ e[0].nroot=ea_copy(e[0].root[..],"work");es_bridge_sync(c[..],b[..],s[..]);#assert es_folder_on(s[..]) && es_folder_value(s[..])=="work";
  #assert es_press(s[..],"composer.repo",2) && es_press(s[..],"env.folder.0",2);es_bridge_sync(c[..],b[..],s[..]);
  #assert cast(string)e[0].folder[0..<e[0].nfo]=="apps" && eu_folder(e)=="apps";
  // a session is open: the folder is the session's, the chip takes no press

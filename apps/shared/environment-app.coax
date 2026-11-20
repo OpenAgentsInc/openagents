@@ -16,7 +16,8 @@ EnvironmentApp :: struct {
   expanded:[64]int;expanded_n:int;history_before:int;sync_requested:bool;paused:bool;workspace:bool;
   // The folders the computer last offered (DescribeEnvironment, ListSessions) and the one a new
   // session opens in (nfo 0: the workspace itself). An older computer offers none and gets none.
-  folders:[EA_FOLDERS]EaFolder;nfolders:int;folder:[EA_FOLDER]u8;nfo:int;
+  // A computer that names its workspace (root) offers the projects in it; an older one, subfolders.
+  folders:[EA_FOLDERS]EaFolder;nfolders:int;folder:[EA_FOLDER]u8;nfo:int;root:[EA_FOLDER]u8;nroot:int;
   // The newest StopSubagent (GitHub #13776): the item of the call that started its sub-agent, where
   // it stands (EU_SUB_*) and, refused, the computer's code. A sub-agent's page reads it.
   stop_item:[128]u8;nstop_item:int;stop_state:int;stop_error:[32]u8;nstop_error:int;
@@ -61,7 +62,7 @@ eu_folder :: (e:[]EnvironmentApp)->string #effects(all) {
   want:=cast(string)e[0].folder[0..<e[0].nfo];if want.count==0 {return "";}
   for i:0..<e[0].nfolders {if cast(string)e[0].folders[i].path[0..<e[0].folders[i].np]==want {return want;}}return "";
 }
-eu_take_folders :: (e:[]EnvironmentApp,v:[]EaView) #effects(all) {e[0].nfolders=v[0].nfolders;for i:0..<v[0].nfolders {e[0].folders[i]=v[0].folders[i];}}
+eu_take_folders :: (e:[]EnvironmentApp,v:[]EaView) #effects(all) {e[0].nfolders=v[0].nfolders;for i:0..<v[0].nfolders {e[0].folders[i]=v[0].folders[i];}e[0].nroot=v[0].nroot;for i:0..<v[0].nroot {e[0].root[i]=v[0].root[i];}}
 #test "a new session names the chosen folder only while the computer offers it" {
  e:[1]EnvironmentApp;e[0].active=true;e[0].nd=ea_copy(e[0].draft[..],"hello");e[0].nfo=ea_copy(e[0].folder[..],"apps");
  eu_mutate(e[..],"OpenSession",false);#assert e[0].request[0].nf==0;   // an older computer offered none: no folder

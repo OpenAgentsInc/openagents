@@ -122,6 +122,43 @@ dk_chats :: (chats: [] DkChat) -> int {
   }
   return count;
 }
+// The projects a phone may start a chat in: the workspace itself (named by its folder, "openagents")
+// and each other project Coder's chats work in inside it: a chat's repository root ("repo_root",
+// so a chat in a worktree counts as its repository), else its folder. Never the workspace's
+// subfolders as such, and nothing outside the workspace the pairing allows.
+dk_projects :: (root: string, v: [] EaView) {
+  v[0].nfolders = 0; v[0].nroot = 0;
+  if root.count == 0 { return; }
+  v[0].nroot = ea_copy(v[0].root[..], hs_cut(fs_base(root), 80)); if v[0].nroot < 0 { v[0].nroot = 0; }
+  pb: [1400] u8; b: [DK_INDEX] u8; n := fs_read(dk_chat_path("index.json", pb[..]), b[..]);
+  if n < 2 || n >= b.count { return; }
+  text := cast(string) b[0..<n];
+  ab: [8192] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  for i: 0..<cl_count(text) {
+    if v[0].nfolders >= EA_FOLDERS { break; }
+    one := cl_json(text, cl_item(text, i));
+    ar[0].at = 0; ar[0].full = false;
+    at := cl_str(ar[..], one, "repo_root"); if at.count == 0 { at = cl_str(ar[..], one, "folder"); }
+    real: [1024] u8; path := fs_realpath(at, real[..]);
+    rel := dk_project_rel(root, path);
+    if rel.count == 0 || fs_kind(path) != FS_DIR { continue; }
+    _ = dk_project_add(v, rel);
+  }
+}
+// `path` (canonical) as a project under `root`: its path from root, or "" for root itself, a path
+// outside it, or one through a hidden or dot folder (a worktree under .claude, say).
+dk_project_rel :: (root: string, path: string) -> string {
+  if root.count == 0 || path.count <= root.count + 1 || cast(string) path[0..<root.count] != root || path[root.count] != '/' { return ""; }
+  rel := cast(string) path[root.count + 1..<path.count];
+  return ifx ea_folder_ok(rel) then rel else "";
+}
+dk_project_add :: (v: [] EaView, rel: string) -> bool {
+  for k: 0..<v[0].nfolders { if cast(string) v[0].folders[k].path[0..<v[0].folders[k].np] == rel { return false; } }
+  if v[0].nfolders >= EA_FOLDERS { return false; }
+  f := v[0].folders[v[0].nfolders..<v[0].nfolders + 1]; f[0].np = ea_copy(f[0].path[..], rel);
+  if f[0].np < 1 { f[0].np = 0; return false; }
+  v[0].nfolders += 1; return true;
+}
 dk_chat_of :: (chats: [] DkChat, nc: int, key: string) -> int {
   for i: 0..<nc { if key.count > 0 && cast(string) chats[i].id[0..<chats[i].ni] == key { return i; } }
   return -1;
@@ -829,6 +866,13 @@ dk_dispatch :: (h: [] HsHost, q: [] EaRequest, grant: string, v: [] EaView) {
   dk_saved_turns(big, ses[..], ab[..], 1);
   users := 0; for k: 0..<ses[0].n { if ses[0].parts[k].kind == P_USER { users += 1; } }
   #assert users == 2;
+}
+#test "the projects a phone picks are the workspace's repositories, never its subfolders or what lies outside" {
+  #assert dk_project_rel("/u/work", "/u/work/openagents") == "openagents";
+  #assert dk_project_rel("/u/work", "/u/work") == "" && dk_project_rel("/u/work", "/u/workshop/x") == "" && dk_project_rel("/u/work", "/u/.openagents/worktrees/a") == "";
+  #assert dk_project_rel("/u/work/openagents", "/u/work/openagents/.claude/worktrees/x") == "";
+  v: [1] EaView;
+  #assert dk_project_add(v[..], "openagents") && !dk_project_add(v[..], "openagents") && dk_project_add(v[..], "psionic") && v[0].nfolders == 2;
 }
 #test "a run's lines are read whole, never a line still being written" {
   b := "{\"a\":1}\n{\"b\":2}\n{\"c\":"; next := [1] int.[0];

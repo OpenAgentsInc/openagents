@@ -115,6 +115,7 @@ EnvSelect :: struct {
   // the folders the paired computer `folders_host` offers, and whether the conversation can still
   // choose one (a new chat on it): the bridge copies them from the device lane (GitHub #13713)
   folders: [EA_FOLDERS] EaFolder; nfolders: int; folders_host: [64] u8; folder_open: bool;
+  root: [EA_FOLDER] u8; nroot: int;   // the computer's workspace by name ("openagents"); 0: an older computer
   // the picker
   sheet: int; scroll: f32;
   // effects for the core
@@ -269,19 +270,26 @@ es_env_value :: (s: [] EnvSelect) -> string #effects(all) {
   return ifx i >= 0 then es_computer_name(s, i) else ifx s[0].local then "No computer" else "Default";
 }
 // The paired computer's folders, as the device lane last had them.
-es_folders_set :: (s: [] EnvSelect, host: string, list: [] EaFolder, n: int, open: bool) #effects(all) {
+es_folders_set :: (s: [] EnvSelect, host: string, list: [] EaFolder, n: int, open: bool, root: string) #effects(all) {
   for i: 0..<64 { s[0].folders_host[i] = ifx i < host.count then host[i] else 0; }
+  s[0].nroot = ea_copy(s[0].root[..], root); if s[0].nroot < 0 { s[0].nroot = 0; }
   s[0].nfolders = ifx n > EA_FOLDERS then EA_FOLDERS else n; for i: 0..<s[0].nfolders { s[0].folders[i] = list[i]; }
   s[0].folder_open = open;
 }
-// Whether the draft can choose a folder now: it runs on a paired computer that offers some, in a new chat.
+// Whether the draft can choose a project now: it runs on a paired computer that names its workspace
+// (and so offers its projects, never subfolders), in a new chat.
 es_folder_on :: (s: [] EnvSelect) -> bool #effects(all) {
-  p := es_chosen_paired(s); if p < 0 || !s[0].folder_open || s[0].nfolders == 0 { return false; }
+  p := es_chosen_paired(s); if p < 0 || !s[0].folder_open || s[0].nroot == 0 { return false; }
   return cast(string) s[0].folders_host[..] == cast(string) s[0].paired[0].entries[p].host[..];
 }
 es_folder_name :: (s: [] EnvSelect) -> string #effects(all) { d := es_now(s); return cast(string) s[0].drafts[d].folder[0..<s[0].drafts[d].nf]; }
-// What the folder chip shows: the chosen folder, or the computer's workspace.
-es_folder_value :: (s: [] EnvSelect) -> string #effects(all) { f := es_folder_name(s); return ifx f.count > 0 then f else "Workspace"; }
+// A project's last name ("coder" for "apps/coder").
+es_base :: (p: string) -> string #effects(all) { from := 0; for c, i: p { if c == '/' { from = i + 1; } } return p[from..<p.count]; }
+// What the project chip shows: the chosen project, or the computer's workspace by name.
+es_folder_value :: (s: [] EnvSelect) -> string #effects(all) {
+  f := es_folder_name(s); if f.count > 0 { return es_base(f); }
+  return ifx s[0].nroot > 0 && es_chosen_paired(s) >= 0 && cast(string) s[0].folders_host[..] == cast(string) s[0].paired[0].entries[es_chosen_paired(s)].host[..] then cast(string) s[0].root[0..<s[0].nroot] else "Workspace";
+}
 es_choose_folder :: (s: [] EnvSelect, i: int) -> bool #effects(all) {
   if !es_folder_on(s) || s[0].sheet != ES_SHEET_REPO || i < -1 || i >= s[0].nfolders { return false; }
   d := es_now(s);

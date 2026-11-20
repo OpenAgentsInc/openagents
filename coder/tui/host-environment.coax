@@ -296,17 +296,9 @@ es_folder_path :: (root:string,folder:string,out:[]u8)->string #effects(all) {
 es_folder_inside :: (root:string,real:string)->bool #effects(all) {
   return root.count>0 && real.count>root.count+1 && cast(string)real[0..<root.count]==root && real[root.count]=='/';
 }
-// The folders a phone may open a session in: the workspace's own folders, not hidden, by name.
-es_folders :: (h:[]HsHost,v:[]EaView) #effects(all) {c:=h[0].environment[0].configuration[..];es_folders_at(cast(string)c[0].workspace[0..<c[0].nw],v);}
-es_folders_at :: (root:string,v:[]EaView) #effects(all) {
-  v[0].nfolders=0;
-  l:[1]FsList;if root.count==0 || fs_list(root,l[..])<1 {return;}
-  for i:0..<l[0].n {
-    if v[0].nfolders>=EA_FOLDERS {break;}name:=fs_entry(l[..],i);real:[1024]u8;
-    if es_folder_path(root,name,real[..]).count==0 {continue;}
-    f:=v[0].folders[v[0].nfolders..<v[0].nfolders+1];f[0].np=ea_copy(f[0].path[..],name);if f[0].np>0 {v[0].nfolders+=1;}
-  }
-}
+// The folders a phone may open a session in.
+// Since #13778's phone build 1413 they are the workspace's projects (dk_projects), not its subfolders.
+es_folders :: (h:[]HsHost,v:[]EaView) #effects(all) {c:=h[0].environment[0].configuration[..];dk_projects(cast(string)c[0].workspace[0..<c[0].nw],v);}
 // The slot works in `folder` (already checked), and says so for a later resume.
 es_use_folder :: (slot:[]EsSlot,real:string,folder:string)->bool #effects(all) {
   engine:=slot[0].engine[..];slot[0].nw=ea_copy(slot[0].workspace[..],real);engine[0].cwd_n=ea_copy(engine[0].cwd[..],real);

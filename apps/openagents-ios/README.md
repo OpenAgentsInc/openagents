@@ -65,6 +65,12 @@ picker are GPU components; the removed `GlassChrome.swift` projection is no
 longer part of the product. UIKit supplies active text entry, accessibility,
 scroll physics and system credential ceremonies.
 
+On a paired Mac the second chip picks the project a new chat starts in. It
+names the Mac's workspace ("openagents") and lists the projects that Coder's
+chats work in inside it (a worktree counts as its repository), never the
+workspace's subfolders. A Mac that predates the list shows "Workspace" and
+takes no press.
+
 Conversation options provide Share excerpt, Copy messages, Pin, Rename,
 Archive/Restore and Workspace. Recents has All/Pinned/Archived filters and
 paged title search across account and connected-computer history. Library
