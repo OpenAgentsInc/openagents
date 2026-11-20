@@ -57,7 +57,7 @@ cp_pane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
   else if state == CP_RUNNING {
     wb: [2 * CP_CMD] u8; wait := cp_agent_wait(s, i, j, wb[..]);
     if wait.count > 0 { y += app_meta(f, cp_pane_id(ib[..], s, ".w", -1), x, y, cw, sheet_pool(sh, wait), false) + a.gap_small; }
-    y += app_working(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cast(int) (s[0].clock - s[0].turns[i].agents[j].began), i * CP_AGENTS + j, "") + a.gap;
+    y += app_working(f, cp_pane_id(ib[..], s, ".t", -1), x, y, cast(int) (s[0].clock - s[0].turns[i].agents[j].began), "") + a.gap;
   }
   else if state == CP_DONE && reply.count > 0 {
     if s[0].pane_parsed != reply.count {

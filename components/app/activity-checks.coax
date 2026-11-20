@@ -17,8 +17,6 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_act_t_is(d[0], "Read 2 files · ran 2 subagents") && app_act_t_is(AppActCount.{}, "");
   b: [24] u8;
   #assert cast(string) b[0..<app_act_elapsed(b[..], 9)] == "9s" && cast(string) b[0..<app_act_elapsed(b[..], 65)] == "1m 5s" && cast(string) b[0..<app_act_elapsed(b[..], 7380)] == "2h 3m";
-  // the working word rolls every seven seconds from the seed's word
-  #assert cast(string) b[0..<app_working_word(b[..], 0, 2)] == "Scheming…" && cast(string) b[0..<app_working_word(b[..], 6, 2)] == "Scheming…" && cast(string) b[0..<app_working_word(b[..], 7, 2)] == "Brewing…";
 }
 
 #test "app activity: a group is open while it works and folded once done, unless the person chose; a choice flips what shows" {
@@ -27,7 +25,7 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   #assert app_act_open(APP_ACT_OPENED, false) && !app_act_open(APP_ACT_FOLDED, true);
   // Coder Desktop's 1.2: every size divided, strengths and counts kept
   a := app_act_scaled(2);
-  #assert a.trunk == 4.25 && a.row == 14 && a.gutter == 24 && a.tree_ink == 0.12 && a.thought_lines == 6 && a.rotate == 7;
+  #assert a.trunk == 4.25 && a.row == 14 && a.gutter == 24 && a.tree_ink == 0.12 && a.thought_lines == 6;
 }
 
 #test "app activity: the header, rows and the working line sit on Zeron's measures: trunk 8.5, elbow 6 to 20, glyph at 24, words at 48, rows 28, header 26" {
@@ -39,14 +37,14 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
   y += app_act_row(f, "g.0", 0, y, 400, r, true, 9);
   r.running = true; r.output = "";
   y += app_act_row(f, "g.1", 0, y, 400, r, false, 9);
-  wy := y; y += app_working(f, "w", 0, y, 9, 1, "");
+  wy := y; y += app_working(f, "w", 0, y, 9, "");
   #assert app_test_end(t[..]) && y == 26 + 28 + 28 + 26;
   #assert app_test_label(t[..], "g") == "Thought process · ran 2 commands" && app_test_has(t[..], "g", EL_S_EXPANDED | EL_S_BUSY) && app_test_pressable(t[..], "g");
   #assert app_test_label(t[..], "g.0") == "Ran gh issue list --state open" && app_test_has(t[..], "g.0", EL_S_EXPANDS) && app_test_pressable(t[..], "g.0");
   #assert app_test_has(t[..], "g.1", EL_S_BUSY) && !app_test_pressable(t[..], "g.1");
   #assert app_test_label(t[..], "w") == "Working";
   #assert app_test_has(t[..], "w", EL_S_BUSY | EL_S_LIVE);
-  #assert app_test_texts(t[..], "Scheming…") == 1 && app_test_texts(t[..], "9s") == 1 && app_test_texts(t[..], "Ran") == 2;
+  #assert app_test_value(t[..], "w") == "Working" && app_test_texts(t[..], "Working") == 1 && app_test_texts(t[..], "9s") == 1 && app_test_texts(t[..], "Ran") == 2;
   // the geometry: two elbows from the trunk at 8.5 to 20, their bend 6 above each row's middle; the trunk runs through the first row
   sh := surface_sheet(t[0].sf[..]); elbows := 0; trunk_full := false; glyph_ok := false;
   for i: 0..<sh.nu {
@@ -202,6 +200,6 @@ app_act_t_is :: (c: AppActCount, want: string) -> bool {
 #test "app activity: before the turn begins the working line says Sending… with no clock" {
   t: [1] AppTest; app_test_init(t[..]); f := t[0].f[..];
   app_test_begin(t[..], "", "", true);
-  _ := app_working(f, "w", 0, 0, -1, 1, "Sending…");
+  _ := app_working(f, "w", 0, 0, -1, "Sending…");
   #assert app_test_end(t[..]) && app_test_value(t[..], "w") == "Sending…" && app_test_texts(t[..], "0s") == 0 && app_test_texts(t[..], "Sending…") == 1;
 }

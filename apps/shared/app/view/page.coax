@@ -358,7 +358,7 @@ view_row :: (f: [] UiFrame, v: [] ChatView, d: [] DurableChat, facts: ViewFacts,
       }
     } else { h = app_message_user(f, id, x, y, w, text); }
   } else if r.kind == VK_TYPING {
-    if s.chat.enabled { secs := ifx v[0].working_from >= 0 then cast(int) (f[0].clock - v[0].working_from) else 0; h = app_working(f, id, x, y, secs, 0, ""); }
+    if s.chat.enabled { secs := ifx v[0].working_from >= 0 then cast(int) (f[0].clock - v[0].working_from) else 0; h = app_working(f, id, x, y, secs, ""); }
     else { h = app_typing(f, id, x, y, VIEW_TYPING_LABEL); }
   }
   else if r.kind == VK_THOUGHT || r.kind == VK_DEVICE_THOUGHT { gap = 0; }   // outside the conversation look a thought shows nowhere; in it, view_group_tools folds it into its group

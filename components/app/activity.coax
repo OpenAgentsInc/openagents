@@ -6,7 +6,7 @@
 //   ├─ ▣ Ran gh issue list --state open …      a tool's row: an elbow off the trunk, its glyph, verb and target
 //   │  I want a bit more detail on a few …     a thought: its words in the tree, no glyph, no branch
 //   ╰─ ◌ Ran for n in 13723 13610 …            the tool in flight: the loader in its glyph's place
-//   ◌ Scheming… 9s                             the working line: a word that rolls, the seconds
+//   ◌ Working 9s                               the working line: "Working" and the seconds
 //
 // The summary counts the group's kinds in Zeron's words and order
 // (app_act_summary). While the agent works the group is open; settled, it
@@ -532,24 +532,13 @@ app_act_row :: (f: [] UiFrame, id: string, x: f32, y: f32, w: f32, r: AppActRow,
   return h;
 }
 
-// The working line at (x, y): the loader, a word that rolls to another every seven seconds
-// ("Scheming…") and how long the run has gone, as Zeron's (ds/working). `seed` picks where the
-// words start; `label`, when given, is said in the word's place ("Stopping…"). Negative seconds:
-// the turn has not begun ("Sending…", Zeron's sending bridge), so no clock. Its row is live and
-// busy. Returns its height.
-APP_ACT_WORDS :: [20] string.["Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering", "Musing", "Composing", "Sifting", "Untangling",
-                              "Distilling", "Sketching", "Plotting", "Riffing", "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"];
-app_working_word :: (out: [] u8, seconds: int, seed: int) -> int {
-  words := APP_ACT_WORDS; at := ifx seconds < 0 then 0 else seconds;
-  rotate := 7;   // not a size: seconds a word holds (Zeron's ROTATE)
-  w := words[((seed % words.count + words.count) % words.count + at / rotate) % words.count];
-  return el_put(out, el_put(out, 0, w), "…");
-}
-app_working :: (f: [] UiFrame, id: string, x: f32, y: f32, seconds: int, seed: int, label: string) -> f32 {
+// The working line at (x, y): the loader, "Working" (or `label` when given, e.g. "Stopping…")
+// and how long the run has gone. Negative seconds: the turn has not begun ("Sending…", Zeron's
+// sending bridge), so no clock. Its row is live and busy. Returns its height.
+app_working :: (f: [] UiFrame, id: string, x: f32, y: f32, seconds: int, label: string) -> f32 {
   s := f[0].skin; a := s.act; sh := f[0].sheet; m := f[0].m; h := a.working_h;
   app_loader(sh, x, y + (h - a.loader) / 2, a.loader, s.muted, f[0].clock, f[0].reduced_motion);
-  wb: [64] u8; wn := ifx label.count > 0 then el_put(wb[..], 0, label) else app_working_word(wb[..], seconds, seed);
-  word := sheet_pool(sh, cast(string) wb[0..<wn]);
+  word := sheet_pool(sh, ifx label.count > 0 then label else "Working");
   tx := x + a.loader + a.header_gap; ly := y + (h - s.tool.line) / 2;
   ww := sheet_text(sh, m, -1, tx, ly, s.tool.line, s.tool.face, s.muted, word);
   right := tx + ww;

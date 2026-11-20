@@ -328,7 +328,7 @@ cp_test_row :: (s: [] CoderPage, id: string) -> El { i := surface_find(s[0].surf
   s[0].clock += 41;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   tb[0] = surface_rows(s[0].surface[..]);
-  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "t0.t")) != "Sending…" && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.grp")) == "Ran 1 command";
+  #assert elt_value_of(tb[..], surface_find(s[0].surface[..], "t0.t")) == "Working" && surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.grp")) == "Ran 1 command";
   #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"ok\"}") == MWW_ENDED;
   #assert cp_test_frame(s, f[..], 1200, 800, true);
   #assert surface_say(s[0].surface[..], surface_find(s[0].surface[..], "t0.grp")) == "Worked for 41s · Ran 1 command";

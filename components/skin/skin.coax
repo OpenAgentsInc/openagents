@@ -328,7 +328,7 @@ UiActivity :: struct {
   fold_h: f32 = 20; fold_pad: f32 = 6; fold_radius: f32 = 4; fold_room: f32 = 26; fold_wash: f32 = 0.08;   // "Show all N lines"
   detail_pad_x: f32 = 12; detail_pad_y: f32 = 8; detail_radius: f32 = 6; detail_gap: f32 = 4;   // a row opened onto its call and output
   detail_lines: f32 = 10; detail_wash: f32 = 0.05;     // an output folds past this many lines
-  working_h: f32 = 26; working_gap: f32 = 8; rotate: f32 = 7;   // the working line: its height, its gaps, seconds a word holds
+  working_h: f32 = 26; working_gap: f32 = 8;   // the working line: its height and its gap
 }
 UiConversation :: struct {enabled:bool;inset:f32=14;action:f32=44;header_pad:f32=12;identity_radius:f32=22;greeting_gap:f32=16;mark:f32=30;menu_w:f32=240;}
 // One drop shadow as CSS writes it (offset x, y; blur; spread; colour), as
