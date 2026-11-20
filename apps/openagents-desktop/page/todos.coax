@@ -172,7 +172,7 @@ cp_todos_tray :: (s: [] CoderPage, f: [] UiFrame, x: f32, at: f32, cw: f32, up: 
     wn := cp_wrap(wb[..], text, per);
     ls := 0;
     ly := ry + row_pad / 2 + (line_h - tf.line) / 2;
-    for j: 0..wn {
+    for j: 0..<wn + 1 {
       if j == wn || wb[j] == 10 {
         if j > ls {
           _ := sheet_text(sh, m, -1, text_x, ly, tf.line, tf.face, color, sheet_pool(sh, cast(string) wb[ls..<j]));
