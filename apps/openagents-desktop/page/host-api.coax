@@ -289,7 +289,10 @@ coder_page_zoom_set :: (s: [] CoderPage, row: int) -> int #export_c #effects(all
 // rows, pages and palette items are gone, an open Gym closes, and settings on a hidden page shows General.
 coder_page_experimental_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
+  was_agy := cp_is_agy(s, s[0].model);
   s[0].experimental = on;
+  if was_agy { s[0].model = cp_agy_idx(s); }
+  s[0].model = cp_model_index(s);
   if on { return; }
   s[0].gym_open = false;
   if !cp_set_page_ok(false, s[0].set_page) { s[0].set_page = CP_PG_GENERAL; s[0].set_scroll = 0; }

@@ -30,13 +30,14 @@ CP_LOGIN_URL :: "https://openagents.com/login";
 
 // What the search finds: a page or one of its rows, its name and the words it also answers to.
 CpSetEntry :: struct { page: int; id: string; name: string; terms: string; }
-CP_SET_ENTRIES :: 21;
+CP_SET_ENTRIES :: 22;
 cp_set_entries :: () -> [CP_SET_ENTRIES] CpSetEntry {
   return [CP_SET_ENTRIES] CpSetEntry.[
     CpSetEntry.{page = CP_PG_GENERAL, id = "", name = "General", terms = "preferences"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.folder", name = "Working folder", terms = "folder directory project open cwd"},
     CpSetEntry.{page = CP_PG_GENERAL, id = "set.zoom", name = "Text size", terms = "zoom bigger smaller font scale"},
-    CpSetEntry.{page = CP_PG_MODELS, id = "", name = "Models", terms = "providers keys antigravity agy"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "", name = "Models", terms = "providers keys gemini antigravity agy"},
+    CpSetEntry.{page = CP_PG_MODELS, id = "set.gemini", name = "Gemini API key", terms = "gemini google api key microcoder aistudio"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.claude", name = "Claude key", terms = "anthropic api token login sub-agents"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or", name = "OpenRouter key", terms = "openrouter api"},
     CpSetEntry.{page = CP_PG_MODELS, id = "set.or.main", name = "Model for Microcoder", terms = "openrouter model main"},
@@ -130,6 +131,7 @@ cp_settings_press :: (s: [] CoderPage, act: int, id: string) -> bool {
   if id == "set.zoom.b" { s[0].ask = CP_ASK_ZOOM_IN; return true; }
   ex := cp_number(id, "set.exp.");
   if ex == 0 || ex == 1 { coder_page_experimental_set(s, ex == 1); s[0].ask = CP_ASK_EXPERIMENTAL; return true; }
+  if id == "set.gemini.a" { s[0].ask = CP_ASK_GEMINI_KEY; return true; }
   if id == "set.claude.a" { s[0].ask = CP_ASK_CLAUDE_KEY; return true; }
   if id == "set.or.a" || id == "set.or.main" || id == "set.or.sub" { s[0].ask = CP_ASK_OPENROUTER; return true; }
   if id == "set.agy.status.a" || id == "set.agy.model" { s[0].ask = CP_ASK_AGY; return true; }
@@ -256,6 +258,12 @@ cp_settings_page :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
     y += cp_set_group(s, f, "set.general.group", x, y, w, rows[..]);
   } else if page == CP_PG_MODELS {
     y += set_page_head(f, "set.title", x, y, w, names[page], "The keys and models Microcoder and its sub-agents run on.") + t.block_gap;
+    gemini := ifx s[0].set_gemini_n > 0 then sheet_pool(sh, cast(string) s[0].set_gemini[0..<s[0].set_gemini_n]) else "Not set";
+    y += set_section_head(f, "set.gemini.head", x, y, w, "Gemini", "Use your own Gemini API key to run Microcoder on Gemini models.") + t.section_gap;
+    gone: [1] SetRow;
+    gone[0] = SetRow.{id = "set.gemini", name = "Gemini API key", desc = "Paste a key from Google AI Studio. Kept in a file only you can read.",
+      value = gemini, kind = SET_ROW_BUTTON, button = "Change…", action = CP_SET_ACT};
+    y += cp_set_group(s, f, "set.gemini.group", x, y, w, gone[..]) + t.block_gap;
     claude := ifx s[0].set_claude_n > 0 then sheet_pool(sh, cast(string) s[0].set_claude[0..<s[0].set_claude_n]) else "Not set";
     y += set_section_head(f, "set.claude.head", x, y, w, "Claude", "") + t.section_gap;
     one: [1] SetRow;
@@ -380,6 +388,14 @@ coder_page_settings_info :: (s: [] CoderPage, claude: string, openrouter: string
   s[0].set_orkey_n = cp_out(s[0].set_orkey[..], openrouter);
   s[0].set_version_n = cp_out(s[0].set_version[..], version);
 }
+// The Gemini API key's state ("Ends 1a2b", "" not set); also updates model picker availability.
+coder_page_settings_gemini :: (s: [] CoderPage, gemini: string) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  was_agy := cp_is_agy(s, s[0].model);
+  s[0].set_gemini_n = cp_out(s[0].set_gemini[..], gemini);
+  if was_agy { s[0].model = cp_agy_idx(s); }
+  s[0].model = cp_model_index(s);
+}
 // Antigravity status, review mode (0 Auto, 1 Default, 2 Plan), model/effort and auth/profile summary (#13803).
 coder_page_settings_agy :: (s: [] CoderPage, status: string, mode: int, model: string, auth: string) #export_c #effects(all) {
   if s.count < 1 { return; }
@@ -419,7 +435,7 @@ coder_page_search_submit :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   n := cp_set_hits("model", hits[..]);
   #assert n >= 3 && es[hits[0]].name == "Models" && (es[hits[1]].name == "Model for Microcoder" || es[hits[1]].name == "Model for sub-agents");
   n = cp_set_hits("KEY", hits[..]);
-  #assert n >= 2 && (es[hits[0]].name == "Claude key" || es[hits[0]].name == "OpenRouter key");
+  #assert n >= 3 && (es[hits[0]].name == "Gemini API key" || es[hits[0]].name == "Claude key" || es[hits[0]].name == "OpenRouter key");
   n = cp_set_hits("zoom", hits[..]);
   #assert n == 1 && es[hits[0]].id == "set.zoom";
   #assert cp_set_hits("", hits[..]) == 0 && cp_set_hits("nothing like this", hits[..]) == 0;
@@ -511,10 +527,10 @@ cp_set_test_row :: (s: [] CoderPage, id: string) -> El {
   #assert cp_settings_press(s, CP_SET_ACT, "set.agy.auth.a") && coder_page_action(s) == CP_ASK_AGY_AUTH;
   // Search for "antigravity" and "agy" finds the Antigravity rows under Models
   coder_page_search_set(s, "antigravity");
-  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.8").action == CP_SET_HIT;
+  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.9").action == CP_SET_HIT;
   #assert coder_page_search_submit(s) && s[0].set_page == CP_PG_MODELS;
   coder_page_search_set(s, "agy");
-  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.8").action == CP_SET_HIT;
+  #assert cp_set_test_frame(s, 1200, 700) && cp_set_test_row(s, "set.hit.9").action == CP_SET_HIT;
 }
 #test "settings: experimental features off hides Foreman, Gym and Account everywhere, and General's row turns them on" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);

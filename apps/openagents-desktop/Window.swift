@@ -163,6 +163,8 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         }
         // Foreman, Gym, log in and the account are experimental features (Settings > General), off unless set
         cd_experimental_set(page, Experimental.on ? 1 : 0)
+        cd_cloud_authed_set(page, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
+        cd_settings_gemini(page, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
         if Experimental.on { startForemanServer() }
         // the unified daemon runs the workers when it can, so runs outlive Coder (GitHub #13694)
         CoderWorker.daemon = daemonClient
@@ -343,6 +345,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 35: chooseAntigravityAuth()
         case 36: experimentalChanged()
         case 37: forkShown()
+        case 38: chooseGeminiKey()
         case 40...43: fileAsked(what)
         default: break
         }

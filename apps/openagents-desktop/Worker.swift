@@ -432,6 +432,28 @@ enum CoderOpenRouter {
     }
 }
 
+enum CoderGemini {
+    static var file: URL {
+        let p = DesktopCore.withCoaxString("gemini-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_coder_file(cn, $0) }
+        }
+        return URL(fileURLWithPath: p)
+    }
+    static var saved: String? {
+        let s = DesktopCore.withCoaxString("gemini-key") { cn in
+            DesktopCore.callString(4096) { oa_dc_key_read(cn, $0) }
+        }
+        return s.isEmpty ? nil : s
+    }
+    static func save(_ key: String) -> Bool {
+        DesktopCore.withCoaxString("gemini-key") { cn in
+            DesktopCore.withCoaxString(key) { ck in
+                oa_dc_key_save(cn, ck) == 1
+            }
+        }
+    }
+}
+
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
 
 /// Antigravity CLI (`agy`) detection, version check (>= 1.5.0), and persisted settings (#13803).

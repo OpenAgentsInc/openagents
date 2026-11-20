@@ -114,6 +114,7 @@
 #test "OpenRouter model picker popover clears the composer, keeps presses from the composer's editor while open, and receives clicks" {
   p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); test_atlas(s[0].atlas[..]);
   s[0].d = 1.0f32;
+  s[0].nturns = 1;
   coder_page_set_openrouter(s, "anthropic/claude-sonnet-4", "");
   #assert cp_models(s) == 5;
   f: [1] UiFrame;
@@ -177,6 +178,7 @@
   st := [1] CoderPage.[CoderPage.{}];
   s := st[..];
   coder_page_init(s);
+  s[0].experimental = true; s[0].cloud_authed = true;
   #assert !coder_page_model_agy(s) && cp_models(s) == CP_MODELS;
   #assert !coder_page_pick_model(s, "antigravity");
   coder_page_set_agy(s, true);
@@ -200,4 +202,31 @@
   // Removing Antigravity resets the selection back to default.
   coder_page_set_agy(s, false);
   #assert !coder_page_model_agy(s) && s[0].model == CP_MODEL_DEFAULT;
+}
+
+#test "cloud models require experimental && cloud_authed; otherwise local-harness-only (Antigravity)" {
+  st := [1] CoderPage.[CoderPage.{}];
+  s := st[..];
+  coder_page_init(s);
+  // Default unauthed / experimental off: no cloud models.
+  coder_page_experimental_set(s, false);
+  coder_page_set_cloud_authed(s, false);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 0 && !coder_page_pick_model(s, "gemini-4-neon");
+  // With Antigravity installed, it is the sole entry and selected automatically.
+  coder_page_set_agy(s, true);
+  #assert cp_models(s) == 1 && coder_page_model_agy(s) && cp_model_label(s, 0) == "Antigravity";
+  // Experimental on alone (not logged in) still hides cloud models.
+  coder_page_experimental_set(s, true);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
+  // Logged in alone (experimental off) still hides cloud models.
+  coder_page_experimental_set(s, false);
+  coder_page_set_cloud_authed(s, true);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
+  // Both experimental && logged in: cloud models appear and Antigravity stays selected.
+  coder_page_experimental_set(s, true);
+  #assert coder_page_cloud_ok(s) && cp_models(s) == CP_MODELS + 1 && coder_page_model_agy(s);
+  #assert coder_page_pick_model(s, "gemini-4-neon") && !coder_page_model_agy(s);
+  // Logging out drops back to Antigravity.
+  coder_page_set_cloud_authed(s, false);
+  #assert !coder_page_cloud_ok(s) && cp_models(s) == 1 && coder_page_model_agy(s);
 }

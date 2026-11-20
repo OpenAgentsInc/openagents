@@ -1,20 +1,29 @@
 // Coder Desktop page (../page.coax): the composer's model list, the OpenRouter main and sub-agent
 // models, and the picker's host calls.
 
-// How many entries the picker has: the Gemini models, the OpenRouter model when set, and Antigravity when installed.
+// Cloud/Microcoder models (Gemini + OpenRouter) are available when the user has entered their own
+// Gemini API key in Settings, or when Experimental features are on and the user is signed into an
+// OpenAgents account. Otherwise the app is local-harness-only (Antigravity).
+cp_cloud_ok :: (s: [] CoderPage) -> bool { return s.count > 0 && (s[0].set_gemini_n > 0 || (s[0].experimental && s[0].cloud_authed)); }
+// How many entries the picker has: cloud models when authed (Gemini + optional OpenRouter), and Antigravity when installed.
 cp_models :: (s: [] CoderPage) -> int {
+  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 1 else 0; }
   n := CP_MODELS;
-  if s.count > 0 && s[0].or_main_n > 0 { n += 1; }
-  if s.count > 0 && s[0].agy { n += 1; }
+  if s[0].or_main_n > 0 { n += 1; }
+  if s[0].agy { n += 1; }
   return n;
 }
 cp_agy_idx :: (s: [] CoderPage) -> int {
   if s.count < 1 || !s[0].agy { return -1; }
+  if !cp_cloud_ok(s) { return 0; }
   return ifx s[0].or_main_n > 0 then CP_MODELS + 1 else CP_MODELS;
 }
 cp_is_agy :: (s: [] CoderPage, idx: int) -> bool { return s.count > 0 && s[0].agy && idx == cp_agy_idx(s); }
 cp_model_index :: (s: [] CoderPage) -> int {
-  return ifx s.count > 0 && s[0].model >= 0 && s[0].model < cp_models(s) then s[0].model else CP_MODEL_DEFAULT;
+  n := cp_models(s);
+  if s.count > 0 && s[0].model >= 0 && s[0].model < n { return s[0].model; }
+  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 0 else -1; }
+  return CP_MODEL_DEFAULT;
 }
 // A kept model's entry: a Gemini id or short name, or any "openrouter:" id (CP_MODEL_OR).
 cp_model_find :: (name: string) -> int {
@@ -28,16 +37,18 @@ cp_model_find :: (name: string) -> int {
 cp_model_find_s :: (s: [] CoderPage, name: string) -> int {
   if name == "antigravity" || name == "Antigravity" || name == "agy" {
     if s.count > 0 && s[0].agy { return cp_agy_idx(s); }
-    return CP_MODEL_DEFAULT;
+    return ifx cp_cloud_ok(s) then CP_MODEL_DEFAULT else -1;
   }
+  if !cp_cloud_ok(s) { return ifx s.count > 0 && s[0].agy then 0 else -1; }
   return cp_model_find(name);
 }
 cp_or_main :: (s: [] CoderPage) -> string { return cast(string) s[0].or_main[0..<s[0].or_main_n]; }
 cp_or_sub :: (s: [] CoderPage) -> string { return cast(string) s[0].or_sub[0..<s[0].or_sub_n]; }
-cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return idx == CP_MODEL_OR && s.count > 0 && s[0].or_main_n > 0; }
+cp_is_or :: (s: [] CoderPage, idx: int) -> bool { return cp_cloud_ok(s) && idx == CP_MODEL_OR && s[0].or_main_n > 0; }
 // The worker's model id for an entry: "openrouter:VENDOR/MODEL" for OpenRouter, "antigravity" for Antigravity.
 cp_model_id :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "antigravity"; }
+  if !cp_cloud_ok(s) { return ""; }
   if cp_is_or(s, idx) { return cast(string) s[0].or_id[0..<cp_out(s[0].or_id[..], CP_OR_PREFIX) + cp_out(s[0].or_id[CP_OR_PREFIX.count..<s[0].or_id.count], cp_or_main(s))]; }
   ids := CP_MODEL_ID;
   return ifx idx >= 0 && idx < CP_MODELS then ids[idx] else ids[CP_MODEL_DEFAULT];
@@ -45,6 +56,7 @@ cp_model_id :: (s: [] CoderPage, idx: int) -> string {
 // The OpenRouter entry's label is the model's name after its vendor (deepseek-v4.1-flash-1017).
 cp_model_label :: (s: [] CoderPage, idx: int) -> string {
   if cp_is_agy(s, idx) { return "Antigravity"; }
+  if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     m := cp_or_main(s); at := 0;
     for c, i: m { if c == '/' { at = i + 1; } }
@@ -64,6 +76,7 @@ cp_model_desc :: (s: [] CoderPage, idx: int) -> string {
     if s[0].set_agy_mode == 2 { return "Antigravity CLI · Plan"; }
     return "Antigravity CLI · Auto";
   }
+  if !cp_cloud_ok(s) { return "Install Antigravity CLI (agy)"; }
   if cp_is_or(s, idx) { return "OpenRouter"; }
   descs := CP_MODEL_DESC;
   return ifx idx >= 0 && idx < CP_MODELS then descs[idx] else descs[CP_MODEL_DEFAULT];
@@ -76,6 +89,7 @@ cp_model_meta :: (s: [] CoderPage, idx: int) -> string {
     n += cp_out(s[0].agy_meta[n..<s[0].agy_meta.count], cast(string) s[0].set_agy_model[0..<s[0].set_agy_model_n]);
     return cast(string) s[0].agy_meta[0..<n];
   }
+  if !cp_cloud_ok(s) { return "No model"; }
   if cp_is_or(s, idx) {
     n := cp_out(s[0].or_meta[..], "Microcoder · OpenRouter · ");
     n += cp_out(s[0].or_meta[n..<s[0].or_meta.count], cp_or_main(s));
@@ -95,6 +109,7 @@ coder_page_pick_model :: (s: [] CoderPage, name: string) -> bool #export_c #effe
     s[0].model = cp_agy_idx(s);
     return true;
   }
+  if !cp_cloud_ok(s) { return false; }
   idx := ifx name == "openrouter" then CP_MODEL_OR else cp_model_find(name);
   if idx == CP_MODEL_DEFAULT && name != cp_model_id(s, CP_MODEL_DEFAULT) && name != cp_model_short(CP_MODEL_DEFAULT) { return false; }
   if idx >= cp_models(s) { return false; }
@@ -107,12 +122,22 @@ coder_page_set_openrouter :: (s: [] CoderPage, main: string, sub: string) #expor
   s[0].or_main_n = ifx main.count <= CP_OR_ID then cp_out(s[0].or_main[..], main) else 0;
   s[0].or_sub_n = ifx sub.count <= CP_OR_ID then cp_out(s[0].or_sub[..], sub) else 0;
   if was_agy { s[0].model = cp_agy_idx(s); }
-  if s[0].model >= cp_models(s) { s[0].model = CP_MODEL_DEFAULT; }
+  s[0].model = cp_model_index(s);
 }
 coder_page_set_agy :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
   if s.count < 1 { return; }
   s[0].agy = on;
-  if !on && s[0].model >= cp_models(s) { s[0].model = CP_MODEL_DEFAULT; }
+  s[0].model = cp_model_index(s);
+}
+coder_page_set_cloud_authed :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  was_agy := cp_is_agy(s, s[0].model);
+  s[0].cloud_authed = on;
+  if was_agy { s[0].model = cp_agy_idx(s); }
+  s[0].model = cp_model_index(s);
+}
+coder_page_cloud_ok :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return cp_cloud_ok(s);
 }
 coder_page_model_agy :: (s: [] CoderPage) -> bool #export_c #effects(all) {
   return s.count > 0 && cp_is_agy(s, cp_model_index(s));

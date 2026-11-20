@@ -32,6 +32,7 @@ MK_GCLOUDS :: [5] string.["/google-cloud-sdk/bin/gcloud", "/.nix-profile/bin/gcl
 MK_GCLOUDS_HOME :: 2;
 MK_AGY_ENV :: "/.openagents/coder/antigravity.env";      // under $HOME: the Antigravity engine's Google Cloud sign-in
 MK_CODER_OPENROUTER_KEY :: "/Library/Application Support/Coder/openrouter-key";   // under $HOME: the key set with Coder > OpenRouter (the key alone); it wins over openrouter.env
+MK_CODER_GEMINI_KEY :: "/Library/Application Support/Coder/gemini-key";           // under $HOME: the key set in Settings > Models > Gemini API key (the key alone); it wins over openagents-gemini-provider.env
 MK_OPENROUTER_PREFIX :: "openrouter:";   // a model "openrouter:VENDOR/MODEL" runs on OpenRouter only, as VENDOR/MODEL
 MK_TURNS :: 6;                   // earlier turns each run is told
 MK_TURN_TEXT :: 8000;            // bytes of each earlier task and reply told to a run (a sub-agent's reply keeps as much); a longer one ends in MK_CUT
@@ -145,7 +146,8 @@ mk_keys :: (k: [] MkKeys) {
   if k[0].nor == 0 { k[0].nor = mk_secret(home, "openrouter.env", GW_OPENROUTER_KEY_ENV, k[0].or_key[..]); }
   // the desktop app on Linux and Windows hands its kept key over in the environment (GitHub #13782)
   if k[0].nor == 0 { k[0].nor = cl_getenv(GW_OPENROUTER_KEY_ENV, k[0].or_key[..]).count; }
-  k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]);
+  k[0].ngm = mk_coder_key(home, MK_CODER_GEMINI_KEY, k[0].gm_key[..]);
+  if k[0].ngm == 0 { k[0].ngm = mk_secret(home, "openagents-gemini-provider.env", "GEMINI_API_KEY", k[0].gm_key[..]); }
   if k[0].ngm == 0 { k[0].ngm = cl_getenv("GEMINI_API_KEY", k[0].gm_key[..]).count; }
   ap: [1400] u8; ab: [4096] u8;
   na := fs_read(cast(string) ap[0..<mk_cat(ap[..], mk_cat(ap[..], 0, home), MK_AGY_ENV)], ab[..]);

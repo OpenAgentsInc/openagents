@@ -18,9 +18,29 @@ extension CoderWindow {
         UserDefaults.standard.set(on, forKey: Experimental.key)
         applyExperimental(on)
     }
+    /// Propagates the current experimental + OpenAgents account login state and Gemini API key to the shown page and background runs.
+    func syncCloudAuth() {
+        let authed: Int32 = (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0
+        let exp: Int32 = Experimental.on ? 1 : 0
+        let gemini = CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? ""
+        cd_experimental_set(page, exp)
+        cd_cloud_authed_set(page, authed)
+        cd_settings_gemini(page, gemini)
+        for r in runs.values where r.page != page {
+            cd_experimental_set(r.page, exp)
+            cd_cloud_authed_set(r.page, authed)
+            cd_settings_gemini(r.page, gemini)
+        }
+        wake()
+    }
     /// Shows or hides the experimental features: the page's rows, the Foreman control server, the menus.
     func applyExperimental(_ on: Bool) {
         cd_experimental_set(page, on ? 1 : 0)
+        cd_cloud_authed_set(page, (on && MacAccount.shared.loggedIn) ? 1 : 0)
+        for r in runs.values where r.page != page {
+            cd_experimental_set(r.page, on ? 1 : 0)
+            cd_cloud_authed_set(r.page, (on && MacAccount.shared.loggedIn) ? 1 : 0)
+        }
         if on {
             startForemanServer()
         } else {
@@ -74,7 +94,9 @@ extension CoderWindow {
         let info = Bundle.main.infoDictionary
         var version = info?["CFBundleShortVersionString"] as? String ?? ""
         if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
+        let gemini = CoderGemini.saved.map { ends($0) } ?? ""
         cd_settings_info(page, claude, openrouter, version)
+        cd_settings_gemini(page, gemini)
         syncAntigravitySettings()
     }
     func syncAntigravitySettings() {

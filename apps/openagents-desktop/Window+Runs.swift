@@ -79,7 +79,16 @@ extension CoderWindow {
             r.worker.folder = r.folder.path
             needsRecall = false
         }
-        let wantProgram = cd_model_agy(r.page) != 0 ? "agyworker" : "mcworker"
+        let useAgy = cd_model_agy(r.page) != 0
+        let cloudOk = CoderGemini.saved != nil || (Experimental.on && MacAccount.shared.loggedIn)
+        if !useAgy && !cloudOk {
+            cd_failed(r.page, CoderWorker.hasAntigravity
+                ? "Add a Gemini API key in Settings → Models to run Gemini models, or switch to Antigravity."
+                : "Add a Gemini API key in Settings → Models, or install Antigravity CLI (agy).")
+            wake()
+            return
+        }
+        let wantProgram = useAgy ? "agyworker" : "mcworker"
         if r.worker.program != wantProgram {
             if r.worker.alive { r.worker.stop(forget: false) }
             r.worker.program = wantProgram
@@ -141,6 +150,9 @@ extension CoderWindow {
                 CoderTurn.remove(t.run); for id in t.agents { daemon.forgetRun(id) }; continue
             }
             coderApplyOpenRouter(back); cd_claude(back, CoderWorker.hasClaude ? 1 : 0); cd_agy(back, CoderWorker.hasAntigravity ? 1 : 0)
+            cd_experimental_set(back, Experimental.on ? 1 : 0)
+            cd_cloud_authed_set(back, (Experimental.on && MacAccount.shared.loggedIn) ? 1 : 0)
+            cd_settings_gemini(back, CoderGemini.saved.map { "Ends " + String($0.suffix(4)) } ?? "")
             syncSkillsNote(for: back, isForeman: t.chat == Foreman.chatID)
             var out = [CChar](repeating: 0, count: 1_048_576)   // a results line: as much as Microcoder's worker reads (MW_LINE)
             guard cd_load(back, sent.chat) != 0, cd_set_text(back, sent.ask) != 0, cd_submit(back) != 0, cd_action(back) == 1 else {

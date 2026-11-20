@@ -243,6 +243,37 @@ extension CoderWindow {
             self.wake()
         }
     }
+    /// Settings > Models > Gemini API key: sets, replaces or removes the user's Gemini API key.
+    func chooseGeminiKey() {
+        var about = "Use your own Gemini API key (from Google AI Studio) to run Microcoder on Gemini models. Coder keeps it in a file only you can read."
+        if let kept = CoderGemini.saved { about += "\n\nThe key set now ends " + CoderKey.tail(kept) + "." }
+        else { about += "\n\nNo key is set now." }
+        var d = CoderDialog(size: .md, title: "Gemini API Key", body: about)
+        d.fields = [.init(hint: "AIza…", secure: true)]
+        let hadKey = CoderGemini.saved != nil
+        if hadKey { d.buttons.append(.init(title: "Remove Key", kind: .danger, aside: true)) }
+        let remove = hadKey ? 0 : -9
+        d.cancel = d.buttons.count; d.buttons.append(.init(title: "Cancel"))
+        let save = d.buttons.count; d.buttons.append(.init(title: "Save", kind: .primary))
+        d.confirm = save
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            let key: String
+            switch answer {
+            case save:
+                key = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if key.isEmpty { self.refocus(); return }
+            case remove: key = ""
+            default: self.refocus(); return
+            }
+            if !CoderGemini.save(key) {
+                self.present(.notice("The key could not be saved.", "Coder could not write " + CoderGemini.file.path + "."))
+                return
+            }
+            self.syncCloudAuth()
+            self.refocus()
+        }
+    }
     /// Coder > Claude Key: sets, replaces or removes the key Claude sub-agents use. It applies to the
     /// next Claude sub-agent; one already running keeps what it started with.
     func chooseKey() {

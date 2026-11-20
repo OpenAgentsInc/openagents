@@ -254,6 +254,7 @@ void cd_close(void *page);
 void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
+void cd_settings_gemini(void *page, const char *gemini);
 void cd_settings_agy(void *page, const char *status, int mode, const char *model, const char *auth);
 int cd_settings_agy_mode(void *page);
 int cd_settings_tier(void *page);
@@ -310,4 +311,5 @@ int cd_gym_rect(void *page, float out[4]);
 // Experimental features (log in and the account, Gym, Foreman): set by the host from UserDefaults; read after CP_ASK_EXPERIMENTAL.
 void cd_experimental_set(void *page, int on);
 int cd_experimental(void *page);
+void cd_cloud_authed_set(void *page, int on);
 #endif

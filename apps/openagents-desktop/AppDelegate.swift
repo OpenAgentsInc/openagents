@@ -73,6 +73,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @MainActor func refreshAccountMenu() {
         let title = MacAccount.shared.title
         accountStatusItem?.title = title.isEmpty ? "Log In to OpenAgents…" : title
+        main?.syncCloudAuth()
     }
     @objc func accountLogin(_ sender: Any?) { guard Experimental.on else { return }; Task { @MainActor in await MacAccount.shared.showLogin() } }
     @objc func accountSecurity(_ sender: Any?) { Task { @MainActor in await MacAccount.shared.showSecurity() } }
