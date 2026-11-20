@@ -25,7 +25,7 @@ CpShow :: struct { pic: string; caption: string; open: string; live: bool; }
 
 // After prefix at the start of line: the rest, trimmed; "" when line does not start with it.
 cp_show_field :: (line: string, prefix: string) -> string {
-  if line.count <= prefix.count || cast(string) line[0..<prefix.count] != prefix { return ""; }
+  if line.count <= prefix.count || cast(string) line[0..<prefix.count] != prefix { return ""; }   // mutant: equivalent (a line exactly the prefix trims to "" either way)
   a := prefix.count; b := line.count;
   while a < b && line[a] == ' ' { a += 1; }
   while b > a && (line[b - 1] == ' ' || line[b - 1] == 13) { b -= 1; }
@@ -34,12 +34,12 @@ cp_show_field :: (line: string, prefix: string) -> string {
 // The pictures text asks for, appended to out from n (the oldest dropped past out's room). Returns the count.
 cp_shows_parse :: (text: string, out: [] CpShow, n0: int) -> int {
   n := n0; i := 0;
-  while i < text.count {
+  while i < text.count {   // mutant: equivalent (one more pass reads an empty line, which names nothing)
     e := i; while e < text.count && text[e] != 10 { e += 1; }
     line := cast(string) text[i..<e];
     i = e + 1;
     pic := cp_show_field(line, "OA-SHOW:");
-    if pic.count > 0 {
+    if pic.count > 0 {   // mutant: equivalent (a one-byte path is no image name, and no other prefix matches an OA-SHOW: line)
       if pic[0] != '/' || !at_is_image_name(pic) || pic.count > CP_IMG_PATH { continue; }
       if n >= out.count { for k: 1..<out.count { out[k - 1] = out[k]; } n = out.count - 1; }
       out[n] = CpShow.{pic = pic}; n += 1;
@@ -70,14 +70,14 @@ cp_shows_draw :: (s: [] CoderPage, f: [] UiFrame, i: int, x: f32, y: f32, cw: f3
   n := cp_shows(s, i, shows[..]);
   if n == 0 { return 0; }
   k := f[0].skin; sh := f[0].sheet; th := cp_theme(); a := k.app;
-  w := ifx cw < CP_SHOW_W then cw else CP_SHOW_W;
+  w := ifx cw < CP_SHOW_W then cw else CP_SHOW_W;   // mutant: equivalent (equal widths are the same width)
   yy := y;
   ib: [EL_ID] u8; cb: [EL_ID] u8;
   for j: 0..<n {
     img := cp_image_request(s, shows[j].pic);
-    ready := img.id > 0 && img.w > 0 && img.h > 0;
+    ready := img.id > 0 && img.w > 0 && img.h > 0;   // mutant: equivalent (coder_page_image_loaded sets id, w and h together: all positive or all 0)
     h := ifx ready then w * cast(f32) img.h / cast(f32) img.w else w * CP_SHOW_RATIO;
-    if h > w { h = w; }
+    if h > w { h = w; }   // mutant: equivalent (h equal to w is w)
     nn := cp_id(ib[..], i, ".show").count; nn = el_put_i(ib[..], nn, j);
     id := sheet_pool(sh, cast(string) ib[0..<nn]);
     label := ifx shows[j].caption.count > 0 then shows[j].caption else at_base_name(shows[j].pic);

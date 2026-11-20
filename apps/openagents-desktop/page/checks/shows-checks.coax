@@ -136,3 +136,111 @@
   small: [4] f32;
   #assert coder_page_over_rects(s, small[..]) == 1 && coder_page_over_rects(s[0..<0], o[..]) == 0;
 }
+
+#test "shows: the field after a prefix is trimmed of spaces and a carriage return; lines that only name the prefix give none" {
+  #assert cp_show_field("OA-SHOW-CAPTION: Before \r", "OA-SHOW-CAPTION:") == "Before";
+  #assert cp_show_field("OA-SHOW-CAPTION: Before ", "OA-SHOW-CAPTION:") == "Before";
+  #assert cp_show_field("OA-SHOW-CAPTION: x\r", "OA-SHOW-CAPTION:") == "x";
+  #assert cp_show_field("OA-SHOW:    ", "OA-SHOW:") == "" && cp_show_field("OA-SHOW: \r ", "OA-SHOW:") == "";
+  #assert cp_show_field("OA-SHOW", "OA-SHOW:") == "" && cp_show_field("OA-SHOX: /a.jpg", "OA-SHOW:") == "";
+  out: [CP_SHOWS] CpShow;
+  // a one-byte caption and open are kept; a picture path up to what the page keeps (CP_IMG_PATH)
+  #assert cp_shows_parse("OA-SHOW: /a.jpg\nOA-SHOW-CAPTION: X\nOA-SHOW-OPEN: /\n", out[..], 0) == 1 && out[0].caption == "X" && out[0].open == "/";
+  lp: [CP_IMG_PATH + 1] u8;
+  for k: 0..<lp.count { lp[k] = 'a'; }
+  lp[0] = '/'; ext := ".jpg";
+  for k: 0..<ext.count { lp[lp.count - ext.count + k] = ext[k]; }
+  tb: [CP_IMG_PATH + 32] u8; tn := el_put(tb[..], 0, "OA-SHOW: "); tn = el_put(tb[..], tn, cast(string) lp[..]);
+  #assert cp_shows_parse(cast(string) tb[0..<tn], out[..], 0) == 0;
+  tn = el_put(tb[..], 0, "OA-SHOW: /"); tn = el_put(tb[..], tn, cast(string) lp[2..<lp.count]);
+  #assert cp_shows_parse(cast(string) tb[0..<tn], out[..], 0) == 1 && out[0].pic.count == CP_IMG_PATH;
+  // a scene's name has something before its extension
+  #assert !cp_show_scene(".ple-scene.json") && cp_show_scene("/.ple-scene.json");
+}
+
+#test "shows: only the turn's own commands that ended show pictures, not what it read, thought or said" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s);
+  #assert coder_page_set_text(s, "show me") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  cp_cmd_add(s, 0, "notes.md", "OA-SHOW: /r/read.jpg", true, false);
+  cp_thought_add(s, 0, -1, "OA-SHOW: /r/thought.jpg", false);
+  cp_thought_add(s, 0, -1, "OA-SHOW: /r/said.jpg", true);
+  out: [CP_SHOWS] CpShow;
+  #assert cp_shows(s, 0, out[..]) == 0;
+  cp_cmd_add(s, 0, "ple-run show", "OA-SHOW: /r/ran.jpg", false, false);
+  #assert cp_shows(s, 0, out[..]) == 1 && out[0].pic == "/r/ran.jpg";
+}
+
+#test "shows: each card fits its picture, framed and clipped, an icon until it is decoded, its caption under it" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_test_composing(s);
+  coder_page_compose(s, true); s[0].experimental = true;
+  #assert coder_page_set_text(s, "show me the pictures") && coder_page_submit(s);
+  #assert coder_page_line(s, "{\"kind\":\"turn\",\"turn\":1,\"source\":\"message\",\"id\":\"\",\"text\":\"\"}") == MWW_TURN;
+  #assert coder_page_line(s, "{\"kind\":\"command\",\"command\":\"ple-run show\",\"exit\":0,\"timed_out\":false,\"output\":\"OA-SHOW: /r/wide.jpg\\nOA-SHOW-CAPTION: W\\nOA-SHOW-OPEN: /r/run.ple-scene.json\\nOA-SHOW-LIVE: on\\nOA-SHOW: /r/tall.jpg\\nOA-SHOW-OPEN: /\\nOA-SHOW: /r/wait.jpg\\nOA-SHOW-OPEN: /r/step.ple-scene.json\\nOA-SHOW: /r/dot.jpg\"}") == MWW_COMMAND;
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"Done.\"}") == MWW_ENDED;
+  out: [262144] f32;
+  _v := coder_page_frame(s, out[..], 1200, 2600, 1, 0);
+  coder_page_image_loaded(s, 0, 400, 200, true);   // wide: half as high as wide
+  coder_page_image_loaded(s, 1, 100, 400, true);   // tall: no higher than wide
+  coder_page_image_loaded(s, 3, 1, 1, true);       // one pixel
+  for i: 0..<3 { _v = coder_page_frame(s, out[..], 1200, 2600, 1, 0); }
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  sh := surface_sheet(s[0].surface[..]); l := sh.under[0..<sh.nu];
+  k := cp_skin(); th := cp_theme();
+  names := [4] string.["t0.show0", "t0.show1", "t0.show2", "t0.show3"];
+  caps := [4] string.["t0.showc0", "t0.showc1", "t0.showc2", "t0.showc3"];
+  hs := [4] f32.[280, 560, 350, 560];
+  for j: 0..<4 {
+    r := elt_find(t[..], names[j]); c := elt_find(t[..], caps[j]);
+    #assert r >= 0 && c >= 0;
+    b := el_box(t[0].rows[r]); cb := el_box(t[0].rows[c]);
+    #assert b.w == CP_SHOW_W && b.h == hs[j];
+    #assert t[0].rows[r].role == EL_BUTTON && t[0].rows[r].action == CP_SHOW && (t[0].rows[r].state & EL_S_DISABLED) == 0;
+    // the caption under the card, the next card under the caption
+    #assert abs(cb.y - (b.y + b.h + k.app.gap_small)) < 0.01 && cb.h == k.small.line;
+    if j < 3 { #assert abs(el_box(t[0].rows[elt_find(t[..], names[j + 1])]).y - (cb.y + k.small.line + k.app.gap)) < 0.01; }
+    // a press anywhere on the card is its row's
+    hit := -1;
+    for q: 0..<sh.nh { if sh.hits[q].kind == UIFRAME_HIT && sh.hits[q].x == b.x && sh.hits[q].y == b.y && sh.hits[q].w == b.w && sh.hits[q].h == b.h { hit = q; } }
+    #assert hit >= 0 && sh.hits[hit].b == 0 && sh.hits[hit].a == r;
+    // framed: a box the card's size under the picture or the icon
+    fr := -1;
+    for q: 0..<l.count { if l[q].kind == PRIM_BOX && l[q].x == b.x && l[q].y == b.y && l[q].w == b.w && l[q].h == b.h && l[q].fill.a > 0 { fr = q; break; } }
+    #assert fr >= 0 && l[fr].radius == CP_SHOW_R && l[fr].border == 1 && l[fr].fill.a == th.surface.a;
+    if j == 2 {
+      #assert l[fr + 1].kind == PRIM_ICON && l[fr + 1].id == ICON_GALLERY && l[fr + 1].w == 24 && l[fr + 1].h == 24;
+      #assert l[fr + 1].x == b.x + (b.w - 24) * 0.5f32 && l[fr + 1].y == b.y + (b.h - 24) * 0.5f32;
+    } else {
+      #assert l[fr + 1].kind == PRIM_CLIP && l[fr + 1].on && l[fr + 1].x == b.x + 1 && l[fr + 1].y == b.y + 1 && l[fr + 1].a == b.x + b.w - 1 && l[fr + 1].b == b.y + b.h - 1;
+      #assert l[fr + 2].kind == PRIM_IMAGE && l[fr + 2].id == (ifx j == 3 then 4 else j + 1) && l[fr + 2].x == b.x && l[fr + 2].y == b.y && l[fr + 2].w == b.w && l[fr + 2].h == b.h;
+      #assert l[fr + 3].kind == PRIM_CLIP && !l[fr + 3].on;
+      #assert l[fr + 4].kind == PRIM_BOX && l[fr + 4].x == b.x && l[fr + 4].y == b.y && l[fr + 4].w == b.w && l[fr + 4].h == b.h && l[fr + 4].fill.a == 0 && l[fr + 4].border == 1;
+    }
+  }
+  // what each caption says a press does
+  #assert elt_label(t[..], elt_find(t[..], "t0.showc0")) == "W · live 3D: drag to turn it, Option-scroll to zoom";
+  #assert elt_label(t[..], elt_find(t[..], "t0.showc1")) == "tall.jpg · press to open";
+  #assert elt_label(t[..], elt_find(t[..], "t0.showc2")) == "wait.jpg · press to open it in 3D";
+  #assert elt_label(t[..], elt_find(t[..], "t0.showc3")) == "dot.jpg";
+  #assert elt_label(t[..], elt_find(t[..], "t0.show0")) == "W" && elt_label(t[..], elt_find(t[..], "t0.show3")) == "dot.jpg";
+  // the captions start at the card's left edge, and the reply comes under the last one
+  c3 := el_box(t[0].rows[elt_find(t[..], "t0.showc3")]);
+  left := false;
+  for q: 0..<sh.no { if sh.over[q].kind == PRIM_TEXT && sh.over[q].text == "dot.jpg" && sh.over[q].x == c3.x && sh.over[q].y == c3.y { left = true; } }
+  #assert left;
+  #assert abs(s[0].turns[0].ay - (c3.y + k.small.line + k.app.gap)) < 0.01;
+  // what a press opens: its OA-SHOW-OPEN, else the picture; none past the turn's pictures or turns
+  #assert cp_show_open_path(s, 0, 0) == "/r/run.ple-scene.json" && cp_show_open_path(s, 0, 1) == "/" && cp_show_open_path(s, 0, 3) == "/r/dot.jpg";
+  #assert cp_show_open_path(s, 0, 4) == "" && cp_show_open_path(s, 0, -1) == "" && cp_show_open_path(s, -1, 0) == "";
+  b3 := el_box(t[0].rows[elt_find(t[..], "t0.show3")]);
+  #assert coder_page_pointer(s, b3.x + 10, b3.y + 10, 0) && coder_page_pointer(s, b3.x + 10, b3.y + 10, 2);
+  #assert coder_page_action(s) == CP_ASK_OPEN_FILE && cp_open_path(s) == "/r/dot.jpg";
+  nt := s[0].nturns; s[0].nturns = 0;
+  #assert cp_show_open_path(s, 0, 0) == "";
+  s[0].nturns = nt;
+  // a card that starts above the conversation's clip and reaches into it is live
+  sc := cp_scale(s); sw: [CP_SHOWS] CpShow;
+  _n := cp_shows(s, 0, sw[..]);
+  s[0].live_r[5] = 100 * sc; s[0].live_r[7] = 50 * sc;
+  #assert cp_show_live(s, sw[0], 0, 95, 10, 10);
+}
