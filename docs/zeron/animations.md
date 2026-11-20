@@ -167,3 +167,70 @@
 
 - **`apps/card-web/site/card.js:373-440,975,993,1011-1012`**: WebGL2 shader pipeline + rAF `wake()`/`tick(now)` loop driving spring physics (`rotX`, `rotY`, `shift`), `strength` interpolation, foil `sweep` (`120 ms` delay, `900 ms` duration, `inOutSine`, `lerp(-0.4, 1.4)`), `arrive` (`820 ms`), and continuous `depth > 0` layer parallax.
 - **`apps/card-web/site/card-page.js:61` & `tools/browser.mjs:29`**: Double `requestAnimationFrame` paint-frame synchronization.
+
+---
+
+## 7. Coder Desktop Port Status / Assessment
+
+Coder Desktop lives in `apps/coder-desktop/` (Swift/AppKit + C Metal host + Coax UI) and builds on the shared Coax UI libraries in `components/` (`components/core/`, `components/paint/`, `components/skin/`, `components/kit/`, `components/app/`, `components/zeron/`). Many of Zeron's core desktop motion primitives and conversation animations are already ported; visual flourishes (shimmers, rolling text, orb, backdrop frost on all overlays) and transition polish remain.
+
+### Status Matrix
+
+| Zeron System | Status | Coder Desktop Implementation (Paths & Symbols) | Notes / Gaps |
+| --- | --- | --- | --- |
+| **Frame Loop & Reduced Motion** (`crates/zgx-platform`) | **Ported** | `apps/coder-desktop/Window.swift` (`CADisplayLink`, `blinkAt`, `cd_blink`, `cd_env`, `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion`); `components/kit/frame.coax` (`UiFrame.clock`, `UiFrame.dt`, `UiFrame.reduced_motion`) | 120 Hz ProMotion loop; skips draws when idle, throttles non-moving work to 60 Hz, schedules wakeups for caret blink. |
+| **Streaming Veil** (`crates/veil`) | **Ported** | `components/core/veil.coax` (`Veil`, `VeilChunk`, `veil_push`, `veil_alpha_at`, `veil_fade` `(1-p)^1.6`, `veil_boost`, 160 ms EMA, 120–400 ms clamp); `apps/coder-desktop/page/transcript.coax` (`veil_push`); `apps/coder-desktop/page/layout/conversation.coax` (`MdVeil`, `app_message_agent_linked_veiled`) | Full cadence-adaptive chunk reveal ported and wired to live agent replies. |
+| **Easing Curves, Timelines & Springs** (`crates/scene/src/motion.rs`, `ui/ds/motion.luau`) | **Ported** | `components/core/arwes/motion.coax` (`ArMotion`, `ar_ease` with 31 curves, `ar_motion_to`/`ar_motion_tick`, `ArTimeline`, `ArSwitch`); `components/core/spring.coax` (`UiSpring`, `ui_spring_step`); `components/core/keyed.coax` (`KeyedStore`, `keyed_toward`, `keyed_press`, `keyed_spring`, `KEYED_DT_MAX = 0.064`) | Analytic damped spring and 31 easing curves with reduced-motion snap. No standalone CSS `cubic-bezier(x1,y1,x2,y2)` solver (polynomial curves like `AM_OUT_QUAD`, `AM_OUT_QUART`, `zc_out3`, `app_ov_out3` are used instead). |
+| **Scroll Physics, Overscroll & Rail** (`ui/ds/scroll.luau`) | **Ported** | `components/core/scroll.coax` (`UiScroll`, `ui_scroll_by`, `ui_scroll_step`, `ui_scroll_rail`); `apps/coder-desktop/page/state.coax` (`scr`, `side_scr`, `pane_scr`) | Quartic ease-out momentum coast, rubber-band overscroll + rebound spring, 1.4 s overlay rail linger + 0.26 s fade. |
+| **Transcript Glide & Jump-to-Latest** (`ui/ds/transcript.luau`) | **Ported** | `apps/coder-desktop/page/layout/conversation.coax` (`cp_follow`, `CP_GLIDE = 0.38s` `AM_OUT_QUAD`, `CP_AWAY = 0.15s`); `apps/coder-desktop/page/input.coax` (`cp_glide_reset`); `components/app/chat.coax` (`app_jump_pill`, `pill_in = 0.18s` `AM_OUT_QUAD`, `pill_out = 0.12s`, `pill_rise = 8`) | Full hysteresis, smooth glide on send/jump, and rising/fading floating pill. |
+| **Composer Pill Morph** (`ui/ds/composer.luau`) | **Ported** | `components/zeron/composer.coax` (`ZcMotion`, `zc_motion_step`, `zc_moving`, 220 ms `zc_out3`); `apps/coder-desktop/page/state.coax` (`pill`); `apps/coder-desktop/page/layout/conversation.coax` | Compact-to-expanded pill height/padding interpolation with hysteresis and reduced-motion snap. |
+| **Caret Blink** (`ui/ds/composer.luau`, `editor`) | **Ported** | `components/zeron/composer.coax` (`since`, `caret_blink`); `components/zeron/editor.coax` (`ue_blink`); `components/app/base.coax` (`UiApp.caret_blink = 0.55s`) | Restarts on input/selection change; pauses under reduced motion; host schedules timer wakeups rather than spinning at 120 Hz. |
+| **Activity Tree, Loader & Working Status** (`ds/activity.luau`, `tree_line.luau`, `working.luau`) | **Ported** | `components/app/activity.coax` (`app_loader` 8-dash ring, `app_working`, tree trunk/branch `UiSpring` stiffness=220/damping=26 + glow, thought fold `UiSpring` + `prim_fade`); `components/app/chat.coax` (`app_thinking` pulsing dots); `components/kit/animated.coax` (`activity` arc sweep) | Ported and wired in `conversation.coax` and `pane.coax`. |
+| **User Message Fold & Edge Fades** (`ds/user_message.luau`) | **Ported** | `components/app/chat.coax` (`app_message_user_fold`, `bubble_ease = 0.26s` `AM_OUT_QUART`); `components/paint/list.coax` (`prim_fade`, `prim_unfade`, `prim_alpha`, `prim_opacity`) | Smooth height expand/collapse with bottom gradient fade (`bubble_fade = 1.5` lines). |
+| **Dialogs, Context Menus & Command Palette** (`ds/dialog.luau`, `ds/menu.luau`) | **Ported (Partial Frost)** | `components/app/overlay.coax` (`AppOverlaySpec`, `app_overlay_zeron`, `app_ov_out3` 200 ms + 4 pt rise, `app_ov_in2` 130 ms exit, 120 ms menu fade); `components/app/palette.coax`; `apps/coder-desktop/page/overlay.coax` | Motion timings and soft shadows (`UiShadows` in `components/skin/skin.coax`) match Zeron, but dialogs/menus still paint solid `#1c1c1f` rather than frosted backdrop blur. |
+| **Live Message Entrance & Control Press/Switch** (`ui/ds/motion.luau`) | **Ported** | `components/app/base.coax` (`uiframe_entry`, `uiframe_press`, `uiframe_spring`); `apps/coder-desktop/page/skin.coax` (`k.motion.enter = 0.12s`, `k.app.rise = 3.0pt`); `apps/coder-desktop/page/layout/conversation.coax` (`live_ask`, `live_reply`, `live_pane`) | Live-only entrance gating prevents re-animating history on chat switch. Switches use `uiframe_spring`. |
+| **Backdrop Blur / Frosted Glass** (`blur.wgsl`) | **Partially Ported** | `components/paint/list.coax` (`PRIM_LAYER`, `prim_backdrop`); `apps/coder-desktop/page/compose.coax` (`CpCompose`, `cp_compose`, `cp_glass`, `CP_BLUR_DEVICE = 31.5`); `apps/coder-desktop/host.c` (`composition.metal`) | Composition pipeline works and is enabled on the models menu (`conversation.coax`), but not yet wired into `app_overlay_paint_panel` (dialogs, context menus, command palette) or floating pills. |
+| **Hover / Focus Color Transitions** | **Missing** | `components/kit/frame.coax` (`uiframe_hovered`) | Controls currently snap hover fills/borders instantaneously instead of easing over 100–150 ms. |
+| **Shimmer / Skeleton Loaders & Rolling Text** (`roll_text`, shimmer) | **Missing** | *(none)* | No sweeping shimmer gradient for loading states or rolling text transitions for changing status verbs/counts. |
+| **Sidebar / Split-Pane / Panel Transitions** | **Missing** | `apps/coder-desktop/page/layout/sidebar.coax`, `pane.coax`, `review.coax`, `filepane.coax` | Sidebars, agent panes, review panes, and file panes toggle instantaneously without width/slide easing. |
+| **Toast Notifications & Micro-Interactions** | **Missing** | *(none)* | No animated toast stack, copy-button check morph, tab indicator slide, or error-shake feedback. |
+| **Procedural 3D Orb Engine** (`crates/orb`) | **Not Ported** | *(none)* | No 3D orb shader, spring-physics orb states, or audio-reactive ring in Coder Desktop. |
+| **Embedded Terminal Animations** | **Not Applicable** | *(none)* | Coder Desktop does not embed Zeron's GPU terminal surface. |
+
+---
+
+## 8. Suggested Porting & Implementation Order for Coder Desktop
+
+### Phase 1 — High-Leverage Polish on Existing Primitives (Low Complexity, High UX Impact)
+
+1. **Wire Backdrop Blur (`prim_backdrop`) into `app_overlay_paint_panel` (`components/app/overlay.coax`)**
+   - *Why*: `composition-v1` (`apps/coder-desktop/page/compose.coax` + `composition.metal`) is already live for the models menu. Extending it to dialogs, context menus, and the command palette (`components/app/palette.coax`) with automatic `reduced_transparency` fallback immediately unifies floating surface depth across the app.
+2. **Smooth Hover & Focus Transitions (`components/core/keyed.coax`, `components/app/base.coax`)**
+   - *Why*: `keyed_toward` already exists. Adding a ~100–120 ms ease on button/row hover washes and focus rings removes visual harshness across the sidebar, conversation actions, and menus with minimal code.
+3. **Copy-Confirmation & Inline Action Micro-Interactions (`apps/coder-desktop/page/layout/conversation.coax`)**
+   - *Why*: `copied_kind`/`copied_turn` state already exists; crossfading the copy icon to a checkmark (and back) over 120–150 ms gives crisp feedback without adding new architecture.
+
+### Phase 2 — Structural Layout & Feedback Transitions (Medium Complexity, High UX Impact)
+
+4. **Animated Sidebar & Split-Pane Open/Close (`apps/coder-desktop/page/layout/sidebar.coax`, `pane.coax`, `filepane.coax`, `review.coax`)**
+   - *Why*: Driving panel width or slide offset with `UiSpring` (or 180–220 ms `AM_OUT_QUART`) makes opening agent sub-panes, file diffs, and the sidebar feel spatial and prevents jarring content jumps. Respect `reduced_motion` via instant snap.
+5. **Shimmer / Skeleton Loading Primitive (`components/paint/`, `components/app/`)**
+   - *Why*: Useful for initial chat/thread hydration, Foreman HUD loading, and file/diff fetches. Can be implemented as a lightweight clock-driven linear sweep band (static muted fill under `reduced_motion`) without heavy shaders.
+6. **Rolling Status Text (`roll_text` equivalent for `app_working` / Foreman status)**
+   - *Why*: When an agent transitions between phases (e.g., *Thinking → Reading → Editing → Testing*), a 160–200 ms vertical clip+fade roll makes live activity readable at a glance without layout jitter.
+
+### Phase 3 — Notification & Secondary Polish (Medium Complexity, Medium UX Impact)
+
+7. **Toast Notification Stack (`components/app/`)**
+   - *Why*: Non-blocking feedback for background events (git worktree actions, daemon reconnects, update ready, clipboard copy) using the existing `AppOverlaySpec` slide+fade timings (`200 ms` `out3` in, `130 ms` `in2` out).
+8. **Active Tab / Selection Indicator Glide (`components/app/pane.coax`, `settings.coax`)**
+   - *Why*: Animating the active tab highlight/underline position with `UiSpring` or `AM_OUT_QUART` gives polish to multi-agent panes and settings tabs.
+9. **Standalone Cubic-Bezier Evaluator (Optional, `components/core/`)**
+   - *Why*: Only needed if future Zeron design tokens require exact CSS `cubic-bezier(...)` parity beyond the 31 analytic curves already in `components/core/arwes/motion.coax`.
+
+### Explicitly Out of Scope (Do *Not* Port to Coder Desktop)
+
+- **Procedural 3D Orb Engine (`crates/orb`)**: Built for Zeron's voice/ambient assistant identity; Coder Desktop is a keyboard-first coding workspace where `app_loader` and `app_working` communicate agent state more cleanly with far lower GPU cost. (Only reconsider if voice mode is added to Coder Desktop.)
+- **iOS / Android Native Animations (`apps/ios`, `apps/android`)**: Mobile sheet detents, haptic-coupled drag gestures, and platform SwiftUI/Compose transitions do not apply to the macOS Coax/Metal desktop host.
+- **Marketing & Card-Web Animations (`apps/landing`, `apps/card-web`)**: 3D WebGL2 foil tilt cards, ASCII background canvases, pointer afterglows, beam sweeps, and infinite marquee drifts are web marketing effects and would distract in a developer tool.
+- **Embedded Terminal Cursor/Bell Animations (`ui/ds/terminal`)**: Not needed unless Coder Desktop embeds a GPU terminal surface.
