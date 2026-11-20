@@ -40,5 +40,24 @@ extension CoderWindow {
         var version = info?["CFBundleShortVersionString"] as? String ?? ""
         if let build = info?["CFBundleVersion"] as? String { version += " (" + build + ")" }
         cd_settings_info(page, claude, openrouter, version)
+        syncAntigravitySettings()
+    }
+    func syncAntigravitySettings() {
+        cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())
+    }
+    func setAntigravityMode(_ modeIndex: Int) {
+        CoderAntigravity.modeIndex = modeIndex
+        applyAntigravity()
+    }
+    func applyAntigravity() {
+        let hasAgy: Int32 = CoderWorker.hasAntigravity ? 1 : 0
+        cd_agy(page, hasAgy)
+        configureWorkerEnv(run, isForeman: isForemanShown)
+        for (id, r) in runs {
+            cd_agy(r.page, hasAgy)
+            configureWorkerEnv(r, isForeman: id == Foreman.chatID)
+        }
+        syncAntigravitySettings()
+        wake()
     }
 }

@@ -324,4 +324,88 @@ extension CoderWindow {
         for (_, r) in runs { coderApplyOpenRouter(r.page) }
         wake()
     }
+    func chooseAntigravity() {
+        let detected: String
+        if let path = CoderAntigravity.resolvedBinaryPath() {
+            if let v = CoderAntigravity.detectedVersion() {
+                let note = CoderAntigravity.isVersionSupported(v) ? "ready" : "needs >= 1.5.0"
+                detected = "Detected: \(path) (v\(v), \(note))"
+            } else {
+                detected = "Detected: \(path)"
+            }
+        } else {
+            detected = "Antigravity CLI (agy) not found. Install Antigravity >= 1.5.0 or set a custom binary path below."
+        }
+        let d = CoderDialog(size: .md, title: "Antigravity CLI & Model",
+                            body: detected + "\nLeave fields empty to use CLI defaults.",
+                            fields: [
+                                .init(label: "Binary path (optional)", value: CoderAntigravity.bin, hint: "Auto-detect agy from PATH or ~/.antigravity"),
+                                .init(label: "Default model", value: CoderAntigravity.model, hint: "e.g. gemini-4-hydrogen"),
+                                .init(label: "Reasoning effort", value: CoderAntigravity.effort, hint: "low, medium, or high")
+                            ],
+                            buttons: [.init(title: "Cancel"), .init(title: "Save", kind: .primary)],
+                            confirm: 1, cancel: 0)
+        present(d) { [weak self] btn, vals in
+            guard let self, btn == 1, vals.count >= 3 else { return }
+            let bin = vals[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let model = vals[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            let effort = vals[2].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !effort.isEmpty && effort != "low" && effort != "medium" && effort != "high" {
+                self.present(.notice("Invalid reasoning effort.", "Use low, medium, high, or leave empty for the CLI default."))
+                return
+            }
+            CoderAntigravity.bin = bin
+            CoderAntigravity.model = model
+            CoderAntigravity.effort = effort
+            self.applyAntigravity()
+            self.refocus()
+        }
+    }
+    func chooseAntigravityAuth() {
+        let envStatus = CoderAntigravity.hasEnvADC()
+            ? "antigravity.env (ADC): configured at \(CoderAntigravity.envFileURL.path)"
+            : "antigravity.env (ADC): not configured (\(CoderAntigravity.envFileURL.path))"
+        let body = "Active profile: \(CoderAntigravity.effectiveProfilePath)\n\(envStatus)"
+        let d = CoderDialog(size: .md, title: "Antigravity Sign-In & Profile",
+                            body: body,
+                            fields: [
+                                .init(label: "Isolated profile directory (optional)", value: CoderAntigravity.profile, hint: CoderAntigravity.defaultProfileURL.path)
+                            ],
+                            buttons: [
+                                .init(title: "Sign in…", aside: true),
+                                .init(title: "Edit env", aside: true),
+                                .init(title: "Cancel"),
+                                .init(title: "Save", kind: .primary)
+                            ],
+                            confirm: 3, cancel: 2)
+        present(d) { [weak self] btn, vals in
+            guard let self else { return }
+            let profileVal = vals.first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if btn == 0 {
+                CoderAntigravity.profile = profileVal
+                self.applyAntigravity()
+                if !CoderAntigravity.launchSignIn() {
+                    self.present(.notice("Antigravity CLI not found.", "Install agy (>= 1.5.0) or configure its binary path first."))
+                }
+                return
+            }
+            if btn == 1 {
+                let url = CoderAntigravity.envFileURL
+                let fm = FileManager.default
+                try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if !fm.fileExists(atPath: url.path) {
+                    let template = "# Antigravity Google Cloud / ADC environment variables (KEY=VALUE)\n# GOOGLE_APPLICATION_CREDENTIALS=/path/to/adc.json\n"
+                    try? template.write(to: url, atomically: true, encoding: .utf8)
+                    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                }
+                NSWorkspace.shared.open(url)
+                self.syncAntigravitySettings()
+                return
+            }
+            guard btn == 3 else { return }
+            CoderAntigravity.profile = profileVal
+            self.applyAntigravity()
+            self.refocus()
+        }
+    }
 }

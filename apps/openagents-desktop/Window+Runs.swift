@@ -262,13 +262,11 @@ extension CoderWindow {
         }
     }
     func configureWorkerEnv(_ r: CoderRun, isForeman: Bool) {
-        var env: [String: String] = [:]
+        var env = CoderAntigravity.workerEnv()
         if isForeman && foremanServer.port > 0 {
-            env = [
-                "CODER_FOREMAN_URL": foremanServer.baseURL,
-                "CODER_FOREMAN_TOKEN": foremanServer.token,
-                "CODER_FOREMAN_TIER": foremanTier.wireName
-            ]
+            env["CODER_FOREMAN_URL"] = foremanServer.baseURL
+            env["CODER_FOREMAN_TOKEN"] = foremanServer.token
+            env["CODER_FOREMAN_TIER"] = foremanTier.wireName
             if let res = Bundle.main.resourcePath {
                 env["PATH"] = res
             }

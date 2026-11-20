@@ -338,6 +338,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
                 NSWorkspace.shared.open(url)
             }
         case 32: openGym()
+        case 33: chooseAntigravity()
+        case 34: setAntigravityMode(Int(cd_settings_agy_mode(page)))
+        case 35: chooseAntigravityAuth()
         case 40...43: fileAsked(what)
         default: break
         }

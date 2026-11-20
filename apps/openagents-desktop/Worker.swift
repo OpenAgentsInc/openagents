@@ -41,16 +41,7 @@ final class CoderWorker {
         }
     }
     static var hasClaude: Bool { path.split(separator: ":").contains { FileManager.default.isExecutableFile(atPath: $0 + "/claude") } }
-    static var hasAntigravity: Bool {
-        let fm = FileManager.default
-        if let custom = ProcessInfo.processInfo.environment["CODER_AGY_BIN"], !custom.isEmpty,
-           fm.isExecutableFile(atPath: custom) { return true }
-        if path.split(separator: ":").contains(where: { fm.isExecutableFile(atPath: $0 + "/agy") }) { return true }
-        let home = fm.homeDirectoryForCurrentUser.path
-        if fm.isExecutableFile(atPath: home + "/.antigravity/antigravity/bin/agy") { return true }
-        if fm.isExecutableFile(atPath: "/Applications/Antigravity.app/Contents/Resources/app/bin/agy") { return true }
-        return false
-    }
+    static var hasAntigravity: Bool { CoderAntigravity.resolvedBinaryPath() != nil }
 
     private func extraEnvLines() -> String {
         extraEnv.map { "\($0.key)=\($0.value)" }.joined(separator: "\n")
@@ -432,6 +423,200 @@ enum CoderOpenRouter {
 }
 
 func coderApplyOpenRouter(_ page: UnsafeMutableRawPointer?) { cd_openrouter(page, CoderOpenRouter.main, CoderOpenRouter.sub) }
+
+/// Antigravity CLI (`agy`) detection, version check (>= 1.5.0), and persisted settings (#13803).
+enum CoderAntigravity {
+    private static let d = UserDefaults.standard
+    private static let kBin = "agy.bin"
+    private static let kMode = "agy.mode"
+    private static let kModel = "agy.model"
+    private static let kEffort = "agy.effort"
+    private static let kProfile = "agy.profile"
+    private static var cachedPath: String?
+    private static var cachedVersion: String?
+    private static var cacheValid = false
+
+    static var bin: String {
+        get { (d.string(forKey: kBin) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        set { d.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: kBin); invalidateCache() }
+    }
+    static var mode: String {
+        get {
+            let raw = (d.string(forKey: kMode) ?? "auto").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return (raw == "default" || raw == "plan") ? raw : "auto"
+        }
+        set {
+            let raw = newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            d.set((raw == "default" || raw == "plan") ? raw : "auto", forKey: kMode)
+        }
+    }
+    static var modeIndex: Int {
+        get {
+            switch mode {
+            case "default": return 1
+            case "plan": return 2
+            default: return 0
+            }
+        }
+        set {
+            switch newValue {
+            case 1: mode = "default"
+            case 2: mode = "plan"
+            default: mode = "auto"
+            }
+        }
+    }
+    static var model: String {
+        get { (d.string(forKey: kModel) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        set { d.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: kModel) }
+    }
+    static var effort: String {
+        get {
+            let raw = (d.string(forKey: kEffort) ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return (raw == "low" || raw == "medium" || raw == "high") ? raw : ""
+        }
+        set {
+            let raw = newValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            d.set((raw == "low" || raw == "medium" || raw == "high") ? raw : "", forKey: kEffort)
+        }
+    }
+    static var profile: String {
+        get { (d.string(forKey: kProfile) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
+        set { d.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: kProfile) }
+    }
+
+    static var defaultProfileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/coder/antigravity-profile", isDirectory: true)
+    }
+    static var envFileURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openagents/coder/antigravity.env", isDirectory: false)
+    }
+    static var effectiveProfilePath: String {
+        let custom = profile
+        if !custom.isEmpty { return (custom as NSString).expandingTildeInPath }
+        return defaultProfileURL.path
+    }
+
+    static func invalidateCache() {
+        cacheValid = false
+        cachedPath = nil
+        cachedVersion = nil
+    }
+
+    static func resolvedBinaryPath() -> String? {
+        let fm = FileManager.default
+        let saved = bin
+        if !saved.isEmpty {
+            let expanded = (saved as NSString).expandingTildeInPath
+            if fm.isExecutableFile(atPath: expanded) { return expanded }
+        }
+        if let custom = ProcessInfo.processInfo.environment["CODER_AGY_BIN"], !custom.isEmpty {
+            let expanded = (custom as NSString).expandingTildeInPath
+            if fm.isExecutableFile(atPath: expanded) { return expanded }
+        }
+        let home = fm.homeDirectoryForCurrentUser.path
+        var candidates = [
+            "\(home)/.antigravity/antigravity/bin/agy",
+            "/Applications/Antigravity.app/Contents/Resources/app/bin/agy",
+            "/opt/homebrew/bin/agy", "/usr/local/bin/agy", "/usr/bin/agy"
+        ]
+        if let pathEnv = ProcessInfo.processInfo.environment["PATH"] {
+            for dir in pathEnv.split(separator: ":") where !dir.isEmpty {
+                candidates.append("\(dir)/agy")
+            }
+        }
+        for p in candidates where fm.isExecutableFile(atPath: p) { return p }
+        return nil
+    }
+
+    static func detectedVersion() -> String? {
+        let path = resolvedBinaryPath()
+        if cacheValid && cachedPath == path { return cachedVersion }
+        cachedPath = path
+        cacheValid = true
+        guard let path else { cachedVersion = nil; return nil }
+        cachedVersion = probeVersion(at: path)
+        return cachedVersion
+    }
+
+    private static func probeVersion(at path: String) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = ["--version"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = out
+        do { try p.run() } catch { return nil }
+        p.waitUntilExit()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        // Extract first semver-like X.Y.Z token
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let re = try? NSRegularExpression(pattern: "\\b([0-9]+\\.[0-9]+\\.[0-9]+)\\b"),
+              let m = re.firstMatch(in: text, options: [], range: range),
+              let r = Range(m.range(at: 1), in: text) else { return nil }
+        return String(text[r])
+    }
+
+    static func isVersionSupported(_ version: String) -> Bool {
+        let parts = version.split(separator: ".").compactMap { Int($0) }
+        guard parts.count >= 2 else { return false }
+        if parts[0] != 1 { return parts[0] > 1 }
+        return parts[1] >= 5
+    }
+
+    static func statusSummary() -> String {
+        guard resolvedBinaryPath() != nil else { return "Not installed" }
+        guard let v = detectedVersion() else { return "Installed" }
+        return isVersionSupported(v) ? "v\(v) (ready)" : "v\(v) (needs >= 1.5.0)"
+    }
+
+    static func modelSummary() -> String {
+        let m = model.isEmpty ? "Default" : model
+        return effort.isEmpty ? m : "\(m) · \(effort)"
+    }
+
+    static func hasEnvADC() -> Bool {
+        guard let text = try? String(contentsOf: envFileURL, encoding: .utf8) else { return false }
+        for raw in text.split(separator: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty || line.hasPrefix("#") { continue }
+            if line.contains("=") { return true }
+        }
+        return false
+    }
+
+    static func authSummary() -> String {
+        if hasEnvADC() { return "antigravity.env (ADC)" }
+        if !profile.isEmpty { return "Custom profile" }
+        if FileManager.default.fileExists(atPath: effectiveProfilePath) { return "Isolated profile (ready)" }
+        return "Isolated profile"
+    }
+
+    static func workerEnv() -> [String: String] {
+        var env: [String: String] = ["CODER_AGY_MODE": mode]
+        if !bin.isEmpty { env["CODER_AGY_BIN"] = (bin as NSString).expandingTildeInPath }
+        if !model.isEmpty { env["CODER_AGY_MODEL"] = model }
+        if !effort.isEmpty { env["CODER_AGY_EFFORT"] = effort }
+        if !profile.isEmpty { env["CODER_AGY_PROFILE_DIR"] = (profile as NSString).expandingTildeInPath }
+        return env
+    }
+
+    @discardableResult
+    static func launchSignIn() -> Bool {
+        guard let agy = resolvedBinaryPath() else { return false }
+        let profileDir = effectiveProfilePath
+        try? FileManager.default.createDirectory(atPath: profileDir, withIntermediateDirectories: true)
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: agy)
+        p.arguments = ["--user-data-dir", profileDir]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run(); return true } catch { return false }
+    }
+}
 
 func coderSkillsNote() -> String {
     let root = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills")

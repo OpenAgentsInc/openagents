@@ -249,10 +249,13 @@ void cd_close(void *page);
 // a search with words emptied (0 when it was empty).
 // cd_action asks: 13 settings opened or closed (move the keyboard), 14/15/29 text size up/down/reset,
 // 16 the Claude key, 17 OpenRouter, 18 Foreman's tier, 19 its audit log, 20 clear its history,
-// 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard.
+// 21 log in (the web page), 22 check for updates, 23 the search field wants the keyboard,
+// 33 Antigravity CLI/model/effort, 34 Antigravity review mode, 35 Antigravity sign-in/profile.
 void cd_settings_open(void *page, int which, const char *row);
 int cd_settings_page(void *page);
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version);
+void cd_settings_agy(void *page, const char *status, int mode, const char *model, const char *auth);
+int cd_settings_agy_mode(void *page);
 int cd_settings_tier(void *page);
 void cd_search_set(void *page, const char *text);
 int cd_search_submit(void *page);

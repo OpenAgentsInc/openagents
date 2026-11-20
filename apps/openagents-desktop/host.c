@@ -516,6 +516,8 @@ void cd_close(void *page) {
 void cd_settings_open(void *page, int which, const char *row) { CoderHost *c = page; if (c) { coder_page_settings_open(cd_state(c), which, cd_string(row)); cd_woke(c); } }
 int cd_settings_page(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_page(cd_state(c)) : -1; }
 void cd_settings_info(void *page, const char *claude, const char *openrouter, const char *version) { CoderHost *c = page; if (c) { coder_page_settings_info(cd_state(c), cd_string(claude), cd_string(openrouter), cd_string(version)); cd_changed(c); } }
+void cd_settings_agy(void *page, const char *status, int mode, const char *model, const char *auth) { CoderHost *c = page; if (c) { coder_page_settings_agy(cd_state(c), cd_string(status), mode, cd_string(model), cd_string(auth)); cd_changed(c); } }
+int cd_settings_agy_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_agy_mode(cd_state(c)) : 0; }
 int cd_settings_tier(void *page) { CoderHost *c = page; return c ? (int)coder_page_settings_tier(cd_state(c)) : 0; }
 void cd_search_set(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_search_set(cd_state(c), cd_string(text)); cd_woke(c); } }
 int cd_bar_drags(void *page, float x, float y) { CoderHost *c = page; return c && coder_page_bar_drags(cd_state(c), x, y); }
