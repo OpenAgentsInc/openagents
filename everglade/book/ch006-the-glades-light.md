@@ -159,6 +159,11 @@ The page reports the bake's status, the AO at you and its crowns as
   map's default instead, and the arrival test asserts that it is exactly the
   glade's light.
 
+## Verification & broken case
+
+- **Expected output:** The arrival check verifies the default light rig matches the glade's sun direction, sky tint, and exposure on frame 0 (`0 failed` in the light/arrival Coax test).
+- **Broken case (refusal):** Switching from Character Create into the glade with a mismatched exposure or fog preset triggers a step-change assertion failure in the arrival check.
+
 ## What comes next
 
 [Chapter 7](ch007-character-create-in-the-world.md) makes Character Create a

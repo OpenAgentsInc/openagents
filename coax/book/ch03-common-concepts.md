@@ -23,6 +23,11 @@ go through them one at a time.
 > marked where it comes up, along with what the compiler says if you
 > try it.
 
+> **Reading guide (two-part chapter):** This chapter covers all core Coax
+> primitives in one reference place (~1,440 lines). Read it in two sittings:
+> - **Part 3A — Values, Types & Operators:** [Variables](#variables), [Constants](#constants), [Data types](#data-types), [Converting between number types](#converting-between-number-types), [Operators](#operators).
+> - **Part 3B — Procedures, Control Flow & Patterns:** [Procedures](#procedures), [Comments](#comments), [Control flow](#control-flow), [Printing](#printing), [In the real world](#in-the-real-world), [Keeping both halves of a product](#keeping-both-halves-of-a-product), [Summary](#summary).
+
 ## Variables
 
 Let's start with a variable that changes. Make a file called

@@ -236,6 +236,11 @@ coax/bin/coax test --library everglade/shared/move.coax
   `gamebuilder engine-list`—you have crossed from level layout into engine
   primitives.
 
+## Expected output & broken case
+
+- **Expected output:** Running `gamebuilder apply-edits --dry-run <batch.json>` on a valid `world.edit.v1` batch prints the validated entity count and exits `0` without mutating the level file.
+- **Broken case (refusal):** Submitting a `world.edit.v1` batch with an unknown palette shape ID or out-of-bounds transform fails `--dry-run` with a structured validation error and applies zero partial edits.
+
 ## What comes next
 
 Part II builds the glade below the level layer. [Chapter 4](ch004-ground-you-can-stand-on.md)

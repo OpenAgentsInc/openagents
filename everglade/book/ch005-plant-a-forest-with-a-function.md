@@ -139,6 +139,11 @@ coax/bin/coax test --library everglade/world/field.coax
   [chapter 8](ch008-if-you-can-see-it-you-can-walk-to-it.md). Everything else
   is planted by this function.
 
+## Verification & broken case
+
+- **Expected output:** Evaluating the deterministic scatter function for the same `(seed, cell_x, cell_z)` produces identical trunk coordinates and radii across repeated runs (`0 failed` in Coax `#test` replay checks).
+- **Broken case (refusal):** Placing a tree trunk whose collision radius overlaps the glade clearing or exceeds the cell's instance budget is refused so no invisible wall or frame-budget overflow enters the published cell.
+
 ## What comes next
 
 [Chapter 6](ch006-the-glades-light.md) lights the glade and the woods.

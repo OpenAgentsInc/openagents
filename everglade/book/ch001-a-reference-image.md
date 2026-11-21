@@ -142,6 +142,11 @@ coax/bin/coax test everglade/world/environment.coax
   or worse. Keep the comparison captures next to the reference, as the
   verification folder above does.
 
+## Verification & broken case
+
+- **Expected check:** Every lighting or terrain change captures a side-by-side headless shot (`coax/web/tool.sh shot <url> <out.png>`) against the reference glade and records the frame timing and visible landmark checklist.
+- **Broken case (refusal):** Approving a shader or foliage tweak without a matching reference capture fails review—if a landmark disappears or the light shifts off-palette, the change is rejected before landing.
+
 ## What comes next
 
 [Chapter 2](ch002-what-the-prototypes-taught.md) looks at what the earlier

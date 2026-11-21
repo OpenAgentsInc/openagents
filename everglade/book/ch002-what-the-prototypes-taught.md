@@ -125,6 +125,11 @@ the hit, and you see and hear what you're rolling against.
 - `everglade/shared/move.coax`, `#test "the run is a jog and the
   walk a stroll"`: Everglade II's pace, apart from v1's.
 
+## Verification & broken case
+
+- **Expected output:** Running the locomotion checks in `metaverse-engine/move/locomotion.coax` (`coax/bin/coax test metaverse-engine/move/locomotion.coax`) confirms Everglade II's walk/run pace and ground-contact invariants pass with `0 failed`.
+- **Broken case (refusal):** Feeding negative or NaN step speeds into the locomotion profile is refused at admission so the camera and character never diverge.
+
 ## What comes next
 
 [Chapter 3](ch003-start-from-a-bare-world.md) starts a fresh world with the
