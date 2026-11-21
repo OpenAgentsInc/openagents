@@ -84,13 +84,16 @@ Because there is **no standalone GameBuilder desktop/mobile app**, placing GameB
 
 **Bonus impact on existing issues:** Retiring `everglade-desktop`, `everglade-mobile`, and `metaverse-engine-desktop` removes a large portion of the external references blocking `#13846` (`apps/openagents-web/old/` and `everglade/legacy/`), removes 2 entries from `metaverse-engine/layer-allowlist.txt` (`apps/metaverse-engine-desktop/scene-policy.coax` and `chat.coax`), and removes the last desktop blocker on retiring `components/zeron/` (`#13847`).
 
-### D4. Bounded Context (`contexts.txt`) & JSON Parser Deduplication
+### D4. Bounded Context (`contexts.txt`) & JSON Library Roles
 - Register `gamebuilder` in `contexts.txt`:
   ```text
   gamebuilder folders: gamebuilder/ may load: engine protocol coder chat nostr toolchain zeron-kit splice
   ```
   and allow `apps/openagents-desktop/` (`coder` context) and `apps/openagents-ios/` to load `gamebuilder`, keeping `layer-check` at **0 new allowlist entries**.
-- **Deduplication opportunity spotted:** `openagents` currently has two JSON libraries: `coax/lib/encoding/json.coax` (extracted in `#13843`) and `coax/lib/json/json.coax` (50.5 KB, loaded 14× by GameBuilder). Audit whether `coax/lib/json/` is a higher-level shape/DOM layer over `encoding/json.coax` or a duplicate parser, and consolidate if duplicated.
+- **JSON libraries clarified (no unnecessary rewrite):** `openagents` has two intentionally distinct JSON libraries:
+  - `coax/lib/encoding/json.coax` (extracted in `#13843`) — zero-alloc RFC 8259 streaming pull parser/writer for `#authority`, wire admission, and Nostr.
+  - `coax/lib/json/json.coax` (`#module "coax.json"`, 740 LOC, loaded 14× by GameBuilder) — caller-array tree/DOM reader/writer for tools.
+  Document this two-tier split in `coax/lib/` rather than rewriting GameBuilder's 14 callers.
 
 ### D5. `tools-in-coax` Compliance Before Landing
 `coax/remote/counts.sh` gates `tools-port` so no commit may raise it. Dropping `host/` and standalone build scripts immediately eliminates most of GameBuilder's `.sh` files. For the remaining non-Coax scripts (browser glue `web/{app,hud-glue,keep}.js`, `tools/{browser-run-record,entrance-probe}.js`, `tools/models.py`, and thin shell wrappers):
@@ -118,15 +121,16 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
    - Extends the `~/.openagents/assets/` directory already mandated by `AGENTS.md` ("Shared asset library").
    - Every worktree on a machine shares the same cached blobs — `git worktree add` never duplicates gigabytes of `.pack` or `.f32` files.
 
-3. **Small Checked-In SHA-256 Lock Manifests in Git**
-   - `assets/manifests/gamebuilder.lock.json` (`village.pack`, `scrappers.gbm`, large raster assets)
-   - `assets/manifests/realms.lock.json` (`everglade2.pack`, `everglade-zone.pack`, `everglade-avatar.pack`, `glade.pack`, `glade.pack.gz`, `fantasy.pack`, `arkai_c.ttf`, etc.)
-   - `assets/manifests/psionic-fixtures.lock.json` (large `psionic/fixtures/` binaries >256 KB: `original-edit/`, `deepseek/`, `robotics/`, `harmony/`, `text/`)
+3. **Extend Existing `assets/registry/` Lockfiles (No Second Manifest System)**
+   - `openagents` already has `assets/registry/` (`oa-collection-lock-v1.schema.json`, `oa-package-lock-v1.schema.json`, `assets/registry/collections/*.lock.json`) and `~/.openagents/bin/asset-registry`. **Do not invent a second `assets/manifests/` convention** — extend `assets/registry/collections/` with:
+     - `assets/registry/collections/gamebuilder.lock.json` (`village.pack`, `scrappers.gbm`, `ghost-data` binary replacing 330 KB base64 in `web/ghost-data.coax`)
+     - `assets/registry/collections/realms.lock.json` (`everglade2.pack`, `everglade-zone.pack`, `everglade-avatar.pack`, `glade.pack`, `glade.pack.gz`, `fantasy.pack`, `arkai_c.ttf`, etc.)
+     - `assets/registry/collections/psionic-fixtures.lock.json` (large `psionic/fixtures/` binaries >256 KB: `original-edit/`, `deepseek/`, `robotics/`, `harmony/`, `text/`)
    - Each row pins `{ "path": "...", "sha256": "...", "bytes": N, "group": "..." }`.
 
 4. **One Coax Hydrator Tool (`coax/web/assets-sync.coax` → `coax/web/tool.sh assets-sync`)**
    - `coax/web/tool.sh assets-sync [--group gamebuilder|realms|psionic|all] [--check]`
-   - For each manifest entry:
+   - Reads `assets/registry/collections/*.lock.json`. For each entry:
      1. Checks if workspace target exists with matching size/SHA-256 (fast no-op).
      2. Checks `~/.openagents/assets/sha256/<aa>/<sha256>`; if missing, downloads from `https://assets.openagents.com/sha256/<aa>/<sha256>` into a temp file, verifies SHA-256 (fails closed on mismatch), and atomically moves into cache.
      3. Materializes into the workspace path via **APFS clonefile (`cp -c`) / regular copy** — **not symlink** — because `coax/web/serve.c:1444` explicitly rejects symlinks (`realpath(full) != full`). On macOS APFS, `cp -c` is copy-on-write (instant, zero extra disk space, regular file).
@@ -134,7 +138,7 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
    - Externalized workspace paths are `.gitignore`d.
 
 5. **Pre-Push Binary Bloat Guard (`coax/web/prepush.coax`)**
-   - Extend the `#13840` verification guard in `coax/web/prepush.coax` to refuse newly added/modified binary assets (`*.pack`, `*.pack.gz`, `*.gbm`, `*.glb`, `*.gltf`, `*.f32`, `*.f64`, `*.mp4`, `*.ttf`, `*.otf`) above 512 KB, pointing authors to `coax/web/tool.sh assets-sync` and `assets/manifests/`.
+   - Extend the `#13840` verification guard in `coax/web/prepush.coax` to refuse newly added/modified binary assets (`*.pack`, `*.pack.gz`, `*.gbm`, `*.glb`, `*.gltf`, `*.f32`, `*.f64`, `*.mp4`, `*.ttf`, `*.otf`) above 512 KB, pointing authors to `coax/web/tool.sh assets-sync` and `assets/registry/collections/`.
 
 ### Net Size Impact of the Combined Migration
 | Bucket | Before | After (in git) | Delta |
@@ -143,7 +147,7 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
 | `psionic/fixtures/` large binaries | 235.6 MB | ~15 MB (small unit fixtures + manifest) | **-220 MB** |
 | Retiring `everglade-desktop`, `everglade-mobile`, `metaverse-engine-desktop` | 2.75 MB | 0 MB | **-2.75 MB** |
 | `gamebuilder/` core, CLI, web, tests, tools + `docs/gamebuilder/` (no `host/`) | 0 MB | ~4.0 MB | **+4.0 MB** |
-| GameBuilder binary assets (`village.pack`, `scrappers.gbm`) | 0 MB | 0 MB (in `assets/manifests/gamebuilder.lock.json`) | **0 MB** |
+| GameBuilder binary assets (`village.pack`, `scrappers.gbm`, `ghost-data`) | 0 MB | 0 MB (in `assets/registry/collections/gamebuilder.lock.json`) | **0 MB** |
 | **Total net working-tree delta** | — | — | **~-575 MB** |
 
 ---
@@ -152,31 +156,42 @@ Solve **all** large binary assets across `gamebuilder/`, `apps/openagents-web/re
 
 ### Phase 0 — Pre-Flight & Owner Sign-Offs (Day 1)
 - [ ] In `~/work/gamebuilder`: commit or discard uncommitted `scripts/web-deploy.sh` and untracked `docs/claude-ui-spec/tokens.css`.
-- [ ] Owner confirms **D1** (`docs/business/` stays private outside public `openagents`) and whether `gamebuilder.org` web/API deploys stay live during transition.
+- [ ] Owner confirms **D1** (`docs/business/` stays private outside public `openagents`) and whether `gamebuilder.org` web/API deploys stay live during transition (see Section 6.2).
 - [ ] Owner provisions durable no-TTL bucket `gs://openagents-assets` + public read CDN `https://assets.openagents.com/sha256/` (unblocking `#13844`, tracked in `NEEDS_OWNER.md`).
 
 ### Phase 1 — Build Unified Asset Pipeline & Close `#13844` (Days 2–3)
-- [ ] Implement `coax/web/assets-sync.coax` (with `#test` checks for manifest parsing, SHA-256 verification, fail-closed mismatch refusal, and clone/copy materialization).
+- [ ] Implement `coax/web/assets-sync.coax` (with `#test` checks for `assets/registry/collections/*.lock.json` parsing, SHA-256 verification, fail-closed mismatch refusal, and clone/copy materialization).
 - [ ] Upload `apps/openagents-web/realms/**/*.pack{,.gz}`, large `psionic/fixtures/`, and GameBuilder's `village.pack` + `scrappers.gbm` to `gs://openagents-assets/sha256/`.
-- [ ] Commit `assets/manifests/{realms,psionic-fixtures,gamebuilder}.lock.json`, wire `assets-sync` into `apps/openagents-web/build.sh`, `psionic/check.sh`, and `coax/remote/host-job.sh`, `git rm` the externalized blobs, and verify fresh-worktree builds pass.
+- [ ] Commit `assets/registry/collections/{realms,psionic-fixtures,gamebuilder}.lock.json`, wire `assets-sync` into `apps/openagents-web/build.sh`, `psionic/check.sh`, and `coax/remote/host-job.sh`, `git rm` the externalized blobs, and verify fresh-worktree builds pass.
 - [ ] Add binary-size guard to `coax/web/prepush.coax`. Close `#13844`.
 
 ### Phase 2 — Fold GameBuilder into `gamebuilder/` (Days 4–6)
-- [ ] Copy GameBuilder `core/`, `shared/`, `cli/`, `web/`, `deploy/api/`, `tools/`, `tests/`, and `docs/gamebuilder/` into `openagents` (omitting `host/`, `vendor/`, `openagents.lock`, `scripts/pin.sh`, `project.yml`, `GameBuilder.xcodeproj`, `Generated/`, `build/`, `docs/business/`, and externalized binaries).
+- [ ] Copy GameBuilder `core/`, `shared/`, `cli/`, `web/` (if kept), `deploy/api/`, `tools/`, `tests/`, and `docs/gamebuilder/` into `openagents` (omitting `host/`, `web/host/`, `vendor/`, `openagents.lock`, `scripts/pin.sh`, `project.yml`, `GameBuilder.xcodeproj`, `Generated/`, `build/`, `docs/business/`, and externalized binaries).
 - [ ] Rewrite all `vendor/openagents/` paths to repo-relative paths (`../coax/...`, `../metaverse-engine/...`, etc.).
 - [ ] Add `gamebuilder` bounded context to `contexts.txt`; verify `coax/web/tool.sh layer-check` passes with 0 new allowlist entries.
 - [ ] Tag/port remaining non-Coax scripts so `coax/web/tool.sh tools-check` passes with 0 new `tools-port.txt` entries.
-- [ ] Register `gamebuilder/` Coax suites in `coax/web/suites.coax` and verify:
-  - `gamebuilder/scripts/check.sh` (all Coax checks + command goldens)
-  - `gamebuilder/cli/build.sh` → `~/.openagents/bin/gamebuilder` (CLI + MCP server)
-  - `gamebuilder/web/build.sh` + staging deploy against `gamebuilder.org` (if kept live)
+- [ ] Register `gamebuilder/` Coax suites in `coax/web/suites.coax` and build `~/.openagents/bin/gamebuilder` from `apps/openagents-cli/build.sh` (or expose `openagents gamebuilder` + symlink).
+- [ ] Verify `gamebuilder/scripts/check.sh` (all Coax checks + command goldens), CLI/MCP (`gamebuilder mcp`), and `gamebuilder/web/` build (if kept).
 
 ### Phase 3 — Embed in OpenAgents Desktop/iOS & Retire Standalone Shells (Weeks 2–3)
 - [ ] Wire `gamebuilder` CLI/MCP + live 3D world side pane into `apps/openagents-desktop/` (per [docs/desktop/2026-11-20-gamebuilder-3d-worlds-audit.md](../desktop/2026-11-20-gamebuilder-3d-worlds-audit.md)) and 3D world creation/play into `apps/openagents-ios/`.
-- [ ] Retire `apps/everglade-desktop/`, `apps/everglade-mobile/`, and `apps/metaverse-engine-desktop/` (after confirming no remaining CI/build dependencies, which also unblocks `#13846` and `#13847`).
-- [ ] Converge `gamebuilder/deploy/api/` into `coax/web/api/`, deduplicate `coax/lib/json/json.coax` vs `coax/lib/encoding/json.coax`, and retire `apps/openagents-web/worldbuilder*` + `realms/create-world/`.
+- [ ] Retire `apps/everglade-desktop/`, `apps/everglade-mobile/`, and `apps/metaverse-engine-desktop/` (unblocking `#13846` and `#13847`).
+- [ ] Move the 10 `tools/splicebots-*` campaign files into `metaverse/splice-bots/` (or archive), converge `gamebuilder/deploy/api/` into `coax/web/api/`, and retire `apps/openagents-web/worldbuilder*` + `realms/create-world/`.
 
 ### Phase 4 — Deprecate `~/work/gamebuilder` (After First Production Deploy from `openagents`)
 - [ ] Verify `gamebuilder` CLI/MCP, desktop/iOS integration, and `gamebuilder.org` (if kept) ship cleanly from `openagents` `main`.
 - [ ] Replace `~/work/gamebuilder/README.md` with a deprecation banner linking to `OpenAgentsInc/openagents` (`gamebuilder/`).
 - [ ] Archive `OpenAgentsInc/gamebuilder` on GitHub as read-only and remove local `~/work/gamebuilder` checkout.
+
+---
+
+## 6. Additional Simplifications Found on Second Pass
+
+1. **One Asset Registry, Not Two (`assets/registry/`):** `openagents` already has `assets/registry/` with `oa-collection-lock-v1.schema.json` and 21 `assets/registry/collections/*.lock.json` files. Extending `assets/registry/collections/` directly avoids inventing a parallel `assets/manifests/` directory and keeps one schema + one `~/.openagents/assets/` cache.
+2. **Eliminate 12,789 LOC of Duplicate Web UI If `gamebuilder.org` Is Not Kept as a Separate Portal:** `~/work/gamebuilder/web/` contains `hud.coax` (5,963 LOC), `page.coax` (3,197 LOC), `chat.coax` (1,405 LOC), `agents.coax` (924 LOC), `account.coax` (910 LOC), and `login.coax` (390 LOC) — essentially a second copy of OpenAgents login/account/chat/agents on the web, plus an untracked 58-file copy of `coax/web/*.js` in `web/host/` and a 330 KB base64-baked Quaternius mesh in `web/ghost-data.coax` (generated by `tools/ghost-bake.coax`).
+   - **If `gamebuilder.org` redirects to `openagents.com` (or becomes a thin landing/download page):** We skip migrating `web/` entirely (**-4.57 MB, -62 files, -12.8k LOC** of duplicate web shell).
+   - **If `gamebuilder.org` stays live:** Serve `coax/web/` directly without copying `web/host/` and move `ghost-data` out of base64 `.coax` into `assets/registry/collections/gamebuilder.lock.json`.
+3. **`deploy/api/` Is Just a 10-Line Wrapper Around `gamebuilder serve`:** `deploy/api/run.sh` runs `gamebuilder serve --accounts "$GB_ACCOUNTS" --origin "$GB_ORIGIN" --port 8811` behind `socat` — there is no separate Postgres schema or C backend. In the monorepo, `deploy/api/deploy.sh` no longer needs its two-repo staging dance (`gamebuilder/` + `openagents-gamebuilder/` at `openagents.lock`); it just builds the `gamebuilder` CLI from `openagents` `main` (and can be retired completely once Desktop/iOS talk directly to `coax/web/api/`).
+4. **One CLI Build/Install Path (`apps/openagents-cli/build.sh`):** Instead of maintaining a separate CLI build/install pipeline for GameBuilder, have `apps/openagents-cli/build.sh` build both `~/.openagents/bin/openagents` and `~/.openagents/bin/gamebuilder` (or expose `openagents gamebuilder` with a `gamebuilder` symlink) so developers and `apps/openagents-desktop/install.sh` keep one binary install step.
+5. **Fold `tools/splicebots-*` (10 files) into `metaverse/splice-bots/`:** `openagents` already owns `metaverse/splice-bots/` (201 files, 5.84 MB) and `apps/openagents-web/realms/splice-bots/`. Keeping GameBuilder's 10 `splicebots-*` porting-campaign files inside `metaverse/splice-bots/` (or archiving them if the port is finished) avoids splitting SpliceBots across two top-level directories.
+6. **Keep Both JSON Libraries With Documented Roles:** `coax/lib/encoding/json.coax` (pull parser for `#authority` / wire) and `coax/lib/json/json.coax` (`#module "coax.json"`, tree DOM for tools) serve complementary roles — no need to churn GameBuilder's 14 callers.
