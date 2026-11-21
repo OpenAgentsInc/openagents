@@ -10,6 +10,7 @@
 //   movement without a settled Spark/Lightning payment hash).
 #authority;
 
+// book:begin types
 ES_MAX_SAT :: 2_100_000_000_000_000;
 
 ES_LEG_WORKER :: 1;
@@ -46,7 +47,9 @@ EsPayoutRequest :: struct {
   utc_day: int;
   already_paid_leg: bool;
 }
+// book:end types
 
+// book:begin policy
 // Monotonic rolling 24-hour UTC period reset: advances to a newer utc_day by
 // zeroing daily counters; never resets backwards on stale/out-of-order timestamps.
 es_roll_period :: (st: EsPeriodState, req_utc_day: int) -> EsPeriodState #effects() {
@@ -91,6 +94,7 @@ es_receipt_truthful :: (real_bitcoin_moved: bool, settled_sat: int, has_payment_
   }
   return true;
 }
+// book:end policy
 
 #test "executor-settlement: two-leg escrow, idempotency, rolling UTC caps & truthful receipts (#13922)" {
   pol := EsPolicy.{

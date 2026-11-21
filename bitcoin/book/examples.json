@@ -1166,6 +1166,16 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "bitcoin/examples/paying-for-requests.coax",
+      "chapter": "bitcoin/book/ch123-paying-for-requests.md",
+      "stdout": "bitcoin/fixtures/paying-for-requests.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

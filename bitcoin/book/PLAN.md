@@ -324,7 +324,7 @@ there is a need.
 | --- | --- | --- | --- |
 | [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented | 31, 33 | One BIP-39 phrase gives the Nostr key and the wallet keys, and restoring from the phrase gives the same addresses. | BIP-39, NIP-06 |
 | [122. Agent treasuries](ch122-agent-treasuries.md) — implemented | 94, 100, 101 | A 2-of-3 treasury spend is signed by independent key agents and broadcast on signet, and an independent wallet tool recovers the coins. | NIP-KEYS |
-| 123. Paying for requests — planned | 113, 114 | A request pays a BOLT 11 invoice, and the server releases its response only after settlement. | x402, BOLT 11 |
+| [123. Paying for requests and verified work](ch123-paying-for-requests.md) — implemented | 113, 114, 121 | `#authority` two-leg (`WORKER` + `VALIDATOR`) settlement policy with idempotency, rolling 24h UTC caps, default-OFF owner arming, and truthful receipt invariants, qualified live on Bitcoin mainnet via Breez Spark (`200 sats` worker + `50 sats` validator, `0` sat fee). | x402, BOLT 11, Breez Spark |
 | 124. Our node on Pylons and Metaverse OS — planned | 89, 93 | A Pylon and a Metaverse OS machine run the node from its Nix module and sync it, and OpenAgents' on-chain checks query it instead of a third-party chain source. | — |
 
 ## Explorer extension: address index (chapter 125)

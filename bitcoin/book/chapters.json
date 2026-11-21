@@ -1,2752 +1,2760 @@
 {
- "schema": 1,
- "book": "bitcoin",
- "chapters": [
-  {
-   "number": 1,
-   "title": "Bytes, hex and base64",
-   "file": "ch001-bytes-hex-and-base64.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "coax:5",
-    "coax:6"
-   ],
-   "source": [
-    "coax/lib/crypto/bytes.coax",
-    "coax/lib/nostr/base64.coax",
-    "coax/lib/nostr/codecs-common.coax",
-    "coax/lib/nostr/hex.coax",
-    "bitcoin/examples/bytes-hex-base64.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/main.coax",
-    "apps/openagents-web/project-names.coax"
-   ]
-  },
-  {
-   "number": 2,
-   "title": "Big integers in fixed limbs",
-   "file": "ch002-big-integers-in-fixed-limbs.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    "coax:13"
-   ],
-   "source": [
-    "coax/lib/crypto/secp_field.coax",
-    "coax/lib/crypto/secp_scalar.coax",
-    "bitcoin/examples/big-integers-in-limbs.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
-  },
-  {
-   "number": 3,
-   "title": "Constant-time rules and secrets",
-   "file": "ch003-constant-time-rules.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    2,
-    "coax:23"
-   ],
-   "source": [
-    "coax/lib/crypto/bytes.coax",
-    "coax/lib/crypto/secret-flow.coax",
-    "coax/lib/crypto/secret-types.coax",
-    "coax/lib/crypto/zeroize.coax",
-    "bitcoin/examples/constant-time-rules.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 4,
-   "title": "SHA-256",
-   "file": "ch004-sha-256.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/crypto/sha256-kernel.coax",
-    "coax/lib/crypto/sha256.coax",
-    "coax/lib/crypto/sha256_workspace.coax",
-    "bitcoin/examples/sha-256.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "psionic/lib/model-io/identity.coax",
-    "psionic/lib/pylon/host.coax"
-   ]
-  },
-  {
-   "number": 5,
-   "title": "SHA-256d and tagged hashes",
-   "file": "ch005-sha-256d-and-tagged-hashes.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    4
-   ],
-   "source": [
-    "coax/lib/bitcoin/hash.coax",
-    "coax/lib/crypto/sha256.coax",
-    "bitcoin/examples/sha-256d.coax",
-    "bitcoin/examples/checks/sha-256d.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "coax/lib/bitcoin/sighash.coax"
-   ]
-  },
-  {
-   "number": 6,
-   "title": "RIPEMD-160 and HASH160",
-   "file": "ch006-ripemd-160-and-hash160.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    1,
-    4
-   ],
-   "source": [
-    "coax/lib/crypto/ripemd160.coax",
-    "coax/lib/bitcoin/hash160.coax",
-    "bitcoin/examples/ripemd160.coax",
-    "bitcoin/examples/checks/ripemd160.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 7,
-   "title": "SHA-512",
-   "file": "ch007-sha-512.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    4
-   ],
-   "source": [
-    "coax/lib/crypto/sha512-kernel.coax",
-    "coax/lib/crypto/sha512.coax",
-    "coax/lib/crypto/sha512-memory.coax",
-    "bitcoin/examples/sha-512.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/bip32.coax",
-    "coax/lib/crypto/bip39.coax"
-   ]
-  },
-  {
-   "number": 8,
-   "title": "HMAC-SHA256",
-   "file": "ch008-hmac-sha256.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    4
-   ],
-   "source": [
-    "coax/lib/crypto/hmac.coax",
-    "coax/lib/crypto/hmac_workspace.coax",
-    "coax/lib/crypto/hmac-memory.coax",
-    "bitcoin/examples/hmac-sha256.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/hkdf.coax"
-   ]
-  },
-  {
-   "number": 9,
-   "title": "HKDF",
-   "file": "ch009-hkdf.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    8
-   ],
-   "source": [
-    "coax/lib/crypto/hkdf.coax",
-    "coax/lib/crypto/hkdf-memory.coax",
-    "bitcoin/examples/hkdf.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/nip44.coax"
-   ]
-  },
-  {
-   "number": 10,
-   "title": "SipHash-2-4",
-   "file": "ch010-siphash-2-4.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    3,
-    5
-   ],
-   "source": [
-    "coax/lib/crypto/siphash.coax",
-    "bitcoin/examples/siphash.coax",
-    "bitcoin/examples/checks/siphash.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 11,
-   "title": "ChaCha20",
-   "file": "ch011-chacha20.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/crypto/chacha20.coax",
-    "coax/lib/crypto/hchacha20.coax",
-    "bitcoin/examples/chacha20.coax",
-    "bitcoin/examples/checks/chacha20.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/nip44.coax"
-   ]
-  },
-  {
-   "number": 12,
-   "title": "Poly1305 and ChaCha20-Poly1305",
-   "file": "ch012-poly1305-and-chacha20-poly1305.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    11,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/poly1305.coax",
-    "coax/lib/crypto/chacha20_poly1305.coax",
-    "coax/lib/crypto/xchacha20_poly1305.coax",
-    "bitcoin/examples/chacha20-poly1305.coax",
-    "bitcoin/examples/checks/chacha20-poly1305.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/aead_workspace.coax",
-    "psionic/lib/peer/link.coax"
-   ]
-  },
-  {
-   "number": 13,
-   "title": "Field arithmetic mod p",
-   "file": "ch013-field-arithmetic-mod-p.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    2,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_field.coax",
-    "coax/lib/crypto/secp_field32.coax",
-    "coax/lib/crypto/secp_field32_total.coax",
-    "bitcoin/examples/field-arithmetic.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_group32.coax"
-   ]
-  },
-  {
-   "number": 14,
-   "title": "Scalars mod n",
-   "file": "ch014-scalars-mod-n.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    2,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_scalar.coax",
-    "bitcoin/examples/scalars.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
-  },
-  {
-   "number": 15,
-   "title": "The secp256k1 group law",
-   "file": "ch015-the-secp256k1-group-law.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    13
-   ],
-   "source": [
-    "coax/lib/crypto/secp_group.coax",
-    "coax/lib/crypto/secp_group32.coax",
-    "bitcoin/examples/group-law.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/secp_mult_const.coax"
-   ]
-  },
-  {
-   "number": 16,
-   "title": "Scalar multiplication",
-   "file": "ch016-scalar-multiplication.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    14,
-    15,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/secp_mult.coax",
-    "coax/lib/crypto/secp_mult_base.coax",
-    "coax/lib/crypto/secp_mult_const.coax",
-    "bitcoin/examples/scalar-mult.coax",
-    "bitcoin/examples/checks/scalar-mult.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/ecdh.coax"
-   ]
-  },
-  {
-   "number": 17,
-   "title": "Point encodings: compressed, uncompressed and x-only",
-   "file": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    15
-   ],
-   "source": [
-    "coax/lib/crypto/secp_encode.coax",
-    "bitcoin/examples/point-encodings.coax",
-    "bitcoin/examples/checks/point-encodings.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "coax/lib/crypto/bip32.coax",
-    "coax/lib/nostr/nipkeys.coax"
-   ]
-  },
-  {
-   "number": 18,
-   "title": "Keys and randomness",
-   "file": "ch018-keys-and-randomness.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    14,
-    3,
-    16
-   ],
-   "source": [
-    "coax/lib/crypto/entropy.coax",
-    "coax/lib/nostr/keys.coax",
-    "bitcoin/examples/keys.coax",
-    "bitcoin/examples/checks/keys.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "psionic/lib/fleet/runtime.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 19,
-   "title": "Verify ECDSA",
-   "file": "ch019-verify-ecdsa.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    5,
-    14,
-    16,
-    17
-   ],
-   "source": [
-    "coax/lib/crypto/ecdsa_verify.coax",
-    "bitcoin/examples/ecdsa-verify.coax",
-    "bitcoin/examples/checks/ecdsa-verify.coax",
-    "coax/lib/crypto/secp_glv.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 20,
-   "title": "Sign with ECDSA",
-   "file": "ch020-sign-with-ecdsa.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    19,
-    8,
-    18,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/ecdsa_sign.coax",
-    "bitcoin/examples/ecdsa-sign.coax",
-    "bitcoin/examples/checks/ecdsa-sign.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/bitcoin/sighash.coax",
-    "coax/lib/nostr/nipkeys_sign.coax"
-   ]
-  },
-  {
-   "number": 21,
-   "title": "Strict DER",
-   "file": "ch021-strict-der.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    19,
-    20
-   ],
-   "source": [
-    "coax/lib/bitcoin/der.coax",
-    "coax/lib/crypto/ecdsa_sign.coax",
-    "bitcoin/examples/strict-der.coax",
-    "bitcoin/examples/checks/strict-der.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 22,
-   "title": "Public key recovery and signed messages",
-   "file": "ch022-public-key-recovery-and-signed-messages.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    19,
-    20,
-    17,
-    26,
-    6,
-    1
-   ],
-   "source": [
-    "coax/lib/crypto/ecdsa_recover.coax",
-    "coax/lib/crypto/ecdsa_sign.coax",
-    "coax/lib/bitcoin/signmessage.coax",
-    "bitcoin/examples/signed-messages.coax",
-    "bitcoin/examples/checks/signed-messages.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 23,
-   "title": "Verify a Schnorr signature",
-   "file": "ch023-verify-a-schnorr-signature.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    4,
-    14,
-    16
-   ],
-   "source": [
-    "coax/lib/crypto/schnorr.coax",
-    "coax/lib/crypto/schnorr_admission.coax",
-    "coax/lib/crypto/schnorr_fast.coax",
-    "bitcoin/examples/schnorr-verify.coax",
-    "bitcoin/examples/checks/schnorr-verify.coax",
-    "coax/lib/crypto/secp_glv.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/nip/nip01-verify.coax",
-    "coax/web/api/nip98.coax",
-    "coax/web/project/landing-nostr.coax"
-   ]
-  },
-  {
-   "number": 24,
-   "title": "Sign with Schnorr",
-   "file": "ch024-sign-with-schnorr.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    23,
-    18,
-    3
-   ],
-   "source": [
-    "coax/lib/crypto/schnorr_self_verify.coax",
-    "coax/lib/crypto/schnorr_sign.coax",
-    "bitcoin/examples/schnorr-sign.coax",
-    "bitcoin/examples/checks/schnorr-sign.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/event_sign.coax"
-   ]
-  },
-  {
-   "number": 25,
-   "title": "Batch verification",
-   "file": "ch025-batch-verification.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    23
-   ],
-   "source": [
-    "coax/lib/crypto/schnorr_batch.coax",
-    "bitcoin/examples/schnorr-batch.coax",
-    "bitcoin/examples/checks/schnorr-batch.coax",
-    "coax/tests/bitcoin/batch.py",
-    "coax/tests/bitcoin/batch_bench.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 26,
-   "title": "Base58Check",
-   "file": "ch026-base58check.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    5
-   ],
-   "source": [
-    "coax/lib/bitcoin/base58.coax",
-    "bitcoin/examples/base58check.coax",
-    "bitcoin/examples/checks/base58check.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 27,
-   "title": "Bech32",
-   "file": "ch027-bech32.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/nostr/bech32-core.coax",
-    "coax/lib/nostr/nip19-core.coax",
-    "bitcoin/examples/bech32.coax",
-    "bitcoin/examples/checks/bech32.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/project-names.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 28,
-   "title": "Bech32m",
-   "file": "ch028-bech32m.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    27
-   ],
-   "source": [
-    "coax/lib/nostr/bech32-core.coax",
-    "coax/lib/bitcoin/segwit.coax",
-    "bitcoin/examples/bech32m.coax",
-    "bitcoin/examples/checks/bech32m.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 29,
-   "title": "Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
-   "file": "ch029-addresses.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    6,
-    17,
-    26,
-    28
-   ],
-   "source": [
-    "coax/lib/bitcoin/address.coax",
-    "bitcoin/examples/addresses.coax",
-    "bitcoin/examples/checks/addresses.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 30,
-   "title": "Output descriptors and their checksum",
-   "file": "ch030-output-descriptors-and-their-checksum.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    29,
-    32,
-    33
-   ],
-   "source": [
-    "coax/lib/bitcoin/descriptor.coax",
-    "bitcoin/examples/descriptors.coax",
-    "bitcoin/examples/checks/descriptors.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 31,
-   "title": "Seed phrases",
-   "file": "ch031-seed-phrases.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    4,
-    7,
-    8
-   ],
-   "source": [
-    "coax/lib/crypto/bip39.coax",
-    "bitcoin/examples/seed-phrases.coax",
-    "bitcoin/examples/checks/seed-phrases.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 32,
-   "title": "Hierarchical deterministic keys",
-   "file": "ch032-hierarchical-deterministic-keys.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    6,
-    16,
-    31
-   ],
-   "source": [
-    "coax/lib/crypto/bip32.coax",
-    "bitcoin/examples/hd-keys.coax",
-    "bitcoin/examples/checks/hd-keys.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 33,
-   "title": "Derivation paths",
-   "file": "ch033-derivation-paths.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    29,
-    31,
-    32
-   ],
-   "source": [
-    "coax/lib/bitcoin/path.coax",
-    "bitcoin/examples/derivation-paths.coax",
-    "bitcoin/examples/checks/derivation-paths.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 34,
-   "title": "Transactions and their serialization",
-   "file": "ch034-transactions-and-their-serialization.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    1,
-    3,
-    5
-   ],
-   "source": [
-    "coax/lib/bitcoin/tx.coax",
-    "bitcoin/examples/transactions.coax",
-    "bitcoin/examples/checks/transactions.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/bitcoin/sighash.coax"
-   ]
-  },
-  {
-   "number": 35,
-   "title": "Txids, wtxids and malleability",
-   "file": "ch035-txids-wtxids-and-malleability.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/malleability.coax",
-    "bitcoin/examples/malleability.coax",
-    "bitcoin/examples/checks/malleability.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 36,
-   "title": "The script interpreter",
-   "file": "ch036-the-script-interpreter.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    6,
-    19,
-    21,
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/script.coax",
-    "bitcoin/examples/script-interpreter.coax",
-    "bitcoin/examples/checks/script-interpreter.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 37,
-   "title": "Legacy signature hashes",
-   "file": "ch037-legacy-signature-hashes.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    34,
-    36
-   ],
-   "source": [
-    "coax/lib/bitcoin/script.coax",
-    "bitcoin/examples/legacy-sighash.coax",
-    "bitcoin/examples/checks/legacy-sighash.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 38,
-   "title": "Segwit v0 signature hashes",
-   "file": "ch038-segwit-v0-signature-hashes.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    5,
-    34,
-    36
-   ],
-   "source": [
-    "coax/lib/bitcoin/script.coax",
-    "bitcoin/examples/segwit-sighash.coax",
-    "bitcoin/examples/checks/segwit-sighash.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 39,
-   "title": "Timelocks",
-   "file": "ch039-timelocks.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36
-   ],
-   "source": [
-    "coax/lib/bitcoin/locktime.coax",
-    "coax/lib/bitcoin/script.coax",
-    "bitcoin/examples/timelocks.coax",
-    "bitcoin/examples/checks/timelocks.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 40,
-   "title": "Weight, vsize and fees",
-   "file": "ch040-weight-vsize-and-fees.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/fees.coax",
-    "bitcoin/examples/fees.coax",
-    "bitcoin/examples/checks/fees.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 41,
-   "title": "The key tweak and the key path",
-   "file": "ch041-the-key-tweak-and-the-key-path.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    24
-   ],
-   "source": [
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/lib/bitcoin/address.coax",
-    "coax/lib/bitcoin/sighash.coax",
-    "bitcoin/examples/taproot-key-path.coax",
-    "bitcoin/examples/checks/taproot-key-path.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 42,
-   "title": "Script trees: tapleaves and tapbranches",
-   "file": "ch042-script-trees-tapleaves-and-tapbranches.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    41
-   ],
-   "source": [
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/lib/bitcoin/address.coax",
-    "bitcoin/examples/taproot-script-trees.coax",
-    "bitcoin/examples/checks/taproot-script-trees.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 43,
-   "title": "Taproot signature hashes",
-   "file": "ch043-taproot-signature-hashes.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    41
-   ],
-   "source": [
-    "bitcoin/examples/taproot-sighash.coax",
-    "bitcoin/examples/checks/taproot-sighash.coax",
-    "coax/lib/bitcoin/sighash.coax",
-    "coax/lib/bitcoin/taproot.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 44,
-   "title": "Tapscript",
-   "file": "ch044-tapscript.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36,
-    43
-   ],
-   "source": [
-    "bitcoin/examples/tapscript.coax",
-    "bitcoin/examples/checks/tapscript.coax",
-    "coax/lib/bitcoin/script.coax",
-    "coax/lib/bitcoin/sighash.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 45,
-   "title": "Control blocks and script-path spends",
-   "file": "ch045-control-blocks-and-script-path-spends.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    42,
-    44
-   ],
-   "source": [
-    "bitcoin/examples/script-path-spend.coax",
-    "bitcoin/examples/checks/script-path-spend.coax",
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/lib/bitcoin/script.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 46,
-   "title": "Merkle trees and the duplicate-leaf flaw",
-   "file": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    3,
-    5,
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/merkle.coax",
-    "bitcoin/examples/merkle-trees.coax",
-    "bitcoin/examples/checks/merkle-trees.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 47,
-   "title": "Block headers and proof of work",
-   "file": "ch047-block-headers-and-proof-of-work.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    2,
-    3,
-    5
-   ],
-   "source": [
-    "coax/lib/bitcoin/pow.coax",
-    "bitcoin/examples/block-headers.coax",
-    "bitcoin/examples/checks/block-headers.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 48,
-   "title": "Compact targets, retargeting and chainwork",
-   "file": "ch048-compact-targets-retargeting-and-chainwork.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    47
-   ],
-   "source": [
-    "coax/lib/bitcoin/retarget.coax",
-    "bitcoin/examples/retargeting.coax",
-    "bitcoin/examples/checks/retargeting.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 49,
-   "title": "The witness commitment",
-   "file": "ch049-the-witness-commitment.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    35,
-    46
-   ],
-   "source": [
-    "coax/lib/bitcoin/witness.coax",
-    "bitcoin/examples/witness-commitment.coax",
-    "bitcoin/examples/checks/witness-commitment.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 50,
-   "title": "Chain parameters: mainnet, testnet4, signet and regtest",
-   "file": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    36,
-    47,
-    48
-   ],
-   "source": [
-    "coax/lib/bitcoin/chainparams.coax",
-    "bitcoin/examples/chain-params.coax",
-    "bitcoin/examples/checks/chain-params.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 51,
-   "title": "Header rules: time, versions and deployments",
-   "file": "ch051-header-rules-time-versions-and-deployments.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    47,
-    48,
-    50
-   ],
-   "source": [
-    "bitcoin/examples/header-rules.coax",
-    "bitcoin/examples/checks/header-rules.coax",
-    "coax/lib/bitcoin/header.coax",
-    "coax/lib/bitcoin/locktime.coax",
-    "coax/tests/bitcoin/header_vectors.coax",
-    "coax/tests/bitcoin/header.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 52,
-   "title": "Transaction checks outside script",
-   "file": "ch052-transaction-checks-outside-script.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    35,
-    39,
-    40
-   ],
-   "source": [
-    "bitcoin/examples/tx-checks.coax",
-    "bitcoin/examples/checks/tx-checks.coax",
-    "coax/lib/bitcoin/txcheck.coax",
-    "coax/lib/bitcoin/fees.coax",
-    "coax/lib/bitcoin/locktime.coax",
-    "coax/tests/bitcoin/txcheck_vectors.coax",
-    "coax/tests/bitcoin/make_txcheck_vectors.py",
-    "coax/tests/bitcoin/txcheck.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 53,
-   "title": "Sigops, weight and block limits",
-   "file": "ch053-sigops-weight-and-block-limits.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36,
-    40
-   ],
-   "source": [
-    "bitcoin/examples/sigop-limits.coax",
-    "bitcoin/examples/checks/sigop-limits.coax",
-    "coax/lib/bitcoin/sigops.coax",
-    "coax/lib/bitcoin/script.coax",
-    "coax/lib/bitcoin/merkle.coax",
-    "coax/lib/bitcoin/txcheck.coax",
-    "coax/tests/bitcoin/sigops_vectors.coax",
-    "coax/tests/bitcoin/make_sigops_vectors.py",
-    "coax/tests/bitcoin/sigops.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 54,
-   "title": "The subsidy and the coinbase",
-   "file": "ch054-the-subsidy-and-the-coinbase.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    50
-   ],
-   "source": [
-    "bitcoin/examples/subsidy-coinbase.coax",
-    "bitcoin/examples/checks/subsidy-coinbase.coax",
-    "coax/lib/bitcoin/subsidy.coax",
-    "coax/lib/bitcoin/chainparams.coax",
-    "coax/lib/bitcoin/txcheck.coax",
-    "coax/tests/bitcoin/subsidy_vectors.coax",
-    "coax/tests/bitcoin/make_subsidy_vectors.py",
-    "coax/tests/bitcoin/subsidy.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 55,
-   "title": "Script flags by height and their exceptions",
-   "file": "ch055-script-flags-by-height-and-their-exceptions.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36,
-    44,
-    50,
-    51
-   ],
-   "source": [
-    "coax/lib/bitcoin/scriptflags.coax",
-    "coax/lib/bitcoin/chainparams.coax",
-    "bitcoin/examples/script-flags.coax",
-    "bitcoin/examples/script-flags-refused.coax",
-    "coax/tests/bitcoin/scriptflags-native.coax",
-    "coax/tests/bitcoin/scriptflags.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 56,
-   "title": "The UTXO set and MuHash3072",
-   "file": "ch056-the-utxo-set-and-muhash3072.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    2,
-    4,
-    11,
-    17,
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/muhash.coax",
-    "coax/lib/bitcoin/coins.coax",
-    "bitcoin/examples/utxo-set.coax",
-    "bitcoin/examples/checks/utxo-set.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 57,
-   "title": "Validate a block: every consensus rule",
-   "file": "ch057-validate-a-block-every-consensus-rule.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    43,
-    45,
-    46,
-    49,
-    51,
-    52,
-    53,
-    54,
-    55,
-    56
-   ],
-   "source": [
-    "coax/lib/bitcoin/validation.coax",
-    "bitcoin/examples/validate-block.coax",
-    "coax/tests/bitcoin/validation_checks.coax",
-    "coax/tests/bitcoin/validation_edges.coax",
-    "coax/tests/bitcoin/validation-native.coax",
-    "coax/tests/bitcoin/validation.py",
-    "coax/tests/bitcoin/validation-corpus.py",
-    "coax/tests/bitcoin/validation_sanitized.c"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 58,
-   "title": "Connect and disconnect a block",
-   "file": "ch058-connect-and-disconnect-a-block.md",
-   "status": "implemented",
-   "profile": "native C (validated and explorer light)",
-   "depends_on": [
-    34,
-    49,
-    56,
-    57,
-    59,
-    62
-   ],
-   "source": [
-    "coax/lib/bitcoin/lightstore.coax",
-    "coax/lib/bitcoin/lightpolicy.coax",
-    "coax/lib/bitcoin/lightchain.coax",
-    "coax/lib/bitcoin/kvhash.coax",
-    "bitcoin/examples/light-chain.coax",
-    "bitcoin/examples/live/light-chain.coax",
-    "coax/tests/bitcoin/lightchain_cases.coax",
-    "coax/tests/bitcoin/lightchain_vectors.coax",
-    "coax/tests/bitcoin/lightchain-native.coax",
-    "coax/tests/bitcoin/lightchain.py",
-    "coax/lib/bitcoin/chainstate.coax",
-    "coax/lib/bitcoin/chainstate-store.coax",
-    "coax/lib/bitcoin/blockundo.coax",
-    "coax/tests/bitcoin/chainstate_checks.coax",
-    "coax/tests/bitcoin/chainstate_store_checks.coax",
-    "coax/tests/bitcoin/chainstate-native.coax",
-    "coax/tests/bitcoin/chainstate.py",
-    "coax/tests/bitcoin/chainstate_sanitized.c",
-    "bitcoin/examples/validated-chain.coax",
-    "bitcoin/examples/live/validated-chain.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 59,
-   "title": "The block index and the most-work chain",
-   "file": "ch059-the-block-index-and-the-most-work-chain.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    48,
-    51
-   ],
-   "source": [
-    "coax/lib/bitcoin/blockindex.coax",
-    "bitcoin/examples/block-index.coax",
-    "bitcoin/examples/checks/block-index.coax",
-    "coax/tests/bitcoin/blockindex_vectors.coax",
-    "coax/tests/bitcoin/make_blockindex_vectors.py",
-    "coax/tests/bitcoin/blockindex.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 60,
-   "title": "Reorganizations and invalid chains",
-   "file": "ch060-reorganizations-and-invalid-chains.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    57,
-    58,
-    59,
-    62
-   ],
-   "source": [
-    "coax/lib/bitcoin/lightstore.coax",
-    "coax/lib/bitcoin/lightpolicy.coax",
-    "coax/lib/bitcoin/lightchain.coax",
-    "coax/lib/bitcoin/kvhash.coax",
-    "bitcoin/examples/light-chain.coax",
-    "bitcoin/examples/live/light-chain.coax",
-    "coax/tests/bitcoin/lightchain_cases.coax",
-    "coax/tests/bitcoin/lightchain_vectors.coax",
-    "coax/tests/bitcoin/lightchain-native.coax",
-    "coax/tests/bitcoin/lightchain.py",
-    "coax/lib/bitcoin/chainbatch.coax",
-    "coax/lib/bitcoin/chainreorg.coax",
-    "bitcoin/examples/validated-reorg.coax",
-    "coax/tests/bitcoin/chainreorg_checks.coax",
-    "coax/tests/bitcoin/chainreorg_vectors.coax",
-    "coax/tests/bitcoin/chainreorg-native.coax",
-    "coax/tests/bitcoin/chainreorg.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 61,
-   "title": "Block files and undo files",
-   "file": "ch061-block-files-and-undo-files.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/blockfiles.coax",
-    "bitcoin/examples/block-files.coax",
-    "bitcoin/examples/live/block-files.coax",
-    "coax/tests/bitcoin/blockfiles.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 62,
-   "title": "A key-value store for the chainstate",
-   "file": "ch062-a-key-value-store-for-the-chainstate.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    1,
-    5
-   ],
-   "source": [
-    "coax/lib/bitcoin/kvstore.coax",
-    "bitcoin/examples/chainstate-store.coax",
-    "bitcoin/examples/checks/chainstate-store.coax",
-    "coax/lib/bitcoin/kvhash.coax",
-    "coax/lib/bitcoin/kvskip.coax",
-    "coax/tests/bitcoin/kvskip_checks.coax",
-    "coax/tests/bitcoin/kvskip_store_checks.coax",
-    "coax/tests/bitcoin/kv_bounds_checks.coax",
-    "coax/tests/bitcoin/kvskip.py",
-    "coax/tests/bitcoin/kvskip-store.py",
-    "coax/lib/bitcoin/kvstream.coax",
-    "bitcoin/platform/kvstream-file.coax",
-    "coax/tests/bitcoin/kvstream-native.coax",
-    "coax/tests/bitcoin/kvstream.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 63,
-   "title": "The coins cache and crash-safe flushes",
-   "file": "ch063-the-coins-cache-and-crash-safe-flushes.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    56,
-    58,
-    60,
-    62
-   ],
-   "source": [
-    "coax/lib/bitcoin/kvwriteback.coax",
-    "coax/lib/bitcoin/coinscache.coax",
-    "coax/tests/bitcoin/coinscache_checks.coax",
-    "coax/tests/bitcoin/coinscache-native.coax",
-    "coax/tests/bitcoin/coinscache.py",
-    "bitcoin/examples/coins-cache.coax",
-    "bitcoin/examples/live/cached-chain.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 64,
-   "title": "Pruning",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    61,
-    63
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 65,
-   "title": "P2P messages and checksums",
-   "file": "ch065-p2p-messages-and-checksums.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    34
-   ],
-   "source": [
-    "coax/lib/bitcoin/p2p.coax",
-    "bitcoin/examples/p2p-messages.coax",
-    "bitcoin/examples/checks/p2p-messages.coax",
-    "coax/tests/bitcoin/p2p_checks.coax",
-    "coax/tests/bitcoin/p2p-large.coax",
-    "coax/tests/bitcoin/p2p-large.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 66,
-   "title": "ElligatorSwift",
-   "file": "ch066-elligatorswift.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    15,
-    17
-   ],
-   "source": [
-    "coax/lib/bitcoin/ellswift.coax",
-    "bitcoin/examples/ellswift.coax",
-    "bitcoin/examples/checks/ellswift.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 67,
-   "title": "The v2 encrypted transport",
-   "file": "ch067-the-v2-encrypted-transport.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    9,
-    12,
-    65,
-    66
-   ],
-   "source": [
-    "coax/lib/bitcoin/v2transport.coax",
-    "bitcoin/examples/v2-transport.coax",
-    "bitcoin/examples/checks/v2-transport.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 68,
-   "title": "The handshake and feature negotiation",
-   "file": "ch068-the-handshake-and-feature-negotiation.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    65,
-    67
-   ],
-   "source": [
-    "coax/lib/bitcoin/handshake.coax",
-    "bitcoin/examples/handshake.coax",
-    "bitcoin/examples/checks/handshake.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 69,
-   "title": "Addresses and the address manager",
-   "file": "ch069-addresses-and-the-address-manager.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    10,
-    65,
-    68
-   ],
-   "source": [
-    "coax/lib/bitcoin/addrman.coax",
-    "bitcoin/examples/addrman.coax",
-    "bitcoin/examples/checks/addrman.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 70,
-   "title": "Connections: outbound, block-relay-only, feelers and eviction",
-   "file": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    68,
-    69
-   ],
-   "source": [
-    "coax/lib/bitcoin/connman.coax",
-    "bitcoin/examples/connman.coax",
-    "bitcoin/examples/checks/connman.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 71,
-   "title": "Misbehavior, limits and denial of service",
-   "file": "ch071-misbehavior-limits-and-denial-of-service.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    68,
-    70
-   ],
-   "source": [
-    "coax/lib/bitcoin/dos.coax",
-    "bitcoin/examples/dos.coax",
-    "bitcoin/examples/checks/dos.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 72,
-   "title": "Headers sync and block download",
-   "file": "ch072-headers-sync-and-block-download.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    46,
-    59,
-    65,
-    68,
-    71
-   ],
-   "source": [
-    "coax/lib/bitcoin/sync.coax",
-    "bitcoin/examples/headers-sync.coax",
-    "bitcoin/examples/checks/headers-sync.coax",
-    "bitcoin/examples/live/sync-node.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 73,
-   "title": "Compact blocks",
-   "file": "ch073-compact-blocks.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    10,
-    35,
-    49,
-    65,
-    68
-   ],
-   "source": [
-    "coax/lib/bitcoin/cmpctblock.coax",
-    "bitcoin/examples/compact-blocks.coax",
-    "bitcoin/examples/checks/compact-blocks.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 74,
-   "title": "Compact block filters",
-   "file": "ch074-compact-block-filters.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    10,
-    46
-   ],
-   "source": [
-    "coax/lib/bitcoin/blockfilter.coax",
-    "bitcoin/examples/block-filters.coax",
-    "bitcoin/examples/checks/block-filters.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 75,
-   "title": "Proxies, Tor and I2P",
-   "file": "ch075-proxies-tor-and-i2p.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    68,
-    70
-   ],
-   "source": [
-    "coax/lib/bitcoin/proxy.coax",
-    "coax/lib/crypto/sha3.coax",
-    "bitcoin/examples/proxy.coax",
-    "bitcoin/examples/checks/proxy.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 76,
-   "title": "The signature cache and parallel script checks",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    57
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 77,
-   "title": "Faster verification: the GLV endomorphism",
-   "file": "ch077-faster-verification-the-glv-endomorphism.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    16,
-    19,
-    23
-   ],
-   "source": [
-    "coax/lib/crypto/secp_glv.coax",
-    "bitcoin/examples/glv.coax",
-    "bitcoin/examples/checks/glv.coax",
-    "coax/tests/bitcoin/glv.py",
-    "coax/tests/bitcoin/glv_bench.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 78,
-   "title": "assumevalid",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    57,
-    72
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 79,
-   "title": "AssumeUTXO snapshots",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    56,
-    63,
-    72
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 80,
-   "title": "Sync mainnet from genesis",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    63,
-    64,
-    72,
-    76,
-    77,
-    78
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 81,
-   "title": "Policy is not consensus: standardness",
-   "file": "ch081-policy-is-not-consensus-standardness.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36,
-    40,
-    53
-   ],
-   "source": [
-    "coax/lib/bitcoin/policy.coax",
-    "bitcoin/examples/standardness.coax",
-    "bitcoin/examples/checks/standardness.coax",
-    "coax/tests/bitcoin/policy.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 82,
-   "title": "Mempool acceptance and limits",
-   "file": "ch082-mempool-acceptance-and-limits.md",
-   "status": "partly implemented",
-   "profile": "native C (unvalidated explorer observations)",
-   "depends_on": [
-    57,
-    81
-   ],
-   "source": [
-    "coax/lib/bitcoin/mempool.coax",
-    "coax/lib/bitcoin/mempool-feed.coax",
-    "bitcoin/platform/explorer-mempool.coax",
-    "bitcoin/examples/mempool-observations.coax",
-    "bitcoin/examples/live/mempool-peer.coax",
-    "bitcoin/explorer/mempool-check.coax",
-    "coax/tests/bitcoin/mempool.py",
-    "proto/openagents/bitcoin/mempool/v1alpha1/mempool.proto",
-    "docs/protocol/bitcoin-mempool-v1.md"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 83,
-   "title": "Transaction relay and orphans",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    68,
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 84,
-   "title": "Replacement: RBF and TRUC",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 85,
-   "title": "Packages, CPFP and anchors",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    82,
-    84
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 86,
-   "title": "Eviction, expiry and persistence",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 87,
-   "title": "Fee estimation",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 88,
-   "title": "Block templates and mining",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    49,
-    54,
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 89,
-   "title": "The node process: configuration, data directory, logs and shutdown",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    63
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 90,
-   "title": "JSON-RPC and REST",
-   "file": "ch090-json-rpc-and-rest.md",
-   "status": "partly implemented",
-   "profile": "native C (read-only explorer HTTP)",
-   "depends_on": [
-    29,
-    59,
-    61,
-    62,
-    91,
-    125
-   ],
-   "source": [
-    "proto/openagents/bitcoin/explorer/v1alpha1/explorer.proto",
-    "docs/protocol/bitcoin-explorer-v1.md",
-    "coax/lib/bitcoin/explorer-request.coax",
-    "coax/lib/bitcoin/explorer-rpc.coax",
-    "coax/lib/bitcoin/explorer-store.coax",
-    "coax/lib/bitcoin/explorer-body.coax",
-    "coax/lib/bitcoin/explorer-json.coax",
-    "bitcoin/examples/explorer-api.coax",
-    "bitcoin/examples/live/explorer-api.coax",
-    "coax/tests/bitcoin/explorer.py",
-    "bitcoin/platform/explorer-http.coax",
-    "bitcoin/platform/explorer-node.coax",
-    "bitcoin/platform/explorer-native.c",
-    "bitcoin/platform/explorer-files-native.c",
-    "coax/tests/bitcoin/explorer-node.py",
-    "coax/tests/bitcoin/explorer-reference.py",
-    "coax/tests/bitcoin/explorer-core-reorg.py",
-    "coax/tests/bitcoin/explorer-core-browser.py",
-    "bitcoin/explorer/node-check.coax",
-    "bitcoin/explorer/signet-check.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 91,
-   "title": "Indexes: transactions, filters and coin statistics",
-   "file": "ch091-indexes-transactions-filters-and-coin-statistics.md",
-   "status": "partly implemented",
-   "profile": "native C (explorer transaction index)",
-   "depends_on": [
-    34,
-    58,
-    59,
-    60,
-    61,
-    62
-   ],
-   "source": [
-    "coax/lib/bitcoin/txindex.coax",
-    "coax/lib/bitcoin/txindex-store.coax",
-    "coax/lib/bitcoin/txindex-files.coax",
-    "bitcoin/examples/tx-index.coax",
-    "bitcoin/examples/live/tx-index.coax",
-    "coax/tests/bitcoin/txindex-native.coax",
-    "coax/tests/bitcoin/txindex.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 92,
-   "title": "Notifications for wallets and Lightning",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    60,
-    82
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 93,
-   "title": "Shadow mode beside Bitcoin Core",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    80,
-    90
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 94,
-   "title": "PSBT",
-   "file": "ch094-psbt.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    38,
-    43
-   ],
-   "source": [
-    "bitcoin/examples/psbt.coax",
-    "bitcoin/examples/checks/psbt.coax",
-    "coax/lib/bitcoin/psbt.coax",
-    "coax/lib/crypto/ecdsa_sign.coax",
-    "coax/tests/bitcoin/psbt_vectors.coax",
-    "coax/tests/bitcoin/make_psbt_vectors.py",
-    "coax/tests/bitcoin/psbt_cases.py",
-    "coax/tests/bitcoin/psbt_reference.py",
-    "coax/tests/bitcoin/psbt.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 95,
-   "title": "Coin selection and change",
-   "file": "ch095-coin-selection-and-change.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    40,
-    94
-   ],
-   "source": [
-    "bitcoin/examples/coinselect.coax",
-    "bitcoin/examples/checks/coinselect.coax",
-    "coax/lib/bitcoin/coinselect.coax",
-    "coax/lib/bitcoin/fees.coax",
-    "coax/lib/crypto/chacha20.coax",
-    "coax/tests/bitcoin/coinselect_vectors.coax",
-    "coax/tests/bitcoin/make_coinselect_vectors.py",
-    "coax/tests/bitcoin/coinselect_reference.py",
-    "coax/tests/bitcoin/coinselect.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 96,
-   "title": "Message signing",
-   "file": "ch096-message-signing.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    36,
-    42,
-    43,
-    94
-   ],
-   "source": [
-    "bitcoin/examples/bip322.coax",
-    "bitcoin/examples/checks/bip322.coax",
-    "coax/lib/bitcoin/bip322.coax",
-    "coax/lib/bitcoin/psbt.coax",
-    "coax/lib/bitcoin/signmessage.coax",
-    "coax/tests/bitcoin/bip322_vectors.coax",
-    "coax/tests/bitcoin/make_bip322_vectors.py",
-    "coax/tests/bitcoin/bip322_reference.py",
-    "coax/tests/bitcoin/bip322.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 97,
-   "title": "Silent payments",
-   "file": "ch097-silent-payments.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    16,
-    24,
-    28,
-    29,
-    32,
-    41
-   ],
-   "source": [
-    "bitcoin/examples/silent.coax",
-    "bitcoin/examples/checks/silent.coax",
-    "coax/lib/bitcoin/silent.coax",
-    "coax/tests/bitcoin/silent_vectors.coax",
-    "coax/tests/bitcoin/make_silent_vectors.py",
-    "coax/tests/bitcoin/silent_reference.py",
-    "coax/tests/bitcoin/silent.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 98,
-   "title": "Miniscript",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    30,
-    36,
-    44
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 99,
-   "title": "A descriptor wallet on our node",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    30,
-    33,
-    92,
-    94,
-    95
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 100,
-   "title": "Multisig",
-   "file": "ch100-multisig.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    30,
-    36
-   ],
-   "source": [
-    "bitcoin/examples/multisig.coax",
-    "bitcoin/examples/checks/multisig.coax",
-    "coax/lib/bitcoin/multisig.coax",
-    "coax/tests/bitcoin/multisig_vectors.coax",
-    "coax/tests/bitcoin/make_multisig_vectors.py",
-    "coax/tests/bitcoin/multisig.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 101,
-   "title": "MuSig2",
-   "file": "ch101-musig2.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    24,
-    41
-   ],
-   "source": [
-    "bitcoin/examples/musig2.coax",
-    "bitcoin/examples/checks/musig2.coax",
-    "coax/lib/bitcoin/musig.coax",
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/lib/crypto/secp_mult.coax",
-    "coax/lib/crypto/schnorr_point_workspace.coax",
-    "coax/tests/bitcoin/musig_vectors.coax",
-    "coax/tests/bitcoin/make_musig_vectors.py",
-    "coax/tests/bitcoin/musig.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 102,
-   "title": "FROST threshold signatures",
-   "file": "ch102-frost-threshold-signatures.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    101
-   ],
-   "source": [
-    "bitcoin/examples/frost.coax",
-    "bitcoin/examples/checks/frost.coax",
-    "coax/lib/bitcoin/frost.coax",
-    "coax/lib/bitcoin/musig.coax",
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/tests/bitcoin/frost_vectors.coax",
-    "coax/tests/bitcoin/make_frost_vectors.py",
-    "coax/tests/bitcoin/frost.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 103,
-   "title": "Adaptor signatures",
-   "file": "ch103-adaptor-signatures.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    24
-   ],
-   "source": [
-    "coax/lib/bitcoin/adaptor.coax",
-    "bitcoin/examples/adaptor-signatures.coax",
-    "bitcoin/examples/checks/adaptor-signatures.coax",
-    "coax/tests/bitcoin/adaptor_vectors.coax",
-    "coax/tests/bitcoin/adaptor.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 104,
-   "title": "Messages and TLVs",
-   "file": "ch104-messages-and-tlvs.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    1
-   ],
-   "source": [
-    "coax/lib/lightning/bolt1.coax",
-    "bitcoin/examples/lightning-messages.coax",
-    "bitcoin/examples/checks/lightning-messages.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 105,
-   "title": "The Noise handshake",
-   "file": "ch105-the-noise-handshake.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    9,
-    12,
-    16
-   ],
-   "source": [
-    "coax/lib/lightning/noise.coax",
-    "bitcoin/examples/lightning-noise.coax",
-    "bitcoin/examples/checks/lightning-noise.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 106,
-   "title": "Commitment keys and revocation",
-   "file": "ch106-commitment-keys-and-revocation.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    4,
-    16
-   ],
-   "source": [
-    "coax/lib/lightning/keys.coax",
-    "bitcoin/examples/lightning-keys.coax",
-    "bitcoin/examples/checks/lightning-keys.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 107,
-   "title": "Shachain",
-   "file": "ch107-shachain.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    4
-   ],
-   "source": [
-    "coax/lib/lightning/shachain.coax",
-    "bitcoin/examples/lightning-shachain.coax",
-    "bitcoin/examples/checks/lightning-shachain.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 108,
-   "title": "Commitment and HTLC transactions",
-   "file": "ch108-commitment-and-htlc-transactions.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    38,
-    100,
-    106
-   ],
-   "source": [
-    "coax/lib/lightning/commitment.coax",
-    "bitcoin/examples/lightning-commitment.coax",
-    "bitcoin/examples/checks/lightning-commitment.coax",
-    "coax/tests/lightning/commitment_vectors.coax",
-    "coax/tests/lightning/make_commitment_vectors.py",
-    "coax/tests/lightning/bolt3_tx.py",
-    "coax/tests/lightning/commitment.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 109,
-   "title": "Open, update and close a channel",
-   "file": "ch109-open-update-and-close-a-channel.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    104,
-    105,
-    107,
-    108
-   ],
-   "source": [
-    "coax/lib/lightning/channel.coax",
-    "bitcoin/examples/lightning-channel.coax",
-    "bitcoin/examples/checks/lightning-channel.coax",
-    "coax/tests/lightning/channel.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 110,
-   "title": "Watch the chain",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    92,
-    109
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 111,
-   "title": "Onion routing and blinded paths",
-   "file": "ch111-onion-routing-and-blinded-paths.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    8,
-    11,
-    16
-   ],
-   "source": [
-    "coax/lib/lightning/onion.coax",
-    "bitcoin/examples/lightning-onion.coax",
-    "bitcoin/examples/checks/lightning-onion.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 112,
-   "title": "Gossip and the channel graph",
-   "file": "ch112-gossip-and-the-channel-graph.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    19,
-    104
-   ],
-   "source": [
-    "coax/lib/lightning/gossip.coax",
-    "bitcoin/examples/lightning-gossip.coax",
-    "bitcoin/examples/checks/lightning-gossip.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 113,
-   "title": "Find a route and pay",
-   "file": "ch113-find-a-route-and-pay.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    109,
-    111,
-    112,
-    114
-   ],
-   "source": [
-    "coax/lib/lightning/pay.coax",
-    "bitcoin/examples/lightning-pay.coax",
-    "bitcoin/examples/checks/lightning-pay.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 114,
-   "title": "Invoices",
-   "file": "ch114-invoices.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    27
-   ],
-   "source": [
-    "coax/lib/lightning/invoice.coax",
-    "bitcoin/examples/lightning-invoice.coax",
-    "bitcoin/examples/checks/lightning-invoice.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 115,
-   "title": "Offers",
-   "file": "ch115-offers.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    5,
-    24,
-    104
-   ],
-   "source": [
-    "coax/lib/lightning/offers.coax",
-    "bitcoin/examples/lightning-offers.coax",
-    "bitcoin/examples/checks/lightning-offers.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 116,
-   "title": "Test vectors and their provenance",
-   "file": "ch116-test-vectors-and-their-provenance.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [],
-   "source": [
-    "coax/tests/vectors/manifest.json",
-    "coax/tests/vectors/pins.json",
-    "coax/tests/vectors/check_vectors.py",
-    "coax/tests/vectors/check_pins.py",
-    "coax/tests/vectors/test_pins.py",
-    "coax/tests/bitcoin/make_provenance_vectors.py",
-    "coax/tests/bitcoin/provenance_vectors.coax",
-    "coax/tests/bitcoin/provenance.py",
-    "bitcoin/examples/provenance.coax",
-    "bitcoin/examples/checks/provenance.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 117,
-   "title": "Differential tests",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    24,
-    36,
-    43,
-    57
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 118,
-   "title": "Bitcoin Core's functional tests against our node",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    68,
-    90
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 119,
-   "title": "Fuzzing",
-   "file": "ch119-fuzzing.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    26,
-    34,
-    65,
-    94,
-    114,
-    116
-   ],
-   "source": [
-    "coax/tests/bitcoin/fuzz_targets.coax",
-    "coax/tests/bitcoin/fuzz.py",
-    "coax/tests/bitcoin/fuzz_regressions.json",
-    "coax/tests/bitcoin/make_fuzz_seeds.py",
-    "coax/tests/bitcoin/fuzz_seeds.coax",
-    "coax/tests/bitcoin/p2p.py",
-    "bitcoin/examples/fuzzing.coax",
-    "bitcoin/examples/checks/fuzzing.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 120,
-   "title": "Formal properties",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    57
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 121,
-   "title": "One seed for Nostr and Bitcoin",
-   "file": "ch121-one-seed-for-nostr-and-bitcoin.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    31,
-    33
-   ],
-   "source": [
-    "bitcoin/examples/one-seed.coax",
-    "bitcoin/examples/checks/one-seed.coax",
-    "coax/lib/bitcoin/oneseed.coax",
-    "coax/lib/bitcoin/descriptor.coax",
-    "coax/lib/bitcoin/path.coax",
-    "coax/lib/nostr/nip06.coax",
-    "coax/tests/bitcoin/oneseed.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 122,
-   "title": "Agent treasuries",
-   "file": "ch122-agent-treasuries.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    94,
-    100,
-    101
-   ],
-   "source": [
-    "bitcoin/examples/treasury.coax",
-    "bitcoin/examples/checks/treasury.coax",
-    "coax/lib/bitcoin/treasury.coax",
-    "coax/lib/bitcoin/psbt.coax",
-    "coax/lib/bitcoin/musig.coax",
-    "coax/lib/bitcoin/taproot.coax",
-    "coax/tests/bitcoin/treasury.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 123,
-   "title": "Paying for requests",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    113,
-    114
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 124,
-   "title": "Our node on Pylons and Metaverse OS",
-   "file": null,
-   "status": "planned",
-   "profile": null,
-   "depends_on": [
-    89,
-    93
-   ],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 125,
-   "title": "Address history, balances and spends",
-   "file": "ch125-address-history-balances-and-spends.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    29,
-    58,
-    60,
-    91
-   ],
-   "source": [
-    "coax/lib/bitcoin/addrindex.coax",
-    "coax/lib/bitcoin/addrindex-stage.coax",
-    "coax/lib/bitcoin/addrindex-store.coax",
-    "bitcoin/platform/index-file.coax",
-    "bitcoin/examples/address-index.coax",
-    "bitcoin/examples/live/address-index.coax",
-    "coax/tests/bitcoin/addrindex-native.coax",
-    "coax/tests/bitcoin/addrindex.py",
-    "coax/lib/bitcoin/addrindex-private.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  }
- ]
+  "schema": 1,
+  "book": "bitcoin",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "Bytes, hex and base64",
+      "file": "ch001-bytes-hex-and-base64.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "coax:5",
+        "coax:6"
+      ],
+      "source": [
+        "coax/lib/crypto/bytes.coax",
+        "coax/lib/nostr/base64.coax",
+        "coax/lib/nostr/codecs-common.coax",
+        "coax/lib/nostr/hex.coax",
+        "bitcoin/examples/bytes-hex-base64.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/main.coax",
+        "apps/openagents-web/project-names.coax"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Big integers in fixed limbs",
+      "file": "ch002-big-integers-in-fixed-limbs.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1,
+        "coax:13"
+      ],
+      "source": [
+        "coax/lib/crypto/secp_field.coax",
+        "coax/lib/crypto/secp_scalar.coax",
+        "bitcoin/examples/big-integers-in-limbs.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/secp_group.coax",
+        "coax/lib/crypto/secp_mult_const.coax"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Constant-time rules and secrets",
+      "file": "ch003-constant-time-rules.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1,
+        2,
+        "coax:23"
+      ],
+      "source": [
+        "coax/lib/crypto/bytes.coax",
+        "coax/lib/crypto/secret-flow.coax",
+        "coax/lib/crypto/secret-types.coax",
+        "coax/lib/crypto/zeroize.coax",
+        "bitcoin/examples/constant-time-rules.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 4,
+      "title": "SHA-256",
+      "file": "ch004-sha-256.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1
+      ],
+      "source": [
+        "coax/lib/crypto/sha256-kernel.coax",
+        "coax/lib/crypto/sha256.coax",
+        "coax/lib/crypto/sha256_workspace.coax",
+        "bitcoin/examples/sha-256.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "psionic/lib/model-io/identity.coax",
+        "psionic/lib/pylon/host.coax"
+      ]
+    },
+    {
+      "number": 5,
+      "title": "SHA-256d and tagged hashes",
+      "file": "ch005-sha-256d-and-tagged-hashes.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        4
+      ],
+      "source": [
+        "coax/lib/bitcoin/hash.coax",
+        "coax/lib/crypto/sha256.coax",
+        "bitcoin/examples/sha-256d.coax",
+        "bitcoin/examples/checks/sha-256d.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/bitcoin/sighash.coax"
+      ]
+    },
+    {
+      "number": 6,
+      "title": "RIPEMD-160 and HASH160",
+      "file": "ch006-ripemd-160-and-hash160.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        1,
+        4
+      ],
+      "source": [
+        "coax/lib/crypto/ripemd160.coax",
+        "coax/lib/bitcoin/hash160.coax",
+        "bitcoin/examples/ripemd160.coax",
+        "bitcoin/examples/checks/ripemd160.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 7,
+      "title": "SHA-512",
+      "file": "ch007-sha-512.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1,
+        4
+      ],
+      "source": [
+        "coax/lib/crypto/sha512-kernel.coax",
+        "coax/lib/crypto/sha512.coax",
+        "coax/lib/crypto/sha512-memory.coax",
+        "bitcoin/examples/sha-512.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/bip32.coax",
+        "coax/lib/crypto/bip39.coax"
+      ]
+    },
+    {
+      "number": 8,
+      "title": "HMAC-SHA256",
+      "file": "ch008-hmac-sha256.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        4
+      ],
+      "source": [
+        "coax/lib/crypto/hmac.coax",
+        "coax/lib/crypto/hmac_workspace.coax",
+        "coax/lib/crypto/hmac-memory.coax",
+        "bitcoin/examples/hmac-sha256.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/hkdf.coax"
+      ]
+    },
+    {
+      "number": 9,
+      "title": "HKDF",
+      "file": "ch009-hkdf.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        8
+      ],
+      "source": [
+        "coax/lib/crypto/hkdf.coax",
+        "coax/lib/crypto/hkdf-memory.coax",
+        "bitcoin/examples/hkdf.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/nostr/nip44.coax"
+      ]
+    },
+    {
+      "number": 10,
+      "title": "SipHash-2-4",
+      "file": "ch010-siphash-2-4.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1,
+        3,
+        5
+      ],
+      "source": [
+        "coax/lib/crypto/siphash.coax",
+        "bitcoin/examples/siphash.coax",
+        "bitcoin/examples/checks/siphash.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 11,
+      "title": "ChaCha20",
+      "file": "ch011-chacha20.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1
+      ],
+      "source": [
+        "coax/lib/crypto/chacha20.coax",
+        "coax/lib/crypto/hchacha20.coax",
+        "bitcoin/examples/chacha20.coax",
+        "bitcoin/examples/checks/chacha20.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/nostr/nip44.coax"
+      ]
+    },
+    {
+      "number": 12,
+      "title": "Poly1305 and ChaCha20-Poly1305",
+      "file": "ch012-poly1305-and-chacha20-poly1305.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        11,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/poly1305.coax",
+        "coax/lib/crypto/chacha20_poly1305.coax",
+        "coax/lib/crypto/xchacha20_poly1305.coax",
+        "bitcoin/examples/chacha20-poly1305.coax",
+        "bitcoin/examples/checks/chacha20-poly1305.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/aead_workspace.coax",
+        "psionic/lib/peer/link.coax"
+      ]
+    },
+    {
+      "number": 13,
+      "title": "Field arithmetic mod p",
+      "file": "ch013-field-arithmetic-mod-p.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        2,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/secp_field.coax",
+        "coax/lib/crypto/secp_field32.coax",
+        "coax/lib/crypto/secp_field32_total.coax",
+        "bitcoin/examples/field-arithmetic.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/secp_group.coax",
+        "coax/lib/crypto/secp_group32.coax"
+      ]
+    },
+    {
+      "number": 14,
+      "title": "Scalars mod n",
+      "file": "ch014-scalars-mod-n.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        2,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/secp_scalar.coax",
+        "bitcoin/examples/scalars.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/secp_mult_const.coax"
+      ]
+    },
+    {
+      "number": 15,
+      "title": "The secp256k1 group law",
+      "file": "ch015-the-secp256k1-group-law.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        13
+      ],
+      "source": [
+        "coax/lib/crypto/secp_group.coax",
+        "coax/lib/crypto/secp_group32.coax",
+        "bitcoin/examples/group-law.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/secp_mult_const.coax"
+      ]
+    },
+    {
+      "number": 16,
+      "title": "Scalar multiplication",
+      "file": "ch016-scalar-multiplication.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        14,
+        15,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/secp_mult.coax",
+        "coax/lib/crypto/secp_mult_base.coax",
+        "coax/lib/crypto/secp_mult_const.coax",
+        "bitcoin/examples/scalar-mult.coax",
+        "bitcoin/examples/checks/scalar-mult.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/ecdh.coax"
+      ]
+    },
+    {
+      "number": 17,
+      "title": "Point encodings: compressed, uncompressed and x-only",
+      "file": "ch017-point-encodings-compressed-uncompressed-and-x-only.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        15
+      ],
+      "source": [
+        "coax/lib/crypto/secp_encode.coax",
+        "bitcoin/examples/point-encodings.coax",
+        "bitcoin/examples/checks/point-encodings.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/crypto/bip32.coax",
+        "coax/lib/nostr/nipkeys.coax"
+      ]
+    },
+    {
+      "number": 18,
+      "title": "Keys and randomness",
+      "file": "ch018-keys-and-randomness.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        14,
+        3,
+        16
+      ],
+      "source": [
+        "coax/lib/crypto/entropy.coax",
+        "coax/lib/nostr/keys.coax",
+        "bitcoin/examples/keys.coax",
+        "bitcoin/examples/checks/keys.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "psionic/lib/fleet/runtime.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 19,
+      "title": "Verify ECDSA",
+      "file": "ch019-verify-ecdsa.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        5,
+        14,
+        16,
+        17
+      ],
+      "source": [
+        "coax/lib/crypto/ecdsa_verify.coax",
+        "bitcoin/examples/ecdsa-verify.coax",
+        "bitcoin/examples/checks/ecdsa-verify.coax",
+        "coax/lib/crypto/secp_glv.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 20,
+      "title": "Sign with ECDSA",
+      "file": "ch020-sign-with-ecdsa.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        19,
+        8,
+        18,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/ecdsa_sign.coax",
+        "bitcoin/examples/ecdsa-sign.coax",
+        "bitcoin/examples/checks/ecdsa-sign.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/bitcoin/sighash.coax",
+        "coax/lib/nostr/nipkeys_sign.coax"
+      ]
+    },
+    {
+      "number": 21,
+      "title": "Strict DER",
+      "file": "ch021-strict-der.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        19,
+        20
+      ],
+      "source": [
+        "coax/lib/bitcoin/der.coax",
+        "coax/lib/crypto/ecdsa_sign.coax",
+        "bitcoin/examples/strict-der.coax",
+        "bitcoin/examples/checks/strict-der.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 22,
+      "title": "Public key recovery and signed messages",
+      "file": "ch022-public-key-recovery-and-signed-messages.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        19,
+        20,
+        17,
+        26,
+        6,
+        1
+      ],
+      "source": [
+        "coax/lib/crypto/ecdsa_recover.coax",
+        "coax/lib/crypto/ecdsa_sign.coax",
+        "coax/lib/bitcoin/signmessage.coax",
+        "bitcoin/examples/signed-messages.coax",
+        "bitcoin/examples/checks/signed-messages.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 23,
+      "title": "Verify a Schnorr signature",
+      "file": "ch023-verify-a-schnorr-signature.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        4,
+        14,
+        16
+      ],
+      "source": [
+        "coax/lib/crypto/schnorr.coax",
+        "coax/lib/crypto/schnorr_admission.coax",
+        "coax/lib/crypto/schnorr_fast.coax",
+        "bitcoin/examples/schnorr-verify.coax",
+        "bitcoin/examples/checks/schnorr-verify.coax",
+        "coax/lib/crypto/secp_glv.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/nip/nip01-verify.coax",
+        "coax/web/api/nip98.coax",
+        "coax/web/project/landing-nostr.coax"
+      ]
+    },
+    {
+      "number": 24,
+      "title": "Sign with Schnorr",
+      "file": "ch024-sign-with-schnorr.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        23,
+        18,
+        3
+      ],
+      "source": [
+        "coax/lib/crypto/schnorr_self_verify.coax",
+        "coax/lib/crypto/schnorr_sign.coax",
+        "bitcoin/examples/schnorr-sign.coax",
+        "bitcoin/examples/checks/schnorr-sign.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/nostr/event_sign.coax"
+      ]
+    },
+    {
+      "number": 25,
+      "title": "Batch verification",
+      "file": "ch025-batch-verification.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        23
+      ],
+      "source": [
+        "coax/lib/crypto/schnorr_batch.coax",
+        "bitcoin/examples/schnorr-batch.coax",
+        "bitcoin/examples/checks/schnorr-batch.coax",
+        "coax/tests/bitcoin/batch.py",
+        "coax/tests/bitcoin/batch_bench.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 26,
+      "title": "Base58Check",
+      "file": "ch026-base58check.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        5
+      ],
+      "source": [
+        "coax/lib/bitcoin/base58.coax",
+        "bitcoin/examples/base58check.coax",
+        "bitcoin/examples/checks/base58check.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 27,
+      "title": "Bech32",
+      "file": "ch027-bech32.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        1
+      ],
+      "source": [
+        "coax/lib/nostr/bech32-core.coax",
+        "coax/lib/nostr/nip19-core.coax",
+        "bitcoin/examples/bech32.coax",
+        "bitcoin/examples/checks/bech32.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/project-names.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 28,
+      "title": "Bech32m",
+      "file": "ch028-bech32m.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        27
+      ],
+      "source": [
+        "coax/lib/nostr/bech32-core.coax",
+        "coax/lib/bitcoin/segwit.coax",
+        "bitcoin/examples/bech32m.coax",
+        "bitcoin/examples/checks/bech32m.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 29,
+      "title": "Addresses: P2PKH, P2SH, P2WPKH, P2WSH and P2TR",
+      "file": "ch029-addresses.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        6,
+        17,
+        26,
+        28
+      ],
+      "source": [
+        "coax/lib/bitcoin/address.coax",
+        "bitcoin/examples/addresses.coax",
+        "bitcoin/examples/checks/addresses.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 30,
+      "title": "Output descriptors and their checksum",
+      "file": "ch030-output-descriptors-and-their-checksum.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        29,
+        32,
+        33
+      ],
+      "source": [
+        "coax/lib/bitcoin/descriptor.coax",
+        "bitcoin/examples/descriptors.coax",
+        "bitcoin/examples/checks/descriptors.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 31,
+      "title": "Seed phrases",
+      "file": "ch031-seed-phrases.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        4,
+        7,
+        8
+      ],
+      "source": [
+        "coax/lib/crypto/bip39.coax",
+        "bitcoin/examples/seed-phrases.coax",
+        "bitcoin/examples/checks/seed-phrases.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 32,
+      "title": "Hierarchical deterministic keys",
+      "file": "ch032-hierarchical-deterministic-keys.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        6,
+        16,
+        31
+      ],
+      "source": [
+        "coax/lib/crypto/bip32.coax",
+        "bitcoin/examples/hd-keys.coax",
+        "bitcoin/examples/checks/hd-keys.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 33,
+      "title": "Derivation paths",
+      "file": "ch033-derivation-paths.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        29,
+        31,
+        32
+      ],
+      "source": [
+        "coax/lib/bitcoin/path.coax",
+        "bitcoin/examples/derivation-paths.coax",
+        "bitcoin/examples/checks/derivation-paths.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 34,
+      "title": "Transactions and their serialization",
+      "file": "ch034-transactions-and-their-serialization.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        1,
+        3,
+        5
+      ],
+      "source": [
+        "coax/lib/bitcoin/tx.coax",
+        "bitcoin/examples/transactions.coax",
+        "bitcoin/examples/checks/transactions.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/bitcoin/sighash.coax"
+      ]
+    },
+    {
+      "number": 35,
+      "title": "Txids, wtxids and malleability",
+      "file": "ch035-txids-wtxids-and-malleability.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/malleability.coax",
+        "bitcoin/examples/malleability.coax",
+        "bitcoin/examples/checks/malleability.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 36,
+      "title": "The script interpreter",
+      "file": "ch036-the-script-interpreter.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        6,
+        19,
+        21,
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/script.coax",
+        "bitcoin/examples/script-interpreter.coax",
+        "bitcoin/examples/checks/script-interpreter.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 37,
+      "title": "Legacy signature hashes",
+      "file": "ch037-legacy-signature-hashes.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        34,
+        36
+      ],
+      "source": [
+        "coax/lib/bitcoin/script.coax",
+        "bitcoin/examples/legacy-sighash.coax",
+        "bitcoin/examples/checks/legacy-sighash.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 38,
+      "title": "Segwit v0 signature hashes",
+      "file": "ch038-segwit-v0-signature-hashes.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        5,
+        34,
+        36
+      ],
+      "source": [
+        "coax/lib/bitcoin/script.coax",
+        "bitcoin/examples/segwit-sighash.coax",
+        "bitcoin/examples/checks/segwit-sighash.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 39,
+      "title": "Timelocks",
+      "file": "ch039-timelocks.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36
+      ],
+      "source": [
+        "coax/lib/bitcoin/locktime.coax",
+        "coax/lib/bitcoin/script.coax",
+        "bitcoin/examples/timelocks.coax",
+        "bitcoin/examples/checks/timelocks.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 40,
+      "title": "Weight, vsize and fees",
+      "file": "ch040-weight-vsize-and-fees.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/fees.coax",
+        "bitcoin/examples/fees.coax",
+        "bitcoin/examples/checks/fees.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 41,
+      "title": "The key tweak and the key path",
+      "file": "ch041-the-key-tweak-and-the-key-path.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        24
+      ],
+      "source": [
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/lib/bitcoin/address.coax",
+        "coax/lib/bitcoin/sighash.coax",
+        "bitcoin/examples/taproot-key-path.coax",
+        "bitcoin/examples/checks/taproot-key-path.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 42,
+      "title": "Script trees: tapleaves and tapbranches",
+      "file": "ch042-script-trees-tapleaves-and-tapbranches.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        41
+      ],
+      "source": [
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/lib/bitcoin/address.coax",
+        "bitcoin/examples/taproot-script-trees.coax",
+        "bitcoin/examples/checks/taproot-script-trees.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 43,
+      "title": "Taproot signature hashes",
+      "file": "ch043-taproot-signature-hashes.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        41
+      ],
+      "source": [
+        "bitcoin/examples/taproot-sighash.coax",
+        "bitcoin/examples/checks/taproot-sighash.coax",
+        "coax/lib/bitcoin/sighash.coax",
+        "coax/lib/bitcoin/taproot.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 44,
+      "title": "Tapscript",
+      "file": "ch044-tapscript.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36,
+        43
+      ],
+      "source": [
+        "bitcoin/examples/tapscript.coax",
+        "bitcoin/examples/checks/tapscript.coax",
+        "coax/lib/bitcoin/script.coax",
+        "coax/lib/bitcoin/sighash.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 45,
+      "title": "Control blocks and script-path spends",
+      "file": "ch045-control-blocks-and-script-path-spends.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        42,
+        44
+      ],
+      "source": [
+        "bitcoin/examples/script-path-spend.coax",
+        "bitcoin/examples/checks/script-path-spend.coax",
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/lib/bitcoin/script.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 46,
+      "title": "Merkle trees and the duplicate-leaf flaw",
+      "file": "ch046-merkle-trees-and-the-duplicate-leaf-flaw.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        3,
+        5,
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/merkle.coax",
+        "bitcoin/examples/merkle-trees.coax",
+        "bitcoin/examples/checks/merkle-trees.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 47,
+      "title": "Block headers and proof of work",
+      "file": "ch047-block-headers-and-proof-of-work.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        2,
+        3,
+        5
+      ],
+      "source": [
+        "coax/lib/bitcoin/pow.coax",
+        "bitcoin/examples/block-headers.coax",
+        "bitcoin/examples/checks/block-headers.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 48,
+      "title": "Compact targets, retargeting and chainwork",
+      "file": "ch048-compact-targets-retargeting-and-chainwork.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        47
+      ],
+      "source": [
+        "coax/lib/bitcoin/retarget.coax",
+        "bitcoin/examples/retargeting.coax",
+        "bitcoin/examples/checks/retargeting.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 49,
+      "title": "The witness commitment",
+      "file": "ch049-the-witness-commitment.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        35,
+        46
+      ],
+      "source": [
+        "coax/lib/bitcoin/witness.coax",
+        "bitcoin/examples/witness-commitment.coax",
+        "bitcoin/examples/checks/witness-commitment.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 50,
+      "title": "Chain parameters: mainnet, testnet4, signet and regtest",
+      "file": "ch050-chain-parameters-mainnet-testnet4-signet-and-regtest.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        36,
+        47,
+        48
+      ],
+      "source": [
+        "coax/lib/bitcoin/chainparams.coax",
+        "bitcoin/examples/chain-params.coax",
+        "bitcoin/examples/checks/chain-params.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 51,
+      "title": "Header rules: time, versions and deployments",
+      "file": "ch051-header-rules-time-versions-and-deployments.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        47,
+        48,
+        50
+      ],
+      "source": [
+        "bitcoin/examples/header-rules.coax",
+        "bitcoin/examples/checks/header-rules.coax",
+        "coax/lib/bitcoin/header.coax",
+        "coax/lib/bitcoin/locktime.coax",
+        "coax/tests/bitcoin/header_vectors.coax",
+        "coax/tests/bitcoin/header.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 52,
+      "title": "Transaction checks outside script",
+      "file": "ch052-transaction-checks-outside-script.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        35,
+        39,
+        40
+      ],
+      "source": [
+        "bitcoin/examples/tx-checks.coax",
+        "bitcoin/examples/checks/tx-checks.coax",
+        "coax/lib/bitcoin/txcheck.coax",
+        "coax/lib/bitcoin/fees.coax",
+        "coax/lib/bitcoin/locktime.coax",
+        "coax/tests/bitcoin/txcheck_vectors.coax",
+        "coax/tests/bitcoin/make_txcheck_vectors.py",
+        "coax/tests/bitcoin/txcheck.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 53,
+      "title": "Sigops, weight and block limits",
+      "file": "ch053-sigops-weight-and-block-limits.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36,
+        40
+      ],
+      "source": [
+        "bitcoin/examples/sigop-limits.coax",
+        "bitcoin/examples/checks/sigop-limits.coax",
+        "coax/lib/bitcoin/sigops.coax",
+        "coax/lib/bitcoin/script.coax",
+        "coax/lib/bitcoin/merkle.coax",
+        "coax/lib/bitcoin/txcheck.coax",
+        "coax/tests/bitcoin/sigops_vectors.coax",
+        "coax/tests/bitcoin/make_sigops_vectors.py",
+        "coax/tests/bitcoin/sigops.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 54,
+      "title": "The subsidy and the coinbase",
+      "file": "ch054-the-subsidy-and-the-coinbase.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        50
+      ],
+      "source": [
+        "bitcoin/examples/subsidy-coinbase.coax",
+        "bitcoin/examples/checks/subsidy-coinbase.coax",
+        "coax/lib/bitcoin/subsidy.coax",
+        "coax/lib/bitcoin/chainparams.coax",
+        "coax/lib/bitcoin/txcheck.coax",
+        "coax/tests/bitcoin/subsidy_vectors.coax",
+        "coax/tests/bitcoin/make_subsidy_vectors.py",
+        "coax/tests/bitcoin/subsidy.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 55,
+      "title": "Script flags by height and their exceptions",
+      "file": "ch055-script-flags-by-height-and-their-exceptions.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36,
+        44,
+        50,
+        51
+      ],
+      "source": [
+        "coax/lib/bitcoin/scriptflags.coax",
+        "coax/lib/bitcoin/chainparams.coax",
+        "bitcoin/examples/script-flags.coax",
+        "bitcoin/examples/script-flags-refused.coax",
+        "coax/tests/bitcoin/scriptflags-native.coax",
+        "coax/tests/bitcoin/scriptflags.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 56,
+      "title": "The UTXO set and MuHash3072",
+      "file": "ch056-the-utxo-set-and-muhash3072.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        2,
+        4,
+        11,
+        17,
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/muhash.coax",
+        "coax/lib/bitcoin/coins.coax",
+        "bitcoin/examples/utxo-set.coax",
+        "bitcoin/examples/checks/utxo-set.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 57,
+      "title": "Validate a block: every consensus rule",
+      "file": "ch057-validate-a-block-every-consensus-rule.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        43,
+        45,
+        46,
+        49,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56
+      ],
+      "source": [
+        "coax/lib/bitcoin/validation.coax",
+        "bitcoin/examples/validate-block.coax",
+        "coax/tests/bitcoin/validation_checks.coax",
+        "coax/tests/bitcoin/validation_edges.coax",
+        "coax/tests/bitcoin/validation-native.coax",
+        "coax/tests/bitcoin/validation.py",
+        "coax/tests/bitcoin/validation-corpus.py",
+        "coax/tests/bitcoin/validation_sanitized.c"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 58,
+      "title": "Connect and disconnect a block",
+      "file": "ch058-connect-and-disconnect-a-block.md",
+      "status": "implemented",
+      "profile": "native C (validated and explorer light)",
+      "depends_on": [
+        34,
+        49,
+        56,
+        57,
+        59,
+        62
+      ],
+      "source": [
+        "coax/lib/bitcoin/lightstore.coax",
+        "coax/lib/bitcoin/lightpolicy.coax",
+        "coax/lib/bitcoin/lightchain.coax",
+        "coax/lib/bitcoin/kvhash.coax",
+        "bitcoin/examples/light-chain.coax",
+        "bitcoin/examples/live/light-chain.coax",
+        "coax/tests/bitcoin/lightchain_cases.coax",
+        "coax/tests/bitcoin/lightchain_vectors.coax",
+        "coax/tests/bitcoin/lightchain-native.coax",
+        "coax/tests/bitcoin/lightchain.py",
+        "coax/lib/bitcoin/chainstate.coax",
+        "coax/lib/bitcoin/chainstate-store.coax",
+        "coax/lib/bitcoin/blockundo.coax",
+        "coax/tests/bitcoin/chainstate_checks.coax",
+        "coax/tests/bitcoin/chainstate_store_checks.coax",
+        "coax/tests/bitcoin/chainstate-native.coax",
+        "coax/tests/bitcoin/chainstate.py",
+        "coax/tests/bitcoin/chainstate_sanitized.c",
+        "bitcoin/examples/validated-chain.coax",
+        "bitcoin/examples/live/validated-chain.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 59,
+      "title": "The block index and the most-work chain",
+      "file": "ch059-the-block-index-and-the-most-work-chain.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        48,
+        51
+      ],
+      "source": [
+        "coax/lib/bitcoin/blockindex.coax",
+        "bitcoin/examples/block-index.coax",
+        "bitcoin/examples/checks/block-index.coax",
+        "coax/tests/bitcoin/blockindex_vectors.coax",
+        "coax/tests/bitcoin/make_blockindex_vectors.py",
+        "coax/tests/bitcoin/blockindex.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 60,
+      "title": "Reorganizations and invalid chains",
+      "file": "ch060-reorganizations-and-invalid-chains.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        57,
+        58,
+        59,
+        62
+      ],
+      "source": [
+        "coax/lib/bitcoin/lightstore.coax",
+        "coax/lib/bitcoin/lightpolicy.coax",
+        "coax/lib/bitcoin/lightchain.coax",
+        "coax/lib/bitcoin/kvhash.coax",
+        "bitcoin/examples/light-chain.coax",
+        "bitcoin/examples/live/light-chain.coax",
+        "coax/tests/bitcoin/lightchain_cases.coax",
+        "coax/tests/bitcoin/lightchain_vectors.coax",
+        "coax/tests/bitcoin/lightchain-native.coax",
+        "coax/tests/bitcoin/lightchain.py",
+        "coax/lib/bitcoin/chainbatch.coax",
+        "coax/lib/bitcoin/chainreorg.coax",
+        "bitcoin/examples/validated-reorg.coax",
+        "coax/tests/bitcoin/chainreorg_checks.coax",
+        "coax/tests/bitcoin/chainreorg_vectors.coax",
+        "coax/tests/bitcoin/chainreorg-native.coax",
+        "coax/tests/bitcoin/chainreorg.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 61,
+      "title": "Block files and undo files",
+      "file": "ch061-block-files-and-undo-files.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/blockfiles.coax",
+        "bitcoin/examples/block-files.coax",
+        "bitcoin/examples/live/block-files.coax",
+        "coax/tests/bitcoin/blockfiles.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 62,
+      "title": "A key-value store for the chainstate",
+      "file": "ch062-a-key-value-store-for-the-chainstate.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        1,
+        5
+      ],
+      "source": [
+        "coax/lib/bitcoin/kvstore.coax",
+        "bitcoin/examples/chainstate-store.coax",
+        "bitcoin/examples/checks/chainstate-store.coax",
+        "coax/lib/bitcoin/kvhash.coax",
+        "coax/lib/bitcoin/kvskip.coax",
+        "coax/tests/bitcoin/kvskip_checks.coax",
+        "coax/tests/bitcoin/kvskip_store_checks.coax",
+        "coax/tests/bitcoin/kv_bounds_checks.coax",
+        "coax/tests/bitcoin/kvskip.py",
+        "coax/tests/bitcoin/kvskip-store.py",
+        "coax/lib/bitcoin/kvstream.coax",
+        "bitcoin/platform/kvstream-file.coax",
+        "coax/tests/bitcoin/kvstream-native.coax",
+        "coax/tests/bitcoin/kvstream.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 63,
+      "title": "The coins cache and crash-safe flushes",
+      "file": "ch063-the-coins-cache-and-crash-safe-flushes.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        56,
+        58,
+        60,
+        62
+      ],
+      "source": [
+        "coax/lib/bitcoin/kvwriteback.coax",
+        "coax/lib/bitcoin/coinscache.coax",
+        "coax/tests/bitcoin/coinscache_checks.coax",
+        "coax/tests/bitcoin/coinscache-native.coax",
+        "coax/tests/bitcoin/coinscache.py",
+        "bitcoin/examples/coins-cache.coax",
+        "bitcoin/examples/live/cached-chain.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 64,
+      "title": "Pruning",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        61,
+        63
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 65,
+      "title": "P2P messages and checksums",
+      "file": "ch065-p2p-messages-and-checksums.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        34
+      ],
+      "source": [
+        "coax/lib/bitcoin/p2p.coax",
+        "bitcoin/examples/p2p-messages.coax",
+        "bitcoin/examples/checks/p2p-messages.coax",
+        "coax/tests/bitcoin/p2p_checks.coax",
+        "coax/tests/bitcoin/p2p-large.coax",
+        "coax/tests/bitcoin/p2p-large.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 66,
+      "title": "ElligatorSwift",
+      "file": "ch066-elligatorswift.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        15,
+        17
+      ],
+      "source": [
+        "coax/lib/bitcoin/ellswift.coax",
+        "bitcoin/examples/ellswift.coax",
+        "bitcoin/examples/checks/ellswift.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 67,
+      "title": "The v2 encrypted transport",
+      "file": "ch067-the-v2-encrypted-transport.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        9,
+        12,
+        65,
+        66
+      ],
+      "source": [
+        "coax/lib/bitcoin/v2transport.coax",
+        "bitcoin/examples/v2-transport.coax",
+        "bitcoin/examples/checks/v2-transport.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 68,
+      "title": "The handshake and feature negotiation",
+      "file": "ch068-the-handshake-and-feature-negotiation.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        65,
+        67
+      ],
+      "source": [
+        "coax/lib/bitcoin/handshake.coax",
+        "bitcoin/examples/handshake.coax",
+        "bitcoin/examples/checks/handshake.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 69,
+      "title": "Addresses and the address manager",
+      "file": "ch069-addresses-and-the-address-manager.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        10,
+        65,
+        68
+      ],
+      "source": [
+        "coax/lib/bitcoin/addrman.coax",
+        "bitcoin/examples/addrman.coax",
+        "bitcoin/examples/checks/addrman.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 70,
+      "title": "Connections: outbound, block-relay-only, feelers and eviction",
+      "file": "ch070-connections-outbound-block-relay-only-feelers-and-eviction.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        68,
+        69
+      ],
+      "source": [
+        "coax/lib/bitcoin/connman.coax",
+        "bitcoin/examples/connman.coax",
+        "bitcoin/examples/checks/connman.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 71,
+      "title": "Misbehavior, limits and denial of service",
+      "file": "ch071-misbehavior-limits-and-denial-of-service.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        68,
+        70
+      ],
+      "source": [
+        "coax/lib/bitcoin/dos.coax",
+        "bitcoin/examples/dos.coax",
+        "bitcoin/examples/checks/dos.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 72,
+      "title": "Headers sync and block download",
+      "file": "ch072-headers-sync-and-block-download.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        46,
+        59,
+        65,
+        68,
+        71
+      ],
+      "source": [
+        "coax/lib/bitcoin/sync.coax",
+        "bitcoin/examples/headers-sync.coax",
+        "bitcoin/examples/checks/headers-sync.coax",
+        "bitcoin/examples/live/sync-node.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 73,
+      "title": "Compact blocks",
+      "file": "ch073-compact-blocks.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        10,
+        35,
+        49,
+        65,
+        68
+      ],
+      "source": [
+        "coax/lib/bitcoin/cmpctblock.coax",
+        "bitcoin/examples/compact-blocks.coax",
+        "bitcoin/examples/checks/compact-blocks.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 74,
+      "title": "Compact block filters",
+      "file": "ch074-compact-block-filters.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        10,
+        46
+      ],
+      "source": [
+        "coax/lib/bitcoin/blockfilter.coax",
+        "bitcoin/examples/block-filters.coax",
+        "bitcoin/examples/checks/block-filters.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 75,
+      "title": "Proxies, Tor and I2P",
+      "file": "ch075-proxies-tor-and-i2p.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        68,
+        70
+      ],
+      "source": [
+        "coax/lib/bitcoin/proxy.coax",
+        "coax/lib/crypto/sha3.coax",
+        "bitcoin/examples/proxy.coax",
+        "bitcoin/examples/checks/proxy.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 76,
+      "title": "The signature cache and parallel script checks",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        57
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 77,
+      "title": "Faster verification: the GLV endomorphism",
+      "file": "ch077-faster-verification-the-glv-endomorphism.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        16,
+        19,
+        23
+      ],
+      "source": [
+        "coax/lib/crypto/secp_glv.coax",
+        "bitcoin/examples/glv.coax",
+        "bitcoin/examples/checks/glv.coax",
+        "coax/tests/bitcoin/glv.py",
+        "coax/tests/bitcoin/glv_bench.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 78,
+      "title": "assumevalid",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        57,
+        72
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 79,
+      "title": "AssumeUTXO snapshots",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        56,
+        63,
+        72
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 80,
+      "title": "Sync mainnet from genesis",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        63,
+        64,
+        72,
+        76,
+        77,
+        78
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 81,
+      "title": "Policy is not consensus: standardness",
+      "file": "ch081-policy-is-not-consensus-standardness.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36,
+        40,
+        53
+      ],
+      "source": [
+        "coax/lib/bitcoin/policy.coax",
+        "bitcoin/examples/standardness.coax",
+        "bitcoin/examples/checks/standardness.coax",
+        "coax/tests/bitcoin/policy.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 82,
+      "title": "Mempool acceptance and limits",
+      "file": "ch082-mempool-acceptance-and-limits.md",
+      "status": "partly implemented",
+      "profile": "native C (unvalidated explorer observations)",
+      "depends_on": [
+        57,
+        81
+      ],
+      "source": [
+        "coax/lib/bitcoin/mempool.coax",
+        "coax/lib/bitcoin/mempool-feed.coax",
+        "bitcoin/platform/explorer-mempool.coax",
+        "bitcoin/examples/mempool-observations.coax",
+        "bitcoin/examples/live/mempool-peer.coax",
+        "bitcoin/explorer/mempool-check.coax",
+        "coax/tests/bitcoin/mempool.py",
+        "proto/openagents/bitcoin/mempool/v1alpha1/mempool.proto",
+        "docs/protocol/bitcoin-mempool-v1.md"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 83,
+      "title": "Transaction relay and orphans",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        68,
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 84,
+      "title": "Replacement: RBF and TRUC",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 85,
+      "title": "Packages, CPFP and anchors",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        82,
+        84
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 86,
+      "title": "Eviction, expiry and persistence",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 87,
+      "title": "Fee estimation",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 88,
+      "title": "Block templates and mining",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        49,
+        54,
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 89,
+      "title": "The node process: configuration, data directory, logs and shutdown",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        63
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 90,
+      "title": "JSON-RPC and REST",
+      "file": "ch090-json-rpc-and-rest.md",
+      "status": "partly implemented",
+      "profile": "native C (read-only explorer HTTP)",
+      "depends_on": [
+        29,
+        59,
+        61,
+        62,
+        91,
+        125
+      ],
+      "source": [
+        "proto/openagents/bitcoin/explorer/v1alpha1/explorer.proto",
+        "docs/protocol/bitcoin-explorer-v1.md",
+        "coax/lib/bitcoin/explorer-request.coax",
+        "coax/lib/bitcoin/explorer-rpc.coax",
+        "coax/lib/bitcoin/explorer-store.coax",
+        "coax/lib/bitcoin/explorer-body.coax",
+        "coax/lib/bitcoin/explorer-json.coax",
+        "bitcoin/examples/explorer-api.coax",
+        "bitcoin/examples/live/explorer-api.coax",
+        "coax/tests/bitcoin/explorer.py",
+        "bitcoin/platform/explorer-http.coax",
+        "bitcoin/platform/explorer-node.coax",
+        "bitcoin/platform/explorer-native.c",
+        "bitcoin/platform/explorer-files-native.c",
+        "coax/tests/bitcoin/explorer-node.py",
+        "coax/tests/bitcoin/explorer-reference.py",
+        "coax/tests/bitcoin/explorer-core-reorg.py",
+        "coax/tests/bitcoin/explorer-core-browser.py",
+        "bitcoin/explorer/node-check.coax",
+        "bitcoin/explorer/signet-check.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 91,
+      "title": "Indexes: transactions, filters and coin statistics",
+      "file": "ch091-indexes-transactions-filters-and-coin-statistics.md",
+      "status": "partly implemented",
+      "profile": "native C (explorer transaction index)",
+      "depends_on": [
+        34,
+        58,
+        59,
+        60,
+        61,
+        62
+      ],
+      "source": [
+        "coax/lib/bitcoin/txindex.coax",
+        "coax/lib/bitcoin/txindex-store.coax",
+        "coax/lib/bitcoin/txindex-files.coax",
+        "bitcoin/examples/tx-index.coax",
+        "bitcoin/examples/live/tx-index.coax",
+        "coax/tests/bitcoin/txindex-native.coax",
+        "coax/tests/bitcoin/txindex.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 92,
+      "title": "Notifications for wallets and Lightning",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        60,
+        82
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 93,
+      "title": "Shadow mode beside Bitcoin Core",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        80,
+        90
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 94,
+      "title": "PSBT",
+      "file": "ch094-psbt.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        38,
+        43
+      ],
+      "source": [
+        "bitcoin/examples/psbt.coax",
+        "bitcoin/examples/checks/psbt.coax",
+        "coax/lib/bitcoin/psbt.coax",
+        "coax/lib/crypto/ecdsa_sign.coax",
+        "coax/tests/bitcoin/psbt_vectors.coax",
+        "coax/tests/bitcoin/make_psbt_vectors.py",
+        "coax/tests/bitcoin/psbt_cases.py",
+        "coax/tests/bitcoin/psbt_reference.py",
+        "coax/tests/bitcoin/psbt.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 95,
+      "title": "Coin selection and change",
+      "file": "ch095-coin-selection-and-change.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        40,
+        94
+      ],
+      "source": [
+        "bitcoin/examples/coinselect.coax",
+        "bitcoin/examples/checks/coinselect.coax",
+        "coax/lib/bitcoin/coinselect.coax",
+        "coax/lib/bitcoin/fees.coax",
+        "coax/lib/crypto/chacha20.coax",
+        "coax/tests/bitcoin/coinselect_vectors.coax",
+        "coax/tests/bitcoin/make_coinselect_vectors.py",
+        "coax/tests/bitcoin/coinselect_reference.py",
+        "coax/tests/bitcoin/coinselect.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 96,
+      "title": "Message signing",
+      "file": "ch096-message-signing.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        36,
+        42,
+        43,
+        94
+      ],
+      "source": [
+        "bitcoin/examples/bip322.coax",
+        "bitcoin/examples/checks/bip322.coax",
+        "coax/lib/bitcoin/bip322.coax",
+        "coax/lib/bitcoin/psbt.coax",
+        "coax/lib/bitcoin/signmessage.coax",
+        "coax/tests/bitcoin/bip322_vectors.coax",
+        "coax/tests/bitcoin/make_bip322_vectors.py",
+        "coax/tests/bitcoin/bip322_reference.py",
+        "coax/tests/bitcoin/bip322.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 97,
+      "title": "Silent payments",
+      "file": "ch097-silent-payments.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        16,
+        24,
+        28,
+        29,
+        32,
+        41
+      ],
+      "source": [
+        "bitcoin/examples/silent.coax",
+        "bitcoin/examples/checks/silent.coax",
+        "coax/lib/bitcoin/silent.coax",
+        "coax/tests/bitcoin/silent_vectors.coax",
+        "coax/tests/bitcoin/make_silent_vectors.py",
+        "coax/tests/bitcoin/silent_reference.py",
+        "coax/tests/bitcoin/silent.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 98,
+      "title": "Miniscript",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        30,
+        36,
+        44
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 99,
+      "title": "A descriptor wallet on our node",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        30,
+        33,
+        92,
+        94,
+        95
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 100,
+      "title": "Multisig",
+      "file": "ch100-multisig.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        30,
+        36
+      ],
+      "source": [
+        "bitcoin/examples/multisig.coax",
+        "bitcoin/examples/checks/multisig.coax",
+        "coax/lib/bitcoin/multisig.coax",
+        "coax/tests/bitcoin/multisig_vectors.coax",
+        "coax/tests/bitcoin/make_multisig_vectors.py",
+        "coax/tests/bitcoin/multisig.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 101,
+      "title": "MuSig2",
+      "file": "ch101-musig2.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        24,
+        41
+      ],
+      "source": [
+        "bitcoin/examples/musig2.coax",
+        "bitcoin/examples/checks/musig2.coax",
+        "coax/lib/bitcoin/musig.coax",
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/lib/crypto/secp_mult.coax",
+        "coax/lib/crypto/schnorr_point_workspace.coax",
+        "coax/tests/bitcoin/musig_vectors.coax",
+        "coax/tests/bitcoin/make_musig_vectors.py",
+        "coax/tests/bitcoin/musig.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 102,
+      "title": "FROST threshold signatures",
+      "file": "ch102-frost-threshold-signatures.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        101
+      ],
+      "source": [
+        "bitcoin/examples/frost.coax",
+        "bitcoin/examples/checks/frost.coax",
+        "coax/lib/bitcoin/frost.coax",
+        "coax/lib/bitcoin/musig.coax",
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/tests/bitcoin/frost_vectors.coax",
+        "coax/tests/bitcoin/make_frost_vectors.py",
+        "coax/tests/bitcoin/frost.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 103,
+      "title": "Adaptor signatures",
+      "file": "ch103-adaptor-signatures.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        24
+      ],
+      "source": [
+        "coax/lib/bitcoin/adaptor.coax",
+        "bitcoin/examples/adaptor-signatures.coax",
+        "bitcoin/examples/checks/adaptor-signatures.coax",
+        "coax/tests/bitcoin/adaptor_vectors.coax",
+        "coax/tests/bitcoin/adaptor.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 104,
+      "title": "Messages and TLVs",
+      "file": "ch104-messages-and-tlvs.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        1
+      ],
+      "source": [
+        "coax/lib/lightning/bolt1.coax",
+        "bitcoin/examples/lightning-messages.coax",
+        "bitcoin/examples/checks/lightning-messages.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 105,
+      "title": "The Noise handshake",
+      "file": "ch105-the-noise-handshake.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        9,
+        12,
+        16
+      ],
+      "source": [
+        "coax/lib/lightning/noise.coax",
+        "bitcoin/examples/lightning-noise.coax",
+        "bitcoin/examples/checks/lightning-noise.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 106,
+      "title": "Commitment keys and revocation",
+      "file": "ch106-commitment-keys-and-revocation.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        4,
+        16
+      ],
+      "source": [
+        "coax/lib/lightning/keys.coax",
+        "bitcoin/examples/lightning-keys.coax",
+        "bitcoin/examples/checks/lightning-keys.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 107,
+      "title": "Shachain",
+      "file": "ch107-shachain.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        4
+      ],
+      "source": [
+        "coax/lib/lightning/shachain.coax",
+        "bitcoin/examples/lightning-shachain.coax",
+        "bitcoin/examples/checks/lightning-shachain.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 108,
+      "title": "Commitment and HTLC transactions",
+      "file": "ch108-commitment-and-htlc-transactions.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        38,
+        100,
+        106
+      ],
+      "source": [
+        "coax/lib/lightning/commitment.coax",
+        "bitcoin/examples/lightning-commitment.coax",
+        "bitcoin/examples/checks/lightning-commitment.coax",
+        "coax/tests/lightning/commitment_vectors.coax",
+        "coax/tests/lightning/make_commitment_vectors.py",
+        "coax/tests/lightning/bolt3_tx.py",
+        "coax/tests/lightning/commitment.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 109,
+      "title": "Open, update and close a channel",
+      "file": "ch109-open-update-and-close-a-channel.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        104,
+        105,
+        107,
+        108
+      ],
+      "source": [
+        "coax/lib/lightning/channel.coax",
+        "bitcoin/examples/lightning-channel.coax",
+        "bitcoin/examples/checks/lightning-channel.coax",
+        "coax/tests/lightning/channel.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 110,
+      "title": "Watch the chain",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        92,
+        109
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 111,
+      "title": "Onion routing and blinded paths",
+      "file": "ch111-onion-routing-and-blinded-paths.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        8,
+        11,
+        16
+      ],
+      "source": [
+        "coax/lib/lightning/onion.coax",
+        "bitcoin/examples/lightning-onion.coax",
+        "bitcoin/examples/checks/lightning-onion.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 112,
+      "title": "Gossip and the channel graph",
+      "file": "ch112-gossip-and-the-channel-graph.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        19,
+        104
+      ],
+      "source": [
+        "coax/lib/lightning/gossip.coax",
+        "bitcoin/examples/lightning-gossip.coax",
+        "bitcoin/examples/checks/lightning-gossip.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 113,
+      "title": "Find a route and pay",
+      "file": "ch113-find-a-route-and-pay.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        109,
+        111,
+        112,
+        114
+      ],
+      "source": [
+        "coax/lib/lightning/pay.coax",
+        "bitcoin/examples/lightning-pay.coax",
+        "bitcoin/examples/checks/lightning-pay.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 114,
+      "title": "Invoices",
+      "file": "ch114-invoices.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        27
+      ],
+      "source": [
+        "coax/lib/lightning/invoice.coax",
+        "bitcoin/examples/lightning-invoice.coax",
+        "bitcoin/examples/checks/lightning-invoice.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 115,
+      "title": "Offers",
+      "file": "ch115-offers.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        5,
+        24,
+        104
+      ],
+      "source": [
+        "coax/lib/lightning/offers.coax",
+        "bitcoin/examples/lightning-offers.coax",
+        "bitcoin/examples/checks/lightning-offers.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 116,
+      "title": "Test vectors and their provenance",
+      "file": "ch116-test-vectors-and-their-provenance.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [],
+      "source": [
+        "coax/tests/vectors/manifest.json",
+        "coax/tests/vectors/pins.json",
+        "coax/tests/vectors/check_vectors.py",
+        "coax/tests/vectors/check_pins.py",
+        "coax/tests/vectors/test_pins.py",
+        "coax/tests/bitcoin/make_provenance_vectors.py",
+        "coax/tests/bitcoin/provenance_vectors.coax",
+        "coax/tests/bitcoin/provenance.py",
+        "bitcoin/examples/provenance.coax",
+        "bitcoin/examples/checks/provenance.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 117,
+      "title": "Differential tests",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        24,
+        36,
+        43,
+        57
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 118,
+      "title": "Bitcoin Core's functional tests against our node",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        68,
+        90
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 119,
+      "title": "Fuzzing",
+      "file": "ch119-fuzzing.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        26,
+        34,
+        65,
+        94,
+        114,
+        116
+      ],
+      "source": [
+        "coax/tests/bitcoin/fuzz_targets.coax",
+        "coax/tests/bitcoin/fuzz.py",
+        "coax/tests/bitcoin/fuzz_regressions.json",
+        "coax/tests/bitcoin/make_fuzz_seeds.py",
+        "coax/tests/bitcoin/fuzz_seeds.coax",
+        "coax/tests/bitcoin/p2p.py",
+        "bitcoin/examples/fuzzing.coax",
+        "bitcoin/examples/checks/fuzzing.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 120,
+      "title": "Formal properties",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        57
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 121,
+      "title": "One seed for Nostr and Bitcoin",
+      "file": "ch121-one-seed-for-nostr-and-bitcoin.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        31,
+        33
+      ],
+      "source": [
+        "bitcoin/examples/one-seed.coax",
+        "bitcoin/examples/checks/one-seed.coax",
+        "coax/lib/bitcoin/oneseed.coax",
+        "coax/lib/bitcoin/descriptor.coax",
+        "coax/lib/bitcoin/path.coax",
+        "coax/lib/nostr/nip06.coax",
+        "coax/tests/bitcoin/oneseed.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 122,
+      "title": "Agent treasuries",
+      "file": "ch122-agent-treasuries.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        94,
+        100,
+        101
+      ],
+      "source": [
+        "bitcoin/examples/treasury.coax",
+        "bitcoin/examples/checks/treasury.coax",
+        "coax/lib/bitcoin/treasury.coax",
+        "coax/lib/bitcoin/psbt.coax",
+        "coax/lib/bitcoin/musig.coax",
+        "coax/lib/bitcoin/taproot.coax",
+        "coax/tests/bitcoin/treasury.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 123,
+      "title": "Paying for requests and verified work",
+      "file": "ch123-paying-for-requests.md",
+      "status": "implemented",
+      "profile": "native C, #authority two-leg Spark/Lightning settlement policy",
+      "depends_on": [
+        113,
+        114,
+        121
+      ],
+      "source": [
+        "bitcoin/examples/paying-for-requests.coax",
+        "pay/executor-settlement.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/pylon-settle.coax"
+      ]
+    },
+    {
+      "number": 124,
+      "title": "Our node on Pylons and Metaverse OS",
+      "file": null,
+      "status": "planned",
+      "profile": null,
+      "depends_on": [
+        89,
+        93
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 125,
+      "title": "Address history, balances and spends",
+      "file": "ch125-address-history-balances-and-spends.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        29,
+        58,
+        60,
+        91
+      ],
+      "source": [
+        "coax/lib/bitcoin/addrindex.coax",
+        "coax/lib/bitcoin/addrindex-stage.coax",
+        "coax/lib/bitcoin/addrindex-store.coax",
+        "bitcoin/platform/index-file.coax",
+        "bitcoin/examples/address-index.coax",
+        "bitcoin/examples/live/address-index.coax",
+        "coax/tests/bitcoin/addrindex-native.coax",
+        "coax/tests/bitcoin/addrindex.py",
+        "coax/lib/bitcoin/addrindex-private.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    }
+  ]
 }

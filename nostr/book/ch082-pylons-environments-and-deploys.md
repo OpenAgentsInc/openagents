@@ -288,11 +288,23 @@ job.
 - **The owner's `auth` tag.** The NIP-OA signature is carried in `PbRead`,
   not verified, so a reader can't yet refuse a receipt whose buyer is the
   beacon's owner.
-- **Paid and other receipts.** Payment acknowledgments, outcomes other than
-  `accepted`, units other than one job, and attested receipts are refused.
-- **Pool aggregate events.** `totals.coax` recomputes the totals from
-  admitted records and `pool-wire.coax` matches a 30201 body against them;
-  this chapter doesn't sign or read a 30201 event.
+- **Paid receipts, Executor Network lanes, and reconciled kind `30201` feeds
+  (W4.1–W4.3, `#13919`, `#13921`, `#13922`).** The basic `receipt.coax` reader
+  in this chapter covers v1 decision service receipts (`kind 3201`). The live
+  Executor Network extends `NIP-PYLON` with three additional lanes—`cj-executor`
+  (compiled exact-trace execution), `cj-validate` (distinct-device Ch 234
+  replay emitting signed NIP-32 kind `1985` `ReplayVerdict` events enforcing
+  `validator_pubkey != worker_pubkey` and `validator_device_ref !=
+  worker_device_ref`), and `cj-training` (bounded DiLoCo training windows)—gated
+  by digest self-test admission (`psionic/lib/pylon/selfcheck.coax`). Paid
+  two-leg Bitcoin mainnet Breez Spark receipts (`WORKER` + `VALIDATOR`) are
+  reconciled into signed kind `30201` `PoolAggregate` events by `#authority`
+  [`psionic/lib/peer/settled-feed.coax`](../../psionic/lib/peer/settled-feed.coax)
+  (`581/581` mutants killed, strictly excluding `real_bitcoin_moved == false`
+  from `paid_msat.bitcoin`). See
+  [Psionic chapter 238](../../psionic/book/ch238-pay-for-verified-work.md),
+  [Bitcoin chapter 123](../../bitcoin/book/ch123-paying-for-requests.md), and
+  [the W4.3 mainnet settlement record](../../docs/verification/executor-w43-mainnet-settlement.md).
 - **NIP-ENV.** Environment definitions, lease admission, expiry and binding
   an execution to a lease before dispatch. NIP-ENV adds no event kinds: its
   requests and results travel as private 3188 artifacts and RUN records.

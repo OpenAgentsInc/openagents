@@ -1096,6 +1096,15 @@ cross-target runs were not done.
 - [76. Work, coordination and control](ch076-work-coordination-and-control.md)
 - [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md)
 
+## Executor Network trajectory contribution (W6.2)
+
+In the coding-agent flywheel, opt-in, default-OFF `ATIF-v1.8` session logs are
+passed through `#authority` secret, PII, and BIP-39 mnemonic redaction
+(`openagents contribute submit`) before emitting `DatasetShardManifest` records
+defined in [`proto/openagents/executor/v1alpha1/training.proto`](../../proto/openagents/executor/v1alpha1/training.proto)
+for [Psionic chapter 272](../../psionic/book/ch272-bounded-training-windows-and-diloco.md)'s
+Dataset Shard Authority and [Coder chapter 18](../../coder/book/ch018-consent-before-sharing.md).
+
 ## Sources
 
 - [OpenAgents NIP-RUN](../nips/openagents/NIP-RUN.md)

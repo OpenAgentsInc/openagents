@@ -1019,6 +1019,16 @@ not done.
 - `opt_plan` keeps a study's confirmation cases exactly the held-out
   cases, so search and selection never see them.
 
+## Executor Network evaluation and lineage contracts
+
+The Executor Network extends these evaluation and program contracts with
+registered single-codec protobuf schemas in
+[`proto/openagents/executor/v1alpha1/`](../../proto/openagents/executor/v1alpha1/training.proto)
+(`CompiledModuleManifest`, `ExecutionTraceReceipt`, `ReplayVerdict`,
+`TrainingWindowClaim`, `TrainingWindowVerdict`, and `CheckpointLineageRecord`),
+binding every promoted checkpoint and compiled weight module to its exact
+verification lineage ([Psionic chapters 272–274](../../psionic/book/ch274-the-quarantine-optimizer.md)).
+
 ## Dependencies
 
 - [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md)

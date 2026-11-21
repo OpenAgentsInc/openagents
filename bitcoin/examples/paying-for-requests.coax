@@ -1,0 +1,57 @@
+#import "Basic";
+#load "../../pay/executor-settlement.coax";
+
+es_name :: (code: int) -> string {
+  if code == ES_RELEASE { return "release"; }
+  if code == ES_HOLD_OWNER { return "hold_owner"; }
+  if code == ES_WITHHOLD_FAILED { return "withhold_failed"; }
+  if code == ES_REFUSE_DUPLICATE { return "refuse_duplicate"; }
+  return "refuse_bad_input";
+}
+
+main :: () {
+  pol := EsPolicy.{
+    owner_armed = true,
+    per_payout_cap_sat = 500,
+    per_pubkey_daily_cap_sat = 1000,
+    global_daily_cap_sat = 1200,
+  };
+  st := EsPeriodState.{utc_day = 20778, global_spent_sat = 900, pubkey_spent_sat = 750};
+
+  // Live two-leg Executor Network payout: 200 sat worker + 50 sat validator
+  worker := EsPayoutRequest.{
+    leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY,
+    amount_sat = 200, utc_day = 20778, already_paid_leg = false,
+  };
+  validator := EsPayoutRequest.{
+    leg = ES_LEG_VALIDATOR, verdict = ES_VERDICT_EXACT_REPLAY,
+    amount_sat = 50, utc_day = 20778, already_paid_leg = false,
+  };
+  print("worker 200 sat: %\n", es_name(es_admit_payout(pol, st, worker)));
+  print("validator 50 sat: %\n", es_name(es_admit_payout(pol, st, validator)));
+
+  // Broken / guarded cases
+  unarmed := pol; unarmed.owner_armed = false;
+  print("unarmed mainnet: %\n", es_name(es_admit_payout(unarmed, st, worker)));
+
+  dup := worker; dup.already_paid_leg = true;
+  print("duplicate leg: %\n", es_name(es_admit_payout(pol, st, dup)));
+
+  failed := worker; failed.verdict = ES_VERDICT_FAILED;
+  print("failed verdict: %\n", es_name(es_admit_payout(pol, st, failed)));
+
+  unverified := worker; unverified.verdict = ES_VERDICT_UNVERIFIED;
+  print("unverified verdict: %\n", es_name(es_admit_payout(pol, st, unverified)));
+
+  over_daily := worker; over_daily.amount_sat = 350; // 900 + 350 = 1250 > 1200
+  print("over global daily cap: %\n", es_name(es_admit_payout(pol, st, over_daily)));
+
+  next_day := over_daily; next_day.utc_day = 20779; // rolls UTC day -> 0 spent
+  print("next UTC day reset: %\n", es_name(es_admit_payout(pol, st, next_day)));
+
+  // Truthful receipt gate
+  print("receipt real+id: % real+no_id: % dry_run: %\n",
+    es_receipt_truthful(true, 200, true),
+    es_receipt_truthful(true, 200, false),
+    es_receipt_truthful(false, 0, false));
+}

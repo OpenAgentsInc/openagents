@@ -1,0 +1,9 @@
+worker 200 sat: release
+validator 50 sat: release
+unarmed mainnet: hold_owner
+duplicate leg: refuse_duplicate
+failed verdict: withhold_failed
+unverified verdict: hold_owner
+over global daily cap: hold_owner
+next UTC day reset: release
+receipt real+id: true real+no_id: false dry_run: true

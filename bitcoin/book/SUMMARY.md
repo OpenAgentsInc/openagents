@@ -161,6 +161,7 @@ The contents list the chapters written so far. The [plan](PLAN.md) lists all
 
 - [121. One seed for Nostr and Bitcoin](ch121-one-seed-for-nostr-and-bitcoin.md) — implemented
 - [122. Agent treasuries](ch122-agent-treasuries.md) — implemented
+- [123. Paying for requests and verified work](ch123-paying-for-requests.md) — implemented
 
 ## Explorer extensions
 
