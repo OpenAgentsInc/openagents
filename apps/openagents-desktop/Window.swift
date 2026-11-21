@@ -275,11 +275,18 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncUpdateUI()
         updater.startPeriodicChecks()
         tick()
+        if !settingsOpen && !overlay.dialogOpen { focusComposer() }
     }
     func wake() { owed = 3 }
     /// The composer (or settings' search) takes the keyboard: the page's view is the first responder.
     func focusComposer() { cd_focus(page, 1); window.makeFirstResponder(canvas); wake() }
     func focusSearch() { cd_focus(page, 2); window.makeFirstResponder(canvas); wake() }
+    /// Routes Edit menu items (Cmd+A/C/X/V/Z/Shift+Cmd+Z) to the Coax GPU editor when canvas owns focus (#13903).
+    func performEditChord(_ code: Int32, mods: Int32) -> Bool {
+        guard window.firstResponder === canvas && cd_wants_text(page) != 0 else { return false }
+        if cd_key(page, code, mods) != 0 { wake(); return true }
+        return false
+    }
     var composerFocused: Bool { window.firstResponder === canvas && cd_settings_page(page) < 0 && cd_overlay_open(page) == 0 && cd_wants_text(page) != 0 }
     /// The composer's text.
     var draft: String {

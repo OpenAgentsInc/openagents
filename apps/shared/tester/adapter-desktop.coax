@@ -43,6 +43,7 @@ da_int_str :: (v: int, out: [] u8) -> string {
 DaSession :: struct {
   out_dir: [DA_PATH] u8; out_n: int;
   home_dir: [DA_PATH] u8; home_n: int;
+  repo_dir: [DA_PATH] u8; repo_n: int;
   sock_path: [DA_PATH] u8; sock_n: int;
   app_bin: [DA_PATH] u8; app_n: int;
   dylib: [DA_PATH] u8; dylib_n: int;
@@ -140,6 +141,9 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
   home := da_cat(b1[..], out_dir, "/home");
   _ = fs_mkdir_all(home);
   s[0].home_n = da_copy_into(s[0].home_dir[..], home);
+  repo_tmp := da_cat(b1[..], out_dir, "/repo");
+  _ = fs_mkdir_all(repo_tmp);
+  s[0].repo_n = da_copy_into(s[0].repo_dir[..], repo_tmp);
   stage := da_cat(b_stage[..], out_dir, "/stage");
   _ = fs_mkdir_all(stage);
   rec := da_cat(b1[..], out_dir, "/worker-record");
@@ -201,6 +205,10 @@ da_stage :: (s: [] DaSession, repo: string, built_app: string, out_dir: string, 
   jo_put(cj[..], repo);
   jo_put(cj[..], "/evals/openagents-desktop/tier3/probe/probe.m'");
   jo_put(cj[..], " && defaults delete com.openagents.desktop.tester >/dev/null 2>&1 || true");
+  // Initialize a real scratch git repo on branch main for Git Actions & worktree scenarios.
+  jo_put(cj[..], " && (cd '");
+  jo_put(cj[..], da_slice(s[0].repo_dir[..], s[0].repo_n));
+  jo_put(cj[..], "' && git init -q -b main && git config user.email 'tester@openagents.local' && git config user.name 'Simulated Tester' && printf 'hello repo\\n' > README.md && git add README.md && git commit -q -m 'init')");
   if !da_run_sh(cast(string) cmd_buf[0..<cj[0].n], 60000) {
     tool_errln("desktop-adapter: staging failed");
     return false;
@@ -215,14 +223,17 @@ da_launch :: (s: [] DaSession) -> bool {
   if h < 0 { return false; }
   _ = proc_arg(h, da_slice(s[0].app_bin[..], s[0].app_n));
   _ = proc_arg(h, "--folder");
-  _ = proc_arg(h, da_slice(s[0].home_dir[..], s[0].home_n));
+  _ = proc_arg(h, da_slice(s[0].repo_dir[..], s[0].repo_n));
+  _ = proc_arg(h, "--model");
+  _ = proc_arg(h, "gemini-4-neon");
 
   b: [1] DaBuf;
+  b_wt: [1] DaBuf;
   home := da_slice(s[0].home_dir[..], s[0].home_n);
   _ = proc_env(h, da_cat(b[..], "HOME=", home));
   _ = proc_env(h, da_cat(b[..], "CFFIXED_USER_HOME=", home));
   _ = proc_env(h, da_cat(b[..], "CODER_HOME=", home));
-  _ = proc_env(h, da_cat(b[..], "CODER_WORKTREES=", da_cat(b[..], home, "/worktrees")));
+  _ = proc_env(h, da_cat(b[..], "CODER_WORKTREES=", da_cat(b_wt[..], home, "/worktrees")));
   _ = proc_env(h, "CODER_UPDATE_URL=");
   _ = proc_env(h, "BROWSER=/usr/bin/true");
   _ = proc_env(h, "LANG=en_US.UTF-8");
@@ -386,4 +397,40 @@ da_record_result :: (s: [] DaSession, r: TsResult) {
   jb: [TS_BUF] u8;
   jn := ts_write_result(r, jb[..]);
   if jn > 0 { da_append_line(da_slice(s[0].res_file[..], s[0].res_n), cast(string) jb[0..<jn]); }
+}
+
+DaBox :: struct { ok: bool; x: int; y: int; w: int; h: int; }
+
+da_box :: (s: [] DaSession, row_id: string) -> DaBox {
+  b: [1] DaBuf;
+  rep: [DA_REPLY] u8;
+  n := da_probe(da_slice(s[0].sock_path[..], s[0].sock_n), da_cat(b[..], "box ", row_id), rep[..], 3000);
+  if n <= 0 { return DaBox.{}; }
+  nodes: [128] JvNode;
+  doc: [1] Jv;
+  if !jv_parse(doc[..], cast(string) rep[0..<n], nodes[..]) { return DaBox.{}; }
+  if !jv_bool(doc[0], jv_get(doc[0], 0, "ok")) { return DaBox.{}; }
+  return DaBox.{
+    ok = true,
+    x = jv_int(doc[0], jv_get(doc[0], 0, "x"), 0),
+    y = jv_int(doc[0], jv_get(doc[0], 0, "y"), 0),
+    w = jv_int(doc[0], jv_get(doc[0], 0, "w"), 0),
+    h = jv_int(doc[0], jv_get(doc[0], 0, "h"), 0)
+  };
+}
+
+da_click_box :: (s: [] DaSession, row_id: string, reply_out: [] u8) -> bool {
+  bx := da_box(s, row_id);
+  if !bx.ok || bx.w <= 0 || bx.h <= 0 { return false; }
+  cx := bx.x + bx.w / 2;
+  cy := bx.y + bx.h / 2;
+  cmd: [128] u8;
+  j: [1] Jo;
+  jo_start(j[..], cmd[..]);
+  jo_put(j[..], "click ");
+  jo_int(j[..], cx);
+  jo_put(j[..], " ");
+  jo_int(j[..], cy);
+  n := da_act(s, "click", row_id, cast(string) cmd[0..<j[0].n], 100, reply_out);
+  return n > 0 && da_json_ok(cast(string) reply_out[0..<n]);
 }

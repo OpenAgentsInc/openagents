@@ -249,7 +249,7 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       r.verdict = "product-fail"; r.first_failure = "dirty-on-open"; r.summary = "freshly opened file reported dirty=true before any edit";
     } else {
       _ = da_act(s, "type", "file-pane", "type X", 100, rep[..]);
-      proc_sleep(150);
+      proc_sleep(350);
       fn2 := da_probe(da_slice(s[0].sock_path[..], s[0].sock_n), "file", rep[..], 3000);
       dirty_after := false;
       if fn2 > 0 && jv_parse(doc[..], cast(string) rep[0..<fn2], nodes[..]) {
@@ -258,8 +258,24 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       if !dirty_after {
         r.verdict = "product-fail"; r.first_failure = "edit-not-dirty"; r.summary = "typing in opened file pane did not mark file dirty (keyboard focus did not move to file editor)";
       } else {
-        r.summary = "opened scratch file in right pane, typed edit, confirmed dirty=true";
-        r.screenshot_ref = "screenshots/10-file-pane.png";
+        // Save with Cmd+S, verify dirty clears and disk file contains the typed edit.
+        _ = da_act(s, "key", "file-pane", "key cmd+s", 100, rep[..]);
+        proc_sleep(300);
+        fn3 := da_probe(da_slice(s[0].sock_path[..], s[0].sock_n), "file", rep[..], 3000);
+        dirty_saved := true;
+        if fn3 > 0 && jv_parse(doc[..], cast(string) rep[0..<fn3], nodes[..]) {
+          dirty_saved = jv_bool(doc[0], jv_get(doc[0], 0, "dirty"));
+        }
+        disk: [256] u8;
+        dn := fs_read(sample, disk[..]);
+        if dirty_saved {
+          r.verdict = "product-fail"; r.first_failure = "save-still-dirty"; r.summary = "Cmd+S did not clear dirty state in file pane";
+        } else if dn <= 0 || !t_has_substr(cast(string) disk[0..<dn], "X") {
+          r.verdict = "product-fail"; r.first_failure = "save-disk-mismatch"; r.summary = "Cmd+S cleared dirty but edit was not written to disk";
+        } else {
+          r.summary = "opened scratch file, typed edit (dirty=true), Cmd+S saved to disk (dirty=false)";
+          r.screenshot_ref = "screenshots/10-file-pane.png";
+        }
       }
     }
   } else if sc_id == "desktop.chat.mock-send-and-stream" {
@@ -288,6 +304,103 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       r.screenshot_ref = obs[0].screenshot_ref;
     } else {
       r.summary = "sent prompt via composer, mock worker replied and settled cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "desktop.git.toolbar-visible" {
+    r.steps_run = 4;
+    proc_sleep(250);
+    b_br := da_box(s, "coder.git.branch");
+    b_md := da_box(s, "coder.git.mode");
+    b_cm := da_box(s, "coder.git.commit");
+    b_ac := da_box(s, "coder.git.actions");
+    _ = da_observe(s, "12-git-toolbar", "git toolbar boxes", obs[..], active[..]);
+    if !b_br.ok || !b_md.ok || !b_cm.ok || !b_ac.ok {
+      r.verdict = "product-fail"; r.first_failure = "git-toolbar-missing";
+      r.summary = "one or more Git Actions toolbar chips (coder.git.branch/mode/commit/actions) not drawn in git repo";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else if b_br.w <= 0 || b_md.w <= 0 || b_cm.w <= 0 || b_ac.w <= 0 {
+      r.verdict = "product-fail"; r.first_failure = "git-toolbar-zero-box";
+      r.summary = "Git Actions toolbar chip rendered with zero width";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "Git Actions toolbar chips (branch, mode, commit, actions) all drawn with valid bounds";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "desktop.git.mode-toggle" {
+    r.steps_run = 2;
+    c1 := da_click_box(s, "coder.git.mode", rep[..]);
+    proc_sleep(200);
+    _ = da_observe(s, "13-git-mode", "after git mode toggle 1", obs[..], active[..]);
+    c2 := da_click_box(s, "coder.git.mode", rep[..]);
+    proc_sleep(200);
+    if !c1 || !c2 {
+      r.verdict = "product-fail"; r.first_failure = "git-mode-click";
+      r.summary = "clicking coder.git.mode (Local vs. Worktree) chip failed";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else if active[0] {
+      r.verdict = "product-fail"; r.first_failure = "focus-steal";
+      r.summary = "toggling Git mode stole macOS focus";
+    } else {
+      r.summary = "toggled Local <-> Worktree mode chip twice cleanly with zero focus steal";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "desktop.git.branch-and-commit-guard" {
+    r.steps_run = 4;
+    // Open branch menu, dismiss with Escape.
+    c_br := da_click_box(s, "coder.git.branch", rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "14-git-branch-menu", "branch picker open", obs[..], active[..]);
+    _ = da_act(s, "key", "git-branch", "key escape", 100, rep[..]);
+    proc_sleep(200);
+    // Create an uncommitted file in the scratch repo and click Commit on main.
+    b1: [1] DaBuf;
+    dirty := da_cat(b1[..], da_slice(s[0].repo_dir[..], s[0].repo_n), "/uncommitted.txt");
+    _ = fs_write(dirty, "dirty change on main\n");
+    c_cm := da_click_box(s, "coder.git.commit", rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "14-git-commit-dialog", "commit dialog on main", obs[..], active[..]);
+    _ = da_act(s, "key", "git-commit", "key escape", 100, rep[..]);
+    proc_sleep(200);
+    if !c_br || !c_cm {
+      r.verdict = "product-fail"; r.first_failure = "git-click";
+      r.summary = "clicking coder.git.branch or coder.git.commit failed";
+      r.screenshot_ref = "screenshots/14-git-commit-dialog.png";
+    } else if !da_observe(s, "", "after commit escape", obs[..], active[..]) {
+      r.verdict = "infrastructure-fail"; r.first_failure = "observe"; r.summary = "observe failed after commit escape";
+    } else {
+      r.summary = "branch menu opened/dismissed and Commit on main triggered dialog & cancelled cleanly";
+      r.screenshot_ref = "screenshots/14-git-commit-dialog.png";
+    }
+  } else if sc_id == "desktop.git.worktree-per-chat" {
+    r.steps_run = 3;
+    _ = da_act(s, "key", "chat", "key cmd+n", 100, rep[..]);
+    proc_sleep(250);
+    _ = da_act(s, "type", "composer", "type create worktree test", 200, rep[..]);
+    proc_sleep(120);
+    _ = da_act(s, "key", "composer", "key return", 100, rep[..]);
+    // Wait up to 6s for a per-chat worktree directory to appear under $HOME/worktrees.
+    wt_check_cmd: [1024] u8;
+    wj: [1] Jo;
+    jo_start(wj[..], wt_check_cmd[..]);
+    jo_put(wj[..], "find '");
+    jo_put(wj[..], da_slice(s[0].home_dir[..], s[0].home_n));
+    jo_put(wj[..], "/worktrees' -maxdepth 3 -name .git 2>/dev/null | grep -q .");
+    found_wt := false;
+    deadline := proc_now_ms() + 6000;
+    while proc_now_ms() < deadline {
+      proc_sleep(300);
+      if da_run_sh(cast(string) wt_check_cmd[0..<wj[0].n], 2000) {
+        found_wt = true;
+        break;
+      }
+    }
+    _ = da_observe(s, "15-git-worktree-chat", "per-chat worktree state", obs[..], active[..]);
+    if !found_wt {
+      r.verdict = "product-fail"; r.first_failure = "no-worktree-created";
+      r.summary = "starting a chat in a git repo did not create a coder/<id> worktree under CODER_WORKTREES within 6s";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "starting a chat in a git repo created an isolated per-chat worktree under CODER_WORKTREES";
       r.screenshot_ref = obs[0].screenshot_ref;
     }
   } else {

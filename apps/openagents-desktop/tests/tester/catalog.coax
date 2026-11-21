@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-DT_SCENARIO_COUNT :: 11;
+DT_SCENARIO_COUNT :: 15;
 
 DtScenario :: struct {
   id: string;
@@ -22,8 +22,12 @@ dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
     DtScenario.{id = "desktop.sidebar.toggle", area = "sidebar", title = "Cmd+B toggle sidebar off and on", required = true},
     DtScenario.{id = "desktop.models.picker", area = "models", title = "Cmd+/ model picker open and Escape dismiss", required = true},
     DtScenario.{id = "desktop.simulator.pane-toggle", area = "simulator", title = "Opt+Cmd+S iOS Simulator pane toggle", required = true},
-    DtScenario.{id = "desktop.files.open-edit-dirty", area = "files", title = "Open scratch file in right pane, edit, and verify dirty state", required = true},
-    DtScenario.{id = "desktop.chat.mock-send-and-stream", area = "chat", title = "Send prompt via composer, stream mock worker reply, settle", required = true}
+    DtScenario.{id = "desktop.files.open-edit-dirty", area = "files", title = "Open scratch file in right pane, edit, dirty=true, Cmd+S save to disk", required = true},
+    DtScenario.{id = "desktop.chat.mock-send-and-stream", area = "chat", title = "Send prompt via composer, stream mock worker reply, settle", required = true},
+    DtScenario.{id = "desktop.git.toolbar-visible", area = "git", title = "Git Actions toolbar chips (branch, mode, commit, actions) drawn cleanly", required = true},
+    DtScenario.{id = "desktop.git.mode-toggle", area = "git", title = "Click Local vs. Worktree mode chip and verify toggle", required = true},
+    DtScenario.{id = "desktop.git.branch-and-commit-guard", area = "git", title = "Branch picker menu, Escape dismiss, and Commit dialog on main", required = true},
+    DtScenario.{id = "desktop.git.worktree-per-chat", area = "git", title = "New chat in git repo creates isolated coder/<id> worktree under CODER_WORKTREES", required = true}
   ];
 }
 

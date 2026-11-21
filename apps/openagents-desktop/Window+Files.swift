@@ -71,6 +71,7 @@ extension CoderWindow {
             cd_file_open(page, shown, raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), Int64(size))
         }
         if ok == 0 { cd_file_failed(page, shown, "Coder couldn't show \(name) here.") }
+        else if cd_file_mode(page) == 1 { window.makeFirstResponder(canvas) }
         wake()
     }
 

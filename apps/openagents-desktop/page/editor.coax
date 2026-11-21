@@ -189,6 +189,15 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     w := cp_ed_which(s);
     if w != CP_ED_DIALOG && w != CP_ED_PALETTE { return true; }
   }
+  if s[0].model_menu && key == KEY_ESCAPE && mods == 0 {
+    s[0].model_menu = false;
+    return true;
+  }
+  if s[0].set_open && key == KEY_ESCAPE && mods == 0 {
+    if coder_page_search_clear(s) { return true; }
+    coder_page_settings_open(s, -2, "");
+    return true;
+  }
   if cp_term_focused(s) { return cp_term_key(s, key, mods); }
   which := cp_ed_which(s);
   if which < 0 { return false; }

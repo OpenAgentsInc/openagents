@@ -236,6 +236,7 @@ coder_page_file_open :: (s: [] CoderPage, path: string, bytes: [] u8, size: int)
   text := cast(string) bytes;
   if text.count <= EB_TEXT && cp_fp_lines(text) <= CP_FP_EDIT_LINES {
     fp[0].mode = CP_FP_EDIT; fp[0].text_n = cp_out(fp[0].text[..], text);
+    s[0].fld[0].kb = CP_KB_FILE;
   } else { fp[0].mode = CP_FP_READ; }
   return true;
 }

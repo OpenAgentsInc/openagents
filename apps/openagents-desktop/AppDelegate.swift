@@ -118,6 +118,12 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func search(_ sender: Any?) { main?.togglePalette() }
     @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
     @objc func toggleSimulator(_ sender: Any?) { main?.toggleSimulator() }
+    @objc func editUndo(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("z").value), mods: 8) != true { NSApp.sendAction(Selector(("undo:")), to: nil, from: sender) } }
+    @objc func editRedo(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("z").value), mods: 9) != true { NSApp.sendAction(Selector(("redo:")), to: nil, from: sender) } }
+    @objc func editCut(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("x").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: sender) } }
+    @objc func editCopy(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("c").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: sender) } }
+    @objc func editPaste(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("v").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: sender) } }
+    @objc func editSelectAll(_ sender: Any?) { if main?.performEditChord(Int32(UnicodeScalar("a").value), mods: 8) != true { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: sender) } }
     @objc func toggleTerminal(_ sender: Any?) { main?.toggleTerminal() }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
@@ -306,13 +312,14 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "Hide OpenAgents", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Quit OpenAgents", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
-        edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+        edit.addItem(withTitle: "Undo", action: #selector(CoderDelegate.editUndo(_:)), keyEquivalent: "z").target = delegate
+        let redo = edit.addItem(withTitle: "Redo", action: #selector(CoderDelegate.editRedo(_:)), keyEquivalent: "z")
+        redo.target = delegate; redo.keyEquivalentModifierMask = [.command, .shift]
         edit.addItem(.separator())
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        edit.addItem(withTitle: "Cut", action: #selector(CoderDelegate.editCut(_:)), keyEquivalent: "x").target = delegate
+        edit.addItem(withTitle: "Copy", action: #selector(CoderDelegate.editCopy(_:)), keyEquivalent: "c").target = delegate
+        edit.addItem(withTitle: "Paste", action: #selector(CoderDelegate.editPaste(_:)), keyEquivalent: "v").target = delegate
+        edit.addItem(withTitle: "Select All", action: #selector(CoderDelegate.editSelectAll(_:)), keyEquivalent: "a").target = delegate
         edit.addItem(.separator())
         edit.addItem(withTitle: "Find in Settings", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
