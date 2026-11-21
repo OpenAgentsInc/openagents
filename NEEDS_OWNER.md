@@ -199,3 +199,21 @@ group. Install it from that group; the handoff records the delivery and checks.
       selected computer; existing Claude permissions and GitHub auth apply.
 - [ ] Share excerpt → verify the chooser and Cancel; check VoiceOver and
       largest text. Model/effort, attachments and mic remain hidden.
+
+
+## Executor W4.3 Mainnet Auto-Settlement Arming & Cap Selection (#13922)
+
+`pay/executor-settlement.coax` (`#authority`, 63/63 mutants killed, 0 survived)
+and `psionic/tools/executor-settle-e2e.coax` default to `owner_armed = false`
+and test networks (`regtest`/`testnet`/`signet`). **Zero mainnet satoshis move
+until you sign off and arm production caps.**
+
+- [ ] Review and select initial mainnet payout caps in `EsPolicy`
+      (`per_payout_cap_sat`, `per_pubkey_daily_cap_sat`, `global_daily_cap_sat`,
+      recommended starting caps: `500` / `2_000` / `10_000` sat/day).
+- [ ] Confirm Breez Spark wallet funding on mainnet (`openagents wallet status`)
+      and verify reconciled feed separates `bitcoin` mainnet from `regtest`/
+      `testnet`/`signet` and excludes `real_bitcoin_moved == false` rows.
+- [ ] Record signed owner approval to flip `owner_armed = true` for mainnet
+      executor/validator two-leg auto-settlement.
+
