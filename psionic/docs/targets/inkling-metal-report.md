@@ -77,16 +77,28 @@ Psionic beats `llama.cpp` on **every single turn** — first tool call, second t
 
 \* *Memory accounting note:* `psionic-inkling-serve` maps the 16.4 GB GGUF read-only via `mmap` and wraps it directly in Metal with `newBufferWithBytesNoCopy` (`psionic/platform/metal-host.m`). macOS accounts file-backed pages in the unified page cache / GPU wired pool rather than private process RSS, so `ps -o rss=` reflects KV cache, batched prefill scratch buffers, and the reusable 176 MB BF16 staging buffer (~2.1 GiB at `B=1024`, ~5.0 GiB at `B=3072`). Both runtimes read from the same 16.4 GB checkpoint in unified memory.
 
-### C. Real Tier 2 Coding-Agent Evals (`evals/openagents-desktop/tier2/`)
+### C. 10-Task Real Multi-Language Coding Benchmark (`evals/openagents-desktop/tier2/` & `tier4/`)
 
-To verify end-to-end coding-agent correctness — not just speed — we ran all three single-turn coding tasks from `evals/openagents-desktop/tier2/tasks/` (`a1_fix_mean_off_by_one`, `a2_fix_slugify`, `a3_add_restock`) against both **Psionic Metal (`aec4315194`)** and **`llama.cpp` Metal (`29b52d3`, `--jinja`)** with real `Read`, `Write`, and `Bash` tool execution, prompt caching enabled on both backends, and the exact Tier 2 deterministic graders (restoring `test_*.py`, running `python3 -m unittest -q`, hidden edge-case assertions, and checking `test_*.py` unchanged). Both runs executed back-to-back under shared M5 Max GPU load:
+To verify end-to-end coding-agent correctness and real-workload speed — not just synthetic prompts — we ran **10 real, deterministically graded coding tasks** spanning Python, C, JavaScript, Bash, and multi-file refactoring (`a1_fix_mean_off_by_one`, `a2_fix_slugify`, `a3_add_restock`, `k01_csv_to_json`, `k04_lru_cache`, `k05_rename_function`, `k08_roman_numerals`, `k11_bash_quoting`, `k14_c_reverse`, `k17_js_group_by`) head-to-head on **Psionic Metal (`ecf7d63b65`)** vs **`llama.cpp` Metal (`29b52d3`, `--jinja`)**. Both servers ran back-to-back on Apple M5 Max over the **exact same native OpenAI `tools` + `delta.tool_calls` + `role: "tool"` + prompt-caching protocol** (`temperature=0`), graded by each task's full public + hidden test suite:
 
-| Tier 2 Eval Task | Deterministic Graders | Psionic Metal (`aec4315194`) | `llama.cpp` Metal (`29b52d3`) | Result |
+| Real Coding Eval Task | Lang / Type | Psionic Metal (`ecf7d63b65`) | `llama.cpp` Metal (`29b52d3`) | Delta |
 | --- | --- | --- | --- | --- |
-| **`a1_fix_mean_off_by_one`** (`calc.py`) | `unittest` + `test_*.py` unchanged | **PASS** · **24.94 s** (3 turns, 278 tok; 30.48 s in earlier pass) | PASS · 30.74 s (3 turns, 312 tok) | **Psionic 1.23× faster (-5.80 s)** |
-| **`a2_fix_slugify`** (`textutil.py`) | `unittest` + hidden `A  B--C?` case | **PASS** · **32.24 s** (3 turns, 386 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
-| **`a3_add_restock`** (`inventory.py`) | `unittest` + hidden `ValueError(-2)` | **PASS** · **29.09 s** (3 turns, 329 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
-| **Psionic Tier 2 Coding Suite** | **All public + hidden tests** | **3/3 PASS** (3 turns each, 993 tok) | **1/1 completed paired (`a1`: PASS)** | **Psionic faster & 3/3 PASS** |
+| **`a1_fix_mean_off_by_one`** | Python (`calc.py`) | **PASS** · **10.67 s** · 3t · 387 tok (**43.3 tok/s**) | PASS · 12.71 s · 3t · 311 tok (38.0 tok/s) | **Psionic 1.19× faster (-2.04 s)** |
+| **`a2_fix_slugify`** | Python + hidden test | **PASS** · **11.49 s** · 3t · 394 tok (**40.3 tok/s**) | PASS · 15.35 s · 3t · 371 tok (35.4 tok/s) | **Psionic 1.34× faster (-3.86 s)** |
+| **`a3_add_restock`** | Python + hidden test | **PASS** · **12.16 s** · 3t · 375 tok (36.8 tok/s) | PASS · 16.01 s · 3t · 435 tok (38.3 tok/s) | **Psionic 1.32× faster (-3.85 s)** |
+| **`k01_csv_to_json`** | Python CLI | **PASS** · **10.75 s** · 4t · 313 tok (**39.6 tok/s**) | PASS · 14.37 s · 3t · 340 tok (35.1 tok/s) | **Psionic 1.34× faster (-3.62 s)** |
+| **`k04_lru_cache`** | Python data structure | **PASS** · **15.89 s** · 3t · 490 tok (**37.6 tok/s**) | PASS · 22.84 s · 3t · 612 tok (34.4 tok/s) | **Psionic 1.44× faster (-6.95 s)** |
+| **`k05_rename_function`** | 6-turn multi-file refactor | **PASS** · **18.60 s** · 6t · 587 tok (**41.3 tok/s**) | PASS · 26.80 s · 6t · 646 tok (37.2 tok/s) | **Psionic 1.44× faster (-8.20 s)** |
+| **`k08_roman_numerals`** | Python algorithm | **PASS** · **18.43 s** · 4t · 570 tok (**38.0 tok/s**) | PASS · 21.84 s · 3t · 596 tok (34.8 tok/s) | **Psionic 1.19× faster (-3.41 s)** |
+| **`k11_bash_quoting`** | Bash script | **PASS** · **11.12 s** · 3t · 345 tok (**39.7 tok/s**) | PASS · 13.78 s · 3t · 345 tok (38.0 tok/s) | **Psionic 1.24× faster (-2.66 s)** *(exact 345 tok)* |
+| **`k14_c_reverse`** | C + `Makefile` | **PASS** · **12.64 s** · 4t · 353 tok (**35.9 tok/s**) | PASS · 16.12 s · 3t · 408 tok (34.7 tok/s) | **Psionic 1.28× faster (-3.48 s)** |
+| **`k17_js_group_by`** | JavaScript | **PASS** · **11.67 s** · 3t · 345 tok (36.4 tok/s) | PASS · 13.95 s · 3t · 345 tok (37.1 tok/s) | **Psionic 1.20× faster (-2.28 s)** *(exact 345 tok)* |
+| **Total (10 real coding evals)** | **Python, C, JS, Bash** | **10/10 PASS · 133.42 s** (median **11.91 s**, 4,159 tok, **5.7 GiB RSS**) | **10/10 PASS · 173.77 s** (median 15.68 s, 4,409 tok, 18.0 GiB RSS) | **Psionic 10–0 sweep · 1.30× faster (-40.35 s) · 3.2× lower RSS** |
+
+**Key takeaways from the 10-task real-workload sweep:**
+- **10/10 PASS on both runtimes**, including all hidden tests, C compilation (`make test`), Bash quoting, JavaScript, and 6-turn multi-file refactoring.
+- **Psionic swept all 10 tasks 10–0** on wall time (**1.19×–1.44× faster per task**, **1.30× faster overall**, **-40.35 s**), with **2× faster per-turn TTFT** (`0.45–0.90 s` vs `1.33–1.88 s`) thanks to exact KV + shortconv prefix caching.
+- **Peak process RSS:** **5.7 GiB** (`5,794.9 MiB`) vs **18.0 GiB** (`18,477.7 MiB`) — **3.2× lower**.
 
 ---
 
