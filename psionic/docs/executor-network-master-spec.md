@@ -87,7 +87,7 @@ This inventory records what is actually implemented on `main` today and the exac
 
 ## 3. Architecture & Technical Specification by Workstream
 
-Work is organized into **six sequential/overlapping workstreams (W1–W6)** comprising **17 engineering deliverables**. No downstream workstream may mock an unfinished upstream contract as "complete."
+Work is organized into **six sequential/overlapping workstreams (W1–W6)** comprising **16 engineering deliverables** tracked under Master Epic [#13912](https://github.com/OpenAgentsInc/openagents/issues/13912). No downstream workstream may mock an unfinished upstream contract as "complete."
 
 ```mermaid
 flowchart LR
@@ -359,27 +359,27 @@ Every claim in this program carries an explicit falsifier:
 
 ## 6. Sequenced Workstream & Issue Map
 
-All 17 engineering work packages below are tracked under the Master Epic and sequenced by hard technical dependencies. Each package maps 1-to-1 to a detailed GitHub issue with explicit non-toy acceptance criteria.
+All 16 engineering work packages below are tracked under Master Epic [#13912](https://github.com/OpenAgentsInc/openagents/issues/13912) and sequenced by hard technical dependencies. Each package maps 1-to-1 to a detailed GitHub issue with explicit non-toy acceptance criteria.
 
 | ID | Workstream | Priority | Depends On | Deliverable Summary | GitHub Issue |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **EPIC** | Program Tracker | `P0` | — | Master Tracker: Executor Network (Tassadar × Pylon × Coding Agents) | *(linked on creation)* |
-| **W1.1** | W1 Substrate | `P0` | — | Unified Attention+FFN Compiled Transformer VM & Dense Weight Materialization (`exec-vm-v1`) | *(linked on creation)* |
-| **W1.2** | W1 Substrate | `P0` | W1.1 | Balanced-Tree `O(log t)` Hull Attention, 35-Op WASM Ladder & Sudoku/Hungarian/Coder Benchmarks (`wasm-exec-v1`) | *(linked on creation)* |
-| **W1.3** | W1 Substrate | `P1` | W1.1 | Metal & CUDA Exact Execution Kernels (`exec-gpu-v1`) + Optimal Slot-Reuse Scheduler | *(linked on creation)* |
-| **W2.1** | W2 Modules & Proto | `P0` | — | Protocol Schemas (`proto/openagents/executor/v1alpha1/`) & Zero-Mutant `#authority` Codecs | *(linked on creation)* |
-| **W2.2** | W2 Modules & Proto | `P1` | W1.2, W2.1 | Production Composable Weight-Module Linker (`module-v2`), Registry & First 4 Coding-Agent Modules | *(linked on creation)* |
-| **W3.1** | W3 Hybrid Models | `P0` | W1.2, W2.2 | Hybrid Executor Runtime: Real Psionic Transformer Routing to Frozen Compiled Weight Cores (`hybrid-exec-v1`) | *(linked on creation)* |
-| **W3.2** | W3 Hybrid Models | `P2` | W1.2, W1.3 | GPU Verified-Trace Distillation & Learned-Exactness Research Harness (`trace-distill-v1`, H1/H3/H5) | *(linked on creation)* |
-| **W4.1** | W4 Pylon Factory | `P0` | W1.2, W2.1 | NIP-PYLON Executor/Validator/Training Lanes, Digest Self-Test Admission & Diverse Open-Window Producer | *(linked on creation)* |
-| **W4.2** | W4 Pylon Factory | `P0` | W4.1 | Multi-Device Independent Replay Validation, 4-Tier Ladder & Trace-Factory Quarantine Admission | *(linked on creation)* |
-| **W4.3** | W4 Pylon Factory | `P1` | W4.2 | Receipt-First Spark/Lightning Auto-Settlement, Rolling Daily Caps & Reconciled Settled Feed (Completes Ch 238) | *(linked on creation)* |
-| **W5.1** | W5 Decentralized Train | `P0` | W2.1, W3.1, W4.2 | `TrainingWindow` Protocol, Dataset Shard Authority & Bandwidth-Aware Local-SGD/DiLoCo Pylon Worker | *(linked on creation)* |
-| **W5.2** | W5 Decentralized Train | `P0` | W5.1 | 6-Tier Training-Window Verification Ladder & Byzantine/Outlier Rejection (`#authority`) | *(linked on creation)* |
-| **W5.3** | W5 Decentralized Train | `P0` | W5.2, W4.3 | Quarantine Optimizer (`canonical → quarantine → promoted`), Ch 239–241 Gates & Checkpoint Lineage Rollback | *(linked on creation)* |
-| **W6.1** | W6 Coding Agents | `P0` | W2.2, W3.1 | Executor & Compiled Weight-Module Integration in Microcoder, OpenAgents Desktop & MCP/ACP | *(linked on creation)* |
-| **W6.2** | W6 Coding Agents | `P1` | W4.2, W6.1 | Opt-In, Secret-Redacted `ATIF-v1.8` Coding Trajectory Capture Feeding Dataset Shard Authority | *(linked on creation)* |
-| **W6.3** | W6 Coding Agents | `P1` | W5.3, W6.1 | Signed Shadow-to-Promote Auto-Distribution, Held-Out Coding Benchmark Qualification (H7) & Live Dashboards | *(linked on creation)* |
+| **EPIC** | Program Tracker | `P0` | — | Master Tracker: Executor Network (Tassadar × Pylon × Coding Agents) | [#13912](https://github.com/OpenAgentsInc/openagents/issues/13912) |
+| **W1.1** | W1 Substrate | `P0` | — | Unified Attention+FFN Compiled Transformer VM & Dense Weight Materialization (`exec-vm-v1`) | [#13913](https://github.com/OpenAgentsInc/openagents/issues/13913) |
+| **W1.2** | W1 Substrate | `P0` | W1.1 (#13913) | Balanced-Tree `O(log t)` Hull Attention, 35-Op WASM Ladder & Sudoku/Hungarian/Coder Benchmarks (`wasm-exec-v1`) | [#13915](https://github.com/OpenAgentsInc/openagents/issues/13915) |
+| **W1.3** | W1 Substrate | `P1` | W1.1 (#13913) | Metal & CUDA Exact Execution Kernels (`exec-gpu-v1`) + Optimal Slot-Reuse Scheduler | [#13916](https://github.com/OpenAgentsInc/openagents/issues/13916) |
+| **W2.1** | W2 Modules & Proto | `P0` | — | Protocol Schemas (`proto/openagents/executor/v1alpha1/`) & Zero-Mutant `#authority` Codecs | [#13914](https://github.com/OpenAgentsInc/openagents/issues/13914) |
+| **W2.2** | W2 Modules & Proto | `P1` | W1.2 (#13915), W2.1 (#13914) | Production Composable Weight-Module Linker (`module-v2`), Registry & First 4 Coding-Agent Modules | [#13917](https://github.com/OpenAgentsInc/openagents/issues/13917) |
+| **W3.1** | W3 Hybrid Models | `P0` | W1.2 (#13915), W2.2 (#13917) | Hybrid Executor Runtime: Real Psionic Transformer Routing to Frozen Compiled Weight Cores (`hybrid-exec-v1`) | [#13920](https://github.com/OpenAgentsInc/openagents/issues/13920) |
+| **W3.2** | W3 Hybrid Models | `P2` | W1.2 (#13915), W1.3 (#13916) | GPU Verified-Trace Distillation & Learned-Exactness Research Harness (`trace-distill-v1`, H1/H3/H5) | [#13918](https://github.com/OpenAgentsInc/openagents/issues/13918) |
+| **W4.1** | W4 Pylon Factory | `P0` | W1.2 (#13915), W2.1 (#13914) | NIP-PYLON Executor/Validator/Training Lanes, Digest Self-Test Admission & Diverse Open-Window Producer | [#13919](https://github.com/OpenAgentsInc/openagents/issues/13919) |
+| **W4.2** | W4 Pylon Factory | `P0` | W4.1 (#13919) | Multi-Device Independent Replay Validation, 4-Tier Ladder & Trace-Factory Quarantine Admission | [#13921](https://github.com/OpenAgentsInc/openagents/issues/13921) |
+| **W4.3** | W4 Pylon Factory | `P1` | W4.2 (#13921) | Receipt-First Spark/Lightning Auto-Settlement, Rolling Daily Caps & Reconciled Settled Feed (Completes Ch 238) | [#13922](https://github.com/OpenAgentsInc/openagents/issues/13922) |
+| **W5.1** | W5 Decentralized Train | `P0` | W2.1 (#13914), W3.1 (#13920), W4.2 (#13921) | `TrainingWindow` Protocol, Dataset Shard Authority & Bandwidth-Aware Local-SGD/DiLoCo Pylon Worker | [#13923](https://github.com/OpenAgentsInc/openagents/issues/13923) |
+| **W5.2** | W5 Decentralized Train | `P0` | W5.1 (#13923) | 6-Tier Training-Window Verification Ladder & Byzantine/Outlier Rejection (`#authority`) | [#13925](https://github.com/OpenAgentsInc/openagents/issues/13925) |
+| **W5.3** | W5 Decentralized Train | `P0` | W5.2 (#13925), W4.3 (#13922) | Quarantine Optimizer (`canonical → quarantine → promoted`), Ch 239–241 Gates & Checkpoint Lineage Rollback | [#13927](https://github.com/OpenAgentsInc/openagents/issues/13927) |
+| **W6.1** | W6 Coding Agents | `P0` | W2.2 (#13917), W3.1 (#13920) | Executor & Compiled Weight-Module Integration in Microcoder, OpenAgents Desktop & MCP/ACP | [#13924](https://github.com/OpenAgentsInc/openagents/issues/13924) |
+| **W6.2** | W6 Coding Agents | `P1` | W4.2 (#13921), W6.1 (#13924) | Opt-In, Secret-Redacted `ATIF-v1.8` Coding Trajectory Capture Feeding Dataset Shard Authority | [#13926](https://github.com/OpenAgentsInc/openagents/issues/13926) |
+| **W6.3** | W6 Coding Agents | `P1` | W5.3 (#13927), W6.1 (#13924), W6.2 (#13926) | Signed Shadow-to-Promote Auto-Distribution, Held-Out Coding Benchmark Qualification (H7) & Live Dashboards | [#13928](https://github.com/OpenAgentsInc/openagents/issues/13928) |
 
 ---
 
