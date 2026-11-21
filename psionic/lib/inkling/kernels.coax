@@ -13,20 +13,7 @@ INK_REL :: 16;
 INK_NEG_INF :: -300000000000000000000000000000000000000.0f32;
 
 // ---- Scalars.
-ink_half :: (bits:u32)->f32 {
-    e:=(bits>>10)&31;
-    if e!=0 && e!=31 {
-        return f32_from_bits(((bits&0x8000)<<16)|(((bits&0x7fff)+0x1c000)<<13));
-    }
-    if e==0 {
-        m:=bits&1023;
-        v:=f32(m)*0.000000059604644775390625f32;
-        return ifx (bits&0x8000)!=0 then -v else v;
-    }
-    m:=bits&1023;
-    v:=f32_from_bits(ifx m==0 then 0x7f800000 else 0x7fc00000);
-    return ifx (bits&0x8000)!=0 then -v else v;
-}
+ink_half :: (bits:u32)->f32 #effects(all) { return am_f16(bits); }
 ink_f16 :: (x:f32)->u32 {
     bits:=f32_bits(x);sign:=(bits>>16)&0x8000;e:=(bits>>23)&255;m:=bits&0x7fffff;
     if e==255 {return sign|0x7c00|(ifx m!=0 then cast(u32)0x200 else cast(u32)0);}
@@ -137,15 +124,13 @@ ink_rmsnorm :: (item:int,dim:int,has_w:int,eps:f32,x:[]f32,w:[]f32,out:[]f32) #e
 // ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows) writes INK_D=8 rows.
 // 4 lanes cooperate on each 32-elem Q8_0 block (8 blocks/simdgroup, 100% coalesced & 72/8=9 exact!).
 // ---- Matvec Q8_0 (1 token): group of 128 threads (4 simdgroups x 2 rows = 8 rows/TG), 4 lanes/block coalesced.
-// ---- Matvec Q8_0 (1 token): 128 threads = 4 simdgroups x 2 rows (8 rows/TG, hoisted row bases).
+// ---- Matvec Q8_0 (1 token, Sprint 30): 1 simdgroup (32 threads) computes 2 rows, ZERO TGEM, ZERO barriers, hardware simd_sum + f16!
 ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
-    for thread:0..<128 {
-        lane:=thread%32;simd:=thread/32;
+    blocks:=cols/32;words:=blocks*17;
+    base_row:=item*2;
+    r1:=base_row+1;
+    for lane:0..<32 {
         blk_lane:=lane/4;sub:=lane%4;
-        base_row:=row0+simd*2;
-        r1:=base_row+1;
         a0:f32=0;a1:f32=0;
         k0:=sub*4;
         if r1<rows {
@@ -163,9 +148,15 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
                         v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
                         v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[at0])*s0;
-                    a1+=ink_half(cast(u32)w[at1])*s1;
+                    a0+=am_f16(cast(u32)w[at0])*s0;
+                    a1+=am_f16(cast(u32)w[at1])*s1;
                 }
+            }
+            tot0:=am_simd_sum(a0);
+            tot1:=am_simd_sum(a1);
+            if lane==0 {
+                if add!=0 {out[base_row]=out[base_row]+tot0;out[r1]=out[r1]+tot1;}
+                else {out[base_row]=tot0;out[r1]=tot1;}
             }
         } else if base_row<rows {
             rb0:=base_row*words;
@@ -180,33 +171,24 @@ ink_dv_q8 :: (item:int,rows:int,cols:int,add:int,w:[]u16,x:[]f32,out:[]f32) #exp
                         v:=cast(u32)w[at+1+k0+j];
                         sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[at])*sum;
+                    a0+=am_f16(cast(u32)w[at])*sum;
                 }
             }
-        }
-        part[thread*2+0]=a0;part[thread*2+1]=a1;
-    }
-    for thread:0..<128 {
-        if thread<INK_D {
-            row:=item*INK_D+thread;
-            if row<rows {
-                simd:=thread/2;r:=thread%2;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
-                if add!=0 {out[row]=out[row]+sum;}else {out[row]=sum;}
+            tot0:=am_simd_sum(a0);
+            if lane==0 {
+                if add!=0 {out[base_row]=out[base_row]+tot0;} else {out[base_row]=tot0;}
             }
         }
     }
 }
 
-// ---- Sprint 28+29: Fused Q8_0 matvec + post shortconv + optional residual add (8 rows/TG, hoisted row bases).
+// ---- Sprint 28+30: Fused Q8_0 matvec + post shortconv + residual (1 simdgroup = 2 rows, ZERO TGEM, ZERO barriers!).
 ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    blocks:=cols/32;words:=blocks*17;row0:=item*INK_D;
-    for thread:0..<128 {
-        lane:=thread%32;simd:=thread/32;
+    blocks:=cols/32;words:=blocks*17;
+    base_row:=item*2;
+    r1:=base_row+1;
+    for lane:0..<32 {
         blk_lane:=lane/4;sub:=lane%4;
-        base_row:=row0+simd*2;
-        r1:=base_row+1;
         a0:f32=0;a1:f32=0;
         k0:=sub*4;
         if r1<rows {
@@ -224,9 +206,21 @@ ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
                         v0:=cast(u32)w[at0+kk];s0+=ink_signed(v0&255)*x0+ink_signed(v0>>8)*x1;
                         v1:=cast(u32)w[at1+kk];s1+=ink_signed(v1&255)*x0+ink_signed(v1>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[at0])*s0;
-                    a1+=ink_half(cast(u32)w[at1])*s1;
+                    a0+=am_f16(cast(u32)w[at0])*s0;
+                    a1+=am_f16(cast(u32)w[at1])*s1;
                 }
+            }
+            tot0:=am_simd_sum(a0);
+            tot1:=am_simd_sum(a1);
+            if lane==0 {
+                x0:=hist[base_row*3+0];x1:=hist[base_row*3+1];x2:=hist[base_row*3+2];
+                hist[base_row*3+0]=x1;hist[base_row*3+1]=x2;hist[base_row*3+2]=tot0;
+                cv0:=(tot0+x0*cw[base_row*4+0]+x1*cw[base_row*4+1]+x2*cw[base_row*4+2]+tot0*cw[base_row*4+3])*0.4472135954999579f32;
+                if add_res!=0 {out[base_row]=res[base_row]+cv0;} else {out[base_row]=cv0;}
+                y0:=hist[r1*3+0];y1:=hist[r1*3+1];y2:=hist[r1*3+2];
+                hist[r1*3+0]=y1;hist[r1*3+1]=y2;hist[r1*3+2]=tot1;
+                cv1:=(tot1+y0*cw[r1*4+0]+y1*cw[r1*4+1]+y2*cw[r1*4+2]+tot1*cw[r1*4+3])*0.4472135954999579f32;
+                if add_res!=0 {out[r1]=res[r1]+cv1;} else {out[r1]=cv1;}
             }
         } else if base_row<rows {
             rb0:=base_row*words;
@@ -241,23 +235,15 @@ ink_dv_q8_conv :: (item:int,rows:int,cols:int,add_res:int,w:[]u16,x:[]f32,cw:[]f
                         v:=cast(u32)w[at+1+k0+j];
                         sum+=ink_signed(v&255)*x0+ink_signed(v>>8)*x1;
                     }
-                    a0+=ink_half(cast(u32)w[at])*sum;
+                    a0+=am_f16(cast(u32)w[at])*sum;
                 }
             }
-        }
-        part[thread*2+0]=a0;part[thread*2+1]=a1;
-    }
-    for thread:0..<128 {
-        if thread<INK_D {
-            row:=item*INK_D+thread;
-            if row<rows {
-                simd:=thread/2;r:=thread%2;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];x3:=sum;
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=x3;
-                acc:=x0*cw[row*4+0]+x1*cw[row*4+1]+x2*cw[row*4+2]+x3*cw[row*4+3];
-                cv:=(x3+acc)*0.4472135954999579f32;
-                if add_res!=0 {out[row]=res[row]+cv;} else {out[row]=cv;}
+            tot0:=am_simd_sum(a0);
+            if lane==0 {
+                x0:=hist[base_row*3+0];x1:=hist[base_row*3+1];x2:=hist[base_row*3+2];
+                hist[base_row*3+0]=x1;hist[base_row*3+1]=x2;hist[base_row*3+2]=tot0;
+                cv0:=(tot0+x0*cw[base_row*4+0]+x1*cw[base_row*4+1]+x2*cw[base_row*4+2]+tot0*cw[base_row*4+3])*0.4472135954999579f32;
+                if add_res!=0 {out[base_row]=res[base_row]+cv0;} else {out[base_row]=cv0;}
             }
         }
     }
@@ -388,10 +374,9 @@ ink_dv_f32 :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #ex
 }
 
 
-// ---- Matvec F32 for small-row matrices (rows <= 128, e.g. ctrl_down [64,4608], router [128,2304]).
-// Launch items = rows, lanes = 256 (1 threadgroup of 256 threads per row).
+// ---- Matvec F32 for small-row matrices (Sprint 30: hardware simd_sum, 1 barrier instead of 3!).
 ink_dv_f32_small :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;part2:[32]f32;
+    part:[256]f32;
     base:=item*cols;
     for thread:0..<INK_NT {
         s:f32=0;
@@ -399,20 +384,12 @@ ink_dv_f32_small :: (item:int,rows:int,cols:int,add:int,w:[]f32,x:[]f32,out:[]f3
             c:=step*256+thread;
             if c<cols {s+=w[base+c]*x[c];}
         }
-        part[thread]=s;
-    }
-    for thread:0..<INK_NT {
-        if thread<32 {
-            s:f32=0;
-            for j:0..<8 {s+=part[j*32+thread];}
-            part2[thread]=s;
-        }
+        part[thread]=am_simd_sum(s);
     }
     for thread:0..<INK_NT {
         if thread==0 {
-            tot:f32=0;
-            for j:0..<32 {tot+=part2[j];}
-            if add!=0 {out[item]=out[item]+tot;}else {out[item]=tot;}
+            tot:=part[0]+part[32]+part[64]+part[96]+part[128]+part[160]+part[192]+part[224];
+            if add!=0 {out[item]=out[item]+tot;} else {out[item]=tot;}
         }
     }
 }
@@ -441,13 +418,8 @@ ink_ctrl_up_apply :: (item:int,dim:int,rank:int,w_gain:[]f32,w_forget:[]f32,gate
     }
 }
 
-// ---- MoE gate_up + SITU for top-K selected experts (IQ4_NL).
-// Launch items = n_used * ceil(n_ff / 4). Group of 128 threads (4 simdgroups x 2 rows):
-// simd 0,1 compute 4 gate rows; simd 2,3 compute 4 matching up rows; then write situ(gate, up).
-// ---- MoE gate_up + SITU (IQ4_NL): 128 threads (4 simdgroups x 2 rows), 4 lanes/block coalesced (72/8=9 exact, 0 idle lanes!).
+// ---- Sprint 30: MoE gate_up + SITU (IQ4_NL): 128 threads = 4 simdgroups x (1 gate + 1 up), ZERO TGEM, ZERO barriers, hardware simd_sum + constant LUT + f16!
 ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids:[]u32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    lut:[16]f32;
     groups_per_exp:=(n_ff+3)/4;
     slot:=item/groups_per_exp;
     rgrp:=item%groups_per_exp;
@@ -456,26 +428,20 @@ ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,id
     exp_base:=exp_id*2*n_ff*row_words;
     row0:=rgrp*4;
     for thread:0..<128 {
-        if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
-    }
-    for thread:0..<128 {
         lane:=thread%32;simd:=thread/32;
-        is_up:=simd/2;
-        sub:=simd%2;
         blk_lane:=lane/4;bsub:=lane%4;
-        r0:=row0+sub*2;
-        r1:=r0+1;
-        wrow0:=r0+is_up*n_ff;
-        a0:f32=0;a1:f32=0;
-        k0:=bsub*2;
-        for step:0..<(blocks+7)/8 {
-            block:=step*8+blk_lane;
-            if block<blocks {
-                xb:=block*32;boff:=block*9;
-                if r1<n_ff {
-                    at0:=exp_base+wrow0*row_words+boff;
-                    at1:=at0+row_words;
-                    s0:f32=0;s1:f32=0;
+        row:=row0+simd;
+        if row<n_ff {
+            ag:f32=0;au:f32=0;
+            k0:=bsub*2;
+            gb:=exp_base+row*row_words;
+            ub:=gb+n_ff*row_words;
+            for step:0..<(blocks+7)/8 {
+                block:=step*8+blk_lane;
+                if block<blocks {
+                    xb:=block*32;boff:=block*9;
+                    atg:=gb+boff;atu:=ub+boff;
+                    sg:f32=0;su:f32=0;
                     for j:0..<2 {
                         k:=k0+j;
                         x0:=x[xb+2*k];
@@ -483,41 +449,18 @@ ink_moe_gu_iq4 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,id
                         x2:=x[xb+2*k+1];
                         x3:=x[xb+16+2*k+1];
                         kk:=1+k;
-                        v0:=cast(u32)w[at0+kk];
-                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
-                        v1:=cast(u32)w[at1+kk];
-                        s1+=lut[cast(int)(v1&15)]*x0+lut[cast(int)((v1>>4)&15)]*x1+lut[cast(int)((v1>>8)&15)]*x2+lut[cast(int)(v1>>12)]*x3;
+                        vg:=cast(u32)w[atg+kk];
+                        sg+=am_iq4_lut(vg)*x0+am_iq4_lut(vg>>4)*x1+am_iq4_lut(vg>>8)*x2+am_iq4_lut(vg>>12)*x3;
+                        vu:=cast(u32)w[atu+kk];
+                        su+=am_iq4_lut(vu)*x0+am_iq4_lut(vu>>4)*x1+am_iq4_lut(vu>>8)*x2+am_iq4_lut(vu>>12)*x3;
                     }
-                    a0+=ink_half(cast(u32)w[at0])*s0;
-                    a1+=ink_half(cast(u32)w[at1])*s1;
-                } else if r0<n_ff {
-                    at0:=exp_base+wrow0*row_words+boff;
-                    s0:f32=0;
-                    for j:0..<2 {
-                        k:=k0+j;
-                        x0:=x[xb+2*k];
-                        x1:=x[xb+16+2*k];
-                        x2:=x[xb+2*k+1];
-                        x3:=x[xb+16+2*k+1];
-                        v0:=cast(u32)w[at0+1+k];
-                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
-                    }
-                    a0+=ink_half(cast(u32)w[at0])*s0;
+                    ag+=am_f16(cast(u32)w[atg])*sg;
+                    au+=am_f16(cast(u32)w[atu])*su;
                 }
             }
-        }
-        part[thread*2+0]=a0;part[thread*2+1]=a1;
-    }
-    for thread:0..<128 {
-        if thread<4 {
-            row:=row0+thread;
-            if row<n_ff {
-                sub:=thread/2;rr:=thread%2;
-                g:f32=0;u:f32=0;
-                for l:0..<32 {
-                    g+=part[(sub*32+l)*2+rr];
-                    u+=part[((2+sub)*32+l)*2+rr];
-                }
+            g:=am_simd_sum(ag);
+            u:=am_simd_sum(au);
+            if lane==0 {
                 act:=beta*ink_tanh(g/beta)*ink_sigmoid(g);
                 if lb>0.0f32 {u=lb*ink_tanh(u/lb);}
                 out[slot*n_ff+row]=act*u;
@@ -592,76 +535,91 @@ ink_moe_gu_q8 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids
     }
 }
 
-// ---- MoE down projection + weighted sum over n_used selected experts (IQ4_NL).
-// Launch items = ceil(rows / 8). Group of 128 threads (4 simdgroups x 2 rows) flattens
-// (slot, block) across n_used * blocks (e.g. 8 * 36 = 288 = 9 * 32, zero idle lanes!).
-// ---- MoE down (IQ4_NL): 128 threads = 4 simdgroups x 2 rows (8 rows/TG), flattened (slot, block) 1-lane/block.
+// ---- Sprint 30: MoE down (IQ4_NL): 1 simdgroup (32 threads) = 2 rows -> 1152 TGs on 40 cores (4x occupancy!), ZERO TGEM, ZERO barriers!
 ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
-    part:[256]f32;
-    lut:[16]f32;
     blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
-    tot_blocks:=n_used*blocks;
-    row0:=item*INK_D;
-    for thread:0..<128 {
-        if thread<16 {lut[thread]=ink_iq4_val(cast(u32)thread);}
-    }
-    for thread:0..<128 {
-        lane:=thread%32;simd:=thread/32;
-        base_row:=row0+simd*2;
-        r1:=base_row+1;
+    base_row:=item*2;
+    r1:=base_row+1;
+    for lane:0..<32 {
+        blk_lane:=lane/4;bsub:=lane%4;
+        k0:=bsub*2;
         a0:f32=0;a1:f32=0;
-        for step:0..<(tot_blocks+31)/32 {
-            idx:=step*32+lane;
-            if idx<tot_blocks {
-                slot:=idx/blocks;
-                block:=idx%blocks;
+        if r1<rows {
+            for slot:0..<n_used {
                 exp_id:=cast(int)ids[slot];ew:=wts[slot];
-                exp_base:=exp_id*exp_words;
-                xb:=slot*cols+block*32;boff:=block*9;
-                if r1<rows {
-                    at0:=exp_base+base_row*row_words+boff;
-                    at1:=at0+row_words;
-                    s0:f32=0;s1:f32=0;
-                    for k:0..<8 {
-                        x0:=x[xb+2*k];
-                        x1:=x[xb+16+2*k];
-                        x2:=x[xb+2*k+1];
-                        x3:=x[xb+16+2*k+1];
-                        kk:=1+k;
-                        v0:=cast(u32)w[at0+kk];
-                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
-                        v1:=cast(u32)w[at1+kk];
-                        s1+=lut[cast(int)(v1&15)]*x0+lut[cast(int)((v1>>4)&15)]*x1+lut[cast(int)((v1>>8)&15)]*x2+lut[cast(int)(v1>>12)]*x3;
+                rb0:=exp_id*exp_words+base_row*row_words;
+                rb1:=rb0+row_words;
+                xs:=slot*cols;
+                e0:f32=0;e1:f32=0;
+                for step:0..<(blocks+7)/8 {
+                    block:=step*8+blk_lane;
+                    if block<blocks {
+                        xb:=xs+block*32;boff:=block*9;
+                        at0:=rb0+boff;at1:=rb1+boff;
+                        s0:f32=0;s1:f32=0;
+                        for j:0..<2 {
+                            k:=k0+j;
+                            x0:=x[xb+2*k];
+                            x1:=x[xb+16+2*k];
+                            x2:=x[xb+2*k+1];
+                            x3:=x[xb+16+2*k+1];
+                            kk:=1+k;
+                            v0:=cast(u32)w[at0+kk];
+                            s0+=am_iq4_lut(v0)*x0+am_iq4_lut(v0>>4)*x1+am_iq4_lut(v0>>8)*x2+am_iq4_lut(v0>>12)*x3;
+                            v1:=cast(u32)w[at1+kk];
+                            s1+=am_iq4_lut(v1)*x0+am_iq4_lut(v1>>4)*x1+am_iq4_lut(v1>>8)*x2+am_iq4_lut(v1>>12)*x3;
+                        }
+                        e0+=am_f16(cast(u32)w[at0])*s0;
+                        e1+=am_f16(cast(u32)w[at1])*s1;
                     }
-                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
-                    a1+=ew*ink_half(cast(u32)w[at1])*s1;
-                } else if base_row<rows {
-                    at0:=exp_base+base_row*row_words+boff;
-                    s0:f32=0;
-                    for k:0..<8 {
-                        x0:=x[xb+2*k];
-                        x1:=x[xb+16+2*k];
-                        x2:=x[xb+2*k+1];
-                        x3:=x[xb+16+2*k+1];
-                        v0:=cast(u32)w[at0+1+k];
-                        s0+=lut[cast(int)(v0&15)]*x0+lut[cast(int)((v0>>4)&15)]*x1+lut[cast(int)((v0>>8)&15)]*x2+lut[cast(int)(v0>>12)]*x3;
-                    }
-                    a0+=ew*ink_half(cast(u32)w[at0])*s0;
                 }
+                a0+=ew*e0;
+                a1+=ew*e1;
             }
-        }
-        part[thread*2+0]=a0;part[thread*2+1]=a1;
-    }
-    for thread:0..<128 {
-        if thread<INK_D {
-            row:=item*INK_D+thread;
-            if row<rows {
-                simd:=thread/2;r:=thread%2;sum:f32=0;
-                for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
-                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
-                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=sum;
-                acc:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+sum*conv_w[row*4+3];
-                out[row]=res[row]+(sum+acc)*0.4472135954999579f32;
+            sum0:=am_simd_sum(a0);
+            sum1:=am_simd_sum(a1);
+            if lane==0 {
+                x0:=hist[base_row*3+0];x1:=hist[base_row*3+1];x2:=hist[base_row*3+2];
+                hist[base_row*3+0]=x1;hist[base_row*3+1]=x2;hist[base_row*3+2]=sum0;
+                acc0:=x0*conv_w[base_row*4+0]+x1*conv_w[base_row*4+1]+x2*conv_w[base_row*4+2]+sum0*conv_w[base_row*4+3];
+                out[base_row]=res[base_row]+(sum0+acc0)*0.4472135954999579f32;
+                y0:=hist[r1*3+0];y1:=hist[r1*3+1];y2:=hist[r1*3+2];
+                hist[r1*3+0]=y1;hist[r1*3+1]=y2;hist[r1*3+2]=sum1;
+                acc1:=y0*conv_w[r1*4+0]+y1*conv_w[r1*4+1]+y2*conv_w[r1*4+2]+sum1*conv_w[r1*4+3];
+                out[r1]=res[r1]+(sum1+acc1)*0.4472135954999579f32;
+            }
+        } else if base_row<rows {
+            for slot:0..<n_used {
+                exp_id:=cast(int)ids[slot];ew:=wts[slot];
+                rb0:=exp_id*exp_words+base_row*row_words;
+                xs:=slot*cols;
+                e0:f32=0;
+                for step:0..<(blocks+7)/8 {
+                    block:=step*8+blk_lane;
+                    if block<blocks {
+                        xb:=xs+block*32;boff:=block*9;
+                        at0:=rb0+boff;
+                        s0:f32=0;
+                        for j:0..<2 {
+                            k:=k0+j;
+                            x0:=x[xb+2*k];
+                            x1:=x[xb+16+2*k];
+                            x2:=x[xb+2*k+1];
+                            x3:=x[xb+16+2*k+1];
+                            v0:=cast(u32)w[at0+1+k];
+                            s0+=am_iq4_lut(v0)*x0+am_iq4_lut(v0>>4)*x1+am_iq4_lut(v0>>8)*x2+am_iq4_lut(v0>>12)*x3;
+                        }
+                        e0+=am_f16(cast(u32)w[at0])*s0;
+                    }
+                }
+                a0+=ew*e0;
+            }
+            sum0:=am_simd_sum(a0);
+            if lane==0 {
+                x0:=hist[base_row*3+0];x1:=hist[base_row*3+1];x2:=hist[base_row*3+2];
+                hist[base_row*3+0]=x1;hist[base_row*3+1]=x2;hist[base_row*3+2]=sum0;
+                acc0:=x0*conv_w[base_row*4+0]+x1*conv_w[base_row*4+1]+x2*conv_w[base_row*4+2]+sum0*conv_w[base_row*4+3];
+                out[base_row]=res[base_row]+(sum0+acc0)*0.4472135954999579f32;
             }
         }
     }
@@ -3479,6 +3437,23 @@ ink_argmax_s2 :: (item:int,n_parts:int,vals:[]f32,ids:[]u32,out_id:[]u32) #expor
                 if vals[j]>bv || (vals[j]==bv && ids[j]<bi) {bv=vals[j];bi=ids[j];}
             }
             out_id[0]=bi;
+        }
+    }
+}
+
+// ---- Sprint 30: Parallel coalesced MoE slot reduction (replaces serial 2304-thread K_MOE_REDUCE_BATCH: 446ms -> ~30ms!).
+// Launch items = nb * ceil(d / 128), lanes = 128.
+ink_moe_sum_batch :: (item:int,dim:int,n_used:int,slot_out:[]f32,out:[]f32) #export_c #effects(all) {
+    d_tiles:=(dim+127)/128;
+    t:=item/d_tiles;
+    c0:=(item%d_tiles)*128;
+    base:=t*n_used*dim;
+    for thread:0..<128 {
+        c:=c0+thread;
+        if c<dim {
+            sum:f32=0;
+            for k:0..<n_used {sum+=slot_out[base+k*dim+c];}
+            out[t*dim+c]=sum;
         }
     }
 }

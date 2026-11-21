@@ -91,6 +91,7 @@ enum {
     K_MIX_CTRL_PREP,
     K_ARGMAX_S1,
     K_ARGMAX_S2,
+    K_MOE_SUM_BATCH,
     K_COUNT
 };
 
@@ -170,19 +171,20 @@ static const char *const k_names[K_COUNT] = {
     "ink_mix_ctrl_prep",
     "ink_argmax_s1",
     "ink_argmax_s2",
+    "ink_moe_sum_batch",
 };
 
 static const int64_t k_lanes[K_COUNT] = {
     INK_NT, /* K_EMBED_Q8 */
     INK_NT, /* K_RMSNORM */
-    128,    /* K_DV_Q8 */
+    32,     /* K_DV_Q8 */
     INK_T,  /* K_DV_IQ4 */
     INK_T,  /* K_DV_F32 */
     INK_NT, /* K_DV_F32_SMALL */
     INK_T,  /* K_CTRL_UP_APPLY */
     128,    /* K_MOE_GU_IQ4 */
     128,    /* K_MOE_GU_Q8 */
-    128,    /* K_MOE_DOWN_IQ4 */
+    32,     /* K_MOE_DOWN_IQ4 */
     128,    /* K_MOE_DOWN_Q8 */
     INK_NT, /* K_ROUTER */
     INK_NT, /* K_MIX */
@@ -242,12 +244,13 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_MM_BF16_32 */
     128,    /* K_MOE_MM_IQ4 */
     128,    /* K_MOE_MM_IQ4_16 */
-    128,    /* K_DV_Q8_CONV */
+    32,     /* K_DV_Q8_CONV */
     INK_T,  /* K_CONV_CLIP_KV */
     INK_T,  /* K_CONV_HEAD_RMSNORM_KV */
     INK_NT, /* K_MIX_CTRL_PREP */
     INK_NT, /* K_ARGMAX_S1 */
     INK_T,  /* K_ARGMAX_S2 */
+    128,    /* K_MOE_SUM_BATCH */
 };
 
 struct InkSession {
@@ -381,7 +384,7 @@ static int dispatch_mv(InkSession *s, PmBatch batch, const InkTensor *w, int64_t
                        PmBuffer x_buf, int64_t x_off, PmBuffer out_buf, int64_t out_off) {
     int64_t items = (rows + INK_D - 1) / INK_D;
     if (w->type == INK_GGML_Q8_0) {
-        CALL(s, batch, K_DV_Q8, items, a_int(rows), a_int(cols), a_int(add),
+        CALL(s, batch, K_DV_Q8, (rows + 1) / 2, a_int(rows), a_int(cols), a_int(add),
              a_tensor_u16(s, w), a_f32v(x_buf, x_off, cols), a_f32v(out_buf, out_off, rows));
     } else if (w->type == INK_GGML_IQ4_NL) {
         CALL(s, batch, K_DV_IQ4, items, a_int(rows), a_int(cols), a_int(add),
@@ -654,7 +657,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
                  a_f32v(s->blocks, (int64_t)(*n_blocks) * d, d));
             (*n_blocks)++;
         }
-        CALL(s, batch, K_DV_Q8_CONV, (d + INK_D - 1) / INK_D, a_int(d), a_int(n_q), a_int(is_blk ? 0 : 1),
+        CALL(s, batch, K_DV_Q8_CONV, (d + 1) / 2, a_int(d), a_int(n_q), a_int(is_blk ? 0 : 1),
              a_tensor_u16(s, &L->attn_output), a_f32v(s->attn_out, 0, n_q),
              a_tensor_f32(s, &L->attn_post_conv), a_f32v(s->conv_ao[il], 0, d * 3),
              a_f32v(s->inp_sa, 0, d), a_f32v(s->cur, 0, d));
@@ -768,7 +771,7 @@ static int dispatch_layer(InkSession *s, PmBatch *bp, int il, int ip, int *n_blo
     /* MoE down + weighted sum + fused post shortconv & residual add (eliminates K_CONVOLVE_ADD + 48 barriers/tok!) */
     int64_t dn_items = (d + INK_D - 1) / INK_D;
     if (L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
-        CALL(s, batch, K_MOE_DOWN_IQ4, dn_items, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
+        CALL(s, batch, K_MOE_DOWN_IQ4, (d + 1) / 2, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
              a_tensor_u16(s, &L->ffn_down_exps),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
@@ -1301,7 +1304,8 @@ static int dispatch_mm_bf16(InkSession *s, PmBatch batch, int64_t rows, int64_t 
     return 0;
 }
 
-static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, int *n_blocks, int has_messages, float tau, int64_t nb) {
+static int dispatch_layer_batch(InkSession *s, PmBatch *bp, int il, int ip, int *n_blocks, int has_messages, float tau, int64_t nb) {
+    PmBatch batch = *bp;
     const InkHParams *hp = &s->gguf.hp;
     const InkLayerTensors *L = &s->gguf.layers[ip];
     int64_t d = hp->n_embd;
@@ -1545,6 +1549,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         if (dispatch_dequant_q8_bf16(s, batch, &L->attn_output, d, n_q, 0)) return 1;
     }
     pm_barrier(batch);
+    prof_mark(bp, 1); batch = *bp; /* 1: MMA attention (scores+softmax+values+o_deq) */
 
     /* Output projection + post shortconv + residual (fused when non-block-boundary!) */
     if (o_bf16) {
@@ -1686,6 +1691,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_u32v(s->row_dst, 0, tot_rows), a_f32v(s->row_wt, 0, tot_rows),
              a_f32v(s->moe_slot_out, 0, tot_rows * d));
         pm_barrier(batch);
+        prof_mark(bp, 3); batch = *bp; /* 3: moe_mm_iq4 (GU+SITU+DN+scatter) */
     } else if (nb >= 8 &&
         L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL &&
         L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
@@ -1744,6 +1750,7 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
              a_u32v(s->row_dst, 0, tot_rows), a_f32v(s->row_wt, 0, tot_rows),
              a_f32v(s->moe_slot_out, 0, tot_rows * d));
         pm_barrier(batch);
+        prof_mark(bp, 3); batch = *bp; /* 3: moe_mm_iq4 (GU+SITU+DN+scatter) */
     } else if (nb >= 8 &&
         (L->ffn_gate_up_exps.type == INK_GGML_IQ4_NL || L->ffn_gate_up_exps.type == INK_GGML_Q8_0) &&
         (L->ffn_down_exps.type == INK_GGML_IQ4_NL || L->ffn_down_exps.type == INK_GGML_Q8_0)) {
@@ -1918,14 +1925,19 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         }
         pm_barrier(batch);
     }
-    /* Fused MoE slot reduction + post shortconv + residual add (eliminates K_CONVOLVE_ADD_BATCH + 48 barriers & moe_out!) */
-    CALL(s, batch, K_MOE_REDUCE_BATCH, d, a_int(d), a_int(hp->n_expert_used), a_int(nb),
+    /* Sprint 30: Parallel coalesced MoE slot sum + coalesced post shortconv & residual add (446ms -> ~30ms on 2.4K prefill!) */
+    CALL(s, batch, K_MOE_SUM_BATCH, nb * ((d + 127) / 128), a_int(d), a_int(hp->n_expert_used),
          a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
+         a_f32v(s->moe_out, 0, bd));
+    pm_barrier(batch);
+    CALL(s, batch, K_CONVOLVE_ADD_BATCH, d, a_int(d), a_int(nb),
+         a_f32v(s->moe_out, 0, bd),
          a_tensor_f32(s, &L->ffn_post_conv),
          a_f32v(s->conv_fo[il], 0, d * 3),
          a_f32v(s->ffn_inp, 0, bd),
          a_f32v(s->cur, 0, bd));
     pm_barrier(batch);
+    prof_mark(bp, 4); batch = *bp; /* 4: moe_reduce_batch */
     return 0;
 }
 
@@ -1967,9 +1979,12 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
     int start = (int)hp->loop_start;
     int end = (int)hp->loop_end;
 
+    int do_pprof = (getenv("INK_PREFILL_PROF") != NULL);
+    if (do_pprof) { prof_active = 1; memset(prof_ms, 0, sizeof prof_ms); }
+
     /* 2. Prelude layers [0 .. start) */
     for (int il = 0; il < start; il++) {
-        if (dispatch_layer_batch(s, batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
     }
 
     /* Save prelude output and prelude blocks */
@@ -2011,7 +2026,7 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
         for (int ip = start; ip < end; ip++) {
             int il = (pass == 0) ? ip : (int)hp->n_phys + (pass - 1) * (end - start) + (ip - start);
             if (pass == 0) {
-                if (dispatch_layer_batch(s, batch, il, ip, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
             } else {
                 const InkLayerTensors *L = &s->gguf.layers[ip];
                 CALL(s, batch, K_MIX_BATCH, 4 * nb, a_int(d), a_int(bank_n_blocks), a_int(nb),
@@ -2020,14 +2035,26 @@ static int run_chunk(InkSession *s, const int32_t *tokens, int nb, int compute_l
                      a_tensor_f32(s, &L->loop_msg_query),
                      a_f32v(s->messages, 0, 4 * bd));
                 pm_barrier(batch);
-                if (dispatch_layer_batch(s, batch, il, ip, &n_blocks, 1, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+                if (dispatch_layer_batch(s, &batch, il, ip, &n_blocks, 1, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
             }
         }
     }
 
     /* 4. Coda layers [end .. n_phys) */
     for (int il = end; il < hp->n_phys; il++) {
-        if (dispatch_layer_batch(s, batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+        if (dispatch_layer_batch(s, &batch, il, il, &n_blocks, 0, tau, nb) != 0) { pm_wait(batch, NULL); return 1; }
+    }
+    if (do_pprof) {
+        prof_active = 0;
+        double sum = prof_ms[0] + prof_ms[1] + prof_ms[2] + prof_ms[3] + prof_ms[4];
+        fprintf(stderr, "\n[INK_PREFILL_PROF nb=%d total_gpu=%.1f ms (%.0f tok/s)]\n"
+                "  1 attn_in+MMA  : %7.1f ms (%4.1f%%)\n"
+                "  3 attn_out+MoE : %7.1f ms (%4.1f%%)\n"
+                "  4 moe_reduce   : %7.1f ms (%4.1f%%)\n",
+                nb, sum, nb * 1000.0 / (sum + 1e-9),
+                prof_ms[1], 100*prof_ms[1]/sum,
+                prof_ms[3], 100*prof_ms[3]/sum,
+                prof_ms[4], 100*prof_ms[4]/sum);
     }
 
     /* 5. Output mix -> output_norm -> lm_head -> logit softcap (ONLY for last token nb-1!) */

@@ -88,6 +88,8 @@ am_f16 :: (h:u32)->f32 #effects(all) {
     for _:0..<-e {v*=0.5f32;}
     return sign*v;
 }
+am_simd_sum :: (x:f32)->f32 #effects(all) { return x; }
+
 am_matmul_iq4_valid :: (rows:int,cols:int,tokens:int,r0:int,t0:int,tn:int,w:int,x:int,out:int,tg:int)->bool #effects(all) {
     if cols<64 || cols%64!=0 || r0<0 || r0>=rows || t0<0 || t0>=tokens || tg<tn*64 {return false;}
     return w>=rows*((cols/32)*9) && x>=tokens*cols && out>=tokens*rows;
@@ -121,6 +123,7 @@ am_matmul_iq4 :: (threads:int,tm:int,tn:int,rows:int,cols:int,tokens:int,r0:int,
 
 #test "BF16 halves decode exactly" {
     #assert am_bf16(0x40003f80,false)==1 && am_bf16(0x40003f80,true)==2 && am_bf16(0xc0400000,true)==-3;
+    #assert am_simd_sum(3.5f32)==3.5f32 && am_simd_sum(-1.25f32)==-1.25f32;
 }
 #test "am_matmul_iq4 decodes IQ4_NL weights and multiplies" {
     exp_lut:=[16]f32.[-127.0f32,-104.0f32,-83.0f32,-65.0f32,-49.0f32,-35.0f32,-22.0f32,-10.0f32,1.0f32,13.0f32,25.0f32,38.0f32,53.0f32,69.0f32,89.0f32,113.0f32];

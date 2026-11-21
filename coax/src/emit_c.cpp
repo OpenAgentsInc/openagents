@@ -1785,6 +1785,14 @@ struct Emitter {
           for (int i = 3; i < 11; i++) s += ex(e->args[i]) + ", ";
           return s + line + ", coax_err)";
         }
+        if (opts.metal_compute && e->proc && e->args.count == 1) {
+          if (str_eq(e->proc->name, "am_simd_sum")) return "simd_sum(" + ex(e->args[0]) + ")";
+          if (str_eq(e->proc->name, "am_iq4_lut")) {
+            apple_tensor = true;
+            return "coax_iq4_lut[(" + ex(e->args[0]) + ") & 15u]";
+          }
+          if (str_eq(e->proc->name, "am_f16")) return "((float)as_type<half>((ushort)(" + ex(e->args[0]) + ")))";
+        }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
         std::string name = e->intrinsic != Intrinsic::none ? math_name(e) : proc_name(e->proc);
