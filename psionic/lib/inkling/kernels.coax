@@ -521,7 +521,7 @@ ink_moe_gu_q8 :: (item:int,n_ff:int,cols:int,beta:f32,lb:f32,w:[]u16,x:[]f32,ids
 // Launch items = ceil(rows / 8). Group of 128 threads (4 simdgroups x 2 rows) flattens
 // (slot, block) across n_used * blocks (e.g. 8 * 36 = 288 = 9 * 32, zero idle lanes!).
 // ---- MoE down (IQ4_NL): 128 threads = 4 simdgroups x 2 rows (8 rows/TG), flattened (slot, block) 1-lane/block.
-ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
+ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     lut:[16]f32;
     blocks:=cols/32;row_words:=blocks*9;exp_words:=rows*row_words;
@@ -583,14 +583,17 @@ ink_moe_down_iq4 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[
             if row<rows {
                 simd:=thread/2;r:=thread%2;sum:f32=0;
                 for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
-                out[row]=sum;
+                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
+                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=sum;
+                acc:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+sum*conv_w[row*4+3];
+                out[row]=res[row]+(sum+acc)*0.4472135954999579f32;
             }
         }
     }
 }
 
 // ---- MoE down projection + weighted sum over n_used selected experts (Q8_0): 128 threads (4 simdgroups x 2 rows), flattened (slot, block).
-ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,out:[]f32) #export_c #effects(all) {
+ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]u32,wts:[]f32,conv_w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
     part:[256]f32;
     blocks:=cols/32;row_words:=blocks*17;exp_words:=rows*row_words;
     tot_blocks:=n_used*blocks;
@@ -640,7 +643,10 @@ ink_moe_down_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,ids:[]
             if row<rows {
                 simd:=thread/2;r:=thread%2;sum:f32=0;
                 for l:0..<32 {sum+=part[(simd*32+l)*2+r];}
-                out[row]=sum;
+                x0:=hist[row*3+0];x1:=hist[row*3+1];x2:=hist[row*3+2];
+                hist[row*3+0]=x1;hist[row*3+1]=x2;hist[row*3+2]=sum;
+                acc:=x0*conv_w[row*4+0]+x1*conv_w[row*4+1]+x2*conv_w[row*4+2]+sum*conv_w[row*4+3];
+                out[row]=res[row]+(sum+acc)*0.4472135954999579f32;
             }
         }
     }
@@ -2078,19 +2084,26 @@ ink_moe_down_batch_q8 :: (item:int,rows:int,cols:int,n_used:int,w:[]u16,x:[]f32,
 }
 
 // ---- Sum n_used expert slot outputs into moe_out[t*dim + r]. Launch items = n_tok (<= 1024 -> _n32!), lanes = 128.
-ink_moe_reduce_batch :: (item:int,dim:int,n_used:int,slot_out:[]f32,out:[]f32) #export_c #effects(all) {
-    tbase:=item*n_used*dim;
-    obase:=item*dim;
-    steps:=(dim+127)/128;
-    for thread:0..<128 {
-        for st:0..<steps {
-            r:=st*128+thread;
-            if r<dim {
-                s:f32=0;
-                for slot:0..<n_used {s+=slot_out[tbase+slot*dim+r];}
-                out[obase+r]=s;
-            }
+// ---- Fused MoE slot reduction + post shortconv + residual add (eliminates K_CONVOLVE_ADD_BATCH + 48 barriers & moe_out round-trip!).
+// Launch items = dim, lanes = 1.
+ink_moe_reduce_batch :: (item:int,dim:int,n_used:int,n_tok:int,slot_out:[]f32,w:[]f32,hist:[]f32,res:[]f32,out:[]f32) #export_c #effects(all) {
+    if item<dim {
+        h_idx:=item*3;
+        x0:=hist[h_idx+0];x1:=hist[h_idx+1];x2:=hist[h_idx+2];
+        wb:=item*4;
+        w0:=w[wb+0];w1:=w[wb+1];w2:=w[wb+2];w3:=w[wb+3];
+        inv_s:=0.4472135954999579f32;
+        stride:=n_used*dim;
+        for t:0..<n_tok {
+            tbase:=t*stride+item;
+            x3:f32=0;
+            for slot:0..<n_used {x3+=slot_out[tbase+slot*dim];}
+            acc:=x0*w0+x1*w1+x2*w2+x3*w3;
+            idx:=t*dim+item;
+            out[idx]=res[idx]+(x3+acc)*inv_s;
+            x0=x1;x1=x2;x2=x3;
         }
+        hist[h_idx+0]=x0;hist[h_idx+1]=x1;hist[h_idx+2]=x2;
     }
 }
 

@@ -199,7 +199,7 @@ static const int64_t k_lanes[K_COUNT] = {
     128,    /* K_SITU_BATCH */
     128,    /* K_MOE_DOWN_BATCH_IQ4 */
     128,    /* K_MOE_DOWN_BATCH_Q8 */
-    128,    /* K_MOE_REDUCE_BATCH */
+    1,      /* K_MOE_REDUCE_BATCH */
     128,    /* K_ATTN_SCORES_MMA */
     INK_NT, /* K_ATTN_SOFTMAX_MMA */
     128,    /* K_ATTN_VALUES_MMA */
@@ -699,7 +699,7 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
     }
     pm_barrier(batch);
 
-    /* MoE down + weighted sum */
+    /* MoE down + weighted sum + fused post shortconv & residual add (eliminates K_CONVOLVE_ADD + 48 barriers/tok!) */
     int64_t dn_items = (d + INK_D - 1) / INK_D;
     if (L->ffn_down_exps.type == INK_GGML_IQ4_NL) {
         CALL(s, batch, K_MOE_DOWN_IQ4, dn_items, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
@@ -707,25 +707,26 @@ static int dispatch_layer(InkSession *s, PmBatch batch, int il, int ip, int *n_b
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
              a_f32v(s->moe_wts, 0, hp->n_expert_used),
-             a_f32v(s->moe_out, 0, d));
+             a_tensor_f32(s, &L->ffn_post_conv),
+             a_f32v(s->conv_fo[il], 0, d * 3),
+             a_f32v(s->ffn_inp, 0, d),
+             a_f32v(s->cur, 0, d));
+        pm_barrier(batch);
     } else if (L->ffn_down_exps.type == INK_GGML_Q8_0) {
         CALL(s, batch, K_MOE_DOWN_Q8, dn_items, a_int(d), a_int(n_ff), a_int(hp->n_expert_used),
              a_tensor_u16(s, &L->ffn_down_exps),
              a_f32v(s->moe_hid, 0, hp->n_expert_used * n_ff),
              a_u32v(s->moe_ids, 0, hp->n_expert_used),
              a_f32v(s->moe_wts, 0, hp->n_expert_used),
-             a_f32v(s->moe_out, 0, d));
+             a_tensor_f32(s, &L->ffn_post_conv),
+             a_f32v(s->conv_fo[il], 0, d * 3),
+             a_f32v(s->ffn_inp, 0, d),
+             a_f32v(s->cur, 0, d));
+        pm_barrier(batch);
     } else {
         snprintf(s->error, sizeof s->error, "unsupported down type %u", L->ffn_down_exps.type);
         return 1;
     }
-    pm_barrier(batch);
-
-    /* Fused MoE post shortconv + residual add (1 dispatch instead of 2!) */
-    CALL(s, batch, K_CONVOLVE_ADD, d, a_int(d),
-         a_f32v(s->moe_out, 0, d), a_tensor_f32(s, &L->ffn_post_conv),
-         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->ffn_inp, 0, d), a_f32v(s->cur, 0, d));
-    pm_barrier(batch);
     return 0;
 }
 
@@ -1746,15 +1747,13 @@ static int dispatch_layer_batch(InkSession *s, PmBatch batch, int il, int ip, in
         }
         pm_barrier(batch);
     }
-    CALL(s, batch, K_MOE_REDUCE_BATCH, nb, a_int(d), a_int(hp->n_expert_used),
+    /* Fused MoE slot reduction + post shortconv + residual add (eliminates K_CONVOLVE_ADD_BATCH + 48 barriers & moe_out!) */
+    CALL(s, batch, K_MOE_REDUCE_BATCH, d, a_int(d), a_int(hp->n_expert_used), a_int(nb),
          a_f32v(s->moe_slot_out, 0, nb * hp->n_expert_used * d),
-         a_f32v(s->moe_out, 0, bd));
-    pm_barrier(batch);
-
-    /* Fused MoE post shortconv + residual add (eliminates K_ADD + barrier!) */
-    CALL(s, batch, K_CONVOLVE_ADD_BATCH, d, a_int(d), a_int(nb),
-         a_f32v(s->moe_out, 0, bd), a_tensor_f32(s, &L->ffn_post_conv),
-         a_f32v(s->conv_fo[il], 0, d * 3), a_f32v(s->ffn_inp, 0, bd), a_f32v(s->cur, 0, bd));
+         a_tensor_f32(s, &L->ffn_post_conv),
+         a_f32v(s->conv_fo[il], 0, d * 3),
+         a_f32v(s->ffn_inp, 0, bd),
+         a_f32v(s->cur, 0, bd));
     pm_barrier(batch);
     return 0;
 }
