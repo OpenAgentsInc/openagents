@@ -1,0 +1,178 @@
+// Local Capability Authoring & Two-Arm Eval Promotion Gate (GitHub #13896).
+//
+// #authority policy deciding whether a candidate local skill/capability may
+// promote from a two-arm evaluation (baseline vs. candidate) into the user's
+// local Skills repertoire. Enforces held-out / negative case coverage
+// (Episode 288-prep), non-regression, optional cost/latency budgets, verified
+// ATIF-v1.8 trace digest, and safe skill slug validation.
+#authority;
+
+CAP_PASS :: 0;
+CAP_FAIL_NO_CASES :: 1;
+CAP_FAIL_NO_HELDOUT :: 2;
+CAP_FAIL_REGRESSED :: 3;
+CAP_FAIL_HELDOUT_REGRESSED :: 4;
+CAP_FAIL_ZERO_PASS :: 5;
+CAP_FAIL_COST_BUDGET :: 6;
+CAP_FAIL_LATENCY_BUDGET :: 7;
+CAP_FAIL_ATIF_UNVERIFIED :: 8;
+
+CapEvalSummary :: struct {
+  total_cases: int;
+  heldout_cases: int;
+  baseline_passed: int;
+  candidate_passed: int;
+  baseline_heldout_passed: int;
+  candidate_heldout_passed: int;
+  candidate_cost_micros: int;
+  max_cost_micros: int;
+  candidate_latency_ms: int;
+  max_latency_ms: int;
+  atif_verified: bool;
+}
+
+cap_valid_slug :: (slug: string) -> bool #effects(reads, traps) {
+  if slug.count < 2 || slug.count > 48 { return false; }
+  if slug[0] == '-' || slug[slug.count - 1] == '-' { return false; }
+  for i: 0..<slug.count {
+    c := slug[i];
+    is_lower := c >= 'a' && c <= 'z';
+    is_digit := c >= '0' && c <= '9';
+    is_dash := c == '-';
+    if !is_lower && !is_digit && !is_dash { return false; }
+    if is_dash && slug[i - 1] == '-' { return false; }   // mutant: equivalent (adjacent-dash check is symmetric because slug[0] != '-' and slug[n-1] != '-')
+  }
+  return true;
+}
+
+cap_admit_promotion :: (e: CapEvalSummary) -> int #effects() {
+  if e.total_cases <= 0 { return CAP_FAIL_NO_CASES; }
+  if e.heldout_cases <= 0 || e.heldout_cases > e.total_cases { return CAP_FAIL_NO_HELDOUT; }
+  if !e.atif_verified { return CAP_FAIL_ATIF_UNVERIFIED; }
+  if e.candidate_passed <= 0 { return CAP_FAIL_ZERO_PASS; }
+  if e.candidate_passed < e.baseline_passed { return CAP_FAIL_REGRESSED; }
+  if e.candidate_heldout_passed < e.baseline_heldout_passed { return CAP_FAIL_HELDOUT_REGRESSED; }
+  if e.max_cost_micros > 0 && e.candidate_cost_micros > e.max_cost_micros { return CAP_FAIL_COST_BUDGET; }
+  if e.max_latency_ms > 0 && e.candidate_latency_ms > e.max_latency_ms { return CAP_FAIL_LATENCY_BUDGET; }
+  return CAP_PASS;
+}
+
+cap_verdict_label :: (code: int) -> string #effects() {
+  if code == CAP_PASS { return "PROMOTED: candidate passed two-arm eval and held-out gate"; }
+  if code == CAP_FAIL_NO_CASES { return "REJECTED: no eval cases recorded"; }
+  if code == CAP_FAIL_NO_HELDOUT { return "REJECTED: missing held-out/negative eval cases"; }
+  if code == CAP_FAIL_REGRESSED { return "REJECTED: candidate regressed below baseline"; }
+  if code == CAP_FAIL_HELDOUT_REGRESSED { return "REJECTED: candidate regressed on held-out cases"; }
+  if code == CAP_FAIL_ZERO_PASS { return "REJECTED: candidate passed zero cases"; }
+  if code == CAP_FAIL_COST_BUDGET { return "REJECTED: candidate exceeded cost budget"; }
+  if code == CAP_FAIL_LATENCY_BUDGET { return "REJECTED: candidate exceeded latency budget"; }
+  if code == CAP_FAIL_ATIF_UNVERIFIED { return "REJECTED: ATIF-v1.8 trace digest unverified"; }
+  return "REJECTED: unknown gate verdict";
+}
+
+#test "capability-gate: slug validation and #authority two-arm promotion gate (#13896)" {
+  // Slug validation boundaries and invalid characters
+  #assert !cap_valid_slug("");
+  #assert !cap_valid_slug("a");
+  #assert cap_valid_slug("ab");
+  #assert cap_valid_slug("az-09-skill");
+  #assert !cap_valid_slug("-abc");
+  #assert !cap_valid_slug("abc-");
+  #assert !cap_valid_slug("a--b");
+  #assert !cap_valid_slug("BadSlug");
+  #assert !cap_valid_slug("../escape");
+  #assert !cap_valid_slug("a_b");
+  #assert !cap_valid_slug("!a");      // index 0 invalid
+  #assert !cap_valid_slug("a{");      // 'z' + 1 boundary
+  #assert !cap_valid_slug("a:");      // '9' + 1 boundary
+  #assert cap_valid_slug("a12345678901234567890123456789012345678901234567");   // 48 chars
+  #assert !cap_valid_slug("a123456789012345678901234567890123456789012345678"); // 49 chars
+
+  // Valid passing promotion (exact boundary match on baseline, cost, latency, heldout == total)
+  ok := CapEvalSummary.{
+    total_cases = 4,
+    heldout_cases = 2,
+    baseline_passed = 2,
+    candidate_passed = 3,
+    baseline_heldout_passed = 1,
+    candidate_heldout_passed = 2,
+    candidate_cost_micros = 500,
+    max_cost_micros = 500,
+    candidate_latency_ms = 1200,
+    max_latency_ms = 1200,
+    atif_verified = true
+  };
+  #assert cap_admit_promotion(ok) == CAP_PASS;
+  #assert cap_verdict_label(CAP_PASS) == "PROMOTED: candidate passed two-arm eval and held-out gate";
+
+  // Equal to baseline also promotes; zero budgets mean unbounded
+  tie := ok;
+  tie.candidate_passed = 2;
+  tie.candidate_heldout_passed = 1;
+  tie.heldout_cases = 4;
+  tie.max_cost_micros = 0;
+  tie.candidate_cost_micros = 99999;
+  tie.max_latency_ms = 0;
+  tie.candidate_latency_ms = 99999;
+  #assert cap_admit_promotion(tie) == CAP_PASS;
+
+  // Reject: no cases
+  nc := ok; nc.total_cases = 0;
+  #assert cap_admit_promotion(nc) == CAP_FAIL_NO_CASES;
+  #assert cap_verdict_label(CAP_FAIL_NO_CASES) == "REJECTED: no eval cases recorded";
+
+  // Reject: no held-out cases or heldout > total
+  nh := ok; nh.heldout_cases = 0;
+  #assert cap_admit_promotion(nh) == CAP_FAIL_NO_HELDOUT;
+  nh2 := ok; nh2.heldout_cases = 5;
+  #assert cap_admit_promotion(nh2) == CAP_FAIL_NO_HELDOUT;
+  #assert cap_verdict_label(CAP_FAIL_NO_HELDOUT) == "REJECTED: missing held-out/negative eval cases";
+
+  // Reject: ATIF unverified
+  na := ok; na.atif_verified = false;
+  #assert cap_admit_promotion(na) == CAP_FAIL_ATIF_UNVERIFIED;
+  #assert cap_verdict_label(CAP_FAIL_ATIF_UNVERIFIED) == "REJECTED: ATIF-v1.8 trace digest unverified";
+
+  // Reject: zero candidate passes
+  zp := ok; zp.baseline_passed = 0; zp.candidate_passed = 0;
+  #assert cap_admit_promotion(zp) == CAP_FAIL_ZERO_PASS;
+  #assert cap_verdict_label(CAP_FAIL_ZERO_PASS) == "REJECTED: candidate passed zero cases";
+
+  // Reject: regressed below baseline
+  rg := ok; rg.candidate_passed = 1;
+  #assert cap_admit_promotion(rg) == CAP_FAIL_REGRESSED;
+  #assert cap_verdict_label(CAP_FAIL_REGRESSED) == "REJECTED: candidate regressed below baseline";
+
+  // Reject: held-out regression even when overall passed >= baseline
+  hr := ok; hr.candidate_heldout_passed = 0;
+  #assert cap_admit_promotion(hr) == CAP_FAIL_HELDOUT_REGRESSED;
+  #assert cap_verdict_label(CAP_FAIL_HELDOUT_REGRESSED) == "REJECTED: candidate regressed on held-out cases";
+
+  // Reject: cost budget exceeded (including max_cost_micros == 1 boundary)
+  cb := ok; cb.candidate_cost_micros = 501;
+  #assert cap_admit_promotion(cb) == CAP_FAIL_COST_BUDGET;
+  cb1 := ok; cb1.max_cost_micros = 1; cb1.candidate_cost_micros = 2;
+  #assert cap_admit_promotion(cb1) == CAP_FAIL_COST_BUDGET;
+  #assert cap_verdict_label(CAP_FAIL_COST_BUDGET) == "REJECTED: candidate exceeded cost budget";
+
+  // Reject: latency budget exceeded (including max_latency_ms == 1 boundary)
+  lb := ok; lb.candidate_latency_ms = 1201;
+  #assert cap_admit_promotion(lb) == CAP_FAIL_LATENCY_BUDGET;
+  lb1 := ok; lb1.max_latency_ms = 1; lb1.candidate_latency_ms = 2;
+  #assert cap_admit_promotion(lb1) == CAP_FAIL_LATENCY_BUDGET;
+  #assert cap_verdict_label(CAP_FAIL_LATENCY_BUDGET) == "REJECTED: candidate exceeded latency budget";
+
+  // Minimal 1-case / 1-heldout promotion boundary
+  one := CapEvalSummary.{
+    total_cases = 1, heldout_cases = 1,
+    baseline_passed = 0, candidate_passed = 1,
+    baseline_heldout_passed = 0, candidate_heldout_passed = 1,
+    candidate_cost_micros = 1, max_cost_micros = 1,
+    candidate_latency_ms = 1, max_latency_ms = 1,
+    atif_verified = true
+  };
+  #assert cap_admit_promotion(one) == CAP_PASS;
+
+  // Unknown verdict code
+  #assert cap_verdict_label(99) == "REJECTED: unknown gate verdict";
+}

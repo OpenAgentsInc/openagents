@@ -173,6 +173,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleWebPreview(_ sender: Any?) { main?.toggleWebPreview() }
     @objc func triggerSnapShot(_ sender: Any?) { main?.triggerRegionSnapshot() }
     @objc func openThreadProof(_ sender: Any?) { ThreadProofDrawer.shared.present(window: main) }
+    @objc func openCapabilityStudio(_ sender: Any?) { CapabilityStudio.shared.present(window: main) }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
@@ -381,6 +382,7 @@ enum TestLaunch {
         appMenu.addItem(withTitle: "Check for Updates…", action: #selector(CoderDelegate.checkForUpdates(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Update Everything…", action: #selector(CoderDelegate.openUpdateEverything(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Scheduled Tasks…", action: #selector(CoderDelegate.openScheduledTasks(_:)), keyEquivalent: "").target = delegate
+        appMenu.addItem(withTitle: "New Local Capability (Two-Arm Eval)…", action: #selector(CoderDelegate.openCapabilityStudio(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Install CLI Shim…", action: #selector(CoderDelegate.toggleCliShim(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(withTitle: "Hold-to-Quit Protection (⌘Q×2)", action: #selector(CoderDelegate.toggleQuitHold(_:)), keyEquivalent: "").target = delegate
         appMenu.addItem(.separator())
