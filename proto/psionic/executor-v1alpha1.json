@@ -1,0 +1,291 @@
+{
+  "profile": "executor-v1alpha1",
+  "descriptor": "proto/descriptors/executor.pb",
+  "codec": "psionic/lib/executor-wire.coax",
+  "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+  "about": "Canonical RFC 8785 (JCS) JSON golden wire frames, SHA-256 digests, and adversarial refusal vectors for all 12 contracts across the 5 openagents.executor.v1alpha1 / openagents.executor-release.v1 schema families (GitHub #13914). Verified against proto/descriptors/executor.pb and psionic/lib/executor-wire.coax by psionic/lib/executor-wire-goldens.coax.",
+  "goldens": [
+    {
+      "name": "compiled_module_manifest",
+      "schema": "openagents.executor.module.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.CompiledModuleManifest",
+      "sha256": "32a3ee0d46bbc99907a98929cbe834b43b0e2efaaf9facd678c2b5cd2e0c9671",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":67108864,\"min_value\":-67108864,\"scalar_type\":\"i64\",\"slot_count\":16},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "executor_program_ref",
+      "schema": "openagents.executor.program-ref.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.ExecutorProgramRef",
+      "sha256": "30fff076880d68aaa3eebad38e133bf46f125317548044ffba168d89620e9ef0",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"profile_id\":\"exec-vm-v1\",\"program_hash\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"schema\":\"openagents.executor.program-ref.v1alpha1\"}"
+    },
+    {
+      "name": "execution_trace_receipt",
+      "schema": "openagents.executor.trace-receipt.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.ExecutionTraceReceipt",
+      "sha256": "3b9fd3533091bd841fe7843bc98440070c25f6ede1df6d7ac28d2c77064c28eb",
+      "body": "{\"chunk_merkle_root\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"finished_at\":1763700002500,\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"job_id\":\"job-2026-11-21-0001\",\"output_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"program_hash\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"schema\":\"openagents.executor.trace-receipt.v1alpha1\",\"started_at\":1763700001000,\"step_count\":4096,\"trace_digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"worker_device_ref\":\"mac-studio-m4-01\",\"worker_pubkey\":\"7777777777777777777777777777777777777777777777777777777777777777\"}"
+    },
+    {
+      "name": "replay_verdict_exact",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.ReplayVerdict",
+      "sha256": "616e25447c25626d17068da679905b46240f7f733d024c8c29f06fd57365c843",
+      "body": "{\"expected_row\":[],\"first_divergent_step\":-1,\"observed_row\":[],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"linux-x86-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"EXACT_REPLAY\"}"
+    },
+    {
+      "name": "replay_verdict_failed",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.ReplayVerdict",
+      "sha256": "a6c35ba143a5fc216692a9df1d98711fb15249cf84cecfff515ad3e47e432be4",
+      "body": "{\"expected_row\":[42,-7,1024,0],\"first_divergent_step\":137,\"observed_row\":[42,-7,1025,0],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"validator_device_ref\":\"linux-x86-val-02\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}"
+    },
+    {
+      "name": "dataset_shard_manifest",
+      "schema": "openagents.executor.dataset-shard.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.DatasetShardManifest",
+      "sha256": "b14596bfbe796adcdc79cd6f7e64c6fa58e95dc27563b7ce06c1574548a085eb",
+      "body": "{\"byte_count\":16777216,\"created_at\":1763700000000,\"exposure_ledger_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"family_tags\":[\"diff-verify\",\"exec-vm-v1\"],\"record_count\":4096,\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"shard_id\":\"shard-train-0001\",\"shard_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"split\":\"TRAIN\"}"
+    },
+    {
+      "name": "training_window_lease",
+      "schema": "openagents.executor.training-lease.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.TrainingWindowLease",
+      "sha256": "5566f2e093402d9935f8d0cf811e6444ac559a0b9c771608be6840f3a70938c2",
+      "body": "{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"end_step\":256,\"expires_at\":1763703600000,\"issued_at\":1763700000000,\"lease_id\":\"lease-w0001-01\",\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":1337,\"schema\":\"openagents.executor.training-lease.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}"
+    },
+    {
+      "name": "training_window_claim",
+      "schema": "openagents.executor.training-claim.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.TrainingWindowClaim",
+      "sha256": "d96374c4c3639511c9f4dfd345bab062909f02d792e74adcbb249d799d776966",
+      "body": "{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"delta_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"end_step\":256,\"lease_id\":\"lease-w0001-01\",\"loss_stats\":{\"final_loss_e6\":1425000,\"initial_loss_e6\":2150000,\"max_grad_norm_e6\":842000,\"non_finite_count\":0},\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":1337,\"schema\":\"openagents.executor.training-claim.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_device_ref\":\"mac-studio-m4-01\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}"
+    },
+    {
+      "name": "training_window_verdict",
+      "schema": "openagents.executor.training-verdict.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.TrainingWindowVerdict",
+      "sha256": "976e55fbd1fff0a2e94c9e0cd26321585d7ce353caeace290796c9bf333cf0d1",
+      "body": "{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":962000,\"l2_norm_e6\":418000,\"loss_delta_e6\":-725000,\"step_distance_ppb\":14500},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":0},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"cuda-h100-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}"
+    },
+    {
+      "name": "checkpoint_lineage_promoted",
+      "schema": "openagents.executor.checkpoint-lineage.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.CheckpointLineageRecord",
+      "sha256": "4cb4920132ed89e92cc2175d24bbe974963c9e01dd0da1c425317c6ddf496c1a",
+      "body": "{\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"included_windows\":[\"3333333333333333333333333333333333333333333333333333333333333333\",\"4444444444444444444444444444444444444444444444444444444444444444\"],\"parent_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"promotion_verdict\":\"PROMOTED\",\"rollback_from\":\"\",\"schema\":\"openagents.executor.checkpoint-lineage.v1alpha1\",\"shard_hashes\":[\"5555555555555555555555555555555555555555555555555555555555555555\"],\"suite_digests\":[\"6666666666666666666666666666666666666666666666666666666666666666\"]}"
+    },
+    {
+      "name": "checkpoint_lineage_rolled_back",
+      "schema": "openagents.executor.checkpoint-lineage.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.CheckpointLineageRecord",
+      "sha256": "b30910f23122d2a0dd11be7e636d30786ffcdaa7903ea868b40cdde43ebed9e2",
+      "body": "{\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"included_windows\":[],\"parent_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"promotion_verdict\":\"ROLLED_BACK\",\"rollback_from\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"schema\":\"openagents.executor.checkpoint-lineage.v1alpha1\",\"shard_hashes\":[\"5555555555555555555555555555555555555555555555555555555555555555\"],\"suite_digests\":[\"6666666666666666666666666666666666666666666666666666666666666666\"]}"
+    },
+    {
+      "name": "verified_payout_intent_worker",
+      "schema": "openagents.executor.payout-intent.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.VerifiedPayoutIntent",
+      "sha256": "2ff606372ed4cbc62297c4e872f682965803056229928e30143bd7d4d7cd3517",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"period_id\":\"2026-11-21\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "verified_payout_intent_validator",
+      "schema": "openagents.executor.payout-intent.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.VerifiedPayoutIntent",
+      "sha256": "a094e51f5557a8fa2df319a63aa874e6d7bdfa33a8901719c14f9a60929c2274",
+      "body": "{\"amount_msat\":50000,\"leg\":\"VALIDATOR\",\"network\":\"signet\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"period_id\":\"2026-11-21\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "settlement_receipt_moved",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.SettlementReceipt",
+      "sha256": "28f2692cf344ef7938e674a111129094cd1be6331fa7f5d2a7093da99b471787",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}"
+    },
+    {
+      "name": "settlement_receipt_unmoved",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "proto": ".openagents.executor.v1alpha1.SettlementReceipt",
+      "sha256": "93f13a4a80dabeb0273bc189617b5a8f487fbdc7cb523d48b2baf7044411eb8c",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"regtest\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":0,\"settlement_commitment\":\"\"}"
+    },
+    {
+      "name": "executor_release_manifest",
+      "schema": "openagents.executor-release.v1",
+      "proto": ".openagents.executor.v1alpha1.ExecutorReleaseManifest",
+      "sha256": "9215ddd43b9c86303563ec2509746f13456cd4fbebbaff19e3170e5c7fa3bf13",
+      "body": "{\"artifacts\":[{\"artifact_id\":\"exec-vm-v1-macos-arm64\",\"byte_count\":4194304,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"target_platform\":\"macos-arm64\"},{\"artifact_id\":\"exec-vm-v1-linux-x86_64\",\"byte_count\":4194304,\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"target_platform\":\"linux-x86_64\"}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":500,\"min_client_version\":\"0.1.0\",\"published_at\":1763700020000,\"release_id\":\"exec-rel-2026-11-21-01\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}"
+    }
+  ],
+  "refusals": [
+    {
+      "name": "truncated_frame",
+      "schema": "openagents.executor.module.v1alpha1",
+      "err": "truncated",
+      "body": "{\"schema\":\"openagents.executor.module.v1alpha1\""
+    },
+    {
+      "name": "bad_schema_version",
+      "schema": "openagents.executor.module.v1alpha1",
+      "err": "schema",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":67108864,\"min_value\":-67108864,\"scalar_type\":\"i64\",\"slot_count\":16},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v999\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "unknown_field_module",
+      "schema": "openagents.executor.module.v1alpha1",
+      "err": "unknown_field",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"extra_field\":1,\"input_abi\":{\"max_value\":67108864,\"min_value\":-67108864,\"scalar_type\":\"i64\",\"slot_count\":16},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "unknown_field_nested_abi",
+      "schema": "openagents.executor.module.v1alpha1",
+      "err": "unknown_field",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"extra\":1,\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "invalid_enum_verification_class",
+      "schema": "openagents.executor.module.v1alpha1",
+      "err": "invalid_enum",
+      "body": "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":67108864,\"min_value\":-67108864,\"scalar_type\":\"i64\",\"slot_count\":16},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"QUANTUM_MAGIC\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "bad_digest_uppercase",
+      "schema": "openagents.executor.program-ref.v1alpha1",
+      "err": "digest",
+      "body": "{\"compiler_hash\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"profile_id\":\"exec-vm-v1\",\"program_hash\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"schema\":\"openagents.executor.program-ref.v1alpha1\"}"
+    },
+    {
+      "name": "bad_trace_time_order",
+      "schema": "openagents.executor.trace-receipt.v1alpha1",
+      "err": "bounds",
+      "body": "{\"chunk_merkle_root\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"finished_at\":1000,\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"job_id\":\"job-2026-11-21-0001\",\"output_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"program_hash\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"schema\":\"openagents.executor.trace-receipt.v1alpha1\",\"started_at\":2000,\"step_count\":4096,\"trace_digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"worker_device_ref\":\"mac-studio-m4-01\",\"worker_pubkey\":\"7777777777777777777777777777777777777777777777777777777777777777\"}"
+    },
+    {
+      "name": "invalid_enum_replay_outcome",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "err": "invalid_enum",
+      "body": "{\"expected_row\":[],\"first_divergent_step\":-1,\"observed_row\":[],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"linux-x86-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"MAYBE\"}"
+    },
+    {
+      "name": "oversized_replay_rows",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "err": "bounds",
+      "body": "{\"expected_row\":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16],\"first_divergent_step\":137,\"observed_row\":[42,-7,1025,0],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"validator_device_ref\":\"linux-x86-val-02\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}"
+    },
+    {
+      "name": "failed_replay_negative_step",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "err": "invariant",
+      "body": "{\"expected_row\":[42,-7,1024,0],\"first_divergent_step\":-1,\"observed_row\":[42,-7,1025,0],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"validator_device_ref\":\"linux-x86-val-02\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}"
+    },
+    {
+      "name": "failed_replay_identical_rows",
+      "schema": "openagents.executor.replay-verdict.v1alpha1",
+      "err": "invariant",
+      "body": "{\"expected_row\":[42,-7,1024,0],\"first_divergent_step\":137,\"observed_row\":[42,-7,1024,0],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"validator_device_ref\":\"linux-x86-val-02\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}"
+    },
+    {
+      "name": "oversized_shard_tags",
+      "schema": "openagents.executor.dataset-shard.v1alpha1",
+      "err": "bounds",
+      "body": "{\"byte_count\":16777216,\"created_at\":1763700000000,\"exposure_ledger_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"family_tags\":[\"tag-0\",\"tag-1\",\"tag-2\",\"tag-3\",\"tag-4\",\"tag-5\",\"tag-6\",\"tag-7\",\"tag-8\",\"tag-9\",\"tag-10\",\"tag-11\",\"tag-12\",\"tag-13\",\"tag-14\",\"tag-15\",\"tag-16\",\"tag-17\",\"tag-18\",\"tag-19\",\"tag-20\",\"tag-21\",\"tag-22\",\"tag-23\",\"tag-24\",\"tag-25\",\"tag-26\",\"tag-27\",\"tag-28\",\"tag-29\",\"tag-30\",\"tag-31\",\"tag-32\"],\"record_count\":4096,\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"shard_id\":\"shard-train-0001\",\"shard_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"split\":\"TRAIN\"}"
+    },
+    {
+      "name": "lease_reversed_window",
+      "schema": "openagents.executor.training-lease.v1alpha1",
+      "err": "bounds",
+      "body": "{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"end_step\":256,\"expires_at\":1763703600000,\"issued_at\":1763700000000,\"lease_id\":\"lease-w0001-01\",\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":1337,\"schema\":\"openagents.executor.training-lease.v1alpha1\",\"start_step\":300,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}"
+    },
+    {
+      "name": "claim_non_finite_gradients",
+      "schema": "openagents.executor.training-claim.v1alpha1",
+      "err": "invariant",
+      "body": "{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"delta_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"end_step\":256,\"lease_id\":\"lease-w0001-01\",\"loss_stats\":{\"final_loss_e6\":1425000,\"initial_loss_e6\":2150000,\"max_grad_norm_e6\":842000,\"non_finite_count\":1},\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":1337,\"schema\":\"openagents.executor.training-claim.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_device_ref\":\"mac-studio-m4-01\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}"
+    },
+    {
+      "name": "verdict_wrong_tier_count",
+      "schema": "openagents.executor.training-verdict.v1alpha1",
+      "err": "bounds",
+      "body": "{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":962000,\"l2_norm_e6\":418000,\"loss_delta_e6\":-725000,\"step_distance_ppb\":14500},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":0},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4}],\"validator_device_ref\":\"cuda-h100-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}"
+    },
+    {
+      "name": "verdict_accepted_with_tier_fail",
+      "schema": "openagents.executor.training-verdict.v1alpha1",
+      "err": "invariant",
+      "body": "{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":962000,\"l2_norm_e6\":418000,\"loss_delta_e6\":-725000,\"step_distance_ppb\":14500},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":0},{\"outcome\":\"FAIL\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"cuda-h100-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}"
+    },
+    {
+      "name": "lineage_promoted_with_rollback_from",
+      "schema": "openagents.executor.checkpoint-lineage.v1alpha1",
+      "err": "invariant",
+      "body": "{\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"included_windows\":[\"3333333333333333333333333333333333333333333333333333333333333333\",\"4444444444444444444444444444444444444444444444444444444444444444\"],\"parent_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"promotion_verdict\":\"PROMOTED\",\"rollback_from\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"schema\":\"openagents.executor.checkpoint-lineage.v1alpha1\",\"shard_hashes\":[\"5555555555555555555555555555555555555555555555555555555555555555\"],\"suite_digests\":[\"6666666666666666666666666666666666666666666666666666666666666666\"]}"
+    },
+    {
+      "name": "payout_non_bitcoin_network",
+      "schema": "openagents.executor.payout-intent.v1alpha1",
+      "err": "invariant",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"usdc\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"period_id\":\"2026-11-21\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "payout_invalid_leg",
+      "schema": "openagents.executor.payout-intent.v1alpha1",
+      "err": "invalid_enum",
+      "body": "{\"amount_msat\":250000,\"leg\":\"BROKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"period_id\":\"2026-11-21\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "settlement_forbidden_bolt11_key",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "secret",
+      "body": "{\"amount_msat\":250000,\"bolt11\":\"lnbc100n1ptest\",\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}"
+    },
+    {
+      "name": "settlement_forbidden_preimage_key",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "secret",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"preimage\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}"
+    },
+    {
+      "name": "settlement_secret_prefix_commitment",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "secret",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"lnbc100n1ptest\"}"
+    },
+    {
+      "name": "settlement_secret_prefix_nsec_payee",
+      "schema": "openagents.executor.payout-intent.v1alpha1",
+      "err": "secret",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"nsec1secretvalue\",\"period_id\":\"2026-11-21\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}"
+    },
+    {
+      "name": "settlement_dishonest_moved_empty_commitment",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "invariant",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"\"}"
+    },
+    {
+      "name": "settlement_dishonest_moved_zero_settled_at",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "invariant",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":0,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}"
+    },
+    {
+      "name": "settlement_dishonest_unmoved_with_commitment",
+      "schema": "openagents.executor.settlement-receipt.v1alpha1",
+      "err": "invariant",
+      "body": "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"regtest\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":false,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":0,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}"
+    },
+    {
+      "name": "release_same_checkpoint_and_rollback",
+      "schema": "openagents.executor-release.v1",
+      "err": "invariant",
+      "body": "{\"artifacts\":[{\"artifact_id\":\"exec-vm-v1-macos-arm64\",\"byte_count\":4194304,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"target_platform\":\"macos-arm64\"},{\"artifact_id\":\"exec-vm-v1-linux-x86_64\",\"byte_count\":4194304,\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"target_platform\":\"linux-x86_64\"}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":500,\"min_client_version\":\"0.1.0\",\"published_at\":1763700020000,\"release_id\":\"exec-rel-2026-11-21-01\",\"rollback_target_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}"
+    },
+    {
+      "name": "release_invalid_stage",
+      "schema": "openagents.executor-release.v1",
+      "err": "invalid_enum",
+      "body": "{\"artifacts\":[{\"artifact_id\":\"exec-vm-v1-macos-arm64\",\"byte_count\":4194304,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"target_platform\":\"macos-arm64\"},{\"artifact_id\":\"exec-vm-v1-linux-x86_64\",\"byte_count\":4194304,\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"target_platform\":\"linux-x86_64\"}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":500,\"min_client_version\":\"0.1.0\",\"published_at\":1763700020000,\"release_id\":\"exec-rel-2026-11-21-01\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"YOLO\"}"
+    }
+  ]
+}

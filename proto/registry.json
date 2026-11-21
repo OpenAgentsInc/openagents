@@ -6741,6 +6741,200 @@
       "check": "coax/lib/agent/tester/schema.coax",
       "step": "C1",
       "note": "Simulated App Tester run report JSON summary emitted by cli.coax (#13891)."
+    },
+    {
+      "id": "openagents.executor.module.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/module.proto#CompiledModuleManifest",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Digest-pinned compiled weight module manifest with ABI, seams, and E/D/S/N verification class (#13914)."
+    },
+    {
+      "id": "openagents.executor.program-ref.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/trace.proto#ExecutorProgramRef",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Content-addressed executor program, input, compiler, profile, and artifact reference (#13914)."
+    },
+    {
+      "id": "openagents.executor.trace-receipt.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/trace.proto#ExecutionTraceReceipt",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Worker execution trace receipt committing to trace digest, output digest, and chunk Merkle root (#13914)."
+    },
+    {
+      "id": "openagents.executor.replay-verdict.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/trace.proto#ReplayVerdict",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Independent replay verdict with EXACT_REPLAY/FAILED/UNVERIFIABLE outcome and first-divergent-step diagnostics (#13914)."
+    },
+    {
+      "id": "openagents.executor.dataset-shard.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/training.proto#DatasetShardManifest",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Immutable decontaminated dataset shard manifest pinned to an exposure ledger (#13914)."
+    },
+    {
+      "id": "openagents.executor.training-lease.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/training.proto#TrainingWindowLease",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Time-bounded worker training-window lease pinning parent checkpoint, optimizer state, shard, config, seed, and step range (#13914)."
+    },
+    {
+      "id": "openagents.executor.training-claim.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/training.proto#TrainingWindowClaim",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Worker training-window delta claim entering quarantine for 6-tier verification (#13914)."
+    },
+    {
+      "id": "openagents.executor.training-verdict.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/training.proto#TrainingWindowVerdict",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Validator training-window verdict carrying tier 0..5 outcomes and fixed-point outlier metrics (#13914)."
+    },
+    {
+      "id": "openagents.executor.checkpoint-lineage.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/training.proto#CheckpointLineageRecord",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Immutable canonical/quarantine/promoted/rollback checkpoint lineage record (#13914)."
+    },
+    {
+      "id": "openagents.executor.payout-intent.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/settlement.proto#VerifiedPayoutIntent",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Bitcoin-only idempotent payout intent keyed by (receipt_digest, leg) with owner policy digest and rolling UTC period_id (#13914)."
+    },
+    {
+      "id": "openagents.executor.settlement-receipt.v1alpha1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/settlement.proto#SettlementReceipt",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Bitcoin-only settlement receipt with truthful real_bitcoin_moved and digest-only settlement_commitment (never invoices/preimages/keys; #13914)."
+    },
+    {
+      "id": "openagents.executor-release.v1",
+      "kind": "proto",
+      "owner": "psionic",
+      "schema": "proto/openagents/executor/v1alpha1/release.proto#ExecutorReleaseManifest",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax",
+        "proto/psionic/executor-v1alpha1.json"
+      ],
+      "note": "Signed shadow-to-promote executor release manifest with rollback target pin (#13914)."
+    },
+    {
+      "id": "executor-v1alpha1-goldens",
+      "kind": "profile",
+      "owner": "psionic",
+      "schema": "proto/psionic/executor-v1alpha1.json",
+      "codec": "psionic/lib/executor-wire.coax",
+      "check": "coax/web/tool.sh psionic/lib/executor-wire-goldens.coax",
+      "step": "new",
+      "tests": [
+        "psionic/lib/executor-wire-checks.coax",
+        "psionic/lib/executor-wire-goldens.coax"
+      ],
+      "note": "Canonical RFC 8785 JCS golden bytes, SHA-256 digests, and 28 adversarial refusal vectors for openagents.executor.v1alpha1 and openagents.executor-release.v1 (#13914)."
     }
   ]
 }

@@ -1,0 +1,56 @@
+syntax = "proto3";
+package openagents.executor.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Bitcoin-only receipt-first payout intent and settlement receipt contracts
+// (psionic/docs/executor-network-master-spec.md W2.1 & W4.3, GitHub #13914).
+//
+// Security invariant: these records NEVER carry BOLT11 invoices, payment
+// preimages, mnemonics, or private keys. Only digest commitments, network
+// identifiers (bitcoin, testnet, signet, regtest), owner-policy digests,
+// rolling UTC period IDs, and truthful real_bitcoin_moved status cross this boundary.
+// Single #authority Coax codec: psionic/lib/executor-wire.coax.
+
+enum PayoutLeg {
+  PAYOUT_LEG_UNSPECIFIED = 0;
+  PAYOUT_LEG_WORKER = 1;
+  PAYOUT_LEG_VALIDATOR = 2;
+}
+
+// Idempotent payout intent keyed by (receipt_digest, leg) emitted only after
+// independent replay or training verification succeeds.
+message VerifiedPayoutIntent {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.payout-intent.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_INTENT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 4096;
+
+  uint64 amount_msat = 1 [json_name = "amount_msat", (openagents.options.v1alpha1.unit) = "msat"];
+  PayoutLeg leg = 2 [json_name = "leg"];
+  string network = 3 [json_name = "network", (openagents.options.v1alpha1.max_bytes) = 16];
+  string owner_policy_digest = 4 [json_name = "owner_policy_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string payee_pubkey = 5 [json_name = "payee_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+  string period_id = 6 [json_name = "period_id", (openagents.options.v1alpha1.max_bytes) = 10];
+  string receipt_digest = 7 [json_name = "receipt_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 8 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  string verdict_digest = 9 [json_name = "verdict_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Reconciled settlement receipt. real_bitcoin_moved MUST be true if and only
+// if settlement_commitment is a non-zero 64-hex digest and settled_at > 0.
+message SettlementReceipt {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.settlement-receipt.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RECEIPT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 4096;
+
+  uint64 amount_msat = 1 [json_name = "amount_msat", (openagents.options.v1alpha1.unit) = "msat"];
+  PayoutLeg leg = 2 [json_name = "leg"];
+  string network = 3 [json_name = "network", (openagents.options.v1alpha1.max_bytes) = 16];
+  string owner_policy_digest = 4 [json_name = "owner_policy_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string period_id = 5 [json_name = "period_id", (openagents.options.v1alpha1.max_bytes) = 10];
+  bool real_bitcoin_moved = 6 [json_name = "real_bitcoin_moved"];
+  string receipt_digest = 7 [json_name = "receipt_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 8 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  int64 settled_at = 9 [json_name = "settled_at", (openagents.options.v1alpha1.unit) = "ms"];
+  string settlement_commitment = 10 [json_name = "settlement_commitment", (openagents.options.v1alpha1.max_bytes) = 64];
+}

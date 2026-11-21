@@ -1,0 +1,57 @@
+syntax = "proto3";
+package openagents.executor.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Compiled weight-module contracts for the OpenAgents Executor Network
+// (psionic/docs/executor-network-master-spec.md W2.1, GitHub #13914).
+//
+// Fields in every message are declared in RFC 8785 (JCS) lexicographical
+// json_name order so canonical signed/hashed JSON payloads match protobuf
+// field declaration order exactly.
+// Single #authority Coax codec: psionic/lib/executor-wire.coax.
+
+enum VerificationClass {
+  VERIFICATION_CLASS_UNSPECIFIED = 0;
+  VERIFICATION_CLASS_E_EXACT_REPLAY = 1;
+  VERIFICATION_CLASS_D_DETERMINISTIC_TEST = 2;
+  VERIFICATION_CLASS_S_STATISTICAL = 3;
+  VERIFICATION_CLASS_N_UNVERIFIED = 4;
+}
+
+// Bounded input or output ABI descriptor for a compiled weight module.
+message AbiDescriptor {
+  int64 max_value = 1 [json_name = "max_value"];
+  int64 min_value = 2 [json_name = "min_value"];
+  string scalar_type = 3 [json_name = "scalar_type", (openagents.options.v1alpha1.max_bytes) = 32];
+  uint32 slot_count = 4 [json_name = "slot_count"];
+}
+
+// One checked residual-stream seam between linked compiled weight blocks.
+message ModuleSeam {
+  uint32 count = 1 [json_name = "count"];
+  uint32 layer = 2 [json_name = "layer"];
+  uint32 slot = 3 [json_name = "slot"];
+  string upstream_module_sha256 = 4 [json_name = "upstream_module_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Digest-pinned compiled weight module manifest (module-v2 / exec-vm-v1).
+message CompiledModuleManifest {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.module.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RELEASE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 65536;
+
+  string compiler_hash = 1 [json_name = "compiler_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string conformance_suite_sha256 = 2 [json_name = "conformance_suite_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  AbiDescriptor input_abi = 3 [json_name = "input_abi"];
+  uint64 max_steps = 4 [json_name = "max_steps"];
+  uint64 memory_bytes = 5 [json_name = "memory_bytes", (openagents.options.v1alpha1.unit) = "bytes"];
+  string module_id = 6 [json_name = "module_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  AbiDescriptor output_abi = 7 [json_name = "output_abi"];
+  string profile_id = 8 [json_name = "profile_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 9 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated ModuleSeam seams = 10 [json_name = "seams", (openagents.options.v1alpha1.max_count) = 64];
+  VerificationClass verification_class = 11 [json_name = "verification_class"];
+  string version = 12 [json_name = "version", (openagents.options.v1alpha1.max_bytes) = 32];
+  string weight_sha256 = 13 [json_name = "weight_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+}

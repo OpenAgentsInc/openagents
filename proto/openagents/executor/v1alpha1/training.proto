@@ -1,0 +1,155 @@
+syntax = "proto3";
+package openagents.executor.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Decentralized training-window, shard authority, 6-tier verification ladder,
+// and quarantine checkpoint lineage contracts (master spec W2.1 & W5, #13914).
+//
+// Fields in every message are declared in RFC 8785 (JCS) lexicographical
+// json_name order. Floating metrics use exact fixed-point integer micro-units
+// (e6) or parts-per-billion (ppb) so canonical JSON hashing is bit-exact.
+// Single #authority Coax codec: psionic/lib/executor-wire.coax.
+
+enum ShardSplit {
+  SHARD_SPLIT_UNSPECIFIED = 0;
+  SHARD_SPLIT_TRAIN = 1;
+  SHARD_SPLIT_VALIDATION = 2;
+  SHARD_SPLIT_HELD_OUT = 3;
+}
+
+enum TierOutcome {
+  TIER_OUTCOME_UNSPECIFIED = 0;
+  TIER_OUTCOME_PASS = 1;
+  TIER_OUTCOME_FAIL = 2;
+  TIER_OUTCOME_SKIPPED = 3;
+}
+
+enum WindowVerdictState {
+  WINDOW_VERDICT_STATE_UNSPECIFIED = 0;
+  WINDOW_VERDICT_STATE_ACCEPTED = 1;
+  WINDOW_VERDICT_STATE_REJECTED = 2;
+  WINDOW_VERDICT_STATE_QUARANTINED = 3;
+}
+
+enum PromotionVerdict {
+  PROMOTION_VERDICT_UNSPECIFIED = 0;
+  PROMOTION_VERDICT_PROMOTED = 1;
+  PROMOTION_VERDICT_HELD = 2;
+  PROMOTION_VERDICT_ROLLED_BACK = 3;
+}
+
+// Immutable, decontaminated verified-trace / redacted-ATIF dataset shard.
+message DatasetShardManifest {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.dataset-shard.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_EVIDENCE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 32768;
+
+  uint64 byte_count = 1 [json_name = "byte_count", (openagents.options.v1alpha1.unit) = "bytes"];
+  int64 created_at = 2 [json_name = "created_at", (openagents.options.v1alpha1.unit) = "ms"];
+  string exposure_ledger_sha256 = 3 [json_name = "exposure_ledger_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string family_tags = 4 [json_name = "family_tags", (openagents.options.v1alpha1.max_count) = 32, (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 record_count = 5 [json_name = "record_count"];
+  string schema = 6 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  string shard_id = 7 [json_name = "shard_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string shard_sha256 = 8 [json_name = "shard_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  ShardSplit split = 9 [json_name = "split"];
+}
+
+// Time-bounded lease assigning one canonical parent checkpoint, optimizer
+// snapshot, shard, config, seed, and step range to a Pylon worker.
+message TrainingWindowLease {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.training-lease.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_GRANT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+
+  string dataset_shard_sha256 = 1 [json_name = "dataset_shard_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 end_step = 2 [json_name = "end_step"];
+  int64 expires_at = 3 [json_name = "expires_at", (openagents.options.v1alpha1.unit) = "ms"];
+  int64 issued_at = 4 [json_name = "issued_at", (openagents.options.v1alpha1.unit) = "ms"];
+  string lease_id = 5 [json_name = "lease_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string optimizer_state_sha256 = 6 [json_name = "optimizer_state_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string parent_checkpoint_sha256 = 7 [json_name = "parent_checkpoint_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 random_seed = 8 [json_name = "random_seed"];
+  string schema = 9 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 start_step = 10 [json_name = "start_step"];
+  string training_config_sha256 = 11 [json_name = "training_config_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string worker_pubkey = 12 [json_name = "worker_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Fixed-point micro-unit loss and gradient statistics for a bounded training window.
+message LossStats {
+  int64 final_loss_e6 = 1 [json_name = "final_loss_e6"];
+  int64 initial_loss_e6 = 2 [json_name = "initial_loss_e6"];
+  int64 max_grad_norm_e6 = 3 [json_name = "max_grad_norm_e6"];
+  uint64 non_finite_count = 4 [json_name = "non_finite_count"];
+}
+
+// Worker submission of a compact Local-SGD / DiLoCo / LoRA weight delta.
+// Public claims enter quarantine only; they never mutate canonical weights directly.
+message TrainingWindowClaim {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.training-claim.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RECEIPT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+
+  string dataset_shard_sha256 = 1 [json_name = "dataset_shard_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string delta_sha256 = 2 [json_name = "delta_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 end_step = 3 [json_name = "end_step"];
+  string lease_id = 4 [json_name = "lease_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  LossStats loss_stats = 5 [json_name = "loss_stats"];
+  string optimizer_state_sha256 = 6 [json_name = "optimizer_state_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string parent_checkpoint_sha256 = 7 [json_name = "parent_checkpoint_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 random_seed = 8 [json_name = "random_seed"];
+  string schema = 9 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 start_step = 10 [json_name = "start_step"];
+  string training_config_sha256 = 11 [json_name = "training_config_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string worker_device_ref = 12 [json_name = "worker_device_ref", (openagents.options.v1alpha1.max_bytes) = 64];
+  string worker_pubkey = 13 [json_name = "worker_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Outcome of one tier (0..5) of the W5.2 training-window verification ladder.
+message TierResult {
+  TierOutcome outcome = 1 [json_name = "outcome"];
+  uint32 tier = 2 [json_name = "tier"];
+}
+
+// Fixed-point Byzantine/outlier filter measurements for a training window.
+message OutlierMetrics {
+  int64 cosine_to_median_e6 = 1 [json_name = "cosine_to_median_e6"];
+  int64 l2_norm_e6 = 2 [json_name = "l2_norm_e6"];
+  int64 loss_delta_e6 = 3 [json_name = "loss_delta_e6"];
+  int64 step_distance_ppb = 4 [json_name = "step_distance_ppb"];
+}
+
+// Validator verdict recording all six tier outcomes (0..5) and outlier metrics.
+message TrainingWindowVerdict {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.training-verdict.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_EVIDENCE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+
+  string claim_digest = 1 [json_name = "claim_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  OutlierMetrics outlier_metrics = 2 [json_name = "outlier_metrics"];
+  string schema = 3 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  string signature = 4 [json_name = "signature", (openagents.options.v1alpha1.max_bytes) = 128];
+  repeated TierResult tier_results = 5 [json_name = "tier_results", (openagents.options.v1alpha1.max_count) = 6];
+  string validator_device_ref = 6 [json_name = "validator_device_ref", (openagents.options.v1alpha1.max_bytes) = 64];
+  string validator_pubkey = 7 [json_name = "validator_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+  WindowVerdictState verdict = 8 [json_name = "verdict"];
+}
+
+// Immutable lineage record connecting canonical -> quarantine -> promoted
+// checkpoints (and atomic rollbacks) to included windows, shards, and eval suites.
+message CheckpointLineageRecord {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.checkpoint-lineage.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RELEASE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 32768;
+
+  string checkpoint_sha256 = 1 [json_name = "checkpoint_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string included_windows = 2 [json_name = "included_windows", (openagents.options.v1alpha1.max_count) = 64, (openagents.options.v1alpha1.max_bytes) = 64];
+  string parent_sha256 = 3 [json_name = "parent_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  PromotionVerdict promotion_verdict = 4 [json_name = "promotion_verdict"];
+  string rollback_from = 5 [json_name = "rollback_from", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 6 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string shard_hashes = 7 [json_name = "shard_hashes", (openagents.options.v1alpha1.max_count) = 32, (openagents.options.v1alpha1.max_bytes) = 64];
+  repeated string suite_digests = 8 [json_name = "suite_digests", (openagents.options.v1alpha1.max_count) = 16, (openagents.options.v1alpha1.max_bytes) = 64];
+}

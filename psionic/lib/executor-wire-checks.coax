@@ -1,0 +1,660 @@
+// Comprehensive #test and #forall checks for psionic/lib/executor-wire.coax
+// targeting zero surviving mutants across all 12 wire contracts.
+
+EXWT_H1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+EXWT_H2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+EXWT_H3 :: "3333333333333333333333333333333333333333333333333333333333333333";
+EXWT_H4 :: "4444444444444444444444444444444444444444444444444444444444444444";
+EXWT_H5 :: "5555555555555555555555555555555555555555555555555555555555555555";
+EXWT_H6 :: "6666666666666666666666666666666666666666666666666666666666666666";
+EXWT_H7 :: "7777777777777777777777777777777777777777777777777777777777777777";
+EXWT_H0 :: "0000000000000000000000000000000000000000000000000000000000000000";
+EXWT_ID64 :: "a123456789012345678901234567890123456789012345678901234567890123";
+EXWT_ID65 :: "a1234567890123456789012345678901234567890123456789012345678901234";
+EXWT_ID32 :: "a1234567890123456789012345678901";
+EXWT_ID33 :: "a12345678901234567890123456789012";
+EXWT_SIG :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+exwt_jcs_ok :: (raw: string) -> bool #effects(all) {
+  d: [1] Jv; nodes: [512] JvNode;
+  return jv_parse(d[..], raw, nodes[..]) && exw_keys_sorted(d[0], 0);
+}
+
+#forall "ASCII lowering and hex/id classification cover every ASCII byte" c:0..<128 {
+  b := cast(u8) c;
+  want_lo := ifx b >= 'A' && b <= 'Z' then b + 32 else b;
+  #assert exw_ascii_lower(b) == want_lo;
+  one := [1] u8.[b];
+  s1 := cast(string) one[..];
+  is_hex := (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f');
+  #assert exw_hex(s1, 1) == is_hex;
+  is_alnum := (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9');
+  #assert exw_id(s1, 8) == is_alnum;
+  two := [2] u8.['a', b];
+  is_body := is_alnum || b == '-' || b == '_' || b == '.';
+  #assert exw_id(cast(string) two[..], 8) == is_body;
+}
+
+#test "shared primitive validators: errors, secrets, hex, ids, periods, enums, ints, bools, jcs, sha256" {
+  #assert exw_err_name(ExwErr.ok) == "ok" && exw_err_name(ExwErr.truncated) == "truncated" && exw_err_name(ExwErr.schema) == "schema";
+  #assert exw_err_name(ExwErr.unknown_field) == "unknown_field" && exw_err_name(ExwErr.invalid_enum) == "invalid_enum";
+  #assert exw_err_name(ExwErr.bounds) == "bounds" && exw_err_name(ExwErr.digest) == "digest";
+  #assert exw_err_name(ExwErr.secret) == "secret" && exw_err_name(ExwErr.invariant) == "invariant";
+
+  // Secret prefixes (case-insensitive, including exact-length prefix)
+  for s: [8] string.["lnbc", "lnbc10u1p", "LNBC10u1p", "lntb1xyz", "lnsb1abc", "nsec1xyz", "xprv9s21", "TPRV8Zgx"] {
+    #assert exw_secret_prefix(s) && exw_check_hex(s, 64) == ExwErr.secret && exw_check_id(s, 64) == ExwErr.secret;
+  }
+  for s: [4] string.["lnb", "ok", "", "zprv123"] { #assert !exw_secret_prefix(s); }
+
+  // Hex & nonzero hex
+  #assert exw_hex(EXWT_H1, 64) && exw_hex(EXWT_H0, 64) && exw_hex(EXWT_SIG, 128);
+  #assert !exw_hex(EXWT_H1, 63) && !exw_hex("0123", 5) && !exw_hex("0123G", 5);
+  #assert exw_hex_nonzero(EXWT_H1) && !exw_hex_nonzero(EXWT_H0) && !exw_hex_nonzero("1");
+  hlast := "000000000000000000000000000000000000000000000000000000000000000a";
+  #assert exw_hex_nonzero(hlast);
+  #assert exw_check_hex("bad", 64) == ExwErr.digest && exw_check_hex(EXWT_H1, 64) == ExwErr.ok;
+
+  // IDs
+  #assert exw_id("a", 1) && exw_id("0-a_b.1", 7) && !exw_id("", 8) && !exw_id("ab", 1) && !exw_id("-a", 8) && !exw_id("A", 8);
+  #assert exw_check_id("ok-1", 4) == ExwErr.ok && exw_check_id("bad!", 8) == ExwErr.bounds;
+
+  // Periods YYYY-MM-DD (including 2000-01-01 boundary for lo == 0 and ':' for digit2)
+  #assert exw_period_ok("2000-01-01") && exw_period_ok("2020-01-01") && exw_period_ok("2026-11-20") && exw_period_ok("2999-12-31");
+  for bad: [12] string.["2026-11-2", "2026-11-200", "2026/11-20", "2026-11/20", "1999-01-01", "3000-01-01", "202a-01-01", "2026-00-01", "2026-13-01", "2026-01-00", "2026-01-32", "2026-a1-01"] {
+    #assert !exw_period_ok(bad);
+  }
+  #assert exw_digit2("09", 0) == 9 && exw_digit2(":0", 0) == -1 && exw_digit2("a0", 0) == -1 && exw_digit2("0a", 0) == -1 && exw_digit2("/0", 0) == -1 && exw_digit2("0:", 0) == -1;
+
+  // Enums
+  en := EXW_LEG_NAMES;
+  #assert exw_enum_parse("WORKER", en[..]) == 1 && exw_enum_parse("VALIDATOR", en[..]) == 2 && exw_enum_parse("OTHER", en[..]) == 0;
+  #assert exw_enum_name(1, en[..]) == "WORKER" && exw_enum_name(2, en[..]) == "VALIDATOR" && exw_enum_name(0, en[..]) == "" && exw_enum_name(3, en[..]) == "";
+  #assert exw_in_list("WORKER", en[..]) && !exw_in_list("NONE", en[..]);
+
+  // Signed/unsigned int, bool
+  d: [1] Jv; nodes: [32] JvNode;
+  #assert jv_parse(d[..], "{\"u\":9007199254740991,\"ubig\":9007199254740992,\"s\":-9007199254740991,\"sbig\":9007199254740992,\"sneg\":-9007199254740992,\"mz\":-0,\"fl\":1.5,\"st\":\"1\",\"bt\":true,\"bf\":false}", nodes[..]);
+  v := d[0];
+  #assert exw_uint(v, 0, "u") == EXW_INT_MAX && exw_uint(v, 0, "ubig") == EXW_BAD_INT && exw_uint(v, 0, "st") == -1;
+  #assert exw_sint(v, 0, "s") == -EXW_INT_MAX && exw_sint(v, 0, "u") == EXW_INT_MAX;
+  #assert exw_sint(v, 0, "sbig") == EXW_BAD_INT && exw_sint(v, 0, "sneg") == -EXW_BAD_INT;
+  #assert exw_sint(v, 0, "mz") == EXW_BAD_INT && exw_sint(v, 0, "fl") == EXW_BAD_INT && exw_sint(v, 0, "st") == EXW_BAD_INT;
+  #assert exw_bool(v, 0, "bt").ok && exw_bool(v, 0, "bt").val && exw_bool(v, 0, "bf").ok && !exw_bool(v, 0, "bf").val && !exw_bool(v, 0, "u").ok;
+  enodes: [2] JvNode; enodes[0] = JvNode.{kind = JV_NUMBER, from = 0, to = 0}; ed := Jv.{text = "", nodes = enodes[..], count = 1};
+  #assert exw_sint_node(ed, 0) == EXW_BAD_INT;
+
+  // Forbidden keys including escaped key
+  for raw: [7] string.["{\"invoice\":\"x\"}", "{\"bolt11\":\"x\"}", "{\"preimage\":\"x\"}", "{\"private_key\":\"x\"}", "{\"nsec\":\"x\"}", "{\"mnemonic\":\"x\"}", "{\"\\u0069nvoice\":\"x\"}"] {
+    #assert jv_parse(d[..], raw, nodes[..]) && exw_has_forbidden_key(d[0], 0);
+  }
+  k1 := [1] string.["a"];
+  #assert jv_parse(d[..], "[]", nodes[..]) && exw_check_obj(d[0], 0, k1[..]) == ExwErr.unknown_field;
+  #assert jv_parse(d[..], "{\"invoice\":1}", nodes[..]) && exw_check_obj(d[0], 0, k1[..]) == ExwErr.secret;
+  #assert jv_parse(d[..], "{}", nodes[..]) && exw_check_obj(d[0], 0, k1[..]) == ExwErr.unknown_field;
+  #assert jv_parse(d[..], "{\"a\":1,\"b\":2}", nodes[..]) && exw_check_obj(d[0], 0, k1[..]) == ExwErr.unknown_field;
+  #assert jv_parse(d[..], "{\"a\":1}", nodes[..]) && exw_check_obj(d[0], 0, k1[..]) == ExwErr.ok;
+
+  // Root open checks: empty, truncated, non-object, forbidden key at root, missing key, unknown key (same count), exact EXW_JSON_MAX, EXW_JSON_MAX+1
+  k2 := [2] string.["a", "schema"];
+  #assert exw_open_root("", d[..], nodes[..], k2[..], "x") == ExwErr.truncated;
+  #assert exw_open_root("{", d[..], nodes[..], k2[..], "x") == ExwErr.truncated;
+  #assert exw_open_root("[]", d[..], nodes[..], k2[..], "x") == ExwErr.truncated;
+  #assert exw_open_root("{\"invoice\":\"lnbc1\",\"schema\":\"x\"}", d[..], nodes[..], k2[..], "x") == ExwErr.secret;
+  #assert exw_open_root("{\"schema\":1}", d[..], nodes[..], k2[..], "x") == ExwErr.schema;
+  #assert exw_open_root("{\"schema\":\"y\"}", d[..], nodes[..], k2[..], "x") == ExwErr.schema;
+  #assert exw_open_root("{\"schema\":\"x\"}", d[..], nodes[..], k2[..], "x") == ExwErr.unknown_field;
+  #assert exw_open_root("{\"b\":1,\"schema\":\"x\"}", d[..], nodes[..], k2[..], "x") == ExwErr.unknown_field;
+  big: [EXW_JSON_MAX + 1] u8; for i: 0..<big.count { big[i] = ' '; }
+  prefix := "{\"a\":1,\"schema\":\"x\"}";
+  for i: 0..<prefix.count { big[i] = prefix[i]; }
+  #assert exw_open_root(cast(string) big[0..<EXW_JSON_MAX], d[..], nodes[..], k2[..], "x") == ExwErr.ok;
+  #assert exw_open_root(cast(string) big[..], d[..], nodes[..], k2[..], "x") == ExwErr.truncated;
+
+  // Arena exhaustion + string reader
+  abuf: [2] u8; a := [1] ExwArena.[ExwArena.{buf = abuf[..]}];
+  #assert jv_parse(d[..], "{\"a\":\"ok\",\"b\":\"toolong\"}", nodes[..]);
+  #assert exw_str(d[0], 0, "a", a[..]) == "ok" && !a[0].bad;
+  #assert exw_str(d[0], 0, "b", a[..]) == "" && a[0].bad;
+  #assert exw_str(d[0], 0, "a", a[..]) == "" && a[0].bad;
+
+  // Finish buffer overflow + exact EXW_JSON_MAX vs EXW_JSON_MAX + 1
+  o: [1] Jo; fbuf: [EXW_JSON_MAX + 2] u8; jo_start(o[..], fbuf[..]); o[0].n = EXW_JSON_MAX;
+  #assert exw_finish(o[..]).err == ExwErr.ok && exw_finish(o[..]).len == EXW_JSON_MAX;
+  o[0].n = EXW_JSON_MAX + 1;
+  #assert exw_finish(o[..]).err == ExwErr.truncated;
+  jo_start(o[..], fbuf[0..<2]); jo_put(o[..], "abc");
+  #assert exw_finish(o[..]).err == ExwErr.truncated;
+
+  // Canonical SHA256 + JCS key sorting (including empty key "" to kill first:=false!)
+  hex: [64] u8;
+  #assert !exw_canonical_sha256("", hex[..]) && !exw_canonical_sha256("abc", hex[0..<63]);
+  #assert exw_canonical_sha256("abc", hex[..]) && cast(string) hex[..] == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  #assert exw_str_lt("a", "ab") && !exw_str_lt("ab", "a") && exw_str_lt("ab", "ac") && !exw_str_lt("ab", "aa") && !exw_str_lt("a", "a");
+  #assert exwt_jcs_ok("{\"\":1}") && exwt_jcs_ok("{\"a\":1,\"b\":[{\"c\":2,\"d\":3}]}");
+  #assert !exwt_jcs_ok("{\"b\":1,\"a\":2}") && !exwt_jcs_ok("{\"a\":1,\"a\":2}") && !exwt_jcs_ok("{\"a\":{\"z\":1,\"y\":2}}") && !exwt_jcs_ok("{\"a\":[{\"z\":1,\"y\":2}]}");
+
+  // Shared hex list & int list edge cases (including exact n == cap and out_n[0] verification)
+  hl: [2] string; hn: [1] int; abuf2: [160] u8; a2 := [1] ExwArena.[ExwArena.{buf = abuf2[..]}];
+  #assert jv_parse(d[..], "{\"x\":1}", nodes[..]) && exw_read_hex_list(d[0], jv_get(d[0], 0, "x"), hl[..], 2, a2[..], hn[..]) == ExwErr.bounds;
+  #assert jv_parse(d[..], "{\"x\":[\"1111111111111111111111111111111111111111111111111111111111111111\",\"2222222222222222222222222222222222222222222222222222222222222222\"]}", nodes[..]);
+  #assert exw_read_hex_list(d[0], jv_get(d[0], 0, "x"), hl[..], 1, a2[..], hn[..]) == ExwErr.bounds;
+  #assert exw_read_hex_list(d[0], jv_get(d[0], 0, "x"), hl[..], 2, a2[..], hn[..]) == ExwErr.ok && hn[0] == 2 && hl[1] == EXWT_H2;
+  a3 := [1] ExwArena.[ExwArena.{buf = abuf2[0..<10]}];
+  #assert exw_read_hex_list(d[0], jv_get(d[0], 0, "x"), hl[..], 2, a3[..], hn[..]) == ExwErr.truncated;
+  #assert jv_parse(d[..], "{\"x\":[\"bad\"]}", nodes[..]) && exw_read_hex_list(d[0], jv_get(d[0], 0, "x"), hl[..], 2, a2[..], hn[..]) == ExwErr.digest;
+  il: [2] int; in1: [1] int;
+  #assert jv_parse(d[..], "{\"x\":1}", nodes[..]) && exw_read_int_list(d[0], jv_get(d[0], 0, "x"), il[..], 2, in1[..]) == ExwErr.bounds;
+  #assert jv_parse(d[..], "{\"x\":[1,2]}", nodes[..]) && exw_read_int_list(d[0], jv_get(d[0], 0, "x"), il[..], 1, in1[..]) == ExwErr.bounds;
+  #assert jv_parse(d[..], "{\"x\":[1,2]}", nodes[..]) && exw_read_int_list(d[0], jv_get(d[0], 0, "x"), il[..], 2, in1[..]) == ExwErr.ok && in1[0] == 2;
+  #assert jv_parse(d[..], "{\"x\":[\"bad\"]}", nodes[..]) && exw_read_int_list(d[0], jv_get(d[0], 0, "x"), il[..], 2, in1[..]) == ExwErr.bounds;
+  #assert jv_parse(d[..], "{\"x\":[-9007199254740992]}", nodes[..]) && exw_read_int_list(d[0], jv_get(d[0], 0, "x"), il[..], 2, in1[..]) == ExwErr.bounds;
+}
+
+#test "Family 1: CompiledModuleManifest round-trip, bounds, seams, enums and refusals" {
+  base := ExwModule.{
+    compiler_hash = EXWT_H1, conformance_suite_sha256 = EXWT_H2,
+    input_abi = ExwAbi.{max_value = 67108864, min_value = -67108864, scalar_type = "i64", slot_count = 16},
+    max_steps = 65536, memory_bytes = 1048576, module_id = "oa-exec-diff-verify",
+    output_abi = ExwAbi.{max_value = 1, min_value = 0, scalar_type = "i32", slot_count = 4},
+    profile_id = "exec-vm-v1", n_seams = 1,
+    verification_class = ExwVerifClass.e_exact_replay, version = "0.1.0", weight_sha256 = EXWT_H3
+  };
+  base.seams[0] = ExwSeam.{count = 1, layer = 1, slot = 1, upstream_module_sha256 = EXWT_H4};
+  m := [1] ExwModule.[base];
+  out: [16384] u8; out2: [16384] u8; arena: [4096] u8; got: [1] ExwModule;
+  w := exw_module_write(m[..], out[..]);
+  #assert w.err == ExwErr.ok && w.len > 0;
+  raw := cast(string) out[0..<w.len];
+  #assert exwt_jcs_ok(raw);
+  #assert exw_module_read(raw, got[..], arena[..]) == ExwErr.ok;
+  w2 := exw_module_write(got[..], out2[..]);
+  #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == raw;
+
+  // All 4 verification classes, all 4 scalar types, exact max bounds & exact max seams (64) round-trip
+  m[0].seams[0].upstream_module_sha256 = "";
+  m[0].input_abi.scalar_type = "f64"; m[0].output_abi.scalar_type = "bytes";
+  for vc: [4] ExwVerifClass.[ExwVerifClass.e_exact_replay, ExwVerifClass.d_deterministic_test, ExwVerifClass.s_statistical, ExwVerifClass.n_unverified] {
+    m[0].verification_class = vc;
+    w = exw_module_write(m[..], out[..]); #assert w.err == ExwErr.ok && exw_module_read(cast(string) out[0..<w.len], got[..], arena[..]) == ExwErr.ok && got[0].verification_class == vc;
+  }
+  mb := [1] ExwModule.[base];
+  mb[0].max_steps = EXW_STEP_MAX; mb[0].memory_bytes = EXW_MEM_MAX;
+  mb[0].module_id = EXWT_ID64; mb[0].profile_id = EXWT_ID64; mb[0].version = EXWT_ID32;
+  mb[0].input_abi = ExwAbi.{min_value = -EXW_INT_MAX, max_value = EXW_INT_MAX, scalar_type = "i32", slot_count = EXW_ABI_SLOTS_MAX};
+  mb[0].output_abi = ExwAbi.{min_value = 5, max_value = 5, scalar_type = "i64", slot_count = 1};
+  mb[0].n_seams = EXW_SEAMS_MAX;
+  for i: 0..<EXW_SEAMS_MAX { mb[0].seams[i] = ExwSeam.{count = EXW_ABI_SLOTS_MAX, layer = EXW_SEAM_LAYER_MAX, slot = EXW_SEAM_SLOT_MAX, upstream_module_sha256 = ""}; }
+  w = exw_module_write(mb[..], out[..]); #assert w.err == ExwErr.ok;
+  #assert exw_module_read(cast(string) out[0..<w.len], got[..], arena[..]) == ExwErr.ok && got[0].n_seams == EXW_SEAMS_MAX;
+  mb[0].n_seams = 0; #assert exw_module_valid(mb[..]) == ExwErr.ok;
+  mb[0].n_seams = EXW_SEAMS_MAX + 1; #assert exw_module_valid(mb[..]) == ExwErr.bounds;
+
+  // Direct validator boundary refusals (including exact +1 IDs & single-byte upstream)
+  bad := [1] ExwModule.[base]; bad[0].compiler_hash = "x"; #assert exw_module_write(bad[..], out[..]).err == ExwErr.digest;
+  bad[0] = base; bad[0].conformance_suite_sha256 = "x"; #assert exw_module_valid(bad[..]) == ExwErr.digest;
+  bad[0] = base; bad[0].weight_sha256 = "x"; #assert exw_module_valid(bad[..]) == ExwErr.digest;
+  bad[0] = base; bad[0].module_id = EXWT_ID65; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].profile_id = EXWT_ID65; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].version = EXWT_ID33; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].max_steps = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].max_steps = EXW_STEP_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].memory_bytes = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].memory_bytes = EXW_MEM_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].verification_class = ExwVerifClass.unspecified; #assert exw_module_valid(bad[..]) == ExwErr.invalid_enum;
+  bad[0] = base; bad[0].n_seams = -1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].n_seams = EXW_SEAMS_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].input_abi.scalar_type = "f16"; #assert exw_module_valid(bad[..]) == ExwErr.invalid_enum;
+  bad[0] = base; bad[0].output_abi.slot_count = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].input_abi.slot_count = EXW_ABI_SLOTS_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].input_abi.min_value = 5; bad[0].input_abi.max_value = 4; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].input_abi.min_value = -EXW_INT_MAX - 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].input_abi.max_value = EXW_INT_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].count = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].count = EXW_ABI_SLOTS_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].layer = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].layer = EXW_SEAM_LAYER_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].slot = 0; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].slot = EXW_SEAM_SLOT_MAX + 1; #assert exw_module_valid(bad[..]) == ExwErr.bounds;
+  bad[0] = base; bad[0].seams[0].upstream_module_sha256 = "a"; #assert exw_module_valid(bad[..]) == ExwErr.digest;
+
+  // JSON reader error paths + 65 seams refused
+  #assert exw_module_read(raw, got[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_module_read("{", got[..], arena[..]) == ExwErr.truncated;
+  #assert exw_module_read(raw, got[..], arena[0..<260]) == ExwErr.truncated;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":1,\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[..]) == ExwErr.bounds;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":1,\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":1,\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"bad\":1}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":1,\"layer\":1,\"slot\":1,\"upstream_module_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[0..<230]) == ExwErr.truncated;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[0..<214]) == ExwErr.truncated;
+  #assert exw_module_read("{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[],\"verification_class\":\"BAD_ENUM\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}", got[..], arena[..]) == ExwErr.invalid_enum;
+
+  bigs: [8192] u8; jo: [1] Jo; jo_start(jo[..], bigs[..]);
+  jo_put(jo[..], "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"max_steps\":1,\"memory_bytes\":1,\"module_id\":\"m\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":1},\"profile_id\":\"p\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[");
+  for i: 0..<EXW_SEAMS_MAX + 1 {
+    if i > 0 { jo_put(jo[..], ","); }
+    jo_put(jo[..], "{\"count\":1,\"layer\":1,\"slot\":1,\"upstream_module_sha256\":\"\"}");
+  }
+  jo_put(jo[..], "],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"1\",\"weight_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}");
+  #assert exw_module_read(jo_text(jo[..]), got[..], arena[..]) == ExwErr.bounds;
+}
+
+#test "Family 2: ExecutorProgramRef, ExecutionTraceReceipt and ReplayVerdict" {
+  out: [4096] u8; out2: [4096] u8; arena: [2048] u8;
+  // ProgramRef
+  pr := ExwProgramRef.{compiler_hash = EXWT_H1, executor_artifact_hash = EXWT_H2, input_hash = EXWT_H3, profile_id = EXWT_ID64, program_hash = EXWT_H4};
+  w := exw_program_ref_write(pr, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  prg: [1] ExwProgramRef;
+  #assert exw_program_ref_read(cast(string) out[0..<w.len], prg[..], arena[..]) == ExwErr.ok;
+  w2 := exw_program_ref_write(prg[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  #assert exw_program_ref_read(cast(string) out[0..<w.len], prg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_program_ref_read("{", prg[..], arena[..]) == ExwErr.truncated;
+  bp := pr; bp.compiler_hash = "x"; #assert exw_program_ref_write(bp, out[..]).err == ExwErr.digest;
+  bp = pr; bp.executor_artifact_hash = "x"; #assert exw_program_ref_valid(bp) == ExwErr.digest;
+  bp = pr; bp.input_hash = "x"; #assert exw_program_ref_valid(bp) == ExwErr.digest;
+  bp = pr; bp.profile_id = EXWT_ID65; #assert exw_program_ref_valid(bp) == ExwErr.bounds;
+  bp = pr; bp.program_hash = "x"; #assert exw_program_ref_valid(bp) == ExwErr.digest;
+  #assert exw_program_ref_read("{\"compiler_hash\":\"bad\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"profile_id\":\"p\",\"program_hash\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"schema\":\"openagents.executor.program-ref.v1alpha1\"}", prg[..], arena[..]) == ExwErr.digest;
+
+  // TraceReceipt (exact min & max boundaries)
+  tr := ExwTraceReceipt.{
+    chunk_merkle_root = EXWT_H1, executor_artifact_hash = EXWT_H2, finished_at = EXW_INT_MAX,
+    input_hash = EXWT_H3, job_id = EXWT_ID64, output_digest = EXWT_H4,
+    program_hash = EXWT_H5, started_at = 1, step_count = 1,
+    trace_digest = EXWT_H6, worker_device_ref = EXWT_ID64, worker_pubkey = EXWT_H7
+  };
+  w = exw_trace_receipt_write(tr, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  trg: [1] ExwTraceReceipt;
+  #assert exw_trace_receipt_read(cast(string) out[0..<w.len], trg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_trace_receipt_write(trg[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  #assert exw_trace_receipt_read(cast(string) out[0..<w.len], trg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_trace_receipt_read("{", trg[..], arena[..]) == ExwErr.truncated;
+  bt := tr; bt.started_at = 1; bt.finished_at = 1; bt.step_count = EXW_STEP_MAX; #assert exw_trace_receipt_valid(bt) == ExwErr.ok;
+  bt = tr; bt.chunk_merkle_root = "x"; #assert exw_trace_receipt_write(bt, out[..]).err == ExwErr.digest;
+  bt = tr; bt.executor_artifact_hash = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  bt = tr; bt.input_hash = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  bt = tr; bt.job_id = EXWT_ID65; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.output_digest = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  bt = tr; bt.program_hash = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  bt = tr; bt.started_at = 0; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.started_at = 10; bt.finished_at = 9; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.finished_at = EXW_INT_MAX + 1; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.step_count = 0; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.step_count = EXW_STEP_MAX + 1; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.trace_digest = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  bt = tr; bt.worker_device_ref = EXWT_ID65; #assert exw_trace_receipt_valid(bt) == ExwErr.bounds;
+  bt = tr; bt.worker_pubkey = "x"; #assert exw_trace_receipt_valid(bt) == ExwErr.digest;
+  #assert exw_trace_receipt_read("{\"chunk_merkle_root\":\"bad\",\"executor_artifact_hash\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"finished_at\":1,\"input_hash\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"job_id\":\"j\",\"output_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"program_hash\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"schema\":\"openagents.executor.trace-receipt.v1alpha1\",\"started_at\":1,\"step_count\":1,\"trace_digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"worker_device_ref\":\"d\",\"worker_pubkey\":\"7777777777777777777777777777777777777777777777777777777777777777\"}", trg[..], arena[..]) == ExwErr.digest;
+
+  // ReplayVerdict: EXACT_REPLAY, UNVERIFIABLE, FAILED (step 0, 16-row boundary, index-0 diff, 1-row identical refusal)
+  rv := [1] ExwReplayVerdict.[ExwReplayVerdict.{
+    first_divergent_step = -1, receipt_digest = EXWT_H1, signature = EXWT_SIG,
+    validator_device_ref = EXWT_ID64, validator_pubkey = EXWT_H2, verdict = ExwReplayOutcome.exact_replay
+  }];
+  w = exw_replay_verdict_write(rv[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  rvg: [1] ExwReplayVerdict;
+  #assert exw_replay_verdict_read(cast(string) out[0..<w.len], rvg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_replay_verdict_write(rvg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  rv[0].verdict = ExwReplayOutcome.unverifiable;
+  w = exw_replay_verdict_write(rv[..], out[..]); #assert w.err == ExwErr.ok && exw_replay_verdict_read(cast(string) out[0..<w.len], rvg[..], arena[..]) == ExwErr.ok;
+  rv[0].verdict = ExwReplayOutcome.failed; rv[0].first_divergent_step = 0;
+  rv[0].n_expected = EXW_ROW_MAX; rv[0].n_observed = EXW_ROW_MAX;
+  for i: 0..<EXW_ROW_MAX { rv[0].expected_row[i] = i; rv[0].observed_row[i] = i; }
+  rv[0].expected_row[0] = -EXW_INT_MAX; rv[0].observed_row[0] = EXW_INT_MAX;
+  rv[0].expected_row[1] = EXW_INT_MAX; rv[0].observed_row[1] = -EXW_INT_MAX;
+  w = exw_replay_verdict_write(rv[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  #assert exw_replay_verdict_read(cast(string) out[0..<w.len], rvg[..], arena[..]) == ExwErr.ok;
+  #assert rvg[0].n_expected == EXW_ROW_MAX && rvg[0].n_observed == EXW_ROW_MAX && rvg[0].expected_row[0] == -EXW_INT_MAX && rvg[0].observed_row[0] == EXW_INT_MAX;
+  w2 = exw_replay_verdict_write(rvg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  // Digest-only FAILED (0 rows, max step) & index-0-only diff
+  rv0 := [1] ExwReplayVerdict.[rv[0]]; rv0[0].n_expected = 0; rv0[0].n_observed = 0; rv0[0].first_divergent_step = EXW_STEP_MAX;
+  #assert exw_replay_verdict_valid(rv0[..]) == ExwErr.ok;
+  rv1 := [1] ExwReplayVerdict.[rv[0]]; rv1[0].n_expected = 1; rv1[0].n_observed = 1; rv1[0].expected_row[0] = 1; rv1[0].observed_row[0] = 2;
+  #assert exw_replay_verdict_valid(rv1[..]) == ExwErr.ok;
+  rv1[0].observed_row[0] = 1; #assert exw_replay_verdict_valid(rv1[..]) == ExwErr.invariant;
+  // Refusals
+  #assert exw_replay_verdict_read(cast(string) out[0..<w.len], rvg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_replay_verdict_read("{", rvg[..], arena[..]) == ExwErr.truncated;
+  brv := [1] ExwReplayVerdict.[rv[0]]; brv[0].receipt_digest = "x"; #assert exw_replay_verdict_write(brv[..], out[..]).err == ExwErr.digest;
+  brv[0] = rv[0]; brv[0].signature = "x"; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.digest;
+  brv[0] = rv[0]; brv[0].validator_device_ref = EXWT_ID65; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].validator_pubkey = "x"; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.digest;
+  brv[0] = rv[0]; brv[0].verdict = ExwReplayOutcome.unspecified; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invalid_enum;
+  brv[0] = rv[0]; brv[0].n_expected = -1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].n_expected = EXW_ROW_MAX + 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].n_observed = -1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].n_observed = EXW_ROW_MAX + 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].expected_row[0] = -EXW_INT_MAX - 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].expected_row[0] = EXW_INT_MAX + 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].observed_row[0] = -EXW_INT_MAX - 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].observed_row[0] = EXW_INT_MAX + 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].first_divergent_step = -2; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].first_divergent_step = EXW_STEP_MAX + 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.bounds;
+  brv[0] = rv[0]; brv[0].first_divergent_step = -1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invariant;
+  brv[0] = rv[0]; brv[0].n_observed = 3; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invariant;
+  brv[0] = rv[0]; brv[0].verdict = ExwReplayOutcome.exact_replay; brv[0].first_divergent_step = 0; brv[0].n_expected = 0; brv[0].n_observed = 0; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invariant;
+  brv[0].first_divergent_step = -1; brv[0].n_expected = 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invariant;
+  brv[0].n_expected = 0; brv[0].n_observed = 1; #assert exw_replay_verdict_valid(brv[..]) == ExwErr.invariant;
+  // 17 ints refused in JSON on both expected_row and observed_row
+  #assert exw_replay_verdict_read("{\"expected_row\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"first_divergent_step\":0,\"observed_row\":[],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}", rvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_replay_verdict_read("{\"expected_row\":[],\"first_divergent_step\":0,\"observed_row\":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}", rvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_replay_verdict_read("{\"expected_row\":[],\"first_divergent_step\":\"x\",\"observed_row\":[],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"EXACT_REPLAY\"}", rvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_replay_verdict_read("{\"expected_row\":[],\"first_divergent_step\":-1,\"observed_row\":[],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"NOPE\"}", rvg[..], arena[..]) == ExwErr.invalid_enum;
+}
+
+#test "Family 3a: DatasetShardManifest, TrainingWindowLease, TrainingWindowClaim" {
+  out: [8192] u8; out2: [8192] u8; arena: [4096] u8;
+  // DatasetShardManifest (exact max bounds + 32 tags round-trip)
+  ds := [1] ExwDatasetShard.[ExwDatasetShard.{
+    byte_count = EXW_INT_MAX, created_at = EXW_INT_MAX, exposure_ledger_sha256 = EXWT_H1,
+    n_tags = EXW_TAGS_MAX, record_count = EXW_INT_MAX, shard_id = EXWT_ID64, shard_sha256 = EXWT_H2, split = ExwShardSplit.train
+  }];
+  for i: 0..<EXW_TAGS_MAX { ds[0].family_tags[i] = EXWT_ID64; }
+  w := exw_dataset_shard_write(ds[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  dsg: [1] ExwDatasetShard;
+  #assert exw_dataset_shard_read(cast(string) out[0..<w.len], dsg[..], arena[..]) == ExwErr.ok;
+  w2 := exw_dataset_shard_write(dsg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  #assert exw_dataset_shard_read(cast(string) out[0..<w.len], dsg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_dataset_shard_read(cast(string) out[0..<w.len], dsg[..], arena[0..<200]) == ExwErr.truncated;
+  #assert exw_dataset_shard_read("{", dsg[..], arena[..]) == ExwErr.truncated;
+  bds := [1] ExwDatasetShard.[ds[0]]; bds[0].byte_count = 0; #assert exw_dataset_shard_write(bds[..], out[..]).err == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].byte_count = EXW_INT_MAX + 1; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].created_at = 0; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].created_at = EXW_INT_MAX + 1; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].record_count = 0; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].record_count = EXW_INT_MAX + 1; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].exposure_ledger_sha256 = "x"; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.digest;
+  bds[0] = ds[0]; bds[0].n_tags = 0; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].n_tags = EXW_TAGS_MAX + 1; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].family_tags[0] = EXWT_ID65; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].shard_id = EXWT_ID65; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.bounds;
+  bds[0] = ds[0]; bds[0].shard_sha256 = "x"; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.digest;
+  bds[0] = ds[0]; bds[0].split = ExwShardSplit.unspecified; #assert exw_dataset_shard_valid(bds[..]) == ExwErr.invalid_enum;
+  #assert exw_dataset_shard_read("{\"byte_count\":1,\"created_at\":1,\"exposure_ledger_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"family_tags\":1,\"record_count\":1,\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"shard_id\":\"s\",\"shard_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"split\":\"TRAIN\"}", dsg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_dataset_shard_read("{\"byte_count\":1,\"created_at\":1,\"exposure_ledger_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"family_tags\":[\"a\"],\"record_count\":1,\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"shard_id\":\"s\",\"shard_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"split\":\"BAD\"}", dsg[..], arena[..]) == ExwErr.invalid_enum;
+  jo: [1] Jo; jt: [2048] u8; jo_start(jo[..], jt[..]);
+  jo_put(jo[..], "{\"byte_count\":1,\"created_at\":1,\"exposure_ledger_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"family_tags\":[");
+  for i: 0..<EXW_TAGS_MAX + 1 { if i > 0 { jo_put(jo[..], ","); } jo_put(jo[..], "\"t\""); }
+  jo_put(jo[..], "],\"record_count\":1,\"schema\":\"openagents.executor.dataset-shard.v1alpha1\",\"shard_id\":\"s\",\"shard_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"split\":\"TRAIN\"}");
+  #assert exw_dataset_shard_read(jo_text(jo[..]), dsg[..], arena[..]) == ExwErr.bounds;
+
+  // TrainingWindowLease (exact min=0/1 & max bounds)
+  ls := ExwTrainingLease.{
+    dataset_shard_sha256 = EXWT_H1, end_step = EXW_STEP_MAX, expires_at = EXW_INT_MAX, issued_at = 1,
+    lease_id = EXWT_ID64, optimizer_state_sha256 = EXWT_H2, parent_checkpoint_sha256 = EXWT_H3,
+    random_seed = 0, start_step = 0, training_config_sha256 = EXWT_H4, worker_pubkey = EXWT_H5
+  };
+  w = exw_training_lease_write(ls, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  lsg: [1] ExwTrainingLease;
+  #assert exw_training_lease_read(cast(string) out[0..<w.len], lsg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_training_lease_write(lsg[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  ls_max := ls; ls_max.random_seed = EXW_INT_MAX; #assert exw_training_lease_valid(ls_max) == ExwErr.ok;
+  #assert exw_training_lease_read(cast(string) out[0..<w.len], lsg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_training_lease_read("{", lsg[..], arena[..]) == ExwErr.truncated;
+  bl := ls; bl.dataset_shard_sha256 = "x"; #assert exw_training_lease_write(bl, out[..]).err == ExwErr.digest;
+  bl = ls; bl.start_step = -1; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.end_step = 0; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.end_step = EXW_STEP_MAX + 1; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.issued_at = 0; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.expires_at = ls.issued_at; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.expires_at = EXW_INT_MAX + 1; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.lease_id = EXWT_ID65; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.optimizer_state_sha256 = "x"; #assert exw_training_lease_valid(bl) == ExwErr.digest;
+  bl = ls; bl.parent_checkpoint_sha256 = "x"; #assert exw_training_lease_valid(bl) == ExwErr.digest;
+  bl = ls; bl.random_seed = -1; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.random_seed = EXW_INT_MAX + 1; #assert exw_training_lease_valid(bl) == ExwErr.bounds;
+  bl = ls; bl.training_config_sha256 = "x"; #assert exw_training_lease_valid(bl) == ExwErr.digest;
+  bl = ls; bl.worker_pubkey = "x"; #assert exw_training_lease_valid(bl) == ExwErr.digest;
+  #assert exw_training_lease_read("{\"dataset_shard_sha256\":\"bad\",\"end_step\":1,\"expires_at\":2,\"issued_at\":1,\"lease_id\":\"l\",\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":0,\"schema\":\"openagents.executor.training-lease.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}", lsg[..], arena[..]) == ExwErr.digest;
+
+  // TrainingWindowClaim (exact min=0 & max bounds)
+  cl := ExwTrainingClaim.{
+    dataset_shard_sha256 = EXWT_H1, delta_sha256 = EXWT_H6, end_step = EXW_STEP_MAX, lease_id = EXWT_ID64,
+    loss_stats = ExwLossStats.{final_loss_e6 = EXW_INT_MAX, initial_loss_e6 = EXW_INT_MAX, max_grad_norm_e6 = EXW_INT_MAX, non_finite_count = 0},
+    optimizer_state_sha256 = EXWT_H2, parent_checkpoint_sha256 = EXWT_H3, random_seed = 0, start_step = 0,
+    training_config_sha256 = EXWT_H4, worker_device_ref = EXWT_ID64, worker_pubkey = EXWT_H5
+  };
+  w = exw_training_claim_write(cl, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  clg: [1] ExwTrainingClaim;
+  #assert exw_training_claim_read(cast(string) out[0..<w.len], clg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_training_claim_write(clg[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  cl_max := cl; cl_max.random_seed = EXW_INT_MAX; #assert exw_training_claim_valid(cl_max) == ExwErr.ok;
+  #assert exw_training_claim_read(cast(string) out[0..<w.len], clg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_training_claim_read("{", clg[..], arena[..]) == ExwErr.truncated;
+  bc := cl; bc.dataset_shard_sha256 = "x"; #assert exw_training_claim_write(bc, out[..]).err == ExwErr.digest;
+  bc = cl; bc.delta_sha256 = "x"; #assert exw_training_claim_valid(bc) == ExwErr.digest;
+  bc = cl; bc.start_step = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.end_step = 0; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.end_step = EXW_STEP_MAX + 1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.lease_id = EXWT_ID65; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.final_loss_e6 = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.final_loss_e6 = EXW_INT_MAX + 1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.initial_loss_e6 = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.initial_loss_e6 = EXW_INT_MAX + 1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.max_grad_norm_e6 = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.max_grad_norm_e6 = EXW_INT_MAX + 1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.non_finite_count = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.loss_stats.non_finite_count = 1; #assert exw_training_claim_valid(bc) == ExwErr.invariant;
+  bc = cl; bc.optimizer_state_sha256 = "x"; #assert exw_training_claim_valid(bc) == ExwErr.digest;
+  bc = cl; bc.parent_checkpoint_sha256 = "x"; #assert exw_training_claim_valid(bc) == ExwErr.digest;
+  bc = cl; bc.random_seed = -1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.random_seed = EXW_INT_MAX + 1; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.training_config_sha256 = "x"; #assert exw_training_claim_valid(bc) == ExwErr.digest;
+  bc = cl; bc.worker_device_ref = EXWT_ID65; #assert exw_training_claim_valid(bc) == ExwErr.bounds;
+  bc = cl; bc.worker_pubkey = "x"; #assert exw_training_claim_valid(bc) == ExwErr.digest;
+  #assert exw_training_claim_read("{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"delta_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"end_step\":1,\"lease_id\":\"l\",\"loss_stats\":1,\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":0,\"schema\":\"openagents.executor.training-claim.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_device_ref\":\"d\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}", clg[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_training_claim_read("{\"dataset_shard_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"delta_sha256\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"end_step\":1,\"lease_id\":\"l\",\"loss_stats\":{\"final_loss_e6\":0,\"initial_loss_e6\":0,\"max_grad_norm_e6\":0,\"non_finite_count\":1},\"optimizer_state_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"parent_checkpoint_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"random_seed\":0,\"schema\":\"openagents.executor.training-claim.v1alpha1\",\"start_step\":0,\"training_config_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"worker_device_ref\":\"d\",\"worker_pubkey\":\"5555555555555555555555555555555555555555555555555555555555555555\"}", clg[..], arena[..]) == ExwErr.invariant;
+}
+
+#test "Family 3b: TrainingWindowVerdict and CheckpointLineageRecord" {
+  out: [16384] u8; out2: [16384] u8; arena: [16384] u8;
+  // TrainingWindowVerdict (exact full byte-for-byte round-trip + min/max boundaries)
+  vbase := ExwTrainingVerdict.{
+    claim_digest = EXWT_H1,
+    outlier_metrics = ExwOutlierMetrics.{cosine_to_median_e6 = EXW_COSINE_MAX, l2_norm_e6 = EXW_INT_MAX, loss_delta_e6 = -EXW_LOSS_DELTA_MAX, step_distance_ppb = EXW_INT_MAX},
+    signature = EXWT_SIG, n_tiers = EXW_TIERS,
+    validator_device_ref = EXWT_ID64, validator_pubkey = EXWT_H2, verdict = ExwWindowVerdict.accepted
+  };
+  for i: 0..<5 { vbase.tier_results[i] = ExwTierResult.{outcome = ExwTierOutcome.pass, tier = i}; }
+  vbase.tier_results[5] = ExwTierResult.{outcome = ExwTierOutcome.skipped, tier = 5};
+  tv := [1] ExwTrainingVerdict.[vbase];
+  w := exw_training_verdict_write(tv[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  tvg: [1] ExwTrainingVerdict;
+  #assert exw_training_verdict_read(cast(string) out[0..<w.len], tvg[..], arena[..]) == ExwErr.ok;
+  w2 := exw_training_verdict_write(tvg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  tv[0].verdict = ExwWindowVerdict.rejected; tv[0].tier_results[1].outcome = ExwTierOutcome.fail;
+  tv[0].outlier_metrics.cosine_to_median_e6 = -EXW_COSINE_MAX; tv[0].outlier_metrics.loss_delta_e6 = EXW_LOSS_DELTA_MAX;
+  w = exw_training_verdict_write(tv[..], out[..]); #assert w.err == ExwErr.ok && exw_training_verdict_read(cast(string) out[0..<w.len], tvg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_training_verdict_write(tvg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+
+  btv := [1] ExwTrainingVerdict.[vbase];
+  btv[0].tier_results[5].outcome = ExwTierOutcome.fail; #assert exw_training_verdict_valid(btv[..]) == ExwErr.ok;
+  btv[0] = vbase; btv[0].tier_results[0].tier = 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invariant;
+  btv[0] = vbase; btv[0].tier_results[0].outcome = ExwTierOutcome.skipped; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invariant;
+  for k: 1..<5 { btv[0] = vbase; btv[0].tier_results[k].outcome = ExwTierOutcome.fail; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invariant; }
+  btv[0] = vbase; btv[0].claim_digest = "x"; #assert exw_training_verdict_write(btv[..], out[..]).err == ExwErr.digest;
+  btv[0] = vbase; btv[0].outlier_metrics.cosine_to_median_e6 = -EXW_COSINE_MAX - 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.cosine_to_median_e6 = EXW_COSINE_MAX + 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.l2_norm_e6 = -1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.l2_norm_e6 = EXW_INT_MAX + 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.step_distance_ppb = -1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.step_distance_ppb = EXW_INT_MAX + 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.loss_delta_e6 = -EXW_LOSS_DELTA_MAX - 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].outlier_metrics.loss_delta_e6 = EXW_LOSS_DELTA_MAX + 1; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].signature = "x"; #assert exw_training_verdict_valid(btv[..]) == ExwErr.digest;
+  btv[0] = vbase; btv[0].n_tiers = 5; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].tier_results[2].tier = 3; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invariant;
+  btv[0] = vbase; btv[0].tier_results[2].outcome = ExwTierOutcome.unspecified; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invalid_enum;
+  btv[0] = vbase; btv[0].validator_device_ref = EXWT_ID65; #assert exw_training_verdict_valid(btv[..]) == ExwErr.bounds;
+  btv[0] = vbase; btv[0].validator_pubkey = "x"; #assert exw_training_verdict_valid(btv[..]) == ExwErr.digest;
+  btv[0] = vbase; btv[0].verdict = ExwWindowVerdict.unspecified; #assert exw_training_verdict_valid(btv[..]) == ExwErr.invalid_enum;
+  #assert exw_training_verdict_read("{", tvg[..], arena[..]) == ExwErr.truncated;
+  #assert exw_training_verdict_read(cast(string) out[0..<w.len], tvg[..], arena[0..<10]) == ExwErr.truncated;
+  #assert exw_training_verdict_read(cast(string) out[0..<w.len], tvg[..], arena[0..<50]) == ExwErr.truncated;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":1,\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[],\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}", tvg[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":0,\"l2_norm_e6\":0,\"loss_delta_e6\":0,\"step_distance_ppb\":0},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":1,\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}", tvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":0,\"l2_norm_e6\":0,\"loss_delta_e6\":0,\"step_distance_ppb\":0},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[],\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}", tvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":0,\"l2_norm_e6\":0,\"loss_delta_e6\":0,\"step_distance_ppb\":0},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"bad\":1},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}", tvg[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":0,\"l2_norm_e6\":0,\"loss_delta_e6\":0,\"step_distance_ppb\":0},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":\"x\"},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}", tvg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_training_verdict_read("{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":0,\"l2_norm_e6\":0,\"loss_delta_e6\":0,\"step_distance_ppb\":0},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":0},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"d\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"BAD\"}", tvg[..], arena[..]) == ExwErr.invalid_enum;
+
+  // CheckpointLineageRecord (exact max counts: 64 windows, 32 shards, 16 suites + max+1 JSON refusal)
+  ln := [1] ExwCheckpointLineage.[ExwCheckpointLineage.{
+    checkpoint_sha256 = EXWT_H1, n_windows = EXW_WINDOWS_MAX, parent_sha256 = EXWT_H2,
+    promotion_verdict = ExwPromotionVerdict.promoted, rollback_from = "", n_shards = EXW_SHARDS_MAX, n_suites = EXW_SUITES_MAX
+  }];
+  for i: 0..<EXW_WINDOWS_MAX { ln[0].included_windows[i] = EXWT_H3; }
+  for i: 0..<EXW_SHARDS_MAX { ln[0].shard_hashes[i] = EXWT_H4; }
+  for i: 0..<EXW_SUITES_MAX { ln[0].suite_digests[i] = EXWT_H5; }
+  w = exw_lineage_write(ln[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  lng: [1] ExwCheckpointLineage;
+  #assert exw_lineage_read(cast(string) out[0..<w.len], lng[..], arena[..]) == ExwErr.ok;
+  w2 = exw_lineage_write(lng[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+
+  ln[0].n_windows = 0; ln[0].n_shards = 1; ln[0].n_suites = 1; ln[0].promotion_verdict = ExwPromotionVerdict.held;
+  w = exw_lineage_write(ln[..], out[..]); #assert w.err == ExwErr.ok && exw_lineage_read(cast(string) out[0..<w.len], lng[..], arena[..]) == ExwErr.ok;
+  ln[0].promotion_verdict = ExwPromotionVerdict.rolled_back; ln[0].rollback_from = EXWT_H6;
+  w = exw_lineage_write(ln[..], out[..]); #assert w.err == ExwErr.ok && exw_lineage_read(cast(string) out[0..<w.len], lng[..], arena[..]) == ExwErr.ok;
+  #assert exw_lineage_read("{", lng[..], arena[..]) == ExwErr.truncated;
+  #assert exw_lineage_read(cast(string) out[0..<w.len], lng[..], arena[0..<10]) == ExwErr.truncated;
+  bln := [1] ExwCheckpointLineage.[ln[0]]; bln[0].checkpoint_sha256 = "x"; #assert exw_lineage_write(bln[..], out[..]).err == ExwErr.digest;
+  bln[0] = ln[0]; bln[0].n_windows = -1; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].n_windows = EXW_WINDOWS_MAX + 1; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].n_windows = 1; bln[0].included_windows[0] = "x"; #assert exw_lineage_valid(bln[..]) == ExwErr.digest;
+  bln[0] = ln[0]; bln[0].parent_sha256 = "x"; #assert exw_lineage_valid(bln[..]) == ExwErr.digest;
+  bln[0] = ln[0]; bln[0].promotion_verdict = ExwPromotionVerdict.unspecified; #assert exw_lineage_valid(bln[..]) == ExwErr.invalid_enum;
+  bln[0] = ln[0]; bln[0].rollback_from = "nsec1abc"; #assert exw_lineage_valid(bln[..]) == ExwErr.secret;
+  bln[0] = ln[0]; bln[0].rollback_from = ""; #assert exw_lineage_valid(bln[..]) == ExwErr.invariant;
+  bln[0] = ln[0]; bln[0].rollback_from = EXWT_H1; #assert exw_lineage_valid(bln[..]) == ExwErr.invariant;
+  bln[0] = ln[0]; bln[0].promotion_verdict = ExwPromotionVerdict.promoted; bln[0].rollback_from = EXWT_H6; #assert exw_lineage_valid(bln[..]) == ExwErr.invariant;
+  bln[0] = ln[0]; bln[0].promotion_verdict = ExwPromotionVerdict.promoted; bln[0].rollback_from = ""; bln[0].n_windows = 0; #assert exw_lineage_valid(bln[..]) == ExwErr.invariant;
+  bln[0] = ln[0]; bln[0].n_shards = 0; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].n_shards = EXW_SHARDS_MAX + 1; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].shard_hashes[0] = "x"; #assert exw_lineage_valid(bln[..]) == ExwErr.digest;
+  bln[0] = ln[0]; bln[0].n_suites = 0; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].n_suites = EXW_SUITES_MAX + 1; #assert exw_lineage_valid(bln[..]) == ExwErr.bounds;
+  bln[0] = ln[0]; bln[0].suite_digests[0] = "x"; #assert exw_lineage_valid(bln[..]) == ExwErr.digest;
+  // Oversized JSON lists: 65 windows, 33 shards, 17 suites
+  for which: 0..<3 {
+    jo: [1] Jo; jb: [8192] u8; jo_start(jo[..], jb[..]);
+    jo_put(jo[..], "{\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"included_windows\":[");
+    nw := ifx which == 0 then EXW_WINDOWS_MAX + 1 else 0;
+    for i: 0..<nw { if i > 0 { jo_put(jo[..], ","); } jo_str(jo[..], EXWT_H3); }
+    jo_put(jo[..], "],\"parent_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"promotion_verdict\":\"HELD\",\"rollback_from\":\"\",\"schema\":\"openagents.executor.checkpoint-lineage.v1alpha1\",\"shard_hashes\":[");
+    ns := ifx which == 1 then EXW_SHARDS_MAX + 1 else 1;
+    for i: 0..<ns { if i > 0 { jo_put(jo[..], ","); } jo_str(jo[..], EXWT_H4); }
+    jo_put(jo[..], "],\"suite_digests\":[");
+    nu := ifx which == 2 then EXW_SUITES_MAX + 1 else 1;
+    for i: 0..<nu { if i > 0 { jo_put(jo[..], ","); } jo_str(jo[..], EXWT_H5); }
+    jo_put(jo[..], "]}");
+    #assert exw_lineage_read(jo_text(jo[..]), lng[..], arena[..]) == ExwErr.bounds;
+  }
+  #assert exw_lineage_read("{\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"included_windows\":[],\"parent_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"promotion_verdict\":\"BAD\",\"rollback_from\":\"\",\"schema\":\"openagents.executor.checkpoint-lineage.v1alpha1\",\"shard_hashes\":[\"4444444444444444444444444444444444444444444444444444444444444444\"],\"suite_digests\":[\"5555555555555555555555555555555555555555555555555555555555555555\"]}", lng[..], arena[..]) == ExwErr.invalid_enum;
+}
+
+#test "Family 4 & 5: Settlement (Bitcoin-only, no secrets, real_bitcoin_moved) and ExecutorReleaseManifest" {
+  out: [8192] u8; out2: [8192] u8; arena: [4096] u8;
+  // VerifiedPayoutIntent (exact max amount_msat)
+  pi := ExwPayoutIntent.{
+    amount_msat = EXW_INT_MAX, leg = ExwPayoutLeg.worker, network = "regtest",
+    owner_policy_digest = EXWT_H1, payee_pubkey = EXWT_H2, period_id = "2026-11-20",
+    receipt_digest = EXWT_H3, verdict_digest = EXWT_H4
+  };
+  w := exw_payout_intent_write(pi, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  pig: [1] ExwPayoutIntent;
+  #assert exw_payout_intent_read(cast(string) out[0..<w.len], pig[..], arena[..]) == ExwErr.ok;
+  w2 := exw_payout_intent_write(pig[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  #assert exw_payout_intent_read("{", pig[..], arena[..]) == ExwErr.truncated;
+  #assert exw_payout_intent_read(cast(string) out[0..<w.len], pig[..], arena[0..<10]) == ExwErr.truncated;
+  for net: [4] string.["bitcoin", "testnet", "signet", "regtest"] { pi.network = net; #assert exw_payout_intent_valid(pi) == ExwErr.ok; }
+  bpi := pi; bpi.amount_msat = 0; #assert exw_payout_intent_write(bpi, out[..]).err == ExwErr.bounds;
+  bpi = pi; bpi.amount_msat = EXW_INT_MAX + 1; #assert exw_payout_intent_valid(bpi) == ExwErr.bounds;
+  bpi = pi; bpi.leg = ExwPayoutLeg.unspecified; #assert exw_payout_intent_valid(bpi) == ExwErr.invalid_enum;
+  bpi = pi; bpi.network = "usdc"; #assert exw_payout_intent_valid(bpi) == ExwErr.invariant;
+  bpi = pi; bpi.owner_policy_digest = "x"; #assert exw_payout_intent_valid(bpi) == ExwErr.digest;
+  bpi = pi; bpi.payee_pubkey = "x"; #assert exw_payout_intent_valid(bpi) == ExwErr.digest;
+  bpi = pi; bpi.period_id = "bad"; #assert exw_payout_intent_valid(bpi) == ExwErr.bounds;
+  bpi = pi; bpi.receipt_digest = "x"; #assert exw_payout_intent_valid(bpi) == ExwErr.digest;
+  bpi = pi; bpi.verdict_digest = "x"; #assert exw_payout_intent_valid(bpi) == ExwErr.digest;
+  #assert exw_payout_intent_read("{\"amount_msat\":1,\"leg\":\"BAD\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"payee_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"period_id\":\"2026-11-20\",\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.payout-intent.v1alpha1\",\"verdict_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\"}", pig[..], arena[..]) == ExwErr.invalid_enum;
+
+  // SettlementReceipt: moved=true (settled_at = 1 AND EXW_INT_MAX) AND moved=false + secret/invoice refusal
+  sr := ExwSettlementReceipt.{
+    amount_msat = EXW_INT_MAX, leg = ExwPayoutLeg.validator, network = "signet",
+    owner_policy_digest = EXWT_H1, period_id = "2026-11-20", real_bitcoin_moved = true,
+    receipt_digest = EXWT_H2, settled_at = 1, settlement_commitment = EXWT_H3
+  };
+  w = exw_settlement_receipt_write(sr, out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  srg: [1] ExwSettlementReceipt;
+  #assert exw_settlement_receipt_read(cast(string) out[0..<w.len], srg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_settlement_receipt_write(srg[0], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  sr_max := sr; sr_max.settled_at = EXW_INT_MAX; #assert exw_settlement_receipt_valid(sr_max) == ExwErr.ok;
+  sr0 := sr; sr0.real_bitcoin_moved = false; sr0.settled_at = 0; sr0.settlement_commitment = "";
+  w = exw_settlement_receipt_write(sr0, out[..]); #assert w.err == ExwErr.ok && exw_settlement_receipt_read(cast(string) out[0..<w.len], srg[..], arena[..]) == ExwErr.ok && !srg[0].real_bitcoin_moved;
+  #assert exw_settlement_receipt_read("{", srg[..], arena[..]) == ExwErr.truncated;
+  #assert exw_settlement_receipt_read(cast(string) out[0..<w.len], srg[..], arena[0..<10]) == ExwErr.truncated;
+  bsr := sr; bsr.amount_msat = 0; #assert exw_settlement_receipt_write(bsr, out[..]).err == ExwErr.bounds;
+  bsr = sr; bsr.amount_msat = EXW_INT_MAX + 1; #assert exw_settlement_receipt_valid(bsr) == ExwErr.bounds;
+  bsr = sr; bsr.leg = ExwPayoutLeg.unspecified; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invalid_enum;
+  bsr = sr; bsr.network = "solana"; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invariant;
+  bsr = sr; bsr.owner_policy_digest = "x"; #assert exw_settlement_receipt_valid(bsr) == ExwErr.digest;
+  bsr = sr; bsr.period_id = "bad"; #assert exw_settlement_receipt_valid(bsr) == ExwErr.bounds;
+  bsr = sr; bsr.receipt_digest = "x"; #assert exw_settlement_receipt_valid(bsr) == ExwErr.digest;
+  bsr = sr; bsr.settled_at = -1; #assert exw_settlement_receipt_valid(bsr) == ExwErr.bounds;
+  bsr = sr; bsr.settled_at = EXW_INT_MAX + 1; #assert exw_settlement_receipt_valid(bsr) == ExwErr.bounds;
+  bsr = sr; bsr.settlement_commitment = "lnbc10u1p0abc"; #assert exw_settlement_receipt_valid(bsr) == ExwErr.secret;
+  bsr = sr; bsr.settlement_commitment = EXWT_H0; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invariant;
+  bsr = sr; bsr.settled_at = 0; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invariant;
+  bsr = sr0; bsr.settlement_commitment = EXWT_H3; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invariant;
+  bsr = sr0; bsr.settled_at = 1; #assert exw_settlement_receipt_valid(bsr) == ExwErr.invariant;
+  #assert exw_settlement_receipt_read("{\"amount_msat\":1,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-20\",\"real_bitcoin_moved\":\"no\",\"receipt_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":0,\"settlement_commitment\":\"\"}", srg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_settlement_receipt_read("{\"amount_msat\":1,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-20\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1,\"settlement_commitment\":\"lnbc10u1p0abc\"}", srg[..], arena[..]) == ExwErr.secret;
+
+  // ExecutorReleaseManifest (exact max artifacts 16, max ppm, max published_at, max byte_count, exact ID lengths 64/32)
+  rel := [1] ExwRelease.[ExwRelease.{
+    n_artifacts = EXW_ARTIFACTS_MAX, channel = "shadow", checkpoint_sha256 = EXWT_H1, lineage_sha256 = EXWT_H2,
+    max_shadow_disagree_ppm = EXW_PPM_MAX, min_client_version = EXWT_ID32, published_at = EXW_INT_MAX,
+    release_id = EXWT_ID64, rollback_target_sha256 = EXWT_H3, signature = EXWT_SIG,
+    signer_pubkey = EXWT_H4, stage = ExwRolloutStage.shadow
+  }];
+  for i: 0..<EXW_ARTIFACTS_MAX { rel[0].artifacts[i] = ExwArtifact.{artifact_id = EXWT_ID64, byte_count = EXW_INT_MAX, sha256 = EXWT_H5, target_platform = "macos-arm64"}; }
+  w = exw_release_write(rel[..], out[..]); #assert w.err == ExwErr.ok && exwt_jcs_ok(cast(string) out[0..<w.len]);
+  relg: [1] ExwRelease;
+  #assert exw_release_read(cast(string) out[0..<w.len], relg[..], arena[..]) == ExwErr.ok;
+  w2 = exw_release_write(relg[..], out2[..]); #assert w2.err == ExwErr.ok && cast(string) out2[0..<w2.len] == cast(string) out[0..<w.len];
+  #assert exw_release_read("{", relg[..], arena[..]) == ExwErr.truncated;
+  #assert exw_release_read(cast(string) out[0..<w.len], relg[..], arena[0..<10]) == ExwErr.truncated;
+  rel[0].n_artifacts = 1;
+  w = exw_release_write(rel[..], out[..]); #assert w.err == ExwErr.ok;
+  #assert exw_release_read(cast(string) out[0..<w.len], relg[..], arena[0..<160]) == ExwErr.truncated;
+  brel := [1] ExwRelease.[rel[0]]; brel[0].n_artifacts = 0; #assert exw_release_write(brel[..], out[..]).err == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].n_artifacts = EXW_ARTIFACTS_MAX + 1; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].artifacts[0].artifact_id = EXWT_ID65; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].artifacts[0].byte_count = 0; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].artifacts[0].byte_count = EXW_INT_MAX + 1; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].artifacts[0].sha256 = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].artifacts[0].target_platform = "win95"; #assert exw_release_valid(brel[..]) == ExwErr.invalid_enum;
+  brel[0] = rel[0]; brel[0].channel = "nightly"; #assert exw_release_valid(brel[..]) == ExwErr.invalid_enum;
+  brel[0] = rel[0]; brel[0].checkpoint_sha256 = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].lineage_sha256 = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].max_shadow_disagree_ppm = -1; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].max_shadow_disagree_ppm = EXW_PPM_MAX + 1; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].min_client_version = EXWT_ID33; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].published_at = 0; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].published_at = EXW_INT_MAX + 1; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].release_id = EXWT_ID65; #assert exw_release_valid(brel[..]) == ExwErr.bounds;
+  brel[0] = rel[0]; brel[0].rollback_target_sha256 = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].rollback_target_sha256 = EXWT_H1; #assert exw_release_valid(brel[..]) == ExwErr.invariant;
+  brel[0] = rel[0]; brel[0].signature = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].signer_pubkey = "x"; #assert exw_release_valid(brel[..]) == ExwErr.digest;
+  brel[0] = rel[0]; brel[0].stage = ExwRolloutStage.unspecified; #assert exw_release_valid(brel[..]) == ExwErr.invalid_enum;
+  #assert exw_release_read("{\"artifacts\":1,\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":0,\"min_client_version\":\"1\",\"published_at\":1,\"release_id\":\"r\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}", relg[..], arena[..]) == ExwErr.bounds;
+  #assert exw_release_read("{\"artifacts\":[{\"bad\":1}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":0,\"min_client_version\":\"1\",\"published_at\":1,\"release_id\":\"r\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}", relg[..], arena[..]) == ExwErr.unknown_field;
+  #assert exw_release_read("{\"artifacts\":[{\"artifact_id\":\"a\",\"byte_count\":1,\"sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"target_platform\":\"portable\"}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":0,\"min_client_version\":\"1\",\"published_at\":1,\"release_id\":\"r\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"BAD\"}", relg[..], arena[..]) == ExwErr.invalid_enum;
+  jo: [1] Jo; ja: [4096] u8; jo_start(jo[..], ja[..]);
+  jo_put(jo[..], "{\"artifacts\":[");
+  for i: 0..<EXW_ARTIFACTS_MAX + 1 { if i > 0 { jo_put(jo[..], ","); } jo_put(jo[..], "{\"artifact_id\":\"a\",\"byte_count\":1,\"sha256\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"target_platform\":\"portable\"}"); }
+  jo_put(jo[..], "],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":0,\"min_client_version\":\"1\",\"published_at\":1,\"release_id\":\"r\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}");
+  #assert exw_release_read(jo_text(jo[..]), relg[..], arena[..]) == ExwErr.bounds;
+}

@@ -1,0 +1,1363 @@
+// Single #authority Coax codec for openagents.executor.v1alpha1 and
+// openagents.executor-release.v1 (proto/openagents/executor/v1alpha1/*.proto,
+// psionic/docs/executor-network-master-spec.md W2.1, GitHub #13914).
+//
+// Every message serializes to RFC 8785 (JCS) canonical compact JSON with
+// lexicographically ordered keys matching protobuf field declaration order.
+// Reads enforce closed objects, exact schema pinning, UTF-8 without NUL,
+// strict bounds, valid enums, lowercase hex digests, Bitcoin-only networks,
+// no-secret/no-invoice invariants, and truthful real_bitcoin_moved semantics.
+//   coax/bin/coax test psionic/lib/executor-wire.coax
+//   coax/bin/coax mutate psionic/lib/executor-wire.coax
+#load "../../coax/lib/json/shape.coax";
+#load "../../coax/lib/crypto/sha256-kernel.coax";
+#authority;
+
+EXW_SCHEMA_MODULE :: "openagents.executor.module.v1alpha1";
+EXW_SCHEMA_PROGRAM_REF :: "openagents.executor.program-ref.v1alpha1";
+EXW_SCHEMA_TRACE_RECEIPT :: "openagents.executor.trace-receipt.v1alpha1";
+EXW_SCHEMA_REPLAY_VERDICT :: "openagents.executor.replay-verdict.v1alpha1";
+EXW_SCHEMA_DATASET_SHARD :: "openagents.executor.dataset-shard.v1alpha1";
+EXW_SCHEMA_TRAINING_LEASE :: "openagents.executor.training-lease.v1alpha1";
+EXW_SCHEMA_TRAINING_CLAIM :: "openagents.executor.training-claim.v1alpha1";
+EXW_SCHEMA_TRAINING_VERDICT :: "openagents.executor.training-verdict.v1alpha1";
+EXW_SCHEMA_CHECKPOINT_LINEAGE :: "openagents.executor.checkpoint-lineage.v1alpha1";
+EXW_SCHEMA_PAYOUT_INTENT :: "openagents.executor.payout-intent.v1alpha1";
+EXW_SCHEMA_SETTLEMENT_RECEIPT :: "openagents.executor.settlement-receipt.v1alpha1";
+EXW_SCHEMA_RELEASE :: "openagents.executor-release.v1";
+
+EXW_JSON_MAX :: 65536;
+EXW_INT_MAX :: 9007199254740991;
+EXW_BAD_INT :: 9007199254740992;
+EXW_STEP_MAX :: 1000000000;
+EXW_MEM_MAX :: 68719476736;
+EXW_ABI_SLOTS_MAX :: 1024;
+EXW_SEAM_LAYER_MAX :: 4096;
+EXW_SEAM_SLOT_MAX :: 65536;
+EXW_SEAMS_MAX :: 64;
+EXW_ROW_MAX :: 16;
+EXW_TAGS_MAX :: 32;
+EXW_TIERS :: 6;
+EXW_WINDOWS_MAX :: 64;
+EXW_SHARDS_MAX :: 32;
+EXW_SUITES_MAX :: 16;
+EXW_ARTIFACTS_MAX :: 16;
+EXW_COSINE_MAX :: 1000000;
+EXW_LOSS_DELTA_MAX :: 1000000000;
+EXW_PPM_MAX :: 1000000;
+
+ExwErr :: enum u8 {
+  ok;
+  truncated;
+  schema;
+  unknown_field;
+  invalid_enum;
+  bounds;
+  digest;
+  secret;
+  invariant;
+}
+
+ExwOut :: struct { len: int; err: ExwErr; }
+ExwArena :: struct { buf: [] u8; n: int; bad: bool; }
+ExwBool :: struct { ok: bool; val: bool; }
+
+// ---- Enums matching proto/openagents/executor/v1alpha1/*.proto ----
+
+ExwVerifClass :: enum u8 { unspecified; e_exact_replay; d_deterministic_test; s_statistical; n_unverified; }
+ExwReplayOutcome :: enum u8 { unspecified; exact_replay; failed; unverifiable; }
+ExwShardSplit :: enum u8 { unspecified; train; validation; held_out; }
+ExwTierOutcome :: enum u8 { unspecified; pass; fail; skipped; }
+ExwWindowVerdict :: enum u8 { unspecified; accepted; rejected; quarantined; }
+ExwPromotionVerdict :: enum u8 { unspecified; promoted; held; rolled_back; }
+ExwPayoutLeg :: enum u8 { unspecified; worker; validator; }
+ExwRolloutStage :: enum u8 { unspecified; shadow; canary; promoted; rolled_back; }
+
+EXW_VERIF_NAMES :: [4] string.["E_EXACT_REPLAY", "D_DETERMINISTIC_TEST", "S_STATISTICAL", "N_UNVERIFIED"];
+EXW_REPLAY_NAMES :: [3] string.["EXACT_REPLAY", "FAILED", "UNVERIFIABLE"];
+EXW_SPLIT_NAMES :: [3] string.["TRAIN", "VALIDATION", "HELD_OUT"];
+EXW_TIER_NAMES :: [3] string.["PASS", "FAIL", "SKIPPED"];
+EXW_WIN_VERDICT_NAMES :: [3] string.["ACCEPTED", "REJECTED", "QUARANTINED"];
+EXW_PROMO_NAMES :: [3] string.["PROMOTED", "HELD", "ROLLED_BACK"];
+EXW_LEG_NAMES :: [2] string.["WORKER", "VALIDATOR"];
+EXW_STAGE_NAMES :: [4] string.["SHADOW", "CANARY", "PROMOTED", "ROLLED_BACK"];
+EXW_SCALAR_NAMES :: [4] string.["i32", "i64", "f64", "bytes"];
+EXW_NETWORK_NAMES :: [4] string.["bitcoin", "testnet", "signet", "regtest"];
+EXW_CHANNEL_NAMES :: [3] string.["shadow", "beta", "stable"];
+EXW_PLATFORM_NAMES :: [4] string.["macos-arm64", "linux-x86_64", "linux-arm64", "portable"];
+EXW_SECRET_KEYS :: [6] string.["invoice", "bolt11", "preimage", "private_key", "nsec", "mnemonic"];
+EXW_SECRET_PREFIXES :: [6] string.["lnbc", "lntb", "lnsb", "nsec1", "xprv", "tprv"];
+
+// ---- Wire records ----
+
+ExwAbi :: struct { max_value: int; min_value: int; scalar_type: string; slot_count: int; }
+ExwSeam :: struct { count: int; layer: int; slot: int; upstream_module_sha256: string; }
+ExwModule :: struct {
+  compiler_hash: string;
+  conformance_suite_sha256: string;
+  input_abi: ExwAbi;
+  max_steps: int;
+  memory_bytes: int;
+  module_id: string;
+  output_abi: ExwAbi;
+  profile_id: string;
+  seams: [EXW_SEAMS_MAX] ExwSeam;
+  n_seams: int;
+  verification_class: ExwVerifClass;
+  version: string;
+  weight_sha256: string;
+}
+
+ExwProgramRef :: struct {
+  compiler_hash: string;
+  executor_artifact_hash: string;
+  input_hash: string;
+  profile_id: string;
+  program_hash: string;
+}
+
+ExwTraceReceipt :: struct {
+  chunk_merkle_root: string;
+  executor_artifact_hash: string;
+  finished_at: int;
+  input_hash: string;
+  job_id: string;
+  output_digest: string;
+  program_hash: string;
+  started_at: int;
+  step_count: int;
+  trace_digest: string;
+  worker_device_ref: string;
+  worker_pubkey: string;
+}
+
+ExwReplayVerdict :: struct {
+  expected_row: [EXW_ROW_MAX] int;
+  n_expected: int;
+  first_divergent_step: int;
+  observed_row: [EXW_ROW_MAX] int;
+  n_observed: int;
+  receipt_digest: string;
+  signature: string;
+  validator_device_ref: string;
+  validator_pubkey: string;
+  verdict: ExwReplayOutcome;
+}
+
+ExwDatasetShard :: struct {
+  byte_count: int;
+  created_at: int;
+  exposure_ledger_sha256: string;
+  family_tags: [EXW_TAGS_MAX] string;
+  n_tags: int;
+  record_count: int;
+  shard_id: string;
+  shard_sha256: string;
+  split: ExwShardSplit;
+}
+
+ExwTrainingLease :: struct {
+  dataset_shard_sha256: string;
+  end_step: int;
+  expires_at: int;
+  issued_at: int;
+  lease_id: string;
+  optimizer_state_sha256: string;
+  parent_checkpoint_sha256: string;
+  random_seed: int;
+  start_step: int;
+  training_config_sha256: string;
+  worker_pubkey: string;
+}
+
+ExwLossStats :: struct {
+  final_loss_e6: int;
+  initial_loss_e6: int;
+  max_grad_norm_e6: int;
+  non_finite_count: int;
+}
+
+ExwTrainingClaim :: struct {
+  dataset_shard_sha256: string;
+  delta_sha256: string;
+  end_step: int;
+  lease_id: string;
+  loss_stats: ExwLossStats;
+  optimizer_state_sha256: string;
+  parent_checkpoint_sha256: string;
+  random_seed: int;
+  start_step: int;
+  training_config_sha256: string;
+  worker_device_ref: string;
+  worker_pubkey: string;
+}
+
+ExwTierResult :: struct { outcome: ExwTierOutcome; tier: int; }
+ExwOutlierMetrics :: struct { cosine_to_median_e6: int; l2_norm_e6: int; loss_delta_e6: int; step_distance_ppb: int; }
+
+ExwTrainingVerdict :: struct {
+  claim_digest: string;
+  outlier_metrics: ExwOutlierMetrics;
+  signature: string;
+  tier_results: [EXW_TIERS] ExwTierResult;
+  n_tiers: int;
+  validator_device_ref: string;
+  validator_pubkey: string;
+  verdict: ExwWindowVerdict;
+}
+
+ExwCheckpointLineage :: struct {
+  checkpoint_sha256: string;
+  included_windows: [EXW_WINDOWS_MAX] string;
+  n_windows: int;
+  parent_sha256: string;
+  promotion_verdict: ExwPromotionVerdict;
+  rollback_from: string;
+  shard_hashes: [EXW_SHARDS_MAX] string;
+  n_shards: int;
+  suite_digests: [EXW_SUITES_MAX] string;
+  n_suites: int;
+}
+
+ExwPayoutIntent :: struct {
+  amount_msat: int;
+  leg: ExwPayoutLeg;
+  network: string;
+  owner_policy_digest: string;
+  payee_pubkey: string;
+  period_id: string;
+  receipt_digest: string;
+  verdict_digest: string;
+}
+
+ExwSettlementReceipt :: struct {
+  amount_msat: int;
+  leg: ExwPayoutLeg;
+  network: string;
+  owner_policy_digest: string;
+  period_id: string;
+  real_bitcoin_moved: bool;
+  receipt_digest: string;
+  settled_at: int;
+  settlement_commitment: string;
+}
+
+ExwArtifact :: struct { artifact_id: string; byte_count: int; sha256: string; target_platform: string; }
+
+ExwRelease :: struct {
+  artifacts: [EXW_ARTIFACTS_MAX] ExwArtifact;
+  n_artifacts: int;
+  channel: string;
+  checkpoint_sha256: string;
+  lineage_sha256: string;
+  max_shadow_disagree_ppm: int;
+  min_client_version: string;
+  published_at: int;
+  release_id: string;
+  rollback_target_sha256: string;
+  signature: string;
+  signer_pubkey: string;
+  stage: ExwRolloutStage;
+}
+
+// ---- Shared primitives ----
+
+exw_err_name :: (e: ExwErr) -> string #effects(all) {
+  names := [9] string.["ok", "truncated", "schema", "unknown_field", "invalid_enum", "bounds", "digest", "secret", "invariant"];
+  return names[cast(int) e];
+}
+
+exw_ascii_lower :: (c: u8) -> u8 #effects(all) {
+  return ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+}
+
+exw_starts_ci :: (s: string, prefix: string) -> bool #effects(all) {
+  if s.count < prefix.count { return false; }
+  for i: 0..<prefix.count {
+    if exw_ascii_lower(s[i]) != prefix[i] { return false; }
+  }
+  return true;
+}
+
+exw_secret_prefix :: (s: string) -> bool #effects(all) {
+  prefixes := EXW_SECRET_PREFIXES;
+  for p: prefixes {
+    if exw_starts_ci(s, p) { return true; }
+  }
+  return false;
+}
+
+exw_hex :: (s: string, want: int) -> bool #effects(all) {
+  if s.count != want { return false; }
+  for c: s {
+    if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; }
+  }
+  return true;
+}
+
+exw_hex_nonzero :: (s: string) -> bool #effects(all) {
+  if !exw_hex(s, 64) { return false; }
+  for c: s { if c != '0' { return true; } }
+  return false;
+}
+
+exw_check_hex :: (s: string, want: int) -> ExwErr #effects(all) {
+  if exw_secret_prefix(s) { return ExwErr.secret; }
+  if !exw_hex(s, want) { return ExwErr.digest; }
+  return ExwErr.ok;
+}
+
+exw_id :: (s: string, max_len: int) -> bool #effects(all) {
+  if s.count < 1 || s.count > max_len { return false; }
+  first := s[0];
+  if !((first >= 'a' && first <= 'z') || (first >= '0' && first <= '9')) { return false; }
+  for i: 1..<s.count {
+    c := s[i];
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.') { return false; }
+  }
+  return true;
+}
+
+exw_check_id :: (s: string, max_len: int) -> ExwErr #effects(all) {
+  if exw_secret_prefix(s) { return ExwErr.secret; }
+  if !exw_id(s, max_len) { return ExwErr.bounds; }
+  return ExwErr.ok;
+}
+
+exw_digit2 :: (s: string, at: int) -> int #effects(all) {
+  a := s[at]; b := s[at + 1];
+  if a < '0' || a > '9' || b < '0' || b > '9' { return -1; }
+  return cast(int)(a - '0') * 10 + cast(int)(b - '0');
+}
+
+exw_period_ok :: (s: string) -> bool #effects(all) {
+  if s.count != 10 || s[4] != '-' || s[7] != '-' { return false; }
+  hi := exw_digit2(s, 0); lo := exw_digit2(s, 2);
+  mo := exw_digit2(s, 5); dy := exw_digit2(s, 8);
+  if hi < 20 || hi > 29 || lo < 0 || mo < 1 || mo > 12 || dy < 1 || dy > 31 { return false; }
+  return true;
+}
+
+exw_enum_parse :: (s: string, names: [] string) -> int #effects(all) {
+  for i: 0..<names.count {
+    if names[i] == s { return i + 1; }
+  }
+  return 0;
+}
+
+exw_enum_name :: (v: int, names: [] string) -> string #effects(all) {
+  if v < 1 || v > names.count { return ""; }
+  return names[v - 1];
+}
+
+exw_in_list :: (s: string, names: [] string) -> bool #effects(all) {
+  return exw_enum_parse(s, names) > 0;
+}
+
+exw_has_forbidden_key :: (v: Jv, at: int) -> bool #effects(all) {
+  forbidden := EXW_SECRET_KEYS;
+  k := v.nodes[at].first;
+  while k != -1 {
+    rk := jv_key(v, k);
+    for fk: forbidden {
+      if jv_raw_eq(rk, fk) { return true; }
+    }
+    k = v.nodes[k].next;
+  }
+  return false;
+}
+
+exw_check_obj :: (v: Jv, at: int, keys: [] string) -> ExwErr #effects(all) {
+  if jv_kind(v, at) != JV_OBJECT { return ExwErr.unknown_field; }
+  if exw_has_forbidden_key(v, at) { return ExwErr.secret; }
+  if !js_fields(v, at, keys) || jv_len(v, at) != keys.count { return ExwErr.unknown_field; }
+  return ExwErr.ok;
+}
+
+exw_open_root :: (raw: string, d: [] Jv, nodes: [] JvNode, keys: [] string, want_schema: string) -> ExwErr #effects(all) {
+  if raw.count > EXW_JSON_MAX || !jv_parse(d, raw, nodes) { return ExwErr.truncated; }
+  v := d[0];
+  if jv_kind(v, 0) != JV_OBJECT { return ExwErr.truncated; }
+  if exw_has_forbidden_key(v, 0) { return ExwErr.secret; }
+  sc := jv_get(v, 0, "schema");
+  if jv_kind(v, sc) != JV_STRING || jv_raw(v, sc) != want_schema { return ExwErr.schema; }
+  if !js_fields(v, 0, keys) || jv_len(v, 0) != keys.count { return ExwErr.unknown_field; }
+  return ExwErr.ok;
+}
+
+exw_str_node :: (v: Jv, node: int, a: [] ExwArena) -> string #effects(all) {
+  if a[0].bad { return ""; }
+  n := js_string(v, node, a[0].buf[a[0].n..<a[0].buf.count]);
+  if n < 0 { a[0].bad = true; return ""; }
+  start := a[0].n;
+  a[0].n += n;
+  return cast(string) a[0].buf[start..<start + n];
+}
+
+exw_str :: (v: Jv, at: int, key: string, a: [] ExwArena) -> string #effects(all) {
+  return exw_str_node(v, jv_get(v, at, key), a);
+}
+
+exw_uint :: (v: Jv, at: int, key: string) -> int #effects(all) {
+  return js_number(v, jv_get(v, at, key));
+}
+
+exw_sint_node :: (v: Jv, node: int) -> int #effects(all) {
+  if jv_kind(v, node) != JV_NUMBER { return EXW_BAD_INT; }
+  raw := jv_raw(v, node);
+  if raw.count == 0 || raw == "-0" { return EXW_BAD_INT; }
+  return jv_int(v, node, EXW_BAD_INT);
+}
+
+exw_sint :: (v: Jv, at: int, key: string) -> int #effects(all) {
+  return exw_sint_node(v, jv_get(v, at, key));
+}
+
+exw_bool :: (v: Jv, at: int, key: string) -> ExwBool #effects(all) {
+  k := jv_kind(v, jv_get(v, at, key));
+  if k == JV_TRUE { return ExwBool.{ok = true, val = true}; }
+  if k == JV_FALSE { return ExwBool.{ok = true, val = false}; }
+  return ExwBool.{};
+}
+
+exw_read_hex_list :: (v: Jv, node: int, dst: [] string, cap: int, a: [] ExwArena, out_n: [] int) -> ExwErr #effects(all) {
+  if jv_kind(v, node) != JV_ARRAY { return ExwErr.bounds; }
+  n := jv_len(v, node);
+  if n > cap { return ExwErr.bounds; }
+  for i: 0..<n {
+    s := exw_str_node(v, jv_at(v, node, i), a);
+    if a[0].bad { return ExwErr.truncated; }
+    e := exw_check_hex(s, 64);
+    if e != ExwErr.ok { return e; }
+    dst[i] = s;
+  }
+  out_n[0] = n;
+  return ExwErr.ok;
+}
+
+exw_read_int_list :: (v: Jv, node: int, dst: [] int, cap: int, out_n: [] int) -> ExwErr #effects(all) {
+  if jv_kind(v, node) != JV_ARRAY { return ExwErr.bounds; }
+  n := jv_len(v, node);
+  if n > cap { return ExwErr.bounds; }
+  for i: 0..<n {
+    x := exw_sint_node(v, jv_at(v, node, i));
+    if x < -EXW_INT_MAX || x > EXW_INT_MAX { return ExwErr.bounds; }
+    dst[i] = x;
+  }
+  out_n[0] = n;
+  return ExwErr.ok;
+}
+
+exw_write_str_list :: (o: [] Jo, items: [] string, n: int) #effects(all) {
+  jo_arr(o);
+  for i: 0..<n { jo_str(o, items[i]); }
+  jo_end(o);
+}
+
+exw_write_int_list :: (o: [] Jo, items: [] int, n: int) #effects(all) {
+  jo_arr(o);
+  for i: 0..<n { jo_int(o, items[i]); }
+  jo_end(o);
+}
+
+exw_finish :: (o: [] Jo) -> ExwOut #effects(all) {
+  if o[0].bad || o[0].n > EXW_JSON_MAX { return ExwOut.{err = ExwErr.truncated}; }
+  return ExwOut.{len = o[0].n, err = ExwErr.ok};
+}
+
+exw_canonical_sha256 :: (canonical: string, out_hex: [] u8) -> bool #effects(all) {
+  if canonical.count == 0 || out_hex.count < 64 { return false; }
+  return S_hex(S_hash(canonical), out_hex[0..<64]);
+}
+
+exw_str_lt :: (a: string, b: string) -> bool #effects(all) {
+  i := 0;
+  while i < a.count && i < b.count {
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+    i += 1;
+  }
+  return a.count < b.count;
+}
+
+// Verifies every object in a parsed JSON tree has strictly ascending JCS keys.
+exw_keys_sorted :: (v: Jv, at: int) -> bool #effects(all) {
+  k := jv_kind(v, at);
+  if k == JV_OBJECT {
+    prev := "";
+    first := true;
+    c := v.nodes[at].first;
+    while c != -1 {
+      key := jv_key(v, c);
+      if !first && !exw_str_lt(prev, key) { return false; }
+      first = false;
+      prev = key;
+      if !exw_keys_sorted(v, c) { return false; }
+      c = v.nodes[c].next;
+    }
+    return true;
+  }
+  if k == JV_ARRAY {
+    c := v.nodes[at].first;
+    while c != -1 {
+      if !exw_keys_sorted(v, c) { return false; }
+      c = v.nodes[c].next;
+    }
+  }
+  return true;
+}
+
+// ---- Family 1: module.proto (CompiledModuleManifest) ----
+
+exw_abi_valid :: (a: ExwAbi) -> ExwErr #effects(all) {
+  scalars := EXW_SCALAR_NAMES;
+  if !exw_in_list(a.scalar_type, scalars[..]) { return ExwErr.invalid_enum; }
+  if a.slot_count < 1 || a.slot_count > EXW_ABI_SLOTS_MAX { return ExwErr.bounds; }
+  if a.min_value < -EXW_INT_MAX || a.max_value > EXW_INT_MAX || a.min_value > a.max_value { return ExwErr.bounds; }
+  return ExwErr.ok;
+}
+
+exw_abi_read :: (v: Jv, at: int, a: [] ExwArena, out: [] ExwAbi) -> ExwErr #effects(all) {
+  keys := [4] string.["max_value", "min_value", "scalar_type", "slot_count"];
+  e := exw_check_obj(v, at, keys[..]);
+  if e != ExwErr.ok { return e; }
+  st := exw_str(v, at, "scalar_type", a);
+  if a[0].bad { return ExwErr.truncated; }
+  out[0] = ExwAbi.{max_value = exw_sint(v, at, "max_value"), min_value = exw_sint(v, at, "min_value"), scalar_type = st, slot_count = exw_uint(v, at, "slot_count")};
+  return ExwErr.ok;
+}
+
+exw_abi_write :: (o: [] Jo, a: ExwAbi) #effects(all) {
+  jo_obj(o);
+  jo_key(o, "max_value"); jo_int(o, a.max_value);
+  jo_key(o, "min_value"); jo_int(o, a.min_value);
+  jo_key(o, "scalar_type"); jo_str(o, a.scalar_type);
+  jo_key(o, "slot_count"); jo_int(o, a.slot_count);
+  jo_end(o);
+}
+
+exw_seam_valid :: (s: ExwSeam) -> ExwErr #effects(all) {
+  if s.count < 1 || s.count > EXW_ABI_SLOTS_MAX || s.layer < 1 || s.layer > EXW_SEAM_LAYER_MAX || s.slot < 1 || s.slot > EXW_SEAM_SLOT_MAX { return ExwErr.bounds; }
+  if s.upstream_module_sha256.count > 0 { return exw_check_hex(s.upstream_module_sha256, 64); }
+  return ExwErr.ok;
+}
+
+exw_module_valid :: (m: [] ExwModule) -> ExwErr #effects(all) {
+  x := m[0];
+  e := exw_check_hex(x.compiler_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.conformance_suite_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_abi_valid(x.input_abi); if e != ExwErr.ok { return e; }
+  if x.max_steps < 1 || x.max_steps > EXW_STEP_MAX { return ExwErr.bounds; }
+  if x.memory_bytes < 1 || x.memory_bytes > EXW_MEM_MAX { return ExwErr.bounds; }
+  e = exw_check_id(x.module_id, 64); if e != ExwErr.ok { return e; }
+  e = exw_abi_valid(x.output_abi); if e != ExwErr.ok { return e; }
+  e = exw_check_id(x.profile_id, 64); if e != ExwErr.ok { return e; }
+  if x.n_seams < 0 || x.n_seams > EXW_SEAMS_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_seams {
+    e = exw_seam_valid(x.seams[i]); if e != ExwErr.ok { return e; }
+  }
+  if x.verification_class == ExwVerifClass.unspecified { return ExwErr.invalid_enum; }
+  e = exw_check_id(x.version, 32); if e != ExwErr.ok { return e; }
+  return exw_check_hex(x.weight_sha256, 64);
+}
+
+exw_module_read :: (raw: string, out: [] ExwModule, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [512] JvNode;
+  keys := [13] string.["compiler_hash", "conformance_suite_sha256", "input_abi", "max_steps", "memory_bytes", "module_id", "output_abi", "profile_id", "schema", "seams", "verification_class", "version", "weight_sha256"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_MODULE);
+  if e != ExwErr.ok { return e; }
+  v := d[0];
+  a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwModule;
+  next[0].compiler_hash = exw_str(v, 0, "compiler_hash", a[..]);
+  next[0].conformance_suite_sha256 = exw_str(v, 0, "conformance_suite_sha256", a[..]);
+  next[0].module_id = exw_str(v, 0, "module_id", a[..]);
+  next[0].profile_id = exw_str(v, 0, "profile_id", a[..]);
+  next[0].version = exw_str(v, 0, "version", a[..]);
+  next[0].weight_sha256 = exw_str(v, 0, "weight_sha256", a[..]);
+  vcs := exw_str(v, 0, "verification_class", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  ia: [1] ExwAbi; oa: [1] ExwAbi;
+  e = exw_abi_read(v, jv_get(v, 0, "input_abi"), a[..], ia[..]); if e != ExwErr.ok { return e; }
+  e = exw_abi_read(v, jv_get(v, 0, "output_abi"), a[..], oa[..]); if e != ExwErr.ok { return e; }
+  next[0].input_abi = ia[0]; next[0].output_abi = oa[0];
+  next[0].max_steps = exw_uint(v, 0, "max_steps"); next[0].memory_bytes = exw_uint(v, 0, "memory_bytes");
+  vnames := EXW_VERIF_NAMES;
+  next[0].verification_class = cast(ExwVerifClass) exw_enum_parse(vcs, vnames[..]);
+  snode := jv_get(v, 0, "seams");
+  if jv_kind(v, snode) != JV_ARRAY { return ExwErr.bounds; }
+  sn := jv_len(v, snode);
+  if sn > EXW_SEAMS_MAX { return ExwErr.bounds; }
+  skeys := [4] string.["count", "layer", "slot", "upstream_module_sha256"];
+  for i: 0..<sn {
+    item := jv_at(v, snode, i);
+    e = exw_check_obj(v, item, skeys[..]); if e != ExwErr.ok { return e; }
+    up := exw_str(v, item, "upstream_module_sha256", a[..]);
+    if a[0].bad { return ExwErr.truncated; }
+    next[0].seams[i] = ExwSeam.{count = exw_uint(v, item, "count"), layer = exw_uint(v, item, "layer"), slot = exw_uint(v, item, "slot"), upstream_module_sha256 = up};
+  }
+  next[0].n_seams = sn;
+  e = exw_module_valid(next[..]);
+  if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_module_write :: (m: [] ExwModule, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_module_valid(m);
+  if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := m[0];
+  vnames := EXW_VERIF_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "compiler_hash"); jo_str(o[..], x.compiler_hash);
+  jo_key(o[..], "conformance_suite_sha256"); jo_str(o[..], x.conformance_suite_sha256);
+  jo_key(o[..], "input_abi"); exw_abi_write(o[..], x.input_abi);
+  jo_key(o[..], "max_steps"); jo_int(o[..], x.max_steps);
+  jo_key(o[..], "memory_bytes"); jo_int(o[..], x.memory_bytes);
+  jo_key(o[..], "module_id"); jo_str(o[..], x.module_id);
+  jo_key(o[..], "output_abi"); exw_abi_write(o[..], x.output_abi);
+  jo_key(o[..], "profile_id"); jo_str(o[..], x.profile_id);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_MODULE);
+  jo_key(o[..], "seams"); jo_arr(o[..]);
+  for i: 0..<x.n_seams {
+    s := x.seams[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "count"); jo_int(o[..], s.count);
+    jo_key(o[..], "layer"); jo_int(o[..], s.layer);
+    jo_key(o[..], "slot"); jo_int(o[..], s.slot);
+    jo_key(o[..], "upstream_module_sha256"); jo_str(o[..], s.upstream_module_sha256);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "verification_class"); jo_str(o[..], exw_enum_name(cast(int) x.verification_class, vnames[..]));
+  jo_key(o[..], "version"); jo_str(o[..], x.version);
+  jo_key(o[..], "weight_sha256"); jo_str(o[..], x.weight_sha256);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+// ---- Family 2: trace.proto (ExecutorProgramRef, ExecutionTraceReceipt, ReplayVerdict) ----
+
+exw_program_ref_valid :: (p: ExwProgramRef) -> ExwErr #effects(all) {
+  e := exw_check_hex(p.compiler_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(p.executor_artifact_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(p.input_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_id(p.profile_id, 64); if e != ExwErr.ok { return e; }
+  return exw_check_hex(p.program_hash, 64);
+}
+
+exw_program_ref_read :: (raw: string, out: [] ExwProgramRef, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [32] JvNode;
+  keys := [6] string.["compiler_hash", "executor_artifact_hash", "input_hash", "profile_id", "program_hash", "schema"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_PROGRAM_REF);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  p := ExwProgramRef.{
+    compiler_hash = exw_str(v, 0, "compiler_hash", a[..]),
+    executor_artifact_hash = exw_str(v, 0, "executor_artifact_hash", a[..]),
+    input_hash = exw_str(v, 0, "input_hash", a[..]),
+    profile_id = exw_str(v, 0, "profile_id", a[..]),
+    program_hash = exw_str(v, 0, "program_hash", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  e = exw_program_ref_valid(p); if e != ExwErr.ok { return e; }
+  out[0] = p;
+  return ExwErr.ok;
+}
+
+exw_program_ref_write :: (p: ExwProgramRef, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_program_ref_valid(p); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "compiler_hash"); jo_str(o[..], p.compiler_hash);
+  jo_key(o[..], "executor_artifact_hash"); jo_str(o[..], p.executor_artifact_hash);
+  jo_key(o[..], "input_hash"); jo_str(o[..], p.input_hash);
+  jo_key(o[..], "profile_id"); jo_str(o[..], p.profile_id);
+  jo_key(o[..], "program_hash"); jo_str(o[..], p.program_hash);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_PROGRAM_REF);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_trace_receipt_valid :: (r: ExwTraceReceipt) -> ExwErr #effects(all) {
+  e := exw_check_hex(r.chunk_merkle_root, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(r.executor_artifact_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(r.input_hash, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_id(r.job_id, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(r.output_digest, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(r.program_hash, 64); if e != ExwErr.ok { return e; }
+  if r.started_at < 1 || r.finished_at < r.started_at || r.finished_at > EXW_INT_MAX { return ExwErr.bounds; }
+  if r.step_count < 1 || r.step_count > EXW_STEP_MAX { return ExwErr.bounds; }
+  e = exw_check_hex(r.trace_digest, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_id(r.worker_device_ref, 64); if e != ExwErr.ok { return e; }
+  return exw_check_hex(r.worker_pubkey, 64);
+}
+
+exw_trace_receipt_read :: (raw: string, out: [] ExwTraceReceipt, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  keys := [13] string.["chunk_merkle_root", "executor_artifact_hash", "finished_at", "input_hash", "job_id", "output_digest", "program_hash", "schema", "started_at", "step_count", "trace_digest", "worker_device_ref", "worker_pubkey"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_TRACE_RECEIPT);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  r := ExwTraceReceipt.{
+    chunk_merkle_root = exw_str(v, 0, "chunk_merkle_root", a[..]),
+    executor_artifact_hash = exw_str(v, 0, "executor_artifact_hash", a[..]),
+    finished_at = exw_uint(v, 0, "finished_at"),
+    input_hash = exw_str(v, 0, "input_hash", a[..]),
+    job_id = exw_str(v, 0, "job_id", a[..]),
+    output_digest = exw_str(v, 0, "output_digest", a[..]),
+    program_hash = exw_str(v, 0, "program_hash", a[..]),
+    started_at = exw_uint(v, 0, "started_at"),
+    step_count = exw_uint(v, 0, "step_count"),
+    trace_digest = exw_str(v, 0, "trace_digest", a[..]),
+    worker_device_ref = exw_str(v, 0, "worker_device_ref", a[..]),
+    worker_pubkey = exw_str(v, 0, "worker_pubkey", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  e = exw_trace_receipt_valid(r); if e != ExwErr.ok { return e; }
+  out[0] = r;
+  return ExwErr.ok;
+}
+
+exw_trace_receipt_write :: (r: ExwTraceReceipt, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_trace_receipt_valid(r); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "chunk_merkle_root"); jo_str(o[..], r.chunk_merkle_root);
+  jo_key(o[..], "executor_artifact_hash"); jo_str(o[..], r.executor_artifact_hash);
+  jo_key(o[..], "finished_at"); jo_int(o[..], r.finished_at);
+  jo_key(o[..], "input_hash"); jo_str(o[..], r.input_hash);
+  jo_key(o[..], "job_id"); jo_str(o[..], r.job_id);
+  jo_key(o[..], "output_digest"); jo_str(o[..], r.output_digest);
+  jo_key(o[..], "program_hash"); jo_str(o[..], r.program_hash);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_TRACE_RECEIPT);
+  jo_key(o[..], "started_at"); jo_int(o[..], r.started_at);
+  jo_key(o[..], "step_count"); jo_int(o[..], r.step_count);
+  jo_key(o[..], "trace_digest"); jo_str(o[..], r.trace_digest);
+  jo_key(o[..], "worker_device_ref"); jo_str(o[..], r.worker_device_ref);
+  jo_key(o[..], "worker_pubkey"); jo_str(o[..], r.worker_pubkey);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_replay_verdict_valid :: (rv: [] ExwReplayVerdict) -> ExwErr #effects(all) {
+  x := rv[0];
+  e := exw_check_hex(x.receipt_digest, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.signature, 128); if e != ExwErr.ok { return e; }
+  e = exw_check_id(x.validator_device_ref, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.validator_pubkey, 64); if e != ExwErr.ok { return e; }
+  if x.verdict == ExwReplayOutcome.unspecified { return ExwErr.invalid_enum; }
+  if x.n_expected < 0 || x.n_expected > EXW_ROW_MAX || x.n_observed < 0 || x.n_observed > EXW_ROW_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_expected { if x.expected_row[i] < -EXW_INT_MAX || x.expected_row[i] > EXW_INT_MAX { return ExwErr.bounds; } }
+  for i: 0..<x.n_observed { if x.observed_row[i] < -EXW_INT_MAX || x.observed_row[i] > EXW_INT_MAX { return ExwErr.bounds; } }
+  if x.first_divergent_step < -1 || x.first_divergent_step > EXW_STEP_MAX { return ExwErr.bounds; }
+  if x.verdict == ExwReplayOutcome.failed {
+    if x.first_divergent_step < 0 || x.n_expected != x.n_observed { return ExwErr.invariant; }
+    if x.n_expected > 0 {
+      diff := false;
+      for i: 0..<x.n_expected { if x.expected_row[i] != x.observed_row[i] { diff = true; } }
+      if !diff { return ExwErr.invariant; }
+    }
+  } else {
+    if x.first_divergent_step != -1 || x.n_expected != 0 || x.n_observed != 0 { return ExwErr.invariant; }
+  }
+  return ExwErr.ok;
+}
+
+exw_replay_verdict_read :: (raw: string, out: [] ExwReplayVerdict, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [96] JvNode;
+  keys := [9] string.["expected_row", "first_divergent_step", "observed_row", "receipt_digest", "schema", "signature", "validator_device_ref", "validator_pubkey", "verdict"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_REPLAY_VERDICT);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwReplayVerdict;
+  ne: [1] int; no: [1] int;
+  e = exw_read_int_list(v, jv_get(v, 0, "expected_row"), next[0].expected_row[..], EXW_ROW_MAX, ne[..]); if e != ExwErr.ok { return e; }
+  e = exw_read_int_list(v, jv_get(v, 0, "observed_row"), next[0].observed_row[..], EXW_ROW_MAX, no[..]); if e != ExwErr.ok { return e; }
+  next[0].n_expected = ne[0]; next[0].n_observed = no[0];
+  next[0].first_divergent_step = exw_sint(v, 0, "first_divergent_step");
+  next[0].receipt_digest = exw_str(v, 0, "receipt_digest", a[..]);
+  next[0].signature = exw_str(v, 0, "signature", a[..]);
+  next[0].validator_device_ref = exw_str(v, 0, "validator_device_ref", a[..]);
+  next[0].validator_pubkey = exw_str(v, 0, "validator_pubkey", a[..]);
+  vs := exw_str(v, 0, "verdict", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  rnames := EXW_REPLAY_NAMES;
+  next[0].verdict = cast(ExwReplayOutcome) exw_enum_parse(vs, rnames[..]);
+  e = exw_replay_verdict_valid(next[..]); if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_replay_verdict_write :: (rv: [] ExwReplayVerdict, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_replay_verdict_valid(rv); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := rv[0]; rnames := EXW_REPLAY_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "expected_row"); exw_write_int_list(o[..], x.expected_row[..], x.n_expected);
+  jo_key(o[..], "first_divergent_step"); jo_int(o[..], x.first_divergent_step);
+  jo_key(o[..], "observed_row"); exw_write_int_list(o[..], x.observed_row[..], x.n_observed);
+  jo_key(o[..], "receipt_digest"); jo_str(o[..], x.receipt_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_REPLAY_VERDICT);
+  jo_key(o[..], "signature"); jo_str(o[..], x.signature);
+  jo_key(o[..], "validator_device_ref"); jo_str(o[..], x.validator_device_ref);
+  jo_key(o[..], "validator_pubkey"); jo_str(o[..], x.validator_pubkey);
+  jo_key(o[..], "verdict"); jo_str(o[..], exw_enum_name(cast(int) x.verdict, rnames[..]));
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+// ---- Family 3: training.proto ----
+
+exw_dataset_shard_valid :: (s: [] ExwDatasetShard) -> ExwErr #effects(all) {
+  x := s[0];
+  if x.byte_count < 1 || x.byte_count > EXW_INT_MAX || x.created_at < 1 || x.created_at > EXW_INT_MAX || x.record_count < 1 || x.record_count > EXW_INT_MAX { return ExwErr.bounds; }
+  e := exw_check_hex(x.exposure_ledger_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.n_tags < 1 || x.n_tags > EXW_TAGS_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_tags { e = exw_check_id(x.family_tags[i], 64); if e != ExwErr.ok { return e; } }
+  e = exw_check_id(x.shard_id, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.shard_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.split == ExwShardSplit.unspecified { return ExwErr.invalid_enum; }
+  return ExwErr.ok;
+}
+
+exw_dataset_shard_read :: (raw: string, out: [] ExwDatasetShard, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [96] JvNode;
+  keys := [9] string.["byte_count", "created_at", "exposure_ledger_sha256", "family_tags", "record_count", "schema", "shard_id", "shard_sha256", "split"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_DATASET_SHARD);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwDatasetShard;
+  next[0].byte_count = exw_uint(v, 0, "byte_count");
+  next[0].created_at = exw_uint(v, 0, "created_at");
+  next[0].record_count = exw_uint(v, 0, "record_count");
+  next[0].exposure_ledger_sha256 = exw_str(v, 0, "exposure_ledger_sha256", a[..]);
+  next[0].shard_id = exw_str(v, 0, "shard_id", a[..]);
+  next[0].shard_sha256 = exw_str(v, 0, "shard_sha256", a[..]);
+  sps := exw_str(v, 0, "split", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  tn := jv_get(v, 0, "family_tags");
+  if jv_kind(v, tn) != JV_ARRAY { return ExwErr.bounds; }
+  nt := jv_len(v, tn);
+  if nt > EXW_TAGS_MAX { return ExwErr.bounds; }
+  for i: 0..<nt {
+    next[0].family_tags[i] = exw_str_node(v, jv_at(v, tn, i), a[..]);
+    if a[0].bad { return ExwErr.truncated; }
+  }
+  next[0].n_tags = nt;
+  snames := EXW_SPLIT_NAMES;
+  next[0].split = cast(ExwShardSplit) exw_enum_parse(sps, snames[..]);
+  e = exw_dataset_shard_valid(next[..]); if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_dataset_shard_write :: (s: [] ExwDatasetShard, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_dataset_shard_valid(s); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := s[0]; snames := EXW_SPLIT_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "byte_count"); jo_int(o[..], x.byte_count);
+  jo_key(o[..], "created_at"); jo_int(o[..], x.created_at);
+  jo_key(o[..], "exposure_ledger_sha256"); jo_str(o[..], x.exposure_ledger_sha256);
+  jo_key(o[..], "family_tags"); exw_write_str_list(o[..], x.family_tags[..], x.n_tags);
+  jo_key(o[..], "record_count"); jo_int(o[..], x.record_count);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_DATASET_SHARD);
+  jo_key(o[..], "shard_id"); jo_str(o[..], x.shard_id);
+  jo_key(o[..], "shard_sha256"); jo_str(o[..], x.shard_sha256);
+  jo_key(o[..], "split"); jo_str(o[..], exw_enum_name(cast(int) x.split, snames[..]));
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_training_lease_valid :: (l: ExwTrainingLease) -> ExwErr #effects(all) {
+  e := exw_check_hex(l.dataset_shard_sha256, 64); if e != ExwErr.ok { return e; }
+  if l.start_step < 0 || l.end_step <= l.start_step || l.end_step > EXW_STEP_MAX { return ExwErr.bounds; }
+  if l.issued_at < 1 || l.expires_at <= l.issued_at || l.expires_at > EXW_INT_MAX { return ExwErr.bounds; }
+  e = exw_check_id(l.lease_id, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(l.optimizer_state_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(l.parent_checkpoint_sha256, 64); if e != ExwErr.ok { return e; }
+  if l.random_seed < 0 || l.random_seed > EXW_INT_MAX { return ExwErr.bounds; }
+  e = exw_check_hex(l.training_config_sha256, 64); if e != ExwErr.ok { return e; }
+  return exw_check_hex(l.worker_pubkey, 64);
+}
+
+exw_training_lease_read :: (raw: string, out: [] ExwTrainingLease, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  keys := [12] string.["dataset_shard_sha256", "end_step", "expires_at", "issued_at", "lease_id", "optimizer_state_sha256", "parent_checkpoint_sha256", "random_seed", "schema", "start_step", "training_config_sha256", "worker_pubkey"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_TRAINING_LEASE);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  l := ExwTrainingLease.{
+    dataset_shard_sha256 = exw_str(v, 0, "dataset_shard_sha256", a[..]),
+    end_step = exw_uint(v, 0, "end_step"), expires_at = exw_uint(v, 0, "expires_at"), issued_at = exw_uint(v, 0, "issued_at"),
+    lease_id = exw_str(v, 0, "lease_id", a[..]),
+    optimizer_state_sha256 = exw_str(v, 0, "optimizer_state_sha256", a[..]),
+    parent_checkpoint_sha256 = exw_str(v, 0, "parent_checkpoint_sha256", a[..]),
+    random_seed = exw_uint(v, 0, "random_seed"), start_step = exw_uint(v, 0, "start_step"),
+    training_config_sha256 = exw_str(v, 0, "training_config_sha256", a[..]),
+    worker_pubkey = exw_str(v, 0, "worker_pubkey", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  e = exw_training_lease_valid(l); if e != ExwErr.ok { return e; }
+  out[0] = l;
+  return ExwErr.ok;
+}
+
+exw_training_lease_write :: (l: ExwTrainingLease, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_training_lease_valid(l); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "dataset_shard_sha256"); jo_str(o[..], l.dataset_shard_sha256);
+  jo_key(o[..], "end_step"); jo_int(o[..], l.end_step);
+  jo_key(o[..], "expires_at"); jo_int(o[..], l.expires_at);
+  jo_key(o[..], "issued_at"); jo_int(o[..], l.issued_at);
+  jo_key(o[..], "lease_id"); jo_str(o[..], l.lease_id);
+  jo_key(o[..], "optimizer_state_sha256"); jo_str(o[..], l.optimizer_state_sha256);
+  jo_key(o[..], "parent_checkpoint_sha256"); jo_str(o[..], l.parent_checkpoint_sha256);
+  jo_key(o[..], "random_seed"); jo_int(o[..], l.random_seed);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_TRAINING_LEASE);
+  jo_key(o[..], "start_step"); jo_int(o[..], l.start_step);
+  jo_key(o[..], "training_config_sha256"); jo_str(o[..], l.training_config_sha256);
+  jo_key(o[..], "worker_pubkey"); jo_str(o[..], l.worker_pubkey);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_training_claim_valid :: (c: ExwTrainingClaim) -> ExwErr #effects(all) {
+  e := exw_check_hex(c.dataset_shard_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(c.delta_sha256, 64); if e != ExwErr.ok { return e; }
+  if c.start_step < 0 || c.end_step <= c.start_step || c.end_step > EXW_STEP_MAX { return ExwErr.bounds; }
+  e = exw_check_id(c.lease_id, 64); if e != ExwErr.ok { return e; }
+  ls := c.loss_stats;
+  if ls.final_loss_e6 < 0 || ls.final_loss_e6 > EXW_INT_MAX || ls.initial_loss_e6 < 0 || ls.initial_loss_e6 > EXW_INT_MAX || ls.max_grad_norm_e6 < 0 || ls.max_grad_norm_e6 > EXW_INT_MAX || ls.non_finite_count < 0 { return ExwErr.bounds; }
+  if ls.non_finite_count != 0 { return ExwErr.invariant; }
+  e = exw_check_hex(c.optimizer_state_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(c.parent_checkpoint_sha256, 64); if e != ExwErr.ok { return e; }
+  if c.random_seed < 0 || c.random_seed > EXW_INT_MAX { return ExwErr.bounds; }
+  e = exw_check_hex(c.training_config_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_id(c.worker_device_ref, 64); if e != ExwErr.ok { return e; }
+  return exw_check_hex(c.worker_pubkey, 64);
+}
+
+exw_training_claim_read :: (raw: string, out: [] ExwTrainingClaim, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [64] JvNode;
+  keys := [13] string.["dataset_shard_sha256", "delta_sha256", "end_step", "lease_id", "loss_stats", "optimizer_state_sha256", "parent_checkpoint_sha256", "random_seed", "schema", "start_step", "training_config_sha256", "worker_device_ref", "worker_pubkey"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_TRAINING_CLAIM);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  lnode := jv_get(v, 0, "loss_stats");
+  lkeys := [4] string.["final_loss_e6", "initial_loss_e6", "max_grad_norm_e6", "non_finite_count"];
+  e = exw_check_obj(v, lnode, lkeys[..]); if e != ExwErr.ok { return e; }
+  c := ExwTrainingClaim.{
+    dataset_shard_sha256 = exw_str(v, 0, "dataset_shard_sha256", a[..]),
+    delta_sha256 = exw_str(v, 0, "delta_sha256", a[..]),
+    end_step = exw_uint(v, 0, "end_step"),
+    lease_id = exw_str(v, 0, "lease_id", a[..]),
+    loss_stats = ExwLossStats.{final_loss_e6 = exw_uint(v, lnode, "final_loss_e6"), initial_loss_e6 = exw_uint(v, lnode, "initial_loss_e6"), max_grad_norm_e6 = exw_uint(v, lnode, "max_grad_norm_e6"), non_finite_count = exw_uint(v, lnode, "non_finite_count")},
+    optimizer_state_sha256 = exw_str(v, 0, "optimizer_state_sha256", a[..]),
+    parent_checkpoint_sha256 = exw_str(v, 0, "parent_checkpoint_sha256", a[..]),
+    random_seed = exw_uint(v, 0, "random_seed"), start_step = exw_uint(v, 0, "start_step"),
+    training_config_sha256 = exw_str(v, 0, "training_config_sha256", a[..]),
+    worker_device_ref = exw_str(v, 0, "worker_device_ref", a[..]),
+    worker_pubkey = exw_str(v, 0, "worker_pubkey", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  e = exw_training_claim_valid(c); if e != ExwErr.ok { return e; }
+  out[0] = c;
+  return ExwErr.ok;
+}
+
+exw_training_claim_write :: (c: ExwTrainingClaim, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_training_claim_valid(c); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "dataset_shard_sha256"); jo_str(o[..], c.dataset_shard_sha256);
+  jo_key(o[..], "delta_sha256"); jo_str(o[..], c.delta_sha256);
+  jo_key(o[..], "end_step"); jo_int(o[..], c.end_step);
+  jo_key(o[..], "lease_id"); jo_str(o[..], c.lease_id);
+  jo_key(o[..], "loss_stats"); jo_obj(o[..]);
+  jo_key(o[..], "final_loss_e6"); jo_int(o[..], c.loss_stats.final_loss_e6);
+  jo_key(o[..], "initial_loss_e6"); jo_int(o[..], c.loss_stats.initial_loss_e6);
+  jo_key(o[..], "max_grad_norm_e6"); jo_int(o[..], c.loss_stats.max_grad_norm_e6);
+  jo_key(o[..], "non_finite_count"); jo_int(o[..], c.loss_stats.non_finite_count);
+  jo_end(o[..]);
+  jo_key(o[..], "optimizer_state_sha256"); jo_str(o[..], c.optimizer_state_sha256);
+  jo_key(o[..], "parent_checkpoint_sha256"); jo_str(o[..], c.parent_checkpoint_sha256);
+  jo_key(o[..], "random_seed"); jo_int(o[..], c.random_seed);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_TRAINING_CLAIM);
+  jo_key(o[..], "start_step"); jo_int(o[..], c.start_step);
+  jo_key(o[..], "training_config_sha256"); jo_str(o[..], c.training_config_sha256);
+  jo_key(o[..], "worker_device_ref"); jo_str(o[..], c.worker_device_ref);
+  jo_key(o[..], "worker_pubkey"); jo_str(o[..], c.worker_pubkey);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_training_verdict_valid :: (tv: [] ExwTrainingVerdict) -> ExwErr #effects(all) {
+  x := tv[0];
+  e := exw_check_hex(x.claim_digest, 64); if e != ExwErr.ok { return e; }
+  om := x.outlier_metrics;
+  if om.cosine_to_median_e6 < -EXW_COSINE_MAX || om.cosine_to_median_e6 > EXW_COSINE_MAX { return ExwErr.bounds; }
+  if om.l2_norm_e6 < 0 || om.l2_norm_e6 > EXW_INT_MAX || om.step_distance_ppb < 0 || om.step_distance_ppb > EXW_INT_MAX { return ExwErr.bounds; }
+  if om.loss_delta_e6 < -EXW_LOSS_DELTA_MAX || om.loss_delta_e6 > EXW_LOSS_DELTA_MAX { return ExwErr.bounds; }
+  e = exw_check_hex(x.signature, 128); if e != ExwErr.ok { return e; }
+  if x.n_tiers != EXW_TIERS { return ExwErr.bounds; }
+  for i: 0..<EXW_TIERS {
+    tr := x.tier_results[i];
+    if tr.tier != i { return ExwErr.invariant; }
+    if tr.outcome == ExwTierOutcome.unspecified { return ExwErr.invalid_enum; }
+  }
+  e = exw_check_id(x.validator_device_ref, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.validator_pubkey, 64); if e != ExwErr.ok { return e; }
+  if x.verdict == ExwWindowVerdict.unspecified { return ExwErr.invalid_enum; }
+  if x.verdict == ExwWindowVerdict.accepted {
+    if x.tier_results[0].outcome != ExwTierOutcome.pass { return ExwErr.invariant; }
+    for i: 1..<5 { if x.tier_results[i].outcome == ExwTierOutcome.fail { return ExwErr.invariant; } }
+  }
+  return ExwErr.ok;
+}
+
+exw_training_verdict_read :: (raw: string, out: [] ExwTrainingVerdict, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [96] JvNode;
+  keys := [8] string.["claim_digest", "outlier_metrics", "schema", "signature", "tier_results", "validator_device_ref", "validator_pubkey", "verdict"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_TRAINING_VERDICT);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwTrainingVerdict;
+  omnode := jv_get(v, 0, "outlier_metrics");
+  okeys := [4] string.["cosine_to_median_e6", "l2_norm_e6", "loss_delta_e6", "step_distance_ppb"];
+  e = exw_check_obj(v, omnode, okeys[..]); if e != ExwErr.ok { return e; }
+  next[0].outlier_metrics = ExwOutlierMetrics.{cosine_to_median_e6 = exw_sint(v, omnode, "cosine_to_median_e6"), l2_norm_e6 = exw_uint(v, omnode, "l2_norm_e6"), loss_delta_e6 = exw_sint(v, omnode, "loss_delta_e6"), step_distance_ppb = exw_uint(v, omnode, "step_distance_ppb")};
+  tnode := jv_get(v, 0, "tier_results");
+  if jv_kind(v, tnode) != JV_ARRAY || jv_len(v, tnode) != EXW_TIERS { return ExwErr.bounds; }
+  tkeys := [2] string.["outcome", "tier"];
+  tnames := EXW_TIER_NAMES;
+  for i: 0..<EXW_TIERS {
+    item := jv_at(v, tnode, i);
+    e = exw_check_obj(v, item, tkeys[..]); if e != ExwErr.ok { return e; }
+    os := exw_str(v, item, "outcome", a[..]);
+    if a[0].bad { return ExwErr.truncated; }
+    ti := exw_uint(v, item, "tier");
+    if ti < 0 { return ExwErr.bounds; }
+    next[0].tier_results[i] = ExwTierResult.{outcome = cast(ExwTierOutcome) exw_enum_parse(os, tnames[..]), tier = ti};
+  }
+  next[0].n_tiers = EXW_TIERS;
+  next[0].claim_digest = exw_str(v, 0, "claim_digest", a[..]);
+  next[0].signature = exw_str(v, 0, "signature", a[..]);
+  next[0].validator_device_ref = exw_str(v, 0, "validator_device_ref", a[..]);
+  next[0].validator_pubkey = exw_str(v, 0, "validator_pubkey", a[..]);
+  vs := exw_str(v, 0, "verdict", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  wnames := EXW_WIN_VERDICT_NAMES;
+  next[0].verdict = cast(ExwWindowVerdict) exw_enum_parse(vs, wnames[..]);
+  e = exw_training_verdict_valid(next[..]); if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_training_verdict_write :: (tv: [] ExwTrainingVerdict, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_training_verdict_valid(tv); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := tv[0]; tnames := EXW_TIER_NAMES; wnames := EXW_WIN_VERDICT_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "claim_digest"); jo_str(o[..], x.claim_digest);
+  jo_key(o[..], "outlier_metrics"); jo_obj(o[..]);
+  jo_key(o[..], "cosine_to_median_e6"); jo_int(o[..], x.outlier_metrics.cosine_to_median_e6);
+  jo_key(o[..], "l2_norm_e6"); jo_int(o[..], x.outlier_metrics.l2_norm_e6);
+  jo_key(o[..], "loss_delta_e6"); jo_int(o[..], x.outlier_metrics.loss_delta_e6);
+  jo_key(o[..], "step_distance_ppb"); jo_int(o[..], x.outlier_metrics.step_distance_ppb);
+  jo_end(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_TRAINING_VERDICT);
+  jo_key(o[..], "signature"); jo_str(o[..], x.signature);
+  jo_key(o[..], "tier_results"); jo_arr(o[..]);
+  for i: 0..<EXW_TIERS {
+    jo_obj(o[..]);
+    jo_key(o[..], "outcome"); jo_str(o[..], exw_enum_name(cast(int) x.tier_results[i].outcome, tnames[..]));
+    jo_key(o[..], "tier"); jo_int(o[..], x.tier_results[i].tier);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "validator_device_ref"); jo_str(o[..], x.validator_device_ref);
+  jo_key(o[..], "validator_pubkey"); jo_str(o[..], x.validator_pubkey);
+  jo_key(o[..], "verdict"); jo_str(o[..], exw_enum_name(cast(int) x.verdict, wnames[..]));
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_lineage_valid :: (l: [] ExwCheckpointLineage) -> ExwErr #effects(all) {
+  x := l[0];
+  e := exw_check_hex(x.checkpoint_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.n_windows < 0 || x.n_windows > EXW_WINDOWS_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_windows { e = exw_check_hex(x.included_windows[i], 64); if e != ExwErr.ok { return e; } }
+  e = exw_check_hex(x.parent_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.promotion_verdict == ExwPromotionVerdict.unspecified { return ExwErr.invalid_enum; }
+  if exw_secret_prefix(x.rollback_from) { return ExwErr.secret; }
+  if x.promotion_verdict == ExwPromotionVerdict.rolled_back {
+    if !exw_hex(x.rollback_from, 64) || x.rollback_from == x.checkpoint_sha256 { return ExwErr.invariant; }
+  } else {
+    if x.rollback_from.count != 0 { return ExwErr.invariant; }
+    if x.promotion_verdict == ExwPromotionVerdict.promoted && x.n_windows == 0 { return ExwErr.invariant; }
+  }
+  if x.n_shards < 1 || x.n_shards > EXW_SHARDS_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_shards { e = exw_check_hex(x.shard_hashes[i], 64); if e != ExwErr.ok { return e; } }
+  if x.n_suites < 1 || x.n_suites > EXW_SUITES_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_suites { e = exw_check_hex(x.suite_digests[i], 64); if e != ExwErr.ok { return e; } }
+  return ExwErr.ok;
+}
+
+exw_lineage_read :: (raw: string, out: [] ExwCheckpointLineage, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [256] JvNode;
+  keys := [8] string.["checkpoint_sha256", "included_windows", "parent_sha256", "promotion_verdict", "rollback_from", "schema", "shard_hashes", "suite_digests"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_CHECKPOINT_LINEAGE);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwCheckpointLineage;
+  nw: [1] int; ns: [1] int; nu: [1] int;
+  next[0].checkpoint_sha256 = exw_str(v, 0, "checkpoint_sha256", a[..]);
+  next[0].parent_sha256 = exw_str(v, 0, "parent_sha256", a[..]);
+  next[0].rollback_from = exw_str(v, 0, "rollback_from", a[..]);
+  pvs := exw_str(v, 0, "promotion_verdict", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  e = exw_read_hex_list(v, jv_get(v, 0, "included_windows"), next[0].included_windows[..], EXW_WINDOWS_MAX, a[..], nw[..]); if e != ExwErr.ok { return e; }
+  e = exw_read_hex_list(v, jv_get(v, 0, "shard_hashes"), next[0].shard_hashes[..], EXW_SHARDS_MAX, a[..], ns[..]); if e != ExwErr.ok { return e; }
+  e = exw_read_hex_list(v, jv_get(v, 0, "suite_digests"), next[0].suite_digests[..], EXW_SUITES_MAX, a[..], nu[..]); if e != ExwErr.ok { return e; }
+  next[0].n_windows = nw[0]; next[0].n_shards = ns[0]; next[0].n_suites = nu[0];
+  pnames := EXW_PROMO_NAMES;
+  next[0].promotion_verdict = cast(ExwPromotionVerdict) exw_enum_parse(pvs, pnames[..]);
+  e = exw_lineage_valid(next[..]); if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_lineage_write :: (l: [] ExwCheckpointLineage, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_lineage_valid(l); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := l[0]; pnames := EXW_PROMO_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "checkpoint_sha256"); jo_str(o[..], x.checkpoint_sha256);
+  jo_key(o[..], "included_windows"); exw_write_str_list(o[..], x.included_windows[..], x.n_windows);
+  jo_key(o[..], "parent_sha256"); jo_str(o[..], x.parent_sha256);
+  jo_key(o[..], "promotion_verdict"); jo_str(o[..], exw_enum_name(cast(int) x.promotion_verdict, pnames[..]));
+  jo_key(o[..], "rollback_from"); jo_str(o[..], x.rollback_from);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_CHECKPOINT_LINEAGE);
+  jo_key(o[..], "shard_hashes"); exw_write_str_list(o[..], x.shard_hashes[..], x.n_shards);
+  jo_key(o[..], "suite_digests"); exw_write_str_list(o[..], x.suite_digests[..], x.n_suites);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+// ---- Family 4: settlement.proto (VerifiedPayoutIntent, SettlementReceipt) ----
+
+exw_payout_intent_valid :: (p: ExwPayoutIntent) -> ExwErr #effects(all) {
+  if p.amount_msat < 1 || p.amount_msat > EXW_INT_MAX { return ExwErr.bounds; }
+  if p.leg == ExwPayoutLeg.unspecified { return ExwErr.invalid_enum; }
+  nets := EXW_NETWORK_NAMES;
+  if !exw_in_list(p.network, nets[..]) { return ExwErr.invariant; }
+  e := exw_check_hex(p.owner_policy_digest, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(p.payee_pubkey, 64); if e != ExwErr.ok { return e; }
+  if !exw_period_ok(p.period_id) { return ExwErr.bounds; }
+  e = exw_check_hex(p.receipt_digest, 64); if e != ExwErr.ok { return e; }
+  return exw_check_hex(p.verdict_digest, 64);
+}
+
+exw_payout_intent_read :: (raw: string, out: [] ExwPayoutIntent, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [48] JvNode;
+  keys := [9] string.["amount_msat", "leg", "network", "owner_policy_digest", "payee_pubkey", "period_id", "receipt_digest", "schema", "verdict_digest"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_PAYOUT_INTENT);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  ls := exw_str(v, 0, "leg", a[..]);
+  p := ExwPayoutIntent.{
+    amount_msat = exw_uint(v, 0, "amount_msat"),
+    network = exw_str(v, 0, "network", a[..]),
+    owner_policy_digest = exw_str(v, 0, "owner_policy_digest", a[..]),
+    payee_pubkey = exw_str(v, 0, "payee_pubkey", a[..]),
+    period_id = exw_str(v, 0, "period_id", a[..]),
+    receipt_digest = exw_str(v, 0, "receipt_digest", a[..]),
+    verdict_digest = exw_str(v, 0, "verdict_digest", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  lnames := EXW_LEG_NAMES;
+  p.leg = cast(ExwPayoutLeg) exw_enum_parse(ls, lnames[..]);
+  e = exw_payout_intent_valid(p); if e != ExwErr.ok { return e; }
+  out[0] = p;
+  return ExwErr.ok;
+}
+
+exw_payout_intent_write :: (p: ExwPayoutIntent, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_payout_intent_valid(p); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  lnames := EXW_LEG_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "amount_msat"); jo_int(o[..], p.amount_msat);
+  jo_key(o[..], "leg"); jo_str(o[..], exw_enum_name(cast(int) p.leg, lnames[..]));
+  jo_key(o[..], "network"); jo_str(o[..], p.network);
+  jo_key(o[..], "owner_policy_digest"); jo_str(o[..], p.owner_policy_digest);
+  jo_key(o[..], "payee_pubkey"); jo_str(o[..], p.payee_pubkey);
+  jo_key(o[..], "period_id"); jo_str(o[..], p.period_id);
+  jo_key(o[..], "receipt_digest"); jo_str(o[..], p.receipt_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_PAYOUT_INTENT);
+  jo_key(o[..], "verdict_digest"); jo_str(o[..], p.verdict_digest);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+exw_settlement_receipt_valid :: (r: ExwSettlementReceipt) -> ExwErr #effects(all) {
+  if r.amount_msat < 1 || r.amount_msat > EXW_INT_MAX { return ExwErr.bounds; }
+  if r.leg == ExwPayoutLeg.unspecified { return ExwErr.invalid_enum; }
+  nets := EXW_NETWORK_NAMES;
+  if !exw_in_list(r.network, nets[..]) { return ExwErr.invariant; }
+  e := exw_check_hex(r.owner_policy_digest, 64); if e != ExwErr.ok { return e; }
+  if !exw_period_ok(r.period_id) { return ExwErr.bounds; }
+  e = exw_check_hex(r.receipt_digest, 64); if e != ExwErr.ok { return e; }
+  if r.settled_at < 0 || r.settled_at > EXW_INT_MAX { return ExwErr.bounds; }
+  if exw_secret_prefix(r.settlement_commitment) { return ExwErr.secret; }
+  if r.real_bitcoin_moved {
+    if !exw_hex_nonzero(r.settlement_commitment) || r.settled_at < 1 { return ExwErr.invariant; }
+  } else {
+    if r.settlement_commitment.count != 0 || r.settled_at != 0 { return ExwErr.invariant; }
+  }
+  return ExwErr.ok;
+}
+
+exw_settlement_receipt_read :: (raw: string, out: [] ExwSettlementReceipt, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [48] JvNode;
+  keys := [10] string.["amount_msat", "leg", "network", "owner_policy_digest", "period_id", "real_bitcoin_moved", "receipt_digest", "schema", "settled_at", "settlement_commitment"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_SETTLEMENT_RECEIPT);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  rb := exw_bool(v, 0, "real_bitcoin_moved");
+  if !rb.ok { return ExwErr.bounds; }
+  ls := exw_str(v, 0, "leg", a[..]);
+  r := ExwSettlementReceipt.{
+    amount_msat = exw_uint(v, 0, "amount_msat"),
+    network = exw_str(v, 0, "network", a[..]),
+    owner_policy_digest = exw_str(v, 0, "owner_policy_digest", a[..]),
+    period_id = exw_str(v, 0, "period_id", a[..]),
+    real_bitcoin_moved = rb.val,
+    receipt_digest = exw_str(v, 0, "receipt_digest", a[..]),
+    settled_at = exw_uint(v, 0, "settled_at"),
+    settlement_commitment = exw_str(v, 0, "settlement_commitment", a[..])
+  };
+  if a[0].bad { return ExwErr.truncated; }
+  lnames := EXW_LEG_NAMES;
+  r.leg = cast(ExwPayoutLeg) exw_enum_parse(ls, lnames[..]);
+  e = exw_settlement_receipt_valid(r); if e != ExwErr.ok { return e; }
+  out[0] = r;
+  return ExwErr.ok;
+}
+
+exw_settlement_receipt_write :: (r: ExwSettlementReceipt, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_settlement_receipt_valid(r); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  lnames := EXW_LEG_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "amount_msat"); jo_int(o[..], r.amount_msat);
+  jo_key(o[..], "leg"); jo_str(o[..], exw_enum_name(cast(int) r.leg, lnames[..]));
+  jo_key(o[..], "network"); jo_str(o[..], r.network);
+  jo_key(o[..], "owner_policy_digest"); jo_str(o[..], r.owner_policy_digest);
+  jo_key(o[..], "period_id"); jo_str(o[..], r.period_id);
+  jo_key(o[..], "real_bitcoin_moved"); jo_bool(o[..], r.real_bitcoin_moved);
+  jo_key(o[..], "receipt_digest"); jo_str(o[..], r.receipt_digest);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_SETTLEMENT_RECEIPT);
+  jo_key(o[..], "settled_at"); jo_int(o[..], r.settled_at);
+  jo_key(o[..], "settlement_commitment"); jo_str(o[..], r.settlement_commitment);
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+// ---- Family 5: release.proto (ExecutorReleaseManifest, openagents.executor-release.v1) ----
+
+exw_artifact_valid :: (a: ExwArtifact) -> ExwErr #effects(all) {
+  e := exw_check_id(a.artifact_id, 64); if e != ExwErr.ok { return e; }
+  if a.byte_count < 1 || a.byte_count > EXW_INT_MAX { return ExwErr.bounds; }
+  e = exw_check_hex(a.sha256, 64); if e != ExwErr.ok { return e; }
+  pnames := EXW_PLATFORM_NAMES;
+  if !exw_in_list(a.target_platform, pnames[..]) { return ExwErr.invalid_enum; }
+  return ExwErr.ok;
+}
+
+exw_release_valid :: (r: [] ExwRelease) -> ExwErr #effects(all) {
+  x := r[0];
+  if x.n_artifacts < 1 || x.n_artifacts > EXW_ARTIFACTS_MAX { return ExwErr.bounds; }
+  for i: 0..<x.n_artifacts { e := exw_artifact_valid(x.artifacts[i]); if e != ExwErr.ok { return e; } }
+  cnames := EXW_CHANNEL_NAMES;
+  if !exw_in_list(x.channel, cnames[..]) { return ExwErr.invalid_enum; }
+  e := exw_check_hex(x.checkpoint_sha256, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.lineage_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.max_shadow_disagree_ppm < 0 || x.max_shadow_disagree_ppm > EXW_PPM_MAX { return ExwErr.bounds; }
+  e = exw_check_id(x.min_client_version, 32); if e != ExwErr.ok { return e; }
+  if x.published_at < 1 || x.published_at > EXW_INT_MAX { return ExwErr.bounds; }
+  e = exw_check_id(x.release_id, 64); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.rollback_target_sha256, 64); if e != ExwErr.ok { return e; }
+  if x.rollback_target_sha256 == x.checkpoint_sha256 { return ExwErr.invariant; }
+  e = exw_check_hex(x.signature, 128); if e != ExwErr.ok { return e; }
+  e = exw_check_hex(x.signer_pubkey, 64); if e != ExwErr.ok { return e; }
+  if x.stage == ExwRolloutStage.unspecified { return ExwErr.invalid_enum; }
+  return ExwErr.ok;
+}
+
+exw_release_read :: (raw: string, out: [] ExwRelease, arena: [] u8) -> ExwErr #export_c #effects(all) {
+  d: [1] Jv; nodes: [256] JvNode;
+  keys := [13] string.["artifacts", "channel", "checkpoint_sha256", "lineage_sha256", "max_shadow_disagree_ppm", "min_client_version", "published_at", "release_id", "rollback_target_sha256", "schema", "signature", "signer_pubkey", "stage"];
+  e := exw_open_root(raw, d[..], nodes[..], keys[..], EXW_SCHEMA_RELEASE);
+  if e != ExwErr.ok { return e; }
+  v := d[0]; a := [1] ExwArena.[ExwArena.{buf = arena}];
+  next: [1] ExwRelease;
+  anode := jv_get(v, 0, "artifacts");
+  if jv_kind(v, anode) != JV_ARRAY { return ExwErr.bounds; }
+  na := jv_len(v, anode);
+  if na > EXW_ARTIFACTS_MAX { return ExwErr.bounds; }
+  akeys := [4] string.["artifact_id", "byte_count", "sha256", "target_platform"];
+  for i: 0..<na {
+    item := jv_at(v, anode, i);
+    e = exw_check_obj(v, item, akeys[..]); if e != ExwErr.ok { return e; }
+    aid := exw_str(v, item, "artifact_id", a[..]);
+    sh := exw_str(v, item, "sha256", a[..]);
+    tp := exw_str(v, item, "target_platform", a[..]);
+    if a[0].bad { return ExwErr.truncated; }
+    next[0].artifacts[i] = ExwArtifact.{artifact_id = aid, byte_count = exw_uint(v, item, "byte_count"), sha256 = sh, target_platform = tp};
+  }
+  next[0].n_artifacts = na;
+  next[0].max_shadow_disagree_ppm = exw_uint(v, 0, "max_shadow_disagree_ppm");
+  next[0].published_at = exw_uint(v, 0, "published_at");
+  next[0].channel = exw_str(v, 0, "channel", a[..]);
+  next[0].checkpoint_sha256 = exw_str(v, 0, "checkpoint_sha256", a[..]);
+  next[0].lineage_sha256 = exw_str(v, 0, "lineage_sha256", a[..]);
+  next[0].min_client_version = exw_str(v, 0, "min_client_version", a[..]);
+  next[0].release_id = exw_str(v, 0, "release_id", a[..]);
+  next[0].rollback_target_sha256 = exw_str(v, 0, "rollback_target_sha256", a[..]);
+  next[0].signature = exw_str(v, 0, "signature", a[..]);
+  next[0].signer_pubkey = exw_str(v, 0, "signer_pubkey", a[..]);
+  sts := exw_str(v, 0, "stage", a[..]);
+  if a[0].bad { return ExwErr.truncated; }
+  snames := EXW_STAGE_NAMES;
+  next[0].stage = cast(ExwRolloutStage) exw_enum_parse(sts, snames[..]);
+  e = exw_release_valid(next[..]); if e != ExwErr.ok { return e; }
+  out[0] = next[0];
+  return ExwErr.ok;
+}
+
+exw_release_write :: (r: [] ExwRelease, out: [] u8) -> ExwOut #export_c #effects(all) {
+  e := exw_release_valid(r); if e != ExwErr.ok { return ExwOut.{err = e}; }
+  x := r[0]; snames := EXW_STAGE_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "artifacts"); jo_arr(o[..]);
+  for i: 0..<x.n_artifacts {
+    art := x.artifacts[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "artifact_id"); jo_str(o[..], art.artifact_id);
+    jo_key(o[..], "byte_count"); jo_int(o[..], art.byte_count);
+    jo_key(o[..], "sha256"); jo_str(o[..], art.sha256);
+    jo_key(o[..], "target_platform"); jo_str(o[..], art.target_platform);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "channel"); jo_str(o[..], x.channel);
+  jo_key(o[..], "checkpoint_sha256"); jo_str(o[..], x.checkpoint_sha256);
+  jo_key(o[..], "lineage_sha256"); jo_str(o[..], x.lineage_sha256);
+  jo_key(o[..], "max_shadow_disagree_ppm"); jo_int(o[..], x.max_shadow_disagree_ppm);
+  jo_key(o[..], "min_client_version"); jo_str(o[..], x.min_client_version);
+  jo_key(o[..], "published_at"); jo_int(o[..], x.published_at);
+  jo_key(o[..], "release_id"); jo_str(o[..], x.release_id);
+  jo_key(o[..], "rollback_target_sha256"); jo_str(o[..], x.rollback_target_sha256);
+  jo_key(o[..], "schema"); jo_str(o[..], EXW_SCHEMA_RELEASE);
+  jo_key(o[..], "signature"); jo_str(o[..], x.signature);
+  jo_key(o[..], "signer_pubkey"); jo_str(o[..], x.signer_pubkey);
+  jo_key(o[..], "stage"); jo_str(o[..], exw_enum_name(cast(int) x.stage, snames[..]));
+  jo_end(o[..]);
+  return exw_finish(o[..]);
+}
+
+#load "executor-wire-checks.coax" #test;

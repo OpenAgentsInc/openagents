@@ -1,0 +1,50 @@
+syntax = "proto3";
+package openagents.executor.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Signed shadow-to-promote executor release manifest for Desktop, CLI, and
+// Pylon distribution (psionic/docs/executor-network-master-spec.md W2.1 & W6.3,
+// GitHub #13914).
+//
+// Contract ID: openagents.executor-release.v1.
+// Fields are declared in RFC 8785 (JCS) lexicographical json_name order.
+// Single #authority Coax codec: psionic/lib/executor-wire.coax.
+
+enum RolloutStage {
+  ROLLOUT_STAGE_UNSPECIFIED = 0;
+  ROLLOUT_STAGE_SHADOW = 1;
+  ROLLOUT_STAGE_CANARY = 2;
+  ROLLOUT_STAGE_PROMOTED = 3;
+  ROLLOUT_STAGE_ROLLED_BACK = 4;
+}
+
+// One content-addressed artifact included in an executor release.
+message ReleaseArtifact {
+  string artifact_id = 1 [json_name = "artifact_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint64 byte_count = 2 [json_name = "byte_count", (openagents.options.v1alpha1.unit) = "bytes"];
+  string sha256 = 3 [json_name = "sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string target_platform = 4 [json_name = "target_platform", (openagents.options.v1alpha1.max_bytes) = 32];
+}
+
+// Signed distribution manifest for promoted executor checkpoints and compiled
+// weight modules with shadow-disagreement policy and explicit rollback pin.
+message ExecutorReleaseManifest {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor-release.v1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RELEASE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 32768;
+
+  repeated ReleaseArtifact artifacts = 1 [json_name = "artifacts", (openagents.options.v1alpha1.max_count) = 16];
+  string channel = 2 [json_name = "channel", (openagents.options.v1alpha1.max_bytes) = 32];
+  string checkpoint_sha256 = 3 [json_name = "checkpoint_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string lineage_sha256 = 4 [json_name = "lineage_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  uint32 max_shadow_disagree_ppm = 5 [json_name = "max_shadow_disagree_ppm"];
+  string min_client_version = 6 [json_name = "min_client_version", (openagents.options.v1alpha1.max_bytes) = 32];
+  int64 published_at = 7 [json_name = "published_at", (openagents.options.v1alpha1.unit) = "ms"];
+  string release_id = 8 [json_name = "release_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string rollback_target_sha256 = 9 [json_name = "rollback_target_sha256", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 10 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  string signature = 11 [json_name = "signature", (openagents.options.v1alpha1.max_bytes) = 128];
+  string signer_pubkey = 12 [json_name = "signer_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+  RolloutStage stage = 13 [json_name = "stage"];
+}

@@ -1,0 +1,72 @@
+syntax = "proto3";
+package openagents.executor.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+
+// Exact execution trace receipt and independent replay verdict contracts
+// (psionic/docs/executor-network-master-spec.md W2.1 & W4, GitHub #13914).
+//
+// Fields in every message are declared in RFC 8785 (JCS) lexicographical
+// json_name order. Single #authority Coax codec: psionic/lib/executor-wire.coax.
+
+enum ReplayOutcome {
+  REPLAY_OUTCOME_UNSPECIFIED = 0;
+  REPLAY_OUTCOME_EXACT_REPLAY = 1;
+  REPLAY_OUTCOME_FAILED = 2;
+  REPLAY_OUTCOME_UNVERIFIABLE = 3;
+}
+
+// Content-addressed reference pinning the exact program, input, compiler,
+// profile, and compiled executor weight artifact for an execution job.
+message ExecutorProgramRef {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.program-ref.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RUNTIME;
+  option (openagents.options.v1alpha1.max_message_bytes) = 4096;
+
+  string compiler_hash = 1 [json_name = "compiler_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string executor_artifact_hash = 2 [json_name = "executor_artifact_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string input_hash = 3 [json_name = "input_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string profile_id = 4 [json_name = "profile_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string program_hash = 5 [json_name = "program_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 6 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Worker receipt committing to an execution trace, output digest, and trace
+// chunk Merkle root. A receipt alone never authorizes training admission or payment.
+message ExecutionTraceReceipt {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.trace-receipt.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_RECEIPT;
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+
+  string chunk_merkle_root = 1 [json_name = "chunk_merkle_root", (openagents.options.v1alpha1.max_bytes) = 64];
+  string executor_artifact_hash = 2 [json_name = "executor_artifact_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  int64 finished_at = 3 [json_name = "finished_at", (openagents.options.v1alpha1.unit) = "ms"];
+  string input_hash = 4 [json_name = "input_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string job_id = 5 [json_name = "job_id", (openagents.options.v1alpha1.max_bytes) = 64];
+  string output_digest = 6 [json_name = "output_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string program_hash = 7 [json_name = "program_hash", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 8 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  int64 started_at = 9 [json_name = "started_at", (openagents.options.v1alpha1.unit) = "ms"];
+  uint64 step_count = 10 [json_name = "step_count"];
+  string trace_digest = 11 [json_name = "trace_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string worker_device_ref = 12 [json_name = "worker_device_ref", (openagents.options.v1alpha1.max_bytes) = 64];
+  string worker_pubkey = 13 [json_name = "worker_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+}
+
+// Independent multi-device replay verdict naming first-divergent-step
+// diagnostics when FAILED.
+message ReplayVerdict {
+  option (openagents.options.v1alpha1.contract) = "openagents.executor.replay-verdict.v1alpha1";
+  option (openagents.options.v1alpha1.data_class) = DATA_CLASS_EVIDENCE;
+  option (openagents.options.v1alpha1.max_message_bytes) = 8192;
+
+  repeated int64 expected_row = 1 [json_name = "expected_row", (openagents.options.v1alpha1.max_count) = 16];
+  int64 first_divergent_step = 2 [json_name = "first_divergent_step"];
+  repeated int64 observed_row = 3 [json_name = "observed_row", (openagents.options.v1alpha1.max_count) = 16];
+  string receipt_digest = 4 [json_name = "receipt_digest", (openagents.options.v1alpha1.max_bytes) = 64];
+  string schema = 5 [json_name = "schema", (openagents.options.v1alpha1.max_bytes) = 64];
+  string signature = 6 [json_name = "signature", (openagents.options.v1alpha1.max_bytes) = 128];
+  string validator_device_ref = 7 [json_name = "validator_device_ref", (openagents.options.v1alpha1.max_bytes) = 64];
+  string validator_pubkey = 8 [json_name = "validator_pubkey", (openagents.options.v1alpha1.max_bytes) = 64];
+  ReplayOutcome verdict = 9 [json_name = "verdict"];
+}

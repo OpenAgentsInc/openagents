@@ -1,0 +1,390 @@
+// Golden bytes, descriptor key-order, SHA-256 digest, refusal, and native
+// protobuf binary round-trip verification for openagents.executor.v1alpha1
+// and openagents.executor-release.v1 (GitHub #13914).
+//
+// Run unit & binary checks:
+//   coax/bin/coax test psionic/lib/executor-wire-goldens.coax
+// Run full fixture + descriptor check (registered in proto/registry.json):
+//   coax/web/tool.sh psionic/lib/executor-wire-goldens.coax
+#load "executor-wire.coax";
+#load "../../coax/lib/proto/importer.coax";
+#load "../../coax/lib/proto/golden-keys.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import_proto "../../proto/descriptors/executor.pb" as EX;
+
+EXWG_DESCRIPTOR :: "proto/descriptors/executor.pb";
+EXWG_PROFILE :: "proto/psionic/executor-v1alpha1.json";
+
+exwg_schema_index :: (schema: string) -> int #effects(all) {
+  schemas := [12] string.[
+    EXW_SCHEMA_MODULE,
+    EXW_SCHEMA_PROGRAM_REF,
+    EXW_SCHEMA_TRACE_RECEIPT,
+    EXW_SCHEMA_REPLAY_VERDICT,
+    EXW_SCHEMA_DATASET_SHARD,
+    EXW_SCHEMA_TRAINING_LEASE,
+    EXW_SCHEMA_TRAINING_CLAIM,
+    EXW_SCHEMA_TRAINING_VERDICT,
+    EXW_SCHEMA_CHECKPOINT_LINEAGE,
+    EXW_SCHEMA_PAYOUT_INTENT,
+    EXW_SCHEMA_SETTLEMENT_RECEIPT,
+    EXW_SCHEMA_RELEASE
+  ];
+  for i: 0..<12 {
+    if schemas[i] == schema { return i; }
+  }
+  return -1;
+}
+
+exwg_roundtrip :: (schema: string, body: string, out: [] u8, arena: [] u8) -> ExwOut #effects(all) {
+  if schema == EXW_SCHEMA_MODULE {
+    m: [1] ExwModule;
+    e := exw_module_read(body, m[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_module_write(m[..], out);
+  }
+  if schema == EXW_SCHEMA_PROGRAM_REF {
+    r: [1] ExwProgramRef;
+    e := exw_program_ref_read(body, r[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_program_ref_write(r[0], out);
+  }
+  if schema == EXW_SCHEMA_TRACE_RECEIPT {
+    r: [1] ExwTraceReceipt;
+    e := exw_trace_receipt_read(body, r[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_trace_receipt_write(r[0], out);
+  }
+  if schema == EXW_SCHEMA_REPLAY_VERDICT {
+    v: [1] ExwReplayVerdict;
+    e := exw_replay_verdict_read(body, v[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_replay_verdict_write(v[..], out);
+  }
+  if schema == EXW_SCHEMA_DATASET_SHARD {
+    s: [1] ExwDatasetShard;
+    e := exw_dataset_shard_read(body, s[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_dataset_shard_write(s[..], out);
+  }
+  if schema == EXW_SCHEMA_TRAINING_LEASE {
+    l: [1] ExwTrainingLease;
+    e := exw_training_lease_read(body, l[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_training_lease_write(l[0], out);
+  }
+  if schema == EXW_SCHEMA_TRAINING_CLAIM {
+    c: [1] ExwTrainingClaim;
+    e := exw_training_claim_read(body, c[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_training_claim_write(c[0], out);
+  }
+  if schema == EXW_SCHEMA_TRAINING_VERDICT {
+    tv: [1] ExwTrainingVerdict;
+    e := exw_training_verdict_read(body, tv[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_training_verdict_write(tv[..], out);
+  }
+  if schema == EXW_SCHEMA_CHECKPOINT_LINEAGE {
+    ln: [1] ExwCheckpointLineage;
+    e := exw_lineage_read(body, ln[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_lineage_write(ln[..], out);
+  }
+  if schema == EXW_SCHEMA_PAYOUT_INTENT {
+    p: [1] ExwPayoutIntent;
+    e := exw_payout_intent_read(body, p[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_payout_intent_write(p[0], out);
+  }
+  if schema == EXW_SCHEMA_SETTLEMENT_RECEIPT {
+    sr: [1] ExwSettlementReceipt;
+    e := exw_settlement_receipt_read(body, sr[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_settlement_receipt_write(sr[0], out);
+  }
+  if schema == EXW_SCHEMA_RELEASE {
+    rel: [1] ExwRelease;
+    e := exw_release_read(body, rel[..], arena);
+    if e != ExwErr.ok { return ExwOut.{err = e}; }
+    return exw_release_write(rel[..], out);
+  }
+  return ExwOut.{err = ExwErr.schema};
+}
+
+exwg_check_proto_enums :: () -> bool #effects(all) {
+  if cast(int) ExwVerifClass.unspecified != EX_VerificationClass_VERIFICATION_CLASS_UNSPECIFIED { return false; }
+  if cast(int) ExwVerifClass.e_exact_replay != EX_VerificationClass_VERIFICATION_CLASS_E_EXACT_REPLAY { return false; }
+  if cast(int) ExwVerifClass.d_deterministic_test != EX_VerificationClass_VERIFICATION_CLASS_D_DETERMINISTIC_TEST { return false; }
+  if cast(int) ExwVerifClass.s_statistical != EX_VerificationClass_VERIFICATION_CLASS_S_STATISTICAL { return false; }
+  if cast(int) ExwVerifClass.n_unverified != EX_VerificationClass_VERIFICATION_CLASS_N_UNVERIFIED { return false; }
+
+  if cast(int) ExwReplayOutcome.unspecified != EX_ReplayOutcome_REPLAY_OUTCOME_UNSPECIFIED { return false; }
+  if cast(int) ExwReplayOutcome.exact_replay != EX_ReplayOutcome_REPLAY_OUTCOME_EXACT_REPLAY { return false; }
+  if cast(int) ExwReplayOutcome.failed != EX_ReplayOutcome_REPLAY_OUTCOME_FAILED { return false; }
+  if cast(int) ExwReplayOutcome.unverifiable != EX_ReplayOutcome_REPLAY_OUTCOME_UNVERIFIABLE { return false; }
+
+  if cast(int) ExwShardSplit.unspecified != EX_ShardSplit_SHARD_SPLIT_UNSPECIFIED { return false; }
+  if cast(int) ExwShardSplit.train != EX_ShardSplit_SHARD_SPLIT_TRAIN { return false; }
+  if cast(int) ExwShardSplit.validation != EX_ShardSplit_SHARD_SPLIT_VALIDATION { return false; }
+  if cast(int) ExwShardSplit.held_out != EX_ShardSplit_SHARD_SPLIT_HELD_OUT { return false; }
+
+  if cast(int) ExwTierOutcome.unspecified != EX_TierOutcome_TIER_OUTCOME_UNSPECIFIED { return false; }
+  if cast(int) ExwTierOutcome.pass != EX_TierOutcome_TIER_OUTCOME_PASS { return false; }
+  if cast(int) ExwTierOutcome.fail != EX_TierOutcome_TIER_OUTCOME_FAIL { return false; }
+  if cast(int) ExwTierOutcome.skipped != EX_TierOutcome_TIER_OUTCOME_SKIPPED { return false; }
+
+  if cast(int) ExwWindowVerdict.unspecified != EX_WindowVerdictState_WINDOW_VERDICT_STATE_UNSPECIFIED { return false; }
+  if cast(int) ExwWindowVerdict.accepted != EX_WindowVerdictState_WINDOW_VERDICT_STATE_ACCEPTED { return false; }
+  if cast(int) ExwWindowVerdict.rejected != EX_WindowVerdictState_WINDOW_VERDICT_STATE_REJECTED { return false; }
+  if cast(int) ExwWindowVerdict.quarantined != EX_WindowVerdictState_WINDOW_VERDICT_STATE_QUARANTINED { return false; }
+
+  if cast(int) ExwPromotionVerdict.unspecified != EX_PromotionVerdict_PROMOTION_VERDICT_UNSPECIFIED { return false; }
+  if cast(int) ExwPromotionVerdict.promoted != EX_PromotionVerdict_PROMOTION_VERDICT_PROMOTED { return false; }
+  if cast(int) ExwPromotionVerdict.held != EX_PromotionVerdict_PROMOTION_VERDICT_HELD { return false; }
+  if cast(int) ExwPromotionVerdict.rolled_back != EX_PromotionVerdict_PROMOTION_VERDICT_ROLLED_BACK { return false; }
+
+  if cast(int) ExwPayoutLeg.unspecified != EX_PayoutLeg_PAYOUT_LEG_UNSPECIFIED { return false; }
+  if cast(int) ExwPayoutLeg.worker != EX_PayoutLeg_PAYOUT_LEG_WORKER { return false; }
+  if cast(int) ExwPayoutLeg.validator != EX_PayoutLeg_PAYOUT_LEG_VALIDATOR { return false; }
+
+  if cast(int) ExwRolloutStage.unspecified != EX_RolloutStage_ROLLOUT_STAGE_UNSPECIFIED { return false; }
+  if cast(int) ExwRolloutStage.shadow != EX_RolloutStage_ROLLOUT_STAGE_SHADOW { return false; }
+  if cast(int) ExwRolloutStage.canary != EX_RolloutStage_ROLLOUT_STAGE_CANARY { return false; }
+  if cast(int) ExwRolloutStage.promoted != EX_RolloutStage_ROLLOUT_STAGE_PROMOTED { return false; }
+  if cast(int) ExwRolloutStage.rolled_back != EX_RolloutStage_ROLLOUT_STAGE_ROLLED_BACK { return false; }
+  return true;
+}
+
+exwg_check_proto_binary :: () -> bool {
+  b0: [1024] u8; b1: [1024] u8; enc: [1024] u8;
+
+  // Family 1: CompiledModuleManifest binary encode/decode
+  m := EX_CompiledModuleManifest_new();
+  m = EX_CompiledModuleManifest_set_module_id(m, "oa-exec-diff-verify", b0[..]);
+  m = EX_CompiledModuleManifest_set_schema(m, EXW_SCHEMA_MODULE, b1[..]);
+  m = EX_CompiledModuleManifest_set_verification_class(m, EX_VerificationClass_VERIFICATION_CLASS_E_EXACT_REPLAY, b0[..]);
+  m = EX_CompiledModuleManifest_set_max_steps(m, 65536, b1[..]);
+  ev := EX_CompiledModuleManifest_encode(m, enc[..]);
+  if ev.error != 0 { return false; }
+  md := EX_CompiledModuleManifest_decode(ev.wire);
+  if md.error != 0 { return false; }
+  if EX_CompiledModuleManifest_get_module_id(md).value != "oa-exec-diff-verify" { return false; }
+  if EX_CompiledModuleManifest_get_verification_class(md).value != EX_VerificationClass_VERIFICATION_CLASS_E_EXACT_REPLAY { return false; }
+  if EX_CompiledModuleManifest_get_max_steps(md).value != 65536 { return false; }
+
+  // Family 2: ExecutorProgramRef binary encode/decode
+  pr := EX_ExecutorProgramRef_new();
+  pr = EX_ExecutorProgramRef_set_profile_id(pr, "exec-vm-v1", b0[..]);
+  pr = EX_ExecutorProgramRef_set_schema(pr, EXW_SCHEMA_PROGRAM_REF, b1[..]);
+  ev = EX_ExecutorProgramRef_encode(pr, enc[..]);
+  if ev.error != 0 { return false; }
+  prd := EX_ExecutorProgramRef_decode(ev.wire);
+  if prd.error != 0 || EX_ExecutorProgramRef_get_profile_id(prd).value != "exec-vm-v1" { return false; }
+
+  // Family 3: DatasetShardManifest binary encode/decode
+  ds := EX_DatasetShardManifest_new();
+  ds = EX_DatasetShardManifest_set_shard_id(ds, "shard-train-0001", b0[..]);
+  ds = EX_DatasetShardManifest_set_split(ds, EX_ShardSplit_SHARD_SPLIT_TRAIN, b1[..]);
+  ds = EX_DatasetShardManifest_set_record_count(ds, 4096, b0[..]);
+  ev = EX_DatasetShardManifest_encode(ds, enc[..]);
+  if ev.error != 0 { return false; }
+  dsd := EX_DatasetShardManifest_decode(ev.wire);
+  if dsd.error != 0 || EX_DatasetShardManifest_get_split(dsd).value != EX_ShardSplit_SHARD_SPLIT_TRAIN || EX_DatasetShardManifest_get_record_count(dsd).value != 4096 { return false; }
+
+  // Family 4: SettlementReceipt binary encode/decode
+  sr := EX_SettlementReceipt_new();
+  sr = EX_SettlementReceipt_set_amount_msat(sr, 250000, b0[..]);
+  sr = EX_SettlementReceipt_set_leg(sr, EX_PayoutLeg_PAYOUT_LEG_WORKER, b1[..]);
+  sr = EX_SettlementReceipt_set_network(sr, "bitcoin", b0[..]);
+  sr = EX_SettlementReceipt_set_real_bitcoin_moved(sr, true, b1[..]);
+  ev = EX_SettlementReceipt_encode(sr, enc[..]);
+  if ev.error != 0 { return false; }
+  srd := EX_SettlementReceipt_decode(ev.wire);
+  if srd.error != 0 || !EX_SettlementReceipt_get_real_bitcoin_moved(srd).value || EX_SettlementReceipt_get_amount_msat(srd).value != 250000 { return false; }
+
+  // Family 5: ExecutorReleaseManifest binary encode/decode
+  rel := EX_ExecutorReleaseManifest_new();
+  rel = EX_ExecutorReleaseManifest_set_release_id(rel, "exec-rel-2026-11-21-01", b0[..]);
+  rel = EX_ExecutorReleaseManifest_set_stage(rel, EX_RolloutStage_ROLLOUT_STAGE_SHADOW, b1[..]);
+  rel = EX_ExecutorReleaseManifest_set_max_shadow_disagree_ppm(rel, 500, b0[..]);
+  ev = EX_ExecutorReleaseManifest_encode(rel, enc[..]);
+  if ev.error != 0 { return false; }
+  reld := EX_ExecutorReleaseManifest_decode(ev.wire);
+  if reld.error != 0 || EX_ExecutorReleaseManifest_get_stage(reld).value != EX_RolloutStage_ROLLOUT_STAGE_SHADOW || EX_ExecutorReleaseManifest_get_max_shadow_disagree_ppm(reld).value != 500 { return false; }
+
+  return true;
+}
+
+exwg_text :: (d: Jv, at: int, out: [] u8) -> string #effects(all) {
+  n := jv_str(d, at, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+#test "protobuf descriptor enum parity across all 5 executor families" {
+  #assert exwg_check_proto_enums();
+  #assert exwg_schema_index(EXW_SCHEMA_MODULE) == 0;
+  #assert exwg_schema_index(EXW_SCHEMA_RELEASE) == 11;
+  #assert exwg_schema_index("openagents.executor.unknown.v1") == -1;
+}
+
+#test "protobuf wire decode checks across executor messages" {
+  // CompiledModuleManifest: field 6 (string "m" -> tag 0x32 len 1 'm') + field 11 (varint 1 -> tag 0x58 val 1)
+  mod_wire := [5] u8.[0x32, 0x01, 'm', 0x58, 0x01];
+  md := EX_CompiledModuleManifest_decode(mod_wire[..]);
+  #assert md.error == 0;
+  #assert EX_CompiledModuleManifest_get_module_id(md).value == "m";
+  #assert EX_CompiledModuleManifest_get_verification_class(md).value == EX_VerificationClass_VERIFICATION_CLASS_E_EXACT_REPLAY;
+
+  // SettlementReceipt: field 1 (varint 100 -> tag 0x08 val 100) + field 6 (bool true -> tag 0x30 val 1)
+  sr_wire := [4] u8.[0x08, 0x64, 0x30, 0x01];
+  srd := EX_SettlementReceipt_decode(sr_wire[..]);
+  #assert srd.error == 0;
+  #assert EX_SettlementReceipt_get_amount_msat(srd).value == 100;
+  #assert EX_SettlementReceipt_get_real_bitcoin_moved(srd).value;
+
+  // Truncated protobuf wire frame is refused
+  bad_wire := [2] u8.[0x32, 0x05];
+  #assert EX_CompiledModuleManifest_decode(bad_wire[..]).error != 0;
+}
+
+#test "canonical JCS golden round-trips and pinned SHA-256 across all 5 contract families" {
+  out: [16384] u8; arena: [16384] u8; hex: [64] u8;
+  // Family 1: CompiledModuleManifest
+  g_mod := "{\"compiler_hash\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"conformance_suite_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"input_abi\":{\"max_value\":67108864,\"min_value\":-67108864,\"scalar_type\":\"i64\",\"slot_count\":16},\"max_steps\":65536,\"memory_bytes\":1048576,\"module_id\":\"oa-exec-diff-verify\",\"output_abi\":{\"max_value\":1,\"min_value\":0,\"scalar_type\":\"i32\",\"slot_count\":4},\"profile_id\":\"exec-vm-v1\",\"schema\":\"openagents.executor.module.v1alpha1\",\"seams\":[{\"count\":4,\"layer\":2,\"slot\":8,\"upstream_module_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\"}],\"verification_class\":\"E_EXACT_REPLAY\",\"version\":\"0.1.0\",\"weight_sha256\":\"4444444444444444444444444444444444444444444444444444444444444444\"}";
+  w := exwg_roundtrip(EXW_SCHEMA_MODULE, g_mod, out[..], arena[..]);
+  #assert w.err == ExwErr.ok && cast(string) out[0..<w.len] == g_mod;
+  #assert exw_canonical_sha256(g_mod, hex[..]) && cast(string) hex[..] == "32a3ee0d46bbc99907a98929cbe834b43b0e2efaaf9facd678c2b5cd2e0c9671";
+
+  // Family 2: ReplayVerdict (FAILED with first-divergent-step diagnostics)
+  g_rv := "{\"expected_row\":[42,-7,1024,0],\"first_divergent_step\":137,\"observed_row\":[42,-7,1025,0],\"receipt_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"schema\":\"openagents.executor.replay-verdict.v1alpha1\",\"signature\":\"fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"validator_device_ref\":\"linux-x86-val-02\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"FAILED\"}";
+  w = exwg_roundtrip(EXW_SCHEMA_REPLAY_VERDICT, g_rv, out[..], arena[..]);
+  #assert w.err == ExwErr.ok && cast(string) out[0..<w.len] == g_rv;
+  #assert exw_canonical_sha256(g_rv, hex[..]) && cast(string) hex[..] == "a6c35ba143a5fc216692a9df1d98711fb15249cf84cecfff515ad3e47e432be4";
+
+  // Family 3: TrainingWindowVerdict (tiers 0..5 + outlier metrics)
+  g_tv := "{\"claim_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"outlier_metrics\":{\"cosine_to_median_e6\":962000,\"l2_norm_e6\":418000,\"loss_delta_e6\":-725000,\"step_distance_ppb\":14500},\"schema\":\"openagents.executor.training-verdict.v1alpha1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"tier_results\":[{\"outcome\":\"PASS\",\"tier\":0},{\"outcome\":\"PASS\",\"tier\":1},{\"outcome\":\"PASS\",\"tier\":2},{\"outcome\":\"PASS\",\"tier\":3},{\"outcome\":\"PASS\",\"tier\":4},{\"outcome\":\"SKIPPED\",\"tier\":5}],\"validator_device_ref\":\"cuda-h100-val-01\",\"validator_pubkey\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"verdict\":\"ACCEPTED\"}";
+  w = exwg_roundtrip(EXW_SCHEMA_TRAINING_VERDICT, g_tv, out[..], arena[..]);
+  #assert w.err == ExwErr.ok && cast(string) out[0..<w.len] == g_tv;
+  #assert exw_canonical_sha256(g_tv, hex[..]) && cast(string) hex[..] == "976e55fbd1fff0a2e94c9e0cd26321585d7ce353caeace290796c9bf333cf0d1";
+
+  // Family 4: SettlementReceipt (Bitcoin-only, real_bitcoin_moved, no secrets)
+  g_sr := "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}";
+  w = exwg_roundtrip(EXW_SCHEMA_SETTLEMENT_RECEIPT, g_sr, out[..], arena[..]);
+  #assert w.err == ExwErr.ok && cast(string) out[0..<w.len] == g_sr;
+  #assert exw_canonical_sha256(g_sr, hex[..]) && cast(string) hex[..] == "28f2692cf344ef7938e674a111129094cd1be6331fa7f5d2a7093da99b471787";
+
+  // Family 5: ExecutorReleaseManifest (openagents.executor-release.v1)
+  g_rel := "{\"artifacts\":[{\"artifact_id\":\"exec-vm-v1-macos-arm64\",\"byte_count\":4194304,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"target_platform\":\"macos-arm64\"},{\"artifact_id\":\"exec-vm-v1-linux-x86_64\",\"byte_count\":4194304,\"sha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"target_platform\":\"linux-x86_64\"}],\"channel\":\"shadow\",\"checkpoint_sha256\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"lineage_sha256\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"max_shadow_disagree_ppm\":500,\"min_client_version\":\"0.1.0\",\"published_at\":1763700020000,\"release_id\":\"exec-rel-2026-11-21-01\",\"rollback_target_sha256\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor-release.v1\",\"signature\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"signer_pubkey\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"stage\":\"SHADOW\"}";
+  w = exwg_roundtrip(EXW_SCHEMA_RELEASE, g_rel, out[..], arena[..]);
+  #assert w.err == ExwErr.ok && cast(string) out[0..<w.len] == g_rel;
+  #assert exw_canonical_sha256(g_rel, hex[..]) && cast(string) hex[..] == "9215ddd43b9c86303563ec2509746f13456cd4fbebbaff19e3170e5c7fa3bf13";
+
+  // Adversarial refusal sanity checks
+  #assert exwg_roundtrip(EXW_SCHEMA_MODULE, "{\"schema\":\"openagents.executor.module.v1alpha1\"", out[..], arena[..]).err == ExwErr.truncated;
+  #assert exwg_roundtrip(EXW_SCHEMA_SETTLEMENT_RECEIPT, "{\"amount_msat\":250000,\"bolt11\":\"lnbc100n1p\",\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"8888888888888888888888888888888888888888888888888888888888888888\"}", out[..], arena[..]).err == ExwErr.secret;
+  #assert exwg_roundtrip(EXW_SCHEMA_SETTLEMENT_RECEIPT, "{\"amount_msat\":250000,\"leg\":\"WORKER\",\"network\":\"bitcoin\",\"owner_policy_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"period_id\":\"2026-11-21\",\"real_bitcoin_moved\":true,\"receipt_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"schema\":\"openagents.executor.settlement-receipt.v1alpha1\",\"settled_at\":1763700010000,\"settlement_commitment\":\"\"}", out[..], arena[..]).err == ExwErr.invariant;
+}
+
+ExwgWork :: struct {
+  desc: [1] PkDescriptor;
+  pb: [65536] u8;
+  file: [131072] u8;
+  nodes: [4096] JvNode;
+  fields: [2048] JvNode;
+  name_buf: [256] u8;
+  schema_buf: [128] u8;
+  proto_buf: [128] u8;
+  sha_buf: [128] u8;
+  err_buf: [64] u8;
+  body_buf: [65536] u8;
+  encoded: [65536] u8;
+  arena: [65536] u8;
+  digest: [64] u8;
+  seen: [12] bool;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  w: [1] ExwgWork;
+  pn := fs_read(EXWG_DESCRIPTOR, w[0].pb[..]);
+  if pn < 1 { tool_errln("executor-wire-goldens: cannot read proto/descriptors/executor.pb"); return 2; }
+  why := pk_load(w[0].desc[..], cast(string) w[0].pb[0..<pn]);
+  if why != "" { print("FAIL  load descriptor: %\n", why); return 2; }
+
+  fn := fs_read(EXWG_PROFILE, w[0].file[..]);
+  if fn < 1 { tool_errln("executor-wire-goldens: cannot read proto/psionic/executor-v1alpha1.json"); return 2; }
+  d: [1] Jv;
+  if !jv_parse(d[..], cast(string) w[0].file[0..<fn], w[0].nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    print("FAIL  cannot parse %\n", EXWG_PROFILE);
+    return 1;
+  }
+  v := d[0];
+  bad := 0;
+
+  if !exwg_check_proto_enums() { print("FAIL  #import_proto enum parity mismatch\n"); bad += 1; }
+  if !exwg_check_proto_binary() { print("FAIL  #import_proto binary round-trip failed\n"); bad += 1; }
+
+  goldens := jv_get(v, 0, "goldens");
+  ng := jv_len(v, goldens);
+  if ng < 12 { print("FAIL  expected at least 12 goldens, got %\n", ng); bad += 1; }
+  for i: 0..<ng {
+    row := jv_at(v, goldens, i);
+    name := exwg_text(v, jv_get(v, row, "name"), w[0].name_buf[..]);
+    schema := exwg_text(v, jv_get(v, row, "schema"), w[0].schema_buf[..]);
+    proto_t := exwg_text(v, jv_get(v, row, "proto"), w[0].proto_buf[..]);
+    want_sha := exwg_text(v, jv_get(v, row, "sha256"), w[0].sha_buf[..]);
+    body := exwg_text(v, jv_get(v, row, "body"), w[0].body_buf[..]);
+
+    idx := exwg_schema_index(schema);
+    if idx < 0 { print("FAIL  golden %: unknown schema %\n", name, schema); bad += 1; continue; }
+    w[0].seen[idx] = true;
+
+    pk_err := pk_text_keys(w[0].desc[0].state[..], proto_t, body, true, false, w[0].fields[..]);
+    if pk_err != "" { print("FAIL  golden %: descriptor key check (%): %\n", name, proto_t, pk_err); bad += 1; continue; }
+
+    jcs_d: [1] Jv;
+    if !jv_parse(jcs_d[..], body, w[0].fields[..]) || !exw_keys_sorted(jcs_d[0], 0) {
+      print("FAIL  golden %: keys are not in RFC 8785 JCS order\n", name); bad += 1; continue;
+    }
+
+    rt := exwg_roundtrip(schema, body, w[0].encoded[..], w[0].arena[..]);
+    if rt.err != ExwErr.ok || rt.len != body.count || cast(string) w[0].encoded[0..<rt.len] != body {
+      print("FAIL  golden %: canonical round-trip mismatch (err=%)\n", name, exw_err_name(rt.err)); bad += 1; continue;
+    }
+
+    if !exw_canonical_sha256(body, w[0].digest[..]) || cast(string) w[0].digest[..] != want_sha {
+      print("FAIL  golden %: sha256 mismatch (got %, want %)\n", name, cast(string) w[0].digest[..], want_sha); bad += 1; continue;
+    }
+    print("ok    golden % (% bytes, sha256=%)\n", name, body.count, want_sha);
+  }
+
+  for i: 0..<12 {
+    if !w[0].seen[i] { print("FAIL  schema index % had no golden in %\n", i, EXWG_PROFILE); bad += 1; }
+  }
+
+  refusals := jv_get(v, 0, "refusals");
+  nr := jv_len(v, refusals);
+  if nr < 20 { print("FAIL  expected at least 20 refusal vectors, got %\n", nr); bad += 1; }
+  for i: 0..<nr {
+    row := jv_at(v, refusals, i);
+    name := exwg_text(v, jv_get(v, row, "name"), w[0].name_buf[..]);
+    schema := exwg_text(v, jv_get(v, row, "schema"), w[0].schema_buf[..]);
+    want_err := exwg_text(v, jv_get(v, row, "err"), w[0].err_buf[..]);
+    body := exwg_text(v, jv_get(v, row, "body"), w[0].body_buf[..]);
+
+    rt := exwg_roundtrip(schema, body, w[0].encoded[..], w[0].arena[..]);
+    got_err := exw_err_name(rt.err);
+    if got_err != want_err {
+      print("FAIL  refusal %: got %, want %\n", name, got_err, want_err); bad += 1; continue;
+    }
+    print("ok    refusal % -> %\n", name, got_err);
+  }
+
+  if bad != 0 {
+    print("executor-wire-goldens: % failures\n", bad);
+    return 1;
+  }
+  print("executor-wire-goldens: % goldens (12/12 schemas, exact descriptor keys & SHA-256), % refusals, and #import_proto binary/enum parity passed\n", ng, nr);
+  return 0;
+}

@@ -262,6 +262,13 @@
       "openagents/agent/v1alpha1/definition.proto",
       "openagents/agent/v1alpha1/invocation.proto",
       "openagents/tester/v1alpha1/tester.proto"
+    ],
+    "executor": [
+      "openagents/executor/v1alpha1/module.proto",
+      "openagents/executor/v1alpha1/trace.proto",
+      "openagents/executor/v1alpha1/training.proto",
+      "openagents/executor/v1alpha1/settlement.proto",
+      "openagents/executor/v1alpha1/release.proto"
     ]
   },
   "profile_namespaces": {
@@ -465,6 +472,10 @@
     "tester": [
       "openagents.agent.v1alpha1",
       "openagents.tester.v1alpha1"
+    ],
+    "executor": [
+      "openagents.executor.v1alpha1",
+      "openagents.options.v1alpha1"
     ]
   }
 }
