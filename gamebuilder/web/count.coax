@@ -1,0 +1,340 @@
+// Counting the core loop's steps on gamebuilder.org (issue 18): the page's part. The steps and the
+// names they are counted under are shared/loop.coax's, the list the server and the funnel read too;
+// this file is when a step is counted, once a visit, and what is sent. page.coax says what happened
+// (gs_count, and what it sees in its own state); its face sends the body this writes to LP_DOOR.
+//
+// What is sent, and what is not. A count is a step's name and a number of milliseconds
+// (shared/loop.coax, lp_body). No id of any kind is made, kept or sent: not for the person, the
+// browser, the tab or the visit. The server adds the count to that day's totals.
+//
+// A visit is a browser tab. So that a step is counted once in it, the page keeps a note of the
+// steps this tab has counted and the tab's clock at the last one ("MASK LAST"): the glue
+// (hud-glue.js) holds it in the tab's sessionStorage, which goes with the tab and is sent nowhere,
+// and gives it back when a page of the site starts again in the same tab. It is no cookie.
+//
+// The page has no clock of its own (a still page is asked for no frames), so the glue gives it the
+// browser's: when the page marks a step it asks (the note changes), and the glue answers with
+//   NOW DOC PAINT FLAGS MASK LAST ...
+// NOW: milliseconds since this tab's first page was asked for. DOC: since this page was. PAINT:
+// when this page first painted (-1: not known). FLAGS: 1, this page was reached by a link of the
+// site's own home page; 2, the browser is driven by a program; 4, this is not the site itself (a
+// dev server, a player test's copy). MASK and LAST: the note this tab kept. Only numbers.
+//
+// Counting never touches the first load, and a failed count is nothing:
+//   - nothing is sent in a page's first CT_SETTLE milliseconds unless the person does something
+//     first (the first load's requests are its own: scripts/web-load.sh); a count held when the
+//     page is left goes as the browser's own beacon (the glue, on pagehide);
+//   - a count is sent once and never again, whatever its answer; the page reads no answer;
+//   - the login's and the chat's requests go before a count, and one that waits takes the
+//     wire from a count in flight (page.coax, gs_queue);
+//   - a browser driven by a program, a dev server and a player test's copy count nothing.
+//   coax/bin/coax test web/count.coax --library
+
+#load "../shared/loop.coax";
+
+CT_SETTLE :: 5000;       // ms into a page before a count is sent with nothing done by the person
+CT_AGAIN :: 250;         // ms until the clock is asked for again, for a row that waits on the browser (the first paint's time, not yet known)
+CT_NOTE :: 96;           // room for the note
+// Where this page began: the first address it was asked for.
+CT_AT_UNKNOWN :: 0; CT_AT_HOME :: 1; CT_AT_BUILDER :: 2; CT_AT_OTHER :: 3;
+// What the glue's flags say.
+CT_FROM_HOME :: 1; CT_DRIVEN :: 2; CT_ELSEWHERE :: 4;
+
+Count :: struct {
+  dirty: bool;                       // the note or the body the page shows changed
+  told: bool;                        // the glue has given this tab's note: nothing is counted before
+  off: bool;                         // nothing is counted here (a program's browser, not the site itself)
+  mask: int;                         // the rows this tab has counted, a bit a row
+  last: int = -1;                    // the tab's clock at the last step counted (-1: none yet)
+  want: int;                         // rows marked and waiting for the clock, a bit a row
+  quiet: int;                        // of those, the ones the person did not do just now (they do not end the first load's hold)
+  late: int;                         // of those, the ones the clock was given for and that wait on the browser still
+  fresh: bool;                       // this page is where the tab arrived
+  asks: int;                         // times the clock was asked for: in the note, so the glue sees a new one
+  doc: int;                          // this page's own clock when the glue last said
+  at: int;                           // where this page began (CT_AT_*)
+  strayed: bool;                     // the login was shown on this page: a load's time to the builder is no longer the load's
+  acted: bool;                       // the person did something: the first load's hold is over
+  q: [LP_BATCH] LpCount; qn: int;    // counts ready to send
+  flying: bool;                      // a body is with the host
+}
+
+ct_bit :: (row: int) -> int { return 1 << row; }
+// Whether this tab counts anything, for what else counts beside the loop (a link's game: web/publish.coax): 1 it
+// does, 0 not known yet (the glue has not said), -1 never (a program's browser).
+ct_may :: (c: [] Count) -> int { return ifx c[0].off then -1 else ifx c[0].told then 1 else 0; }
+// A row the page counts without the person doing anything just then: arriving, what is shown as a
+// page loads, a fact, a measure. It waits out the first load.
+ct_passive :: (row: int) -> bool { return LP_ROWS[row].kind != LP_STEP || row == LP_ARRIVED || row == LP_BUILDER || row == LP_SHARED; }
+
+// Row happened (a row of shared/loop.coax's list: anything else is nothing). Counted once a tab:
+// again, it is nothing. The clock is asked for; the count is ready when the glue answers (ct_told).
+ct_mark :: (c: [] Count, row: int) { ct_mark_as(c, row, row >= 0 && row < LP_N && ct_passive(row)); }
+ct_mark_as :: (c: [] Count, row: int, quiet: bool) {
+  if row < 0 || row >= LP_N || c[0].off { return; }
+  if ((c[0].mask | c[0].want) & ct_bit(row)) != 0 { return; }
+  c[0].want |= ct_bit(row);
+  if quiet { c[0].quiet |= ct_bit(row); }
+  c[0].asks += 1; c[0].dirty = true;
+}
+// The first address this page was asked for (later ones are moves within it).
+ct_address :: (c: [] Count, at: int) { if c[0].at == CT_AT_UNKNOWN { c[0].at = at; } }
+// The login was shown.
+ct_stray :: (c: [] Count) { c[0].strayed = true; }
+
+// Whole numbers, space apart, read from text into out: how many. A word that is no number ends it.
+ct_ints :: (text: string, out: [] int) -> int {
+  n := 0; i := 0;
+  while i < text.count && n < out.count {
+    while i < text.count && text[i] == ' ' { i += 1; }
+    if i >= text.count { break; }
+    neg := text[i] == '-';
+    if neg { i += 1; }
+    if i >= text.count || text[i] < '0' || text[i] > '9' { return n; }
+    v := 0; digits := 0;
+    while i < text.count && text[i] >= '0' && text[i] <= '9' { if digits < 15 { v = v * 10 + cast(int) (text[i] - '0'); } digits += 1; i += 1; }
+    if i < text.count && text[i] != ' ' { return n; }
+    out[n] = ifx neg then -v else v; n += 1;
+  }
+  return n;
+}
+
+// The glue's answer: the clock, what the browser knows of this page, and (the first time) the
+// note this tab kept. Every row marked is now counted: a step with its time since the step
+// before, a fact, or a measure with its time when the page can know it.
+ct_told :: (c: [] Count, text: string) {
+  v: [6] int;
+  if ct_ints(text, v[..]) < 6 { return; }
+  now := v[0]; doc := v[1]; paint := v[2]; flags := v[3];
+  fresh := false;
+  if !c[0].told {
+    c[0].told = true;
+    // the note is this tab's own, but it is only a note: bits the list has not are dropped
+    c[0].mask = ifx v[4] > 0 then v[4] & (ct_bit(LP_N) - 1) else 0;
+    c[0].last = ifx v[5] >= 0 then v[5] else -1;
+    if (flags & (CT_DRIVEN | CT_ELSEWHERE)) != 0 { c[0].off = true; c[0].want = 0; c[0].quiet = 0; c[0].qn = 0; c[0].dirty = true; return; }
+    fresh = c[0].mask == 0;
+    // the button pressed before the page's code had loaded is the button's own link: this page is the builder's, reached from the home page
+    if (flags & CT_FROM_HOME) != 0 && c[0].at == CT_AT_BUILDER { ct_mark_as(c, LP_CREATE, true); }
+  }
+  if c[0].off { return; }
+  c[0].doc = doc;
+  if (c[0].want ^ (c[0].want & c[0].quiet)) != 0 { c[0].acted = true; }
+  if (c[0].want & ct_bit(LP_ARRIVED)) != 0 && (c[0].mask & ct_bit(LP_ARRIVED)) == 0 { c[0].fresh = true; }
+  first := c[0].fresh;
+  c[0].late = 0;
+  for row: 0..<LP_N {
+    if (c[0].want & ct_bit(row)) == 0 || (c[0].mask & ct_bit(row)) != 0 { continue; }
+    // the first paint's time is the browser's to say, a moment after the paint: until it does (or the first load is over), the row waits
+    if row == LP_BUTTON_MS && first && c[0].at == CT_AT_HOME && paint < 0 && doc < CT_SETTLE { c[0].late |= ct_bit(row); continue; }
+    c[0].mask |= ct_bit(row);
+    ms := -1; keep := true;
+    if LP_ROWS[row].kind == LP_STEP {
+      // arriving starts the visit's clock where the page was asked for; a press inferred from the link has no time of its own
+      inferred := row == LP_CREATE && (c[0].quiet & ct_bit(row)) != 0;
+      if row == LP_ARRIVED { c[0].last = ifx fresh && now >= doc then now - doc else now; }
+      else if !inferred {
+        if c[0].last >= 0 && now >= c[0].last { ms = now - c[0].last; }
+        c[0].last = now;
+      }
+    }
+    else if LP_ROWS[row].kind == LP_FACT { ms = 0; }
+    // a first visit to the home page: the first paint holds the button
+    else if row == LP_BUTTON_MS { ms = paint; keep = first && c[0].at == CT_AT_HOME && paint >= 0; }
+    // a page loaded at the builder's address, and the builder shown with no login between
+    else if row == LP_BUILDER_MS { ms = doc; keep = c[0].at == CT_AT_BUILDER && !c[0].strayed && doc >= 0; }
+    if keep && c[0].qn < LP_BATCH { c[0].q[c[0].qn] = LpCount.{row = row, ms = ifx ms > LP_MS_MAX then LP_MS_MAX else ms}; c[0].qn += 1; }
+  }
+  c[0].want = c[0].late; c[0].quiet &= c[0].late;
+  c[0].dirty = true;
+}
+
+// Whether a body is ready for the face: counts wait, none is in flight, and the first load is over
+// (CT_SETTLE into the page, or the person did something).
+ct_wants :: (c: [] Count) -> bool { return c[0].qn > 0 && !c[0].flying && !c[0].off && (c[0].acted || c[0].doc >= CT_SETTLE); }
+// The body to send: every count that waits, as one. It is with the host from here, and is not
+// kept: whatever becomes of it, it is never sent again.
+ct_send :: (c: [] Count, out: [] u8) -> string {
+  body := lp_body(c[0].q[0..<c[0].qn], out);
+  c[0].qn = 0; c[0].flying = body.count > 0; c[0].dirty = true;
+  return body;
+}
+// The answer ended (status 0: there was none), or the wire was taken for the login or the chat.
+// Counted or not, the page goes on the same.
+ct_end :: (c: [] Count, status: int) { c[0].flying = false; }
+// The page was left and the browser took what waited (the glue's beacon).
+ct_left :: (c: [] Count) { if c[0].qn > 0 { c[0].qn = 0; c[0].dirty = true; } }
+
+// The note the page shows the glue: "MASK LAST ASKS WAKE". The glue keeps it for the tab, answers
+// with the clock when ASKS changes, and again once the page is WAKE ms old (0: no need): that is
+// when a count held for the first load may go, or a row that waits on the browser is asked after.
+ct_note :: (c: [] Count, out: [] u8) -> string {
+  n := lp_put_int(out, 0, c[0].mask); n = lp_put(out, n, " "); n = lp_put_int(out, n, c[0].last); n = lp_put(out, n, " ");
+  n = lp_put_int(out, n, c[0].asks); n = lp_put(out, n, " ");
+  wake := 0;
+  if !c[0].off && c[0].told && c[0].doc < CT_SETTLE {
+    if c[0].late != 0 { wake = ifx c[0].doc + CT_AGAIN > CT_SETTLE then CT_SETTLE else c[0].doc + CT_AGAIN; }
+    else if c[0].qn > 0 && !c[0].acted { wake = CT_SETTLE; }
+  }
+  n = lp_put_int(out, n, wake);
+  return cast(string) out[0..<ifx n > out.count then out.count else n];
+}
+// What waits to be sent, as its body, for the browser to take should the page be left first: ""
+// when nothing waits or it is already with the host.
+ct_waiting :: (c: [] Count, out: [] u8) -> string {
+  if c[0].qn == 0 || c[0].off { return ""; }
+  return lp_body(c[0].q[0..<c[0].qn], out);
+}
+
+#test "a first visit: arriving is counted once the glue gives the clock, with the button's time, and waits out the first load" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8; nb: [CT_NOTE] u8;
+  #assert ct_note(c, nb[..]) == "0 -1 0 0" && !ct_wants(c) && ct_waiting(c, b[..]) == "";
+  ct_address(c, CT_AT_HOME); ct_address(c, CT_AT_BUILDER);   // (a move within the page is not where it began)
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUTTON_MS); ct_mark(c, LP_ARRIVED);
+  // nothing is counted before the glue answers: the note only asks
+  #assert c[0].qn == 0 && c[0].mask == 0 && ct_note(c, nb[..]) == "0 -1 2 0" && !ct_wants(c);
+  // 900 ms into the tab's first page, painted at 148 ms, a person's own browser, nothing kept
+  ct_told(c, "900 900 148 0 0 -1 0 0");
+  #assert c[0].qn == 2 && c[0].q[0].row == LP_ARRIVED && c[0].q[0].ms == -1 && c[0].q[1].row == LP_BUTTON_MS && c[0].q[1].ms == 148;
+  // held: the first load is not over, and the glue is asked to say when it is
+  #assert !ct_wants(c) && ct_note(c, nb[..]) == "4097 0 2 5000";
+  // should the page be left now, the browser takes this
+  #assert ct_waiting(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"button_ms\",\"ms\":148}]}";
+  ct_told(c, "5010 5010 148 0 4097 0 2 5000");
+  #assert ct_wants(c) && ct_note(c, nb[..]) == "4097 0 2 0";
+  #assert ct_send(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"button_ms\",\"ms\":148}]}";
+  #assert !ct_wants(c) && c[0].flying && ct_waiting(c, b[..]) == "";
+  ct_end(c, 200);
+  // counted once: again is nothing, and asks nothing
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUTTON_MS);
+  #assert c[0].want == 0 && ct_note(c, nb[..]) == "4097 0 2 0" && !ct_wants(c);
+}
+#test "a press ends the hold: the button pressed 2 s in goes at once, with its time since the page was asked for" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8;
+  ct_address(c, CT_AT_HOME);
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUTTON_MS);
+  ct_told(c, "900 900 148 0 0 -1 0 0");
+  #assert !ct_wants(c);
+  ct_mark(c, LP_CREATE); ct_mark(c, LP_BUILDER);
+  ct_told(c, "2000 2000 148 0 4097 0 2 5000");
+  #assert ct_wants(c);
+  #assert ct_send(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"button_ms\",\"ms\":148},{\"name\":\"create\",\"ms\":2000},{\"name\":\"builder\",\"ms\":0}]}";
+  ct_end(c, 200);
+  // the next step, a minute on: its time is since the step before it
+  ct_mark(c, LP_PICKED); ct_told(c, "62000 62000 148 0 0 0 0 0");
+  #assert ct_wants(c) && ct_send(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"picked\",\"ms\":60000}]}";
+  // (the builder's own time is only for a page loaded at its address)
+  ct_end(c, 200); ct_mark(c, LP_BUILDER_MS); ct_told(c, "63000 63000 148 0 0 0 0 0");
+  #assert c[0].qn == 0 && (c[0].mask & ct_bit(LP_BUILDER_MS)) != 0;
+}
+#test "a failed count is nothing: no answer, an error or the wire taken leave the page as a count that went, and it is never sent again" {
+  for status: [4] int.[200, 0, 404, 500] {
+    w: [1] Count; c := w[..]; b: [LP_BODY] u8; nb: [CT_NOTE] u8;
+    ct_mark(c, LP_ARRIVED); ct_mark(c, LP_CREATE); ct_told(c, "100 100 50 0 0 -1 0 0");
+    #assert ct_wants(c) && ct_send(c, b[..]).count > 0 && c[0].flying && !ct_wants(c);
+    // (a count marked while one is in flight waits for it)
+    ct_mark(c, LP_PICKED); ct_told(c, "300 300 50 0 0 0 0 0");
+    #assert !ct_wants(c);
+    ct_end(c, status);
+    #assert !c[0].flying && c[0].qn == 1 && c[0].q[0].row == LP_PICKED && ct_wants(c) && ct_note(c, nb[..]) == "11 300 3 0";
+    #assert ct_send(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"picked\",\"ms\":200}]}";
+  }
+}
+#test "the same tab, another page of the site: the kept note says what was counted, and time runs on from the last step" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8; nb: [CT_NOTE] u8;
+  // the tab arrived and pressed the button 9 s ago; this page is the builder's, reloaded
+  ct_address(c, CT_AT_BUILDER);
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUILDER); ct_mark(c, LP_BUILDER_MS);
+  ct_told(c, "12000 700 90 0 3 3000 7 0");
+  #assert c[0].qn == 2 && c[0].q[0].row == LP_BUILDER && c[0].q[0].ms == 9000 && c[0].q[1].row == LP_BUILDER_MS && c[0].q[1].ms == 700;
+  #assert ct_note(c, nb[..]) == "8199 12000 3 5000";
+  // a note that is not this list's (a bit past the list, a clock before the last step) counts nothing wrong
+  x: [1] Count; k := x[..];
+  ct_mark(k, LP_PICKED); ct_told(k, "500 500 90 0 1073741825 9000 0 0");
+  #assert k[0].mask == (1 | ct_bit(LP_PICKED)) && k[0].qn == 1 && k[0].q[0].ms == -1 && k[0].last == 500;
+  // and words that are no clock are nothing
+  y: [1] Count; j := y[..];
+  ct_mark(j, LP_ARRIVED); ct_told(j, "soon"); ct_told(j, "1 2 3"); ct_told(j, ""); ct_told(j, "1 2 3 x 0 0");
+  #assert !j[0].told && j[0].qn == 0;
+}
+#test "the button pressed before the code had loaded: the builder's page, reached from the home page, counts the press it could not see" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8;
+  ct_address(c, CT_AT_BUILDER);
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUILDER); ct_mark(c, LP_BUILDER_MS);
+  ct_told(c, "1400 1400 200 1 0 -1 0 0");
+  // arrived, the press (no time: it was not seen), the builder and the load's time to it; held like any first load
+  #assert !ct_wants(c);
+  ct_told(c, "5000 5000 200 1 0 0 0 0");
+  #assert ct_send(c, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"create\",\"ms\":-1},{\"name\":\"builder\",\"ms\":1400},{\"name\":\"builder_ms\",\"ms\":1400}]}";
+  // the builder's address asked for directly is no press; and the login shown first is not the load's time
+  x: [1] Count; k := x[..];
+  ct_address(k, CT_AT_BUILDER); ct_mark(k, LP_ARRIVED); ct_stray(k); ct_mark(k, LP_BUILDER); ct_mark(k, LP_BUILDER_MS);
+  ct_told(k, "90000 90000 200 0 0 -1 0 0");
+  #assert k[0].qn == 2 && k[0].q[0].row == LP_ARRIVED && k[0].q[1].row == LP_BUILDER;
+}
+#test "a program's browser, a dev server and a player test's copy count nothing; a row the list has not is nothing" {
+  for flags: [3] string.["2", "4", "7"] {
+    w: [1] Count; c := w[..]; b: [LP_BODY] u8; tb: [64] u8;
+    ct_mark(c, LP_ARRIVED); ct_mark(c, LP_CREATE);
+    n := lp_put(tb[..], 0, "100 100 50 "); n = lp_put(tb[..], n, flags); n = lp_put(tb[..], n, " 0 -1 0 0");
+    ct_told(c, cast(string) tb[0..<n]);
+    #assert c[0].off && c[0].qn == 0 && !ct_wants(c) && ct_waiting(c, b[..]) == "";
+    ct_mark(c, LP_PICKED); ct_told(c, "9000 9000 50 0 0 -1 0 0");
+    #assert c[0].qn == 0 && c[0].want == 0 && !ct_wants(c);
+  }
+  w: [1] Count; c := w[..];
+  ct_mark(c, -1); ct_mark(c, LP_N); ct_mark(c, 63);
+  #assert c[0].want == 0 && c[0].asks == 0 && !c[0].dirty;
+}
+#test "the page left with a count held: the browser takes it, and the page sends nothing after" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8;
+  ct_mark(c, LP_ARRIVED); ct_told(c, "800 800 100 0 0 -1 0 0");
+  #assert ct_waiting(c, b[..]).count > 0 && !ct_wants(c);
+  ct_left(c);
+  #assert ct_waiting(c, b[..]) == "" && c[0].qn == 0;
+  ct_told(c, "6000 6000 100 0 0 0 0 0");
+  #assert !ct_wants(c);
+}
+#test "every row of the list can be counted, under its own name, and all of them fit one body" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8;
+  ct_address(c, CT_AT_HOME);
+  for row: 0..<LP_N { ct_mark(c, row); }
+  ct_told(c, "7000 7000 100 0 0 -1 0 0");
+  // (all but the builder's own load time: this page began at the home page)
+  #assert c[0].qn == LP_N - 1 && ct_wants(c);
+  body := ct_send(c, b[..]);
+  #assert body.count > 0;
+  for row: 0..<LP_N {
+    if row == LP_BUILDER_MS { continue; }
+    name := LP_ROWS[row].name; found := false;
+    for i: 0..<body.count - name.count - 1 { if body[i] == '"' && cast(string) body[i + 1..<i + 1 + name.count] == name && body[i + 1 + name.count] == '"' { found = true; } }
+    #assert found;
+  }
+}
+#test "the first paint's time comes a moment after the paint: the row waits for it, asks again, and gives up when the first load is over" {
+  w: [1] Count; c := w[..]; b: [LP_BODY] u8; nb: [CT_NOTE] u8;
+  ct_address(c, CT_AT_HOME);
+  ct_mark(c, LP_ARRIVED); ct_mark(c, LP_BUTTON_MS);
+  ct_told(c, "60 60 -1 0 0 -1 0 0");
+  // arrived is counted; the paint's time is asked after in a quarter second
+  #assert c[0].qn == 1 && c[0].q[0].row == LP_ARRIVED && ct_note(c, nb[..]) == "1 0 2 310";
+  ct_mark(c, LP_BUTTON_MS); #assert ct_note(c, nb[..]) == "1 0 2 310";   // (it is waited on, not marked again)
+  ct_told(c, "320 320 44 0 1 0 2 310");
+  #assert c[0].qn == 2 && c[0].q[1].row == LP_BUTTON_MS && c[0].q[1].ms == 44 && ct_note(c, nb[..]) == "4097 0 2 5000" && !ct_wants(c);
+  // a browser that never says: the row is dropped when the first load is over, and what was counted goes
+  x: [1] Count; k := x[..];
+  ct_address(k, CT_AT_HOME);
+  ct_mark(k, LP_ARRIVED); ct_mark(k, LP_BUTTON_MS);
+  ct_told(k, "60 60 -1 0 0 -1 0 0"); ct_told(k, "4900 4900 -1 0 0 0 0 0");
+  #assert ct_note(k, nb[..]) == "1 0 2 5000" && !ct_wants(k);
+  ct_told(k, "5000 5000 -1 0 0 0 0 0");
+  #assert k[0].qn == 1 && ct_wants(k) && ct_note(k, nb[..]) == "4097 0 2 0";
+  #assert ct_send(k, b[..]) == "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1}]}";
+  // and a press meanwhile ends the hold as ever: the paint's time follows when it is known
+  y: [1] Count; j := y[..];
+  ct_address(j, CT_AT_HOME);
+  ct_mark(j, LP_ARRIVED); ct_mark(j, LP_BUTTON_MS);
+  ct_told(j, "60 60 -1 0 0 -1 0 0");
+  ct_mark(j, LP_CREATE); ct_told(j, "200 200 -1 0 0 0 0 0");
+  #assert j[0].acted && ct_wants(j) && j[0].qn == 2 && j[0].late == ct_bit(LP_BUTTON_MS);
+}

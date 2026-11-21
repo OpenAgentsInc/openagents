@@ -1,0 +1,390 @@
+// gamebuilder.org's login: log in with your OpenAgents account, the one the
+// apps use (coax/web/api/auth.c): your email, then the code
+// sent to it. This is the login's rules and its part of the page; page.coax is
+// the module that holds it, shows it at /login, and sends the requests it asks
+// for through its face.
+//
+// The session is the login service's own cookie (HttpOnly, on this site), so
+// nothing here holds a token. The requests go to this site's /api/auth/*,
+// which the load balancer hands to that service (scripts/web-deploy.sh):
+//   GET  /api/auth/account                who is logged in
+//   POST /api/auth/email/start {email}    sends the code
+//   POST /api/auth/email/verify {code}    the code, in the browser that asked
+//   POST /api/auth/logout
+//   POST /api/auth/cli/code               a command line's one-time code (the page /login/cli)
+// What the service says when it refuses is shown in its own words.
+//
+// /login/cli is where `gamebuilder login` sends you (cli/account.coax, docs/cli.md). Logged in here
+// (by the same email login), you press "make a code" and the page shows a one-time code with a
+// Copy button; you paste it where the command line asks, and the command line spends it for a
+// login of its own (POST /api/auth/cli/redeem, which only an app may ask: never this page). The
+// code is the service's, good once for five minutes, and gives the command line no more than this
+// browser's own email login (openagents INVARIANTS.md, "A command line's login from a browser").
+//   coax/bin/coax test web/login.coax --library
+
+#load "look.coax";
+
+LG_EMAIL :: 254; LG_CODE :: 12; LG_SAID :: 240; LG_URL :: 48; LG_BODY :: 320; LG_REPLY :: 4096;
+LG_CLI :: 32;          // a command line's code: 32 hex digits
+LG_CLI_ROOM :: 48;     // room to read one, so a longer answer is seen as wrong, not cut to fit
+// Where the page is.
+LG_CHECKING :: 0; LG_ASK_EMAIL :: 1; LG_ASK_CODE :: 2; LG_IN :: 3;
+// The request in flight.
+LG_NONE :: 0; LG_WHO :: 1; LG_START :: 2; LG_VERIFY :: 3; LG_OUT :: 4; LG_CLI_ASK :: 5;
+// What the host says happened: a press, a field's text, Enter in a field, a piece of an answer, its end.
+LG_CLICK :: 1; LG_INPUT :: 2; LG_SUBMIT :: 3; LG_PIECE :: 4; LG_END :: 5;
+
+Login :: struct {
+  begun: bool;                             // it has asked who is logged in
+  dirty: bool;                             // something the page shows changed
+  step: int; ask: int;
+  want: bool;                              // a request is ready for the face to send
+  url: [LG_URL] u8; url_n: int; body: [LG_BODY] u8; body_n: int;
+  reply: [LG_REPLY] u8; reply_n: int;
+  email: [LG_EMAIL] u8; email_n: int;
+  code: [LG_CODE] u8; code_n: int;
+  who: [LG_EMAIL] u8; who_n: int;          // the email logged in, when the service says it
+  said: [LG_SAID] u8; said_n: int;         // what went wrong, in words
+  cli: bool;                               // the page is /login/cli: a command line asks for a login
+  cli_code: [LG_CLI_ROOM] u8; cli_code_n: int;   // the code the service made, shown to copy
+  copied: bool;                            // the copy button was pressed for this code
+  over: bool;                              // the login is open over a game being built (the page's sheet): its words say the game stays, and that a new email is a new account
+  made: bool;                              // the service said this login made the account (a new email): the page counts it
+}
+
+lg_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+lg_say :: (s: [] Login, words: string) { s[0].said_n = lg_put(s[0].said[..], 0, words); }
+lg_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+// The text of a JSON string member `"key":"..."`, its escapes read, into out. Bytes written; 0 for none.
+lg_member :: (json: string, key: string, out: [] u8) -> int {
+  at := lg_find(json, key);
+  if at < 0 { return 0; }
+  i := at + key.count; n := 0;
+  while i < json.count && json[i] != '"' {
+    c := json[i];
+    if c == '\\' && i + 1 < json.count { i += 1; c = json[i]; if c == 'n' { c = ' '; } }
+    if n < out.count && c >= 32 { out[n] = c; n += 1; }
+    i += 1;
+  }
+  return n;
+}
+// An email worth sending: one @ with something each side, no spaces, quotes or controls.
+lg_email_ok :: (e: string) -> bool {
+  at := -1;
+  for i: 0..<e.count {
+    c := e[i];
+    if c <= 32 || c == '"' || c == '\\' || c == 127 { return false; }
+    if c == '@' { if at >= 0 { return false; } at = i; }
+  }
+  return at > 0 && at < e.count - 1;
+}
+lg_ask :: (s: [] Login, ask: int, url: string, body_n: int) {
+  s[0].ask = ask; s[0].want = true; s[0].reply_n = 0;
+  s[0].url_n = lg_put(s[0].url[..], 0, url); s[0].body_n = body_n;
+  s[0].dirty = true;
+}
+lg_busy :: (s: [] Login) -> bool { return s[0].ask != LG_NONE; }
+
+lg_send_email :: (s: [] Login) {
+  if lg_busy(s) { return; }
+  // trimmed of the spaces a paste leaves
+  lo := 0; hi := s[0].email_n;
+  while lo < hi && s[0].email[lo] <= 32 { lo += 1; }
+  while hi > lo && s[0].email[hi - 1] <= 32 { hi -= 1; }
+  e := cast(string) s[0].email[lo..<hi];
+  if !lg_email_ok(e) { lg_say(s, "that's not an email address."); s[0].dirty = true; return; }
+  s[0].said_n = 0;
+  n := lg_put(s[0].body[..], 0, "{\"email\":\""); n = lg_put(s[0].body[..], n, e); n = lg_put(s[0].body[..], n, "\"}");
+  s[0].who_n = lg_put(s[0].who[..], 0, e);
+  lg_ask(s, LG_START, "/api/auth/email/start", n);
+}
+lg_send_code :: (s: [] Login) {
+  if lg_busy(s) { return; }
+  // the digits of what was typed: a pasted "123 456" is the same code
+  digits: [LG_CODE] u8; d := 0;
+  for i: 0..<s[0].code_n { c := s[0].code[i]; if c >= '0' && c <= '9' && d < LG_CODE { digits[d] = c; d += 1; } }
+  if d < 4 { lg_say(s, "type the code from the email."); s[0].dirty = true; return; }
+  s[0].said_n = 0;
+  n := lg_put(s[0].body[..], 0, "{\"code\":\""); n = lg_put(s[0].body[..], n, cast(string) digits[0..<d]); n = lg_put(s[0].body[..], n, "\"}");
+  lg_ask(s, LG_VERIFY, "/api/auth/email/verify", n);
+}
+lg_back :: (s: [] Login) {
+  if lg_busy(s) { return; }
+  s[0].step = LG_ASK_EMAIL; s[0].code_n = 0; s[0].said_n = 0; s[0].dirty = true;
+}
+// A command line's code, for the browser logged in here.
+lg_cli_make :: (s: [] Login) {
+  if lg_busy(s) || s[0].step != LG_IN { return; }
+  s[0].said_n = 0; s[0].cli_code_n = 0; s[0].copied = false;
+  n := lg_put(s[0].body[..], 0, "{}");
+  lg_ask(s, LG_CLI_ASK, "/api/auth/cli/code", n);
+}
+// The code as the page shows it, when there is one.
+lg_cli_code :: (s: [] Login) -> string { return cast(string) s[0].cli_code[0..<s[0].cli_code_n]; }
+// Forgets the code (the page left /login/cli, or the login ended).
+lg_cli_forget :: (s: [] Login) {
+  for i: 0..<LG_CLI_ROOM { s[0].cli_code[i] = 0; }
+  s[0].cli_code_n = 0; s[0].copied = false;
+}
+lg_hex :: (t: string) -> bool {
+  for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+lg_log_out :: (s: [] Login) {
+  if lg_busy(s) { return; }
+  s[0].said_n = 0;
+  n := lg_put(s[0].body[..], 0, "{}");
+  lg_ask(s, LG_OUT, "/api/auth/logout", n);
+}
+
+// An answer ended: `status` is its HTTP status, 0 when there was none.
+lg_answer :: (s: [] Login, status: int) {
+  ask := s[0].ask; s[0].ask = LG_NONE; s[0].dirty = true;
+  r := cast(string) s[0].reply[0..<s[0].reply_n];
+  if ask == LG_WHO {
+    // anything but a clear yes is nobody: the page asks for an email
+    if status == 200 && lg_find(r, "\"logged_in\":true") >= 0 {
+      s[0].who_n = lg_member(r, "\"email\":\"", s[0].who[..]);
+      s[0].step = LG_IN;
+    } else { s[0].step = LG_ASK_EMAIL; }
+    return;
+  }
+  if ask == LG_OUT { s[0].step = LG_ASK_EMAIL; s[0].who_n = 0; s[0].email_n = 0; s[0].code_n = 0; lg_cli_forget(s); return; }
+  if ask == LG_CLI_ASK {
+    if status == 200 && lg_find(r, "\"state\":\"code\"") >= 0 {
+      n := lg_member(r, "\"code\":\"", s[0].cli_code[..]);
+      if n == LG_CLI && lg_hex(cast(string) s[0].cli_code[0..<n]) { s[0].cli_code_n = n; return; }
+      lg_cli_forget(s);
+    }
+    // the browser's login ended meanwhile: log in again here, then make the code
+    if status == 401 { s[0].step = LG_ASK_EMAIL; s[0].who_n = 0; }
+  }
+  if status == 200 && ask == LG_START && lg_find(r, "\"state\":\"sent\"") >= 0 { s[0].step = LG_ASK_CODE; s[0].code_n = 0; return; }
+  if status == 200 && ask == LG_VERIFY && lg_find(r, "\"state\":\"logged-in\"") >= 0 { s[0].step = LG_IN; s[0].code_n = 0; s[0].made = lg_find(r, "\"new\":true") >= 0; return; }
+  // refused: the service's own words when it gave any
+  n := lg_member(r, "\"error\":\"", s[0].said[..]);
+  if n > 0 { s[0].said_n = n; }
+  else if status == 0 { lg_say(s, "can't reach the server. try again."); }
+  else { lg_say(s, "that didn't work. try again."); }
+}
+
+// /login/cli, logged in: who the command line will be, a button for its code, and the code with a
+// Copy button. The code is selectable whole with one click too (`all` in look.coax), for a browser
+// that refuses the page the clipboard.
+lg_cli_part :: (s: [] Login, t: [] Tree) {
+  busy := lg_busy(s);
+  h := tr_leaf(t, "login.h", TG_H1, "", "log in your command line.");
+  if s[0].who_n > 0 { w := tr_leaf(t, "login.who", TG_P, "who", cast(string) s[0].who[0..<s[0].who_n]); }
+  has := s[0].cli_code_n > 0;
+  lede := tr_leaf(t, "login.l", TG_P, "lede", ifx has then "paste it where gamebuilder login asks. it works once, for five minutes."
+    else "make a code, then paste it where gamebuilder login asks. only for a terminal you started.");
+  form := tr_open(t, "form", TG_DIV, "form");
+  if has {
+    fld := tr_open(t, "cli.f", TG_DIV, "fld hud k3");
+    code := tr_leaf(t, "cli.code", TG_P, "mono all cli", lg_cli_code(s));
+    tr_attr(t, code, AT_LABEL, "your command line's code");
+    tr_close(t);
+    copy := tr_leaf(t, "cli.copy", TG_BUTTON, "btn hud k4", ifx s[0].copied then "copied" else "copy");
+  }
+  said := tr_leaf(t, "said", TG_P, "said", cast(string) s[0].said[0..<s[0].said_n]);
+  tr_attr(t, said, AT_LIVE, "polite");
+  make := tr_leaf(t, "cli.make", TG_BUTTON, ifx has then "quiet" else "btn hud k4", ifx busy then "..." else ifx has then "make another" else "make a code");
+  if busy { tr_attr(t, make, AT_DISABLED, "true"); }
+  home := tr_leaf(t, "home", TG_A, "quiet", "back");
+  tr_attr(t, home, AT_HREF, "/");
+  tr_close(t);
+}
+
+// The login's part of the page, into the tree the page is building.
+lg_section :: (s: [] Login, t: [] Tree) {
+  busy := lg_busy(s);
+  box := tr_open(t, "login", TG_SECTION, "wrap login hud k9");
+  eye := tr_leaf(t, "login.e", TG_P, "eye mono", ifx s[0].cli then "command line" else "account");
+  if s[0].step == LG_IN && s[0].cli { lg_cli_part(s, t); }
+  else if s[0].step == LG_IN {
+    h := tr_leaf(t, "login.h", TG_H1, "", "you're in.");
+    if s[0].who_n > 0 { w := tr_leaf(t, "login.who", TG_P, "who", cast(string) s[0].who[0..<s[0].who_n]); }
+    form := tr_open(t, "form", TG_DIV, "form");
+    said := tr_leaf(t, "said", TG_P, "said", cast(string) s[0].said[0..<s[0].said_n]);
+    tr_attr(t, said, AT_LIVE, "polite");
+    out := tr_leaf(t, "out", TG_BUTTON, "btn hud k4", ifx busy then "..." else "log out");
+    if busy { tr_attr(t, out, AT_DISABLED, "true"); }
+    home := tr_leaf(t, "home", TG_A, "quiet", "back");
+    tr_attr(t, home, AT_HREF, "/");
+    tr_close(t);
+  } else {
+    // (over a game, it is the way to an account too: the email login makes one for an email it has not seen; no other sign-up)
+    h := tr_leaf(t, "login.h", TG_H1, "", ifx s[0].over then "log in or create an account." else "log in.");
+    code := s[0].step == LG_ASK_CODE;
+    lede := tr_leaf(t, "login.l", TG_P, "lede", ifx s[0].step == LG_CHECKING then "one moment." else ifx code then "code sent. check your email."
+      else ifx s[0].cli then "log in here first. then your command line gets a code."
+      else ifx s[0].over then "your game stays as it is, and is kept on your account. a new email makes a new account. we email you a code." else "same account as the app. we email you a code.");
+    form := tr_open(t, "form", TG_DIV, "form");
+    if s[0].step == LG_ASK_EMAIL {
+      fld := tr_open(t, "email.f", TG_DIV, "fld hud k3");
+      f := tr_open(t, "email", TG_INPUT, "");
+      tr_attr(t, f, AT_TYPE, "email"); tr_attr(t, f, AT_COMPLETE, "email"); tr_attr(t, f, AT_PLACEHOLDER, "email"); tr_attr(t, f, AT_LABEL, "Email"); tr_attr(t, f, AT_FOCUS, "true");
+      tr_close(t);
+      tr_close(t);
+    }
+    if code {
+      fld := tr_open(t, "code.f", TG_DIV, "fld hud k3");
+      f := tr_open(t, "code", TG_INPUT, "");
+      tr_attr(t, f, AT_TYPE, "text"); tr_attr(t, f, AT_COMPLETE, "one-time-code"); tr_attr(t, f, AT_PLACEHOLDER, "6 digits"); tr_attr(t, f, AT_LABEL, "Code"); tr_attr(t, f, AT_FOCUS, "true");
+      tr_close(t);
+      tr_close(t);
+    }
+    said := tr_leaf(t, "said", TG_P, "said", cast(string) s[0].said[0..<s[0].said_n]);
+    tr_attr(t, said, AT_LIVE, "polite");
+    if s[0].step != LG_CHECKING {
+      go := tr_leaf(t, "go", TG_BUTTON, "btn hud k4", ifx busy then "..." else ifx code then "log in" else "send code");
+      if busy { tr_attr(t, go, AT_DISABLED, "true"); }
+    }
+    if code { other := tr_leaf(t, "back", TG_BUTTON, "quiet", "use another email"); }
+    tr_close(t);
+  }
+  tr_close(t);
+}
+
+// The first time the login is shown: who is logged in?
+lg_begin :: (s: [] Login) {
+  if s[0].begun { return; }
+  s[0].begun = true;
+  lg_ask(s, LG_WHO, "/api/auth/account", 0);
+}
+// A press on the thing with this id. True when it was the login's.
+lg_press :: (s: [] Login, id: string) -> bool {
+  if id == "go" && s[0].step == LG_ASK_EMAIL { lg_send_email(s); return true; }
+  if id == "go" && s[0].step == LG_ASK_CODE { lg_send_code(s); return true; }
+  if id == "back" { lg_back(s); return true; }
+  if id == "out" { lg_log_out(s); return true; }
+  if id == "cli.make" && s[0].cli { lg_cli_make(s); return true; }
+  return false;
+}
+// Enter in a field is its button.
+lg_submit :: (s: [] Login, id: string) {
+  if id == "email" && s[0].step == LG_ASK_EMAIL { lg_send_email(s); }
+  if id == "code" && s[0].step == LG_ASK_CODE { lg_send_code(s); }
+}
+// A field's text as it stands.
+lg_input :: (s: [] Login, id: string, text: [] u8) {
+  if id == "email" { m := ifx text.count > LG_EMAIL then LG_EMAIL else text.count; for i: 0..<m { s[0].email[i] = text[i]; } s[0].email_n = m; }
+  if id == "code" { m := ifx text.count > LG_CODE then LG_CODE else text.count; for i: 0..<m { s[0].code[i] = text[i]; } s[0].code_n = m; }
+}
+// A piece of the answer in flight, and its end with the HTTP status (0: no answer).
+lg_piece :: (s: [] Login, bytes: [] u8) { for i: 0..<bytes.count { if s[0].reply_n < LG_REPLY { s[0].reply[s[0].reply_n] = bytes[i]; s[0].reply_n += 1; } } }
+lg_end :: (s: [] Login, status: int) { if s[0].ask != LG_NONE && !s[0].want { lg_answer(s, status); } }
+lg_wants :: (s: [] Login) -> bool { return s[0].want; }
+lg_sent :: (s: [] Login) { s[0].want = false; }
+
+// ---------------------------------------------------------------- checks
+
+LgTest :: struct { s: [1] Login; }
+// The host's part of a request: takes it, then gives the answer in a piece and an end.
+lg_test_answer :: (s: [] Login, status: int, text: string) {
+  #assert lg_wants(s);
+  lg_sent(s);
+  b: [512] u8; for i: 0..<text.count { b[i] = text[i]; }
+  lg_piece(s, b[0..<text.count]);
+  lg_end(s, status);
+}
+lg_test_type :: (s: [] Login, id: string, text: string) { b: [128] u8; for i: 0..<text.count { b[i] = text[i]; } lg_input(s, id, b[0..<text.count]); }
+
+#test "nobody logged in: an email sends a code, the code logs in, and log out comes back to the start" {
+  t: [1] LgTest; s := t[0].s[..];
+  lg_begin(s);
+  // the login first asks who is logged in
+  #assert s[0].step == LG_CHECKING && cast(string) s[0].url[0..<s[0].url_n] == "/api/auth/account" && s[0].body_n == 0;
+  lg_begin(s); #assert s[0].ask == LG_WHO;
+  lg_test_answer(s, 200, "{\"logged_in\":false}");
+  #assert s[0].step == LG_ASK_EMAIL && !lg_wants(s);
+  // a bad address is refused here and nothing is asked
+  lg_test_type(s, "email", "not an email");
+  #assert lg_press(s, "go") && !lg_wants(s) && s[0].said_n > 0 && s[0].step == LG_ASK_EMAIL;
+  lg_test_type(s, "email", "  ada@example.com ");
+  #assert lg_press(s, "go");
+  #assert cast(string) s[0].url[0..<s[0].url_n] == "/api/auth/email/start";
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"email\":\"ada@example.com\"}" && s[0].said_n == 0;
+  // a second press while it is in flight asks nothing more
+  lg_sent(s); #assert lg_press(s, "go") && !lg_wants(s); s[0].want = true;
+  lg_test_answer(s, 200, "{\"state\":\"sent\",\"expires_in\":600,\"tries\":5}");
+  #assert s[0].step == LG_ASK_CODE;
+  // a wrong code: the service's words are shown and the page stays
+  lg_test_type(s, "code", "123 456");
+  lg_submit(s, "code");
+  #assert cast(string) s[0].url[0..<s[0].url_n] == "/api/auth/email/verify" && cast(string) s[0].body[0..<s[0].body_n] == "{\"code\":\"123456\"}";
+  lg_test_answer(s, 400, "{\"error\":\"That code isn't right. 4 tries left.\"}");
+  #assert s[0].step == LG_ASK_CODE && cast(string) s[0].said[0..<s[0].said_n] == "That code isn't right. 4 tries left.";
+  #assert lg_press(s, "go");
+  lg_test_answer(s, 200, "{\"state\":\"logged-in\",\"account\":\"acct_1\",\"new\":false,\"player\":null}");
+  #assert s[0].step == LG_IN && cast(string) s[0].who[0..<s[0].who_n] == "ada@example.com";
+  #assert lg_press(s, "out") && cast(string) s[0].url[0..<s[0].url_n] == "/api/auth/logout";
+  lg_test_answer(s, 200, "{\"state\":\"logged-out\"}");
+  #assert s[0].step == LG_ASK_EMAIL && s[0].who_n == 0 && !lg_press(s, "nothing");
+}
+#test "someone logged in is shown at once; no answer at all says so and asks for an email; another email goes back" {
+  t: [1] LgTest; s := t[0].s[..];
+  lg_begin(s);
+  lg_test_answer(s, 200, "{\"logged_in\":true,\"account\":\"acct_9\",\"email\":\"ada@example.com\"}");
+  #assert s[0].step == LG_IN && cast(string) s[0].who[0..<s[0].who_n] == "ada@example.com";
+  u: [1] LgTest; v := u[0].s[..];
+  lg_begin(v);
+  lg_test_answer(v, 0, "");
+  #assert v[0].step == LG_ASK_EMAIL;
+  lg_test_type(v, "email", "ada@example.com");
+  #assert lg_press(v, "go");
+  lg_test_answer(v, 0, "");
+  #assert v[0].step == LG_ASK_EMAIL && cast(string) v[0].said[0..<v[0].said_n] == "can't reach the server. try again.";
+  #assert lg_press(v, "go");
+  lg_test_answer(v, 200, "{\"state\":\"sent\"}");
+  #assert v[0].step == LG_ASK_CODE;
+  #assert lg_press(v, "back") && v[0].step == LG_ASK_EMAIL && !lg_wants(v);
+  #assert !lg_email_ok("a@b@c") && !lg_email_ok("@b") && !lg_email_ok("a@") && !lg_email_ok("a\"@b") && lg_email_ok("a@b");
+}
+#test "/login/cli: logged in, a press makes the command line's code, shown to copy; nothing is made before the press" {
+  t: [1] LgTest; s := t[0].s[..];
+  s[0].cli = true;
+  lg_begin(s);
+  lg_test_answer(s, 200, "{\"logged_in\":true,\"account\":\"acct_9\",\"email\":\"ada@example.com\"}");
+  #assert s[0].step == LG_IN && !lg_wants(s) && s[0].cli_code_n == 0;
+  #assert lg_press(s, "cli.make") && cast(string) s[0].url[0..<s[0].url_n] == "/api/auth/cli/code" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
+  // a second press while it is in flight asks nothing more
+  lg_sent(s); #assert lg_press(s, "cli.make") && !lg_wants(s); s[0].want = true;
+  lg_test_answer(s, 200, "{\"state\":\"code\",\"code\":\"0123456789abcdef0123456789abcdef\",\"expires_in\":300}");
+  #assert lg_cli_code(s) == "0123456789abcdef0123456789abcdef" && s[0].said_n == 0;
+  // make another: the old one is gone while the new one is asked for
+  #assert lg_press(s, "cli.make") && s[0].cli_code_n == 0;
+  lg_test_answer(s, 200, "{\"state\":\"code\",\"code\":\"ffffffffffffffffffffffffffffffff\",\"expires_in\":300}");
+  #assert lg_cli_code(s) == "ffffffffffffffffffffffffffffffff";
+  // logging out forgets it
+  #assert lg_press(s, "out"); lg_test_answer(s, 200, "{\"state\":\"logged-out\"}");
+  #assert s[0].cli_code_n == 0 && s[0].step == LG_ASK_EMAIL;
+}
+#test "/login/cli: a refusal is said in the service's words; an answer that is not a code shows none; an ended login asks for the email again" {
+  t: [1] LgTest; s := t[0].s[..];
+  s[0].cli = true;
+  lg_begin(s);
+  lg_test_answer(s, 200, "{\"logged_in\":true,\"account\":\"acct_9\",\"email\":\"ada@example.com\"}");
+  #assert lg_press(s, "cli.make");
+  lg_test_answer(s, 429, "{\"error\":\"Too many requests from your network.\"}");
+  #assert s[0].cli_code_n == 0 && cast(string) s[0].said[0..<s[0].said_n] == "Too many requests from your network." && s[0].step == LG_IN;
+  #assert lg_press(s, "cli.make");
+  lg_test_answer(s, 200, "{\"state\":\"code\",\"code\":\"0123456789abcdef0123456789abcdef00\"}");
+  #assert s[0].cli_code_n == 0;
+  #assert lg_press(s, "cli.make");
+  lg_test_answer(s, 200, "{\"state\":\"code\",\"code\":\"0123456789ABCDEF0123456789abcdef\"}");
+  #assert s[0].cli_code_n == 0;
+  #assert lg_press(s, "cli.make");
+  lg_test_answer(s, 401, "{\"error\":\"Log in first.\"}");
+  #assert s[0].step == LG_ASK_EMAIL && s[0].cli_code_n == 0;
+  _ = lg_press(s, "cli.make"); #assert !lg_wants(s);
+  // the plain login page has no code to make
+  u: [1] LgTest; v := u[0].s[..];
+  lg_begin(v);
+  lg_test_answer(v, 200, "{\"logged_in\":true,\"account\":\"acct_9\"}");
+  #assert !lg_press(v, "cli.make") && !lg_wants(v);
+}

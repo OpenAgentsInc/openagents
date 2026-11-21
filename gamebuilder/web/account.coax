@@ -1,0 +1,910 @@
+// gamebuilder.org keeps a logged-in person's game on their account (docs/web-world.md, "Kept on
+// your account"; issue 16): the game a guest built is kept there once they log in or create an
+// account, and it comes back on any browser they log in on, and in the app.
+//
+// Nothing here is a save path of the website's own. The file is the app's level file
+// (web/level.coax: world.doc.v1, then aethyr.content.v1 `shape`), the game is the app's game
+// (new-game with the type's id), and the requests are the same rows every surface uses, at the
+// hosted levels API on this site (docs/programmatic-access.md):
+//   GET  /api/auth/account                who is logged in (the login service; asked first every time, so
+//                                         a session the service renews is renewed in this browser)
+//   POST /api/rows/list-games {}          the account's games (the picker's "your games")
+//   POST /api/rows/list-levels {}         each level's revision
+//   POST /api/rows/new-game               a game of the type, made once (its key says which)
+//   POST /api/rows/read-content           a level's file
+//   POST /api/rows/write-content          a level's file, from the revision it was read at
+// The browser's login is the login service's cookie, which the hosted API takes from this site's
+// own pages only (coax/api.coax gb_api_cookie_call).
+//
+// The rule when both copies exist, the same as the app's sync (coax/sync.coax), and always said in
+// words on the page:
+//   only this browser's changed    it is written to the account
+//   only the account's changed     the account's copy opens here
+//   both changed                   nothing is lost: this browser's copy is kept as a new game on the
+//                                  account and stays open; the account's is under "your games"
+//   the account's is gone          this browser's copy is kept as a new game
+// A guest's built game is kept as a new game: it never writes over a game already on the account.
+// A save that fails changes nothing in this browser (web/keep.coax keeps it there as ever) and is
+// tried again.
+//
+// What the account holds is the app's limits (shared/game-types.coax GT_LEVEL_*): 512 things, 64
+// different shapes and 262,144 bytes a level (the village's buildings are things among them). A bigger game is not
+// sent: it stays in this browser, and the page says so with the number. A level's settings that
+// differ (keep.coax's settings-N) are this browser's alone: the level file does not hold them.
+//
+// Which game on the account each game type's level here is, and what both sides last agreed on, is
+// one small record in this browser (keep.coax's `account`):
+//   gamebuilder.web-account.v1 ACCOUNT          (- for nobody yet)
+//   SLOT GAME LEVEL REVISION SUM BUILT KEY      a line a level kept here that has anything to say (keep.coax's
+//                                              slots: a game type's number, then crates' second and third rooms)
+//   SLOT GAME LEVEL REVISION SUM BUILT KEY FROM a remix (web/page.coax gs_remix): the code of the published game
+//                                              the level was made from, sent with its publish (web/publish.coax)
+// A crates game is three levels of one game on the account (shared/game-types.coax gt_levels): each room is saved
+// and read as its own level while it is the one that is up, and a game made here links all three at once.
+//   coax/bin/coax test web/account.coax --library
+
+#load "keep.coax";
+#load "../../coax/lib/json/json.coax";
+
+AC_HEAD :: "gamebuilder.web-account.v1";
+AC_WHO :: 96;            // bytes of an account's id
+AC_KEY :: 40;            // bytes of a new game's key
+AC_FROM :: 6;            // a link's code (coax/publish.coax PUB_CODE)
+AC_GAMES :: 32;          // games of the account the picker lists
+AC_TITLE :: 48;
+AC_URL :: 48;
+AC_BODY :: 2 * GT_LEVEL_FILE + 1024;   // a request's body: a level's file as JSON text, every byte of the biggest escaped (the page's request buffer is as big)
+AC_REPLY :: 2 * GT_LEVEL_FILE + 4096;  // an answer: a level's file the same way, and what is said with it
+AC_NODES :: 4096;        // its JSON's values
+AC_SAID :: 320;
+AC_WAIT :: 4.0;          // seconds from a change to its save on the account
+AC_POLL :: 60.0;         // seconds between looks at the account while a game is up
+AC_RETRY :: 15.0;        // seconds to the next try after one that failed
+AC_KEY_WAIT :: 2.0;      // seconds a new game's key is given to reach this browser's record before the game is made
+AC_TRIES :: 3;           // times a pass starts over at once (the account changed under it) before it waits
+// Where a pass is.
+AC_IDLE :: 0; AC_P_WHO :: 1; AC_P_GAMES :: 2; AC_P_LEVELS :: 3; AC_P_KEY :: 4; AC_P_NEW :: 5; AC_P_REV :: 6; AC_P_PUSH :: 7; AC_P_PULL :: 8;
+// How the game that is up stands with the account (ac_note).
+AC_S_NONE :: 0;          // nothing to say: nobody is logged in, or nothing is built yet
+AC_S_BUSY :: 1;          // being saved
+AC_S_KEPT :: 2;          // kept on the account
+AC_S_LOCAL :: 3;         // kept in this browser only: over a limit of the account's, or refused by it
+AC_S_NOT :: 4;           // not kept yet: the save failed, and is tried again
+AC_S_OUT :: 5;           // the login ended
+
+AcLink :: struct {
+  game: int; level: int;               // the account's game and its level (0: none yet)
+  rev: int;                            // the account's revision both sides last agreed on (-1: the game was made and never written; -2: it is to be read whatever is here)
+  sum: int;                            // this browser's file's sum then (ac_sum)
+  built: bool;                         // something was built here: a game worth keeping
+  key: [AC_KEY] u8; key_n: int;        // the key its new game is made with, once
+  from: [AC_FROM] u8; from_n: int;     // a remix: the code of the published game it was made from (0: it is none)
+}
+AcGame :: struct { game: int; level: int; more: [GT_LEVELS_MOST - 1] int; kind: int; title: [AC_TITLE] u8; title_n: int; }
+Acct :: struct {
+  who: [AC_WHO] u8; who_n: int;        // the account the record is of
+  link: [KP_KINDS] AcLink;
+  loaded: bool;                        // this browser's record has answered
+  legacy: bool;                        // it had none: a level kept here before there was one counts as built
+  link_dirty: bool;                    // the record is to be written
+  key_wait: bool; key_at: f32;         // a new key's write is still with the host, and since when
+  games: [AC_GAMES] AcGame; games_n: int; listed: bool; list_want: bool; more: int;
+  phase: int; kind: int = -1;          // the pass in hand, and the game type it is of
+  listing: bool;                       // it is the picker's list, not a game's
+  want: bool;                          // a request is ready for the face
+  url: [AC_URL] u8; url_n: int; body: [AC_BODY] u8; body_n: int;
+  reply: [AC_REPLY] u8; reply_n: int; over: bool;
+  nodes: [AC_NODES] JvNode;
+  state: int;
+  said: [AC_SAID] u8; said_n: int;     // words for the page to say once (ac_take)
+  pulled: bool;                        // the world was replaced by the account's copy: the page forgets its undo
+  made: bool;                          // a game was kept on the account for the first time: the page counts it
+  fresh: bool;                         // the write in hand is a new game's first
+  opened: bool;                        // the read in hand is a game picked from "your games"
+  due: f32; soon: bool;                // when the next pass starts
+  seen: int = -1;                      // the list's revision last seen
+  tries: int; failed: bool;
+  rev_now: int;                        // the account's revision of the linked level, as last listed (-1: no such level)
+  pass_sum: int; push_sum: int; push_level: int;
+  told: int;                           // the sum of the file a limit or a refusal was last said about
+  stuck_rev: int;                      // the account's revision that could not be read here
+  open_game: int; open_level: int; open_more: [GT_LEVELS_MOST - 1] int; open_kind: int = -1;   // a game picked from "your games", opened once this browser's own is settled
+  ent: [3] int; ent_ok: bool; keys: int;
+  file: [LV_DOC] u8;
+  back: [1] Blocks;
+}
+
+ac_hex :: (out: [] u8, n: int, v: int) -> int { k := n; d := "0123456789abcdef"; for q: 0..<8 { if k < out.count { out[k] = d[(v >> ((7 - q) * 4)) & 15]; k += 1; } } return k; }
+ac_mix :: (bytes: [] u8, salt: int) -> int { h := 2166136261 ^ salt; for c: bytes { h = ((h ^ cast(int) c) * 16777619) & 0xffffffff; } return h; }
+// The host's random bytes, as the page starts: what a new game's key is made of.
+ac_entropy :: (a: [] Acct, bytes: [] u8, ok: bool) { for i: 0..<3 { a[0].ent[i] = ac_mix(bytes, 77 + i * 131); } a[0].ent_ok = ok; }
+ac_say :: (a: [] Acct, words: string) { a[0].said_n = bl_put(a[0].said[..], 0, words); }
+// The words to say, once: their length in out (0: none).
+ac_take :: (a: [] Acct, out: [] u8) -> int { n := 0; for i: 0..<a[0].said_n { if n < out.count { out[n] = a[0].said[i]; n += 1; } } a[0].said_n = 0; return n; }
+ac_busy :: (a: [] Acct) -> bool { return a[0].phase != AC_IDLE; }
+ac_wants :: (a: [] Acct) -> bool { return a[0].want; }
+ac_sent :: (a: [] Acct) { a[0].want = false; }
+ac_who :: (a: [] Acct) -> string { return cast(string) a[0].who[0..<a[0].who_n]; }
+// The corner's note for the game that is up ("": the browser's own note stands).
+ac_note :: (a: [] Acct) -> string {
+  s := a[0].state;
+  return ifx s == AC_S_BUSY then "saving to your account" else ifx s == AC_S_KEPT then "kept on your account" else ifx s == AC_S_LOCAL then "kept in this browser only" else ifx s == AC_S_NOT then "not on your account yet" else "";
+}
+// Something was built in game type `kind`: its game is worth keeping.
+ac_built :: (a: [] Acct, kind: int) { if kind >= 0 && kind < KP_KINDS && !a[0].link[kind].built { a[0].link[kind].built = true; a[0].link_dirty = true; } }
+// A pass as soon as may be (someone logged in, a game came up).
+ac_wake :: (a: [] Acct) { a[0].soon = true; a[0].tries = 0; if a[0].state == AC_S_OUT { a[0].state = AC_S_NONE; } }
+// Nobody is logged in any more: nothing is said about the account, and an answer still on its way is not used.
+ac_out :: (a: [] Acct) { a[0].phase = AC_IDLE; a[0].want = false; a[0].state = AC_S_NONE; a[0].listed = false; a[0].games_n = 0; a[0].open_game = 0; a[0].key_wait = false; }
+// The picker wants the account's games.
+ac_list :: (a: [] Acct) { a[0].list_want = true; }
+
+// ---------------------------------------------------------------- this browser's record
+
+ac_num :: (out: [] u8, n: int, v: int) -> int { k := n; if v < 0 { k = bl_put(out, k, "-"); return bl_int(out, k, -v); } return bl_int(out, k, v); }
+ac_record_write :: (a: [] Acct, out: [] u8) -> int {
+  n := bl_put(out, 0, AC_HEAD); n = bl_put(out, n, " ");
+  n = bl_put(out, n, ifx a[0].who_n > 0 then ac_who(a) else "-"); n = bl_put(out, n, "\n");
+  for k: 0..<KP_KINDS {
+    l := a[0].link[k];
+    if l.level == 0 && !l.built && l.key_n == 0 { continue; }
+    n = ac_num(out, n, k); n = bl_put(out, n, " "); n = ac_num(out, n, l.game); n = bl_put(out, n, " "); n = ac_num(out, n, l.level); n = bl_put(out, n, " ");
+    n = ac_num(out, n, l.rev); n = bl_put(out, n, " "); n = ac_num(out, n, l.sum); n = bl_put(out, n, ifx l.built then " 1 " else " 0 ");
+    n = bl_put(out, n, ifx l.key_n > 0 then cast(string) a[0].link[k].key[0..<l.key_n] else "-");
+    if l.from_n == AC_FROM { n = bl_put(out, n, " "); n = bl_put(out, n, cast(string) a[0].link[k].from[0..<AC_FROM]); }
+    n = bl_put(out, n, "\n");
+  }
+  return n;
+}
+AcTok :: struct { lo: int; hi: int; }
+ac_tok :: (t: string, at: int) -> AcTok { i := at; while i < t.count && t[i] == ' ' { i += 1; } j := i; while j < t.count && t[j] != ' ' && t[j] != '\n' { j += 1; } return AcTok.{lo = i, hi = j}; }
+ac_int :: (t: string) -> int { v := 0; neg := false; for i: 0..<t.count { c := t[i]; if i == 0 && c == '-' { neg = true; } else if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); } else { return 0; } } return ifx neg then -v else v; }
+ac_key_ok :: (t: string) -> bool {
+  if t.count < 1 || t.count > AC_KEY { return false; }
+  for c: t { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A code as a record may hold it: AC_FROM of lowercase letters and digits.
+ac_from_ok :: (t: string) -> bool {
+  if t.count != AC_FROM { return false; }
+  for c: t { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { return false; } }
+  return true;
+}
+// The level kept here for game type `kind` is a remix of the published game at `code` ("": it is none). It stays
+// so while the level is this one: through a login, a save, a new game made of it. Another game opened in its place
+// from the account is not one (ac_decide).
+ac_from_set :: (a: [] Acct, kind: int, code: string) {
+  if kind < 0 || kind >= KP_KINDS { return; }
+  ok := ac_from_ok(code);
+  if ok { for i: 0..<AC_FROM { a[0].link[kind].from[i] = code[i]; } }
+  a[0].link[kind].from_n = ifx ok then AC_FROM else 0; a[0].link_dirty = true;
+}
+ac_from :: (a: [] Acct, kind: int) -> string {
+  if kind < 0 || kind >= KP_KINDS || a[0].link[kind].from_n != AC_FROM { return ""; }
+  return cast(string) a[0].link[kind].from[0..<AC_FROM];
+}
+// (what a level was remixed from is the level's, not the account's: forgetting the account's game leaves it)
+ac_forget :: (a: [] Acct, k: int, built: bool) { a[0].link[k].game = 0; a[0].link[k].level = 0; a[0].link[k].rev = 0; a[0].link[k].sum = 0; a[0].link[k].key_n = 0; a[0].link[k].built = built; a[0].link_dirty = true; }
+// Every level here of the game type `slot` is a level of (crates: its three rooms) is forgotten: what was built stays built.
+ac_forget_game :: (a: [] Acct, slot: int) {
+  kind := kp_slot_kind(slot);
+  for r: 0..<kp_rooms(kind) { q := kp_slot(kind, r); ac_forget(a, q, q == slot || a[0].link[q].built || a[0].link[q].level > 0); }
+}
+// The record as this browser kept it ("": none). Lines that are not the record's are not used.
+ac_record_read :: (a: [] Acct, text: string) {
+  a[0].loaded = true;
+  if text.count == 0 { a[0].legacy = true; return; }
+  h := ac_tok(text, 0);
+  if cast(string) text[h.lo..<h.hi] != AC_HEAD { return; }
+  w := ac_tok(text, h.hi);
+  who := cast(string) text[w.lo..<w.hi];
+  if who != "-" && who.count <= AC_WHO { a[0].who_n = bl_put(a[0].who[..], 0, who); }
+  at := w.hi;
+  while at < text.count {
+    while at < text.count && text[at] != '\n' { at += 1; }
+    at += 1;
+    if at >= text.count { break; }
+    t: [7] AcTok; p := at; full := true;
+    for q: 0..<7 { t[q] = ac_tok(text, p); p = t[q].hi; if t[q].hi == t[q].lo { full = false; } }
+    if !full { continue; }
+    k := ac_int(cast(string) text[t[0].lo..<t[0].hi]);
+    if k < 0 || k >= KP_KINDS || t[0].hi - t[0].lo > 2 { continue; }
+    // (what was built here before the record was read stays built)
+    was := a[0].link[k].built;
+    a[0].link[k].game = ac_int(cast(string) text[t[1].lo..<t[1].hi]); a[0].link[k].level = ac_int(cast(string) text[t[2].lo..<t[2].hi]);
+    a[0].link[k].rev = ac_int(cast(string) text[t[3].lo..<t[3].hi]); a[0].link[k].sum = ac_int(cast(string) text[t[4].lo..<t[4].hi]);
+    a[0].link[k].built = was || cast(string) text[t[5].lo..<t[5].hi] == "1";
+    key := cast(string) text[t[6].lo..<t[6].hi];
+    a[0].link[k].key_n = ifx key != "-" && ac_key_ok(key) then bl_put(a[0].link[k].key[..], 0, key) else 0;
+    // (a remix's line has an eighth word, on the same line: where it came from)
+    fr := AcTok.{lo = t[6].hi, hi = t[6].hi};
+    while fr.lo < text.count && text[fr.lo] == ' ' { fr.lo += 1; }
+    fr.hi = fr.lo; while fr.hi < text.count && text[fr.hi] != ' ' && text[fr.hi] != '\n' { fr.hi += 1; }
+    from := cast(string) text[fr.lo..<fr.hi];
+    a[0].link[k].from_n = ifx ac_from_ok(from) then bl_put(a[0].link[k].from[..], 0, from) else 0;
+    if a[0].link[k].level < 0 || a[0].link[k].level > 9999 { ac_forget(a, k, a[0].link[k].built); }
+  }
+}
+// The record's write has ended (or there was none to make): a new game's key is where a reload finds it.
+ac_linked :: (a: [] Acct) { a[0].key_wait = false; }
+
+// ---------------------------------------------------------------- requests
+
+ac_ask :: (a: [] Acct, phase: int, url: string) { a[0].phase = phase; a[0].want = true; a[0].reply_n = 0; a[0].over = false; a[0].url_n = bl_put(a[0].url[..], 0, url); }
+ac_ask_who :: (a: [] Acct) { a[0].body_n = 0; ac_ask(a, AC_P_WHO, "/api/auth/account"); }
+ac_ask_plain :: (a: [] Acct, phase: int, url: string) { a[0].body_n = bl_put(a[0].body[..], 0, "{}"); ac_ask(a, phase, url); }
+// The file of the world as level `level`, into Acct.file: its length (0: it does not fit a file at all).
+ac_file :: (a: [] Acct, st: [] LvStore, b: [] Blocks, level: int) -> int { return lv_write(b, st, level, a[0].file[..]); }
+// The sum of what is built, whatever its level's number: what the record holds to see a change by.
+ac_sum :: (a: [] Acct, st: [] LvStore, b: [] Blocks) -> int { n := ac_file(a, st, b, 1); return ifx n > 0 then kp_sum(a[0].file[0..<n]) else 0; }
+// Why the account does not hold the world as it stands, in words with the number, into Acct.said. True when it does.
+// (`bytes` and the store's shapes are of the file just written: ac_file.)
+ac_fits :: (a: [] Acct, st: [] LvStore, b: [] Blocks, bytes: int) -> bool {
+  o := a[0].said[..]; n := 0;
+  tail := " delete some and it is kept there too.";
+  if b[0].n > GT_LEVEL_THINGS {
+    n = bl_put(o, 0, "kept in this browser only: a game on your account holds "); n = bl_int(o, n, GT_LEVEL_THINGS); n = bl_put(o, n, " things at most, and this one has "); n = bl_int(o, n, b[0].n); n = bl_put(o, n, "."); n = bl_put(o, n, tail);
+  } else if st[0].shapes > GT_LEVEL_SHAPES {
+    n = bl_put(o, 0, "kept in this browser only: a game on your account holds "); n = bl_int(o, n, GT_LEVEL_SHAPES); n = bl_put(o, n, " different shapes (a kind and a size) at most, and this one has "); n = bl_int(o, n, st[0].shapes); n = bl_put(o, n, ". make some the same size and it is kept there too.");
+  } else if bytes == 0 || bytes > GT_LEVEL_FILE {
+    n = bl_put(o, 0, "kept in this browser only: a game on your account is "); n = bl_int(o, n, GT_LEVEL_FILE / 1024); n = bl_put(o, n, " kb at most, and this one is "); n = bl_int(o, n, (bytes + 1023) / 1024); n = bl_put(o, n, " kb."); n = bl_put(o, n, tail);
+  } else { return true; }
+  a[0].said_n = n;
+  return false;
+}
+// A pass ends: how the game stands, and when the next look is.
+ac_finish :: (a: [] Acct, state: int, time: f32) {
+  a[0].phase = AC_IDLE; a[0].want = false; a[0].state = state; a[0].fresh = false; a[0].opened = false; a[0].key_wait = false;
+  a[0].due = time + (ifx state == AC_S_NOT then AC_RETRY else AC_POLL);
+  if state != AC_S_NOT { a[0].failed = false; a[0].tries = 0; }
+}
+// A request had no good answer: nothing in this browser changes, it is said once, and tried again.
+ac_fail :: (a: [] Acct, status: int, time: f32) {
+  listing := a[0].listing;
+  if !a[0].failed {
+    o := a[0].said[..];
+    n := bl_put(o, 0, ifx listing then "can't read your account's games" else "not kept on your account yet");
+    if status == 0 { n = bl_put(o, n, ": can't reach the server."); } else { n = bl_put(o, n, ": the server answered "); n = bl_int(o, n, status); n = bl_put(o, n, "."); }
+    if !listing { n = bl_put(o, n, " it is kept in this browser, and tried again."); }
+    a[0].said_n = n;
+  }
+  a[0].failed = true; a[0].open_game = 0;
+  ac_finish(a, ifx listing then a[0].state else AC_S_NOT, time);
+  if listing { a[0].listing = false; a[0].due = time + AC_RETRY; }
+}
+// A pass starts over at once: the account changed under it. After a few, it waits.
+ac_again :: (a: [] Acct, time: f32) {
+  a[0].tries += 1;
+  if a[0].tries > AC_TRIES { ac_fail(a, 409, time); return; }
+  a[0].phase = AC_IDLE; a[0].want = false; a[0].soon = true;
+}
+// The server's refusal, in its own words where it gave any.
+ac_refused :: (a: [] Acct, d: Jv) {
+  o := a[0].said[..]; why: [200] u8;
+  wn := jv_str(d, jv_get(d, 0, "why"), why[..]);
+  n := bl_put(o, 0, "not kept on your account: ");
+  n = bl_put(o, n, ifx wn > 0 then cast(string) why[0..<wn] else "the server refused it");
+  n = bl_put(o, n, ". it is kept in this browser.");
+  a[0].said_n = n;
+}
+ac_push :: (a: [] Acct, st: [] LvStore, b: [] Blocks, kind: int, rev: int, time: f32) {
+  l := a[0].link[kind];
+  bytes := ac_file(a, st, b, l.level);
+  if !ac_fits(a, st, b, bytes) {
+    // (said when the game first does not fit, not at every look)
+    if a[0].told == a[0].pass_sum { a[0].said_n = 0; }
+    a[0].told = a[0].pass_sum;
+    ac_finish(a, AC_S_LOCAL, time); return;
+  }
+  if a[0].told == a[0].pass_sum { ac_finish(a, AC_S_LOCAL, time); return; }   // (the same file the account refused: not sent again until it changes)
+  o: [1] Jo; jo_start(o[..], a[0].body[..]); jo_obj(o[..]);
+  jo_key(o[..], "level"); jo_int(o[..], l.level); jo_key(o[..], "revision"); jo_int(o[..], rev);
+  jo_key(o[..], "content"); jo_str(o[..], cast(string) a[0].file[0..<bytes]); jo_end(o[..]);
+  if o[0].bad { a[0].said_n = 0; ac_finish(a, AC_S_LOCAL, time); return; }
+  a[0].body_n = o[0].n; a[0].push_sum = a[0].pass_sum; a[0].push_level = l.level;
+  a[0].state = AC_S_BUSY;
+  ac_ask(a, AC_P_PUSH, "/api/rows/write-content");
+}
+ac_pull :: (a: [] Acct, kind: int) {
+  o: [1] Jo; jo_start(o[..], a[0].body[..]); jo_obj(o[..]); jo_key(o[..], "level"); jo_int(o[..], a[0].link[kind].level); jo_end(o[..]);
+  a[0].body_n = o[0].n;
+  ac_ask(a, AC_P_PULL, "/api/rows/read-content");
+}
+// This browser's game of the type is kept as a new game on the account: its key first (made once, and written to
+// this browser's record before the game is asked for, so a reload makes no second game), then the game, then its file.
+ac_new :: (a: [] Acct, st: [] LvStore, b: [] Blocks, kind: int, time: f32) {
+  bytes := ac_file(a, st, b, 1);
+  if !ac_fits(a, st, b, bytes) {
+    if a[0].told == a[0].pass_sum { a[0].said_n = 0; }
+    a[0].told = a[0].pass_sum;
+    ac_finish(a, AC_S_LOCAL, time); return;
+  }
+  if a[0].told == a[0].pass_sum { ac_finish(a, AC_S_LOCAL, time); return; }
+  if a[0].link[kind].key_n == 0 {
+    a[0].keys += 1;
+    t := cast(int) (time * 1000000.0);
+    n := bl_put(a[0].link[kind].key[..], 0, "web-");
+    n = ac_hex(a[0].link[kind].key[..], n, a[0].ent[0] ^ (ifx a[0].ent_ok then 0 else t));
+    n = ac_hex(a[0].link[kind].key[..], n, (a[0].ent[1] + a[0].keys * 40503 + kind) & 0xffffffff);
+    n = ac_hex(a[0].link[kind].key[..], n, (a[0].ent[2] ^ t) & 0xffffffff);
+    a[0].link[kind].key_n = n;
+    a[0].link_dirty = true; a[0].key_wait = true; a[0].key_at = time;
+  }
+  a[0].state = AC_S_BUSY; a[0].fresh = true;
+  a[0].phase = AC_P_KEY;
+}
+ac_ask_new :: (a: [] Acct, kind: int) {
+  ids := GT_ID;
+  o: [1] Jo; jo_start(o[..], a[0].body[..]); jo_obj(o[..]);
+  jo_key(o[..], "template"); jo_str(o[..], ids[gt_web_type(kp_slot_kind(kind))]);
+  jo_key(o[..], "key"); jo_str(o[..], cast(string) a[0].link[kind].key[0..<a[0].link[kind].key_n]); jo_end(o[..]);
+  a[0].body_n = o[0].n;
+  ac_ask(a, AC_P_NEW, "/api/rows/new-game");
+}
+// What is to be done for the game that is up, now that the account's levels are listed (Acct.rev_now).
+ac_decide :: (a: [] Acct, st: [] LvStore, b: [] Blocks, kind: int, time: f32) {
+  l := a[0].link[kind];
+  sum := ac_sum(a, st, b); a[0].pass_sum = sum;
+  if a[0].open_game > 0 && a[0].open_kind == kind {
+    // a game picked from "your games" opens once this browser's own game of the type is safe: never built, or
+    // kept on the account as it stands. Otherwise it is settled first (below), and this is come back to.
+    settled := (l.level == 0 && !l.built) || (l.level > 0 && l.rev >= 0 && sum == l.sum && a[0].rev_now == l.rev);
+    if settled {
+      a[0].link[kind].game = a[0].open_game; a[0].link[kind].level = a[0].open_level; a[0].link[kind].rev = -2; a[0].link[kind].sum = 0;
+      a[0].link[kind].key_n = 0; a[0].link[kind].built = true; a[0].link_dirty = true; a[0].open_game = 0;
+      a[0].link[kind].from_n = 0;   // (another game takes this level's place: whatever was remixed here is not it)
+      // (the game's other levels are its other rooms here: read when each comes up; a room the game has no level for is this browser's alone)
+      for r: 1..<kp_rooms(kind) {
+        q := kp_slot(kind, r); lv := a[0].open_more[r - 1];
+        ac_forget(a, q, false);
+        if lv > 0 { a[0].link[q].game = a[0].link[kind].game; a[0].link[q].level = lv; a[0].link[q].rev = -2; a[0].link[q].built = true; }
+      }
+      a[0].opened = true; a[0].state = AC_S_BUSY;
+      ac_pull(a, kind); return;
+    }
+    a[0].soon = true;
+  }
+  room := kp_slot_room(kind); first := kp_slot_kind(kind);
+  if l.level == 0 {
+    if !l.built && l.key_n == 0 { ac_finish(a, AC_S_NONE, time); return; }
+    if room > 0 && a[0].link[first].level > 0 {
+      // a later room of a game whose account copy has no level for it (it was made with fewer, or the level was deleted
+      // there): no second game is made for one room. It stays here, and that is said once.
+      if a[0].told != sum { o := a[0].said[..]; n := bl_put(o, 0, "room "); n = bl_int(o, n, room + 1); n = bl_put(o, n, " is kept in this browser only: this game on your account has no level for it."); a[0].said_n = n; }
+      a[0].told = sum;
+      ac_finish(a, AC_S_LOCAL, time); return;
+    }
+    ac_new(a, st, b, kind, time); return;
+  }
+  if l.rev == -2 {
+    if a[0].rev_now < 0 { ac_say(a, "that game is no longer on your account."); ac_forget(a, kind, false); ac_finish(a, AC_S_NONE, time); return; }
+    a[0].opened = true; ac_pull(a, kind); return;
+  }
+  if a[0].rev_now < 0 && room > 0 {
+    // a later room whose level is gone from the account, its game still there: the room stays in this browser
+    ac_forget(a, kind, true);
+    o := a[0].said[..]; n := bl_put(o, 0, "room "); n = bl_int(o, n, room + 1); n = bl_put(o, n, " is no longer on your account: it is kept in this browser only.");
+    a[0].said_n = n; a[0].told = sum;
+    ac_finish(a, AC_S_LOCAL, time); return;
+  }
+  if a[0].rev_now < 0 {
+    ac_forget_game(a, kind);
+    ac_new(a, st, b, kind, time);
+    if a[0].phase == AC_P_KEY { ac_say(a, "this game is no longer on your account. this browser's copy is kept there as a new game."); }
+    return;
+  }
+  if l.rev == -1 { ac_push(a, st, b, kind, a[0].rev_now, time); return; }
+  here := sum != l.sum; there := a[0].rev_now != l.rev;
+  if !here && !there { ac_finish(a, AC_S_KEPT, time); return; }
+  if here && !there { ac_push(a, st, b, kind, l.rev, time); return; }
+  if !here {
+    if a[0].rev_now == a[0].stuck_rev { ac_finish(a, AC_S_LOCAL, time); return; }   // (the copy this page could not show: left alone until it changes)
+    ac_pull(a, kind); return;
+  }
+  // both changed: this browser's copy becomes a new game (every level of it: crates' three rooms), and the account's stays as it is
+  ac_forget_game(a, kind);
+  ac_new(a, st, b, kind, time);
+  if a[0].phase == AC_P_KEY { ac_say(a, "this game changed here and on your account. nothing is lost: this browser's copy is kept as a new game, and the account's is under your games."); }
+}
+
+// Each frame. `in`: someone is logged in. `up`: a game is up and nothing of it is still being read from this
+// browser (`kind` is its type). A change is saved AC_WAIT seconds on; the account is looked at every AC_POLL.
+ac_tick :: (a: [] Acct, b: [] Blocks, kind: int, time: f32, in: bool, up: bool) {
+  if !in { if a[0].phase != AC_IDLE || a[0].state != AC_S_NONE || a[0].listed { ac_out(a); } return; }
+  if a[0].phase == AC_P_KEY {
+    if !up || kind != a[0].kind { a[0].phase = AC_IDLE; a[0].soon = true; return; }
+    if !a[0].key_wait || time >= a[0].key_at + AC_KEY_WAIT { a[0].key_wait = false; ac_ask_new(a, kind); }
+    return;
+  }
+  if a[0].phase != AC_IDLE || !a[0].loaded || a[0].state == AC_S_OUT { return; }
+  if up {
+    if kind != a[0].kind { a[0].kind = kind; a[0].state = AC_S_NONE; a[0].soon = true; a[0].seen = b[0].rev; a[0].tries = 0; }
+    if b[0].rev != a[0].seen { a[0].seen = b[0].rev; if a[0].link[kind].built && a[0].due > time + AC_WAIT { a[0].due = time + AC_WAIT; } }
+    if a[0].soon || time >= a[0].due {
+      a[0].soon = false; a[0].listing = false; a[0].due = time + AC_POLL;
+      ac_ask_who(a); return;
+    }
+  }
+  if a[0].list_want { a[0].list_want = false; a[0].listing = true; ac_ask_who(a); }
+}
+ac_piece :: (a: [] Acct, bytes: [] u8) { for i: 0..<bytes.count { if a[0].reply_n < AC_REPLY { a[0].reply[a[0].reply_n] = bytes[i]; a[0].reply_n += 1; } else { a[0].over = true; } } }
+// The account's games, from list-games' answer.
+ac_games :: (a: [] Acct, d: Jv) {
+  a[0].games_n = 0; a[0].more = 0; a[0].listed = true;
+  g := jv_get(d, 0, "games");
+  i := ifx jv_kind(d, g) == JV_ARRAY then d.nodes[g].first else -1;
+  word: [32] u8;
+  while i >= 0 {
+    if a[0].games_n >= AC_GAMES { a[0].more += 1; i = d.nodes[i].next; continue; }
+    n := a[0].games_n;
+    wn := jv_str(d, jv_get(d, i, "template"), word[..]);
+    levels := jv_get(d, i, "levels");
+    a[0].games[n].game = jv_int(d, jv_get(d, i, "game"), 0);
+    a[0].games[n].level = ifx jv_kind(d, levels) == JV_ARRAY then jv_int(d, d.nodes[levels].first, 0) else 0;
+    // (a game of several levels: the ones after the first are its later rooms, as many as a game is made with)
+    for q: 0..<GT_LEVELS_MOST - 1 { a[0].games[n].more[q] = 0; }
+    li := ifx a[0].games[n].level > 0 then d.nodes[d.nodes[levels].first].next else -1; q := 0;
+    while li >= 0 && q < GT_LEVELS_MOST - 1 { a[0].games[n].more[q] = jv_int(d, li, 0); q += 1; li = d.nodes[li].next; }
+    a[0].games[n].kind = ifx wn > 0 then gt_web_kind(gt_of(cast(string) word[0..<wn])) else -1;
+    tn := jv_str(d, jv_get(d, i, "title"), a[0].games[n].title[..]);
+    a[0].games[n].title_n = ifx tn > 0 then tn else 0;
+    if a[0].games[n].game > 0 { a[0].games_n += 1; }
+    i = d.nodes[i].next;
+  }
+}
+// A request's answer ended: `status` is its HTTP status, 0 when there was none. `up` and `kind` as ac_tick's.
+ac_end :: (a: [] Acct, st: [] LvStore, b: [] Blocks, kind: int, status: int, time: f32, up: bool) {
+  phase := a[0].phase;
+  if phase == AC_IDLE || phase == AC_P_KEY { return; }
+  a[0].phase = AC_IDLE;
+  r := cast(string) a[0].reply[0..<a[0].reply_n];
+  d: [1] Jv;
+  parsed := !a[0].over && jv_parse(d[..], r, a[0].nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+  if phase == AC_P_WHO {
+    if status == 401 || (status == 200 && parsed && !jv_bool(d[0], jv_get(d[0], 0, "logged_in"))) {
+      listing := a[0].listing; a[0].listing = false;
+      ac_finish(a, AC_S_OUT, time);
+      if !listing { ac_say(a, "log in again to keep your game on your account. it is kept in this browser."); }
+      return;
+    }
+    id: [AC_WHO] u8;
+    idn := ifx status == 200 && parsed then jv_str(d[0], jv_get(d[0], 0, "account"), id[..]) else -1;
+    if idn <= 0 { ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    if cast(string) id[0..<idn] != ac_who(a) {
+      // another account than the record's (or the first): what the record says of games is the other's. What was built stays built.
+      for k: 0..<KP_KINDS { ac_forget(a, k, a[0].link[k].built || a[0].link[k].level > 0); }
+      a[0].who_n = bl_put(a[0].who[..], 0, cast(string) id[0..<idn]); a[0].link_dirty = true; a[0].told = 0; a[0].stuck_rev = 0;
+    }
+    if a[0].listing { ac_ask_plain(a, AC_P_GAMES, "/api/rows/list-games"); } else { ac_ask_plain(a, AC_P_LEVELS, "/api/rows/list-levels"); }
+    return;
+  }
+  ok := status == 200 && parsed && jv_bool(d[0], jv_get(d[0], 0, "ok"));
+  if phase == AC_P_GAMES {
+    a[0].listing = false;
+    if !ok { a[0].listing = true; ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    ac_games(a, d[0]);
+    return;
+  }
+  // the rest are of a game: the one that was up when the pass began, and still is
+  if !up || kind != a[0].kind { a[0].soon = true; a[0].fresh = false; a[0].opened = false; return; }
+  refused := parsed && status >= 400 && status < 500 && status != 401 && status != 403 && jv_get(d[0], 0, "error") >= 0;
+  if phase == AC_P_LEVELS || phase == AC_P_REV {
+    if !ok { ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    a[0].rev_now = -1;
+    ls := jv_get(d[0], 0, "levels");
+    i := ifx jv_kind(d[0], ls) == JV_ARRAY then d[0].nodes[ls].first else -1;
+    while i >= 0 {
+      if jv_int(d[0], jv_get(d[0], i, "level"), 0) == a[0].link[kind].level && a[0].link[kind].level > 0 { a[0].rev_now = jv_int(d[0], jv_get(d[0], i, "revision"), -1); }
+      i = d[0].nodes[i].next;
+    }
+    if phase == AC_P_LEVELS { ac_decide(a, st, b, kind, time); return; }
+    // a new game's level, just made: written from the revision it has
+    if a[0].rev_now < 0 { ac_fail(a, 502, time); return; }
+    a[0].pass_sum = ac_sum(a, st, b);
+    a[0].fresh = true;
+    ac_push(a, st, b, kind, a[0].rev_now, time);
+    return;
+  }
+  if phase == AC_P_NEW {
+    if refused { ac_refused(a, d[0]); a[0].told = a[0].pass_sum; ac_finish(a, AC_S_LOCAL, time); return; }
+    game := ifx ok then jv_int(d[0], jv_get(d[0], 0, "game"), 0) else 0; level := ifx ok then jv_int(d[0], jv_get(d[0], 0, "level"), 0) else 0;
+    if game < 1 || level < 1 { ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    // a game of several levels (crates: three rooms) names them all: each is the level of its room here, written when that room is up
+    ls := jv_get(d[0], 0, "levels"); first := kp_slot_kind(kind); room := kp_slot_room(kind);
+    if kp_rooms(first) > 1 && jv_kind(d[0], ls) == JV_ARRAY {
+      li := d[0].nodes[ls].first; ri := 0;
+      while li >= 0 && ri < kp_rooms(first) {
+        q := kp_slot(first, ri); lv := jv_int(d[0], li, 0);
+        if q != kind && lv > 0 { was := a[0].link[q].built; ac_forget(a, q, was); a[0].link[q].game = game; a[0].link[q].level = lv; a[0].link[q].rev = -1; }
+        if q == kind && lv > 0 { level = lv; }
+        ri += 1; li = d[0].nodes[li].next;
+      }
+    } else if room > 0 { ac_fail(a, 502, time); return; }   // (a server that makes the game with one level: this room has none there)
+    a[0].link[kind].game = game; a[0].link[kind].level = level; a[0].link[kind].rev = -1; a[0].link[kind].sum = 0; a[0].link_dirty = true;
+    ac_ask_plain(a, AC_P_REV, "/api/rows/list-levels");
+    return;
+  }
+  if phase == AC_P_PUSH {
+    if status == 409 { a[0].fresh = false; ac_again(a, time); return; }
+    if refused { ac_refused(a, d[0]); a[0].told = a[0].push_sum; ac_finish(a, AC_S_LOCAL, time); return; }
+    rev := ifx ok then jv_int(d[0], jv_get(d[0], 0, "revision"), -1) else -1;
+    if rev < 0 { ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    first := a[0].fresh;
+    a[0].link[kind].rev = rev; a[0].link[kind].sum = a[0].push_sum; a[0].link[kind].key_n = 0; a[0].link_dirty = true; a[0].told = 0;
+    if first { a[0].made = true; if a[0].said_n == 0 { ac_say(a, "your game is kept on your account now: it opens in the app, and in any browser you log in on."); } }
+    ac_finish(a, AC_S_KEPT, time);
+    // (built on while it was sent: saved again soon)
+    if ac_sum(a, st, b) != a[0].push_sum { a[0].due = time + AC_WAIT; a[0].state = AC_S_BUSY; }
+    return;
+  }
+  if phase == AC_P_PULL {
+    opened := a[0].opened;
+    if status == 404 && refused { a[0].opened = false; ac_again(a, time); return; }
+    // (built on while it was read: nothing is replaced, and the pass starts over with both changed)
+    moved := ac_sum(a, st, b) != a[0].pass_sum;
+    n := ifx ok then jv_str(d[0], jv_get(d[0], 0, "content"), a[0].file[..]) else -1;
+    rev := ifx ok then jv_int(d[0], jv_get(d[0], 0, "revision"), -1) else -1;
+    if n <= 0 || rev < 0 { ac_fail(a, ifx status == 200 then 502 else status, time); return; }
+    if moved && !opened { ac_again(a, time); return; }
+    if moved { ac_forget(a, kind, true); ac_say(a, "you built on while that game was read: it was not opened, and what you built is kept."); a[0].soon = true; ac_finish(a, AC_S_NONE, time); return; }
+    a[0].back[0] = b[0];
+    if !lv_read(b, st, cast(string) a[0].file[0..<n]) {
+      // not a level this page builds (the app's own kinds, or more than this type holds): the world stays as it was
+      b[0] = a[0].back[0];
+      ac_say(a, ifx opened then "that game has things this page can't show: open it in the app. this browser's game is as it was."
+        else "your account's copy of this game has things this page can't show. it is left as it is: open it in the app.");
+      if opened { ac_forget(a, kind, false); ac_finish(a, AC_S_NONE, time); } else { a[0].stuck_rev = rev; ac_finish(a, AC_S_LOCAL, time); }
+      return;
+    }
+    a[0].link[kind].rev = rev; a[0].link[kind].sum = ac_sum(a, st, b); a[0].link[kind].built = true; a[0].link_dirty = true;
+    a[0].pulled = true; a[0].seen = b[0].rev; a[0].told = 0;
+    ac_say(a, ifx opened then "opened from your account." else "your account has a newer copy of this game: it is open here now.");
+    ac_finish(a, AC_S_KEPT, time);
+    return;
+  }
+}
+// A game of "your games" picked (its place in the list): the game type to enter, or -1 with words when it is
+// not one this page opens. It opens once this browser's own game of the type is safe (ac_decide).
+ac_open :: (a: [] Acct, i: int) -> int {
+  if i < 0 || i >= a[0].games_n { return -1; }
+  g := a[0].games[i];
+  if g.kind < 0 || g.level < 1 { ac_say(a, "that game is one the app plays: open it there."); return -1; }
+  if a[0].link[g.kind].game == g.game && a[0].link[g.kind].level == g.level { a[0].open_game = 0; ac_wake(a); return g.kind; }   // (the one this browser has: it is up as it is here)
+  a[0].open_game = g.game; a[0].open_level = g.level; a[0].open_kind = g.kind;
+  for q: 0..<GT_LEVELS_MOST - 1 { a[0].open_more[q] = g.more[q]; }
+  ac_wake(a);
+  return g.kind;
+}
+
+// ---------------------------------------------------------------- checks
+
+AcTest :: struct { a: [1] Acct; b: [1] Blocks; st: [1] LvStore; t: f32; out: [AC_SAID] u8; rec: [KP_LINK] u8; }
+ac_test_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+ac_test_new :: (t: [] AcTest, kind: int) { bl_new(t[0].b[..], gt_web_type(kind)); ty := gt_web_type(kind); bl_bounds(t[0].b[..], GT_FAR[ty], GT_HIGH[ty]); bl_low(t[0].b[..], GT_LOW[ty]); bl_roles(t[0].b[..], gt_roles(ty)); }
+ac_test_tick :: (t: [] AcTest, kind: int, by: f32) { t[0].t += by; ac_tick(t[0].a[..], t[0].b[..], kind, t[0].t, true, true); if t[0].a[0].link_dirty { t[0].a[0].link_dirty = false; ac_linked(t[0].a[..]); ac_tick(t[0].a[..], t[0].b[..], kind, t[0].t, true, true); } }
+// The request the page would send: its door and its body.
+ac_test_door :: (t: [] AcTest) -> string { return ifx t[0].a[0].want then cast(string) t[0].a[0].url[0..<t[0].a[0].url_n] else ""; }
+ac_test_body :: (t: [] AcTest) -> string { return cast(string) t[0].a[0].body[0..<t[0].a[0].body_n]; }
+ac_test_answer :: (t: [] AcTest, kind: int, status: int, text: string) {
+  ac_sent(t[0].a[..]);
+  buf: [2048] u8; n := 0; for c: text { buf[n] = c; n += 1; }
+  ac_piece(t[0].a[..], buf[0..<n]);
+  ac_end(t[0].a[..], t[0].st[..], t[0].b[..], kind, status, t[0].t, true);
+  if t[0].a[0].link_dirty { t[0].a[0].link_dirty = false; ac_linked(t[0].a[..]); }
+  ac_tick(t[0].a[..], t[0].b[..], kind, t[0].t, true, true);
+}
+ac_test_said :: (t: [] AcTest) -> string { n := ac_take(t[0].a[..], t[0].out[..]); return cast(string) t[0].out[0..<n]; }
+ac_test_who :: (t: [] AcTest, kind: int) { ac_test_answer(t, kind, 200, "{\"logged_in\":true,\"account\":\"acct_a\",\"kind\":\"person\"}"); }
+GT_RACING_KIND :: GT_RACING - GT_WEB_FIRST;
+
+#test "a guest's built game is kept on the account as a new game of its type, once: who is logged in is asked first, the key is made once, the file is the app's level file, and the corner says so" #steps 2000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k); ac_record_read(a, "");
+  seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8) (i * 7 + 1); } ac_entropy(a, seed[..], true);
+  // nobody logged in: nothing is asked, and nothing is said
+  ac_tick(a, t[0].b[..], k, 1, false, true); #assert !ac_wants(a) && ac_note(a) == "";
+  // logged in, nothing built: who is logged in and the levels are asked, and no game is made
+  ac_wake(a); ac_test_tick(t[..], k, 0.1);
+  #assert ac_test_door(t[..]) == "/api/auth/account" && a[0].body_n == 0;
+  ac_test_who(t[..], k);
+  #assert ac_test_door(t[..]) == "/api/rows/list-levels" && ac_test_body(t[..]) == "{}" && ac_who(a) == "acct_a";
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert !ac_wants(a) && !ac_busy(a) && ac_note(a) == "" && ac_test_said(t[..]) == "";
+  // something built: four seconds on it is saved. A game of the type is made with a key, then its file written from the revision the game has
+  #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, k);
+  ac_test_tick(t[..], k, 0.1); #assert !ac_wants(a);
+  ac_test_tick(t[..], k, AC_WAIT); #assert ac_test_door(t[..]) == "/api/auth/account";
+  ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":1,\"title\":\"Level 1\",\"game\":1,\"revision\":5}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game" && ac_note(a) == "saving to your account";
+  body := ac_test_body(t[..]);
+  #assert ac_test_has(body, "{\"template\":\"racing\",\"key\":\"web-") && a[0].link[k].key_n == 28 && ac_key_ok(cast(string) a[0].link[k].key[0..<28]);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":2,\"level\":7,\"template\":\"racing\",\"key\":\"x\"}");
+  #assert ac_test_door(t[..]) == "/api/rows/list-levels" && a[0].link[k].game == 2 && a[0].link[k].level == 7 && a[0].link[k].rev == -1;
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":1,\"game\":1,\"revision\":5},{\"level\":7,\"game\":2,\"revision\":90}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/write-content" && ac_test_has(ac_test_body(t[..]), "{\"level\":7,\"revision\":90,\"content\":\"world.doc.v1 level-7\\n") && ac_test_has(ac_test_body(t[..]), "aethyr.content.v1 level ");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":7,\"revision\":91}");
+  #assert !ac_busy(a) && a[0].link[k].rev == 91 && a[0].link[k].sum == ac_sum(a, t[0].st[..], t[0].b[..]) && a[0].link[k].key_n == 0 && a[0].made && ac_note(a) == "kept on your account";
+  #assert ac_test_said(t[..]) == "your game is kept on your account now: it opens in the app, and in any browser you log in on.";
+  // the record round trips, and a page that reads it back makes no second game: the next look finds nothing changed
+  n := ac_record_write(a, t[0].rec[..]);
+  r: [1] AcTest; ra := r[0].a[..]; ac_test_new(r[..], k); #assert bl_add(r[0].b[..], 300, 300, 100, 100, 100, 0);
+  ac_record_read(ra, cast(string) t[0].rec[0..<n]);
+  #assert ac_who(ra) == "acct_a" && ra[0].link[k].game == 2 && ra[0].link[k].level == 7 && ra[0].link[k].rev == 91 && ra[0].link[k].built && !ra[0].legacy && ra[0].link[k].sum == a[0].link[k].sum;
+  ac_wake(ra); ac_test_tick(r[..], k, 0.1); ac_test_who(r[..], k);
+  ac_test_answer(r[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":91}]}");
+  #assert !ac_wants(ra) && !ac_busy(ra) && ac_note(ra) == "kept on your account" && ac_test_said(r[..]) == "";
+  // a change here alone is written from the revision agreed on
+  #assert bl_add(r[0].b[..], 600, 300, 100, 100, 100, 0);
+  ac_test_tick(r[..], k, 0.1); ac_test_tick(r[..], k, AC_WAIT); ac_test_who(r[..], k);
+  ac_test_answer(r[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":91}]}");
+  #assert ac_test_door(r[..]) == "/api/rows/write-content" && ac_test_has(ac_test_body(r[..]), "{\"level\":7,\"revision\":91,");
+  ac_test_answer(r[..], k, 200, "{\"ok\":true,\"level\":7,\"revision\":92}");
+  #assert ra[0].link[k].rev == 92 && ac_test_said(r[..]) == "" && !ra[0].made;
+}
+
+#test "a reload between the key and the game makes no second game: the same key is sent again" #steps 2000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k); ac_record_read(a, "gamebuilder.web-account.v1 acct_a\n7 0 0 0 0 1 web-00aa\n");
+  #assert a[0].link[k].built && a[0].link[k].key_n == 8;
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game" && ac_test_body(t[..]) == "{\"template\":\"racing\",\"key\":\"web-00aa\"}";
+}
+
+#test "the conflict rule, said in words: the account's newer copy opens here; both changed keeps this browser's as a new game; a game gone from the account is kept as a new one; a copy this page can't show is left alone" #steps 4000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND; s: [1] AcTest;
+  // the account's copy: a world with two things more, as the file read-content gives
+  ac_test_new(s[..], k); #assert bl_add(s[0].b[..], 300, 300, 100, 100, 100, 0) && bl_add(s[0].b[..], 900, 300, 100, 100, 100, 0);
+  fn := lv_write(s[0].b[..], s[0].st[..], 7, s[0].a[0].file[..]);
+  o: [1] Jo; reply: [4096] u8; jo_start(o[..], reply[..]); jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "level"); jo_int(o[..], 7); jo_key(o[..], "revision"); jo_int(o[..], 95);
+  jo_key(o[..], "content"); jo_str(o[..], cast(string) s[0].a[0].file[0..<fn]); jo_end(o[..]);
+  #assert !o[0].bad;
+  // this browser: linked at revision 91, unchanged since
+  ac_test_new(t[..], k); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0);
+  ac_record_read(a, "gamebuilder.web-account.v1 acct_a\n");
+  a[0].link[k].game = 2; a[0].link[k].level = 7; a[0].link[k].rev = 91; a[0].link[k].sum = ac_sum(a, t[0].st[..], t[0].b[..]); a[0].link[k].built = true;
+  n0 := t[0].b[0].n;
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":95}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/read-content" && ac_test_body(t[..]) == "{\"level\":7}";
+  ac_sent(a); ac_piece(a, reply[0..<o[0].n]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, t[0].t, true);
+  #assert t[0].b[0].n == n0 + 1 && a[0].pulled && a[0].link[k].rev == 95 && a[0].link[k].sum == ac_sum(a, t[0].st[..], t[0].b[..]) && ac_note(a) == "kept on your account";
+  #assert ac_test_said(t[..]) == "your account has a newer copy of this game: it is open here now.";
+  // both changed: nothing of the account's is asked for or written over. This browser's copy is a new game
+  a[0].link_dirty = false; a[0].pulled = false;
+  #assert bl_add(t[0].b[..], 1200, 300, 100, 100, 100, 0); n1 := t[0].b[0].n;
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":99}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game" && a[0].link[k].level == 0 && t[0].b[0].n == n1;
+  #assert ac_test_said(t[..]) == "this game changed here and on your account. nothing is lost: this browser's copy is kept as a new game, and the account's is under your games.";
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":3,\"level\":8}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":99},{\"level\":8,\"game\":3,\"revision\":4}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/write-content" && ac_test_has(ac_test_body(t[..]), "{\"level\":8,\"revision\":4,");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":8,\"revision\":6}");
+  #assert a[0].link[k].game == 3 && a[0].link[k].level == 8 && a[0].link[k].rev == 6 && t[0].b[0].n == n1 && !a[0].pulled;
+  // the game gone from the account: this browser's copy is kept as a new one
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":99}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game" && ac_test_said(t[..]) == "this game is no longer on your account. this browser's copy is kept there as a new game.";
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":4,\"level\":9}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":9,\"game\":4,\"revision\":4}]}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":9,\"revision\":7}");
+  #assert a[0].link[k].level == 9 && a[0].link[k].rev == 7 && ac_note(a) == "kept on your account";
+  x := ac_test_said(t[..]);
+  // a copy on the account this page can't show (the app's own kinds): the world here is as it was, and it is said once
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":9,\"game\":4,\"revision\":12}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/read-content";
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":9,\"revision\":12,\"content\":\"world.doc.v1 level-9\\nnot a level\\n\"}");
+  #assert t[0].b[0].n == n1 && !a[0].pulled && a[0].link[k].rev == 7 && ac_note(a) == "kept in this browser only";
+  #assert ac_test_said(t[..]) == "your account's copy of this game has things this page can't show. it is left as it is: open it in the app.";
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":9,\"game\":4,\"revision\":12}]}");
+  #assert !ac_wants(a) && ac_test_said(t[..]) == "";
+}
+
+#test "the account's limits are said in words with the number, and a game over one is not sent: 512 things, 64 shapes, 256 kb; under the limit again it is kept; the village's buildings are kept there as things are" #steps 4000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k); ac_record_read(a, "");
+  n0 := t[0].b[0].n; line: [64] u8;
+  // 512 things fit; the 513th does not
+  for i: 0..<GT_LEVEL_THINGS - n0 { #assert bl_add(t[0].b[..], 300 + (i % 10) * 200, 300 + (i / 10) * 200, 100, 100, 100, 0); }
+  #assert t[0].b[0].n == GT_LEVEL_THINGS;
+  bytes := ac_file(a, t[0].st[..], t[0].b[..], 1);
+  #assert bytes > 0 && bytes <= GT_LEVEL_FILE && ac_fits(a, t[0].st[..], t[0].b[..], bytes);
+  #assert bl_add(t[0].b[..], 4000, 4000, 100, 100, 100, 0); ac_built(a, k);
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert !ac_wants(a) && !ac_busy(a) && ac_note(a) == "kept in this browser only" && a[0].link[k].level == 0;
+  #assert ac_test_said(t[..]) == "kept in this browser only: a game on your account holds 512 things at most, and this one has 513. delete some and it is kept there too.";
+  // (said once: the next look says nothing more)
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert !ac_wants(a) && ac_test_said(t[..]) == "" && ac_note(a) == "kept in this browser only";
+  // one deleted: it is kept
+  t[0].b[0].n -= 1; t[0].b[0].rev += 1;
+  ac_test_tick(t[..], k, 0.1); ac_test_tick(t[..], k, AC_WAIT); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game";
+  // 64 different shapes fit; the 65th does not, and it is said with the number
+  u: [1] AcTest; ua := u[0].a[..]; ac_test_new(u[..], k); u[0].b[0].n = 0;
+  for i: 0..<GT_LEVEL_SHAPES + 1 { #assert bl_add(u[0].b[..], 300 + (i % 10) * 300, 300 + (i / 10) * 300, 30 + i, 100, 100, 0); }
+  u[0].b[0].n = GT_LEVEL_SHAPES;
+  bytes = ac_file(ua, u[0].st[..], u[0].b[..], 1);
+  #assert ac_fits(ua, u[0].st[..], u[0].b[..], bytes);
+  u[0].b[0].n = GT_LEVEL_SHAPES + 1;
+  bytes = ac_file(ua, u[0].st[..], u[0].b[..], 1);
+  #assert !ac_fits(ua, u[0].st[..], u[0].b[..], bytes) && ac_test_said(u[..]) == "kept in this browser only: a game on your account holds 64 different shapes (a kind and a size) at most, and this one has 65. make some the same size and it is kept there too.";
+  u[0].b[0].n = GT_LEVEL_SHAPES; bytes = ac_file(ua, u[0].st[..], u[0].b[..], 1);
+  // the village's buildings, the green's nine and one more, are things the account holds
+  v: [1] AcTest; va := v[0].a[..]; ac_test_new(v[..], GT_VILLAGE - GT_WEB_FIRST);
+  #assert bl_add_building(v[0].b[..], 0, 3000, -3000, 0, 0) && v[0].b[0].n == 2 + GT_GREEN;
+  bytes = ac_file(va, v[0].st[..], v[0].b[..], 1);
+  #assert bytes > 0 && ac_fits(va, v[0].st[..], v[0].b[..], bytes);
+  // the file's size
+  #assert !ac_fits(va, u[0].st[..], u[0].b[..], GT_LEVEL_FILE + 1) && ac_test_said(v[..]) == "kept in this browser only: a game on your account is 256 kb at most, and this one is 257 kb. delete some and it is kept there too.";
+}
+
+#test "a failed save never touches this browser's copy: no answer, a server's error and a refusal are each said in words, the world is as built, and it is tried again; a login that ended is said" #steps 4000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k); ac_record_read(a, ""); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, k);
+  n0 := t[0].b[0].n; rev0 := t[0].b[0].rev;
+  ac_wake(a); ac_test_tick(t[..], k, 0.1);
+  ac_test_answer(t[..], k, 0, "");
+  #assert !ac_busy(a) && ac_note(a) == "not on your account yet" && t[0].b[0].n == n0 && t[0].b[0].rev == rev0;
+  #assert ac_test_said(t[..]) == "not kept on your account yet: can't reach the server. it is kept in this browser, and tried again.";
+  // tried again 15 seconds on, and a second failure is not said again
+  ac_test_tick(t[..], k, AC_RETRY - 1); #assert !ac_wants(a);
+  ac_test_tick(t[..], k, 1.5); #assert ac_test_door(t[..]) == "/api/auth/account";
+  ac_test_who(t[..], k); ac_test_answer(t[..], k, 503, "busy");
+  #assert ac_test_said(t[..]) == "" && ac_note(a) == "not on your account yet" && t[0].b[0].n == n0;
+  // it works again: the game is made, and the account's refusal of its file is said in the account's words
+  ac_test_tick(t[..], k, AC_RETRY + 1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":2,\"level\":7}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":90}]}");
+  ac_test_answer(t[..], k, 422, "{\"ok\":false,\"error\":\"unreadable\",\"why\":\"that is not a level's file (read-content gives one)\"}");
+  #assert ac_test_said(t[..]) == "not kept on your account: that is not a level's file (read-content gives one). it is kept in this browser." && ac_note(a) == "kept in this browser only" && t[0].b[0].n == n0;
+  // the same file is not sent again; a changed one is
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":90}]}");
+  #assert !ac_wants(a) && ac_test_said(t[..]) == "";
+  #assert bl_add(t[0].b[..], 900, 300, 100, 100, 100, 0);
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k); ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":90}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/write-content";
+  // the account changed under the write: the pass starts over, and nothing is written over
+  ac_test_answer(t[..], k, 409, "{\"ok\":false,\"error\":\"stale\",\"why\":\"the level changed since that revision\"}");
+  #assert ac_test_door(t[..]) == "/api/auth/account";
+  // the login ended: said, and nothing more is asked until someone logs in
+  ac_test_answer(t[..], k, 200, "{\"logged_in\":false}");
+  #assert !ac_wants(a) && ac_note(a) == "" && ac_test_said(t[..]) == "log in again to keep your game on your account. it is kept in this browser.";
+  ac_test_tick(t[..], k, AC_POLL * 2); #assert !ac_wants(a);
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); #assert ac_test_door(t[..]) == "/api/auth/account";
+}
+
+#test "your games: the account's games are listed with their types; one picked opens once this browser's own game of the type is safe, and one the app plays is said to be the app's" #steps 4000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND; s: [1] AcTest;
+  ac_test_new(t[..], k); ac_record_read(a, "");
+  ac_list(a); ac_tick(a, t[0].b[..], k, 1, true, false);
+  #assert ac_test_door(t[..]) == "/api/auth/account";
+  ac_sent(a); r1 := "{\"logged_in\":true,\"account\":\"acct_a\"}"; buf: [512] u8; n := 0; for c: r1 { buf[n] = c; n += 1; }
+  ac_piece(a, buf[0..<n]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, 1, false);
+  #assert ac_test_door(t[..]) == "/api/rows/list-games";
+  r2 := "{\"ok\":true,\"games\":[{\"game\":1,\"title\":\"Game 1\",\"template\":\"arena\",\"levels\":[1]},{\"game\":2,\"title\":\"My track\",\"template\":\"racing\",\"levels\":[7,8]}]}";
+  ac_sent(a); n = 0; for c: r2 { buf[n] = c; n += 1; } ac_piece(a, buf[0..<n]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, 1, false);
+  #assert a[0].listed && a[0].games_n == 2 && a[0].games[0].kind == -1 && a[0].games[1].kind == k && a[0].games[1].level == 7 && cast(string) a[0].games[1].title[0..<a[0].games[1].title_n] == "My track";
+  #assert ac_open(a, 0) == -1 && ac_test_said(t[..]) == "that game is one the app plays: open it there.";
+  // this browser has built a racing game of its own, not on the account yet: it is kept as a new game first, then the picked one opens
+  #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, k); n0 := t[0].b[0].n;
+  ac_from_set(a, k, "abc234");   // (what is built here is a remix: it stays one when it is kept as a new game, below)
+  #assert ac_open(a, 1) == k;
+  ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":50}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game";
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":3,\"level\":9}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":50},{\"level\":9,\"game\":3,\"revision\":4}]}");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":9,\"revision\":5}");
+  #assert a[0].link[k].game == 3 && a[0].open_game == 2 && t[0].b[0].n == n0 && ac_from(a, k) == "abc234";
+  x := ac_test_said(t[..]);
+  ac_test_tick(t[..], k, 0.1); #assert ac_test_door(t[..]) == "/api/auth/account";
+  ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":50},{\"level\":9,\"game\":3,\"revision\":5}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/read-content" && ac_test_body(t[..]) == "{\"level\":7}" && a[0].link[k].game == 2 && a[0].link[k].rev == -2;
+  ac_test_new(s[..], k); #assert bl_add(s[0].b[..], 300, 300, 100, 100, 100, 0) && bl_add(s[0].b[..], 900, 300, 100, 100, 100, 0) && bl_add(s[0].b[..], 1500, 300, 100, 100, 100, 0);
+  fn := lv_write(s[0].b[..], s[0].st[..], 7, s[0].a[0].file[..]);
+  o: [1] Jo; reply: [4096] u8; jo_start(o[..], reply[..]); jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "revision"); jo_int(o[..], 50);
+  jo_key(o[..], "content"); jo_str(o[..], cast(string) s[0].a[0].file[0..<fn]); jo_end(o[..]);
+  ac_sent(a); ac_piece(a, reply[0..<o[0].n]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, t[0].t, true);
+  #assert t[0].b[0].n == s[0].b[0].n && a[0].pulled && a[0].link[k].rev == 50 && ac_test_said(t[..]) == "opened from your account." && ac_note(a) == "kept on your account";
+  // the game opened in its place is not the remix that was here
+  #assert ac_from(a, k) == "";
+}
+
+#test "a crates game is three levels of one game on the account, a room each: made once with all three linked, each room written as its own level when it is up; a later room the account's game has no level for stays in this browser, in words; one opened from your games links its rooms; the record keeps them" #steps 4000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := KP_CRATES; r1 := kp_slot(k, 1); r2 := kp_slot(k, 2);
+  #assert kp_rooms(k) == 3 && kp_rooms(GT_RACING_KIND) == 1 && r1 == GT_WEB_TYPES && r2 == GT_WEB_TYPES + 1 && kp_slot(GT_RACING_KIND, 1) == GT_RACING_KIND && kp_slot_kind(r2) == k && kp_slot_room(r2) == 2 && kp_slot_kind(k) == k && kp_slot_room(k) == 0;
+  ac_test_new(t[..], k); ac_record_read(a, "");
+  seed: [16] u8; for i: 0..<16 { seed[i] = cast(u8) (i * 5 + 3); } ac_entropy(a, seed[..], true);
+  // built in the first room: the game is made, and its answer names its three levels: all three are linked, the first written
+  #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, k);
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game" && ac_test_has(ac_test_body(t[..]), "{\"template\":\"crates\",\"key\":\"web-");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"game\":4,\"level\":20,\"levels\":[20,21,22],\"template\":\"crates\"}");
+  #assert a[0].link[k].level == 20 && a[0].link[r1].game == 4 && a[0].link[r1].level == 21 && a[0].link[r1].rev == -1 && a[0].link[r2].level == 22 && a[0].link[r2].rev == -1;
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":1},{\"level\":21,\"game\":4,\"revision\":1},{\"level\":22,\"game\":4,\"revision\":1}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/write-content" && ac_test_has(ac_test_body(t[..]), "{\"level\":20,\"revision\":1,");
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"level\":20,\"revision\":2}");
+  #assert ac_note(a) == "kept on your account" && a[0].link[k].rev == 2; x := ac_test_said(t[..]);
+  // the second room comes up, built in: it is written to the game's second level, from the revision that level has; no second game
+  bl_new_level(t[0].b[..], GT_CRATES, 1); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, r1);
+  ac_test_tick(t[..], r1, 0.1); #assert ac_test_door(t[..]) == "/api/auth/account";
+  ac_test_who(t[..], r1);
+  ac_test_answer(t[..], r1, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":2},{\"level\":21,\"game\":4,\"revision\":1},{\"level\":22,\"game\":4,\"revision\":1}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/write-content" && ac_test_has(ac_test_body(t[..]), "{\"level\":21,\"revision\":1,\"content\":\"world.doc.v1 level-21\\n");
+  ac_test_answer(t[..], r1, 200, "{\"ok\":true,\"level\":21,\"revision\":2}");
+  #assert a[0].link[r1].rev == 2 && a[0].link[r1].game == 4 && ac_note(a) == "kept on your account";
+  // the record keeps every room's line (two-digit slots), and reads them back
+  n := ac_record_write(a, t[0].rec[..]);
+  b: [1] AcTest; ac_record_read(b[0].a[..], cast(string) t[0].rec[0..<n]);
+  #assert b[0].a[0].link[k].level == 20 && b[0].a[0].link[r1].level == 21 && b[0].a[0].link[r1].rev == 2 && b[0].a[0].link[r1].built && b[0].a[0].link[r2].level == 22 && b[0].a[0].link[r2].rev == -1;
+  // the third room's level deleted from the account (the app can): the room stays in this browser, said once, and no game is made for it
+  bl_new_level(t[0].b[..], GT_CRATES, 2); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0); ac_built(a, r2);
+  ac_test_tick(t[..], r2, 0.1); ac_test_who(t[..], r2);
+  ac_test_answer(t[..], r2, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":2},{\"level\":21,\"game\":4,\"revision\":2}]}");
+  #assert !ac_wants(a) && ac_note(a) == "kept in this browser only" && ac_test_said(t[..]) == "room 3 is no longer on your account: it is kept in this browser only." && a[0].link[r2].level == 0 && a[0].link[k].level == 20;
+  ac_wake(a); ac_test_tick(t[..], r2, 0.1); ac_test_who(t[..], r2);
+  ac_test_answer(t[..], r2, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":2},{\"level\":21,\"game\":4,\"revision\":2}]}");
+  #assert !ac_wants(a) && ac_note(a) == "kept in this browser only" && ac_test_said(t[..]) == "";
+  // your games: a crates game of three levels picked while the first room is up and safe: its first level is read, and its other two are the other rooms', read when each is up
+  bl_new_level(t[0].b[..], GT_CRATES, 0); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0);
+  ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":2}]}");
+  #assert ac_note(a) == "kept on your account";
+  ac_list(a); ac_tick(a, t[0].b[..], k, t[0].t, true, false);
+  ac_sent(a); w1 := "{\"logged_in\":true,\"account\":\"acct_a\"}"; buf: [512] u8; m := 0; for c: w1 { buf[m] = c; m += 1; }
+  ac_piece(a, buf[0..<m]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, t[0].t, false);
+  w2 := "{\"ok\":true,\"games\":[{\"game\":4,\"title\":\"Mine\",\"template\":\"crates\",\"levels\":[20,21]},{\"game\":9,\"title\":\"From the app\",\"template\":\"crates\",\"levels\":[40,41,42,43]}]}";
+  ac_sent(a); m = 0; for c: w2 { buf[m] = c; m += 1; } ac_piece(a, buf[0..<m]); ac_end(a, t[0].st[..], t[0].b[..], k, 200, t[0].t, false);
+  #assert a[0].games_n == 2 && a[0].games[1].kind == k && a[0].games[1].level == 40 && a[0].games[1].more[0] == 41 && a[0].games[1].more[1] == 42 && a[0].games[0].more[0] == 21 && a[0].games[0].more[1] == 0;
+  #assert ac_open(a, 1) == k;
+  ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":20,\"game\":4,\"revision\":2},{\"level\":40,\"game\":9,\"revision\":7}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/read-content" && ac_test_body(t[..]) == "{\"level\":40}" && a[0].link[k].game == 9 && a[0].link[r1].game == 9 && a[0].link[r1].level == 41 && a[0].link[r1].rev == -2 && a[0].link[r2].level == 42 && a[0].link[r2].rev == -2;
+}
+#test "another account logged in on this browser: the record's games are the other's and are forgotten, and what was built here is kept on this one as a new game" #steps 2000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k); #assert bl_add(t[0].b[..], 300, 300, 100, 100, 100, 0);
+  ac_record_read(a, "gamebuilder.web-account.v1 acct_b\n7 2 7 91 12345 1 -\n");
+  #assert ac_who(a) == "acct_b" && a[0].link[k].level == 7;
+  ac_wake(a); ac_test_tick(t[..], k, 0.1); ac_test_who(t[..], k);
+  #assert ac_who(a) == "acct_a" && a[0].link[k].level == 0 && a[0].link[k].built;
+  ac_test_answer(t[..], k, 200, "{\"ok\":true,\"levels\":[{\"level\":7,\"game\":2,\"revision\":91}]}");
+  #assert ac_test_door(t[..]) == "/api/rows/new-game";
+  n := ac_record_write(a, t[0].rec[..]);
+  #assert ac_test_has(cast(string) t[0].rec[0..<n], "gamebuilder.web-account.v1 acct_a\n7 0 0 0 0 1 web-");
+}
+#test "a remix: the game a level was made from is kept in this browser's record beside it, through the account's game being forgotten, and read back; a word that is no code is not kept" #steps 2000000000 {
+  t: [1] AcTest; a := t[0].a[..]; k := GT_RACING_KIND;
+  ac_test_new(t[..], k);
+  ac_record_read(a, "gamebuilder.web-account.v1 acct_a\n7 2 7 91 12345 1 -\n");
+  #assert a[0].link[k].level == 7 && ac_from(a, k) == "";
+  // Remix: the type's game on the account is left where it is, and the level here is a remix of abc234
+  ac_forget_game(a, k); ac_from_set(a, k, "abc234");
+  #assert a[0].link[k].level == 0 && a[0].link[k].built && ac_from(a, k) == "abc234" && a[0].link_dirty;
+  n := ac_record_write(a, t[0].rec[..]);
+  #assert ac_test_has(cast(string) t[0].rec[0..<n], "\n7 0 0 0 0 1 - abc234\n");
+  // forgetting the account's game again (it was removed there, another account logged in) leaves it: it is the level's
+  ac_forget_game(a, k);
+  #assert ac_from(a, k) == "abc234";
+  a[0].link[k].from_n = 0;
+  ac_record_read(a, cast(string) t[0].rec[0..<n]);
+  #assert ac_from(a, k) == "abc234" && a[0].link[k].built;
+  // a line of before has none, and a word that is no code is not kept
+  ac_record_read(a, "gamebuilder.web-account.v1 acct_a\n7 0 0 0 0 1 -\n");
+  #assert ac_from(a, k) == "";
+  ac_record_read(a, "gamebuilder.web-account.v1 acct_a\n7 0 0 0 0 1 - ../../\n7 0 0 0 0 1 - ABC234\n");
+  #assert ac_from(a, k) == "";
+  ac_from_set(a, k, "abc234"); ac_from_set(a, -1, "abc234"); ac_from_set(a, KP_KINDS, "abc234");
+  #assert ac_from(a, k) == "abc234" && ac_from(a, -1) == "" && ac_from(a, KP_KINDS) == "";
+  ac_from_set(a, k, "nope");
+  #assert ac_from(a, k) == "";
+}

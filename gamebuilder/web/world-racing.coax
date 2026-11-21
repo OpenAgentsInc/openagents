@@ -1,0 +1,889 @@
+// Racing: a world of its own (docs/web-world.md, "Racing"). A closed circuit at the end of a summer
+// day: a car on the engine's vehicle (metaverse-engine/physics/vehicle.coax), three laps against the
+// clock past checkpoints in order (metaverse-engine/world/course.coax), on a ribbon laid along a few
+// points (metaverse-engine/world/track.coax), with kerbs on its corners, barriers, a rise and a fall,
+// banked sweepers, a hairpin, a grandstand and a start gantry.
+//
+//   W or Up drives, S or Down brakes and then backs, A and D or Left and Right steer, Space is the
+//   handbrake, R puts the car back on the track at the last checkpoint (after the flag, R races again).
+//
+// The circuit is things of the level (a new game's are rc_points, from shared/game-types.coax: where the
+// line goes, how high, how far each corner banks; the HUD gives the level's own, rc_lay). A gate
+// counts only as the next (course.coax): the barriers keep the car on the ribbon, and a gate passed out
+// of turn gains nothing, so there is no cutting. The race is stepped at a fixed 120 a second.
+//
+// The entrance: the floor's grid lines bend into the ribbon (its edges, drawn as lines of light, go
+// from the nearest grid line to where they lie), the ribbon fills in from the start line both ways
+// while the meadow and the low sun come up, the car drops onto the grid and settles on its springs,
+// and three lights on the gantry count 3, 2, 1; green is go.
+//
+// Everything is in the engine's axes (y up; the page's z turned). The HUD keeps the camera (a chase,
+// behind the car) and draws what rc_mesh writes; it hears the keys and tells the page what rc_describe says.
+//   coax/bin/coax test web/world-racing.coax --library
+
+#load "../../metaverse-engine/world/course.coax";
+#load "../../metaverse-engine/world/track.coax";
+#load "../../metaverse-engine/physics/vehicle.coax";
+#load "../../metaverse-engine/render/shade/stylized-frame.coax";
+#load "../../metaverse-engine/arch/solid.coax";
+#load "../../metaverse-engine/core/points.coax";
+#load "../shared/game-types.coax";   // a new game's circuit (GT_CIRCUIT_*), and the track point's kind
+
+RC_POINTS :: 64;           // points a circuit may be laid through (a level's track points; a new game's has GT_CIRCUIT)
+RC_PER :: 12;              // samples between two of its points: 228 round, about 3.4 m each
+RC_HALF :: 5.5;            // half the road's width, metres
+RC_KERB :: 1.0;            // a kerb's width, outside the road's edge on a corner
+RC_RUNOFF :: 7.0;          // from the road's edge to the barrier's face
+RC_WALL :: 0.9;            // the barrier's height
+RC_LIFT :: 0.06;           // the road is drawn (and driven) this far over the ribbon's line: clear of the ground under it
+RC_BENT :: 0.022;          // a bend (1/m) past which a corner has kerbs: a radius of 45 m and less
+RC_LAPS :: 3;
+RC_GATES :: 8;             // checkpoints round a lap, the last of them the line
+RC_GRID :: 16.0;           // the car's place on the grid, metres before the line
+RC_DT :: 0.0083333333;     // the race's step: 120 a second
+// The first race's start is short (a person drives within about a second of picking the type; the
+// lights are still the rule: nothing moves the car before green). A race again (R after the flag) keeps
+// the full count: a second a light.
+RC_DROP_AT :: 0.1;         // seconds into the world: the car drops in
+RC_DROP :: 0.6;            // metres over its rest it drops from then
+RC_COUNT_AT :: 0.25;       // the first light
+RC_BEAT :: 0.25;           // seconds a light: green at RC_COUNT_AT + 3 RC_BEAT, a second in
+RC_AGAIN_AT :: 0.9;        // a race again: seconds from R to its first light (the car drops in from 4 m at once)
+RC_AGAIN_BEAT :: 1.0;      // and seconds a light
+RC_BEND_IN :: 0.5;         // the grid's lines take this long to bend into the ribbon
+RC_FILL_AT :: 0.25; RC_FILL :: 0.55;   // and the ribbon fills in from the line, both ways, over this long
+RC_SKY :: 1.5;             // the low sun comes up over this long
+RC_STUCK :: 1.5;           // seconds on its roof (or off the ribbon) before the car is put back
+RC_BOXES :: 256;           // built boxes the car can meet
+RC_TOUCH :: 4;             // of which the nearest give it planes at a step
+RC_REACH :: 2.6;           // metres round a box (the car's half length and some) within which its faces are met
+RC_STEP :: 0.3;            // metres under the car's middle a box's top must be for the car to drive onto it
+RC_BOOSTS :: 64;           // built boosts
+RC_BOOST :: 1.4;           // a boost's push: the car's speed grows by this share a second while it is over one
+RC_BOOST_TOP :: 1.5;       // up to this many times its top speed
+RC_MESH :: 22000;          // vertices the whole of it may take (the HUD's mesh holds more)
+// The table of where grass grows (the stylized frame's ground table): 96 cells a side from (x0, z0), the engine's axes.
+RC_TABLE_N :: 96; RC_TABLE_CELL :: 3.5; RC_TABLE_X0 :: -105.0; RC_TABLE_Z0 :: -185.0;
+
+// The circuit's points as a level has them (shared/game-types.coax: a new racing game's track points,
+// GT_CIRCUIT_*; the HUD gives the level's own, rc_lay): where its line goes (the engine's x and z), how
+// high it is there, and how far its corner banks (the outside of the turn is raised). A thing's place
+// is the page's (hundredths, z turned) and its turn the bank in degrees: rc_point reads one.
+rc_point :: (x: int, y: int, z: int, turn: int) -> TrackPoint {
+  d: f32 = 0.0174533;
+  bank := ifx turn > 180 then turn - 360 else turn;
+  return TrackPoint.{x = cast(f32) x / 100, z = -cast(f32) z / 100, y = cast(f32) y / 100, bank = cast(f32) bank * d};
+}
+// The circuit a new game starts with: how many points into out.
+rc_points :: (out: [] TrackPoint) -> int {
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter(GT_RACING, s[..]); m := 0;
+  for i: 0..<n { if s[i].kind == GK_TRACK && m < out.count { out[m] = rc_point(s[i].x, s[i].y, s[i].z, s[i].turn); m += 1; } }
+  return m;
+}
+
+// The car: a light, quick one on the engine's vehicle. 4.2 m long, 1.9 wide, 900 kg.
+rc_car :: () -> VehicleSpec {
+  v := vehicle_roadster();
+  v.drive = 15000.0; v.brake = 22000.0; v.top_speed = 40.0; v.coast = 0.25;
+  v.mu = 1.7; v.grip = 14.0; v.steer = 0.5; v.steer_fade = 0.62; v.stick = 4.0;
+  return v;
+}
+RC_MASS :: 900.0;
+
+Racing :: struct {
+  ok: bool;
+  t: [1] Track;
+  clock: f32;                 // seconds since the world came up
+  body: RigidBody; st: VehicleState; spec: VehicleSpec;
+  shown: bool;                // the car is in (it drops in at RC_DROP_AT)
+  hint: int; s: f32; side: f32; over: f32;   // where the car is on the ribbon
+  run: Run; line: f32; gate: [RC_GATES] f32;  // the run, and where its line and each gate are along the ribbon
+  acc: f32;                   // time not yet stepped
+  stuck: f32;                 // how long it has been stuck
+  backs: int;                 // times it has been put back on the track
+  start: f32;                 // the clock when this race's countdown began (a race again starts its countdown over)
+  count_at: f32 = RC_COUNT_AT; beat: f32 = RC_BEAT;   // seconds from then to the first light, and a light (the first race's are short; a race again's the full count)
+  baked: int; baked_at: int;  // the circuit's vertices as last written, and where in the mesh they start (0: not kept)
+  // what has been built here (every game type is built in): boxes the car meets, low and high corners in
+  // the engine's axes, told by the HUD each frame (rc_built); the nearest RC_TOUCH are its planes (rc_box_planes)
+  nbx: int; bx: [RC_BOXES * 6] f32;
+  nbo: int; bo: [RC_BOOSTS * 6] f32;   // and the boosts built on it (rc_boosts): over one the car speeds up
+  np: int; pts: [RC_POINTS] TrackPoint;   // the points the ribbon is laid through
+}
+
+rc_ease :: (x: f32) -> f32 { if !(x > 0) { return 0; } if x >= 1 { return 1; } return x * x * (3 - 2 * x); }
+rc_f :: (a: D3) -> [3] f32 { return [3] f32.[cast(f32) a.x, cast(f32) a.y, cast(f32) a.z]; }
+rc_d :: (a: [3] f32) -> D3 { return d3(cast(f64) a[0], cast(f64) a[1], cast(f64) a[2]); }
+
+// A race made on the circuit through `pts`: the ribbon laid, its gates, the car on the grid (not yet
+// shown), the clock at 0. Not ok when the points make no ribbon (fewer than 3, or two at one place).
+rc_make :: (r: [] Racing, pts: [] TrackPoint) {
+  keep: [RC_POINTS] TrackPoint; n := ifx pts.count > RC_POINTS then RC_POINTS else pts.count;
+  for i: 0..<n { keep[i] = pts[i]; }
+  r[0] = Racing.{};
+  r[0].np = n; for i: 0..<n { r[0].pts[i] = keep[i]; }
+  r[0].ok = n >= GT_TRACK_FEW && track_make(r[0].pts[0..<n], RC_PER, r[0].t[..]);
+  if !r[0].ok { return; }
+  r[0].spec = rc_car();
+  r[0].line = r[0].t[0].s[RC_PER];   // the line is the second of its points
+  L := r[0].t[0].length;
+  for k: 0..<RC_GATES { r[0].gate[k] = r[0].line + L * cast(f32) (k + 1) / cast(f32) RC_GATES; }
+  r[0].run = course_run(RC_GATES, RC_LAPS);
+  rc_place(r, r[0].line - RC_GRID, 0);
+  r[0].hint = -1;
+}
+// A race made on the circuit a new game starts with.
+rc_in :: (r: [] Racing) { p: [RC_POINTS] TrackPoint; n := rc_points(p[..]); rc_make(r, p[0..<n]); }
+// Whether the ribbon is laid through just these points.
+rc_laid :: (r: [] Racing, pts: [] TrackPoint) -> bool {
+  if r[0].np != pts.count { return false; }
+  for i: 0..<pts.count { a := r[0].pts[i]; b := pts[i]; if a.x != b.x || a.y != b.y || a.z != b.z || a.bank != b.bank { return false; } }
+  return true;
+}
+// The circuit laid again through other points (the level's track points were moved, added or removed):
+// the car back on the grid and the run from its start, the world's clock and its countdown as they
+// were (no entrance again). False, and nothing changed, when the points make no ribbon.
+rc_lay :: (r: [] Racing, pts: [] TrackPoint) -> bool {
+  if pts.count < GT_TRACK_FEW || pts.count > RC_POINTS { return false; }
+  probe: [1] Track; if !track_make(pts, RC_PER, probe[..]) { return false; }
+  was := r[0];
+  rc_make(r, pts);
+  r[0].clock = was.clock; r[0].start = was.start; r[0].count_at = was.count_at; r[0].beat = was.beat; r[0].backs = was.backs; r[0].shown = was.shown;
+  r[0].nbx = was.nbx; r[0].bx = was.bx; r[0].nbo = was.nbo; r[0].bo = was.bo;
+  return true;
+}
+// A race again (after the flag): the car back on the grid, the countdown from the first light.
+rc_again :: (r: [] Racing) {
+  if !r[0].ok { return; }
+  clock := r[0].clock; backs := r[0].backs; baked := r[0].baked; at := r[0].baked_at;
+  p := r[0].pts; n := r[0].np;
+  rc_make(r, p[0..<n]);
+  r[0].clock = clock; r[0].start = clock; r[0].count_at = RC_AGAIN_AT; r[0].beat = RC_AGAIN_BEAT; r[0].backs = backs; r[0].baked = baked; r[0].baked_at = at;
+  rc_place(r, r[0].line - RC_GRID, 4); r[0].shown = true;
+}
+// The race settled, with no entrance (a person who prefers reduced motion, a kept world come back):
+// the ribbon in, the low sun up, the car on the grid at rest. The lights are the rule and still count.
+rc_settle :: (r: [] Racing) {
+  if !r[0].ok { return; }
+  r[0].clock = RC_FILL_AT + RC_FILL + RC_SKY; r[0].start = r[0].clock - RC_DROP_AT;
+  rc_place(r, r[0].line - RC_GRID, 0); r[0].shown = true;
+}
+// The car `s` metres along, on the line, `lift` metres over its rest, facing ahead and still.
+rc_place :: (r: [] Racing, s: f32, lift: f32) {
+  a := track_at(r[0].t[..], s);
+  p := track_point(a, 0, 0.75 + lift);
+  r[0].body = vehicle_body(r[0].spec, RC_MASS, rc_d(p), dq_y(cast(f64) atan2(a.ahead[0], a.ahead[2])));
+  r[0].st = VehicleState.{};
+  r[0].s = a.s; r[0].hint = a.i; r[0].side = 0; r[0].stuck = 0;
+}
+// Seconds since this race's countdown could begin (the world's clock, less any race before it).
+rc_time :: (r: [] Racing) -> f32 { return r[0].clock - r[0].start; }
+// The light the countdown is at: 0 before it, 1 to 3 the lights, 4 green.
+rc_light :: (r: [] Racing) -> int {
+  t := rc_time(r);
+  if t < r[0].count_at { return 0; }
+  if t >= r[0].count_at + 3 * r[0].beat { return 4; }
+  return 1 + cast(int) floor((t - r[0].count_at) / r[0].beat);
+}
+// Back on the track: at the last checkpoint passed (before any, the grid), on the line, still.
+rc_back :: (r: [] Racing) {
+  if !r[0].ok || !r[0].shown { return; }
+  g := course_back(r[0].run);
+  rc_place(r, ifx g < 0 then r[0].line - RC_GRID else r[0].gate[g], 0.3);
+  r[0].backs += 1;
+}
+// The world's own action (R): back on the track, or after the flag a race again.
+rc_act :: (r: [] Racing) { if r[0].run.done { rc_again(r); } else { rc_back(r); } }
+
+// What one step of the race did.
+RcStep :: struct { gate: int = -1; what: int; }
+// The race over `step` seconds, with the keys as a throttle (1 on, -1 brake and back), a steer (1
+// right) and the handbrake. Before green the car is held on the grid; after the flag it coasts.
+rc_step :: (r: [] Racing, throttle: f32, steer: f32, handbrake: bool, step: f32) -> RcStep {
+  out: RcStep;
+  if !r[0].ok { return out; }
+  r[0].clock += step;
+  if !r[0].shown && rc_time(r) >= RC_DROP_AT { rc_place(r, r[0].line - RC_GRID, RC_DROP); r[0].shown = true; }
+  if !r[0].shown { return out; }
+  if rc_light(r) == 4 && !r[0].run.going && !r[0].run.done && r[0].run.lap == 0 && r[0].run.next == 0 && r[0].run.clock == 0 { r[0].run = course_go(r[0].run); }
+  r[0].acc += step; if r[0].acc > RC_DT * 8 { r[0].acc = RC_DT * 8; }
+  while r[0].acc >= RC_DT {
+    r[0].acc -= RC_DT;
+    s := rc_sub(r, throttle, steer, handbrake);
+    if s.what != COURSE_NOTHING { out = s; }
+  }
+  r[0].run = course_tick(r[0].run, step);
+  return out;
+}
+// The planes the car meets where it is: the road's surface, and a barrier each side.
+rc_planes :: (a: TrackAt) -> [3] Plane {
+  w: f32 = RC_HALF + RC_RUNOFF;
+  return [3] Plane.[plane_through(rc_d(a.up), rc_d(track_point(a, 0, RC_LIFT))), plane_through(rc_d(a.right), rc_d(track_point(a, -w, 0))), plane_through(d3_neg(rc_d(a.right)), rc_d(track_point(a, w, 0)))];
+}
+rc_sub :: (r: [] Racing, throttle: f32, steer: f32, handbrake: bool) -> RcStep {
+  out: RcStep;
+  t := r[0].t[..];
+  b := r[0].body;
+  a := track_near(t, cast(f32) b.pos.x, cast(f32) b.pos.y, cast(f32) b.pos.z, r[0].hint, 10);
+  road := rc_planes(a);
+  // the road and its barriers, and the faces of what was built near the car
+  planes: [3 + RC_TOUCH] Plane; for k: 0..<3 { planes[k] = road[k]; }
+  np := 3 + rc_box_planes(r, b.pos, planes[3..<3 + RC_TOUCH]);
+  live := r[0].run.going && !r[0].run.done;
+  in := VehicleInput.{throttle = ifx live then cast(f64) throttle else 0.0, steer = cast(f64) steer, handbrake = !r[0].run.going && !r[0].run.done || (live && handbrake)};
+  v := vehicle_step(b, r[0].spec, r[0].st, in, planes[0..<np], d3(0.0, -9.81, 0.0), RC_DT);
+  store: [1] RigidBody; store[0] = v.body;
+  w := rigid_world(RC_DT, store[..]); w = rigid_step(w, D3_ZERO);
+  nb := vehicle_collide(store[0], r[0].spec, planes[0..<np], 0.1, 0.6);
+  // off the road and its kerbs, on the gravel: it slows
+  if abs(a.side) > RC_HALF + RC_KERB { nb.vel = d3_scale(nb.vel, 1.0 - 1.6 * RC_DT); }
+  // over a built boost (within its footprint, near its top): it speeds up, to RC_BOOST_TOP times its top speed
+  if rc_boosted(r, nb.pos) {
+    v2 := d3_dot(nb.vel, nb.vel); top := r[0].spec.top_speed * RC_BOOST_TOP;
+    if v2 > 1 && v2 < top * top { nb.vel = d3_scale(nb.vel, 1.0 + RC_BOOST * RC_DT); }
+  }
+  r[0].body = nb; r[0].st = v.state;
+  n := track_near(t, cast(f32) nb.pos.x, cast(f32) nb.pos.y, cast(f32) nb.pos.z, a.i, 4);
+  // a gate passed: it counts only as the next
+  if live {
+    g := r[0].run.next;
+    if track_passed(r[0].s, n.s, r[0].gate[g], t[0].length) {
+      p := course_pass(r[0].run, g); r[0].run = p.run; out = RcStep.{gate = g, what = p.what};
+    }
+  }
+  r[0].s = n.s; r[0].hint = n.i; r[0].side = n.side; r[0].over = n.over;
+  // on its roof or its side, or off the ribbon, for a while: back on the track
+  lost := vehicle_stuck(nb, v.state, rc_d(n.up)) || n.over < -4 || abs(n.side) > RC_HALF + RC_RUNOFF + 2;
+  r[0].stuck = ifx lost then r[0].stuck + RC_DT else 0.0f32;
+  if r[0].stuck > RC_STUCK { rc_back(r); }
+  return out;
+}
+
+// What was built, as boxes in the engine's axes (six floats each: low corner, high corner); past RC_BOXES are not met.
+rc_built :: (r: [] Racing, boxes: [] f32) {
+  n := boxes.count / 6; if n > RC_BOXES { n = RC_BOXES; }
+  for k: 0..<n * 6 { r[0].bx[k] = boxes[k]; }
+  r[0].nbx = n;
+}
+// The boosts built on the road, as boxes in the engine's axes (six floats each, low corner then high); past RC_BOOSTS none.
+rc_boosts :: (r: [] Racing, boxes: [] f32) {
+  n := boxes.count / 6; if n > RC_BOOSTS { n = RC_BOOSTS; }
+  for k: 0..<n * 6 { r[0].bo[k] = boxes[k]; }
+  r[0].nbo = n;
+}
+// Whether the car at `p` is over a boost: within its footprint and its middle under 1.2 m over the boost's top.
+rc_boosted :: (r: [] Racing, p: D3) -> bool {
+  for k: 0..<r[0].nbo {
+    b := r[0].bo[k * 6..<k * 6 + 6];
+    if p.x >= cast(f64) b[0] && p.x <= cast(f64) b[3] && p.z >= cast(f64) b[2] && p.z <= cast(f64) b[5] && p.y >= cast(f64) b[1] - 0.5 && p.y <= cast(f64) b[4] + 1.2 { return true; }
+  }
+  return false;
+}
+// The faces of the built boxes the car at `p` meets, nearest first, into `out`: how many. Over a box's
+// top (within its footprint, near its top) the top is a floor; beside it, the face on the car's side is a wall.
+rc_box_planes :: (r: [] Racing, p: D3, out: [] Plane) -> int {
+  used: [RC_BOXES] bool; n := 0;
+  for k: 0..<r[0].nbx { used[k] = false; }
+  while n < out.count {
+    best := -1; far: f64 = 0;
+    for k: 0..<r[0].nbx {
+      if used[k] { continue; }
+      b := r[0].bx[k * 6..<k * 6 + 6];
+      ox := fmax(fmax(cast(f64) b[0] - p.x, p.x - cast(f64) b[3]), 0.0); oz := fmax(fmax(cast(f64) b[2] - p.z, p.z - cast(f64) b[5]), 0.0);
+      d := ox * ox + oz * oz;
+      if ox > RC_REACH || oz > RC_REACH || p.y > cast(f64) b[4] + 2.5 || p.y < cast(f64) b[1] - 1.5 { continue; }
+      if best < 0 || d < far { best = k; far = d; }
+    }
+    if best < 0 { break; }
+    used[best] = true;
+    b := r[0].bx[best * 6..<best * 6 + 6];
+    lo := d3(cast(f64) b[0], cast(f64) b[1], cast(f64) b[2]); hi := d3(cast(f64) b[3], cast(f64) b[4], cast(f64) b[5]);
+    // (a box lower than the car's step is driven onto: its top is the floor near it, never a wall)
+    over := (p.x > lo.x - 0.3 && p.x < hi.x + 0.3 && p.z > lo.z - 0.3 && p.z < hi.z + 0.3 && p.y > hi.y - 0.4) || hi.y < p.y - RC_STEP;
+    if over { out[n] = plane_through(D3_Y, hi); n += 1; continue; }
+    // the side the car is on: the face it is furthest out past
+    side := [4] f64.[lo.x - p.x, p.x - hi.x, lo.z - p.z, p.z - hi.z];
+    f := 0; for q: 1..<4 { if side[q] > side[f] { f = q; } }
+    out[n] = ifx f == 0 then plane_through(d3(-1.0, 0.0, 0.0), lo) else ifx f == 1 then plane_through(d3(1.0, 0.0, 0.0), hi) else ifx f == 2 then plane_through(d3(0.0, 0.0, -1.0), lo) else plane_through(d3(0.0, 0.0, 1.0), hi);
+    n += 1;
+  }
+  return n;
+}
+// The car's speed along its way, metres a second.
+rc_speed :: (r: [] Racing) -> f32 { return cast(f32) vehicle_forward_speed(r[0].body); }
+// Where the camera follows: the car, in the engine's axes.
+rc_at :: (r: [] Racing) -> [3] f32 { return rc_f(r[0].body.pos); }
+// The way the car faces on the level, the engine's axes (x, z).
+rc_ahead :: (r: [] Racing) -> [3] f32 { return rc_f(rigid_axis(r[0].body, D3_Z)); }
+
+// An autopilot: the keys a careful driver would press now. It aims at a point down the line ahead
+// (further the faster it goes) and keeps to a speed the tightest bend ahead allows. The checks drive
+// the race with it; a person never sees it.
+RcKeys :: struct { throttle: f32; steer: f32; }
+rc_pilot :: (r: [] Racing) -> RcKeys {
+  t := r[0].t[..];
+  v := rc_speed(r);
+  look := 7 + abs(v) * 0.45;
+  aim := track_at(t, r[0].s + look);
+  at := rc_at(r); f := rc_ahead(r);
+  dx := aim.at[0] - at[0]; dz := aim.at[2] - at[2];
+  // the turn to it: positive to the right (on the level, right of ahead (x, z) is (-z, x): looking along +z, -x)
+  across := -dx * f[2] + dz * f[0];
+  along := dx * f[0] + dz * f[2];
+  turn := atan2(across, along);
+  steer := turn * 2.2; if steer > 1 { steer = 1; } if steer < -1 { steer = -1; }
+  // the speed the bends ahead allow: grip over bend, a share of it
+  worst: f32 = 0;
+  for k: 0..<8 { b := abs(t[0].bend[((ifx r[0].hint < 0 then 0 else r[0].hint) + k * 3) % t[0].n]); if b > worst { worst = b; } }
+  want := ifx worst > 0.0005 then sqrt(9.81 * 1.05 / worst) else 60.0f32;
+  throttle: f32 = ifx v < want - 1 then 1 else ifx v > want + 2 then -1 else 0.2f32;
+  return RcKeys.{throttle = throttle, steer = steer};
+}
+
+// ---------------------------------------------------------------- what is drawn
+// The point nearest p on the floor's grid lines (every 4 m): the entrance's lines start there.
+rc_snap :: (p: [3] f32) -> [3] f32 {
+  gx := floor(p[0] / 4 + 0.5) * 4; gz := floor(p[2] / 4 + 0.5) * 4;
+  if abs(p[0] - gx) < abs(p[2] - gz) { return [3] f32.[gx, 0, p[2]]; }
+  return [3] f32.[p[0], 0, gz];
+}
+// How far the grid's lines have bent into the ribbon (0 to 1), and how far from the line, both ways, the ribbon has filled in (metres).
+rc_bent :: (r: [] Racing) -> f32 { return rc_ease(r[0].clock / RC_BEND_IN); }
+rc_filled :: (r: [] Racing) -> f32 { return rc_ease((r[0].clock - RC_FILL_AT) / RC_FILL) * (r[0].t[0].length * 0.5 + 1); }
+// Whether all of it is in: the ribbon and what stands by it are written once and kept.
+rc_up :: (r: [] Racing) -> bool { return r[0].ok && r[0].clock >= RC_FILL_AT + RC_FILL; }
+// How far along from the line a distance is, the short way round.
+rc_from_line :: (r: [] Racing, s: f32) -> f32 {
+  L := r[0].t[0].length; d := s - r[0].line; d -= floor(d / L) * L;
+  return ifx d > L * 0.5 then L - d else d;
+}
+rc_quad :: (p: [] ArchPen, a: [3] f32, b: [3] f32, c: [3] f32, d: [3] f32) { arch_face(p, a, b, c, d); }
+
+// A strip of the ribbon between frames A and B, from `s0` to `s1` metres right of the line, `up` over it.
+rc_strip :: (p: [] ArchPen, A: TrackAt, B: TrackAt, s0: f32, s1: f32, up: f32) {
+  rc_quad(p, track_point(A, s0, up), track_point(A, s1, up), track_point(B, s1, up), track_point(B, s0, up));
+}
+// A barrier's face (toward the road) and top, `side` 1 on the right and -1 on the left; and when the
+// ribbon is raised, its outside down to the ground.
+rc_wall :: (p: [] ArchPen, A: TrackAt, B: TrackAt, side: f32) {
+  w: f32 = (RC_HALF + RC_RUNOFF) * side; t: f32 = 0.5 * side;
+  a0 := track_point(A, w, 0); a1 := track_point(A, w, RC_WALL); b0 := track_point(B, w, 0); b1 := track_point(B, w, RC_WALL);
+  c1 := track_point(A, w + t, RC_WALL); d1 := track_point(B, w + t, RC_WALL);
+  if side > 0 { rc_quad(p, b0, a0, a1, b1); rc_quad(p, b1, a1, c1, d1); } else { rc_quad(p, a0, b0, b1, a1); rc_quad(p, a1, b1, d1, c1); }
+  if A.at[1] > 0.15 || B.at[1] > 0.15 {
+    c0 := [3] f32.[c1[0], -0.05, c1[2]]; d0 := [3] f32.[d1[0], -0.05, d1[2]];
+    if side > 0 { rc_quad(p, c1, c0, d0, d1); } else { rc_quad(p, d1, d0, c0, c1); }
+  }
+}
+// A box turned to a frame: its middle `side` right and `up` over the line at frame a, half sizes along right, up and ahead.
+rc_box :: (p: [] ArchPen, a: TrackAt, side: f32, up: f32, hr: f32, hu: f32, ha: f32) {
+  arch_obox(p, track_point(a, side, up), arch_vmul(a.right, hr), arch_vmul(a.up, hu), arch_vmul(a.ahead, ha));
+}
+// A box on the level, turned to face along `ahead` (x, z), its foot at (x, y, z).
+rc_tree :: (p: [] ArchPen, x: f32, y: f32, z: f32, height: f32, seed: int) {
+  arch_material(p, ARCH_M_BARK, 0, 0, 0);
+  arch_obox(p, [3] f32.[x, y + height * 0.12, z], [3] f32.[0.22, 0, 0], [3] f32.[0, height * 0.12, 0], [3] f32.[0, 0, 0.22]);
+  // a cypress: three diamonds of dark leaf, narrowing up
+  g := 0.3 + 0.08 * cast(f32) (seed % 3);
+  arch_material(p, ARCH_M_LEAF, 0.16, g, 0.14);
+  for k: 0..<3 {
+    w := height * (0.17 - 0.04 * cast(f32) k); hy := height * (0.24 - 0.04 * cast(f32) k); cy := y + height * (0.36 + 0.22 * cast(f32) k);
+    turn := 0.4 * cast(f32) (seed + k); c := cos(turn) * w * 0.7071; s := sin(turn) * w * 0.7071;
+    arch_obox(p, [3] f32.[x, cy, z], [3] f32.[c, 0, -s], [3] f32.[0, hy, 0], [3] f32.[s, 0, c]);
+  }
+}
+
+// The circuit and what stands by it: what is written once and kept (rc_mesh).
+rc_circuit :: (r: [] Racing, p: [] ArchPen) {
+  t := r[0].t[..]; n := t[0].n;
+  bent := rc_bent(r); fill := rc_filled(r);
+  H: f32 = RC_HALF;
+  for i: 0..<n {
+    A := track_frame(t, i, 0); B := track_frame(t, (i + 1) % n, 0);
+    if rc_from_line(r, A.s) <= fill {
+      // the road, a white line along each edge, a kerb outside it on a corner, the gravel, the barriers
+      arch_material(p, ARCH_M_SMOOTH, 0.2, 0.2, 0.22); rc_strip(p, A, B, -H + 0.35, H - 0.35, RC_LIFT);
+      arch_material(p, ARCH_M_SMOOTH, 0.92, 0.9, 0.86); rc_strip(p, A, B, -H, -H + 0.35, RC_LIFT); rc_strip(p, A, B, H - 0.35, H, RC_LIFT);
+      corner := abs(t[0].bend[i]) > RC_BENT;
+      if corner {
+        if i % 2 == 0 { arch_material(p, ARCH_M_SMOOTH, 0.85, 0.12, 0.1); } else { arch_material(p, ARCH_M_SMOOTH, 0.95, 0.94, 0.92); }
+        rc_strip(p, A, B, -H - RC_KERB, -H, RC_LIFT + 0.03); rc_strip(p, A, B, H, H + RC_KERB, RC_LIFT + 0.03);
+      }
+      k: f32 = ifx corner then RC_KERB else 0.0f32;
+      arch_material(p, ARCH_M_SMOOTH, 0.62, 0.55, 0.44); rc_strip(p, A, B, -H - RC_RUNOFF, -H - k, RC_LIFT - 0.01); rc_strip(p, A, B, H + k, H + RC_RUNOFF, RC_LIFT - 0.01);
+      // the barriers: blue and white, a section each
+      if i % 2 == 0 { arch_material(p, ARCH_M_SMOOTH, 0.2, 0.36, 0.72); } else { arch_material(p, ARCH_M_SMOOTH, 0.94, 0.94, 0.95); }
+      rc_wall(p, A, B, 1); rc_wall(p, A, B, -1);
+    }
+    // the grid's lines, bending into the ribbon's edges: light while it fills in, gone once it has
+    if bent > 0 && fill < t[0].length * 0.5 && rc_from_line(r, A.s) > fill - 6 {
+      arch_material(p, ARCH_M_GLOW, 0.5, 1.0, 1.4);
+      for e: 0..<2 {
+        side: f32 = ifx e == 0 then -H else H;
+        a0 := track_point(A, side, 0.02); b0 := track_point(B, side, 0.02);
+        a := arch_vmix(rc_snap(a0), a0, bent); b := arch_vmix(rc_snap(b0), b0, bent);
+        a[1] += 0.02; b[1] += 0.02;
+        d := arch_vnorm(arch_vsub(b, a)); q := [3] f32.[-d[2] * 0.09, 0, d[0] * 0.09];
+        rc_quad(p, arch_vsub(a, q), arch_vadd(a, q), arch_vadd(b, q), arch_vsub(b, q));
+      }
+    }
+  }
+  if fill < 1 { return; }
+  // the line: a band of squares across the road, black and white
+  L := track_at(t, r[0].line); M := track_at(t, r[0].line + 1.2);
+  for k: 0..<11 {
+    s0 := -H + cast(f32) k; s1 := s0 + 1;
+    for j: 0..<2 {
+      Lj := ifx j == 0 then L else track_at(t, r[0].line + 0.6); Mj := ifx j == 0 then track_at(t, r[0].line + 0.6) else M;
+      if (k + j) % 2 == 0 { arch_material(p, ARCH_M_SMOOTH, 0.08, 0.08, 0.09); } else { arch_material(p, ARCH_M_SMOOTH, 0.95, 0.95, 0.95); }
+      rc_strip(p, Lj, Mj, s0, ifx s1 > H then H else s1, RC_LIFT + 0.005);
+    }
+  }
+  // the gantry over the line: two posts outside the barriers, a beam, its panel
+  arch_material(p, ARCH_M_METAL, 0.32, 0.33, 0.36);
+  w: f32 = RC_HALF + RC_RUNOFF + 1.2;
+  rc_box(p, L, -w, 3.6, 0.35, 3.6, 0.35); rc_box(p, L, w, 3.6, 0.35, 3.6, 0.35);
+  rc_box(p, L, 0, 7.0, w + 0.4, 0.45, 0.4);
+  arch_material(p, ARCH_M_SMOOTH, 0.1, 0.1, 0.12); rc_box(p, L, 0, 5.9, 3.2, 0.75, 0.15);
+  // a grandstand outside the right of the straight: steps of seats, a roof on posts
+  G := track_at(t, r[0].line - 10);
+  for k: 0..<6 {
+    out := RC_HALF + RC_RUNOFF + 3 + cast(f32) k * 1.4;
+    if k % 2 == 0 { arch_material(p, ARCH_M_SMOOTH, 0.82, 0.3, 0.2); } else { arch_material(p, ARCH_M_SMOOTH, 0.95, 0.78, 0.3); }
+    rc_box(p, G, out, 0.4 + cast(f32) k * 0.5, 0.7, 0.4 + cast(f32) k * 0.5, 22);
+  }
+  arch_material(p, ARCH_M_SMOOTH, 0.94, 0.93, 0.9); rc_box(p, G, RC_HALF + RC_RUNOFF + 6.5, 6.4, 5.2, 0.15, 23);
+  arch_material(p, ARCH_M_METAL, 0.3, 0.3, 0.32);
+  for k: 0..<4 { P := track_at(t, r[0].line - 10 - 20 + cast(f32) k * 13.3); rc_box(p, P, RC_HALF + RC_RUNOFF + 11.3, 3.2, 0.15, 3.2, 0.15); }
+  // cypresses round it, outside the barriers: a row along the back straight and a few at the corners
+  for k: 0..<40 {
+    s := cast(f32) k * t[0].length / 40 + 7;
+    a := track_at(t, s);
+    side: f32 = ifx k % 2 == 0 then 1 else -1;
+    if rc_from_line(r, s) < 45 && side > 0 { continue; }   // (the grandstand's side of the straight)
+    q := track_point(a, side * (RC_HALF + RC_RUNOFF + 5 + cast(f32) (k % 3) * 2.5), 0);
+    // a tree stands where nothing of the ribbon is near: inside a hairpin there may be another stretch of it
+    near := track_near(t, q[0], 0, q[2], -1, 0);
+    if abs(near.side) < RC_HALF + RC_RUNOFF + 3 { continue; }
+    rc_tree(p, q[0], 0, q[2], 7 + cast(f32) (k % 4), k);
+  }
+}
+
+// The bars of a digit (pf_bars' order: top, top right, bottom right, bottom, bottom left, top left, middle).
+rc_bars :: (d: int) -> int { b := [10] int.[63, 6, 91, 79, 102, 109, 125, 7, 127, 111]; return b[((d % 10) + 10) % 10]; }
+// A digit of lit bars on a board: its bottom left at o, `right` and `up` its axes (a unit each), `h` its height.
+rc_digit :: (p: [] ArchPen, o: [3] f32, right: [3] f32, up: [3] f32, h: f32, d: int) {
+  bars := rc_bars(d); w := h * 0.55; t := h * 0.12;
+  // each bar: from (x0, y0) to (x1, y1) on the board
+  xs := [7] [4] f32.[[4] f32.[0, h - t, w, h], [4] f32.[w - t, h * 0.5, w, h], [4] f32.[w - t, 0, w, h * 0.5], [4] f32.[0, 0, w, t], [4] f32.[0, 0, t, h * 0.5], [4] f32.[0, h * 0.5, t, h], [4] f32.[0, h * 0.5 - t * 0.5, w, h * 0.5 + t * 0.5]];
+  for k: 0..<7 {
+    if (bars & (1 << k)) == 0 { continue; }
+    q := xs[k];
+    a := arch_vadd(o, arch_vadd(arch_vmul(right, q[0]), arch_vmul(up, q[1])));
+    b := arch_vadd(o, arch_vadd(arch_vmul(right, q[2]), arch_vmul(up, q[1])));
+    c := arch_vadd(o, arch_vadd(arch_vmul(right, q[2]), arch_vmul(up, q[3])));
+    e := arch_vadd(o, arch_vadd(arch_vmul(right, q[0]), arch_vmul(up, q[3])));
+    rc_quad(p, a, b, c, e);
+  }
+}
+// A row of digits and marks on a board, from o along `right`: digits 0 to 9, 10 a colon, 11 a point, 12 a slash, -1 a space.
+rc_row :: (p: [] ArchPen, o: [3] f32, right: [3] f32, up: [3] f32, h: f32, glyphs: [] int) -> f32 {
+  x: f32 = 0; t := h * 0.12;
+  for g: glyphs {
+    at := arch_vadd(o, arch_vmul(right, x));
+    if g >= 0 && g <= 9 { rc_digit(p, at, right, up, h, g); x += h * 0.8; }
+    else if g == 10 || g == 11 {
+      for k: 0..<(ifx g == 10 then 2 else 1) {
+        y := ifx g == 11 then 0.0f32 else ifx k == 0 then h * 0.22 else h * 0.66;
+        a := arch_vadd(at, arch_vmul(up, y)); rc_quad(p, a, arch_vadd(a, arch_vmul(right, t)), arch_vadd(arch_vadd(a, arch_vmul(right, t)), arch_vmul(up, t)), arch_vadd(a, arch_vmul(up, t)));
+      }
+      x += h * 0.35;
+    } else if g == 12 {
+      a := at; b := arch_vadd(at, arch_vmul(right, t)); c := arch_vadd(arch_vadd(at, arch_vmul(right, h * 0.45 + t)), arch_vmul(up, h)); e := arch_vadd(arch_vadd(at, arch_vmul(right, h * 0.45)), arch_vmul(up, h));
+      rc_quad(p, a, b, c, e); x += h * 0.7;
+    } else { x += h * 0.5; }
+  }
+  return x;
+}
+// A time as glyphs: m:ss (and .t when `tenths`). Returns how many.
+rc_clock :: (seconds: f32, tenths: bool, out: [] int) -> int {
+  tt := cast(int) floor(seconds * 10 + 0.5); if tt < 0 { tt = 0; }
+  m := tt / 600; s := (tt / 10) % 60;
+  n := 0;
+  if m >= 10 { out[n] = (m / 10) % 10; n += 1; }
+  out[n] = m % 10; out[n + 1] = 10; out[n + 2] = s / 10; out[n + 3] = s % 10; n += 4;
+  if tenths { out[n] = 11; out[n + 1] = tt % 10; n += 2; }
+  return n;
+}
+
+// The car, where it is: a low body, its cabin, a wing, its wheels (the front ones turned), its lights.
+rc_car_mesh :: (r: [] Racing, p: [] ArchPen, braking: bool) {
+  b := r[0].body; st := r[0].st; spec := r[0].spec;
+  f: [4] [3] f32; f[0] = rc_f(b.pos); f[1] = rc_f(rigid_axis(b, D3_X)); f[2] = rc_f(rigid_axis(b, D3_Y)); f[3] = rc_f(rigid_axis(b, D3_Z));
+  ex := f[1]; ey := f[2]; ez := f[3];
+  arch_material(p, ARCH_M_SMOOTH, 0.96, 0.42, 0.1);
+  rc_part(p, f, 0, -0.06, 0.1, 0.95, 0.26, 2.0);          // the body
+  rc_part(p, f, 0, -0.02, 1.95, 0.86, 0.18, 0.25);        // its nose, lower
+  rc_part(p, f, 0.62, 0.05, -0.2, 0.33, 0.24, 1.2); rc_part(p, f, -0.62, 0.05, -0.2, 0.33, 0.24, 1.2);   // its haunches over the wheels
+  arch_material(p, ARCH_M_SMOOTH, 0.1, 0.12, 0.16);
+  rc_part(p, f, 0, 0.36, -0.3, 0.66, 0.2, 0.85);          // the cabin, dark glass
+  rc_part(p, f, 0, 0.42, -2.0, 0.98, 0.04, 0.24);         // the wing
+  rc_part(p, f, 0.7, 0.25, -2.0, 0.04, 0.17, 0.12); rc_part(p, f, -0.7, 0.25, -2.0, 0.04, 0.17, 0.12);
+  // the wheels: where each hangs on its spring, the front two turned by the steer
+  arch_material(p, ARCH_M_SMOOTH, 0.07, 0.07, 0.08);
+  for i: 0..<WHEELS {
+    m := spec.mount[i];
+    drop := cast(f32) (ifx st.touching[i] then spec.rest - st.compression[i] else spec.rest);
+    wc := rc_in_car(f, cast(f32) m.x, cast(f32) m.y - drop, cast(f32) m.z);
+    turn := ifx i < 2 then -cast(f32) st.steer_now else 0.0f32;
+    fx := arch_vadd(arch_vmul(ex, cos(turn)), arch_vmul(ez, -sin(turn))); fz := arch_vadd(arch_vmul(ex, sin(turn)), arch_vmul(ez, cos(turn)));
+    arch_obox(p, wc, arch_vmul(fx, 0.17), arch_vmul(ey, 0.37), arch_vmul(fz, 0.37));
+  }
+  // its lights: warm white ahead, red behind, brighter on the brake
+  arch_material(p, ARCH_M_GLOW, 1.6, 1.45, 1.1); rc_part(p, f, 0.62, 0.02, 2.11, 0.2, 0.06, 0.02); rc_part(p, f, -0.62, 0.02, 2.11, 0.2, 0.06, 0.02);
+  red: f32 = ifx braking then 2.4 else 1.0;
+  arch_material(p, ARCH_M_GLOW, red, 0.12 * red, 0.08 * red); rc_part(p, f, 0.62, 0.05, -1.92, 0.22, 0.05, 0.02); rc_part(p, f, -0.62, 0.05, -1.92, 0.22, 0.05, 0.02);
+}
+// A point in the car's own frame (f: its middle, then its x, y and z axes).
+rc_in_car :: (f: [4] [3] f32, x: f32, y: f32, z: f32) -> [3] f32 { return arch_vadd(f[0], arch_vadd(arch_vmul(f[1], x), arch_vadd(arch_vmul(f[2], y), arch_vmul(f[3], z)))); }
+// A box of the car: its middle in the car's frame, its half sizes along the car's axes.
+rc_part :: (p: [] ArchPen, f: [4] [3] f32, x: f32, y: f32, z: f32, hx: f32, hy: f32, hz: f32) { arch_obox(p, rc_in_car(f, x, y, z), arch_vmul(f[1], hx), arch_vmul(f[2], hy), arch_vmul(f[3], hz)); }
+
+// What changes from frame to frame: the car, the gantry's lights and its board, and a board over
+// the car with the lap and its time (the result once the flag has fallen).
+rc_live :: (r: [] Racing, p: [] ArchPen, braking: bool) {
+  t := r[0].t[..];
+  if r[0].shown { rc_car_mesh(r, p, braking); }
+  if !rc_up(r) { return; }
+  L := track_at(t, r[0].line);
+  // three lights on the gantry's panel: red one by one, then all green
+  lit := rc_light(r);
+  for k: 0..<3 {
+    on := lit == 4 || lit > k;
+    if lit == 4 { arch_material(p, ARCH_M_GLOW, 0.3, 2.2, 0.5); }
+    else if on { arch_material(p, ARCH_M_GLOW, 2.4, 0.2, 0.12); }
+    else { arch_material(p, ARCH_M_SMOOTH, 0.18, 0.05, 0.05); }
+    rc_box(p, L, (cast(f32) k - 1) * 1.8, 5.9, 0.55, 0.55, 0.18 + 0.05);
+  }
+  if !r[0].shown { return; }
+  c := rc_at(r); f := rc_ahead(r);
+  flat := arch_vnorm([3] f32.[f[0], 0, f[2]]); side := [3] f32.[-flat[2], 0, flat[0]];   // (the camera's right, from behind: right of ahead on the level)
+  up := [3] f32.[0, 1, 0];
+  // the count as a big digit over the car (3, 2, 1), facing the camera behind it
+  if lit >= 1 && lit <= 3 && r[0].run.lap == 0 {
+    arch_material(p, ARCH_M_GLOW, 2.4, 0.5, 0.25);
+    rc_digit(p, arch_vadd(arch_vadd(c, arch_vmul(up, 1.75)), arch_vmul(side, -0.28)), side, up, 1.0, 4 - lit);
+  }
+  // over the car, facing the camera behind it: the lap and its time; after the flag the race's time and its best lap
+  if lit < 4 { return; }
+  g: [12] int; n := 0;
+  arch_material(p, ARCH_M_GLOW, 1.7, 1.25, 0.55);
+  if r[0].run.done {
+    n = rc_clock(r[0].run.clock, true, g[..]);
+    w := cast(f32) n * 0.24;
+    o := arch_vadd(arch_vadd(c, arch_vmul(up, 2.5)), arch_vmul(side, -w * 0.5));
+    _ = rc_row(p, o, side, up, 0.42, g[0..<n]);
+    arch_material(p, ARCH_M_GLOW, 0.5, 1.6, 0.8);
+    n = rc_clock(r[0].run.best_lap, true, g[..]);
+    o = arch_vadd(arch_vadd(c, arch_vmul(up, 1.85)), arch_vmul(side, -cast(f32) n * 0.16 * 0.5));
+    _ = rc_row(p, o, side, up, 0.28, g[0..<n]);
+    return;
+  }
+  lap := r[0].run.lap + 1; if lap > RC_LAPS { lap = RC_LAPS; }
+  g[0] = lap; g[1] = 12; g[2] = RC_LAPS; g[3] = -1;
+  n = 4 + rc_clock(r[0].run.lap_clock, false, g[4..<12]);
+  w := cast(f32) n * 0.15;
+  o := arch_vadd(arch_vadd(c, arch_vmul(up, 1.75)), arch_vmul(side, -w * 0.5));
+  _ = rc_row(p, o, side, up, 0.24, g[0..<n]);
+}
+
+// The whole of it into the pen: the circuit (kept once it is all in: written again only while it
+// comes in), then what moves.
+rc_mesh :: (r: [] Racing, p: [] ArchPen, braking: bool) {
+  if !r[0].ok { return; }
+  if rc_up(r) && r[0].baked > 0 && r[0].baked_at == p[0].n && r[0].baked <= p[0].out.count / ARCH_VERTEX_FLOATS {
+    p[0].n = r[0].baked;   // (the circuit is in the mesh already, as it was written last)
+  } else {
+    from := p[0].n;
+    rc_circuit(r, p);
+    r[0].baked = ifx rc_up(r) && !p[0].full then p[0].n else 0; r[0].baked_at = from;
+  }
+  rc_live(r, p, braking);
+}
+
+// The ground table: grass everywhere but on and by the ribbon (its road, gravel and barriers, and a
+// margin), each node 4 floats (height, grass cover, paving, spare) as the stylized frame reads them.
+rc_ground :: (r: [] Racing, table: [] f32) {
+  side := RC_TABLE_N + 1;
+  if table.count < side * side * 4 || !r[0].ok { return; }
+  t := r[0].t[..];
+  for j: 0..<side {
+    for i: 0..<side {
+      x := RC_TABLE_X0 + cast(f32) i * RC_TABLE_CELL; z := RC_TABLE_Z0 + cast(f32) j * RC_TABLE_CELL;
+      a := track_near(t, x, 0, z, -1, 0);
+      // a raised ribbon's sides come down to the ground half a metre outside its barriers
+      bare := abs(a.side) < RC_HALF + RC_RUNOFF + 0.5 + RC_TABLE_CELL;
+      k := (j * side + i) * 4;
+      table[k] = 0; table[k + 1] = ifx bare then 0.0f32 else 1.0f32; table[k + 2] = 0; table[k + 3] = 0;
+    }
+  }
+}
+
+// The day: the sun low in the west, warm and long-shadowed; the meadow lush. `base` is the meadow's
+// own day (the HUD's), whose grass and air this keeps; it comes up from black as the world does.
+rc_day :: (base: StyLook) -> StyLook {
+  l := base;
+  l.sun_x = -0.6; l.sun_y = 0.045; l.sun_z = 0.8; l.shadow = 0.75; l.band = 0.55;
+  l.sun_r = 1.05; l.sun_g = 0.64; l.sun_b = 0.34;
+  l.sky_r = 0.36; l.sky_g = 0.32; l.sky_b = 0.36;
+  l.ground_r = 0.26; l.ground_g = 0.2; l.ground_b = 0.14;
+  l.haze_r = 0.95; l.haze_g = 0.74; l.haze_b = 0.55; l.haze = 0.004; l.haze_start = 60; l.haze_most = 0.7;
+  l.air = 1.2; l.cloud = 0.3; l.cloud_scale = 1.2; l.sun_disc = 0.024;
+  return l;
+}
+rc_look :: (r: [] Racing, base: StyLook) -> StyLook {
+  night: StyLook;
+  night.sun_r = 0; night.sun_g = 0; night.sun_b = 0; night.sky_r = 0; night.sky_g = 0; night.sky_b = 0;
+  night.ground_r = 0; night.ground_g = 0; night.ground_b = 0; night.zenith_r = 0; night.zenith_g = 0; night.zenith_b = 0;
+  night.horizon_r = 0; night.horizon_g = 0; night.horizon_b = 0; night.haze_r = 0; night.haze_g = 0; night.haze_b = 0; night.haze = 0;
+  night.cloud = 0; night.air = 0; night.lush = base.lush; night.blade = base.blade; night.blade_wide = base.blade_wide; night.grass_cell = base.grass_cell; night.grass_reach = base.grass_reach;
+  f := ifx r[0].ok then rc_ease((r[0].clock - 0.1) / RC_SKY) else 0.0f32;
+  return sty_look_mix(night, rc_day(base), f);
+}
+
+// ---------------------------------------------------------------- what the page is told
+// A number that changes whenever what the page is told would: the light, the lap, the gate, the flag, the times put back.
+rc_state :: (r: [] Racing) -> int {
+  if !r[0].ok { return 1; }
+  return (rc_light(r) << 26) | ((r[0].run.lap & 7) << 22) | ((r[0].run.next & 15) << 18) | ((r[0].backs & 1023) << 4) | (ifx r[0].run.done then 2 else 0) | (ifx r[0].shown then 4 else 0) | 1;
+}
+rc_put :: (out: [] u8, n: int, s: string) -> int { k := n; for ch: s { if k < out.count { out[k] = ch; k += 1; } } return k; }
+rc_put_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := ifx v < 0 then 0 else v;
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+rc_put_time :: (out: [] u8, n: int, seconds: f32) -> int {
+  g: [12] int; m := rc_clock(seconds, true, g[..]);
+  k := n;
+  for i: 0..<m { c: u8 = ifx g[i] == 10 then ':' else ifx g[i] == 11 then '.' else cast(u8) ('0' + g[i]); if k < out.count { out[k] = c; k += 1; } }
+  return k;
+}
+// The world in words, for the chat's model: its game type, how it is played, and where the race is.
+rc_describe :: (r: [] Racing, out: [] u8) -> int {
+  n := rc_put(out, 0, "a racing circuit at the end of the day: three laps against the clock past checkpoints in order (a checkpoint counts only as the next, so there is no cutting); W or Up drives, S or Down brakes, A and D or Left and Right steer, Space is the handbrake, R puts the car back at the last checkpoint.");
+  if !r[0].ok { return n; }
+  lit := rc_light(r);
+  if !r[0].shown || lit < 4 && !r[0].run.done && r[0].run.lap == 0 && r[0].run.next == 0 {
+    n = rc_put(out, n, " on the grid");
+    if lit >= 1 && lit <= 3 { n = rc_put(out, n, ": "); n = rc_put_int(out, n, 4 - lit); }
+    n = rc_put(out, n, ".");
+    return n;
+  }
+  if r[0].run.done {
+    n = rc_put(out, n, " finished: three laps in "); n = rc_put_time(out, n, r[0].run.clock);
+    n = rc_put(out, n, ", best lap "); n = rc_put_time(out, n, r[0].run.best_lap); n = rc_put(out, n, ". R races again.");
+    return n;
+  }
+  n = rc_put(out, n, " lap "); n = rc_put_int(out, n, r[0].run.lap + 1); n = rc_put(out, n, " of 3. checkpoint ");
+  n = rc_put_int(out, n, r[0].run.next); n = rc_put(out, n, " of "); n = rc_put_int(out, n, RC_GATES - 1); n = rc_put(out, n, ". time ");
+  n = rc_put_time(out, n, r[0].run.clock);
+  if r[0].run.best_lap > 0 { n = rc_put(out, n, ". best lap "); n = rc_put_time(out, n, r[0].run.best_lap); }
+  n = rc_put(out, n, ".");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+rc_test_has :: (a: string, b: string) -> bool {
+  if b.count > a.count { return false; }
+  for i: 0..<a.count - b.count + 1 { if cast(string) a[i..<i + b.count] == b { return true; } }
+  return false;
+}
+// The race driven by the autopilot for `seconds` at 60 frames a second.
+rc_test_drive :: (r: [] Racing, seconds: f32) {
+  frames := cast(int) (seconds * 60);
+  for k: 0..<frames { keys := rc_pilot(r); _ := rc_step(r, keys.throttle, keys.steer, false, 0.016666668); if r[0].run.done { break; } }
+}
+
+#test "the circuit: a closed ribbon about 780 m round, its corners no tighter than 11 m, never near itself, a rise of 5 m" #steps 4000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  t := r[0].t[..];
+  #assert r[0].ok && t[0].n == GT_CIRCUIT * RC_PER && t[0].length > 740 && t[0].length < 820;
+  top: f32 = 0; tight: f32 = 0;
+  for i: 0..<t[0].n { if t[0].at[i][1] > top { top = t[0].at[i][1]; } if abs(t[0].bend[i]) > tight { tight = abs(t[0].bend[i]); } }
+  #assert top > 4.8 && top < 5.6 && tight < 1.0 / 11.0 && tight > 1.0 / 20.0;
+  // no stretch comes within two barriers' width of another (the gravel of one never meets the other's)
+  for i: 0..<t[0].n {
+    for j: 0..<t[0].n {
+      gap := ifx i > j then i - j else j - i; if t[0].n - gap < gap { gap = t[0].n - gap; }
+      if gap < 30 { continue; }
+      dx := t[0].at[i][0] - t[0].at[j][0]; dz := t[0].at[i][2] - t[0].at[j][2];
+      #assert dx * dx + dz * dz > (2 * (RC_HALF + RC_RUNOFF) + 4) * (2 * (RC_HALF + RC_RUNOFF) + 4);
+    }
+  }
+  // the line on the start straight, the gates round it in order, the last the line again
+  #assert r[0].line > 70 && r[0].line < 90 && abs(t[0].at[RC_PER][0]) < 0.01 && r[0].gate[RC_GATES - 1] == r[0].line + t[0].length;
+  for k: 1..<RC_GATES { #assert r[0].gate[k] > r[0].gate[k - 1]; }
+}
+
+#test "the entrance: the lines bend in, the ribbon fills from the line, the car drops in and settles, three lights and go, all within about a second" #steps 4000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  #assert rc_bent(r[..]) == 0 && rc_filled(r[..]) == 0 && !r[0].shown && rc_light(r[..]) == 0 && !rc_up(r[..]);
+  _ := rc_step(r[..], 1, 0, false, 0.06);
+  #assert rc_bent(r[..]) > 0 && rc_filled(r[..]) == 0 && !r[0].shown;
+  // the car is in and the first light is on a quarter of a second in; a light each quarter second after
+  for k: 0..<12 { _ = rc_step(r[..], 1, 0, false, 0.016666668); } #assert r[0].shown && rc_light(r[..]) == 1 && !r[0].run.going;
+  for k: 0..<15 { _ = rc_step(r[..], 1, 0, false, 0.016666668); } #assert rc_light(r[..]) == 2;
+  for k: 0..<15 { _ = rc_step(r[..], 1, 0, false, 0.016666668); } #assert rc_light(r[..]) == 3 && !r[0].run.going;
+  // it has dropped onto its springs and settled on the grid, still: the keys do nothing before green; the ribbon is all in
+  for k: 0..<12 { _ = rc_step(r[..], 1, 0, false, 0.016666668); }
+  #assert rc_light(r[..]) == 3 && r[0].st.wheels == 4 && abs(rc_speed(r[..])) < 0.3 && !r[0].run.going && rc_up(r[..]) && rc_bent(r[..]) == 1;
+  #assert abs(r[0].s - (r[0].line - RC_GRID)) < 0.5 && abs(r[0].side) < 0.1;
+  // green a second in: the clock runs and the car goes
+  for k: 0..<4 { _ = rc_step(r[..], 1, 0, false, 0.016666668); }
+  #assert rc_light(r[..]) == 4 && r[0].run.going && r[0].run.clock > 0 && r[0].run.clock < 0.1 && r[0].clock < 1.1;
+  #assert RC_COUNT_AT + 3 * RC_BEAT <= 1.0;
+  for k: 0..<60 { _ = rc_step(r[..], 1, 0, false, 0.016666668); }
+  #assert rc_speed(r[..]) > 8 && r[0].s > r[0].line - RC_GRID + 5;
+}
+
+#test "three laps by an autopilot: every gate in order, three laps timed and the best kept; then R races again" #steps 400000000000 #traversal 1000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  rc_test_drive(r[..], 160);
+  #assert r[0].run.done && r[0].run.lap == RC_LAPS && r[0].backs == 0;
+  #assert r[0].run.clock > 60 && r[0].run.clock < 150 && r[0].run.best_lap > 15 && r[0].run.best_lap <= r[0].run.last_lap + 0.001;
+  // after the flag the keys do nothing: it coasts
+  done := r[0].run.clock;
+  for k: 0..<120 { _ := rc_step(r[..], 1, 0, false, 0.016666668); }
+  #assert r[0].run.clock == done;
+  // R: a race again, from the grid, the countdown from its start
+  rc_act(r[..]);
+  #assert !r[0].run.done && r[0].run.lap == 0 && !r[0].run.going && r[0].shown && rc_light(r[..]) == 0;
+  // (a race again keeps the full count: a second a light, so a second on it is at its first and far from green)
+  for k: 0..<60 { _ := rc_step(r[..], 0, 0, false, 0.016666668); } #assert rc_light(r[..]) == 1 && !r[0].run.going;
+  for k: 0..<340 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  #assert r[0].run.going && abs(r[0].s - (r[0].line - RC_GRID)) < 0.6;
+}
+
+#test "no cutting: a gate out of turn counts for nothing; R puts the car back at the last checkpoint, still and on the line" #steps 40000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  for k: 0..<420 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  #assert r[0].run.going;
+  // carried over the course to just short of the fourth gate and let go: the third, second and first were never passed
+  rc_place(r[..], r[0].gate[3] - 3, 0);
+  for k: 0..<60 { keys := rc_pilot(r[..]); _ := rc_step(r[..], keys.throttle, keys.steer, false, 0.016666668); }
+  #assert r[0].s > r[0].gate[3] && r[0].run.next == 0 && r[0].run.lap == 0;
+  // back on the track before any gate: the grid
+  rc_act(r[..]); #assert r[0].backs == 1 && abs(r[0].s - (r[0].line - RC_GRID)) < 0.1 && d3_len(r[0].body.vel) == 0;
+  // driven to the first gate and past it, then put back: there
+  for k: 0..<1200 { keys := rc_pilot(r[..]); _ := rc_step(r[..], keys.throttle, keys.steer, false, 0.016666668); if r[0].run.next >= 2 { break; } }
+  #assert r[0].run.next == 2;
+  rc_act(r[..]);
+  #assert r[0].backs == 2 && abs(r[0].s - r[0].gate[1]) < 0.2;
+  #assert abs(r[0].side) < 0.01 && r[0].run.next == 2;
+  // upside down and still: put back by itself after a while
+  r[0].body.orientation = dq_z(3.14159); r[0].body.vel = D3_ZERO;
+  for k: 0..<200 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  #assert r[0].backs == 3 && rigid_axis(r[0].body, D3_Y).y > 0.9;
+}
+
+#test "the barriers hold the car on the ribbon: driven straight at one, it stays inside" #steps 40000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  for k: 0..<420 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  for k: 0..<240 { _ := rc_step(r[..], 1, 1, false, 0.016666668); }
+  #assert abs(r[0].side) < RC_HALF + RC_RUNOFF && r[0].backs == 0;
+}
+
+#test "what is built is met: a wall across the start straight stops the car; a low slab on it is driven over; none, it drives through as before" #steps 40000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  for k: 0..<420 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  // a wall 1.5 m high across the road, 25 m on from the car
+  a := track_at(r[0].t[..], r[0].s + 25); c := track_point(a, 0, 0);
+  wall := [6] f32.[c[0] - 9, c[1], c[2] - 0.5, c[0] + 9, c[1] + 1.5, c[2] + 0.5];
+  #assert abs(a.ahead[2]) > 0.9;   // (the start straight runs along z here)
+  rc_built(r[..], wall[..]);
+  for k: 0..<300 { _ := rc_step(r[..], 1, 0, false, 0.016666668); }
+  #assert r[0].s < r[0].line - RC_GRID + 25 && r[0].nbx == 1;
+  // a slab a hand high: it is driven over
+  r2: [1] Racing; rc_in(r2[..]);
+  for k: 0..<420 { _ := rc_step(r2[..], 0, 0, false, 0.016666668); }
+  slab := [6] f32.[c[0] - 9, c[1], c[2] - 2, c[0] + 9, c[1] + 0.12, c[2] + 2];
+  rc_built(r2[..], slab[..]);
+  for k: 0..<300 { _ := rc_step(r2[..], 1, 0, false, 0.016666668); }
+  #assert r2[0].s > r2[0].line - RC_GRID + 40;
+  // the planes themselves: over a top it is the top, beside a box its near face, far off none
+  out: [RC_TOUCH] Plane; box := [6] f32.[0, 0, 0, 2, 1, 4];
+  rc_built(r2[..], box[..]);
+  #assert rc_box_planes(r2[..], d3(1, 1.2, 2), out[..]) == 1 && out[0].n.y == 1 && out[0].d == 1;
+  #assert rc_box_planes(r2[..], d3(-1, 0.5, 2), out[..]) == 1 && out[0].n.x == -1 && out[0].d == 0;
+  #assert rc_box_planes(r2[..], d3(1, 0.5, 5.5), out[..]) == 1 && out[0].n.z == 1 && out[0].d == 4;
+  #assert rc_box_planes(r2[..], d3(10, 0.5, 2), out[..]) == 0 && rc_box_planes(r2[..], d3(1, 6, 2), out[..]) == 0;
+}
+
+#test "a boost built on the road speeds the car up while it is over it, never past one and a half times its top speed" #steps 40000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  for k: 0..<420 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  a := track_at(r[0].t[..], r[0].s + 5); c := track_point(a, 0, 0);
+  // a strip 18 wide across the straight, from 5 m on to 60 m on
+  e := track_at(r[0].t[..], r[0].s + 60); f := track_point(e, 0, 0);
+  strip := [6] f32.[c[0] - 9, c[1] - 0.2, (ifx c[2] < f[2] then c[2] else f[2]), c[0] + 9, c[1] + 0.05, (ifx c[2] > f[2] then c[2] else f[2])];
+  r2: [1] Racing; rc_in(r2[..]);
+  for k: 0..<420 { _ := rc_step(r2[..], 0, 0, false, 0.016666668); }
+  rc_boosts(r2[..], strip[..]);
+  #assert r2[0].nbo == 1;
+  for k: 0..<150 { _ := rc_step(r[..], 1, 0, false, 0.016666668); _ := rc_step(r2[..], 1, 0, false, 0.016666668); }
+  #assert rc_speed(r2[..]) > rc_speed(r[..]) + 2 && cast(f64) rc_speed(r2[..]) <= r2[0].spec.top_speed * RC_BOOST_TOP + 0.5;
+  // the test of being over one
+  box := [6] f32.[0, 0, 0, 2, 0.25, 4];
+  rc_boosts(r2[..], box[..]);
+  #assert rc_boosted(r2[..], d3(1, 0.6, 2)) && !rc_boosted(r2[..], d3(3, 0.6, 2)) && !rc_boosted(r2[..], d3(1, 2, 2)) && !rc_boosted(r2[..], d3(1, 0.6, -0.5));
+  rc_boosts(r2[..], box[0..<0]); #assert !rc_boosted(r2[..], d3(1, 0.6, 2));
+}
+
+#test "the mesh: the circuit and the car fit at every moment of the entrance and the race, and the circuit is kept once it is in" #steps 400000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  mesh: [RC_MESH * ARCH_VERTEX_FLOATS] f32;
+  most := 0;
+  for k: 0..<480 {
+    _ := rc_step(r[..], 0, 0, false, 0.016666668);
+    if k % 20 != 0 { continue; }
+    p: [1] ArchPen; arch_pen(p[..], mesh[..]); p[0].n = 6;
+    rc_mesh(r[..], p[..], false);
+    #assert !p[0].full; if p[0].n > most { most = p[0].n; }
+  }
+  #assert most > 6000 && rc_up(r[..]) && r[0].baked > 6 && r[0].baked_at == 6;
+  // kept: written again only from the car on
+  kept := r[0].baked; mesh[kept * ARCH_VERTEX_FLOATS - 1] = 12345;
+  p: [1] ArchPen; arch_pen(p[..], mesh[..]); p[0].n = 6; rc_mesh(r[..], p[..], true);
+  #assert mesh[kept * ARCH_VERTEX_FLOATS - 1] == 12345 && p[0].n > kept;
+  // a pen that starts elsewhere writes it all again
+  p[0].n = 0; rc_mesh(r[..], p[..], false); #assert r[0].baked_at == 0 && r[0].baked == kept - 6;
+  // the grass's table: none on the road, grass far from it
+  table: [(RC_TABLE_N + 1) * (RC_TABLE_N + 1) * 4] f32; rc_ground(r[..], table[..]);
+  side := RC_TABLE_N + 1;
+  i := cast(int) ((0 - RC_TABLE_X0) / RC_TABLE_CELL + 0.5); j := cast(int) ((0 - RC_TABLE_Z0) / RC_TABLE_CELL + 0.5);
+  #assert table[(j * side + i) * 4 + 1] == 0 && table[(j * side + i + 12) * 4 + 1] == 1 && table[1] == 1;
+}
+
+#test "the page is told the race: on the grid and its count, the lap, the checkpoint and the time, and the finish" #steps 400000000000 #traversal 1000000000 {
+  r: [1] Racing; rc_in(r[..]);
+  out: [600] u8;
+  n := rc_describe(r[..], out[..]); s := cast(string) out[0..<n];
+  #assert rc_test_has(s, "a racing circuit") && rc_test_has(s, "no cutting") && rc_test_has(s, "on the grid.");
+  for k: 0..<20 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  n = rc_describe(r[..], out[..]); s = cast(string) out[0..<n]; #assert rc_test_has(s, "on the grid: 3.");
+  a := rc_state(r[..]);
+  for k: 0..<200 { _ := rc_step(r[..], 0, 0, false, 0.016666668); }
+  #assert rc_state(r[..]) != a;
+  rc_test_drive(r[..], 12);
+  n = rc_describe(r[..], out[..]); s = cast(string) out[0..<n];
+  #assert rc_test_has(s, " lap 1 of 3. checkpoint ") && rc_test_has(s, ". time 0:");
+  rc_test_drive(r[..], 200);
+  n = rc_describe(r[..], out[..]); s = cast(string) out[0..<n];
+  #assert rc_test_has(s, "finished: three laps in ") && rc_test_has(s, ", best lap 0:") && rc_test_has(s, "R races again.");
+  g: [12] int; #assert rc_clock(83.46, true, g[..]) == 6 && g[0] == 1 && g[1] == 10 && g[2] == 2 && g[3] == 3 && g[4] == 11 && g[5] == 5;
+  #assert rc_clock(605, false, g[..]) == 5 && g[0] == 1 && g[1] == 0 && g[2] == 10;
+}

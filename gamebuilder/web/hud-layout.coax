@@ -1,0 +1,25 @@
+// gamebuilder.org's frame block, the page's own part: what follows the Metaverse Engine's stylized
+// frame (metaverse-engine/render/shade/stylized-layout.coax, STY_UNIFORM_FLOATS
+// floats) in the uniform floats. hud.coax writes these and gpu/hud.coax's shaders read them, so
+// both load this file. Loaded after stylized-layout.coax.
+//   HUD_U_POINTER  the pointer's x and y in device pixels, how lit its glow is (0 to 1), and how far
+//                  the camera has come down to the world (0 the page's views, 1 the world)
+//   HUD_U_SHADE    the box of the panel the ground is dimmed behind, device pixels: x, y, width, height
+//   HUD_U_PAGE     device pixels a CSS pixel, how much of the character is shown (0 to 1), how far its
+//                  body is left out of the view (0 to 1: the eye in its head, first person), one spare
+HUD_U_POINTER :: STY_UNIFORM_FLOATS;
+HUD_U_SHADE :: STY_UNIFORM_FLOATS + 4;
+HUD_U_PAGE :: STY_UNIFORM_FLOATS + 8;
+HUD_UNIFORMS :: STY_UNIFORM_FLOATS + 12;
+// A scene draw whose first instance is this or more is the character: its vertices come from the
+// `skin` and `tris` stores, not the kit's mesh.
+HUD_GHOST_AT :: 4096;
+// A scene draw whose first instance is this or more (and under HUD_GHOST_AT) is a place of the
+// village: an indexed draw over the pack's vertices, its record the instance itself (the records
+// after the kit's two).
+HUD_PACK_AT :: 2;
+HUD_SKIN_FLOATS :: 9;      // a skinned vertex: where it is in the world, its normal, and its livery's colour (black: a ghost)
+// A kit vertex whose material is this or more is a picture the page gives (the home page's ring,
+// web/ring.coax): the material less this is which, its uv the picture's own. No material of the
+// engine's is as high (arch/solid.coax ARCH_M_COUNT).
+RG_M_PICTURE :: 64;

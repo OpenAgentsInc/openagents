@@ -277,3 +277,5 @@ gamebuilder/assets/scrappers.gbm
 
 # GameBuilder build outputs (#13854)
 gamebuilder/build/
+gamebuilder/web/build/
+gamebuilder/web/host/

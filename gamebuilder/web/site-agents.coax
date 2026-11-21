@@ -1,0 +1,388 @@
+// gamebuilder.org/agents' module (issues 29 and 30): the page (web/page.coax) with the chat with your agents
+// (web/agents.coax). The browser loads it only at /agents (web/keep.js asks for build/site-agents.wasm there in
+// place of build/site.wasm), so the home page's first load never carries it; from /agents the page moves to the
+// home page, the world and the rest without loading a page, as one module (this one) holds them all here too.
+// Its C face is the page's (web/site-agents-face.c includes web/site-face.c with this module's header).
+//   scripts/web.sh check     the page's checks and these, /agents' own
+//   coax/bin/coax test web/site-agents.coax --library
+
+#load "page.coax";
+#load "agents.coax";
+
+// /agents' answers, as the account's rows give them: two agents of one game, one waiting for you,
+// one whose Mac has gone quiet.
+// pic: the second agent's picture's address on the account ("": none)
+gs_test_agents :: (out: [] u8, pic: string) -> string {
+  r: [2] AgrRecord; o: [1] Jo; jo_start(o[..], out);
+  agr_record_new(r[0..<1], "a1-0", 3, "Moss Run", 7, AGR_BUILD, AGR_LOCAL, AGR_THIS_MAC, "claude", 1000);
+  agr_record_new(r[1..<2], "a1-1", 3, "Moss Run", 7, AGR_PLAYTEST, AGR_LOCAL, AGR_THIS_MAC, "claude", 900);
+  r[0].state = AGR_WAITING; r[0].events = 2; r[1].state = AGR_WORKING; r[1].heard = 500;
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "agents"); jo_arr(o[..]);
+  jobs := [2] string.["add two ramps", "play it through"]; shown := [2] int.[AGR_WAITING, AGR_OFFLINE]; ages := [2] string.["2m", "3h"];
+  for k: 0..<2 {
+    jo_obj(o[..]); jo_key(o[..], "agent"); agr_record_json(r[k..<k + 1], jobs[k], o[..]);
+    jo_key(o[..], "shown"); jo_str(o[..], AGR_STATE_ID[shown[k]]); jo_key(o[..], "words"); jo_str(o[..], AGR_STATE_WORDS[shown[k]]);
+    jo_key(o[..], "for"); jo_str(o[..], ages[k]); jo_key(o[..], "where"); jo_str(o[..], agr_place_words(r[k..<k + 1]));
+    if k == 1 && pic.count > 0 { jo_key(o[..], "picture"); jo_obj(o[..]); jo_key(o[..], "at"); jo_str(o[..], pic); jo_key(o[..], "made"); jo_int(o[..], 950); jo_end(o[..]); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+
+// What /agents asks as it comes up, answered: your agents, your games, your computers.
+gs_test_ag_up :: (s: [] Site, agents: string, games: string, computers: string) {
+  gs_test_say(s, GS_ADDRESS, 0, "/agents");
+  gs_test_answer(s, 200, "{\"logged_in\":true}");
+  #assert s[0].view == GS_AGENTS_VIEW && gs_wants(s) && gs_test_door(s) == "/api/rows/agents" && cast(string) s[0].req_body[0..<gs_body_len(s)] == "{}";
+  gs_test_answer(s, 200, agents);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/list-games";
+  gs_test_answer(s, 200, games);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/computers" && cast(string) s[0].req_body[0..<gs_body_len(s)] == "{}";
+  gs_test_answer(s, 200, computers);
+}
+gs_test_body :: (s: [] Site) -> string { return cast(string) s[0].req_body[0..<gs_body_len(s)]; }
+gs_test_said :: (s: [] Site) -> string { return cast(string) s[0].ag[0].said[0..<s[0].ag[0].said_n]; }
+// The list's answer with one cloud Builder of game 5 in it, in a state, at a step.
+gs_test_cloud :: (out: [] u8, id: string, words: string, state: int, step: string, events: int) -> string {
+  r: [1] AgrRecord; o: [1] Jo; jo_start(o[..], out);
+  agr_record_new(r[..], id, 5, "Maze", 9, AGR_BUILD, AGR_CLOUD, "", AGR_CLOUD_RUNNER, 1000);
+  r[0].state = state; r[0].step_n = agr_set(r[0].step[..], step); r[0].events = cast(s32) events;
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "agents"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "agent"); agr_record_json(r[..], words, o[..]); jo_key(o[..], "shown"); jo_str(o[..], AGR_STATE_ID[state]); jo_key(o[..], "for"); jo_str(o[..], "4s"); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+// Your games' answer with game 5 in it, of the type the site shows first.
+gs_test_games :: (out: [] u8) -> string {
+  ids := GT_ID;
+  n := agr_put(out, 0, "{\"ok\":true,\"games\":[{\"game\":5,\"title\":\"Maze\",\"template\":\""); n = agr_put(out, n, ids[GT_THIRD]); n = agr_put(out, n, "\",\"levels\":[9]},{\"game\":6,\"title\":\"Empty\",\"template\":\""); n = agr_put(out, n, ids[GT_THIRD]); n = agr_put(out, n, "\",\"levels\":[]}]}");
+  return cast(string) out[0..<n];
+}
+
+#test "/agents: logged out it is the login, then back; a login that has ended says so" #steps 200000000 {
+  ua: [1] GsTest; u := ua[0].s[..];
+  gs_test_say(u, GS_ADDRESS, 0, "/agents");
+  #assert u[0].view == GS_AGENTS_VIEW;
+  gs_test_answer(u, 200, "{\"logged_in\":false}");
+  #assert u[0].view == GS_LOGIN_VIEW && gs_go(u) == 6 && u[0].to_agents;
+  t: [1] GsTest; s := t[0].s[..];
+  gs_test_say(s, GS_ADDRESS, 0, "/agents");
+  gs_test_answer(s, 200, "{\"logged_in\":true}");
+  gs_test_answer(s, 401, "{\"ok\":false}");
+  v := gs_frame(s, 0.016, true);
+  #assert gs_has(gs_test_pool(s), "your login has ended") && !gs_wants(s);
+}
+
+#test "/agents, an account with nothing on it: a message box with the caret in it, a new game of the first type beside it, the limits once in one line; Return makes the game and starts a Builder on it with what was typed, two rows; a refusal puts the words back" #steps 400000000 {
+  t: [1] GsTest; s := t[0].s[..]; g := s[0].ag[..]; tr := s[0].tree[..];
+  names := GT_NAME; ids := GT_ID; nb: [512] u8; ab: [8192] u8;
+  gs_test_ag_up(s, "{\"ok\":true,\"agents\":[]}", "{\"ok\":true,\"games\":[]}", "{\"ok\":true,\"computers\":[]}");
+  v := gs_frame(s, 0.016, true);
+  pool := gs_test_pool(s);
+  // the box is there with nothing on the account, the caret in it; Send waits for words, and nothing says you need a game first
+  box := tr_find(tr, "ga.say");
+  #assert box >= 0 && tr_attr_of(tr, box, AT_FOCUS) == "true" && tr_attr_of(tr, box, AT_PLACEHOLDER) == "say what to build" && gs_test_slot(s, "ga.send") >= 0 && gs_test_slot(s, "ga.stop") < 0;
+  #assert tr_attr_of(tr, tr_find(tr, "ga.send"), AT_STATE) != "primary" && !gs_has(pool, "no games on your account") && !gs_wants(s);
+  // the control beside it: a new game, third person until another type is picked
+  n := agr_put(nb[..], 0, "a new game: "); n = agr_put(nb[..], n, names[GT_THIRD]);
+  #assert tr_text_of(tr, tr_find(tr, "ga.for.l")) == cast(string) nb[0..<n] && g[0].pick == 0 && gt_web_type(g[0].kind) == GT_THIRD;
+  // the limits, once, in one line, free; how a computer is paired is not said until it is asked for
+  lim := tr_text_of(tr, tr_find(tr, "ga.limits"));
+  #assert gs_has(lim, "free") && gs_has(lim, "12 model steps of up to 8 commands, 100,000 tokens, 30 changes and 10 minutes") && gs_has(lim, "60 model steps a day");
+  #assert !gs_has(pool, GA_PAIR_WORDS) && gs_test_slot(s, "ga.comps") >= 0 && gs_has(pool, "no agents yet");
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.comps"), 0); v = gs_frame(s, 0.016, true);
+  #assert gs_has(gs_test_pool(s), GA_PAIR_WORDS);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.comps"), 0); v = gs_frame(s, 0.016, true);
+  // the control's menu: the nine types the site has, and no game of yours
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.for"), 0); v = gs_frame(s, 0.016, true);
+  kinds := 0; for k: 0..<GT_WEB_TYPES { kb: [UI_ID] u8; if gs_test_slot(s, tr_cat(kb[..], "ga.kind.", GS_KIND_NO[k])) >= 0 { kinds += 1; } }
+  #assert kinds == GT_WEB_TYPES && kinds == 9 && !gs_has(gs_test_pool(s), "one of your games");
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.kind.5"), 0); v = gs_frame(s, 0.016, true);
+  n = agr_put(nb[..], 0, "a new game: "); n = agr_put(nb[..], n, names[gt_web_type(5)]);
+  #assert tr_text_of(tr, tr_find(tr, "ga.for.l")) == cast(string) nb[0..<n] && gs_test_slot(s, "ga.kind.5") < 0;
+  // Return with nothing typed sends nothing; a first message over a job's length is refused with its numbers
+  gs_event(s, GS_SUBMIT, gs_test_slot(s, "ga.say"), 0);
+  #assert !gs_wants(s);
+  long: [241] u8; for i: 0..<241 { long[i] = 'a'; }
+  gs_test_say(s, GS_INPUT, gs_test_slot(s, "ga.say"), cast(string) long[..]);
+  gs_event(s, GS_SUBMIT, gs_test_slot(s, "ga.say"), 0);
+  #assert !gs_wants(s) && gs_has(gs_test_said(s), "a first message is at most 240 bytes, and this is 241") && g[0].no;
+  // typed, and Return: the game is made first, of the type picked, under a key of this send's
+  gs_test_say(s, GS_INPUT, gs_test_slot(s, "ga.say"), "  make a small maze\n");
+  v = gs_frame(s, 0.016, true);
+  #assert tr_attr_of(tr, tr_find(tr, "ga.send"), AT_STATE) == "primary";
+  gs_event(s, GS_SUBMIT, gs_test_slot(s, "ga.say"), 0);
+  n = agr_put(nb[..], 0, "{\"template\":\""); n = agr_put(nb[..], n, ids[gt_web_type(5)]); n = agr_put(nb[..], n, "\",\"key\":\"agents-");
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/new-game" && gs_has(gs_test_body(s), cast(string) nb[0..<n]);
+  kept: [GS_AG_KEY] u8; kn := agr_put(kept[..], 0, cast(string) g[0].key[0..<g[0].key_n]);
+  // what was sent shows at once, the box is empty, and the page says what it is doing
+  v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ga.pend.p")) == "make a small maze" && g[0].draft_n == 0 && gs_has(gs_test_pool(s), "making the game...") && gs_test_slot(s, "ga.empty") < 0;
+  // no answer: said, the words back in the box, and the same key again on the next send (one sent twice is made once)
+  gs_test_answer(s, 0, "");
+  #assert gs_has(gs_test_said(s), "can't reach your account just now") && ga_draft(g) == "make a small maze" && !gs_wants(s);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.send"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/new-game" && gs_has(gs_test_body(s), cast(string) kept[0..<kn]);
+  n = agr_put(nb[..], 0, "{\"ok\":true,\"game\":5,\"level\":9,\"template\":\""); n = agr_put(nb[..], n, ids[gt_web_type(5)]); n = agr_put(nb[..], n, "\"}");
+  gs_test_answer(s, 200, cast(string) nb[0..<n]);
+  // then its Builder, on the game just made, with the same words as its job
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-new" && gs_test_body(s) == "{\"game\":5,\"role\":\"build\",\"job\":\"make a small maze\"}";
+  // a refusal here is said in the row's words; the game stays, and the next send is on it (no second game)
+  gs_test_answer(s, 429, "{\"ok\":false,\"error\":\"limit\",\"why\":\"your account has used its 60 model steps for today\"}");
+  #assert gs_test_said(s) == "the game is made, and its builder didn't start: your account has used its 60 model steps for today" && g[0].pick == 5 && ga_draft(g) == "make a small maze";
+  // (your games are read again: the new one is among them, and it is the one the control says now)
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/list-games";
+  gs_test_answer(s, 200, gs_test_games(nb[..]));
+  v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ga.for.l")) == "Maze" && !gs_wants(s);
+  gs_event(s, GS_SUBMIT, gs_test_slot(s, "ga.say"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-new" && gs_test_body(s) == "{\"game\":5,\"role\":\"build\",\"job\":\"make a small maze\"}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"state\":\"queued\",\"level\":9,\"limits\":\"...\"}");
+  // the list again with the new one up, your games (the new one is among them), and its events
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agents";
+  gs_test_answer(s, 200, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_WORKING, "step 1 of 12, 0 of 100,000 tokens, 0 of 30 changes", 1));
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-events" && gs_test_body(s) == "{\"agent\":\"c1-0\",\"after\":0}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":[],\"next\":0,\"more\":false}");
+  v = gs_frame(s, 0.016, true);
+  pool = gs_test_pool(s);
+  #assert tr_text_of(tr, tr_find(tr, "ga.title")) == "make a small maze" && gs_has(pool, "step 1 of 12, 0 of 100,000 tokens, 0 of 30 changes - working for 4s") && gs_test_slot(s, "ga.stop") >= 0 && gs_test_slot(s, "ga.send") < 0;
+  // its game opens in the builder from here, and the limits' line is gone once the first send is made
+  #assert gs_test_slot(s, "ga.open") >= 0 && tr_text_of(tr, tr_find(tr, "ga.open")) == "open in the builder" && tr_attr_of(tr, tr_find(tr, "ga.open"), AT_TITLE) == "open Maze in the builder" && gs_test_slot(s, "ga.limits") < 0 && gs_test_slot(s, "ga.for") < 0;
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.open"), 0);
+  #assert s[0].view == GS_WORLD_VIEW && s[0].picking && s[0].to_game == 5;
+}
+
+#test "/agents, a conversation: your message, each command a row that opens onto what it sent and what came back, a refused one with its reason, its change with the way to take it back, and its answer as Markdown; Stop where Send was while it works; each a row of the table's" #steps 400000000 {
+  t: [1] GsTest; s := t[0].s[..]; g := s[0].ag[..]; tr := s[0].tree[..];
+  ab: [8192] u8; gb: [512] u8;
+  gs_test_ag_up(s, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_WORKING, "step 3 of 12, 2,400 of 100,000 tokens, 1 of 30 changes: apply-edits", 5), gs_test_games(gb[..]), "{\"ok\":true,\"computers\":[]}");
+  v := gs_frame(s, 0.016, true);
+  // the list: its game, and its row, at work
+  #assert gs_test_slot(s, "game.5") >= 0 && tr_text_of(tr, tr_find(tr, "agent.0.t")) == "Builder - make a small maze" && tr_text_of(tr, tr_find(tr, "agent.0.m")) == "working for 4s - cloud" && tr_attr_of(tr, tr_find(tr, "agent.0"), AT_STATE) == "busy";
+  gs_event(s, GS_CLICK, gs_test_slot(s, "agent.0"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-events" && gs_test_body(s) == "{\"agent\":\"c1-0\",\"after\":0}";
+  e: [1] AgrEvent; lb: [8192] u8; eb: [32768] u8; en := agr_put(eb[..], 0, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":[");
+  e[0] = agr_event(AGR_MESSAGE); e[0].n = 1; e[0].from = AGR_PERSON; agr_event_text(e[..], "make a small maze");
+  en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, ",");
+  e[0] = agr_event(AGR_TOOL); e[0].n = 2; e[0].ok = true; e[0].tool_n = agr_put(e[0].tool[..], 0, "gb_read_level"); e[0].args_n = agr_put(e[0].args[..], 0, "{\"level\":9,\"as\":\"data\"}"); e[0].result_n = agr_put(e[0].result[..], 0, "{\"schema\":\"gamebuilder.level.v1\",\"rev\":3}");
+  en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, ",");
+  e[0] = agr_event(AGR_TOOL); e[0].n = 3; e[0].ok = false; e[0].tool_n = agr_put(e[0].tool[..], 0, "gb_apply_edits"); e[0].args_n = agr_put(e[0].args[..], 0, "{\"command\":\"apply-edits 9 '{}'\"}"); e[0].result_n = agr_put(e[0].result[..], 0, "{\"ok\":false,\"error\":\"stale\",\"why\":\"level 9 is at revision 3, and this was made for 2\"}");
+  en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, ",");
+  e[0] = agr_event(AGR_EDIT); e[0].n = 4; e[0].level = 9; e[0].before = 3; e[0].after = 4; e[0].things[0] = 12; e[0].things_n = 1; agr_event_text(e[..], "added 1 block");
+  en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, ",");
+  e[0] = agr_event(AGR_MESSAGE); e[0].n = 5; e[0].from = AGR_AGENT; agr_event_text(e[..], "**Done.** The maze has:\n\n- four walls\n- a goal");
+  en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, "],\"next\":5,\"more\":false}");
+  gs_test_answer(s, 200, cast(string) eb[0..<en]);
+  v = gs_frame(s, 0.016, true);
+  pool := gs_test_pool(s);
+  // your message; a command as a row, shut; a refused one says so with why
+  #assert tr_class(tr, tr_find(tr, "ev.1")) == "msg-user" && tr_text_of(tr, tr_find(tr, "ev.1.p")) == "make a small maze";
+  #assert tr_attr_of(tr, tr_find(tr, "ev.2.frame"), AT_STATE) == "ok" && tr_text_of(tr, tr_find(tr, "ev.2.what")) == "gb_read_level" && tr_text_of(tr, tr_find(tr, "ev.2.detail")) == "level 9, as data" && tr_attr_of(tr, tr_find(tr, "ev.2"), AT_EXPANDED) == "false" && tr_find(tr, "ev.2.out") < 0;
+  #assert tr_attr_of(tr, tr_find(tr, "ev.3.frame"), AT_STATE) == "no" && tr_text_of(tr, tr_find(tr, "ev.3.detail")) == "refused: level 9 is at revision 3, and this was made for 2";
+  // its change, with the way to take it back; its answer as Markdown, not as it was typed
+  #assert tr_class(tr, tr_find(tr, "ev.4")) == "ag-change" && tr_find(tr, "ga.undo") >= 0 && t[0].s[0].tree[0].nodes[tr_find(tr, "ga.undo")].parent == tr_find(tr, "ev.4");
+  #assert tr_class(tr, tr_find(tr, "ev.5")) == "msg-ai" && tr_class(tr, tr_find(tr, "ev.5.md")) == "md" && gs_has(pool, "four walls") && !gs_has(pool, "**Done.**") && !gs_has(pool, "- four walls");
+  // at work: its step and for how long, and Stop where Send was
+  #assert gs_has(tr_text_of(tr, tr_find(tr, "ga.live.w")), "step 3 of 12, 2,400 of 100,000 tokens, 1 of 30 changes: apply-edits - working for 4s") && gs_test_slot(s, "ga.stop") >= 0 && gs_test_slot(s, "ga.send") < 0 && !gs_wants(s);
+  // (a command's line is shown as its line)
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ev.3"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ev.3.in")) == "apply-edits 9 '{}'" && gs_has(tr_text_of(tr, tr_find(tr, "ev.3.out")), "\"error\":\"stale\"");
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ev.3"), 0);
+  // while it works the page asks for frames, so its clock runs and it is read again (the host draws only a page that asks)
+  #assert gs_busy(s);
+  // a row pressed opens onto what it sent and what came back; copy puts what came back on the clipboard; pressed again it shuts
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ev.2"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_attr_of(tr, tr_find(tr, "ev.2"), AT_EXPANDED) == "true" && tr_text_of(tr, tr_find(tr, "ev.2.in")) == "level 9, as data" && tr_text_of(tr, tr_find(tr, "ev.2.out")) == "{\"schema\":\"gamebuilder.level.v1\",\"rev\":3}";
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ev.2.copy"), 0);
+  #assert cast(string) s[0].clip[0..<gs_clip_len(s)] == "{\"schema\":\"gamebuilder.level.v1\",\"rev\":3}";
+  gs_clip_done(s);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ev.2"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_find(tr, "ev.2.out") < 0;
+  // read again while it works, every few seconds: the list, then its events on from where they stand
+  v = gs_frame(s, 1.0, true); #assert !gs_wants(s);
+  for i: 0..<40 { v = gs_frame(s, 0.1, true); }
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agents";
+  gs_test_answer(s, 200, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_WORKING, "step 4 of 12", 5));
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-events" && gs_test_body(s) == "{\"agent\":\"c1-0\",\"after\":5}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":[],\"next\":5,\"more\":false}");
+  // Return in the box while it works sends it a message (agent-message); it shows at once
+  gs_test_say(s, GS_INPUT, gs_test_slot(s, "ga.say"), "make it stone");
+  gs_event(s, GS_SUBMIT, gs_test_slot(s, "ga.say"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-message" && gs_test_body(s) == "{\"agent\":\"c1-0\",\"message\":\"make it stone\"}";
+  v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ga.pend.p")) == "make it stone";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"state\":\"working\"}");
+  gs_test_answer(s, 200, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_WORKING, "step 4 of 12", 6));
+  e[0] = agr_event(AGR_MESSAGE); e[0].n = 6; e[0].from = AGR_PERSON; agr_event_text(e[..], "make it stone");
+  en = agr_put(eb[..], 0, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":["); en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, "],\"next\":6,\"more\":false}");
+  gs_test_answer(s, 200, cast(string) eb[0..<en]);
+  v = gs_frame(s, 0.016, true);
+  #assert tr_find(tr, "ga.pend") < 0 && tr_text_of(tr, tr_find(tr, "ev.6.p")) == "make it stone";
+  // Stop: a row, and what it came to said
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.stop"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-stop" && gs_test_body(s) == "{\"agent\":\"c1-0\"}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"state\":\"stopped\"}");
+  #assert gs_test_said(s) == "stopped. what it changed stays." && !g[0].no;
+  gs_test_answer(s, 200, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_STOPPED, "", 6));
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":[],\"next\":6,\"more\":false}");
+  v = gs_frame(s, 0.016, true);
+  // stopped: Send is back, nothing says it works, and the page is still
+  #assert !gs_busy(s);
+  #assert gs_test_slot(s, "ga.send") >= 0 && gs_test_slot(s, "ga.stop") < 0 && tr_find(tr, "ga.live") < 0 && !gs_wants(s);
+  // take back its last change: a row; a refusal is said in the row's own words, marked as one
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.undo"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-undo" && gs_test_body(s) == "{\"agent\":\"c1-0\"}";
+  gs_test_answer(s, 409, "{\"ok\":false,\"error\":\"stale\",\"why\":\"level 9 changed since its change, so that change stands (read-level shows it as it is)\"}");
+  v = gs_frame(s, 0.016, true);
+  #assert gs_test_said(s) == "level 9 changed since its change, so that change stands (read-level shows it as it is)" && tr_class(tr, tr_find(tr, "ga.said")) == "ag-said no" && !gs_wants(s);
+  // taken back: said, and with its change taken back in the log nothing is left to take back
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.undo"), 0);
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c1-0\",\"level\":9,\"rev\":5}");
+  #assert gs_test_said(s) == "its last change is taken back." && gs_test_door(s) == "/api/rows/agents";
+  gs_test_answer(s, 200, gs_test_cloud(ab[..], "c1-0", "make a small maze", AGR_STOPPED, "", 7));
+  e[0] = agr_event(AGR_EDIT); e[0].n = 7; e[0].level = 9; e[0].before = 4; e[0].after = 5;
+  en = agr_put(eb[..], 0, "{\"ok\":true,\"agent\":\"c1-0\",\"events\":["); en = agr_put(eb[..], en, agr_event_write("c1-0", e[..], lb[..])); en = agr_put(eb[..], en, "],\"next\":7,\"more\":false}");
+  gs_test_answer(s, 200, cast(string) eb[0..<en]);
+  v = gs_frame(s, 0.016, true);
+  // (said once: the log's own line says it now, so the note over the box goes)
+  #assert tr_find(tr, "ev.7") >= 0 && tr_find(tr, "ga.undo") < 0 && tr_find(tr, "ga.said") < 0;
+  // new agent: an empty conversation again, on a game of yours if one is picked (a game with no level is none to work on)
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.new"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_find(tr, "ga.empty") >= 0 && tr_find(tr, "ev.1") < 0 && gs_test_slot(s, "ga.limits") >= 0 && tr_text_of(tr, tr_find(tr, "ga.title")) == "new agent";
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.for"), 0); v = gs_frame(s, 0.016, true);
+  #assert gs_test_slot(s, "ga.game.5") >= 0 && gs_test_slot(s, "ga.game.6") < 0;
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.game.5"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ga.for.l")) == "Maze";
+  gs_test_say(s, GS_INPUT, gs_test_slot(s, "ga.say"), "add a tower");
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.send"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-new" && gs_test_body(s) == "{\"game\":5,\"role\":\"build\",\"job\":\"add a tower\"}";
+}
+
+#test "/agents, the list: your agents by game, those waiting for you first, offline with its age; one pressed comes up; an agent on your computer is read here and told things there, in words; a narrow screen's drawer opens and shuts" #steps 200000000 {
+  t: [1] GsTest; s := t[0].s[..]; g := s[0].ag[..]; tr := s[0].tree[..];
+  ab: [8192] u8;
+  gs_test_ag_up(s, gs_test_agents(ab[..], ""), "{\"ok\":true,\"games\":[]}", "{\"ok\":true,\"computers\":[]}");
+  v := gs_frame(s, 0.016, true);
+  pool := gs_test_pool(s);
+  #assert tr_text_of(tr, tr_find(tr, "game.3.t")) == "Moss Run" && tr_text_of(tr, tr_find(tr, "game.3.n")) == "2" && gs_has(pool, "Builder - add two ramps") && gs_has(pool, "Playtester - play it through");
+  #assert gs_has(pool, "waiting for you for 2m - this Mac") && gs_has(pool, "offline for 3h: what is shown is as it was then - this Mac") && !gs_has(pool, "done for");
+  // waiting first: its row comes before the other's; no picture on the account: nothing where one goes
+  #assert gs_test_slot(s, "agent.0") >= 0 && gs_test_slot(s, "agent.0") < gs_test_slot(s, "agent.1") && gs_test_slot(s, "game.p.3") < 0 && gs_test_slot(s, "game.pw.3") < 0;
+  // the box is there all the same: a new agent
+  #assert gs_test_slot(s, "ga.say") >= 0 && tr_find(tr, "ga.empty") >= 0;
+  // the drawer (a narrow screen's): the bar's button brings the list out, a press beside it or on a row puts it away
+  #assert tr_class(tr, tr_find(tr, "agents")) == "ag" && tr_find(tr, "ga.shut") < 0;
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.drawer"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_class(tr, tr_find(tr, "agents")) == "ag out" && tr_attr_of(tr, tr_find(tr, "ga.drawer"), AT_EXPANDED) == "true";
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.shut"), 0); v = gs_frame(s, 0.016, true);
+  #assert tr_class(tr, tr_find(tr, "agents")) == "ag";
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.drawer"), 0); v = gs_frame(s, 0.016, true);
+  // one pressed: its conversation, and the drawer away
+  gs_event(s, GS_CLICK, gs_test_slot(s, "agent.0"), 0);
+  #assert !g[0].drawer && gs_wants(s) && gs_test_door(s) == "/api/rows/agent-events" && gs_has(gs_test_body(s), "\"agent\":\"a1-0\",\"after\":0");
+  e1: [2] AgrEvent; lb: [2048] u8; eb: [4096] u8; en := 0;
+  e1[0] = agr_event(AGR_MESSAGE); e1[0].n = 1; e1[0].from = AGR_PERSON; agr_event_text(e1[0..<1], "add two ramps");
+  e1[1] = agr_event(AGR_ASK); e1[1].n = 2; agr_event_text(e1[1..<2], "Wood or stone?"); e1[1].choices = 2;
+  e1[1].choice_n[0] = agr_put(e1[1].choice[0..<AGR_CHOICE], 0, "Wood"); e1[1].choice_n[1] = agr_put(e1[1].choice[AGR_CHOICE..<2 * AGR_CHOICE], 0, "Stone");
+  en = agr_put(eb[..], en, "{\"ok\":true,\"agent\":\"a1-0\",\"events\":[");
+  en = agr_put(eb[..], en, agr_event_write("a1-0", e1[0..<1], lb[..])); en = agr_put(eb[..], en, ",");
+  en = agr_put(eb[..], en, agr_event_write("a1-0", e1[1..<2], lb[..]));
+  en = agr_put(eb[..], en, "],\"next\":2,\"more\":false}");
+  gs_test_answer(s, 200, cast(string) eb[0..<en]);
+  v = gs_frame(s, 0.016, true);
+  pool = gs_test_pool(s);
+  #assert tr_attr_of(tr, tr_find(tr, "agent.0"), AT_CURRENT) == "true" && tr_text_of(tr, tr_find(tr, "ev.1.p")) == "add two ramps" && gs_has(pool, "Builder asks: Wood or stone? (Wood / Stone)") && !gs_wants(s);
+  // read only here: no box, no Stop, no take back, and the words that say where it is told things
+  #assert gs_test_slot(s, "ga.say") < 0 && gs_test_slot(s, "ga.stop") < 0 && gs_test_slot(s, "ga.send") < 0 && gs_test_slot(s, "ga.undo") < 0 && tr_text_of(tr, tr_find(tr, "ga.there.t")) == AGR_THERE;
+  // new agent: the box again
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.new"), 0); v = gs_frame(s, 0.016, true);
+  #assert gs_test_slot(s, "ga.say") >= 0 && tr_find(tr, "ev.1") < 0 && tr_find(tr, "ga.there") < 0;
+}
+
+#test "/agents: a game's group shows its agents' newest picture from the account, above their rows; none, or one that is not a path here, shows nothing" #steps 200000000 {
+  ab: [8192] u8;
+  t: [1] GsTest; s := t[0].s[..];
+  gs_test_say(s, GS_ADDRESS, 0, "/agents");
+  gs_test_answer(s, 200, "{\"logged_in\":true}");
+  at := "/api/pictures/4ec110538022028080effd480be96638.jpg";
+  gs_test_answer(s, 200, gs_test_agents(ab[..], at));
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/list-games"; gs_test_answer(s, 200, "{\"ok\":true,\"games\":[]}");
+  v := gs_frame(s, 0.016, true);
+  tr := s[0].tree[..];
+  i := tr_find(tr, "game.p.3");
+  #assert i >= 0 && tr_attr_of(tr, i, AT_SRC) == at && tr_attr_of(tr, i, AT_LABEL) == "the newest picture of Moss Run";
+  #assert gs_test_slot(s, "game.pw.3") >= 0 && gs_test_slot(s, "game.pw.3") < gs_test_slot(s, "agent.0");
+  // an address that would send the browser elsewhere is not taken: nothing is shown
+  u: [1] GsTest; w := u[0].s[..];
+  gs_test_say(w, GS_ADDRESS, 0, "/agents");
+  gs_test_answer(w, 200, "{\"logged_in\":true}");
+  gs_test_answer(w, 200, gs_test_agents(ab[..], "https://elsewhere.example/p.jpg"));
+  #assert gs_wants(w) && gs_test_door(w) == "/api/rows/list-games"; gs_test_answer(w, 200, "{\"ok\":true,\"games\":[]}");
+  v2 := gs_frame(w, 0.016, true);
+  #assert gs_test_slot(w, "agent.0") >= 0 && gs_test_slot(w, "game.p.3") < 0 && gs_test_slot(w, "game.pw.3") < 0;
+}
+
+// ---------------------------------------------------------------- publish, and a link anyone plays (web/publish.coax; issue 17)
+
+
+#test "/agents: your computers as their resident services say; a Builder queued on one at no charge; paused says when it goes on; carry on in the cloud is a press, never by itself" #steps 200000000 {
+  t: [1] GsTest; s := t[0].s[..]; g := s[0].ag[..];
+  gs_test_say(s, GS_ADDRESS, 0, "/agents");
+  gs_test_answer(s, 200, "{\"logged_in\":true}");
+  // a paused Builder on a computer, and an offline one
+  r: [2] AgrRecord; ab: [8192] u8; o: [1] Jo; jo_start(o[..], ab[..]);
+  agr_record_new(r[0..<1], "m1-0", 4, "Sky Fort", 7, AGR_BUILD, AGR_LOCAL, "Studio Mac", AGR_RESIDENT, 1000);
+  r[0].state = AGR_PAUSED; r[0].resumes = 3600000; r[0].why_n = agr_set(r[0].why[..], AGR_PLAN_PAUSED);
+  agr_record_new(r[1..<2], "m1-1", 4, "Sky Fort", 7, AGR_BUILD, AGR_LOCAL, "Studio Mac", AGR_RESIDENT, 1000);
+  r[1].state = AGR_WORKING;
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "agents"); jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "agent"); agr_record_json(r[0..<1], "add a moat", o[..]); jo_key(o[..], "shown"); jo_str(o[..], "paused"); jo_key(o[..], "for"); jo_str(o[..], "5m"); jo_key(o[..], "goes_on"); jo_str(o[..], "2h"); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "agent"); agr_record_json(r[1..<2], "add a gate", o[..]); jo_key(o[..], "shown"); jo_str(o[..], "offline"); jo_key(o[..], "for"); jo_str(o[..], "9m"); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  gs_test_answer(s, 200, jo_text(o[..]));
+  gs_test_answer(s, 200, "{\"ok\":true,\"games\":[{\"game\":4,\"title\":\"Sky Fort\",\"template\":\"arena\",\"levels\":[7]}]}");
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/computers" && cast(string) s[0].req_body[0..<gs_body_len(s)] == "{}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"computers\":[{\"computer\":{\"schema\":\"gamebuilder.computer.v1\",\"id\":\"studio-mac\",\"name\":\"Studio Mac\",\"on\":true,\"since\":1000,\"heard\":1000,\"slots\":1,\"used\":0,\"agents\":{\"claude\":\"signed-in\",\"codex\":\"not-installed\"},\"running\":[],\"why\":\"\"},\"shown\":\"on\",\"words\":\"on: 0 of 1 slot in use; Claude signed in, Codex not installed\"}]}");
+  v := gs_frame(s, 0.016, true);
+  tr := s[0].tree[..];
+  pool := gs_test_pool(s);
+  // your computers are a fold at the list's foot: how many, and how many on; their words when it is opened. Nothing moved by itself
+  #assert tr_text_of(tr, tr_find(tr, "ga.comps.m")) == "1, 1 on" && !gs_has(pool, "0 of 1 slot in use") && !gs_wants(s);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.comps"), 0); v = gs_frame(s, 0.016, true);
+  pool = gs_test_pool(s);
+  #assert gs_has(pool, "Studio Mac - on: 0 of 1 slot in use; Claude signed in, Codex not installed") && !gs_has(pool, GA_PAIR_WORDS);
+  #assert gs_has(pool, "paused for 5m, it goes on in 2h - Studio Mac") && gs_has(pool, "offline for 9m: what is shown is as it was then");
+  // the paused one, opened: why, in its record's words; read here and told things there; carry on in the cloud is offered, never done by itself
+  gs_event(s, GS_CLICK, gs_test_slot(s, "agent.0"), 0);
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"m1-0\",\"events\":[],\"next\":0,\"more\":false}");
+  v = gs_frame(s, 0.016, true);
+  #assert tr_text_of(tr, tr_find(tr, "ga.why")) == AGR_PLAN_PAUSED && tr_text_of(tr, tr_find(tr, "ga.there.t")) == AGR_THERE && gs_test_slot(s, "ga.cloud") >= 0 && gs_test_slot(s, "ga.say") < 0 && !gs_wants(s);
+  // a new Builder, there: the control offers where it runs, and no charge from us is said before it starts
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.new"), 0); v = gs_frame(s, 0.016, true);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.for"), 0); v = gs_frame(s, 0.016, true);
+  #assert gs_test_slot(s, "ga.where.cloud") >= 0 && gs_test_slot(s, "ga.where.0") >= 0 && gs_test_slot(s, "ga.game.4") >= 0;
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.game.4"), 0); v = gs_frame(s, 0.016, true);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.for"), 0); v = gs_frame(s, 0.016, true);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.where.0"), 0); v = gs_frame(s, 0.016, true);
+  #assert g[0].where == 0 && tr_text_of(tr, tr_find(tr, "ga.for.l")) == "Sky Fort, on Studio Mac" && gs_has(tr_text_of(tr, tr_find(tr, "ga.limits")), "your own agent: no charge from us. it runs on your own claude plan, at most 20 model steps a message");
+  gs_test_say(s, GS_INPUT, gs_test_slot(s, "ga.say"), "add a tower");
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.send"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-new-on" && gs_test_body(s) == "{\"computer\":\"Studio Mac\",\"game\":4,\"role\":\"build\",\"job\":\"add a tower\"}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"m1-2\",\"state\":\"queued\",\"computer\":\"Studio Mac\",\"cost\":\"your own agent: no charge from us\"}");
+  #assert gs_has(gs_test_said(s), "queued on Studio Mac: its resident service takes it when a slot is free, with the app open or not. your own agent: no charge from us");
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agents";
+  gs_test_answer(s, 200, jo_text(o[..]));
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/computers";
+  gs_test_answer(s, 200, "{\"ok\":true,\"computers\":[]}");
+  #assert !gs_wants(s);
+  // carry on in the cloud: the person's press, a new cloud Builder on the same game and job, free and its limits said
+  v = gs_frame(s, 0.016, true);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "agent.0"), 0);
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"m1-0\",\"events\":[],\"next\":0,\"more\":false}");
+  v = gs_frame(s, 0.016, true);
+  gs_event(s, GS_CLICK, gs_test_slot(s, "ga.cloud"), 0);
+  #assert gs_wants(s) && gs_test_door(s) == "/api/rows/agent-new" && gs_test_body(s) == "{\"game\":4,\"role\":\"build\",\"job\":\"add a moat\"}";
+  gs_test_answer(s, 200, "{\"ok\":true,\"agent\":\"c9-0\",\"state\":\"queued\"}");
+  #assert gs_has(gs_test_said(s), "carried on in the cloud") && gs_has(gs_test_said(s), "free. each message runs at most 12 model steps");
+}

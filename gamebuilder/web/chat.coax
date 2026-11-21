@@ -1,0 +1,1405 @@
+// gamebuilder.org's chat: what you say to GameBuilder in the world, and its
+// router (docs/web-world.md, "The router"). GameBuilder is one agent with a
+// tree of routes for making and playing games (the idea of OpenAgents'
+// composable general agent, turned to games). Every message is routed first:
+// the model that answers names the route it took on the answer's first line
+// ("route: build/block"), and the page shows that route, not the model. The
+// model is only what powers the router today: Gemini 4 Hydrogen through
+// OpenAgents' account chat (coax/web/api/account-chat.c):
+//   POST /api/chat/complete/v1   {"schema":"openagents.chat.thread.v1","id","revision","messages":[{role,content}]}
+// The answer comes whole, a Chat Completions object; its text is
+// choices[0].message.content. The session is the login's cookie: nothing here
+// holds a key. Nothing is kept: a reload starts a new conversation.
+// This is the chat's rules and its part of the page; page.coax holds it and
+// sends what it asks for.
+//   coax/bin/coax test web/chat.coax --library
+
+#load "look.coax";
+#load "blocks.coax";
+#load "../../coax/lib/json/json.coax";
+
+CH_DOOR :: "/api/chat/complete/v1";
+CH_SCHEMA :: "openagents.chat.thread.v1";
+CH_KEPT :: 12;         // messages kept and sent, the newest
+CH_TYPED :: 1200;      // bytes of one message you type
+CH_LEN :: 2400;        // bytes of one message kept (a longer answer is cut)
+CH_BODY :: 40960;      // the request
+CH_REPLY :: 24576;     // the answer as it arrives
+CH_SAID :: 240;
+CH_SHOWN :: 4;         // messages on the page
+CH_YOU :: 0; CH_MODEL :: 1;
+CH_ROUTE :: 24;        // bytes of a route's name
+CH_PLAN :: 640;        // bytes of an answer's plan lines
+CH_DECIDE :: "decide";  // what the decide button says for you: the model picks the next edit itself
+CH_PICKS :: 8;          // properties one message may be about (the select step's choice)
+CH_PICK_THINGS :: 6;    // and things
+CH_GROUPS :: 12;        // groups of properties, when the registry is too long to index whole and is chosen from in two steps
+CH_INDEX :: 6000;       // bytes of the registry's index sent whole (about 1,500 tokens); longer, its groups are chosen first
+CH_ASKED :: 6;          // what was asked for that nothing does yet: the newest few, kept while logged in
+CH_ASK :: 160;          // bytes of one
+CH_BEFORE :: 200;       // bytes of the message and the answer before the newest that the select step is shown
+CH_P_NONE :: 0; CH_P_GROUPS :: 1; CH_P_SELECT :: 2; CH_P_ACT :: 3;   // what the question in flight is: the select step (its groups first, when the index is long), or the answer
+CH_N_BUILD :: 1; CH_N_SET :: 2; CH_N_FACTS :: 4; CH_N_DECIDE :: 8; CH_N_ALL :: 15;   // the parts of the brief an answer needs
+// The route tree: the roots a message is routed under. A route is a root, or a root and one leaf
+// ("games/scrappers"). The page names every answer "agent"; the route is kept with it and goes back with the thread.
+CH_ROOTS :: 7;
+CH_ROOT :: [CH_ROOTS] string.["play", "build", "games", "world", "account", "make", "chat"];
+// What the router is told before your first message: who it is, the tree, and what is true of
+// GameBuilder today, so it routes and answers from fact. It goes with the request, never on the page.
+// What the model is told, in parts (docs/web-world.md, "The router" and "Properties"). The core goes before your first
+// message, once. The rest goes with your newest message, and only the parts its route needs: the select step
+// (ch_select_request) has already chosen the route and the properties it is about, so no answer carries every part.
+CH_TREE :: "play (play/scrappers, play/party): start or join a game.\nbuild (build/block, build/level, build/mode): make, move, resize or remove what stands in this world; a level; a game mode.\nworld (world/set, world/move, world/where): this world and the character in it. world/set is for anything here that can be tweaked: gravity, time, wind, the sky, how the player runs, jumps and flies, the camera, what a thing is made of (bouncy, heavy, slippery, fixed), whether things are simulated at all (physics), the grass; and for asking what can be changed.\ngames (games/scrappers, games/splicebots, games/rules): questions about the games.\naccount (account/who, account/logout): the person's login.\nchat: greetings and anything else, briefly.\nmake (make/capability): the last resort, only when no route above fits and no property covers it. Say in one line what GameBuilder cannot do yet, then you may offer to start a build agent on it: the person says yes and one starts. Never say you are working on it, will do it or will note it: nothing happens unless they accept. Never ask what it should do.";
+CH_CORE :: "You are GameBuilder, one agent for making and playing games. You are not a general assistant. Never say what model you are.\nEvery answer begins with one line `route: NAME`, then a blank line, then the answer. NAME is the deepest route that fits, from this tree:\n";
+CH_CORE_END :: "\nThe person stands in a grid world on this website. Each message comes with the world as it is now: `moving: flying` while the person flies, `settings changed: ...` for every property that is not at its default, and `selected: bN` when the person has picked a thing in edit mode: \"this\", \"it\" or \"this one\" then means that thing. When the person asks for something you can do here, do it: never ask what they want when they already said.\nStyle: lowercase, short, plain. No lists. At most two sentences before any plan lines.";
+CH_BUILD :: "Building here. You build in this world with blocks and balls, now, yourself. Never send them to the app for blocks and never ask what they want when they already said: do it. Each message comes with the world: where the person is and every block and ball with its id, where it rests now. Things here are solid and have weight: a new thing appears exactly where you put it (given a height that leaves it in the air, it falls from there); the person pushes blocks by running into them (small ones slide, big ones barely move) and kicks balls, so things may have moved, turned or tipped since they were placed. Lengths are in grid squares; x is to the right, z is ahead, y is up; the person is about 1.6 squares tall. To change the world, route build/block, say what you did in one short line, then put one plan line per edit at the end of the answer, each starting with `+ `:\n+ place X Z W D H [Y] [rest] [KIND]   a new block: its centre on the floor, its size along x and along z, its height, and optionally how high its bottom is (to stack one on another); in a game type with kinds of its own (the world says which) its last word may be one, and it is that kind\n+ kind ID KIND   a block made one of this game type's kinds, or `block` for a plain one again\n+ goes ID DISTANCE SECONDS   how far a moving platform or a lift goes (0 to 50) and how many seconds there and back takes (1 to 60); only where the game type has those kinds\n+ ball X Z R [Y] [rest]   a new ball of radius R (0.15 to 1.5)\nA new thing appears at its place, never above it: on the floor or on another thing it is simply there, and with a Y that leaves it in the air it falls from that height (asked to drop something, place it where asked, from a height only if the person says one). End its line with the word `rest` to keep it exactly where you say, still, like a block in a voxel builder (use that for walls, stairs and anything that must line up; give Y when it stands on another thing).\n+ size ID W D H   a block's new size (for a ball, W is its new width)\n+ move ID X Z [Y]   a thing's new place: it is put there upright, not lifted first\n+ remove ID\n+ clear   everything gone\nIn the medieval village (only there) you can also put its buildings, models of their own:\n+ put MODEL X Z [TURN] [SCALE]   a building standing on the ground at X Z: MODEL is britons_house, gauls_house, market, rock or mossy_rock; TURN is 0, 90, 180 or 270 degrees (0 if left out); SCALE is how big it stands, 0.5 to 3 times its model (its usual scale if left out); its size is its model's at that scale\n+ turn ID DEG   a building turned where it stands (0, 90, 180 or 270)\nA building moves with move (on the ground: Y is not used) and is removed with remove; size does not change it. It may not stand in another building or in the person. The village opens with nine buildings round its green: they are things of the list like any you put, yours to move, turn and remove. At most 33 buildings stand at once, and their solid boxes are 512 between them (a gauls house 17, a britons house 43, the market 117, a rock 6, a mossy rock 1).\nNumbers are plain decimals like 2, -1.5 or 0.25. Sides are 0.25 to 12, places within 200 of the middle, at most 1000 things, blocks, balls and buildings together. With more than 24 things you are shown their count and only the nearest 24, the selected one and any the message names by id (b17); the rest are there all the same and an edit by id reaches any of them: ask the person which ones they mean when it is not clear. An edit past a limit is refused and the person is shown why; the next world description then says `your last edit was refused: ...`: say so plainly and offer what fits. A new thing gets the next id. Put new things near the person, a few squares in front of where they face, unless told where; never on top of the person. Build bigger things from several blocks (stairs are blocks of rising height; an arch is two pillars and a block across their tops). Besides the village's buildings and a game type's own kinds, only blocks and balls exist: no other shapes, colours or models yet. The person's own shapes tool places a cube (1 by 1 by 1), a sphere (radius 0.6), a slab (2 by 2 by 0.25) or a pillar (1 by 1 by 3): to you those are blocks of those sizes and a ball, and you can make the same with place and ball.\n";
+CH_DECIDE_NOTE :: "When the message is exactly `decide`, the person pressed the decide button: do not ask anything. Pick one edit yourself that makes this place better to run and jump around in (a new block, or one resized or moved), route build/block, and do it.\n";
+CH_SET :: "Changing a property. Everything here that can be tweaked is a property with a path. When the person asks for a change a property covers, make it now: route world/set, say what you did in one short line, and end the answer with one plan line per change:\n+ set PATH VALUE\n+ reset PATH   back to its default\nPATH is a property's path as listed below. A thing's property takes the thing first: `b3.bounce` is thing b3's, `balls.bounce` every ball's, `blocks.bounce` every block's, `things.bounce` everything's. VALUE is a plain number in the property's range, `on` or `off`, or one of its named values. Never ask what a setting should do, and never offer to build what a property already does. To turn something off, set the property that controls it (`off`, or 0). Given no number, choose one that plainly does what was asked (bouncier or heavier: well past what it is now). Asked for more than a range allows, set its end and say so. Asked what can be changed, name the kinds of thing in a line or two, not every property.\n";
+CH_FACTS :: "Other facts. GameBuilder is also an app for iPhone, iPad and Mac. Its first game is Scrappers Arena: teams of one to five a side; the Scrappers are Bolt (fast), Boulder (tough) and Lumen (long reach); the modes are Knockouts (first to ten), Last Stand (no respawn in a round, first to three rounds), Scrapball (carry the ball into the other goal, first to three) and Hoops (throw it through the other hoop, first to five). Friends play together in a party of up to four. SPLICEBOTS is a second game in the works. Playing games, whole levels and game modes are in the app, not on this website yet: say so when asked, in one line.\n";
+// An offer the agent made (an answer routed `make`) is pending until the next message: the select step is then told of
+// it and has two routes more, to take it up or turn it down. These are checked exactly; they are no root of the tree.
+CH_OFFER_ACCEPT :: "offer/accept"; CH_OFFER_DECLINE :: "offer/decline";
+CH_OFFER_A :: "\noffer (offer/accept, offer/decline): the agent's last answer offered to start a build agent on: \"";
+CH_OFFER_B :: "\". offer/accept when this message takes up that offer; offer/decline when it turns it down. Any other message takes its own route, and the offer lapses.";
+// A build agent (docs/agents.md; OpenAgents' docs/protocol/gamebuilder-agent-v1.md): one piece of work on this game, in the
+// person's words, run as one durable turn on OpenAgents' hosted runner. It has no tools: its answer's plan lines are made
+// here, checked against the registry and the level's limits as any answer's are. One at a time; it is read every two
+// seconds while it works, and given up on after seven minutes.
+CH_JOB_DOOR :: "/api/gamebuilder/agents/v1";
+CH_JOB_READ :: "/api/gamebuilder/agent/v1?id=";
+CH_JOB_GAME :: "gamebuilder.org world";
+CH_JOB_BODY :: 32768;   // the start request (the service takes at most 32,768 bytes)
+CH_JOB_BRIEF :: 14000;  // bytes of the brief (the service's limit)
+CH_JOB_POLL :: 2.0;     // seconds between reads while it works
+CH_JOB_WAIT :: 420.0;   // seconds before the page gives up on it
+CH_JOB_CAP :: "it gets one model turn: at most 2,048 tokens of answer and about 6 minutes, and it costs you nothing for now.";
+CH_JOB_CLOUD :: "/api/rows/agent-new";   // a cloud Builder on the game of yours this world is: the table's row (issue 7)
+CH_J_NONE :: 0; CH_J_STARTING :: 1; CH_J_WORKING :: 2; CH_J_DONE :: 3; CH_J_FAILED :: 4;
+// The select step's own brief: a strictly formatted answer, chosen from what is listed and nothing else.
+CH_SELECT_A :: "You are the router of GameBuilder, an agent for making and playing games in a grid world on a website. Read the person's newest message and answer with exactly these lines and nothing else:\nroute: NAME\n";
+CH_SELECT_B :: "NAME is the deepest route that fits, from this tree:\n";
+CH_SELECT_PROPS :: "\nPATHS: every property the message is about, by its path `group.name`, from the index below and nowhere else, separated by commas; `none` when it is about no property. A property belongs when the answer would have to change it or read it: to turn something off, the property that controls it; for a thing that should behave differently, the property of things that makes it so.\nIDS: the ids of the things the message is about (like b3), from the things listed below, separated by commas; `none` when it is about no one thing.\nproperties (group: name (what it is)):\n";
+CH_SELECT_GROUPS :: "\nNAMES: the groups of properties the message is about, from the list below and nowhere else, separated by commas; `none` when it is about no property.\nproperty groups (name, how many properties): ";
+
+Chat :: struct {
+  dirty: bool;
+  n: int; who: [CH_KEPT] int; len: [CH_KEPT] int; text: [CH_KEPT] [CH_LEN] u8;
+  route: [CH_KEPT] [CH_ROUTE] u8; route_n: [CH_KEPT] int;   // the route an answer took, "" when it named none
+  plan: [CH_KEPT] [CH_PLAN] u8; plan_n: [CH_KEPT] int;      // an answer's plan lines as they came, for the thread sent back
+  blocks: [1] Blocks;                      // what stands in the world
+  cam: int;                                // the camera picked in the hotbar's camera menu (page.coax's GS_CAM_*; the orbit again when the conversation is cleared: a logout)
+  kind: int;                               // the game type picked (page.coax): the model is told it with the world, and only third person (the village too) has the follow button
+  note: [CH_NOTE] u8; note_n: int;         // what the HUD says the world is, in its own words (its action 115): a game type that is its own world; told to the model after the game type
+  draft: [CH_TYPED] u8; draft_n: int;
+  busy: bool;                              // a question is with the model
+  empty_retried: bool;                     // at most one extra final-completion request, before any answer or edit
+  asking: bool;                            // the login is still asking who is here (page.coax says): until it answers, the chat's box is not yet a guest's words
+  want: bool;                              // its request is ready for the face to send
+  body: [CH_BODY] u8; body_n: int;
+  reply: [CH_REPLY] u8; reply_n: int;
+  said: [CH_SAID] u8; said_n: int;         // what went wrong, in words
+  refused: [CH_SAID] u8; refused_n: int;   // why the agent's own last edit was refused, when a limit refused it: told to the model with your next message
+  seed: int;                               // makes this conversation's id
+  cut: bool;                               // what is typed is longer than a message may be, and was cut (said once)
+  forgot: bool;                            // the oldest message has been let go once, and the page has said so
+  guest: bool;                             // nobody is logged in (page.coax says): the agent is for accounts, so nothing typed is ever sent (issue 15)
+  // the select step (docs/web-world.md, "Properties"): what it chose for the message in flight
+  direct: bool;                            // one call a message, with every part of the brief: no select step
+  phase: int;                              // CH_P_*
+  pick_route: [CH_ROUTE] u8; pick_route_n: int;            // the route chosen ("": none, and the answer is given every part)
+  pick: [CH_PICKS] int; pick_n: int;                       // the registry's rows the message is about
+  pick_thing: [CH_PICK_THINGS] int; pick_thing_n: int;     // the things' ids it is about
+  pick_group: [CH_GROUPS] int; pick_group_n: int;          // the groups chosen first (each by its first row), when the index is long
+  // what was asked for that GameBuilder cannot do yet (an answer routed `make`): the newest few, shown in the world's settings
+  asked: [CH_ASKED] [CH_ASK] u8; asked_n: [CH_ASKED] int; asks: int;
+  // the offer the agent's last answer made, pending until the next message, and what the select step made of it
+  offer: [CH_ASK] u8; offer_n: int;
+  offer_pick: int;                         // 0: none; 1: taken up; 2: turned down
+  // the build agent (one at a time): its job in your words, its turn, its state in words, and its own requests
+  agent: int;                              // CH_J_*
+  job_words: [CH_ASK] u8; job_words_n: int;
+  job_id: [40] u8; job_id_n: int;
+  job_said: [CH_SAID] u8; job_said_n: int;
+  jobs: int;                               // starts in this tab; retained across conversation clears
+  job_nonce: [16] u8; job_nonce_ready: bool; // browser secure entropy, once per module instance
+  job_want: bool; job_busy: bool;          // its request is ready for the face; it is with the host
+  job_url: [80] u8; job_url_n: int;
+  job_body: [CH_JOB_BODY] u8; job_body_n: int;
+  job_reply: [CH_REPLY] u8; job_reply_n: int;
+  job_now: f32; job_began: f32; job_next: f32;   // the page's clock (ch_job_tick), when it started, when it is read next
+  // the game on your account this world is (page.coax sets it from web/account.coax; 0: none yet), and a cloud
+  // Builder's limits in words (coax/agent-record.coax's): yes to an offer starts one on it (issue 7)
+  cloud_game: s32;
+  cloud_words: [512] u8; cloud_words_n: int;
+  job_cloud: bool;                         // the build agent is a cloud Builder on your account (agent-new)
+}
+
+ch_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+ch_find :: (hay: string, needle: string, from: int) -> int {
+  if from < 0 || needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: from..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+// Text as the inside of a JSON string.
+ch_quote :: (out: [] u8, n: int, s: string) -> int {
+  k := n; hex := "0123456789abcdef";
+  for c: s {
+    if c == '"' || c == '\\' { k = ch_put(out, k, "\\"); if k < out.count { out[k] = c; k += 1; } }
+    else if c == '\n' { k = ch_put(out, k, "\\n"); }
+    else if c < 32 { k = ch_put(out, k, "\\u00"); if k + 1 < out.count { out[k] = hex[c >> 4]; out[k + 1] = hex[c & 15]; k += 2; } }
+    else if k < out.count { out[k] = c; k += 1; }
+  }
+  return k;
+}
+ch_hex :: (c: u8) -> int { if c >= '0' && c <= '9' { return cast(int) (c - '0'); } if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; } if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; } return -1; }
+// The text of the JSON string that begins at `from` (just past its opening quote), its escapes
+// read, into out. Bytes written.
+ch_unquote :: (json: string, from: int, out: [] u8) -> int {
+  i := from; n := 0;
+  while i < json.count && json[i] != '"' {
+    c := json[i];
+    if c != '\\' || i + 1 >= json.count { if n < out.count { out[n] = c; n += 1; } i += 1; continue; }
+    e := json[i + 1]; i += 2;
+    if e == 'n' { if n < out.count { out[n] = '\n'; n += 1; } continue; }
+    if e == 't' { if n < out.count { out[n] = ' '; n += 1; } continue; }
+    if e == 'r' { continue; }
+    if e != 'u' || i + 4 > json.count { if n < out.count { out[n] = e; n += 1; } continue; }
+    // \uXXXX as UTF-8 (a pair of surrogates is left as a question mark each)
+    v := 0; ok := true;
+    for k: 0..<4 { h := ch_hex(json[i + k]); if h < 0 { ok = false; } else { v = v * 16 + h; } }
+    i += 4;
+    if !ok || (v >= 0xD800 && v < 0xE000) { if n < out.count { out[n] = '?'; n += 1; } continue; }
+    if v < 0x80 { if n < out.count { out[n] = cast(u8) v; n += 1; } }
+    else if v < 0x800 { if n + 1 < out.count { out[n] = cast(u8) (0xC0 | (v >> 6)); out[n + 1] = cast(u8) (0x80 | (v & 63)); n += 2; } }
+    else if n + 2 < out.count { out[n] = cast(u8) (0xE0 | (v >> 12)); out[n + 1] = cast(u8) (0x80 | ((v >> 6) & 63)); out[n + 2] = cast(u8) (0x80 | (v & 63)); n += 3; }
+  }
+  return n;
+}
+ch_say :: (c: [] Chat, words: string) { c[0].said_n = ch_put(c[0].said[..], 0, words); }
+// Keeps a message, the oldest going when there is no room.
+ch_keep :: (c: [] Chat, who: int, text: [] u8) {
+  if c[0].n == CH_KEPT {
+    for k: 1..<CH_KEPT { c[0].who[k - 1] = c[0].who[k]; c[0].len[k - 1] = c[0].len[k]; c[0].text[k - 1] = c[0].text[k]; c[0].route[k - 1] = c[0].route[k]; c[0].route_n[k - 1] = c[0].route_n[k]; c[0].plan[k - 1] = c[0].plan[k]; c[0].plan_n[k - 1] = c[0].plan_n[k]; }
+    c[0].n = CH_KEPT - 1;
+  }
+  at := c[0].n; m := ifx text.count > CH_LEN then CH_LEN else text.count;
+  // a cut never ends in the middle of a UTF-8 character
+  while m > 0 && m < text.count && (text[m] & 0xC0) == 0x80 { m -= 1; }
+  for i: 0..<m { c[0].text[at][i] = text[i]; }
+  c[0].who[at] = who; c[0].len[at] = m; c[0].route_n[at] = 0; c[0].plan_n[at] = 0; c[0].n = at + 1;
+}
+// A route's name as the tree has it: lowercase letters and hyphens, one slash at most, and a root
+// the tree knows. Anything else is no route.
+ch_route_ok :: (r: string) -> bool {
+  if r.count < 1 || r.count > CH_ROUTE { return false; }
+  slash := -1;
+  for i: 0..<r.count {
+    ch := r[i];
+    if ch == '/' { if slash >= 0 || i == 0 || i == r.count - 1 { return false; } slash = i; }
+    else if !((ch >= 'a' && ch <= 'z') || ch == '-') { return false; }
+  }
+  root := ifx slash < 0 then r else cast(string) r[0..<slash];
+  roots := CH_ROOT;
+  for k: 0..<CH_ROOTS { if roots[k] == root { return true; } }
+  return false;
+}
+// An answer as it came: its first line "route: NAME" taken off when it names a route of the
+// tree, and its plan lines (those starting "+ ") taken out of the words. Under a build route each
+// plan line is an edit and is made; under any other route plan lines are dropped unmade. Kept
+// with its route and its plan.
+ch_route_space :: (v:u8)->bool { return v==' ' || v=='\t' || v=='\r' || v=='\n'; }
+ch_keep_answer :: (c: [] Chat, text: [] u8) {
+  body := 0; r: string = "";
+  t := cast(string) text;
+  start:=0;while start<t.count && ch_route_space(t[start]) {start+=1;}
+  if t.count-start > 7 && cast(string) t[start..<start+6] == "route:" {
+    lo := start+6; while lo < t.count && (t[lo]==' ' || t[lo]=='\t') { lo += 1; }
+    hi := lo; while hi < t.count && !ch_route_space(t[hi]) { hi += 1; }
+    if ch_route_ok(cast(string) t[lo..<hi]) {
+      r = cast(string) t[lo..<hi];
+      body = hi; while body < t.count && ch_route_space(t[body]) { body += 1; }
+    }
+  }
+  if body >= text.count { body = 0; r = ""; }   // a route and nothing else is shown as it came
+  builds := r.count >= 5 && cast(string) r[0..<5] == "build";
+  // a property is set under a build route or a world route (world/set); what the person asked for and nothing does is kept
+  sets := builds || (r.count >= 5 && cast(string) r[0..<5] == "world");
+  if r.count >= 4 && cast(string) r[0..<4] == "make" && c[0].n > 0 && c[0].who[c[0].n - 1] == CH_YOU {
+    asked := cast(string) c[0].text[c[0].n - 1][0..<c[0].len[c[0].n - 1]];
+    ch_ask(c, asked);
+    // (and the offer it may make is pending: the next message can take it up)
+    m := ifx asked.count > CH_ASK then CH_ASK else asked.count;
+    while m > 0 && m < asked.count && (asked[m] & 0xC0) == 0x80 { m -= 1; }
+    for i: 0..<m { c[0].offer[i] = asked[i]; }
+    c[0].offer_n = m;
+  }
+  c[0].blocks[0].props[0].why_n = 0;
+  ch_bounds(c);   // (the game type's own bounds for what is built: every game type is built in)
+  // the words without the plan lines, and the plan lines as they came
+  words: [CH_LEN + 8] u8; wn := 0; plan: [CH_PLAN] u8; pn := 0; made := 0; why := BL_WHY_NONE;
+  at := body;
+  while at < t.count {
+    end := at; while end < t.count && t[end] != '\n' { end += 1; }
+    lo:=at;while lo<end && (t[lo]==' ' || t[lo]=='\t') {lo+=1;}
+    hi:=end;while hi>lo && (t[hi-1]=='\r' || t[hi-1]==' ' || t[hi-1]=='\t') {hi-=1;}
+    line := cast(string) t[lo..<hi];
+    if line.count >= 2 && line[0] == '+' && line[1] == ' ' {
+      edit := cast(string) line[2..<line.count]; verb := bl_word(edit, 0); tunes := cast(string) edit[verb.lo..<verb.hi] == "set" || cast(string) edit[verb.lo..<verb.hi] == "reset";
+      if (ifx tunes then sets else builds) && bl_plan(c[0].blocks[..], edit) { made += 1; }
+      // (an edit a limit refused: the first such reason is kept, to be said under the answer and told to the model)
+      else if !tunes && builds && c[0].blocks[0].why != BL_WHY_NONE && why == BL_WHY_NONE { why = c[0].blocks[0].why; }
+      if pn + line.count + 1 <= CH_PLAN { if pn > 0 { plan[pn] = '\n'; pn += 1; } for i: 0..<line.count { plan[pn] = line[i]; pn += 1; } }
+    } else {
+      if wn > 0 && wn < words.count { words[wn] = '\n'; wn += 1; }
+      for i: 0..<line.count { if wn < words.count { words[wn] = line[i]; wn += 1; } }
+    }
+    at = end + 1;
+  }
+  while wn > 0 && words[wn - 1] <= 32 { wn -= 1; }
+  // a plan with no words still says something
+  if wn == 0 { wn = ch_put(words[..], 0, ifx made > 0 then "done." else "nothing changed."); }
+  // an edit that was refused (no such property, a value out of its range, a thing that is not there) changed nothing: the answer says so
+  pw := c[0].blocks[0].props[..];
+  if pw[0].why_n > 0 { wn = ch_put(words[..], wn, "\n"); wn = ch_put(words[..], wn, cast(string) pw[0].why[0..<pw[0].why_n]); pw[0].why_n = 0; }
+  ch_tuned(c);
+  ch_keep(c, CH_MODEL, words[0..<wn]);
+  k := c[0].n - 1;
+  for i: 0..<r.count { c[0].route[k][i] = r[i]; }
+  c[0].route_n[k] = r.count;
+  for i: 0..<pn { c[0].plan[k][i] = plan[i]; }
+  c[0].plan_n[k] = pn;
+  // a limit refused one of its edits: said on the page in words, with the number, and kept for the model
+  c[0].refused_n = bl_why(c[0].blocks[..], why, c[0].refused[..], 0);
+  if c[0].refused_n > 0 { c[0].said_n = ch_put(c[0].said[..], 0, cast(string) c[0].refused[0..<c[0].refused_n]); }
+}
+// Keeps what was asked for that nothing does yet: the newest CH_ASKED, the same thing once.
+ch_ask :: (c: [] Chat, text: string) {
+  m := ifx text.count > CH_ASK then CH_ASK else text.count;
+  while m > 0 && m < text.count && (text[m] & 0xC0) == 0x80 { m -= 1; }
+  for k: 0..<c[0].asks { if cast(string) c[0].asked[k][0..<c[0].asked_n[k]] == cast(string) text[0..<m] { return; } }
+  if c[0].asks == CH_ASKED { for k: 1..<CH_ASKED { c[0].asked[k - 1] = c[0].asked[k]; c[0].asked_n[k - 1] = c[0].asked_n[k]; } c[0].asks = CH_ASKED - 1; }
+  for i: 0..<m { c[0].asked[c[0].asks][i] = text[i]; }
+  c[0].asked_n[c[0].asks] = m; c[0].asks += 1;
+}
+// The camera is the registry's camera.view: the camera menu and a game type's own camera set it, an answer may
+// set it, and the page's own copy (what the hotbar shows and tells the HUD) follows the registry.
+ch_tuned :: (c: [] Chat) { c[0].cam = pr_value(c[0].blocks[0].props[..], TW_VIEW); }
+ch_cam :: (c: [] Chat, cam: int) {
+  if cam <= 0 { ok := bl_plan(c[0].blocks[..], "reset camera.view"); }
+  else { line: [40] u8; n := bl_put(line[..], 0, "set camera.view "); n = bl_put(line[..], n, TW_ROWS[TW_VIEW].names[ifx cam < 4 then cam else 0]); ok := bl_plan(c[0].blocks[..], cast(string) line[0..<n]); }
+  ch_tuned(c);
+}
+// A request's head: the schema and a name for the thread (twenty hex digits from a seed), up to its messages.
+ch_head :: (out: [] u8, seed: int) -> int {
+  hex := "0123456789abcdef";
+  n := ch_put(out, 0, "{\"schema\":\""); n = ch_put(out, n, CH_SCHEMA); n = ch_put(out, n, "\",\"id\":\"m_");
+  v := seed;
+  for k: 0..<20 { v = (v * 1103515245 + 12345) & 0x7fffffff; if n < out.count { out[n] = hex[(v >> 16) & 15]; n += 1; } }
+  return ch_put(out, n, "\",\"revision\":0,\"messages\":[");
+}
+// The route chosen for the message in flight, and its root.
+ch_picked :: (c: [] Chat) -> string { return cast(string) c[0].pick_route[0..<c[0].pick_route_n]; }
+ch_root :: (r: string) -> string { for i: 0..<r.count { if r[i] == '/' { return cast(string) r[0..<i]; } } return r; }
+// The parts of the brief the answer needs, by the route the select step chose: building under build (and the decide
+// button's note with it), properties under world or whenever any were chosen, the other facts under the routes that
+// only talk. With no route chosen (no select step, or an answer of it that could not be read): every part.
+ch_needs :: (c: [] Chat) -> int {
+  r := ch_picked(c);
+  if r.count == 0 { return CH_N_ALL; }
+  root := ch_root(r); need := 0;
+  newest := ifx c[0].n > 0 then cast(string) c[0].text[c[0].n - 1][0..<c[0].len[c[0].n - 1]] else "";
+  if root == "build" { need |= CH_N_BUILD; if newest == CH_DECIDE { need |= CH_N_DECIDE; } }
+  if root == "world" || root == "make" || c[0].pick_n > 0 { need |= CH_N_SET; }
+  if root != "build" && root != "world" { need |= CH_N_FACTS; }
+  return need;
+}
+// The registry's index, for whoever chooses from it: whole, or the chosen groups' lines only (each group by its first row).
+ch_index :: (reg: [] const Tunable, groups: [] const int, out: [] u8, n: int) -> int {
+  if groups.count == 0 { return tun_index(reg, "", out, n); }
+  k := n;
+  for g: groups { k = tun_index(reg, tun_group(reg[g].path), out, k); }
+  return k;
+}
+// The properties the answer is given, as plain text: the full detail of each one the select step chose (what it
+// takes, its default, what it is now, what it does), a thing's for each thing chosen, or for each kind when none
+// was. With none chosen: the index (or its groups, when it is long), so a question about what can be changed has
+// an answer. Never every property's detail.
+ch_props_text :: (c: [] Chat, out: [] u8, from: int) -> int {
+  p := c[0].blocks[0].props[..]; b := c[0].blocks[..]; n := from;
+  if c[0].pick_n == 0 {
+    scratch: [CH_INDEX + 1] u8; m := tun_index(TW_ROWS[..], "", scratch[..], 0);
+    if m <= CH_INDEX { n = tun_put(out, n, "what can be changed (group: name (what it is)); a property's path is group.name:\n"); return tun_put(out, n, cast(string) scratch[0..<m]); }
+    n = tun_put(out, n, "what can be changed, by group (name, how many properties): "); n = tun_groups(TW_ROWS[..], out, n);
+    return tun_put(out, n, "\n");
+  }
+  n = tun_put(out, n, "the properties this is about (path: what it takes, its default, what it is now. what it does):\n");
+  name: [TUN_PATH + 16] u8;
+  for k: 0..<c[0].pick_n {
+    prop := c[0].pick[k]; t := TW_ROWS[prop];
+    if t.scope != TUN_THING { n = tun_detail(t, pr_plain(p, prop, -1), pr_value(p, prop), out, n); n = tun_put(out, n, "\n"); continue; }
+    some := false;
+    for j: 0..<c[0].pick_thing_n {
+      i := bl_at(b, c[0].pick_thing[j]);
+      if i < 0 { continue; }
+      some = true;
+      m := pr_path(prop, b[0].b[i].id, name[..], 0); t.path = cast(string) name[0..<m];
+      n = tun_detail(t, pr_plain(p, prop, b[0].b[i].kind), pr_thing(p, prop, b[0].b[i].id, b[0].b[i].kind), out, n); n = tun_put(out, n, "\n");
+    }
+    if some { continue; }
+    // no one thing: each kind's, as it stands for a thing with nothing of its own (an id no thing has)
+    for kind: 0..<TW_KINDS.count {
+      m := pr_path(prop, -1 - kind, name[..], 0); t.path = cast(string) name[0..<m];
+      n = tun_detail(t, pr_plain(p, prop, kind), pr_thing(p, prop, BL_NO_ID, kind), out, n); n = tun_put(out, n, "\n");
+    }
+  }
+  return n;
+}
+// The world as it stands, for the model: the game type it is played as, what the HUD says of it, then you and the things.
+ch_world :: (c: [] Chat, world: [] u8, said: string) -> int {
+  ty := gt_web_type(ifx c[0].kind >= 0 && c[0].kind < CH_KINDS then c[0].kind else 0);
+  wn := bl_put(world, 0, "game type: "); wn = bl_put(world, wn, GT_SAID[ty]); wn = bl_put(world, wn, "\n");
+  if GT_BUILT[ty].count > 0 { wn = bl_put(world, wn, GT_BUILT[ty]); wn = bl_put(world, wn, "\n"); }
+  if c[0].note_n > 0 { wn = bl_put(world, wn, cast(string) c[0].note[0..<c[0].note_n]); wn = bl_put(world, wn, "\n"); }
+  wn = bl_describe_for(c[0].blocks[..], world, wn, said);   // (past BL_SHOWN things: the nearest, the selected and those `said` names)
+  // (and why your last edit was refused, when a limit refused it)
+  if c[0].refused_n > 0 { wn = bl_put(world, wn, "\nyour last edit was refused: "); wn = bl_put(world, wn, cast(string) c[0].refused[0..<c[0].refused_n]); }
+  return wn;
+}
+// The request for the conversation as it stands: the answer's. Bytes written.
+ch_request :: (c: [] Chat, out: [] u8) -> int {
+  n := ch_head(out, c[0].seed);
+  // the thread begins with you: an answer left at the front by the oldest going is not sent
+  first := 0;
+  while first < c[0].n && c[0].who[first] == CH_MODEL { first += 1; }
+  for k: first..<c[0].n {
+    if k > first { n = ch_put(out, n, ","); }
+    n = ch_put(out, n, ifx c[0].who[k] == CH_MODEL then "{\"role\":\"assistant\",\"content\":\"" else "{\"role\":\"user\",\"content\":\"");
+    // the brief's core goes before your first message, once; the parts this answer needs, the properties it is
+    // about and the world as it stands go before your newest; an answer goes back as it came, route first and plan last
+    if k == first { n = ch_quote(out, n, CH_CORE); n = ch_quote(out, n, CH_TREE); n = ch_quote(out, n, CH_CORE_END); n = ch_put(out, n, "\\n\\n"); }
+    if k == c[0].n - 1 && c[0].who[k] == CH_YOU {
+      need := ch_needs(c);
+      if c[0].pick_route_n > 0 { n = ch_put(out, n, "the router chose the route "); n = ch_put(out, n, ch_picked(c)); n = ch_put(out, n, " for this message: keep it unless it is plainly wrong.\\n"); }
+      if (need & CH_N_BUILD) != 0 { n = ch_quote(out, n, CH_BUILD); }
+      if (need & CH_N_DECIDE) != 0 { n = ch_quote(out, n, CH_DECIDE_NOTE); }
+      if (need & CH_N_SET) != 0 {
+        n = ch_quote(out, n, CH_SET);
+        text: [CH_INDEX + 256] u8; tn := ch_props_text(c, text[..], 0);
+        n = ch_quote(out, n, cast(string) text[0..<tn]);
+      }
+      if (need & CH_N_FACTS) != 0 { n = ch_quote(out, n, CH_FACTS); }
+      world: [BL_TEXT] u8; wn := ch_world(c, world[..], cast(string) c[0].text[k][0..<c[0].len[k]]);
+      if need != 0 { n = ch_put(out, n, "\\n"); }
+      n = ch_put(out, n, "world now:\\n"); n = ch_quote(out, n, cast(string) world[0..<wn]); n = ch_put(out, n, "\\n\\n");
+    }
+    if c[0].who[k] == CH_YOU { n = ch_put(out, n, "message: "); }
+    if c[0].who[k] == CH_MODEL && c[0].route_n[k] > 0 { n = ch_put(out, n, "route: "); n = ch_put(out, n, cast(string) c[0].route[k][0..<c[0].route_n[k]]); n = ch_put(out, n, "\\n\\n"); }
+    n = ch_quote(out, n, cast(string) c[0].text[k][0..<c[0].len[k]]);
+    if c[0].who[k] == CH_MODEL && c[0].plan_n[k] > 0 { n = ch_put(out, n, "\\n"); n = ch_quote(out, n, cast(string) c[0].plan[k][0..<c[0].plan_n[k]]); }
+    n = ch_put(out, n, "\"}");
+  }
+  n = ch_put(out, n, "]}");
+  return ifx n >= out.count then -1 else n;
+}
+// The select step's request (docs/web-world.md, "Properties"): a thread of its own, one message. The model is given
+// your newest message, the route tree and the registry's index (group names, and under each its properties with a
+// few words: no ranges, no values), and answers three lines: the route, the properties the message is about, the
+// things. A registry too long to index whole is chosen from in two steps: its groups first (`groups` empty and the
+// index over CH_INDEX), then the rows of the chosen groups (`groups`: each chosen group's first row). The typed
+// choice is the model's; nothing here matches words. Bytes written, -1 when it does not fit.
+ch_select_request :: (c: [] Chat, reg: [] const Tunable, groups: [] const int, out: [] u8) -> int {
+  scratch: [CH_INDEX + 1] u8; m := ch_index(reg, groups, scratch[..], 0);
+  whole := m <= CH_INDEX || groups.count > 0;
+  // (the chosen groups' rows, cut at a whole line when even they are too long)
+  if m > CH_INDEX { m = CH_INDEX; while m > 0 && scratch[m - 1] != '\n' { m -= 1; } }
+  n := ch_head(out, c[0].seed + 1);
+  n = ch_put(out, n, "{\"role\":\"user\",\"content\":\"");
+  n = ch_quote(out, n, CH_SELECT_A); n = ch_quote(out, n, ifx whole then "props: PATHS\nthings: IDS\n" else "groups: NAMES\n");
+  n = ch_quote(out, n, CH_SELECT_B); n = ch_quote(out, n, CH_TREE);
+  if c[0].offer_n > 0 { n = ch_quote(out, n, CH_OFFER_A); n = ch_quote(out, n, cast(string) c[0].offer[0..<c[0].offer_n]); n = ch_quote(out, n, CH_OFFER_B); }
+  if whole { n = ch_quote(out, n, CH_SELECT_PROPS); n = ch_quote(out, n, cast(string) scratch[0..<m]); }
+  else { n = ch_quote(out, n, CH_SELECT_GROUPS); g := tun_groups(reg, scratch[..], 0); n = ch_quote(out, n, cast(string) scratch[0..<g]); n = ch_put(out, n, "\\n"); }
+  // the things by id and kind, the one selected, and the turn before, clipped: enough to know what "it" and "the ball" are
+  b := c[0].blocks[..];
+  n = ch_put(out, n, "things here:");
+  for i: 0..<b[0].n { n = ch_put(out, n, ifx i > 0 then ", b" else " b"); t: [12] u8; tn := bl_int(t[..], 0, b[0].b[i].id); n = ch_put(out, n, cast(string) t[0..<tn]); n = ch_put(out, n, ifx b[0].b[i].kind == BL_BALL then " ball" else " block"); }
+  if b[0].n == 0 { n = ch_put(out, n, " none"); }
+  n = ch_put(out, n, "\\n");
+  if bl_chosen(b) >= 0 { n = ch_put(out, n, "selected: b"); t: [12] u8; tn := bl_int(t[..], 0, b[0].sel); n = ch_put(out, n, cast(string) t[0..<tn]); n = ch_put(out, n, "\\n"); }
+  last := c[0].n - 1;
+  for k: (ifx last - 2 < 0 then 0 else last - 2)..<last {
+    m2 := ifx c[0].len[k] > CH_BEFORE then CH_BEFORE else c[0].len[k];
+    while m2 > 0 && m2 < c[0].len[k] && (c[0].text[k][m2] & 0xC0) == 0x80 { m2 -= 1; }
+    n = ch_put(out, n, ifx c[0].who[k] == CH_YOU then "before, the person: " else "before, the agent: "); n = ch_quote(out, n, cast(string) c[0].text[k][0..<m2]); n = ch_put(out, n, "\\n");
+  }
+  n = ch_put(out, n, "message: ");
+  if last >= 0 { n = ch_quote(out, n, cast(string) c[0].text[last][0..<c[0].len[last]]); }
+  n = ch_put(out, n, "\"}]}");
+  return ifx n >= out.count then -1 else n;
+}
+// One of the select step's choices, added once, while there is room.
+ch_pick_one :: (list: [] int, count: int, v: int) -> int {
+  for k: 0..<count { if list[k] == v { return count; } }
+  if count >= list.count { return count; }
+  list[count] = v;
+  return count + 1;
+}
+// The select step's answer, read: `route: NAME`, `props: a, b`, `things: b3, b4` (or `groups: a, b`), a line each, in
+// any order. Every choice is checked against what was listed: a route the tree has, a path the registry has (a
+// thing's may be written by the thing, `b3.bounce`, which also names the thing), a thing that stands in the
+// world, a group the registry has. Anything else is dropped, `none` among it. This reads a typed answer's bounded
+// fields; it matches nothing in what the person typed.
+ch_select_read :: (c: [] Chat, reg: [] const Tunable, text: string) {
+  c[0].pick_route_n = 0; c[0].pick_n = 0; c[0].pick_thing_n = 0; c[0].pick_group_n = 0; c[0].offer_pick = 0;
+  b := c[0].blocks[..];
+  at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    hi:=end;while hi>at && (text[hi-1]=='\r' || text[hi-1]==' ' || text[hi-1]=='\t') {hi-=1;}
+    line := cast(string) text[at..<hi];
+    at = end + 1;
+    lo := 0; while lo < line.count && (line[lo]==' ' || line[lo]=='\t') { lo += 1; }
+    colon := lo; while colon < line.count && line[colon] != ':' { colon += 1; }
+    if colon >= line.count { continue; }
+    label := cast(string) line[lo..<colon];
+    // the words after the label, parted by commas and spaces
+    i := colon + 1;
+    while i < line.count {
+      while i < line.count && (line[i]==' ' || line[i]=='\t' || line[i]==',') { i += 1; }
+      w := i; while i < line.count && line[i]!=' ' && line[i]!='\t' && line[i]!=',' { i += 1; }
+      if i == w { break; }
+      word := cast(string) line[w..<i];
+      // (an offer's two routes, only while one is pending)
+      if label == "route" && c[0].offer_n > 0 && c[0].pick_route_n == 0 && c[0].offer_pick == 0 && (word == CH_OFFER_ACCEPT || word == CH_OFFER_DECLINE) { c[0].offer_pick = ifx word == CH_OFFER_ACCEPT then 1 else 2; }
+      else if label == "route" { if ch_route_ok(word) && c[0].offer_pick == 0 && c[0].pick_route_n == 0 { for k: 0..<word.count { c[0].pick_route[k] = word[k]; } c[0].pick_route_n = word.count; } }
+      else if label == "props" {
+        who := tun_at(reg, TW_KINDS[..], word);
+        // (a thing's path for a thing that is not there is dropped whole)
+        there := who.target <= 0 || bl_at(b, who.target) >= 0;
+        if who.prop >= 0 && there { c[0].pick_n = ch_pick_one(c[0].pick[..], c[0].pick_n, who.prop); }
+        if who.prop >= 0 && who.target > 0 && there { c[0].pick_thing_n = ch_pick_one(c[0].pick_thing[..], c[0].pick_thing_n, who.target); }
+      }
+      else if label == "things" { id := bl_id(word); if id > 0 && bl_at(b, id) >= 0 { c[0].pick_thing_n = ch_pick_one(c[0].pick_thing[..], c[0].pick_thing_n, id); } }
+      else if label == "groups" { for t, k: reg { if tun_first(reg, k) && tun_group(t.path) == word { c[0].pick_group_n = ch_pick_one(c[0].pick_group[..], c[0].pick_group_n, k); } } }
+    }
+  }
+}
+// The chat box's text as it stands.
+// (a message longer than CH_TYPED bytes is cut there, and the page says so: a limit a person can hit is said in words)
+ch_input :: (c: [] Chat, text: [] u8) {
+  m := ifx text.count > CH_TYPED then CH_TYPED else text.count; for i: 0..<m { c[0].draft[i] = text[i]; } c[0].draft_n = m;
+  if text.count > CH_TYPED && !c[0].cut { ch_say(c, "that message is too long: it is cut at 1200 characters."); c[0].dirty = true; }
+  c[0].cut = text.count > CH_TYPED;
+}
+// The agent is for accounts (the owner's decision, 2026-11-17: a guest gets no AI messages). A guest's message, the
+// decide button and a build agent's start are refused here, in words, before any request is made: nothing a guest
+// does reaches /api/chat/complete/v1 or /api/gamebuilder/agents/v1. page.coax says who is a guest.
+CH_GUEST :: "log in or create an account to talk to the agent.";
+ch_guest :: (c: [] Chat, on: bool) { if c[0].guest != on { c[0].guest = on; c[0].dirty = true; } }
+// Enter: what you typed goes to the model. True when it went.
+ch_send :: (c: [] Chat) -> bool {
+  if c[0].busy { return false; }
+  if c[0].guest { ch_say(c, CH_GUEST); c[0].dirty = true; return false; }
+  lo := 0; hi := c[0].draft_n;
+  while lo < hi && c[0].draft[lo] <= 32 { lo += 1; }
+  while hi > lo && c[0].draft[hi - 1] <= 32 { hi -= 1; }
+  if hi == lo { return false; }
+  full := c[0].n == CH_KEPT;
+  ch_keep(c, CH_YOU, c[0].draft[lo..<hi]);
+  c[0].draft_n = 0; c[0].said_n = 0; c[0].cut = false; c[0].empty_retried = false;
+  // (the conversation is as long as the agent is sent: the first time the oldest message goes, the page says so)
+  if full && !c[0].forgot { c[0].forgot = true; ch_say(c, "the agent sees the last 12 messages: older ones are let go."); }
+  // the select step goes first: the route and the properties the message is about. The decide button needs none
+  // (its route is build/block), and a chat told to answer in one call has none
+  c[0].pick_route_n = 0; c[0].pick_n = 0; c[0].pick_thing_n = 0; c[0].pick_group_n = 0;
+  decides := cast(string) c[0].text[c[0].n - 1][0..<c[0].len[c[0].n - 1]] == CH_DECIDE;
+  if decides { c[0].pick_route_n = ch_put(c[0].pick_route[..], 0, "build/block"); }
+  none: [1] int;
+  c[0].phase = ifx c[0].direct || decides then CH_P_ACT else CH_P_SELECT;
+  if c[0].phase == CH_P_ACT { c[0].offer_n = 0; }   // (only the select step can take an offer up)
+  n := ifx c[0].phase == CH_P_ACT then ch_request(c, c[0].body[..]) else ch_select_request(c, TW_ROWS[..], none[0..<0], c[0].body[..]);
+  if n < 0 { ch_say(c, "that's too long to send."); c[0].phase = CH_P_NONE; c[0].dirty = true; return false; }
+  if c[0].phase == CH_P_ACT { c[0].refused_n = 0; }   // (told once: with the answer's own question)
+  c[0].body_n = n; c[0].reply_n = 0; c[0].want = true; c[0].busy = true; c[0].dirty = true;
+  return true;
+}
+// The decide button: the model is asked to pick the next edit itself. True when it went.
+ch_decide :: (c: [] Chat) -> bool {
+  if c[0].busy { return false; }
+  if c[0].guest { ch_say(c, CH_GUEST); c[0].dirty = true; return false; }   // (and what a guest typed stays in the box)
+  word := CH_DECIDE;
+  for i: 0..<word.count { c[0].draft[i] = word[i]; }
+  c[0].draft_n = word.count;
+  return ch_send(c);
+}
+ch_piece :: (c: [] Chat, bytes: [] u8) { for i: 0..<bytes.count { if c[0].reply_n < CH_REPLY { c[0].reply[c[0].reply_n] = bytes[i]; c[0].reply_n += 1; } } }
+// Read the actual completion envelope, including spaced JSON. A blank successful
+// completion is retriable only when it is a text response with no error, refusal,
+// tool continuation or filtered/truncated/unknown finish. No nonempty answer is
+// retried, even when it makes no edit. The request and world remain unchanged.
+ChCompletion :: struct { n: int = -1; retryable: bool; }
+ch_completion :: (raw: string, out: [] u8) -> ChCompletion {
+  nodes: [512] JvNode; doc: [1] Jv; result: ChCompletion;
+  if !jv_parse(doc[..], raw, nodes[..]) { return result; }
+  d := doc[0]; choices := jv_get(d, 0, "choices"); choice := jv_at(d, choices, 0); message := jv_get(d, choice, "message");
+  if jv_get(d, 0, "error") >= 0 || jv_kind(d, choices) != JV_ARRAY || jv_len(d, choices) != 1 || jv_kind(d, message) != JV_OBJECT { return result; }
+  refusal := jv_get(d, message, "refusal");
+  if jv_kind(d, refusal) != 0 && jv_kind(d, refusal) != JV_NULL { return result; }
+  content := jv_get(d, message, "content"); kind := jv_kind(d, content);
+  if kind == JV_STRING {
+    text: [CH_REPLY] u8; n := jv_str(d, content, text[..]);
+    if n < 0 { return result; }
+    result.n = ifx n > out.count then out.count else n;
+    while result.n > 0 && result.n < n && (text[result.n] & 0xC0) == 0x80 { result.n -= 1; }
+    for i: 0..<result.n { out[i] = text[i]; }
+  }
+  else if kind == 0 || kind == JV_NULL { result.n = 0; }
+  if result.n < 0 { return result; }
+  for i: 0..<result.n { if out[i] > 32 { return result; } }
+  result.n = 0;
+  for key: [2] string.["tool_calls", "function_call"] { at := jv_get(d, message, key); if jv_kind(d, at) != 0 && jv_kind(d, at) != JV_NULL { return result; } }
+  finish := jv_get(d, choice, "finish_reason"); fk := jv_kind(d, finish); name := jv_raw(d, finish);
+  result.retryable = fk == 0 || fk == JV_NULL || (fk == JV_STRING && (name == "stop" || name == "STOP" || name == "end_turn" || name == "stop_sequence"));
+  native := jv_get(d, choice, "native_finish_reason"); nk := jv_kind(d, native); native_name := jv_raw(d, native);
+  if nk != 0 && nk != JV_NULL && (nk != JV_STRING || (native_name != "STOP" && native_name != "stop" && native_name != "end_turn" && native_name != "stop_sequence")) { result.retryable = false; }
+  return result;
+}
+// The answer ended: `status` is its HTTP status, 0 when there was none.
+ch_end :: (c: [] Chat, status: int) {
+  if !c[0].busy || c[0].want { return; }
+  r := cast(string) c[0].reply[0..<c[0].reply_n];
+  buf: [CH_LEN + 8] u8;
+  if status == 200 && c[0].phase != CH_P_ACT && c[0].phase != CH_P_NONE {
+    // the select step answered: its choices are read (an answer that cannot be read chooses nothing, and the
+    // answer is then given every part of the brief), and the next question goes: the chosen groups' rows when the
+    // groups were chosen first, else the answer's own
+    at := ch_find(r, "\"content\":\"", ch_find(r, "\"message\"", 0));
+    n := ifx at < 0 then 0 else ch_unquote(r, at + 11, buf[..]);
+    ch_select_read(c, TW_ROWS[..], cast(string) buf[0..<n]);
+    // the agent's offer: taken up, a build agent starts on it; turned down, nothing does; any other route, it lapses
+    if c[0].offer_pick != 0 && c[0].phase == CH_P_SELECT {
+      words: [CH_ASK] u8; wn := c[0].offer_n; for i: 0..<wn { words[i] = c[0].offer[i]; }
+      c[0].offer_n = 0; c[0].busy = false; c[0].phase = CH_P_NONE; c[0].dirty = true;
+      if c[0].offer_pick == 1 { ch_job_start(c, cast(string) words[0..<wn]); }
+      else { no: [32] u8; k := ch_put(no[..], 0, "ok, i won't start it."); ch_keep(c, CH_MODEL, no[0..<k]); }
+      c[0].offer_pick = 0;
+      return;
+    }
+    c[0].offer_n = 0;
+    again := c[0].phase == CH_P_SELECT && c[0].pick_group_n > 0 && c[0].pick_n == 0;
+    c[0].phase = ifx again then CH_P_GROUPS else CH_P_ACT;
+    m := ifx again then ch_select_request(c, TW_ROWS[..], c[0].pick_group[0..<c[0].pick_group_n], c[0].body[..]) else ch_request(c, c[0].body[..]);
+    if m < 0 { c[0].busy = false; c[0].phase = CH_P_NONE; c[0].dirty = true; ch_say(c, "that's too long to send."); return; }
+    if !again { c[0].refused_n = 0; }   // (told once)
+    c[0].body_n = m; c[0].reply_n = 0; c[0].want = true; c[0].dirty = true;
+    return;
+  }
+  if status == 200 {
+    answer := ch_completion(r, buf[..]);
+    if c[0].phase == CH_P_ACT && !c[0].empty_retried && answer.retryable {
+      c[0].empty_retried = true; c[0].reply_n = 0; c[0].want = true; c[0].dirty = true;
+      return;
+    }
+    c[0].busy = false; c[0].dirty = true; c[0].phase = CH_P_NONE;
+    if answer.n > 0 { ch_keep_answer(c, buf[0..<answer.n]); return; }
+    ch_say(c, "no answer came back. try again.");
+    return;
+  }
+  c[0].busy = false; c[0].dirty = true; c[0].phase = CH_P_NONE;
+  // refused: the service's own words when it gave any ({"error":"..."} or {"error":{"message":"..."}})
+  at := ch_find(r, "\"error\":\"", 0); skip := 9;
+  if at < 0 { at = ch_find(r, "\"message\":\"", ch_find(r, "\"error\"", 0)); skip = 11; }
+  n := ifx at < 0 then 0 else ch_unquote(r, at + skip, c[0].said[..]);
+  if n > 0 { c[0].said_n = n; }
+  else if status == 0 { ch_say(c, "can't reach the server. try again."); }
+  else if status == 401 { ch_say(c, "log in again."); }
+  else if status == 429 { ch_say(c, "that's the limit for now. wait a minute, then try again."); }   // (a limit that came with no words of its own)
+  else { ch_say(c, "that didn't work. try again."); }
+}
+ch_wants :: (c: [] Chat) -> bool { return c[0].want; }
+ch_sent :: (c: [] Chat) { c[0].want = false; }
+// A new conversation: logging out leaves nothing behind.
+// What the HUD says the world is (from the glue, through the page's hidden field): kept whole, or not at all when it is too long.
+ch_note :: (c: [] Chat, t: string) { c[0].note_n = 0; if t.count > CH_NOTE { return; } for i: 0..<t.count { c[0].note[i] = t[i]; } c[0].note_n = t.count; }
+// The conversation alone forgotten (a logout): the messages, what was typed, an offer, the build agent's row and
+// anything with the host. The world built, its game type and its camera stay.
+ch_forget :: (c: [] Chat) { c[0].phase = CH_P_NONE; c[0].pick_route_n = 0; c[0].pick_n = 0; c[0].pick_thing_n = 0; c[0].asks = 0; c[0].n = 0; c[0].draft_n = 0; c[0].said_n = 0; c[0].refused_n = 0; c[0].cut = false; c[0].forgot = false; c[0].busy = false; c[0].want = false; c[0].reply_n = 0; c[0].empty_retried = false; c[0].offer_n = 0; c[0].offer_pick = 0; c[0].agent = CH_J_NONE; c[0].job_words_n = 0; c[0].job_id_n = 0; c[0].job_said_n = 0; c[0].job_want = false; c[0].job_busy = false; c[0].job_reply_n = 0; c[0].dirty = true; }
+ch_clear :: (c: [] Chat) { c[0].phase = CH_P_NONE; c[0].pick_route_n = 0; c[0].pick_n = 0; c[0].pick_thing_n = 0; c[0].asks = 0; c[0].cam = 0; c[0].kind = 0; c[0].note_n = 0; bl_reset(c[0].blocks[..]); bl_start(c[0].blocks[..]); c[0].n = 0; c[0].draft_n = 0; c[0].said_n = 0; c[0].refused_n = 0; c[0].cut = false; c[0].forgot = false; c[0].busy = false; c[0].want = false; c[0].reply_n = 0; c[0].empty_retried = false; c[0].offer_n = 0; c[0].offer_pick = 0; c[0].agent = CH_J_NONE; c[0].job_words_n = 0; c[0].job_id_n = 0; c[0].job_said_n = 0; c[0].job_want = false; c[0].job_busy = false; c[0].job_reply_n = 0; c[0].dirty = true; }
+
+// ---------------------------------------------------------------- the build agent
+
+// The host supplies bytes, never an id or a rule. A fresh tab's 128-bit nonce
+// separates starts even when its first animation frame has the same clock.
+ch_job_entropy :: (c:[]Chat,bytes:[]u8,ok:bool) {
+  if c.count<1 || c[0].job_nonce_ready || !ok || bytes.count!=16 {return;}
+  for i:0..<16 {c[0].job_nonce[i]=bytes[i];}c[0].job_nonce_ready=true;
+}
+ch_job_operation :: (c:[]Chat,out:[]u8)->int {
+  if c.count<1 || !c[0].job_nonce_ready || out.count<64 {return 0;}
+  hex:="0123456789abcdef";n:=ch_put(out,0,"gb_");for b:c[0].job_nonce {out[n]=hex[b>>4];out[n+1]=hex[b&15];n+=2;}n=ch_put(out,n,"_");return bl_int(out,n,c[0].jobs);
+}
+// Starts a build agent on `words`: its start request is ready for the face. Said in the chat with its cap, in words.
+ch_job_start :: (c: [] Chat, words: string) {
+  line: [CH_LEN] u8; k := 0;
+  if c[0].guest { ch_say(c, CH_GUEST); c[0].dirty = true; return; }
+  if c[0].agent == CH_J_STARTING || c[0].agent == CH_J_WORKING {
+    k = ch_put(line[..], 0, "one build agent at a time: the one working now has to finish first.");
+    ch_keep(c, CH_MODEL, line[0..<k]); return;
+  }
+  m := ifx words.count > CH_ASK then CH_ASK else words.count;
+  // this world is a game on your account: a cloud Builder works on it there (agent-new), and its changes come
+  // back to this world as the account's do (web/account.coax); /agents shows it, tells it things and stops it
+  if c[0].cloud_game > 0 {
+    for i: 0..<m { c[0].job_words[i] = words[i]; }
+    c[0].job_words_n = m; c[0].job_id_n = 0; c[0].jobs += 1;
+    b := c[0].job_body[..];
+    n := ch_put(b, 0, "{\"game\":"); n = bl_int(b, n, cast(int) c[0].cloud_game);
+    n = ch_put(b, n, ",\"role\":\"build\",\"job\":\""); n = ch_quote(b, n, cast(string) c[0].job_words[0..<m]); n = ch_put(b, n, "\"}");
+    c[0].job_body_n = n; c[0].job_url_n = ch_put(c[0].job_url[..], 0, CH_JOB_CLOUD); c[0].job_cloud = true;
+    c[0].agent = CH_J_STARTING; c[0].job_want = true; c[0].job_began = c[0].job_now;
+    c[0].job_said_n = ch_put(c[0].job_said[..], 0, "starting");
+    k = ch_put(line[..], 0, "starting a builder on your account on that. its limits: "); k = ch_put(line[..], k, cast(string) c[0].cloud_words[0..<c[0].cloud_words_n]);
+    k = ch_put(line[..], k, ". /agents shows it as it works.");
+    ch_keep(c, CH_MODEL, line[0..<k]);
+    c[0].dirty = true;
+    return;
+  }
+  c[0].job_cloud = false;
+  if !c[0].job_nonce_ready {k=ch_put(line[..],0,"secure random bytes are unavailable, so no build agent was started.");ch_keep(c,CH_MODEL,line[0..<k]);return;}
+  for i: 0..<m { c[0].job_words[i] = words[i]; }
+  c[0].job_words_n = m; c[0].job_id_n = 0; c[0].jobs += 1;
+  // the brief: how to build and set, what can be changed, and the world as it stands (cut at the service's limit)
+  brief: [CH_JOB_BRIEF] u8; bn := ch_put(brief[..], 0, CH_BUILD); bn = ch_put(brief[..], bn, CH_SET);
+  c[0].pick_n = 0; c[0].pick_thing_n = 0;
+  text: [CH_INDEX + 256] u8; tn := ch_props_text(c, text[..], 0); bn = ch_put(brief[..], bn, cast(string) text[0..<tn]);
+  world: [BL_TEXT] u8; wn := ch_world(c, world[..], words);   // (the things the job names, past BL_SHOWN)
+  bn = ch_put(brief[..], bn, "\nworld now:\n"); bn = ch_put(brief[..], bn, cast(string) world[0..<wn]);
+  b := c[0].job_body[..];
+  n := ch_put(b, 0, "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"");
+  operation:[64]u8;on:=ch_job_operation(c,operation[..]);n=ch_put(b,n,cast(string)operation[0..<on]);
+  n = ch_put(b, n, "\",\"game\":\""); n = ch_put(b, n, CH_JOB_GAME);
+  n = ch_put(b, n, "\",\"job\":\""); n = ch_quote(b, n, cast(string) c[0].job_words[0..<m]);
+  n = ch_put(b, n, "\",\"brief\":\""); n = ch_quote(b, n, cast(string) brief[0..<bn]); n = ch_put(b, n, "\"}");
+  if n >= b.count { k = ch_put(line[..], 0, "that's too much to send to a build agent: nothing was started."); ch_keep(c, CH_MODEL, line[0..<k]); return; }
+  c[0].job_body_n = n; c[0].job_url_n = ch_put(c[0].job_url[..], 0, CH_JOB_DOOR);
+  c[0].agent = CH_J_STARTING; c[0].job_want = true; c[0].job_began = c[0].job_now;
+  c[0].job_said_n = ch_put(c[0].job_said[..], 0, "starting");
+  k = ch_put(line[..], 0, "starting a build agent on that. "); k = ch_put(line[..], k, CH_JOB_CAP);
+  ch_keep(c, CH_MODEL, line[0..<k]);
+  c[0].dirty = true;
+}
+ch_job_wants :: (c: [] Chat) -> bool { return c[0].job_want; }
+ch_job_sent :: (c: [] Chat) { c[0].job_want = false; c[0].job_busy = true; c[0].job_reply_n = 0; }
+ch_job_piece :: (c: [] Chat, bytes: [] u8) { for i: 0..<bytes.count { if c[0].job_reply_n < CH_REPLY { c[0].job_reply[c[0].job_reply_n] = bytes[i]; c[0].job_reply_n += 1; } } }
+ch_job_state :: (c: [] Chat, words: string) { c[0].job_said_n = ch_put(c[0].job_said[..], 0, words); c[0].dirty = true; }
+// It stopped for good: said on its row, with the service's words when it gave any.
+ch_job_fail :: (c: [] Chat, words: string, why: string) {
+  c[0].agent = CH_J_FAILED; n := ch_put(c[0].job_said[..], 0, words);
+  if why.count > 0 { n = ch_put(c[0].job_said[..], n, ": "); n = ch_put(c[0].job_said[..], n, why); }
+  c[0].job_said_n = n; c[0].dirty = true;
+}
+// The page's clock, each frame: while it works it is read every CH_JOB_POLL seconds, and given up on after CH_JOB_WAIT.
+ch_job_tick :: (c: [] Chat, now: f32) {
+  c[0].job_now = now;
+  if c[0].agent != CH_J_WORKING || c[0].job_want || c[0].job_busy || now < c[0].job_next { return; }
+  if now - c[0].job_began > CH_JOB_WAIT { ch_job_fail(c, "no answer within 7 minutes, so the page stopped waiting; nothing changed", ""); return; }
+  n := ch_put(c[0].job_url[..], 0, CH_JOB_READ); n = ch_put(c[0].job_url[..], n, cast(string) c[0].job_id[0..<c[0].job_id_n]);
+  c[0].job_url_n = n; c[0].job_body_n = 0; c[0].job_want = true; c[0].job_next = now + CH_JOB_POLL;
+}
+// A JSON string's value by its key (the first such key), into out. Bytes, -1 when there is none.
+ch_job_field :: (r: string, key: string, from: int, out: [] u8) -> int {
+  k: [40] u8; kn := ch_put(k[..], 0, "\""); kn = ch_put(k[..], kn, key); kn = ch_put(k[..], kn, "\":\"");
+  at := ch_find(r, cast(string) k[0..<kn], from);
+  return ifx at < 0 then -1 else ch_unquote(r, at + kn, out);
+}
+// Its answer ended: `status` is the HTTP status, 0 when there was none.
+ch_job_end :: (c: [] Chat, status: int) {
+  if !c[0].job_busy { return; }
+  c[0].job_busy = false; c[0].dirty = true;
+  r := cast(string) c[0].job_reply[0..<c[0].job_reply_n];
+  why: [CH_SAID] u8; wn := ch_job_field(r, "error", 0, why[..]);
+  if wn < 0 { wn = ch_job_field(r, "message", ch_find(r, "\"error\"", 0), why[..]); }
+  if wn < 0 { wn = 0; }
+  // a cloud Builder: started on your account, or refused in the row's own words; /agents follows it from there
+  if c[0].job_cloud && c[0].agent == CH_J_STARTING {
+    wn = ch_job_field(r, "why", 0, why[..]); if wn < 0 { wn = 0; }
+    if status != 200 || ch_find(r, "\"ok\":true", 0) < 0 {
+      ch_job_fail(c, ifx status == 0 then "can't reach your account, so nothing was started" else ifx status == 401 then "log in again: nothing was started" else "it didn't start", cast(string) why[0..<wn]);
+      return;
+    }
+    id: [64] u8; n := ch_job_field(r, "agent", 0, id[..]);
+    if n > 0 && n <= 40 { for i: 0..<n { c[0].job_id[i] = id[i]; } c[0].job_id_n = n; }
+    c[0].agent = CH_J_DONE;
+    ch_job_state(c, "working on your account: /agents shows it, and its changes come to this world");
+    return;
+  }
+  if c[0].agent == CH_J_STARTING {
+    if status != 200 && status != 202 {
+      ch_job_fail(c, ifx status == 0 then "can't reach the server, so nothing was started" else ifx status == 401 then "log in again: nothing was started" else "it didn't start", cast(string) why[0..<wn]);
+      return;
+    }
+    id: [64] u8; n := ch_job_field(r, "turn_id", 0, id[..]);
+    if n < 1 || n > 40 { ch_job_fail(c, "it didn't start: no answer came back", ""); return; }
+    for i: 0..<n { c[0].job_id[i] = id[i]; }
+    c[0].job_id_n = n; c[0].agent = CH_J_WORKING; c[0].job_next = c[0].job_now + CH_JOB_POLL;
+    ch_job_state(c, "waiting for a runner");
+    return;
+  }
+  if c[0].agent != CH_J_WORKING { return; }
+  // a read that did not come back is tried again; one refused stops it
+  if status == 0 { return; }
+  if status != 200 { ch_job_fail(c, ifx status == 401 then "log in again to see it" else "it can't be read any more", cast(string) why[0..<wn]); return; }
+  state: [16] u8; sn := ch_job_field(r, "state", 0, state[..]);
+  st := ifx sn > 0 then cast(string) state[0..<sn] else "";
+  if st == "queued" { ch_job_state(c, "waiting for a runner"); return; }
+  if st == "running" { ch_job_state(c, "working"); return; }
+  if st == "failed" { ch_job_fail(c, "failed", cast(string) why[0..<wn]); return; }
+  if st == "cancelled" { ch_job_fail(c, "stopped", ""); return; }
+  if st == "unknown" { ch_job_fail(c, "lost: the runner stopped answering, and nothing changed", ""); return; }
+  if st != "completed" { return; }
+  // done: its answer is kept as the agent's, and its plan lines are made as any build answer's are
+  text: [CH_REPLY] u8; tn := ch_put(text[..], 0, "route: build/block\n\n");
+  at := ch_find(r, "\"text\":\"", ch_find(r, "\"content\":[", 0));
+  if at >= 0 && ch_find(r, "\"content\":[", 0) >= 0 { tn += ch_unquote(r, at + 8, text[tn..<text.count]); }
+  c[0].agent = CH_J_DONE;
+  if tn == 20 { ch_job_state(c, "done, with nothing to say"); return; }
+  ch_keep_answer(c, text[0..<tn]);
+  ch_job_state(c, "done");
+}
+// The chat's part of the page, into the tree the page is building: the last few messages, the
+// box, and a line that says how.
+// The game types, as the model is told them (the order is page.coax's picker's, and the HUD's camera kinds').
+CH_KINDS :: GT_WEB_TYPES;
+// Every game type is built in (AGENTS.md): a game type adds its own pieces and rules, it never takes building away.
+// From CH_OWN on a game type is a world of its own; the model is told how building goes there (GT_BUILT, shared/game-types.coax).
+CH_OWN :: GT_CRATES - GT_WEB_FIRST;   // the first of shared/game-types.coax's own worlds, as a website kind
+CH_PLATFORMER :: GT_PLATFORMER - GT_WEB_FIRST;
+CH_DRIFT :: GT_DRIFT - GT_WEB_FIRST;
+// What the model is told the game type is, and how building goes there: shared/game-types.coax's (the app's
+// agents are told the same).
+// The game type's bounds for what is built (web/blocks.coax bl_bounds): the platformer's course is 628 m long and up to 49 m up;
+// drift's rings run 600 m ahead and 420 m aside, from 80 m under the start to 30 m over it, in open space (bottoms under 0 too).
+// And its kinds (bl_roles): the platformer's pad, spikes, shard, checkpoint, mover and lift, crates' wall, goal, gate and start, racing's boost and cone.
+// (Both are shared/game-types.coax's: GT_FAR, GT_HIGH, GT_LOW and gt_roles, the app's too.)
+ch_bounds :: (c: [] Chat) {
+  b := c[0].blocks[..]; ty := gt_web_type(c[0].kind);
+  if ty < 0 { ty = GT_THIRD; }
+  bl_bounds(b, GT_FAR[ty], GT_HIGH[ty]); bl_low(b, GT_LOW[ty]);
+  bl_roles(b, gt_roles(ty));
+}
+// A game type's kinds, a bit each (BL_R_*): the platformer's, crates', racing's; the rest have none.
+ch_roles_of :: (kind: int) -> int { return gt_roles(gt_web_type(kind)); }
+CH_NOTE :: 1024;       // bytes of the world's own words kept
+// What stands in the world, for the HUD (the glue reads this element's text; nobody sees it), and the fields the
+// glue writes into: where you stand, and where things came to rest. The chat's own, and a published game's page's
+// (page.coax: the world with no chat).
+ch_wire :: (c: [] Chat, t: [] Tree) {
+  list: [BL_TEXT] u8; ln := bl_wire(c[0].blocks[..], list[..]);
+  wire := tr_leaf(t, "blocks", TG_SPAN, "gs-blocks", cast(string) list[0..<ln]);
+  tr_attr(t, wire, AT_HIDDEN, "true");
+  where := tr_open(t, "where", TG_INPUT, "gs-where");
+  tr_attr(t, where, AT_TYPE, "text"); tr_attr(t, where, AT_HIDDEN, "true"); tr_attr(t, where, AT_COMPLETE, "off");
+  tr_close(t);
+  things := tr_open(t, "things", TG_INPUT, "gs-things");
+  tr_attr(t, things, AT_TYPE, "text"); tr_attr(t, things, AT_HIDDEN, "true"); tr_attr(t, things, AT_COMPLETE, "off");
+  tr_close(t);
+  note := tr_open(t, "note", TG_INPUT, "gs-note");   // what the HUD says the world is (its action 115)
+  tr_attr(t, note, AT_TYPE, "text"); tr_attr(t, note, AT_HIDDEN, "true"); tr_attr(t, note, AT_COMPLETE, "off");
+  tr_close(t);
+}
+ch_section :: (c: [] Chat, t: [] Tree) {
+  ida: [UI_ID] u8;
+  digits := [CH_KEPT] string.["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+  // the chat sits in the window's bottom left corner and goes faint when nothing has happened for
+  // a while (the stylesheet's doing); each new message changes its class, which wakes it again
+  box := tr_open(t, "chat", TG_SECTION, ifx c[0].busy then "chat busy" else ifx c[0].n % 2 == 0 then "chat wa" else "chat wb");
+  first := ifx c[0].n > CH_SHOWN then c[0].n - CH_SHOWN else 0;
+  if c[0].n > 0 || c[0].busy || c[0].said_n > 0 || c[0].agent != CH_J_NONE {
+    lines := tr_open(t, "chat.log", TG_DIV, "log hud k1");
+    for k: first..<c[0].n {
+      row := tr_open(t, tr_cat(ida[..], "chat.m.", digits[k - first]), TG_P, ifx c[0].who[k] == CH_MODEL then "msg model" else "msg you");
+      name := ifx c[0].who[k] == CH_YOU then "you" else "agent";   // the route an answer took is kept and sent back, not shown
+      who := tr_leaf(t, tr_cat(ida[..], "chat.w.", digits[k - first]), TG_SPAN, "mono", name);
+      words := tr_leaf(t, tr_cat(ida[..], "chat.t.", digits[k - first]), TG_SPAN, "", cast(string) c[0].text[k][0..<c[0].len[k]]);
+      tr_close(t);
+    }
+    if c[0].busy { wait := tr_leaf(t, "chat.wait", TG_P, "msg mono", "routing"); }
+    // the build agent: its state in words, and its job
+    if c[0].agent != CH_J_NONE {
+      row: [CH_SAID + CH_ASK + 32] u8; rn := ch_put(row[..], 0, "build agent, "); rn = ch_put(row[..], rn, cast(string) c[0].job_said[0..<c[0].job_said_n]);
+      rn = ch_put(row[..], rn, ". the job: "); rn = ch_put(row[..], rn, cast(string) c[0].job_words[0..<c[0].job_words_n]);
+      jr := tr_leaf(t, "chat.job", TG_P, ifx c[0].agent == CH_J_FAILED then "msg mono said" else "msg mono", cast(string) row[0..<rn]); tr_attr(t, jr, AT_LIVE, "polite");
+    }
+    if c[0].said_n > 0 { said := tr_leaf(t, "chat.said", TG_P, "said", cast(string) c[0].said[0..<c[0].said_n]); tr_attr(t, said, AT_LIVE, "polite"); }
+    tr_close(t);
+  }
+  ch_wire(c, t);
+  bar := tr_open(t, "say.b", TG_DIV, "saybar");
+  if c[0].guest && !c[0].asking {
+    // a guest (ch_guest; issue 13): no box to type in. The words say what talking to the agent takes, and the one button logs in (page.coax)
+    g := tr_open(t, "say.g", TG_DIV, "guest hud k3");
+    words := tr_leaf(t, "say.w", TG_P, "", CH_GUEST);
+    in := tr_leaf(t, "say.in", TG_BUTTON, "btn", "log in");
+    tr_close(t);
+  } else {
+    fld := tr_open(t, "say.f", TG_DIV, "fld hud k3");
+    f := tr_open(t, "say", TG_INPUT, "");
+    tr_attr(t, f, AT_TYPE, "text"); tr_attr(t, f, AT_COMPLETE, "off"); tr_attr(t, f, AT_PLACEHOLDER, "enter to talk"); tr_attr(t, f, AT_LABEL, "Message");   // the keys are your feet's until Enter puts the caret here
+    tr_close(t);
+    tr_close(t);
+  }
+  // (the decide button and the follow camera's are on the hotbar: page.coax)
+  tr_close(t);
+  tr_close(t);
+}
+
+// ---------------------------------------------------------------- checks
+
+ChTest :: struct { c: [1] Chat; }
+ch_test_type :: (c: [] Chat, text: string) { b: [2048] u8; for i: 0..<text.count { b[i] = text[i]; } ch_input(c, b[0..<text.count]); }
+ch_test_answer :: (c: [] Chat, status: int, text: string) {
+  #assert ch_wants(c);
+  ch_sent(c);
+  b: [2048] u8; for i: 0..<text.count { b[i] = text[i]; }
+  ch_piece(c, b[0..<text.count]);
+  ch_end(c, status);
+}
+ch_test_text :: (c: [] Chat, k: int) -> string { return cast(string) c[0].text[k][0..<c[0].len[k]]; }
+
+#test "an empty final completion retries the unchanged request once before any edit, then keeps exactly one answer" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; ch_clear(c); #assert bl_plan(c[0].blocks[..], "clear");
+  #assert ch_decide(c);
+  body: [CH_BODY] u8; n := c[0].body_n; for i: 0..<n { body[i] = c[0].body[i]; }
+  blank := "{\"choices\":[{\"message\":{\"role\":\"assistant\"},\"finish_reason\":\"stop\"}]}";
+  ch_test_answer(c, 200, blank);
+  #assert c[0].busy && ch_wants(c) && c[0].phase == CH_P_ACT && c[0].n == 1 && c[0].blocks[0].n == 0 && c[0].said_n == 0;
+  #assert c[0].body_n == n && cast(string) body[0..<n] == cast(string) c[0].body[0..<n];
+  #assert !ch_decide(c); // a second press cannot create another request while waiting
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\nthere.\\n+ place 0 5 3 3 0.5 rest\"},\"finish_reason\":\"stop\"}]}");
+  #assert !c[0].busy && !ch_wants(c) && c[0].n == 2 && c[0].blocks[0].n == 1;
+  ch_end(c, 200); #assert c[0].blocks[0].n == 1 && c[0].n == 2;
+  // Two blanks stop; the next logical turn has its own single allowance.
+  #assert ch_decide(c); ch_test_answer(c, 200, blank); #assert ch_wants(c);
+  ch_test_answer(c, 200, blank); #assert !c[0].busy && !ch_wants(c) && c[0].n == 3 && c[0].blocks[0].n == 1;
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "no answer came back. try again.";
+  #assert ch_decide(c); ch_test_answer(c, 200, blank); #assert ch_wants(c) && c[0].n == 4;
+  ch_test_answer(c, 200, "{ \"choices\": [{ \"message\": { \"content\": \"route: chat\\n\\nhello.\" } }] }");
+  #assert !c[0].busy && !ch_wants(c) && c[0].n == 5 && c[0].blocks[0].n == 1;
+}
+#test "only a valid empty text completion can retry: never refusals, errors, tools, filters, limits, malformed or nonempty answers" #steps 400000000 {
+  out: [128] u8;
+  for raw: [4] string.[
+    "{\"choices\":[{\"message\":{}}]}",
+    "{\"choices\":[{\"message\":{\"content\":null,\"refusal\":null},\"finish_reason\":null}]}",
+    "{\"choices\":[{\"message\":{\"content\":\"\"},\"finish_reason\":\"STOP\"}]}",
+    "{\"choices\":[{\"message\":{\"content\":\" \\r\\n\\t\"},\"finish_reason\":\"stop\",\"native_finish_reason\":\"STOP\"}]}"
+  ] { a := ch_completion(raw, out[..]); #assert a.n == 0 && a.retryable; }
+  for raw: [12] string.[
+    "{\"choices\":[{\"message\":{\"refusal\":\"no\"}}]}",
+    "{\"choices\":[{\"message\":{\"content\":\"\"},\"finish_reason\":\"content_filter\"}]}",
+    "{\"choices\":[{\"message\":{},\"finish_reason\":\"length\"}]}",
+    "{\"choices\":[{\"message\":{},\"finish_reason\":\"other\"}]}",
+    "{\"choices\":[{\"message\":{},\"finish_reason\":\"stop\",\"native_finish_reason\":\"SAFETY\"}]}",
+    "{\"choices\":[{\"message\":{\"tool_calls\":[]}}]}",
+    "{\"choices\":[{\"message\":{\"function_call\":{}}}]}",
+    "{\"error\":\"no\",\"choices\":[{\"message\":{}}]}",
+    "{\"choices\":[{\"message\":{\"content\":[{\"type\":\"refusal\"}]}}]}",
+    "{\"choices\":[]}", "not json", "{\"choices\":[{\"message\":{\"content\":\"hello\"}}]}"
+  ] { #assert !ch_completion(raw, out[..]).retryable; }
+  for status: [4] int.[0, 401, 429, 500] {
+    t: [1] ChTest; c := t[0].c[..]; #assert ch_decide(c);
+    ch_test_answer(c, status, "{\"choices\":[{\"message\":{}}]}");
+    #assert !c[0].busy && !ch_wants(c) && !c[0].empty_retried && c[0].said_n > 0;
+  }
+  t: [1] ChTest; c := t[0].c[..]; #assert ch_decide(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\\n\\nhello.\"}}]}");
+  #assert !c[0].busy && !ch_wants(c) && !c[0].empty_retried && c[0].n == 2;
+  c[0].empty_retried = true; ch_forget(c); #assert !c[0].empty_retried;
+  c[0].empty_retried = true; ch_clear(c); #assert !c[0].empty_retried;
+}
+
+#test "what you type goes as a thread, the answer is read with its escapes, and one question is asked at a time" #steps 200000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true;   // one call a message: the select step has its own checks
+  c[0].seed = 7;
+  ch_test_type(c, "   ");
+  #assert !ch_send(c) && !ch_wants(c) && c[0].n == 0;
+  ch_test_type(c, "  say \"hi\"\nplease ");
+  #assert ch_send(c) && c[0].busy && c[0].n == 1 && ch_test_text(c, 0) == "say \"hi\"\nplease" && c[0].draft_n == 0;
+  body := cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "{\"schema\":\"openagents.chat.thread.v1\",\"id\":\"m_", 0) == 0;
+  #assert ch_find(body, "\",\"revision\":0,\"messages\":[{\"role\":\"user\",\"content\":\"You are GameBuilder,", 0) == 66;
+  // the brief goes before the first message, and the message after it
+  #assert ch_find(body, "route: NAME", 0) > 0 && ch_find(body, "\\n\\nmessage: say \\\"hi\\\"\\nplease\"}]}", 0) > 0;
+  // the id is "m_" and twenty hex digits
+  for k: 0..<20 { #assert ch_hex(body[46 + k]) >= 0; }
+  #assert body[66] == '"';
+  // a second Enter while it is with the model does nothing
+  ch_test_type(c, "again");
+  #assert !ch_send(c) && c[0].n == 1;
+  ch_test_answer(c, 200, "{\"id\":\"x\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hi.\\nI\\u2019m here: \\\"ready\\\" \\u00e9\"},\"finish_reason\":\"stop\"}]}");
+  #assert !c[0].busy && c[0].n == 2 && c[0].who[1] == CH_MODEL && c[0].said_n == 0;
+  #assert ch_test_text(c, 1) == "Hi.\nI’m here: \"ready\" é";
+  // the next question carries the conversation so far
+  #assert ch_send(c);
+  body = cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "{\"role\":\"assistant\",\"content\":\"Hi.\\nI", 0) > 0 && ch_find(body, "\\n\\nworld now:\\ngame type: third person\\nblocks: none\\n\\nmessage: again\"}]}", 0) > 0;
+  // the brief is sent once, with the first message only
+  #assert ch_find(body, "You are GameBuilder,", ch_find(body, "You are GameBuilder,", 0) + 1) < 0;
+  ch_test_answer(c, 200, "{\"choices\":[]}");
+  #assert !c[0].busy && c[0].n == 3 && cast(string) c[0].said[0..<c[0].said_n] == "no answer came back. try again.";
+}
+#test "a guest's message never calls the chat route: typing, the decide button and a build agent's start are refused in words, and nothing is wanted" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true; c[0].job_nonce_ready = true;
+  ch_guest(c, true);
+  ch_test_type(c, "build me a castle");
+  #assert !ch_send(c) && !ch_wants(c) && !c[0].busy && c[0].body_n == 0 && c[0].n == 0 && c[0].phase == CH_P_NONE;
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "log in or create an account to talk to the agent.";
+  // what was typed is kept for when they have an account
+  #assert cast(string) c[0].draft[0..<c[0].draft_n] == "build me a castle";
+  c[0].said_n = 0;
+  #assert !ch_decide(c) && !ch_wants(c) && !c[0].busy && c[0].body_n == 0 && c[0].n == 0 && cast(string) c[0].said[0..<c[0].said_n] == CH_GUEST;
+  #assert cast(string) c[0].draft[0..<c[0].draft_n] == "build me a castle";
+  c[0].said_n = 0;
+  ch_job_start(c, "a castle");
+  #assert c[0].agent == CH_J_NONE && !ch_job_wants(c) && c[0].job_url_n == 0 && c[0].job_body_n == 0 && c[0].jobs == 0 && cast(string) c[0].said[0..<c[0].said_n] == CH_GUEST;
+  // the select step is a call to the chat route too: a guest's message makes none in two-step mode either
+  c[0].direct = false; c[0].draft_n = 0; ch_test_type(c, "hello");
+  #assert !ch_send(c) && !ch_wants(c) && c[0].phase == CH_P_NONE && c[0].body_n == 0;
+  // with an account, the same message goes
+  ch_guest(c, false);
+  #assert ch_send(c) && ch_wants(c) && c[0].busy && c[0].body_n > 0 && c[0].n == 1;
+}
+#test "a refusal is shown in the service's words, no answer says so, only the newest twelve are kept, and clearing leaves nothing" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true;   // one call a message: the select step has its own checks
+  ch_test_type(c, "hello");
+  #assert ch_send(c);
+  // a limit is said in the service's words, with its number (OpenAgents' inference.request, migration 0213): an account
+  // is answered whether or not it is on OpenAgents' team (account-chat-policy.coax act_funded_from)
+  ch_test_answer(c, 429, "{\"error\":\"this account's 500 requests for today are used up\"}");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "this account's 500 requests for today are used up" && c[0].n == 1;
+  ch_test_type(c, "hello"); #assert ch_send(c) && c[0].said_n == 0;
+  ch_test_answer(c, 429, "{\"error\":\"this account's $2.00 spend for today is used up\"}");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "this account's $2.00 spend for today is used up";
+  ch_test_type(c, "hello"); #assert ch_send(c) && c[0].said_n == 0;
+  ch_test_answer(c, 429, "{\"error\":{\"code\":429,\"message\":\"Slow down.\"}}");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "Slow down.";
+  ch_test_type(c, "hello"); #assert ch_send(c);
+  ch_test_answer(c, 429, "");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "that's the limit for now. wait a minute, then try again.";
+  ch_test_type(c, "hello"); #assert ch_send(c);
+  ch_test_answer(c, 0, "");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "can't reach the server. try again.";
+  ch_test_type(c, "hello"); #assert ch_send(c);
+  ch_test_answer(c, 401, "");
+  #assert cast(string) c[0].said[0..<c[0].said_n] == "log in again.";
+  // many turns: twelve are kept, and the thread sent begins with you
+  for k: 0..<10 {
+    ch_test_type(c, "more"); #assert ch_send(c);
+    ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"ok\"}}]}");
+  }
+  #assert c[0].n == CH_KEPT;
+  ch_test_type(c, "last"); #assert ch_send(c) && c[0].n == CH_KEPT;
+  body := cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "\"messages\":[{\"role\":\"user\",\"content\":\"You are GameBuilder,", 0) > 0 && ch_find(body, "\\n\\nmessage: last\"}]}", 0) > 0;
+  ch_clear(c);
+  #assert c[0].n == 0 && !c[0].busy && !ch_wants(c);
+}
+#test "an answer names its route on its first line: the page shows the route and the words, a route the tree lacks is not one, and the route goes back with the thread" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true;   // one call a message: the select step has its own checks
+  #assert ch_route_ok("build") && ch_route_ok("games/scrappers") && ch_route_ok("make/capability") && ch_route_ok("chat");
+  #assert !ch_route_ok("") && !ch_route_ok("gemini") && !ch_route_ok("build/") && !ch_route_ok("/build") && !ch_route_ok("build/a/b") && !ch_route_ok("Build") && !ch_route_ok("build block") && !ch_route_ok("games/scrappers-arena-is-too-long");
+  ch_test_type(c, "add a ramp"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\nthat's in the app for now. i'd place a ramp.\"}}]}");
+  #assert c[0].n == 2 && cast(string) c[0].route[1][0..<c[0].route_n[1]] == "build/block" && ch_test_text(c, 1) == "that's in the app for now. i'd place a ramp.";
+  // the next request carries the answer as it came, route first
+  ch_test_type(c, "and a wall"); #assert ch_send(c);
+  body := cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "{\"role\":\"assistant\",\"content\":\"route: build/block\\n\\nthat's in the app", 0) > 0;
+  // no route line, a route the tree lacks, and a route alone: each is shown as it came, with no route
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"hello there\"}}]}");
+  #assert c[0].route_n[3] == 0 && ch_test_text(c, 3) == "hello there";
+  ch_test_type(c, "x"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: wallet/send\\n\\nsending\"}}]}");
+  #assert c[0].route_n[5] == 0 && ch_test_text(c, 5) == "route: wallet/send\n\nsending";
+  ch_test_type(c, "x"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\"}}]}");
+  #assert c[0].route_n[7] == 0 && ch_test_text(c, 7) == "route: chat";
+  // the brief says nothing of which model answers, and tells it never to
+  #assert ch_find(CH_CORE, "Gemini", 0) < 0 && ch_find(CH_CORE, "Never say what model you are", 0) > 0 && ch_find(CH_SELECT_A, "Gemini", 0) < 0;
+}
+#test "a selected edit accepts CRLF and leading whitespace without changing route permissions" #steps 600000000 {
+  t:[1]ChTest;c:=t[0].c[..];c[0].direct=true;ch_clear(c);b:=c[0].blocks[..];
+  #assert bl_plan(b,"clear") && bl_plan(b,"place 0 5 3 3 0.5");#assert b[0].b[0].id==5;b[0].sel=5;
+  ch_test_type(c,"make this selected one taller, keeping its width, depth and place");#assert ch_send(c);
+  ch_test_answer(c,200,"{\"choices\":[{\"message\":{\"content\":\"\\r\\n \\troute: build/block\\r\\n\\r\\nmade b5 taller.\\r\\n  + size b5 3 3 1\\r\\n\"}}]}");
+  #assert b[0].n==1 && b[0].b[0].h==100 && b[0].b[0].w==300 && b[0].b[0].d==300 && b[0].b[0].x==0 && b[0].b[0].z==500;
+  #assert cast(string)c[0].route[1][0..<c[0].route_n[1]]=="build/block" && ch_test_text(c,1)=="made b5 taller.";
+  ch_test_type(c,"x");#assert ch_send(c);ch_test_answer(c,200,"{\"choices\":[{\"message\":{\"content\":\"\\r\\nroute: wallet/send\\r\\n+ clear\\r\\n\"}}]}");#assert b[0].n==1;
+  ch_test_type(c,"x");#assert ch_send(c);ch_test_answer(c,200,"{\"choices\":[{\"message\":{\"content\":\"\\r\\n+ clear\\r\\n\"}}]}");#assert b[0].n==1;
+  ch_select_read(c,TW_ROWS[..],"\t route:\tbuild/block\r\n props:\tworld.gravity\r\n things:\tb5\r\n");
+  #assert cast(string)c[0].pick_route[0..<c[0].pick_route_n]=="build/block" && c[0].pick_n==1 && c[0].pick[0]==TW_GRAVITY && c[0].pick_thing_n==1 && c[0].pick_thing[0]==5;
+}
+#test "a build answer's plan lines are edits: they are made, taken out of the words, and sent back with the thread; the world goes with your newest message" #steps 600000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true;   // one call a message: the select step has its own checks
+  ch_clear(c);
+  #assert c[0].blocks[0].n == 4;
+  ch_test_type(c, "put a wall in front of me"); #assert ch_send(c);
+  body := cast(string) c[0].body[0..<c[0].body_n];
+  // the brief, then the world as it stands, then what you said
+  #assert ch_find(body, "+ place X Z W D H [Y]", 0) > 0 && ch_find(body, "\\n\\nworld now:\\ngame type: third person\\nblocks (id: x z, size w d h, bottom y):\\nb1: -3 4, size 2 2 1, bottom 0\\n", 0) > 0;
+  #assert ch_find(body, "\\nb4: ball 0.8 3, radius 0.6, bottom 0\\n\\nmessage: put a wall in front of me\"}]}", 0) > 0;
+  // and the brief says what the world is like: things fall, can be pushed, and there are balls
+  #assert ch_find(body, "+ ball X Z R [Y]", 0) > 0 && ch_find(body, "never above it", 0) > 0 && ch_find(body, "falls to rest", 0) < 0 && ch_find(body, "drops in", 0) < 0 && ch_find(body, "kicks balls", 0) > 0;
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\na wall, three ahead.\\n+ place 0 3 4 0.5 2\\n+ size b2 1 1 5\\n+ remove b9\\n+ dance\"}}]}");
+  // two edits were made; the two that are not edits changed nothing; the words have no plan in them
+  b := c[0].blocks[..];
+  #assert b[0].n == 5 && b[0].b[4].id == 5 && b[0].b[4].z == 300 && b[0].b[4].w == 400 && b[0].b[4].d == 50 && b[0].b[1].h == 500 && b[0].b[1].sizes == 2;
+  #assert ch_test_text(c, 1) == "a wall, three ahead." && cast(string) c[0].route[1][0..<c[0].route_n[1]] == "build/block";
+  // the decide button says "decide" for you; the answer before it goes back with its plan, and the world is the new one
+  #assert ch_decide(c) && !ch_decide(c) && ch_test_text(c, 2) == "decide";
+  body = cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "{\"role\":\"assistant\",\"content\":\"route: build/block\\n\\na wall, three ahead.\\n+ place 0 3 4 0.5 2\\n+ size b2 1 1 5\\n+ remove b9\\n+ dance\"}", 0) > 0;
+  #assert ch_find(body, "\\nb5: 0 3, size 4 0.5 2, bottom 0\\n\\nmessage: decide\"}]}", 0) > 0;
+  // the world went once, with the newest message only
+  #assert ch_find(body, "world now:", ch_find(body, "world now:", 0) + 1) < 0;
+  // a plan with no words says it was done
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\n+ ball 5 5 0.4\"}}]}");
+  #assert b[0].n == 6 && b[0].b[5].kind == BL_BALL && b[0].b[5].w == 80 && ch_test_text(c, 3) == "done.";
+  // plan lines under a route that does not build are dropped unmade
+  ch_test_type(c, "hi"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\\n\\nhey.\\n+ clear\"}}]}");
+  #assert b[0].n == 6 && ch_test_text(c, 5) == "hey.";
+  ch_test_type(c, "hi"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"hey.\\n+ clear\"}}]}");
+  #assert b[0].n == 6;
+  // logging out puts the world back as it opens
+  ch_clear(c);
+  #assert b[0].n == 4 && c[0].n == 0;
+}
+
+#test "an edit of the agent's that a limit refuses is said on the page in words and told to the model with the next message, once; a message too long is cut and said so; the oldest message going is said once" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; c[0].direct = true;   // one call a message: the select step has its own checks
+  c[0].seed = 7; bl_start(c[0].blocks[..]);
+  ch_test_type(c, "a huge block far away"); #assert ch_send(c);
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\nthere.\\n+ place 900 0 1 1 1\\n+ place 0 0 40 1 1\"}}]}");
+  // nothing was made; the first limit met is said under the answer and kept for the model
+  #assert c[0].blocks[0].n == 4 && ch_test_text(c, 1) == "there." && cast(string) c[0].said[0..<c[0].said_n] == "too far: things stay within 200 m of the middle." && c[0].refused_n == c[0].said_n;
+  ch_test_type(c, "why not?"); #assert ch_send(c);
+  body := cast(string) c[0].body[0..<c[0].body_n];
+  #assert ch_find(body, "\\nyour last edit was refused: too far: things stay within 200 m of the middle.\\n\\nmessage: why not?", 0) > 0 && c[0].refused_n == 0 && c[0].said_n == 0;
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: build/block\\n\\nok.\\n+ place 3 3 1 1 1\"}}]}");
+  // an edit that is made leaves nothing to say, and the next message says nothing of a refusal
+  #assert c[0].blocks[0].n == 5 && c[0].refused_n == 0 && c[0].said_n == 0;
+  ch_test_type(c, "thanks"); #assert ch_send(c) && ch_find(cast(string) c[0].body[0..<c[0].body_n], "refused: too far", 0) < 0;
+  ch_test_answer(c, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\\n\\nsure.\\n+ place 900 0 1 1 1\"}}]}");
+  #assert c[0].refused_n == 0 && c[0].said_n == 0;   // (a plan line under a route that does not build is no edit, and no refusal)
+  // the brief tells the model so
+  #assert ch_find(CH_BUILD, "your last edit was refused", 0) > 0 && ch_find(CH_BUILD, "at most 1000 things, blocks, balls and buildings together", 0) > 0 && ch_find(CH_BUILD, "+ put MODEL X Z [TURN] [SCALE]", 0) > 0 && ch_find(CH_BUILD, "+ turn ID DEG", 0) > 0 && ch_find(CH_BUILD, "At most 33 buildings stand at once, and their solid boxes are 512", 0) > 0 && ch_find(CH_BUILD, "only the nearest 24", 0) > 0 && ch_find(CH_BUILD, "8 of them", 0) < 0;
+  // a message longer than one may be is cut there, and the page says so once (until it is short again)
+  long: [1400] u8; for i: 0..<1400 { long[i] = 'a'; }
+  ch_input(c, long[0..<1200]); #assert c[0].draft_n == 1200 && c[0].said_n == 0 && !c[0].cut;
+  c[0].dirty = false; ch_input(c, long[0..<1201]); #assert c[0].draft_n == 1200 && cast(string) c[0].said[0..<c[0].said_n] == "that message is too long: it is cut at 1200 characters." && c[0].cut && c[0].dirty && CH_TYPED == 1200;
+  c[0].said_n = 0; c[0].dirty = false; ch_input(c, long[0..<1400]); #assert c[0].said_n == 0 && c[0].cut && !c[0].dirty;
+  ch_input(c, long[0..<5]); #assert !c[0].cut; ch_input(c, long[0..<1300]); #assert c[0].said_n > 0 && c[0].cut;
+  // sent, the cut is forgotten; twelve messages are kept: the first time the oldest goes the page says so, and not again
+  u: [1] ChTest; d := u[0].c[..]; d[0].seed = 3; d[0].direct = true;
+  for q: 0..<6 {
+    ch_test_type(d, "hi"); #assert ch_send(d) && !d[0].cut && d[0].said_n == 0 && !d[0].forgot;
+    ch_test_answer(d, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\\n\\nhi.\"}}]}");
+  }
+  #assert d[0].n == CH_KEPT && CH_KEPT == 12;
+  ch_test_type(d, "one more"); #assert ch_send(d) && d[0].forgot && cast(string) d[0].said[0..<d[0].said_n] == "the agent sees the last 12 messages: older ones are let go.";
+  ch_test_answer(d, 200, "{\"choices\":[{\"message\":{\"content\":\"route: chat\\n\\nhi.\"}}]}");
+  ch_test_type(d, "and another"); #assert ch_send(d) && d[0].said_n == 0;
+  ch_clear(d); #assert !d[0].forgot && !d[0].cut && d[0].refused_n == 0;
+}
+// A model's answer, as the service sends it: `content` is already JSON-escaped.
+ch_test_model :: (c: [] Chat, content: string) {
+  b: [2048] u8; n := ch_put(b[..], 0, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"");
+  // Callers may pass escaped text or actual line breaks; the HTTP fixture is always valid JSON.
+  for byte: content {
+    if byte == '\n' { n = ch_put(b[..], n, "\\n"); }
+    else if byte == '\r' { n = ch_put(b[..], n, "\\r"); }
+    else if byte == '\t' { n = ch_put(b[..], n, "\\t"); }
+    else if n < b.count { b[n] = byte; n += 1; }
+  }
+  n = ch_put(b[..], n, "\"}}]}");
+  ch_test_answer(c, 200, cast(string) b[0..<n]);
+}
+ch_test_body :: (c: [] Chat) -> string { return cast(string) c[0].body[0..<c[0].body_n]; }
+ch_test_said :: (c: [] Chat) -> string { return ch_test_text(c, c[0].n - 1); }
+#test "the select step goes first: the message, the route tree and the registry's index, and nothing else; its answer is checked against what was listed, and the answer is then given only the parts it needs" #steps 800000000 {
+  t: [1] ChTest; c := t[0].c[..];
+  ch_clear(c);
+  ch_test_type(c, "disable double jump"); #assert ch_send(c) && c[0].phase == CH_P_SELECT;
+  body := ch_test_body(c);
+  // the select step: the tree, every property's path with a few words, the things by id; no brief for building, no ranges, no world
+  #assert ch_find(body, "route: NAME\\nprops: PATHS\\nthings: IDS\\n", 0) > 0 && ch_find(body, "world/set", 0) > 0 && ch_find(body, "player: air_jumps (double jump), fly (flying)", 0) > 0;
+  #assert ch_find(body, "things here: b1 block, b2 block, b3 block, b4 ball\\n", 0) > 0 && ch_find(body, "message: disable double jump\"}]}", 0) > 0;
+  #assert ch_find(body, "+ place", 0) < 0 && ch_find(body, "default", 0) < 0 && ch_find(body, "world now:", 0) < 0 && ch_find(body, "You are GameBuilder,", 0) < 0;
+  // the router's answer: a route, two paths and no thing; then the answer's question, with the property part and only the chosen properties' detail
+  ch_test_model(c, "route: world/set\\nprops: player.air_jumps, player.fly\\nthings: none");
+  #assert c[0].phase == CH_P_ACT && c[0].busy && c[0].pick_n == 2 && c[0].pick[0] == TW_AIR_JUMPS && c[0].pick[1] == TW_FLY && c[0].pick_thing_n == 0 && ch_picked(c) == "world/set";
+  body = ch_test_body(c);
+  #assert ch_find(body, "You are GameBuilder,", 0) > 0 && ch_find(body, "the router chose the route world/set", 0) > 0 && ch_find(body, "+ set PATH VALUE", 0) > 0;
+  #assert ch_find(body, "player.air_jumps: whole number 0 to 2, default 1, now 1. ", 0) > 0 && ch_find(body, "player.fly: on or off, default on, now on. ", 0) > 0;
+  #assert ch_find(body, "world.gravity:", 0) < 0 && ch_find(body, "+ place X Z W D H [Y]", 0) < 0 && ch_find(body, "message: disable double jump\"}]}", 0) > 0;
+  // what the router may not choose is dropped: a route the tree lacks, a path the registry lacks, a thing that is not there
+  ch_select_read(c, TW_ROWS[..], "route: wallet/send\nprops: world.nope, b9.bounce, none, world.gravity\nthings: b77, none, b2");
+  #assert c[0].pick_route_n == 0 && c[0].pick_n == 1 && c[0].pick[0] == TW_GRAVITY && c[0].pick_thing_n == 1 && c[0].pick_thing[0] == 2;
+  // a thing's path names the thing; the same choice twice is one
+  ch_select_read(c, TW_ROWS[..], "things: b3\n  props: b4.bounce,b4.bounce  balls.friction\nroute: world/set extra");
+  #assert ch_picked(c) == "world/set" && c[0].pick_n == 2 && c[0].pick[0] == TW_BOUNCE && c[0].pick[1] == TW_FRICTION && c[0].pick_thing_n == 2 && c[0].pick_thing[0] == 3 && c[0].pick_thing[1] == 4;
+  ch_select_read(c, TW_ROWS[..], "groups: camera, sky, world");
+  #assert c[0].pick_group_n == 2 && c[0].pick_group[0] == TW_VIEW && c[0].pick_group[1] == TW_GRAVITY;
+  // an answer of the router that cannot be read chooses nothing, and the answer is given every part
+  ch_select_read(c, TW_ROWS[..], "I think you want the jump");
+  #assert c[0].pick_route_n == 0 && c[0].pick_n == 0 && ch_needs(c) == CH_N_ALL;
+  // the decide button skips the select step: its route is build/block, and the build part and its note go
+  c[0].busy = false; c[0].want = false;
+  #assert ch_decide(c) && c[0].phase == CH_P_ACT && ch_picked(c) == "build/block" && ch_needs(c) == CH_N_BUILD | CH_N_DECIDE;
+  body = ch_test_body(c);
+  #assert ch_find(body, "+ place X Z W D H [Y]", 0) > 0 && ch_find(body, "+ set PATH VALUE", 0) < 0;
+  // a refusal at the select step is shown as any is, and nothing waits
+  c[0].busy = false; c[0].want = false;
+  ch_test_type(c, "hello"); #assert ch_send(c) && c[0].phase == CH_P_SELECT;
+  ch_test_answer(c, 429, "{\"error\":\"Slow down.\"}");
+  #assert !c[0].busy && c[0].phase == CH_P_NONE && cast(string) c[0].said[0..<c[0].said_n] == "Slow down.";
+}
+#test "recorded conversations: a clear setting is made at once in a short line, never asked about; what can be changed is answered from the index; what nothing does is said in one line and kept" #steps 1200000000 {
+  t: [1] ChTest; c := t[0].c[..];
+  ch_clear(c);
+  p := c[0].blocks[0].props[..];
+  wire: [512] u8;
+  // "disable double jump": the player's air jumps go to none, and the HUD is told exactly that (web/hud.coax's check
+  // "disable double jump" takes this text and finds the jump rule refuses a jump in the air)
+  ch_test_type(c, "disable double jump"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: player.air_jumps, player.fly\\nthings: none");
+  ch_test_model(c, "route: world/set\\n\\ndouble jump is off.\\n+ set player.air_jumps 0\\n+ set player.fly off");
+  #assert ch_test_said(c) == "double jump is off." && pr_value(p, TW_AIR_JUMPS) == 0 && pr_value(p, TW_FLY) == 0;
+  n := pr_wire(p, wire[..], 0); #assert cast(string) wire[0..<n] == "player.air_jumps=0\nplayer.fly=off\n";
+  // "disable physics": the select step is shown world.physics in the index by its own words, and the answer turns it off
+  // (web/hud.coax's check of the things' properties takes `world.physics=off` and finds every thing held where it is)
+  ch_test_type(c, "disable physics"); #assert ch_send(c);
+  #assert ch_find(ch_test_body(c), "physics (physics: things fall and get pushed)", 0) > 0;
+  ch_test_model(c, "route: world/set\\nprops: world.physics\\nthings: none");
+  #assert ch_find(ch_test_body(c), "world.physics: on or off, default on, now on. ", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\nphysics is off: everything holds where it is.\\n+ set world.physics off");
+  #assert ch_test_said(c) == "physics is off: everything holds where it is." && pr_value(p, TW_PHYSICS) == 0;
+  n = pr_wire(p, wire[..], 0); #assert cast(string) wire[0..<n] == "player.air_jumps=0\nplayer.fly=off\nworld.physics=off\n";
+  #assert bl_plan(c[0].blocks[..], "reset world.physics");
+  // "turn off flying" (flying back on first)
+  #assert bl_plan(c[0].blocks[..], "reset player.fly");
+  ch_test_type(c, "turn off flying"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: player.fly\\nthings: none");
+  #assert ch_find(ch_test_body(c), "player.fly: on or off, default on, now on. ", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\nflying is off.\\n+ set player.fly off");
+  #assert ch_test_said(c) == "flying is off." && pr_value(p, TW_FLY) == 0;
+  // "make gravity half"
+  ch_test_type(c, "make gravity half"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: world.gravity\\nthings: none");
+  #assert ch_find(ch_test_body(c), "world.gravity: 0 to 5 x, step 0.1, default 1, now 1. ", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\ngravity is half.\\n+ set world.gravity 0.5");
+  #assert ch_test_said(c) == "gravity is half." && pr_value(p, TW_GRAVITY) == 50 && c[0].blocks[0].grav == 5;
+  // "make the ball bouncier": the ball is b4, and the answer is shown its bounce as it stands
+  ch_test_type(c, "make the ball bouncier"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: thing.bounce\\nthings: b4");
+  #assert ch_find(ch_test_body(c), "b4.bounce: 0 to 1, step 0.05, default 0.55, now 0.55. ", 0) > 0 && ch_find(ch_test_body(c), "b1.bounce", 0) < 0;
+  ch_test_model(c, "route: world/set\\n\\nthe ball bounces more now.\\n+ set b4.bounce 0.9");
+  #assert pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 90 && pr_thing(p, TW_BOUNCE, 1, PR_BLOCK) == 15;
+  // with no one thing chosen, each kind's is shown
+  ch_test_type(c, "everything slippery"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: thing.friction\\nthings: none");
+  #assert ch_find(ch_test_body(c), "blocks.friction: 0 to 1.5, step 0.05, default 0.5, now 0.5. ", 0) > 0 && ch_find(ch_test_body(c), "balls.friction: 0 to 1.5, step 0.05, default 0.6, now 0.6. ", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\neverything slides.\\n+ set things.friction 0");
+  #assert pr_thing(p, TW_FRICTION, 2, PR_BLOCK) == 0 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 0;
+  // "make b2 really heavy"
+  ch_test_type(c, "make b2 really heavy"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: b2.density\\nthings: b2");
+  #assert ch_find(ch_test_body(c), "b2.density: whole number 5 to 5000 kg a cubic metre, default 200, now 200. ", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\nb2 is very heavy now.\\n+ set b2.density 5000");
+  #assert pr_thing(p, TW_DENSITY, 2, PR_BLOCK) == 5000 && pr_thing(p, TW_DENSITY, 1, PR_BLOCK) == 200;
+  // asked past a range: the edit is refused, nothing changes, and the answer says why
+  ch_test_type(c, "gravity 9"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: world.gravity\\nthings: none");
+  ch_test_model(c, "route: world/set\\n\\nok.\\n+ set world.gravity 9");
+  #assert pr_value(p, TW_GRAVITY) == 50 && ch_test_said(c) == "ok.\nworld.gravity takes 0 to 5, not 9.";
+  // "what can i change here?": no property chosen, so the answer is given the index (and no property's detail)
+  ch_test_type(c, "what can i change here?"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: none\\nthings: none");
+  body := ch_test_body(c);
+  #assert ch_find(body, "what can be changed (group: name (what it is))", 0) > 0 && ch_find(body, "grass: height (how tall the grass is)", 0) > 0 && ch_find(body, "default 1, now", 0) < 0;
+  #assert ch_find(body, "settings changed: world.gravity 0.5, player.air_jumps 0, player.fly off", 0) > 0;
+  ch_test_model(c, "route: world/set\\n\\ngravity, time and wind, the sky, how you run, jump and fly, the camera, what things are made of, and the grass.");
+  #assert ch_test_said(c) == "gravity, time and wind, the sky, how you run, jump and fly, the camera, what things are made of, and the grass." && c[0].asks == 0;
+  // what nothing does yet: one line, and the request is kept (once)
+  ch_test_type(c, "add a dragon that breathes fire"); #assert ch_send(c);
+  ch_test_model(c, "route: make/capability\\nprops: none\\nthings: none");
+  ch_test_model(c, "route: make/capability\\n\\nthere are no dragons yet. i can note it to build.");
+  #assert c[0].asks == 1 && cast(string) c[0].asked[0][0..<c[0].asked_n[0]] == "add a dragon that breathes fire" && ch_test_said(c) == "there are no dragons yet. i can note it to build.";
+  ch_ask(c, "add a dragon that breathes fire"); #assert c[0].asks == 1;
+  // a set line under a route that only talks is not made
+  ch_test_type(c, "hi"); #assert ch_send(c);
+  ch_test_model(c, "route: chat\\nprops: none\\nthings: none");
+  ch_test_model(c, "route: chat\\n\\nhey.\\n+ set world.gravity 2");
+  #assert pr_value(p, TW_GRAVITY) == 50;
+  // the camera menu is camera.view: the page's copy follows the registry either way
+  ch_cam(c, 2); #assert c[0].cam == 2 && pr_value(p, TW_VIEW) == 2;
+  ch_test_type(c, "top down view"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\\nprops: camera.view\\nthings: none");
+  ch_test_model(c, "route: world/set\\n\\nseen from above.\\n+ set camera.view top_down");
+  #assert c[0].cam == 3;
+  ch_cam(c, 0); #assert c[0].cam == 0 && pr_value(p, TW_VIEW) == 0;
+  // logging out forgets it all
+  ch_clear(c); #assert c[0].asks == 0 && pr_value(p, TW_GRAVITY) == 100 && pr_value(p, TW_AIR_JUMPS) == 1;
+}
+// The host's part of a build agent's request: takes it, then gives its answer.
+ch_test_job :: (c: [] Chat, status: int, text: string) {
+  #assert ch_job_wants(c);
+  ch_job_sent(c);
+  b: [4096] u8; for i: 0..<text.count { b[i] = text[i]; }
+  ch_job_piece(c, b[0..<text.count]);
+  ch_job_end(c, status);
+}
+ch_test_job_url :: (c: [] Chat) -> string { return cast(string) c[0].job_url[0..<c[0].job_url_n]; }
+ch_test_job_said :: (c: [] Chat) -> string { return cast(string) c[0].job_said[0..<c[0].job_said_n]; }
+CH_TEST_TURN :: "0193a9b2-7c1d-7e2f-8a3b-4c5d6e7f8a9b";
+#test "an offer the agent made is pending: the next message's select step is told of it and may take it up or turn it down; any other route lets it lapse" #steps 1200000000 {
+  t: [1] ChTest; c := t[0].c[..];
+  ch_clear(c);
+  // what nothing does yet: the answer may offer a build agent, and the offer is pending
+  ch_test_type(c, "add a dragon that breathes fire"); #assert ch_send(c);
+  #assert ch_find(ch_test_body(c), "offer (offer/accept", 0) < 0;
+  ch_test_model(c, "route: make/capability\nprops: none\nthings: none");
+  ch_test_model(c, "route: make/capability\n\nthere are no dragons yet. want me to start a build agent on it?");
+  #assert cast(string) c[0].offer[0..<c[0].offer_n] == "add a dragon that breathes fire";
+  // the brief tells the model to offer, never to claim it is working
+  #assert ch_find(CH_TREE, "offer to start a build agent", 0) > 0 && ch_find(CH_TREE, "Never say you are working on it", 0) > 0;
+  // "no": the select step sees the offer, turns it down, and nothing more is asked
+  ch_test_type(c, "no thanks"); #assert ch_send(c);
+  body := ch_test_body(c);
+  #assert ch_find(body, "offer (offer/accept, offer/decline): the agent's last answer offered to start a build agent on: \\\"add a dragon that breathes fire\\\".", 0) > 0;
+  ch_test_model(c, "route: offer/decline\nprops: none\nthings: none");
+  #assert !c[0].busy && !ch_wants(c) && c[0].offer_n == 0 && c[0].agent == CH_J_NONE && ch_test_said(c) == "ok, i won't start it.";
+  // with no offer pending, its routes are no route
+  ch_select_read(c, TW_ROWS[..], "route: offer/accept"); #assert c[0].offer_pick == 0 && c[0].pick_route_n == 0;
+  // another message: the offer lapses, and that message is answered as any is
+  ch_test_type(c, "add a dragon"); #assert ch_send(c);
+  ch_test_model(c, "route: make/capability\nprops: none\nthings: none");
+  ch_test_model(c, "route: make/capability\n\nno dragons yet. want a build agent on it?");
+  #assert c[0].offer_n > 0;
+  ch_test_type(c, "make gravity half"); #assert ch_send(c);
+  ch_test_model(c, "route: world/set\nprops: world.gravity\nthings: none");
+  #assert c[0].offer_n == 0 && c[0].phase == CH_P_ACT && c[0].busy;
+  ch_test_model(c, "route: world/set\n\ngravity is half.\n+ set world.gravity 0.5");
+  // the decide button has no select step: an offer lapses with it too
+  ch_test_type(c, "add a dragon"); #assert ch_send(c);
+  ch_test_model(c, "route: make/capability\nprops: none\nthings: none");
+  ch_test_model(c, "route: make/capability\n\nno dragons yet. want a build agent on it?");
+  #assert ch_decide(c) && c[0].offer_n == 0;
+  ch_test_model(c, "route: build/block\n\n+ place 3 3 1 1 1");
+  ch_clear(c); #assert c[0].offer_n == 0 && c[0].agent == CH_J_NONE;
+}
+#test "yes after an offer starts a build agent: one start request with the job in your words and the brief, its cap said in words, its state read until it is done, and its plan lines made" #steps 2000000000 {
+  t: [1] ChTest; c := t[0].c[..];
+  ch_clear(c); c[0].seed = 5; nonce:[16]u8;ch_job_entropy(c,nonce[..],true);
+  p := c[0].blocks[0].props[..];
+  ch_test_type(c, "make the blocks never fall"); #assert ch_send(c);
+  ch_test_model(c, "route: make/capability\nprops: none\nthings: none");
+  ch_test_model(c, "route: make/capability\n\ni can't do that here yet. want me to start a build agent on it?");
+  ch_job_tick(c, 10.0);
+  ch_test_type(c, "yes"); #assert ch_send(c);
+  ch_test_model(c, "route: offer/accept\nprops: none\nthings: none");
+  // no answer is asked for: a build agent starts, and the chat says so with its cap
+  #assert !c[0].busy && !ch_wants(c) && c[0].agent == CH_J_STARTING && ch_job_wants(c) && ch_test_job_url(c) == "/api/gamebuilder/agents/v1";
+  #assert ch_test_said(c) == "starting a build agent on that. it gets one model turn: at most 2,048 tokens of answer and about 6 minutes, and it costs you nothing for now.";
+  body := cast(string) c[0].job_body[0..<c[0].job_body_n];
+  #assert ch_find(body, "{\"schema\":\"gamebuilder.agent.start.v1\",\"operation_id\":\"gb_", 0) == 0 && ch_find(body, "\",\"game\":\"gamebuilder.org world\",\"job\":\"make the blocks never fall\",\"brief\":\"Building here.", 0) == 92;
+  #assert ch_find(body, "+ set PATH VALUE", 0) > 0 && ch_find(body, "physics (physics: things fall and get pushed)", 0) > 0 && ch_find(body, "\\nworld now:\\ngame type: third person\\n", 0) > 0 && ch_find(body, "\"}", body.count - 2) == body.count - 2;
+  #assert c[0].job_body_n < 32768;
+  // a second yes while it works starts none
+  ch_job_start(c, "again"); #assert ch_test_said(c) == "one build agent at a time: the one working now has to finish first.";
+  // it started: the turn, and nothing is read until two seconds on
+  ch_test_job(c, 202, "{\"schema\":\"openagents.chat.control.v2alpha1\",\"conversation_id\":\"0193a9b2-0000-7e2f-8a3b-4c5d6e7f8a9b\",\"turn_id\":\"0193a9b2-7c1d-7e2f-8a3b-4c5d6e7f8a9b\",\"conversation_revision\":1,\"state\":\"queued\",\"stop_requested\":false,\"event_cursor\":0}");
+  #assert c[0].agent == CH_J_WORKING && ch_test_job_said(c) == "waiting for a runner" && cast(string) c[0].job_id[0..<c[0].job_id_n] == CH_TEST_TURN;
+  ch_job_tick(c, 11.0); #assert !ch_job_wants(c);
+  ch_job_tick(c, 12.5); #assert ch_job_wants(c) && ch_test_job_url(c) == "/api/gamebuilder/agent/v1?id=0193a9b2-7c1d-7e2f-8a3b-4c5d6e7f8a9b" && c[0].job_body_n == 0;
+  ch_test_job(c, 200, "{\"schema\":\"x\",\"id\":\"t\",\"state\":\"running\",\"content\":[],\"error\":null}");
+  #assert ch_test_job_said(c) == "working";
+  // a read that did not come back is tried again
+  ch_job_tick(c, 15.0); ch_test_job(c, 0, ""); #assert c[0].agent == CH_J_WORKING;
+  // done: its words are the agent's, and its plan lines are made (checked as any answer's: one past its range is refused)
+  ch_job_tick(c, 18.0);
+  ch_test_job(c, 200, "{\"schema\":\"x\",\"id\":\"t\",\"state\":\"completed\",\"usage\":{\"input_tokens\":9},\"content\":[{\"type\":\"text\",\"text\":\"physics is off and the blocks hold.\\n+ set world.physics off\\n+ set world.gravity 9\"}],\"error\":null}");
+  #assert c[0].agent == CH_J_DONE && ch_test_job_said(c) == "done" && pr_value(p, TW_PHYSICS) == 0 && pr_value(p, TW_GRAVITY) == 100;
+  #assert ch_test_said(c) == "physics is off and the blocks hold.\nworld.gravity takes 0 to 5, not 9.";
+  ch_job_tick(c, 30.0); #assert !ch_job_wants(c);
+  // a start refused is said on its row, in the service's words
+  ch_job_start(c, "a castle"); #assert c[0].agent == CH_J_STARTING;
+  ch_test_job(c, 429, "{\"error\":\"32 chats are queued or running on this account, the most at once. Stop or finish one before queuing more.\"}");   // (a build agent is any account's since 2026-11-17, OpenAgents' docs/protocol/gamebuilder-agent-v1.md: what refuses a start is a limit, said with its number)
+  #assert c[0].agent == CH_J_FAILED && ch_test_job_said(c) == "it didn't start: 32 chats are queued or running on this account, the most at once. Stop or finish one before queuing more.";
+  ch_job_start(c, "a castle"); ch_test_job(c, 0, ""); #assert ch_test_job_said(c) == "can't reach the server, so nothing was started";
+  // one that fails, or is never taken up within seven minutes, says so
+  ch_job_start(c, "a castle"); ch_test_job(c, 202, "{\"turn_id\":\"0193a9b2-7c1d-7e2f-8a3b-4c5d6e7f8a9b\",\"state\":\"queued\"}");
+  ch_job_tick(c, 40.0); ch_test_job(c, 200, "{\"state\":\"failed\",\"content\":[],\"error\":\"The model refused.\"}");
+  #assert ch_test_job_said(c) == "failed: The model refused.";
+  ch_job_tick(c, 50.0); ch_job_start(c, "a castle"); ch_test_job(c, 202, "{\"turn_id\":\"0193a9b2-7c1d-7e2f-8a3b-4c5d6e7f8a9b\",\"state\":\"queued\"}");
+  ch_job_tick(c, 300.0); ch_test_job(c, 200, "{\"state\":\"queued\",\"content\":[],\"error\":null}");
+  ch_job_tick(c, 471.0); #assert !ch_job_wants(c) && c[0].agent == CH_J_FAILED && ch_test_job_said(c) == "no answer within 7 minutes, so the page stopped waiting; nothing changed";
+  // logging out forgets it, and an answer still on its way is dropped
+  ch_job_start(c, "a castle"); ch_job_sent(c); ch_clear(c); ch_job_end(c, 202);
+  #assert c[0].agent == CH_J_NONE && !ch_job_wants(c);
+}
+#test "a registry too long to index whole is chosen from in two steps: its groups, then the chosen groups' rows" #steps 2000000000 {
+  t: [1] ChTest; c := t[0].c[..];
+  ch_clear(c);
+  big: [1] ChTestBig; reg := ch_test_big(big[..]);
+  ch_test_type(c, "make the fog thicker");
+  none: [1] int;
+  n := ch_select_request(c, reg, none[0..<0], c[0].body[..]); body := cast(string) c[0].body[0..<n];
+  // whole, the index would be past CH_INDEX: the groups go instead, by name and count
+  #assert n > 0 && ch_find(body, "route: NAME\\ngroups: NAMES\\n", 0) > 0 && ch_find(body, "g0 20, g1 20,", 0) > 0 && ch_find(body, "g0: p0 (", 0) < 0 && n < 4000;
+  // the groups chosen: only their rows
+  groups := [2] int.[40, 60];
+  n = ch_select_request(c, reg, groups[..], c[0].body[..]); body = cast(string) c[0].body[0..<n];
+  #assert ch_find(body, "props: PATHS\\nthings: IDS\\n", 0) > 0 && ch_find(body, "g2: p0 (", 0) > 0 && ch_find(body, "g3: p0 (", 0) > 0 && ch_find(body, "g1: p0", 0) < 0 && n < 4000;
+  // the real registry is short enough to go whole
+  n = ch_select_request(c, TW_ROWS[..], none[0..<0], c[0].body[..]);
+  #assert ch_find(cast(string) c[0].body[0..<n], "props: PATHS", 0) > 0;
+}
+// A synthetic registry of 500 rows: 25 groups of 20, each with a hint and a line, as long as the real ones.
+ChTestBig :: struct { rows: [500] Tunable; paths: [500] [12] u8; }
+ch_test_big :: (b: [] ChTestBig) -> [] const Tunable {
+  for k: 0..<500 {
+    n := bl_put(b[0].paths[k][..], 0, "g"); n = bl_int(b[0].paths[k][..], n, k / 20); n = bl_put(b[0].paths[k][..], n, ".p"); n = bl_int(b[0].paths[k][..], n, k % 20);
+    b[0].rows[k] = Tunable.{path = cast(string) b[0].paths[k][0..<n], kind = TUN_NUMBER, scope = TUN_WORLD, low = 0, high = 100, step = 5, def = 50, unit = "x", hint = "how strong it is", about = "a made-up property of the size real ones are, for measuring"};
+  }
+  return b[0].rows[..];
+}
+
+#test "build starts differ across fresh tabs and conversation clears; missing entropy never starts a job" #steps 400000000 {
+  t:[3]ChTest;a:=t[0].c[..];b:=t[1].c[..];none:=t[2].c[..];nonce:[16]u8;other:[16]u8;other[15]=1;
+  a[0].seed=5;b[0].seed=5;ch_job_entropy(a,nonce[..],true);ch_job_entropy(b,other[..],true);
+  ch_job_start(a,"a flag");ch_job_start(b,"a flag");first:[64]u8;second:[64]u8;next:[64]u8;
+  n:=ch_job_operation(a,first[..]);m:=ch_job_operation(b,second[..]);#assert n>0 && n==m && cast(string)first[0..<n]!=cast(string)second[0..<m];
+  ch_clear(a);ch_job_start(a,"a flag");k:=ch_job_operation(a,next[..]);#assert k>0 && cast(string)first[0..<n]!=cast(string)next[0..<k];
+  ch_job_entropy(none,nonce[0..<15],true);ch_job_entropy(none,nonce[..],false);ch_job_start(none,"a flag");#assert !ch_job_wants(none) && none[0].jobs==0 && !none[0].job_nonce_ready;
+}
+
+#test "a guest's chat box is words and one log in button, not a field (and not while who is here is still being asked); a logout forgets the conversation and keeps the world" #steps 400000000 {
+  t: [1] ChTest; c := t[0].c[..]; tr: [1] Tree;
+  ch_guest(c, true);
+  tr_begin(tr[..]); ch_section(c, tr[..]);
+  #assert tr_find(tr[..], "say") < 0 && tr_find(tr[..], "say.in") >= 0 && tr_text_of(tr[..], tr_find(tr[..], "say.w")) == "log in or create an account to talk to the agent." && tr_text_of(tr[..], tr_find(tr[..], "say.in")) == "log in";
+  // while the login is still asking who is here: the box, for the moment (and nothing typed in it goes: ch_send refuses a guest)
+  c[0].asking = true; ch_test_type(c, "add a cube");
+  tr_begin(tr[..]); ch_section(c, tr[..]); #assert tr_find(tr[..], "say") >= 0 && tr_find(tr[..], "say.in") < 0 && !ch_send(c) && !ch_wants(c);
+  // logged in: the box, and it goes
+  c[0].asking = false; ch_guest(c, false);
+  tr_begin(tr[..]); ch_section(c, tr[..]); #assert tr_find(tr[..], "say") >= 0 && tr_find(tr[..], "say.in") < 0;
+  #assert ch_send(c) && ch_wants(c) && c[0].busy && c[0].n == 1;
+  // a logout forgets the conversation and keeps the world
+  n := c[0].blocks[0].n; c[0].kind = 7;
+  ch_forget(c);
+  #assert c[0].n == 0 && !c[0].busy && !ch_wants(c) && c[0].blocks[0].n == n && c[0].kind == 7;
+}

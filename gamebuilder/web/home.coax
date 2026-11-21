@@ -1,0 +1,187 @@
+// gamebuilder.org's home page (issue 12; issue 30, the ring): its words and its nodes. The home page is
+// the create-a-game flow: one heading, and the game types as names to press. Once the world is drawing
+// (hud.coax, web/ring.coax) the names stand over the types' portals round the meadow; before it is, and
+// in a browser with no WebGPU, they are a plain list under the heading.
+//
+// This file is the one source of the home page. The page's module draws it (page.coax: the home view is
+// gs_home_page, and the builder's picker is gs_ring_section, the same nodes), and web/index.html holds
+// the same nodes and their rules (look.coax, gs_css_first) as plain HTML, so the heading and the names
+// show at first paint and can be pressed before any code has loaded (each is a link to the builder with
+// its type chosen: GS_BUILDER?type=ID): tools/home-check.coax writes that part of index.html, and
+// index.md, from here (`--write`), and scripts/check.sh fails when they differ. Change the words or the
+// nodes here, never there.
+
+#load "look.coax";
+#load "gpu-words.coax";
+#load "../shared/game-types.coax";   // the one list of game types: the ring's names, in its order
+
+GS_HOME :: "https://openagents.com";
+// The page's voice: lowercase, clipped, few words. Say only what the site does today.
+GS_HEAD :: "make a game. ";
+GS_HEAD_HERE :: "pick a portal.";
+GS_HEAD_NONE :: "pick a type.";   // where the builder can't run there are no portals: the names alone (gpu-words.coax says why)
+GS_LINE :: "build it in your browser. nothing to install.";
+GS_BUILDER :: "/play";   // the builder's address: a name's link is it with the type chosen (GS_TYPE_ASK and the type's id)
+GS_TYPE_ASK :: "?type=";
+GS_RING_LABEL :: "game types";
+GS_APPS :: "also on iphone / ipad / mac";
+GS_COPYRIGHT :: "© 2026 openagents, inc.";
+GS_BUILT_ON :: "built on openagents";
+// The page's class: the view (the glue reads it for the HUD's camera), "ring" (the glue raises the ring
+// of portals in the world under it: hud-glue.js), and, while the login is still being asked who is here,
+// "asking". The first frame is asking, and so is index.html's copy: a browser that was logged in last
+// time keeps the home page out of sight for that moment (index.html).
+GS_HOME_CLASS :: "gs v0 ring";
+GS_HOME_ASKING :: "gs v0 asking";
+GS_RING_SLOT :: [GS_RING_MOST] string.["kind r0", "kind r1", "kind r2", "kind r3", "kind r4", "kind r5", "kind r6", "kind r7", "kind r8", "kind r9", "kind r10", "kind r11", "kind r12", "kind r13", "kind r14", "kind r15"];
+GS_RING_ON :: [GS_RING_MOST] string.["kind r0 on", "kind r1 on", "kind r2 on", "kind r3 on", "kind r4 on", "kind r5 on", "kind r6 on", "kind r7 on", "kind r8 on", "kind r9 on", "kind r10 on", "kind r11 on", "kind r12 on", "kind r13 on", "kind r14 on", "kind r15 on"];
+
+
+// The logo, alone in the window's top left corner: the way home.
+gs_brand :: (t: [] Tree) {
+  brand := tr_open(t, "brand", TG_A, "brand");
+  tr_attr(t, brand, AT_HREF, "/");
+  tr_attr(t, brand, AT_LABEL, "GameBuilder");
+  icon := tr_leaf(t, "brand.i", TG_SPAN, "mark", "");   // the app's icon, small, in the stylesheet (look.coax, GS_MARK)
+  tr_close(t);
+}
+// The way in, at the top right, for someone not logged in.
+gs_way_in :: (t: [] Tree) {
+  nav := tr_open(t, "nav", TG_NAV, "nav");
+  login := tr_leaf(t, "nav.login", TG_A, "quiet", "log in");
+  tr_attr(t, login, AT_HREF, "/login");
+  tr_close(t);
+}
+// Why the builder can't run here, from the glue (hud-glue.js: it asks the browser for WebGPU and writes
+// the way's digit): a hidden field on every view (issue 14; docs/web-world.md, "No WebGPU").
+gs_gpu_field :: (t: [] Tree) {
+  gf := tr_open(t, "gpu", TG_INPUT, "gs-gpu"); tr_attr(t, gf, AT_TYPE, "text"); tr_attr(t, gf, AT_HIDDEN, "true"); tr_attr(t, gf, AT_COMPLETE, "off"); tr_close(t);
+}
+// The counting of the core loop's steps (web/count.coax): what the page says to the glue (a note of what this
+// tab has counted, and what waits to be sent), and a hidden field for the glue's answer, the browser's clock.
+gs_count_field :: (t: [] Tree, note: string) {
+  out := tr_leaf(t, "count.out", TG_SPAN, "gs-count", note); tr_attr(t, out, AT_HIDDEN, "true");
+  cf := tr_open(t, "count", TG_INPUT, "gs-count-in"); tr_attr(t, cf, AT_TYPE, "text"); tr_attr(t, cf, AT_HIDDEN, "true"); tr_attr(t, cf, AT_COMPLETE, "off"); tr_close(t);
+}
+// The game types as names to press, from the shared list in its order (shared/game-types.coax
+// gt_picker), a type added there being a name here: its key (1 to 9), its name and its line, each a link
+// to the builder with the type chosen, so a press before the page's code has loaded is a way in all
+// the same (the builder's address reads it: page.coax). The name at place i has the class "rI": over
+// the world the glue stands it over portal i (hud-glue.js, web/ring.coax). `last` (a website kind, -1
+// none) is lit. A hidden line a portal says where its picture is, for the glue to give the HUD.
+gs_ring_list :: (t: [] Tree, last: int) {
+  a: [32] u8; b: [32] u8; no: [12] u8; to: [64] u8; pics: [GS_RING_MOST * 40] u8; pn := 0;
+  slots := GS_RING_SLOT; lit := GS_RING_ON; ids := GT_ID; names := GT_NAME; lines := GT_LINE; credits := GT_CREDIT; pictures := GT_PIC;
+  list := tr_open(t, "ring", TG_NAV, "names");
+  tr_attr(t, list, AT_LABEL, GS_RING_LABEL);
+  order: [GT_TYPES] int; n := gt_picker(GT_ON_SITE, order[..]);
+  if n > GS_RING_MOST { n = GS_RING_MOST; }
+  for i: 0..<n {
+    ty := order[i]; k := gt_web_kind(ty);
+    if k < 0 { continue; }
+    kn := gs_num(no[..], k);
+    one := tr_open(t, tr_cat(a[..], "kind.", kn), TG_A, ifx last == k then lit[i] else slots[i]);
+    tr_attr(t, one, AT_HREF, tr_cat(to[..], GS_BUILDER, tr_cat(b[..], GS_TYPE_ASK, ids[ty])));
+    if credits[ty].count > 0 { tr_attr(t, one, AT_TITLE, credits[ty]); }   // whose art it is (the village's: 0 A.D.'s), on its name
+    if last == k { tr_attr(t, one, AT_CURRENT, "true"); }
+    key := tr_leaf(t, tr_cat(b[..], "kind.n.", kn), TG_SPAN, "no", gt_key(i));
+    name := tr_leaf(t, tr_cat(b[..], "kind.h.", kn), TG_SPAN, "kn", names[ty]);
+    line := tr_leaf(t, tr_cat(b[..], "kind.p.", kn), TG_SPAN, "kl", lines[ty]);
+    tr_close(t);
+    for c: "/img/" { if pn < pics.count { pics[pn] = c; pn += 1; } }
+    for c: pictures[ty] { if pn < pics.count { pics[pn] = c; pn += 1; } }
+    if pn < pics.count { pics[pn] = '\n'; pn += 1; }
+  }
+  said := tr_leaf(t, "ring.pics", TG_SPAN, "gs-ring", cast(string) pics[0..<pn]); tr_attr(t, said, AT_HIDDEN, "true");
+  tr_close(t);
+}
+// The create-a-game flow's own part of a page: the heading, the line, the names and (where the builder
+// can't run) why; the home page's and the builder's picker alike (page.coax gs_picker).
+gs_ring_section :: (t: [] Tree, gpu: int, last: int, id: string) {
+  hero := tr_open(t, id, TG_SECTION, "wrap hero");
+  hid: [32] u8;
+  h := tr_open(t, tr_cat(hid[..], id, ".h"), TG_H1, "");
+  h1 := tr_leaf(t, tr_cat(hid[..], id, ".h.a"), TG_SPAN, "", GS_HEAD);
+  // the second line says portals only where there are any. Not yet known (index.html's copy, the page's first frames) it is
+  // both, and the stylesheet shows the one the browser's class says (look.coax: html.gpu); known that it can't run, the other alone
+  if gpu == GW_FINE {
+    h2 := tr_leaf(t, tr_cat(hid[..], id, ".h.b"), TG_SPAN, "ghost wg", GS_HEAD_HERE);
+    h3 := tr_leaf(t, tr_cat(hid[..], id, ".h.c"), TG_SPAN, "ghost ng", GS_HEAD_NONE);
+  } else {
+    h3 := tr_leaf(t, tr_cat(hid[..], id, ".h.c"), TG_SPAN, "ghost", GS_HEAD_NONE);
+  }
+  tr_close(t);
+  lede := tr_leaf(t, tr_cat(hid[..], id, ".lede"), TG_P, "lede", GS_LINE);
+  gs_ring_list(t, last);
+  // by the way into the builder: a browser that cannot run it is told here, under the names, before one
+  // is pressed (issue 14). Nothing is said while it is fine or not yet known, so index.html's copy has none.
+  if gpu != GW_FINE {
+    no := tr_open(t, tr_cat(hid[..], id, ".nogpu"), TG_P, "nogpu said");
+    n1 := tr_leaf(t, tr_cat(hid[..], id, ".nogpu.h"), TG_SPAN, "", GW_HEAD);
+    n2 := tr_leaf(t, tr_cat(hid[..], id, ".nogpu.w"), TG_SPAN, "", gw_words(gpu));
+    n3 := tr_leaf(t, tr_cat(hid[..], id, ".nogpu.d"), TG_SPAN, "", gw_do(gpu));
+    tr_close(t);
+  }
+  tr_close(t);
+}
+// The home page, whole, as the tree's only nodes: the top, the heading and the names (gs_ring_section),
+// the apps' line and the foot. Over the world only the top, the heading and the names show (look.coax).
+gs_home_page :: (t: [] Tree, class: string, gpu: int, counting: string) {
+  page := tr_open(t, "page", TG_MAIN, class);
+  top := tr_open(t, "top", TG_HEADER, "top");
+  gs_brand(t);
+  gs_gpu_field(t);
+  gs_count_field(t, counting);
+  gs_way_in(t);
+  tr_close(t);
+
+  gs_ring_section(t, gpu, -1, "hero");
+
+  foot := tr_open(t, "foot", TG_FOOTER, "wrap foot mono");
+  apps := tr_leaf(t, "foot.apps", TG_SPAN, "", GS_APPS);
+  copy := tr_leaf(t, "foot.c", TG_SPAN, "", GS_COPYRIGHT);
+  cr := tr_leaf(t, "foot.credits", TG_A, "", "credits");
+  tr_attr(t, cr, AT_HREF, "/credits");
+  oa := tr_leaf(t, "foot.oa", TG_A, "", GS_BUILT_ON);
+  tr_attr(t, oa, AT_HREF, GS_HOME);
+  tr_close(t);
+  tr_close(t);
+}
+
+#test "the home page: one heading, the game types as names in the shared order, each a link to the builder with its type chosen, the way in and the way home" {
+  w: [1] Tree; t := w[..];
+  tr_begin(t);
+  gs_home_page(t, GS_HOME_ASKING, GW_FINE, "");
+  #assert t[0].lost == 0 && t[0].depth == 0 && tr_class(t, 0) == GS_HOME_ASKING;
+  heads := 0; for i: 0..<t[0].n { if t[0].nodes[i].tag == TG_H1 || t[0].nodes[i].tag == TG_H2 { heads += 1; } }
+  #assert heads == 1 && tr_text_of(t, tr_find(t, "hero.lede")) == GS_LINE && tr_text_of(t, tr_find(t, "foot.apps")) == GS_APPS;
+  #assert tr_attr_of(t, tr_find(t, "nav.login"), AT_HREF) == "/login" && tr_attr_of(t, tr_find(t, "brand"), AT_HREF) == "/";
+  // every type of the shared list, in its order: its key, its name, its line, and the builder with it chosen
+  order: [GT_TYPES] int; n := gt_picker(GT_ON_SITE, order[..]); ids := GT_ID; names := GT_NAME;
+  #assert n == GT_WEB_TYPES && n <= GS_RING_MOST && GS_RING_MOST == 16;   // (16: web/ring.coax RG_MAX, the engine's portals a world, PRT_MAX; its check holds that side)
+  kinds := 0; prev := -1; b: [12] u8; c: [32] u8; h: [64] u8;
+  for i: 0..<t[0].n { if t[0].nodes[i].tag == TG_A && tr_class(t, i).count > 5 && cast(string) tr_class(t, i)[0..<5] == "kind " { kinds += 1; #assert i > prev; prev = i; } }
+  #assert kinds == n;
+  for i: 0..<n {
+    k := gt_web_kind(order[i]); one := tr_find(t, tr_cat(c[..], "kind.", gs_num(b[..], k)));
+    #assert one >= 0 && tr_attr_of(t, one, AT_HREF) == tr_cat(h[..], "/play?type=", ids[order[i]]) && tr_class(t, one) == GS_RING_SLOT[i];
+    #assert tr_text_of(t, tr_find(t, tr_cat(c[..], "kind.h.", gs_num(b[..], k)))) == names[order[i]] && tr_text_of(t, tr_find(t, tr_cat(c[..], "kind.n.", gs_num(b[..], k)))) == gt_key(i);
+  }
+  // the village's name carries its art's credit; the pictures' line names each type's picture, in order
+  #assert tr_attr_of(t, tr_find(t, "kind.4"), AT_TITLE) == GT_CREDIT[GT_VILLAGE];
+  pics := tr_text_of(t, tr_find(t, "ring.pics"));
+  #assert pics.count > 9 * 10 && cast(string) pics[0..<5] == "/img/" && tr_attr_of(t, tr_find(t, "ring.pics"), AT_HIDDEN) == "true";
+  // no picture is asked for at first paint: the mark is in the stylesheet, the portals' pictures the glue's to fetch once the world is up
+  for i: 0..<t[0].n { #assert t[0].nodes[i].tag != TG_IMG; }
+}
+#test "a browser that cannot run the builder keeps the names, and is told why under them" {
+  w: [1] Tree; t := w[..];
+  tr_begin(t);
+  gs_home_page(t, GS_HOME_CLASS, GW_NONE, "");
+  #assert tr_find(t, "kind.7") >= 0 && tr_text_of(t, tr_find(t, "hero.nogpu.h")) == GW_HEAD && tr_find(t, "hero.nogpu") > tr_find(t, "ring");
+  // and the heading speaks of no portals there: there are none
+  #assert tr_find(t, "hero.h.b") < 0 && tr_text_of(t, tr_find(t, "hero.h.c")) == GS_HEAD_NONE && tr_class(t, tr_find(t, "hero.h.c")) == "ghost";
+  // while it is not known (index.html's copy is this), both endings, each shown by the browser's class (look.coax)
+  w2: [1] Tree; u := w2[..]; tr_begin(u); gs_home_page(u, GS_HOME_ASKING, GW_FINE, "");
+  #assert tr_text_of(u, tr_find(u, "hero.h.b")) == GS_HEAD_HERE && tr_class(u, tr_find(u, "hero.h.b")) == "ghost wg" && tr_class(u, tr_find(u, "hero.h.c")) == "ghost ng";
+}

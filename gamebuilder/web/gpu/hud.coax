@@ -1,0 +1,189 @@
+// gamebuilder.org's shaders (web/hud.coax): the world is drawn by the Metaverse Engine's stylized
+// shading, as light (its film entries: the page's host blooms and tones the frame in its post pass)
+// (metaverse-engine/render/shade/stylized.coax: the sky, the ground and
+// the blocks, their shadows, the grass, its wind, its parting round the character and its reveal),
+// and the character by the engine's ghost (metaverse-engine/render/ghost.coax). This module only
+// names the engine's entries and adds the page's own part:
+//   hud_scene_vs / hud_shadow_vs   the engine's, plus the character's vertices: skinned on the CPU
+//                                  each frame into the `skin` store, its triangles in `tris`
+//   hud_scene_fs                   the engine's, the character shaded as the engine's ghost, and the
+//                                  page's dimming of the ground (behind a panel of words, toward the
+//                                  window's edges, lit a little round the pointer)
+//   hud_fx_vs / hud_fx_fs          the HUD's strokes: the ARWES frames round the page's panels
+// web/build.sh writes web/build/hud.wgsl from it with the pinned tree's coax/web/wgsl-module.coax
+// (hud.module and hud.bindings beside this file). Nothing here is written in WGSL by hand.
+#load "../../../metaverse-engine/render/shade/stylized.coax";
+#load "../../../metaverse-engine/render/ghost.coax";
+#load "../../../metaverse-engine/render/livery.coax";
+#load "../../../metaverse-engine/render/shade/stylized-pack.coax";
+#load "../../../metaverse-engine/render/sampling.coax";
+#load "../hud-layout.coax";
+RG_PIC_W :: 256; RG_PIC_H :: 144;   // a picture's texels across and down (web/ring.coax: a check there holds the two the same)
+
+HudStroke :: struct {pos:V4; ink:V4; edge:V2;}
+hud_fx_vs_in :: struct {a:V4; b:V4;}
+
+hud_bg_vs :: (i:u32,iid:u32)->V4 {return stylized_bg_vs(i,iid);}
+// The frame is drawn as light (the engine's film entries): the host's post pass blooms the sun and
+// the bright sky and tones the frame once (hud_bloom_fs, hud_post_fs).
+hud_bg_fs :: (pos:V4,u:[]f32)->StyFilm {return stylized_film_bg_fs(pos,u);}
+hud_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {return stylized_bloom_fs(pos,bloom_src,bloom_lin,bloom_step);}
+hud_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_lin:Sampler)->V4 {return stylized_post_fs(pos,u,post_light,post_quarter,post_eighth,post_lin);}
+hud_grass_vs :: (v:u32,i:u32,u:[]f32,mesh:[]f32,objects:[]StyObj,heights:[]f32)->StyBlade {return stylized_grass_vs(v,i,u,mesh,objects,heights);}
+hud_grass_fs :: (g:StyBlade,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->StyFilm {return stylized_film_grass_fs(g,u,shadow_map,shadow_cmp);}
+
+// The character's vertex `id` of its draw: the triangle list names a skinned vertex, already where
+// it stands in the world.
+hud_ghost_at :: (id:u32,skin:[]f32,tris:[]u32)->int {return cast(int)tris[cast(int)id]*HUD_SKIN_FLOATS;}
+hud_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,mesh:[]f32,objects:[]StyObj,skin:[]f32,tris:[]u32)->StyS {
+  if (instance>=HUD_GHOST_AT) {
+    k:int=hud_ghost_at(id,skin,tris);
+    s:StyS;
+    s.world=v3(skin[k],skin[k+1],skin[k+2]);
+    s.normal=v3(skin[k+3],skin[k+4],skin[k+5]);
+    // its livery's colour (the platformer's hero, drawn solid), or black: a ghost
+    s.uv=v2(0.0f32,0.0f32); s.tint=v3(skin[k+6],skin[k+7],skin[k+8]); s.wash=v3(1.0f32,1.0f32,1.0f32);
+    s.info=v4(0.0f32,0.0f32,(ifx s.tint.x+s.tint.y+s.tint.z>0.0f32 then 1.0f32 else 0.0f32),1.0f32);
+    s.pos=sty_clip(s.world,u,STY_U_VIEW);
+    return s;
+  }
+  // a place of the village: the pack's vertex, stood by its record (the engine's painted surfaces)
+  if (instance>=HUD_PACK_AT) { return sty_pack_stand(id,instance,u,vertices,objects); }
+  return sty_stand(id,instance,u,mesh,objects);
+}
+hud_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,mesh:[]f32,objects:[]StyObj,skin:[]f32,tris:[]u32)->StyShade {
+  if (instance>=HUD_GHOST_AT) {
+    k:int=hud_ghost_at(id,skin,tris);
+    s:StyShade;
+    s.pos=sty_clip(v3(skin[k],skin[k+1],skin[k+2]),u,STY_U_LIGHT);
+    // a ghost not yet shown casts nothing
+    if (u[HUD_U_PAGE+1]<0.5f32) { s.pos=v4(0.0f32,0.0f32,2.0f32,1.0f32); }
+    return s;
+  }
+  if (instance>=HUD_PACK_AT) {
+    s:StyShade;
+    s.pos=sty_clip(sty_pack_stand(id,instance,u,vertices,objects).world,u,STY_U_LIGHT);
+    return s;
+  }
+  return stylized_shadow_vs(id,instance,u,mesh,objects);
+}
+hud_shadow_fs :: (s:StyShade) {}
+
+// How much of the ground's light the page leaves at a pixel: less behind a panel of words (softly at
+// its edges) and toward the window's edges, more round the pointer; the last two only on the page's
+// own views, gone once the camera is down in the world.
+hud_page_dim :: (pos:V4,u:[]f32)->f32 {
+  d:f32=fmax(u[HUD_U_PAGE],1.0f32);
+  sx:f32=u[STY_U_SIZE]/d; sy:f32=u[STY_U_SIZE+1]/d; px:f32=pos.x/d; py:f32=pos.y/d;
+  page:f32=1.0f32-saturate(u[HUD_U_POINTER+3]);
+  bx:f32=u[HUD_U_SHADE]/d; by:f32=u[HUD_U_SHADE+1]/d; bw:f32=u[HUD_U_SHADE+2]/d; bh:f32=u[HUD_U_SHADE+3]/d;
+  inside:f32=fmin(fmin(px-bx,bx+bw-px),fmin(py-by,by+bh-py));
+  shade:f32=smoothstep(0.0f32-28.0f32,20.0f32,inside)*(ifx bw>=1.0f32 then 1.0f32 else 0.0f32);
+  edge:f32=smoothstep(0.0f32,0.42f32,fmin(fmin(px,sx-px)/sx,fmin(py,sy-py)/sy)*2.0f32);
+  qx:f32=px-u[HUD_U_POINTER]/d; qy:f32=py-u[HUD_U_POINTER+1]/d;
+  near:f32=exp((0.0f32-sqrt(qx*qx+qy*qy))/170.0f32)*u[HUD_U_POINTER+2]*page;
+  return (1.0f32-0.8f32*shade)*mix(1.0f32,0.55f32+0.45f32*edge,page)*(1.0f32+1.4f32*near);
+}
+// A texel of the page's pictures (THE STAND-IN: web/ring.coax), as display colours: picture `p`,
+// column x and row y, each held inside the picture.
+hud_pic_at :: (pics:[]u32,p:int,x:int,y:int)->V3 {
+  cx:int=ifx x<0 then 0 else ifx x>RG_PIC_W-1 then RG_PIC_W-1 else x;
+  cy:int=ifx y<0 then 0 else ifx y>RG_PIC_H-1 then RG_PIC_H-1 else y;
+  t:u32=pics[(p*RG_PIC_H+cy)*RG_PIC_W+cx];
+  return v3(cast(f32)(t&cast(u32)255)/255.0f32,cast(f32)((t>>cast(u32)8)&cast(u32)255)/255.0f32,cast(f32)((t>>cast(u32)16)&cast(u32)255)/255.0f32);
+}
+// A portal's picture at uv, as light: the four texels round the point, mixed.
+hud_picture :: (pics:[]u32,p:int,uv:V2)->V3 {
+  fx:f32=saturate(uv.x)*cast(f32)RG_PIC_W-0.5f32; fy:f32=saturate(uv.y)*cast(f32)RG_PIC_H-0.5f32;
+  x0:f32=floor(fx); y0:f32=floor(fy); ax:f32=fx-x0; ay:f32=fy-y0;
+  x:int=cast(int)x0; y:int=cast(int)y0;
+  top:V3=mix3(hud_pic_at(pics,p,x,y),hud_pic_at(pics,p,x+1,y),ax);
+  low:V3=mix3(hud_pic_at(pics,p,x,y+1),hud_pic_at(pics,p,x+1,y+1),ax);
+  return sty_decode(mix3(top,low,ay));
+}
+// A picture's colour as the light the post pass shows as it is (THE STAND-IN). A picture is a frame the
+// page already drew, exposed and toned: given to the film as it is, the post pass exposed it and rolled
+// its highlights off a second time and bloomed its bright sky over it, and it read washed out and hazy.
+// So its exposure and the tone's roll-off (sty_tone1, channel by channel) are undone here, and it adds
+// nothing to the bloom.
+hud_untone1 :: (y:f32)->f32 {
+  if (y<=0.6f32) {return fmax(y,0.0f32);}
+  return 0.6f32-1.2f32*log(1.0f32-fmin((y-0.6f32)/0.4f32,0.98f32));
+}
+hud_picture_film :: (c:V3,u:[]f32)->StyFilm {
+  air:f32=ifx u[STY_U_AIR]>0.0f32 then u[STY_U_AIR] else 1.0f32;
+  o:StyFilm=sty_film(scale3(v3(hud_untone1(c.x),hud_untone1(c.y),hud_untone1(c.z)),1.0f32/air),u);
+  o.light.w=0.0f32;
+  return o;
+}
+hud_scene_fs :: (s:StyS,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare,sheets:Tex2DArray,sheet:Sampler,pics:[]u32)->StyFilm {
+  // (a painted surface's layer is sampled first: a sample needs uniform control flow)
+  layer:s32=sty_pack_layer(s);
+  paint:V4=render_sample_layer8(sheets,sheet,s.uv,(ifx layer<0 then 0 else layer));
+  c:StyFilm=stylized_film_scene_fs(s,u,shadow_map,shadow_cmp);
+  // a portal's picture (the home page's ring): the page's own texels, shown as they are (no sun or
+  // shadow on them, so a picture reads from any side of the day), as lit as the ring is, in the haze
+  if (layer<0&&s.info.w<0.5f32&&s.info.x>=cast(f32)RG_M_PICTURE-0.5f32) {
+    lit:V3=scale3(hud_picture(pics,cast(int)(s.info.x+0.5f32)-RG_M_PICTURE,s.uv),saturate(u[HUD_U_PAGE+3]));
+    return hud_picture_film(sty_haze(lit,s.world,u),u);
+  }
+  // a place of the village: the engine's painted surface, under the same sun, shadow, sky and haze
+  if (layer>=0) { c=sty_film(sty_painted(s,v3(paint.x,paint.y,paint.z),sty_shadow(s.world,normalize3(s.normal),u,shadow_map,shadow_cmp),u),u); }
+  if (layer<0&&s.info.w>0.5f32&&s.info.z>0.5f32) {
+    // the platformer's hero: solid, its livery's colours (display values) under the sun, in its
+    // shadows and the sky's light, with the livery's rim off the sky; gone when the eye is in its head
+    if (u[HUD_U_PAGE+2]>0.5f32||u[HUD_U_PAGE+1]<0.004f32) { gpu_demote_helper(); }
+    to:V3=normalize3(sub3(wg_at3(u,STY_U_EYE),s.world));
+    // (a normal turned from the eye on a face toward it, where the thinned outfit's layers meet:
+    // laid flat across the view, and no rim, so it reads as the cloth round it)
+    n0:V3=normalize3(s.normal); ndv:f32=dot3(n0,to);
+    n:V3=ifx ndv<0.0f32 then normalize3(sub3(n0,scale3(to,ndv*1.05f32))) else n0;
+    lit:V3=sty_lit(sty_decode(s.tint),n,dot3(n,wg_at3(u,STY_U_SUN)),sty_shadow(s.world,n,u,shadow_map,shadow_cmp),u);
+    lit=add3(lit,scale3(wg_at3(u,STY_U_SKY_LIGHT),ifx ndv<0.0f32 then 0.0f32 else engine_livery_rim(ndv)));
+    return sty_film(sty_haze(lit,s.world,u),u);
+  }
+  if (layer<0&&s.info.w>0.5f32) {
+    // the character: the engine's ghost, no texture and no light of its own
+    ndv:f32=dot3(normalize3(s.normal),normalize3(sub3(wg_at3(u,STY_U_EYE),s.world)));
+    if (ndv<0.0f32) { gpu_demote_helper(); }
+    rim:f32=engine_ghost_rim(ndv);
+    // (left out of the view as far as the eye is in its head: first person, hud.coax's `gone`)
+    seen:f32=saturate(u[HUD_U_PAGE+1])*saturate(1.0f32-u[HUD_U_PAGE+2]);
+    if (seen<0.004f32) { gpu_demote_helper(); }
+    // (the ghost's colours are the display's; the frame is light, so they are decoded)
+    g:V3=sty_decode(v3(engine_ghost_channel(rim,0),engine_ghost_channel(rim,1),engine_ghost_channel(rim,2)));
+    c.light=v4(g.x,g.y,g.z,engine_ghost_alpha(rim)*seen);
+    return c;
+  }
+  // (the page's dimming is of what is shown: on light it is its 2.2 power)
+  k:f32=pow(hud_page_dim(s.pos,u),2.2f32);
+  c.light=v4(c.light.x*k,c.light.y*k,c.light.z*k,c.light.w);
+  return c;
+}
+
+// A stroke's vertex is 8 floats: x, y in device pixels; r, g, b, a; how far the point is from the
+// stroke's centre line and the stroke's half width, both device pixels (a soft edge a pixel wide).
+hud_fx_vs :: (_vid:u32,_iid:u32,in_:hud_fx_vs_in,u:[]f32)->HudStroke {
+  o:HudStroke;
+  o.pos=v4(((in_.a.x/u[STY_U_SIZE])*2.0f32)-1.0f32,1.0f32-((in_.a.y/u[STY_U_SIZE+1])*2.0f32),0.0f32,1.0f32);
+  o.ink=v4(in_.a.z,in_.a.w,in_.b.x,in_.b.y);
+  o.edge=v2(in_.b.z,in_.b.w);
+  return o;
+}
+hud_fx_fs :: (s:HudStroke)->V4 {
+  a:f32=s.ink.w*saturate(s.edge.y+0.5f32-abs(s.edge.x));
+  return v4(s.ink.x*a,s.ink.y*a,s.ink.z*a,a);
+}
+
+#test "a portal's picture comes out of the post pass as it went in: its roll-off undone, and no bloom of its own" {
+  // (a grey's channels roll off alike, so the tone's two roll-offs agree and the round trip is exact)
+  for i: 0..<98 {
+    y: f32 = cast(f32) i * 0.01;
+    #assert abs(sty_tone1(hud_untone1(y)) - y) < 0.0005;
+    g := sty_tone(v3(hud_untone1(y), hud_untone1(y), hud_untone1(y)));
+    #assert abs(g.x - y) < 0.0005 && abs(g.z - y) < 0.0005;
+  }
+  u: [STY_U_AIR + 1] f32; u[STY_U_AIR] = 1.3;
+  o := hud_picture_film(v3(0.9, 0.8, 0.95), u[..]);
+  #assert o.light.w == 0 && abs(sty_tone1(o.light.x) - 0.9) < 0.001 && abs(sty_tone1(o.light.y) - 0.8) < 0.001;   // (the light is exposed: what the post pass tones)
+}

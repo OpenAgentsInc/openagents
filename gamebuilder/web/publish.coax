@@ -1,0 +1,573 @@
+// gamebuilder.org publishes the game that is up, and plays a published one from its link (docs/publishing.md,
+// "What is built"; docs/web-world.md, "Publish"; issue 17).
+//
+// Nothing here is a publish path of the website's own. The game published is the account's level, kept there
+// by web/account.coax through the rows every surface uses, and publishing it is the same rows again, at the
+// hosted API on this site (docs/programmatic-access.md), with the browser's own login:
+//   GET  /api/auth/account                who is logged in (asked first every time, as the account's passes do)
+//   POST /api/rows/published {}           what the account has published: is this game one of them
+//   POST /api/rows/publish                {"level":L,"name":NAME}: a new version, live at once; the answer's link
+//   POST /api/rows/set-live               {"published":G,"version":N}: an older version is the one the link plays
+//   POST /api/rows/unpublish              {"published":G}: the link plays nothing until it is published again
+// and a link's page asks, with no login at all:
+//   GET  /api/play/CODE                   the game's name, its game type and its live version's level file
+//   POST /api/play/CODE/report            {"reason":R}: a player's report, for the operator
+//   POST /api/play/CODE/played            {"fact":F}: the game counted (shared/plays.coax): its link opened, played
+//                                         for a minute, Remix pressed. Nothing of the visitor is sent
+// A remix says where it came from when it is published: the publish row's body has "from", the code of the game
+// Remix was pressed on (web/account.coax keeps it beside the level in this browser).
+//
+// A game is published as it stands on the account, so it is first kept there (account.coax's own pass, woken
+// here), and what the account can't hold can't be published: said in words, with the numbers. The limits of
+// publishing itself are the server's (coax/publish.coax) and are said in its words when one is met.
+//
+// The link's page plays the level with this site's own world code, the build tools off. Remix puts that level
+// in the visitor's own builder as a new game of theirs (a guest's, kept in their browser), never the creator's.
+//   coax/bin/coax test web/publish.coax --library
+
+#load "account.coax";
+#load "../shared/plays.coax";
+
+PB_NAME :: 48;           // bytes of a game's name (coax/publish.coax PUB_NAME)
+PB_LINK :: 160;
+PB_URL :: 64;
+PB_BODY :: 256;
+PB_REPLY :: 131072;      // an answer: a published level's file as JSON text
+PB_NODES :: 2048;
+PB_SAID :: 320;
+PB_VERS :: 6;            // versions the sheet lists, newest first
+PB_WAIT :: 45.0;         // seconds the game is given to be kept on the account before publishing gives up
+PB_CODE :: 6;            // a link's code (coax/publish.coax PUB_CODE)
+// What the server holds a published game to, said in the sheet (coax/publish.coax: a check holds these to it).
+PB_GAMES :: 16; PB_PER_HOUR :: 30; PB_KEPT :: 128;
+// Where a pass is.
+PB_IDLE :: 0; PB_P_WHO :: 1; PB_P_KEEP :: 2; PB_P_LIST :: 3; PB_P_SEND :: 4; PB_P_LIVE :: 5; PB_P_DOWN :: 6; PB_P_PLAY :: 7; PB_P_REPORT :: 8; PB_P_FACT :: 9;
+// What a pass is for.
+PB_DO_LIST :: 1; PB_DO_PUBLISH :: 2; PB_DO_LIVE :: 3; PB_DO_DOWN :: 4;
+// A link's page.
+PL_NONE :: 0;            // this is not a link's page
+PL_ASK :: 1;             // the game is being asked for
+PL_GOT :: 2;             // its file is here: the page puts it in the world (pb_play_took)
+PL_UP :: 3;              // it is being played
+PL_GONE :: 4;            // the link plays nothing: no such game, unpublished, or taken down
+PL_APP :: 5;             // a game this page can't show
+PL_FAIL :: 6;            // the server didn't answer: try again
+PB_REASONS :: 4;
+PB_REASON :: [PB_REASONS] string.["offensive", "personal", "spam", "other"];             // the server's words (coax/publish.coax PUB_REASON)
+PB_REASON_SAID :: [PB_REASONS] string.["offensive", "someone's personal details", "spam", "something else"];
+
+Publish :: struct {
+  // the builder's sheet
+  open: bool;                          // the sheet is open over the world
+  after: bool;                         // a guest pressed publish: the sheet opens once they are logged in
+  login: bool;                         // the login ended, or there never was one: the page opens the account sheet (once)
+  phase: int; next: int;
+  want: bool;
+  url: [PB_URL] u8; url_n: int; body: [PB_BODY] u8; body_n: int;
+  reply: [PB_REPLY] u8; reply_n: int; over: bool;
+  nodes: [PB_NODES] JvNode;
+  name: [PB_NAME] u8; name_n: int; typed: bool;   // the name in the field, and whether the person typed it
+  listed: bool;                        // the account was asked what it has published, for the level `level`
+  level: int;
+  game: int; live: int; versions: int; on: bool;   // this level's published game (0: none yet), its live version, how many it has had, and whether it is on the web
+  link: [PB_LINK] u8; link_n: int;
+  to: int;                             // the version set-live asks for
+  said: [PB_SAID] u8; said_n: int; bad: bool;      // words in the sheet, and whether they say something went wrong
+  copied: bool;
+  done: bool;                          // a publish just went through: the page counts it (once)
+  since: f32;
+  // a link's page
+  play: int;
+  code: [PB_CODE] u8;
+  title: [PB_NAME] u8; title_n: int;   // the game's name
+  kind: int = -1;                      // its game type, as this page's kind
+  version: int;
+  file: [LV_DOC] u8; file_n: int;      // its level's file
+  reporting: bool;                     // the report's reasons are shown
+  reported: bool;
+  swap: bool;                          // Remix found a game of this type kept in this browser: replace it, or keep it?
+  checking: bool;                      // Remix asked this browser what it keeps of the type
+  note: [PB_SAID] u8; note_n: int;     // words on the link's page
+  // the game counted (shared/plays.coax): a fact goes once for a code, while this page is up
+  facts: int;                          // the facts that wait to be sent, a bit a fact
+  counted: int;                        // the facts this page has marked for the code, a bit a fact
+  up_at: f32;                          // when the game came up: a minute on, it was played a minute
+}
+
+pb_wants :: (p: [] Publish) -> bool { return p[0].want; }
+pb_sent :: (p: [] Publish) { p[0].want = false; }
+pb_busy :: (p: [] Publish) -> bool { return p[0].phase != PB_IDLE; }
+pb_piece :: (p: [] Publish, bytes: [] u8) { for i: 0..<bytes.count { if p[0].reply_n < PB_REPLY { p[0].reply[p[0].reply_n] = bytes[i]; p[0].reply_n += 1; } else { p[0].over = true; } } }
+pb_ask :: (p: [] Publish, phase: int, url: string) { p[0].phase = phase; p[0].want = true; p[0].reply_n = 0; p[0].over = false; p[0].url_n = bl_put(p[0].url[..], 0, url); }
+pb_say :: (p: [] Publish, words: string, bad: bool) { p[0].said_n = bl_put(p[0].said[..], 0, words); p[0].bad = bad; }
+pb_link :: (p: [] Publish) -> string { return cast(string) p[0].link[0..<p[0].link_n]; }
+pb_name :: (p: [] Publish) -> string { return cast(string) p[0].name[0..<p[0].name_n]; }
+pb_code :: (p: [] Publish) -> string { return cast(string) p[0].code[0..<PB_CODE]; }
+pb_title :: (p: [] Publish) -> string { return cast(string) p[0].title[0..<p[0].title_n]; }
+// The name a game is given until the person types one: "my racing game".
+pb_name_default :: (p: [] Publish, kind: int) {
+  if p[0].typed { return; }
+  names := GT_NAME; ty := gt_web_type(kind);
+  n := bl_put(p[0].name[..], 0, "my ");
+  if ty >= 0 { n = bl_put(p[0].name[..], n, names[ty]); n = bl_put(p[0].name[..], n, " "); }
+  p[0].name_n = bl_put(p[0].name[..], n, "game");
+}
+// What is typed in the name's field: at most PB_NAME bytes, on one line.
+pb_name_input :: (p: [] Publish, bytes: [] u8) {
+  n := 0;
+  for c: bytes { if n < PB_NAME && c >= ' ' { p[0].name[n] = c; n += 1; } }
+  p[0].name_n = n; p[0].typed = true;
+}
+// The limits a published game is held to, in words with their numbers: the sheet's small print.
+pb_limits :: (out: [] u8) -> int {
+  n := bl_put(out, 0, "a published game holds "); n = bl_int(out, n, GT_LEVEL_THINGS); n = bl_put(out, n, " things, "); n = bl_int(out, n, GT_LEVEL_SHAPES);
+  n = bl_put(out, n, " different shapes and "); n = bl_int(out, n, GT_LEVEL_FILE / 1024); n = bl_put(out, n, " kb at most. an account publishes ");
+  n = bl_int(out, n, PB_GAMES); n = bl_put(out, n, " games, "); n = bl_int(out, n, PB_PER_HOUR); n = bl_put(out, n, " times an hour, and its last ");
+  n = bl_int(out, n, PB_KEPT); n = bl_put(out, n, " versions are kept.");
+  return n;
+}
+
+// The sheet opens (the page has seen to it that someone is logged in): what the account has published is asked.
+pb_open :: (p: [] Publish, kind: int) {
+  p[0].open = true; p[0].after = false; p[0].said_n = 0; p[0].bad = false; p[0].copied = false; p[0].listed = false;
+  pb_name_default(p, kind);
+  _ = pb_begin(p, PB_DO_LIST);
+}
+pb_close :: (p: [] Publish) { p[0].open = false; p[0].after = false; }
+// A pass begins: who is logged in is asked first. False while another is in hand.
+pb_begin :: (p: [] Publish, what: int) -> bool {
+  if p[0].phase != PB_IDLE { return false; }
+  p[0].next = what; p[0].body_n = 0;
+  pb_ask(p, PB_P_WHO, "/api/auth/account");
+  return true;
+}
+// The sheet's buttons.
+pb_publish :: (p: [] Publish) {
+  if p[0].name_n == 0 { pb_say(p, "give it a name first.", true); return; }
+  if pb_begin(p, PB_DO_PUBLISH) { pb_say(p, "saving your game to your account, then publishing.", false); p[0].copied = false; }
+}
+pb_live :: (p: [] Publish, version: int) { if p[0].game > 0 && version > 0 && pb_begin(p, PB_DO_LIVE) { p[0].to = version; p[0].said_n = 0; } }
+pb_down :: (p: [] Publish) { if p[0].game > 0 && pb_begin(p, PB_DO_DOWN) { p[0].said_n = 0; } }
+
+pb_fail :: (p: [] Publish, words: string) { p[0].phase = PB_IDLE; p[0].want = false; pb_say(p, words, true); }
+// The publish row is sent. `from`: the code of the published game this level was remixed from ("": it is none).
+pb_send :: (p: [] Publish, level: int, from: string) {
+  o: [1] Jo; jo_start(o[..], p[0].body[..]); jo_obj(o[..]);
+  jo_key(o[..], "level"); jo_int(o[..], level); jo_key(o[..], "name"); jo_str(o[..], pb_name(p));
+  if from.count == PB_CODE { jo_key(o[..], "from"); jo_str(o[..], from); }
+  jo_end(o[..]);
+  if o[0].bad { pb_fail(p, "that name can't be sent: try a shorter one."); return; }
+  p[0].body_n = o[0].n; p[0].level = level;
+  pb_ask(p, PB_P_SEND, "/api/rows/publish");
+}
+pb_send_game :: (p: [] Publish, phase: int, url: string, version: int) {
+  o: [1] Jo; jo_start(o[..], p[0].body[..]); jo_obj(o[..]);
+  jo_key(o[..], "published"); jo_int(o[..], p[0].game);
+  if version > 0 { jo_key(o[..], "version"); jo_int(o[..], version); }
+  jo_end(o[..]);
+  p[0].body_n = o[0].n;
+  pb_ask(p, phase, url);
+}
+pb_ask_list :: (p: [] Publish) { p[0].body_n = bl_put(p[0].body[..], 0, "{}"); pb_ask(p, PB_P_LIST, "/api/rows/published"); }
+
+// Each frame while a publish waits for the game to be kept on the account (account.coax's own pass, woken here).
+// `in`: someone is logged in. `up`: a game is up (`kind` is its type).
+pb_tick :: (p: [] Publish, a: [] Acct, st: [] LvStore, b: [] Blocks, kind: int, time: f32, in: bool, up: bool) {
+  if p[0].phase != PB_P_KEEP { return; }
+  if !in { p[0].phase = PB_IDLE; p[0].login = true; return; }
+  if !up || kind < 0 || kind >= GT_WEB_TYPES { pb_fail(p, "there is no game up to publish."); return; }
+  if time >= p[0].since + PB_WAIT { pb_fail(p, "not published: your game is taking too long to save to your account. try again."); return; }
+  if ac_busy(a) || !a[0].loaded { return; }
+  s := a[0].state; l := a[0].link[kind];
+  if s == AC_S_OUT { p[0].phase = PB_IDLE; p[0].login = true; return; }
+  if s == AC_S_LOCAL {
+    // what the account can't hold can't be published: with the numbers
+    o := p[0].said[..];
+    n := bl_put(o, 0, "not published: this game is kept in this browser only. a game on your account, and so a published one, holds ");
+    n = bl_int(o, n, GT_LEVEL_THINGS); n = bl_put(o, n, " things, "); n = bl_int(o, n, GT_LEVEL_SHAPES); n = bl_put(o, n, " different shapes and ");
+    n = bl_int(o, n, GT_LEVEL_FILE / 1024); n = bl_put(o, n, " kb at most. this one has "); n = bl_int(o, n, b[0].n); n = bl_put(o, n, " things.");
+    p[0].said_n = n; p[0].bad = true; p[0].phase = PB_IDLE;
+    return;
+  }
+  if s == AC_S_NOT { pb_fail(p, "not published: your game could not be saved to your account just now. try again."); return; }
+  if s == AC_S_KEPT && l.level > 0 && l.rev >= 0 && ac_sum(a, st, b) == l.sum { pb_send(p, l.level, ac_from(a, kind)); return; }
+  // not kept as it stands yet: the starter game of a type is a game too, and it is saved now, not a moment on
+  ac_built(a, kind); ac_wake(a);
+}
+
+// The account's answer to `published`: this level's game, if it is one of them.
+pb_listed :: (p: [] Publish, d: Jv, level: int) {
+  p[0].listed = true; p[0].level = level; p[0].game = 0; p[0].on = false; p[0].link_n = 0; p[0].live = 0; p[0].versions = 0;
+  g := jv_get(d, 0, "published");
+  i := ifx jv_kind(d, g) == JV_ARRAY then d.nodes[g].first else -1;
+  while i >= 0 {
+    if level > 0 && jv_int(d, jv_get(d, i, "level"), 0) == level {
+      p[0].game = jv_int(d, jv_get(d, i, "published"), 0);
+      p[0].live = jv_int(d, jv_get(d, i, "live"), 0); p[0].versions = jv_int(d, jv_get(d, i, "versions"), 0);
+      p[0].on = jv_bool(d, jv_get(d, i, "on_web"));
+      ln := jv_str(d, jv_get(d, i, "link"), p[0].link[..]); p[0].link_n = ifx ln > 0 then ln else 0;
+      if !p[0].typed { nn := jv_str(d, jv_get(d, i, "name"), p[0].name[..]); if nn > 0 { p[0].name_n = nn; } }
+    }
+    i = d.nodes[i].next;
+  }
+}
+// A request's answer ended: `status` is its HTTP status, 0 when there was none. `level` is the account's level of
+// the game that is up (0: none yet).
+pb_end :: (p: [] Publish, level: int, status: int, time: f32) {
+  phase := p[0].phase;
+  if phase == PB_IDLE || phase == PB_P_KEEP { return; }
+  p[0].phase = PB_IDLE;
+  r := cast(string) p[0].reply[0..<p[0].reply_n];
+  d: [1] Jv;
+  parsed := !p[0].over && jv_parse(d[..], r, p[0].nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+  ok := status == 200 && parsed && jv_bool(d[0], jv_get(d[0], 0, "ok"));
+  why: [240] u8; wn := ifx parsed then jv_str(d[0], jv_get(d[0], 0, "why"), why[..]) else 0;
+  if wn < 0 { wn = 0; }
+  if phase == PB_P_PLAY {
+    if status == 404 { p[0].play = PL_GONE; return; }
+    tw: [32] u8;
+    tn := ifx ok then jv_str(d[0], jv_get(d[0], 0, "template"), tw[..]) else -1;
+    fn := ifx ok then jv_str(d[0], jv_get(d[0], 0, "content"), p[0].file[..]) else -1;
+    nn := ifx ok then jv_str(d[0], jv_get(d[0], 0, "name"), p[0].title[..]) else -1;
+    if !ok || fn <= 0 || tn <= 0 { p[0].play = PL_FAIL; return; }
+    p[0].title_n = ifx nn > 0 then nn else 0; p[0].file_n = fn; p[0].version = jv_int(d[0], jv_get(d[0], 0, "version"), 0);
+    p[0].kind = gt_web_kind(gt_of(cast(string) tw[0..<tn]));
+    p[0].play = ifx p[0].kind >= 0 then PL_GOT else PL_APP;
+    return;
+  }
+  if phase == PB_P_FACT { return; }   // (counted or not, nothing on the page changes)
+  if phase == PB_P_REPORT {
+    p[0].reporting = false;
+    if ok { p[0].reported = true; p[0].note_n = bl_put(p[0].note[..], 0, "reported. thank you: a person will look at it."); return; }
+    n := bl_put(p[0].note[..], 0, "not reported: ");
+    n = bl_put(p[0].note[..], n, ifx wn > 0 then cast(string) why[0..<wn] else ifx status == 0 then "can't reach the server" else "the server didn't take it");
+    p[0].note_n = bl_put(p[0].note[..], n, ".");
+    return;
+  }
+  if phase == PB_P_WHO {
+    if status == 401 || (status == 200 && parsed && !jv_bool(d[0], jv_get(d[0], 0, "logged_in"))) { p[0].login = true; pb_say(p, "log in to publish. your game stays as it is.", false); return; }
+    if status != 200 || !parsed { pb_fail(p, ifx status == 0 then "can't reach the server. nothing was published: try again." else "the login didn't answer. nothing was published: try again."); return; }
+    if p[0].next == PB_DO_LIST { pb_ask_list(p); }
+    else if p[0].next == PB_DO_PUBLISH { p[0].phase = PB_P_KEEP; p[0].since = time; }
+    else if p[0].next == PB_DO_LIVE { pb_send_game(p, PB_P_LIVE, "/api/rows/set-live", p[0].to); }
+    else { pb_send_game(p, PB_P_DOWN, "/api/rows/unpublish", 0); }
+    return;
+  }
+  if status == 401 { p[0].login = true; pb_say(p, "log in again to publish. your game stays as it is.", false); return; }
+  if !ok {
+    // the server's refusal in its own words (a limit says its number there), or that it didn't answer
+    o := p[0].said[..];
+    n := bl_put(o, 0, ifx phase == PB_P_LIST then "can't read what you have published: " else ifx phase == PB_P_SEND then "not published: " else "not changed: ");
+    if wn > 0 { n = bl_put(o, n, cast(string) why[0..<wn]); }
+    else if status == 0 { n = bl_put(o, n, "can't reach the server"); }
+    else { n = bl_put(o, n, "the server answered "); n = bl_int(o, n, status); }
+    n = bl_put(o, n, ".");
+    p[0].said_n = n; p[0].bad = true;
+    return;
+  }
+  if phase == PB_P_LIST { pb_listed(p, d[0], level); return; }
+  if phase == PB_P_SEND {
+    p[0].game = jv_int(d[0], jv_get(d[0], 0, "published"), 0);
+    p[0].live = jv_int(d[0], jv_get(d[0], 0, "version"), 0); p[0].versions = p[0].live;
+    ln := jv_str(d[0], jv_get(d[0], 0, "link"), p[0].link[..]); p[0].link_n = ifx ln > 0 then ln else 0;
+    p[0].on = p[0].link_n > 0; p[0].listed = true; p[0].done = true;
+    pb_say(p, ifx p[0].live > 1 then "published: the link plays this version now." else "published. anyone with the link can play it.", false);
+    return;
+  }
+  // set-live and unpublish: how the game stands now is read back
+  pb_say(p, ifx phase == PB_P_LIVE then "done: the link plays that version now." else "done: the link plays nothing now. publish puts it back at the same link.", false);
+  pb_ask_list(p);
+}
+
+// ---------------------------------------------------------------- a link's page
+
+// The address is a link's (/g/CODE): the game is asked for. False when the code is not one (the page says the
+// link plays nothing, and asks nothing).
+pb_play_code :: (p: [] Publish, path: string) -> bool {
+  code := ifx path.count > 3 then path[3..<path.count] else "";
+  if code.count > PB_CODE && (code[PB_CODE] == '/' || code[PB_CODE] == '?' || code[PB_CODE] == '#') { code = code[0..<PB_CODE]; }
+  p[0].play = PL_GONE; p[0].reporting = false; p[0].reported = false; p[0].swap = false; p[0].checking = false; p[0].note_n = 0; p[0].title_n = 0;
+  if code.count != PB_CODE { return false; }
+  for c: code { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { return false; } }
+  // (another game's link: nothing of it has been counted here)
+  if pb_code(p) != code { p[0].facts = 0; p[0].counted = 0; }
+  for i: 0..<PB_CODE { p[0].code[i] = code[i]; }
+  pb_play_ask(p);
+  return true;
+}
+pb_play_ask :: (p: [] Publish) {
+  n := bl_put(p[0].url[..], 0, "/api/play/"); n = bl_put(p[0].url[..], n, pb_code(p));
+  p[0].body_n = 0; p[0].play = PL_ASK;
+  p[0].phase = PB_P_PLAY; p[0].want = true; p[0].reply_n = 0; p[0].over = false; p[0].url_n = n;
+}
+// The page put the file in the world (or could not: a level with things this page can't show). A game that came
+// up was opened: counted.
+pb_play_took :: (p: [] Publish, shown: bool, time: f32) {
+  p[0].play = ifx shown then PL_UP else PL_APP;
+  if shown { p[0].up_at = time; pb_fact(p, PY_OPENED); }
+}
+// A fact of the game at this page's code happened (shared/plays.coax: opened, minute, remix): it is sent once for
+// the code while this page is up, and again is nothing.
+pb_fact :: (p: [] Publish, fact: int) {
+  if fact < 0 || fact >= PY_SENT || (p[0].counted & (1 << fact)) != 0 { return; }
+  p[0].counted |= 1 << fact; p[0].facts |= 1 << fact;
+}
+// Each frame: a game still being played a minute on was played a minute, and a fact that waits is sent when no
+// other request of this module's is in hand. `may`: whether this tab counts (web/count.coax ct_may): 1 it does,
+// 0 not known yet (the facts wait), -1 never (a program's browser: they are dropped).
+pb_fact_tick :: (p: [] Publish, time: f32, may: int) {
+  if p[0].play == PL_UP && time >= p[0].up_at + cast(f32) PY_MINUTE_S { pb_fact(p, PY_MINUTE); }
+  if may < 0 { p[0].facts = 0; return; }
+  if may == 0 || p[0].facts == 0 || p[0].phase != PB_IDLE || p[0].want { return; }
+  fact := 0; while fact < PY_SENT && (p[0].facts & (1 << fact)) == 0 { fact += 1; }
+  p[0].facts ^= 1 << fact;
+  body := py_body(fact, p[0].body[..]);
+  if body.count == 0 { return; }
+  p[0].body_n = body.count;
+  n := bl_put(p[0].url[..], 0, "/api/play/"); n = bl_put(p[0].url[..], n, pb_code(p)); n = bl_put(p[0].url[..], n, PY_DOOR);
+  p[0].phase = PB_P_FACT; p[0].want = true; p[0].reply_n = 0; p[0].over = false; p[0].url_n = n;
+}
+// A reason pressed: the report is sent. One report a visit.
+pb_report :: (p: [] Publish, reason: int) {
+  if reason < 0 || reason >= PB_REASONS || p[0].reported || p[0].phase != PB_IDLE { return; }
+  words := PB_REASON;
+  o: [1] Jo; jo_start(o[..], p[0].body[..]); jo_obj(o[..]); jo_key(o[..], "reason"); jo_str(o[..], words[reason]); jo_end(o[..]);
+  p[0].body_n = o[0].n;
+  n := bl_put(p[0].url[..], 0, "/api/play/"); n = bl_put(p[0].url[..], n, pb_code(p)); n = bl_put(p[0].url[..], n, "/report");
+  p[0].phase = PB_P_REPORT; p[0].want = true; p[0].reply_n = 0; p[0].over = false; p[0].url_n = n;
+}
+
+// ---------------------------------------------------------------- checks
+
+PbTest :: struct { p: [1] Publish; a: [1] Acct; b: [1] Blocks; st: [1] LvStore; t: f32; }
+pb_test_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+pb_test_door :: (t: [] PbTest) -> string { return ifx t[0].p[0].want then cast(string) t[0].p[0].url[0..<t[0].p[0].url_n] else ""; }
+pb_test_body :: (t: [] PbTest) -> string { return cast(string) t[0].p[0].body[0..<t[0].p[0].body_n]; }
+pb_test_said :: (t: [] PbTest) -> string { return cast(string) t[0].p[0].said[0..<t[0].p[0].said_n]; }
+pb_test_answer :: (t: [] PbTest, level: int, status: int, text: string) {
+  #assert pb_wants(t[0].p[..]);
+  pb_sent(t[0].p[..]);
+  buf: [2048] u8; for i: 0..<text.count { buf[i] = text[i]; }
+  pb_piece(t[0].p[..], buf[0..<text.count]);
+  pb_end(t[0].p[..], level, status, t[0].t);
+}
+PB_TEST_IN :: "{\"logged_in\":true,\"account\":\"acct_a\",\"kind\":\"person\"}";
+PB_TEST_KIND :: GT_RACING - GT_WEB_FIRST;
+pb_test_new :: (t: [] PbTest) { ty := gt_web_type(PB_TEST_KIND); bl_new(t[0].b[..], ty); bl_bounds(t[0].b[..], GT_FAR[ty], GT_HIGH[ty]); bl_low(t[0].b[..], GT_LOW[ty]); bl_roles(t[0].b[..], gt_roles(ty)); }
+// The account holds the game as it stands: its level `level`, kept.
+pb_test_kept :: (t: [] PbTest, level: int) {
+  a := t[0].a[..]; k := PB_TEST_KIND;
+  a[0].loaded = true; a[0].state = AC_S_KEPT; a[0].link[k].game = 1; a[0].link[k].level = level; a[0].link[k].rev = 3;
+  a[0].link[k].sum = ac_sum(a, t[0].st[..], t[0].b[..]);
+}
+
+#test "publishing: who is here is asked first, the game is kept on the account, then the publish row is sent with its name, and the link comes back" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..]; pb_test_new(t[..]);
+  pb_open(p, PB_TEST_KIND);
+  #assert p[0].open && pb_name(p) == "my racing game" && pb_test_door(t[..]) == "/api/auth/account" && p[0].body_n == 0;
+  pb_test_answer(t[..], 0, 200, PB_TEST_IN);
+  // what the account has published: nothing of this game yet
+  #assert pb_test_door(t[..]) == "/api/rows/published" && pb_test_body(t[..]) == "{}";
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"published\":[],\"where\":\"on the web\"}");
+  #assert p[0].listed && p[0].game == 0 && !p[0].on && !pb_busy(p);
+  // the name is the person's
+  nm := "Moss Run"; nb: [16] u8; for i: 0..<nm.count { nb[i] = nm[i]; }
+  pb_name_input(p, nb[0..<nm.count]);
+  pb_publish(p);
+  #assert pb_test_door(t[..]) == "/api/auth/account";
+  pb_test_answer(t[..], 0, 200, PB_TEST_IN);
+  // the game is not on the account yet: nothing is sent until it is, and the account's own pass is woken
+  #assert p[0].phase == PB_P_KEEP && !pb_wants(p);
+  t[0].a[0].loaded = true;
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 1.0, true, true);
+  #assert p[0].phase == PB_P_KEEP && !pb_wants(p) && t[0].a[0].soon && t[0].a[0].link[PB_TEST_KIND].built;
+  // kept: the publish row, with the account's level and the name
+  pb_test_kept(t[..], 7);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 2.0, true, true);
+  #assert pb_test_door(t[..]) == "/api/rows/publish" && pb_test_body(t[..]) == "{\"level\":7,\"name\":\"Moss Run\"}";
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":2,\"version\":1,\"link\":\"https://gamebuilder.org/g/abc234\",\"where\":\"on the web\"}");
+  #assert p[0].done && p[0].on && p[0].game == 2 && p[0].live == 1 && pb_link(p) == "https://gamebuilder.org/g/abc234" && !p[0].bad && pb_test_has(pb_test_said(t[..]), "anyone with the link");
+  // again: a new version, live at once
+  p[0].done = false;
+  pb_publish(p); pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 3.0, true, true);
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":2,\"version\":2,\"link\":\"https://gamebuilder.org/g/abc234\"}");
+  #assert p[0].live == 2 && p[0].versions == 2 && p[0].done && pb_test_has(pb_test_said(t[..]), "this version");
+}
+
+#test "publishing: a limit, a refusal and a login that ended are said in words, and nothing is sent that the account can't hold" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..]; pb_test_new(t[..]);
+  p[0].open = true; pb_name_default(p, PB_TEST_KIND);
+  // nobody is logged in: the page is told to open the account sheet, once
+  pb_publish(p);
+  pb_test_answer(t[..], 0, 200, "{\"logged_in\":false}");
+  #assert p[0].login && !pb_busy(p) && pb_test_has(pb_test_said(t[..]), "log in to publish");
+  p[0].login = false;
+  // the game is over what the account holds: not published, with the numbers
+  pb_publish(p); pb_test_answer(t[..], 0, 200, PB_TEST_IN);
+  t[0].a[0].loaded = true; t[0].a[0].state = AC_S_LOCAL;
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 1.0, true, true);
+  #assert !pb_busy(p) && p[0].bad && pb_test_has(pb_test_said(t[..]), "512 things") && pb_test_has(pb_test_said(t[..]), "256 kb") && pb_test_has(pb_test_said(t[..]), "not published");
+  // the save failed: said, not sent
+  t[0].a[0].state = AC_S_NOT;
+  pb_publish(p); pb_test_answer(t[..], 0, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 2.0, true, true);
+  #assert !pb_busy(p) && p[0].bad && pb_test_has(pb_test_said(t[..]), "could not be saved");
+  // it never gets kept: publishing gives up after PB_WAIT seconds, in words
+  t[0].a[0].state = AC_S_NONE; t[0].t = 10.0;
+  pb_publish(p); pb_test_answer(t[..], 0, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 20.0, true, true);
+  #assert p[0].phase == PB_P_KEEP;
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 10.0 + PB_WAIT, true, true);
+  #assert !pb_busy(p) && pb_test_has(pb_test_said(t[..]), "taking too long");
+  // the server's limit, in the server's words with its number
+  pb_test_kept(t[..], 7); t[0].t = 60.0;
+  pb_publish(p); pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 60.0, true, true);
+  pb_test_answer(t[..], 7, 429, "{\"ok\":false,\"error\":\"limit\",\"why\":\"30 publishes an hour (PUB_PER_HOUR): try again later\"}");
+  #assert p[0].bad && !p[0].done && pb_test_said(t[..]) == "not published: 30 publishes an hour (PUB_PER_HOUR): try again later.";
+  // the login ended between the two requests
+  pb_publish(p); pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 61.0, true, true);
+  pb_test_answer(t[..], 7, 401, "{\"ok\":false,\"error\":\"not-logged-in\",\"why\":\"x\"}");
+  #assert p[0].login;
+  // no name: nothing is asked
+  p[0].name_n = 0; p[0].login = false;
+  pb_publish(p);
+  #assert !pb_busy(p) && pb_test_has(pb_test_said(t[..]), "name");
+  // the small print says the numbers
+  lb: [320] u8; ln := pb_limits(lb[..]);
+  #assert pb_test_has(cast(string) lb[0..<ln], "512 things") && pb_test_has(cast(string) lb[0..<ln], "16 games") && pb_test_has(cast(string) lb[0..<ln], "30 times an hour") && pb_test_has(cast(string) lb[0..<ln], "128 versions");
+}
+
+#test "publishing: the sheet shows the game the account already published, an older version is made live, and unpublish takes the link down" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..]; pb_test_new(t[..]);
+  pb_open(p, PB_TEST_KIND);
+  pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  list := "{\"ok\":true,\"published\":[{\"published\":1,\"level\":3,\"name\":\"Other\",\"link\":\"https://gamebuilder.org/g/zzzzzz\",\"live\":1,\"versions\":1,\"on_web\":true},{\"published\":2,\"level\":7,\"name\":\"Moss Run\",\"template\":\"racing\",\"link\":\"https://gamebuilder.org/g/abc234\",\"live\":3,\"versions\":3,\"on_web\":true}]}";
+  pb_test_answer(t[..], 7, 200, list);
+  #assert p[0].listed && p[0].game == 2 && p[0].live == 3 && p[0].versions == 3 && p[0].on && pb_link(p) == "https://gamebuilder.org/g/abc234" && pb_name(p) == "Moss Run";
+  // version 2 is the one the link plays
+  pb_live(p, 2);
+  pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  #assert pb_test_door(t[..]) == "/api/rows/set-live" && pb_test_body(t[..]) == "{\"published\":2,\"version\":2}";
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":2,\"live\":2}");
+  #assert pb_test_door(t[..]) == "/api/rows/published";
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":[{\"published\":2,\"level\":7,\"name\":\"Moss Run\",\"link\":\"https://gamebuilder.org/g/abc234\",\"live\":2,\"versions\":3,\"on_web\":true}]}");
+  #assert p[0].live == 2 && p[0].versions == 3 && pb_test_has(pb_test_said(t[..]), "that version");
+  // a version the server no longer keeps: its words
+  pb_live(p, 1); pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_test_answer(t[..], 7, 404, "{\"ok\":false,\"error\":\"not-found\",\"why\":\"that game has no such version (versions)\"}");
+  #assert p[0].bad && pb_test_said(t[..]) == "not changed: that game has no such version (versions)." && p[0].live == 2;
+  // unpublish
+  pb_down(p); pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  #assert pb_test_door(t[..]) == "/api/rows/unpublish" && pb_test_body(t[..]) == "{\"published\":2}";
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":2}");
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":[{\"published\":2,\"level\":7,\"name\":\"Moss Run\",\"link\":\"https://gamebuilder.org/g/abc234\",\"live\":2,\"versions\":3,\"on_web\":false}]}");
+  #assert !p[0].on && p[0].game == 2 && pb_test_has(pb_test_said(t[..]), "plays nothing");
+}
+
+#test "a link's page: the code is read from the address, the game asked for with no login, and what comes back is the level's file and its type; a report is one of four reasons" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..];
+  #assert !pb_play_code(p, "/g/") && p[0].play == PL_GONE && !pb_wants(p);
+  #assert !pb_play_code(p, "/g/ABC234") && !pb_play_code(p, "/g/abc23") && !pb_play_code(p, "/g/abc2345") && !pb_play_code(p, "/g/../../x");
+  #assert pb_play_code(p, "/g/abc234") && p[0].play == PL_ASK && pb_test_door(t[..]) == "/api/play/abc234" && p[0].body_n == 0;
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"schema\":\"gamebuilder.play.v1\",\"code\":\"abc234\",\"name\":\"Moss Run\",\"template\":\"racing\",\"version\":2,\"content\":\"world.doc.v1 level-7\\n\"}");
+  #assert p[0].play == PL_GOT && p[0].kind == PB_TEST_KIND && pb_title(p) == "Moss Run" && p[0].version == 2 && cast(string) p[0].file[0..<p[0].file_n] == "world.doc.v1 level-7\n";
+  pb_play_took(p, true, 0.0);
+  #assert p[0].play == PL_UP;
+  // a report: a reason of the server's list, once
+  pb_report(p, 2);
+  #assert pb_test_door(t[..]) == "/api/play/abc234/report" && pb_test_body(t[..]) == "{\"reason\":\"spam\"}";
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"reported\":true}");
+  #assert p[0].reported && pb_test_has(cast(string) p[0].note[0..<p[0].note_n], "reported");
+  pb_report(p, 1);
+  #assert !pb_wants(p);
+  // with a slash after it the code is still the code; a game the app plays is said so; one that is gone, gone
+  #assert pb_play_code(p, "/g/abc234/") && pb_test_door(t[..]) == "/api/play/abc234";
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"name\":\"A\",\"template\":\"arena\",\"version\":1,\"content\":\"world.doc.v1 level-1\\n\"}");
+  #assert p[0].play == PL_APP;
+  #assert pb_play_code(p, "/g/abc234");
+  pb_test_answer(t[..], 0, 404, "{\"ok\":false,\"error\":\"not-found\",\"why\":\"this game isn't available\"}");
+  #assert p[0].play == PL_GONE;
+  #assert pb_play_code(p, "/g/abc234");
+  pb_test_answer(t[..], 0, 0, "");
+  #assert p[0].play == PL_FAIL;
+  // the reasons shown are the server's four
+  #assert PB_REASON[0] == "offensive" && PB_REASON[3] == "other" && PB_REASONS == 4;
+}
+#test "a link's game is counted: opened when it comes up, played a minute, Remix pressed; each once for a code, never ahead of another request, and never from a program's browser" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..];
+  game := "{\"ok\":true,\"schema\":\"gamebuilder.play.v1\",\"code\":\"abc234\",\"name\":\"Moss Run\",\"template\":\"racing\",\"version\":2,\"content\":\"world.doc.v1 level-7\\n\"}";
+  #assert pb_play_code(p, "/g/abc234");
+  pb_test_answer(t[..], 0, 200, game);
+  // a game that could not be shown was not opened
+  pb_play_took(p, false, 5.0); pb_fact_tick(p, 5.0, 1);
+  #assert p[0].play == PL_APP && !pb_wants(p) && p[0].facts == 0;
+  pb_play_took(p, true, 5.0);
+  // whether this tab counts is not known yet: the fact waits
+  pb_fact_tick(p, 5.1, 0);
+  #assert !pb_wants(p) && p[0].facts != 0;
+  pb_fact_tick(p, 5.2, 1);
+  #assert pb_test_door(t[..]) == "/api/play/abc234/played" && pb_test_body(t[..]) == "{\"fact\":\"opened\"}";
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"counted\":\"opened\"}");
+  #assert !pb_busy(p) && p[0].play == PL_UP && p[0].note_n == 0;
+  // nothing more until it has been played a minute
+  pb_fact_tick(p, 64.9, 1);
+  #assert !pb_wants(p);
+  pb_fact_tick(p, 65.0, 1);
+  #assert pb_test_door(t[..]) == "/api/play/abc234/played" && pb_test_body(t[..]) == "{\"fact\":\"minute\"}";
+  // whatever became of it (here: no answer at all), the page goes on, and it is not sent again
+  pb_test_answer(t[..], 0, 0, "");
+  pb_fact_tick(p, 200.0, 1);
+  #assert !pb_busy(p) && !pb_wants(p) && p[0].play == PL_UP;
+  // Remix, once; a fact that is not the page's to say is nothing; and a request in hand goes first
+  pb_fact(p, PY_REMIX); pb_fact(p, PY_REMIX); pb_fact(p, PY_REMADE); pb_fact(p, -1);
+  pb_report(p, 2);
+  pb_fact_tick(p, 201.0, 1);
+  #assert pb_test_door(t[..]) == "/api/play/abc234/report";
+  pb_test_answer(t[..], 0, 200, "{\"ok\":true,\"reported\":true}");
+  pb_fact_tick(p, 202.0, 1);
+  #assert pb_test_door(t[..]) == "/api/play/abc234/played" && pb_test_body(t[..]) == "{\"fact\":\"remix\"}";
+  pb_test_answer(t[..], 0, 429, "{\"ok\":false,\"error\":\"limit\",\"why\":\"x\"}");
+  pb_fact_tick(p, 203.0, 1);
+  #assert !pb_wants(p) && p[0].reported;
+  // the same link asked for again counts nothing new
+  #assert pb_play_code(p, "/g/abc234");
+  pb_test_answer(t[..], 0, 200, game);
+  pb_play_took(p, true, 300.0); pb_fact_tick(p, 400.0, 1);
+  #assert !pb_wants(p);
+  // another game's link starts over; in a program's browser what waits is dropped, and stays dropped
+  #assert pb_play_code(p, "/g/zzz999");
+  pb_test_answer(t[..], 0, 200, game);
+  pb_play_took(p, true, 500.0);
+  #assert p[0].facts != 0;
+  pb_fact_tick(p, 501.0, -1);
+  #assert !pb_wants(p) && p[0].facts == 0;
+  pb_fact_tick(p, 502.0, 1);
+  #assert !pb_wants(p);
+}
+#test "publishing a remix: the publish row says the game it was made from, as this browser kept it; a game that is none says nothing" #steps 400000000 {
+  t: [1] PbTest; p := t[0].p[..]; pb_test_new(t[..]);
+  pb_test_kept(t[..], 7);
+  ac_from_set(t[0].a[..], PB_TEST_KIND, "abc234");
+  pb_open(p, PB_TEST_KIND);
+  pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":[],\"where\":\"on the web\"}");
+  pb_publish(p);
+  pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 1.0, true, true);
+  #assert pb_test_door(t[..]) == "/api/rows/publish" && pb_test_body(t[..]) == "{\"level\":7,\"name\":\"my racing game\",\"from\":\"abc234\"}";
+  pb_test_answer(t[..], 7, 200, "{\"ok\":true,\"published\":2,\"version\":1,\"link\":\"https://gamebuilder.org/g/zzz999\",\"from\":\"abc234\",\"where\":\"on the web\"}");
+  #assert p[0].done && p[0].on && pb_link(p) == "https://gamebuilder.org/g/zzz999";
+  // not a remix: no word of one
+  ac_from_set(t[0].a[..], PB_TEST_KIND, "");
+  pb_publish(p);
+  pb_test_answer(t[..], 7, 200, PB_TEST_IN);
+  pb_tick(p, t[0].a[..], t[0].st[..], t[0].b[..], PB_TEST_KIND, 2.0, true, true);
+  #assert pb_test_door(t[..]) == "/api/rows/publish" && pb_test_body(t[..]) == "{\"level\":7,\"name\":\"my racing game\"}";
+}

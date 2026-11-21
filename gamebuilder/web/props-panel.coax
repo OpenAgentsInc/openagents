@@ -1,0 +1,125 @@
+// The world's settings and the selected thing's, drawn from the registry (docs/web-world.md,
+// "Properties"). Nothing here names a property: every row is a row of the engine's table
+// (metaverse-engine/state/world-tunables.coax), drawn with the control its kind
+// takes (a slider for a number, a press for on or off, a row of presses for a choice), what it is
+// now, and a reset when it differs. What differs comes first. A change goes through the same plan
+// line the model writes (`set PATH VALUE`, `reset PATH`: web/blocks.coax), so the panel, the model
+// and the world can never disagree.
+//
+// Ids: a row's control is `p.` and the path as written (`p.world.gravity`, `p.b3.bounce`); its
+// reset `p.PATH.r`; an on-or-off press `p.PATH.t`; a choice's presses `p.PATH.cK`; every setting
+// back `p.all`.
+//   coax/bin/coax test web/page.coax --library   (its checks press these)
+
+PP_ID :: 64;   // bytes of a row's id
+
+// One row: its name, its control, what it is now, and a reset when it differs. `path` is the path as
+// written (the world's own, or a thing's: b3.bounce, balls.bounce), `named` whether it is shown whole
+// (under a group's heading only its name is); `now` and `changed` are its value and whether it differs.
+pp_row :: (t: [] Tree, row: Tunable, path: string, named: bool, now: int, changed: bool) {
+  id: [PP_ID] u8; ia: [PP_ID] u8; ib: [PP_ID] u8; words: [64] u8; name: [48] u8;
+  n := tun_put(id[..], 0, "p."); n = tun_put(id[..], n, path); pid := cast(string) id[0..<n];
+  m := tun_put(name[..], 0, ifx named then path else tun_name(path)); for i: 0..<m { if name[i] == '_' { name[i] = ' '; } }
+  shown := cast(string) name[0..<m];
+  r := tr_open(t, tr_cat(ia[..], pid, ".row"), TG_DIV, ifx changed then "prow on" else "prow");
+  tr_attr(t, r, AT_TITLE, row.about);
+  w := tun_text(row, now, words[..], 0);
+  if (row.kind == TUN_NUMBER || row.kind == TUN_WHOLE) && row.unit.count > 0 && row.unit.count < 4 { w = tun_put(words[..], w, " "); w = tun_put(words[..], w, row.unit); }
+  if row.kind == TUN_NUMBER || row.kind == TUN_WHOLE {
+    f := k_slider(t, pid, shown, cast(string) words[0..<w], row.low, row.high, row.step);
+    v: [24] u8; vn := tun_put_int(v[..], 0, now); tr_attr(t, f, AT_VALUE, cast(string) v[0..<vn]);
+  } else {
+    l := tr_leaf(t, tr_cat(ia[..], pid, ".n"), TG_SPAN, "meta", shown);
+    if row.kind == TUN_BOOL {
+      b := tr_leaf(t, tr_cat(ib[..], pid, ".t"), TG_BUTTON, "", ifx now != 0 then "on" else "off");
+      tr_attr(t, b, AT_PRESSED, ifx now != 0 then "true" else "false"); tr_attr(t, b, AT_LABEL, shown);
+    } else {
+      for k: 0..<row.high + 1 {
+        c: [PP_ID] u8; cn := tun_put(c[..], 0, pid); cn = tun_put(c[..], cn, ".c"); cn = tun_put_int(c[..], cn, k);
+        b := tr_leaf(t, cast(string) c[0..<cn], TG_BUTTON, "", row.names[k]);
+        tr_attr(t, b, AT_PRESSED, ifx k == now then "true" else "false");
+      }
+    }
+  }
+  if changed { x := tr_leaf(t, tr_cat(ib[..], pid, ".r"), TG_BUTTON, "", "reset"); tr_attr(t, x, AT_LABEL, "reset"); }
+  tr_close(t);
+}
+// A group's heading.
+pp_head :: (t: [] Tree, id: string, words: string) { h := tr_leaf(t, id, TG_SPAN, "pgroup mono", words); }
+// The world's settings: what differs first (the world's, the player's, the camera's, and any set for
+// things), each with its reset and one for them all; then every other row of the world, the player,
+// the camera and the grass, by group. A thing's own rows are in its own panel.
+pp_world :: (t: [] Tree, k: [] Blocks) {
+  p := k[0].props[..]; pr_ready(p); o := p[0].over[..];
+  path: [PP_ID] u8;
+  if o[0].n > 0 {
+    pp_head(t, "p.h.changed", "changed");
+    for i: 0..<o[0].n {
+      n := pr_path(o[0].prop[i], o[0].target[i], path[..], 0);
+      pp_row(t, TW_ROWS[o[0].prop[i]], cast(string) path[0..<n], true, o[0].value[i], true);
+    }
+    all := tr_leaf(t, "p.all", TG_BUTTON, "", "reset all"); tr_attr(t, all, AT_LABEL, "every setting back");
+  }
+  last := "";
+  for row, i: TW_ROWS {
+    if row.scope == TUN_THING || pr_changed(p, i) { continue; }
+    // (a group's heading over its first row still here: one that differs is above, in what changed)
+    g := tun_group(row.path);
+    if g != last { hid: [PP_ID] u8; hn := tun_put(hid[..], 0, "p.h."); hn = tun_put(hid[..], hn, g); pp_head(t, cast(string) hid[0..<hn], g); last = g; }
+    pp_row(t, row, row.path, false, row.def, false);
+  }
+}
+// The selected thing's own rows, as they stand for it (its own, its kind's, every thing's, or the
+// world's start), each with a reset when it has its own.
+pp_thing :: (t: [] Tree, k: [] Blocks, i: int) {
+  p := k[0].props[..]; one := k[0].b[i]; kind := ifx one.kind == BL_BALL then PR_BALL else PR_BLOCK;
+  path: [PP_ID] u8;
+  for row, r: TW_ROWS {
+    if row.scope != TUN_THING { continue; }
+    n := pr_path(r, one.id, path[..], 0);
+    own := tun_find(p[0].over[..], r, one.id) >= 0;
+    pp_row(t, row, cast(string) path[0..<n], false, pr_thing(p, r, one.id, kind), own);
+  }
+}
+// A slider moved: `id` is its id, `text` the whole number it stands at. True when the setting changed.
+pp_input :: (k: [] Blocks, id: string, text: string) -> bool {
+  if id.count < 3 || cast(string) id[0..<2] != "p." { return false; }
+  path := cast(string) id[2..<id.count];
+  at := pr_at(path);
+  v := tun_whole(text);
+  if at.prop < 0 || v.status != TUN_OK { return false; }
+  line: [96] u8; n := tun_put(line[..], 0, "set "); n = tun_put(line[..], n, path); n = tun_put(line[..], n, " "); n = tun_text(TW_ROWS[at.prop], v.value, line[..], n);
+  return bl_plan(k, cast(string) line[0..<n]);
+}
+// A press in a panel: a reset, an on-or-off, a choice, or every setting back. True when it was one.
+pp_click :: (k: [] Blocks, id: string) -> bool {
+  if id == "p.all" { pr_clear(k[0].props[..]); bl_tuned(k); return true; }
+  if id.count < 5 || cast(string) id[0..<2] != "p." { return false; }
+  // the press's own part is after the last dot; the path is between
+  d := id.count - 1; while d > 2 && id[d] != '.' { d -= 1; }
+  if d <= 2 { return false; }
+  path := cast(string) id[2..<d]; what := cast(string) id[d + 1..<id.count];
+  at := pr_at(path);
+  if at.prop < 0 { return false; }
+  row := TW_ROWS[at.prop];
+  line: [96] u8; n := 0;
+  if what == "r" { n = tun_put(line[..], 0, "reset "); n = tun_put(line[..], n, path); }
+  else if what == "t" && row.kind == TUN_BOOL {
+    now := ifx at.target == 0 && row.scope != TUN_THING then pr_value(k[0].props[..], at.prop) else pp_thing_now(k, at);
+    n = tun_put(line[..], 0, "set "); n = tun_put(line[..], n, path); n = tun_put(line[..], n, ifx now != 0 then " off" else " on");
+  }
+  else if what.count >= 2 && what[0] == 'c' && row.kind == TUN_CHOICE {
+    c := tun_whole(cast(string) what[1..<what.count]);
+    if c.status != TUN_OK || c.value > row.high { return false; }
+    n = tun_put(line[..], 0, "set "); n = tun_put(line[..], n, path); n = tun_put(line[..], n, " "); n = tun_put(line[..], n, row.names[c.value]);
+  }
+  else { return false; }
+  return bl_plan(k, cast(string) line[0..<n]);
+}
+// A thing's row as it stands for whom a path names: one thing, a kind, or every thing (as a block has it).
+pp_thing_now :: (k: [] Blocks, at: TunAt) -> int {
+  p := k[0].props[..];
+  if at.target > 0 { i := bl_at(k, at.target); return pr_thing(p, at.prop, at.target, ifx i >= 0 && k[0].b[i].kind == BL_BALL then PR_BALL else PR_BLOCK); }
+  if at.target < 0 { return pr_thing(p, at.prop, BL_NO_ID, -1 - at.target); }
+  return pr_thing(p, at.prop, BL_NO_ID, PR_BLOCK);
+}

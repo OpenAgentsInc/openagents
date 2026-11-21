@@ -1,0 +1,171 @@
+// gamebuilder.org's properties: everything about the world that can be tweaked, as one registry
+// (docs/web-world.md, "Properties"). The registry is the engine's: its rows are
+// metaverse-engine/state/world-tunables.coax (a path like world.gravity or
+// thing.bounce, a kind, a range, a default, a few words, a line that says what it does) and what
+// is done with them is state/tunables.coax. This file is the little the page and the world both
+// need round it: what this world starts from, a value set or put back by its path as written, the
+// words when that is refused, and the paths as the chat's model writes them.
+//
+// A new tweakable thing is a row in the engine's table and the place its rule reads it
+// (web/hud.coax: hud_tuning, hud_tune, hud_materials, the frame). It is never a new verb here.
+//
+// Both modules load this: the page (web/blocks.coax keeps a Props in its list, and `set PATH VALUE`
+// and `reset PATH` are edits like any other) and the world (web/hud.coax is told what differs with
+// the hotbar's state, message 113, and reads each value where the rule that uses it is).
+//   coax/bin/coax test web/props.coax --library
+
+#load "../../metaverse-engine/state/world-tunables.coax";
+
+PR_NO_THING :: 16;      // a status beside the engine's TUN_*: the path names a thing that is not there
+PR_WHY :: 320;          // bytes of what was refused, kept for the answer
+PR_BLOCK :: 0; PR_BALL :: 1;   // the kinds of thing, in the engine's order (TW_KINDS) and the page's (BL_BLOCK, BL_BALL)
+
+Props :: struct {
+  ready: bool;
+  base: [1] TunStore;                 // what this world starts from where it is not the table's default: a ball's material
+  over: [1] TunStore;                 // what differs: the world's settings
+  why: [PR_WHY] u8; why_n: int;       // why the last edits that were refused were (pr_why): the chat puts it under the answer
+}
+
+// What this world starts from: a ball is lighter for its size than a block, grips more and bounces
+// more (web/hud.coax's own numbers before the registry: 40 kg a cubic metre, 0.6, 0.55).
+pr_ready :: (p: [] Props) {
+  if p[0].ready { return; }
+  b := p[0].base[..];
+  tun_clear(b);
+  ok := tun_keep(b, TW_DENSITY, -1 - PR_BALL, 40) && tun_keep(b, TW_FRICTION, -1 - PR_BALL, 60) && tun_keep(b, TW_BOUNCE, -1 - PR_BALL, 55);
+  p[0].ready = true;
+}
+// The world's or the player's value of a row now; a thing's, by its id and kind.
+pr_value :: (p: [] Props, prop: int) -> int { pr_ready(p); return tun_value(TW_ROWS[..], p[0].base[..], p[0].over[..], prop); }
+pr_thing :: (p: [] Props, prop: int, id: int, kind: int) -> int { pr_ready(p); return tun_thing(TW_ROWS[..], p[0].base[..], p[0].over[..], prop, id, kind); }
+// What a thing of a kind has of a row when nothing was set for it or for its kind: the default the panel and the model are told.
+pr_plain :: (p: [] Props, prop: int, kind: int) -> int { pr_ready(p); none: [1] TunStore; return tun_thing(TW_ROWS[..], p[0].base[..], none[..], prop, TUN_ALL, kind); }
+// Whether the world's or the player's row is anything but its default.
+pr_changed :: (p: [] Props, prop: int) -> bool { return pr_value(p, prop) != TW_ROWS[prop].def; }
+// A path as written, to its row and who it is for.
+pr_at :: (path: string) -> TunAt { return tun_at(TW_ROWS[..], TW_KINDS[..], path); }
+// What a row takes, in words: "on or off", "one of night, dawn", "0 to 5".
+pr_takes :: (t: Tunable, out: [] u8, n: int) -> int {
+  if t.kind == TUN_BOOL { return tun_put(out, n, "on or off"); }
+  k := n;
+  if t.kind == TUN_CHOICE {
+    k = tun_put(out, k, "one of ");
+    for i: 0..<t.high + 1 { if i > 0 { k = tun_put(out, k, ", "); } k = tun_put(out, k, t.names[i]); }
+    return k;
+  }
+  k = tun_text(t, t.low, out, k); k = tun_put(out, k, " to "); k = tun_text(t, t.high, out, k);
+  return k;
+}
+// Keeps why an edit was refused, in plain words, for the answer: one short sentence an edit.
+pr_refused :: (p: [] Props, path: string, value: string, status: int) {
+  w := p[0].why[..]; n := p[0].why_n;
+  if n > 0 { n = tun_put(w, n, " "); }
+  at := pr_at(path);
+  if status == TUN_UNKNOWN || at.prop < 0 { n = tun_put(w, n, "there is no property "); n = tun_put(w, n, path); n = tun_put(w, n, "."); }
+  else if status == PR_NO_THING { n = tun_put(w, n, "there is no "); n = tun_put(w, n, tun_group(path)); n = tun_put(w, n, "."); }
+  else if status == TUN_FULL { n = tun_put(w, n, "too many settings are changed: reset some first."); }
+  else {
+    n = tun_put(w, n, path); n = tun_put(w, n, " takes "); n = pr_takes(TW_ROWS[at.prop], w, n);
+    n = tun_put(w, n, ", not "); n = tun_put(w, n, value); n = tun_put(w, n, ".");
+  }
+  p[0].why_n = n;
+}
+// A value set by its path as written ("world.gravity", "b3.bounce", "balls.friction",
+// "things.density") from text. TUN_OK, or why not; refused, nothing changes and the reason is kept.
+pr_set :: (p: [] Props, path: string, value: string) -> int {
+  pr_ready(p);
+  at := pr_at(path);
+  status := TUN_UNKNOWN;
+  if at.prop >= 0 {
+    r := tun_read(TW_ROWS[at.prop], value);
+    status = r.status;
+    if status == TUN_OK { status = tun_set(TW_ROWS[..], p[0].base[..], p[0].over[..], at, r.value); }
+  }
+  if status != TUN_OK { pr_refused(p, path, value, status); }
+  return status;
+}
+// A path's value put back as the world starts with it. TUN_OK (also when it was not changed), or TUN_UNKNOWN.
+pr_reset :: (p: [] Props, path: string) -> int {
+  at := pr_at(path);
+  if at.prop < 0 { pr_refused(p, path, "", TUN_UNKNOWN); return TUN_UNKNOWN; }
+  was := tun_reset(TW_ROWS[..], p[0].over[..], at);
+  return TUN_OK;
+}
+// A thing is gone: what was set for it alone goes with it. (id 0: every single thing's, when the world is cleared.)
+pr_forget :: (p: [] Props, id: int) {
+  o := p[0].over[..]; i := 0;
+  while i < o[0].n {
+    if o[0].target[i] > 0 && (id == 0 || o[0].target[i] == id) { was := tun_drop(o, o[0].prop[i], o[0].target[i]); } else { i += 1; }
+  }
+}
+// Everything as the world starts with it.
+pr_clear :: (p: [] Props) { tun_clear(p[0].over[..]); p[0].why_n = 0; }
+// A row and who it is for, as the chat's model writes it: "world.gravity", "things.bounce", "balls.bounce", "b3.bounce".
+pr_path :: (prop: int, target: int, out: [] u8, n: int) -> int {
+  t := TW_ROWS[prop]; k := n;
+  if t.scope != TUN_THING { return tun_put(out, k, t.path); }
+  if target > 0 { k = tun_put(out, k, "b"); k = tun_put_int(out, k, target); }
+  else if target < 0 && -1 - target < TW_KINDS.count { k = tun_put(out, k, TW_KINDS[-1 - target]); }
+  else { k = tun_put(out, k, tun_group(t.path)); k = tun_put(out, k, "s"); }
+  k = tun_put(out, k, "."); k = tun_put(out, k, tun_name(t.path));
+  return k;
+}
+// What differs, on one line, for the model: "settings changed: world.gravity 0.3, b3.bounce 0.9". Nothing when nothing does.
+pr_describe :: (p: [] Props, out: [] u8, n: int) -> int {
+  o := p[0].over[..]; k := n;
+  if o[0].n == 0 { return k; }
+  k = tun_put(out, k, "settings changed: ");
+  for i: 0..<o[0].n {
+    if i > 0 { k = tun_put(out, k, ", "); }
+    k = pr_path(o[0].prop[i], o[0].target[i], out, k); k = tun_put(out, k, " ");
+    k = tun_text(TW_ROWS[o[0].prop[i]], o[0].value[i], out, k);
+  }
+  return tun_put(out, k, "\n");
+}
+// What differs, for the world (web/hud.coax, after the hotbar's state in message 113): the engine's own text of the map.
+pr_wire :: (p: [] Props, out: [] u8, n: int) -> int { return n + tun_save(TW_ROWS[..], p[0].over[..], out[n..<out.count]); }
+
+// ---------------------------------------------------------------- checks
+
+PrTest :: struct { p: [1] Props; out: [1024] u8; }
+pr_test_wire :: (t: [] PrTest) -> string { n := pr_wire(t[0].p[..], t[0].out[..], 0); return cast(string) t[0].out[0..<n]; }
+pr_test_words :: (t: [] PrTest) -> string { n := pr_describe(t[0].p[..], t[0].out[..], 0); return cast(string) t[0].out[0..<n]; }
+pr_test_why :: (t: [] PrTest) -> string { n := t[0].p[0].why_n; t[0].p[0].why_n = 0; return cast(string) t[0].p[0].why[0..<n]; }
+
+#test "the world starts with the table's defaults, and a ball with its own material" #steps 20000000 {
+  t: [1] PrTest; p := t[0].p[..];
+  #assert pr_value(p, TW_GRAVITY) == 100 && pr_value(p, TW_AIR_JUMPS) == 1 && pr_value(p, TW_FLY) == 1 && pr_value(p, TW_RUN_SPEED) == 690 && !pr_changed(p, TW_GRAVITY);
+  #assert pr_thing(p, TW_BOUNCE, 1, PR_BLOCK) == 15 && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 55 && pr_thing(p, TW_DENSITY, 1, PR_BLOCK) == 200 && pr_thing(p, TW_DENSITY, 4, PR_BALL) == 40 && pr_thing(p, TW_FRICTION, 1, PR_BLOCK) == 50 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 60 && pr_thing(p, TW_FIXED, 4, PR_BALL) == 0;
+  #assert pr_plain(p, TW_BOUNCE, PR_BALL) == 55 && pr_plain(p, TW_BOUNCE, PR_BLOCK) == 15 && pr_test_wire(t[..]) == "" && pr_test_words(t[..]) == "";
+}
+#test "a value is set by its path as written, takes effect, is told to the world and to the model, and is put back" #steps 40000000 {
+  t: [1] PrTest; p := t[0].p[..];
+  #assert pr_set(p, "player.air_jumps", "0") == TUN_OK && pr_value(p, TW_AIR_JUMPS) == 0 && pr_changed(p, TW_AIR_JUMPS);
+  #assert pr_set(p, "world.gravity", "0.5") == TUN_OK && pr_set(p, "b4.bounce", "0.9") == TUN_OK && pr_set(p, "balls.friction", "0.1") == TUN_OK && pr_set(p, "b2.density", "2000") == TUN_OK && pr_set(p, "player.fly", "off") == TUN_OK && pr_set(p, "world.time_of_day", "sunrise") == TUN_OK;
+  #assert pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 90 && pr_thing(p, TW_BOUNCE, 5, PR_BALL) == 55 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 10 && pr_thing(p, TW_FRICTION, 1, PR_BLOCK) == 50 && pr_thing(p, TW_DENSITY, 2, PR_BLOCK) == 2000 && pr_plain(p, TW_FRICTION, PR_BALL) == 60;
+  #assert pr_test_wire(t[..]) == "world.gravity=0.5\nworld.time_of_day=sunrise\nplayer.air_jumps=0\nplayer.fly=off\nthing.bounce@4=0.9\nthing.friction@-2=0.1\nthing.density@2=2000\n";
+  #assert pr_test_words(t[..]) == "settings changed: world.gravity 0.5, world.time_of_day sunrise, player.air_jumps 0, player.fly off, b4.bounce 0.9, balls.friction 0.1, b2.density 2000\n";
+  // for every thing: one line, and no single thing keeps its own
+  #assert pr_set(p, "things.bounce", "0.3") == TUN_OK && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 30 && pr_thing(p, TW_BOUNCE, 1, PR_BLOCK) == 30;
+  n := pr_path(TW_BOUNCE, TUN_ALL, t[0].out[..], 0); #assert cast(string) t[0].out[0..<n] == "things.bounce";
+  // put back, by the same paths; what was not changed is put back to no effect
+  #assert pr_reset(p, "world.gravity") == TUN_OK && pr_reset(p, "world.gravity") == TUN_OK && pr_value(p, TW_GRAVITY) == 100 && pr_reset(p, "things.bounce") == TUN_OK && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 55 && pr_reset(p, "b2.density") == TUN_OK && pr_thing(p, TW_DENSITY, 2, PR_BLOCK) == 200;
+  // a thing that is gone takes its own with it; a cleared world, every single thing's; the kinds' stay
+  #assert pr_set(p, "b4.bounce", "0.9") == TUN_OK && pr_set(p, "b7.fixed", "on") == TUN_OK && pr_set(p, "b7.bounce", "1") == TUN_OK;
+  pr_forget(p, 7); #assert pr_thing(p, TW_FIXED, 7, PR_BLOCK) == 0 && pr_thing(p, TW_BOUNCE, 7, PR_BLOCK) == 15 && pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 90;
+  pr_forget(p, 0); #assert pr_thing(p, TW_BOUNCE, 4, PR_BALL) == 55 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 10 && pr_value(p, TW_AIR_JUMPS) == 0;
+  pr_clear(p); #assert pr_test_wire(t[..]) == "" && pr_value(p, TW_AIR_JUMPS) == 1 && pr_thing(p, TW_FRICTION, 4, PR_BALL) == 60;
+}
+#test "what is refused changes nothing and says why in plain words" #steps 40000000 {
+  t: [1] PrTest; p := t[0].p[..];
+  #assert pr_set(p, "world.gravity", "9") == TUN_RANGE && pr_test_why(t[..]) == "world.gravity takes 0 to 5, not 9.";
+  #assert pr_set(p, "world.gravitas", "1") == TUN_UNKNOWN && pr_test_why(t[..]) == "there is no property world.gravitas.";
+  #assert pr_set(p, "player.fly", "maybe") == TUN_BAD && pr_test_why(t[..]) == "player.fly takes on or off, not maybe.";
+  #assert pr_set(p, "world.time_of_day", "noon") == TUN_BAD && pr_test_why(t[..]) == "world.time_of_day takes one of night, dawn, sunrise, morning, day, not noon.";
+  #assert pr_set(p, "player.air_jumps", "1.5") == TUN_BAD && pr_set(p, "b3.gravity", "1") == TUN_UNKNOWN && pr_test_why(t[..]) == "player.air_jumps takes 0 to 2, not 1.5. there is no property b3.gravity.";
+  #assert pr_reset(p, "world.weather") == TUN_UNKNOWN && pr_test_why(t[..]) == "there is no property world.weather.";
+  pr_refused(p, "b9.bounce", "1", PR_NO_THING); #assert pr_test_why(t[..]) == "there is no b9.";
+  pr_refused(p, "b9.bounce", "1", TUN_FULL); #assert pr_test_why(t[..]) == "too many settings are changed: reset some first.";
+  #assert pr_test_wire(t[..]) == "" && t[0].p[0].over[0].rev == 0;
+}

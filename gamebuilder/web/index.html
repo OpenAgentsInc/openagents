@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GAMEBUILDER</title>
+<!-- The tab's icon: the app's icon (web/img/icon.png) at 32 pixels, in the page itself, so it costs no request
+     (sips -z 32 32 web/img/icon.png, oxipng, base64). Make it again when the icon changes, with the mark in look.coax. -->
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAEnElEQVR42u3Wa0yTVxgH8P9530J5S0uhBQQ6aAUtMAoVUTHbLIooQW5CRFGxIA7UTdlYwei8C9MYZ1CHkXkBOtRN1OnUOS9oxKiTmeJi2FymnTpBpwynmZlYkGdJwweyZFwUkn3YL8/3/znPec7JAWMMA4ZhgDH81zB7icFhgHBATmrIuSOTls7Rujs69n+LBOD8oTB6FkCNXpf2+k0d6+klFQSeQ38RwM7sUdA9gRo4sjC6Ims8PygjWdKfZ3Bml/hYCctNxLYF+KIAC5Mgc8Ir4QElJ47SBplmJIf6+p5Yx96N4UeGxrgKnugXEnDVG42tFwvo8IdJ4RHV2VgRq2rIabwaZ50Znvuqs86DSRksZXG0Lv3F7DWWaeYH7519tMBar7PtE2hNgIWD6CXbopHJc+KHHyqeXuy5tD6rgBLK2yLqbfonzaF0R0+lHk+nydve8roASAGuz6P6miBYquOpVktbgnc4V/0yykKhzx6+TldD2k/o2qvDO6b73PZS/iyNvTakZJ/j7CIoBjNwDL0WqJA2lwVTmro5MibFMcfoVPi28/JYae4bsjmrwh/lR5Eu8DJkZfj4uug+sQpC5U34hvYhwE8q/zUpuyO7wrbhh4YNNyrnHR4XkCUgQECwYfQDbQJJQ3YLipmyZbXCCeKKOrD3BUKiexvAwOtdIpu3W8lM901/XMu8/rvp6d21tH3JlfdXn0wrbx15gLQnW3wuNCov3FNYnkmuEjtjw5Co3l4lGXyqCo9RJZWNqQpyjBTgrhYHF4wpqVh0b9mWP1PMLbrqB5KPjmPEdCjD4D8eRcdgJaQWAg6sN8sf5zfj+ZH2k+m1Yig95d7mlVXRIyYAcBa7u7hoBNcAXu4PcJqgsISvanjtMDAFKiw4exuyoeiRCC7rZ5mpgpL9Znm4e2RMymg7SFvyzAGDtV13OVin002eEbz3uluSURKoxYR5uEOIymToiQcLqt9ovb2wScI8KhdWtW+jn4rbr5XR0fKHLi4K2MldXfNrHg9d8Q2AiD2nJTVNUIXj8hOs/gwQo1vM4DvNtqOj9E0zgIn+8Z9MrGrIpzLjd0mGfJ4XwY7jmJchV51i0q/d7JBuwsRsxjlg82nU3IKgZuiO45LEEtpAcV4zYectVR1KvBWjzgYgFaslYo3YSSMS/ACoRkerjrcibHxn26YshpWgj/9nAGNdD0Bmnne01UR6aRzAMzAADpAbgtLL3/m2srBp+cqm9M1No3Y1uq08Dc1YSL3BOHASiHzY2Pm4S5ich25wcCpN3f1iLmWp1gCePNx4qFIDCyzzbV9ntKxOuZiZec5gqh1SVOf6uQ1bmxGUBvhAMgyuqaLCL3GXWNzcHt6iZE3WY2NH3fCWTO/10YPylkYcaDDSzuRL3jI94AQ42IddwuuSmPk37PwLU8xs3CbxB2cd6tq4uhbmE95DgDOU6yPL78eSdST9aKCbabQ14ZSb4I8uGOw1NIZV3MApQg2xesL3z9mURfb47gI6M6aq55dG7N8UcXBqYJ4gcv/XL4wyEMZVKN6PxZ9ieCLghL4Q2as7rLN4gDH872WxAe0ew98FEY0lBpT7WAAAAABJRU5ErkJggg==">
+<meta property="og:title" content="GAMEBUILDER">
+<!-- home:words (the page's own words, written by tools/home-check.coax --write from web/home.coax; do not edit here) -->
+<meta name="description" content="make a game. pick a portal. build it in your browser. nothing to install.">
+<meta property="og:description" content="make a game. pick a portal. build it in your browser. nothing to install.">
+<!-- /home:words -->
+<meta property="og:image" content="https://gamebuilder.org/img/hero.jpg">
+<meta property="og:url" content="https://gamebuilder.org/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#000000">
+<link rel="alternate" type="text/markdown" href="/index.md">
+<!-- No font is preloaded: Chrome holds the first paint for a preloaded font (about 100 ms after the page
+     arrives, live), and the names must show from the page alone. The faces below are asked for as soon as
+     the first style uses them, a few ms after the page, and swap in when they come. -->
+<script>
+if ("gpu" in navigator) document.documentElement.classList.add("gpu");
+// The home page's own nodes are in this file (home:page, below) so that they show at first paint. Every
+// address of the site is this same file: at any other than the home page's (the login, the builder, the
+// credits) those nodes stay out of sight, and the page's module draws that address when it starts.
+{ const mount = document.querySelector('meta[name="coaxial-mount"]')?.content || "";
+  if (location.pathname.replace(/\/$/, "") !== mount) document.documentElement.classList.add("away"); }
+</script>
+<script>
+// Whether you were logged in the last time this browser was here. The login's cookie is not the
+// page's to read, so the page keeps its own note: with it, the home page stays out of sight for
+// the moment the login is asked who is here (the page's class says "asking"), and the world
+// comes up with no flash of the home page first. The note is only a guess: the login decides.
+try { if (localStorage.getItem("gb-in") === "1") document.documentElement.classList.add("was-in"); } catch (e) {}
+new MutationObserver(() => {
+  const g = document.querySelector(".gs");
+  if (!g || g.classList.contains("asking") || g.classList.contains("v3")) return;   // (the credits page says nothing of who is here)
+  // Only ever write when something changes: taking a class off, even one that is not there, is
+  // itself a change this observer would be told of, and it would never stop.
+  const h = document.documentElement, was = h.classList.contains("was-in");
+  try {
+    if (g.classList.contains("v2")) { if (localStorage.getItem("gb-in") !== "1") localStorage.setItem("gb-in", "1"); }
+    else if (localStorage.getItem("gb-in") !== null) localStorage.removeItem("gb-in");
+  } catch (e) {}
+  if (was && !g.classList.contains("v2")) h.classList.remove("was-in");
+}).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"] });
+</script>
+<style>
+/* The page's faces (Geist and Geist Mono, SIL OFL 1.1: web/fonts/, WOFF2 made by scripts/web-fonts.sh).
+   They are declared here and nowhere else. Each is asked for when a view first uses it (the home page's
+   two at its first style), never preloaded (above), and the page is drawn in the fallback until it comes. */
+@font-face{font-family:Geist;src:url(/fonts/Geist.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:Geist;src:url(/fonts/Geist-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
+@font-face{font-family:Geist;src:url(/fonts/Geist-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
+@font-face{font-family:'Geist Mono';src:url(/fonts/GeistMono.woff2) format("woff2");font-display:swap}
+html,body{margin:0;background:#000;color:#fff}
+/* No elastic overscroll: the browser slides the page past its ends without telling
+   the page, and the HUD's frames (drawn where the page says its panels are) would
+   be left behind. */
+html,body{overscroll-behavior:none}
+#coaxial{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+html:not(.gpu) #coaxial{display:none}
+.was-in .gs.asking.v0>:not(.top),.was-in .gs.asking .nav{visibility:hidden}
+/* (the home page's own nodes, at another address: the page's module's nodes carry data-slot, these do not) */
+.away #coaxial-root>.gs:not([data-slot]){display:none}
+/* home:css (the first paint's rules, written by tools/home-check.coax --write from web/look.coax, gs_css_first; do not edit here) */
+:root{--ink:#fff;--soft:rgba(255,255,255,.66);--dim:rgba(255,255,255,.4);--line:rgba(255,255,255,.2);--sans:Geist,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'Geist Mono',ui-monospace,SFMono-Regular,Menlo,monospace}html{background:#000}body{margin:0;background:transparent;color:var(--ink);font:400 16px/1.5 var(--sans);-webkit-font-smoothing:antialiased}.gs{position:relative;z-index:1;min-height:100dvh;display:flex;flex-direction:column}.gs *{box-sizing:border-box}.gs img{display:block;max-width:100%}.wrap{width:100%;max-width:1120px;margin:0 auto;padding-left:28px;padding-right:28px}.mono{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px}.brand{display:flex;align-items:center;gap:12px;font:500 14px/1 var(--mono);letter-spacing:.18em}a.brand{color:inherit;text-decoration:none}.mark{display:block;width:32px;height:32px;border-radius:7px;background:url(data:image/webp;base64,UklGRtAEAABXRUJQVlA4IMQEAACwGQCdASpAAEAAPlEcjUQjoaEYDAYAOAUEtgBlGAR8a4Y7b/vtktfRpzAdoD8Rf531Rekh5gP2S/1X+A7AH+K9QD/H9QB6AHlqex7+0/7ge0l//9akTP8H+/p5M9kcnl+X/Kf0v/uW+Gfzf+4b7Ph39k8Wv6x/trY7j3/4HpX/8flK/Lv71/2v8Z8BH8v/sP/J67n7Vey64FL/X6CQle37H2sfKPHooRUKdNKqXrg67c3NotogoSecE5+FPVLZSHqs/PPoU5zqzCy6NIFYVRhMHQxNDiwAAP7/DWn/QIKj3lWcwYPh8Cduvy3/IrfM0YiK0FRROj/foFiGlMX8Z/nP+P30Uq6d31//DG75q5frlbVwIDIJj4UJk7mx/Kr+/mX/0d22oJfl7Fj21Y7x/ABrssOqzgNnZjT+wn4CsKR4aIi1F/N8XWTdZ4cKytXaDLR2EWm9E+bmf5CK/050C6PCv+4g/o8Kv962uRh+qzLZeNC6Uv5H+ehfzcInyBxnuyBQuOEM+HwcL64tHEn8Bu1FvI1xwUea29Y9Mv303MjhUfvNgGhSNxfQsoGfMXNkxDfyoCp8D4V2t2Qq+vwp74/H6jide1q+ci+c1TNE+gmPPKEF8LQncJ0/ZrEcyCAPd2G/ytXW2tBbgDBg4pbja5dJfsGZTE9D9/YeZ+adM7hKfy/pMvFpqRqMuP9UyvI36NayV/k0iilXmR48apgBf+pZvg8L1pvdL49jVr9RgdhbATvP/S5rgn+GxLW4mxfsfMPPdUow8LNsbXkxqrMjrt43VaNY8iBLHdo4tFPFEkoUXVspj0qreruhkf1ZF2ciFo/wUmaYiAOS/STM8p0IptG77xAQf4NfWafwFqgfxWPDObHr4KR+0bQh8vSnv7DZ2Plal9IbZ3aTaPx+WuWm8oJMhd8/+kxzen5iYnjqC9Ol5MnXVKh6YoiPciweTqZuY6o0WZvgRt398e5rVw76ZU+P6m6pr2rcSz/a7gVYJNl1XD3awPCQr/8LFDtfZD7U8QjpEQ7QCwbH7Ae/+up4kokeMV93Yx8EtXCKFxann+5eBeRM2tt7tdwEjDUa8QRGMTaIMJb4ZDO76tXeKmz7xXOEoTnkfxhxyvnA9C48ZsN0/cUP/KTXf/qKLJtI70PmfDbjWjRkaR/r/WJym5wXS+Yce9FJn9aQjU9tO87DTqVWE5NzJu9wteCAIHz7i8ZEAuAFlHKrtpZXsvuTMqEgKq/vstB3Oikjq/Mf7OEQdjLn1ewOo+/SmKmRkiuTE8hgLlEuDbLUnVbzpcqwP0iW4mx34eF8eMDAbfl3+0Kz7EoYcSUB/r4hqLFpfwcjIw/n/yxIpnbSpOk5vX7803wa+ZHedrzyb9/icJQsQLKUqZ5KVpYdGBVB5YuqIdBUD9eLu1L/HNCTS5t3j9XiuvMsM1Tk1dZiH3/9U5AYgwmaw0t9eNIeXORaBbgARxW4806tw7id1ajDPdZX159br/P1H6BPt5bnCkN1NL1QoenAnfIPwQ1m40LmgiR/THuhJy2Lkpv88OQpIlUe2i0aJF6iUdmJrNDMfGd0Wku7eBuMBTTwHCfjZu14d0xUSm0sf6XtnisYfRjUzWh6PyG9BUKPeHW6gAAAAA==) center/cover no-repeat}.nav{position:relative;display:flex;align-items:center;gap:22px}.quiet{appearance:none;border:0;background:none;padding:0;align-self:flex-start;cursor:pointer;color:var(--dim);font:400 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;text-decoration:none}.quiet:hover,.quiet:focus-visible{color:#fff;outline:0}.nav .quiet{align-self:center}.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:24px;padding-bottom:40px}.hero h1{margin:0;font-weight:600;font-size:clamp(40px,8vw,104px);line-height:.94;letter-spacing:-.045em}.hero h1 span{display:block}.ghost{color:transparent;-webkit-text-stroke:1.5px #fff}.lede{margin:22px 0 0;color:var(--soft);font:400 clamp(15px,1.5vw,17px)/1.6 var(--mono);letter-spacing:.02em}.names{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:min(780px,100%);margin-top:36px}.kind{position:relative;display:flex;align-items:baseline;gap:12px;min-height:48px;padding:12px 16px;border:1px solid rgba(255,255,255,.28);background:rgba(0,0,0,.5);color:#fff;text-decoration:none;text-align:left;font:600 18px/1.2 var(--sans);letter-spacing:-.015em;cursor:pointer;transition:border-color .15s,background .15s}.kind:hover,.kind:focus-visible,.kind.on{border-color:#fff;background:rgba(255,255,255,.1);outline:0}.kind .no{flex:none;font:400 11px/1 var(--mono);letter-spacing:.14em;color:var(--dim)}.kind .kl{display:none}.gs-ring,.gs-last{display:none!important}@media (max-width:640px){.names{grid-template-columns:repeat(2,minmax(0,1fr))}.kind{font-size:16px;padding:11px 12px}}html.ringed .hero{flex:0 0 auto;justify-content:flex-start;padding-top:2px;padding-bottom:0;pointer-events:none}html.ringed .hero h1{font-size:clamp(22px,3.2vw,38px);text-shadow:0 1px 16px rgba(0,0,0,.45)}html.ringed .lede,html.ringed .foot{display:none}html.ringed .gs{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}html.ringed .names{display:block;width:0;height:0;margin:0}html.ringed .kind{position:fixed;left:-999px;top:0;z-index:2;pointer-events:auto;flex-direction:column;align-items:center;gap:4px;min-height:0;padding:7px 14px 8px;border-color:transparent;background:rgba(0,0,0,.55);text-align:center;white-space:nowrap;transform:translate(-50%,0);animation:gb-ring .6s both}html.ringed .kind .kl{font:400 12px/1.4 var(--mono);letter-spacing:.02em;color:var(--soft);white-space:normal;width:max-content;max-width:min(300px,78vw)}@keyframes gb-ring{from{opacity:0}}html.ringed .r0{left:var(--r0x,-999px);top:var(--r0y,0px)}html.ringed[data-lit="0"] .r0{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="0"] .r0 .kl{display:block}html.ringed .r1{left:var(--r1x,-999px);top:var(--r1y,0px)}html.ringed[data-lit="1"] .r1{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="1"] .r1 .kl{display:block}html.ringed .r2{left:var(--r2x,-999px);top:var(--r2y,0px)}html.ringed[data-lit="2"] .r2{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="2"] .r2 .kl{display:block}html.ringed .r3{left:var(--r3x,-999px);top:var(--r3y,0px)}html.ringed[data-lit="3"] .r3{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="3"] .r3 .kl{display:block}html.ringed .r4{left:var(--r4x,-999px);top:var(--r4y,0px)}html.ringed[data-lit="4"] .r4{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="4"] .r4 .kl{display:block}html.ringed .r5{left:var(--r5x,-999px);top:var(--r5y,0px)}html.ringed[data-lit="5"] .r5{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="5"] .r5 .kl{display:block}html.ringed .r6{left:var(--r6x,-999px);top:var(--r6y,0px)}html.ringed[data-lit="6"] .r6{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="6"] .r6 .kl{display:block}html.ringed .r7{left:var(--r7x,-999px);top:var(--r7y,0px)}html.ringed[data-lit="7"] .r7{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="7"] .r7 .kl{display:block}html.ringed .r8{left:var(--r8x,-999px);top:var(--r8y,0px)}html.ringed[data-lit="8"] .r8{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="8"] .r8 .kl{display:block}html.ringed .r9{left:var(--r9x,-999px);top:var(--r9y,0px)}html.ringed[data-lit="9"] .r9{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="9"] .r9 .kl{display:block}html.ringed .r10{left:var(--r10x,-999px);top:var(--r10y,0px)}html.ringed[data-lit="10"] .r10{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="10"] .r10 .kl{display:block}html.ringed .r11{left:var(--r11x,-999px);top:var(--r11y,0px)}html.ringed[data-lit="11"] .r11{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="11"] .r11 .kl{display:block}html.ringed .r12{left:var(--r12x,-999px);top:var(--r12y,0px)}html.ringed[data-lit="12"] .r12{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="12"] .r12 .kl{display:block}html.ringed .r13{left:var(--r13x,-999px);top:var(--r13y,0px)}html.ringed[data-lit="13"] .r13{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="13"] .r13 .kl{display:block}html.ringed .r14{left:var(--r14x,-999px);top:var(--r14y,0px)}html.ringed[data-lit="14"] .r14{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="14"] .r14 .kl{display:block}html.ringed .r15{left:var(--r15x,-999px);top:var(--r15y,0px)}html.ringed[data-lit="15"] .r15{border-color:#fff;background:rgba(0,0,0,.8)}html.ringed[data-lit="15"] .r15 .kl{display:block}html.gpu .v0 .nav .quiet{color:#fff;background:rgba(0,0,0,.55);padding:9px 14px}html.gpu .v0 .nav .quiet:hover,html.gpu .v0 .nav .quiet:focus-visible{background:rgba(0,0,0,.85)}@media (max-height:520px){html.ringed .hero h1{position:fixed;left:50%;top:22px;transform:translateX(-50%);font-size:20px;line-height:1.2;white-space:nowrap}html.ringed .hero h1 span{display:inline}}html:not(.gpu) .hero .wg,html.gpu .hero .ng{display:none}.gs-gpu,.gs-count,.gs-count-in{display:none!important}.foot{margin-top:auto;padding-top:30px;padding-bottom:40px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px}.foot a{color:var(--dim);text-decoration:none}.foot a:hover,.foot a:focus-visible{color:#fff}@media (max-width:520px){.wrap{padding-left:20px;padding-right:20px}.brand{font-size:13px;gap:9px}.mark{width:26px;height:26px}}@media (pointer:coarse){.brand{min-width:44px;min-height:44px}.quiet{min-height:44px;display:inline-flex;align-items:center}}@media (prefers-reduced-motion:reduce){.kind{transition:none}html.ringed .kind{animation:none}}
+/* /home:css */
+/* While the world's code arrives, a line under the top bar says how far it has come, in words (the
+   host fills it as it loads: coaxial/loader.js). A load quicker than a third of a second shows
+   nothing. If the world's start fails, it says what failed and offers to try again; the page says
+   the rest in its own words (web/gpu-words.coax). */
+#coaxial-load{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:10px;max-width:calc(100vw - 190px);pointer-events:none;color:rgba(255,255,255,.66);font:400 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:lowercase;white-space:nowrap;opacity:0;animation:gb-load .2s .35s forwards}
+#coaxial-load.gone{animation:none;opacity:0;transition:opacity .2s}
+#coaxial-load[hidden]{display:none}
+#coaxial-load .lb{display:block;flex:none;width:72px;height:2px;background:rgba(255,255,255,.2);overflow:hidden}
+#coaxial-load .lb i{display:block;height:100%;background:#fff;transform:scaleX(0);transform-origin:0 50%;transition:transform .2s linear}
+#coaxial-load .le,#coaxial-load .la{display:none}
+#coaxial-load[data-state=fail]{pointer-events:auto;white-space:normal;animation:none;opacity:1;top:auto;bottom:56px}
+#coaxial-load[data-state=fail] .lw,#coaxial-load[data-state=fail] .lb,#coaxial-load[data-state=fail] .lt,#coaxial-load[data-state=fail] .lp{display:none}
+#coaxial-load[data-state=fail] .le:not(:empty),#coaxial-load[data-state=fail] .la:not(:empty){display:inline;color:#fff}
+@keyframes gb-load{to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#coaxial-load,#coaxial-load .lb i{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main id="coaxial-root">
+<!-- home:page (the home page as the page's Coax draws its first frame, written by tools/home-check.coax --write from web/home.coax; do not edit here. The page's module replaces these nodes with its own when it starts) -->
+<main class="gs v0 asking">
+<header class="top">
+<a class="brand" href="/" aria-label="GameBuilder"><span class="mark"></span></a>
+<input class="gs-gpu" aria-hidden="true" type="text" autocomplete="off"></input>
+<span class="gs-count" aria-hidden="true"></span>
+<input class="gs-count-in" aria-hidden="true" type="text" autocomplete="off"></input>
+<nav class="nav">
+<a class="quiet" href="/login">log in</a>
+</nav>
+</header>
+<section class="wrap hero">
+<h1><span>make a game. </span><span class="ghost wg">pick a portal.</span><span class="ghost ng">pick a type.</span></h1>
+<p class="lede">build it in your browser. nothing to install.</p>
+<nav class="names" aria-label="game types">
+<a class="kind r0" href="/play?type=third-person"><span class="no">1</span><span class="kn">third person</span><span class="kl">3d. the camera behind you. orbit it.</span></a>
+<a class="kind r1" href="/play?type=first-person"><span class="no">2</span><span class="kn">first person</span><span class="kl">fps. through your own eyes.</span></a>
+<a class="kind r2" href="/play?type=top-down"><span class="no">3</span><span class="kn">top-down</span><span class="kl">from above. the camera never turns.</span></a>
+<a class="kind r3" href="/play?type=side-scroller"><span class="no">4</span><span class="kn">side-scroller</span><span class="kl">2d. from the side. run and jump.</span></a>
+<a class="kind r4" href="/play?type=village" title="0 A.D. art by Wildfire Games, CC BY-SA 3.0"><span class="no">5</span><span class="kn">medieval village</span><span class="kl">a village green. thatch and timber.</span></a>
+<a class="kind r5" href="/play?type=crates"><span class="no">6</span><span class="kn">crates</span><span class="kl">push crates onto pads. open the gate.</span></a>
+<a class="kind r6" href="/play?type=platformer"><span class="no">7</span><span class="kn">platformer</span><span class="kl">run, jump, jump again. reach the goal.</span></a>
+<a class="kind r7" href="/play?type=racing"><span class="no">8</span><span class="kn">racing</span><span class="kl">three laps against the clock. no cutting.</span></a>
+<a class="kind r8" href="/play?type=drift"><span class="no">9</span><span class="kn">drift</span><span class="kl">fly the rings in order. zero g.</span></a>
+<span class="gs-ring" aria-hidden="true">/img/kind-third.jpg
+/img/kind-first.jpg
+/img/kind-top.jpg
+/img/kind-side.jpg
+/img/kind-village.jpg
+/img/kind-crates.jpg
+/img/kind-platformer.jpg
+/img/kind-racing.jpg
+/img/kind-drift.jpg
+</span>
+</nav>
+</section>
+<footer class="wrap foot mono">
+<span>also on iphone / ipad / mac</span>
+<span>© 2026 openagents, inc.</span>
+<a href="/credits">credits</a>
+<a href="https://openagents.com">built on openagents</a>
+</footer>
+</main>
+<!-- /home:page -->
+</main>
+<div id="coaxial-load" role="progressbar" aria-label="loading the world" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span class="lw">loading the world</span><i class="lb"><i></i></i><span class="lt">engine</span><span class="lp">0%</span><span class="le"></span><a class="la"></a></div>
+<!-- The village's pack (web/world-village.coax) is held back until the medieval village is picked: nothing of it is fetched before. -->
+<!-- &top: the page's module is the page's own (vendor coax/web/dom-host.js), so it is told the address with its query:
+     a name pressed before the code was up is its link, /play?type=ID, and that type is entered. (Before root=: a
+     mounted release adds &mount= after it: tools/player-release.coax.) -->
+<script type="module" src="/host/app.js?app=site&top&root=coaxial-root" data-app="hud" data-wgsl="/build/hud.wgsl" data-assets="pack:/assets/village.pack"></script>
+</body>
+</html>

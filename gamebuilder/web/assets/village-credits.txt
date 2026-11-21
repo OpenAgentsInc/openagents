@@ -1,0 +1,33 @@
+gamebuilder.org: the medieval village's art
+
+The buildings and rocks of the medieval village are from 0 A.D., a free
+software game. 0 A.D. art by Wildfire Games (https://www.wildfiregames.com/),
+licensed under the Creative Commons Attribution-ShareAlike 3.0 Unported
+licence (CC BY-SA 3.0): https://creativecommons.org/licenses/by-sa/3.0/
+
+The models (0 A.D.'s names):
+  structures/britons/house
+  structures/gauls/house
+  structures/gauls/market
+  geology/highland1_moss
+  geology/highland2
+with their base-colour textures (brit_struct_1, celt_struct_1, celt_prop_1,
+celt_props_new, wrld_rock_highlands, wrld_rock_highlands_moss).
+
+What was changed. Each model was exported from 0 A.D.'s files to glTF with
+its transforms baked, moved so the middle of its footprint is over the origin
+(its own ground level kept), and written as one vertex and index
+buffer in an OpenAgents Metaverse Engine asset pack (VPK1). Its base-colour
+textures were resized to 512 by 512 pixels and re-encoded as JPEG (quality
+92); its normal and specular maps were left out. No triangle was removed. On
+the page the models are scaled (1.3 to 2.6 times), turned in quarter turns
+and lit by the page's own renderer.
+
+The changed art is offered under the same licence, CC BY-SA 3.0. It is these
+files, which anyone may fetch:
+  https://gamebuilder.org/assets/village.pack        the pack (models and textures)
+  https://gamebuilder.org/assets/village-pack.coax   the tool that built it, with the pack's layout
+  https://gamebuilder.org/assets/village-credits.txt this note
+
+The rest of gamebuilder.org (its code, its other art) is not part of this
+art and is not under this licence.

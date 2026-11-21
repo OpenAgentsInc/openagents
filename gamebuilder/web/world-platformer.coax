@@ -1,0 +1,641 @@
+// Platformer (docs/web-world.md, "Platformer"): a game type that is its own world. A course of
+// floating platforms high in a bright sky, seen side on (the engine's side-on camera kind, which
+// holds the character on its line): run right, jump the gaps, ride the moving platforms and the
+// lifts, take the bounce pads up, hop the spikes, pick up the glowing shards, touch each checkpoint
+// and reach the goal against the clock. A real double jump (the walk rules' air jump, which side on
+// keeps) and no flying (side on has none). Falling into the void or onto spikes puts you back at the
+// last checkpoint touched. At the goal the clock stops and a board over it lights with your time and
+// your shards.
+//
+// The course is things of the level (issue 2): a new game's are shared/game-types.coax's starter
+// (GT_COURSE, read by gt_course), the same on the website and in the app, and a person or a model
+// moves, sizes, adds and removes them as any other thing. pf_make reads the things it is given (the
+// HUD's: web/hud.coax) into the course: a plain block is a platform, a pad throws, a checkpoint is a
+// platform that is a gate of the run (the checkpoints are passed in their order along the course, and
+// the furthest is the goal), a moving platform slides along the course and a lift rises, each as far
+// as its thing says and back in as long as it says, spikes lie on what is under them and are no body,
+// and a shard is a mark to take. Its rules are the engine's course
+// (metaverse-engine/world/course.coax): the moving platforms and lifts are its slides, the
+// checkpoints and the goal the gates of its run, the shards its collectibles. A recorded run
+// (PF_SOLUTION: the keys held, frame by frame at 60 a second) is replayed by web/hud.coax's check
+// through the real character on a new game's course, so the course shipped is known to be completable.
+//
+// This file is the course's own part: the course made from things, entered and left, its rules a
+// frame, where its platforms are, the entrance (the grid floor breaks into slabs that rise and settle
+// as the platforms, while the floor falls away below and the sky brightens), its mesh (the engine's
+// architecture kit), its light, and what the page is told is here. web/hud.coax owns the frame, the
+// camera, the character, and calls in here. Axes: the page's (x across the line, z along the course,
+// y up); what is drawn is turned to the engine's (x, y, -z).
+//   coax/bin/coax test web/world-platformer.coax --library
+
+#load "../shared/game-types.coax";
+#load "../../metaverse-engine/world/course.coax";
+#load "../../metaverse-engine/render/shade/stylized-frame.coax";
+#load "../../metaverse-engine/arch/solid.coax";
+
+PF_LENS :: 0.95;           // radians, upright: the side-on view's lens here, wider than the side-scroller's long one (about 11 metres tall from 12 away)
+PF_PARTS :: GT_LEVEL_THINGS;   // platforms at most: every thing a level holds may be one
+PF_SHARDS :: GT_LEVEL_THINGS;  // shards at most
+PF_CHECKS :: GT_LEVEL_THINGS;  // checkpoints at most (the goal is the furthest along)
+PF_SPIKES :: GT_LEVEL_THINGS;  // strips of spikes at most
+PF_START :: 4.0;           // metres: a new game's first platform's top over where the floor was (GT_PF_START)
+PF_FALL :: 9.0;            // metres under the lowest platform's top: the void
+PF_NO_GROUND :: -400.0;    // where the ground is once the floor has fallen away: nothing to stand on
+PF_BOUNCE :: 18.5;         // m/s up a bounce pad throws you (5.3 m; and a double jump at the top: 7.7)
+PF_REACH :: 0.9;           // metres from the middle of you a shard is taken
+PF_STAND :: 0.15;          // metres over or under a top your feet are on it
+PF_RISE_AT :: 0.05;        // seconds in the first slab starts to rise (the entrance is short: you move and build through it, and the course is up within a second)
+PF_RISE_NEAR :: 0.015;     // seconds later each metre further along the course starts
+PF_RISE_LAST :: 0.5;       // and no later than this
+PF_RISE :: 0.45;           // seconds a slab takes to rise and settle
+PF_FLOOR_AT :: 0.3;        // seconds in the floor starts to fall away
+PF_FLOOR :: 0.7;           // seconds it takes to fall
+PF_ENTER :: 1.0;           // seconds in the course is up: the floor gone, the clock starts, the platforms move
+PF_SKY :: 1.0;             // seconds the sky takes to brighten
+// Kinds of platform.
+PF_PLAIN :: 0; PF_MOVER :: 1; PF_LIFT :: 2; PF_PAD :: 3;
+
+// A recorded run of a new game's course: the keys held, as runs of frames at 60 a second (d right, j jump,
+// x nothing), from the moment the course is up. Recorded by a small player (tools/platformer-record.coax)
+// and replayed in web/hud.coax's check: it reaches the goal with no fall.
+PF_SOLUTION :: "d43dj20d12x5d42dj21d7x3d35dj21d7x3d43dj21d12x9d21dj20d25dj20d12x5d42dj20d1dj16j8x26d73dj21d1dj19j5x26d30dj21d1dj10j13x18d39dj21d1dj23d13x14d39dj21d20x5d33dj20d1dj14j10x12d38dj21d1dj23d13x14d57dj20d3x14d74dj21d7x10d35dj19j5x21d56dj20d13x4d36dj21j2x16d39dj20d21x7d32dj21d20x8d64x264d12dj21d2x134d25dj21d4x13d28x94d11dj21d3x162d23dj21d7x9d40dj20d12x5d14x143d12dj21d3x105d17dj21d5x12d57dj21d3x127d23dj21d2x14d19x112d12dj21d11x125d26dj21d7x9d31dj20d13x4d25dj20d1dj11j13x17d30dj21d20x5d60dj21d11x6d14dj21d31dj21d24dj21d1dj19j4x27d21dj21d1dj19j4x23d21dj21d1dj19j4x23d22dj21d1dj23d4x31d20dj20d34dj21d11x6d47x22d12dj21d3x105d26dj20d4x13d36dj17j6x9d38dj21d1dj23d5x21d21dj21d1dj23d5x21d9x112d12dj21d12x124d27dj21d4x13d3dj21d17dj21d1x15d56dj20d4x13d21x294d9dj20d13x127d27dj21d4x13d22dj21d1dj10j13x23d21dj21d1dj10j13x23d13x294d9dj20d21x119d27dj21d2x14d2dj20d17dj21d11x17d56dj21d11x6d25dj21d1dj10j14x21d21dj21d1dj10j13x21d22dj21d1dj10j13x21d10x22d12dj21d2x163d23dj21d2x13d39dj21d1dj24d13x13d30dj21d2x15d35dj19j5x16d59";
+
+// A thing of the level, as the course reads it (the page's axes, centimetres: the middle of its foot, its
+// bottom, its size across, up and along): its kind among the platformer's (BL_R_*; none: a plain block),
+// and for a moving platform or a lift how far it goes, centimetres, and how long there and back takes,
+// milliseconds.
+PfThing :: struct { role: int; x: int; y: int; z: int; w: int; h: int; d: int; go: int; every: int; }
+PfPart :: struct {
+  kind: int;
+  x0: f32; x1: f32;          // across the line
+  z0: f32; z1: f32; y: f32;  // along the course and its top, where it rests (a slide's start)
+  thick: f32;                // how thick it is under its top
+  slide: Slide;              // a moving platform's or a lift's way, from where it rests (nothing for the others)
+  gate: int;                 // the gate of the run it is (a checkpoint, or the goal), or -1
+}
+PfCourse :: struct {
+  ok: bool;
+  n: int; parts: [PF_PARTS] PfPart;
+  shards: int; at: [PF_SHARDS * 3] f32;   // each shard's place
+  spikes: int; spike: [PF_SPIKES * 6] f32;   // each strip of spikes: its box (low x y z, high x y z)
+  gates: int; gate_part: [PF_CHECKS] int; // the run's gates: each checkpoint's platform in their order along the course, the goal's last
+  start: int;                // the platform you start on: the one that begins nearest the course's start
+  low: f32;                  // the lowest top
+  end: f32;                  // where the course ends along it
+}
+// Hundredths as metres, exactly where they can be (a division, not a product: 1050 is 10.5).
+pf_m :: (v: int) -> f32 { return cast(f32) v / 100.0f32; }
+pf_half :: (twice: int) -> f32 { return cast(f32) twice / 200.0f32; }
+// The course made of these things: false (and no course) with nothing among them to stand on.
+pf_make :: (things: [] PfThing, c: [] PfCourse) -> bool {
+  c[0] = PfCourse.{};
+  for k: things {
+    if k.w <= 0 || k.h <= 0 || k.d <= 0 { continue; }
+    if k.role == BL_R_SHARD {
+      if c[0].shards >= PF_SHARDS { continue; }
+      o := c[0].shards * 3; c[0].at[o] = pf_m(k.x); c[0].at[o + 1] = pf_half(2 * k.y + k.h); c[0].at[o + 2] = pf_m(k.z); c[0].shards += 1;
+      continue;
+    }
+    if k.role == BL_R_SPIKES {
+      if c[0].spikes >= PF_SPIKES { continue; }
+      o := c[0].spikes * 6;
+      c[0].spike[o] = pf_half(2 * k.x - k.w); c[0].spike[o + 1] = pf_m(k.y); c[0].spike[o + 2] = pf_half(2 * k.z - k.d);
+      c[0].spike[o + 3] = pf_half(2 * k.x + k.w); c[0].spike[o + 4] = pf_m(k.y + k.h); c[0].spike[o + 5] = pf_half(2 * k.z + k.d);
+      c[0].spikes += 1;
+      continue;
+    }
+    if c[0].n >= PF_PARTS { continue; }
+    p := PfPart.{kind = ifx k.role == BL_R_PAD then PF_PAD else ifx k.role == BL_R_SLIDER then PF_MOVER else ifx k.role == BL_R_LIFT then PF_LIFT else PF_PLAIN,
+      x0 = pf_half(2 * k.x - k.w), x1 = pf_half(2 * k.x + k.w), z0 = pf_half(2 * k.z - k.d), z1 = pf_half(2 * k.z + k.d), y = pf_m(k.y + k.h), thick = pf_m(k.h), gate = -1};
+    period := cast(f32) k.every / 1000.0f32;
+    if k.role == BL_R_SLIDER && k.every > 0 { p.slide = Slide.{bz = pf_m(k.go), period = period}; }
+    if k.role == BL_R_LIFT && k.every > 0 { p.slide = Slide.{by = pf_m(k.go), period = period}; }
+    if k.role == BL_R_CHECKPOINT && c[0].gates < PF_CHECKS {
+      // (a gate, in its place among the gates along the course: after those that are no further along)
+      g := c[0].gates; mid := p.z0 + p.z1;
+      while g > 0 && c[0].parts[c[0].gate_part[g - 1]].z0 + c[0].parts[c[0].gate_part[g - 1]].z1 > mid { c[0].gate_part[g] = c[0].gate_part[g - 1]; g -= 1; }
+      c[0].gate_part[g] = c[0].n; c[0].gates += 1;
+    }
+    if c[0].n == 0 || p.y < c[0].low { c[0].low = p.y; }
+    if c[0].n == 0 || p.z0 < c[0].parts[c[0].start].z0 { c[0].start = c[0].n; }
+    far := p.z1 + p.slide.bz; if far > c[0].end { c[0].end = far; }
+    c[0].parts[c[0].n] = p; c[0].n += 1;
+  }
+  for g: 0..<c[0].gates { c[0].parts[c[0].gate_part[g]].gate = g; }
+  c[0].ok = c[0].n > 0;
+  return c[0].ok;
+}
+// A thing of a new game's starter as the course reads it; and the whole of a new game's course
+// (shared/game-types.coax gt_starter), into out: how many.
+pf_thing_of :: (k: GtThing) -> PfThing { r := gk_role(k.kind); return PfThing.{role = ifx r > 0 then r else BL_R_NONE, x = k.x, y = k.y, z = k.z, w = k.w, h = k.h, d = k.d, go = k.go, every = k.every}; }
+pf_starter :: (out: [] PfThing) -> int {
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter(GT_PLATFORMER, s[..]); m := 0;
+  for i: 0..<n { if s[i].kind != GK_BALL && m < out.count { out[m] = pf_thing_of(s[i]); m += 1; } }
+  return m;
+}
+
+Platformer :: struct {
+  ok: bool;                  // the course is in
+  c: [1] PfCourse;           // as made
+  clock: f32;                // seconds since it was entered: the entrance, then the platforms' time
+  run: Run;                  // the checkpoints and the goal, in order, against the clock (the engine's)
+  taken: [PF_SHARDS] bool;   // the shards taken
+  falls: int;                // times you went back to a checkpoint
+  won: f32;                  // seconds since the goal (0: not there yet)
+  stand: int;                // the platform your feet are on (-1: none)
+}
+pf_ease :: (t: f32) -> f32 { if t <= 0 { return 0; } if t >= 1 { return 1; } return t * t * (3 - 2 * t); }
+// A slab's rise, 0 to 1, `seconds` after it starts: up past its place a little, and back (it settles).
+pf_settle :: (t: f32) -> f32 {
+  if t <= 0 { return 0; } if t >= 1 { return 1; }
+  s := 1 - t; return 1 - s * s * s * (1 - 2.6 * t);
+}
+// How far part `i` has risen, 0 to 1: the nearer the start the sooner. The start's own slab stands
+// from the first frame: you are on it then, and move and jump from it while the rest come up (a slab
+// rising this fast under your feet would throw you).
+pf_risen :: (p: [] Platformer, i: int) -> f32 { return ifx i == p[0].c[0].start then 1.0f32 else pf_risen_at(p, p[0].c[0].parts[i].z0); }
+// And anything that begins `z` along the course.
+pf_risen_at :: (p: [] Platformer, z: f32) -> f32 {
+  at := f32(PF_RISE_AT) + f32(PF_RISE_NEAR) * (ifx z > 0 then z else 0.0f32); if at > PF_RISE_LAST { at = PF_RISE_LAST; }
+  return pf_settle((p[0].clock - at) / PF_RISE);
+}
+// The platforms' own time: they move once the course is up.
+pf_time :: (p: [] Platformer) -> f32 { t := p[0].clock - f32(PF_ENTER); return ifx t > 0 then t else 0.0f32; }
+// Whether the entrance is over (the floor gone, the clock running).
+pf_up :: (p: [] Platformer) -> bool { return p[0].ok && p[0].clock >= PF_ENTER; }
+// The course entered, made of these things: nothing taken, the clock at nothing. False when there is
+// nothing among them to stand on.
+pf_enter_with :: (p: [] Platformer, things: [] PfThing) -> bool {
+  p[0] = Platformer.{stand = -1};
+  p[0].ok = pf_make(things, p[0].c[..]);
+  p[0].run = course_run(p[0].c[0].gates, 1);
+  return p[0].ok;
+}
+// A new game's course entered.
+PfThings :: struct { t: [PF_PARTS] PfThing; }
+pf_enter :: (p: [] Platformer) -> bool { s: [1] PfThings; n := pf_starter(s[0].t[..]); return pf_enter_with(p, s[0].t[0..<n]); }
+// The course made again of these things, where it stands (a thing moved, sized, added or removed while
+// it is built or played): the clock, the falls and the goal's time as they were; a shard that is where
+// one was is taken if that one was; the run goes on when it has as many gates as before, and starts
+// over (going, if it was) when it has not. False, and the course as it was, with nothing to stand on.
+pf_lay :: (p: [] Platformer, things: [] PfThing) -> bool {
+  was: [1] Platformer; was[0] = p[0];
+  if !pf_make(things, p[0].c[..]) { p[0] = was[0]; return false; }
+  c := p[0].c[..]; p[0].ok = true; p[0].stand = -1;
+  for k: 0..<c[0].shards {
+    p[0].taken[k] = false;
+    for q: 0..<was[0].c[0].shards { if was[0].taken[q] && was[0].c[0].at[q * 3] == c[0].at[k * 3] && was[0].c[0].at[q * 3 + 1] == c[0].at[k * 3 + 1] && was[0].c[0].at[q * 3 + 2] == c[0].at[k * 3 + 2] { p[0].taken[k] = true; } }
+  }
+  for k: c[0].shards..<PF_SHARDS { p[0].taken[k] = false; }
+  if !was[0].ok || was[0].c[0].gates != c[0].gates {
+    p[0].run = course_run(c[0].gates, 1); p[0].won = 0;
+    if was[0].run.going || was[0].run.done { p[0].run = course_go(p[0].run); }
+  }
+  return true;
+}
+// Where part `i` is now, at time `time` of the platforms: its box (low x y z, high x y z).
+pf_box_at :: (p: [] Platformer, i: int, time: f32) -> [6] f32 {
+  q := p[0].c[0].parts[i];
+  o := course_slide_at(q.slide, time);
+  top := q.y * pf_risen(p, i) + o[1];
+  return [6] f32.[q.x0, top - q.thick, q.z0 + o[2], q.x1, top, q.z1 + o[2]];
+}
+pf_box :: (p: [] Platformer, i: int) -> [6] f32 { return pf_box_at(p, i, pf_time(p)); }
+// A checkpoint's place (gate `g`; -1: the start): the middle of its platform, on its top. The start is
+// 2 m along the platform the course begins on (its middle, when it is shorter than 4 m).
+pf_spot :: (p: [] Platformer, g: int) -> [3] f32 {
+  c := p[0].c[..];
+  if c[0].n == 0 { return [3] f32.[0, PF_START, 2]; }
+  i := ifx g >= 0 && g < c[0].gates then c[0].gate_part[g] else c[0].start;
+  q := c[0].parts[i];
+  z := ifx g >= 0 && g < c[0].gates || q.z1 - q.z0 < 4 then (q.z0 + q.z1) * 0.5 else q.z0 + 2;
+  return [3] f32.[(q.x0 + q.x1) * 0.5, q.y * pf_risen(p, i), z];
+}
+// Where you start.
+pf_start :: (p: [] Platformer) -> [3] f32 { return pf_spot(p, -1); }
+// The ground under the course: the floor until it has fallen away, then none.
+pf_ground :: (p: [] Platformer) -> f32 { return ifx pf_up(p) then f32(PF_NO_GROUND) else 0.0f32; }
+// How far the floor has fallen (metres), and how much of the bare grid is still drawn on it.
+pf_floor :: (p: [] Platformer) -> f32 { return -320 * pf_ease((p[0].clock - PF_FLOOR_AT) / PF_FLOOR); }
+pf_grid :: (p: [] Platformer) -> f32 { return ifx p[0].ok then 1 - pf_ease((p[0].clock - PF_FLOOR_AT) / PF_FLOOR) else 1.0f32; }
+// The platforms as the engine's colliders want them (six floats a box, the page's axes): those near
+// along the course (`z` is where you are). How many.
+PF_NEAR :: 60.0;
+PF_DRAWN :: 45.0;          // metres along the course either way the mesh holds (the side-on view sees a few)
+PF_MESH :: 8000;          // vertices a new game's course's mesh stays under anywhere along it
+pf_solids :: (p: [] Platformer, z: f32, out: [] f32) -> int {
+  if !p[0].ok { return 0; }
+  m := 0;
+  for i: 0..<p[0].c[0].n {
+    b := pf_box(p, i);
+    if b[5] < z - PF_NEAR || b[2] > z + PF_NEAR || (m + 1) * 6 > out.count { continue; }
+    for k: 0..<6 { out[m * 6 + k] = b[k]; }
+    m += 1;
+  }
+  return m;
+}
+// The platform feet at (x, y, z) are on now (-1: none). On two at once (a pad set into a platform, their
+// tops level), the pad: it is the one that does something.
+pf_on :: (p: [] Platformer, x: f32, y: f32, z: f32) -> int {
+  if !p[0].ok { return -1; }
+  found := -1;
+  for i: 0..<p[0].c[0].n {
+    b := pf_box(p, i);
+    if x >= b[0] - 0.3 && x <= b[3] + 0.3 && z >= b[2] - 0.3 && z <= b[5] + 0.3 && abs(y - b[4]) <= PF_STAND {
+      if p[0].c[0].parts[i].kind == PF_PAD { return i; }
+      if found < 0 { found = i; }
+    }
+  }
+  return found;
+}
+// Whether feet at (x, y, z) are in spikes: over a strip, at its foot (on what it lies on).
+pf_spiked :: (p: [] Platformer, x: f32, y: f32, z: f32) -> bool {
+  c := p[0].c[..];
+  for k: 0..<c[0].spikes {
+    o := k * 6; up := pf_risen_at(p, c[0].spike[o + 2]);
+    if x >= c[0].spike[o] - 0.3 && x <= c[0].spike[o + 3] + 0.3 && z >= c[0].spike[o + 2] - 0.2 && z <= c[0].spike[o + 5] + 0.2 && abs(y - c[0].spike[o + 1] * up) <= PF_STAND { return true; }
+  }
+  return false;
+}
+
+// The void under you at `z`: PF_FALL under the lowest top within 40 metres along the course.
+pf_void :: (p: [] Platformer, z: f32) -> f32 {
+  c := p[0].c[..]; low := c[0].low; first := true;
+  for i: 0..<c[0].n { q := c[0].parts[i]; if q.z1 + c[0].parts[i].slide.bz > z - 40 && q.z0 < z + 40 && (first || q.y < low) { low = q.y; first = false; } }
+  return low - PF_FALL;
+}
+// What a frame of the rules says.
+PfStep :: struct {
+  back: bool; to: [3] f32;   // you fell or met spikes: put back here
+  bounce: bool;              // a pad throws you up
+  carry: [3] f32;            // the platform under you moved this much over the frame: you go with it
+  got: int;                  // shards taken
+  gate: int;                 // COURSE_GATE when a checkpoint was touched, COURSE_FINISH at the goal
+}
+// The course's rules for one frame, you at (x, y, z) (your feet), on the ground or not: the shards
+// you are at, the checkpoint or goal you stand on, spikes and the void (back to the last checkpoint),
+// a pad under you; then its clock on, and how the platform under you moved. A course with no
+// checkpoint has no goal: its clock runs on, and a fall is back to the start.
+pf_step :: (p: [] Platformer, x: f32, y: f32, z: f32, on_ground: bool, step: f32) -> PfStep {
+  s: PfStep;
+  if !p[0].ok { return s; }
+  c := p[0].c[..];
+  st := pf_on(p, x, y, z);
+  p[0].stand = st;
+  if pf_up(p) && !p[0].run.going && !p[0].run.done { p[0].run = course_go(p[0].run); }
+  if p[0].run.going || (pf_up(p) && c[0].gates == 0) {
+    s.got = course_take(c[0].at[0..<c[0].shards * 3], p[0].taken[0..<c[0].shards], x, y + 0.9, z, PF_REACH);
+    if pf_spiked(p, x, y, z) || y < pf_void(p, z) {
+      s.back = true; s.to = pf_spot(p, course_back(p[0].run)); p[0].falls += 1; p[0].stand = -1;
+      p[0].clock += step; p[0].run = course_tick(p[0].run, step);
+      return s;
+    }
+    if st >= 0 && c[0].parts[st].gate >= 0 { r := course_pass(p[0].run, c[0].parts[st].gate); p[0].run = r.run; if r.what != COURSE_NOTHING { s.gate = r.what; } }
+    if s.gate == COURSE_FINISH { p[0].won = 0.0001; }
+    s.bounce = st >= 0 && on_ground && c[0].parts[st].kind == PF_PAD;
+  }
+  if st >= 0 { s.carry = course_slide_step(c[0].parts[st].slide, pf_time(p), ifx pf_up(p) then step else 0.0f32); }
+  p[0].clock += step;
+  p[0].run = course_tick(p[0].run, step);
+  if p[0].won > 0 { p[0].won += step; }
+  return s;
+}
+
+// ---------------------------------------------------------------- the look
+
+pf_v :: (x: f32, y: f32, z: f32) -> [3] f32 { return [3] f32.[x, y, z]; }
+// A box in the page's axes, drawn in the engine's.
+pf_slab :: (a: [] ArchPen, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) { arch_slab(a, x0, y0, -z1, x1, y1, -z0); }
+// A shard: a small glowing gem turning where it floats.
+pf_gem :: (a: [] ArchPen, x: f32, y: f32, z: f32, size: f32, turn: f32) {
+  c := cos(turn); s := sin(turn); h: f32 = 0.7071;
+  ex := pf_v(c * h * size, h * size, -s * h * size); ey := pf_v(-c * h * size, h * size, s * h * size); ez := pf_v(s * size * 0.7, 0, c * size * 0.7);
+  arch_obox(a, pf_v(x, y, -z), ex, ey, ez);
+}
+// The seven bars of a digit lit for 0 to 9 (top, top right, bottom right, bottom, bottom left, top left, middle).
+pf_bars :: (d: int) -> int { b := [10] int.[63, 6, 91, 79, 102, 109, 125, 7, 127, 111]; return b[((d % 10) + 10) % 10]; }
+// A digit of bars on the board, its bottom left at (z, y) along the course, in the plane x.
+pf_digit :: (a: [] ArchPen, x: f32, z: f32, y: f32, d: int) {
+  bars := pf_bars(d); w: f32 = 0.55; hh: f32 = 0.5; t: f32 = 0.09;
+  if (bars & 1) != 0 { pf_slab(a, x - 0.05, y + 2 * hh - t, z, x, y + 2 * hh, z + w); }
+  if (bars & 2) != 0 { pf_slab(a, x - 0.05, y + hh, z + w - t, x, y + 2 * hh, z + w); }
+  if (bars & 4) != 0 { pf_slab(a, x - 0.05, y, z + w - t, x, y + hh, z + w); }
+  if (bars & 8) != 0 { pf_slab(a, x - 0.05, y, z, x, y + t, z + w); }
+  if (bars & 16) != 0 { pf_slab(a, x - 0.05, y, z, x, y + hh, z + t); }
+  if (bars & 32) != 0 { pf_slab(a, x - 0.05, y + hh, z, x, y + 2 * hh, z + t); }
+  if (bars & 64) != 0 { pf_slab(a, x - 0.05, y + hh - t * 0.5, z, x, y + hh + t * 0.5, z + w); }
+}
+// The course's mesh, in the engine's axes: each platform as far up as it has risen (a pale stone
+// slab with a soft mint top; a moving one blue and a lift violet, each with a line of light along
+// its front; a bounce pad with a glowing pink pad on it that squashes as it throws), the spikes (a
+// row of red-tipped teeth), the shards not yet taken (gold gems, turning, bobbing), each checkpoint's
+// post (an amber light that turns green once touched), and the goal (an arch of light; reached, it
+// flashes, and a board over it shows the time and the shards). `time` is the frame's clock; what is
+// within `reach` of `z` along the course is drawn (PF_DRAWN while it is played: the side-on view sees a few metres).
+pf_mesh :: (p: [] Platformer, a: [] ArchPen, time: f32, z: f32) { pf_mesh_near(p, a, time, z, PF_DRAWN); }
+pf_mesh_near :: (p: [] Platformer, a: [] ArchPen, time: f32, z: f32, reach: f32) {
+  if !p[0].ok { return; }
+  c := p[0].c[..];
+  for i: 0..<c[0].n {
+    q := c[0].parts[i]; b := pf_box(p, i);
+    if b[5] < z - reach || b[2] > z + reach { continue; }
+    // the slab, and its top
+    if q.kind == PF_MOVER { arch_material(a, ARCH_M_SMOOTH, 0.62, 0.74, 0.9); }
+    else if q.kind == PF_LIFT { arch_material(a, ARCH_M_SMOOTH, 0.74, 0.66, 0.9); }
+    else { arch_material(a, ARCH_M_SMOOTH, 0.93, 0.86, 0.74); }
+    cap := ifx q.thick > 0.24 then 0.12f32 else q.thick * 0.5;   // (the top's own layer: a thin thing's is half of it)
+    pf_slab(a, b[0], b[1], b[2], b[3], b[4] - cap, b[5]);
+    // under a slab (wide, long and no thicker than a metre), a narrower and a narrower again: a floating island's keel, in a dusky stone
+    w := b[5] - b[2]; inset := ifx w > 2.4 then 0.5f32 else w * 0.2;
+    if q.thick <= 1 && b[3] - b[0] >= 2.4 && w >= 2 {
+      arch_material(a, ARCH_M_SMOOTH, 0.66, 0.62, 0.74);
+      pf_slab(a, b[0] + 0.35, b[1] - 0.7, b[2] + inset, b[3] - 0.35, b[1], b[5] - inset);
+      if w > 3 { pf_slab(a, b[0] + 0.8, b[1] - 1.3, b[2] + inset * 2.4, b[3] - 0.8, b[1] - 0.7, b[5] - inset * 2.4); }
+    }
+    if q.kind == PF_PLAIN || q.kind == PF_PAD { arch_material(a, ARCH_M_SMOOTH, 0.56, 0.86, 0.68); }
+    pf_slab(a, b[0] + 0.02, b[4] - cap, b[2] + 0.02, b[3] - 0.02, b[4], b[5] - 0.02);
+    // a line of light along the front of a moving one and a lift
+    if q.kind == PF_MOVER { arch_material(a, ARCH_M_GLOW, 0.3, 1.1, 1.5); pf_slab(a, b[3], b[4] - 0.3, b[2] + 0.1, b[3] + 0.04, b[4] - 0.2, b[5] - 0.1); }
+    if q.kind == PF_LIFT { arch_material(a, ARCH_M_GLOW, 1.1, 0.4, 1.6); pf_slab(a, b[3], b[4] - 0.3, b[2] + 0.1, b[3] + 0.04, b[4] - 0.2, b[5] - 0.1); }
+    // a pad: it breathes, and squashes for a moment when it throws you
+    if q.kind == PF_PAD {
+      g := 1.1 + 0.4 * sin(time * 4);
+      squash := ifx p[0].stand == i then 0.04f32 else 0.16f32;
+      arch_material(a, ARCH_M_GLOW, 1.6 * g, 0.35 * g, 1.1 * g);
+      small := ifx b[3] - b[0] < w then b[3] - b[0] else w; edge := ifx small > 1.5 then 0.3f32 else small * 0.2;
+      pf_slab(a, b[0] + edge, b[4], b[2] + edge, b[3] - edge, b[4] + squash, b[5] - edge);
+    }
+    // a checkpoint's post, and the goal's arch
+    if q.gate >= 0 {
+      m := (b[2] + b[5]) * 0.5; cx := (b[0] + b[3]) * 0.5;
+      passed := p[0].run.done || (p[0].run.next > q.gate);
+      if q.gate == c[0].gates - 1 {
+        f := ifx p[0].won > 0 then 1 + 2.5 * pf_ease(1 - p[0].won / 1.5) else 0.0f32;
+        arch_material(a, ARCH_M_SMOOTH, 0.9, 0.9, 0.92);
+        pf_slab(a, cx - 0.25, b[4], m - 2.4, cx + 0.25, b[4] + 4, m - 2.1); pf_slab(a, cx - 0.25, b[4], m + 2.1, cx + 0.25, b[4] + 4, m + 2.4);
+        g := 1.0 + 0.3 * sin(time * 3) + f;
+        if p[0].won > 0 { arch_material(a, ARCH_M_GLOW, 0.4 * g, 1.5 * g, 0.7 * g); } else { arch_material(a, ARCH_M_GLOW, 1.5 * g, 1.1 * g, 0.35 * g); }
+        pf_slab(a, cx - 0.3, b[4] + 4, m - 2.5, cx + 0.3, b[4] + 4.35, m + 2.5);
+      } else {
+        arch_material(a, ARCH_M_SMOOTH, 0.9, 0.9, 0.92);
+        pf_slab(a, b[0] + 0.1, b[4], m - 0.08, b[0] + 0.26, b[4] + 2.2, m + 0.08);
+        g := 1.1 + 0.3 * sin(time * 3);
+        if passed { arch_material(a, ARCH_M_GLOW, 0.3 * g, 1.5 * g, 0.6 * g); } else { arch_material(a, ARCH_M_GLOW, 1.5 * g, 0.85 * g, 0.2 * g); }
+        pf_slab(a, b[0] + 0.02, b[4] + 2.2, m - 0.4, b[0] + 0.34, b[4] + 2.6, m + 0.08);
+      }
+    }
+  }
+  // spikes: teeth turned on edge, a row across the strip every half metre along it, standing on its foot
+  for k: 0..<c[0].spikes {
+    o := k * 6; g := c[0].spike[o..<o + 6];
+    if g[5] < z - reach || g[2] > z + reach { continue; }
+    foot := g[1] * pf_risen_at(p, g[2]); cx := (g[0] + g[3]) * 0.5; hx := (g[3] - g[0]) * 0.5;
+    n := cast(int) ((g[5] - g[2]) / 0.5); if n < 1 { n = 1; }
+    for t: 0..<n {
+      mz := g[2] + 0.25 + 0.5 * cast(f32) t; h: f32 = 0.18;
+      arch_material(a, ARCH_M_SMOOTH, 0.32, 0.3, 0.36);
+      arch_obox(a, pf_v(cx, foot, -mz), pf_v(hx, 0, 0), pf_v(0, h, h), pf_v(0, -h, h));
+      arch_material(a, ARCH_M_GLOW, 1.4, 0.18, 0.12);
+      arch_obox(a, pf_v(cx, foot + 0.2, -mz), pf_v(hx + 0.02, 0, 0), pf_v(0, 0.05, 0.05), pf_v(0, -0.05, 0.05));
+    }
+  }
+  // the shards not yet taken, gold, turning and bobbing (while the course rises they rise with it)
+  up := pf_ease((p[0].clock - PF_RISE_AT) / (PF_ENTER - PF_RISE_AT));
+  arch_material(a, ARCH_M_GLOW, 1.7, 1.15, 0.3);
+  for k: 0..<c[0].shards {
+    if p[0].taken[k] { continue; }
+    sz := c[0].at[k * 3 + 2];
+    if sz < z - reach || sz > z + reach { continue; }
+    sy := c[0].at[k * 3 + 1] * up + 0.12 * sin(time * 2.2 + sz);
+    pf_gem(a, c[0].at[k * 3], sy, sz, 0.26 * up, time * 1.7 + sz);
+  }
+  // the board over the goal once it is reached: the time (minutes, seconds) and the shards taken
+  if p[0].won > 0 && c[0].gates > 0 {
+    b := pf_box(p, c[0].gate_part[c[0].gates - 1]);
+    m := (b[2] + b[5]) * 0.5; y := b[4] + 5.2;
+    show := pf_ease(p[0].won / 0.8);
+    arch_material(a, ARCH_M_SMOOTH, 0.12, 0.14, 0.2);
+    pf_slab(a, -1.8, y - 0.35, m - 3.3, -1.7, y + 2.95 * show, m + 3.3);
+    secs := cast(int) (p[0].run.clock + 0.5); mins := secs / 60; secs = secs % 60;
+    arch_material(a, ARCH_M_GLOW, 1.6 * show, 1.4 * show, 0.6 * show);
+    yy := y + 1.55; zz := m - 2.6;
+    pf_digit(a, -1.68, zz, yy, mins / 10); pf_digit(a, -1.68, zz + 0.75, yy, mins);
+    pf_slab(a, -1.73, yy + 0.25, zz + 1.42, -1.68, yy + 0.37, zz + 1.54); pf_slab(a, -1.73, yy + 0.65, zz + 1.42, -1.68, yy + 0.77, zz + 1.54);
+    pf_digit(a, -1.68, zz + 1.75, yy, secs / 10); pf_digit(a, -1.68, zz + 2.5, yy, secs);
+    got := course_taken(p[0].taken[0..<c[0].shards]);
+    yy = y; arch_material(a, ARCH_M_GLOW, 1.7 * show, 1.15 * show, 0.3 * show);
+    pf_digit(a, -1.68, zz, yy, got / 10); pf_digit(a, -1.68, zz + 0.75, yy, got);
+    pf_gem(a, -1.7, yy + 0.5, zz + 1.75, 0.3 * show, 0.6);
+    pf_digit(a, -1.68, zz + 2.4, yy, c[0].shards / 10); pf_digit(a, -1.68, zz + 3.15, yy, c[0].shards);
+  }
+}
+// The course's light: a bright high day, airy, with the atmosphere's clouds, coming up from black
+// as the floor falls away (the sky brightens through the entrance).
+pf_day :: () -> StyLook {
+  l: StyLook;
+  l.sun_x = 0.36; l.sun_y = 0.82; l.sun_z = -0.44; l.shadow = 0.6; l.band = 0.6;
+  l.sun_r = 0.8; l.sun_g = 0.76; l.sun_b = 0.66;
+  l.sky_r = 0.34; l.sky_g = 0.42; l.sky_b = 0.52;
+  l.ground_r = 0.3; l.ground_g = 0.34; l.ground_b = 0.42;
+  l.zenith_r = 0.2; l.zenith_g = 0.48; l.zenith_b = 0.92;
+  l.horizon_r = 0.76; l.horizon_g = 0.87; l.horizon_b = 0.98;
+  l.haze_r = 0.78; l.haze_g = 0.87; l.haze_b = 0.98; l.haze = 0.006; l.haze_start = 30; l.haze_most = 0.85;
+  l.air = 1.15; l.cloud = 0.55; l.cloud_scale = 1.3; l.sun_disc = 0.02;
+  l.lush = 0;
+  return l;
+}
+pf_look :: (p: [] Platformer) -> StyLook {
+  night: StyLook;
+  night.sun_r = 0; night.sun_g = 0; night.sun_b = 0; night.sky_r = 0; night.sky_g = 0; night.sky_b = 0;
+  night.ground_r = 0; night.ground_g = 0; night.ground_b = 0; night.zenith_r = 0; night.zenith_g = 0; night.zenith_b = 0;
+  night.horizon_r = 0; night.horizon_g = 0; night.horizon_b = 0; night.haze_r = 0; night.haze_g = 0; night.haze_b = 0; night.haze = 0;
+  night.cloud = 0; night.air = 0; night.lush = 0;
+  f := ifx p[0].ok then pf_ease(p[0].clock / PF_SKY) else 0.0f32;
+  return sty_look_mix(night, pf_day(), f);
+}
+
+// ---------------------------------------------------------------- what the page is told
+// A number that changes whenever what the page is told would: the checkpoint, the shards, the falls, the goal.
+pf_state :: (p: [] Platformer) -> int {
+  if !p[0].ok { return 1; }
+  return ((((p[0].run.next + 1) * 1031 + course_taken(p[0].taken[..])) * 1031 + (p[0].falls & 1023)) << 4) | (ifx p[0].run.done then 2 else 0) | (ifx pf_up(p) then 8 else 0) | 1;
+}
+pf_put :: (out: [] u8, n: int, s: string) -> int { k := n; for ch: s { if k < out.count { out[k] = ch; k += 1; } } return k; }
+pf_put_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := ifx v < 0 then 0 else v;
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+// What is here, for the page's chat.
+pf_describe :: (p: [] Platformer, out: [] u8) -> int {
+  c := p[0].c[..];
+  n := pf_put(out, 0, "a platformer, seen side on: run right (A and D, or the arrows), jump with Space or W, and once more in the air (no flying). ");
+  if p[0].run.done {
+    n = pf_put(out, n, "finished in "); n = pf_put_int(out, n, cast(int) (p[0].run.clock + 0.5)); n = pf_put(out, n, " seconds");
+  } else {
+    n = pf_put(out, n, "checkpoints: "); n = pf_put_int(out, n, p[0].run.next); n = pf_put(out, n, " of "); n = pf_put_int(out, n, ifx c[0].gates > 0 then c[0].gates - 1 else 0);
+  }
+  n = pf_put(out, n, ". shards: "); n = pf_put_int(out, n, course_taken(p[0].taken[0..<c[0].shards])); n = pf_put(out, n, " of "); n = pf_put_int(out, n, c[0].shards);
+  n = pf_put(out, n, ". falls: "); n = pf_put_int(out, n, p[0].falls);
+  n = pf_put(out, n, ifx p[0].run.done then ". R runs it again." else ". falling or spikes put you back at the last checkpoint; R starts over.");
+  return n;
+}
+
+// ---------------------------------------------------------------- checks (the recorded run is replayed in web/hud.coax)
+
+pf_test_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 || needle.count > hay.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return true; } }
+  return false;
+}
+PfTest :: struct { p: [1] Platformer; mesh: [60000 * ARCH_VERTEX_FLOATS] f32; }
+
+#test "the course is made of things: a new game's, a checkpoint each section and the goal last, every kind in it; a small one, thing by thing; with nothing to stand on there is none" {
+  t: [1] PfTest; p := t[0].p[..]; c := p[0].c[..];
+  #assert pf_enter(p) && c[0].ok && c[0].gates == 9 && c[0].n == 67 && c[0].shards == 38 && c[0].spikes == 6 && c[0].end == 628 && c[0].start == 0;
+  #assert c[0].parts[0].z0 == 0 && c[0].parts[0].z1 == 7 && c[0].parts[0].y == PF_START && c[0].parts[0].kind == PF_PLAIN && c[0].parts[0].gate == -1 && c[0].parts[0].x0 == -1.6 && c[0].parts[0].x1 == 1.6 && c[0].parts[0].thick == 0.9;
+  #assert c[0].at[0] == 0 && c[0].at[1] == PF_START + 1.2 && c[0].at[2] == 7;
+  // the goal is the furthest checkpoint: the first half of the last platform; the gates are in their order along the course
+  #assert c[0].gate_part[c[0].gates - 1] == c[0].n - 2 && c[0].parts[c[0].n - 2].gate == c[0].gates - 1 && c[0].parts[c[0].n - 1].gate == -1;
+  for g: 1..<c[0].gates { #assert c[0].parts[c[0].gate_part[g]].z0 > c[0].parts[c[0].gate_part[g - 1]].z1; }
+  // every kind is in it, and the platforms go along the course in order
+  kinds := 0;
+  for i: 0..<c[0].n { kinds |= 1 << c[0].parts[i].kind; if i > 0 { #assert c[0].parts[i].z0 >= c[0].parts[i - 1].z1; } }
+  #assert kinds == 15 && c[0].low >= 0;
+  // a small course, thing by thing (centimetres): a platform, spikes on it, a shard, a lift, a moving platform, a pad, two checkpoints given out of order
+  one := [8] PfThing.[
+    PfThing.{role = BL_R_NONE, x = 0, y = 310, z = 200, w = 320, h = 90, d = 400},
+    PfThing.{role = BL_R_SPIKES, x = 0, y = 400, z = 300, w = 280, h = 25, d = 100},
+    PfThing.{role = BL_R_SHARD, x = 0, y = 525, z = 500, w = 50, h = 50, d = 50},
+    PfThing.{role = BL_R_CHECKPOINT, x = 0, y = 310, z = 3000, w = 320, h = 90, d = 600},
+    PfThing.{role = BL_R_LIFT, x = 0, y = 310, z = 700, w = 320, h = 90, d = 200, go = 300, every = 4000},
+    PfThing.{role = BL_R_SLIDER, x = 50, y = 610, z = 1000, w = 320, h = 90, d = 200, go = 500, every = 6000},
+    PfThing.{role = BL_R_PAD, x = 0, y = 0, z = 1800, w = 200, h = 25, d = 200},
+    PfThing.{role = BL_R_CHECKPOINT, x = 0, y = 310, z = 2200, w = 320, h = 90, d = 400}];
+  #assert pf_enter_with(p, one[..]) && c[0].n == 6 && c[0].gates == 2 && c[0].shards == 1 && c[0].spikes == 1 && c[0].start == 0 && c[0].low == 0.25 && c[0].end == 33;
+  #assert c[0].spike[1] == 4 && c[0].spike[2] == 2.5 && c[0].spike[5] == 3.5 && c[0].spike[0] == -1.4 && c[0].at[1] == 5.5 && c[0].at[2] == 5;
+  #assert c[0].parts[2].kind == PF_LIFT && c[0].parts[2].slide.by == 3 && c[0].parts[2].slide.period == 4 && c[0].parts[2].slide.bz == 0;
+  #assert c[0].parts[3].kind == PF_MOVER && c[0].parts[3].z0 == 9 && c[0].parts[3].slide.bz == 5 && c[0].parts[3].slide.period == 6 && c[0].parts[3].x0 == -1.1 && c[0].parts[3].y == 7;
+  #assert c[0].parts[4].kind == PF_PAD && c[0].parts[4].thick == 0.25;
+  // the nearer checkpoint is the first gate, the further the goal, whatever their order among the things
+  #assert c[0].gate_part[0] == 5 && c[0].gate_part[1] == 1 && c[0].parts[5].gate == 0 && c[0].parts[1].gate == 1 && p[0].run.gates == 2;
+  // you start 2 m along the platform the course begins on
+  #assert pf_start(p)[2] == 2 && pf_start(p)[0] == 0;
+  // nothing to stand on: no course (shards and spikes alone are none)
+  #assert !pf_enter_with(p, one[1..<3]) && !p[0].ok && !pf_enter_with(p, one[0..<0]);
+  // a course with no checkpoint has no goal, and is a course
+  #assert pf_enter_with(p, one[0..<1]) && p[0].ok && c[0].gates == 0 && p[0].run.done;
+}
+#test "the course laid again where it stands: a platform moved is where it is now, the clock, the falls and the shards taken kept; the run goes on with as many checkpoints, and starts over with one more" {
+  t: [1] PfTest; p := t[0].p[..]; c := p[0].c[..];
+  g: [1] PfThings; n := pf_starter(g[0].t[..]);
+  #assert n == 111 && pf_enter_with(p, g[0].t[0..<n]);
+  p[0].clock = PF_ENTER;
+  s := pf_step(p, 0, PF_START, 3, true, 0.016); s = pf_step(p, 0, PF_START + 0.4, 7, false, 0.016);
+  q := c[0].parts[c[0].gate_part[0]];
+  s = pf_step(p, 0, q.y, (q.z0 + q.z1) * 0.5, true, 0.016);
+  #assert p[0].taken[0] && p[0].run.next == 1 && p[0].run.going;
+  clock := p[0].clock; p[0].falls = 2;
+  // the second platform raised a metre
+  #assert g[0].t[3].role == BL_R_NONE; g[0].t[3].y += 100;
+  #assert pf_lay(p, g[0].t[0..<n]) && c[0].parts[1].y == PF_START + 1 && p[0].clock == clock && p[0].falls == 2 && p[0].taken[0] && !p[0].taken[1] && p[0].run.next == 1 && p[0].run.going;
+  // a checkpoint more: the run starts over, going
+  g[0].t[n] = PfThing.{role = BL_R_CHECKPOINT, x = 0, y = 310, z = 1500, w = 320, h = 90, d = 200};
+  #assert pf_lay(p, g[0].t[0..<n + 1]) && c[0].gates == 10 && p[0].run.next == 0 && p[0].run.going && p[0].run.gates == 10 && p[0].clock == clock;
+  // nothing to stand on: the course stays as it was
+  #assert !pf_lay(p, g[0].t[0..<0]) && p[0].ok && c[0].gates == 10;
+}
+#test "entering: the slabs lie in the floor, then rise one after another along the course and settle; the floor falls away and the sky comes up" {
+  t: [1] PfTest; p := t[0].p[..];
+  #assert pf_enter(p) && p[0].ok && p[0].stand == -1 && !pf_up(p) && pf_ground(p) == 0;
+  #assert pf_box(p, 0)[4] == PF_START && pf_start(p)[1] == PF_START && pf_start(p)[2] == 2 && pf_box(p, 1)[4] == 0;
+  dark := pf_look(p); #assert dark.sun_r == 0 && dark.air == 0 && pf_grid(p) == 1 && pf_floor(p) == 0;
+  p[0].clock = 0.3;
+  #assert pf_risen(p, 1) > pf_risen(p, 5) && pf_risen(p, 5) >= pf_risen(p, 30) && pf_risen(p, 1) > 0.3;
+  // a slab goes a little past its place and back
+  over := false; for k: 1..<20 { if pf_settle(cast(f32) k / 20) > 1 { over = true; } } #assert over && pf_settle(1) == 1 && pf_settle(0) == 0;
+  p[0].clock = PF_ENTER;
+  #assert pf_up(p) && pf_ground(p) == PF_NO_GROUND && pf_grid(p) < 0.01 && pf_floor(p) < -300;
+  for i: 0..<p[0].c[0].n { #assert pf_risen(p, i) == 1 && pf_box(p, i)[4] == p[0].c[0].parts[i].y; }
+  day := pf_look(p); #assert day.air > 1 && day.cloud > 0.5 && day.sun_y > 0.8 && day.lush == 0;
+}
+#test "the rules: shards are taken, checkpoints touched in order, the void and spikes put you back at the last, a pad throws, a moving platform carries, the goal stops the clock" {
+  t: [1] PfTest; p := t[0].p[..]; c := p[0].c[..];
+  ok := pf_enter(p); p[0].clock = PF_ENTER;
+  s := pf_step(p, 0, PF_START, 3, true, 0.016);
+  #assert p[0].run.going && p[0].stand == 0 && !s.back && s.got == 0 && p[0].run.next == 0;
+  // the first shard, at the end of the first platform
+  s = pf_step(p, 0, PF_START + 0.4, 7, false, 0.016); #assert s.got == 1 && p[0].taken[0] && course_taken(p[0].taken[..]) == 1;
+  // falling into the void before any checkpoint: back to the start
+  s = pf_step(p, 0, c[0].low - PF_FALL - 0.1, 20, false, 0.016); #assert s.back && s.to[2] == 2 && s.to[1] == PF_START && p[0].falls == 1;
+  // the first checkpoint, then spikes after it: back to it
+  g := c[0].gate_part[0]; q := c[0].parts[g];
+  s = pf_step(p, 0, q.y, (q.z0 + q.z1) * 0.5, true, 0.016); #assert s.gate == COURSE_GATE && p[0].run.next == 1;
+  sp := -1; for k: 0..<c[0].spikes { if c[0].spike[k * 6 + 2] > q.z1 && sp < 0 { sp = k; } }
+  ry := c[0].spike[sp * 6 + 1]; rz := c[0].spike[sp * 6 + 2];
+  s = pf_step(p, 0, ry + 0.05, rz + 0.3, true, 0.016); #assert s.back && s.to[2] == (q.z0 + q.z1) * 0.5 && s.to[1] == q.y && p[0].falls == 2;
+  // over the spikes in the air: nothing; and beside the strip, on the same platform: nothing
+  s = pf_step(p, 0, ry + 1.2, rz + 0.3, false, 0.016); #assert !s.back;
+  s = pf_step(p, 0, ry, rz - 0.5, true, 0.016); #assert !s.back;
+  // a later checkpoint touched out of order counts for nothing
+  q2 := c[0].parts[c[0].gate_part[2]];
+  s = pf_step(p, 0, q2.y, q2.z0 + 1, true, 0.016); #assert s.gate == 0 && p[0].run.next == 1;
+  // a pad throws you when you are on it on the ground, not when you pass over it
+  pad := -1; for i: 0..<c[0].n { if c[0].parts[i].kind == PF_PAD && pad < 0 { pad = i; } }
+  d := c[0].parts[pad];
+  #assert pf_step(p, 0, d.y, d.z0 + 1, true, 0.016).bounce && !pf_step(p, 0, d.y, d.z0 + 1, false, 0.016).bounce && !pf_step(p, 0, d.y + 1, d.z0 + 1, true, 0.016).bounce;
+  // a moving platform carries what stands on it, by as far as it moves
+  mv := -1; for i: 0..<c[0].n { if c[0].parts[i].kind == PF_MOVER && mv < 0 { mv = i; } }
+  p[0].clock = PF_ENTER + 1.0; b := pf_box(p, mv);
+  s = pf_step(p, 0, b[4], (b[2] + b[5]) * 0.5, true, 0.1);
+  after := pf_box(p, mv);
+  #assert p[0].stand == mv && s.carry[2] > 0.1 && abs(s.carry[2] - (after[2] - b[2])) < 0.001 && s.carry[1] == 0;
+  // the solids near you are the platforms near you
+  o: [PF_PARTS * 6] f32; n := pf_solids(p, 0, o[..]); #assert n >= 4 && n < c[0].n && o[1] == PF_START - 0.9 && o[4] == PF_START;
+  // the rest of the checkpoints in order, then the goal: the clock stops
+  for k: 1..<c[0].gates {
+    e := c[0].parts[c[0].gate_part[k]];
+    s = pf_step(p, 0, e.y, e.z0 + 1, true, 0.016);
+    #assert s.gate == (ifx k == c[0].gates - 1 then COURSE_FINISH else COURSE_GATE);
+  }
+  #assert p[0].run.done && p[0].won > 0 && !p[0].run.going;
+  was := p[0].run.clock; s = pf_step(p, 0, PF_START, 3, true, 1.0); #assert p[0].run.clock == was && p[0].won > 1;
+}
+#test "the mesh: slabs where the platforms are, gems for the shards not taken, posts that turn green, and the board at the goal" #steps 2000000000 {
+  t: [1] PfTest; p := t[0].p[..]; c := p[0].c[..];
+  a: [1] ArchPen; arch_pen(a[..], t[0].mesh[..]);
+  pf_mesh(p, a[..], 0, 0); #assert a[0].n == 0;
+  ok := pf_enter(p); p[0].clock = PF_ENTER;
+  arch_pen(a[..], t[0].mesh[..]); pf_mesh(p, a[..], 0, 0);
+  first := a[0].n; #assert first > 0 && !a[0].full;
+  // a shard taken is drawn no more
+  s := pf_step(p, 0, PF_START + 0.4, 7, false, 0.016);
+  arch_pen(a[..], t[0].mesh[..]); pf_mesh(p, a[..], 0, 0); #assert a[0].n == first - 36;
+  // the goal reached: the board's bars are drawn too (and far along the course is drawn there)
+  for k: 0..<c[0].gates { e := c[0].parts[c[0].gate_part[k]]; s = pf_step(p, 0, e.y, e.z0 + 1, true, 0.016); }
+  p[0].won = 2;
+  arch_pen(a[..], t[0].mesh[..]); pf_mesh(p, a[..], 0, c[0].end); #assert a[0].n > 36 * 20 && !a[0].full;
+  // everything is in the engine's axes: along the course is the engine's -z
+  far: f32 = 0; for v: 0..<a[0].n { if t[0].mesh[v * ARCH_VERTEX_FLOATS + 2] < far { far = t[0].mesh[v * ARCH_VERTEX_FLOATS + 2]; } }
+  #assert far <= -c[0].end + 0.1 && far > -c[0].end - 10;
+  // anywhere along the course, the board up, it fits the page's mesh
+  most := 0; at: f32 = 0;
+  while at < c[0].end + 10 { arch_pen(a[..], t[0].mesh[..]); pf_mesh(p, a[..], 0, at); if a[0].n > most { most = a[0].n; } at += 5; }
+  #assert most < PF_MESH && most > 1000;
+}
+#test "what the page is told: the checkpoints, the shards, the falls, how to start over; and the state's number changes with each" {
+  t: [1] PfTest; p := t[0].p[..]; c := p[0].c[..]; out: [512] u8;
+  #assert pf_state(p) == 1;
+  ok := pf_enter(p); p[0].clock = PF_ENTER;
+  a := pf_state(p);
+  n := pf_describe(p, out[..]); s := cast(string) out[0..<n];
+  #assert pf_test_has(s, "a platformer") && pf_test_has(s, "checkpoints: 0 of 8") && pf_test_has(s, "shards: 0 of") && pf_test_has(s, "falls: 0") && pf_test_has(s, "no flying") && n < 400;
+  r := pf_step(p, 0, PF_START + 0.4, 7, false, 0.016); #assert pf_state(p) != a; b := pf_state(p);
+  r = pf_step(p, 0, -50, 14, false, 0.016); #assert pf_state(p) != b;
+  for k: 0..<c[0].gates { e := c[0].parts[c[0].gate_part[k]]; r = pf_step(p, 0, e.y, e.z0 + 1, true, 0.016); }
+  n = pf_describe(p, out[..]); s = cast(string) out[0..<n];
+  #assert pf_test_has(s, "finished in") && pf_test_has(s, "shards: 1 of") && pf_test_has(s, "falls: 1");
+}

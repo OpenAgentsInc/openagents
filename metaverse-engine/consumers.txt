@@ -40,9 +40,6 @@ pipeline metaverse-engine/audio/measure.coax metaverse-engine/audio/sfx-tool.coa
 
 # The Metaverse Engine book's own implementations: a chapter builds each and its example runs it
 book metaverse-engine/physics/sim/scene.coax metaverse-engine/book/ch017-a-scene-owns-the-state.md
-book metaverse-engine/physics/sim/bodies.coax metaverse-engine/book/ch018-rigid-bodies-and-time-steps.md  # rigid bodies that touch: GameBuilder's web world (another repository) steps its blocks and ball with it
-book metaverse-engine/physics/sim/broad.coax metaverse-engine/book/ch020-find-the-pairs-that-might-touch.md
-book metaverse-engine/physics/sim/narrow.coax metaverse-engine/book/ch021-find-where-they-touch.md
 book metaverse-engine/physics/sim/sph.coax metaverse-engine/book/ch024-liquids-from-particles.md
 book metaverse-engine/physics/sim/mpm.coax metaverse-engine/book/ch026-sand-snow-and-clay-on-a-grid.md
 book metaverse-engine/physics/sim/grid-fluid.coax metaverse-engine/book/ch028-smoke-on-a-grid.md
