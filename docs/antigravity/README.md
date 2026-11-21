@@ -217,6 +217,14 @@ mints a bootstrap token, monitors for crashes, supports a **stamp/self-restart**
 
 ## 8. The interesting subsystems
 
+> **Inference, the agent loop and tool calls have their own page:**
+> [`inference-and-agent-loop.md`](./inference-and-agent-loop.md) — how a prompt reaches
+> Gemini (Cloud Code `v1internal:streamGenerateContent` vs `generativelanguage`), why the
+> loop lives inside the Go `language_server` rather than the Electron JS, the
+> `CortexStep` / `ToolCallStep` wire format, the planner/executor split, the
+> `EXECUTOR_TERMINATION_REASON_*` contract, the tool vocabulary, and the Actuator
+> round-trip that lets the Go loop drive the host's `computer_use` and `browser_*` tools.
+
 ### 8.1 Browser engine and streaming (`browserEngine/`, `browserStream/`)
 
 `browserEngine.js` discovers a local Chrome, connects over a **CDP pipe**
