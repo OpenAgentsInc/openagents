@@ -1,0 +1,1030 @@
+// Coder Desktop page (../page.coax): integrated multi-tab terminal pane on the window's right
+// (GitHub #13869). The page owns multi-tab state, ANSI escape stripping, retained scrollback,
+// clickable http(s) URL & file-path detection, listening-port & process-tree telemetry display,
+// text selection, and "Send to chat" composer attachment requests. The host (Window+Terminal.swift,
+// host.c) spawns and manages the native PTY processes, feeds output bytes here, writes queued
+// keyboard input back to the PTY, resizes on cols/rows changes, and scans listening ports.
+
+CP_TERM_TABS :: 8;
+CP_TERM_PORTS :: 8;
+CP_TERM_LINKS :: 64;
+CP_TERM_INLINE_PER_TAB :: 2048;   // default per-tab buffer when no host 8 MiB buffer is bound (tests)
+CP_TERM_INPUT_CAP :: 4096;
+CP_TERM_SEND_CAP :: 16384;
+CP_TERM_PATH :: 512;
+CP_TERM_URL :: 256;
+
+// ANSI parser states across streaming PTY chunks
+CP_TERM_ANSI_NORMAL :: 0;
+CP_TERM_ANSI_ESC :: 1;
+CP_TERM_ANSI_CSI :: 2;
+CP_TERM_ANSI_OSC :: 3;
+CP_TERM_ANSI_OSC_ESC :: 4;
+CP_TERM_ANSI_CHARSET :: 5;
+
+// Detected clickable span kinds in terminal output
+CP_TERM_LINK_URL :: 1;
+CP_TERM_LINK_PATH :: 2;
+
+// Row actions dispatched by the terminal pane (170..204)
+CP_TERM_TOGGLE :: 170;      // corner toolbar button
+CP_TERM_CLOSE :: 171;       // close terminal pane
+CP_TERM_NEW :: 172;         // + new terminal tab
+CP_TERM_CLEAR :: 173;       // clear active tab scrollback
+CP_TERM_SEND_CHAT :: 174;   // attach selection to composer
+CP_TERM_BODY :: 175;        // click on terminal output body
+CP_TERM_TAB :: 180;         // 180..<188 switch tab i
+CP_TERM_TAB_CLOSE :: 188;   // 188..<196 close tab i
+CP_TERM_PORT :: 196;        // 196..<204 open listening port i in browser
+CP_TERM_LINK :: 204;        // click on detected URL or file path (id carries index)
+
+// Host action & operations (coder_page_action == CP_ASK_TERM, coder_page_term_op == CP_TERM_OP_*)
+CP_ASK_TERM :: 52;
+CP_TERM_OP_NONE :: 0;
+CP_TERM_OP_OPEN :: 1;       // spawn PTY for op_tab
+CP_TERM_OP_CLOSE_TAB :: 2;  // terminate PTY for op_tab
+CP_TERM_OP_RESIZE :: 3;     // resize PTY for op_tab
+CP_TERM_OP_INPUT :: 4;      // drain queued input bytes into input_tab's PTY
+CP_TERM_OP_SEND_CHAT :: 5;  // attach selected terminal output to composer
+CP_TERM_OP_FOCUS :: 6;      // give keyboard focus to the canvas for terminal input
+CP_TERM_OP_CLOSED :: 7;     // terminal pane hidden
+
+CP_KB_TERM :: 4;            // keyboard focus is on the terminal pane (editor.coax's CP_KB_*)
+CP_SCR_TERM :: 6;           // wheel scroll target is the terminal pane (input.coax's CP_SCR_*)
+
+CpTermPort :: struct {
+  port: int;
+  pid: int;
+  proc: [32] u8; proc_n: int;
+  cpu_tenths: int;
+  rss_kb: int;
+}
+
+CpTermLink :: struct {
+  kind: int;                  // CP_TERM_LINK_URL or CP_TERM_LINK_PATH
+  text: [CP_TERM_PATH] u8; text_n: int;
+}
+
+CpTermTab :: struct {
+  used: bool;
+  id: int;
+  title: [64] u8; title_n: int;
+  cwd: [CP_TERM_PATH] u8; cwd_n: int;
+  running: bool;
+  exit_code: int;
+  cols: int; rows: int;
+  sent_cols: int; sent_rows: int;
+  buf: [] u8;                 // host-bound 8 MiB scrollback buffer, or inline_buf slice in tests
+  len: int;
+  lines: int;
+  line_start: int;
+  ansi_state: int;
+  scroll: f32; content: f32; view: f32;
+  stick: bool;
+  sel_a: int; sel_b: int; sel_on: bool;
+  ports: [CP_TERM_PORTS] CpTermPort; nports: int;
+  cpu_tenths: int; rss_kb: int;
+}
+
+CpTermPane :: struct {
+  open: bool;
+  front: bool;
+  tabs: [CP_TERM_TABS] CpTermTab;
+  ntabs: int;
+  active: int;                // 0..<ntabs, -1 none
+  next_id: int;
+  inline_buf: [CP_TERM_TABS * CP_TERM_INLINE_PER_TAB] u8;
+  op: int;                    // CP_TERM_OP_*
+  op_tab: int;                // tab id for op
+  input_buf: [CP_TERM_INPUT_CAP] u8; input_n: int; input_tab: int;
+  send_buf: [CP_TERM_SEND_CAP] u8; send_n: int;
+  body_x: f32; body_y: f32; body_w: f32; body_h: f32;
+  cell_w: f32; line_h: f32;
+  dragging: bool;
+  links: [CP_TERM_LINKS] CpTermLink; nlinks: int;
+  click_url: [CP_TERM_URL] u8; click_url_n: int;
+  click_path: [CP_TERM_PATH] u8; click_path_n: int;
+}
+
+cp_term :: (s: [] CoderPage) -> [] CpTermPane { return s[0].term[..]; }
+
+// ---------------------------------------------------------------- visibility & focus
+
+cp_term_shown :: (s: [] CoderPage) -> bool {
+  t := cp_term(s);
+  return t[0].open && (t[0].front || !(s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].sim[0].open));
+}
+cp_term_front :: (s: [] CoderPage) -> bool { return s[0].term[0].open && s[0].term[0].front; }
+cp_term_focused :: (s: [] CoderPage) -> bool {
+  return cp_term_shown(s) && !s[0].set_open && !cp_overlay_open(s) && s[0].fld[0].kb == CP_KB_TERM;
+}
+cp_term_yield :: (s: [] CoderPage, act: int) -> bool {
+  t := cp_term(s);
+  if !t[0].open || !t[0].front || act != CP_REVIEW && act != CP_AGENT { return false; }
+  t[0].front = false;
+  return false;
+}
+cp_term_ask :: (s: [] CoderPage, op: int, tab_id: int) {
+  t := cp_term(s);
+  t[0].op = op; t[0].op_tab = tab_id;
+  s[0].ask = CP_ASK_TERM;
+}
+
+// ---------------------------------------------------------------- tab helpers
+
+cp_term_tab_buf :: (t: [] CpTermPane, slot: int) -> [] u8 {
+  if slot < 0 || slot >= CP_TERM_TABS { return t[0].inline_buf[0..<0]; }
+  if t[0].tabs[slot].buf.count > 0 { return t[0].tabs[slot].buf; }
+  off := slot * CP_TERM_INLINE_PER_TAB;
+  return t[0].inline_buf[off..<off + CP_TERM_INLINE_PER_TAB];
+}
+cp_term_tab_text :: (t: [] CpTermPane, slot: int) -> string {
+  b := cp_term_tab_buf(t, slot);
+  n := t[0].tabs[slot].len;
+  if n < 0 { n = 0; }
+  if n > b.count { n = b.count; }
+  return cast(string) b[0..<n];
+}
+cp_term_slot_by_id :: (t: [] CpTermPane, tab_id: int) -> int {
+  for i: 0..<t[0].ntabs {
+    if t[0].tabs[i].used && t[0].tabs[i].id == tab_id { return i; }
+  }
+  return -1;
+}
+cp_term_active_slot :: (s: [] CoderPage) -> int {
+  t := cp_term(s);
+  if t[0].ntabs <= 0 || t[0].active < 0 || t[0].active >= t[0].ntabs { return -1; }
+  return t[0].active;
+}
+
+// Opens a new terminal tab scoped to cwd (or the chat's active folder when cwd is empty).
+// Returns the new tab's unique id, or -1 if CP_TERM_TABS are already open.
+cp_term_new_tab :: (s: [] CoderPage, title: string, cwd: string) -> int {
+  t := cp_term(s);
+  if t[0].ntabs >= CP_TERM_TABS { return -1; }
+  slot := t[0].ntabs;
+  t[0].next_id += 1;
+  id := t[0].next_id;
+  keep_buf := t[0].tabs[slot].buf;
+  t[0].tabs[slot] = CpTermTab.{};
+  t[0].tabs[slot].used = true;
+  t[0].tabs[slot].id = id;
+  t[0].tabs[slot].buf = keep_buf;
+  t[0].tabs[slot].running = true;
+  t[0].tabs[slot].cols = 80; t[0].tabs[slot].rows = 24;
+  t[0].tabs[slot].lines = 1;
+  t[0].tabs[slot].stick = true;
+  if title.count > 0 {
+    t[0].tabs[slot].title_n = cp_out(t[0].tabs[slot].title[..], title);
+  } else {
+    b: [32] u8; n := el_put(b[..], 0, "shell "); n = el_put_i(b[..], n, id);
+    t[0].tabs[slot].title_n = cp_out(t[0].tabs[slot].title[..], cast(string) b[0..<n]);
+  }
+  use_cwd := ifx cwd.count > 0 then cwd else cast(string) s[0].folder[0..<s[0].folder_n];
+  t[0].tabs[slot].cwd_n = cp_out(t[0].tabs[slot].cwd[..], use_cwd);
+  t[0].ntabs += 1;
+  t[0].active = slot;
+  cp_term_ask(s, CP_TERM_OP_OPEN, id);
+  return id;
+}
+
+cp_term_close_slot :: (s: [] CoderPage, slot: int) -> bool {
+  t := cp_term(s);
+  if slot < 0 || slot >= t[0].ntabs { return false; }
+  dead_id := t[0].tabs[slot].id;
+  dead_buf := t[0].tabs[slot].buf;
+  for i: slot..<t[0].ntabs - 1 {
+    t[0].tabs[i] = t[0].tabs[i + 1];
+  }
+  last := t[0].ntabs - 1;
+  t[0].tabs[last] = CpTermTab.{};
+  t[0].tabs[last].buf = dead_buf;   // preserve host-bound heap buffer for reuse
+  t[0].ntabs -= 1;
+  if t[0].ntabs == 0 {
+    t[0].active = -1;
+    t[0].open = false; t[0].front = false;
+    if s[0].fld[0].kb == CP_KB_TERM { s[0].fld[0].kb = CP_KB_COMPOSER; }
+  } else if t[0].active >= t[0].ntabs {
+    t[0].active = t[0].ntabs - 1;
+  }
+  cp_term_ask(s, CP_TERM_OP_CLOSE_TAB, dead_id);
+  return true;
+}
+
+cp_term_clear_slot :: (s: [] CoderPage, slot: int) {
+  t := cp_term(s);
+  if slot < 0 || slot >= t[0].ntabs { return; }
+  t[0].tabs[slot].len = 0;
+  t[0].tabs[slot].lines = 1;
+  t[0].tabs[slot].line_start = 0;
+  t[0].tabs[slot].scroll = 0;
+  t[0].tabs[slot].stick = true;
+  t[0].tabs[slot].sel_on = false;
+  t[0].tabs[slot].sel_a = 0;
+  t[0].tabs[slot].sel_b = 0;
+}
+
+cp_term_show :: (s: [] CoderPage) {
+  t := cp_term(s);
+  t[0].open = true; t[0].front = true;
+  s[0].fp[0].front = false; s[0].sim[0].front = false;
+  s[0].fld[0].kb = CP_KB_TERM;
+  if t[0].ntabs == 0 {
+    _ = cp_term_new_tab(s, "", "");
+  } else {
+    cp_term_ask(s, CP_TERM_OP_FOCUS, t[0].tabs[t[0].active].id);
+  }
+}
+
+cp_term_hide :: (s: [] CoderPage) {
+  t := cp_term(s);
+  if !t[0].open { return; }
+  t[0].open = false; t[0].front = false;
+  if s[0].fld[0].kb == CP_KB_TERM { s[0].fld[0].kb = CP_KB_COMPOSER; }
+  cp_term_ask(s, CP_TERM_OP_CLOSED, 0);
+}
+
+cp_term_toggle :: (s: [] CoderPage) {
+  if cp_term_shown(s) { cp_term_hide(s); } else { cp_term_show(s); }
+}
+
+// ---------------------------------------------------------------- ANSI stripping & scrollback ingestion
+
+// Drops oldest complete lines from tab slot's buffer to free at least `need` bytes.
+cp_term_trim_oldest :: (t: [] CpTermPane, slot: int, need: int) {
+  b := cp_term_tab_buf(t, slot);
+  nlen := t[0].tabs[slot].len;
+  if nlen <= 0 || b.count <= 0 { return; }
+  drop := b.count / 4;
+  if drop < need { drop = need; }
+  if drop >= nlen {
+    t[0].tabs[slot].len = 0;
+    t[0].tabs[slot].lines = 1;
+    t[0].tabs[slot].line_start = 0;
+    t[0].tabs[slot].sel_on = false; t[0].tabs[slot].sel_a = 0; t[0].tabs[slot].sel_b = 0;
+    return;
+  }
+  // advance to the next newline so we drop whole lines
+  cut := drop;
+  while cut < nlen && b[cut] != '\n' { cut += 1; }
+  if cut < nlen && b[cut] == '\n' { cut += 1; }
+  dropped_lines := 0;
+  for i: 0..<cut { if b[i] == '\n' { dropped_lines += 1; } }
+  rem := nlen - cut;
+  for i: 0..<rem { b[i] = b[cut + i]; }
+  t[0].tabs[slot].len = rem;
+  t[0].tabs[slot].lines -= dropped_lines;
+  if t[0].tabs[slot].lines < 1 { t[0].tabs[slot].lines = 1; }
+  t[0].tabs[slot].line_start -= cut;
+  if t[0].tabs[slot].line_start < 0 { t[0].tabs[slot].line_start = 0; }
+  if t[0].tabs[slot].sel_on {
+    t[0].tabs[slot].sel_a -= cut;
+    t[0].tabs[slot].sel_b -= cut;
+    if t[0].tabs[slot].sel_a < 0 { t[0].tabs[slot].sel_a = 0; }
+    if t[0].tabs[slot].sel_b < 0 { t[0].tabs[slot].sel_b = 0; }
+    if t[0].tabs[slot].sel_a == t[0].tabs[slot].sel_b { t[0].tabs[slot].sel_on = false; }
+  }
+}
+
+cp_term_push_byte :: (t: [] CpTermPane, slot: int, ch: u8) {
+  b := cp_term_tab_buf(t, slot);
+  if b.count <= 0 { return; }
+  if t[0].tabs[slot].len >= b.count { cp_term_trim_oldest(t, slot, 64); }
+  if t[0].tabs[slot].len >= b.count { return; }
+  b[t[0].tabs[slot].len] = ch;
+  t[0].tabs[slot].len += 1;
+  if ch == '\n' {
+    t[0].tabs[slot].lines += 1;
+    t[0].tabs[slot].line_start = t[0].tabs[slot].len;
+  }
+}
+
+// Feeds raw PTY output bytes into tab slot, incrementally stripping ANSI CSI/OSC/ESC sequences
+// and handling carriage returns and backspaces across chunk boundaries.
+cp_term_feed_slot :: (t: [] CpTermPane, slot: int, bytes: [] u8) {
+  if slot < 0 || slot >= t[0].ntabs || bytes.count <= 0 { return; }
+  st := t[0].tabs[slot].ansi_state;
+  i := 0;
+  while i < bytes.count {
+    c := bytes[i];
+    i += 1;
+    if st == CP_TERM_ANSI_NORMAL {
+      if c == 0x1b { st = CP_TERM_ANSI_ESC; continue; }
+      if c == 0x07 { continue; }   // BEL
+      if c == '\r' {
+        // CR followed by LF is standard CRLF; standalone CR rewinds to start of current line
+        if i < bytes.count && bytes[i] == '\n' { continue; }
+        t[0].tabs[slot].len = t[0].tabs[slot].line_start;
+        continue;
+      }
+      if c == 0x08 {   // BS
+        if t[0].tabs[slot].len > t[0].tabs[slot].line_start { t[0].tabs[slot].len -= 1; }
+        continue;
+      }
+      if c == '\t' {
+        cp_term_push_byte(t, slot, ' ');
+        cp_term_push_byte(t, slot, ' ');
+        continue;
+      }
+      if c == '\n' || c >= 0x20 { cp_term_push_byte(t, slot, c); }
+      continue;
+    }
+    if st == CP_TERM_ANSI_ESC {
+      if c == '[' { st = CP_TERM_ANSI_CSI; }
+      else if c == ']' { st = CP_TERM_ANSI_OSC; }
+      else if c == '(' || c == ')' || c == '*' || c == '+' { st = CP_TERM_ANSI_CHARSET; }
+      else { st = CP_TERM_ANSI_NORMAL; }
+      continue;
+    }
+    if st == CP_TERM_ANSI_CSI {
+      if c >= 0x40 && c <= 0x7e { st = CP_TERM_ANSI_NORMAL; }
+      continue;
+    }
+    if st == CP_TERM_ANSI_OSC {
+      if c == 0x07 { st = CP_TERM_ANSI_NORMAL; }
+      else if c == 0x1b { st = CP_TERM_ANSI_OSC_ESC; }
+      continue;
+    }
+    if st == CP_TERM_ANSI_OSC_ESC {
+      st = CP_TERM_ANSI_NORMAL;
+      continue;
+    }
+    if st == CP_TERM_ANSI_CHARSET {
+      st = CP_TERM_ANSI_NORMAL;
+      continue;
+    }
+  }
+  t[0].tabs[slot].ansi_state = st;
+}
+
+// ---------------------------------------------------------------- URL & file-path link detection
+
+cp_term_is_space :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
+cp_term_is_trail_punct :: (c: u8) -> bool {
+  return c == '.' || c == ',' || c == ';' || c == ')' || c == ']' || c == '}' || c == '>' || c == '"' || c == '\'' || c == '`';
+}
+cp_term_is_lead_punct :: (c: u8) -> bool {
+  return c == '(' || c == '[' || c == '{' || c == '<' || c == '"' || c == '\'' || c == '`';
+}
+cp_term_is_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+// Strips trailing :line or :line:col suffix from a file path token.
+cp_term_strip_line_col :: (tok: string) -> string {
+  e := tok.count;
+  // strip up to two :digits suffixes
+  for _: 0..<2 {
+    k := e;
+    while k > 0 && cp_term_is_digit(tok[k - 1]) { k -= 1; }
+    if k < e && k > 1 && tok[k - 1] == ':' { e = k - 1; }
+    else { break; }
+  }
+  return cast(string) tok[0..<e];
+}
+
+// True when tok looks like a clickable file path (contains '/' or a known file extension, no spaces).
+cp_term_looks_like_path :: (tok: string) -> bool {
+  clean := cp_term_strip_line_col(tok);
+  if clean.count < 3 || clean.count >= CP_TERM_PATH { return false; }
+  // exclude URLs
+  if clean.count >= 7 && (clean[0..<7] == "http://" || (clean.count >= 8 && clean[0..<8] == "https://")) { return false; }
+  has_slash := false;
+  last_dot := -1;
+  for i: 0..<clean.count {
+    c := clean[i];
+    if c == '/' { has_slash = true; }
+    if c == '.' { last_dot = i; }
+  }
+  if last_dot > 0 && last_dot < clean.count - 1 {
+    ext := cast(string) clean[last_dot..<clean.count];
+    if ext == ".coax" || ext == ".swift" || ext == ".c" || ext == ".h" || ext == ".m" ||
+       ext == ".rs" || ext == ".ts" || ext == ".tsx" || ext == ".js" || ext == ".jsx" ||
+       ext == ".py" || ext == ".md" || ext == ".json" || ext == ".toml" || ext == ".yaml" ||
+       ext == ".yml" || ext == ".sh" || ext == ".txt" || ext == ".nix" || ext == ".go" ||
+       ext == ".css" || ext == ".html" || ext == ".sql" || ext == ".proto" {
+      return true;
+    }
+  }
+  if has_slash && (clean[0] == '/' || clean[0] == '~' || (clean.count >= 2 && clean[0] == '.' && clean[1] == '/')) {
+    return clean.count >= 3;
+  }
+  return false;
+}
+
+CpTermSpan :: struct { kind: int; start: int; end: int; }
+
+// Finds clickable http(s) URLs and file paths in `line`, writing spans into `out`.
+cp_term_scan_line :: (line: string, out: [] CpTermSpan) -> int {
+  n := 0; i := 0;
+  while i < line.count && n < out.count {
+    while i < line.count && cp_term_is_space(line[i]) { i += 1; }
+    if i >= line.count { break; }
+    start := i;
+    while i < line.count && !cp_term_is_space(line[i]) { i += 1; }
+    end := i;
+    while start < end && cp_term_is_lead_punct(line[start]) { start += 1; }
+    while end > start && cp_term_is_trail_punct(line[end - 1]) { end -= 1; }
+    if end <= start { continue; }
+    tok := cast(string) line[start..<end];
+    if (tok.count > 7 && tok[0..<7] == "http://") || (tok.count > 8 && tok[0..<8] == "https://") {
+      out[n] = CpTermSpan.{kind = CP_TERM_LINK_URL, start = start, end = end};
+      n += 1;
+    } else if cp_term_looks_like_path(tok) {
+      out[n] = CpTermSpan.{kind = CP_TERM_LINK_PATH, start = start, end = end};
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- selection & send-to-chat
+
+cp_term_has_selection :: (s: [] CoderPage) -> bool {
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return false; }
+  tb := s[0].term[0].tabs[slot];
+  return tb.sel_on && tb.sel_a != tb.sel_b;
+}
+
+// Writes the active tab's selected text into `out` (returns byte count).
+cp_term_selected_raw :: (s: [] CoderPage, out: [] u8) -> int {
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return 0; }
+  t := cp_term(s);
+  if !t[0].tabs[slot].sel_on { return 0; }
+  a := t[0].tabs[slot].sel_a;
+  b := t[0].tabs[slot].sel_b;
+  if a > b { tmp := a; a = b; b = tmp; }
+  txt := cp_term_tab_text(t, slot);
+  if a < 0 { a = 0; }
+  if b > txt.count { b = txt.count; }
+  if b <= a { return 0; }
+  return cp_out(out, cast(string) txt[a..<b]);
+}
+
+// Formats the selection (or the last 20 lines if no selection is active) into send_buf and asks
+// the host to attach it to the composer as a terminal-context chip.
+cp_term_send_to_chat :: (s: [] CoderPage) -> bool {
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return false; }
+  t := cp_term(s);
+  txt := cp_term_tab_text(t, slot);
+  if txt.count == 0 { return false; }
+  a := 0; b := txt.count;
+  if t[0].tabs[slot].sel_on && t[0].tabs[slot].sel_a != t[0].tabs[slot].sel_b {
+    a = t[0].tabs[slot].sel_a; b = t[0].tabs[slot].sel_b;
+    if a > b { tmp := a; a = b; b = tmp; }
+    if a < 0 { a = 0; }
+    if b > txt.count { b = txt.count; }
+  } else {
+    // fallback: last 20 lines of terminal output
+    lines := 0; k := txt.count;
+    while k > 0 && lines < 20 {
+      k -= 1;
+      if txt[k] == '\n' { lines += 1; }
+    }
+    a = ifx k > 0 && txt[k] == '\n' then k + 1 else k;
+  }
+  if b <= a { return false; }
+  title := cast(string) t[0].tabs[slot].title[0..<t[0].tabs[slot].title_n];
+  cwd := cast(string) t[0].tabs[slot].cwd[0..<t[0].tabs[slot].cwd_n];
+  n := cp_out(t[0].send_buf[..], "# Terminal output (");
+  n += cp_out(t[0].send_buf[n..<CP_TERM_SEND_CAP], title);
+  if cwd.count > 0 {
+    n += cp_out(t[0].send_buf[n..<CP_TERM_SEND_CAP], " · ");
+    n += cp_out(t[0].send_buf[n..<CP_TERM_SEND_CAP], cwd);
+  }
+  n += cp_out(t[0].send_buf[n..<CP_TERM_SEND_CAP], ")\n");
+  n += cp_out(t[0].send_buf[n..<CP_TERM_SEND_CAP], cast(string) txt[a..<b]);
+  t[0].send_n = n;
+  cp_term_ask(s, CP_TERM_OP_SEND_CHAT, t[0].tabs[slot].id);
+  return true;
+}
+
+// ---------------------------------------------------------------- keyboard & pointer input
+
+cp_term_queue_input :: (s: [] CoderPage, bytes: string) -> bool {
+  slot := cp_term_active_slot(s);
+  if slot < 0 || bytes.count == 0 { return false; }
+  t := cp_term(s);
+  id := t[0].tabs[slot].id;
+  if t[0].input_tab != id { t[0].input_n = 0; t[0].input_tab = id; }
+  for c: bytes {
+    if t[0].input_n < CP_TERM_INPUT_CAP {
+      t[0].input_buf[t[0].input_n] = c;
+      t[0].input_n += 1;
+    }
+  }
+  t[0].tabs[slot].stick = true;
+  cp_term_ask(s, CP_TERM_OP_INPUT, id);
+  return true;
+}
+
+cp_term_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  if !cp_term_focused(s) { return false; }
+  ctrl := (mods & MOD_CTRL) != 0;
+  cmd := (mods & MOD_CMD) != 0;
+  if cmd { return false; }
+  if ctrl && key >= 'a' && key <= 'z' {
+    b: [1] u8; b[0] = cast(u8) (key - 'a' + 1);
+    return cp_term_queue_input(s, cast(string) b[0..<1]);
+  }
+  if ctrl && key >= 'A' && key <= 'Z' {
+    b: [1] u8; b[0] = cast(u8) (key - 'A' + 1);
+    return cp_term_queue_input(s, cast(string) b[0..<1]);
+  }
+  if key == KEY_ENTER { return cp_term_queue_input(s, "\r"); }
+  if key == KEY_BACKSPACE { b: [1] u8; b[0] = 0x7f; return cp_term_queue_input(s, cast(string) b[0..<1]); }
+  if key == -15 { return cp_term_queue_input(s, "\t"); }
+  if key == KEY_ESCAPE { b: [1] u8; b[0] = 0x1b; return cp_term_queue_input(s, cast(string) b[0..<1]); }
+  if key == KEY_UP { b := [3] u8.[27, '[', 'A']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_DOWN { b := [3] u8.[27, '[', 'B']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_RIGHT { b := [3] u8.[27, '[', 'C']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_LEFT { b := [3] u8.[27, '[', 'D']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_HOME { b := [3] u8.[27, '[', 'H']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_END { b := [3] u8.[27, '[', 'F']; return cp_term_queue_input(s, cast(string) b[..]); }
+  if key == KEY_DELETE { b := [4] u8.[27, '[', '3', '~']; return cp_term_queue_input(s, cast(string) b[..]); }
+  return false;
+}
+
+// Maps a point (ux, uy) in page units inside the terminal body to a byte offset in the active tab's buffer.
+cp_term_offset_at :: (s: [] CoderPage, ux: f32, uy: f32) -> int {
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return 0; }
+  t := cp_term(s);
+  txt := cp_term_tab_text(t, slot);
+  if txt.count == 0 { return 0; }
+  lh := ifx t[0].line_h > 0 then t[0].line_h else 18.0f32;
+  cw := ifx t[0].cell_w > 0 then t[0].cell_w else 7.5f32;
+  cols := ifx t[0].tabs[slot].cols > 0 then t[0].tabs[slot].cols else 80;
+  rel_y := uy - t[0].body_y + t[0].tabs[slot].scroll;
+  target_row := ifx rel_y < 0 then 0 else cast(int) (rel_y / lh);
+  rel_x := ux - t[0].body_x;
+  target_col := ifx rel_x < 0 then 0 else cast(int) (rel_x / cw);
+  if target_col > cols { target_col = cols; }
+  row := 0; at := 0;
+  while true {
+    end := at; while end < txt.count && txt[end] != '\n' { end += 1; }
+    line_len := end - at;
+    rows := ifx line_len == 0 then 1 else (line_len + cols - 1) / cols;
+    if target_row < row + rows {
+      sub := target_row - row;
+      off := at + sub * cols + target_col;
+      if off > end { off = end; }
+      return off;
+    }
+    row += rows;
+    if end >= txt.count { return txt.count; }
+    at = end + 1;
+  }
+  return txt.count;
+}
+
+// Handles pointer press/drag/release inside the terminal body for text selection and focus.
+cp_term_pointer :: (s: [] CoderPage, ux: f32, uy: f32, phase: int) -> bool {
+  if !cp_term_shown(s) || s[0].set_open || cp_overlay_open(s) { return false; }
+  t := cp_term(s);
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return false; }
+  in_body := ux >= t[0].body_x && ux < t[0].body_x + t[0].body_w && uy >= t[0].body_y && uy < t[0].body_y + t[0].body_h;
+  if phase == 0 {
+    if !in_body { return false; }
+    // let link hits take priority on click
+    hit := surface_hit(s[0].surface[..], ux, uy);
+    if surface_action(s[0].surface[..], hit) == CP_TERM_LINK { return false; }
+    s[0].fld[0].kb = CP_KB_TERM;
+    cp_term_ask(s, CP_TERM_OP_FOCUS, t[0].tabs[slot].id);
+    off := cp_term_offset_at(s, ux, uy);
+    t[0].tabs[slot].sel_a = off;
+    t[0].tabs[slot].sel_b = off;
+    t[0].tabs[slot].sel_on = false;
+    t[0].dragging = true;
+    return true;
+  }
+  if !t[0].dragging { return false; }
+  off := cp_term_offset_at(s, ux, uy);
+  t[0].tabs[slot].sel_b = off;
+  t[0].tabs[slot].sel_on = t[0].tabs[slot].sel_a != t[0].tabs[slot].sel_b;
+  if phase != 1 { t[0].dragging = false; }
+  return true;
+}
+
+cp_term_scroll :: (s: [] CoderPage, delta: f32) {
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return; }
+  t := cp_term(s);
+  t[0].tabs[slot].scroll = scroll_clamp(t[0].tabs[slot].scroll + delta, t[0].tabs[slot].content, t[0].tabs[slot].view);
+  if delta < 0 { t[0].tabs[slot].stick = false; }
+  else if t[0].tabs[slot].scroll >= t[0].tabs[slot].content - t[0].tabs[slot].view - 1 { t[0].tabs[slot].stick = true; }
+}
+
+// ---------------------------------------------------------------- row presses
+
+cp_term_click_url :: (s: [] CoderPage) -> string { return cast(string) s[0].term[0].click_url[0..<s[0].term[0].click_url_n]; }
+cp_term_click_path :: (s: [] CoderPage) -> string { return cast(string) s[0].term[0].click_path[0..<s[0].term[0].click_path_n]; }
+
+cp_term_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  t := cp_term(s);
+  if act == CP_TERM_TOGGLE { cp_term_toggle(s); return true; }
+  if !t[0].open { return false; }
+  if act == CP_TERM_CLOSE { cp_term_hide(s); return true; }
+  if act == CP_TERM_NEW { _ = cp_term_new_tab(s, "", ""); return true; }
+  if act == CP_TERM_CLEAR { cp_term_clear_slot(s, cp_term_active_slot(s)); return true; }
+  if act == CP_TERM_SEND_CHAT { return cp_term_send_to_chat(s); }
+  if act >= CP_TERM_TAB && act < CP_TERM_TAB + CP_TERM_TABS {
+    i := act - CP_TERM_TAB;
+    if i >= 0 && i < t[0].ntabs {
+      t[0].active = i;
+      s[0].fld[0].kb = CP_KB_TERM;
+      cp_term_ask(s, CP_TERM_OP_FOCUS, t[0].tabs[i].id);
+      return true;
+    }
+    return false;
+  }
+  if act >= CP_TERM_TAB_CLOSE && act < CP_TERM_TAB_CLOSE + CP_TERM_TABS {
+    return cp_term_close_slot(s, act - CP_TERM_TAB_CLOSE);
+  }
+  if act >= CP_TERM_PORT && act < CP_TERM_PORT + CP_TERM_PORTS {
+    slot := cp_term_active_slot(s);
+    pi := act - CP_TERM_PORT;
+    if slot < 0 || pi < 0 || pi >= t[0].tabs[slot].nports { return false; }
+    b: [64] u8; n := el_put(b[..], 0, "http://127.0.0.1:"); n = el_put_i(b[..], n, t[0].tabs[slot].ports[pi].port);
+    t[0].click_url_n = cp_out(t[0].click_url[..], cast(string) b[0..<n]);
+    s[0].open_url_term = true;
+    s[0].ask = CP_ASK_OPEN_URL;
+    return true;
+  }
+  if act == CP_TERM_LINK {
+    li := cp_number(id, "coder.term.link.");
+    if li < 0 || li >= t[0].nlinks { return false; }
+    link := t[0].links[li];
+    txt := cast(string) link.text[0..<link.text_n];
+    if link.kind == CP_TERM_LINK_URL {
+      t[0].click_url_n = cp_out(t[0].click_url[..], txt);
+      s[0].open_url_term = true;
+      s[0].ask = CP_ASK_OPEN_URL;
+      return true;
+    }
+    if link.kind == CP_TERM_LINK_PATH {
+      clean := cp_term_strip_line_col(txt);
+      t[0].click_path_n = cp_out(t[0].click_path[..], clean);
+      s[0].open_term_path = true;
+      s[0].open_call = -1; s[0].open_turn = -1; s[0].open_cargo = -1; s[0].open_show = -1;
+      s[0].ask = CP_ASK_OPEN_FILE;
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- drawing
+
+cp_termpane :: (s: [] CoderPage, f: [] UiFrame, px: f32, pw: f32, h: f32) {
+  k := f[0].skin; a := k.app; sh := f[0].sheet; th := cp_theme(); t := cp_term(s);
+  top := ifx px > 0 then 0.0f32 else cp_bar(s);
+  if px > 0 { sheet_fill(sh, px, 0, k.border, h, 0, k.menu_divider); }
+  // header toolbar: Send to chat, Clear, +, Close on the right
+  side := a.icon_button;
+  mid := top + CP_CORNER + side / 2;
+  close_x := px + pw - CP_CORNER - side;
+  _ := app_icon_button(f, "coder.term.close", close_x, top + CP_CORNER, ICON_CLOSE, "Close terminal", APP_BUTTON_QUIET, 0, CP_TERM_CLOSE);
+  right := close_x - a.gap_small;
+  new_x := right - side;
+  _ := app_icon_button(f, "coder.term.new", new_x, top + CP_CORNER, ICON_COMPOSE, "New terminal tab", APP_BUTTON_QUIET, ifx t[0].ntabs >= CP_TERM_TABS then EL_S_DISABLED else 0, CP_TERM_NEW);
+  right = new_x - a.gap_small;
+  cw_btn := app_button_width(f, -1, "Clear");
+  clear_x := right - cw_btn;
+  _ := app_button(f, "coder.term.clear", clear_x, mid - k.control_h / 2, cw_btn, -1, "Clear", APP_BUTTON_QUIET, 0, CP_TERM_CLEAR);
+  right = clear_x - a.gap_small;
+  has_sel := cp_term_has_selection(s);
+  send_label := "Send to chat";
+  sw_btn := app_button_width(f, -1, send_label);
+  send_x := right - sw_btn;
+  _ := app_button(f, "coder.term.send", send_x, mid - k.control_h / 2, sw_btn, -1, send_label, ifx has_sel then APP_BUTTON_PRIMARY else APP_BUTTON_DEFAULT, 0, CP_TERM_SEND_CHAT);
+
+  // left side of header: terminal icon + title
+  hx := px + a.gap;
+  sheet_icon(sh, ICON_TERMINAL, hx, mid - 8, 16, th.muted);
+  _ := sheet_text(sh, f[0].m, -1, hx + 22, mid - k.label.line / 2, k.label.line, k.label.face, k.ink, "Terminal");
+  y := top + CP_CORNER + side + a.gap_small;
+  sheet_fill(sh, px, y, pw, k.border, 0, k.menu_divider);
+  y += k.border + a.gap_small;
+
+  // multi-tab strip
+  tx := px + a.gap;
+  tab_h := k.control_h;
+  for i: 0..<t[0].ntabs {
+    tb := t[0].tabs[i];
+    lbl := sheet_pool(sh, cast(string) tb.title[0..<tb.title_n]);
+    tw := measure_width(f[0].m, k.small.face, lbl) + 28;
+    if tx + tw > px + pw - a.gap { break; }
+    active := i == t[0].active;
+    bg := ifx active then th.surface else Rgba.{};
+    edge := ifx active then th.border else Rgba.{};
+    sheet_under(sh, prim_box(sh[0].under, sh[0].nu, tx, y, tw, tab_h, 6, ifx active then 1.0f32 else 0.0f32, bg, edge));
+    ib: [32] u8; in_n := el_put(ib[..], 0, "coder.term.tab."); in_n = el_put_i(ib[..], in_n, i);
+    tid := sheet_pool(sh, cast(string) ib[0..<in_n]);
+    _ := uiframe_semantic(f, tid, EL_TAB, lbl, tx, y, tw - 18, tab_h, ifx active then EL_S_CURRENT else 0, CP_TERM_TAB + i);
+    _ := sheet_text(sh, f[0].m, -1, tx + 8, y + (tab_h - k.small.line) / 2, k.small.line, k.small.face, ifx active then k.ink else k.muted, lbl);
+    cb: [36] u8; cn := el_put(cb[..], 0, "coder.term.tabclose."); cn = el_put_i(cb[..], cn, i);
+    cid := sheet_pool(sh, cast(string) cb[0..<cn]);
+    _ := uiframe_semantic(f, cid, EL_BUTTON, "Close tab", tx + tw - 18, y + 2, 16, tab_h - 4, 0, CP_TERM_TAB_CLOSE + i);
+    _ := sheet_text(sh, f[0].m, -1, tx + tw - 14, y + (tab_h - k.small.line) / 2, k.small.line, k.small.face, k.faint, "×");
+    tx += tw + 6;
+  }
+  y += tab_h + a.gap_small;
+
+  slot := cp_term_active_slot(s);
+  if slot < 0 {
+    _ := app_meta(f, "coder.term.empty", px + a.gap, y, pw - 2 * a.gap, "No terminal tab open. Click + to start a shell.", false);
+    return;
+  }
+
+  // cwd + active ports & CPU/RAM telemetry bar
+  cwd_s := sheet_pool(sh, cast(string) t[0].tabs[slot].cwd[0..<t[0].tabs[slot].cwd_n]);
+  y += app_meta(f, "coder.term.cwd", px + a.gap, y, pw - 2 * a.gap, cwd_s, false) + 4;
+  if t[0].tabs[slot].nports > 0 || t[0].tabs[slot].rss_kb > 0 {
+    px_chip := px + a.gap;
+    chip_h := k.small.line + 6;
+    for pi: 0..<t[0].tabs[slot].nports {
+      pt := t[0].tabs[slot].ports[pi];
+      pb: [64] u8; pn := el_put(pb[..], 0, ":"); pn = el_put_i(pb[..], pn, pt.port);
+      if pt.proc_n > 0 { pn = el_put(pb[..], pn, " "); pn = el_put(pb[..], pn, cast(string) pt.proc[0..<pt.proc_n]); }
+      plbl := sheet_pool(sh, cast(string) pb[0..<pn]);
+      pw_chip := measure_width(f[0].m, k.mono_tiny.face, plbl) + 14;
+      if px_chip + pw_chip > px + pw - a.gap { break; }
+      sheet_under(sh, prim_box(sh[0].under, sh[0].nu, px_chip, y, pw_chip, chip_h, 5, 1, th.surface, th.border));
+      pib: [32] u8; pin := el_put(pib[..], 0, "coder.term.port."); pin = el_put_i(pib[..], pin, pi);
+      _ := uiframe_semantic(f, sheet_pool(sh, cast(string) pib[0..<pin]), EL_LINK, plbl, px_chip, y, pw_chip, chip_h, 0, CP_TERM_PORT + pi);
+      _ := sheet_text(sh, f[0].m, -1, px_chip + 7, y + 3, k.small.line, k.mono_tiny.face, k.accent, plbl);
+      px_chip += pw_chip + 6;
+    }
+    if t[0].tabs[slot].rss_kb > 0 || t[0].tabs[slot].cpu_tenths > 0 {
+      tb_s: [64] u8; tn := el_put(tb_s[..], 0, "CPU ");
+      tn = el_put_i(tb_s[..], tn, t[0].tabs[slot].cpu_tenths / 10);
+      tn = el_put(tb_s[..], tn, "."); tn = el_put_i(tb_s[..], tn, t[0].tabs[slot].cpu_tenths % 10);
+      tn = el_put(tb_s[..], tn, "% · ");
+      tn = el_put_i(tb_s[..], tn, (t[0].tabs[slot].rss_kb + 512) / 1024);
+      tn = el_put(tb_s[..], tn, " MB");
+      tlbl := sheet_pool(sh, cast(string) tb_s[0..<tn]);
+      _ := sheet_text(sh, f[0].m, -1, px_chip + 4, y + 3, k.small.line, k.mono_tiny.face, k.muted, tlbl);
+    }
+    y += chip_h + 6;
+  }
+
+  // terminal canvas body
+  status_h := k.small.line + 8;
+  body_x := px + a.gap;
+  body_w := pw - 2 * a.gap;
+  body_y := y;
+  body_h := h - status_h - a.gap_small - body_y;
+  if !(body_w > 0) || !(body_h > 0) { return; }
+
+  // dark terminal well
+  sheet_under(sh, prim_box(sh[0].under, sh[0].nu, body_x, body_y, body_w, body_h, 8, 1, rgba(0.06, 0.07, 0.09, 1.0), ifx cp_term_focused(s) then k.accent else th.border));
+  pad := 8.0f32;
+  tx0 := body_x + pad; ty0 := body_y + pad; tw0 := body_w - 2 * pad; th0 := body_h - 2 * pad;
+  face := k.mono.face; lh := k.mono.line;
+  cell := measure_width(f[0].m, face, "0");
+  if !(cell > 0) { cell = 7.5f32; }
+  cols := cast(int) floor(tw0 / cell); if cols < 20 { cols = 20; }
+  rows := cast(int) floor(th0 / lh); if rows < 4 { rows = 4; }
+  t[0].body_x = tx0; t[0].body_y = ty0; t[0].body_w = tw0; t[0].body_h = th0;
+  t[0].cell_w = cell; t[0].line_h = lh;
+  t[0].tabs[slot].cols = cols; t[0].tabs[slot].rows = rows;
+  t[0].tabs[slot].view = th0;
+  if t[0].tabs[slot].stick {
+    end_s := t[0].tabs[slot].content - t[0].tabs[slot].view;
+    t[0].tabs[slot].scroll = ifx end_s > 0 then end_s else 0.0f32;
+  }
+  t[0].tabs[slot].scroll = scroll_clamp(t[0].tabs[slot].scroll, t[0].tabs[slot].content, t[0].tabs[slot].view);
+  _ := uiframe_semantic(f, "coder.term.body", EL_REGION, "Terminal output", tx0, ty0, tw0, th0, 0, 0);
+
+  // render visible wrapped lines, selection highlight, and clickable URLs/file paths
+  t[0].nlinks = 0;
+  src := cp_term_tab_text(t, slot);
+  sel_on := t[0].tabs[slot].sel_on;
+  sel_lo := ifx t[0].tabs[slot].sel_a < t[0].tabs[slot].sel_b then t[0].tabs[slot].sel_a else t[0].tabs[slot].sel_b;
+  sel_hi := ifx t[0].tabs[slot].sel_a < t[0].tabs[slot].sel_b then t[0].tabs[slot].sel_b else t[0].tabs[slot].sel_a;
+  uiframe_clip(f, tx0, ty0, tx0 + tw0, ty0 + th0);
+  ry := ty0 - t[0].tabs[slot].scroll;
+  at := 0;
+  spans: [16] CpTermSpan;
+  while true {
+    end := at; while end < src.count && src[end] != '\n' { end += 1; }
+    line := cast(string) src[at..<end];
+    lrows := ifx line.count == 0 then 1 else (line.count + cols - 1) / cols;
+    if ry + cast(f32) lrows * lh > ty0 && ry < ty0 + th0 {
+      nspans := cp_term_scan_line(line, spans[..]);
+      for r: 0..<lrows {
+        c0 := r * cols;
+        c1 := c0 + cols; if c1 > line.count { c1 = line.count; }
+        row_y := ry + cast(f32) r * lh;
+        if row_y + lh <= ty0 || row_y >= ty0 + th0 { continue; }
+        // selection highlight on this wrapped row
+        if sel_on {
+          row_a := at + c0; row_b := at + c1;
+          ov_a := ifx sel_lo > row_a then sel_lo else row_a;
+          ov_b := ifx sel_hi < row_b then sel_hi else row_b;
+          if ov_b > ov_a {
+            sx := tx0 + cast(f32) (ov_a - row_a) * cell;
+            sw := cast(f32) (ov_b - ov_a) * cell;
+            sheet_fill(sh, sx, row_y, sw, lh, 2, rgba(0.24, 0.48, 0.96, 0.35));
+          }
+        }
+        if c1 > c0 {
+          seg := sheet_pool(sh, cast(string) line[c0..<c1]);
+          _ := sheet_text(sh, f[0].m, -1, tx0, row_y, lh, face, k.ink, seg);
+        }
+        // register clickable link/path overlays on this row
+        for si: 0..<nspans {
+          sp := spans[si];
+          if sp.end <= c0 || sp.start >= c1 || t[0].nlinks >= CP_TERM_LINKS { continue; }
+          ov_s := ifx sp.start > c0 then sp.start else c0;
+          ov_e := ifx sp.end < c1 then sp.end else c1;
+          lx := tx0 + cast(f32) (ov_s - c0) * cell;
+          lw := cast(f32) (ov_e - ov_s) * cell;
+          li := t[0].nlinks;
+          t[0].links[li].kind = sp.kind;
+          t[0].links[li].text_n = cp_out(t[0].links[li].text[..], cast(string) line[sp.start..<sp.end]);
+          t[0].nlinks += 1;
+          lib: [32] u8; lin := el_put(lib[..], 0, "coder.term.link."); lin = el_put_i(lib[..], lin, li);
+          _ := uiframe_semantic(f, sheet_pool(sh, cast(string) lib[0..<lin]), EL_LINK, sheet_pool(sh, cast(string) line[sp.start..<sp.end]), lx, row_y, lw, lh, 0, CP_TERM_LINK);
+          sheet_fill(sh, lx, row_y + lh - 2, lw, 1, 0, k.accent);
+        }
+      }
+    }
+    ry += cast(f32) lrows * lh;
+    if end >= src.count { break; }
+    at = end + 1;
+  }
+  // live cursor block at end of output when focused
+  if cp_term_focused(s) && t[0].tabs[slot].running {
+    last_len := src.count - t[0].tabs[slot].line_start;
+    if last_len < 0 { last_len = 0; }
+    cur_col := last_len % cols;
+    cur_y := ry - lh;
+    if cur_y >= ty0 && cur_y + lh <= ty0 + th0 {
+      sheet_fill(sh, tx0 + cast(f32) cur_col * cell, cur_y + 1, cell, lh - 2, 1, rgba(0.85, 0.88, 0.95, 0.7));
+    }
+  }
+  uiframe_unclip(f);
+  t[0].tabs[slot].content = ry + t[0].tabs[slot].scroll - ty0;
+
+  // status footer
+  sy := body_y + body_h + 4;
+  sb: [96] u8; sn := 0;
+  if t[0].tabs[slot].running { sn = el_put(sb[..], sn, "Running · "); }
+  else { sn = el_put(sb[..], sn, "Exited ("); sn = el_put_i(sb[..], sn, t[0].tabs[slot].exit_code); sn = el_put(sb[..], sn, ") · "); }
+  sn = el_put_i(sb[..], sn, cols); sn = el_put(sb[..], sn, "×"); sn = el_put_i(sb[..], sn, rows);
+  sn = el_put(sb[..], sn, " · "); sn = el_put_i(sb[..], sn, t[0].tabs[slot].lines); sn = el_put(sb[..], sn, " lines");
+  _ := app_meta(f, "coder.term.status", body_x, sy, body_w, sheet_pool(sh, cast(string) sb[0..<sn]), false);
+}
+
+// ---------------------------------------------------------------- host C API exports
+
+coder_page_term_toggle :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_term_toggle(s);
+}
+coder_page_term_show :: (s: [] CoderPage, open: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  if open { cp_term_show(s); } else { cp_term_hide(s); }
+}
+coder_page_term_open :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].term[0].open; }
+coder_page_term_shown :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && cp_term_shown(s); }
+coder_page_term_new_tab :: (s: [] CoderPage, title: string, cwd: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return -1; }
+  if !s[0].ready { cp_init(s); }
+  s[0].term[0].open = true; s[0].term[0].front = true;
+  return cp_term_new_tab(s, title, cwd);
+}
+coder_page_term_bind_buf :: (s: [] CoderPage, slot: int, buf: [] u8) -> bool #export_c #effects(all) {
+  if s.count < 1 || slot < 0 || slot >= CP_TERM_TABS { return false; }
+  s[0].term[0].tabs[slot].buf = buf;
+  return true;
+}
+coder_page_term_feed :: (s: [] CoderPage, tab_id: int, bytes: [] u8) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  slot := cp_term_slot_by_id(s[0].term[..], tab_id);
+  if slot < 0 { return false; }
+  cp_term_feed_slot(s[0].term[..], slot, bytes);
+  return true;
+}
+coder_page_term_exited :: (s: [] CoderPage, tab_id: int, code: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  slot := cp_term_slot_by_id(s[0].term[..], tab_id);
+  if slot < 0 { return; }
+  s[0].term[0].tabs[slot].running = false;
+  s[0].term[0].tabs[slot].exit_code = code;
+}
+coder_page_term_op :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return CP_TERM_OP_NONE; }
+  op := s[0].term[0].op; s[0].term[0].op = CP_TERM_OP_NONE;
+  return op;
+}
+coder_page_term_op_tab :: (s: [] CoderPage) -> int #export_c #effects(all) { return ifx s.count > 0 then s[0].term[0].op_tab else 0; }
+coder_page_term_active_id :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  slot := cp_term_active_slot(s);
+  return ifx slot >= 0 then s[0].term[0].tabs[slot].id else 0;
+}
+coder_page_term_tab_cwd :: (s: [] CoderPage, tab_id: int, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  slot := cp_term_slot_by_id(s[0].term[..], tab_id);
+  if slot < 0 { return 0; }
+  return cp_out(out, cast(string) s[0].term[0].tabs[slot].cwd[0..<s[0].term[0].tabs[slot].cwd_n]);
+}
+coder_page_term_input_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := cp_term(s);
+  n := cp_out(out, cast(string) t[0].input_buf[0..<t[0].input_n]);
+  t[0].input_n = 0;
+  return n;
+}
+coder_page_term_selected :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := cp_term(s);
+  return cp_out(out, cast(string) t[0].send_buf[0..<t[0].send_n]);
+}
+coder_page_term_select :: (s: [] CoderPage, start: int, end: int) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  slot := cp_term_active_slot(s);
+  if slot < 0 { return false; }
+  t := cp_term(s);
+  txt := cp_term_tab_text(t, slot);
+  a := ifx start < 0 then 0 else ifx start > txt.count then txt.count else start;
+  b := ifx end < 0 then 0 else ifx end > txt.count then txt.count else end;
+  t[0].tabs[slot].sel_a = a; t[0].tabs[slot].sel_b = b; t[0].tabs[slot].sel_on = a != b;
+  return true;
+}
+// Returns tab id needing PTY resize (writing cols, rows into out[0..1]), or 0 when unchanged.
+coder_page_term_resize_due :: (s: [] CoderPage, out: [] int) -> int #export_c #effects(all) {
+  if s.count < 1 || out.count < 2 { return 0; }
+  t := cp_term(s);
+  for i: 0..<t[0].ntabs {
+    if t[0].tabs[i].used && t[0].tabs[i].running &&
+       (t[0].tabs[i].cols != t[0].tabs[i].sent_cols || t[0].tabs[i].rows != t[0].tabs[i].sent_rows) {
+      t[0].tabs[i].sent_cols = t[0].tabs[i].cols;
+      t[0].tabs[i].sent_rows = t[0].tabs[i].rows;
+      out[0] = t[0].tabs[i].cols; out[1] = t[0].tabs[i].rows;
+      return t[0].tabs[i].id;
+    }
+  }
+  return 0;
+}
+// Parses host port-scan & process-tree telemetry payload for tab_id:
+//   TREE\t<cpu_tenths>\t<rss_kb>\n
+//   PORT\t<port>\t<pid>\t<proc>\t<cpu_tenths>\t<rss_kb>\n
+cp_term_parse_int :: (s: string) -> int {
+  v := 0;
+  for c: s {
+    if c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); }
+    else { break; }
+  }
+  return v;
+}
+coder_page_term_ports :: (s: [] CoderPage, tab_id: int, payload: string) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  t := cp_term(s);
+  slot := cp_term_slot_by_id(t, tab_id);
+  if slot < 0 { return 0; }
+  t[0].tabs[slot].nports = 0;
+  t[0].tabs[slot].cpu_tenths = 0;
+  t[0].tabs[slot].rss_kb = 0;
+  i := 0;
+  while i < payload.count {
+    e := i; while e < payload.count && payload[e] != '\n' { e += 1; }
+    line := cast(string) payload[i..<e];
+    i = ifx e < payload.count then e + 1 else e;
+    if line.count == 0 { continue; }
+    // split up to 6 tab-separated fields
+    f0 := 0; cols_s: [6] string; nc := 0;
+    for k: 0..<line.count + 1 {
+      if k == line.count || line[k] == '\t' {
+        if nc < 6 { cols_s[nc] = cast(string) line[f0..<k]; nc += 1; }
+        f0 = k + 1;
+      }
+    }
+    if nc >= 3 && cols_s[0] == "TREE" {
+      t[0].tabs[slot].cpu_tenths = cp_term_parse_int(cols_s[1]);
+      t[0].tabs[slot].rss_kb = cp_term_parse_int(cols_s[2]);
+    } else if nc >= 4 && cols_s[0] == "PORT" && t[0].tabs[slot].nports < CP_TERM_PORTS {
+      p := cp_term_parse_int(cols_s[1]);
+      if p <= 0 || p > 65535 { continue; }
+      // deduplicate by port number
+      dup := false;
+      for j: 0..<t[0].tabs[slot].nports { if t[0].tabs[slot].ports[j].port == p { dup = true; break; } }
+      if dup { continue; }
+      idx := t[0].tabs[slot].nports;
+      t[0].tabs[slot].ports[idx].port = p;
+      t[0].tabs[slot].ports[idx].pid = cp_term_parse_int(cols_s[2]);
+      t[0].tabs[slot].ports[idx].proc_n = cp_out(t[0].tabs[slot].ports[idx].proc[..], cols_s[3]);
+      t[0].tabs[slot].ports[idx].cpu_tenths = ifx nc >= 5 then cp_term_parse_int(cols_s[4]) else 0;
+      t[0].tabs[slot].ports[idx].rss_kb = ifx nc >= 6 then cp_term_parse_int(cols_s[5]) else 0;
+      t[0].tabs[slot].nports += 1;
+    }
+  }
+  return t[0].tabs[slot].nports;
+}

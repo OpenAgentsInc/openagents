@@ -1,0 +1,169 @@
+// Checks for the integrated multi-tab terminal pane (termpane.coax, GitHub #13869):
+// multi-tab lifecycle scoped to active worktree, ANSI escape stripping across chunks,
+// 5,000+ line scrollback retention, clickable URLs and file paths, listening-port &
+// CPU/RAM telemetry parsing, selection-to-chat attachment, and interactive PTY input.
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_term_test_find :: (s: [] CoderPage, id: string) -> int { return surface_find(s[0].surface[..], id); }
+cp_term_test_press :: (s: [] CoderPage, id: string) -> bool { r := cp_term_test_find(s, id); return r >= 0 && cp_press(s, r); }
+cp_term_test_page :: (s: [] CoderPage, f: [] UiFrame) {
+  cp_init(s); s[0].d = 1; test_atlas(s[0].atlas[..]);
+  coder_page_env(s, true, false);
+  coder_page_folder(s, "~/work/openagents");
+  #assert cp_test_draw_side(s, f);
+}
+
+#test "terminal drawer toggles open with a tab scoped to the chat folder, supports multiple tabs, clear and close" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  #assert !coder_page_term_open(s) && !coder_page_term_shown(s);
+  #assert cp_term_test_press(s, "coder.term.toggle");
+  #assert coder_page_term_open(s) && coder_page_term_shown(s);
+  #assert coder_page_action(s) == CP_ASK_TERM && coder_page_term_op(s) == CP_TERM_OP_OPEN;
+  tab1 := coder_page_term_active_id(s);
+  #assert tab1 > 0 && coder_page_term_op_tab(s) == tab1;
+  cwd_b: [256] u8;
+  #assert cast(string) cwd_b[0..<coder_page_term_tab_cwd(s, tab1, cwd_b[..])] == "~/work/openagents";
+  #assert cp_test_draw_side(s, f[..]) && s[0].pane_w > 0;
+  #assert cp_term_test_find(s, "coder.term.tab.0") >= 0 && cp_term_test_find(s, "coder.term.body") >= 0;
+
+  // open a second tab and switch between them
+  #assert cp_term_test_press(s, "coder.term.new");
+  #assert coder_page_action(s) == CP_ASK_TERM && coder_page_term_op(s) == CP_TERM_OP_OPEN;
+  tab2 := coder_page_term_active_id(s);
+  #assert tab2 > tab1 && s[0].term[0].ntabs == 2 && s[0].term[0].active == 1;
+  #assert cp_test_draw_side(s, f[..]) && cp_term_test_find(s, "coder.term.tab.1") >= 0;
+
+  // switch back to tab 0, feed text, then clear
+  #assert cp_term_test_press(s, "coder.term.tab.0") && s[0].term[0].active == 0;
+  msg := "hello from tab 1\n";
+  b: [64] u8; n := cp_out(b[..], msg);
+  #assert coder_page_term_feed(s, tab1, b[0..<n]);
+  #assert cp_term_tab_text(s[0].term[..], 0) == msg;
+  #assert cp_term_test_press(s, "coder.term.clear") && cp_term_tab_text(s[0].term[..], 0).count == 0;
+
+  // close tab 1, then close tab 0 (which hides the pane)
+  #assert cp_term_test_press(s, "coder.term.tabclose.1");
+  #assert coder_page_action(s) == CP_ASK_TERM && coder_page_term_op(s) == CP_TERM_OP_CLOSE_TAB && coder_page_term_op_tab(s) == tab2;
+  #assert s[0].term[0].ntabs == 1 && coder_page_term_open(s);
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_term_test_press(s, "coder.term.tabclose.0");
+  #assert s[0].term[0].ntabs == 0 && !coder_page_term_open(s);
+}
+
+#test "ANSI CSI and OSC sequences are stripped across chunk boundaries, with CR rewrite and 5000+ line scrollback retention" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  tab := coder_page_term_new_tab(s, "build", "~/work/openagents");
+  #assert tab > 0;
+  // bind a larger 128 KB scrollback buffer to verify 5,000+ lines retention
+  big: [131072] u8;
+  #assert coder_page_term_bind_buf(s, 0, big[..]);
+
+  // split an ANSI color escape across two chunks + OSC title + CR progress overwrite
+  // c1 = ESC[32mOK ESC[0
+  c1 := [11] u8.[27, '[', '3', '2', 'm', 'O', 'K', 27, '[', '0', ' '];
+  // wait: split right before 'm' of ESC[0m
+  c1_len := 10;
+  // c2 = "m " + ESC]0;zsh BEL + "progress 10%\rprogress 100%\n"
+  b: [128] u8;
+  #assert coder_page_term_feed(s, tab, c1[0..<c1_len]);
+  k := 0;
+  b[k] = 'm'; k += 1; b[k] = ' '; k += 1;
+  b[k] = 27; k += 1; b[k] = ']'; k += 1; b[k] = '0'; k += 1; b[k] = ';'; k += 1;
+  b[k] = 'z'; k += 1; b[k] = 's'; k += 1; b[k] = 'h'; k += 1; b[k] = 7; k += 1;
+  k += cp_out(b[k..<b.count], "progress 10%\rprogress 100%\n");
+  #assert coder_page_term_feed(s, tab, b[0..<k]);
+  #assert cp_term_tab_text(s[0].term[..], 0) == "progress 100%\n";
+
+  // feed 5,100 lines and verify > 5,000 lines retained
+  line := "row 0123456789\n";
+  ln := cp_out(b[..], line);
+  for _: 0..<5100 {
+    #assert coder_page_term_feed(s, tab, b[0..<ln]);
+  }
+  #assert s[0].term[0].tabs[0].lines >= 5000;
+}
+
+#test "clickable http(s) URLs and file paths in terminal output dispatch CP_ASK_OPEN_URL and CP_ASK_OPEN_FILE" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  tab := coder_page_term_new_tab(s, "dev", "~/work/openagents");
+  out_s := "Server ready at http://localhost:3000/app, see apps/openagents-desktop/Window.swift:42.\n";
+  b: [256] u8;
+  #assert coder_page_term_feed(s, tab, b[0..<cp_out(b[..], out_s)]);
+  #assert cp_test_draw_side(s, f[..]);
+  #assert s[0].term[0].nlinks == 2;
+
+  // link 0 is the URL
+  #assert cp_term_test_press(s, "coder.term.link.0");
+  #assert coder_page_action(s) == CP_ASK_OPEN_URL;
+  ub: [256] u8;
+  #assert cast(string) ub[0..<coder_page_open_url(s, ub[..])] == "http://localhost:3000/app";
+
+  // link 1 is the file path with :42 stripped
+  #assert cp_term_test_press(s, "coder.term.link.1");
+  #assert coder_page_action(s) == CP_ASK_OPEN_FILE;
+  pb: [256] u8;
+  #assert cast(string) pb[0..<coder_page_open_path(s, pb[..])] == "apps/openagents-desktop/Window.swift";
+}
+
+#test "listening ports and CPU/RAM telemetry are parsed and clicking a port chip opens localhost URL" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  tab := coder_page_term_new_tab(s, "server", "~/work/openagents");
+  payload := "TREE\t124\t163840\nPORT\t3000\t4210\tnode\t85\t102400\nPORT\t3000\t4210\tnode\t85\t102400\nPORT\t5173\t4215\tvite\t39\t61440\n";
+  #assert coder_page_term_ports(s, tab, payload) == 2;
+  #assert s[0].term[0].tabs[0].cpu_tenths == 124 && s[0].term[0].tabs[0].rss_kb == 163840;
+  #assert cp_test_draw_side(s, f[..]);
+  #assert cp_term_test_find(s, "coder.term.port.0") >= 0 && cp_term_test_find(s, "coder.term.port.1") >= 0;
+
+  #assert cp_term_test_press(s, "coder.term.port.1");
+  #assert coder_page_action(s) == CP_ASK_OPEN_URL;
+  ub: [256] u8;
+  #assert cast(string) ub[0..<coder_page_open_url(s, ub[..])] == "http://127.0.0.1:5173";
+}
+
+#test "selecting terminal output and clicking Send to chat formats selection and requests composer attachment" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  tab := coder_page_term_new_tab(s, "test", "~/work/openagents");
+  out_s := "line 1\nFAIL: assertion failed at foo.coax:19\nline 3\n";
+  b: [256] u8;
+  #assert coder_page_term_feed(s, tab, b[0..<cp_out(b[..], out_s)]);
+  #assert coder_page_term_select(s, 7, 45);
+  #assert cp_term_has_selection(s);
+  #assert cp_test_draw_side(s, f[..]);
+
+  // Copy copies the exact raw selection
+  s[0].fld[0].kb = CP_KB_TERM;
+  cb: [256] u8;
+  cn := coder_page_copy(s, false, cb[..]);
+  #assert cast(string) cb[0..<cn] == "FAIL: assertion failed at foo.coax:19\n";
+
+  // Send to chat formats with header and asks host to attach to composer
+  #assert cp_term_test_press(s, "coder.term.send");
+  #assert coder_page_action(s) == CP_ASK_TERM && coder_page_term_op(s) == CP_TERM_OP_SEND_CHAT;
+  sb: [512] u8;
+  sn := coder_page_term_selected(s, sb[..]);
+  sent := cast(string) sb[0..<sn];
+  #assert cp_find(sent, "Terminal output (test") >= 0 && cp_find(sent, "FAIL: assertion failed at foo.coax:19") >= 0;
+}
+
+#test "focused terminal routes typed text, special keys, Ctrl+C and reports resize" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); f: [1] UiFrame; cp_term_test_page(s, f[..]);
+  coder_page_term_show(s, true);
+  #assert coder_page_wants_text(s) && cp_term_focused(s);
+  #assert cp_test_draw_side(s, f[..]);
+
+  // resize due reports computed cols/rows once
+  dims: [2] int;
+  rid := coder_page_term_resize_due(s, dims[..]);
+  #assert rid > 0 && dims[0] >= 20 && dims[1] >= 4;
+  #assert coder_page_term_resize_due(s, dims[..]) == 0;
+
+  // typed text via IME + Return + Ctrl+C queue into input_out
+  coder_page_ime_replace(s, -1, -1, "ls -la");
+  #assert coder_page_key(s, KEY_ENTER, 0);
+  #assert coder_page_key(s, 'c', MOD_CTRL);
+  #assert coder_page_action(s) == CP_ASK_TERM && coder_page_term_op(s) == CP_TERM_OP_INPUT;
+  ib: [64] u8;
+  in_n := coder_page_term_input_out(s, ib[..]);
+  #assert in_n == 8 && cast(string) ib[0..<6] == "ls -la" && ib[6] == '\r' && ib[7] == 0x03;
+}

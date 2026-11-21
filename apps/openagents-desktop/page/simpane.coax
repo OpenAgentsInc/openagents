@@ -93,13 +93,13 @@ cp_sim_put :: (b: [] u8, n: [] int, s: string) { n[0] = cp_out(b, s); }
 // ---------------------------------------------------------------- what the rest of the page asks
 
 // Whether the pane draws the simulator: open, in front, or nothing else wants the pane.
-cp_sim_shown :: (s: [] CoderPage) -> bool { m := cp_sim(s); return m[0].open && (m[0].front || !(s[0].pane_open || s[0].review || s[0].fp[0].open)); }
+cp_sim_shown :: (s: [] CoderPage) -> bool { m := cp_sim(s); return m[0].open && !cp_term_front(s) && (m[0].front || !(s[0].pane_open || s[0].review || s[0].fp[0].open)); }
 cp_sim_front :: (s: [] CoderPage) -> bool { return s[0].sim[0].open && s[0].sim[0].front; }
 // The simulator comes to the front (View > iOS Simulator, the palette, an agent's op).
 cp_sim_show :: (s: [] CoderPage) {
   m := cp_sim(s);
   was := m[0].open;
-  m[0].open = true; m[0].front = true; s[0].fp[0].front = false;
+  m[0].open = true; m[0].front = true; s[0].fp[0].front = false; s[0].term[0].front = false;
   if !was { m[0].op = CP_SIM_OP_OPENED; s[0].ask = CP_ASK_SIM; }
   if m[0].connected { cp_sim_queue_list(s); }
 }

@@ -168,6 +168,26 @@ int cd_sim_key(void *page, int code, const char *chars);
 int cd_sim_pinch(void *page, int phase, float x, float y, float w, float h);
 int cd_sim_scroll(void *page, int phase, float x, float y, float dx, float dy, float w, float h);
 int cd_sim_command(void *page, int code, const char *chars, int shift);
+// Integrated multi-tab terminal pane (page/termpane.coax, GitHub #13869).
+void cd_term_toggle(void *page);
+void cd_term_show(void *page, int open);
+int cd_term_open(void *page);
+int cd_term_shown(void *page);
+int cd_term_new_tab(void *page, const char *title, const char *cwd);
+int cd_term_feed(void *page, int tab_id, const char *bytes, int len);
+void cd_term_exited(void *page, int tab_id, int code);
+int cd_term_op(void *page);
+int cd_term_op_tab(void *page);
+int cd_term_active_id(void *page);
+int cd_term_tab_cwd(void *page, int tab_id, char *out, int cap);
+int cd_term_input_out(void *page, char *out, int cap);
+int cd_term_selected(void *page, char *out, int cap);
+int cd_term_resize_due(void *page, int *out_cols, int *out_rows);
+int cd_term_ports(void *page, int tab_id, const char *payload);
+// Native POSIX PTY helpers (macOS / Linux): spawn shell in controlling PTY, resize, and terminate.
+int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *out_pid);
+int cd_pty_resize(int master_fd, int cols, int rows);
+void cd_pty_kill(int pid);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

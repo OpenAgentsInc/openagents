@@ -143,6 +143,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var simStarting = false
     var simRetryAt: Date?
     var gitProcess: Process?             // active Git Actions command (Window+GitActions.swift; #13871)
+    // integrated multi-tab terminal pane (Window+Terminal.swift, #13869)
+    var termSessions: [Int32: TerminalSession] = [:]
+    var termPortTimer: Timer?
     private var monitor: Any?
     private var keyMonitor: Any?   // Esc in settings and the composer; the editing chords before the menu bar's
     private var flagsMonitor: Any? // Command-key hold (>1s) sidebar shortcut hints
@@ -383,6 +386,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 49: gitAsked()
         case 50: refreshGitDiff()
         case 51: openReviewCommentDialog()
+        case 52: termAsked()
         case 40...43: fileAsked(what)
         default: break
         }
@@ -446,6 +450,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         syncLiveScene()
         syncGymPanelFrame()
         syncSimulatorFrame()
+        syncTerminalFrame()
     }
 
     /// Whether quitting leaves the running messages going: the daemon runs their workers.
@@ -495,6 +500,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         retired = true
         gitProcess?.terminate(); gitProcess = nil
         updater.stop()
+        stopAllTerminals()
         foremanServer.stop()
         ForemanControlDescriptor.remove()
         if chat != nil { keep(closing: true) }

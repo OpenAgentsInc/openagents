@@ -118,6 +118,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func search(_ sender: Any?) { main?.togglePalette() }
     @objc func toggleSidebar(_ sender: Any?) { main?.toggleSidebar() }
     @objc func toggleSimulator(_ sender: Any?) { main?.toggleSimulator() }
+    @objc func toggleTerminal(_ sender: Any?) { main?.toggleTerminal() }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
     @objc func previousChat(_ sender: Any?) { main?.stepChat(-1) }
@@ -273,6 +274,8 @@ enum TestLaunch {
         view.addItem(withTitle: "Choose Model", action: #selector(CoderDelegate.chooseModel(_:)), keyEquivalent: "/").target = delegate
         let sim = view.addItem(withTitle: "iOS Simulator", action: #selector(CoderDelegate.toggleSimulator(_:)), keyEquivalent: "s")
         sim.target = delegate; sim.keyEquivalentModifierMask = [.command, .option]
+        let term = view.addItem(withTitle: "Toggle Terminal", action: #selector(CoderDelegate.toggleTerminal(_:)), keyEquivalent: "j")
+        term.target = delegate; term.keyEquivalentModifierMask = [.command]
         // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys
         let next = view.addItem(withTitle: "Next Chat", action: #selector(CoderDelegate.nextChat(_:)), keyEquivalent: "\t")
         next.target = delegate; next.keyEquivalentModifierMask = [.control]

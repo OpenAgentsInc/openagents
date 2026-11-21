@@ -303,8 +303,8 @@ CoderPage :: struct {
   live_ask: int; live_reply: int; live_call: int; live_pane: int;   // >= 0: newly arrived live item to animate in once
   copied_turn: int; copied_block: int; copied_kind: int; copied_at: f32;
   copied_row: int;            // CP_COPIED_SAID: the row whose code block was copied
-  open_call: int; open_turn: int; open_file: int;   // the file a press asked to open (CP_ASK_OPEN_FILE): row open_call's, else the open_file'th the reply of open_turn names
-  open_url_turn: int; open_url: int; open_url_pane: bool;   // the http(s) link a press asked to open (CP_ASK_OPEN_URL)
+  open_call: int; open_turn: int; open_file: int; open_term_path: bool;   // the file a press asked to open (CP_ASK_OPEN_FILE): row open_call's, else the open_file'th the reply of open_turn names
+  open_url_turn: int; open_url: int; open_url_pane: bool; open_url_term: bool;   // the http(s) link a press asked to open (CP_ASK_OPEN_URL)
   stop_agent: int;            // 0-based sub-agent to stop for CP_ASK_STOP_AGENT (-1: none; #13766)
   update_state: int;
   update_label: [64] u8; update_label_n: int;
@@ -354,6 +354,7 @@ CoderPage :: struct {
   fp: [1] CpFilePane;          // a file in the pane on the right (filepane.coax; GitHub #13760)
   sim: [1] CpSimPane;          // the iOS Simulator in the pane on the right (simpane.coax; GitHub #13811)
   gd: [1] CpGitDiff;           // live Git diff, changed-files tree and inline review comments (gitdiff.coax; GitHub #13870)
+  term: [1] CpTermPane;        // integrated multi-tab terminal pane on the right (termpane.coax; GitHub #13869)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them

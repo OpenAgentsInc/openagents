@@ -6,6 +6,17 @@
 #include "../shared/native/tailnet-codec.c"
 #include <time.h>
 #include <sys/stat.h>
+#if defined(__APPLE__) || defined(__linux__)
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#ifdef __APPLE__
+#include <util.h>
+#else
+#include <pty.h>
+#endif
+#endif
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
@@ -45,6 +56,7 @@ typedef struct {
   char *files;   // the working folder's files as the app listed them (cd_files): the page reads them here
   char *file;    // the file in the pane as last read or saved (cd_file_open, cd_file_saved): the page reads it here
   char *gitdiff; // live working-tree git status + diff buffer (cd_git_diff_set): the page reads it here
+  uint8_t *term_bufs[8];   // 8 MiB per-tab retained scrollback buffers (page/termpane.coax, #13869)
 } CoderHost;
 
 static coax_v_t_CoderPage cd_state(CoderHost *c) { return (coax_v_t_CoderPage){c->s, 1}; }
@@ -542,12 +554,117 @@ int cd_sim_key(void *page, int code, const char *chars) { CoderHost *c = page; r
 int cd_sim_pinch(void *page, int phase, float x, float y, float w, float h) { CoderHost *c = page; return c && coder_page_sim_pinch(cd_state(c), phase, x, y, w, h); }
 int cd_sim_scroll(void *page, int phase, float x, float y, float dx, float dy, float w, float h) { CoderHost *c = page; return c && coder_page_sim_scroll(cd_state(c), phase, x, y, dx, dy, w, h); }
 int cd_sim_command(void *page, int code, const char *chars, int shift) { CoderHost *c = page; return c && coder_page_sim_command(cd_state(c), code, cd_string(chars), shift != 0); }
+// Integrated multi-tab terminal pane (page/termpane.coax, GitHub #13869).
+#define CD_TERM_SCROLL_BYTES (8 * 1024 * 1024)
+static void cd_term_ensure_bufs(CoderHost *c) {
+  if (!c) return;
+  for (int i = 0; i < 8; i++) {
+    if (!c->term_bufs[i]) {
+      uint8_t *buf = malloc(CD_TERM_SCROLL_BYTES);
+      if (buf) {
+        c->term_bufs[i] = buf;
+        coder_page_term_bind_buf(cd_state(c), i, (coax_v_u8){buf, CD_TERM_SCROLL_BYTES});
+      }
+    }
+  }
+}
+void cd_term_toggle(void *page) { CoderHost *c = page; if (c) { cd_term_ensure_bufs(c); coder_page_term_toggle(cd_state(c)); cd_woke(c); } }
+void cd_term_show(void *page, int open) { CoderHost *c = page; if (c) { if (open) cd_term_ensure_bufs(c); coder_page_term_show(cd_state(c), open != 0); cd_woke(c); } }
+int cd_term_open(void *page) { CoderHost *c = page; return c && coder_page_term_open(cd_state(c)); }
+int cd_term_shown(void *page) { CoderHost *c = page; return c && coder_page_term_shown(cd_state(c)); }
+int cd_term_new_tab(void *page, const char *title, const char *cwd) {
+  CoderHost *c = page;
+  if (!c) return -1;
+  cd_term_ensure_bufs(c);
+  int id = (int)coder_page_term_new_tab(cd_state(c), cd_string(title), cd_string(cwd));
+  cd_woke(c);
+  return id;
+}
+int cd_term_feed(void *page, int tab_id, const char *bytes, int len) {
+  CoderHost *c = page;
+  if (!c || !bytes || len <= 0) return 0;
+  int ok = coder_page_term_feed(cd_state(c), tab_id, (coax_v_u8){(uint8_t *)bytes, len});
+  if (ok) cd_woke(c);
+  return ok;
+}
+void cd_term_exited(void *page, int tab_id, int code) { CoderHost *c = page; if (c) { coder_page_term_exited(cd_state(c), tab_id, code); cd_woke(c); } }
+int cd_term_op(void *page) { CoderHost *c = page; return c ? (int)coder_page_term_op(cd_state(c)) : 0; }
+int cd_term_op_tab(void *page) { CoderHost *c = page; return c ? (int)coder_page_term_op_tab(cd_state(c)) : 0; }
+int cd_term_active_id(void *page) { CoderHost *c = page; return c ? (int)coder_page_term_active_id(cd_state(c)) : 0; }
+int cd_term_tab_cwd(void *page, int tab_id, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_term_tab_cwd(cd_state(c), tab_id, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_term_input_out(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 0 ? (int)coder_page_term_input_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap}) : 0; }
+int cd_term_selected(void *page, char *out, int cap) { CoderHost *c = page; return c && cap > 1 ? cd_text_out((int)coder_page_term_selected(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap) : 0; }
+int cd_term_resize_due(void *page, int *out_cols, int *out_rows) {
+  CoderHost *c = page;
+  if (!c || !out_cols || !out_rows) return 0;
+  int64_t dims[2] = {0, 0};
+  int id = (int)coder_page_term_resize_due(cd_state(c), (coax_v_s64){dims, 2});
+  if (id > 0) { *out_cols = (int)dims[0]; *out_rows = (int)dims[1]; }
+  return id;
+}
+int cd_term_ports(void *page, int tab_id, const char *payload) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int n = (int)coder_page_term_ports(cd_state(c), tab_id, cd_string(payload));
+  cd_woke(c);
+  return n;
+}
+int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *out_pid) {
+#if defined(__APPLE__) || defined(__linux__)
+  struct winsize ws;
+  memset(&ws, 0, sizeof ws);
+  ws.ws_col = (unsigned short)(cols > 0 ? cols : 80);
+  ws.ws_row = (unsigned short)(rows > 0 ? rows : 24);
+  int master = -1;
+  pid_t pid = forkpty(&master, NULL, NULL, &ws);
+  if (pid < 0) return -1;
+  if (pid == 0) {
+    if (cwd && cwd[0]) (void)chdir(cwd);
+    setenv("TERM", "xterm-256color", 1);
+    setenv("COLORTERM", "truecolor", 1);
+    const char *sh = (shell && shell[0]) ? shell : getenv("SHELL");
+    if (!sh || !sh[0]) sh = "/bin/zsh";
+    execl(sh, sh, "-l", (char *)NULL);
+    execl("/bin/sh", "/bin/sh", (char *)NULL);
+    _exit(127);
+  }
+  int flags = fcntl(master, F_GETFL, 0);
+  if (flags >= 0) (void)fcntl(master, F_SETFL, flags | O_NONBLOCK);
+  if (out_pid) *out_pid = (int)pid;
+  return master;
+#else
+  (void)shell; (void)cwd; (void)cols; (void)rows;
+  if (out_pid) *out_pid = -1;
+  return -1;
+#endif
+}
+int cd_pty_resize(int master_fd, int cols, int rows) {
+#if defined(__APPLE__) || defined(__linux__)
+  if (master_fd < 0) return 0;
+  struct winsize ws;
+  memset(&ws, 0, sizeof ws);
+  ws.ws_col = (unsigned short)(cols > 0 ? cols : 80);
+  ws.ws_row = (unsigned short)(rows > 0 ? rows : 24);
+  return ioctl(master_fd, TIOCSWINSZ, &ws) == 0 ? 1 : 0;
+#else
+  (void)master_fd; (void)cols; (void)rows;
+  return 0;
+#endif
+}
+void cd_pty_kill(int pid) {
+#if defined(__APPLE__) || defined(__linux__)
+  if (pid > 0) { kill(-pid, SIGHUP); kill(pid, SIGHUP); }
+#else
+  (void)pid;
+#endif
+}
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
 void cd_close(void *page) {
   CoderHost *c = page;
   if (!c) return;
   if (!c->headless) gallery_free(&c->app);
   for (int i = 0; i < CD_IMAGES; i++) free(c->images[i].rgba);
+  for (int i = 0; i < 8; i++) free(c->term_bufs[i]);
   free(c->files); free(c->file); free(c->gitdiff); free(c->s); free(c->st); free(c);
 }
 // Settings (settings.coax): open it on a page, scrolled to a row (page < -1 closes it); the page

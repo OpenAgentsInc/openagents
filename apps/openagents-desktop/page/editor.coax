@@ -189,6 +189,7 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
     w := cp_ed_which(s);
     if w != CP_ED_DIALOG && w != CP_ED_PALETTE { return true; }
   }
+  if cp_term_focused(s) { return cp_term_key(s, key, mods); }
   which := cp_ed_which(s);
   if which < 0 { return false; }
   e := cp_ed(s, which);
@@ -229,15 +230,16 @@ coder_page_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effe
   return true;
 }
 // Whether a field has the keyboard: typed keys then go through the input method.
-coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ready && cp_ed_which(s) >= 0; }
+coder_page_wants_text :: (s: [] CoderPage) -> bool #export_c #effects(all) { return s.count > 0 && s[0].ready && (cp_ed_which(s) >= 0 || cp_term_focused(s)); }
 // The keyboard goes to the composer (1) or settings' search (2), or leaves both (0).
 coder_page_focus :: (s: [] CoderPage, kb: int) #export_c #effects(all) {
   if s.count < 1 { return; }
-  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH then kb else CP_KB_NONE;
+  s[0].fld[0].kb = ifx kb == CP_KB_COMPOSER || kb == CP_KB_SEARCH || kb == CP_KB_TERM then kb else CP_KB_NONE;
 }
 // Pasted text into the field with the keyboard, as its own undo step. False when none has it or it does not fit.
 coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return false; }
+  if cp_term_focused(s) { return cp_term_queue_input(s, text); }
   which := cp_ed_which(s);
   if which < 0 { return false; }
   e := cp_ed(s, which); ue_unmark(e);
@@ -248,6 +250,7 @@ coder_page_paste :: (s: [] CoderPage, text: string) -> bool #export_c #effects(a
 // a composition, or when out does not hold them. Cut removes the selection once it is copied.
 coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return 0; }
+  if cp_term_focused(s) { return cp_term_selected_raw(s, out); }
   which := cp_ed_which(s);
   if which < 0 { return 0; }
   e := cp_ed(s, which); c := e[0].body[..];
@@ -262,6 +265,7 @@ coder_page_copy :: (s: [] CoderPage, cut: bool, out: [] u8) -> int #export_c #ef
 // NSTextInputClient (ui-host.h UiIme) over the field with the keyboard, in UTF-16 units; points in device pixels.
 coder_page_ime_replace :: (s: [] CoderPage, from16: int, to16: int, text: string) #export_c #effects(all) {
   if s.count < 1 || !s[0].ready { return; }
+  if cp_term_focused(s) { _ = cp_term_queue_input(s, text); return; }
   which := cp_ed_which(s);
   if which < 0 { return; }
   if ue_replace16(cp_ed(s, which), from16, to16, text) { cp_ed_publish(s, which); }
@@ -303,6 +307,7 @@ coder_page_ime_index :: (s: [] CoderPage, x: f32, y: f32) -> int #export_c #effe
 coder_page_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 || !(s[0].d > 0) { return false; }
   if cp_ed_pointer(s, x / s[0].d, y / s[0].d, phase, clicks, mods) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
+  if cp_term_pointer(s, x / s[0].d, y / s[0].d, phase) { s[0].px = x / s[0].d; s[0].py = y / s[0].d; return true; }
   return coder_page_pointer(s, x, y, phase);
 }
 // Seconds until the caret next blinks, after the last frame; -1 when nothing blinks.

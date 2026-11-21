@@ -3,13 +3,14 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
-  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1;
+  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
 }
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
+  if s[0].open_term_path { return cp_term_click_path(s); }   // a file path clicked in the terminal pane (termpane.coax)
   if s[0].open_show >= 0 { return cp_show_open_path(s, i, s[0].open_show); }   // a picture a command showed (shows.coax)
   if s[0].open_cargo >= 0 && s[0].open_cargo < cp_cargo_n(s) { return at_path(s[0].cargo[0].files[..], s[0].open_cargo); }   // an attachment's chip (attach.coax)
   if q >= 0 && q < s[0].calls_n { t := cast(string) s[0].calls[q].text[0..<s[0].calls[q].text_n]; return cast(string) t[cp_edit_at(t)..<t.count]; }
@@ -19,12 +20,13 @@ cp_open_path :: (s: [] CoderPage) -> string {
 // An http(s) link a reply or sub-agent message carries: the host opens it in the browser
 // (CP_ASK_OPEN_URL, coder_page_open_url). False for none.
 cp_open_url :: (s: [] CoderPage, pane: bool, i: int, n: int) -> bool {
-  s[0].open_url_pane = pane; s[0].open_url_turn = i; s[0].open_url = n;
+  s[0].open_url_pane = pane; s[0].open_url_turn = i; s[0].open_url = n; s[0].open_url_term = false;
   if cp_open_url_str(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_URL;
   return true;
 }
 cp_open_url_str :: (s: [] CoderPage) -> string {
+  if s[0].open_url_term { return cp_term_click_url(s); }
   if s[0].open_url_pane { return app_message_url(s[0].pane_doc[..], 0, s[0].pane_blocks, s[0].open_url); }
   i := s[0].open_url_turn;
   if i >= 0 && i < s[0].nturns { return app_message_url(cp_doc(s, i), 0, s[0].turns[i].blocks, s[0].open_url); }
@@ -42,6 +44,8 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_FP_CLOSE && act <= CP_FP_EXTERNAL { return cp_fp_press(s, act); }   // the file in the pane (filepane.coax)
   if act >= CP_SIM_CLOSE && act < CP_SIM_TAB + CP_SIM_DEVICES && act != 100 { return cp_sim_press(s, act); }   // the simulator in the pane (simpane.coax)
   if act >= CP_GIT_BRANCH && act <= CP_GIT_STOP { return cp_git_press(s, act); }   // Git Actions toolbar (gitactions.coax; #13871)
+  if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
+  _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   if cp_fp_yield(s, act, surface_id(s[0].surface[..], row)) { return true; }
   if act == CP_TOOL {
@@ -251,7 +255,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
 // transcript that takes the whole window has no edge.
 cp_edge :: (s: [] CoderPage, ux: f32) -> int {
   if s[0].side > 0 && abs(ux - s[0].side) <= CP_EDGE { return 1; }
-  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
+  if (s[0].pane_open || s[0].review || s[0].fp[0].open || s[0].sim[0].open || s[0].term[0].open || s[0].todos[0].n > 0) && s[0].pane_w > 0 && s[0].pane_x > 0 && abs(ux - s[0].pane_x) <= CP_EDGE { return 2; }
   return 0;
 }
 // True while the pointer is on a sidebar's edge or drags one: the host shows the resize cursor.
@@ -393,6 +397,7 @@ CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3; CP_S
 cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if cp_term_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_TERM; }
   if cp_fp_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FILE; }
   if cp_review_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_REVIEW; }
   if s[0].pane_open && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_PANE; }
@@ -410,6 +415,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
   }
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
   // the code review moves as the deltas come, the platform's own coast included
+  if view == CP_SCR_TERM { cp_term_scroll(s, delta); return; }
   if view == CP_SCR_FILE { cp_fp_scroll(s, delta); return; }
   if view == CP_SCR_REVIEW { s[0].review_scroll = scroll_clamp(s[0].review_scroll + delta, s[0].review_content, s[0].pane_view); return; }
   if view == CP_SCR_PANE {
