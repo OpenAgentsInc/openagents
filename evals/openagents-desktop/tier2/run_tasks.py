@@ -56,6 +56,9 @@ REAL_HOME = Path(os.path.expanduser("~"))
 
 # Gated commands naming any of these are answered no by host_driver (GUARD), whatever the
 # page says. The temp HOME already keeps ~ inside the sandbox; this is the second wall.
+# The composer's default model. The page offers cloud models only once Gemini or Google auth is set
+# (page/models.coax cp_cloud_ok), so every task picks one, as a signed-in desktop has (SET_MODEL).
+DEFAULT_MODEL = "gemini-4-neon"
 DEFAULT_GUARDS = [str(REAL_HOME), "sudo ", "git push", "curl ", "wget ", "ssh ", "scp ", "rm -rf /", "/Users/", "/etc/", "launchctl", "osascript"]
 
 # The credentials the worker reads under $HOME (coder/tui/microcoder_keys.coax), linked into
@@ -192,7 +195,8 @@ class Sandbox:
 
     def worker_env(self) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("CODER_", "GW_", "CLAUDE"))}
-        env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"))
+        # no __pycache__ from the agent's own test runs: it would count as files the task changed
+        env.update(HOME=str(self.home), BROWSER="/usr/bin/true", TMPDIR=str(self.root / "tmp"), PYTHONDONTWRITEBYTECODE="1")
         env.update(GIT_CONFIG_NOSYSTEM="1", GIT_AUTHOR_NAME="eval", GIT_AUTHOR_EMAIL="eval@example.invalid",
                    GIT_COMMITTER_NAME="eval", GIT_COMMITTER_EMAIL="eval@example.invalid")
         (self.root / "tmp").mkdir(exist_ok=True)
@@ -319,8 +323,7 @@ def open_slot(d: Driver, sb: Sandbox, task: dict[str, Any], session: str, claude
     must(d.cmd(f"OPEN 0 0 {RESOURCES_DIR}"), "OPEN")
     must(d.cmd(f"SET_CWD 0 {sb.repo}"), "SET_CWD")
     must(d.cmd(f"SET_SESSION 0 {session}"), "SET_SESSION")
-    if model:
-        must(d.cmd(f"SET_MODEL 0 {model}"), "SET_MODEL")
+    must(d.cmd(f"SET_MODEL 0 {model or DEFAULT_MODEL}"), "SET_MODEL")
     if sb.skills_note:
         must(d.cmd(f"SKILLS 0 {esc(sb.skills_note)}"), "SKILLS")
     if claude:

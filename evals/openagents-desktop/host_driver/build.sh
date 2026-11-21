@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Firm reason: 5 (thin build wrapper invoking coax and clang for the headless eval host driver)
+# Firm reason: 5 (thin build wrapper invoking coax and the C compiler for the headless eval host driver)
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -27,16 +27,21 @@ if [ "$need_coax" -eq 1 ]; then
   "$coax" c "$repo/apps/openagents-desktop/app.coax" --library --header "$work/gallery.h" > "$work/gallery.c"
 fi
 
+# clang, or the C compiler when this clang has no C library headers (NixOS's unwrapped clang).
+cc_bin="${CC:-clang}"
+if ! printf '#include <signal.h>\n' | "$cc_bin" -x c -fsyntax-only - >/dev/null 2>&1; then cc_bin=cc; fi
 # No warnings for the generated code, but an undeclared call stays an error: its pointer result
 # would be cut to an int (ui_view on Linux, #13734). -w would hide it on older clang.
-cflags=(-O2 -ffp-contract=off -fno-fast-math -Wno-everything -Werror=implicit-function-declaration -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/openagents-desktop" -I"$here")
+quiet=(-Wno-everything)
+"$cc_bin" --version 2>/dev/null | grep -qi clang || quiet=(-w)
+cflags=(-O2 -ffp-contract=off -fno-fast-math "${quiet[@]}" -Werror=implicit-function-declaration -I"$work" -I"$repo/apps/shared/host/linux" -I"$repo/apps/openagents-desktop" -I"$here")
 
-clang -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/openagents-desktop/carrier.c" -o "$work/carrier.o"
-clang -std=gnu11 "${cflags[@]}" -c "$work/gallery.c" -o "$work/gallery.o"
-clang -std=gnu11 "${cflags[@]}" -c "$here/ui_host_stub.c" -o "$work/ui_host_stub.o"
-clang -std=gnu11 "${cflags[@]}" -c "$here/host_driver.c" -o "$work/host_driver.o"
+"$cc_bin" -std=gnu11 "${cflags[@]}" -include "$here/ui_host_stub.h" -c "$repo/apps/openagents-desktop/carrier.c" -o "$work/carrier.o"
+"$cc_bin" -std=gnu11 "${cflags[@]}" -c "$work/gallery.c" -o "$work/gallery.o"
+"$cc_bin" -std=gnu11 "${cflags[@]}" -c "$here/ui_host_stub.c" -o "$work/ui_host_stub.o"
+"$cc_bin" -std=gnu11 "${cflags[@]}" -c "$here/host_driver.c" -o "$work/host_driver.o"
 ldflags=(-lm)
 if [ "$(uname -s)" = "Darwin" ]; then
   ldflags+=(-framework CoreFoundation -framework CoreGraphics -framework ImageIO)
 fi
-clang "${cflags[@]}" "$work/carrier.o" "$work/gallery.o" "$work/ui_host_stub.o" "$work/host_driver.o" "${ldflags[@]}" -o "$work/host_driver"
+"$cc_bin" "${cflags[@]}" "$work/carrier.o" "$work/gallery.o" "$work/ui_host_stub.o" "$work/host_driver.o" "${ldflags[@]}" -o "$work/host_driver"

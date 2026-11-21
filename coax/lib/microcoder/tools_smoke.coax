@@ -77,10 +77,10 @@ main :: () {
   // numbered views: a file of 1,000 lines shows 300 and names the next; a range shows itself
   r = mc_run_command(dir, "seq 1 1000 > n.txt", 30, b[0].out[..]);
   v = mc_view_lines(dir, "n.txt", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
-  ok = ok && v.found && ps_count(v.content, "   300\t300\n[lines 1-300 of 1000; next: view n.txt:301-600]") == 1;
+  ok = ok && v.found && ps_count(v.content, "   150\t150\n[lines 1-150 of 1000; next: view n.txt:151-300]") == 1;   // MC_VIEW_LINES (#13830)
   v = mc_view_lines(dir, "n.txt:499-500", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
   print("ranged view: [%]\n", v.content);
-  ok = ok && v.content == "   499\t499\n   500\t500\n[lines 499-500 of 1000; next: view n.txt:501-800]";
+  ok = ok && v.content == "   499\t499\n   500\t500\n[lines 499-500 of 1000; next: view n.txt:501-650]";
   v = mc_view_lines(dir, "../outside.txt", "danger-full-access", "", MC_STEP_BUDGET, b[..]);
   ok = ok && !v.found;
   // a sandbox profile this computer can't run (bwrap is Linux only) says so, not "could not read it" (GitHub #13732)
