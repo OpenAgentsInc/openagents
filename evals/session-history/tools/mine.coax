@@ -1,0 +1,799 @@
+// Session History Evals Stage 2: Episode Mining & Stratification (GitHub #13830).
+// Reads ATIF-v1.8 `.atif.jsonl` logs and `index.jsonl` under
+// `~/.openagents/evals/session-history/` (or `--in DIR`), splits trajectories
+// into substantive episodes (`[start_step_id, end_step_id]`), extracts
+// objective verification commands, resolves `base_sha` / `target_sha` for
+// git-anchored repos, classifies Buckets A-E, and emits candidate task JSONs
+// conforming to `evals/session-history/schema/task.schema.json`.
+//
+// Usage:
+//   coax/web/tool.sh evals/session-history/tools/mine.coax [--in DIR] [--out DIR] [--source all|claude|codex|openagents|antigravity|opencode] [--repo PATH] [--limit N]
+//   coax/bin/coax test evals/session-history/tools/mine.coax
+#import "Basic";
+#load "../../../coax/lib/nostr/atif/log.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/openagents-paths.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+MINE_LINE_MAX :: 262144;
+MINE_READ_CHUNK :: 65536;
+MINE_PROMPT_MAX :: 4096;
+MINE_CMD_MAX :: 1024;
+MINE_MAX_FILES :: 32;
+MINE_MAX_EPISODES :: 64;
+
+BUCKET_A :: "A_edit_precision";
+BUCKET_B :: "B_multi_file";
+BUCKET_C :: "C_verification";
+BUCKET_D :: "D_error_recovery";
+BUCKET_E :: "E_long_context";
+
+MineReader :: struct {
+  path: [1024] u8; path_n: int;
+  file_size: int;
+  offset: int;
+  chunk: [MINE_READ_CHUNK] u8;
+  chunk_n: int;
+  chunk_at: int;
+  eof: bool;
+}
+
+MineEpisode :: struct {
+  active: bool;
+  start_step_id: int;
+  end_step_id: int;
+  prompt: [MINE_PROMPT_MAX] u8; prompt_n: int;
+  started_at: [64] u8; started_at_n: int;
+  ended_at: [64] u8; ended_at_n: int;
+  model: [128] u8; model_n: int;
+  turns: int;
+  tool_calls: int;
+  edit_calls: int;
+  diag_shell_calls: int;
+  delegate_calls: int;
+  failed_tool_calls: int;
+  verify_cmd: [MINE_CMD_MAX] u8; verify_cmd_n: int;
+  verify_cmd_count: int;
+  verify_passed: bool;
+  saw_failure: bool;
+  saw_failure_then_pass: bool;
+  prompt_tokens: int;
+  completion_tokens: int;
+  cached_tokens: int;
+  cost_usd_micros: int;
+  file_hashes: [MINE_MAX_FILES] u64;
+  unique_files: int;
+  step_hasher: AtifStepsHasher;
+  steps_digest: [64] u8;
+  digest_ok: bool;
+}
+
+// ---- Pure string & helper utilities
+
+mine_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+mine_trim :: (s: string) -> string {
+  a := 0;
+  while a < s.count && (s[a] == ' ' || s[a] == '\t' || s[a] == '\n' || s[a] == '\r') { a += 1; }
+  b := s.count;
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\n' || s[b - 1] == '\r') { b -= 1; }
+  return s[a..<b];
+}
+
+mine_starts_with :: (s: string, pre: string) -> bool {
+  return s.count >= pre.count && s[0..<pre.count] == pre;
+}
+
+mine_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  end := hay.count - needle.count + 1;
+  for i: 0..<end {
+    if hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+mine_cut :: (s: string, limit: int) -> string {
+  if limit <= 0 || s.count <= limit { return s; }
+  end := limit;
+  while end > 0 && (s[end] & 192) == 128 { end -= 1; }
+  return s[0..<end];
+}
+
+mine_fnv1a :: (s: string) -> u64 {
+  h: u64 = 2166136261;
+  for c: s {
+    h = ((h ^ cast(u64) c) * 16777619) % 4294967291;
+  }
+  return h;
+}
+
+mine_jv_str_cut :: (d: Jv, node: int, out: [] u8, limit: int) -> string {
+  if jv_kind(d, node) != JV_STRING { return ""; }
+  cap := ifx limit < out.count then limit else out.count;
+  n := jv_str(d, node, out[0..<cap]);
+  if n >= 0 { return cast(string) out[0..<n]; }
+  return mine_cut(jv_raw(d, node), cap);
+}
+
+// Returns true if a user message is a trivial slash command or noise, not a real task prompt.
+mine_is_trivial_prompt :: (raw: string) -> bool {
+  s := mine_trim(raw);
+  if s.count < 12 { return true; }
+  if s[0] == '/' {
+    if mine_starts_with(s, "/status") || mine_starts_with(s, "/model") || mine_starts_with(s, "/fast") { return true; }
+    if mine_starts_with(s, "/clear") || mine_starts_with(s, "/compact") || mine_starts_with(s, "/help") { return true; }
+    if mine_starts_with(s, "/exit") || mine_starts_with(s, "/quit") || mine_starts_with(s, "/cost") { return true; }
+  }
+  if mine_starts_with(s, "<local-command") || mine_starts_with(s, "<command-name>") { return true; }
+  if mine_starts_with(s, "[Request interrupted") { return true; }
+  return false;
+}
+
+// Tool role classification (aligned with ingest.coax)
+mine_is_edit_tool :: (name: string) -> bool {
+  return name == "Edit" || name == "Write" || name == "MultiEdit" || name == "NotebookEdit" ||
+         name == "edit_file" || name == "write_file" || name == "replace_file_content" ||
+         name == "multi_replace_file_content" || name == "write_to_file" || name == "apply_patch";
+}
+
+mine_is_shell_tool :: (name: string) -> bool {
+  return name == "Bash" || name == "run_command" || name == "exec" || name == "shell" ||
+         name == "command" || name == "exec_command";
+}
+
+mine_is_delegate_tool :: (name: string) -> bool {
+  return name == "Agent" || name == "Task" || name == "invoke_subagent" ||
+         name == "delegate" || name == "swarm";
+}
+
+// Checks whether a shell command is an objective verification/test/build command.
+mine_is_verify_cmd :: (cmd: string) -> bool {
+  if cmd.count == 0 { return false; }
+  if mine_has(cmd, "coax test") || mine_has(cmd, "tools-check") || mine_has(cmd, "coax mutate") { return true; }
+  if mine_has(cmd, "pytest") || mine_has(cmd, "unittest") || mine_has(cmd, "cargo test") || mine_has(cmd, "go test") || mine_has(cmd, "npm test") { return true; }
+  if mine_has(cmd, "check.sh") || mine_has(cmd, "build.sh") || mine_has(cmd, "test.sh") { return true; }
+  if mine_has(cmd, "wire-check") || mine_has(cmd, "layer-check") || mine_has(cmd, "components-check") { return true; }
+  return false;
+}
+
+// Checks whether a shell command is a diagnostic or build/inspection command.
+mine_is_diag_cmd :: (cmd: string) -> bool {
+  if mine_is_verify_cmd(cmd) { return true; }
+  if mine_has(cmd, "git diff") || mine_has(cmd, "git status") || mine_has(cmd, "git log") || mine_has(cmd, "git grep") { return true; }
+  if mine_has(cmd, "rg ") || mine_has(cmd, "grep ") || mine_has(cmd, "python3 ") || mine_has(cmd, "coax ") { return true; }
+  return false;
+}
+
+// Extracts the cleanest objective check sub-command from a shell command string
+// (splits on `&&` / `;` / `\n` and returns the last verification segment, stripping leading `cd ...`).
+mine_extract_verify_cmd :: (raw: string, out: [] u8) -> string {
+  best_start := -1;
+  best_end := -1;
+  i := 0;
+  seg_start := 0;
+  while i <= raw.count {
+    is_sep := false;
+    step := 1;
+    if i == raw.count {
+      is_sep = true;
+    } else if raw[i] == '\n' || raw[i] == ';' {
+      is_sep = true;
+    } else if raw[i] == '&' && i + 1 < raw.count && raw[i + 1] == '&' {
+      is_sep = true;
+      step = 2;
+    }
+    if is_sep {
+      seg := mine_trim(raw[seg_start..<i]);
+      if seg.count > 0 && mine_is_verify_cmd(seg) {
+        // Skip commands that are purely git commit/push or echo wrappers
+        if !mine_starts_with(seg, "echo ") && !mine_starts_with(seg, "git commit") && !mine_starts_with(seg, "git push") {
+          best_start = seg_start;
+          best_end = i;
+        }
+      }
+      seg_start = i + step;
+    }
+    i += step;
+  }
+  if best_start < 0 { return ""; }
+  seg := mine_trim(raw[best_start..<best_end]);
+  // Strip trailing redirections or pipes to tail/head if present
+  cut := seg.count;
+  for k: 0..<seg.count {
+    if seg[k] == '|' && k + 1 < seg.count && seg[k + 1] != '|' {
+      cut = k;
+      break;
+    }
+  }
+  cleaned := mine_trim(seg[0..<cut]);
+  if cleaned.count == 0 { return ""; }
+  n := mine_copy(out, cleaned);
+  return cast(string) out[0..<n];
+}
+
+// Classifies an episode into Buckets A-E per docs/coder/session-history-evals-spec.md.
+mine_classify_bucket :: (ep: MineEpisode) -> string {
+  if ep.turns > 20 || ep.delegate_calls > 0 { return BUCKET_E; }
+  if ep.saw_failure_then_pass || ep.failed_tool_calls >= 2 { return BUCKET_D; }
+  if ep.unique_files >= 4 { return BUCKET_B; }
+  if ep.verify_cmd_count >= 2 && ep.edit_calls <= 2 { return BUCKET_C; }
+  return BUCKET_A;
+}
+
+// Inclusion criteria from spec Stage 2:
+//   >= 2 tool calls, >= 1 file edit or diagnostic command, objective verify command present.
+mine_episode_substantive :: (ep: MineEpisode) -> bool {
+  if !ep.active { return false; }
+  if ep.prompt_n < 12 { return false; }
+  if ep.tool_calls < 2 { return false; }
+  if ep.edit_calls < 1 && ep.diag_shell_calls < 1 { return false; }
+  if ep.verify_cmd_n == 0 { return false; }
+  return true;
+}
+
+mine_record_file :: (ep: [] MineEpisode, path: string) {
+  if path.count == 0 { return; }
+  h := mine_fnv1a(path);
+  for i: 0..<ep[0].unique_files {
+    if ep[0].file_hashes[i] == h { return; }
+  }
+  if ep[0].unique_files < MINE_MAX_FILES {
+    ep[0].file_hashes[ep[0].unique_files] = h;
+    ep[0].unique_files += 1;
+  }
+}
+
+mine_episode_start :: (ep: [] MineEpisode, step_id: int, prompt: string, ts: string) {
+  ep[0] = MineEpisode.{};
+  ep[0].active = true;
+  ep[0].start_step_id = step_id;
+  ep[0].end_step_id = step_id;
+  ep[0].prompt_n = mine_copy(ep[0].prompt[..], mine_trim(prompt));
+  ep[0].started_at_n = mine_copy(ep[0].started_at[..], ts);
+  ep[0].ended_at_n = mine_copy(ep[0].ended_at[..], ts);
+  ep[0].turns = 1;
+  h: [1] AtifStepsHasher;
+  atif_steps_hash_init(h[..]);
+  ep[0].step_hasher = h[0];
+}
+
+mine_episode_finish :: (ep: [] MineEpisode) {
+  if !ep[0].active { return; }
+  h: [1] AtifStepsHasher;
+  h[0] = ep[0].step_hasher;
+  ep[0].digest_ok = atif_steps_hash_final(h[..], ep[0].steps_digest[..]) == ATIF_DIGEST_OK;
+}
+
+// Processes one parsed ATIF step JSON line into the current episode state machine.
+// If a new substantive user step begins, finishes the prior episode into `finished_out`
+// and sets `emitted[0] = true`, then starts the new episode in `cur`.
+mine_feed_step_line :: (line: string, cur: [] MineEpisode, finished_out: [] MineEpisode, emitted: [] bool) {
+  emitted[0] = false;
+  nodes: [ATIF_CANON_NODES] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return; }
+  rb: [32] u8;
+  rec := mine_jv_str_cut(d[0], jv_get(d[0], 0, "record"), rb[..], 32);
+  if rec != "step" { return; }
+
+  st := jv_get(d[0], 0, "step");
+  if jv_kind(d[0], st) != JV_OBJECT { return; }
+  step_id := jv_int(d[0], jv_get(d[0], st, "step_id"), 0);
+  if step_id < 1 { return; }
+
+  sb: [32] u8; src := mine_jv_str_cut(d[0], jv_get(d[0], st, "source"), sb[..], 32);
+  tsb: [64] u8; ts := mine_jv_str_cut(d[0], jv_get(d[0], st, "timestamp"), tsb[..], 64);
+  mb: [128] u8; model := mine_jv_str_cut(d[0], jv_get(d[0], st, "model_name"), mb[..], 128);
+  msg_buf: [MINE_PROMPT_MAX] u8;
+  msg := mine_jv_str_cut(d[0], jv_get(d[0], st, "message"), msg_buf[..], MINE_PROMPT_MAX);
+  obs_node := jv_get(d[0], st, "observation");
+  has_obs := jv_kind(d[0], obs_node) == JV_OBJECT;
+  tc_node := jv_get(d[0], st, "tool_calls");
+  has_tc := jv_kind(d[0], tc_node) == JV_ARRAY;
+
+  // Decide if this is a new substantive user episode boundary.
+  if src == ATIF_SOURCE_USER && !has_obs && !mine_is_trivial_prompt(msg) {
+    if cur[0].active {
+      mine_episode_finish(cur);
+      finished_out[0] = cur[0];
+      emitted[0] = true;
+    }
+    mine_episode_start(cur, step_id, msg, ts);
+  } else if !cur[0].active && src == ATIF_SOURCE_AGENT && mine_has(msg, "\"rationale\"") {
+    // OpenAgents Desktop AJR1 logs embed the first turn's objective in `rationale`
+    // when the raw user prompt was in the truncated system context frame.
+    rn: [512] JvNode; rd: [1] Jv;
+    if jv_parse(rd[..], msg, rn[..]) && jv_kind(rd[0], 0) == JV_OBJECT {
+      rbuf: [MINE_PROMPT_MAX] u8;
+      rat := mine_jv_str_cut(rd[0], jv_get(rd[0], 0, "rationale"), rbuf[..], MINE_PROMPT_MAX);
+      if !mine_is_trivial_prompt(rat) {
+        mine_episode_start(cur, step_id, rat, ts);
+      }
+    }
+  }
+
+  if !cur[0].active { return; }
+
+  cur[0].end_step_id = step_id;
+  if ts.count > 0 {
+    if cur[0].started_at_n == 0 { cur[0].started_at_n = mine_copy(cur[0].started_at[..], ts); }
+    cur[0].ended_at_n = mine_copy(cur[0].ended_at[..], ts);
+  }
+  if model.count > 0 && cur[0].model_n == 0 {
+    cur[0].model_n = mine_copy(cur[0].model[..], model);
+  }
+
+  // Hash step into episode steps_digest
+  step_raw := jv_raw(d[0], st);
+  if step_raw.count > 0 {
+    h: [1] AtifStepsHasher; h[0] = cur[0].step_hasher;
+    sc: [131072] u8;
+    _ := atif_steps_hash_step(h[..], step_raw, sc[..]);
+    cur[0].step_hasher = h[0];
+  }
+
+  // Count agent turns
+  if src == ATIF_SOURCE_AGENT {
+    cur[0].turns += 1;
+  }
+
+  // Accumulate metrics if present
+  met := jv_get(d[0], st, "metrics");
+  if jv_kind(d[0], met) == JV_OBJECT {
+    pt := jv_int(d[0], jv_get(d[0], met, "prompt_tokens"), 0);
+    ct := jv_int(d[0], jv_get(d[0], met, "completion_tokens"), 0);
+    ca := jv_int(d[0], jv_get(d[0], met, "cached_tokens"), 0);
+    if pt > 0 { cur[0].prompt_tokens += pt; }
+    if ct > 0 { cur[0].completion_tokens += ct; }
+    if ca > 0 { cur[0].cached_tokens += ca; }
+  }
+
+  // Inspect tool calls
+  if has_tc {
+    n_tc := jv_len(d[0], tc_node);
+    for i: 0..<n_tc {
+      tc := jv_at(d[0], tc_node, i);
+      nb: [128] u8; fname := mine_jv_str_cut(d[0], jv_get(d[0], tc, "function_name"), nb[..], 128);
+      args := jv_get(d[0], tc, "arguments");
+      cur[0].tool_calls += 1;
+      if mine_is_edit_tool(fname) {
+        cur[0].edit_calls += 1;
+        pb: [512] u8;
+        fp := mine_jv_str_cut(d[0], jv_get(d[0], args, "file_path"), pb[..], 512);
+        if fp.count == 0 { fp = mine_jv_str_cut(d[0], jv_get(d[0], args, "Path"), pb[..], 512); }
+        if fp.count == 0 { fp = mine_jv_str_cut(d[0], jv_get(d[0], args, "TargetFile"), pb[..], 512); }
+        if fp.count == 0 { fp = mine_jv_str_cut(d[0], jv_get(d[0], args, "path"), pb[..], 512); }
+        mine_record_file(cur, fp);
+      } else if mine_is_delegate_tool(fname) {
+        cur[0].delegate_calls += 1;
+      } else if mine_is_shell_tool(fname) {
+        cb: [2048] u8;
+        cmd := mine_jv_str_cut(d[0], jv_get(d[0], args, "command"), cb[..], 2048);
+        if cmd.count == 0 { cmd = mine_jv_str_cut(d[0], jv_get(d[0], args, "CommandLine"), cb[..], 2048); }
+        if cmd.count == 0 { cmd = mine_jv_str_cut(d[0], jv_get(d[0], args, "cmd"), cb[..], 2048); }
+        if cmd.count == 0 { cmd = mine_jv_str_cut(d[0], jv_get(d[0], args, "raw"), cb[..], 2048); }
+        if mine_is_diag_cmd(cmd) { cur[0].diag_shell_calls += 1; }
+        vbuf: [MINE_CMD_MAX] u8;
+        vcmd := mine_extract_verify_cmd(cmd, vbuf[..]);
+        if vcmd.count > 0 {
+          cur[0].verify_cmd_n = mine_copy(cur[0].verify_cmd[..], vcmd);
+          cur[0].verify_cmd_count += 1;
+        }
+      }
+    }
+  }
+
+  // Inspect observations for errors and failure->pass transitions
+  if has_obs {
+    res := jv_get(d[0], obs_node, "results");
+    if jv_kind(d[0], res) == JV_ARRAY {
+      n_res := jv_len(d[0], res);
+      for i: 0..<n_res {
+        item := jv_at(d[0], res, i);
+        is_err := jv_kind(d[0], jv_path(d[0], item, "extra.is_error")) == JV_TRUE;
+        cb: [2048] u8;
+        ct := mine_jv_str_cut(d[0], jv_get(d[0], item, "content"), cb[..], 2048);
+        if !is_err && (mine_has(ct, "Command exited with code 1") || mine_has(ct, "FAIL ") || mine_has(ct, "error:")) {
+          is_err = true;
+        }
+        if is_err {
+          cur[0].failed_tool_calls += 1;
+          cur[0].saw_failure = true;
+        } else if cur[0].verify_cmd_n > 0 {
+          if mine_has(ct, "passed, 0 failed") || mine_has(ct, "exited with code 0") || mine_has(ct, "tools-check: ok") || mine_has(ct, "OK") {
+            cur[0].verify_passed = true;
+            if cur[0].saw_failure { cur[0].saw_failure_then_pass = true; }
+          }
+        }
+      }
+    }
+  }
+}
+
+// ---- Streaming line reader
+
+mine_reader_init :: (r: [] MineReader, path: string) -> bool {
+  r[0] = MineReader.{};
+  sz := fs_size(path);
+  if sz <= 0 { return false; }
+  r[0].path_n = mine_copy(r[0].path[..], path);
+  r[0].file_size = sz;
+  return true;
+}
+
+mine_reader_next_line :: (r: [] MineReader, line_buf: [] u8) -> int {
+  if r[0].eof { return -1; }
+  n := 0;
+  overflow := false;
+  got_any := false;
+  path := cast(string) r[0].path[0..<r[0].path_n];
+  while true {
+    if r[0].chunk_at >= r[0].chunk_n {
+      if r[0].offset >= r[0].file_size {
+        r[0].eof = true;
+        if !got_any { return -1; }
+        if overflow { return 0; }
+        if n > 0 && line_buf[n - 1] == 13 { n -= 1; }
+        return n;
+      }
+      want := r[0].file_size - r[0].offset;
+      if want > MINE_READ_CHUNK { want = MINE_READ_CHUNK; }
+      got := fs_read_at(path, r[0].offset, r[0].chunk[0..<want]);
+      if got <= 0 {
+        r[0].eof = true;
+        if !got_any { return -1; }
+        if overflow { return 0; }
+        return n;
+      }
+      r[0].offset += got;
+      r[0].chunk_n = got;
+      r[0].chunk_at = 0;
+    }
+    c := r[0].chunk[r[0].chunk_at];
+    r[0].chunk_at += 1;
+    got_any = true;
+    if c == 10 {
+      if overflow { return 0; }
+      if n > 0 && line_buf[n - 1] == 13 { n -= 1; }
+      return n;
+    }
+    if !overflow {
+      if n < line_buf.count { line_buf[n] = c; n += 1; }
+      else { overflow = true; }
+    }
+  }
+  return -1;
+}
+
+// ---- Git SHA resolution
+
+mine_git_sha_before :: (repo: string, iso_ts: string, out: [] u8) -> string {
+  if repo.count == 0 || iso_ts.count == 0 { return ""; }
+  argv := [7] string.["git", "-C", repo, "rev-list", "-n", "1", "--before="];
+  // Build --before=<ts>
+  bflag: [96] u8;
+  p := mine_copy(bflag[..], "--before=");
+  p += mine_copy(bflag[p..<bflag.count], iso_ts);
+  argv2 := [8] string.["git", "-C", repo, "rev-list", "-n", "1", cast(string) bflag[0..<p], "HEAD"];
+  ob: [128] u8; eb: [256] u8;
+  r := proc_run(argv2[..], 10000, ob[..], eb[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 7 { return ""; }
+  sha := mine_trim(cast(string) ob[0..<r.out_n]);
+  if sha.count < 7 || sha.count > 40 { return ""; }
+  n := mine_copy(out, sha);
+  return cast(string) out[0..<n];
+}
+
+// ---- Task JSON writer (conforming to evals/session-history/schema/task.schema.json)
+
+mine_write_task_json :: (
+  task_id: string,
+  harness: string,
+  traj_id: string,
+  project: string,
+  base_sha: string,
+  target_sha: string,
+  fallback_model: string,
+  ep_in: MineEpisode,
+  out: [] u8
+) -> int {
+  ep := ep_in;
+  bucket := mine_classify_bucket(ep);
+  model := ifx ep.model_n > 0 then cast(string) ep.model[0..<ep.model_n] else (ifx fallback_model.count > 0 then fallback_model else "unknown");
+  digest := ifx ep.digest_ok then cast(string) ep.steps_digest[..] else "0000000000000000000000000000000000000000000000000000000000000000";
+  prompt := cast(string) ep.prompt[0..<ep.prompt_n];
+  vcmd := cast(string) ep.verify_cmd[0..<ep.verify_cmd_n];
+  turns := ifx ep.turns < 1 then 1 else ep.turns;
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "id"); jo_str(o[..], task_id);
+  jo_key(o[..], "category"); jo_str(o[..], "session-history");
+  jo_key(o[..], "bucket"); jo_str(o[..], bucket);
+  jo_key(o[..], "description"); jo_str(o[..], mine_cut(prompt, 120));
+
+  jo_key(o[..], "source");
+  jo_obj(o[..]);
+  jo_key(o[..], "harness"); jo_str(o[..], harness);
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], traj_id);
+  jo_key(o[..], "step_range"); jo_arr(o[..]); jo_int(o[..], ep.start_step_id); jo_int(o[..], ep.end_step_id); jo_end(o[..]);
+  jo_key(o[..], "steps_digest"); jo_str(o[..], digest);
+  jo_key(o[..], "project"); jo_str(o[..], ifx project.count > 0 then project else "work/openagents");
+  jo_key(o[..], "base_sha");
+  if base_sha.count >= 7 { jo_str(o[..], base_sha); } else { jo_null(o[..]); }
+  jo_key(o[..], "target_sha");
+  if target_sha.count >= 7 { jo_str(o[..], target_sha); } else { jo_null(o[..]); }
+  jo_end(o[..]);
+
+  jo_key(o[..], "baseline");
+  jo_obj(o[..]);
+  jo_key(o[..], "model"); jo_str(o[..], model);
+  jo_key(o[..], "turns"); jo_int(o[..], turns);
+  jo_key(o[..], "tool_calls"); jo_int(o[..], ep.tool_calls);
+  jo_key(o[..], "failed_tool_calls"); jo_int(o[..], ep.failed_tool_calls);
+  if ep.prompt_tokens > 0 { jo_key(o[..], "prompt_tokens"); jo_int(o[..], ep.prompt_tokens); }
+  if ep.completion_tokens > 0 { jo_key(o[..], "completion_tokens"); jo_int(o[..], ep.completion_tokens); }
+  if ep.cached_tokens > 0 { jo_key(o[..], "cached_tokens"); jo_int(o[..], ep.cached_tokens); }
+  jo_key(o[..], "cost_usd_micros"); jo_int(o[..], ep.cost_usd_micros);
+  jo_key(o[..], "wall_s"); jo_int(o[..], 0);
+  jo_key(o[..], "passed"); jo_bool(o[..], ep.verify_passed);
+  jo_end(o[..]);
+
+  jo_key(o[..], "budget_usd_micros"); jo_int(o[..], 150000);
+  jo_key(o[..], "timeout_s"); jo_int(o[..], 300);
+
+  jo_key(o[..], "steps");
+  jo_arr(o[..]);
+  jo_obj(o[..]);
+  jo_key(o[..], "send"); jo_str(o[..], prompt);
+  jo_end(o[..]);
+  jo_end(o[..]);
+
+  jo_key(o[..], "graders");
+  jo_arr(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "not_timed_out"); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "ended"); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "command"); jo_key(o[..], "run"); jo_str(o[..], vcmd); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "outside_unchanged"); jo_end(o[..]);
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "no_guard_trips"); jo_end(o[..]);
+  jo_end(o[..]);
+
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+mine_make_task_id :: (harness: string, seq: int, traj_id: string, out: [] u8) -> string {
+  n := mine_copy(out, "sh_");
+  // 3-digit sequence
+  d2 := (seq / 100) % 10;
+  d1 := (seq / 10) % 10;
+  d0 := seq % 10;
+  if n + 4 < out.count {
+    out[n] = cast(u8) ('0' + d2);
+    out[n + 1] = cast(u8) ('0' + d1);
+    out[n + 2] = cast(u8) ('0' + d0);
+    out[n + 3] = '_';
+    n += 4;
+  }
+  for c: harness {
+    if n >= out.count - 12 { break; }
+    if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') { out[n] = c; n += 1; }
+  }
+  if n < out.count { out[n] = '_'; n += 1; }
+  // 8-char sanitized prefix of trajectory_id
+  added := 0;
+  for c: traj_id {
+    if added >= 8 || n >= out.count { break; }
+    lc := ifx c >= 'A' && c <= 'Z' then cast(u8) (c + 32) else c;
+    if (lc >= 'a' && lc <= 'z') || (lc >= '0' && lc <= '9') {
+      out[n] = lc; n += 1; added += 1;
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- CLI entrypoint
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("mine: failed to load argv"); return 2; }
+  if args_has(a[..], "--help") || args_has(a[..], "-h") {
+    print("Usage: mine.coax [--in DIR] [--out DIR] [--source all|claude|codex|openagents|antigravity|opencode] [--repo PATH] [--limit N]\n");
+    return 0;
+  }
+
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  in_buf: [1024] u8;
+  in_dir := args_value(a[..], "--in", "");
+  if in_dir.count == 0 { in_dir = fs_join(home, ".openagents/evals/session-history", in_buf[..]); }
+  out_buf: [1024] u8;
+  out_dir := args_value(a[..], "--out", "");
+  if out_dir.count == 0 { out_dir = fs_join(in_dir, "candidates", out_buf[..]); }
+  source_filter := args_value(a[..], "--source", "all");
+  repo_dir := args_value(a[..], "--repo", "");
+  limit := args_whole(args_value(a[..], "--limit", "5"));
+  if limit <= 0 { limit = 5; }
+
+  idx_buf: [1024] u8;
+  idx_path := fs_join(in_dir, "index.jsonl", idx_buf[..]);
+  if fs_kind(idx_path) != FS_FILE {
+    tool_errln("mine: index.jsonl not found; run ingest.coax first");
+    return 1;
+  }
+  if !fs_mkdir(out_dir) {
+    tool_errln("mine: failed to create output directory");
+    return 1;
+  }
+
+  idx_rd: [1] MineReader;
+  if !mine_reader_init(idx_rd[..], idx_path) { return 1; }
+  idx_line: [16384] u8;
+  total_emitted := 0;
+  per_source_emitted: [5] int;
+
+  while true {
+    ln := mine_reader_next_line(idx_rd[..], idx_line[..]);
+    if ln < 0 { break; }
+    if ln == 0 { continue; }
+    line := cast(string) idx_line[0..<ln];
+    nodes: [1024] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], line, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { continue; }
+
+    sb: [32] u8; src := mine_jv_str_cut(d[0], jv_get(d[0], 0, "source"), sb[..], 32);
+    if source_filter != "all" && src != source_filter { continue; }
+
+    src_idx := 0;
+    if src == "claude" { src_idx = 0; }
+    else if src == "codex" { src_idx = 1; }
+    else if src == "openagents" { src_idx = 2; }
+    else if src == "antigravity" { src_idx = 3; }
+    else { src_idx = 4; }
+    if per_source_emitted[src_idx] >= limit { continue; }
+
+    has_v := jv_kind(d[0], jv_get(d[0], 0, "has_verify_cmd")) == JV_TRUE;
+    if !has_v { continue; }
+
+    ab: [1024] u8; art_path := mine_jv_str_cut(d[0], jv_get(d[0], 0, "artifact_path"), ab[..], 1024);
+    tb: [128] u8; traj_id := mine_jv_str_cut(d[0], jv_get(d[0], 0, "trajectory_id"), tb[..], 128);
+    pb: [160] u8; proj := mine_jv_str_cut(d[0], jv_get(d[0], 0, "project"), pb[..], 160);
+    mb: [128] u8; primary_model := mine_jv_str_cut(d[0], jv_get(d[0], 0, "primary_model"), mb[..], 128);
+    if fs_kind(art_path) != FS_FILE { continue; }
+
+    rd: [1] MineReader;
+    if !mine_reader_init(rd[..], art_path) { continue; }
+    step_line: [MINE_LINE_MAX] u8;
+    cur: [1] MineEpisode;
+    fin: [1] MineEpisode;
+    emitted_flag: [1] bool;
+
+    while true {
+      sln := mine_reader_next_line(rd[..], step_line[..]);
+      if sln < 0 { break; }
+      if sln == 0 { continue; }
+      mine_feed_step_line(cast(string) step_line[0..<sln], cur[..], fin[..], emitted_flag[..]);
+      if emitted_flag[0] && mine_episode_substantive(fin[0]) && per_source_emitted[src_idx] < limit {
+        total_emitted += 1;
+        per_source_emitted[src_idx] += 1;
+        bsha_buf: [64] u8; tsha_buf: [64] u8;
+        bsha := mine_git_sha_before(repo_dir, cast(string) fin[0].started_at[0..<fin[0].started_at_n], bsha_buf[..]);
+        tsha := mine_git_sha_before(repo_dir, cast(string) fin[0].ended_at[0..<fin[0].ended_at_n], tsha_buf[..]);
+        if tsha == bsha { tsha = ""; }
+        id_buf: [64] u8; tid := mine_make_task_id(src, total_emitted, traj_id, id_buf[..]);
+        tbuf: [32768] u8;
+        tn := mine_write_task_json(tid, src, traj_id, proj, bsha, tsha, primary_model, fin[0], tbuf[..]);
+        if tn > 0 {
+          fn_buf: [128] u8; fn_n := mine_copy(fn_buf[..], tid); fn_n += mine_copy(fn_buf[fn_n..<fn_buf.count], ".json");
+          fp_buf: [1024] u8; fpath := fs_join(out_dir, cast(string) fn_buf[0..<fn_n], fp_buf[..]);
+          _ := fs_write(fpath, cast(string) tbuf[0..<tn]);
+          print("mined % (%, %, steps %..%, tools=%)\n", tid, src, mine_classify_bucket(fin[0]), fin[0].start_step_id, fin[0].end_step_id, fin[0].tool_calls);
+        }
+      }
+    }
+    // Flush trailing episode
+    if cur[0].active {
+      mine_episode_finish(cur[..]);
+      if mine_episode_substantive(cur[0]) && per_source_emitted[src_idx] < limit {
+        total_emitted += 1;
+        per_source_emitted[src_idx] += 1;
+        bsha_buf: [64] u8; tsha_buf: [64] u8;
+        bsha := mine_git_sha_before(repo_dir, cast(string) cur[0].started_at[0..<cur[0].started_at_n], bsha_buf[..]);
+        tsha := mine_git_sha_before(repo_dir, cast(string) cur[0].ended_at[0..<cur[0].ended_at_n], tsha_buf[..]);
+        if tsha == bsha { tsha = ""; }
+        id_buf: [64] u8; tid := mine_make_task_id(src, total_emitted, traj_id, id_buf[..]);
+        tbuf: [32768] u8;
+        tn := mine_write_task_json(tid, src, traj_id, proj, bsha, tsha, primary_model, cur[0], tbuf[..]);
+        if tn > 0 {
+          fn_buf: [128] u8; fn_n := mine_copy(fn_buf[..], tid); fn_n += mine_copy(fn_buf[fn_n..<fn_buf.count], ".json");
+          fp_buf: [1024] u8; fpath := fs_join(out_dir, cast(string) fn_buf[0..<fn_n], fp_buf[..]);
+          _ := fs_write(fpath, cast(string) tbuf[0..<tn]);
+          print("mined % (%, %, steps %..%, tools=%)\n", tid, src, mine_classify_bucket(cur[0]), cur[0].start_step_id, cur[0].end_step_id, cur[0].tool_calls);
+        }
+      }
+    }
+  }
+
+  print("mine: emitted % candidate task(s) to %\n", total_emitted, out_dir);
+  return 0;
+}
+
+// ---- Checks
+
+#test "mine_extract_verify_cmd extracts clean objective test commands from shell pipelines" {
+  out: [256] u8;
+  #assert mine_extract_verify_cmd("cd /work/openagents && coax/bin/coax test evals/session-history/tools/ingest.coax | tail -n 20", out[..]) == "coax/bin/coax test evals/session-history/tools/ingest.coax";
+  #assert mine_extract_verify_cmd("git status && coax/web/tool.sh tools-check", out[..]) == "coax/web/tool.sh tools-check";
+  #assert mine_extract_verify_cmd("pytest -q tests/test_foo.py; echo done", out[..]) == "pytest -q tests/test_foo.py";
+  #assert mine_extract_verify_cmd("ls -la && git status", out[..]) == "";
+  #assert mine_is_verify_cmd("cargo test --lib");
+  #assert !mine_is_verify_cmd("ls -la");
+}
+
+#test "mine_classify_bucket stratifies episodes into Buckets A through E" {
+  ep := MineEpisode.{active = true, turns = 4, tool_calls = 5, edit_calls = 2, unique_files = 2, verify_cmd_count = 1};
+  #assert mine_classify_bucket(ep) == BUCKET_A;
+
+  ep_b := ep; ep_b.unique_files = 4;
+  #assert mine_classify_bucket(ep_b) == BUCKET_B;
+
+  ep_c := ep; ep_c.verify_cmd_count = 2; ep_c.edit_calls = 1;
+  #assert mine_classify_bucket(ep_c) == BUCKET_C;
+
+  ep_d := ep; ep_d.saw_failure_then_pass = true;
+  #assert mine_classify_bucket(ep_d) == BUCKET_D;
+
+  ep_d2 := ep; ep_d2.failed_tool_calls = 2;
+  #assert mine_classify_bucket(ep_d2) == BUCKET_D;
+
+  ep_e1 := ep; ep_e1.turns = 21;
+  #assert mine_classify_bucket(ep_e1) == BUCKET_E;
+
+  ep_e2 := ep; ep_e2.delegate_calls = 1;
+  #assert mine_classify_bucket(ep_e2) == BUCKET_E;
+}
+
+#test "mine_feed_step_line splits multi-episode ATIF logs and filters trivial slash commands" {
+  cur: [1] MineEpisode;
+  fin: [1] MineEpisode;
+  emitted: [1] bool;
+
+  // Trivial slash command is ignored
+  mine_feed_step_line("{\"record\":\"step\",\"step\":{\"step_id\":1,\"source\":\"user\",\"message\":\"/status\"}}", cur[..], fin[..], emitted[..]);
+  #assert !cur[0].active && !emitted[0];
+
+  // Episode 1 starts
+  mine_feed_step_line("{\"record\":\"step\",\"step\":{\"step_id\":2,\"timestamp\":\"2026-11-20T10:00:00Z\",\"source\":\"user\",\"message\":\"Fix the off-by-one bug in parser.coax and run tests.\"}}", cur[..], fin[..], emitted[..]);
+  #assert cur[0].active && cur[0].start_step_id == 2 && !emitted[0];
+
+  // Agent edits a file and runs coax test
+  mine_feed_step_line("{\"record\":\"step\",\"step\":{\"step_id\":3,\"timestamp\":\"2026-11-20T10:00:10Z\",\"source\":\"agent\",\"model_name\":\"claude-opus-5-5\",\"message\":\"\",\"tool_calls\":[{\"tool_call_id\":\"c1\",\"function_name\":\"Edit\",\"arguments\":{\"file_path\":\"parser.coax\"}},{\"tool_call_id\":\"c2\",\"function_name\":\"Bash\",\"arguments\":{\"command\":\"coax/bin/coax test parser.coax\"}}]}}", cur[..], fin[..], emitted[..]);
+  #assert cur[0].tool_calls == 2 && cur[0].edit_calls == 1 && cur[0].unique_files == 1;
+  #assert cast(string) cur[0].verify_cmd[0..<cur[0].verify_cmd_n] == "coax/bin/coax test parser.coax";
+
+  // Observation arrives as user step with observation -> does NOT split episode
+  mine_feed_step_line("{\"record\":\"step\",\"step\":{\"step_id\":4,\"source\":\"user\",\"message\":\"\",\"observation\":{\"results\":[{\"source_call_id\":\"c2\",\"content\":\"5 checks, 5 passed, 0 failed\"}]}}}", cur[..], fin[..], emitted[..]);
+  #assert !emitted[0] && cur[0].verify_passed && cur[0].end_step_id == 4;
+
+  // Episode 2 starts -> emits Episode 1
+  mine_feed_step_line("{\"record\":\"step\",\"step\":{\"step_id\":5,\"timestamp\":\"2026-11-20T10:05:00Z\",\"source\":\"user\",\"message\":\"Now refactor all five modules in lib/ and verify.\"}}", cur[..], fin[..], emitted[..]);
+  #assert emitted[0] && mine_episode_substantive(fin[0]);
+  #assert fin[0].start_step_id == 2 && fin[0].end_step_id == 4 && fin[0].digest_ok;
+  #assert cur[0].active && cur[0].start_step_id == 5;
+
+  // Verify emitted task JSON is valid JSON and has required schema fields
+  jbuf: [8192] u8;
+  jn := mine_write_task_json("sh_001_claude_demo1234", "claude", "demo1234", "work/openagents", "1234567", "89abcdef", "claude-opus-5-5", fin[0], jbuf[..]);
+  #assert jn > 0;
+  nodes: [512] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) jbuf[0..<jn], nodes[..]);
+  #assert jv_raw(d[0], jv_get(d[0], 0, "category")) == "session-history";
+  #assert jv_raw(d[0], jv_get(d[0], 0, "bucket")) == BUCKET_A;
+  #assert jv_raw(d[0], jv_path(d[0], 0, "source.base_sha")) == "1234567";
+}

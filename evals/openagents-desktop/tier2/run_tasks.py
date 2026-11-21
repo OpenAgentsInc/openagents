@@ -131,8 +131,25 @@ class Sandbox:
         self.repo = self.root / "repo"
         self.outside = self.root / "outside"
         self.home = self.root / "home"
-        self.fixture = fixture_dir(task)
-        shutil.copytree(self.fixture, self.repo)
+        self.base_sha = (task.get("source") or {}).get("base_sha") if isinstance(task.get("source"), dict) else None
+        self.is_git_worktree = False
+        if task.get("fixture"):
+            self.fixture: Path | None = fixture_dir(task)
+            shutil.copytree(self.fixture, self.repo)
+        elif self.base_sha:
+            self.fixture = None
+            r = sh(["git", "-C", str(REPO_ROOT), "worktree", "add", "--detach", str(self.repo), str(self.base_sha)], timeout=120)
+            if r.returncode != 0:
+                raise RuntimeError(f"git worktree add {self.base_sha} failed: {r.stderr}")
+            self.is_git_worktree = True
+            coax_src = coax_bin()
+            if coax_src.exists():
+                coax_dst = self.repo / "coax/bin/coax"
+                coax_dst.parent.mkdir(parents=True, exist_ok=True)
+                if not coax_dst.exists():
+                    coax_dst.symlink_to(coax_src)
+        else:
+            raise RuntimeError(f"task {task['id']} needs either fixture or source.base_sha")
         self.outside.mkdir()
         for rel, text in task.get("outside", {}).items():
             p = self.outside / rel
@@ -157,10 +174,11 @@ class Sandbox:
         skill.write_text("---\nname: eval-house-style\ndescription: House style for Python files in eval workspaces: four-space indents and a docstring on each new function.\n---\n\n# House style\n\nUse four-space indents. Give each new function a one-line docstring.\n")
         self.skills_note = skills_note(self.home)
         env = self.git_env()
-        for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]):
-            r = sh(["git", *args], cwd=self.repo, env=env)
-            if r.returncode != 0:
-                raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr}")
+        if not self.is_git_worktree:
+            for args in (["init", "-q", "-b", "main"], ["add", "-A"], ["commit", "-q", "-m", "fixture"]):
+                r = sh(["git", *args], cwd=self.repo, env=env)
+                if r.returncode != 0:
+                    raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr}")
         self.head = sh(["git", "rev-parse", "HEAD"], cwd=self.repo, env=env).stdout.strip()
 
     def git_env(self) -> dict[str, str]:
@@ -177,10 +195,14 @@ class Sandbox:
 
     def diff(self) -> str:
         env = self.git_env()
+        if self.is_git_worktree:
+            return sh(["git", "diff", self.head], cwd=self.repo, env=env).stdout
         sh(["git", "add", "-A"], cwd=self.repo, env=env)
         return sh(["git", "diff", "--cached", self.head], cwd=self.repo, env=env).stdout
 
     def remove(self) -> None:
+        if self.is_git_worktree:
+            sh(["git", "-C", str(REPO_ROOT), "worktree", "remove", "--force", str(self.repo)], timeout=60)
         shutil.rmtree(self.root, ignore_errors=True)
 
 
@@ -516,19 +538,25 @@ def grade(g: dict[str, Any], c: Ctx) -> dict[str, Any]:
 
 
 def g_command(g, c):
-    """Runs a check in a copy of the workspace, with listed files restored from the fixture first (the hidden test)."""
+    """Runs a check in a copy of the workspace (or directly in git worktree for base_sha tasks)."""
     with tempfile.TemporaryDirectory(prefix="coder-t2-grade-") as td:
-        work = Path(td) / "w"
-        shutil.copytree(c.sb.repo, work, ignore=shutil.ignore_patterns(".git"))
-        for rel in g.get("restore", []):
-            src = c.sb.fixture / rel
-            (work / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, work / rel)
+        if c.sb.is_git_worktree:
+            work = c.sb.repo
+            for rel in g.get("restore", []):
+                sh(["git", "checkout", c.sb.head, "--", rel], cwd=work, env=c.sb.git_env())
+        else:
+            work = Path(td) / "w"
+            shutil.copytree(c.sb.repo, work, ignore=shutil.ignore_patterns(".git"))
+            for rel in g.get("restore", []):
+                assert c.sb.fixture is not None
+                src = c.sb.fixture / rel
+                (work / rel).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, work / rel)
         for rel, text in g.get("add", {}).items():
             (work / rel).parent.mkdir(parents=True, exist_ok=True)
             (work / rel).write_text(text)
         env = dict(os.environ, HOME=td, PYTHONDONTWRITEBYTECODE="1")
-        r = subprocess.run(g["run"], shell=True, cwd=str(work), env=env, capture_output=True, text=True, timeout=g.get("timeout_s", 60))
+        r = subprocess.run(g["run"], shell=True, cwd=str(work), env=env, capture_output=True, text=True, timeout=g.get("timeout_s", 120))
         want = g.get("expect_exit", 0)
         out = (r.stdout + r.stderr)[-600:]
         if r.returncode != want:
@@ -537,6 +565,10 @@ def g_command(g, c):
             if s not in r.stdout:
                 return False, f"stdout lacks {s!r}: {out}"
         return True, f"exit {r.returncode}"
+
+
+def g_file_exists(g, c):
+    return (c.sb.repo / g["path"]).exists(), g["path"]
 
 
 def g_file_contains(g, c):
@@ -673,7 +705,7 @@ def g_diff_max_files(g, c):
 
 
 GRADERS = {
-    "command": g_command, "file_contains": g_file_contains, "file_absent": g_file_absent, "files_unchanged": g_files_unchanged,
+    "command": g_command, "file_exists": g_file_exists, "file_contains": g_file_contains, "file_absent": g_file_absent, "files_unchanged": g_files_unchanged,
     "outside_unchanged": g_outside_unchanged, "no_guard_trips": g_no_guard_trips, "no_command_matching": g_no_command_matching,
     "reply_contains": g_reply_contains, "reply_not_contains": g_reply_not_contains, "wire_count": g_wire_count,
     "recall_sent": g_recall_sent, "task_line": g_task_line, "state": g_state, "budget_stop": g_budget_stop, "not_timed_out": g_not_timed_out,
@@ -692,12 +724,16 @@ def main() -> int:
     ap.add_argument("--claude", action="store_true", help="build claudeworker and let tasks marked claude use it")
     ap.add_argument("--list", action="store_true", help="list the tasks and exit")
     ap.add_argument("--manifest", default="", help="run the tasks a manifest names (Tier 4: evals/openagents-desktop/tier4/slice.json)")
+    ap.add_argument("--tasks-dir", default="", help="load task JSONs from this directory (e.g. evals/session-history/tasks)")
     args = ap.parse_args()
 
     tier = 2
     if args.manifest:
         manifest, tasks = load_manifest(Path(args.manifest))
         tier = int(manifest.get("tier", 4))
+    elif args.tasks_dir:
+        td = Path(args.tasks_dir)
+        tasks = load_tasks(td, td.parent / "fixtures")
     else:
         tasks = load_tasks(TASKS_DIR, FIXTURES_DIR)
     if args.filter:

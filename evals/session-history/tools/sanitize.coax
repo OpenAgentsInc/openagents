@@ -1,0 +1,560 @@
+// Session History Evals Stage 3: Sanitization & Hermeticity Gate (GitHub #13830).
+// Scrubs secrets/PII (API keys, Bearer tokens, PEM private keys, Nostr nsec1,
+// emails, and /Users/<name>/... or /home/<name>/... paths), normalizes repo
+// paths to worktree-relative paths, records `source.derivation = redacted`,
+// and optionally runs the hermeticity gate (`--verify`) on `base_sha` and
+// `target_sha` (or `--patch FILE`) in a temporary git worktree.
+//
+// Usage:
+//   coax/web/tool.sh evals/session-history/tools/sanitize.coax --in FILE [--out FILE] [--verify] [--repo PATH] [--patch FILE] [--require-base-fail]
+//   coax/bin/coax test evals/session-history/tools/sanitize.coax
+#import "Basic";
+#load "../../../coax/lib/nostr/atif/log.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+SAN_FILE_MAX :: 131072;
+SAN_STR_MAX :: 16384;
+
+// ---- Pure string helpers
+
+san_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+san_append :: (dst: [] u8, at: [] int, src: string) {
+  for c: src {
+    if at[0] >= dst.count { break; }
+    dst[at[0]] = c;
+    at[0] += 1;
+  }
+}
+
+san_starts_at :: (s: string, pos: int, pre: string) -> bool {
+  if pos < 0 || pos + pre.count > s.count { return false; }
+  return s[pos..<pos + pre.count] == pre;
+}
+
+san_is_tok_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+         c == '_' || c == '-' || c == '.' || c == '+' || c == '/' || c == '=';
+}
+
+san_is_key_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+         c == '_' || c == '-';
+}
+
+san_is_email_local :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+         c == '.' || c == '_' || c == '%' || c == '+' || c == '-';
+}
+
+san_is_bech32 :: (c: u8) -> bool {
+  return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z');
+}
+
+san_is_path_char :: (c: u8) -> bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+         c == '_' || c == '-' || c == '.' || c == '/';
+}
+
+san_is_word_boundary_before :: (s: string, pos: int) -> bool {
+  if pos <= 0 { return true; }
+  c := s[pos - 1];
+  return !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_');
+}
+
+// Checks for known API key prefixes at s[pos..]. Returns matched length or 0.
+san_match_api_key :: (s: string, pos: int) -> int {
+  if !san_is_word_boundary_before(s, pos) { return 0; }
+  prefixes := [11] string.[
+    "sk-ant-", "sk-or-", "sk-proj-", "sk-",
+    "AIza", "ghp_", "gho_", "ghu_", "ghs_", "xoxb-", "AKIA"
+  ];
+  min_lens := [11] int.[20, 20, 20, 20, 24, 20, 20, 20, 20, 20, 16];
+  for pi: 0..<11 {
+    pre := prefixes[pi];
+    if san_starts_at(s, pos, pre) {
+      j := pos + pre.count;
+      while j < s.count && san_is_key_char(s[j]) { j += 1; }
+      if j - pos >= min_lens[pi] { return j - pos; }
+    }
+  }
+  return 0;
+}
+
+// Checks for PEM private key block starting at s[pos..]. Returns length or 0.
+san_match_pem_key :: (s: string, pos: int) -> int {
+  if !san_starts_at(s, pos, "-----BEGIN ") { return 0; }
+  // Ensure it mentions PRIVATE KEY on the header line
+  line_end := pos;
+  while line_end < s.count && s[line_end] != '\n' { line_end += 1; }
+  hdr := s[pos..<line_end];
+  has_priv := false;
+  if hdr.count >= 11 {
+    for k: 0..<(hdr.count - 10) {
+      if hdr[k..<k + 11] == "PRIVATE KEY" { has_priv = true; break; }
+    }
+  }
+  if !has_priv { return 0; }
+  // Find -----END ... PRIVATE KEY-----
+  j := line_end;
+  while j < s.count {
+    if san_starts_at(s, j, "-----END ") {
+      k := j;
+      while k < s.count && s[k] != '\n' { k += 1; }
+      return k - pos;
+    }
+    j += 1;
+  }
+  return s.count - pos;
+}
+
+// Checks for email address starting at s[pos..]. Returns length or 0.
+san_match_email :: (s: string, pos: int) -> int {
+  if !san_is_word_boundary_before(s, pos) { return 0; }
+  if !san_is_email_local(s[pos]) { return 0; }
+  j := pos;
+  while j < s.count && san_is_email_local(s[j]) { j += 1; }
+  if j == pos || j >= s.count || s[j] != '@' { return 0; }
+  at_pos := j;
+  j += 1;
+  dom_start := j;
+  has_dot := false;
+  last_dot := -1;
+  while j < s.count && ((s[j] >= 'a' && s[j] <= 'z') || (s[j] >= 'A' && s[j] <= 'Z') || (s[j] >= '0' && s[j] <= '9') || s[j] == '-' || s[j] == '.') {
+    if s[j] == '.' { has_dot = true; last_dot = j; }
+    j += 1;
+  }
+  if !has_dot || last_dot <= dom_start || j - last_dot < 3 { return 0; }
+  // Don't redact trailing punctuation
+  if s[j - 1] == '.' { j -= 1; }
+  if at_pos - pos < 1 || j - at_pos < 5 { return 0; }
+  return j - pos;
+}
+
+// Normalizes `/Users/<name>/...` or `/home/<name>/...` starting at s[pos..].
+// Writes replacement into `out` at `at[0]` and returns consumed bytes from `s` (0 if not matched).
+san_rewrite_user_path :: (s: string, pos: int, out: [] u8, at: [] int) -> int {
+  pre_len := 0;
+  if san_starts_at(s, pos, "/Users/") { pre_len = 7; }
+  else if san_starts_at(s, pos, "/home/") { pre_len = 6; }
+  else { return 0; }
+
+  // Read <username>
+  u_start := pos + pre_len;
+  u_end := u_start;
+  while u_end < s.count && s[u_end] != '/' && san_is_path_char(s[u_end]) { u_end += 1; }
+  if u_end == u_start { return 0; }
+
+  // Check if followed by /work/openagents or /work/oa-<topic>
+  if u_end < s.count && s[u_end] == '/' {
+    after_user := u_end + 1;
+    if san_starts_at(s, after_user, "work/openagents/") {
+      return (after_user + 16) - pos; // Strip prefix completely -> relative repo path!
+    }
+    if san_starts_at(s, after_user, "work/openagents") {
+      end_p := after_user + 15;
+      if end_p == s.count || !san_is_path_char(s[end_p]) {
+        san_append(out, at, ".");
+        return end_p - pos;
+      }
+    }
+    if san_starts_at(s, after_user, "work/oa-") {
+      wt_end := after_user + 8;
+      while wt_end < s.count && s[wt_end] != '/' && san_is_path_char(s[wt_end]) { wt_end += 1; }
+      if wt_end < s.count && s[wt_end] == '/' {
+        return (wt_end + 1) - pos; // Strip worktree root -> relative repo path!
+      }
+      san_append(out, at, ".");
+      return wt_end - pos;
+    }
+  }
+
+  san_append(out, at, "[REDACTED_HOME]");
+  return u_end - pos;
+}
+
+// Scrubs secrets, PII, and user-specific absolute paths from `input` into `out`.
+san_scrub_text :: (input: string, out: [] u8) -> string {
+  at: [1] int;
+  i := 0;
+  while i < input.count && at[0] < out.count {
+    // 1. PEM private keys
+    pem_n := san_match_pem_key(input, i);
+    if pem_n > 0 {
+      san_append(out, at[..], "[REDACTED_PRIVATE_KEY]");
+      i += pem_n;
+      continue;
+    }
+    // 2. Bearer tokens
+    if san_is_word_boundary_before(input, i) && (san_starts_at(input, i, "Bearer ") || san_starts_at(input, i, "bearer ")) {
+      j := i + 7;
+      while j < input.count && san_is_tok_char(input[j]) { j += 1; }
+      if j - (i + 7) >= 12 {
+        san_append(out, at[..], "Bearer [REDACTED_TOKEN]");
+        i = j;
+        continue;
+      }
+    }
+    // 3. Nostr nsec1...
+    if san_is_word_boundary_before(input, i) && san_starts_at(input, i, "nsec1") {
+      j := i + 5;
+      while j < input.count && san_is_bech32(input[j]) { j += 1; }
+      if j - i >= 20 {
+        san_append(out, at[..], "[REDACTED_NSEC]");
+        i = j;
+        continue;
+      }
+    }
+    // 4. API keys
+    key_n := san_match_api_key(input, i);
+    if key_n > 0 {
+      san_append(out, at[..], "[REDACTED_API_KEY]");
+      i += key_n;
+      continue;
+    }
+    // 5. User home / repo absolute paths
+    if input[i] == '/' {
+      path_n := san_rewrite_user_path(input, i, out, at[..]);
+      if path_n > 0 {
+        i += path_n;
+        continue;
+      }
+    }
+    // 6. Emails
+    em_n := san_match_email(input, i);
+    if em_n > 0 {
+      san_append(out, at[..], "[REDACTED_EMAIL]");
+      i += em_n;
+      continue;
+    }
+    out[at[0]] = input[i];
+    at[0] += 1;
+    i += 1;
+  }
+  return cast(string) out[0..<at[0]];
+}
+
+// ---- Task JSON sanitizer
+
+san_jv_str :: (d: Jv, node: int, out: [] u8) -> string {
+  if jv_kind(d, node) != JV_STRING { return ""; }
+  n := jv_str(d, node, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+san_rewrite_task_json :: (raw_json: string, out: [] u8) -> int {
+  nodes: [4096] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], raw_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return -1; }
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+
+  tmp: [SAN_STR_MAX] u8;
+  scb: [SAN_STR_MAX] u8;
+
+  // id, category, bucket, optional fixture, description
+  jo_key(o[..], "id"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], 0, "id"), tmp[..]));
+  jo_key(o[..], "category"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], 0, "category"), tmp[..]));
+  jo_key(o[..], "bucket"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], 0, "bucket"), tmp[..]));
+
+  fix_n := jv_get(d[0], 0, "fixture");
+  if jv_kind(d[0], fix_n) == JV_STRING {
+    jo_key(o[..], "fixture"); jo_str(o[..], san_jv_str(d[0], fix_n, tmp[..]));
+  }
+  desc_n := jv_get(d[0], 0, "description");
+  if jv_kind(d[0], desc_n) == JV_STRING {
+    jo_key(o[..], "description"); jo_str(o[..], san_scrub_text(san_jv_str(d[0], desc_n, tmp[..]), scb[..]));
+  }
+
+  // source (with derivation = redacted)
+  src := jv_get(d[0], 0, "source");
+  if jv_kind(d[0], src) != JV_OBJECT { return -1; }
+  jo_key(o[..], "source");
+  jo_obj(o[..]);
+  jo_key(o[..], "harness"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], src, "harness"), tmp[..]));
+  jo_key(o[..], "trajectory_id"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], src, "trajectory_id"), tmp[..]));
+  sr := jv_get(d[0], src, "step_range");
+  jo_key(o[..], "step_range"); jo_raw(o[..], ifx jv_kind(d[0], sr) == JV_ARRAY then jv_raw(d[0], sr) else "[1,1]");
+  jo_key(o[..], "steps_digest"); jo_str(o[..], san_jv_str(d[0], jv_get(d[0], src, "steps_digest"), tmp[..]));
+  proj_s := san_scrub_text(san_jv_str(d[0], jv_get(d[0], src, "project"), tmp[..]), scb[..]);
+  jo_key(o[..], "project"); jo_str(o[..], ifx proj_s.count > 0 then proj_s else "work/openagents");
+  bsha := jv_get(d[0], src, "base_sha");
+  jo_key(o[..], "base_sha");
+  if jv_kind(d[0], bsha) == JV_STRING { jo_str(o[..], san_jv_str(d[0], bsha, tmp[..])); } else { jo_null(o[..]); }
+  tsha := jv_get(d[0], src, "target_sha");
+  jo_key(o[..], "target_sha");
+  if jv_kind(d[0], tsha) == JV_STRING { jo_str(o[..], san_jv_str(d[0], tsha, tmp[..])); } else { jo_null(o[..]); }
+  jo_key(o[..], "derivation");
+  jo_obj(o[..]); jo_key(o[..], "kind"); jo_str(o[..], "redacted"); jo_key(o[..], "source"); jo_null(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+
+  // baseline (preserve raw object)
+  base := jv_get(d[0], 0, "baseline");
+  if jv_kind(d[0], base) != JV_OBJECT { return -1; }
+  jo_key(o[..], "baseline"); jo_raw(o[..], jv_raw(d[0], base));
+
+  jo_key(o[..], "budget_usd_micros"); jo_int(o[..], jv_int(d[0], jv_get(d[0], 0, "budget_usd_micros"), 150000));
+  jo_key(o[..], "timeout_s"); jo_int(o[..], jv_int(d[0], jv_get(d[0], 0, "timeout_s"), 300));
+
+  // steps (scrub send text)
+  steps := jv_get(d[0], 0, "steps");
+  if jv_kind(d[0], steps) != JV_ARRAY { return -1; }
+  jo_key(o[..], "steps");
+  jo_arr(o[..]);
+  for i: 0..<jv_len(d[0], steps) {
+    st := jv_at(d[0], steps, i);
+    send_s := san_scrub_text(san_jv_str(d[0], jv_get(d[0], st, "send"), tmp[..]), scb[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "send"); jo_str(o[..], send_s);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+
+  // graders (scrub command run text)
+  graders := jv_get(d[0], 0, "graders");
+  if jv_kind(d[0], graders) != JV_ARRAY { return -1; }
+  jo_key(o[..], "graders");
+  jo_arr(o[..]);
+  for i: 0..<jv_len(d[0], graders) {
+    g := jv_at(d[0], graders, i);
+    gty := san_jv_str(d[0], jv_get(d[0], g, "type"), tmp[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], gty);
+    if gty == "command" {
+      run_s := san_scrub_text(san_jv_str(d[0], jv_get(d[0], g, "run"), tmp[..]), scb[..]);
+      jo_key(o[..], "run"); jo_str(o[..], run_s);
+      rest := jv_get(d[0], g, "restore");
+      if jv_kind(d[0], rest) == JV_ARRAY {
+        jo_key(o[..], "restore"); jo_raw(o[..], jv_raw(d[0], rest));
+      }
+    } else if gty == "file_exists" || gty == "file_contains" {
+      p_n := jv_get(d[0], g, "path");
+      if jv_kind(d[0], p_n) == JV_STRING {
+        jo_key(o[..], "path"); jo_str(o[..], san_scrub_text(san_jv_str(d[0], p_n, tmp[..]), scb[..]));
+      }
+      t_n := jv_get(d[0], g, "text");
+      if jv_kind(d[0], t_n) == JV_STRING {
+        jo_key(o[..], "text"); jo_str(o[..], san_scrub_text(san_jv_str(d[0], t_n, tmp[..]), scb[..]));
+      }
+    }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// ---- Hermeticity Gate (--verify)
+
+san_run_sh :: (cmd: string, timeout_ms: int) -> ProcRun {
+  argv := [3] string.["/bin/sh", "-c", cmd];
+  ob: [8192] u8; eb: [4096] u8;
+  return proc_run(argv[..], timeout_ms, ob[..], eb[..]);
+}
+
+san_link_coax_bin :: (repo: string, wt: string) {
+  cb: [1024] u8;
+  src := fs_join(repo, "coax/bin/coax", cb[..]);
+  if fs_kind(src) != FS_FILE { return; }
+  cmd_buf: [2048] u8; at: [1] int;
+  san_append(cmd_buf[..], at[..], "mkdir -p '");
+  san_append(cmd_buf[..], at[..], wt);
+  san_append(cmd_buf[..], at[..], "/coax/bin' && ln -sf '");
+  san_append(cmd_buf[..], at[..], src);
+  san_append(cmd_buf[..], at[..], "' '");
+  san_append(cmd_buf[..], at[..], wt);
+  san_append(cmd_buf[..], at[..], "/coax/bin/coax'");
+  _ := san_run_sh(cast(string) cmd_buf[0..<at[0]], 10000);
+}
+
+san_verify_hermeticity :: (task_json: string, repo: string, patch_path: string, require_base_fail: bool) -> bool {
+  nodes: [4096] JvNode;
+  d: [1] Jv;
+  if !jv_parse(d[..], task_json, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+    tool_errln("sanitize --verify: invalid task JSON");
+    return false;
+  }
+  b1: [128] u8; tid := san_jv_str(d[0], jv_get(d[0], 0, "id"), b1[..]);
+  b2: [64] u8; base_sha := san_jv_str(d[0], jv_path(d[0], 0, "source.base_sha"), b2[..]);
+  b3: [64] u8; target_sha := san_jv_str(d[0], jv_path(d[0], 0, "source.target_sha"), b3[..]);
+  if base_sha.count < 7 {
+    tool_errln("sanitize --verify: task has no source.base_sha");
+    return false;
+  }
+  if target_sha.count < 7 && patch_path.count == 0 {
+    tool_errln("sanitize --verify: task has no source.target_sha and no --patch");
+    return false;
+  }
+
+  // Create temp directory for worktree
+  tdir_buf: [1024] u8;
+  tdir := fs_temp("oa-sh-verify-", tdir_buf[..]);
+  if tdir.count == 0 { tool_errln("sanitize --verify: fs_temp failed"); return false; }
+  wt_buf: [1024] u8;
+  wt := fs_join(tdir, "wt", wt_buf[..]);
+
+  // 1. Checkout base_sha in temp worktree
+  add_argv := [7] string.["git", "-C", repo, "worktree", "add", "--detach", wt];
+  // Wait: worktree add --detach <path> <commit>
+  add_argv2 := [8] string.["git", "-C", repo, "worktree", "add", "--detach", wt, base_sha];
+  ob: [4096] u8; eb: [4096] u8;
+  r_add := proc_run(add_argv2[..], 60000, ob[..], eb[..]);
+  if r_add.started != 0 || r_add.status != 0 {
+    tool_err("sanitize --verify: git worktree add failed: ");
+    tool_errln(cast(string) eb[0..<r_add.err_n]);
+    _ := fs_remove(tdir);
+    return false;
+  }
+  san_link_coax_bin(repo, wt);
+
+  // 2. Run command graders on base_sha
+  graders := jv_get(d[0], 0, "graders");
+  base_any_failed := false;
+  cmd_count := 0;
+  for i: 0..<jv_len(d[0], graders) {
+    g := jv_at(d[0], graders, i);
+    tb: [32] u8; gty := san_jv_str(d[0], jv_get(d[0], g, "type"), tb[..]);
+    if gty != "command" { continue; }
+    cmd_count += 1;
+    rb: [2048] u8; gcmd := san_jv_str(d[0], jv_get(d[0], g, "run"), rb[..]);
+    sh_buf: [3072] u8; at: [1] int;
+    san_append(sh_buf[..], at[..], "cd '"); san_append(sh_buf[..], at[..], wt); san_append(sh_buf[..], at[..], "' && "); san_append(sh_buf[..], at[..], gcmd);
+    r_base := san_run_sh(cast(string) sh_buf[0..<at[0]], 120000);
+    print("verify[%] base_sha=% exit=% cmd=%\n", tid, base_sha, r_base.status, gcmd);
+    if r_base.status != 0 { base_any_failed = true; }
+  }
+
+  // 3. Apply baseline diff (patch or target_sha)
+  applied := false;
+  if patch_path.count > 0 {
+    ap_argv := [5] string.["git", "-C", wt, "apply", patch_path];
+    r_ap := proc_run(ap_argv[..], 30000, ob[..], eb[..]);
+    applied = r_ap.started == 0 && r_ap.status == 0;
+  } else {
+    co_argv := [6] string.["git", "-C", wt, "checkout", "--detach", target_sha];
+    r_co := proc_run(co_argv[..], 60000, ob[..], eb[..]);
+    applied = r_co.started == 0 && r_co.status == 0;
+  }
+  san_link_coax_bin(repo, wt);
+
+  // 4. Run command graders on target state
+  target_all_passed := applied && cmd_count > 0;
+  if applied {
+    for i: 0..<jv_len(d[0], graders) {
+      g := jv_at(d[0], graders, i);
+      tb: [32] u8; gty := san_jv_str(d[0], jv_get(d[0], g, "type"), tb[..]);
+      if gty != "command" { continue; }
+      rb: [2048] u8; gcmd := san_jv_str(d[0], jv_get(d[0], g, "run"), rb[..]);
+      sh_buf: [3072] u8; at: [1] int;
+      san_append(sh_buf[..], at[..], "cd '"); san_append(sh_buf[..], at[..], wt); san_append(sh_buf[..], at[..], "' && "); san_append(sh_buf[..], at[..], gcmd);
+      r_tgt := san_run_sh(cast(string) sh_buf[0..<at[0]], 120000);
+      print("verify[%] target_sha=% exit=% cmd=%\n", tid, target_sha, r_tgt.status, gcmd);
+      if r_tgt.status != 0 { target_all_passed = false; }
+    }
+  } else {
+    tool_errln("sanitize --verify: failed to apply target_sha / patch");
+  }
+
+  // 5. Cleanup temp worktree
+  rm_argv := [7] string.["git", "-C", repo, "worktree", "remove", "--force", wt];
+  _ := proc_run(rm_argv[..], 30000, ob[..], eb[..]);
+  _ := fs_remove(tdir);
+
+  if require_base_fail && !base_any_failed {
+    tool_errln("sanitize --verify: grader already passed on base_sha (--require-base-fail)");
+    return false;
+  }
+  return target_all_passed;
+}
+
+// ---- CLI entrypoint
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("sanitize: failed to load argv"); return 2; }
+  if args_has(a[..], "--help") || args_has(a[..], "-h") {
+    print("Usage: sanitize.coax --in FILE [--out FILE] [--verify] [--repo PATH] [--patch FILE] [--require-base-fail]\n");
+    return 0;
+  }
+  in_path := args_value(a[..], "--in", "");
+  if in_path.count == 0 { tool_errln("sanitize: --in FILE is required"); return 2; }
+  out_path := args_value(a[..], "--out", "");
+  do_verify := args_has(a[..], "--verify");
+  req_base_fail := args_has(a[..], "--require-base-fail");
+  repo := args_value(a[..], "--repo", ".");
+  patch := args_value(a[..], "--patch", "");
+
+  raw_buf: [SAN_FILE_MAX] u8;
+  rn := fs_read(in_path, raw_buf[..]);
+  if rn <= 0 { tool_errln("sanitize: failed to read --in file"); return 1; }
+  raw := cast(string) raw_buf[0..<rn];
+
+  out_buf: [SAN_FILE_MAX] u8;
+  on := san_rewrite_task_json(raw, out_buf[..]);
+  if on <= 0 { tool_errln("sanitize: failed to parse/sanitize task JSON"); return 1; }
+  sanitized := cast(string) out_buf[0..<on];
+
+  if out_path.count > 0 {
+    if !fs_write(out_path, sanitized) {
+      tool_errln("sanitize: failed to write --out file");
+      return 1;
+    }
+    print("sanitize: wrote % (% bytes)\n", out_path, on);
+  }
+
+  if do_verify {
+    ok := san_verify_hermeticity(sanitized, repo, patch, req_base_fail);
+    if !ok {
+      tool_errln("sanitize: hermeticity gate FAILED");
+      return 1;
+    }
+    print("sanitize: hermeticity gate PASSED\n");
+  }
+  return 0;
+}
+
+// ---- Checks
+
+#test "san_scrub_text redacts API keys, Bearer tokens, PEM private keys, nsec1, and emails" {
+  out: [1024] u8;
+  #assert san_scrub_text("key=sk-ant-api03-abcdefghijklmnop123456 end", out[..]) == "key=[REDACTED_API_KEY] end";
+  #assert san_scrub_text("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig!", out[..]) == "Authorization: Bearer [REDACTED_TOKEN]!";
+  #assert san_scrub_text("secret nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq ok", out[..]) == "secret [REDACTED_NSEC] ok";
+  #assert san_scrub_text("contact alice.dev@openagents.com today", out[..]) == "contact [REDACTED_EMAIL] today";
+  #assert san_scrub_text("-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA\n-----END RSA PRIVATE KEY-----\nafter", out[..]) == "[REDACTED_PRIVATE_KEY]\nafter";
+  #assert san_scrub_text("token ghp_1234567890abcdefghij1234567890", out[..]) == "token [REDACTED_API_KEY]";
+}
+
+#test "san_scrub_text normalizes user absolute paths to worktree-relative paths" {
+  out: [1024] u8;
+  #assert san_scrub_text("Edit /Users/alice/work/openagents/coax/lib/foo.coax now", out[..]) == "Edit coax/lib/foo.coax now";
+  #assert san_scrub_text("Run in /Users/bob/work/oa-evals-phase2/evals/session-history/README.md", out[..]) == "Run in evals/session-history/README.md";
+  #assert san_scrub_text("Check /Users/alice/work/openagents please", out[..]) == "Check . please";
+  #assert san_scrub_text("Read /Users/alice/.secrets/vertex.json", out[..]) == "Read [REDACTED_HOME]/.secrets/vertex.json";
+  #assert san_scrub_text("Read /home/runner/private/key.pem", out[..]) == "Read [REDACTED_HOME]/private/key.pem";
+}
+
+#test "san_rewrite_task_json scrubs prompt and grader and marks derivation redacted" {
+  raw := "{\"id\":\"sh_001_claude_demo\",\"category\":\"session-history\",\"bucket\":\"A_edit_precision\",\"description\":\"Fix /Users/alice/work/openagents/foo.coax for bob@example.com\",\"source\":{\"harness\":\"claude\",\"trajectory_id\":\"t1\",\"step_range\":[1,5],\"steps_digest\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"project\":\"work/openagents\",\"base_sha\":\"1234567\",\"target_sha\":\"89abcdef\"},\"baseline\":{\"model\":\"claude-opus-5-5\",\"turns\":2,\"tool_calls\":4,\"failed_tool_calls\":0,\"cost_usd_micros\":10000,\"wall_s\":12,\"passed\":true},\"budget_usd_micros\":150000,\"timeout_s\":300,\"steps\":[{\"send\":\"Fix /Users/alice/work/openagents/foo.coax with key sk-ant-api03-abcdefghijklmnop123456\"}],\"graders\":[{\"type\":\"command\",\"run\":\"/Users/alice/work/openagents/coax/bin/coax test foo.coax\"}]}";
+  out: [8192] u8;
+  n := san_rewrite_task_json(raw, out[..]);
+  #assert n > 0;
+  nodes: [512] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) out[0..<n], nodes[..]);
+  tb: [512] u8;
+  #assert san_jv_str(d[0], jv_path(d[0], 0, "source.derivation.kind"), tb[..]) == "redacted";
+  #assert jv_kind(d[0], jv_path(d[0], 0, "source.derivation.source")) == JV_NULL;
+  s0 := jv_at(d[0], jv_get(d[0], 0, "steps"), 0);
+  g0 := jv_at(d[0], jv_get(d[0], 0, "graders"), 0);
+  #assert san_jv_str(d[0], jv_get(d[0], s0, "send"), tb[..]) == "Fix foo.coax with key [REDACTED_API_KEY]";
+  #assert san_jv_str(d[0], jv_get(d[0], g0, "run"), tb[..]) == "coax/bin/coax test foo.coax";
+}

@@ -1,0 +1,433 @@
+// Session History Evals Stage 5: Baseline Comparison & Failure Taxonomy (GitHub #13830).
+// Compares candidate `evals/openagents-desktop` runs (`host_driver` + `mcworker`)
+// against observed frontier baselines stored in `evals/session-history/tasks/*.json`.
+// Computes pass_rate, cost_usd, wall_s, failed_edit_rate, and tags failing
+// trajectories with primary failure modes (`edit_mismatch`, `premature_done`,
+// `search_bloat`, `compaction_drop`, `bad_delegation`).
+//
+// Usage:
+//   coax/web/tool.sh evals/session-history/tools/compare.coax --tasks DIR --run DIR
+//   coax/bin/coax test evals/session-history/tools/compare.coax
+#import "Basic";
+#load "../../../coax/lib/nostr/atif/log.coax";
+#load "../../../coax/lib/sys/fs.coax";
+#load "../../../coax/lib/sys/tool.coax";
+
+CMP_MAX_CASES :: 128;
+CMP_FILE_MAX :: 262144;
+
+TAG_NONE :: "";
+TAG_EDIT_MISMATCH :: "edit_mismatch";
+TAG_PREMATURE_DONE :: "premature_done";
+TAG_SEARCH_BLOAT :: "search_bloat";
+TAG_COMPACTION_DROP :: "compaction_drop";
+TAG_BAD_DELEGATION :: "bad_delegation";
+
+WireSignals :: struct {
+  edit_attempts: int;
+  edit_failures: int;
+  read_calls: int;
+  verify_calls: int;
+  compaction_events: int;
+  ended_finished: bool;
+}
+
+CaseComparison :: struct {
+  id: [96] u8; id_n: int;
+  bucket: [32] u8; bucket_n: int;
+  harness: [32] u8; harness_n: int;
+  base_model: [96] u8; base_model_n: int;
+  cand_model: [96] u8; cand_model_n: int;
+  base_passed: bool;
+  cand_passed: bool;
+  base_cost_micros: int;
+  cand_cost_micros: int;
+  base_wall_s: int;
+  cand_wall_ms: int;
+  base_turns: int;
+  cand_turns: int;
+  base_tools: int;
+  cand_tools: int;
+  cand_agent_tasks: int;
+  cand_timed_out: bool;
+  diff_bytes: int;
+  sig: WireSignals;
+  failure_tag: [32] u8; failure_tag_n: int;
+}
+
+// ---- Pure helpers
+
+cmp_copy :: (dst: [] u8, src: string) -> int {
+  n := ifx src.count < dst.count then src.count else dst.count;
+  for i: 0..<n { dst[i] = src[i]; }
+  return n;
+}
+
+cmp_append :: (dst: [] u8, at: [] int, src: string) {
+  for c: src {
+    if at[0] >= dst.count { break; }
+    dst[at[0]] = c;
+    at[0] += 1;
+  }
+}
+
+cmp_append_int :: (dst: [] u8, at: [] int, v_in: int) {
+  v := v_in;
+  if v < 0 { cmp_append(dst, at, "-"); v = -v; }
+  tmp: [24] u8; k := 0;
+  while true {
+    tmp[k] = cast(u8) ('0' + (v % 10));
+    k += 1;
+    v /= 10;
+    if v == 0 { break; }
+  }
+  for i: 0..<k {
+    if at[0] < dst.count { dst[at[0]] = tmp[k - 1 - i]; at[0] += 1; }
+  }
+}
+
+cmp_append_usd :: (dst: [] u8, at: [] int, micros: int) {
+  cmp_append(dst, at, "$");
+  whole := micros / 1000000;
+  frac := (micros % 1000000) / 100; // 4 decimal places
+  cmp_append_int(dst, at, whole);
+  cmp_append(dst, at, ".");
+  d3 := (frac / 1000) % 10;
+  d2 := (frac / 100) % 10;
+  d1 := (frac / 10) % 10;
+  d0 := frac % 10;
+  if at[0] + 4 <= dst.count {
+    dst[at[0]] = cast(u8) ('0' + d3);
+    dst[at[0] + 1] = cast(u8) ('0' + d2);
+    dst[at[0] + 2] = cast(u8) ('0' + d1);
+    dst[at[0] + 3] = cast(u8) ('0' + d0);
+    at[0] += 4;
+  }
+}
+
+cmp_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  end := hay.count - needle.count + 1;
+  for i: 0..<end {
+    if hay[i..<i + needle.count] == needle { return true; }
+  }
+  return false;
+}
+
+cmp_ends_with :: (s: string, suf: string) -> bool {
+  return s.count >= suf.count && s[s.count - suf.count..<s.count] == suf;
+}
+
+cmp_jv_str :: (d: Jv, node: int, out: [] u8) -> string {
+  if jv_kind(d, node) != JV_STRING { return ""; }
+  n := jv_str(d, node, out);
+  return ifx n >= 0 then cast(string) out[0..<n] else "";
+}
+
+// Classifies primary failure mode per docs/coder/session-history-evals-spec.md section 6.1.
+cmp_classify_failure :: (passed: bool, sig: WireSignals, cand_turns: int, cand_agent_tasks: int, diff_bytes: int) -> string {
+  if passed { return TAG_NONE; }
+  if sig.edit_failures >= 2 { return TAG_EDIT_MISMATCH; }
+  if cand_agent_tasks > 0 { return TAG_BAD_DELEGATION; }
+  if sig.compaction_events > 0 || cand_turns > 10 { return TAG_COMPACTION_DROP; }
+  if sig.read_calls >= 15 && sig.edit_attempts <= 1 { return TAG_SEARCH_BLOAT; }
+  if sig.ended_finished && sig.verify_calls == 0 { return TAG_PREMATURE_DONE; }
+  if sig.edit_failures > 0 { return TAG_EDIT_MISMATCH; }
+  if diff_bytes == 0 { return TAG_PREMATURE_DONE; }
+  return TAG_PREMATURE_DONE;
+}
+
+// Scans a host_driver `wire.jsonl` payload for tool discipline & failure signals.
+cmp_scan_wire :: (wire_text: string) -> WireSignals {
+  s: WireSignals;
+  from := 0;
+  for i: 0..<(wire_text.count + 1) {
+    if i < wire_text.count && wire_text[i] != 10 { continue; }
+    line := wire_text[from..<i];
+    from = i + 1;
+    if line.count == 0 { continue; }
+    if cmp_has(line, "\"kind\":\"edit\"") || cmp_has(line, "\\\"kind\\\":\\\"edit\\\"") || cmp_has(line, "edit_file") {
+      s.edit_attempts += 1;
+    }
+    if cmp_has(line, "old_text not found") || cmp_has(line, "edit failed") || cmp_has(line, "not unique") || cmp_has(line, "mismatch") {
+      s.edit_failures += 1;
+    }
+    if cmp_has(line, "\"kind\":\"view\"") || cmp_has(line, "\\\"kind\\\":\\\"view\\\"") || cmp_has(line, "read_file") {
+      s.read_calls += 1;
+    }
+    if cmp_has(line, "coax test") || cmp_has(line, "tools-check") || cmp_has(line, "pytest") || cmp_has(line, "unittest") || cmp_has(line, "cargo test") {
+      s.verify_calls += 1;
+    }
+    if cmp_has(line, "\"kind\":\"compact\"") || cmp_has(line, "\\\"kind\\\":\\\"compact\\\"") || cmp_has(line, "compaction") {
+      s.compaction_events += 1;
+    }
+    if cmp_has(line, "\\\"ending\\\":\\\"finished\\\"") || cmp_has(line, "\"ending\":\"finished\"") {
+      s.ended_finished = true;
+    }
+  }
+  return s;
+}
+
+// Writes `summary.json` with baseline comparison and failure taxonomy.
+cmp_write_summary_json :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -> int {
+  base_pass := 0; cand_pass := 0;
+  base_cost := 0; cand_cost := 0;
+  base_wall := 0; cand_wall_ms := 0;
+  tot_edit_att := 0; tot_edit_fail := 0;
+
+  for i: 0..<n_cases {
+    c := cases[i];
+    if c.base_passed { base_pass += 1; }
+    if c.cand_passed { cand_pass += 1; }
+    base_cost += c.base_cost_micros;
+    cand_cost += c.cand_cost_micros;
+    base_wall += c.base_wall_s;
+    cand_wall_ms += c.cand_wall_ms;
+    tot_edit_att += c.sig.edit_attempts;
+    tot_edit_fail += c.sig.edit_failures;
+  }
+
+  base_rate_pct := ifx n_cases > 0 then (base_pass * 100) / n_cases else 0;
+  cand_rate_pct := ifx n_cases > 0 then (cand_pass * 100) / n_cases else 0;
+  fail_edit_pct := ifx tot_edit_att > 0 then (tot_edit_fail * 100) / tot_edit_att else 0;
+
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]);
+  jo_key(o[..], "schema_version"); jo_str(o[..], ATIF_SCHEMA_VERSION);
+  jo_key(o[..], "total"); jo_int(o[..], n_cases);
+  jo_key(o[..], "candidate_passed"); jo_int(o[..], cand_pass);
+  jo_key(o[..], "baseline_passed"); jo_int(o[..], base_pass);
+  jo_key(o[..], "candidate_pass_rate_pct"); jo_int(o[..], cand_rate_pct);
+  jo_key(o[..], "baseline_pass_rate_pct"); jo_int(o[..], base_rate_pct);
+  jo_key(o[..], "candidate_cost_usd_micros"); jo_int(o[..], cand_cost);
+  jo_key(o[..], "baseline_cost_usd_micros"); jo_int(o[..], base_cost);
+  jo_key(o[..], "candidate_wall_s"); jo_int(o[..], cand_wall_ms / 1000);
+  jo_key(o[..], "baseline_wall_s"); jo_int(o[..], base_wall);
+  jo_key(o[..], "failed_edit_rate_pct"); jo_int(o[..], fail_edit_pct);
+
+  jo_key(o[..], "cases");
+  jo_arr(o[..]);
+  for i: 0..<n_cases {
+    c := cases[i];
+    jo_obj(o[..]);
+    jo_key(o[..], "id"); jo_str(o[..], cast(string) c.id[0..<c.id_n]);
+    jo_key(o[..], "bucket"); jo_str(o[..], cast(string) c.bucket[0..<c.bucket_n]);
+    jo_key(o[..], "source_harness"); jo_str(o[..], cast(string) c.harness[0..<c.harness_n]);
+    jo_key(o[..], "baseline_model"); jo_str(o[..], cast(string) c.base_model[0..<c.base_model_n]);
+    jo_key(o[..], "candidate_model"); jo_str(o[..], cast(string) c.cand_model[0..<c.cand_model_n]);
+    jo_key(o[..], "baseline_passed"); jo_bool(o[..], c.base_passed);
+    jo_key(o[..], "candidate_passed"); jo_bool(o[..], c.cand_passed);
+    jo_key(o[..], "baseline_cost_usd_micros"); jo_int(o[..], c.base_cost_micros);
+    jo_key(o[..], "candidate_cost_usd_micros"); jo_int(o[..], c.cand_cost_micros);
+    jo_key(o[..], "baseline_wall_s"); jo_int(o[..], c.base_wall_s);
+    jo_key(o[..], "candidate_wall_s"); jo_int(o[..], c.cand_wall_ms / 1000);
+    jo_key(o[..], "edit_attempts"); jo_int(o[..], c.sig.edit_attempts);
+    jo_key(o[..], "edit_failures"); jo_int(o[..], c.sig.edit_failures);
+    jo_key(o[..], "failure_tag");
+    if c.failure_tag_n > 0 { jo_str(o[..], cast(string) c.failure_tag[0..<c.failure_tag_n]); } else { jo_null(o[..]); }
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_byte(o[..], 10);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+// Writes a human-readable Markdown scorecard.
+cmp_write_scorecard_md :: (cases: [] CaseComparison, n_cases: int, out: [] u8) -> int {
+  at: [1] int;
+  base_pass := 0; cand_pass := 0;
+  base_cost := 0; cand_cost := 0;
+  base_wall := 0; cand_wall_ms := 0;
+  tot_edit_att := 0; tot_edit_fail := 0;
+  for i: 0..<n_cases {
+    c := cases[i];
+    if c.base_passed { base_pass += 1; }
+    if c.cand_passed { cand_pass += 1; }
+    base_cost += c.base_cost_micros;
+    cand_cost += c.cand_cost_micros;
+    base_wall += c.base_wall_s;
+    cand_wall_ms += c.cand_wall_ms;
+    tot_edit_att += c.sig.edit_attempts;
+    tot_edit_fail += c.sig.edit_failures;
+  }
+  base_rate := ifx n_cases > 0 then (base_pass * 100) / n_cases else 0;
+  cand_rate := ifx n_cases > 0 then (cand_pass * 100) / n_cases else 0;
+  fail_edit := ifx tot_edit_att > 0 then (tot_edit_fail * 100) / tot_edit_att else 0;
+
+  cmp_append(out, at[..], "# Session History Evals Scorecard\n\n");
+  cmp_append(out, at[..], "| Metric | Baseline | Candidate |\n| --- | --- | --- |\n");
+  cmp_append(out, at[..], "| pass_rate | "); cmp_append_int(out, at[..], base_pass); cmp_append(out, at[..], "/"); cmp_append_int(out, at[..], n_cases); cmp_append(out, at[..], " ("); cmp_append_int(out, at[..], base_rate); cmp_append(out, at[..], "%) | ");
+  cmp_append_int(out, at[..], cand_pass); cmp_append(out, at[..], "/"); cmp_append_int(out, at[..], n_cases); cmp_append(out, at[..], " ("); cmp_append_int(out, at[..], cand_rate); cmp_append(out, at[..], "%) |\n");
+  cmp_append(out, at[..], "| cost_usd | "); cmp_append_usd(out, at[..], base_cost); cmp_append(out, at[..], " | "); cmp_append_usd(out, at[..], cand_cost); cmp_append(out, at[..], " |\n");
+  cmp_append(out, at[..], "| wall_s | "); cmp_append_int(out, at[..], base_wall); cmp_append(out, at[..], "s | "); cmp_append_int(out, at[..], cand_wall_ms / 1000); cmp_append(out, at[..], "s |\n");
+  cmp_append(out, at[..], "| failed_edit_rate | - | "); cmp_append_int(out, at[..], fail_edit); cmp_append(out, at[..], "% ("); cmp_append_int(out, at[..], tot_edit_fail); cmp_append(out, at[..], "/"); cmp_append_int(out, at[..], tot_edit_att); cmp_append(out, at[..], ") |\n\n");
+
+  cmp_append(out, at[..], "| Task | Source | Bucket | Baseline | Candidate | Cost | Wall | Failure Tag |\n");
+  cmp_append(out, at[..], "| --- | --- | --- | --- | --- | --- | --- | --- |\n");
+  for i: 0..<n_cases {
+    c := cases[i];
+    cmp_append(out, at[..], "| "); cmp_append(out, at[..], cast(string) c.id[0..<c.id_n]);
+    cmp_append(out, at[..], " | "); cmp_append(out, at[..], cast(string) c.harness[0..<c.harness_n]);
+    cmp_append(out, at[..], " | "); cmp_append(out, at[..], cast(string) c.bucket[0..<c.bucket_n]);
+    cmp_append(out, at[..], " | "); cmp_append(out, at[..], ifx c.base_passed then "pass" else "fail");
+    cmp_append(out, at[..], " | "); cmp_append(out, at[..], ifx c.cand_passed then "PASS" else "FAIL");
+    cmp_append(out, at[..], " | "); cmp_append_usd(out, at[..], c.cand_cost_micros);
+    cmp_append(out, at[..], " | "); cmp_append_int(out, at[..], c.cand_wall_ms / 1000); cmp_append(out, at[..], "s");
+    cmp_append(out, at[..], " | "); cmp_append(out, at[..], ifx c.failure_tag_n > 0 then cast(string) c.failure_tag[0..<c.failure_tag_n] else "-");
+    cmp_append(out, at[..], " |\n");
+  }
+  return at[0];
+}
+
+// ---- CLI entrypoint
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("compare: failed to load argv"); return 2; }
+  if args_has(a[..], "--help") || args_has(a[..], "-h") {
+    print("Usage: compare.coax --tasks DIR --run DIR\n");
+    return 0;
+  }
+  tasks_dir := args_value(a[..], "--tasks", "evals/session-history/tasks");
+  run_dir := args_value(a[..], "--run", "");
+  if run_dir.count == 0 { tool_errln("compare: --run DIR is required"); return 2; }
+
+  files: [1] FsList;
+  nf := fs_list(tasks_dir, files[..]);
+  if nf <= 0 { tool_errln("compare: no tasks found in --tasks dir"); return 1; }
+
+  cases: [CMP_MAX_CASES] CaseComparison;
+  n_cases := 0;
+
+  for i: 0..<nf {
+    if n_cases >= CMP_MAX_CASES { break; }
+    fname := fs_entry(files[..], i);
+    if !cmp_ends_with(fname, ".json") { continue; }
+    tp_buf: [1024] u8; tp := fs_join(tasks_dir, fname, tp_buf[..]);
+    tbuf: [65536] u8; tn := fs_read(tp, tbuf[..]);
+    if tn <= 0 { continue; }
+
+    tnodes: [2048] JvNode; td: [1] Jv;
+    if !jv_parse(td[..], cast(string) tbuf[0..<tn], tnodes[..]) || jv_kind(td[0], 0) != JV_OBJECT { continue; }
+    sb: [256] u8;
+    tid := cmp_jv_str(td[0], jv_get(td[0], 0, "id"), sb[..]);
+    if tid.count == 0 { continue; }
+
+    // Check if run_dir/cases/<tid>/result.json exists
+    cdir1: [1024] u8; cdir2: [1024] u8; rpath_buf: [1024] u8;
+    cases_root := fs_join(run_dir, "cases", cdir1[..]);
+    case_dir := fs_join(cases_root, tid, cdir2[..]);
+    rpath := fs_join(case_dir, "result.json", rpath_buf[..]);
+    if fs_kind(rpath) != FS_FILE { continue; }
+
+    c: CaseComparison;
+    c.id_n = cmp_copy(c.id[..], tid);
+    c.bucket_n = cmp_copy(c.bucket[..], cmp_jv_str(td[0], jv_get(td[0], 0, "bucket"), sb[..]));
+    c.harness_n = cmp_copy(c.harness[..], cmp_jv_str(td[0], jv_path(td[0], 0, "source.harness"), sb[..]));
+    c.base_model_n = cmp_copy(c.base_model[..], cmp_jv_str(td[0], jv_path(td[0], 0, "baseline.model"), sb[..]));
+    c.base_passed = jv_kind(td[0], jv_path(td[0], 0, "baseline.passed")) == JV_TRUE;
+    c.base_cost_micros = jv_int(td[0], jv_path(td[0], 0, "baseline.cost_usd_micros"), 0);
+    c.base_wall_s = jv_int(td[0], jv_path(td[0], 0, "baseline.wall_s"), 0);
+    c.base_turns = jv_int(td[0], jv_path(td[0], 0, "baseline.turns"), 1);
+    c.base_tools = jv_int(td[0], jv_path(td[0], 0, "baseline.tool_calls"), 0);
+
+    rbuf: [65536] u8; rn := fs_read(rpath, rbuf[..]);
+    if rn > 0 {
+      rnodes: [2048] JvNode; rd: [1] Jv;
+      if jv_parse(rd[..], cast(string) rbuf[0..<rn], rnodes[..]) && jv_kind(rd[0], 0) == JV_OBJECT {
+        c.cand_passed = jv_kind(rd[0], jv_get(rd[0], 0, "passed")) == JV_TRUE;
+        c.cand_cost_micros = jv_int(rd[0], jv_get(rd[0], 0, "cost_usd_micros"), 0);
+        c.cand_wall_ms = jv_int(rd[0], jv_get(rd[0], 0, "wall_ms"), 0);
+        c.cand_turns = jv_int(rd[0], jv_get(rd[0], 0, "turns"), 0);
+        c.cand_tools = jv_int(rd[0], jv_get(rd[0], 0, "tool_calls"), 0);
+        c.cand_agent_tasks = jv_int(rd[0], jv_get(rd[0], 0, "agent_tasks"), 0);
+        c.cand_timed_out = jv_kind(rd[0], jv_get(rd[0], 0, "timed_out")) == JV_TRUE;
+        m_arr := jv_get(rd[0], 0, "models");
+        if jv_kind(rd[0], m_arr) == JV_ARRAY && jv_len(rd[0], m_arr) > 0 {
+          c.cand_model_n = cmp_copy(c.cand_model[..], cmp_jv_str(rd[0], jv_at(rd[0], m_arr, 0), sb[..]));
+        }
+      }
+    }
+
+    wpath_buf: [1024] u8; wpath := fs_join(case_dir, "wire.jsonl", wpath_buf[..]);
+    wbuf: [CMP_FILE_MAX] u8; wn := fs_read(wpath, wbuf[..]);
+    if wn > 0 {
+      c.sig = cmp_scan_wire(cast(string) wbuf[0..<wn]);
+    }
+    dpath_buf: [1024] u8; dpath := fs_join(case_dir, "workspace.diff", dpath_buf[..]);
+    dsz := fs_size(dpath);
+    if dsz > 0 { c.diff_bytes = dsz; }
+
+    ftag := cmp_classify_failure(c.cand_passed, c.sig, c.cand_turns, c.cand_agent_tasks, c.diff_bytes);
+    c.failure_tag_n = cmp_copy(c.failure_tag[..], ftag);
+
+    cases[n_cases] = c;
+    n_cases += 1;
+  }
+
+  sbuf: [65536] u8;
+  sn := cmp_write_summary_json(cases[..], n_cases, sbuf[..]);
+  if sn > 0 {
+    sp_buf: [1024] u8; sp := fs_join(run_dir, "summary.json", sp_buf[..]);
+    _ := fs_write(sp, cast(string) sbuf[0..<sn]);
+  }
+
+  mbuf: [32768] u8;
+  mn := cmp_write_scorecard_md(cases[..], n_cases, mbuf[..]);
+  if mn > 0 {
+    mp_buf: [1024] u8; mp := fs_join(run_dir, "scorecard.md", mp_buf[..]);
+    _ := fs_write(mp, cast(string) mbuf[0..<mn]);
+    print("%", cast(string) mbuf[0..<mn]);
+  }
+  return 0;
+}
+
+// ---- Checks
+
+#test "cmp_classify_failure assigns exact failure-taxonomy tags from wire signals" {
+  #assert cmp_classify_failure(true, WireSignals.{edit_failures = 3}, 1, 0, 10) == TAG_NONE;
+  #assert cmp_classify_failure(false, WireSignals.{edit_failures = 2}, 2, 0, 10) == TAG_EDIT_MISMATCH;
+  #assert cmp_classify_failure(false, WireSignals.{}, 2, 1, 10) == TAG_BAD_DELEGATION;
+  #assert cmp_classify_failure(false, WireSignals.{compaction_events = 1}, 3, 0, 10) == TAG_COMPACTION_DROP;
+  #assert cmp_classify_failure(false, WireSignals.{read_calls = 16, edit_attempts = 1}, 3, 0, 10) == TAG_SEARCH_BLOAT;
+  #assert cmp_classify_failure(false, WireSignals.{ended_finished = true, verify_calls = 0}, 2, 0, 0) == TAG_PREMATURE_DONE;
+}
+
+#test "cmp_scan_wire and scorecard writers produce valid summary JSON and markdown" {
+  wire := "{\"dir\":\"from_worker\",\"line\":\"{\\\"kind\\\":\\\"edit\\\"}\"}\n{\"dir\":\"from_worker\",\"line\":\"old_text not found\"}\n{\"dir\":\"from_worker\",\"line\":\"{\\\"kind\\\":\\\"ended\\\",\\\"ending\\\":\\\"finished\\\"}\"}\n";
+  sig := cmp_scan_wire(wire);
+  #assert sig.edit_attempts == 1 && sig.edit_failures == 1 && sig.ended_finished;
+
+  cases: [2] CaseComparison;
+  cases[0].id_n = cmp_copy(cases[0].id[..], "sh_001_claude_demo");
+  cases[0].bucket_n = cmp_copy(cases[0].bucket[..], "A_edit_precision");
+  cases[0].harness_n = cmp_copy(cases[0].harness[..], "claude");
+  cases[0].base_passed = true; cases[0].cand_passed = true;
+  cases[0].base_cost_micros = 100000; cases[0].cand_cost_micros = 20000;
+  cases[0].base_wall_s = 30; cases[0].cand_wall_ms = 12000;
+  cases[0].sig = WireSignals.{edit_attempts = 2, edit_failures = 0};
+
+  cases[1].id_n = cmp_copy(cases[1].id[..], "sh_002_agy_demo");
+  cases[1].bucket_n = cmp_copy(cases[1].bucket[..], "D_error_recovery");
+  cases[1].harness_n = cmp_copy(cases[1].harness[..], "antigravity");
+  cases[1].base_passed = true; cases[1].cand_passed = false;
+  cases[1].base_cost_micros = 200000; cases[1].cand_cost_micros = 40000;
+  cases[1].base_wall_s = 60; cases[1].cand_wall_ms = 25000;
+  cases[1].sig = WireSignals.{edit_attempts = 2, edit_failures = 2};
+  cases[1].failure_tag_n = cmp_copy(cases[1].failure_tag[..], TAG_EDIT_MISMATCH);
+
+  jbuf: [8192] u8;
+  jn := cmp_write_summary_json(cases[..], 2, jbuf[..]);
+  #assert jn > 0;
+  nodes: [512] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], cast(string) jbuf[0..<jn], nodes[..]);
+  #assert jv_int(d[0], jv_get(d[0], 0, "candidate_pass_rate_pct"), -1) == 50;
+  #assert jv_int(d[0], jv_get(d[0], 0, "baseline_pass_rate_pct"), -1) == 100;
+  #assert jv_int(d[0], jv_get(d[0], 0, "failed_edit_rate_pct"), -1) == 50;
+
+  mbuf: [4096] u8;
+  mn := cmp_write_scorecard_md(cases[..], 2, mbuf[..]);
+  #assert mn > 0 && cmp_has(cast(string) mbuf[0..<mn], "edit_mismatch") && cmp_has(cast(string) mbuf[0..<mn], "$0.0600");
+}

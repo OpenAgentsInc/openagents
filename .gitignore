@@ -100,6 +100,7 @@ build/pipeline/
 # Coder Desktop evaluation run logs and headless host driver build output.
 /evals/openagents-desktop/results/
 /evals/openagents-desktop/host_driver/build/
+/evals/session-history/results/
 
 # Copied from metaverse/stage-resources/Cast.bin by apps/openagents-web/build.sh
 apps/openagents-web/demos/grid-crowd/assets/cast/Cast.bin

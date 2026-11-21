@@ -1,0 +1,12 @@
+{"id":"sh_001_claude_todos_wrap","category":"session-history","bucket":"A_edit_precision","description":"Fix the to-do tray wrap loop syntax error in apps/openagents-desktop/page/todos.coax so page.coax compiles and passes tests.","source":{"harness":"claude","trajectory_id":"2bedbb8b-7568-4067-abfc-dd78b09907a9","step_range":[833, 854],"steps_digest":"f03eeda12161e209cafb0f580c76c6ffb303b785f9dc2f1dc4c9b058e2d53d20","project":"work/openagents","base_sha":"7951edddcef1a7a7532ca3e1bc31c73e4dc74296","target_sha":"ccd8aaf01eca7fd2157dfe40aa3f9c6095830a8c","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "claude-opus-5-5",
+    "turns": 14,
+    "tool_calls": 7,
+    "failed_tool_calls": 0,
+    "prompt_tokens": 30,
+    "completion_tokens": 9202,
+    "cached_tokens": 3932552,
+    "cost_usd_micros": 0,
+    "wall_s": 45,
+    "passed": true
+  },"budget_usd_micros":150000,"timeout_s":300,"steps":[{"send":"apps/openagents-desktop/page.coax stopped compiling because of a bad range syntax in apps/openagents-desktop/page/todos.coax (E0216). Fix the loop in cp_todos_tray so it reaches wn cleanly without reading past wb[wn], and verify with `coax/bin/coax test apps/openagents-desktop/page.coax --only todos`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"coax/bin/coax test apps/openagents-desktop/page.coax --only todos"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

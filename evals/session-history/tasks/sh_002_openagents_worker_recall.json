@@ -1,0 +1,9 @@
+{"id":"sh_002_openagents_worker_recall","category":"session-history","bucket":"A_edit_precision","description":"Preserve conversation context by sending cd_recall_line when switching worker programs mid-thread in OpenAgents Desktop.","source":{"harness":"openagents","trajectory_id":"worker-1795226189283348","step_range":[2, 50],"steps_digest":"9a5add5fbfcb92d6b9a850a2bd7eaaa9b914794eb62e21c2056089c7829e3836","project":"work/openagents","base_sha":"a1c6baa26d0c3a445106a7062d73fdecd92e5093","target_sha":"bbf94941d72cd32d9d0469ac9161df1a59227d9f","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "gemini-4-neon",
+    "turns": 11,
+    "tool_calls": 19,
+    "failed_tool_calls": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 60,
+    "passed": true
+  },"budget_usd_micros":150000,"timeout_s":300,"steps":[{"send":"When switching between Antigravity CLI (agyworker) and Microcoder (mcworker) mid-thread in OpenAgents Desktop (`apps/openagents-desktop/Window+Runs.swift`), `launchWorker` stops the old worker and starts the new one without sending `cd_recall_line` unless `recallDue` was already set. Update `launchWorker` so switching worker programs (`switchedProgram`) always sets `sendRecall = needsRecall || switchedProgram` and replays completed turns to the new worker. Verify syntax with `swiftc -parse apps/openagents-desktop/Window+Runs.swift`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"swiftc -parse apps/openagents-desktop/Window+Runs.swift && grep -q 'switchedProgram' apps/openagents-desktop/Window+Runs.swift && grep -q 'sendRecall' apps/openagents-desktop/Window+Runs.swift"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}

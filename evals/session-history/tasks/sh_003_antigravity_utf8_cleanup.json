@@ -1,0 +1,9 @@
+{"id":"sh_003_antigravity_utf8_cleanup","category":"session-history","bucket":"C_verification","description":"Make agyw_copy UTF-8-safe on truncation and add verified --probe temp-session cleanup in coder/tui/agyworker.coax.","source":{"harness":"antigravity","trajectory_id":"f4ed3730-2e68-45dc-9aed-9812e534198c","step_range":[1, 120],"steps_digest":"7f65a81ca267607468fa4456c31e9f9e40a5ca65e8c55be4fdd6c06a24db5ace","project":"work/openagents","base_sha":"90dde0139b91d96d79e47f6b4b91e204baf9eb63","target_sha":"d503e953fc522ff91169ff597f071e01f01d2f6f","derivation":{"kind":"redacted","source":null}},"baseline":{
+    "model": "Gemini 4 Neon (Medium)",
+    "turns": 6,
+    "tool_calls": 11,
+    "failed_tool_calls": 0,
+    "cost_usd_micros": 0,
+    "wall_s": 90,
+    "passed": true
+  },"budget_usd_micros":200000,"timeout_s":300,"steps":[{"send":"In `coder/tui/agyworker.coax` (GitHub #13836): 1) Update `agyw_copy` to back up to a valid UTF-8 codepoint boundary when truncating multi-byte output so it never emits invalid UTF-8. 2) Add `agyw_session_db_owned` and `agyw_probe_cleanup` to verify `session_id` and `workspace_uri` metadata before unlinking temporary `--probe` `.db`/`.pbtxt` artifacts. Add `#test` checks and verify with `coax/bin/coax test coder/tui/agyworker.coax --only agyworker`."}],"graders":[{"type":"not_timed_out"},{"type":"ended"},{"type":"command","run":"grep -q 'agyw_probe_cleanup' coder/tui/agyworker.coax && grep -q 'agyw_session_db_owned' coder/tui/agyworker.coax && coax/bin/coax test coder/tui/agyworker.coax --only agyworker"},{"type":"outside_unchanged"},{"type":"no_guard_trips"}]}
