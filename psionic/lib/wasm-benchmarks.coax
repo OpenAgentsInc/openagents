@@ -1,0 +1,449 @@
+// Real non-toy wasm-core-i32-v1 benchmarks (Executor W1.2, GitHub #13915):
+// 1. 9x9 Sudoku recursive backtracking solver (4 distinct real 9x9 puzzles)
+// 2. 10x10 Hungarian (Kuhn-Munkres) optimal assignment solver (4 distinct 10x10 matrices)
+// 3. Coder Ch 8 tool-program compiler (bind / when / repeat with variables -> wasm-core-i32-v1)
+#load "wasm-core.coax";
+#load "harness/program.coax";
+
+// Structured bytecode builder with automatic block/loop/if/else/end target patching.
+WB_MAX_OPS :: 1024;
+WB_MAX_STK :: 32;
+
+WbFrame :: struct {
+  kind: int; // 0=block, 1=loop, 2=if
+  open_ip: int;
+  else_ip: int;
+}
+
+WmBuilder :: struct {
+  ops: [WB_MAX_OPS] WmOp;
+  n: int;
+  stk: [WB_MAX_STK] WbFrame;
+  sp: int;
+}
+
+wb_op :: (b: [] WmBuilder, code: WmCode) -> int { return wb_op2(b, code, 0, 0); }
+wb_op1 :: (b: [] WmBuilder, code: WmCode, arg: int) -> int { return wb_op2(b, code, arg, 0); }
+wb_op2 :: (b: [] WmBuilder, code: WmCode, arg: int, arg2: int) -> int {
+  i := b[0].n;
+  if i < WB_MAX_OPS {
+    b[0].ops[i] = WmOp.{code = code, arg = arg, arg2 = arg2};
+    b[0].n = i + 1;
+  }
+  return i;
+}
+
+wb_block :: (b: [] WmBuilder) {
+  ip := wb_op2(b, WmCode.block, 0, 0);
+  b[0].stk[b[0].sp] = WbFrame.{kind = 0, open_ip = ip, else_ip = -1};
+  b[0].sp += 1;
+}
+
+wb_loop :: (b: [] WmBuilder) {
+  ip := wb_op2(b, WmCode.loop, 0, 0);
+  b[0].stk[b[0].sp] = WbFrame.{kind = 1, open_ip = ip, else_ip = -1};
+  b[0].sp += 1;
+}
+
+wb_if :: (b: [] WmBuilder) {
+  ip := wb_op2(b, WmCode.if_op, 0, 0);
+  b[0].stk[b[0].sp] = WbFrame.{kind = 2, open_ip = ip, else_ip = -1};
+  b[0].sp += 1;
+}
+
+wb_else :: (b: [] WmBuilder) {
+  ip := wb_op2(b, WmCode.else_op, 0, 0);
+  b[0].stk[b[0].sp - 1].else_ip = ip;
+}
+
+wb_end :: (b: [] WmBuilder) {
+  ip := wb_op2(b, WmCode.end_op, 0, 0);
+  if b[0].sp > 0 {
+    b[0].sp -= 1;
+    f := b[0].stk[b[0].sp];
+    if f.kind == 2 {
+      b[0].ops[f.open_ip].arg = ifx f.else_ip >= 0 then f.else_ip else ip;
+      b[0].ops[f.open_ip].arg2 = ip;
+      if f.else_ip >= 0 { b[0].ops[f.else_ip].arg = ip; }
+    } else {
+      b[0].ops[f.open_ip].arg = ip;
+    }
+  }
+}
+
+// ============================================================================
+// Benchmark 1: Real 9x9 Sudoku Backtracking Solver in wasm-core-i32-v1
+// ============================================================================
+// Linear memory:
+//   0..80:   9x9 board (0 = empty, 1..9 = digit)
+//   81..89:  row_mask[0..8]  (bit d set iff digit d present in row)
+//   90..98:  col_mask[0..8]  (bit d set iff digit d present in col)
+//   99..107: box_mask[0..8]  (bit d set iff digit d present in 3x3 box)
+// Uses i32.shl, i32.or, i32.and, i32.xor for O(1) constraint checks & backtracking.
+// fn0 (main): loads clues + bitmasks into hull-v2 memory, calls solve(0), returns board checksum.
+// fn1 (solve(cell)): recursive backtracking over cells 0..80, returns 1 if solved.
+wb_build_sudoku :: (clues: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+  b[0] = WmBuilder.{};
+  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 2};
+  rmask: [9] int; cmask: [9] int; bmask: [9] int;
+  for i: 0..<81 {
+    d := clues[i];
+    if d != 0 {
+      r := i / 9; c := i % 9; bx := (r / 3) * 3 + (c / 3);
+      bit := 1 << d;
+      rmask[r] = rmask[r] | bit;
+      cmask[c] = cmask[c] | bit;
+      bmask[bx] = bmask[bx] | bit;
+      _ = wb_op1(b, WmCode.i32_const, i);
+      _ = wb_op1(b, WmCode.i32_const, d);
+      _ = wb_op(b, WmCode.i32_store);
+    }
+  }
+  for k: 0..<9 {
+    if rmask[k] != 0 { _ = wb_op1(b, WmCode.i32_const, 81 + k); _ = wb_op1(b, WmCode.i32_const, rmask[k]); _ = wb_op(b, WmCode.i32_store); }
+    if cmask[k] != 0 { _ = wb_op1(b, WmCode.i32_const, 90 + k); _ = wb_op1(b, WmCode.i32_const, cmask[k]); _ = wb_op(b, WmCode.i32_store); }
+    if bmask[k] != 0 { _ = wb_op1(b, WmCode.i32_const, 99 + k); _ = wb_op1(b, WmCode.i32_const, bmask[k]); _ = wb_op(b, WmCode.i32_store); }
+  }
+  _ = wb_op1(b, WmCode.i32_const, 0);
+  _ = wb_op1(b, WmCode.call, 1);
+  _ = wb_op(b, WmCode.i32_eqz);
+  wb_if(b);
+    _ = wb_op1(b, WmCode.i32_const, 0);
+    _ = wb_op(b, WmCode.ret);
+  wb_end(b);
+  // Weighted board checksum: sum_{i=0..80} (i+1)*mem[i]
+  _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 0);
+  _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 1);
+  wb_block(b);
+  wb_loop(b);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 81); _ = wb_op(b, WmCode.i32_ge_s); _ = wb_op1(b, WmCode.br_if, 1);
+    _ = wb_op1(b, WmCode.local_get, 1);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op(b, WmCode.i32_load);
+    _ = wb_op(b, WmCode.i32_mul); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 1);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 0);
+    _ = wb_op1(b, WmCode.br, 0);
+  wb_end(b);
+  wb_end(b);
+  _ = wb_op1(b, WmCode.local_get, 1);
+  _ = wb_op(b, WmCode.end_op);
+
+  // fn1: solve(cell = local 0)
+  // local 1 = d, local 2 = r_addr (81+r), local 3 = c_addr (90+c), local 4 = b_addr (99+bx),
+  // local 5 = used_mask, local 6 = bit (1 << d)
+  funcs[1] = WmFunc.{entry_ip = b[0].n, n_params = 1, n_locals = 7};
+  wb_block(b);
+  wb_loop(b);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 81); _ = wb_op(b, WmCode.i32_ge_s); _ = wb_op1(b, WmCode.br_if, 1);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op(b, WmCode.i32_load); _ = wb_op(b, WmCode.i32_eqz); _ = wb_op1(b, WmCode.br_if, 1);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 0);
+    _ = wb_op1(b, WmCode.br, 0);
+  wb_end(b);
+  wb_end(b);
+  _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 81); _ = wb_op(b, WmCode.i32_ge_s);
+  wb_if(b); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.ret); wb_end(b);
+
+  // r_addr = 81 + cell/9; c_addr = 90 + cell%9; b_addr = 99 + ((cell/9)/3)*3 + (cell%9)/3
+  _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 9); _ = wb_op(b, WmCode.i32_div_s);
+  _ = wb_op1(b, WmCode.local_tee, 5); // temp r in local 5
+  _ = wb_op1(b, WmCode.i32_const, 81); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 2);
+  _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 9); _ = wb_op(b, WmCode.i32_rem_s);
+  _ = wb_op1(b, WmCode.local_tee, 6); // temp c in local 6
+  _ = wb_op1(b, WmCode.i32_const, 90); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 3);
+  _ = wb_op1(b, WmCode.local_get, 5); _ = wb_op1(b, WmCode.i32_const, 3); _ = wb_op(b, WmCode.i32_div_s); _ = wb_op1(b, WmCode.i32_const, 3); _ = wb_op(b, WmCode.i32_mul);
+  _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op1(b, WmCode.i32_const, 3); _ = wb_op(b, WmCode.i32_div_s); _ = wb_op(b, WmCode.i32_add);
+  _ = wb_op1(b, WmCode.i32_const, 99); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 4);
+  // used_mask = mem[r_addr] | mem[c_addr] | mem[b_addr]
+  _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_load);
+  _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op(b, WmCode.i32_load); _ = wb_op(b, WmCode.i32_or);
+  _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_load); _ = wb_op(b, WmCode.i32_or);
+  _ = wb_op1(b, WmCode.local_set, 5);
+
+  // Try d = 1..9
+  _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op1(b, WmCode.local_set, 1);
+  wb_block(b);
+  wb_loop(b);
+    _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op1(b, WmCode.i32_const, 9); _ = wb_op(b, WmCode.i32_gt_s); _ = wb_op1(b, WmCode.br_if, 1);
+    // bit = 1 << d; if (used_mask & bit) == 0
+    _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_shl); _ = wb_op1(b, WmCode.local_tee, 6);
+    _ = wb_op1(b, WmCode.local_get, 5); _ = wb_op(b, WmCode.i32_and); _ = wb_op(b, WmCode.i32_eqz);
+    wb_if(b);
+      // Set board[cell] = d and toggle bit in row/col/box masks via xor
+      _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+      // Recurse: solve(cell + 1)
+      _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.call, 1);
+      wb_if(b); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.ret); wb_end(b);
+      // Backtrack: clear board[cell] and toggle bit off via xor
+      _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_xor); _ = wb_op(b, WmCode.i32_store);
+    wb_end(b);
+    _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 1);
+    _ = wb_op1(b, WmCode.br, 0);
+  wb_end(b);
+  wb_end(b);
+  _ = wb_op1(b, WmCode.i32_const, 0);
+  _ = wb_op(b, WmCode.end_op);
+  return 2;
+}
+
+// ============================================================================
+// Benchmark 2: Real 10x10 Hungarian (Kuhn-Munkres) Optimal Assignment Solver
+// ============================================================================
+// Memory layout:
+//   0..99:   cost matrix C[r*10 + c] (0-indexed)
+//   100..110: u[0..10]
+//   120..130: v[0..10]
+//   140..150: p[0..10]
+//   160..170: way[0..10]
+//   180..190: minv[0..10]
+//   200..210: used[0..10]
+// Returns exact minimum assignment cost.
+wb_build_hungarian10 :: (costs: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+  b[0] = WmBuilder.{};
+  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 10};
+  // Store 10x10 cost matrix into mem[0..99]
+  for k: 0..<100 {
+    _ = wb_op1(b, WmCode.i32_const, k);
+    _ = wb_op1(b, WmCode.i32_const, costs[k]);
+    _ = wb_op(b, WmCode.i32_store);
+  }
+  // Locals:
+  // 0 = i (1..10), 1 = j0, 2 = j, 3 = i0, 4 = delta, 5 = j1, 6 = cur, 7 = total
+  _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op1(b, WmCode.local_set, 0); // i = 1
+  wb_block(b);
+  wb_loop(b);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 10); _ = wb_op(b, WmCode.i32_gt_s); _ = wb_op1(b, WmCode.br_if, 1);
+    // p[0] = i
+    _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op(b, WmCode.i32_store);
+    // j0 = 0
+    _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 1);
+    // for j = 0..10: minv[j] = 1000000000; used[j] = 0
+    _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 2);
+    wb_block(b);
+    wb_loop(b);
+      _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 10); _ = wb_op(b, WmCode.i32_gt_s); _ = wb_op1(b, WmCode.br_if, 1);
+      _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+      _ = wb_op1(b, WmCode.i32_const, 1000000000); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.i32_const, 200); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+      _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 2);
+      _ = wb_op1(b, WmCode.br, 0);
+    wb_end(b);
+    wb_end(b);
+    // do-while augmenting loop:
+    wb_block(b);
+    wb_loop(b);
+      // used[j0] = 1
+      _ = wb_op1(b, WmCode.i32_const, 200); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_add);
+      _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_store);
+      // i0 = p[j0]; delta = 1000000000; j1 = 0
+      _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_set, 3);
+      _ = wb_op1(b, WmCode.i32_const, 1000000000); _ = wb_op1(b, WmCode.local_set, 4);
+      _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 5);
+      // for j = 1..10: if !used[j]
+      _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op1(b, WmCode.local_set, 2);
+      wb_block(b);
+      wb_loop(b);
+        _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 10); _ = wb_op(b, WmCode.i32_gt_s); _ = wb_op1(b, WmCode.br_if, 1);
+        _ = wb_op1(b, WmCode.i32_const, 200); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+        _ = wb_op(b, WmCode.i32_eqz);
+        wb_if(b);
+          // cur = C[(i0-1)*10 + (j-1)] - u[i0] - v[j]
+          _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_sub);
+          _ = wb_op1(b, WmCode.i32_const, 10); _ = wb_op(b, WmCode.i32_mul);
+          _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_sub);
+          _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.i32_const, 100); _ = wb_op1(b, WmCode.local_get, 3); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op(b, WmCode.i32_sub);
+          _ = wb_op1(b, WmCode.i32_const, 120); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op(b, WmCode.i32_sub);
+          _ = wb_op1(b, WmCode.local_set, 6);
+          // if cur < minv[j]: minv[j] = cur; way[j] = j0
+          _ = wb_op1(b, WmCode.local_get, 6);
+          _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op(b, WmCode.i32_lt_s);
+          wb_if(b);
+            _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+            _ = wb_op1(b, WmCode.local_get, 6); _ = wb_op(b, WmCode.i32_store);
+            _ = wb_op1(b, WmCode.i32_const, 160); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+            _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_store);
+          wb_end(b);
+          // if minv[j] < delta: delta = minv[j]; j1 = j
+          _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.local_get, 4);
+          _ = wb_op(b, WmCode.i32_lt_s);
+          wb_if(b);
+            _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+            _ = wb_op1(b, WmCode.local_set, 4);
+            _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.local_set, 5);
+          wb_end(b);
+        wb_end(b);
+        _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 2);
+        _ = wb_op1(b, WmCode.br, 0);
+      wb_end(b);
+      wb_end(b);
+      // for j = 0..10: if used[j] { u[p[j]] += delta; v[j] -= delta } else { minv[j] -= delta }
+      _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 2);
+      wb_block(b);
+      wb_loop(b);
+        _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 10); _ = wb_op(b, WmCode.i32_gt_s); _ = wb_op1(b, WmCode.br_if, 1);
+        _ = wb_op1(b, WmCode.i32_const, 200); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+        wb_if(b);
+          // u[p[j]] += delta
+          _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.local_set, 8); // p[j]
+          _ = wb_op1(b, WmCode.i32_const, 100); _ = wb_op1(b, WmCode.local_get, 8); _ = wb_op(b, WmCode.i32_add);
+          _ = wb_op1(b, WmCode.i32_const, 100); _ = wb_op1(b, WmCode.local_get, 8); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_store);
+          // v[j] -= delta
+          _ = wb_op1(b, WmCode.i32_const, 120); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+          _ = wb_op1(b, WmCode.i32_const, 120); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_sub); _ = wb_op(b, WmCode.i32_store);
+        wb_else(b);
+          // minv[j] -= delta
+          _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add);
+          _ = wb_op1(b, WmCode.i32_const, 180); _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+          _ = wb_op1(b, WmCode.local_get, 4); _ = wb_op(b, WmCode.i32_sub); _ = wb_op(b, WmCode.i32_store);
+        wb_end(b);
+        _ = wb_op1(b, WmCode.local_get, 2); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 2);
+        _ = wb_op1(b, WmCode.br, 0);
+      wb_end(b);
+      wb_end(b);
+      // j0 = j1; continue while p[j0] != 0
+      _ = wb_op1(b, WmCode.local_get, 5); _ = wb_op1(b, WmCode.local_set, 1);
+      _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+      _ = wb_op1(b, WmCode.br_if, 0);
+    wb_end(b);
+    wb_end(b);
+    // Augment along way: do { j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0 != 0)
+    wb_block(b);
+    wb_loop(b);
+      _ = wb_op1(b, WmCode.i32_const, 160); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load); _ = wb_op1(b, WmCode.local_set, 5);
+      _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op(b, WmCode.i32_add);
+      _ = wb_op1(b, WmCode.i32_const, 140); _ = wb_op1(b, WmCode.local_get, 5); _ = wb_op(b, WmCode.i32_add); _ = wb_op(b, WmCode.i32_load);
+      _ = wb_op(b, WmCode.i32_store);
+      _ = wb_op1(b, WmCode.local_get, 5); _ = wb_op1(b, WmCode.local_set, 1);
+      _ = wb_op1(b, WmCode.local_get, 1); _ = wb_op1(b, WmCode.br_if, 0);
+    wb_end(b);
+    wb_end(b);
+    _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 0);
+    _ = wb_op1(b, WmCode.br, 0);
+  wb_end(b);
+  wb_end(b);
+  // Total optimal cost = -v[0]
+  _ = wb_op1(b, WmCode.i32_const, 0);
+  _ = wb_op1(b, WmCode.i32_const, 120); _ = wb_op(b, WmCode.i32_load);
+  _ = wb_op(b, WmCode.i32_sub);
+  _ = wb_op(b, WmCode.end_op);
+  return 1;
+}
+
+// ============================================================================
+// Benchmark 3: Real Coder Ch 8 Tool-Program Compiler (PgProgram -> wasm-core-i32-v1)
+// ============================================================================
+// Compiles psionic/lib/harness/program.coax programs (variables x0..x7 in locals 0..7,
+// `bind` deterministic tool evaluations, `when` conditionals, and `repeat` fixed loops)
+// into wasm-core-i32-v1 bytecode. Records each tool call (tool_id, arg0, result) into
+// hull-v2 linear memory starting at cell 0 and returns a commitment over (calls, x0..x7).
+wb_emit_pg_stmt :: (b: [] WmBuilder, st: PgStmt) {
+  // Deterministic tool kernel (matches Ch 8 tool semantics over bounded integer args):
+  //   tool 0 (read/hash): arg0 * 31 + arg1 + 7
+  //   tool 1 (check/cmp): (arg0 >= arg1) ? 1 : 0
+  //   tool 2 (edit/add):  arg0 + arg1
+  //   tool 3 (run/mul):   arg0 * arg1 + 1
+  if st.refs[0] > 0 { _ = wb_op1(b, WmCode.local_get, st.refs[0] - 1); }
+  else { _ = wb_op1(b, WmCode.i32_const, st.args[0]); }
+  if st.refs[1] > 0 { _ = wb_op1(b, WmCode.local_get, st.refs[1] - 1); }
+  else { _ = wb_op1(b, WmCode.i32_const, st.args[1]); }
+  if st.tool == 0 {
+    _ = wb_op1(b, WmCode.local_set, 10); // arg1
+    _ = wb_op1(b, WmCode.i32_const, 31); _ = wb_op(b, WmCode.i32_mul);
+    _ = wb_op1(b, WmCode.local_get, 10); _ = wb_op(b, WmCode.i32_add);
+    _ = wb_op1(b, WmCode.i32_const, 7);  _ = wb_op(b, WmCode.i32_add);
+  } else if st.tool == 1 {
+    _ = wb_op(b, WmCode.i32_ge_s);
+  } else if st.tool == 2 {
+    _ = wb_op(b, WmCode.i32_add);
+  } else {
+    _ = wb_op(b, WmCode.i32_mul);
+    _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add);
+  }
+  _ = wb_op1(b, WmCode.local_tee, st.var);
+  // Log result into hull-v2 linear memory at mem[local 8] and increment call counter (local 8)
+  _ = wb_op1(b, WmCode.local_set, 11);
+  _ = wb_op1(b, WmCode.local_get, 8);
+  _ = wb_op1(b, WmCode.local_get, 11);
+  _ = wb_op(b, WmCode.i32_store);
+  _ = wb_op1(b, WmCode.local_get, 8); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 8);
+}
+
+wb_build_coder_prog :: (prog: PgProgram, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+  b[0] = WmBuilder.{};
+  // locals 0..7 = x0..x7, local 8 = call_count, local 9 = repeat_counter, locals 10..11 = scratch
+  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 12};
+  i := 0;
+  while i < prog.count {
+    st := prog.stmts[i];
+    if st.kind == PgKind.bind {
+      wb_emit_pg_stmt(b, st);
+      i += 1;
+    } else if st.kind == PgKind.when {
+      _ = wb_op1(b, WmCode.local_get, st.var);
+      wb_if(b);
+      for k: 0..<st.body {
+        if i + 1 + k < prog.count { wb_emit_pg_stmt(b, prog.stmts[i + 1 + k]); }
+      }
+      wb_end(b);
+      i += 1 + st.body;
+    } else if st.kind == PgKind.repeat {
+      _ = wb_op1(b, WmCode.i32_const, 0); _ = wb_op1(b, WmCode.local_set, 9);
+      wb_block(b);
+      wb_loop(b);
+        _ = wb_op1(b, WmCode.local_get, 9); _ = wb_op1(b, WmCode.i32_const, st.count); _ = wb_op(b, WmCode.i32_ge_s); _ = wb_op1(b, WmCode.br_if, 1);
+        for k: 0..<st.body {
+          if i + 1 + k < prog.count { wb_emit_pg_stmt(b, prog.stmts[i + 1 + k]); }
+        }
+        _ = wb_op1(b, WmCode.local_get, 9); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 9);
+        _ = wb_op1(b, WmCode.br, 0);
+      wb_end(b);
+      wb_end(b);
+      i += 1 + st.body;
+    } else {
+      i += 1;
+    }
+  }
+  // Return commitment: call_count * 100000 + sum_{v=0..7} (v+1)*x_v
+  _ = wb_op1(b, WmCode.local_get, 8); _ = wb_op1(b, WmCode.i32_const, 100000); _ = wb_op(b, WmCode.i32_mul);
+  for v: 0..<PG_VARS {
+    _ = wb_op1(b, WmCode.local_get, v); _ = wb_op1(b, WmCode.i32_const, v + 1); _ = wb_op(b, WmCode.i32_mul); _ = wb_op(b, WmCode.i32_add);
+  }
+  _ = wb_op(b, WmCode.end_op);
+  return 1;
+}
+
+#test "wasm-benchmarks: 9x9 Sudoku builder and 10x10 Hungarian solver" {
+  nodes: [512] HtNode;
+  b: [1] WmBuilder;
+  fns: [4] WmFunc;
+  puz1 := [81] int.[
+    5,3,0, 0,7,0, 0,0,0,  6,0,0, 1,9,5, 0,0,0,  0,9,8, 0,0,0, 0,6,0,
+    8,0,0, 0,6,0, 0,0,3,  4,0,0, 8,0,3, 0,0,1,  7,0,0, 0,2,0, 0,0,6,
+    0,6,0, 0,0,0, 2,8,0,  0,0,0, 4,1,9, 0,0,5,  0,0,0, 0,8,0, 0,7,9
+  ];
+  nf1 := wb_build_sudoku(puz1[..], b[..], fns[..]);
+  #assert nf1 == 2 && b[0].n > 100 && b[0].sp == 0;
+
+  m1: [100] int;
+  for r: 0..<10 {
+    for c: 0..<10 {
+      m1[r * 10 + c] = ifx r == c then 1 else 50 + r + c;
+    }
+  }
+  nh1 := wb_build_hungarian10(m1[..], b[..], fns[..]);
+  #assert nh1 == 1 && b[0].n > 400 && b[0].sp == 0;
+}

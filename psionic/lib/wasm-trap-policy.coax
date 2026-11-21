@@ -1,0 +1,110 @@
+// #authority admission, trap, and i32 arithmetic boundary policy for wasm-core-i32-v1 (Executor W1.2, #13915).
+#authority;
+
+WM_I32_MIN :: -2147483648;
+WM_I32_MAX :: 2147483647;
+WM_U32_MOD :: 4294967296;
+WM_KEY_MAX :: 1048576;
+
+WmStatus :: enum u8 {
+  ok;
+  invalid_op;
+  bad_branch;
+  stack_underflow;
+  stack_overflow;
+  call_overflow;
+  div_zero;
+  div_overflow;
+  oob_memory;
+  budget;
+  capacity;
+}
+
+// Wrap any 64-bit signed int to WebAssembly i32 ([-2^31, 2^31 - 1]).
+wm_i32 :: (x: int) -> int #effects(all) {
+  u := x & 4294967295;
+  if u >= 2147483648 { return u - WM_U32_MOD; }
+  return u;
+}
+
+wm_u32 :: (x: int) -> int #effects(all) {
+  return x & 4294967295;
+}
+
+// Preflight admission for program length, memory size, and step budget.
+wm_admit_run :: (prog_len: int, mem_cells: int, budget: int) -> WmStatus #effects(all) {
+  if prog_len < 1 { return WmStatus.invalid_op; }
+  if mem_cells < 0 || mem_cells > WM_KEY_MAX { return WmStatus.oob_memory; }
+  if budget < 1 { return WmStatus.budget; }
+  return WmStatus.ok;
+}
+
+// Check signed i32 division trap conditions (div-by-zero and INT32_MIN / -1).
+wm_check_div_s :: (a: int, b: int) -> WmStatus #effects(all) {
+  if b == 0 { return WmStatus.div_zero; }
+  if a == WM_I32_MIN && b == -1 { return WmStatus.div_overflow; }
+  return WmStatus.ok;
+}
+
+// Check signed i32 remainder trap condition (div-by-zero; INT32_MIN % -1 is 0 in WASM).
+wm_check_rem_s :: (b: int) -> WmStatus #effects(all) {
+  if b == 0 { return WmStatus.div_zero; }
+  return WmStatus.ok;
+}
+
+// Check linear memory bounds [0, mem_cells).
+wm_check_mem :: (addr: int, mem_cells: int) -> WmStatus #effects(all) {
+  if addr < 0 || addr >= mem_cells { return WmStatus.oob_memory; }
+  return WmStatus.ok;
+}
+
+// Check operand stack push/pop and call stack depth bounds.
+wm_check_pop :: (sp: int, need: int) -> WmStatus #effects(all) {
+  if sp < need { return WmStatus.stack_underflow; }
+  return WmStatus.ok;
+}
+
+wm_check_push :: (sp: int, cap: int) -> WmStatus #effects(all) {
+  if sp >= cap { return WmStatus.stack_overflow; }
+  return WmStatus.ok;
+}
+
+wm_check_call :: (fp: int, cap: int) -> WmStatus #effects(all) {
+  if fp >= cap { return WmStatus.call_overflow; }
+  return WmStatus.ok;
+}
+
+#test "wasm-trap-policy: i32 wrapping, admission, div/rem/mem/stack/call traps" {
+  #assert wm_i32(0) == 0 && wm_i32(WM_I32_MAX) == WM_I32_MAX && wm_i32(WM_I32_MIN) == WM_I32_MIN;
+  #assert wm_i32(2147483648) == WM_I32_MIN && wm_i32(2147483647) == 2147483647;
+  #assert wm_i32(-1) == -1 && wm_i32(4294967296) == 0;
+  #assert wm_u32(-1) == 4294967295 && wm_u32(0) == 0 && wm_u32(4294967297) == 1;
+
+  #assert wm_admit_run(0, 16, 10) == WmStatus.invalid_op;
+  #assert wm_admit_run(1, -1, 10) == WmStatus.oob_memory;
+  #assert wm_admit_run(1, WM_KEY_MAX + 1, 10) == WmStatus.oob_memory;
+  #assert wm_admit_run(1, 0, 10) == WmStatus.ok;
+  #assert wm_admit_run(1, WM_KEY_MAX, 10) == WmStatus.ok;
+  #assert wm_admit_run(1, 16, 0) == WmStatus.budget;
+  #assert wm_admit_run(1, 16, 1) == WmStatus.ok;
+
+  #assert wm_check_div_s(10, 0) == WmStatus.div_zero;
+  #assert wm_check_div_s(WM_I32_MIN, -1) == WmStatus.div_overflow;
+  #assert wm_check_div_s(WM_I32_MIN + 1, -1) == WmStatus.ok;
+  #assert wm_check_div_s(WM_I32_MIN, 1) == WmStatus.ok;
+  #assert wm_check_rem_s(0) == WmStatus.div_zero;
+  #assert wm_check_rem_s(-1) == WmStatus.ok;
+
+  #assert wm_check_mem(-1, 16) == WmStatus.oob_memory;
+  #assert wm_check_mem(16, 16) == WmStatus.oob_memory;
+  #assert wm_check_mem(0, 16) == WmStatus.ok;
+  #assert wm_check_mem(15, 16) == WmStatus.ok;
+
+  #assert wm_check_pop(0, 1) == WmStatus.stack_underflow;
+  #assert wm_check_pop(1, 1) == WmStatus.ok;
+  #assert wm_check_pop(1, 2) == WmStatus.stack_underflow;
+  #assert wm_check_push(256, 256) == WmStatus.stack_overflow;
+  #assert wm_check_push(255, 256) == WmStatus.ok;
+  #assert wm_check_call(128, 128) == WmStatus.call_overflow;
+  #assert wm_check_call(127, 128) == WmStatus.ok;
+}

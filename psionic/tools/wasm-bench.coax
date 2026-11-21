@@ -1,0 +1,115 @@
+// Benchmark runner for wasm-core-i32-v1 (Executor W1.2, GitHub #13915):
+// Runs 4 real 9x9 Sudoku puzzles and 4 real 10x10 Hungarian assignment matrices
+// through wasm-core-i32-v1 with hull-v2 parabolic memory, printing exact outputs,
+// step counts, hull vs linear-scan compares, and SHA-256 trace digests.
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/clock.coax";
+#load "../lib/wasm-benchmarks.coax";
+
+wb_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
+wb_hex :: (d: [32] u8, out: [] u8) -> string {
+  for i: 0..<32 { b := cast(int) d[i]; out[2 * i] = wb_hex_ch(b >> 4); out[2 * i + 1] = wb_hex_ch(b & 15); }
+  return cast(string) out[0..<64];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  nodes: [512] HtNode;
+  b: [1] WmBuilder;
+  fns: [4] WmFunc;
+  hex: [64] u8;
+
+  puz1 := [81] int.[
+    5,3,0, 0,7,0, 0,0,0,  6,0,0, 1,9,5, 0,0,0,  0,9,8, 0,0,0, 0,6,0,
+    8,0,0, 0,6,0, 0,0,3,  4,0,0, 8,0,3, 0,0,1,  7,0,0, 0,2,0, 0,0,6,
+    0,6,0, 0,0,0, 2,8,0,  0,0,0, 4,1,9, 0,0,5,  0,0,0, 0,8,0, 0,7,9
+  ];
+  puz2 := [81] int.[
+    0,0,0, 2,6,0, 7,0,1,  6,8,0, 0,7,0, 0,9,0,  1,9,0, 0,0,4, 5,0,0,
+    8,2,0, 1,0,0, 0,4,0,  0,0,4, 6,0,2, 9,0,0,  0,5,0, 0,0,3, 0,2,8,
+    0,0,9, 3,0,0, 0,7,4,  0,4,0, 0,5,0, 0,3,6,  7,0,3, 0,1,8, 0,0,0
+  ];
+  puz3 := [81] int.[
+    0,2,0, 6,0,8, 0,0,0,  5,8,0, 0,0,9, 7,0,0,  0,0,0, 0,4,0, 0,0,0,
+    3,7,0, 0,0,0, 5,0,0,  6,0,0, 0,0,0, 0,0,4,  0,0,8, 0,0,0, 0,1,3,
+    0,0,0, 0,2,0, 0,0,0,  0,0,9, 8,0,0, 0,3,6,  0,0,0, 3,0,6, 0,9,0
+  ];
+  puz4 := [81] int.[
+    0,0,5, 3,0,0, 0,0,0,  8,0,0, 0,0,0, 0,2,0,  0,7,0, 0,1,0, 5,0,0,
+    4,0,0, 0,0,5, 3,0,0,  0,1,0, 0,7,0, 0,0,6,  0,0,3, 2,0,0, 0,8,0,
+    0,6,0, 5,0,0, 0,0,9,  0,0,4, 0,0,0, 0,3,0,  0,0,0, 0,0,9, 7,0,0
+  ];
+
+  // Run all 4 9x9 Sudoku puzzles
+  for k: 0..<4 {
+    nf := 0;
+    if k == 0 { nf = wb_build_sudoku(puz1[..], b[..], fns[..]); }
+    else if k == 1 { nf = wb_build_sudoku(puz2[..], b[..], fns[..]); }
+    else if k == 2 { nf = wb_build_sudoku(puz3[..], b[..], fns[..]); }
+    else { nf = wb_build_sudoku(puz4[..], b[..], fns[..]); }
+    t0 := cxproc_wall_us();
+    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 128, 50000000, nodes[..]);
+    dt := cxproc_wall_us() - t0;
+    if r.status != WmStatus.ok || !r.has_result || r.result <= 0 {
+      print("sudoku_% FAIL status=% steps=%\n", k + 1, r.status, r.steps);
+      return 1;
+    }
+    print("SUDOKU_% ok checksum=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
+          k + 1, r.result, r.steps, dt, r.hull_compares, r.scan_compares, wb_hex(r.digest, hex[..]));
+  }
+
+  // Run all 4 10x10 Hungarian matrices
+  m1: [100] int; m2: [100] int; m3: [100] int; m4: [100] int;
+  for r: 0..<10 {
+    for c: 0..<10 {
+      m1[r * 10 + c] = ifx r == c then 1 else 50 + r + c;
+      m2[r * 10 + c] = ifx r + c == 9 then r + 1 else 100 + r * 3 + c * 7;
+      m3[r * 10 + c] = ((r * 37 + c * 73 + r * c * 11 + 19) % 97) + 1;
+      m4[r * 10 + c] = ((r * 53 + c * 29 + (r + 1) * (c + 3) * 17) % 89) + 5;
+    }
+  }
+  for k: 0..<4 {
+    nf := 0;
+    if k == 0 { nf = wb_build_hungarian10(m1[..], b[..], fns[..]); }
+    else if k == 1 { nf = wb_build_hungarian10(m2[..], b[..], fns[..]); }
+    else if k == 2 { nf = wb_build_hungarian10(m3[..], b[..], fns[..]); }
+    else { nf = wb_build_hungarian10(m4[..], b[..], fns[..]); }
+    t0 := cxproc_wall_us();
+    r := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 256, 500000, nodes[..]);
+    dt := cxproc_wall_us() - t0;
+    if r.status != WmStatus.ok || !r.has_result || r.result <= 0 {
+      print("hungarian_% FAIL status=% steps=%\n", k + 1, r.status, r.steps);
+      return 1;
+    }
+    print("HUNGARIAN_% ok opt_cost=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
+          k + 1, r.result, r.steps, dt, r.hull_compares, r.scan_compares, wb_hex(r.digest, hex[..]));
+  }
+  // Run Coder Ch 8 tool programs (bind + when + repeat over PgProgram AST)
+  cp: PgProgram;
+  cp.count = 6;
+  // x0 = tool0(2, 3) = 2*31+3+7 = 72
+  cp.stmts[0] = PgStmt.{kind = PgKind.bind, var = 0, tool = 0, args = [HT_FIELDS_MAX] int.[2, 3, 0, 0]};
+  // x1 = tool1(x0, 50) = (72 >= 50) = 1
+  cp.stmts[1] = PgStmt.{kind = PgKind.bind, var = 1, tool = 1, args = [HT_FIELDS_MAX] int.[0, 50, 0, 0], refs = [HT_FIELDS_MAX] int.[1, 0, 0, 0]};
+  // when x1: x2 = tool2(x0, 28) = 100
+  cp.stmts[2] = PgStmt.{kind = PgKind.when, var = 1, body = 1};
+  cp.stmts[3] = PgStmt.{kind = PgKind.bind, var = 2, tool = 2, args = [HT_FIELDS_MAX] int.[0, 28, 0, 0], refs = [HT_FIELDS_MAX] int.[1, 0, 0, 0]};
+  // repeat 5: x2 = tool2(x2, 10) -> 150 (total calls = 1 + 1 + 1 + 5 = 8)
+  cp.stmts[4] = PgStmt.{kind = PgKind.repeat, count = 5, body = 1};
+  cp.stmts[5] = PgStmt.{kind = PgKind.bind, var = 2, tool = 2, args = [HT_FIELDS_MAX] int.[0, 10, 0, 0], refs = [HT_FIELDS_MAX] int.[3, 0, 0, 0]};
+  nfc := wb_build_coder_prog(cp, b[..], fns[..]);
+  t0c := cxproc_wall_us();
+  rc := wm_run(b[0].ops[0..<b[0].n], fns[0..<nfc], 64, 10000, nodes[..]);
+  dtc := cxproc_wall_us() - t0c;
+  // Expected: 8*100000 + 1*72 + 2*1 + 3*150 = 800524
+  if rc.status != WmStatus.ok || !rc.has_result || rc.result != 800524 {
+    print("CODER_CH8 FAIL status=% result=%\n", rc.status, rc.result);
+    return 1;
+  }
+  print("CODER_CH8 ok commit=% steps=% us=% hull_cmp=% scan_cmp=% digest=%\n",
+        rc.result, rc.steps, dtc, rc.hull_compares, rc.scan_compares, wb_hex(rc.digest, hex[..]));
+
+  print("wasm-bench: PASS\n");
+  return 0;
+}

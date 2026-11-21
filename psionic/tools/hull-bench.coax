@@ -1,0 +1,108 @@
+// Benchmark & 10,000-op linear-scan oracle verifier for hull-v2 (Executor W1.2, GitHub #13915).
+// Run with: coax/web/tool.sh psionic/tools/hull-bench.coax
+// tool.sh: release
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/clock.coax";
+#load "../lib/hull-tree.coax";
+
+HB_WRITES :: 1048576;
+HB_NODES :: 131072;
+HB_ORACLE_OPS :: 10000;
+
+hb_run_oracle :: () -> int #effects(all) {
+  oracle_keys: [HB_ORACLE_OPS] int;
+  oracle_vals: [HB_ORACLE_OPS] int;
+  oracle_nodes: [HB_ORACLE_OPS] HtNode;
+  ox := ht_index(oracle_nodes[..]);
+  rng := 1391501;
+  n_writes := 0;
+  oracle_reads := 0;
+  oracle_hull_cmp := 0;
+  oracle_scan_cmp := 0;
+  for op: 0..<HB_ORACLE_OPS {
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    is_write := (rng % 3) != 0;
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    key := (rng % 2001) - 1000;
+    if is_write {
+      rng = (rng * 1103515245 + 12345) % 2147483648;
+      val := (rng % 100000) - 50000;
+      oracle_keys[n_writes] = key;
+      oracle_vals[n_writes] = val;
+      n_writes += 1;
+      ins := ht_insert(ox, key, val);
+      if ins.status != EmStatus.ok { tool_errln("hull-bench: oracle insert failed"); return 1; }
+      ox = ins.index;
+    } else {
+      got := ht_read(ox, key);
+      want := em_read(oracle_keys[..], oracle_vals[..], n_writes, key);
+      if got.read.status != want.status || got.read.value != want.value || got.read.position != want.position {
+        tool_errln("hull-bench: MISMATCH vs em_read linear scan oracle");
+        return 1;
+      }
+      oracle_reads += 1;
+      oracle_hull_cmp += got.compares;
+      if n_writes > 0 { oracle_scan_cmp += n_writes - 1; }
+    }
+  }
+  print("hull-v2 oracle: % ops (% writes, % reads) matched em_read bit-for-bit (0 divergences; hull_cmp=% vs scan_cmp=%)\n",
+        HB_ORACLE_OPS, n_writes, oracle_reads, oracle_hull_cmp, oracle_scan_cmp);
+  return 0;
+}
+
+hb_run_1m :: () -> int #effects(all) {
+  nodes: [HB_NODES] HtNode;
+  x := ht_index(nodes[..]);
+  t0 := cxproc_wall_us();
+  max_ins_cmp := 0;
+  total_ins_cmp := 0;
+  rng2 := 987654321;
+  for w: 0..<HB_WRITES {
+    k := 0;
+    if w < HB_NODES {
+      // First 131,072 writes insert distinct keys sequentially (worst-case for unbalanced trees!)
+      k = w - (HB_NODES / 2);
+    } else {
+      rng2 = (rng2 * 1103515245 + 12345) % 2147483648;
+      k = (rng2 % HB_NODES) - (HB_NODES / 2);
+    }
+    ins := ht_insert(x, k, w);
+    if ins.status != EmStatus.ok { tool_errln("hull-bench: 1M insert failed"); return 1; }
+    x = ins.index;
+    if ins.compares > max_ins_cmp { max_ins_cmp = ins.compares; }
+    total_ins_cmp += ins.compares;
+  }
+  t1 := cxproc_wall_us();
+
+  max_rd_cmp := 0;
+  total_rd_cmp := 0;
+  hits := 0;
+  for q: 0..<HB_NODES {
+    k := q - (HB_NODES / 2);
+    rd := ht_read(x, k);
+    if rd.read.status != EmStatus.ok { tool_errln("hull-bench: 1M read missed"); return 1; }
+    hits += 1;
+    if rd.compares > max_rd_cmp { max_rd_cmp = rd.compares; }
+    total_rd_cmp += rd.compares;
+  }
+  t2 := cxproc_wall_us();
+
+  ins_ms := (t1 - t0) / 1000;
+  rd_ms := (t2 - t1) / 1000;
+  print("hull-v2 1M bench: writes=% distinct=% height=% max_ins_cmp=% avg_ins_cmp=% max_rd_cmp=% avg_rd_cmp=% write_ms=% read_ms=%\n",
+        x.writes, x.count, x.nodes[x.root].height, max_ins_cmp, total_ins_cmp / HB_WRITES,
+        max_rd_cmp, total_rd_cmp / hits, ins_ms, rd_ms);
+  if x.nodes[x.root].height > 25 || max_ins_cmp > 25 || max_rd_cmp > 25 {
+    tool_errln("hull-bench: height/compares exceeded O(log t) bound");
+    return 1;
+  }
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  if hb_run_oracle() != 0 { return 1; }
+  if hb_run_1m() != 0 { return 1; }
+  print("hull-v2 bench: PASS\n");
+  return 0;
+}

@@ -1,0 +1,320 @@
+// Profile hull-v2 (Executor W1.2, GitHub #13915):
+// Caller-allocated iterative AVL balanced binary search tree over parabolic
+// keys (Ch 227/232), providing O(log t) reads AND O(log t) inserts for >=1M
+// trace writes over [-EM_KEY_MAX, EM_KEY_MAX] with zero hidden heap allocation.
+// Exact tie-breaking (latest write wins) and missing/range/capacity refusals
+// match exact-memory.coax's O(t) linear scan bit-for-bit.
+#load "hull-memory.coax";
+#authority;
+
+HT_MAX_DEPTH :: 64;
+
+HtNode :: struct {
+  key: int;
+  value: int;
+  position: int;
+  left: int;
+  right: int;
+  height: int;
+}
+
+HtIndex :: struct {
+  nodes: [] HtNode;
+  count: int;
+  root: int;
+  writes: int;
+}
+
+HtInsert :: struct {
+  status: EmStatus;
+  index: HtIndex;
+  compares: int;
+  visits: int;
+}
+
+HtRead :: struct {
+  read: EmRead;
+  compares: int;
+  visits: int;
+  node: int;
+}
+
+ht_index :: (nodes: [] HtNode) -> HtIndex #effects(all) {
+  return HtIndex.{nodes = nodes, count = 0, root = -1, writes = 0};
+}
+
+ht_h :: (nodes: [] HtNode, idx: int) -> int #effects(all) {
+  if idx < 0 { return 0; }
+  return nodes[idx].height;
+}
+
+ht_fix_h :: (nodes: [] HtNode, idx: int) #effects(all) {
+  lh := ht_h(nodes, nodes[idx].left);
+  rh := ht_h(nodes, nodes[idx].right);
+  nodes[idx].height = (ifx lh > rh then lh else rh) + 1; // mutant: equivalent — equal heights give same max
+}
+
+ht_bf :: (nodes: [] HtNode, idx: int) -> int #effects(all) {
+  return ht_h(nodes, nodes[idx].left) - ht_h(nodes, nodes[idx].right);
+}
+
+ht_rot_right :: (nodes: [] HtNode, y: int) -> int #effects(all) {
+  x := nodes[y].left;
+  t2 := nodes[x].right;
+  nodes[x].right = y;
+  nodes[y].left = t2;
+  ht_fix_h(nodes, y);
+  ht_fix_h(nodes, x);
+  return x;
+}
+
+ht_rot_left :: (nodes: [] HtNode, x: int) -> int #effects(all) {
+  y := nodes[x].right;
+  t2 := nodes[y].left;
+  nodes[y].left = x;
+  nodes[x].right = t2;
+  ht_fix_h(nodes, x);
+  ht_fix_h(nodes, y);
+  return y;
+}
+
+ht_insert :: (x: HtIndex, k: int, v: int) -> HtInsert #effects(all) {
+  r := HtInsert.{index = x};
+  if k < -EM_KEY_MAX || k > EM_KEY_MAX { r.status = EmStatus.range; return r; }
+  if x.root < 0 {
+    if x.nodes.count < 1 { r.status = EmStatus.capacity; return r; }
+    x.nodes[0] = HtNode.{key = k, value = v, position = x.writes, left = -1, right = -1, height = 1};
+    r.index.root = 0;
+    r.index.count = 1;
+    r.index.writes = x.writes + 1;
+    r.visits = 1;
+    return r;
+  }
+  path: [HT_MAX_DEPTH] int;
+  dir: [HT_MAX_DEPTH] int;
+  depth := 0;
+  cur := x.root;
+  while cur >= 0 {
+    r.visits += 1;
+    r.compares += 1;
+    ck := x.nodes[cur].key;
+    if k == ck {
+      x.nodes[cur].value = v;
+      x.nodes[cur].position = x.writes;
+      r.index.writes = x.writes + 1;
+      return r;
+    }
+    if depth >= HT_MAX_DEPTH { r.status = EmStatus.capacity; return r; } // mutant: equivalent — AVL height for <= 2^21+1 keys is <= 30 < 64
+    path[depth] = cur;
+    if k < ck { // mutant: equivalent — k == ck returned above
+      cur = x.nodes[cur].left;
+    } else {
+      dir[depth] = 1; // mutant: equivalent — only tested against 0
+      cur = x.nodes[cur].right;
+    }
+    depth += 1;
+  }
+  if x.count >= x.nodes.count { r.status = EmStatus.capacity; return r; }
+  idx := x.count;
+  x.nodes[idx] = HtNode.{key = k, value = v, position = x.writes, left = -1, right = -1, height = 1};
+  r.index.count = x.count + 1;
+  r.index.writes = x.writes + 1;
+  parent := path[depth - 1];
+  if dir[depth - 1] == 0 { x.nodes[parent].left = idx; }
+  else { x.nodes[parent].right = idx; }
+
+  // Walk back up the search path updating heights and rebalancing via AVL rotations.
+  for step: 0..<depth {
+    i := depth - 1 - step;
+    n := path[i];
+    ht_fix_h(x.nodes, n);
+    bf := ht_bf(x.nodes, n);
+    sub := n;
+    if bf > 1 {
+      if ht_bf(x.nodes, x.nodes[n].left) < 0 { // mutant: equivalent — insert-induced AVL left child bf is +-1, never 0
+        x.nodes[n].left = ht_rot_left(x.nodes, x.nodes[n].left);
+      }
+      sub = ht_rot_right(x.nodes, n);
+    } else if bf < -1 {
+      if ht_bf(x.nodes, x.nodes[n].right) > 0 { // mutant: equivalent — insert-induced AVL right child bf is +-1, never 0
+        x.nodes[n].right = ht_rot_right(x.nodes, x.nodes[n].right);
+      }
+      sub = ht_rot_left(x.nodes, n);
+    }
+    if sub != n {
+      if i == 0 { r.index.root = sub; }
+      else if dir[i - 1] == 0 { x.nodes[path[i - 1]].left = sub; }
+      else { x.nodes[path[i - 1]].right = sub; }
+    }
+  }
+  return r;
+}
+
+ht_read :: (x: HtIndex, q: int) -> HtRead #effects(all) {
+  r := HtRead.{node = -1};
+  if q < -EM_KEY_MAX || q > EM_KEY_MAX { r.read.status = EmStatus.range; return r; }
+  if x.root < 0 { r.read.status = EmStatus.missing; return r; }
+  cur := x.root;
+  while cur >= 0 {
+    r.visits += 1;
+    r.compares += 1;
+    ck := x.nodes[cur].key;
+    if q == ck {
+      // Parabolic hard-max invariant: em_score(ck, q) == q*q is uniquely maximized at ck == q.
+      r.read.value = x.nodes[cur].value;
+      r.read.position = x.nodes[cur].position;
+      r.node = cur;
+      return r;
+    }
+    if q < ck { cur = x.nodes[cur].left; } // mutant: equivalent — q == ck returned above
+    else { cur = x.nodes[cur].right; }
+  }
+  r.read.status = EmStatus.missing;
+  return r;
+}
+
+#test "hull-v2: range, empty, capacity, overwrite, and all four AVL rotations (LL, RR, LR, RL)" {
+  buf: [32] HtNode;
+  empty := ht_index(buf[0..<0]);
+  #assert empty.count == 0 && empty.root == -1 && empty.writes == 0;
+  re := ht_read(empty, 0);
+  #assert re.read.status == EmStatus.missing && re.node == -1;
+  #assert ht_read(empty, EM_KEY_MAX + 1).read.status == EmStatus.range;
+  #assert ht_read(empty, -EM_KEY_MAX - 1).read.status == EmStatus.range;
+  #assert ht_insert(empty, EM_KEY_MAX + 1, 1).status == EmStatus.range;
+  #assert ht_insert(empty, -EM_KEY_MAX - 1, 1).status == EmStatus.range;
+  #assert ht_insert(empty, 0, 1).status == EmStatus.capacity;
+
+  // Capacity limit after first node
+  one := ht_index(buf[0..<1]);
+  w0 := ht_insert(one, 10, 100);
+  #assert w0.status == EmStatus.ok && w0.index.count == 1 && w0.index.writes == 1 && w0.visits == 1;
+  #assert w0.index.nodes[0].height == 1;
+  #assert ht_insert(w0.index, 20, 200).status == EmStatus.capacity;
+  // Overwrite at full capacity still succeeds
+  w0b := ht_insert(w0.index, 10, 101);
+  #assert w0b.status == EmStatus.ok && w0b.index.count == 1 && w0b.index.writes == 2 && w0b.visits == 1 && w0b.compares == 1;
+  r0 := ht_read(w0b.index, 10);
+  #assert r0.read.status == EmStatus.ok && r0.read.value == 101 && r0.read.position == 1 && r0.node == 0 && r0.visits == 1 && r0.compares == 1;
+
+  // LL rotation: 30, 20, 10 -> root=20
+  ll := ht_index(buf[..]);
+  ll = ht_insert(ll, 30, 3).index;
+  wll := ht_insert(ll, 20, 2);
+  #assert wll.index.count == 2 && wll.visits == 1 && wll.compares == 1;
+  ll = wll.index;
+  #assert ll.nodes[ll.root].key == 30 && ll.nodes[ll.root].height == 2;
+  ll = ht_insert(ll, 10, 1).index;
+  #assert ll.count == 3 && ll.nodes[ll.root].key == 20 && ll.nodes[ll.root].height == 2;
+  #assert ll.nodes[ll.nodes[ll.root].left].height == 1 && ll.nodes[ll.nodes[ll.root].right].height == 1;
+  #assert ht_read(ll, 10).read.value == 1 && ht_read(ll, 20).read.value == 2 && ht_read(ll, 30).read.value == 3;
+  #assert ht_read(ll, 25).read.status == EmStatus.missing && ht_read(ll, 5).read.status == EmStatus.missing;
+
+  // RR rotation: 10, 20, 30 -> root=20
+  rr := ht_index(buf[..]);
+  rr = ht_insert(rr, 10, 1).index;
+  rr = ht_insert(rr, 20, 2).index;
+  #assert rr.nodes[rr.root].key == 10 && rr.nodes[rr.root].height == 2;
+  rr = ht_insert(rr, 30, 3).index;
+  #assert rr.count == 3 && rr.nodes[rr.root].key == 20 && rr.nodes[rr.root].height == 2;
+  #assert rr.nodes[rr.nodes[rr.root].left].height == 1 && rr.nodes[rr.nodes[rr.root].right].height == 1;
+
+  // LR rotation: 30, 10, 20 -> root=20
+  lr := ht_index(buf[..]);
+  lr = ht_insert(lr, 30, 3).index;
+  lr = ht_insert(lr, 10, 1).index;
+  lr = ht_insert(lr, 20, 2).index;
+  #assert lr.nodes[lr.root].key == 20 && lr.nodes[lr.root].height == 2;
+  #assert lr.nodes[lr.nodes[lr.root].left].height == 1 && lr.nodes[lr.nodes[lr.root].right].height == 1;
+
+  // RL rotation: 10, 30, 20 -> root=20
+  rl := ht_index(buf[..]);
+  rl = ht_insert(rl, 10, 1).index;
+  rl = ht_insert(rl, 30, 3).index;
+  rl = ht_insert(rl, 20, 2).index;
+  #assert rl.nodes[rl.root].key == 20 && rl.nodes[rl.root].height == 2;
+  #assert rl.nodes[rl.nodes[rl.root].left].height == 1 && rl.nodes[rl.nodes[rl.root].right].height == 1;
+
+  // Subtree rotations (non-root left and right child re-linking) + extreme keys +-EM_KEY_MAX
+  sub := ht_index(buf[..]);
+  seq := [10] int.[50, 20, 80, 10, 5, 90, 95, -EM_KEY_MAX, EM_KEY_MAX, 75];
+  for i: 0..<10 {
+    ins := ht_insert(sub, seq[i], i + 1);
+    #assert ins.status == EmStatus.ok;
+    sub = ins.index;
+  }
+  #assert sub.count == 10;
+  for i: 0..<10 {
+    rd := ht_read(sub, seq[i]);
+    #assert rd.read.status == EmStatus.ok && rd.read.value == i + 1 && rd.read.position == i;
+  }
+  // Check exact AVL height & balance invariant on every node
+  for i: 0..<sub.count {
+    lh := ht_h(sub.nodes, sub.nodes[i].left);
+    rh := ht_h(sub.nodes, sub.nodes[i].right);
+    #assert sub.nodes[i].height == (ifx lh > rh then lh else rh) + 1;
+    bf := ht_bf(sub.nodes, i);
+    #assert bf >= -1 && bf <= 1;
+  }
+
+  // Ascending & descending 15-node inserts verify post-rotation root & child heights exactly
+  asc := ht_index(buf[..]);
+  for k: 1..<16 {
+    asc = ht_insert(asc, k, k * 10).index;
+  }
+  #assert asc.nodes[asc.root].height == 4;
+  for i: 0..<asc.count {
+    lh := ht_h(asc.nodes, asc.nodes[i].left);
+    rh := ht_h(asc.nodes, asc.nodes[i].right);
+    #assert asc.nodes[i].height == (ifx lh > rh then lh else rh) + 1;
+  }
+  desc := ht_index(buf[..]);
+  for k: 0..<15 {
+    desc = ht_insert(desc, 15 - k, k).index;
+  }
+  #assert desc.nodes[desc.root].height == 4;
+  // LR and RL rotations on height-3 subtrees verify ht_rot_right/ht_rot_left fix the new root's height to 3
+  lr3 := ht_index(buf[..]);
+  lr3_seq := [6] int.[40, 20, 50, 10, 30, 25];
+  for k: 0..<6 { lr3 = ht_insert(lr3, lr3_seq[k], k).index; }
+  #assert lr3.nodes[lr3.root].key == 30 && lr3.nodes[lr3.root].height == 3;
+  rl3 := ht_index(buf[..]);
+  rl3_seq := [6] int.[20, 10, 40, 30, 50, 35];
+  for k: 0..<6 { rl3 = ht_insert(rl3, rl3_seq[k], k).index; }
+  #assert rl3.nodes[rl3.root].key == 30 && rl3.nodes[rl3.root].height == 3;
+
+  // Direct rotation height checks (2-node chains where rotated child becomes height 2)
+  buf[0] = HtNode.{key = 2, left = 1, right = -1, height = 2};
+  buf[1] = HtNode.{key = 1, left = -1, right = -1, height = 1};
+  #assert ht_rot_right(buf[..], 0) == 1 && buf[1].height == 2 && buf[0].height == 1;
+  buf[0] = HtNode.{key = 1, left = -1, right = 1, height = 2};
+  buf[1] = HtNode.{key = 2, left = -1, right = -1, height = 1};
+  #assert ht_rot_left(buf[..], 0) == 1 && buf[1].height == 2 && buf[0].height == 1;
+}
+
+#forall "hull-v2: bit-exact match with em_read linear scan and O(log n) height" seed:0..<12 {
+  nodes: [64] HtNode;
+  x := ht_index(nodes[..]);
+  keys: [48] int;
+  vals: [48] int;
+  rng := (seed * 7919 + 12345) % 2147483648;
+  for t: 0..<48 {
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    k := (rng % 31) - 15;
+    rng = (rng * 1103515245 + 12345) % 2147483648;
+    v := rng % 10000;
+    keys[t] = k; vals[t] = v;
+    w := ht_insert(x, k, v);
+    #assert w.status == EmStatus.ok && w.compares <= 8;
+    x = w.index;
+  }
+  #assert x.nodes[x.root].height <= 7;
+  for q: -16..<17 {
+    got := ht_read(x, q);
+    want := em_read(keys[..], vals[..], 48, q);
+    #assert got.read.status == want.status;
+    #assert got.read.value == want.value;
+    #assert got.read.position == want.position;
+    #assert got.compares <= 7;
+  }
+}

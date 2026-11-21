@@ -1,0 +1,476 @@
+// Profile wasm-core-i32-v1 (Executor W1.2, GitHub #13915):
+// Deterministic 38-opcode WebAssembly i32 subset interpreter with structured
+// control flow, recursive function calls, hull-v2 parabolic linear memory,
+// exact typed traps, and canonical SHA-256 trace digest emission.
+#load "hull-tree.coax";
+#load "wasm-trap-policy.coax";
+
+WM_PROFILE_ID :: "wasm-core-i32-v1";
+
+WM_STACK_MAX :: 256;
+WM_CALL_MAX :: 128;
+WM_FRAME_LOCALS :: 16;
+WM_LOCALS_POOL :: 2048;
+WM_GLOBALS_MAX :: 32;
+WM_FUNCS_MAX :: 32;
+WM_LABELS_MAX :: 512;
+
+WmCode :: enum u8 {
+  nop;
+  drop;
+  select;
+  i32_const;
+  local_get;
+  local_set;
+  local_tee;
+  global_get;
+  global_set;
+  block;
+  loop;
+  if_op;
+  else_op;
+  end_op;
+  br;
+  br_if;
+  call;
+  ret;
+  i32_add;
+  i32_sub;
+  i32_mul;
+  i32_div_s;
+  i32_rem_s;
+  i32_and;
+  i32_or;
+  i32_xor;
+  i32_shl;
+  i32_shr_s;
+  i32_shr_u;
+  i32_eq;
+  i32_eqz;
+  i32_ne;
+  i32_lt_s;
+  i32_le_s;
+  i32_gt_s;
+  i32_ge_s;
+  i32_load;
+  i32_store;
+}
+
+WmOp :: struct {
+  code: WmCode;
+  arg: int;
+  arg2: int;
+}
+
+WmFunc :: struct {
+  entry_ip: int;
+  n_params: int;
+  n_locals: int;
+}
+
+WmLabel :: struct {
+  is_loop: bool;
+  start_ip: int;
+  end_ip: int;
+  stack_depth: int;
+}
+
+WmFrame :: struct {
+  return_ip: int;
+  local_base: int;
+  label_base: int;
+}
+
+WmResult :: struct {
+  status: WmStatus;
+  ip: int;
+  steps: int;
+  result: int;
+  has_result: bool;
+  mem_writes: int;
+  mem_reads: int;
+  hull_compares: int;
+  scan_compares: int;
+  digest: [32] u8;
+}
+
+wm_hash_row :: (sha: [] u8, a: int, b: int, c: int, d: int) #effects(all) {
+  row := [4] int.[a, b, c, d];
+  bytes: [16] u8;
+  tm_bytes(row[..], bytes[..]);
+  #assert sha256_update_checked(sha, bytes[..], false) == SHA_OK;
+}
+
+// Execute a validated wasm-core-i32-v1 program with hull-v2 parabolic linear memory.
+// funcs[0] is the entry function (or entry_ip=0 if funcs.count == 0).
+// Structured control ops encode targets:
+//   block: arg = matching end_ip
+//   loop:  arg = matching end_ip (br targets loop_ip + 1)
+//   if_op: arg = matching else_ip (or end_ip if no else), arg2 = matching end_ip
+//   else_op: arg = matching end_ip
+//   br / br_if: arg = label depth (0 = innermost)
+//   call: arg = function index into funcs
+wm_run :: (prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: [] HtNode) -> WmResult #effects(all) {
+  res: WmResult;
+  if prog.count < 1 { res.status = WmStatus.invalid_op; return res; }
+  if mem_cells < 0 || mem_cells > EM_KEY_MAX { res.status = WmStatus.oob_memory; return res; }
+  if budget < 1 { res.status = WmStatus.budget; return res; }
+
+  stack: [WM_STACK_MAX] int; sp := 0;
+  locals: [WM_LOCALS_POOL] int;
+  globals: [WM_GLOBALS_MAX] int;
+  frames: [WM_CALL_MAX] WmFrame; fp := 0;
+  labels: [WM_LABELS_MAX] WmLabel; lp := 0;
+
+  mem := ht_index(nodes);
+  sha: [112] u8;
+  #assert sha256_init(sha[..]) == SHA_OK;
+
+  ip := 0;
+  if funcs.count > 0 {
+    if funcs[0].entry_ip < 0 || funcs[0].entry_ip >= prog.count { res.status = WmStatus.bad_branch; return res; }
+    ip = funcs[0].entry_ip;
+  }
+  frames[0] = WmFrame.{return_ip = -1, local_base = 0, label_base = 0};
+  fp = 1;
+
+  while true {
+    if ip < 0 || ip >= prog.count { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+    if res.steps >= budget { res.status = WmStatus.budget; res.ip = ip; return res; }
+    op := prog[ip];
+    code := op.code;
+    next_ip := ip + 1;
+    trace_x := 0;
+    trace_y := 0;
+    halted := false;
+    lb := frames[fp - 1].local_base;
+
+    if code == WmCode.nop {
+      // no-op
+    } else if code == WmCode.drop {
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      sp -= 1;
+      trace_x = stack[sp];
+    } else if code == WmCode.select {
+      if sp < 3 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      cond := stack[sp - 1];
+      v2 := stack[sp - 2];
+      v1 := stack[sp - 3];
+      sp -= 2;
+      stack[sp - 1] = ifx cond != 0 then v1 else v2;
+      trace_x = stack[sp - 1];
+    } else if code == WmCode.i32_const {
+      if sp >= WM_STACK_MAX { res.status = WmStatus.stack_overflow; res.ip = ip; return res; }
+      v := wm_i32(op.arg);
+      stack[sp] = v; sp += 1;
+      trace_x = v;
+    } else if code == WmCode.local_get {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      if sp >= WM_STACK_MAX { res.status = WmStatus.stack_overflow; res.ip = ip; return res; }
+      v := locals[lb + op.arg];
+      stack[sp] = v; sp += 1;
+      trace_x = v; trace_y = op.arg;
+    } else if code == WmCode.local_set {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      sp -= 1;
+      locals[lb + op.arg] = stack[sp];
+      trace_x = stack[sp]; trace_y = op.arg;
+    } else if code == WmCode.local_tee {
+      if op.arg < 0 || op.arg >= WM_FRAME_LOCALS { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      locals[lb + op.arg] = stack[sp - 1];
+      trace_x = stack[sp - 1]; trace_y = op.arg;
+    } else if code == WmCode.global_get {
+      if op.arg < 0 || op.arg >= WM_GLOBALS_MAX { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      if sp >= WM_STACK_MAX { res.status = WmStatus.stack_overflow; res.ip = ip; return res; }
+      v := globals[op.arg];
+      stack[sp] = v; sp += 1;
+      trace_x = v; trace_y = op.arg;
+    } else if code == WmCode.global_set {
+      if op.arg < 0 || op.arg >= WM_GLOBALS_MAX { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      sp -= 1;
+      globals[op.arg] = stack[sp];
+      trace_x = stack[sp]; trace_y = op.arg;
+    } else if code == WmCode.block {
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+      labels[lp] = WmLabel.{is_loop = false, start_ip = ip + 1, end_ip = op.arg, stack_depth = sp};
+      lp += 1;
+      trace_y = op.arg;
+    } else if code == WmCode.loop {
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+      labels[lp] = WmLabel.{is_loop = true, start_ip = ip + 1, end_ip = op.arg, stack_depth = sp};
+      lp += 1;
+      trace_y = op.arg;
+    } else if code == WmCode.if_op {
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      if lp >= WM_LABELS_MAX || op.arg < ip || op.arg >= prog.count || op.arg2 < op.arg || op.arg2 >= prog.count {
+        res.status = WmStatus.bad_branch; res.ip = ip; return res;
+      }
+      sp -= 1;
+      cond := stack[sp];
+      trace_x = cond;
+      if cond != 0 {
+        labels[lp] = WmLabel.{is_loop = false, start_ip = ip + 1, end_ip = op.arg2, stack_depth = sp};
+        lp += 1;
+      } else if op.arg < op.arg2 {
+        // Jump into else branch (op.arg is else_op, so body starts at op.arg + 1)
+        labels[lp] = WmLabel.{is_loop = false, start_ip = op.arg + 1, end_ip = op.arg2, stack_depth = sp};
+        lp += 1;
+        next_ip = op.arg + 1;
+      } else {
+        // No else branch: skip past end_op
+        next_ip = op.arg2 + 1;
+      }
+      trace_y = next_ip;
+    } else if code == WmCode.else_op {
+      if lp <= frames[fp - 1].label_base || op.arg < ip || op.arg >= prog.count { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+      lp -= 1;
+      next_ip = op.arg + 1;
+      trace_y = next_ip;
+    } else if code == WmCode.end_op {
+      if lp > frames[fp - 1].label_base {
+        lp -= 1;
+      } else {
+        // End of function frame
+        ret_ip := frames[fp - 1].return_ip;
+        fp -= 1;
+        if fp == 0 {
+          halted = true;
+        } else {
+          next_ip = ret_ip;
+        }
+      }
+      trace_y = next_ip;
+    } else if code == WmCode.br || code == WmCode.br_if {
+      take := true;
+      if code == WmCode.br_if {
+        if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+        sp -= 1;
+        take = stack[sp] != 0;
+        trace_x = stack[sp];
+      }
+      if take {
+        depth := op.arg;
+        avail := lp - frames[fp - 1].label_base;
+        if depth < 0 || depth >= avail { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+        target_idx := lp - 1 - depth;
+        lbl := labels[target_idx];
+        if lbl.is_loop {
+          lp = target_idx + 1;
+          next_ip = lbl.start_ip;
+        } else {
+          lp = target_idx;
+          next_ip = lbl.end_ip + 1;
+        }
+      }
+      trace_y = next_ip;
+    } else if code == WmCode.call {
+      fi := op.arg;
+      if fi < 0 || fi >= funcs.count { res.status = WmStatus.bad_branch; res.ip = ip; return res; }
+      fn := funcs[fi];
+      if fn.entry_ip < 0 || fn.entry_ip >= prog.count || fn.n_params < 0 || fn.n_params > WM_FRAME_LOCALS || fn.n_locals < fn.n_params || fn.n_locals > WM_FRAME_LOCALS {
+        res.status = WmStatus.invalid_op; res.ip = ip; return res;
+      }
+      if sp < fn.n_params { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      if fp >= WM_CALL_MAX { res.status = WmStatus.call_overflow; res.ip = ip; return res; }
+      new_lb := fp * WM_FRAME_LOCALS;
+      for k: 0..<WM_FRAME_LOCALS { locals[new_lb + k] = 0; }
+      for p: 0..<fn.n_params {
+        locals[new_lb + (fn.n_params - 1 - p)] = stack[sp - 1];
+        sp -= 1;
+      }
+      frames[fp] = WmFrame.{return_ip = ip + 1, local_base = new_lb, label_base = lp};
+      fp += 1;
+      next_ip = fn.entry_ip;
+      trace_x = fi; trace_y = next_ip;
+    } else if code == WmCode.ret {
+      lp = frames[fp - 1].label_base;
+      ret_ip := frames[fp - 1].return_ip;
+      fp -= 1;
+      if fp == 0 {
+        halted = true;
+      } else {
+        next_ip = ret_ip;
+      }
+      trace_y = next_ip;
+    } else if code == WmCode.i32_eqz {
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      v := ifx stack[sp - 1] == 0 then 1 else 0;
+      stack[sp - 1] = v;
+      trace_x = v;
+    } else if code == WmCode.i32_load {
+      if sp < 1 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      addr := stack[sp - 1] + op.arg;
+      if addr < 0 || addr >= mem_cells { res.status = WmStatus.oob_memory; res.ip = ip; return res; }
+      hr := ht_read(mem, addr);
+      val := ifx hr.read.status == EmStatus.ok then hr.read.value else 0;
+      stack[sp - 1] = val;
+      res.mem_reads += 1;
+      res.hull_compares += hr.compares;
+      if res.mem_writes > 0 { res.scan_compares += res.mem_writes - 1; }
+      trace_x = val; trace_y = addr;
+    } else if code == WmCode.i32_store {
+      if sp < 2 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      val := wm_i32(stack[sp - 1]);
+      addr := stack[sp - 2] + op.arg;
+      sp -= 2;
+      if addr < 0 || addr >= mem_cells { res.status = WmStatus.oob_memory; res.ip = ip; return res; }
+      ins := ht_insert(mem, addr, val);
+      if ins.status != EmStatus.ok { res.status = WmStatus.capacity; res.ip = ip; return res; }
+      mem = ins.index;
+      res.mem_writes += 1;
+      res.hull_compares += ins.compares;
+      trace_x = val; trace_y = addr;
+    } else {
+      // Binary i32 arithmetic, bitwise, and signed comparison opcodes
+      if sp < 2 { res.status = WmStatus.stack_underflow; res.ip = ip; return res; }
+      b := stack[sp - 1];
+      a := stack[sp - 2];
+      sp -= 1;
+      v := 0;
+      if code == WmCode.i32_add { v = wm_i32(a + b); }
+      else if code == WmCode.i32_sub { v = wm_i32(a - b); }
+      else if code == WmCode.i32_mul { v = wm_i32(a * b); }
+      else if code == WmCode.i32_div_s {
+        if b == 0 { res.status = WmStatus.div_zero; res.ip = ip; return res; }
+        if a == WM_I32_MIN && b == -1 { res.status = WmStatus.div_overflow; res.ip = ip; return res; }
+        v = wm_i32(a / b);
+      } else if code == WmCode.i32_rem_s {
+        if b == 0 { res.status = WmStatus.div_zero; res.ip = ip; return res; }
+        if a == WM_I32_MIN && b == -1 { v = 0; }
+        else { v = wm_i32(a % b); }
+      } else if code == WmCode.i32_and { v = wm_i32(wm_u32(a) & wm_u32(b)); }
+      else if code == WmCode.i32_or  { v = wm_i32(wm_u32(a) | wm_u32(b)); }
+      else if code == WmCode.i32_xor { v = wm_i32(wm_u32(a) ^ wm_u32(b)); }
+      else if code == WmCode.i32_shl {
+        sh := b & 31;
+        v = wm_i32(wm_u32(a) << sh);
+      } else if code == WmCode.i32_shr_s {
+        sh := b & 31;
+        v = wm_i32(a >> sh);
+      } else if code == WmCode.i32_shr_u {
+        sh := b & 31;
+        v = wm_i32(wm_u32(a) >> sh);
+      } else if code == WmCode.i32_eq   { v = ifx a == b then 1 else 0; }
+      else if code == WmCode.i32_ne     { v = ifx a != b then 1 else 0; }
+      else if code == WmCode.i32_lt_s   { v = ifx a < b then 1 else 0; }
+      else if code == WmCode.i32_le_s   { v = ifx a <= b then 1 else 0; }
+      else if code == WmCode.i32_gt_s   { v = ifx a > b then 1 else 0; }
+      else if code == WmCode.i32_ge_s   { v = ifx a >= b then 1 else 0; }
+      else { res.status = WmStatus.invalid_op; res.ip = ip; return res; }
+      stack[sp - 1] = v;
+      trace_x = v;
+    }
+
+    wm_hash_row(sha[..], ip, cast(int) code, trace_x, trace_y);
+    res.steps += 1;
+    if halted { break; }
+    ip = next_ip;
+  }
+
+  res.ip = ip;
+  if sp > 0 { res.result = stack[sp - 1]; res.has_result = true; }
+  #assert sha256_final_checked(sha[..], res.digest[..], false) == SHA_OK;
+  return res;
+}
+
+#test "wasm-core-i32-v1: all 38 opcodes, recursion, hull-v2 memory, and typed traps" {
+  nodes: [64] HtNode;
+  no_fn: [1] WmFunc;
+
+  // 1. Arithmetic, bitwise, shifts, comparisons, locals, globals, select, drop, nop
+  p1 := [28] WmOp.[
+    WmOp.{code = WmCode.nop},
+    WmOp.{code = WmCode.i32_const, arg = 10},
+    WmOp.{code = WmCode.local_tee, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 3},
+    WmOp.{code = WmCode.i32_div_s},       // 3
+    WmOp.{code = WmCode.global_set, arg = 0},
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 3},
+    WmOp.{code = WmCode.i32_rem_s},       // 1
+    WmOp.{code = WmCode.global_get, arg = 0},
+    WmOp.{code = WmCode.i32_add},         // 4
+    WmOp.{code = WmCode.i32_const, arg = 2},
+    WmOp.{code = WmCode.i32_shl},         // 16
+    WmOp.{code = WmCode.i32_const, arg = 1},
+    WmOp.{code = WmCode.i32_shr_u},       // 8
+    WmOp.{code = WmCode.i32_const, arg = 6},
+    WmOp.{code = WmCode.i32_or},          // 14
+    WmOp.{code = WmCode.i32_const, arg = 12},
+    WmOp.{code = WmCode.i32_and},         // 12
+    WmOp.{code = WmCode.i32_const, arg = 5},
+    WmOp.{code = WmCode.i32_xor},         // 9
+    WmOp.{code = WmCode.i32_const, arg = 99},
+    WmOp.{code = WmCode.drop},
+    WmOp.{code = WmCode.i32_const, arg = 42},
+    WmOp.{code = WmCode.i32_const, arg = 0},
+    WmOp.{code = WmCode.i32_eqz},         // 1
+    WmOp.{code = WmCode.select},          // selects 9
+    WmOp.{code = WmCode.end_op},
+  ];
+  r1 := wm_run(p1[..], no_fn[0..<0], 16, 1000, nodes[..]);
+  #assert r1.status == WmStatus.ok && r1.has_result && r1.result == 9 && r1.steps == 28;
+
+  // 2. Typed traps: div_zero, div_overflow (INT32_MIN / -1), oob_memory, budget, stack_underflow
+  p_dz := [4] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = 5},
+    WmOp.{code = WmCode.i32_const, arg = 0},
+    WmOp.{code = WmCode.i32_div_s},
+    WmOp.{code = WmCode.end_op},
+  ];
+  #assert wm_run(p_dz[..], no_fn[0..<0], 16, 100, nodes[..]).status == WmStatus.div_zero;
+
+  p_ov := [4] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = WM_I32_MIN},
+    WmOp.{code = WmCode.i32_const, arg = -1},
+    WmOp.{code = WmCode.i32_div_s},
+    WmOp.{code = WmCode.end_op},
+  ];
+  #assert wm_run(p_ov[..], no_fn[0..<0], 16, 100, nodes[..]).status == WmStatus.div_overflow;
+
+  p_oob := [3] WmOp.[
+    WmOp.{code = WmCode.i32_const, arg = 16},
+    WmOp.{code = WmCode.i32_load},
+    WmOp.{code = WmCode.end_op},
+  ];
+  #assert wm_run(p_oob[..], no_fn[0..<0], 16, 100, nodes[..]).status == WmStatus.oob_memory;
+
+  // 3. Recursive factorial(6) = 720 + hull-v2 memory store/load
+  // fn0 (main): call fn1(6), store to mem[3], load mem[3], end
+  // fn1 (fact(n)): if n <= 1 -> return 1 else return n * fact(n - 1)
+  p_rec := [22] WmOp.[
+    // 0: main
+    WmOp.{code = WmCode.i32_const, arg = 3},
+    WmOp.{code = WmCode.i32_const, arg = 6},
+    WmOp.{code = WmCode.call, arg = 1},
+    WmOp.{code = WmCode.i32_store},
+    WmOp.{code = WmCode.i32_const, arg = 3},
+    WmOp.{code = WmCode.i32_load},
+    WmOp.{code = WmCode.end_op},
+    // 7: fact(n = local 0)
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 1},
+    WmOp.{code = WmCode.i32_le_s},
+    WmOp.{code = WmCode.if_op, arg = 13, arg2 = 20},
+    WmOp.{code = WmCode.i32_const, arg = 1},
+    WmOp.{code = WmCode.ret},
+    WmOp.{code = WmCode.else_op, arg = 20},
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.local_get, arg = 0},
+    WmOp.{code = WmCode.i32_const, arg = 1},
+    WmOp.{code = WmCode.i32_sub},
+    WmOp.{code = WmCode.call, arg = 1},
+    WmOp.{code = WmCode.i32_mul},
+    WmOp.{code = WmCode.end_op},
+    WmOp.{code = WmCode.end_op},
+  ];
+  fns := [2] WmFunc.[
+    WmFunc.{entry_ip = 0, n_params = 0, n_locals = 0},
+    WmFunc.{entry_ip = 7, n_params = 1, n_locals = 1},
+  ];
+  rr := wm_run(p_rec[..], fns[..], 16, 1000, nodes[..]);
+  #assert rr.status == WmStatus.ok && rr.has_result && rr.result == 720 && rr.mem_writes == 1 && rr.mem_reads == 1;
+}
