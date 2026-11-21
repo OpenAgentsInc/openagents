@@ -205,6 +205,7 @@ extension CoderWindow {
     }
     func syncAntigravitySettings() {
         cd_settings_agy(page, CoderAntigravity.statusSummary(), Int32(CoderAntigravity.modeIndex), CoderAntigravity.modelSummary(), CoderAntigravity.authSummary())
+        cd_permit_approval_mode_set(page, CoderAntigravity.modeIndex != 0 ? 1 : 0)
     }
     func setAntigravityMode(_ modeIndex: Int) {
         CoderAntigravity.modeIndex = modeIndex
@@ -212,10 +213,13 @@ extension CoderWindow {
     }
     func applyAntigravity() {
         let hasAgy: Int32 = CoderWorker.hasAntigravity ? 1 : 0
+        let approvalOn: Int32 = CoderAntigravity.modeIndex != 0 ? 1 : 0
         cd_agy(page, hasAgy)
+        cd_permit_approval_mode_set(page, approvalOn)
         configureWorkerEnv(run, isForeman: isForemanShown)
         for (id, r) in runs {
             cd_agy(r.page, hasAgy)
+            cd_permit_approval_mode_set(r.page, approvalOn)
             configureWorkerEnv(r, isForeman: id == Foreman.chatID)
         }
         syncAntigravitySettings()

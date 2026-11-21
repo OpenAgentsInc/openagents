@@ -191,7 +191,7 @@ coder_page_line :: (s: [] CoderPage, line: string) -> int #export_c #effects(all
   else if kind == MWW_ATTEMPT && l[0].gateway == "antigravity" { s[0].turns[i].ran_n = cp_out(s[0].turns[i].ran[..], l[0].model); }   // the model agy opened the session on: the reply's label
   else if kind == MWW_ATTEMPT { s[0].turns[i].fresh = true; cp_add_cost(s, cp_attempt_cost(l[0])); cp_ctx_take(s, l[0]); }
   else if kind == MWW_ASK { cp_cmd_asked(s, i, l[0].command, l[0].ticket.value); }
-  else if kind == MWW_PERMIT { cp_permit_take(s, l[0].ticket.value, l[0].question.ok && l[0].question.value, l[0].title, l[0].command, l[0].options); }
+  else if kind == MWW_PERMIT { cp_permit_take_line(s, -1, "", l[0], line); }
   else if kind == MWW_DELEGATE { cp_delegate(s, i, l[0].tasks, l[0].ticket.value); }
   else if kind == MWW_STOP_AGENT { if l[0].agent.ok { cp_agent_stopped_by_run(s, i, l[0].agent.value); } }
   else if kind == MWW_COMMAND { cp_cmd_done(s, i, l[0].command, l[0].output, l[0].timed_out.value || l[0].exit.value != 0); }

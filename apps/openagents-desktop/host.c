@@ -848,3 +848,37 @@ int cd_ckpt_diff_from(void *page, const char *chat, int turn, char *out, int cap
   return n;
 }
 int cd_ckpt_needs_confirm(int dirty_files, int turns_dropped) { return coder_page_ckpt_needs_confirm(dirty_files, turns_dropped) ? 1 : 0; }
+// Interactive permission, sub-agent approval, Plan Mode, and Secret request cards (page/permit.coax, GitHub #13873).
+int cd_permit_open(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_open(cd_state(c)) : 0; }
+int cd_permit_kind(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_kind(cd_state(c)) : -1; }
+int cd_permit_pending(void *page) { CoderHost *c = page; return c ? (int)coder_page_permit_pending(cd_state(c)) : 0; }
+void cd_permit_approval_mode_set(void *page, int on) { CoderHost *c = page; if (c) { coder_page_permit_approval_mode_set(cd_state(c), on != 0); cd_woke(c); } }
+int cd_permit_approval_mode(void *page) { CoderHost *c = page; return c && coder_page_permit_approval_mode(cd_state(c)) ? 1 : 0; }
+int cd_permit_secret_name(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_permit_secret_name(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_permit_title(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_permit_title(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_permit_body(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_permit_body(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_permit_secret_done(void *page, int saved) {
+  CoderHost *c = page;
+  if (!c) return 0;
+  int ok = coder_page_permit_secret_done(cd_state(c), saved != 0) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}

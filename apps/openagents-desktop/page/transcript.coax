@@ -46,11 +46,15 @@ cp_reply_set :: (s: [] CoderPage, i: int, text: string, more: bool) {
 }
 // A command or a file read joins the running turn.
 cp_cmd_add :: (s: [] CoderPage, i: int, text: string, output: string, read: bool, failed: bool) { _ = cp_call_add(s, i, -1, text, output, read, failed, false); }
-// The worker asks before it runs a command: the command shows at once as running, and the page
-// owes the worker its answer (coder_page_answer_line).
+// The worker asks before it runs a command: the command shows at once as running. When approval
+// mode is active (permit.coax; #13873), it prompts interactively instead of auto-approving.
 cp_cmd_asked :: (s: [] CoderPage, i: int, text: string, ticket: int) {
-  s[0].answer = ticket; s[0].answer_due = true;
   _ = cp_call_add(s, i, -1, text, "", false, false, true);
+  if cp_permit_should_gate(s) {
+    cp_permit_take_gated(s, -1, "", ticket, text);
+    return;
+  }
+  s[0].answer = ticket; s[0].answer_due = true;
 }
 // A command finished: the running row with its text takes the output, else it is a new row.
 cp_cmd_done :: (s: [] CoderPage, i: int, text: string, output: string, failed: bool) {
@@ -789,9 +793,19 @@ coder_page_agent_line :: (s: [] CoderPage, j: int, line: string) -> int #export_
     cp_round_check(s, i);
   } else if kind == MWW_ASK {
     s[0].turns[i].agents[j].quiet += 1;
-    s[0].turns[i].agents[j].answer = l[0].ticket.value; s[0].turns[i].agents[j].answer_due = !claude;
+    s[0].turns[i].agents[j].answer = l[0].ticket.value;
     s[0].turns[i].agents[j].now_n = cp_out(s[0].turns[i].agents[j].now[..], l[0].command); s[0].turns[i].agents[j].now_running = true;
     s[0].turns[i].agents[j].calls += 1; _ = cp_call_add(s, i, j, l[0].command, "", false, false, true);
+    if !claude && cp_permit_should_gate(s) {
+      s[0].turns[i].agents[j].answer_due = false;
+      anb: [CP_PERMIT_AGENT_NAME] u8;
+      cp_permit_take_gated(s, j, cp_permit_agent_label(s, i, j, anb[..]), l[0].ticket.value, l[0].command);
+    } else {
+      s[0].turns[i].agents[j].answer_due = !claude;
+    }
+  } else if kind == MWW_PERMIT {
+    anb: [CP_PERMIT_AGENT_NAME] u8;
+    cp_permit_take_line(s, j, cp_permit_agent_label(s, i, j, anb[..]), l[0], line);
   } else if kind == MWW_COMMAND {
     failed := l[0].timed_out.value || l[0].exit.value != 0;
     // an edit, or a command the worker ran before the first call, was not asked about
@@ -870,6 +884,8 @@ coder_page_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int #ex
     w := mww_answer(rest, false, s[0].turns[i].agents[j].answer, cast(string) wb[0..<wn]);
     return ifx w > 0 then at + w else at;
   }
+  pw := cp_permit_agent_answer_line(s, j, rest);
+  if pw > 0 { return at + pw; }
   if !s[0].turns[i].agents[j].answer_due { return at; }
   s[0].turns[i].agents[j].answer_due = false;
   w := mww_answer(rest, true, s[0].turns[i].agents[j].answer, "");

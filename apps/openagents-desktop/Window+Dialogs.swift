@@ -692,4 +692,63 @@ extension CoderWindow {
             self.refocus()
         }
     }
+    /// Interactive Secret / Credential request card (page/permit.coax; GitHub #13873):
+    /// prompts in a masked secure dialog, saves to a 0600 file under ~/Library/Application Support/Coder/secrets/
+    /// (and known provider key stores when applicable) without ever logging or echoing the secret into the transcript.
+    func enterRequestedSecret() {
+        var nameBuf = [CChar](repeating: 0, count: 257)
+        var titleBuf = [CChar](repeating: 0, count: 257)
+        var bodyBuf = [CChar](repeating: 0, count: 1025)
+        let nn = cd_permit_secret_name(page, &nameBuf, Int32(nameBuf.count))
+        let tn = cd_permit_title(page, &titleBuf, Int32(titleBuf.count))
+        let bn = cd_permit_body(page, &bodyBuf, Int32(bodyBuf.count))
+        let secretName = nn > 0 ? String(cString: nameBuf) : "SECRET"
+        let title = tn > 0 ? String(cString: titleBuf) : "Enter Secret"
+        let reason = bn > 0 ? String(cString: bodyBuf) : "The agent requested a secret credential."
+        let body = reason + "\n\nStored in a 0600 file under ~/Library/Application Support/Coder/secrets/ and never logged or echoed into the chat transcript."
+        var d = CoderDialog(size: .md, title: title, body: body)
+        d.fields = [.init(label: secretName, hint: "Paste secret value…", secure: true)]
+        d.buttons = [.init(title: "Cancel"), .init(title: "Save & Continue", kind: .primary)]
+        d.confirm = 1; d.cancel = 0
+        present(d) { [weak self] answer, values in
+            guard let self else { return }
+            defer { self.refocus() }
+            guard answer == 1 else { return }
+            let raw = (values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !raw.isEmpty else { return }
+            let saved = Self.saveRequestedSecret(name: secretName, value: raw)
+            guard saved else {
+                self.present(.notice("Secret could not be saved.", "Coder could not write the 0600 secret file for \(secretName)."))
+                return
+            }
+            if secretName.uppercased() == "GEMINI_API_KEY" { self.syncCloudAuth() }
+            _ = cd_permit_secret_done(self.page, 1)
+            self.pump(self.run)
+            self.wake()
+        }
+    }
+    private static func saveRequestedSecret(name: String, value: String) -> Bool {
+        let upper = name.uppercased()
+        if upper == "GEMINI_API_KEY" { _ = CoderGemini.save(value) }
+        else if upper == "ANTHROPIC_API_KEY" || upper == "CODER_CLAUDE_KEY" { _ = CoderKey.save(value) }
+        else if upper == "OPENROUTER_API_KEY" { _ = CoderOpenRouter.save(value) }
+        let safe = name.lowercased().map { ch -> Character in
+            (ch.isASCII && (ch.isLetter || ch.isNumber || ch == "-" || ch == "_")) ? ch : "-"
+        }
+        let slug = String(safe).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let filename = slug.isEmpty ? "secret" : slug
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.homeDirectoryForCurrentUser
+        let dir = base.appendingPathComponent("Coder/secrets", isDirectory: true)
+        do {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let fileURL = dir.appendingPathComponent(filename)
+            let data = Data((value + "\n").utf8)
+            try data.write(to: fileURL, options: .atomic)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            return true
+        } catch {
+            return false
+        }
+    }
 }

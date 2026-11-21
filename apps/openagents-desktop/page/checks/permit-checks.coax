@@ -1,0 +1,186 @@
+// Checks for interactive permission, sub-agent approval, Plan Mode, and Secret request cards (permit.coax; #13873).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "permit: Microcoder gated MWW_ASK routes through permit card when approval mode is active" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  out: [512] u8;
+
+  // 1. Default (approval mode off): MWW_ASK auto-approves without opening permit card.
+  #assert coder_page_set_text(s, "run checks") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"echo hi\",\"ticket\":10}") == MWW_ASK;
+  #assert coder_page_permit_open(s) == 0;
+  n0 := coder_page_answer_line(s, out[..]);
+  #assert n0 > 0 && cast(string) out[0..<n0] == "{\"answer\":true,\"ticket\":10}\n";
+
+  // 2. Enable approval mode: MWW_ASK prompts via permit.coax instead of auto-approving.
+  coder_page_permit_approval_mode_set(s, true);
+  #assert coder_page_permit_approval_mode(s);
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"rm -rf build\",\"ticket\":11}") == MWW_ASK;
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_kind(s) == CP_PERMIT_KIND_APPROVAL;
+  #assert coder_page_answer_line(s, out[..]) == 0;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "coder.permit.card") >= 0;
+  #assert surface_find(sf, "coder.permit.opt.0") >= 0 && surface_find(sf, "coder.permit.opt.1") >= 0 && surface_find(sf, "coder.permit.deny") >= 0;
+
+  // Click "Allow once" -> emits allow_once, keeps session_allow false.
+  #assert cp_press(s, surface_find(sf, "coder.permit.opt.0")) && coder_page_action(s) == CP_ASK_ANSWER;
+  #assert coder_page_permit_open(s) == 0 && !s[0].permit[0].session_allow;
+  n1 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n1] == "{\"answer\":true,\"ticket\":11,\"option\":\"allow_once\"}\n";
+
+  // 3. Next MWW_ASK still prompts; click Deny -> emits denied answer.
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"git push --force\",\"ticket\":12}") == MWW_ASK;
+  #assert coder_page_permit_open(s) == 1 && cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert cp_press(s, surface_find(sf, "coder.permit.deny")) && coder_page_action(s) == CP_ASK_ANSWER;
+  n2 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n2] == "{\"answer\":false,\"ticket\":12,\"why\":\"denied by user\"}\n";
+
+  // 4. Click "Allow for session" -> emits allow_session and auto-approves subsequent asks in this session.
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"make test\",\"ticket\":13}") == MWW_ASK;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert cp_press(s, surface_find(sf, "coder.permit.opt.1")) && coder_page_action(s) == CP_ASK_ANSWER;
+  #assert s[0].permit[0].session_allow;
+  n3 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n3] == "{\"answer\":true,\"ticket\":13,\"option\":\"allow_session\"}\n";
+
+  #assert coder_page_line(s, "{\"kind\":\"ask\",\"command\":\"ls -la\",\"ticket\":14}") == MWW_ASK;
+  #assert coder_page_permit_open(s) == 0;
+  n4 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n4] == "{\"answer\":true,\"ticket\":14}\n";
+
+  // 5. Ending turn and starting a new chat clears session_allow while keeping approval_mode.
+  #assert coder_page_line(s, "{\"kind\":\"ended\",\"ending\":\"finished\",\"text\":\"done\"}") == MWW_ENDED;
+  #assert coder_page_new(s) && coder_page_action(s) == CP_ASK_NEW;
+  #assert coder_page_permit_approval_mode(s) && !s[0].permit[0].session_allow;
+}
+
+#test "permit: sub-agent gated approvals queue and surface in parent chat with attribution" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  out: [512] u8;
+
+  coder_page_permit_approval_mode_set(s, true);
+  #assert coder_page_set_text(s, "delegate work") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+  del := "{\"kind\":\"delegate\",\"tasks\":[{\"level\":\"carbon\",\"task\":\"audit auth\"},{\"level\":\"neon\",\"task\":\"run migrations\"}],\"ticket\":5}";
+  #assert coder_page_line(s, del) == MWW_DELEGATE;
+  #assert coder_page_agent_next(s) == 0 && coder_page_agent_next(s) == 1 && coder_page_agent_next(s) == -1;
+
+  // Sub-agent 0 asks to run a command -> prompts in parent chat card with attribution.
+  #assert coder_page_agent_line(s, 0, "{\"kind\":\"ask\",\"command\":\"grep -R secret src/\",\"ticket\":21}") == MWW_ASK;
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_pending(s) == 1;
+  #assert cp_permit_agent_waiting(s, 0) && !cp_permit_agent_waiting(s, 1);
+  #assert coder_page_agent_answer_line(s, 0, out[..]) == 0;
+  #assert cp_permit_str(s[0].permit[0].agent_name[..], s[0].permit[0].nagent_name) == "Sub-agent #1 · Carbon";
+
+  // Sub-agent 1 also asks while sub-agent 0's card is open -> queued, pending count = 2.
+  #assert coder_page_agent_line(s, 1, "{\"kind\":\"ask\",\"command\":\"sqlx migrate run\",\"ticket\":31}") == MWW_ASK;
+  #assert coder_page_permit_pending(s) == 2 && cp_permit_agent_waiting(s, 1);
+  #assert coder_page_agent_answer_line(s, 1, out[..]) == 0;
+
+  // Render card (wide enough for conversation beside sub-agent pane) and verify badge shows sub-agent attribution and pending count.
+  #assert cp_test_draw_wide(s, f[..]) && cp_test_draw_wide(s, f[..]);
+  badge_row := surface_find(sf, "coder.permit.badge");
+  #assert badge_row >= 0;
+  t := [1] ElTable.[surface_rows(sf)];
+  badge_lbl := cast(string) t[0].rows[badge_row].label[0..<t[0].rows[badge_row].label_n];
+  #assert cp_str_has(badge_lbl, "Sub-agent #1 · Carbon") && cp_str_has(badge_lbl, "2 pending");
+
+  // Approve sub-agent 0 once -> sub-agent 0 gets its answer, sub-agent 1 pops to front!
+  #assert cp_press(s, surface_find(sf, "coder.permit.opt.0")) && coder_page_action(s) == CP_ASK_ANSWER;
+  n0 := coder_page_agent_answer_line(s, 0, out[..]);
+  #assert cast(string) out[0..<n0] == "{\"answer\":true,\"ticket\":21,\"option\":\"allow_once\"}\n";
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_pending(s) == 1;
+  #assert !cp_permit_agent_waiting(s, 0) && cp_permit_agent_waiting(s, 1);
+  #assert cp_permit_str(s[0].permit[0].agent_name[..], s[0].permit[0].nagent_name) == "Sub-agent #2 · Neon";
+
+  // Deny sub-agent 1 -> sub-agent 1 gets denied answer, queue empty.
+  #assert cp_test_draw_wide(s, f[..]) && cp_test_draw_wide(s, f[..]);
+  #assert cp_press(s, surface_find(sf, "coder.permit.deny")) && coder_page_action(s) == CP_ASK_ANSWER;
+  n1 := coder_page_agent_answer_line(s, 1, out[..]);
+  #assert cast(string) out[0..<n1] == "{\"answer\":false,\"ticket\":31,\"why\":\"denied by user\"}\n";
+  #assert coder_page_permit_open(s) == 0 && coder_page_permit_pending(s) == 0;
+}
+
+#test "permit: Plan Mode card renders Approve & Implement, Revise, and Cancel actions" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  out: [512] u8;
+
+  #assert coder_page_set_text(s, "plan auth refactor") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+
+  // 1. Plan card via MWW_PERMIT with card:"plan" -> Approve & Implement.
+  plan_line := "{\"kind\":\"permit\",\"ticket\":41,\"card\":\"plan\",\"title\":\"Refactor Auth Store\",\"body\":\"1. Split token cache\\n2. Add unit tests\\n3. Wire Keychain\",\"options\":[]}";
+  #assert coder_page_line(s, plan_line) == MWW_PERMIT;
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_kind(s) == CP_PERMIT_KIND_PLAN;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "coder.permit.badge") >= 0 && surface_find(sf, "coder.permit.body") >= 0;
+  #assert surface_find(sf, "coder.permit.plan.approve") >= 0 && surface_find(sf, "coder.permit.plan.revise") >= 0 && surface_find(sf, "coder.permit.deny") >= 0;
+
+  #assert cp_press(s, surface_find(sf, "coder.permit.plan.approve")) && coder_page_action(s) == CP_ASK_ANSWER;
+  #assert coder_page_permit_open(s) == 0;
+  n1 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n1] == "{\"answer\":true,\"ticket\":41,\"option\":\"approve_plan\"}\n";
+
+  // 2. Plan card -> Revise focuses composer and emits revise plan answer.
+  coder_page_env(s, true, false);
+  cp_ed_focus(s, CP_KB_NONE);
+  cp_permit_take_plan(s, -1, "", 42, "Second Plan", "Step A\nStep B");
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_kind(s) == CP_PERMIT_KIND_PLAN;
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert cp_press(s, surface_find(sf, "coder.permit.plan.revise")) && coder_page_action(s) == CP_ASK_ANSWER;
+  #assert s[0].fld[0].kb == CP_KB_COMPOSER && cp_composer_focused(s);
+  n2 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n2] == "{\"answer\":false,\"ticket\":42,\"why\":\"revise plan\"}\n";
+
+  // 3. Plan card -> Cancel emits plan cancelled answer.
+  cp_permit_take_plan(s, -1, "", 43, "Third Plan", "Step X");
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert cp_press(s, surface_find(sf, "coder.permit.deny")) && coder_page_action(s) == CP_ASK_ANSWER;
+  n3 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n3] == "{\"answer\":false,\"ticket\":43,\"why\":\"plan cancelled\"}\n";
+}
+
+#test "permit: Secret request card prompts via host dialog and never renders or logs secret values" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]); cp_init(s); f: [1] UiFrame;
+  sf := s[0].surface[..];
+  out: [512] u8;
+  name_buf: [128] u8;
+
+  #assert coder_page_set_text(s, "deploy stripe webhook") && coder_page_submit(s) && coder_page_action(s) == CP_ASK_SEND;
+
+  // 1. Secret request via MWW_PERMIT with card:"secret".
+  sec_line := "{\"kind\":\"permit\",\"ticket\":51,\"card\":\"secret\",\"title\":\"Stripe API key required\",\"command\":\"STRIPE_SECRET_KEY\",\"body\":\"Needed to verify webhook signatures\",\"options\":[]}";
+  #assert coder_page_line(s, sec_line) == MWW_PERMIT;
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_kind(s) == CP_PERMIT_KIND_SECRET;
+  sn := coder_page_permit_secret_name(s, name_buf[..]);
+  #assert cast(string) name_buf[0..<sn] == "STRIPE_SECRET_KEY";
+
+  // Render card and click "Enter Secret…" -> asks host (CP_ASK_SECRET), card stays open.
+  #assert cp_test_draw(s, f[..]) && cp_test_draw(s, f[..]);
+  #assert surface_find(sf, "coder.permit.secret.enter") >= 0 && surface_find(sf, "coder.permit.deny") >= 0;
+  cmd_row := surface_find(sf, "coder.permit.cmd");
+  #assert cmd_row >= 0;
+  t := [1] ElTable.[surface_rows(sf)];
+  #assert cast(string) t[0].rows[cmd_row].label[0..<t[0].rows[cmd_row].label_n] == "Key: STRIPE_SECRET_KEY";
+  #assert cp_press(s, surface_find(sf, "coder.permit.secret.enter")) && coder_page_action(s) == CP_ASK_SECRET;
+  #assert coder_page_permit_open(s) == 1;
+
+  // Host saves secret to 0600 file/Keychain (secret value NEVER enters CoderPage) and calls secret_done(true).
+  #assert coder_page_permit_secret_done(s, true) && coder_page_action(s) == CP_ASK_ANSWER;
+  #assert coder_page_permit_open(s) == 0;
+  n1 := coder_page_answer_line(s, out[..]);
+  ans := cast(string) out[0..<n1];
+  #assert ans == "{\"answer\":true,\"ticket\":51,\"option\":\"secret_saved\"}\n";
+  // Verify transcript reply & card hold no secret value.
+  #assert s[0].turns[0].reply_n == 0;
+  #assert !cp_str_has(ans, "sk_live_");
+
+  // 2. Denied secret request emits secret denied by user.
+  cp_permit_take_secret(s, -1, "", 52, "GitHub Token", "GITHUB_TOKEN", "Required to create release");
+  #assert coder_page_permit_open(s) == 1 && coder_page_permit_kind(s) == CP_PERMIT_KIND_SECRET;
+  #assert coder_page_permit_secret_done(s, false) && coder_page_action(s) == CP_ASK_ANSWER;
+  n2 := coder_page_answer_line(s, out[..]);
+  #assert cast(string) out[0..<n2] == "{\"answer\":false,\"ticket\":52,\"why\":\"secret denied by user\"}\n";
+}

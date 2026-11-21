@@ -388,6 +388,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 51: openReviewCommentDialog()
         case 52: termAsked()
         case 53: checkpointAsked()
+        case 54: enterRequestedSecret()
         case 55: walletConnectOrCreate()
         case 56: walletReceiveDialog()
         case 57: walletSendDialog()

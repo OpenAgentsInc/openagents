@@ -74,7 +74,9 @@ cp_act_agent :: (s: [] CoderPage, f: [] UiFrame, i: int, j: int) -> AppActRow {
   task := sheet_single_line(f[0].sheet, cast(string) g.task[0..<g.task_n]);
   tb: [CP_AGENT_TASK + 32] u8; n := el_put(tb[..], 0, CP_LEVEL_NAME[g.level]);
   if task.count > 0 { n = el_put(tb[..], n, " · "); n = el_put(tb[..], n, task); }
-  return AppActRow.{kind = APP_ACT_AGENT, verb = "Ran a subagent", target = sheet_pool(f[0].sheet, cast(string) tb[0..<n]),
+  waiting_permit := g.state == CP_RUNNING && cp_permit_agent_waiting(s, j);
+  verb := ifx waiting_permit then "Waiting for approval" else "Ran a subagent";
+  return AppActRow.{kind = APP_ACT_AGENT, verb = verb, target = sheet_pool(f[0].sheet, cast(string) tb[0..<n]),
                     failed = g.state == CP_FAILED, running = g.state == CP_RUNNING && !g.paused, opens = true};
 }
 // "t7" + ".x" + 12: a part of an activity group, under the group's name ("t7" a message's, "p3.1"
@@ -212,7 +214,7 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   lane := cp_copy_lane_h(); lane_top := 8.0f32 / u; lane_btn := 24.0f32 / u;
   bar := ifx s[0].bar_h > 0 then s[0].bar_h else 80.0f32;   // the composer and its foot
   todos_h := ifx s[0].todos[0].docked then 0.0f32 else s[0].todos[0].tray_h;   // the task list over the composer, when it is not in the right sidebar
-  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h;   // what scrolls runs up to the trays and the bar
+  bottom := h - CP_BOTTOM - bar - s[0].fu[0].tray_h - todos_h - s[0].git[0].tray_h - s[0].permit[0].tray_h;   // what scrolls runs up to the trays and the bar
   top: f32 = 0;
   s[0].view = bottom - top;
   s[0].frame_n += 1; s[0].anim = false;

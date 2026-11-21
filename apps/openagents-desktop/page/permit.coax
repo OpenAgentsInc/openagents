@@ -1,12 +1,30 @@
-// Coder Desktop page (../page.coax): Interactive permission escalation and user-input
-// question card docked over the composer (GitHub #13831). Driven by MWW_PERMIT from
-// agyworker (or any interactive worker) and answered via MWW_ANSWER (mww_answer_option).
+// Coder Desktop page (../page.coax): Interactive permission escalation, user-input question,
+// Plan Mode approval, and Secret/Credential request cards docked over the composer
+// (GitHub #13831, #13873). Driven by MWW_PERMIT (any worker) and gated MWW_ASK (Microcoder &
+// sub-agents when approval mode is active), answered via MWW_ANSWER (mww_answer_option).
 
 CP_PERMIT_OPTS :: 4;
 CP_PERMIT_ID :: 64;
 CP_PERMIT_LABEL :: 96;
 CP_PERMIT_TITLE :: 160;
 CP_PERMIT_CMD :: 256;
+CP_PERMIT_BODY :: 1024;
+CP_PERMIT_AGENT_NAME :: 96;
+CP_PERMIT_QUEUE :: 6;
+CP_PERMIT_BODY_LINES :: 6;
+
+CP_PERMIT_KIND_APPROVAL :: 0;   // command / tool permission escalation (Allow once / Allow for session / Deny)
+CP_PERMIT_KIND_QUESTION :: 1;   // structured user-input question
+CP_PERMIT_KIND_PLAN :: 2;       // Plan Mode approval card (Approve & Implement / Revise / Cancel)
+CP_PERMIT_KIND_SECRET :: 3;     // Secret / Credential request card (Enter Secret… / Deny; never logs/renders secret value)
+
+// Host action asked when user clicks "Enter Secret…" on a CP_PERMIT_KIND_SECRET card.
+CP_ASK_SECRET :: 54;
+
+// Row actions for Plan Mode and Secret cards (CP_PERMIT_OPT = 75, CP_PERMIT_DENY = 76 in state.coax).
+CP_PERMIT_PLAN_APPROVE :: 77;
+CP_PERMIT_PLAN_REVISE :: 78;
+CP_PERMIT_SECRET_ENTER :: 79;
 
 CpPermitOpt :: struct {
   id: [CP_PERMIT_ID] u8; nid: int;
@@ -14,18 +32,47 @@ CpPermitOpt :: struct {
   kind: [32] u8; nkind: int;
 }
 
-CpPermit :: struct {
-  open: bool;
+CpPermitItem :: struct {
+  kind: int;
   question: bool;
   ticket: int;
+  agent_idx: int;                                // -1 parent worker, 0..<CP_AGENTS sub-agent
+  agent_name: [CP_PERMIT_AGENT_NAME] u8; nagent_name: int;
+  title: [CP_PERMIT_TITLE] u8; ntitle: int;
+  cmd: [CP_PERMIT_CMD] u8; ncmd: int;            // command (approval) or secret key name (secret)
+  body: [CP_PERMIT_BODY] u8; nbody: int;         // plan summary/body or secret reason (never secret value)
+  opts: [CP_PERMIT_OPTS] CpPermitOpt; nopts: int;
+}
+
+CpPermitAns :: struct {
+  due: bool;
+  ticket: int;
+  allow: bool;
+  opt: [CP_PERMIT_ID] u8; opt_n: int;
+  why: [CP_PERMIT_LABEL] u8; why_n: int;
+}
+
+CpPermit :: struct {
+  open: bool;
+  kind: int;
+  question: bool;
+  ticket: int;
+  agent_idx: int;                                // -1 parent worker, 0..<CP_AGENTS sub-agent
+  agent_name: [CP_PERMIT_AGENT_NAME] u8; nagent_name: int;
   title: [CP_PERMIT_TITLE] u8; ntitle: int;
   cmd: [CP_PERMIT_CMD] u8; ncmd: int;
+  body: [CP_PERMIT_BODY] u8; nbody: int;
   opts: [CP_PERMIT_OPTS] CpPermitOpt; nopts: int;
   tray_h: f32;
+  approval_mode: bool;                           // route Microcoder gated MWW_ASK & sub-agent asks through permit card
+  session_allow: bool;                           // user chose "Allow for session" for gated commands
   answer_due: bool;
   answer_ticket: int;
   answer_allow: bool;
   answer_opt: [CP_PERMIT_ID] u8; answer_opt_n: int;
+  answer_why: [CP_PERMIT_LABEL] u8; answer_why_n: int;
+  agent_ans: [CP_AGENTS] CpPermitAns;            // pending permit answers owed to sub-agent workers
+  queue: [CP_PERMIT_QUEUE] CpPermitItem; qcount: int;
 }
 
 cp_permit_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
@@ -36,18 +83,134 @@ cp_permit_put :: (dst: [] u8, src: string) -> int {
   return n;
 }
 
+// Clear active and queued prompts (e.g. turn ended), preserving approval_mode and session_allow.
 cp_permit_reset :: (s: [] CoderPage) {
   if s.count < 1 { return; }
-  s[0].permit[0] = CpPermit.{};
+  am := s[0].permit[0].approval_mode;
+  sa := s[0].permit[0].session_allow;
+  s[0].permit[0] = CpPermit.{approval_mode = am, session_allow = sa, agent_idx = -1};
 }
 
-cp_permit_take :: (s: [] CoderPage, ticket: int, question: bool, title: string, cmd: string, opts_raw: string) {
+// Reset for a new chat: clears prompts and session_allow, keeping approval_mode.
+cp_permit_new_chat :: (s: [] CoderPage) {
+  if s.count < 1 { return; }
+  am := s[0].permit[0].approval_mode;
+  s[0].permit[0] = CpPermit.{approval_mode = am, agent_idx = -1};
+}
+
+// True when Microcoder/sub-agent gated MWW_ASK commands should prompt interactively via permit.coax.
+cp_permit_should_gate :: (s: [] CoderPage) -> bool {
+  if s.count < 1 { return false; }
+  return (s[0].permit[0].approval_mode || s[0].set_agy_mode != 0) && !s[0].permit[0].session_allow;
+}
+
+// Total pending prompts (active card + queued items).
+cp_permit_pending_count :: (s: [] CoderPage) -> int {
+  if s.count < 1 { return 0; }
+  return (ifx s[0].permit[0].open then 1 else 0) + s[0].permit[0].qcount;
+}
+
+// True when sub-agent j currently has an active or queued approval waiting on the user.
+cp_permit_agent_waiting :: (s: [] CoderPage, j: int) -> bool {
+  if s.count < 1 || j < 0 { return false; }
+  p := s[0].permit[..];
+  if p[0].open && p[0].agent_idx == j { return true; }
+  for k: 0..<p[0].qcount {
+    if p[0].queue[k].agent_idx == j { return true; }
+  }
+  return false;
+}
+
+// Format a sub-agent attribution label: "Sub-agent #1 · Carbon".
+cp_permit_agent_label :: (s: [] CoderPage, i: int, j: int, out: [] u8) -> string {
+  n := el_put(out, 0, "Sub-agent #");
+  n = el_put_i(out, n, j + 1);
+  if i >= 0 && i < s[0].nturns && j >= 0 && j < s[0].turns[i].nagents {
+    lvl := s[0].turns[i].agents[j].level;
+    if lvl >= 0 && lvl < CP_LEVELS {
+      n = el_put(out, n, " · ");
+      n = el_put(out, n, CP_LEVEL_NAME[lvl]);
+    }
+  }
+  return cast(string) out[0..<n];
+}
+
+cp_permit_load_item :: (p: [] CpPermit, entry: CpPermitItem) {
+  p[0].open = true;
+  p[0].kind = entry.kind;
+  p[0].question = entry.question;
+  p[0].ticket = entry.ticket;
+  p[0].agent_idx = entry.agent_idx;
+  p[0].agent_name = entry.agent_name; p[0].nagent_name = entry.nagent_name;
+  p[0].title = entry.title; p[0].ntitle = entry.ntitle;
+  p[0].cmd = entry.cmd; p[0].ncmd = entry.ncmd;
+  p[0].body = entry.body; p[0].nbody = entry.nbody;
+  p[0].nopts = entry.nopts;
+  for k: 0..<entry.nopts { p[0].opts[k] = entry.opts[k]; }
+}
+
+cp_permit_push_item :: (s: [] CoderPage, entry: CpPermitItem) {
   if s.count < 1 { return; }
   p := s[0].permit[..];
-  p[0] = CpPermit.{open = true, question = question, ticket = ticket};
-  p[0].ntitle = cp_permit_put(p[0].title[..], ifx title.count > 0 then title else (ifx question then "Choose an option" else "Approval requested"));
-  p[0].ncmd = cp_permit_put(p[0].cmd[..], cmd);
-  if opts_raw.count > 0 {
+  if !p[0].open {
+    cp_permit_load_item(p, entry);
+    return;
+  }
+  if p[0].qcount < CP_PERMIT_QUEUE {
+    p[0].queue[p[0].qcount] = entry;
+    p[0].qcount += 1;
+  }
+}
+
+cp_permit_record_answer :: (s: [] CoderPage, agent_idx: int, ticket: int, allow: bool, opt: string, why: string) {
+  p := s[0].permit[..];
+  if agent_idx >= 0 && agent_idx < CP_AGENTS {
+    a := p[0].agent_ans[agent_idx..<agent_idx + 1];
+    a[0].due = true;
+    a[0].ticket = ticket;
+    a[0].allow = allow;
+    a[0].opt_n = ifx allow then cp_permit_put(a[0].opt[..], opt) else 0;
+    a[0].why_n = ifx !allow then cp_permit_put(a[0].why[..], why) else 0;
+  } else {
+    p[0].answer_due = true;
+    p[0].answer_ticket = ticket;
+    p[0].answer_allow = allow;
+    p[0].answer_opt_n = ifx allow then cp_permit_put(p[0].answer_opt[..], opt) else 0;
+    p[0].answer_why_n = ifx !allow then cp_permit_put(p[0].answer_why[..], why) else 0;
+  }
+  s[0].ask = CP_ASK_ANSWER;
+}
+
+cp_permit_pop_next :: (s: [] CoderPage) {
+  p := s[0].permit[..];
+  while p[0].qcount > 0 {
+    next := p[0].queue[0];
+    for k: 1..<p[0].qcount { p[0].queue[k - 1] = p[0].queue[k]; }
+    p[0].qcount -= 1;
+    // If the user just clicked "Allow for session", auto-approve any queued gated approval items.
+    if next.kind == CP_PERMIT_KIND_APPROVAL && p[0].session_allow {
+      cp_permit_record_answer(s, next.agent_idx, next.ticket, true, "allow_session", "");
+      continue;
+    }
+    cp_permit_load_item(p, next);
+    return;
+  }
+  p[0].open = false;
+  p[0].tray_h = 0.0f32;
+}
+
+cp_permit_make_item :: (s: [] CoderPage, kind: int, agent_idx: int, agent_name: string, ticket: int, title: string, cmd: string, body: string, opts_raw: string) -> CpPermitItem {
+  question := kind == CP_PERMIT_KIND_QUESTION;
+  entry := CpPermitItem.{kind = kind, question = question, ticket = ticket, agent_idx = agent_idx};
+  entry.nagent_name = cp_permit_put(entry.agent_name[..], agent_name);
+  def_title := ifx kind == CP_PERMIT_KIND_PLAN then "Proposed Plan"
+               else ifx kind == CP_PERMIT_KIND_SECRET then "Secret requested"
+               else ifx question then "Choose an option"
+               else "Approval requested";
+  entry.ntitle = cp_permit_put(entry.title[..], ifx title.count > 0 then title else def_title);
+  entry.ncmd = cp_permit_put(entry.cmd[..], cmd);
+  entry.nbody = cp_permit_put(entry.body[..], body);
+  if (kind == CP_PERMIT_KIND_APPROVAL || kind == CP_PERMIT_KIND_QUESTION) && opts_raw.count > 0 {
     ar := [1] ClArena.[ClArena.{buf = s[0].arena[..]}];
     cnt := cl_count(opts_raw);
     k := 0;
@@ -58,41 +221,153 @@ cp_permit_take :: (s: [] CoderPage, ticket: int, question: bool, title: string, 
       obj := opts_raw[item.from..<item.to];
       oid := cl_str(ar[..], obj, "optionId");
       if oid.count == 0 { oid = cl_str(ar[..], obj, "id"); }
-      kind := cl_str(ar[..], obj, "kind");
+      okind := cl_str(ar[..], obj, "kind");
       // For approvals, Deny has its own dedicated button so skip reject_* in the allow strip.
-      if !question && (kind == "reject_once" || kind == "reject_always") { continue; }
+      if !question && (okind == "reject_once" || okind == "reject_always") { continue; }
       lbl := cl_str(ar[..], obj, "name");
       if lbl.count == 0 { lbl = cl_str(ar[..], obj, "label"); }
-      if lbl.count == 0 { lbl = ifx kind == "allow_always" then "Allow for thread" else ifx kind == "allow_once" then "Allow once" else oid; }
+      if lbl.count == 0 { lbl = ifx okind == "allow_always" then "Allow for thread" else ifx okind == "allow_once" then "Allow once" else oid; }
       if oid.count == 0 { continue; }
-      p[0].opts[k].nid = cp_permit_put(p[0].opts[k].id[..], oid);
-      p[0].opts[k].nlabel = cp_permit_put(p[0].opts[k].label[..], lbl);
-      p[0].opts[k].nkind = cp_permit_put(p[0].opts[k].kind[..], kind);
+      entry.opts[k].nid = cp_permit_put(entry.opts[k].id[..], oid);
+      entry.opts[k].nlabel = cp_permit_put(entry.opts[k].label[..], lbl);
+      entry.opts[k].nkind = cp_permit_put(entry.opts[k].kind[..], okind);
       k += 1;
     }
-    p[0].nopts = k;
+    entry.nopts = k;
   }
-  if !question && p[0].nopts == 0 {
-    p[0].opts[0].nid = cp_permit_put(p[0].opts[0].id[..], "allow_once");
-    p[0].opts[0].nlabel = cp_permit_put(p[0].opts[0].label[..], "Allow");
-    p[0].opts[0].nkind = cp_permit_put(p[0].opts[0].kind[..], "allow_once");
-    p[0].nopts = 1;
+  if kind == CP_PERMIT_KIND_APPROVAL && entry.nopts == 0 {
+    entry.opts[0].nid = cp_permit_put(entry.opts[0].id[..], "allow_once");
+    entry.opts[0].nlabel = cp_permit_put(entry.opts[0].label[..], "Allow once");
+    entry.opts[0].nkind = cp_permit_put(entry.opts[0].kind[..], "allow_once");
+    entry.opts[1].nid = cp_permit_put(entry.opts[1].id[..], "allow_session");
+    entry.opts[1].nlabel = cp_permit_put(entry.opts[1].label[..], "Allow for session");
+    entry.opts[1].nkind = cp_permit_put(entry.opts[1].kind[..], "allow_always");
+    entry.nopts = 2;
   }
+  return entry;
+}
+
+// Legacy entry point (kept compatible with #13831 callers and checks).
+cp_permit_take :: (s: [] CoderPage, ticket: int, question: bool, title: string, cmd: string, opts_raw: string) {
+  if s.count < 1 { return; }
+  kind := ifx question then CP_PERMIT_KIND_QUESTION else CP_PERMIT_KIND_APPROVAL;
+  entry := cp_permit_make_item(s, kind, -1, "", ticket, title, cmd, "", opts_raw);
+  cp_permit_push_item(s, entry);
+}
+
+// Parse an MWW_PERMIT line from either the parent worker (agent_idx = -1) or a sub-agent (agent_idx >= 0).
+// Supports standard approvals, questions, Plan Mode ("card":"plan" / "plan":true),
+// Secret requests ("card":"secret" / "secret":true), and sub-agent attribution ("agent_name").
+cp_permit_take_line :: (s: [] CoderPage, agent_idx: int, default_agent_name: string, l: MwwLine, raw_line: string) {
+  if s.count < 1 { return; }
+  ab: [4096] u8; ar := [1] ClArena.[ClArena.{buf = ab[..]}];
+  card := cl_str(ar[..], raw_line, "card");
+  if card.count == 0 { card = cl_str(ar[..], raw_line, "mode"); }
+  is_plan := card == "plan" || (cl_bool(raw_line, "plan").ok && cl_bool(raw_line, "plan").value);
+  is_secret := card == "secret" || (cl_bool(raw_line, "secret").ok && cl_bool(raw_line, "secret").value);
+  body := cl_str(ar[..], raw_line, "body");
+  if body.count == 0 { body = cl_str(ar[..], raw_line, "summary"); }
+  if body.count == 0 { body = cl_str(ar[..], raw_line, "reason"); }
+  aname := cl_str(ar[..], raw_line, "agent_name");
+  if aname.count == 0 { aname = default_agent_name; }
+  sname := cl_str(ar[..], raw_line, "secret_name");
+  if sname.count == 0 { sname = cl_str(ar[..], raw_line, "env"); }
+  if sname.count == 0 { sname = l.command; }
+  kind := ifx is_plan then CP_PERMIT_KIND_PLAN
+          else ifx is_secret then CP_PERMIT_KIND_SECRET
+          else ifx l.question.ok && l.question.value then CP_PERMIT_KIND_QUESTION
+          else CP_PERMIT_KIND_APPROVAL;
+  cmd := ifx kind == CP_PERMIT_KIND_SECRET then sname else l.command;
+  entry := cp_permit_make_item(s, kind, agent_idx, aname, l.ticket.value, l.title, cmd, body, l.options);
+  cp_permit_push_item(s, entry);
+}
+
+// Route a gated Microcoder or sub-agent MWW_ASK command through the interactive approval card.
+cp_permit_take_gated :: (s: [] CoderPage, agent_idx: int, agent_name: string, ticket: int, cmd: string) {
+  if s.count < 1 { return; }
+  title := ifx agent_idx >= 0 then "Sub-agent approval requested" else "Approve command";
+  entry := cp_permit_make_item(s, CP_PERMIT_KIND_APPROVAL, agent_idx, agent_name, ticket, title, cmd, "", "");
+  cp_permit_push_item(s, entry);
+}
+
+// Open a structured Plan Mode approval card directly.
+cp_permit_take_plan :: (s: [] CoderPage, agent_idx: int, agent_name: string, ticket: int, title: string, body: string) {
+  if s.count < 1 { return; }
+  entry := cp_permit_make_item(s, CP_PERMIT_KIND_PLAN, agent_idx, agent_name, ticket, title, "", body, "");
+  cp_permit_push_item(s, entry);
+}
+
+// Open an interactive Secret / Credential request card directly (secret_name is only the identifier, never the value).
+cp_permit_take_secret :: (s: [] CoderPage, agent_idx: int, agent_name: string, ticket: int, title: string, secret_name: string, reason: string) {
+  if s.count < 1 { return; }
+  entry := cp_permit_make_item(s, CP_PERMIT_KIND_SECRET, agent_idx, agent_name, ticket, title, secret_name, reason, "");
+  cp_permit_push_item(s, entry);
 }
 
 cp_permit_choose :: (s: [] CoderPage, allow: bool, opt_idx: int) -> bool {
   if s.count < 1 || !s[0].permit[0].open { return false; }
   p := s[0].permit[..];
-  p[0].answer_due = true;
-  p[0].answer_ticket = p[0].ticket;
-  p[0].answer_allow = allow;
-  p[0].answer_opt_n = 0;
+  agent_idx := p[0].agent_idx;
+  ticket := p[0].ticket;
+  kind := p[0].kind;
+  opt_buf: [CP_PERMIT_ID] u8; opt_n := 0;
   if allow && opt_idx >= 0 && opt_idx < p[0].nopts {
-    p[0].answer_opt_n = cp_permit_put(p[0].answer_opt[..], cp_permit_str(p[0].opts[opt_idx].id[..], p[0].opts[opt_idx].nid));
+    oid := cp_permit_str(p[0].opts[opt_idx].id[..], p[0].opts[opt_idx].nid);
+    okind := cp_permit_str(p[0].opts[opt_idx].kind[..], p[0].opts[opt_idx].nkind);
+    opt_n = cp_permit_put(opt_buf[..], oid);
+    if kind == CP_PERMIT_KIND_APPROVAL && (oid == "allow_session" || okind == "allow_always") {
+      p[0].session_allow = true;
+    }
   }
-  p[0].open = false;
-  p[0].tray_h = 0.0f32;
-  s[0].ask = CP_ASK_ANSWER;
+  why := ifx allow then ""
+         else ifx kind == CP_PERMIT_KIND_PLAN then "plan cancelled"
+         else ifx kind == CP_PERMIT_KIND_SECRET then "secret denied by user"
+         else "denied by user";
+  cp_permit_record_answer(s, agent_idx, ticket, allow, cast(string) opt_buf[0..<opt_n], why);
+  cp_permit_pop_next(s);
+  return true;
+}
+
+// Handle Plan Mode Approve & Implement or Revise actions.
+cp_permit_plan_action :: (s: [] CoderPage, act: int) -> bool {
+  if s.count < 1 || !s[0].permit[0].open || s[0].permit[0].kind != CP_PERMIT_KIND_PLAN { return false; }
+  p := s[0].permit[..];
+  agent_idx := p[0].agent_idx;
+  ticket := p[0].ticket;
+  if act == CP_PERMIT_PLAN_APPROVE {
+    cp_permit_record_answer(s, agent_idx, ticket, true, "approve_plan", "");
+    cp_permit_pop_next(s);
+    return true;
+  }
+  if act == CP_PERMIT_PLAN_REVISE {
+    cp_ed_focus(s, CP_KB_COMPOSER);
+    cp_permit_record_answer(s, agent_idx, ticket, false, "", "revise plan");
+    cp_permit_pop_next(s);
+    return true;
+  }
+  return false;
+}
+
+// User clicked "Enter Secret…": ask the native host to show a masked secure input dialog.
+cp_permit_secret_enter :: (s: [] CoderPage) -> bool {
+  if s.count < 1 || !s[0].permit[0].open || s[0].permit[0].kind != CP_PERMIT_KIND_SECRET { return false; }
+  s[0].ask = CP_ASK_SECRET;
+  return true;
+}
+
+// Host finished the masked secret dialog (saved to 0600 file / Keychain) and notifies the page.
+// The secret value never enters CoderPage or the transcript.
+cp_permit_secret_done :: (s: [] CoderPage, saved: bool) -> bool {
+  if s.count < 1 || !s[0].permit[0].open || s[0].permit[0].kind != CP_PERMIT_KIND_SECRET { return false; }
+  p := s[0].permit[..];
+  agent_idx := p[0].agent_idx;
+  ticket := p[0].ticket;
+  if saved {
+    cp_permit_record_answer(s, agent_idx, ticket, true, "secret_saved", "");
+  } else {
+    cp_permit_record_answer(s, agent_idx, ticket, false, "", "secret denied by user");
+  }
+  cp_permit_pop_next(s);
   return true;
 }
 
@@ -101,7 +376,46 @@ cp_permit_answer_line :: (s: [] CoderPage, out: [] u8) -> int {
   p := s[0].permit[..];
   p[0].answer_due = false;
   opt := cp_permit_str(p[0].answer_opt[..], p[0].answer_opt_n);
-  return mww_answer_option(out, p[0].answer_allow, p[0].answer_ticket, opt, ifx p[0].answer_allow then "" else "denied by user");
+  why := ifx p[0].answer_why_n > 0 then cp_permit_str(p[0].answer_why[..], p[0].answer_why_n) else "denied by user";
+  return mww_answer_option(out, p[0].answer_allow, p[0].answer_ticket, opt, ifx p[0].answer_allow then "" else why);
+}
+
+cp_permit_agent_answer_line :: (s: [] CoderPage, j: int, out: [] u8) -> int {
+  if s.count < 1 || j < 0 || j >= CP_AGENTS || !s[0].permit[0].agent_ans[j].due { return 0; }
+  a := s[0].permit[0].agent_ans[j..<j + 1];
+  a[0].due = false;
+  opt := cp_permit_str(a[0].opt[..], a[0].opt_n);
+  why := ifx a[0].why_n > 0 then cp_permit_str(a[0].why[..], a[0].why_n) else "denied by user";
+  return mww_answer_option(out, a[0].allow, a[0].ticket, opt, ifx a[0].allow then "" else why);
+}
+
+// Count lines in body (up to CP_PERMIT_BODY_LINES).
+cp_permit_body_lines :: (body: string) -> int {
+  if body.count == 0 { return 0; }
+  n := 1;
+  for c: body {
+    if c == 10 {
+      n += 1;
+      if n >= CP_PERMIT_BODY_LINES { return CP_PERMIT_BODY_LINES; }
+    }
+  }
+  return n;
+}
+
+// Helper to draw a permit card button and return its width + gap.
+cp_permit_btn :: (f: [] UiFrame, id: string, label: string, bx: f32, by: f32, max_x: f32, btn_h: f32, primary: bool, act: int) -> f32 {
+  k := f[0].skin; sh := f[0].sheet; th := cp_theme();
+  bw := measure_width(f[0].m, k.label.face, label) + 20.0f32;
+  if bw < 64.0f32 { bw = 64.0f32; }
+  if bx + bw > max_x { return 0.0f32; }
+  row := uiframe_semantic(f, id, EL_BUTTON, label, bx, by, bw, btn_h, 0, act);
+  hov := uiframe_hovered(f, id);
+  fill := ifx primary then (ifx hov then rgba_mix(th.text, th.hover, 0.2) else th.text) else (ifx hov then th.hover else th.surface);
+  fg := ifx primary then th.bg else th.text;
+  _ = sheet_box(sh, bx, by, bw, btn_h, 6.0f32, 1.0f32, fill, th.line);
+  _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, fg, label);
+  sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, bw, btn_h);
+  return bw + 8.0f32;
 }
 
 cp_permit_card :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f32) -> f32 {
@@ -113,53 +427,127 @@ cp_permit_card :: (s: [] CoderPage, f: [] UiFrame, x: f32, bottom_y: f32, cw: f3
   k := f[0].skin; sh := f[0].sheet; th := cp_theme();
   pad := cast(f32) CP_CARD_PAD;
   btn_h := 28.0f32;
+  pending := cp_permit_pending_count(s);
+  has_badge := p[0].nagent_name > 0 || p[0].kind == CP_PERMIT_KIND_PLAN || p[0].kind == CP_PERMIT_KIND_SECRET || pending > 1;
   has_cmd := p[0].ncmd > 0;
-  h := pad * 2 + k.label.line + (ifx has_cmd then k.small.line + 4.0f32 else 0.0f32) + 8.0f32 + btn_h;
+  body_str := cp_permit_str(p[0].body[..], p[0].nbody);
+  blines := cp_permit_body_lines(body_str);
+  h := pad * 2 + k.label.line + 8.0f32 + btn_h;
+  if has_badge { h += k.small.line + 4.0f32; }
+  if has_cmd { h += k.small.line + 4.0f32; }
+  if blines > 0 { h += cast(f32) blines * (k.small.line + 2.0f32) + 4.0f32; }
   y := bottom_y - h;
   p[0].tray_h = h + k.app.gap_small;
   _ = sheet_box(sh, x, y, cw, h, 10.0f32, 1.0f32, th.menu, th.line);
   title := cp_permit_str(p[0].title[..], p[0].ntitle);
   _ := uiframe_semantic(f, "coder.permit.card", EL_REGION, title, x, y, cw, h, 0, 0);
-  _ := sheet_text(sh, f[0].m, -1, x + pad, y + pad, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, title, cw - 2 * pad));
-  by := y + pad + k.label.line + 8.0f32;
+  cy := y + pad;
+  if has_badge {
+    bb: [192] u8; bn := 0;
+    kind_lbl := ifx p[0].kind == CP_PERMIT_KIND_PLAN then "Plan Mode"
+                else ifx p[0].kind == CP_PERMIT_KIND_SECRET then "Secret Request"
+                else ifx p[0].kind == CP_PERMIT_KIND_QUESTION then "Question"
+                else "Approval";
+    bn = el_put(bb[..], bn, kind_lbl);
+    if p[0].nagent_name > 0 {
+      bn = el_put(bb[..], bn, " · ");
+      bn = el_put(bb[..], bn, cp_permit_str(p[0].agent_name[..], p[0].nagent_name));
+    }
+    if pending > 1 {
+      bn = el_put(bb[..], bn, " · ");
+      bn = el_put_i(bb[..], bn, pending);
+      bn = el_put(bb[..], bn, " pending");
+    }
+    badge := sheet_pool(sh, cast(string) bb[0..<bn]);
+    _ := uiframe_semantic(f, "coder.permit.badge", EL_TEXT, badge, x + pad, cy, cw - 2 * pad, k.small.line, 0, 0);
+    _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, badge, cw - 2 * pad));
+    cy += k.small.line + 4.0f32;
+  }
+  _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.label.line, k.label.face, th.text, app_fit(f, k.label.face, title, cw - 2 * pad));
+  cy += k.label.line + 4.0f32;
   if has_cmd {
-    cmd := cp_permit_str(p[0].cmd[..], p[0].ncmd);
-    _ := sheet_text(sh, f[0].m, -1, x + pad, y + pad + k.label.line + 2.0f32, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, cmd, cw - 2 * pad));
-    by += k.small.line + 4.0f32;
+    cb: [CP_PERMIT_CMD + 16] u8; cn := 0;
+    if p[0].kind == CP_PERMIT_KIND_SECRET { cn = el_put(cb[..], cn, "Key: "); }
+    cn = el_put(cb[..], cn, cp_permit_str(p[0].cmd[..], p[0].ncmd));
+    cmd_disp := sheet_pool(sh, cast(string) cb[0..<cn]);
+    _ := uiframe_semantic(f, "coder.permit.cmd", EL_TEXT, cmd_disp, x + pad, cy, cw - 2 * pad, k.small.line, 0, 0);
+    _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, cmd_disp, cw - 2 * pad));
+    cy += k.small.line + 4.0f32;
   }
+  if blines > 0 {
+    body_y0 := cy;
+    at := 0;
+    drawn := 0;
+    while at < body_str.count && drawn < CP_PERMIT_BODY_LINES {
+      end := at;
+      while end < body_str.count && body_str[end] != 10 { end += 1; }
+      line := cast(string) body_str[at..<end];
+      _ := sheet_text(sh, f[0].m, -1, x + pad, cy, k.small.line, k.small.face, th.muted, app_fit(f, k.small.face, line, cw - 2 * pad));
+      cy += k.small.line + 2.0f32;
+      drawn += 1;
+      at = ifx end < body_str.count then end + 1 else end;
+    }
+    _ := uiframe_semantic(f, "coder.permit.body", EL_TEXT, sheet_pool(sh, body_str), x + pad, body_y0, cw - 2 * pad, cy - body_y0, 0, 0);
+    cy += 4.0f32;
+  }
+  by := cy + 4.0f32;
   bx := x + pad;
-  ib: [32] u8;
-  for i: 0..<p[0].nopts {
-    lbl := cp_permit_str(p[0].opts[i].label[..], p[0].opts[i].nlabel);
-    bw := measure_width(f[0].m, k.label.face, lbl) + 20.0f32;
-    if bw < 64.0f32 { bw = 64.0f32; }
-    if bx + bw > x + cw - pad { break; }
-    in_n := el_put(ib[..], 0, "coder.permit.opt."); in_n = el_put_i(ib[..], in_n, i);
-    id := sheet_pool(sh, cast(string) ib[0..<in_n]);
-    row := uiframe_semantic(f, id, EL_BUTTON, lbl, bx, by, bw, btn_h, 0, CP_PERMIT_OPT);
-    hov := uiframe_hovered(f, id);
-    fill := ifx i == 0 then (ifx hov then rgba_mix(th.text, th.hover, 0.2) else th.text) else (ifx hov then th.hover else th.surface);
-    fg := ifx i == 0 then th.bg else th.text;
-    _ = sheet_box(sh, bx, by, bw, btn_h, 6.0f32, 1.0f32, fill, th.line);
-    _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, fg, lbl);
-    sheet_hit(sh, UIFRAME_HIT, row, 0, bx, by, bw, btn_h);
-    bx += bw + 8.0f32;
-  }
-  if !p[0].question {
-    dlbl := "Deny";
-    dw := measure_width(f[0].m, k.label.face, dlbl) + 20.0f32;
-    if dw < 64.0f32 { dw = 64.0f32; }
-    if bx + dw <= x + cw - pad {
-      drow := uiframe_semantic(f, "coder.permit.deny", EL_BUTTON, dlbl, bx, by, dw, btn_h, 0, CP_PERMIT_DENY);
-      dhov := uiframe_hovered(f, "coder.permit.deny");
-      _ = sheet_box(sh, bx, by, dw, btn_h, 6.0f32, 1.0f32, ifx dhov then th.hover else th.surface, th.line);
-      _ := sheet_text(sh, f[0].m, -1, bx + 10.0f32, by + (btn_h - k.label.line) / 2, k.label.line, k.label.face, th.text, dlbl);
-      sheet_hit(sh, UIFRAME_HIT, drow, 0, bx, by, dw, btn_h);
+  max_x := x + cw - pad;
+  if p[0].kind == CP_PERMIT_KIND_PLAN {
+    bx += cp_permit_btn(f, "coder.permit.plan.approve", "Approve & Implement", bx, by, max_x, btn_h, true, CP_PERMIT_PLAN_APPROVE);
+    bx += cp_permit_btn(f, "coder.permit.plan.revise", "Revise", bx, by, max_x, btn_h, false, CP_PERMIT_PLAN_REVISE);
+    _ = cp_permit_btn(f, "coder.permit.deny", "Cancel", bx, by, max_x, btn_h, false, CP_PERMIT_DENY);
+  } else if p[0].kind == CP_PERMIT_KIND_SECRET {
+    bx += cp_permit_btn(f, "coder.permit.secret.enter", "Enter Secret…", bx, by, max_x, btn_h, true, CP_PERMIT_SECRET_ENTER);
+    _ = cp_permit_btn(f, "coder.permit.deny", "Deny", bx, by, max_x, btn_h, false, CP_PERMIT_DENY);
+  } else {
+    ib: [32] u8;
+    for i: 0..<p[0].nopts {
+      lbl := cp_permit_str(p[0].opts[i].label[..], p[0].opts[i].nlabel);
+      in_n := el_put(ib[..], 0, "coder.permit.opt."); in_n = el_put_i(ib[..], in_n, i);
+      id := sheet_pool(sh, cast(string) ib[0..<in_n]);
+      step := cp_permit_btn(f, id, lbl, bx, by, max_x, btn_h, i == 0, CP_PERMIT_OPT);
+      if step <= 0.0f32 { break; }
+      bx += step;
+    }
+    if p[0].kind != CP_PERMIT_KIND_QUESTION {
+      _ = cp_permit_btn(f, "coder.permit.deny", "Deny", bx, by, max_x, btn_h, false, CP_PERMIT_DENY);
     }
   }
   return p[0].tray_h;
 }
 
+// ---- C exports for host integration
+
 coder_page_permit_open :: (s: [] CoderPage) -> int #export_c #effects(all) {
   return ifx s.count > 0 && s[0].permit[0].open then 1 else 0;
+}
+coder_page_permit_kind :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 && s[0].permit[0].open then s[0].permit[0].kind else -1;
+}
+coder_page_permit_pending :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return cp_permit_pending_count(s);
+}
+coder_page_permit_approval_mode_set :: (s: [] CoderPage, on: bool) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  s[0].permit[0].approval_mode = on;
+  if !on { s[0].permit[0].session_allow = false; }
+}
+coder_page_permit_approval_mode :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].permit[0].approval_mode;
+}
+coder_page_permit_secret_name :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  return cp_out(out, cp_permit_str(s[0].permit[0].cmd[..], s[0].permit[0].ncmd));
+}
+coder_page_permit_title :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  return cp_out(out, cp_permit_str(s[0].permit[0].title[..], s[0].permit[0].ntitle));
+}
+coder_page_permit_body :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 || !s[0].permit[0].open { return 0; }
+  return cp_out(out, cp_permit_str(s[0].permit[0].body[..], s[0].permit[0].nbody));
+}
+coder_page_permit_secret_done :: (s: [] CoderPage, saved: bool) -> bool #export_c #effects(all) {
+  return cp_permit_secret_done(s, saved);
 }
