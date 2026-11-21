@@ -1533,7 +1533,7 @@ frame_view :: (s: [] LandState, l: Layout, t: f32, step: f32, still: bool, width
   s[0].clip = l.scene;
   s[0].cx = width * 0.5; s[0].cy = height * 0.5;
   s[0].base = 22.5;
-  if !l.phone { s[0].cx = width * 0.46; s[0].cy = height * 0.56; s[0].base = clamp(40 * 1440 / (width / d), 36, 50); }
+  if !l.phone { s[0].cx = width * 0.55; s[0].cy = height * 0.54; s[0].base = clamp(40 * 1440 / (width / d), 36, 50); }
   look := centre(s, -1);
   if l.phone {
     sway := ifx still then 0.0f32 else ease(0.5 - 0.5 * cos(t * 0.07));

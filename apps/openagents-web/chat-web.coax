@@ -265,6 +265,7 @@ ChatWeb :: struct {
   set: [1] SettingsWeb;              // Settings: the section shown, its search, and what it has read
   here: int;                         // the side alone on a place's page (SS_SIDE): the place it lights (ss_side_place), else -2
   side_closed: bool;                 // the side is put away (kept in this browser)
+  mob_side_open: bool;               // mobile overlay drawer open (<= 760px; #13929)
   me: [SS_WHO] u8; me_n: int; me_asked: bool;   // who is logged in, as the side's foot names them
   worlds: [SS_WORLDS_MAX] SsWorld; worlds_n: int; worlds_asked: bool;   // the worlds they may edit, under Worlds
   projects: [SS_WORLDS_MAX] SsWorld; projects_n: int; projects_asked: bool;   // the projects they are in, under Projects
@@ -386,8 +387,18 @@ cw_claude_row :: (s: [] ChatWeb, k: int) {
 cw_side :: (s: [] ChatWeb) {
   t := s[0].tree[..]; u := s[0].ui[..];
   if s[0].page == SS_FOOT { return; }   // in a page that draws the side itself
-  if s[0].side_closed { o := k_side_open(t, "side.show", "Show the side"); return; }
+  // Mobile top bar (hidden > 760px by mono.coax): keeps sidebar toggle & Log in reachable on narrow viewports (#13929).
+  mt := tr_open(t, "mob.top", TG_DIV, "mob-top");
+  _ = k_icon_button(t, "side.mob", IC_SIDEBAR, "Show the side");
+  if s[0].me_n == 0 {
+    _ = k_place(t, u, "mob.who", IC_ENTER_LOGIN, "Log in", "/login", false);
+  } else {
+    _ = k_place(t, u, "mob.who", IC_AVATAR_PROFILE, cast(string) s[0].me[0..<s[0].me_n], "/settings", false);
+  }
+  tr_close(t);
+  if s[0].side_closed && !s[0].mob_side_open { o := k_side_open(t, "side.show", "Show the side"); return; }
   side := k_side(t, "side", "Places");
+  if s[0].mob_side_open { tr_attr(t, side, AT_STATE, "open"); }
   hd := k_side_head(t, "side.h", "OpenAgents", "/");
   hide := k_icon_button(t, "side.hide", IC_SIDEBAR, "Hide the side");
   tr_close(t);
@@ -1688,7 +1699,11 @@ coaxial_chatweb_event :: (s: [] ChatWeb, kind: int, slot: int, length: int) #exp
     if s[0].me_n == 0 { return; }
     cw_new_chat(s); s[0].page = SS_HOME; cw_go_to(s, "/", true); dm_focus(s[0].dom[..], "composer");
   }
-  else if kind == CW_CLICK && (id == "side.hide" || id == "side.show") { s[0].side_closed = id == "side.hide"; cw_keep(s); }
+  else if kind == CW_CLICK && id == "side.mob" { s[0].mob_side_open = !s[0].mob_side_open; }
+  else if kind == CW_CLICK && (id == "side.hide" || id == "side.show") {
+    if id == "side.hide" && s[0].mob_side_open { s[0].mob_side_open = false; }
+    else { s[0].side_closed = id == "side.hide"; cw_keep(s); }
+  }
   else if kind == CW_CLICK && id == "who.out" { s[0].out_due = true; }
   else if kind == CW_CLICK && cw_number(id, "s.") >= 0 {
     k := cw_number(id, "s.");
