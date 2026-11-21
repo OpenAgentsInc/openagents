@@ -605,4 +605,27 @@ int cd_side_chat_add_turn(void *page, const char *ask, const char *reply);
 void cd_side_chat_close(void *page);
 int cd_side_chat_is_open(void *page);
 int cd_side_chat_id(void *page, char *out, int cap);
+// Scheduled tasks, HMAC-SHA256 webhooks & "Update Everything" coordinator (page/scheduled.coax; #13885).
+int cd_sched_load_json(void *page, const char *json);
+int cd_sched_save_json(void *page, char *out, int cap);
+int cd_sched_count(void *page);
+int cd_sched_target(void *page);
+int cd_sched_add(void *page, const char *id, const char *name, const char *cron, const char *folder, const char *prompt, int enabled);
+int cd_sched_toggle(void *page, int idx);
+int cd_sched_remove(void *page, int idx);
+int cd_sched_mark_run(void *page, int idx, int64_t now_ms, const char *chat_id);
+int cd_sched_get_id(void *page, int idx, char *out, int cap);
+int cd_sched_get_name(void *page, int idx, char *out, int cap);
+int cd_sched_get_cron(void *page, int idx, char *out, int cap);
+int cd_sched_get_folder(void *page, int idx, char *out, int cap);
+int cd_sched_get_prompt(void *page, int idx, char *out, int cap);
+int cd_sched_is_enabled(void *page, int idx);
+int cd_sched_cron_valid(const char *expr);
+int cd_sched_cron_matches(const char *expr, int minute, int hour, int dom, int month, int dow);
+int cd_sched_due(void *page, int64_t now_ms, int minute, int hour, int dom, int month, int dow, int *out_indices, int cap);
+void cd_sched_webhook_set(void *page, int enabled, const char *status);
+int cd_sched_webhook_admit(void *page, const char *secret, const char *delivery_id, const char *body, const char *sig_hex);
+void cd_upd_all_set(void *page, int target, const char *current, const char *latest, int available, int leases, int atomic_switch, const char *status);
+int cd_upd_all_decision(void *page, int target);
+void cd_upd_all_busy_set(void *page, int busy);
 #endif

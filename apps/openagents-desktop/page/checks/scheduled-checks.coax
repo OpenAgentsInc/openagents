@@ -1,0 +1,187 @@
+// Checks for page/scheduled.coax: 5-field cron matching, task JSON round-trip,
+// HMAC-SHA256 webhook verification & 64-delivery replay dedup, "Update Everything"
+// active-session lease guard, and Settings -> Scheduled Tasks / About rows (#13885).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+#test "scheduled: 5-field cron validation and matching (*, */N, A-B, comma lists)" {
+  #assert cp_cron_valid("* * * * *");
+  #assert cp_cron_valid("*/15 9-17 * * 1-5");
+  #assert cp_cron_valid("0,30 8,12,18 1-15 */2 0,6");
+  #assert !cp_cron_valid("");
+  #assert !cp_cron_valid("* * * *");
+  #assert !cp_cron_valid("* * * * * *");
+  #assert !cp_cron_valid("60 * * * *");
+  #assert !cp_cron_valid("* 24 * * *");
+  #assert !cp_cron_valid("* * 0 * *");
+  #assert !cp_cron_valid("* * * 13 *");
+  #assert !cp_cron_valid("*/0 * * * *");
+  #assert !cp_cron_valid("10-5 * * * *");
+
+  // Every 15 min, 09:00-17:59, Mon-Fri
+  #assert cp_cron_matches("*/15 9-17 * * 1-5", 0, 9, 10, 6, 1);
+  #assert cp_cron_matches("*/15 9-17 * * 1-5", 45, 17, 10, 6, 5);
+  #assert !cp_cron_matches("*/15 9-17 * * 1-5", 10, 9, 10, 6, 1);
+  #assert !cp_cron_matches("*/15 9-17 * * 1-5", 0, 18, 10, 6, 1);
+  #assert !cp_cron_matches("*/15 9-17 * * 1-5", 0, 9, 10, 6, 0);
+
+  // Comma lists & ranges
+  #assert cp_cron_matches("5,20,35 8,20 1-10 1,11 *", 20, 20, 5, 11, 3);
+  #assert !cp_cron_matches("5,20,35 8,20 1-10 1,11 *", 21, 20, 5, 11, 3);
+  #assert !cp_cron_matches("5,20,35 8,20 1-10 1,11 *", 20, 20, 11, 11, 3);
+}
+
+#test "scheduled: task store CRUD, JSON round-trip, minute dedup, and 32-task cap" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  #assert coder_page_sched_count(s) == 0;
+  // Invalid cron rejected
+  #assert coder_page_sched_add(s, "bad", "Bad", "99 * * * *", "/tmp", "hi", true) == -1;
+  #assert coder_page_sched_count(s) == 0;
+
+  i0 := coder_page_sched_add(s, "t-nightly", "Nightly Audit", "0 9 * * 1-5", "/Users/dev/app", "Run \"smoke\" tests", true);
+  i1 := coder_page_sched_add(s, "t-hourly", "Hourly Ping", "*/30 * * * *", "/Users/dev/app", "Check status", false);
+  #assert i0 == 0 && i1 == 1 && coder_page_sched_count(s) == 2;
+  #assert coder_page_sched_is_enabled(s, 0) && !coder_page_sched_is_enabled(s, 1);
+
+  // Due check: only enabled matching task fires, and marking run prevents duplicate in same minute
+  due: [8] int;
+  now_ms := 1795165200000;   // epoch minute 29919420
+  #assert coder_page_sched_due(s, now_ms, 0, 9, 21, 11, 5, due[..]) == 1 && due[0] == 0;
+  #assert coder_page_sched_mark_run(s, 0, now_ms, "chat-abc-123");
+  #assert coder_page_sched_due(s, now_ms + 30000, 0, 9, 21, 11, 5, due[..]) == 0;
+  #assert coder_page_sched_due(s, now_ms + 60000, 0, 9, 21, 11, 5, due[..]) == 1;
+
+  // JSON serialize -> reload into a fresh page
+  buf: [8192] u8;
+  n := coder_page_sched_save_json(s, buf[..]);
+  #assert n > 20;
+
+  p2: [1] CoderPage; p2_st: [1] CpCheckLean; s2 := cp_check_lean(p2[..], p2_st[..]);
+  cp_init(s2);
+  loaded := coder_page_sched_load_json(s2, cast(string) buf[0..<n]);
+  #assert loaded == 2 && coder_page_sched_count(s2) == 2;
+
+  nb: [128] u8;
+  nn := coder_page_sched_get_name(s2, 0, nb[..]);
+  #assert cast(string) nb[0..<nn] == "Nightly Audit";
+  pn := coder_page_sched_get_prompt(s2, 0, nb[..]);
+  #assert cast(string) nb[0..<pn] == "Run \"smoke\" tests";
+  #assert coder_page_sched_is_enabled(s2, 0) && !coder_page_sched_is_enabled(s2, 1);
+  #assert s2[0].sched[0].tasks[0].last_run_ms == now_ms;
+  #assert cast(string) s2[0].sched[0].tasks[0].last_chat_id[0..<s2[0].sched[0].tasks[0].last_chat_id_n] == "chat-abc-123";
+
+  // Toggle and remove
+  #assert coder_page_sched_toggle(s2, 1) && coder_page_sched_is_enabled(s2, 1);
+  #assert coder_page_sched_remove(s2, 0) && coder_page_sched_count(s2) == 1;
+  idn := coder_page_sched_get_id(s2, 0, nb[..]);
+  #assert cast(string) nb[0..<idn] == "t-hourly";
+
+  // 32-task cap
+  for k: 1..<CP_SCHED_MAX {
+    ib: [16] u8; in_n := el_put(ib[..], 0, "cap-"); in_n = el_put_i(ib[..], in_n, k);
+    #assert coder_page_sched_add(s2, cast(string) ib[0..<in_n], "T", "* * * * *", "", "p", true) == k;
+  }
+  #assert coder_page_sched_count(s2) == CP_SCHED_MAX;
+  #assert coder_page_sched_add(s2, "overflow", "Overflow", "* * * * *", "", "p", true) == -1;
+}
+
+#test "scheduled: HMAC-SHA256 webhook verification (sha256= & raw hex) and 64-entry replay dedup" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  // RFC 4231 Case 2: key="Jefe", data="what do ya want for nothing?"
+  raw_hex := "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+  prefixed := "sha256=5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843";
+  #assert cp_webhook_verify_hmac("Jefe", "what do ya want for nothing?", prefixed);
+  #assert cp_webhook_verify_hmac("Jefe", "what do ya want for nothing?", raw_hex);
+  #assert !cp_webhook_verify_hmac("Jefe", "tampered", prefixed);
+  #assert !cp_webhook_verify_hmac("wrong", "what do ya want for nothing?", raw_hex);
+  #assert !cp_webhook_verify_hmac("", "what do ya want for nothing?", raw_hex);
+
+  // Admit + duplicate rejection + 64-entry ring eviction
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-00", "what do ya want for nothing?", raw_hex) == SCHED_WH_OK;
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-00", "what do ya want for nothing?", prefixed) == SCHED_WH_DUPLICATE;
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-bad", "tampered", raw_hex) == SCHED_WH_BAD_SIG;
+
+  for k: 1..<64 {
+    ib: [16] u8; in_n := el_put(ib[..], 0, "deliv-"); in_n = el_put_i(ib[..], in_n, k);
+    #assert coder_page_sched_webhook_admit(s, "Jefe", cast(string) ib[0..<in_n], "what do ya want for nothing?", prefixed) == SCHED_WH_OK;
+  }
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-00", "what do ya want for nothing?", prefixed) == SCHED_WH_DUPLICATE;
+  // 65th unique delivery evicts slot 0 ("deliv-00")
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-64", "what do ya want for nothing?", prefixed) == SCHED_WH_OK;
+  #assert coder_page_sched_webhook_admit(s, "Jefe", "deliv-00", "what do ya want for nothing?", prefixed) == SCHED_WH_OK;
+}
+
+#test "scheduled: Update Everything active-session lease guard across Desktop, agy, claude, codex" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s);
+
+  // agy supports atomic switch (#13839) -> applies even with active leases
+  coder_page_upd_all_set(s, CP_UPD_TARGET_AGY, "1.5.10", "1.5.13", true, 2, true, "1.5.10 → 1.5.13");
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_AGY) == UPD_APPLY_NOW;
+  #assert cp_upd_all_can_apply(s, CP_UPD_TARGET_AGY);
+
+  // Desktop and claude do NOT support atomic switch -> deferred while leases > 0
+  coder_page_upd_all_set(s, CP_UPD_TARGET_DESKTOP, "1.0.0", "1.1.0", true, 1, false, "1.0.0 → 1.1.0 (deferred)");
+  coder_page_upd_all_set(s, CP_UPD_TARGET_CLAUDE, "1.0.2", "1.0.3", true, 1, false, "1.0.2 → 1.0.3 (deferred)");
+  coder_page_upd_all_set(s, CP_UPD_TARGET_CODEX, "0.168.0", "0.168.0", false, 0, false, "0.168.0 (up to date)");
+
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_DESKTOP) == UPD_DEFER_LEASED;
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_CLAUDE) == UPD_DEFER_LEASED;
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_CODEX) == UPD_UP_TO_DATE;
+  #assert cp_upd_all_ready_count(s) == 1;
+  #assert cp_upd_all_blocked_count(s) == 2;
+
+  // Release leases -> Desktop and claude become UPD_APPLY_NOW
+  coder_page_upd_all_set(s, CP_UPD_TARGET_DESKTOP, "1.0.0", "1.1.0", true, 0, false, "1.0.0 → 1.1.0");
+  coder_page_upd_all_set(s, CP_UPD_TARGET_CLAUDE, "1.0.2", "1.0.3", true, 0, false, "1.0.2 → 1.0.3");
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_DESKTOP) == UPD_APPLY_NOW;
+  #assert coder_page_upd_all_decision(s, CP_UPD_TARGET_CLAUDE) == UPD_APPLY_NOW;
+  #assert cp_upd_all_ready_count(s) == 3 && cp_upd_all_blocked_count(s) == 0;
+}
+
+#test "scheduled: Settings -> Scheduled Tasks and About -> Update Everything rows and search" {
+  p: [1] CoderPage; p_st: [1] CpCheckStore; s := cp_check_page(p[..], p_st[..]);
+  cp_init(s); s[0].d = 1.0f32;
+  _ = coder_page_sched_add(s, "t1", "Morning Check", "0 8 * * *", "/Users/dev/repo", "Summarize git status", true);
+  coder_page_sched_webhook_set(s, true, "Active (secret configured)");
+
+  // Settings -> Scheduled Tasks renders rows and dispatches asks
+  coder_page_settings_open(s, CP_PG_SCHED, "");
+  #assert coder_page_settings_page(s) == CP_PG_SCHED;
+  #assert cp_set_test_frame(s, 1200, 800);
+  #assert cp_set_test_row(s, "set.sched.add.a").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.sched.webhook.a").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.sched.t.0.0").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.sched.t.0.2").action == CP_SET_ACT;
+  #assert cp_set_test_row(s, "set.sched.t.0.3").action == CP_SET_ACT;
+
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sched.add.a") && coder_page_action(s) == CP_ASK_SCHED_ADD;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sched.webhook.a") && coder_page_action(s) == CP_ASK_SCHED_WEBHOOK;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sched.t.0.0") && coder_page_action(s) == CP_ASK_SCHED_TOGGLE && coder_page_sched_target(s) == 0 && !coder_page_sched_is_enabled(s, 0);
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sched.t.0.2") && coder_page_action(s) == CP_ASK_SCHED_RUN && coder_page_sched_target(s) == 0;
+  #assert cp_settings_press(s, CP_SET_ACT, "set.sched.t.0.3") && coder_page_action(s) == CP_ASK_SCHED_DELETE && coder_page_sched_target(s) == 0;
+
+  // Settings -> About & updates renders Update Everything group
+  coder_page_settings_open(s, CP_PG_ABOUT, "");
+  #assert cp_set_test_frame(s, 1200, 900);
+  #assert cp_set_test_row(s, "set.update.all.a").action == CP_SET_ACT;
+  #assert surface_find(s[0].surface[..], "set.update.agy") >= 0;
+  #assert surface_find(s[0].surface[..], "set.update.claude") >= 0;
+  #assert surface_find(s[0].surface[..], "set.update.codex") >= 0;
+  // No updates ready yet -> Check all
+  #assert cp_settings_press(s, CP_SET_ACT, "set.update.all.a") && coder_page_action(s) == CP_ASK_SCHED_UPDATE_CHECK;
+  // Mark agy update ready -> Update all
+  coder_page_upd_all_set(s, CP_UPD_TARGET_AGY, "1.5.10", "1.5.13", true, 0, true, "1.5.10 → 1.5.13");
+  #assert cp_settings_press(s, CP_SET_ACT, "set.update.all.a") && coder_page_action(s) == CP_ASK_SCHED_UPDATE_ALL;
+
+  // Settings search finds Scheduled Tasks and Update Everything
+  hits: [CP_SET_HITS] int; es := cp_set_entries();
+  n := cp_set_hits_in("cron", hits[..], false);
+  #assert n >= 1 && es[hits[0]].page == CP_PG_SCHED;
+  n = cp_set_hits_in("update everything", hits[..], false);
+  #assert n >= 1 && es[hits[0]].id == "set.update.all" && es[hits[0]].page == CP_PG_ABOUT;
+}

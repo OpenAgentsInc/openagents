@@ -22,6 +22,8 @@
 #load "../../../coax/lib/agent/device/sim-gesture.coax";
 #load "../../../coax/lib/gateway/card.coax";
 #load "../../../coax/lib/agent/desktop/checkpoint.coax";
+#load "../../../coax/lib/agent/desktop/scheduled.coax";
+#load "../../../coax/lib/agent/desktop/webhook-auth.coax";
 #load "../settings.coax";
 
 #load "state.coax";
@@ -65,3 +67,4 @@
 #load "voice.coax";
 #load "environments.coax";
 #load "rich.coax";
+#load "scheduled.coax";

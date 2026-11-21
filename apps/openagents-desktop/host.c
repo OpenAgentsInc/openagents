@@ -1480,3 +1480,100 @@ int cd_side_chat_id(void *page, char *out, int cap) {
   CoderHost *c = page; if (!c || !out || cap < 2) return 0;
   return cd_text_out((int)coder_page_side_chat_id(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }
+// Scheduled tasks, HMAC-SHA256 webhooks & "Update Everything" coordinator (page/scheduled.coax; #13885).
+int cd_sched_load_json(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int n = (int)coder_page_sched_load_json(cd_state(c), cd_string(json));
+  cd_woke(c);
+  return n;
+}
+int cd_sched_save_json(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_save_json(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_sched_count(cd_state(c)) : 0; }
+int cd_sched_target(void *page) { CoderHost *c = page; return c ? (int)coder_page_sched_target(cd_state(c)) : -1; }
+int cd_sched_add(void *page, const char *id, const char *name, const char *cron, const char *folder, const char *prompt, int enabled) {
+  CoderHost *c = page; if (!c) return -1;
+  int idx = (int)coder_page_sched_add(cd_state(c), cd_string(id), cd_string(name), cd_string(cron), cd_string(folder), cd_string(prompt), enabled != 0);
+  if (idx >= 0) cd_woke(c);
+  return idx;
+}
+int cd_sched_toggle(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_sched_toggle(cd_state(c), idx) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_sched_remove(void *page, int idx) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_sched_remove(cd_state(c), idx) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_sched_mark_run(void *page, int idx, int64_t now_ms, const char *chat_id) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_sched_mark_run(cd_state(c), idx, now_ms, cd_string(chat_id)) ? 1 : 0;
+  if (ok) cd_woke(c);
+  return ok;
+}
+int cd_sched_get_id(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_get_id(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_get_name(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_get_name(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_get_cron(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_get_cron(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_get_folder(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_get_folder(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_get_prompt(void *page, int idx, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_sched_get_prompt(cd_state(c), idx, (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_sched_is_enabled(void *page, int idx) {
+  CoderHost *c = page; return c && coder_page_sched_is_enabled(cd_state(c), idx) ? 1 : 0;
+}
+int cd_sched_cron_valid(const char *expr) {
+  return coder_page_sched_cron_valid(cd_string(expr)) ? 1 : 0;
+}
+int cd_sched_cron_matches(const char *expr, int minute, int hour, int dom, int month, int dow) {
+  return coder_page_sched_cron_matches(cd_string(expr), minute, hour, dom, month, dow) ? 1 : 0;
+}
+int cd_sched_due(void *page, int64_t now_ms, int minute, int hour, int dom, int month, int dow, int *out_indices, int cap) {
+  CoderHost *c = page; if (!c || !out_indices || cap < 1) return 0;
+  int64_t tmp[32];
+  int want = cap < 32 ? cap : 32;
+  int n = (int)coder_page_sched_due(cd_state(c), now_ms, minute, hour, dom, month, dow, (coax_v_s64){tmp, want});
+  int copy_n = n < want ? n : want;
+  for (int i = 0; i < copy_n; i++) out_indices[i] = (int)tmp[i];
+  return n;
+}
+void cd_sched_webhook_set(void *page, int enabled, const char *status) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_sched_webhook_set(cd_state(c), enabled != 0, cd_string(status));
+  cd_woke(c);
+}
+int cd_sched_webhook_admit(void *page, const char *secret, const char *delivery_id, const char *body, const char *sig_hex) {
+  CoderHost *c = page; if (!c) return 1;
+  return (int)coder_page_sched_webhook_admit(cd_state(c), cd_string(secret), cd_string(delivery_id), cd_string(body), cd_string(sig_hex));
+}
+void cd_upd_all_set(void *page, int target, const char *current, const char *latest, int available, int leases, int atomic_switch, const char *status) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_upd_all_set(cd_state(c), target, cd_string(current), cd_string(latest), available != 0, leases, atomic_switch != 0, cd_string(status));
+  cd_woke(c);
+}
+int cd_upd_all_decision(void *page, int target) {
+  CoderHost *c = page; return c ? (int)coder_page_upd_all_decision(cd_state(c), target) : 0;
+}
+void cd_upd_all_busy_set(void *page, int busy) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_upd_all_busy_set(cd_state(c), busy != 0);
+  cd_woke(c);
+}

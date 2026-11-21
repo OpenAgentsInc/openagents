@@ -386,6 +386,7 @@ CoderPage :: struct {
   usage: [1] CpUsageState;     // Usage & quota limits dashboard, composer popover, pooling & recovery (usage.coax; #13877)
   voice: [1] CpVoiceState;     // Native & local voice dictation in composer and Settings -> Voice (voice.coax; #13882)
   rich: [1] CpRichState;       // Prompt stash/history, Mermaid/LaTeX, inline quote & Side Chat pane (rich.coax; #13884)
+  sched: [1] CpSchedState;     // Scheduled tasks, HMAC-SHA256 webhooks & Update Everything coordinator (scheduled.coax; #13885)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -517,6 +518,7 @@ cp_init :: (s: [] CoderPage) {
   cp_voice_init(s);
   cp_env_init(s);
   cp_rich_init(s);
+  cp_sched_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

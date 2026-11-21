@@ -218,6 +218,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         CoderWorker.daemon = daemonClient
         daemonClient.ensureDaemon()
         syncFromDaemon()
+        startScheduledAutomation()
         // the working folder: --folder PATH for this launch, else the one chosen last, else the home folder
         var isFolder: ObjCBool = false
         if let at = CommandLine.arguments.firstIndex(of: "--folder"), at + 1 < CommandLine.arguments.count,
@@ -475,6 +476,13 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 103: handleRichUsage()
         case 104: saveRichPersistence()
         case 105: handleRichSideOpenMain()
+        case 110: schedAddDialog()
+        case 111: schedToggleSelected()
+        case 112: schedRunSelectedNow()
+        case 113: schedDeleteSelected()
+        case 114: schedWebhookDialog()
+        case 115: applyUpdateEverything()
+        case 116: checkUpdateEverything()
         case 40...43: fileAsked(what)
         default: break
         }

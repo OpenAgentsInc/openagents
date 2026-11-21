@@ -205,6 +205,7 @@ extension CoderWindow {
         if cd_settings_page(page) == 6 { refreshUsageDashboard() }
         syncMcpSkills()
         syncEnvironments()
+        syncScheduledSettings()
         applyProbes()
         CoderProbes.refreshGeminiAuth { [weak self] in self?.applyProbes() }
     }
