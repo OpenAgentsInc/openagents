@@ -41,6 +41,20 @@ public actor OASparkWallet {
         public static let done: coax_t_Event = 7
     }
 
+    public enum SparkNetwork: String, Sendable {
+        case mainnet
+        case regtest
+        case signet
+
+        var sdkNetwork: Network {
+            switch self {
+            case .mainnet: return .mainnet
+            case .regtest: return .regtest
+            case .signet: return .signet
+            }
+        }
+    }
+
     public struct PaymentItem: Equatable, Sendable {
         public enum Status: String, Sendable { case done, pending, failed }
         public var id: String
@@ -52,6 +66,7 @@ public actor OASparkWallet {
         public var rail: String
         public var note: String?
         public var reference: String?
+        public var paymentHash: String? = nil
     }
 
     public enum Destination: Sendable {
@@ -153,14 +168,20 @@ public actor OASparkWallet {
     }
 
     /// Opens Spark with an explicit mnemonic and storage directory (used by
-    /// `openFromKeychain` and isolated throwaway-seed smoke tests).
-    public func open(mnemonic: String, storageDir: URL, readOnly: Bool = false) async throws {
+    /// `openFromKeychain`, settlement helpers, and isolated throwaway-seed tests).
+    public func open(
+        mnemonic: String,
+        storageDir: URL,
+        readOnly: Bool = false,
+        network: SparkNetwork = .mainnet
+    ) async throws {
         if sdk != nil {
             await disconnect()
         }
         try FileManager.default.createDirectory(at: storageDir, withIntermediateDirectories: true)
-        var config = readOnly ? defaultServerConfig(network: .mainnet) : defaultConfig(network: .mainnet)
-        config.apiKey = oaBreezApiKey
+        let sdkNet = network.sdkNetwork
+        var config = readOnly ? defaultServerConfig(network: sdkNet) : defaultConfig(network: sdkNet)
+        config.apiKey = (network == .mainnet) ? oaBreezApiKey : nil
         config.realTimeSyncServerUrl = nil
         config.maxDepositClaimFee = readOnly ? nil : MaxFee(onchain: .networkRecommended(leewaySatPerVbyte: 1))
 
@@ -169,6 +190,16 @@ public actor OASparkWallet {
         do {
             self.sdk = try await builder.build()
             self.flow = metaverse_wallet_start()
+        } catch {
+            throw WalletError.sdk(String(describing: error))
+        }
+    }
+
+    public func identityPubkey() async throws -> String {
+        let sdk = try requireSdk()
+        do {
+            let info = try await sdk.getInfo(request: GetInfoRequest(ensureSynced: false))
+            return info.identityPubkey
         } catch {
             throw WalletError.sdk(String(describing: error))
         }
@@ -536,10 +567,12 @@ public actor OASparkWallet {
         }
         var note: String?
         var ref: String?
+        var paymentHash: String?
         switch p.details {
-        case .lightning(let desc, let invoice, _, _, let lnurlPay, _, _, _)?:
+        case .lightning(let desc, let invoice, _, let htlcDetails, let lnurlPay, _, _, _)?:
             note = desc
             ref = lnurlPay?.lnAddress ?? invoice
+            paymentHash = htlcDetails.paymentHash
             if let c = lnurlPay?.comment, !c.isEmpty { note = c }
         case .spark(let inv, _, _)?:
             note = inv?.description
@@ -557,7 +590,8 @@ public actor OASparkWallet {
             timestamp: Int64(p.timestamp),
             rail: rail,
             note: note,
-            reference: ref
+            reference: ref,
+            paymentHash: paymentHash
         )
     }
 }

@@ -1,6 +1,6 @@
 # 238. Pay for verified work
 
-> **Status: partly implemented.** The buyer's side runs in process: a quote held in escrow per job, released only after the checker agrees (or, by policy, for unsampled work), withheld on disagreement, held for the owner when unverifiable or above the payout cap, one payment intent per receipt digest, a recount from the event log, and a wallet boundary that states Lightning and Spark amounts without paying them. Executing a payment is an owner action. Worker self-tests, a separately paid validator and trace-machine work remain; see [What remains](#what-remains).
+> **Status: partly implemented.** In-process buyer escrow (`VpLedger`) and the W4.3 Executor Network two-leg (`WORKER` + `VALIDATOR`) settlement layer are implemented and mutation-verified (`psionic/lib/peer/pay.coax`, 438/438 root mutants killed; `pay/executor-settlement.coax`, 63/63 killed; `psionic/lib/peer/settled-feed.coax`, 581/581 killed), wired to Ch 234 exact replay and W5 training verdicts, rolling 24-hour UTC daily caps, W2.1 `VerifiedPayoutIntent` / `SettlementReceipt` codecs (`psionic/lib/executor-wire.coax`), `NIP-PYLON` kind `30201` reconciled pool projection, `openagents pylon settle` / `pool-feed` CLI, and the real Breez Spark wallet bridge (`apps/openagents-desktop/spark-settle-helper.sh`, verified live against Breez Spark regtest and mainnet operators). Chapter status stays `partly implemented` until a funded test-network (`regtest` / `testnet` / `signet`) Spark transfer completes end-to-end across two distinct external devices (`real_bitcoin_moved: true`); see [What remains](#what-remains) and `NEEDS_OWNER.md`.
 
 [Chapter 195](ch195-check-a-peers-work.md) built a checker. It admits a
 peer's receipt, samples some of the work, runs it again and says whether the
@@ -506,37 +506,53 @@ bound, the verdict, policy and payout-cap rules, amounts at 21
 million bitcoin in both units, the withheld total's bound, the Spark
 whole-sat rule and the recount's refusals.
 
-`peer/pay.coax` is an `#authority` file. `coax mutate` changes each of the
-663 mutation sites its checks reach, in this file and the ones it loads, in
-turn, and the checks kill all 663, none marked equivalent (2026-11-03, after
-the receipts and payees moved to the standard library's `Kept(8)`, #12696;
-`coax/lib/kept.coax`'s own 173 sites are among them). Run it
-with the other Psionic units:
+`peer/pay.coax` is an `#authority` file (`coax mutate psionic/lib/peer/pay.coax --root-only`:
+438/438 root mutants killed, 0 survived, 0 marked equivalent; it composes
+`pay/executor-settlement.coax` at 63/63 killed and `psionic/lib/executor-wire.coax`,
+with `psionic/lib/peer/settled-feed.coax` at 581/581 killed for reconciled public
+feeds and `NIP-PYLON` kind `30201` pool projection). Run it with the other Psionic units:
 
 ```shell
 psionic/check.sh --only peer/pay
+coax/bin/coax mutate psionic/lib/peer/settled-feed.coax --root-only
+coax/web/tool.sh psionic/tools/executor-settle-e2e.coax
 ```
 
 ## What remains
 
-- **Executing payments.** An intent says what to pay; it pays nothing. Paying
-  through the Breez Spark wallet, and setting the cap and payout cap for a
-  period, are owner actions recorded in `NEEDS_OWNER.md`. A ledger total
-  here is owed money, never a settled payment, and no simulated payment is
-  counted as paid.
-- **Worker admission.** A worker declaring a capability only after a
-  digest-checked self-test is not built.
-- **A paid validator.** Here the buyer runs the checker in process. A
-  validator on a separate device, paid for its own replay, needs its own
-  receipts and intents.
-- **Trace-machine work.** The verified work is chapter 195's binary32 stage.
-  Paying for traces that [chapter 234](ch234-exact-replay-as-a-verification-class.md)
-  replays exactly, on programs beyond a fixture, is not wired in.
-- **Signed receipts and a schema.** Receipts are chapter 195's MACed text,
-  and the event log is this chapter's in-process layout. Receipts a third
-  party can verify need signatures and a published schema in `proto/`.
-- **Periods.** The cap covers one period; resetting it each day is not
-  built.
+Most earlier gaps are now built and verified on `main`:
+
+- **Worker admission & independent replay validator:** implemented in W4.1/W4.2
+  (`psionic/lib/pylon/executor-selfcheck.coax`, `psionic/lib/peer/executor-audit.coax`,
+  `openagents pylon executor start`, `openagents pylon validate --auto`).
+- **Two-leg escrow, Ch 234 / W5 verdicts, rolling UTC daily caps & W2.1 schemas:**
+  implemented in `pay/executor-settlement.coax`, `psionic/lib/peer/pay.coax`
+  (`vp_exec_admit_replay_pair`, `vp_exec_admit_training_pair`, `vp_exec_owner_review`,
+  `vp_exec_record_settlement`, `vp_exec_recount`), and `psionic/lib/executor-wire.coax`
+  (`proto/openagents/executor/v1alpha1/settlement.proto`).
+- **Reconciled public settled feed & `NIP-PYLON` `30201` pool projection:**
+  implemented in `psionic/lib/peer/settled-feed.coax` and `openagents pylon settle` /
+  `openagents pylon pool-feed` (recomputes strictly from append-only
+  `settlement-receipts.jsonl`, separates `bitcoin` mainnet from `testnet`/`signet`/`regtest`,
+  excludes all `real_bitcoin_moved == false` rows from paid totals, and enforces zero
+  leak of invoices, preimages, or private keys).
+- **Real Breez Spark wallet settlement bridge:** implemented in
+  `apps/shared/host/apple/SparkWallet.swift` and
+  `apps/openagents-desktop/spark-settle-helper.sh` (connects live to Breez Spark
+  `regtest` and `mainnet` operators through `pay/wallet.coax`, refuses unarmed mainnet
+  and zero-balance spends truthfully with `real_bitcoin_moved: false`).
+
+What still remains before flipping this chapter to `implemented` and closing `#13922`:
+
+- **Live funded test-network movement (`real_bitcoin_moved: true`):** funding a
+  Breez Spark `regtest` (via Lightspark's Regtest Faucet or Breez's local regtest
+  stack on a cloud host) or `testnet` settlement wallet and executing one hands-off
+  two-leg autonomous settlement (`worker != validator` on two distinct devices) so
+  real test satoshis move and reconcile into a `30201` pool aggregate with
+  `real_bitcoin_moved: true`.
+- **Owner-signed mainnet arming:** explicit owner approval and initial mainnet
+  cap selection in `NEEDS_OWNER.md` before any `bitcoin` mainnet satoshis move
+  (`mainnet_armed = false` by default).
 
 ## Sources
 

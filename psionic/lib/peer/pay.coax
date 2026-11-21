@@ -10,6 +10,8 @@
 //   coax/bin/coax mutate psionic/lib/peer/pay.coax --root-only
 #load "audit.coax";
 #load "../../../coax/lib/kept.coax";
+#load "../../../pay/executor-settlement.coax";
+#load "../executor-wire.coax";
 #authority;
 
 // book:begin types
@@ -440,3 +442,602 @@ vpt_same :: (a:VpLedger,b:VpLedger)->bool #effects(all) {
     c:=vp_recount(750,p,ev[0..<ne]);#assert c.refuse==VpRefuse.none && vpt_same(c.ledger,l);
 }
 // book:end check-oracle
+
+// ---- W4.3 Executor & Training Two-Leg Escrow Integration (GitHub #13922) ----
+// Reuses pay/executor-settlement.coax (#authority) for rolling 24-hour UTC daily
+// caps, owner-signed arming, and verdict gating, and psionic/lib/executor-wire.coax
+// (#authority) for canonical W2.1 VerifiedPayoutIntent / SettlementReceipt records.
+
+VP_EXEC_MAX_LEGS :: 32;
+VP_EXEC_MAX_KEYS :: 16;
+VP_EXEC_MAX_SAT :: EXW_INT_MAX / 1000;
+
+VpExecState :: enum u8 { none; released; held_for_owner; withheld; settled; }
+
+VpExecPolicy :: struct {
+  es: EsPolicy;
+  mainnet_armed: bool;
+  owner_policy_digest: string;
+}
+
+VpExecLeg :: struct {
+  receipt: Kept(8);
+  verdict: Kept(8);
+  payee: Kept(8);
+  leg: int;
+  amount_sat: int;
+  utc_day: int;
+  net: int;
+  state: VpExecState;
+  real_bitcoin_moved: bool;
+  settled_at: int;
+  commitment: Kept(8);
+}
+
+VpExecLedger :: struct {
+  utc_day: int;
+  global_spent_sat: int;
+  n_keys: int;
+  keys: [VP_EXEC_MAX_KEYS] Kept(8);
+  key_spent_sat: [VP_EXEC_MAX_KEYS] int;
+  n_legs: int;
+  legs: [VP_EXEC_MAX_LEGS] VpExecLeg;
+  held_sat: int;
+  released_sat: int;
+  withheld_sat: int;
+  settled_real_sat: int;
+}
+
+VpExecStep :: struct {
+  code: int;
+  state: VpExecState;
+  ledger: VpExecLedger;
+  intent: ExwPayoutIntent;
+  has_intent: bool;
+}
+
+VpExecPair :: struct {
+  worker: VpExecStep;
+  validator: VpExecStep;
+  ledger: VpExecLedger;
+}
+
+VpExecLogKind :: enum u8 { admit; review; settle; }
+
+VpExecLogEvent :: struct {
+  kind: VpExecLogKind;
+  receipt_digest: string;
+  verdict_digest: string;
+  payee_pubkey: string;
+  leg: int;
+  es_verdict: int;
+  amount_sat: int;
+  utc_day: int;
+  period_id: string;
+  network: string;
+  approve: bool;
+  real_bitcoin_moved: bool;
+  settled_at: int;
+  commitment: string;
+}
+
+VpExecRecount :: struct {
+  ok: bool;
+  bad_at: int = -1;
+  ledger: VpExecLedger;
+}
+
+vp_net_code :: (net: string) -> int #effects(all) {
+  names := EXW_NETWORK_NAMES;
+  for i: 0..<4 {
+    if names[i] == net { return i; }
+  }
+  return -1;
+}
+
+vp_net_name :: (code: int) -> string #effects(all) {
+  names := EXW_NETWORK_NAMES;
+  return names[code];
+}
+
+vp_replay_verdict_code :: (o: ExwReplayOutcome) -> int #export_c #effects(all) {
+  if o == ExwReplayOutcome.exact_replay { return ES_VERDICT_EXACT_REPLAY; }
+  if o == ExwReplayOutcome.failed { return ES_VERDICT_FAILED; }
+  return ES_VERDICT_UNVERIFIED;
+}
+
+vp_training_verdict_code :: (v: ExwWindowVerdict) -> int #export_c #effects(all) {
+  if v == ExwWindowVerdict.accepted { return ES_VERDICT_TRAINING_ACCEPTED; }
+  if v == ExwWindowVerdict.rejected { return ES_VERDICT_FAILED; }
+  return ES_VERDICT_UNVERIFIED;
+}
+
+vp_exec_find_leg :: (l: VpExecLedger, receipt_digest: string, leg: int) -> int #effects(all) {
+  k := kept64(receipt_digest);
+  for i: 0..<l.n_legs {
+    if l.legs[i].leg == leg && kept_same(l.legs[i].receipt, k) { return i; }
+  }
+  return -1;
+}
+
+vp_exec_pubkey_spent :: (l: VpExecLedger, payee_pubkey: string) -> int #effects(all) {
+  k := kept64(payee_pubkey);
+  for i: 0..<l.n_keys {
+    if kept_same(l.keys[i], k) { return l.key_spent_sat[i]; }
+  }
+  return 0;
+}
+
+vp_exec_roll :: (l: VpExecLedger, req_utc_day: int) -> VpExecLedger #effects(all) {
+  rolled := es_roll_period(EsPeriodState.{utc_day = l.utc_day, global_spent_sat = l.global_spent_sat}, req_utc_day);
+  if rolled.utc_day != l.utc_day {
+    n := l;
+    n.utc_day = rolled.utc_day;
+    n.global_spent_sat = 0;
+    n.n_keys = 0;
+    return n;
+  }
+  return l;
+}
+
+vp_exec_add_key_spend :: (l: [] VpExecLedger, payee_pubkey: string, amount_sat: int) -> bool #effects(all) {
+  k := kept64(payee_pubkey);
+  for i: 0..<l[0].n_keys {
+    if kept_same(l[0].keys[i], k) {
+      l[0].key_spent_sat[i] += amount_sat;
+      return true;
+    }
+  }
+  if l[0].n_keys >= VP_EXEC_MAX_KEYS { return false; }
+  idx := l[0].n_keys;
+  l[0].keys[idx] = k;
+  l[0].key_spent_sat[idx] = amount_sat;
+  l[0].n_keys += 1;
+  return true;
+}
+
+vp_exec_make_intent :: (
+  pol: VpExecPolicy,
+  receipt_digest: string,
+  verdict_digest: string,
+  payee_pubkey: string,
+  leg: int,
+  amount_sat: int,
+  period_id: string,
+  network: string
+) -> ExwPayoutIntent #effects(all) {
+  return ExwPayoutIntent.{
+    amount_msat = amount_sat * 1000,
+    leg = ifx leg == ES_LEG_WORKER then ExwPayoutLeg.worker else ExwPayoutLeg.validator,
+    network = network,
+    owner_policy_digest = pol.owner_policy_digest,
+    payee_pubkey = payee_pubkey,
+    period_id = period_id,
+    receipt_digest = receipt_digest,
+    verdict_digest = verdict_digest
+  };
+}
+
+// Admit one WORKER or VALIDATOR leg payout through pay/executor-settlement.coax.
+// Enforces (receipt_digest, leg) idempotency, rolling UTC daily caps, explicit
+// mainnet arming, and canonical W2.1 VerifiedPayoutIntent emission.
+vp_exec_admit_leg :: (
+  l: VpExecLedger,
+  pol: VpExecPolicy,
+  receipt_digest: string,
+  verdict_digest: string,
+  payee_pubkey: string,
+  leg: int,
+  es_verdict: int,
+  amount_sat: int,
+  utc_day: int,
+  period_id: string,
+  network: string
+) -> VpExecStep #export_c #effects(all) {
+  bad := VpExecStep.{code = ES_REFUSE_BAD_INPUT, ledger = l};
+  if !exw_hex(pol.owner_policy_digest, 64) || !exw_hex(receipt_digest, 64) || !exw_hex(verdict_digest, 64) || !exw_hex(payee_pubkey, 64) || !exw_period_ok(period_id) {
+    return bad;
+  }
+  net := vp_net_code(network);
+  if net < 0 || amount_sat <= 0 || amount_sat > VP_EXEC_MAX_SAT || utc_day <= 0 { return bad; }
+  if leg != ES_LEG_WORKER && leg != ES_LEG_VALIDATOR { return bad; }
+  if vp_exec_find_leg(l, receipt_digest, leg) >= 0 {
+    return VpExecStep.{code = ES_REFUSE_DUPLICATE, ledger = l};
+  }
+  if l.n_legs >= VP_EXEC_MAX_LEGS { return bad; }
+
+  cur: [1] VpExecLedger;
+  cur[0] = vp_exec_roll(l, utc_day);
+  st := EsPeriodState.{
+    utc_day = cur[0].utc_day,
+    global_spent_sat = cur[0].global_spent_sat,
+    pubkey_spent_sat = vp_exec_pubkey_spent(cur[0], payee_pubkey)
+  };
+  req := EsPayoutRequest.{
+    leg = leg,
+    verdict = es_verdict,
+    amount_sat = amount_sat,
+    utc_day = utc_day,
+    already_paid_leg = false
+  };
+  eff := pol.es;
+  if net == 0 && !pol.mainnet_armed { eff.owner_armed = false; }
+  decision := es_admit_payout(eff, st, req);
+
+  row := VpExecLeg.{
+    receipt = kept64(receipt_digest),
+    verdict = kept64(verdict_digest),
+    payee = kept64(payee_pubkey),
+    leg = leg,
+    amount_sat = amount_sat,
+    utc_day = cur[0].utc_day,
+    net = net
+  };
+
+  if decision == ES_WITHHOLD_FAILED {
+    row.state = VpExecState.withheld;
+    cur[0].legs[cur[0].n_legs] = row;
+    cur[0].n_legs += 1;
+    cur[0].withheld_sat += amount_sat;
+    return VpExecStep.{code = decision, state = VpExecState.withheld, ledger = cur[0]};
+  }
+  if decision == ES_HOLD_OWNER {
+    row.state = VpExecState.held_for_owner;
+    cur[0].legs[cur[0].n_legs] = row;
+    cur[0].n_legs += 1;
+    cur[0].held_sat += amount_sat;
+    return VpExecStep.{code = decision, state = VpExecState.held_for_owner, ledger = cur[0]};
+  }
+  if !vp_exec_add_key_spend(cur[..], payee_pubkey, amount_sat) { return bad; }
+  row.state = VpExecState.released;
+  cur[0].legs[cur[0].n_legs] = row;
+  cur[0].n_legs += 1;
+  cur[0].global_spent_sat += amount_sat;
+  cur[0].released_sat += amount_sat;
+  intent := vp_exec_make_intent(pol, receipt_digest, verdict_digest, payee_pubkey, leg, amount_sat, period_id, network);
+  return VpExecStep.{code = ES_RELEASE, state = VpExecState.released, ledger = cur[0], intent = intent, has_intent = true};
+}
+
+// Two-leg admission for a Ch 234 ReplayVerdict (worker != validator strictly enforced).
+vp_exec_admit_replay_pair :: (
+  l: VpExecLedger,
+  pol: VpExecPolicy,
+  receipt_digest: string,
+  verdict_digest: string,
+  worker_pubkey: string,
+  validator_pubkey: string,
+  outcome: ExwReplayOutcome,
+  worker_sat: int,
+  validator_sat: int,
+  utc_day: int,
+  period_id: string,
+  network: string
+) -> VpExecPair #export_c #effects(all) {
+  if worker_pubkey == validator_pubkey {
+    bad := VpExecStep.{code = ES_REFUSE_BAD_INPUT, ledger = l};
+    return VpExecPair.{worker = bad, validator = bad, ledger = l};
+  }
+  vc := vp_replay_verdict_code(outcome);
+  w := vp_exec_admit_leg(l, pol, receipt_digest, verdict_digest, worker_pubkey, ES_LEG_WORKER, vc, worker_sat, utc_day, period_id, network);
+  v := vp_exec_admit_leg(w.ledger, pol, receipt_digest, verdict_digest, validator_pubkey, ES_LEG_VALIDATOR, vc, validator_sat, utc_day, period_id, network);
+  return VpExecPair.{worker = w, validator = v, ledger = v.ledger};
+}
+
+// Two-leg admission for a W5.2 TrainingWindowVerdict (worker != validator strictly enforced).
+vp_exec_admit_training_pair :: (
+  l: VpExecLedger,
+  pol: VpExecPolicy,
+  claim_digest: string,
+  verdict_digest: string,
+  worker_pubkey: string,
+  validator_pubkey: string,
+  verdict: ExwWindowVerdict,
+  worker_sat: int,
+  validator_sat: int,
+  utc_day: int,
+  period_id: string,
+  network: string
+) -> VpExecPair #export_c #effects(all) {
+  if worker_pubkey == validator_pubkey {
+    bad := VpExecStep.{code = ES_REFUSE_BAD_INPUT, ledger = l};
+    return VpExecPair.{worker = bad, validator = bad, ledger = l};
+  }
+  vc := vp_training_verdict_code(verdict);
+  w := vp_exec_admit_leg(l, pol, claim_digest, verdict_digest, worker_pubkey, ES_LEG_WORKER, vc, worker_sat, utc_day, period_id, network);
+  v := vp_exec_admit_leg(w.ledger, pol, claim_digest, verdict_digest, validator_pubkey, ES_LEG_VALIDATOR, vc, validator_sat, utc_day, period_id, network);
+  return VpExecPair.{worker = w, validator = v, ledger = v.ledger};
+}
+
+// Owner decision on a held_for_owner leg: release or withhold.
+vp_exec_owner_review :: (
+  l: VpExecLedger,
+  pol: VpExecPolicy,
+  receipt_digest: string,
+  verdict_digest: string,
+  payee_pubkey: string,
+  leg: int,
+  approve: bool,
+  period_id: string
+) -> VpExecStep #export_c #effects(all) {
+  bad := VpExecStep.{code = ES_REFUSE_BAD_INPUT, ledger = l};
+  if !exw_hex(pol.owner_policy_digest, 64) || !exw_hex(receipt_digest, 64) || !exw_hex(verdict_digest, 64) || !exw_hex(payee_pubkey, 64) || !exw_period_ok(period_id) {
+    return bad;
+  }
+  idx := vp_exec_find_leg(l, receipt_digest, leg);
+  if idx < 0 || l.legs[idx].state != VpExecState.held_for_owner { return bad; }
+  row := l.legs[idx];
+  if !kept_same(row.payee, kept64(payee_pubkey)) || !kept_same(row.verdict, kept64(verdict_digest)) { return bad; }
+  cur: [1] VpExecLedger;
+  cur[0] = l;
+  cur[0].held_sat -= row.amount_sat;
+  if !approve {
+    cur[0].legs[idx].state = VpExecState.withheld;
+    cur[0].withheld_sat += row.amount_sat;
+    return VpExecStep.{code = ES_WITHHOLD_FAILED, state = VpExecState.withheld, ledger = cur[0]};
+  }
+  if !vp_exec_add_key_spend(cur[..], payee_pubkey, row.amount_sat) { return bad; }
+  cur[0].legs[idx].state = VpExecState.released;
+  cur[0].global_spent_sat += row.amount_sat;
+  cur[0].released_sat += row.amount_sat;
+  intent := vp_exec_make_intent(pol, receipt_digest, verdict_digest, payee_pubkey, leg, row.amount_sat, period_id, vp_net_name(row.net));
+  return VpExecStep.{code = ES_RELEASE, state = VpExecState.released, ledger = cur[0], intent = intent, has_intent = true};
+}
+
+// Record wallet execution outcome against a released leg and emit W2.1 SettlementReceipt.
+// Only real_bitcoin_moved == true with a valid non-zero 64-hex commitment & settled_at > 0
+// marks the leg settled and increments settled_real_sat.
+vp_exec_record_settlement :: (
+  l: VpExecLedger,
+  pol: VpExecPolicy,
+  receipt_digest: string,
+  leg: int,
+  real_bitcoin_moved: bool,
+  settled_at: int,
+  commitment: string,
+  period_id: string,
+  out_rec: [] ExwSettlementReceipt
+) -> VpExecStep #export_c #effects(all) {
+  bad := VpExecStep.{code = ES_REFUSE_BAD_INPUT, ledger = l};
+  if out_rec.count < 1 || !exw_hex(pol.owner_policy_digest, 64) || !exw_hex(receipt_digest, 64) || !exw_period_ok(period_id) {
+    return bad;
+  }
+  idx := vp_exec_find_leg(l, receipt_digest, leg);
+  if idx < 0 || l.legs[idx].state != VpExecState.released { return bad; }
+  row := l.legs[idx];
+  rec := ExwSettlementReceipt.{
+    amount_msat = row.amount_sat * 1000,
+    leg = ifx leg == ES_LEG_WORKER then ExwPayoutLeg.worker else ExwPayoutLeg.validator,
+    network = vp_net_name(row.net),
+    owner_policy_digest = pol.owner_policy_digest,
+    period_id = period_id,
+    real_bitcoin_moved = real_bitcoin_moved,
+    receipt_digest = receipt_digest,
+    settled_at = settled_at,
+    settlement_commitment = commitment
+  };
+  if !es_receipt_truthful(real_bitcoin_moved, row.amount_sat, commitment.count == 64) || exw_settlement_receipt_valid(rec) != ExwErr.ok {
+    return bad;
+  }
+  out_rec[0] = rec;
+  cur := l;
+  if real_bitcoin_moved {
+    cur.legs[idx].state = VpExecState.settled;
+    cur.legs[idx].real_bitcoin_moved = true;
+    cur.legs[idx].settled_at = settled_at;
+    cur.legs[idx].commitment = kept64(commitment);
+    cur.settled_real_sat += row.amount_sat;
+  }
+  return VpExecStep.{code = ES_RELEASE, state = cur.legs[idx].state, ledger = cur};
+}
+
+// Deterministic append-only log recount for daemon restart reconciliation.
+vp_exec_recount :: (pol: VpExecPolicy, events: [] VpExecLogEvent) -> VpExecRecount #export_c #effects(all) {
+  l: VpExecLedger;
+  rec: [1] ExwSettlementReceipt;
+  for i: 0..<events.count {
+    e := events[i];
+    st: VpExecStep;
+    if e.kind == VpExecLogKind.admit {
+      st = vp_exec_admit_leg(l, pol, e.receipt_digest, e.verdict_digest, e.payee_pubkey, e.leg, e.es_verdict, e.amount_sat, e.utc_day, e.period_id, e.network);
+      if st.code == ES_REFUSE_BAD_INPUT || st.code == ES_REFUSE_DUPLICATE {
+        return VpExecRecount.{ok = false, bad_at = i, ledger = l};
+      }
+    } else if e.kind == VpExecLogKind.review {
+      st = vp_exec_owner_review(l, pol, e.receipt_digest, e.verdict_digest, e.payee_pubkey, e.leg, e.approve, e.period_id);
+      if st.code == ES_REFUSE_BAD_INPUT {
+        return VpExecRecount.{ok = false, bad_at = i, ledger = l};
+      }
+    } else {
+      st = vp_exec_record_settlement(l, pol, e.receipt_digest, e.leg, e.real_bitcoin_moved, e.settled_at, e.commitment, e.period_id, rec[..]);
+      if st.code == ES_REFUSE_BAD_INPUT {
+        return VpExecRecount.{ok = false, bad_at = i, ledger = l};
+      }
+    }
+    l = st.ledger;
+  }
+  return VpExecRecount.{ok = true, ledger = l};
+}
+
+VPT_D :: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+VPT_E :: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+VPT_F :: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+VPT_P :: "1111111111111111111111111111111111111111111111111111111111111111";
+
+#test "W4.3 two-leg executor/training escrow, rolling UTC caps, mainnet lock & recount (#13922)" {
+  pol := VpExecPolicy.{
+    es = EsPolicy.{owner_armed = true, per_payout_cap_sat = 1000, per_pubkey_daily_cap_sat = 1500, global_daily_cap_sat = 2000},
+    mainnet_armed = false,
+    owner_policy_digest = VPT_P
+  };
+  l: VpExecLedger;
+
+  // Replay & training verdict mapping
+  #assert vp_replay_verdict_code(ExwReplayOutcome.exact_replay) == ES_VERDICT_EXACT_REPLAY;
+  #assert vp_replay_verdict_code(ExwReplayOutcome.failed) == ES_VERDICT_FAILED;
+  #assert vp_replay_verdict_code(ExwReplayOutcome.unverifiable) == ES_VERDICT_UNVERIFIED;
+  #assert vp_training_verdict_code(ExwWindowVerdict.accepted) == ES_VERDICT_TRAINING_ACCEPTED;
+  #assert vp_training_verdict_code(ExwWindowVerdict.rejected) == ES_VERDICT_FAILED;
+  #assert vp_training_verdict_code(ExwWindowVerdict.quarantined) == ES_VERDICT_UNVERIFIED;
+
+  // Network codes & names
+  #assert vp_net_code("bitcoin") == 0 && vp_net_code("testnet") == 1 && vp_net_code("signet") == 2 && vp_net_code("regtest") == 3 && vp_net_code("usdt") == -1;
+  #assert vp_net_name(0) == "bitcoin" && vp_net_name(1) == "testnet" && vp_net_name(2) == "signet" && vp_net_name(3) == "regtest";
+
+  // Self-validation (worker == validator) refused immediately on both replay and training pairs
+  self_r := vp_exec_admit_replay_pair(l, pol, VPT_A, VPT_B, VPT_D, VPT_D, ExwReplayOutcome.exact_replay, 800, 200, 20778, "2026-11-21", "regtest");
+  #assert self_r.worker.code == ES_REFUSE_BAD_INPUT && self_r.validator.code == ES_REFUSE_BAD_INPUT && self_r.ledger.n_legs == 0;
+  self_t := vp_exec_admit_training_pair(l, pol, VPT_A, VPT_B, VPT_D, VPT_D, ExwWindowVerdict.accepted, 800, 200, 20778, "2026-11-21", "regtest");
+  #assert self_t.worker.code == ES_REFUSE_BAD_INPUT && self_t.validator.code == ES_REFUSE_BAD_INPUT && self_t.ledger.n_legs == 0;
+
+  // Valid two-leg Ch 234 EXACT_REPLAY on regtest releases both WORKER (800) and VALIDATOR (200)
+  pair := vp_exec_admit_replay_pair(l, pol, VPT_A, VPT_B, VPT_D, VPT_E, ExwReplayOutcome.exact_replay, 800, 200, 20778, "2026-11-21", "regtest");
+  #assert pair.worker.code == ES_RELEASE && pair.worker.has_intent && exw_payout_intent_valid(pair.worker.intent) == ExwErr.ok;
+  #assert pair.worker.intent.amount_msat == 800000 && pair.worker.intent.leg == ExwPayoutLeg.worker && pair.worker.intent.network == "regtest";
+  #assert pair.validator.code == ES_RELEASE && pair.validator.has_intent && exw_payout_intent_valid(pair.validator.intent) == ExwErr.ok;
+  #assert pair.validator.intent.amount_msat == 200000 && pair.validator.intent.leg == ExwPayoutLeg.validator;
+  l = pair.ledger;
+  #assert l.n_legs == 2 && l.released_sat == 1000 && l.global_spent_sat == 1000 && l.n_keys == 2;
+  #assert vp_exec_pubkey_spent(l, VPT_D) == 800 && vp_exec_pubkey_spent(l, VPT_E) == 200 && vp_exec_pubkey_spent(l, VPT_F) == 0;
+
+  // Duplicate delivery for same (receipt, leg) refused with zero double-spend
+  dup := vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20778, "2026-11-21", "regtest");
+  #assert dup.code == ES_REFUSE_DUPLICATE && dup.ledger.released_sat == 1000 && !dup.has_intent;
+
+  // Training window ACCEPTED on testnet: worker 700 fits per-pubkey cap (800+700=1500), validator 300 fits global (1000+700+300=2000)
+  tp := vp_exec_admit_training_pair(l, pol, VPT_C, VPT_B, VPT_D, VPT_E, ExwWindowVerdict.accepted, 700, 300, 20778, "2026-11-21", "testnet");
+  #assert tp.worker.code == ES_RELEASE && tp.validator.code == ES_RELEASE && tp.ledger.global_spent_sat == 2000;
+  l = tp.ledger;
+  #assert vp_exec_pubkey_spent(l, VPT_D) == 1500 && vp_exec_pubkey_spent(l, VPT_E) == 500;
+
+  // Mainnet lock: even with es.owner_armed=true, mainnet_armed=false forces held_for_owner on "bitcoin"
+  mn_hold := vp_exec_admit_leg(VpExecLedger.{}, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 500, 20778, "2026-11-21", "bitcoin");
+  #assert mn_hold.code == ES_HOLD_OWNER && mn_hold.state == VpExecState.held_for_owner && !mn_hold.has_intent && mn_hold.ledger.held_sat == 500;
+  pol_mn := pol; pol_mn.mainnet_armed = true;
+  mn_ok := vp_exec_admit_leg(VpExecLedger.{}, pol_mn, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 500, 20778, "2026-11-21", "bitcoin");
+  #assert mn_ok.code == ES_RELEASE && mn_ok.has_intent && mn_ok.intent.network == "bitcoin";
+
+  // Over daily cap on same UTC day -> held_for_owner; rolling to next UTC day (20779) resets daily counters!
+  over := vp_exec_admit_leg(l, pol, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 100, 20778, "2026-11-21", "regtest");
+  #assert over.code == ES_HOLD_OWNER && over.state == VpExecState.held_for_owner && over.ledger.held_sat == 100;
+  rolled := vp_exec_admit_leg(l, pol, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 900, 20779, "2026-11-22", "regtest");
+  #assert rolled.code == ES_RELEASE && rolled.ledger.utc_day == 20779 && rolled.ledger.global_spent_sat == 900 && rolled.ledger.n_keys == 1;
+  // Stale day does not roll backwards
+  stale := vp_exec_roll(rolled.ledger, 20778);
+  #assert stale.utc_day == 20779 && stale.global_spent_sat == 900 && stale.n_keys == 1;
+
+  // FAILED verdict withholds immediately with zero intent, stores withheld leg (cannot re-admit)
+  fail := vp_exec_admit_leg(VpExecLedger.{}, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_FAILED, 800, 20778, "2026-11-21", "regtest");
+  #assert fail.code == ES_WITHHOLD_FAILED && fail.state == VpExecState.withheld && fail.ledger.withheld_sat == 800 && !fail.has_intent;
+  #assert fail.ledger.n_legs == 1 && fail.ledger.legs[0].state == VpExecState.withheld;
+  #assert vp_exec_admit_leg(fail.ledger, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20778, "2026-11-21", "regtest").code == ES_REFUSE_DUPLICATE;
+
+  // Owner review: approve and withhold held_for_owner legs (including idx == 0), plus refusal cases
+  rev0 := vp_exec_owner_review(mn_hold.ledger, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21");
+  #assert rev0.code == ES_RELEASE && rev0.state == VpExecState.released && rev0.ledger.legs[0].state == VpExecState.released && rev0.has_intent;
+  rev_ok := vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21");
+  #assert rev_ok.code == ES_RELEASE && rev_ok.state == VpExecState.released && rev_ok.ledger.legs[4].state == VpExecState.released && rev_ok.has_intent && rev_ok.ledger.held_sat == 0 && rev_ok.ledger.released_sat == 2100 && rev_ok.ledger.global_spent_sat == 2100;
+  rev_no := vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, false, "2026-11-21");
+  #assert rev_no.code == ES_WITHHOLD_FAILED && rev_no.state == VpExecState.withheld && rev_no.ledger.legs[4].state == VpExecState.withheld && !rev_no.has_intent && rev_no.ledger.held_sat == 0 && rev_no.ledger.withheld_sat == 100;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_B, VPT_E, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_C, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_E, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, VpExecPolicy.{owner_policy_digest = "bad"}, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, "bad", VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_F, "bad", VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_B, "bad", ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_owner_review(over.ledger, pol, VPT_F, VPT_B, VPT_D, ES_LEG_WORKER, true, "bad").code == ES_REFUSE_BAD_INPUT;
+
+  // Record settlement: real_bitcoin_moved=false leaves settled_real_sat=0 and state=released; true marks settled
+  rec: [1] ExwSettlementReceipt;
+  s_sim := vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, false, 0, "", "2026-11-21", rec[..]);
+  #assert s_sim.code == ES_RELEASE && s_sim.state == VpExecState.released && s_sim.ledger.settled_real_sat == 0 && !rec[0].real_bitcoin_moved;
+  // Lying receipt (real=true with empty commitment or zero settled_at) refused
+  #assert vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, true, 1795200000, "", "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, true, 0, VPT_P, "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, true, 1795200000, VPT_P, "2026-11-21", rec[0..<0]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, VpExecPolicy.{owner_policy_digest = "bad"}, VPT_A, ES_LEG_WORKER, true, 1795200000, VPT_P, "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, pol, "bad", ES_LEG_WORKER, true, 1795200000, VPT_P, "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, true, 1795200000, VPT_P, "bad", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_record_settlement(l, pol, VPT_F, ES_LEG_WORKER, true, 1795200000, VPT_P, "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+  s_real := vp_exec_record_settlement(l, pol, VPT_A, ES_LEG_WORKER, true, 1795200000, VPT_P, "2026-11-21", rec[..]);
+  #assert s_real.code == ES_RELEASE && s_real.state == VpExecState.settled && s_real.ledger.settled_real_sat == 800;
+  #assert s_real.ledger.legs[0].real_bitcoin_moved && s_real.ledger.legs[0].settled_at == 1795200000 && kept_is(s_real.ledger.legs[0].commitment, VPT_P);
+  #assert rec[0].real_bitcoin_moved && rec[0].amount_msat == 800000 && rec[0].leg == ExwPayoutLeg.worker && rec[0].settlement_commitment == VPT_P;
+  s_val := vp_exec_record_settlement(s_real.ledger, pol, VPT_A, ES_LEG_VALIDATOR, true, 1795200001, VPT_B, "2026-11-21", rec[..]);
+  #assert s_val.code == ES_RELEASE && s_val.state == VpExecState.settled && s_val.ledger.settled_real_sat == 1000 && rec[0].leg == ExwPayoutLeg.validator;
+  // Re-settling already settled leg refused
+  #assert vp_exec_record_settlement(s_val.ledger, pol, VPT_A, ES_LEG_WORKER, true, 1795200002, VPT_P, "2026-11-21", rec[..]).code == ES_REFUSE_BAD_INPUT;
+
+  // Append-only log recount matches bit-for-bit across admit, hold+review, and settle
+  evs := [6] VpExecLogEvent.[
+    VpExecLogEvent.{kind = VpExecLogKind.admit, receipt_digest = VPT_A, verdict_digest = VPT_B, payee_pubkey = VPT_D, leg = ES_LEG_WORKER, es_verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 800, utc_day = 20778, period_id = "2026-11-21", network = "regtest"},
+    VpExecLogEvent.{kind = VpExecLogKind.admit, receipt_digest = VPT_A, verdict_digest = VPT_B, payee_pubkey = VPT_E, leg = ES_LEG_VALIDATOR, es_verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 200, utc_day = 20778, period_id = "2026-11-21", network = "regtest"},
+    VpExecLogEvent.{kind = VpExecLogKind.admit, receipt_digest = VPT_C, verdict_digest = VPT_B, payee_pubkey = VPT_D, leg = ES_LEG_WORKER, es_verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 900, utc_day = 20778, period_id = "2026-11-21", network = "regtest"},
+    VpExecLogEvent.{kind = VpExecLogKind.review, receipt_digest = VPT_C, verdict_digest = VPT_B, payee_pubkey = VPT_D, leg = ES_LEG_WORKER, approve = true, period_id = "2026-11-21"},
+    VpExecLogEvent.{kind = VpExecLogKind.settle, receipt_digest = VPT_A, leg = ES_LEG_WORKER, real_bitcoin_moved = true, settled_at = 1795200000, commitment = VPT_P, period_id = "2026-11-21"},
+    VpExecLogEvent.{kind = VpExecLogKind.settle, receipt_digest = VPT_A, leg = ES_LEG_VALIDATOR, real_bitcoin_moved = false, settled_at = 0, commitment = "", period_id = "2026-11-21"}
+  ];
+  rc := vp_exec_recount(pol, evs[..]);
+  #assert rc.ok && rc.bad_at == -1 && rc.ledger.n_legs == 3 && rc.ledger.released_sat == 1900 && rc.ledger.held_sat == 0 && rc.ledger.settled_real_sat == 800;
+
+  // Recount refusal indices for bad admit, bad review, and bad settle
+  bad_evs := evs; bad_evs[1].receipt_digest = VPT_A; bad_evs[1].leg = ES_LEG_WORKER;
+  #assert !vp_exec_recount(pol, bad_evs[..]).ok && vp_exec_recount(pol, bad_evs[..]).bad_at == 1;
+  bad_evs2 := evs; bad_evs2[0].amount_sat = 0;
+  #assert !vp_exec_recount(pol, bad_evs2[..]).ok && vp_exec_recount(pol, bad_evs2[..]).bad_at == 0;
+  bad_evs3 := evs; bad_evs3[3].approve = true; bad_evs3[3].receipt_digest = VPT_F;
+  #assert !vp_exec_recount(pol, bad_evs3[..]).ok && vp_exec_recount(pol, bad_evs3[..]).bad_at == 3;
+  bad_evs4 := evs; bad_evs4[4].commitment = "";
+  #assert !vp_exec_recount(pol, bad_evs4[..]).ok && vp_exec_recount(pol, bad_evs4[..]).bad_at == 4;
+}
+
+#test "W4.3 input validation and capacity bounds (#13922)" {
+  pol := VpExecPolicy.{
+    es = EsPolicy.{owner_armed = true, per_payout_cap_sat = 0, per_pubkey_daily_cap_sat = 0, global_daily_cap_sat = 0},
+    mainnet_armed = true,
+    owner_policy_digest = VPT_P
+  };
+  l: VpExecLedger;
+  #assert vp_exec_admit_leg(l, VpExecPolicy.{owner_policy_digest = "bad"}, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, "bad", VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, "bad", VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, "bad", ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "bad", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "usdc").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 0, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, VP_EXEC_MAX_SAT, 1, "2026-11-21", "regtest").code == ES_RELEASE;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, VP_EXEC_MAX_SAT + 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 0, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, 0, ES_VERDICT_EXACT_REPLAY, 1, 1, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+
+  // Fill VP_EXEC_MAX_KEYS distinct pubkeys -> 17th distinct pubkey refused on admit & review
+  d: [64] u8; pk: [64] u8;
+  for i: 0..<64 { d[i] = '0'; pk[i] = 'a'; }
+  hex := "0123456789abcdef";
+  for k: 0..<VP_EXEC_MAX_KEYS {
+    d[0] = hex[k >> 4]; d[1] = hex[k & 15];
+    pk[0] = hex[k >> 4]; pk[1] = hex[k & 15];
+    st := vp_exec_admit_leg(l, pol, cast(string) d[..], VPT_B, cast(string) pk[..], ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 20778, "2026-11-21", "regtest");
+    #assert st.code == ES_RELEASE;
+    l = st.ledger;
+  }
+  #assert l.n_keys == VP_EXEC_MAX_KEYS;
+  #assert vp_exec_admit_leg(l, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 20778, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+  // Hold a 17th key under an unarmed policy, then owner-approve fails cleanly on key table capacity
+  unarmed := pol; unarmed.es.owner_armed = false;
+  h17 := vp_exec_admit_leg(l, unarmed, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 20778, "2026-11-21", "regtest");
+  #assert h17.code == ES_HOLD_OWNER;
+  #assert vp_exec_owner_review(h17.ledger, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, true, "2026-11-21").code == ES_REFUSE_BAD_INPUT;
+
+  // Fill VP_EXEC_MAX_LEGS using same pubkey -> 33rd leg refused
+  l2: VpExecLedger;
+  for k: 0..<VP_EXEC_MAX_LEGS {
+    d[0] = hex[k >> 4]; d[1] = hex[k & 15];
+    st := vp_exec_admit_leg(l2, pol, cast(string) d[..], VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 20778, "2026-11-21", "regtest");
+    #assert st.code == ES_RELEASE;
+    l2 = st.ledger;
+  }
+  #assert l2.n_legs == VP_EXEC_MAX_LEGS;
+  #assert vp_exec_admit_leg(l2, pol, VPT_A, VPT_B, VPT_D, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1, 20778, "2026-11-21", "regtest").code == ES_REFUSE_BAD_INPUT;
+}

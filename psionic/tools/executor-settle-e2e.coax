@@ -1,43 +1,15 @@
 // Executor W4.3 End-to-End Two-Leg Settlement, Rolling Daily Caps, Append-Only
-// Log Recount & Reconciled Feed Verification Runner (GitHub #13922).
+// Log Recount, Reconciled Settled Feed & NIP-PYLON 30201 Pool Verifier (GitHub #13922).
 // tool.sh: release
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
 #load "../../coax/lib/crypto/sha256.coax";
 #load "../../coax/lib/encoding/json.coax";
-#load "../../pay/executor-settlement.coax";
 #load "../lib/wasm-exec.coax";
 #load "../lib/peer/executor-audit.coax";
-
-ESE_NET_MAINNET :: 1;
-ESE_NET_REGTEST :: 2;
-
-EseLogRow :: struct {
-  receipt_id: int;
-  leg: int;
-  amount_sat: int;
-  network: int;
-  real_bitcoin_moved: bool;
-}
-
-ese_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
-ese_hex32 :: (d: [32] u8, out: [] u8) -> string {
-  for i: 0..<32 { b := cast(int) d[i]; out[2 * i] = ese_hex_ch(b >> 4); out[2 * i + 1] = ese_hex_ch(b & 15); }
-  return cast(string) out[0..<64];
-}
-
-// Domain-separated settlement commitment: SHA-256("openagents.pylon-settlement.v1:<NET>:<PAYMENT_HASH>")
-ese_commitment :: (network: string, payment_hash: string, out_sha: [] u8) {
-  buf: [256] u8;
-  n := 0;
-  p := "openagents.pylon-settlement.v1:";
-  for i: 0..<p.count { buf[n] = p[i]; n += 1; }
-  for i: 0..<network.count { buf[n] = network[i]; n += 1; }
-  buf[n] = ':'; n += 1;
-  for i: 0..<payment_hash.count { buf[n] = payment_hash[i]; n += 1; }
-  #assert sha256_hash_checked(buf[0..<n], out_sha, false) == SHA_OK;
-}
+#load "../lib/peer/pay.coax";
+#load "../lib/peer/settled-feed.coax";
 
 tool_main :: () -> int #export_c #effects(all) {
   out_dir := "/tmp/oa-w43-settle";
@@ -67,99 +39,160 @@ tool_main :: () -> int #export_c #effects(all) {
   #assert ea_submit_quarantine(q[..], 901, 111, 111, 1001, true, true, true, false) == EaStatus.ok;
   #assert ea_apply_verdict(q[..], 901, 222, 222, 2002, true, true, true) == EaStatus.ok;
 
-  // 2. Two-leg verdict-gated escrow on regtest via #authority pay/executor-settlement.coax
-  pol := EsPolicy.{
-    owner_armed = true,
-    per_payout_cap_sat = 1000,
-    per_pubkey_daily_cap_sat = 2000,
-    global_daily_cap_sat = 2500,
+  // 2. Two-leg verdict-gated escrow on regtest via #authority pay.coax + pay/executor-settlement.coax
+  pol := VpExecPolicy.{
+    es = EsPolicy.{
+      owner_armed = true,
+      per_payout_cap_sat = 1000,
+      per_pubkey_daily_cap_sat = 2000,
+      global_daily_cap_sat = 2500
+    },
+    mainnet_armed = false,
+    owner_policy_digest = "1111111111111111111111111111111111111111111111111111111111111111"
   };
-  st := EsPeriodState.{utc_day = 20778, global_spent_sat = 0, pubkey_spent_sat = 0};
+  rcpt_hex: [64] u8;
+  _ = S_hex(S_hash("w43-e2e-receipt-901"), rcpt_hex[..]);
+  rcpt_id := cast(string) rcpt_hex[..];
+  rcpt2_hex: [64] u8;
+  _ = S_hex(S_hash("w43-e2e-receipt-902"), rcpt2_hex[..]);
+  rcpt2_id := cast(string) rcpt2_hex[..];
+  vd_id := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  wrk_pk := "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+  val_pk := "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
-  // Worker leg (800 sat) + Validator leg (200 sat) -> both release
-  req_w := EsPayoutRequest.{leg = ES_LEG_WORKER, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 800, utc_day = 20778, already_paid_leg = false};
-  if es_admit_payout(pol, st, req_w) != ES_RELEASE { print("W43_FAIL worker release\n"); return 1; }
-  st.global_spent_sat += 800;
-  st.pubkey_spent_sat += 800;
+  l: VpExecLedger;
+  pair := vp_exec_admit_replay_pair(
+    l, pol, rcpt_id, vd_id, wrk_pk, val_pk,
+    ExwReplayOutcome.exact_replay, 800, 200, 20778, "2026-11-21", "regtest"
+  );
+  if pair.worker.code != ES_RELEASE || pair.validator.code != ES_RELEASE || !pair.worker.has_intent || !pair.validator.has_intent {
+    print("W43_FAIL two-leg release\n"); return 1;
+  }
+  l = pair.ledger;
 
-  req_v := EsPayoutRequest.{leg = ES_LEG_VALIDATOR, verdict = ES_VERDICT_EXACT_REPLAY, amount_sat = 200, utc_day = 20778, already_paid_leg = false};
-  if es_admit_payout(pol, st, req_v) != ES_RELEASE { print("W43_FAIL validator release\n"); return 1; }
-  st.global_spent_sat += 200;
+  // Domain-separated settlement commitments via #authority settled-feed.coax (no preimage/seed leaked)
+  hex_w: [64] u8; hex_v: [64] u8;
+  #assert sf_settlement_commitment("regtest", "regtest-payhash-worker-901", hex_w[..]);
+  #assert sf_settlement_commitment("regtest", "regtest-payhash-validator-901", hex_v[..]);
+  cw := cast(string) hex_w[..];
+  cv := cast(string) hex_v[..];
 
-  // Domain-separated settlement commitments (no preimage/seed leaked)
-  c_w: [32] u8; c_v: [32] u8; hex_w: [64] u8; hex_v: [64] u8;
-  ese_commitment("regtest", "regtest-payhash-worker-901", c_w[..]);
-  ese_commitment("regtest", "regtest-payhash-validator-901", c_v[..]);
-  #assert es_receipt_truthful(true, 800, true) && es_receipt_truthful(true, 200, true);
-  #assert !es_receipt_truthful(true, 800, false) && !es_receipt_truthful(true, 0, true);
+  // Record settled worker (800 sat) + validator (200 sat) and one simulated (500 sat, real_bitcoin_moved=false)
+  recs: [3] ExwSettlementReceipt;
+  sw := vp_exec_record_settlement(l, pol, rcpt_id, ES_LEG_WORKER, true, 1795200100, cw, "2026-11-21", recs[0..<1]);
+  #assert sw.code == ES_RELEASE && sw.state == VpExecState.settled;
+  l = sw.ledger;
+  sv := vp_exec_record_settlement(l, pol, rcpt_id, ES_LEG_VALIDATOR, true, 1795200101, cv, "2026-11-21", recs[1..<2]);
+  #assert sv.code == ES_RELEASE && sv.state == VpExecState.settled;
+  l = sv.ledger;
+  sim_step := vp_exec_admit_leg(l, pol, rcpt2_id, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 500, 20778, "2026-11-21", "regtest");
+  #assert sim_step.code == ES_RELEASE;
+  l = sim_step.ledger;
+  ss := vp_exec_record_settlement(l, pol, rcpt2_id, ES_LEG_WORKER, false, 0, "", "2026-11-21", recs[2..<3]);
+  #assert ss.code == ES_RELEASE && ss.state == VpExecState.released && ss.ledger.settled_real_sat == 1000;
+  l = ss.ledger;
 
   // 3. All 5 adversarial checks:
   // (a) Tampered trace digest -> FAILED verdict -> ES_WITHHOLD_FAILED on both legs
   bad_rc := rc; bad_rc.trace_digest[0] ^= 1;
   bad_rep := wx_replay_verify(prog[..], fns[..], 16, 100, bad_rc, n2[..]);
   if bad_rep.verdict != RxVerdict.failed { print("W43_FAIL tamper check\n"); return 1; }
-  req_fail_w := req_w; req_fail_w.verdict = ES_VERDICT_FAILED;
-  req_fail_v := req_v; req_fail_v.verdict = ES_VERDICT_FAILED;
-  #assert es_admit_payout(pol, st, req_fail_w) == ES_WITHHOLD_FAILED;
-  #assert es_admit_payout(pol, st, req_fail_v) == ES_WITHHOLD_FAILED;
+  bad_pair := vp_exec_admit_replay_pair(
+    VpExecLedger.{}, pol, rcpt_id, vd_id, wrk_pk, val_pk,
+    ExwReplayOutcome.failed, 800, 200, 20778, "2026-11-21", "regtest"
+  );
+  #assert bad_pair.worker.code == ES_WITHHOLD_FAILED && bad_pair.validator.code == ES_WITHHOLD_FAILED;
 
   // (b) Duplicate verdict delivery -> ES_REFUSE_DUPLICATE (zero double-spend)
-  dup_w := req_w; dup_w.already_paid_leg = true;
-  #assert es_admit_payout(pol, st, dup_w) == ES_REFUSE_DUPLICATE;
+  dup := vp_exec_admit_leg(l, pol, rcpt_id, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20778, "2026-11-21", "regtest");
+  #assert dup.code == ES_REFUSE_DUPLICATE;
 
-  // (c) Over per-payout cap (1001 > 1000) AND over global daily cap -> ES_HOLD_OWNER
-  over_p := req_w; over_p.amount_sat = 1001;
-  #assert es_admit_payout(pol, st, over_p) == ES_HOLD_OWNER;
-  st_near := EsPeriodState.{utc_day = 20778, global_spent_sat = 2100, pubkey_spent_sat = 800};
-  #assert es_admit_payout(pol, st_near, req_w) == ES_HOLD_OWNER;
+  // (c) Over per-payout cap (1001 > 1000), over global daily cap, AND unarmed mainnet -> ES_HOLD_OWNER
+  rcpt3 := "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+  #assert vp_exec_admit_leg(l, pol, rcpt3, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 1001, 20778, "2026-11-21", "regtest").code == ES_HOLD_OWNER;
+  #assert vp_exec_admit_leg(l, pol, rcpt3, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20778, "2026-11-21", "bitcoin").code == ES_HOLD_OWNER;
+  l_near := l; l_near.global_spent_sat = 2100;
+  #assert vp_exec_admit_leg(l_near, pol, rcpt3, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20778, "2026-11-21", "regtest").code == ES_HOLD_OWNER;
 
   // (d) Rolling over UTC day resets daily cap cleanly
-  req_next_day := req_w; req_next_day.utc_day = 20779;
-  #assert es_admit_payout(pol, st_near, req_next_day) == ES_RELEASE;
+  rolled := vp_exec_admit_leg(l_near, pol, rcpt3, vd_id, wrk_pk, ES_LEG_WORKER, ES_VERDICT_EXACT_REPLAY, 800, 20779, "2026-11-22", "regtest");
+  #assert rolled.code == ES_RELEASE && rolled.ledger.utc_day == 20779 && rolled.ledger.global_spent_sat == 800;
 
-  // (e) Append-only ledger write & restart recount (excluding real_bitcoin_moved=false and separating mainnet vs regtest)
+  // (e) Append-only W2.1 JSONL persistence, restart reload & #authority reconciled settled feed + 30201 projection
   log_p: [512] u8;
-  log_path := fs_join(out_dir, "settlement-ledger.log", log_p[..]);
-  rows := [3] EseLogRow.[
-    EseLogRow.{receipt_id = 901, leg = ES_LEG_WORKER, amount_sat = 800, network = ESE_NET_REGTEST, real_bitcoin_moved = true},
-    EseLogRow.{receipt_id = 901, leg = ES_LEG_VALIDATOR, amount_sat = 200, network = ESE_NET_REGTEST, real_bitcoin_moved = true},
-    EseLogRow.{receipt_id = 902, leg = ES_LEG_WORKER, amount_sat = 500, network = ESE_NET_REGTEST, real_bitcoin_moved = false},
-  ];
-  // Serialize append-only rows and reload from disk to simulate daemon restart recount
-  ser: [1024] u8;
+  log_path := fs_join(out_dir, "settlement-ledger.jsonl", log_p[..]);
+  ser: [8192] u8;
   sn := 0;
-  for r: rows {
-    sn = json_raw(ser[..], sn, "{\"v\":\"openagents.executor.settlement-receipt.v1alpha1\",\"receipt_id\":");
-    sn = json_write_int(ser[..], sn, r.receipt_id);
-    sn = json_raw(ser[..], sn, ",\"leg\":"); sn = json_write_int(ser[..], sn, r.leg);
-    sn = json_raw(ser[..], sn, ",\"sat\":"); sn = json_write_int(ser[..], sn, r.amount_sat);
-    sn = json_raw(ser[..], sn, ",\"net\":"); sn = json_write_int(ser[..], sn, r.network);
-    sn = json_raw(ser[..], sn, ",\"real\":"); sn = json_write_int(ser[..], sn, ifx r.real_bitcoin_moved then 1 else 0);
-    sn = json_raw(ser[..], sn, "}\n");
+  for r: recs {
+    one_b: [2048] u8;
+    w := exw_settlement_receipt_write(r, one_b[..]);
+    #assert w.err == ExwErr.ok;
+    #assert !sf_has_secret(cast(string) one_b[0..<w.len]);
+    for j: 0..<w.len { ser[sn] = one_b[j]; sn += 1; }
+    ser[sn] = '\n'; sn += 1;
   }
   #assert fs_replace_durable(log_path, cast(string) ser[0..<sn]);
 
-  // Recount strictly from persisted ledger on disk
-  rd: [2048] u8;
+  // Reload strictly from persisted disk log and decode with W2.1 exw_settlement_receipt_read
+  rd: [8192] u8;
   rn := fs_read(log_path, rd[..]);
   #assert rn == sn;
-  recount_regtest_sat := 0;
-  recount_mainnet_sat := 0;
-  recount_real_rows := 0;
-  recount_sim_excluded := 0;
-  for r: rows {
-    if !r.real_bitcoin_moved { recount_sim_excluded += 1; continue; }
-    recount_real_rows += 1;
-    if r.network == ESE_NET_MAINNET { recount_mainnet_sat += r.amount_sat; }
-    else { recount_regtest_sat += r.amount_sat; }
+  reloaded: [3] ExwSettlementReceipt;
+  arena: [4096] u8;
+  a_pos := 0;
+  r_cnt := 0;
+  pos := 0;
+  while pos < rn {
+    start := pos;
+    while pos < rn && rd[pos] != '\n' { pos += 1; }
+    line := cast(string) rd[start..<pos];
+    pos += 1;
+    #assert exw_settlement_receipt_read(line, reloaded[r_cnt..<r_cnt + 1], arena[a_pos..<a_pos + 1024]) == ExwErr.ok;
+    r_cnt += 1;
+    a_pos += 1024;
   }
-  if recount_regtest_sat != 1000 || recount_mainnet_sat != 0 || recount_real_rows != 2 || recount_sim_excluded != 1 {
-    print("W43_FAIL recount mismatch\n"); return 1;
-  }
+  #assert r_cnt == 3;
 
-  print("W43_SETTLE ok worker_sat=800 validator_sat=200 regtest_total_sat=% mainnet_total_sat=% sim_excluded=% commit_w=% commit_v=%\n",
-        recount_regtest_sat, recount_mainnet_sat, recount_sim_excluded,
-        ese_hex32(c_w, hex_w[..]), ese_hex32(c_v, hex_v[..]));
-  print("executor-settle-e2e: PASS (two-leg escrow, 5/5 adversarial checks, UTC rollover, restart recount & feed separation)\n");
+  // Reconcile via #authority settled-feed.coax + verify NIP-PYLON 30201 pool aggregate
+  feed := sf_reconcile_feed(reloaded[..]);
+  #assert feed.err == SfErr.ok;
+  #assert feed.paid_msat_regtest == 1000000 && feed.paid_msat_bitcoin == 0 && feed.paid_msat_testnet == 0 && feed.paid_msat_signet == 0;
+  #assert feed.settled_count == 2 && feed.excluded_simulated_count == 1;
+
+  zero_sha := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  meta := SfPoolMeta.{
+    aggregator = val_pk,
+    pool = "executor-pool",
+    policy_digest = pol.owner_policy_digest,
+    window_from = 1795200000,
+    window_to = 1795203600,
+    generated_at = 1795203600,
+    valid_until = 1795203900,
+    beacons_count = 2,
+    beacons_digest = zero_sha,
+    checks_count = 1,
+    checks_digest = zero_sha,
+    pylons_online = 2,
+    slots_total = 2,
+    slots_free = 2,
+    family_unified = 1,
+    family_gpu = 1,
+    family_cpu = 0,
+    jobs_accepted = 1,
+    checks_pass = 1,
+    checks_fail = 0,
+    checks_inconclusive = 0
+  };
+  pbody: [4096] u8; ptags: [512] u8; fjson: [8192] u8;
+  pbn := sf_pool_30201_content(meta, feed, pbody[..]);
+  ptn := sf_pool_30201_tags(meta, cast(string) pbody[0..<pbn], ptags[..]);
+  fjn := sf_feed_json(feed, reloaded[..], fjson[..]);
+  #assert pbn > 0 && ptn > 0 && fjn > 0;
+  #assert !sf_has_secret(cast(string) pbody[0..<pbn]) && !sf_has_secret(cast(string) fjson[0..<fjn]);
+  #assert sf_pool_30201_verify(cast(string) pbody[0..<pbn], cast(string) ptags[0..<ptn], meta, reloaded[..]);
+
+  print("W43_SETTLE ok worker_sat=800 validator_sat=200 regtest_total_sat=% mainnet_total_sat=% sim_excluded=% pool_30201_bytes=% commit_w=% commit_v=%\n",
+        feed.paid_msat_regtest / 1000, feed.paid_msat_bitcoin / 1000, feed.excluded_simulated_count, pbn, cw, cv);
+  print("executor-settle-e2e: PASS (two-leg W2.1 escrow, 5/5 adversarial checks, UTC rollover, restart recount, settled feed & NIP-PYLON 30201)\n");
   return 0;
 }

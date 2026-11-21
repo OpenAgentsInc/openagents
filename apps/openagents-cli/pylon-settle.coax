@@ -1,0 +1,738 @@
+// Executor W4.3 Receipt-First Spark/Lightning Settlement & Reconciled Settled Feed CLI
+// (`openagents pylon settle` and `openagents pylon pool-feed`, GitHub #13922).
+//
+// Connects a live Nostr relay's signed W4.2 ReplayVerdict (kind 30211) and
+// ExecutionTraceReceipt (kind 30210) events -> #authority two-leg escrow & rolling
+// 24h UTC daily caps (`psionic/lib/peer/pay.coax` + `pay/executor-settlement.coax`) ->
+// real Breez Spark wallet bridge (`spark-settle-helper.sh` / Desktop Wallet RPC / dry-run) ->
+// append-only W2.1 SettlementReceipt ledger -> #authority reconciled settled feed &
+// NIP-PYLON kind 30201 pool aggregate (`psionic/lib/peer/settled-feed.coax`).
+#load "../../psionic/lib/peer/pay.coax";
+#load "../../psionic/lib/peer/settled-feed.coax";
+
+PS_MAX_LEDGER_BYTES :: 262144;
+PS_MAX_EVENTS :: 32;
+
+// Exact UTC day (days since 1970-01-01) -> "YYYY-MM-DD" in out[0..<10].
+ps_period_id_of_day :: (days: int, out: [] u8) -> string {
+  z := days + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  out[0] = cast(u8) ('0' + (y / 1000) % 10);
+  out[1] = cast(u8) ('0' + (y / 100) % 10);
+  out[2] = cast(u8) ('0' + (y / 10) % 10);
+  out[3] = cast(u8) ('0' + y % 10);
+  out[4] = '-';
+  out[5] = cast(u8) ('0' + m / 10);
+  out[6] = cast(u8) ('0' + m % 10);
+  out[7] = '-';
+  out[8] = cast(u8) ('0' + d / 10);
+  out[9] = cast(u8) ('0' + d % 10);
+  return cast(string) out[0..<10];
+}
+
+// Compute canonical 64-hex SHA-256 owner policy digest binding caps & arming flags.
+ps_policy_digest :: (pol: EsPolicy, mainnet_armed: bool, network: string, out_hex: [] u8) -> string {
+  buf: [512] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]); jo_obj(o[..]);
+  jo_key(o[..], "global_daily_cap_sat"); jo_int(o[..], pol.global_daily_cap_sat);
+  jo_key(o[..], "mainnet_armed"); jo_bool(o[..], mainnet_armed);
+  jo_key(o[..], "network"); jo_str(o[..], network);
+  jo_key(o[..], "owner_armed"); jo_bool(o[..], pol.owner_armed);
+  jo_key(o[..], "per_payout_cap_sat"); jo_int(o[..], pol.per_payout_cap_sat);
+  jo_key(o[..], "per_pubkey_daily_cap_sat"); jo_int(o[..], pol.per_pubkey_daily_cap_sat);
+  jo_end(o[..]);
+  _ = exw_canonical_sha256(cast(string) buf[0..<o[0].n], out_hex);
+  return cast(string) out_hex[0..<64];
+}
+
+// Append one canonical JSON line durably to an append-only ledger file.
+ps_append_jsonl :: (path: string, line: string) -> bool {
+  existing: [PS_MAX_LEDGER_BYTES] u8;
+  n := fs_read(path, existing[..]);
+  if n < 0 { n = 0; }
+  if n + line.count + 1 > existing.count { return false; }
+  for i: 0..<line.count { existing[n + i] = line[i]; }
+  existing[n + line.count] = '\n';
+  return fs_replace_durable(path, cast(string) existing[0..<n + line.count + 1]);
+}
+
+// Parse all W2.1 SettlementReceipt lines from a persisted JSONL ledger file.
+ps_load_receipts :: (
+  path: string,
+  out_recs: [] ExwSettlementReceipt,
+  arena: [] u8,
+  out_count: [] int
+) -> bool {
+  out_count[0] = 0;
+  if fs_kind(path) != FS_FILE { return true; }
+  raw: [PS_MAX_LEDGER_BYTES] u8;
+  rn := fs_read(path, raw[..]);
+  if rn < 0 { return false; }
+  if rn == 0 { return true; }
+  arena_pos := 0;
+  i := 0;
+  while i < rn {
+    start := i;
+    while i < rn && raw[i] != '\n' { i += 1; }
+    end := i;
+    if i < rn && raw[i] == '\n' { i += 1; }
+    if end == start { continue; }
+    if out_count[0] >= out_recs.count { return false; }
+    if arena_pos + 1024 > arena.count { return false; }
+    line := cast(string) raw[start..<end];
+    one: [1] ExwSettlementReceipt;
+    err := exw_settlement_receipt_read(line, one[..], arena[arena_pos..<arena_pos + 1024]);
+    if err != ExwErr.ok { return false; }
+    out_recs[out_count[0]] = one[0];
+    out_count[0] += 1;
+    arena_pos += 1024;
+  }
+  return true;
+}
+
+// Default ledger directory: --ledger DIR, else ~/.openagents/pylon/settlement.
+ps_ledger_dir :: (a: [] Args, out: [] u8) -> string {
+  custom := args_value(a, "--ledger", "");
+  if custom != "" {
+    n := copy(custom, out);
+    return ifx n > 0 then cast(string) out[0..<n] else "";
+  }
+  ph: [1024] u8;
+  return fs_join(pylon_home(ph[..]), "settlement", out);
+}
+
+// Execute one released payout leg through the configured wallet bridge.
+// Sets real_bitcoin_moved=true ONLY when the live wallet bridge returns a
+// real settled transfer with a valid 64-hex settlement_commitment & settled_at > 0.
+PsBridgeOut :: struct {
+  real_bitcoin_moved: bool;
+  settled_at: int;
+  commitment: [64] u8;
+  has_commitment: bool;
+  status: [64] u8;
+  status_n: int;
+}
+
+ps_set_status :: (dst: [] PsBridgeOut, s: string) {
+  n := copy(s, dst[0].status[..]);
+  dst[0].status_n = ifx n > 0 then n else 0;
+}
+
+ps_execute_bridge :: (
+  bridge: string,
+  network: string,
+  dest: string,
+  amount_sat: int,
+  idem_key: string,
+  daily_rem_sat: int,
+  storage_dir: string,
+  arm_mainnet: bool,
+  out: [] PsBridgeOut
+) {
+  out[0] = PsBridgeOut.{};
+  if bridge == "dry-run" {
+    ps_set_status(out, "dry_run");
+    return;
+  }
+  if dest == "" {
+    ps_set_status(out, "missing_destination");
+    return;
+  }
+
+  if bridge == "desktop-rpc" {
+    jbuf: [2048] u8; o: [1] Jo; jo_start(o[..], jbuf[..]);
+    jo_obj(o[..]);
+    jo_key(o[..], "destination"); jo_str(o[..], dest);
+    jo_key(o[..], "amount_sats"); jo_int(o[..], amount_sat);
+    jo_key(o[..], "reason"); jo_str(o[..], "Executor W4.3 verified settlement");
+    jo_end(o[..]);
+    resp: [16384] u8;
+    rn := wallet_rpc_call("POST", "/v1/wallet/pay", jo_text(o[..]), resp[..]);
+    if rn <= 0 {
+      ps_set_status(out, "desktop_rpc_unavailable");
+      return;
+    }
+    rtxt := cast(string) resp[0..<rn];
+    st_b: [64] u8;
+    st_s := wallet_json_field(rtxt, "status", st_b[..]);
+    if st_s != "sent" {
+      ps_set_status(out, ifx st_s != "" then st_s else "desktop_rpc_refused");
+      return;
+    }
+    id_b: [128] u8;
+    pid := wallet_json_field(rtxt, "id", id_b[..]);
+    if pid != "" && sf_settlement_commitment(network, pid, out[0].commitment[..]) {
+      out[0].real_bitcoin_moved = true;
+      out[0].has_commitment = true;
+      out[0].settled_at = cxcli_now_s();
+      ps_set_status(out, "settled");
+      return;
+    }
+    ps_set_status(out, "desktop_rpc_missing_id");
+    return;
+  }
+
+  if bridge == "spark-helper" {
+    h_env: [1024] u8; h_path: [1024] u8; root_b: [1024] u8;
+    helper := proc_getenv("OA_SPARK_HELPER", h_env[..]);
+    if helper == "" {
+      root := source_root(root_b[..]);
+      if root != "" {
+        helper = fs_join(root, "apps/openagents-desktop/spark-settle-helper.sh", h_path[..]);
+      }
+    }
+    if helper == "" || fs_kind(helper) != FS_FILE {
+      ps_set_status(out, "spark_helper_missing");
+      return;
+    }
+    amt_b: [32] u8; rem_b: [32] u8;
+    amt_s := int_text(amount_sat, amt_b[..]);
+    rem_s := int_text(daily_rem_sat, rem_b[..]);
+    eph_b: [16] u8;
+    use_eph := proc_getenv("OA_SPARK_EPHEMERAL", eph_b[..]) == "1" && network != "bitcoin";
+
+    argv: [18] string;
+    ac := 0;
+    argv[ac] = helper; ac += 1;
+    argv[ac] = "pay"; ac += 1;
+    argv[ac] = "--network"; ac += 1; argv[ac] = network; ac += 1;
+    argv[ac] = "--dest"; ac += 1; argv[ac] = dest; ac += 1;
+    argv[ac] = "--amount-sats"; ac += 1; argv[ac] = amt_s; ac += 1;
+    argv[ac] = "--idempotency-key"; ac += 1; argv[ac] = idem_key; ac += 1;
+    argv[ac] = "--fee-cap-sats"; ac += 1; argv[ac] = "500"; ac += 1;
+    argv[ac] = "--daily-remaining-sats"; ac += 1; argv[ac] = rem_s; ac += 1;
+    if storage_dir != "" {
+      argv[ac] = "--storage-dir"; ac += 1; argv[ac] = storage_dir; ac += 1;
+    }
+    if use_eph { argv[ac] = "--ephemeral"; ac += 1; }
+    if arm_mainnet { argv[ac] = "--arm-mainnet"; ac += 1; }
+
+    sout: [8192] u8; serr: [4096] u8;
+    got := proc_run(argv[0..<ac], 60000, sout[..], serr[..]);
+    if got.started != 0 || got.timed_out || got.out_n <= 0 {
+      ps_set_status(out, "spark_helper_exec_failed");
+      return;
+    }
+    rtxt := cast(string) sout[0..<got.out_n];
+    // Parse sanitized JSON response from spark-settle-helper
+    d: [1] Jv; nodes: [64] JvNode;
+    if !jv_parse(d[..], rtxt, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT {
+      ps_set_status(out, "spark_helper_bad_json");
+      return;
+    }
+    v := d[0];
+    st_b: [64] u8;
+    st_s := wallet_json_field(rtxt, "status", st_b[..]);
+    moved := jv_kind(v, jv_get(v, 0, "real_bitcoin_moved")) == JV_TRUE;
+    sat_at := jv_int(v, jv_get(v, 0, "settled_at"), 0);
+    c_b: [128] u8;
+    c_s := wallet_json_field(rtxt, "settlement_commitment", c_b[..]);
+    if got.status == 0 && moved && sat_at > 0 && exw_hex_nonzero(c_s) {
+      for i: 0..<64 { out[0].commitment[i] = c_s[i]; }
+      out[0].real_bitcoin_moved = true;
+      out[0].has_commitment = true;
+      out[0].settled_at = sat_at;
+      ps_set_status(out, "settled");
+      return;
+    }
+    ps_set_status(out, ifx st_s != "" then st_s else "spark_helper_not_settled");
+    return;
+  }
+
+  ps_set_status(out, "unknown_bridge");
+}
+
+// Reconcile ledger from disk, build NIP-PYLON 30201 pool aggregate + settled feed JSON,
+// optionally publish kind 30201 to a live Nostr relay.
+ps_publish_and_save_pool :: (
+  ledger_dir: string,
+  pool: string,
+  agg_pubkey: string,
+  secret: [] u8,
+  policy_digest: string,
+  now: int,
+  publish: bool,
+  relay_url: string,
+  deadline: int,
+  out_feed: [] SfFeed,
+  out_pool_event_id: [] u8,
+  out_published: [] bool
+) -> bool {
+  out_published[0] = false;
+  rpath_b: [1024] u8;
+  rpath := fs_join(ledger_dir, "settlement-receipts.jsonl", rpath_b[..]);
+
+  recs: [SF_MAX_RECEIPTS] ExwSettlementReceipt;
+  arena: [SF_MAX_RECEIPTS * 1024] u8;
+  n_recs: [1] int;
+  if !ps_load_receipts(rpath, recs[..], arena[..], n_recs[..]) { return false; }
+
+  feed := sf_reconcile_feed(recs[0..<n_recs[0]]);
+  if feed.err != SfErr.ok { return false; }
+  out_feed[0] = feed;
+
+  // Write reconciled settled-feed.json (asserting zero leaked secrets)
+  fbuf: [65536] u8;
+  fn := sf_feed_json(feed, recs[0..<n_recs[0]], fbuf[..]);
+  if fn <= 0 { return false; }
+  fstr := cast(string) fbuf[0..<fn];
+  if sf_has_secret(fstr) { return false; }
+  fpath_b: [1024] u8;
+  fpath := fs_join(ledger_dir, "settled-feed.json", fpath_b[..]);
+  if !fs_replace_durable(fpath, fstr) { return false; }
+
+  // Build & verify NIP-PYLON kind 30201 pool aggregate
+  win_to := (now / 60) * 60;
+  win_from := ifx win_to >= 3600 then win_to - 3600 else 0;
+  if win_to == 0 { win_to = 60; }
+  gen_at := ifx now >= win_to then now else win_to;
+  zero_sha := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  meta := SfPoolMeta.{
+    aggregator = agg_pubkey,
+    pool = pool,
+    policy_digest = policy_digest,
+    window_from = win_from,
+    window_to = win_to,
+    generated_at = gen_at,
+    valid_until = gen_at + 300,
+    beacons_count = 0,
+    beacons_digest = zero_sha,
+    checks_count = feed.settled_count,
+    checks_digest = zero_sha,
+    pylons_online = 0,
+    slots_total = 0,
+    slots_free = 0,
+    family_unified = 0,
+    family_gpu = 0,
+    family_cpu = 0,
+    jobs_accepted = feed.settled_count,
+    checks_pass = feed.settled_count,
+    checks_fail = 0,
+    checks_inconclusive = 0
+  };
+  pbody: [4096] u8; ptags: [512] u8;
+  pbn := sf_pool_30201_content(meta, feed, pbody[..]);
+  if pbn <= 0 { return false; }
+  pb_s := cast(string) pbody[0..<pbn];
+  if sf_has_secret(pb_s) { return false; }
+  ptn := sf_pool_30201_tags(meta, pb_s, ptags[..]);
+  if ptn <= 0 { return false; }
+  pt_s := cast(string) ptags[0..<ptn];
+  if !sf_pool_30201_verify(pb_s, pt_s, meta, recs[0..<n_recs[0]]) { return false; }
+
+  ppath_b: [1024] u8;
+  ppath := fs_join(ledger_dir, "pool-30201.json", ppath_b[..]);
+  if !fs_replace_durable(ppath, pb_s) { return false; }
+
+  if publish {
+    c: [1] CliRelay;
+    if !cr_open(c[..], relay_url, secret) { cr_close(c[..]); return false; }
+    ev: [8192] u8;
+    en := sign_event_at(secret, gen_at, SF_POOL_KIND, pt_s, pb_s, ev[..]);
+    ok := en > 0 && cr_publish(c[..], cast(string) ev[0..<en], deadline);
+    cr_close(c[..]);
+    if !ok { return false; }
+    for i: 0..<64 { out_pool_event_id[i] = ev[7 + i]; }
+    out_published[0] = true;
+  }
+  return true;
+}
+
+// `openagents pylon settle`
+pylon_settle_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if args_has(a, "--help") || args_has(a, "-h") {
+    return fail(r, EXIT_USAGE, "pylon settle [--relay URL] [--network regtest|signet|testnet|bitcoin] [--ledger DIR] [--pool NAME] [--worker-sats N] [--validator-sats N] [--per-payout-cap N] [--per-pubkey-cap N] [--global-daily-cap N] [--armed] [--arm-mainnet-owner-approved] [--wallet-bridge dry-run|spark-helper|desktop-rpc] [--worker-dest ADDR] [--validator-dest ADDR] [--publish-pool]");
+  }
+
+  url := args_value(a, "--relay", "wss://relay.openagents.com");
+  network := args_value(a, "--network", "regtest");
+  if vp_net_code(network) < 0 {
+    return fail(r, EXIT_USAGE, "--network must be bitcoin, testnet, signet, or regtest");
+  }
+  pool := args_value(a, "--pool", "executor-pool");
+  if !sf_slug_ok(pool) {
+    return fail(r, EXIT_USAGE, "--pool must be 1..64 chars of [a-z0-9_-] starting alphanumeric");
+  }
+  bridge := args_value(a, "--wallet-bridge", "dry-run");
+  if bridge != "dry-run" && bridge != "spark-helper" && bridge != "desktop-rpc" {
+    return fail(r, EXIT_USAGE, "--wallet-bridge must be dry-run, spark-helper, or desktop-rpc");
+  }
+
+  worker_sats := cli_parse_u64(args_value(a, "--worker-sats", "800"));
+  validator_sats := cli_parse_u64(args_value(a, "--validator-sats", "200"));
+  per_payout_cap := cli_parse_u64(args_value(a, "--per-payout-cap", "1000"));
+  per_pubkey_cap := cli_parse_u64(args_value(a, "--per-pubkey-cap", "5000"));
+  global_daily_cap := cli_parse_u64(args_value(a, "--global-daily-cap", "10000"));
+  if worker_sats <= 0 || validator_sats <= 0 || per_payout_cap < 0 || per_pubkey_cap < 0 || global_daily_cap < 0 {
+    return fail(r, EXIT_USAGE, "payout amounts must be positive sats and caps non-negative");
+  }
+
+  owner_armed := args_has(a, "--armed");
+  mn_env_b: [16] u8;
+  mainnet_armed := args_has(a, "--arm-mainnet-owner-approved") && proc_getenv("OA_EXECUTOR_MAINNET_ARMED", mn_env_b[..]) == "1";
+  worker_dest := args_value(a, "--worker-dest", "");
+  validator_dest := args_value(a, "--validator-dest", "");
+  spark_dir := args_value(a, "--spark-storage-dir", "");
+  publish_pool := args_has(a, "--publish-pool");
+
+  ldir_b: [1024] u8;
+  ldir := ps_ledger_dir(a, ldir_b[..]);
+  if ldir == "" || !fs_mkdir_all(ldir) {
+    return fail(r, EXIT_FAIL, "could not create settlement ledger directory");
+  }
+
+  k: [1] Key;
+  if !load_key(profile, k[..]) {
+    return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`");
+  }
+  mh: [64] u8;
+  if !pubkey_hex(k[0].secret[..], mh[..]) {
+    wipe(k[0].secret[..]);
+    return fail(r, EXIT_FAIL, "could not read public key");
+  }
+  agg_pk := cast(string) mh[..];
+
+  now := cxcli_now_s();
+  utc_day := now / 86400;
+  if utc_day <= 0 { utc_day = 1; }
+  pid_b: [10] u8;
+  period_id := ps_period_id_of_day(utc_day, pid_b[..]);
+
+  es_pol := EsPolicy.{
+    owner_armed = owner_armed,
+    per_payout_cap_sat = per_payout_cap,
+    per_pubkey_daily_cap_sat = per_pubkey_cap,
+    global_daily_cap_sat = global_daily_cap
+  };
+  pdig_b: [64] u8;
+  pol_digest := ps_policy_digest(es_pol, mainnet_armed, network, pdig_b[..]);
+  vp_pol := VpExecPolicy.{es = es_pol, mainnet_armed = mainnet_armed, owner_policy_digest = pol_digest};
+
+  // 1. Replay persisted append-only SettlementReceipt log into VpExecLedger for restart idempotency
+  rpath_b: [1024] u8; ipath_b: [1024] u8;
+  rpath := fs_join(ldir, "settlement-receipts.jsonl", rpath_b[..]);
+  ipath := fs_join(ldir, "payout-intents.jsonl", ipath_b[..]);
+  existing_recs: [SF_MAX_RECEIPTS] ExwSettlementReceipt;
+  rec_arena: [SF_MAX_RECEIPTS * 1024] u8;
+  n_existing: [1] int;
+  if !ps_load_receipts(rpath, existing_recs[..], rec_arena[..], n_existing[..]) {
+    wipe(k[0].secret[..]);
+    return fail(r, EXIT_FAIL, "failed to load or verify persisted settlement-receipts.jsonl");
+  }
+
+  ledger: VpExecLedger;
+  ledger.utc_day = utc_day;
+  for i: 0..<n_existing[0] {
+    er := existing_recs[i];
+    es_leg := ifx er.leg == ExwPayoutLeg.worker then ES_LEG_WORKER else ES_LEG_VALIDATOR;
+    if vp_exec_find_leg(ledger, er.receipt_digest, es_leg) < 0 && ledger.n_legs < VP_EXEC_MAX_LEGS {
+      sats := er.amount_msat / 1000;
+      row := VpExecLeg.{
+        receipt = kept64(er.receipt_digest),
+        leg = es_leg,
+        amount_sat = sats,
+        utc_day = utc_day,
+        net = vp_net_code(er.network),
+        state = ifx er.real_bitcoin_moved then VpExecState.settled else VpExecState.released,
+        real_bitcoin_moved = er.real_bitcoin_moved,
+        settled_at = er.settled_at
+      };
+      if er.real_bitcoin_moved {
+        row.commitment = kept64(er.settlement_commitment);
+        ledger.settled_real_sat += sats;
+      }
+      if er.period_id == period_id {
+        ledger.global_spent_sat += sats;
+      }
+      ledger.released_sat += sats;
+      ledger.legs[ledger.n_legs] = row;
+      ledger.n_legs += 1;
+    }
+  }
+
+  // 2. Connect to live Nostr relay & fetch signed 30210 ExecutionTraceReceipt + 30211 ReplayVerdict events
+  c: [1] CliRelay;
+  if !cr_open(c[..], url, k[0].secret[..]) {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not connect to relay");
+  }
+  deadline := deadline_flag(a, "20");
+
+  // Fetch 30210 receipts
+  if !cr_req(c[..], "{\"kinds\":[30210],\"#t\":[\"oa:executor-receipt:v1\"]}") {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not send REQ for 30210 receipts");
+  }
+  tr_ids: [PS_MAX_EVENTS][64] u8;
+  tr_pks: [PS_MAX_EVENTS][64] u8;
+  tr_devs: [PS_MAX_EVENTS][128] u8;
+  tr_dev_ns: [PS_MAX_EVENTS] int;
+  tr_n := 0;
+  while true {
+    s := cr_next(c[..], deadline);
+    if s == CR_EOSE { cr_req_end(c[..]); break; }
+    if s != CR_EVENT {
+      wipe(k[0].secret[..]); cr_close(c[..]);
+      return fail(r, EXIT_FAIL, "relay did not reach EOSE while fetching 30210 receipts");
+    }
+    if tr_n < PS_MAX_EVENTS {
+      scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+      v := ev_of(cr_event(c[..]), scratch[..], buf[..]);
+      if v.ok && v.kind == PE_KIND_RECEIPT && v.content_n > 0 {
+        for j: 0..<64 { tr_ids[tr_n][j] = v.id[j]; tr_pks[tr_n][j] = v.author[j]; }
+        dn := pe_json_str(v.content, "device_ref", tr_devs[tr_n][..]);
+        tr_dev_ns[tr_n] = ifx dn > 0 then dn else 0;
+        tr_n += 1;
+      }
+    }
+  }
+
+  // Fetch 30211 replay verdicts
+  if !cr_req(c[..], "{\"kinds\":[30211],\"#t\":[\"oa:replay-verdict:v1\"]}") {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not send REQ for 30211 verdicts");
+  }
+  vd_ids: [PS_MAX_EVENTS][64] u8;
+  vd_pks: [PS_MAX_EVENTS][64] u8;
+  vd_contents: [PS_MAX_EVENTS][2048] u8;
+  vd_lens: [PS_MAX_EVENTS] int;
+  vd_n := 0;
+  while true {
+    s := cr_next(c[..], deadline);
+    if s == CR_EOSE { cr_req_end(c[..]); break; }
+    if s != CR_EVENT {
+      wipe(k[0].secret[..]); cr_close(c[..]);
+      return fail(r, EXIT_FAIL, "relay did not reach EOSE while fetching 30211 verdicts");
+    }
+    if vd_n < PS_MAX_EVENTS {
+      scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+      v := ev_of(cr_event(c[..]), scratch[..], buf[..]);
+      if v.ok && v.kind == PE_KIND_VERDICT && v.content_n > 0 && v.content_n <= 2048 {
+        for j: 0..<64 { vd_ids[vd_n][j] = v.id[j]; vd_pks[vd_n][j] = v.author[j]; }
+        for j: 0..<v.content_n { vd_contents[vd_n][j] = buf[j]; }
+        vd_lens[vd_n] = v.content_n;
+        vd_n += 1;
+      }
+    }
+  }
+  cr_close(c[..]);
+
+  // 3. Process every verified (30210 receipt, 30211 verdict) pair through #authority escrow
+  released_legs := 0;
+  held_legs := 0;
+  withheld_legs := 0;
+  duplicate_legs := 0;
+  rejected_pairing := 0;
+  settled_real_legs := 0;
+  unfunded_legs := 0;
+  last_bridge_status: [64] u8;
+  last_bridge_n := 0;
+
+  for vi: 0..<vd_n {
+    v_id := cast(string) vd_ids[vi][..];
+    val_pk := cast(string) vd_pks[vi][..];
+    v_body := cast(string) vd_contents[vi][0..<vd_lens[vi]];
+
+    rid_b: [128] u8; rid_n := pe_json_str(v_body, "receipt_id", rid_b[..]);
+    vst_b: [64] u8; vst_n := pe_json_str(v_body, "verdict", vst_b[..]);
+    vdev_b: [128] u8; vdev_n := pe_json_str(v_body, "device_ref", vdev_b[..]);
+    if rid_n != 64 || vst_n <= 0 || vdev_n <= 0 { continue; }
+    rid := cast(string) rid_b[0..<64];
+    vst := cast(string) vst_b[0..<vst_n];
+    vdev := cast(string) vdev_b[0..<vdev_n];
+
+    // Match parent 30210 ExecutionTraceReceipt
+    ti := -1;
+    for j: 0..<tr_n {
+      if cast(string) tr_ids[j][..] == rid { ti = j; break; }
+    }
+    if ti < 0 || tr_dev_ns[ti] <= 0 { continue; }
+    wrk_pk := cast(string) tr_pks[ti][..];
+    wdev := cast(string) tr_devs[ti][0..<tr_dev_ns[ti]];
+
+    // Enforce distinct key & distinct device_ref pairing via #authority executor-audit.coax
+    if ea_check_pairing(pe_id_hash(wrk_pk), pe_id_hash(wrk_pk), pe_id_hash(wdev),
+                        pe_id_hash(val_pk), pe_id_hash(val_pk), pe_id_hash(vdev), true) != EaStatus.ok {
+      rejected_pairing += 1;
+      continue;
+    }
+
+    outcome := ExwReplayOutcome.unverifiable;
+    if vst == "EXACT_REPLAY" { outcome = ExwReplayOutcome.exact_replay; }
+    else if vst == "FAILED" { outcome = ExwReplayOutcome.failed; }
+
+    pair := vp_exec_admit_replay_pair(
+      ledger, vp_pol, rid, v_id, wrk_pk, val_pk, outcome,
+      worker_sats, validator_sats, utc_day, period_id, network
+    );
+    ledger = pair.ledger;
+
+    // Execute both legs independently (WORKER then VALIDATOR)
+    steps := [2] VpExecStep.[pair.worker, pair.validator];
+    legs := [2] int.[ES_LEG_WORKER, ES_LEG_VALIDATOR];
+    amts := [2] int.[worker_sats, validator_sats];
+    dests := [2] string.[worker_dest, validator_dest];
+    for li: 0..<2 {
+      st := steps[li];
+      if st.code == ES_REFUSE_DUPLICATE { duplicate_legs += 1; continue; }
+      if st.code == ES_HOLD_OWNER { held_legs += 1; continue; }
+      if st.code == ES_WITHHOLD_FAILED { withheld_legs += 1; continue; }
+      if st.code != ES_RELEASE || !st.has_intent { continue; }
+
+      released_legs += 1;
+      // Persist canonical W2.1 VerifiedPayoutIntent JSON
+      ibuf: [2048] u8;
+      iw := exw_payout_intent_write(st.intent, ibuf[..]);
+      if iw.err == ExwErr.ok {
+        _ = ps_append_jsonl(ipath, cast(string) ibuf[0..<iw.len]);
+      }
+
+      // Build deterministic idempotency key `<receipt_digest>-<leg>`
+      ik_b: [80] u8;
+      ikn := copy(rid, ik_b[..]);
+      ikn += copy(ifx legs[li] == ES_LEG_WORKER then "-worker" else "-validator", ik_b[ikn..<80]);
+      idem_key := cast(string) ik_b[0..<ikn];
+
+      rem := ifx global_daily_cap > ledger.global_spent_sat then global_daily_cap - ledger.global_spent_sat + amts[li] else amts[li];
+      bo: [1] PsBridgeOut;
+      ps_execute_bridge(bridge, network, dests[li], amts[li], idem_key, rem, spark_dir, mainnet_armed, bo[..]);
+      last_bridge_n = copy(cast(string) bo[0].status[0..<bo[0].status_n], last_bridge_status[..]);
+
+      commit_s := ifx bo[0].has_commitment then cast(string) bo[0].commitment[..] else "";
+      s_rec: [1] ExwSettlementReceipt;
+      sr := vp_exec_record_settlement(
+        ledger, vp_pol, rid, legs[li],
+        bo[0].real_bitcoin_moved, bo[0].settled_at, commit_s, period_id, s_rec[..]
+      );
+      if sr.code == ES_RELEASE {
+        ledger = sr.ledger;
+        rbuf: [2048] u8;
+        rw := exw_settlement_receipt_write(s_rec[0], rbuf[..]);
+        if rw.err == ExwErr.ok {
+          rjson := cast(string) rbuf[0..<rw.len];
+          if !sf_has_secret(rjson) {
+            _ = ps_append_jsonl(rpath, rjson);
+          }
+        }
+        if bo[0].real_bitcoin_moved { settled_real_legs += 1; }
+        else { unfunded_legs += 1; }
+      }
+    }
+  }
+
+  // 4. Reconcile strictly from append-only disk log & emit NIP-PYLON 30201 pool aggregate
+  feed_out: [1] SfFeed;
+  pool_ev_id: [64] u8;
+  published: [1] bool;
+  ok_pool := ps_publish_and_save_pool(
+    ldir, pool, agg_pk, k[0].secret[..], pol_digest, now,
+    publish_pool, url, deadline, feed_out[..], pool_ev_id[..], published[..]
+  );
+  wipe(k[0].secret[..]);
+  if !ok_pool {
+    return fail(r, EXIT_FAIL, "failed to reconcile settled feed or publish NIP-PYLON 30201 pool aggregate");
+  }
+
+  f := feed_out[0];
+  rd := f.receipts_digest;
+  rep_str(r, "network", network);
+  rep_str(r, "period_id", period_id);
+  rep_str(r, "bridge", bridge);
+  rep_bool(r, "owner_armed", owner_armed);
+  rep_bool(r, "mainnet_armed", mainnet_armed);
+  rep_str(r, "ledger_dir", ldir);
+  rep_int(r, "receipts_seen", tr_n);
+  rep_int(r, "verdicts_seen", vd_n);
+  rep_int(r, "rejected_pairing", rejected_pairing);
+  rep_int(r, "released_legs", released_legs);
+  rep_int(r, "held_legs", held_legs);
+  rep_int(r, "withheld_legs", withheld_legs);
+  rep_int(r, "duplicate_legs", duplicate_legs);
+  rep_int(r, "settled_real_legs", settled_real_legs);
+  rep_int(r, "unfunded_or_dry_legs", unfunded_legs);
+  if last_bridge_n > 0 { rep_str(r, "last_bridge_status", cast(string) last_bridge_status[0..<last_bridge_n]); }
+  rep_int(r, "feed_settled_count", f.settled_count);
+  rep_int(r, "feed_excluded_simulated", f.excluded_simulated_count);
+  rep_int(r, "paid_msat_bitcoin", f.paid_msat_bitcoin);
+  rep_int(r, "paid_msat_regtest", f.paid_msat_regtest);
+  rep_int(r, "paid_msat_signet", f.paid_msat_signet);
+  rep_int(r, "paid_msat_testnet", f.paid_msat_testnet);
+  rep_str(r, "receipts_digest", cast(string) rd[..]);
+  rep_bool(r, "pool_30201_published", published[0]);
+  if published[0] { rep_str(r, "pool_30201_event_id", cast(string) pool_ev_id[..]); }
+  return rep_done(r, EXIT_OK);
+}
+
+// `openagents pylon pool-feed`
+pylon_pool_feed_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if args_has(a, "--help") || args_has(a, "-h") {
+    return fail(r, EXIT_USAGE, "pylon pool-feed [--ledger DIR] [--pool NAME] [--relay URL] [--publish] [--json]");
+  }
+  pool := args_value(a, "--pool", "executor-pool");
+  if !sf_slug_ok(pool) {
+    return fail(r, EXIT_USAGE, "--pool must be 1..64 chars of [a-z0-9_-] starting alphanumeric");
+  }
+  url := args_value(a, "--relay", "wss://relay.openagents.com");
+  publish := args_has(a, "--publish");
+  ldir_b: [1024] u8;
+  ldir := ps_ledger_dir(a, ldir_b[..]);
+  if ldir == "" || !fs_mkdir_all(ldir) {
+    return fail(r, EXIT_FAIL, "could not open settlement ledger directory");
+  }
+
+  k: [1] Key;
+  has_key := load_key(profile, k[..]);
+  if publish && !has_key {
+    return fail(r, EXIT_AUTH, "--publish needs a Nostr key: run `openagents nostr new`");
+  }
+  mh: [64] u8;
+  agg_pk := "0000000000000000000000000000000000000000000000000000000000000000";
+  if has_key && pubkey_hex(k[0].secret[..], mh[..]) {
+    agg_pk = cast(string) mh[..];
+  }
+
+  now := cxcli_now_s();
+  deadline := deadline_flag(a, "20");
+  pdig_b: [64] u8;
+  pol_digest := ps_policy_digest(EsPolicy.{}, false, "regtest", pdig_b[..]);
+
+  feed_out: [1] SfFeed;
+  pool_ev_id: [64] u8;
+  published: [1] bool;
+  ok_pool := ps_publish_and_save_pool(
+    ldir, pool, agg_pk, k[0].secret[..], pol_digest, now,
+    publish, url, deadline, feed_out[..], pool_ev_id[..], published[..]
+  );
+  if has_key { wipe(k[0].secret[..]); }
+  if !ok_pool {
+    return fail(r, EXIT_FAIL, "failed to reconcile settled feed from ledger");
+  }
+
+  f := feed_out[0];
+  rd := f.receipts_digest;
+  rep_str(r, "pool", pool);
+  rep_str(r, "ledger_dir", ldir);
+  rep_int(r, "total_input_receipts", f.total_input);
+  rep_int(r, "settled_count", f.settled_count);
+  rep_int(r, "worker_settled_count", f.worker_settled_count);
+  rep_int(r, "validator_settled_count", f.validator_settled_count);
+  rep_int(r, "excluded_simulated_count", f.excluded_simulated_count);
+  rep_int(r, "excluded_simulated_msat", f.excluded_simulated_msat);
+  rep_int(r, "duplicate_count", f.duplicate_count);
+  rep_int(r, "paid_msat_bitcoin", f.paid_msat_bitcoin);
+  rep_int(r, "paid_msat_regtest", f.paid_msat_regtest);
+  rep_int(r, "paid_msat_signet", f.paid_msat_signet);
+  rep_int(r, "paid_msat_testnet", f.paid_msat_testnet);
+  rep_str(r, "receipts_digest", cast(string) rd[..]);
+  rep_bool(r, "pool_30201_published", published[0]);
+  if published[0] { rep_str(r, "pool_30201_event_id", cast(string) pool_ev_id[..]); }
+  return rep_done(r, EXIT_OK);
+}

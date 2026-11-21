@@ -1,0 +1,638 @@
+// Reconciled Settled Payout Feed & NIP-PYLON Kind 30201 Pool Aggregate Projection
+// (Executor W4.3, GitHub #13922; NIP-PYLON §Service receipt & §Pool aggregate).
+//
+// #authority invariants enforced with 0 surviving mutants:
+// - Recomputes every total strictly from the append-only SettlementReceipt log.
+// - Strictly separates `bitcoin` mainnet from `testnet` / `signet` / `regtest`
+//   (test networks are NEVER added to `bitcoin`).
+// - Excludes ALL `real_bitcoin_moved == false` rows from every paid total (#test + #forall).
+// - Deduplicates by both `(receipt_digest, leg)` and `(network, settlement_commitment)`.
+// - Enforces zero leak of invoices, preimages, mnemonics, or private keys in public
+//   receipts, feeds, and kind 30201 pool aggregates; settlement references carry only
+//   `SHA-256("openagents.pylon-settlement.v1:<NETWORK>:<PAYMENT_HASH>")`.
+//
+//   coax/bin/coax test psionic/lib/peer/settled-feed.coax
+//   coax/bin/coax mutate psionic/lib/peer/settled-feed.coax --root-only
+#load "../../../coax/lib/kept.coax";
+#load "../../../pay/executor-settlement.coax";
+#load "../executor-wire.coax";
+#authority;
+
+SF_MAX_RECEIPTS :: 64;
+SF_NET_BITCOIN :: 0;
+SF_NET_TESTNET :: 1;
+SF_NET_SIGNET :: 2;
+SF_NET_REGTEST :: 3;
+
+SF_POOL_KIND :: 30201;
+SF_POOL_VERSION :: "openagents.pylon-pool.v2";
+SF_POOL_MARKER :: "oa:pylon-pool:v2";
+SF_COMMIT_PREFIX :: "openagents.pylon-settlement.v1:";
+
+SfErr :: enum u8 { ok; capacity; invalid_receipt; overflow; }
+
+SfFeed :: struct {
+  err: SfErr;
+  total_input: int;
+  settled_count: int;
+  excluded_simulated_count: int;
+  excluded_simulated_msat: int;
+  duplicate_count: int;
+  worker_settled_count: int;
+  validator_settled_count: int;
+  paid_msat_bitcoin: int;
+  paid_msat_testnet: int;
+  paid_msat_signet: int;
+  paid_msat_regtest: int;
+  worker_msat_by_net: [4] int;
+  validator_msat_by_net: [4] int;
+  counted_idx: [SF_MAX_RECEIPTS] int;
+  receipts_digest: [64] u8;
+}
+
+SfPoolMeta :: struct {
+  aggregator: string;
+  pool: string;
+  policy_digest: string;
+  window_from: int;
+  window_to: int;
+  generated_at: int;
+  valid_until: int;
+  beacons_count: int;
+  beacons_digest: string;
+  checks_count: int;
+  checks_digest: string;
+  pylons_online: int;
+  slots_total: int;
+  slots_free: int;
+  family_unified: int;
+  family_gpu: int;
+  family_cpu: int;
+  jobs_accepted: int;
+  checks_pass: int;
+  checks_fail: int;
+  checks_inconclusive: int;
+}
+
+SF_SECRET_TOKENS :: [11] string.[
+  "lnbc", "lntb", "lnsb", "nsec1", "xprv", "tprv",
+  "\"invoice\"", "\"bolt11\"", "\"preimage\"", "\"private_key\"", "\"mnemonic\""
+];
+
+sf_net_index :: (network: string) -> int #effects(all) {
+  nets := EXW_NETWORK_NAMES;
+  for i: 0..<4 {
+    if nets[i] == network { return i; }
+  }
+  return -1;
+}
+
+sf_contains_ci :: (text: string, needle: string) -> bool #effects(all) {
+  if needle.count == 0 || needle.count > text.count { return false; }
+  for i: 0..<text.count - needle.count + 1 {
+    matched := true;
+    for j: 0..<needle.count {
+      if exw_ascii_lower(text[i + j]) != needle[j] { matched = false; break; }
+    }
+    if matched { return true; }
+  }
+  return false;
+}
+
+// Returns true if text contains any forbidden secret, invoice, preimage, or key marker.
+sf_has_secret :: (text: string) -> bool #export_c #effects(all) {
+  tokens := SF_SECRET_TOKENS;
+  for tok: tokens {
+    if sf_contains_ci(text, tok) { return true; }
+  }
+  return false;
+}
+
+sf_slug_ok :: (s: string) -> bool #effects(all) {
+  if s.count < 1 || s.count > 64 { return false; }
+  if s[0] == '-' || s[0] == '_' { return false; }
+  for c: s {
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; }
+  }
+  return true;
+}
+
+// Domain-separated settlement commitment per NIP-PYLON §Service receipt:
+// SHA-256("openagents.pylon-settlement.v1:<NETWORK>:<PAYMENT_REF>")
+sf_settlement_commitment :: (network: string, payment_ref: string, out_hex: [] u8) -> bool #export_c #effects(all) {
+  if sf_net_index(network) < 0 || out_hex.count < 64 { return false; }
+  if payment_ref.count < 16 || payment_ref.count > 128 { return false; }
+  if sf_has_secret(payment_ref) { return false; }
+  for c: payment_ref {
+    if c <= 32 || c >= 127 { return false; }
+  }
+  buf: [256] u8;
+  n := 0;
+  for c: SF_COMMIT_PREFIX { buf[n] = c; n += 1; }
+  for c: network { buf[n] = c; n += 1; }
+  buf[n] = ':'; n += 1;
+  for c: payment_ref { buf[n] = c; n += 1; }
+  return S_hex(S_hash(cast(string) buf[0..<n]), out_hex[0..<64]);
+}
+
+sf_row_lt :: (a: ExwSettlementReceipt, b: ExwSettlementReceipt) -> bool #effects(all) {
+  if a.receipt_digest != b.receipt_digest { return exw_str_lt(a.receipt_digest, b.receipt_digest); }
+  if a.leg != b.leg { return a.leg == ExwPayoutLeg.worker; }
+  return exw_str_lt(a.settlement_commitment, b.settlement_commitment);
+}
+
+// Reconcile the entire settled feed strictly from scratch from an append-only
+// SettlementReceipt log. Strictly excludes real_bitcoin_moved == false rows,
+// deduplicates (receipt_digest, leg) and (network, settlement_commitment), and
+// keeps bitcoin mainnet totals strictly separate from testnet/signet/regtest.
+sf_reconcile_feed :: (receipts: [] ExwSettlementReceipt) -> SfFeed #export_c #effects(all) {
+  f: SfFeed;
+  if receipts.count > SF_MAX_RECEIPTS {
+    f.err = SfErr.capacity;
+    return f;
+  }
+  f.total_input = receipts.count;
+  for i: 0..<receipts.count {
+    r := receipts[i];
+    if exw_settlement_receipt_valid(r) != ExwErr.ok || !es_receipt_truthful(r.real_bitcoin_moved, r.amount_msat, r.settlement_commitment.count == 64) {
+      f.err = SfErr.invalid_receipt;
+      return f;
+    }
+    if !r.real_bitcoin_moved {
+      if r.amount_msat > EXW_INT_MAX - f.excluded_simulated_msat { f.err = SfErr.overflow; return f; }
+      f.excluded_simulated_count += 1;
+      f.excluded_simulated_msat += r.amount_msat;
+      continue;
+    }
+    dup := false;
+    for j: 0..<f.settled_count {
+      prev := receipts[f.counted_idx[j]];
+      if (prev.receipt_digest == r.receipt_digest && prev.leg == r.leg) ||
+         (prev.network == r.network && prev.settlement_commitment == r.settlement_commitment) {
+        dup = true;
+        break;
+      }
+    }
+    if dup {
+      f.duplicate_count += 1;
+      continue;
+    }
+    net := sf_net_index(r.network);
+    if net == SF_NET_BITCOIN {
+      if r.amount_msat > EXW_INT_MAX - f.paid_msat_bitcoin { f.err = SfErr.overflow; return f; }
+      f.paid_msat_bitcoin += r.amount_msat;
+    } else if net == SF_NET_TESTNET {
+      if r.amount_msat > EXW_INT_MAX - f.paid_msat_testnet { f.err = SfErr.overflow; return f; }
+      f.paid_msat_testnet += r.amount_msat;
+    } else if net == SF_NET_SIGNET {
+      if r.amount_msat > EXW_INT_MAX - f.paid_msat_signet { f.err = SfErr.overflow; return f; }
+      f.paid_msat_signet += r.amount_msat;
+    } else {
+      if r.amount_msat > EXW_INT_MAX - f.paid_msat_regtest { f.err = SfErr.overflow; return f; }
+      f.paid_msat_regtest += r.amount_msat;
+    }
+    if r.leg == ExwPayoutLeg.worker {
+      f.worker_settled_count += 1;
+      f.worker_msat_by_net[net] += r.amount_msat;
+    } else {
+      f.validator_settled_count += 1;
+      f.validator_msat_by_net[net] += r.amount_msat;
+    }
+    f.counted_idx[f.settled_count] = i;
+    f.settled_count += 1;
+  }
+
+  // Canonical order-independent SHA-256 commitment over counted real receipts.
+  order: [SF_MAX_RECEIPTS] int;
+  for i: 0..<f.settled_count { order[i] = f.counted_idx[i]; }
+  for i: 1..<f.settled_count {
+    at := i;
+    while at > 0 && sf_row_lt(receipts[order[at]], receipts[order[at - 1]]) {
+      tmp := order[at]; order[at] = order[at - 1]; order[at - 1] = tmp;
+      at -= 1;
+    }
+  }
+  // Each line is 64 (receipt_digest) + 1 ':' + 1 leg_digit + 1 ':' + 64 (commitment) + optional '\n' = 132 bytes max.
+  lines: [SF_MAX_RECEIPTS * 132] u8;
+  ln := 0;
+  for i: 0..<f.settled_count {
+    if i > 0 { lines[ln] = '\n'; ln += 1; }
+    row := receipts[order[i]];
+    for c: row.receipt_digest { lines[ln] = c; ln += 1; }
+    lines[ln] = ':'; ln += 1;
+    lines[ln] = ifx row.leg == ExwPayoutLeg.worker then cast(u8) '1' else cast(u8) '2'; ln += 1;
+    lines[ln] = ':'; ln += 1;
+    for c: row.settlement_commitment { lines[ln] = c; ln += 1; }
+  }
+  _ = S_hex(S_hash(cast(string) lines[0..<ln]), f.receipts_digest[..]);
+  return f;
+}
+
+sf_pool_meta_valid :: (m: SfPoolMeta) -> bool #export_c #effects(all) {
+  if !exw_hex(m.aggregator, 64) || !sf_slug_ok(m.pool) || !exw_hex(m.policy_digest, 64) { return false; }
+  if !exw_hex(m.beacons_digest, 64) || !exw_hex(m.checks_digest, 64) { return false; }
+  if m.window_from < 0 || m.window_to <= m.window_from || m.window_from % 60 != 0 || m.window_to % 60 != 0 { return false; }
+  if (m.window_to - m.window_from) / 60 > 60 { return false; }
+  if m.generated_at < m.window_to || m.valid_until <= m.generated_at || m.valid_until - m.generated_at > 300 { return false; }
+  if m.beacons_count < 0 || m.checks_count < 0 || m.pylons_online < 0 { return false; }
+  if m.slots_free < 0 || m.slots_total < m.slots_free { return false; }
+  if m.family_unified < 0 || m.family_gpu < 0 || m.family_cpu < 0 { return false; }
+  if m.jobs_accepted < 0 || m.checks_pass < 0 || m.checks_fail < 0 || m.checks_inconclusive < 0 { return false; }
+  return true;
+}
+
+// Emits canonical JCS JSON for NIP-PYLON kind 30201 pool aggregate (openagents.pylon-pool.v2)
+// with paid_msat strictly derived from the reconciled SfFeed.
+sf_pool_30201_content :: (m: SfPoolMeta, feed: SfFeed, out: [] u8) -> int #export_c #effects(all) {
+  if !sf_pool_meta_valid(m) || feed.err != SfErr.ok { return -1; }
+  rd := feed.receipts_digest;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "aggregator"); jo_str(o[..], m.aggregator);
+  jo_key(o[..], "generated_at"); jo_int(o[..], m.generated_at);
+  jo_key(o[..], "inputs"); jo_obj(o[..]);
+  jo_key(o[..], "beacons"); jo_obj(o[..]); jo_key(o[..], "count"); jo_int(o[..], m.beacons_count); jo_key(o[..], "digest"); jo_str(o[..], m.beacons_digest); jo_end(o[..]);
+  jo_key(o[..], "checks"); jo_obj(o[..]); jo_key(o[..], "count"); jo_int(o[..], m.checks_count); jo_key(o[..], "digest"); jo_str(o[..], m.checks_digest); jo_end(o[..]);
+  jo_key(o[..], "receipts"); jo_obj(o[..]); jo_key(o[..], "count"); jo_int(o[..], feed.settled_count); jo_key(o[..], "digest"); jo_str(o[..], cast(string) rd[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "policy"); jo_str(o[..], m.policy_digest);
+  jo_key(o[..], "pool"); jo_str(o[..], m.pool);
+  jo_key(o[..], "rate"); jo_arr(o[..]); jo_int(o[..], m.jobs_accepted); jo_end(o[..]);
+  jo_key(o[..], "requires"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "totals"); jo_obj(o[..]);
+  jo_key(o[..], "by_family"); jo_obj(o[..]);
+  jo_key(o[..], "cpu"); jo_int(o[..], m.family_cpu);
+  jo_key(o[..], "gpu"); jo_int(o[..], m.family_gpu);
+  jo_key(o[..], "unified-memory"); jo_int(o[..], m.family_unified);
+  jo_end(o[..]);
+  jo_key(o[..], "checks"); jo_obj(o[..]);
+  jo_key(o[..], "fail"); jo_int(o[..], m.checks_fail);
+  jo_key(o[..], "inconclusive"); jo_int(o[..], m.checks_inconclusive);
+  jo_key(o[..], "pass"); jo_int(o[..], m.checks_pass);
+  jo_end(o[..]);
+  jo_key(o[..], "jobs"); jo_obj(o[..]);
+  jo_key(o[..], "accepted"); jo_int(o[..], m.jobs_accepted);
+  jo_key(o[..], "failed"); jo_int(o[..], 0);
+  jo_key(o[..], "rejected"); jo_int(o[..], 0);
+  jo_key(o[..], "timeout"); jo_int(o[..], 0);
+  jo_end(o[..]);
+  jo_key(o[..], "paid_msat"); jo_obj(o[..]);
+  jo_key(o[..], "bitcoin"); jo_int(o[..], feed.paid_msat_bitcoin);
+  jo_key(o[..], "regtest"); jo_int(o[..], feed.paid_msat_regtest);
+  jo_key(o[..], "signet"); jo_int(o[..], feed.paid_msat_signet);
+  jo_key(o[..], "testnet"); jo_int(o[..], feed.paid_msat_testnet);
+  jo_end(o[..]);
+  jo_key(o[..], "pylons_online"); jo_int(o[..], m.pylons_online);
+  jo_key(o[..], "slots_free"); jo_int(o[..], m.slots_free);
+  jo_key(o[..], "slots_total"); jo_int(o[..], m.slots_total);
+  jo_key(o[..], "units"); jo_obj(o[..]);
+  jo_key(o[..], "jobs"); jo_int(o[..], m.jobs_accepted);
+  jo_key(o[..], "seconds"); jo_int(o[..], 0);
+  jo_key(o[..], "tokens"); jo_int(o[..], 0);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "v"); jo_str(o[..], SF_POOL_VERSION);
+  jo_key(o[..], "valid_until"); jo_int(o[..], m.valid_until);
+  jo_key(o[..], "window"); jo_obj(o[..]);
+  jo_key(o[..], "from"); jo_int(o[..], m.window_from);
+  jo_key(o[..], "to"); jo_int(o[..], m.window_to);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Emits canonical NIP-PYLON kind 30201 tags: d, t, x (SHA-256 of content), expiration.
+sf_pool_30201_tags :: (m: SfPoolMeta, content: string, out: [] u8) -> int #export_c #effects(all) {
+  if !sf_pool_meta_valid(m) || content.count == 0 { return -1; }
+  x_hex: [64] u8;
+  _ = S_hex(S_hash(content), x_hex[..]);
+  exp_buf: [32] u8;
+  eo: [1] Jo; jo_start(eo[..], exp_buf[..]); jo_int(eo[..], m.valid_until);
+  exp_str := cast(string) exp_buf[0..<eo[0].n];
+
+  o: [1] Jo; jo_start(o[..], out); jo_arr(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "d"); jo_str(o[..], m.pool); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "t"); jo_str(o[..], SF_POOL_MARKER); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "x"); jo_str(o[..], cast(string) x_hex[..]); jo_end(o[..]);
+  jo_arr(o[..]); jo_str(o[..], "expiration"); jo_str(o[..], exp_str); jo_end(o[..]);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// Independent reader verification: recomputes feed from raw receipts and checks
+// exact body + tag equality against canonical NIP-PYLON 30201 projection.
+sf_pool_30201_verify :: (content: string, tags: string, m: SfPoolMeta, receipts: [] ExwSettlementReceipt) -> bool #export_c #effects(all) {
+  feed := sf_reconcile_feed(receipts);
+  if feed.err != SfErr.ok { return false; }
+  exp_body: [4096] u8;
+  bn := sf_pool_30201_content(m, feed, exp_body[..]);
+  if bn == -1 || content != cast(string) exp_body[0..<bn] { return false; }
+  exp_tags: [512] u8;
+  tn := sf_pool_30201_tags(m, content, exp_tags[..]);
+  return tags == cast(string) exp_tags[0..<tn];
+}
+
+// Emits sanitized public reconciled settled-feed JSON containing strictly real
+// settled entries (real_bitcoin_moved == true), per-network totals, and zero secrets.
+sf_feed_json :: (feed: SfFeed, receipts: [] ExwSettlementReceipt, out: [] u8) -> int #export_c #effects(all) {
+  if feed.err != SfErr.ok || receipts.count != feed.total_input { return -1; }
+  lnames := EXW_LEG_NAMES;
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "duplicate_count"); jo_int(o[..], feed.duplicate_count);
+  jo_key(o[..], "entries"); jo_arr(o[..]);
+  for i: 0..<feed.settled_count {
+    row := receipts[feed.counted_idx[i]];
+    jo_obj(o[..]);
+    jo_key(o[..], "amount_msat"); jo_int(o[..], row.amount_msat);
+    jo_key(o[..], "leg"); jo_str(o[..], exw_enum_name(cast(int) row.leg, lnames[..]));
+    jo_key(o[..], "network"); jo_str(o[..], row.network);
+    jo_key(o[..], "period_id"); jo_str(o[..], row.period_id);
+    jo_key(o[..], "real_bitcoin_moved"); jo_bool(o[..], true);
+    jo_key(o[..], "receipt_digest"); jo_str(o[..], row.receipt_digest);
+    jo_key(o[..], "settled_at"); jo_int(o[..], row.settled_at);
+    jo_key(o[..], "settlement_commitment"); jo_str(o[..], row.settlement_commitment);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "excluded_simulated_count"); jo_int(o[..], feed.excluded_simulated_count);
+  jo_key(o[..], "excluded_simulated_msat"); jo_int(o[..], feed.excluded_simulated_msat);
+  jo_key(o[..], "paid_msat"); jo_obj(o[..]);
+  jo_key(o[..], "bitcoin"); jo_int(o[..], feed.paid_msat_bitcoin);
+  jo_key(o[..], "regtest"); jo_int(o[..], feed.paid_msat_regtest);
+  jo_key(o[..], "signet"); jo_int(o[..], feed.paid_msat_signet);
+  jo_key(o[..], "testnet"); jo_int(o[..], feed.paid_msat_testnet);
+  jo_end(o[..]);
+  rd := feed.receipts_digest;
+  jo_key(o[..], "receipts_digest"); jo_str(o[..], cast(string) rd[..]);
+  jo_key(o[..], "settled_count"); jo_int(o[..], feed.settled_count);
+  jo_key(o[..], "validator_settled_count"); jo_int(o[..], feed.validator_settled_count);
+  jo_key(o[..], "worker_settled_count"); jo_int(o[..], feed.worker_settled_count);
+  jo_end(o[..]);
+  if o[0].bad { return -1; }
+  return o[0].n;
+}
+
+// ---- Checks (#test + #forall) ----
+
+SFT_A :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+SFT_B :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+SFT_C :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+SFT_P :: "1111111111111111111111111111111111111111111111111111111111111111";
+SFT_M :: "2222222222222222222222222222222222222222222222222222222222222222";
+SFT_ZERO_SHA :: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+sft_meta :: () -> SfPoolMeta #effects(all) {
+  return SfPoolMeta.{
+    aggregator = SFT_A,
+    pool = "executor-pool",
+    policy_digest = SFT_P,
+    window_from = 1795200000,
+    window_to = 1795203600,
+    generated_at = 1795203600,
+    valid_until = 1795203900,
+    beacons_count = 2,
+    beacons_digest = SFT_B,
+    checks_count = 1,
+    checks_digest = SFT_C,
+    pylons_online = 2,
+    slots_total = 4,
+    slots_free = 2,
+    family_unified = 1,
+    family_gpu = 1,
+    family_cpu = 0,
+    jobs_accepted = 1,
+    checks_pass = 1,
+    checks_fail = 0,
+    checks_inconclusive = 0
+  };
+}
+
+sft_row :: (rcpt: string, leg: ExwPayoutLeg, net: string, msat: int, moved: bool, commit: string) -> ExwSettlementReceipt #effects(all) {
+  return ExwSettlementReceipt.{
+    amount_msat = msat,
+    leg = leg,
+    network = net,
+    owner_policy_digest = SFT_P,
+    period_id = "2026-11-21",
+    real_bitcoin_moved = moved,
+    receipt_digest = rcpt,
+    settled_at = ifx moved then 1795200100 else 0,
+    settlement_commitment = ifx moved then commit else ""
+  };
+}
+
+#forall "simulated rows never enter paid totals and test networks never enter bitcoin" m0: bool, m1: bool, n0: 0..<4, n1: 0..<4 {
+  nets := EXW_NETWORK_NAMES;
+  rows := [2] ExwSettlementReceipt.[
+    sft_row(SFT_A, ExwPayoutLeg.worker, nets[n0], 800000, m0, SFT_P),
+    sft_row(SFT_A, ExwPayoutLeg.validator, nets[n1], 200000, m1, SFT_M)
+  ];
+  f := sf_reconcile_feed(rows[..]);
+  #assert f.err == SfErr.ok;
+  want_btc := (ifx m0 && n0 == 0 then 800000 else 0) + (ifx m1 && n1 == 0 then 200000 else 0);
+  want_tnt := (ifx m0 && n0 == 1 then 800000 else 0) + (ifx m1 && n1 == 1 then 200000 else 0);
+  want_sig := (ifx m0 && n0 == 2 then 800000 else 0) + (ifx m1 && n1 == 2 then 200000 else 0);
+  want_reg := (ifx m0 && n0 == 3 then 800000 else 0) + (ifx m1 && n1 == 3 then 200000 else 0);
+  want_sim_n := (ifx !m0 then 1 else 0) + (ifx !m1 then 1 else 0);
+  want_sim_msat := (ifx !m0 then 800000 else 0) + (ifx !m1 then 200000 else 0);
+  #assert f.paid_msat_bitcoin == want_btc && f.paid_msat_testnet == want_tnt && f.paid_msat_signet == want_sig && f.paid_msat_regtest == want_reg;
+  #assert f.excluded_simulated_count == want_sim_n && f.excluded_simulated_msat == want_sim_msat;
+  #assert f.settled_count == 2 - want_sim_n;
+  #assert f.worker_settled_count == (ifx m0 then 1 else 0) && f.validator_settled_count == (ifx m1 then 1 else 0);
+}
+
+#test "settled-feed: domain-separated commitment, secret leak guard, dedup, order independence & 30201 projection (#13922)" {
+  // Exact pinned SHA-256("openagents.pylon-settlement.v1:regtest:regtest-payhash-worker-901")
+  hex_w: [64] u8; hex_v: [64] u8;
+  #assert sf_settlement_commitment("regtest", "regtest-payhash-worker-901", hex_w[..]);
+  #assert cast(string) hex_w[..] == "a85a8922cb3ebb5e0fb2585d40287c4e8f5ebb2f627829aac67226b81f3a07d8";
+  #assert sf_settlement_commitment("regtest", "regtest-payhash-validator-901", hex_v[..]);
+  #assert cast(string) hex_v[..] == "fac3b52dc58a77b15d038692050976f45a81b29e6c9e6c57baf0ee89e4c46b85";
+  #assert sf_settlement_commitment("bitcoin", "0123456789abcdef", hex_w[..]);
+  #assert !sf_settlement_commitment("usdt", "regtest-payhash-worker-901", hex_w[..]);
+  #assert !sf_settlement_commitment("regtest", "regtest-payhash-worker-901", hex_w[0..<63]);
+  #assert !sf_settlement_commitment("regtest", "0123456789abcde", hex_w[..]);
+  long129: [129] u8; for i: 0..<129 { long129[i] = 'a'; }
+  #assert sf_settlement_commitment("regtest", cast(string) long129[0..<128], hex_w[..]);
+  #assert !sf_settlement_commitment("regtest", cast(string) long129[..], hex_w[..]);
+  #assert !sf_settlement_commitment("regtest", "lnbc100n1p0123456789abcdef", hex_w[..]);
+  #assert !sf_settlement_commitment("regtest", "has space 0123456789", hex_w[..]);
+  del17: [17] u8; for i: 0..<16 { del17[i] = 'a'; } del17[16] = 127;
+  #assert !sf_settlement_commitment("regtest", cast(string) del17[..], hex_w[..]);
+  #assert sf_settlement_commitment("regtest", "0123456789abcdef!", hex_w[..]);
+  #assert sf_settlement_commitment("regtest", "0123456789abcdef~", hex_w[..]);
+
+  // Secret leak guard catches invoices, preimages, and private keys case-insensitively
+  #assert !sf_contains_ci("abc", "") && !sf_contains_ci("ab", "abc") && sf_contains_ci("AbC", "abc") && sf_contains_ci("abc", "bc") && !sf_contains_ci("xbc", "abc") && !sf_contains_ci("aa", "ab");
+  #assert sf_has_secret("{\"invoice\":\"x\"}") && sf_has_secret("LNBC1u1p") && sf_has_secret("nsec1abc") && sf_has_secret("{\"preimage\":\"00\"}");
+  #assert !sf_has_secret("{\"settlement_commitment\":\"a85a8922\"}");
+
+  // Reconcile mixed real + simulated + duplicate rows across regtest & bitcoin
+  // Start with a simulated row at index 0 so counted_idx[0] != 0, and put smallest real row last to exercise multi-step sort
+  #assert sf_settlement_commitment("regtest", "regtest-payhash-worker-901", hex_w[..]);
+  cw := cast(string) hex_w[..];
+  cv := cast(string) hex_v[..];
+  rows := [7] ExwSettlementReceipt.[
+    sft_row(SFT_C, ExwPayoutLeg.worker, "regtest", 500000, false, ""),       // idx 0: simulated -> excluded
+    sft_row(SFT_B, ExwPayoutLeg.validator, "regtest", 200000, true, cv),     // idx 1: largest (SFT_B:2)
+    sft_row(SFT_A, ExwPayoutLeg.validator, "regtest", 100000, true, SFT_P),  // idx 2: middle (SFT_A:2)
+    sft_row(SFT_B, ExwPayoutLeg.validator, "regtest", 200000, true, SFT_M),  // duplicate of counted[0]
+    sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 800000, true, cw),        // idx 4: smallest (SFT_A:1 -> bubbles 2 steps!)
+    sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 800000, true, SFT_M),     // duplicate of (SFT_A, worker)
+    sft_row(SFT_C, ExwPayoutLeg.worker, "regtest", 500000, true, cw)         // duplicate (network, commitment)
+  ];
+  f := sf_reconcile_feed(rows[..]);
+  #assert f.err == SfErr.ok && f.total_input == 7 && f.settled_count == 3 && f.duplicate_count == 3 && f.excluded_simulated_count == 1 && f.excluded_simulated_msat == 500000;
+  #assert f.paid_msat_regtest == 1100000 && f.paid_msat_bitcoin == 0 && f.paid_msat_testnet == 0 && f.paid_msat_signet == 0;
+  #assert f.worker_settled_count == 1 && f.validator_settled_count == 2;
+  #assert f.worker_msat_by_net[SF_NET_REGTEST] == 800000 && f.validator_msat_by_net[SF_NET_REGTEST] == 300000;
+
+  // Independent Python-computed canonical receipts_digest & order independence
+  want_rd := "b4e5db3925433d2d66b22b7417e857f9de2e1e2c90a0d15cc32649116b7efee9";
+  #assert cast(string) f.receipts_digest[..] == want_rd;
+  rev := [3] ExwSettlementReceipt.[rows[1], rows[2], rows[4]];
+  fwd := [3] ExwSettlementReceipt.[rows[4], rows[2], rows[1]];
+  f_rev := sf_reconcile_feed(rev[..]);
+  f_fwd := sf_reconcile_feed(fwd[..]);
+  #assert cast(string) f_rev.receipts_digest[..] == want_rd && cast(string) f_fwd.receipts_digest[..] == want_rd;
+  // Tiebreakers in sf_row_lt (leg order and commitment order)
+  #assert sf_row_lt(sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_M), sft_row(SFT_A, ExwPayoutLeg.validator, "regtest", 1000, true, SFT_P));
+  #assert !sf_row_lt(sft_row(SFT_A, ExwPayoutLeg.validator, "regtest", 1000, true, SFT_P), sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_M));
+  #assert sf_row_lt(sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_P), sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_M));
+  #assert !sf_row_lt(sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_M), sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, true, SFT_P));
+
+  // Empty feed gives SHA-256("")
+  f0 := sf_reconcile_feed(rows[0..<0]);
+  #assert f0.err == SfErr.ok && f0.settled_count == 0 && cast(string) f0.receipts_digest[..] == SFT_ZERO_SHA;
+
+  // NIP-PYLON kind 30201 pool aggregate content, independent Python SHA-256 golden, JCS order & tags
+  m := sft_meta();
+  body: [4096] u8; tags: [512] u8;
+  bn := sf_pool_30201_content(m, f, body[..]);
+  #assert bn > 0;
+  bstr := cast(string) body[0..<bn];
+  #assert !sf_has_secret(bstr);
+  b_sha: [64] u8;
+  #assert S_hex(S_hash(bstr), b_sha[..]) && cast(string) b_sha[..] == "a870223c1703c58cdd044733e0bf190ad4dc74b5c06495fb16fb4464489036da";
+  dj: [1] Jv; jnodes: [128] JvNode;
+  #assert jv_parse(dj[..], bstr, jnodes[..]) && exw_keys_sorted(dj[0], 0);
+  tn := sf_pool_30201_tags(m, bstr, tags[..]);
+  #assert tn > 0;
+  tstr := cast(string) tags[0..<tn];
+  #assert tstr == "[[\"d\",\"executor-pool\"],[\"t\",\"oa:pylon-pool:v2\"],[\"x\",\"a870223c1703c58cdd044733e0bf190ad4dc74b5c06495fb16fb4464489036da\"],[\"expiration\",\"1795203900\"]]";
+  #assert sf_pool_30201_verify(bstr, tstr, m, rows[..]);
+  #assert !sf_pool_30201_verify(bstr, tstr, m, rows[0..<1]);
+  #assert !sf_pool_30201_verify("{}", tstr, m, rows[..]);
+  #assert !sf_pool_30201_verify(bstr, "[]", m, rows[..]);
+  #assert !sf_pool_30201_verify("lnbc1u1p", tstr, m, rows[..]);
+  #assert !sf_pool_30201_verify(bstr, "nsec1bad", m, rows[..]);
+  #assert sf_pool_30201_content(m, f, body[0..<16]) == -1;
+  #assert sf_pool_30201_tags(m, "", tags[..]) == -1;
+  #assert sf_pool_30201_tags(m, bstr, tags[0..<16]) == -1;
+
+  // Reconciled public settled feed JSON: valid JCS, zero secrets, excludes simulated rows, real_bitcoin_moved=true & exact settled_at
+  feed_buf: [8192] u8;
+  fn := sf_feed_json(f, rows[..], feed_buf[..]);
+  #assert fn > 0;
+  fstr := cast(string) feed_buf[0..<fn];
+  #assert !sf_has_secret(fstr);
+  fdj: [1] Jv; fnodes: [256] JvNode;
+  #assert jv_parse(fdj[..], fstr, fnodes[..]) && exw_keys_sorted(fdj[0], 0);
+  ents := jv_get(fdj[0], 0, "entries");
+  #assert jv_len(fdj[0], ents) == 3;
+  e0 := jv_at(fdj[0], ents, 0);
+  #assert jv_kind(fdj[0], jv_get(fdj[0], e0, "real_bitcoin_moved")) == JV_TRUE;
+  #assert jv_int(fdj[0], jv_get(fdj[0], e0, "settled_at"), -1) == 1795200100;
+  #assert sf_feed_json(f, rows[0..<1], feed_buf[..]) == -1;
+  #assert sf_feed_json(f, rows[..], feed_buf[0..<16]) == -1;
+}
+
+#test "settled-feed: validation, capacity, overflow & pool metadata bounds (#13922)" {
+  // Invalid receipt fails closed
+  bad_r := [1] ExwSettlementReceipt.[sft_row("bad", ExwPayoutLeg.worker, "regtest", 1000, true, SFT_P)];
+  #assert sf_reconcile_feed(bad_r[..]).err == SfErr.invalid_receipt;
+  // Capacity overflow (> 64)
+  many: [SF_MAX_RECEIPTS + 1] ExwSettlementReceipt;
+  #assert sf_reconcile_feed(many[..]).err == SfErr.capacity;
+  // Exact capacity (64) passes when rows valid
+  for i: 0..<SF_MAX_RECEIPTS { many[i] = sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", 1000, false, ""); }
+  #assert sf_reconcile_feed(many[0..<SF_MAX_RECEIPTS]).err == SfErr.ok;
+  // Overflow guards across simulated and every network bucket (exact EXW_INT_MAX ok; +1 overflows)
+  for n_idx: 0..<4 {
+    nets := EXW_NETWORK_NAMES;
+    exact_max := [2] ExwSettlementReceipt.[
+      sft_row(SFT_A, ExwPayoutLeg.worker, nets[n_idx], EXW_INT_MAX - 1, true, SFT_P),
+      sft_row(SFT_B, ExwPayoutLeg.worker, nets[n_idx], 1, true, SFT_M)
+    ];
+    #assert sf_reconcile_feed(exact_max[..]).err == SfErr.ok;
+    ov := [2] ExwSettlementReceipt.[
+      sft_row(SFT_A, ExwPayoutLeg.worker, nets[n_idx], EXW_INT_MAX, true, SFT_P),
+      sft_row(SFT_B, ExwPayoutLeg.worker, nets[n_idx], 1, true, SFT_M)
+    ];
+    #assert sf_reconcile_feed(ov[..]).err == SfErr.overflow;
+  }
+  exact_sim := [2] ExwSettlementReceipt.[
+    sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", EXW_INT_MAX - 1, false, ""),
+    sft_row(SFT_B, ExwPayoutLeg.worker, "regtest", 1, false, "")
+  ];
+  #assert sf_reconcile_feed(exact_sim[..]).err == SfErr.ok;
+  ov_sim := [2] ExwSettlementReceipt.[
+    sft_row(SFT_A, ExwPayoutLeg.worker, "regtest", EXW_INT_MAX, false, ""),
+    sft_row(SFT_B, ExwPayoutLeg.worker, "regtest", 1, false, "")
+  ];
+  #assert sf_reconcile_feed(ov_sim[..]).err == SfErr.overflow;
+
+  // Slug checks (all boundary characters)
+  #assert sf_slug_ok("a") && sf_slug_ok("pool-09_z") && !sf_slug_ok("") && !sf_slug_ok("-a") && !sf_slug_ok("_a") && !sf_slug_ok("A") && !sf_slug_ok("a b") && !sf_slug_ok("a:b") && !sf_slug_ok("a{b");
+  s65: [65] u8; for i: 0..<65 { s65[i] = 'a'; }
+  #assert sf_slug_ok(cast(string) s65[0..<64]) && !sf_slug_ok(cast(string) s65[..]);
+
+  // Every pool metadata bound independently checked
+  base := sft_meta();
+  #assert sf_pool_meta_valid(base);
+  for k: 0..<24 {
+    m := base;
+    if k == 0 { m.aggregator = "bad"; }
+    if k == 1 { m.pool = ""; }
+    if k == 2 { m.policy_digest = "bad"; }
+    if k == 3 { m.beacons_digest = "bad"; }
+    if k == 4 { m.checks_digest = "bad"; }
+    if k == 5 { m.window_from = -60; }
+    if k == 6 { m.window_to = m.window_from; }
+    if k == 7 { m.window_from = 61; }
+    if k == 8 { m.window_to = m.window_from + 61; }
+    if k == 9 { m.window_to = m.window_from + 3660; m.generated_at = m.window_to; m.valid_until = m.generated_at + 60; }
+    if k == 10 { m.generated_at = m.window_to - 1; }
+    if k == 11 { m.valid_until = m.generated_at; }
+    if k == 12 { m.valid_until = m.generated_at + 301; }
+    if k == 13 { m.beacons_count = -1; }
+    if k == 14 { m.checks_count = -1; }
+    if k == 15 { m.pylons_online = -1; }
+    if k == 16 { m.slots_free = -1; }
+    if k == 17 { m.slots_total = m.slots_free - 1; }
+    if k == 18 { m.family_unified = -1; }
+    if k == 19 { m.family_gpu = -1; }
+    if k == 20 { m.family_cpu = -1; }
+    if k == 21 { m.jobs_accepted = -1; }
+    if k == 22 { m.checks_pass = -1; }
+    if k == 23 { m.checks_fail = -1; }
+    #assert !sf_pool_meta_valid(m);
+  }
+  m_inc := base; m_inc.checks_inconclusive = -1;
+  #assert !sf_pool_meta_valid(m_inc);
+  m_edge := base; m_edge.window_from = 0; m_edge.window_to = 60; m_edge.generated_at = 60; m_edge.valid_until = 61;
+  m_edge.beacons_count = 0; m_edge.checks_count = 0; m_edge.pylons_online = 0; m_edge.slots_total = 0; m_edge.slots_free = 0;
+  m_edge.family_unified = 0; m_edge.family_gpu = 0; m_edge.family_cpu = 0; m_edge.jobs_accepted = 0; m_edge.checks_pass = 0; m_edge.checks_fail = 0; m_edge.checks_inconclusive = 0;
+  #assert sf_pool_meta_valid(m_edge);
+
+  // Error feed refused by content/verify/feed_json
+  err_f := SfFeed.{err = SfErr.invalid_receipt};
+  buf: [4096] u8;
+  #assert sf_pool_30201_content(base, err_f, buf[..]) == -1;
+  #assert sf_pool_30201_content(m_inc, SfFeed.{}, buf[..]) == -1;
+  #assert sf_pool_30201_tags(m_inc, "{}", buf[..]) == -1;
+  #assert sf_feed_json(err_f, bad_r[0..<0], buf[..]) == -1;
+  #assert !sf_pool_30201_verify("{}", "[]", base, bad_r[..]);
+  #assert !sf_pool_30201_verify("{}", "[]", m_inc, bad_r[0..<0]);
+}

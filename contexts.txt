@@ -24,7 +24,7 @@ chat folders: components/chat/ apps/openagents-web/chat.coax coax/web/api/chat.c
 zeron-kit folders: components/chat/composer.coax components/chat/editor.coax may load: toolchain
 projects folders: coax/lib/project/api-profile.coax coax/lib/project/api-wire.coax coax/web/api/projects coax/web/api/private.c coax/web/api/drops.c coax/web/project/ may load: identity payments nostr psionic toolchain
 nostr folders: nostr/ coax/lib/nostr/ may load: toolchain
-psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/api/mesh may load: nostr protocol toolchain
+psionic folders: psionic/ coax/lib/systemone/ coax/web/api/inference.c coax/web/api/mesh may load: nostr protocol payments toolchain
 engine folders: metaverse-engine/ metaverse-engine/session/lifecycle.coax coax/web/map-points.coax may load: toolchain
 splice folders: metaverse/splice-bots/ may load: engine realm-authoring toolchain
 realm-seat folders: coax/lib/media/realm_seat.coax may load: realm-authoring toolchain

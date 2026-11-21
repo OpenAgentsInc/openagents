@@ -4,6 +4,7 @@
 #load "../../coax/lib/nostr/xp_keys.coax";
 #load "../../psionic/lib/pylon/beacon.coax";
 #load "pylon-executor.coax";
+#load "pylon-settle.coax";
 
 pylon_usage :: () {
   print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
@@ -18,6 +19,8 @@ pylon_usage :: () {
   print("%\n", "  pylon list [--relay URL] [--mine]          the network's Pylons, verified and fresh");
   print("%\n", "  pylon executor start [--relay URL] [--device REF] [--window N]  run self-test, advertise cj-executor & emit signed receipt");
   print("%\n", "  pylon validate [--auto] [--relay URL] [--device REF]            replay receipts & emit signed verdict + NIP-32 1985 label");
+  print("%\n", "  pylon settle [--relay URL] [--network NET] [--ledger DIR] [--armed] [--wallet-bridge dry-run|spark-helper|desktop-rpc] [--publish-pool]");
+  print("%\n", "  pylon pool-feed [--ledger DIR] [--pool NAME] [--relay URL] [--publish]");
   print("%\n", "");
 }
 
@@ -205,6 +208,8 @@ pylon_logs :: (a: [] Args, r: [] Rep) -> int {
 pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "executor" { return pylon_executor_main(a, r, profile); }
   if verb == "validate" { return pylon_validate_main(a, r, profile); }
+  if verb == "settle" { return pylon_settle_main(a, r, profile); }
+  if verb == "pool-feed" { return pylon_pool_feed_main(a, r, profile); }
   if verb == "start" { return pylon_start(a, r, profile); }
   if verb == "claim" { return pylon_claim(a, r, profile, true); }
   if verb == "unclaim" { return pylon_claim(a, r, profile, false); }
