@@ -10,6 +10,7 @@
 #load "../../coax/lib/agent/desktop/worker-env.coax";
 #load "../../coax/lib/agent/desktop/update.coax";
 #load "../../coax/lib/agent/desktop/gym.coax";
+#load "../../coax/lib/lean/gym.coax";
 #load "../../coax/lib/agent/desktop/executor-store.coax";
 #load "../../coax/lib/agent/user-instructions.coax";
 #load "../../psionic/lib/peer/executor-release-store.coax";
@@ -470,10 +471,21 @@ oa_dc_tools_note :: (ple_run: string, out: [] u8) -> int #export_c #effects(all)
   return oa_dc_copy(dc_tools_note(ple_run, b[..]), out);
 }
 
+oa_dc_lean_tools_note :: (lean_run: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [2048] u8;
+  return oa_dc_copy(dc_lean_tools_note(lean_run, b[..]), out);
+}
+
 // A program's Gym request (ple-gym-request.v1) as the plan GymWorkbenchView.applyPlan takes (gym.coax).
 oa_dc_gym_plan :: (req: string, out: [] u8) -> int #export_c #effects(all) {
   b: [8192] u8;
   return oa_dc_copy(dc_gym_plan(req, b[..]), out);
+}
+
+// A program's Lean Gym request (lean-gym-request.v1) as a normalized plan JSON (coax/lib/lean/gym.coax).
+oa_dc_lean_gym_plan :: (req: string, out: [] u8) -> int #export_c #effects(all) {
+  b: [8192] u8;
+  return oa_dc_copy(dc_lean_gym_plan(req, b[..]), out);
 }
 
 oa_dc_run_file :: (daemon_dir: string, id: string, ext: string, out: [] u8) -> int #export_c #effects(all) {

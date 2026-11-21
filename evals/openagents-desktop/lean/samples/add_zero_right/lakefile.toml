@@ -1,0 +1,5 @@
+name = "add_zero_right"
+defaultTargets = ["AddZeroRight"]
+
+[[lean_lib]]
+name = "AddZeroRight"

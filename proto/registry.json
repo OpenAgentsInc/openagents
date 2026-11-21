@@ -6935,6 +6935,90 @@
         "psionic/lib/executor-wire-goldens.coax"
       ],
       "note": "Canonical RFC 8785 JCS golden bytes, SHA-256 digests, and 28 adversarial refusal vectors for openagents.executor.v1alpha1 and openagents.executor-release.v1 (#13914)."
+    },
+    {
+      "id": "lean-doctor.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Environment and RH corpus health report written by lean-run doctor --json (#13944)."
+    },
+    {
+      "id": "lean-verify.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Digest-bound Lean 4 kernel verification receipt judged by #authority coax/lib/lean/policy.coax (#13944)."
+    },
+    {
+      "id": "lean-gym-request.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Programmatic steering request to OpenAgents Desktop Gym -> Lean & RH Workbench (#13944, #13946)."
+    },
+    {
+      "id": "lean-gym-state.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Live state snapshot returned by OpenAgents Desktop Gym -> Lean & RH Workbench (#13944, #13946)."
+    },
+    {
+      "id": "rh-index.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Manifest for the pure Coax 175,187-module Riemann Hypothesis proof binary index (#13945)."
+    },
+    {
+      "id": "rh-note.v1",
+      "kind": "profile",
+      "owner": "coder",
+      "schema": "proto/coder/lean-gym-v1.json",
+      "codec": "coax/lib/lean/wire.coax",
+      "check": "coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json",
+      "step": "new",
+      "tests": [
+        "proto/coder/lean-gym-v1.json",
+        "coax/lib/lean/wire-checks.coax"
+      ],
+      "note": "Persistent user or agent study note attached to a Riemann Hypothesis module or declaration (#13946)."
     }
   ]
 }

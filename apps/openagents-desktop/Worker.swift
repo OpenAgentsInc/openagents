@@ -785,9 +785,16 @@ enum CoderAntigravity {
 /// the words are Coax's (dc_tools_note); this finds the program. Gym is experimental, and so is this.
 func coderToolsNote() -> String {
     guard Experimental.on, let res = Bundle.main.resourcePath else { return "" }
+    var out = ""
     let tool = (res as NSString).appendingPathComponent("ple-run")
-    guard FileManager.default.isExecutableFile(atPath: tool) else { return "" }
-    return DesktopCore.withCoaxString(tool) { t in DesktopCore.callString(4096) { oa_dc_tools_note(t, $0) } }
+    if FileManager.default.isExecutableFile(atPath: tool) {
+        out += DesktopCore.withCoaxString(tool) { t in DesktopCore.callString(4096) { oa_dc_tools_note(t, $0) } }
+    }
+    let leanTool = (res as NSString).appendingPathComponent("lean-run")
+    if FileManager.default.isExecutableFile(atPath: leanTool) {
+        out += DesktopCore.withCoaxString(leanTool) { t in DesktopCore.callString(2048) { oa_dc_lean_tools_note(t, $0) } }
+    }
+    return out
 }
 
 func coderSkillsNote(repoFolder: URL? = nil) -> String {

@@ -101,6 +101,12 @@ fi
 # ple-run (ple-run.coax): a PLE run a chat starts and the pictures it shows inline (docs/desktop/steer-ple-from-chat.md).
 COAX="$coax" "$repo/coax/web/tool.sh" "$here/ple-run.coax" < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/ple-run-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/ple-run"
+# lean-run (coder/tui/lean-run.coax): Lean 4 verifier, Gym steering & RH Workbench CLI (#13944, #13945).
+COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coder/tui/lean-run.coax" help < /dev/null > /dev/null 2>&1 || true
+cp "$repo/coax/web/build/tools/lean-run-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/lean-run"
+mkdir -p "$res/lean-checker" "$res/fixtures/lean-samples"
+[[ -f "$repo/resources/lean-checker/OpenAgentsVerify.lean" ]] && cp "$repo/resources/lean-checker/OpenAgentsVerify.lean" "$res/lean-checker/OpenAgentsVerify.lean"
+[[ -d "$repo/evals/openagents-desktop/lean/samples/add_zero_right" ]] && cp -R "$repo/evals/openagents-desktop/lean/samples/add_zero_right" "$res/fixtures/lean-samples/"
 # proof-export (coax/lib/agent/desktop/proof-export.coax): canonical ATIF-v1.8 trace exporter & verifier (#13895).
 COAX="$coax" "$repo/coax/web/tool.sh" "$repo/coax/lib/agent/desktop/proof-export.coax" help < /dev/null > /dev/null 2>&1 || true
 cp "$repo/coax/web/build/tools/proof-export-$(shasum -a 256 "$coax" | cut -d " " -f 1)" "$res/proof-export"

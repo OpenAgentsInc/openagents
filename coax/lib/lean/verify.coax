@@ -1,0 +1,359 @@
+// Lean 4 environment doctor, SHA-256 digester, real kernel verifier, and OA-SHOW JPEG card
+// renderer (Epic #13943, #13944; docs/lean/spec.md, docs/lean/verification-and-security.md).
+//
+// All verification verdicts pass strictly through #authority coax/lib/lean/policy.coax.
+// Zero mock/stub pass verdicts: if Lean is not installed or the kernel rejects, verified == false.
+// Loaded by coder/tui/lean-run.coax (pure imperative shell over policy.coax and wire.coax).
+#load "policy.coax";
+#load "wire.coax";
+#load "../sys/fs.coax";
+#load "../sys/proc.coax";
+#load "../sys/clock.coax";
+#load "../crypto/sha256.coax";
+#load "../image/jpeg_enc.coax";
+
+LV_READ_CHUNK :: 65536;
+LV_TIMEOUT_MS :: 60000;
+
+lv_cat :: (out: [] u8, n: int, s: string) -> int {
+  k := n;
+  for c: s { if k < out.count { out[k] = c; k += 1; } }
+  return k;
+}
+
+lv_trim_line :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t' || s[b - 1] == '\r' || s[b - 1] == '\n') { b -= 1; }
+  return cast(string) s[a..<b];
+}
+
+lv_first_line :: (s: string) -> string {
+  e := 0;
+  while e < s.count && s[e] != '\n' && s[e] != '\r' { e += 1; }
+  return lv_trim_line(cast(string) s[0..<e]);
+}
+
+// Streams a file in 64 KiB chunks and writes its lowercase 64-char SHA-256 hex digest into hex_out.
+lv_sha256_file :: (path: string, hex_out: [] u8) -> int {
+  if hex_out.count < 64 || fs_kind(path) != FS_FILE { return 0; }
+  st: [SHA_STATE_BYTES] u8;
+  if sha256_init(st[..]) != SHA_OK { return 0; }
+  buf: [LV_READ_CHUNK] u8;
+  off := 0;
+  while true {
+    n := fs_read_at(path, off, buf[..]);
+    if n < 0 { return 0; }
+    if n == 0 { break; }
+    if sha256_update_checked(st[..], buf[0..<n], false) != SHA_OK { return 0; }
+    off += n;
+  }
+  raw: [32] u8;
+  if sha256_final_checked(st[..], raw[..], false) != SHA_OK { return 0; }
+  d: S_Digest;
+  for i: 0..<8 { d.words[i] = cb_load_be32(raw[..], i * 4).value; }
+  if !S_hex(d, hex_out[0..<64]) { return 0; }
+  return 64;
+}
+
+// Parses Lean's `#print axioms` output (from stdout) into axioms[0..<count].
+// Returns: 1 if axioms were explicitly parsed (possibly 0 axioms for constructive proofs),
+//          0 if no axiom summary line was found.
+lv_parse_axioms :: (stdout: string, axioms: [][96] u8, lens: [] int, out_count: [] int) -> bool {
+  out_count[0] = 0;
+  pos := 0;
+  while pos < stdout.count {
+    end := pos;
+    while end < stdout.count && stdout[end] != '\n' { end += 1; }
+    line := lv_trim_line(cast(string) stdout[pos..<end]);
+    pos = end + 1;
+    if lp_has(line, "does not depend on any axioms") {
+      out_count[0] = 0;
+      return true;
+    }
+    marker := "depends on axioms:";
+    if lp_has(line, marker) {
+      lb := -1; rb := -1;
+      for i: 0..<line.count {
+        if line[i] == '[' && lb < 0 { lb = i; }
+        else if line[i] == ']' && lb >= 0 { rb = i; break; }
+      }
+      if lb < 0 || rb < lb { continue; }
+      cur := lb + 1;
+      cnt := 0;
+      while cur < rb {
+        while cur < rb && (line[cur] == ' ' || line[cur] == ',' || line[cur] == '\t') { cur += 1; }
+        st := cur;
+        while cur < rb && line[cur] != ',' && line[cur] != ' ' && line[cur] != '\t' { cur += 1; }
+        if cur > st && cnt < axioms.count {
+          tok := cast(string) line[st..<cur];
+          lens[cnt] = lw_put(axioms[cnt][..], tok);
+          cnt += 1;
+        }
+      }
+      out_count[0] = cnt;
+      return true;
+    }
+  }
+  return false;
+}
+
+// Finds an executable in standard Lean / Homebrew / system locations.
+lv_find_bin :: (name: string, home: string, out: [] u8) -> string {
+  p0: [FS_PATH_MAX] u8; p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8; p3: [FS_PATH_MAX] u8; p4: [FS_PATH_MAX] u8;
+  d0: [FS_PATH_MAX] u8; d1: [FS_PATH_MAX] u8;
+  cands := [5] string.[
+    fs_join(fs_join(home, ".elan/bin", d0[..]), name, p0[..]),
+    fs_join(fs_join(home, ".local/bin", d1[..]), name, p1[..]),
+    fs_join("/opt/homebrew/bin", name, p2[..]),
+    fs_join("/usr/local/bin", name, p3[..]),
+    fs_join("/usr/bin", name, p4[..])
+  ];
+  for i: 0..<5 {
+    if cands[i].count > 0 && fs_kind(cands[i]) == FS_FILE {
+      n := lw_put(out, cands[i]);
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+
+lv_probe_version :: (bin: string, out: [] u8) -> int {
+  if bin.count == 0 { return 0; }
+  argv := [2] string.[bin, "--version"];
+  so: [1024] u8; se: [512] u8;
+  r := proc_run(argv[..], 5000, so[..], se[..]);
+  if r.started != 0 || r.status != 0 || r.out_n <= 0 { return 0; }
+  return lw_put(out, lv_first_line(cast(string) so[0..<r.out_n]));
+}
+
+// Checks local Lean toolchain (elan/lean/lake) and RH corpus/index availability.
+lv_doctor :: (home: string, doc: [] LwDoctor) {
+  doc[0] = LwDoctor.{};
+  eb: [FS_PATH_MAX] u8; lb: [FS_PATH_MAX] u8; kb: [FS_PATH_MAX] u8;
+  elan := lv_find_bin("elan", home, eb[..]);
+  lean := lv_find_bin("lean", home, lb[..]);
+  lake := lv_find_bin("lake", home, kb[..]);
+  doc[0].elan_found = elan.count > 0;
+  doc[0].lean_found = lean.count > 0;
+  doc[0].lake_found = lake.count > 0;
+  doc[0].elan_path_n = lw_put(doc[0].elan_path[..], elan);
+  doc[0].lean_version_n = lv_probe_version(lean, doc[0].lean_version[..]);
+  doc[0].lake_version_n = lv_probe_version(lake, doc[0].lake_version[..]);
+
+  // Check RH corpus and binary index under ~/.openagents/lean/
+  cpb: [FS_PATH_MAX] u8; main_p: [FS_PATH_MAX] u8; ipb: [FS_PATH_MAX] u8;
+  corp := fs_join(home, ".openagents/lean/corpora/riemann-hypothesis", cpb[..]);
+  main_lean := fs_join(corp, "src/Main.lean", main_p[..]);
+  doc[0].rh_corpus_present = fs_kind(main_lean) == FS_FILE;
+
+  manifest := fs_join(home, ".openagents/lean/index/rh-manifest.json", ipb[..]);
+  if fs_kind(manifest) == FS_FILE {
+    mb: [8192] u8; mn := fs_read(manifest, mb[..]);
+    if mn > 0 {
+      ix: [1] LwRhIndex;
+      if lw_rh_index_read(cast(string) mb[0..<mn], ix[..]) {
+        doc[0].rh_index_present = true;
+        doc[0].rh_modules = ix[0].modules;
+      }
+    }
+  }
+
+  doc[0].ok = doc[0].lean_found || doc[0].rh_corpus_present;
+  if doc[0].lean_found && doc[0].rh_index_present {
+    doc[0].note_n = lw_put(doc[0].note[..], "Lean 4 toolchain and RH 175k-module index ready");
+  } else if doc[0].lean_found {
+    doc[0].note_n = lw_put(doc[0].note[..], "Lean 4 toolchain ready");
+  } else if doc[0].rh_index_present {
+    doc[0].note_n = lw_put(doc[0].note[..], "RH Tier A index ready; install elan for live Lean 4 proving");
+  } else if doc[0].rh_corpus_present {
+    doc[0].note_n = lw_put(doc[0].note[..], "RH corpus present (run `lean-run rh index`); install elan for live Lean 4 proving");
+  } else {
+    doc[0].note_n = lw_put(doc[0].note[..], "Install elan (https://lean-lang.org) or run `lean-run rh fetch` for Tier A RH Workbench");
+  }
+}
+
+// Verifies a Lean 4 file and target theorem using the real Lean kernel + #authority policy.
+// Appends a temporary `#print axioms <target>` check in a scratch copy so the source file is
+// never mutated. Optional `statement_sig` checks that the exact theorem signature appears verbatim.
+lv_verify_file :: (home: string, file_path: string, target: string, statement_sig: string, out: [] LwVerify) {
+  out[0] = LwVerify.{};
+  out[0].file_n = lw_put(out[0].file[..], file_path);
+  out[0].target_n = lw_put(out[0].target[..], target);
+  out[0].kernel_n = lw_put(out[0].kernel[..], "lean4");
+  t0 := proc_now_ms();
+
+  if !lp_target_safe(target) {
+    out[0].verdict_n = lw_put(out[0].verdict[..], lp_code_name(LP_BAD_TARGET));
+    out[0].message_n = lw_put(out[0].message[..], "invalid Lean target identifier");
+    return;
+  }
+  if fs_kind(file_path) != FS_FILE {
+    out[0].verdict_n = lw_put(out[0].verdict[..], "missing_file");
+    out[0].message_n = lw_put(out[0].message[..], "Lean source file not found");
+    return;
+  }
+  out[0].file_sha256_n = lv_sha256_file(file_path, out[0].file_sha256[..]);
+
+  // Read source file to check optional frozen statement signature & append #print axioms in scratch file
+  src_buf: [262144] u8;
+  src_n := fs_read(file_path, src_buf[..]);
+  if src_n < 0 {
+    out[0].verdict_n = lw_put(out[0].verdict[..], "file_too_large");
+    out[0].message_n = lw_put(out[0].message[..], "source exceeds 256 KiB single-file verifier limit");
+    return;
+  }
+  src := cast(string) src_buf[0..<src_n];
+  stmt_ok := statement_sig.count == 0 || lp_has(src, statement_sig);
+  out[0].statement_match = stmt_ok;
+
+  lb: [FS_PATH_MAX] u8; kb: [FS_PATH_MAX] u8;
+  lean_bin := lv_find_bin("lean", home, lb[..]);
+  lake_bin := lv_find_bin("lake", home, kb[..]);
+  if lean_bin.count == 0 {
+    out[0].elapsed_ms = proc_now_ms() - t0;
+    out[0].exit_code = -1;
+    out[0].verdict_n = lw_put(out[0].verdict[..], "no_toolchain");
+    out[0].message_n = lw_put(out[0].message[..], "Lean 4 binary not found (install elan to enable live kernel verification)");
+    return;
+  }
+  out[0].toolchain_n = lv_probe_version(lean_bin, out[0].toolchain[..]);
+
+  // Write scratch file with `#print axioms <target>` appended
+  tmpd_b: [FS_PATH_MAX] u8; tmpd := fs_temp("oa-lean-verify-", tmpd_b[..]);
+  if tmpd.count == 0 {
+    out[0].verdict_n = lw_put(out[0].verdict[..], "temp_failed");
+    out[0].message_n = lw_put(out[0].message[..], "could not create temporary verification directory");
+    return;
+  }
+  chk_p_b: [FS_PATH_MAX] u8; chk_p := fs_join(tmpd, "Check.lean", chk_p_b[..]);
+  comb: [266240] u8;
+  cn := lv_cat(comb[..], 0, src);
+  cn = lv_cat(comb[..], cn, "\n#print axioms ");
+  cn = lv_cat(comb[..], cn, target);
+  cn = lv_cat(comb[..], cn, "\n");
+  if !fs_write(chk_p, cast(string) comb[0..<cn]) {
+    _ = fs_remove(tmpd);
+    out[0].verdict_n = lw_put(out[0].verdict[..], "write_failed");
+    out[0].message_n = lw_put(out[0].message[..], "could not write scratch Lean file");
+    return;
+  }
+
+  // Decide whether to invoke `lake env lean` (if lakefile exists in parent dir) or plain `lean`
+  dir := fs_dir(file_path);
+  lt_b: [FS_PATH_MAX] u8; ll_b: [FS_PATH_MAX] u8;
+  has_lake := lake_bin.count > 0 && (fs_kind(fs_join(dir, "lakefile.toml", lt_b[..])) == FS_FILE || fs_kind(fs_join(dir, "lakefile.lean", ll_b[..])) == FS_FILE);
+
+  so: [65536] u8; se: [16384] u8;
+  r: ProcRun;
+  if has_lake {
+    h := proc_new();
+    _ = proc_arg(h, lake_bin);
+    _ = proc_arg(h, "env");
+    _ = proc_arg(h, "lean");
+    _ = proc_arg(h, chk_p);
+    _ = proc_cwd(h, dir);
+    r.started = proc_start(h);
+    if r.started == 0 {
+      out_n := 0;
+      dl := proc_deadline(LV_TIMEOUT_MS, proc_now_ms());
+      while true {
+        left := proc_left(dl, proc_now_ms());
+        if left == 0 { r.timed_out = true; break; }
+        ln_b: [4096] u8;
+        ln := proc_line(h, left, ln_b[..]);
+        if ln == PROC_EOF { break; }
+        if ln == PROC_TIMEOUT { r.timed_out = true; break; }
+        if ln > 0 {
+          out_n = lv_cat(so[..], out_n, cast(string) ln_b[0..<ln]);
+          out_n = lv_cat(so[..], out_n, "\n");
+        }
+      }
+      r.out_n = out_n;
+      if r.timed_out { _ = proc_kill(h, PROC_SIGKILL); r.status = -1; }
+      else { r.status = proc_wait(h, 2000); }
+      es := proc_stderr(h, se[..]);
+      r.err_n = es.count;
+    }
+    _ = proc_release(h);
+  } else {
+    argv := [2] string.[lean_bin, chk_p];
+    r = proc_run(argv[..], LV_TIMEOUT_MS, so[..], se[..]);
+  }
+  _ = fs_remove(tmpd);
+
+  out[0].elapsed_ms = proc_now_ms() - t0;
+  if out[0].elapsed_ms < 0 { out[0].elapsed_ms = 0; }
+  out[0].exit_code = r.status;
+
+  ax_cnt := [1] int.[0];
+  has_ax := lv_parse_axioms(cast(string) so[0..<r.out_n], out[0].axioms[..], out[0].axioms_n[..], ax_cnt[..]);
+  out[0].axiom_count = ax_cnt[0];
+
+  ax_views: [LW_AXIOMS] string;
+  for i: 0..<out[0].axiom_count {
+    ax_views[i] = cast(string) out[0].axioms[i][0..<out[0].axioms_n[i]];
+  }
+  chk := LpCheck.{
+    target = target,
+    exit_code = r.status,
+    timed_out = r.timed_out,
+    statement_match = stmt_ok,
+    has_axioms_field = has_ax,
+    unsafe_flag = false,
+    axioms = ax_views[0..<out[0].axiom_count]
+  };
+  code := lp_verdict(chk);
+  out[0].verified = code == LP_OK;
+  out[0].verdict_n = lw_put(out[0].verdict[..], lp_code_name(code));
+  if out[0].verified {
+    out[0].message_n = lw_put(out[0].message[..], "verified by Lean 4 kernel with standard axioms only");
+  } else if r.err_n > 0 {
+    out[0].message_n = lw_put(out[0].message[..], lv_first_line(cast(string) se[0..<r.err_n]));
+  } else if r.out_n > 0 {
+    out[0].message_n = lw_put(out[0].message[..], lv_first_line(cast(string) so[0..<r.out_n]));
+  } else {
+    out[0].message_n = lw_put(out[0].message[..], lp_code_name(code));
+  }
+}
+
+// Renders a compact 480x144 OA-SHOW verification/status JPEG card using pure Coax jpeg_enc.coax.
+LV_CARD_W :: 480;
+LV_CARD_H :: 144;
+
+lv_fill_rect :: (px: [] u8, w: int, h: int, x0: int, y0: int, rw: int, rh: int, r: u8, g: u8, b: u8) {
+  for y: y0..<y0 + rh {
+    if y < 0 || y >= h { continue; }
+    for x: x0..<x0 + rw {
+      if x < 0 || x >= w { continue; }
+      idx := (y * w + x) * 3;
+      px[idx] = r; px[idx + 1] = g; px[idx + 2] = b;
+    }
+  }
+}
+
+lv_render_card_jpg :: (status_ok: bool, out_path: string) -> bool {
+  px: [LV_CARD_W * LV_CARD_H * 3] u8;
+  // Deep slate canvas (#11151C)
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 0, 0, LV_CARD_W, LV_CARD_H, 17, 21, 28);
+  // Subtle card frame (#263042)
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 8, 8, LV_CARD_W - 16, LV_CARD_H - 16, 24, 30, 42);
+  // Left verdict bar: emerald (#22C55E) if verified, crimson (#EF4444) if rejected
+  ar := cast(u8) (ifx status_ok then 34 else 239);
+  ag := cast(u8) (ifx status_ok then 197 else 68);
+  ab := cast(u8) (ifx status_ok then 94 else 68);
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 8, 8, 8, LV_CARD_H - 16, ar, ag, ab);
+  // Status emblem badge + abstract critical-line strip graphic on right
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 32, 30, 88, 26, ar, ag, ab);
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 32, 72, 220, 12, 210, 222, 240);
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 32, 96, 168, 9, 130, 148, 174);
+  // Critical strip Re(s) = 1/2 accent glyph
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 310, 22, 136, 100, 15, 20, 30);
+  lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 377, 26, 2, 92, 96, 165, 250);
+  zeros := [5] int.[38, 56, 72, 90, 108];
+  for z: zeros { lv_fill_rect(px[..], LV_CARD_W, LV_CARD_H, 375, z, 6, 6, ar, ag, ab); }
+  jpg: [65536] u8;
+  jn := jpe_encode(px[..], LV_CARD_W, LV_CARD_H, 3, 85, false, false, jpg[..]);
+  if jn <= 0 { return false; }
+  return fs_write(out_path, cast(string) jpg[0..<jn]);
+}

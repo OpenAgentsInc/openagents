@@ -1,0 +1,98 @@
+// Lean 4 math Unicode backslash-abbreviation expander (Epic #13943, #13944;
+// docs/lean/spec.md §4). Used by the cross-platform Coax Lean scratchpad editor
+// and RH search input so typing `\forall`, `\to`, `\C`, `\zeta`, `\chi`, `\sigma`
+// + Space/Tab expands directly into canonical Lean 4 UTF-8 math symbols.
+//
+//   coax/bin/coax test coax/lib/lean/unicode.coax --library
+
+LU_COUNT :: 56;
+LU_KEYS :: [LU_COUNT] string.[
+  "forall", "exists", "to", "r", "l", "iff", "lr", "mapsto", "=>",
+  "le", "ge", "ne", "in", "notin", "sub", "sup", "and", "or", "not",
+  "lam", "vdash", "langle", "rangle", "times", "cdot", "circ", "inf",
+  "N", "nat", "Z", "int", "Q", "rat", "R", "real", "C", "complex",
+  "alpha", "beta", "gamma", "delta", "eps", "zeta", "eta", "theta",
+  "chi", "sigma", "pi", "phi", "psi", "omega",
+  "Sigma", "Pi", "Gamma", "Delta", "Omega"
+];
+LU_VALS :: [LU_COUNT] string.[
+  "∀", "∃", "→", "→", "←", "↔", "↔", "↦", "⇒",
+  "≤", "≥", "≠", "∈", "∉", "⊆", "⊇", "∧", "∨", "¬",
+  "λ", "⊢", "⟨", "⟩", "×", "·", "∘", "∞",
+  "ℕ", "ℕ", "ℤ", "ℤ", "ℚ", "ℚ", "ℝ", "ℝ", "ℂ", "ℂ",
+  "α", "β", "γ", "δ", "ε", "ζ", "η", "θ",
+  "χ", "σ", "π", "φ", "ψ", "ω",
+  "Σ", "Π", "Γ", "Δ", "Ω"
+];
+
+lu_lookup :: (abbrev: string) -> string {
+  for i: 0..<LU_COUNT {
+    if LU_KEYS[i] == abbrev { return LU_VALS[i]; }
+  }
+  return "";
+}
+
+LuResult :: struct {
+  expanded: bool;
+  len: int;
+  new_cursor: int;
+}
+
+// Expands a `\abbrev` immediately preceding `cursor` in `text`, writing the result into `out`.
+// If no abbreviation matches, copies `text` unchanged and sets expanded = false.
+lu_expand_before_cursor :: (text: string, cursor: int, out: [] u8) -> LuResult {
+  res := LuResult.{expanded = false, len = 0, new_cursor = cursor};
+  cur := ifx cursor < 0 then 0 else ifx cursor > text.count then text.count else cursor;
+  bs := cur - 1;
+  while bs >= 0 && text[bs] != '\\' && text[bs] != ' ' && text[bs] != '\n' && text[bs] != '\t' {
+    bs -= 1;
+  }
+  sym := "";
+  if bs >= 0 && text[bs] == '\\' && bs + 1 < cur {
+    sym = lu_lookup(cast(string) text[bs + 1..<cur]);
+  }
+  if sym.count == 0 {
+    n := ifx text.count < out.count then text.count else out.count;
+    for i: 0..<n { out[i] = text[i]; }
+    res.len = n; res.new_cursor = cur;
+    return res;
+  }
+  need := bs + sym.count + (text.count - cur);
+  if need > out.count {
+    n := ifx text.count < out.count then text.count else out.count;
+    for i: 0..<n { out[i] = text[i]; }
+    res.len = n; res.new_cursor = cur;
+    return res;
+  }
+  n := 0;
+  for i: 0..<bs { out[n] = text[i]; n += 1; }
+  for i: 0..<sym.count { out[n] = sym[i]; n += 1; }
+  new_cur := n;
+  for i: cur..<text.count { out[n] = text[i]; n += 1; }
+  res.expanded = true; res.len = n; res.new_cursor = new_cur;
+  return res;
+}
+
+#test "lean unicode: lookup and cursor expansion" {
+  #assert lu_lookup("forall") == "∀";
+  #assert lu_lookup("to") == "→";
+  #assert lu_lookup("C") == "ℂ";
+  #assert lu_lookup("zeta") == "ζ";
+  #assert lu_lookup("chi") == "χ";
+  #assert lu_lookup("sigma") == "σ";
+  #assert lu_lookup("vdash") == "⊢";
+  #assert lu_lookup("nope") == "";
+  buf: [128] u8;
+  r := lu_expand_before_cursor("\\forall s : \\C", 14, buf[..]);
+  #assert r.expanded && cast(string) buf[0..<r.len] == "\\forall s : ℂ";
+  r2 := lu_expand_before_cursor(cast(string) buf[0..<r.len], 7, buf[..]);
+  // copy first so no aliasing
+  tmp: [128] u8;
+  r3 := lu_expand_before_cursor("\\forall s : ℂ", 7, tmp[..]);
+  #assert r3.expanded && cast(string) tmp[0..<r3.len] == "∀ s : ℂ" && r3.new_cursor == 3;
+  r4 := lu_expand_before_cursor("plain text", 10, tmp[..]);
+  #assert !r4.expanded && cast(string) tmp[0..<r4.len] == "plain text" && r4.new_cursor == 10;
+  small: [2] u8;
+  r5 := lu_expand_before_cursor("\\forall", 7, small[..]);
+  #assert !r5.expanded;
+}

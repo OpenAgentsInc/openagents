@@ -1,0 +1,170 @@
+// Lean Gym request planner (Epic #13943, #13944, #13946; docs/lean/spec.md §6.3).
+// Mirrors coax/lib/agent/desktop/gym.coax (`dc_gym_plan`) for `lean-run gym`
+// (~/.openagents/lean/gym-request.json) and `POST /v1/gym/lean`.
+//
+// Validates every field, rejects unknown keys cleanly, normalizes view and math_tab names,
+// and emits a flat JSON plan consumed by the desktop host and Coax page.
+//
+//   coax/bin/coax test coax/lib/lean/gym.coax --library
+#load "wire.coax";
+
+DLG_KEYS :: [11] string.["schema", "id", "open", "view", "module", "decl", "tour_step", "search", "math_tab", "file", "line"];
+DLG_VIEWS :: [6] string.["tour", "atlas", "math", "inspect", "trust", "prover"];
+DLG_MATH_TABS :: [3] string.["strip", "robin", "theta"];
+
+dlg_known_key :: (key: string) -> bool {
+  for k: 0..<DLG_KEYS.count { if key == DLG_KEYS[k] { return true; } }
+  return false;
+}
+
+dlg_norm_view :: (v: string) -> string {
+  if v.count == 0 { return ""; }
+  if v == "rh" || v == "overview" { return "tour"; }
+  if v == "graph" || v == "map" { return "atlas"; }
+  if v == "visuals" || v == "viz" { return "math"; }
+  if v == "inspector" || v == "source" { return "inspect"; }
+  if v == "ledger" || v == "provenance" || v == "audit" { return "trust"; }
+  if v == "lean" || v == "editor" || v == "scratchpad" { return "prover"; }
+  for k: 0..<DLG_VIEWS.count { if v == DLG_VIEWS[k] { return DLG_VIEWS[k]; } }
+  return "?";
+}
+
+dlg_norm_math_tab :: (t: string) -> string {
+  if t.count == 0 { return ""; }
+  if t == "zeta" || t == "critical_strip" { return "strip"; }
+  if t == "sigma" || t == "lagarias" { return "robin"; }
+  if t == "lift" || t == "sqrt_x" { return "theta"; }
+  for k: 0..<DLG_MATH_TABS.count { if t == DLG_MATH_TABS[k] { return DLG_MATH_TABS[k]; } }
+  return "?";
+}
+
+dlg_err :: (out: [] u8, why: string) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], false); jo_key(o[..], "error"); jo_str(o[..], why); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+
+dlg_str :: (d: Jv, key: string, buf: [] u8, ok: [] bool) -> string {
+  at := jv_get(d, 0, key);
+  if jv_kind(d, at) == 0 { return ""; }
+  n := jv_str(d, at, buf);
+  if n < 0 { ok[0] = false; return ""; }
+  return cast(string) buf[0..<n];
+}
+
+// Validates and normalizes a Lean Gym request JSON into a plan JSON in `out`.
+dc_lean_gym_plan :: (req: string, out: [] u8) -> string {
+  nodes: [256] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], req, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT {
+    return dlg_err(out, "the Lean Gym request is not a JSON object");
+  }
+  d := jd[0];
+  for i: 0..<jv_len(d, 0) {
+    if !dlg_known_key(jv_key(d, jv_at(d, 0, i))) {
+      return dlg_err(out, "unknown key (allowed: schema, id, open, view, module, decl, tour_step, search, math_tab, file, line)");
+    }
+  }
+  ok := [1] bool.[true];
+  sb_sc: [64] u8; sc := dlg_str(d, "schema", sb_sc[..], ok[..]);
+  sb_id: [128] u8; id := dlg_str(d, "id", sb_id[..], ok[..]);
+  sb_vw: [64] u8; vw_raw := dlg_str(d, "view", sb_vw[..], ok[..]);
+  sb_md: [256] u8; mod := dlg_str(d, "module", sb_md[..], ok[..]);
+  sb_dc: [256] u8; decl := dlg_str(d, "decl", sb_dc[..], ok[..]);
+  sb_sr: [256] u8; search := dlg_str(d, "search", sb_sr[..], ok[..]);
+  sb_mt: [64] u8; mt_raw := dlg_str(d, "math_tab", sb_mt[..], ok[..]);
+  sb_fl: [1024] u8; file := dlg_str(d, "file", sb_fl[..], ok[..]);
+  if !ok[0] { return dlg_err(out, "string fields must be bounded UTF-8 strings"); }
+  if sc.count > 0 && sc != LW_SCHEMA_GYM_REQ { return dlg_err(out, "unexpected schema version"); }
+
+  vw := dlg_norm_view(vw_raw);
+  if vw == "?" { return dlg_err(out, "view must be tour, atlas, math, inspect, trust or prover"); }
+  mt := dlg_norm_math_tab(mt_raw);
+  if mt == "?" { return dlg_err(out, "math_tab must be strip, robin or theta"); }
+
+  open := true;
+  op := jv_get(d, 0, "open");
+  if jv_kind(d, op) != 0 {
+    if jv_kind(d, op) != JV_TRUE && jv_kind(d, op) != JV_FALSE { return dlg_err(out, "open must be true or false"); }
+    open = jv_kind(d, op) == JV_TRUE;
+  }
+
+  tour_step := 0;
+  ts := jv_get(d, 0, "tour_step");
+  if jv_kind(d, ts) != 0 {
+    if jv_kind(d, ts) != JV_NUMBER { return dlg_err(out, "tour_step must be an integer 0..20"); }
+    tour_step = jv_int(d, ts, -1);
+    if tour_step < 0 || tour_step > 20 { return dlg_err(out, "tour_step must be an integer 0..20"); }
+  }
+
+  line := 0;
+  ln := jv_get(d, 0, "line");
+  if jv_kind(d, ln) != 0 {
+    if jv_kind(d, ln) != JV_NUMBER { return dlg_err(out, "line must be a non-negative integer"); }
+    line = jv_int(d, ln, -1);
+    if line < 0 { return dlg_err(out, "line must be a non-negative integer"); }
+  }
+
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_bool(o[..], true);
+  jo_key(o[..], "id"); jo_str(o[..], id);
+  jo_key(o[..], "open"); jo_bool(o[..], open);
+  jo_key(o[..], "view"); jo_str(o[..], vw);
+  jo_key(o[..], "module"); jo_str(o[..], mod);
+  jo_key(o[..], "decl"); jo_str(o[..], decl);
+  jo_key(o[..], "tour_step"); jo_int(o[..], tour_step);
+  jo_key(o[..], "search"); jo_str(o[..], search);
+  jo_key(o[..], "math_tab"); jo_str(o[..], mt);
+  jo_key(o[..], "file"); jo_str(o[..], file);
+  jo_key(o[..], "line"); jo_int(o[..], line);
+  jo_end(o[..]);
+  return ifx o[0].bad then dlg_err(out, "the Lean Gym plan is longer than its room") else jo_text(o[..]);
+}
+
+#test "lean gym plan: valid requests, aliases and refusals" {
+  b: [4096] u8;
+  // every canonical view and alias
+  #assert dlg_norm_view("tour") == "tour" && dlg_norm_view("rh") == "tour" && dlg_norm_view("overview") == "tour";
+  #assert dlg_norm_view("atlas") == "atlas" && dlg_norm_view("graph") == "atlas" && dlg_norm_view("map") == "atlas";
+  #assert dlg_norm_view("math") == "math" && dlg_norm_view("visuals") == "math" && dlg_norm_view("viz") == "math";
+  #assert dlg_norm_view("inspect") == "inspect" && dlg_norm_view("inspector") == "inspect" && dlg_norm_view("source") == "inspect";
+  #assert dlg_norm_view("trust") == "trust" && dlg_norm_view("ledger") == "trust" && dlg_norm_view("provenance") == "trust" && dlg_norm_view("audit") == "trust";
+  #assert dlg_norm_view("prover") == "prover" && dlg_norm_view("lean") == "prover" && dlg_norm_view("editor") == "prover" && dlg_norm_view("scratchpad") == "prover";
+  #assert dlg_norm_view("") == "" && dlg_norm_view("bogus") == "?";
+
+  // every canonical math_tab and alias
+  #assert dlg_norm_math_tab("strip") == "strip" && dlg_norm_math_tab("zeta") == "strip" && dlg_norm_math_tab("critical_strip") == "strip";
+  #assert dlg_norm_math_tab("robin") == "robin" && dlg_norm_math_tab("sigma") == "robin" && dlg_norm_math_tab("lagarias") == "robin";
+  #assert dlg_norm_math_tab("theta") == "theta" && dlg_norm_math_tab("lift") == "theta" && dlg_norm_math_tab("sqrt_x") == "theta";
+  #assert dlg_norm_math_tab("") == "" && dlg_norm_math_tab("bogus") == "?";
+
+  // valid requests including schema, open true/false, exact boundary tour_step 0 and 20, line 0 and 42
+  p := dc_lean_gym_plan("{\"schema\":\"lean-gym-request.v1\",\"id\":\"r1\",\"view\":\"graph\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":20,\"math_tab\":\"zeta\",\"open\":true}", b[..]);
+  #assert p == "{\"ok\":true,\"id\":\"r1\",\"open\":true,\"view\":\"atlas\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":20,\"search\":\"\",\"math_tab\":\"strip\",\"file\":\"\",\"line\":0}";
+  #assert dc_lean_gym_plan("{}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"view\":\"\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"\",\"file\":\"\",\"line\":0}";
+  #assert dc_lean_gym_plan("{\"open\":false,\"view\":\"ledger\",\"tour_step\":0,\"math_tab\":\"sqrt_x\",\"line\":42}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":false,\"view\":\"trust\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"theta\",\"file\":\"\",\"line\":42}";
+  #assert dc_lean_gym_plan("{\"line\":0,\"id\":\"\"}", b[..]) == "{\"ok\":true,\"id\":\"\",\"open\":true,\"view\":\"\",\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"search\":\"\",\"math_tab\":\"\",\"file\":\"\",\"line\":0}";
+  #assert dc_lean_gym_plan("{\"schema\":\"x\"}", b[..]) == "{\"ok\":false,\"error\":\"unexpected schema version\"}";
+
+  // exact error messages & refusals
+  #assert dc_lean_gym_plan("", b[..]) == "{\"ok\":false,\"error\":\"the Lean Gym request is not a JSON object\"}";
+  #assert dc_lean_gym_plan("[]", b[..]) == "{\"ok\":false,\"error\":\"the Lean Gym request is not a JSON object\"}";
+  #assert dc_lean_gym_plan("{\"nope\":1}", b[..]) == "{\"ok\":false,\"error\":\"unknown key (allowed: schema, id, open, view, module, decl, tour_step, search, math_tab, file, line)\"}";
+  #assert dc_lean_gym_plan("{\"id\":7}", b[..]) == "{\"ok\":false,\"error\":\"string fields must be bounded UTF-8 strings\"}";
+  #assert dc_lean_gym_plan("{\"schema\":\"other.v1\"}", b[..]) == "{\"ok\":false,\"error\":\"unexpected schema version\"}";
+  #assert dc_lean_gym_plan("{\"view\":\"bogus\"}", b[..]) == "{\"ok\":false,\"error\":\"view must be tour, atlas, math, inspect, trust or prover\"}";
+  #assert dc_lean_gym_plan("{\"math_tab\":\"bogus\"}", b[..]) == "{\"ok\":false,\"error\":\"math_tab must be strip, robin or theta\"}";
+  #assert dc_lean_gym_plan("{\"open\":\"yes\"}", b[..]) == "{\"ok\":false,\"error\":\"open must be true or false\"}";
+  #assert dc_lean_gym_plan("{\"tour_step\":\"5\"}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
+  #assert dc_lean_gym_plan("{\"tour_step\":-1}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
+  #assert dc_lean_gym_plan("{\"tour_step\":21}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
+  #assert dc_lean_gym_plan("{\"tour_step\":1.5}", b[..]) == "{\"ok\":false,\"error\":\"tour_step must be an integer 0..20\"}";
+  #assert dc_lean_gym_plan("{\"line\":\"5\"}", b[..]) == "{\"ok\":false,\"error\":\"line must be a non-negative integer\"}";
+  #assert dc_lean_gym_plan("{\"line\":-1}", b[..]) == "{\"ok\":false,\"error\":\"line must be a non-negative integer\"}";
+  #assert dc_lean_gym_plan("{\"line\":1.5}", b[..]) == "{\"ok\":false,\"error\":\"line must be a non-negative integer\"}";
+
+  // oversized string field refused, small output buffer refused
+  long_id := "{\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+  #assert dc_lean_gym_plan(long_id, b[..]) == "{\"ok\":false,\"error\":\"string fields must be bounded UTF-8 strings\"}";
+  small: [64] u8;
+  #assert dc_lean_gym_plan("{\"module\":\"Main\"}", small[..]) == "{\"ok\":false,\"error\":\"the Lean Gym plan is longer than its room\"}";
+}

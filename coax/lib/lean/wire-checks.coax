@@ -1,0 +1,113 @@
+// Golden byte checker for Lean 4 Gym & RH Workbench wire shapes (proto/coder/lean-gym-v1.json;
+// Epic #13943, #13944). Reads every golden record in the profile through coax/lib/lean/wire.coax,
+// re-serializes it byte-for-byte, and verifies every malformed record in "refused" is rejected.
+//
+//   coax/web/tool.sh coax/lib/lean/wire-checks.coax proto/coder/lean-gym-v1.json
+#import "Basic";
+#load "wire.coax";
+#load "../sys/tool.coax";
+#load "../sys/args.coax";
+#load "../sys/fs.coax";
+
+LwcWork :: struct {
+  file: [1048576] u8;
+  nodes: [32768] JvNode;
+  line: [16384] u8;
+  back: [16384] u8;
+  kind: [64] u8;
+  doc: [1] LwDoctor;
+  ver: [1] LwVerify;
+  req: [1] LwGymReq;
+  st: [1] LwGymState;
+  ix: [1] LwRhIndex;
+  nt: [1] LwRhNote;
+  checked: int;
+  failed: int;
+}
+
+lwc_roundtrip :: (w: [] LwcWork, kind: string, line: string) -> bool {
+  k := -1;
+  if kind == LW_SCHEMA_DOCTOR {
+    if !lw_doctor_read(line, w[0].doc[..]) { return false; }
+    k = lw_doctor_write(w[0].doc[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_VERIFY {
+    if !lw_verify_read(line, w[0].ver[..]) { return false; }
+    k = lw_verify_write(w[0].ver[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_GYM_REQ {
+    if !lw_gym_req_read(line, w[0].req[..]) { return false; }
+    k = lw_gym_req_write(w[0].req[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_GYM_STATE {
+    if !lw_gym_state_read(line, w[0].st[..]) { return false; }
+    k = lw_gym_state_write(w[0].st[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_RH_INDEX {
+    if !lw_rh_index_read(line, w[0].ix[..]) { return false; }
+    k = lw_rh_index_write(w[0].ix[..], w[0].back[..]);
+  } else if kind == LW_SCHEMA_RH_NOTE {
+    if !lw_rh_note_read(line, w[0].nt[..]) { return false; }
+    k = lw_rh_note_write(w[0].nt[..], w[0].back[..]);
+  } else {
+    return false;
+  }
+  return k == line.count && cast(string) w[0].back[0..<k] == line;
+}
+
+lwc_accepts_any :: (w: [] LwcWork, line: string) -> bool {
+  return lw_doctor_read(line, w[0].doc[..])
+    || lw_verify_read(line, w[0].ver[..])
+    || lw_gym_req_read(line, w[0].req[..])
+    || lw_gym_state_read(line, w[0].st[..])
+    || lw_rh_index_read(line, w[0].ix[..])
+    || lw_rh_note_read(line, w[0].nt[..]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  args: [1] Args; _ = args_load(args[..]);
+  path := args_at(args[..], 0);
+  if path.count == 0 { path = "proto/coder/lean-gym-v1.json"; }
+  w: [1] LwcWork;
+  n := fs_read(path, w[0].file[..]);
+  if n <= 0 { tool_errln("lean wire-checks: cannot read profile"); return 1; }
+  jd: [1] Jv;
+  if !jv_parse(jd[..], cast(string) w[0].file[0..<n], w[0].nodes[..]) {
+    tool_errln("lean wire-checks: profile is not valid JSON");
+    return 1;
+  }
+  d := jd[0];
+  goldens := jv_get(d, 0, "goldens");
+  seen := [6] bool.[false, false, false, false, false, false];
+  schemas := [6] string.[LW_SCHEMA_DOCTOR, LW_SCHEMA_VERIFY, LW_SCHEMA_GYM_REQ, LW_SCHEMA_GYM_STATE, LW_SCHEMA_RH_INDEX, LW_SCHEMA_RH_NOTE];
+  for i: 0..<jv_len(d, goldens) {
+    e := jv_at(d, goldens, i);
+    kn := jv_str(d, jv_get(d, e, "schema"), w[0].kind[..]);
+    ln := jv_str(d, jv_get(d, e, "line"), w[0].line[..]);
+    if kn <= 0 || ln <= 0 { w[0].failed += 1; continue; }
+    kind := cast(string) w[0].kind[0..<kn];
+    line := cast(string) w[0].line[0..<ln];
+    w[0].checked += 1;
+    if !lwc_roundtrip(w[..], kind, line) {
+      tool_err("lean wire-checks: roundtrip mismatch for "); tool_errln(kind);
+      w[0].failed += 1;
+    } else {
+      for s: 0..<6 { if schemas[s] == kind { seen[s] = true; } }
+    }
+  }
+  for s: 0..<6 {
+    if !seen[s] {
+      tool_err("lean wire-checks: missing golden for "); tool_errln(schemas[s]);
+      w[0].failed += 1;
+    }
+  }
+  refused := jv_get(d, 0, "refused");
+  for i: 0..<jv_len(d, refused) {
+    ln := jv_str(d, jv_at(d, refused, i), w[0].line[..]);
+    if ln < 0 { continue; }
+    w[0].checked += 1;
+    if lwc_accepts_any(w[..], cast(string) w[0].line[0..<ln]) {
+      tool_errln("lean wire-checks: malformed record unexpectedly accepted");
+      w[0].failed += 1;
+    }
+  }
+  if w[0].failed > 0 { return 1; }
+  print("lean wire-checks: ok\n");
+  return 0;
+}

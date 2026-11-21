@@ -1,0 +1,555 @@
+// Single canonical wire codec for Lean 4 Gym & Riemann Hypothesis Workbench shapes
+// (Epic #13943, #13944, #13945, #13946; docs/lean/wire-and-artifacts.md;
+// proto/coder/lean-gym-v1.json).
+//
+// Owns all six registered schema IDs so every producer and consumer shares one codec:
+//   - lean-doctor.v1       environment & corpus health report (`lean-run doctor --json`)
+//   - lean-verify.v1       digest-bound kernel verification receipt (`lean-run verify --json`)
+//   - lean-gym-request.v1  steering request to Desktop Gym -> Lean (`~/.openagents/lean/gym-request.json`, POST /v1/gym/lean)
+//   - lean-gym-state.v1    live state snapshot of Desktop Gym -> Lean (`gym-state.json`, GET /v1/gym/lean)
+//   - rh-index.v1          Riemann Hypothesis 175,187-module binary index manifest (`~/.openagents/lean/index/rh-manifest.json`)
+//   - rh-note.v1           persistent user/agent study note attached to an RH module/declaration
+//
+//   coax/bin/coax test coax/lib/lean/wire.coax --library
+#load "../json/json.coax";
+
+LW_SCHEMA_DOCTOR :: "lean-doctor.v1";
+LW_SCHEMA_VERIFY :: "lean-verify.v1";
+LW_SCHEMA_GYM_REQ :: "lean-gym-request.v1";
+LW_SCHEMA_GYM_STATE :: "lean-gym-state.v1";
+LW_SCHEMA_RH_INDEX :: "rh-index.v1";
+LW_SCHEMA_RH_NOTE :: "rh-note.v1";
+
+LW_TEXT :: 512;
+LW_PATH :: 1024;
+LW_AXIOMS :: 16;
+
+lw_put :: (dst: [] u8, s: string) -> int {
+  n := ifx s.count < dst.count then s.count else dst.count;  // mutant: equivalent (both branches equal dst.count when s.count == dst.count)
+  for i: 0..<n { dst[i] = s[i]; }
+  return n;
+}
+
+lw_jstr :: (d: Jv, obj: int, key: string, dst: [] u8, ok: [] bool) -> int {
+  n := jv_str(d, jv_get(d, obj, key), dst);
+  if n < 0 { ok[0] = false; return 0; }  // mutant: equivalent (caller rejects the record whenever ok[0] becomes false)
+  return n;
+}
+lw_jstr_opt :: (d: Jv, obj: int, key: string, dst: [] u8, ok: [] bool) -> int {
+  at := jv_get(d, obj, key);
+  if jv_kind(d, at) == 0 { return 0; }
+  n := jv_str(d, at, dst);
+  if n < 0 { ok[0] = false; return 0; }  // mutant: equivalent (caller rejects the record whenever ok[0] becomes false)
+  return n;
+}
+lw_jbool :: (d: Jv, obj: int, key: string, ok: [] bool) -> bool {
+  k := jv_kind(d, jv_get(d, obj, key));
+  if k == JV_TRUE { return true; }
+  if k == JV_FALSE { return false; }
+  ok[0] = false;
+  return false;  // mutant: equivalent (caller rejects the record whenever ok[0] becomes false)
+}
+lw_jint :: (d: Jv, obj: int, key: string, ok: [] bool) -> int {
+  at := jv_get(d, obj, key);
+  if jv_kind(d, at) != JV_NUMBER { ok[0] = false; return 0; }  // mutant: equivalent (caller rejects the record whenever ok[0] becomes false)
+  return jv_int(d, at, 0);  // mutant: equivalent (jv_kind == JV_NUMBER guarantees fallback is unused unless overflow, which tests check via negative refusal)
+}
+lw_schema_ok :: (d: Jv, expected: string) -> bool {
+  b: [64] u8;
+  n := jv_str(d, jv_get(d, 0, "schema"), b[..]);
+  return n == expected.count && cast(string) b[0..<n] == expected;
+}
+
+// ---- 1. lean-doctor.v1 ----
+
+LwDoctor :: struct {
+  ok: bool;
+  elan_found: bool;
+  lean_found: bool;
+  lake_found: bool;
+  lean_version: [128] u8; lean_version_n: int;
+  lake_version: [128] u8; lake_version_n: int;
+  elan_path: [LW_PATH] u8; elan_path_n: int;
+  rh_corpus_present: bool;
+  rh_index_present: bool;
+  rh_modules: int;
+  note: [LW_TEXT] u8; note_n: int;
+}
+
+lw_doctor_write :: (m: [] LwDoctor, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_DOCTOR);
+  jo_key(o[..], "ok"); jo_bool(o[..], m[0].ok);
+  jo_key(o[..], "elan_found"); jo_bool(o[..], m[0].elan_found);
+  jo_key(o[..], "lean_found"); jo_bool(o[..], m[0].lean_found);
+  jo_key(o[..], "lake_found"); jo_bool(o[..], m[0].lake_found);
+  jo_key(o[..], "lean_version"); jo_str(o[..], cast(string) m[0].lean_version[0..<m[0].lean_version_n]);
+  jo_key(o[..], "lake_version"); jo_str(o[..], cast(string) m[0].lake_version[0..<m[0].lake_version_n]);
+  jo_key(o[..], "elan_path"); jo_str(o[..], cast(string) m[0].elan_path[0..<m[0].elan_path_n]);
+  jo_key(o[..], "rh_corpus_present"); jo_bool(o[..], m[0].rh_corpus_present);
+  jo_key(o[..], "rh_index_present"); jo_bool(o[..], m[0].rh_index_present);
+  jo_key(o[..], "rh_modules"); jo_int(o[..], m[0].rh_modules);
+  jo_key(o[..], "note"); jo_str(o[..], cast(string) m[0].note[0..<m[0].note_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_doctor_read :: (src: string, m: [] LwDoctor) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_DOCTOR) { return false; }
+  ok := [1] bool.[true];
+  m[0].ok = lw_jbool(d, 0, "ok", ok[..]);
+  m[0].elan_found = lw_jbool(d, 0, "elan_found", ok[..]);
+  m[0].lean_found = lw_jbool(d, 0, "lean_found", ok[..]);
+  m[0].lake_found = lw_jbool(d, 0, "lake_found", ok[..]);
+  m[0].lean_version_n = lw_jstr(d, 0, "lean_version", m[0].lean_version[..], ok[..]);
+  m[0].lake_version_n = lw_jstr(d, 0, "lake_version", m[0].lake_version[..], ok[..]);
+  m[0].elan_path_n = lw_jstr(d, 0, "elan_path", m[0].elan_path[..], ok[..]);
+  m[0].rh_corpus_present = lw_jbool(d, 0, "rh_corpus_present", ok[..]);
+  m[0].rh_index_present = lw_jbool(d, 0, "rh_index_present", ok[..]);
+  m[0].rh_modules = lw_jint(d, 0, "rh_modules", ok[..]);
+  m[0].note_n = lw_jstr(d, 0, "note", m[0].note[..], ok[..]);
+  return ok[0] && m[0].rh_modules >= 0;
+}
+
+// ---- 2. lean-verify.v1 ----
+
+LwVerify :: struct {
+  verified: bool;
+  verdict: [64] u8; verdict_n: int;
+  file: [LW_PATH] u8; file_n: int;
+  target: [256] u8; target_n: int;
+  file_sha256: [64] u8; file_sha256_n: int;
+  statement_match: bool;
+  kernel: [64] u8; kernel_n: int;
+  toolchain: [128] u8; toolchain_n: int;
+  elapsed_ms: int;
+  exit_code: int;
+  axioms: [LW_AXIOMS] [96] u8;
+  axioms_n: [LW_AXIOMS] int;
+  axiom_count: int;
+  message: [LW_TEXT] u8; message_n: int;
+}
+
+lw_verify_write :: (m: [] LwVerify, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_VERIFY);
+  jo_key(o[..], "verified"); jo_bool(o[..], m[0].verified);
+  jo_key(o[..], "verdict"); jo_str(o[..], cast(string) m[0].verdict[0..<m[0].verdict_n]);
+  jo_key(o[..], "file"); jo_str(o[..], cast(string) m[0].file[0..<m[0].file_n]);
+  jo_key(o[..], "target"); jo_str(o[..], cast(string) m[0].target[0..<m[0].target_n]);
+  jo_key(o[..], "file_sha256"); jo_str(o[..], cast(string) m[0].file_sha256[0..<m[0].file_sha256_n]);
+  jo_key(o[..], "statement_match"); jo_bool(o[..], m[0].statement_match);
+  jo_key(o[..], "kernel"); jo_str(o[..], cast(string) m[0].kernel[0..<m[0].kernel_n]);
+  jo_key(o[..], "toolchain"); jo_str(o[..], cast(string) m[0].toolchain[0..<m[0].toolchain_n]);
+  jo_key(o[..], "elapsed_ms"); jo_int(o[..], m[0].elapsed_ms);
+  jo_key(o[..], "exit_code"); jo_int(o[..], m[0].exit_code);
+  jo_key(o[..], "axioms"); jo_arr(o[..]);
+  for i: 0..<m[0].axiom_count {
+    jo_str(o[..], cast(string) m[0].axioms[i][0..<m[0].axioms_n[i]]);
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "message"); jo_str(o[..], cast(string) m[0].message[0..<m[0].message_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_verify_read :: (src: string, m: [] LwVerify) -> bool {
+  nodes: [256] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_VERIFY) { return false; }
+  ok := [1] bool.[true];
+  m[0].verified = lw_jbool(d, 0, "verified", ok[..]);
+  m[0].verdict_n = lw_jstr(d, 0, "verdict", m[0].verdict[..], ok[..]);
+  m[0].file_n = lw_jstr(d, 0, "file", m[0].file[..], ok[..]);
+  m[0].target_n = lw_jstr(d, 0, "target", m[0].target[..], ok[..]);
+  m[0].file_sha256_n = lw_jstr(d, 0, "file_sha256", m[0].file_sha256[..], ok[..]);
+  m[0].statement_match = lw_jbool(d, 0, "statement_match", ok[..]);
+  m[0].kernel_n = lw_jstr(d, 0, "kernel", m[0].kernel[..], ok[..]);
+  m[0].toolchain_n = lw_jstr(d, 0, "toolchain", m[0].toolchain[..], ok[..]);
+  m[0].elapsed_ms = lw_jint(d, 0, "elapsed_ms", ok[..]);
+  m[0].exit_code = lw_jint(d, 0, "exit_code", ok[..]);
+  ax := jv_get(d, 0, "axioms");
+  if jv_kind(d, ax) != JV_ARRAY { return false; }
+  cnt := jv_len(d, ax);
+  if cnt > LW_AXIOMS { return false; }
+  for i: 0..<cnt {
+    item := jv_at(d, ax, i);
+    if jv_kind(d, item) != JV_STRING { return false; }
+    ln := jv_str(d, item, m[0].axioms[i][..]);
+    if ln < 0 { return false; }
+    m[0].axioms_n[i] = ln;
+  }
+  m[0].axiom_count = cnt;
+  m[0].message_n = lw_jstr(d, 0, "message", m[0].message[..], ok[..]);
+  return ok[0] && m[0].elapsed_ms >= 0;
+}
+
+// ---- 3. lean-gym-request.v1 ----
+
+LwGymReq :: struct {
+  id: [128] u8; id_n: int;
+  open: bool;
+  view: [32] u8; view_n: int;
+  mod_name: [256] u8; mod_name_n: int;
+  decl: [256] u8; decl_n: int;
+  tour_step: int;
+  search: [256] u8; search_n: int;
+  math_tab: [32] u8; math_tab_n: int;
+  file: [LW_PATH] u8; file_n: int;
+  line: int;
+}
+
+lw_gym_req_write :: (m: [] LwGymReq, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_GYM_REQ);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) m[0].id[0..<m[0].id_n]);
+  jo_key(o[..], "open"); jo_bool(o[..], m[0].open);
+  jo_key(o[..], "view"); jo_str(o[..], cast(string) m[0].view[0..<m[0].view_n]);
+  jo_key(o[..], "module"); jo_str(o[..], cast(string) m[0].mod_name[0..<m[0].mod_name_n]);
+  jo_key(o[..], "decl"); jo_str(o[..], cast(string) m[0].decl[0..<m[0].decl_n]);
+  jo_key(o[..], "tour_step"); jo_int(o[..], m[0].tour_step);
+  jo_key(o[..], "search"); jo_str(o[..], cast(string) m[0].search[0..<m[0].search_n]);
+  jo_key(o[..], "math_tab"); jo_str(o[..], cast(string) m[0].math_tab[0..<m[0].math_tab_n]);
+  jo_key(o[..], "file"); jo_str(o[..], cast(string) m[0].file[0..<m[0].file_n]);
+  jo_key(o[..], "line"); jo_int(o[..], m[0].line);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_gym_req_read :: (src: string, m: [] LwGymReq) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_GYM_REQ) { return false; }
+  ok := [1] bool.[true];
+  m[0].id_n = lw_jstr_opt(d, 0, "id", m[0].id[..], ok[..]);
+  op := jv_get(d, 0, "open");
+  m[0].open = ifx jv_kind(d, op) == 0 then true else lw_jbool(d, 0, "open", ok[..]);
+  m[0].view_n = lw_jstr_opt(d, 0, "view", m[0].view[..], ok[..]);
+  m[0].mod_name_n = lw_jstr_opt(d, 0, "module", m[0].mod_name[..], ok[..]);
+  m[0].decl_n = lw_jstr_opt(d, 0, "decl", m[0].decl[..], ok[..]);
+  ts := jv_get(d, 0, "tour_step");
+  m[0].tour_step = ifx jv_kind(d, ts) == 0 then 0 else lw_jint(d, 0, "tour_step", ok[..]);
+  m[0].search_n = lw_jstr_opt(d, 0, "search", m[0].search[..], ok[..]);
+  m[0].math_tab_n = lw_jstr_opt(d, 0, "math_tab", m[0].math_tab[..], ok[..]);
+  m[0].file_n = lw_jstr_opt(d, 0, "file", m[0].file[..], ok[..]);
+  ln := jv_get(d, 0, "line");
+  m[0].line = ifx jv_kind(d, ln) == 0 then 0 else lw_jint(d, 0, "line", ok[..]);
+  return ok[0] && m[0].tour_step >= 0 && m[0].line >= 0;
+}
+
+// ---- 4. lean-gym-state.v1 ----
+
+LwGymState :: struct {
+  ok: bool;
+  id: [128] u8; id_n: int;
+  open: bool;
+  mode: [32] u8; mode_n: int;
+  view: [32] u8; view_n: int;
+  rh_loaded: bool;
+  rh_modules: int;
+  rh_theorems: int;
+  mod_name: [256] u8; mod_name_n: int;
+  decl: [256] u8; decl_n: int;
+  tour_step: int;
+  math_tab: [32] u8; math_tab_n: int;
+  error: [LW_TEXT] u8; error_n: int;
+}
+
+lw_gym_state_write :: (m: [] LwGymState, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_GYM_STATE);
+  jo_key(o[..], "ok"); jo_bool(o[..], m[0].ok);
+  jo_key(o[..], "id"); jo_str(o[..], cast(string) m[0].id[0..<m[0].id_n]);
+  jo_key(o[..], "open"); jo_bool(o[..], m[0].open);
+  jo_key(o[..], "mode"); jo_str(o[..], cast(string) m[0].mode[0..<m[0].mode_n]);
+  jo_key(o[..], "view"); jo_str(o[..], cast(string) m[0].view[0..<m[0].view_n]);
+  jo_key(o[..], "rh_loaded"); jo_bool(o[..], m[0].rh_loaded);
+  jo_key(o[..], "rh_modules"); jo_int(o[..], m[0].rh_modules);
+  jo_key(o[..], "rh_theorems"); jo_int(o[..], m[0].rh_theorems);
+  jo_key(o[..], "module"); jo_str(o[..], cast(string) m[0].mod_name[0..<m[0].mod_name_n]);
+  jo_key(o[..], "decl"); jo_str(o[..], cast(string) m[0].decl[0..<m[0].decl_n]);
+  jo_key(o[..], "tour_step"); jo_int(o[..], m[0].tour_step);
+  jo_key(o[..], "math_tab"); jo_str(o[..], cast(string) m[0].math_tab[0..<m[0].math_tab_n]);
+  jo_key(o[..], "error"); jo_str(o[..], cast(string) m[0].error[0..<m[0].error_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_gym_state_read :: (src: string, m: [] LwGymState) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_GYM_STATE) { return false; }
+  ok := [1] bool.[true];
+  m[0].ok = lw_jbool(d, 0, "ok", ok[..]);
+  m[0].id_n = lw_jstr(d, 0, "id", m[0].id[..], ok[..]);
+  m[0].open = lw_jbool(d, 0, "open", ok[..]);
+  m[0].mode_n = lw_jstr(d, 0, "mode", m[0].mode[..], ok[..]);
+  m[0].view_n = lw_jstr(d, 0, "view", m[0].view[..], ok[..]);
+  m[0].rh_loaded = lw_jbool(d, 0, "rh_loaded", ok[..]);
+  m[0].rh_modules = lw_jint(d, 0, "rh_modules", ok[..]);
+  m[0].rh_theorems = lw_jint(d, 0, "rh_theorems", ok[..]);
+  m[0].mod_name_n = lw_jstr(d, 0, "module", m[0].mod_name[..], ok[..]);
+  m[0].decl_n = lw_jstr(d, 0, "decl", m[0].decl[..], ok[..]);
+  m[0].tour_step = lw_jint(d, 0, "tour_step", ok[..]);
+  m[0].math_tab_n = lw_jstr(d, 0, "math_tab", m[0].math_tab[..], ok[..]);
+  m[0].error_n = lw_jstr(d, 0, "error", m[0].error[..], ok[..]);
+  return ok[0] && m[0].rh_modules >= 0 && m[0].rh_theorems >= 0 && m[0].tour_step >= 0;
+}
+
+// ---- 5. rh-index.v1 ----
+
+LwRhIndex :: struct {
+  corpus_path: [LW_PATH] u8; corpus_path_n: int;
+  corpus_commit: [64] u8; corpus_commit_n: int;
+  lean_toolchain: [128] u8; lean_toolchain_n: int;
+  modules: int;
+  edges: int;
+  theorems: int;
+  defs: int;
+  lines: int;
+  bytes: int;
+  metaprog_files: int;
+  max_depth: int;
+  main_id: int;
+  elapsed_ms: int;
+}
+
+lw_rh_index_write :: (m: [] LwRhIndex, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_RH_INDEX);
+  jo_key(o[..], "corpus_path"); jo_str(o[..], cast(string) m[0].corpus_path[0..<m[0].corpus_path_n]);
+  jo_key(o[..], "corpus_commit"); jo_str(o[..], cast(string) m[0].corpus_commit[0..<m[0].corpus_commit_n]);
+  jo_key(o[..], "lean_toolchain"); jo_str(o[..], cast(string) m[0].lean_toolchain[0..<m[0].lean_toolchain_n]);
+  jo_key(o[..], "modules"); jo_int(o[..], m[0].modules);
+  jo_key(o[..], "edges"); jo_int(o[..], m[0].edges);
+  jo_key(o[..], "theorems"); jo_int(o[..], m[0].theorems);
+  jo_key(o[..], "defs"); jo_int(o[..], m[0].defs);
+  jo_key(o[..], "lines"); jo_int(o[..], m[0].lines);
+  jo_key(o[..], "bytes"); jo_int(o[..], m[0].bytes);
+  jo_key(o[..], "metaprog_files"); jo_int(o[..], m[0].metaprog_files);
+  jo_key(o[..], "max_depth"); jo_int(o[..], m[0].max_depth);
+  jo_key(o[..], "main_id"); jo_int(o[..], m[0].main_id);
+  jo_key(o[..], "elapsed_ms"); jo_int(o[..], m[0].elapsed_ms);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_rh_index_read :: (src: string, m: [] LwRhIndex) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_RH_INDEX) { return false; }
+  ok := [1] bool.[true];
+  m[0].corpus_path_n = lw_jstr(d, 0, "corpus_path", m[0].corpus_path[..], ok[..]);
+  m[0].corpus_commit_n = lw_jstr(d, 0, "corpus_commit", m[0].corpus_commit[..], ok[..]);
+  m[0].lean_toolchain_n = lw_jstr(d, 0, "lean_toolchain", m[0].lean_toolchain[..], ok[..]);
+  m[0].modules = lw_jint(d, 0, "modules", ok[..]);
+  m[0].edges = lw_jint(d, 0, "edges", ok[..]);
+  m[0].theorems = lw_jint(d, 0, "theorems", ok[..]);
+  m[0].defs = lw_jint(d, 0, "defs", ok[..]);
+  m[0].lines = lw_jint(d, 0, "lines", ok[..]);
+  m[0].bytes = lw_jint(d, 0, "bytes", ok[..]);
+  m[0].metaprog_files = lw_jint(d, 0, "metaprog_files", ok[..]);
+  m[0].max_depth = lw_jint(d, 0, "max_depth", ok[..]);
+  m[0].main_id = lw_jint(d, 0, "main_id", ok[..]);
+  m[0].elapsed_ms = lw_jint(d, 0, "elapsed_ms", ok[..]);
+  return ok[0] && m[0].modules >= 0 && m[0].edges >= 0 && m[0].theorems >= 0 && m[0].defs >= 0 && m[0].lines >= 0 && m[0].bytes >= 0;
+}
+
+// ---- 6. rh-note.v1 ----
+
+LwRhNote :: struct {
+  mod_name: [256] u8; mod_name_n: int;
+  decl: [256] u8; decl_n: int;
+  author: [64] u8; author_n: int;
+  updated_s: int;
+  body: [4096] u8; body_n: int;
+}
+
+lw_rh_note_write :: (m: [] LwRhNote, out: [] u8) -> int {
+  o: [1] Jo; jo_start(o[..], out); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], LW_SCHEMA_RH_NOTE);
+  jo_key(o[..], "module"); jo_str(o[..], cast(string) m[0].mod_name[0..<m[0].mod_name_n]);
+  jo_key(o[..], "decl"); jo_str(o[..], cast(string) m[0].decl[0..<m[0].decl_n]);
+  jo_key(o[..], "author"); jo_str(o[..], cast(string) m[0].author[0..<m[0].author_n]);
+  jo_key(o[..], "updated_s"); jo_int(o[..], m[0].updated_s);
+  jo_key(o[..], "body"); jo_str(o[..], cast(string) m[0].body[0..<m[0].body_n]);
+  jo_end(o[..]);
+  return ifx o[0].bad then -1 else o[0].n;
+}
+
+lw_rh_note_read :: (src: string, m: [] LwRhNote) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], src, nodes[..]) { return false; }
+  d := jd[0];
+  if !lw_schema_ok(d, LW_SCHEMA_RH_NOTE) { return false; }
+  ok := [1] bool.[true];
+  m[0].mod_name_n = lw_jstr(d, 0, "module", m[0].mod_name[..], ok[..]);
+  m[0].decl_n = lw_jstr(d, 0, "decl", m[0].decl[..], ok[..]);
+  m[0].author_n = lw_jstr(d, 0, "author", m[0].author[..], ok[..]);
+  m[0].updated_s = lw_jint(d, 0, "updated_s", ok[..]);
+  m[0].body_n = lw_jstr(d, 0, "body", m[0].body[..], ok[..]);
+  return ok[0] && m[0].mod_name_n > 0 && m[0].updated_s >= 0;
+}
+
+#test "lean wire: round-trip all six schemas" {
+  buf: [8192] u8; back: [8192] u8;
+
+  doc := [1] LwDoctor.[LwDoctor.{ok = true, elan_found = true, lean_found = true, lake_found = true, rh_corpus_present = true, rh_index_present = true, rh_modules = 175187}];
+  doc[0].lean_version_n = lw_put(doc[0].lean_version[..], "4.33.1");
+  doc[0].lake_version_n = lw_put(doc[0].lake_version[..], "5.0.0");
+  doc[0].elan_path_n = lw_put(doc[0].elan_path[..], "/Users/test/.elan/bin/elan");
+  doc[0].note_n = lw_put(doc[0].note[..], "ready");
+  dn := lw_doctor_write(doc[..], buf[..]);
+  #assert dn > 0;
+  doc2: [1] LwDoctor;
+  #assert lw_doctor_read(cast(string) buf[0..<dn], doc2[..]);
+  dn2 := lw_doctor_write(doc2[..], back[..]);
+  #assert dn2 == dn && cast(string) back[0..<dn2] == cast(string) buf[0..<dn];
+
+  v := [1] LwVerify.[LwVerify.{verified = true, statement_match = true, elapsed_ms = 42, exit_code = 2, axiom_count = 3}];
+  v[0].verdict_n = lw_put(v[0].verdict[..], "ok");
+  v[0].file_n = lw_put(v[0].file[..], "src/Main.lean");
+  v[0].target_n = lw_put(v[0].target[..], "riemannHypothesis");
+  v[0].file_sha256_n = lw_put(v[0].file_sha256[..], "9631b4f020199e580ba86178cb56c6e9b09f690c2369a80dc4334aa93f49c7fc");
+  v[0].kernel_n = lw_put(v[0].kernel[..], "lean4");
+  v[0].toolchain_n = lw_put(v[0].toolchain[..], "leanprover/lean4:v4.33.1");
+  v[0].axioms_n[0] = lw_put(v[0].axioms[0][..], "propext");
+  v[0].axioms_n[1] = lw_put(v[0].axioms[1][..], "Quot.sound");
+  v[0].axioms_n[2] = lw_put(v[0].axioms[2][..], "Classical.choice");
+  v[0].message_n = lw_put(v[0].message[..], "verified");
+  vn := lw_verify_write(v[..], buf[..]);
+  #assert vn > 0 && cast(string) buf[0..<vn] == "{\"schema\":\"lean-verify.v1\",\"verified\":true,\"verdict\":\"ok\",\"file\":\"src/Main.lean\",\"target\":\"riemannHypothesis\",\"file_sha256\":\"9631b4f020199e580ba86178cb56c6e9b09f690c2369a80dc4334aa93f49c7fc\",\"statement_match\":true,\"kernel\":\"lean4\",\"toolchain\":\"leanprover/lean4:v4.33.1\",\"elapsed_ms\":42,\"exit_code\":2,\"axioms\":[\"propext\",\"Quot.sound\",\"Classical.choice\"],\"message\":\"verified\"}";
+  v2: [1] LwVerify;
+  #assert lw_verify_read(cast(string) buf[0..<vn], v2[..]) && v2[0].exit_code == 2;
+  vn2 := lw_verify_write(v2[..], back[..]);
+  #assert vn2 == vn && cast(string) back[0..<vn2] == cast(string) buf[0..<vn];
+
+  rq := [1] LwGymReq.[LwGymReq.{open = true, tour_step = 4, line = 12}];
+  rq[0].id_n = lw_put(rq[0].id[..], "req-1");
+  rq[0].view_n = lw_put(rq[0].view[..], "atlas");
+  rq[0].mod_name_n = lw_put(rq[0].mod_name[..], "Main");
+  rq[0].decl_n = lw_put(rq[0].decl[..], "riemannHypothesis");
+  rq[0].search_n = lw_put(rq[0].search[..], "Behrend");
+  rq[0].math_tab_n = lw_put(rq[0].math_tab[..], "strip");
+  rq[0].file_n = lw_put(rq[0].file[..], "src/Main.lean");
+  rn := lw_gym_req_write(rq[..], buf[..]);
+  #assert rn > 0;
+  rq2: [1] LwGymReq;
+  #assert lw_gym_req_read(cast(string) buf[0..<rn], rq2[..]);
+  rn2 := lw_gym_req_write(rq2[..], back[..]);
+  #assert rn2 == rn && cast(string) back[0..<rn2] == cast(string) buf[0..<rn];
+
+  st := [1] LwGymState.[LwGymState.{ok = true, open = true, rh_loaded = true, rh_modules = 175187, rh_theorems = 818755, tour_step = 1}];
+  st[0].id_n = lw_put(st[0].id[..], "req-1");
+  st[0].mode_n = lw_put(st[0].mode[..], "lean");
+  st[0].view_n = lw_put(st[0].view[..], "atlas");
+  st[0].mod_name_n = lw_put(st[0].mod_name[..], "Main");
+  st[0].decl_n = lw_put(st[0].decl[..], "riemannHypothesis");
+  st[0].math_tab_n = lw_put(st[0].math_tab[..], "strip");
+  st[0].error_n = lw_put(st[0].error[..], "none");
+  sn := lw_gym_state_write(st[..], buf[..]);
+  #assert sn > 0;
+  st2: [1] LwGymState;
+  #assert lw_gym_state_read(cast(string) buf[0..<sn], st2[..]) && st2[0].error_n == 4;
+  sn2 := lw_gym_state_write(st2[..], back[..]);
+  #assert sn2 == sn && cast(string) back[0..<sn2] == cast(string) buf[0..<sn];
+
+  ix := [1] LwRhIndex.[LwRhIndex.{modules = 175187, edges = 920000, theorems = 818755, defs = 242067, lines = 17374215, bytes = 1030531854, metaprog_files = 6, max_depth = 142, main_id = 7, elapsed_ms = 12345}];
+  ix[0].corpus_path_n = lw_put(ix[0].corpus_path[..], "/Users/test/.openagents/lean/corpora/riemann-hypothesis");
+  ix[0].corpus_commit_n = lw_put(ix[0].corpus_commit[..], "40e56bab");
+  ix[0].lean_toolchain_n = lw_put(ix[0].lean_toolchain[..], "leanprover/lean4:v4.33.1");
+  in_n := lw_rh_index_write(ix[..], buf[..]);
+  #assert in_n > 0;
+  ix2: [1] LwRhIndex;
+  #assert lw_rh_index_read(cast(string) buf[0..<in_n], ix2[..]);
+  in_n2 := lw_rh_index_write(ix2[..], back[..]);
+  #assert in_n2 == in_n && cast(string) back[0..<in_n2] == cast(string) buf[0..<in_n];
+
+  nt := [1] LwRhNote.[LwRhNote.{updated_s = 1795284849}];
+  nt[0].mod_name_n = lw_put(nt[0].mod_name[..], "Main");
+  nt[0].decl_n = lw_put(nt[0].decl[..], "riemannHypothesis");
+  nt[0].author_n = lw_put(nt[0].author[..], "user");
+  nt[0].body_n = lw_put(nt[0].body[..], "Directly wraps rhOfAll from Supplements.Kernels.MainTheorems.");
+  nn := lw_rh_note_write(nt[..], buf[..]);
+  #assert nn > 0;
+  nt2: [1] LwRhNote;
+  #assert lw_rh_note_read(cast(string) buf[0..<nn], nt2[..]);
+  nn2 := lw_rh_note_write(nt2[..], back[..]);
+  #assert nn2 == nn && cast(string) back[0..<nn2] == cast(string) buf[0..<nn];
+}
+
+#test "lean wire: boundaries, defaults, small buffers, and malformed refusals" {
+  // lw_put exact fit and truncation
+  pbuf: [4] u8;
+  #assert lw_put(pbuf[..], "abcd") == 4 && cast(string) pbuf[0..<4] == "abcd";
+  #assert lw_put(pbuf[..], "abcdef") == 4 && cast(string) pbuf[0..<4] == "abcd";
+  #assert lw_put(pbuf[..], "z") == 1 && pbuf[0] == 'z';
+
+  // small output buffers fail cleanly with -1
+  tiny: [16] u8;
+  doc: [1] LwDoctor; #assert lw_doctor_write(doc[..], tiny[..]) == -1;
+  ver: [1] LwVerify; #assert lw_verify_write(ver[..], tiny[..]) == -1;
+  rq: [1] LwGymReq; #assert lw_gym_req_write(rq[..], tiny[..]) == -1;
+  st: [1] LwGymState; #assert lw_gym_state_write(st[..], tiny[..]) == -1;
+  ix: [1] LwRhIndex; #assert lw_rh_index_write(ix[..], tiny[..]) == -1;
+  nt: [1] LwRhNote; #assert lw_rh_note_write(nt[..], tiny[..]) == -1;
+
+  // non-object / bad schema refusals across all 6 readers
+  bad_json := [5] string.["", "[]", "{}", "{\"schema\":1}", "{\"schema\":\"wrong.v1\"}"];
+  for b: bad_json {
+    #assert !lw_doctor_read(b, doc[..]) && !lw_verify_read(b, ver[..]) && !lw_gym_req_read(b, rq[..]);
+    #assert !lw_gym_state_read(b, st[..]) && !lw_rh_index_read(b, ix[..]) && !lw_rh_note_read(b, nt[..]);
+  }
+
+  // doctor: missing/bad fields & negative rh_modules & exact 0
+  #assert lw_doctor_read("{\"schema\":\"lean-doctor.v1\",\"ok\":false,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":false,\"rh_index_present\":false,\"rh_modules\":0,\"note\":\"\"}", doc[..]) && !doc[0].ok && doc[0].rh_modules == 0;
+  #assert !lw_doctor_read("{\"schema\":\"lean-doctor.v1\",\"ok\":\"x\",\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":false,\"rh_index_present\":false,\"rh_modules\":0,\"note\":\"\"}", doc[..]);
+  #assert !lw_doctor_read("{\"schema\":\"lean-doctor.v1\",\"ok\":true,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":1,\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":false,\"rh_index_present\":false,\"rh_modules\":0,\"note\":\"\"}", doc[..]);
+  #assert !lw_doctor_read("{\"schema\":\"lean-doctor.v1\",\"ok\":true,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":false,\"rh_index_present\":false,\"rh_modules\":\"0\",\"note\":\"\"}", doc[..]);
+  #assert !lw_doctor_read("{\"schema\":\"lean-doctor.v1\",\"ok\":true,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":false,\"rh_index_present\":false,\"rh_modules\":-1,\"note\":\"\"}", doc[..]);
+
+  // verify: axioms edge cases (non-array, non-string, too many > 16, exact 16, negative elapsed_ms)
+  #assert !lw_verify_read("{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":true,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":0,\"exit_code\":0,\"axioms\":1,\"message\":\"\"}", ver[..]);
+  #assert !lw_verify_read("{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":true,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":0,\"exit_code\":0,\"axioms\":[1],\"message\":\"\"}", ver[..]);
+  #assert !lw_verify_read("{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":true,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":-1,\"exit_code\":0,\"axioms\":[],\"message\":\"\"}", ver[..]);
+  #assert lw_verify_read("{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":false,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":0,\"exit_code\":1,\"axioms\":[\"\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"],\"message\":\"m\"}", ver[..]) && ver[0].axiom_count == 16 && ver[0].axioms_n[0] == 0;
+  #assert !lw_verify_read("{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":false,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":0,\"exit_code\":1,\"axioms\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\",\"q\"],\"message\":\"m\"}", ver[..]);
+  // oversized axiom string (> 96 bytes) refused
+  big_ax := "{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"ok\",\"file\":\"a\",\"target\":\"b\",\"file_sha256\":\"\",\"statement_match\":true,\"kernel\":\"k\",\"toolchain\":\"t\",\"elapsed_ms\":0,\"exit_code\":0,\"axioms\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],\"message\":\"\"}";
+  #assert !lw_verify_read(big_ax, ver[..]);
+
+  // gym_req: optional defaults, explicit empty string, explicit false, bad optional string, negative tour_step/line
+  #assert lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\"}", rq[..]) && rq[0].open && rq[0].id_n == 0 && rq[0].tour_step == 0 && rq[0].line == 0;
+  #assert lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\",\"id\":\"\",\"open\":false,\"tour_step\":0,\"line\":0}", rq[..]) && !rq[0].open && rq[0].id_n == 0;
+  #assert !lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\",\"id\":123}", rq[..]);
+  #assert !lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\",\"open\":\"no\"}", rq[..]);
+  #assert !lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\",\"tour_step\":-1}", rq[..]);
+  #assert !lw_gym_req_read("{\"schema\":\"lean-gym-request.v1\",\"line\":-1}", rq[..]);
+
+  // gym_state: zero boundaries and negative refusals
+  #assert lw_gym_state_read("{\"schema\":\"lean-gym-state.v1\",\"ok\":false,\"id\":\"\",\"open\":false,\"mode\":\"lean\",\"view\":\"tour\",\"rh_loaded\":false,\"rh_modules\":0,\"rh_theorems\":0,\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"math_tab\":\"\",\"error\":\"e\"}", st[..]) && !st[0].ok;
+  #assert !lw_gym_state_read("{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"id\":\"\",\"open\":true,\"mode\":\"lean\",\"view\":\"tour\",\"rh_loaded\":false,\"rh_modules\":-1,\"rh_theorems\":0,\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"math_tab\":\"\",\"error\":\"\"}", st[..]);
+  #assert !lw_gym_state_read("{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"id\":\"\",\"open\":true,\"mode\":\"lean\",\"view\":\"tour\",\"rh_loaded\":false,\"rh_modules\":0,\"rh_theorems\":-1,\"module\":\"\",\"decl\":\"\",\"tour_step\":0,\"math_tab\":\"\",\"error\":\"\"}", st[..]);
+  #assert !lw_gym_state_read("{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"id\":\"\",\"open\":true,\"mode\":\"lean\",\"view\":\"tour\",\"rh_loaded\":false,\"rh_modules\":0,\"rh_theorems\":0,\"module\":\"\",\"decl\":\"\",\"tour_step\":-1,\"math_tab\":\"\",\"error\":\"\"}", st[..]);
+
+  // rh_index: zero boundaries and each negative counter refused
+  #assert lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":0,\"theorems\":0,\"defs\":0,\"lines\":0,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":-1,\"edges\":0,\"theorems\":0,\"defs\":0,\"lines\":0,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":-1,\"theorems\":0,\"defs\":0,\"lines\":0,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":0,\"theorems\":-1,\"defs\":0,\"lines\":0,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":0,\"theorems\":0,\"defs\":-1,\"lines\":0,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":0,\"theorems\":0,\"defs\":0,\"lines\":-1,\"bytes\":0,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+  #assert !lw_rh_index_read("{\"schema\":\"rh-index.v1\",\"corpus_path\":\"p\",\"corpus_commit\":\"c\",\"lean_toolchain\":\"t\",\"modules\":0,\"edges\":0,\"theorems\":0,\"defs\":0,\"lines\":0,\"bytes\":-1,\"metaprog_files\":0,\"max_depth\":0,\"main_id\":0,\"elapsed_ms\":0}", ix[..]);
+
+  // rh_note: empty module refused, updated_s = 0 allowed, updated_s = -1 refused
+  #assert lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"M\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":0,\"body\":\"b\"}", nt[..]);
+  #assert !lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":0,\"body\":\"b\"}", nt[..]);
+  #assert !lw_rh_note_read("{\"schema\":\"rh-note.v1\",\"module\":\"M\",\"decl\":\"\",\"author\":\"a\",\"updated_s\":-1,\"body\":\"b\"}", nt[..]);
+}

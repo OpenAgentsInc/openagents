@@ -1,0 +1,231 @@
+// lean-run: OpenAgents Desktop Lean 4 & Riemann Hypothesis Gym CLI (Epic #13943, #13944, #13945;
+// docs/lean/spec.md, docs/lean/riemann-hypothesis-workbench-spec.md).
+//
+// Bundled beside ple-run and oasim in OpenAgents.app/Contents/Resources/lean-run so both users
+// and agents (Microcoder / Claude) can invoke real Lean 4 kernel verification, steer Gym -> Lean,
+// emit OA-SHOW verification cards, and drive the 175,187-module Riemann Hypothesis index.
+//
+// Verbs:
+//   lean-run doctor [--json]
+//   lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]
+//   lean-run sample [--out DIR]
+//   lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD] [--decl DECL]
+//                [--tour-step N] [--search QUERY] [--math-tab strip|robin|theta]
+//                [--file PATH] [--line N] [--no-open] [--wait S]
+//   lean-run card --out FILE.jpg [--fail]
+//   lean-run help
+//
+//   coax/web/tool.sh coder/tui/lean-run.coax doctor --json
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/lean/verify.coax";
+#load "../../coax/lib/lean/gym.coax";
+
+LR_GYM_WAIT_S :: 15;
+
+lr_int_str :: (v: int, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); jo_int(o[..], v);
+  return jo_text(o[..]);
+}
+
+lr_usage :: () -> int {
+  print("lean-run — OpenAgents Lean 4 & Riemann Hypothesis Gym CLI\n\n");
+  print("Usage:\n");
+  print("  lean-run doctor [--json]\n");
+  print("  lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]\n");
+  print("  lean-run sample [--out DIR]\n");
+  print("  lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD]\n");
+  print("               [--decl DECL] [--tour-step N] [--search Q] [--math-tab strip|robin|theta]\n");
+  print("               [--no-open] [--wait S]\n");
+  print("  lean-run card --out FILE.jpg [--fail]\n");
+  return 0;
+}
+
+lr_cmd_doctor :: (a: [] Args, home: string) -> int {
+  doc: [1] LwDoctor;
+  lv_doctor(home, doc[..]);
+  if args_has(a, "--json") {
+    buf: [8192] u8;
+    n := lw_doctor_write(doc[..], buf[..]);
+    if n <= 0 { tool_errln("lean-run doctor: failed to format JSON"); return 1; }
+    print("%\n", cast(string) buf[0..<n]);
+    return 0;
+  }
+  print("OpenAgents Lean 4 Doctor\n");
+  print("  elan:   %\n", ifx doc[0].elan_found then cast(string) doc[0].elan_path[0..<doc[0].elan_path_n] else "not found");
+  print("  lean:   %\n", ifx doc[0].lean_found then cast(string) doc[0].lean_version[0..<doc[0].lean_version_n] else "not found");
+  print("  lake:   %\n", ifx doc[0].lake_found then cast(string) doc[0].lake_version[0..<doc[0].lake_version_n] else "not found");
+  print("  RH corpus: %\n", ifx doc[0].rh_corpus_present then "present (~/.openagents/lean/corpora/riemann-hypothesis)" else "absent (run `lean-run rh fetch`)");
+  print("  RH index:  % (% modules)\n", ifx doc[0].rh_index_present then "ready" else "not built", doc[0].rh_modules);
+  print("  status: %\n", cast(string) doc[0].note[0..<doc[0].note_n]);
+  return 0;
+}
+
+lr_cmd_verify :: (a: [] Args, home: string) -> int {
+  file := args_at(a, 1);
+  target := args_at(a, 2);
+  if file.count == 0 || target.count == 0 {
+    tool_errln("usage: lean-run verify FILE TARGET [--statement SIG] [--card OUT.jpg] [--json]");
+    return 2;
+  }
+  stmt := args_value(a, "--statement", "");
+  card := args_value(a, "--card", "");
+  ver: [1] LwVerify;
+  lv_verify_file(home, file, target, stmt, ver[..]);
+
+  if card.count > 0 {
+    _ = lv_render_card_jpg(ver[0].verified, card);
+  }
+  if args_has(a, "--json") {
+    buf: [8192] u8;
+    n := lw_verify_write(ver[..], buf[..]);
+    if n <= 0 { tool_errln("lean-run verify: failed to format JSON"); return 1; }
+    print("%\n", cast(string) buf[0..<n]);
+    return ifx ver[0].verified then 0 else 1;
+  }
+  print("Lean 4 Verification: % (%)\n", ifx ver[0].verified then "VERIFIED" else "REJECTED", cast(string) ver[0].verdict[0..<ver[0].verdict_n]);
+  print("  file:    %\n", cast(string) ver[0].file[0..<ver[0].file_n]);
+  print("  target:  %\n", cast(string) ver[0].target[0..<ver[0].target_n]);
+  print("  sha256:  %\n", cast(string) ver[0].file_sha256[0..<ver[0].file_sha256_n]);
+  print("  time:    % ms (exit %)\n", ver[0].elapsed_ms, ver[0].exit_code);
+  print("  axioms:  ");
+  if ver[0].axiom_count == 0 { print("(none)"); }
+  for i: 0..<ver[0].axiom_count {
+    if i > 0 { print(", "); }
+    print("%", cast(string) ver[0].axioms[i][0..<ver[0].axioms_n[i]]);
+  }
+  print("\n  message: %\n", cast(string) ver[0].message[0..<ver[0].message_n]);
+  if card.count > 0 {
+    print("OA-SHOW: %\n", card);
+    print("OA-SHOW-CAPTION: Lean 4 %: % (%)\n", ifx ver[0].verified then "VERIFIED" else "REJECTED", target, cast(string) ver[0].verdict[0..<ver[0].verdict_n]);
+    print("OA-SHOW-OPEN: %\n", file);
+  }
+  return ifx ver[0].verified then 0 else 1;
+}
+
+lr_cmd_sample :: (a: [] Args, home: string) -> int {
+  out_dir := args_value(a, "--out", "");
+  db: [FS_PATH_MAX] u8;
+  if out_dir.count == 0 {
+    out_dir = fs_join(home, ".openagents/lean/samples/add_zero_right", db[..]);
+  }
+  if !fs_mkdir_all(out_dir) {
+    tool_errln("lean-run sample: could not create sample directory");
+    return 1;
+  }
+  p0: [FS_PATH_MAX] u8; p1: [FS_PATH_MAX] u8; p2: [FS_PATH_MAX] u8;
+  f_lake := fs_join(out_dir, "lakefile.toml", p0[..]);
+  f_tc := fs_join(out_dir, "lean-toolchain", p1[..]);
+  f_src := fs_join(out_dir, "AddZeroRight.lean", p2[..]);
+  ok := fs_write(f_lake, "name = \"add_zero_right\"\ndefaultTargets = [\"AddZeroRight\"]\n\n[[lean_lib]]\nname = \"AddZeroRight\"\n")
+    && fs_write(f_tc, "leanprover/lean4:v4.33.1\n")
+    && fs_write(f_src, "theorem add_zero_right (n : Nat) : n + 0 = n := by\n  rfl\n\ntheorem add_comm_nat (a b : Nat) : a + b = b + a := by\n  induction b with\n  | zero => rw [Nat.add_zero, Nat.zero_add]\n  | succ k ih => rw [Nat.add_succ, Nat.succ_add, ih]\n");
+  if !ok {
+    tool_errln("lean-run sample: could not write sample files");
+    return 1;
+  }
+  print("Wrote Lean 4 sample project to %\n", out_dir);
+  print("Verify with: lean-run verify % add_zero_right\n", f_src);
+  return 0;
+}
+
+lr_cmd_gym :: (a: [] Args, home: string) -> int {
+  db: [FS_PATH_MAX] u8;
+  dir := fs_join(home, ".openagents/lean", db[..]);
+  if !fs_mkdir_all(dir) { tool_errln("lean-run gym: could not create ~/.openagents/lean"); return 1; }
+
+  req: [1] LwGymReq;
+  ib: [64] u8; nb: [32] u8;
+  id_n := lv_cat(ib[..], 0, "lean-run-");
+  id_n = lv_cat(ib[..], id_n, lr_int_str(cxproc_wall_us(), nb[..]));
+  id := cast(string) ib[0..<id_n];
+
+  req[0].id_n = lw_put(req[0].id[..], id);
+  req[0].open = !args_has(a, "--no-open");
+  req[0].view_n = lw_put(req[0].view[..], args_value(a, "--view", ""));
+  req[0].mod_name_n = lw_put(req[0].mod_name[..], args_value(a, "--module", ""));
+  req[0].decl_n = lw_put(req[0].decl[..], args_value(a, "--decl", ""));
+  req[0].search_n = lw_put(req[0].search[..], args_value(a, "--search", ""));
+  req[0].math_tab_n = lw_put(req[0].math_tab[..], args_value(a, "--math-tab", ""));
+  req[0].file_n = lw_put(req[0].file[..], args_value(a, "--file", ""));
+  ts := args_whole(args_value(a, "--tour-step", ""));
+  if ts > 0 { req[0].tour_step = ts; }
+  ln := args_whole(args_value(a, "--line", ""));
+  if ln > 0 { req[0].line = ln; }
+
+  rb: [8192] u8;
+  rn := lw_gym_req_write(req[..], rb[..]);
+  if rn <= 0 { tool_errln("lean-run gym: failed to serialize request"); return 2; }
+
+  // Validate through dc_lean_gym_plan before sending to the app
+  pb: [8192] u8;
+  plan := dc_lean_gym_plan(cast(string) rb[0..<rn], pb[..]);
+  if plan.count >= 12 && cast(string) plan[0..<12] == "{\"ok\":false," {
+    tool_err("lean-run gym: invalid request: "); tool_errln(plan);
+    return 2;
+  }
+
+  qp_b: [FS_PATH_MAX] u8; tp_b: [FS_PATH_MAX] u8; sp_b: [FS_PATH_MAX] u8;
+  qp := fs_join(dir, "gym-request.json", qp_b[..]);
+  tp := fs_join(dir, "gym-request.json.tmp", tp_b[..]);
+  sp := fs_join(dir, "gym-state.json", sp_b[..]);
+  if !fs_write(tp, cast(string) rb[0..<rn]) || !fs_rename(tp, qp) {
+    tool_errln("lean-run gym: could not write ~/.openagents/lean/gym-request.json");
+    return 1;
+  }
+
+  wait_s := args_whole(args_value(a, "--wait", ""));
+  if wait_s <= 0 { wait_s = LR_GYM_WAIT_S; }
+  until := proc_now_ms() + wait_s * 1000;
+  while proc_now_ms() < until {
+    proc_sleep(200);
+    st_b: [16384] u8;
+    sn := fs_read(sp, st_b[..]);
+    if sn <= 0 { continue; }
+    st: [1] LwGymState;
+    if !lw_gym_state_read(cast(string) st_b[0..<sn], st[..]) { continue; }
+    if cast(string) st[0].id[0..<st[0].id_n] != id { continue; }
+    if args_has(a, "--json") {
+      print("%\n", cast(string) st_b[0..<sn]);
+      return ifx st[0].ok then 0 else 1;
+    }
+    if !st[0].ok {
+      tool_err("lean-run gym refused: "); tool_errln(cast(string) st[0].error[0..<st[0].error_n]);
+      return 1;
+    }
+    print("Lean Gym view: % | RH loaded: % (% modules, % theorems) | module: % | tour step: %\n",
+      cast(string) st[0].view[0..<st[0].view_n],
+      ifx st[0].rh_loaded then "yes" else "no",
+      st[0].rh_modules, st[0].rh_theorems,
+      cast(string) st[0].mod_name[0..<st[0].mod_name_n],
+      st[0].tour_step);
+    return 0;
+  }
+  tool_errln("lean-run gym: timed out waiting for OpenAgents Desktop (is it running with Experimental features on?)");
+  return 1;
+}
+
+lr_cmd_card :: (a: [] Args) -> int {
+  out := args_value(a, "--out", "");
+  if out.count == 0 { tool_errln("usage: lean-run card --out FILE.jpg [--fail]"); return 2; }
+  ok := !args_has(a, "--fail");
+  if !lv_render_card_jpg(ok, out) { tool_errln("lean-run card: failed to render JPEG"); return 1; }
+  print("OA-SHOW: %\n", out);
+  print("OA-SHOW-CAPTION: Lean 4 %\n", ifx ok then "VERIFIED" else "REJECTED");
+  return 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; _ = args_load(a[..]);
+  verb := args_at(a[..], 0);
+  if verb.count == 0 || verb == "help" || verb == "--help" || verb == "-h" { return lr_usage(); }
+  hb: [FS_PATH_MAX] u8;
+  home := proc_getenv("HOME", hb[..]);
+  if verb == "doctor" { return lr_cmd_doctor(a[..], home); }
+  if verb == "verify" { return lr_cmd_verify(a[..], home); }
+  if verb == "sample" { return lr_cmd_sample(a[..], home); }
+  if verb == "gym" { return lr_cmd_gym(a[..], home); }
+  if verb == "card" { return lr_cmd_card(a[..]); }
+  tool_err("lean-run: unknown verb: "); tool_errln(verb);
+  return 2;
+}

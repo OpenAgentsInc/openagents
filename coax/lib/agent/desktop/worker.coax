@@ -35,16 +35,28 @@ dc_worker_alive :: (w: [] DcWorker) -> bool { return dc_worker_is_run(w) || dcos
 // PATH with the folders a program opened from the desktop lacks put in front, each once (CoderWorker.path).
 dc_worker_path :: (home: string, had: string, out: [] u8) -> string {
   given := ifx had.count > 0 then had else "/usr/bin:/bin:/usr/sbin:/sbin";
-  more: [3] string; mb0: [DC_PATH] u8; mb1: [DC_PATH] u8;
-  more[0] = dc_join(home, ".local/bin", mb0[..]); more[1] = "/opt/homebrew/bin"; more[2] = "/usr/local/bin";
+  more: [4] string; mb0: [DC_PATH] u8; mb1: [DC_PATH] u8;
+  more[0] = dc_join(home, ".elan/bin", mb1[..]); more[1] = dc_join(home, ".local/bin", mb0[..]); more[2] = "/opt/homebrew/bin"; more[3] = "/usr/local/bin";
   n := 0;
   for m: more {
-    if m.count == 0 || dc_path_has(given, m) { continue; }
-    if n > 0 { n = dc_cat(out, n, ":"); }
+    if m.count == 0 || dc_path_has(given, m) { continue; }  // mutant: equivalent (each path in more is either empty on overflow or at least 10 bytes)
+    if n > 0 { n = dc_cat(out, n, ":"); }  // mutant: equivalent (every path added before ':' is longer than 1 byte)
     n = dc_cat(out, n, m);
   }
-  if n > 0 { n = dc_cat(out, n, ":"); }
+  if n > 0 { n = dc_cat(out, n, ":"); }  // mutant: equivalent (every path added before ':' is longer than 1 byte)
   n = dc_cat(out, n, given);
+  return dc_fits(out, n);
+}
+// Optional Lean 4 & RH Workbench tool note appended when OpenAgents Desktop ships `lean-run`.
+dc_lean_tools_note :: (lean_run: string, out: [] u8) -> string {
+  if lean_run.count == 0 { return ""; }
+  n := dc_cat(out, 0, "- `");
+  n = dc_cat(out, n, lean_run);
+  n = dc_cat(out, n, " doctor` checks Lean 4 (`elan`/`lean`/`lake`) and the Nov 2026 Riemann Hypothesis corpus/index; `");
+  n = dc_cat(out, n, lean_run);
+  n = dc_cat(out, n, " verify FILE TARGET` runs the real Lean 4 kernel + `#authority` axiom policy; `");
+  n = dc_cat(out, n, lean_run);
+  n = dc_cat(out, n, " gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD] [--tour-step N]` opens and steers the Gym -> Lean & Riemann Hypothesis Workbench.\n\n");
   return dc_fits(out, n);
 }
 // What a chat is told about the tools the app ships (docs/desktop/steer-ple-from-chat.md): ple_run is
@@ -273,9 +285,17 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
 
 #test "desktop core worker: PATH, environment and the run spec" {
   b: [DC_PATH] u8;
-  #assert dc_worker_path("/h", "/usr/bin:/bin", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
-  #assert dc_worker_path("/h", "/usr/local/bin:/usr/bin", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin";
-  #assert dc_worker_path("/h", "", b[..]) == "/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+  #assert dc_worker_path("/h", "/usr/bin:/bin", b[..]) == "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  #assert dc_worker_path("/h", "/usr/local/bin:/usr/bin", b[..]) == "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin";
+  #assert dc_worker_path("/h", "", b[..]) == "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin";
+  #assert dc_worker_path("/h", "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin", b[..]) == "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin";
+  #assert dc_worker_path("/h", "x", b[..]) == "/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:x";
+  big_h: [DC_PATH] u8; for k: 0..<DC_PATH { big_h[k] = 'a'; }
+  #assert dc_worker_path(cast(string) big_h[..], "/usr/bin", b[..]) == "/opt/homebrew/bin:/usr/local/bin:/usr/bin";
+  lb_note: [2048] u8;
+  ln := dc_lean_tools_note("/A/Resources/lean-run", lb_note[..]);
+  #assert ln == "- `/A/Resources/lean-run doctor` checks Lean 4 (`elan`/`lean`/`lake`) and the Nov 2026 Riemann Hypothesis corpus/index; `/A/Resources/lean-run verify FILE TARGET` runs the real Lean 4 kernel + `#authority` axiom policy; `/A/Resources/lean-run gym [--view tour|atlas|math|inspect|trust|prover] [--module MOD] [--tour-step N]` opens and steers the Gym -> Lean & Riemann Hypothesis Workbench.\n\n";
+  #assert dc_lean_tools_note("", lb_note[..]) == "";
   e: [1] DcEnv; e[0].used = 0;
   dc_env_add(e[..], "PATH", "/a"); dc_env_lines(e[..], "X=1\nPATH=/extra\nbad\nX=2", "/a", ":");
   #assert e[0].set_n == 2 && e[0].set[0] == "PATH=/extra:/a" && e[0].set[1] == "X=2";
@@ -294,7 +314,7 @@ dc_worker_stop :: (w: [] DcWorker, d: [] DcDaemon, forget: bool) {
   for i: 0..<40 { dc_worker_env_on(w3[..], DC_OS_LINUX, "", "", "", "mcworker", cast(string) big[0..<bn], "/h", "/bin", ""); }
   #assert w3[0].set_n == 2 && w3[0].set[1].count == 1002;
   dc_worker_env_on(w3[..], DC_OS_LINUX, "C:/PF", "", "", "mcworker", "PATH=/x", "/h", "/usr/bin:/bin", "");
-  #assert w3[0].set[0] == "PATH=/x:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
+  #assert w3[0].set[0] == "PATH=/x:/h/.elan/bin:/h/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin";
   e[0].unset[0] = "CODER_CLAUDE_KEY"; e[0].unset_n = 1;
   out: [1024] u8; n := dc_run_spec("/app/mcworker", "/h", e[..], out[..]);
   #assert cast(string) out[0..<n] == "{\"program\":\"/app/mcworker\",\"cwd\":\"/h\",\"env\":[\"PATH=/extra:/a\",\"X=2\"],\"unset\":[\"CODER_CLAUDE_KEY\"]}";

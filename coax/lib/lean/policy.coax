@@ -1,0 +1,301 @@
+// Lean 4 kernel verification and anti-cheat admission policy (Epic #13943, #13944;
+// docs/lean/verification-and-security.md).
+//
+// This file is #authority: nothing else decides whether a Lean 4 proof is VERIFIED.
+// Every candidate proof must pass all of:
+//   1. No unsafe compiler/CLI flags (--trust, -Ddebug.*, skipKernelTC, --plugin, --load-dynlib).
+//   2. Target name is a syntactically valid Lean identifier (no whitespace, shell chars, or '..').
+//   3. Kernel process completed without timeout and exited with status 0.
+//   4. Frozen theorem statement digest matches the checked declaration verbatim.
+//   5. The axiom footprint was explicitly reported (never silently omitted).
+//   6. Every axiom in the footprint is strictly in the Lean standard triad:
+//      {propext, Quot.sound, Classical.choice}.
+//      In particular sorryAx, Lean.ofReduceBool, Lean.trustCompiler, and any custom axiom fail.
+//
+//   coax/bin/coax test coax/lib/lean/policy.coax --library
+//   coax/bin/coax mutate coax/lib/lean/policy.coax --root-only
+#authority;
+
+LP_OK :: 0;
+LP_UNSAFE_FLAG :: 1;
+LP_BAD_TARGET :: 2;
+LP_TIMEOUT :: 3;
+LP_EXITED_NONZERO :: 4;
+LP_STATEMENT_MISMATCH :: 5;
+LP_EMPTY_AXIOMS :: 6;
+LP_SORRY :: 7;
+LP_NATIVE_DECIDE :: 8;
+LP_TRUST_COMPILER :: 9;
+LP_BAD_AXIOM :: 10;
+
+LpCheck :: struct {
+  target: string;
+  exit_code: int;
+  timed_out: bool;
+  statement_match: bool;
+  has_axioms_field: bool;
+  unsafe_flag: bool;
+  axioms: [] string;
+}
+
+lp_starts :: (s: string, p: string) -> bool #effects(all) {
+  if p.count > s.count { return false; }
+  for i: 0..<p.count {
+    if s[i] != p[i] { return false; }
+  }
+  return true;
+}
+
+lp_has :: (s: string, p: string) -> bool #effects(all) {
+  if p.count == 0 { return true; }
+  if p.count > s.count { return false; }
+  for i: 0..<s.count - p.count + 1 {
+    matched := true;
+    for j: 0..<p.count {
+      if s[i + j] != p[j] { matched = false; break; }
+    }
+    if matched { return true; }
+  }
+  return false;
+}
+
+// Strict Lean standard axiom triad (matches comparator.json permitted_axioms).
+lp_axiom_allowed :: (name: string) -> bool #effects(all) {
+  return name == "propext" || name == "Quot.sound" || name == "Classical.choice";
+}
+
+// Classifies a single axiom name: LP_OK if permitted, else the specific rejection reason.
+lp_axiom_code :: (name: string) -> int #effects(all) {
+  if lp_axiom_allowed(name) { return LP_OK; }
+  if name == "sorryAx" { return LP_SORRY; }
+  if name == "Lean.ofReduceBool" { return LP_NATIVE_DECIDE; }
+  if name == "Lean.trustCompiler" { return LP_TRUST_COMPILER; }
+  return LP_BAD_AXIOM;
+}
+
+// Rejects any Lean CLI flag that weakens or bypasses kernel type-checking.
+lp_flag_allowed :: (flag: string) -> bool #effects(all) {
+  if flag.count == 0 { return false; }
+  if lp_starts(flag, "--trust") { return false; }
+  if lp_starts(flag, "-Ddebug.") { return false; }
+  if lp_starts(flag, "--plugin") { return false; }
+  if lp_starts(flag, "--load-dynlib") { return false; }
+  if lp_has(flag, "skipKernelTC") { return false; }
+  return true;
+}
+
+// Checks that a target theorem/module name is a clean Lean qualified identifier.
+lp_target_safe :: (name: string) -> bool #effects(all) {
+  if name.count < 1 || name.count > 256 { return false; }
+  if name[name.count - 1] == '.' { return false; }
+  prev_dot := true;
+  for i: 0..<name.count {
+    c := name[i];
+    if c == '.' {
+      if prev_dot { return false; }
+      prev_dot = true;
+      continue;
+    }
+    prev_dot = false;
+    alpha := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+    digit := c >= '0' && c <= '9';
+    extra := c == '_' || c == '\'';
+    if !alpha && !digit && !extra { return false; }
+  }
+  return true;
+}
+
+lp_axiom_rank :: (code: int) -> int #effects(all) {
+  if code == LP_SORRY { return 4; }
+  if code == LP_NATIVE_DECIDE { return 3; }
+  if code == LP_TRUST_COMPILER { return 2; }
+  if code == LP_BAD_AXIOM { return 1; }
+  return 0;
+}
+
+// Evaluates a kernel verification result in strict deterministic priority order.
+lp_verdict :: (c: LpCheck) -> int #effects(all) {
+  if c.unsafe_flag { return LP_UNSAFE_FLAG; }
+  if !lp_target_safe(c.target) { return LP_BAD_TARGET; }
+  if c.timed_out { return LP_TIMEOUT; }
+  if c.exit_code != 0 { return LP_EXITED_NONZERO; }
+  if !c.statement_match { return LP_STATEMENT_MISMATCH; }
+  if !c.has_axioms_field { return LP_EMPTY_AXIOMS; }
+  worst := LP_OK;
+  for i: 0..<c.axioms.count {
+    code := lp_axiom_code(c.axioms[i]);
+    if lp_axiom_rank(code) > lp_axiom_rank(worst) { worst = code; }  // mutant: equivalent (lp_axiom_rank is injective on lp_axiom_code outputs, so equal rank implies code == worst)
+  }
+  return worst;
+}
+
+lp_is_verified :: (c: LpCheck) -> bool #effects(all) {
+  return lp_verdict(c) == LP_OK;
+}
+
+lp_code_name :: (code: int) -> string #effects(all) {
+  if code == LP_OK { return "ok"; }
+  if code == LP_UNSAFE_FLAG { return "unsafe_flag"; }
+  if code == LP_BAD_TARGET { return "bad_target"; }
+  if code == LP_TIMEOUT { return "timeout"; }
+  if code == LP_EXITED_NONZERO { return "exited_nonzero"; }
+  if code == LP_STATEMENT_MISMATCH { return "statement_mismatch"; }
+  if code == LP_EMPTY_AXIOMS { return "empty_axioms"; }
+  if code == LP_SORRY { return "sorry"; }
+  if code == LP_NATIVE_DECIDE { return "native_decide"; }
+  if code == LP_TRUST_COMPILER { return "trust_compiler"; }
+  if code == LP_BAD_AXIOM { return "bad_axiom"; }
+  return "unknown";
+}
+
+#test "lean policy: permitted axioms and specific forbidden axiom codes" {
+  #assert lp_axiom_allowed("propext");
+  #assert lp_axiom_allowed("Quot.sound");
+  #assert lp_axiom_allowed("Classical.choice");
+  #assert !lp_axiom_allowed("sorryAx");
+  #assert !lp_axiom_allowed("Lean.ofReduceBool");
+  #assert !lp_axiom_allowed("Lean.trustCompiler");
+  #assert !lp_axiom_allowed("MyCustomAxiom");
+  #assert !lp_axiom_allowed("");
+  #assert lp_axiom_code("propext") == LP_OK;
+  #assert lp_axiom_code("Quot.sound") == LP_OK;
+  #assert lp_axiom_code("Classical.choice") == LP_OK;
+  #assert lp_axiom_code("sorryAx") == LP_SORRY;
+  #assert lp_axiom_code("Lean.ofReduceBool") == LP_NATIVE_DECIDE;
+  #assert lp_axiom_code("Lean.trustCompiler") == LP_TRUST_COMPILER;
+  #assert lp_axiom_code("cheat") == LP_BAD_AXIOM;
+  #assert lp_axiom_rank(LP_SORRY) == 4 && lp_axiom_rank(LP_NATIVE_DECIDE) == 3 && lp_axiom_rank(LP_TRUST_COMPILER) == 2 && lp_axiom_rank(LP_BAD_AXIOM) == 1 && lp_axiom_rank(LP_OK) == 0;
+}
+
+#test "lean policy: helper prefix and substring checks" {
+  #assert lp_starts("--trust=10", "--trust");
+  #assert !lp_starts("--tru", "--trust");
+  #assert !lp_starts("--trusX", "--trust");
+  #assert !lp_starts("X-trust", "--trust");
+  #assert lp_has("abc", "");
+  #assert !lp_has("abc", "z");
+  #assert lp_has("abc", "c");
+  #assert !lp_has("ab", "cd");
+  #assert lp_has("skipKernelTC", "skipKernelTC");
+  #assert lp_has("x_skipKernelTC_y", "skipKernelTC");
+  #assert !lp_has("XkipKernelTC", "skipKernelTC");
+  #assert !lp_has("skipKernelT", "skipKernelTC");
+  #assert !lp_has("skipKernelTX", "skipKernelTC");
+}
+
+#test "lean policy: unsafe CLI flags rejected, normal flags accepted" {
+  #assert !lp_flag_allowed("");
+  #assert !lp_flag_allowed("--trust=1000");
+  #assert !lp_flag_allowed("--trust");
+  #assert !lp_flag_allowed("-Ddebug.skipKernelTC=true");
+  #assert !lp_flag_allowed("-Ddebug.proofAsSorry=true");
+  #assert !lp_flag_allowed("--plugin=bad.so");
+  #assert !lp_flag_allowed("--load-dynlib=/tmp/x.dylib");
+  #assert !lp_flag_allowed("-Dfoo.skipKernelTC=true");
+  #assert lp_flag_allowed("--tstack=400000");
+  #assert lp_flag_allowed("-DmaxHeartbeats=4000000");
+  #assert lp_flag_allowed("--json");
+}
+
+#test "lean policy: target identifier validation" {
+  #assert lp_target_safe("riemannHypothesis");
+  #assert lp_target_safe("Main.riemannHypothesis");
+  #assert lp_target_safe("AZaz09_'");
+  #assert lp_target_safe("a");
+  #assert !lp_target_safe("");
+  #assert !lp_target_safe("!abc");
+  #assert !lp_target_safe("@abc");
+  #assert !lp_target_safe("[abc");
+  #assert !lp_target_safe("`abc");
+  #assert !lp_target_safe("{abc");
+  #assert !lp_target_safe("/abc");
+  #assert !lp_target_safe(":abc");
+  #assert !lp_target_safe(".Main");
+  #assert !lp_target_safe("Main.");
+  #assert !lp_target_safe("Main..riemannHypothesis");
+  #assert !lp_target_safe("Main;rm -rf /");
+  #assert !lp_target_safe("Main riemannHypothesis");
+  #assert !lp_target_safe("Main/riemannHypothesis");
+  #assert !lp_target_safe("Main-x");
+  // exact 256-byte target accepted, 257-byte rejected
+  exact: [256] u8; for i: 0..<256 { exact[i] = 'a'; }
+  #assert lp_target_safe(cast(string) exact[..]);
+  too_long: [257] u8; for i: 0..<257 { too_long[i] = 'a'; }
+  #assert !lp_target_safe(cast(string) too_long[..]);
+}
+
+#test "lean policy: verdict priority, anti-cheat precedence, and code names" {
+  good_ax := [3] string.["propext", "Quot.sound", "Classical.choice"];
+  base := LpCheck.{
+    target = "Main.riemannHypothesis",
+    exit_code = 0,
+    timed_out = false,
+    statement_match = true,
+    has_axioms_field = true,
+    unsafe_flag = false,
+    axioms = good_ax[..]
+  };
+  #assert lp_verdict(base) == LP_OK && lp_is_verified(base);
+
+  // empty axiom list (pure constructive proof) is valid when has_axioms_field is true
+  constructive := base; constructive.axioms = good_ax[0..<0];
+  #assert lp_verdict(constructive) == LP_OK && lp_is_verified(constructive);
+
+  // priority order: unsafe_flag > bad_target > timeout > exit_code > statement_match > has_axioms_field > axioms
+  c1 := base; c1.unsafe_flag = true; c1.target = ""; c1.timed_out = true;
+  #assert lp_verdict(c1) == LP_UNSAFE_FLAG && !lp_is_verified(c1);
+
+  c2 := base; c2.target = "bad target"; c2.timed_out = true;
+  #assert lp_verdict(c2) == LP_BAD_TARGET;
+
+  c3 := base; c3.timed_out = true; c3.exit_code = 1;
+  #assert lp_verdict(c3) == LP_TIMEOUT;
+
+  c4 := base; c4.exit_code = 1; c4.statement_match = false;
+  #assert lp_verdict(c4) == LP_EXITED_NONZERO;
+
+  c5 := base; c5.statement_match = false; c5.has_axioms_field = false;
+  #assert lp_verdict(c5) == LP_STATEMENT_MISMATCH;
+
+  c6 := base; c6.has_axioms_field = false;
+  #assert lp_verdict(c6) == LP_EMPTY_AXIOMS;
+
+  // axiom rejection priority: sorry > native_decide > trust_compiler > bad_axiom
+  ax_bad := [2] string.["propext", "my_cheat"];
+  c7 := base; c7.axioms = ax_bad[..];
+  #assert lp_verdict(c7) == LP_BAD_AXIOM;
+
+  ax_tc := [2] string.["my_cheat", "Lean.trustCompiler"];
+  c8 := base; c8.axioms = ax_tc[..];
+  #assert lp_verdict(c8) == LP_TRUST_COMPILER;
+
+  ax_nd := [3] string.["my_cheat", "Lean.trustCompiler", "Lean.ofReduceBool"];
+  c9 := base; c9.axioms = ax_nd[..];
+  #assert lp_verdict(c9) == LP_NATIVE_DECIDE;
+
+  ax_nd_first := [2] string.["Lean.ofReduceBool", "Lean.trustCompiler"];
+  c9b := base; c9b.axioms = ax_nd_first[..];
+  #assert lp_verdict(c9b) == LP_NATIVE_DECIDE;
+
+  ax_sorry := [3] string.["Lean.ofReduceBool", "Lean.trustCompiler", "sorryAx"];
+  c10 := base; c10.axioms = ax_sorry[..];
+  #assert lp_verdict(c10) == LP_SORRY;
+
+  ax_sorry_first := [3] string.["sorryAx", "Lean.ofReduceBool", "Lean.trustCompiler"];
+  c10b := base; c10b.axioms = ax_sorry_first[..];
+  #assert lp_verdict(c10b) == LP_SORRY;
+
+  // every code name matches
+  #assert lp_code_name(LP_OK) == "ok";
+  #assert lp_code_name(LP_UNSAFE_FLAG) == "unsafe_flag";
+  #assert lp_code_name(LP_BAD_TARGET) == "bad_target";
+  #assert lp_code_name(LP_TIMEOUT) == "timeout";
+  #assert lp_code_name(LP_EXITED_NONZERO) == "exited_nonzero";
+  #assert lp_code_name(LP_STATEMENT_MISMATCH) == "statement_mismatch";
+  #assert lp_code_name(LP_EMPTY_AXIOMS) == "empty_axioms";
+  #assert lp_code_name(LP_SORRY) == "sorry";
+  #assert lp_code_name(LP_NATIVE_DECIDE) == "native_decide";
+  #assert lp_code_name(LP_TRUST_COMPILER) == "trust_compiler";
+  #assert lp_code_name(LP_BAD_AXIOM) == "bad_axiom";
+  #assert lp_code_name(999) == "unknown";
+}

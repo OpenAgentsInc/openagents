@@ -1,0 +1,55 @@
+{
+  "profile": "lean-gym-v1",
+  "description": "Canonical JSON wire goldens and adversarial refusals for OpenAgents Desktop Lean 4 Gym & Riemann Hypothesis Workbench (Epic #13943, #13944).",
+  "schemas": [
+    "lean-doctor.v1",
+    "lean-verify.v1",
+    "lean-gym-request.v1",
+    "lean-gym-state.v1",
+    "rh-index.v1",
+    "rh-note.v1"
+  ],
+  "goldens": [
+    {
+      "schema": "lean-doctor.v1",
+      "line": "{\"schema\":\"lean-doctor.v1\",\"ok\":true,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":true,\"rh_index_present\":true,\"rh_modules\":175187,\"note\":\"RH Tier A corpus ready; install elan for live Lean 4 proving\"}"
+    },
+    {
+      "schema": "lean-verify.v1",
+      "line": "{\"schema\":\"lean-verify.v1\",\"verified\":true,\"verdict\":\"ok\",\"file\":\"src/Main.lean\",\"target\":\"riemannHypothesis\",\"file_sha256\":\"9631b4f020199e580ba86178cb56c6e9b09f690c2369a80dc4334aa93f49c7fc\",\"statement_match\":true,\"kernel\":\"lean4\",\"toolchain\":\"leanprover/lean4:v4.33.1\",\"elapsed_ms\":42,\"exit_code\":0,\"axioms\":[\"propext\",\"Quot.sound\",\"Classical.choice\"],\"message\":\"verified\"}"
+    },
+    {
+      "schema": "lean-verify.v1",
+      "line": "{\"schema\":\"lean-verify.v1\",\"verified\":false,\"verdict\":\"sorry\",\"file\":\"CheatSorry.lean\",\"target\":\"add_zero_right\",\"file_sha256\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"statement_match\":true,\"kernel\":\"lean4\",\"toolchain\":\"leanprover/lean4:v4.33.1\",\"elapsed_ms\":18,\"exit_code\":0,\"axioms\":[\"sorryAx\"],\"message\":\"rejected: sorryAx\"}"
+    },
+    {
+      "schema": "lean-gym-request.v1",
+      "line": "{\"schema\":\"lean-gym-request.v1\",\"id\":\"lean-run-1\",\"open\":true,\"view\":\"atlas\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":1,\"search\":\"Behrend\",\"math_tab\":\"strip\",\"file\":\"\",\"line\":0}"
+    },
+    {
+      "schema": "lean-gym-state.v1",
+      "line": "{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"id\":\"lean-run-1\",\"open\":true,\"mode\":\"lean\",\"view\":\"atlas\",\"rh_loaded\":true,\"rh_modules\":175187,\"rh_theorems\":818755,\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"tour_step\":1,\"math_tab\":\"strip\",\"error\":\"\"}"
+    },
+    {
+      "schema": "rh-index.v1",
+      "line": "{\"schema\":\"rh-index.v1\",\"corpus_path\":\"/Users/test/.openagents/lean/corpora/riemann-hypothesis\",\"corpus_commit\":\"40e56bab\",\"lean_toolchain\":\"leanprover/lean4:v4.33.1\",\"modules\":175187,\"edges\":920000,\"theorems\":818755,\"defs\":242067,\"lines\":17374215,\"bytes\":1030531854,\"metaprog_files\":6,\"max_depth\":142,\"main_id\":0,\"elapsed_ms\":12345}"
+    },
+    {
+      "schema": "rh-note.v1",
+      "line": "{\"schema\":\"rh-note.v1\",\"module\":\"Main\",\"decl\":\"riemannHypothesis\",\"author\":\"user\",\"updated_s\":1795284849,\"body\":\"Entry theorem wrapping rhOfAll from Supplements.Kernels.MainTheorems.\"}"
+    }
+  ],
+  "refused": [
+    "",
+    "[]",
+    "{}",
+    "{\"schema\":\"unknown.v1\"}",
+    "{\"schema\":\"lean-doctor.v1\",\"ok\":\"yes\"}",
+    "{\"schema\":\"lean-doctor.v1\",\"ok\":true,\"elan_found\":false,\"lean_found\":false,\"lake_found\":false,\"lean_version\":\"\",\"lake_version\":\"\",\"elan_path\":\"\",\"rh_corpus_present\":true,\"rh_index_present\":true,\"rh_modules\":-1,\"note\":\"\"}",
+    "{\"schema\":\"lean-verify.v1\",\"verified\":true,\"axioms\":\"not-an-array\"}",
+    "{\"schema\":\"lean-gym-request.v1\",\"tour_step\":-1}",
+    "{\"schema\":\"lean-gym-state.v1\",\"ok\":true,\"rh_modules\":-5}",
+    "{\"schema\":\"rh-index.v1\",\"modules\":-1}",
+    "{\"schema\":\"rh-note.v1\",\"module\":\"\",\"decl\":\"\",\"author\":\"u\",\"updated_s\":1,\"body\":\"empty module rejected\"}"
+  ]
+}
