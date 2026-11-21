@@ -35,8 +35,14 @@ main :: () {}
 ''')
 
     def run_mutate(self, *flags, compiler=COMPILER, source=None, jobs='1'):
+        env = {**os.environ, 'COAX_JOBS_QUIET': '1'}
         return subprocess.run([str(compiler), 'mutate', str(source or self.entry), '--jobs', jobs, *flags],
-                              capture_output=True, text=True, timeout=90)
+                              capture_output=True, text=True, timeout=90, env=env)
+
+    @staticmethod
+    def timeless(result):
+        # The baseline line holds a wall time (and a frozen compiler may not print it).
+        return '\n'.join(x for x in result.stderr.splitlines() if not x.startswith('mutation-baseline '))
 
     def count(self, result):
         m = re.search(r'^(\d+) mutants?, (\d+) killed, (\d+) survived', result.stdout, re.M)
@@ -47,10 +53,8 @@ main :: () {}
         flags = ('--mutation-trace', '--mutation-stats')
         old = self.run_mutate(*flags, compiler=BASELINE)
         current = self.run_mutate(*flags)
-        # The baseline line holds a wall time (and a frozen compiler may not print it).
-        timeless = lambda r: '\n'.join(x for x in r.stderr.splitlines() if not x.startswith('mutation-baseline '))
-        self.assertEqual((current.returncode, current.stdout, timeless(current)),
-                         (old.returncode, old.stdout, timeless(old)))
+        self.assertEqual((current.returncode, current.stdout, self.timeless(current)),
+                         (old.returncode, old.stdout, self.timeless(old)))
         self.assertIn(str(self.dependency), current.stdout)
         self.assertEqual(self.count(current), (9, 5, 4))
 
@@ -117,8 +121,8 @@ main :: () {}
         flags = ['--root-only', '--mutation-trace', '--mutation-stats']
         serial = self.run_mutate(*flags)
         parallel = self.run_mutate(*flags, jobs='4')
-        self.assertEqual((serial.returncode, serial.stdout, serial.stderr),
-                         (parallel.returncode, parallel.stdout, parallel.stderr))
+        self.assertEqual((serial.returncode, serial.stdout, self.timeless(serial)),
+                         (parallel.returncode, parallel.stdout, self.timeless(parallel)))
 
     def test_equal_inventory_scopes_still_cannot_mix_receipts(self):
         # No imports: both modes have exactly the same mutation sites.

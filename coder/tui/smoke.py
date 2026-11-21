@@ -219,19 +219,20 @@ def verbs(check):
         usrv = http.server.HTTPServer(("127.0.0.1", 0), UsageStub)
         threading.Thread(target=usrv.serve_forever, daemon=True).start()
         ubase = "http://127.0.0.1:%d" % usrv.server_address[1]
-        ucl = tempfile.mkdtemp(prefix="coder-usage-claude-"); ucx = tempfile.mkdtemp(prefix="coder-usage-codex-")
+        ucl = tempfile.mkdtemp(prefix="coder-usage-claude-"); ucx = tempfile.mkdtemp(prefix="coder-usage-codex-"); uagy = tempfile.mkdtemp(prefix="coder-usage-agy-")
         json.dump({"claudeAiOauth": {"accessToken": "tok-claude", "subscriptionType": "max"}}, open(os.path.join(ucl, ".credentials.json"), "w"))
         json.dump({"tokens": {"access_token": "tok-codex", "account_id": "acct-1"}}, open(os.path.join(ucx, "auth.json"), "w"))
-        uenv = dict(env, CODER_USAGE_KEYCHAIN="0", CLAUDE_CONFIG_DIR=ucl, CODEX_HOME=ucx,
+        uenv = dict(env, CODER_USAGE_KEYCHAIN="0", CLAUDE_CONFIG_DIR=ucl, CODEX_HOME=ucx, CODER_AGY_PROFILE_DIR=uagy,
                     CODER_USAGE_CLAUDE_URL=ubase + "/api/oauth/usage", CODER_USAGE_CODEX_URL=ubase + "/backend-api/wham/usage")
         uj = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
         ut = subprocess.run([coder, "usage"], cwd=REPO, env=uenv, capture_output=True, text=True, timeout=120)
         try: urows = json.loads(uj.stdout)
         except ValueError: urows = []
-        un = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=dict(uenv, CLAUDE_CONFIG_DIR=tempfile.mkdtemp(), CODEX_HOME=tempfile.mkdtemp()), capture_output=True, text=True, timeout=120)
-        check("usage: Claude's and Codex's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
-              len(urows) == 2 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
+        un = subprocess.run([coder, "usage", "--json"], cwd=REPO, env=dict(uenv, CLAUDE_CONFIG_DIR=tempfile.mkdtemp(), CODEX_HOME=tempfile.mkdtemp(), CODER_AGY_PROFILE_DIR=tempfile.mkdtemp()), capture_output=True, text=True, timeout=120)
+        check("usage: Claude's, Codex's, and Antigravity's plan windows from Zeron's endpoints, with each login's headers; no login says so and exits 1",
+              len(urows) == 3 and [w["used_percent"] for w in urows[0]["windows"]] == [12, 84] and [w["label"] for w in urows[0]["windows"]] == ["Session", "Week"]
               and [w["used_percent"] for w in urows[1]["windows"]] == [3, 4] and [w["label"] for w in urows[1]["windows"]] == ["Session", "Week"]
+              and urows[2].get("agent") == "antigravity" and urows[2].get("windows") == [] and "signed_out" in urows[2].get("error", "")
               and ("/api/oauth/usage", "Bearer tok-claude", "oauth-2025-04-20", None) in seen_auth
               and ("/backend-api/wham/usage", "Bearer tok-codex", None, "acct-1") in seen_auth
               and "Week" in ut.stdout and "84%" in ut.stdout and "tok-" not in uj.stdout + ut.stdout + uj.stderr + ut.stderr
