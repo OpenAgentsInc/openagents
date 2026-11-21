@@ -1,0 +1,127 @@
+// Proto-First Desktop Built-in Agents Catalog & Target-Lease Guard (GitHub #13894).
+//
+// Emits canonical openagents.agent.v1alpha1 AgentDefinition records for the three
+// day-one composable agents in OpenAgents Desktop (Coder, Simulated App Tester,
+// Game Builder) using coax/lib/agent/registry/wire.coax (`ar_write_def`) and
+// enforces non-overlapping TargetBinding leases via #authority policy.coax
+// (`ar_bindings_conflict`).
+//
+// Usage:
+//   coax/web/tool.sh coax/lib/agent/desktop/agents-catalog.coax list
+//   coax/web/tool.sh coax/lib/agent/desktop/agents-catalog.coax check-lease --a-target T --a-device D --b-target T --b-device D
+//   coax/web/tool.sh coax/lib/agent/desktop/agents-catalog.coax selftest
+#load "../registry/wire.coax";
+#load "../tester/schema.coax";
+#load "../../sys/tool.coax";
+
+ac_builtin_defs :: () -> [3] ArDefRecord {
+  return [3] ArDefRecord.[
+    ArDefRecord.{
+      agent_id = "coder",
+      name = "Coder",
+      description = "Composable coding agent running Microcoder, Claude Code, Antigravity ACP, or local Psionic Metal against the active workspace.",
+      version = 1,
+      kind = "coding",
+      execution_mode = "hybrid",
+      runtime = "coax-worker:mcworker",
+      input_contract = "coder.turn_request.v1",
+      output_contract = "coder.turn_result.v1",
+      max_depth = 3,
+      max_concurrency = 4,
+      budget = ArBudget.{wall_ms = 600000, turns = 32, tokens = 250000, cost_usd_e6 = 5000000},
+      model_hint = "default"
+    },
+    ArDefRecord.{
+      agent_id = "simulated-app-tester",
+      name = "Simulated App Tester",
+      description = "Deterministic and hybrid UI verification agent driving OpenAgents Desktop, iOS Simulator (oasim), and headless WebGPU Chrome with non-overlapping target leases and cascading Stop.",
+      version = 1,
+      kind = "tester",
+      execution_mode = "deterministic",
+      runtime = "coax-tool:apps/shared/tester/cli.coax",
+      input_contract = "tester.run_request.v1",
+      output_contract = TESTER_RESULT_SCHEMA,
+      max_depth = 2,
+      max_concurrency = 2,
+      budget = ArBudget.{wall_ms = 300000, turns = 0, tokens = 0, cost_usd_e6 = 0},
+      model_hint = ""
+    },
+    ArDefRecord.{
+      agent_id = "game-builder",
+      name = "Game Builder",
+      description = "Native 120 Hz Metal/Vulkan 3D creation environment wired to the folded GameBuilder / PLE scene core with live interactive side-pane viewport.",
+      version = 1,
+      kind = "creator",
+      execution_mode = "hybrid",
+      runtime = "coax-metal:SceneView",
+      input_contract = "ple.scene.edit.v1",
+      output_contract = "ple.scene.document.v1",
+      max_depth = 2,
+      max_concurrency = 1,
+      budget = ArBudget.{wall_ms = 600000, turns = 24, tokens = 200000, cost_usd_e6 = 3000000},
+      model_hint = "default"
+    }
+  ];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("agents-catalog: arguments did not fit"); return 2; }
+  cmd := args_at(a[..], 0);
+
+  if cmd == "list" {
+    defs := ac_builtin_defs();
+    buf: [AR_WIRE_BUF] u8;
+    print("[\n");
+    for i: 0..<3 {
+      n := ar_write_def(defs[i], buf[..]);
+      if n <= 0 { tool_errln("agents-catalog: failed to encode AgentDefinition"); return 1; }
+      print("  %", cast(string) buf[0..<n]);
+      if i < 2 { print(",\n"); } else { print("\n"); }
+    }
+    print("]\n");
+    return 0;
+  }
+
+  if cmd == "check-lease" {
+    at := ""; ad := ""; bt := ""; bd := "";
+    i := 1;
+    while i < a[0].n {
+      k := args_at(a[..], i);
+      if k == "--a-target" && i + 1 < a[0].n { at = args_at(a[..], i + 1); i += 2; continue; }
+      if k == "--a-device" && i + 1 < a[0].n { ad = args_at(a[..], i + 1); i += 2; continue; }
+      if k == "--b-target" && i + 1 < a[0].n { bt = args_at(a[..], i + 1); i += 2; continue; }
+      if k == "--b-device" && i + 1 < a[0].n { bd = args_at(a[..], i + 1); i += 2; continue; }
+      i += 1;
+    }
+    ba := ArBinding.{device_lease = ad, workspace_dir = at};
+    bb := ArBinding.{device_lease = bd, workspace_dir = bt};
+    conflict := ar_bindings_conflict(ba, bb);
+    if conflict {
+      print("{\"conflict\":true}\n");
+      return 1;
+    }
+    print("{\"conflict\":false}\n");
+    return 0;
+  }
+
+  if cmd == "selftest" {
+    defs := ac_builtin_defs();
+    buf: [AR_WIRE_BUF] u8;
+    for i: 0..<3 {
+      n := ar_write_def(defs[i], buf[..]);
+      if n <= 0 { tool_errln("selftest: ar_write_def failed"); return 1; }
+    }
+    // Verify #authority lease conflict detection on overlapping device_lease
+    l1 := ArBinding.{device_lease = "sim-udid-1", workspace_dir = "/tmp/ws1"};
+    l2 := ArBinding.{device_lease = "sim-udid-1", workspace_dir = "/tmp/ws2"};
+    l3 := ArBinding.{device_lease = "chrome-2", workspace_dir = "/tmp/ws3"};
+    if !ar_bindings_conflict(l1, l2) { tool_errln("selftest: overlapping lease should conflict"); return 1; }
+    if ar_bindings_conflict(l1, l3) { tool_errln("selftest: disjoint leases should not conflict"); return 1; }
+    print("agents-catalog selftest: PASS (definitions=3 lease_policy=ok)\n");
+    return 0;
+  }
+
+  print("usage: agents-catalog [list|check-lease|selftest]\n");
+  return 0;
+}

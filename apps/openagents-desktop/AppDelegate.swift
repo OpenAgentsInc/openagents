@@ -173,6 +173,7 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleWebPreview(_ sender: Any?) { main?.toggleWebPreview() }
     @objc func triggerSnapShot(_ sender: Any?) { main?.triggerRegionSnapshot() }
     @objc func openThreadProof(_ sender: Any?) { ThreadProofDrawer.shared.present(window: main) }
+    @objc func openAgentsPage(_ sender: Any?) { AgentsPageController.shared.present(window: main) }
     @objc func openCapabilityStudio(_ sender: Any?) { CapabilityStudio.shared.present(window: main) }
     @objc func chooseModel(_ sender: Any?) { main?.toggleModels() }
     @objc func nextChat(_ sender: Any?) { main?.stepChat(1) }
@@ -354,6 +355,8 @@ enum TestLaunch {
         snapItem.target = delegate; snapItem.keyEquivalentModifierMask = [.command, .shift]
         let proofItem = view.addItem(withTitle: "Thread Proof & ATIF Trace…", action: #selector(CoderDelegate.openThreadProof(_:)), keyEquivalent: "P")
         proofItem.target = delegate; proofItem.keyEquivalentModifierMask = [.command, .shift]
+        let agentsItem = view.addItem(withTitle: "Agents (Coder, Tester, Game Builder)…", action: #selector(CoderDelegate.openAgentsPage(_:)), keyEquivalent: "A")
+        agentsItem.target = delegate; agentsItem.keyEquivalentModifierMask = [.command, .shift]
         // Control-Tab is heard before the composer takes it (Window+Palette.swift); these name the keys
         let next = view.addItem(withTitle: "Next Chat", action: #selector(CoderDelegate.nextChat(_:)), keyEquivalent: "\t")
         next.target = delegate; next.keyEquivalentModifierMask = [.control]
