@@ -1,0 +1,158 @@
+// scripts/port-splicebots.sh SHIPPING.zip --assets PACK_DIR --tuning INI --out NEW_DIR
+// Assemble the existing Coax jam game and verify its input against the release.
+#import "Basic";
+#load "splicebots-build.coax";
+#load "splicebots-adapter-v1.coax";
+
+SBP_DATA_MAX :: 8388608;
+
+// Match only loose game data. ZIP admission has already normalized Windows
+// separators and checked every path, including entries outside Data.
+sbp_data_relative :: (path: string) -> string {
+  return ifx upv_starts(path, SBP_DATA_PREFIX) then path[SBP_DATA_PREFIX.count..<path.count] else "";
+}
+sbp_extract :: (zip: string, out: string, count: [] int) -> bool {
+  z: [1] UzCatalog = ---; end: [1] UzEnd;
+  why := upv_archive(zip, SBP_ZIP_BYTES, z[..], end[..]);
+  if why != "" { _ = sbp_fail(why); return false; }
+  compressed: [SBP_DATA_MAX] u8 = ---; decoded: [SBP_DATA_MAX] u8 = ---;
+  for k: 0..<z[0].n {
+    i := z[0].order[k]; e := z[0].entries[i];
+    rel := sbp_data_relative(uz_name(z[..], i));
+    if rel == "" || e.directory { continue; }
+    reason := upv_member(zip, end[0], z[..], i, compressed[..], decoded[..]);
+    if reason != "" { _ = sbp_fail(reason); tool_err("  member: "); tool_errln(rel); return false; }
+    path: [4096] u8; target := fs_join(out, rel, path[..]);
+    if !fs_mkdir(fs_dir(target)) || !fs_write(target, cast(string) decoded[0..<e.bytes]) {
+      _ = sbp_fail("could not stage a shipped data file"); tool_errln(rel); return false;
+    }
+    count[0] += 1;
+  }
+  if count[0] == 0 { _ = sbp_fail("the archive has no SPLICEBOTS/Data files"); return false; }
+  return true;
+}
+
+#test "the adapter takes game Data and keeps its relative archive path" {
+  #assert sbp_data_relative("SPLICEBOTS/Data/audio/wav/music.wav") == "audio/wav/music.wav";
+  #assert sbp_data_relative("SPLICEBOTS/Data/items.csv") == "items.csv";
+  #assert sbp_data_relative("SPLICEBOTS/Binaries/Win64/SPLICEBOTS-Win64-Shipping.exe") == "";
+  #assert sbp_data_relative("SPLICEBOTS/DataShadow/items.csv") == "";
+}
+
+sbp_matches :: (path: string, hash: string) -> bool {
+  hex: [64] u8;
+  return upv_hash(path, fs_size(path), hex[..]) && cast(string) hex[..] == hash;
+}
+sbp_supply :: (name: string, from: string, to: string, hash: string) -> bool {
+  if !sbp_copy(from, to) { return false; }
+  if sbp_matches(to, hash) { return true; }
+  _ = sbp_fail("source supplement differs from the adapter for");
+  tool_errln(name); return false;
+}
+
+sbp_ship_checks :: (root: string, tmp: string, src: string, data: string, assets: string) -> bool {
+  plan := "metaverse/splice-bots/tools/jam-data.plan.json";
+  aimp_b: [4096] u8; bundle := fs_join(tmp, "shipping.aimport", aimp_b[..]);
+  converted_b: [4096] u8; converted := fs_join(tmp, "shipping-pack", converted_b[..]);
+  if !sbp_data_pack(root, src, data, plan, bundle, converted) { return false; }
+  pack_b: [4096] u8; pack := fs_join(converted, SBP_WORLD, pack_b[..]);
+
+  // The same extracted Data directory is both the shipping reference and
+  // the adapter's /Data source. Only Config adds a source-side file.
+  buffer: [UPV_LOG] u8 = ---;
+  check_args := [4] string.[data, pack, "--source", src];
+  n := sbp_coax(root, "comparing the data pack to the shipping ZIP", "metaverse/splice-bots/tools/jam-data-check.coax", check_args[..], buffer[..]);
+  note: [4096] u8;
+  if n < 0 || !fs_write(fs_join(tmp, "shipping-data-check.txt", note[..]), cast(string) buffer[0..<n]) { return false; }
+
+  return sbp_runtime_packs(root, assets, pack, fs_join(tmp, "coax-replay.txt", note[..]), false);
+}
+
+sbp_report :: (result: string, count: int, pin: string) -> bool {
+  bytes: [8192] u8; writer: [1] Jo; j := writer[..];
+  jo_start(j, bytes[..]); jo_obj(j);
+  sbp_text(j, "schema", "gamebuilder.splicebots-port.v1");
+  sbp_text(j, "adapter", SBP_ADAPTER);
+  sbp_text(j, "target", "local-webgpu");
+  sbp_text(j, "shipping_zip_sha256", SBP_ZIP_SHA);
+  jo_key(j, "shipping_data_files"); jo_int(j, count);
+  jo_key(j, "model_calls"); jo_int(j, 0);
+  sbp_text(j, "openagents_pin", pin);
+  sbp_text(j, "source_export_revision", SBP_SOURCE_REV);
+  sbp_text(j, "tuning_supplement_sha256", SBP_TUNING_SHA);
+  sbp_text(j, "shipping_data_check", "shipping-data-check.txt");
+  sbp_text(j, "coax_playthrough_check", "coax-replay.txt");
+  sbp_text(j, "verification_scope", "Shipping Data comparison and Coax replay. Executable parity is a separate test.");
+  evidence := [3] string.["shipping-data-check.txt", "coax-replay.txt", "play.sh"];
+  if !sbp_hash_fields(j, result, evidence[..]) { return false; }
+  jo_end(j);
+  path: [4096] u8;
+  return !j[0].bad && fs_write(fs_join(result, "port.json", path[..]), jo_text(j));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 7 || args_at(a[..], 1) != "--assets" ||
+    args_at(a[..], 3) != "--tuning" || args_at(a[..], 5) != "--out" {
+    tool_errln("usage: scripts/port-splicebots.sh SHIPPING.zip --assets PACK_DIR --tuning DefaultSpliceTuning.ini --out NEW_DIR");
+    return 2;
+  }
+  zip_b: [4096] u8; zip := fs_realpath(args_at(a[..], 0), zip_b[..]);
+  if fs_size(zip) != SBP_ZIP_BYTES || !sbp_matches(zip, SBP_ZIP_SHA) { return sbp_fail("v1 requires the original SPLICEBOTS Windows shipping ZIP from 15 November 2026"); }
+  stamp := fs_mtime_ns(zip);
+
+  root_b: [4096] u8; gb_b: [4096] u8; pin_b: [64] u8;
+  root := proc_getenv("COAX_TOOL_REPO", root_b[..]);
+  gb := proc_getenv("GB_PORT_ROOT", gb_b[..]);
+  pin := proc_getenv("GB_UNREAL_PIN", pin_b[..]);
+  if gb == "" { return sbp_fail("run through scripts/port-splicebots.sh"); }
+  buffer: [UPV_LOG] u8 = ---;
+  if !upv_pinned(root, pin, buffer[..]) { return 1; }
+
+  arg := args_at(a[..], 6);
+  parent_b: [4096] u8; parent := fs_realpath(fs_dir(arg), parent_b[..]);
+  out_b: [4096] u8; out := fs_join(parent, fs_base(arg), out_b[..]);
+  if parent == "" || fs_kind(parent) != FS_DIR || fs_base(arg) == "" || out == "" || fs_kind(out) != FS_NONE {
+    return sbp_fail("--out must name a new directory under an existing parent");
+  }
+  for c: out { if c < 32 || c == 127 { return sbp_fail("--out cannot contain control characters"); } }
+  tmp_b: [4096] u8; path: [4096] u8;
+  mkdir_args := [3] string.["mktemp", "-d", fs_join(parent, ".gamebuilder-splicebots.XXXXXX", path[..])];
+  tn := upv_run("creating private staging", mkdir_args[..], 30000, tmp_b[..]);
+  if tn < 0 { return 1; }
+  tmp := cast(string) tmp_b[0..<tn];
+  defer { _ = fs_remove(tmp); }
+  result_b: [4096] u8; res := fs_join(tmp, "result", result_b[..]);
+  player_b: [4096] u8; player := fs_join(res, "player", player_b[..]);
+  private_b: [4096] u8; assets := fs_join(player, "private", private_b[..]);
+  src_b: [4096] u8; src := fs_join(tmp, "source", src_b[..]);
+  data_b: [4096] u8; data := fs_join(src, "Data", data_b[..]);
+  if !fs_mkdir_private(res) || !sbp_player_dirs(assets, player) || !fs_mkdir_private(data) { return sbp_fail("could not create stage directories"); }
+
+  assets_b: [4096] u8; supplied := fs_realpath(args_at(a[..], 2), assets_b[..]);
+  tune_b: [4096] u8; tuning_source := fs_realpath(args_at(a[..], 4), tune_b[..]);
+  if supplied == "" || tuning_source == "" { return sbp_fail("the private source pack directory or tuning file is missing"); }
+  from: [4096] u8;
+  if !sbp_supply(SBP_WORLD, fs_join(supplied, SBP_WORLD, from[..]), fs_join(assets, SBP_WORLD, path[..]), SBP_WORLD_SHA) ||
+    !sbp_supply(SBP_CAST, fs_join(supplied, SBP_CAST, from[..]), fs_join(assets, SBP_CAST, path[..]), SBP_CAST_SHA) { return 1; }
+  tuning := fs_join(src, "Config/DefaultSpliceTuning.ini", path[..]);
+  if !fs_mkdir(fs_dir(tuning)) || !sbp_supply("DefaultSpliceTuning.ini", tuning_source, tuning, SBP_TUNING_SHA) { return 1; }
+  count: [1] int;
+  if !sbp_extract(zip, data, count[..]) { return 1; }
+  if fs_size(zip) != SBP_ZIP_BYTES || fs_mtime_ns(zip) != stamp || !sbp_matches(zip, SBP_ZIP_SHA) {
+    return sbp_fail("the ZIP changed during the port");
+  }
+  print("Checking shipped data and replaying the SPLICEBOTS route...\n");
+  if !sbp_ship_checks(root, tmp, src, data, assets) { return 1; }
+  print("Building the local SPLICEBOTS player...\n");
+  if !sbp_player(root, gb, player) { return 1; }
+
+  for name: [2] string.["shipping-data-check.txt", "coax-replay.txt"] {
+    if !fs_rename(fs_join(tmp, name, from[..]), fs_join(res, name, path[..])) { return sbp_fail("could not keep the verification logs"); }
+  }
+  launcher := fs_join(gb, "tools/splicebots-play.sh", from[..]);
+  if !sbp_copy(launcher, fs_join(res, "play.sh", path[..])) || !sbp_report(res, count[0], pin) { return sbp_fail("could not package the port report or launcher"); }
+  if fs_kind(out) != FS_NONE || !fs_rename(res, out) { return sbp_fail("could not finish --out as a new directory"); }
+  print("SPLICEBOTS: %\nRun %/play.sh and open the URL it prints.\nVerification: %/port.json\n", out, out, out);
+  return 0;
+}

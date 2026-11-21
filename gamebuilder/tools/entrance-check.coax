@@ -1,0 +1,150 @@
+// The first second, checked in a real browser (issue 14; docs/web-world.md, "The first second"):
+// headless Chrome with WebGPU opens the builder on the dev server, and for each game type the page
+// is timed from the press on its name (the ring's, issue 30: the fly through its portal included) to the first key the world takes (the character, the car or
+// the ship moves) and to a thing placed with the hotbar's first tool. Over the budget, or never,
+// fails. Then the same page with WebGPU missing each way a browser can lack it (none at all, no
+// adapter, a device that will not start): at the home page and at the builder's address the page
+// must say so in the site's own words (web/gpu-words.coax) and never stay blank.
+//   scripts/web.sh entrance                         the dev server on a port of its own, then this
+//   coax/web/tool.sh tools/entrance-check.coax URL [--budget MS] [--shots DIR] [--times-only] [--words-only]
+// URL is the dev server (http://127.0.0.1:8810/). --budget is milliseconds a type may take to its
+// first key and to its placed thing (2000). --shots keeps a picture of each page with WebGPU missing.
+// What runs in the page is tools/entrance-probe.js; the verdict is here (ec_judge, with its checks).
+#load "../../coax/lib/media/media.coax";
+#load "../web/gpu-words.coax";
+#load "../shared/game-types.coax";
+#import "Basic";
+
+EC_BUDGET :: 2000;        // milliseconds: from the press on a type's name to the first key taken, and to a placed thing
+EC_KINDS :: GT_WEB_TYPES; // game types on the site, in the ring's order (shared/game-types.coax)
+
+EcRow :: struct { seen: bool; first: int = -1; placed: int = -1; }
+EcVerdict :: struct { rows: [EC_KINDS] EcRow; bad: int; }
+ec_int :: (t: string, from: int) -> [2] int {
+  i := from; while i < t.count && t[i] == ' ' { i += 1; }
+  neg := i < t.count && t[i] == '-'; if neg { i += 1; }
+  v := 0; got := false;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { if v < 100000000 { v = v * 10 + cast(int) (t[i] - '0'); } i += 1; got = true; }
+  return [2] int.[ifx !got then -1 else ifx neg then -v else v, i];
+}
+// The probe's answer judged: a line a type, "KIND FIRST_MS PLACED_MS". A type is bad when it has
+// no line, when either never happened (-1), or when either took longer than the budget.
+ec_judge :: (text: string, budget: int) -> EcVerdict {
+  v: EcVerdict; at := 0;
+  while at < text.count {
+    end := at; while end < text.count && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end]; at = end + 1;
+    k := ec_int(line, 0); f := ec_int(line, k[1]); p := ec_int(line, f[1]);
+    if k[0] < 0 || k[0] >= EC_KINDS { continue; }
+    v.rows[k[0]] = EcRow.{seen = true, first = f[0], placed = p[0]};
+  }
+  for k: 0..<EC_KINDS { r := v.rows[k]; if !r.seen || r.first < 0 || r.placed < 0 || r.first > budget || r.placed > budget { v.bad += 1; } }
+  return v;
+}
+ec_ok :: (r: EcRow, budget: int) -> bool { return r.seen && r.first >= 0 && r.placed >= 0 && r.first <= budget && r.placed <= budget; }
+#test "the verdict: every type needs a line, both times, and both within the budget" {
+  good := "0 310 620\n1 300 700\n2 280 610\n3 290 640\n4 400 900\n5 350 800\n6 330 760\n7 1100 640\n8 320 700";
+  v := ec_judge(good, 2000); #assert v.bad == 0 && v.rows[7].first == 1100 && v.rows[8].placed == 700 && ec_ok(v.rows[0], 2000);
+  // a type over the budget, one that never placed, one with no line
+  w := ec_judge("0 310 2001\n1 300 -1\n2 280 610\n3 290 640\n4 400 900\n5 350 800\n6 330 760\n7 1100 640", 2000);
+  #assert w.bad == 3 && !ec_ok(w.rows[0], 2000) && !ec_ok(w.rows[1], 2000) && !w.rows[8].seen && ec_ok(w.rows[2], 2000);
+  // the budget is the caller's; lines that are no type are passed over; nothing at all is nine bad
+  #assert ec_judge(good, 1000).bad == 1 && ec_judge("12 1 1\nwhat\n", 2000).bad == EC_KINDS && ec_judge("", 2000).bad == EC_KINDS;
+  #assert EC_BUDGET == 2000 && EC_KINDS == 9;
+}
+
+// What a page with WebGPU missing must show: the way's words, both at the home page and at the builder.
+// The script that takes WebGPU away before any of the page's own runs, by the address's ?nogpu=WAY
+// (1 no WebGPU at all, 2 no adapter, 3 a device that will not start): only this check adds it.
+EC_AWAY :: "(() => { globalThis.gbLoad = []; setInterval(() => { const e = document.querySelector('#coaxial-load:not(.gone) .lt'); const t = e && e.textContent.trim().toLowerCase(); if (t && globalThis.gbLoad[globalThis.gbLoad.length - 1] !== t) globalThis.gbLoad.push(t); }, 4); const w = new URL(location.href).searchParams.get('nogpu'); if (w === '1') { delete Navigator.prototype.gpu; } else if (w === '2' && navigator.gpu) { navigator.gpu.requestAdapter = async () => null; } else if (w === '3' && navigator.gpu) { const real = navigator.gpu.requestAdapter.bind(navigator.gpu); navigator.gpu.requestAdapter = async (o) => { const a = await real(o); if (a) a.requestDevice = async () => { throw new Error('no device (the check took it away)'); }; return a; }; } })()";
+// While the world's code arrives the page says how far it has come, in words (index.html, #coaxial-load,
+// filled by the host): what it said, in order, once the world is drawing; and "| gone" when the line has then left.
+EC_LOAD :: "(async () => { for (let i = 0; i < 300; i++) { const c = globalThis.coaxial; if (c && c.ready && c.sceneReady) break; await new Promise((r) => setTimeout(r, 100)); } await new Promise((r) => setTimeout(r, 900)); const e = document.getElementById('coaxial-load'); return (globalThis.gbLoad || []).join(' > ') + (!e || e.classList.contains('gone') ? ' | gone' : ' | still there'); })()";
+// The words the page shows for it, once they are there (or nothing, after ten seconds).
+EC_SAID :: "(async () => { for (let i = 0; i < 100; i++) { const e = document.querySelector('.nogpu'); if (e && e.textContent.trim()) return e.textContent.replace(/\\s+/g, ' ').trim(); await new Promise((r) => setTimeout(r, 100)); } return ''; })()";
+
+ec_cat :: (out: [] u8, parts: [] string) -> string { n := 0; for p: parts { for ch: p { if n < out.count { out[n] = ch; n += 1; } } } return cast(string) out[0..<n]; }
+ec_has :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  if hay.count < needle.count { return false; }
+  for i: 0..<hay.count - needle.count + 1 { ok := true; for j: 0..<needle.count { if hay[i + j] != needle[j] { ok = false; break; } } if ok { return true; } }
+  return false;
+}
+ec_go :: (c: [] Cdp, url: string) -> bool {
+  params: [4096] u8; j: [1] Jo;
+  jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
+  return !j[0].bad && cdp_call(c, "Page.navigate", jo_text(j[..]), CDP_CALL_MS) >= 0;
+}
+ec_put_ms :: (ms: int) { b: [24] u8; if ms < 0 { print("    never"); return; } n := ws_digits(b[..], 0, ms); for k: n..<6 { print(" "); } print("% ms", cast(string) b[0..<n]); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0);
+  if !ok || url.count == 0 || url[0] == '-' { tool_errln("usage: tool.sh tools/entrance-check.coax URL [--budget MS] [--shots DIR] [--times-only] [--words-only]"); return 2; }
+  budget := EC_BUDGET; bn := args_number(args_value(a[..], "--budget", "2000")); if bn.ok && bn.value > 0.0 { budget = cast(int) bn.value; }
+  shots := args_value(a[..], "--shots", "");
+  base := url; if base[base.count - 1] == '/' { base = cast(string) base[0..<base.count - 1]; }
+  c: [1] Cdp; wh := ArgsSize.{ok = true, w = 1440, h = 900};
+  if !cdp_launch(c[..], wh.w, wh.h, "gb-entrance-") { tool_err("entrance: "); tool_errln(cdp_error(c[..])); return 1; }
+  bad := 0; ub: [4096] u8; value: [65536] u8;
+  if !media_size(c[..], wh) { tool_errln("entrance: the browser would not take a window size"); cdp_close(c[..]); return 1; }
+  if !args_has(a[..], "--words-only") {
+    probe: [65536] u8; pn := fs_read("tools/entrance-probe.js", probe[..]);
+    if pn <= 0 { tool_errln("entrance: no tools/entrance-probe.js (run from the repository's root)"); cdp_close(c[..]); return 1; }
+    first := [2] string.[base, "/play?observe=1"];
+    if !ec_go(c[..], ec_cat(ub[..], first[..])) { tool_err("entrance: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+    proc_sleep(500);
+    n := media_value(c[..], cast(string) probe[0..<pn], value[..]);
+    gpu: [256] u8; adapter := cdp_adapter(c[..], gpu[..]);
+    print("entrance: WebGPU adapter: %\n", adapter);
+    if n <= 0 { tool_err("entrance: NOT timed: the page's script gave nothing: "); tool_errln(cdp_error(c[..])); bad += 1; }
+    else {
+      v := ec_judge(cast(string) value[0..<n], budget); names: [EC_KINDS] string; for k: 0..<EC_KINDS { names[k] = GT_NAME[gt_web_type(k)]; }
+      print("entrance: from the press on a game type's name (budget % ms)\n", budget);
+      for k: 0..<EC_KINDS {
+        r := v.rows[k];
+        print("  % %", ifx ec_ok(r, budget) then "ok  " else "NOT ", names[k]); for pad: names[k].count..<18 { print(" "); }
+        print("first key"); ec_put_ms(r.first); print("   placed"); ec_put_ms(r.placed); print("\n");
+      }
+      bad += v.bad;
+    }
+  }
+  if !args_has(a[..], "--times-only") {
+    src: [1] Jo; jo_start(src[..], value[..]); jo_obj(src[..]); jo_key(src[..], "source"); jo_str(src[..], EC_AWAY); jo_end(src[..]);
+    // (Page.enable comes before the script: without it it does not run on the next document)
+    if cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) < 0 { tool_err("entrance: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+    if cdp_call(c[..], "Page.addScriptToEvaluateOnNewDocument", jo_text(src[..]), CDP_CALL_MS) < 0 { tool_err("entrance: "); tool_errln(cdp_error(c[..])); cdp_close(c[..]); return 1; }
+    // a load with WebGPU there: the words as the world's code came in, and the line gone once it draws
+    fresh := [2] string.[base, "/?nogpu=0"];
+    if !ec_go(c[..], ec_cat(ub[..], fresh[..])) { tool_err("entrance: "); tool_errln(cdp_error(c[..])); bad += 1; }
+    else {
+      lw: [2048] u8; ln := media_value(c[..], EC_LOAD, lw[..]); told := ifx ln > 0 then cast(string) lw[0..<ln] else "";
+      fine := ec_has(told, "engine") && ec_has(told, "| gone");
+      print("  % the load says how far it has come, in words: %\n", ifx fine then "ok  " else "NOT ", ifx told.count > 0 then told else "nothing said");
+      if !fine { bad += 1; }
+    }
+    ways := [3] string.["1", "2", "3"]; pages := [2] string.["/", "/play"]; page_names := [2] string.["home", "play"];
+    for w: 0..<3 {
+      for p: 0..<2 {
+        to := [4] string.[base, pages[p], "?nogpu=", ways[w]];
+        if !ec_go(c[..], ec_cat(ub[..], to[..])) { tool_err("entrance: "); tool_errln(cdp_error(c[..])); bad += 1; continue; }
+        said: [2048] u8; sn := media_value(c[..], EC_SAID, said[..]);
+        got := ifx sn > 0 then cast(string) said[0..<sn] else "";
+        want := gw_words(w + 1);
+        fine := got.count > 0 && ec_has(got, want);
+        print("  % WebGPU missing (%), at %: %\n", ifx fine then "ok  " else "NOT ", gw_name(w + 1), pages[p], ifx got.count > 0 then got else "nothing said");
+        if !fine { bad += 1; }
+        if shots.count > 0 {
+          png: [MEDIA_PNG] u8; k := cdp_screenshot(c[..], png[..]);
+          file := [6] string.[shots, "/nogpu-", ways[w], "-", page_names[p], ".png"];
+          if k > 0 { saved := fs_write(ec_cat(ub[..], file[..]), cast(string) png[0..<k]); }
+        }
+      }
+    }
+  }
+  cdp_close(c[..]);
+  if bad > 0 { print("entrance: % NOT within the first second's rules\n", bad); return 1; }
+  print("entrance: ok\n");
+  return 0;
+}

@@ -1,0 +1,221 @@
+// A hosted server's published games (issue 17, docs/publishing.md): `gamebuilder serve --accounts DIR` keeps
+// what each account published, and answers a link's page and what it plays. The rules are gamebuilder/core/publish.coax's
+// (a game, its versions, its code, its limits) and the routes gamebuilder/core/api.coax's; this file reads and writes the
+// files.
+//
+// Where the files are, under the accounts' folder DIR:
+//   DIR/ACCOUNT/published               the account's games and versions (gamebuilder.publish.v1), as on a device
+//   DIR/ACCOUNT/published-G-V.level     version V of game G: the level's file as it was published, never changed after
+//   DIR/.published/CODE                 whose game a link's code is: the account's folder name, one line
+//   DIR/.published/CODE.down            the operator's takedown: while this file is there the link plays nothing,
+//                                       whatever its owner does (docs/publishing.md, "Abuse")
+//   DIR/.reports                        the players' reports, a line each: AT|CODE|REASON|TEXT, for the operator
+//   DIR/.plays/CODE, DIR/.plays/.site   each game's counts and the site's (cli/plays.coax)
+// No account's name has a dot, so none of the dotted names is an account's folder.
+//
+// A link plays the bytes of its live version, by the site's own world code: a published game holds no code of
+// its author's, so it is served from the site's own address (GAMES_DOMAIN moves it: cli_games).
+PUB_INDEX :: ".published";
+PUB_REPORTS :: ".reports";
+PUB_REPORTS_HOUR :: 120;        // reports this server takes an hour, from everyone: past it, 429
+PUB_REPORTS_MAX :: 1048576;     // bytes of the queue: past it no more are taken until the operator has read it
+PUB_PAGE_KEEP :: 60000;         // ms the site's page is kept before it is asked for again
+PUB_PAGE_MAX :: 131072;         // bytes of the site's page, at most
+PUB_PATH :: 4608;
+
+CliPub :: struct {
+  page: [PUB_PAGE_MAX] u8; page_n: int; page_at: int;   // the site's own page, as its /play answers
+  hour: s64; reports: int;                              // the reports taken this hour
+  reason: [32] u8; text: [PUB_TEXT + 8] u8; line: [PUB_TEXT + 96] u8;
+}
+
+cli_pub_join :: (parts: [] string, out: [] u8) -> string {
+  n := 0;
+  for p: parts { for ch: p { if n >= out.count { return ""; } out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// The accounts' folder, and the account whose folder the CLI is in (its last part).
+cli_pub_root :: (c: [] Cli) -> string { return cast(string) c[0].site[0..<c[0].site_n]; }
+cli_pub_account :: (c: [] Cli) -> string {
+  d := cli_dir(c); r := cli_pub_root(c);
+  if d.count <= r.count + 1 { return ""; }
+  return d[r.count + 1..<d.count];
+}
+cli_pub_index :: (c: [] Cli, code: string, ext: string, out: [] u8) -> string {
+  parts := [6] string.[cli_pub_root(c), "/", PUB_INDEX, "/", code, ext];
+  return cli_pub_join(parts[..], out);
+}
+// published-G-V.level, in the folder the CLI is in.
+cli_pub_version :: (c: [] Cli, game: s32, version: s32, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], cli_dir(c)); tx_put(t[..], "/published-"); tx_int(t[..], cast(s64) game); tx_put(t[..], "-"); tx_int(t[..], cast(s64) version); tx_put(t[..], ".level");
+  return ifx t[0].at >= out.count then "" else cast(string) out[0..<t[0].at];
+}
+// Whose a code is: the account's folder name into out, "" when it is no one's.
+cli_pub_owner :: (c: [] Cli, code: string, out: [] u8) -> string {
+  pb: [PUB_PATH] u8;
+  path := cli_pub_index(c, code, "", pb[..]);
+  if path.count == 0 || !fs_exists(path) { return ""; }
+  k := fs_read(path, out);
+  if k <= 0 || k >= out.count { return ""; }
+  while k > 0 && (out[k - 1] == '\n' || out[k - 1] == '\r') { k -= 1; }
+  who := cast(string) out[0..<k];
+  return ifx gb_api_account_ok(who) then who else "";
+}
+
+// After a publish was made in the core and before the account's store is written: the link's code is made this
+// account's among every account's (another is taken when it is someone else's, and the answer says the new one),
+// and the version's bytes are kept. "" when done, else why not.
+cli_pub_keep :: (c: [] Cli, r: GbResult) -> string {
+  e := c[0].e[..]; s := e[0].pub[..];
+  later := "the published game can't be kept just now: nothing was published";
+  account := cli_pub_account(c);
+  i := pub_find(s, r.published);
+  if i < 0 || account.count == 0 { return later; }
+  ib: [PUB_PATH] u8; ob: [80] u8; fb: [PUB_PATH] u8;
+  folder_parts := [3] string.[cli_pub_root(c), "/", PUB_INDEX];
+  folder := cli_pub_join(folder_parts[..], fb[..]);
+  if folder.count == 0 || (!fs_exists(folder) && !fs_mkdir(folder)) { return later; }
+  mine := false;
+  for attempt: 1..<9 {
+    code := s[0].games[i].code;
+    cs := cast(string) code[0..<PUB_CODE];
+    path := cli_pub_index(c, cs, "", ib[..]);
+    if path.count == 0 { return later; }
+    if !fs_exists(path) { if !fs_replace_durable(path, account) { return later; } mine = true; break; }
+    if cli_pub_owner(c, cs, ob[..]) == account { mine = true; break; }
+    // another account's: this game takes another code, and the answer's link says it
+    old: [PUB_CODE] u8; for k: 0..<PUB_CODE { old[k] = code[k]; }
+    if !pub_recode(s, r.published, cast(s64) attempt) { return later; }
+    n := r.json.count;
+    at := 0;
+    while at + 3 + PUB_CODE <= n {
+      if c[0].out[at] == '/' && c[0].out[at + 1] == 'g' && c[0].out[at + 2] == '/' {
+        same := true; for k: 0..<PUB_CODE { if c[0].out[at + 3 + k] != old[k] { same = false; } }
+        if same { for k: 0..<PUB_CODE { c[0].out[at + 3 + k] = s[0].games[i].code[k]; } }
+      }
+      at += 1;
+    }
+  }
+  if !mine { return later; }
+  n := ed_save(e, c[0].doc[..]);
+  vb: [PUB_PATH] u8; vp := cli_pub_version(c, r.published, r.version, vb[..]);
+  if n <= 0 || vp.count == 0 || !fs_replace_durable(vp, cast(string) c[0].doc[0..<n]) { return later; }
+  return "";
+}
+// A game removed for good: its code is no one's again.
+cli_pub_forget :: (c: [] Cli, code: string) {
+  ob: [80] u8; pb: [PUB_PATH] u8;
+  if cli_pub_owner(c, code, ob[..]) != cli_pub_account(c) || cli_pub_account(c).count == 0 { return; }
+  _ = fs_remove(cli_pub_index(c, code, "", pb[..]));
+  cli_plays_forget(c, code);
+}
+// The versions' files the store no longer names go (a removed game's, or the oldest past 128).
+cli_pub_sweep :: (c: [] Cli) {
+  s := c[0].e[0].pub[..];
+  if fs_list(cli_dir(c), c[0].list[..]) < 0 { return; }
+  head := "published-"; tail := ".level";
+  for i: 0..<c[0].list[0].n {
+    name := fs_entry(c[0].list[..], i);
+    if name.count <= head.count + tail.count || cast(string) name[0..<head.count] != head || cast(string) name[name.count - tail.count..<name.count] != tail { continue; }
+    g: s64 = 0; v: s64 = 0; dash := false; bad := false;
+    for ch: name[head.count..<name.count - tail.count] {
+      if ch == '-' && !dash { dash = true; }
+      else if ch >= '0' && ch <= '9' { if dash { v = v * 10 + cast(s64) (ch - '0'); } else { g = g * 10 + cast(s64) (ch - '0'); } if g > 100000000 || v > 100000000 { bad = true; } }
+      else { bad = true; }
+    }
+    if bad || !dash || pub_version_at(s, cast(s32) g, cast(s32) v) >= 0 { continue; }
+    pb: [PUB_PATH] u8; parts := [3] string.[cli_dir(c), "/", name];
+    path := cli_pub_join(parts[..], pb[..]);
+    if path.count > 0 { _ = fs_remove(path); }
+  }
+}
+
+// The game a link's code plays, read from its account's folder into the CLI's editor: its place in that store, or
+// -1 when the link plays nothing (no such code, taken down, unpublished, or its files don't read).
+cli_pub_find :: (c: [] Cli, code: string) -> s64 {
+  if !c[0].hosted || !pub_code_ok(code) { return -1; }
+  ob: [80] u8; pb: [PUB_PATH] u8;
+  who := cli_pub_owner(c, code, ob[..]);
+  if who.count == 0 { return -1; }
+  down := cli_pub_index(c, code, ".down", pb[..]);
+  if down.count == 0 || fs_exists(down) { return -1; }
+  parts := [3] string.[cli_pub_root(c), "/", who];
+  if !cli_set_dir(c, parts[..]) { return -1; }
+  c[0].e[0] = Editor.{};
+  k := fs_read(cli_path(c, "published", ""), c[0].doc[..]);
+  if k <= 0 || !ed_pub_load(c[0].e[..], c[0].doc[0..<k]) { return -1; }
+  d := pub_play(c[0].e[0].pub[..], code);
+  if d.error.count > 0 { return -1; }
+  // (the code is this account's by the index, and the store's own: a store that says another's is not believed)
+  return cast(s64) d.game;
+}
+
+// GET /api/play/CODE: the answer's status; its JSON is in c.out (200) or refusal.
+cli_pub_play :: (c: [] Cli, code: string, refusal: [] u8, json: [] string) -> int {
+  i := cli_pub_find(c, code);
+  none := "this game isn't available";
+  if i < 0 { json[0] = gb_api_refusal(404, none, refusal); return 404; }
+  s := c[0].e[0].pub[..];
+  vb: [PUB_PATH] u8; vp := cli_pub_version(c, s[0].games[i].id, s[0].games[i].live, vb[..]);
+  k := ifx vp.count > 0 then fs_read(vp, c[0].doc[..]) else 0;
+  if k <= 0 { json[0] = gb_api_refusal(404, none, refusal); return 404; }
+  body := gb_api_play(s, i, cast(string) c[0].doc[0..<k], c[0].out[..]);
+  if body.count == 0 { json[0] = gb_api_refusal(404, none, refusal); return 404; }
+  json[0] = body;
+  return 200;
+}
+
+// POST /api/play/CODE/report: a player's report, queued for the operator. The answer's status; its JSON is in refusal.
+cli_pub_report :: (c: [] Cli, p: [] CliPub, code: string, body: string, read_only: bool, nodes: [] JvNode, refusal: [] u8, json: [] string) -> int {
+  if read_only { json[0] = gb_api_refusal(403, "this server is read-only (gamebuilder serve --read-only): it takes no reports", refusal); return 403; }
+  if cli_pub_find(c, code) < 0 { json[0] = gb_api_refusal(404, "this game isn't available", refusal); return 404; }
+  n: [2] int;
+  why := gb_api_report_read(body, nodes, p[0].reason[..], p[0].text[..], n[..]);
+  if why.count > 0 { json[0] = gb_api_refusal(400, why, refusal); return 400; }
+  now := cast(s64) cxsock_now_ms() / 3600000;
+  if now != p[0].hour { p[0].hour = now; p[0].reports = 0; }
+  pb: [PUB_PATH] u8; parts := [3] string.[cli_pub_root(c), "/", PUB_REPORTS];
+  path := cli_pub_join(parts[..], pb[..]);
+  if p[0].reports >= PUB_REPORTS_HOUR || path.count == 0 || fs_size(path) >= PUB_REPORTS_MAX {
+    json[0] = gb_api_refusal(429, "this server takes 120 reports an hour (PUB_REPORTS_HOUR): this one was not taken. try again later", refusal); return 429;
+  }
+  line := gb_api_report_line(cli_now(c), code, cast(string) p[0].reason[0..<n[0]], cast(string) p[0].text[0..<n[1]], p[0].line[..]);
+  if line.count == 0 || !fs_append_durable(path, line) { json[0] = gb_api_refusal(503, "the report can't be kept just now: try again", refusal); return 503; }
+  p[0].reports += 1;
+  o: [1] Jo; jo_start(o[..], refusal);
+  gb_ok(o[..]); jo_key(o[..], "reported"); jo_bool(o[..], true); jo_end(o[..]);
+  json[0] = jo_text(o[..]);
+  return 200;
+}
+
+// GET /g/CODE: the site's own page with the game's name, picture and address in its head (coax/api.coax
+// gb_api_page). The answer's status and its HTML in c.out: 200 for a game on the web, 404 with the site's page
+// as it is for a link that plays nothing (the page says so in words), 0 when the site's page could not be had.
+cli_pub_page :: (c: [] Cli, p: [] CliPub, site: string, code: string, html: [] string) -> int {
+  now := cxsock_now_ms();
+  if p[0].page_n == 0 || now - p[0].page_at > PUB_PAGE_KEEP || now < p[0].page_at {
+    ub: [400] u8; up := [2] string.[site, "/play"];
+    url := cli_pub_join(up[..], ub[..]);
+    none: [1] string;
+    res := http_do(c[0].http[..], "GET", url, none[0..<0], "", 10000, 2, c[0].out[..]);
+    if url.count > 0 && res.error == HTTP_OK && res.code == 200 && res.n > 0 && res.n < PUB_PAGE_MAX {
+      for k: 0..<res.n { p[0].page[k] = c[0].out[k]; }
+      p[0].page_n = res.n; p[0].page_at = now;
+    }
+    // (a page kept from before is still the site's: it is used when the site doesn't answer just now)
+  }
+  if p[0].page_n == 0 { return 0; }
+  index := cast(string) p[0].page[0..<p[0].page_n];
+  i := cli_pub_find(c, code);
+  if i < 0 { for k: 0..<index.count { c[0].out[k] = index[k]; } html[0] = cast(string) c[0].out[0..<index.count]; return 404; }
+  g := c[0].e[0].pub[0].games[i];
+  name := g.name; tp := g.type;
+  lb: [400] u8; lp := [3] string.[cli_games(c), "/g/", code];
+  link := cli_pub_join(lp[..], lb[..]);
+  type := ifx g.type_n > 0 then gt_of(cast(string) tp[0..<cast(s64) g.type_n]) else gt_of(TEMPLATE_ID[TEMPLATE_ARENA]);
+  page := gb_api_page(index, cast(string) name[0..<cast(s64) g.name_n], type, site, link, c[0].out[..]);
+  if page.count == 0 { return 0; }
+  html[0] = page;
+  return 200;
+}

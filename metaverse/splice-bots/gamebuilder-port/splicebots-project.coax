@@ -1,0 +1,206 @@
+// scripts/port-splicebots-project.sh PROJECT_DIR --out NEW_DIR [--engine ENGINE_DIR]
+#import "Basic";
+#load "splicebots-build.coax";
+
+SBPJ_ADAPTER :: "splicebots.unreal-project.v2";
+SBPJ_PROJECT :: "SPLICEBOTS.uproject";
+SBPJ_EDITOR_PACK :: "splice-bots-jam-editor.pack";
+SBPJ_EDITOR_MS :: 900000;
+SBPJ_DUCK_NOTICE :: "NOTICE-microduck.md";
+
+sbpj_commit :: (s: string) -> bool {
+  if s.count != 40 { return false; }
+  for c: s { if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') { return false; } }
+  return true;
+}
+#test "the project adapter accepts a full commit identity only" {
+  #assert sbpj_commit("007b7c281fc6fe272caa479879e7f150a850cf01");
+  #assert !sbpj_commit("007b7c2") && !sbpj_commit("007b7c281fc6fe272caa479879e7f150a850cf0z");
+}
+
+// The upstream importer prints the temporary bundle path as its first line.
+sbpj_report_body :: (s: string) -> string {
+  if !upv_starts(s, "Import of ") { return ""; }
+  for c, k: s { if c == '\n' { return s[k + 1..<s.count]; } }
+  return "";
+}
+#test "private staging paths do not enter the import report" {
+  #assert sbpj_report_body("Import of /first/maps.aimport\nPack scene.pack\n") == sbpj_report_body("Import of /second/maps.aimport\nPack scene.pack\n");
+  #assert sbpj_report_body("Import of /first/maps.aimport\nPack scene.pack\n") == "Pack scene.pack\n";
+  #assert sbpj_report_body("partial") == "";
+}
+
+sbpj_revision :: (project: string, out: [] u8) -> string {
+  head := [5] string.["git", "-C", project, "rev-parse", "HEAD"];
+  n := upv_run("reading the Unreal project revision", head[..], 30000, out);
+  if n <= 0 || !sbpj_commit(cast(string) out[0..<n]) { return ""; }
+  return cast(string) out[0..<n];
+}
+
+sbpj_snapshot :: (project: string, revision: string, checkout: string) -> bool {
+  lines: [UPV_LOG] u8 = ---;
+  clone := [7] string.["git", "clone", "--quiet", "--shared", "--no-checkout", project, checkout];
+  if upv_run("creating an isolated copy of the Unreal project", clone[..], 120000, lines[..]) < 0 { return false; }
+  select := [7] string.["git", "-C", checkout, "checkout", "--quiet", "--detach", revision];
+  return upv_run("checking out the committed Unreal project", select[..], 120000, lines[..]) >= 0 &&
+    sbpj_revision(checkout, lines[..]) == revision;
+}
+
+sbpj_save_editor_log :: (scratch: string, private_root: string) {
+  from: [4096] u8; log_path := fs_join(scratch, "maps.aimport.log", from[..]);
+  if fs_kind(log_path) != FS_FILE { return; }
+  temp: [4096] u8; at: [4096] u8;
+  cmd := [3] string.["mktemp", "-d", fs_join(private_root, "splicebots-editor.XXXXXX", temp[..])];
+  n := upv_run("creating private editor diagnostics", cmd[..], 30000, at[..]);
+  if n < 0 { return; }
+  to: [4096] u8; saved := fs_join(cast(string) at[0..<n], "editor.log", to[..]);
+  if fs_rename(log_path, saved) { tool_err("Unreal editor log: "); tool_errln(saved); }
+}
+
+sbpj_world :: (root: string, gb: string, project: string, engine: string, scratch: string, private_root: string, assets: string, result: string) -> bool {
+  paths: [6][4096] u8;
+  plan := fs_join(gb, "tools/splicebots-project-maps-v1.json", paths[0][..]);
+  bundle := fs_join(scratch, "maps.aimport", paths[1][..]);
+  converted := fs_join(scratch, "world", paths[2][..]);
+  buffer: [UPV_LOG] u8 = ---;
+  // This adapter takes clips from the source rigs. Some of the newer baked
+  // Unreal AnimSequences crash the general glTF exporter on this engine.
+  profile := fs_join(gb, "tools/splicebots-project-assets-v1.json", paths[5][..]);
+  env: [4096] u8; e: [1] Jo; jo_start(e[..], env[..]);
+  jo_put(e[..], "AIMPORT_ASSETS="); jo_put(e[..], profile);
+  if e[0].bad { return false; }
+  export := [9] string.["env", "AIMPORT_SOURCE_RIGS=1", jo_text(e[..]), "coax/web/tool.sh", "metaverse-engine/tools/unreal-level-export.coax", plan, project, engine, bundle];
+  tool_errln("Exporting the committed Unreal maps in the headless editor...");
+  if sbp_command_for(root, "exporting the Unreal project maps", export[..], buffer[..], SBPJ_EDITOR_MS) < 0 {
+    sbpj_save_editor_log(scratch, private_root); return false;
+  }
+  convert := [8] string.[bundle, converted, "--plan", plan, "--two-tone", "Lit=Shade", "--shade-auto", "ShadeAuto:ShadeShare:ShadeTint"];
+  if sbp_coax(root, "converting the Unreal map export", "metaverse-engine/tools/unreal-level-import.coax", convert[..], buffer[..]) < 0 { return false; }
+  return sbp_copy(fs_join(converted, SBPJ_EDITOR_PACK, paths[3][..]), fs_join(assets, SBP_WORLD, paths[4][..])) &&
+    sbp_copy(fs_join(bundle, "skipped.json", paths[3][..]), fs_join(result, "editor-skipped.json", paths[4][..])) &&
+    sbpj_write_import_report(converted, result, "editor-import.txt");
+}
+
+sbpj_write_import_report :: (converted: string, result: string, name: string) -> bool {
+  paths: [2][4096] u8; text: [UPV_LOG] u8 = ---;
+  n := upv_read(fs_join(converted, "import-report.txt", paths[0][..]), text[..]);
+  if n <= 0 { return false; }
+  body := sbpj_report_body(cast(string) text[0..<n]);
+  return body != "" && fs_write(fs_join(result, name, paths[1][..]), body);
+}
+
+sbpj_data_and_cast :: (root: string, gb: string, checkout: string, scratch: string, assets: string, result: string) -> bool {
+  paths: [7][4096] u8;
+  to := fs_join(scratch, "rig", paths[0][..]);
+  source := fs_join(checkout, "Assets/Source", paths[1][..]);
+  lines: [UPV_LOG] u8 = ---;
+  rig := [3] string.["splice-bots", source, to];
+  if sbp_coax(root, "retargeting the Director and raiders from source", "metaverse-engine/tools/unreal-rig.coax", rig[..], lines[..]) < 0 { return false; }
+  cast_args := [2] string.[to, fs_join(assets, SBP_CAST, paths[2][..])];
+  if sbp_coax(root, "packing the project characters", "metaverse/splice-bots/tools/jam-chars-pack.coax", cast_args[..], lines[..]) < 0 { return false; }
+
+  data := fs_join(checkout, "Data", paths[0][..]);
+  wav := fs_join(data, "audio/wav", paths[1][..]);
+  // The data reader enumerates this directory. Some project revisions have
+  // only Unreal audio assets, which come through the separate editor export.
+  if fs_kind(wav) != FS_DIR && !fs_mkdir(wav) { return false; }
+  plan := fs_join(gb, "tools/splicebots-project-data-v1.json", paths[2][..]);
+  bundle := fs_join(scratch, "data.aimport", paths[3][..]);
+  converted := fs_join(scratch, "data", paths[4][..]);
+  if !sbp_data_pack(root, checkout, data, plan, bundle, converted) { return false; }
+  if !sbp_copy(fs_join(bundle, "skipped.json", paths[5][..]), fs_join(result, "data-skipped.json", paths[6][..])) ||
+    !sbpj_write_import_report(converted, result, "data-import.txt") { return false; }
+  pack := fs_join(converted, SBP_WORLD, paths[5][..]);
+  check := [5] string.[data, pack, "--source", checkout, "--project"];
+  n := sbp_coax(root, "checking the data pack against the Unreal project", "metaverse/splice-bots/tools/jam-data-check.coax", check[..], lines[..]);
+  if n < 0 || !fs_write(fs_join(result, "project-data-check.txt", paths[6][..]), cast(string) lines[0..<n]) { return false; }
+  return sbp_runtime_packs(root, assets, pack, fs_join(result, "coax-replay.txt", paths[6][..]), true);
+}
+
+sbpj_report :: (result: string, pin: string, revision: string) -> bool {
+  bytes: [8192] u8; writer: [1] Jo; j := writer[..];
+  jo_start(j, bytes[..]); jo_obj(j);
+  sbp_text(j, "schema", "gamebuilder.splicebots-project-port.v1");
+  sbp_text(j, "adapter", SBPJ_ADAPTER);
+  sbp_text(j, "target", "local-webgpu");
+  sbp_text(j, "source_revision", revision);
+  sbp_text(j, "openagents_pin", pin);
+  jo_key(j, "model_calls"); jo_int(j, 0);
+  sbp_text(j, "rules", "Pinned Coax SPLICEBOTS campaign rules");
+  sbp_text(j, "verification_scope", "Admitted Unreal maps, baked MetaSounds, the Microduck mesh and source tables, plus the Coax campaign replay");
+  evidence := [8] string.["editor-skipped.json", "editor-import.txt", "data-skipped.json", "data-import.txt", "project-data-check.txt", "coax-replay.txt", "play.sh", SBPJ_DUCK_NOTICE];
+  if !sbp_hash_fields(j, result, evidence[..]) { return false; }
+  jo_end(j);
+  path: [4096] u8;
+  return !j[0].bad && fs_write(fs_join(result, "port.json", path[..]), jo_text(j));
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || (args_count(a[..]) != 3 && args_count(a[..]) != 5) || args_at(a[..], 1) != "--out" ||
+    (args_count(a[..]) == 5 && args_at(a[..], 3) != "--engine") {
+    tool_errln("usage: scripts/port-splicebots-project.sh PROJECT_DIR --out NEW_DIR [--engine ENGINE_DIR]"); return 2;
+  }
+  path: [4096] u8; project_b: [4096] u8; rev_b: [64] u8;
+  src := fs_realpath(args_at(a[..], 0), project_b[..]);
+  if src == "" || fs_kind(fs_join(src, SBPJ_PROJECT, path[..])) != FS_FILE { return sbp_fail("PROJECT_DIR must contain SPLICEBOTS.uproject"); }
+  rev := sbpj_revision(src, rev_b[..]);
+  if rev == "" { return sbp_fail("PROJECT_DIR must be a Git checkout with a committed project"); }
+
+  root_b: [4096] u8; gb_b: [4096] u8; pin_b: [64] u8; home_b: [4096] u8;
+  root := proc_getenv("COAX_TOOL_REPO", root_b[..]);
+  gb := proc_getenv("GB_PORT_ROOT", gb_b[..]);
+  pin := proc_getenv("GB_UNREAL_PIN", pin_b[..]);
+  home := proc_getenv("HOME", home_b[..]);
+  lines: [UPV_LOG] u8 = ---;
+  if gb == "" { return sbp_fail("run through scripts/port-splicebots-project.sh"); }
+  if !upv_pinned(root, pin, lines[..]) { return 1; }
+  engine_b: [4096] u8; engine := fs_realpath(ifx args_count(a[..]) == 5 then args_at(a[..], 4) else fs_join(home, "UnrealEngine-5.9/src", path[..]), engine_b[..]);
+  if engine == "" || fs_kind(fs_join(engine, "Engine/Build/BatchFiles/RunUBT.sh", path[..])) != FS_FILE {
+    return sbp_fail("supply the built Unreal Engine 5.9 source tree with --engine ENGINE_DIR");
+  }
+  wanted := args_at(a[..], 2);
+  parent_b: [4096] u8; out_b: [4096] u8;
+  parent := fs_realpath(fs_dir(wanted), parent_b[..]);
+  out := fs_join(parent, fs_base(wanted), out_b[..]);
+  if parent == "" || fs_kind(parent) != FS_DIR || fs_base(wanted) == "" || out == "" || fs_kind(out) != FS_NONE {
+    return sbp_fail("--out must name a new directory under an existing parent");
+  }
+  for c: out { if c < 32 || c == 127 { return sbp_fail("--out cannot contain control characters"); } }
+
+  priv_b: [4096] u8; private_root := fs_join(home, ".openagents", priv_b[..]);
+  if home == "" || (fs_kind(private_root) != FS_DIR && !fs_mkdir_private(private_root)) {
+    return sbp_fail("could not open ~/.openagents for private exports");
+  }
+  scratch_b: [4096] u8; tmp_b: [4096] u8;
+  create := [3] string.["mktemp", "-d", fs_join(private_root, "splice-project.XXXXXX", path[..])];
+  n := upv_run("creating private Unreal export scratch", create[..], 30000, scratch_b[..]);
+  if n < 0 { return 1; }
+  scratch := cast(string) scratch_b[0..<n];
+  defer { _ = fs_remove(scratch); }
+  create[2] = fs_join(parent, ".gamebuilder-splicebots.XXXXXX", path[..]);
+  tn := upv_run("creating private player staging", create[..], 30000, tmp_b[..]);
+  if tn < 0 { return 1; }
+  tmp := cast(string) tmp_b[0..<tn];
+  defer { _ = fs_remove(tmp); }
+
+  paths: [5][4096] u8;
+  checkout := fs_join(scratch, "project", paths[0][..]);
+  project := fs_join(checkout, SBPJ_PROJECT, paths[1][..]);
+  player := fs_join(tmp, "player", paths[2][..]);
+  assets := fs_join(player, "private", paths[3][..]);
+  if !sbp_player_dirs(assets, player) || !sbpj_snapshot(src, rev, checkout) { return 1; }
+  if fs_kind(project) != FS_FILE { return sbp_fail("the committed tree has no SPLICEBOTS.uproject at its root"); }
+  if !sbpj_world(root, gb, project, engine, scratch, private_root, assets, tmp) { return 1; }
+  tool_errln("Building the source character packs and replaying the campaign...");
+  if !sbpj_data_and_cast(root, gb, checkout, scratch, assets, tmp) { return 1; }
+  tool_errln("Building the local SPLICEBOTS player...");
+  launcher := fs_join(gb, "tools/splicebots-play.sh", paths[4][..]);
+  notice_b: [4096] u8;
+  notice := fs_join(checkout, "Assets/Source/Things/NOTICE-microduck.md", notice_b[..]);
+  if !sbp_copy(notice, fs_join(tmp, SBPJ_DUCK_NOTICE, path[..])) { return sbp_fail("could not copy the source Microduck notice"); }
+  if !sbp_player(root, gb, player) || !sbp_copy(launcher, fs_join(tmp, "play.sh", path[..])) || !sbpj_report(tmp, pin, rev) { return 1; }
+  if fs_kind(out) != FS_NONE || !fs_rename(tmp, out) { return sbp_fail("could not finish --out as a new directory"); }
+  print("SPLICEBOTS: %\nRun %/play.sh and open the URL it prints.\nVerification: %/port.json\n", out, out, out);
+  return 0;
+}

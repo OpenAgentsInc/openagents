@@ -1,0 +1,184 @@
+// GameBuilder's resident service end to end (GitHub issue 11; docs/agents.md, "The resident
+// service"), on a folder of its own, with tools/claude-standin.coax standing in for the person's
+// Claude Code. It holds that:
+//   - the service says it is on, beside the levels (computer-ID.computer): its name, one slot,
+//     what is installed and signed in, and no login; computers lists it, on, in words;
+//   - an agent queued on it (agent-new-on, as the App Store build's pane and the page start one)
+//     runs with no app open: its turn is the stand-in, told no settings and no tools but the
+//     rows', with no key in its environment though the service had one; its gb_add goes through
+//     gamebuilder mcp --resident and is a tool event and an edit event in its log; it says at the
+//     start that it costs nothing ("your own agent: no charge from us"), and ends done with its
+//     answer and its usage;
+//   - the person's stop (agent-stop) ends its process: the slot is free again;
+//   - a plan's limit pauses it until the time the plan says, and it goes on by itself then;
+//   - a session that would bill a key is stopped and fails in words;
+//   - quitting the service (resident stop) stops the agent it runs, and its log says why; the
+//     computer says it is off; a service killed mid-turn leaves the turn unknown, said when it
+//     starts again.
+//   coax/web/tool.sh tools/resident-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "hosted-lib.coax";
+
+RcRun :: struct {
+  bin: string; dir: [1024] u8; dir_n: int; home: [1024] u8; home_n: int; log: [1100] u8; log_n: int; wrap: [1100] u8; wrap_n: int;
+  out: [262144] u8; bad: int;
+}
+rc_dir :: (k: [] RcRun) -> string { return cast(string) k[0].dir[0..<k[0].dir_n]; }
+rc_envs :: (k: [] RcRun, h: int) -> bool {
+  eb: [1200] u8; et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "HOME="); tx_put(et[..], cast(string) k[0].home[0..<k[0].home_n]);
+  gb: [1200] u8; gt := [1] Text.[Text.{buf = gb[..]}]; tx_put(gt[..], "GB_CLAUDE="); tx_put(gt[..], cast(string) k[0].wrap[0..<k[0].wrap_n]);
+  lb: [1200] u8; lt := [1] Text.[Text.{buf = lb[..]}]; tx_put(lt[..], "GB_STANDIN_LOG="); tx_put(lt[..], cast(string) k[0].log[0..<k[0].log_n]);
+  return proc_env(h, cast(string) eb[0..<et[0].at]) && proc_env(h, cast(string) gb[0..<gt[0].at]) && proc_env(h, cast(string) lb[0..<lt[0].at])
+    && proc_env(h, "GAMEBUILDER_COMPUTER=Test Mac") && proc_env(h, "ANTHROPIC_API_KEY=sk-standin-not-a-key");
+}
+// gamebuilder --dir DIR WORDS...: what it printed first.
+rc_cli :: (k: [] RcRun, words: [] string) -> string {
+  h := proc_new();
+  ok := rc_envs(k, h) && proc_arg(h, k[0].bin) && proc_arg(h, "--dir") && proc_arg(h, rc_dir(k));
+  for w: words { ok = ok && proc_arg(h, w); }
+  if !ok || proc_start(h) != 0 { return "(not started)"; }
+  n := proc_line(h, 30000, k[0].out[..]);
+  _ = proc_wait(h, 10000); _ = proc_release(h);
+  return ifx n > 0 then cast(string) k[0].out[0..<n] else "";
+}
+// The service, started: its handle (its first line is read).
+rc_resident :: (k: [] RcRun) -> int {
+  h := proc_new();
+  ok := rc_envs(k, h) && proc_arg(h, k[0].bin) && proc_arg(h, "--dir") && proc_arg(h, rc_dir(k)) && proc_arg(h, "resident");
+  if !ok || proc_start(h) != 0 { return -1; }
+  n := proc_line(h, 30000, k[0].out[..]);
+  rc_expect(k, "the service starts and says it is on, at no charge", ifx n > 0 then cast(string) k[0].out[0..<n] else "", "\"resident\":\"Test Mac\"");
+  return h;
+}
+rc_expect :: (k: [] RcRun, what: string, got: string, part: string) {
+  if level_find(got, part) >= 0 { return; }
+  print("resident: NOT %\n  want %\n  got  %\n", what, part, got);
+  k[0].bad += 1;
+}
+rc_no :: (k: [] RcRun, what: string, got: string, part: string) {
+  if level_find(got, part) < 0 { return; }
+  print("resident: NOT %\n  did not want %\n  got  %\n", what, part, got);
+  k[0].bad += 1;
+}
+// Waits up to ms for agent id's record to say part: its last read.
+rc_wait :: (k: [] RcRun, id: string, part: string, ms: int) -> string {
+  got := "";
+  deadline := proc_now_ms() + ms;
+  while proc_now_ms() < deadline {
+    w := [2] string.["agent-read", id];
+    got = rc_cli(k, w[..]);
+    if level_find(got, part) >= 0 { return got; }
+    proc_sleep(300);
+  }
+  return got;
+}
+rc_new :: (k: [] RcRun, work: string, out: [] u8) -> string {
+  w := [5] string.["agent-new-on", "Test Mac", "1", "build", work];
+  got := rc_cli(k, w[..]);
+  rc_expect(k, "agent-new-on queues an agent on the service's computer, at no charge", got, "\"cost\":\"your own agent: no charge from us\"");
+  at := level_find(got, "\"agent\":\"");
+  if at < 0 { return ""; }
+  n := 0; i := at + 9;
+  while i < got.count && got[i] != '"' && n < out.count { out[n] = got[i]; n += 1; i += 1; }
+  return cast(string) out[0..<n];
+}
+rc_events :: (k: [] RcRun, id: string) -> string { w := [3] string.["agent-events", id, "0"]; return rc_cli(k, w[..]); }
+rc_computer :: (k: [] RcRun) -> string { w := [1] string.["computers"]; return rc_cli(k, w[..]); }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: tools/resident-check.coax GAMEBUILDER"); return 2; }
+  k: [1] RcRun;
+  k[0].bin = args_at(a[..], 0);
+  tb: [1024] u8; dir := fs_temp("gb-resident", tb[..]);
+  hb: [1024] u8; home := fs_temp("gb-resident-home", hb[..]);
+  if dir.count == 0 || home.count == 0 { tool_errln("resident: no temporary folder"); return 1; }
+  k[0].dir_n = agr_put(k[0].dir[..], 0, dir); k[0].home_n = agr_put(k[0].home[..], 0, home);
+  // the stand-in, started by its path as the service starts claude
+  cw: [1024] u8; cwd := fs_cwd(cw[..]);
+  k[0].wrap_n = agr_put(k[0].wrap[..], agr_put(k[0].wrap[..], 0, home), "/claude");
+  k[0].log_n = agr_put(k[0].log[..], agr_put(k[0].log[..], 0, home), "/standin.log");
+  sb: [4096] u8; st := [1] Text.[Text.{buf = sb[..]}];
+  tx_put(st[..], "#!/bin/sh\nexec \""); tx_put(st[..], cwd); tx_put(st[..], "/coax/web/tool.sh\" \""); tx_put(st[..], cwd); tx_put(st[..], "/tools/claude-standin.coax\" \"$@\"\n");
+  wrap := cast(string) k[0].wrap[0..<k[0].wrap_n];
+  if !fs_write(wrap, cast(string) sb[0..<st[0].at]) { tool_errln("resident: can't write the stand-in"); return 1; }
+  ob: [256] u8; eb: [256] u8; cm := [3] string.["/bin/chmod", "755", wrap];
+  _ = proc_run(cm[..], 5000, ob[..], eb[..]);
+  // build the stand-in now (with no -p it only says its name), so the service's first turn isn't its build
+  bw := [1] string.[wrap]; bo: [4096] u8; be: [4096] u8; _ = proc_run(bw[..], 300000, bo[..], be[..]);
+  _ = fs_remove(cast(string) k[0].log[0..<k[0].log_n]);
+
+  g := [2] string.["new-game", GT_ID[GT_ARENA]]; _ = rc_cli(k[..], g[..]);
+  // before the service has run, no computer is known here
+  early := [5] string.["agent-new-on", "Test Mac", "1", "build", "x"];
+  rc_expect(k[..], "agent-new-on is refused before the service has said how it is", rc_cli(k[..], early[..]), "\"error\":\"not-found\"");
+  h := rc_resident(k[..]);
+  if h < 0 { print("resident: NOT started\n"); return 1; }
+  c := rc_computer(k[..]);
+  rc_expect(k[..], "computers lists this computer, on, with one slot", c, "\"name\":\"Test Mac\",\"on\":true");
+  rc_expect(k[..], "computers says it in words", c, "\"words\":\"on: 0 of 1 slot in use;");
+  rc_no(k[..], "a computer names no key or token", c, "sk-standin");
+
+  // a Builder, with no app open: the stand-in's gb_add through mcp --resident
+  ib: [64] u8; id := rc_new(k[..], "add a block", ib[..]);
+  got := rc_wait(k[..], id, "\"state\":\"done\"", 60000);
+  rc_expect(k[..], "the agent ran and is done", got, "\"state\":\"done\"");
+  rc_expect(k[..], "it runs on the service", got, "\"runner\":\"resident\"");
+  ev := rc_events(k[..], id);
+  rc_expect(k[..], "it said at the start that it costs nothing", ev, "\"state\":\"working\",\"text\":\"your own agent: no charge from us\"");
+  rc_expect(k[..], "its tool call is in its log", ev, "\"type\":\"tool\",\"tool\":\"gb_add\"");
+  rc_expect(k[..], "its change is an edit event", ev, "\"type\":\"edit\",\"level\":1");
+  rc_expect(k[..], "its answer is in its log", ev, "\"from\":\"agent\",\"text\":\"I added a block.\"");
+  rc_expect(k[..], "its usage is in its log", ev, "\"type\":\"usage\",\"turns\":2,\"cents\":1");
+  lg: [65536] u8; ln := fs_read(cast(string) k[0].log[0..<k[0].log_n], lg[..]);
+  said := ifx ln > 0 then cast(string) lg[0..<ln] else "";
+  rc_expect(k[..], "no key reached claude, though the service had one", said, "key:absent tools:none settings:none allowed:rows build");
+  rc_no(k[..], "no key reached claude", said, "key:present");
+
+  // the person's stop ends its process
+  id2b: [64] u8; id2 := rc_new(k[..], "slow-me", id2b[..]);
+  _ = rc_wait(k[..], id2, "\"state\":\"working\"", 30000);
+  rc_expect(k[..], "the computer says its slot is in use", rc_computer(k[..]), "\"used\":1,");
+  sw := [2] string.["agent-stop", id2]; _ = rc_cli(k[..], sw[..]);
+  freed := "";
+  deadline := proc_now_ms() + 15000;
+  while proc_now_ms() < deadline { freed = rc_computer(k[..]); if level_find(freed, "\"used\":0,") >= 0 { break; } proc_sleep(300); }
+  rc_expect(k[..], "a stop frees the slot: its process ended", freed, "\"used\":0,");
+  rc_expect(k[..], "and it stays stopped, as the person said", rc_wait(k[..], id2, "\"state\":\"stopped\"", 1000), "You stopped it");
+
+  // a plan's limit pauses it until the plan's time, and it goes on by itself
+  id3b: [64] u8; id3 := rc_new(k[..], "pause-me", id3b[..]);
+  p := rc_wait(k[..], id3, "\"state\":\"paused\"", 30000);
+  rc_expect(k[..], "a plan's limit pauses it", p, "\"state\":\"paused\"");
+  rc_expect(k[..], "and says when it goes on", p, "\"resumes\":");
+  rc_expect(k[..], "it goes on by itself when the plan lets it", rc_wait(k[..], id3, "\"state\":\"done\"", 60000), "\"state\":\"done\"");
+  rc_expect(k[..], "its pause is said in words", rc_events(k[..], id3), "your Claude plan hit its limit");
+
+  // a key is never billed
+  id4b: [64] u8; id4 := rc_new(k[..], "key-me", id4b[..]);
+  rc_expect(k[..], "a session that would bill a key fails, in words", rc_wait(k[..], id4, "\"state\":\"failed\"", 30000), "this would bill an API key");
+
+  // quitting the service stops the agent it runs, and says so
+  id5b: [64] u8; id5 := rc_new(k[..], "slow-me", id5b[..]);
+  _ = rc_wait(k[..], id5, "\"state\":\"working\"", 30000);
+  qw := [2] string.["resident", "stop"];
+  rc_expect(k[..], "resident stop says it stopped", rc_cli(k[..], qw[..]), "\"stopped\":true");
+  _ = proc_wait(h, 15000); _ = proc_release(h);
+  rc_expect(k[..], "the agent it ran stopped, and says the service was quit", rc_wait(k[..], id5, "\"state\":\"stopped\"", 5000), "you quit GameBuilder's resident service");
+  rc_expect(k[..], "the computer says it is off", rc_computer(k[..]), "\"on\":false");
+
+  // killed mid-turn: its turn is unknown, said when it starts again
+  h = rc_resident(k[..]);
+  id6b: [64] u8; id6 := rc_new(k[..], "slow-me", id6b[..]);
+  _ = rc_wait(k[..], id6, "\"state\":\"working\"", 30000);
+  _ = proc_kill(h, PROC_SIGKILL); _ = proc_wait(h, 5000); _ = proc_release(h);
+  h = rc_resident(k[..]);
+  rc_expect(k[..], "a turn cut off by a killed service is unknown, in words", rc_wait(k[..], id6, "\"state\":\"unknown\"", 10000), "ended mid-turn");
+  _ = rc_cli(k[..], qw[..]);
+  _ = proc_wait(h, 15000); _ = proc_release(h);
+
+  if k[0].bad > 0 { print("resident: % failed\n", k[0].bad); return 1; }
+  print("resident: ok\n");
+  return 0;
+}

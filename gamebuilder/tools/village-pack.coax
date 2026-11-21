@@ -1,0 +1,275 @@
+// Builds the medieval village's asset pack (docs/web-world.md, "The medieval village"):
+// web/assets/village.pack, a VPK1 pack of the engine's (metaverse-engine/editor/pack.coax)
+// holding a few buildings and rocks of 0 A.D. (art by Wildfire Games, CC BY-SA 3.0), which the
+// page's host fetches from this site when the village is picked. Offline tooling; the page never
+// runs it.
+//
+//   coax/web/tool.sh tools/village-pack.coax GLTF_DIR OUT.pack PIN.coax NAME [NAME ...]
+//
+// as the pack in the repository was built:
+//   coax/web/tool.sh tools/village-pack.coax ~/.openagents/assets/cache/0ad-gltf web/assets/village.pack web/village-pin.coax \
+//     structures-britons-house structures-gauls-house structures-gauls-market geology-highland1-moss geology-highland2
+// PIN.coax (web/village-pin.coax) is the pack's size and SHA-256 as Coax, which the page admits the
+// pack by (web/world-village.coax): build the pack again and the pin goes with it.
+//
+// GLTF_DIR is the asset store's converted copy of the registry's "0ad-selected" package
+// (~/.openagents/assets/cache/0ad-gltf: each model exported from its GLB with Blender, transforms
+// baked, by metaverse/tools/assets/zero_ad_gltf.py); NAME is a model's folder
+// there (structures-britons-house ...). The pack's models are in the order of the names.
+//
+// What it changes of the art (the licence asks that changes be said): each model is moved so its
+// footprint's middle is over the origin (its own ground stays the ground: a building reaches a little under it); its vertices are
+// written as the engine's 48-byte pack vertex (place, normal, uv, a white tint with the texture
+// layer in its top byte); its base-colour textures are resized to 512 by 512 and encoded as JPEG
+// (quality 92); its normal maps are left out. No triangle is removed or merged.
+//
+// The pack, in the engine's order: the catalog, the vertices, the indices (u32, each a vertex of
+// the pack), then a JPEG a texture layer. The catalog's lines:
+//   pack village / budget BYTES / bytes BYTES
+//   L 0 0 A.D. art by Wildfire Games|CC BY-SA 3.0|https://www.wildfiregames.com/
+//   M NAME FIRST COUNT 0 X0 Y0 Z0 X1 Y1 Z1     a model: its indices and its bounds in metres (the engine's line)
+//   T LAYER NAME 0                             a texture layer
+//   G K FIRST COUNT X0 Y0 Z0 X1 Y1 Z1          model K again for the page, whole numbers: its indices and its bounds in millimetres
+//   B K X0 Y0 Z0 X1 Y1 Z1                      a box of model K that is solid, millimetres, in the model's own axes
+//
+// The solid boxes are the model as a closed solid, found from its own surface (no box is placed by
+// hand, so any model gets them): the surface is sampled into columns half a metre square, and a
+// column is
+//   standing   when it holds surface between 0.25 and 1.2 m up (a wall, a post, a stair, a rock):
+//              solid from the ground to the highest surface in it
+//   inside     when it is not standing but cannot be reached from the model's edge along the
+//              ground without crossing a standing column (a room's floor): solid from the ground
+//              to the highest surface over it, so nothing gets into a building, by a door, a wall
+//              or its roof
+//   hanging    when it only holds surface higher up (an eave, an awning, a porch roof): solid from
+//              the lowest of that surface to the highest, so you walk under it and stand on it
+// Heights are taken to quarter metres (down for a low side, up for a top), and columns that have
+// the same low and top are merged into boxes: along x, then along z. A pitched roof comes out as
+// steps a quarter metre high: it can be walked up and stood on, and nothing falls through it.
+// tool.sh: stack-gib 8
+// tool.sh: release
+#load "../../coax/lib/sys/tool.coax";
+#load "../../metaverse/tools/humans/ph_pack.coax";
+#load "../../metaverse/tools/humans/ph_face.coax";      // (ph_pack.coax names its face rig,
+#load "../../metaverse/tools/humans/ph_outfits.coax";   //  and that its outfits)
+#load "../../coax/lib/crypto/sha256.coax";
+#import "Basic";
+
+VP_VERTS :: 65536; VP_INDICES :: 262144; VP_LAYERS :: 16; VP_MODELS :: 12;
+VP_OUT :: 16777216;        // the pack's bytes at most
+VP_BUDGET :: 6291456;      // and the budget it states: 6 MiB
+VP_SIDE :: 512;            // a texture layer's side
+VP_CELL :: 0.5;            // metres: a collider cell
+VP_GRID :: 96;             // cells a side at most (48 m)
+VP_LOW :: 0.25; VP_HIGH :: 1.2;   // metres: surface between these heights makes a column standing (a wall, a post, a stair)
+VP_STEP :: 0.25;                  // metres: heights are taken to this
+VP_CREDIT :: "0 A.D. art by Wildfire Games|CC BY-SA 3.0|https://www.wildfiregames.com/";
+
+Vp :: struct {
+  v: [VP_VERTS * 48] u8; nv: int;
+  i: [VP_INDICES * 4] u8; ni: int;
+  tex: [VP_LAYERS] string; enc: [VP_LAYERS] string; nt: int;
+  txt: [1] Txt;
+  cat: [262144] u8;
+  out: [VP_OUT] u8;
+  solid: [VP_GRID * VP_GRID] bool; top: [VP_GRID * VP_GRID] f32; used: [VP_GRID * VP_GRID] bool;
+  bot: [VP_GRID * VP_GRID] f32; edge: [VP_GRID * VP_GRID] bool;   // a column's lowest surface over VP_LOW; whether it is reached from the edge
+  lo: [VP_GRID * VP_GRID] int; hi: [VP_GRID * VP_GRID] int;      // a solid column's low side and top, in steps (hi 0: not solid)
+}
+vp_word :: (b: [] u8, at: int, v: u32) { for k: 0..<4 { b[at + k] = cast,trunc(u8) (v >> cast(u32) (k * 8)); } }
+vp_layer :: (w: [] Vp, path: string, iw: [] ImgWork) -> int {
+  for i: 0..<w[0].nt { if base_name(w[0].tex[i]) == base_name(path) { return i; } }   // (a texture two models share is one layer: each model's folder has its own copy)
+  if w[0].nt >= VP_LAYERS { ph_die("village-pack: more texture layers than the tool keeps"); }
+  i := w[0].nt;
+  w[0].tex[i] = txt_keep(w[0].txt[..], path);
+  w[0].enc[i] = txt_keep(w[0].txt[..], cast(string) layer_bytes(path, VP_SIDE, false, iw));
+  w[0].nt += 1;
+  return i;
+}
+vp_mm :: (v: f32) -> int { return cast(int) floor(v * 1000 + 0.5); }
+// A point of a model's surface, for its colliders: its column is standing if the point is at a wall's height, as high as the highest point in it, and (over VP_LOW) as low as the lowest.
+vp_mark :: (w: [] Vp, x: f32, y: f32, z: f32, x0: f32, z0: f32) {
+  cx := cast(int) floor((x - x0) / VP_CELL); cz := cast(int) floor((z - z0) / VP_CELL);
+  if cx < 0 || cz < 0 || cx >= VP_GRID || cz >= VP_GRID { return; }
+  k := cz * VP_GRID + cx;
+  if y > w[0].top[k] { w[0].top[k] = y; }
+  if y >= VP_LOW && y < w[0].bot[k] { w[0].bot[k] = y; }
+  if y >= VP_LOW && y <= VP_HIGH { w[0].solid[k] = true; }
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 4 { ph_die("usage: tool.sh tools/village-pack.coax GLTF_DIR OUT.pack PIN.coax NAME [NAME ...]"); }
+  models := args_count(a[..]) - 3;
+  if models > VP_MODELS { ph_die("village-pack: more models than the tool keeps"); }
+  w: [1] Vp; g: [1] Gltf; iw: [1] ImgWork;
+  c: [1] Sb; c[0] = sb(w[0].cat[..]);
+  lines: [262144] u8; l: [1] Sb; l[0] = sb(lines[..]);   // the M, G and B lines, written after the head
+  root := args_at(a[..], 0);
+  for item: 0..<models {
+    name := args_at(a[..], 3 + item);
+    dir := txt_cat3(w[0].txt[..], root, "/", name);
+    gl_load(g[..], txt_cat(w[0].txt[..], dir, "/model.gltf"));
+    // its bounds as it was exported
+    lo := [3] f32.[100000, 100000, 100000]; hi := [3] f32.[-100000, -100000, -100000];
+    for mi: 0..<g[0].nx[GA_MESH] {
+      prims := gl_get(g[..], gl_at(g[..], GA_MESH, mi), "primitives");
+      for pi: 0..<jv_len(g[0].d[0], prims) {
+        attr := gl_get(g[..], jv_at(g[0].d[0], prims, pi), "attributes"); pos: [196608] f64;
+        nv := gl_acc(g[..], gl_int(g[..], attr, "POSITION", 0), pos[..]).count;
+        for v: 0..<nv { for k: 0..<3 { p := cast(f32) pos[v * 3 + k]; if p < lo[k] { lo[k] = p; } if p > hi[k] { hi[k] = p; } } }
+      }
+    }
+    // moved so its footprint's middle is over the origin and its own ground on the ground
+    // (a building of 0 A.D. reaches under its own ground, for sloping land: its ground stays the ground, and what is under it is under the page's)
+    mx := (lo[0] + hi[0]) * 0.5; mz := (lo[2] + hi[2]) * 0.5; my := ifx lo[1] < 0 then 0.0f32 else lo[1];
+    x0 := lo[0] - mx; z0 := lo[2] - mz;
+    for k: 0..<VP_GRID * VP_GRID { w[0].solid[k] = false; w[0].top[k] = 0; w[0].used[k] = false; w[0].bot[k] = 100000; w[0].edge[k] = false; w[0].lo[k] = 0; w[0].hi[k] = 0; }
+    first := w[0].ni;
+    for mi: 0..<g[0].nx[GA_MESH] {
+      prims := gl_get(g[..], gl_at(g[..], GA_MESH, mi), "primitives");
+      for pi: 0..<jv_len(g[0].d[0], prims) {
+        pr := jv_at(g[0].d[0], prims, pi); attr := gl_get(g[..], pr, "attributes");
+        pos: [196608] f64; nor: [196608] f64; uv: [131072] f64; idx: [262144] f64;
+        nv := gl_acc(g[..], gl_int(g[..], attr, "POSITION", 0), pos[..]).count;
+        r := gl_acc(g[..], gl_int(g[..], attr, "NORMAL", 0), nor[..]); r = gl_acc(g[..], gl_int(g[..], attr, "TEXCOORD_0", 0), uv[..]);
+        ni := gl_acc(g[..], gl_int(g[..], pr, "indices", 0), idx[..]).count;
+        mat := gl_at(g[..], GA_MAT, gl_int(g[..], pr, "material", 0));
+        tex := gl_get(g[..], gl_get(g[..], mat, "pbrMetallicRoughness"), "baseColorTexture");
+        im := gl_at(g[..], GA_IMG, gl_int(g[..], gl_at(g[..], GA_TEX, gl_int(g[..], tex, "index", 0)), "source", 0));
+        layer := vp_layer(w[..], txt_cat3(w[0].txt[..], dir, "/", gl_str(g[..], im, "uri")), iw[..]);
+        base := w[0].nv;
+        if base + nv > VP_VERTS || w[0].ni + ni > VP_INDICES { ph_die("village-pack: more geometry than the tool keeps"); }
+        for v: 0..<nv {
+          at := (base + v) * 48; b := w[0].v[..];
+          vp_word(b, at, f32_bits(cast(f32) pos[v * 3] - mx)); vp_word(b, at + 4, f32_bits(cast(f32) pos[v * 3 + 1] - my)); vp_word(b, at + 8, f32_bits(cast(f32) pos[v * 3 + 2] - mz));
+          for k: 0..<3 { vp_word(b, at + 12 + k * 4, f32_bits(cast(f32) nor[v * 3 + k])); }
+          vp_word(b, at + 24, f32_bits(cast(f32) uv[v * 2])); vp_word(b, at + 28, f32_bits(cast(f32) uv[v * 2 + 1]));
+          vp_word(b, at + 32, cast(u32) 0x00ffffff | (cast(u32) layer << 24));
+          for k: 36..<48 { b[at + k] = 0; }
+        }
+        w[0].nv += nv;
+        for t: 0..<ni / 3 {
+          tri := [3] int.[cast(int) idx[t * 3], cast(int) idx[t * 3 + 1], cast(int) idx[t * 3 + 2]];
+          for k: 0..<3 { vp_word(w[0].i[..], w[0].ni * 4, cast(u32) (base + tri[k])); w[0].ni += 1; }
+          // the triangle's surface, sampled every fifth of a metre or so, for the colliders
+          p: [9] f32;
+          for k: 0..<3 { p[k * 3] = cast(f32) pos[tri[k] * 3] - mx; p[k * 3 + 1] = cast(f32) pos[tri[k] * 3 + 1] - my; p[k * 3 + 2] = cast(f32) pos[tri[k] * 3 + 2] - mz; }
+          long: f32 = 0;
+          for k: 0..<3 { j := (k + 1) % 3; d := sqrt((p[k * 3] - p[j * 3]) * (p[k * 3] - p[j * 3]) + (p[k * 3 + 1] - p[j * 3 + 1]) * (p[k * 3 + 1] - p[j * 3 + 1]) + (p[k * 3 + 2] - p[j * 3 + 2]) * (p[k * 3 + 2] - p[j * 3 + 2])); if d > long { long = d; } }
+          steps := cast(int) (long / 0.2) + 1; if steps > 200 { steps = 200; }
+          for s: 0..<steps + 1 { for q: 0..<steps + 1 - s {
+            fa := cast(f32) s / cast(f32) steps; fb := cast(f32) q / cast(f32) steps; fc := 1 - fa - fb;
+            vp_mark(w[..], p[0] * fa + p[3] * fb + p[6] * fc, p[1] * fa + p[4] * fb + p[7] * fc, p[2] * fa + p[5] * fb + p[8] * fc, x0, z0);
+          } }
+        }
+      }
+    }
+    count := w[0].ni - first;
+    sb_put(l[..], "M "); sb_put(l[..], name); sb_byte(l[..], ' '); sb_int(l[..], first); sb_byte(l[..], ' '); sb_int(l[..], count); sb_put(l[..], " 0");
+    b6 := [6] f32.[lo[0] - mx, lo[1] - my, lo[2] - mz, hi[0] - mx, hi[1] - my, hi[2] - mz];
+    for k: 0..<6 { sb_byte(l[..], ' '); sb_fixed(l[..], cast(f64) b6[k], 3); }
+    sb_byte(l[..], '\n');
+    sb_put(l[..], "G "); sb_int(l[..], item); sb_byte(l[..], ' '); sb_int(l[..], first); sb_byte(l[..], ' '); sb_int(l[..], count);
+    for k: 0..<6 { sb_byte(l[..], ' '); sb_int(l[..], vp_mm(b6[k])); }
+    sb_byte(l[..], '\n');
+    // the colliders (the header says how): which columns the model's edge reaches along the ground
+    // without crossing a standing one, then each column's low side and top
+    cols := cast(int) ((hi[0] - lo[0]) / VP_CELL) + 1; rows := cast(int) ((hi[2] - lo[2]) / VP_CELL) + 1;
+    if cols > VP_GRID { cols = VP_GRID; } if rows > VP_GRID { rows = VP_GRID; }
+    for cz: 0..<rows { for cx: 0..<cols { if (cz == 0 || cx == 0 || cz == rows - 1 || cx == cols - 1) && !w[0].solid[cz * VP_GRID + cx] { w[0].edge[cz * VP_GRID + cx] = true; } } }
+    grew := true;
+    while grew {
+      grew = false;
+      for cz: 0..<rows { for cx: 0..<cols {
+        k := cz * VP_GRID + cx;
+        if w[0].edge[k] || w[0].solid[k] { continue; }
+        near := (cx > 0 && w[0].edge[k - 1]) || (cx + 1 < cols && w[0].edge[k + 1]) || (cz > 0 && w[0].edge[k - VP_GRID]) || (cz + 1 < rows && w[0].edge[k + VP_GRID]);
+        if near { w[0].edge[k] = true; grew = true; }
+      } }
+    }
+    for cz: 0..<rows { for cx: 0..<cols {
+      k := cz * VP_GRID + cx;
+      standing := w[0].solid[k]; inside := !standing && !w[0].edge[k]; hanging := !standing && w[0].edge[k] && w[0].top[k] >= VP_LOW;
+      if !standing && !inside && !hanging { continue; }
+      t := w[0].top[k];
+      // (a room's floor with no roof over this very column: as high as the walls beside it)
+      if inside && t < VP_LOW { t = 2.5; }
+      w[0].hi[k] = cast(int) floor(t / VP_STEP + 0.999);
+      w[0].lo[k] = ifx hanging then cast(int) floor(w[0].bot[k] / VP_STEP) else 0;
+      if w[0].hi[k] <= w[0].lo[k] { w[0].hi[k] = w[0].lo[k] + 1; }
+    } }
+    // columns with the same low side and top in runs along x, a run grown along z while the next row has the same run
+    boxes := 0;
+    for cz: 0..<rows { for cx: 0..<cols {
+      k := cz * VP_GRID + cx;
+      if w[0].hi[k] == 0 || w[0].used[k] { continue; }
+      x1 := cx;
+      while x1 + 1 < cols && !w[0].used[cz * VP_GRID + x1 + 1] && w[0].hi[cz * VP_GRID + x1 + 1] == w[0].hi[k] && w[0].lo[cz * VP_GRID + x1 + 1] == w[0].lo[k] { x1 += 1; }
+      z1 := cz;
+      while z1 + 1 < rows {
+        whole := true;
+        for x: cx..<x1 + 1 { q := (z1 + 1) * VP_GRID + x; if w[0].used[q] || w[0].hi[q] != w[0].hi[k] || w[0].lo[q] != w[0].lo[k] { whole = false; } }
+        if !whole { break; }
+        z1 += 1;
+      }
+      for z: cz..<z1 + 1 { for x: cx..<x1 + 1 { w[0].used[z * VP_GRID + x] = true; } }
+      sb_put(l[..], "B "); sb_int(l[..], item);
+      box := [6] f32.[x0 + cast(f32) cx * VP_CELL, cast(f32) w[0].lo[k] * VP_STEP, z0 + cast(f32) cz * VP_CELL, x0 + cast(f32) (x1 + 1) * VP_CELL, cast(f32) w[0].hi[k] * VP_STEP, z0 + cast(f32) (z1 + 1) * VP_CELL];
+      for q: 0..<6 { sb_byte(l[..], ' '); sb_int(l[..], vp_mm(box[q])); }
+      sb_byte(l[..], '\n');
+      boxes += 1;
+    } }
+    print("% : % triangles, % by % by % m, % solid boxes\n", name, count / 3, hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], boxes);
+  }
+  // the pack: its table, then each entry from a 4-byte boundary. The catalog states the pack's size,
+  // so it is written until the size it states is the size it has (the size's own digits count).
+  entries := 3 + w[0].nt;
+  total := 0;
+  for pass: 0..<6 {
+    stated := total;
+    c[0].n = 0;
+    sb_put(c[..], "pack village\nbudget "); sb_int(c[..], VP_BUDGET); sb_put(c[..], "\nbytes ");
+    sb_int(c[..], total); sb_put(c[..], "\nL 0 "); sb_put(c[..], VP_CREDIT); sb_byte(c[..], '\n');
+    sb_put(c[..], sb_text(l[..]));
+    for i: 0..<w[0].nt { sb_put(c[..], "T "); sb_int(c[..], i); sb_byte(c[..], ' '); sb_put(c[..], base_name(w[0].tex[i])); sb_put(c[..], " 0\n"); }
+    b := w[0].out[..];
+    for k: 0..<32 + 48 * entries { b[k] = 0; }
+    at := 32 + 48 * entries;
+    at = wr_entry(b, 0, 1, "catalog", at, c[0].n); b[32 + 1] = 255;
+    for k: 0..<c[0].n { b[at + k] = w[0].cat[k]; } at += c[0].n;
+    at = wr_entry(b, 1, 2, "vertices", at, w[0].nv * 48); b[32 + 48 + 1] = 255;
+    for k: 0..<w[0].nv * 48 { b[at + k] = w[0].v[k]; } at += w[0].nv * 48;
+    at = wr_entry(b, 2, 3, "indices", at, w[0].ni * 4); b[32 + 96 + 1] = 255;
+    for k: 0..<w[0].ni * 4 { b[at + k] = w[0].i[k]; } at += w[0].ni * 4;
+    for i: 0..<w[0].nt {
+      e := w[0].enc[i];
+      if at + e.count + 8 > VP_OUT { ph_die("village-pack: the pack is past the tool's room"); }
+      at = wr_entry(b, 3 + i, 4, base_name(w[0].tex[i]), at, e.count);   // (its licence: source 0)
+      for k: 0..<e.count { b[at + k] = e[k]; } at += e.count;
+    }
+    while at % 4 != 0 { b[at] = 0; at += 1; }
+    total = at;
+    b[0] = 'V'; b[1] = 'P'; b[2] = 'K'; b[3] = '1';
+    put_u32(b, 4, entries); put_u32(b, 8, total); put_u32(b, 12, VP_BUDGET); put_u32(b, 16, 32); put_u32(b, 20, 32 + 48 * entries);
+    if total == stated { break; }
+    if pass == 5 { ph_die("village-pack: the pack's size did not settle"); }
+  }
+  if total > VP_BUDGET { ph_die("village-pack: the pack is over its budget"); }
+  if !fs_write(args_at(a[..], 1), cast(string) w[0].out[0..<total]) { ph_die("village-pack: can't write the pack"); }
+  print("wrote % : % bytes, % vertices, % triangles, % layers\n", args_at(a[..], 1), total, w[0].nv, w[0].ni / 3, w[0].nt);
+  // the pin: the pack's size and SHA-256, as Coax
+  st: [SHA_STATE_BYTES] u8; digest: [32] u8;
+  ok := sha256_init(st[..]) == 0;
+  at := 0;
+  while ok && at < total { n := ifx total - at > 65536 then 65536 else total - at; ok = sha256_update_checked(st[..], w[0].out[at..<at + n], false) == 0; at += n; }
+  ok = ok && sha256_final_checked(st[..], digest[..], false) == 0;
+  if !ok { ph_die("village-pack: the pack's SHA-256 could not be made"); }
+  c[0].n = 0;
+  sb_put(c[..], "// Generated by tools/village-pack.coax with web/assets/village.pack; do not edit. The pack's size\n// and SHA-256: web/world-village.coax admits the pack the host fetched only if both are these.\n");
+  sb_put(c[..], "VL_PACK_BYTES :: "); sb_int(c[..], total); sb_put(c[..], ";\nVL_PACK_SHA256 :: [32] u8.[");
+  for k: 0..<32 { if k > 0 { sb_put(c[..], ", "); } sb_int(c[..], cast(int) digest[k]); }
+  sb_put(c[..], "];\n");
+  if !fs_write(args_at(a[..], 2), sb_text(c[..])) { ph_die("village-pack: can't write the pin"); }
+  return 0;
+}

@@ -1,0 +1,396 @@
+// The local Claude runner (GitHub issue 4; docs/agents-audit.md, recommendation 1): what makes an
+// agent's turns on this computer, lifted out of the Agents pane. A runner is given an agent's
+// record (agent-record.coax) and the person's messages, and it says what happened only as events
+// appended to that record (ag_emit and its helpers, agents.coax): a message, a tool call with its
+// arguments and short result, an edit with the revisions before and after and the things it
+// touched, an ask, usage, an error, a state change. The pane draws the record; the record's log is
+// what persists, what the CLI and the website read, and what is reported to the account.
+//
+// The seam another runner plugs into (an attached agent, issue 6; a Code agent, issue 8): read
+// the record (p[0].store[0].r[k]); take the person's next words from ag_take (a message, or the
+// answer to an ask); append what happens with ag_emit, ag_emit_say, ag_emit_tool, ag_emit_edit,
+// ag_emit_ask, ag_emit_usage and ag_set_state; carry tool calls out as rows with
+// gb_command_run_world and the agent's own id (AG_ID0 + k), so its edits are one ⌘Z step each and
+// undo-turn takes back only its own. The record's runner field names which runner it is: this
+// one is "claude".
+//
+// This runner is the person's own Claude Code, run in-process by the Coax Claude Agent SDK
+// (coax/lib/agent/claude), as Everglade's Next issue does:
+//   - Its tools are the command table's rows with GB_PANE, one in-process MCP tool each on one
+//     server, `gamebuilder` (the model sees mcp__gamebuilder__read_level). What a call changed
+//     stays highlighted in the agent's colour (changes.coax) and is an edit event with its words.
+//     ask is the pane's own: the turn waits on the person's answer, a button or their own words.
+//   - Built-in tools are off (--tools with none), no settings files are read, the session runs in
+//     a folder of its own the host names, with AGR_TURNS turns and AG_BUDGET_USD a message at
+//     most. ANTHROPIC_API_KEY and its kin are taken out of its environment: the person's login,
+//     never a key.
+//   - One session at a time (a Claude plan runs one automated turn at a time): another agent
+//     waits, queued, and its row says so.
+//   - The session is polled from the host's clock (ed_agents_tick), never waited on.
+//   - Starting `claude` needs a build without the App Sandbox (the GameBuilder-macOS-Dev target).
+//   - A Code agent (code-agent.coax) runs here too, with its own options, brief and tools: Claude
+//     Code's normal ones in its worktree, and its three reporting tools.
+//   scripts/check.sh
+
+#load "../../coax/lib/agent/claude/claude.coax";
+#load "brief.coax";        // what a local agent is told and how claude is found, shared with the resident service (cli/resident.coax)
+
+AG_RUNNER :: "claude";     // the record's runner for this one
+AG_SERVER :: "gamebuilder";
+AG_PROMPT :: 32768;        // bytes of a first message: the brief and the goal
+AG_SYSTEM :: 16384;
+AG_STRS :: 65536;          // the session's names, descriptions and schemas, kept while it runs
+AG_ASK :: 240;             // bytes of an ask's question
+
+
+AG_ASK_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\",\"maxLength\":240,\"description\":\"One short question.\"},\"choices\":{\"type\":\"array\",\"minItems\":2,\"maxItems\":4,\"items\":{\"type\":\"string\",\"maxLength\":40},\"description\":\"The answers, each a few words.\"},\"engine\":{\"type\":\"string\",\"maxLength\":240,\"description\":\"Only when the level needs an engine change: that change, in one or two sentences. The person is offered a Code agent on the engine for it.\"}},\"required\":[\"question\",\"choices\"],\"additionalProperties\":false}";
+
+// ---- the session's options: the brief, the tools and the limits
+
+// A row's tool, its name and schema: coax/mcp.coax's gb_tool_name and gb_tool_schema.
+ag_tool_name :: (verb: string, out: [] u8) -> string { return gb_tool_name(verb, out); }
+ag_schema :: (c: GbCommand, out: [] u8) -> string { return gb_tool_schema(c, true, out); }
+
+// The options a session for agent k starts with, program first tried: the rows' tools on one
+// server, nothing built in, no settings files, and the limits.
+ag_options :: (p: [] AgPane, k: int, program: string) {
+  if ca_of(p, k) >= 0 { ca_options(p, k, program); return; }
+  p[0].strs_n = 0; p[0].tools = 0;
+  o := p[0].opt[..];
+  o[0] = ClOptions.{};
+  o[0].program = ag_keep(p, program);
+  // the brief: the rules, the batch's form and the agent's kind
+  t := [1] Text.[Text.{buf = p[0].system[..]}];
+  tx_put(t[..], AG_RULES);
+  tx_put(t[..], "The batch apply_edits takes:\n\n");
+  gb_batch_text(t[..]);
+  kind := p[0].store[0].r[k].kind;
+  tx_put(t[..], AG_KIND_BRIEF[ifx kind >= 0 && kind < AGR_KINDS && AG_KIND_BRIEF[kind].count > 0 then kind else AGR_BUILD]);
+  p[0].system_n = t[0].at;
+  o[0].system_prompt = cast(string) p[0].system[0..<p[0].system_n];
+  o[0].persist_session = false;
+  o[0].setting_sources_set = true;           // no settings files: no project rules, hooks or other servers
+  o[0].tools_set = true;                     // the base set is empty: no Bash, no files, no web
+  o[0].max_turns = AGR_TURNS;
+  o[0].max_budget_usd = AG_BUDGET_USD; o[0].has_max_budget = true;
+  if p[0].folder_n > 0 { o[0].cwd = cast(string) p[0].folder[0..<p[0].folder_n]; }
+  server := cl_add_server(o, AG_SERVER, "1");
+  nb: [64] u8; db: [1024] u8; sb: [4096] u8; ab: [96] u8;
+  for v: 0..<GB_N {
+    c := GB_COMMANDS[v];
+    if (c.surfaces & GB_PANE) == 0 { continue; }
+    name := ag_keep(p, ag_tool_name(c.verb, nb[..]));
+    about := ag_keep(p, gb_mcp_description(c, db[..]));
+    schema := ag_keep(p, ifx v == VERB_ASK then AG_ASK_SCHEMA else ag_schema(c, sb[..]));
+    tool := cl_add_server_tool(o, server, name, about, schema);
+    if tool < 0 { continue; }
+    p[0].tool_verb[tool] = v; p[0].tools += 1;
+    an := ag_put(ab[..], 0, "mcp__"); an = ag_put(ab[..], an, AG_SERVER); an = ag_put(ab[..], an, "__"); an = ag_put(ab[..], an, name);
+    cl_add_allowed(o, ag_keep(p, cast(string) ab[0..<an]));
+  }
+  // the person's login, never a key, and the person's usual places for programs
+  for v: AG_NO_KEYS { cl_remove_env(o, v); }
+  if p[0].path_n > 0 { cl_add_env(o, cast(string) p[0].path[0..<p[0].path_n]); }
+}
+
+// ---- the session
+
+// Starts agent k's session with its first message: "" when it started, else why not.
+ag_start :: (p: [] AgPane, k: int, message: string) -> string {
+  if p[0].here != AG_HERE_LOCAL { return ag_here_words(p[0].here); }
+  hb: [1024] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count > 0 && p[0].path_n == 0 {
+    n := ag_put(p[0].path[..], 0, "PATH="); n = ag_put(p[0].path[..], n, home); n = ag_put(p[0].path[..], n, "/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
+    p[0].path_n = n;
+  }
+  pb: [1200] u8;
+  why := "";
+  for tries: 0..<AG_PROGRAMS {
+    program := ag_program(tries, home, pb[..]);
+    if program.count == 0 { continue; }
+    ag_options(p, k, program);
+    p[0].q[0] = ClQuery.{};
+    cl_init(p[0].q[..], p[0].line[..], p[0].arena[..], p[0].out[..]);
+    p[0].q[0].options = p[0].opt[0];
+    why = cl_start(p[0].q[..], p[0].p[..], "", true, p[0].scratch[..]);
+    if why.count == 0 { break; }
+    p[0].p[0].handle = -1;
+    if why != "claude executable not found" { break; }
+  }
+  if why.count > 0 {
+    if why == "claude executable not found" { p[0].claude = AG_CLAUDE_MISSING; return "Claude Code isn't installed on this computer. Install it, then try again."; }
+    return why;
+  }
+  if p[0].claude != AG_CLAUDE_READY { p[0].claude = AG_CLAUDE_FOUND; }
+  p[0].live = k; p[0].owed = true; p[0].asking = false;
+  p[0].prompt_n = ag_put(p[0].prompt[..], 0, message);
+  return "";
+}
+// The session ends (the process and its group stop); the agent's state is the caller's.
+ag_end :: (p: [] AgPane) {
+  if p[0].p[0].handle >= 0 { cl_close(p[0].p[..]); }
+  p[0].p[0].handle = -1;
+  p[0].live = -1; p[0].asking = false; p[0].owed = false;
+}
+
+// The person's next words for agent k (its record says it is queued): to its session when it has
+// one waiting for the person, else a new session with the brief, else it waits its turn. A message
+// starts its meter again.
+ag_take :: (p: [] AgPane, e: [] Editor, k: int, words: string) {
+  r := p[0].store[0].r[k];
+  a := p[0].agents[k..<k + 1];
+  if p[0].live == k && p[0].p[0].handle >= 0 && r.state != AGR_WORKING {
+    if p[0].owed { p[0].prompt_n = ag_put(p[0].prompt[..], 0, words); }
+    else { cl_send_user(p[0].q[..], words); }
+    ag_message_starts(a); a[0].spent_base = a[0].spent;
+    ag_set_state(p, k, AGR_WORKING, ""); return;
+  }
+  // the session is another agent's: it ends when that agent is not working
+  if p[0].live >= 0 && p[0].live != k {
+    other := p[0].store[0].r[p[0].live].state;
+    if other == AGR_WORKING || other == AGR_WAITING {
+      ag_set_pending(p, k, words);
+      ag_set_state(p, k, AGR_QUEUED, ""); return;
+    }
+  }
+  ag_end(p);
+  bb: [AG_PROMPT] u8;
+  why := ag_start(p, k, ag_brief(p, e, k, words, bb[..]));
+  if why.count > 0 { ag_set_state(p, k, AGR_FAILED, why); return; }
+  ag_message_starts(a); a[0].spent = 0; a[0].spent_base = 0;
+  // a session starts: it says what it costs (docs/agents.md, "What must be true")
+  ag_set_state(p, k, AGR_WORKING, AGR_LOCAL_COST);
+}
+// A message's meter starts at nothing: no turns, no cents, nothing changed.
+ag_message_starts :: (a: [] AgAgent) { a[0].turns = 0; a[0].cents = 0; a[0].turn_id_n = 0; a[0].batches = 0; a[0].lit = 0; }
+// The first message of a new session: what the agent is and does, and where.
+ag_brief :: (p: [] AgPane, e: [] Editor, k: int, words: string, out: [] u8) -> string {
+  if ca_of(p, k) >= 0 { return ca_brief(p, k, words, out); }
+  r := p[0].store[0].r[k..<k + 1];
+  n := ag_put(out, 0, "The open level is level "); n = ag_put_int(out, n, cast(int) r[0].level);
+  n = ag_put(out, n, ifx ed_may_edit(e) then ".\n\n" else ", which is locked: it isn't the person's to change.\n\n");
+  n = ag_put(out, n, "Your goal, in the person's words: "); n = ag_put(out, n, agr_job_of(p[0].store[..], k));
+  if words.count > 0 && words != agr_job_of(p[0].store[..], k) { n = ag_put(out, n, "\n\nYou worked on this before in a session that ended. The person now says: "); n = ag_put(out, n, words); }
+  return cast(string) out[0..<n];
+}
+// The next queued agent, if any, starts once the session is free.
+ag_next :: (p: [] AgPane, e: [] Editor) {
+  if p[0].live >= 0 { s := p[0].store[0].r[p[0].live].state; if s == AGR_WORKING || s == AGR_WAITING { return; } }
+  for k: 0..<p[0].store[0].n {
+    r := p[0].store[0].r[k];
+    if r.state != AGR_QUEUED || r.place != AGR_LOCAL || cast(string) r.runner[0..<r.runner_n] != AG_RUNNER { continue; }
+    if p[0].here != AG_HERE_LOCAL { return; }
+    msg: [AGR_MESSAGE_MAX] u8; mn := ag_put(msg[..], 0, cast(string) p[0].agents[k].pending[0..<p[0].agents[k].pending_n]);
+    p[0].agents[k].pending_n = 0;
+    ag_take(p, e, k, cast(string) msg[0..<mn]);
+    return;
+  }
+}
+
+// One event from the session.
+ag_event :: (p: [] AgPane, e: [] Editor, ev: ClEvent) {
+  k := p[0].live; if k < 0 { return; }
+  if ev.kind == ClEventKind.initialized {
+    if p[0].owed { cl_send_user(p[0].q[..], cast(string) p[0].prompt[0..<p[0].prompt_n]); p[0].owed = false; }
+    return;
+  }
+  if ev.kind == ClEventKind.message { ag_on_message(p, e, ev.message); return; }
+  if ev.kind == ClEventKind.tool_call { if ca_of(p, k) >= 0 { ca_tool(p, e, ev); } else { ag_tool(p, e, ev); } return; }
+  if ev.kind == ClEventKind.permission { ca_permission(p, e, ev); return; }
+  if ev.kind == ClEventKind.failed || ev.kind == ClEventKind.end {
+    if p[0].store[0].r[k].state != AGR_WORKING { ag_end(p); return; }    // a session waiting for the person went: the next message starts one
+    eb: [2048] u8;
+    why := cl_stderr(p[0].p[..], eb[..]);
+    if why.count == 0 && ev.kind == ClEventKind.failed { why = cl_error(p[0].q[..]); }
+    ag_end(p);
+    ag_set_state(p, k, AGR_FAILED, ifx why.count > 0 then why else "Claude Code stopped before it answered.");
+    ag_later(p, e, k);
+    ag_next(p, e);
+  }
+}
+ag_on_message :: (p: [] AgPane, e: [] Editor, m: ClMessage) {
+  if m.parent_tool_use_id.count > 0 { return; }
+  k := p[0].live;
+  l := m.line; ar := p[0].q[0].ar[..];
+  // every run is the person's Claude login: "none" is the login; anything else is a key
+  if m.kind == ClKind.system && m.system == ClSystem.init {
+    source := cl_str(ar, l, "apiKeySource");
+    if source.count > 0 && source != "none" {
+      ag_end(p);
+      ag_set_state(p, k, AGR_FAILED, AG_KEY_WORDS);
+      return;
+    }
+    return;
+  }
+  if m.kind == ClKind.assistant {
+    // a model message of its own is a turn (one comes in parts, each with the same id)
+    a := p[0].agents[k..<k + 1];
+    id := cl_str(ar, l, "message.id");
+    if id.count == 0 || id.count > a[0].turn_id.count || cast(string) a[0].turn_id[0..<a[0].turn_id_n] != id {
+      a[0].turns += 1;
+      a[0].turn_id_n = ifx id.count <= a[0].turn_id.count then ag_put(a[0].turn_id[..], 0, id) else 0;
+    }
+    content := cl_raw(l, "message.content");
+    for i: 0..<cl_count(content) {
+      item := cl_json(content, cl_item(content, i));
+      type := cl_str(ar, item, "type");
+      if type == "text" { ag_emit_say(p, k, AGR_AGENT, cl_str(ar, item, "text")); }
+    }
+    err := cl_assistant_error(l, cl_at(l, "error"));
+    if err == ClAssistantError.authentication_failed || err == ClAssistantError.oauth_org_not_allowed {
+      p[0].claude = AG_CLAUDE_SIGNED_OUT;
+      ag_end(p);
+      ag_set_state(p, k, AGR_FAILED, AG_SIGNED_OUT_WORDS);
+      ag_next(p, e);
+    }
+    return;
+  }
+  // the plan's limit: a rejected one pauses it, until the time the plan says (brief.coax)
+  if m.kind == ClKind.rate_limit_event {
+    rl := cl_rate_limit_of(ar, m);
+    p[0].agents[k].pause_until = ag_pause_until(rl.status, ifx rl.resets_at.has then cast(s64) rl.resets_at.value else 0);
+    return;
+  }
+  if m.kind == ClKind.result {
+    p[0].claude = AG_CLAUDE_READY;
+    // what this message took: its turns, and the cents its session spent since the message began
+    a := p[0].agents[k..<k + 1];
+    turns := cl_int(l, "num_turns"); ms := cl_int(l, "duration_ms"); cost := cl_num(l, "total_cost_usd");
+    if turns.ok { a[0].turns = turns.value; }
+    if cost.ok { a[0].spent = cost.value; a[0].cents = cast(int) ((a[0].spent - a[0].spent_base) * 100.0 + 0.5); }
+    ag_emit_usage(p, k, a[0].turns, a[0].cents, ifx ms.ok then ms.value else 0);
+    if cl_bool(l, "is_error").value || m.result != ClResultKind.success {
+      why := cl_str(ar, l, "result");
+      wb: [160] u8;
+      if m.result == ClResultKind.error_max_turns { why = ag_limit_words(p[0].store[0].r[k], true, wb[..]); }
+      if m.result == ClResultKind.error_max_budget_usd { why = ag_limit_words(p[0].store[0].r[k], false, wb[..]); }
+      if p[0].agents[k].pause_until > 0 { ag_pause(p, k, p[0].agents[k].pause_until); }
+      else { ag_set_state(p, k, AGR_FAILED, ifx why.count > 0 then why else "The turn failed."); }
+    } else { ag_set_state(p, k, AGR_DONE, ""); }
+    if ca_of(p, k) >= 0 { ca_turn_end(p, k); }
+    ag_later(p, e, k);
+    ag_next(p, e);
+  }
+}
+
+// Paused until the plan's reset: a state event that says when (agr_append keeps it in the record).
+ag_pause :: (p: [] AgPane, k: int, until: s64) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_STATE); ev[0].state = AGR_PAUSED; ev[0].until = until; agr_event_text(ev[..], AGR_PLAN_PAUSED);
+  _ = ag_emit(p, k, ev[..]);
+  p[0].store[0].r[k].step_n = 0; p[0].agents[k].pause_until = 0;
+}
+// A paused agent of this runner's goes on, queued, once its plan's limit lifts: nothing else moves by itself.
+ag_resume_due :: (p: [] AgPane) {
+  for k: 0..<p[0].store[0].n {
+    r := p[0].store[0].r[k];
+    if r.state != AGR_PAUSED || r.place != AGR_LOCAL || r.resumes <= 0 || p[0].now < r.resumes || cast(string) r.runner[0..<r.runner_n] != AG_RUNNER { continue; }
+    p[0].agents[k].pending_n = agr_set(p[0].agents[k].pending[..], AG_RESUMED);
+    ag_set_state(p, k, AGR_QUEUED, "");
+  }
+}
+// A tool call: an ask waits for the person; any other is the row's, on the open level.
+ag_tool :: (p: [] AgPane, e: [] Editor, ev: ClEvent) {
+  k := p[0].live;
+  if ev.server != 0 || ev.tool < 0 || ev.tool >= p[0].tools { cl_tool_text(p[0].q[..], "no such tool", true); return; }
+  v := p[0].tool_verb[ev.tool];
+  nb: [64] u8;
+  name := ag_tool_name(GB_COMMANDS[v].verb, nb[..]);
+  if v == VERB_ASK {
+    q: [AG_ASK] u8; qn: [1] int; ch: [1] AgrEvent;
+    why := ag_ask_read(ev.arguments, q[..], qn[..], ch[..]);
+    if why.count > 0 { ag_emit_tool(p, k, name, ev.arguments, false, why); cl_tool_text(p[0].q[..], why, true); return; }
+    p[0].asking = true;
+    ag_emit_ask(p, k, cast(string) q[0..<qn[0]], ch[..]);
+    // an engine change it needs: the pane offers a Code agent on the engine for it
+    ag_ask_engine(p, k, ev.arguments);
+    return;
+  }
+  r := p[0].store[0].r[k];
+  if r.level != ed_level(e) {
+    refused := "{\"ok\":false,\"error\":\"not-found\",\"why\":\"the person has another level open now: wait for them to open yours again\"}";
+    ag_emit_tool(p, k, name, ev.arguments, false, "the person has another level open now");
+    cl_tool_text(p[0].q[..], refused, true);
+    return;
+  }
+  r2 := ag_call(p, e, k, v, ev.arguments);
+  cl_tool_text(p[0].q[..], r2.json, r2.code != GB_DONE);
+}
+// Agent k's call of row v with its arguments, carried out on the open level as the agent: a tool
+// event says how it went, and what it changed is highlighted (changes.coax) and an edit event with
+// the revisions either side and its words. undo_turn's taking back is marked on the change's card.
+ag_call :: (p: [] AgPane, e: [] Editor, k: int, v: int, args: string) -> GbResult {
+  a := p[0].agents[k..<k + 1];
+  nb: [64] u8;
+  levels := [1] s32.[ed_level(e)];
+  before := ed_agent_rev(e);
+  ch_snap(e, p[0].snap[..]);
+  r := gb_command_run_as(e, v, args, levels[..], p[0].answer[..], cast(s32) (AG_ID0 + k));
+  ok := r.code == GB_DONE;
+  // a play-test's event names the revision it played: its picture's (pictures.coax)
+  played := v == VERB_PLAY_TEST && ok;
+  ag_emit_tool_at(p, k, ag_tool_name(GB_COMMANDS[v].verb, nb[..]), args, ok, ag_short(r.json), ifx played then ed_level(e) else 0, ifx played then ed_agent_rev(e) else 0);
+  if !ok { return r; }
+  things: [CH_MARKS] ChThing;
+  lit := ch_record_into(e, cast(s32) (AG_ID0 + k), p[0].snap[..], things[..]);
+  if v == VERB_UNDO_TURN {
+    p[0].changed = true; if a[0].batches > 0 { a[0].batches -= 1; }
+    ag_undone(p, k);
+    return r;
+  }
+  after := ed_agent_rev(e);
+  if lit > 0 { p[0].changed = true; a[0].lit += lit; if v == VERB_APPLY_EDITS { a[0].batches += 1; } }
+  if lit > 0 || after != before { ag_emit_edit(p, k, ed_level(e), before, after, things[0..<lit]); }
+  return r;
+}
+// A row's answer, short, for a tool event: a refusal's why, else the answer cut to AGR_RESULT.
+ag_short :: (json: string) -> string {
+  nodes: [64] JvNode; d: [1] Jv;
+  if jv_parse(d[..], json, nodes[..]) && !jv_bool(d[0], jv_get(d[0], 0, "ok")) {
+    w := jv_get(d[0], 0, "why");
+    if w >= 0 { raw := jv_raw(d[0], w); if raw.count >= 2 { return agr_cut(cast(string) raw[1..<raw.count - 1], AGR_RESULT); } }
+  }
+  return agr_cut(json, AGR_RESULT);
+}
+// An ask's question and answers: "" when they are good, else why not. The answers go into ch's
+// choice fields, as an ask event holds them.
+ag_ask_read :: (args: string, q: [] u8, qn: [] int, ch: [] AgrEvent) -> string {
+  nodes: [32] JvNode; d: [1] Jv;
+  ch[0] = agr_event(AGR_ASK);
+  if !jv_parse(d[..], args, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return "the arguments are {\"question\":...,\"choices\":[...]}"; }
+  qa := jv_get(d[0], 0, "question"); c := jv_get(d[0], 0, "choices");
+  if jv_kind(d[0], qa) != JV_STRING { return "question is a string"; }
+  n := jv_str(d[0], qa, q);
+  if n < 1 || n > AG_ASK { return "question is 1 to 240 bytes"; }
+  if jv_kind(d[0], c) != JV_ARRAY || jv_len(d[0], c) < 2 || jv_len(d[0], c) > AGR_CHOICES { return "choices is 2 to 4 answers"; }
+  for i: 0..<jv_len(d[0], c) {
+    at := jv_at(d[0], c, i);
+    if jv_kind(d[0], at) != JV_STRING { return "each choice is a string"; }
+    m := jv_str(d[0], at, ch[0].choice[i * AGR_CHOICE..<(i + 1) * AGR_CHOICE]);
+    if m < 1 { return "each choice is 1 to 40 bytes"; }
+    ch[0].choice_n[i] = m;
+  }
+  qn[0] = n; ch[0].choices = jv_len(d[0], c);
+  return "";
+}
+
+// An ask's engine words (the engine change a level needs), kept for the pane's offer.
+ag_ask_engine :: (p: [] AgPane, k: int, args: string) {
+  nodes: [32] JvNode; d: [1] Jv;
+  a := p[0].agents[k..<k + 1]; a[0].engine_n = 0;
+  if !jv_parse(d[..], args, nodes[..]) { return; }
+  g := jv_get(d[0], 0, "engine");
+  if jv_kind(d[0], g) == JV_STRING { m := jv_str(d[0], g, a[0].engine[..]); a[0].engine_n = ifx m > 0 then m else 0; }
+}
+
+// What arrived since the last tick, without waiting. True when the pane changed.
+ag_poll :: (p: [] AgPane, e: [] Editor) -> bool {
+  moved := false;
+  for i: 0..<64 {
+    if p[0].live < 0 || p[0].asking || p[0].p[0].handle < 0 { return moved; }
+    ev := cl_poll(p[0].q[..], p[0].p[..], 0);
+    if ev.kind == ClEventKind.idle { return moved; }
+    ag_event(p, e, ev);
+    moved = true;
+  }
+  return moved;
+}

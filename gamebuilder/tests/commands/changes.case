@@ -1,0 +1,12 @@
+# What agents changed: an apply-edits answer says it in words, a dry run says what a batch would do,
+# and a level read from its file has no highlight (the running app's is reached with --attach).
+> new-level
+< {"ok":true,"level":1}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1289232695,"do":"apply","edits":[{"op":"spawn","id":0,"kind":7,"x":500,"y":0,"z":-300,"yaw":0,"scale":100},{"op":"spawn","id":0,"kind":7,"x":700,"y":0,"z":-300,"yaw":0,"scale":100},{"op":"move","id":7,"x":100,"y":0,"z":50},{"op":"despawn","id":8},{"op":"despawn","id":9}]},"dry_run":true}
+< {"ok":true,"rev":685592831,"ids":[29,30,7,8,9],"summary":"added 2 blocks, moved 1, removed 2","things":[{"id":7,"kind":"block","name":"Block 7","how":"moved"},{"id":29,"kind":"block","name":"Block 29","how":"added"},{"id":30,"kind":"block","name":"Block 30","how":"added"},{"id":8,"kind":"block","name":"Block 8","how":"removed"},{"id":9,"kind":"block","name":"Block 9","how":"removed"}],"dry_run":true}
+> changes {"level":1}
+< {"ok":true,"summary":"nothing an agent changed is highlighted here","things":[]}
+> show-changes {"level":1}
+< {"ok":false,"error":"not-found","why":"nothing an agent changed is highlighted here (changes)"}
+> dismiss-changes {"level":1}
+< {"ok":true,"dismissed":0}

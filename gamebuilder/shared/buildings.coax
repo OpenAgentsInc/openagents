@@ -1,0 +1,140 @@
+// The medieval village's buildings as data, for the website (web/) and the app (coax/) alike
+// (docs/web-world.md, "Placing buildings"; AGENTS.md, "One way to make a game"): the pack's models a
+// person, the chat's model or an agent may place, how big each stands, its footprint and how many
+// solid boxes it brings, and the rules a building is held to wherever it is placed, moved, turned or
+// scaled, with the words a refusal is said in. A building is a kind of thing (shared/kinds.coax,
+// GK_BUILDING and up: its word, its name and its model's own size); the green a new village opens
+// with is things of the level (shared/game-types.coax gt_starter).
+// No engine is loaded here: the page (web/blocks.coax) and the app's editor (coax/palette.coax) read
+// it to check a building before it is in the list, the scene (web/world-village.coax) to draw and
+// stand it. The numbers are the pinned pack's (web/assets/village.pack, its catalog's G and B lines):
+// tools/village-pack-check.coax checks them against the pack itself. The art is 0 A.D.'s, by Wildfire
+// Games, CC BY-SA 3.0 (shared/game-types.coax GT_CREDIT).
+//   coax/bin/coax test shared/buildings.coax --library
+
+#load "kinds.coax";
+
+VL_KINDS :: GK_BUILDINGS;  // models a person may place: every model of the pack
+// A model's word in a plan line and a level's file (`+ put britons_house 3 4 90`), and its name in words: its kind's.
+vl_word :: (m: int) -> string { return ifx m >= 0 && m < VL_KINDS then GK_WORD[GK_BUILDING + m] else ""; }
+vl_name :: (m: int) -> string { return ifx m >= 0 && m < VL_KINDS then GK_SAID[GK_BUILDING + m] else ""; }
+// How big a new one stands, percent of its model (145 is 1.45 times the model), and how big one may be.
+VL_SCALE :: [VL_KINDS] int.[145, 145, 135, 180, 160];
+VL_SCALE_SMALL :: 50; VL_SCALE_BIG :: 300;
+// Half its bounds across (x) and along (z), and its height, millimetres, the model's own axes (the catalog's G lines).
+VL_HALF_X :: [VL_KINDS] int.[2288, 2144, 5041, 538, 673];
+VL_HALF_Z :: [VL_KINDS] int.[2698, 2862, 3888, 408, 553];
+VL_TALL :: [VL_KINDS] int.[3270, 2967, 4529, 629, 1005];
+// Its solid boxes (the catalog's B lines): each is one of the rigid bodies' walls once it stands.
+VL_KIND_BOXES :: [VL_KINDS] int.[43, 17, 117, 1, 6];
+// The walls the engine's bodies take at once (BD_WALLS): what a level's buildings may have between them.
+VL_WALLS :: 512;
+VL_PUT :: 33;             // buildings standing at once (and fewer when their boxes run out first)
+
+// A building where it stands: which of the pack's models, where its footprint's middle is, how many quarter
+// turns it is turned (counter-clockwise seen from above, in the engine's axes), how big, and what the page calls it.
+VlPlace :: struct { model: int; x: f32; z: f32; quarter: int; scale: f32; name: string; }
+// A model by its word; -1 when it is none.
+vl_kind_of :: (word: string) -> int { return gk_building(gk_of(word)); }
+// The quarter turns a turn in degrees is (any sign: -90 is 3); -1 when it is no quarter turn.
+vl_quarter :: (deg: int) -> int { return ifx deg % 90 != 0 then -1 else (((deg / 90) % 4) + 4) % 4; }
+// A footprint on the ground, hundredths of a metre, square to the world: its middle and half its sides.
+VlFoot :: struct { x: int; z: int; hx: int; hz: int; }
+// Model `m` at (x, z), hundredths, turned `quarter` quarter turns, at `scale` hundredths: its footprint (a quarter turn swaps its sides).
+vl_foot :: (m: int, x: int, z: int, quarter: int, scale: int) -> VlFoot {
+  hx := VL_HALF_X; hz := VL_HALF_Z;
+  a := hx[m] * scale / 1000; b := hz[m] * scale / 1000;
+  odd := ((quarter % 4) + 4) % 2 == 1;
+  return VlFoot.{x = x, z = z, hx = ifx odd then b else a, hz = ifx odd then a else b};
+}
+// Whether two footprints overlap by more than `slack` hundredths each way (touching is not overlapping).
+vl_feet_meet :: (a: VlFoot, b: VlFoot, slack: int) -> bool {
+  return a.x - a.hx + slack < b.x + b.hx && b.x - b.hx + slack < a.x + a.hx && a.z - a.hz + slack < b.z + b.hz && b.z - b.hz + slack < a.z + a.hz;
+}
+VL_SLACK :: 10;           // hundredths two buildings' footprints may overlap and still stand
+// A building's size as it stands, centimetres across, up and along (its model's own axes: not turned).
+vl_size :: (m: int, scale: int) -> [3] int {
+  hx := VL_HALF_X; hz := VL_HALF_Z; tall := VL_TALL;
+  return [3] int.[hx[m] * scale / 500, tall[m] * scale / 1000, hz[m] * scale / 500];
+}
+
+// ---- a building's rules, and a refusal's words with its numbers (AGENTS.md), the same on the website and in the app
+
+VL_WHY_NONE :: 0;
+VL_WHY_SCALE :: 1;        // its scale is past VL_SCALE_SMALL to VL_SCALE_BIG
+VL_WHY_TURN :: 2;         // its turn is no quarter turn
+VL_WHY_GROUND :: 3;       // its bottom is off the ground
+VL_WHY_ROOM :: 4;         // it would stand in another building (or the person)
+VL_WHY_BOXES :: 5;        // VL_PUT buildings stand, or their solid boxes are all used
+VL_WHY_SIZE :: 6;         // its size was set: a building's size is its model's
+// Why a building may not stand turned `deg` degrees with its bottom at y, at `scale` percent (VL_WHY_NONE: it may,
+// as far as it alone goes: whether it stands in another, and whether there is room for one more, is the list's to say).
+vl_own_why :: (deg: int, y: int, scale: int) -> int {
+  return ifx scale < VL_SCALE_SMALL || scale > VL_SCALE_BIG then VL_WHY_SCALE else ifx vl_quarter(deg) < 0 then VL_WHY_TURN else ifx y != 0 then VL_WHY_GROUND else VL_WHY_NONE;
+}
+// Whether one more building of model `m` fits a level where `standing` stand with `used` solid boxes between them.
+vl_fits :: (m: int, standing: int, used: int) -> bool { boxes := VL_KIND_BOXES; return standing < VL_PUT && used + boxes[m] <= VL_WALLS; }
+vl_say :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+vl_say_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = vl_say(out, k, "-"); a = -a; }
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 && m < 12 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+// The words for a VL_WHY_, in the page's voice; `used`: the solid boxes the level's buildings have now. How many bytes into out from n.
+vl_why_words :: (why: int, used: int, out: [] u8, from: int) -> int {
+  n := from;
+  if why == VL_WHY_SCALE { n = vl_say(out, n, "that scale is out of range: a building stands at "); n = vl_say_int(out, n, VL_SCALE_SMALL); n = vl_say(out, n, " to "); n = vl_say_int(out, n, VL_SCALE_BIG); n = vl_say(out, n, " percent of its model."); }
+  if why == VL_WHY_TURN { n = vl_say(out, n, "a building turns by quarter turns: 0, 90, 180 or 270 degrees."); }
+  if why == VL_WHY_GROUND { n = vl_say(out, n, "a building stands on the ground: its bottom is at 0."); }
+  if why == VL_WHY_ROOM { n = vl_say(out, n, "no room there: something is standing in that place."); }
+  if why == VL_WHY_BOXES { n = vl_say(out, n, "no more buildings: a level's buildings share "); n = vl_say_int(out, n, VL_WALLS); n = vl_say(out, n, " solid boxes ("); n = vl_say_int(out, n, used); n = vl_say(out, n, " used) and at most "); n = vl_say_int(out, n, VL_PUT); n = vl_say(out, n, " stand. delete one to place another."); }
+  if why == VL_WHY_SIZE { n = vl_say(out, n, "a building's size is its model's: set its scale, "); n = vl_say_int(out, n, VL_SCALE_SMALL); n = vl_say(out, n, " to "); n = vl_say_int(out, n, VL_SCALE_BIG); n = vl_say(out, n, " percent."); }
+  return n;
+}
+// The buildings' limits in words with their numbers, for a model or an agent. How many bytes into out from n.
+vl_limits_words :: (out: [] u8, from: int) -> int {
+  n := vl_say(out, from, " buildings: at most "); n = vl_say_int(out, n, VL_PUT); n = vl_say(out, n, " stand, sharing "); n = vl_say_int(out, n, VL_WALLS); n = vl_say(out, n, " solid boxes (");
+  boxes := VL_KIND_BOXES;
+  for m: 0..<VL_KINDS { if m > 0 { n = vl_say(out, n, ", "); } n = vl_say(out, n, vl_word(m)); n = vl_say(out, n, " "); n = vl_say_int(out, n, boxes[m]); }
+  n = vl_say(out, n, "); a building's scale is "); n = vl_say_int(out, n, VL_SCALE_SMALL); n = vl_say(out, n, " to "); n = vl_say_int(out, n, VL_SCALE_BIG);
+  n = vl_say(out, n, " percent of its model; it stands on the ground (y 0), turned 0, 90, 180 or 270 degrees, never in another building.");
+  return n;
+}
+
+#test "the models' table: a word for each, its kind's; a footprint that turns with its quarter turns; a size at its scale; the model's own size is its kind's" {
+  #assert vl_kind_of("britons_house") == 0 && vl_kind_of("rock") == 4 && vl_kind_of("house") == -1 && vl_kind_of("") == -1 && vl_kind_of("block") == -1;
+  #assert vl_word(2) == "market" && vl_name(3) == "mossy rock" && vl_word(5) == "" && vl_word(-1) == "";
+  f := vl_foot(0, 100, -200, 0, 145); g := vl_foot(0, 100, -200, 1, 145); h := vl_foot(0, 100, -200, -1, 145);
+  #assert f.x == 100 && f.z == -200 && f.hx == 331 && f.hz == 391;
+  #assert g.hx == 391 && g.hz == 331;
+  #assert h.hx == 391;
+  #assert vl_foot(2, 0, 0, 2, 135).hx == 680 && vl_foot(2, 0, 0, 2, 135).hz == 524;
+  #assert vl_feet_meet(f, VlFoot.{x = 500, z = -200, hx = 100, hz = 100}, 10) && !vl_feet_meet(f, VlFoot.{x = 532, z = -200, hx = 100, hz = 100}, 10) && !vl_feet_meet(f, VlFoot.{x = 525, z = -200, hx = 100, hz = 100}, 10);
+  #assert vl_size(0, 145)[0] == 663 && vl_size(0, 145)[1] == 474 && vl_size(0, 145)[2] == 782;
+  hx := VL_HALF_X; hz := VL_HALF_Z; tall := VL_TALL; scale := VL_SCALE;
+  for m: 0..<VL_KINDS {
+    k := GK_BUILDING + m;
+    #assert cast(int) GK_SX[k] == hx[m] / 5 && cast(int) GK_SY[k] == tall[m] / 10 && cast(int) GK_SZ[k] == hz[m] / 5 && gk_building(k) == m;
+    #assert scale[m] >= VL_SCALE_SMALL && scale[m] <= VL_SCALE_BIG;
+  }
+  #assert vl_quarter(0) == 0 && vl_quarter(90) == 1 && vl_quarter(180) == 2 && vl_quarter(-90) == 3 && vl_quarter(270) == 3 && vl_quarter(360) == 0 && vl_quarter(45) == -1 && vl_quarter(-1) == -1;
+}
+#test "a building's rules: a scale of 50 to 300 percent, a quarter turn, on the ground; one more fits while 33 stand at most and 512 boxes are theirs; each refusal is said with its numbers" {
+  #assert vl_own_why(90, 0, 145) == VL_WHY_NONE && vl_own_why(-90, 0, 50) == VL_WHY_NONE && vl_own_why(180, 0, 300) == VL_WHY_NONE;
+  #assert vl_own_why(0, 0, 49) == VL_WHY_SCALE && vl_own_why(0, 0, 301) == VL_WHY_SCALE && vl_own_why(45, 0, 100) == VL_WHY_TURN && vl_own_why(0, 100, 100) == VL_WHY_GROUND && vl_own_why(0, -1, 100) == VL_WHY_GROUND;
+  #assert vl_fits(2, 0, 0) && vl_fits(2, 3, 395) && !vl_fits(2, 3, 396) && vl_fits(3, 32, 511) && !vl_fits(3, 33, 100) && !vl_fits(3, 2, 512);
+  b: [512] u8;
+  n := vl_why_words(VL_WHY_SCALE, 0, b[..], 0); #assert cast(string) b[0..<n] == "that scale is out of range: a building stands at 50 to 300 percent of its model.";
+  n = vl_why_words(VL_WHY_TURN, 0, b[..], 0); #assert cast(string) b[0..<n] == "a building turns by quarter turns: 0, 90, 180 or 270 degrees.";
+  n = vl_why_words(VL_WHY_GROUND, 0, b[..], 0); #assert cast(string) b[0..<n] == "a building stands on the ground: its bottom is at 0.";
+  n = vl_why_words(VL_WHY_ROOM, 0, b[..], 0); #assert cast(string) b[0..<n] == "no room there: something is standing in that place.";
+  n = vl_why_words(VL_WHY_BOXES, 443, b[..], 0); #assert cast(string) b[0..<n] == "no more buildings: a level's buildings share 512 solid boxes (443 used) and at most 33 stand. delete one to place another.";
+  n = vl_why_words(VL_WHY_SIZE, 0, b[..], 0); #assert cast(string) b[0..<n] == "a building's size is its model's: set its scale, 50 to 300 percent.";
+  #assert vl_why_words(VL_WHY_NONE, 0, b[..], 7) == 7;
+  n = vl_limits_words(b[..], 0);
+  #assert cast(string) b[0..<n] == " buildings: at most 33 stand, sharing 512 solid boxes (britons_house 43, gauls_house 17, market 117, mossy_rock 1, rock 6); a building's scale is 50 to 300 percent of its model; it stands on the ground (y 0), turned 0, 90, 180 or 270 degrees, never in another building.";
+}

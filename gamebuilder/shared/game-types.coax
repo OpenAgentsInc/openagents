@@ -1,0 +1,716 @@
+// The game types, and how a new game of one is made: one source for the website (web/) and the
+// app (coax/), so that making a game is the same on both (AGENTS.md, "One way to make a game";
+// owner's rule, 2026-11-17). Both load this file and nothing else for it:
+//
+//   - which types there are, their ids (what a game's document names), names, lines, pictures
+//     and credits (GT_*), and the order a picker shows them in (gt_picker): the website's card
+//     picker (web/page.coax gs_picker) and the app's (coax/picker.coax) both draw that list;
+//   - what a type offers to build with (gt_palette, its kinds in shared/kinds.coax) and its limits
+//     (gt_far, gt_high, gt_low);
+//   - what a new game of a type starts with (gt_starter): the website's world is made from it
+//     (web/blocks.coax bl_new) and so is the app's level (coax/games.coax ed_new_game), thing for
+//     thing; and how many levels it starts with (GT_LEVELS: one, but crates, whose three rooms are
+//     three levels of the game, gt_starter_level).
+//
+// tools/game-types-check.coax makes every type through both and holds them to the same things, and
+// holds the sources to having no second list of the types. Units are the app's and the website's:
+// centimetres (the website's hundredths of a one-metre square), degrees.
+//
+// What should go upstream (into the engine, when it can be changed): nothing here is the engine's;
+// the types, their kinds and their starters are GameBuilder's own (AGENTS.md, "What comes from where").
+//   coax/bin/coax test shared/game-types.coax --library
+
+#load "kinds.coax";
+#load "buildings.coax";   // the medieval village's buildings: their models, footprints and rules
+
+GT_TYPES :: 12;
+// The app's three first templates keep their numbers (a level no game holds is an arena: 0), so
+// every game made before the list was shared reads back as it was. The website's nine follow.
+GT_ARENA :: 0; GT_ADVENTURE :: 1; GT_FIELD :: 2;
+GT_THIRD :: 3; GT_FIRST :: 4; GT_TOP :: 5; GT_SIDE :: 6;   // the meadow, by the engine's camera kinds
+GT_VILLAGE :: 7;                                         // the medieval village (0 A.D.'s art)
+GT_CRATES :: 8; GT_PLATFORMER :: 9; GT_RACING :: 10; GT_DRIFT :: 11;   // worlds of their own
+// The website's types are these, in this order: its kind k is type GT_WEB_FIRST + k.
+GT_WEB_FIRST :: GT_THIRD; GT_WEB_TYPES :: 9;
+
+// What a level holds at most, as a file: the app's level (coax/editor.coax ACTORS_MAX and SHAPES_MAX),
+// the file the rows move whole (coax/agent.coax AGENT_FILE_MAX: read-content, write-content), and so a
+// game kept on an account, wherever it was built. The website's world holds more than this in a
+// browser (web/blocks.coax BL_MAX); one that is over is not kept on the account, and the page says
+// so with these numbers (web/account.coax ac_fits).
+GT_LEVEL_THINGS :: 512;      // things a level (a world of its own's course is things: the platformer's is 111, and there is room to build four times that)
+GT_LEVEL_SHAPES :: 64;       // different shapes (a kind and a size) a level
+GT_LEVEL_FILE :: 262144;     // bytes of a level's file: 256 kb (512 things at the most a thing's line takes, and the shape table)
+
+// What a game's document names its type by (games.coax: table game, column template).
+GT_ID :: [GT_TYPES] string.["arena", "adventure", "field", "third-person", "first-person", "top-down", "side-scroller", "village",
+  "crates", "platformer", "racing", "drift"];
+// Its name on a card and in a list.
+GT_NAME :: [GT_TYPES] string.["arena", "adventure", "open field", "third person", "first person", "top-down", "side-scroller",
+  "medieval village", "crates", "platformer", "racing", "drift"];
+// Its line on a card, and what is said of a level of it while it is played.
+GT_LINE :: [GT_TYPES] string.[
+  "three a side. first to ten knockouts.",
+  "a place to walk round, seen from behind.",
+  "shoot the targets. enemies are coming. build on it.",
+  "3d. the camera behind you. orbit it.",
+  "fps. through your own eyes.",
+  "from above. the camera never turns.",
+  "2d. from the side. run and jump.",
+  "a village green. thatch and timber.",
+  "push crates onto pads. open the gate.",
+  "run, jump, jump again. reach the goal.",
+  "three laps against the clock. no cutting.",
+  "fly the rings in order. zero g."];
+// Its card's picture: that world as it is drawn, a file of web/img/ (the website serves it under
+// /img/, the app ships the folder). scripts/web-shots.sh cards takes the website's again.
+GT_PIC :: [GT_TYPES] string.["kind-arena.jpg", "kind-adventure.jpg", "kind-field.jpg", "kind-third.jpg", "kind-first.jpg", "kind-top.jpg",
+  "kind-side.jpg", "kind-village.jpg", "kind-crates.jpg", "kind-platformer.jpg", "kind-racing.jpg", "kind-drift.jpg"];
+// Whose art a type's world shows when it is not ours, shown with its card (the village's is
+// CC BY-SA 3.0: AGENTS.md, and the website's credits page).
+GT_CREDIT :: [GT_TYPES] string.["", "", "", "", "", "", "", "0 A.D. art by Wildfire Games, CC BY-SA 3.0", "", "", "", ""];
+// Where a type is played today. The website plays its nine. The app plays every type: its three first
+// ones and the meadow by its own play (coax/play.coax), and, where the app has the engine's page (the Mac,
+// iPhone and iPad: gamebuilder/core/world.coax), the website's nine by the website's own scene and rules. A build
+// without the page (Linux today) plays the meadow its own way and says, in words, that the village and
+// the four worlds of their own are played where the page is (coax/play.coax PLAY_NO_PAGE).
+GT_ON_WEB :: [GT_TYPES] bool.[false, false, false, true, true, true, true, true, true, true, true, true];
+GT_PLAYS_IN_APP :: [GT_TYPES] bool.[true, true, true, true, true, true, true, true, true, true, true, true];
+// How a play-test plays a level of the type (coax/playtest.coax, the play-test row): GT_TEST_MATCH, a
+// match with bots in every seat (the arena's); GT_TEST_WALK, a walk-through, a bot that walks from the start
+// to every thing it can reach on the engine's walking grid, nearest first. The walk-through walks the
+// things the level has, not the type's own world round them (the village's houses, the crates' room, the
+// course, the circuit, open space).
+GT_TEST_MATCH :: 0; GT_TEST_WALK :: 1;
+GT_PLAYTEST :: [GT_TYPES] s32.[GT_TEST_MATCH, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK,
+  GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK, GT_TEST_WALK];
+// The meadow's four types are each a camera kind of the engine's (metaverse-engine/cam/kinds.coax CAM_KIND_*:
+// third person, first person, top down, side on, in that order); -1: a type that is not one of them.
+gt_cam :: (t: int) -> int { return ifx t >= GT_THIRD && t <= GT_SIDE then t - GT_THIRD else -1; }
+
+// How many levels a new game of the type starts with: one, but crates, whose three rooms are three levels
+// of one game, each made of things (gt_starter_level). A game holds more: a person adds levels to any game.
+GT_LEVELS_MOST :: 3;
+GT_LEVELS :: [GT_TYPES] int.[1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1];
+gt_levels :: (t: int) -> int { return ifx t >= 0 && t < GT_TYPES then GT_LEVELS[t] else 0; }
+
+// What a model is told the type is (the website's chat, web/chat.coax ch_world; the app's agents).
+GT_SAID :: [GT_TYPES] string.["arena (three a side, a match of knockouts)", "adventure (a place to walk round, seen from behind)",
+  "open field (targets to shoot and enemies coming, first person)", "third person", "first person", "top-down", "side-scroller", "medieval village", "crates (a crate puzzle, seen from above)", "platformer (a course of floating platforms, seen side on)", "racing (a circuit driven in a car)", "drift (a small ship flown through rings in open space)"];
+// How building goes in the type, as the model is told it: its kinds and its limits, in words with numbers
+// (AGENTS.md: a limit is said with its number). "" for a type that builds as the meadow does.
+GT_BUILT :: [GT_TYPES] string.["", "", "", "", "", "", "",
+  "building here: the green's buildings are things of the world like any other, yours to move, turn and remove, and more may be put, each at a scale of its own. kinds here: britons_house, gauls_house, market, mossy_rock and rock (models of their own: a building's size is its model's, and how big it stands is its scale, 50 to 300 percent of the model). a building stands on the ground, turned 0, 90, 180 or 270 degrees, never in another building or in the person. at most 33 buildings stand at once, and their solid boxes are 512 between them (a britons house 43, a gauls house 17, a market 117, a mossy rock 1, a rock 6).",
+  "building here: the room is things of this level: its walls, its crates, its pads, its gate and where the person starts; move, size, add or remove any of them. a plain block here is a crate the person pushes (a crate is 0.9 by 0.9 by 0.9), and it lights a pad it rests on. kinds here, a place line's last word: wall (a fixed block nothing pushes: walls are about 1.5 by 1.5 and 2.4 high, and a run of them one thing up to 12 long), goal (a pad on the floor, about 1.2 by 1.2 and 0.25 high: a crate must rest on every goal before the gate opens; with no goal the room is never solved), gate (the way out, about 1.5 by 1.5 and 2.4 high, set in the outer wall: shut until every goal holds a crate, and out through it is the game's next level; a room has one, and with none solving the room goes on by itself) and start (where the person starts; a room has one, and with none they start in the middle). keep the goals and the way to the gate clear unless asked. the floor is laid under the walls' whole extent. a game of this type starts with 3 levels, a room each: clearing a room and leaving by its gate opens the next.",
+  "building here: the course runs along z (to the right on screen) and the person stays on the line x 0, so put things at x 0 to be reached. there is no ground under the course: give Y, the bottom's height (the person's feet height is given), and end every place line with rest; what is placed here stays exactly where it is put. the course itself is things of this world (its platforms, pads, spikes, shards, checkpoints, moving platforms and lifts), changed as any other: move, size or remove one by its id. a platform above the person's head is a slab about 3 along z, 3 across, 0.5 thick, its bottom about 2.6 over their feet, at their z. here places reach 700 from the middle and bottoms 60 up. kinds here, a place line's last word: pad (a bounce pad: standing on it throws the person up about 5), spikes (not solid, laid on a platform: feet on them send the person back to their last checkpoint), shard (a small block, about 0.5 a side, taken by touching it; at the height of their middle, about 0.9 over their feet, to be reached), checkpoint (a platform: standing on it makes it where they come back to after a fall; checkpoints are passed in their order along z, and the furthest along is the goal), mover (a moving platform, about 3.2 across, 0.9 thick and 4 along: it slides along z and back) and lift (the same, rising and coming down). each has a distance (how far it goes, 0 to 50) and a period (how long there and back takes, 1 to 60 seconds): a new mover goes 8 and a new lift 6, every 6 seconds. a platform is a plain block.",
+  "building here: the person's place is the car's. what you place stands solid on the grass or the track and the car meets it: a block is a wall it stops at, and a slab under a quarter of a square high is driven over. keep the road clear unless asked for something on it. kinds here, a place line's last word: boost (a flat pad on the road, about 4 by 4 and 0.25 high: the car speeds up over it, as far as 1.5 times its top speed), cone (a small block about 0.4 by 0.4 by 0.6 the car knocks away, not a wall) and track (a point of the circuit: the road is laid through the track points in their order and closes back to the first, the second is the start line, a point's bottom is the road's height there; moving, removing or adding one lays the road again; under 3 points the circuit is the first one). a barrier is a plain block. ramps are not built yet.",
+  "building here: the person's place is the ship's, flying in open space: no ground and no gravity. give Y, the bottom's height (the person's height is given, and it may be under 0), and end every place line with rest; what is placed here is held where it is put, solid, and the ship bumps off it. the rings run from the start along -z for about 600 m, up to 420 m to either side and from 80 m under the start to 30 m over it; keep a ring's opening clear unless asked. bottoms go from -100 to 100 m, and things within 700 m of the middle. kinds here, a place line's last word: ring (a ring of the course, the thing its middle: the course goes through the rings in their order, each facing along the line; a ring is 6.5 m in radius at 2 a side, and as much wider as the thing is)."];
+
+// The type a game's document names; -1: none.
+gt_of :: (id: string) -> int { for t: 0..<GT_TYPES { if GT_ID[t] == id { return t; } } return -1; }
+// The website's kind k (0 to 8) as a type, and a type as the website's kind (-1: not the website's).
+gt_web_type :: (k: int) -> int { return ifx k >= 0 && k < GT_WEB_TYPES then GT_WEB_FIRST + k else -1; }
+gt_web_kind :: (t: int) -> int { return ifx t >= GT_WEB_FIRST && t < GT_WEB_FIRST + GT_WEB_TYPES && GT_ON_WEB[t] then t - GT_WEB_FIRST else -1; }
+
+// ---- the picker
+
+// The words over the cards, on both pickers.
+GT_PICK_EYE :: "game type";
+GT_PICK_HEAD :: "pick a game.";
+GT_PICK_LEDE :: "each one drops you in its own way.";
+GT_ON_SITE :: 0; GT_ON_APP :: 1;   // which picker asks
+// The types a picker shows, in its order, into out: the website's nine first, then (in the app) the
+// three the app had before them, so a game made on one of those is made the same way. Returns how many.
+gt_picker :: (on: int, out: [] int) -> int {
+  n := 0;
+  for t: GT_WEB_FIRST..<GT_TYPES { if n < out.count && (on == GT_ON_APP || GT_ON_WEB[t]) { out[n] = t; n += 1; } }
+  if on == GT_ON_APP { for t: 0..<GT_WEB_FIRST { if n < out.count { out[n] = t; n += 1; } } }
+  return n;
+}
+// The key that picks a picker's card at place i: 1 to 9, and none past them.
+GT_KEYS :: [9] string.["1", "2", "3", "4", "5", "6", "7", "8", "9"];
+gt_key :: (i: int) -> string { return ifx i >= 0 && i < 9 then GT_KEYS[i] else ""; }
+
+// ---- what a type builds with, and its limits
+
+// The kinds a type offers (shared/kinds.coax), into out: how many. The website's types build with
+// blocks and balls (AGENTS.md: every game type is buildable).
+GT_PALETTE_MAX :: 16;
+gt_palette :: (t: int, out: [] int) -> int {
+  arena := [12] int.[GK_BLOCK, GK_START, GK_RIVAL, GK_PACK, GK_GOAL, GK_RIVAL_GOAL, GK_HOOP, GK_RIVAL_HOOP, GK_BALL, GK_TREE, GK_WATER, GK_PATH];
+  adventure := [5] int.[GK_BLOCK, GK_START, GK_TREE, GK_WATER, GK_PATH];
+  field := [5] int.[GK_BLOCK, GK_START, GK_TARGET, GK_MOVER, GK_ENEMY];
+  web := [2] int.[GK_BLOCK, GK_BALL];
+  n := 0;
+  if t == GT_ARENA { for k: arena { out[n] = k; n += 1; } }
+  else if t == GT_ADVENTURE { for k: adventure { out[n] = k; n += 1; } }
+  else if t == GT_FIELD { for k: field { out[n] = k; n += 1; } }
+  else if t >= 0 && t < GT_TYPES {
+    for k: web { out[n] = k; n += 1; }
+    // and the type's own kinds (gt_roles), in the website's order
+    roles := gt_roles(t);
+    for r: 1..<BL_ROLES { if (roles & (1 << r)) != 0 { out[n] = GK_ROLE[r]; n += 1; } }
+    // and the medieval village's buildings, a kind a model (shared/buildings.coax)
+    if t == GT_VILLAGE { for m: 0..<GK_BUILDINGS { out[n] = GK_BUILDING + m; n += 1; } }
+  }
+  return n;
+}
+gt_offers :: (t: int, kind: int) -> bool {
+  p: [GT_PALETTE_MAX] int; n := gt_palette(t, p[..]);
+  for i: 0..<n { if p[i] == kind { return true; } }
+  return false;
+}
+// Whether a level of type t holds one of a kind at most: a start for each team, a crates room's gate, and in the arena
+// its goals, hoops and its one ball (the website's types have as many balls as a person places).
+gt_one :: (t: int, kind: int) -> bool {
+  if kind == GK_START || kind == GK_RIVAL || kind == GK_GATE { return true; }
+  return t == GT_ARENA && (kind == GK_GOAL || kind == GK_RIVAL_GOAL || kind == GK_HOOP || kind == GK_RIVAL_HOOP || kind == GK_BALL);
+}
+
+// How far from the middle a thing may stand, how high its bottom may be and how low, centimetres. The
+// meadow's reach is where its haze hides the ground; the platformer's course is 628 m long and up to
+// 49 m up; drift's rings run 600 m ahead and 420 m aside, from 80 m under the start to 30 m over it, in
+// open space. The app's first three types reach as far as an edit does (the engine's WE_REACH).
+GT_FAR_MEADOW :: 20000; GT_HIGH_MEADOW :: 1200; GT_REACH :: 10000000;
+GT_FAR :: [GT_TYPES] int.[GT_REACH, GT_REACH, GT_REACH, GT_FAR_MEADOW, GT_FAR_MEADOW, GT_FAR_MEADOW, GT_FAR_MEADOW, GT_FAR_MEADOW, GT_FAR_MEADOW, 70000, GT_FAR_MEADOW, 70000];
+GT_HIGH :: [GT_TYPES] int.[GT_REACH, GT_REACH, GT_REACH, GT_HIGH_MEADOW, GT_HIGH_MEADOW, GT_HIGH_MEADOW, GT_HIGH_MEADOW, GT_HIGH_MEADOW, GT_HIGH_MEADOW, 6000, GT_HIGH_MEADOW, 10000];
+GT_LOW :: [GT_TYPES] int.[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -10000];
+// The sizes a thing of the website's types may have, centimetres: a side a quarter metre to twelve, a
+// ball's radius 0.15 m to 1.5 (in the app, half its width).
+GT_SIDE_SMALL :: 25; GT_SIDE_BIG :: 1200; GT_BALL_SMALL :: 15; GT_BALL_BIG :: 150;
+// Whether a type holds its things to those sizes (the app's first three keep the level's own).
+gt_sized :: (t: int) -> bool { return t >= GT_WEB_FIRST && t < GT_TYPES; }
+
+// ---- a limit in words, with its number (AGENTS.md), the same on the website and in the app
+
+GT_WHY_NONE :: 0; GT_WHY_FAR :: 1; GT_WHY_HIGH :: 2; GT_WHY_SIZE :: 3; GT_WHY_RADIUS :: 4;
+GT_WHY_TRAVEL :: 5;   // a moving platform's or a lift's distance or period past what it may be
+GT_WHY_STILL :: 6;    // a distance or a period for a kind that does not move
+// Why a thing can't stand at x, z with its bottom at y, between those bounds; GT_WHY_NONE: it can.
+gt_place_why :: (far: int, low: int, high: int, x: int, y: int, z: int) -> int {
+  return ifx x < -far || x > far || z < -far || z > far then GT_WHY_FAR else ifx y < low || y > high then GT_WHY_HIGH else GT_WHY_NONE;
+}
+gt_side_ok :: (v: int) -> bool { return v >= GT_SIDE_SMALL && v <= GT_SIDE_BIG; }
+gt_radius_ok :: (v: int) -> bool { return v >= GT_BALL_SMALL && v <= GT_BALL_BIG; }
+// Text into out from n, a whole number, and centimetres as metres ("2.5", "-1", "0.05").
+gt_say :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+gt_say_int :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = gt_say(out, k, "-"); a = -a; }
+  digits: [12] u8; m := 0;
+  if a == 0 { digits[0] = '0'; m = 1; }
+  while a > 0 { digits[m] = cast(u8) ('0' + a % 10); m += 1; a /= 10; }
+  while m > 0 { m -= 1; if k < out.count { out[k] = digits[m]; k += 1; } }
+  return k;
+}
+gt_say_m :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v;
+  if a < 0 { k = gt_say(out, k, "-"); a = -a; }
+  k = gt_say_int(out, k, a / 100);
+  part := a % 100;
+  if part == 0 { return k; }
+  k = gt_say(out, k, ".");
+  if k < out.count { out[k] = cast(u8) ('0' + part / 10); k += 1; }
+  if part % 10 != 0 && k < out.count { out[k] = cast(u8) ('0' + part % 10); k += 1; }
+  return k;
+}
+// The words for a GT_WHY_ limit, in the page's voice, between those bounds: how many bytes into out from n.
+gt_why_words :: (why: int, far: int, low: int, high: int, out: [] u8, from: int) -> int {
+  n := from;
+  if why == GT_WHY_FAR { n = gt_say(out, n, "too far: things stay within "); n = gt_say_int(out, n, far / 100); n = gt_say(out, n, " m of the middle."); }
+  if why == GT_WHY_SIZE { n = gt_say(out, n, "that size is out of range: sides are "); n = gt_say_m(out, n, GT_SIDE_SMALL); n = gt_say(out, n, " to "); n = gt_say_m(out, n, GT_SIDE_BIG); n = gt_say(out, n, " m."); }
+  if why == GT_WHY_RADIUS { n = gt_say(out, n, "that size is out of range: a ball's radius is "); n = gt_say_m(out, n, GT_BALL_SMALL); n = gt_say(out, n, " to "); n = gt_say_m(out, n, GT_BALL_BIG); n = gt_say(out, n, " m."); }
+  if why == GT_WHY_HIGH && low < 0 { n = gt_say(out, n, "out of reach: a thing's bottom is from "); n = gt_say_int(out, n, low / 100); n = gt_say(out, n, " to "); n = gt_say_int(out, n, high / 100); n = gt_say(out, n, " m up."); }
+  else if why == GT_WHY_HIGH { n = gt_say(out, n, "too high: a thing's bottom is at most "); n = gt_say_int(out, n, high / 100); n = gt_say(out, n, " m up."); }
+  if why == GT_WHY_TRAVEL {
+    n = gt_say(out, n, "out of range: a moving platform or a lift goes 0 to "); n = gt_say_int(out, n, GK_GO_MOST / 100); n = gt_say(out, n, " m, there and back in ");
+    n = gt_say_int(out, n, GK_EVERY_LEAST / 1000); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GK_EVERY_MOST / 1000); n = gt_say(out, n, " seconds.");
+  }
+  if why == GT_WHY_STILL { n = gt_say(out, n, "only a moving platform or a lift has a distance and a period."); }
+  return n;
+}
+
+// A type's limits in words with their numbers, for a model or an agent: where things may stand, how high,
+// how big, and how many a world or level holds (things). How many bytes into out from n.
+gt_limits_words :: (t: int, things: int, out: [] u8, from: int) -> int {
+  n := from;
+  if t < 0 || t >= GT_TYPES { return n; }
+  if GT_FAR[t] < GT_REACH {
+    n = gt_say(out, n, "things stay within "); n = gt_say_int(out, n, GT_FAR[t] / 100); n = gt_say(out, n, " m of the middle (x and z from ");
+    n = gt_say_int(out, n, -GT_FAR[t]); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GT_FAR[t]); n = gt_say(out, n, " cm); ");
+    if GT_LOW[t] < 0 { n = gt_say(out, n, "a thing's bottom is from "); n = gt_say_int(out, n, GT_LOW[t] / 100); n = gt_say(out, n, " to "); }
+    else { n = gt_say(out, n, "a thing's bottom is at most "); }
+    n = gt_say_int(out, n, GT_HIGH[t] / 100); n = gt_say(out, n, " m up (y "); n = gt_say_int(out, n, GT_LOW[t]); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GT_HIGH[t]); n = gt_say(out, n, " cm); ");
+  }
+  if gt_sized(t) {
+    n = gt_say(out, n, "sides are "); n = gt_say_m(out, n, GT_SIDE_SMALL); n = gt_say(out, n, " to "); n = gt_say_m(out, n, GT_SIDE_BIG); n = gt_say(out, n, " m (");
+    n = gt_say_int(out, n, GT_SIDE_SMALL); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GT_SIDE_BIG); n = gt_say(out, n, " cm, size times scale); a ball's radius is ");
+    n = gt_say_m(out, n, GT_BALL_SMALL); n = gt_say(out, n, " to "); n = gt_say_m(out, n, GT_BALL_BIG); n = gt_say(out, n, " m; ");
+  }
+  if (gt_roles(t) & (1 << BL_R_SLIDER)) != 0 {
+    n = gt_say(out, n, "a moving platform or a lift goes 0 to "); n = gt_say_int(out, n, GK_GO_MOST / 100); n = gt_say(out, n, " m (distance 0 to "); n = gt_say_int(out, n, GK_GO_MOST);
+    n = gt_say(out, n, " cm), there and back in "); n = gt_say_int(out, n, GK_EVERY_LEAST / 1000); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GK_EVERY_MOST / 1000);
+    n = gt_say(out, n, " seconds (period "); n = gt_say_int(out, n, GK_EVERY_LEAST); n = gt_say(out, n, " to "); n = gt_say_int(out, n, GK_EVERY_MOST); n = gt_say(out, n, " ms); ");
+  }
+  n = gt_say(out, n, "at most "); n = gt_say_int(out, n, things); n = gt_say(out, n, " things.");
+  if t == GT_VILLAGE { n = vl_limits_words(out, n); }
+  return n;
+}
+
+// A type's own kinds of block (shared/kinds.coax BL_R_*, a bit each): the platformer's pad, spikes,
+// shard, checkpoint, moving platform and lift, crates' wall, goal, gate and start, racing's boost, cone and track point, drift's ring; the rest have none.
+gt_roles :: (t: int) -> int { return ifx t == GT_PLATFORMER then BL_PF_ROLES else ifx t == GT_CRATES then BL_CR_ROLES else ifx t == GT_RACING then BL_RC_ROLES else ifx t == GT_DRIFT then BL_DR_ROLES else 0; }
+
+// ---- what a new game starts with
+
+// A thing a new game starts with: its kind (shared/kinds.coax), where the middle of its foot
+// stands and how high its bottom is, its size across, up and along, centimetres, and its turn
+// about the upright, degrees (-179 to 180, as a level keeps a turn); its size in percent (a
+// building's scale: its w, h and d are its model's own); and, for a kind that moves (shared/kinds.coax
+// gk_moves), how far it goes, centimetres, and how long there and back takes, milliseconds.
+GtThing :: struct { kind: int; x: int; y: int; z: int; w: int; h: int; d: int; turn: int; scale: int = 100; go: int; every: int; }
+GT_STARTER_MAX :: 128;
+GT_ARENA_HALF :: 1500;      // centimetres from the middle of a new arena to its walls
+GT_ARENA_PACKS :: 4;        // the health packs a new arena has
+
+gt_put :: (out: [] GtThing, n: int, kind: int, x: int, z: int, w: int, h: int, d: int, turn: int) -> int {
+  if n >= out.count { return n; }
+  out[n] = GtThing.{kind = kind, x = x, y = 0, z = z, w = w, h = h, d = d, turn = turn};
+  return n + 1;
+}
+// One of a kind at its made size, its bottom y up.
+gt_at :: (out: [] GtThing, n: int, kind: int, x: int, y: int, z: int, turn: int) -> int {
+  m := gt_put(out, n, kind, x, z, cast(int) GK_SX[kind], cast(int) GK_SY[kind], cast(int) GK_SZ[kind], turn);
+  if m > n { out[n].y = y; }
+  return m;
+}
+// The racing circuit: the points its line goes through, in order round the lap (the second is the
+// start line), x and z in metres (z the engine's: the start straight runs up +z at x 0; a thing's is
+// the page's, -z), how high the road is there in centimetres, and how far the corner banks, degrees
+// (the outside of the turn is raised). A closed circuit of about 780 m: a rise and a fall, banked
+// sweepers, a hairpin. web/world-racing.coax lays the ribbon through the level's track points.
+GT_CIRCUIT :: 19;
+GT_CIRCUIT_X :: [GT_CIRCUIT] int.[0, 0, 0, 12, 45, 90, 122, 132, 120, 92, 78, 92, 128, 140, 122, 82, 42, 8, 0];
+GT_CIRCUIT_Z :: [GT_CIRCUIT] int.[-90, -10, 60, 100, 122, 118, 92, 50, 15, -2, -22, -44, -62, -100, -138, -150, -154, -134, -115];
+GT_CIRCUIT_Y :: [GT_CIRCUIT] int.[0, 0, 0, 30, 120, 260, 400, 500, 520, 460, 400, 340, 260, 180, 100, 60, 30, 0, 0];
+GT_CIRCUIT_BANK :: [GT_CIRCUIT] int.[0, 0, 0, 4, 6, 8, 9, 4, 0, 0, 0, 0, 5, 6, 4, 0, 0, 0, 0];
+// Drift's course: each ring's middle, in order from the start, centimetres in the engine's axes (the
+// ship starts at the middle facing +z; a thing's z is the page's, -z). Twelve rings about 62 m apart,
+// winding and falling: the course the seed 2207 gave, kept here as the level's own.
+GT_RINGS :: 12;
+GT_RING_X :: [GT_RINGS] int.[0, 1278, -177, -170, 1852, 7171, 13117, 19278, 25086, 29587, 33578, 38248];
+GT_RING_Y :: [GT_RINGS] int.[400, 150, -1199, -1999, -2206, -1220, -800, 2, 158, -878, -2247, -4435];
+GT_RING_Z :: [GT_RINGS] int.[5284, 10109, 15887, 21213, 26067, 30417, 32761, 34590, 34952, 38033, 41251, 44195];
+// The village green: the buildings a new village opens with, in the order they rise. You start at its
+// near end looking up it: the market closes the far end, a house stands each side of the path, and
+// rocks lie about (the ball lies in the middle, to kick). Each: its model (shared/buildings.coax), where
+// its footprint's middle stands, centimetres, its quarter turns, and how big it stands, percent of its model.
+GT_GREEN :: 9;
+GT_GREEN_MODEL :: [GT_GREEN] int.[0, 1, 2, 1, 3, 4, 4, 3, 3];
+GT_GREEN_X :: [GT_GREEN] int.[-1150, 1150, 0, -1300, -650, 750, -500, 600, 1500];
+GT_GREEN_Z :: [GT_GREEN] int.[1100, 1400, 2900, 2400, 350, 500, 1900, 2200, 300];
+GT_GREEN_QUARTER :: [GT_GREEN] int.[1, 3, 2, 0, 0, 1, 2, 3, 1];
+GT_GREEN_SCALE :: [GT_GREEN] int.[145, 145, 135, 130, 180, 160, 220, 200, 260];
+GT_TRACK_FEW :: 3;          // points a circuit needs: with fewer in the level, the circuit is the starter's
+
+// The platformer's course, a section a line, each ending at a checkpoint (the last at the goal). The
+// words, the numbers in metres (and seconds), read from the cursor (where the last thing ended, at the
+// height it is at; the first platform's top is GT_PF_START):
+//   pL     a platform L long            bL     a bounce pad L long
+//   gL     a gap of L                   uH dH  the next platform H higher, or lower
+//   mL,D,P a moving platform L long that slides D along the course and back every P seconds
+//   lL,D,P a lift L long that rises D and comes down every P seconds (the next platform is D higher)
+//   sA,L   spikes on the last platform, from A along it, L long
+//   *H     a shard H over the height here     c  the last platform is a checkpoint     f  it is the goal
+// gt_course reads it into things of the level: a platform a block, a pad, a moving platform and a lift
+// their own kinds, each GT_PF_WIDE across and GT_PF_THICK thick; a checkpoint's (and the goal's) platform
+// a checkpoint; spikes a strip lying on their platform; a shard a small cube. The course runs along +z
+// from the middle on the line x 0. A platform longer than a side may be (GT_SIDE_BIG) is two, end to end.
+GT_COURSE :: [9] string.[
+  "p7 *1.2 g1.5 *2.2 g1.5 p6 *1.2 u1 g2.5 p5 u1 g2.5 p6 d1 g3 *2.4 p9 s4,2 *2.4 g3 p6 *1.5 g3.5 p10 c",
+  "g4 *2.5 p5 u2 g3 *3.5 p6 g6 *3.4 p6 d2 g4 p5 u3 g2.5 *4 p6 g6 *3.4 p8 *1.2 g2 p10 c",
+  "g2.5 b4 u5 g3 *4 *6.5 p8 g3 b3 u6 g4 *6 p6 d3 g4 *2 p5 d3 g4 *2 p10 c",
+  "g2 m4,10,6 *1.5 g2 p6 *1.5 g2 m4,12,7 g2 p6 g3 *2.5 p4 g2 m3,9,5 g2 p8 c",
+  "g2 l4,6,6 g2 p5 *1.5 g3 l4,7,6 g2.5 p5 *1.5 g3 p4 u2 g3 *3.2 p5 d2 g4 p8 c",
+  "g3 p14 s3,2 s9,2.5 *2.4 g4 p4 u1 g4 *2.6 p4 u1 g4 p4 d3 g5 *3.4 p10 s4,3 *2.5 g3 p8 c",
+  "g2 m4,8,5 g2 b3 u7 g3 *5 *7.5 p6 g5 *3.4 p4 g5 p4 d4 g3 m4,10,6 *1.5 g2 p6 s2,2 g2 p8 c",
+  "g2 p5 g3 m4,9,6 g2 p4 u1 g3 *3 p4 u1 g3 p4 d2 g4 *2 l4,5,6 g2 p6 s2,2 *2.4 g3 d3 p8 c",
+  "g3 p4 u1.5 g3 p4 u1.5 g3 p4 u1.5 g3 *2.5 p4 g2 l4,8,7 g2 p6 *1.5 g6 *3.4 p5 g2 b3 u6 g4 *6.5 p16 f"];
+GT_PF_WIDE :: 320;          // centimetres across a platform of the course
+GT_PF_THICK :: 90;          // and thick, under its top
+GT_PF_START :: 400;         // the first platform's top over where the floor was
+GT_PF_SPIKES :: 280;        // centimetres across a strip of spikes
+// A number at text[i], as hundredths: digits, and a fraction of two places at most after a point. Where
+// it ends, and what it is (-1: none there).
+GtNum :: struct { v: int; at: int; }
+gt_num :: (text: string, i: int) -> GtNum {
+  k := i; v := 0; any := false;
+  while k < text.count && text[k] >= '0' && text[k] <= '9' { v = v * 10 + cast(int) (text[k] - '0'); k += 1; any = true; }
+  v *= 100;
+  if k < text.count && text[k] == '.' {
+    k += 1; f := 10;
+    while k < text.count && text[k] >= '0' && text[k] <= '9' { v += f * cast(int) (text[k] - '0'); f /= 10; k += 1; any = true; }
+  }
+  return GtNum.{v = ifx any then v else -1, at = k};
+}
+// A course's sections read into things: how many, or -1 when a word is not one of the course's, a number
+// is missing, a word needs a platform before it, out is too small, or it has no goal.
+gt_course :: (sections: [] string, out: [] GtThing) -> int {
+  n := 0; z := 0; y := GT_PF_START; goal := false;
+  last := -1; last_z0 := 0;   // the last platform's thing (its first, when it is two), and where it starts
+  for text: sections {
+    i := 0;
+    while i < text.count {
+      w := text[i];
+      if w == ' ' { i += 1; continue; }
+      if goal { return -1; }   // nothing after the goal
+      i += 1;
+      if w == 'c' || w == 'f' {
+        if last < 0 || out[last].kind != GK_BLOCK { return -1; }
+        out[last].kind = GK_CHECKPOINT;
+        goal = w == 'f';
+        continue;
+      }
+      a := gt_num(text, i); i = a.at;
+      if a.v < 0 { return -1; }
+      b: GtNum; d: GtNum;
+      if w == 'm' || w == 'l' || w == 's' {
+        if i >= text.count || text[i] != ',' { return -1; }
+        b = gt_num(text, i + 1); i = b.at;
+        if b.v < 0 { return -1; }
+        if w != 's' {
+          if i >= text.count || text[i] != ',' { return -1; }
+          d = gt_num(text, i + 1); i = d.at;
+          if d.v <= 0 { return -1; }
+        }
+      }
+      if w == 'g' { z += a.v; }
+      else if w == 'u' { y += a.v; }
+      else if w == 'd' { y -= a.v; }
+      else if w == '*' {
+        if n >= out.count { return -1; }
+        side := cast(int) GK_SX[GK_SHARD];
+        out[n] = GtThing.{kind = GK_SHARD, x = 0, y = y + a.v - side / 2, z = z, w = side, h = side, d = side}; n += 1;
+      }
+      else if w == 's' {
+        if last < 0 || out[last].kind != GK_BLOCK || n >= out.count { return -1; }
+        out[n] = GtThing.{kind = GK_SPIKES, x = 0, y = out[last].y + out[last].h, z = last_z0 + a.v + b.v / 2, w = GT_PF_SPIKES, h = cast(int) GK_SY[GK_SPIKES], d = b.v}; n += 1;
+      }
+      else if w == 'p' || w == 'b' || w == 'm' || w == 'l' {
+        if a.v <= 0 { return -1; }
+        kind := ifx w == 'b' then GK_PAD else ifx w == 'm' then GK_SLIDER else ifx w == 'l' then GK_LIFT else GK_BLOCK;
+        parts := ifx w == 'p' && a.v > GT_SIDE_BIG then 2 else 1;
+        if n + parts > out.count { return -1; }
+        last = n; last_z0 = z;
+        for k: 0..<parts {
+          long := a.v / parts;
+          out[n] = GtThing.{kind = kind, x = 0, y = y - GT_PF_THICK, z = z + long * k + long / 2, w = GT_PF_WIDE, h = GT_PF_THICK, d = long};
+          if w == 'm' || w == 'l' { out[n].go = b.v; out[n].every = d.v * 10; }
+          n += 1;
+        }
+        z += a.v;
+        if w == 'm' { z += b.v; }
+        if w == 'l' { y += b.v; }
+      }
+      else { return -1; }
+    }
+  }
+  return ifx goal then n else -1;
+}
+
+gt_mark :: (out: [] GtThing, n: int, kind: int, x: int, z: int, turn: int) -> int { return gt_put(out, n, kind, x, z, cast(int) GK_SX[kind], cast(int) GK_SY[kind], cast(int) GK_SZ[kind], turn); }
+
+// Crates' rooms, a level of the game each: rows of tiles, the first row the north side (the top of the
+// screen): # a wall, . floor, c a crate, o a pad, @ where you start, > the gate. Rising: one crate and a
+// turn; two crates round a block; three crates that must all go through one door, in the right order.
+// A room is made things of its level (gt_room): nothing else of it is kept anywhere.
+GT_ROOMS :: 3;
+GT_ROOM :: [GT_ROOMS] string.[
+  "#######/#...o.#/#@.c..>/#.....#/#######",
+  "########/#......#/#.c..o.#/#@.##..>/#.o..c.#/#......#/########",
+  "#########/#...#.o.#/#.c.#...#/#@.c..o.>/#.c.#...#/#...#.o.#/#########"];
+GT_TILE :: 150;             // centimetres a tile of a room is across (a wall's made size)
+GT_ROOM_SIDE :: 12;         // tiles a room is across or along, at most
+GT_WALL_RUN :: 8;           // tiles of wall in a row made one thing, at most: a side is 12 m at most (GT_SIDE_BIG)
+// A room's text as the things of a level, into out from n: its walls first (a row's run of two or more
+// tiles one wall, cut where it would be longer than a side may be; then what is left, a column's run),
+// then its pads, its crates, its gate and its start. The room's middle is the level's, the first row the
+// furthest north (+z). How many things there are now; n unchanged for a text that is no room.
+gt_room :: (text: string, out: [] GtThing, from: int) -> int {
+  tile: [GT_ROOM_SIDE * GT_ROOM_SIDE] u8; cols := 0; rows := 0; col := 0;
+  for c: text {
+    if c == '/' { if rows == 0 { cols = col; } if col != cols || col == 0 { return from; } rows += 1; col = 0; continue; }
+    if col >= GT_ROOM_SIDE || rows >= GT_ROOM_SIDE { return from; }
+    tile[rows * GT_ROOM_SIDE + col] = c; col += 1;
+  }
+  if rows == 0 { cols = col; }
+  if col != cols || col == 0 { return from; }
+  rows += 1;
+  n := from;
+  // (a tile's middle, centimetres: twice the place, so half tiles stay whole numbers)
+  x2 := 1 - cols; z2 := rows - 1; half := GT_TILE / 2;
+  // the walls: along the rows
+  for r: 0..<rows {
+    c := 0;
+    while c < cols {
+      if tile[r * GT_ROOM_SIDE + c] != '#' { c += 1; continue; }
+      e := c; while e < cols && tile[r * GT_ROOM_SIDE + e] == '#' { e += 1; }
+      if e - c >= 2 {
+        // (cut in equal parts no longer than a side may be)
+        parts := (e - c + GT_WALL_RUN - 1) / GT_WALL_RUN; a := c;
+        for k: 0..<parts {
+          b := c + (e - c) * (k + 1) / parts; if k == parts - 1 { b = e; }
+          n = gt_put(out, n, GK_WALL, (x2 + a + b - 1) * half, (z2 - 2 * r) * half, (b - a) * GT_TILE, cast(int) GK_SY[GK_WALL], GT_TILE, 0);
+          a = b;
+        }
+        for k: c..<e { tile[r * GT_ROOM_SIDE + k] = 'W'; }
+      }
+      c = e;
+    }
+  }
+  // (and down the columns, what no row took)
+  for c: 0..<cols {
+    r := 0;
+    while r < rows {
+      if tile[r * GT_ROOM_SIDE + c] != '#' { r += 1; continue; }
+      e := r; while e < rows && e - r < GT_WALL_RUN && tile[e * GT_ROOM_SIDE + c] == '#' { e += 1; }
+      n = gt_put(out, n, GK_WALL, (x2 + 2 * c) * half, (z2 - (r + e - 1)) * half, GT_TILE, cast(int) GK_SY[GK_WALL], (e - r) * GT_TILE, 0);
+      r = e;
+    }
+  }
+  kinds := [4] int.[GK_CRATE_GOAL, GK_BLOCK, GK_GATE, GK_START]; marks := "oc>@";
+  for q: 0..<4 {
+    for r: 0..<rows { for c: 0..<cols {
+      if tile[r * GT_ROOM_SIDE + c] != marks[q] { continue; }
+      k := kinds[q];
+      // (a crate is 0.9 a side, GT_CRATE: a block the person pushes)
+      side := ifx k == GK_BLOCK then GT_CRATE else cast(int) GK_SX[k];
+      n = gt_put(out, n, k, (x2 + 2 * c) * half, (z2 - 2 * r) * half, side, ifx k == GK_BLOCK then GT_CRATE else cast(int) GK_SY[k], ifx k == GK_BLOCK then GT_CRATE else cast(int) GK_SZ[k], 0);
+    } }
+  }
+  return n;
+}
+GT_CRATE :: 90;             // centimetres a crate is a side
+
+// What a new game of type t starts with, into out (GT_STARTER_MAX is enough): how many things.
+// A world of its own starts with its course as things of the level, which the editor selects, moves,
+// sizes and deletes as any other and the scene reads from the level (racing: its circuit's points;
+// drift: its rings; the medieval village: the buildings of its green; the platformer: its course, GT_COURSE
+// read by gt_course; crates: its first room, and gt_starter_level its other rooms, a level each).
+gt_starter :: (t: int, out: [] GtThing) -> int { return gt_starter_level(t, 0, out); }
+// What level k (from 0) of a new game of type t starts with: gt_levels(t) of them; none past them.
+gt_starter_level :: (t: int, level: int, out: [] GtThing) -> int {
+  n := 0;
+  if level < 0 || level >= gt_levels(t) { return 0; }
+  if t == GT_CRATES { return gt_room(GT_ROOM[level], out, 0); }
+  if t == GT_ARENA {
+    // four walls round a square, cover inside it, your team's start at the south end and the
+    // rivals' at the north, facing in, and the match's markers
+    h := GT_ARENA_HALF;
+    n = gt_mark(out, n, GK_START, 0, -(h - 250), 0);
+    n = gt_mark(out, n, GK_RIVAL, 0, h - 250, 180);
+    n = gt_put(out, n, GK_BLOCK, 0, -h, 2 * h + 50, 300, 50, 0);
+    n = gt_put(out, n, GK_BLOCK, 0, h, 2 * h + 50, 300, 50, 0);
+    n = gt_put(out, n, GK_BLOCK, -h, 0, 50, 300, 2 * h + 50, 0);
+    n = gt_put(out, n, GK_BLOCK, h, 0, 50, 300, 2 * h + 50, 0);
+    n = gt_put(out, n, GK_BLOCK, 0, 0, 300, 150, 300, 0);              // the middle
+    for k: 0..<4 {
+      sx := ifx (k & 1) != 0 then 1 else -1; sz := ifx (k & 2) != 0 then 1 else -1;
+      n = gt_put(out, n, GK_BLOCK, sx * 650, sz * 650, 100, 300, 100, 0);    // a pillar a quarter
+      n = gt_put(out, n, GK_BLOCK, sx * 1100, sz * 250, 150, 150, 150, 0);   // a crate by each side wall
+    }
+    n = gt_put(out, n, GK_BLOCK, 0, -800, 400, 120, 60, 0);            // a low wall before each start
+    n = gt_put(out, n, GK_BLOCK, 0, 800, 400, 120, 60, 0);
+    n = gt_put(out, n, GK_BLOCK, -950, 0, 60, 120, 400, 0);            // and one each side of the middle
+    n = gt_put(out, n, GK_BLOCK, 950, 0, 60, 120, 400, 0);
+    // each goal 1.4 m behind its start, its hoop half a metre in from it, the packs a third of the
+    // way along and either side of the middle, the ball beside the middle block
+    g := h - 250 + 140;
+    n = gt_put(out, n, GK_GOAL, 0, -g, cast(int) GK_SX[GK_GOAL], cast(int) GK_SY[GK_GOAL], cast(int) GK_SZ[GK_GOAL], 0);
+    n = gt_put(out, n, GK_RIVAL_GOAL, 0, g, cast(int) GK_SX[GK_GOAL], cast(int) GK_SY[GK_GOAL], cast(int) GK_SZ[GK_GOAL], 180);
+    n = gt_put(out, n, GK_HOOP, 0, -(g - 50), cast(int) GK_SX[GK_HOOP], cast(int) GK_SY[GK_HOOP], cast(int) GK_SZ[GK_HOOP], 0);
+    n = gt_put(out, n, GK_RIVAL_HOOP, 0, g - 50, cast(int) GK_SX[GK_HOOP], cast(int) GK_SY[GK_HOOP], cast(int) GK_SZ[GK_HOOP], 180);
+    packs := [8] int.[0, -500, 0, 500, -700, 0, 700, 0];
+    for k: 0..<GT_ARENA_PACKS { n = gt_mark(out, n, GK_PACK, packs[2 * k], packs[2 * k + 1], 0); }
+    n = gt_mark(out, n, GK_BALL, 250, 0, 0);
+  } else if t == GT_ADVENTURE {
+    // a clearing of bare earth to walk, a pond, trees round it, and a few blocks to climb
+    n = gt_put(out, n, GK_START, 0, -1200, 60, 180, 60, 0);
+    n = gt_put(out, n, GK_PATH, 0, 0, 4000, 5, 4000, 0);              // the ground
+    n = gt_put(out, n, GK_WATER, 900, 600, 900, 5, 600, 15);           // a pond
+    tx := [8] int.[-1500, -1300, -600, 400, 1600, 1700, 1200, -1700];
+    tz := [8] int.[-700, 900, 1500, 1600, 1300, -300, -1500, 200];
+    for k: 0..<8 { n = gt_put(out, n, GK_TREE, tx[k], tz[k], 80, 450, 80, 0); }
+    n = gt_put(out, n, GK_BLOCK, -500, -200, 200, 100, 200, 0);         // steps up
+    n = gt_put(out, n, GK_BLOCK, -500, 150, 200, 200, 200, 0);
+    n = gt_put(out, n, GK_BLOCK, -500, 500, 200, 300, 200, 0);
+    n = gt_put(out, n, GK_BLOCK, 300, -500, 500, 250, 80, 20);          // a wall
+  } else if t == GT_FIELD {
+    // the arena's floor, open to the horizon: your start, a crate and two low walls of cover, five
+    // targets facing you (two of them sliding) and three enemies further off who come at you
+    n = gt_put(out, n, GK_START, 0, 0, 60, 180, 60, 0);
+    n = gt_put(out, n, GK_BLOCK, 350, 800, 150, 150, 150, 0);               // a crate of cover ahead, to the right
+    n = gt_put(out, n, GK_BLOCK, -900, 2400, 400, 120, 60, 0);              // and a low wall either side, further on
+    n = gt_put(out, n, GK_BLOCK, 900, 2400, 400, 120, 60, 0);
+    tx := [5] int.[-700, 700, -1500, 0, 1500];
+    tz := [5] int.[1400, 1400, 900, 1900, 900];
+    for k: 0..<5 { n = gt_mark(out, n, ifx k == 3 || k == 2 then GK_MOVER else GK_TARGET, tx[k], tz[k], 180); }   // facing back at your start
+    ex := [3] int.[-1600, 0, 1600];
+    ez := [3] int.[3600, 4200, 3600];
+    for k: 0..<3 { n = gt_mark(out, n, GK_ENEMY, ex[k], ez[k], 180); }
+  } else if t >= GT_THIRD && t <= GT_SIDE {
+    // the meadow: a few blocks ahead of where you land, to climb on and build from
+    n = gt_put(out, n, GK_BLOCK, -300, 400, 200, 100, 200, 0);    // a low platform to the left
+    n = gt_put(out, n, GK_BLOCK, 300, 500, 100, 300, 100, 0);     // a pillar to the right
+    n = gt_put(out, n, GK_BLOCK, 0, 800, 600, 200, 100, 0);       // a wall across, further on
+    n = gt_put(out, n, GK_BALL, 80, 300, 120, 120, 120, 0);       // and a big ball before them, to kick (0.6 m in radius)
+  } else if t == GT_VILLAGE {
+    // the green: a ball to kick, and its buildings, each its model's kind at its own scale
+    n = gt_put(out, n, GK_BALL, 150, 450, 120, 120, 120, 0);
+    for k: 0..<GT_GREEN {
+      q := GT_GREEN_QUARTER[k]; m := n;
+      n = gt_mark(out, n, GK_BUILDING + GT_GREEN_MODEL[k], GT_GREEN_X[k], GT_GREEN_Z[k], ifx q == 3 then -90 else q * 90);
+      if n > m { out[m].scale = GT_GREEN_SCALE[k]; }
+    }
+  } else if t == GT_RACING {
+    for k: 0..<GT_CIRCUIT { n = gt_at(out, n, GK_TRACK, GT_CIRCUIT_X[k] * 100, GT_CIRCUIT_Y[k], -GT_CIRCUIT_Z[k] * 100, GT_CIRCUIT_BANK[k]); }
+  } else if t == GT_PLATFORMER {
+    c := GT_COURSE; m := gt_course(c[..], out);
+    n = ifx m > 0 then m else 0;
+  } else if t == GT_DRIFT {
+    // (a ring's thing is its middle: its bottom half its height under it)
+    for k: 0..<GT_RINGS { n = gt_at(out, n, GK_RING, GT_RING_X[k], GT_RING_Y[k] - cast(int) GK_SY[GK_RING] / 2, -GT_RING_Z[k], 0); }
+  }
+  return n;
+}
+
+#test "a type's limits are said with their numbers" {
+  b: [512] u8;
+  n := gt_limits_words(GT_PLATFORMER, 64, b[..], 0);
+  #assert cast(string) b[0..<n] == "things stay within 700 m of the middle (x and z from -70000 to 70000 cm); a thing's bottom is at most 60 m up (y 0 to 6000 cm); sides are 0.25 to 12 m (25 to 1200 cm, size times scale); a ball's radius is 0.15 to 1.5 m; a moving platform or a lift goes 0 to 50 m (distance 0 to 5000 cm), there and back in 1 to 60 seconds (period 1000 to 60000 ms); at most 64 things.";
+  n = gt_why_words(GT_WHY_TRAVEL, 0, 0, 0, b[..], 0);
+  #assert cast(string) b[0..<n] == "out of range: a moving platform or a lift goes 0 to 50 m, there and back in 1 to 60 seconds.";
+  n = gt_why_words(GT_WHY_STILL, 0, 0, 0, b[..], 0);
+  #assert cast(string) b[0..<n] == "only a moving platform or a lift has a distance and a period.";
+  n = gt_limits_words(GT_DRIFT, 1000, b[..], 0);
+  #assert cast(string) b[0..<41] == "things stay within 700 m of the middle (x" && gt_say(b[..], 0, "") == 0;
+  n = gt_limits_words(GT_ARENA, 64, b[..], 0);
+  #assert cast(string) b[0..<n] == "at most 64 things.";
+  // the village's: the meadow's, and its buildings'
+  b2: [1024] u8; n = gt_limits_words(GT_VILLAGE, 512, b2[..], 0);
+  tail := "at most 512 things. buildings: at most 33 stand, sharing 512 solid boxes (britons_house 43, gauls_house 17, market 117, mossy_rock 1, rock 6); a building's scale is 50 to 300 percent of its model; it stands on the ground (y 0), turned 0, 90, 180 or 270 degrees, never in another building.";
+  #assert n > tail.count && cast(string) b2[n - tail.count..<n] == tail;
+}
+
+#test "every type has an id, a name, a line and a picture, each its own, and is read back by its id" {
+  for t: 0..<GT_TYPES {
+    #assert gt_of(GT_ID[t]) == t && GT_NAME[t].count > 0 && GT_LINE[t].count > 0 && GT_PIC[t].count > 0;
+    #assert GT_ON_WEB[t] || GT_PLAYS_IN_APP[t];   // every type is played somewhere
+    for u: 0..<t { #assert GT_ID[u] != GT_ID[t] && GT_NAME[u] != GT_NAME[t] && GT_LINE[u] != GT_LINE[t] && GT_PIC[u] != GT_PIC[t]; }
+  }
+  #assert gt_of("") == -1 && gt_of("Arena") == -1 && gt_of("racing") == GT_RACING;
+}
+#test "the website's nine are its kinds 0 to 8, in order; the app's picker shows all twelve, the website's nine first" {
+  for k: 0..<GT_WEB_TYPES { #assert gt_web_kind(gt_web_type(k)) == k && GT_ON_WEB[gt_web_type(k)]; }
+  #assert gt_web_type(GT_WEB_TYPES) == -1 && gt_web_kind(GT_ARENA) == -1 && gt_web_kind(GT_TYPES) == -1;
+  site: [GT_TYPES] int; app: [GT_TYPES] int;
+  ns := gt_picker(GT_ON_SITE, site[..]); na := gt_picker(GT_ON_APP, app[..]);
+  #assert ns == GT_WEB_TYPES && na == GT_TYPES;
+  for i: 0..<ns { #assert site[i] == app[i] && site[i] == gt_web_type(i); }
+  for i: 0..<na { for j: 0..<i { #assert app[i] != app[j]; } }
+  #assert app[9] == GT_ARENA && app[10] == GT_ADVENTURE && app[11] == GT_FIELD && gt_key(0) == "1" && gt_key(8) == "9" && gt_key(9) == "";
+}
+#test "each type starts with what its world opens with, in its palette, and a palette holds its kinds once" {
+  for t: 0..<GT_TYPES {
+    s: [GT_STARTER_MAX] GtThing; n := gt_starter(t, s[..]);
+    #assert n < GT_STARTER_MAX;
+    for i: 0..<n { #assert gt_offers(t, s[i].kind) && s[i].w > 0 && s[i].h > 0 && s[i].d > 0 && gk_travel_ok(s[i].kind, s[i].go, s[i].every); }
+    p: [GT_PALETTE_MAX] int; m := gt_palette(t, p[..]);
+    #assert m > 0 && p[0] == GK_BLOCK;
+    for i: 0..<m { for j: 0..<i { #assert p[i] != p[j]; } }
+  }
+  s: [GT_STARTER_MAX] GtThing;
+  #assert gt_starter(GT_ARENA, s[..]) == 28 && s[0].kind == GK_START && s[1].kind == GK_RIVAL;
+  #assert gt_starter(GT_THIRD, s[..]) == 4 && s[3].kind == GK_BALL && s[3].w == 120;
+  #assert gt_starter(GT_TYPES, s[..]) == 0 && gt_starter(GT_CRATES, s[..]) == 9;
+  // the medieval village: its ball, then the green's nine buildings, each a model's kind at its model's size, on the
+  // ground, turned by quarter turns, at its own scale; none stands in another, and their boxes are within a level's
+  #assert gt_starter(GT_VILLAGE, s[..]) == 1 + GT_GREEN && s[0].kind == GK_BALL && s[0].scale == 100 && s[1].kind == GK_BRITONS_HOUSE && s[1].x == -1150 && s[1].z == 1100 && s[1].turn == 90 && s[1].scale == 145 && s[1].w == 457;
+  #assert s[2].kind == GK_GAULS_HOUSE && s[2].turn == -90 && s[3].kind == GK_MARKET && s[3].turn == 180 && s[3].scale == 135 && s[4].scale == 130 && s[9].kind == GK_MOSSY_ROCK && s[9].scale == 260;
+  used := 0; boxes := VL_KIND_BOXES;
+  for i: 1..<1 + GT_GREEN {
+    m := gk_building(s[i].kind);
+    #assert m >= 0 && vl_own_why(s[i].turn, s[i].y, s[i].scale) == VL_WHY_NONE && vl_fits(m, i - 1, used);
+    used += boxes[m];
+    for j: 1..<i { #assert !vl_feet_meet(vl_foot(m, s[i].x, s[i].z, vl_quarter(s[i].turn), s[i].scale), vl_foot(gk_building(s[j].kind), s[j].x, s[j].z, vl_quarter(s[j].turn), s[j].scale), VL_SLACK); }
+  }
+  #assert used == 209 && gt_offers(GT_VILLAGE, GK_MARKET) && !gt_offers(GT_THIRD, GK_MARKET) && !gt_offers(GT_RACING, GK_ROCK);
+  p: [GT_PALETTE_MAX] int; #assert gt_palette(GT_VILLAGE, p[..]) == 2 + GK_BUILDINGS && p[1] == GK_BALL && p[2] == GK_BRITONS_HOUSE && p[6] == GK_ROCK;
+  // racing: its circuit, a track point each, the second on the start line at the middle
+  #assert gt_starter(GT_RACING, s[..]) == GT_CIRCUIT && s[1].kind == GK_TRACK && s[1].x == 0 && s[1].z == 1000 && s[6].y == 400 && s[6].turn == 9 && s[6].z == -9200 && gk_mark(s[0].kind);
+  // drift: its rings, each thing a ring's middle
+  #assert gt_starter(GT_DRIFT, s[..]) == GT_RINGS && s[0].kind == GK_RING && s[0].x == 0 && s[0].y == 300 && s[0].z == -5284 && s[11].y == -4535 && gt_offers(GT_DRIFT, GK_RING) && !gt_offers(GT_RACING, GK_RING);
+  #assert gt_one(GT_ARENA, GK_BALL) && !gt_one(GT_THIRD, GK_BALL) && gt_one(GT_ADVENTURE, GK_START);
+}
+#test "the platformer's course is things: its platforms, pads, moving platforms and lifts with how far and how often they go, spikes on their platforms, shards, a checkpoint each section and the goal last; every one within the type's limits; bad text is no course" {
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter(GT_PLATFORMER, s[..]);
+  kinds: [GK_KINDS] int; for i: 0..<n { kinds[s[i].kind] += 1; }
+  #assert n == 111 && kinds[GK_BLOCK] == 44 && kinds[GK_CHECKPOINT] == 9 && kinds[GK_PAD] == 4 && kinds[GK_SLIDER] == 6 && kinds[GK_LIFT] == 4 && kinds[GK_SPIKES] == 6 && kinds[GK_SHARD] == 38;
+  // the first platform: 7 m long from the middle, its top 4 m up; the first shard 1.2 m over its end
+  #assert s[0].kind == GK_BLOCK && s[0].x == 0 && s[0].z == 350 && s[0].d == 700 && s[0].w == GT_PF_WIDE && s[0].h == GT_PF_THICK && s[0].y + s[0].h == GT_PF_START;
+  #assert s[1].kind == GK_SHARD && s[1].z == 700 && s[1].y + s[1].h / 2 == GT_PF_START + 120 && gk_mark(s[1].kind);
+  far := 0; goal := -1; first_mover := -1; first_lift := -1; first_spikes := -1;
+  for i: 0..<n {
+    k := s[i];
+    #assert k.x == 0 && gt_side_ok(k.w) && gt_side_ok(k.h) && gt_side_ok(k.d) && gt_place_why(GT_FAR[GT_PLATFORMER], GT_LOW[GT_PLATFORMER], GT_HIGH[GT_PLATFORMER], k.x, k.y, k.z) == GT_WHY_NONE;
+    if k.kind == GK_CHECKPOINT && k.z > far { far = k.z; goal = i; }
+    if k.kind == GK_SLIDER && first_mover < 0 { first_mover = i; }
+    if k.kind == GK_LIFT && first_lift < 0 { first_lift = i; }
+    if k.kind == GK_SPIKES && first_spikes < 0 { first_spikes = i; }
+  }
+  // the goal is the furthest checkpoint, the first half of the last platform (16 m: two of 8), 628 m along
+  #assert goal == n - 2 && s[n - 1].kind == GK_BLOCK && s[goal].d == 800 && s[n - 1].d == 800 && s[n - 1].z + 400 == 62800 && s[n - 1].z == s[goal].z + 800;
+  #assert s[first_mover].go == 1000 && s[first_mover].every == 6000 && s[first_mover].d == 400 && s[first_lift].go == 600 && s[first_lift].every == 6000;
+  // the first spikes: 2 m of them from 4 m along the 9 m platform before them, lying on its top
+  p := s[first_spikes - 1]; k := s[first_spikes];
+  #assert p.kind == GK_BLOCK && p.d == 900 && k.d == 200 && k.z == p.z - 450 + 400 + 100 && k.y == p.y + p.h && k.w == GT_PF_SPIKES;
+  // small courses, and text that is none
+  one := [1] string.["p4 g2.5 u1.5 p3 s0.5,1 *2 l2,3,4 m2,5,6 b2 p2 c g1 p6 f"];
+  #assert gt_course(one[..], s[..]) == 9 && s[1].z == 800 && s[1].y + s[1].h == 550 && s[2].kind == GK_SPIKES && s[2].z == 750 && s[2].d == 100 && s[3].kind == GK_SHARD && s[3].y == 725 && s[3].z == 950;
+  #assert s[4].kind == GK_LIFT && s[4].go == 300 && s[4].every == 4000 && s[5].kind == GK_SLIDER && s[5].go == 500 && s[5].z == 1250 && s[5].y + s[5].h == 850 && s[6].kind == GK_PAD && s[6].z == 1950;
+  #assert s[7].kind == GK_CHECKPOINT && s[8].kind == GK_CHECKPOINT && s[8].z + 300 == 2950;
+  for bad: [12] string.["", "p4", "p4 q", "p4 g f", "c p4 f", "b4 s1,2 f", "p4 m2,3 f", "p4 l2,3,0 f", "p4 f p2", "p4 m2,3,4 c", "b2 f", "p4 x1 f"] {
+    b := [1] string.[bad]; #assert gt_course(b[..], s[..]) < 0;
+  }
+}
+#test "crates starts with three levels, a room each, made of things: walls in runs no longer than a side may be, a pad for each crate, a gate and a start; every other type starts with one" {
+  s: [GT_STARTER_MAX] GtThing;
+  for t: 0..<GT_TYPES { #assert gt_levels(t) == (ifx t == GT_CRATES then GT_ROOMS else 1) && gt_levels(t) <= GT_LEVELS_MOST && gt_starter_level(t, gt_levels(t), s[..]) == 0 && gt_starter_level(t, -1, s[..]) == 0; }
+  #assert gt_levels(-1) == 0 && gt_levels(GT_TYPES) == 0;
+  count := [GT_ROOMS] int.[9, 12, 17]; crates := [GT_ROOMS] int.[1, 2, 3];
+  for k: 0..<GT_ROOMS {
+    n := gt_starter_level(GT_CRATES, k, s[..]);
+    #assert n == count[k];
+    walls := 0; pads := 0; boxes := 0; gates := 0; starts := 0;
+    for i: 0..<n {
+      g := s[i];
+      #assert gt_offers(GT_CRATES, g.kind) && gt_side_ok(g.w) && gt_side_ok(g.h) && gt_side_ok(g.d) && g.y == 0 && gt_place_why(GT_FAR[GT_CRATES], GT_LOW[GT_CRATES], GT_HIGH[GT_CRATES], g.x, g.y, g.z) == GT_WHY_NONE;
+      if g.kind == GK_WALL { walls += 1; #assert g.h == 240 && (g.w == GT_TILE || g.d == GT_TILE) && g.w % GT_TILE == 0 && g.d % GT_TILE == 0; }
+      if g.kind == GK_CRATE_GOAL { pads += 1; }
+      if g.kind == GK_BLOCK { boxes += 1; #assert g.w == GT_CRATE && g.h == GT_CRATE && g.d == GT_CRATE; }
+      if g.kind == GK_GATE { gates += 1; }
+      if g.kind == GK_START { starts += 1; }
+    }
+    #assert pads == crates[k] && boxes == crates[k] && gates == 1 && starts == 1 && walls == n - 2 * crates[k] - 2;
+  }
+  // the first room: its north wall one thing 10.5 m long, its start a tile in from the west wall, its gate in the east wall
+  n := gt_starter(GT_CRATES, s[..]);
+  #assert n == 9 && s[0].kind == GK_WALL && s[0].x == 0 && s[0].z == 300 && s[0].w == 1050 && s[0].d == 150;
+  #assert s[5].kind == GK_CRATE_GOAL && s[5].x == 150 && s[5].z == 150 && s[6].kind == GK_BLOCK && s[6].x == 0 && s[6].z == 0;
+  #assert s[7].kind == GK_GATE && s[7].x == 450 && s[7].z == 0 && s[8].kind == GK_START && s[8].x == -300 && s[8].z == 0;
+  // the third room's north wall is 13.5 m: two things, 6 m and 7.5 m
+  n = gt_starter_level(GT_CRATES, 2, s[..]);
+  #assert s[0].w == 600 && s[1].w == 750 && s[0].z == s[1].z && s[0].x + s[0].w / 2 == s[1].x - s[1].w / 2 && s[0].x - s[0].w / 2 == -675;
+  // a text that is no room is nothing
+  #assert gt_room("##/#", s[..], 0) == 0 && gt_room("", s[..], 0) == 0 && gt_room("#############", s[..], 0) == 0;
+}

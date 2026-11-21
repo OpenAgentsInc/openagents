@@ -1,0 +1,15 @@
+// Public world-list snapshots only: no engine export or state assignment.
+PtObject :: struct {ok:bool;id:int;kind:int;x:int;y:int;z:int;w:int;h:int;d:int;}
+pt_one_object :: (p:[]Pt)->PtObject {
+ q:PtObject;r:=pb_read(p[0].c[..],"(()=>{const a=document.getElementById('blocks')?.textContent.trim().split('\\n'),r=a?.[1]?.trim().split(/\\s+/).map(Number);return a?.length===2&&Number(a[0])===1&&r?.length>=10&&r.every(Number.isFinite)?{id:r[0],kind:r[1],x:r[4],y:r[5],z:r[6],w:r[7],h:r[8],d:r[9]}:null})()");
+ if r<0 || jv_kind(cdp_doc(p[0].c[..]),r)!=JV_OBJECT {return q;}d:=cdp_doc(p[0].c[..]);q.id=jv_int(d,jv_get(d,r,"id"),-1);q.kind=jv_int(d,jv_get(d,r,"kind"),-1);q.x=jv_int(d,jv_get(d,r,"x"),-99999);q.y=jv_int(d,jv_get(d,r,"y"),-99999);q.z=jv_int(d,jv_get(d,r,"z"),-99999);q.w=jv_int(d,jv_get(d,r,"w"),0);q.h=jv_int(d,jv_get(d,r,"h"),0);q.d=jv_int(d,jv_get(d,r,"d"),0);q.ok=q.id>0 && q.kind==0 && q.w>0 && q.h>0 && q.d>0 && q.x != -99999 && q.y != -99999 && q.z != -99999;return q;
+}
+pt_taller_same :: (a:PtObject,b:PtObject)->bool {return a.ok && b.ok && a.id==b.id && a.kind==b.kind && a.x==b.x && a.y==b.y && a.z==b.z && a.w==b.w && a.d==b.d && b.h>a.h;}
+pt_object_trace :: (p:[]Pt,a:PtObject,b:PtObject) {
+ buf:[2048]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"case");jo_str(o[..],"create.selected-agent");names:=[9]string.["id","kind","x_cm","y_cm","z_cm","w_cm","h_cm","d_cm","valid"];
+ for q,i:[2]PtObject.[a,b] {jo_key(o[..],ifx i==0 then "before" else "after");jo_obj(o[..]);v:=[9]int.[q.id,q.kind,q.x,q.y,q.z,q.w,q.h,q.d,ifx q.ok then 1 else 0];for value,j:v {jo_key(o[..],names[j]);jo_int(o[..],value);}jo_end(o[..]);}jo_end(o[..]);path:[4096]u8;_=fs_append(pt_path(p,"measurements.jsonl",path[..]),jo_text(o[..]));_=fs_append(pt_path(p,"measurements.jsonl",path[..]),"\n");
+}
+#test "selected resizing requires the same object, width, depth and place" {
+ a:=PtObject.{ok=true,id=5,kind=0,x=0,y=0,z=500,w=300,h=50,d=300};b:=a;b.h=100;#assert pt_taller_same(a,b);
+ b.id=6;#assert !pt_taller_same(a,b);b.id=5;b.w=400;#assert !pt_taller_same(a,b);b.w=300;b.z=600;#assert !pt_taller_same(a,b);b.z=500;b.ok=false;#assert !pt_taller_same(a,b);b.ok=true;b.h=50;#assert !pt_taller_same(a,b);
+}

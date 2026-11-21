@@ -1,0 +1,20 @@
+# gamebuilder.org/agents is a chat (issue 29): a message sent in an empty conversation is two
+# rows, a new game of the type the control beside the box says (its id, and a key of that send's)
+# and then a Builder on the game that answered, the words its job.
+# Sent again in that conversation it is a message to the agent; Stop and take back are rows too.
+> new-game {"template":"third-person","key":"agents-00000001a1b2c3d4000f4240"}
+< {"ok":true,"game":1,"level":1,"template":"third-person","key":"agents-00000001a1b2c3d4000f4240"}
+> agent-new {"game":1,"role":"build","job":"make a small maze with four walls and a goal"}
+< {"ok":true,"agent":"a19a91a37500-0","state":"queued","cost":"your own agent: no charge from us"}
+> agents
+< {"ok":true,"agents":[{"agent":{"schema":"gamebuilder.agent.v1","id":"a19a91a37500-0","game":1,"title":"Game 1","level":1,"kind":"build","job":"make a small maze with four walls and a goal","place":"local","computer":"this Mac","runner":"claude","state":"queued","since":1763380000000,"made":1763380000000,"updated":1763380000000,"heard":0,"step":"","why":"","limits":{"turns":20,"cents":200},"events":1},"shown":"queued","words":"queued","for":"0s","where":"this Mac","cost":"your own agent: no charge from us"}]}
+> agent-events {"agent":"a19a91a37500-0","after":0}
+< {"ok":true,"agent":"a19a91a37500-0","events":[{"schema":"gamebuilder.agent.event.v1","agent":"a19a91a37500-0","n":1,"at":1763380000000,"type":"message","from":"person","text":"make a small maze with four walls and a goal"}],"next":1,"more":false}
+> agent-message {"agent":"a19a91a37500-0","message":"make the walls taller"}
+< {"ok":true,"agent":"a19a91a37500-0","state":"queued"}
+> agent-stop {"agent":"a19a91a37500-0"}
+< {"ok":true,"agent":"a19a91a37500-0","state":"stopped"}
+> agent-undo {"agent":"a19a91a37500-0"}
+< {"ok":false,"error":"edit-refused","why":"it has made no edit to take back"}
+> agent-new {"game":7,"role":"build","job":"a game that is not there"}
+< {"ok":false,"error":"not-found","why":"there is no such game of yours (list-games)"}

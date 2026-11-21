@@ -1,0 +1,272 @@
+// The website's saving against the app's, end to end (issue 16; docs/web-world.md, "Kept on your
+// account"): the page's own account module (web/account.coax, the code the browser runs) asks the
+// real hosted server (`gamebuilder serve --accounts DIR`, the app's core behind the same rows
+// every surface uses), as a browser logged in by the login service's cookie. This tool stands in
+// for the login service and for two browsers. It fails if the web's saving drifts from the app's:
+//   - a game built on the website is kept as a game of its type whose level file is, byte for byte,
+//     what the app's core stores and gives back (read-content, by a command line's login), and is on
+//     disk where the app keeps a level;
+//   - another browser lists it under "your games", opens it, and has the same things in the same places;
+//   - a change on one browser comes to the other; both changed keeps both, as two games, and says so;
+//   - another account on the same browser never touches the first account's games;
+//   - a file the app's core wrote (a level changed by a command line) opens on the website;
+//   - a level over the app's limits (513 things) is refused by the app's core itself, which is why
+//     the page does not send one (web/account.coax ac_fits) and says so; a village with its
+//     buildings (the green's nine and one more) is a level the core takes.
+//   coax/web/tool.sh tools/web-account-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+#load "../web/account.coax";
+#import "Basic";
+
+WA_RACING :: GT_RACING - GT_WEB_FIRST;
+WaBrowser :: struct { a: [1] Acct; b: [1] Blocks; st: [1] LvStore; t: f32; said: [AC_SAID] u8; said_n: int; }
+WaRun :: struct {
+  answer: [262144] u8; n: int;
+  ask: [16384] u8;
+  req: [140000] u8;
+  file: [LV_DOC] u8; body: [AC_BODY] u8; text: [AC_BODY] u8;
+  nodes: [AC_NODES] JvNode;
+  origin: [64] u8; origin_n: int;
+  port: int; login: int;
+  asked: int; bad: int;
+  one: [1] WaBrowser; two: [1] WaBrowser;
+}
+wa_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+wa_not :: (r: [] WaRun, what: string, got: string) { print("web account: NOT %: %\n", what, got); r[0].bad += 1; }
+
+// The login service, asked by the server who a caller is (GET /api/auth/account?as=lines): a
+// browser's cookie (ck-a, ck-b) or a command line's token (tok-a) is its account.
+wa_serve_login :: (r: [] WaRun, wait: int) -> bool {
+  h := cxsock_accept(r[0].login, wait);
+  if h < 0 { return false; }
+  n := 0; deadline := cxsock_now_ms() + 10000; done := false;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].ask.count { r[0].ask[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    if n >= 4 && wa_find(cast(string) r[0].ask[0..<n], "\r\n\r\n") >= 0 { done = true; }
+  }
+  ask := cast(string) r[0].ask[0..<n];
+  lines := "";
+  if wa_find(ask, "__Host-oa_session=ck-a") >= 0 || wa_find(ask, "Authorization: Bearer tok-a\r\n") >= 0 { lines = "account acct_a\nprimary a@example.com\n"; }
+  else if wa_find(ask, "__Host-oa_session=ck-b") >= 0 { lines = "account acct_b\nprimary b@example.com\n"; }
+  ab: [512] u8; an := 0;
+  if lines.count == 0 { lines = "error that login has ended\n"; an = bl_put(ab[..], 0, "HTTP/1.1 401 Unauthorized\r\n"); } else { an = bl_put(ab[..], 0, "HTTP/1.1 200 OK\r\n"); }
+  an = bl_put(ab[..], an, "Content-Type: text/plain\r\nConnection: close\r\nContent-Length: "); an = bl_int(ab[..], an, lines.count);
+  an = bl_put(ab[..], an, "\r\n\r\n"); an = bl_put(ab[..], an, lines);
+  for b: ab[0..<an] { _ = cxsock_write(h, cast(int) b); }
+  _ = cxsock_flush(h, 5000);
+  _ = cxsock_close(h);
+  r[0].asked += 1;
+  return true;
+}
+// One POST to the server, as `headers` say who asks: the whole response.
+wa_call :: (r: [] WaRun, path: string, headers: string, body: string) -> string {
+  q := r[0].req[..];
+  n0 := bl_put(q, 0, "POST "); n0 = bl_put(q, n0, path); n0 = bl_put(q, n0, " HTTP/1.1\r\nHost: games.example\r\n"); n0 = bl_put(q, n0, headers);
+  n0 = bl_put(q, n0, "Content-Type: application/json\r\nContent-Length: "); n0 = bl_int(q, n0, body.count); n0 = bl_put(q, n0, "\r\n\r\n"); n0 = bl_put(q, n0, body);
+  if n0 >= q.count { return "(the request did not fit)"; }
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  h := cxsock_connect(r[0].port, 5000);
+  if h < 0 { return "(no server)"; }
+  for b: r[0].req[0..<n0] { _ = cxsock_write(h, cast(int) b); }
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); return "(the request was not sent)"; }
+  _ = wa_serve_login(r, 10000);
+  n := 0; deadline := cxsock_now_ms() + 30000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].answer.count { r[0].answer[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+  }
+  _ = cxsock_close(h);
+  r[0].n = n;
+  return cast(string) r[0].answer[0..<n];
+}
+wa_status :: (resp: string) -> int { if resp.count < 12 || cast(string) resp[0..<9] != "HTTP/1.1 " { return 0; } return (cast(int) resp[9] - 48) * 100 + (cast(int) resp[10] - 48) * 10 + (cast(int) resp[11] - 48); }
+wa_body :: (resp: string) -> string { at := wa_find(resp, "\r\n\r\n"); return ifx at >= 0 then cast(string) resp[at + 4..<resp.count] else ""; }
+// A command line's call (its own login), for looking at the account from outside the page.
+wa_cli :: (r: [] WaRun, verb: string, body: string) -> string {
+  pb: [64] u8; n := bl_put(pb[..], 0, "/api/rows/"); n = bl_put(pb[..], n, verb);
+  return wa_body(wa_call(r, cast(string) pb[0..<n], "Authorization: Bearer tok-a\r\n", body));
+}
+
+// A browser's pass, to its end: each request the page's module asks is sent as the browser would send it (its
+// cookie, from the site's own page), and the answer given back. Who is logged in is the login service's to say,
+// asked by the page itself: this tool answers it. What the page would say is kept.
+wa_pass :: (r: [] WaRun, w: [] WaBrowser, kind: int, cookie: string, account: string, up: bool) {
+  a := w[0].a[..];
+  hb: [256] u8; hn := bl_put(hb[..], 0, "Cookie: __Host-oa_session="); hn = bl_put(hb[..], hn, cookie); hn = bl_put(hb[..], hn, "\r\nOrigin: "); hn = bl_put(hb[..], hn, cast(string) r[0].origin[0..<r[0].origin_n]); hn = bl_put(hb[..], hn, "\r\n");
+  w[0].said_n = 0;
+  for step: 0..<40 {
+    w[0].t += 0.1;
+    ac_tick(a, w[0].b[..], kind, w[0].t, true, up);
+    if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+    if a[0].said_n > 0 && w[0].said_n == 0 { w[0].said_n = ac_take(a, w[0].said[..]); }
+    if !ac_wants(a) { if !ac_busy(a) && step > 2 { break; } continue; }
+    ac_sent(a);
+    url := cast(string) a[0].url[0..<a[0].url_n];
+    if url == "/api/auth/account" {
+      jb: [128] u8; jn := bl_put(jb[..], 0, "{\"logged_in\":true,\"account\":\""); jn = bl_put(jb[..], jn, account); jn = bl_put(jb[..], jn, "\"}");
+      ac_piece(a, jb[0..<jn]); ac_end(a, w[0].st[..], w[0].b[..], kind, 200, w[0].t, up);
+    } else {
+      resp := wa_call(r, url, cast(string) hb[0..<hn], cast(string) a[0].body[0..<a[0].body_n]);
+      body := wa_body(resp);
+      for i: 0..<body.count { r[0].text[i] = body[i]; }
+      ac_piece(a, r[0].text[0..<body.count]); ac_end(a, w[0].st[..], w[0].b[..], kind, wa_status(resp), w[0].t, up);
+    }
+    if a[0].said_n > 0 && w[0].said_n == 0 { w[0].said_n = ac_take(a, w[0].said[..]); }
+  }
+  if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+}
+wa_said :: (w: [] WaBrowser) -> string { return cast(string) w[0].said[0..<w[0].said_n]; }
+wa_world :: (w: [] WaBrowser, kind: int) {
+  ty := gt_web_type(kind);
+  bl_new(w[0].b[..], ty); bl_bounds(w[0].b[..], GT_FAR[ty], GT_HIGH[ty]); bl_low(w[0].b[..], GT_LOW[ty]); bl_roles(w[0].b[..], gt_roles(ty));
+}
+// read-content's file of `level`, by a command line: into WaRun.file. Its length (0: none).
+wa_read :: (r: [] WaRun, level: int) -> int {
+  bb: [64] u8; n := bl_put(bb[..], 0, "{\"level\":"); n = bl_int(bb[..], n, level); n = bl_put(bb[..], n, "}");
+  body := wa_cli(r, "read-content", cast(string) bb[0..<n]);
+  d: [1] Jv;
+  if !jv_parse(d[..], body, r[0].nodes[..]) { return 0; }
+  got := jv_str(d[0], jv_get(d[0], 0, "content"), r[0].file[..]);
+  return ifx got > 0 then got else 0;
+}
+// Whether the browser's world, written as `level`, is byte for byte the file the account holds.
+wa_same :: (r: [] WaRun, w: [] WaBrowser, level: int) -> bool {
+  n := wa_read(r, level);
+  m := lv_write(w[0].b[..], w[0].st[..], level, w[0].a[0].file[..]);
+  return n > 0 && n == m && cast(string) r[0].file[0..<n] == cast(string) w[0].a[0].file[0..<m];
+}
+// write-content of the browser's world as `level` from `rev`, by a command line: the server's answer.
+wa_write :: (r: [] WaRun, w: [] WaBrowser, level: int, rev: int) -> string {
+  m := lv_write(w[0].b[..], w[0].st[..], level, w[0].a[0].file[..]);
+  o: [1] Jo; jo_start(o[..], r[0].body[..]); jo_obj(o[..]); jo_key(o[..], "level"); jo_int(o[..], level); jo_key(o[..], "revision"); jo_int(o[..], rev);
+  jo_key(o[..], "content"); jo_str(o[..], cast(string) w[0].a[0].file[0..<m]); jo_end(o[..]);
+  return wa_cli(r, "write-content", cast(string) r[0].body[0..<o[0].n]);
+}
+wa_rev :: (r: [] WaRun, level: int) -> int {
+  body := wa_cli(r, "list-levels", "{}");
+  d: [1] Jv;
+  if !jv_parse(d[..], body, r[0].nodes[..]) { return -1; }
+  ls := jv_get(d[0], 0, "levels"); i := ifx jv_kind(d[0], ls) == JV_ARRAY then d[0].nodes[ls].first else -1;
+  while i >= 0 { if jv_int(d[0], jv_get(d[0], i, "level"), 0) == level { return jv_int(d[0], jv_get(d[0], i, "revision"), -1); } i = d[0].nodes[i].next; }
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/web-account-check.coax GAMEBUILDER\n"); return 2; }
+  bin := args_at(a[..], 0);
+  r: [1] WaRun; k := WA_RACING;
+  r[0].login = cxsock_listen(0);
+  if r[0].login < 0 { print("web account: NOT a port for the login service\n"); return 1; }
+  r[0].origin_n = bl_put(r[0].origin[..], 0, "http://127.0.0.1:"); r[0].origin_n = bl_int(r[0].origin[..], r[0].origin_n, cxsock_port(r[0].login)); origin := cast(string) r[0].origin[0..<r[0].origin_n];
+  db: [256] u8; dir := fs_temp("gb-web-account", db[..]);
+  if dir.count == 0 { print("web account: NOT a folder to work in\n"); return 1; }
+  sh := proc_new();
+  ok := proc_arg(sh, bin) && proc_arg(sh, "serve") && proc_arg(sh, "--accounts") && proc_arg(sh, dir) && proc_arg(sh, "--origin") && proc_arg(sh, origin) && proc_arg(sh, "--port") && proc_arg(sh, "0");
+  if !ok || proc_start(sh) != 0 { print("web account: NOT started: % serve --accounts\n", bin); return 1; }
+  sl: [256] u8; sn := proc_line(sh, 10000, sl[..]);
+  if sn > 0 {
+    said := cast(string) sl[0..<sn]; at := wa_find(said, "127.0.0.1:");
+    if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { r[0].port = r[0].port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+  }
+  if r[0].port == 0 { print("web account: NOT a port said by serve --accounts\n"); _ = proc_kill(sh, 15); return 1; }
+  one := r[0].one[..]; two := r[0].two[..]; a1 := one[0].a[..]; a2 := two[0].a[..];
+  seed: [16] u8; now := cxsock_now_ms(); for i: 0..<16 { seed[i] = cast(u8) (((now >> (i % 5)) + i * 29) & 255); }
+  ac_entropy(a1, seed[..], true); seed[3] = seed[3] ^ 85; ac_entropy(a2, seed[..], true);
+
+  // 1. a guest's racing game, built in one browser, then logged in: kept on the account as a racing game
+  wa_world(one, k); ac_record_read(a1, "");
+  if !(bl_add(one[0].b[..], 1000, 2000, 200, 200, 100, 0) && bl_add(one[0].b[..], 3000, 2000, 200, 400, 100, 0) && bl_add_ball(one[0].b[..], 5000, 2000, 50, 0)) { wa_not(r[..], "three things built", ""); }
+  ac_built(a1, k); ac_wake(a1);
+  wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  l1 := a1[0].link[k];
+  if l1.level < 1 || l1.game < 1 || a1[0].state != AC_S_KEPT || wa_said(one) != "your game is kept on your account now: it opens in the app, and in any browser you log in on." { wa_not(r[..], "a built game kept on the account", wa_said(one)); }
+  games := wa_cli(r[..], "list-games", "{}");
+  if wa_find(games, "\"template\":\"racing\"") < 0 { wa_not(r[..], "a racing game on the account", games); }
+  if !wa_same(r[..], one, l1.level) { wa_not(r[..], "the account's file the page's file, byte for byte", cast(string) r[0].file[0..<64]); }
+  pb: [512] u8; pn := bl_put(pb[..], 0, dir); pn = bl_put(pb[..], pn, "/acct_a/level-"); pn = bl_int(pb[..], pn, l1.level); pn = bl_put(pb[..], pn, ".world");
+  if !fs_exists(cast(string) pb[0..<pn]) { wa_not(r[..], "the level on disk where the app keeps one", cast(string) pb[0..<pn]); }
+  // (a second pass makes no second game and writes nothing)
+  rev1 := wa_rev(r[..], l1.level);
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if a1[0].link[k].level != l1.level || wa_rev(r[..], l1.level) != rev1 || wa_said(one) != "" { wa_not(r[..], "nothing asked twice", wa_said(one)); }
+
+  // 2. another browser, the same account: "your games" lists it, and it opens there as it was built
+  wa_world(two, k); ac_record_read(a2, "");
+  ac_list(a2); wa_pass(r[..], two, k, "ck-a", "acct_a", false);
+  found := -1; for i: 0..<a2[0].games_n { if a2[0].games[i].game == l1.game && a2[0].games[i].kind == k && a2[0].games[i].level == l1.level { found = i; } }
+  if found < 0 { wa_not(r[..], "the game listed under your games, as racing", games); }
+  if ac_open(a2, found) != k { wa_not(r[..], "the game opened", ""); }
+  wa_pass(r[..], two, k, "ck-a", "acct_a", true);
+  same := two[0].b[0].n == one[0].b[0].n;
+  if same { for i: 0..<one[0].b[0].n { p := one[0].b[0].b[i]; q := two[0].b[0].b[i]; if p.x != q.x || p.z != q.z || p.w != q.w || p.d != q.d || p.h != q.h || p.kind != q.kind { same = false; } } }
+  if !same || wa_said(two) != "opened from your account." || a2[0].link[k].level != l1.level { wa_not(r[..], "the same things in the same places on the other browser", wa_said(two)); }
+
+  // 3. a change on the second comes to the first
+  if !bl_add(two[0].b[..], 7000, 2000, 200, 200, 100, 0) { wa_not(r[..], "a fourth thing", ""); }
+  ac_wake(a2); wa_pass(r[..], two, k, "ck-a", "acct_a", true);
+  if !wa_same(r[..], two, l1.level) { wa_not(r[..], "the second browser's change on the account", wa_said(two)); }
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if one[0].b[0].n != two[0].b[0].n || wa_said(one) != "your account has a newer copy of this game: it is open here now." { wa_not(r[..], "the account's newer copy opened on the first", wa_said(one)); }
+
+  // 4. both changed: both kept, as two games, and said
+  if !(bl_add(one[0].b[..], 9000, 2000, 200, 200, 100, 0) && bl_add(two[0].b[..], 9000, 4000, 300, 300, 100, 0)) { wa_not(r[..], "a thing each", ""); }
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  ac_wake(a2); wa_pass(r[..], two, k, "ck-a", "acct_a", true);
+  l2 := a2[0].link[k];
+  if l2.level == l1.level || l2.game == l1.game || wa_find(wa_said(two), "nothing is lost: this browser's copy is kept as a new game") < 0 { wa_not(r[..], "both changed kept as two games", wa_said(two)); }
+  if !wa_same(r[..], one, l1.level) || !wa_same(r[..], two, l2.level) { wa_not(r[..], "each browser's copy whole on the account", ""); }
+
+  // 5. a file the app's core wrote opens on the website: a command line writes the first game's level (the second
+  // browser's world, as that level), and the first browser's next look opens it
+  rev := wa_rev(r[..], l1.level);
+  wrote := wa_write(r[..], two, l1.level, rev);
+  if wa_find(wrote, "\"ok\":true") < 0 { wa_not(r[..], "a command line's write of a level file", wrote); }
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if one[0].b[0].n != two[0].b[0].n || !wa_same(r[..], one, l1.level) { wa_not(r[..], "the app's file opened on the website", wa_said(one)); }
+
+  // 6. the app's limits are the account's: its core refuses a level of 513 things, and the page does not send
+  // one (it says so, and the account's copy is as it was); a village's buildings are things the core takes
+  n0 := one[0].b[0].n;
+  for i: 0..<GT_LEVEL_THINGS + 1 - n0 { if !bl_add(one[0].b[..], 1000 + (i % 25) * 400, 6000 + (i / 25) * 400, 100, 100, 100, 0) { wa_not(r[..], "513 things built", ""); } }
+  rev = wa_rev(r[..], l1.level);
+  over := wa_write(r[..], one, l1.level, rev);
+  if wa_find(over, "\"ok\":false") < 0 { wa_not(r[..], "513 things refused by the app's core", over); }
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if wa_rev(r[..], l1.level) != rev || a1[0].state != AC_S_LOCAL || wa_said(one) != "kept in this browser only: a game on your account holds 512 things at most, and this one has 513. delete some and it is kept there too." { wa_not(r[..], "a game over the limit not sent, and said", wa_said(one)); }
+  one[0].b[0].n = GT_LEVEL_THINGS; one[0].b[0].rev += 1;
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if a1[0].state != AC_S_KEPT || !wa_same(r[..], one, l1.level) { wa_not(r[..], "512 things kept", wa_said(one)); }
+  vk := GT_VILLAGE - GT_WEB_FIRST;
+  wa_world(two, vk);
+  if !bl_add_building(two[0].b[..], 0, 3000, -3000, 0, 0) || two[0].b[0].n != 2 + GT_GREEN { wa_not(r[..], "a village's buildings", ""); }
+  rev = wa_rev(r[..], l2.level);
+  house := wa_write(r[..], two, l2.level, rev);
+  if wa_find(house, "\"ok\":true") < 0 { wa_not(r[..], "a village with its buildings written by the app's core", house); }
+
+  // 7. another account on the first browser: its record's games are the other account's and are left alone; what
+  // was built is kept on this account as a new game
+  before := wa_rev(r[..], l1.level);
+  ac_wake(a1); wa_pass(r[..], one, k, "ck-b", "acct_b", true);
+  bb: [512] u8; bn := bl_put(bb[..], 0, dir); bn = bl_put(bb[..], bn, "/acct_b/level-"); bn = bl_int(bb[..], bn, a1[0].link[k].level); bn = bl_put(bb[..], bn, ".world");
+  if ac_who(a1) != "acct_b" || a1[0].state != AC_S_KEPT || !fs_exists(cast(string) bb[0..<bn]) || wa_rev(r[..], l1.level) != before { wa_not(r[..], "another account's game its own", wa_said(one)); }
+
+  _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh);
+  if r[0].bad > 0 { return 1; }
+  print("web account: ok, % logins asked\n", r[0].asked);
+  return 0;
+}

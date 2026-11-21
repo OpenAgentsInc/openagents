@@ -1,0 +1,9 @@
+# A batch: two edits as one step against the revision read, tried dry first; the same batch again is stale.
+> new-level
+< {"ok":true,"level":1}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1289232695,"do":"apply","edits":[{"op":"spawn","id":0,"kind":3,"x":500,"y":0,"z":-300,"yaw":0,"scale":100},{"op":"spawn","id":0,"kind":3,"x":-500,"y":0,"z":300,"yaw":45,"scale":150}]},"dry_run":true}
+< {"ok":true,"rev":792932930,"ids":[29,30],"summary":"added 2 blocks","things":[{"id":29,"kind":"block","name":"Block 29","how":"added"},{"id":30,"kind":"block","name":"Block 30","how":"added"}],"dry_run":true}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1289232695,"do":"apply","edits":[{"op":"spawn","id":0,"kind":3,"x":500,"y":0,"z":-300,"yaw":0,"scale":100},{"op":"spawn","id":0,"kind":3,"x":-500,"y":0,"z":300,"yaw":45,"scale":150}]}}
+< {"ok":true,"rev":792932930,"ids":[29,30],"summary":"added 2 blocks","things":[{"id":29,"kind":"block","name":"Block 29","how":"added"},{"id":30,"kind":"block","name":"Block 30","how":"added"}]}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1289232695,"do":"apply","edits":[{"op":"spawn","id":0,"kind":3,"x":500,"y":0,"z":-300,"yaw":0,"scale":100},{"op":"spawn","id":0,"kind":3,"x":-500,"y":0,"z":300,"yaw":45,"scale":150}]}}
+< {"ok":false,"error":"stale","rev":792932930,"why":"the level changed since that revision: read it again"}

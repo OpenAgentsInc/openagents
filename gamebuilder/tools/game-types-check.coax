@@ -1,0 +1,340 @@
+// Making a game is the same on gamebuilder.org and in the app, and stays so (AGENTS.md, "One way to
+// make a game"; issue 2). Two halves:
+//
+//   - its #tests load the website's blocks (web/blocks.coax) and the app's core (coax/controls.coax)
+//     together, make every game type through each side's one call (bl_new, ed_new_game), and hold the
+//     website's world and the app's level to the same things, thing for thing; and hold both
+//     pickers to shared/game-types.coax's list;
+//   - run as a tool over the sources, it fails when a file other than shared/ has a string that is a
+//     game type's id, name, line or picture, or a kind's word or name: a second list of them. Such a
+//     word belongs in shared/ and is read from there (GT_*, GK_*). And it fails when the app would play
+//     the website's worlds by anything but the website's own scene (gtc_one_scene): the worlds' rules are
+//     one source, web/hud.coax and the web/world-*.coax it loads, which gamebuilder/core/world.coax loads into the app.
+//     And it fails when a world of its own keeps its course in its own file (gtc_one_course): a course is
+//     things of the level, from shared/game-types.coax's starter alone, the same on the website and in the app.
+//
+// scripts/check.sh runs both: `coax test tools/game-types-check.coax` and
+//   coax/web/tool.sh tools/game-types-check.coax web/*.coax gamebuilder/core/*.coax cli/*.coax tests/player/*.coax tools/*.coax
+// tool.sh: run-steps 100000000
+#run_steps 100000000;
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../web/blocks.coax";
+#load "../web/level.coax";   // the website's world as a level file (issue 13): held to the app's here
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+// ---- the two sides make the same thing
+
+GtCheck :: struct { e: [1] Editor; b: [1] Blocks; c: [1] Blocks; st: [1] LvStore; file: [LV_DOC] u8; }
+
+// A thing of the website's, as a kind of shared/kinds.coax.
+gtc_web_kind :: (k: Block) -> int { return ifx k.kind == BL_BUILDING then GK_BUILDING + k.model else ifx k.kind == BL_BALL then GK_BALL else ifx k.kind == BL_BLOCK && k.role > 0 && k.role < BL_ROLES then GK_ROLE[k.role] else ifx k.kind == BL_BLOCK then GK_BLOCK else -1; }
+
+#test "every game type made on the website and in the app holds the same things" {
+  t: [1] GtCheck; e := t[0].e[..]; b := t[0].b[..];
+  ed_init(e, 800, 400);
+  for ty: 0..<GT_TYPES {
+    #assert ed_new_game(e, cast(s32) (ty + 1), cast(s32) ty, cast(s32) (ty * GT_LEVELS_MOST + 1));   // (a game's levels are numbered on from its first: crates has three)
+    b[0] = Blocks.{};
+    bl_bounds(b, BL_FAR, BL_HIGH);
+    bl_new(b, ty);
+    s: [GT_STARTER_MAX] GtThing; n := gt_starter(ty, s[..]);
+    // the app's level is the starter, thing for thing
+    #assert cast(int) ed_count(e) == n;
+    // and so is the website's world, for every type the website has (the app's three first types are the
+    // app's: their starters hold kinds the website has no thing for, the starts and the match's markers)
+    if !GT_ON_WEB[ty] { continue; }
+    #assert b[0].n == n;
+    for i: 0..<n {
+      a := ed_actor(e, i); k := b[0].b[i];
+      #assert gtc_web_kind(k) == cast(int) a.kind && GK_WORD[a.kind] == LEVEL_KIND[a.kind];
+      #assert k.x == cast(int) a.x && k.z == cast(int) a.z && k.y == cast(int) a.y && editor_turn(k.turn) == cast(int) a.yaw;
+      // (a village building: the app's is its model's own size at its scale, the website's the size it stands at)
+      if k.kind == BL_BUILDING {
+        size := vl_size(k.model, cast(int) a.scale);
+        #assert k.scale == cast(int) a.scale && s[i].scale == k.scale && k.w == size[0] && k.h == size[1] && k.d == size[2] && a.sx == GK_SX[a.kind] && a.sy == GK_SY[a.kind] && a.sz == GK_SZ[a.kind];
+        #assert k.starts && k.rest;
+        continue;
+      }
+      #assert k.w == cast(int) a.sx && k.h == cast(int) a.sy && k.d == cast(int) a.sz && a.scale == 100;
+      // (a moving platform's and a lift's way: the course's, on both sides)
+      #assert k.go == s[i].go && k.every == s[i].every && cast(int) a.go == s[i].go && cast(int) a.every == s[i].every;
+      #assert k.starts && !k.rest;
+    }
+    #assert b[0].models == (ty == GT_VILLAGE);
+    // a game of several levels (crates: a room each): the website's world of each is that level's starter too
+    for lv: 1..<gt_levels(ty) { m := gt_starter_level(ty, lv, s[..]); bl_new_level(b, ty, lv); #assert m > 0 && b[0].n == m; for i: 0..<m { #assert gtc_web_kind(b[0].b[i]) == s[i].kind && b[0].b[i].x == s[i].x && b[0].b[i].z == s[i].z && b[0].b[i].w == s[i].w && b[0].b[i].d == s[i].d && b[0].b[i].h == s[i].h; } }
+  }
+}
+
+#test "a level file is one file: what the website keeps of a new game opens in the app as that level, and the app's file of one opens on the website" #steps 2000000000 {
+  t: [1] GtCheck; e := t[0].e[..]; b := t[0].b[..]; c := t[0].c[..]; st := t[0].st[..];
+  ed_init(e, 800, 400);
+  for ty: 0..<GT_TYPES {
+    if !GT_ON_WEB[ty] { continue; }
+    level := gt_web_kind(ty) + 1;
+    b[0] = Blocks.{}; bl_bounds(b, GT_FAR[ty], GT_HIGH[ty]); bl_low(b, GT_LOW[ty]); bl_roles(b, gt_roles(ty)); bl_new(b, ty);
+    // the website's file, opened by the app's own reader
+    n := lv_write(b, st, level, t[0].file[..]);
+    #assert n > 0 && level_open(e, cast(s32) level, GAME_SCRAPPERS, t[0].file[0..<n]);
+    #assert cast(int) ed_count(e) == b[0].n;
+    for i: 0..<b[0].n {
+      a := ed_actor(e, i); k := b[0].b[i];
+      #assert gtc_web_kind(k) == cast(int) a.kind && k.x == cast(int) a.x && k.y == cast(int) a.y && k.z == cast(int) a.z && k.go == cast(int) a.go && k.every == cast(int) a.every;
+      if k.kind == BL_BUILDING { #assert k.scale == cast(int) a.scale && editor_turn(k.turn) == cast(int) a.yaw && a.sx == GK_SX[a.kind]; continue; }
+      #assert k.w == cast(int) a.sx && k.h == cast(int) a.sy && k.d == cast(int) a.sz && a.scale == 100;
+    }
+    // and the app's file of it, byte for byte the website's, read by the website
+    m := ed_save(e, t[0].file[..]);
+    #assert m > 0;
+    c[0] = Blocks.{}; bl_bounds(c, GT_FAR[ty], GT_HIGH[ty]); bl_low(c, GT_LOW[ty]); bl_roles(c, gt_roles(ty)); c[0].models = ty == GT_VILLAGE;   // (the page reading it is of the same type: web/chat.coax ch_bounds)
+    #assert lv_read(c, st, cast(string) t[0].file[0..<m]) && c[0].n == b[0].n;
+    for i: 0..<b[0].n { p := b[0].b[i]; q := c[0].b[i]; #assert p.kind == q.kind && p.x == q.x && p.y == q.y && p.z == q.z && p.w == q.w && p.h == q.h && p.d == q.d && p.role == q.role && p.turn == q.turn && p.model == q.model && p.scale == q.scale && p.go == q.go && p.every == q.every; }
+  }
+}
+
+#test "a village kept on the website before its buildings had a scale (a building's row the size it stood at, at 100 percent) opens on both sides at that scale, and is kept from then on as its model's row and its scale" #steps 2000000000 {
+  t: [1] GtCheck; e := t[0].e[..]; b := t[0].b[..]; c := t[0].c[..]; st := t[0].st[..];
+  ed_init(e, 800, 400);
+  ty := GT_VILLAGE; level := gt_web_kind(ty) + 1;
+  b[0] = Blocks.{}; bl_bounds(b, GT_FAR[ty], GT_HIGH[ty]); bl_bare(b, ty);
+  old := vl_size(2, 135);
+  #assert bl_add(b, 3000, -3000, 100, 100, 100, 0); b[0].b[0].w = old[0]; b[0].b[0].h = old[1]; b[0].b[0].d = old[2];
+  n := lv_write(b, st, level, t[0].file[..]);
+  at := lv_test_find(cast(string) t[0].file[0..<n], "|block|"); #assert n > 0 && at > 0;
+  // (the same file with the row's word the market's)
+  for i: 0..<n - at - 6 { t[0].file[n - 1 - i + 1] = t[0].file[n - 1 - i]; }
+  word := "market"; for i: 0..<6 { t[0].file[at + 1 + i] = word[i]; }
+  n += 1;
+  #assert level_open(e, cast(s32) level, GAME_SCRAPPERS, t[0].file[0..<n]) && ed_count(e) == 1;
+  a := ed_actor(e, 0);
+  #assert a.kind == GK_MARKET && a.scale == 135 && a.sx == GK_SX[GK_MARKET] && a.sy == GK_SY[GK_MARKET] && a.sz == GK_SZ[GK_MARKET] && a.x == 3000 && a.z == -3000;
+  c[0] = Blocks.{}; bl_bounds(c, GT_FAR[ty], GT_HIGH[ty]); c[0].models = true;
+  #assert lv_read(c, st, cast(string) t[0].file[0..<n]) && c[0].n == 1 && c[0].b[0].kind == BL_BUILDING && c[0].b[0].model == 2 && c[0].b[0].scale == 135;
+  m := ed_save(e, t[0].file[..]);
+  #assert m > 0 && lv_test_find(cast(string) t[0].file[0..<m], "|market|1008|452|777\n") > 0 && lv_read(c, st, cast(string) t[0].file[0..<m]) && c[0].b[0].scale == 135;
+}
+
+#test "the account holds what the app holds (issue 16): the limits the website says in words before it sends a game (web/account.coax ac_fits) are the app's own numbers, from one source; a website level of 512 things opens in the app, one of 513 does not" #steps 2000000000 {
+  t: [1] GtCheck; e := t[0].e[..]; b := t[0].b[..]; st := t[0].st[..];
+  #assert ACTORS_MAX == GT_LEVEL_THINGS && SHAPES_MAX == GT_LEVEL_SHAPES && AGENT_FILE_MAX == GT_LEVEL_FILE && GT_LEVEL_THINGS == 512 && GT_LEVEL_FILE == 262144;
+  ed_init(e, 800, 400);
+  ty := GT_RACING; level := gt_web_kind(ty) + 1;
+  b[0] = Blocks.{}; bl_bounds(b, GT_FAR[ty], GT_HIGH[ty]); bl_new(b, ty);
+  n0 := b[0].n;
+  for i: 0..<GT_LEVEL_THINGS - n0 { #assert bl_add(b, 300 + (i % 10) * 300, 300 + (i / 10) * 300, 100 + i % 40, 100, 100, 0); }
+  n := lv_write(b, st, level, t[0].file[..]);
+  #assert b[0].n == GT_LEVEL_THINGS && n > 0 && n <= GT_LEVEL_FILE && level_open(e, cast(s32) level, GAME_SCRAPPERS, t[0].file[0..<n]) && cast(int) ed_count(e) == GT_LEVEL_THINGS;
+  #assert bl_add(b, 9000, 9000, 100, 100, 100, 0);
+  n = lv_write(b, st, level, t[0].file[..]);
+  #assert n > 0 && !level_open(e, cast(s32) level, GAME_SCRAPPERS, t[0].file[0..<n]);
+}
+
+#test "both pickers draw the shared list, in its order; the website's nine are the app's first nine" {
+  site: [GT_TYPES] int; app: [GT_TYPES] int;
+  ns := gt_picker(GT_ON_SITE, site[..]); na := gt_picker(GT_ON_APP, app[..]);
+  #assert ns == GT_WEB_TYPES && na == GT_TYPES;
+  for i: 0..<ns { #assert site[i] == app[i]; }
+  // the app's picker: its cards are those, with their pictures
+  p: [1] PickerTest;
+  pk_test_frame(p[..], 1200);
+  #assert cast(int) ed_picker_cards(p[0].p[..]) == na;
+  for i: 0..<na { k := ed_picker_pic(p[0].p[..], cast(s32) i, p[0].b[..]); #assert cast(string) p[0].b[0..<k] == GT_PIC[app[i]]; }
+  // the commands list the app's picker, in its order
+  #assert GT_TYPES == TEMPLATES;
+  for t: 0..<GT_TYPES { #assert TEMPLATE_ID[t] == GT_ID[t] && TEMPLATE_NAME[t] == GT_NAME[t] && template_of(GT_ID[t]) == cast(s32) t; }
+}
+
+#test "each website type offers the same kinds and refuses at the same limits, in the same words, on both sides" {
+  t: [1] GtCheck; e := t[0].e[..]; b := t[0].b[..];
+  ed_init(e, 800, 400);
+  wb: [256] u8; ab: [256] u8;
+  for ty: GT_WEB_FIRST..<GT_TYPES {
+    #assert ed_new_game(e, cast(s32) (ty + 1), cast(s32) ty, cast(s32) (ty * GT_LEVELS_MOST + 1));   // (a game's levels are numbered on from its first: crates has three)
+    // the website's kinds of block for the type are the app palette's own kinds, in order
+    roles := gt_roles(ty); at := 2;
+    for r: 1..<BL_ROLES { if (roles & (1 << r)) != 0 { #assert cast(int) ed_palette_kind(e, cast(s32) at) == GK_ROLE[r]; at += 1; } }
+    // (the village's buildings: the five models, the kinds the website's `put` takes by the same words)
+    if ty == GT_VILLAGE { for m: 0..<GK_BUILDINGS { #assert cast(int) ed_palette_kind(e, cast(s32) at) == GK_BUILDING + m && vl_kind_of(GK_WORD[GK_BUILDING + m]) == m; at += 1; } }
+    #assert cast(int) ed_palette_count(e) == at;
+    // the website's world for the type (as web/chat.coax ch_bounds sets it), and a block in the app
+    b[0] = Blocks.{}; bl_bounds(b, GT_FAR[ty], GT_HIGH[ty]); bl_low(b, GT_LOW[ty]); bl_roles(b, roles);
+    #assert ed_add(e, KIND_BLOCK) > 0;
+    far := GT_FAR[ty] + 100;
+    #assert !bl_add(b, far, 0, 100, 100, 100, 0) && b[0].why == BL_WHY_FAR;
+    wn := bl_why(b, b[0].why, wb[..], 0); an := ed_field_refusal(e, FIELD_X, cast(s32) far, ab[..]);
+    #assert wn > 0 && cast(string) wb[0..<wn] == cast(string) ab[0..<an];
+    up := GT_HIGH[ty] + 100;
+    #assert !bl_add(b, 0, 0, 100, 100, 100, up) && b[0].why == BL_WHY_HIGH;
+    wn = bl_why(b, b[0].why, wb[..], 0); an = ed_field_refusal(e, FIELD_Y, cast(s32) up, ab[..]);
+    #assert wn > 0 && cast(string) wb[0..<wn] == cast(string) ab[0..<an];
+    big := GT_SIDE_BIG + 100;
+    #assert !bl_add(b, 0, 0, big, 100, 100, 0) && b[0].why == BL_WHY_SIZE;
+    wn = bl_why(b, b[0].why, wb[..], 0); an = ed_field_refusal(e, FIELD_WIDTH, cast(s32) big, ab[..]);
+    #assert wn > 0 && cast(string) wb[0..<wn] == cast(string) ab[0..<an];
+    // a village building's rules, the same on both sides in the same words: its scale, room for it, the boxes they share
+    if ty != GT_VILLAGE { continue; }
+    b[0].models = true; bl_new(b, ty);
+    rock := ed_add(e, cast(s32) GK_ROCK); #assert rock > 0 && e[0].selected == rock;
+    #assert !bl_plan(b, "put rock 30 -30 0 3.01") && b[0].why == BL_WHY_SCALE;
+    wn = bl_why(b, b[0].why, wb[..], 0); an = ed_field_refusal(e, FIELD_SCALE, 301, ab[..]);
+    #assert wn > 0 && cast(string) wb[0..<wn] == cast(string) ab[0..<an];
+    #assert !bl_plan(b, "put rock 0 29") && b[0].why == BL_WHY_ROOM;
+    wn = bl_why(b, b[0].why, wb[..], 0); #assert ed_set_field(e, FIELD_X, 0); an = ed_field_refusal(e, FIELD_Z, 2900, ab[..]);
+    #assert wn > 0 && cast(string) wb[0..<wn] == cast(string) ab[0..<an];
+    #assert bl_plan(b, "put market -30 -30") && bl_plan(b, "put market 30 -30") && bl_plan(b, "put gauls_house 0 -45") && bl_plan(b, "put gauls_house 0 -60") && bl_plan(b, "put gauls_house 0 -75") && !bl_plan(b, "put market 0 -90") && b[0].why == BL_WHY_BOXES;
+    e[0].vp[0].here_ok = true; e[0].vp[0].here_x = -3000; e[0].vp[0].here_z = -3000; #assert ed_add(e, cast(s32) GK_MARKET) > 0;
+    e[0].vp[0].here_ok = true; e[0].vp[0].here_x = 3000; e[0].vp[0].here_z = -3000; #assert ed_add(e, cast(s32) GK_MARKET) > 0;
+    for q: 0..<3 { e[0].vp[0].here_ok = true; e[0].vp[0].here_x = 0; e[0].vp[0].here_z = -4500 - 1500 * q; #assert ed_add(e, cast(s32) GK_GAULS_HOUSE) > 0; }
+    wn = bl_why(b, b[0].why, wb[..], 0); an = ed_add_refusal(e, cast(s32) GK_MARKET, ab[..]);
+    // (the app's level has the rock besides: its 6 boxes are in the count it says)
+    #assert wn > 0 && an > 0 && ed_add(e, cast(s32) GK_MARKET) == 0 && gtc_has(cast(string) ab[0..<an], "no more buildings: a level's buildings share 512 solid boxes (") && gtc_has(cast(string) wb[0..<wn], "no more buildings: a level's buildings share 512 solid boxes (494 used) and at most 33 stand.");
+  }
+}
+
+// ---- no second list
+
+GTC_TEXT :: 1048576;
+GtcScan :: struct { text: [GTC_TEXT] u8; }
+
+// The words that are shared/'s alone. A game type's name, line or picture and a kind's name are flagged
+// wherever they stand. A type's id or a kind's word is often an everyday word too ("field", "target",
+// a model called "pad"), so they are flagged as a list: a line whose strings are all such words, two or
+// more different ones (["block", "pad", "spikes"]).
+gtc_word :: (s: string) -> string {
+  for t: 0..<GT_TYPES {
+    if s == GT_NAME[t] { return "a game type's name"; }
+    if s == GT_LINE[t] { return "a game type's line"; }
+    if s == GT_PIC[t] { return "a game type's picture"; }
+  }
+  for k: 0..<GK_KINDS { if s == GK_NAME[k] { return "a kind's name"; } }
+  return "";
+}
+gtc_listed :: (s: string) -> int {
+  for t: 0..<GT_TYPES { if s == GT_ID[t] { return t; } }
+  for k: 0..<GK_KINDS { if s == GK_WORD[k] { return GT_TYPES + k; } }
+  // crates' goal in a plan line (bl_role_word)
+  if s == "goal" { return GT_TYPES + GK_GOAL; }
+  return -1;
+}
+// A line's strings so far: how many, how many are ids or kind words, two different ones of those, and the first.
+GtcLine :: struct { strings: int; listed: int; first: int; two: bool; shown: [64] u8; shown_n: int; }
+gtc_line_end :: (path: string, line: int, l: GtcLine) -> int {
+  if l.two && l.listed == l.strings {
+    m := l;
+    print("game types: NOT in shared/: %:% lists game types' ids or kinds' words (\"%\" and others): read them from shared/game-types.coax or shared/kinds.coax\n", path, line, cast(string) m.shown[0..<m.shown_n]);
+    return 1;
+  }
+  return 0;
+}
+// Prints each string literal of the text (outside comments and #test blocks) that is a shared word.
+gtc_scan :: (path: string, text: string) -> int {
+  bad := 0; i := 0; line := 1; in_test := false; depth := 0;
+  l := GtcLine.{first = -1};
+  while i < text.count {
+    c := text[i];
+    if c == '\n' { bad += gtc_line_end(path, line, l); l = GtcLine.{first = -1}; line += 1; i += 1; continue; }
+    // a comment runs to the line's end
+    if c == '/' && i + 1 < text.count && text[i + 1] == '/' { while i < text.count && text[i] != '\n' { i += 1; } continue; }
+    // a #test block is left out: a check may name what it checks
+    if c == '#' && i + 5 <= text.count && cast(string) text[i..<i + 5] == "#test" { in_test = true; depth = 0; i += 5; continue; }
+    if in_test && c == '{' { depth += 1; }
+    if in_test && c == '}' { depth -= 1; if depth == 0 { in_test = false; } }
+    if c == '\'' && i + 2 < text.count { i += ifx text[i + 1] == '\\' then 4 else 3; continue; }
+    if c != '"' { i += 1; continue; }
+    j := i + 1;
+    while j < text.count && text[j] != '"' && text[j] != '\n' { j += ifx text[j] == '\\' then 2 else 1; }
+    if j >= text.count { break; }
+    s := cast(string) text[i + 1..<j];
+    i = j + 1;
+    if in_test { continue; }
+    what := gtc_word(s);
+    if what.count > 0 { print("game types: NOT in shared/: %:% says \"%\", % (read it from shared/game-types.coax or shared/kinds.coax)\n", path, line, s, what); bad += 1; continue; }
+    l.strings += 1;
+    w := gtc_listed(s);
+    if w < 0 { continue; }
+    l.listed += 1;
+    if l.first < 0 { l.first = w; for k: 0..<s.count { if k < 64 { l.shown[k] = s[k]; l.shown_n = k + 1; } } }
+    else if w != l.first { l.two = true; }
+  }
+  return bad + gtc_line_end(path, line, l);
+}
+
+// ---- one scene
+
+// The app plays the website's worlds by the website's own scene: gamebuilder/core/world.coax loads web/hud.coax and
+// nothing else in gamebuilder/core/ loads a world of the website's, so a world's rules are one source, on both sides or
+// neither (issue 2). The checks that hold the rest (each type, kind and limit the same through that scene)
+// are gamebuilder/core/world.coax's "one source" #test, which scripts/check.sh runs.
+GTC_SCENE :: "#load \"../web/hud.coax\";";
+GTC_WORLD :: "gamebuilder/core/world.coax";
+gtc_has :: (text: string, word: string) -> bool {
+  if word.count > text.count { return false; }
+  for i: 0..<text.count - word.count + 1 { if cast(string) text[i..<i + word.count] == word { return true; } }
+  return false;
+}
+gtc_one_scene :: (a: [] Args, c: [] GtcScan) -> int {
+  bad := 0; core := 0; bridge := false;
+  for f: 0..<args_count(a) {
+    path := args_at(a, f);
+    if !(path.count > 5 && cast(string) path[0..<5] == "gamebuilder/core/") { continue; }
+    core += 1;
+    n := fs_read(path, c[0].text[..]);
+    if n < 0 || n >= GTC_TEXT { continue; }
+    text := cast(string) c[0].text[0..<n];
+    if path == GTC_WORLD {
+      bridge = true;
+      if !gtc_has(text, GTC_SCENE) { print("game types: NOT one scene: % does not load the website's scene (%): the app would play a world by rules of its own\n", path, GTC_SCENE); bad += 1; }
+    } else if gtc_has(text, "#load \"../web/world-") || gtc_has(text, "#load \"../web/hud") {
+      print("game types: NOT one scene: % loads a world of the website's itself: the app's worlds are gamebuilder/core/world.coax's, through web/hud.coax\n", path); bad += 1;
+    }
+  }
+  if core > 0 && !bridge { print("game types: NOT one scene: % is not among the app's files: the app has no way to play the website's worlds\n", GTC_WORLD); bad += 1; }
+  return bad;
+}
+
+// A world of its own's course is things of the level (shared/game-types.coax gt_starter), read by its
+// world from the level: it fails when a world's file does not read the shared starter, or holds a course
+// of its own beside it (a starter on one side only). Each row: the world's file, what reads the shared
+// starter there, what a course of its own there would be, and the course's name.
+GTC_COURSES :: 5;
+GTC_COURSE :: [GTC_COURSES] [4] string.[
+  [4] string.["web/world-racing.coax", "gt_starter(GT_RACING", "TrackPoint.[", "the racing circuit"],
+  [4] string.["web/world-drift.coax", "gt_starter(GT_DRIFT", "rings_make(", "drift's rings"],
+  [4] string.["web/world-village.coax", "gt_starter(GT_VILLAGE", "VlPlace.[", "the village green's buildings"],
+  [4] string.["web/world-platformer.coax", "gt_starter(GT_PLATFORMER", "pf_course", "the platformer's course"],
+  [4] string.["web/world-crates.coax", "gt_starter_level(GT_CRATES", "cr_rooms ::", "crates' rooms"]];
+gtc_one_course :: (a: [] Args, c: [] GtcScan) -> int {
+  bad := 0; rows := GTC_COURSE;
+  for f: 0..<args_count(a) {
+    path := args_at(a, f);
+    for r: 0..<GTC_COURSES {
+      if path != rows[r][0] { continue; }
+      n := fs_read(path, c[0].text[..]);
+      if n < 0 || n >= GTC_TEXT { continue; }
+      text := cast(string) c[0].text[0..<n];
+      if !gtc_has(text, rows[r][1]) { print("game types: NOT one starter: % does not read % from the level's starter (shared/game-types.coax gt_starter)\n", path, rows[r][3]); bad += 1; }
+      if gtc_has(text, rows[r][2]) { print("game types: NOT one starter: % holds % itself (%): it is things of the level, in shared/game-types.coax alone\n", path, rows[r][3], rows[r][2]); bad += 1; }
+    }
+  }
+  return bad;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: tool.sh tools/game-types-check.coax FILE...\n"); return 2; }
+  c: [1] GtcScan;
+  for f: 0..<args_count(a[..]) {
+    path := args_at(a[..], f);
+    if path.count > 7 && cast(string) path[0..<7] == "shared/" { continue; }
+    n := fs_read(path, c[0].text[..]);
+    if n < 0 || n >= GTC_TEXT { print("game types: NOT read %\n", path); bad += 1; continue; }
+    bad += gtc_scan(path, cast(string) c[0].text[0..<n]);
+  }
+  bad += gtc_one_scene(a[..], c[..]);
+  bad += gtc_one_course(a[..], c[..]);
+  if bad > 0 { return 1; }
+  print("game types: ok, % files hold no second list\n", args_count(a[..]));
+  return 0;
+}

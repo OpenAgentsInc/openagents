@@ -1,0 +1,538 @@
+// The automated user's local site (issue 28; docs/user-testing.md, "Running it"): one child process
+// that stands where gamebuilder.org's load balancer stands, in front of
+//   - the site's own files as a deploy lays them out (scripts/web-stage.sh), served as the bucket serves them,
+//   - a local `gamebuilder serve --accounts` (the hosted API: rows, levels, play, pictures, /g/, counts),
+//   - a stand-in login service (the OpenAgents email-code login's routes, /api/auth/*): any email, a
+//     six-digit code written to the run's private outbox file, the journeys' mailbox; a wrong code is
+//     refused in the service's own words;
+//   - a stand-in chat model (/api/chat/complete/v1): the page's select step and act step answered by
+//     what the request is (an offer pending or not, a select or an act), never by the person's words;
+//   - a stand-in for OpenAgents' model route (/api/v1/inference, on a port of its own, asked by the
+//     server's cloud-step children): the next line of the run's model plan, which the journey wrote.
+// One process, cooperative: every socket is read with no wait, so the server's question to the login
+// service (asked through this same origin, as production asks it) is answered while the server's
+// own answer to the page is still being relayed. Nothing here decides what a person sees: the
+// product's own files and server answer everything else.
+#load "../../../coax/lib/net/socket_foreign.coax";
+#load "../../../coax/lib/crypto/rand_foreign.coax";
+
+UE_MAX :: 12;            // connections held at once (the platform's sockets are 16 in all: two listen)
+UE_REQ :: 1048576;       // a request's bytes, head and body (a level is at most 256 kb, sent as JSON)
+UE_FREE :: 0; UE_READ :: 1; UE_RELAY :: 2; UE_HELD :: 3;
+UE_ACCTS :: 32; UE_SESSIONS :: 64; UE_PENDING :: 64;
+UeConn :: struct { client: int = -1; up: int = -1; phase: int; n: int; head: int; want: int; since: int; until: int; model: bool; buf: [UE_REQ] u8; }
+UeAcct :: struct { email: [256] u8; email_n: int; }
+UeTok :: struct { tok: [40] u8; acct: int = -1; email: [256] u8; email_n: int; code: [6] u8; tries: int; }
+Ue :: struct {
+  conns: [UE_MAX] UeConn;
+  listen: int = -1; model: int = -1; api_port: int;
+  site: [2048] u8; site_n: int;            // the staged site's folder
+  dir: [2048] u8; dir_n: int;
+  accts: [UE_ACCTS] UeAcct; accts_n: int;
+  sessions: [UE_SESSIONS] UeTok; sessions_n: int;
+  pending: [UE_PENDING] UeTok; pending_n: int;
+  owner: [40] u8;            // the run's owner token (Authorization: Bearer): the funnel's reader, never a browser's
+  out: [262144] u8;
+  steps: int;                // model calls answered
+}
+
+// ---------------------------------------------------------------- requests read
+
+ue_find :: (hay: string, needle: string, from: int) -> int {
+  if needle.count == 0 || from < 0 { return -1; }
+  i := from; while i + needle.count <= hay.count { if cast(string) hay[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+ue_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+// A header's value in a request's head (its name any case), "" when it has none.
+ue_header :: (head: string, name: string) -> string {
+  at := 0;
+  while at < head.count {
+    end := ue_find(head, "\r\n", at); if end < 0 { end = head.count; }
+    line := head[at..<end];
+    if line.count > name.count && line[name.count] == ':' {
+      same := true; for i: 0..<name.count { if ue_lower(line[i]) != ue_lower(name[i]) { same = false; } }
+      if same { v := name.count + 1; while v < line.count && line[v] == ' ' { v += 1; } return cast(string) line[v..<line.count]; }
+    }
+    at = end + 2;
+  }
+  return "";
+}
+ue_int :: (s: string) -> int { v := 0; any := false; for c: s { if c < '0' || c > '9' { break; } v = v * 10 + cast(int) (c - '0'); any = true; } return ifx any then v else -1; }
+// The request line's method and path.
+ue_method :: (head: string) -> string { sp := ue_find(head, " ", 0); return ifx sp > 0 then cast(string) head[0..<sp] else ""; }
+ue_path :: (head: string) -> string {
+  sp := ue_find(head, " ", 0); if sp < 0 { return ""; }
+  e := ue_find(head, " ", sp + 1); if e < 0 { return ""; }
+  return cast(string) head[sp + 1..<e];
+}
+ue_starts :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+// A cookie's value in a Cookie header, "" when it has none.
+ue_cookie :: (jar: string, name: string) -> string {
+  at := 0;
+  while at < jar.count {
+    while at < jar.count && (jar[at] == ' ' || jar[at] == ';') { at += 1; }
+    end := at; while end < jar.count && jar[end] != ';' { end += 1; }
+    one := jar[at..<end];
+    if one.count > name.count && one[name.count] == '=' && cast(string) one[0..<name.count] == name { return cast(string) one[name.count + 1..<one.count]; }
+    at = end + 1;
+  }
+  return "";
+}
+// The text of a JSON string member "key":"..." (no escapes are expected in an email or a code), "" when absent.
+ue_member :: (json: string, key: string) -> string {
+  k: [64] u8; n := ws_put(k[..], 0, "\""); n = ws_put(k[..], n, key); n = ws_put(k[..], n, "\":\"");
+  at := ue_find(json, cast(string) k[0..<n], 0); if at < 0 { return ""; }
+  from := at + n; to := from; while to < json.count && json[to] != '"' && json[to] != '\\' { to += 1; }
+  return cast(string) json[from..<to];
+}
+#test "a request's parts are read from its head" {
+  head := "POST /api/auth/email/start HTTP/1.1\r\nHost: localhost:9\r\ncontent-length: 25\r\nCookie: a=1; __Host-oa_session=oas_x; b=2\r\n";
+  #assert ue_method(head) == "POST" && ue_path(head) == "/api/auth/email/start" && ue_int(ue_header(head, "Content-Length")) == 25;
+  #assert ue_cookie(ue_header(head, "cookie"), "__Host-oa_session") == "oas_x" && ue_cookie("a=1", "b") == "" && ue_header(head, "Origin") == "";
+  #assert ue_member("{\"email\":\"a@b.c\",\"x\":1}", "email") == "a@b.c" && ue_member("{}", "code") == "";
+}
+
+// Where a request goes, as the load balancer's map sends it (scripts/web-deploy.sh): the hosted API's
+// paths to the server, the login's and the chat's to the stand-ins, the rest to the site's files.
+UE_TO_SITE :: 0; UE_TO_API :: 1; UE_TO_LOGIN :: 2; UE_TO_CHAT :: 3; UE_TO_AGENT :: 4;
+UE_API_EXACT :: [3] string.["/api/capabilities", "/api/openapi.json", "/api/count"];
+UE_API_UNDER :: [6] string.["/api/rows/", "/api/levels/", "/api/play/", "/api/pictures/", "/g/", "/mcp"];
+ue_route :: (path: string) -> int {
+  p := path; q := ue_find(p, "?", 0); if q >= 0 { p = cast(string) p[0..<q]; }
+  for e: UE_API_EXACT { if p == e { return UE_TO_API; } }
+  for u: UE_API_UNDER { if ue_starts(p, u) { return UE_TO_API; } }
+  if ue_starts(p, "/api/auth/") && p != "/api/auth/viewer" { return UE_TO_LOGIN; }
+  if p == "/api/chat/complete/v1" { return UE_TO_CHAT; }
+  if ue_starts(p, "/api/gamebuilder/") { return UE_TO_AGENT; }
+  return UE_TO_SITE;
+}
+#test "the map: the hosted API's paths, the login's, the chat's, and the site's files" {
+  #assert ue_route("/api/rows/list-games") == UE_TO_API && ue_route("/g/abc123") == UE_TO_API && ue_route("/api/count") == UE_TO_API && ue_route("/api/capabilities?x") == UE_TO_API;
+  #assert ue_route("/api/auth/account?as=lines") == UE_TO_LOGIN && ue_route("/api/auth/viewer") == UE_TO_SITE && ue_route("/api/chat/complete/v1") == UE_TO_CHAT;
+  #assert ue_route("/") == UE_TO_SITE && ue_route("/play") == UE_TO_SITE && ue_route("/b/x/host/app.js") == UE_TO_SITE && ue_route("/agents") == UE_TO_SITE && ue_route("/api/gamebuilder/agents/v1") == UE_TO_AGENT;
+}
+
+// ---------------------------------------------------------------- answers
+
+ue_answer :: (h: int, status: int, reason: string, kind: string, extra: string, body: string) {
+  b: [4096] u8; n := ws_put(b[..], 0, "HTTP/1.1 "); n = pb_decimal(b[..], n, status); n = ws_put(b[..], n, " "); n = ws_put(b[..], n, reason);
+  n = ws_put(b[..], n, "\r\nContent-Type: "); n = ws_put(b[..], n, kind); n = ws_put(b[..], n, "\r\nCache-Control: no-store\r\nConnection: close\r\n");
+  n = ws_put(b[..], n, extra); n = ws_put(b[..], n, "Content-Length: "); n = pb_decimal(b[..], n, body.count); n = ws_put(b[..], n, "\r\n\r\n");
+  for i: 0..<n { _ = cxsock_write(h, cast(int) b[i]); }
+  at := 0;
+  while at < body.count {
+    k := 0; while at < body.count && k < 60000 { _ = cxsock_write(h, cast(int) body[at]); at += 1; k += 1; }
+    if cxsock_flush(h, 10000) != 0 { break; }
+  }
+  _ = cxsock_flush(h, 10000);
+}
+ue_json :: (h: int, status: int, body: string) { ue_answer(h, status, ifx status == 200 then "OK" else "Refused", "application/json", "", body); }
+
+ue_random :: (out: [] u8, digits: bool) {
+  r: [64] u8; _ = cxrand_draw(r[..], out.count);
+  hex := "0123456789abcdef";
+  for i: 0..<out.count { out[i] = ifx digits then '0' + r[i] % 10 else hex[r[i] & 15]; }
+}
+ue_dir :: (u: [] Ue) -> string { return cast(string) u[0].dir[0..<u[0].dir_n]; }
+
+// ---------------------------------------------------------------- the site's files, as the bucket serves them
+
+// The bucket's way (scripts/web-deploy.sh: main page index.html, error page 404.html): a folder is its
+// index.html; no file is the not-found page, with 404. No "..", no dotfiles. Its types are a browser's.
+UE_TYPES :: [12] string.[".html", "text/html; charset=utf-8", ".js", "text/javascript; charset=utf-8", ".wasm", "application/wasm", ".json", "application/json", ".jpg", "image/jpeg", ".png", "image/png"];
+ue_type :: (path: string) -> string {
+  t := UE_TYPES; i := 0;
+  while i < t.count { e := t[i]; if path.count >= e.count && cast(string) path[path.count - e.count..<path.count] == e { return t[i + 1]; } i += 2; }
+  if path.count >= 6 && cast(string) path[path.count - 6..<path.count] == ".woff2" { return "font/woff2"; }
+  if path.count >= 3 && cast(string) path[path.count - 3..<path.count] == ".md" { return "text/markdown; charset=utf-8"; }
+  return "application/octet-stream";
+}
+// The file a path names in dir (into out), "" when none: dir + path, or its index.html.
+ue_resolve :: (dir: string, path: string, out: [] u8) -> string {
+  p := path; q := ue_find(p, "?", 0); if q >= 0 { p = cast(string) p[0..<q]; }
+  if p.count == 0 || p[0] != '/' || ue_find(p, "..", 0) >= 0 || ue_find(p, "/.", 0) >= 0 || ue_find(p, "%", 0) >= 0 { return ""; }
+  n := ws_put(out, 0, dir); n = ws_put(out, n, p);
+  if fs_kind(cast(string) out[0..<n]) == 2 || p[p.count - 1] == '/' { if out[n - 1] != '/' { n = ws_put(out, n, "/"); } n = ws_put(out, n, "index.html"); }
+  return ifx fs_kind(cast(string) out[0..<n]) == 1 then cast(string) out[0..<n] else "";
+}
+#test "the bucket's way: a folder is its index.html, a dotfile or a climb is nothing" {
+  #assert ue_type("/b/x/app.wasm") == "application/wasm" && ue_type("/") == "application/octet-stream" && ue_type("/f.woff2") == "font/woff2";
+  b: [256] u8; #assert ue_resolve("/nowhere", "/../etc", b[..]) == "" && ue_resolve("/nowhere", "/.git/x", b[..]) == "";
+}
+ue_file :: (u: [] Ue, h: int, head: string) {
+  pb: [4096] u8; path := ue_resolve(cast(string) u[0].site[0..<u[0].site_n], ue_path(head), pb[..]);
+  status := 200;
+  if path.count == 0 { status = 404; path = fs_join(cast(string) u[0].site[0..<u[0].site_n], "404.html", pb[..]); }
+  if ue_method(head) != "GET" && ue_method(head) != "HEAD" { ue_answer(h, 405, "Not Allowed", "text/plain", "", "not here\n"); return; }
+  size := fs_size(path); if size < 0 { ue_answer(h, 404, "Not Found", "text/plain", "", "not found\n"); return; }
+  b: [1024] u8; n := ws_put(b[..], 0, "HTTP/1.1 "); n = pb_decimal(b[..], n, status); n = ws_put(b[..], n, ifx status == 200 then " OK" else " Not Found");
+  n = ws_put(b[..], n, "\r\nContent-Type: "); n = ws_put(b[..], n, ue_type(path)); n = ws_put(b[..], n, "\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: ");
+  n = pb_decimal(b[..], n, size); n = ws_put(b[..], n, "\r\n\r\n");
+  for i: 0..<n { _ = cxsock_write(h, cast(int) b[i]); }
+  if ue_method(head) == "GET" {
+    chunk: [65536] u8; at := 0;
+    while at < size {
+      k := fs_read_at(path, at, chunk[..]); if k <= 0 { break; }
+      for i: 0..<k { _ = cxsock_write(h, cast(int) chunk[i]); }
+      if cxsock_flush(h, 20000) != 0 { return; }
+      at += k;
+    }
+  }
+  _ = cxsock_flush(h, 20000);
+}
+// The hosted server's port, once the run has written it (the file api-port).
+ue_api_port :: (u: [] Ue) {
+  fb: [2200] u8; b: [32] u8; n := fs_read(fs_join(ue_dir(u), "api-port", fb[..]), b[..]);
+  if n > 0 { u[0].api_port = ue_int(cast(string) b[0..<n]); }
+}
+
+// ---------------------------------------------------------------- the stand-in login service
+
+UE_SESSION :: "__Host-oa_session"; UE_PENDING_COOKIE :: "__Host-oa_pending";
+ue_session_of :: (u: [] Ue, tok: string) -> int {
+  if tok.count == 0 { return -1; }
+  for i: 0..<u[0].sessions_n { if cast(string) u[0].sessions[i].tok[..] == tok { return i; } }
+  return -1;
+}
+ue_pending_of :: (u: [] Ue, tok: string) -> int {
+  if tok.count == 0 { return -1; }
+  for i: 0..<u[0].pending_n { if cast(string) u[0].pending[i].tok[..] == tok { return i; } }
+  return -1;
+}
+ue_acct_of :: (u: [] Ue, email: string, made: [] bool) -> int {
+  for i: 0..<u[0].accts_n { if cast(string) u[0].accts[i].email[0..<u[0].accts[i].email_n] == email { made[0] = false; return i; } }
+  if u[0].accts_n >= UE_ACCTS || email.count > 250 { return -1; }
+  i := u[0].accts_n; u[0].accts_n += 1; u[0].accts[i].email_n = ws_put(u[0].accts[i].email[..], 0, email); made[0] = true;
+  return i;
+}
+// Who a request is: a browser's session cookie, or a bearer token (the run's owner alone). -1: nobody.
+ue_who :: (u: [] Ue, head: string, email: [] string) -> int {
+  auth := ue_header(head, "Authorization");
+  if ue_starts(auth, "Bearer ") {
+    if cast(string) auth[7..<auth.count] == cast(string) u[0].owner[..] { email[0] = "chris@openagents.com"; return UE_ACCTS; }
+    return -1;
+  }
+  s := ue_session_of(u, ue_cookie(ue_header(head, "Cookie"), UE_SESSION));
+  if s < 0 { return -1; }
+  a := u[0].sessions[s].acct; email[0] = cast(string) u[0].accts[a].email[0..<u[0].accts[a].email_n];
+  return a;
+}
+ue_login :: (u: [] Ue, h: int, head: string, body: string) {
+  path := ue_path(head); method := ue_method(head);
+  b: [1024] u8; o: [1] Jo;
+  if ue_starts(path, "/api/auth/account") {
+    email: [1] string; a := ue_who(u, head, email[..]);
+    if ue_find(path, "as=lines", 0) >= 0 {
+      if a < 0 { ue_answer(h, 401, "Unauthorized", "text/plain", "", "error that login has ended\n"); return; }
+      n := ws_put(b[..], 0, "account acct_"); n = ifx a == UE_ACCTS then ws_put(b[..], n, "owner") else pb_decimal(b[..], n, a + 1);
+      n = ws_put(b[..], n, "\nprimary "); n = ws_put(b[..], n, email[0]); n = ws_put(b[..], n, "\n");
+      ue_answer(h, 200, "OK", "text/plain", "", cast(string) b[0..<n]); return;
+    }
+    // the service's own shape (openagents coax/web/api/auth-wire.coax auw_me_head_write and its tail)
+    jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "logged_in"); jo_bool(o[..], a >= 0);
+    if a >= 0 {
+      ab: [32] u8; an := ws_put(ab[..], 0, "acct_"); an = ifx a == UE_ACCTS then ws_put(ab[..], an, "owner") else pb_decimal(ab[..], an, a + 1);
+      jo_key(o[..], "account"); jo_str(o[..], cast(string) ab[0..<an]); jo_key(o[..], "kind"); jo_str(o[..], "person"); jo_key(o[..], "level"); jo_str(o[..], "L1");
+      jo_key(o[..], "via"); jo_str(o[..], "email"); jo_key(o[..], "session"); jo_str(o[..], "s1"); jo_key(o[..], "admin"); jo_bool(o[..], false);
+      jo_key(o[..], "emails"); jo_arr(o[..]); jo_str(o[..], "a***"); jo_end(o[..]); jo_key(o[..], "primary"); jo_str(o[..], email[0]); jo_key(o[..], "keys"); jo_arr(o[..]); jo_end(o[..]);
+    }
+    jo_end(o[..]); ue_json(h, 200, jo_text(o[..])); return;
+  }
+  if method != "POST" { ue_json(h, 405, "{\"error\":\"Not here.\"}"); return; }
+  if path == "/api/auth/email/start" {
+    email := ue_member(body, "email");
+    if email.count == 0 || email.count > 250 || ue_find(email, "@", 0) <= 0 { ue_json(h, 400, "{\"error\":\"We can't send email to that address.\"}"); return; }
+    if u[0].pending_n >= UE_PENDING { ue_json(h, 429, "{\"error\":\"Too many codes. Wait a while.\"}"); return; }
+    p := u[0].pending_n; u[0].pending_n += 1;
+    ue_random(u[0].pending[p].tok[..], false); ue_random(u[0].pending[p].code[..], true);
+    u[0].pending[p].email_n = ws_put(u[0].pending[p].email[..], 0, email); u[0].pending[p].tries = 5;
+    // the mailbox: one line a code sent, in the run's private folder
+    line: [320] u8; ln := ws_put(line[..], 0, email); ln = ws_put(line[..], ln, " "); ln = ws_put(line[..], ln, cast(string) u[0].pending[p].code[..]); ln = ws_put(line[..], ln, "\n");
+    fb: [2200] u8; _ = fs_append(fs_join(ue_dir(u), "outbox", fb[..]), cast(string) line[0..<ln]);
+    ck: [256] u8; cn := ws_put(ck[..], 0, "Set-Cookie: "); cn = ws_put(ck[..], cn, UE_PENDING_COOKIE); cn = ws_put(ck[..], cn, "="); cn = ws_put(ck[..], cn, cast(string) u[0].pending[p].tok[..]); cn = ws_put(ck[..], cn, "; Path=/; Max-Age=600; HttpOnly; Secure; SameSite=Lax\r\n");
+    ue_answer(h, 200, "OK", "application/json", cast(string) ck[0..<cn], "{\"state\":\"sent\"}"); return;
+  }
+  if path == "/api/auth/email/verify" {
+    p := ue_pending_of(u, ue_cookie(ue_header(head, "Cookie"), UE_PENDING_COOKIE));
+    if p < 0 || u[0].pending[p].tries <= 0 { ue_json(h, 409, "{\"error\":\"Ask for a code in this browser first.\"}"); return; }
+    code := ue_member(body, "code");
+    if code != cast(string) u[0].pending[p].code[..] {
+      u[0].pending[p].tries -= 1; left := u[0].pending[p].tries;
+      w: [120] u8; wn := ws_put(w[..], 0, "{\"error\":\"That code isn't right. "); wn = pb_decimal(w[..], wn, left); wn = ws_put(w[..], wn, ifx left == 1 then " try left.\"}" else " tries left.\"}");
+      ue_json(h, 401, cast(string) w[0..<wn]); return;
+    }
+    made: [1] bool; a := ue_acct_of(u, cast(string) u[0].pending[p].email[0..<u[0].pending[p].email_n], made[..]);
+    if a < 0 || u[0].sessions_n >= UE_SESSIONS { ue_json(h, 500, "{\"error\":\"That didn't work. Try again.\"}"); return; }
+    u[0].pending[p].tries = 0;
+    s := u[0].sessions_n; u[0].sessions_n += 1; ue_random(u[0].sessions[s].tok[..], false); u[0].sessions[s].acct = a;
+    ck: [512] u8; cn := ws_put(ck[..], 0, "Set-Cookie: "); cn = ws_put(ck[..], cn, UE_SESSION); cn = ws_put(ck[..], cn, "="); cn = ws_put(ck[..], cn, cast(string) u[0].sessions[s].tok[..]);
+    cn = ws_put(ck[..], cn, "; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax\r\nSet-Cookie: "); cn = ws_put(ck[..], cn, UE_PENDING_COOKIE); cn = ws_put(ck[..], cn, "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n");
+    ue_answer(h, 200, "OK", "application/json", cast(string) ck[0..<cn], ifx made[0] then "{\"state\":\"logged-in\",\"new\":true}" else "{\"state\":\"logged-in\",\"new\":false}"); return;
+  }
+  if path == "/api/auth/logout" {
+    s := ue_session_of(u, ue_cookie(ue_header(head, "Cookie"), UE_SESSION));
+    if s >= 0 { u[0].sessions[s].acct = -1; for i: 0..<40 { u[0].sessions[s].tok[i] = '-'; } }
+    ck: [160] u8; cn := ws_put(ck[..], 0, "Set-Cookie: "); cn = ws_put(ck[..], cn, UE_SESSION); cn = ws_put(ck[..], cn, "=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax\r\n");
+    ue_answer(h, 200, "OK", "application/json", cast(string) ck[0..<cn], "{\"state\":\"logged-out\"}"); return;
+  }
+  if path == "/api/auth/cli/code" {
+    email: [1] string;
+    if ue_who(u, head, email[..]) < 0 { ue_json(h, 401, "{\"error\":\"Log in first.\"}"); return; }
+    code: [32] u8; ue_random(code[..], false);
+    jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "state"); jo_str(o[..], "code"); jo_key(o[..], "code"); jo_str(o[..], cast(string) code[..]); jo_end(o[..]);
+    ue_json(h, 200, jo_text(o[..])); return;
+  }
+  ue_json(h, 404, "{\"error\":\"Not here.\"}");
+}
+
+// ---------------------------------------------------------------- the stand-in chat model
+
+// The page's own request says which step it is: the select step's brief (its first words, web/chat.coax
+// CH_SELECT_A) and, when the last answer offered a build agent, the offer's two routes (CH_OFFER_A).
+// The stand-in answers what the step asks for, the same answer for any words: a select with an offer
+// pending takes it up; any other select routes to `make`; an act under `make` says what it can't do
+// and offers a build agent. The person's words are never read.
+UE_SELECT_MARK :: "You are the router of GameBuilder";
+UE_OFFER_MARK :: "offer (offer/accept, offer/decline)";
+ue_chat_content :: (body: string) -> string {
+  if ue_find(body, UE_SELECT_MARK, 0) >= 0 {
+    if ue_find(body, UE_OFFER_MARK, 0) >= 0 { return "route: offer/accept\nprops: none\nthings: none"; }
+    return "route: make\nprops: none\nthings: none";
+  }
+  return "route: make\ngamebuilder can't do that here yet. say yes and i'll start a build agent on it.";
+}
+#test "the chat stand-in answers by the step, never by the words" {
+  #assert ue_chat_content("{\"messages\":[{\"content\":\"You are the router of GameBuilder ... message: anything\"}]}") == "route: make\nprops: none\nthings: none";
+  #assert ue_chat_content("You are the router of GameBuilder\noffer (offer/accept, offer/decline): ...") == "route: offer/accept\nprops: none\nthings: none";
+  #assert ue_starts(ue_chat_content("{\"messages\":[]}"), "route: make\n");
+}
+ue_completion :: (h: int, content: string) {
+  b: [8192] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "choices"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "message"); jo_obj(o[..]);
+  jo_key(o[..], "role"); jo_str(o[..], "assistant"); jo_key(o[..], "content"); jo_str(o[..], content); jo_end(o[..]);
+  jo_key(o[..], "finish_reason"); jo_str(o[..], "stop"); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "usage"); jo_obj(o[..]); jo_key(o[..], "prompt_tokens"); jo_int(o[..], 400); jo_key(o[..], "completion_tokens"); jo_int(o[..], 30); jo_end(o[..]); jo_end(o[..]);
+  ue_json(h, 200, jo_text(o[..]));
+}
+// A journey may say what the chat's next answer is (the run's file chat-plan: one answer a line, "\n"
+// for its line breaks), as it says the model's: the select step is then answered with that answer's
+// route, and the act step with the answer, which is taken off the file. Still never the person's words.
+ue_chat_planned :: (u: [] Ue, select: bool, out: [] u8) -> int {
+  fb: [2200] u8; file := fs_join(ue_dir(u), "chat-plan", fb[..]);
+  plan: [65536] u8; n := fs_read(file, plan[..]); if n <= 0 { return 0; }
+  e := 0; while e < n && plan[e] != '\n' { e += 1; }
+  line := cast(string) plan[0..<e]; k := 0; i := 0;
+  while i < line.count && k < out.count {
+    if i + 1 < line.count && line[i] == '\\' && line[i + 1] == 'n' { if select { break; } out[k] = '\n'; k += 1; i += 2; continue; }
+    out[k] = line[i]; k += 1; i += 1;
+  }
+  // (a line that is a route alone answers the select step only, and is taken off then)
+  if select { only := i >= line.count; k = ws_put(out, k, "\nprops: none\nthings: none"); if !only { return k; } }
+  _ = fs_write(file, ifx e < n then cast(string) plan[e + 1..<n] else "");
+  return k;
+}
+ue_chat :: (u: [] Ue, h: int, head: string, body: string) {
+  email: [1] string;
+  if ue_who(u, head, email[..]) < 0 || ue_method(head) != "POST" { ue_json(h, 401, "{\"error\":\"Log in first.\"}"); return; }
+  b: [8192] u8; select := ue_find(body, UE_SELECT_MARK, 0) >= 0;
+  n := ue_chat_planned(u, select, b[..]);
+  ue_completion(h, ifx n > 0 then cast(string) b[0..<n] else ue_chat_content(body));
+}
+
+// ---------------------------------------------------------------- the stand-in model route
+
+// The model plan (the run's file model-plan): one line an answer, each a next_action as Microcoder's
+// schema has it, written by the journey before it starts or tells an agent. `{REV}` in a line is the
+// level's revision the request last says (as a command's output says it), and `{LEVEL}` and
+// `{AGENT}` the Builder's level and id as its environment says them; a line that begins
+// `hold MS ` is answered MS milliseconds later (a step still asked when the journey presses Stop).
+// With no line left, the answer finishes the message.
+UE_DONE_ACTION :: "{\"rationale\":\"nothing left\",\"edits\":[],\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"done.\",\"ask\":\"none\"}";
+// The level's revision the last answer in the request said, or -1 (its "rev": escaped twice there).
+ue_rev :: (body: string) -> int {
+  key := "\\\\\\\"rev\\\\\\\":"; at := -1; from := 0;
+  while true { k := ue_find(body, key, from); if k < 0 { break; } at = k; from = k + key.count; }
+  if at < 0 { return -1; }
+  return ue_int(body[at + key.count..<body.count]);
+}
+#test "the revision a model request last says" {
+  #assert ue_rev("x \\\\\\\"rev\\\\\\\":12, y \\\\\\\"rev\\\\\\\":340}") == 340 && ue_rev("nothing") == -1;
+}
+// What follows the last `key` in body ("" when it is not there): the request's environment names the
+// Builder's level and itself so ("LEVEL is always 3, your level. AGENT is always a1-0, you.").
+ue_after :: (body: string, key: string) -> string {
+  at := -1; from := 0;
+  while true { k := ue_find(body, key, from); if k < 0 { break; } at = k; from = k + key.count; }
+  return ifx at < 0 then "" else cast(string) body[at + key.count..<body.count];
+}
+#test "what the request says follows a key" {
+  b := "x LEVEL is always 4, your level. AGENT is always a19-0, you. LEVEL is always 7, your";
+  #assert ue_after(b, "LEVEL is always ")[0] == '7' && ue_after(b, "AGENT is always ")[0] == 'a' && ue_after(b, "none").count == 0;
+}
+// The next plan line, taken off the file: its hold (ms) and its action, the revision put in. False: none left.
+ue_plan_next :: (u: [] Ue, body: string, action: [] u8, alen: [] int, hold: [] int) -> bool {
+  fb: [2200] u8; file := fs_join(ue_dir(u), "model-plan", fb[..]);
+  plan: [262144] u8; n := fs_read(file, plan[..]);
+  if n <= 0 { return false; }
+  e := 0; while e < n && plan[e] != '\n' { e += 1; }
+  line := cast(string) plan[0..<e];
+  hold[0] = 0;
+  if ue_starts(line, "hold ") { sp := ue_find(line, " ", 5); hold[0] = ue_int(line[5..<line.count]); line = ifx sp > 0 then cast(string) line[sp + 1..<line.count] else ""; }
+  rev := ue_rev(body); k := 0; i := 0;
+  rb: [24] u8; rn := pb_decimal(rb[..], 0, ifx rev < 0 then 0 else rev);
+  lb: [24] u8; lv := ue_after(body, "LEVEL is always "); ln := 0; while ln < lv.count && ln < 20 && lv[ln] >= '0' && lv[ln] <= '9' { lb[ln] = lv[ln]; ln += 1; }
+  ab: [64] u8; ag := ue_after(body, "AGENT is always "); an := 0; while an < ag.count && an < 60 && ((ag[an] >= 'a' && ag[an] <= 'z') || (ag[an] >= '0' && ag[an] <= '9') || ag[an] == '-') { ab[an] = ag[an]; an += 1; }
+  while i < line.count {
+    if i + 5 <= line.count && cast(string) line[i..<i + 5] == "{REV}" { for c: rb[0..<rn] { if k < action.count { action[k] = c; k += 1; } } i += 5; continue; }
+    if i + 7 <= line.count && cast(string) line[i..<i + 7] == "{LEVEL}" { for c: lb[0..<ln] { if k < action.count { action[k] = c; k += 1; } } i += 7; continue; }
+    if i + 7 <= line.count && cast(string) line[i..<i + 7] == "{AGENT}" { for c: ab[0..<an] { if k < action.count { action[k] = c; k += 1; } } i += 7; continue; }
+    if k < action.count { action[k] = line[i]; k += 1; } i += 1;
+  }
+  alen[0] = k;
+  rest := ifx e < n then cast(string) plan[e + 1..<n] else "";
+  _ = fs_write(file, rest);
+  return k > 0;
+}
+ue_model_answer :: (u: [] Ue, h: int, content: string) {
+  b: [70000] u8; o: [1] Jo; jo_start(o[..], b[..]);
+  jo_obj(o[..]); jo_key(o[..], "choices"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "message"); jo_obj(o[..]);
+  jo_key(o[..], "role"); jo_str(o[..], "assistant"); jo_key(o[..], "content"); jo_str(o[..], content); jo_end(o[..]);
+  jo_key(o[..], "finish_reason"); jo_str(o[..], "stop"); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "usage"); jo_obj(o[..]); jo_key(o[..], "prompt_tokens"); jo_int(o[..], 1200); jo_key(o[..], "completion_tokens"); jo_int(o[..], 60); jo_end(o[..]); jo_end(o[..]);
+  ue_json(h, 200, jo_text(o[..]));
+  u[0].steps += 1;
+  fb: [2200] u8; cb: [32] u8; cn := pb_decimal(cb[..], 0, u[0].steps); _ = fs_write(fs_join(ue_dir(u), "model-steps", fb[..]), cast(string) cb[0..<cn]);
+}
+
+// The edge's log (the run's file edge.log, private): each request's method and path (its query cut,
+// so no code or address is in it), with when.
+ue_log :: (u: [] Ue, head: string, note: string) {
+  path := ue_path(head); q := ue_find(path, "?", 0); if q >= 0 { path = cast(string) path[0..<q]; }
+  b: [600] u8; n := pb_decimal(b[..], 0, cxsock_now_ms() % 10000000); n = ws_put(b[..], n, " "); n = ws_put(b[..], n, ue_method(head)); n = ws_put(b[..], n, " ");
+  n = ws_put(b[..], n, ifx path.count > 300 then cast(string) path[0..<300] else path); n = ws_put(b[..], n, " "); n = ws_put(b[..], n, note);
+  n = ws_put(b[..], n, ifx ue_header(head, "Authorization").count > 0 then " bearer" else ifx ue_cookie(ue_header(head, "Cookie"), UE_SESSION).count > 0 then " session" else ""); n = ws_put(b[..], n, "\n");
+  fb: [2200] u8; _ = fs_append(fs_join(ue_dir(u), "edge.log", fb[..]), cast(string) b[0..<n]);
+}
+
+// ---------------------------------------------------------------- the loop
+
+ue_close :: (c: [] UeConn) {
+  if c[0].client >= 0 { _ = cxsock_close(c[0].client); }
+  if c[0].up >= 0 { _ = cxsock_close(c[0].up); }
+  c[0].client = -1; c[0].up = -1; c[0].phase = UE_FREE; c[0].n = 0; c[0].head = 0; c[0].want = 0; c[0].model = false;
+}
+ue_take :: (u: [] Ue, h: int, model: bool) {
+  for i: 0..<UE_MAX {
+    if u[0].conns[i].phase == UE_FREE {
+      u[0].conns[i].client = h; u[0].conns[i].phase = UE_READ; u[0].conns[i].n = 0; u[0].conns[i].head = 0; u[0].conns[i].want = -1;
+      u[0].conns[i].since = cxsock_now_ms(); u[0].conns[i].model = model; return;
+    }
+  }
+  ue_answer(h, 503, "Busy", "text/plain", "", "the local site is busy\n"); _ = cxsock_close(h);
+}
+// Sends the request on to port, as the load balancer would, its connection closed after the answer.
+ue_forward :: (u: [] Ue, c: [] UeConn, port: int) -> bool {
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  up := cxsock_connect(port, 3000);
+  if up < 0 { return false; }
+  head := cast(string) c[0].buf[0..<c[0].head];
+  at := 0; first := true;
+  while at < head.count {
+    end := ue_find(head, "\r\n", at); if end < 0 { end = head.count; }
+    line := head[at..<end];
+    keep := first || !(ue_header(cast(string) line, "Connection").count > 0 || ue_header(cast(string) line, "Keep-Alive").count > 0);
+    if keep { for ch: line { _ = cxsock_write(up, cast(int) ch); } _ = cxsock_write(up, 13); _ = cxsock_write(up, 10); }
+    first = false; at = end + 2;
+  }
+  for ch: "Connection: close\r\n\r\n" { _ = cxsock_write(up, cast(int) ch); }
+  if cxsock_flush(up, 5000) != 0 { _ = cxsock_close(up); return false; }
+  body := c[0].buf[c[0].head + 4..<c[0].n];
+  i := 0;
+  while i < body.count { k := 0; while i < body.count && k < 60000 { _ = cxsock_write(up, cast(int) body[i]); i += 1; k += 1; } if cxsock_flush(up, 10000) != 0 { _ = cxsock_close(up); return false; } }
+  c[0].up = up; c[0].phase = UE_RELAY;
+  return true;
+}
+ue_dispatch :: (u: [] Ue, c: [] UeConn) {
+  head := cast(string) c[0].buf[0..<c[0].head];
+  body := cast(string) c[0].buf[c[0].head + 4..<c[0].n];
+  if c[0].model {
+    action: [65536] u8; alen: [1] int; hold: [1] int;
+    if ue_plan_next(u, body, action[..], alen[..], hold[..]) {
+      if hold[0] > 0 {
+        // answered later: the line is kept in the buffer until its time
+        for i: 0..<alen[0] { c[0].buf[i] = action[i]; } c[0].n = alen[0]; c[0].head = 0; c[0].until = cxsock_now_ms() + hold[0]; c[0].phase = UE_HELD; return;
+      }
+      ue_model_answer(u, c[0].client, cast(string) action[0..<alen[0]]);
+    } else { ue_model_answer(u, c[0].client, UE_DONE_ACTION); }
+    ue_close(c); return;
+  }
+  route := ue_route(ue_path(head));
+  ue_log(u, head, ifx c[0].model then "model" else "");
+  if route == UE_TO_LOGIN { ue_login(u, c[0].client, head, body); ue_close(c); return; }
+  if route == UE_TO_CHAT { ue_chat(u, c[0].client, head, body); ue_close(c); return; }
+  if route == UE_TO_AGENT { ue_json(c[0].client, 503, "{\"error\":\"the one-turn build agent is not stood in for here\"}"); ue_close(c); return; }
+  if route == UE_TO_SITE { ue_file(u, c[0].client, head); ue_close(c); return; }
+  if u[0].api_port <= 0 { ue_api_port(u); }
+  if u[0].api_port <= 0 || !ue_forward(u, c, u[0].api_port) {
+    ue_answer(c[0].client, 502, "Bad Gateway", "text/plain", "", "the local server did not answer\n"); ue_close(c);
+  }
+}
+// One pass over every connection, none waited on. True when anything moved.
+ue_pass :: (u: [] Ue) -> bool {
+  moved := false;
+  h := cxsock_accept(u[0].listen, 0); if h >= 0 { ue_take(u, h, false); moved = true; }
+  m := cxsock_accept(u[0].model, 0); if m >= 0 { ue_take(u, m, true); moved = true; }
+  now := cxsock_now_ms();
+  for i: 0..<UE_MAX {
+    c := u[0].conns[i..<i + 1];
+    if c[0].phase == UE_READ {
+      k := cxsock_read(c[0].client, 0);
+      // an idle connection a browser opened ahead (nothing asked on it) is let go: a slot is kept for the server's own question
+      if k == -2 { if (c[0].n == 0 && now - c[0].since > 3000) || now - c[0].since > 60000 { ue_close(c); } continue; }
+      if k <= 0 { ue_close(c); continue; }
+      moved = true;
+      for j: 0..<k { if c[0].n < UE_REQ { c[0].buf[c[0].n] = cast(u8) cxsock_byte(c[0].client, j); c[0].n += 1; } }
+      if c[0].want < 0 {
+        e := ue_find(cast(string) c[0].buf[0..<c[0].n], "\r\n\r\n", 0);
+        if e >= 0 { c[0].head = e; cl := ue_int(ue_header(cast(string) c[0].buf[0..<e], "Content-Length")); c[0].want = e + 4 + (ifx cl > 0 then cl else 0); }
+      }
+      if c[0].want >= 0 && c[0].n >= c[0].want { ue_dispatch(u, c); }
+      else if c[0].n >= UE_REQ { ue_answer(c[0].client, 413, "Too Large", "text/plain", "", "too large\n"); ue_close(c); }
+      continue;
+    }
+    if c[0].phase == UE_RELAY {
+      k := cxsock_read(c[0].up, 0);
+      if k == -2 { if now - c[0].since > 900000 { ue_close(c); } continue; }
+      if k <= 0 { ue_close(c); moved = true; continue; }
+      moved = true;
+      for j: 0..<k { _ = cxsock_write(c[0].client, cxsock_byte(c[0].up, j)); }
+      if cxsock_flush(c[0].client, 20000) != 0 { ue_close(c); }
+      continue;
+    }
+    if c[0].phase == UE_HELD && now >= c[0].until {
+      ue_model_answer(u, c[0].client, cast(string) c[0].buf[0..<c[0].n]); ue_close(c); moved = true;
+    }
+  }
+  return moved;
+}
+// The edge's whole life: listen, say where (the file `edge` in the run's folder: ITS_PORT MODEL_PORT),
+// and pass until the file `edge.stop` appears.
+ue_run :: (u: [] Ue, dir: string, site: string, listen_port: int) -> int {
+  u[0].dir_n = ws_put(u[0].dir[..], 0, dir); u[0].site_n = ws_put(u[0].site[..], 0, site);
+  u[0].listen = cxsock_listen(listen_port); u[0].model = cxsock_listen(0);
+  if u[0].listen < 0 || u[0].model < 0 { tool_errln("user-test edge: no port to listen on"); return 2; }
+  fb: [2200] u8; ob: [64] u8;
+  n := fs_read(fs_join(dir, "owner-token", fb[..]), ob[..]);
+  if n != 40 { ue_random(u[0].owner[..], false); } else { for i: 0..<40 { u[0].owner[i] = ob[i]; } }
+  b: [64] u8; k := pb_decimal(b[..], 0, cxsock_port(u[0].listen)); k = ws_put(b[..], k, " "); k = pb_decimal(b[..], k, cxsock_port(u[0].model)); k = ws_put(b[..], k, "\n");
+  if !fs_write(fs_join(dir, "edge", fb[..]), cast(string) b[0..<k]) { return 2; }
+  checked := 0;
+  while true {
+    if !ue_pass(u) { proc_sleep(2); }
+    now := cxsock_now_ms();
+    if now - checked > 400 { checked = now; if fs_exists(fs_join(dir, "edge.stop", fb[..])) { break; } }
+  }
+  for i: 0..<UE_MAX { ue_close(u[0].conns[i..<i + 1]); }
+  return 0;
+}

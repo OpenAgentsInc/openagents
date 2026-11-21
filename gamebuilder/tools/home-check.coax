@@ -1,0 +1,162 @@
+// The home page's first paint is the page's own (issue 12; AGENTS.md, the website). web/index.html
+// holds the home page as plain HTML, with its rules in the head, so the heading and the button show
+// and can be pressed before any code has loaded. Those nodes, rules and words have one source, the
+// page's Coax (web/home.coax: gs_home_page and the GS_ words; web/look.coax: gs_css_first). This tool
+// draws the home page as its first frame has it, writes it as HTML, and holds index.html and index.md to it:
+//
+//   coax/web/tool.sh tools/home-check.coax           fails when a part differs (scripts/check.sh runs it)
+//   coax/web/tool.sh tools/home-check.coax --write   writes the parts again, after the words or the rules change
+//
+// The parts of web/index.html, each between a pair of marks: the words for search and link previews
+// (home:words), the first paint's rules (home:css) and the page's nodes (home:page). web/index.md,
+// the page as text for agents, is written whole. Run from the repository's root.
+// tool.sh: run-steps 100000000
+#run_steps 100000000;
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../web/home.coax";
+#import "Basic";
+
+HC_TEXT :: 131072;
+HC_SITE :: "https://gamebuilder.org";
+HcWork :: struct { tree: [1] Tree; page: [HC_TEXT] u8; was: [HC_TEXT] u8; next: [HC_TEXT] u8; part: [HC_TEXT] u8; }
+
+hc_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+// Text as HTML holds it, in a node or in an attribute's quotes.
+hc_esc :: (out: [] u8, n: int, s: string) -> int {
+  k := n;
+  for c: s {
+    if c == '&' { k = hc_put(out, k, "&amp;"); } else if c == '<' { k = hc_put(out, k, "&lt;"); } else if c == '>' { k = hc_put(out, k, "&gt;"); }
+    else if c == '"' { k = hc_put(out, k, "&quot;"); } else if k < out.count { out[k] = c; k += 1; }
+  }
+  return k;
+}
+// A node of the tree and all under it, as HTML: its tag, its class and attributes, its text, its
+// children in order. No ids: the page's own nodes have them, and these are gone when it draws.
+hc_node :: (t: [] Tree, i: int, out: [] u8, at: int) -> int {
+  tags := TG_NAMES; names := AT_NAMES;
+  n := hc_put(out, at, "<"); n = hc_put(out, n, tags[t[0].nodes[i].tag]);
+  if tr_class(t, i).count > 0 { n = hc_put(out, n, " class=\""); n = hc_esc(out, n, tr_class(t, i)); n = hc_put(out, n, "\""); }
+  for k: 0..<AT_COUNT {
+    if !tr_has(t, i, k) { continue; }
+    n = hc_put(out, n, " "); n = hc_put(out, n, names[k]); n = hc_put(out, n, "=\""); n = hc_esc(out, n, tr_attr_of(t, i, k)); n = hc_put(out, n, "\"");
+  }
+  n = hc_put(out, n, ">");
+  n = hc_esc(out, n, tr_text_of(t, i));
+  kids := 0;
+  for c: i + 1..<t[0].n { if t[0].nodes[c].parent == i { if kids == 0 && !hc_inline(t, i) { n = hc_put(out, n, "\n"); } n = hc_node(t, c, out, n); kids += 1; if !hc_inline(t, i) { n = hc_put(out, n, "\n"); } } }
+  n = hc_put(out, n, "</"); n = hc_put(out, n, tags[t[0].nodes[i].tag]); n = hc_put(out, n, ">");
+  return n;
+}
+// A heading, a link or a line keeps its children on its own line (a line break between them would be a space on the page).
+hc_inline :: (t: [] Tree, i: int) -> bool { tag := t[0].nodes[i].tag; return tag == TG_H1 || tag == TG_P || tag == TG_A || tag == TG_SPAN; }
+
+// The words as one sentence: for search engines, link previews and the page as text.
+hc_said :: (out: [] u8, at: int) -> int { n := hc_put(out, at, GS_HEAD); n = hc_put(out, n, GS_HEAD_HERE); n = hc_put(out, n, " "); n = hc_put(out, n, GS_LINE); return n; }
+
+// The part of index.html named `name`, as the page's Coax has it.
+hc_part :: (w: [] HcWork, name: string, out: [] u8) -> int {
+  n := 0;
+  if name == "words" {
+    n = hc_put(out, n, "<meta name=\"description\" content=\""); n = hc_said(out, n); n = hc_put(out, n, "\">\n");
+    n = hc_put(out, n, "<meta property=\"og:description\" content=\""); n = hc_said(out, n); n = hc_put(out, n, "\">\n");
+  } else if name == "css" {
+    n = gs_css_first(out, n); n = hc_put(out, n, "\n");
+  } else if name == "page" {
+    t := w[0].tree[..]; tr_begin(t); gs_home_page(t, GS_HOME_ASKING, GW_FINE, "");
+    n = hc_node(t, 0, out, n); n = hc_put(out, n, "\n");
+  }
+  return ifx n >= out.count then -1 else n;
+}
+// The page as text (web/index.md), whole.
+hc_md :: (out: [] u8) -> int {
+  n := hc_put(out, 0, "# GAMEBUILDER\n\n"); n = hc_put(out, n, GS_HEAD); n = hc_put(out, n, GS_HEAD_HERE); n = hc_put(out, n, "\n\n");
+  n = hc_put(out, n, GS_LINE); n = hc_put(out, n, "\n\n");
+  // the game types, in the shared order, each the builder with it chosen (shared/game-types.coax)
+  order: [GT_TYPES] int; m := gt_picker(GT_ON_SITE, order[..]); ids := GT_ID; names := GT_NAME; lines := GT_LINE;
+  for i: 0..<m {
+    n = hc_put(out, n, gt_key(i)); n = hc_put(out, n, ". ["); n = hc_put(out, n, names[order[i]]); n = hc_put(out, n, "](");
+    n = hc_put(out, n, HC_SITE); n = hc_put(out, n, GS_BUILDER); n = hc_put(out, n, GS_TYPE_ASK); n = hc_put(out, n, ids[order[i]]); n = hc_put(out, n, "): ");
+    n = hc_put(out, n, lines[order[i]]); n = hc_put(out, n, "\n");
+  }
+  n = hc_put(out, n, "\n"); n = hc_put(out, n, GS_APPS); n = hc_put(out, n, ".\n\n");
+  n = hc_put(out, n, "[credits]("); n = hc_put(out, n, HC_SITE); n = hc_put(out, n, "/credits). [");
+  n = hc_put(out, n, GS_BUILT_ON); n = hc_put(out, n, "]("); n = hc_put(out, n, GS_HOME); n = hc_put(out, n, "). "); n = hc_put(out, n, GS_COPYRIGHT); n = hc_put(out, n, "\n");
+  return ifx n >= out.count then -1 else n;
+}
+hc_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+// `text` with what stands between the marks of `name` replaced by `part`: the new length, or -1 when
+// a mark is missing. The marks are whole lines, "home:NAME" and "/home:NAME" in a comment.
+hc_swap :: (text: string, name: string, part: string, out: [] u8) -> int {
+  a: [64] u8; b: [64] u8;
+  an := hc_put(a[..], 0, " home:"); an = hc_put(a[..], an, name); an = hc_put(a[..], an, " ");
+  bn := hc_put(b[..], 0, " /home:"); bn = hc_put(b[..], bn, name); bn = hc_put(b[..], bn, " ");
+  from := hc_find(text, cast(string) a[0..<an]); to := hc_find(text, cast(string) b[0..<bn]);
+  if from < 0 || to < from { return -1; }
+  while from < text.count && text[from] != '\n' { from += 1; }   // (the rest of the opening mark's line)
+  while to > 0 && text[to - 1] != '\n' { to -= 1; }              // (the closing mark's line, from its start)
+  if from >= to { return -1; }
+  n := hc_put(out, 0, cast(string) text[0..<from + 1]); n = hc_put(out, n, part); n = hc_put(out, n, cast(string) text[to..<text.count]);
+  return ifx n >= out.count then -1 else n;
+}
+
+#test "a part is swapped between its marks, whole lines kept; a missing mark is refused" {
+  out: [256] u8;
+  text := "a\n<!-- home:page (written) -->\nold\nolder\n<!-- /home:page -->\nz\n";
+  n := hc_swap(text, "page", "new\n", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "a\n<!-- home:page (written) -->\nnew\n<!-- /home:page -->\nz\n";
+  #assert hc_swap(text, "css", "new\n", out[..]) < 0 && hc_swap("<!-- /home:page -->\n<!-- home:page -->\n", "page", "x", out[..]) < 0;
+  e := hc_esc(out[..], 0, "a<b & \"c\"");
+  #assert cast(string) out[0..<e] == "a&lt;b &amp; &quot;c&quot;";
+}
+#test "the first frame as HTML: the page's class while the login is asked, the nine names links to the builder with their type chosen, no ids" #steps 400000000 {
+  w: [1] HcWork;
+  n := hc_part(w[..], "page", w[0].part[..]);
+  #assert n > 0;
+  html := cast(string) w[0].part[0..<n];
+  #assert hc_find(html, "<main class=\"gs v0 asking\">") == 0 && hc_find(html, "<nav class=\"names\" aria-label=\"game types\">") > 0;
+  #assert hc_find(html, "<a class=\"kind r0\" href=\"/play?type=third-person\"><span class=\"no\">1</span><span class=\"kn\">third person</span>") > 0;
+  #assert hc_find(html, "<a class=\"kind r7\" href=\"/play?type=racing\"><span class=\"no\">8</span><span class=\"kn\">racing</span>") > 0;
+  #assert hc_find(html, " id=") < 0 && hc_find(html, "<h1><span>make a game. </span><span class=\"ghost wg\">pick a portal.</span><span class=\"ghost ng\">pick a type.</span></h1>") > 0;
+  #assert hc_find(html, "<a class=\"quiet\" href=\"/login\">log in</a>") > 0 && hc_find(html, "<a class=\"brand\" href=\"/\" aria-label=\"GameBuilder\"><span class=\"mark\"></span></a>") > 0;
+  // (each of the shared list's types is there, a tenth one too: the list is the shared one, not this page's)
+  order: [GT_TYPES] int; m := gt_picker(GT_ON_SITE, order[..]); ids := GT_ID; at := 0;
+  for i: 0..<m { q: [64] u8; k := hc_put(q[..], 0, "href=\"/play?type="); k = hc_put(q[..], k, ids[order[i]]); k = hc_put(q[..], k, "\""); f := hc_find(html, cast(string) q[0..<k]); #assert f > at; at = f; }
+  md: [8192] u8; mn := hc_md(md[..]);
+  #assert mn > 0 && hc_find(cast(string) md[0..<mn], "8. [racing](https://gamebuilder.org/play?type=racing)") > 0;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) { return 2; }
+  write := args_has(a[..], "--write");
+  w: [1] HcWork; bad := 0;
+  n := fs_read("web/index.html", w[0].page[..]);
+  if n < 0 || n >= HC_TEXT { print("home: web/index.html NOT read (run from the repository's root)\n"); return 1; }
+  names := [3] string.["words", "css", "page"];
+  for name: names {
+    pn := hc_part(w[..], name, w[0].part[..]);
+    k := ifx pn < 0 then -1 else hc_swap(cast(string) w[0].page[0..<n], name, cast(string) w[0].part[0..<pn], w[0].next[..]);
+    if k < 0 { print("home: web/index.html has no part home:% (a line with home:% in a comment, and one with /home:% after it)\n", name, name, name); return 1; }
+    if k != n || cast(string) w[0].next[0..<k] != cast(string) w[0].page[0..<n] {
+      bad += 1;
+      if !write { print("home: web/index.html's part home:% is NOT what the page's Coax draws\n", name); }
+      for i: 0..<k { w[0].page[i] = w[0].next[i]; } n = k;
+    }
+  }
+  if bad > 0 && write { if !fs_write("web/index.html", cast(string) w[0].page[0..<n]) { print("home: web/index.html NOT written\n"); return 1; } }
+  mn := hc_md(w[0].part[..]); wn := fs_read("web/index.md", w[0].was[..]);
+  if mn < 0 { return 1; }
+  if wn != mn || cast(string) w[0].was[0..<mn] != cast(string) w[0].part[0..<mn] {
+    bad += 1;
+    if write { if !fs_write("web/index.md", cast(string) w[0].part[0..<mn]) { print("home: web/index.md NOT written\n"); return 1; } }
+    else { print("home: web/index.md is NOT the page's words\n"); }
+  }
+  if bad > 0 && !write { print("home: the page's words and rules are web/home.coax's and web/look.coax's; write them again with\n  coax/web/tool.sh tools/home-check.coax --write\n"); return 1; }
+  if bad > 0 { print("home: wrote % part(s) from the page's Coax\n", bad); } else { print("home: ok, index.html's first paint and index.md are the page's own\n"); }
+  return 0;
+}

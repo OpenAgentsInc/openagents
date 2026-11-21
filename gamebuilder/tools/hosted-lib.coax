@@ -1,0 +1,198 @@
+// The helpers of the hosted server's checks (tools/hosted-check.coax, tools/cloud-check.coax): a
+// stand-in for the login service a server asks who a caller is, a request to the server with that
+// question answered while it waits, and the CLI run beside it.
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#import "Basic";
+
+A :: "Authorization: Bearer tok-a\r\n";
+B :: "Authorization: Bearer tok-b\r\n";
+OWNER :: "Authorization: Bearer tok-owner\r\n";   // an owner of the games that ship (coax/games.coax): reads the site's counts
+
+HcRun :: struct {
+  answer: [262144] u8; n: int;
+  ask: [16384] u8;
+  body: [131072] u8;
+  asked: int;              // times the login service was asked
+  bad: int;
+}
+
+// The login service's answer to token: an account's lines, or 401.
+hc_login_answer :: (token: string, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  lines := "";
+  if token == "tok-a" { lines = "account acct_a\nprimary a@example.com\n"; }
+  else if token == "tok-b" { lines = "account acct_b\nprimary b@example.com\n"; }
+  else if token == "tok-owner" { lines = "account acct_o\nprimary chris@openagents.com\n"; }
+  else if token == "tok-unsafe" { lines = "account ../acct_a\nprimary c@example.com\n"; }
+  if lines.count == 0 {
+    lines = "error that login has ended\n";
+    tx_put(t[..], "HTTP/1.1 401 Unauthorized\r\n");
+  } else { tx_put(t[..], "HTTP/1.1 200 OK\r\n"); }
+  tx_put(t[..], "Content-Type: text/plain\r\nConnection: close\r\nContent-Length: "); tx_int(t[..], cast(s64) lines.count);
+  tx_put(t[..], "\r\n\r\n"); tx_put(t[..], lines);
+  return cast(string) out[0..<t[0].at];
+}
+
+// Answers one question of the login service, if one comes within wait ms. True when it did.
+hc_serve_login :: (r: [] HcRun, login: int, wait: int) -> bool {
+  h := cxsock_accept(login, wait);
+  if h < 0 { return false; }
+  n := 0; deadline := cxsock_now_ms() + 10000; done := false;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].ask.count { r[0].ask[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    if n >= 4 && level_find(cast(string) r[0].ask[0..<n], "\r\n\r\n") >= 0 { done = true; }
+  }
+  ask := cast(string) r[0].ask[0..<n];
+  token := "";
+  if level_find(ask, "GET /api/auth/account?as=lines HTTP/1.1\r\n") != 0 { print("hosted: NOT the account route asked: %\n", ask); r[0].bad += 1; }
+  at := level_find(ask, "Authorization: Bearer ");
+  if at >= 0 {
+    from := at + 22; to := from;
+    while to < n && ask[to] != '\r' { to += 1; }
+    token = cast(string) ask[from..<to];
+  }
+  // a browser's login: the site's cookie, passed on whole (ck-a is a's browser, ck-b b's)
+  ck := level_find(ask, "Cookie: ");
+  if at < 0 && ck >= 0 {
+    to := ck; while to < n && ask[to] != '\r' { to += 1; }
+    jar := cast(string) ask[ck..<to];
+    if level_find(jar, "__Host-oa_session=ck-a") >= 0 { token = "tok-a"; } else if level_find(jar, "__Host-oa_session=ck-b") >= 0 { token = "tok-b"; }
+    if level_find(ask, "Authorization:") >= 0 { print("hosted: NOT a cookie passed on alone: %\n", ask); r[0].bad += 1; }
+  }
+  ab: [512] u8;
+  reply := hc_login_answer(token, ab[..]);
+  for b: reply { _ = cxsock_write(h, cast(int) b); }
+  _ = cxsock_flush(h, 5000);
+  _ = cxsock_close(h);
+  r[0].asked += 1;
+  return true;
+}
+
+// One request to the server at port: the whole response. The login service is answered when the
+// server asks it (it asks before it answers a signed call).
+hc_call :: (r: [] HcRun, port: int, login: int, method: string, path: string, headers: string, body: string) -> string {
+  rb: [140000] u8; t := [1] Text.[Text.{buf = rb[..]}];
+  tx_put(t[..], method); tx_put(t[..], " "); tx_put(t[..], path); tx_put(t[..], " HTTP/1.1\r\nHost: games.example\r\n"); tx_put(t[..], headers);
+  tx_put(t[..], "Content-Type: application/json\r\nContent-Length: "); tx_int(t[..], cast(s64) body.count); tx_put(t[..], "\r\n\r\n"); tx_put(t[..], body);
+  if t[0].at >= rb.count { return "(the request did not fit)"; }
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  h := cxsock_connect(port, 5000);
+  if h < 0 { return "(no server)"; }
+  for b: rb[0..<t[0].at] { _ = cxsock_write(h, cast(int) b); }
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); return "(the request was not sent)"; }
+  // the server asks the login service first when the call is signed; a short wait otherwise
+  _ = hc_serve_login(r, login, ifx (level_find(headers, "Authorization:") >= 0 && level_find(headers, "Origin:") < 0) || level_find(headers, "Cookie: __Host-oa_session=ck-") == 0 then 10000 else 200);
+  n := 0; deadline := cxsock_now_ms() + 30000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].answer.count { r[0].answer[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+  }
+  _ = cxsock_close(h);
+  r[0].n = n;
+  return cast(string) r[0].answer[0..<n];
+}
+
+// gamebuilder --remote --origin site VERB [WORD] in home, the login service answered while it
+// runs: its exit code, a space, and what it printed.
+hc_remote :: (r: [] HcRun, bin: string, home: string, site: string, login: int, verb: string, word: string) -> string {
+  h := proc_new();
+  eb: [512] u8; et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "HOME="); tx_put(et[..], home);
+  ok := proc_env(h, cast(string) eb[0..<et[0].at]) && proc_env(h, "GAMEBUILDER_PROFILE=default") && proc_arg(h, bin) && proc_arg(h, "--remote") && proc_arg(h, "--origin") && proc_arg(h, site) && proc_arg(h, verb);
+  if ok && word.count > 0 { ok = proc_arg(h, word); }
+  if !ok || proc_start(h) != 0 { return "(not started)"; }
+  _ = hc_serve_login(r, login, 10000);
+  n := proc_line(h, 30000, r[0].answer[2..<r[0].answer.count]);
+  code := proc_wait(h, 10000); _ = proc_release(h);
+  r[0].answer[0] = cast(u8) ('0' + ifx code >= 0 && code <= 9 then code else 9); r[0].answer[1] = ' ';
+  return cast(string) r[0].answer[0..<2 + ifx n > 0 then n else 0];
+}
+
+// --remote --server: the login is the site's (profile "site", gamebuilder.org's), the server this
+// computer's. asks is how many login lookups the call should make (0: refused before any request).
+hc_remote_server :: (r: [] HcRun, bin: string, home: string, server: string, login: int, asks: int, verb: string) -> string {
+  h := proc_new();
+  eb: [512] u8; et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "HOME="); tx_put(et[..], home);
+  ok := proc_env(h, cast(string) eb[0..<et[0].at]) && proc_env(h, "GAMEBUILDER_PROFILE=site") && proc_arg(h, bin) && proc_arg(h, "--remote") && proc_arg(h, "--server") && proc_arg(h, server) && proc_arg(h, verb);
+  if !ok || proc_start(h) != 0 { return "(not started)"; }
+  for k: 0..<asks { _ = hc_serve_login(r, login, 10000); }
+  n := proc_line(h, 30000, r[0].answer[2..<r[0].answer.count]);
+  code := proc_wait(h, 10000); _ = proc_release(h);
+  r[0].answer[0] = cast(u8) ('0' + ifx code >= 0 && code <= 9 then code else 9); r[0].answer[1] = ' ';
+  return cast(string) r[0].answer[0..<2 + ifx n > 0 then n else 0];
+}
+
+// gamebuilder --remote --origin site --as-agent NAME VERB in home: as hc_remote.
+hc_remote_as :: (r: [] HcRun, bin: string, home: string, site: string, login: int, name: string, verb: string) -> string {
+  h := proc_new();
+  eb: [512] u8; et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "HOME="); tx_put(et[..], home);
+  ok := proc_env(h, cast(string) eb[0..<et[0].at]) && proc_env(h, "GAMEBUILDER_PROFILE=default") && proc_arg(h, bin) && proc_arg(h, "--remote") && proc_arg(h, "--origin") && proc_arg(h, site)
+    && proc_arg(h, "--as-agent") && proc_arg(h, name) && proc_arg(h, verb);
+  if !ok || proc_start(h) != 0 { return "(not started)"; }
+  _ = hc_serve_login(r, login, 10000);
+  n := proc_line(h, 30000, r[0].answer[2..<r[0].answer.count]);
+  code := proc_wait(h, 10000); _ = proc_release(h);
+  r[0].answer[0] = cast(u8) ('0' + ifx code >= 0 && code <= 9 then code else 9); r[0].answer[1] = ' ';
+  return cast(string) r[0].answer[0..<2 + ifx n > 0 then n else 0];
+}
+// How many agent records in dir/account say part.
+hc_agents :: (r: [] HcRun, dir: string, account: string, part: string) -> int {
+  fb: [512] u8; jp := [2] string.[dir, account]; f := hc_join(r[..], jp[..]); for i: 0..<f.count { fb[i] = f[i]; }
+  folder := cast(string) fb[0..<f.count];
+  l: [1] FsList; n := 0;
+  if fs_list(folder, l[..]) < 0 { return 0; }
+  for i: 0..<l[0].n {
+    e := fs_entry(l[..], i);
+    if e.count < 7 || cast(string) e[e.count - 6..<e.count] != ".agent" { continue; }
+    pb: [1024] u8; jq := [3] string.[folder, "/", e]; p := hc_join(r[..], jq[..]); for k: 0..<p.count { pb[k] = p[k]; }
+    tb: [4096] u8; k := fs_read(cast(string) pb[0..<p.count], tb[..]);
+    if k > 0 && level_find(cast(string) tb[0..<k], part) >= 0 { n += 1; }
+  }
+  return n;
+}
+
+hc_expect :: (r: [] HcRun, what: string, got: string, status: string, part: string) {
+  if level_find(got, status) != 0 || level_find(got, part) < 0 {
+    print("hosted: NOT %: wanted % and %\n  got %\n", what, status, part, got);
+    r[0].bad += 1;
+  }
+}
+// The text between from and the next to in s, after from's end.
+hc_between :: (s: string, from: string, to: string) -> string {
+  a := level_find(s, from);
+  if a < 0 { return ""; }
+  rest := s[a + from.count..<s.count];
+  b := level_find(rest, to);
+  return ifx b < 0 then "" else rest[0..<b];
+}
+// A JSON body built from parts.
+hc_join :: (r: [] HcRun, parts: [] string) -> string {
+  n := 0;
+  for p: parts { for c: p { if n < r[0].body.count { r[0].body[n] = c; n += 1; } } }
+  return cast(string) r[0].body[0..<n];
+}
+
+// gamebuilder --dir dir VERB WORDS... on this computer's folder, as the app's own computer: what it printed.
+hc_cli :: (r: [] HcRun, bin: string, dir: string, words: [] string, out: [] u8) -> string {
+  h := proc_new();
+  ok := proc_env(h, "GAMEBUILDER_COMPUTER=this Mac") && proc_arg(h, bin) && proc_arg(h, "--dir") && proc_arg(h, dir);
+  for w: words { ok = ok && proc_arg(h, w); }
+  if !ok || proc_start(h) != 0 { return "(not started)"; }
+  n := proc_line(h, 30000, out);
+  _ = proc_wait(h, 10000); _ = proc_release(h);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// The events of an answer of agent-events: its "events" array, as text.
+hc_events :: (answer: string) -> string {
+  a := level_find(answer, "\"events\":[");
+  b := level_find(answer, "],\"next\":");
+  return ifx a < 0 || b < a then "" else answer[a..<b + 1];
+}
+

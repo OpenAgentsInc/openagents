@@ -1,0 +1,164 @@
+// tool.sh: stack-gib 1
+// Record a scripted browser run with the engine's fixed-step clock. The driver
+// defines browserRun.ready(), browserRun.first(), and, for one real reload,
+// browserRun.resume(checkpoint). first() returns the checkpoint passed to
+// resume(). The finished recording is local; the browser is headless and muted.
+// coax/web/tool.sh tools/browser-run-record.coax URL DRIVER.js OUT.mp4 [--reload] [--silent]
+#import "Basic";
+#load "../../coax/lib/media/media.coax";
+
+BR_BIND :: "coaxRecordFrame";
+BR_RATE :: 20;
+BR_CHUNK :: 1048576;   // base64 characters, a multiple of four
+BR_MAX_FRAMES :: 36000;   // 30 minutes at 20 fps, also below the frame name's limit
+
+br_frame_event :: (d: Jv) -> bool {
+  return cdp_event_method(d) == "Runtime.bindingCalled" &&
+    jv_raw(d, jv_path(d, 0, "params.name")) == BR_BIND &&
+    jv_raw(d, jv_path(d, 0, "params.payload")) == "frame";
+}
+
+#test "a capture request is accepted only from the recorder binding" {
+  d: [1] Jv; nodes: [40] JvNode;
+  #assert jv_parse(d[..], "{\"method\":\"Runtime.bindingCalled\",\"params\":{\"name\":\"coaxRecordFrame\",\"payload\":\"frame\"}}", nodes[..]) && br_frame_event(d[0]);
+  #assert jv_parse(d[..], "{\"method\":\"Runtime.bindingCalled\",\"params\":{\"name\":\"other\",\"payload\":\"frame\"}}", nodes[..]) && !br_frame_event(d[0]);
+  #assert jv_parse(d[..], "{\"id\":1,\"result\":{}}", nodes[..]) && !br_frame_event(d[0]);
+}
+
+br_page_script :: (c: [] Cdp, source: string) -> bool {
+  b: [131072] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "source"); jo_str(o[..], source); jo_end(o[..]);
+  return !o[0].bad && cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+
+// Keep the evaluation pending while the browser yields individual frames.
+// Only acknowledge a frame after its pixels are written. The acknowledgement
+// itself is sent without waiting so an early next-frame event cannot be lost.
+br_segment :: (c: [] Cdp, expression: string, dir: string, frames: [] int, result: [] u8) -> int {
+  params: [65536] u8; o: [1] Jo; jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "expression"); jo_str(o[..], expression);
+  jo_key(o[..], "awaitPromise"); jo_bool(o[..], true); jo_key(o[..], "returnByValue"); jo_bool(o[..], true); jo_end(o[..]);
+  if o[0].bad { tool_errln("browser recording: driver expression is too long"); return -1; }
+  id := cdp_send(c, "Runtime.evaluate", jo_text(o[..]));
+  if id < 0 { return -1; }
+  png: [MEDIA_PNG] u8 = ---; name: [32] u8; path: [4200] u8;
+  while cdp_poll(c, CDP_CALL_MS) == CDP_GOT {
+    d := cdp_doc(c);
+    if cdp_reply_id(d) == id {
+      if jv_path(d, 0, "result.exceptionDetails") >= 0 {
+        tool_errln(jv_raw(d, jv_path(d, 0, "result.exceptionDetails.exception.description")));
+        return -1;
+      }
+      value := jv_path(d, 0, "result.result.value");
+      if value < 0 { tool_errln("browser recording: driver returned no checkpoint"); return -1; }
+      text: [1] Jo; jo_start(text[..], result); jv_write(d, value, text[..]);
+      return ifx text[0].bad then -1 else text[0].n;
+    }
+    if !br_frame_event(d) { continue; }
+    if frames[0] >= BR_MAX_FRAMES { tool_errln("browser recording: reached the 30-minute capture limit"); return -1; }
+    n := cdp_screenshot_with(c, "{\"format\":\"png\",\"optimizeForSpeed\":true}", png[..]);
+    if n <= 0 { tool_errln("browser recording: Chrome gave no picture for a frame"); return -1; }
+    file := fs_join(dir, clip_frame_name(frames[0], name[..]), path[..]);
+    if !fs_write(file, cast(string) png[0..<n]) { tool_errln("browser recording: could not write a frame"); return -1; }
+    frames[0] += 1;
+    if frames[0] % 600 == 0 { print("Captured % seconds\n", frames[0] / BR_RATE); }
+    if cdp_send(c, "Runtime.evaluate", "{\"expression\":\"globalThis.coaxRecordAck()\"}") < 0 { return -1; }
+  }
+  tool_errln("browser recording: timed out waiting for the driver or a frame");
+  return -1;
+}
+
+// The host mixes each document offline. Move the WAV over CDP in bounded
+// chunks so the complete soundtrack can exceed the protocol's single reply.
+br_audio :: (c: [] Cdp, count: int, path: string) -> bool {
+  b: [256] u8;
+  n := ws_put(b[..], 0, "(async()=>{globalThis.coaxRecordWav=await coaxialClipMix(");
+  n = ws_digits(b[..], n, count); n = ws_put(b[..], n, "/20,20);return coaxRecordWav.length})()");
+  v := cdp_evaluate(c, cast(string) b[0..<n]);
+  size := jv_int(cdp_doc(c), v, 0);
+  if size < 60 || !fs_write(path, "") { return false; }
+  bytes: [BR_CHUNK] u8 = ---;
+  at := 0;
+  while at < size {
+    end := ifx at + BR_CHUNK < size then at + BR_CHUNK else size;
+    n = ws_put(b[..], 0, "coaxRecordWav.slice("); n = ws_digits(b[..], n, at);
+    n = ws_put(b[..], n, ","); n = ws_digits(b[..], n, end); n = ws_put(b[..], n, ")");
+    v = cdp_evaluate(c, cast(string) b[0..<n]);
+    read := b64_decode(jv_raw(cdp_doc(c), v), bytes[..]);
+    if read <= 0 || !fs_append(path, cast(string) bytes[0..<read]) { return false; }
+    at = end;
+  }
+  return true;
+}
+
+br_encode :: (dir: string, out: string, reload: bool, silent: bool) -> bool {
+  b: [3][4200] u8; err: [65536] u8; output: [4096] u8;
+  wav := ifx silent then "" else fs_join(dir, ifx reload then "audio.wav" else "first.wav", b[0][..]);
+  if reload && !silent {
+    first := fs_join(dir, "first.wav", b[1][..]); second := fs_join(dir, "second.wav", b[2][..]);
+    args := [17] string.["ffmpeg", "-v", "error", "-y", "-i", first, "-i", second, "-filter_complex",
+      "[0:a][1:a]concat=n=2:v=0:a=1[a]", "-map", "[a]", "-c:a", "pcm_s16le", "-ar", "48000", wav];
+    r := proc_run(args[..], -1, output[..], err[..]);
+    if r.started != 0 || r.status != 0 { tool_errln(cast(string) err[0..<r.err_n]); return false; }
+  }
+  error := media_encode_sound("ffmpeg", dir, "20", wav, out, err[..]);
+  if error != "" { tool_errln(error); return false; }
+  return true;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; if !args_load(a[..]) || args_count(a[..]) < 3 || args_count(a[..]) > 5 {
+    tool_errln("usage: browser-run-record URL DRIVER.js OUT.mp4 [--reload] [--silent]"); return 2;
+  }
+  for i: 3..<args_count(a[..]) {
+    arg := args_at(a[..], i); if arg != "--reload" && arg != "--silent" { tool_errln("browser recording: unknown option"); return 2; }
+  }
+  out := args_at(a[..], 2); reload := args_has(a[..], "--reload"); silent := args_has(a[..], "--silent");
+  if fs_kind(out) != FS_NONE { tool_errln("browser recording: use a new output path"); return 2; }
+  bootstrap: [8192] u8; bn := fs_read("tools/browser-run-record.js", bootstrap[..]);
+  if bn <= 0 { tool_errln("browser recording: run from the GameBuilder repository root"); return 2; }
+  driver: [65536] u8; dn := fs_read(args_at(a[..], 1), driver[..]);
+  if dn <= 0 { tool_errln("browser recording: could not read the driver"); return 2; }
+  db: [4096] u8; dir := fs_temp("coax-browser-run-", db[..]);
+  if dir == "" || !fs_mkdir_private(dir) { tool_errln("browser recording: could not create a private frames directory"); return 1; }
+  defer { _ = fs_remove(dir); }
+  c: [1] Cdp;
+  if !cdp_launch(c[..], 1024, 640, "coax-browser-run-") { tool_errln(cdp_error(c[..])); return 1; }
+  defer { cdp_close(c[..]); }
+  if !media_size(c[..], ArgsSize.{ok = true, w = 1024, h = 640}) ||
+     cdp_call(c[..], "Runtime.enable", "", CDP_CALL_MS) < 0 ||
+     cdp_call(c[..], "Page.enable", "", CDP_CALL_MS) < 0 ||
+     cdp_call(c[..], "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 ||
+     cdp_call(c[..], "Runtime.addBinding", "{\"name\":\"coaxRecordFrame\"}", CDP_CALL_MS) < 0 ||
+     !br_page_script(c[..], cast(string) bootstrap[0..<bn]) ||
+     (!silent && !br_page_script(c[..], "globalThis.coaxialClipAudio = true")) ||
+     !br_page_script(c[..], cast(string) driver[0..<dn]) { tool_errln(cdp_error(c[..])); return 1; }
+  b: [65536] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "url"); jo_str(o[..], args_at(a[..], 0)); jo_end(o[..]);
+  if o[0].bad || cdp_call(c[..], "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { tool_errln(cdp_error(c[..])); return 1; }
+  frames: [1] int; result: [48000] u8; path: [4200] u8;
+  n := br_segment(c[..], "(async()=>{await browserRun.ready();coaxRecordStart();await coaxialClipStep(20,20);const result=await browserRun.first();await coaxialClipStep(20,20);return result??null;})()", dir, frames[..], result[..]);
+  if n < 0 || frames[0] == 0 { tool_errln("browser recording: first segment failed"); return 1; }
+  print("First segment % frames: %\n", frames[0], cast(string) result[0..<n]);
+  before_reload := frames[0];
+  if !silent && !br_audio(c[..], before_reload, fs_join(dir, "first.wav", path[..])) {
+    tool_errln("browser recording: could not write the first soundtrack"); return 1;
+  }
+  if reload {
+    jo_start(o[..], b[..]);
+    jo_put(o[..], "(async()=>{await browserRun.ready();coaxRecordStart();await coaxialClipStep(20,20);const result=await browserRun.resume(");
+    jo_put(o[..], cast(string) result[0..<n]); jo_put(o[..], ");await coaxialClipStep(40,20);return result??null;})()");
+    if o[0].bad || cdp_call(c[..], "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 { return 1; }
+    proc_sleep(250);
+    n = br_segment(c[..], jo_text(o[..]), dir, frames[..], result[..]);
+    if n < 0 || frames[0] == before_reload { tool_errln("browser recording: segment after reload failed"); return 1; }
+    print("Segment after reload % frames: %\n", frames[0] - before_reload, cast(string) result[0..<n]);
+    if !silent && !br_audio(c[..], frames[0] - before_reload, fs_join(dir, "second.wav", path[..])) {
+      tool_errln("browser recording: could not write the soundtrack after reload"); return 1;
+    }
+  }
+  if fs_kind(out) != FS_NONE { tool_errln("browser recording: the output path was filled during capture"); return 1; }
+  if !br_encode(dir, out, reload, silent) { _ = fs_remove(out); return 1; }
+  print("% frames: %\n", frames[0], out);
+  return 0;
+}

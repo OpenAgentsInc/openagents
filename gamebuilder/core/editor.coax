@@ -1,0 +1,1276 @@
+// GameBuilder's level editor: a 3D viewport you fly through and edit, with
+// the controls of a desktop level editor.
+//
+// Picking, the fly camera and the move, turn and size drags are the
+// Metaverse Engine's shared viewport (metaverse-engine/editor/viewport.coax in
+// the pinned openagents tree). This file adds what a level editor needs
+// on top of it: a scene of boxes, orbit, pan, dolly and focus, the mouse,
+// keyboard and touch bindings, and what the GPU draws (the camera matrix and
+// one instance per box).
+//
+// The iOS and macOS hosts (host/) own one Editor's memory and a Metal view.
+// They forward every pointer, key and gesture here, and each frame they draw
+// the instances ed_draw writes with the matrix ed_camera writes. Nothing in
+// this file calls the host.
+//
+// Mouse and keys (macOS, or a keyboard and mouse on iPad):
+//   right drag            look; hold it and W A S D fly, Q E down and up, Shift fast
+//   left click            select; left drag on nothing: forward, back and turn
+//   left drag on the selection, with move, rotate or scale picked: that edit, snapped
+//   Option + left drag    orbit the selection, or what is ahead
+//   Option + right drag   dolly
+//   middle drag           pan
+//   wheel                 dolly
+//   Q W E R               select, move, rotate, scale (while not flying)
+//   F                     focus the selection
+//   Delete                delete the selection
+// Touch: one finger orbits (or edits the selection, as a left drag does),
+// a tap selects, two fingers pan and a pinch dollies.
+//
+//   scripts/check.sh
+// Signing (decide.coax) builds the secp256k1 generator table while compiling.
+#run_steps 100000000;
+#load "../../metaverse-engine/editor/viewport.coax";
+#load "../../metaverse-engine/cam/kinds.coax";   // the meadow's camera kinds, as gamebuilder.org's (play.coax)
+#load "../shared/game-types.coax";   // the game types, their kinds and their starters: the website's too
+#load "decide.coax";
+#load "level.coax";
+#load "play.coax";
+#load "net.coax";
+#load "modes.coax";
+#load "clip.coax";
+#load "her.coax";
+#load "publish.coax";   // what this device has published (docs/publishing.md)
+#load "model.coax";
+#load "scene.coax";
+#load "farm.coax";
+#load "rave.coax";
+#load "meshes.coax";
+#load "games.coax";
+#load "lobby.coax";
+#load "party.coax";
+#load "palette.coax";
+#load "panel.coax";
+#load "picker.coax";   // New Game's picker: the game types' cards (shared/game-types.coax)
+#load "agent.coax";
+#load "claims.coax";
+#load "playtest.coax";
+#load "changes.coax";
+#load "pictures.coax";   // pictures of agents' changes and play-tests, drawn by the app's renderer
+
+ACTORS_MAX :: GT_LEVEL_THINGS;   // (shared/game-types.coax: the website holds a game kept on an account to the same numbers)
+SHAPES_MAX :: GT_LEVEL_SHAPES;   // the different boxes a level may hold
+HISTORY_OPS :: 256;      // changes the undo history keeps
+HISTORY_STEPS :: 128;    // edits it can take back
+INSTANCE_FLOATS :: 20;   // a 4 by 4 model matrix, then shade, look and two spare
+CAMERA_FLOATS :: 20;     // a 4 by 4 view-projection matrix, then the eye and the grid's step
+INSTANCES_MAX :: 1 + ACTORS_MAX + 12 + CLAIMS_MAX * 4 + CH_MARKS * CH_MARK_INSTANCES + FIGHTERS * 12 + SHOTS + SPARKS + 24 + PACKS * 2 + 4 + MODE_INSTANCES + PIC_SEGS;   // the editor's with what agents changed (changes.coax), and a match's Scrappers, shots, ball and goals
+NEAR :: 0.2f32;              // far enough out that flat ground pieces a few centimetres up don't flicker a long way off
+FAR :: 1000.0f32;
+FOV :: 1.0f32;              // radians, vertical
+GROUND_HALF :: 200.0f32;    // metres from the middle to the edge of the drawn ground
+
+// How a fragment is lit (the host's shader reads it).
+LOOK_SOLID :: 0; LOOK_SELECTED :: 1; LOOK_GROUND :: 2; LOOK_LINE :: 3; LOOK_ARENA :: 4; LOOK_SKY :: 5;   // a match's floor of plates, and the box of dusk sky round it
+
+// What a box is for. Every kind is a box today; the kind sets its shade.
+// They are shared/kinds.coax's, which the website's things are too.
+KIND_BLOCK :: GK_BLOCK; KIND_START :: GK_START; KIND_RIVAL :: GK_RIVAL;   // a block, where your team starts, where the rivals start
+KIND_TREE :: GK_TREE; KIND_WATER :: GK_WATER; KIND_PATH :: GK_PATH;     // a tree, water and bare earth: a place's blockout
+// The arena's markers (palette.coax): where a health pack lies, each team's
+// goal and hoop, and where the ball starts. Drawn only while editing.
+KIND_PACK :: GK_PACK; KIND_GOAL :: GK_GOAL; KIND_RIVAL_GOAL :: GK_RIVAL_GOAL; KIND_HOOP :: GK_HOOP; KIND_RIVAL_HOOP :: GK_RIVAL_HOOP; KIND_BALL :: GK_BALL;
+// The open field's markers: a target that pops back up once shot, one that
+// slides from side to side, and where an enemy comes in. Drawn only while
+// editing; play puts the target or the enemy there.
+KIND_TARGET :: GK_TARGET; KIND_MOVER :: GK_MOVER; KIND_ENEMY :: GK_ENEMY;
+KINDS :: GK_KINDS;
+// Whether a kind stops a body and a shot. Water and earth lie flat and are walked over.
+ed_kind_solid :: (kind: s32) -> bool { return kind == KIND_BLOCK || kind == KIND_TREE; }
+// The colour a kind is drawn in (the host shader's tints; play.coax names the first eight).
+TINT_LEAF :: 9; TINT_WATER :: 10; TINT_EARTH :: 11;
+ed_kind_tint :: (kind: s32) -> s32 {
+  if kind == KIND_START { return TINT_MINE; }
+  if kind == KIND_RIVAL { return TINT_RIVAL; }
+  if kind == KIND_TREE { return TINT_LEAF; }
+  if kind == KIND_WATER { return TINT_WATER; }
+  if kind == KIND_PATH { return TINT_EARTH; }
+  if kind == KIND_PACK { return TINT_HEALTH; }
+  if kind == KIND_GOAL || kind == KIND_HOOP { return TINT_MINE; }
+  if kind == KIND_RIVAL_GOAL || kind == KIND_RIVAL_HOOP { return TINT_RIVAL; }
+  if kind == KIND_BALL || kind == KIND_MOVER { return TINT_GLOW; }
+  if kind == KIND_TARGET { return TINT_SPARK; }
+  if kind == KIND_ENEMY { return TINT_RIVAL; }
+  // a game type's own kinds (shared/kinds.coax): what bounces or speeds you glows, what hurts is the rivals', a
+  // place to reach is yours, a shard sparks, a crate's pad is the packs' green
+  if kind == GK_PAD || kind == GK_BOOST { return TINT_GLOW; }
+  if kind == GK_SPIKES { return TINT_RIVAL; }
+  if kind == GK_CHECKPOINT { return TINT_MINE; }
+  if kind == GK_SHARD { return TINT_SPARK; }
+  if kind == GK_CRATE_GOAL { return TINT_HEALTH; }
+  if kind == GK_CONE { return TINT_EARTH; }
+  return TINT_NONE;
+}
+EYE_ROOM :: 0.35f32;        // metres the editor's camera keeps from a block
+EYE_HIDES :: 1.6f32;        // a block this near the camera is not drawn, so it never fills the view
+ARENA_HALF :: GT_ARENA_HALF;   // centimetres from the middle of a new level's arena to its walls
+
+// A box's kind and its size in centimetres. A placed thing names one as its
+// mesh (the shape's place in the level's list, from 1), so two things of the
+// same size share it.
+// (go, every: how far a moving platform or a lift goes, centimetres, and how long there and back takes, milliseconds; 0 for any other kind)
+EdShape :: struct { kind: s32; sx: s32; sy: s32; sz: s32; go: s32; every: s32; }
+
+// One box in the scene, as the editor reads it: where its base's middle
+// stands and its size, in centimetres; its turn in degrees; its size in
+// percent, as the shared viewport's gizmos edit them. The scene itself is the
+// engine's edit log (edit.coax EditorScene); ed_actor reads one out of it.
+Actor :: struct {
+  id: s32;
+  kind: s32;
+  x: s32; y: s32; z: s32;
+  yaw: s32;
+  scale: s32;
+  sx: s32; sy: s32; sz: s32;
+  go: s32; every: s32;      // a moving platform's or a lift's: how far it goes, cm, and how long there and back takes, ms
+}
+
+// Pointer buttons the hosts send. A touch is a left button that orbits.
+BUTTON_LEFT :: 0; BUTTON_RIGHT :: 1; BUTTON_MIDDLE :: 2; BUTTON_TOUCH :: 3;
+// Modifier bits.
+MOD_SHIFT :: 1; MOD_ALT :: 2; MOD_COMMAND :: 4; MOD_CONTROL :: 8;
+// Keys are lowercase ASCII.
+KEY_A :: 97; KEY_D :: 100; KEY_E :: 101; KEY_F :: 102; KEY_Q :: 113; KEY_R :: 114; KEY_S :: 115; KEY_W :: 119; KEY_Z :: 122;
+KEY_BACKSPACE :: 8; KEY_DELETE :: 127;
+
+// What the drag in flight does.
+DRAG_NONE :: 0; DRAG_LEFT :: 1; DRAG_LOOK :: 2; DRAG_ORBIT :: 3; DRAG_PAN :: 4; DRAG_DOLLY :: 5;
+
+LOOK_PER_PX :: 0.004f32;    // radians a point of drag turns the camera (the viewport's VP_FLY_LOOK)
+WALK_PER_PX :: 0.03f32;     // metres a point of left drag moves the camera
+ORBIT_PER_PX :: 0.006f32;
+PAN_PER_PX :: 0.0015f32;    // of the distance to the pivot, a point
+DOLLY_STEP :: 0.1f32;       // of the distance to the pivot, a wheel notch
+DOLLY_MIN :: 0.25f32;       // metres, the least a dolly moves
+EYE_FLOOR :: 0.25f32;       // metres: the camera never goes lower, so never under the ground
+FOCUS_ROOM :: 2.5f32;       // a focused box fills this share of the view's height, about
+
+Editor :: struct {
+  vp: [1] Viewport;
+  w: f32; h: f32;                      // the view, in points
+  // The scene and its undo history: the engine's EditorScene over these.
+  items: [ACTORS_MAX] EditorItem;
+  ops: [HISTORY_OPS] EditorItemOp;
+  steps: [HISTORY_STEPS] EditorStep;
+  st: [1] EditorSceneState;
+  shapes: [SHAPES_MAX] EdShape;
+  shape_n: s32;
+  level: s32;                          // which level this is, from 1
+  fresh: bool;                         // a level made here and not yet written
+  official: bool;                      // what is open is a game's own level (games.coax)
+  game: s32;                           // which game's
+  plays: s32;                       // the template the level open plays on: TEMPLATE_* (games.coax)
+  why: [256] u8;                    // a refusal's words, with their numbers (palette.coax ed_bounds_why)
+  mine_open: s32;                      // the game of yours the level open belongs to, or 0
+  mine: [MINE_MAX] Mine;               // your games, by number (games.coax)
+  mine_n: s32;
+  account: [ACCOUNT_MAX] u8;           // the email this device is logged in as, or none
+  account_n: s32;
+  selected: s32;                       // an actor's id, or 0
+  drag: s32;                           // DRAG_*
+  button: s32;
+  lx: f32; ly: f32;                    // the pointer at the last event
+  pivot: WorldPoint;                   // what orbit and pan turn about
+  k_fore: bool; k_back: bool; k_left: bool; k_right: bool; k_down: bool; k_up: bool; k_fast: bool;
+  k_fast_ctrl: bool; k_sneak: bool;    // Control and Shift, as a match reads them: sprint and sneak
+  dirty: bool;                         // something changed since the last frame
+  log: [LOG_MAX] Step;                 // the last edits, for the decision model (decide.coax)
+  log_count: s32;
+  asking: bool;                        // a decision is in flight
+  deciding: bool;                      // the edit being made is a decision's
+  note: [NOTE_MAX] u8;                 // what the last decision did
+  note_len: s32;
+  play: [1] Play;                      // the match, while playing (play.coax)
+  scene: [1] SceneLevel;               // SPLICEBOTS' pickups and Digger in that level (scene.coax)
+  meshes: [1] Meshes;                  // the match's models, when their file is here (meshes.coax)
+  farm: [1] FarmLevel;                 // SPLICEBOTS' real opening level, when its pack is here (farm.coax)
+  model: [1] HerModel;                 // the Director's real model, when its pack is here (model.coax)
+  clip: [1] Clip;                      // what was copied (clip.coax)
+  agent: [1] AgentLog;                 // agents' turns, to take back and to light (agent.coax)
+  pub: [1] PubStore;                   // what this device has published, and the feedback on it (publish.coax)
+  claims: [1] ClaimSet;                // what agents have claimed on the open level (claims.coax)
+  changes: [1] Changes;                // what agents and calls from outside the app changed, kept highlighted (changes.coax)
+  attach_h: int; attach_on: bool;      // where calls from the terminal come in (attach.coax)
+  agents_open: bool;                   // the Agents pane is beside the level (agents.coax; the agents row)
+  game_due: s32;                       // a game of yours a row changed, for the host to write (ed_game_due; controls.coax)
+  world: [1] WorldIn;                  // the engine's page, and what the person does while its world plays (world.coax)
+  code_sheet: s32;                     // the code-agent row asks the pane for its Code sheet: a repository + 1, 0 when not
+  game_also_due: s32;                 // a second game a row changed (move-level's two), after game_due
+  drop_due: s32; drop_game_due: s32;   // a level's and a game's file to delete (ed_drop_due); 0: none
+  open_due: s32; open_game_due: s32;   // open-level's level + 1, open-game's game + 1, for the host to open (ed_open_due); 0: none
+  play_next: bool;                     // the level the host opens next is the game's next one, come to while playing: it plays on (world.coax; ed_open)
+  // a new game's levels after its first (crates: its second and third room), each as its file, for the host to write (ed_more_due; games.coax)
+  more_n: s32; more_level: [GT_LEVELS_MOST - 1] s32; more_len: [GT_LEVELS_MOST - 1] s32; more_doc: [(GT_LEVELS_MOST - 1) * MORE_DOC] u8;
+  agents_private: bool;                // this computer's agents are not kept on the account (the agents-account row; on by default)
+  pic: [] PicStore;                    // the level's pictures, when the surface keeps them (pictures.coax ed_pics_attach)
+  pic_drawing: bool;                   // this editor is a picture being drawn (pictures.coax ed_pic_stage)
+}
+
+// ---- the camera
+
+// How wide the view is: the editor's, or the Director's own in SPLICEBOTS.
+ed_fov :: (e: [] Editor) -> f32 {
+  return ifx e[0].play[0].on && e[0].play[0].her_on then e[0].play[0].her[0].fov else FOV;
+}
+
+// The engine's page (coax/world.coax): whether the host has it open, and what the person does while one of
+// the website's worlds plays in it. The page is the website's own world (web/hud.coax), which the app's core
+// loads: a level of one of the website's types is drawn by it while it is built, and played by it.
+WORLD_SAYS :: 512;
+WorldIn :: struct {
+  page: bool;          // the host opened the page (ed_world_attach)
+  gen: int;            // one more each time Play starts in it
+  seen: int;           // the Play the page has started (world.coax)
+  sum: int;            // what the page was last told the level holds (world_sum)
+  keys: int;           // the keys held, as the page's bits (web/hud.coax HUD_KEY_*)
+  act: int;            // presses of the world's own action (R: the room again, the car back on the track)
+  says: [WORLD_SAYS] u8; says_n: int;   // how the run stands, in the world's words (the play screen's line)
+  next: bool; cleared: int;             // crates: the game's next level was asked for while playing, and the rooms cleared till then (the count goes on in it)
+}
+// Whether the level open is drawn by the engine's page: one of the website's types, with the page open.
+ed_paged :: (e: [] Editor) -> bool { return e[0].world[0].page && gt_web_kind(cast(int) e[0].plays) >= 0; }
+// The host says the engine's page is open (or is gone): from now a level of one of the website's types is
+// drawn by it and played by it.
+ed_world_attach :: (e: [] Editor, on: bool) #export_c #effects(all) { if e.count == 1 { e[0].world[0].page = on; e[0].dirty = true; } }
+// Whether the page draws the level open (the host then draws no boxes of its own for it).
+ed_world_draws :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && ed_paged(e); }
+// A point across the view, as this file's own view has it. The page draws the level with x to the right
+// of a view looking along +z, as the website does; the shared viewport's view has -x there (vp_ray). So the
+// page's picture is this view's in a mirror, and a pointer on it is told to the viewport mirrored: every
+// press, drag and pick then lands on what is under it.
+ed_sx :: (e: [] Editor, x: f32) -> f32 { return ifx ed_paged(e) then e[0].w - x else x; }
+
+ed_view :: (e: [] Editor) -> VpView {
+  like := VpView.{fov = ed_fov(e), w = e[0].w, h = e[0].h};
+  return vp_fly_view(e[0].vp[..], like);
+}
+
+Basis :: struct { f: WorldPoint; r: WorldPoint; u: WorldPoint; }
+// The fly camera's axes: ahead, right and up, as the shared viewport's vp_ray
+// builds them (right is ahead crossed with the world's up).
+ed_basis :: (e: [] Editor) -> Basis {
+  yaw := e[0].vp[0].fyaw; pitch := e[0].vp[0].fpitch;
+  cp := cos(pitch);
+  f := WorldPoint.{x = sin(yaw) * cp, y = sin(pitch), z = cos(yaw) * cp};
+  r := WorldPoint.{x = -cos(yaw), y = 0, z = sin(yaw)};
+  u := WorldPoint.{x = r.y * f.z - r.z * f.y, y = r.z * f.x - r.x * f.z, z = r.x * f.y - r.y * f.x};
+  return Basis.{f = f, r = r, u = u};
+}
+
+ed_eye :: (e: [] Editor) -> WorldPoint {
+  return WorldPoint.{x = e[0].vp[0].fx, y = e[0].vp[0].fy, z = e[0].vp[0].fz};
+}
+
+// Every camera move ends here, so this is where the camera stays above the ground.
+// And where it stays out of the blocks: an eye inside one, or nearer than
+// EYE_ROOM, is moved out through the nearest side or the top.
+ed_set_eye :: (e: [] Editor, p: WorldPoint) {
+  q := p;
+  if q.y < EYE_FLOOR { q.y = EYE_FLOOR; }
+  for pass: 0..<3 {
+    moved := false;
+    for i: 0..<ed_count(e) {
+      a := ed_actor(e, i);
+      if !ed_kind_solid(a.kind) { continue; }
+      b := ed_bounds(a);
+      dx := b.hx + EYE_ROOM - abs(q.x - b.c.x); dz := b.hz + EYE_ROOM - abs(q.z - b.c.z); dy := b.c.y + b.hy + EYE_ROOM - q.y;
+      if dx <= 0 || dz <= 0 || dy <= 0 { continue; }
+      // out the way that is nearest
+      if dy <= dx && dy <= dz { q.y += dy; }
+      else if dx <= dz { q.x += ifx q.x >= b.c.x then dx else -dx; }
+      else { q.z += ifx q.z >= b.c.z then dz else -dz; }
+      moved = true;
+    }
+    if !moved { break; }
+  }
+  e[0].vp[0].fx = q.x; e[0].vp[0].fy = q.y; e[0].vp[0].fz = q.z;
+}
+
+// Whether a block is too near the camera to draw: it would fill the view.
+ed_hidden :: (e: [] Editor, a: Actor) -> bool {
+  if !ed_kind_solid(a.kind) { return false; }
+  b := ed_bounds(a); eye := ed_eye(e);
+  return abs(eye.x - b.c.x) < b.hx + EYE_HIDES && abs(eye.z - b.c.z) < b.hz + EYE_HIDES && eye.y < b.c.y + b.hy + EYE_HIDES;
+}
+
+ed_dist :: (a: WorldPoint, b: WorldPoint) -> f32 { return vp_len(a.x - b.x, a.y - b.y, a.z - b.z); }
+
+// Looks from where the camera is toward a point.
+ed_aim :: (e: [] Editor, at: WorldPoint) {
+  eye := ed_eye(e);
+  v := VpView.{ex = eye.x, ey = eye.y, ez = eye.z, ax = at.x, ay = at.y, az = at.z, fov = FOV, w = e[0].w, h = e[0].h};
+  vp_fly_from(e[0].vp[..], v);
+}
+
+// The view-projection matrix for Metal (depth 0 to 1), column-major, written
+// at out[0..16], then the eye and the ground grid's step in metres. It sends
+// a point to the same pixel vp_project does. False when the view has no size.
+ed_camera :: (e: [] Editor, out: [] f32) -> bool #export_c #effects(all) {
+  if out.count < CAMERA_FLOATS || e.count != 1 || e[0].w <= 0 || e[0].h <= 0 { return false; }
+  b := ed_basis(e); eye := ed_eye(e);
+  t := tan(ed_fov(e) * 0.5);
+  a := e[0].w / e[0].h;
+  far: f32 = ifx e[0].play[0].on && e[0].play[0].real then FARM_FAR else FAR;
+  k: f32 = far / (far - NEAR);
+  sx := 1 / (t * a); sy := 1 / t;
+  re := b.r.x * eye.x + b.r.y * eye.y + b.r.z * eye.z;
+  ue := b.u.x * eye.x + b.u.y * eye.y + b.u.z * eye.z;
+  fe := b.f.x * eye.x + b.f.y * eye.y + b.f.z * eye.z;
+  // rows: x = r/(t a), y = u/t, z = f k - near k, w = f (each less the eye)
+  rows := [16] f32.[
+    b.r.x * sx, b.r.y * sx, b.r.z * sx, -re * sx,
+    b.u.x * sy, b.u.y * sy, b.u.z * sy, -ue * sy,
+    b.f.x * k, b.f.y * k, b.f.z * k, -fe * k - NEAR * k,
+    b.f.x, b.f.y, b.f.z, -fe];
+  for row: 0..<4 { for col: 0..<4 { out[col * 4 + row] = rows[row * 4 + col]; } }
+  out[16] = eye.x; out[17] = eye.y; out[18] = eye.z;
+  out[19] = cast(f32) e[0].vp[0].grid / 100;
+  return true;
+}
+
+// ---- the scene
+
+// The scene as the engine's edit log sees it. An actor's id is the log's
+// wire ID: the item's own number and one, so 0 is no actor.
+ed_scene :: (e: [] Editor) -> EditorScene {
+  return EditorScene.{st = e[0].st[..], items = e[0].items[..], ops = e[0].ops[..], steps = e[0].steps[..]};
+}
+
+ed_count :: (e: [] Editor) -> s64 { return e[0].st[0].n; }
+
+ed_index :: (e: [] Editor, id: s32) -> s64 {
+  if id <= 0 { return -1; }
+  return editor_scene_find(ed_scene(e), cast(int) id - 1);
+}
+
+// The shape of this kind and size: its number from 1, added when the level
+// has none like it. 0 when the list is full.
+// A kind that moves (a moving platform, a lift) goes as a new one does.
+ed_shape :: (e: [] Editor, kind: s32, sx: s32, sy: s32, sz: s32) -> int { return ed_shape_go(e, kind, sx, sy, sz, cast(s32) gk_go(cast(int) kind), cast(s32) gk_every(cast(int) kind)); }
+// The same for a kind that moves, with how far it goes and how long there and back takes.
+ed_shape_go :: (e: [] Editor, kind: s32, sx: s32, sy: s32, sz: s32, go: s32, every: s32) -> int {
+  for i: 0..<cast(s64) e[0].shape_n {
+    h := e[0].shapes[i];
+    if h.kind == kind && h.sx == sx && h.sy == sy && h.sz == sz && h.go == go && h.every == every { return i + 1; }
+  }
+  if e[0].shape_n >= SHAPES_MAX { return 0; }
+  e[0].shapes[e[0].shape_n] = EdShape.{kind = kind, sx = sx, sy = sy, sz = sz, go = go, every = every};
+  e[0].shape_n += 1;
+  return cast(int) e[0].shape_n;
+}
+
+ed_actor :: (e: [] Editor, i: s64) -> Actor {
+  item := e[0].items[i];
+  w := we_spawn_of(item);
+  h := EdShape.{kind = KIND_BLOCK, sx = 100, sy = 100, sz = 100};
+  if item.mesh >= 1 && item.mesh <= cast(int) e[0].shape_n { h = e[0].shapes[item.mesh - 1]; }
+  return Actor.{id = cast(s32) w.id, kind = h.kind, x = cast(s32) w.x, y = cast(s32) w.y, z = cast(s32) w.z,
+                yaw = cast(s32) w.yaw, scale = cast(s32) w.scale, sx = h.sx, sy = h.sy, sz = h.sz, go = h.go, every = h.every};
+}
+
+// Puts a box in the scene with no undo entry: the starter scene and a level
+// read from its file. Its id, or 0 when there is no room.
+ed_put :: (e: [] Editor, kind: s32, x: s32, z: s32, sx: s32, sy: s32, sz: s32, yaw: s32) -> s32 { return ed_put_at(e, kind, x, 0, z, sx, sy, sz, yaw); }
+// The same with its bottom y centimetres up.
+ed_put_at :: (e: [] Editor, kind: s32, x: s32, y: s32, z: s32, sx: s32, sy: s32, sz: s32, yaw: s32) -> s32 { return ed_put_as(e, kind, x, y, z, sx, sy, sz, yaw, 100); }
+// The same at a scale, percent (a village building's: shared/buildings.coax).
+ed_put_as :: (e: [] Editor, kind: s32, x: s32, y: s32, z: s32, sx: s32, sy: s32, sz: s32, yaw: s32, scale: s32) -> s32 {
+  mesh := ed_shape(e, kind, sx, sy, sz);
+  if mesh == 0 { return 0; }
+  return cast(s32) (editor_scene_load(ed_scene(e), mesh, we_m(cast(int) x), we_m(cast(int) y), we_m(cast(int) z), we_rad(cast(int) yaw), cast(f32) scale / 100) + 1);
+}
+
+// Adds a box as one edit that undo takes back. Its id, or 0 when there is
+// no room or the edit is not one the engine takes.
+ed_spawn :: (e: [] Editor, kind: s32, x: s32, z: s32, sx: s32, sy: s32, sz: s32, yaw: s32, scale: s32) -> s32 {
+  if !ed_may_edit(e) { return 0; }
+  mesh := ed_shape(e, kind, sx, sy, sz);
+  if mesh == 0 { return 0; }
+  r := we_scene_apply(ed_scene(e), WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = mesh, x = cast(int) x, y = 0, z = cast(int) z, yaw = cast(int) yaw, scale = cast(int) scale});
+  return ifx r.ok then cast(s32) r.id else 0;
+}
+
+// The box's half size along each world axis once turned, in metres: what a
+// pick and a focus treat it as.
+Bounds :: struct { c: WorldPoint; hx: f32; hy: f32; hz: f32; }
+ed_bounds :: (a: Actor) -> Bounds {
+  s := cast(f32) a.scale / 100;
+  hx := cast(f32) a.sx * s / 200; hy := cast(f32) a.sy * s / 200; hz := cast(f32) a.sz * s / 200;
+  r := cast(f32) a.yaw * 0.017453292;
+  c := abs(cos(r)); n := abs(sin(r));
+  return Bounds.{c = WorldPoint.{x = cast(f32) a.x / 100, y = cast(f32) a.y / 100 + hy, z = cast(f32) a.z / 100}, hx = c * hx + n * hz, hy = hy, hz = n * hx + c * hz};
+}
+
+// The actor as a drag would leave it: the shared viewport's snapped `now`.
+ed_shown :: (e: [] Editor, a: Actor) -> Actor {
+  p := e[0].vp[..];
+  if !vp_dragging(p) || cast(s64) a.id != p[0].held.id { return a; }
+  b := a;
+  b.x = cast(s32) p[0].now.x; b.z = cast(s32) p[0].now.z;
+  b.yaw = cast(s32) p[0].now.yaw; b.scale = cast(s32) p[0].now.scale;
+  return b;
+}
+
+PickBoxes :: struct { f: [ACTORS_MAX * QUERY_BOX] f32; }
+// What a point of the view picks: an actor's index, or -1 for the ground or the sky.
+ed_pick :: (e: [] Editor, px: f32, py: f32, spot: [] VpSpot) -> s64 {
+  boxes: [1] PickBoxes;
+  for i: 0..<ed_count(e) {
+    b := ed_bounds(ed_actor(e, i));
+    at := i * QUERY_BOX;
+    boxes[0].f[at] = b.c.x - b.hx; boxes[0].f[at + 1] = b.c.y - b.hy; boxes[0].f[at + 2] = b.c.z - b.hz;
+    boxes[0].f[at + 3] = b.c.x + b.hx; boxes[0].f[at + 4] = b.c.y + b.hy; boxes[0].f[at + 5] = b.c.z + b.hz;
+  }
+  c := Colliders.{ground = 0, boxes = boxes[0].f[0..<ed_count(e) * QUERY_BOX]};
+  hit := vp_pick(c, ed_view(e), px, py);
+  if spot.count > 0 {
+    spot[0] = VpSpot.{};
+    if hit.hit { spot[0] = VpSpot.{ok = true, x = hit.point.x, z = hit.point.z}; }
+  }
+  if hit.hit && hit.shape == QueryShape.box { return hit.index; }
+  return -1;
+}
+
+// What orbit and pan turn about: the selection's middle, else what the middle
+// of the view looks at, else a point ten metres ahead.
+ed_find_pivot :: (e: [] Editor) -> WorldPoint {
+  i := ed_index(e, e[0].selected);
+  if i >= 0 { return ed_bounds(ed_actor(e, i)).c; }
+  spot: [1] VpSpot;
+  _ = ed_pick(e, e[0].w / 2, e[0].h / 2, spot[..]);
+  eye := ed_eye(e);
+  if spot[0].ok && ed_dist(eye, WorldPoint.{x = spot[0].x, z = spot[0].z}) < 100 {
+    r := vp_ray(ed_view(e), e[0].w / 2, e[0].h / 2);
+    g := vp_ground(r, 0);
+    // a box's face, or the ground: step along the ray to the spot
+    if g.ok && abs(g.x - spot[0].x) < 0.01 && abs(g.z - spot[0].z) < 0.01 { return WorldPoint.{x = g.x, y = 0, z = g.z}; }
+    dx := spot[0].x - eye.x; dz := spot[0].z - eye.z;
+    flat := sqrt(r.d.x * r.d.x + r.d.z * r.d.z);
+    if flat > 0.0001 {
+      s := sqrt(dx * dx + dz * dz) / flat;
+      return WorldPoint.{x = eye.x + r.d.x * s, y = eye.y + r.d.y * s, z = eye.z + r.d.z * s};
+    }
+  }
+  b := ed_basis(e);
+  return WorldPoint.{x = eye.x + b.f.x * 10, y = eye.y + b.f.y * 10, z = eye.z + b.f.z * 10};
+}
+
+// ---- setting up
+
+ed_start_view :: (e: [] Editor) {
+  start := VpView.{ex = 4, ey = 4, ez = -9, ax = 0, ay = 0.5, az = 3, fov = FOV, w = e[0].w, h = e[0].h};
+  _ = vp_act(e[0].vp[..], "fly on", start);
+  _ = vp_act(e[0].vp[..], "tool select", start);
+}
+
+// Where a level opens: above and behind your team's end of the arena,
+// looking across it.
+ed_overview :: (e: [] Editor) {
+  // the middle of what the level holds, and how far it reaches from there
+  lo := WorldPoint.{x = 1000000, z = 1000000}; hi := WorldPoint.{x = -1000000, z = -1000000};
+  for i: 0..<ed_count(e) {
+    b := ed_bounds(ed_actor(e, i));
+    if b.c.x - b.hx < lo.x { lo.x = b.c.x - b.hx; } if b.c.x + b.hx > hi.x { hi.x = b.c.x + b.hx; }
+    if b.c.z - b.hz < lo.z { lo.z = b.c.z - b.hz; } if b.c.z + b.hz > hi.z { hi.z = b.c.z + b.hz; }
+  }
+  cx: f32 = 0; cz: f32 = 0; r: f32 = 21;
+  if ed_count(e) > 0 { cx = (lo.x + hi.x) / 2; cz = (lo.z + hi.z) / 2; r = vp_len((hi.x - lo.x) / 2, 0, (hi.z - lo.z) / 2); }
+  if r < 6 { r = 6; }
+  over := VpView.{ex = cx + r * 0.6, ey = r * 0.9, ez = cz - r * 1.35, ax = cx, ay = 0, az = cz, fov = FOV, w = e[0].w, h = e[0].h};
+  _ = vp_act(e[0].vp[..], "fly on", over);
+  // "fly on" takes the view only when it turns flying on: a level opened after another needs the camera put there
+  vp_fly_from(e[0].vp[..], over);
+  _ = vp_act(e[0].vp[..], "tool select", over);
+}
+
+// A new editor on a view of this size, in points, with the starter level: a
+// player start and a few blocks to fly around. It is level 1 until the host
+// opens another.
+ed_init :: (e: [] Editor, w: f32, h: f32) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0] = Editor.{};
+  e[0].w = w; e[0].h = h;
+  e[0].level = 1; e[0].fresh = true;
+  _ = ed_put(e, KIND_START, 0, -300, 60, 180, 60, 0);
+  _ = ed_put(e, KIND_BLOCK, 0, 300, 100, 100, 100, 0);
+  _ = ed_put(e, KIND_BLOCK, 0, 900, 800, 300, 50, 0);
+  _ = ed_put(e, KIND_BLOCK, -500, 500, 80, 400, 80, 0);
+  _ = ed_put(e, KIND_BLOCK, 500, 500, 300, 50, 300, 30);
+  _ = ed_put(e, KIND_BLOCK, 250, 100, 50, 50, 50, 15);
+  _ = ed_put(e, KIND_BLOCK, -250, 1400, 400, 150, 400, 0);
+  ed_start_view(e);
+  e[0].dirty = true;
+}
+
+// A new game's starter place on type t (shared/game-types.coax gt_starter_level, the website's too):
+// its level k (from 0; crates has three, a room each), put in with no undo entry.
+MORE_DOC :: 8192;          // bytes a starter level's file is, at most (held by a check in games.coax)
+ed_starter :: (e: [] Editor, t: s32) { ed_starter_level(e, t, 0); }
+ed_starter_level :: (e: [] Editor, t: s32, k: s32) {
+  s: [GT_STARTER_MAX] GtThing; n := gt_starter_level(cast(int) t, cast(int) k, s[..]);
+  for i: 0..<n {
+    // (a moving platform or a lift of the course goes as the course says, not as a new one does)
+    if gk_moves(s[i].kind) {
+      mesh := ed_shape_go(e, cast(s32) s[i].kind, cast(s32) s[i].w, cast(s32) s[i].h, cast(s32) s[i].d, cast(s32) s[i].go, cast(s32) s[i].every);
+      if mesh == 0 { continue; }
+      _ = editor_scene_load(ed_scene(e), mesh, we_m(s[i].x), we_m(s[i].y), we_m(s[i].z), we_rad(s[i].turn), 1);
+      continue;
+    }
+    _ = ed_put_as(e, cast(s32) s[i].kind, cast(s32) s[i].x, cast(s32) s[i].y, cast(s32) s[i].z, cast(s32) s[i].w, cast(s32) s[i].h, cast(s32) s[i].d, cast(s32) s[i].turn, cast(s32) s[i].scale);
+  }
+}
+// A new level's arena: four walls round a square, cover inside it, your
+// team's start at the south end and the rivals' at the north, facing in.
+ed_arena :: (e: [] Editor) { ed_starter(e, GT_ARENA); }
+
+// SPLICEBOTS' solar farm, blocked out: rows of panels on Mars ground, the
+// road north, the garage and the lab. A sketch to stand in the app until the
+// real game is ported (docs/splice-bots-port.md).
+ed_splice :: (e: [] Editor) {
+  _ = ed_put(e, KIND_START, 0, -7000, 60, 180, 60, 0);
+  _ = ed_put(e, KIND_PATH, 0, 0, 9000, 5, 17000, 0);            // the ground
+  for row: 0..<5 {
+    for col: 0..<3 {
+      _ = ed_put(e, KIND_BLOCK, (cast(s32) col - 1) * 1500, -5600 + cast(s32) row * 900, 1100, 130, 220, 0);   // a bank of panels
+    }
+  }
+  for k: 0..<3 { _ = ed_put(e, KIND_BLOCK, (cast(s32) k - 1) * 2600, -900, 60, 260, 60, 0); }   // charge points
+  _ = ed_put(e, KIND_BLOCK, -1600, 2400, 1400, 520, 1000, 0);   // the garage
+  _ = ed_put(e, KIND_BLOCK, 1500, 2000, 300, 300, 300, 20);     // the edit bay
+  _ = ed_put(e, KIND_BLOCK, 0, 6800, 2200, 700, 1400, 0);       // the lab
+  _ = ed_put(e, KIND_BLOCK, -2600, 5200, 400, 200, 400, 35);    // rock
+  _ = ed_put(e, KIND_BLOCK, 2800, 4300, 500, 260, 450, 60);
+}
+
+// A new adventure's starter place: a clearing of bare earth to walk, a pond,
+// trees round it, and a few blocks to climb.
+ed_adventure :: (e: [] Editor) { ed_starter(e, GT_ADVENTURE); }
+
+// A new open field's starter place: the arena's floor, open to the horizon,
+// with your start, cover, five targets and three enemies, every one a thing
+// of the palette's.
+ed_open_field :: (e: [] Editor) { ed_starter(e, GT_FIELD); }
+
+ed_resize :: (e: [] Editor, w: f32, h: f32) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].w = w; e[0].h = h; e[0].dirty = true;
+}
+
+// ---- the camera's moves
+
+ed_look :: (e: [] Editor, dx: f32, dy: f32) { vp_fly_look(e[0].vp[..], dx, dy); }
+
+ed_orbit :: (e: [] Editor, dx: f32, dy: f32) {
+  pivot := e[0].pivot;
+  d := ed_dist(ed_eye(e), pivot);
+  vp_fly_look(e[0].vp[..], dx * ORBIT_PER_PX / LOOK_PER_PX, dy * ORBIT_PER_PX / LOOK_PER_PX);
+  // tilt no further up than keeps the eye above the floor at this distance
+  if d > 0.001 {
+    most := (pivot.y - EYE_FLOOR) / d;
+    if most < -1 { most = -1; }
+    if sin(e[0].vp[0].fpitch) > most { e[0].vp[0].fpitch = angle_atan2(most, sqrt(1 - most * most)); }
+  }
+  b := ed_basis(e);
+  ed_set_eye(e, WorldPoint.{x = pivot.x - b.f.x * d, y = pivot.y - b.f.y * d, z = pivot.z - b.f.z * d});
+}
+
+ed_pan :: (e: [] Editor, dx: f32, dy: f32) {
+  b := ed_basis(e); eye := ed_eye(e);
+  s := ed_dist(eye, e[0].pivot) * PAN_PER_PX;
+  if s < 0.002 { s = 0.002; }
+  // the scene follows the pointer: the camera moves the other way
+  ed_set_eye(e, WorldPoint.{x = eye.x - b.r.x * dx * s + b.u.x * dy * s, y = eye.y - b.r.y * dx * s + b.u.y * dy * s, z = eye.z - b.r.z * dx * s + b.u.z * dy * s});
+  // the pivot moves as far as the eye did, which the floor may have stopped
+  now := ed_eye(e);
+  e[0].pivot = WorldPoint.{x = e[0].pivot.x + now.x - eye.x, y = e[0].pivot.y + now.y - eye.y, z = e[0].pivot.z + now.z - eye.z};
+}
+
+// Moves the camera ahead (or back, for a negative amount) by metres.
+ed_ahead :: (e: [] Editor, m: f32) {
+  b := ed_basis(e); eye := ed_eye(e);
+  ed_set_eye(e, WorldPoint.{x = eye.x + b.f.x * m, y = eye.y + b.f.y * m, z = eye.z + b.f.z * m});
+}
+
+// A dolly of `notches` wheel notches toward what is ahead, larger the
+// further it is.
+ed_dolly_notches :: (e: [] Editor, notches: f32) {
+  d := ed_dist(ed_eye(e), ed_find_pivot(e)) * DOLLY_STEP;
+  if d < DOLLY_MIN { d = DOLLY_MIN; }
+  ed_ahead(e, notches * d);
+}
+
+// Left drag on nothing: forward and back along the ground, and turn.
+ed_walk :: (e: [] Editor, dx: f32, dy: f32) {
+  vp_fly_look(e[0].vp[..], dx, 0);
+  yaw := e[0].vp[0].fyaw;
+  eye := ed_eye(e);
+  ed_set_eye(e, WorldPoint.{x = eye.x - sin(yaw) * dy * WALK_PER_PX, y = eye.y, z = eye.z - cos(yaw) * dy * WALK_PER_PX});
+}
+
+// Frames the selection: aims at its middle from far enough to see all of it.
+ed_focus :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  i := ed_index(e, e[0].selected);
+  if i < 0 { return; }
+  b := ed_bounds(ed_actor(e, i));
+  ed_frame(e, b.c, vp_len(b.hx, b.hy, b.hz));
+}
+// Aims at c from far enough, along the way the camera looks, to see a ball of this radius
+// round it (the selection's, or what agents changed: changes.coax's Show me).
+ed_frame :: (e: [] Editor, c: WorldPoint, radius: f32) {
+  d := radius * FOCUS_ROOM / tan(FOV * 0.5);
+  if d < 1.5 { d = 1.5; }
+  bs := ed_basis(e);
+  ed_set_eye(e, WorldPoint.{x = c.x - bs.f.x * d, y = c.y - bs.f.y * d, z = c.z - bs.f.z * d});
+  ed_aim(e, c);
+  e[0].pivot = c;
+  e[0].dirty = true;
+}
+
+// ---- the pointer
+
+ed_held :: (e: [] Editor, px: f32, py: f32) -> VpThing {
+  i := ed_index(e, e[0].selected);
+  none: [1] VpSpot;
+  if i < 0 || !ed_may_edit(e) || ed_pick(e, px, py, none[0..<0]) != i { return VpThing.{}; }
+  a := ed_actor(e, i);
+  return VpThing.{id = cast(int) a.id, x = cast(int) a.x, y = cast(int) a.y, z = cast(int) a.z, yaw = cast(int) a.yaw, scale = cast(int) a.scale};
+}
+
+ed_down :: (e: [] Editor, button: s32, at_x: f32, y: f32, mods: s32) #export_c #effects(all) {
+  if e.count != 1 || e[0].drag != DRAG_NONE || e[0].play[0].on { return; }
+  x := ed_sx(e, at_x);
+  e[0].button = button; e[0].lx = x; e[0].ly = y;
+  alt := (mods & MOD_ALT) != 0;
+  if button == BUTTON_MIDDLE { e[0].pivot = ed_find_pivot(e); e[0].drag = DRAG_PAN; return; }
+  if button == BUTTON_RIGHT {
+    e[0].drag = ifx alt then DRAG_DOLLY else DRAG_LOOK;
+    if alt { e[0].pivot = ed_find_pivot(e); }
+    return;
+  }
+  if alt { e[0].pivot = ed_find_pivot(e); e[0].drag = DRAG_ORBIT; return; }
+  // A left press or a touch: the shared viewport decides whether it becomes
+  // a tap or holds the selection for a move, turn or size.
+  vp_press(e[0].vp[..], x, y, ed_held(e, x, y));
+  e[0].drag = DRAG_LEFT;
+  if button == BUTTON_TOUCH { e[0].pivot = ed_find_pivot(e); }
+}
+
+ed_move :: (e: [] Editor, at_x: f32, y: f32) #export_c #effects(all) {
+  if e.count != 1 || e[0].drag == DRAG_NONE { return; }
+  x := ed_sx(e, at_x);
+  dx := x - e[0].lx; dy := y - e[0].ly;
+  e[0].lx = x; e[0].ly = y;
+  d := e[0].drag;
+  if d == DRAG_LOOK { ed_look(e, dx, dy); }
+  if d == DRAG_ORBIT { ed_orbit(e, dx, dy); }
+  if d == DRAG_PAN { ed_pan(e, dx, dy); }
+  if d == DRAG_DOLLY { ed_ahead(e, -dy * WALK_PER_PX); }
+  if d == DRAG_LEFT {
+    p := e[0].vp[..];
+    was_far := p[0].far;
+    vp_drag(p, ed_view(e), x, y);
+    if !p[0].holding && p[0].far {
+      // the press left its first point: catch up the motion before it was a drag
+      if !was_far { dx = x - p[0].x0; dy = y - p[0].y0; }
+      if e[0].button == BUTTON_TOUCH { ed_orbit(e, dx, dy); } else { ed_walk(e, dx, dy); }
+    }
+  }
+  e[0].dirty = true;
+}
+
+// Carries out an edit on the scene's log, as one step undo takes back: the
+// edit a drag ended with, or one the decision model chose.
+ed_apply :: (e: [] Editor, edit: WorldEdit) {
+  w := edit;
+  if !w.ok || !ed_may_edit(e) { return; }
+  i := ed_index(e, cast(s32) w.id);
+  if i < 0 { return; }
+  before := ed_actor(e, i);
+  // a village building (shared/buildings.coax): a drag's turn goes to the nearest quarter turn, it stays on the
+  // ground, and one that would break its rules is not made: the note says why, in the website's words
+  if gk_building(cast(int) before.kind) >= 0 && (w.op == WE_MOVE || w.op == WE_ROTATE || w.op == WE_SCALE) {
+    if w.op == WE_ROTATE { w.yaw = editor_turn(((w.yaw + 360 + 45) / 90 % 4) * 90); }
+    if w.op == WE_MOVE { w.y = 0; }
+    x := ifx w.op == WE_MOVE then w.x else cast(int) before.x; z := ifx w.op == WE_MOVE then w.z else cast(int) before.z;
+    why := ed_building_why(e, before.kind, x, 0, z, ifx w.op == WE_ROTATE then w.yaw else cast(int) before.yaw, ifx w.op == WE_SCALE then w.scale else cast(int) before.scale, before.id);
+    if why.count > 0 { ed_say(e, why); return; }
+  }
+  if !we_scene_apply(ed_scene(e), w).ok { return; }
+  after := ed_actor(e, ed_index(e, before.id));
+  if w.op == WE_MOVE { ed_log_actor(e, OP_MOVE, after, before); }
+  if w.op == WE_ROTATE { ed_log_actor(e, OP_TURN, after, before); }
+  if w.op == WE_SCALE { ed_log_actor(e, OP_SIZE, after, before); }
+}
+
+ed_up :: (e: [] Editor, button: s32, at_x: f32, y: f32) #export_c #effects(all) {
+  if e.count != 1 || e[0].drag == DRAG_NONE || button != e[0].button { return; }
+  x := ed_sx(e, at_x);
+  if e[0].drag == DRAG_LEFT {
+    vp_drag(e[0].vp[..], ed_view(e), x, y);
+    r := vp_release(e[0].vp[..]);
+    if r.tap {
+      spot: [1] VpSpot;
+      i := ed_pick(e, r.x, r.y, spot[..]);
+      e[0].selected = ifx i >= 0 then ed_actor(e, i).id else 0;
+      if i >= 0 { ed_log_actor(e, OP_SELECT, ed_actor(e, i), ed_actor(e, i)); }
+      vp_here(e[0].vp[..], spot[0]);
+    }
+    ed_apply(e, r.edit);
+  }
+  e[0].drag = DRAG_NONE;
+  e[0].dirty = true;
+}
+
+// The press was taken away: a touch became a two-finger gesture.
+ed_cancel :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  vp_cancel(e[0].vp[..]);
+  e[0].drag = DRAG_NONE;
+  e[0].dirty = true;
+}
+
+ed_wheel :: (e: [] Editor, notches: f32) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  if e[0].play[0].on { if e[0].play[0].her_on { her_zoom(e, notches); } return; }
+  ed_dolly_notches(e, notches);
+  e[0].dirty = true;
+}
+
+// Two fingers moved together by points: pan.
+ed_touch_pan :: (e: [] Editor, dx: f32, dy: f32, begin: bool) #export_c #effects(all) {
+  if e.count != 1 || e[0].play[0].on { return; }
+  if begin { e[0].pivot = ed_find_pivot(e); }
+  ed_pan(e, ifx ed_paged(e) then -dx else dx, dy);
+  e[0].dirty = true;
+}
+
+// Two fingers spread by a factor since the last call: dolly toward the pivot.
+ed_touch_pinch :: (e: [] Editor, factor: f32) #export_c #effects(all) {
+  if e.count != 1 || factor <= 0 { return; }
+  if e[0].play[0].on { if e[0].play[0].her_on { her_zoom(e, (factor - 1) * 8); } return; }
+  d := ed_dist(ed_eye(e), ed_find_pivot(e));
+  ed_ahead(e, d * (1 - 1 / factor));
+  e[0].dirty = true;
+}
+
+// ---- keys
+
+ed_tool_word :: (key: s32) -> string {
+  if key == KEY_Q { return "tool select"; }
+  if key == KEY_W { return "tool move"; }
+  if key == KEY_E { return "tool turn"; }
+  if key == KEY_R { return "tool size"; }
+  return "";
+}
+
+// A key went down or up. Letters are lowercase ASCII.
+ed_key :: (e: [] Editor, key: s32, down: bool, mods: s32) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].k_fast = (mods & MOD_SHIFT) != 0;
+  e[0].k_sneak = e[0].k_fast; e[0].k_fast_ctrl = (mods & MOD_CONTROL) != 0;
+  if key == KEY_W { e[0].k_fore = down; }
+  if key == KEY_S { e[0].k_back = down; }
+  if key == KEY_A { e[0].k_left = down; }
+  if key == KEY_D { e[0].k_right = down; }
+  if key == KEY_Q { e[0].k_down = down; }
+  if key == KEY_E { e[0].k_up = down; }
+  if e[0].play[0].on { play_key(e, key, down); e[0].dirty = true; return; }
+  if !down || e[0].drag == DRAG_LOOK { return; }
+  if (mods & MOD_COMMAND) != 0 {
+    // Command is the app's: Z takes an edit back, Shift Z makes it again; C X V D copy, cut, paste and duplicate (clip.coax).
+    if key == KEY_Z { ed_history(e, (mods & MOD_SHIFT) != 0); }
+    _ = clip_key(e, key);
+    e[0].dirty = true;
+    return;
+  }
+  // Not flying: the keys are the editor's.
+  word := ed_tool_word(key);
+  if word.count > 0 { _ = vp_act(e[0].vp[..], word, ed_view(e)); }
+  if key == KEY_F { ed_focus(e); }
+  if key == KEY_DELETE || key == KEY_BACKSPACE { ed_delete(e); }
+  e[0].dirty = true;
+}
+
+ed_flying :: (e: [] Editor) -> bool {
+  k := e[0];
+  return k.drag == DRAG_LOOK && (k.k_fore || k.k_back || k.k_left || k.k_right || k.k_down || k.k_up);
+}
+
+// Time passed. Flies while the right button is held with W A S D Q E down.
+// True while the next frame should come without waiting for input.
+ed_tick :: (e: [] Editor, dt: f32) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  if e[0].play[0].on { play_tick(e, dt); return true; }
+  if !ed_flying(e) { return false; }
+  k := e[0];
+  ahead: f32 = (ifx k.k_fore then 1.0f32 else 0.0f32) - (ifx k.k_back then 1.0f32 else 0.0f32);
+  right: f32 = (ifx k.k_right then 1.0f32 else 0.0f32) - (ifx k.k_left then 1.0f32 else 0.0f32);
+  if ed_paged(e) { right = -right; }   // (the page's picture is this view's in a mirror: ed_sx)
+  up: f32 = (ifx k.k_up then 1.0f32 else 0.0f32) - (ifx k.k_down then 1.0f32 else 0.0f32);
+  vp_fly_step(e[0].vp[..], dt, ahead, right, up, k.k_fast);
+  ed_set_eye(e, ed_eye(e));
+  e[0].dirty = true;
+  return true;
+}
+
+// ---- what the toolbar does
+
+ED_TOOLS :: 4;
+// The tool picked: 0 select, 1 move, 2 rotate, 3 scale.
+ed_tool :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  t := e[0].vp[0].tool;
+  if t >= VT_MOVE && t <= VT_SIZE { return cast(s32) (t - VT_SELECT); }
+  return 0;
+}
+
+ed_set_tool :: (e: [] Editor, tool: s32) #export_c #effects(all) {
+  if e.count != 1 || tool < 0 || tool >= ED_TOOLS { return; }
+  words := [ED_TOOLS] string.["tool select", "tool move", "tool turn", "tool size"];
+  _ = vp_act(e[0].vp[..], words[tool], ed_view(e));
+  e[0].dirty = true;
+}
+
+ed_has_selection :: (e: [] Editor) -> bool #export_c #effects(all) {
+  return e.count == 1 && ed_index(e, e[0].selected) >= 0;
+}
+
+ed_delete :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || e[0].play[0].on || !ed_may_edit(e) { return; }
+  i := ed_index(e, e[0].selected);
+  if i < 0 { return; }
+  gone := ed_actor(e, i);
+  if !we_scene_apply(ed_scene(e), WorldEdit.{ok = true, op = WE_DESPAWN, id = cast(int) gone.id}).ok { return; }
+  ed_log_actor(e, OP_DELETE, gone, gone);
+  e[0].selected = 0;
+  e[0].dirty = true;
+}
+
+// Takes back the last edit, or makes it again. Nothing happens in the middle
+// of a drag, or with nothing to take back.
+ed_history :: (e: [] Editor, redo: bool) {
+  if e.count != 1 || e[0].drag != DRAG_NONE || e[0].play[0].on || !ed_may_edit(e) { return; }
+  s := ed_scene(e);
+  done := ifx redo then editor_scene_redo(s) else editor_scene_undo(s);
+  if !done { return; }
+  ed_log(e, Step.{op = ifx redo then OP_REDO else OP_UNDO});
+  if ed_index(e, e[0].selected) < 0 { e[0].selected = 0; }
+  e[0].dirty = true;
+}
+ed_undo :: (e: [] Editor) #export_c #effects(all) { ed_history(e, false); }
+ed_redo :: (e: [] Editor) #export_c #effects(all) { ed_history(e, true); }
+ed_can_undo :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && editor_scene_can_undo(ed_scene(e)); }
+ed_can_redo :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && editor_scene_can_redo(ed_scene(e)); }
+
+// Adds a one-metre block where the last tap met the ground, or on the
+// ground ahead, snapped to the grid, and selects it. (The toolbar's Add block
+// is the add row with {"kind":"block"}, coax/controls.coax; this is the checks'.)
+ed_add_block :: (e: [] Editor) { _ = ed_add(e, KIND_BLOCK); }
+
+// Whether a frame is due, and clears it: a still screen draws nothing.
+ed_take_dirty :: (e: [] Editor) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  d := e[0].dirty;
+  e[0].dirty = false;
+  return d;
+}
+
+// ---- what is drawn
+
+// One instance: a unit cube (ed_cube) placed by a model matrix.
+ed_instance :: (out: [] f32, n: s64, c: WorldPoint, hx: f32, hy: f32, hz: f32, yaw_deg: f32, shade: f32, look: s32) -> s64 {
+  at := n * INSTANCE_FLOATS;
+  if at + INSTANCE_FLOATS > out.count { return n; }
+  r := yaw_deg * 0.017453292;
+  cs := cos(r); sn := sin(r);
+  // column-major: columns are the scaled, turned axes, then the middle
+  m := [16] f32.[
+    cs * hx * 2, 0, -sn * hx * 2, 0,
+    0, hy * 2, 0, 0,
+    sn * hz * 2, 0, cs * hz * 2, 0,
+    c.x, c.y, c.z, 1];
+  for i: 0..<16 { out[at + i] = m[i]; }
+  out[at + 16] = shade; out[at + 17] = cast(f32) look; out[at + 18] = 0; out[at + 19] = 0;
+  return n + 1;
+}
+
+ed_instance_capacity :: () -> s32 #export_c #effects(all) { return INSTANCES_MAX; }
+ed_instance_floats :: () -> s32 #export_c #effects(all) { return INSTANCE_FLOATS; }
+ed_camera_floats :: () -> s32 #export_c #effects(all) { return CAMERA_FLOATS; }
+
+// The ground, every box, and the selection's twelve edges, as instances of
+// ed_cube. Returns how many it wrote.
+ed_draw :: (e: [] Editor, out: [] f32) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  if e[0].play[0].on { return play_draw(e, out); }
+  n: s64 = 0;
+  n = ed_instance(out, n, WorldPoint.{y = -0.05}, GROUND_HALF, 0.05, GROUND_HALF, 0, 0.1, LOOK_GROUND);
+  sel := ed_index(e, e[0].selected);
+  for i: 0..<ed_count(e) {
+    a := ed_shown(e, ed_actor(e, i));
+    s := cast(f32) a.scale / 100;
+    c := WorldPoint.{x = cast(f32) a.x / 100, y = cast(f32) a.y / 100 + cast(f32) a.sy * s / 200, z = cast(f32) a.z / 100};
+    if ed_hidden(e, a) && i != sel { continue; }
+    shade: f32 = ifx a.kind == KIND_BLOCK then 0.7f32 else 0.9f32;
+    shade *= ch_light(e, a.id);
+    was := n;
+    n = ed_instance(out, n, c, cast(f32) a.sx * s / 200, cast(f32) a.sy * s / 200, cast(f32) a.sz * s / 200, cast(f32) a.yaw, shade, ifx i == sel then LOOK_SELECTED else LOOK_SOLID);
+    // each kind wears its colour
+    if n > was { out[was * INSTANCE_FLOATS + 18] = cast(f32) ed_kind_tint(a.kind); }
+  }
+  // the selection's twelve edges, in white
+  if sel >= 0 { n = ed_edges(out, n, ed_shown(e, ed_actor(e, sel)), 1, 0); }
+  // what agents changed, in their colours (changes.coax)
+  n = ch_draw(e, out, n);
+  // a play-test's paths and marks, in a picture being drawn (pictures.coax)
+  n = pic_draw(e, out, n);
+  // what agents have claimed, round it on the ground in each one's colour (claims.coax)
+  return claims_draw(e, out, n);
+}
+
+// One bar drawn as a line (LOOK_LINE), in a tint: 0 the selection's white, else one of the
+// host's tints (an agent's colour, changes.coax).
+ed_line :: (out: [] f32, n: s64, c: WorldPoint, hx: f32, hy: f32, hz: f32, yaw: f32, tint: s32) -> s64 {
+  m := ed_instance(out, n, c, hx, hy, hz, yaw, 1, LOOK_LINE);
+  if m > n { out[n * INSTANCE_FLOATS + 18] = cast(f32) tint; }
+  return m;
+}
+// Twelve thin bars along a box's edges, turned with it: weight 1 is the selection's thickness.
+ed_edges :: (out: [] f32, n: s64, a: Actor, weight: f32, tint: s32) -> s64 {
+  s := cast(f32) a.scale / 100;
+  hx := cast(f32) a.sx * s / 200; hy := cast(f32) a.sy * s / 200; hz := cast(f32) a.sz * s / 200;
+  base := WorldPoint.{x = cast(f32) a.x / 100, y = cast(f32) a.y / 100 + hy, z = cast(f32) a.z / 100};
+  th: f32 = weight * (0.012 + 0.004 * vp_len(hx, hy, hz));
+  r := cast(f32) a.yaw * 0.017453292;
+  cs := cos(r); sn := sin(r);
+  yaw := cast(f32) a.yaw;
+  m := n;
+  for k: 0..<4 {
+    // the corner in the box's own axes, then turned: column x is (cs, -sn), column z is (sn, cs)
+    ux: f32 = ifx (k & 1) != 0 then hx else -hx;
+    uz: f32 = ifx (k & 2) != 0 then hz else -hz;
+    wx := cs * ux + sn * uz; wz := -sn * ux + cs * uz;
+    // an upright edge at each corner
+    m = ed_line(out, m, WorldPoint.{x = base.x + wx, y = base.y, z = base.z + wz}, th, hy + th, th, yaw, tint);
+    // a top and a bottom edge along x, then along z
+    ey: f32 = ifx (k & 1) != 0 then hy else -hy;
+    zx := ifx (k & 2) != 0 then hz else -hz;
+    m = ed_line(out, m, WorldPoint.{x = base.x + sn * zx, y = base.y + ey, z = base.z + cs * zx}, hx + th, th, th, yaw, tint);
+    m = ed_line(out, m, WorldPoint.{x = base.x + cs * (ifx (k & 2) != 0 then hx else -hx), y = base.y + ey, z = base.z - sn * (ifx (k & 2) != 0 then hx else -hx)}, th, th, hz + th, yaw, tint);
+  }
+  return m;
+}
+
+// The unit cube every instance draws: 36 vertices, each a position (-0.5 to
+// 0.5) and a normal, six floats. Returns how many vertices it wrote.
+ED_CUBE_VERTICES :: 36;
+ed_cube_vertices :: () -> s32 #export_c #effects(all) { return ED_CUBE_VERTICES; }
+ed_cube :: (out: [] f32) -> s64 #export_c #effects(all) {
+  if out.count < ED_CUBE_VERTICES * 6 { return 0; }
+  n: s64 = 0;
+  for face: 0..<6 {
+    axis := face / 2;
+    sign: f32 = ifx face % 2 == 0 then 1.0f32 else -1.0f32;
+    // the face's two in-plane axes
+    ua := (axis + 1) % 3; va := (axis + 2) % 3;
+    corners := [6] int.[0, 1, 2, 0, 2, 3];
+    for c: corners {
+      u: f32 = ifx c == 1 || c == 2 then 0.5f32 else -0.5f32;
+      v: f32 = ifx c >= 2 then 0.5f32 else -0.5f32;
+      // wind each face counter-clockwise seen from outside
+      if sign < 0 { v = -v; }
+      p: [3] f32;
+      p[axis] = 0.5 * sign; p[ua] = u; p[va] = v;
+      nrm: [3] f32;
+      nrm[axis] = sign;
+      at := n * 6;
+      out[at] = p[0]; out[at + 1] = p[1]; out[at + 2] = p[2];
+      out[at + 3] = nrm[0]; out[at + 4] = nrm[1]; out[at + 5] = nrm[2];
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// ---- checks
+
+EdTest :: struct { e: [1] Editor; }
+ed_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.02; }
+
+// Where the camera matrix puts a world point on the view, in points.
+ed_through :: (e: [] Editor, x: f32, y: f32, z: f32) -> VpPixel {
+  m: [CAMERA_FLOATS] f32;
+  if !ed_camera(e, m[..]) { return VpPixel.{}; }
+  cx := m[0] * x + m[4] * y + m[8] * z + m[12];
+  cy := m[1] * x + m[5] * y + m[9] * z + m[13];
+  cz := m[2] * x + m[6] * y + m[10] * z + m[14];
+  cw := m[3] * x + m[7] * y + m[11] * z + m[15];
+  if cw <= 0 || cz < 0 || cz > cw { return VpPixel.{}; }
+  return VpPixel.{ok = true, x = (cx / cw + 1) * 0.5 * e[0].w, y = (1 - cy / cw) * 0.5 * e[0].h};
+}
+
+#test "the camera matrix puts a point where the shared viewport projects it" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  v := ed_view(e);
+  pts := [9] f32.[0, 0, 3, 5, 2, 9, -4, 0.5, 1];
+  for i: 0..<3 {
+    a := vp_project(v, pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
+    b := ed_through(e, pts[i * 3], pts[i * 3 + 1], pts[i * 3 + 2]);
+    #assert a.ok && b.ok && ed_near(a.x, b.x) && ed_near(a.y, b.y);
+  }
+  // behind the eye is not drawn
+  eye := ed_eye(e); f := ed_basis(e).f;
+  #assert !ed_through(e, eye.x - f.x * 3, eye.y - f.y * 3, eye.z - f.z * 3).ok;
+}
+
+#test "a tap on a box selects it, and a tap on the ground clears the selection" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  a := ed_actor(e, 1);
+  b := ed_bounds(a);
+  px := ed_through(e, b.c.x, b.c.y, b.c.z);
+  #assert px.ok;
+  ed_down(e, BUTTON_LEFT, px.x, px.y, 0);
+  ed_up(e, BUTTON_LEFT, px.x, px.y);
+  #assert e[0].selected == a.id && ed_has_selection(e);
+  ground := ed_through(e, 6, 0, 0);
+  #assert ground.ok;
+  ed_down(e, BUTTON_LEFT, ground.x, ground.y, 0);
+  ed_up(e, BUTTON_LEFT, ground.x, ground.y);
+  #assert e[0].selected == 0 && e[0].vp[0].here_ok;
+}
+
+#test "with move picked, a left drag on the selection moves it along the ground, snapped" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  a := ed_actor(e, 1);
+  b := ed_bounds(a);
+  px := ed_through(e, b.c.x, b.c.y, b.c.z);
+  ed_down(e, BUTTON_LEFT, px.x, px.y, 0); ed_up(e, BUTTON_LEFT, px.x, px.y);
+  ed_key(e, KEY_W, true, 0); ed_key(e, KEY_W, false, 0);
+  #assert ed_tool(e) == 1;
+  ed_down(e, BUTTON_LEFT, px.x, px.y, 0);
+  ed_move(e, px.x - 40, px.y);
+  ed_up(e, BUTTON_LEFT, px.x - 40, px.y);
+  moved := ed_actor(e, 1);
+  #assert moved.x != a.x && moved.x % 50 == 0 && moved.z % 50 == 0;
+  // the view's left is the world's +x here (vp_ray: right is ahead crossed with up)
+  #assert moved.x > a.x;
+}
+
+#test "no camera move takes the eye under the ground" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  // orbit a finger far upward, as if to look up from below the ground
+  ed_down(e, BUTTON_TOUCH, 100, 800, 0);
+  for i: 0..<40 { ed_move(e, 100, cast(f32) (800 - i * 40)); }
+  ed_up(e, BUTTON_TOUCH, 100, -800);
+  #assert ed_eye(e).y >= EYE_FLOOR - 0.001;
+  // pan the view up hard with two fingers, then pinch in and fly down
+  for i: 0..<60 { ed_touch_pan(e, 0, -400, i == 0); }
+  #assert ed_eye(e).y >= EYE_FLOOR - 0.001;
+  for i: 0..<30 { ed_touch_pinch(e, 3); }
+  #assert ed_eye(e).y >= EYE_FLOOR - 0.001;
+  ed_down(e, BUTTON_RIGHT, 100, 400, 0);
+  ed_key(e, KEY_Q, true, 0);
+  for i: 0..<200 { _ = ed_tick(e, 0.05); }
+  #assert ed_eye(e).y >= EYE_FLOOR - 0.001;
+}
+
+#test "orbit keeps the distance to the pivot; pan moves the eye and the pivot together" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  ed_down(e, BUTTON_LEFT, 100, 400, MOD_ALT);
+  pivot := e[0].pivot;
+  d0 := ed_dist(ed_eye(e), pivot);
+  ed_move(e, 160, 380);
+  ed_up(e, BUTTON_LEFT, 160, 380);
+  #assert ed_near(ed_dist(ed_eye(e), pivot), d0);
+  // the pivot stays in the middle of the view
+  mid := ed_through(e, pivot.x, pivot.y, pivot.z);
+  #assert mid.ok && abs(mid.x - 195) < 1 && abs(mid.y - 422) < 1;
+  ed_down(e, BUTTON_MIDDLE, 200, 400, 0);
+  p0 := e[0].pivot; eye0 := ed_eye(e);
+  ed_move(e, 230, 400);
+  ed_up(e, BUTTON_MIDDLE, 230, 400);
+  eye1 := ed_eye(e); p1 := e[0].pivot;
+  #assert ed_dist(eye0, eye1) > 0.01;
+  #assert ed_near(eye1.x - eye0.x, p1.x - p0.x) && ed_near(eye1.z - eye0.z, p1.z - p0.z);
+}
+
+#test "right drag with W held flies forward; without the right button W picks move" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  eye0 := ed_eye(e); f := ed_basis(e).f;
+  ed_down(e, BUTTON_RIGHT, 200, 400, 0);
+  ed_key(e, KEY_W, true, 0);
+  #assert ed_tick(e, 0.5);
+  eye1 := ed_eye(e);
+  ahead := (eye1.x - eye0.x) * f.x + (eye1.y - eye0.y) * f.y + (eye1.z - eye0.z) * f.z;
+  #assert ed_near(ahead, VP_FLY_SPEED * 0.5);
+  #assert ed_tool(e) == 0;
+  ed_key(e, KEY_W, false, 0);
+  ed_up(e, BUTTON_RIGHT, 200, 400);
+  #assert !ed_tick(e, 0.5);
+  ed_key(e, KEY_W, true, 0);
+  #assert ed_tool(e) == 1;
+}
+
+#test "the wheel dollies toward what is ahead; focus frames the selection" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  eye0 := ed_eye(e); f := ed_basis(e).f;
+  ed_wheel(e, 2);
+  eye1 := ed_eye(e);
+  #assert (eye1.x - eye0.x) * f.x + (eye1.y - eye0.y) * f.y + (eye1.z - eye0.z) * f.z > 0.4;
+  e[0].selected = ed_actor(e, 2).id;
+  ed_key(e, KEY_F, true, 0);
+  c := ed_bounds(ed_actor(e, 2)).c;
+  mid := ed_through(e, c.x, c.y, c.z);
+  #assert mid.ok && abs(mid.x - 195) < 1 && abs(mid.y - 422) < 1;
+}
+
+#test "delete removes the selection; add places a block and selects it" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  n := ed_count(e);
+  e[0].selected = ed_actor(e, 3).id;
+  gone := e[0].selected;
+  ed_key(e, KEY_DELETE, true, 0);
+  #assert ed_count(e) == n - 1 && ed_index(e, gone) < 0 && e[0].selected == 0;
+  ed_add_block(e);
+  #assert ed_count(e) == n && e[0].selected == ed_actor(e, n - 1).id;
+  #assert ed_actor(e, n - 1).x % 50 == 0 && ed_actor(e, n - 1).z % 50 == 0;
+}
+
+#test "a frame draws the ground, every box and the selection's edges, within capacity" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  out: [INSTANCES_MAX * INSTANCE_FLOATS] f32;
+  #assert ed_draw(e, out[..]) == 1 + ed_count(e);
+  e[0].selected = ed_actor(e, 0).id;
+  n := ed_draw(e, out[..]);
+  #assert n == 1 + ed_count(e) + 12 && n <= INSTANCES_MAX;
+  // the ground is first, and lit as ground
+  #assert out[17] == cast(f32) LOOK_GROUND;
+  cube: [ED_CUBE_VERTICES * 6] f32;
+  #assert ed_cube(cube[..]) == ED_CUBE_VERTICES;
+}
+
+#test "a still editor asks for no frame; input does" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  #assert ed_take_dirty(e) && !ed_take_dirty(e);
+  ed_wheel(e, 1);
+  #assert ed_take_dirty(e);
+}
+
+#test "undo takes an edit back and redo makes it again: a move, a turn, an add and a delete" {
+  e: [1] Editor;
+  ed_init(e[..], 800, 600);
+  n := ed_count(e[..]);
+  was := ed_actor(e[..], 1);
+  #assert !ed_can_undo(e[..]) && !ed_can_redo(e[..]);
+  ed_apply(e[..], WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) was.id, x = cast(int) was.x + 100, y = 0, z = cast(int) was.z});
+  ed_apply(e[..], WorldEdit.{ok = true, op = WE_ROTATE, id = cast(int) was.id, yaw = 45});
+  #assert ed_actor(e[..], 1).x == was.x + 100 && ed_actor(e[..], 1).yaw == 45 && ed_can_undo(e[..]);
+  ed_undo(e[..]);
+  #assert ed_actor(e[..], 1).x == was.x + 100 && ed_actor(e[..], 1).yaw == was.yaw && ed_can_redo(e[..]);
+  ed_undo(e[..]);
+  #assert ed_actor(e[..], 1).x == was.x && !ed_can_undo(e[..]);
+  ed_undo(e[..]);   // nothing left: nothing happens
+  #assert ed_actor(e[..], 1).x == was.x;
+  ed_redo(e[..]); ed_redo(e[..]);
+  #assert ed_actor(e[..], 1).x == was.x + 100 && ed_actor(e[..], 1).yaw == 45 && !ed_can_redo(e[..]);
+  // an added block goes and comes back with its own id; the selection doesn't outlive it
+  ed_add_block(e[..]);
+  added := e[0].selected;
+  #assert ed_count(e[..]) == n + 1 && added > 0;
+  ed_undo(e[..]);
+  #assert ed_count(e[..]) == n && e[0].selected == 0 && ed_index(e[..], added) < 0;
+  ed_redo(e[..]);
+  #assert ed_count(e[..]) == n + 1 && ed_index(e[..], added) >= 0;
+  // a deleted block comes back where and as it was
+  e[0].selected = was.id;
+  now := ed_actor(e[..], 1);
+  ed_delete(e[..]);
+  #assert ed_index(e[..], was.id) < 0;
+  ed_undo(e[..]);
+  back := ed_actor(e[..], ed_index(e[..], was.id));
+  #assert back.x == now.x && back.z == now.z && back.yaw == now.yaw && back.sx == now.sx && back.kind == now.kind;
+  // a new edit after an undo ends the redo
+  ed_undo(e[..]);
+  #assert ed_can_redo(e[..]);
+  ed_apply(e[..], WorldEdit.{ok = true, op = WE_SCALE, id = cast(int) was.id, scale = 150});
+  #assert !ed_can_redo(e[..]) && ed_actor(e[..], 1).scale == 150;
+}
+
+#test "Command Z undoes and Shift Command Z redoes, and neither runs during a drag" {
+  e: [1] Editor;
+  ed_init(e[..], 800, 600);
+  was := ed_actor(e[..], 1);
+  ed_apply(e[..], WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) was.id, x = cast(int) was.x + 100, y = 0, z = cast(int) was.z});
+  ed_key(e[..], KEY_Z, true, 0);   // a bare Z is not undo
+  #assert ed_actor(e[..], 1).x == was.x + 100;
+  ed_down(e[..], BUTTON_MIDDLE, 10, 10, 0);
+  ed_undo(e[..]);
+  #assert ed_actor(e[..], 1).x == was.x + 100;
+  ed_up(e[..], BUTTON_MIDDLE, 10, 10);
+  ed_key(e[..], KEY_Z, true, MOD_COMMAND);
+  #assert ed_actor(e[..], 1).x == was.x;
+  ed_key(e[..], KEY_Z, true, MOD_COMMAND | MOD_SHIFT);
+  #assert ed_actor(e[..], 1).x == was.x + 100;
+  // the model is told: the history it reads ends with the undo and the redo
+  #assert e[0].log[e[0].log_count - 1].op == OP_REDO && e[0].log[e[0].log_count - 2].op == OP_UNDO;
+}
+
+#test "the camera stays out of blocks, and a block it is pressed against is not drawn" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  wall := ed_actor(e, 2);   // 8 m wide, 3 m tall, half a metre deep, at z 9
+  b := ed_bounds(wall);
+  // put inside it, the eye comes out through the nearest side with room to spare
+  ed_set_eye(e, WorldPoint.{x = b.c.x + 1, y = 1, z = b.c.z + 0.1});
+  eye := ed_eye(e);
+  #assert eye.z >= b.c.z + b.hz + EYE_ROOM - 0.001 && abs(eye.x - (b.c.x + 1)) < 0.001;
+  // flying forward into it never gets through
+  ed_set_eye(e, WorldPoint.{x = b.c.x, y = 1, z = b.c.z - 3});
+  for k: 0..<60 { now := ed_eye(e); ed_set_eye(e, WorldPoint.{x = now.x, y = now.y, z = now.z + 0.1}); }
+  #assert ed_eye(e).z <= b.c.z - b.hz - EYE_ROOM + 0.001;
+  // pressed against it, it is not drawn, so it can't fill the view; from across the room it is
+  #assert ed_hidden(e, wall);
+  out: [INSTANCES_MAX * INSTANCE_FLOATS] f32;
+  near := ed_draw(e, out[..]);
+  ed_set_eye(e, WorldPoint.{x = b.c.x, y = 2, z = b.c.z - 12});
+  #assert !ed_hidden(e, wall) && ed_draw(e, out[..]) == near + 1;
+  // over the top is free
+  ed_set_eye(e, WorldPoint.{x = b.c.x, y = b.c.y + b.hy + 2, z = b.c.z});
+  #assert abs(ed_eye(e).z - b.c.z) < 0.001;
+}
+
+#test "opening a level puts the camera above it, looking at its middle, however large it is" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 800, 600);
+  ed_new(e, 1);
+  near := ed_eye(e);
+  #assert near.y > 15 && near.y < 40 && near.z < -20;
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  far := ed_eye(e);
+  // SPLICEBOTS' place is about 170 m long: the camera is far higher and further back
+  #assert far.y > near.y * 2 && far.z < near.z * 2 && e[0].vp[0].fpitch < -0.3;
+  ed_new(e, 2);
+  #assert ed_eye(e).y < 40;
+}

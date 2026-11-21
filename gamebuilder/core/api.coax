@@ -1,0 +1,847 @@
+// The HTTP API (docs/programmatic-access.md, "The HTTP API", stage C6): the command table's
+// rows as routes, made from the table as the MCP tools are. This file is the pure part, the
+// same for any server that carries it: a request's bytes read, its route found, its arguments
+// read as an MCP call's (gb_mcp_read), the answer's status, and the discovery documents. The
+// surface moves the bytes and carries the row out: `gamebuilder serve` (cli/main.coax) on this
+// computer, with the CLI's files and login.
+//
+//   GET  /api/capabilities         gamebuilder.commands.v1, as `gamebuilder commands`
+//   GET  /api/openapi.json         OpenAPI 3.1, from the rows
+//   GET  /api/levels/N             read-level N
+//   POST /api/levels/N             apply-edits on N; the body is the world.edit.v1 batch
+//   POST /api/rows/VERB            any row with GB_HTTP; the body is its arguments, as MCP's
+//   POST /mcp                      MCP over HTTP: one JSON-RPC message, answered as JSON (stage C7)
+//   POST /api/count                gamebuilder.org's page counts a step of its core loop (issue 18): no row and
+//                                  no login, since the caller is a visitor's page. Its body is a
+//                                  gamebuilder.count.v1 (shared/loop.coax), added to the day's totals
+//                                  (loop-day.coax); the `funnel` row reads them back
+//   GET  /g/CODE                   a published game's page (issue 17): the site's own page, with the game's
+//                                  name, description and picture in its head, so a link pasted in a chat
+//                                  shows them (gb_api_page). No login: anyone with the link
+//   GET  /api/play/CODE            what the link plays: gamebuilder.play.v1, the live version's level
+//                                  file and its game type (gb_api_play). No login
+//   POST /api/play/CODE/report     a player's report of the game: {"reason":R,"text":T} (publish.coax
+//                                  pub_report_ok), queued for the operator. No login
+//   POST /api/play/CODE/played     the link's page counts a fact of the game: {"fact":F}, F one of opened,
+//                                  minute, remix (shared/plays.coax). Added to the game's totals and the
+//                                  site's, and nothing else is kept. No login
+//   GET  /api/pictures/ADDRESS.jpg an agent's newest picture kept on the account (issue 9; agent-pictures.coax),
+//                                  as a JPEG. Its address is 32 hex digits of the SHA-256 of the picture's own
+//                                  bytes, given only to the account's own login (the agents row): no login, since
+//                                  a page's <img> asks with GET, and a browser's login is taken with POST only
+//
+// A row's answer is the row's JSON, the same bytes the CLI prints and MCP answers (the golden
+// cases hold that). Its status says what kind of answer it is: 200 done, and a refusal's code
+// as HTTP says it (409 when the batch is stale, 422 when an edit is refused). Routes are found
+// by exact paths and typed verbs (gb_find), never by words in a request.
+// Strict on what it reads: HTTP/1.1 or 1.0, CRLF line ends, one Content-Length and no
+// Transfer-Encoding, a head of at most API_HEAD and a body of at most API_BODY.
+//   scripts/check.sh
+
+API_HEAD :: 16384;
+API_BODY :: 2 * AGENT_FILE_MAX + 4096;   // a level's file as JSON text, every byte of the biggest escaped (write-content), which is more than a batch (WE_BATCH_BODY)
+API_TARGET :: 2048;
+
+// What gb_api_parse found.
+API_NEED :: 0;                 // more bytes are coming
+API_READY :: 1;                // a whole request
+API_BAD :: 2;                  // not one: answer status and close
+
+// The routes.
+API_NONE :: 0; API_CAPABILITIES :: 1; API_OPENAPI :: 2; API_ROW :: 3; API_LEVEL_READ :: 4; API_LEVEL_EDIT :: 5; API_MCP :: 6; API_COUNT :: 7;
+API_PAGE :: 8; API_PLAY :: 9; API_PLAY_REPORT :: 10;   // a published game's page, what it plays, and a player's report of it (issue 17)
+API_PICTURE :: 11;             // an agent's newest picture, by its address (issue 9)
+API_PLAY_COUNT :: 12;          // a published game's page counts a fact of it (shared/plays.coax)
+API_PAGE_DOOR :: "/g/";        // a published game's link: GAMES_DOMAIN/g/CODE
+API_PLAY_DOOR :: "/api/play/";
+
+GbApiRequest :: struct {
+  state: int;
+  status: int;                 // API_BAD's status
+  method: string; target: string; body: string;
+  host: string; origin: string;   // the Host and Origin headers, "" when absent
+  bearer: string;              // Authorization: Bearer's token, "" when absent (a hosted server's caller)
+  cookie: string;              // the Cookie header as sent, "" when absent: a browser's login on a hosted server's own site (gb_api_cookie_call)
+  row: string;                 // X-GameBuilder-Row: the caller's digest of the row it calls (gb_row_digest), "" when absent
+  session: string;             // Mcp-Session-Id: an attached agent's record, made at MCP's initialize (attached.coax), "" when absent
+  as_agent: string;            // GameBuilder-Agent: a row called as the attached agent of that name (--as-agent), "" when absent
+  size: int;                   // bytes of the request: head and body
+  why: string;
+}
+
+GbApiRoute :: struct {
+  kind: int;
+  v: int;                      // the row, for API_ROW and the level routes
+  level: s32;
+  status: int;                 // 0 when found, else 404 or 405
+  allow: string;               // a 405's methods
+  why: string;
+  code: string;                // a published game's share code, for the play routes
+  picture: string;             // API_PICTURE's address (agent-pictures.coax agp_hex_ok)
+}
+
+api_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+api_same :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if api_lower(a[i]) != api_lower(b[i]) { return false; } }
+  return true;
+}
+api_trim :: (s: string) -> string {
+  a := 0; b := s.count;
+  while a < b && (s[a] == ' ' || s[a] == '\t') { a += 1; }
+  while b > a && (s[b - 1] == ' ' || s[b - 1] == '\t') { b -= 1; }
+  return s[a..<b];
+}
+api_bad :: (status: int, why: string) -> GbApiRequest { return GbApiRequest.{state = API_BAD, status = status, why = why}; }
+
+// Reads raw, the bytes so far: API_NEED until the head and the body it names are all here.
+gb_api_parse :: (raw: string) -> GbApiRequest {
+  end := -1;
+  for i: 3..<raw.count { if raw[i - 3] == '\r' && raw[i - 2] == '\n' && raw[i - 1] == '\r' && raw[i] == '\n' { end = i + 1; break; } }
+  if end < 0 {
+    if raw.count > API_HEAD { return api_bad(431, "the request's head is longer than 16384 bytes"); }
+    return GbApiRequest.{state = API_NEED};
+  }
+  if end > API_HEAD { return api_bad(431, "the request's head is longer than 16384 bytes"); }
+  // the request line: METHOD SP TARGET SP HTTP/1.x
+  eol := 0; while eol + 1 < end && !(raw[eol] == '\r' && raw[eol + 1] == '\n') { eol += 1; }
+  line := raw[0..<eol];
+  s1 := 0; while s1 < line.count && line[s1] != ' ' { s1 += 1; }
+  s2 := s1 + 1; while s2 < line.count && line[s2] != ' ' { s2 += 1; }
+  if s1 == 0 || s2 >= line.count { return api_bad(400, "the request line is METHOD TARGET HTTP/1.1"); }
+  method := line[0..<s1]; target := line[s1 + 1..<s2]; version := line[s2 + 1..<line.count];
+  for c: method { if c < 'A' || c > 'Z' { return api_bad(400, "the method is capital letters"); } }
+  if version != "HTTP/1.1" && version != "HTTP/1.0" { return api_bad(505, "HTTP/1.1 only"); }
+  if target.count == 0 || target[0] != '/' { return api_bad(400, "the target is a path"); }
+  if target.count > API_TARGET { return api_bad(414, "the target is longer than 2048 bytes"); }
+  for c: target { if c <= ' ' || c >= 127 { return api_bad(400, "the target has a space or a control character"); } }
+  // the headers: only the body's length matters here
+  length := -1; host := ""; origin := ""; bearer := ""; cookie := ""; row := ""; session := ""; as_agent := "";
+  at := eol + 2;
+  while at < end - 2 {
+    e := at; while e + 1 < end && !(raw[e] == '\r' && raw[e + 1] == '\n') { e += 1; }
+    h := raw[at..<e]; at = e + 2;
+    colon := 0; while colon < h.count && h[colon] != ':' { colon += 1; }
+    if colon == 0 || colon >= h.count { return api_bad(400, "a header is NAME: VALUE"); }
+    name := h[0..<colon]; value := api_trim(h[colon + 1..<h.count]);
+    for c: name { if c <= ' ' || c >= 127 { return api_bad(400, "a header's name has a space"); } }
+    if api_same(name, "host") { host = value; }
+    if api_same(name, "origin") { origin = value; }
+    if api_same(name, "authorization") {
+      scheme := "bearer ";
+      if value.count <= scheme.count || !api_same(value[0..<scheme.count], scheme) { return api_bad(401, "Authorization is Bearer TOKEN, your GameBuilder login's"); }
+      bearer = api_trim(value[scheme.count..<value.count]);
+      for c: bearer { if c <= ' ' || c >= 127 { return api_bad(401, "Authorization is Bearer TOKEN, your GameBuilder login's"); } }
+    }
+    if api_same(name, "cookie") { cookie = value; }
+    if api_same(name, "x-gamebuilder-row") { row = value; }
+    if api_same(name, "mcp-session-id") { session = value; }
+    if api_same(name, "gamebuilder-agent") { as_agent = value; }
+    if api_same(name, "transfer-encoding") { return api_bad(411, "send the body with a Content-Length, not chunked"); }
+    if api_same(name, "content-length") {
+      if value.count == 0 || value.count > 9 { return api_bad(400, "Content-Length is a number"); }
+      n := 0; for c: value { if c < '0' || c > '9' { return api_bad(400, "Content-Length is a number"); } n = n * 10 + cast(int) (c - '0'); }
+      if length >= 0 && length != n { return api_bad(400, "two Content-Lengths"); }
+      length = n;
+    }
+  }
+  if length > API_BODY { return api_bad(413, "the body is longer than 528384 bytes"); }
+  if length < 0 { length = 0; }
+  if raw.count < end + length { return GbApiRequest.{state = API_NEED}; }
+  return GbApiRequest.{state = API_READY, method = method, target = target, body = raw[end..<end + length], host = host, origin = origin, bearer = bearer, cookie = cookie, row = row, session = session, as_agent = as_agent, size = end + length};
+}
+
+// A server on this computer answers only this computer's callers: "" when the request may be
+// one, else why not. Its Host is this computer's name (a page that renamed itself to here, by
+// DNS rebinding, is not), and a browser's Origin, when it sends one, is a page of this
+// computer's: otherwise any web page the person opens could POST an edit to it.
+gb_api_local_only :: (r: GbApiRequest) -> string {
+  if r.host.count > 0 && !api_local_name(r.host, false) { return "this server answers only this computer (Host)"; }
+  if r.origin.count > 0 && !api_local_name(r.origin, true) { return "this server answers only this computer's pages (Origin)"; }
+  return "";
+}
+// A hosted server (gamebuilder serve --accounts) answers any computer, each call signed in, but a
+// browser's call only from site's own pages: "" when the request may be one, else why not.
+gb_api_site_only :: (r: GbApiRequest, site: string) -> string {
+  if r.origin.count > 0 && !api_same(r.origin, site) { return "this server answers only its own site's pages (Origin)"; }
+  return "";
+}
+// A hosted server's caller with no Authorization: a browser logged in on the site, whose login is
+// the login service's own cookie (HttpOnly: the page holds no token to send). The cookie goes with
+// every request the browser makes to the site, whoever wrote the page that made it, so it names
+// the caller only when the request says it comes from site's own page: an Origin, and the site's
+// (a browser sends one with every POST; a page of another site cannot set it). "" when the
+// request is such a call, else why not, in words. The cookie itself is the login service's to
+// read: it is passed on whole (cli/account.coax ac_hosted_who_cookie) and never kept.
+API_COOKIE :: 4096;            // bytes of a Cookie header passed on, at most (the login service reads no more)
+gb_api_cookie_call :: (r: GbApiRequest, site: string) -> string {
+  if r.cookie.count == 0 { return "log in first: send Authorization: Bearer with your GameBuilder login's access token (gamebuilder login)"; }
+  if r.cookie.count > API_COOKIE { return "the Cookie header is longer than 4096 bytes"; }
+  for c: r.cookie { if c < ' ' || c >= 127 { return "the Cookie header has a control character"; } }
+  if r.origin.count == 0 || !api_same(r.origin, site) { return "a browser's login is taken only from this site's own pages: send the page's Origin, or Authorization: Bearer with your GameBuilder login's access token"; }
+  if r.method != "POST" { return "a browser's login is taken with POST only"; }
+  return "";
+}
+// An account's id as the login service gives it, safe as a folder's name: 1 to 64 of letters,
+// digits, - and _.
+gb_api_account_ok :: (a: string) -> bool {
+  if a.count < 1 || a.count > 64 { return false; }
+  for c: a { if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// Whether a route needs the caller signed in on a hosted server: all but discovery and a count.
+// A count is a visitor's page's: it carries no login, and none is asked (what it may say is the list's: loop-day.coax).
+// A published game's page, what it plays and a report of it are a player's: anyone with the link, no account.
+// A picture is anyone's with its address (agent-pictures.coax): only the account's own login is told it.
+gb_api_signed :: (route: GbApiRoute) -> bool { return route.kind != API_CAPABILITIES && route.kind != API_OPENAPI && route.kind != API_COUNT && route.kind != API_PICTURE && !gb_api_players(route); }
+gb_api_players :: (route: GbApiRoute) -> bool { return route.kind == API_PAGE || route.kind == API_PLAY || route.kind == API_PLAY_REPORT || route.kind == API_PLAY_COUNT; }
+// A person's row (approval "person": publishing) over HTTP is the person's own call, with their own login, from
+// gamebuilder.org's page or `gamebuilder --remote`: "" when the request may be one, else why not. A call made in
+// an agent's name (GameBuilder-Agent, an MCP session) is never one.
+gb_api_person_call :: (r: GbApiRequest, v: int) -> string {
+  if v < 0 || v >= GB_N || GB_COMMANDS[v].approval != "person" { return ""; }
+  if r.as_agent.count > 0 || r.session.count > 0 { return "only the person may do it, never an agent for them: publishing is yours to press, at gamebuilder.org or a terminal"; }
+  return "";
+}
+
+// A caller that says which row it calls (X-GameBuilder-Row: the row's digest, as `gamebuilder
+// --remote` sends it) is answered only when this server's row is the same: "" when it is, or the
+// caller said nothing, else why not, in words. Two builds of different tables never carry out a
+// row that one of them reads another way.
+gb_api_row_same :: (r: GbApiRequest, v: int, out: [] u8) -> string {
+  if r.row.count == 0 || v < 0 || v >= GB_N { return ""; }
+  hb: [8] u8;
+  if r.row == gb_hex8(gb_row_digest(v), hb[..]) { return ""; }
+  t := [1] Text.[Text.{buf = out}]; vb: [96] u8;
+  tx_put(t[..], "this server's "); tx_put(t[..], GB_COMMANDS[v].verb);
+  tx_put(t[..], " is not your gamebuilder's: they were built from different command tables (this server is ");
+  tx_put(t[..], gb_version(vb[..])); tx_put(t[..], "; gamebuilder version --remote compares them). Use a gamebuilder built from the same commit, or deploy the server again");
+  if t[0].at >= out.count { return "this server's row is not your gamebuilder's: they were built from different command tables"; }
+  return cast(string) out[0..<t[0].at];
+}
+
+// 127.0.0.1, localhost or [::1], with a port or none; with scheme, after http://.
+api_local_name :: (s: string, scheme: bool) -> bool {
+  t := s;
+  if scheme {
+    pre := "http://";
+    if t.count <= pre.count || t[0..<pre.count] != pre { return false; }
+    t = t[pre.count..<t.count];
+  }
+  for name: [3] string.["127.0.0.1", "localhost", "[::1]"] {
+    if t.count < name.count || !api_same(t[0..<name.count], name) { continue; }
+    rest := t[name.count..<t.count];
+    if rest.count == 0 { return true; }
+    if rest[0] != ':' || rest.count < 2 || rest.count > 6 { continue; }
+    digits := true; for c: rest[1..<rest.count] { if c < '0' || c > '9' { digits = false; } }
+    if digits { return true; }
+  }
+  return false;
+}
+
+api_route_bad :: (status: int, allow: string, why: string) -> GbApiRoute { return GbApiRoute.{status = status, allow = allow, why = why}; }
+
+// Whether row c is offered over HTTP.
+gb_api_offered :: (c: GbCommand) -> bool { return (c.surfaces & GB_HTTP) != 0; }
+
+// The route of method and target (its query, if any, is not read).
+gb_api_route :: (method: string, target: string) -> GbApiRoute {
+  q := 0; while q < target.count && target[q] != '?' { q += 1; }
+  path := target[0..<q];
+  if path == "/api/capabilities" || path == "/api/openapi.json" {
+    if method != "GET" { return api_route_bad(405, "GET", "this route is GET"); }
+    return GbApiRoute.{kind = ifx path == "/api/capabilities" then API_CAPABILITIES else API_OPENAPI, v = -1};
+  }
+  if path == "/mcp" {
+    // DELETE ends the session its Mcp-Session-Id names (an attached agent's: attached.coax)
+    if method != "POST" && method != "DELETE" { return api_route_bad(405, "POST, DELETE", "MCP over HTTP is POST, one JSON-RPC message a request, and DELETE to end a session; this server sends no event stream"); }
+    return GbApiRoute.{kind = API_MCP, v = -1};
+  }
+  if path == LP_DOOR {
+    if method != "POST" { return api_route_bad(405, "POST", "a count is POST, its body a gamebuilder.count.v1 (shared/loop.coax)"); }
+    return GbApiRoute.{kind = API_COUNT, v = -1};
+  }
+  // a published game's link, and what its page asks: the code is six of the share alphabet, and nothing else is read
+  if path.count > API_PAGE_DOOR.count && path[0..<API_PAGE_DOOR.count] == API_PAGE_DOOR {
+    code := path[API_PAGE_DOOR.count..<path.count];
+    if code.count > 0 && code[code.count - 1] == '/' { code = code[0..<code.count - 1]; }
+    if method != "GET" { return api_route_bad(405, "GET", "a game's page is GET"); }
+    // (a code that is none is still a page: the site's own, which says the game isn't available)
+    return GbApiRoute.{kind = API_PAGE, v = -1, code = ifx pub_code_ok(code) then code else ""};
+  }
+  if path.count > API_PLAY_DOOR.count && path[0..<API_PLAY_DOOR.count] == API_PLAY_DOOR {
+    rest := path[API_PLAY_DOOR.count..<path.count];
+    tail := "/report";
+    report := rest.count == PUB_CODE + tail.count && rest[PUB_CODE..<rest.count] == tail;
+    played := rest.count == PUB_CODE + PY_DOOR.count && rest[PUB_CODE..<rest.count] == PY_DOOR;
+    code := ifx report || played then rest[0..<PUB_CODE] else rest;
+    if !pub_code_ok(code) { return api_route_bad(404, "", "this game isn't available"); }
+    if played { if method != "POST" { return api_route_bad(405, "POST", "a count is POST"); } return GbApiRoute.{kind = API_PLAY_COUNT, v = -1, code = code}; }
+    if report { if method != "POST" { return api_route_bad(405, "POST", "a report is POST"); } return GbApiRoute.{kind = API_PLAY_REPORT, v = -1, code = code}; }
+    if method != "GET" { return api_route_bad(405, "GET", "what a link plays is GET"); }
+    return GbApiRoute.{kind = API_PLAY, v = -1, code = code};
+  }
+  // an agent's picture: AGP_DOOR, 32 hex digits and .jpg, and nothing else is read
+  if path.count > AGP_DOOR.count && path[0..<AGP_DOOR.count] == AGP_DOOR {
+    h := agp_of_path(path);
+    if h.count == 0 { return api_route_bad(404, "", "no such picture"); }
+    if method != "GET" { return api_route_bad(405, "GET", "a picture is GET"); }
+    return GbApiRoute.{kind = API_PICTURE, v = -1, picture = h};
+  }
+  levels := "/api/levels/";
+  if path.count > levels.count && path[0..<levels.count] == levels {
+    digits := path[levels.count..<path.count];
+    n := 0;
+    if digits.count > 4 || digits[0] == '0' { return api_route_bad(404, "", "a level is 1 to 9,999 (LEVEL_MAX)"); }
+    for c: digits { if c < '0' || c > '9' { return api_route_bad(404, "", "a level is 1 to 9,999 (LEVEL_MAX)"); } n = n * 10 + cast(int) (c - '0'); }
+    if n < 1 || n > LEVEL_MAX { return api_route_bad(404, "", "a level is 1 to 9,999 (LEVEL_MAX)"); }
+    if method == "GET" { return GbApiRoute.{kind = API_LEVEL_READ, v = VERB_READ_LEVEL, level = cast(s32) n}; }
+    if method == "POST" { return GbApiRoute.{kind = API_LEVEL_EDIT, v = VERB_APPLY_EDITS, level = cast(s32) n}; }
+    return api_route_bad(405, "GET, POST", "a level is read with GET and changed with POST");
+  }
+  rows := "/api/rows/";
+  if path.count > rows.count && path[0..<rows.count] == rows {
+    v := gb_find(path[rows.count..<path.count]);
+    if v < 0 || !gb_api_offered(GB_COMMANDS[v]) { return api_route_bad(404, "", "no such command over HTTP: GET /api/capabilities lists them"); }
+    if method != "POST" { return api_route_bad(405, "POST", "a row is POST, its arguments the body"); }
+    return GbApiRoute.{kind = API_ROW, v = v};
+  }
+  return api_route_bad(404, "", "no such route: GET /api/openapi.json lists them");
+}
+
+// A route's arguments, read into call[0].a as an MCP call's are: "" when they are good, else why
+// not. A row's are the body (an object, or nothing); a level route's are its level, and the
+// batch for POST. nodes and text are the caller's room.
+gb_api_args :: (route: GbApiRoute, body: string, call: [] GbMcpCall, nodes: [] JvNode, text: [] u8) -> string {
+  call[0].v = route.v; call[0].used = 0;
+  args := body;
+  if route.kind == API_LEVEL_READ || route.kind == API_LEVEL_EDIT {
+    t := [1] Text.[Text.{buf = text}];
+    tx_put(t[..], "{\"level\":"); tx_int(t[..], cast(s64) route.level);
+    if route.kind == API_LEVEL_EDIT { tx_put(t[..], ",\"batch\":"); tx_put(t[..], body); }
+    tx_put(t[..], "}");
+    if t[0].at >= text.count { return "the batch is too long"; }
+    args = cast(string) text[0..<t[0].at];
+  }
+  all_space := true; for c: args { if c != ' ' && c != '\t' && c != '\r' && c != '\n' { all_space = false; } }
+  d: [1] Jv;
+  if all_space {
+    return gb_mcp_read(call, route.v, d[0], -1, GbFill.{});
+  }
+  if !jv_parse(d[..], args, nodes) { return ifx route.kind == API_LEVEL_EDIT then "the body is a world.edit.v1 batch, as JSON" else "the body is the row's arguments, a JSON object"; }
+  if route.kind == API_LEVEL_EDIT && jv_kind(d[0], jv_get(d[0], 0, "batch")) != JV_OBJECT { return "the body is a world.edit.v1 batch, as JSON"; }
+  return gb_mcp_read(call, route.v, d[0], 0, GbFill.{});
+}
+
+// A row's answer's status: 200 when done, else its refusal's code as HTTP says it. The codes
+// are the table's (gb_refuse) and the agent seam's (ed_agent_apply).
+API_CODES :: 19;
+API_CODE :: [API_CODES] string.["bad-request", "unreadable", "not-found", "not-permitted", "locked", "stale", "stale-revision",
+  "edit-refused", "refused", "operation-failed", "playing", "busy", "already", "limit", "unknown", "spend", "not-logged-in", "version-mismatch", "claimed"];
+API_CODE_STATUS :: [API_CODES] int.[400, 400, 404, 403, 403, 409, 409, 422, 422, 503, 503, 503, 409, 422, 422, 402, 401, 409, 409];
+gb_api_status :: (r: GbResult, nodes: [] JvNode) -> int {
+  if r.code == GB_DONE { return 200; }
+  d: [1] Jv;
+  if !jv_parse(d[..], r.json, nodes) { return 500; }
+  eb: [64] u8; n := jv_str(d[0], jv_get(d[0], 0, "error"), eb[..]);
+  if n <= 0 { return 422; }
+  code := cast(string) eb[0..<n];
+  for k: 0..<API_CODES { if API_CODE[k] == code { return API_CODE_STATUS[k]; } }
+  return 422;
+}
+
+api_reason :: (status: int) -> string {
+  if status == 200 { return "OK"; }
+  if status == 202 { return "Accepted"; }
+  if status == 400 { return "Bad Request"; }
+  if status == 401 { return "Unauthorized"; }
+  if status == 402 { return "Payment Required"; }
+  if status == 403 { return "Forbidden"; }
+  if status == 404 { return "Not Found"; }
+  if status == 405 { return "Method Not Allowed"; }
+  if status == 409 { return "Conflict"; }
+  if status == 411 { return "Length Required"; }
+  if status == 413 { return "Content Too Large"; }
+  if status == 414 { return "URI Too Long"; }
+  if status == 422 { return "Unprocessable Content"; }
+  if status == 429 { return "Too Many Requests"; }
+  if status == 431 { return "Request Header Fields Too Large"; }
+  if status == 503 { return "Service Unavailable"; }
+  if status == 505 { return "HTTP Version Not Supported"; }
+  return "Internal Server Error";
+}
+
+// What a published game's link plays (GET /api/play/CODE): gamebuilder.play.v1, the game at place i of the store
+// and its live version's level file, for the site's own world code to load with the build tools off. No account's
+// name or email is in it (docs/publishing.md, question 7: the link shows nothing about the creator).
+gb_api_play :: (s: [] PubStore, i: s64, content: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  g := s[0].games[i];
+  gb_ok(o[..]); jo_key(o[..], "schema"); jo_str(o[..], "gamebuilder.play.v1");
+  code := g.code; jo_key(o[..], "code"); jo_str(o[..], cast(string) code[0..<PUB_CODE]);
+  name := g.name; jo_key(o[..], "name"); jo_str(o[..], cast(string) name[0..<cast(s64) g.name_n]);
+  tp := g.type; jo_key(o[..], "template"); jo_str(o[..], ifx g.type_n > 0 then cast(string) tp[0..<cast(s64) g.type_n] else TEMPLATE_ID[TEMPLATE_ARENA]);
+  jo_key(o[..], "version"); jo_int(o[..], cast(int) g.live);
+  jo_key(o[..], "content"); jo_str(o[..], content);
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// A player's report read: {"reason":R,"text":T}. "" and the two in reason and text, else why not.
+gb_api_report_read :: (body: string, nodes: [] JvNode, reason: [] u8, text: [] u8, n: [] int) -> string {
+  d: [1] Jv;
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { return "a report is a JSON object: {\"reason\":\"offensive\",\"text\":\"...\"}"; }
+  rn := jv_str(d[0], jv_get(d[0], 0, "reason"), reason); tn := jv_str(d[0], jv_get(d[0], 0, "text"), text);
+  if rn < 0 { rn = 0; } if tn < 0 { tn = 0; }
+  if jv_get(d[0], 0, "text") >= 0 && jv_kind(d[0], jv_get(d[0], 0, "text")) != JV_STRING { return "a report's line is text"; }
+  why := pub_report_ok(cast(string) reason[0..<rn], cast(string) text[0..<tn]);
+  n[0] = rn; n[1] = tn;
+  return why;
+}
+// A report as the operator's queue keeps it, a line: AT|CODE|REASON|TEXT (the line has no bar: pub_text_ok).
+gb_api_report_line :: (at: s64, code: string, reason: string, text: string, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_int(t[..], at); tx_put(t[..], "|"); tx_put(t[..], code); tx_put(t[..], "|"); tx_put(t[..], reason); tx_put(t[..], "|"); tx_put(t[..], text); tx_put(t[..], "\n");
+  return ifx t[0].at >= out.count then "" else cast(string) out[0..<t[0].at];
+}
+
+// A published game's page (GET /g/CODE): the site's own page (`index`, as the site serves it at any address), with
+// this game's title, description, picture and address in its head, so a link pasted in a chat shows them. The body
+// is the site's, untouched: the page's module draws the game from GET /api/play/CODE. The name is a person's
+// words: it is written as text (& < > " escaped) and nowhere but those attributes and the title.
+// `type` is the game's type (shared/game-types.coax), -1 for one this site has no picture of. "" when it does not fit.
+api_page_text :: (t: [] Text, w: string) {
+  for c: w {
+    if c == '&' { tx_put(t, "&amp;"); } else if c == '<' { tx_put(t, "&lt;"); } else if c == '>' { tx_put(t, "&gt;"); } else if c == '"' { tx_put(t, "&quot;"); } else if c == '\'' { tx_put(t, "&#39;"); }
+    else { one := [1] u8.[c]; tx_put(t, cast(string) one[..]); }
+  }
+}
+API_PAGE_MARKS :: 6;
+gb_api_page :: (index: string, name: string, type: int, site: string, link: string, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  // each mark: what comes before the words to replace, and what ends them
+  from := [API_PAGE_MARKS] string.["<title>", "property=\"og:title\" content=\"", "name=\"description\" content=\"", "property=\"og:description\" content=\"", "property=\"og:image\" content=\"", "property=\"og:url\" content=\""];
+  till := [API_PAGE_MARKS] string.["</title>", "\"", "\"", "\"", "\"", "\""];
+  at := 0;
+  while at < index.count {
+    hit := -1;
+    for m: 0..<API_PAGE_MARKS { if at + from[m].count <= index.count && index[at..<at + from[m].count] == from[m] { hit = m; break; } }
+    if hit < 0 { one := [1] u8.[index[at]]; tx_put(t[..], cast(string) one[..]); at += 1; continue; }
+    tx_put(t[..], from[hit]); at += from[hit].count;
+    end := at; while end + till[hit].count <= index.count && index[end..<end + till[hit].count] != till[hit] { end += 1; }
+    if hit == 0 || hit == 1 { api_page_text(t[..], name); tx_put(t[..], " · GAMEBUILDER"); }
+    else if hit == 2 || hit == 3 {
+      tx_put(t[..], "a ");
+      if type >= 0 && type < GT_TYPES { tx_put(t[..], GT_NAME[type]); tx_put(t[..], " "); }
+      tx_put(t[..], "game made with gamebuilder. play it in your browser, then remix it into your own.");
+    }
+    else if hit == 4 { if type >= 0 && type < GT_TYPES && GT_ON_WEB[type] { tx_put(t[..], site); tx_put(t[..], "/img/"); tx_put(t[..], GT_PIC[type]); } else { tx_put(t[..], index[at..<end]); } }
+    else { api_page_text(t[..], link); }
+    at = end;
+  }
+  return ifx t[0].at >= out.count then "" else cast(string) out[0..<t[0].at];
+}
+// A response's head for a page of n bytes of HTML: asked of this server each time (a game's name or whether it is
+// on the web may have changed), and never framed by another site.
+gb_api_head_html :: (status: int, n: int, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "HTTP/1.1 "); tx_int(t[..], cast(s64) status); tx_put(t[..], " "); tx_put(t[..], api_reason(status));
+  tx_put(t[..], "\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: "); tx_int(t[..], cast(s64) n);
+  tx_put(t[..], "\r\nCache-Control: no-cache\r\nX-Frame-Options: DENY\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n");
+  return cast(string) out[0..<t[0].at];
+}
+
+// A response's head for a picture: a JPEG of n bytes, the same at its address for good (agent-pictures.coax).
+gb_api_head_jpeg :: (status: int, n: int, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "HTTP/1.1 "); tx_int(t[..], cast(s64) status); tx_put(t[..], " "); tx_put(t[..], api_reason(status));
+  tx_put(t[..], "\r\nContent-Type: image/jpeg\r\nContent-Length: "); tx_int(t[..], cast(s64) n);
+  tx_put(t[..], "\r\nCache-Control: private, max-age=31536000, immutable\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n");
+  return cast(string) out[0..<t[0].at];
+}
+
+// A response's head for a JSON body of n bytes (allow: a 405's methods, else ""). Every answer
+// says which build gave it (gb_version) and its table's digest, which `gamebuilder --remote`
+// compares with its own.
+gb_api_head :: (status: int, n: int, allow: string, out: [] u8) -> string { return gb_api_head_with(status, n, allow, "", out); }
+// The same with one header more (NAME: VALUE), "" for none: MCP's Mcp-Session-Id.
+gb_api_head_with :: (status: int, n: int, allow: string, extra: string, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  vb: [96] u8; hb: [8] u8;
+  tx_put(t[..], "HTTP/1.1 "); tx_int(t[..], cast(s64) status); tx_put(t[..], " "); tx_put(t[..], api_reason(status));
+  tx_put(t[..], "\r\nX-GameBuilder-Version: "); tx_put(t[..], gb_version(vb[..]));
+  tx_put(t[..], "\r\nX-GameBuilder-Table: "); tx_put(t[..], gb_hex8(gb_table_digest(), hb[..]));
+  tx_put(t[..], "\r\nContent-Type: application/json\r\nContent-Length: "); tx_int(t[..], cast(s64) n);
+  if allow.count > 0 { tx_put(t[..], "\r\nAllow: "); tx_put(t[..], allow); }
+  if extra.count > 0 { tx_put(t[..], "\r\n"); tx_put(t[..], extra); }
+  if status == 401 { tx_put(t[..], "\r\nWWW-Authenticate: Bearer realm=\"gamebuilder\""); }
+  tx_put(t[..], "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+  return cast(string) out[0..<t[0].at];
+}
+
+// A refusal of the request itself (not a row's): the table's refusal shape.
+gb_api_refusal :: (status: int, why: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  code := ifx status == 404 then "not-found" else ifx status == 403 then "not-permitted" else ifx status == 401 then "not-logged-in" else ifx status == 409 then "version-mismatch" else ifx status == 413 || status == 431 || status == 414 || status == 429 then "limit" else "bad-request";
+  return gb_refuse(o[..], code, why).json;
+}
+
+// ---- discovery
+
+api_responses :: (o: [] Jo, read: bool) {
+  jo_key(o, "responses"); jo_obj(o);
+  jo_key(o, "200"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Done: the row's answer"); api_json_content(o); jo_end(o);
+  jo_key(o, "400"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Refused: the arguments don't read"); api_json_content(o); jo_end(o);
+  jo_key(o, "404"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Refused: no such level, game or thing"); api_json_content(o); jo_end(o);
+  if !read {
+    jo_key(o, "403"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Refused: the level isn't yours to change (copy-level makes your copy)"); api_json_content(o); jo_end(o);
+    jo_key(o, "409"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Refused: stale, the level changed since you read it"); api_json_content(o); jo_end(o);
+    jo_key(o, "422"); jo_obj(o); jo_key(o, "description"); jo_str(o, "Refused: the edit can't be made, said in words"); api_json_content(o); jo_end(o);
+  }
+  jo_end(o);
+}
+api_json_content :: (o: [] Jo) {
+  jo_key(o, "content"); jo_obj(o); jo_key(o, "application/json"); jo_obj(o); jo_key(o, "schema"); jo_obj(o);
+  jo_key(o, "$ref"); jo_str(o, "#/components/schemas/Answer"); jo_end(o); jo_end(o); jo_end(o);
+}
+api_op :: (o: [] Jo, id: string, summary: string, read: bool) {
+  jo_key(o, "operationId"); jo_str(o, id); jo_key(o, "summary"); jo_str(o, summary);
+  api_responses(o, read);
+}
+
+// OpenAPI 3.1 for every route, the rows' from the table. "" when it does not fit out.
+gb_api_openapi :: (version: string, hosted: bool, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); nb: [64] u8; db: [1024] u8; pb: [96] u8;
+  jo_obj(o[..]);
+  jo_key(o[..], "openapi"); jo_str(o[..], "3.1.0");
+  jo_key(o[..], "info"); jo_obj(o[..]); jo_key(o[..], "title"); jo_str(o[..], "GameBuilder"); jo_key(o[..], "version"); jo_str(o[..], version);
+  jo_key(o[..], "description"); jo_str(o[..], "GameBuilder's command table as routes: each row's answer is the same JSON the gamebuilder command line prints. Units are centimetres; a batch is world.edit.v1 (GET /api/capabilities, and the gamebuilder skill).");
+  jo_end(o[..]);
+  jo_key(o[..], "paths"); jo_obj(o[..]);
+  jo_key(o[..], "/api/capabilities"); jo_obj(o[..]); jo_key(o[..], "get"); jo_obj(o[..]); api_op(o[..], "capabilities", "Every row: its arguments, flags, effect, approval, limits and surfaces (gamebuilder.commands.v1)", true); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/openapi.json"); jo_obj(o[..]); jo_key(o[..], "get"); jo_obj(o[..]); api_op(o[..], "openapi", "This document", true); jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/mcp"); jo_obj(o[..]); jo_key(o[..], "post"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "mcp"); jo_key(o[..], "summary"); jo_str(o[..], "MCP over HTTP (Streamable HTTP, JSON answers only): one JSON-RPC message a request; the tools are the rows MCP offers");
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "The JSON-RPC answer"); jo_end(o[..]);
+  jo_key(o[..], "202"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "A notification, taken"); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], LP_DOOR); jo_obj(o[..]); jo_key(o[..], "post"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "count"); jo_key(o[..], "summary"); jo_str(o[..], "gamebuilder.org's page counts steps of its core loop: a gamebuilder.count.v1 body, each name one of the loop's steps (a body with any other name is refused whole), added to the day's totals. No login, and nothing about the visitor is kept. The funnel row reads the totals");
+  jo_key(o[..], "security"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Counted"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "400"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused whole: not a count, or a name the loop's list does not have"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "429"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused: more counts this minute than the server takes"); api_json_content(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/play/{code}"); jo_obj(o[..]); jo_key(o[..], "get"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "play"); jo_key(o[..], "summary"); jo_str(o[..], "What a published game's link plays (gamebuilder.play.v1): its name, its game type and its live version's level file. No login: anyone with the link. Its page is GET /g/{code}");
+  jo_key(o[..], "security"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "The game"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "404"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "This game isn't available: no such link, or it was unpublished or taken down"); api_json_content(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/pictures/{address}.jpg"); jo_obj(o[..]); jo_key(o[..], "get"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "picture"); jo_key(o[..], "summary"); jo_str(o[..], "An agent's newest picture kept on the account, as a JPEG of at most 8,192 bytes: its address (32 hex digits of the SHA-256 of the picture's own bytes) is given only to the account's own login, in the agents row's answer. No login");
+  jo_key(o[..], "security"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "The JPEG"); jo_end(o[..]);
+  jo_key(o[..], "404"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "No such picture: none has that address, or a newer one took its place"); api_json_content(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/play/{code}/report"); jo_obj(o[..]); jo_key(o[..], "post"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "play-report"); jo_key(o[..], "summary"); jo_str(o[..], "A player's report of a published game, queued for the operator: a reason (offensive, personal, spam, other) and an optional line of at most 160 bytes. No login");
+  jo_key(o[..], "security"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Queued"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "400"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused: not a report"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "429"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused: more reports this hour than the server takes"); api_json_content(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/play/{code}/played"); jo_obj(o[..]); jo_key(o[..], "post"); jo_obj(o[..]);
+  jo_key(o[..], "operationId"); jo_str(o[..], "play-count"); jo_key(o[..], "summary"); jo_str(o[..], "A published game's page counts a fact of the game: opened, minute (played for a minute) or remix. One is added to the game's totals and the site's, and nothing about the visitor is kept. The creator reads their games' totals with the published row. No login");
+  jo_key(o[..], "security"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "responses"); jo_obj(o[..]);
+  jo_key(o[..], "200"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Counted"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "400"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused: not a count, or a fact the list does not have"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "404"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "This game isn't available"); api_json_content(o[..]); jo_end(o[..]);
+  jo_key(o[..], "429"); jo_obj(o[..]); jo_key(o[..], "description"); jo_str(o[..], "Refused: more counts this minute than the server takes"); api_json_content(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "/api/levels/{level}"); jo_obj(o[..]);
+  jo_key(o[..], "parameters"); jo_arr(o[..]); jo_obj(o[..]);
+  jo_key(o[..], "name"); jo_str(o[..], "level"); jo_key(o[..], "in"); jo_str(o[..], "path"); jo_key(o[..], "required"); jo_bool(o[..], true);
+  jo_key(o[..], "schema"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "integer"); jo_key(o[..], "minimum"); jo_int(o[..], 1); jo_key(o[..], "maximum"); jo_int(o[..], LEVEL_MAX); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_key(o[..], "get"); jo_obj(o[..]); api_op(o[..], "read-level", GB_COMMANDS[VERB_READ_LEVEL].help, true); jo_end(o[..]);
+  jo_key(o[..], "post"); jo_obj(o[..]); api_op(o[..], "apply-edits", GB_COMMANDS[VERB_APPLY_EDITS].help, false);
+  jo_key(o[..], "requestBody"); jo_obj(o[..]); jo_key(o[..], "required"); jo_bool(o[..], true); jo_key(o[..], "description"); jo_str(o[..], "A world.edit.v1 batch");
+  jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "application/json"); jo_obj(o[..]); jo_key(o[..], "schema"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "object"); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]);
+  jo_end(o[..]);
+  for c: GB_COMMANDS {
+    if !gb_api_offered(c) { continue; }
+    t := [1] Text.[Text.{buf = pb[..]}]; tx_put(t[..], "/api/rows/"); tx_put(t[..], c.verb);
+    jo_key(o[..], cast(string) pb[0..<t[0].at]); jo_obj(o[..]); jo_key(o[..], "post"); jo_obj(o[..]);
+    jo_key(o[..], "operationId"); jo_str(o[..], c.verb);
+    jo_key(o[..], "summary"); jo_str(o[..], gb_mcp_description(c, db[..]));
+    jo_key(o[..], "requestBody"); jo_obj(o[..]); jo_key(o[..], "required"); jo_bool(o[..], gb_parts(c.arguments) > 0);
+    jo_key(o[..], "content"); jo_obj(o[..]); jo_key(o[..], "application/json"); jo_obj(o[..]); jo_key(o[..], "schema"); gb_mcp_schema(o[..], c); jo_end(o[..]); jo_end(o[..]);
+    jo_end(o[..]);
+    api_responses(o[..], c.effect == "read");
+    jo_end(o[..]); jo_end(o[..]);
+    _ = nb;
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "components"); jo_obj(o[..]); jo_key(o[..], "schemas"); jo_obj(o[..]);
+  jo_key(o[..], "Answer"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "object");
+  jo_key(o[..], "properties"); jo_obj(o[..]);
+  jo_key(o[..], "ok"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "boolean"); jo_end(o[..]);
+  jo_key(o[..], "error"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "string"); jo_key(o[..], "description"); jo_str(o[..], "A refusal's code"); jo_end(o[..]);
+  jo_key(o[..], "why"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "string"); jo_key(o[..], "description"); jo_str(o[..], "A refusal, in words, with the limit's number where a limit refused it"); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_key(o[..], "required"); jo_arr(o[..]); jo_str(o[..], "ok"); jo_end(o[..]);
+  jo_end(o[..]);
+  jo_end(o[..]);
+  // a hosted server's callers are signed in with their GameBuilder login (discovery needs none)
+  if hosted {
+    jo_key(o[..], "securitySchemes"); jo_obj(o[..]); jo_key(o[..], "login"); jo_obj(o[..]);
+    jo_key(o[..], "type"); jo_str(o[..], "http"); jo_key(o[..], "scheme"); jo_str(o[..], "bearer");
+    jo_key(o[..], "description"); jo_str(o[..], "Your GameBuilder login's access token (gamebuilder login); each account has its own levels");
+    jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]);
+  if hosted { jo_key(o[..], "security"); jo_arr(o[..]); jo_obj(o[..]); jo_key(o[..], "login"); jo_arr(o[..]); jo_end(o[..]); jo_end(o[..]); jo_end(o[..]); }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+
+// ---- checks
+
+ApiTest :: struct { call: [1] GbMcpCall; nodes: [WE_BATCH * WE_NODES + 256] JvNode; text: [API_BODY + 64] u8; out: [API_BODY] u8; }
+
+#test "api: a request is read whole, and only when its body has come" {
+  r := gb_api_parse("GET /api/levels/3 HTTP/1.1\r\nHost: x\r\n\r\n");
+  #assert r.state == API_READY && r.method == "GET" && r.target == "/api/levels/3" && r.body.count == 0;
+  #assert gb_api_parse("GET /api/levels/3 HTTP/1.1\r\nHost: x\r\n").state == API_NEED;
+  r = gb_api_parse("POST /api/rows/add HTTP/1.1\r\ncontent-length: 7\r\n\r\n{\"a\":");
+  #assert r.state == API_NEED;
+  raw := "POST /api/rows/add HTTP/1.1\r\nContent-Length:  7 \r\n\r\n{\"a\":1}extra";
+  r = gb_api_parse(raw);
+  #assert r.state == API_READY && r.body == "{\"a\":1}" && r.size == raw.count - 5;
+  #assert gb_api_parse("POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n").status == 411;
+  #assert gb_api_parse("POST / HTTP/1.1\r\nContent-Length: 999999\r\n\r\n").status == 413;
+  #assert gb_api_parse("POST / HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n").status == 400;
+  #assert gb_api_parse("get / HTTP/1.1\r\n\r\n").status == 400;
+  #assert gb_api_parse("GET / HTTP/2\r\n\r\n").status == 505;
+  #assert gb_api_parse("GET nope HTTP/1.1\r\n\r\n").status == 400;
+  #assert gb_api_parse("GET / HTTP/1.1\r\nno colon\r\n\r\n").status == 400;
+}
+
+#test "api: a server here answers only this computer's callers" {
+  ok := gb_api_parse("POST /api/rows/add HTTP/1.1\r\nHost: 127.0.0.1:8811\r\n\r\n");
+  #assert gb_api_local_only(ok) == "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: localhost\r\nOrigin: http://localhost:3000\r\n\r\n")) == "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: [::1]:8811\r\n\r\n")) == "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\n\r\n")) == "";
+  // a page elsewhere, a renamed host, and look-alikes are refused
+  #assert gb_api_local_only(gb_api_parse("POST / HTTP/1.1\r\nHost: 127.0.0.1:8811\r\nOrigin: https://example.com\r\n\r\n")) != "";
+  #assert gb_api_local_only(gb_api_parse("POST / HTTP/1.1\r\nHost: 127.0.0.1:8811\r\nOrigin: null\r\n\r\n")) != "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: rebind.example.com:8811\r\n\r\n")) != "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: localhost.example.com\r\n\r\n")) != "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: 127.0.0.1:88x1\r\n\r\n")) != "";
+  #assert gb_api_local_only(gb_api_parse("GET / HTTP/1.1\r\nHost: localhost\r\nOrigin: http://localhost.evil.com\r\n\r\n")) != "";
+}
+
+#test "api: routes are exact paths and the table's verbs, each with its methods" {
+  #assert gb_api_route("POST", "/mcp").kind == API_MCP && gb_api_route("GET", "/mcp").status == 405;
+  // an attached agent's session ends with DELETE (attached.coax)
+  #assert gb_api_route("DELETE", "/mcp").kind == API_MCP && gb_api_route("GET", "/mcp").allow == "POST, DELETE";
+  r := gb_api_route("GET", "/api/levels/12?x=1");
+  #assert r.status == 0 && r.kind == API_LEVEL_READ && r.level == 12 && r.v == VERB_READ_LEVEL;
+  r = gb_api_route("POST", "/api/levels/12");
+  #assert r.kind == API_LEVEL_EDIT && r.v == VERB_APPLY_EDITS;
+  #assert gb_api_route("DELETE", "/api/levels/12").status == 405;
+  #assert gb_api_route("GET", "/api/levels/0").status == 404 && gb_api_route("GET", "/api/levels/10000").status == 404;
+  #assert gb_api_route("GET", "/api/levels/012").status == 404 && gb_api_route("GET", "/api/levels/1a").status == 404;
+  #assert gb_api_route("POST", "/api/rows/add").kind == API_ROW && gb_api_route("POST", "/api/rows/add").v == VERB_ADD;
+  #assert gb_api_route("GET", "/api/rows/add").status == 405;
+  // the app's own rows, the pane's and the login are not routes
+  #assert gb_api_route("POST", "/api/rows/undo").status == 404 && gb_api_route("POST", "/api/rows/ask").status == 404;
+  #assert gb_api_route("POST", "/api/rows/login").status == 404 && gb_api_route("POST", "/api/rows/decide").status == 404;
+  #assert gb_api_route("POST", "/api/rows/please add a ramp").status == 404;
+  #assert gb_api_route("GET", "/api/capabilities").kind == API_CAPABILITIES && gb_api_route("POST", "/api/capabilities").status == 405;
+  #assert gb_api_route("GET", "/").status == 404;
+  // a count is the page's (shared/loop.coax's door): POST only, and no row
+  #assert gb_api_route("POST", LP_DOOR).kind == API_COUNT && gb_api_route("POST", LP_DOOR).status == 0 && gb_api_route("POST", LP_DOOR).v == -1;
+  #assert gb_api_route("GET", LP_DOOR).status == 405 && gb_api_route("GET", LP_DOOR).allow == "POST" && gb_api_route("POST", "/api/count/arrived").status == 404 && gb_api_route("POST", "/api/rows/count").status == 404;
+  #assert gb_api_route("POST", "/api/rows/funnel").v == VERB_FUNNEL;
+  // a published game's link and what its page asks (issue 17): a code is six of the share alphabet and nothing else
+  #assert gb_api_route("GET", "/g/abc234").kind == API_PAGE && gb_api_route("GET", "/g/abc234").code == "abc234" && gb_api_route("GET", "/g/abc234/").code == "abc234" && gb_api_route("POST", "/g/abc234").status == 405;
+  #assert gb_api_route("GET", "/g/../etc").kind == API_PAGE && gb_api_route("GET", "/g/../etc").code == "" && gb_api_route("GET", "/g/abc0ef").code == "";
+  #assert gb_api_route("GET", "/api/play/abc234").kind == API_PLAY && gb_api_route("GET", "/api/play/abc234").code == "abc234" && gb_api_route("POST", "/api/play/abc234").status == 405;
+  #assert gb_api_route("GET", "/api/play/..%2f..").status == 404 && gb_api_route("GET", "/api/play/abc23").status == 404 && gb_api_route("GET", "/api/play/abc234/x").status == 404;
+  #assert gb_api_route("POST", "/api/play/abc234/report").kind == API_PLAY_REPORT && gb_api_route("GET", "/api/play/abc234/report").status == 405;
+  #assert gb_api_route("POST", "/api/play/abc234/played").kind == API_PLAY_COUNT && gb_api_route("POST", "/api/play/abc234/played").code == "abc234" && gb_api_route("GET", "/api/play/abc234/played").status == 405;
+  #assert gb_api_route("POST", "/api/play/abc0ef/played").status == 404 && gb_api_route("POST", "/api/play/abc234/played/x").status == 404 && !gb_api_signed(gb_api_route("POST", "/api/play/abc234/played"));
+  // the publishing rows are the person's own over HTTP: never a call made in an agent's name
+  #assert gb_api_route("POST", "/api/rows/publish").v == VERB_PUB_PUBLISH && gb_api_route("POST", "/api/rows/unpublish").v == VERB_PUB_UNPUBLISH && gb_api_route("POST", "/api/rows/set-live").kind == API_ROW;
+  #assert gb_api_person_call(gb_api_parse("POST /api/rows/publish HTTP/1.1\r\nCookie: a=b\r\n\r\n"), VERB_PUB_PUBLISH) == "";
+  #assert gb_api_person_call(gb_api_parse("POST /api/rows/publish HTTP/1.1\r\nGameBuilder-Agent: codex\r\n\r\n"), VERB_PUB_PUBLISH) != "" && gb_api_person_call(gb_api_parse("POST /api/rows/add HTTP/1.1\r\nGameBuilder-Agent: codex\r\n\r\n"), VERB_ADD) == "";
+  #assert gb_find("publish") >= 0 && (GB_COMMANDS[VERB_PUB_PUBLISH].surfaces & GB_MCP) == 0 && (GB_COMMANDS[VERB_PUB_PUBLISH].surfaces & GB_PANE) == 0;
+  // every row offered over HTTP is one a file reaches: no person's, no view's, no spend
+  for c: GB_COMMANDS {
+    if !gb_api_offered(c) { continue; }
+    #assert c.area != "account" && c.effect != "spend" && c.effect != "view" && (c.surfaces & GB_CLI) != 0;
+  }
+}
+
+#test "api: a route's arguments read as an MCP call's, the level from the path" {
+  t: [1] ApiTest;
+  why := gb_api_args(gb_api_route("GET", "/api/levels/4"), "", t[0].call[..], t[0].nodes[..], t[0].text[..]);
+  #assert why == "" && t[0].call[0].a[0].level == 4;
+  why = gb_api_args(gb_api_route("POST", "/api/levels/4"), "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[]}", t[0].call[..], t[0].nodes[..], t[0].text[..]);
+  #assert why == "" && t[0].call[0].a[0].level == 4 && level_find(t[0].call[0].a[0].batch, "world.edit.v1") >= 0;
+  #assert gb_api_args(gb_api_route("POST", "/api/levels/4"), "[1]", t[0].call[..], t[0].nodes[..], t[0].text[..]) != "";
+  #assert gb_api_args(gb_api_route("POST", "/api/levels/4"), "not json", t[0].call[..], t[0].nodes[..], t[0].text[..]) != "";
+  why = gb_api_args(gb_api_route("POST", "/api/rows/add"), "{\"level\":2,\"kind\":\"block\",\"x\":300,\"z\":-200,\"dry_run\":true}", t[0].call[..], t[0].nodes[..], t[0].text[..]);
+  #assert why == "";
+  #assert t[0].call[0].a[0].level == 2;
+  #assert t[0].call[0].a[0].dry;
+  #assert gb_api_args(gb_api_route("POST", "/api/rows/add"), "{\"level\":2}", t[0].call[..], t[0].nodes[..], t[0].text[..]) == "kind is required";
+  #assert gb_api_args(gb_api_route("POST", "/api/rows/list-games"), "", t[0].call[..], t[0].nodes[..], t[0].text[..]) == "";
+}
+
+#test "api: a refusal's code is its status, and the head says the length" {
+  t: [1] ApiTest;
+  #assert gb_api_status(GbResult.{code = GB_DONE, json = "{\"ok\":true}"}, t[0].nodes[..]) == 200;
+  #assert gb_api_status(GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"stale\",\"rev\":3}"}, t[0].nodes[..]) == 409;
+  #assert gb_api_status(GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"not-permitted\",\"why\":\"x\"}"}, t[0].nodes[..]) == 403;
+  #assert gb_api_status(GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"refused\",\"why\":\"x\"}"}, t[0].nodes[..]) == 422;
+  #assert gb_api_status(GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"not-found\",\"why\":\"x\"}"}, t[0].nodes[..]) == 404;
+  hb: [512] u8;
+  h := gb_api_head(405, 11, "GET", hb[..]);
+  vb: [96] u8; hb2: [8] u8; want: [512] u8; wt := [1] Text.[Text.{buf = want[..]}];
+  tx_put(wt[..], "HTTP/1.1 405 Method Not Allowed\r\nX-GameBuilder-Version: "); tx_put(wt[..], gb_version(vb[..]));
+  tx_put(wt[..], "\r\nX-GameBuilder-Table: "); tx_put(wt[..], gb_hex8(gb_table_digest(), hb2[..]));
+  tx_put(wt[..], "\r\nContent-Type: application/json\r\nContent-Length: 11\r\nAllow: GET\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n");
+  #assert h == cast(string) want[0..<wt[0].at];
+}
+
+#test "api: the OpenAPI document has every route and reads as JSON" {
+  t: [1] ApiTest;
+  doc := gb_api_openapi("0.1.0", false, t[0].out[..]);
+  #assert doc.count > 0;
+  d: [1] Jv; nodes: [16384] JvNode;
+  #assert jv_parse(d[..], doc, nodes[..]) && jv_kind(d[0], jv_path(d[0], 0, "paths")) == JV_OBJECT;
+  paths := jv_path(d[0], 0, "paths");
+  #assert jv_get(d[0], paths, "/api/levels/{level}") >= 0 && jv_get(d[0], paths, "/api/capabilities") >= 0 && jv_get(d[0], paths, LP_DOOR) >= 0;
+  pb: [96] u8;
+  for c: GB_COMMANDS {
+    t2 := [1] Text.[Text.{buf = pb[..]}]; tx_put(t2[..], "/api/rows/"); tx_put(t2[..], c.verb);
+    #assert (jv_get(d[0], paths, cast(string) pb[0..<t2[0].at]) >= 0) == gb_api_offered(c);
+  }
+}
+
+#test "api: a hosted server reads the caller's login, answers only its own site's pages, and says 401 with the scheme" {
+  r := gb_api_parse("GET /api/levels/1 HTTP/1.1\r\nHost: gamebuilder.org\r\nAuthorization: Bearer oa_at_abc.123\r\n\r\n");
+  #assert r.state == API_READY && r.bearer == "oa_at_abc.123";
+  #assert gb_api_parse("GET / HTTP/1.1\r\nauthorization: bearer xyz\r\n\r\n").bearer == "xyz";
+  #assert gb_api_parse("GET / HTTP/1.1\r\nAuthorization: Basic eHl6\r\n\r\n").status == 401;
+  #assert gb_api_parse("GET / HTTP/1.1\r\nAuthorization: Bearer\r\n\r\n").status == 401;
+  #assert gb_api_parse("GET / HTTP/1.1\r\n\r\n").bearer == "";
+  // any Host; a browser's Origin only the site's own
+  #assert gb_api_site_only(gb_api_parse("GET / HTTP/1.1\r\nHost: api.example\r\n\r\n"), "https://gamebuilder.org") == "";
+  #assert gb_api_site_only(gb_api_parse("GET / HTTP/1.1\r\nOrigin: https://gamebuilder.org\r\n\r\n"), "https://gamebuilder.org") == "";
+  #assert gb_api_site_only(gb_api_parse("GET / HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n"), "https://gamebuilder.org") != "";
+  #assert gb_api_site_only(gb_api_parse("GET / HTTP/1.1\r\nOrigin: https://gamebuilder.org.evil.example\r\n\r\n"), "https://gamebuilder.org") != "";
+  // a browser's login (the site's cookie, no Authorization): only a POST from the site's own page, said by its Origin
+  site := "https://gamebuilder.org";
+  ck := gb_api_parse("POST /api/rows/list-levels HTTP/1.1\r\nHost: gamebuilder.org\r\nOrigin: https://gamebuilder.org\r\nCookie: __Host-oa_session=oas_abc; other=1\r\n\r\n");
+  #assert ck.state == API_READY && ck.bearer == "" && ck.cookie == "__Host-oa_session=oas_abc; other=1" && gb_api_cookie_call(ck, site) == "";
+  #assert gb_api_cookie_call(gb_api_parse("POST /api/rows/list-levels HTTP/1.1\r\nCookie: a=b\r\n\r\n"), site) != "";                                          // no Origin: not known to be the site's page
+  #assert gb_api_cookie_call(gb_api_parse("POST /api/rows/list-levels HTTP/1.1\r\nOrigin: https://evil.example\r\nCookie: a=b\r\n\r\n"), site) != "";       // another site's page
+  #assert gb_api_cookie_call(gb_api_parse("GET /api/levels/1 HTTP/1.1\r\nOrigin: https://gamebuilder.org\r\nCookie: a=b\r\n\r\n"), site) != "";                // not a POST
+  #assert gb_api_cookie_call(gb_api_parse("POST /api/rows/list-levels HTTP/1.1\r\nOrigin: https://gamebuilder.org\r\n\r\n"), site) != "";                       // no login at all
+  // an account names a folder: no dots, no slashes
+  #assert gb_api_account_ok("acct_01HZX-9") && !gb_api_account_ok("") && !gb_api_account_ok("../x") && !gb_api_account_ok("a/b") && !gb_api_account_ok("a.b");
+  // discovery is open; every other route is signed
+  #assert !gb_api_signed(gb_api_route("GET", "/api/openapi.json")) && !gb_api_signed(gb_api_route("GET", "/api/capabilities"));
+  // a count is a visitor's page's, with no login; reading the counts back (the funnel row) is signed
+  #assert !gb_api_signed(gb_api_route("POST", LP_DOOR)) && gb_api_signed(gb_api_route("POST", "/api/rows/funnel"));
+  // a published game is anyone's to open, play and report; publishing it is signed
+  #assert !gb_api_signed(gb_api_route("GET", "/g/abc234")) && !gb_api_signed(gb_api_route("GET", "/api/play/abc234")) && !gb_api_signed(gb_api_route("POST", "/api/play/abc234/report")) && gb_api_signed(gb_api_route("POST", "/api/rows/publish"));
+  #assert gb_api_signed(gb_api_route("POST", "/mcp")) && gb_api_signed(gb_api_route("GET", "/api/levels/3")) && gb_api_signed(gb_api_route("POST", "/api/rows/write-content"));
+  t: [1] ApiTest;
+  #assert gb_api_status(GbResult.{code = GB_REFUSED, json = "{\"ok\":false,\"error\":\"not-logged-in\",\"why\":\"x\"}"}, t[0].nodes[..]) == 401;
+  #assert level_find(gb_api_refusal(401, "log in", t[0].text[..]), "\"error\":\"not-logged-in\"") >= 0;
+  hb: [512] u8;
+  #assert level_find(gb_api_head(401, 2, "", hb[..]), "\r\nWWW-Authenticate: Bearer realm=\"gamebuilder\"\r\n") >= 0;
+  doc := gb_api_openapi("0.1.0", true, t[0].out[..]);
+  d: [1] Jv; nodes: [16384] JvNode;
+  #assert jv_parse(d[..], doc, nodes[..]) && jv_kind(d[0], jv_path(d[0], jv_path(d[0], 0, "components"), "securitySchemes")) == JV_OBJECT;
+  #assert jv_kind(d[0], jv_path(d[0], 0, "security")) == JV_ARRAY;
+  #assert jv_path(d[0], 0, "security") >= 0 && level_find(gb_api_openapi("0.1.0", false, t[0].out[..]), "securitySchemes") < 0;
+}
+
+#test "api: write-content's body reads, a level's file and the revision it was read at" {
+  t: [1] ApiTest;
+  why := gb_api_args(gb_api_route("POST", "/api/rows/write-content"), "{\"level\":3,\"revision\":2147483000,\"content\":\"world.doc.v1 level-3\\ncontent 16\\n\"}", t[0].call[..], t[0].nodes[..], t[0].text[..]);
+  #assert why == "" && t[0].call[0].a[0].level == 3 && t[0].call[0].a[0].revision == 2147483000;
+  #assert level_find(t[0].call[0].a[0].content, "world.doc.v1 level-3\ncontent") == 0;
+  #assert gb_api_args(gb_api_route("POST", "/api/rows/write-content"), "{\"level\":3,\"revision\":-1,\"content\":\"x\"}", t[0].call[..], t[0].nodes[..], t[0].text[..]) != "";
+  #assert gb_api_args(gb_api_route("POST", "/api/rows/write-content"), "{\"level\":3,\"content\":\"x\"}", t[0].call[..], t[0].nodes[..], t[0].text[..]) == "revision is required";
+}
+
+#test "api: every answer names its build, and a call made for another build's row is refused in words" {
+  hb: [512] u8; vb: [96] u8; db: [8] u8; wb: [1024] u8;
+  head := gb_api_head(200, 2, "", hb[..]);
+  #assert level_find(head, gb_version(vb[..])) > 0 && level_find(head, "\r\nX-GameBuilder-Table: ") > 0;
+  r := gb_api_parse("POST /api/rows/add HTTP/1.1\r\nX-GameBuilder-Row: 0badf00d\r\n\r\n");
+  #assert r.state == API_READY && r.row == "0badf00d";
+  #assert level_find(gb_api_row_same(r, VERB_ADD, wb[..]), "different command tables") > 0;
+  same: [128] u8; t := [1] Text.[Text.{buf = same[..]}];
+  tx_put(t[..], "POST /api/rows/add HTTP/1.1\r\nx-gamebuilder-row: "); tx_put(t[..], gb_hex8(gb_row_digest(VERB_ADD), db[..])); tx_put(t[..], "\r\n\r\n");
+  #assert gb_api_row_same(gb_api_parse(cast(string) same[0..<t[0].at]), VERB_ADD, wb[..]) == "";
+  // a caller that says nothing (a browser, curl) is answered as before
+  #assert gb_api_row_same(gb_api_parse("POST /api/rows/add HTTP/1.1\r\n\r\n"), VERB_ADD, wb[..]) == "";
+}
+
+#test "api: an MCP session's id and an --as-agent name come in their headers, and a session's id goes back in one" {
+  r := gb_api_parse("POST /mcp HTTP/1.1\r\nMcp-Session-Id: a19a91a37500-2\r\nContent-Length: 2\r\n\r\n{}");
+  #assert r.state == API_READY && r.session == "a19a91a37500-2" && r.as_agent == "";
+  r = gb_api_parse("POST /api/rows/add HTTP/1.1\r\ngamebuilder-agent: codex\r\nContent-Length: 2\r\n\r\n{}");
+  #assert r.state == API_READY && r.as_agent == "codex" && r.session == "";
+  hb: [1024] u8;
+  head := gb_api_head_with(200, 2, "", "Mcp-Session-Id: a19a91a37500-2", hb[..]);
+  #assert level_find(head, "\r\nMcp-Session-Id: a19a91a37500-2\r\n") > 0 && level_find(head, "\r\n\r\n") == head.count - 4;
+}
+
+ApiPlayTest :: struct { s: [1] PubStore; lv: [64] u8; out: [8192] u8; nodes: [256] JvNode; reason: [32] u8; text: [PUB_TEXT + 8] u8; }
+#test "api: what a link plays is the live version's file and its type, with nothing of the creator; its page carries the game's name, picture and address as text; a report reads" #steps 200000000 {
+  t: [1] ApiPlayTest; s := t[0].s[..];
+  for i: 0..<64 { t[0].lv[i] = cast(u8) ('a' + i % 26); }
+  #assert pub_publish(s, "me@example.com", 3, "Moss <Run> & \"co\"", "racing", t[0].lv[..], 1000, false).error == "";
+  code := s[0].games[0].code; cs := cast(string) code[0..<PUB_CODE];
+  j := gb_api_play(s, 0, "world.doc.v1 level-3\n", t[0].out[..]);
+  #assert level_find(j, "{\"ok\":true,\"schema\":\"gamebuilder.play.v1\",\"code\":\"") == 0 && level_find(j, "\"template\":\"racing\",\"version\":1,\"content\":\"world.doc.v1 level-3\\n\"}") > 0;
+  #assert level_find(j, "example.com") < 0 && level_find(j, cs) > 0;
+  index := "<title>GAMEBUILDER</title>\n<meta property=\"og:title\" content=\"GAMEBUILDER\">\n<meta name=\"description\" content=\"make a game.\">\n<meta property=\"og:description\" content=\"make a game.\">\n<meta property=\"og:image\" content=\"https://gamebuilder.org/img/hero.jpg\">\n<meta property=\"og:url\" content=\"https://gamebuilder.org/\">\n<body><title>not this</title>";
+  page := gb_api_page(index, "Moss <Run> & \"co\"", gt_of("racing"), "https://gamebuilder.org", "https://gamebuilder.org/g/abc234", t[0].out[..]);
+  #assert level_find(page, "<title>Moss &lt;Run&gt; &amp; &quot;co&quot; · GAMEBUILDER</title>") == 0 && level_find(page, "<Run>") < 0;
+  #assert level_find(page, "property=\"og:title\" content=\"Moss &lt;Run&gt; &amp; &quot;co&quot; · GAMEBUILDER\">") > 0;
+  #assert level_find(page, "name=\"description\" content=\"a racing game made with gamebuilder. play it in your browser, then remix it into your own.\">") > 0;
+  #assert level_find(page, "property=\"og:image\" content=\"https://gamebuilder.org/img/kind-racing.jpg\">") > 0 && level_find(page, "property=\"og:url\" content=\"https://gamebuilder.org/g/abc234\">") > 0;
+  // a type the site has no picture of keeps the site's own
+  #assert level_find(gb_api_page(index, "A", gt_of("arena"), "https://gamebuilder.org", "x", t[0].out[..]), "/img/hero.jpg") > 0;
+  n: [2] int;
+  #assert gb_api_report_read("{\"reason\":\"offensive\",\"text\":\"the name\"}", t[0].nodes[..], t[0].reason[..], t[0].text[..], n[..]) == "" && n[0] == 9 && n[1] == 8;
+  #assert gb_api_report_read("{\"reason\":\"spam\"}", t[0].nodes[..], t[0].reason[..], t[0].text[..], n[..]) == "" && n[1] == 0;
+  #assert gb_api_report_read("{\"reason\":\"because\"}", t[0].nodes[..], t[0].reason[..], t[0].text[..], n[..]) != "" && gb_api_report_read("[]", t[0].nodes[..], t[0].reason[..], t[0].text[..], n[..]) != "";
+  lb: [256] u8;
+  #assert gb_api_report_line(1700000000000, "abc234", "spam", "x y", lb[..]) == "1700000000000|abc234|spam|x y\n";
+  hb: [512] u8;
+  #assert level_find(gb_api_head_html(200, 12, hb[..]), "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 12\r\n") == 0;
+}

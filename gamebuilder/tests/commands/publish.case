@@ -1,0 +1,31 @@
+# Publishing is the person's own and needs their account: with nobody logged in every row says so, and nothing is kept. A number out of its bounds is refused first, in its words, and so is a remix's --from that is no link's code. (What a logged-in publish does is held by coax/publish.coax's and coax/panel.coax's #tests, and on the hosted server, link and all, by tools/web-publish-check.coax.)
+> new-level
+< {"ok":true,"level":1}
+> publish {"level":1,"name":"Moss Run"}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> publish {"level":1,"name":"Moss Run","from":"abc234"}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> publish {"level":1,"name":"Moss Run","from":"abc0ef"}
+< {"ok":false,"error":"bad-request","why":"--from is the code of the published game this one was remixed from: the six characters after /g/ in its link"}
+> publish {"level":1,"name":"Moss Run","from":"../../x","dry_run":true}
+< {"ok":false,"error":"bad-request","why":"--from is the code of the published game this one was remixed from: the six characters after /g/ in its link"}
+> published
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> versions {"published":1}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> versions {"published":0}
+< {"ok":false,"error":"bad-request","why":"a published game is its number (published)"}
+> set-live {"published":1,"version":2}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> unpublish {"published":1}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> remove-published {"published":1,"dry_run":true}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> feedback {"published":1}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> feedback-hide {"feedback":3}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> block {"feedback":3}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}
+> report {"feedback":3}
+< {"ok":false,"error":"not-logged-in","why":"publishing needs your account: log in first (login)"}

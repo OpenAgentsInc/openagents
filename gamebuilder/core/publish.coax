@@ -1,0 +1,560 @@
+// Publishing a level to the web (docs/publishing.md): the publishing service's own rules, in Coax,
+// as the rows run them. A published game is one level of yours with a share code; each publish is a
+// new version, immutable once made, named by its level file's SHA-256; "live" is a pointer on the
+// game, so a version is made live again (set-live) and the link stays the same. Players leave a
+// thumb and a line of text; the creator hides, blocks or reports what arrives.
+//
+// What is here is the service's state and every rule it checks, the same whether a device keeps it
+// (the folder's `published` file, which the CLI, the app and the golden cases read and write) or
+// the hosted server does (gamebuilder serve --accounts: the same file in each account's folder, the
+// same rows; issue 17). On the server a publish is on the web: its link is GAMES_DOMAIN/g/CODE
+// (gamebuilder.org until the owner names another domain), which anyone opens and plays with no
+// account (pub_play: what the link's page is given), and a player may report it (pub_report_ok).
+// On a device with no server a publish is kept on the device and says so. Only the person
+// publishes: every action here is a person's row (coax/commands.coax), never an agent's for them,
+// and every one checks the account itself.
+//   coax/bin/coax test coax/publish.coax --library
+
+#load "../../coax/lib/crypto/sha256.coax";
+
+PUB_GAMES :: 16;            // published games an account (or a device) keeps
+PUB_VERSIONS :: 128;        // versions kept between them: past it the oldest that no link plays goes
+PUB_FEEDBACK :: 128;        // feedback items between them
+PUB_BLOCKS :: 64;           // player tokens blocked
+PUB_NAME :: 48;             // a published game's name, bytes (MINE_TITLE)
+PUB_ACCOUNT :: 254;         // an account's email, bytes (ACCOUNT_MAX)
+PUB_TEXT :: 160;            // a feedback line, bytes
+PUB_CODE :: 6;              // a share code's characters
+PUB_TEMPLATE :: 24;         // a game type's id, bytes (shared/game-types.coax GT_ID)
+PUB_REASONS :: 4;           // why a player reports a game: a closed list (pub_report_ok)
+PUB_REASON :: [PUB_REASONS] string.["offensive", "personal", "spam", "other"];
+PUB_LEVEL_MAX :: 262144;    // a level file a version holds, bytes (256 KB)
+PUB_PER_HOUR :: 30;         // publishes an account makes in an hour
+PUB_HOUR :: 3600000;        // ms
+// A share code's alphabet: no look-alikes (no 0 O 1 l I).
+PUB_ALPHABET :: "23456789abcdefghjkmnpqrstuvwxyz";
+// A game's state, and a feedback item's.
+PUB_LIVE :: 1; PUB_UNPUBLISHED :: 2;
+PUB_NEW :: 0; PUB_HIDDEN :: 1; PUB_HELD :: 2;
+
+PubGame :: struct {
+  id: s32; level: s32; live: s32; state: s32; versions: s32;
+  code: [PUB_CODE] u8;
+  name: [PUB_NAME] u8; name_n: s32;
+  owner: [PUB_ACCOUNT] u8; owner_n: s32;
+  type: [PUB_TEMPLATE] u8; type_n: s32;   // its game type's id ("": a file of before issue 17, an arena)
+  from: [PUB_CODE] u8; from_n: s32;       // a remix: the code of the game it was made from (0: it is no remix, or none was said)
+}
+PubVersion :: struct { game: s32; n: s32; at: s64; size: s32; hash: [32] u8; }
+PubFeedback :: struct {
+  id: s32; game: s32; version: s32; up: bool; state: s32; reported: bool;
+  token: s64; at: s64;
+  text: [PUB_TEXT] u8; text_n: s32;
+}
+PubStore :: struct {
+  games: [PUB_GAMES] PubGame; game_n: s32; next_game: s32;
+  versions: [PUB_VERSIONS] PubVersion; version_n: s32;
+  feedback: [PUB_FEEDBACK] PubFeedback; feedback_n: s32; next_feedback: s32;
+  blocks: [PUB_BLOCKS] s64; block_n: s32;
+  changed: bool;             // for the host to write the file (ed_pub_due)
+}
+// What a call answers: "" and the game, the version or the item it made or changed; or why not.
+PubDone :: struct { why: string; error: string; game: s32; version: s32; }
+pub_no :: (error: string, why: string) -> PubDone { return PubDone.{error = error, why = why}; }
+
+pub_same :: (a: [] u8, an: s32, b: string) -> bool {
+  if cast(s64) an != b.count { return false; }
+  for i: 0..<b.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+pub_find :: (s: [] PubStore, game: s32) -> s64 {
+  for i: 0..<cast(s64) s[0].game_n { if s[0].games[i].id == game { return i; } }
+  return -1;
+}
+// The game, only when it is the account's: the service never takes the app's word for whose it is.
+pub_mine :: (s: [] PubStore, owner: string, game: s32) -> s64 {
+  i := pub_find(s, game);
+  if i < 0 || !pub_same(s[0].games[i].owner[..], s[0].games[i].owner_n, owner) { return -1; }
+  return i;
+}
+pub_of_level :: (s: [] PubStore, owner: string, level: s32) -> s64 {
+  for i: 0..<cast(s64) s[0].game_n { if s[0].games[i].level == level && pub_same(s[0].games[i].owner[..], s[0].games[i].owner_n, owner) { return i; } }
+  return -1;
+}
+pub_version_at :: (s: [] PubStore, game: s32, n: s32) -> s64 {
+  for i: 0..<cast(s64) s[0].version_n { if s[0].versions[i].game == game && s[0].versions[i].n == n { return i; } }
+  return -1;
+}
+pub_name_ok :: (w: string) -> bool {
+  if w.count < 1 || w.count > PUB_NAME || w[0] == ' ' || w[w.count - 1] == ' ' { return false; }
+  for c: w { if c < 32 || c == '|' || c == 127 { return false; } }
+  return true;
+}
+// A name the link's page shows to anyone: no link in it, and none of the lobby's masked words.
+pub_name_shown :: (w: string) -> bool {
+  if pub_has_link(w) { return false; }
+  b: [PUB_NAME] u8; n := 0; for c: w { if n < PUB_NAME { b[n] = c; n += 1; } }
+  return !lb_mask(b[0..<n]);
+}
+pub_template_ok :: (w: string) -> bool {
+  if w.count > PUB_TEMPLATE { return false; }
+  for c: w { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+// A game's share code: six of the alphabet, from the SHA-256 of who, which level and which game,
+// so it is not the name and not guessed in bulk; another is tried while one is taken.
+pub_code :: (s: [] PubStore, owner: string, level: s32, id: s32, out: [] u8) { pub_code_from(s, owner, level, id, 0, out); }
+// The same from attempt `from` on: the hosted server asks for another when a code is another account's (pub_recode).
+pub_code_from :: (s: [] PubStore, owner: string, level: s32, id: s32, from: s64, out: [] u8) {
+  for attempt: from..<from + 64 {
+    seed: [PUB_ACCOUNT + 32] u8; n := 0;
+    for c: owner { seed[n] = c; n += 1; }
+    for v: [3] s64.[cast(s64) level, cast(s64) id, attempt] { for k: 0..<8 { seed[n] = cast(u8) ((v >> (k * 8)) & 255); n += 1; } }
+    h: [32] u8; _ = sha256_hash_checked(seed[0..<n], h[..], false);
+    al := PUB_ALPHABET;
+    for k: 0..<PUB_CODE { out[k] = al[cast(s64) h[k] % al.count]; }
+    taken := false;
+    for i: 0..<cast(s64) s[0].game_n { same := true; for k: 0..<PUB_CODE { if s[0].games[i].code[k] != out[k] { same = false; } } if same { taken = true; } }
+    if !taken { return; }
+  }
+}
+
+// Publishes level as a new version of its game (made on its first publish), named name, and makes
+// it live. bytes: the level's file as it is now.
+pub_publish :: (s: [] PubStore, owner: string, level: s32, name: string, template: string, bytes: [] u8, now: s64, dry: bool) -> PubDone {
+  return pub_publish_from(s, owner, level, name, template, "", bytes, now, dry);
+}
+// The same, of a remix: `from` is the code of the published game this level was made from ("": none).
+// It is kept with the game when the game is made, and never changed after: what a game came from is
+// said once, at its first publish, and a later publish that says another is not believed.
+pub_publish_from :: (s: [] PubStore, owner: string, level: s32, name: string, template: string, from: string, bytes: [] u8, now: s64, dry: bool) -> PubDone {
+  if from.count > 0 && !pub_code_ok(from) { return pub_no("bad-request", PUB_FROM_WORDS); }
+  if owner.count == 0 { return pub_no("not-logged-in", "publishing needs your account: log in first (login)"); }
+  if bytes.count == 0 { return pub_no("not-found", "the level has no file to publish yet"); }
+  if bytes.count > PUB_LEVEL_MAX { return pub_no("limit", "a published level is at most 256 KB (PUB_LEVEL_MAX)"); }
+  if !pub_name_ok(name) { return pub_no("bad-request", "a name is 1 to 48 bytes on one line, with no bar and no space at either end (PUB_NAME)"); }
+  if !pub_name_shown(name) { return pub_no("edit-refused", "anyone with the link sees a published game's name: it can't hold a link or a word the lobby masks. give it another name"); }
+  if !pub_template_ok(template) { return pub_no("bad-request", "a game type's id is at most 24 lowercase letters, digits and dashes (PUB_TEMPLATE)"); }
+  // 30 publishes an hour, an account
+  recent := 0;
+  for v: 0..<cast(s64) s[0].version_n {
+    g := pub_mine(s, owner, s[0].versions[v].game);
+    if g >= 0 && s[0].versions[v].at > now - PUB_HOUR { recent += 1; }
+  }
+  if recent >= PUB_PER_HOUR { return pub_no("limit", "30 publishes an hour (PUB_PER_HOUR): try again later"); }
+  i := pub_of_level(s, owner, level);
+  if i < 0 && s[0].game_n >= PUB_GAMES { return pub_no("limit", "16 published games at most (PUB_GAMES): remove one first (remove-published)"); }
+  // 128 versions are kept: past it the oldest that no link plays goes (its game's later versions stay)
+  drop: s64 = -1;
+  if s[0].version_n >= PUB_VERSIONS {
+    for v: 0..<cast(s64) s[0].version_n {
+      g := pub_find(s, s[0].versions[v].game);
+      if g >= 0 && s[0].games[g].live == s[0].versions[v].n { continue; }
+      if drop < 0 || s[0].versions[v].at < s[0].versions[drop].at { drop = v; }
+    }
+    if drop < 0 { return pub_no("limit", "128 versions are kept (PUB_VERSIONS), and every one is a link's live version: remove a published game first (remove-published)"); }
+  }
+  id := ifx i >= 0 then s[0].games[i].id else s[0].next_game + 1;
+  n := ifx i >= 0 then s[0].games[i].versions + 1 else 1;
+  if dry { return PubDone.{game = id, version = n}; }
+  if drop >= 0 { for v: drop..<cast(s64) s[0].version_n - 1 { s[0].versions[v] = s[0].versions[v + 1]; } s[0].version_n -= 1; }
+  if i < 0 {
+    i = cast(s64) s[0].game_n; s[0].game_n += 1; s[0].next_game = id;
+    s[0].games[i] = PubGame.{id = id, level = level};
+    for k: 0..<owner.count { s[0].games[i].owner[k] = owner[k]; }
+    s[0].games[i].owner_n = cast(s32) owner.count;
+    pub_code(s, owner, level, id, s[0].games[i].code[..]);
+    // (a game is not its own remix)
+    code := s[0].games[i].code;
+    if from.count == PUB_CODE && cast(string) code[0..<PUB_CODE] != from { for k: 0..<PUB_CODE { s[0].games[i].from[k] = from[k]; } s[0].games[i].from_n = PUB_CODE; }
+  }
+  for k: 0..<name.count { s[0].games[i].name[k] = name[k]; }
+  s[0].games[i].name_n = cast(s32) name.count;
+  for k: 0..<template.count { s[0].games[i].type[k] = template[k]; }
+  s[0].games[i].type_n = cast(s32) template.count;
+  s[0].games[i].versions = n; s[0].games[i].live = n; s[0].games[i].state = PUB_LIVE;
+  v := cast(s64) s[0].version_n; s[0].version_n += 1;
+  s[0].versions[v] = PubVersion.{game = id, n = n, at = now, size = cast(s32) bytes.count};
+  _ = sha256_hash_checked(bytes, s[0].versions[v].hash[..], false);
+  s[0].changed = true;
+  return PubDone.{game = id, version = n};
+}
+// Makes version n the one the link plays (a roll back, or forward again).
+pub_set_live :: (s: [] PubStore, owner: string, game: s32, n: s32, dry: bool) -> PubDone {
+  i := pub_mine(s, owner, game);
+  if i < 0 { return pub_no("not-found", "you have no such published game (published)"); }
+  if pub_version_at(s, game, n) < 0 { return pub_no("not-found", "that game has no such version (versions)"); }
+  if !dry { s[0].games[i].live = n; s[0].games[i].state = PUB_LIVE; s[0].changed = true; }
+  return PubDone.{game = game, version = n};
+}
+// Takes the link down at once; its versions and feedback are kept, and publish puts it back.
+pub_unpublish :: (s: [] PubStore, owner: string, game: s32, dry: bool) -> PubDone {
+  i := pub_mine(s, owner, game);
+  if i < 0 { return pub_no("not-found", "you have no such published game (published)"); }
+  if s[0].games[i].state == PUB_UNPUBLISHED { return pub_no("edit-refused", "it is not on the web already: publish puts it back at the same link"); }
+  if !dry { s[0].games[i].state = PUB_UNPUBLISHED; s[0].changed = true; }
+  return PubDone.{game = game, version = s[0].games[i].live};
+}
+// Removes the game, its versions and its feedback for good.
+pub_remove :: (s: [] PubStore, owner: string, game: s32, dry: bool) -> PubDone {
+  i := pub_mine(s, owner, game);
+  if i < 0 { return pub_no("not-found", "you have no such published game (published)"); }
+  if dry { return PubDone.{game = game}; }
+  for k: i..<cast(s64) s[0].game_n - 1 { s[0].games[k] = s[0].games[k + 1]; }
+  s[0].game_n -= 1;
+  kept: s32 = 0;
+  for v: 0..<cast(s64) s[0].version_n { if s[0].versions[v].game != game { s[0].versions[kept] = s[0].versions[v]; kept += 1; } }
+  s[0].version_n = kept;
+  kept = 0;
+  for f: 0..<cast(s64) s[0].feedback_n { if s[0].feedback[f].game != game { s[0].feedback[kept] = s[0].feedback[f]; kept += 1; } }
+  s[0].feedback_n = kept;
+  s[0].changed = true;
+  return PubDone.{game = game};
+}
+
+// The code of the game that game was remixed from: "" when it is no remix (or none was said).
+pub_from :: (s: [] PubStore, game: s32, out: [] u8) -> string {
+  i := pub_find(s, game);
+  if i < 0 || s[0].games[i].from_n != PUB_CODE || out.count < PUB_CODE { return ""; }
+  for k: 0..<PUB_CODE { out[k] = s[0].games[i].from[k]; }
+  return cast(string) out[0..<PUB_CODE];
+}
+PUB_FROM_WORDS :: "--from is the code of the published game this one was remixed from: the six characters after /g/ in its link";
+
+// The game a link's code plays: its place in the store, or -1 (no such code here, or it is not on the web).
+pub_by_code :: (s: [] PubStore, code: string) -> s64 {
+  if code.count != PUB_CODE { return -1; }
+  for g: 0..<cast(s64) s[0].game_n { same := true; for k: 0..<PUB_CODE { if s[0].games[g].code[k] != code[k] { same = false; } } if same { return g; } }
+  return -1;
+}
+// A link's code as an address may say it: six of the alphabet, nothing else (so it names a file and no path).
+pub_code_ok :: (code: string) -> bool {
+  if code.count != PUB_CODE { return false; }
+  al := PUB_ALPHABET;
+  for c: code { in := false; for a: al { if a == c { in = true; } } if !in { return false; } }
+  return true;
+}
+// What a link plays: the game at `code` when it is on the web, and its live version. error "" and the game's place
+// in .game (not its id), else "not-found" with the words the link's page shows.
+pub_play :: (s: [] PubStore, code: string) -> PubDone {
+  i := pub_by_code(s, code);
+  if i < 0 || s[0].games[i].state != PUB_LIVE || pub_version_at(s, s[0].games[i].id, s[0].games[i].live) < 0 { return pub_no("not-found", "this game isn't available"); }
+  return PubDone.{game = cast(s32) i, version = s[0].games[i].live};
+}
+// Another code for game (its attempt-th and on): the hosted server found this one is another account's.
+pub_recode :: (s: [] PubStore, game: s32, attempt: s64) -> bool {
+  i := pub_find(s, game);
+  if i < 0 { return false; }
+  owner := s[0].games[i].owner;
+  pub_code_from(s, cast(string) owner[0..<cast(s64) s[0].games[i].owner_n], s[0].games[i].level, game, attempt * 64, s[0].games[i].code[..]);
+  s[0].changed = true;
+  return true;
+}
+// A player's report of a game (the link's page, no account): a reason of the closed list and an optional line.
+// "" when it may be queued for the operator, else why not.
+pub_report_ok :: (reason: string, text: string) -> string {
+  known := false; for r: PUB_REASON { if r == reason { known = true; } }
+  if !known { return "a report's reason is one of: offensive, personal, spam, other"; }
+  if !pub_text_ok(text) { return "a report's line is at most 160 bytes, on one line (PUB_TEXT)"; }
+  return "";
+}
+// A feedback line the creator is shown: up to 160 bytes on one line, no bar, and no link (a line
+// with one is held, not shown).
+pub_text_ok :: (w: string) -> bool {
+  if w.count > PUB_TEXT { return false; }
+  for c: w { if c < 32 || c == '|' || c == 127 { return false; } }
+  return true;
+}
+pub_has_link :: (w: string) -> bool {
+  for k: [4] string.["://", "www.", ".com", ".org"] {
+    if k.count > w.count { continue; }
+    for i: 0..<w.count - k.count + 1 {
+      same := true;
+      for j: 0..<k.count { c := w[i + j]; if c >= 'A' && c <= 'Z' { c = c + 32; } if c != k[j] { same = false; } }
+      if same { return true; }
+    }
+  }
+  return false;
+}
+// A player's thumb and line on the live game at code (the player's route: no account). One a
+// player token on a version: a second replaces the first. A blocked token's never arrives.
+pub_feedback_add :: (s: [] PubStore, code: string, up: bool, text: string, token: s64, now: s64) -> PubDone {
+  if code.count != PUB_CODE { return pub_no("not-found", "there is no such game here"); }
+  i := pub_by_code(s, code);
+  if i < 0 || s[0].games[i].state != PUB_LIVE { return pub_no("not-found", "this game isn't available"); }
+  if !pub_text_ok(text) { return pub_no("bad-request", "a line is at most 160 bytes, on one line (PUB_TEXT)"); }
+  game := s[0].games[i].id; version := s[0].games[i].live;
+  for b: 0..<cast(s64) s[0].block_n { if s[0].blocks[b] == token { return PubDone.{game = game, version = version}; } }
+  f: s64 = -1;
+  for k: 0..<cast(s64) s[0].feedback_n { if s[0].feedback[k].game == game && s[0].feedback[k].version == version && s[0].feedback[k].token == token { f = k; } }
+  if f < 0 {
+    if s[0].feedback_n >= PUB_FEEDBACK {
+      // the oldest goes
+      for k: 0..<cast(s64) s[0].feedback_n - 1 { s[0].feedback[k] = s[0].feedback[k + 1]; }
+      s[0].feedback_n -= 1;
+    }
+    f = cast(s64) s[0].feedback_n; s[0].feedback_n += 1;
+    s[0].next_feedback += 1;
+    s[0].feedback[f] = PubFeedback.{id = s[0].next_feedback, game = game, version = version, token = token};
+  }
+  s[0].feedback[f].up = up; s[0].feedback[f].at = now;
+  s[0].feedback[f].state = ifx pub_has_link(text) then PUB_HELD else PUB_NEW;
+  for k: 0..<text.count { s[0].feedback[f].text[k] = text[k]; }
+  s[0].feedback[f].text_n = cast(s32) text.count;
+  s[0].changed = true;
+  return PubDone.{game = game, version = version};
+}
+pub_item :: (s: [] PubStore, owner: string, id: s32) -> s64 {
+  for f: 0..<cast(s64) s[0].feedback_n { if s[0].feedback[f].id == id && pub_mine(s, owner, s[0].feedback[f].game) >= 0 { return f; } }
+  return -1;
+}
+// The creator's actions on an item of their own game's feedback: hide it, block whoever sent it
+// (their later feedback never arrives, and this item is hidden), or report it to the operator
+// (it is held for a moderator).
+PUB_HIDE :: 0; PUB_BLOCK :: 1; PUB_REPORT :: 2;
+pub_act :: (s: [] PubStore, owner: string, id: s32, act: int, dry: bool) -> PubDone {
+  f := pub_item(s, owner, id);
+  if f < 0 { return pub_no("not-found", "you have no such feedback (feedback)"); }
+  game := s[0].feedback[f].game;
+  if act == PUB_BLOCK && s[0].block_n >= PUB_BLOCKS { return pub_no("limit", "64 players blocked (PUB_BLOCKS)"); }
+  if dry { return PubDone.{game = game}; }
+  if act == PUB_HIDE || act == PUB_BLOCK { s[0].feedback[f].state = PUB_HIDDEN; }
+  if act == PUB_BLOCK {
+    t := s[0].feedback[f].token; had := false;
+    for b: 0..<cast(s64) s[0].block_n { if s[0].blocks[b] == t { had = true; } }
+    if !had { s[0].blocks[s[0].block_n] = t; s[0].block_n += 1; }
+  }
+  if act == PUB_REPORT { s[0].feedback[f].reported = true; s[0].feedback[f].state = PUB_HELD; }
+  s[0].changed = true;
+  return PubDone.{game = game};
+}
+
+// ---- the file: gamebuilder.publish.v1, a line a thing
+//   g|ID|LEVEL|CODE|LIVE|STATE|VERSIONS|OWNER|NAME|TEMPLATE   (a file of before issue 17 has no TEMPLATE, and reads)
+//   g|ID|LEVEL|CODE|LIVE|STATE|VERSIONS|OWNER|NAME|TEMPLATE|FROM   a remix: the code of the game it was made from
+//   v|GAME|N|AT|SIZE|SHA256 (hex)
+//   f|ID|GAME|VERSION|UP|STATE|REPORTED|TOKEN|AT|TEXT
+//   b|TOKEN
+PUB_HEAD :: "gamebuilder.publish.v1\n";
+PubOut :: struct { buf: [] u8; n: s64; bad: bool; }
+po_put :: (o: [] PubOut, w: string) {
+  if o[0].n + w.count > o[0].buf.count { o[0].bad = true; return; }
+  for c: w { o[0].buf[o[0].n] = c; o[0].n += 1; }
+}
+po_int :: (o: [] PubOut, v: s64) {
+  b: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while true { b[k] = cast(u8) ('0' + x % 10); k += 1; x = x / 10; if x == 0 { break; } }
+  if v < 0 { b[k] = '-'; k += 1; }
+  r: [24] u8; for j: 0..<k { r[j] = b[k - 1 - j]; }
+  po_put(o, cast(string) r[0..<k]);
+}
+po_ints :: (o: [] PubOut, vs: [] s64) { for v: vs { po_int(o, v); po_put(o, "|"); } }
+pub_save :: (s: [] PubStore, out: [] u8) -> s64 {
+  o := [1] PubOut.[PubOut.{buf = out}];
+  po_put(o[..], PUB_HEAD);
+  hex := "0123456789abcdef";
+  for i: 0..<cast(s64) s[0].game_n {
+    g := s[0].games[i];
+    po_put(o[..], "g|"); ga1 := [2] s64.[cast(s64) g.id, cast(s64) g.level]; po_ints(o[..], ga1[..]);
+    code := g.code; po_put(o[..], cast(string) code[0..<PUB_CODE]); po_put(o[..], "|");
+    ga2 := [3] s64.[cast(s64) g.live, cast(s64) g.state, cast(s64) g.versions]; po_ints(o[..], ga2[..]);
+    owner := g.owner; po_put(o[..], cast(string) owner[0..<cast(s64) g.owner_n]); po_put(o[..], "|");
+    name := g.name; po_put(o[..], cast(string) name[0..<cast(s64) g.name_n]); po_put(o[..], "|");
+    tp := g.type; po_put(o[..], cast(string) tp[0..<cast(s64) g.type_n]);
+    fr := g.from; if g.from_n == PUB_CODE { po_put(o[..], "|"); po_put(o[..], cast(string) fr[0..<PUB_CODE]); }
+    po_put(o[..], "\n");
+  }
+  for i: 0..<cast(s64) s[0].version_n {
+    v := s[0].versions[i];
+    po_put(o[..], "v|"); ga3 := [4] s64.[cast(s64) v.game, cast(s64) v.n, v.at, cast(s64) v.size]; po_ints(o[..], ga3[..]);
+    hb: [64] u8; for k: 0..<32 { hb[k * 2] = hex[cast(s64) (v.hash[k] >> 4)]; hb[k * 2 + 1] = hex[cast(s64) (v.hash[k] & 15)]; }
+    po_put(o[..], cast(string) hb[0..<64]); po_put(o[..], "\n");
+  }
+  for i: 0..<cast(s64) s[0].feedback_n {
+    f := s[0].feedback[i];
+    po_put(o[..], "f|");
+    ga4 := [8] s64.[cast(s64) f.id, cast(s64) f.game, cast(s64) f.version, ifx f.up then 1 else 0, cast(s64) f.state, ifx f.reported then 1 else 0, f.token, f.at]; po_ints(o[..], ga4[..]);
+    text := f.text; po_put(o[..], cast(string) text[0..<cast(s64) f.text_n]); po_put(o[..], "\n");
+  }
+  for i: 0..<cast(s64) s[0].block_n { po_put(o[..], "b|"); po_int(o[..], s[0].blocks[i]); po_put(o[..], "\n"); }
+  return ifx o[0].bad then -1 else o[0].n;
+}
+// The fields of a line, split at each bar.
+PubFields :: struct { at: [12] s64; end: [12] s64; n: int; }
+pub_fields :: (line: string) -> PubFields {
+  f := PubFields.{}; from: s64 = 0;
+  for i: 0..<line.count + 1 {
+    if i < line.count && line[i] != '|' { continue; }
+    if f.n < 12 { f.at[f.n] = from; f.end[f.n] = i; f.n += 1; }
+    from = i + 1;
+  }
+  return f;
+}
+PubNum :: struct { ok: bool; v: s64; }
+pub_num :: (w: string) -> PubNum {
+  if w.count == 0 || w.count > 19 { return PubNum.{}; }
+  neg := w[0] == '-'; v: s64 = 0;
+  for i: ifx neg then 1 else 0..<w.count { if w[i] < '0' || w[i] > '9' { return PubNum.{}; } v = v * 10 + cast(s64) (w[i] - '0'); }
+  return PubNum.{ok = true, v = ifx neg then -v else v};
+}
+pub_hexv :: (c: u8) -> int { return ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else -1; }
+// Reads the file into s; false, and s left empty, when a line is not one this file writes.
+pub_load :: (s: [] PubStore, text: string) -> bool {
+  s[0] = PubStore.{};
+  if text.count < PUB_HEAD.count || cast(string) text[0..<PUB_HEAD.count] != PUB_HEAD { return false; }
+  from := PUB_HEAD.count;
+  for i: PUB_HEAD.count..<text.count {
+    if text[i] != '\n' { continue; }
+    line := cast(string) text[from..<i]; from = i + 1;
+    f := pub_fields(line);
+    w: [12] string;
+    for k: 0..<f.n { w[k] = cast(string) line[f.at[k]..<f.end[k]]; }
+    ok := true;
+    if w[0] == "g" && f.n >= 9 && f.n <= 11 && s[0].game_n < PUB_GAMES {
+      id := pub_num(w[1]); lv := pub_num(w[2]); live := pub_num(w[4]); st := pub_num(w[5]); vs := pub_num(w[6]);
+      ok = id.ok && lv.ok && live.ok && st.ok && vs.ok && w[3].count == PUB_CODE && w[7].count <= PUB_ACCOUNT && pub_name_ok(w[8]) && (f.n == 9 || pub_template_ok(w[9])) && (f.n < 11 || pub_code_ok(w[10]));
+      if ok {
+        g := cast(s64) s[0].game_n; s[0].game_n += 1;
+        s[0].games[g] = PubGame.{id = cast(s32) id.v, level = cast(s32) lv.v, live = cast(s32) live.v, state = cast(s32) st.v, versions = cast(s32) vs.v,
+          owner_n = cast(s32) w[7].count, name_n = cast(s32) w[8].count};
+        for k: 0..<PUB_CODE { s[0].games[g].code[k] = w[3][k]; }
+        for k: 0..<w[7].count { s[0].games[g].owner[k] = w[7][k]; }
+        for k: 0..<w[8].count { s[0].games[g].name[k] = w[8][k]; }
+        if f.n >= 10 { for k: 0..<w[9].count { s[0].games[g].type[k] = w[9][k]; } s[0].games[g].type_n = cast(s32) w[9].count; }
+        if f.n == 11 { for k: 0..<PUB_CODE { s[0].games[g].from[k] = w[10][k]; } s[0].games[g].from_n = PUB_CODE; }
+        if s[0].next_game < cast(s32) id.v { s[0].next_game = cast(s32) id.v; }
+      }
+    } else if w[0] == "v" && f.n == 6 && s[0].version_n < PUB_VERSIONS {
+      g := pub_num(w[1]); n := pub_num(w[2]); at := pub_num(w[3]); size := pub_num(w[4]);
+      ok = g.ok && n.ok && at.ok && size.ok && w[5].count == 64;
+      if ok {
+        v := cast(s64) s[0].version_n; s[0].version_n += 1;
+        s[0].versions[v] = PubVersion.{game = cast(s32) g.v, n = cast(s32) n.v, at = at.v, size = cast(s32) size.v};
+        for k: 0..<32 {
+          hi := pub_hexv(w[5][k * 2]); lo := pub_hexv(w[5][k * 2 + 1]);
+          if hi < 0 || lo < 0 { ok = false; } else { s[0].versions[v].hash[k] = cast(u8) (hi * 16 + lo); }
+        }
+      }
+    } else if w[0] == "f" && f.n == 10 && s[0].feedback_n < PUB_FEEDBACK {
+      id := pub_num(w[1]); g := pub_num(w[2]); v := pub_num(w[3]); up := pub_num(w[4]); st := pub_num(w[5]); rp := pub_num(w[6]); tk := pub_num(w[7]); at := pub_num(w[8]);
+      ok = id.ok && g.ok && v.ok && up.ok && st.ok && rp.ok && tk.ok && at.ok && pub_text_ok(w[9]);
+      if ok {
+        k := cast(s64) s[0].feedback_n; s[0].feedback_n += 1;
+        s[0].feedback[k] = PubFeedback.{id = cast(s32) id.v, game = cast(s32) g.v, version = cast(s32) v.v, up = up.v == 1, state = cast(s32) st.v,
+          reported = rp.v == 1, token = tk.v, at = at.v, text_n = cast(s32) w[9].count};
+        for j: 0..<w[9].count { s[0].feedback[k].text[j] = w[9][j]; }
+        if s[0].next_feedback < cast(s32) id.v { s[0].next_feedback = cast(s32) id.v; }
+      }
+    } else if w[0] == "b" && f.n == 2 && s[0].block_n < PUB_BLOCKS {
+      t := pub_num(w[1]); ok = t.ok;
+      if ok { s[0].blocks[s[0].block_n] = t.v; s[0].block_n += 1; }
+    } else { ok = false; }
+    if !ok { s[0] = PubStore.{}; return false; }
+  }
+  return from == text.count;
+}
+
+// The device's file of what it has published (`published` in the folder): read once, written
+// whenever a row changed it (ed_pub_due), as the CLI, the app and the golden cases keep it.
+ed_pub_load :: (e: [] Editor, text: [] u8) -> bool #export_c #effects(all) { return e.count == 1 && pub_load(e[0].pub[..], cast(string) text); }
+ed_pub_due :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].pub[0].changed; }
+ed_pub_save :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) { return ifx e.count == 1 then pub_save(e[0].pub[..], out) else -1; }
+ed_pub_saved :: (e: [] Editor) #export_c #effects(all) { if e.count == 1 { e[0].pub[0].changed = false; } }
+ed_pub_max :: () -> s64 #export_c #effects(all) { return 131072; }
+
+PubTest :: struct { s: [1] PubStore; r: [1] PubStore; o: [65536] u8; lv: [64] u8; }
+#test "a publish is a version, immutable, its link the same; a player's feedback arrives once a version, filtered, and the creator hides, blocks and reports it; the file reads back the same" #steps 200000000 {
+  t: [1] PubTest; s := t[0].s[..];
+  for i: 0..<64 { t[0].lv[i] = cast(u8) ('a' + i % 26); }
+  me := "me@example.com"; them := "them@example.com";
+  #assert pub_publish(s, "", 1, "Moss Run", "racing", t[0].lv[..], 1000, false).error == "not-logged-in";
+  #assert pub_publish(s, me, 1, " no", "racing", t[0].lv[..], 1000, false).error == "bad-request";
+  // a dry run says what it would make, and makes nothing
+  d := pub_publish(s, me, 1, "Moss Run", "racing", t[0].lv[..], 1000, true);
+  #assert d.error == "" && d.game == 1 && d.version == 1 && s[0].game_n == 0;
+  p := pub_publish(s, me, 1, "Moss Run", "racing", t[0].lv[..], 1000, false);
+  #assert p.error == "" && p.game == 1 && p.version == 1 && s[0].games[0].live == 1 && s[0].games[0].state == PUB_LIVE;
+  // its share code: six of the alphabet, with no look-alikes
+  for k: 0..<PUB_CODE { c := s[0].games[0].code[k]; #assert c != '0' && c != 'o' && c != '1' && c != 'l' && c != 'i'; }
+  t[0].lv[0] = 'Z';
+  p2 := pub_publish(s, me, 1, "Moss Run", "racing", t[0].lv[..], 2000, false);
+  #assert p2.game == 1 && p2.version == 2 && s[0].game_n == 1 && s[0].version_n == 2;
+  #assert s[0].versions[0].hash[0] != s[0].versions[1].hash[0] || s[0].versions[0].hash[1] != s[0].versions[1].hash[1];
+  // only the owner changes it: another account is told there is no such game
+  #assert pub_set_live(s, them, 1, 1, false).error == "not-found" && pub_unpublish(s, them, 1, false).error == "not-found";
+  #assert pub_set_live(s, me, 1, 3, false).error == "not-found" && pub_set_live(s, me, 1, 1, false).error == "" && s[0].games[0].live == 1;
+  // a player's feedback on the live version: one a token, a second replacing the first
+  code := s[0].games[0].code;
+  cs := cast(string) code[0..<PUB_CODE];
+  #assert pub_feedback_add(s, cs, true, "fun!", 77, 3000).error == "" && s[0].feedback_n == 1;
+  #assert pub_feedback_add(s, cs, false, "too hard", 77, 3100).error == "" && s[0].feedback_n == 1 && !s[0].feedback[0].up;
+  #assert pub_feedback_add(s, cs, true, "see www.example.com", 78, 3200).error == "" && s[0].feedback[1].state == PUB_HELD;
+  #assert pub_feedback_add(s, "zzzzzz", true, "", 79, 3300).error == "not-found";
+  // block: the item hidden, and that token's later feedback never arrives
+  #assert pub_act(s, them, 1, PUB_BLOCK, false).error == "not-found";
+  #assert pub_act(s, me, 1, PUB_BLOCK, false).error == "" && s[0].feedback[0].state == PUB_HIDDEN && s[0].block_n == 1;
+  _ = pub_set_live(s, me, 1, 2, false);
+  #assert pub_feedback_add(s, cs, true, "again", 77, 3400).error == "" && s[0].feedback_n == 2;
+  #assert pub_act(s, me, 2, PUB_REPORT, false).error == "" && s[0].feedback[1].reported;
+  // the file reads back the same
+  n := pub_save(s, t[0].o[..]);
+  #assert n > 0 && pub_load(t[0].r[..], cast(string) t[0].o[0..<n]);
+  #assert t[0].r[0].game_n == 1 && t[0].r[0].version_n == 2 && t[0].r[0].feedback_n == 2 && t[0].r[0].block_n == 1;
+  #assert t[0].r[0].versions[1].hash[0] == s[0].versions[1].hash[0] && t[0].r[0].games[0].code[0] == s[0].games[0].code[0];
+  #assert !pub_load(t[0].r[..], "gamebuilder.publish.v1\nq|1\n") && t[0].r[0].game_n == 0;
+  // the game type is kept with the game, and a file of before it (no TEMPLATE) reads as it did
+  #assert pub_load(t[0].r[..], cast(string) t[0].o[0..<n]) && cast(string) t[0].r[0].games[0].type[0..<cast(s64) t[0].r[0].games[0].type_n] == "racing";
+  #assert pub_load(t[0].r[..], "gamebuilder.publish.v1\ng|1|1|abcdef|1|1|1|me@example.com|Moss Run\n") && t[0].r[0].game_n == 1 && t[0].r[0].games[0].type_n == 0;
+  // what the link plays: the live version while the game is on the web; a code is six of the alphabet
+  #assert pub_play(s, cs).error == "" && pub_play(s, cs).version == s[0].games[0].live && pub_play(s, "zzzzzz").error == "not-found";
+  #assert pub_code_ok(cs) && !pub_code_ok("../../") && !pub_code_ok("abc0ef") && !pub_code_ok("abcdefg");
+  // another code when the server finds this one is another account's
+  was := s[0].games[0].code; #assert pub_recode(s, 1, 1); now_code := s[0].games[0].code;
+  differs := false; for k: 0..<PUB_CODE { if was[k] != now_code[k] { differs = true; } } #assert differs && pub_code_ok(cast(string) now_code[0..<PUB_CODE]);
+  cs = cast(string) now_code[0..<PUB_CODE];
+  // a player's report: a reason of the list and a line
+  #assert pub_report_ok("offensive", "") == "" && pub_report_ok("other", "the name is rude") == "" && pub_report_ok("because", "") != "" && pub_report_ok("spam", "a|b") != "";
+  // unpublished: the link says it isn't available, and feedback does not arrive
+  #assert pub_unpublish(s, me, 1, false).error == "" && pub_unpublish(s, me, 1, false).error == "edit-refused";
+  #assert pub_feedback_add(s, cs, true, "", 90, 3500).error == "not-found" && pub_play(s, cs).error == "not-found";
+  // removed: the game, its versions and its feedback go
+  #assert pub_remove(s, me, 1, false).error == "" && s[0].game_n == 0 && s[0].version_n == 0 && s[0].feedback_n == 0;
+  // a name anyone with the link sees holds no link and no masked word; a game type's id is its own letters
+  #assert pub_publish(s, me, 2, "see www.example.com", "racing", t[0].lv[..], 9000, false).error == "edit-refused" && pub_publish(s, me, 2, "Shit Run", "racing", t[0].lv[..], 9000, false).error == "edit-refused";
+  #assert pub_publish(s, me, 2, "Again", "Racing|x", t[0].lv[..], 9000, false).error == "bad-request";
+  // 30 publishes an hour
+  for k: 0..<30 { _ = pub_publish(s, me, 2, "Again", "racing", t[0].lv[..], 10000 + k, false); }
+  #assert s[0].version_n == 30 && pub_publish(s, me, 2, "Again", "racing", t[0].lv[..], 20000, false).error == "limit";
+  #assert pub_publish(s, me, 2, "Again", "racing", t[0].lv[..], 10000 + PUB_HOUR + 30, false).error == "";
+  // 128 versions are kept: the next publish lets the oldest that no link plays go, and the link still plays the newest
+  at: s64 = 100000000;
+  while s[0].version_n < PUB_VERSIONS { at += PUB_HOUR; #assert pub_publish(s, me, 2, "Again", "racing", t[0].lv[..], at, false).error == ""; }
+  first := s[0].versions[0].n;
+  p9 := pub_publish(s, me, 2, "Again", "racing", t[0].lv[..], at + PUB_HOUR, false);
+  #assert p9.error == "" && s[0].version_n == PUB_VERSIONS && s[0].versions[0].n != first && s[0].games[0].live == p9.version && pub_version_at(s, p9.game, p9.version) >= 0;
+}
+#test "a remix: the game it came from is kept with it from its first publish, never changed after, and the file reads it back" {
+  t: [1] PubTest; s := t[0].s[..]; fb: [PUB_CODE] u8;
+  for i: 0..<64 { t[0].lv[i] = cast(u8) ('a' + i % 26); }
+  me := "me@example.com";
+  // a code that is not one is refused before anything is made, a dry run included
+  #assert pub_publish_from(s, me, 1, "Moss Run", "racing", "../../", t[0].lv[..], 1000, false).error == "bad-request" && pub_publish_from(s, me, 1, "Moss Run", "racing", "abc0ef", t[0].lv[..], 1000, true).why == PUB_FROM_WORDS && s[0].game_n == 0;
+  // a game published with no word of where it came from is no remix
+  #assert pub_publish(s, me, 1, "Moss Run", "racing", t[0].lv[..], 1000, false).error == "" && pub_from(s, 1, fb[..]) == "";
+  // a remix: said at its first publish, and kept
+  r := pub_publish_from(s, me, 2, "Moss Run Two", "racing", "abc234", t[0].lv[..], 2000, false);
+  #assert r.error == "" && r.game == 2 && r.version == 1 && pub_from(s, 2, fb[..]) == "abc234";
+  // a later version does not change it, whatever it says: not to another game, and not to none
+  #assert pub_publish_from(s, me, 2, "Moss Run Two", "racing", "zzz999", t[0].lv[..], 3000, false).version == 2 && pub_from(s, 2, fb[..]) == "abc234";
+  #assert pub_publish(s, me, 2, "Moss Run Two", "racing", t[0].lv[..], 4000, false).version == 3 && pub_from(s, 2, fb[..]) == "abc234";
+  // and a game that was no remix at first is not made one later
+  #assert pub_publish_from(s, me, 1, "Moss Run", "racing", "abc234", t[0].lv[..], 5000, false).version == 2 && pub_from(s, 1, fb[..]) == "";
+  // a game is not its own remix (its code is its own from the start)
+  own := s[0].games[0].code; _ = pub_remove(s, me, 1, false);
+  #assert pub_publish_from(s, me, 1, "Moss Run", "racing", cast(string) own[0..<PUB_CODE], t[0].lv[..], 6000, true).error == "";
+  // the file: a remix's line has its eleventh field, a game's that is none has ten, and both read back
+  n := pub_save(s, t[0].o[..]);
+  #assert n > 0 && pub_load(t[0].r[..], cast(string) t[0].o[0..<n]) && t[0].r[0].game_n == 1 && pub_from(t[0].r[..], 2, fb[..]) == "abc234";
+  #assert pub_load(t[0].r[..], "gamebuilder.publish.v1\ng|1|1|abcdef|1|1|1|me@example.com|Moss Run|racing\ng|2|2|abcdeg|1|1|1|me@example.com|Two|racing|abc234\n") && t[0].r[0].game_n == 2 && pub_from(t[0].r[..], 1, fb[..]) == "" && pub_from(t[0].r[..], 2, fb[..]) == "abc234";
+  #assert !pub_load(t[0].r[..], "gamebuilder.publish.v1\ng|2|2|abcdeg|1|1|1|me@example.com|Two|racing|../../\n") && !pub_load(t[0].r[..], "gamebuilder.publish.v1\ng|2|2|abcdeg|1|1|1|me@example.com|Two|racing|abc234|x\n");
+}

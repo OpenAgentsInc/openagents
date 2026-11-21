@@ -1,0 +1,45 @@
+// A stale or malformed own-frame record cannot authorize further movement.
+#load "../../../coax/lib/json/json.coax";
+PlayerFrameHealth :: struct {sequence:int=-1;seen_at:int;}
+// Side-on play runs along world Z; world X is the fixed depth plane. Released
+// horizontal input may still coast along Z while the player tries W or S.
+pt_depth_plane :: (kind:int,before:[2]f64,after:[2]f64)->bool {
+  return (kind!=3 && kind!=6) || (before[0] != -99999 && after[0] != -99999 && abs(after[0]-before[0])<15);
+}
+#test "side-on depth ignores horizontal coasting but detects movement off its plane" {
+  before:=[2]f64.[0,483];coast:=[2]f64.[0,439];depth:=[2]f64.[31,439];
+  #assert pt_depth_plane(3,before,coast) && pt_depth_plane(6,before,coast);
+  #assert !pt_depth_plane(3,before,depth) && !pt_depth_plane(6,before,depth);
+  #assert pt_depth_plane(0,before,depth);
+}
+pt_frame_tick :: (h:[]PlayerFrameHealth,sequence:int,now:int)->bool {
+  if sequence<1 || now<0 {return false;}
+  if sequence!=h[0].sequence {h[0].sequence=sequence;h[0].seen_at=now;return true;}
+  return now>=h[0].seen_at && now-h[0].seen_at<=500;
+}
+pt_frame_valid :: (d:Jv,r:int)->bool {
+  if jv_kind(d,r)!=JV_OBJECT || jv_raw(d,jv_get(d,r,"schema"))!="gamebuilder.observation.v1" {return false;}
+  for key:[6]string.["sequence","time_ms","x_cm","y_cm","z_cm","kind"] {if jv_kind(d,jv_get(d,r,key))!=JV_NUMBER {return false;}}
+  return jv_int(d,jv_get(d,r,"sequence"),0)>0 && jv_int(d,jv_get(d,r,"time_ms"),-1)>=0 && jv_int(d,jv_get(d,r,"kind"),-1)>=0 && jv_int(d,jv_get(d,r,"kind"),-1)<=3;
+}
+#test "stale observations stop authorizing input within half a second" {
+  h:[1]PlayerFrameHealth;#assert pt_frame_tick(h[..],1,1000) && pt_frame_tick(h[..],1,1400);
+  #assert !pt_frame_tick(h[..],1,1501) && !pt_frame_tick(h[..],0,1502) && pt_frame_tick(h[..],2,1600);
+}
+#test "malformed or missing frame records cannot authorize input" {
+  d:[1]Jv;nodes:[64]JvNode;
+  #assert jv_parse(d[..],"{\"schema\":\"gamebuilder.observation.v1\",\"sequence\":1,\"time_ms\":10,\"x_cm\":0,\"y_cm\":0,\"z_cm\":0,\"kind\":0}",nodes[..]) && pt_frame_valid(d[0],0);
+  #assert jv_parse(d[..],"{\"schema\":\"gamebuilder.observation.v1\",\"sequence\":\"stale\"}",nodes[..]) && !pt_frame_valid(d[0],0);
+  #assert jv_parse(d[..],"null",nodes[..]) && !pt_frame_valid(d[0],0);
+}
+// A missing/replaced selection is not evidence of an object moving.
+pt_drag_changed :: (delivered:bool,id0:f64,id1:f64,x0:f64,z0:f64,x1:f64,z1:f64)->bool {
+  return delivered && id0>=0 && id0==id1 && x0 != -99999 && z0 != -99999 && x1 != -99999 && z1 != -99999 && abs(x1-x0)+abs(z1-z0)>10;
+}
+#test "drag requires the same valid object before and after native input" {
+  #assert pt_drag_changed(true,7,7,100,200,120,200);
+  #assert !pt_drag_changed(true,7,7,100,200,-99999,-99999);
+  #assert !pt_drag_changed(true,7,8,100,200,120,200);
+  #assert !pt_drag_changed(true,7,7,100,200,100,200);
+  #assert !pt_drag_changed(false,7,7,100,200,120,200);
+}

@@ -1,0 +1,128 @@
+// The website's grammar and the command table are one (docs/programmatic-access.md, "Drift
+// checks"): gamebuilder.org's edits are plan lines, the same words whether its chat's model writes
+// them or its own tools and edit mode do (web/blocks.coax, bl_plan and bl_edit). Each word they
+// read is a row of the table in the web's area (coax/commands.coax, area "web", surface GB_WEB),
+// and each such row is a word they read; each row has its case among the website's #tests (a
+// line it runs, bl_plan(b, "VERB ...") or bl_edit(b, "VERB ...")); and each plan line the
+// model is told (web/chat.coax, the CH_ prompts' "+ VERB USAGE" lines) is a row's, its words the
+// row's usage exactly. So a word the website takes, or tells the model, without a row fails here,
+// and so does a row the website no longer reads.
+// A tool, not a #test: a check cannot read a file. scripts/check.sh runs it; it prints what does
+// not hold and ends 1, or "web rows: ok" and 0.
+//   coax/web/tool.sh tools/web-rows-check.coax web/blocks.coax web/chat.coax
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+// What bl_edit reads that is no edit and no row: the HUD's limit, met where its tool was used,
+// only says why on the page (nothing changes).
+WR_NOT_ROWS :: [1] string.["limit"];
+
+WrText :: struct { text: [1048576] u8; }
+WR_WORDS :: 64;
+WrWords :: struct { w: [WR_WORDS] [32] u8; n: [WR_WORDS] int; count: int; }
+
+wr_word :: (s: [] WrWords, i: int) -> string { return cast(string) s[0].w[i][0..<s[0].n[i]]; }
+wr_has :: (s: [] WrWords, w: string) -> bool {
+  for i: 0..<s[0].count { if wr_word(s, i) == w { return true; } }
+  return false;
+}
+wr_add :: (s: [] WrWords, w: string) {
+  if wr_has(s, w) || s[0].count >= WR_WORDS || w.count > 32 { return; }
+  for k: 0..<w.count { s[0].w[s[0].count][k] = w[k]; }
+  s[0].n[s[0].count] = w.count; s[0].count += 1;
+}
+// The body of function name in text: from "name ::" at a line's start to the first "\n}\n".
+wr_body :: (text: string, name: string) -> string {
+  at := -1;
+  for i: 0..<text.count - name.count {
+    if (i == 0 || text[i - 1] == '\n') && cast(string) text[i..<i + name.count] == name && i + name.count + 3 <= text.count && cast(string) text[i + name.count..<i + name.count + 3] == " ::" { at = i; break; }
+  }
+  if at < 0 { return ""; }
+  for j: at..<text.count - 2 { if text[j] == '\n' && text[j + 1] == '}' && text[j + 2] == '\n' { return cast(string) text[at..<j + 2]; } }
+  return "";
+}
+// Each `verb == "X"` the body reads.
+wr_verbs :: (body: string, out: [] WrWords) {
+  key := "verb == \"";
+  for i: 0..<body.count - key.count {
+    if cast(string) body[i..<i + key.count] != key { continue; }
+    e := i + key.count; while e < body.count && body[e] != '"' { e += 1; }
+    wr_add(out, cast(string) body[i + key.count..<e]);
+  }
+}
+// Whether text runs a line of verb in a #test: bl_plan(b, "VERB or bl_edit(b, "VERB, followed by
+// a space or the line's end.
+wr_cased :: (text: string, verb: string) -> bool {
+  for head: [2] string.["bl_plan(b, \"", "bl_edit(b, \""] {
+    for i: 0..<text.count - head.count - verb.count - 1 {
+      if cast(string) text[i..<i + head.count] != head { continue; }
+      if cast(string) text[i + head.count..<i + head.count + verb.count] != verb { continue; }
+      after := text[i + head.count + verb.count];
+      if after == ' ' || after == '"' { return true; }
+    }
+  }
+  return false;
+}
+wr_row :: (verb: string) -> int {
+  for i: 0..<GB_N { if GB_COMMANDS[i].area == "web" && GB_COMMANDS[i].verb == verb { return i; } }
+  return -1;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) != 2 { print("usage: tool.sh tools/web-rows-check.coax web/blocks.coax web/chat.coax\n"); return 2; }
+  bt: [1] WrText; ct: [1] WrText;
+  bn := fs_read(args_at(a[..], 0), bt[0].text[..]);
+  cn := fs_read(args_at(a[..], 1), ct[0].text[..]);
+  if bn < 0 || bn >= bt[0].text.count || cn < 0 || cn >= ct[0].text.count { print("web rows: NOT read % and %\n", args_at(a[..], 0), args_at(a[..], 1)); return 1; }
+  blocks := cast(string) bt[0].text[0..<bn]; chat := cast(string) ct[0].text[0..<cn];
+  // the words the website reads
+  read: [1] WrWords;
+  plan := wr_body(blocks, "bl_plan"); edit := wr_body(blocks, "bl_edit");
+  if plan.count == 0 || edit.count == 0 { print("web rows: NOT found bl_plan and bl_edit in %\n", args_at(a[..], 0)); return 1; }
+  wr_verbs(plan, read[..]); wr_verbs(edit, read[..]);
+  for i: 0..<read[0].count {
+    w := wr_word(read[..], i);
+    skip := false; for x: WR_NOT_ROWS { if x == w { skip = true; } }
+    if !skip && wr_row(w) < 0 { print("web rows: NOT a row: the website reads \"%\" (bl_plan or bl_edit) and the table has no web row for it\n", w); bad += 1; }
+  }
+  // each web row: a word the website reads, only on the website, with its case
+  rows := 0;
+  for i: 0..<GB_N {
+    c := GB_COMMANDS[i];
+    if c.area != "web" { continue; }
+    rows += 1;
+    if !wr_has(read[..], c.verb) { print("web rows: NOT read: the % row is no word bl_plan or bl_edit reads\n", c.verb); bad += 1; }
+    if c.surfaces != GB_WEB { print("web rows: NOT the website's only: the % row is on more than GB_WEB\n", c.verb); bad += 1; }
+    if !wr_cased(blocks, c.verb) { print("web rows: NOT cased: no #test in % runs a % line (bl_plan or bl_edit)\n", args_at(a[..], 0), c.verb); bad += 1; }
+  }
+  // the plan lines the model is told: in a CH_ constant, "\n+ VERB USAGE" then three spaces or the line's end
+  told := 0;
+  from := 0;
+  for i: 0..<chat.count + 1 {
+    if i < chat.count && chat[i] != '\n' { continue; }
+    line := cast(string) chat[from..<i]; from = i + 1;
+    if line.count < 3 || line[0] != 'C' || line[1] != 'H' || line[2] != '_' { continue; }
+    key := "\\n+ ";
+    for j: 0..<line.count - key.count {
+      if cast(string) line[j..<j + key.count] != key { continue; }
+      s := j + key.count;
+      e := s; while e < line.count && line[e] != '\\' && !(e + 2 < line.count && line[e] == ' ' && line[e + 1] == ' ' && line[e + 2] == ' ') { e += 1; }
+      words := cast(string) line[s..<e];
+      v := 0; while v < words.count && words[v] != ' ' { v += 1; }
+      verb := cast(string) words[0..<v];
+      usage := ifx v < words.count then cast(string) words[v + 1..<words.count] else "";
+      told += 1;
+      r := wr_row(verb);
+      if r < 0 { print("web rows: NOT a row: the model is told \"+ %\" (web/chat.coax) and the table has no web row for it\n", words); bad += 1; continue; }
+      if GB_COMMANDS[r].usage != usage { print("web rows: NOT the row's words: the model is told \"+ %\", the % row's usage is \"%\"\n", words, verb, GB_COMMANDS[r].usage); bad += 1; }
+    }
+  }
+  if told == 0 { print("web rows: NOT found the model's plan lines in %\n", args_at(a[..], 1)); bad += 1; }
+  if bad > 0 { return 1; }
+  print("web rows: ok, % rows, % plan lines told, every one a row's\n", rows, told);
+  return 0;
+}

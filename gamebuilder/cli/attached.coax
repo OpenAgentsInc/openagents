@@ -1,0 +1,240 @@
+// The gamebuilder CLI's side of an attached agent (coax/attached.coax; GitHub issue 6;
+// docs/agents.md, "An attached agent"): its record and log as files beside the levels (on a
+// hosted server, in the account's folder), agent-ID.agent written whole and agent-ID.events
+// appended to, as the record module's rows read them.
+//   gamebuilder mcp [--attach]      a session on stdio: a record made at initialize, its calls logged, done when stdin ends
+//   gamebuilder mcp --remote        the session goes to the site's POST /mcp, which keeps the record on your account
+//   POST /mcp (serve)               initialize makes one and answers its Mcp-Session-Id; calls that send it are logged; DELETE ends it
+//   gamebuilder --as-agent NAME ... one call as the attached agent NAME: the newest one still working of that name, or a new one
+// A call no agent makes (the CLI's own, or POST /api/rows without GameBuilder-Agent) makes no record.
+// dir/agent-ID.EXT, in the path buffer.
+cli_att_path :: (c: [] Cli, id: string, ext: string) -> string {
+  nb: [64] u8;
+  return cli_path(c, agr_file(id, ext, nb[..]), "");
+}
+
+// Writes what the last step changed: its log's new lines appended, the record whole. False when
+// it couldn't.
+cli_att_save :: (c: [] Cli) -> bool {
+  s := c[0].agent[..];
+  if !s[0].on { return true; }
+  ib: [AGR_ID] u8; idn := agr_put(ib[..], 0, agr_id(s[0].r[..])); id := cast(string) ib[0..<idn];
+  _ = fs_mkdir(cli_dir(c));
+  lines := gb_att_lines(s);
+  if lines.count > 0 && !fs_append_durable(cli_att_path(c, id, ".events"), lines) { return false; }
+  s[0].out_n = 0;
+  rec := gb_att_record(s);
+  return rec.count > 0 && fs_replace_durable(cli_att_path(c, id, ".agent"), rec);
+}
+
+// Reads agent id's record from the folder into the open agent: "" when it is an attached
+// agent's, else why not.
+cli_att_read :: (c: [] Cli, id: string) -> string {
+  c[0].agent[0].on = false;
+  if !agr_id_ok(id) { return "an agent's id is 1 to 32 of a to z, 0 to 9 and -"; }
+  k := fs_read(cli_att_path(c, id, ".agent"), c[0].doc[0..<AGR_RECORD_MAX + 1]);
+  if k <= 0 { return "there is no such agent here"; }
+  return gb_att_load(c[0].agent[..], cast(string) c[0].doc[0..<k]);
+}
+
+// How many agents the folder keeps; with a name, the id of the newest attached one of that name
+// still working goes into found (none: "").
+cli_att_scan :: (c: [] Cli, name: string, found: [] u8, found_n: [] int) -> int {
+  count := 0; best: s64 = -1; found_n[0] = 0;
+  if fs_list(cli_dir(c), c[0].list[..]) < 0 { return 0; }
+  r: [1] AgrRecord; jw: [1] AgrJob;
+  for i: 0..<c[0].list[0].n {
+    f := fs_entry(c[0].list[..], i);
+    if agr_file_id(f).count == 0 { continue; }
+    count += 1;
+    if name.count == 0 { continue; }
+    k := fs_read(cli_path(c, f, ""), c[0].doc[0..<AGR_RECORD_MAX + 1]);
+    if k <= 0 || agr_record_read(cast(string) c[0].doc[0..<k], r[..], jw[..]).count > 0 { continue; }
+    if r[0].place != AGR_ATTACHED || r[0].state == AGR_DONE || r[0].state == AGR_FAILED || cast(string) r[0].runner[0..<r[0].runner_n] != name || r[0].updated <= best { continue; }
+    best = r[0].updated; found_n[0] = agr_put(found, 0, agr_id(r[..]));
+  }
+  return count;
+}
+
+// Opens a new record for client, come through via. False, said on stderr, when it can't: the
+// folder keeps AGR_RECORDS agents already, or the record can't be written. The calls are carried
+// out all the same, unrecorded.
+cli_att_open :: (c: [] Cli, client: string, via: int) -> bool {
+  none: [1] u8; nn: [1] int;
+  n := cli_att_scan(c, "", none[..], nn[..]);
+  if n >= AGR_RECORDS { tool_errln("gamebuilder: this folder keeps at most 256 agents (AGR_RECORDS): this agent's calls are carried out but not recorded"); return false; }
+  ib: [AGR_ID] u8; now := cli_now(c);
+  id := agr_new_id(now, n, ib[..]);
+  computer := ifx via == GB_ATT_HTTP then "" else cli_computer(c);
+  gb_att_open(c[0].agent[..], id, client, via, computer, now);
+  if !cli_att_save(c) { c[0].agent[0].on = false; tool_errln("gamebuilder: this agent's record can't be written beside the levels: its calls are carried out but not recorded"); return false; }
+  return true;
+}
+
+// The attached agent NAME for one call (--as-agent, or GameBuilder-Agent: NAME): the newest of
+// that name still working, else a new one. "" when it is open, else why not.
+cli_att_named :: (c: [] Cli, name: string, via: int) -> string {
+  why := gb_att_name_why(name);
+  if why.count > 0 { return why; }
+  fb: [AGR_ID] u8; fn: [1] int;
+  _ = cli_att_scan(c, name, fb[..], fn[..]);
+  if fn[0] > 0 && cli_att_read(c, cast(string) fb[0..<fn[0]]).count == 0 { return ""; }
+  _ = cli_att_open(c, name, via);
+  return "";
+}
+
+// One call of the open agent's (none open: an ordinary call): read its record again first (the
+// person may have cut it off, and another surface may have added to its log), refuse it in
+// words when it was cut off, else carry it out with its turn number and log it. args are the
+// call's arguments as it sent them ("": as the CLI's words read).
+cli_att_run :: (c: [] Cli, v: int, ga: [] GbArgs, who: [] AcWho, args: string) -> GbResult {
+  s := c[0].agent[..];
+  if !s[0].on { return cli_keyed(c, v, ga, who); }
+  ib: [AGR_ID] u8; idn := agr_put(ib[..], 0, agr_id(s[0].r[..])); id := cast(string) ib[0..<idn];
+  if cli_att_read(c, id).count > 0 {
+    // its file went: the record is made again from here on
+    tool_errln("gamebuilder: this agent's record is gone from the folder: its calls are carried out but not recorded");
+    return cli_keyed(c, v, ga, who);
+  }
+  cut := gb_att_cut(s);
+  if cut.count > 0 { o: [1] Jo; jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "not-permitted", cut); }
+  // a batch named by its file is read here, so its edits are known after the call
+  if v == VERB_APPLY_EDITS && ga[0].batch.count > 0 && ga[0].batch[0] != '{' {
+    k := fs_read(ga[0].batch, c[0].att_batch[..]);
+    if k > 0 { ga[0].batch = cast(string) c[0].att_batch[0..<k]; }
+  }
+  ab: [AGR_ARGS + 1] u8;
+  said := ifx args.count > 0 then args else gb_args_json(v, ga[0], ab[..]);
+  ga[0].agent = gb_att_turn(id);
+  r := cli_keyed(c, v, ga, who);
+  // an agent row may have written this record too (it read the folder's): read it again
+  if r.agent > 0 && cli_att_read(c, id).count > 0 { return r; }
+  takes := gb_part(GB_COMMANDS[v].arguments, 0) == "level";
+  k := GbAttCall.{v = v, args = said, batch = ga[0].batch, dry = ga[0].dry, level = ifx takes then ga[0].level else -1, before = c[0].before, after = c[0].after};
+  tb: [MINE_TITLE] u8;
+  if takes {
+    // the game it is in: the folder's games (read with the files; attached, read here)
+    if c[0].attach { c[0].e[0] = Editor.{}; cli_load(c); }
+    k.game = ed_level_mine(c[0].e[..], k.level);
+    k.title = ifx k.game > 0 then cast(string) tb[0..<ed_mine_title(c[0].e[..], k.game, tb[..])] else "";
+  }
+  gb_att_call(s, k, r, cli_now(c));
+  if !cli_att_save(c) { tool_errln("gamebuilder: this agent's call could not be written to its log"); }
+  return r;
+}
+
+// The session ended: done, unless it was cut off.
+cli_att_end :: (c: [] Cli) {
+  s := c[0].agent[..];
+  if !s[0].on { return; }
+  ib: [AGR_ID] u8; idn := agr_put(ib[..], 0, agr_id(s[0].r[..]));
+  if cli_att_read(c, cast(string) ib[0..<idn]).count > 0 { return; }
+  // the resident service's agent: its turn's end is the service's to say (cli/resident.coax)
+  if s[0].resident { s[0].on = false; return; }
+  gb_att_end(s, cli_now(c));
+  _ = cli_att_save(c);
+  s[0].on = false;
+}
+
+// ---- serving
+
+CliAttHttp :: struct { status: int; body: string; extra: string; }
+
+// POST /mcp (or DELETE /mcp) on a server, with the session's record around it: initialize makes
+// one and its id goes back as Mcp-Session-Id; a message that sends one is that agent's.
+cli_att_http :: (c: [] Cli, s: [] CliServe, req: GbApiRequest, cfg: GbMcpCfg, who: [] AcWho, eb: [] u8) -> CliAttHttp {
+  a := c[0].agent[..]; a[0].on = false;
+  if req.session.count > 0 && cli_att_read(c, req.session).count > 0 {
+    return CliAttHttp.{status = 404, body = gb_api_refusal(404, "no such MCP session here: send initialize again (each session is an agent of its own)", s[0].refusal[..])};
+  }
+  if req.method == "DELETE" {
+    if !a[0].on { return CliAttHttp.{status = 400, body = gb_api_refusal(400, "DELETE /mcp ends the session its Mcp-Session-Id names", s[0].refusal[..])}; }
+    cli_att_end(c);
+    return CliAttHttp.{status = 200, body = "{\"ok\":true}"};
+  }
+  body := gb_mcp_handle(req.body, cfg, s[0].mcp[..], s[0].call[..]);
+  extra := "";
+  if s[0].call[0].init && body.count > 0 {
+    cb: [GB_ATT_CLIENT] u8;
+    if cli_att_open(c, gb_att_client(cast(string) s[0].call[0].client[0..<s[0].call[0].client_n], cb[..]), GB_ATT_HTTP) {
+      t := [1] Text.[Text.{buf = eb}]; tx_put(t[..], "Mcp-Session-Id: "); tx_put(t[..], agr_id(a[0].r[..]));
+      extra = cast(string) eb[0..<t[0].at];
+    }
+  }
+  if body.count == 0 && s[0].call[0].v >= 0 {
+    r := cli_att_run(c, s[0].call[0].v, s[0].call[0].a[..], who, s[0].call[0].args);
+    body = gb_mcp_answer(s[0].call[..], r, s[0].mcp[..]);
+  }
+  a[0].on = false;
+  return CliAttHttp.{status = ifx body.count > 0 then 200 else 202, body = body, extra = extra};
+}
+
+// POST /api/rows/VERB on a server: as the attached agent GameBuilder-Agent names, when it does.
+cli_att_row :: (c: [] Cli, s: [] CliServe, req: GbApiRequest, v: int, who: [] AcWho) -> GbResult {
+  c[0].agent[0].on = false;
+  if req.as_agent.count > 0 {
+    why := cli_att_named(c, req.as_agent, GB_ATT_ONE);
+    if why.count > 0 { o: [1] Jo; jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "bad-request", why); }
+  }
+  r := cli_att_run(c, v, s[0].call[0].a[..], who, req.body);
+  c[0].agent[0].on = false;
+  return r;
+}
+
+// ---- gamebuilder mcp --remote: the session is the site's
+
+// One message to the site's POST /mcp, signed in as you, with the session's id once it gave
+// one; its answer, or "" when it took a notification. A refusal before the site answered is a
+// JSON-RPC error in words.
+cli_mcp_remote :: (c: [] Cli, who: [] AcWho, line: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  nodes: [64] JvNode; d: [1] Jv; idb: [1] GbMcpCall;
+  // the request's id, for an error said here
+  if jv_parse(d[..], line, nodes[..]) {
+    at := jv_get(d[0], 0, "id");
+    if at < 0 { idb[0].id_kind = 0; }
+    else {
+      raw := jv_raw(d[0], at);
+      if jv_kind(d[0], at) == JV_STRING { idb[0].id_n = jv_str(d[0], at, idb[0].id[..]); idb[0].id_kind = JV_STRING; }
+      else if raw.count <= idb[0].id.count { for i: 0..<raw.count { idb[0].id[i] = raw[i]; } idb[0].id_n = raw.count; idb[0].id_kind = JV_NUMBER; }
+      if idb[0].id_n < 0 { idb[0].id_n = 0; }
+    }
+  }
+  why := ac_session(who);
+  if why.count > 0 { return gb_mcp_error(o[..], idb[..], -32001, why); }
+  ub: [2400] u8; up := [2] string.[cli_remote_base(c, who), "/mcp"];
+  url := ac_join(up[..], ub[..]);
+  ab: [AC_TOKEN + 40] u8;
+  ap := [2] string.["Authorization: Bearer ", cast(string) who[0].access[0..<who[0].access_n]];
+  sb: [AGR_ID + 32] u8; sp := [2] string.["Mcp-Session-Id: ", cast(string) c[0].session[0..<c[0].session_n]];
+  hs := [3] string.[ac_join(ap[..], ab[..]), "Content-Type: application/json", ac_join(sp[..], sb[..])];
+  res := http_do(c[0].http[..], "POST", url, hs[0..<ifx c[0].session_n > 0 then 3 else 2], line, CLI_REMOTE_MS, 0, out);
+  for i: 0..<ab.count { ab[i] = 0; }
+  ac_wipe(who);
+  sid := http_header(cast(string) c[0].http[0].head[0..<c[0].http[0].head_n], "mcp-session-id");
+  if sid.count > 0 && agr_id_ok(sid) { c[0].session_n = agr_put(c[0].session[..], 0, sid); }
+  if res.error == HTTP_OK && res.code == 202 { return ""; }
+  if res.error == HTTP_OK && res.code == 200 && res.n > 0 { return cast(string) out[0..<res.n]; }
+  jo_start(o[..], out);
+  if res.error == HTTP_OK && res.code == 401 { return gb_mcp_error(o[..], idb[..], -32001, "your login has ended or isn't the site's: run gamebuilder login"); }
+  if res.error == HTTP_OK && res.code == 404 && c[0].session_n > 0 {
+    c[0].session_n = 0;
+    return gb_mcp_error(o[..], idb[..], -32001, "the site no longer knows this session: start it again");
+  }
+  return gb_mcp_error(o[..], idb[..], -32603, cli_join(c, "couldn't reach your account's levels at", cli_remote_base(c, who)));
+}
+
+// The session ended: the site is told, so its agent shows done.
+cli_mcp_remote_end :: (c: [] Cli, who: [] AcWho) {
+  if c[0].session_n == 0 || ac_session(who).count > 0 { return; }
+  ub: [2400] u8; up := [2] string.[cli_remote_base(c, who), "/mcp"];
+  url := ac_join(up[..], ub[..]);
+  ab: [AC_TOKEN + 40] u8;
+  ap := [2] string.["Authorization: Bearer ", cast(string) who[0].access[0..<who[0].access_n]];
+  sb: [AGR_ID + 32] u8; sp := [2] string.["Mcp-Session-Id: ", cast(string) c[0].session[0..<c[0].session_n]];
+  hs := [2] string.[ac_join(ap[..], ab[..]), ac_join(sp[..], sb[..])];
+  ob: [4096] u8;
+  _ = http_do(c[0].http[..], "DELETE", url, hs[..], "", 10000, 0, ob[..]);
+  for i: 0..<ab.count { ab[i] = 0; }
+  ac_wipe(who);
+}

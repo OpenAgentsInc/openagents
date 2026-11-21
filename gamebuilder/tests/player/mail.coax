@@ -1,0 +1,101 @@
+// Dedicated Mail.tm inbox, read-only. No auth-service or cookie bypass.
+// tool.sh: tls
+#load "../../../coax/lib/net/http.coax";
+#load "../../../coax/lib/net/cdp.coax";
+#load "../../../coax/lib/json/json.coax";
+#load "../../../coax/lib/sys/proc.coax";
+
+PlayerMail :: struct {
+  address: [256] u8; address_n: int;
+  token: [4096] u8; token_n: int;
+  old: [30] [128] u8; old_n: [30] int; count: int;
+  cutoff:[32]u8;cutoff_n:int;
+  body: [262144] u8; work: [1] HttpWork; nodes: [8192] JvNode; doc: [1] Jv;
+  status:int;error:int;
+}
+pm_snapshot :: (m:[]PlayerMail)->bool {
+  if !pm_call(m,"GET","/messages","") {return false;}
+  d:=m[0].doc[0];list:=jv_get(d,0,"hydra:member");if jv_kind(d,list)!=JV_ARRAY {return false;}
+  m[0].count=jv_len(d,list);if m[0].count>30 {return false;}
+  for i:0..<m[0].count {m[0].old_n[i]=jv_str(d,jv_get(d,jv_at(d,list,i),"id"),m[0].old[i][..]);}return true;
+}
+// Reuse the dedicated ordinary account, rather than consuming a new signup
+// for every run. The private durable file is outside all evidence directories.
+pm_ordinary :: (m:[]PlayerMail)->bool {
+  path:[4096]u8;fixture:=proc_getenv("AUTH_TEST_ORDINARY_FIXTURE",path[..]);if fixture.count==0 {return false;}
+  b:[8192]u8;n:=fs_read(fixture,b[..]);
+  if n<0 {return pm_new(m);}
+  d:[1]Jv;nodes:[32]JvNode;if !jv_parse(d[..],cast(string)b[0..<n],nodes[..]) {return false;}
+  m[0].address_n=jv_str(d[0],jv_get(d[0],0,"address"),m[0].address[..]);if m[0].address_n<=0 {return false;}
+  ok:=pm_call(m,"POST","/token",cast(string)b[0..<n]);for i:0..<b.count {b[i]=0;}
+  if !ok {return false;}m[0].token_n=jv_str(m[0].doc[0],jv_get(m[0].doc[0],0,"token"),m[0].token[..]);return m[0].token_n>0 && pm_snapshot(m);
+}
+#test "only an isolated six-digit code is accepted" {
+  b: [6] u8;
+  #assert pm_digits("Your code is 123456. It expires.", b[..]) && cast(string)b[..]=="123456";
+  #assert !pm_digits("1234567",b[..]) && !pm_digits("no code",b[..]) && !pm_digits("12345",b[..]);
+}
+pm_digits :: (text: string, out: [] u8) -> bool {
+  if out.count<6 {return false;}
+  at:=0;
+  while at<text.count {
+    if text[at]<'0' || text[at]>'9' {at+=1;continue;}
+    end:=at;while end<text.count && text[end]>='0' && text[end]<='9' {end+=1;}
+    if end-at==6 {for i:0..<6 {out[i]=text[at+i];}return true;}at=end;
+  }return false;
+}
+pm_call :: (m: [] PlayerMail, method: string, path: string, body: string) -> bool {
+  url: [512] u8; n:=ws_put(url[..],0,"https://api.mail.tm");n=ws_put(url[..],n,path);
+  auth: [4200] u8; an:=ws_put(auth[..],0,"Authorization: Bearer ");an=ws_put(auth[..],an,cast(string)m[0].token[0..<m[0].token_n]);
+  headers: [3] string; headers[0]="Accept: application/ld+json";headers[1]="Content-Type: application/json";headers[2]=cast(string)auth[0..<an];
+  r:=http_do(m[0].work[..],method,cast(string)url[0..<n],headers[0..<(ifx m[0].token_n>0 then 3 else 2)],body,10000,0,m[0].body[..]);
+  m[0].status=r.code;m[0].error=r.error;
+  parsed:=r.n>0 && jv_parse(m[0].doc[..],cast(string)m[0].body[0..<r.n],m[0].nodes[..]);
+  return r.error==HTTP_OK && (r.code==200 || r.code==201) && parsed;
+}
+pm_new :: (m:[]PlayerMail)->bool {
+  if !pm_call(m,"GET","/domains","") {return false;}
+  d:=m[0].doc[0];list:=jv_get(d,0,"hydra:member");domain:[256]u8;dn:=jv_str(d,jv_get(d,jv_at(d,list,0),"domain"),domain[..]);if dn<=0 {return false;}
+  random:[24]u8;if cxrand_draw(random[..],24)!=0 {return false;}
+  password:[16]u8;tag:[16]u8;hex:="0123456789abcdef";alphabet:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
+  for i:0..<16 {password[i]=alphabet[random[i]&63];}for i:0..<8 {tag[i*2]=hex[random[16+i]>>4];tag[i*2+1]=hex[random[16+i]&15];}
+  an:=ws_put(m[0].address[..],0,"gb");an=ws_put(m[0].address[..],an,cast(string)tag[..]);an=ws_put(m[0].address[..],an,"@");an=ws_put(m[0].address[..],an,cast(string)domain[0..<dn]);m[0].address_n=an;
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"address");jo_str(o[..],cast(string)m[0].address[0..<an]);jo_key(o[..],"password");jo_str(o[..],cast(string)password[..]);jo_end(o[..]);
+  created:=pm_call(m,"POST","/accounts",jo_text(o[..]));
+  file:[4096]u8;fixture:=proc_getenv("AUTH_TEST_ORDINARY_FIXTURE",file[..]);
+  saved:=fixture.count==0 || (created && fs_replace_durable(fixture,jo_text(o[..])));
+  ok:=created && saved && pm_call(m,"POST","/token",jo_text(o[..]));for i:0..<16 {password[i]=0;}for i:0..<b.count {b[i]=0;}if !ok {
+    fault:=jv_raw(m[0].doc[0],jv_path(m[0].doc[0],0,"hydra:description"));violations:=jv_get(m[0].doc[0],0,"violations");field:=jv_raw(m[0].doc[0],jv_get(m[0].doc[0],jv_at(m[0].doc[0],violations,0),"propertyPath"));
+    print("mail provisioning: created %, field %, domain error %, length error %\n",created,ifx field=="address" then "address" else ifx field=="password" then "password" else "other",cdp_contains(fault,"domain"),cdp_contains(fault,"long"));
+    message:=jv_raw(m[0].doc[0],jv_get(m[0].doc[0],jv_at(m[0].doc[0],violations,0),"message"));if message.count<200 && !cdp_contains(message,"@") {print("mail validation: %\n",message);}return false;
+  }
+  m[0].token_n=jv_str(m[0].doc[0],jv_get(m[0].doc[0],0,"token"),m[0].token[..]);return m[0].token_n>0 && pm_snapshot(m);
+}
+pm_open :: (m: [] PlayerMail) -> bool {
+  password: [1024] u8; addr:=proc_getenv("AUTH_TEST_INBOX",m[0].address[..]);m[0].address_n=addr.count;
+  pass:=proc_getenv("AUTH_TEST_INBOX_PASSWORD",password[..]);if addr.count==0 || pass.count==0 {return false;}
+  b:[4096]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"address");jo_str(o[..],addr);jo_key(o[..],"password");jo_str(o[..],pass);jo_end(o[..]);
+  ok:=pm_call(m,"POST","/token",jo_text(o[..]));for i:0..<password.count {password[i]=0;}
+  if !ok {return false;}
+  m[0].token_n=jv_str(m[0].doc[0],jv_get(m[0].doc[0],0,"token"),m[0].token[..]);
+  return m[0].token_n>0 && pm_snapshot(m);
+}
+pm_code :: (m: [] PlayerMail, code: [] u8) -> bool {
+  if !pm_call(m,"GET","/messages","") {return false;}
+  d:=m[0].doc[0];list:=jv_get(d,0,"hydra:member");id:[128]u8;
+  for i:0..<jv_len(d,list) {
+    one:=jv_at(d,list,i);n:=jv_str(d,jv_get(d,one,"id"),id[..]);if n<=0 {continue;}
+    old:=false;for k:0..<m[0].count {if cast(string)m[0].old[k][0..<m[0].old_n[k]]==cast(string)id[0..<n] {old=true;}}
+    if old {continue;}
+    created:=jv_raw(d,jv_get(d,one,"createdAt"));fresh:=created.count>=19 && m[0].cutoff_n>=19;
+    if fresh {for k:0..<19 {if created[k]<m[0].cutoff[k] {fresh=false;break;}if created[k]>m[0].cutoff[k] {break;}}}
+    if !fresh {continue;}
+    sender:=jv_raw(d,jv_path(d,one,"from.address"));if !http_same(sender,"no-reply@openagents.com") && !http_same(sender,"noreply@openagents.com") && !http_same(sender,"login@openagents.com") {continue;}
+    to:=jv_get(d,one,"to");recipient:=false;
+    for k:0..<jv_len(d,to) {if http_same(jv_raw(d,jv_path(d,jv_at(d,to,k),"address")),cast(string)m[0].address[0..<m[0].address_n]) {recipient=true;}}
+    if !recipient {continue;}
+    p:[256]u8;pn:=ws_put(p[..],0,"/messages/");pn=ws_put(p[..],pn,cast(string)id[0..<n]);
+    if !pm_call(m,"GET",cast(string)p[0..<pn],"") {return false;}
+    txt:[32768]u8;tn:=jv_str(m[0].doc[0],jv_get(m[0].doc[0],0,"text"),txt[..]);return tn>0 && pm_digits(cast(string)txt[0..<tn],code);
+  }return false;
+}

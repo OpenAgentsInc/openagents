@@ -1,0 +1,38 @@
+// A separate read-only connection starts before navigation, including auth.
+// Its schema cannot carry console arguments, exception text, headers, bodies,
+// cookies, typed text, query strings, mailbox addresses or session identifiers.
+// Chat replies stay in memory: only lengths, shape, token counts and a
+// whitelisted finish reason are written, never their text or request ID.
+#load "reply-grammar.coax";
+pt_reply_shape :: (c:[]Cdp,dir:string,request:string,began:int) {
+  args:[512]u8;o:[1]Jo;jo_start(o[..],args[..]);jo_obj(o[..]);jo_key(o[..],"requestId");jo_str(o[..],request);jo_end(o[..]);r:=cdp_call(c,"Network.getResponseBody",jo_text(o[..]),PB_CALL_MS);
+  body:[131072]u8;n:=ifx r>=0 then jv_str(cdp_doc(c),jv_get(cdp_doc(c),r,"body"),body[..]) else -1;encoded:=r>=0 && jv_bool(cdp_doc(c),jv_get(cdp_doc(c),r,"base64Encoded"));d:[1]Jv;nodes:[8192]JvNode;valid:=n>0 && !encoded && jv_parse(d[..],cast(string)body[0..<n],nodes[..]);
+  choices:=jv_get(d[0],0,"choices");choice:=jv_at(d[0],choices,0);message:=jv_get(d[0],choice,"message");content:=jv_get(d[0],message,"content");finish:=jv_raw(d[0],jv_get(d[0],choice,"finish_reason"));safe:="other";for name:[4]string.["stop","length","content_filter","tool_calls"] {if finish==name {safe=name;}}
+  b:[2048]u8;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"at_ms");jo_int(o[..],proc_now_ms()-began);jo_key(o[..],"method");jo_str(o[..],"chat.reply-shape");jo_key(o[..],"url");jo_str(o[..],"https://gamebuilder.org/api/chat/complete/v1");
+  jo_key(o[..],"available");jo_bool(o[..],r>=0 && n>=0);jo_key(o[..],"bodyBytes");jo_int(o[..],ifx n>0 then n else 0);jo_key(o[..],"validJson");jo_bool(o[..],valid);jo_key(o[..],"base64");jo_bool(o[..],encoded);jo_key(o[..],"choices");jo_int(o[..],jv_len(d[0],choices));jo_key(o[..],"contentKind");jo_int(o[..],jv_kind(d[0],content));jo_key(o[..],"contentBytes");jo_int(o[..],jv_raw(d[0],content).count);jo_key(o[..],"minifiedContentTag");jo_bool(o[..],n>0 && cdp_contains(cast(string)body[0..<(ifx n>0 then n else 0)],"\"content\":\""));jo_key(o[..],"finish");jo_str(o[..],safe);jo_key(o[..],"errorPresent");jo_bool(o[..],jv_get(d[0],0,"error")>=0);
+  jo_key(o[..],"completionTokens");jo_int(o[..],jv_int(d[0],jv_path(d[0],0,"usage.completion_tokens"),-1));jo_key(o[..],"reasoningTokens");jo_int(o[..],jv_int(d[0],jv_path(d[0],0,"usage.completion_tokens_details.reasoning_tokens"),-1));
+  words:[16384]u8;wn:=ifx valid then jv_str(d[0],content,words[..]) else -1;g:=pt_reply_grammar(ifx wn>0 then cast(string)words[0..<wn] else "");jo_key(o[..],"grammarAvailable");jo_bool(o[..],wn>=0);jo_key(o[..],"leadingWhitespace");jo_bool(o[..],g.leading_space);jo_key(o[..],"carriageReturns");jo_int(o[..],g.carriage_returns);jo_key(o[..],"routeAtStart");jo_bool(o[..],g.route_at_start);jo_key(o[..],"routeSeen");jo_bool(o[..],g.route_seen);jo_key(o[..],"routeRoot");jo_str(o[..],ifx g.root>=0 then RG_ROOTS[g.root] else "unknown");jo_key(o[..],"fenced");jo_bool(o[..],g.fenced);jo_key(o[..],"planLines");jo_int(o[..],g.plans);jo_key(o[..],"planVerbs");jo_obj(o[..]);for i:0..<8 {jo_key(o[..],RG_VERBS[i]);jo_int(o[..],g.verbs[i]);}jo_end(o[..]);jo_end(o[..]);path:[4096]u8;_=fs_append(fs_join(dir,"telemetry.jsonl",path[..]),jo_text(o[..]));_=fs_append(fs_join(dir,"telemetry.jsonl",path[..]),"\n");for i:0..<body.count {body[i]=0;}for i:0..<words.count {words[i]=0;}
+}
+pt_telemetry :: (url:string,dir:string)->int {
+  c:[1]Cdp;if !cdp_connect(c[..],url) {return 1;}
+  defer cdp_shut(c[..]);
+  for domain:[4]string.["Runtime.enable","Network.enable","Log.enable","Page.enable"] {_:=cdp_call(c[..],domain,"{}",PB_CALL_MS);}
+  path:[4096]u8;_=fs_write(fs_join(dir,"telemetry.ready",path[..]),"ready");began:=proc_now_ms();pending:[32][128]u8;pending_n:[32]int;
+  while proc_now_ms()-began<1800000 {
+    if fs_exists(fs_join(dir,"telemetry.stop",path[..])) {return 0;}
+    received:=cdp_poll(c[..],200);if received==CDP_CLOSED || received==CDP_FAIL {return 1;}if received!=CDP_GOT {continue;}d:=cdp_doc(c[..]);method:=cdp_event_method(d);
+    if method=="Network.responseReceived" && jv_raw(d,jv_path(d,0,"params.response.url"))=="https://gamebuilder.org/api/chat/complete/v1" && jv_int(d,jv_path(d,0,"params.response.status"),0)==200 {for i:0..<32 {if pending_n[i]==0 {pending_n[i]=jv_str(d,jv_path(d,0,"params.requestId"),pending[i][..]);break;}}}
+    if method=="Network.loadingFinished" {
+      request:[128]u8;n:=jv_str(d,jv_path(d,0,"params.requestId"),request[..]);found:=-1;for i:0..<32 {if pending_n[i]>0 && pending_n[i]==n && cast(string)pending[i][0..<pending_n[i]]==cast(string)request[0..<n] {found=i;}}
+      if found>=0 {pending_n[found]=0;pt_reply_shape(c[..],dir,cast(string)request[0..<n],began);}continue;
+    }
+    if method!="Network.responseReceived" && method!="Network.loadingFailed" && method!="Runtime.exceptionThrown" && method!="Runtime.consoleAPICalled" && method!="Network.webSocketCreated" && method!="Network.webSocketClosed" {continue;}
+    if method=="Runtime.consoleAPICalled" && jv_raw(d,jv_path(d,0,"params.type"))!="error" {continue;}
+    b:[2048]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"at_ms");jo_int(o[..],proc_now_ms()-began);jo_key(o[..],"method");jo_str(o[..],method);
+    u:=jv_raw(d,jv_path(d,0,"params.response.url"));prefix:="https://gamebuilder.org/";end:=0;
+    if u.count>=prefix.count && cast(string)u[0..<prefix.count]==prefix {end=prefix.count;while end<u.count && u[end]!='?' && u[end]!='#' {end+=1;}}
+    jo_key(o[..],"url");jo_str(o[..],ifx end>0 then u[0..<end] else "");jo_key(o[..],"status");jo_int(o[..],jv_int(d,jv_path(d,0,"params.response.status"),0));
+    cls:=jv_raw(d,jv_path(d,0,"params.exceptionDetails.exception.className"));safe:="";for name:[7]string.["Error","TypeError","RangeError","ReferenceError","SyntaxError","RuntimeError","CompileError"] {if cls==name {safe=name;}}
+    jo_key(o[..],"exceptionClass");jo_str(o[..],safe);jo_end(o[..]);_=fs_append(fs_join(dir,"telemetry.jsonl",path[..]),jo_text(o[..]));_=fs_append(fs_join(dir,"telemetry.jsonl",path[..]),"\n");
+  }return 1;
+}

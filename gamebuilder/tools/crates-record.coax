@@ -1,0 +1,130 @@
+// Records the solutions of the crates puzzle's rooms (web/world-crates.coax, cr_solutions): each
+// room a new game starts with (a level's things: shared/game-types.coax gt_starter_level) is walked by a small script (go to a tile; push a crate a way until it is on a tile), by
+// holding the same keys a person holds, through the real page's HUD (web/hud.coax: the character,
+// the bodies, the room's rules), a frame at a time at 60 a second. What it held each frame is
+// printed as the room's recording: runs of letters (w north, s south, a west, d east, x nothing)
+// and frames. Paste the lines into web/world-crates.coax; web/hud.coax's check replays them.
+// A tool, not a #test: it prints. Run it again when a room, the walk or the bodies change.
+//   coax/web/tool.sh tools/crates-record.coax
+// tool.sh: stack-gib 2
+#load "../../coax/lib/sys/tool.coax";
+#load "../web/hud.coax";
+#import "Basic";
+
+RK_GO :: 0; RK_PUSH :: 1;
+RK_N :: 0; RK_S :: 1; RK_W :: 2; RK_E :: 3;
+RK_FRAMES :: 6000;
+RK_TRACE :: false;        // say where everything is after each step (for writing a script)
+RK_LEAD :: 0.04;           // metres short of its tile a pushed crate is let go: it slides on
+// A step of a room's script: go to tile (a, b) (parts of a tile count); or push crate `a` the way `way` until it is on row or column `b`.
+RkStep :: struct { kind: int; way: int; a: f32; b: f32; }
+rk_go :: (col: f32, row: f32) -> RkStep { return RkStep.{kind = RK_GO, a = col, b = row}; }
+rk_push :: (way: int, crate: int, to: f32) -> RkStep { return RkStep.{kind = RK_PUSH, way = way, a = cast(f32) crate, b = to}; }
+
+Rk :: struct { t: [1] HudTest; held: [RK_FRAMES] u8; n: int; out: [4096] u8; }
+// The middle of tile (col, row) of the room, counted from its north west corner (the room is the level's things: web/hud.coax hud_crates_lay).
+rk_x :: (c: [] Crates, col: f32) -> f32 { return c[0].x0 + (col + 0.5) * f32(CR_CELL); }
+rk_z :: (c: [] Crates, row: f32) -> f32 { return c[0].z1 - (row + 0.5) * f32(CR_CELL); }
+// Crate `n` of the room (in the order of their ids: the level's order) among the bodies.
+rk_crate :: (b: [] Bodies, n: int) -> int {
+  last := -1; at := -1;
+  for k: 0..<n + 1 { at = -1; for j: 0..<bd_count(b) { if cr_is(b, j) && b[0].id[j] > last && (at < 0 || b[0].id[j] < b[0].id[at]) { at = j; } } if at < 0 { return -1; } last = b[0].id[at]; }
+  return at;
+}
+// One frame with these keys held.
+rk_frame :: (k: [] Rk, bits: int) {
+  h := k[0].t[0].h[..]; text: [16] u8;
+  m := hud_test_put(text[..], 0, bits);
+  hud_test_say(h, HUD_KEYS_MSG, cast(string) text[0..<m]);
+  hud_test_run(k[0].t[..], 1, 0.016666668);
+  if k[0].n < RK_FRAMES { k[0].held[k[0].n] = cast(u8) bits; k[0].n += 1; }
+}
+// Along one axis: the key to hold to close `d` (far off, hold; near, tap when nearly stopped; there, nothing).
+rk_axis :: (d: f32, speed: f32, plus: int, minus: int) -> int {
+  if abs(d) > 0.55 || (abs(d) > 0.08 && speed < 0.6) { return ifx d > 0 then plus else minus; }
+  return 0;
+}
+// Walk to (tx, tz), by the keys: both axes at once.
+rk_goto :: (k: [] Rk, room: int, tx: f32, tz: f32) {
+  h := k[0].t[0].h[..]; c := h[0].crates[..];
+  for f: 0..<900 {
+    if c[0].through { break; }
+    dx := tx - h[0].cx; dz := tz - h[0].cz; v := h[0].foot.walk.speed;
+    bits := rk_axis(dx, v, HUD_KEY_RIGHT, HUD_KEY_LEFT) | rk_axis(dz, v, HUD_KEY_FORE, HUD_KEY_BACK);
+    if bits == 0 && v < 0.3 { break; }
+    rk_frame(k, bits);
+  }
+}
+rk_run :: (k: [] Rk, room: int, steps: [] RkStep) -> bool {
+  h := k[0].t[0].h[..]; c := h[0].crates[..]; b := h[0].things[..];
+  hud_test_crates(k[0].t[..], room);
+  k[0].n = 0;
+  for s: steps {
+    if c[0].through { break; }
+    if s.kind == RK_GO { rk_goto(k, room, rk_x(c, s.a), rk_z(c, s.b)); }
+    else {
+      n := cast(int) s.a;
+      key := ifx s.way == RK_N then HUD_KEY_FORE else ifx s.way == RK_S then HUD_KEY_BACK else ifx s.way == RK_W then HUD_KEY_LEFT else HUD_KEY_RIGHT;
+      // first squarely behind it: level with the crate's own middle, where you already stand along the push
+      i := rk_crate(b, n); p := b[0].set[0].pos[i];
+      if s.way == RK_N || s.way == RK_S { rk_goto(k, room, cast(f32) p.x, h[0].cz); } else { rk_goto(k, room, h[0].cx, cast(f32) p.z); }
+      for f: 0..<900 {
+        i = rk_crate(b, n); p = b[0].set[0].pos[i]; v := b[0].set[0].vel[i];
+        left := ifx s.way == RK_N then rk_z(c, s.b) - cast(f32) p.z else ifx s.way == RK_S then cast(f32) p.z - rk_z(c, s.b) else ifx s.way == RK_W then cast(f32) p.x - rk_x(c, s.b) else rk_x(c, s.b) - cast(f32) p.x;
+        // let go where its own slide will carry it the rest of the way (its speed squared over twice its friction's hold)
+        speed := cast(f32) sqrt(v.x * v.x + v.z * v.z);
+        if left < RK_LEAD + speed * speed / (2 * f32(CR_FRICTION) * 9.81) { break; }
+        rk_frame(k, key);
+      }
+      // and wait for it, and the room's rule, to settle
+      for f: 0..<40 { rk_frame(k, 0); }
+    }
+    if RK_TRACE { print("  room % step kind % way % a % b %: you % %", room + 1, s.kind, s.way, s.a, s.b, h[0].cx, h[0].cz); for i: 0..<bd_count(b) { print("  crate % %", b[0].set[0].pos[i].x, b[0].set[0].pos[i].z); } print(" lit % frames %\n", c[0].lit, k[0].n); }
+  }
+  return c[0].through;
+}
+// The frames held, as runs.
+rk_print :: (k: [] Rk, room: int) {
+  o := 0; i := 0;
+  while i < k[0].n {
+    bits := cast(int) k[0].held[i]; j := i;
+    while j < k[0].n && cast(int) k[0].held[j] == bits { j += 1; }
+    if bits == 0 { k[0].out[o] = 'x'; o += 1; }
+    if (bits & HUD_KEY_FORE) != 0 { k[0].out[o] = 'w'; o += 1; }
+    if (bits & HUD_KEY_BACK) != 0 { k[0].out[o] = 's'; o += 1; }
+    if (bits & HUD_KEY_LEFT) != 0 { k[0].out[o] = 'a'; o += 1; }
+    if (bits & HUD_KEY_RIGHT) != 0 { k[0].out[o] = 'd'; o += 1; }
+    o = hud_test_put(k[0].out[..], o, j - i);
+    i = j;
+  }
+  print("CR_SOLUTION_% :: \"%\";\n", room, cast(string) k[0].out[0..<o]);
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  k: [1] Rk; bad := 0;
+  // room 1: the crate east a tile, then round under it and north onto the pad; out
+  r0 := [7] RkStep.[rk_push(RK_E, 0, 4), rk_go(3, 3), rk_go(4, 3), rk_push(RK_N, 0, 1), rk_go(5, 1.6), rk_go(5, 2), rk_go(7.3, 2)];
+  // room 2: the west crate south onto its pad, round the block, the east crate north onto its; out
+  r1 := [9] RkStep.[rk_go(1, 1), rk_go(2, 1), rk_push(RK_S, 0, 4), rk_go(1, 3.5), rk_go(1, 5), rk_go(5, 5), rk_push(RK_N, 1, 2), rk_go(6, 3), rk_go(8.3, 3)];
+  // room 3: the middle crate through the door and north; the north crate down to the door's row, through, and south; the south crate up, through, and it stays; round it and out
+  r2 := [30] RkStep.[
+    rk_push(RK_E, 1, 6), rk_go(5, 3), rk_go(5, 4), rk_go(6, 4), rk_push(RK_N, 1, 1),
+    rk_go(5, 2), rk_go(5, 3), rk_go(3, 3), rk_go(3, 1), rk_go(2, 1), rk_push(RK_S, 0, 3), rk_go(1, 2.5), rk_go(1, 3), rk_push(RK_E, 0, 6),
+    rk_go(5, 3), rk_go(5, 2), rk_go(6, 2), rk_push(RK_S, 0, 5),
+    rk_go(5, 4), rk_go(5, 3), rk_go(3, 3), rk_go(3, 5), rk_go(2, 5), rk_push(RK_N, 2, 3), rk_go(1, 3.5), rk_go(1, 3), rk_push(RK_E, 2, 6),
+    rk_go(5, 2), rk_go(7, 2), rk_go(7, 3)];
+  out := [1] RkStep.[rk_go(9.3, 3)];
+  h := k[0].t[0].h[..];
+  if rk_run(k[..], 0, r0[..]) { rk_print(k[..], 0); } else { print("room 1: NOT solved (lit %, at % %)\n", h[0].crates[0].lit, h[0].cx, h[0].cz); bad += 1; }
+  if rk_run(k[..], 1, r1[..]) { rk_print(k[..], 1); } else { print("room 2: NOT solved (lit %, at % %)\n", h[0].crates[0].lit, h[0].cx, h[0].cz); bad += 1; }
+  done := rk_run(k[..], 2, r2[..]);
+  if !done {
+    // (the last step, out through the gate, on the same recording)
+    c := h[0].crates[..];
+    tx := rk_x(c, 9.3);
+    for f: 0..<300 { if c[0].through { break; } rk_frame(k[..], ifx tx - h[0].cx > 0.1 then HUD_KEY_RIGHT else 0); }
+    done = c[0].through;
+  }
+  if done { rk_print(k[..], 2); } else { print("room 3: NOT solved (lit %, at % %)\n", h[0].crates[0].lit, h[0].cx, h[0].cz); bad += 1; }
+  return ifx bad > 0 then 1 else 0;
+}

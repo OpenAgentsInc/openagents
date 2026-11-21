@@ -1,0 +1,193 @@
+/*
+ * Claude Desktop UI — Adapted to GameBuilder Color Scheme
+ * Source tokens extracted from /Applications/Claude.app/Contents/Resources/ion-dist.asar
+ * Adapted to GameBuilder's pure-monochrome Geist palette (black, white, grey)
+ */
+
+:root {
+  /* Typography (GameBuilder Geist stack replacing Anthropic Sans/Serif/Mono) */
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "Geist Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-voice: var(--font-sans);
+  --font-ui: var(--font-sans);
+  --font-claude-response: var(--font-sans);
+  --font-user-message: var(--font-sans);
+
+  /* Font Weights (Claude CDS exact scale) */
+  --cds-font-weight-regular: 400;
+  --cds-font-weight-body: 400;
+  --cds-font-weight-control: 500;
+  --cds-font-weight-badge: 500;
+  --cds-font-weight-medium: 500;
+  --cds-font-weight-header: 580;
+  --cds-font-weight-semibold: 580;
+  --cds-font-weight-bold: 600;
+
+  /* Scale & Sizing */
+  --cds-rem-scale: 1;
+  --cds-h-control--xs: calc(1.5rem * var(--cds-rem-scale));       /* 24px */
+  --cds-h-control--sm: calc(1.75rem * var(--cds-rem-scale));      /* 28px */
+  --cds-h-control: calc(1.75rem * var(--cds-rem-scale));          /* 28px (26px compact) */
+  --cds-h-control--lg: calc(2.5rem * var(--cds-rem-scale));       /* 40px */
+  --cds-h-control-nested: calc(1.375rem * var(--cds-rem-scale));  /* 22px */
+
+  /* Radii */
+  --cds-radius: calc(0.5rem * var(--cds-rem-scale));              /* 8px */
+  --cds-radius-sm: calc(0.25rem * var(--cds-rem-scale));          /* 4px */
+  --cds-radius-composer: calc(0.875rem * var(--cds-rem-scale));   /* 14px */
+  --cds-radius-lg: calc(1rem * var(--cds-rem-scale));             /* 16px */
+  --cds-radius-pill: 9999px;
+
+  /* Motion & Easing */
+  --cds-dur-fast: 60ms;
+  --cds-dur-base: 0.2s;
+  --cds-dur-sheet: 0.3s;
+  --cds-dur-slow: 0.45s;
+  --df-dur-fast: 0.12s;
+  --df-dur-slow: 0.3s;
+  --df-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --df-ease-out-cubic: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --df-ease-out-fast: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Desktop Frame (df-*) Layout Metrics */
+  --df-chrome-bar-height: 36px;
+  --df-header-h: 48px;
+  --df-content-gutter: 8px;
+  --df-pane-trailing-gutter: 8px;
+  --df-row-h: 32px;
+  --df-row-px: 8px;
+  --df-row-gap: 8px;
+  --df-row-stack-gap: 2px;
+  --df-family-step: 20px;
+  --df-icon-size: 16px;
+  --df-leading-slot: 24px;
+  --df-group-pt: 12px;
+  --df-group-font: 12px;
+  --df-heading-pitch: 28px;
+  --df-footer-btn-size: 24px;
+  --df-footer-gap: 3px;
+}
+
+/* Dark Mode — GameBuilder Default Pure Monochrome Palette */
+:root,
+[data-mode="dark"] {
+  /* Surfaces (replaces Claude warm charcoal #141413 / #1f1e1d / #262624) */
+  --cds-surface-0: #000000;                    /* Deepest app shell / sidebar ground */
+  --cds-surface-1: #0a0a0a;                    /* Main canvas / page ground */
+  --cds-surface-2: #141414;                    /* Elevated cards, composer, right inspector */
+  --cds-surface-3: #1f1f1f;                    /* Hover surfaces, active sidebar row, pills */
+  --cds-surface-4: #292929;                    /* Pressed states, nested code blocks */
+
+  /* Desktop Frame Z-Layers */
+  --df-bg-page: var(--cds-surface-1);
+  --df-z0: 0 0% 0%;
+  --df-z1: 0 0% 4%;
+  --df-z2: 0 0% 8%;
+  --df-z3: 0 0% 12%;
+  --df-z4: 0 0% 16%;
+  --df-z5: 0 0% 24%;
+  --df-z6: 0 0% 65%;
+
+  /* Text / Ink (GameBuilder --ink, --soft, --dim) */
+  --cds-text-primary: #ffffff;
+  --cds-text-secondary: rgba(255, 255, 255, 0.66);
+  --cds-text-muted: rgba(255, 255, 255, 0.40);
+  --cds-text-disabled: rgba(255, 255, 255, 0.25);
+
+  /* Borders & Hairlines (GameBuilder --line) */
+  --cds-border-subtle: rgba(255, 255, 255, 0.08);
+  --cds-border-default: rgba(255, 255, 255, 0.14);
+  --cds-border-strong: rgba(255, 255, 255, 0.20);
+  --df-edge-line-rgb: 255 255 255;
+  --df-edge-line-max: 0.14;
+  --df-edge-shade-max: 0.6;
+
+  /* Alphas & Interactive Fills */
+  --cds-alpha-1: rgba(255, 255, 255, 0.05);
+  --cds-alpha-2: rgba(255, 255, 255, 0.09);
+  --cds-alpha-3: rgba(255, 255, 255, 0.14);
+  --cds-alpha-4: rgba(255, 255, 255, 0.24);
+  --cds-alpha-5: rgba(255, 255, 255, 0.45);
+  --cds-fill-ghost-hover: var(--cds-alpha-1);
+  --cds-fill-ghost-active: var(--cds-alpha-2);
+
+  /* Primary Accent (replaces Claude terracotta #d97757 with crisp high-contrast white) */
+  --cds-accent-fill: #ffffff;
+  --cds-accent-ink: #000000;
+  --cds-text-accent: #ffffff;
+
+  /* Semantic & Git Diff Status Colors (preserved for functional clarity) */
+  --cds-text-danger: #fa8080;
+  --cds-text-success: #53c556;
+  --cds-text-warning: #e49c06;
+  --cds-text-pro: #a89af0;
+
+  --cds-text-git-added: #32d74b;
+  --cds-text-git-removed: #ff2c56;
+  --cds-text-git-modified: #ffd014;
+  --cds-text-git-conflicting: #fa832e;
+  --cds-text-git-merged: #b796ff;
+  --cds-text-git-closed: #ff6159;
+  --cds-text-git-draft: #a6a6a6;
+
+  /* Shadows */
+  --cds-shadow-color: rgba(0, 0, 0, 0.45);
+  --cds-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 2px 8px 0 var(--cds-shadow-color);
+  --cds-shadow-md: 0 2px 4px 0 rgba(0, 0, 0, 0.30), 0 6px 16px 0 var(--cds-shadow-color);
+  --cds-shadow-lg: 0 4px 8px 0 rgba(0, 0, 0, 0.35), 0 12px 28px -2px var(--cds-shadow-color);
+  --cds-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.52), 0 2px 6px rgba(0, 0, 0, 0.30);
+}
+
+/* Light Mode — GameBuilder Inverted Pure Monochrome Palette */
+[data-mode="light"] {
+  --cds-surface-0: #f5f5f5;
+  --cds-surface-1: #ffffff;
+  --cds-surface-2: #fafafa;
+  --cds-surface-3: #ededed;
+  --cds-surface-4: #e0e0e0;
+
+  --df-bg-page: var(--cds-surface-1);
+  --df-z0: 0 0% 96%;
+  --df-z1: 0 0% 100%;
+  --df-z2: 0 0% 92.2%;
+  --df-z3: 0 0% 87.8%;
+  --df-z4: 0 0% 83.9%;
+  --df-z5: 0 0% 60%;
+  --df-z6: 0 0% 45.1%;
+
+  --cds-text-primary: #000000;
+  --cds-text-secondary: rgba(0, 0, 0, 0.66);
+  --cds-text-muted: rgba(0, 0, 0, 0.45);
+  --cds-text-disabled: rgba(0, 0, 0, 0.25);
+
+  --cds-border-subtle: rgba(0, 0, 0, 0.08);
+  --cds-border-default: rgba(0, 0, 0, 0.14);
+  --cds-border-strong: rgba(0, 0, 0, 0.20);
+  --df-edge-line-rgb: 0 0 0;
+  --df-edge-line-max: 0.10;
+  --df-edge-shade-max: 0.20;
+
+  --cds-alpha-1: rgba(0, 0, 0, 0.04);
+  --cds-alpha-2: rgba(0, 0, 0, 0.08);
+  --cds-alpha-3: rgba(0, 0, 0, 0.12);
+  --cds-alpha-4: rgba(0, 0, 0, 0.20);
+  --cds-alpha-5: rgba(0, 0, 0, 0.40);
+
+  --cds-accent-fill: #000000;
+  --cds-accent-ink: #ffffff;
+  --cds-text-accent: #000000;
+
+  --cds-text-git-added: #1e9e3c;
+  --cds-text-git-removed: #cd2054;
+  --cds-text-git-modified: #98801f;
+  --cds-text-git-conflicting: #c5621b;
+  --cds-text-git-merged: #8e6bd9;
+  --cds-text-git-closed: #ff3a30;
+  --cds-text-git-draft: #737373;
+
+  --cds-shadow-color: rgba(0, 0, 0, 0.08);
+  --cds-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --cds-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.10), 0 2px 4px -2px rgba(0, 0, 0, 0.10);
+  --cds-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.10), 0 4px 6px -4px rgba(0, 0, 0, 0.10);
+  --cds-shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.08);
+}

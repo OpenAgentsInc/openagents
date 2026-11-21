@@ -1,0 +1,106 @@
+// The core loop's counts on a server's disk (issue 18): `gamebuilder serve` takes a count from
+// gamebuilder.org's page (POST /api/count, gamebuilder/core/api.coax) and adds it to the day's totals, a file
+// a UTC day in the folder .loop; the funnel row reads the last days back. The rules are
+// gamebuilder/core/loop-day.coax's (a count read against shared/loop.coax's list, a day's totals, the
+// funnel); this file reads and writes the files and says who may read.
+//
+// Where the files are: a hosted server's (serve --accounts DIR) are DIR/.loop/DAY.json, beside
+// the accounts' folders and in none of them (no account's name has a dot); a server on this
+// computer keeps them in its own folder's .loop. A day's file holds that day's totals only: no
+// visit, no id, no address.
+//
+// Who reads them: on a hosted server, an owner of the games that ship (coax/games.coax,
+// GAME_OWNERS), by the email their login proved; anyone else is refused in words. On this
+// computer the folder is yours.
+
+// The folder the counts are kept in, into out: "" when its name is too long.
+cli_loop_dir :: (c: [] Cli, out: [] u8) -> string {
+  base := ifx c[0].hosted then cast(string) c[0].site[0..<c[0].site_n] else cli_dir(c);
+  n := 0;
+  parts := [3] string.[base, "/", LP_FOLDER];
+  for p: parts { for ch: p { if n >= out.count { return ""; } out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// A day's file in that folder, into out.
+cli_loop_file :: (folder: string, date: string, out: [] u8) -> string {
+  n := 0;
+  parts := [4] string.[folder, "/", date, ".json"];
+  for p: parts { for ch: p { if n >= out.count { return ""; } out[n] = ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+CliLoop :: struct { text: [LP_DAY_TEXT] u8; nodes: [LP_DAY_NODES] JvNode; day: [1] LpDay; counts: [LP_BATCH] LpCount; cn: [LP_COUNT_NODES] JvNode; }
+
+// A day's totals read from its file: 1 read, 0 no file yet (the day is empty), -1 a file that is
+// not a day's (it is left as it is: nothing is written over what can't be read).
+cli_loop_read :: (l: [] CliLoop, path: string) -> int {
+  l[0].day[0] = LpDay.{};
+  if !fs_exists(path) { return 0; }
+  k := fs_read(path, l[0].text[..]);
+  if k <= 0 || k >= LP_DAY_TEXT || !lp_day_read(cast(string) l[0].text[0..<k], l[0].nodes[..], l[0].day[..]) { l[0].day[0] = LpDay.{}; return -1; }
+  return 1;
+}
+
+// POST /api/count: the body's counts added to today's totals. The answer's status; its JSON is in out.
+// A minute takes LP_PER_MINUTE counts at most (minute and taken are the server's, kept between calls).
+cli_count :: (c: [] Cli, body: string, read_only: bool, minute: [] s64, taken: [] int, out: [] u8, json: [] string) -> int {
+  o: [1] Jo; jo_start(o[..], out);
+  if read_only { json[0] = gb_refuse(o[..], "not-permitted", "this server is read-only (gamebuilder serve --read-only): it keeps no counts").json; return 403; }
+  now := cast(s64) cxsock_now_ms() / 60000;
+  if now != minute[0] { minute[0] = now; taken[0] = 0; }
+  if taken[0] >= LP_PER_MINUTE { json[0] = gb_refuse(o[..], "limit", "this server takes 600 counts a minute (LP_PER_MINUTE): this one was not counted").json; return 429; }
+  l: [1] CliLoop; why: [1] string;
+  n := lp_count_read(body, l[0].cn[..], l[0].counts[..], why[..]);
+  if n < 0 { json[0] = gb_refuse(o[..], "bad-request", why[0]).json; return 400; }
+  taken[0] += 1;
+  fb: [2200] u8; pb: [2300] u8; db: [10] u8;
+  folder := cli_loop_dir(c, fb[..]);
+  date := lp_date(cast(int) cli_now(c), 0, db[..]);
+  path := cli_loop_file(folder, date, pb[..]);
+  later := "the day's totals can't be kept just now: this count was not counted";
+  if folder.count == 0 || path.count == 0 || date.count == 0 { json[0] = gb_refuse(o[..], "operation-failed", later).json; return 503; }
+  if !fs_exists(folder) && !fs_mkdir(folder) { json[0] = gb_refuse(o[..], "operation-failed", later).json; return 503; }
+  if cli_loop_read(l[..], path) < 0 { json[0] = gb_refuse(o[..], "operation-failed", later).json; return 503; }
+  lp_day_add(l[0].day[..], l[0].counts[0..<n]);
+  text := lp_day_write(l[0].day[..], date, l[0].text[..]);
+  if text.count == 0 || !fs_write(path, text) { jo_start(o[..], out); json[0] = gb_refuse(o[..], "operation-failed", later).json; return 503; }
+  gb_ok(o[..]); jo_key(o[..], "counted"); jo_int(o[..], n); jo_end(o[..]);
+  json[0] = jo_text(o[..]);
+  return 200;
+}
+
+// Whether this login reads a hosted server's counts: an owner of a game that ships.
+cli_loop_reader :: (who: [] AcWho) -> bool {
+  mb: [ACCOUNT_MAX] u8; mine := ac_email(who, mb[..]);
+  if mine.count == 0 { return false; }
+  for g: 0..<GAMES { if game_owner(cast(s32) g, mb[0..<mine.count]) { return true; } }
+  return false;
+}
+
+// The funnel row: the last LP_DAYS days' totals as gamebuilder.funnel.v1, newest first. The answer is in c.out.
+cli_funnel :: (c: [] Cli, who: [] AcWho) -> GbResult {
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  if c[0].hosted && !cli_loop_reader(who) {
+    return gb_refuse(o[..], "not-permitted", "gamebuilder.org's counts are read by an owner of the games that ship (GAME_OWNERS): log in as one (gamebuilder login), then gamebuilder funnel --remote");
+  }
+  l: [1] CliLoop; fb: [2200] u8; pb: [2300] u8; db: [10] u8;
+  folder := cli_loop_dir(c, fb[..]);
+  if folder.count == 0 { return gb_refuse(o[..], "operation-failed", "the folder's name is too long"); }
+  now := cast(int) cli_now(c);
+  gb_ok(o[..]); jo_key(o[..], "schema"); jo_str(o[..], LP_FUNNEL_SCHEMA);
+  jo_key(o[..], "days"); jo_arr(o[..]);
+  unread := 0;
+  for back: 0..<LP_DAYS {
+    date := lp_date(now, back, db[..]);
+    if cli_loop_read(l[..], cli_loop_file(folder, date, pb[..])) < 0 { unread += 1; }
+    lp_funnel_day(o[..], date, ifx back == 0 then "today so far" else ifx back == 1 then "yesterday" else "", l[0].day[..]);
+  }
+  jo_end(o[..]);
+  if unread > 0 { jo_key(o[..], "unread"); jo_int(o[..], unread); }   // (days whose file was not a day's: shown as nothing counted)
+  jo_key(o[..], "note"); jo_str(o[..], LP_FUNNEL_NOTE);
+  // the published games, counted: a hosted server's (a server on this computer puts none on the web)
+  if c[0].hosted { cli_plays_funnel(c, o[..]); }
+  jo_end(o[..]);
+  if o[0].bad { jo_start(o[..], c[0].out[..]); return gb_refuse(o[..], "operation-failed", "the funnel did not fit the answer"); }
+  return GbResult.{code = GB_DONE, json = jo_text(o[..])};
+}

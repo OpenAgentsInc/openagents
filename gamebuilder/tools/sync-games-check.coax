@@ -1,0 +1,395 @@
+// The app's sync against the website's saving, both ways, end to end (issue 19; docs/web-world.md,
+// "Kept on your account"): the app's own sync (coax/sync.coax, the code the Mac app runs every few
+// seconds) and the page's own account module (web/account.coax, the code the browser runs) ask the
+// same real hosted server (`gamebuilder serve --accounts DIR`), one with the app's login and one
+// with a browser's cookie. This tool stands in for the login service, for the app's host (it
+// carries the bytes, as host/Sources/Sync.swift does) and for the browser. It fails unless:
+//   - a game made on the website comes to the app as a game of its type, its level file byte for
+//     byte the account's;
+//   - a game made in the app is listed under "your games" on the website as its type and opens
+//     there; one of a type the page does not build is listed and the page says where it opens;
+//   - a level changed in the app and on the website keeps both: the account's stays, the app's
+//     copy is a new game of the same type on both sides, and the app says so;
+//   - a game and a level deleted in the app are deleted on the account and no pass brings them
+//     back; a game deleted on the account is no longer a game in the app, and the app says so;
+//   - a pass with nothing changed asks the two lists and nothing else;
+//   - a crates game (three levels, a room each) built on the website is one game of three levels in
+//     the app; a room changed on either side is that level on the other; "your games" opens all
+//     three rooms; a room's level deleted in the app is deleted on the account and not brought back.
+//   coax/web/tool.sh tools/sync-games-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+#load "../core/controls.coax";
+#load "../web/account.coax";
+#import "Basic";
+
+SgBrowser :: struct { a: [1] Acct; b: [1] Blocks; st: [1] LvStore; t: f32; said: [AC_SAID] u8; said_n: int; }
+SgRun :: struct {
+  answer: [262144] u8; n: int;
+  ask: [16384] u8;
+  req: [AGENT_FILE_MAX * 2 + 4096] u8;
+  text: [AC_BODY] u8;
+  file: [AGENT_FILE_MAX] u8;
+  origin: [64] u8; origin_n: int;
+  port: int; login: int;
+  asked: int; bad: int;
+  t: [1] SyncTest;              // the app: its sync, its open editor and its level files
+  one: [1] SgBrowser;
+}
+sg_has :: (hay: string, needle: string) -> bool { return level_find(hay, needle) >= 0; }
+sg_count :: (hay: string, needle: string) -> int {
+  n := 0;
+  if needle.count == 0 || needle.count > hay.count { return 0; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { n += 1; } }
+  return n;
+}
+sg_not :: (r: [] SgRun, what: string, got: string) { print("sync games: NOT %: %\n", what, got); r[0].bad += 1; }
+
+// The login service, asked by the server who a caller is: the browser's cookie (ck-a) and the
+// app's login (tok-a) are the same account.
+sg_serve_login :: (r: [] SgRun, wait: int) -> bool {
+  h := cxsock_accept(r[0].login, wait);
+  if h < 0 { return false; }
+  n := 0; deadline := cxsock_now_ms() + 10000; done := false;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].ask.count { r[0].ask[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    if n >= 4 && sg_has(cast(string) r[0].ask[0..<n], "\r\n\r\n") { done = true; }
+  }
+  ask := cast(string) r[0].ask[0..<n];
+  lines := "";
+  if sg_has(ask, "__Host-oa_session=ck-a") || sg_has(ask, "Authorization: Bearer tok-a\r\n") { lines = "account acct_a\nprimary a@example.com\n"; }
+  ab: [512] u8; an := 0;
+  if lines.count == 0 { lines = "error that login has ended\n"; an = bl_put(ab[..], 0, "HTTP/1.1 401 Unauthorized\r\n"); } else { an = bl_put(ab[..], 0, "HTTP/1.1 200 OK\r\n"); }
+  an = bl_put(ab[..], an, "Content-Type: text/plain\r\nConnection: close\r\nContent-Length: "); an = bl_int(ab[..], an, lines.count);
+  an = bl_put(ab[..], an, "\r\n\r\n"); an = bl_put(ab[..], an, lines);
+  for b: ab[0..<an] { _ = cxsock_write(h, cast(int) b); }
+  _ = cxsock_flush(h, 5000);
+  _ = cxsock_close(h);
+  r[0].asked += 1;
+  return true;
+}
+// One POST to the server, as `headers` say who asks: the whole response.
+sg_call :: (r: [] SgRun, path: string, headers: string, body: string) -> string {
+  q := r[0].req[..];
+  n0 := bl_put(q, 0, "POST "); n0 = bl_put(q, n0, path); n0 = bl_put(q, n0, " HTTP/1.1\r\nHost: games.example\r\n"); n0 = bl_put(q, n0, headers);
+  n0 = bl_put(q, n0, "Content-Type: application/json\r\nContent-Length: "); n0 = bl_int(q, n0, body.count); n0 = bl_put(q, n0, "\r\n\r\n"); n0 = bl_put(q, n0, body);
+  if n0 >= q.count { return "(the request did not fit)"; }
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  h := cxsock_connect(r[0].port, 5000);
+  if h < 0 { return "(no server)"; }
+  for b: r[0].req[0..<n0] { _ = cxsock_write(h, cast(int) b); }
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); return "(the request was not sent)"; }
+  _ = sg_serve_login(r, 10000);
+  n := 0; deadline := cxsock_now_ms() + 30000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].answer.count { r[0].answer[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+  }
+  _ = cxsock_close(h);
+  r[0].n = n;
+  return cast(string) r[0].answer[0..<n];
+}
+sg_status :: (resp: string) -> int { if resp.count < 12 || cast(string) resp[0..<9] != "HTTP/1.1 " { return 0; } return (cast(int) resp[9] - 48) * 100 + (cast(int) resp[10] - 48) * 10 + (cast(int) resp[11] - 48); }
+sg_body :: (resp: string) -> string { at := level_find(resp, "\r\n\r\n"); return ifx at >= 0 then cast(string) resp[at + 4..<resp.count] else ""; }
+// A row on the account from elsewhere (a command line, with the same login).
+sg_cli :: (r: [] SgRun, verb: string, body: string) -> string {
+  pb: [64] u8; n := bl_put(pb[..], 0, "/api/rows/"); n = bl_put(pb[..], n, verb);
+  return sg_body(sg_call(r, cast(string) pb[0..<n], "Authorization: Bearer tok-a\r\n", body));
+}
+// The account's file of a level (read-content), into SgRun.file: its length (0: none).
+sg_read :: (r: [] SgRun, level: int) -> int {
+  bb: [64] u8; n := bl_put(bb[..], 0, "{\"level\":"); n = bl_int(bb[..], n, level); n = bl_put(bb[..], n, "}");
+  body := sg_cli(r, "read-content", cast(string) bb[0..<n]);
+  d: [1] Jv;
+  if !jv_parse(d[..], body, r[0].t[0].nodes[..]) { return 0; }
+  got := jv_str(d[0], jv_get(d[0], 0, "content"), r[0].file[..]);
+  return ifx got > 0 then got else 0;
+}
+// Whether the app's file of a level is, byte for byte, the account's.
+sg_same :: (r: [] SgRun, level: int) -> bool {
+  if level < 1 || level >= SYNC_T { return false; }
+  n := sg_read(r, level);
+  t := r[0].t[..];
+  return n > 0 && n == t[0].sizes[level] && cast(string) r[0].file[0..<n] == cast(string) t[0].files[level][0..<n];
+}
+sg_listed :: (r: [] SgRun, level: int) -> bool {
+  nb: [48] u8; n := bl_put(nb[..], 0, "{\"level\":"); n = bl_int(nb[..], n, level); n = bl_put(nb[..], n, ",");
+  return sg_has(sg_cli(r, "list-levels", "{}"), cast(string) nb[0..<n]);
+}
+// How many games of a type the account lists.
+sg_games_of :: (r: [] SgRun, ty: int) -> int {
+  nb: [64] u8; n := bl_put(nb[..], 0, "\"template\":\""); n = bl_put(nb[..], n, GT_ID[ty]); n = bl_put(nb[..], n, "\"");
+  return sg_count(sg_cli(r, "list-games", "{}"), cast(string) nb[0..<n]);
+}
+
+// One pass of the app's sync, this tool playing the host as host/Sources/Sync.swift does: the
+// requests go to the real server with the app's login; the files are the device's.
+sg_app :: (r: [] SgRun) -> bool {
+  t := r[0].t[..];
+  here: [SYNC_T] s32; hn := 0;
+  for k: 1..<SYNC_T { if t[0].sizes[k] > 0 { here[hn] = cast(s32) k; hn += 1; } }
+  t[0].asked = 0; t[0].note_n = 0; t[0].aside = 0;
+  ed_sync_device(t[0].s[..], t[0].d[..]);
+  if !ed_sync_begin(t[0].s[..], here[0..<hn], t[0].kept[0..<t[0].kept_n]) { return false; }
+  steps := 0;
+  while ed_sync_ask(t[0].s[..]) != SYNC_IDLE && steps < 200 {
+    steps += 1;
+    ask := ed_sync_ask(t[0].s[..]);
+    pb: [64] u8; pn := ed_sync_path(t[0].s[..], pb[..]);
+    bn := ed_sync_body(t[0].s[..], t[0].out[..]);
+    n := ed_sync_level(t[0].s[..]);
+    none := t[0].out[0..<0];
+    if ask == SYNC_HTTP {
+      t[0].asked += 1;
+      resp := sg_call(r, cast(string) pb[0..<pn], "Authorization: Bearer tok-a\r\n", cast(string) t[0].out[0..<bn]);
+      body := sg_body(resp);
+      at := resp.count - body.count;
+      ed_sync_answer(t[0].s[..], cast(s32) sg_status(resp), r[0].answer[at..<at + body.count]);
+    } else if ask == SYNC_READ {
+      ok := n >= 1 && n < SYNC_T && t[0].sizes[n] > 0;
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, ifx ok then t[0].files[n][0..<t[0].sizes[n]] else none);
+    } else if ask == SYNC_WRITE {
+      if n < 1 || n >= SYNC_T { ed_sync_answer(t[0].s[..], 0, none); continue; }
+      for i: 0..<bn { t[0].files[n][i] = t[0].out[i]; }
+      t[0].sizes[n] = cast(int) bn;
+      if !t[0].d[0].official && ed_level(t[0].d[..]) == n { _ = ed_open(t[0].d[..], n, t[0].files[n][0..<t[0].sizes[n]]); }
+      ed_sync_answer(t[0].s[..], 1, none);
+    } else if ask == SYNC_GAME {
+      ok := ed_sync_mine(t[0].s[..], t[0].d[..]);
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, none);
+    } else if ask == SYNC_DROP {
+      ok := ed_sync_mine(t[0].s[..], t[0].d[..]);
+      if ok { t[0].aside = n; }
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, none);
+    } else if ask == SYNC_MOVE {
+      to := ed_sync_to(t[0].s[..]);
+      ok := to >= 1 && to < SYNC_T && ed_sync_mine(t[0].s[..], t[0].d[..]);
+      if ok { for i: 0..<bn { t[0].files[to][i] = t[0].out[i]; } t[0].sizes[to] = cast(int) bn; t[0].sizes[n] = 0; }
+      sync_test_saved(t);
+      ed_sync_answer(t[0].s[..], ifx ok then 1 else 0, none);
+    } else if ask == SYNC_KEEP {
+      for i: 0..<bn { t[0].kept[i] = t[0].out[i]; }
+      t[0].kept_n = cast(int) bn;
+      ed_sync_answer(t[0].s[..], 1, none);
+    } else {
+      ed_sync_answer(t[0].s[..], 0, none);
+    }
+  }
+  if ed_sync_note(t[0].s[..], t[0].d[..]) { t[0].note_n = cast(int) ed_note(t[0].d[..], t[0].note[..]); }
+  return steps < 200 && t[0].s[0].failed == 0;
+}
+// The app's game that holds a level: its type, or -1 when the level is in no game.
+sg_type_here :: (r: [] SgRun, level: int) -> int {
+  d := r[0].t[0].d[..];
+  i := sync_test_game(d, cast(s32) level);
+  return ifx i >= 0 then cast(int) d[0].mine[i].plays else -1;
+}
+
+// A browser's pass, to its end (as tools/web-account-check.coax's): each request the page's module asks is sent
+// as the browser sends it, and the answer given back. What the page would say is kept.
+sg_web :: (r: [] SgRun, w: [] SgBrowser, kind: int, up: bool) {
+  a := w[0].a[..];
+  hb: [256] u8; hn := bl_put(hb[..], 0, "Cookie: __Host-oa_session=ck-a\r\nOrigin: "); hn = bl_put(hb[..], hn, cast(string) r[0].origin[0..<r[0].origin_n]); hn = bl_put(hb[..], hn, "\r\n");
+  w[0].said_n = 0;
+  for step: 0..<40 {
+    w[0].t += 0.1;
+    ac_tick(a, w[0].b[..], kind, w[0].t, true, up);
+    if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+    if a[0].said_n > 0 && w[0].said_n == 0 { w[0].said_n = ac_take(a, w[0].said[..]); }
+    if !ac_wants(a) { if !ac_busy(a) && step > 2 { break; } continue; }
+    ac_sent(a);
+    url := cast(string) a[0].url[0..<a[0].url_n];
+    if url == "/api/auth/account" {
+      jb: [128] u8; jn := bl_put(jb[..], 0, "{\"logged_in\":true,\"account\":\"acct_a\"}");
+      ac_piece(a, jb[0..<jn]); ac_end(a, w[0].st[..], w[0].b[..], kind, 200, w[0].t, up);
+    } else {
+      resp := sg_call(r, url, cast(string) hb[0..<hn], cast(string) a[0].body[0..<a[0].body_n]);
+      body := sg_body(resp);
+      for i: 0..<body.count { r[0].text[i] = body[i]; }
+      ac_piece(a, r[0].text[0..<body.count]); ac_end(a, w[0].st[..], w[0].b[..], kind, sg_status(resp), w[0].t, up);
+    }
+    if a[0].said_n > 0 && w[0].said_n == 0 { w[0].said_n = ac_take(a, w[0].said[..]); }
+  }
+  if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+}
+sg_web_said :: (w: [] SgBrowser) -> string { return cast(string) w[0].said[0..<w[0].said_n]; }
+sg_world :: (w: [] SgBrowser, kind: int) {
+  ty := gt_web_type(kind);
+  bl_new(w[0].b[..], ty); bl_bounds(w[0].b[..], GT_FAR[ty], GT_HIGH[ty]); bl_low(w[0].b[..], GT_LOW[ty]); bl_roles(w[0].b[..], gt_roles(ty));
+}
+// The page's "your games", listed again: the place of the game holding `level`, or -1.
+sg_web_find :: (r: [] SgRun, w: [] SgBrowser, kind: int, level: int) -> int {
+  a := w[0].a[..];
+  ac_list(a); sg_web(r, w, kind, false);
+  for i: 0..<a[0].games_n { if a[0].games[i].level == level { return i; } }
+  return -1;
+}
+sg_new_game :: (r: [] SgRun, ty: int) -> bool {
+  ab: [64] u8; n := bl_put(ab[..], 0, "{\"template\":\""); n = bl_put(ab[..], n, GT_ID[ty]); n = bl_put(ab[..], n, "\"}");
+  return sync_test_here(r[0].t[..], "new-game", cast(string) ab[0..<n]);
+}
+sg_arg :: (key: string, n: int, out: [] u8) -> string {
+  k := bl_put(out, 0, "{\""); k = bl_put(out, k, key); k = bl_put(out, k, "\":"); k = bl_int(out, k, n); k = bl_put(out, k, "}");
+  return cast(string) out[0..<k];
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/sync-games-check.coax GAMEBUILDER\n"); return 2; }
+  bin := args_at(a[..], 0);
+  r: [1] SgRun;
+  r[0].login = cxsock_listen(0);
+  if r[0].login < 0 { print("sync games: NOT a port for the login service\n"); return 1; }
+  r[0].origin_n = bl_put(r[0].origin[..], 0, "http://127.0.0.1:"); r[0].origin_n = bl_int(r[0].origin[..], r[0].origin_n, cxsock_port(r[0].login)); origin := cast(string) r[0].origin[0..<r[0].origin_n];
+  db: [256] u8; dir := fs_temp("gb-sync-games", db[..]);
+  if dir.count == 0 { print("sync games: NOT a folder to work in\n"); return 1; }
+  sh := proc_new();
+  ok := proc_arg(sh, bin) && proc_arg(sh, "serve") && proc_arg(sh, "--accounts") && proc_arg(sh, dir) && proc_arg(sh, "--origin") && proc_arg(sh, origin) && proc_arg(sh, "--port") && proc_arg(sh, "0");
+  if !ok || proc_start(sh) != 0 { print("sync games: NOT started: % serve --accounts\n", bin); return 1; }
+  sl: [256] u8; sn := proc_line(sh, 10000, sl[..]);
+  if sn > 0 {
+    said := cast(string) sl[0..<sn]; at := level_find(said, "127.0.0.1:");
+    if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { r[0].port = r[0].port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+  }
+  if r[0].port == 0 { print("sync games: NOT a port said by serve --accounts\n"); _ = proc_kill(sh, 15); return 1; }
+  rr := r[..]; t := r[0].t[..]; d := t[0].d[..]; one := r[0].one[..]; a1 := one[0].a[..];
+  seed: [16] u8; now := cxsock_now_ms(); for i: 0..<16 { seed[i] = cast(u8) (((now >> (i % 5)) + i * 29) & 255); }
+  ac_entropy(a1, seed[..], true);
+  sync_test_login(t, "a@example.com");   // the email the app's login proved
+  nb: [64] u8;
+
+  // 1. a game built on the website comes to the app as a game of its type, its file the account's byte for byte
+  wk := GT_RACING - GT_WEB_FIRST;
+  sg_world(one, wk); ac_record_read(a1, "");
+  if !(bl_add(one[0].b[..], 1000, 2000, 200, 200, 100, 0) && bl_add(one[0].b[..], 3000, 2000, 200, 400, 100, 0) && bl_add_ball(one[0].b[..], 5000, 2000, 50, 0)) { sg_not(rr, "three things built on the website", ""); }
+  ac_built(a1, wk); ac_wake(a1);
+  sg_web(rr, one, wk, true);
+  w1 := a1[0].link[wk].level;
+  if w1 < 1 || w1 >= SYNC_T || a1[0].state != AC_S_KEPT { sg_not(rr, "the website's game kept on the account", sg_web_said(one)); _ = proc_kill(sh, 15); return 1; }
+  if !sg_app(rr) { sg_not(rr, "the app's pass", sync_test_said(t)); }
+  if sg_type_here(rr, w1) != GT_RACING || d[0].mine_n != 1 || !sg_same(rr, w1) { sg_not(rr, "the website's game in the app, as a game of its type, its file the account's", sync_test_said(t)); }
+  if !sg_has(sync_test_said(t), "came from your account") { sg_not(rr, "the app saying a game came from the account", sync_test_said(t)); }
+  // (a pass with nothing changed asks the two lists and nothing else, and says nothing)
+  if !sg_app(rr) || t[0].asked != 2 || sync_test_said(t) != "" || d[0].mine_n != 1 { sg_not(rr, "nothing asked twice", sync_test_said(t)); }
+
+  // 2. a game made in the app is on the account as a game of its type, is listed under "your games" on the
+  // website, and opens there
+  if !sg_new_game(rr, GT_THIRD) { sg_not(rr, "a game made in the app", ""); }
+  a2 := 0; for k: 1..<SYNC_T { if t[0].sizes[k] > 0 && k != w1 { a2 = k; } }
+  if a2 == 0 || !sync_test_edit(t, cast(s32) a2, 200) || !sg_app(rr) { sg_not(rr, "the app's pass with its game", sync_test_said(t)); }
+  a2 = 0; for k: 1..<SYNC_T { if sg_type_here(rr, k) == GT_THIRD { a2 = k; } }   // (the number the account gave its level)
+  if a2 == 0 || sg_games_of(rr, GT_THIRD) != 1 || sg_games_of(rr, GT_RACING) != 1 || !sg_same(rr, a2) { sg_not(rr, "the app's game on the account, as a game of its type", sg_cli(rr, "list-games", "{}")); }
+  tk := GT_THIRD - GT_WEB_FIRST;
+  sg_world(one, tk);
+  at2 := sg_web_find(rr, one, tk, a2);
+  if at2 < 0 || a1[0].games[at2].kind != tk { sg_not(rr, "the app's game under your games on the website, as its type", sg_cli(rr, "list-games", "{}")); }
+  if ac_open(a1, at2) != tk { sg_not(rr, "the app's game picked on the website", sg_web_said(one)); }
+  sg_web(rr, one, tk, true);
+  if sg_web_said(one) != "opened from your account." || a1[0].link[tk].level != a2 || one[0].b[0].n == 0 { sg_not(rr, "the app's game opened on the website", sg_web_said(one)); }
+  // (a game of a type the page does not build is listed, and the page says where it opens)
+  if !sg_new_game(rr, GT_ADVENTURE) || !sg_app(rr) { sg_not(rr, "an app-only game made and sent", sync_test_said(t)); }
+  a3 := 0; for k: 1..<SYNC_T { if sg_type_here(rr, k) == GT_ADVENTURE { a3 = k; } }
+  at3 := sg_web_find(rr, one, tk, a3);
+  if a3 == 0 || at3 < 0 || ac_open(a1, at3) != -1 || ac_take(a1, one[0].said[..]) == 0 { sg_not(rr, "an app-only game listed on the website", ""); }
+  else { one[0].said_n = 0; for ch: "that game is one the app plays: open it there." { if one[0].said[one[0].said_n] != ch { sg_not(rr, "the website saying where an app-only game opens", ""); break; } one[0].said_n += 1; } }
+
+  // 3. the website's game changed on the website and in the app: the account's stays, the app's copy is a new
+  // game of the same type on both sides, and the app says so
+  sg_world(one, wk);
+  atw := sg_web_find(rr, one, wk, w1);
+  if atw < 0 || ac_open(a1, atw) != wk { sg_not(rr, "the website's own game picked again", sg_web_said(one)); }
+  sg_web(rr, one, wk, true);
+  if !bl_add(one[0].b[..], 7000, 2000, 200, 200, 100, 0) { sg_not(rr, "a fourth thing on the website", ""); }
+  ac_wake(a1); sg_web(rr, one, wk, true);
+  if a1[0].state != AC_S_KEPT { sg_not(rr, "the website's change kept", sg_web_said(one)); }
+  if !sync_test_edit(t, cast(s32) w1, 300) || !sg_app(rr) { sg_not(rr, "the app's pass with both changed", sync_test_said(t)); }
+  if !sg_has(sync_test_said(t), "Nothing is lost") { sg_not(rr, "the app saying both were kept", sync_test_said(t)); }
+  if !sg_app(rr) { sg_not(rr, "the app's pass after both changed", sync_test_said(t)); }
+  racing := 0; for i: 0..<d[0].mine_n { if d[0].mine[i].plays == GT_RACING { racing += 1; } }
+  if racing != 2 || sg_games_of(rr, GT_RACING) != 2 || !sg_same(rr, w1) { sg_not(rr, "both copies kept as two games of the type, here and on the account", sg_cli(rr, "list-games", "{}")); }
+  for k: 1..<SYNC_T { if t[0].sizes[k] > 0 && !sg_same(rr, k) { sg_not(rr, "every level of the app's the account's, byte for byte", sg_arg("level", k, nb[..])); } }
+
+  // 4. a game and its level deleted in the app are deleted on the account, and no pass brings them back
+  gi := sync_test_game(d, cast(s32) a3);
+  g3 := ifx gi >= 0 then cast(int) d[0].mine[gi].n else 0;
+  if !sync_test_here(t, "delete-game", sg_arg("game", g3, nb[..])) || !sync_test_open(t, cast(s32) a3) || !sync_test_here(t, "delete-level", sg_arg("level", a3, nb[..])) || t[0].sizes[a3] != 0 { sg_not(rr, "a game and its level deleted in the app", ""); }
+  _ = sync_test_open(t, cast(s32) w1);
+  if !sg_app(rr) || sg_games_of(rr, GT_ADVENTURE) != 0 || sg_listed(rr, a3) { sg_not(rr, "the app's deletion made on the account", sg_cli(rr, "list-levels", "{}")); }
+  if !sg_app(rr) || t[0].sizes[a3] != 0 || sg_type_here(rr, a3) != -1 || sg_listed(rr, a3) || t[0].asked != 2 { sg_not(rr, "a deleted level not brought back", sync_test_said(t)); }
+  // a game deleted on the account (the website's side, or another device): no longer a game in the app, its
+  // level stays, and the app says so; a level deleted there goes here, and the app says so
+  gi = sync_test_game(d, cast(s32) a2);
+  listed := sg_cli(rr, "list-games", "{}");
+  dg: [1] Jv; ga := 0;
+  if jv_parse(dg[..], listed, t[0].nodes[..]) {
+    gs := jv_get(dg[0], 0, "games"); i := ifx jv_kind(dg[0], gs) == JV_ARRAY then dg[0].nodes[gs].first else -1;
+    while i >= 0 { ls := jv_get(dg[0], i, "levels"); if jv_kind(dg[0], ls) == JV_ARRAY && jv_int(dg[0], dg[0].nodes[ls].first, 0) == a2 { ga = jv_int(dg[0], jv_get(dg[0], i, "game"), 0); } i = dg[0].nodes[i].next; }
+  }
+  gone := sg_cli(rr, "delete-game", sg_arg("game", ga, nb[..]));
+  if gi < 0 || ga == 0 || !sg_has(gone, "\"ok\":true") { sg_not(rr, "a game deleted on the account", gone); }
+  if !sg_app(rr) || sg_type_here(rr, a2) != -1 || t[0].sizes[a2] == 0 || !sg_has(sync_test_said(t), "was deleted on your account, so it is no longer a game here") { sg_not(rr, "a game deleted on the account no longer a game in the app, and said", sync_test_said(t)); }
+  gone = sg_cli(rr, "delete-level", sg_arg("level", a2, nb[..]));
+  if !sg_has(gone, "\"ok\":true") { sg_not(rr, "a level deleted on the account", gone); }
+  if !sg_app(rr) || t[0].sizes[a2] != 0 || cast(int) t[0].aside != a2 || !sg_has(sync_test_said(t), "was deleted on your account, so it is deleted here too") { sg_not(rr, "a level deleted on the account deleted in the app, set aside, and said", sync_test_said(t)); }
+  if !sg_app(rr) || t[0].sizes[a2] != 0 || sg_listed(rr, a2) || sg_games_of(rr, GT_THIRD) != 0 || sg_games_of(rr, GT_RACING) != 2 || t[0].asked != 2 { sg_not(rr, "nothing deleted brought back, and the rest as it was", sync_test_said(t)); }
+
+  // 5. crates: a game is three levels, a room each (shared/game-types.coax gt_levels). Built on the website, it is
+  // made once with all three, and comes to the app as one game of three levels, each the account's byte for byte
+  ck := KP_CRATES; c1 := kp_slot(ck, 1); c2 := kp_slot(ck, 2);
+  sg_world(one, ck);
+  if !bl_add(one[0].b[..], 300, 300, 100, 100, 100, 0) { sg_not(rr, "a crate added to the first room on the website", ""); }
+  ac_built(a1, ck); ac_wake(a1); sg_web(rr, one, ck, true);
+  k1 := a1[0].link[ck].level; k2 := a1[0].link[c1].level; k3 := a1[0].link[c2].level;
+  if k1 < 1 || k2 < 1 || k3 < 1 || k3 >= SYNC_T || k1 == k2 || k2 == k3 || a1[0].link[c1].game != a1[0].link[ck].game || a1[0].link[c2].game != a1[0].link[ck].game || a1[0].state != AC_S_KEPT || sg_games_of(rr, GT_CRATES) != 1 {
+    sg_not(rr, "the website's crates game made once on the account with its three levels", sg_cli(rr, "list-games", "{}")); _ = proc_kill(sh, 15); return 1;
+  }
+  if !sg_app(rr) || sg_type_here(rr, k1) != GT_CRATES || sync_test_game(d, cast(s32) k1) < 0 || sync_test_game(d, cast(s32) k2) != sync_test_game(d, cast(s32) k1) || sync_test_game(d, cast(s32) k3) != sync_test_game(d, cast(s32) k1) || !sg_same(rr, k1) || !sg_same(rr, k2) || !sg_same(rr, k3) {
+    sg_not(rr, "the website's crates game in the app as one game of three levels, each file the account's", sync_test_said(t));
+  }
+  // the second room built in on the website is written to the game's second level (no second game), and comes to the app
+  bl_new_level(one[0].b[..], GT_CRATES, 1);
+  if !bl_add(one[0].b[..], 300, 300, 100, 100, 100, 0) { sg_not(rr, "a crate added to the second room on the website", ""); }
+  ac_built(a1, c1); sg_web(rr, one, c1, true);
+  if a1[0].state != AC_S_KEPT || a1[0].link[c1].level != k2 || a1[0].link[c1].rev < 0 || sg_games_of(rr, GT_CRATES) != 1 { sg_not(rr, "the second room kept as the game's second level", sg_web_said(one)); }
+  if !sg_app(rr) || !sg_same(rr, k2) || !sg_has(cast(string) t[0].files[k2][0..<t[0].sizes[k2]], "block") { sg_not(rr, "the second room's change in the app", sync_test_said(t)); }
+  // the second room changed in the app comes back to the website when that room is up
+  if !sync_test_edit(t, cast(s32) k2, 100) || !sg_app(rr) || !sg_same(rr, k2) { sg_not(rr, "the second room changed in the app, and sent", sync_test_said(t)); }
+  ac_wake(a1); sg_web(rr, one, c1, true);
+  if sg_web_said(one) != "your account has a newer copy of this game: it is open here now." || a1[0].state != AC_S_KEPT { sg_not(rr, "the app's change to the second room open on the website", sg_web_said(one)); }
+  // "your games" lists the game with its levels, and a browser that has none of it opens all three rooms from it
+  two: [1] SgBrowser; a2w := two[0].a[..]; ac_entropy(a2w, seed[..], true);
+  sg_world(two[..], ck); ac_record_read(a2w, "");
+  at5 := sg_web_find(rr, two[..], ck, k1);
+  if at5 < 0 || a2w[0].games[at5].kind != ck || a2w[0].games[at5].more[0] != k2 || a2w[0].games[at5].more[1] != k3 { sg_not(rr, "the crates game under your games with its three levels", sg_cli(rr, "list-games", "{}")); }
+  else {
+    if ac_open(a2w, at5) != ck { sg_not(rr, "the crates game picked on the website", sg_web_said(two[..])); }
+    sg_web(rr, two[..], ck, true);
+    if sg_web_said(two[..]) != "opened from your account." || a2w[0].link[ck].level != k1 || a2w[0].link[c1].level != k2 || a2w[0].link[c2].level != k3 { sg_not(rr, "the crates game's first room opened on the website, its other rooms linked", sg_web_said(two[..])); }
+    bl_new_level(two[0].b[..], GT_CRATES, 1); sg_web(rr, two[..], c1, true);
+    if sg_web_said(two[..]) != "opened from your account." || a2w[0].link[c1].rev < 0 || a2w[0].state != AC_S_KEPT || two[0].b[0].n != one[0].b[0].n { sg_not(rr, "the second room opened from the account when it came up", sg_web_said(two[..])); }
+  }
+  // a room's level deleted in the app is deleted on the account, no pass brings it back, and the website says the room is this browser's alone
+  if !sync_test_open(t, cast(s32) k3) || !sync_test_here(t, "delete-level", sg_arg("level", k3, nb[..])) || t[0].sizes[k3] != 0 { sg_not(rr, "the third room's level deleted in the app", ""); }
+  _ = sync_test_open(t, cast(s32) k1);
+  if !sg_app(rr) || sg_listed(rr, k3) || !sg_listed(rr, k2) || !sg_app(rr) || t[0].sizes[k3] != 0 || sg_listed(rr, k3) || t[0].asked != 2 || sg_games_of(rr, GT_CRATES) != 1 { sg_not(rr, "a room's level deleted in the app deleted on the account, and not brought back", sync_test_said(t)); }
+  bl_new_level(one[0].b[..], GT_CRATES, 2);
+  if !bl_add(one[0].b[..], 300, 300, 100, 100, 100, 0) { sg_not(rr, "a crate added to the third room on the website", ""); }
+  ac_built(a1, c2); sg_web(rr, one, c2, true);
+  if sg_web_said(one) != "room 3 is no longer on your account: it is kept in this browser only." || a1[0].state != AC_S_LOCAL || sg_games_of(rr, GT_CRATES) != 1 || a1[0].link[ck].level != k1 { sg_not(rr, "the website saying a room deleted from the account is this browser's alone, with no second game", sg_web_said(one)); }
+
+  _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh);
+  if r[0].bad > 0 { return 1; }
+  print("sync games: ok, % logins asked\n", r[0].asked);
+  return 0;
+}

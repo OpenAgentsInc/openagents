@@ -1,0 +1,100 @@
+// Tiny central-directory fixtures. No game archives or Unreal build are
+// needed for these checks. The original private ZIP is the end-to-end test.
+upv_test_entry :: (b: [] u8, name: string, unix_mode: int) -> int {
+  for i: 0..<46 { b[i] = 0; }
+  b[0] = 0x50; b[1] = 0x4b; b[2] = 1; b[3] = 2;
+  b[28] = cast(u8) name.count;
+  b[40] = cast,trunc(u8) unix_mode; b[41] = cast,trunc(u8) (unix_mode >> 8);
+  for c, i: name { b[46 + i] = c; }
+  return 46 + name.count;
+}
+
+#test "a Windows-path ZIP selects the one game container and its global companion" {
+  central: [1024] u8;
+  n := 0;
+  for name: [6] string.["Demo\\Content\\Paks\\Game.utoc", "Demo\\Data\\items.csv",
+    "Demo\\Content\\Paks\\Game.ucas", "Demo\\Content\\Paks\\global.utoc",
+    "Demo\\Content\\Paks\\global.ucas", "Demo\\Game.exe"] {
+    n += upv_test_entry(central[n..<central.count], name, 0);
+  }
+  z: [1] UzCatalog = ---;
+  #assert uz_catalog(central[0..<n], UzEnd.{entries = 6, at = 1000, bytes = n}, z[..]) == "";
+  io := uz_io(z[..]);
+  #assert io.error == "" && io.toc == 0 && io.data == 2 && io.global_toc == 3 && io.global_data == 4;
+  #assert uz_name(z[..], io.toc) == "Demo/Content/Paks/Game.utoc" && z[0].order[0] == 2;
+  json: [2048] u8; j: [1] Jo; jo_start(j[..], json[..]); upv_inventory(j[..], z[..], io);
+  #assert !j[0].bad;
+  nodes: [96] JvNode; d: [1] Jv;
+  #assert jv_parse(d[..], jo_text(j[..]), nodes[..]) && jv_len(d[0], 0) == 6;
+  loose := jv_at(d[0], 0, 4); executable := jv_at(d[0], 0, 5);
+  #assert jv_raw(d[0], jv_get(d[0], loose, "reason")) == "loose file outside the cooked scene profile";
+  #assert jv_raw(d[0], jv_get(d[0], executable, "status")) == "skipped";
+}
+
+#test "a bad path, a link and slash or case aliases are refused before extraction" {
+  central: [512] u8; z: [1] UzCatalog = ---;
+  for name: [5] string.["../Demo.utoc", "A\\..\\Demo.utoc", "/Demo.utoc", "C:\\Demo.utoc", "A//Demo.utoc"] {
+    n := upv_test_entry(central[..], name, 0);
+    #assert upv_starts(uz_catalog(central[0..<n], UzEnd.{entries = 1, at = 1000}, z[..]), "unsafe ZIP member path");
+  }
+  n := upv_test_entry(central[..], "demo.utoc", 0xa000);
+  #assert uz_catalog(central[0..<n], UzEnd.{entries = 1, at = 1000}, z[..]) == "ZIP contains a link, reparse point, or non-regular member";
+  n = upv_test_entry(central[..], "A\\Demo.utoc", 0);
+  n += upv_test_entry(central[n..<central.count], "a/demo.utoc", 0);
+  #assert upv_starts(uz_catalog(central[0..<n], UzEnd.{entries = 2, at = 1000}, z[..]), "duplicate ZIP member path");
+}
+
+#test "missing and multiple containers or a source project give a specific refusal" {
+  central: [512] u8; z: [1] UzCatalog = ---;
+  n := upv_test_entry(central[..], "demo.utoc", 0);
+  #assert uz_catalog(central[0..<n], UzEnd.{entries = 1, at = 1000}, z[..]) == "";
+  #assert uz_io(z[..]).error == "the game .utoc has no matching .ucas in the ZIP";
+  n += upv_test_entry(central[n..<central.count], "dlc.utoc", 0);
+  #assert uz_catalog(central[0..<n], UzEnd.{entries = 2, at = 1000}, z[..]) == "";
+  #assert upv_starts(uz_io(z[..]).error, "multiple game IoStore containers");
+  n = upv_test_entry(central[..], "Demo.uproject", 0);
+  #assert uz_catalog(central[0..<n], UzEnd.{entries = 1, at = 1000}, z[..]) == "";
+  #assert upv_starts(uz_io(z[..]).error, "source project ZIP");
+}
+
+#test "ZIP trailer bounds, local payload range and ZIP CRC are checked" {
+  tail: [22] u8; tail[0] = 0x50; tail[1] = 0x4b; tail[2] = 5; tail[3] = 6;
+  tail[8] = 1; tail[10] = 1; tail[12] = 48; tail[16] = 100;
+  end := uz_end(tail[..], 170);
+  #assert end.error == "" && end.entries == 1 && end.at == 100 && end.bytes == 48;
+  #assert uz_end(tail[..], 169).error == "invalid ZIP central directory range";
+  tail[4] = 1;
+  #assert uz_end(tail[..], 170).error == "split ZIP archives are unsupported";
+  head: [30] u8; head[0] = 0x50; head[1] = 0x4b; head[2] = 3; head[3] = 4;
+  head[26] = 8;
+  #assert uz_data_at(head[..], UzEntry.{offset = 10}, 49) == 48;
+  #assert uz_data_at(head[..], UzEntry.{offset = 10}, 47) == -1;
+  data := [9] u8.['1','2','3','4','5','6','7','8','9'];
+  decoded: [9] u8;
+  #assert uz_decode(data[..], decoded[..], UzEntry.{crc = 0xcbf43926});
+  #assert !uz_decode(data[..], decoded[..], UzEntry.{crc = 0xcbf43927});
+}
+
+#test "unknown, partitioned and protected IoStore layouts are refused" {
+  b: [144] u8;
+  for c, i: "-==--==--==--==-" { b[i] = c; }
+  b[20] = 144; b[52] = 1;
+  #assert upv_starts(uz_toc_error(b[..]), "unsupported IoStore header");
+  b[16] = 8; b[80] = 9;
+  #assert uz_toc_error(b[..]) == "";
+  b[80] = 11;
+  #assert upv_starts(uz_toc_error(b[..]), "encrypted or signed");
+  b[80] = 9; b[52] = 2;
+  #assert upv_starts(uz_toc_error(b[..]), "partitioned IoStore");
+}
+
+#test "report rows retain cooked refusals and converter counts without paths or clocks" {
+  text: [1024] u8; j: [1] Jo; jo_start(j[..], text[..]);
+  upv_diagnostics(j[..], "unreal-cooked-export: 8 packages (21 ms)\n  map Demo refused: bad data\nunreal-cooked-export: 1 refused (41) ms\nunreal-cooked-export: 2 files, 63 ms", 0);
+  #assert jo_text(j[..]) == "[\"unreal-cooked-export: 8 packages\",\"  map Demo refused: bad data\",\"unreal-cooked-export: 1 refused\",\"unreal-cooked-export: 2 files\"]";
+  jo_start(j[..], text[..]);
+  upv_diagnostics(j[..], "Import of /tmp/job/a.aimport\nPack unreal-preview.pack\nskipped abc: hidden\n", 2);
+  #assert jo_text(j[..]) == "[\"Pack unreal-preview.pack\",\"skipped abc: hidden\"]";
+  #assert upv_material_count_agrees("2 colliders, 12 material parameters not mapped\nunreal-level-import: wrote /tmp/job", 12);
+  #assert !upv_material_count_agrees("2 colliders, 12 material parameters not mapped\nunreal-level-import: wrote /tmp/job", 1);
+}

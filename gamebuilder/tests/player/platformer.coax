@@ -1,0 +1,44 @@
+// Declared course walkthrough, assisted by read-only own-frame diagnostics.
+// The course is public product data; no game export, simulated tick or edit is
+// invoked. Keyboard keys or two independent browser touch contacts do all work.
+#load "platformer-policy.coax";
+PpInput :: struct {way:int;jump:bool;started:bool;w:int;h:int;}
+pt_pf_frame :: (p:[]Pt)->PpFrame {
+  f:PpFrame;r:=pb_read(p[0].c[..],"globalThis.gamebuilderObservation");if r<0 {return f;}d:=cdp_doc(p[0].c[..]);
+  f.ok=pt_frame_valid(d,r) && pt_frame_tick(p[0].health[..],jv_int(d,jv_get(d,r,"sequence"),0),proc_now_ms()) && jv_int(d,jv_get(d,r,"game_type"),-1)==6 && jv_get(d,r,"checkpoints")>=0;
+  f.sequence=jv_int(d,jv_get(d,r,"sequence"),0);f.z=cast(f32)jv_int(d,jv_get(d,r,"z_cm"),0)/100;f.y=cast(f32)jv_int(d,jv_get(d,r,"y_cm"),0)/100;
+  f.vy=cast(f32)jv_int(d,jv_get(d,r,"vy_cm"),0)/100;f.vz=cast(f32)jv_int(d,jv_get(d,r,"vz_cm"),0)/100;f.ground=jv_int(d,jv_get(d,r,"on_ground"),0)==1;f.air=jv_int(d,jv_get(d,r,"air_jumps"),0);f.clock=cast(f32)jv_int(d,jv_get(d,r,"course_ms"),0)/1000;
+  f.gate=jv_int(d,jv_get(d,r,"checkpoints"),-1);f.falls=jv_int(d,jv_get(d,r,"falls"),-1);f.done=jv_int(d,jv_get(d,r,"finished"),0)==1;return f;
+}
+pt_pf_input :: (p:[]Pt,k:[]PpInput,d:PpDecision)->bool {
+  if !p[0].touch {
+    ok:=true;if k[0].way!=d.way {if k[0].way!=0 {ok=pt_key(p,ifx k[0].way>0 then "d" else "a",ifx k[0].way>0 then "KeyD" else "KeyA",false);}if d.way!=0 {ok=pt_key(p,ifx d.way>0 then "d" else "a",ifx d.way>0 then "KeyD" else "KeyA",true) && ok;}}
+    if k[0].jump!=d.jump {ok=pt_key(p," ","Space",d.jump) && ok;}k[0].way=d.way;k[0].jump=d.jump;return ok;
+  }
+  points:=[2]PbContact.[PbContact.{id=1,x=k[0].w/4,y=k[0].h*3/5},PbContact.{id=2,x=k[0].w*4/5,y=k[0].h*2/5}];
+  if !k[0].started {if !pb_touch(p[0].c[..],"touchStart",points[0..<1]) {return false;}k[0].started=true;}
+  points[0].x+=d.way*55;
+  if !pb_touch(p[0].c[..],"touchMove",points[0..<1]) {return false;}
+  if d.jump && !k[0].jump {if !pb_touch(p[0].c[..],"touchStart",points[..]) {return false;}_:=pb_wait(pt_dir(p),30);if !pb_touch(p[0].c[..],"touchEnd",points[1..<2]) {return false;}}
+  k[0].way=d.way;k[0].jump=d.jump;return true;
+}
+pt_platformer :: (p:[]Pt) {
+  entered:=pt_picker(p) && pt_enter(p,6);f:=pt_pf_frame(p);_=pt_shot(p,"platformer-start.png");
+  // Deliberately fall off the beginning. The live checkpoint must respawn us.
+  moved:=pt_hold(p,"a","KeyA",1300);_=pb_wait(pt_dir(p),2500);fallen:=pt_pf_frame(p);
+  reset:=pt_tap(p,"hot.s.5");_=pb_wait(pt_dir(p),5000);again:=pt_pf_frame(p);
+  pt_result(p,"game.platformer.reset",entered && f.ok && moved && fallen.falls>f.falls && reset && again.ok && again.falls==0 && again.gate==0 && abs(again.z-2)<0.2);
+  course:[1]Platformer;ok:=pf_enter(course[..]);k:[1]PpInput;k[0].w=cast(int)pt_number(p,"innerWidth",0);k[0].h=cast(int)pt_number(p,"innerHeight",0);last:=0;gate:=0;logged:=0;sequence:=0;end:=proc_now_ms()+360000;
+  while ok && proc_now_ms()<end {
+    _:=pb_heartbeat(pt_dir(p));f=pt_pf_frame(p);if !f.ok {p[0].input_fault=true;ok=false;break;}if f.done {break;}
+    if f.sequence==sequence {_:=pb_wait(pt_dir(p),20);continue;}sequence=f.sequence;
+    course[0].clock=f.clock;st:=pf_on(course[..],0,f.y,f.z);if st>=0 && f.ground {last=st;}
+    if f.gate>gate {gate=f.gate;_=pt_observe(p);print("platformer checkpoint %\n",gate);}
+    d:=pp_decide(course[..],f,last,k[0].jump);
+    if proc_now_ms()-logged>=500 {logged=proc_now_ms();b:[1024]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"game");jo_str(o[..],GT_ID[GT_PLATFORMER]);jo_key(o[..],"time_ms");jo_int(o[..],cast(int)(f.clock*1000));jo_key(o[..],"z_cm");jo_int(o[..],cast(int)(f.z*100));jo_key(o[..],"y_cm");jo_int(o[..],cast(int)(f.y*100));jo_key(o[..],"vy_cm");jo_int(o[..],cast(int)(f.vy*100));jo_key(o[..],"ground");jo_bool(o[..],f.ground);jo_key(o[..],"part");jo_int(o[..],last);jo_key(o[..],"way");jo_int(o[..],d.way);jo_key(o[..],"jump");jo_bool(o[..],d.jump);jo_key(o[..],"falls");jo_int(o[..],f.falls);jo_end(o[..]);file:[4096]u8;_=fs_append(pt_path(p,"measurements.jsonl",file[..]),jo_text(o[..]));_=fs_append(pt_path(p,"measurements.jsonl",file[..]),"\n");}
+    ok=pt_pf_input(p,k[..],d);_=pb_wait(pt_dir(p),40);
+  }
+  _:=pb_release(p[0].c[..]);_=pb_wait(pt_dir(p),500);_=pt_observe(p);f=pt_pf_frame(p);_=pt_shot(p,"platformer-objective.png");
+  visible:=pt_bool(p,"/finished in/.test(document.getElementById('note')?.value||'')");returned:=pt_picker(p) && pt_enter(p,0);
+  pt_result(p,"game.platformer.objective",ok && f.ok && f.done && f.gate==0 && gate==course[0].c[0].gates-1 && visible && returned);
+}

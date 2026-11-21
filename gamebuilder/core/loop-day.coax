@@ -1,0 +1,294 @@
+// The core loop's counts as the server keeps them and the owner reads them (issue 18). The steps
+// and their names are shared/loop.coax's, the one list the page counts from too. This file is the
+// pure part: a count's body read and checked against the list, a day's totals added to, written
+// and read, the day a moment falls on, and the funnel made from days of totals. The surface moves
+// the bytes: `gamebuilder serve` takes POST /api/count and keeps each day's totals in the file
+// DIR/.loop/DAY.json (cli/main.coax), and the `funnel` row reads them back.
+//
+// What is kept is a day's totals and nothing else. For each row of the list: how many times it was
+// counted that day, how many of those came with a time, and how many times fell under each of
+// LP_BOUNDS. No visit, no id, no address, no account, no single time. Days are UTC.
+//   scripts/check.sh    (coax/controls.coax loads it; alone: coax test coax/loop-day.coax --library)
+
+#load "../shared/loop.coax";
+#load "../../coax/lib/json/json.coax";
+
+LP_DAY_SCHEMA :: "gamebuilder.loop.day.v1";     // a day's totals, as the file holds them
+LP_FUNNEL_SCHEMA :: "gamebuilder.funnel.v1";    // what the funnel row answers
+LP_FOLDER :: ".loop";                           // under the server's folder: no account's (an account's name has no dot)
+LP_DAYS :: 7;                                   // the funnel's days: today so far, yesterday and the five before
+LP_DAY_TEXT :: 8192;                            // room for a day's file
+LP_DAY_NODES :: 512;
+LP_COUNT_NODES :: 96;                           // room to read a count's body: LP_BATCH counts
+LP_PER_MINUTE :: 600;                           // counts a server takes in one minute: past it they are refused until the next
+
+LpTally :: struct { n: int; timed: int; under: [LP_BUCKETS] int; }
+LpDay :: struct { t: [LP_N] LpTally; }
+
+// What each bound is called, and past the last.
+LP_BOUND_WORDS :: [LP_BUCKETS] string.["under 0.25 s", "under 0.5 s", "under 1 s", "under 2 s", "under 4 s", "under 8 s", "under 15 s", "under 30 s",
+  "under 1 min", "under 2 min", "under 5 min", "under 15 min", "under 1 h", "over 1 h"];
+
+// A count's body read into out: how many counts it holds, or -1 with why[0] saying what is wrong.
+// The whole body is refused when one of its names is not on the list (shared/loop.coax): nothing
+// is ever counted under another name, and nothing of a body that tried is kept.
+lp_count_read :: (body: string, nodes: [] JvNode, out: [] LpCount, why: [] string) -> int {
+  if body.count > LP_BODY { why[0] = "a count's body is at most 1,024 bytes (LP_BODY)"; return -1; }
+  d: [1] Jv;
+  if !jv_parse(d[..], body, nodes) || jv_kind(d[0], 0) != JV_OBJECT { why[0] = "a count's body is JSON: {\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":STEP,\"ms\":N}]}"; return -1; }
+  sb: [32] u8; sn := jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != LP_COUNT_SCHEMA { why[0] = "a count's schema is gamebuilder.count.v1"; return -1; }
+  list := jv_get(d[0], 0, "counts");
+  if jv_kind(d[0], list) != JV_ARRAY { why[0] = "a count's body has counts, a list"; return -1; }
+  n := jv_len(d[0], list);
+  if n < 1 || n > LP_BATCH || n > out.count { why[0] = "a body holds 1 to 16 counts (LP_BATCH)"; return -1; }
+  for i: 0..<n {
+    at := jv_at(d[0], list, i);
+    nb: [32] u8; nn := jv_str(d[0], jv_get(d[0], at, "name"), nb[..]);
+    row := ifx nn > 0 then lp_find(cast(string) nb[0..<nn]) else -1;
+    if row < 0 { why[0] = "no step is counted under that name: the steps and their names are shared/loop.coax's (LP_ROWS), and a count under any other is refused whole"; return -1; }
+    ms := jv_int(d[0], jv_get(d[0], at, "ms"), -2);
+    if ms < -1 || ms > LP_MS_MAX { why[0] = "a count's ms is a whole number from -1 (not known) to 86,400,000 (LP_MS_MAX)"; return -1; }
+    // a measure is a time or it is nothing
+    if LP_ROWS[row].kind == LP_MEASURE && ms < 0 { why[0] = "a measure's ms is its time: 0 to 86,400,000 (LP_MS_MAX)"; return -1; }
+    out[i] = LpCount.{row = row, ms = ms};
+  }
+  return n;
+}
+
+// Adds counts to a day's totals. A fact has no time; a step's or a measure's falls under its bound.
+lp_day_add :: (day: [] LpDay, counts: [] LpCount) {
+  for c: counts {
+    if c.row < 0 || c.row >= LP_N { continue; }
+    day[0].t[c.row].n += 1;
+    if c.ms >= 0 && LP_ROWS[c.row].kind != LP_FACT { day[0].t[c.row].timed += 1; day[0].t[c.row].under[lp_bucket(c.ms)] += 1; }
+  }
+}
+
+// A day's totals as its file: every row of the list by name. "" when it does not fit out.
+lp_day_write :: (day: [] LpDay, date: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "schema"); jo_str(o[..], LP_DAY_SCHEMA); jo_key(o[..], "day"); jo_str(o[..], date);
+  jo_key(o[..], "rows"); jo_obj(o[..]);
+  for i: 0..<LP_N {
+    jo_key(o[..], LP_ROWS[i].name); jo_obj(o[..]);
+    jo_key(o[..], "n"); jo_int(o[..], day[0].t[i].n); jo_key(o[..], "timed"); jo_int(o[..], day[0].t[i].timed);
+    jo_key(o[..], "under"); jo_arr(o[..]); for b: 0..<LP_BUCKETS { jo_int(o[..], day[0].t[i].under[b]); } jo_end(o[..]);
+    jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+// A day's file read into day (emptied first). False when it is not one: the caller then keeps
+// nothing of it. A row the list no longer has is left out; one the file has not is zero.
+lp_day_read :: (text: string, nodes: [] JvNode, day: [] LpDay) -> bool {
+  day[0] = LpDay.{};
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) { return false; }
+  sb: [32] u8; sn := jv_str(d[0], jv_get(d[0], 0, "schema"), sb[..]);
+  if sn <= 0 || cast(string) sb[0..<sn] != LP_DAY_SCHEMA { return false; }
+  rows := jv_get(d[0], 0, "rows");
+  if jv_kind(d[0], rows) != JV_OBJECT { return false; }
+  for i: 0..<LP_N {
+    r := jv_get(d[0], rows, LP_ROWS[i].name);
+    if r < 0 { continue; }
+    n := jv_int(d[0], jv_get(d[0], r, "n"), -1); timed := jv_int(d[0], jv_get(d[0], r, "timed"), -1);
+    under := jv_get(d[0], r, "under");
+    if n < 0 || timed < 0 || timed > n || jv_kind(d[0], under) != JV_ARRAY { return false; }
+    day[0].t[i].n = n; day[0].t[i].timed = timed;
+    // (a file of before a bound was added has fewer: the rest are zero)
+    for b: 0..<LP_BUCKETS { v := jv_int(d[0], jv_at(d[0], under, b), 0); day[0].t[i].under[b] = ifx v < 0 then 0 else v; }
+  }
+  return true;
+}
+
+// The UTC day a moment falls on, as YYYY-MM-DD: ms is milliseconds since 1970, back days earlier.
+lp_date :: (ms: int, back: int, out: [] u8) -> string {
+  if out.count < 10 { return ""; }
+  days := (ifx ms < 0 then 0 else ms) / 86400000 - back;
+  // the civil date of a day number (days since 1970-01-01), in the proleptic Gregorian calendar
+  z := days + 719468;
+  era := (ifx z >= 0 then z else z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  if y < 0 || y > 9999 { return ""; }
+  out[0] = cast(u8) ('0' + y / 1000); out[1] = cast(u8) ('0' + y / 100 % 10); out[2] = cast(u8) ('0' + y / 10 % 10); out[3] = cast(u8) ('0' + y % 10);
+  out[4] = '-'; out[5] = cast(u8) ('0' + m / 10); out[6] = cast(u8) ('0' + m % 10);
+  out[7] = '-'; out[8] = cast(u8) ('0' + d / 10); out[9] = cast(u8) ('0' + d % 10);
+  return cast(string) out[0..<10];
+}
+
+// The bound the middle time fell under: -1 when no time was kept.
+lp_middle :: (t: LpTally) -> int {
+  if t.timed < 1 { return -1; }
+  half := (t.timed + 1) / 2; seen := 0;
+  for b: 0..<LP_BUCKETS { seen += t.under[b]; if seen >= half { return b; } }
+  return LP_BUCKETS - 1;
+}
+
+// One day of the funnel, as an object in o: the steps in the loop's order, each with how many
+// reached it, how many of the step before that is and how many were lost between them, and the
+// middle time since the step before; then the facts and the measures; then the same in lines of
+// plain words. which says what day it is to the reader: "today so far", "yesterday" or "".
+lp_funnel_day :: (o: [] Jo, date: string, which: string, day: [] LpDay) {
+  jo_obj(o); jo_key(o, "day"); jo_str(o, date);
+  if which.count > 0 { jo_key(o, "which"); jo_str(o, which); }
+  arrived := day[0].t[LP_ARRIVED].n;
+  for kind: 0..<3 {
+    jo_key(o, ifx kind == LP_STEP then "steps" else ifx kind == LP_FACT then "facts" else "measures"); jo_arr(o);
+    for i: 0..<LP_N {
+      r := LP_ROWS[i]; t := day[0].t[i];
+      if r.kind != kind { continue; }
+      jo_obj(o); jo_key(o, "name"); jo_str(o, r.name); jo_key(o, "words"); jo_str(o, r.words); jo_key(o, "n"); jo_int(o, t.n);
+      if r.after >= 0 {
+        before := day[0].t[r.after].n;
+        jo_key(o, "after"); jo_str(o, LP_ROWS[r.after].name);
+        jo_key(o, "percent"); jo_int(o, ifx before > 0 then t.n * 100 / before else 0);
+        jo_key(o, "left"); jo_int(o, ifx before > t.n then before - t.n else 0);
+      }
+      if kind == LP_FACT { jo_key(o, "percent_of_arrived"); jo_int(o, ifx arrived > 0 then t.n * 100 / arrived else 0); }
+      mid := lp_middle(t);
+      if mid >= 0 { jo_key(o, "time"); jo_str(o, LP_BOUND_WORDS[mid]); jo_key(o, "timed"); jo_int(o, t.timed); }
+      jo_end(o);
+    }
+    jo_end(o);
+  }
+  // the same, to read
+  jo_key(o, "lines"); jo_arr(o);
+  for i: 0..<LP_N {
+    r := LP_ROWS[i]; t := day[0].t[i];
+    lb: [240] u8; n := lp_put(lb[..], 0, r.words); n = lp_put(lb[..], n, ": ");
+    mid := lp_middle(t);
+    if r.kind == LP_MEASURE {
+      if mid < 0 { n = lp_put(lb[..], n, "no visit measured"); }
+      else { n = lp_put(lb[..], n, LP_BOUND_WORDS[mid]); n = lp_put(lb[..], n, " (the middle of "); n = lp_put_int(lb[..], n, t.timed); n = lp_put(lb[..], n, ")"); }
+    } else {
+      n = lp_put_int(lb[..], n, t.n);
+      // (of the step before, when anyone reached that)
+      if r.after >= 0 && day[0].t[r.after].n > 0 {
+        before := day[0].t[r.after].n;
+        n = lp_put(lb[..], n, ", "); n = lp_put_int(lb[..], n, t.n * 100 / before);
+        n = lp_put(lb[..], n, "% of \""); n = lp_put(lb[..], n, LP_ROWS[r.after].words); n = lp_put(lb[..], n, "\" (");
+        n = lp_put_int(lb[..], n, ifx before > t.n then before - t.n else 0); n = lp_put(lb[..], n, " left before it)");
+      }
+      if r.kind == LP_FACT && arrived > 0 { n = lp_put(lb[..], n, ", "); n = lp_put_int(lb[..], n, t.n * 100 / arrived); n = lp_put(lb[..], n, "% of arrived"); }
+      if r.kind == LP_STEP && mid >= 0 { n = lp_put(lb[..], n, ", "); n = lp_put(lb[..], n, LP_BOUND_WORDS[mid]); n = lp_put(lb[..], n, " after the step before"); }
+    }
+    jo_str(o, cast(string) lb[0..<ifx n > lb.count then lb.count else n]);
+  }
+  jo_end(o);
+  jo_end(o);
+}
+// What the funnel says about its own numbers, once.
+LP_FUNNEL_NOTE :: "Days are UTC. A visit is a browser tab, and each step is counted once in it. Counts hold no id, address or account: a day's totals are all that is kept. A step's time is since the visit's step before it, said as the bound the middle one fell under.";
+
+#test "a count's body: the page's own reads back, and a name the list has not refuses the whole body" {
+  nodes: [LP_COUNT_NODES] JvNode; got: [LP_BATCH] LpCount; why: [1] string; out: [LP_BODY] u8;
+  // every row, as the page writes it (lp_body), is read as the same row and time
+  all: [LP_N] LpCount;
+  for i: 0..<LP_N { all[i] = LpCount.{row = i, ms = i * 1000}; }
+  n := lp_count_read(lp_body(all[..], out[..]), nodes[..], got[..], why[..]);
+  #assert n == LP_N;
+  for i: 0..<LP_N { #assert got[i].row == i && got[i].ms == i * 1000; }
+  // a step counted under a name that is not on the list: refused whole, the good counts beside it too
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1},{\"name\":\"clicked_buy\",\"ms\":5}]}", nodes[..], got[..], why[..]) == -1;
+  #assert why[0] == "no step is counted under that name: the steps and their names are shared/loop.coax's (LP_ROWS), and a count under any other is refused whole";
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"Arrived\",\"ms\":-1}]}", nodes[..], got[..], why[..]) == -1;
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"ms\":1}]}", nodes[..], got[..], why[..]) == -1;
+  // and what is not a count
+  #assert lp_count_read("", nodes[..], got[..], why[..]) == -1 && lp_count_read("[]", nodes[..], got[..], why[..]) == -1;
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v2\",\"counts\":[{\"name\":\"arrived\",\"ms\":-1}]}", nodes[..], got[..], why[..]) == -1 && why[0] == "a count's schema is gamebuilder.count.v1";
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[]}", nodes[..], got[..], why[..]) == -1 && why[0] == "a body holds 1 to 16 counts (LP_BATCH)";
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":-2}]}", nodes[..], got[..], why[..]) == -1;
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":86400001}]}", nodes[..], got[..], why[..]) == -1;
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"arrived\",\"ms\":\"soon\"}]}", nodes[..], got[..], why[..]) == -1;
+  #assert lp_count_read("{\"schema\":\"gamebuilder.count.v1\",\"counts\":[{\"name\":\"button_ms\",\"ms\":-1}]}", nodes[..], got[..], why[..]) == -1 && why[0] == "a measure's ms is its time: 0 to 86,400,000 (LP_MS_MAX)";
+  // seventeen counts, and a body past its bytes
+  many: [1200] u8; k := lp_put(many[..], 0, "{\"schema\":\"gamebuilder.count.v1\",\"counts\":[");
+  for i: 0..<17 { k = lp_put(many[..], k, ifx i > 0 then ",{\"name\":\"nogpu\",\"ms\":0}" else "{\"name\":\"nogpu\",\"ms\":0}"); }
+  k = lp_put(many[..], k, "]}");
+  #assert lp_count_read(cast(string) many[0..<k], nodes[..], got[..], why[..]) == -1 && why[0] == "a body holds 1 to 16 counts (LP_BATCH)";
+  for i: k..<1100 { many[i] = ' '; }
+  #assert lp_count_read(cast(string) many[0..<1100], nodes[..], got[..], why[..]) == -1 && why[0] == "a count's body is at most 1,024 bytes (LP_BODY)";
+}
+#test "a day's totals: added to, written, read back the same, and nothing of a visit in the file" {
+  day: [1] LpDay; back: [1] LpDay; text: [LP_DAY_TEXT] u8; nodes: [LP_DAY_NODES] JvNode;
+  a := [4] LpCount.[LpCount.{row = LP_ARRIVED, ms = -1}, LpCount.{row = LP_BUTTON_MS, ms = 148}, LpCount.{row = LP_CREATE, ms = 5200}, LpCount.{row = LP_NOGPU, ms = 0}];
+  b := [2] LpCount.[LpCount.{row = LP_ARRIVED, ms = -1}, LpCount.{row = LP_CREATE, ms = 900}];
+  lp_day_add(day[..], a[..]); lp_day_add(day[..], b[..]);
+  #assert day[0].t[LP_ARRIVED].n == 2 && day[0].t[LP_ARRIVED].timed == 0 && day[0].t[LP_CREATE].n == 2 && day[0].t[LP_CREATE].timed == 2;
+  #assert day[0].t[LP_CREATE].under[lp_bucket(5200)] == 1 && day[0].t[LP_CREATE].under[lp_bucket(900)] == 1 && day[0].t[LP_BUTTON_MS].under[0] == 1;
+  // (a fact has no time)
+  #assert day[0].t[LP_NOGPU].n == 1 && day[0].t[LP_NOGPU].timed == 0;
+  f := lp_day_write(day[..], "2026-11-17", text[..]);
+  #assert f.count > 0 && lp_day_read(f, nodes[..], back[..]);
+  for i: 0..<LP_N { #assert back[0].t[i].n == day[0].t[i].n && back[0].t[i].timed == day[0].t[i].timed; for k: 0..<LP_BUCKETS { #assert back[0].t[i].under[k] == day[0].t[i].under[k]; } }
+  // the file holds totals: none of the times that were counted, and no key but the list's and the totals'
+  for part: [3] string.["148", "5200", "900"] {
+    found := false;
+    for i: 0..<f.count - part.count + 1 { if cast(string) f[i..<i + part.count] == part { found = true; } }
+    #assert !found;
+  }
+  // every row at a large day's totals fits the file's room
+  for i: 0..<LP_N { day[0].t[i].n = 99999999; day[0].t[i].timed = 99999999; for k: 0..<LP_BUCKETS { day[0].t[i].under[k] = 99999999; } }
+  #assert lp_day_write(day[..], "2026-11-17", text[..]).count > 0;
+  // what is not a day's file is not read, and leaves nothing
+  #assert !lp_day_read("", nodes[..], back[..]) && !lp_day_read("{\"schema\":\"other\",\"rows\":{}}", nodes[..], back[..]) && back[0].t[LP_ARRIVED].n == 0;
+  #assert !lp_day_read("{\"schema\":\"gamebuilder.loop.day.v1\",\"rows\":{\"arrived\":{\"n\":1,\"timed\":2,\"under\":[]}}}", nodes[..], back[..]);
+  // a row the list has not is left out; a row the file has not is zero
+  #assert lp_day_read("{\"schema\":\"gamebuilder.loop.day.v1\",\"rows\":{\"gone\":{\"n\":9,\"timed\":0,\"under\":[]},\"arrived\":{\"n\":3,\"timed\":0,\"under\":[]}}}", nodes[..], back[..]) && back[0].t[LP_ARRIVED].n == 3 && back[0].t[LP_CREATE].n == 0;
+}
+#test "the day a moment falls on, in UTC" {
+  b: [10] u8;
+  #assert lp_date(0, 0, b[..]) == "1970-01-01" && lp_date(86399999, 0, b[..]) == "1970-01-01" && lp_date(86400000, 0, b[..]) == "1970-01-02";
+  // 1763380000000: 2025-11-17 11:46:40 UTC (the golden cases' clock), and the days before it
+  #assert lp_date(1763380000000, 0, b[..]) == "2025-11-17" && lp_date(1763380000000, 1, b[..]) == "2025-11-16" && lp_date(1763380000000, 17, b[..]) == "2025-10-31";
+  // a leap day, a year's end, a century's leap year
+  #assert lp_date(1709164800000, 0, b[..]) == "2024-02-29" && lp_date(1709164800000, -1, b[..]) == "2024-03-01" && lp_date(1735689599999, 0, b[..]) == "2024-12-31" && lp_date(951782400000, 0, b[..]) == "2000-02-29";
+  #assert lp_date(0, 0, b[0..<9]) == "";
+}
+#test "the funnel: how many reached each step, how many were lost before it, and the middle time" {
+  day: [1] LpDay; out: [65536] u8; nodes: [1024] JvNode; d: [1] Jv;
+  // ten arrive; four press the button, at 1 s, 3 s, 3 s and 20 s; one of them picks a type
+  for i: 0..<10 { one := [1] LpCount.[LpCount.{row = LP_ARRIVED, ms = -1}]; lp_day_add(day[..], one[..]); }
+  for ms: [4] int.[1000, 3000, 3000, 20000] { one := [1] LpCount.[LpCount.{row = LP_CREATE, ms = ms}]; lp_day_add(day[..], one[..]); }
+  more := [3] LpCount.[LpCount.{row = LP_BUILDER, ms = 100}, LpCount.{row = LP_NOGPU, ms = 0}, LpCount.{row = LP_BUTTON_MS, ms = 300}];
+  lp_day_add(day[..], more[..]);
+  o: [1] Jo; jo_start(o[..], out[..]);
+  lp_funnel_day(o[..], "2026-11-16", "yesterday", day[..]);
+  #assert !o[0].bad && jv_parse(d[..], jo_text(o[..]), nodes[..]);
+  steps := jv_get(d[0], 0, "steps"); create := jv_at(d[0], steps, LP_CREATE);
+  #assert jv_len(d[0], steps) == 12 && jv_int(d[0], jv_get(d[0], jv_at(d[0], steps, 0), "n"), -1) == 10;
+  #assert jv_int(d[0], jv_get(d[0], create, "n"), -1) == 4 && jv_int(d[0], jv_get(d[0], create, "percent"), -1) == 40 && jv_int(d[0], jv_get(d[0], create, "left"), -1) == 6;
+  tb: [32] u8; tn := jv_str(d[0], jv_get(d[0], create, "time"), tb[..]);
+  #assert cast(string) tb[0..<tn] == "under 4 s" && jv_int(d[0], jv_get(d[0], create, "timed"), -1) == 4;
+  // (a step nobody reached says so, and no time)
+  picked := jv_at(d[0], steps, LP_PICKED);
+  #assert jv_int(d[0], jv_get(d[0], picked, "n"), -1) == 0 && jv_int(d[0], jv_get(d[0], picked, "left"), -1) == 1 && jv_get(d[0], picked, "time") == -1;
+  #assert jv_len(d[0], jv_get(d[0], 0, "facts")) == 1 && jv_int(d[0], jv_get(d[0], jv_at(d[0], jv_get(d[0], 0, "facts"), 0), "percent_of_arrived"), -1) == 10;
+  #assert jv_len(d[0], jv_get(d[0], 0, "measures")) == 2 && jv_len(d[0], jv_get(d[0], 0, "lines")) == LP_N;
+  lb: [240] u8; ln := jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_CREATE), lb[..]);
+  #assert cast(string) lb[0..<ln] == "pressed a game type on the home page: 4, 40% of \"arrived\" (6 left before it), under 4 s after the step before";
+  ln = jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_BUILDER), lb[..]);
+  #assert cast(string) lb[0..<ln] == "saw the builder: 1, 25% of \"pressed a game type on the home page\" (3 left before it), under 0.25 s after the step before";
+  ln = jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_PLACED), lb[..]);
+  #assert cast(string) lb[0..<ln] == "placed the first thing: 0";
+  ln = jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_NOGPU), lb[..]);
+  #assert cast(string) lb[0..<ln] == "browsers without WebGPU: 1, 10% of arrived";
+  ln = jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_BUTTON_MS), lb[..]);
+  #assert cast(string) lb[0..<ln] == "first visit: time to the names: under 0.5 s (the middle of 1)";
+  ln = jv_str(d[0], jv_at(d[0], jv_get(d[0], 0, "lines"), LP_BUILDER_MS), lb[..]);
+  #assert cast(string) lb[0..<ln] == "first visit: time to the builder: no visit measured";
+  // seven days of the largest totals fit 65,536 bytes (the CLI's room for an answer is CLI_OUT, 4 MB)
+  for i: 0..<LP_N { day[0].t[i].n = 99999999; day[0].t[i].timed = 99999999; for k: 0..<LP_BUCKETS { day[0].t[i].under[k] = 9999999; } }
+  jo_start(o[..], out[..]); jo_arr(o[..]);
+  for k: 0..<LP_DAYS { lp_funnel_day(o[..], "2026-11-16", "", day[..]); }
+  jo_end(o[..]);
+  #assert !o[0].bad && LP_BOUND_WORDS[LP_BUCKETS - 1] == "over 1 h";
+}

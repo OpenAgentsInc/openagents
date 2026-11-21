@@ -1,0 +1,554 @@
+// Levels on disk: a level saved whole and read back.
+//
+// A level's file is two of the Metaverse Engine's documents, one after the
+// other: the world (world.doc.v1, metaverse-engine/editor/world-doc.coax),
+// then the content its entities' kinds name (aethyr.content.v1,
+// metaverse-engine/content/tables.coax). They are the same bytes a world with
+// an ID keeps on openagents.com, its document and its tables, so a level made
+// here is a world there, and an agent's edits (agent.coax) are the same
+// world.edit.v1 batches the web sends.
+//
+// The content is one table, `shape`: a kind of thing and its size a row.
+//   aethyr.content.v1 level REV
+//   reach 100000
+//   table shape id kind:text sx:cm sy:cm sz:cm
+//   1|start|60|180|60
+// A level with a moving platform or a lift in it has two columns more,
+// `go:cm every:int`: how far a row's things go, centimetres, and how long
+// there and back takes, milliseconds (0 and 0 for a kind that does not move).
+// A level with none is written without them, as it always was.
+// Each box is one entity with a transform (metres and radians, as the
+// scene's log keeps them), a kind (a row of `shape`), and one column of the
+// level's own: its size in percent. The document's content line is the
+// table's revision.
+//
+// A file of before 2026-11-17 is the world document alone (content 0): its
+// kind column was the box's kind and one, and four own columns held the size
+// in percent and the shape's width, height and depth in centimetres. It is
+// still read, and is written the new way at the next save.
+//
+// The undo history is not saved: a level read back starts with none. The
+// host owns the files and their folder; it asks ed_save_due after each input,
+// writes what ed_save gives it under ed_level_id's name, and says so with
+// ed_saved. Which bytes are a level, what a new level holds and what a level
+// is called are decided here.
+#load "../../metaverse-engine/editor/world-doc.coax";
+
+LEVEL_OWN :: 1;              // a box's size in percent
+LEVEL_OWN_V1 :: 4;           // a file of before 2026-11-17: its size, then its shape's width, height and depth
+LEVEL_CONTENT_MAX :: 96 + SHAPES_MAX * 64;   // the content document's bytes, at most
+LEVEL_KIND :: GK_WORD;      // a kind's word in the shape table (shared/kinds.coax)
+LEVEL_LISTS :: 64;           // the spatial index's lists: a power of two
+LEVEL_SIZE_MAX :: 100000;    // centimetres a shape's side may be: a kilometre
+LEVEL_MAX :: 9999;           // the highest level number
+
+// A World's storage for one level: what world_of gives a realm, at this
+// editor's size.
+LevelWorld :: struct {
+  gen: [ACTORS_MAX] int; live: [ACTORS_MAX] bool; born: [ACTORS_MAX] bool; doomed: [ACTORS_MAX] bool;
+  ids: [ACTORS_MAX] int; free: [ACTORS_MAX] int; spawns: [ACTORS_MAX] int; en: [ENTITY_COUNTERS] int;
+  has: [ACTORS_MAX] int; f: [WORLD_F * ACTORS_MAX] f32; i: [WORLD_I * ACTORS_MAX] int;
+  head: [LEVEL_LISTS] int; next: [ACTORS_MAX] int; prev: [ACTORS_MAX] int; at: [ACTORS_MAX] int;
+  cx: [ACTORS_MAX] int; cz: [ACTORS_MAX] int; gx: [ACTORS_MAX] f32; gz: [ACTORS_MAX] f32; cell: [1] f32; gn: [SPATIAL_COUNTERS] int;
+  sys_id: [1] int; sys_reads: [1] int; sys_writes: [1] int;
+  seen: [WORLD_COMPONENTS] int; n: [WORLD_COUNTERS] int;
+  own: [ACTORS_MAX * LEVEL_OWN_V1] int;
+}
+
+level_world :: (b: [] LevelWorld) -> World {
+  return World.{
+    ents = EntityStore.{gen = b[0].gen[..], live = b[0].live[..], born = b[0].born[..], doomed = b[0].doomed[..],
+      ids = b[0].ids[..], free = b[0].free[..], spawns = b[0].spawns[..], n = b[0].en[..]},
+    has = b[0].has[..], f = b[0].f[..], i = b[0].i[..],
+    grid = SpatialGrid.{head = b[0].head[..], next = b[0].next[..], prev = b[0].prev[..], at = b[0].at[..],
+      cx = b[0].cx[..], cz = b[0].cz[..], x = b[0].gx[..], z = b[0].gz[..], cell = b[0].cell[..], n = b[0].gn[..]},
+    sys_id = b[0].sys_id[..], sys_reads = b[0].sys_reads[..], sys_writes = b[0].sys_writes[..],
+    seen = b[0].seen[..], n = b[0].n[..]};
+}
+
+// ---- what a level is called
+
+// "level-N": the level's ID in its document and its file's name, less the
+// host's extension. Returns the bytes written, or 0 for a number that is no
+// level's or a buffer too small.
+ed_level_id :: (n: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if n < 0 || n > LEVEL_MAX { return 0; }
+  t := [1] Text.[Text.{buf = out}];
+  // level 0 is the game's own level, under the game's name (games.coax)
+  if n == 0 { tx_put(t[..], GAME_ID[GAME_SCRAPPERS]); } else { tx_put(t[..], "level-"); tx_n(t[..], n); }
+  return ifx t[0].at >= out.count then 0 else t[0].at;
+}
+
+// "Level N": what the level is called on screen.
+ed_level_title :: (n: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if n < 0 || n > LEVEL_MAX { return 0; }
+  t := [1] Text.[Text.{buf = out}];
+  if n == 0 { tx_put(t[..], GAME_TITLE[GAME_SCRAPPERS]); } else { tx_put(t[..], "Level "); tx_n(t[..], n); }
+  return ifx t[0].at >= out.count then 0 else t[0].at;
+}
+
+// The number a level's file name gives ("level-12"), or 0 when it is not one.
+ed_level_number :: (name: [] u8) -> s32 #export_c #effects(all) {
+  head := "level-";
+  if name.count <= head.count || name.count > head.count + 4 { return 0; }
+  for i: 0..<head.count { if name[i] != head[i] { return 0; } }
+  if name[head.count] == '0' { return 0; }
+  v: s32 = 0;
+  for i: head.count..<name.count {
+    if name[i] < '0' || name[i] > '9' { return 0; }
+    v = v * 10 + cast(s32) (name[i] - '0');
+  }
+  return v;
+}
+
+// The number a new level takes: one past the highest there is. 0 when there
+// is no number left.
+ed_level_next :: (have: [] s32) -> s32 #export_c #effects(all) {
+  most: s32 = 0;
+  for n: have { if n > most { most = n; } }
+  return ifx most >= LEVEL_MAX then 0 else most + 1;
+}
+
+ed_level :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].level else 0; }
+
+// ---- saving
+
+ed_save_max :: () -> s32 #export_c #effects(all) {
+  now := wd_bytes(ACTORS_MAX, LEVEL_OWN) + LEVEL_CONTENT_MAX; was := wd_bytes(ACTORS_MAX, LEVEL_OWN_V1);
+  return cast(s32) (ifx now > was then now else was);
+}
+
+// ---- the content
+
+level_kind_word :: (kind: s32) -> string { return ifx kind >= 0 && kind < KINDS then LEVEL_KIND[kind] else "block"; }
+level_kind_of :: (word: string) -> s32 {
+  for k: 0..<KINDS { if LEVEL_KIND[k] == word { return cast(s32) k; } }
+  return -1;
+}
+// The table's revision: rows are only ever added, so their count names it.
+level_content_rev :: (e: [] Editor) -> int { return cast(int) e[0].shape_n + 1; }
+
+// The level's content document into out; "" when it does not fit.
+level_tables_text :: (e: [] Editor, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "aethyr.content.v1 level "); tx_int(t[..], cast(s64) level_content_rev(e));
+  tx_put(t[..], "\nreach "); tx_int(t[..], LEVEL_SIZE_MAX);
+  // (two columns more when a thing moves: how far it goes and how long there and back takes)
+  moving := false; for i: 0..<cast(s64) e[0].shape_n { moving = moving || e[0].shapes[i].every > 0; }
+  tx_put(t[..], ifx moving then "\ntable shape id kind:text sx:cm sy:cm sz:cm go:cm every:int\n" else "\ntable shape id kind:text sx:cm sy:cm sz:cm\n");
+  for i: 0..<cast(s64) e[0].shape_n {
+    h := e[0].shapes[i];
+    tx_int(t[..], i + 1); tx_put(t[..], "|"); tx_put(t[..], level_kind_word(h.kind));
+    tx_put(t[..], "|"); tx_int(t[..], cast(s64) h.sx); tx_put(t[..], "|"); tx_int(t[..], cast(s64) h.sy);
+    tx_put(t[..], "|"); tx_int(t[..], cast(s64) h.sz);
+    if moving { tx_put(t[..], "|"); tx_int(t[..], cast(s64) h.go); tx_put(t[..], "|"); tx_int(t[..], cast(s64) h.every); }
+    tx_put(t[..], "\n");
+  }
+  return ifx t[0].at >= out.count then "" else cast(string) out[0..<t[0].at];
+}
+
+// ---- saving
+
+// Whether the level has changed since it was last written, or was never
+// written.
+ed_save_due :: (e: [] Editor) -> bool #export_c #effects(all) {
+  return e.count == 1 && e[0].drag == DRAG_NONE && ed_may_edit(e) && (e[0].fresh || editor_scene_dirty(ed_scene(e)));
+}
+
+// The host wrote what ed_save gave it.
+ed_saved :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 { return; }
+  e[0].fresh = false;
+  editor_scene_saved(ed_scene(e));
+}
+
+// The level's world document alone into out; "" when it does not fit.
+level_doc_text :: (e: [] Editor, out: [] u8) -> string {
+  b: [1] LevelWorld;
+  w := level_world(b[..]);
+  if !world_init(w, 8) { return ""; }
+  for i: 0..<ed_count(e) {
+    item := e[0].items[i];
+    made := world_spawn(w, WORLD_TRANSFORM | WORLD_KIND);
+    if made.handle == ENTITY_NONE { return ""; }
+    s := entity_slot(made.handle);
+    _ = world_set_f(w, WF_X, s, item.x); _ = world_set_f(w, WF_Y, s, item.y); _ = world_set_f(w, WF_Z, s, item.z);
+    _ = world_set_f(w, WF_YAW, s, item.yaw);
+    _ = world_set_i(w, WI_KIND, s, item.mesh);
+    b[0].own[s * LEVEL_OWN] = cast(int) ed_actor(e, i).scale;
+  }
+  if !world_commit(w) { return ""; }
+  // a game's own level is named for the game; yours for its number
+  name: [32] u8;
+  nn := ifx e[0].official then ed_game_id(e[0].game, name[..]) else ed_level_id(e[0].level, name[..]);
+  if nn == 0 { return ""; }
+  return world_save(w, cast(string) name[0..<nn], level_content_rev(e), 0, e[0].st[0].next_id + 1, b[0].own[0..<ACTORS_MAX * LEVEL_OWN], LEVEL_OWN, out);
+}
+
+// The level as its file (its world, then its content) into out. Returns its
+// length, or 0 when out is too small (ed_save_max is always enough).
+ed_save :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  doc := level_doc_text(e, out);
+  if doc.count == 0 { return 0; }
+  tables := level_tables_text(e, out[doc.count..<out.count]);
+  if tables.count == 0 { return 0; }
+  return doc.count + tables.count;
+}
+
+// ---- opening
+
+// Clears the scene, its history and everything that pointed into it, and
+// puts the camera where a level opens.
+level_clear :: (e: [] Editor, n: s32, game: s32) {
+  editor_scene_reset(ed_scene(e));
+  e[0].shape_n = 0;
+  e[0].play[0].on = false;
+  e[0].selected = 0;
+  e[0].drag = DRAG_NONE;
+  vp_cancel(e[0].vp[..]);
+  e[0].vp[0].here_ok = false;
+  e[0].log_count = 0;
+  e[0].note_len = 0;
+  e[0].changes[0] = Changes.{};     // what agents changed was another level's (changes.coax)
+  e[0].level = n;
+  e[0].official = n == 0; e[0].game = game;
+  e[0].plays = GAME_TEMPLATE[game]; e[0].mine_open = 0;
+  e[0].dirty = true;
+}
+
+// Whether a loaded World is a level this editor can hold: every entity a box
+// of a known kind, a size and a place the edits allow. `kinds`: the rows of
+// the shape table; 0 for a file of before 2026-11-17 (its kinds are the box's
+// kind and one, its sizes in its own columns).
+level_ok :: (w: World, own: [] int, per: int, kinds: int) -> bool {
+  for s: 0..<world_high(w) {
+    if world_at(w, s) == ENTITY_NONE { continue; }
+    if !world_has(w, s, WORLD_TRANSFORM | WORLD_KIND) { return false; }
+    kind := world_i(w, WI_KIND, s);
+    if kind < 1 || kind > (ifx kinds > 0 then kinds else KINDS) { return false; }
+    if !we_scale_ok(own[s * per]) { return false; }
+    for k: 1..<per { if own[s * per + k] < 1 || own[s * per + k] > LEVEL_SIZE_MAX { return false; } }
+    reach := cast(f32) WE_REACH / 100;
+    for c: WF_X..<WF_YAW {
+      v := world_f(w, c, s);
+      if !(v >= -reach && v <= reach) { return false; }
+    }
+    yaw := world_f(w, WF_YAW, s);
+    if !(yaw >= -4 && yaw <= 4) { return false; }
+  }
+  return true;
+}
+
+// Where a file's content document starts: after the world document's last
+// line. The file's length when it has none (a file of before 2026-11-17).
+level_split :: (text: string) -> int {
+  head := "\naethyr.content.v1 ";
+  if text.count < head.count { return text.count; }
+  for i: 0..<text.count - head.count + 1 {
+    if text[i] == '\n' && cast(string) text[i..<i + head.count] == head { return i + 1; }
+  }
+  return text.count;
+}
+
+// A level's shape table read into shapes: the number of rows, or -1 for a
+// content document that is not a level's (rows numbered 1 and up in order,
+// each a known kind and a size in range).
+LevelShapes :: struct { s: [SHAPES_MAX] EdShape; }
+level_read_tables :: (text: string, out: [] LevelShapes, rev: [] int) -> int {
+  c: [1] ContentDoc;
+  if !ct_read(c[..], text) || c[0].t_n != 1 { return -1; }
+  t := ct_table(c[..], "shape");
+  if t < 0 || (ct_cols(c[..], t) != 5 && ct_cols(c[..], t) != 7) || ct_rows(c[..], t) > SHAPES_MAX { return -1; }
+  moving := ct_cols(c[..], t) == 7;
+  cols := [6] string.["kind", "sx", "sy", "sz", "go", "every"];
+  for k: 0..<ct_cols(c[..], t) - 1 { if ct_col(c[..], t, cols[k]) != k + 1 { return -1; } }
+  for r: 0..<ct_rows(c[..], t) {
+    if ct_get(c[..], t, r, 0) != r + 1 { return -1; }
+    kind := level_kind_of(ct_str(c[..], t, r, 1));
+    if kind < 0 { return -1; }
+    sz := [3] int.[ct_get(c[..], t, r, 2), ct_get(c[..], t, r, 3), ct_get(c[..], t, r, 4)];
+    for v: sz { if v < 1 || v > LEVEL_SIZE_MAX { return -1; } }
+    // (a distance and a period are a moving platform's or a lift's alone, within their limits)
+    go := ifx moving then ct_get(c[..], t, r, 5) else 0; every := ifx moving then ct_get(c[..], t, r, 6) else 0;
+    if !gk_travel_ok(cast(int) kind, go, every) { return -1; }
+    out[0].s[r] = EdShape.{kind = kind, sx = cast(s32) sz[0], sy = cast(s32) sz[1], sz = cast(s32) sz[2], go = cast(s32) go, every = cast(s32) every};
+  }
+  rev[0] = c[0].rev;
+  return ct_rows(c[..], t);
+}
+
+// Reads a level's file into the editor as level n of a game. False, and the
+// editor as it was, for bytes that are not a level's.
+level_open :: (e: [] Editor, n: s32, game: s32, text: [] u8) -> bool {
+  all := cast(string) text;
+  at := level_split(all);
+  b: [1] LevelWorld;
+  w := level_world(b[..]);
+  if !world_init(w, 8) { return false; }
+  shapes: [1] LevelShapes; rev: [1] int;
+  rows := 0; per := LEVEL_OWN_V1;
+  if at < all.count {
+    rows = level_read_tables(all[at..<all.count], shapes[..], rev[..]);
+    if rows < 0 { return false; }
+    per = LEVEL_OWN;
+  }
+  d := world_load(w, all[0..<at], b[0].own[0..<ACTORS_MAX * per], per);
+  if !d.ok || !level_ok(w, b[0].own[..], per, ifx per == LEVEL_OWN then rows else 0) { return false; }
+  // (a level may hold nothing: a new game of a world of its own starts empty, and a person may clear one)
+  if per == LEVEL_OWN && d.content != rev[0] { return false; }
+  if per == LEVEL_OWN_V1 && d.content != 0 { return false; }
+  level_clear(e, n, game);
+  for r: 0..<rows { e[0].shapes[r] = shapes[0].s[r]; }
+  e[0].shape_n = cast(s32) rows;
+  scene := ed_scene(e);
+  for s: 0..<world_high(w) {
+    if world_at(w, s) == ENTITY_NONE { continue; }
+    mesh := world_i(w, WI_KIND, s);
+    if per == LEVEL_OWN_V1 {
+      mesh = ed_shape(e, cast(s32) (mesh - 1), cast(s32) b[0].own[s * per + 1], cast(s32) b[0].own[s * per + 2], cast(s32) b[0].own[s * per + 3]);
+      if mesh == 0 { continue; }
+    }
+    scale := b[0].own[s * per];
+    // (a village building's row is its model's own size and its scale its own column; a file the website kept
+    // before buildings had a scale holds the size it stood at in its row, at 100 percent: read as that scale)
+    if per == LEVEL_OWN && mesh >= 1 && mesh <= rows && gk_building(cast(int) e[0].shapes[mesh - 1].kind) >= 0 {
+      h := e[0].shapes[mesh - 1];
+      if h.sx != KIND_SX[h.kind] || h.sy != KIND_SY[h.kind] || h.sz != KIND_SZ[h.kind] {
+        if scale == 100 { scale = (cast(int) h.sx * 100 + cast(int) KIND_SX[h.kind] / 2) / cast(int) KIND_SX[h.kind]; }
+        mesh = cast(int) ed_shape(e, h.kind, KIND_SX[h.kind], KIND_SY[h.kind], KIND_SZ[h.kind]);
+        if mesh == 0 { continue; }
+      }
+    }
+    _ = editor_scene_load(scene, mesh, world_f(w, WF_X, s), world_f(w, WF_Y, s), world_f(w, WF_Z, s), world_f(w, WF_YAW, s), cast(f32) scale / 100);
+  }
+  ed_overview(e);
+  e[0].fresh = false;
+  return true;
+}
+
+// Opens level n from its document: one of yours (1 and up), or Scrappers'
+// own (0). False, and the editor as it was, for bytes that are not a level's.
+// The level open-level said to open, for the host to read and open (ed_open), and clears it; -1: none.
+ed_open_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || e[0].open_due == 0 { return -1; }
+  n := e[0].open_due - 1; e[0].open_due = 0;
+  return n;
+}
+// The shipped game open-game said to open, for the host to open with its saved level (ed_open_game); -1: none.
+ed_open_game_due :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || e[0].open_game_due == 0 { return -1; }
+  g := e[0].open_game_due - 1; e[0].open_game_due = 0;
+  return g;
+}
+ed_open :: (e: [] Editor, n: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || n < 0 || n > LEVEL_MAX { return false; }
+  on := e[0].play_next && e[0].play[0].on && e[0].play[0].world; e[0].play_next = false;
+  if !level_open(e, n, GAME_SCRAPPERS, text) { return false; }
+  // a level of one of your games plays on that game's template; any other is an arena
+  e[0].mine_open = mine_of_level(e, n);
+  if e[0].mine_open != 0 { e[0].plays = e[0].mine[mine_find(e, e[0].mine_open)].plays; }
+  // the game's next level, come to while playing (crates: out through the gate): it plays on
+  if on { ed_play(e, 0); }
+  return true;
+}
+
+// Opens a game's own level: from its document when there is one (an owner's
+// saved changes), else as the game ships. Anyone may play it; its owners
+// change it (games.coax). False for no such game or bytes that are not a level's.
+ed_open_game :: (e: [] Editor, game: s32, text: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || game < 0 || game >= GAMES { return false; }
+  if text.count > 0 { return level_open(e, 0, game, text); }
+  level_clear(e, 0, game);
+  if game == GAME_SPLICE_BOTS { ed_splice(e); } else { ed_arena(e); }
+  ed_overview(e);
+  e[0].fresh = false;
+  return true;
+}
+
+// Starts level n as a new one: an arena to play in and change, not yet
+// written.
+ed_new :: (e: [] Editor, n: s32) #export_c #effects(all) {
+  if e.count != 1 || n < 1 || n > LEVEL_MAX { return; }
+  level_clear(e, n, GAME_SCRAPPERS);
+  ed_arena(e);
+  ed_overview(e);
+  e[0].fresh = true;
+}
+
+// Scrappers' own level as it ships.
+ed_official :: (e: [] Editor) #export_c #effects(all) {
+  none: [1] u8;
+  _ = ed_open_game(e, GAME_SCRAPPERS, none[0..<0]);
+}
+
+// Makes what is open a level of your own, numbered n: the same scene, yours
+// to change, not yet written. This is how someone who doesn't own a game
+// changes it.
+ed_copy :: (e: [] Editor, n: s32) #export_c #effects(all) {
+  if e.count != 1 || n < 1 || n > LEVEL_MAX || e[0].play[0].on { return; }
+  e[0].level = n; e[0].official = false; e[0].fresh = true; e[0].dirty = true;
+}
+
+// ---- checks
+
+LevelTest :: struct { e: [1] Editor; f: [1] Editor; a: [32768] u8; b: [32768] u8; }
+
+// Where part first is in s; -1 when nowhere.
+level_find :: (s: string, part: string) -> int {
+  if part.count > s.count { return -1; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return i; } }
+  return -1;
+}
+
+// A level's file with its table's revision line said to be rev, into out:
+// its length.
+level_retable :: (file: string, rev: int, out: [] u8) -> int {
+  at := level_split(file);
+  line := at; while line < file.count && file[line] != '\n' { line += 1; }
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], file[0..<at]); tx_put(t[..], "aethyr.content.v1 level "); tx_int(t[..], rev);
+  tx_put(t[..], file[line..<file.count]);
+  return t[0].at;
+}
+
+// The level as a file of before 2026-11-17 was written: the world document
+// alone, its kinds the box's kind and one, and four own columns (the size in
+// percent, then the shape's sides). Only to prove such files still open.
+level_save_v1 :: (e: [] Editor, out: [] u8) -> s64 {
+  b: [1] LevelWorld;
+  w := level_world(b[..]);
+  if !world_init(w, 8) { return 0; }
+  for i: 0..<ed_count(e) {
+    item := e[0].items[i]; a := ed_actor(e, i);
+    made := world_spawn(w, WORLD_TRANSFORM | WORLD_KIND);
+    if made.handle == ENTITY_NONE { return 0; }
+    s := entity_slot(made.handle);
+    _ = world_set_f(w, WF_X, s, item.x); _ = world_set_f(w, WF_Y, s, item.y); _ = world_set_f(w, WF_Z, s, item.z);
+    _ = world_set_f(w, WF_YAW, s, item.yaw);
+    _ = world_set_i(w, WI_KIND, s, cast(int) a.kind + 1);
+    b[0].own[s * LEVEL_OWN_V1] = cast(int) a.scale; b[0].own[s * LEVEL_OWN_V1 + 1] = cast(int) a.sx;
+    b[0].own[s * LEVEL_OWN_V1 + 2] = cast(int) a.sy; b[0].own[s * LEVEL_OWN_V1 + 3] = cast(int) a.sz;
+  }
+  if !world_commit(w) { return 0; }
+  name: [32] u8;
+  nn := ed_level_id(e[0].level, name[..]);
+  return world_save(w, cast(string) name[0..<nn], 0, 0, e[0].st[0].next_id + 1, b[0].own[0..<ACTORS_MAX * LEVEL_OWN_V1], LEVEL_OWN_V1, out).count;
+}
+
+#test "a level's file is its world, then the content its kinds name" {
+  t: [1] LevelTest;
+  e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_save(e, t[0].a[..]);
+  file := cast(string) t[0].a[0..<n];
+  at := level_split(file);
+  rows := cast(int) e[0].shape_n;
+  #assert rows == 7 && at < n && level_find(file, "\ncontent 8\n") > 0;
+  #assert level_find(file, "\naethyr.content.v1 level 8\nreach 100000\ntable shape id kind:text sx:cm sy:cm sz:cm\n1|start|60|180|60\n2|block|100|100|100\n") == at - 1;
+  // every thing's kind is a row
+  for i: 0..<ed_count(e) { #assert e[0].items[i].mesh >= 1 && e[0].items[i].mesh <= rows; }
+}
+
+#test "a file of before 2026-11-17 still opens as the same level" {
+  t: [1] LevelTest;
+  e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 600);
+  ed_new(e, 1);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = 2, x = 150, y = 0, z = 250});
+  ed_apply(e, WorldEdit.{ok = true, op = WE_SCALE, id = 4, scale = 75});
+  n := level_save_v1(e, t[0].a[..]);
+  #assert n > 0 && n <= cast(s64) ed_save_max() && level_split(cast(string) t[0].a[0..<n]) == n;
+  ed_init(f, 800, 600);
+  #assert ed_open(f, 1, t[0].a[0..<n]);
+  #assert ed_count(f) == ed_count(e) && f[0].shape_n == e[0].shape_n && ed_agent_rev(f) == ed_agent_rev(e);
+  // and it is written the new way, which opens as the same level again
+  m := ed_save(f, t[0].b[..]);
+  #assert m > 0 && level_split(cast(string) t[0].b[0..<m]) < m;
+  ed_init(e, 800, 600);
+  #assert ed_open(e, 1, t[0].b[0..<m]) && ed_agent_rev(e) == ed_agent_rev(f);
+}
+
+#test "a level saves and opens as the same level, and saves again as the same bytes" {
+  t: [1] LevelTest;
+  e := t[0].e[..]; f := t[0].f[..];
+  ed_init(e, 800, 600);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = 2, x = 150, y = 0, z = 250});
+  ed_apply(e, WorldEdit.{ok = true, op = WE_ROTATE, id = 3, yaw = -45});
+  ed_apply(e, WorldEdit.{ok = true, op = WE_SCALE, id = 4, scale = 75});
+  #assert ed_save_due(e);
+  n := ed_save(e, t[0].a[..]);
+  #assert n > 0 && n <= cast(s64) ed_save_max();
+  ed_saved(e);
+  #assert !ed_save_due(e);
+  ed_init(f, 800, 600);
+  ed_delete(f);
+  #assert ed_open(f, 1, t[0].a[0..<n]);
+  #assert ed_count(f) == ed_count(e) && !ed_can_undo(f) && !ed_save_due(f) && ed_level(f) == 1;
+  for i: 0..<ed_count(e) {
+    p := ed_actor(e, i); q := ed_actor(f, i);
+    #assert p.kind == q.kind && p.x == q.x && p.y == q.y && p.z == q.z && p.yaw == q.yaw && p.scale == q.scale && p.sx == q.sx && p.sy == q.sy && p.sz == q.sz;
+  }
+  #assert ed_actor(f, 1).x == 150 && ed_actor(f, 2).yaw == -45 && ed_actor(f, 3).scale == 75 && ed_actor(f, 0).kind == KIND_START;
+  m := ed_save(f, t[0].b[..]);
+  #assert m == n;
+  for i: 0..<n { #assert t[0].a[i] == t[0].b[i]; }
+}
+
+#test "bytes that are not a level are refused and leave the editor as it was" {
+  t: [1] LevelTest;
+  e := t[0].e[..];
+  ed_init(e, 800, 600);
+  n := ed_save(e, t[0].a[..]);
+  count := ed_count(e);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = 2, x = 150, y = 0, z = 250});
+  #assert !ed_open(e, 2, t[0].a[0..<n - 1]) && !ed_open(e, 2, t[0].a[0..<0]) && !ed_open(e, -1, t[0].a[0..<n]);
+  // a changed byte of the world no longer gives the document's own digest
+  at := level_split(cast(string) t[0].a[0..<n]);
+  #assert at < n;
+  for i: 0..<n { t[0].b[i] = t[0].a[i]; }
+  t[0].b[at - 2] = ifx t[0].b[at - 2] == '1' then '2' else '1';
+  #assert !ed_open(e, 2, t[0].b[0..<n]);
+  // a table row of a kind nobody knows
+  for i: 0..<n { t[0].b[i] = t[0].a[i]; }
+  k := level_find(cast(string) t[0].a[at..<n], "|start|");
+  #assert k > 0;
+  t[0].b[at + k + 1] = 'x';
+  #assert !ed_open(e, 2, t[0].b[0..<n]);
+  // a table of another revision than the world names
+  m := level_retable(cast(string) t[0].a[0..<n], 99, t[0].b[..]);
+  #assert m > n && !ed_open(e, 2, t[0].b[0..<m]);
+  #assert ed_count(e) == count && ed_actor(e, 1).x == 150 && ed_can_undo(e) && ed_level(e) == 1;
+}
+
+#test "a new level holds an arena with both starts, is due a save, and has no history" {
+  t: [1] LevelTest;
+  e := t[0].e[..];
+  ed_init(e, 800, 600);
+  ed_saved(e);
+  ed_delete(e);
+  ed_new(e, 3);
+  #assert ed_level(e) == 3 && ed_count(e) == 28 && ed_actor(e, 0).kind == KIND_START && ed_actor(e, 1).kind == KIND_RIVAL && ed_actor(e, 1).yaw == 180 && ed_save_due(e) && !ed_can_undo(e) && !ed_has_selection(e);
+  n := ed_save(e, t[0].a[..]);
+  ed_saved(e);
+  #assert n > 0 && !ed_save_due(e);
+  #assert ed_open(e, 3, t[0].a[0..<n]) && ed_count(e) == 28 && ed_actor(e, 1).kind == KIND_RIVAL && ed_actor(e, 1).yaw == 180;
+}
+
+#test "levels are named and numbered" {
+  b: [16] u8;
+  n := ed_level_id(12, b[..]);
+  #assert cast(string) b[0..<n] == "level-12" && ed_level_number(b[0..<n]) == 12;
+  n = ed_level_title(12, b[..]);
+  #assert cast(string) b[0..<n] == "Level 12";
+  #assert ed_level_id(-1, b[..]) == 0 && ed_level_id(10000, b[..]) == 0 && ed_level_id(5, b[0..<3]) == 0;
+  bad := [5] string.["level-", "level-012", "level-1x", "levels-1", "level-12345"];
+  for w: bad {
+    k := 0; for c: w { b[k] = c; k += 1; }
+    #assert ed_level_number(b[0..<k]) == 0;
+  }
+  have := [3] s32.[2, 7, 4];
+  #assert ed_level_next(have[..]) == 8 && ed_level_next(have[0..<0]) == 1;
+  full := [1] s32.[9999];
+  #assert ed_level_next(full[..]) == 0;
+}

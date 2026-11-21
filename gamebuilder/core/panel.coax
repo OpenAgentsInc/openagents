@@ -1,0 +1,735 @@
+// The editor's side panel: the palette (what this game's template can add)
+// and the inspector (the selection's fields), drawn by the shared component
+// kit (components/kit, the Metaverse skin) on the shared UI host's view, so
+// the Mac, iOS, and later Windows and Linux draw the same panel. It is Coax
+// throughout: the host (host/panel/panel-host.c) only hands it frames, the
+// pointer and the wheel.
+//
+// Every press goes through the same calls an agent's command does: ed_add and
+// ed_set_field (palette.coax). Each is one edit and one undo. A press that
+// can't be done says why on the panel, in words (ed_add_why, ed_field_why).
+// Over them, when the open level is in a game of yours, the game: its name, typed in a field
+// and renamed through the rename-game row (gb_run), whose game file the host then writes
+// (ed_game_due).
+//
+// Layout is in the skin's units, drawn PN_SCALE device points per unit.
+//   scripts/check.sh
+
+#load "../../components/raster/host-tables.coax";
+#load "../../components/kit/controls.coax";
+#load "../../components/kit/form.coax";
+#load "../../components/skin/metaverse.coax";
+
+PN_SCALE :: 1.0;
+PN_MAX_VERTICES :: 24576;
+// The surface's capacity: primitives, runs of text, hits, pooled bytes, semantic rows; keyed ids.
+PN_UNDER :: 512; PN_OVER :: 512; PN_HITS :: 64; PN_POOL :: 2048; PN_ROWS :: 96; PN_KEYED :: 8;
+PN_NOTE_MAX :: 120;
+PN_DRAG :: 6.0;          // units a finger moves before a press becomes a scroll
+
+// What a row dispatches when pressed: adding a kind, or stepping a field down or up; the game's
+// name field, and its Rename; the level's name and its Rename, the owners and Set owners, the
+// two Deletes, and moving the level into a game of yours (PN_MOVE + its place in the list) or out.
+PN_ADD :: 100; PN_LESS :: 200; PN_MORE :: 300; PN_NAME :: 400; PN_RENAME :: 401;
+PN_LEVEL_NAME :: 402; PN_RENAME_LEVEL :: 403; PN_OWNERS :: 404; PN_SET_OWNERS :: 405;
+PN_DELETE_LEVEL :: 406; PN_DELETE_GAME :: 407; PN_MOVE_OUT :: 408; PN_MOVE :: 500;
+// The Share section's (publish.coax): Publish, take it off the web, delete it from the web (pressed
+// twice), and a version made live or an item of feedback hidden, blocked or reported (each + its
+// place in the device's list).
+PN_PUBLISH :: 409; PN_UNPUBLISH :: 410; PN_REMOVE_PUB :: 411;
+PN_LIVE :: 1000; PN_HIDE :: 2000; PN_BLOCK :: 3000; PN_REPORT :: 4000; PN_EACH :: 1000;
+// Which field has the keyboard.
+PN_F_NONE :: 0; PN_F_GAME :: 1; PN_F_LEVEL :: 2; PN_F_OWNERS :: 3;
+// How far one step moves a field.
+PN_STEP :: [FIELDS] s32.[1, 50, 50, 50, 15, 10, 50, 50, 50, 50, 500];   // (a distance by half a metre, a period by half a second)
+
+PnGeneration :: struct { under: [PN_UNDER] Prim; over: [PN_OVER] Prim; hits: [PN_HITS] SheetHit; pool: [PN_POOL] u8; rows: [PN_ROWS] El; }
+
+EdPanel :: struct {
+  ready: bool; time: f32; d: f32; width: f32; height: f32;
+  atlas: [1] Atlas;
+  // the pointer: where it is (units), whether it is down, where it went down, and the id it went down on
+  px: f32; py: f32; touching: bool; down_y: f32; dragging: bool;
+  pressed: [EL_ID] u8; pressed_n: int;
+  scroll: f32; content: f32;           // how far the content is scrolled, and how tall it is
+  note: [PN_NOTE_MAX] u8; note_n: int; failure: bool;
+  changed: bool;                       // a press changed the level: the host syncs its view of it
+  gen: [2] PnGeneration; surface: [1] UiSurface;
+  keys: [PN_KEYED] Keyed; keyed: [1] KeyedStore;
+  refused: int;
+  // the game's name as typed, for game draft_game, and its owners; the level's name, for level
+  // draft_level; field: which has the keyboard (PN_F_); armed: a Delete pressed once, to press again
+  field: s32; draft: [MINE_TITLE] u8; draft_n: int; draft_game: s32;
+  owners: [MINE_OWNERS] u8; owners_n: int;
+  level_draft: [MINE_TITLE] u8; level_draft_n: int; draft_level: s32;
+  armed: int;
+}
+
+pn_init :: (p: [] EdPanel) {
+  p[0].ready = true;
+  g := p[0].gen[..];
+  p[0].surface[0] = surface_over(
+    Sheet.{under = g[0].under[..], over = g[0].over[..], hits = g[0].hits[..], pool = g[0].pool[..]}, g[0].rows[..],
+    Sheet.{under = g[1].under[..], over = g[1].over[..], hits = g[1].hits[..], pool = g[1].pool[..]}, g[1].rows[..]);
+  p[0].keyed[0] = KeyedStore.{rows = p[0].keys[..]};
+}
+pn_note :: (p: [] EdPanel, text: string, failure: bool) {
+  n := 0;
+  for c: text { if n >= PN_NOTE_MAX { break; } p[0].note[n] = c; n += 1; }
+  while n > 0 && n < text.count && (text[n] & 0xC0) == 0x80 { n -= 1; }
+  p[0].note_n = n; p[0].failure = failure && n > 0;
+}
+
+// A whole number as text, into out.
+pn_int :: (v: s32, out: [] u8) -> string {
+  n := 0; x: int = cast(int) v; neg := x < 0;
+  if neg { x = -x; }
+  digits: [12] u8; k := 0;
+  while true { digits[k] = cast(u8) (48 + x % 10); k += 1; x = x / 10; if x == 0 || k >= 11 { break; } }
+  if neg { out[n] = 45; n += 1; }
+  while k > 0 { k -= 1; out[n] = digits[k]; n += 1; }
+  return cast(string) out[0..<n];
+}
+// A field's value as it is read: the kind's name, or the number and its unit.
+pn_value :: (e: [] Editor, f: s32, out: [] u8) -> string {
+  v := ed_field(e, f);
+  if f == FIELD_KIND { return ifx v >= 0 && v < KINDS then KIND_NAME[v] else ""; }
+  num := pn_int(v, out);
+  n := num.count;
+  unit := FIELD_UNIT[f];
+  if unit.count > 0 && unit != "°" && unit != "%" { out[n] = 32; n += 1; }
+  for c: unit { if n >= out.count { break; } out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+// The value a step takes a field to: a kind steps through the template's
+// palette, a number by its step, held inside the field's range.
+pn_stepped :: (e: [] Editor, f: s32, up: bool) -> s32 {
+  v := ed_field(e, f);
+  if f == FIELD_KIND {
+    n := ed_palette_count(e);
+    at: s32 = -1;
+    for i: 0..<n { if ed_palette_kind(e, cast(s32) i) == v { at = cast(s32) i; } }
+    if n < 1 { return v; }
+    next := ifx at < 0 then 0 else ifx up then (at + 1) % n else (at + n - 1) % n;
+    return ed_palette_kind(e, next);
+  }
+  // (a village building turns by quarter turns, round and round)
+  if f == FIELD_TURN && gk_building(cast(int) ed_field(e, FIELD_KIND)) >= 0 { return cast(s32) editor_turn(cast(int) v + (ifx up then 90 else -90)); }
+  w := ifx up then v + PN_STEP[f] else v - PN_STEP[f];
+  // (a distance or a period at its limit: the step past it is refused, and the limit said in words with its numbers)
+  if f == FIELD_GO || f == FIELD_EVERY { return w; }
+  if w < FIELD_MIN[f] { w = FIELD_MIN[f]; }
+  if w > FIELD_MAX[f] { w = FIELD_MAX[f]; }
+  return w;
+}
+
+// What pressing a part does: a tap, a click and a driver's tap all come here.
+pn_press :: (p: [] EdPanel, e: [] Editor, act: int) -> bool {
+  if act != PN_DELETE_LEVEL && act != PN_DELETE_GAME && act != PN_REMOVE_PUB { p[0].armed = 0; }
+  if act == PN_PUBLISH {
+    // named as its game is, or as the level is when it is in none
+    nb: [64] u8; g := ed_mine_open(e);
+    n := ifx g > 0 then ed_mine_title(e, g, nb[..]) else ed_level_title(ed_level(e), nb[..]);
+    return pn_pub(p, e, VERB_PUB_PUBLISH, GbArgs.{level = ed_level(e), text = cast(string) nb[0..<(ifx n > 0 then n else 0)]});
+  }
+  if act == PN_UNPUBLISH || act == PN_REMOVE_PUB {
+    me := cast(string) e[0].account[0..<cast(s64) e[0].account_n];
+    gi := pub_of_level(e[0].pub[..], me, ed_level(e));
+    if gi < 0 { return true; }
+    if act == PN_REMOVE_PUB && p[0].armed != act {
+      p[0].armed = act;
+      pn_note(p, "press Delete from the web again: its versions and feedback go for good", false);
+      return true;
+    }
+    p[0].armed = 0;
+    return pn_pub(p, e, ifx act == PN_UNPUBLISH then VERB_PUB_UNPUBLISH else VERB_PUB_REMOVE_PUBLISHED, GbArgs.{pub = e[0].pub[0].games[gi].id});
+  }
+  if act >= PN_LIVE && act < PN_LIVE + PN_EACH {
+    k := cast(s64) (act - PN_LIVE);
+    if k >= cast(s64) e[0].pub[0].version_n { return true; }
+    return pn_pub(p, e, VERB_PUB_SET_LIVE, GbArgs.{pub = e[0].pub[0].versions[k].game, version = e[0].pub[0].versions[k].n});
+  }
+  if act >= PN_HIDE && act < PN_REPORT + PN_EACH {
+    k := cast(s64) ((act - PN_HIDE) % PN_EACH); which := (act - PN_HIDE) / PN_EACH;
+    if k >= cast(s64) e[0].pub[0].feedback_n { return true; }
+    verb := ifx which == 0 then VERB_PUB_FEEDBACK_HIDE else ifx which == 1 then VERB_PUB_BLOCK else VERB_PUB_REPORT;
+    return pn_pub(p, e, verb, GbArgs.{item = e[0].pub[0].feedback[k].id});
+  }
+  if act == PN_NAME { p[0].field = PN_F_GAME; return true; }
+  if act == PN_LEVEL_NAME { p[0].field = PN_F_LEVEL; return true; }
+  if act == PN_OWNERS { p[0].field = PN_F_OWNERS; return true; }
+  if act == PN_RENAME { return pn_rename(p, e); }
+  if act == PN_RENAME_LEVEL { return pn_manage(p, e, VERB_RENAME_LEVEL, 0); }
+  if act == PN_SET_OWNERS { return pn_manage(p, e, VERB_SET_OWNERS, 0); }
+  if act == PN_MOVE_OUT { return pn_manage(p, e, VERB_MOVE_LEVEL, 0); }
+  if act >= PN_MOVE && act < PN_MOVE + MINE_MAX {
+    k := cast(s64) (act - PN_MOVE);
+    return k < cast(s64) e[0].mine_n && pn_manage(p, e, VERB_MOVE_LEVEL, e[0].mine[k].n);
+  }
+  if act == PN_DELETE_LEVEL || act == PN_DELETE_GAME {
+    // a Delete is pressed twice: the first says what it will do
+    if p[0].armed != act {
+      p[0].armed = act;
+      pn_note(p, ifx act == PN_DELETE_LEVEL then "press Delete level again to delete it and its file" else "press Delete game again: its levels stay, in no game", false);
+      return true;
+    }
+    p[0].armed = 0;
+    return pn_manage(p, e, ifx act == PN_DELETE_LEVEL then VERB_DELETE_LEVEL else VERB_DELETE_GAME, 0);
+  }
+  if act >= PN_ADD && act < PN_ADD + KINDS {
+    kind := cast(s32) (act - PN_ADD);
+    why := ed_add_why(e, kind);
+    had := e[0].selected;
+    id := ed_add(e, kind);
+    if why.count > 0 {
+      // a one-only kind already placed: that one is selected, and the panel says so
+      if id > 0 { pn_note(p, "a level has only one of these: it is selected", false); }
+      else { pn_note(p, why, true); }
+    } else if id == 0 && gk_building(cast(int) kind) >= 0 {
+      // (a village building with no clear place near: said in the website's words)
+      wb: [128] u8; wn := vl_why_words(VL_WHY_ROOM, 0, wb[..], 0); pn_note(p, cast(string) wb[0..<wn], true);
+    } else { pn_note(p, "", false); }
+    p[0].changed = p[0].changed || id > 0 || had != e[0].selected;
+    return true;
+  }
+  if act >= PN_LESS && act < PN_MORE + FIELDS {
+    up := act >= PN_MORE;
+    base: int = PN_LESS; if up { base = PN_MORE; }
+    f := cast(s32) (act - base);
+    if f < 0 || f >= FIELDS { return false; }
+    v := pn_stepped(e, f, up);
+    why := ed_field_why(e, f, v);
+    if why.count > 0 { pn_note(p, why, true); return true; }
+    if ed_set_field(e, f, v) { pn_note(p, "", false); p[0].changed = true; }
+    return true;
+  }
+  return false;
+}
+// Rename: the rename-game row with the name typed, as any surface calls it. Its refusal is said
+// on the panel in the row's words; the host writes the game's file (ed_game_due).
+pn_rename :: (p: [] EdPanel, e: [] Editor) -> bool {
+  g := ed_mine_open(e);
+  if g <= 0 { return false; }
+  out: [1024] u8; none: [1] s32;
+  r := gb_run(e, VERB_RENAME_GAME, GbArgs.{game = g, text = cast(string) p[0].draft[0..<p[0].draft_n]}, GbWorld.{levels = none[0..<0]}, out[..]);
+  if r.code != GB_DONE {
+    nodes: [16] JvNode; da: [1] Jv; wb: [PN_NOTE_MAX] u8;
+    w := ifx jv_parse(da[..], r.json, nodes[..]) then jv_str(da[0], jv_get(da[0], 0, "why"), wb[..]) else -1;
+    pn_note(p, ifx w > 0 then cast(string) wb[0..<w] else "that name can't be a game's", true);
+    return true;
+  }
+  if r.save_game > 0 { e[0].game_due = r.save_game; }
+  p[0].field = PN_F_NONE; pn_note(p, "", false); p[0].changed = true;
+  return true;
+}
+// The Share section's rows, as any surface calls them, on the open level; the clock is the one the
+// host gives the core (ed_claims_clock). A refusal is said in the row's words; the host writes the
+// device's file of what it has published (ed_pub_due).
+pn_pub :: (p: [] EdPanel, e: [] Editor, verb: int, a: GbArgs) -> bool {
+  lv: [1] s32; lv[0] = ed_level(e);
+  out: [2048] u8;
+  r := gb_run(e, verb, a, GbWorld.{levels = lv[..], now = cast(s64) e[0].claims[0].now * 1000}, out[..]);
+  if r.code != GB_DONE {
+    nodes: [16] JvNode; da: [1] Jv; wb: [PN_NOTE_MAX] u8;
+    w := ifx jv_parse(da[..], r.json, nodes[..]) then jv_str(da[0], jv_get(da[0], 0, "why"), wb[..]) else -1;
+    pn_note(p, ifx w > 0 then cast(string) wb[0..<w] else "that could not be done", true);
+    return true;
+  }
+  pn_note(p, "", false); p[0].changed = true;
+  return true;
+}
+// The managing rows on the open level and its game, as any surface calls them: rename-level with
+// the name typed, set-owners with the owners typed, move-level into game into, and the Deletes.
+// The world is the open level, which is there. A refusal is said in the row's words; the host
+// writes and deletes the files (ed_game_due, ed_drop_due).
+pn_manage :: (p: [] EdPanel, e: [] Editor, verb: int, into: s32) -> bool {
+  lv: [1] s32; lv[0] = ed_level(e);
+  a := GbArgs.{level = ed_level(e), game = ed_mine_open(e), into = into,
+    text = cast(string) p[0].level_draft[0..<p[0].level_draft_n], owners = cast(string) p[0].owners[0..<p[0].owners_n]};
+  out: [2048] u8;
+  // the row reads its words as any call's are, so a name or a list it does not take is refused alike
+  if verb == VERB_RENAME_LEVEL && !mine_title_ok(a.text) { pn_note(p, "a name is 1 to 48 bytes on one line, with no bar and no space at either end (MINE_TITLE)", true); return true; }
+  if verb == VERB_SET_OWNERS { why := mine_owners_why(a.owners); if why.count > 0 { pn_note(p, why, true); return true; } }
+  r := gb_run(e, verb, a, GbWorld.{levels = lv[..]}, out[..]);
+  if r.code != GB_DONE {
+    nodes: [16] JvNode; da: [1] Jv; wb: [PN_NOTE_MAX] u8;
+    w := ifx jv_parse(da[..], r.json, nodes[..]) then jv_str(da[0], jv_get(da[0], 0, "why"), wb[..]) else -1;
+    pn_note(p, ifx w > 0 then cast(string) wb[0..<w] else "that could not be done", true);
+    return true;
+  }
+  if r.save_game > 0 { e[0].game_due = r.save_game; }
+  if r.save_also > 0 { e[0].game_also_due = r.save_also; }
+  if r.drop_level > 0 { e[0].drop_due = r.drop_level; }
+  if r.drop_game > 0 { e[0].drop_game_due = r.drop_game; }
+  p[0].field = PN_F_NONE; pn_note(p, "", false); p[0].changed = true;
+  p[0].draft_game = -1; p[0].draft_level = -1;   // the drafts start again from what is now kept
+  return true;
+}
+// The draft follows the open game: a game opened since starts from its own name.
+pn_draft_for :: (p: [] EdPanel, e: [] Editor, g: s32) {
+  if p[0].draft_game == g { return; }
+  p[0].draft_game = g; p[0].field = PN_F_NONE;
+  n := ed_mine_title(e, g, p[0].draft[..]);
+  p[0].draft_n = ifx n > 0 then cast(int) n else 0;
+  // its owners, a comma between each
+  i := mine_find(e, g);
+  p[0].owners_n = 0;
+  if i >= 0 { for k: 0..<cast(s64) e[0].mine[i].owners_n { p[0].owners[k] = e[0].mine[i].owners[k]; } p[0].owners_n = cast(int) e[0].mine[i].owners_n; }
+}
+// The level's draft follows the open level: its name in its game, or none.
+pn_level_draft_for :: (p: [] EdPanel, e: [] Editor, level: s32) {
+  if p[0].draft_level == level { return; }
+  p[0].draft_level = level;
+  if p[0].field == PN_F_LEVEL { p[0].field = PN_F_NONE; }
+  p[0].level_draft_n = 0;
+  i := mine_find(e, ed_mine_open(e));
+  if i < 0 { return; }
+  for k: 0..<cast(s64) e[0].mine[i].level_n {
+    if e[0].mine[i].levels[k] != level { continue; }
+    nb: [MINE_TITLE] u8; name := mine_level_name(e[0].mine[i], k, nb[..]);
+    for j: 0..<name.count { p[0].level_draft[j] = name[j]; }
+    p[0].level_draft_n = name.count;
+  }
+}
+
+pn_press_row :: (p: [] EdPanel, e: [] Editor, row: int) -> bool {
+  act := surface_action(p[0].surface[..], row);
+  return act != 0 && pn_press(p, e, act);
+}
+
+// ---- the layout
+
+PN_IDS :: 64;
+// A stable id per control: "add.N", "less.N" and "more.N".
+pn_id :: (prefix: string, k: int, out: [] u8) -> string {
+  n := 0;
+  for c: prefix { out[n] = c; n += 1; }
+  out[n] = 46; n += 1;
+  d := pn_int(cast(s32) k, out[n..<out.count]);
+  return cast(string) out[0..<n + d.count];
+}
+
+// Lays the panel out w by h units; returns its content's height.
+pn_layout :: (p: [] EdPanel, e: [] Editor, f: [] UiFrame, w: f32, h: f32) -> f32 {
+  k := f[0].skin; m := f[0].m;
+  sheet_fill(f[0].sheet, 0, 0, w, h, 0, k.sidebar);
+  sheet_fill(f[0].sheet, 0, 0, k.border, h, 0, k.hairline);
+  uiframe_clip(f, 0, 0, w, h);
+  x := k.pad; cw := w - 2 * k.pad;
+  y := k.pad - p[0].scroll;
+  ids: [EL_ID] u8;
+  // the game the open level is in, when it is yours: its name, and Rename
+  g := ed_mine_open(e);
+  if g > 0 {
+    pn_draft_for(p, e, g);
+    _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, "Game");
+    y += k.title.line + k.space;
+    draft := sheet_pool(f[0].sheet, cast(string) p[0].draft[0..<p[0].draft_n]);
+    y += ctx_field(f, "game.name", x, y, cw, "Name", draft, "the game's name", p[0].field == PN_F_GAME, 0, PN_NAME) + k.space / 2;
+    _ := ctx_button(f, "game.rename", x, y, "Rename", false, ifx p[0].draft_n > 0 then 0 else EL_S_DISABLED, PN_RENAME);
+    y += k.control_h + k.space;
+    owners := sheet_pool(f[0].sheet, cast(string) p[0].owners[0..<p[0].owners_n]);
+    y += ctx_field(f, "game.owners", x, y, cw, "Owners", owners, "anyone on this device", p[0].field == PN_F_OWNERS, 0, PN_OWNERS) + k.space / 2;
+    _ := ctx_button(f, "game.set-owners", x, y, "Set owners", false, ifx p[0].owners_n > 0 then 0 else EL_S_DISABLED, PN_SET_OWNERS);
+    y += k.control_h + k.space;
+    _ := ctx_button(f, "game.delete", x, y, ifx p[0].armed == PN_DELETE_GAME then "Press again to delete" else "Delete game", false, 0, PN_DELETE_GAME);
+    y += k.control_h + k.space;
+    sheet_fill(f[0].sheet, x, y, cw, k.border, 0, k.hairline);
+    y += k.space;
+  } else { p[0].draft_game = 0; if p[0].field != PN_F_LEVEL { p[0].field = PN_F_NONE; } }
+  // the open level, when it is yours: its name in its game, the games it can move into, Delete
+  lvl := ed_level(e);
+  if lvl >= 1 && !e[0].official {
+    pn_level_draft_for(p, e, lvl);
+    _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, "Level");
+    y += k.title.line + k.space;
+    if g > 0 {
+      name := sheet_pool(f[0].sheet, cast(string) p[0].level_draft[0..<p[0].level_draft_n]);
+      y += ctx_field(f, "level.name", x, y, cw, "Name", name, "the level's name in its game", p[0].field == PN_F_LEVEL, 0, PN_LEVEL_NAME) + k.space / 2;
+      _ := ctx_button(f, "level.rename", x, y, "Rename level", false, ifx p[0].level_draft_n > 0 then 0 else EL_S_DISABLED, PN_RENAME_LEVEL);
+      y += k.control_h + k.space;
+      _ := ctx_button(f, "level.out", x, y, "Out of the game", false, 0, PN_MOVE_OUT);
+      y += k.control_h + k.space;
+    } else { p[0].level_draft_n = 0; }
+    plays := ifx g > 0 then e[0].plays else TEMPLATE_ARENA;
+    for i: 0..<cast(s64) e[0].mine_n {
+      mg := e[0].mine[i];
+      if mg.n == g || mg.plays != plays { continue; }
+      lb: [MINE_TITLE + 8] u8; tl := [1] Text.[Text.{buf = lb[..]}];
+      tx_put(tl[..], "Into "); tx_put(tl[..], cast(string) mg.title[0..<cast(s64) mg.title_n]);
+      _ := ctx_button(f, pn_id("level.move", cast(int) i, ids[..]), x, y, sheet_pool(f[0].sheet, tx_text(tl[..])), false, 0, PN_MOVE + cast(int) i);
+      y += k.control_h + k.space / 2;
+    }
+    _ := ctx_button(f, "level.delete", x, y, ifx p[0].armed == PN_DELETE_LEVEL then "Press again to delete" else "Delete level", false, 0, PN_DELETE_LEVEL);
+    y += k.control_h + k.space;
+    sheet_fill(f[0].sheet, x, y, cw, k.border, 0, k.hairline);
+    y += k.space;
+  }
+  // Share: the open level on the web, the person's own (publish.coax; docs/publishing.md)
+  if lvl >= 1 && !e[0].official {
+    _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, "Share");
+    y += k.title.line + k.space;
+    me := cast(string) e[0].account[0..<cast(s64) e[0].account_n];
+    if me.count == 0 {
+      _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.muted, "Log in to publish (the account sheet)");
+      y += k.body.line + k.space;
+    } else {
+      s := e[0].pub[..];
+      gi := pub_of_level(s, me, lvl);
+      _ := ctx_button(f, "share.publish", x, y, ifx gi >= 0 then "Publish update" else "Publish", false, 0, PN_PUBLISH);
+      y += k.control_h + k.space / 2;
+      if gi >= 0 {
+        pg := s[0].games[gi];
+        lb: [96] u8; tl := [1] Text.[Text.{buf = lb[..]}];
+        if pg.state == PUB_LIVE { tx_put(tl[..], "Live: version "); tx_int(tl[..], cast(s64) pg.live); tx_put(tl[..], " at g/"); code := pg.code; tx_put(tl[..], cast(string) code[0..<PUB_CODE]); }
+        else { tx_put(tl[..], "Not on the web: Publish puts it back"); }
+        _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.ink, sheet_pool(f[0].sheet, tx_text(tl[..])));
+        y += k.body.line;
+        _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.muted, "Kept on this device: the games' domain is not live yet");
+        y += k.body.line + k.space / 2;
+        if pg.state == PUB_LIVE { _ := ctx_button(f, "share.unpublish", x, y, "Take it off the web", false, 0, PN_UNPUBLISH); y += k.control_h + k.space / 2; }
+        // its other versions, newest first, at most four
+        shown := 0; vi := cast(s64) s[0].version_n - 1;
+        while vi >= 0 && shown < 4 {
+          pv := s[0].versions[vi];
+          if pv.game == pg.id && pv.n != pg.live {
+            vb: [40] u8; vt := [1] Text.[Text.{buf = vb[..]}];
+            tx_put(vt[..], "Make version "); tx_int(vt[..], cast(s64) pv.n); tx_put(vt[..], " live");
+            _ := ctx_button(f, pn_id("share.live", cast(int) vi, ids[..]), x, y, sheet_pool(f[0].sheet, tx_text(vt[..])), false, 0, PN_LIVE + cast(int) vi);
+            y += k.control_h + k.space / 2; shown += 1;
+          }
+          vi -= 1;
+        }
+        // its feedback, newest first, at most three not hidden
+        shown = 0; fi := cast(s64) s[0].feedback_n - 1;
+        while fi >= 0 && shown < 3 {
+          pf := s[0].feedback[fi];
+          if pf.game == pg.id && pf.state != PUB_HIDDEN {
+            fb: [PUB_TEXT + 32] u8; ft := [1] Text.[Text.{buf = fb[..]}];
+            tx_put(ft[..], ifx pf.up then "Thumbs up" else "Thumbs down"); tx_put(ft[..], " on version "); tx_int(ft[..], cast(s64) pf.version);
+            if pf.state == PUB_NEW && pf.text_n > 0 { tx_put(ft[..], ": "); text := pf.text; tx_put(ft[..], cast(string) text[0..<cast(s64) pf.text_n]); }
+            if pf.state == PUB_HELD { tx_put(ft[..], " (its line is held)"); }
+            _ := sheet_text(f[0].sheet, m, -1, x, y, k.body.line, k.body.face, k.ink, sheet_pool(f[0].sheet, tx_text(ft[..])));
+            y += k.body.line + k.space / 2;
+            _ := ctx_button(f, pn_id("share.hide", cast(int) fi, ids[..]), x, y, "Hide", false, 0, PN_HIDE + cast(int) fi);
+            y += k.control_h + k.space / 2;
+            _ := ctx_button(f, pn_id("share.block", cast(int) fi, ids[..]), x, y, "Block this player", false, 0, PN_BLOCK + cast(int) fi);
+            y += k.control_h + k.space / 2;
+            if !pf.reported { _ := ctx_button(f, pn_id("share.report", cast(int) fi, ids[..]), x, y, "Report", false, 0, PN_REPORT + cast(int) fi); y += k.control_h + k.space / 2; }
+            shown += 1;
+          }
+          fi -= 1;
+        }
+        _ := ctx_button(f, "share.remove", x, y, ifx p[0].armed == PN_REMOVE_PUB then "Press again to delete" else "Delete from the web", false, 0, PN_REMOVE_PUB);
+        y += k.control_h + k.space;
+      }
+    }
+    sheet_fill(f[0].sheet, x, y, cw, k.border, 0, k.hairline);
+    y += k.space;
+  }
+  // the palette: what this game's template can add
+  _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, "Add");
+  y += k.title.line + k.space;
+  pen := x;
+  n := ed_palette_count(e);
+  for i: 0..<n {
+    kind := ed_palette_kind(e, cast(s32) i);
+    label := KIND_NAME[kind];
+    bw := button_width(m, k, label);
+    if pen > x && pen + bw > x + cw { pen = x; y += k.control_h + k.space / 2; }
+    state := ifx ed_add_why(e, kind).count > 0 && !ed_kind_one(e, kind) then EL_S_DISABLED else 0;
+    _ := ctx_button(f, pn_id("add", cast(int) kind, ids[..]), pen, y, label, false, state, PN_ADD + cast(int) kind);
+    pen += bw + k.space / 2;
+  }
+  y += k.control_h + k.space;
+  note := cast(string) p[0].note[0..<p[0].note_n];
+  if note.count > 0 {
+    y += ctx_notice(f, "note", x, y, cw, note, p[0].failure) + k.space;
+  }
+  // the inspector: the selection's fields
+  y += k.space;
+  sheet_fill(f[0].sheet, x, y, cw, k.border, 0, k.hairline);
+  y += k.space;
+  i := ed_index(e, e[0].selected);
+  if i < 0 {
+    _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.muted, "Nothing selected");
+    y += k.title.line + k.space;
+  } else {
+    kind := ed_field(e, FIELD_KIND);
+    _ := sheet_text(f[0].sheet, m, -1, x, y, k.title.line, k.title.face, k.ink, KIND_NAME[kind]);
+    y += k.title.line + k.space;
+    vb: [64] u8;
+    for fi: 0..<FIELDS {
+      fs := cast(s32) fi;
+      // (a village building's size is its model's: it has a scale and no sides to set)
+      if gk_building(cast(int) kind) >= 0 && fi >= FIELD_WIDTH { continue; }
+      // (a distance and a period are a moving platform's and a lift's alone: no other thing shows them)
+      if !ed_field_has(e, fs) { continue; }
+      ly := y + (k.control_h - k.body.line) / 2;
+      _ := sheet_text(f[0].sheet, m, -1, x, ly, k.body.line, k.body.face, k.muted, FIELD_NAME[fi]);
+      bw := button_width(m, k, "+");
+      _ := ctx_button(f, pn_id("more", fi, ids[..]), x + cw - bw, y, "+", false, 0, PN_MORE + fi);
+      lw := button_width(m, k, "-");
+      _ := ctx_button(f, pn_id("less", fi, ids[..]), x + cw - bw - k.space / 2 - lw, y, "-", false, 0, PN_LESS + fi);
+      value := sheet_pool(f[0].sheet, pn_value(e, fs, vb[..]));
+      vx := x + cw * 0.36;
+      _ := sheet_text(f[0].sheet, m, -1, vx, ly, k.body.line, k.body.face, k.ink, value);
+      y += k.control_h + k.space / 2;
+    }
+  }
+  uiframe_unclip(f);
+  return y + p[0].scroll + k.pad;
+}
+
+pn_clamp_scroll :: (p: [] EdPanel) {
+  most := p[0].content - p[0].height;
+  if p[0].scroll > most { p[0].scroll = most; }
+  if p[0].scroll < 0 { p[0].scroll = 0; }
+}
+
+// ---- the host's calls
+
+// One frame of width by height device pixels. Returns the vertex count.
+ed_panel_frame :: (p: [] EdPanel, e: [] Editor, out: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || width < 1 || height < 1 { return 0; }
+  if !p[0].ready { pn_init(p); }
+  a := p[0].atlas[..];
+  d := (ifx dpr < 1 then 1.0f32 else dpr) * PN_SCALE;
+  w := width / d; h := height / d;
+  p[0].d = d; p[0].width = w; p[0].height = h;
+  t := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  p[0].time += t;
+  a[0].frame += 1;
+  k := metaverse_skin();
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, k.sidebar, k.sidebar);
+  if !a[0].ready { return v; }
+  pn_clamp_scroll(p);
+  f: [1] UiFrame;
+  input := uiinput(p[0].px, p[0].py, true, p[0].touching && !p[0].dragging, cast(string) p[0].pressed[0..<p[0].pressed_n], "");
+  uiframe_begin(f[..], p[0].surface[..], p[0].keyed[..], measure_font(a), k, input, p[0].time, t, false, false);
+  p[0].content = pn_layout(p, e, f[..], w, h);
+  if !uiframe_end(f[..], p[0].surface[..]) { p[0].refused += 1; }
+  sh := surface_sheet(p[0].surface[..]);
+  v = gpu_draw(out, v, a, d, sh.under[0..<sh.nu], 0, 0, -8, h + 8);
+  v = gpu_draw(out, v, a, d, sh.over[0..<sh.no], 0, 0, -8, h + 8);
+  return v;
+}
+// The pointer, in device pixels: phase 0 down, 1 moved, 2 up, 3 cancelled. A
+// part is pressed when the pointer lifts on the part it went down on; a drag
+// past PN_DRAG scrolls instead. True when the panel needs a frame.
+ed_panel_pointer :: (p: [] EdPanel, e: [] Editor, x: f32, y: f32, phase: int) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || !(p[0].d > 0) { return false; }
+  ux := x / p[0].d; uy := y / p[0].d;
+  was_y := p[0].py;
+  p[0].px = ux; p[0].py = uy;
+  row := surface_hit(p[0].surface[..], ux, uy);
+  id := surface_id(p[0].surface[..], row);
+  acts := surface_action(p[0].surface[..], row) != 0;
+  pressed := cast(string) p[0].pressed[0..<p[0].pressed_n];
+  if phase == 0 {
+    p[0].touching = true; p[0].dragging = false; p[0].down_y = uy;
+    p[0].pressed_n = ifx acts then el_copy(p[0].pressed[..], id) else 0;
+    return true;
+  }
+  if phase == 1 {
+    if !p[0].touching { return true; }      // hovering
+    if !p[0].dragging && abs(uy - p[0].down_y) > PN_DRAG { p[0].dragging = true; p[0].pressed_n = 0; }
+    if p[0].dragging { p[0].scroll -= uy - was_y; pn_clamp_scroll(p); }
+    return true;
+  }
+  held := p[0].pressed_n > 0 && pressed == id && !p[0].dragging;
+  p[0].touching = false; p[0].dragging = false; p[0].pressed_n = 0;
+  if phase == 2 && held { _ = pn_press_row(p, e, row); }
+  return true;
+}
+// The wheel, in device pixels down.
+ed_panel_wheel :: (p: [] EdPanel, dy: f32) #export_c #effects(all) {
+  if p.count < 1 || !(p[0].d > 0) { return; }
+  p[0].scroll += dy / p[0].d;
+  pn_clamp_scroll(p);
+}
+// Whether a press changed the level since the last call: the host then syncs.
+ed_panel_changed :: (p: [] EdPanel) -> bool #export_c #effects(all) {
+  if p.count < 1 { return false; }
+  c := p[0].changed; p[0].changed = false;
+  return c;
+}
+// Presses the control with this id (add.N, less.N, more.N, game.name, game.rename), as a tap does.
+ed_panel_activate :: (p: [] EdPanel, e: [] Editor, id: [] u8) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 { return false; }
+  return pn_press_row(p, e, surface_find(p[0].surface[..], cast(string) id));
+}
+// The panel's note (a refusal, in words) into out: its length.
+ed_panel_note :: (p: [] EdPanel, out: [] u8) -> s64 #export_c #effects(all) {
+  if p.count < 1 { return 0; }
+  return play_text(cast(string) p[0].note[0..<p[0].note_n], out);
+}
+// Whether the game's name field has the keyboard: the host then sends typed text and keys here.
+ed_panel_wants_text :: (p: [] EdPanel) -> bool #export_c #effects(all) { return p.count > 0 && p[0].field != PN_F_NONE; }
+// Typed text, into the name field, at most MINE_TITLE (48) bytes, on one line.
+ed_panel_text :: (p: [] EdPanel, text: [] u8) #export_c #effects(all) {
+  if p.count < 1 || p[0].field == PN_F_NONE { return; }
+  if p[0].field == PN_F_OWNERS {
+    // emails: no spaces, a comma between each, at most MINE_OWNERS bytes
+    for c: text { if c > 32 && c != '|' && c < 127 && p[0].owners_n < MINE_OWNERS { p[0].owners[p[0].owners_n] = c; p[0].owners_n += 1; } }
+    return;
+  }
+  d := ifx p[0].field == PN_F_GAME then p[0].draft[..] else p[0].level_draft[..];
+  n := ifx p[0].field == PN_F_GAME then p[0].draft_n else p[0].level_draft_n;
+  for c: text { if c >= 32 && c != '|' && n < MINE_TITLE { d[n] = c; n += 1; } }
+  // a character cut at the limit is taken out whole
+  while n > 0 && n == MINE_TITLE && (d[n - 1] & 0xC0) == 0xC0 { n -= 1; }
+  if p[0].field == PN_F_GAME { p[0].draft_n = n; } else { p[0].level_draft_n = n; }
+}
+// A key (the shared host's numbering: -1 Escape, -2 Enter, -3 Backspace). Return renames,
+// Backspace takes the last character, Escape lets the keyboard go. True when taken.
+ed_panel_key :: (p: [] EdPanel, e: [] Editor, key: int, mods: int, down: bool) -> bool #export_c #effects(all) {
+  if p.count < 1 || e.count != 1 || p[0].field == PN_F_NONE { return false; }
+  if !down { return true; }
+  if key == -1 { p[0].field = PN_F_NONE; return true; }
+  if key == -3 {
+    if p[0].field == PN_F_OWNERS { if p[0].owners_n > 0 { p[0].owners_n -= 1; } return true; }
+    d := ifx p[0].field == PN_F_GAME then p[0].draft[..] else p[0].level_draft[..];
+    n := ifx p[0].field == PN_F_GAME then p[0].draft_n else p[0].level_draft_n;
+    while n > 0 { n -= 1; if (d[n] & 0xC0) != 0x80 { break; } }
+    if p[0].field == PN_F_GAME { p[0].draft_n = n; } else { p[0].level_draft_n = n; }
+    return true;
+  }
+  if key == -2 {
+    if p[0].field == PN_F_GAME { return pn_rename(p, e); }
+    return pn_manage(p, e, ifx p[0].field == PN_F_LEVEL then VERB_RENAME_LEVEL else VERB_SET_OWNERS, 0);
+  }
+  return true;
+}
+ed_panel_scale :: () -> f32 #export_c #effects(all) { return PN_SCALE; }
+ed_panel_max_vertices :: () -> int #export_c #effects(all) { return PN_MAX_VERTICES; }
+ed_panel_size :: () -> s64 #export_c #effects(all) { return size_of(EdPanel); }
+
+// ---- checks
+
+PanelTest :: struct { p: [1] EdPanel; e: [1] Editor; v: [PN_MAX_VERTICES * GP_VERTEX_FLOATS] f32; b: [128] u8; }
+
+// A frame with an atlas that measures every glyph 8 wide, so the layout runs.
+pn_test_frame :: (t: [] PanelTest) {
+  if !t[0].p[0].atlas[0].ready { text_test_atlas(t[0].p[0].atlas[..]); gp_set_atlas(t[0].p[0].atlas[..], 4096, 4096, 2); }
+  _ = ed_panel_frame(t[0].p[..], t[0].e[..], t[0].v[..], 280, 900, 1, 0.016);
+}
+pn_test_tap :: (t: [] PanelTest, id: string) -> bool {
+  pn_test_frame(t);
+  // a pointer down and up on the middle of the control's committed row
+  i := surface_find(t[0].p[0].surface[..], id);
+  if i < 0 { return false; }
+  r := surface_rows(t[0].p[0].surface[..]).rows[i];
+  x := (r.x + r.w / 2) * t[0].p[0].d; y := (r.y + r.h / 2) * t[0].p[0].d;
+  _ := ed_panel_pointer(t[0].p[..], t[0].e[..], x, y, 0);
+  _ := ed_panel_pointer(t[0].p[..], t[0].e[..], x, y, 2);
+  return true;
+}
+
+#test "the panel's palette adds a thing, selected, and says nothing" {
+  t: [1] PanelTest;
+  ed_arena(t[0].e[..]);
+  was := ed_count(t[0].e[..]);
+  pn_test_frame(t[..]);
+  #assert surface_find(t[0].p[0].surface[..], "add.0") >= 0;
+  #assert pn_test_tap(t[..], "add.0");
+  #assert ed_count(t[0].e[..]) == was + 1 && ed_field(t[0].e[..], FIELD_KIND) == KIND_BLOCK && t[0].p[0].note_n == 0;
+  #assert ed_panel_changed(t[0].p[..]) && !ed_panel_changed(t[0].p[..]);
+}
+#test "a refusal is said on the panel, in words" {
+  t: [1] PanelTest;
+  ed_arena(t[0].e[..]);
+  // the arena has its four health packs: a fifth is refused, and the panel says why
+  #assert palette_count_of(t[0].e[..], KIND_PACK) == PACKS;
+  was := ed_count(t[0].e[..]);
+  #assert pn_test_tap(t[..], "add.6");
+  #assert ed_count(t[0].e[..]) == was && t[0].p[0].failure;
+  #assert cast(string) t[0].p[0].note[0..<t[0].p[0].note_n] == "a level has four health packs at most";
+}
+#test "the inspector's + moves the selection by one step, one undo" {
+  t: [1] PanelTest;
+  ed_arena(t[0].e[..]);
+  #assert pn_test_tap(t[..], "add.0");
+  x := ed_field(t[0].e[..], FIELD_X);
+  #assert pn_test_tap(t[..], "more.1");
+  #assert ed_field(t[0].e[..], FIELD_X) == x + 50;
+  ed_undo(t[0].e[..]);
+  #assert ed_field(t[0].e[..], FIELD_X) == x;
+}
+#test "the panel's Share section publishes the open level through the publish row, rolls a version back, and takes it off the web, the person's own" {
+  t: [1] PanelTest; e := t[0].e[..]; p := t[0].p[..];
+  out: [4096] u8; none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ARENA}, GbWorld.{levels = none[0..<0]}, out[..]).code == GB_DONE;
+  // logged out: no Publish, and it says how
+  pn_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "share.publish") < 0;
+  for c: "me@example.com" { e[0].account[e[0].account_n] = c; e[0].account_n += 1; }
+  ed_claims_clock(e, 1000);
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.publish") && e[0].pub[0].game_n == 1 && e[0].pub[0].games[0].live == 1 && ed_pub_due(e);
+  ed_pub_saved(e);
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.publish") && e[0].pub[0].games[0].live == 2 && ed_pub_due(e);
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.live.0") && e[0].pub[0].games[0].live == 1;
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.unpublish") && e[0].pub[0].games[0].state == PUB_UNPUBLISHED;
+  // a player's feedback shows, and is hidden from the panel
+  e[0].pub[0].games[0].state = PUB_LIVE;
+  code := e[0].pub[0].games[0].code;
+  #assert pub_feedback_add(e[0].pub[..], cast(string) code[0..<PUB_CODE], true, "fun", 5, 2000).error == "";
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.hide.0") && e[0].pub[0].feedback[0].state == PUB_HIDDEN;
+  // Delete from the web is pressed twice
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "share.remove") && e[0].pub[0].game_n == 1 && pn_test_tap(t[..], "share.remove") && e[0].pub[0].game_n == 0;
+}
+#test "the panel renames the open game of yours through the rename-game row, and the host is told to write it" {
+  t: [1] PanelTest; e := t[0].e[..]; p := t[0].p[..];
+  out: [4096] u8; none: [1] s32;
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ARENA}, GbWorld.{levels = none[0..<0]}, out[..]).code == GB_DONE;
+  g := ed_mine_open(e);
+  #assert g > 0;
+  pn_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "game.name") >= 0 && surface_find(p[0].surface[..], "game.rename") >= 0;
+  #assert pn_test_tap(t[..], "game.name") && ed_panel_wants_text(p);
+  for i: 0..<60 { _ = ed_panel_key(p, e, -3, 0, true); }
+  #assert p[0].draft_n == 0;
+  for c: "Moss Run" { t[0].b[0] = c; ed_panel_text(p, t[0].b[0..<1]); }
+  #assert ed_panel_key(p, e, -2, 0, true) && !ed_panel_wants_text(p);
+  tb: [64] u8;
+  #assert cast(string) tb[0..<ed_mine_title(e, g, tb[..])] == "Moss Run";
+  #assert ed_game_due(e) == g && ed_game_due(e) == 0 && ed_panel_changed(p);
+  // a name the row refuses is said in its words, and nothing changes
+  #assert pn_test_tap(t[..], "game.name");
+  for i: 0..<60 { _ = ed_panel_key(p, e, -3, 0, true); }
+  for c: "A|B" { t[0].b[0] = c; ed_panel_text(p, t[0].b[0..<1]); }
+  #assert cast(string) p[0].draft[0..<p[0].draft_n] == "AB";
+  // the level of the game: named, then moved into a second game of yours and out, then deleted
+  had: [1] s32; had[0] = ed_level(e);
+  #assert gb_run(e, VERB_NEW_GAME, GbArgs.{plays = TEMPLATE_ARENA}, GbWorld.{levels = had[..]}, out[..]).code == GB_DONE;
+  g2 := ed_mine_open(e); l2 := ed_level(e);
+  pn_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "level.name") >= 0 && surface_find(p[0].surface[..], "level.delete") >= 0 && surface_find(p[0].surface[..], "game.owners") >= 0;
+  #assert pn_test_tap(t[..], "level.name") && ed_panel_wants_text(p);
+  for c: "The Pit" { t[0].b[0] = c; ed_panel_text(p, t[0].b[0..<1]); }
+  #assert ed_panel_key(p, e, -2, 0, true) && ed_game_due(e) == g2;
+  // a game keeps one level, so the only one does not move out, and says why
+  #assert pn_test_tap(t[..], "level.out") && mine_of_level(e, l2) == g2 && p[0].failure;
+  // a loose level moves into the second game, and out again
+  lv: [2] s32; lv[0] = had[0]; lv[1] = l2;
+  #assert gb_run(e, VERB_NEW_LEVEL, GbArgs.{}, GbWorld.{levels = lv[..]}, out[..]).code == GB_DONE;
+  l3 := ed_level(e);
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "level.move.1") && mine_of_level(e, l3) == g2 && ed_game_due(e) == g2;
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "level.out") && mine_of_level(e, l3) == 0 && ed_game_due(e) == g2;
+  // a Delete is pressed twice; the first only says what it will do
+  pn_test_frame(t[..]);
+  #assert pn_test_tap(t[..], "level.delete") && ed_drop_due(e) == 0 && pn_test_tap(t[..], "level.delete");
+  #assert ed_drop_due(e) == l3 && ed_drop_due(e) == 0;
+  // nothing open of yours: no game section
+  t[0].e[0] = Editor.{}; ed_arena(e);
+  pn_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "game.name") < 0;
+}

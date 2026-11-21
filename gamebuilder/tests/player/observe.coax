@@ -1,0 +1,36 @@
+// Read-only browser observations. Diagnostic fields never feed the player policy.
+#load "../../../coax/web/player-browser.coax";
+#load "../../../coax/lib/image/png.coax";
+
+PT_OBSERVE :: "(()=>{const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'&&!e.hidden};const scrub=s=>s.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi,'[email]');return {schema:'player.observation.v1',at_ms:performance.now(),url:location.origin+location.pathname,view:document.querySelector('.gs')?.className||'',focus:document.activeElement?.id||'',locked:!!document.pointerLockElement,viewport:[innerWidth,innerHeight,devicePixelRatio],visualViewport:visualViewport?{x:visualViewport.offsetLeft,y:visualViewport.offsetTop,width:visualViewport.width,height:visualViewport.height}:null,controls:[...document.querySelectorAll('button,a[href],input:not([hidden]),select')].filter(visible).slice(0,256).map(e=>{const r=e.getBoundingClientRect();return {id:e.id,role:e.getAttribute('role')||e.tagName.toLowerCase(),label:scrub(e.getAttribute('aria-label')||e.textContent||''),enabled:!e.disabled,bounds:[r.x,r.y,r.width,r.height]}}),text:scrub(document.body.innerText).slice(0,12000),diagnostics:{frame:globalThis.gamebuilderObservation||null,assets:globalThis.coaxialAssetReceipts||null,where:document.getElementById('where')?.value||'',things:document.getElementById('things')?.value||'',blocks:document.getElementById('blocks')?.textContent||'',tools:document.getElementById('state')?.textContent||''}}})()";
+PtImage :: struct { png:[16777216]u8; rgba:[33554432]u8; work:[67108864]u8; }
+#test "blank frames do not qualify as a rendered world" {
+  a:[400]u8;#assert !pt_image_varied(a[..]);
+  for i:0..<400 {a[i]=255;}#assert !pt_image_varied(a[..]);
+  for i:0..<400 {a[i]=0;}
+  for i:0..<100 {a[i*4]=cast(u8)(i*2);a[i*4+1]=cast(u8)i;}#assert pt_image_varied(a[..]);
+}
+pt_image_varied :: (pixels:[]u8)->bool {
+  if pixels.count<100 {return false;}low:=765;high:=0;
+  for i:0..<pixels.count/4 {v:=cast(int)pixels[i*4]+cast(int)pixels[i*4+1]+cast(int)pixels[i*4+2];if v<low {low=v;}if v>high {high=v;}}
+  return high-low>60;
+}
+// Verify real screenshot bytes independently of the product's ready/position reports.
+pt_image_check :: (path:string)->bool {
+  im:[1]PtImage;n:=fs_read(path,im[0].png[..]);if n<=0 {return false;}
+  info:=png_info(im[0].png[0..<n]);if info.status!=PNG_OK || info.w<320 || info.h<200 || info.w*info.h*4>im[0].rgba.count || info.work>im[0].work.count {return false;}
+  if png_decode(im[0].png[0..<n],im[0].work[..],im[0].rgba[..])!=PNG_OK {return false;}
+  // Scene pixels beside the reticle, above chat/hotbar. A crosshair or transcript
+  // on a black canvas must not qualify the world as rendered.
+  low:=765;high:=0;for y:info.h/4..<info.h*3/5 {for x:info.w*3/5..<info.w*4/5 {
+    at:=(y*info.w+x)*4;v:=cast(int)im[0].rgba[at]+cast(int)im[0].rgba[at+1]+cast(int)im[0].rgba[at+2];if v<low {low=v;}if v>high {high=v;}
+  }}return high-low>60;
+}
+// Native evidence stays full resolution. The model gets a separate browser
+// capture with a bounded long edge, keeping tablet images within its budget.
+pt_policy_shot :: (p:[]Pt,name:string)->bool {
+  w:=cast(int)pt_number(p,"innerWidth",0);h:=cast(int)pt_number(p,"innerHeight",0);dpr:=pt_number(p,"devicePixelRatio",0);if p[0].driver!=0 || w<1 || h<1 || dpr<=0 {return false;}
+  edge:=ifx w>h then w else h;milli:=cast(int)(1280000/(cast(f64)edge*dpr));if milli>1000 {milli=1000;}if milli<1 {return false;}scale:[16]u8;n:=0;if milli==1000 {n=ws_put(scale[..],0,"1");}else {n=ws_put(scale[..],0,"0.");if milli<100 {n=ws_put(scale[..],n,"0");}if milli<10 {n=ws_put(scale[..],n,"0");}n=pb_decimal(scale[..],n,milli);}
+  b:[512]u8;o:[1]Jo;jo_start(o[..],b[..]);jo_obj(o[..]);jo_key(o[..],"format");jo_str(o[..],"png");jo_key(o[..],"captureBeyondViewport");jo_bool(o[..],false);jo_key(o[..],"clip");jo_obj(o[..]);jo_key(o[..],"x");jo_int(o[..],0);jo_key(o[..],"y");jo_int(o[..],0);jo_key(o[..],"width");jo_int(o[..],w);jo_key(o[..],"height");jo_int(o[..],h);jo_key(o[..],"scale");jo_raw(o[..],cast(string)scale[0..<n]);jo_end(o[..]);jo_end(o[..]);
+  bytes:[8388608]u8;k:=cdp_screenshot_with(p[0].c[..],jo_text(o[..]),bytes[..]);if k<1 {return false;}info:=png_info(bytes[0..<k]);if info.status!=PNG_OK || info.w>1280 || info.h>1280 {return false;}path:[4096]u8;ok:=fs_write(pt_path(p,name,path[..]),cast(string)bytes[0..<k]);pt_event(p,"screenshot-policy",name,ok);return ok;
+}

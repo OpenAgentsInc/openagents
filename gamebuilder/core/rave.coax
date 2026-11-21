@@ -1,0 +1,192 @@
+// SPLICEBOTS' rave in the garage ring, as people: the jam's raiders as
+// themselves, standing about by day.
+//
+// The jam places sixteen raiders (SpliceRaveRaider) along the ring's entry
+// and a crowd of 416 cards (SpliceCrowd) round its dance floor. In the
+// imported level the raiders are a placeholder capsule each and the cards a
+// flat quad each (the cards' look does not come through the import), so
+// neither is drawn. In their place, as the jam's own web port does
+// (openagents metaverse/splice-bots/jam/jam-cast.coax): each raider is one of
+// the six raider bodies in the characters pack (by its place in the ring), standing where the jam put it, turned as it was; and an audience
+// of 48 raiders stands spread over the crowd's cards, each facing the dance
+// floor's middle line a little askew. All play their idle, each at its own
+// point in it, and only while she is within 90 m of the crowd.
+//
+// Not here: the party at night (the dancing to the beat), the game's five
+// raiders on their plans, and the fights. The bodies are the private
+// characters pack's, read by model.coax; the places are the world pack's
+// (farm.coax gathers them when it opens).
+RAVE_PLACED :: 16;                 // the jam's raiders in the ring
+// The port's own numbers (jam-cast.coax's SJC_AUDIENCE_N, SJC_CARDS and SJC_CROWD_NEAR: that file needs
+// the whole web game, so it is not loaded here).
+RAVE_AUDIENCE :: 48;               // raiders standing in for the crowd's cards, at most
+RAVE_BODIES :: RAVE_PLACED + RAVE_AUDIENCE;
+RAVE_CARDS :: 512;                 // the crowd's cards read, at most
+RAVE_NEAR :: 90.0f32;              // m from the crowd's middle within which she sees them
+RAVE_RAIDERS :: [6] string.["raider-1", "raider-2", "raider-3", "raider-4", "raider-5", "raider-6"];
+
+// The raider body for the n-th raider in the ring: the six in turn, shifted
+// each round (jam-cast.coax sjc_body_of).
+rave_body_of :: (n: int) -> int { return (n + n / 6) % 6; }
+
+// One body: where its feet stand, which way it faces (radians about +y, from
+// +z toward +x), and its number among the ring's raiders (which body it is).
+RaveBody :: struct { x: f32; y: f32; z: f32; yaw: f32; n: int; }
+RaveLevel :: struct { bodies: [RAVE_BODIES] RaveBody; n: int; placed: int; mid_x: f32; mid_z: f32; cards: int; }
+
+// The crowd's cards, while the world pack is read (in the Farm).
+RaveCards :: struct { x: [RAVE_CARDS] f32; y: [RAVE_CARDS] f32; z: [RAVE_CARDS] f32; n: int; }
+
+// A raider the jam placed: instance k of the world, in the ring.
+rave_place :: (r: [] RaveLevel, w: [] IwWorld, k: int) {
+  if r[0].placed >= RAVE_PLACED { return; }
+  p := w[0].inst[k];
+  b := RaveBody.{x = p.t[0], y = p.t[1], z = p.t[2], yaw = rave_yaw(p.q), n = r[0].placed};
+  r[0].bodies[r[0].placed] = b; r[0].placed += 1; r[0].n = r[0].placed;
+}
+// A quaternion's yaw: where it turns +z, about +y (as the jam's port reads an actor's).
+rave_yaw :: (q: [4] f32) -> f32 {
+  return angle_atan2(2 * (q[0] * q[2] + q[3] * q[1]), 1 - 2 * (q[0] * q[0] + q[1] * q[1]));
+}
+// A card of the crowd: where it stands (its middle less half its height).
+rave_card :: (c: [] RaveCards, w: [] IwWorld, k: int) {
+  if c[0].n >= RAVE_CARDS { return; }
+  p := w[0].inst[k];
+  c[0].x[c[0].n] = p.t[0]; c[0].y[c[0].n] = p.t[1] - p.s[2] * 0.5; c[0].z[c[0].n] = p.t[2]; c[0].n += 1;
+}
+// The audience over the cards, after the placed raiders: spread over them,
+// each facing the floor's middle line askew (sjc_audience, by day).
+rave_audience :: (r: [] RaveLevel, c: [] RaveCards) {
+  m := c[0].n;
+  r[0].cards = m;
+  if m == 0 { return; }
+  sx: f32 = 0; sz: f32 = 0;
+  for i: 0..<m { sx += c[0].x[i]; sz += c[0].z[i]; }
+  r[0].mid_x = sx / cast(f32) m; r[0].mid_z = sz / cast(f32) m;
+  count := ifx m < RAVE_AUDIENCE then m else RAVE_AUDIENCE;
+  for i: 0..<count {
+    k := i * m / count;
+    x := c[0].x[k]; z := c[0].z[k];
+    yaw := angle_atan2(r[0].mid_x - x, 0.0f32) + sin(cast(f32) k * 12.9898) * 0.45;
+    r[0].bodies[r[0].n] = RaveBody.{x = x, y = c[0].y[k], z = z, yaw = yaw, n = RAVE_PLACED + k};
+    r[0].n += 1;
+  }
+}
+
+// The character in the pack that body k is: the six raiders in turn, or the
+// first raider for a pack with fewer; -1 for a pack with none.
+rave_char :: (e: [] Editor, k: int) -> int {
+  m := e[0].model[..];
+  c := m[0].crew[..];
+  ch := sjc_find(c, RAVE_RAIDERS[rave_body_of(e[0].farm[0].rave[0].bodies[k].n)]);
+  return ifx ch >= 0 then ch else sjc_find(c, RAVE_RAIDERS[0]);
+}
+
+// Whether the rave shows now: the real level, the raiders' bodies in the
+// characters pack, and she near the crowd (or the raiders, when the ring has
+// no crowd).
+rave_near :: (e: [] Editor) -> bool {
+  r := e[0].farm[0].rave[0];
+  if !e[0].play[0].on || !e[0].play[0].real || !e[0].model[0].ok || r.n == 0 { return false; }
+  at := her_at(e[0].play[..]);
+  mx := r.mid_x; mz := r.mid_z;
+  if r.cards == 0 { mx = r.bodies[0].x; mz = r.bodies[0].z; }
+  return (at.x - mx) * (at.x - mx) + (at.z - mz) * (at.z - mz) <= RAVE_NEAR * RAVE_NEAR && rave_char(e, 0) >= 0;
+}
+
+// A step: each body plays its idle, from its own point in it.
+rave_step :: (e: [] Editor, dt: f32) {
+  if !rave_near(e) { return; }
+  m := e[0].model[..];
+  r := e[0].farm[0].rave[..];
+  for k: 0..<r[0].n {
+    ch := rave_char(e, k);
+    p := m[0].rave[k..<k + 1];
+    fresh := p[0].clip < 0;
+    sjc_play(p, m[0].crew[..], ch, SJC_IDLE, dt, 0, 1);
+    if fresh && p[0].clip >= 0 {
+      // not all in step: each starts somewhere along its loop
+      s := sjc_seconds(m[0].crew[0].clips[p[0].clip]);
+      u := cast(f32) k * 0.618034; p[0].t = (u - floor(u)) * s;
+    }
+  }
+}
+
+// How many bodies the host draws now (0 when the rave doesn't show).
+ed_rave_shown :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || !rave_near(e) { return 0; }
+  return cast(s32) e[0].farm[0].rave[0].n;
+}
+// Where body k's mesh is in the characters pack's bytes, as ed_model_mesh says hers is.
+ed_rave_mesh :: (e: [] Editor, k: s32, out: [] s64) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < 4 || k < 0 || cast(int) k >= e[0].farm[0].rave[0].n || !e[0].model[0].ok { return false; }
+  ch := rave_char(e, cast(int) k);
+  if ch < 0 { return false; }
+  m := e[0].model[0];
+  c := m.crew[0].chars[ch];
+  if c.vword < 0 || c.vword + c.vertices * SJC_VERTEX > m.words_n || c.iword < 0 || c.iword + c.indices > m.words_n { return false; }
+  out[0] = m.words + c.vword * 4; out[1] = c.vertices; out[2] = m.words + c.iword * 4; out[3] = c.indices;
+  return true;
+}
+// Body k's skinning matrices for this frame, as ed_model_palette gives hers.
+ed_rave_palette :: (e: [] Editor, k: s32, pack: [] u8, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < MODEL_PALETTE || k < 0 || cast(int) k >= e[0].farm[0].rave[0].n || !e[0].model[0].ok { return false; }
+  m := e[0].model[..];
+  f := sjc_frames(m[0].rave[k..<k + 1], m[0].crew[..]);
+  frames := m[0].crew[0].frames;
+  if m[0].rave[k].clip < 0 || f.a < 0 || f.a >= frames || f.b < 0 || f.b >= frames { return false; }
+  a := m[0].words + (m[0].crew[0].pword + f.a * SJC_PALETTE) * 4;
+  b := m[0].words + (m[0].crew[0].pword + f.b * SJC_PALETTE) * 4;
+  if a + MODEL_PALETTE * 4 > pack.count || b + MODEL_PALETTE * 4 > pack.count { return false; }
+  for i: 0..<MODEL_PALETTE {
+    va := f32_from_bits(model_word(pack, a + i * 4)); vb := f32_from_bits(model_word(pack, b + i * 4));
+    out[i] = va + (vb - va) * f.w;
+  }
+  return true;
+}
+// Where body k stands, as a model matrix (column-major, 16 floats), as ed_model_place gives hers.
+ed_rave_place :: (e: [] Editor, k: s32, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < 16 || k < 0 || cast(int) k >= e[0].farm[0].rave[0].n { return false; }
+  b := e[0].farm[0].rave[0].bodies[k];
+  cs := cos(b.yaw); sn := sin(b.yaw);
+  mat := [16] f32.[cs, 0, -sn, 0,  0, 1, 0, 0,  sn, 0, cs, 0,  b.x, b.y, b.z, 1];
+  for i: 0..<16 { out[i] = mat[i]; }
+  return true;
+}
+
+// ---- checks
+
+RaveTest :: struct { f: [1] FarmTest; m: [1] ModelTest; place: [16] f32; mesh: [4] s64; }
+
+#test "the ring's raider and crowd card are drawn as raiders standing about, near the crowd only" {
+  t: [1] RaveTest; e := t[0].f[0].e[..]; f := t[0].f[0].f[..];
+  ed_init(e, 800, 400);
+  n := farm_test_pack(t[0].f[..]);
+  #assert ed_farm_open(f, t[0].f[0].pack[0..<n]) && ed_farm_bind(e, f);
+  // the placed raider, then one of the audience over the one card
+  r := e[0].farm[0].rave[0];
+  #assert r.n == 2 && r.placed == 1 && r.cards == 1 && r.bodies[0].x == 38 && r.bodies[0].n == 0 && abs(r.bodies[0].yaw) < 0.0001;
+  #assert r.bodies[1].x == 44 && r.bodies[1].z == 3 && abs(r.bodies[1].y) < 0.0001 && r.bodies[1].n == RAVE_PLACED && r.mid_x == 44;
+  // a characters pack with a raider: the Director and raider-1
+  m := model_test_pack_of(t[0].m[..], "sjc 2 32 2\nchar 0 director 65 0 3 21 3 24 1750\nchar 1 raider-1 65 0 3 21 3 24 1800\nclip 0 idle 0 2 30000 1 0\nclip 1 idle 0 2 30000 1 0\n");
+  pack := t[0].m[0].pack[0..<m];
+  #assert ed_model_open(e, pack);
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  ed_play(e, 0);
+  // at the farm's start, 42 m off, inside the 90 m: they show; every body is raider-1 (the pack has no other)
+  for k: 0..<3 { play_step(e); }
+  #assert ed_rave_shown(e) == 2 && rave_char(e, 1) == 1;
+  #assert ed_rave_mesh(e, 1, t[0].mesh[..]) && t[0].mesh[1] == 3 && t[0].mesh[3] == 3;
+  #assert ed_rave_palette(e, 0, pack, t[0].m[0].out[..]) && t[0].m[0].out[0] >= 1 && t[0].m[0].out[0] <= 3;
+  #assert ed_rave_place(e, 1, t[0].place[..]) && t[0].place[12] == 44 && t[0].place[14] == 3 && t[0].place[15] == 1;
+  // not all in step
+  #assert e[0].model[0].rave[0].t != e[0].model[0].rave[1].t;
+  // far from the crowd they don't show
+  e[0].play[0].her[0].foot.walk.x = 200;
+  #assert ed_rave_shown(e) == 0;
+  // without a raider in the characters pack, none show
+  e[0].play[0].her[0].foot.walk.x = 40;
+  #assert ed_model_open(e, t[0].m[0].pack[0..<model_test_pack(t[0].m[..])]);
+  #assert ed_rave_shown(e) == 0;
+}

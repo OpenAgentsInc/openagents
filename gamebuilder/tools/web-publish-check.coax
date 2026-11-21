@@ -1,0 +1,416 @@
+// Publishing from the website against the app's core, end to end (issue 17; docs/publishing.md, "What is built";
+// docs/web-world.md, "Publish"): the page's own modules (web/account.coax and web/publish.coax, the code the
+// browser runs) ask the real hosted server (`gamebuilder serve --accounts DIR`, the app's core behind the same
+// rows every surface uses). This tool stands in for the site (its login service and its page) and for the
+// browsers. It fails if the website's publishing drifts from the rows:
+//   - a game built on the website and published from its sheet is a published game of the account, made by the
+//     publish row itself (the same game and link a command line's publish of that level gives), and its
+//     version's bytes on the server are, byte for byte, the level file the app's core holds;
+//   - the link plays with no login: GET /api/play/CODE gives that file, its type and its name and nothing of the
+//     account, and the page's own module reads it into a world with the same things in the same places;
+//   - GET /g/CODE is the site's own page with the game's name, picture and address in its head;
+//   - publishing again is a new version at the same link; set-live plays an older one's bytes again;
+//     unpublish takes the link down at once (404, and the site's page as it is) and publish puts it back;
+//   - a player's report is queued for the operator; the operator's takedown file stops the link whatever
+//     its owner does; another account can do nothing to the game; an agent's call may never publish;
+//   - a visitor's Remix is a new game on the visitor's own account, and the creator's level is untouched;
+//   - the link's page counts the game at the game's own door with no login (opened, Remix), the maker's published
+//     row reads the counts back, and a count that is none counts nothing; a remix published by its visitor says
+//     the game it came from, which is counted one more remade, in its own totals and the site's;
+//   - remove-published gives the link and the versions' files back, and its counts go with it;
+//   - the limits the page says (games, publishes an hour, versions kept) and its report reasons are the core's.
+//   coax/web/tool.sh tools/web-publish-check.coax build/cli/gamebuilder
+// cli/check.sh runs it.
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/net/socket_foreign.coax";
+#load "../web/publish.coax";
+#import "Basic";
+
+WA_RACING :: GT_RACING - GT_WEB_FIRST;
+WP_PAGE :: "<!doctype html>\n<html><head>\n<title>GAMEBUILDER</title>\n<meta property=\"og:title\" content=\"GAMEBUILDER\">\n<meta name=\"description\" content=\"make a game.\">\n<meta property=\"og:description\" content=\"make a game.\">\n<meta property=\"og:image\" content=\"https://gamebuilder.org/img/hero.jpg\">\n<meta property=\"og:url\" content=\"https://gamebuilder.org/\">\n</head><body><div id=\"coaxial-root\"></div></body></html>\n";
+WaBrowser :: struct { a: [1] Acct; p: [1] Publish; b: [1] Blocks; st: [1] LvStore; t: f32; said: [AC_SAID] u8; said_n: int; }
+WaRun :: struct {
+  answer: [262144] u8; n: int;
+  ask: [16384] u8;
+  req: [140000] u8;
+  file: [LV_DOC] u8; first: [LV_DOC] u8; first_n: int; body: [AC_BODY] u8; text: [PB_REPLY] u8;
+  nodes: [AC_NODES] JvNode;
+  origin: [64] u8; origin_n: int;
+  port: int; login: int;
+  asked: int; pages: int; bad: int;
+  one: [1] WaBrowser; two: [1] WaBrowser;
+}
+wa_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  for i: 0..<hay.count - needle.count + 1 { if cast(string) hay[i..<i + needle.count] == needle { return i; } }
+  return -1;
+}
+wa_not :: (r: [] WaRun, what: string, got: string) { print("web publish: NOT %: %\n", what, got); r[0].bad += 1; }
+
+// The login service, asked by the server who a caller is (GET /api/auth/account?as=lines): a
+// browser's cookie (ck-a, ck-b) or a command line's token (tok-a) is its account.
+wa_serve_login :: (r: [] WaRun, wait: int) -> bool {
+  h := cxsock_accept(r[0].login, wait);
+  if h < 0 { return false; }
+  n := 0; deadline := cxsock_now_ms() + 10000; done := false;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].ask.count { r[0].ask[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+    if n >= 4 && wa_find(cast(string) r[0].ask[0..<n], "\r\n\r\n") >= 0 { done = true; }
+  }
+  ask := cast(string) r[0].ask[0..<n];
+  lines := "";
+  if wa_find(ask, "__Host-oa_session=ck-a") >= 0 || wa_find(ask, "Authorization: Bearer tok-a\r\n") >= 0 { lines = "account acct_a\nprimary a@example.com\n"; }
+  else if wa_find(ask, "__Host-oa_session=ck-b") >= 0 { lines = "account acct_b\nprimary b@example.com\n"; }
+  else if wa_find(ask, "Authorization: Bearer tok-owner\r\n") >= 0 { lines = "account acct_o\nprimary chris@openagents.com\n"; }   // (an owner of the games that ship, as tools/hosted-lib.coax's: reads the site's counts)
+  ab: [2048] u8; an := 0;
+  // (the site's own page, as its /play answers: the server asks for it to make a link's page)
+  if wa_find(ask, "GET /play ") == 0 { lines = WP_PAGE; r[0].pages += 1; r[0].asked -= 1; an = bl_put(ab[..], 0, "HTTP/1.1 200 OK\r\n"); }
+  else if lines.count == 0 { lines = "error that login has ended\n"; an = bl_put(ab[..], 0, "HTTP/1.1 401 Unauthorized\r\n"); } else { an = bl_put(ab[..], 0, "HTTP/1.1 200 OK\r\n"); }
+  an = bl_put(ab[..], an, "Content-Type: text/plain\r\nConnection: close\r\nContent-Length: "); an = bl_int(ab[..], an, lines.count);
+  an = bl_put(ab[..], an, "\r\n\r\n"); an = bl_put(ab[..], an, lines);
+  for b: ab[0..<an] { _ = cxsock_write(h, cast(int) b); }
+  _ = cxsock_flush(h, 5000);
+  _ = cxsock_close(h);
+  r[0].asked += 1;
+  return true;
+}
+// One POST to the server, as `headers` say who asks: the whole response.
+wa_call :: (r: [] WaRun, path: string, headers: string, body: string) -> string { return wa_ask(r, "POST", path, headers, body, true); }
+// One request to the server. `site`: the server asks the site something first (who the caller is, or its page).
+wa_ask :: (r: [] WaRun, method: string, path: string, headers: string, body: string, site: bool) -> string {
+  q := r[0].req[..];
+  n0 := bl_put(q, 0, method); n0 = bl_put(q, n0, " "); n0 = bl_put(q, n0, path); n0 = bl_put(q, n0, " HTTP/1.1\r\nHost: games.example\r\n"); n0 = bl_put(q, n0, headers);
+  n0 = bl_put(q, n0, "Content-Type: application/json\r\nContent-Length: "); n0 = bl_int(q, n0, body.count); n0 = bl_put(q, n0, "\r\n\r\n"); n0 = bl_put(q, n0, body);
+  if n0 >= q.count { return "(the request did not fit)"; }
+  for ch: "127.0.0.1" { _ = cxsock_host_push(cast(int) ch); }
+  h := cxsock_connect(r[0].port, 5000);
+  if h < 0 { return "(no server)"; }
+  for b: r[0].req[0..<n0] { _ = cxsock_write(h, cast(int) b); }
+  if cxsock_flush(h, 5000) != 0 { _ = cxsock_close(h); return "(the request was not sent)"; }
+  if site { _ = wa_serve_login(r, 10000); }
+  n := 0; deadline := cxsock_now_ms() + 30000;
+  while true {
+    left := deadline - cxsock_now_ms();
+    k := ifx left > 0 then cxsock_read(h, left) else -2;
+    if k <= 0 { break; }
+    for i: 0..<k { if n < r[0].answer.count { r[0].answer[n] = cast(u8) cxsock_byte(h, i); n += 1; } }
+  }
+  _ = cxsock_close(h);
+  r[0].n = n;
+  return cast(string) r[0].answer[0..<n];
+}
+wa_status :: (resp: string) -> int { if resp.count < 12 || cast(string) resp[0..<9] != "HTTP/1.1 " { return 0; } return (cast(int) resp[9] - 48) * 100 + (cast(int) resp[10] - 48) * 10 + (cast(int) resp[11] - 48); }
+wa_body :: (resp: string) -> string { at := wa_find(resp, "\r\n\r\n"); return ifx at >= 0 then cast(string) resp[at + 4..<resp.count] else ""; }
+// A command line's call (its own login), for looking at the account from outside the page.
+wa_cli :: (r: [] WaRun, verb: string, body: string) -> string {
+  pb: [64] u8; n := bl_put(pb[..], 0, "/api/rows/"); n = bl_put(pb[..], n, verb);
+  return wa_body(wa_call(r, cast(string) pb[0..<n], "Authorization: Bearer tok-a\r\n", body));
+}
+
+
+wa_said :: (w: [] WaBrowser) -> string { return cast(string) w[0].said[0..<w[0].said_n]; }
+wa_world :: (w: [] WaBrowser, kind: int) {
+  ty := gt_web_type(kind);
+  bl_new(w[0].b[..], ty); bl_bounds(w[0].b[..], GT_FAR[ty], GT_HIGH[ty]); bl_low(w[0].b[..], GT_LOW[ty]); bl_roles(w[0].b[..], gt_roles(ty));
+}
+// A browser's frames, to their end: each request the page's two modules ask (the account's save, then
+// publishing's) is sent as the browser would send it (its cookie, from the site's own page; a GET with no body
+// and no cookie's Origin for a link's page), and the answer given back. Who is logged in is the login
+// service's to say, asked by the page itself: this tool answers it (`account`, "" for nobody).
+wp_pass :: (r: [] WaRun, w: [] WaBrowser, kind: int, cookie: string, account: string, up: bool) {
+  a := w[0].a[..]; p := w[0].p[..];
+  hb: [256] u8; hn := bl_put(hb[..], 0, "Cookie: __Host-oa_session="); hn = bl_put(hb[..], hn, cookie); hn = bl_put(hb[..], hn, "\r\nOrigin: "); hn = bl_put(hb[..], hn, cast(string) r[0].origin[0..<r[0].origin_n]); hn = bl_put(hb[..], hn, "\r\n");
+  jb: [128] u8; jn := bl_put(jb[..], 0, "{\"logged_in\":true,\"account\":\""); jn = bl_put(jb[..], jn, account); jn = bl_put(jb[..], jn, "\"}");
+  if account.count == 0 { jn = bl_put(jb[..], 0, "{\"logged_in\":false}"); }
+  in := account.count > 0;
+  w[0].said_n = 0;
+  for step: 0..<80 {
+    w[0].t += 0.1;
+    ac_tick(a, w[0].b[..], kind, w[0].t, in, up);
+    pb_tick(p, a, w[0].st[..], w[0].b[..], kind, w[0].t, in, up);
+    if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+    if a[0].said_n > 0 && w[0].said_n == 0 { w[0].said_n = ac_take(a, w[0].said[..]); }
+    if ac_wants(a) {
+      ac_sent(a);
+      url := cast(string) a[0].url[0..<a[0].url_n];
+      if url == "/api/auth/account" { ac_piece(a, jb[0..<jn]); ac_end(a, w[0].st[..], w[0].b[..], kind, 200, w[0].t, up); }
+      else {
+        resp := wa_call(r, url, cast(string) hb[0..<hn], cast(string) a[0].body[0..<a[0].body_n]);
+        body := wa_body(resp);
+        for i: 0..<body.count { r[0].text[i] = body[i]; }
+        ac_piece(a, r[0].text[0..<body.count]); ac_end(a, w[0].st[..], w[0].b[..], kind, wa_status(resp), w[0].t, up);
+      }
+      continue;
+    }
+    if pb_wants(p) {
+      pb_sent(p);
+      url := cast(string) p[0].url[0..<p[0].url_n];
+      level := ifx kind >= 0 then a[0].link[kind].level else 0;
+      if url == "/api/auth/account" { pb_piece(p, jb[0..<jn]); pb_end(p, level, 200, w[0].t); }
+      else {
+        // (a link's page asks with no login at all: a GET, or its report's POST, with nothing of an account in it)
+        open := p[0].body_n == 0 || wa_find(url, "/api/play/") == 0;
+        resp := wa_ask(r, ifx p[0].body_n == 0 then "GET" else "POST", url, ifx open then "" else cast(string) hb[0..<hn], cast(string) p[0].body[0..<p[0].body_n], !open);
+        body := wa_body(resp);
+        for i: 0..<body.count { r[0].text[i] = body[i]; }
+        pb_piece(p, r[0].text[0..<body.count]); pb_end(p, level, wa_status(resp), w[0].t);
+      }
+      continue;
+    }
+    if !ac_busy(a) && !pb_busy(p) && step > 2 { break; }
+  }
+  if a[0].link_dirty { a[0].link_dirty = false; ac_linked(a); }
+}
+wp_psaid :: (w: [] WaBrowser) -> string { return cast(string) w[0].p[0].said[0..<w[0].p[0].said_n]; }
+// read-content's file of `level`, by a command line: into WaRun.file. Its length (0: none).
+wa_read :: (r: [] WaRun, level: int) -> int {
+  bb: [64] u8; n := bl_put(bb[..], 0, "{\"level\":"); n = bl_int(bb[..], n, level); n = bl_put(bb[..], n, "}");
+  body := wa_cli(r, "read-content", cast(string) bb[0..<n]);
+  d: [1] Jv;
+  if !jv_parse(d[..], body, r[0].nodes[..]) { return 0; }
+  got := jv_str(d[0], jv_get(d[0], 0, "content"), r[0].file[..]);
+  return ifx got > 0 then got else 0;
+}
+wa_rev :: (r: [] WaRun, level: int) -> int {
+  body := wa_cli(r, "list-levels", "{}");
+  d: [1] Jv;
+  if !jv_parse(d[..], body, r[0].nodes[..]) { return -1; }
+  ls := jv_get(d[0], 0, "levels"); i := ifx jv_kind(d[0], ls) == JV_ARRAY then d[0].nodes[ls].first else -1;
+  while i >= 0 { if jv_int(d[0], jv_get(d[0], i, "level"), 0) == level { return jv_int(d[0], jv_get(d[0], i, "revision"), -1); } i = d[0].nodes[i].next; }
+  return -1;
+}
+// What the link plays, asked as anyone would: the whole response.
+wp_play :: (r: [] WaRun, code: string) -> string {
+  ub: [64] u8; n := bl_put(ub[..], 0, "/api/play/"); n = bl_put(ub[..], n, code);
+  return wa_ask(r, "GET", cast(string) ub[0..<n], "", "", false);
+}
+// The link's level file, from the play answer: into WaRun.text. Its length (0: none).
+wp_content :: (r: [] WaRun, resp: string) -> int {
+  d: [1] Jv;
+  if !jv_parse(d[..], wa_body(resp), r[0].nodes[..]) { return 0; }
+  got := jv_str(d[0], jv_get(d[0], 0, "content"), r[0].text[..]);
+  return ifx got > 0 then got else 0;
+}
+wp_path :: (dir: string, rest: string, out: [] u8) -> string { n := bl_put(out, 0, dir); n = bl_put(out, n, rest); return cast(string) out[0..<n]; }
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) != 1 { print("usage: tool.sh tools/web-publish-check.coax GAMEBUILDER\n"); return 2; }
+  bin := args_at(a[..], 0);
+  r: [1] WaRun; k := WA_RACING;
+  r[0].login = cxsock_listen(0);
+  if r[0].login < 0 { print("web publish: NOT a port for the site\n"); return 1; }
+  r[0].origin_n = bl_put(r[0].origin[..], 0, "http://127.0.0.1:"); r[0].origin_n = bl_int(r[0].origin[..], r[0].origin_n, cxsock_port(r[0].login)); origin := cast(string) r[0].origin[0..<r[0].origin_n];
+  db: [256] u8; dir := fs_temp("gb-web-publish", db[..]);
+  if dir.count == 0 { print("web publish: NOT a folder to work in\n"); return 1; }
+  sh := proc_new();
+  ok := proc_arg(sh, bin) && proc_arg(sh, "serve") && proc_arg(sh, "--accounts") && proc_arg(sh, dir) && proc_arg(sh, "--origin") && proc_arg(sh, origin) && proc_arg(sh, "--port") && proc_arg(sh, "0");
+  if !ok || proc_start(sh) != 0 { print("web publish: NOT started: % serve --accounts\n", bin); return 1; }
+  sl: [256] u8; sn := proc_line(sh, 10000, sl[..]);
+  if sn > 0 {
+    said := cast(string) sl[0..<sn]; at := wa_find(said, "127.0.0.1:");
+    if at >= 0 { j := at + 10; while j < sn && said[j] >= '0' && said[j] <= '9' { r[0].port = r[0].port * 10 + cast(int) (said[j] - '0'); j += 1; } }
+  }
+  if r[0].port == 0 { print("web publish: NOT a port said by serve --accounts\n"); _ = proc_kill(sh, 15); return 1; }
+  one := r[0].one[..]; two := r[0].two[..]; a1 := one[0].a[..]; a2 := two[0].a[..]; p1 := one[0].p[..]; p2 := two[0].p[..];
+  seed: [16] u8; now := cxsock_now_ms(); for i: 0..<16 { seed[i] = cast(u8) (((now >> (i % 5)) + i * 29) & 255); }
+  ac_entropy(a1, seed[..], true); seed[3] = seed[3] ^ 85; ac_entropy(a2, seed[..], true);
+  pathb: [600] u8; cb: [8] u8; bb: [160] u8;
+
+  // 0. the limits the page says in words are the core's own numbers, and its report reasons the core's own list:
+  // read from the core's source (coax/publish.coax), which the page does not load
+  src: [] u8 = r[0].answer[..];
+  cn0 := fs_read("gamebuilder/core/publish.coax", src);
+  core := cast(string) src[0..<(ifx cn0 > 0 then cn0 else 0)];
+  lb: [160] u8; ln := 0; held := core.count > 0;
+  ln = bl_put(lb[..], 0, "\nPUB_GAMES :: "); ln = bl_int(lb[..], ln, PB_GAMES); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  ln = bl_put(lb[..], 0, "\nPUB_VERSIONS :: "); ln = bl_int(lb[..], ln, PB_KEPT); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  ln = bl_put(lb[..], 0, "\nPUB_PER_HOUR :: "); ln = bl_int(lb[..], ln, PB_PER_HOUR); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  ln = bl_put(lb[..], 0, "\nPUB_NAME :: "); ln = bl_int(lb[..], ln, PB_NAME); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  ln = bl_put(lb[..], 0, "\nPUB_CODE :: "); ln = bl_int(lb[..], ln, PB_CODE); ln = bl_put(lb[..], ln, ";"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  ln = bl_put(lb[..], 0, "\nPUB_REASON :: [PUB_REASONS] string.[");
+  for i: 0..<PB_REASONS { if i > 0 { ln = bl_put(lb[..], ln, ", "); } ln = bl_put(lb[..], ln, "\""); ln = bl_put(lb[..], ln, PB_REASON[i]); ln = bl_put(lb[..], ln, "\""); }
+  ln = bl_put(lb[..], ln, "];"); if wa_find(core, cast(string) lb[0..<ln]) < 0 { held = false; }
+  if !held { wa_not(r[..], "the page's limits and report reasons the core's own (coax/publish.coax)", cast(string) lb[0..<ln]); }
+
+  // 1. a racing game built on the website, its maker logged in: the sheet opens (nothing of it is published yet),
+  // it is named, and publish keeps it on the account and publishes it by the publish row
+  wa_world(one, k); ac_record_read(a1, "");
+  if !(bl_add(one[0].b[..], 1000, 2000, 200, 200, 100, 0) && bl_add(one[0].b[..], 3000, 2000, 200, 400, 100, 0) && bl_add_ball(one[0].b[..], 5000, 2000, 50, 0)) { wa_not(r[..], "three things built", ""); }
+  pb_open(p1, k);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if !p1[0].listed || p1[0].game != 0 || p1[0].bad { wa_not(r[..], "the sheet open on a game not yet published", wp_psaid(one)); }
+  nm := "Moss Run"; nb: [16] u8; for i: 0..<nm.count { nb[i] = nm[i]; }
+  pb_name_input(p1, nb[0..<nm.count]);
+  pb_publish(p1);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  l1 := a1[0].link[k];
+  link := pb_link(p1);
+  if !p1[0].done || !p1[0].on || p1[0].game < 1 || p1[0].live != 1 || l1.level < 1 || a1[0].state != AC_S_KEPT { wa_not(r[..], "published from the sheet", wp_psaid(one)); }
+  lead := origin.count + 3;
+  if link.count != lead + PB_CODE || wa_find(link, origin) != 0 || cast(string) link[origin.count..<lead] != "/g/" { wa_not(r[..], "a link at the site's own address, /g/ and a code", link); _ = proc_kill(sh, 15); return 1; }
+  for i: 0..<PB_CODE { cb[i] = link[lead + i]; }
+  code := cast(string) cb[0..<PB_CODE];
+  // the same row as every surface: a command line's `published` lists that game at that link, of that level
+  listed := wa_cli(r[..], "published", "{}");
+  if wa_find(listed, link) < 0 || wa_find(listed, "\"name\":\"Moss Run\"") < 0 || wa_find(listed, "\"template\":\"racing\"") < 0 || wa_find(listed, "\"on_web\":true") < 0 { wa_not(r[..], "the published game as the row lists it", listed); }
+  // its version's bytes on the server are the level file the app's core holds
+  fn := wa_read(r[..], l1.level);
+  vn := bl_put(bb[..], 0, "/acct_a/published-"); vn = bl_int(bb[..], vn, p1[0].game); vn = bl_put(bb[..], vn, "-1.level");
+  kn := fs_read(wp_path(dir, cast(string) bb[0..<vn], pathb[..]), r[0].first[..]);
+  r[0].first_n = ifx kn > 0 then kn else 0;
+  if fn <= 0 || kn != fn || cast(string) r[0].first[0..<r[0].first_n] != cast(string) r[0].file[0..<fn] { wa_not(r[..], "the version's file the app's level file, byte for byte", cast(string) bb[0..<vn]); }
+
+  // 2. the link plays with no login: the file, its type, its name, and nothing of the account
+  played := wp_play(r[..], code);
+  pn := wp_content(r[..], played);
+  if wa_status(played) != 200 || pn != fn || cast(string) r[0].text[0..<pn] != cast(string) r[0].file[0..<fn] { wa_not(r[..], "the link playing the published file with no login", wa_body(played)); }
+  if wa_find(played, "\"schema\":\"gamebuilder.play.v1\"") < 0 || wa_find(played, "\"template\":\"racing\"") < 0 || wa_find(played, "\"name\":\"Moss Run\"") < 0 || wa_find(played, "acct_a") >= 0 || wa_find(played, "a@example.com") >= 0 { wa_not(r[..], "the play answer: the game, and nothing of its maker", wa_body(played)); }
+  // a visitor's browser, nobody logged in: the page's own module reads it into a world with the same things in the same places
+  ac_record_read(a2, "");
+  ab: [16] u8; an := bl_put(ab[..], 0, "/g/"); an = bl_put(ab[..], an, code);
+  if !pb_play_code(p2, cast(string) ab[0..<an]) { wa_not(r[..], "the link's code read from its address", cast(string) ab[0..<an]); }
+  wp_pass(r[..], two, -1, "", "", false);
+  shown := p2[0].play == PL_GOT && p2[0].kind == k && pb_title(p2) == "Moss Run";
+  if shown { wa_world(two, k); shown = lv_read(two[0].b[..], two[0].st[..], cast(string) p2[0].file[0..<p2[0].file_n]); pb_play_took(p2, shown, two[0].t); }
+  same := shown && two[0].b[0].n == one[0].b[0].n;
+  if same { for i: 0..<one[0].b[0].n { p := one[0].b[0].b[i]; q := two[0].b[0].b[i]; if p.x != q.x || p.z != q.z || p.w != q.w || p.d != q.d || p.h != q.h || p.kind != q.kind { same = false; } } }
+  if !same { wa_not(r[..], "the same things in the same places on the link's page", ""); }
+  // and the page counts the game opened: at the game's own door, with no login, and the maker's published row reads it back
+  pb_fact_tick(p2, two[0].t, 1);
+  wp_pass(r[..], two, -1, "", "", false);
+  listed = wa_cli(r[..], "published", "{}");
+  if p2[0].facts != 0 || pb_busy(p2) || wa_find(listed, "\"plays\":{\"opened\":1,\"minute\":0,\"remix\":0,\"remade\":0}") < 0 { wa_not(r[..], "the game counted opened, and read back by its maker", listed); }
+  // a count that is none is refused whole, a link that plays nothing counts nothing, and neither changed the totals
+  cdb: [64] u8; cdn := bl_put(cdb[..], 0, "/api/play/"); cdn = bl_put(cdb[..], cdn, code); cdn = bl_put(cdb[..], cdn, PY_DOOR);
+  none := wa_ask(r[..], "POST", cast(string) cdb[0..<cdn], "", "{\"fact\":\"remade\"}", false);
+  if wa_status(none) != 400 || wa_find(none, "opened, minute, remix") < 0 { wa_not(r[..], "a fact that is not the page's to say refused", none); }
+  none = wa_ask(r[..], "POST", cast(string) cdb[0..<cdn], "", "{\"fact\":\"opened\",\"n\":50}", false);
+  if wa_status(none) != 400 { wa_not(r[..], "a count with a number of its own refused", none); }
+  none = wa_ask(r[..], "POST", "/api/play/zzzzzz/played", "", "{\"fact\":\"opened\"}", false);
+  if wa_status(none) != 404 { wa_not(r[..], "a count for a link that plays nothing refused", none); }
+  if wa_find(wa_cli(r[..], "published", "{}"), "\"plays\":{\"opened\":1,\"minute\":0,\"remix\":0,\"remade\":0}") < 0 { wa_not(r[..], "the totals as they were after the refused counts", ""); }
+
+  // 3. the link's own page: the site's, with the game's name, picture and address in its head
+  gb: [16] u8; gn := bl_put(gb[..], 0, "/g/"); gn = bl_put(gb[..], gn, code);
+  page := wa_ask(r[..], "GET", cast(string) gb[0..<gn], "", "", true);
+  if wa_status(page) != 200 || wa_find(page, "Content-Type: text/html") < 0 || wa_find(page, "<title>Moss Run · GAMEBUILDER</title>") < 0 || wa_find(page, "/img/kind-racing.jpg\">") < 0 || wa_find(page, "property=\"og:url\" content=\"") < 0 || wa_find(page, link) < 0 || wa_find(page, "<div id=\"coaxial-root\">") < 0 || r[0].pages != 1 {
+    wa_not(r[..], "the link's page: the site's own, with the game in its head", page);
+  }
+
+  // 4. publishing may never be an agent's call, and never a call with no login
+  hb: [256] u8; hn := bl_put(hb[..], 0, "Authorization: Bearer tok-a\r\nGameBuilder-Agent: codex\r\n");
+  pbody: [96] u8; pbn := bl_put(pbody[..], 0, "{\"level\":"); pbn = bl_int(pbody[..], pbn, l1.level); pbn = bl_put(pbody[..], pbn, ",\"name\":\"By An Agent\"}");
+  agent := wa_ask(r[..], "POST", "/api/rows/publish", cast(string) hb[0..<hn], cast(string) pbody[0..<pbn], true);
+  if wa_status(agent) != 403 || wa_find(agent, "never an agent") < 0 { wa_not(r[..], "an agent's publish refused", agent); }
+  nobody := wa_ask(r[..], "POST", "/api/rows/publish", "", cast(string) pbody[0..<pbn], false);
+  if wa_status(nobody) != 401 { wa_not(r[..], "a publish with no login refused", nobody); }
+  if wa_find(wa_cli(r[..], "published", "{}"), "By An Agent") >= 0 { wa_not(r[..], "nothing published by the refused calls", ""); }
+
+  // 5. built on and published again: a new version at the same link, played at once; set-live plays the first one's
+  // bytes again; unpublish takes it down at once, and publish puts it back
+  if !bl_add(one[0].b[..], 7000, 2000, 200, 200, 100, 0) { wa_not(r[..], "a fourth thing", ""); }
+  p1[0].done = false;
+  pb_publish(p1);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  if !p1[0].done || p1[0].live != 2 || pb_link(p1) != link { wa_not(r[..], "a second version at the same link", wp_psaid(one)); }
+  f2 := wa_read(r[..], l1.level);
+  played = wp_play(r[..], code); pn = wp_content(r[..], played);
+  if pn != f2 || cast(string) r[0].text[0..<pn] != cast(string) r[0].file[0..<f2] || f2 == r[0].first_n || wa_find(played, "\"version\":2") < 0 { wa_not(r[..], "the link playing the new version", wa_body(played)); }
+  pb_live(p1, 1);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  played = wp_play(r[..], code); pn = wp_content(r[..], played);
+  if p1[0].live != 1 || p1[0].versions != 2 || pn != r[0].first_n || cast(string) r[0].text[0..<pn] != cast(string) r[0].first[0..<r[0].first_n] { wa_not(r[..], "the first version live again, its own bytes", wp_psaid(one)); }
+  pb_down(p1);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  played = wp_play(r[..], code);
+  // (one answer at a time is held: each is judged before the next is asked)
+  if p1[0].on || wa_status(played) != 404 || wa_find(played, "this game isn't available") < 0 { wa_not(r[..], "unpublished: the link's answer is none, at once", wa_body(played)); }
+  page = wa_ask(r[..], "GET", cast(string) gb[0..<gn], "", "", false);
+  if wa_status(page) != 404 || wa_find(page, "<title>GAMEBUILDER</title>") < 0 || wa_find(page, "Moss Run") >= 0 { wa_not(r[..], "unpublished: the link's page the site's own, with nothing of the game", page); }
+  pb_publish(p1);
+  wp_pass(r[..], one, k, "ck-a", "acct_a", true);
+  played = wp_play(r[..], code);
+  if !p1[0].on || p1[0].live != 3 || pb_link(p1) != link || wa_status(played) != 200 { wa_not(r[..], "published again at the same link", wp_psaid(one)); }
+
+  // 6. a player's report is queued for the operator, and the operator's takedown stops the link whatever its owner does
+  pb_play_took(p2, true, two[0].t);
+  pb_report(p2, 2);
+  wp_pass(r[..], two, -1, "", "", false);
+  qn := fs_read(wp_path(dir, "/.reports", pathb[..]), r[0].file[..]);
+  queue := cast(string) r[0].file[0..<(ifx qn > 0 then qn else 0)];
+  rb: [32] u8; rn := bl_put(rb[..], 0, "|"); rn = bl_put(rb[..], rn, code); rn = bl_put(rb[..], rn, "|spam|\n");
+  if !p2[0].reported || wa_find(queue, cast(string) rb[0..<rn]) < 0 { wa_not(r[..], "a report queued for the operator", queue); }
+  rpb: [64] u8; rpn := bl_put(rpb[..], 0, "/api/play/"); rpn = bl_put(rpb[..], rpn, code); rpn = bl_put(rpb[..], rpn, "/report");
+  bad := wa_ask(r[..], "POST", cast(string) rpb[0..<rpn], "", "{\"reason\":\"because\"}", false);
+  if wa_status(bad) != 400 { wa_not(r[..], "a report that is none refused", bad); }
+  db2: [64] u8; dn := bl_put(db2[..], 0, "/.published/"); dn = bl_put(db2[..], dn, code); dn = bl_put(db2[..], dn, ".down");
+  down := wp_path(dir, cast(string) db2[0..<dn], pathb[..]);
+  if !fs_write(down, "taken down by the operator\n") { wa_not(r[..], "the takedown file written", down); }
+  played = wp_play(r[..], code);
+  if wa_status(played) != 404 { wa_not(r[..], "a game taken down plays nothing", wa_body(played)); }
+  down = wp_path(dir, cast(string) db2[0..<dn], pathb[..]);
+  if !fs_remove(down) || wa_status(wp_play(r[..], code)) != 200 { wa_not(r[..], "the takedown lifted", ""); }
+
+  // 7. Remix: the visitor's copy is the visitor's own game, on their own account, and the maker's level is untouched;
+  // and another account can do nothing to the maker's published game
+  before := wa_rev(r[..], l1.level);
+  ac_forget(a2, k, true); ac_built(a2, k); ac_wake(a2);
+  // (as the page's Remix does: the copy remembers the game it came from, and the game hears Remix was pressed)
+  ac_from_set(a2, k, code); pb_fact(p2, PY_REMIX); pb_fact_tick(p2, two[0].t, 1);
+  wp_pass(r[..], two, k, "ck-b", "acct_b", true);
+  mb: [64] u8; mn := bl_put(mb[..], 0, "/acct_b/level-"); mn = bl_int(mb[..], mn, a2[0].link[k].level); mn = bl_put(mb[..], mn, ".world");
+  if ac_who(a2) != "acct_b" || a2[0].state != AC_S_KEPT || !fs_exists(wp_path(dir, cast(string) mb[0..<mn], pathb[..])) || wa_rev(r[..], l1.level) != before { wa_not(r[..], "the remix a game of the visitor's own, the maker's untouched", wa_said(two)); }
+  ub: [64] u8; un := bl_put(ub[..], 0, "{\"published\":"); un = bl_int(ub[..], un, p1[0].game); un = bl_put(ub[..], un, "}");
+  cbh: [256] u8; cn := bl_put(cbh[..], 0, "Cookie: __Host-oa_session=ck-b\r\nOrigin: "); cn = bl_put(cbh[..], cn, origin); cn = bl_put(cbh[..], cn, "\r\n");
+  other := wa_call(r[..], "/api/rows/unpublish", cast(string) cbh[0..<cn], cast(string) ub[0..<un]);
+  if wa_status(other) != 404 || wa_status(wp_play(r[..], code)) != 200 { wa_not(r[..], "another account unable to take the game down", other); }
+
+  // 7b. the visitor publishes the remix from their own sheet: the publish row is told where it came from, the answer
+  // and their published row say so, and the maker's game is counted one more remade, in its own totals and the site's
+  pb_open(p2, k);
+  wp_pass(r[..], two, k, "ck-b", "acct_b", true);
+  pb_publish(p2);
+  wp_pass(r[..], two, k, "ck-b", "acct_b", true);
+  theirs := wa_body(wa_call(r[..], "/api/rows/published", cast(string) cbh[0..<cn], "{}"));
+  fj: [32] u8; fjn := bl_put(fj[..], 0, "\"from\":\""); fjn = bl_put(fj[..], fjn, code); fjn = bl_put(fj[..], fjn, "\"");
+  if !p2[0].done || !p2[0].on || wa_find(theirs, cast(string) fj[0..<fjn]) < 0 || wa_find(theirs, "\"plays\":{\"opened\":0,\"minute\":0,\"remix\":0,\"remade\":0}") < 0 { wa_not(r[..], "the remix published as a remix of the maker's game", theirs); }
+  listed = wa_cli(r[..], "published", "{}");
+  if wa_find(listed, "\"plays\":{\"opened\":1,\"minute\":0,\"remix\":1,\"remade\":1}") < 0 || wa_find(listed, "\"from\"") >= 0 { wa_not(r[..], "the maker's game counted one remix pressed and one remix published", listed); }
+  // a second version of the remix is no second remix
+  pb_publish(p2);
+  wp_pass(r[..], two, k, "ck-b", "acct_b", true);
+  if wa_find(wa_cli(r[..], "published", "{}"), "\"remade\":1}") < 0 { wa_not(r[..], "a remix's later version not counted again", wp_psaid(two)); }
+  sb2: [PY_TEXT] u8; skn := fs_read(wp_path(dir, "/.plays/.site", pathb[..]), sb2[..]);
+  site := cast(string) sb2[0..<(ifx skn > 0 then skn else 0)];
+  tb2: [32] u8; tbn := bl_put(tb2[..], 0, "top "); tbn = bl_put(tb2[..], tbn, code); tbn = bl_put(tb2[..], tbn, " 1\n");
+  if wa_find(site, "gamebuilder.plays.v1\nopened 1\nminute 0\nremix 1\nremade 1\n") != 0 || wa_find(site, cast(string) tb2[0..<tbn]) < 0 { wa_not(r[..], "the site's totals and its top", site); }
+  pfb: [64] u8; pfn := bl_put(pfb[..], 0, "/.plays/"); pfn = bl_put(pfb[..], pfn, code);
+  if !fs_exists(wp_path(dir, cast(string) pfb[0..<pfn], pathb[..])) { wa_not(r[..], "the game's totals file", cast(string) pfb[0..<pfn]); }
+  // and the site's owner reads them in the funnel: two links, one remix of them published by someone else (500 a thousand links)
+  fun := wa_body(wa_call(r[..], "/api/rows/funnel", "Authorization: Bearer tok-owner\r\n", "{}"));
+  gjb: [200] u8; gjn := bl_put(gjb[..], 0, "\"games\":{\"links\":2,\"opened\":1,\"minute\":0,\"remix\":1,\"remade\":1,\"remade_per_1000_links\":500,\"top\":[{\"code\":\""); gjn = bl_put(gjb[..], gjn, code);
+  gjn = bl_put(gjb[..], gjn, "\",\"opened\":1,\"minute\":0,\"remix\":1,\"remade\":1}],\"note\":\"Published games, counted");
+  if wa_find(fun, cast(string) gjb[0..<gjn]) < 0 { wa_not(r[..], "the funnel's published games, counted", fun); }
+  if wa_find(wa_cli(r[..], "funnel", "{}"), "an owner of the games that ship") < 0 { wa_not(r[..], "the funnel refused to a maker who is no owner", ""); }
+
+  // 8. removed for good by its maker (a command line's call, the same row): the link and the versions' files are given back
+  gone := wa_cli(r[..], "remove-published", cast(string) ub[0..<un]);
+  ib: [64] u8; in := bl_put(ib[..], 0, "/.published/"); in = bl_put(ib[..], in, code);
+  if wa_find(gone, "\"ok\":true") < 0 || wa_status(wp_play(r[..], code)) != 404 || fs_exists(wp_path(dir, cast(string) ib[0..<in], pathb[..])) || fs_exists(wp_path(dir, cast(string) bb[0..<vn], pathb[..])) { wa_not(r[..], "a removed game's link and files given back", gone); }
+  // its counts go with it, and it is in the site's top no more (what it added to the site's totals stays)
+  skn = fs_read(wp_path(dir, "/.plays/.site", pathb[..]), sb2[..]);
+  site = cast(string) sb2[0..<(ifx skn > 0 then skn else 0)];
+  if fs_exists(wp_path(dir, cast(string) pfb[0..<pfn], pathb[..])) || wa_find(site, "opened 1\n") < 0 || wa_find(site, "top ") >= 0 { wa_not(r[..], "a removed game's counts gone with it", site); }
+
+  _ = proc_kill(sh, 15); _ = proc_wait(sh, 5000); _ = proc_release(sh);
+  if r[0].bad > 0 { return 1; }
+  print("web publish: ok, % logins asked, % page read\n", r[0].asked, r[0].pages);
+  return 0;
+}

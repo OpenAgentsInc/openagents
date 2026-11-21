@@ -1,0 +1,156 @@
+// The engine pull request from a person with no push access (issue 23; docs/engine-upgrades.md,
+// "The pull request"): what the two rows answer.
+//   engine-ready   what this computer needs before a pull request can be opened at
+//                  OpenAgentsInc/openagents, each with the one command that fixes it
+//   engine-mine    the person's own pull requests there, and whether the engine commit
+//                  GameBuilder is built on holds each merged one
+// The surface runs git, gh and claude and hands what they said here (cli/main.coax,
+// cli_engine_ready and cli_engine_mine): the core starts no process and reaches no network.
+//
+// Limits: engine-mine reads the newest 20 pull requests (ENF_MINE), each title up to 120 bytes.
+
+ENF_CHECKS :: 5;
+ENF_GIT :: 0; ENF_GH :: 1; ENF_LOGIN :: 2; ENF_PUSH :: 3; ENF_CLAUDE :: 4;
+ENF_NAME :: [ENF_CHECKS] string.["git", "gh", "gh-login", "push-or-fork", "claude"];
+ENF_WHAT :: [ENF_CHECKS] string.["git is installed", "the GitHub command line (gh) is installed", "gh is logged in to GitHub",
+  "you may push to OpenAgentsInc/openagents, or you have your own fork of it", "Claude Code is installed, for a Code agent"];
+ENF_FIX :: [ENF_CHECKS] string.["xcode-select --install", "brew install gh", "gh auth login",
+  "gh repo fork OpenAgentsInc/openagents --clone=false", "curl -fsSL https://claude.ai/install.sh | bash"];
+// A check's state: it holds, it does not, or it was not looked at because an earlier one failed.
+ENF_NO :: 0; ENF_YES :: 1; ENF_SKIPPED :: 2;
+ENF_MINE :: 20;
+ENF_TITLE :: 120;
+
+// The engine-ready row's answer (gamebuilder.engine.ready.v1). state: one of ENF_NO, ENF_YES,
+// ENF_SKIPPED a check. login: the GitHub name gh is logged in as, "" for none. pushes: the
+// person may push to the engine's repository, so no fork is needed.
+enf_ready :: (o: [] Jo, state: [] s32, login: string, pushes: bool) -> GbResult {
+  if state.count != ENF_CHECKS { return gb_refuse(o, "bad-request", "five checks"); }
+  // Claude Code is for a Code agent only: a pull request made by hand needs the first four
+  ready := true; for i: 0..<ENF_CLAUDE { if state[i] != ENF_YES { ready = false; } }
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.engine.ready.v1");
+  jo_key(o, "repo"); jo_str(o, GB_ENGINE_REPO);
+  jo_key(o, "ready"); jo_bool(o, ready);
+  jo_key(o, "code_agent"); jo_bool(o, ready && state[ENF_CLAUDE] == ENF_YES);
+  if login.count > 0 { jo_key(o, "github"); jo_str(o, login); }
+  if state[ENF_PUSH] == ENF_YES {
+    jo_key(o, "push_to"); jo_str(o, ifx pushes then "origin" else "fork");
+    jo_key(o, "how"); jo_str(o, ifx pushes then "You may push branches to OpenAgentsInc/openagents: push your branch there and open the pull request. Never push to main."
+      else "You have no push access, which is the usual case: push your branch to your own fork and open the pull request from it. In the clone, `gh repo fork OpenAgentsInc/openagents --remote --remote-name fork` adds your fork as the remote `fork`; then `git push fork BRANCH` and `gh pr create --repo OpenAgentsInc/openagents`.");
+  }
+  jo_key(o, "checks"); jo_arr(o);
+  for i: 0..<ENF_CHECKS {
+    jo_obj(o); jo_key(o, "check"); jo_str(o, ENF_NAME[i]); jo_key(o, "what"); jo_str(o, ENF_WHAT[i]);
+    jo_key(o, "ok"); jo_bool(o, state[i] == ENF_YES);
+    if state[i] == ENF_SKIPPED { jo_key(o, "skipped"); jo_str(o, "not looked at: an earlier check must pass first"); }
+    if state[i] == ENF_NO { jo_key(o, "fix"); jo_str(o, ENF_FIX[i]); }
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_key(o, "note"); jo_str(o, "A fix that makes something in your name (a login, a fork on GitHub) is yours to run, or an agent's only after you say yes. The fix lines are for macOS.");
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+// A field of a tab-separated line: its k-th, "" past the end.
+enf_field :: (line: string, k: int) -> string {
+  n := 0; from := 0;
+  for i: 0..<line.count + 1 {
+    if i == line.count || line[i] == 9 {
+      if n == k { return cast(string) line[from..<i]; }
+      n += 1; from = i + 1;
+    }
+  }
+  return "";
+}
+// The k-th line of text, and whether there is one.
+EnfLine :: struct { text: string; any: bool; }
+enf_line :: (text: string, k: int) -> EnfLine {
+  n := 0; from := 0;
+  for i: 0..<text.count + 1 {
+    if i == text.count || text[i] == 10 {
+      if n == k { return EnfLine.{text = cast(string) text[from..<i], any = i > from}; }
+      n += 1; from = i + 1;
+    }
+  }
+  return EnfLine.{};
+}
+// A merged pull request's commit, when its line has one (40 hex): what the surface asks GitHub about.
+enf_merge_of :: (line: string) -> string {
+  m := enf_field(line, 2);
+  if enf_field(line, 1) != "MERGED" || m.count != 40 { return ""; }
+  for c: m { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return ""; } }
+  return m;
+}
+
+// The engine-mine row's answer (gamebuilder.engine.mine.v1). lines: one pull request a line,
+// newest first, as `gh pr list` gives them through its template: number, state (OPEN, MERGED,
+// CLOSED), the merge commit or "", the address, the title, tabs between. reached: for each line,
+// ENF_YES when the commit GameBuilder is built on holds its merge, ENF_NO when not yet,
+// ENF_SKIPPED when GitHub could not say.
+enf_mine :: (o: [] Jo, login: string, lines: string, reached: [] s32) -> GbResult {
+  gb_ok(o); jo_key(o, "schema"); jo_str(o, "gamebuilder.engine.mine.v1");
+  jo_key(o, "repo"); jo_str(o, GB_ENGINE_REPO); jo_key(o, "github"); jo_str(o, login);
+  jo_key(o, "pin"); jo_str(o, ENG_PIN);
+  jo_key(o, "limit"); jo_str(o, "your newest 20 pull requests (ENF_MINE)");
+  jo_key(o, "pull_requests"); jo_arr(o);
+  for k: 0..<ENF_MINE {
+    el := enf_line(lines, k);
+    if !el.any { break; }
+    line := el.text;
+    n := gb_int(enf_field(line, 0)); state := enf_field(line, 1);
+    if !n.ok || (state != "OPEN" && state != "MERGED" && state != "CLOSED") { continue; }
+    title := enf_field(line, 4);
+    if title.count > ENF_TITLE { title = cast(string) title[0..<ENF_TITLE]; }
+    r := ifx k < reached.count then reached[k] else ENF_SKIPPED;
+    jo_obj(o); jo_key(o, "number"); jo_int(o, n.v); jo_key(o, "title"); jo_str(o, title); jo_key(o, "url"); jo_str(o, enf_field(line, 3));
+    jo_key(o, "state"); jo_str(o, ifx state == "OPEN" then "open" else ifx state == "MERGED" then "merged" else "closed");
+    if state == "MERGED" {
+      jo_key(o, "in_gamebuilder"); jo_str(o, ifx r == ENF_YES then "yes" else ifx r == ENF_NO then "not-yet" else "unknown");
+      jo_key(o, "means"); jo_str(o, ifx r == ENF_YES then "GameBuilder is built on an engine commit that holds this. A release made since can use it."
+        else ifx r == ENF_NO then "Merged, and GameBuilder's pin is older: it reaches GameBuilder when the pin moves (scripts/pin.sh bump in the GameBuilder repository) and a release follows. That is GameBuilder's team's to do."
+        else "Merged. GitHub could not say whether GameBuilder's pin holds it.");
+    } else if state == "OPEN" { jo_key(o, "means"); jo_str(o, "Waiting for a person at OpenAgents to review it. It may be changed or declined."); }
+    else { jo_key(o, "means"); jo_str(o, "Closed without merging."); }
+    jo_end(o);
+  }
+  jo_end(o);
+  jo_end(o);
+  if o[0].bad { return GbResult.{code = GB_REFUSED, json = ""}; }
+  return GbResult.{code = GB_DONE, json = jo_text(o)};
+}
+
+#test "engine-ready says what is missing with its one fix, and how the branch is pushed" {
+  ob: [8192] u8; o: [1] Jo;
+  jo_start(o[..], ob[..]);
+  all := [ENF_CHECKS] s32.[ENF_YES, ENF_YES, ENF_YES, ENF_YES, ENF_YES];
+  r := enf_ready(o[..], all[..], "kiki", false);
+  #assert r.code == GB_DONE && level_find(r.json, "\"ready\":true") >= 0 && level_find(r.json, "\"code_agent\":true") >= 0;
+  #assert level_find(r.json, "\"push_to\":\"fork\"") >= 0 && level_find(r.json, "--remote-name fork") >= 0 && level_find(r.json, "\"fix\"") < 0 && level_find(r.json, "\"github\":\"kiki\"") >= 0;
+  jo_start(o[..], ob[..]);
+  r = enf_ready(o[..], all[..], "owner", true);
+  #assert level_find(r.json, "\"push_to\":\"origin\"") >= 0 && level_find(r.json, "Never push to main") >= 0;
+  jo_start(o[..], ob[..]);
+  none := [ENF_CHECKS] s32.[ENF_YES, ENF_YES, ENF_NO, ENF_SKIPPED, ENF_NO];
+  r = enf_ready(o[..], none[..], "", false);
+  #assert level_find(r.json, "\"ready\":false") >= 0 && level_find(r.json, "\"fix\":\"gh auth login\"") >= 0 && level_find(r.json, "\"skipped\":") >= 0 && level_find(r.json, "\"push_to\"") < 0;
+  jo_start(o[..], ob[..]);
+  hand := [ENF_CHECKS] s32.[ENF_YES, ENF_YES, ENF_YES, ENF_YES, ENF_NO];     // no Claude Code: ready by hand, no Code agent
+  r = enf_ready(o[..], hand[..], "kiki", false);
+  #assert level_find(r.json, "\"ready\":true") >= 0 && level_find(r.json, "\"code_agent\":false") >= 0 && level_find(r.json, "claude.ai/install.sh") >= 0;
+}
+#test "engine-mine says of each pull request where it stands, and of a merged one whether GameBuilder has it" {
+  ob: [8192] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+  lines := "31\tOPEN\t\thttps://github.com/OpenAgentsInc/openagents/pull/31\tWater that reflects the sky\n30\tMERGED\t0123456789abcdef0123456789abcdef01234567\thttps://x/30\tRopes\n29\tMERGED\t1123456789abcdef0123456789abcdef01234567\thttps://x/29\tA\tb\n28\tCLOSED\t\thttps://x/28\tNo\nnot a line\n";
+  #assert enf_merge_of("30\tMERGED\t0123456789abcdef0123456789abcdef01234567\tu\tt") == "0123456789abcdef0123456789abcdef01234567";
+  #assert enf_merge_of("31\tOPEN\t\tu\tt") == "" && enf_merge_of("30\tMERGED\tzz\tu\tt") == "";
+  reached := [5] s32.[ENF_SKIPPED, ENF_YES, ENF_NO, ENF_SKIPPED, ENF_SKIPPED];
+  r := enf_mine(o[..], "kiki", lines, reached[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"number\":31,\"title\":\"Water that reflects the sky\"") >= 0 && level_find(r.json, "\"state\":\"open\"") >= 0;
+  #assert level_find(r.json, "\"in_gamebuilder\":\"yes\"") >= 0 && level_find(r.json, "\"in_gamebuilder\":\"not-yet\"") >= 0 && level_find(r.json, "\"state\":\"closed\"") >= 0;
+  #assert level_find(r.json, "not a line") < 0 && level_find(r.json, ENG_PIN) >= 0;
+  jo_start(o[..], ob[..]);
+  r = enf_mine(o[..], "kiki", "", reached[0..<0]);
+  #assert level_find(r.json, "\"pull_requests\":[]") >= 0;
+}

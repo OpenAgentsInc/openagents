@@ -34,3 +34,4 @@ protocol folders: proto/ may load:
 toolchain folders: coax/ coax/lib/bitcoin/base58.coax coax/lib/bitcoin/hash160.coax coax/lib/bitcoin/hash.coax may load:
 ops folders: coax/web/api/analytics.c coax/web/api/email.c coax/web/api/jobs.c coax/web/api/access.c may load: identity toolchain
 anime-lab folders: coax/web/api/anime- may load: engine toolchain
+gamebuilder folders: gamebuilder/ may load: engine realm-authoring psionic protocol coder chat nostr toolchain zeron-kit splice

@@ -1,0 +1,19 @@
+# A platformer's moving platform and lift: the distance and the period are fields, each set as one edit; past their limits, and on a thing that does not move, refused in words with the numbers; what the type's kinds and limits are told as.
+> new-game {"template":"platformer"}
+< {"ok":true,"game":1,"level":1,"template":"platformer"}
+> add {"level":1,"kind":"mover","x":0,"z":2000}
+< {"ok":true,"id":112,"kind":"mover","rev":2057908187}
+> set-field {"level":1,"thing":112,"field":"distance","value":1200}
+< {"ok":true,"id":112,"field":"Distance","value":1200,"rev":2057960587}
+> set-field {"level":1,"thing":112,"field":"period","value":4500}
+< {"ok":true,"id":112,"field":"Period","value":4500,"rev":2057959087}
+> set-field {"level":1,"thing":112,"field":"distance","value":5001}
+< {"ok":false,"error":"edit-refused","why":"out of range: a moving platform or a lift goes 0 to 50 m, there and back in 1 to 60 seconds."}
+> set-field {"level":1,"thing":112,"field":"period","value":999}
+< {"ok":false,"error":"edit-refused","why":"out of range: a moving platform or a lift goes 0 to 50 m, there and back in 1 to 60 seconds."}
+> set-field {"level":1,"thing":112,"field":"kind","value":"lift"}
+< {"ok":true,"id":112,"field":"Kind","value":31,"rev":1777709229}
+> set-field {"level":1,"thing":1,"field":"distance","value":800}
+< {"ok":false,"error":"edit-refused","why":"only a moving platform or a lift has a distance and a period."}
+> list-palette {"level":1}
+< {"ok":true,"template":"platformer","kinds":[{"kind":"block","name":"Block","one":false},{"kind":"ball","name":"Ball","one":false},{"kind":"pad","name":"Bounce pad","one":false},{"kind":"spikes","name":"Spikes","one":false},{"kind":"shard","name":"Shard","one":false},{"kind":"checkpoint","name":"Checkpoint","one":false},{"kind":"mover","name":"Moving platform","one":false},{"kind":"lift","name":"Lift","one":false}],"game_type":"platformer (a course of floating platforms, seen side on)","building":"building here: the course runs along z (to the right on screen) and the person stays on the line x 0, so put things at x 0 to be reached. there is no ground under the course: give Y, the bottom's height (the person's feet height is given), and end every place line with rest; what is placed here stays exactly where it is put. the course itself is things of this world (its platforms, pads, spikes, shards, checkpoints, moving platforms and lifts), changed as any other: move, size or remove one by its id. a platform above the person's head is a slab about 3 along z, 3 across, 0.5 thick, its bottom about 2.6 over their feet, at their z. here places reach 700 from the middle and bottoms 60 up. kinds here, a place line's last word: pad (a bounce pad: standing on it throws the person up about 5), spikes (not solid, laid on a platform: feet on them send the person back to their last checkpoint), shard (a small block, about 0.5 a side, taken by touching it; at the height of their middle, about 0.9 over their feet, to be reached), checkpoint (a platform: standing on it makes it where they come back to after a fall; checkpoints are passed in their order along z, and the furthest along is the goal), mover (a moving platform, about 3.2 across, 0.9 thick and 4 along: it slides along z and back) and lift (the same, rising and coming down). each has a distance (how far it goes, 0 to 50) and a period (how long there and back takes, 1 to 60 seconds): a new mover goes 8 and a new lift 6, every 6 seconds. a platform is a plain block.","limits":"things stay within 700 m of the middle (x and z from -70000 to 70000 cm); a thing's bottom is at most 60 m up (y 0 to 6000 cm); sides are 0.25 to 12 m (25 to 1200 cm, size times scale); a ball's radius is 0.15 to 1.5 m; a moving platform or a lift goes 0 to 50 m (distance 0 to 5000 cm), there and back in 1 to 60 seconds (period 1000 to 60000 ms); at most 512 things."}

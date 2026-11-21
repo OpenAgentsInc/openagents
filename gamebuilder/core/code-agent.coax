@@ -1,0 +1,1027 @@
+// A Code agent (GitHub issue 8; docs/agents-audit.md, recommendation 5; docs/agents.md, "A Code
+// agent"): work on the engine (OpenAgentsInc/openagents) or on the app (this repository) handed
+// over from the Agents pane. It is the person's own Claude Code with its normal coding tools,
+// unlike a Builder, which has none:
+//
+//   - It starts only after the person approves it in the pane's New agent sheet, which says in
+//     words what it can do (run commands and change files in its folder), where, how its work
+//     lands, what follows, and its limits (AGR_CODE_TURNS turns and AGR_CODE_CENTS of the plan a
+//     message). The words are agent-record.coax's, which the code-brief row answers too.
+//   - Its folder is a fresh git worktree from origin/main of its repository, made by the app in
+//     ~/gamebuilder-code (outside the app's own folders and outside any main checkout) from the
+//     app's own clone there (repos/NAME). An engine clone gets a pre-push hook that refuses main:
+//     the engine changes by pull request only.
+//   - Its session is the person's login, never a key: ANTHROPIC_API_KEY and its kin are taken out,
+//     and a session that reports a key source is stopped (agents.coax, as for every agent). Its
+//     file edits outside its folder are refused (the host answers can_use_tool); its commands run.
+//   - It reports its branch, its checks and its pull request through three tools of its own on an
+//     in-process server, gamebuilder-code. The pane measures the files it changed after each turn.
+//     Each is an event of its record (agent-record.coax), kept beside the levels with every other
+//     agent's (agents.coax), and the code card is drawn from them, after a relaunch too.
+//   - After an engine pull request, the card offers the next job: a Code agent on the app that
+//     bumps the pin (scripts/pin.sh bump) with scripts/check.sh passing. Never done silently.
+//   - Only a build that may start `claude` runs one (AG_HERE_LOCAL); elsewhere the pane says the
+//     next step in words.
+// The git steps run as child processes polled from the pane's clock, never waited on.
+//   scripts/check.sh (the #tests here); tools/code-agent-check.coax makes a worktree for real.
+
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sys/clock.coax";
+
+CA_SERVER :: "gamebuilder-code";
+CA_FOLDER :: "gamebuilder-code";   // in the person's home: repos/NAME (the app's clones) and NAME-ID (a worktree each)
+CA_REMOTE :: "https://github.com/";
+CA_SLOTS :: 8;                     // Code agents the pane runs at once: each has its steps and its card here
+CA_LOG :: 32768;                   // bytes of a Code agent's card events kept (worktree, branch, pull request, files, checks, pin, usage)
+CA_STEPS :: 8; CA_ARGS :: 10; CA_ARGB :: 8192;
+CA_OUT :: 16384;                   // bytes of the steps' output kept (a worktree's commit, the files it changed)
+CA_WHY :: 480;
+CA_CHECKS :: 6;                    // checks the card shows, the latest of each name
+CA_SHOWN_FILES :: 4;               // files the card names; the count says the rest
+// What its steps are doing.
+CA_IDLE :: 0; CA_PREPARE :: 1; CA_DIFF :: 2;
+// A step's turn on the clock.
+CA_RUNNING :: 0; CA_STEP_DONE :: 1; CA_ALL_DONE :: 2; CA_FAILED :: 3;
+
+// Its reporting tools: one in-process server, its own.
+CA_TOOLS :: 3;
+CA_BRANCH_TOOL :: 0; CA_CHECK_TOOL :: 1; CA_PULL_TOOL :: 2;
+CA_TOOL_NAME :: [CA_TOOLS] string.["report_branch", "report_check", "report_pull_request"];
+CA_TOOL_ABOUT :: [CA_TOOLS] string.[
+  "Tell the person the branch you work on, once you have made it.",
+  "Tell the person a check you ran and whether it passed: its name (the command), passed, and a line of what it said.",
+  "Tell the person the pull request you opened: its address. Call it once it is open."];
+CA_TOOL_SCHEMA :: [CA_TOOLS] string.[
+  "{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\",\"maxLength\":128}},\"required\":[\"branch\"],\"additionalProperties\":false}",
+  "{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\",\"maxLength\":64},\"passed\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\",\"maxLength\":240}},\"required\":[\"name\",\"passed\"],\"additionalProperties\":false}",
+  "{\"type\":\"object\",\"properties\":{\"url\":{\"type\":\"string\",\"maxLength\":240}},\"required\":[\"url\"],\"additionalProperties\":false}"];
+
+// The engine clone's pre-push hook: a push to main is refused, a branch goes.
+CA_HOOK :: "#!/bin/sh\n# GameBuilder's Code agent: the engine changes by pull request, never by a push to main.\nwhile read local lsha remote rsha; do\n  case \"$remote\" in refs/heads/main|refs/heads/master) echo \"GameBuilder: the engine changes by pull request: push a branch of your own, not main.\" >&2; exit 1;; esac\ndone\nexit 0\n";
+// The steps' small shell lines: arguments come in as $1, $2, never spliced into the text.
+CA_CLONE_SH :: "[ -d \"$1/.git\" ] || git clone --quiet --filter=blob:none --no-checkout \"$2\" \"$1\"";
+CA_HOOK_SH :: "mkdir -p \"$1\" && printf '%s' \"$2\" > \"$1/pre-push\" && chmod +x \"$1/pre-push\"";
+
+// A Code agent's slot: the pane's agent k (its record, p[0].store[0].r[k]) and what the record
+// does not hold: its folder, its steps, and its card's events.
+CaCode :: struct {
+  on: bool;                          // this slot is a Code agent's
+  k: int;                            // the pane's agent it is
+  repo: int;
+  log: [CA_LOG] u8; log_n: int; full: bool;
+  root: [512] u8; root_n: int;       // ~/gamebuilder-code
+  tree: [768] u8; tree_n: int;       // its worktree
+  ready: bool;                       // the worktree is made
+  base: [AGR_COMMIT] u8; base_n: int;
+  // the steps in hand
+  doing: int; steps: int; at: int; h: int = -1;
+  argb: [CA_ARGB] u8; argb_n: int;
+  argf: [CA_STEPS * CA_ARGS] int; argl: [CA_STEPS * CA_ARGS] int; argc: [CA_STEPS] int;
+  keep: [CA_STEPS] bool;             // the step's stdout is kept in out
+  out: [CA_OUT] u8; out_n: int;
+  why: [CA_WHY] u8; why_n: int;
+  pin_offered: bool;
+}
+
+// ---- text
+
+// Now, in milliseconds since 1970: the host's clock (ed_agents_clock), else the computer's.
+ca_now :: (p: [] AgPane) -> s64 { if p[0].now > 0 { return p[0].now; } return cast(s64) (cxproc_wall_us() / 1000); }
+
+// Agent k's slot, or -1 when it is not a Code agent the pane runs.
+ca_of :: (p: [] AgPane, k: int) -> int {
+  for i: 0..<CA_SLOTS { if p[0].code[i].on && p[0].code[i].k == k { return i; } }
+  return -1;
+}
+ca_c :: (p: [] AgPane, k: int) -> [] CaCode { i := ca_of(p, k); return p[0].code[i..<i + 1]; }
+// A slot for Code agent k on repo: a free one, or one whose agent is over and has no step in hand.
+// Its folder is named for the agent. -1 and the pane says why when all are in use.
+ca_adopt :: (p: [] AgPane, k: int, repo: int, id: string) -> int {
+  at := ca_of(p, k);
+  if at < 0 { for i: 0..<CA_SLOTS { if at < 0 && !p[0].code[i].on { at = i; } } }
+  if at < 0 {
+    for i: 0..<CA_SLOTS {
+      ck := p[0].code[i].k;
+      if at >= 0 || p[0].code[i].doing != CA_IDLE || ck == p[0].live || ck >= ag_count(p) { continue; }
+      st := p[0].store[0].r[ck].state;
+      if st != AGR_WORKING && st != AGR_WAITING && st != AGR_QUEUED { at = i; }
+    }
+  }
+  if at < 0 { ag_note(p, "GameBuilder runs at most 8 Code agents at once (CA_SLOTS): stop one first.", true); return -1; }
+  c := p[0].code[at..<at + 1];
+  c[0] = CaCode.{};
+  c[0].on = true; c[0].k = k; c[0].repo = repo;
+  rb: [512] u8; root := ca_home(p, rb[..]);
+  c[0].root_n = ag_put(c[0].root[..], 0, root);
+  tn := ag_put(c[0].tree[..], 0, root); tn = ag_put(c[0].tree[..], tn, "/"); tn = ag_put(c[0].tree[..], tn, AGR_REPO_ID[repo]);
+  tn = ag_put(c[0].tree[..], tn, "-"); tn = ag_put(c[0].tree[..], tn, id); c[0].tree_n = tn;
+  return at;
+}
+
+ca_text :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+ca_tree :: (c: [] CaCode) -> string { return cast(string) c[0].tree[0..<c[0].tree_n]; }
+ca_root :: (c: [] CaCode) -> string { return cast(string) c[0].root[0..<c[0].root_n]; }
+// The app's clone of repo, under root.
+ca_clone :: (root: string, repo: int, out: [] u8) -> string {
+  n := ag_put(out, 0, root); n = ag_put(out, n, "/repos/"); n = ag_put(out, n, AGR_REPO_ID[repo]);
+  return cast(string) out[0..<n];
+}
+// What its limits are, in words with their numbers.
+ca_limits :: (out: [] u8) -> string {
+  n := ag_put(out, 0, "At most "); n = ag_put_int(out, n, AGR_CODE_TURNS); n = ag_put(out, n, " turns and $");
+  n = ag_put_int(out, n, AGR_CODE_CENTS / 100); n = ag_put(out, n, " of your plan a message.");
+  return cast(string) out[0..<n];
+}
+
+// Why the folder can't hold Code agents, or "": an absolute path, not under the app's own folder
+// (the pane's session folder), with no "..".
+ca_folder_why :: (root: string, app: string) -> string {
+  if root.count < 2 || root[0] != '/' { return "its folder is a full path"; }
+  if level_find(root, "/..") >= 0 { return "its folder is a plain path, with no .."; }
+  if app.count > 0 && (root == app || ca_inside(app, root)) { return "a Code agent never works in the app's own folders"; }
+  return "";
+}
+// Whether path is inside dir (dir itself is not).
+ca_inside :: (dir: string, path: string) -> bool {
+  if dir.count == 0 || path.count <= dir.count + 1 || cast(string) path[0..<dir.count] != dir || path[dir.count] != '/' { return false; }
+  return level_find(path, "/../") < 0 && level_find(path, "/./") < 0 && !(path.count >= 3 && cast(string) path[path.count - 3..<path.count] == "/..");
+}
+
+// ---- the record and its events
+
+// Appends ev to agent k's log, as every agent's (ag_emit): the record follows it, the host writes
+// it, and the card reads it (ca_seen).
+ca_append :: (p: [] AgPane, k: int, ev: [] AgrEvent) { _ = ag_emit(p, k, ev); }
+ca_step_words :: (p: [] AgPane, k: int, words: string) { p[0].store[0].r[k].step_n = agr_set(p[0].store[0].r[k].step[..], words); }
+// One of Code agent k's events, appended or read in: the card's are kept for it (a full card stops
+// taking them, and says so), and its worktree makes it ready.
+ca_seen :: (p: [] AgPane, k: int, ev: [] AgrEvent, line: string) {
+  i := ca_of(p, k);
+  if i < 0 { return; }
+  c := p[0].code[i..<i + 1];
+  t := ev[0].type;
+  if t != AGR_WORKTREE && t != AGR_BRANCH && t != AGR_PULL && t != AGR_FILES && t != AGR_CHECK && t != AGR_PIN && t != AGR_USAGE { return; }
+  if t == AGR_WORKTREE { c[0].base_n = agr_set(c[0].base[..], cast(string) ev[0].commit[0..<ev[0].commit_n]); c[0].ready = true; }
+  if c[0].log_n + line.count + 1 > CA_LOG { c[0].full = true; return; }
+  c[0].log_n = ag_put(c[0].log[..], ag_put(c[0].log[..], c[0].log_n, line), "\n");
+}
+
+// ---- the steps: git, as child processes
+
+ca_steps_clear :: (c: [] CaCode, doing: int) {
+  c[0].doing = doing; c[0].steps = 0; c[0].at = 0; c[0].argb_n = 0; c[0].out_n = 0; c[0].why_n = 0;
+}
+// One step: its arguments, program first. keep: its output is kept.
+ca_step :: (c: [] CaCode, argv: [] string, keep: bool) {
+  if c[0].steps >= CA_STEPS || argv.count > CA_ARGS { c[0].why_n = agr_set(c[0].why[..], "too many steps"); return; }
+  s := c[0].steps;
+  for i: 0..<argv.count {
+    c[0].argf[s * CA_ARGS + i] = c[0].argb_n; c[0].argl[s * CA_ARGS + i] = argv[i].count;
+    c[0].argb_n = ag_put(c[0].argb[..], c[0].argb_n, argv[i]);
+  }
+  c[0].argc[s] = argv.count; c[0].keep[s] = keep; c[0].steps += 1;
+}
+ca_arg :: (c: [] CaCode, s: int, i: int) -> string {
+  from := c[0].argf[s * CA_ARGS + i];
+  return cast(string) c[0].argb[from..<from + c[0].argl[s * CA_ARGS + i]];
+}
+// A step as one line of words: what a check reads, and what a failure says.
+ca_step_line :: (c: [] CaCode, s: int, out: [] u8) -> string {
+  n := 0;
+  for i: 0..<c[0].argc[s] { if i > 0 { n = ag_put(out, n, " "); } n = ag_put(out, n, ca_arg(c, s, i)); }
+  return cast(string) out[0..<n];
+}
+
+// The steps that make its worktree: the app's clone of the repository (made the first time, and
+// for the app the engine's too, which scripts/pin.sh works from), fetched, a worktree added from
+// origin/main, its commit read, and for the engine the hook that refuses a push to main.
+// remote is where the repositories are: CA_REMOTE ("https://github.com/") but in a check.
+ca_plan_prepare :: (c: [] CaCode, remote: string) {
+  ca_steps_clear(c, CA_PREPARE);
+  root := ca_root(c); tree := ca_tree(c);
+  rb: [640] u8; db: [640] u8; ub: [400] u8; eb: [640] u8; hb: [700] u8;
+  repos := cast(string) rb[0..<ag_put(rb[..], ag_put(rb[..], 0, root), "/repos")];
+  v1 := [3] string.["/bin/mkdir", "-p", repos]; ca_step(c, v1[..], false);
+  if c[0].repo == AGR_APP {
+    engine := ca_clone(root, AGR_ENGINE, eb[..]);
+    un := ag_put(ub[..], ag_put(ub[..], ag_put(ub[..], 0, remote), AGR_REPO_GITHUB[AGR_ENGINE]), ".git");
+    v2 := [6] string.["/bin/sh", "-c", CA_CLONE_SH, "sh", engine, cast(string) ub[0..<un]]; ca_step(c, v2[..], false);
+  }
+  clone := ca_clone(root, c[0].repo, db[..]);
+  un := ag_put(ub[..], ag_put(ub[..], ag_put(ub[..], 0, remote), AGR_REPO_GITHUB[c[0].repo]), ".git");
+  v3 := [6] string.["/bin/sh", "-c", CA_CLONE_SH, "sh", clone, cast(string) ub[0..<un]]; ca_step(c, v3[..], false);
+  v4 := [6] string.["git", "-C", clone, "fetch", "--quiet", "origin"]; ca_step(c, v4[..], false);
+  v5 := [8] string.["git", "-C", clone, "worktree", "add", "--detach", tree, "origin/main"]; ca_step(c, v5[..], false);
+  v6 := [5] string.["git", "-C", tree, "rev-parse", "HEAD"]; ca_step(c, v6[..], true);
+  if c[0].repo == AGR_ENGINE {
+    hooks := cast(string) hb[0..<ag_put(hb[..], ag_put(hb[..], 0, clone), "/.git/hooks")];
+    v7 := [6] string.["/bin/sh", "-c", CA_HOOK_SH, "sh", hooks, CA_HOOK]; ca_step(c, v7[..], false);
+  }
+}
+// The steps that measure what it changed since its worktree was made: tracked files that differ
+// from the commit it started from (committed or not), and new files.
+ca_plan_diff :: (c: [] CaCode) {
+  ca_steps_clear(c, CA_DIFF);
+  tree := ca_tree(c); base := ca_text(c[0].base[..], c[0].base_n);
+  v8 := [6] string.["git", "-C", tree, "diff", "--name-only", base]; ca_step(c, v8[..], true);
+  v9 := [6] string.["git", "-C", tree, "ls-files", "--others", "--exclude-standard"]; ca_step(c, v9[..], true);
+}
+
+// The step in hand, a turn: started when it isn't, its output taken, and whether it ended,
+// waiting at most wait_ms (0 from the pane's clock).
+ca_step_tick :: (c: [] CaCode, wait_ms: int) -> int {
+  if c[0].doing == CA_IDLE || c[0].at >= c[0].steps { return CA_ALL_DONE; }
+  if c[0].why_n > 0 { return CA_FAILED; }
+  s := c[0].at;
+  if c[0].h < 0 {
+    h := proc_new();
+    if h < 0 { c[0].why_n = agr_set(c[0].why[..], "no process slot is free"); return CA_FAILED; }
+    ok := true;
+    for i: 0..<c[0].argc[s] { ok = ok && proc_arg(h, ca_arg(c, s, i)); }
+    // git never stops to ask for a password here: a sign-in it needs is said instead
+    ok = ok && proc_env(h, "GIT_TERMINAL_PROMPT=0");
+    if !ok { r := proc_release(h); c[0].why_n = agr_set(c[0].why[..], "an argument does not fit"); return CA_FAILED; }
+    started := proc_start(h);
+    if started != 0 {
+      r := proc_release(h);
+      c[0].why_n = agr_set(c[0].why[..], ifx started == PROC_ENOENT then "git isn't installed on this computer (Xcode's command line tools have it)" else "a step could not start");
+      return CA_FAILED;
+    }
+    c[0].h = h;
+  }
+  line: [2048] u8;
+  for i: 0..<256 {
+    n := proc_line(c[0].h, 0, line[..]);
+    if n < 0 { break; }
+    if c[0].keep[s] && c[0].out_n + n + 1 < CA_OUT { c[0].out_n = ag_put(c[0].out[..], ag_put(c[0].out[..], c[0].out_n, cast(string) line[0..<n]), "\n"); }
+  }
+  st := proc_wait(c[0].h, wait_ms);
+  if st == PROC_RUNNING { return CA_RUNNING; }
+  // what is left of its output
+  for i: 0..<4096 {
+    n := proc_line(c[0].h, 0, line[..]);
+    if n < 0 { break; }
+    if c[0].keep[s] && c[0].out_n + n + 1 < CA_OUT { c[0].out_n = ag_put(c[0].out[..], ag_put(c[0].out[..], c[0].out_n, cast(string) line[0..<n]), "\n"); }
+  }
+  eb: [400] u8; err := proc_stderr(c[0].h, eb[..]);
+  r := proc_release(c[0].h); c[0].h = -1;
+  if st != 0 {
+    sb: [1200] u8;
+    wn := ag_put(c[0].why[..], 0, ca_step_line(c, s, sb[..]));
+    wn = ag_put(c[0].why[..], wn, ": "); wn = ag_put(c[0].why[..], wn, ifx err.count > 0 then err else "it failed");
+    c[0].why_n = wn;
+    return CA_FAILED;
+  }
+  c[0].at += 1;
+  return ifx c[0].at >= c[0].steps then CA_ALL_DONE else CA_STEP_DONE;
+}
+// Stops the step in hand, if any.
+ca_steps_stop :: (c: [] CaCode) {
+  if c[0].h >= 0 { k := proc_kill(c[0].h, PROC_SIGKILL); r := proc_release(c[0].h); }
+  c[0].h = -1; c[0].doing = CA_IDLE;
+}
+// All the steps, waiting: for a tool (tools/code-agent-check.coax), never the pane. "" when they
+// all ran, else why not.
+ca_run_all :: (c: [] CaCode, wait_ms: int) -> string {
+  for i: 0..<100000 {
+    r := ca_step_tick(c, wait_ms);
+    if r == CA_ALL_DONE { c[0].doing = CA_IDLE; return ""; }
+    if r == CA_FAILED { ca_steps_stop(c); return ca_text(c[0].why[..], c[0].why_n); }
+  }
+  return "the steps did not end";
+}
+
+// The kept output's first line: a worktree's commit.
+ca_first_line :: (c: [] CaCode) -> string {
+  n := 0; while n < c[0].out_n && c[0].out[n] != '\n' { n += 1; }
+  return cast(string) c[0].out[0..<n];
+}
+
+// ---- starting one
+
+// A new Code agent on repo with the person's job, once they approved it: its index, or -1 and the
+// pane says why. Its record is made on the open game (or none), its worktree first, then its
+// session starts with its brief.
+ca_new :: (p: [] AgPane, e: [] Editor, repo: int, work: string, approved: bool, now: s64) -> int {
+  if work.count == 0 { ag_note(p, "Say what it should do.", true); return -1; }
+  why := agr_job_why(work);
+  if why.count > 0 { ag_note(p, why, true); return -1; }
+  if p[0].here != AG_HERE_LOCAL { ag_note(p, ag_here_words(p[0].here), true); return -1; }
+  if repo < 0 || repo >= AGR_REPOS { ag_note(p, "Pick the engine or the app.", true); return -1; }
+  if !approved { ag_note(p, "A Code agent starts only when you approve it: read what it may do, then press Approve and start.", true); return -1; }
+  rb: [512] u8; root := ca_home(p, rb[..]);
+  why = ca_folder_why(root, cast(string) p[0].folder[0..<p[0].folder_n]);
+  if why.count > 0 { ag_note(p, why, true); return -1; }
+  if ag_count(p) >= AGR_RECORDS { ag_note(p, "GameBuilder keeps at most 256 agents (AGR_RECORDS).", true); return -1; }
+  k := ag_count(p);
+  ib: [AGR_ID] u8; id := agr_new_id(now, k, ib[..]);
+  if ca_adopt(p, k, repo, id) < 0 { return -1; }
+  game := ed_mine_open(e); tb: [64] u8;
+  title := ifx game > 0 then cast(string) tb[0..<ed_mine_title(e, game, tb[..])] else AGR_REPO_GITHUB[repo];
+  st := p[0].store[..];
+  agr_record_new(st[0].r[k..<k + 1], id, ifx game > 0 then game else 0, title, ed_level(e), AGR_CODE, AGR_LOCAL, AGR_THIS_MAC, AG_RUNNER, now);
+  st[0].r[k].repo = repo; st[0].r[k].turns = AGR_CODE_TURNS; st[0].r[k].cents = AGR_CODE_CENTS;
+  st[0].jw[k].n = agr_set(st[0].jw[k].buf[..], agr_cut(work, AGR_JOB));
+  st[0].n += 1;
+  p[0].agents[k] = AgAgent.{}; p[0].dirty[k] = true;
+  ag_emit_say(p, k, AGR_PERSON, work);
+  c := ca_c(p, k);
+  ca_plan_prepare(c, ifx p[0].remote_n > 0 then cast(string) p[0].remote[0..<p[0].remote_n] else CA_REMOTE);
+  sb: [AG_NOTE] u8; sn := ag_put(sb[..], 0, "Making its folder: a worktree of "); sn = ag_put(sb[..], sn, AGR_REPO_GITHUB[repo]);
+  sn = ag_put(sb[..], sn, " from origin/main (the first time, the repository is cloned).");
+  ag_set_state(p, k, AGR_WORKING, cast(string) sb[0..<sn]);
+  ca_step_words(p, k, "making its worktree from origin/main");
+  ag_note(p, ifx k == 0 && ed_agents_account(e) then AG_ON_ACCOUNT else "", false);
+  return k;
+}
+// The folder Code agents work in: the pane's (a check's) or ~/gamebuilder-code.
+ca_home :: (p: [] AgPane, out: [] u8) -> string {
+  if p[0].code_root_n > 0 { return cast(string) out[0..<ag_put(out, 0, cast(string) p[0].code_root[0..<p[0].code_root_n])]; }
+  hb: [400] u8; home := cl_getenv("HOME", hb[..]);
+  if home.count == 0 { return ""; }
+  n := ag_put(out, 0, home); n = ag_put(out, n, "/"); n = ag_put(out, n, CA_FOLDER);
+  return cast(string) out[0..<n];
+}
+
+// The rules its session is given on top of Claude Code's own (--append-system-prompt).
+ca_rules :: (c: [] CaCode, out: [] u8) -> string {
+  repo := c[0].repo;
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], "You are GameBuilder's Code agent: the person handed you work on "); tx_put(t[..], AGR_REPO_WORDS[repo]);
+  tx_put(t[..], " (github.com/"); tx_put(t[..], AGR_REPO_GITHUB[repo]); tx_put(t[..], ") from GameBuilder's Agents pane, and approved what you may do.\n\n");
+  tx_put(t[..], "- Your folder is a fresh git worktree of "); tx_put(t[..], AGR_REPO_GITHUB[repo]); tx_put(t[..], " made from origin/main: ");
+  tx_put(t[..], ca_tree(c)); tx_put(t[..], ". Work only there: never in another checkout of the repository (above all never a main checkout), and never in GameBuilder's own folders. Your file edits elsewhere are refused.\n");
+  tx_put(t[..], "- Read and follow the repository's AGENTS.md first (and CLAUDE.md and INVARIANTS.md where they are), as any agent working in it does.\n");
+  if repo == AGR_ENGINE {
+    tx_put(t[..], "- Make the change on a branch of your own, run the repository's checks, push the branch, and open a pull request with `gh pr create --repo OpenAgentsInc/openagents`, saying what a GameBuilder world needs it for. Where the branch goes: `gh repo view OpenAgentsInc/openagents --json viewerPermission -q .viewerPermission` says WRITE, MAINTAIN or ADMIN when the person may push there, and then `git push origin BRANCH`. Anything else is the usual case, no push access: `gh repo fork OpenAgentsInc/openagents --remote --remote-name fork` in your folder makes the person's fork on GitHub the first time and adds it as the remote `fork`, then `git push fork BRANCH`. The person approved that fork when they started you. Never push to main: a hook in this clone refuses it, and the owner merges engine changes by pull request only.\n");
+    tx_put(t[..], "- Do not bump GameBuilder's pin yourself. After your pull request merges, the person is offered that as the next job.\n");
+  } else {
+    tx_put(t[..], "- Land your work as this repository's AGENTS.md says: scripts/check.sh and scripts/build.sh macos passing, then commit and push main. This worktree finds the engine's pinned tree through GB_OPENAGENTS_MAIN (scripts/pin.sh sync makes it).\n");
+  }
+  tx_put(t[..], "- Report as you go: report_branch when you have a branch, report_check after each check you run (its command as the name, passed or not, and a line of what it said), report_pull_request once a pull request is open. The person sees these on the agent's card, with the files you changed.\n");
+  tx_put(t[..], "- When you are done, say in two or three lines what changed and where.\n");
+  return cast(string) out[0..<t[0].at];
+}
+// The first message of a session: the job, and where it starts.
+ca_brief :: (p: [] AgPane, k: int, words: string, out: [] u8) -> string {
+  c := ca_c(p, k);
+  jw := agr_job_of(p[0].store[..], k);
+  n := ag_put(out, 0, "Your work, in the person's words: "); n = ag_put(out, n, jw);
+  n = ag_put(out, n, "\n\nYour folder is "); n = ag_put(out, n, ca_tree(c));
+  n = ag_put(out, n, ", a git worktree of "); n = ag_put(out, n, AGR_REPO_GITHUB[c[0].repo]);
+  n = ag_put(out, n, " at origin/main, commit "); n = ag_put(out, n, ca_text(c[0].base[..], c[0].base_n)); n = ag_put(out, n, ".");
+  if words.count > 0 && words != jw { n = ag_put(out, n, "\n\nYou worked on this before in a session that ended; your folder is as you left it. The person now says: "); n = ag_put(out, n, words); }
+  return cast(string) out[0..<n];
+}
+
+// The options a Code agent's session starts with, program first tried: Claude Code's own coding
+// tools, the repository's own project settings, its folder, its limits, the person's login, and
+// the host answering each tool's permission.
+ca_options :: (p: [] AgPane, k: int, program: string) {
+  c := ca_c(p, k);
+  p[0].strs_n = 0; p[0].tools = 0;
+  o := p[0].opt[..];
+  o[0] = ClOptions.{};
+  o[0].program = ag_keep(p, program);
+  p[0].system_n = ca_rules(c, p[0].system[..]).count;
+  o[0].append_system_prompt = cast(string) p[0].system[0..<p[0].system_n];
+  o[0].persist_session = false;
+  cl_add_setting_source(o, "project");       // the repository's own CLAUDE.md and settings; not the person's other hooks
+  o[0].permission_handler = true;             // the pane answers can_use_tool: file edits only in its folder
+  o[0].max_turns = AGR_CODE_TURNS;
+  o[0].max_budget_usd = cast(f64) AGR_CODE_CENTS / 100.0; o[0].has_max_budget = true;
+  o[0].cwd = ag_keep(p, ca_tree(c));
+  server := cl_add_server(o, CA_SERVER, "1");
+  ab: [96] u8;
+  for i: 0..<CA_TOOLS {
+    tool := cl_add_server_tool(o, server, CA_TOOL_NAME[i], CA_TOOL_ABOUT[i], CA_TOOL_SCHEMA[i]);
+    if tool < 0 { continue; }
+    p[0].tools += 1;
+    an := ag_put(ab[..], 0, "mcp__"); an = ag_put(ab[..], an, CA_SERVER); an = ag_put(ab[..], an, "__"); an = ag_put(ab[..], an, CA_TOOL_NAME[i]);
+    cl_add_allowed(o, ag_keep(p, cast(string) ab[0..<an]));
+  }
+  for v: AG_NO_KEYS { cl_remove_env(o, v); }
+  if p[0].path_n > 0 { cl_add_env(o, cast(string) p[0].path[0..<p[0].path_n]); }
+  if c[0].repo == AGR_APP {
+    // scripts/pin.sh and scripts/env.sh find the engine through the app's own clone, never a main checkout
+    gb: [700] u8; cb: [640] u8;
+    gn := ag_put(gb[..], 0, "GB_OPENAGENTS_MAIN="); gn = ag_put(gb[..], gn, ca_clone(ca_root(c), AGR_ENGINE, cb[..]));
+    cl_add_env(o, ag_keep(p, cast(string) gb[0..<gn]));
+  }
+}
+
+// ---- the clock
+
+// Agent k's steps, a turn: true when the pane changed.
+ca_tick_one :: (p: [] AgPane, e: [] Editor, k: int) -> bool {
+  c := ca_c(p, k);
+  if c[0].doing == CA_IDLE { return false; }
+  if p[0].store[0].r[k].state == AGR_STOPPED { ca_steps_stop(c); return true; }
+  r := ca_step_tick(c, 0);
+  if r == CA_FAILED { ca_steps_failed(p, e, k); return true; }
+  if r == CA_ALL_DONE { ca_steps_done(p, e, k); return true; }
+  return r == CA_STEP_DONE;
+}
+ca_steps_failed :: (p: [] AgPane, e: [] Editor, k: int) {
+  c := ca_c(p, k);
+  what := c[0].doing;
+  ca_steps_stop(c);
+  why := ca_text(c[0].why[..], c[0].why_n);
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_ERROR); agr_event_text(ev[..], why); ca_append(p, k, ev[..]);
+  if what == CA_PREPARE {
+    wb: [CA_WHY + 64] u8; wn := ag_put(wb[..], 0, "Its folder could not be made: "); wn = ag_put(wb[..], wn, why);
+    ag_set_state(p, k, AGR_FAILED, cast(string) wb[0..<wn]);
+  }
+}
+ca_steps_done :: (p: [] AgPane, e: [] Editor, k: int) {
+  c := ca_c(p, k);
+  what := c[0].doing; c[0].doing = CA_IDLE;
+  if what == CA_PREPARE {
+    base := ca_first_line(c);
+    if !agr_commit_ok(base) { c[0].why_n = agr_set(c[0].why[..], "its worktree has no commit"); c[0].doing = CA_PREPARE; ca_steps_failed(p, e, k); return; }
+    ca_worktree_made(p, e, k, base);
+    return;
+  }
+  if what == CA_DIFF { ca_files(p, k, ca_text(c[0].out[..], c[0].out_n)); }
+}
+// The worktree is made at commit base: its event, and the session starts with its brief (or waits
+// its turn behind the session in use).
+ca_worktree_made :: (p: [] AgPane, e: [] Editor, k: int, base: string) {
+  c := ca_c(p, k);
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_WORKTREE); ev[0].repo = c[0].repo; ev[0].commit_n = agr_set(ev[0].commit[..], base);
+  ca_append(p, k, ev[..]);
+  c[0].base_n = agr_set(c[0].base[..], base); c[0].ready = true;
+  ca_step_words(p, k, "working in its worktree");
+  jb: [AGR_JOB] u8; jn := ag_put(jb[..], 0, agr_job_of(p[0].store[..], k));
+  ag_take(p, e, k, cast(string) jb[0..<jn]);
+}
+// What it changed, from the steps' output (a name a line, maybe twice): a files event.
+ca_files :: (p: [] AgPane, k: int, out: string) {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_FILES);
+  names: [AGR_TEXT] u8; nn := 0; count := 0;
+  from := 0;
+  for i: 0..<out.count + 1 {
+    if i < out.count && out[i] != '\n' { continue; }
+    name := cast(string) out[from..<i]; from = i + 1;
+    if name.count == 0 || ca_listed(cast(string) names[0..<nn], name) { continue; }
+    // a name that does not fit is counted, not named
+    if count < AGR_NAMES && nn + name.count + 1 <= names.count { if nn > 0 { nn = ag_put(names[..], nn, "\n"); } nn = ag_put(names[..], nn, name); }
+    count += 1;
+  }
+  ev[0].count = cast(s32) count; agr_event_text(ev[..], cast(string) names[0..<nn]);
+  ca_append(p, k, ev[..]);
+}
+ca_listed :: (names: string, name: string) -> bool {
+  from := 0;
+  for i: 0..<names.count + 1 { if i == names.count || names[i] == '\n' { if cast(string) names[from..<i] == name { return true; } from = i + 1; } }
+  return false;
+}
+
+// A turn ended (its result, whose usage the runner kept): what it changed is measured.
+ca_turn_end :: (p: [] AgPane, k: int) {
+  c := ca_c(p, k);
+  if c[0].ready && c[0].doing == CA_IDLE { ca_plan_diff(c); }
+}
+
+// ---- its session's events
+
+// A tool's permission (can_use_tool): file edits only inside its folder, anything else as the
+// person approved (its commands run). Each is a tool event of its record.
+ca_permission :: (p: [] AgPane, e: [] Editor, ev: ClEvent) {
+  k := p[0].live;
+  if k < 0 || ca_of(p, k) < 0 { cl_deny(p[0].q[..], "this agent has no tools of that kind", false); return; }
+  c := ca_c(p, k);
+  ar := p[0].q[0].ar[..];
+  tool := ev.request.tool_name; input := ev.request.input;
+  edits := tool == "Edit" || tool == "Write" || tool == "MultiEdit" || tool == "NotebookEdit";
+  allowed := true; result := "allowed";
+  if edits {
+    path := cl_str(ar, input, "file_path");
+    if path.count == 0 { path = cl_str(ar, input, "notebook_path"); }
+    if !ca_inside(ca_tree(c), path) { allowed = false; result = "refused: outside its folder"; }
+  }
+  ag_emit_tool(p, k, tool, input, allowed, result);
+  if allowed { cl_allow(p[0].q[..], input, ""); return; }
+  wb: [900] u8; wn := ag_put(wb[..], 0, "Refused: a Code agent changes files only in its own folder, "); wn = ag_put(wb[..], wn, ca_tree(c)); wn = ag_put(wb[..], wn, ".");
+  cl_deny(p[0].q[..], cast(string) wb[0..<wn], false);
+}
+
+// One of its reporting tools: an event of its record, and the answer.
+ca_tool :: (p: [] AgPane, e: [] Editor, ev: ClEvent) {
+  k := p[0].live;
+  if ev.server != 0 || ev.tool < 0 || ev.tool >= CA_TOOLS { cl_tool_text(p[0].q[..], "no such tool", true); return; }
+  why := ca_report(p, k, ev.tool, ev.arguments);
+  ag_emit_tool(p, k, CA_TOOL_NAME[ev.tool], ev.arguments, why.count == 0, ifx why.count > 0 then why else "shown");
+  if why.count > 0 { cl_tool_text(p[0].q[..], why, true); return; }
+  cl_tool_text(p[0].q[..], "{\"ok\":true,\"shown\":true}", false);
+}
+// A report read into its event: "" when it was good, else why not, in words for the agent.
+ca_report :: (p: [] AgPane, k: int, tool: int, args: string) -> string {
+  c := ca_c(p, k);
+  nodes: [32] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], args, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return "the arguments are one JSON object"; }
+  ev: [1] AgrEvent;
+  if tool == CA_BRANCH_TOOL {
+    ev[0] = agr_event(AGR_BRANCH); ev[0].repo = c[0].repo;
+    n := jv_str(d[0], jv_get(d[0], 0, "branch"), ev[0].branch[..]);
+    if n < 0 || !agr_branch_ok(cast(string) ev[0].branch[0..<n]) { return "branch is a git branch's name of 1 to 128 bytes"; }
+    ev[0].branch_n = n;
+  }
+  if tool == CA_CHECK_TOOL {
+    ev[0] = agr_event(AGR_CHECK);
+    n := jv_str(d[0], jv_get(d[0], 0, "name"), ev[0].name[..]);
+    if n < 1 { return "name is the check's command, 1 to 64 bytes"; }
+    ev[0].name_n = n;
+    pv := jv_get(d[0], 0, "passed");
+    if jv_kind(d[0], pv) != JV_TRUE && jv_kind(d[0], pv) != JV_FALSE { return "passed is true or false"; }
+    ev[0].ok = jv_bool(d[0], pv);
+    sb: [AGR_RESULT] u8; sn := jv_str(d[0], jv_get(d[0], 0, "summary"), sb[..]);
+    agr_event_text(ev[..], ifx sn > 0 then cast(string) sb[0..<sn] else "");
+  }
+  if tool == CA_PULL_TOOL {
+    ev[0] = agr_event(AGR_PULL); ev[0].repo = c[0].repo;
+    n := jv_str(d[0], jv_get(d[0], 0, "url"), ev[0].url[..]);
+    num := ifx n < 0 then -1 else agr_pull_number(c[0].repo, cast(string) ev[0].url[0..<n]);
+    if num < 0 {
+      wb: [200] u8; wn := ag_put(wb[..], 0, "url is the pull request's address at https://github.com/"); wn = ag_put(wb[..], wn, AGR_REPO_GITHUB[c[0].repo]); wn = ag_put(wb[..], wn, "/pull/N");
+      return ag_keep(p, cast(string) wb[0..<wn]);
+    }
+    ev[0].url_n = n; ev[0].number = num;
+    // its branch: the last one it reported
+    cd: [1] CaCard; ca_read(p, k, cd[..]);
+    ev[0].branch_n = agr_set(ev[0].branch[..], ifx cd[0].branch_n > 0 then cast(string) cd[0].branch[0..<cd[0].branch_n] else "unknown");
+  }
+  ca_append(p, k, ev[..]);
+  return "";
+}
+
+// ---- the card, from its events
+
+CaCard :: struct {
+  base: [AGR_COMMIT] u8; base_n: int;
+  branch: [AGR_REF] u8; branch_n: int;
+  url: [AGR_URL] u8; url_n: int; number: s32;
+  files: s32; names: [AGR_TEXT] u8; names_n: int; measured: bool;
+  check: [CA_CHECKS * AGR_NAME] u8; check_n: [CA_CHECKS] int; check_ok: [CA_CHECKS] bool; checks: int;
+  pin: bool;                         // the pin bump was offered (started from the card)
+  turns: s32; cents: s32;
+  events: int;
+}
+// What agent k's log says, for its card.
+ca_read :: (p: [] AgPane, k: int, cd: [] CaCard) {
+  cd[0] = CaCard.{};
+  c := ca_c(p, k);
+  lg := ca_text(c[0].log[..], c[0].log_n);
+  id := agr_id(p[0].store[0].r[k..<k + 1]);
+  ev: [1] AgrEvent;
+  from := 0;
+  for i: 0..<lg.count {
+    if lg[i] != '\n' { continue; }
+    line := cast(string) lg[from..<i]; from = i + 1;
+    if agr_event_read(line, id, ev[..]).count > 0 { continue; }
+    cd[0].events += 1;
+    t := ev[0].type;
+    if t == AGR_WORKTREE { cd[0].base_n = agr_set(cd[0].base[..], cast(string) ev[0].commit[0..<ev[0].commit_n]); }
+    if t == AGR_BRANCH || t == AGR_PULL { cd[0].branch_n = agr_set(cd[0].branch[..], cast(string) ev[0].branch[0..<ev[0].branch_n]); }
+    if t == AGR_PULL { cd[0].url_n = agr_set(cd[0].url[..], cast(string) ev[0].url[0..<ev[0].url_n]); cd[0].number = ev[0].number; }
+    if t == AGR_FILES { cd[0].files = ev[0].count; cd[0].names_n = agr_set(cd[0].names[..], cast(string) ev[0].text[0..<ev[0].text_n]); cd[0].measured = true; }
+    if t == AGR_PIN { cd[0].pin = true; }
+    if t == AGR_USAGE { cd[0].turns = ev[0].turns; cd[0].cents += ev[0].cents; }
+    if t == AGR_CHECK {
+      name := cast(string) ev[0].name[0..<ev[0].name_n];
+      at := -1;
+      for j: 0..<cd[0].checks { if ca_check_name(cd, j) == name { at = j; } }
+      if at < 0 {
+        if cd[0].checks >= CA_CHECKS {
+          // the oldest gives way
+          for j: 1..<CA_CHECKS { for b: 0..<AGR_NAME { cd[0].check[(j - 1) * AGR_NAME + b] = cd[0].check[j * AGR_NAME + b]; } cd[0].check_n[j - 1] = cd[0].check_n[j]; cd[0].check_ok[j - 1] = cd[0].check_ok[j]; }
+          cd[0].checks -= 1;
+        }
+        at = cd[0].checks; cd[0].checks += 1;
+        cd[0].check_n[at] = agr_set(cd[0].check[at * AGR_NAME..<(at + 1) * AGR_NAME], name);
+      }
+      cd[0].check_ok[at] = ev[0].ok;
+    }
+  }
+}
+ca_check_name :: (cd: [] CaCard, j: int) -> string { return cast(string) cd[0].check[j * AGR_NAME..<j * AGR_NAME + cd[0].check_n[j]]; }
+
+// The code card under an open Code agent: its repository and where it started, its branch and
+// pull request, the files it changed, its checks, and for the engine the pin bump that follows.
+// Returns its height.
+ca_card :: (p: [] AgPane, e: [] Editor, f: [] UiFrame, k: int, x: f32, top: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  c := ca_c(p, k);
+  cd: [1] CaCard; ca_read(p, k, cd[..]);
+  pad := s.space; tw := w - 2 * pad;
+  lines: [8] string; ln := 0;
+  b0: [200] u8; b1: [400] u8; b2: [200] u8; b3: [700] u8; b4: [600] u8; b5: [300] u8;
+  n := ag_put(b0[..], 0, "Code - "); n = ag_put(b0[..], n, AGR_REPO_GITHUB[c[0].repo]);
+  lines[ln] = sheet_pool(f[0].sheet, cast(string) b0[0..<n]); ln += 1;
+  n = ag_put(b1[..], 0, "Its folder: "); n = ag_put(b1[..], n, ca_tree(c));
+  if cd[0].base_n > 0 { n = ag_put(b1[..], n, ", from origin/main at "); n = ag_put(b1[..], n, agr_cut(cast(string) cd[0].base[0..<cd[0].base_n], 10)); }
+  else if c[0].doing == CA_PREPARE { n = ag_put(b1[..], n, " (being made)"); }
+  lines[ln] = sheet_pool(f[0].sheet, cast(string) b1[0..<n]); ln += 1;
+  n = ag_put(b2[..], 0, "Branch: "); n = ag_put(b2[..], n, ifx cd[0].branch_n > 0 then cast(string) cd[0].branch[0..<cd[0].branch_n] else "none yet");
+  if cd[0].url_n > 0 { n = ag_put(b2[..], n, " - pull request #"); n = ag_put_int(b2[..], n, cast(int) cd[0].number); }
+  else if c[0].repo == AGR_ENGINE { n = ag_put(b2[..], n, " - no pull request yet"); }
+  lines[ln] = sheet_pool(f[0].sheet, cast(string) b2[0..<n]); ln += 1;
+  if cd[0].measured {
+    n = ag_put(b3[..], 0, "Files changed: "); n = ag_put_int(b3[..], n, cast(int) cd[0].files);
+    names := cast(string) cd[0].names[0..<cd[0].names_n]; shown := 0; from := 0;
+    for i: 0..<names.count + 1 {
+      if i < names.count && names[i] != '\n' { continue; }
+      if i > from && shown < CA_SHOWN_FILES { n = ag_put(b3[..], n, ifx shown == 0 then " - " else ", "); n = ag_put(b3[..], n, cast(string) names[from..<i]); shown += 1; }
+      from = i + 1;
+    }
+    if cast(int) cd[0].files > shown && shown > 0 { n = ag_put(b3[..], n, ", ..."); }
+    lines[ln] = sheet_pool(f[0].sheet, cast(string) b3[0..<n]); ln += 1;
+  }
+  if cd[0].checks > 0 {
+    n = ag_put(b4[..], 0, "Checks: ");
+    for j: 0..<cd[0].checks { if j > 0 { n = ag_put(b4[..], n, "; "); } n = ag_put(b4[..], n, ca_check_name(cd[..], j)); n = ag_put(b4[..], n, ifx cd[0].check_ok[j] then " passed" else " failed"); }
+    lines[ln] = sheet_pool(f[0].sheet, cast(string) b4[0..<n]); ln += 1;
+  } else { lines[ln] = "Checks: none reported yet"; ln += 1; }
+  next := c[0].repo == AGR_ENGINE && cd[0].url_n > 0;
+  if next {
+    n = ag_put(b5[..], 0, ifx cd[0].pin then "Next: the pin bump is offered as its own Code agent." else "Next, once it merges: bump the engine pin here (scripts/pin.sh bump, then scripts/check.sh).");
+    lines[ln] = sheet_pool(f[0].sheet, cast(string) b5[0..<n]); ln += 1;
+  }
+  if c[0].full { lines[ln] = "Its card holds 32 KB of events (CA_LOG): later ones are in its log, not here."; ln += 1; }
+  h := pad;
+  for i: 0..<ln { h += control_copy(f[0].sheet, m, s.small, s.muted, x + pad, top + h, tw, lines[i]) + s.space / 4; }
+  buttons := cd[0].url_n > 0;
+  if buttons { h += s.control_h + s.space / 2; }
+  h += pad;
+  _ := sheet_box(f[0].sheet, x, top, w, h, s.radius_control, s.border, s.surface, s.accent);
+  y := top + pad;
+  for i: 0..<ln { y += control_copy(f[0].sheet, m, s.small, ifx i == 0 then s.ink else s.muted, x + pad, y, tw, lines[i]) + s.space / 4; }
+  if buttons {
+    bw := ctx_button(f, "code.pr", x + pad, y, "Open pull request", false, 0, AG_ACT_OPEN_PR);
+    if next && !cd[0].pin { _ := ctx_button(f, "code.pin", x + pad + bw + s.space / 2, y, "Bump the pin...", true, 0, AG_ACT_PIN); }
+  }
+  return h;
+}
+
+// ---- what the person does
+
+// Open pull request: the host opens its address.
+ca_open_pr :: (p: [] AgPane, k: int) -> bool {
+  if k < 0 || k >= ag_count(p) || ca_of(p, k) < 0 { return false; }
+  cd: [1] CaCard; ca_read(p, k, cd[..]);
+  if cd[0].url_n == 0 { return false; }
+  p[0].url_n = agr_set(p[0].url[..], cast(string) cd[0].url[0..<cd[0].url_n]);
+  p[0].request = AG_ASK_OPEN_URL;
+  return true;
+}
+// Bump the pin: the next job, offered as the sheet of a Code agent on the app, through the
+// code-agent row; it starts only when the person approves it there.
+ca_pin :: (p: [] AgPane, e: [] Editor, k: int) -> bool {
+  if k < 0 || k >= ag_count(p) || ca_of(p, k) < 0 || ca_c(p, k)[0].repo != AGR_ENGINE { return false; }
+  cd: [1] CaCard; ca_read(p, k, cd[..]);
+  if cd[0].url_n == 0 { return false; }
+  jb: [AGR_JOB] u8;
+  jn := ag_put(jb[..], 0, "Bump the engine pin to the commit that merged ");
+  jn = ag_put(jb[..], jn, cast(string) cd[0].url[0..<cd[0].url_n]);
+  jn = ag_put(jb[..], jn, " (scripts/pin.sh bump), fix what moved, and push when scripts/check.sh passes.");
+  work := agr_cut(cast(string) jb[0..<jn], AGR_JOB);
+  ob: [512] u8; none: [1] s32;
+  r := gb_command_run(e, VERB_CODE_AGENT, "{\"name\":\"gamebuilder\"}", none[0..<0], ob[..]);
+  if r.code != GB_DONE { return false; }
+  _ = ca_take_sheet(p, e);
+  eb_set(p[0].goal_eb[..], work);
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_PIN); ev[0].url_n = agr_set(ev[0].url[..], cast(string) cd[0].url[0..<cd[0].url_n]); agr_event_text(ev[..], work);
+  ca_append(p, k, ev[..]);
+  return true;
+}
+// The code-agent row asked for the Code sheet (e.code_sheet): it opens, nothing starts.
+ca_take_sheet :: (p: [] AgPane, e: [] Editor) -> bool {
+  if e[0].code_sheet <= 0 { return false; }
+  repo := cast(int) e[0].code_sheet - 1; e[0].code_sheet = 0;
+  if repo < 0 || repo >= AGR_REPOS { return false; }
+  p[0].sheet = true; p[0].sheet_kind = AGR_CODE; p[0].sheet_repo = repo; p[0].focus = AG_FOCUS_JOB;
+  ag_note(p, ifx p[0].here == AG_HERE_LOCAL then "" else ag_here_words(p[0].here), p[0].here != AG_HERE_LOCAL);
+  return true;
+}
+// A Builder's ask offered a Code agent on the engine (its engine words) and the person took it:
+// the sheet opens with the job, and the waiting turn is told. Never a start.
+ca_offer :: (p: [] AgPane, e: [] Editor, k: int) -> bool {
+  if k < 0 || k != p[0].live || !p[0].asking { return false; }
+  a := p[0].agents[k..<k + 1];
+  if a[0].engine_n == 0 { return false; }
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_ANSWER); agr_event_text(ev[..], "Start a Code agent on the engine");
+  _ = ag_emit(p, k, ev[..]);
+  e[0].code_sheet = cast(s32) (AGR_ENGINE + 1);
+  _ := ca_take_sheet(p, e);
+  eb_set(p[0].goal_eb[..], agr_cut(cast(string) a[0].engine[0..<a[0].engine_n], AGR_JOB));
+  cl_tool_text(p[0].q[..], "{\"ok\":true,\"answer\":\"The person is looking at a Code agent on the engine for it; it starts only when they approve it. Stop here: say in one line what the level waits for.\"}", false);
+  p[0].asking = false; a[0].ask_n = 0; a[0].choices = 0; a[0].engine_n = 0;
+  ag_set_state(p, k, AGR_WORKING, "");
+  return true;
+}
+
+// The approval in the New agent sheet: what a Code agent on repo may do, in words with its
+// limits. Returns its height.
+ca_approval :: (p: [] AgPane, f: [] UiFrame, repo: int, x: f32, top: f32, w: f32) -> f32 {
+  s := f[0].skin; m := f[0].m;
+  lb: [96] u8; limits := sheet_pool(f[0].sheet, ca_limits(lb[..]));
+  parts := [5] string.[AGR_CODE_MAY, AGR_CODE_WHERE, AGR_REPO_ENDS_WORDS[repo], AGR_REPO_THEN_WORDS[repo], AGR_CODE_PLAN];
+  pad := s.space; tw := w - 2 * pad;
+  h := pad;
+  for t: parts { if t.count > 0 { h += control_copy(f[0].sheet, m, s.small, s.muted, x + pad, top + h, tw, t) + s.space / 3; } }
+  h += control_copy(f[0].sheet, m, s.small, s.ink, x + pad, top + h, tw, limits) + pad;
+  _ := sheet_box(f[0].sheet, x, top, w, h, s.radius_control, s.border, s.surface, AG_GOLD);
+  y := top + pad;
+  for t: parts { if t.count > 0 { y += control_copy(f[0].sheet, m, s.small, s.muted, x + pad, y, tw, t) + s.space / 3; } }
+  _ = control_copy(f[0].sheet, m, s.small, s.ink, x + pad, y, tw, limits);
+  return h;
+}
+
+// ---- checks
+
+// A Code agent in slot 0 on repo, its folder under /tmp, as ca_new makes one (no steps run).
+ca_test_agent :: (t: [] AgentsTest, repo: int) -> int {
+  p := t[0].p[..]; e := t[0].e[..];
+  ag_place(p, AG_HERE_LOCAL, "/tmp/gb-app/agents");
+  p[0].now = 1763380000000;
+  p[0].code_root_n = ag_put(p[0].code_root[..], 0, "/tmp/gb-code");
+  k := ca_new(p, e, repo, "water that ripples", true, 1763380000000);
+  return k;
+}
+// The worktree made by hand at a commit, as its steps would: the session starts with its brief.
+ca_test_made :: (t: [] AgentsTest, k: int) {
+  p := t[0].p[..];
+  c := ca_c(p, k);
+  ca_steps_stop(c);
+  // a session is a process: here the options are built and lines are fed as `claude` sends them
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_WORKTREE); ev[0].repo = c[0].repo; ev[0].commit_n = agr_set(ev[0].commit[..], "7c2e19c3fc00827ec08972775f27c159abf3c534");
+  ca_append(p, k, ev[..]);
+  ag_test_session(t, k);
+}
+// Whether agent k's log has a line with part: its lines not yet written by the host (a check
+// writes none).
+ca_test_has :: (p: [] AgPane, k: int, part: string) -> bool {
+  for j: 0..<p[0].ob_e {
+    if p[0].ob_k[j] != cast(s32) k { continue; }
+    from := cast(int) p[0].ob_from[j];
+    if level_find(cast(string) p[0].ob[from..<from + cast(int) p[0].ob_len[j]], part) >= 0 { return true; }
+  }
+  return false;
+}
+ca_test_feed :: (t: [] AgentsTest, line: string) { ev := cl_feed(t[0].p[0].q[..], line); ag_event(t[0].p[..], t[0].e[..], ev); }
+
+#test "a Code agent starts only when the person approves it, and only where the build may start claude" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_SANDBOX, "");
+  p[0].now = 1763380000000;
+  #assert ca_new(p, e, AGR_ENGINE, "water that ripples", true, 1) == -1 && level_find(ca_text(p[0].note[..], p[0].note_n), "GameBuilder download for Mac") >= 0;
+  ag_place(p, AG_HERE_LOCAL, "/tmp/gb-app/agents");
+  p[0].code_root_n = ag_put(p[0].code_root[..], 0, "/tmp/gb-code");
+  // not approved: nothing starts, and the pane says what to do
+  #assert ca_new(p, e, AGR_ENGINE, "water that ripples", false, 1) == -1 && ag_count(p) == 0;
+  #assert level_find(ca_text(p[0].note[..], p[0].note_n), "Approve and start") >= 0;
+  // never in the app's own folders
+  p[0].code_root_n = ag_put(p[0].code_root[..], 0, "/tmp/gb-app/agents/code");
+  #assert ca_new(p, e, AGR_ENGINE, "water that ripples", true, 1) == -1 && level_find(ca_text(p[0].note[..], p[0].note_n), "app's own folders") >= 0;
+  // the sheet: Code, the engine, the approval in words with the limits, and Approve and start
+  p[0].code_root_n = ag_put(p[0].code_root[..], 0, "/tmp/gb-code");
+  #assert ag_test_tap(t[..], "new");
+  #assert p[0].sheet;
+  #assert ag_test_tap(t[..], "kind.2");
+  #assert p[0].sheet_kind == AGR_CODE;
+  #assert ag_test_tap(t[..], "repo.1") && p[0].sheet_repo == AGR_APP && ag_test_tap(t[..], "repo.0") && p[0].sheet_repo == AGR_ENGINE;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "start") >= 0;
+  lb: [96] u8;
+  #assert ca_limits(lb[..]) == "At most 80 turns and $10 of your plan a message.";
+  eb_set(p[0].goal_eb[..], "water that ripples");
+  #assert ag_test_tap(t[..], "start") && ag_count(p) == 1 && p[0].store[0].r[0].kind == AGR_CODE && !p[0].sheet;
+  c := ca_c(p, 0);
+  // its record: a Code agent on the engine, its job the person's first message
+  rb: [AGR_RECORD_MAX] u8;
+  rec := agr_record_write(p[0].store[0].r[0..<1], "water that ripples", rb[..]);
+  #assert level_find(rec, "\"kind\":\"code\",\"repo\":\"openagents\"") >= 0 && level_find(rec, "\"limits\":{\"turns\":80,\"cents\":1000}") >= 0;
+  #assert ca_test_has(p, 0, "\"type\":\"message\",\"from\":\"person\",\"text\":\"water that ripples\"");
+  // its folder: under the Code agents' folder, named for it, never a main checkout
+  #assert ca_inside("/tmp/gb-code", ca_tree(c)) && level_find(ca_tree(c), "/tmp/gb-code/openagents-a") == 0;
+  // the steps make the worktree from origin/main of the app's own clone, then read its commit
+  sb: [1200] u8;
+  #assert c[0].doing == CA_PREPARE && c[0].steps == 6;
+  #assert ca_step_line(c, 1, sb[..]) == "/bin/sh -c [ -d \"$1/.git\" ] || git clone --quiet --filter=blob:none --no-checkout \"$2\" \"$1\" sh /tmp/gb-code/repos/openagents https://github.com/OpenAgentsInc/openagents.git";
+  #assert ca_step_line(c, 2, sb[..]) == "git -C /tmp/gb-code/repos/openagents fetch --quiet origin";
+  wt: [900] u8; wn := ag_put(wt[..], 0, "git -C /tmp/gb-code/repos/openagents worktree add --detach "); wn = ag_put(wt[..], wn, ca_tree(c)); wn = ag_put(wt[..], wn, " origin/main");
+  #assert ca_step_line(c, 3, sb[..]) == cast(string) wt[0..<wn];
+  #assert ca_arg(c, 4, 3) == "rev-parse" && c[0].keep[4];
+  // and, for the engine, the hook that refuses a push to main
+  #assert ca_arg(c, 5, 4) == "/tmp/gb-code/repos/openagents/.git/hooks" && ca_arg(c, 5, 5) == CA_HOOK;
+  // the app's: the engine's clone too, for scripts/pin.sh
+  ed_new(e, 7);
+  ca_test_reset(p);
+  #assert ca_test_agent(t[..], AGR_APP) == 0;
+  c = ca_c(p, 0);
+  #assert c[0].steps == 6 && ca_arg(c, 1, 4) == "/tmp/gb-code/repos/openagents" && ca_arg(c, 2, 4) == "/tmp/gb-code/repos/gamebuilder";
+}
+
+#test "a Code agent's session runs Claude Code with its coding tools in its worktree, on the person's login, within its limits" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  k := ca_test_agent(t[..], AGR_ENGINE);
+  #assert k == 0;
+  ca_test_made(t[..], k);
+  o := p[0].opt[0];
+  args: [1] ClArgs; ab: [65536] u8; sb: [8192] u8; args[0].buf = ab[..];
+  cl_build_args(o, args[..], sb[..]);
+  #assert !args[0].failed;
+  saw_turns := false; saw_budget := false; saw_settings := false; saw_handler := false; saw_rules := false; saw_allowed := false;
+  for i: 0..<args[0].count {
+    a := cl_arg_at(args[..], i);
+    // its normal tools: no --tools list, and never every permission skipped
+    #assert a.count < 7 || a[0..<7] != "--tools";
+    #assert a != "--dangerously-skip-permissions" && a != "--allow-dangerously-skip-permissions";
+    #assert a.count < 16 || a[0..<16] != "--system-prompt=";
+    if a == "--max-turns=80" { saw_turns = true; }
+    if a == "--max-budget-usd=10" || a == "--max-budget-usd=10.0" { saw_budget = true; }
+    if a == "--setting-sources=project" { saw_settings = true; }
+    if a == "--permission-prompt-tool=stdio" { saw_handler = true; }
+    if a.count > 23 && a[0..<23] == "--append-system-prompt=" {
+      saw_rules = level_find(a, "AGENTS.md") >= 0 && level_find(a, "gh pr create --repo OpenAgentsInc/openagents") >= 0 && level_find(a, "Never push to main") >= 0 && level_find(a, ca_tree(ca_c(p, 0))) >= 0;
+    }
+    if a.count > 15 && a[0..<15] == "--allowedTools=" { saw_allowed = level_find(a, "mcp__gamebuilder-code__report_pull_request") >= 0; }
+  }
+  #assert saw_turns && saw_budget && saw_settings && saw_handler && saw_rules && saw_allowed;
+  #assert o.cwd == ca_tree(ca_c(p, 0)) && !o.persist_session && o.server_count == 1 && o.servers[0].name == CA_SERVER && o.servers[0].tool_count == CA_TOOLS;
+  removed := 0; for i: 0..<o.env_remove_count { if o.env_remove[i] == "ANTHROPIC_API_KEY" || o.env_remove[i] == "CLAUDE_CODE_OAUTH_TOKEN" { removed += 1; } }
+  #assert removed == 2;
+  // its first message: the job, its folder and the commit it starts from
+  bb: [AG_PROMPT] u8;
+  brief := ca_brief(p, 0, "", bb[..]);
+  #assert level_find(brief, "water that ripples") >= 0 && level_find(brief, "origin/main, commit 7c2e19c3fc00827ec08972775f27c159abf3c534") >= 0;
+  // the app's: its rules are the repository's own, and pin.sh finds the engine in the app's clone
+  ca_test_reset(p);
+  #assert ca_test_agent(t[..], AGR_APP) == 0;
+  ca_test_made(t[..], 0);
+  o = p[0].opt[0];
+  #assert level_find(o.append_system_prompt, "push main") >= 0 && level_find(o.append_system_prompt, "gh pr create") < 0;
+  env := false; for i: 0..<o.env_count { if o.env[i] == "GB_OPENAGENTS_MAIN=/tmp/gb-code/repos/openagents" { env = true; } }
+  #assert env;
+}
+
+#test "a Code agent's session that reports a key source is stopped, and the record says so" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  k := ca_test_agent(t[..], AGR_ENGINE);
+  ca_test_made(t[..], k);
+  ca_test_feed(t[..], "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"ANTHROPIC_API_KEY\",\"claude_code_version\":\"2.1.0\",\"cwd\":\"/tmp/gb-code/openagents-a1\",\"tools\":[\"Bash\",\"Edit\"],\"mcp_servers\":[{\"name\":\"gamebuilder-code\",\"status\":\"connected\"}],\"model\":\"claude-opus-5-5\",\"permissionMode\":\"default\",\"slash_commands\":[],\"output_style\":\"default\",\"skills\":[],\"plugins\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"s1\"}");
+  #assert p[0].store[0].r[k].state == AGR_FAILED && p[0].live == -1;
+  #assert ca_test_has(p, k, "\"type\":\"state\",\"state\":\"failed\",\"text\":\"Stopped: this would bill an API key, not your Claude login.");
+  #assert level_find(agr_text(p[0].store[0].r[k].why[..], p[0].store[0].r[k].why_n), "API key") >= 0;
+  // the login is fine: none is the login
+  ca_test_reset(p);
+  k = ca_test_agent(t[..], AGR_ENGINE);
+  ca_test_made(t[..], k);
+  ca_test_feed(t[..], "{\"type\":\"system\",\"subtype\":\"init\",\"apiKeySource\":\"none\",\"claude_code_version\":\"2.1.0\",\"cwd\":\"/tmp/gb-code/openagents-a1\",\"tools\":[\"Bash\",\"Edit\"],\"mcp_servers\":[{\"name\":\"gamebuilder-code\",\"status\":\"connected\"}],\"model\":\"claude-opus-5-5\",\"permissionMode\":\"default\",\"slash_commands\":[],\"output_style\":\"default\",\"skills\":[],\"plugins\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"s1\"}");
+  #assert p[0].store[0].r[k].state == AGR_WORKING && p[0].live == k;
+}
+
+#test "a Code agent's file edits outside its worktree are refused, its commands run, and each is an event" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  k := ca_test_agent(t[..], AGR_ENGINE);
+  ca_test_made(t[..], k);
+  tree := ca_tree(ca_c(p, k));
+  lb: [2048] u8; ln := ag_put(lb[..], 0, "{\"type\":\"control_request\",\"request_id\":\"w1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Write\",\"input\":{\"file_path\":\"");
+  ln = ag_put(lb[..], ln, tree); ln = ag_put(lb[..], ln, "/metaverse-engine/render/water.coax\",\"content\":\"x\"},\"tool_use_id\":\"t1\"}}");
+  ca_test_feed(t[..], cast(string) lb[0..<ln]);
+  #assert level_find(ag_test_said(t[..]), "\"behavior\":\"allow\"") >= 0;
+  cl_outbox_clear(p[0].q[..]);
+  ca_test_feed(t[..], "{\"type\":\"control_request\",\"request_id\":\"w2\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Edit\",\"input\":{\"file_path\":\"/Users/someone/work/openagents/AGENTS.md\",\"old_string\":\"a\",\"new_string\":\"b\"},\"tool_use_id\":\"t2\"}}");
+  #assert level_find(ag_test_said(t[..]), "\"behavior\":\"deny\"") >= 0 && level_find(ag_test_said(t[..]), "only in its own folder") >= 0;
+  cl_outbox_clear(p[0].q[..]);
+  // a path that climbs out of the folder is outside it
+  lb2: [2048] u8; l2 := ag_put(lb2[..], 0, "{\"type\":\"control_request\",\"request_id\":\"w3\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Write\",\"input\":{\"file_path\":\"");
+  l2 = ag_put(lb2[..], l2, tree); l2 = ag_put(lb2[..], l2, "/../gamebuilder/x\",\"content\":\"x\"},\"tool_use_id\":\"t3\"}}");
+  ca_test_feed(t[..], cast(string) lb2[0..<l2]);
+  #assert level_find(ag_test_said(t[..]), "\"behavior\":\"deny\"") >= 0;
+  cl_outbox_clear(p[0].q[..]);
+  ca_test_feed(t[..], "{\"type\":\"control_request\",\"request_id\":\"b1\",\"request\":{\"subtype\":\"can_use_tool\",\"tool_name\":\"Bash\",\"input\":{\"command\":\"coax/bin/coax test metaverse-engine/render/water.coax\"},\"tool_use_id\":\"t4\"}}");
+  #assert level_find(ag_test_said(t[..]), "\"behavior\":\"allow\"") >= 0;
+  #assert ca_test_has(p, k, "\"type\":\"tool\",\"tool\":\"Edit\"") && ca_test_has(p, k, "\"ok\":false,\"result\":\"refused: outside its folder\"") && ca_test_has(p, k, "\"tool\":\"Bash\"");
+}
+
+#test "a Code agent's branch, checks and pull request are recorded, and its card shows them with the files and the pin bump" #steps 60000000 {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  k := ca_test_agent(t[..], AGR_ENGINE);
+  ca_test_made(t[..], k);
+  e[0].agents_open = true; p[0].open = k;
+  ca_test_call(t[..], "report_branch", "{\"branch\":\"water-ripples\"}");
+  ca_test_call(t[..], "report_check", "{\"name\":\"coax/bin/coax test metaverse-engine/render/water.coax\",\"passed\":true,\"summary\":\"12 checks passed\"}");
+  ca_test_call(t[..], "report_check", "{\"name\":\"scripts/check.sh\",\"passed\":false,\"summary\":\"1 failed\"}");
+  // a pull request somewhere else is refused, with the address it should have
+  cl_outbox_clear(p[0].q[..]);
+  ca_test_call(t[..], "report_pull_request", "{\"url\":\"https://github.com/someone/openagents/pull/9\"}");
+  #assert level_find(ag_test_said(t[..]), "https://github.com/OpenAgentsInc/openagents/pull/N") >= 0 && level_find(ag_test_said(t[..]), "\"isError\":true") >= 0;
+  cl_outbox_clear(p[0].q[..]);
+  ca_test_call(t[..], "report_pull_request", "{\"url\":\"https://github.com/OpenAgentsInc/openagents/pull/12345\"}");
+  #assert level_find(ag_test_said(t[..]), "\"isError\":true") < 0;
+  #assert ca_test_has(p, k, "\"type\":\"pr\",\"repo\":\"openagents\",\"branch\":\"water-ripples\",\"number\":12345,\"url\":\"https://github.com/OpenAgentsInc/openagents/pull/12345\"");
+  // the turn ends: its usage, then the files it changed, measured in its worktree
+  ca_test_feed(t[..], "{\"type\":\"result\",\"subtype\":\"success\",\"duration_ms\":61000,\"duration_api_ms\":50000,\"is_error\":false,\"num_turns\":14,\"result\":\"Opened the pull request.\",\"total_cost_usd\":1.25,\"usage\":{\"input_tokens\":100,\"output_tokens\":200},\"modelUsage\":{},\"permission_denials\":[],\"uuid\":\"12345678-1234-1234-1234-123456789012\",\"session_id\":\"s1\"}");
+  #assert p[0].store[0].r[k].state == AGR_DONE;
+  c := ca_c(p, k);
+  #assert c[0].doing == CA_DIFF;
+  #assert ca_test_has(p, k, "\"type\":\"usage\",\"turns\":14,\"cents\":125,\"ms\":61000");
+  #assert ca_arg(c, 0, 3) == "diff" && ca_arg(c, 0, 5) == "7c2e19c3fc00827ec08972775f27c159abf3c534";
+  ca_steps_stop(c);
+  ca_files(p, k, "metaverse-engine/render/water.coax\ndocs/water.md\nmetaverse-engine/render/water.coax\nmetaverse-engine/render/water-check.coax\n");
+  #assert ca_test_has(p, k, "\"type\":\"files\",\"count\":3,\"names\":[\"metaverse-engine/render/water.coax\",\"docs/water.md\",\"metaverse-engine/render/water-check.coax\"]");
+  // the card
+  cd: [1] CaCard; ca_read(p, k, cd[..]);
+  #assert cd[0].number == 12345 && cd[0].files == 3 && cd[0].checks == 2 && cd[0].check_ok[0] && !cd[0].check_ok[1] && !cd[0].pin;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "code.pr") >= 0 && surface_find(p[0].surface[..], "code.pin") >= 0;
+  #assert ag_test_tap(t[..], "code.pr") && ed_agents_request(p) == AG_ASK_OPEN_URL;
+  ub: [256] u8; un := ed_agents_url(p, ub[..]);
+  #assert cast(string) ub[0..<un] == "https://github.com/OpenAgentsInc/openagents/pull/12345";
+  // the pin bump is the next job, offered as a Code agent on the app: the sheet, not a start
+  n := ag_count(p);
+  #assert ag_test_tap(t[..], "code.pin");
+  #assert p[0].sheet && p[0].sheet_kind == AGR_CODE && p[0].sheet_repo == AGR_APP && ag_count(p) == n;
+  #assert level_find(eb_text(p[0].goal_eb[..]), "scripts/pin.sh bump") >= 0 && level_find(eb_text(p[0].goal_eb[..]), "pull/12345") >= 0;
+  #assert ca_test_has(p, k, "\"type\":\"pin\",\"url\":\"https://github.com/OpenAgentsInc/openagents/pull/12345\"");
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "code.pin") < 0;
+  // quit and reopen: its record and log read back, and its card is the same
+  lg_n: [1] int; rb: [AGR_RECORD_MAX] u8;
+  rn := ag_put(rb[..], 0, ag_test_write(t[..], lg_n[..]));
+  ca_test_reset(p);
+  #assert ed_agents_load(p, e, rb[0..<rn], t[0].lg[0..<lg_n[0]]);
+  #assert ag_count(p) == 1 && p[0].store[0].r[0].kind == AGR_CODE && ca_of(p, 0) >= 0 && ca_c(p, 0)[0].ready;
+  again: [1] CaCard; ca_read(p, 0, again[..]);
+  #assert again[0].number == 12345 && again[0].files == 3 && again[0].checks == 2 && again[0].pin;
+}
+
+#test "a Builder can offer a Code agent on the engine through ask, and never starts one" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  p[0].now = 1763380000000;
+  ag_test_agent(t[..], 7, AGR_BUILD); p[0].open = 0;
+  ag_test_session(t[..], 0);
+  // the Builder's brief says how
+  #assert level_find(o_system(p), "engine") >= 0;
+  ag_test_call(t[..], "ask", "{\"question\":\"Water can't ripple yet: the engine can't do that. Start a Code agent on the engine?\",\"choices\":[\"Use flat water\",\"Not now\"],\"engine\":\"Rippling water for GameBuilder levels: a water surface primitive with waves\"}");
+  #assert p[0].asking && p[0].store[0].r[0].state == AGR_WAITING;
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "offer") >= 0 && surface_find(p[0].surface[..], "choice.0") >= 0;
+  #assert ag_test_tap(t[..], "offer");
+  // the sheet, with the job; nothing started, and the turn is told
+  #assert p[0].sheet && p[0].sheet_kind == AGR_CODE && p[0].sheet_repo == AGR_ENGINE && ag_count(p) == 1 && ca_of(p, 0) < 0;
+  #assert level_find(eb_text(p[0].goal_eb[..]), "Rippling water") == 0;
+  #assert !p[0].asking && level_find(ag_test_said(t[..]), "starts only when they approve it") >= 0;
+  // and an ask without engine words offers no Code agent
+  cl_outbox_clear(p[0].q[..]);
+  ag_test_call(t[..], "ask", "{\"question\":\"Wood or stone?\",\"choices\":[\"Wood\",\"Stone\"]}");
+  ag_test_frame(t[..]);
+  #assert surface_find(p[0].surface[..], "offer") < 0;
+}
+
+#test "the code-agent row opens the Code sheet on its repository, and code-brief says what one is given" {
+  t: [1] AgentsTest; p := t[0].p[..]; e := t[0].e[..];
+  ed_new(e, 7);
+  ag_place(p, AG_HERE_LOCAL, "");
+  p[0].now = 1763380000000;
+  out: [4096] u8; none: [1] s32;
+  r := gb_command_run(e, VERB_CODE_AGENT, "{\"name\":\"gamebuilder\"}", none[0..<0], out[..]);
+  #assert level_find(r.json, "\"ok\":true") >= 0;
+  #assert r.code == GB_DONE;
+  #assert e[0].agents_open && e[0].code_sheet == AGR_APP + 1;
+  _ := ed_agents_tick(p, e, 0.016);
+  #assert p[0].sheet && p[0].sheet_kind == AGR_CODE && p[0].sheet_repo == AGR_APP && e[0].code_sheet == 0 && ag_count(p) == 0;
+  #assert gb_command_run(e, VERB_CODE_AGENT, "{\"name\":\"psionic\"}", none[0..<0], out[..]).code == GB_REFUSED;
+  // the menu's control is the row's
+  i := gb_control_find("menu.code-agent");
+  #assert i >= 0 && GB_CONTROLS[i].verb == VERB_CODE_AGENT;
+  b := gb_command_run(e, VERB_CODE_BRIEF, "{\"name\":\"openagents\"}", none[0..<0], out[..]);
+  #assert b.code == GB_DONE && level_find(b.json, "\"ends\":\"pull-request\",\"then\":\"pin-bump\",\"limits\":{\"turns\":80,\"cents\":1000}") >= 0;
+  #assert level_find(b.json, AGR_CODE_MAY) >= 0;
+}
+
+// The pane as a new one, without a new one on the stack: its agents and its session gone.
+ca_test_reset :: (p: [] AgPane) {
+  ag_end(p);
+  for k: 0..<ag_count(p) { p[0].agents[k] = AgAgent.{}; p[0].dirty[k] = false; }
+  for i: 0..<CA_SLOTS { if p[0].code[i].on { ca_steps_stop(p[0].code[i..<i + 1]); } p[0].code[i].on = false; }
+  p[0].store[0].n = 0; p[0].ob_n = 0; p[0].ob_e = 0;
+  p[0].open = -1; p[0].sheet = false; p[0].sheet_kind = AGR_BUILD; p[0].sheet_repo = 0; eb_clear(p[0].goal_eb[..]); eb_clear(p[0].composer[..]); p[0].strs_n = 0; p[0].asking = false;
+  p[0].ring[0] = AtlRing.{};
+}
+o_system :: (p: [] AgPane) -> string { return cast(string) p[0].system[0..<p[0].system_n]; }
+// A tools/call from `claude` to the Code agent's own server.
+ca_test_call :: (t: [] AgentsTest, name: string, args: string) {
+  b: [8192] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "{\"type\":\"control_request\",\"request_id\":\"r1\",\"request\":{\"subtype\":\"mcp_message\",\"server_name\":\"gamebuilder-code\",\"message\":{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"");
+  tx_put(tx[..], name); tx_put(tx[..], "\",\"arguments\":"); tx_put(tx[..], args); tx_put(tx[..], "}}}}");
+  ca_test_feed(t, cast(string) b[0..<tx[0].at]);
+}

@@ -1,0 +1,441 @@
+// Decide: the next edit, chosen by a decision model from what the scene
+// holds and what was just done to it.
+//
+// One press asks one question set of the OpenAgents decision door,
+// POST https://openagents.com/api/v1/systemone with "model":"auto". The
+// server tries Google's Gemini Decision 1 first and falls back to our own
+// models (docs/research/2026-11-13-gemini-decision-1.md in openagents).
+// The model never writes text: it picks one option of each typed question
+// (which edit, which block, which way, how far, how much). This file
+// writes the request (coax/lib/systemone/request.coax), signs it with the
+// app's own Nostr key under NIP-98 (coax/lib/nostr/nip98_sign.coax), reads
+// the answer (coax/lib/systemone/answers.coax) and carries it out as the
+// same edit a drag or a button makes. The host only sends the bytes and
+// keeps the key: it never decides anything.
+//
+// The edits it can choose are the editor's own: move, turn, size, add a
+// block beside one, delete one.
+#load "../../coax/lib/systemone/answers.coax";
+#load "../../coax/lib/nostr/nip98_sign.coax";
+
+DECIDE_URL :: "https://openagents.com/api/v1/systemone";
+DECIDE_MODEL :: "auto";
+DECIDE_BODY_MAX :: 16384;      // the route's body limit
+DECIDE_STATE_MAX :: 8192;
+DECIDE_HEADER_MAX :: N98S_HEADER;
+LOG_MAX :: 12;                 // edits the model sees, newest last
+NOTE_MAX :: 160;
+
+// What an edit did, for the history the model reads.
+OP_MOVE :: 1; OP_TURN :: 2; OP_SIZE :: 3; OP_ADD :: 4; OP_DELETE :: 5; OP_SELECT :: 6; OP_UNDO :: 7; OP_REDO :: 8;
+
+Step :: struct {
+  op: s32;
+  id: s32;
+  kind: s32;
+  x: s32; z: s32;           // where it stands after
+  dx: s32; dz: s32;         // how far a move took it
+  yaw: s32; dyaw: s32;
+  scale: s32; dscale: s32;
+  decided: bool;            // the decision model made it
+}
+
+// ---- the history
+
+ed_log :: (e: [] Editor, s: Step) {
+  if e[0].log_count == LOG_MAX {
+    for i: 0..<LOG_MAX - 1 { e[0].log[i] = e[0].log[i + 1]; }
+    e[0].log_count -= 1;
+  }
+  t := s;
+  t.decided = e[0].deciding;
+  e[0].log[e[0].log_count] = t;
+  e[0].log_count += 1;
+}
+
+ed_log_actor :: (e: [] Editor, op: s32, a: Actor, before: Actor) {
+  ed_log(e, Step.{op = op, id = a.id, kind = a.kind, x = a.x, z = a.z, dx = a.x - before.x, dz = a.z - before.z,
+                  yaw = a.yaw, dyaw = a.yaw - before.yaw, scale = a.scale, dscale = a.scale - before.scale});
+}
+
+// ---- text
+
+Text :: struct { buf: [] u8; at: int; }
+
+tx_put :: (t: [] Text, s: string) {
+  for i: 0..<s.count {
+    if t[0].at >= t[0].buf.count { return; }
+    t[0].buf[t[0].at] = s[i];
+    t[0].at += 1;
+  }
+}
+
+tx_int :: (t: [] Text, v: s64) {
+  if v < 0 { tx_put(t, "-"); tx_int(t, -v); return; }
+  digits: [20] u8;
+  n := 0;
+  w := v;
+  while true {
+    digits[n] = cast(u8) (48 + w % 10);
+    n += 1;
+    w = w / 10;
+    if w == 0 { break; }
+  }
+  for i: 0..<n {
+    if t[0].at >= t[0].buf.count { return; }
+    t[0].buf[t[0].at] = digits[n - 1 - i];
+    t[0].at += 1;
+  }
+}
+
+tx_n :: (t: [] Text, v: s32) { tx_int(t, cast(s64) v); }
+
+tx_signed :: (t: [] Text, v: s32) {
+  if v > 0 { tx_put(t, "+"); }
+  tx_n(t, v);
+}
+
+tx_text :: (t: [] Text) -> string { return cast(string) t[0].buf[0..<t[0].at]; }
+
+// What the decision model is told a kind is (shared/kinds.coax).
+ed_kind_word :: (kind: s32) -> string { return ifx kind < 0 || kind >= KINDS then GK_SAID[GK_BLOCK] else GK_SAID[kind]; }
+
+tx_actor :: (t: [] Text, a: Actor) {
+  tx_put(t, ed_kind_word(a.kind)); tx_put(t, " "); tx_n(t, a.id);
+  tx_put(t, " at x "); tx_n(t, a.x); tx_put(t, " z "); tx_n(t, a.z);
+  s := a.scale;
+  tx_put(t, ", "); tx_n(t, a.sx * s / 100); tx_put(t, " wide, "); tx_n(t, a.sy * s / 100);
+  tx_put(t, " tall, "); tx_n(t, a.sz * s / 100); tx_put(t, " deep");
+  if a.yaw != 0 { tx_put(t, ", turned "); tx_n(t, a.yaw); tx_put(t, " degrees"); }
+}
+
+tx_step :: (t: [] Text, s: Step) {
+  if s.decided { tx_put(t, "(suggested and kept) "); }
+  w := ed_kind_word(s.kind);
+  if s.op == OP_MOVE {
+    tx_put(t, "moved "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id);
+    tx_put(t, " by x "); tx_signed(t, s.dx); tx_put(t, " z "); tx_signed(t, s.dz);
+    tx_put(t, " to x "); tx_n(t, s.x); tx_put(t, " z "); tx_n(t, s.z);
+  }
+  if s.op == OP_TURN { tx_put(t, "turned "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id); tx_put(t, " by "); tx_signed(t, s.dyaw); tx_put(t, " degrees to "); tx_n(t, s.yaw); }
+  if s.op == OP_SIZE { tx_put(t, "resized "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id); tx_put(t, " to "); tx_n(t, s.scale); tx_put(t, " percent"); }
+  if s.op == OP_ADD { tx_put(t, "added "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id); tx_put(t, " at x "); tx_n(t, s.x); tx_put(t, " z "); tx_n(t, s.z); }
+  if s.op == OP_DELETE { tx_put(t, "deleted "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id); }
+  if s.op == OP_UNDO { tx_put(t, "took the last edit back"); return; }
+  if s.op == OP_REDO { tx_put(t, "made the edit they took back again"); return; }
+  if s.op == OP_SELECT { tx_put(t, "selected "); tx_put(t, w); tx_put(t, " "); tx_n(t, s.id); }
+}
+
+// What the model reads: the task, the scene and the recent edits.
+ed_state :: (e: [] Editor, t: [] Text) {
+  tx_put(t, "Someone is building a game level in a 3D editor. From the blocks already placed and the edits they just made, work out what they are building and what they are doing, and choose the one next edit that carries it on the way they would. Repeat a pattern they started (a row, a wall, a staircase, a ring, even spacing) when there is one. Positions are centimetres on the ground: x and z, with y up. ");
+  tx_put(t, "Scene: ");
+  for i: 0..<ed_count(e) {
+    if i > 0 { tx_put(t, "; "); }
+    tx_actor(t, ed_actor(e, i));
+  }
+  tx_put(t, ". ");
+  sel := ed_index(e, e[0].selected);
+  if sel >= 0 { tx_put(t, "Selected: "); tx_put(t, ed_kind_word(ed_actor(e, sel).kind)); tx_put(t, " "); tx_n(t, e[0].selected); tx_put(t, ". "); }
+  else { tx_put(t, "Nothing is selected. "); }
+  tx_put(t, "Grid: "); tx_int(t, e[0].vp[0].grid); tx_put(t, " cm. ");
+  if e[0].log_count == 0 { tx_put(t, "No edits yet."); return; }
+  tx_put(t, "Edits so far, oldest first: ");
+  for i: 0..<cast(s64) e[0].log_count {
+    if i > 0 { tx_put(t, "; "); }
+    tx_int(t, i + 1); tx_put(t, ". "); tx_step(t, e[0].log[i]);
+  }
+  tx_put(t, ".");
+}
+
+// ---- the questions
+
+ACTIONS :: 5;
+ACTION_KEYS :: [ACTIONS] string.["move", "turn", "size", "add", "delete"];
+ACTION_LABELS :: [ACTIONS] string.[
+  "Move a block along the ground",
+  "Turn a block about its upright axis",
+  "Make a block bigger or smaller",
+  "Add a new block like a block, beside it",
+  "Delete a block"];
+DIRS :: 4;
+DIR_KEYS :: [DIRS] string.["x_plus", "x_minus", "z_plus", "z_minus"];
+DIR_LABELS :: [DIRS] string.["Toward +x", "Toward -x", "Toward +z", "Toward -z"];
+DIR_X :: [DIRS] int.[1, -1, 0, 0];
+DIR_Z :: [DIRS] int.[0, 0, 1, -1];
+DISTS :: 5;
+DIST_KEYS :: [DISTS] string.["50", "100", "200", "300", "500"];
+DIST_CM :: [DISTS] int.[50, 100, 200, 300, 500];
+TURNS :: 6;
+TURN_KEYS :: [TURNS] string.["plus_15", "plus_45", "plus_90", "minus_15", "minus_45", "minus_90"];
+TURN_DEG :: [TURNS] int.[15, 45, 90, -15, -45, -90];
+SIZES :: 5;
+SIZE_KEYS :: [SIZES] string.["50", "75", "125", "150", "200"];
+SIZE_PCT :: [SIZES] int.[50, 75, 125, 150, 200];
+
+TargetKeys :: struct { key: [ACTORS_MAX] [8] u8; label: [ACTORS_MAX] [160] u8; keys: [ACTORS_MAX] string; labels: [ACTORS_MAX] string; }
+
+ed_target_key :: (t: [] Text, id: s32) { tx_put(t, "b"); tx_n(t, id); }
+
+// The request body into out: its length, or -1 (the note says why). It
+// begins an ask; ed_decide_answer ends it.
+ed_decide_body :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return -1; }
+  if ed_count(e) < 2 { ed_say(e, "Place at least two blocks first"); return -1; }
+  sb: [DECIDE_STATE_MAX] u8;
+  st: [1] Text; st[0].buf = sb[..];
+  ed_state(e, st[..]);
+  tk: [1] TargetKeys;
+  for i: 0..<ed_count(e) {
+    k: [1] Text; k[0].buf = tk[0].key[i][..];
+    ed_target_key(k[..], ed_actor(e, i).id);
+    tk[0].keys[i] = tx_text(k[..]);
+    l: [1] Text; l[0].buf = tk[0].label[i][..];
+    tx_actor(l[..], ed_actor(e, i));
+    tk[0].labels[i] = tx_text(l[..]);
+  }
+  n := ed_count(e);
+  b: [1] SoBody;
+  so_begin(b[..], out, DECIDE_MODEL, "");
+  so_state_text(b[..], tx_text(st[..]));
+  ak := ACTION_KEYS; al := ACTION_LABELS;
+  so_choice(b[..], "action", "Which edit should come next?", ak[..], al[..]);
+  so_choice(b[..], "target", "Which block should that edit be made to, or added beside?", tk[0].keys[0..<n], tk[0].labels[0..<n]);
+  dk := DIR_KEYS; dl := DIR_LABELS;
+  so_choice(b[..], "direction", "If it moves a block or adds one beside it, which way?", dk[..], dl[..]);
+  sk := DIST_KEYS;
+  so_choice(b[..], "distance", "If it moves a block or adds one beside it, how many centimetres between the old and new middles?", sk[..], sk[..]);
+  rk := TURN_KEYS;
+  so_choice(b[..], "turn", "If it turns a block, by how many degrees? plus is anticlockwise seen from above.", rk[..], rk[..]);
+  zk := SIZE_KEYS;
+  so_choice(b[..], "size", "If it resizes a block, to what percent of its size now?", zk[..], zk[..]);
+  body := so_body(b[..]);
+  if body.count == 0 { ed_say(e, "Couldn't write the question"); return -1; }
+  e[0].asking = true;
+  ed_say(e, "Deciding...");
+  return body.count;
+}
+
+// The decision door's address into out: its length.
+ed_decide_url :: (out: [] u8) -> s64 #export_c #effects(all) {
+  t: [1] Text; t[0].buf = out;
+  tx_put(t[..], DECIDE_URL);
+  return t[0].at;
+}
+
+// The NIP-98 Authorization header for a body: "Nostr " and the signed
+// event, into out. key is the app's 32-byte Nostr key, aux 32 fresh random
+// bytes, nonce 16, now_s the Unix time. Its length, or -1.
+ed_decide_sign :: (key: [] u8, aux: [] u8, nonce: [] u8, now_s: s64, body: [] u8, out: [] u8) -> s64 #export_c #effects(all) {
+  return n98s_header(key, aux, nonce, now_s, DECIDE_URL, "POST", body, true, out);
+}
+
+ed_pick_of :: (ar: [] ClArena, text: string, name: string, keys: [] string) -> s64 {
+  c := so_choice_of(ar, text, name);
+  if !c.ok { return -1; }
+  for i: 0..<keys.count { if keys[i] == c.choice { return i; } }
+  return -1;
+}
+
+// The decision door answered with an HTTP status and a body. Carries out
+// the edit it chose and says what it did. True when the scene changed.
+ed_decide_answer :: (e: [] Editor, status: s32, body: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  e[0].asking = false;
+  e[0].dirty = true;
+  if status == 401 || status == 403 { ed_say(e, "The decision door refused this app's key"); return false; }
+  if status == 429 { ed_say(e, "Too many decisions for now; try again in a minute"); return false; }
+  if status != 200 { ed_say(e, "The decision door didn't answer"); return false; }
+  text := cast(string) body;
+  ab: [4096] u8; ar: [1] ClArena; ar[0].buf = ab[..];
+  ak := ACTION_KEYS; dk := DIR_KEYS; sk := DIST_KEYS; rk := TURN_KEYS; zk := SIZE_KEYS;
+  action := so_choice_of(ar[..], text, "action");
+  target := so_choice_of(ar[..], text, "target");
+  if !action.ok || !target.ok { ed_say(e, "The answer had no decision in it"); return false; }
+  act := -1;
+  for i: 0..<ACTIONS { if ak[i] == action.choice { act = i; } }
+  // the target's key is "b" and its id
+  id: s32 = 0;
+  if target.choice.count > 1 && target.choice[0] == 98 {
+    for i: 1..<target.choice.count {
+      c := target.choice[i];
+      if c < 48 || c > 57 { id = 0; break; }
+      id = id * 10 + cast(s32) (c - 48);
+    }
+  }
+  i := ed_index(e, id);
+  if act < 0 || i < 0 { ed_say(e, "The answer named an edit or block that isn't there"); return false; }
+  d := ed_pick_of(ar[..], text, "direction", dk[..]);
+  s := ed_pick_of(ar[..], text, "distance", sk[..]);
+  r := ed_pick_of(ar[..], text, "turn", rk[..]);
+  z := ed_pick_of(ar[..], text, "size", zk[..]);
+  return ed_carry_out(e, act, i, d, s, r, z, action.probability);
+}
+
+DecideEdit :: struct { ok: bool; act: s64; }
+
+// Carries out one decided edit on the actor at index i, with the chosen
+// direction, distance, turn and size (an index each, -1 when missing).
+ed_carry_out :: (e: [] Editor, act: s64, i: s64, d: s64, s: s64, r: s64, z: s64, p: f64) -> bool {
+  e[0].deciding = true;
+  a := ed_actor(e, i);
+  id := cast(int) a.id; ax := cast(int) a.x; ay := cast(int) a.y; az := cast(int) a.z;
+  yaw := cast(int) a.yaw; scale := cast(int) a.scale;
+  dx := DIR_X; dz := DIR_Z; dc := DIST_CM; rt := TURN_DEG; zp := SIZE_PCT;
+  grid := e[0].vp[0].grid;
+  ok := false;
+  if act == 0 && d >= 0 && s >= 0 {
+    ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = id, x = vp_snap(ax + dx[d] * dc[s], grid), y = ay, z = vp_snap(az + dz[d] * dc[s], grid)});
+    e[0].selected = a.id;
+    ok = true;
+  }
+  if act == 1 && r >= 0 {
+    ed_apply(e, WorldEdit.{ok = true, op = WE_ROTATE, id = id, yaw = vp_wrap(yaw + rt[r])});
+    e[0].selected = a.id;
+    ok = true;
+  }
+  if act == 2 && z >= 0 {
+    sc := vp_snap(scale * zp[z] / 100, VP_SIZE_STEP);
+    if sc < EDITOR_SCALE_MIN { sc = EDITOR_SCALE_MIN; }
+    if sc > EDITOR_SCALE_MAX { sc = EDITOR_SCALE_MAX; }
+    ed_apply(e, WorldEdit.{ok = true, op = WE_SCALE, id = id, scale = sc});
+    e[0].selected = a.id;
+    ok = true;
+  }
+  if act == 3 && d >= 0 && s >= 0 {
+    // beside it: at least its own size away along that axis, so the two don't overlap
+    along := ifx dx[d] != 0 then cast(int) a.sx * scale / 100 else cast(int) a.sz * scale / 100;
+    gap := ifx dc[s] > along then dc[s] else along;
+    nid := ed_spawn(e, KIND_BLOCK, cast(s32) vp_snap(ax + dx[d] * gap, grid), cast(s32) vp_snap(az + dz[d] * gap, grid), a.sx, a.sy, a.sz, a.yaw, a.scale);
+    if nid > 0 {
+      n := ed_index(e, nid);
+      e[0].selected = nid;
+      ed_log_actor(e, OP_ADD, ed_actor(e, n), ed_actor(e, n));
+      ok = true;
+    }
+  }
+  if act == 4 && a.kind != KIND_START {
+    e[0].selected = a.id;
+    ed_delete(e);
+    ok = true;
+  }
+  e[0].deciding = false;
+  if !ok { ed_say(e, "The decision didn't fit this scene; try again"); return false; }
+  // say what was done, as the history will tell the model next time
+  t: [1] Text; nb: [NOTE_MAX] u8; t[0].buf = nb[..];
+  done := e[0].log[e[0].log_count - 1];
+  done.decided = false;
+  tx_put(t[..], "Decided: "); tx_step(t[..], done); tx_put(t[..], " (");
+  tx_int(t[..], cast(s64) (p * 100 + 0.5)); tx_put(t[..], "% sure)");
+  ed_say(e, tx_text(t[..]));
+  return true;
+}
+
+ed_say :: (e: [] Editor, s: string) {
+  n := ifx s.count < NOTE_MAX then s.count else NOTE_MAX;
+  for i: 0..<n { e[0].note[i] = s[i]; }
+  e[0].note_len = cast(s32) n;
+  e[0].dirty = true;
+}
+
+// The line under the toolbar: what the last decision did, or why it didn't.
+ed_note :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  n := ifx cast(s64) e[0].note_len < out.count then cast(s64) e[0].note_len else out.count;
+  for i: 0..<n { out[i] = e[0].note[i]; }
+  return n;
+}
+
+ed_asking :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].asking; }
+
+ed_decide_body_max :: () -> s32 #export_c #effects(all) { return DECIDE_BODY_MAX; }
+ed_decide_header_max :: () -> s32 #export_c #effects(all) { return DECIDE_HEADER_MAX; }
+
+// ---- checks
+
+// An answer as the door sends one: each choice with its probability.
+ed_test_answer :: (out: [] u8, action: string, target: string, dir: string, dist: string, turn: string, size: string) -> [] u8 {
+  t: [1] Text; t[0].buf = out;
+  tx_put(t[..], "{\"answers\":{");
+  names := [6] string.["action", "target", "direction", "distance", "turn", "size"];
+  picks := [6] string.[action, target, dir, dist, turn, size];
+  for i: 0..<6 {
+    if i > 0 { tx_put(t[..], ","); }
+    tx_put(t[..], "\""); tx_put(t[..], names[i]); tx_put(t[..], "\":{\"type\":\"choice\",\"choice\":\"");
+    tx_put(t[..], picks[i]); tx_put(t[..], "\",\"probabilities\":{\""); tx_put(t[..], picks[i]);
+    tx_put(t[..], "\":0.8},\"confidence\":0.8}");
+  }
+  tx_put(t[..], "}}");
+  return out[0..<t[0].at];
+}
+
+#test "the request asks six typed questions about this scene, with each block as a target" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  out: [DECIDE_BODY_MAX] u8;
+  n := ed_decide_body(e, out[..]);
+  #assert n > 0 && ed_asking(e);
+  body := cast(string) out[0..<n];
+  #assert json_valid(body);
+  #assert n98s_has(body, "\"model\":\"auto\"");
+  #assert n98s_has(body, "\"action\":{\"type\":\"choice\"");
+  #assert n98s_has(body, "\"b2\":\"block 2 at x 0 z 300, 100 wide, 100 tall, 100 deep\"");
+  #assert n98s_has(body, "\"b1\":\"player start 1");
+  #assert n98s_has(body, "No edits yet.");
+}
+
+#test "the history the model reads says what was moved, by how much, and to where" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  a := ed_actor(e, 1);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) a.id, x = cast(int) a.x + 100, y = 0, z = cast(int) a.z});
+  out: [DECIDE_BODY_MAX] u8;
+  n := ed_decide_body(e, out[..]);
+  #assert n > 0;
+  #assert n98s_has(cast(string) out[0..<n], "1. moved block 2 by x +100 z 0 to x 100 z 300");
+}
+
+#test "an answer to move is carried out on the grid, selected, and said" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  a := ed_actor(e, 1);
+  ab: [2048] u8;
+  ans := ed_test_answer(ab[..], "move", "b2", "z_plus", "200", "plus_15", "150");
+  #assert ed_decide_answer(e, 200, ans);
+  b := ed_actor(e, 1);
+  #assert b.x == a.x && b.z == a.z + 200 && e[0].selected == a.id;
+  nb: [NOTE_MAX] u8;
+  note := cast(string) nb[0..<ed_note(e, nb[..])];
+  #assert note == "Decided: moved block 2 by x 0 z +200 to x 0 z 500 (80% sure)";
+  #assert e[0].log[e[0].log_count - 1].decided;
+}
+
+#test "add places a like block beside the target without overlapping; turn and size snap" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  n := ed_count(e);
+  wall := ed_actor(e, 2);   // 800 wide
+  ab: [2048] u8;
+  #assert ed_decide_answer(e, 200, ed_test_answer(ab[..], "add", "b3", "x_plus", "100", "plus_15", "150"));
+  #assert ed_count(e) == n + 1;
+  c := ed_actor(e, n);
+  #assert c.x == wall.x + 800 && c.z == wall.z && c.sx == wall.sx && c.kind == KIND_BLOCK && e[0].selected == c.id;
+  #assert ed_decide_answer(e, 200, ed_test_answer(ab[..], "turn", "b2", "x_plus", "100", "minus_45", "150"));
+  #assert ed_actor(e, 1).yaw == -45;
+  #assert ed_decide_answer(e, 200, ed_test_answer(ab[..], "size", "b2", "x_plus", "100", "minus_45", "75"));
+  #assert ed_actor(e, 1).scale == 75;
+}
+
+#test "a refusal, a block that is gone, or the start's deletion changes nothing and says why" {
+  t: [1] EdTest; e := t[0].e[..];
+  ed_init(e, 390, 844);
+  n := ed_count(e);
+  ab: [2048] u8;
+  #assert !ed_decide_answer(e, 401, ab[0..<0]);
+  #assert !ed_decide_answer(e, 200, ed_test_answer(ab[..], "move", "b99", "x_plus", "100", "plus_15", "150"));
+  #assert !ed_decide_answer(e, 200, ed_test_answer(ab[..], "delete", "b1", "x_plus", "100", "plus_15", "150"));
+  bad := "{\"error\":{\"code\":\"x\"}}";
+  for i: 0..<bad.count { ab[i] = bad[i]; }
+  #assert !ed_decide_answer(e, 200, ab[0..<bad.count]);
+  #assert ed_count(e) == n && !ed_asking(e);
+}

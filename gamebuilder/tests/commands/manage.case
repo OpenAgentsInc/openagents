@@ -1,0 +1,67 @@
+# Your games and levels managed: a level named in its game, moved into a second game and out, deleted with its file, and a game deleted with its levels kept in no game. A game keeps one level at least and may hold several: a level moves into a game whose type offers every kind of thing it holds, and a crates game is made with three levels, a room each; owners are the person's, when logged in.
+> new-game {"template":"arena"}
+< {"ok":true,"game":1,"level":1,"template":"arena"}
+> new-game {"template":"arena"}
+< {"ok":true,"game":2,"level":2,"template":"arena"}
+> new-game {"template":"racing"}
+< {"ok":true,"game":3,"level":3,"template":"racing"}
+> new-level
+< {"ok":true,"level":4}
+> rename-level {"level":1,"name":"The Pit"}
+< {"ok":true,"level":1,"name":"The Pit"}
+> rename-level {"level":4,"name":"Loose"}
+< {"ok":false,"error":"edit-refused","why":"a level is named in its game: put it in one of yours first (move-level)"}
+> rename-level {"level":1,"name":" no"}
+< {"ok":false,"error":"bad-request","why":"a name is 1 to 48 bytes on one line, with no bar and no space at either end (MINE_TITLE)"}
+> move-level {"level":4,"into":1}
+< {"ok":true,"level":4,"game":1}
+> move-level {"level":4,"into":3}
+< {"ok":false,"error":"edit-refused","why":"that level holds a player start, which a racing game has no kind for: a level moves into a game whose type offers every kind of thing it holds"}
+> move-level {"level":1,"into":2}
+< {"ok":true,"level":1,"game":2}
+> move-level {"level":2,"into":1}
+< {"ok":true,"level":2,"game":1}
+> list-levels
+< {"ok":true,"levels":[{"level":1,"title":"Level 1","game":2,"name":"The Pit","revision":1289232695},{"level":2,"title":"Level 2","game":1,"revision":1193706683},{"level":3,"title":"Level 3","game":3,"revision":1993336886},{"level":4,"title":"Level 4","game":1,"revision":1002654659}]}
+> move-level {"level":4,"into":0}
+< {"ok":true,"level":4,"game":0}
+> list-games
+< {"ok":true,"games":[{"game":1,"title":"Game 1","template":"arena","levels":[2]},{"game":2,"title":"Game 2","template":"arena","levels":[1]},{"game":3,"title":"Game 3","template":"racing","levels":[3]}]}
+> delete-level {"level":3}
+< {"ok":false,"error":"edit-refused","why":"a game keeps one level at least: delete-game deletes the game"}
+> delete-level {"level":4,"dry_run":true}
+< {"ok":true,"level":4,"dry_run":true}
+> delete-level {"level":4}
+< {"ok":true,"level":4}
+> delete-level {"level":4}
+< {"ok":false,"error":"not-found","why":"there is no such level (list-levels)"}
+> owners {"game":1}
+< {"ok":true,"game":1,"owners":[]}
+> set-owners {"game":1,"owners":"me@example.com"}
+< {"ok":false,"error":"not-logged-in","why":"owners are accounts: log in first (login)"}
+> delete-game {"game":1}
+< {"ok":true,"game":1}
+> list-games
+< {"ok":true,"games":[{"game":2,"title":"Game 2","template":"arena","levels":[1]},{"game":3,"title":"Game 3","template":"racing","levels":[3]}]}
+> list-levels
+< {"ok":true,"levels":[{"level":1,"title":"Level 1","game":2,"name":"The Pit","revision":1289232695},{"level":2,"title":"Level 2","game":0,"revision":1193706683},{"level":3,"title":"Level 3","game":3,"revision":1993336886}]}
+> new-game {"template":"crates"}
+< {"ok":true,"game":1,"level":4,"template":"crates","levels":[4,5,6]}
+> list-games
+< {"ok":true,"games":[{"game":1,"title":"Game 1","template":"crates","levels":[4,5,6]},{"game":2,"title":"Game 2","template":"arena","levels":[1]},{"game":3,"title":"Game 3","template":"racing","levels":[3]}]}
+> move-level {"level":5,"into":3}
+< {"ok":false,"error":"edit-refused","why":"that level holds a wall, which a racing game has no kind for: a level moves into a game whose type offers every kind of thing it holds"}
+> move-level {"level":5,"into":2}
+< {"ok":false,"error":"edit-refused","why":"that level holds a wall, which an arena game has no kind for: a level moves into a game whose type offers every kind of thing it holds"}
+> new-game {"template":"crates"}
+< {"ok":true,"game":4,"level":7,"template":"crates","levels":[7,8,9]}
+> move-level {"level":5,"into":4}
+< {"ok":true,"level":5,"game":4}
+> list-games
+< {"ok":true,"games":[{"game":1,"title":"Game 1","template":"crates","levels":[4,6]},{"game":2,"title":"Game 2","template":"arena","levels":[1]},{"game":3,"title":"Game 3","template":"racing","levels":[3]},{"game":4,"title":"Game 4","template":"crates","levels":[7,8,9,5]}]}
+> delete-level {"level":6}
+< {"ok":true,"level":6}
+> move-level {"level":5,"into":1}
+< {"ok":true,"level":5,"game":1}
+> list-games
+< {"ok":true,"games":[{"game":1,"title":"Game 1","template":"crates","levels":[4,5]},{"game":2,"title":"Game 2","template":"arena","levels":[1]},{"game":3,"title":"Game 3","template":"racing","levels":[3]},{"game":4,"title":"Game 4","template":"crates","levels":[7,8,9]}]}

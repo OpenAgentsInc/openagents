@@ -1,0 +1,41 @@
+# The medieval village: a new game opens on the green's nine buildings, things of the level; the palette has the five models and says a building's limits in words with their numbers; one is added at its model's usual scale, scaled, turned by a quarter turn and moved within those limits, and what breaks one is refused in those words; a batch's building is held to them too.
+> new-game {"template":"village"}
+< {"ok":true,"game":1,"level":1,"template":"village"}
+> read-level {"level":1}
+< {"schema":"gamebuilder.level.v1","rev":802029298,"level":1,"game":0,"template":"village","locked":false,"grid":50,"content":"aethyr.content.v1 level 7\nreach 100000\ntable shape id kind:text sx:cm sy:cm sz:cm\n1|ball|120|120|120\n2|britons_house|457|327|539\n3|gauls_house|428|296|572\n4|market|1008|452|777\n5|mossy_rock|107|62|81\n6|rock|134|100|110\n","things":[{"id":1,"kind":1,"is":"ball","x":150,"y":0,"z":450,"yaw":0,"scale":100},{"id":2,"kind":2,"is":"britons_house","x":-1150,"y":0,"z":1100,"yaw":90,"scale":145},{"id":3,"kind":3,"is":"gauls_house","x":1150,"y":0,"z":1400,"yaw":-90,"scale":145},{"id":4,"kind":4,"is":"market","x":0,"y":0,"z":2900,"yaw":180,"scale":135},{"id":5,"kind":3,"is":"gauls_house","x":-1300,"y":0,"z":2400,"yaw":0,"scale":130},{"id":6,"kind":5,"is":"mossy_rock","x":-650,"y":0,"z":350,"yaw":0,"scale":180},{"id":7,"kind":6,"is":"rock","x":750,"y":0,"z":500,"yaw":90,"scale":160},{"id":8,"kind":6,"is":"rock","x":-500,"y":0,"z":1900,"yaw":180,"scale":220},{"id":9,"kind":5,"is":"mossy_rock","x":600,"y":0,"z":2200,"yaw":-90,"scale":200},{"id":10,"kind":5,"is":"mossy_rock","x":1500,"y":0,"z":300,"yaw":90,"scale":260}]}
+> list-palette {"level":1}
+< {"ok":true,"template":"village","kinds":[{"kind":"block","name":"Block","one":false},{"kind":"ball","name":"Ball","one":false},{"kind":"britons_house","name":"Britons house","one":false},{"kind":"gauls_house","name":"Gauls house","one":false},{"kind":"market","name":"Market","one":false},{"kind":"mossy_rock","name":"Mossy rock","one":false},{"kind":"rock","name":"Rock","one":false}],"game_type":"medieval village","building":"building here: the green's buildings are things of the world like any other, yours to move, turn and remove, and more may be put, each at a scale of its own. kinds here: britons_house, gauls_house, market, mossy_rock and rock (models of their own: a building's size is its model's, and how big it stands is its scale, 50 to 300 percent of the model). a building stands on the ground, turned 0, 90, 180 or 270 degrees, never in another building or in the person. at most 33 buildings stand at once, and their solid boxes are 512 between them (a britons house 43, a gauls house 17, a market 117, a mossy rock 1, a rock 6).","limits":"things stay within 200 m of the middle (x and z from -20000 to 20000 cm); a thing's bottom is at most 12 m up (y 0 to 1200 cm); sides are 0.25 to 12 m (25 to 1200 cm, size times scale); a ball's radius is 0.15 to 1.5 m; at most 512 things. buildings: at most 33 stand, sharing 512 solid boxes (britons_house 43, gauls_house 17, market 117, mossy_rock 1, rock 6); a building's scale is 50 to 300 percent of its model; it stands on the ground (y 0), turned 0, 90, 180 or 270 degrees, never in another building."}
+> add {"level":1,"kind":"market","x":3000,"z":-3000}
+< {"ok":true,"id":11,"kind":"market","rev":1004457712}
+> set-field {"level":1,"thing":11,"field":"scale","value":200}
+< {"ok":true,"id":11,"field":"Scale","value":200,"rev":1150583627}
+> set-field {"level":1,"thing":11,"field":"scale","value":301}
+< {"ok":false,"error":"edit-refused","why":"that scale is out of range: a building stands at 50 to 300 percent of its model."}
+> set-field {"level":1,"thing":11,"field":"turn","value":90}
+< {"ok":true,"id":11,"field":"Turn","value":90,"rev":1885772969}
+> set-field {"level":1,"thing":11,"field":"turn","value":45}
+< {"ok":false,"error":"edit-refused","why":"a building turns by quarter turns: 0, 90, 180 or 270 degrees."}
+> set-field {"level":1,"thing":11,"field":"up","value":100}
+< {"ok":false,"error":"edit-refused","why":"a building stands on the ground: its bottom is at 0."}
+> set-field {"level":1,"thing":11,"field":"width","value":500}
+< {"ok":false,"error":"edit-refused","why":"a building's size is its model's: set its scale, 50 to 300 percent."}
+> set-field {"level":1,"thing":11,"field":"north","value":2900}
+< {"ok":true,"id":11,"field":"North","value":2900,"rev":494941643}
+> set-field {"level":1,"thing":11,"field":"east","value":0}
+< {"ok":false,"error":"edit-refused","why":"no room there: something is standing in that place."}
+> add {"level":1,"kind":"rock","x":0,"z":2900}
+< {"ok":true,"id":12,"kind":"rock","rev":599161524}
+> add {"level":1,"kind":"market","x":-3000,"z":-3000}
+< {"ok":true,"id":13,"kind":"market","rev":589140135}
+> add {"level":1,"kind":"market","x":0,"z":-6000}
+< {"ok":false,"error":"edit-refused","why":"no more buildings: a level's buildings share 512 solid boxes (449 used) and at most 33 stand. delete one to place another."}
+> delete {"level":1,"thing":2}
+< {"ok":true,"id":2,"rev":184951715}
+> read-level {"level":1}
+< {"schema":"gamebuilder.level.v1","rev":1732662630,"level":1,"game":0,"template":"village","locked":false,"grid":50,"content":"aethyr.content.v1 level 7\nreach 100000\ntable shape id kind:text sx:cm sy:cm sz:cm\n1|ball|120|120|120\n2|britons_house|457|327|539\n3|gauls_house|428|296|572\n4|market|1008|452|777\n5|mossy_rock|107|62|81\n6|rock|134|100|110\n","things":[{"id":1,"kind":1,"is":"ball","x":150,"y":0,"z":450,"yaw":0,"scale":100},{"id":2,"kind":3,"is":"gauls_house","x":1150,"y":0,"z":1400,"yaw":-90,"scale":145},{"id":3,"kind":4,"is":"market","x":0,"y":0,"z":2900,"yaw":180,"scale":135},{"id":4,"kind":3,"is":"gauls_house","x":-1300,"y":0,"z":2400,"yaw":0,"scale":130},{"id":5,"kind":5,"is":"mossy_rock","x":-650,"y":0,"z":350,"yaw":0,"scale":180},{"id":6,"kind":6,"is":"rock","x":750,"y":0,"z":500,"yaw":90,"scale":160},{"id":7,"kind":6,"is":"rock","x":-500,"y":0,"z":1900,"yaw":180,"scale":220},{"id":8,"kind":5,"is":"mossy_rock","x":600,"y":0,"z":2200,"yaw":-90,"scale":200},{"id":9,"kind":5,"is":"mossy_rock","x":1500,"y":0,"z":300,"yaw":90,"scale":260},{"id":10,"kind":4,"is":"market","x":3000,"y":0,"z":2900,"yaw":90,"scale":200},{"id":11,"kind":6,"is":"rock","x":-1000,"y":0,"z":1900,"yaw":0,"scale":160},{"id":12,"kind":4,"is":"market","x":-3000,"y":0,"z":-3000,"yaw":0,"scale":135}]}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1732662630,"do":"apply","edits":[{"op":"spawn","id":0,"kind":6,"x":2000,"y":0,"z":-5000,"yaw":0,"scale":160},{"op":"spawn","id":0,"kind":6,"x":2050,"y":0,"z":-5000,"yaw":0,"scale":160}]}}
+< {"ok":false,"error":"refused","rev":1732662630,"why":"no room there: something is standing in that place."}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1732662630,"do":"apply","edits":[{"op":"spawn","id":0,"kind":6,"x":2000,"y":0,"z":-5000,"yaw":0,"scale":400}]}}
+< {"ok":false,"error":"refused","rev":1732662630,"edit":0,"why":"that scale is out of range: a building stands at 50 to 300 percent of its model."}
+> apply-edits {"level":1,"batch":{"schema":"world.edit.v1","rev":1732662630,"do":"apply","edits":[{"op":"spawn","id":0,"kind":6,"x":2000,"y":0,"z":-5000,"yaw":90,"scale":160}]}}
+< {"ok":true,"rev":1221822791,"ids":[13],"summary":"added 1 rock","things":[{"id":13,"kind":"rock","name":"Rock 13","how":"added"}]}

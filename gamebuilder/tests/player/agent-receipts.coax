@@ -1,0 +1,16 @@
+#load "../../../coax/lib/json/json.coax";
+// Only completed first-party start responses count. Missing/malformed
+// telemetry is unknown, never evidence that no job started before consent.
+pt_agent_start_count :: (text:string)->int {
+  if text.count<1 {return -1;}at:=0;count:=0;d:[1]Jv;nodes:[64]JvNode;
+  while at<text.count {end:=at;while end<text.count && text[end]!='\n' {end+=1;}
+    if end==at || !jv_parse(d[..],text[at..<end],nodes[..]) {return -1;}
+    if jv_raw(d[0],jv_get(d[0],0,"method"))=="Network.responseReceived" && jv_raw(d[0],jv_get(d[0],0,"url"))=="https://gamebuilder.org/api/gamebuilder/agents/v1" && jv_int(d[0],jv_get(d[0],0,"status"),0)==202 {count+=1;}at=end+1;
+  }return count;
+}
+#test "agent start proof requires one completed first-party 202 and rejects missing telemetry" {
+  #assert pt_agent_start_count("")==-1 && pt_agent_start_count("broken\n")==-1;
+  #assert pt_agent_start_count("{\"method\":\"Network.responseReceived\",\"url\":\"https://gamebuilder.org/api/gamebuilder/agents/v1\",\"status\":202}\n")==1;
+  #assert pt_agent_start_count("{\"method\":\"Network.responseReceived\",\"url\":\"https://gamebuilder.org/api/gamebuilder/agents/v1\",\"status\":200}\n")==0;
+  #assert pt_agent_start_count("{\"method\":\"Network.responseReceived\",\"url\":\"https://other.example/api/gamebuilder/agents/v1\",\"status\":202}\n")==0;
+}

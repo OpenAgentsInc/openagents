@@ -1,0 +1,71 @@
+// The shipped engine registry is the settings denominator, including new rows.
+#load "../../../metaverse-engine/state/world-tunables.coax";
+// Wait before a gesture, never retry it: conditional reset controls and
+// wrapped rows can move the panel after selection or a value change.
+pt_settings_notice :: (p:[]Pt)->bool {
+ // A successful placement can follow a refused occupied spot while its
+ // five-second notice remains. Its later removal moves this whole panel;
+ // a briefly stable target alone cannot detect that scheduled transition.
+ if pt_bool(p,"!!document.getElementById('limit')") {
+  gone:=pt_wait(p,"!document.getElementById('limit')",10000);pt_event(p,"settings-layout","transient limit notice cleared before gesture",gone);return gone;
+ }
+ return true;
+}
+pt_setting_stable :: (p:[]Pt,id:string)->bool {
+ if !pt_settings_notice(p) {return false;}
+ end:=proc_now_ms()+2500;since:=proc_now_ms();last_x:=-1;last_y:=-1;
+ while proc_now_ms()<end {
+  r:=pb_target(p[0].c[..],id);x:=-1;y:=-1;if r>=0 && jv_kind(cdp_doc(p[0].c[..]),r)==JV_OBJECT {d:=cdp_doc(p[0].c[..]);x=jv_int(d,jv_get(d,r,"x"),-1);y=jv_int(d,jv_get(d,r,"y"),-1);}
+  if x<0 || y<0 || x!=last_x || y!=last_y {since=proc_now_ms();last_x=x;last_y=y;}
+  else if proc_now_ms()-since>=250 {return true;}
+  if !pb_wait(pt_dir(p),50) {return false;}
+ }return false;
+}
+pt_setting_default_expr :: (base:string,out:[]u8)->string {
+ q:[256]u8;o:[1]Jo;jo_start(o[..],q[..]);jo_str(o[..],base);n:=ws_put(out,0,"(()=>{const b=");n=ws_put(out,n,jo_text(o[..]));n=ws_put(out,n,";const e=document.getElementById(b)||document.getElementById(b+'.t')||document.getElementById(b+'.c0'),r=e?.closest('.prow');return !!r&&!r.classList.contains('on')&&!document.getElementById(b+'.r')})()");return cast(string)out[0..<n];
+}
+pt_setting_trace :: (p:[]Pt,base:string,phase:string) {
+ q:[512]u8;o:[1]Jo;jo_start(o[..],q[..]);jo_arr(o[..]);jo_str(o[..],base);jo_str(o[..],phase);jo_end(o[..]);
+ js:[4096]u8;n:=ws_put(js[..],0,"(()=>{const [base,phase]=");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,";const e=document.getElementById(base)||document.getElementById(base+'.t')||document.getElementById(base+'.c0'),row=e?.closest('.prow'),r=e?.getBoundingClientRect(),panel=document.getElementById('world')||document.getElementById('sel');return {case:'settings-row',control:base,phase,changed:row?.classList.contains('on')??null,value:e?.value??null,text:document.getElementById(base+'.v')?.textContent??null,pressed:e?.getAttribute('aria-pressed')??null,resetPresent:!!document.getElementById(base+'.r'),rect:r?{x:r.x,y:r.y,w:r.width,h:r.height}:null,scrollTop:panel?.scrollTop??null,active:document.activeElement?.id}})()");
+ r:=pb_read(p[0].c[..],cast(string)js[0..<n]);if r<0 {return;}path:[4096]u8;_=fs_append(pt_path(p,"measurements.jsonl",path[..]),jv_raw(cdp_doc(p[0].c[..]),r));_=fs_append(pt_path(p,"measurements.jsonl",path[..]),"\n");
+}
+pt_reveal_setting :: (p:[]Pt,id:string)->bool {
+  if !pt_settings_notice(p) {return false;}
+  quoted:[256]u8;o:[1]Jo;jo_start(o[..],quoted[..]);jo_str(o[..],id);js:[2048]u8;n:=ws_put(js[..],0,"(()=>{const e=document.getElementById(");n=ws_put(js[..],n,jo_text(o[..]));n=ws_put(js[..],n,");const p=(document.getElementById('world')||document.getElementById('pal')||document.getElementById('sel'));if(!e||!p)return -2;const r=e.getBoundingClientRect(),q=p.getBoundingClientRect();return r.top<Math.max(q.top,0)+8?-1:r.bottom>Math.min(q.bottom,innerHeight)-8?1:0})()");
+  for attempt:0..<20 {
+    side:=cast(int)pt_number(p,cast(string)js[0..<n],-2);if side==0 {return true;}if side==-2 {return false;}
+    // Start a native pan in the panel's padding. Starting on a range changes
+    // its value before the browser recognizes the vertical scrolling gesture.
+    x:=cast(int)pt_number(p,"(()=>{const r=(document.getElementById('world')||document.getElementById('pal')||document.getElementById('sel')).getBoundingClientRect();return r.left+6})()",-1);y:=cast(int)pt_number(p,"(()=>{const r=(document.getElementById('world')||document.getElementById('pal')||document.getElementById('sel')).getBoundingClientRect();return r.y+r.height/2})()",-1);
+    if x<0 || y<0 {return false;}_:=pb_heartbeat(pt_dir(p));
+    if p[0].touch {w:=pt_number(p,"innerWidth",1440);h:=pt_number(p,"innerHeight",900);_=pt_drag(p,cast(int)(cast(f64)x*1440/w),cast(int)(cast(f64)y*900/h),cast(int)(cast(f64)x*1440/w),cast(int)(cast(f64)(y-side*130)*900/h));}
+    else {_:=pb_mouse(p[0].c[..],"mouseWheel",x,y,"none",0,side*300);}
+    _:=pb_wait(pt_dir(p),150);
+  }return false;
+}
+pt_settings :: (p:[]Pt)->bool {return pt_settings_group(p,false);}
+pt_settings_group :: (p:[]Pt,thing:bool)->bool {
+  ok:=true;
+  selected:[64]u8;sn:=0;if thing {r:=pb_read(p[0].c[..],"document.getElementById('sel.id')?.textContent||''");if r<0 {return false;}sn=jv_str(cdp_doc(p[0].c[..]),r,selected[..]);if sn<2 || selected[0]!='b' {return false;}}
+  for row:TW_ROWS {
+    if (row.scope==TUN_THING)!=thing {continue;}id:[128]u8;n:=ws_put(id[..],0,"p.");if thing {n=ws_put(id[..],n,cast(string)selected[0..<sn]);n=ws_put(id[..],n,".");n=ws_put(id[..],n,tun_name(row.path));}else {n=ws_put(id[..],n,row.path);}base:=cast(string)id[0..<n];
+    control:[160]u8;cn:=ws_put(control[..],0,base);
+    if row.kind==TUN_BOOL {cn=ws_put(control[..],cn,".t");}else if row.kind==TUN_CHOICE {cn=ws_put(control[..],cn,ifx row.def==0 then ".c1" else ".c0");}
+    target:=cast(string)control[0..<cn];revealed:=pt_reveal_setting(p,target) && pt_setting_stable(p,target);changed:=false;pt_setting_trace(p,base,"before");
+    if revealed && (row.kind==TUN_NUMBER || row.kind==TUN_WHOLE) {
+      // A quarter/three-quarter click can round exactly to a row's default
+      // (camera.distance, for example). Select a different endpoint instead.
+      quoted:[256]u8;o:[1]Jo;jo_start(o[..],quoted[..]);jo_str(o[..],target);js:[1024]u8;j:=ws_put(js[..],0,"(()=>{const r=document.getElementById(");j=ws_put(js[..],j,jo_text(o[..]));j=ws_put(js[..],j,").getBoundingClientRect();return {x:Math.round(");j=ws_put(js[..],j,ifx row.def==row.low then "r.right-1" else "r.x+1");j=ws_put(js[..],j,"),y:Math.round(r.y+r.height/2)}})()");r:=pb_read(p[0].c[..],cast(string)js[0..<j]);
+      if r>=0 {d:=cdp_doc(p[0].c[..]);x:=jv_int(d,jv_get(d,r,"x"),-1);y:=jv_int(d,jv_get(d,r,"y"),-1);if x>=0 && y>=0 {changed=ifx p[0].touch then pb_touch_tap(p[0].c[..],x,y) else pb_click(p[0].c[..],x,y);}}
+    }else if revealed {changed=pt_tap(p,target);}
+    _:=pb_wait(pt_dir(p),200);pt_setting_trace(p,base,"changed");reset:[160]u8;rn:=ws_put(reset[..],0,base);rn=ws_put(reset[..],rn,".r");reset_id:=cast(string)reset[0..<rn];
+    // A reset exists only after the product has accepted a different value.
+    accepted:=changed && pt_reveal_setting(p,reset_id) && pt_setting_stable(p,reset_id) && pt_tap(p,reset_id);expr:[1024]u8;restored:=accepted && pt_wait(p,pt_setting_default_expr(base,expr[..]),2000);pt_setting_trace(p,base,"reset");pt_event(p,"settings-row",row.path,restored);ok=ok && restored;
+  }
+  if !thing {_:=pt_reveal_setting(p,"p.world.gravity");}
+  // The world panel also lists changed individual things. Check the exact
+  // registry rows this group exercised; a failed material reset remains its
+  // own failure rather than also becoming a false world-gravity failure.
+  defaults:=true;for row:TW_ROWS {if (row.scope==TUN_THING)!=thing {continue;}id:[128]u8;n:=ws_put(id[..],0,"p.");if thing {n=ws_put(id[..],n,cast(string)selected[0..<sn]);n=ws_put(id[..],n,".");n=ws_put(id[..],n,tun_name(row.path));}else {n=ws_put(id[..],n,row.path);}expr:[1024]u8;defaults=pt_bool(p,pt_setting_default_expr(cast(string)id[0..<n],expr[..])) && defaults;}
+  pt_event(p,"settings-row","all exercised rows restored to defaults",defaults);return ok && defaults;
+}

@@ -1,0 +1,625 @@
+// gamebuilder mcp: the command table as MCP tools (docs/programmatic-access.md,
+// stage C2), JSON-RPC 2.0 with one request a line, as the openagents CLI's
+// apps/openagents-cli/mcp.coax does.
+//   claude mcp add gamebuilder -- gamebuilder mcp
+// Each tool is one row with GB_MCP: its name is gb_VERB with "-" as "_", its
+// input schema comes from the row's argument and flag kinds and their bounds.
+// A call's JSON arguments become the words the CLI reads (gb_mcp_words), read
+// by the same gb_args_read, and the surface carries the row out with the same
+// gb_run in its own process: no child is started, and the answer is the
+// CLI's own JSON. The engine row is answered here, with the commit the surface
+// was built on. The account rows are not tools: only the person logs in.
+//
+// The table is 22 rows, so every offered row is listed. A find and a call
+// meta-tool, as the openagents CLI has (realm_find, realm_call), wait until it
+// is long enough to need them. Not here: --attach (the open level in the app),
+// resources, prompts and paging.
+//   scripts/check.sh
+// The secp256k1 tables the editor loads are built at compile time (editor.coax).
+#run_steps 100000000;
+#load "commands.coax";
+
+GB_MCP_PROTOCOL :: "2025-06-18";
+GB_MCP_WORDS :: 8;
+GB_MCP_BUF :: 70000;        // a call's unescaped strings: a batch (WE_BATCH_BODY) and its words
+
+// agent: the calls are an attached agent's, with a record (attached.coax): attached to the app,
+// it may take back its own turns too (undo-turn).
+GbMcpCfg :: struct { read_only: bool; version: string; pin: string; attach: bool; agent: bool; }
+
+// A tools/call the surface carries out: its row and its words, read; the request's id, kept for the answer.
+GbMcpCall :: struct {
+  v: int;                   // the row, or -1: nothing to run
+  a: [1] GbArgs;           // its words, read (one: gb_args_read takes a slice)
+  id: [256] u8; id_n: int; id_kind: int;
+  buf: [GB_MCP_BUF] u8; used: int;
+  init: bool;               // the request was initialize: the surface opens the client's record (attached.coax)
+  client: [64] u8; client_n: int;   // initialize's clientInfo.name, as sent
+  args: string;             // a tools/call's arguments as sent (JSON), for its record's log
+}
+
+// ---- the tools, from the table
+
+gb_mcp_offered :: (c: GbCommand, read_only: bool) -> bool {
+  return (c.surfaces & GB_MCP) != 0 && (!read_only || c.effect == "read");
+}
+// Attached to the running app (--attach), the app's own rows are offered too: undo, the tools,
+// the clipboard (attach.coax). Never one that spends (Decide): the person presses that.
+gb_mcp_offered_attached :: (c: GbCommand, read_only: bool, attach: bool) -> bool {
+  if gb_mcp_offered(c, read_only) { return true; }
+  return attach && (c.surfaces & GB_UI) != 0 && c.effect != "spend" && c.area != "lobby" && (!read_only || c.effect == "read");
+}
+// An attached agent with a record (attached.coax) on the app may also take back its own turns.
+gb_mcp_offered_cfg :: (c: GbCommand, cfg: GbMcpCfg) -> bool {
+  if gb_mcp_offered_attached(c, cfg.read_only, cfg.attach) { return true; }
+  return cfg.attach && cfg.agent && !cfg.read_only && c.verb == "undo-turn";
+}
+
+// A call's words, read (gb_args_read), written back as the row's arguments by their MCP names:
+// what --attach sends the app, which reads them again as an MCP call's (attach.coax).
+gb_args_json :: (v: int, a: GbArgs, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  c := GB_COMMANDS[v];
+  jo_obj(o[..]);
+  for k: 0..<gb_parts(c.arguments) {
+    kind := gb_part(c.arguments, k);
+    jo_key(o[..], gb_mcp_prop(kind));
+    if kind == "level" { jo_int(o[..], cast(int) a.level); }
+    else if kind == "game" { jo_int(o[..], cast(int) a.game); }
+    else if kind == "thing" { jo_int(o[..], cast(int) a.thing); }
+    else if kind == "template" { jo_str(o[..], TEMPLATE_ID[a.plays]); }
+    else if kind == "kind" { jo_str(o[..], LEVEL_KIND[a.kind]); }
+    else if kind == "tool" { jo_str(o[..], GB_TOOL_WORD[a.tool]); }
+    else if kind == "field" {
+      lb: [16] u8; n := 0;
+      for ch: FIELD_NAME[a.field] { if n < 16 { lb[n] = ifx ch >= 'A' && ch <= 'Z' then ch + 32 else ch; n += 1; } }
+      jo_str(o[..], cast(string) lb[0..<n]);
+    } else if kind == "value" {
+      if a.field == FIELD_KIND { jo_str(o[..], LEVEL_KIND[a.value]); } else { jo_int(o[..], cast(int) a.value); }
+    } else if kind == "batch" { jo_str(o[..], a.batch); }
+    else if kind == "revision" { jo_int(o[..], cast(int) a.revision); }
+    else if kind == "content" { jo_str(o[..], a.content); }
+    else if kind == "agent" { jo_str(o[..], a.aid); }
+    else if kind == "role" { jo_str(o[..], AGR_KIND_ID[a.role]); }
+    else if kind == "job" || kind == "message" || kind == "answer" { jo_str(o[..], a.say); }
+    else if kind == "after" { jo_int(o[..], cast(int) a.after); }
+    else if kind == "report" || kind == "status" { jo_value(o[..]); jo_put(o[..], a.report); }
+    else if kind == "picture" { jo_value(o[..]); jo_put(o[..], a.picture); }
+    else if kind == "computer" { jo_str(o[..], a.on); }
+    else if kind == "region" { jo_str(o[..], a.region); }
+    else if kind == "side" { jo_int(o[..], cast(int) a.side); }
+    else if kind == "shipped" || kind == "scrapper" || kind == "slot" || kind == "player" || kind == "line" || kind == "member" { jo_int(o[..], cast(int) a.pick); }
+    else if kind == "reply" { jo_str(o[..], ifx a.yes then "yes" else "no"); }
+    else if kind == "look" { jo_str(o[..], ifx a.yes then "on" else "off"); }
+    else if kind == "say" { jo_str(o[..], a.say); }
+    else if kind == "into" { jo_int(o[..], cast(int) a.into); }
+    else if kind == "owners" { jo_str(o[..], a.owners); }
+    else if kind == "published" { jo_int(o[..], cast(int) a.pub); }
+    else if kind == "version" { jo_int(o[..], cast(int) a.version); }
+    else if kind == "feedback" { jo_int(o[..], cast(int) a.item); }
+    else if kind == "which" { jo_str(o[..], PIC_WHICH_WORD[a.which]); }
+    else { jo_str(o[..], a.text); }
+  }
+  if a.at { jo_key(o[..], "x"); jo_int(o[..], cast(int) a.x); jo_key(o[..], "z"); jo_int(o[..], cast(int) a.z); }
+  if a.dry { jo_key(o[..], "dry_run"); jo_bool(o[..], true); }
+  if a.key.count > 0 { jo_key(o[..], "key"); jo_str(o[..], a.key); }
+  if a.who.count > 0 { jo_key(o[..], "agent"); jo_str(o[..], a.who); }
+  if gb_has_flag(v, "--mode") {
+    jo_key(o[..], "mode"); jo_str(o[..], PLAYTEST_MODE_WORD[a.mode]);
+    jo_key(o[..], "size"); jo_int(o[..], cast(int) a.size);
+    if gb_has_flag(v, "--seconds") {
+      jo_key(o[..], "seconds"); jo_int(o[..], cast(int) a.seconds);
+      jo_key(o[..], "seed"); jo_int(o[..], cast(int) a.seed);
+    }
+  }
+  jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}
+gb_mcp_name :: (verb: string, out: [] u8) -> string {
+  n := 0;
+  for ch: "gb_" { if n < out.count { out[n] = ch; n += 1; } }
+  for ch: verb { if n < out.count { out[n] = ifx ch == '-' then cast(u8) '_' else ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// An argument kind's property name: the kind's own, but a game's name is "name".
+gb_mcp_prop :: (kind: string) -> string { return ifx kind == "text" then "name" else kind; }
+// A flag's property name: --x is x, --dry-run is dry_run.
+gb_mcp_flag :: (flag: string, out: [] u8) -> string {
+  n := 0;
+  for i: 2..<flag.count { if n < out.count { out[n] = ifx flag[i] == '-' then cast(u8) '_' else flag[i]; n += 1; } }
+  return cast(string) out[0..<n];
+}
+gb_mcp_int :: (o: [] Jo, min: s64, max: s64, what: string) {
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "integer"); jo_key(o, "minimum"); jo_int(o, min); jo_key(o, "maximum"); jo_int(o, max);
+  jo_key(o, "description"); jo_str(o, what); jo_end(o);
+}
+gb_mcp_words :: (o: [] Jo, words: [] const string, what: string) {
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "enum"); jo_arr(o); for w: words { jo_str(o, w); } jo_end(o);
+  jo_key(o, "description"); jo_str(o, what); jo_end(o);
+}
+// The schema of one argument kind, with its bounds: the same bounds gb_args_read holds a call to.
+gb_mcp_kind :: (o: [] Jo, kind: string) {
+  if kind == "level" { gb_mcp_int(o, 0, LEVEL_MAX, "a level's number (gb_list_levels); 0 is Scrappers Arena's own level, which gb_copy_level copies"); }
+  else if kind == "game" { gb_mcp_int(o, 1, LEVEL_MAX, "a game's number (gb_list_games)"); }
+  else if kind == "thing" { gb_mcp_int(o, 1, 999999999, "a thing's id (gb_read_level)"); }
+  else if kind == "tool" { gb_mcp_words(o, GB_TOOL_WORD[..], "what a drag on the selection does"); }
+  else if kind == "template" { gb_mcp_words(o, TEMPLATE_ID[..], "what the game is made on (gb_list_templates)"); }
+  else if kind == "kind" { gb_mcp_words(o, LEVEL_KIND[..], "a palette word; a level takes only its template's (gb_list_palette). In a batch, a kind is a shape row's number instead"); }
+  else if kind == "field" {
+    lower: [FIELDS] string; lb: [FIELDS * 16] u8;
+    for i: 0..<FIELDS {
+      from := i * 16; n := 0;
+      for ch: FIELD_NAME[i] { if n < 16 { lb[from + n] = ifx ch >= 'A' && ch <= 'Z' then ch + 32 else ch; n += 1; } }
+      lower[i] = cast(string) lb[from..<from + n];
+    }
+    gb_mcp_words(o, lower[..], "which of the thing's fields (gb_list_fields gives each one's unit and range); width, height or depth gives the thing a shape row of its own; distance (cm) and period (ms there and back) are a moving platform's or a lift's alone");
+  } else if kind == "value" {
+    jo_obj(o); jo_key(o, "type"); jo_arr(o); jo_str(o, "integer"); jo_str(o, "string"); jo_end(o);
+    jo_key(o, "description"); jo_str(o, "a whole number in the field's unit (gb_list_fields), or for the field kind, a palette word"); jo_end(o);
+  } else if kind == "batch" {
+    jo_obj(o); jo_key(o, "type"); jo_arr(o); jo_str(o, "object"); jo_str(o, "string"); jo_end(o);
+    jo_key(o, "description"); jo_str(o, "a world.edit.v1 batch: {schema, rev, do, edits}, each edit's fields in the wire's order (see the server's instructions); or a batch file's path"); jo_end(o);
+  } else if kind == "revision" { gb_mcp_int(o, 0, 2147483647, "the level's revision when its file was read (gb_read_content's), or 0 for a level that isn't there yet"); }
+  else if kind == "content" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, AGENT_FILE_MAX);
+    jo_key(o, "description"); jo_str(o, "a level's whole file, as gb_read_content gives it (world.doc.v1)"); jo_end(o);
+  } else if kind == "region" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "pattern"); jo_str(o, "^(box:-?[0-9]{1,9}(,-?[0-9]{1,9}){3}|things:[0-9]{1,9}(,[0-9]{1,9}){0,15})$");
+    jo_key(o, "description"); jo_str(o, "what you claim: a box, box:X0,Z0,X1,Z1 (two corners in centimetres, at most 10000 a side, from the ground up), or things by id, things:ID,ID (1 to 16)"); jo_end(o);
+  } else if kind == "text" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, MINE_TITLE);
+    jo_key(o, "description"); jo_str(o, "a name of one line, with no bar and no space at either end"); jo_end(o);
+  } else if kind == "agent" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "pattern"); jo_str(o, "^[a-z][a-z0-9-]{0,31}$");
+    jo_key(o, "description"); jo_str(o, "an agent's id (gb_agents)"); jo_end(o);
+  } else if kind == "role" { gb_mcp_words(o, AGR_KIND_ID[..], "what the agent is: build (a Builder) and playtest (a Playtester) run today"); }
+  else if kind == "job" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, AGR_JOB);
+    jo_key(o, "description"); jo_str(o, "what it should do, in the person's words, on one line"); jo_end(o);
+  } else if kind == "message" || kind == "answer" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, AGR_MESSAGE_MAX);
+    jo_key(o, "description"); jo_str(o, ifx kind == "message" then "the message, in the person's words" else "one of the answers its question offered (gb_agent_events)"); jo_end(o);
+  } else if kind == "after" { gb_mcp_int(o, 0, AGR_EVENTS, "the events after this one (0: from the first); an answer's next reads on"); }
+  else if kind == "picture" {
+    jo_obj(o); jo_key(o, "type"); jo_arr(o); jo_str(o, "object"); jo_str(o, "string"); jo_end(o);
+    jo_key(o, "description"); jo_str(o, "one picture as the pictures row's file keeps it (gamebuilder.picture.v1: its level, revision, which, when it was made, and its JPEG of at most 8,192 bytes in base64); or a file's path holding one"); jo_end(o);
+  }
+  else if kind == "report" {
+    jo_obj(o); jo_key(o, "type"); jo_arr(o); jo_str(o, "object"); jo_str(o, "string"); jo_end(o);
+    jo_key(o, "description"); jo_str(o, "{record, from, events}: the agent's record (gamebuilder.agent.v1), how many of its events were sent before, and up to 20 events after them (gamebuilder.agent.event.v1); or a report file's path"); jo_end(o);
+  } else if kind == "status" {
+    jo_obj(o); jo_key(o, "type"); jo_arr(o); jo_str(o, "object"); jo_str(o, "string"); jo_end(o);
+    jo_key(o, "description"); jo_str(o, "the computer as its resident service says it (gamebuilder.computer.v1): its name, whether it is on, its slots and the agents in them, and which coding agents are installed and signed in; or its file's path"); jo_end(o);
+  } else if kind == "computer" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, AGR_COMPUTER);
+    jo_key(o, "description"); jo_str(o, "one of your computers, by its name (gb_computers)"); jo_end(o);
+  } else if kind == "shipped" || kind == "scrapper" || kind == "slot" || kind == "player" || kind == "line" || kind == "member" || kind == "side" {
+    gb_mcp_int(o, 0, gb_pick_most(kind), gb_pick_words(kind));
+  } else if kind == "into" { gb_mcp_int(o, 0, LEVEL_MAX, "a game of yours (gb_list_games), or 0 for none"); }
+  else if kind == "published" { gb_mcp_int(o, 1, 1000000, "a published game of yours (gb_published)"); }
+  else if kind == "version" { gb_mcp_int(o, 1, 1000000, "a version of it (gb_versions)"); }
+  else if kind == "feedback" { gb_mcp_int(o, 1, 1000000, "an item of its feedback (gb_feedback)"); }
+  else if kind == "owners" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 3); jo_key(o, "maxLength"); jo_int(o, OWNERS_MAX * (ACCOUNT_MAX + 1));
+    jo_key(o, "description"); jo_str(o, "1 to 4 accounts' emails, a comma between each, yours among them"); jo_end(o);
+  } else if kind == "reply" { gb_mcp_words(o, GB_REPLY_WORD[..], "your answer to the invitation"); }
+  else if kind == "which" { gb_mcp_words(o, PIC_WHICH_WORD[1..<4], "which picture of that revision: the level before an agent's change, after it, or a play-test's"); }
+  else if kind == "look" { gb_mcp_words(o, GB_LOOK_WORD[..], "look for a quick match, or stop"); }
+  else if kind == "say" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, 1); jo_key(o, "maxLength"); jo_int(o, LB_TEXT);
+    jo_key(o, "description"); jo_str(o, "what to say, in the person's own words"); jo_end(o);
+  } else if kind == "name" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "minLength"); jo_int(o, LB_NAME_MIN); jo_key(o, "maxLength"); jo_int(o, LB_NAME);
+    jo_key(o, "description"); jo_str(o, "the name the lobby shows you by"); jo_end(o);
+  } else { jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_end(o); }
+}
+gb_mcp_flag_schema :: (o: [] Jo, kind: string) {
+  if kind == "cm" { gb_mcp_int(o, -AGENT_REACH, AGENT_REACH, "centimetres from the level's middle (x east, z north); x and z come together; snapped to the grid"); }
+  else if kind == "key" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "pattern"); jo_str(o, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+    jo_key(o, "description"); jo_str(o, "a key of your own for this call: the first result sent with it is kept, and the same call with the same key answers that result again and changes nothing, so a call can be retried safely"); jo_end(o);
+  } else if kind == "agent" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "pattern"); jo_str(o, "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$");
+    jo_key(o, "description"); jo_str(o, "your name as an agent, the same in every call, when several agents work on one level: your changes are then refused inside another agent's claim, and gb_claim claims for you. Leave it out when you act for the person alone"); jo_end(o);
+  } else if kind == "mode" { gb_mcp_words(o, PLAYTEST_MODE_WORD[..], "the match's mode (gb_list_modes); knockouts when not given"); }
+  else if kind == "size" { gb_mcp_int(o, 1, TEAM_SIZE, "Scrappers a side; 3 when not given"); }
+  else if kind == "seconds" { gb_mcp_int(o, 1, PLAYTEST_SECONDS, "match time to play at most, in seconds; the match may end first; 600 when not given"); }
+  else if kind == "seed" { gb_mcp_int(o, 0, 999999999, "the match's random numbers start from it: the same seed plays the same match; the app's own when not given"); }
+  else if kind == "code" {
+    jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_key(o, "pattern"); jo_str(o, "^[2-9a-hjkmnp-z]{6}$");
+    jo_key(o, "description"); jo_str(o, "the code of the published game this one was remixed from: the six characters after /g/ in its link. Kept at the game's first publish only"); jo_end(o);
+  }
+  else if kind == "bool" { jo_obj(o); jo_key(o, "type"); jo_str(o, "boolean"); jo_key(o, "description"); jo_str(o, "carry it out and answer, but write nothing"); jo_end(o); }
+  else { jo_obj(o); jo_key(o, "type"); jo_str(o, "string"); jo_end(o); }
+}
+// The row's help, then what it does and who must agree: "[edit; only on a level or game you own]".
+gb_mcp_description :: (c: GbCommand, out: [] u8) -> string {
+  t := [1] Text.[Text.{buf = out}];
+  tx_put(t[..], c.help); tx_put(t[..], " ["); tx_put(t[..], c.effect);
+  for k: 0..<GB_APPROVALS.count { if GB_APPROVALS[k] == c.approval && GB_APPROVAL_WORDS[k].count > 0 { tx_put(t[..], "; "); tx_put(t[..], GB_APPROVAL_WORDS[k]); } }
+  tx_put(t[..], "]");
+  return cast(string) out[0..<t[0].at];
+}
+// A row's arguments as a JSON Schema object: MCP's inputSchema, and the HTTP API's body (api.coax).
+gb_mcp_schema :: (o: [] Jo, c: GbCommand) {
+  fb: [32] u8;
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "object");
+  jo_key(o, "properties"); jo_obj(o);
+  for k: 0..<gb_parts(c.arguments) { kind := gb_part(c.arguments, k); jo_key(o, gb_mcp_prop(kind)); gb_mcp_kind(o, kind); }
+  for k: 0..<gb_parts(c.flags) {
+    f := gb_part(c.flags, k); cut := 0; while cut < f.count && f[cut] != ':' { cut += 1; }
+    jo_key(o, gb_mcp_flag(f[0..<cut], fb[..])); gb_mcp_flag_schema(o, ifx cut < f.count then cast(string) f[cut + 1..<f.count] else "bool");
+  }
+  jo_end(o);
+  jo_key(o, "required"); jo_arr(o); for k: 0..<gb_parts(c.arguments) { jo_str(o, gb_mcp_prop(gb_part(c.arguments, k))); } jo_end(o);
+  jo_key(o, "additionalProperties"); jo_bool(o, false);
+  jo_end(o);
+}
+gb_mcp_tool :: (o: [] Jo, c: GbCommand) {
+  nb: [64] u8; db: [1024] u8;
+  jo_obj(o);
+  jo_key(o, "name"); jo_str(o, gb_mcp_name(c.verb, nb[..]));
+  jo_key(o, "description"); jo_str(o, gb_mcp_description(c, db[..]));
+  jo_key(o, "inputSchema"); gb_mcp_schema(o, c);
+  // the hints an MCP client reads: a read changes nothing; an edit can be tried first with dry_run
+  jo_key(o, "annotations"); jo_obj(o);
+  if c.effect == "read" { jo_key(o, "readOnlyHint"); jo_bool(o, true); }
+  else { jo_key(o, "readOnlyHint"); jo_bool(o, false); jo_key(o, "destructiveHint"); jo_bool(o, c.verb == "delete"); }
+  jo_end(o);
+  jo_end(o);
+}
+// ---- a row as a tool an agent of ours is given: the Agents pane's (coax/runner.coax). A cloud
+// Builder is given its rows as command lines instead (coax/cloud-rows.coax; issue 27)
+
+// A row's tool name: its verb with _ for - (read-level is read_level).
+gb_tool_name :: (verb: string, out: [] u8) -> string {
+  n := 0;
+  for ch: verb { if n < out.count { out[n] = ifx ch == '-' then cast(u8) '_' else ch; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// A row's input schema as such an agent is given it: as its MCP tool's, but the level is always
+// the agent's own (left out), and a key and the caller's name are the surface's (left out).
+// closed: no other property is taken (additionalProperties false), for a model that reads it.
+gb_tool_schema :: (c: GbCommand, closed: bool, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out); fb: [32] u8;
+  jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], "object");
+  jo_key(o[..], "properties"); jo_obj(o[..]);
+  for k: 0..<gb_parts(c.arguments) { kind := gb_part(c.arguments, k); if kind != "level" { jo_key(o[..], gb_mcp_prop(kind)); gb_mcp_kind(o[..], kind); } }
+  for k: 0..<gb_parts(c.flags) {
+    f := gb_part(c.flags, k); cut := 0; while cut < f.count && f[cut] != ':' { cut += 1; }
+    if f[0..<cut] == "--key" || f[0..<cut] == "--agent" { continue; }   // the surface names its agent itself
+    jo_key(o[..], gb_mcp_flag(f[0..<cut], fb[..])); gb_mcp_flag_schema(o[..], ifx cut < f.count then cast(string) f[cut + 1..<f.count] else "bool");
+  }
+  jo_end(o[..]);
+  jo_key(o[..], "required"); jo_arr(o[..]);
+  for k: 0..<gb_parts(c.arguments) { kind := gb_part(c.arguments, k); if kind != "level" { jo_str(o[..], gb_mcp_prop(kind)); } }
+  jo_end(o[..]);
+  if closed { jo_key(o[..], "additionalProperties"); jo_bool(o[..], false); }
+  jo_end(o[..]);
+  return jo_text(o[..]);
+}
+gb_mcp_find :: (name: string, cfg: GbMcpCfg) -> int {
+  nb: [64] u8;
+  for i: 0..<GB_N { if gb_mcp_offered_cfg(GB_COMMANDS[i], cfg) && gb_mcp_name(GB_COMMANDS[i].verb, nb[..]) == name { return i; } }
+  return -1;
+}
+
+// ---- a call's arguments become the row's words
+
+// What the app's screen fills in when a call leaves it out (ed_command): the open level, and
+// the selection for a thing. A program's call fills in nothing.
+GbFill :: struct { on: bool; level: s32; thing: s32; }
+
+gb_mcp_keep :: (call: [] GbMcpCall, s: string) -> string {
+  from := call[0].used;
+  if from + s.count > call[0].buf.count { return ""; }
+  for i: 0..<s.count { call[0].buf[from + i] = s[i]; }
+  call[0].used += s.count;
+  return cast(string) call[0].buf[from..<from + s.count];
+}
+// A JSON value as the word it stands for: a string unescaped, a number as written, an object
+// (a batch) as its own text. ok false when it is none of those.
+gb_mcp_word :: (call: [] GbMcpCall, d: Jv, at: int, ok: [] bool) -> string {
+  k := jv_kind(d, at);
+  if k == JV_NUMBER { return jv_raw(d, at); }
+  if k == JV_OBJECT { return jv_raw(d, at); }
+  if k == JV_STRING {
+    n := jv_str(d, at, call[0].buf[call[0].used..<call[0].buf.count]);
+    if n < 0 { ok[0] = false; return ""; }
+    s := cast(string) call[0].buf[call[0].used..<call[0].used + n]; call[0].used += n;
+    return s;
+  }
+  ok[0] = false; return "";
+}
+// Reads the arguments object at args (-1: none) for row v into call[0].a: "" when they are good,
+// else why not, naming the property.
+gb_mcp_read :: (call: [] GbMcpCall, v: int, d: Jv, args: int, fill: GbFill) -> string {
+  c := GB_COMMANDS[v]; fb: [32] u8;
+  if args >= 0 && jv_kind(d, args) != JV_OBJECT { return "arguments is an object"; }
+  // every key is one of the tool's properties
+  m := ifx args >= 0 then d.nodes[args].first else -1;
+  while m >= 0 {
+    key := jv_key(d, m); known := false;
+    for k: 0..<gb_parts(c.arguments) { if gb_mcp_prop(gb_part(c.arguments, k)) == key { known = true; } }
+    for k: 0..<gb_parts(c.flags) {
+      f := gb_part(c.flags, k); cut := 0; while cut < f.count && f[cut] != ':' { cut += 1; }
+      if gb_mcp_flag(f[0..<cut], fb[..]) == key { known = true; }
+    }
+    if !known { return gb_mcp_keep(call, "unknown argument: the tool's input schema lists what it takes"); }
+    m = d.nodes[m].next;
+  }
+  words: [GB_MCP_WORDS] string; n := 0; ok: [1] bool; ok[0] = true;
+  for k: 0..<gb_parts(c.arguments) {
+    prop := gb_mcp_prop(gb_part(c.arguments, k));
+    at := ifx args >= 0 then jv_get(d, args, prop) else -1;
+    kind := gb_part(c.arguments, k);
+    if at < 0 && fill.on && (kind == "level" || kind == "thing") {
+      if kind == "thing" && fill.thing <= 0 { return "nothing is selected"; }
+      nb: [16] u8; t := [1] Text.[Text.{buf = nb[..]}];
+      tx_int(t[..], cast(s64) (ifx kind == "level" then fill.level else fill.thing));
+      if n < words.count { words[n] = gb_mcp_keep(call, cast(string) nb[0..<t[0].at]); n += 1; }
+      continue;
+    }
+    if at < 0 {
+      b: [64] u8; t := [1] Text.[Text.{buf = b[..]}]; tx_put(t[..], prop); tx_put(t[..], " is required");
+      return gb_mcp_keep(call, cast(string) b[0..<t[0].at]);
+    }
+    w := gb_mcp_word(call, d, at, ok[..]);
+    if !ok[0] || (jv_kind(d, at) == JV_OBJECT && gb_part(c.arguments, k) != "batch" && gb_part(c.arguments, k) != "report" && gb_part(c.arguments, k) != "picture" && gb_part(c.arguments, k) != "status") {
+      b: [64] u8; t := [1] Text.[Text.{buf = b[..]}]; tx_put(t[..], prop); tx_put(t[..], " has the wrong type");
+      return gb_mcp_keep(call, cast(string) b[0..<t[0].at]);
+    }
+    if n < words.count { words[n] = w; n += 1; }
+  }
+  flags := GbFlags.{};
+  kb: [GB_KEY_MAX + 1] u8;
+  for name: [10] string.["x", "z", "dry_run", "key", "mode", "size", "seconds", "seed", "agent", "from"] {
+    at := ifx args >= 0 then jv_get(d, args, name) else -1;
+    if at < 0 { continue; }
+    if name == "agent" {
+      // a row whose argument is an agent's id (agent-stop, agent-read) read it above: it is not the caller's name
+      named := false;
+      for k: 0..<gb_parts(c.arguments) { if gb_part(c.arguments, k) == "agent" { named = true; } }
+      if named { continue; }
+      nb: [CLAIM_NAME + 1] u8;
+      an := ifx jv_kind(d, at) == JV_STRING then jv_str(d, at, nb[..]) else -1;
+      if an < 1 { return "agent is your name: 1 to 32 of letters, digits, -, _ and ."; }
+      flags.agent = gb_mcp_keep(call, cast(string) nb[0..<an]); continue;
+    }
+    if name == "mode" {
+      if jv_kind(d, at) != JV_STRING { return "mode is a word (gb_list_modes)"; }
+      mb: [32] u8; mn := jv_str(d, at, mb[..]);
+      if mn < 0 { return "mode is a word (gb_list_modes)"; }
+      flags.mode = gb_mcp_keep(call, cast(string) mb[0..<mn]); continue;
+    }
+    if name == "size" || name == "seconds" || name == "seed" {
+      if jv_kind(d, at) != JV_NUMBER { return "size, seconds and seed are whole numbers"; }
+      if name == "size" { flags.size = jv_raw(d, at); } else if name == "seconds" { flags.seconds = jv_raw(d, at); } else { flags.seed = jv_raw(d, at); }
+      continue;
+    }
+    if name == "key" {
+      kn := ifx jv_kind(d, at) == JV_STRING then jv_str(d, at, kb[..]) else -1;
+      if kn < 0 { return "key is 1 to 64 of letters, digits, -, _ and ."; }
+      flags.key = gb_mcp_keep(call, cast(string) kb[0..<kn]); continue;
+    }
+    if name == "from" {
+      cb: [PUB_CODE + 1] u8;
+      cn := ifx jv_kind(d, at) == JV_STRING then jv_str(d, at, cb[..]) else -1;
+      if cn < 0 { return PUB_FROM_WORDS; }
+      flags.from = gb_mcp_keep(call, cast(string) cb[0..<cn]); continue;
+    }
+    if name == "dry_run" {
+      if jv_kind(d, at) != JV_TRUE && jv_kind(d, at) != JV_FALSE { return "dry_run is true or false"; }
+      flags.dry = jv_bool(d, at); continue;
+    }
+    if jv_kind(d, at) != JV_NUMBER { return "x and z are whole numbers of centimetres"; }
+    if name == "x" { flags.x = jv_raw(d, at); } else { flags.z = jv_raw(d, at); }
+  }
+  return gb_args_read(v, words[0..<n], flags, call[0].a[..]);
+}
+
+// ---- JSON-RPC
+
+gb_mcp_id :: (o: [] Jo, call: [] GbMcpCall) {
+  raw := cast(string) call[0].id[0..<call[0].id_n];
+  // a string id is kept unescaped and written by jo_str, which marks the value written (jo_requote
+  // doesn't, so the next key would follow with no comma)
+  if call[0].id_kind == JV_STRING { jo_str(o, raw); }
+  else if call[0].id_kind == JV_NUMBER { jo_raw(o, raw); }
+  else { jo_null(o); }
+}
+gb_mcp_start :: (o: [] Jo, call: [] GbMcpCall) {
+  jo_obj(o); jo_key(o, "jsonrpc"); jo_str(o, "2.0"); jo_key(o, "id"); gb_mcp_id(o, call);
+}
+gb_mcp_error :: (o: [] Jo, call: [] GbMcpCall, code: int, message: string) -> string {
+  gb_mcp_start(o, call);
+  jo_key(o, "error"); jo_obj(o); jo_key(o, "code"); jo_int(o, code); jo_key(o, "message"); jo_str(o, message); jo_end(o);
+  jo_end(o);
+  return jo_text(o);
+}
+// A tool's answer: the row's JSON as its text, an error when the row refused it.
+gb_mcp_text :: (o: [] Jo, call: [] GbMcpCall, text: string, is_error: bool) -> string {
+  gb_mcp_start(o, call);
+  jo_key(o, "result"); jo_obj(o); jo_key(o, "content"); jo_arr(o);
+  jo_obj(o); jo_key(o, "type"); jo_str(o, "text"); jo_key(o, "text"); jo_str(o, text); jo_end(o);
+  jo_end(o); jo_key(o, "isError"); jo_bool(o, is_error); jo_end(o);
+  jo_end(o);
+  if o[0].bad {
+    jo_start(o, o[0].buf);
+    return gb_mcp_error(o, call, -32603, "the answer is too long for this server");
+  }
+  return jo_text(o);
+}
+// The answer to a call the surface carried out (gb_mcp_handle left it in call).
+gb_mcp_answer :: (call: [] GbMcpCall, r: GbResult, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  return gb_mcp_text(o[..], call, r.json, r.code != GB_DONE);
+}
+
+GB_MCP_GUIDE :: "Build and change GameBuilder game worlds: the level and game files the GameBuilder app keeps on this computer. Ask the person to close a level in the app before you change it: the app's next save writes over a level it has open, and nothing here can tell whether it is open. Words like list-palette in an answer name the tool gb_list_palette. To edit a level: find it (gb_list_games, gb_list_levels) or make one (gb_new_game, gb_new_level). Read it with gb_read_level: rev is the revision you read, things is what is in it, content is its shape table, and locked true means it isn't yours (gb_copy_level makes your copy). Send the whole change as one gb_apply_edits batch, first with dry_run true, then the same batch without it (keep the rev you read: a dry run writes nothing). Read the level back and check it. Units are centimetres. x is east, z is north, y is up, and the level's middle is x 0, z 0. A thing's x and z are the middle of its base, and y is the height of its base. Turns (yaw) are whole degrees from -180 to 180 about the up axis; nothing tilts. A thing's kind means two things: in a batch and in things it is a row of the shape table (content: ID|KIND|WIDTH|HEIGHT|DEPTH, sides in centimetres); in gb_add and gb_set_field it is a palette word (gb_list_palette). A thing's size is its row times its scale, a percent of all three sides. A batch is {\"schema\":\"world.edit.v1\",\"rev\":REV,\"do\":\"apply\",\"edits\":[...]} and each edit's fields go in this order, and no others: {\"op\":\"spawn\",\"id\":0,\"kind\":ROW,\"x\":X,\"y\":Y,\"z\":Z,\"yaw\":DEG,\"scale\":PERCENT}, {\"op\":\"move\",\"id\":ID,\"x\":X,\"y\":Y,\"z\":Z}, {\"op\":\"rotate\",\"id\":ID,\"yaw\":DEG}, {\"op\":\"scale\",\"id\":ID,\"scale\":PERCENT}, {\"op\":\"despawn\",\"id\":ID}. A new size is a new shape row, added in the same batch before the spawns that name it: {\"op\":\"cell\",\"table\":\"shape\",\"row\":N,\"col\":\"*\",\"v\":\"N|block|WIDTH|HEIGHT|DEPTH\"}, where N is one past the table's last row (the next, N+1, and so on), col * is the whole row, and the word after N is a kind's word, such as block. Rows are only added; when a row already has the size you want, name it. gb_set_field with width, height or depth gives that one thing a row of its own; the other things on its old row keep theirs. The answer's ids has one number for each edit, in order: a new row's number for a cell, else the thing it made or changed. Spawns in a batch are placed exactly where you say; gb_add snaps to the grid. Nothing checks that things overlap: work out footprints from x, z, yaw and size. A batch refused as unreadable with a wire field: wire is your batch written with its fields in the wire's order; check nothing was lost and send that. Stale means the level changed since you read it: read it again and plan again. When a world needs something the engine can't do (how things look, such as a stone material, how they move or collide, tilting), gb_engine names the engine's commit and the steps to propose the change as a pull request at OpenAgentsInc/openagents; ask the person first.";
+
+// Answers one request line into out. "" when nothing is to be written now: a notification
+// (call[0].v is -1), or a row the surface must carry out (call[0].v is its row, call[0].a its
+// words) and answer with gb_mcp_answer.
+gb_mcp_handle :: (line: string, cfg: GbMcpCfg, out: [] u8, call: [] GbMcpCall) -> string {
+  call[0].v = -1; call[0].used = 0; call[0].id_n = 0; call[0].id_kind = 0; call[0].init = false; call[0].client_n = 0; call[0].args = "";
+  nodes: [WE_BATCH * WE_NODES + 256] JvNode; dd: [1] Jv; o: [1] Jo;
+  jo_start(o[..], out);
+  if !jv_parse(dd[..], line, nodes[..]) || jv_kind(dd[0], 0) != JV_OBJECT { return gb_mcp_error(o[..], call, -32700, "parse error"); }
+  d := dd[0];
+  id := jv_get(d, 0, "id");
+  if id < 0 { return ""; }   // a notification (initialized, cancelled): no answer
+  kind := jv_kind(d, id);
+  if kind == JV_STRING {
+    n := jv_str(d, id, call[0].id[..]);
+    if n < 0 { return gb_mcp_error(o[..], call, -32600, "the id is too long"); }
+    call[0].id_n = n;
+  } else if kind == JV_NUMBER {
+    raw := jv_raw(d, id);
+    if raw.count > call[0].id.count { return gb_mcp_error(o[..], call, -32600, "the id is too long"); }
+    for i: 0..<raw.count { call[0].id[i] = raw[i]; }
+    call[0].id_n = raw.count;
+  }
+  call[0].id_kind = kind;
+  mb: [64] u8; mn := jv_str(d, jv_get(d, 0, "method"), mb[..]);
+  method := ifx mn > 0 then cast(string) mb[0..<mn] else "";
+  if method == "" { return gb_mcp_error(o[..], call, -32600, "invalid request"); }
+  if method == "initialize" {
+    pv: [32] u8; pn := jv_str(d, jv_path(d, 0, "params.protocolVersion"), pv[..]);
+    call[0].init = true;
+    cn := jv_str(d, jv_path(d, 0, "params.clientInfo.name"), call[0].client[..]);
+    call[0].client_n = ifx cn > 0 then cn else 0;
+    gb_mcp_start(o[..], call); jo_key(o[..], "result"); jo_obj(o[..]);
+    jo_key(o[..], "protocolVersion"); jo_str(o[..], ifx pn > 0 then cast(string) pv[0..<pn] else GB_MCP_PROTOCOL);
+    jo_key(o[..], "capabilities"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]);
+    jo_key(o[..], "serverInfo"); jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], "gamebuilder"); jo_key(o[..], "version"); jo_str(o[..], cfg.version); jo_end(o[..]);
+    jo_key(o[..], "instructions"); jo_str(o[..], GB_MCP_GUIDE);
+    jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "ping" { gb_mcp_start(o[..], call); jo_key(o[..], "result"); jo_obj(o[..]); jo_end(o[..]); jo_end(o[..]); return jo_text(o[..]); }
+  if method == "tools/list" {
+    gb_mcp_start(o[..], call); jo_key(o[..], "result"); jo_obj(o[..]); jo_key(o[..], "tools"); jo_arr(o[..]);
+    for c: GB_COMMANDS { if gb_mcp_offered_cfg(c, cfg) { gb_mcp_tool(o[..], c); } }
+    jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+    return jo_text(o[..]);
+  }
+  if method == "tools/call" {
+    nb: [64] u8; nn := jv_str(d, jv_path(d, 0, "params.name"), nb[..]);
+    v := gb_mcp_find(ifx nn > 0 then cast(string) nb[0..<nn] else "", cfg);
+    if v < 0 { return gb_mcp_error(o[..], call, -32602, "unknown tool: tools/list names them"); }
+    aat := jv_path(d, 0, "params.arguments");
+    call[0].args = ifx aat >= 0 then jv_raw(d, aat) else "{}";
+    why := gb_mcp_read(call, v, d, jv_path(d, 0, "params.arguments"), GbFill.{});
+    if why.count > 0 {
+      rb: [512] u8; ro: [1] Jo; jo_start(ro[..], rb[..]);
+      r := gb_refuse(ro[..], "bad-request", why);
+      return gb_mcp_text(o[..], call, r.json, true);
+    }
+    // the engine row: the commit this surface was built on
+    if v == VERB_ENGINE {
+      eb: [8192] u8; eo: [1] Jo; jo_start(eo[..], eb[..]);
+      r := gb_engine(eo[..], cfg.pin);
+      return gb_mcp_text(o[..], call, r.json, r.code != GB_DONE);
+    }
+    call[0].v = v;
+    return "";
+  }
+  return gb_mcp_error(o[..], call, -32601, "method not found");
+}
+
+// ---- checks
+
+#test "mcp: initialize, ping, notifications, unknown methods and bad lines" {
+  out: [65536] u8; call: [1] GbMcpCall; cfg := GbMcpCfg.{version = "0.1.0", pin = "abc"};
+  s := gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}", cfg, out[..], call[..]);
+  #assert level_find(s, "\"protocolVersion\":\"2025-03-26\"") >= 0 && level_find(s, "\"tools\":{}") >= 0 && level_find(s, "\"id\":1,") >= 0;
+  #assert level_find(s, "\"name\":\"gamebuilder\",\"version\":\"0.1.0\"") >= 0 && level_find(s, "gb_apply_edits batch") >= 0 && level_find(s, "OpenAgentsInc/openagents") >= 0;
+  #assert gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", cfg, out[..], call[..]) == "" && call[0].v == -1;
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":\"a\",\"method\":\"ping\"}", cfg, out[..], call[..]);
+  #assert level_find(s, "\"id\":\"a\",") >= 0 && level_find(s, "\"result\":{}") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"nope\"}", cfg, out[..], call[..]), "-32601") >= 0;
+  #assert level_find(gb_mcp_handle("not json", cfg, out[..], call[..]), "-32700") >= 0;
+}
+
+#test "mcp: a tool a row, its schema the row's kinds and bounds; read-only offers the reads" #steps 60000000 {
+  out: [131072] u8; call: [1] GbMcpCall; cfg := GbMcpCfg.{version = "0.1.0"};
+  s := gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], call[..]);
+  nb: [64] u8;
+  for c: GB_COMMANDS {
+    q: [80] u8; t := [1] Text.[Text.{buf = q[..]}]; tx_put(t[..], "\"name\":\""); tx_put(t[..], gb_mcp_name(c.verb, nb[..])); tx_put(t[..], "\"");
+    #assert (level_find(s, cast(string) q[0..<t[0].at]) >= 0) == ((c.surfaces & GB_MCP) != 0);
+  }
+  // only the person logs in: the account rows are no tools
+  #assert level_find(s, "gb_login") < 0 && level_find(s, "gb_whoami") < 0 && level_find(s, "\"name\":\"gb_engine\"") >= 0;
+  #assert level_find(s, "\"level\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":9999") >= 0;
+  #assert level_find(s, "\"x\":{\"type\":\"integer\",\"minimum\":-20000,\"maximum\":20000") >= 0;
+  #assert level_find(s, "\"template\":{\"type\":\"string\",\"enum\":[\"arena\",\"adventure\",\"field\",\"third-person\",\"first-person\",\"top-down\",\"side-scroller\",\"village\",\"crates\",\"platformer\",\"racing\",\"drift\"]") >= 0;
+  #assert level_find(s, "\"field\":{\"type\":\"string\",\"enum\":[\"kind\",\"east\",\"up\",\"north\",\"turn\",\"scale\",\"width\",\"height\",\"depth\",\"distance\",\"period\"]") >= 0;
+  #assert level_find(s, "\"name\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":48") >= 0;
+  #assert level_find(s, "\"required\":[\"level\",\"thing\",\"field\",\"value\"],\"additionalProperties\":false") >= 0;
+  #assert level_find(s, "\"dry_run\":{\"type\":\"boolean\"") >= 0 && level_find(s, "[edit; only on a level or game you own]\"") >= 0;
+  #assert level_find(s, "\"annotations\":{\"readOnlyHint\":true}") >= 0 && level_find(s, "\"destructiveHint\":true") >= 0;
+  cfg.read_only = true;
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}", cfg, out[..], call[..]);
+  #assert level_find(s, "\"name\":\"gb_read_level\"") >= 0 && level_find(s, "gb_apply_edits") < 0 && level_find(s, "gb_new_game") < 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_add\",\"arguments\":{}}}", cfg, out[..], call[..]), "unknown tool") >= 0;
+}
+
+#test "mcp: a call's arguments are the row's words, read as the CLI reads them" {
+  out: [65536] u8; call: [1] GbMcpCall; cfg := GbMcpCfg.{};
+  s := gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_set_field\",\"arguments\":{\"level\":3,\"thing\":12,\"field\":\"east\",\"value\":-400,\"dry_run\":true}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].v == VERB_SET_FIELD && call[0].a[0].level == 3 && call[0].a[0].thing == 12 && call[0].a[0].field == FIELD_X && call[0].a[0].value == -400 && call[0].a[0].dry;
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_set_field\",\"arguments\":{\"level\":3,\"thing\":12,\"field\":\"kind\",\"value\":\"tree\"}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].a[0].value == KIND_TREE;
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_add\",\"arguments\":{\"level\":1,\"kind\":\"block\",\"x\":500,\"z\":-300}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].v == VERB_ADD && call[0].a[0].at && call[0].a[0].x == 500 && call[0].a[0].z == -300;
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_rename_game\",\"arguments\":{\"game\":2,\"name\":\"Moss \\\"Run\\\"\"}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].a[0].game == 2 && call[0].a[0].text == "Moss \"Run\"";
+  // a batch as an object is its own text; as a string, unescaped
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":8,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_apply_edits\",\"arguments\":{\"level\":2,\"batch\":{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[]}}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].v == VERB_APPLY_EDITS && call[0].a[0].batch == "{\"schema\":\"world.edit.v1\",\"rev\":1,\"do\":\"apply\",\"edits\":[]}";
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_apply_edits\",\"arguments\":{\"level\":2,\"batch\":\"{\\\"schema\\\":1}\"}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].a[0].batch == "{\"schema\":1}";
+  // refusals: the bounds, missing and unknown properties, wrong types; the answer keeps the id
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_read_level\",\"arguments\":{\"level\":10000}}}", cfg, out[..], call[..]);
+  #assert call[0].v == -1 && level_find(s, "\"id\":10,") >= 0 && level_find(s, "\"isError\":true") >= 0 && level_find(s, "0 to 9999 (LEVEL_MAX)") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":11,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_read_level\",\"arguments\":{}}}", cfg, out[..], call[..]), "level is required") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":12,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_read_level\",\"arguments\":{\"level\":1,\"rev\":2}}}", cfg, out[..], call[..]), "unknown argument") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":13,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_read_level\",\"arguments\":{\"level\":true}}}", cfg, out[..], call[..]), "level has the wrong type") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":14,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_read_level\",\"arguments\":{\"level\":1,\"dry_run\":true}}}", cfg, out[..], call[..]), "unknown argument") >= 0;
+  #assert level_find(gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":15,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_add\",\"arguments\":{\"level\":1,\"kind\":\"block\",\"x\":5}}}", cfg, out[..], call[..]), "come together") >= 0;
+  // no arguments at all: a row that takes none
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":16,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_list_levels\"}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].v == VERB_LIST_LEVELS;
+}
+
+#test "mcp: the engine row answers here, and a carried-out row answers the CLI's own JSON" {
+  t: [1] CommandTest; e := t[0].e[..];
+  out: [65536] u8; call: [1] GbMcpCall; cfg := GbMcpCfg.{pin = "0123abcd"};
+  s := gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"gb_engine\"}}", cfg, out[..], call[..]);
+  #assert call[0].v == -1 && level_find(s, "\\\"commit\\\":\\\"0123abcd\\\"") >= 0 && level_find(s, "\"isError\":false") >= 0;
+  none: [1] s32; w := GbWorld.{levels = none[0..<0]};
+  s = gb_mcp_handle("{\"jsonrpc\":\"2.0\",\"id\":\"n\",\"method\":\"tools/call\",\"params\":{\"name\":\"gb_new_game\",\"arguments\":{\"template\":\"adventure\"}}}", cfg, out[..], call[..]);
+  #assert s == "" && call[0].v == VERB_NEW_GAME;
+  r := gb_run(e, call[0].v, call[0].a[0], w, t[0].out[..]);
+  #assert r.code == GB_DONE;
+  ab: [65536] u8;
+  s = gb_mcp_answer(call[..], r, ab[..]);
+  // the answer's text is the row's JSON, escaped once
+  jb: [65536] u8; jo: [1] Jo; jo_start(jo[..], jb[..]); jo_str(jo[..], r.json);
+  #assert level_find(s, "\"id\":\"n\",") >= 0;
+  #assert level_find(s, jo_text(jo[..])) >= 0;
+  #assert level_find(s, "\"isError\":false") >= 0;
+  // a refusal is an error the agent reads
+  r = gb_run(e, VERB_RENAME_GAME, GbArgs.{game = 7, text = "X"}, w, t[0].out[..]);
+  #assert level_find(gb_mcp_answer(call[..], r, ab[..]), "\"isError\":true") >= 0;
+}
+
+#load "api.coax";
+
+// An outside agent attached through MCP or --as-agent: its record and its calls logged (issue 6).
+#load "attached.coax";
+
+// A cloud Builder's rows and words, for Microcoder's loop on a hosted server (issues 7 and 27; cli/cloud.coax runs it).
+#load "cloud-rows.coax";

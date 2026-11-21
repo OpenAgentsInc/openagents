@@ -1,0 +1,910 @@
+// The level, drawn and played by the OpenAgents Metaverse Engine (issue 2, steps 4 and 5).
+//
+// A level of one of the website's nine game types is drawn in the app by the same scene that
+// draws it on gamebuilder.org: web/hud.coax, the engine's stylized renderer with its grass, sky
+// and shadows, the meadow, the village and the four worlds of their own (crates, the platformer,
+// racing, drift). This file loads that scene into the app's core and stands between the two:
+//
+//   - while a level is built, it tells the scene what the level holds (the things, as the
+//     website's page tells them: message 105), holds the scene still (nothing is stepped, nobody
+//     stands in it), gives it the editor's own camera, and names what is lit: the selection, and
+//     what an agent just changed;
+//   - while it is played, it starts the scene's world over with the level's things in it, to
+//     fall, roll and be pushed as on the website, and hands it the keys; the scene's own rules
+//     run it (web/world-*.coax), and the way the run stands is told in the world's own words.
+//
+// The host is the engine's page host (metaverse-engine/host/apple/PageHost.m),
+// as for any realm: it calls ed_world_frame for each frame through the page's face
+// (host/page/world-face.c) and draws what the scene hands back. Nothing here draws.
+//
+// Axes. A level's numbers are the website's: x to the right of a view looking along +z, y up,
+// centimetres. The scene's bodies are in the same axes, metres. The editor's own camera math
+// (the engine's shared viewport) has -x to the right there, so its picture of the same numbers
+// is a mirror of the scene's; coax/editor.coax ed_sx mirrors the pointer to match, and the
+// camera handed to the scene is the editor's eye with the same yaw and pitch.
+//
+// What should go upstream: nothing here is the engine's; it is GameBuilder's own use of it.
+//   scripts/check.sh   (coax test coax/app.coax --only "the engine's page")
+
+#load "../web/hud.coax";
+
+WORLD_BUILDING :: 2;   // message 105's KIND for a village building (web/blocks.coax's own number for one)
+WORLD_UP :: 10.0f32;   // a world of its own's clock while it is built: its entrance long over, its course standing
+
+// A whole number as text into out at n: where it ended.
+world_int :: (out: [] u8, n: int, v: int) -> int { return hud_test_put(out, n, v); }
+world_put :: (out: [] u8, n: int, s: string) -> int { k := n; for c: s { if k < out.count { out[k] = c; k += 1; } } return k; }
+
+// The website's kind for one of the app's (message 105's KIND): 0 a block, 1 a ball, 2 a village building,
+// BL_ROLE_WIRE and its kind for a type's own (a pad, a wall, a boost); -1 for a thing the website's worlds do not have.
+world_kind :: (kind: int) -> int {
+  if kind == GK_BLOCK { return 0; }
+  if kind == GK_BALL { return 1; }
+  if gk_building(kind) >= 0 { return WORLD_BUILDING; }
+  r := gk_role(kind);
+  return ifx r > 0 then BL_ROLE_WIRE + r else -1;
+}
+
+// A thing's size across, up and along, centimetres (a ball's width, three times).
+world_size :: (a: Actor) -> [3] int {
+  w := cast(int) a.sx * cast(int) a.scale / 100; h := cast(int) a.sy * cast(int) a.scale / 100; d := cast(int) a.sz * cast(int) a.scale / 100;
+  if a.kind == GK_BALL { return [3] int.[w, w, w]; }
+  return [3] int.[w, h, d];
+}
+
+// What the level holds, as the website's page tells its scene (web/blocks.coax bl_wire): a count, then
+// "ID KIND MOVES SIZES X Y Z W H D REST" a line, hundredths of a metre. MOVES and SIZES change when the
+// thing's place or size does (the scene takes a place or a size only then). REST 1: set down at rest,
+// asleep (a level being built); 2: made at its place, to fall if that leaves it in the air (Play).
+// A village building's line is "ID 2 MOVES SIZES X 0 Z MODEL QUARTER SCALE 1": its model, its quarter turns
+// and its scale in percent (a turn being dragged is shown at its nearest quarter).
+world_wire :: (e: [] Editor, out: [] u8, rest: int) -> int {
+  count := 0;
+  for i: 0..<ed_count(e) { if world_kind(cast(int) ed_actor(e, i).kind) >= 0 && count < HUD_BLOCKS { count += 1; } }
+  n := world_int(out, 0, count); n = world_put(out, n, "\n");
+  made := 0;
+  for i: 0..<ed_count(e) {
+    a := ed_shown(e, ed_actor(e, i));
+    k := world_kind(cast(int) a.kind);
+    if k < 0 || made >= count { continue; }
+    made += 1;
+    s := world_size(a);
+    moves := ((cast(int) a.x + 20000000) * 7919 + (cast(int) a.y + 20000000) * 104729 + (cast(int) a.z + 20000000) * 1299709 + (cast(int) a.yaw + 720) * 15485863) % 1000003;
+    sizes := (s[0] * 7919 + s[1] * 104729 + s[2] * 1299709 + cast(int) a.go * 15485863 + cast(int) a.every * 32452843) % 1000003;
+    v := [10] int.[cast(int) a.id, k, moves, sizes, cast(int) a.x, cast(int) a.y, cast(int) a.z, s[0], s[1], s[2]];
+    if k == WORLD_BUILDING {
+      sc := cast(int) a.scale; if sc < VL_SCALE_SMALL { sc = VL_SCALE_SMALL; } if sc > VL_SCALE_BIG { sc = VL_SCALE_BIG; }
+      v[5] = 0; v[7] = gk_building(cast(int) a.kind); v[8] = (cast(int) a.yaw + 360 + 45) / 90 % 4; v[9] = sc;
+    }
+    for q: 0..<10 { n = world_int(out, n, v[q]); n = world_put(out, n, " "); }
+    n = world_int(out, n, ifx k == WORLD_BUILDING then 1 else rest);
+    // (a track point's turn is its bank: said after the rest's number, as the website's page says it)
+    if a.kind == GK_TRACK { n = world_put(out, n, " "); n = world_int(out, n, cast(int) a.yaw); }
+    // (a moving platform's or a lift's way: after a turn of 0, how far it goes and how long there and back takes)
+    if a.every > 0 { n = world_put(out, n, " 0 "); n = world_int(out, n, cast(int) a.go); n = world_put(out, n, " "); n = world_int(out, n, cast(int) a.every); }
+    n = world_put(out, n, "\n");
+  }
+  return n;
+}
+
+// Tells the scene a message, as its page would (web/hud.coax hud_message).
+world_tell :: (h: [] Hud, kind: int, s: string) {
+  n := world_put(h[0].inbox[..], 0, s);
+  hud_message(h, kind, n);
+}
+world_tell_int :: (h: [] Hud, kind: int, v: int) {
+  n := world_int(h[0].inbox[..], 0, v);
+  hud_message(h, kind, n);
+}
+
+// The level's things into the scene: made, moved, sized or gone as the list says, then each body put
+// exactly where the level has it, turned as it is turned (the list has no turn). Still: asleep there.
+world_things :: (e: [] Editor, h: [] Hud, still: bool) {
+  // (the platformer's course has no ground and drift no gravity: what is built there is held where it is put,
+  // as the website's page sets it down, at rest)
+  held := e[0].plays == GT_PLATFORMER || e[0].plays == GT_DRIFT;
+  n := world_wire(e, h[0].inbox[..], ifx still || held then 1 else 2);
+  hud_message(h, HUD_BLOCKS_MSG, n);
+  b := h[0].things[..];
+  for i: 0..<ed_count(e) {
+    a := ed_shown(e, ed_actor(e, i));
+    if world_kind(cast(int) a.kind) < 0 { continue; }
+    slot := bd_index(b, cast(int) a.id);
+    if slot < 0 { continue; }   // (a mark: a shard, a goal, a boost is no body)
+    if !still && a.yaw == 0 { continue; }   // (played: made where it stands already)
+    s := world_size(a);
+    tall := cast(f64) s[1] * 0.005;
+    bd_place(b, slot, d3(cast(f64) a.x * 0.01, cast(f64) a.y * 0.01 + tall, cast(f64) a.z * 0.01), dq_y(cast(f64) a.yaw * 0.017453292519943295));
+    if still { bd_still(b, slot); }
+  }
+  h[0].stale = true;
+}
+
+// A number that changes when what the scene draws of the level does: every thing's kind, place, turn and
+// size (a thing being dragged, where it is shown), and the type.
+world_sum :: (e: [] Editor) -> int {
+  s := 1469598103 + cast(int) e[0].plays;
+  for i: 0..<ed_count(e) {
+    a := ed_shown(e, ed_actor(e, i));
+    v := [11] int.[cast(int) a.id, cast(int) a.kind, cast(int) a.x, cast(int) a.y, cast(int) a.z, cast(int) a.yaw, cast(int) a.sx * cast(int) a.scale, cast(int) a.sy * cast(int) a.scale, cast(int) a.sz * cast(int) a.scale, cast(int) a.go, cast(int) a.every];
+    for q: 0..<11 { s = (s * 1099511 + v[q] + 40000000) % 2147483629; }
+  }
+  return s;
+}
+
+// The scene's tools are the website's own (its hotbar); the app has its own, so the scene is told it has
+// none in hand and is not editing, and how often the world's own action (R) has been pressed.
+world_tools :: (e: [] Editor, h: [] Hud) {
+  o := h[0].inbox[..];
+  n := world_put(o, 0, "-1 0 0 -1 -1 1 ");
+  n = world_int(o, n, e[0].world[0].act);
+  n = world_put(o, n, " 0 0");
+  hud_message(h, HUD_TOOL_MSG, n);
+}
+
+// The editor's camera, as the scene's: the same eye (the scene's z runs the other way), yaw and pitch.
+world_eye :: (e: [] Editor) -> StyCamera {
+  eye := ed_eye(e);
+  return StyCamera.{x = eye.x, y = eye.y, z = -eye.z, yaw = e[0].vp[0].fyaw, pitch = e[0].vp[0].fpitch, fov = ed_fov(e), near = 0.1, far = 3000};
+}
+
+// What is lit while the level is built: the selection, wholly, and what agents and calls from outside
+// changed, until the person dismisses it (changes.coax).
+world_glow :: (e: [] Editor, h: [] Hud) {
+  n := 0;
+  if ed_index(e, e[0].selected) >= 0 { h[0].glow[0] = cast(int) e[0].selected; h[0].glow_a[0] = 1; n = 1; }
+  for i: 0..<ed_count(e) {
+    if n >= HUD_GLOWS { break; }
+    a := ed_actor(e, i);
+    if ch_find(e[0].changes[..], a.id) < 0 || a.id == e[0].selected { continue; }
+    h[0].glow[n] = cast(int) a.id; h[0].glow_a[n] = 1; n += 1;
+  }
+  h[0].glow_n = n;
+}
+
+// A world of its own stands as it does once its entrance is over: its room, course, circuit or rings up.
+world_up :: (h: [] Hud) {
+  t := h[0].type;
+  if t == HUD_VILLAGE && h[0].village[0].ready && h[0].village[0].clock < vl_done(h[0].village[..]) + 0.1 { h[0].village[0].clock = vl_done(h[0].village[..]) + 0.1; h[0].stale = true; hud_statics(h); }
+  if t == HUD_CRATES && h[0].crates[0].clock < WORLD_UP { h[0].crates[0].clock = WORLD_UP; h[0].stale = true; }
+  // (the platformer's course at the moment its clock starts: every moving platform and lift where its thing stands, so what is selected is what is seen)
+  if t == HUD_PLATFORMER && h[0].plat[0].clock != cast(f32) PF_ENTER { h[0].plat[0].clock = PF_ENTER; h[0].stale = true; }
+  if t == HUD_RACING && h[0].race[0].clock < WORLD_UP { h[0].race[0].clock = WORLD_UP; h[0].race[0].baked = 0; h[0].stale = true; }
+  if t == HUD_DRIFT && h[0].drift[0].clock < WORLD_UP { h[0].drift[0].clock = WORLD_UP; h[0].drift[0].baked = 0; h[0].stale = true; }
+}
+
+// How the run stands, in the world's own words (what it tells the website's page for its model, less the
+// part that is the same whatever the run: what the world is and its keys). Nothing for the meadow.
+world_line :: (h: [] Hud, out: [] u8) -> int {
+  live: [2048] u8; base: [2048] u8;
+  n := 0; m := 0; t := h[0].type;
+  if t == HUD_CRATES { z: [1] Crates; n = cr_describe(h[0].crates[..], live[..]); m = cr_describe(z[..], base[..]); }
+  else if t == HUD_PLATFORMER { z: [1] Platformer; z[0].stand = -1; n = pf_describe(h[0].plat[..], live[..]); m = pf_describe(z[..], base[..]); }
+  else if t == HUD_RACING { z: [1] Racing; n = rc_describe(h[0].race[..], live[..]); m = rc_describe(z[..], base[..]); }
+  else if t == HUD_DRIFT { z: [1] Drift; n = dr_describe(h[0].drift[..], live[..]); m = dr_describe(z[..], base[..]); }
+  else { return 0; }
+  // what both say alike is what the world is; the run begins at the sentence where they part
+  same := 0;
+  while same < n && same < m && live[same] == base[same] { same += 1; }
+  if same >= n { return 0; }
+  from := same;
+  // (parted right after a sentence: the run is all of what follows; else back to that sentence's start)
+  if same > 0 && live[same] == ' ' && live[same - 1] == '.' { from = same + 1; }
+  else { while from > 0 && !(live[from - 1] == ' ' && from >= 2 && live[from - 2] == '.') { from -= 1; } }
+  k := 0;
+  for i: from..<n { if k < out.count { out[k] = live[i]; k += 1; } }
+  return k;
+}
+
+// ---------------------------------------------------------------- the editor's own lines
+
+WORLD_GRID_LINES :: 14;        // each way from the middle of the picture, along each axis
+WORLD_GRID_ALPHA :: 0.13f32;
+WORLD_CLAIM_ALPHA :: 0.9f32;
+// The shader's tints the claims go round (host/Sources/Shaders.metal tint_colour; claims.coax CLAIM_TINT): gold,
+// green, blue, orange, indigo, red.
+world_tint :: (tint: int) -> [3] f32 {
+  if tint == 7 { return [3] f32.[1.0, 0.85, 0.35]; }
+  if tint == 5 { return [3] f32.[0.35, 0.95, 0.5]; }
+  if tint == 1 { return [3] f32.[0.25, 0.62, 1.0]; }
+  if tint == 18 { return [3] f32.[1.0, 0.63, 0.2]; }
+  if tint == 17 { return [3] f32.[0.33, 0.36, 0.66]; }
+  if tint == 2 { return [3] f32.[1.0, 0.3, 0.32]; }
+  return [3] f32.[1, 1, 1];
+}
+// A line on the level from one point to another (the page's axes, metres), in a colour: cut in `parts` so a
+// piece behind the camera does not take the rest with it.
+world_stroke :: (o: [] HudOut, u: [] f32, a: [3] f32, b: [3] f32, parts: int, width: f32, c: [3] f32, alpha: f32) {
+  world_stroke_past(o, u, a, b, parts, width, c, alpha, Colliders.{}, WorldPoint.{}, false);
+}
+// (`hid`: a piece whose middle a thing of `things` stands in front of, seen from `eye`, is left out)
+world_stroke_past :: (o: [] HudOut, u: [] f32, a: [3] f32, b: [3] f32, parts: int, width: f32, c: [3] f32, alpha: f32, things: Colliders, eye: WorldPoint, hid: bool) {
+  was := sty_project(u, a[0], a[1], -a[2]);
+  for k: 1..<parts + 1 {
+    t := cast(f32) k / cast(f32) parts;
+    p := sty_project(u, a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, -(a[2] + (b[2] - a[2]) * t));
+    seen := true;
+    if hid {
+      th := (cast(f32) k - 0.5) / cast(f32) parts;
+      mx := a[0] + (b[0] - a[0]) * th - eye.x; my := a[1] + (b[1] - a[1]) * th - eye.y; mz := a[2] + (b[2] - a[2]) * th - eye.z;
+      far := vp_len(mx, my, mz);
+      if far > 0.2 { hit := query_ray(things, eye, WorldPoint.{x = mx / far, y = my / far, z = mz / far}, far - 0.1); seen = !(hit.hit && hit.shape == QueryShape.box); }
+    }
+    if was.ahead && p.ahead && seen {
+      at := o[0].n;
+      hud_line(o, was.x, was.y, p.x, p.y, width, alpha);
+      for v: at..<o[0].n { for q: 0..<3 { o[0].v[v * HUD_FLOATS + 2 + q] = c[q]; } }
+    }
+    was = p;
+  }
+}
+// The things that could stand between the eye (over ex, ez) and a line from a to b: those whose foot
+// meets the ground's rectangle round the eye and the line (every sight line to the line stays over it).
+// The rest cannot hide any piece of it. Into `out`.
+world_before :: (things: Colliders, ex: f32, ez: f32, a: [3] f32, b: [3] f32, out: [] f32) -> Colliders {
+  x0 := ex; x1 := ex; z0 := ez; z1 := ez;
+  if a[0] < x0 { x0 = a[0]; } if a[0] > x1 { x1 = a[0]; } if b[0] < x0 { x0 = b[0]; } if b[0] > x1 { x1 = b[0]; }
+  if a[2] < z0 { z0 = a[2]; } if a[2] > z1 { z1 = a[2]; } if b[2] < z0 { z0 = b[2]; } if b[2] > z1 { z1 = b[2]; }
+  n := 0; f := things.boxes;
+  for i: 0..<f.count / QUERY_BOX {
+    k := i * QUERY_BOX;
+    if f[k + 3] < x0 || f[k] > x1 || f[k + 5] < z0 || f[k + 2] > z1 { continue; }
+    for q: 0..<QUERY_BOX { out[n + q] = f[k + q]; }
+    n += QUERY_BOX;
+  }
+  return Colliders.{ground = things.ground, boxes = out[0..<n]};
+}
+// The ground's grid at the viewport's step, round what the middle of the picture looks at, and each
+// agent's claim as a line round it on the ground in the agent's colour. Returns the vertices there are now.
+world_lines :: (e: [] Editor, out: [] f32, n: int, u: [] f32, d: f32) -> int {
+  o := [1] HudOut.[HudOut.{v = out, n = n}];
+  step := cast(f32) e[0].vp[0].grid / 100;
+  if step > 0.01 {
+    v := ed_view(e);
+    mid := vp_ground(vp_ray(v, e[0].w * 0.5, e[0].h * 0.62), 0);
+    eye := ed_eye(e);
+    mx := ifx mid.ok then mid.x else eye.x; mz := ifx mid.ok then mid.z else eye.z;
+    // (far off, where the lines would run together, the grid is left out)
+    far := vp_len(mx - eye.x, eye.y, mz - eye.z);
+    if far < step * 60 {
+      cx := cast(f32) cast(int) floor(mx / step + 0.5) * step; cz := cast(f32) cast(int) floor(mz / step + 0.5) * step;
+      r := cast(f32) WORLD_GRID_LINES * step; white := [3] f32.[1, 1, 1];
+      // (the things stand in front of it: a piece of a line behind one is not drawn)
+      boxes: [1] PickBoxes;
+      for i: 0..<ed_count(e) {
+        q := ed_bounds(ed_actor(e, i));
+        at := i * QUERY_BOX;
+        boxes[0].f[at] = q.c.x - q.hx; boxes[0].f[at + 1] = q.c.y - q.hy; boxes[0].f[at + 2] = q.c.z - q.hz;
+        boxes[0].f[at + 3] = q.c.x + q.hx; boxes[0].f[at + 4] = q.c.y + q.hy; boxes[0].f[at + 5] = q.c.z + q.hz;
+      }
+      things := Colliders.{ground = -1000, boxes = boxes[0].f[0..<ed_count(e) * QUERY_BOX]};
+      from := WorldPoint.{x = eye.x, y = eye.y, z = eye.z};
+      // (a line is asked only of the things that could stand before it: those over the ground between the
+      // eye and the line. A full level is 512 things and the grid a hundred lines of pieces, every frame)
+      near: [1] PickBoxes;
+      for k: -WORLD_GRID_LINES..<WORLD_GRID_LINES + 1 {
+        at := cast(f32) k * step;
+        la := [3] f32.[cx + at, 0.01, cz - r]; lb := [3] f32.[cx + at, 0.01, cz + r];
+        world_stroke_past(o[..], u, la, lb, WORLD_GRID_LINES * 2, d, white, WORLD_GRID_ALPHA, world_before(things, eye.x, eye.z, la, lb, near[0].f[..]), from, true);
+        la = [3] f32.[cx - r, 0.01, cz + at]; lb = [3] f32.[cx + r, 0.01, cz + at];
+        world_stroke_past(o[..], u, la, lb, WORLD_GRID_LINES * 2, d, white, WORLD_GRID_ALPHA, world_before(things, eye.x, eye.z, la, lb, near[0].f[..]), from, true);
+      }
+    }
+  }
+  b: [6] s32;
+  for i: 0..<ed_claims_count(e) {
+    if !ed_claim_box(e, cast(s32) i, b[..]) { continue; }
+    x0 := cast(f32) b[2] / 100; z0 := cast(f32) b[3] / 100; x1 := cast(f32) b[4] / 100; z1 := cast(f32) b[5] / 100;
+    c := world_tint(cast(int) b[1]);
+    world_stroke(o[..], u, [3] f32.[x0, 0.02, z0], [3] f32.[x1, 0.02, z0], 6, 3 * d, c, WORLD_CLAIM_ALPHA);
+    world_stroke(o[..], u, [3] f32.[x1, 0.02, z0], [3] f32.[x1, 0.02, z1], 6, 3 * d, c, WORLD_CLAIM_ALPHA);
+    world_stroke(o[..], u, [3] f32.[x1, 0.02, z1], [3] f32.[x0, 0.02, z1], 6, 3 * d, c, WORLD_CLAIM_ALPHA);
+    world_stroke(o[..], u, [3] f32.[x0, 0.02, z1], [3] f32.[x0, 0.02, z0], 6, 3 * d, c, WORLD_CLAIM_ALPHA);
+  }
+  // a play-test's paths and marks, in a picture being drawn (pictures.coax)
+  for g: pic_segs(e) {
+    world_stroke(o[..], u, [3] f32.[g.ax, 0.03, g.az], [3] f32.[g.bx, 0.03, g.bz], 4, 3 * d, world_tint(cast(int) g.tint), 1);
+  }
+  return o[0].n;
+}
+
+
+// One frame of the level open, through the scene: the strokes written (web/hud.coax hud_frame). The host
+// calls it for a level the page draws (ed_world_draws) with the page's own state, vertices and frame block.
+ed_world_frame :: (e: [] Editor, h: [] Hud, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c #effects(all) {
+  if e.count != 1 || h.count != 1 { return 0; }
+  kind := gt_web_kind(cast(int) e[0].plays);
+  if kind < 0 { return 0; }
+  w := e[0].world[..];
+  if h[0].type != kind { world_tell_int(h, HUD_KIND_MSG, kind); h[0].still = false; }
+  if h[0].view != HUD_WORLD { world_tell_int(h, HUD_VIEW_MSG, HUD_WORLD); h[0].still = false; }
+  // crates: the room is the level open, one of its game's levels (the scene's words say which of how many)
+  if kind == HUD_CRATES { at := mine_level_at(e, e[0].level); h[0].crates[0].room = at[0]; h[0].crates[0].rooms = at[1]; }
+  if e[0].play[0].on && e[0].play[0].world {
+    if w[0].gen != w[0].seen || h[0].still {
+      // Play begins: the world from the start, with the level's things made in it afresh
+      w[0].seen = w[0].gen;
+      h[0].still = false; h[0].eye_on = false; h[0].glow_n = 0;
+      world_tell(h, HUD_BLOCKS_MSG, "0\n");
+      world_tools(e, h);
+      hud_again(h);
+      // (crates: come here through the last level's gate, the rooms cleared are counted on)
+      if kind == HUD_CRATES && w[0].next { h[0].crates[0].cleared = w[0].cleared; }
+      w[0].next = false;
+      world_things(e, h, false);
+      // (the website's entrance, the camera coming down as the grass spreads and the sun rises, is the home page's: here the world is up)
+      h[0].zoom = 1; h[0].spread = HUD_SPREAD; h[0].dawn = HUD_SUNRISE; h[0].tilt = h[0].lean;
+      h[0].keys = 0; h[0].taps = 0;
+    }
+    if w[0].keys != h[0].keys { world_tell_int(h, HUD_KEYS_MSG, w[0].keys); }
+    if w[0].act != h[0].act { world_tools(e, h); }
+  } else {
+    sum := world_sum(e);
+    if !h[0].still || sum != w[0].sum {
+      if !h[0].still {
+        // from Play, or a level just opened: the world as it stands before anyone is in it
+        w[0].next = false;
+        world_tools(e, h);
+        hud_again(h);
+        h[0].still = true; h[0].dawn = HUD_SUNRISE;
+        h[0].keys = 0; h[0].taps = 0;
+      }
+      world_things(e, h, true);
+      w[0].sum = sum;
+    }
+    h[0].eye_on = true; h[0].eye = world_eye(e);
+    h[0].zoom = 1; h[0].spread = HUD_SPREAD; h[0].tilt = h[0].lean;
+    h[0].px = -9999; h[0].py = -9999;
+    world_up(h);
+    world_glow(e, h);
+  }
+  n := hud_frame(h, out, uniforms, width, height, dpr, dt);
+  // crates, played: out through the open gate, the game's next level is opened (the host reads its file, as
+  // for open-level: ed_open_due) and plays on (ed_open); the last one leads round to the first
+  if kind == HUD_CRATES && e[0].play[0].on && e[0].play[0].world && h[0].crates[0].through && !e[0].play_next && e[0].open_due == 0 {
+    next := mine_next_level(e, e[0].level);
+    if next > 0 { e[0].open_due = next + 1; e[0].play_next = true; h[0].edit_n = 0; w[0].next = true; w[0].cleared = h[0].crates[0].cleared; }
+  }
+  if h[0].still && uniforms.count >= HUD_UNIFORMS { n = world_lines(e, out, n, uniforms, ifx dpr > 0 then dpr else 1.0f32); }
+  if e[0].play[0].on && e[0].play[0].world { w[0].says_n = world_line(h, w[0].says[..]); } else { w[0].says_n = 0; }
+  return n;
+}
+
+// ---------------------------------------------------------------- checks
+
+WorldTest :: struct { e: [1] Editor; t: [1] HudTest; }
+world_test_frames :: (t: [] WorldTest, frames: int, dt: f32) {
+  for i: 0..<frames { n := ed_world_frame(t[0].e[..], t[0].t[0].h[..], t[0].t[0].out[..], t[0].t[0].u[..], 1280, 720, 1, dt); }
+}
+world_test_open :: (t: [] WorldTest, type: s32) {
+  e := t[0].e[..];
+  ed_init(e, 1280, 720);
+  made := ed_new_game(e, 1, type, 1);
+  ed_world_attach(e, true);
+  t[0].t[0].h[0].bare = true;   // (no character is posed: the checks have no pack of one)
+}
+
+#test "the engine's page: a meadow level being built is the scene's things, at rest where the level has them, turned as they are turned, and nothing moves" #steps 400000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_THIRD);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..];
+  #assert ed_paged(e) && ed_world_draws(e) && ed_count(e) == 4;
+  world_test_frames(t[..], 3, 0.016);
+  #assert h[0].type == 0 && h[0].view == HUD_WORLD && h[0].still && h[0].eye_on && h[0].zoom == 1 && h[0].spread == HUD_SPREAD;
+  #assert bd_count(b) == 4;
+  // the starter's wall across: 6 m by 2 m by 1 m at (0, 8), its middle a metre up
+  wall := ed_actor(e, 2);
+  i := bd_index(b, cast(int) wall.id);
+  #assert i >= 0 && near(cast(f32) b[0].set[0].pos[i].x, 0, 0.001) && near(cast(f32) b[0].set[0].pos[i].y, 1, 0.001) && near(cast(f32) b[0].set[0].pos[i].z, 8, 0.001);
+  // the ball is a ball, 0.6 m in radius, resting on the ground; a second of frames moves nothing
+  ball := ed_actor(e, 3);
+  j := bd_index(b, cast(int) ball.id);
+  #assert j >= 0 && b[0].kind[j] == Bd_Kind.ball && near(cast(f32) b[0].set[0].pos[j].y, 0.6, 0.001);
+  world_test_frames(t[..], 60, 0.016);
+  #assert near(cast(f32) b[0].set[0].pos[j].y, 0.6, 0.0001) && near(cast(f32) b[0].set[0].pos[j].x, 0.8, 0.0001) && near(cast(f32) b[0].set[0].pos[i].y, 1, 0.0001);
+  // the camera is the editor's own: its eye, the scene's z the other way
+  eye := ed_eye(e);
+  #assert near(h[0].eye.x, eye.x, 0.0001) && near(h[0].eye.z, -eye.z, 0.0001) && near(h[0].eye.yaw, e[0].vp[0].fyaw, 0.0001);
+  // a thing turned in the level is turned in the scene, and one moved is where it was moved to; undo puts it back
+  e[0].selected = wall.id;
+  ed_apply(e, WorldEdit.{ok = true, op = WE_ROTATE, id = cast(int) wall.id, yaw = 90});
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) wall.id, x = 300, y = 0, z = 800});
+  world_test_frames(t[..], 1, 0.016);
+  q := b[0].set[0].att[i];
+  #assert near(cast(f32) b[0].set[0].pos[i].x, 3, 0.001) && near(cast(f32) q.y, 0.70710678, 0.001) && near(cast(f32) q.w, 0.70710678, 0.001);
+  #assert h[0].glow_n >= 1 && h[0].glow[0] == cast(int) wall.id && h[0].glow_a[0] == 1;
+  ed_undo(e); ed_undo(e);
+  world_test_frames(t[..], 1, 0.016);
+  #assert near(cast(f32) b[0].set[0].pos[i].x, 0, 0.001) && near(cast(f32) b[0].set[0].att[i].y, 0, 0.001);
+  // a thing deleted is gone from the scene, and one added is in it, its mesh with the rest
+  ed_delete(e);
+  world_test_frames(t[..], 1, 0.016);
+  #assert bd_count(b) == 3 && bd_index(b, cast(int) wall.id) < 0;
+  n0 := h[0].mesh_n;
+  added := ed_add(e, KIND_BLOCK);
+  world_test_frames(t[..], 1, 0.016);
+  #assert bd_count(b) == 4 && h[0].mesh_n > n0;
+}
+
+#test "the engine's page: Play starts the scene's world with the level's things in it, the keys walk the character by the website's rules, and Stop puts the level back as it was built" #steps 2000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_THIRD);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..];
+  world_test_frames(t[..], 2, 0.016);
+  ball := ed_actor(e, 3);
+  ed_play(e, 0);
+  #assert ed_playing(e) && ed_world_playing(e) && !ed_play_captures(e);
+  world_test_frames(t[..], 30, 0.016);
+  #assert !h[0].still && !h[0].eye_on && bd_count(b) == 4;
+  // W walks ahead (the page's +z); the character is where the scene's walk rules put it
+  z0 := h[0].cz;
+  ed_key(e, KEY_W, true, 0);
+  world_test_frames(t[..], 120, 0.016);
+  #assert e[0].world[0].keys == 1 && h[0].keys == 1 && h[0].cz > z0 + 1;
+  j := bd_index(b, cast(int) ball.id);
+  ed_key(e, KEY_W, false, 0);
+  world_test_frames(t[..], 10, 0.016);
+  #assert h[0].keys == 0;
+  // Escape is Stop: the level is drawn as it was built, the ball back at its place, at rest
+  ed_key(e, KEY_ESCAPE, true, 0);
+  #assert !ed_playing(e);
+  world_test_frames(t[..], 2, 0.016);
+  #assert h[0].still && j >= 0 && near(cast(f32) b[0].set[0].pos[j].x, 0.8, 0.001) && near(cast(f32) b[0].set[0].pos[j].z, 3, 0.001) && near(cast(f32) b[0].set[0].pos[j].y, 0.6, 0.001);
+  #assert ed_count(e) == 4;
+}
+
+#test "the engine's page: without the page a meadow level plays as before; a pointer on the page's picture is the viewport's in a mirror" {
+  t: [1] WorldTest;
+  e := t[0].e[..];
+  ed_init(e, 1280, 720);
+  #assert ed_new_game(e, 1, cast(s32) GT_THIRD, 1);
+  #assert !ed_paged(e) && !ed_world_draws(e) && ed_sx(e, 100) == 100;
+  ed_play(e, 0);
+  #assert ed_playing(e) && !ed_world_playing(e) && e[0].play[0].meadow;
+  ed_stop(e);
+  ed_world_attach(e, true);
+  #assert ed_paged(e) && ed_sx(e, 100) == 1180;
+  ed_play(e, 0);
+  #assert ed_world_playing(e);
+  ed_stop(e);
+  // the app's own three types are never the page's
+  #assert ed_new_game(e, 2, cast(s32) GT_ARENA, 2);
+  #assert !ed_paged(e) && ed_sx(e, 100) == 100;
+}
+
+#test "the engine's page: a click on a thing where the page draws it picks that thing, each of the starter's four, and a click on the ground picks none" #steps 400000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_THIRD);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..]; u := t[0].t[0].u[..];
+  world_test_frames(t[..], 2, 0.016);
+  for k: 0..<4 {
+    a := ed_actor(e, k);
+    i := bd_index(b, cast(int) a.id);
+    #assert i >= 0;
+    // where the frame's own camera puts the thing's middle on the screen (the scene's z the other way)
+    at := sty_project(u, cast(f32) b[0].set[0].pos[i].x, cast(f32) b[0].set[0].pos[i].y, -cast(f32) b[0].set[0].pos[i].z);
+    #assert at.ahead && at.x > 0 && at.x < 1280 && at.y > 0 && at.y < 720;
+    ed_down(e, BUTTON_LEFT, at.x, at.y, 0);
+    ed_up(e, BUTTON_LEFT, at.x, at.y);
+    #assert e[0].selected == a.id;
+  }
+  // the ground far to one side of them all
+  g := sty_project(u, 40, 0, -6);
+  if g.ahead && g.x > 0 && g.x < 1280 && g.y > 0 && g.y < 720 {
+    ed_down(e, BUTTON_LEFT, g.x, g.y, 0);
+    ed_up(e, BUTTON_LEFT, g.x, g.y);
+    #assert e[0].selected == 0;
+  }
+}
+
+#test "the engine's page: the ground's grid and an agent's claim are lines over the level being built, the claim in its agent's colour; in Play there are neither" #steps 800000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_THIRD);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; out := t[0].t[0].out[..]; u := t[0].t[0].u[..];
+  world_test_frames(t[..], 2, 0.016);
+  bare := hud_frame(h, out, u, 1280, 720, 1, 0);
+  with := ed_world_frame(e, h, out, u, 1280, 720, 1, 0);
+  #assert with > bare + 6 * WORLD_GRID_LINES;
+  // every vertex the grid adds is white and faint
+  #assert out[bare * HUD_FLOATS + 2] == 1 && out[bare * HUD_FLOATS + 4] == 1 && near(out[bare * HUD_FLOATS + 5], WORLD_GRID_ALPHA, 0.0001);
+  // an agent's claim on the ground in front: its lines after the grid's, in the agent's colour
+  ed_claims_clock(e, 1000);
+  ann := claim_named("ann");
+  r: [1] ClaimRegion; _ = claim_region_read("box:-300,200,300,600", r[..]);
+  words: [1024] u8;
+  #assert claims_make(e, ann, "ann", r[0], words[..]).error == "";
+  more := ed_world_frame(e, h, out, u, 1280, 720, 1, 0);
+  #assert more > with;
+  c := world_tint(cast(int) claim_tint(ann));
+  #assert !(c[0] == 1 && c[1] == 1 && c[2] == 1);
+  #assert near(out[(more - 1) * HUD_FLOATS + 2], c[0], 0.0001) && near(out[(more - 1) * HUD_FLOATS + 3], c[1], 0.0001) && near(out[(more - 1) * HUD_FLOATS + 4], c[2], 0.0001);
+  // each tint the claims go round has a colour of its own
+  for k: 0..<CLAIM_TINTS { w := world_tint(cast(int) CLAIM_TINT[k]); #assert !(w[0] == 1 && w[1] == 1 && w[2] == 1); }
+  // in Play the picture is the world's alone
+  ed_play(e, 0);
+  played := ed_world_frame(e, h, out, u, 1280, 720, 1, 0.016);
+  alone := hud_frame(h, out, u, 1280, 720, 1, 0);
+  #assert played == alone;
+}
+
+// ---------------------------------------------------------------- checks: the worlds of their own, played by the page
+// (each is the website's own check of that world, web/hud.coax, come at through the app: a game made of the
+// type, Play pressed, the app's keys)
+
+// Frames as the website's checks run them: a 1600 by 1200 picture at two pixels a point.
+world_test_run :: (t: [] WorldTest, frames: int) {
+  for i: 0..<frames { n := ed_world_frame(t[0].e[..], t[0].t[0].h[..], t[0].t[0].out[..], t[0].t[0].u[..], 1600, 1200, 2, 0.016666668); }
+}
+// The app's keys for a recording's letters, held or let go (web/hud.coax hud_test_keys: w s a d, j jump).
+world_test_hold :: (e: [] Editor, letters: string, down: bool) {
+  for ch: letters {
+    if ch == 'w' { ed_key(e, KEY_W, down, 0); } if ch == 's' { ed_key(e, KEY_S, down, 0); } if ch == 'a' { ed_key(e, KEY_A, down, 0); }
+    if ch == 'd' { ed_key(e, KEY_D, down, 0); } if ch == 'j' { ed_key(e, KEY_SPACE, down, 0); }
+  }
+}
+// A recording replayed through the app's keys (runs of letters and a count of frames, 60 a second), as far as
+// `most` frames. How many frames it ran.
+world_test_replay :: (t: [] WorldTest, rec: string, most: int) -> int {
+  e := t[0].e[..]; i := 0; frames := 0;
+  while i < rec.count && frames < most {
+    from := i;
+    while i < rec.count && (rec[i] < '0' || rec[i] > '9') { i += 1; }
+    letters := cast(string) rec[from..<i];
+    n := 0;
+    while i < rec.count && rec[i] >= '0' && rec[i] <= '9' { n = n * 10 + cast(int) (rec[i] - '0'); i += 1; }
+    world_test_hold(e, letters, true);
+    world_test_run(t, n); frames += n;
+    world_test_hold(e, letters, false);
+  }
+  return frames;
+}
+// A thing of a kind added to the level at a place (centimetres), its kind's own size: its id.
+world_test_add :: (e: [] Editor, kind: int, x: int, z: int) -> s32 {
+  return ed_spawn(e, cast(s32) kind, cast(s32) x, cast(s32) z, GK_SX[kind], GK_SY[kind], GK_SZ[kind], 0, 100);
+}
+// A game of a type made and Play pressed, the picture the website's checks' size.
+world_test_play :: (t: [] WorldTest, type: s32) {
+  world_test_open(t, type);
+  world_test_run(t, 2);
+  ed_play(t[0].e[..], 0);
+}
+
+// What the host does for a new crates game in these checks: the files of its second and third level kept (ed_more_save).
+WorldRooms :: struct { doc: [3 * GB_DOC_MAX] u8; len: [3] s64; }
+#test "the engine's page: crates in the app: a new game is three levels, a room each, made of things; a wall moved in the editor is the played room's; played, each room's recorded solution through the app's keys lights the pads, opens the gate and walks out into the game's next level, the last into the first; R resets; Stop is the level you are in" #steps 8000000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_CRATES);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; c := h[0].crates[..]; b := h[0].things[..];
+  k: [1] WorldRooms;
+  // the game: levels 1, 2 and 3; the first open, the other two for the host to write
+  gi := mine_find(e, 1);
+  #assert gi >= 0 && e[0].mine[gi].level_n == 3 && e[0].mine[gi].levels[0] == 1 && e[0].mine[gi].levels[1] == 2 && e[0].mine[gi].levels[2] == 3 && ed_level(e) == 1 && ed_count(e) == 9;
+  #assert ed_more_due(e) == 2; k[0].len[1] = ed_more_save(e, k[0].doc[GB_DOC_MAX..<2 * GB_DOC_MAX]);
+  #assert ed_more_due(e) == 3; k[0].len[2] = ed_more_save(e, k[0].doc[2 * GB_DOC_MAX..<3 * GB_DOC_MAX]);
+  #assert ed_more_due(e) == 0 && k[0].len[1] > 200 && k[0].len[1] < MORE_DOC && k[0].len[2] > k[0].len[1] && k[0].len[2] < MORE_DOC && ed_more_save(e, k[0].doc[0..<16]) == 0;
+  #assert mine_next_level(e, 1) == 2 && mine_next_level(e, 3) == 1 && mine_next_level(e, 7) == 0 && mine_level_at(e, 2)[0] == 1 && mine_level_at(e, 2)[1] == 3 && mine_level_at(e, 7)[1] == 1;
+  world_test_run(t[..], 3);
+  #assert h[0].type == HUD_CRATES && h[0].still && c[0].ok && c[0].room == 0 && c[0].rooms == 3 && h[0].ns == 1 && bd_count(b) == 6 && h[0].nmk == 3 && c[0].z1 == 3.75;
+  // the north wall (the level's first thing) moved a tile north in the editor: the room's floor reaches it; undo and redo
+  a := ed_actor(e, 0); #assert a.kind == GK_WALL && a.z == 300;
+  e[0].selected = a.id; #assert ed_set_field(e, FIELD_Z, 450);
+  world_test_run(t[..], 2); #assert c[0].z1 == 5.25;
+  ed_undo(e); world_test_run(t[..], 2); #assert c[0].z1 == 3.75 && ed_can_redo(e);
+  ed_redo(e); world_test_run(t[..], 2); #assert c[0].z1 == 5.25;
+  k[0].len[0] = ed_save(e, k[0].doc[0..<GB_DOC_MAX]); #assert k[0].len[0] > 0;
+  ed_play(e, 0);
+  #assert ed_world_playing(e);
+  world_test_run(t[..], 420);
+  #assert !h[0].still && c[0].ok && c[0].room == 0 && c[0].cleared == 0 && !c[0].solved && h[0].kind == CAM_KIND_TOP && c[0].z1 == 5.25 && bd_count(b) == 6;
+  // how the run stands is said over the picture in the room's own words, less what the world is
+  #assert e[0].world[0].says_n > 0 && cast(string) e[0].world[0].says[0..<4] == "pads";
+  for room: 0..<3 {
+    frames := world_test_replay(t[..], cr_solutions()[room], 60 * 90);
+    // out through the gate: the game's next level is for the host to open (as open-level's is), the last leading round to the first
+    next := cast(s32) ((room + 1) % 3) + 1;
+    #assert frames > 60 && c[0].cleared == room + 1 && c[0].through && e[0].play_next && e[0].open_due == next + 1 && ed_level(e) == cast(s32) room + 1;
+    world_test_run(t[..], 5); #assert e[0].open_due == next + 1;      // (asked once)
+    due := ed_open_due(e); #assert due == next;
+    at := cast(s64) (next - 1) * GB_DOC_MAX;
+    #assert ed_open(e, due, k[0].doc[at..<at + k[0].len[next - 1]]);
+    // it is the level open, and it plays on: its room, the rooms cleared counted on
+    #assert ed_level(e) == next && ed_world_playing(e) && !e[0].play_next && e[0].mine_open == 1 && e[0].plays == GT_CRATES;
+    world_test_run(t[..], 420);
+    #assert !h[0].still && c[0].room == cast(int) next - 1 && c[0].rooms == 3 && c[0].cleared == room + 1 && !c[0].solved && !c[0].through && c[0].lit == 0 && c[0].r[0].ng == cast(int) next && e[0].open_due == 0;
+  }
+  // round to the first again: the wall is where it was moved to
+  #assert ed_level(e) == 1 && c[0].z1 == 5.25 && cast(string) e[0].world[0].says[0..<4] == "pads";
+  // R: the world's own action, the room over again
+  ed_key(e, KEY_R, true, 0); ed_key(e, KEY_R, false, 0);
+  world_test_run(t[..], 2);
+  #assert e[0].world[0].act == 1 && c[0].room == 0 && c[0].lit == 0 && c[0].resets == 1;
+  ed_stop(e);
+  world_test_run(t[..], 2);
+  #assert !ed_playing(e) && h[0].still && c[0].room == 0 && e[0].world[0].says_n == 0 && ed_count(e) == 9;
+  // a level opened while nothing plays stays in the editor
+  #assert ed_open(e, 2, k[0].doc[GB_DOC_MAX..<GB_DOC_MAX + k[0].len[1]]) && !ed_playing(e) && ed_count(e) == 12;
+  world_test_run(t[..], 2); #assert h[0].still && c[0].room == 1 && c[0].r[0].ng == 2;
+}
+
+#test "the engine's page: crates built in the app: a wall and a pad added in the editor are in the played room, the wall fixed and the pad a goal to light; undo takes them out again" #steps 2000000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_CRATES);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..];
+  world_test_run(t[..], 2);
+  wall := world_test_add(e, GK_WALL, 600, 600);
+  goal := world_test_add(e, GK_CRATE_GOAL, -600, 600);
+  #assert wall > 0 && goal > 0 && ed_count(e) == 11;
+  world_test_run(t[..], 2);
+  i := bd_index(b, cast(int) wall);
+  #assert i >= 0 && bd_fixed(b, i) && hud_role(h, cast(int) wall) == BL_R_WALL && h[0].nmk == 4 && h[0].marks[3].role == BL_R_GOAL && bd_index(b, cast(int) goal) < 0;
+  // (the room reaches the wall that was added: its floor is laid out to it)
+  #assert h[0].crates[0].r[0].ng == 2 && h[0].crates[0].x1 == 6.75 && h[0].crates[0].z1 == 6.75;
+  ed_play(e, 0);
+  world_test_run(t[..], 60);
+  j := bd_index(b, cast(int) wall);
+  #assert j >= 0 && bd_fixed(b, j) && h[0].crates[0].r[0].ng == 2 && near(cast(f32) b[0].set[0].pos[j].x, 6, 0.01) && near(cast(f32) b[0].set[0].pos[j].z, 6, 0.01);
+  ed_stop(e);
+  ed_undo(e); ed_undo(e);
+  world_test_run(t[..], 2);
+  #assert ed_count(e) == 9 && bd_index(b, cast(int) wall) < 0 && h[0].nmk == 3 && h[0].crates[0].x1 == 5.25;
+}
+
+#test "the engine's page: the platformer's moving platforms in the app: built, each stands where its thing is; the distance and the period set in the inspector are the course's; played, it goes that far in that time and carries who stands on it; undo puts them back" #steps 4000000000000 #traversal 4000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_PLATFORMER);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; p := h[0].plat[..]; c := p[0].c[..];
+  world_test_run(t[..], 2);
+  // built: the course is the level's 111 things, held at the moment its clock starts
+  #assert ed_count(e) == 111 && h[0].still && p[0].ok && c[0].n == 67 && pf_time(p) == 0 && h[0].pf_n == 111;
+  first := -1; for i: 0..<ed_count(e) { if ed_actor(e, i).kind == GK_SLIDER && first < 0 { first = cast(int) i; } }
+  k := -1; for i: 0..<c[0].n { if c[0].parts[i].kind == PF_MOVER && k < 0 { k = i; } }
+  a := ed_actor(e, first);
+  z0 := cast(f32) (cast(int) a.z * 2 - cast(int) a.sz) / 200.0f32;
+  #assert first > 0 && k > 0 && c[0].parts[k].slide.bz == 10 && c[0].parts[k].slide.period == 6 && near(pf_box(p, k)[2], z0, 0.001) && near(pf_box(p, k)[4], cast(f32) (a.y + a.sy) / 100.0f32, 0.001);
+  // selected, its distance 4 m and its period 2 seconds: the course has it so, still where its thing is
+  e[0].selected = a.id;
+  #assert ed_set_field(e, FIELD_GO, 400) && ed_set_field(e, FIELD_EVERY, 2000);
+  world_test_run(t[..], 2);
+  #assert c[0].parts[k].slide.bz == 4 && c[0].parts[k].slide.period == 2 && near(pf_box(p, k)[2], z0, 0.001) && h[0].still;
+  // played: it goes 4 m and comes back in 2 seconds, and carries who stands on it
+  ed_play(e, 0);
+  for f: 0..<240 { world_test_run(t[..], 1); if pf_up(p) { break; } }
+  #assert ed_world_playing(e) && pf_up(p) && c[0].parts[k].slide.bz == 4 && c[0].parts[k].slide.period == 2;
+  hud_plat_put(h, [3] f32.[0, pf_box(p, k)[4], pf_box(p, k)[2] + 2]);
+  most: f32 = 0; back := false; rode := true; t0 := pf_time(p);
+  for f: 0..<180 {
+    world_test_run(t[..], 1);
+    d := pf_box(p, k)[2] - z0;
+    if d > most { most = d; }
+    if most > 3.9 && d < 0.2 { back = true; }
+    if !near(h[0].cz, pf_box(p, k)[2] + 2, 0.08) || p[0].stand != k { rode = false; }
+  }
+  #assert near(most, 4, 0.05) && back && rode && pf_time(p) - t0 > 2.9;
+  ed_stop(e);
+  world_test_run(t[..], 2);
+  #assert h[0].still && pf_time(p) == 0 && near(pf_box(p, k)[2], z0, 0.001);
+  // undo, twice: the period, then the distance, as they were
+  ed_undo(e); #assert ed_field(e, FIELD_EVERY) == 6000 && ed_field(e, FIELD_GO) == 400;
+  ed_undo(e); #assert ed_field(e, FIELD_GO) == 1000;
+  world_test_run(t[..], 2);
+  #assert c[0].parts[k].slide.bz == 10 && c[0].parts[k].slide.period == 6;
+}
+#test "the engine's page: the platformer in the app: the recorded run through the app's keys touches every checkpoint and reaches the goal without a fall; a bounce pad built under the start throws the character up; a platform built in the air is held there" #steps 4000000000000 #traversal 4000000000 {
+  t: [1] WorldTest; world_test_play(t[..], cast(s32) GT_PLATFORMER);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; p := h[0].plat[..]; b := h[0].things[..];
+  world_test_run(t[..], 84);
+  #assert ed_world_playing(e) && h[0].type == HUD_PLATFORMER && pf_up(p) && p[0].run.going && h[0].kind == CAM_KIND_SIDE && near(h[0].cy, PF_START, 0.05);
+  frames := world_test_replay(t[..], PF_SOLUTION, 60 * 200);
+  #assert p[0].run.done && p[0].falls == 0 && p[0].run.clock > 120 && p[0].run.clock < 180 && frames > 120 * 60;
+  #assert e[0].world[0].says_n > 8 && cast(string) e[0].world[0].says[0..<8] == "finished";
+  ed_stop(e);
+  // built: a pad under where the character starts (its top the first platform's), and a slab in the air over it
+  pad := world_test_add(e, GK_PAD, 0, 200);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) pad, x = 0, y = 375, z = 200});
+  slab := world_test_add(e, GK_BLOCK, 0, 200);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) slab, x = 0, y = 1400, z = 200});
+  #assert ed_actor(e, ed_index(e, pad)).y == 375 && ed_actor(e, ed_index(e, slab)).y == 1400;
+  world_test_run(t[..], 2);
+  ed_play(e, 0);
+  top: f32 = 0; for k: 0..<140 { world_test_run(t[..], 1); if h[0].cy > top { top = h[0].cy; } }
+  i := bd_index(b, cast(int) pad); j := bd_index(b, cast(int) slab);
+  #assert i >= 0 && hud_role(h, cast(int) pad) == BL_R_PAD && top > PF_START + 3;
+  #assert j >= 0 && b[0].set[0].inv_mass[j] == 0 && near(cast(f32) b[0].set[0].pos[j].y, 14.5, 0.01);
+}
+
+#test "the engine's page: racing's circuit is the level's track points: a new game's are the road it opens on; one moved in the editor, the road is laid through where it is now, the car on its grid; undo is the first road again; deleted down to two, the first circuit stands; played, the moved road is the one driven" #steps 4000000000000 #traversal 1000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_RACING);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; r := h[0].race[..];
+  world_test_run(t[..], 3);
+  first: [RC_POINTS] TrackPoint; nf := rc_points(first[..]);
+  #assert h[0].type == HUD_RACING && h[0].still && r[0].ok && ed_count(e) == GT_CIRCUIT && h[0].nmk == GT_CIRCUIT && rc_laid(r, first[0..<nf]);
+  length := r[0].t[0].length;
+  // the far corner (the 14th point, banked 6 degrees) pulled 40 m out
+  a := ed_actor(e, 13); #assert a.kind == GK_TRACK && a.x == 14000 && a.z == 10000 && a.yaw == 6 && a.y == 180;
+  e[0].selected = a.id; #assert ed_set_field(e, FIELD_X, 18000);
+  world_test_run(t[..], 2);
+  #assert r[0].ok && !rc_laid(r, first[0..<nf]) && r[0].pts[13].x == 180 && r[0].pts[13].bank == first[13].bank && r[0].t[0].length > length + 30 && abs(r[0].s - (r[0].line - RC_GRID)) < 0.01;
+  long := r[0].t[0].length;
+  // undo: the road as it was
+  ed_undo(e); world_test_run(t[..], 2);
+  #assert rc_laid(r, first[0..<nf]) && r[0].t[0].length == length;
+  ed_redo(e); world_test_run(t[..], 2);
+  #assert r[0].t[0].length == long;
+  // played: the same road, and the car drives it from the lights
+  ed_play(e, 0); world_test_run(t[..], 3);
+  #assert !h[0].still && r[0].ok && r[0].t[0].length == long && r[0].np == GT_CIRCUIT;
+  ed_stop(e); world_test_run(t[..], 2);
+  // every point but two deleted: no circuit of its own, so the first one stands
+  while ed_count(e) > 2 { e[0].selected = ed_actor(e, 0).id; ed_delete(e); }
+  world_test_run(t[..], 2);
+  #assert h[0].nmk == 2 && r[0].ok && rc_laid(r, first[0..<nf]);
+}
+
+#test "the engine's page: racing in the app: W does nothing till green, then drives; a cone built on the road is knocked away and never a wall, a boost built there is a mark the race reads; R puts the car back; the run is said in the race's words" #steps 4000000000000 #traversal 1000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_RACING);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; r := h[0].race[..]; b := h[0].things[..];
+  world_test_run(t[..], 3);
+  #assert h[0].type == HUD_RACING && h[0].still && r[0].ok;
+  // a cone 12 m ahead of the grid on the road, and a boost 20 m ahead (the track's z runs the other way to the level's)
+  a := track_point(track_at(r[0].t[..], r[0].s + 12), 0, 0); g := track_point(track_at(r[0].t[..], r[0].s + 20), 0, 0);
+  cone := world_test_add(e, GK_CONE, cast(int) (a[0] * 100), cast(int) (-a[2] * 100));
+  boost := world_test_add(e, GK_BOOST, cast(int) (g[0] * 100), cast(int) (-g[2] * 100));
+  #assert cone > 0 && boost > 0;
+  world_test_run(t[..], 2);
+  #assert bd_index(b, cast(int) cone) >= 0 && h[0].nmk == GT_CIRCUIT + 1 && h[0].marks[GT_CIRCUIT].role == BL_R_BOOST;
+  ed_play(e, 0);
+  ed_key(e, KEY_W, true, 0);
+  world_test_run(t[..], 57);
+  #assert ed_world_playing(e) && r[0].shown && !r[0].run.going && abs(rc_speed(r)) < 0.5;
+  i := bd_index(b, cast(int) cone); #assert i >= 0 && hud_role(h, cast(int) cone) == BL_R_CONE && !bd_fixed(b, i);
+  was := b[0].set[0].pos[i]; s0 := r[0].s;
+  for k: 0..<420 { world_test_run(t[..], 1); if r[0].s > s0 + 30 { break; } }
+  q := b[0].set[0].pos[bd_index(b, cast(int) cone)];
+  #assert r[0].run.going && r[0].s > s0 + 25 && r[0].nbx == 0 && r[0].nbo == 1 && (q.x - was.x) * (q.x - was.x) + (q.z - was.z) * (q.z - was.z) > 1;
+  #assert e[0].world[0].says_n > 3 && cast(string) e[0].world[0].says[0..<3] == "lap";
+  // R: back on course, still
+  ed_key(e, KEY_W, false, 0);
+  ed_key(e, KEY_R, true, 0); ed_key(e, KEY_R, false, 0);
+  world_test_run(t[..], 2);
+  #assert r[0].backs == 1 && abs(rc_speed(r)) < 1;
+  ed_stop(e);
+  world_test_run(t[..], 2);
+  #assert h[0].still && ed_count(e) == GT_CIRCUIT + 2;
+}
+
+#test "the engine's page: drift's course is the level's rings: a new game's are the course it opens on; one moved and made wider in the editor, the course goes through it as it is now; undo is the first course again; one deleted, the course is the ones left; played, that is the course flown" #steps 4000000000000 #traversal 1000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_DRIFT);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; d := h[0].drift[..];
+  world_test_run(t[..], 3);
+  first: [DR_RINGS] Ring; nf := dr_rings(first[..]);
+  #assert h[0].type == HUD_DRIFT && h[0].still && d[0].ok && ed_count(e) == GT_RINGS && h[0].nmk == GT_RINGS && dr_laid(d, first[0..<nf]);
+  // the third ring (12 m under where the floor was) raised 40 m and made twice as wide
+  a := ed_actor(e, 2); #assert a.kind == GK_RING && a.x == -177 && a.y == -1299 && a.z == -15887;
+  e[0].selected = a.id; #assert ed_set_field(e, FIELD_Y, 2701) && ed_set_field(e, FIELD_SCALE, 200);
+  world_test_run(t[..], 2);
+  r := d[0].course[0].ring[2];
+  #assert d[0].ok && !dr_laid(d, first[0..<nf]) && near(r.y, first[2].y + 41, 0.02) && near(r.r, DR_RING_R * 2, 0.01) && d[0].course[0].n == GT_RINGS;
+  // undo, twice: the course as it was
+  ed_undo(e); ed_undo(e); world_test_run(t[..], 2);
+  #assert dr_laid(d, first[0..<nf]);
+  // the last ring deleted: eleven; played, eleven are flown
+  e[0].selected = ed_actor(e, GT_RINGS - 1).id; ed_delete(e); world_test_run(t[..], 2);
+  #assert ed_count(e) == GT_RINGS - 1 && d[0].course[0].n == GT_RINGS - 1;
+  ed_play(e, 0); world_test_run(t[..], 3);
+  #assert !h[0].still && d[0].ok && d[0].course[0].n == GT_RINGS - 1 && d[0].run.gates == GT_RINGS - 1;
+}
+#test "the engine's page: drift in the app: W flies the ship from the first frame, Space rises and Shift sinks, a block built in open space is held where it was put, R puts the ship back" #steps 4000000000000 #traversal 1000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_DRIFT);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; d := h[0].drift[..]; b := h[0].things[..];
+  world_test_run(t[..], 3);
+  #assert h[0].type == HUD_DRIFT && h[0].still && d[0].ok;
+  block := world_test_add(e, GK_BLOCK, 3000, -4000);
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) block, x = 3000, y = 900, z = -4000});
+  world_test_run(t[..], 2);
+  ed_play(e, 0);
+  ed_key(e, KEY_W, true, 0);
+  world_test_run(t[..], 80);
+  #assert ed_world_playing(e) && dr_up(d) && d[0].run.going && dr_speed(d) > 3;
+  ed_key(e, KEY_W, false, 0);
+  ed_key(e, KEY_SPACE, true, 0); y0 := dr_at(d)[1]; world_test_run(t[..], 40); y1 := dr_at(d)[1]; ed_key(e, KEY_SPACE, false, 0);
+  #assert y1 > y0 + 0.5;
+  // Shift is a modifier: the host tells its change as key 0
+  ed_key(e, 0, false, MOD_SHIFT); world_test_run(t[..], 120); y2 := dr_at(d)[1]; ed_key(e, 0, false, 0);
+  #assert (e[0].world[0].keys & 2048) == 0 && y2 < y1;
+  j := bd_index(b, cast(int) block);
+  #assert j >= 0 && near(cast(f32) b[0].set[0].pos[j].y, 9.5, 0.01) && near(cast(f32) b[0].set[0].pos[j].x, 30, 0.01) && near(cast(f32) b[0].set[0].pos[j].z, -40, 0.01);
+  ed_key(e, KEY_R, true, 0); ed_key(e, KEY_R, false, 0);
+  world_test_run(t[..], 2);
+  #assert d[0].backs == 1;
+}
+
+#test "the engine's page: the village in the app: the green's nine buildings are things of the level, drawn by the scene while it is built; one is added, moved, turned and scaled within a building's rules and undone; played, the character walks it, the buildings solid and the starter's ball a body" #steps 4000000000000 #traversal 1000000000 {
+  t: [1] WorldTest; world_test_open(t[..], cast(s32) GT_VILLAGE);
+  e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..];
+  world_test_run(t[..], 3);
+  vl_test_ready(h[0].village[..]); hud_statics(h);   // (the buildings' shapes, as the pack gives them: the checks have no pack)
+  world_test_run(t[..], 2);
+  // the green is the level's: its nine buildings are things of the level beside the ball, and the scene's buildings are those
+  v := h[0].village[..];
+  #assert h[0].type == HUD_VILLAGE && h[0].still && h[0].ns > 0 && ed_count(e) == 1 + GT_GREEN && bd_count(b) == 1 && v[0].nput == GT_GREEN;
+  house := ed_actor(e, 1);
+  #assert house.kind == GK_BRITONS_HOUSE && house.scale == 145 && house.yaw == 90 && v[0].put_id[0] == cast(int) house.id && v[0].put[0].model == 0 && v[0].put[0].quarter == 1 && near(v[0].put[0].scale, 1.45, 0.0001);
+  solids := h[0].ns;
+  // one added from the palette stands at its model's usual scale, clear of the others; moved, turned and scaled, the scene's follows; undo takes each back
+  rock := ed_add(e, cast(s32) GK_ROCK);
+  world_test_run(t[..], 1);
+  #assert rock > 0 && ed_count(e) == 2 + GT_GREEN && v[0].nput == GT_GREEN + 1 && v[0].put_id[GT_GREEN] == cast(int) rock && v[0].put[GT_GREEN].model == 4 && near(v[0].put[GT_GREEN].scale, 1.6, 0.0001);
+  ra := ed_actor(e, ed_index(e, rock));
+  #assert ed_building_why(e, ra.kind, cast(int) ra.x, 0, cast(int) ra.z, 0, 160, rock).count == 0;
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) rock, x = 3000, y = 0, z = -3000});
+  ed_apply(e, WorldEdit.{ok = true, op = WE_ROTATE, id = cast(int) rock, yaw = 100});   // (a drag's turn: to the nearest quarter)
+  ed_apply(e, WorldEdit.{ok = true, op = WE_SCALE, id = cast(int) rock, scale = 250});
+  world_test_run(t[..], 1);
+  ra = ed_actor(e, ed_index(e, rock));
+  #assert ra.x == 3000 && ra.z == -3000 && ra.yaw == 90 && ra.scale == 250 && near(v[0].put[GT_GREEN].x, 30, 0.001) && near(v[0].put[GT_GREEN].z, -30, 0.001) && v[0].put[GT_GREEN].quarter == 1 && near(v[0].put[GT_GREEN].scale, 2.5, 0.0001);
+  // what breaks a building's rules is not made, and the note says why with its numbers: into the market, past 300 percent
+  ed_apply(e, WorldEdit.{ok = true, op = WE_MOVE, id = cast(int) rock, x = 0, y = 0, z = 2900});
+  nb: [NOTE_MAX] u8; #assert ed_actor(e, ed_index(e, rock)).x == 3000 && cast(string) nb[0..<ed_note(e, nb[..])] == "no room there: something is standing in that place.";
+  ed_apply(e, WorldEdit.{ok = true, op = WE_SCALE, id = cast(int) rock, scale = 301});
+  #assert ed_actor(e, ed_index(e, rock)).scale == 250 && cast(string) nb[0..<ed_note(e, nb[..])] == "that scale is out of range: a building stands at 50 to 300 percent of its model.";
+  // selected, the scene lights it
+  e[0].selected = rock; world_test_run(t[..], 1); #assert h[0].glow_n >= 1 && h[0].glow[0] == cast(int) rock;
+  ed_undo(e); #assert ed_actor(e, ed_index(e, rock)).scale == 160;
+  ed_undo(e); #assert ed_actor(e, ed_index(e, rock)).yaw == 0;
+  ed_undo(e); #assert ed_actor(e, ed_index(e, rock)).x != 3000;
+  ed_undo(e); #assert ed_count(e) == 1 + GT_GREEN;
+  world_test_run(t[..], 1);
+  #assert v[0].nput == GT_GREEN && h[0].ns == solids;
+  // played, the green comes up as on the website: its buildings rise, and are solid once they stand
+  ed_play(e, 0);
+  for k: 0..<1500 { world_test_run(t[..], 1); if h[0].ns == solids { break; } }
+  #assert ed_world_playing(e) && !h[0].still && h[0].ns == solids && bd_count(b) == 1;
+  z0 := h[0].cz; x0 := h[0].cx;
+  ed_key(e, KEY_W, true, 0);
+  world_test_run(t[..], 120);
+  ed_key(e, KEY_W, false, 0);
+  #assert (h[0].cz - z0) * (h[0].cz - z0) + (h[0].cx - x0) * (h[0].cx - x0) > 4;
+  ed_stop(e);
+  world_test_run(t[..], 2);
+  #assert h[0].still && bd_count(b) == 1 && v[0].nput == GT_GREEN;
+}
+
+// ---------------------------------------------------------------- checks: one source
+// (the app plays the website's own scene, this file's load of web/hud.coax, so a rule is on both sides or
+// neither. These hold the rest to it: every type the website has is the scene's in the app, each kind a type
+// offers is a thing the scene knows by the same role, and each type's limits are the scene's own.)
+
+#test "the engine's page: one source: every game type the website has is drawn and played in the app by the website's scene, as that type; every kind its palette offers is the scene's own kind there; and its limit on how far a thing may stand is the scene's" #steps 4000000000000 #traversal 1000000000 {
+  for ty: 0..<GT_TYPES {
+    #assert GT_PLAYS_IN_APP[ty];
+    if !GT_ON_WEB[ty] { #assert gt_web_kind(ty) < 0; continue; }
+    t: [1] WorldTest; world_test_open(t[..], cast(s32) ty);
+    e := t[0].e[..]; h := t[0].t[0].h[..]; b := h[0].things[..];
+    world_test_run(t[..], 2);
+    // the type is the scene's own number for it (the website's kind), and the meadow's four are its camera kinds
+    #assert ed_paged(e) && ed_world_draws(e) && h[0].type == gt_web_kind(ty) && h[0].still;
+    if gt_cam(ty) >= 0 { #assert h[0].kind == gt_cam(ty) && hud_meadow(h); }
+    // how far from the middle a thing may stand
+    #assert cast(int) (hud_far(h) * 100 + 0.5) == GT_FAR[ty];
+    // each kind of the palette, added: the scene has it, a body or a mark, by the kind's own role
+    p: [GT_PALETTE_MAX] int; pn := gt_palette(ty, p[..]);
+    #assert pn >= 2;
+    for i: 0..<pn {
+      #assert world_kind(p[i]) >= 0;
+      // (a village building: added clear of the green, it is one of the scene's buildings, its model the kind's)
+      if gk_building(p[i]) >= 0 {
+        bid := ed_spawn(e, cast(s32) p[i], cast(s32) (-3000 + 1500 * gk_building(p[i])), -3000, GK_SX[p[i]], GK_SY[p[i]], GK_SZ[p[i]], 0, 100);
+        world_test_run(t[..], 1);
+        found := false; for q: 0..<h[0].village[0].nput { if h[0].village[0].put_id[q] == cast(int) bid && h[0].village[0].put[q].model == gk_building(p[i]) { found = true; } }
+        #assert bid > 0 && found && bd_index(b, cast(int) bid) < 0;
+        continue;
+      }
+      id := world_test_add(e, p[i], 300 + 300 * i, 900);
+      #assert id > 0;
+      world_test_run(t[..], 1);
+      role := gk_role(p[i]);
+      if p[i] == GK_BALL { j := bd_index(b, cast(int) id); #assert j >= 0 && b[0].kind[j] == Bd_Kind.ball; }
+      else if hud_marker(role) { found := false; for q: 0..<h[0].nmk { if h[0].marks[q].id == cast(int) id && h[0].marks[q].role == role { found = true; } } #assert found && bd_index(b, cast(int) id) < 0; }
+      else { #assert bd_index(b, cast(int) id) >= 0 && hud_role(h, cast(int) id) == (ifx role > 0 then role else 0); }
+    }
+    // and Play is the page's
+    ed_play(e, 0);
+    #assert ed_world_playing(e);
+    world_test_run(t[..], 2);
+    #assert !h[0].still;
+    ed_stop(e);
+  }
+}

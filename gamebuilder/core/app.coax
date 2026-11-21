@@ -1,0 +1,8 @@
+// The app's root: the core (controls.coax, which the CLI's and the checks' roots also are) and the engine's
+// page for it (world.coax: the website's own world, web/hud.coax, loaded into the core so a level of one
+// of the website's game types is drawn and played in the app by the same scene). scripts/generate.sh
+// compiles this file to the C the Xcode targets build; scripts/check.sh runs the page's checks from it.
+//   scripts/check.sh
+#run_steps 100000000;
+#load "controls.coax";
+#load "world.coax";

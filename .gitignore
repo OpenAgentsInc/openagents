@@ -274,3 +274,6 @@ psionic/fixtures/verse-villain/parity-0.f32
 psionic/fixtures/verse-villain/parity-1.f32
 gamebuilder/web/assets/village.pack
 gamebuilder/assets/scrappers.gbm
+
+# GameBuilder build outputs (#13854)
+gamebuilder/build/

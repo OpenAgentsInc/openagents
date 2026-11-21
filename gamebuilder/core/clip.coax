@@ -1,0 +1,139 @@
+// The editor's clipboard: copy what is selected, paste it back as a new
+// block, cut, and duplicate (copy and paste at once).
+//
+// A paste is one spawn on the scene's edit log, so undo takes it back and
+// redo puts it again, and it lands only where the person may edit (games.coax
+// through ed_spawn's own check). The clipboard holds one block because the
+// editor selects one; it is the editor's own, not the system's, so it is
+// shared by every level open on this device until the app quits.
+//
+// Where a paste lands: where the last tap met the ground, when there was one
+// since the copy; else beside the copied block, one more of its widths along
+// for each paste, so pastes never sit inside each other.
+
+Clip :: struct { have: bool; a: Actor; pastes: s32; }
+
+// Copies the selection. False with nothing selected, or a team's start (a
+// level has one of each).
+ed_clip_copy :: (e: [] Editor) -> bool #export_c #effects(all) {
+  if e.count != 1 || e[0].play[0].on { return false; }
+  i := ed_index(e, e[0].selected);
+  if i < 0 { return false; }
+  a := ed_actor(e, i);
+  if a.kind == KIND_START || a.kind == KIND_RIVAL { ed_say(e, "A level has one start for each team: it can't be copied"); return false; }
+  e[0].clip[0] = Clip.{have = true, a = a};
+  e[0].vp[0].here_ok = false;
+  return true;
+}
+
+ed_clip_has :: (e: [] Editor) -> bool #export_c #effects(all) { return e.count == 1 && e[0].clip[0].have; }
+
+// Pastes the clipboard as a new block and selects it. Its id, or 0.
+ed_clip_paste :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || e[0].play[0].on || !e[0].clip[0].have || e[0].drag != DRAG_NONE || !ed_may_edit(e) { return 0; }
+  c := e[0].clip[0];
+  a := c.a;
+  p := e[0].vp[..];
+  x := cast(int) a.x; z := cast(int) a.z;
+  if p[0].here_ok { x = p[0].here_x; z = p[0].here_z; p[0].here_ok = false; }
+  else {
+    // beside it: its own width, at least a grid step, along x for each paste
+    wide := cast(int) a.sx * cast(int) a.scale / 100;
+    if wide < p[0].grid { wide = p[0].grid; }
+    x = cast(int) a.x + wide * (cast(int) c.pastes + 1);
+  }
+  mesh := ed_shape_go(e, a.kind, a.sx, a.sy, a.sz, a.go, a.every);
+  if mesh == 0 { return 0; }
+  r := we_scene_apply(ed_scene(e), WorldEdit.{ok = true, op = WE_SPAWN, id = 0, kind = mesh, x = vp_snap(x, p[0].grid), y = cast(int) a.y, z = vp_snap(z, p[0].grid), yaw = cast(int) a.yaw, scale = cast(int) a.scale});
+  if !r.ok { return 0; }
+  id := cast(s32) r.id;
+  e[0].clip[0].pastes += 1;
+  e[0].selected = id;
+  made := ed_actor(e, ed_index(e, id));
+  ed_log_actor(e, OP_ADD, made, made);
+  e[0].dirty = true;
+  return id;
+}
+
+// Copies the selection and deletes it (one edit undo takes back).
+ed_clip_cut :: (e: [] Editor) -> bool #export_c #effects(all) {
+  if e.count != 1 || !ed_may_edit(e) || !ed_clip_copy(e) { return false; }
+  ed_delete(e);
+  return true;
+}
+
+// A copy of the selection beside it, selected: copy then paste.
+ed_clip_duplicate :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 || !ed_may_edit(e) || !ed_clip_copy(e) { return 0; }
+  return ed_clip_paste(e);
+}
+
+// ⌘C, ⌘X, ⌘V and ⌘D, from ed_key.
+KEY_C :: 99; KEY_X :: 120;
+clip_key :: (e: [] Editor, key: s32) -> bool {
+  if key == KEY_C { _ = ed_clip_copy(e); return true; }
+  if key == KEY_X { _ = ed_clip_cut(e); return true; }
+  if key == KEY_V { _ = ed_clip_paste(e); return true; }
+  if key == KEY_D { _ = ed_clip_duplicate(e); return true; }
+  return false;
+}
+
+// ---- checks
+
+#test "copy and paste: a like block beside the first, one undo takes it back, redo puts it again" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  n := ed_count(e);
+  // pick a pillar
+  pick := -1;
+  for i: 0..<n { a := ed_actor(e, i); if a.kind == KIND_BLOCK && a.sx == 100 && a.sy == 300 { pick = i; break; } }
+  #assert pick >= 0;
+  a := ed_actor(e, pick);
+  e[0].selected = a.id;
+  #assert !ed_clip_has(e) && ed_clip_paste(e) == 0;
+  ed_key(e, KEY_C, true, MOD_COMMAND);
+  #assert ed_clip_has(e) && ed_count(e) == n;
+  ed_key(e, KEY_V, true, MOD_COMMAND);
+  #assert ed_count(e) == n + 1;
+  b := ed_actor(e, ed_index(e, e[0].selected));
+  #assert b.id != a.id && b.kind == a.kind && b.sx == a.sx && b.sy == a.sy && b.sz == a.sz && b.yaw == a.yaw && b.scale == a.scale && b.z == a.z && b.x == a.x + 100;
+  // a second paste goes one further along, not on top of the first
+  second := ed_clip_paste(e);
+  c := ed_actor(e, ed_index(e, second));
+  #assert ed_count(e) == n + 2 && c.x == a.x + 200;
+  ed_undo(e);
+  #assert ed_count(e) == n + 1 && ed_index(e, second) < 0;
+  ed_redo(e);
+  #assert ed_count(e) == n + 2;
+  // a tap on the ground first: the paste lands there
+  e[0].vp[0].here_ok = true; e[0].vp[0].here_x = 300; e[0].vp[0].here_z = -400;
+  d := ed_actor(e, ed_index(e, ed_clip_paste(e)));
+  #assert d.x == 300 && d.z == -400 && ed_count(e) == n + 3;
+  // duplicate and cut
+  #assert ed_clip_duplicate(e) > 0 && ed_count(e) == n + 4;
+  #assert ed_clip_cut(e) && ed_count(e) == n + 3 && !ed_has_selection(e);
+  ed_undo(e);
+  #assert ed_count(e) == n + 4;
+  // a team's start is not copied
+  for i: 0..<ed_count(e) { s := ed_actor(e, i); if s.kind == KIND_START { e[0].selected = s.id; } }
+  was := e[0].clip[0].a.id;
+  #assert !ed_clip_copy(e) && e[0].clip[0].a.id == was;
+}
+
+#test "only an owner pastes into a game's own level, and nothing is pasted while playing" {
+  t: [1] PlayTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SCRAPPERS, none[0..<0]);
+  n := ed_count(e);
+  for i: 0..<n { a := ed_actor(e, i); if a.kind == KIND_BLOCK { e[0].selected = a.id; break; } }
+  // nobody logged in: the game's own level is not theirs to change, though they may copy from it
+  #assert !ed_may_edit(e) && ed_clip_copy(e) && ed_clip_paste(e) == 0 && ed_clip_duplicate(e) == 0 && ed_count(e) == n;
+  owner := "chris@openagents.com"; b: [64] u8;
+  k := 0; for ch: owner { b[k] = ch; k += 1; }
+  ed_set_account(e, b[0..<k]);
+  #assert ed_may_edit(e) && ed_clip_paste(e) > 0 && ed_count(e) == n + 1;
+  ed_play(e, 0);
+  #assert ed_clip_paste(e) == 0 && ed_count(e) == n + 1;
+}

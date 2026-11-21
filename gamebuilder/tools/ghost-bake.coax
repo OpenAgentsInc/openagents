@@ -1,0 +1,330 @@
+// Bakes the web world's character (docs/web-world.md): one Quaternius outfit, its skin on the
+// people rig's 65 joints, and four of that rig's clips, into web/ghost-data.coax, which
+// web/ghost.coax reads. Offline tooling; the page never runs it.
+//
+//   coax/web/tool.sh tools/ghost-bake.coax OUTFIT.gltf RIGS.vrg OUT.coax [CELL_MM]
+//
+// OUTFIT.gltf is an outfit of Quaternius' Modular Character Outfits - Fantasy (CC0 1.0), e.g.
+//   ~/.openagents/assets/originals/9415c92b.../source/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf
+// (the asset registry's "fantasy" package). RIGS.vrg is everglade/model/rigs.vrg:
+// its "people" set is the rig those outfits are made for (the Quaternius Universal Base Characters'
+// male skeleton) with clips from Quaternius' Universal Animation Library (CC0 1.0). No texture is
+// read: the character is drawn as a ghost.
+//
+// What it does: each vertex is rebound onto the rig's rest pose (as people.py's part_file), the
+// mesh is thinned by vertex clustering (cells of CELL_MM millimetres, 22 when not given), its normals
+// are smoothed, and the
+// clips idle, run, jump_loop and jump_land are sampled 24 times a second.
+//
+// The bytes (little endian), written as base-64 text in chunks:
+//   "GBG1", then u32s: vertices, triangles, joints, clips, samples a second, moved joints
+//   a joint: its parent (i8)
+//   a joint: its rest translation (3 f32)
+//   a joint: its inverse bind, three rows of four (12 f32)
+//   a moved joint (one whose translation a clip changes): its number (u8)
+//   a clip: samples (u32), seconds (f32), metres a loop (f32)
+//   a vertex, 17 bytes: x y z (i16, 1/8192 m), its normal (3 i8, 127ths), four joints (u8), four weights (u8, 255ths)
+//   a triangle: three vertices (u16)
+//   a clip's samples in turn, each: a joint's rotation x y z w (4 i16, 32767ths), then a moved
+//   joint's translation (3 i16, 1/8192 m)
+// Metres, +y up, +z the way the figure faces, its left +x.
+// tool.sh: stack-gib 8
+// tool.sh: release
+#load "../../coax/lib/sys/tool.coax";
+#load "../../metaverse/tools/humans/ph_gltf.coax";
+#load "../../metaverse-engine/anim/mannequin.coax";
+#import "Basic";
+
+GB_J :: 65;
+GB_V :: 400000;            // vertices read
+GB_T :: 400000;            // triangles read
+GB_HASH :: 1048576;
+GB_OUT :: 4194304;
+GB_FPS :: 24;
+GB_CLIPS :: 4;
+GB_CLIP :: [4] int.[0, 8, 13, 14];   // the people rig's idle, run, jump_loop, jump_land
+GB_POS :: 8192.0;
+GB_KEYS :: 65536;
+GB_SMOOTH :: 3;            // passes of smoothing over the normals
+
+Bake :: struct {
+  vrg: [4194304] u8;
+  parent: [GB_J] int; rest: [GB_J * 7] f32; bind: [GB_J * 12] f32;
+  duration: [256] f32; distance: [256] f32; track_t: [256 * GB_J * 2] int; track_r: [256 * GB_J * 2] int;
+  keys_t: [GB_KEYS * 4] f32; keys_r: [GB_KEYS * 5] f32;
+  // the mesh as read, rebound
+  nv: int; p: [GB_V * 3] f64; n: [GB_V * 3] f64; j: [GB_V * 4] int; w: [GB_V * 4] int;
+  nt: int; t: [GB_T * 3] int;
+  // thinned
+  cell: [GB_V] int; hk: [GB_HASH] int; hv: [GB_HASH] int;
+  nc: int; mid: [GB_V * 3] f64; cnt: [GB_V] int; rep: [GB_V] int; best: [GB_V] f64; cn: [GB_V * 3] f64;
+  no: int; ot: [GB_T * 3] int; sn: [GB_V * 3] f64; sm: [GB_V * 3] f64;
+  moved: [GB_J] bool; nm: int;
+  out: [GB_OUT] u8; on: int;
+  text: [GB_OUT * 2] u8;
+  // scratch for the accessors
+  a0: [GB_V * 3] f64; a1: [GB_V * 3] f64; a2: [GB_V * 4] f64; a3: [GB_V * 4] f64; a4: [GB_T * 3] f64;
+}
+
+gb_u8 :: (b: [] Bake, v: int) { b[0].out[b[0].on] = cast,trunc(u8) v; b[0].on += 1; }
+gb_u16 :: (b: [] Bake, v: int) { gb_u8(b, v & 255); gb_u8(b, (v >> 8) & 255); }
+gb_i16 :: (b: [] Bake, v: int) { x := ifx v < -32767 then -32767 else ifx v > 32767 then 32767 else v; gb_u16(b, x & 65535); }
+gb_u32 :: (b: [] Bake, v: int) { gb_u16(b, v & 65535); gb_u16(b, (v >> 16) & 65535); }
+gb_f32 :: (b: [] Bake, v: f32) { gb_u32(b, cast(int) f32_bits(v)); }
+gb_float :: (b: [] u8, at: int) -> f32 { return f32_from_bits(cast(u32) gl_u32(b, at)); }
+gb_round :: (x: f64) -> int { return pn_floor(x + 0.5); }
+
+// The slot of key k in the table, made when it is new: the cell's number.
+gb_cell :: (b: [] Bake, k: int) -> int {
+  at := (k * 2654435761) & (GB_HASH - 1);
+  while b[0].hk[at] >= 0 && b[0].hk[at] != k { at = (at + 1) & (GB_HASH - 1); }
+  if b[0].hk[at] < 0 { b[0].hk[at] = k; b[0].hv[at] = b[0].nc; b[0].nc += 1; }
+  return b[0].hv[at];
+}
+
+// Joint jn's local pose `time` seconds into clip c: translation into tr, rotation returned.
+gb_sample :: (b: [] Bake, c: int, jn: int, time: f64, tr: [] f64) -> [4] f64 {
+  o := jn * 7;
+  for k: 0..<3 { tr[k] = cast(f64) b[0].rest[o + k]; }
+  q := [4] f64.[cast(f64) b[0].rest[o + 3], cast(f64) b[0].rest[o + 4], cast(f64) b[0].rest[o + 5], cast(f64) b[0].rest[o + 6]];
+  k := (c * GB_J + jn) * 2;
+  first := b[0].track_t[k]; count := b[0].track_t[k + 1];
+  if count > 0 {
+    i := 0;
+    while i + 1 < count && cast(f64) b[0].keys_t[(first + i + 1) * 4] <= time { i += 1; }
+    a := first + i; e := ifx i + 1 < count then a + 1 else a;
+    ta := cast(f64) b[0].keys_t[a * 4]; tb := cast(f64) b[0].keys_t[e * 4];
+    f := ifx tb > ta then (time - ta) / (tb - ta) else 0.0;
+    f = ifx f < 0.0 then 0.0 else ifx f > 1.0 then 1.0 else f;
+    for x: 0..<3 { tr[x] = cast(f64) b[0].keys_t[a * 4 + 1 + x] * (1.0 - f) + cast(f64) b[0].keys_t[e * 4 + 1 + x] * f; }
+  }
+  first = b[0].track_r[k]; count = b[0].track_r[k + 1];
+  if count > 0 {
+    i := 0;
+    while i + 1 < count && cast(f64) b[0].keys_r[(first + i + 1) * 5] <= time { i += 1; }
+    a := first + i; e := ifx i + 1 < count then a + 1 else a;
+    ta := cast(f64) b[0].keys_r[a * 5]; tb := cast(f64) b[0].keys_r[e * 5];
+    f := ifx tb > ta then (time - ta) / (tb - ta) else 0.0;
+    f = ifx f < 0.0 then 0.0 else ifx f > 1.0 then 1.0 else f;
+    qa: [4] f64; qb: [4] f64;
+    for x: 0..<4 { qa[x] = cast(f64) b[0].keys_r[a * 5 + 1 + x]; qb[x] = cast(f64) b[0].keys_r[e * 5 + 1 + x]; }
+    q = slerp(qunit(qa), qunit(qb), f);
+  }
+  return qunit(q);
+}
+
+GB_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { ph_die("usage: tool.sh tools/ghost-bake.coax OUTFIT.gltf RIGS.vrg OUT.coax [CELL_MM]"); }
+  cell := 0.022;
+  if args_count(a[..]) > 3 { cell = pf(args_at(a[..], 3)) / 1000.0; }
+  bk: [1] Bake; b := bk[..];
+  // the rig
+  size := fs_read(args_at(a[..], 1), b[0].vrg[..]);
+  if size < 0 { ph_die("ghost-bake: can't read the rigs"); }
+  // (the VRG1 file read by hand, as metaverse-engine/anim/rig-pack.coax lays it out: that reader's
+  // points are f32 and this tool's glTF maths f64, and the two don't load together)
+  vb := b[0].vrg[0..<size];
+  if size < 32 || gl_u32(vb, 0) != 0x31475256 { ph_die("ghost-bake: not a VRG1 file"); }
+  version := gl_u32(vb, 4); at := -1; clips := 0; nkt := 0; nkr := 0;
+  for k: 0..<gl_u32(vb, 8) {
+    row := 32 + 48 * k; nm := "people"; same := true;
+    for i: 0..<16 { c := ifx i < nm.count then cast(int) nm[i] else 0; if cast(int) vb[row + i] != c { same = false; } }
+    if same && gl_u32(vb, row + 16) == GB_J { clips = gl_u32(vb, row + 20); nkt = gl_u32(vb, row + 24); nkr = gl_u32(vb, row + 28); at = gl_u32(vb, row + 32); }
+  }
+  if at < 0 || clips > 256 || nkt > GB_KEYS || nkr > GB_KEYS { ph_die("ghost-bake: no people rig in the file"); }
+  for i: 0..<GB_J { b[0].parent[i] = gl_u32(vb, at + i * 4) - 1; }
+  at += GB_J * 4;
+  for i: 0..<GB_J * 7 { b[0].rest[i] = gb_float(vb, at + i * 4); }
+  at += GB_J * 7 * 2 * 4;
+  for i: 0..<GB_J * 12 { b[0].bind[i] = gb_float(vb, at + i * 4); }
+  at += GB_J * 12 * 2 * 4;
+  for i: 0..<clips { b[0].duration[i] = gb_float(vb, at + i * 4); b[0].distance[i] = gb_float(vb, at + (clips + i) * 4); }
+  at += clips * 2 * 4;
+  for i: 0..<clips * GB_J * 2 { b[0].track_t[i] = gl_u32(vb, at + i * 4); b[0].track_r[i] = gl_u32(vb, at + (clips * GB_J * 2 + i) * 4); }
+  at += clips * GB_J * 4 * 4;
+  for i: 0..<nkt * 4 { b[0].keys_t[i] = gb_float(vb, at + i * 4); }
+  at += nkt * 4 * 2 * 4;
+  for k: 0..<nkr {
+    if version == 2 {
+      b[0].keys_r[k * 5] = gb_float(vb, at + k * 12);
+      for c: 0..<4 { u := cast(int) vb[at + k * 12 + 4 + c * 2] | (cast(int) vb[at + k * 12 + 5 + c * 2] << 8); if u >= 32768 { u -= 65536; } b[0].keys_r[k * 5 + 1 + c] = cast(f32) (cast(f64) u / 32767.0); }
+    } else { for c: 0..<5 { b[0].keys_r[k * 5 + c] = gb_float(vb, at + (k * 5 + c) * 4); } }
+  }
+  // its rest pose in the figure's space
+  world: [GB_J] [4][4] f64;
+  for k: 0..<GB_J {
+    o := k * 7;
+    m := mat_tr([3] f64.[cast(f64) b[0].rest[o], cast(f64) b[0].rest[o + 1], cast(f64) b[0].rest[o + 2]],
+                qunit([4] f64.[cast(f64) b[0].rest[o + 3], cast(f64) b[0].rest[o + 4], cast(f64) b[0].rest[o + 5], cast(f64) b[0].rest[o + 6]]));
+    world[k] = ifx b[0].parent[k] < 0 then m else mmul4(world[b[0].parent[k]], m);
+  }
+  // the outfit, each vertex rebound onto that pose
+  g: [1] Gltf; own: [1] Skel;
+  gl_load(g[..], args_at(a[..], 0)); sk_load(g[..], own[..]);
+  remap: [SK_MAX] int; to: [SK_MAX] [4][4] f64;
+  for k: 0..<own[0].n {
+    remap[k] = -1;
+    for q: 0..<GB_J { if MANNEQUIN_NAME[q] == own[0].names[k] { remap[k] = q; } }
+    if remap[k] < 0 { ph_die2("ghost-bake: a joint the rig lacks: ", own[0].names[k]); }
+    to[k] = mmul4(world[remap[k]], own[0].ib[k]);
+  }
+  for mi: 0..<g[0].nx[GA_MESH] {
+    prs := gl_get(g[..], g[0].ix[GA_MESH][mi], "primitives");
+    for pi: 0..<gl_len(g[..], prs) {
+      pr := gl_item(g[..], prs, pi);
+      att := gl_get(g[..], pr, "attributes");
+      np := gl_acc(g[..], gl_int(g[..], att, "POSITION", 0), b[0].a0[..]).count;
+      x1 := gl_acc(g[..], gl_int(g[..], att, "NORMAL", 0), b[0].a1[..]);
+      x2 := gl_acc(g[..], gl_int(g[..], att, "JOINTS_0", 0), b[0].a2[..]);
+      x3 := gl_acc(g[..], gl_int(g[..], att, "WEIGHTS_0", 0), b[0].a3[..]);
+      ni := gl_acc(g[..], gl_int(g[..], pr, "indices", 0), b[0].a4[..]).count;
+      v0 := b[0].nv;
+      if v0 + np > GB_V || b[0].nt + ni / 3 > GB_T { ph_die("ghost-bake: a mesh past the buffers"); }
+      for i: 0..<np {
+        ws: [4] f64;
+        for k: 0..<4 { ws[k] = b[0].a3[i * 4 + k]; }
+        m: [4][4] f64;
+        for r: 0..<4 { for c: 0..<4 { m[r][c] = 0.0; for k: 0..<4 { m[r][c] += ws[k] * to[cast(int) b[0].a2[i * 4 + k]][r][c]; } } }
+        p := apply4(m, [3] f64.[b[0].a0[i * 3], b[0].a0[i * 3 + 1], b[0].a0[i * 3 + 2]], 1.0);
+        n := apply4(m, [3] f64.[b[0].a1[i * 3], b[0].a1[i * 3 + 1], b[0].a1[i * 3 + 2]], 0.0);
+        l := sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]); if l == 0.0 { l = 1.0; }
+        qw := quantize4(ws);
+        for k: 0..<3 { b[0].p[(v0 + i) * 3 + k] = p[k]; b[0].n[(v0 + i) * 3 + k] = n[k] / l; }
+        for k: 0..<4 { b[0].w[(v0 + i) * 4 + k] = qw[k]; b[0].j[(v0 + i) * 4 + k] = ifx qw[k] > 0 then remap[cast(int) b[0].a2[i * 4 + k]] else 0; }
+      }
+      k := 0;
+      while k + 2 < ni { for c: 0..<3 { b[0].t[b[0].nt * 3 + c] = v0 + cast(int) b[0].a4[k + c]; } b[0].nt += 1; k += 3; }
+      b[0].nv = v0 + np;
+    }
+  }
+  print("read % vertices, % triangles\n", b[0].nv, b[0].nt);
+  // thinned: the vertices of one cell become the one nearest their middle, with the cell's mean normal
+  for i: 0..<GB_HASH { b[0].hk[i] = -1; }
+  for i: 0..<b[0].nv {
+    kx := pn_floor(b[0].p[i * 3] / cell) + 512; ky := pn_floor(b[0].p[i * 3 + 1] / cell) + 512; kz := pn_floor(b[0].p[i * 3 + 2] / cell) + 512;
+    if kx < 0 || kx > 1023 || ky < 0 || ky > 1023 || kz < 0 || kz > 1023 { ph_die("ghost-bake: a vertex out of the cells' range"); }
+    c := gb_cell(b, kx | (ky << 10) | (kz << 20));
+    b[0].cell[i] = c; b[0].cnt[c] += 1;
+    for k: 0..<3 { b[0].mid[c * 3 + k] += b[0].p[i * 3 + k]; }
+  }
+  for c: 0..<b[0].nc { for k: 0..<3 { b[0].mid[c * 3 + k] /= cast(f64) b[0].cnt[c]; } b[0].rep[c] = -1; }
+  for i: 0..<b[0].nv {
+    c := b[0].cell[i]; d := 0.0;
+    for k: 0..<3 { e := b[0].p[i * 3 + k] - b[0].mid[c * 3 + k]; d += e * e; }
+    if b[0].rep[c] < 0 || d < b[0].best[c] { b[0].rep[c] = i; b[0].best[c] = d; }
+  }
+  for i: 0..<b[0].nv {
+    // a normal on the other side of a thin sheet is counted as its own side: the ghost is lit the same from both
+    c := b[0].cell[i]; r := b[0].rep[c]; dot := 0.0;
+    for k: 0..<3 { dot += b[0].n[i * 3 + k] * b[0].n[r * 3 + k]; }
+    sign := ifx dot < 0.0 then -1.0 else 1.0;
+    for k: 0..<3 { b[0].cn[c * 3 + k] += sign * b[0].n[i * 3 + k]; }
+  }
+  if b[0].nc > 65535 { ph_die("ghost-bake: more vertices than a u16 names; use bigger cells"); }
+  // the triangles that are still triangles, each once
+  for i: 0..<GB_HASH { b[0].hk[i] = -1; }
+  kept := b[0].nc; b[0].nc = 0;
+  for i: 0..<b[0].nt {
+    x := b[0].cell[b[0].t[i * 3]]; y := b[0].cell[b[0].t[i * 3 + 1]]; z := b[0].cell[b[0].t[i * 3 + 2]];
+    if x == y || y == z || x == z { continue; }
+    lo := ifx x < y then (ifx x < z then x else z) else (ifx y < z then y else z);
+    hi2 := ifx x > y then (ifx x > z then x else z) else (ifx y > z then y else z);
+    md := x + y + z - lo - hi2;
+    before := b[0].nc;
+    c := gb_cell(b, lo | (md << 16) | (hi2 << 32));
+    if b[0].nc == before { continue; }
+    b[0].ot[b[0].no * 3] = x; b[0].ot[b[0].no * 3 + 1] = y; b[0].ot[b[0].no * 3 + 2] = z; b[0].no += 1;
+  }
+  print("kept % vertices, % triangles (cells of % mm)\n", kept, b[0].no, gb_round(cell * 1000.0));
+  // its normals, smoothed: a vertex's is its cell's mean, then three times the mean of itself and the
+  // vertices it shares a triangle with (each counted on its own side), so the ghost's light runs
+  // evenly over the thinned mesh
+  for c: 0..<kept {
+    l := sqrt(b[0].cn[c * 3] * b[0].cn[c * 3] + b[0].cn[c * 3 + 1] * b[0].cn[c * 3 + 1] + b[0].cn[c * 3 + 2] * b[0].cn[c * 3 + 2]);
+    for k: 0..<3 { b[0].sn[c * 3 + k] = ifx l > 0.000001 then b[0].cn[c * 3 + k] / l else b[0].n[b[0].rep[c] * 3 + k]; }
+  }
+  for pass: 0..<GB_SMOOTH {
+    for i: 0..<kept * 3 { b[0].sm[i] = b[0].sn[i]; }
+    for i: 0..<b[0].no { for e: 0..<3 {
+      x := b[0].ot[i * 3 + e]; y := b[0].ot[i * 3 + (e + 1) % 3];
+      dot := 0.0; for k: 0..<3 { dot += b[0].sn[x * 3 + k] * b[0].sn[y * 3 + k]; }
+      sign := ifx dot < 0.0 then -0.5 else 0.5;
+      for k: 0..<3 { b[0].sm[x * 3 + k] += sign * b[0].sn[y * 3 + k]; b[0].sm[y * 3 + k] += sign * b[0].sn[x * 3 + k]; }
+    } }
+    for c: 0..<kept {
+      l := sqrt(b[0].sm[c * 3] * b[0].sm[c * 3] + b[0].sm[c * 3 + 1] * b[0].sm[c * 3 + 1] + b[0].sm[c * 3 + 2] * b[0].sm[c * 3 + 2]);
+      if l > 0.000001 { for k: 0..<3 { b[0].sn[c * 3 + k] = b[0].sm[c * 3 + k] / l; } }
+    }
+  }
+  // the joints a clip moves from where they rest
+  tr: [3] f64;
+  for ci: 0..<GB_CLIPS {
+    c := GB_CLIP[ci]; frames := gb_round(cast(f64) b[0].duration[c] * cast(f64) GB_FPS);
+    for f: 0..<frames + 1 { for jn: 0..<GB_J {
+      q := gb_sample(b, c, jn, cast(f64) b[0].duration[c] * cast(f64) f / cast(f64) frames, tr[..]);
+      for k: 0..<3 { if abs(tr[k] - cast(f64) b[0].rest[jn * 7 + k]) > 0.0005 { b[0].moved[jn] = true; } }
+    } }
+  }
+  for jn: 0..<GB_J { if b[0].moved[jn] { b[0].nm += 1; } }
+  // the bytes
+  gb_u8(b, 'G'); gb_u8(b, 'B'); gb_u8(b, 'G'); gb_u8(b, '1');
+  gb_u32(b, kept); gb_u32(b, b[0].no); gb_u32(b, GB_J); gb_u32(b, GB_CLIPS); gb_u32(b, GB_FPS); gb_u32(b, b[0].nm);
+  for jn: 0..<GB_J { gb_u8(b, b[0].parent[jn] & 255); }
+  for jn: 0..<GB_J { for k: 0..<3 { gb_f32(b, b[0].rest[jn * 7 + k]); } }
+  for jn: 0..<GB_J { for k: 0..<12 { gb_f32(b, b[0].bind[jn * 12 + k]); } }
+  for jn: 0..<GB_J { if b[0].moved[jn] { gb_u8(b, jn); } }
+  for ci: 0..<GB_CLIPS {
+    c := GB_CLIP[ci];
+    gb_u32(b, gb_round(cast(f64) b[0].duration[c] * cast(f64) GB_FPS) + 1); gb_f32(b, b[0].duration[c]); gb_f32(b, b[0].distance[c]);
+  }
+  low := [3] f64.[1000.0, 1000.0, 1000.0]; high := [3] f64.[-1000.0, -1000.0, -1000.0];
+  for c: 0..<kept {
+    r := b[0].rep[c];
+    for k: 0..<3 { v := b[0].p[r * 3 + k]; gb_i16(b, gb_round(v * GB_POS)); if v < low[k] { low[k] = v; } if v > high[k] { high[k] = v; } }
+    for k: 0..<3 { gb_u8(b, gb_round(b[0].sn[c * 3 + k] * 127.0) & 255); }
+    for k: 0..<4 { gb_u8(b, b[0].j[r * 4 + k]); }
+    for k: 0..<4 { gb_u8(b, b[0].w[r * 4 + k]); }
+  }
+  for i: 0..<b[0].no * 3 { gb_u16(b, b[0].ot[i]); }
+  for ci: 0..<GB_CLIPS {
+    c := GB_CLIP[ci]; frames := gb_round(cast(f64) b[0].duration[c] * cast(f64) GB_FPS);
+    for f: 0..<frames + 1 {
+      time := cast(f64) b[0].duration[c] * cast(f64) f / cast(f64) frames;
+      for jn: 0..<GB_J { q := gb_sample(b, c, jn, time, tr[..]); for k: 0..<4 { gb_i16(b, gb_round(q[k] * 32767.0)); } }
+      for jn: 0..<GB_J { if b[0].moved[jn] { q := gb_sample(b, c, jn, time, tr[..]); for k: 0..<3 { gb_i16(b, gb_round(tr[k] * GB_POS)); } } }
+    }
+  }
+  print("% bytes; % moved joints; the figure spans x % to %, y % to %, z % to % mm\n", b[0].on, b[0].nm,
+        gb_round(low[0] * 1000.0), gb_round(high[0] * 1000.0), gb_round(low[1] * 1000.0), gb_round(high[1] * 1000.0), gb_round(low[2] * 1000.0), gb_round(high[2] * 1000.0));
+  // as Coax: base-64 text in chunks
+  o: [1] Sb; o[0] = sb(b[0].text[..]);
+  sb_put(o[..], "// Generated by tools/ghost-bake.coax; do not edit. The web world's character (docs/web-world.md):\n");
+  sb_put(o[..], "// a Quaternius outfit (Modular Character Outfits - Fantasy, CC0 1.0: "); sb_put(o[..], base_name(args_at(a[..], 0)));
+  sb_put(o[..], ") thinned, on the\n// Quaternius people rig with four Universal Animation Library clips (CC0 1.0), as base-64 text.\n");
+  sb_put(o[..], "// web/ghost.coax reads it; tools/ghost-bake.coax has the layout.\n");
+  chunk := 3072; chunks := (b[0].on + chunk - 1) / chunk;
+  sb_put(o[..], "GHOST_DATA_BYTES :: "); sb_int(o[..], b[0].on); sb_put(o[..], ";\nGHOST_DATA_CHUNKS :: "); sb_int(o[..], chunks);
+  sb_put(o[..], ";\nghost_data_chunk :: (i: int) -> string {\n");
+  for c: 0..<chunks {
+    sb_put(o[..], "  if i == "); sb_int(o[..], c); sb_put(o[..], " { return \"");
+    from := c * chunk; upto := ifx from + chunk < b[0].on then from + chunk else b[0].on;
+    k := from;
+    while k < upto {
+      x := cast(int) b[0].out[k] << 16; got := 1;
+      if k + 1 < upto { x = x | (cast(int) b[0].out[k + 1] << 8); got = 2; }
+      if k + 2 < upto { x = x | cast(int) b[0].out[k + 2]; got = 3; }
+      sb_byte(o[..], GB_B64[(x >> 18) & 63]); sb_byte(o[..], GB_B64[(x >> 12) & 63]);
+      if got > 1 { sb_byte(o[..], GB_B64[(x >> 6) & 63]); }
+      if got > 2 { sb_byte(o[..], GB_B64[x & 63]); }
+      k += 3;
+    }
+    sb_put(o[..], "\"; }\n");
+  }
+  sb_put(o[..], "  return \"\";\n}\n");
+  if !fs_write(args_at(a[..], 2), sb_text(o[..])) { ph_die("ghost-bake: can't write the output"); }
+  print("wrote %\n", args_at(a[..], 2));
+  return 0;
+}

@@ -1,0 +1,26 @@
+{
+  "spot_tags": ["mandate_notice"],
+  "dynamic_meshes": [
+    {
+      "asset": "/Game/SpliceBots/Things/SM_thing_microduck.SM_thing_microduck",
+      "map": "/Game/World/Graybox/L_Cabin",
+      "actor": "AethyrMicroduck"
+    }
+  ],
+  "metasounds": [
+    {"asset": "/Game/Audio/Music/MS_MUS_Title.MS_MUS_Title", "seconds": 21.333333, "loop": true},
+    {"asset": "/Game/Audio/Music/MS_MUS_Cabin.MS_MUS_Cabin", "seconds": 26.666667, "loop": true},
+    {"asset": "/Game/Audio/Music/MS_MUS_Desert.MS_MUS_Desert", "seconds": 24, "loop": true},
+    {"asset": "/Game/Audio/Music/MS_MUS_Rave.MS_MUS_Rave", "seconds": 13.913043, "loop": true},
+    {"asset": "/Game/Audio/Loops/MS_SFX_DRILL_SPARKS.MS_SFX_DRILL_SPARKS", "seconds": 8, "loop": true},
+    {"asset": "/Game/Audio/Loops/MS_SFX_HEAT_HAZE.MS_SFX_HEAT_HAZE", "seconds": 8, "loop": true},
+    {"asset": "/Game/Audio/Loops/MS_SFX_SPEED_LINES.MS_SFX_SPEED_LINES", "seconds": 8, "loop": true},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T02.MS_CHIRP_T02", "seconds": 0.95, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T07.MS_CHIRP_T07", "seconds": 0.49, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T20.MS_CHIRP_T20", "seconds": 0.60, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T21.MS_CHIRP_T21", "seconds": 0.60, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T22.MS_CHIRP_T22", "seconds": 0.37, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T23.MS_CHIRP_T23", "seconds": 0.45, "loop": false},
+    {"asset": "/Game/Audio/Sniper/MS_CHIRP_T33.MS_CHIRP_T33", "seconds": 0.49, "loop": false}
+  ]
+}

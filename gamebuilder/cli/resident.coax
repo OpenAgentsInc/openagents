@@ -1,0 +1,653 @@
+// GameBuilder's resident service (GitHub issue 11; docs/agents.md, "The resident service"): a
+// process of its own on the person's computer that runs their agents there with the app open or
+// closed, so an agent started from the App Store build, an iPhone or gamebuilder.org/agents runs
+// on that computer, on the person's own Claude plan.
+//   gamebuilder resident [--dir DIR]      run it, until it is quit (it says it is on in the folder)
+//   gamebuilder resident stop             quit it: the agent it runs stops, and says so
+//   gamebuilder resident status           this computer as the service last said it
+//   gamebuilder resident install          a launchd agent that starts it at login (macOS)
+//
+// What it does, every second:
+//   - It says it is on: this computer's file beside the levels (computer-ID.computer,
+//     gamebuilder.computer.v1): its name, its one slot and the agent in it, and whether Claude Code
+//     and Codex are installed and signed in here. It names no login, token or key. The pane's tile
+//     and New agent read it; signed in, it reports it to the account (computer-report), which
+//     gamebuilder.org/agents shows.
+//   - It takes the next agent queued for it (runner AGR_RESIDENT, this computer's name): one at a
+//     time, as a Claude plan runs one automated session at a time. Signed in, an agent started for
+//     this computer on the account (agent-new-on) is brought here first, record and log.
+//   - A turn is the person's own Claude Code, `claude -p` with its stream-json output, briefed as
+//     the pane's agent is (coax/brief.coax), with no tool of its own but GameBuilder's: the
+//     rows the pane's agent has, through `gamebuilder mcp --resident ID` on this folder, whose calls
+//     are logged to the agent's record as an attached agent's are (cli/attached.coax). Keys and
+//     tokens are taken out of its environment (AG_NO_KEYS) and a session that says it would bill a
+//     key is stopped: the plan's login stays on this computer, and it never costs Credits.
+//   - The turn's end: its answer, its usage and its state (done, failed in words, or paused until
+//     the plan's limit lifts, which then goes on by itself). The person stopping it (agent-stop,
+//     anywhere) ends its process.
+//   - Signed in, each of its agents is reported to the account (agent-report).
+// Quitting it (resident stop) stops the agent it runs and says why in its log (AGR_QUIT); one
+// that was killed instead leaves its turn unknown, said when it starts again (AGR_LOST). Closing
+// the app stops nothing: this is its own process.
+//   tools/resident-check.coax (a stand-in claude, through cli/check.sh)
+
+#load "../core/brief.coax";
+
+RES_TICK_MS :: 1000;        // how often it looks
+RES_SAY_MS :: 5000;         // how often it says it is on, at least
+RES_LOOK_MS :: 60000;       // how often it looks again at what is installed and signed in
+RES_ACCOUNT_MS :: 10000;    // how often it reports to the account, signed in
+RES_LINE :: 262144;         // bytes of one line claude writes, at most
+RES_STOP :: "resident.stop";      // asks the service on this folder to quit
+RES_LOCK :: "resident.lock";      // one service a folder
+RES_PROMPT :: 32768;
+RES_SYSTEM :: 65536;
+RES_NODES :: 16384;
+RES_SERVER :: "gamebuilder";   // its tools' MCP server, as the pane's agent's is named
+
+CliResident :: struct {
+  me: [1] AgrComputer;
+  h: int;                       // claude's process, -1 when none
+  live: [AGR_ID] u8; live_n: int;   // the agent in its slot
+  started: s64;
+  answer: [AGR_TEXT] u8; answer_n: int;     // its last words to the person
+  turns: int; cents: int; ms: int;
+  result: bool; failed: bool; why: [AGR_WHY] u8; why_n: int;
+  pause_until: s64;
+  said: s64; looked: s64; reported: s64;
+  on_account: bool;             // signed in to the account
+  line: [RES_LINE] u8;
+  system: [RES_SYSTEM] u8; system_n: int;
+  prompt: [RES_PROMPT] u8; prompt_n: int;
+  cfg: [8192] u8; cfg_n: int;
+  allowed: [8192] u8; allowed_n: int;
+  bin: [4096] u8; bin_n: int;
+  path: [2048] u8; path_n: int;
+  home: [1024] u8; home_n: int;
+  nodes: [RES_NODES] JvNode;
+  buf: [262144] u8;             // a remote answer kept while it is read
+  rep: [AGR_REPORT * (AGR_LINE + 2) + AGR_RECORD_MAX + 256] u8;
+}
+
+res_id :: (r: [] CliResident) -> string { return cast(string) r[0].live[0..<r[0].live_n]; }
+res_name :: (r: [] CliResident) -> string { return cast(string) r[0].me[0].name[0..<r[0].me[0].name_n]; }
+
+// This computer's name as its agents' records and the account say it: GAMEBUILDER_COMPUTER, else
+// the name the person gave it (macOS: its Computer Name; Linux: its host name), else the CLI's.
+res_computer_name :: (c: [] Cli, out: [] u8) -> string {
+  w := proc_getenv("GAMEBUILDER_COMPUTER", c[0].name[..]);
+  if w.count > 0 && w.count <= AGR_COMPUTER && agr_line_ok(w) { return cast(string) out[0..<agr_set(out, w)]; }
+  mac := tool_os() == TOOL_MAC;
+  argv := [3] string.[ifx mac then "/usr/sbin/scutil" else "hostname", ifx mac then "--get" else "-s", "ComputerName"];
+  ob: [256] u8; eb: [256] u8;
+  r := proc_run(argv[0..<(ifx mac then 3 else 2)], 3000, ob[..], eb[..]);
+  n := ifx r.started == 0 && r.status == 0 then r.out_n else 0;
+  while n > 0 && (ob[n - 1] == '\n' || ob[n - 1] == ' ') { n -= 1; }
+  if n > 0 && n <= AGR_COMPUTER && agr_line_ok(cast(string) ob[0..<n]) { return cast(string) out[0..<agr_set(out, cast(string) ob[0..<n])]; }
+  return cast(string) out[0..<agr_set(out, cli_computer(c))];
+}
+
+// ---- what is installed and signed in here (the same facts coder host serve's DescribeStation
+// reads: coax/lib/agent/router/station.coax): whether each program is there, and whether its
+// login file is. It reads no token: only whether ~/.claude.json has an oauthAccount, and whether
+// ~/.codex/auth.json is there.
+res_on_path :: (c: [] Cli, program: string) -> bool {
+  pb: [4096] u8; path := proc_getenv("PATH", pb[..]);
+  from := 0;
+  for i: 0..<path.count + 1 {
+    if i < path.count && path[i] != ':' { continue; }
+    if i > from {
+      fb: [4352] u8; parts := [3] string.[cast(string) path[from..<i], "/", program];
+      if fs_exists(ac_join(parts[..], fb[..])) { return true; }
+    }
+    from = i + 1;
+  }
+  return false;
+}
+res_look :: (c: [] Cli, r: [] CliResident) {
+  home := cast(string) r[0].home[0..<r[0].home_n];
+  claude := res_on_path(c, "claude");
+  pb: [1200] u8;
+  for k: 1..<AG_PROGRAMS { if fs_exists(ag_program(k, home, pb[..])) { claude = true; } }
+  signed := false;
+  if home.count > 0 {
+    fb: [1200] u8; parts := [2] string.[home, "/.claude.json"];
+    n := fs_read(ac_join(parts[..], fb[..]), c[0].out[..]);
+    if n > 0 && level_find_agr(cast(string) c[0].out[0..<n], "\"oauthAccount\"") >= 0 { signed = true; }
+    cp := [2] string.[home, "/.claude/.credentials.json"];
+    if fs_exists(ac_join(cp[..], fb[..])) { signed = true; }
+  }
+  r[0].me[0].have[0] = ifx !claude then AGR_NOT_INSTALLED else ifx signed then AGR_SIGNED_IN else AGR_INSTALLED;
+  codex := res_on_path(c, "codex") || fs_exists("/opt/homebrew/bin/codex") || fs_exists("/usr/local/bin/codex");
+  csigned := false;
+  if home.count > 0 { fb: [1200] u8; parts := [2] string.[home, "/.codex/auth.json"]; csigned = fs_exists(ac_join(parts[..], fb[..])); }
+  r[0].me[0].have[1] = ifx !codex then AGR_NOT_INSTALLED else ifx csigned then AGR_SIGNED_IN else AGR_INSTALLED;
+}
+
+// This computer's file, written whole: "" when it was, else why not.
+res_say :: (c: [] Cli, r: [] CliResident, now: s64) -> bool {
+  r[0].me[0].heard = now;
+  r[0].me[0].used = ifx r[0].live_n > 0 then 1 else 0;
+  r[0].me[0].running_n[0] = ifx r[0].live_n > 0 then agr_put(r[0].me[0].running[0..<AGR_ID], 0, res_id(r)) else 0;
+  tb: [AGR_COMPUTER_MAX * 2] u8; fb: [64] u8;
+  text := agr_computer_write(r[0].me[..], tb[..]);
+  r[0].said = now;
+  return text.count > 0 && fs_replace_durable(cli_path(c, agr_computer_file(cast(string) r[0].me[0].id[0..<r[0].me[0].id_n], fb[..]), ""), text);
+}
+
+// ---- the folder's agents
+
+// The folder's records, read again (another surface may have changed one).
+res_scan :: (c: [] Cli) {
+  c[0].agents[0].n = 0;
+  if fs_list(cli_dir(c), c[0].list[..]) < 0 { return; }
+  rb: [AGR_RECORD_MAX + 1] u8;
+  for i: 0..<c[0].list[0].n {
+    name := fs_entry(c[0].list[..], i);
+    if agr_file_id(name).count == 0 { continue; }
+    k := fs_read(cli_path(c, name, ""), rb[..]);
+    if k > 0 && k <= AGR_RECORD_MAX { _ = agr_store_add(c[0].agents[..], cast(string) rb[0..<k]); }
+  }
+}
+// Whether record k is one this service runs: on this computer, its runner the resident's.
+res_mine :: (c: [] Cli, r: [] CliResident, k: int) -> bool {
+  a := c[0].agents[0].r[k];
+  return a.place == AGR_LOCAL && cast(string) a.runner[0..<a.runner_n] == AGR_RESIDENT && cast(string) a.computer[0..<a.computer_n] == res_name(r);
+}
+// An event appended to agent id's record and log, read from the folder first: false when it
+// couldn't be.
+res_emit :: (c: [] Cli, id: string, ev: [] AgrEvent, now: s64) -> bool {
+  res_scan(c);
+  k := agr_find(c[0].agents[..], id);
+  if k < 0 { return false; }
+  line := agr_append(c[0].agents[0].r[k..<k + 1], ev, now, c[0].agents[0].lines[..]);
+  return line.count > 0 && cli_save_agent(c, k, line);
+}
+res_state :: (c: [] Cli, id: string, state: int, why: string, until: s64, now: s64) -> bool {
+  ev: [1] AgrEvent; ev[0] = agr_event(AGR_STATE); ev[0].state = state; ev[0].until = until; agr_event_text(ev[..], why);
+  return res_emit(c, id, ev[..], now);
+}
+
+// The words a turn of agent k starts from: the person's newest message or answer since its last
+// turn began; none since, and it worked before, it goes on (a pause lifted); never worked, its job.
+res_words :: (c: [] Cli, k: int, out: [] u8) -> string {
+  s := c[0].agents[..];
+  id := agr_id(s[0].r[k..<k + 1]);
+  fb: [64] u8;
+  n := fs_read(cli_path(c, agr_file(id, ".events", fb[..]), ""), c[0].lg[..]);
+  lg := ifx n > 0 then cast(string) c[0].lg[0..<n] else "";
+  words := ""; worked := false;
+  ev: [1] AgrEvent;
+  total := agr_log_count(lg);
+  for i: 1..<total + 1 {
+    sp := agr_log_line(lg, i);
+    if sp.from < 0 || agr_event_read(cast(string) lg[sp.from..<sp.from + sp.count], id, ev[..]).count > 0 { continue; }
+    if ev[0].type == AGR_STATE && ev[0].state == AGR_WORKING { worked = true; words = ""; }
+    if (ev[0].type == AGR_MESSAGE && ev[0].from == AGR_PERSON) || ev[0].type == AGR_ANSWER { words = cast(string) out[0..<agr_set(out, cast(string) ev[0].text[0..<ev[0].text_n])]; }
+  }
+  if words.count > 0 { return words; }
+  return ifx worked then AG_RESUMED else agr_job_of(s, k);
+}
+
+// ---- a turn
+
+// The brief (coax/brief.coax) and the session's options, for agent k.
+res_brief :: (c: [] Cli, r: [] CliResident, k: int) {
+  a := c[0].agents[0].r[k];
+  t := [1] Text.[Text.{buf = r[0].system[..]}];
+  tx_put(t[..], AG_RESIDENT_RULES);
+  tx_put(t[..], "The batch gb_apply_edits takes:\n\n");
+  gb_batch_text(t[..]);
+  tx_put(t[..], AG_KIND_BRIEF[ifx a.kind >= 0 && a.kind < AGR_KINDS && AG_KIND_BRIEF[a.kind].count > 0 then a.kind else AGR_BUILD]);
+  r[0].system_n = t[0].at;
+  wb: [AGR_TEXT] u8;
+  words := res_words(c, k, wb[..]);
+  p := [1] Text.[Text.{buf = r[0].prompt[..]}];
+  tx_put(p[..], "Your level is level "); tx_n(p[..], a.level);
+  if a.title_n > 0 { tx_put(p[..], ", in the game "); tx_put(p[..], cast(string) a.title[0..<a.title_n]); }
+  tx_put(p[..], ".\n\nYour goal, in the person's words: "); tx_put(p[..], agr_job_of(c[0].agents[..], k));
+  if words != agr_job_of(c[0].agents[..], k) { tx_put(p[..], "\n\nYou worked on this before in a session that ended. The person now says: "); tx_put(p[..], words); }
+  r[0].prompt_n = p[0].at;
+  // its tools: gamebuilder mcp on this folder, as this agent; allowed, the rows the pane's agent has
+  o: [1] Jo; jo_start(o[..], r[0].cfg[..]);
+  jo_obj(o[..]); jo_key(o[..], "mcpServers"); jo_obj(o[..]); jo_key(o[..], RES_SERVER); jo_obj(o[..]);
+  jo_key(o[..], "type"); jo_str(o[..], "stdio");
+  jo_key(o[..], "command"); jo_str(o[..], cast(string) r[0].bin[0..<r[0].bin_n]);
+  jo_key(o[..], "args"); jo_arr(o[..]); jo_str(o[..], "--dir"); jo_str(o[..], cli_dir(c)); jo_str(o[..], "mcp"); jo_str(o[..], "--resident"); jo_str(o[..], agr_id(c[0].agents[0].r[k..<k + 1])); jo_end(o[..]);
+  jo_end(o[..]); jo_end(o[..]); jo_end(o[..]);
+  r[0].cfg_n = jo_text(o[..]).count;
+  n := agr_put(r[0].allowed[..], 0, "--allowedTools=");
+  first := true; nb: [64] u8;
+  for v: 0..<GB_N {
+    cm := GB_COMMANDS[v];
+    if (cm.surfaces & GB_PANE) == 0 || (cm.surfaces & GB_MCP) == 0 { continue; }
+    if !first { n = agr_put(r[0].allowed[..], n, ","); }
+    first = false;
+    n = agr_put(r[0].allowed[..], n, "mcp__"); n = agr_put(r[0].allowed[..], n, RES_SERVER); n = agr_put(r[0].allowed[..], n, "__");
+    n = agr_put(r[0].allowed[..], n, gb_mcp_name(cm.verb, nb[..]));
+  }
+  r[0].allowed_n = n;
+}
+// claude, started for agent k with its brief on stdin: "" when it started, else why not.
+res_spawn :: (c: [] Cli, r: [] CliResident, k: int) -> string {
+  res_brief(c, r, k);
+  home := cast(string) r[0].home[0..<r[0].home_n];
+  gb: [1200] u8; given := proc_getenv("GB_CLAUDE", gb[..]);
+  // a session folder of its own, beside the levels: no project files, no settings
+  wb: [4352] u8; wp := [2] string.[cli_dir(c), "/resident"];
+  work := ac_join(wp[..], wb[..]);
+  if !fs_exists(work) { _ = fs_mkdir(work); }
+  pb: [1200] u8; budget: [16] u8;
+  bn := agr_put(budget[..], agr_int(budget[..], 0, cast(s64) AGR_CENTS / 100), ".00");
+  turns: [8] u8; tn := agr_int(turns[..], 0, cast(s64) c[0].agents[0].r[k].turns);
+  for tries: 0..<AG_PROGRAMS {
+    program := ifx given.count > 0 then given else ag_program(tries, home, pb[..]);
+    if program.count == 0 { continue; }
+    h := proc_new();
+    if h < 0 { return "no process could be made"; }
+    argv := [17] string.[program, "-p", "--output-format", "stream-json", "--verbose",
+      "--max-turns", cast(string) turns[0..<tn], "--max-budget-usd", cast(string) budget[0..<bn],
+      "--system-prompt", cast(string) r[0].system[0..<r[0].system_n],
+      "--mcp-config", cast(string) r[0].cfg[0..<r[0].cfg_n], "--strict-mcp-config",
+      "--tools=", cast(string) r[0].allowed[0..<r[0].allowed_n], "--setting-sources="];
+    ok := true;
+    for a: argv { ok = ok && proc_arg(h, a); }
+    ok = ok && proc_arg(h, "--no-session-persistence");
+    // the person's login, never a key
+    for key: AG_NO_KEYS { ok = ok && proc_unset(h, key); }
+    if r[0].path_n > 0 { ok = ok && proc_env(h, cast(string) r[0].path[0..<r[0].path_n]); }
+    ok = ok && proc_cwd(h, work);
+    st := ifx ok then proc_start(h) else -1;
+    if st == 0 {
+      if !proc_send(h, cast(string) r[0].prompt[0..<r[0].prompt_n]) || !proc_close_stdin(h) { _ = proc_kill(h, PROC_SIGKILL); _ = proc_wait(h, 2000); _ = proc_release(h); return "Claude Code took no message"; }
+      r[0].h = h;
+      return "";
+    }
+    _ = proc_release(h);
+    if given.count > 0 || st != PROC_ENOENT { return "Claude Code could not be started on this computer"; }
+  }
+  return "Claude Code isn't installed on this computer. Install it, then send your message again.";
+}
+
+// Cents of a dollar figure as JSON writes it ("0.1234").
+res_cents :: (raw: string) -> int {
+  whole := 0; frac := 0; digits := 0; dot := false;
+  for ch: raw {
+    if ch == '.' { dot = true; continue; }
+    if ch < '0' || ch > '9' { break; }
+    if !dot { whole = whole * 10 + cast(int) (ch - '0'); }
+    else if digits < 3 { frac = frac * 10 + cast(int) (ch - '0'); digits += 1; }
+  }
+  while digits < 3 { frac *= 10; digits += 1; }
+  return whole * 100 + (frac + 5) / 10;
+}
+
+// One line claude wrote: its login checked, its words kept, a rate limit, the result.
+res_line :: (c: [] Cli, r: [] CliResident, line: string) {
+  da: [1] Jv;
+  if !jv_parse(da[..], line, r[0].nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return; }
+  d := da[0];
+  sb: [AGR_TEXT] u8;
+  n := jv_str(d, jv_get(d, 0, "type"), sb[..]); type := ifx n > 0 then cast(string) sb[0..<n] else "";
+  if type == "system" {
+    n = jv_str(d, jv_get(d, 0, "apiKeySource"), sb[..]);
+    // every run is the person's Claude login: "none" is the login; anything else is a key
+    if n > 0 && cast(string) sb[0..<n] != "none" { r[0].failed = true; r[0].why_n = agr_set(r[0].why[..], AG_KEY_WORDS); _ = proc_kill(r[0].h, PROC_SIGTERM); }
+    return;
+  }
+  if type == "assistant" {
+    content := jv_path(d, 0, "message.content");
+    for i: 0..<jv_len(d, content) {
+      item := jv_at(d, content, i);
+      tn := jv_str(d, jv_get(d, item, "type"), sb[..]);
+      if tn == 4 && cast(string) sb[0..<4] == "text" {
+        m := jv_str(d, jv_get(d, item, "text"), r[0].answer[..]);
+        if m > 0 { r[0].answer_n = m; }
+      }
+    }
+    n = jv_str(d, jv_get(d, 0, "error"), sb[..]);
+    if n > 0 && (cast(string) sb[0..<n] == "authentication_failed" || cast(string) sb[0..<n] == "oauth_org_not_allowed") {
+      r[0].failed = true; r[0].why_n = agr_set(r[0].why[..], AG_SIGNED_OUT_WORDS); _ = proc_kill(r[0].h, PROC_SIGTERM);
+    }
+    return;
+  }
+  if type == "rate_limit_event" {
+    info := jv_get(d, 0, "rate_limit_info");
+    n = jv_str(d, jv_get(d, info, "status"), sb[..]);
+    r[0].pause_until = ag_pause_until(ifx n > 0 then cast(string) sb[0..<n] else "", cast(s64) jv_int(d, jv_get(d, info, "resetsAt"), 0));
+    return;
+  }
+  if type == "result" {
+    r[0].result = true;
+    r[0].turns = jv_int(d, jv_get(d, 0, "num_turns"), 0);
+    r[0].ms = jv_int(d, jv_get(d, 0, "duration_ms"), 0);
+    r[0].cents = res_cents(jv_raw(d, jv_get(d, 0, "total_cost_usd")));
+    n = jv_str(d, jv_get(d, 0, "subtype"), sb[..]); sub := ifx n > 0 then cast(string) sb[0..<n] else "";
+    m := jv_str(d, jv_get(d, 0, "result"), r[0].answer[..]);
+    if m > 0 && sub == "success" { r[0].answer_n = m; }
+    if jv_bool(d, jv_get(d, 0, "is_error")) || sub != "success" {
+      r[0].failed = true;
+      rec := AgrRecord.{}; rec.turns = AGR_TURNS; rec.cents = AGR_CENTS; wb: [160] u8;
+      why := ifx m > 0 then cast(string) r[0].answer[0..<m] else "The turn failed.";
+      if sub == "error_max_turns" { why = ag_limit_words(rec, true, wb[..]); }
+      if sub == "error_max_budget_usd" { why = ag_limit_words(rec, false, wb[..]); }
+      if r[0].why_n == 0 { r[0].why_n = agr_set(r[0].why[..], why); }
+      r[0].answer_n = 0;
+    }
+  }
+}
+
+// The turn under way: claude's lines read, the person's stop taken. True when it ended.
+res_poll :: (c: [] Cli, r: [] CliResident, now: s64) -> bool {
+  if r[0].h < 0 { return false; }
+  for i: 0..<64 {
+    n := proc_line(r[0].h, 0, r[0].line[..]);
+    if n == PROC_TIMEOUT { break; }
+    if n == PROC_TOO_LONG { continue; }
+    if n < 0 { res_end(c, r, now); return true; }
+    res_line(c, r, cast(string) r[0].line[0..<n]);
+  }
+  // stopped by the person (agent-stop, anywhere): its process ends, and what it did stays
+  res_scan(c);
+  k := agr_find(c[0].agents[..], res_id(r));
+  if k < 0 || c[0].agents[0].r[k].state != AGR_WORKING { res_kill(r); res_free(r); return true; }
+  return false;
+}
+res_kill :: (r: [] CliResident) {
+  if r[0].h < 0 { return; }
+  _ = proc_kill(r[0].h, PROC_SIGTERM);
+  if proc_wait(r[0].h, 3000) == PROC_RUNNING { _ = proc_kill(r[0].h, PROC_SIGKILL); _ = proc_wait(r[0].h, 2000); }
+  _ = proc_release(r[0].h); r[0].h = -1;
+}
+res_free :: (r: [] CliResident) { r[0].live_n = 0; }
+// claude ended: its answer, its usage and its state, in its log.
+res_end :: (c: [] Cli, r: [] CliResident, now: s64) {
+  _ = proc_wait(r[0].h, 3000); _ = proc_release(r[0].h); r[0].h = -1;
+  id := res_id(r); ib: [AGR_ID] u8; id = cast(string) ib[0..<agr_put(ib[..], 0, id)];
+  res_free(r);
+  res_scan(c);
+  k := agr_find(c[0].agents[..], id);
+  // stopped meanwhile: what the person said stands
+  if k < 0 || c[0].agents[0].r[k].state != AGR_WORKING { return; }
+  ev: [1] AgrEvent;
+  if r[0].answer_n > 0 {
+    ev[0] = agr_event(AGR_MESSAGE); ev[0].from = AGR_AGENT; agr_event_text(ev[..], cast(string) r[0].answer[0..<r[0].answer_n]);
+    _ = res_emit(c, id, ev[..], now);
+  }
+  if r[0].result {
+    ev[0] = agr_event(AGR_USAGE); ev[0].turns = cast(s32) r[0].turns; ev[0].cents = cast(s32) r[0].cents; ev[0].ms = cast(s32) r[0].ms;
+    _ = res_emit(c, id, ev[..], now);
+  }
+  if r[0].pause_until > now { _ = res_state(c, id, AGR_PAUSED, AGR_PLAN_PAUSED, r[0].pause_until, now); return; }
+  if r[0].failed || !r[0].result {
+    why := ifx r[0].why_n > 0 then cast(string) r[0].why[0..<r[0].why_n] else "Claude Code stopped before it answered.";
+    _ = res_state(c, id, AGR_FAILED, why, 0, now);
+    return;
+  }
+  _ = res_state(c, id, AGR_DONE, "", 0, now);
+}
+// The next agent queued for this service starts, while its slot is free; a pause whose time came
+// is queued again first. Nothing else moves by itself.
+res_next :: (c: [] Cli, r: [] CliResident, now: s64) {
+  if r[0].h >= 0 { return; }
+  res_scan(c);
+  ib: [AGR_ID] u8;
+  for k: 0..<c[0].agents[0].n {
+    a := c[0].agents[0].r[k];
+    if !res_mine(c, r, k) || a.state != AGR_PAUSED || a.resumes <= 0 || now < a.resumes { continue; }
+    id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(c[0].agents[0].r[k..<k + 1]))];
+    _ = res_state(c, id, AGR_QUEUED, "", 0, now);
+    res_scan(c);
+  }
+  best := -1;
+  for k: 0..<c[0].agents[0].n {
+    if !res_mine(c, r, k) || c[0].agents[0].r[k].state != AGR_QUEUED { continue; }
+    if best < 0 || c[0].agents[0].r[k].updated < c[0].agents[0].r[best].updated { best = k; }
+  }
+  if best < 0 { return; }
+  id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(c[0].agents[0].r[best..<best + 1]))];
+  r[0].answer_n = 0; r[0].turns = 0; r[0].cents = 0; r[0].ms = 0; r[0].result = false; r[0].failed = false; r[0].why_n = 0; r[0].pause_until = 0;
+  why := res_spawn(c, r, best);
+  if why.count > 0 { _ = res_state(c, id, AGR_FAILED, why, 0, now); return; }
+  r[0].live_n = agr_put(r[0].live[..], 0, id); r[0].started = now;
+  // it starts: it says what it costs (docs/agents.md, "What must be true before it ships")
+  _ = res_state(c, id, AGR_WORKING, AGR_LOCAL_COST, 0, now);
+  _ = res_say(c, r, now);
+}
+
+// ---- the account (signed in): this computer, its agents, and the agents started for it there
+
+// A row on the account (cli_remote), its answer copied into the service's buffer: "" when it
+// failed.
+res_remote :: (c: [] Cli, r: [] CliResident, who: [] AcWho, verb: string, words: [] string) -> string {
+  v := gb_find(verb);
+  ga: [1] GbArgs;
+  if v < 0 || gb_args_read(v, words, GbFlags.{}, ga[..]).count > 0 { return ""; }
+  c[0].remote = true;
+  res := cli_remote(c, v, ga[..], who);
+  c[0].remote = false;
+  if res.code != GB_DONE || res.json.count > r[0].buf.count { return ""; }
+  for i: 0..<res.json.count { r[0].buf[i] = res.json[i]; }
+  return cast(string) r[0].buf[0..<res.json.count];
+}
+res_account :: (c: [] Cli, r: [] CliResident, who: [] AcWho, now: s64) {
+  r[0].reported = now;
+  tb: [AGR_COMPUTER_MAX * 2] u8;
+  status := agr_computer_write(r[0].me[..], tb[..]);
+  w1 := [1] string.[status];
+  if res_remote(c, r, who, "computer-report", w1[..]).count == 0 { r[0].on_account = false; return; }
+  r[0].on_account = true;
+  // the account's agents: those started for this computer come here; ours go there
+  none: [1] string;
+  list := res_remote(c, r, who, "agents", none[0..<0]);
+  if list.count == 0 { return; }
+  da: [1] Jv;
+  if !jv_parse(da[..], list, r[0].nodes[..]) { return; }
+  d := da[0];
+  arr := jv_get(d, 0, "agents");
+  theirs: [AGR_RECORDS] s32; tid: [AGR_RECORDS * AGR_ID] u8; tid_n: [AGR_RECORDS] int; tn := 0;
+  adopt: [8 * AGR_RECORD_MAX] u8; adopt_at: [9] int; an := 0; adopt_at[0] = 0;
+  for i: 0..<jv_len(d, arr) {
+    rec := jv_get(d, jv_at(d, arr, i), "agent");
+    got: [1] AgrRecord; jw: [1] AgrJob;
+    raw := jv_raw(d, rec);
+    if agr_record_read(raw, got[..], jw[..]).count > 0 || tn >= AGR_RECORDS { continue; }
+    theirs[tn] = got[0].events; tid_n[tn] = agr_put(tid[tn * AGR_ID..<(tn + 1) * AGR_ID], 0, agr_id(got[..])); tn += 1;
+    mine := got[0].place == AGR_LOCAL && cast(string) got[0].runner[0..<got[0].runner_n] == AGR_RESIDENT && cast(string) got[0].computer[0..<got[0].computer_n] == res_name(r);
+    fb: [64] u8;
+    if mine && an < 8 && !fs_exists(cli_path(c, agr_file(agr_id(got[..]), ".agent", fb[..]), "")) && raw.count <= AGR_RECORD_MAX {
+      adopt_at[an + 1] = agr_put(adopt[..], adopt_at[an], raw); an += 1;
+    }
+  }
+  for i: 0..<an { res_adopt(c, r, who, cast(string) adopt[adopt_at[i]..<adopt_at[i + 1]]); }
+  // ours, reported from the account's count
+  res_scan(c);
+  for k: 0..<c[0].agents[0].n {
+    if !res_mine(c, r, k) { continue; }
+    id := agr_id(c[0].agents[0].r[k..<k + 1]);
+    from := 0;
+    for j: 0..<tn { if cast(string) tid[j * AGR_ID..<j * AGR_ID + tid_n[j]] == id { from = cast(int) theirs[j]; } }
+    if from >= cast(int) c[0].agents[0].r[k].events { continue; }
+    ib: [AGR_ID] u8; idc := cast(string) ib[0..<agr_put(ib[..], 0, id)];
+    for rounds: 0..<8 {
+      if !res_report(c, r, who, idc, from) { break; }
+      from += AGR_REPORT;
+      res_scan(c);
+      kk := agr_find(c[0].agents[..], idc);
+      if kk < 0 || from >= cast(int) c[0].agents[0].r[kk].events { break; }
+    }
+  }
+}
+// One report of agent id's, from event from: true when the account took it.
+res_report :: (c: [] Cli, r: [] CliResident, who: [] AcWho, id: string, from: int) -> bool {
+  fb: [64] u8; rb: [AGR_RECORD_MAX + 1] u8;
+  rn := fs_read(cli_path(c, agr_file(id, ".agent", fb[..]), ""), rb[..]);
+  ln := fs_read(cli_path(c, agr_file(id, ".events", fb[..]), ""), c[0].lg[..]);
+  if rn <= 0 || ln < 0 { return false; }
+  o: [1] Jo; jo_start(o[..], r[0].rep[..]);
+  if agr_report(cast(string) rb[0..<rn], cast(string) c[0].lg[0..<ln], from, o[..]) < 0 { return false; }
+  // the row's argument is the report itself: {"report": X}'s X
+  da: [1] Jv;
+  if !jv_parse(da[..], jo_text(o[..]), r[0].nodes[..]) { return false; }
+  w := [1] string.[jv_raw(da[0], jv_get(da[0], 0, "report"))];
+  return res_remote(c, r, who, "agent-report", w[..]).count > 0;
+}
+// An agent started for this computer on the account: its record and log, brought here.
+res_adopt :: (c: [] Cli, r: [] CliResident, who: [] AcWho, record: string) {
+  got: [1] AgrRecord; jw: [1] AgrJob;
+  if agr_record_read(record, got[..], jw[..]).count > 0 { return; }
+  ib: [AGR_ID] u8; id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(got[..]))];
+  n := 0; after := 0;
+  for pages: 0..<4 {
+    ab: [16] u8; an := agr_int(ab[..], 0, cast(s64) after);
+    w := [2] string.[id, cast(string) ab[0..<an]];
+    page := res_remote(c, r, who, "agent-events", w[..]);
+    if page.count == 0 { return; }
+    da: [1] Jv;
+    if !jv_parse(da[..], page, r[0].nodes[..]) { return; }
+    d := da[0];
+    evs := jv_get(d, 0, "events");
+    ev: [1] AgrEvent;
+    for i: 0..<jv_len(d, evs) {
+      raw := jv_raw(d, jv_at(d, evs, i));
+      if agr_event_read(raw, id, ev[..]).count > 0 || ev[0].n != cast(s32) (after + i + 1) { return; }
+      line := agr_event_write(id, ev[..], c[0].lg[n..<c[0].lg.count - 1]);
+      if line.count == 0 { return; }
+      n += line.count; c[0].lg[n] = '\n'; n += 1;
+    }
+    after += jv_len(d, evs);
+    if after >= cast(int) got[0].events || jv_len(d, evs) == 0 { break; }
+  }
+  if after != cast(int) got[0].events { return; }
+  fb: [64] u8;
+  if n > 0 && !fs_append_durable(cli_path(c, agr_file(id, ".events", fb[..]), ""), cast(string) c[0].lg[0..<n]) { return; }
+  tb: [AGR_RECORD_MAX * 2] u8;
+  text := agr_record_write(got[..], cast(string) jw[0].buf[0..<jw[0].n], tb[..]);
+  if text.count > 0 { _ = fs_replace_durable(cli_path(c, agr_file(id, ".agent", fb[..]), ""), text); }
+}
+
+// ---- the service
+
+cli_resident :: (c: [] Cli, who: [] AcWho, words: [] string) -> int {
+  r := c[0].res[..];
+  r[0].h = -1;
+  nb: [AGR_COMPUTER] u8;
+  name := res_computer_name(c, nb[..]);
+  now := cli_now(c);
+  agr_computer_new(r[0].me[..], name, now);
+  fb: [64] u8;
+  mine := cli_path(c, agr_computer_file(cast(string) r[0].me[0].id[0..<r[0].me[0].id_n], fb[..]), "");
+  mb: [4352] u8; mine = cast(string) mb[0..<agr_put(mb[..], 0, mine)];
+  sub := ifx words.count > 0 then words[0] else "";
+  if sub == "status" {
+    k := fs_read(mine, c[0].doc[..]);
+    if k <= 0 { tool_errln("gamebuilder: the resident service has never run on this folder (gamebuilder resident)"); return 1; }
+    got: [1] AgrComputer;
+    why := agr_computer_read(cast(string) c[0].doc[0..<k], got[..]);
+    if why.count > 0 { tool_err("gamebuilder: "); tool_errln(why); return 1; }
+    o: [1] Jo; jo_start(o[..], c[0].out[..]);
+    jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "computer"); agr_computer_json(got[..], o[..]); agr_computer_shown_json(got[..], now, o[..]); jo_end(o[..]);
+    print("%\n", jo_text(o[..]));
+    return 0;
+  }
+  if sub == "stop" {
+    if !fs_write(cli_path(c, RES_STOP, ""), "stop\n") { tool_errln("gamebuilder: can't ask it to stop: the folder can't be written"); return 1; }
+    for i: 0..<30 {
+      proc_sleep(500);
+      k := fs_read(mine, c[0].doc[..]);
+      got: [1] AgrComputer;
+      if k > 0 && agr_computer_read(cast(string) c[0].doc[0..<k], got[..]) == "" && !got[0].on {
+        print("{\"ok\":true,\"stopped\":true,\"why\":\"%\"}\n", AGR_QUIT);
+        return 0;
+      }
+    }
+    _ = fs_remove(cli_path(c, RES_STOP, ""));
+    print("%\n", "{\"ok\":false,\"error\":\"not-found\",\"why\":\"no resident service answered on this folder: it isn't running\"}");
+    return 1;
+  }
+  if sub == "install" { return res_install(c); }
+  if sub.count > 0 { tool_errln("gamebuilder: resident [stop | status | install] [--dir DIR]"); return 3; }
+  // one service a folder
+  _ = fs_mkdir(cli_dir(c));
+  if !fs_try_lock(cli_path(c, RES_LOCK, "")) { tool_errln("gamebuilder: a resident service already runs on this folder (gamebuilder resident stop quits it)"); return 1; }
+  if fs_exists(cli_path(c, RES_STOP, "")) { _ = fs_remove(cli_path(c, RES_STOP, "")); }
+  // how it starts its tools: this program, by its own path
+  sb: [4096] u8; self := tool_self(sb[..]);
+  rp: [4096] u8; real := ifx self.count > 0 then fs_realpath(self, rp[..]) else "";
+  gbin: [1024] u8; env_bin := proc_getenv("GAMEBUILDER_BIN", gbin[..]);
+  r[0].bin_n = agr_put(r[0].bin[..], 0, ifx env_bin.count > 0 then env_bin else ifx real.count > 0 then real else "gamebuilder");
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  r[0].home_n = agr_put(r[0].home[..], 0, home);
+  pp := [3] string.["PATH=", home, "/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"];
+  r[0].path_n = agr_put(r[0].path[..], 0, ac_join(pp[..], c[0].path[..]));
+  r[0].on_account = ac_session(who).count == 0; ac_wipe(who);
+  // a turn this service ran when it ended without quitting: nobody can tell where it got to
+  res_scan(c);
+  ib: [AGR_ID] u8;
+  for k: 0..<c[0].agents[0].n {
+    if !res_mine(c, r, k) || c[0].agents[0].r[k].state != AGR_WORKING { continue; }
+    id := cast(string) ib[0..<agr_put(ib[..], 0, agr_id(c[0].agents[0].r[k..<k + 1]))];
+    _ = res_state(c, id, AGR_UNKNOWN, AGR_LOST, 0, now);
+    res_scan(c);
+  }
+  res_look(c, r); r[0].looked = now;
+  if !res_say(c, r, now) { tool_errln("gamebuilder: this computer's file can't be written beside the levels"); return 1; }
+  ob: [4608] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "resident"); jo_str(o[..], name); jo_key(o[..], "folder"); jo_str(o[..], cli_dir(c));
+  jo_key(o[..], "account"); jo_bool(o[..], r[0].on_account); jo_key(o[..], "cost"); jo_str(o[..], AGR_LOCAL_COST); jo_end(o[..]);
+  // written whole, at once: whoever started it reads that it is on (print waits for a full buffer on a pipe)
+  on_n := agr_put(ob[..], jo_text(o[..]).count, "\n");
+  _ = cxterm_write(ob[0..<on_n]);
+  while true {
+    now = cli_now(c);
+    if fs_exists(cli_path(c, RES_STOP, "")) { break; }
+    if r[0].h >= 0 { _ = res_poll(c, r, now); }
+    if r[0].h < 0 { res_next(c, r, now); }
+    if now - r[0].looked >= RES_LOOK_MS { res_look(c, r); r[0].looked = now; }
+    if now - r[0].said >= RES_SAY_MS { _ = res_say(c, r, now); }
+    if r[0].on_account && now - r[0].reported >= RES_ACCOUNT_MS { res_account(c, r, who, now); }
+    proc_sleep(ifx r[0].h >= 0 then 200 else RES_TICK_MS);
+  }
+  // quit: the agent it runs stops, and says why; the computer says it is off
+  now = cli_now(c);
+  if r[0].h >= 0 {
+    id := cast(string) ib[0..<agr_put(ib[..], 0, res_id(r))];
+    res_kill(r); res_free(r);
+    _ = res_state(c, id, AGR_STOPPED, AGR_QUIT, 0, now);
+  }
+  r[0].me[0].on = false; r[0].me[0].since = now; r[0].me[0].why_n = agr_set(r[0].me[0].why[..], "you quit GameBuilder's resident service here");
+  _ = res_say(c, r, now);
+  if r[0].on_account { res_account(c, r, who, now); }
+  _ = fs_remove(cli_path(c, RES_STOP, ""));
+  _ = fs_unlock();
+  print("{\"ok\":true,\"stopped\":true,\"why\":\"%\"}\n", AGR_QUIT);
+  return 0;
+}
+
+// install: a launchd agent that starts the service when the person logs in to this Mac, and again
+// if it ends: written, and how to start it now said. It is the person's to load.
+RES_LABEL :: "org.gamebuilder.resident";
+res_install :: (c: [] Cli) -> int {
+  if tool_os() != TOOL_MAC { tool_errln("gamebuilder: resident install writes a launchd agent (macOS); elsewhere run gamebuilder resident from your session's start (systemd --user, for one)"); return 3; }
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  if home.count == 0 { tool_errln("gamebuilder: no HOME"); return 1; }
+  sb: [4096] u8; self := tool_self(sb[..]);
+  rp: [4096] u8; bin := ifx self.count > 0 then fs_realpath(self, rp[..]) else "";
+  if bin.count == 0 { tool_errln("gamebuilder: run it by its path (where gamebuilder is installed), so the agent knows what to start"); return 1; }
+  t := [1] Text.[Text.{buf = c[0].doc[..]}];
+  tx_put(t[..], "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\">\n<dict>\n");
+  tx_put(t[..], "  <key>Label</key><string>"); tx_put(t[..], RES_LABEL); tx_put(t[..], "</string>\n");
+  tx_put(t[..], "  <key>ProgramArguments</key><array><string>"); tx_put(t[..], bin); tx_put(t[..], "</string><string>--dir</string><string>"); tx_put(t[..], cli_dir(c)); tx_put(t[..], "</string><string>resident</string></array>\n");
+  tx_put(t[..], "  <key>RunAtLoad</key><true/>\n  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n</dict>\n</plist>\n");
+  pb: [1200] u8; parts := [3] string.[home, "/Library/LaunchAgents/", RES_LABEL];
+  dir := [2] string.[home, "/Library/LaunchAgents"]; db: [1200] u8;
+  _ = fs_mkdir(ac_join(dir[..], db[..]));
+  fp: [1300] u8; path := [2] string.[ac_join(parts[..], pb[..]), ".plist"]; file := ac_join(path[..], fp[..]);
+  if !fs_write(file, cast(string) c[0].doc[0..<t[0].at]) { tool_err("gamebuilder: can't write "); tool_errln(file); return 1; }
+  o: [1] Jo; jo_start(o[..], c[0].out[..]);
+  jo_obj(o[..]); jo_key(o[..], "ok"); jo_bool(o[..], true); jo_key(o[..], "agent"); jo_str(o[..], file);
+  jo_key(o[..], "next"); jo_str(o[..], "start it now with: launchctl load -w followed by that file; it starts at each login after. gamebuilder resident stop quits it and launchd leaves it quit");
+  jo_end(o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}

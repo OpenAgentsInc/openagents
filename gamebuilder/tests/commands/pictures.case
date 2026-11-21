@@ -1,0 +1,10 @@
+# The pictures the app drew of a level, kept beside it: a level here has none (the command line draws
+# none), and asking for one that isn't kept says so, and why, in words.
+> new-level
+< {"ok":true,"level":1}
+> pictures {"level":1}
+< {"ok":true,"schema":"gamebuilder.pictures.v1","level":1,"keep":32,"pictures":[],"waiting":0}
+> picture {"level":1,"revision":1289232695,"which":"after"}
+< {"ok":false,"error":"not-found","why":"no picture of that revision is kept: the app draws one when an agent changes the level (before and after) or play-tests it, with the level's own renderer, and a level keeps its last 32 (PIC_KEEP); a call from the command line draws none (pictures lists those kept)"}
+> picture {"level":1,"revision":1289232695,"which":"sideways"}
+< {"ok":false,"error":"bad-request","why":"which picture is before, after or playtest"}

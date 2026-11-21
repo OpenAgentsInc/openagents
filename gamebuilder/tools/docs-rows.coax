@@ -1,0 +1,121 @@
+// The row tables in the docs are made from the command table (docs/programmatic-access.md, "Drift
+// checks"): docs/cli.md's commands by area, and docs/programmatic-access.md's full list of rows,
+// each with its surfaces and the reasons it is not on the others. Each is the text between
+// `<!-- rows: NAME -->` and `<!-- /rows -->` in its file; nothing outside them is touched.
+// With --check it changes nothing, prints each table that is not what the table makes, and ends 1;
+// so a row added, changed or taken away in the table and not in the docs fails scripts/check.sh.
+//   coax/web/tool.sh tools/docs-rows.coax [--check] docs/cli.md docs/programmatic-access.md
+// tool.sh: run-steps 100000000
+#load "../../coax/lib/sys/tool.coax";
+#load "../core/controls.coax";
+#load "../../coax/lib/sys/fs.coax";
+#import "Basic";
+
+DR_MAX :: 1048576;
+DrFile :: struct { text: [DR_MAX] u8; out: [DR_MAX] u8; made: [65536] u8; }
+
+// The areas in the order the table first names them.
+dr_areas :: (out: [] string) -> int {
+  n := 0;
+  for c: GB_COMMANDS {
+    seen := false; for k: 0..<n { if out[k] == c.area { seen = true; } }
+    if !seen && n < out.count { out[n] = c.area; n += 1; }
+  }
+  return n;
+}
+dr_surfaces :: (t: [] Text, c: GbCommand) {
+  if (c.surfaces & GB_RULED) == GB_RULED { tx_put(t, "every one"); if (c.surfaces & GB_WEB) != 0 { tx_put(t, ", web"); } if (c.surfaces & GB_CLOUD) != 0 { tx_put(t, ", cloud"); } return; }
+  first := true;
+  for s: 0..<GB_SURFACES {
+    if (c.surfaces & cast(s32) (1 << s)) == 0 { continue; }
+    if !first { tx_put(t, ", "); }
+    tx_put(t, GB_SURFACE_NAME[s]); first = false;
+  }
+  if first { tx_put(t, "none"); }
+}
+// Text in a table's cell: a bar is written \| so it does not end the cell.
+dr_cell :: (t: [] Text, w: string) {
+  from := 0;
+  for i: 0..<w.count { if w[i] == '|' { tx_put(t, cast(string) w[from..<i]); tx_put(t, "\\|"); from = i + 1; } }
+  tx_put(t, cast(string) w[from..<w.count]);
+}
+// docs/cli.md: what the CLI runs, by area, each as it is typed.
+dr_cli :: (t: [] Text) {
+  areas: [32] string; n := dr_areas(areas[..]);
+  tx_put(t, "| Area | Commands |\n| --- | --- |\n");
+  for k: 0..<n {
+    any := false;
+    for c: GB_COMMANDS {
+      if c.area != areas[k] || (c.surfaces & GB_CLI) == 0 { continue; }
+      tx_put(t, ifx any then ", " else "| "); if !any { tx_put(t, areas[k]); tx_put(t, " | "); }
+      tx_put(t, "`"); tx_put(t, c.verb); if c.usage.count > 0 { tx_put(t, " "); dr_cell(t, c.usage); } tx_put(t, "`");
+      any = true;
+    }
+    if any { tx_put(t, " |\n"); }
+  }
+}
+// docs/programmatic-access.md: every row, where it is, and why it is not elsewhere.
+dr_inventory :: (t: [] Text) {
+  areas: [32] string; n := dr_areas(areas[..]);
+  tx_put(t, "| Area | Row | Surfaces | Not on the others because |\n| --- | --- | --- | --- |\n");
+  for k: 0..<n {
+    for c: GB_COMMANDS {
+      if c.area != areas[k] { continue; }
+      tx_put(t, "| "); tx_put(t, c.area); tx_put(t, " | `"); tx_put(t, c.verb); tx_put(t, "` | ");
+      dr_surfaces(t, c); tx_put(t, " | ");
+      for g: 0..<gb_parts(c.gap) { if g > 0 { tx_put(t, ", "); } tx_put(t, "`"); tx_put(t, gb_part(c.gap, g)); tx_put(t, "`"); }
+      tx_put(t, " |\n");
+    }
+  }
+}
+dr_find :: (s: string, what: string, from: int) -> int {
+  for i: from..<s.count - what.count + 1 { if cast(string) s[i..<i + what.count] == what { return i; } }
+  return -1;
+}
+// The file's text with each marked table made again, into out; -1 when a marker is missing.
+dr_make :: (f: [] DrFile, text: string, name: string) -> int {
+  o := [1] Text.[Text.{buf = f[0].out[..]}];
+  head := "<!-- rows: ";
+  at := 0; tables := 0;
+  while true {
+    i := dr_find(text, head, at);
+    if i < 0 { break; }
+    e := dr_find(text, " -->\n", i);
+    if e < 0 { return -1; }
+    which := cast(string) text[i + head.count..<e];
+    end := dr_find(text, "<!-- /rows -->", e);
+    if end < 0 { return -1; }
+    tx_put(o[..], cast(string) text[at..<e + 5]);
+    m := [1] Text.[Text.{buf = f[0].made[..]}];
+    if which == "cli" { dr_cli(m[..]); } else if which == "inventory" { dr_inventory(m[..]); } else { return -1; }
+    tx_put(o[..], tx_text(m[..]));
+    at = end; tables += 1;
+  }
+  if tables == 0 { return -1; }
+  tx_put(o[..], cast(string) text[at..<text.count]);
+  return tx_text(o[..]).count;
+}
+
+tool_main :: () -> int #export_c #effects(all) {
+  a: [1] Args; bad := 0;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { print("usage: tool.sh tools/docs-rows.coax [--check] FILE...\n"); return 2; }
+  check := args_at(a[..], 0) == "--check";
+  f: [1] DrFile;
+  first := ifx check then 1 else 0;
+  for k: first..<args_count(a[..]) {
+    path := args_at(a[..], k);
+    n := fs_read(path, f[0].text[..]);
+    if n < 0 || n >= DR_MAX { print("docs: NOT read %\n", path); bad += 1; continue; }
+    text := cast(string) f[0].text[0..<n];
+    m := dr_make(f[..], text, path);
+    if m < 0 { print("docs: NOT marked: % has no table between <!-- rows: cli|inventory --> and <!-- /rows -->\n", path); bad += 1; continue; }
+    made := cast(string) f[0].out[0..<m];
+    if made == text { continue; }
+    if check { print("docs: NOT made from the table: % (run coax/web/tool.sh tools/docs-rows.coax %)\n", path, path); bad += 1; continue; }
+    if !fs_write(path, made) { print("docs: NOT written %\n", path); bad += 1; continue; }
+    print("docs: made %\n", path);
+  }
+  if bad > 0 { return 1; }
+  if check { print("docs: ok, the row tables are the table's\n"); }
+  return 0;
+}

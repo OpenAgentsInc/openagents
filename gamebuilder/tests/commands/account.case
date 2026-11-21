@@ -1,0 +1,7 @@
+# The account's rows, nobody logged in: who you are, logging out, and a login refused in words before anything is sent.
+> whoami
+< {"ok":false,"error":"not-logged-in","why":"nobody is logged in: run gamebuilder login"}
+> logout
+< {"ok":true,"profile":"default","ended":false}
+> login {"email":"nope"}
+< {"ok":false,"error":"bad-request","why":"that isn't an email address"}

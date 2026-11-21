@@ -1,0 +1,33 @@
+// Build identity and delivered bytes, not an inference from a local checkout.
+#load "catalog.coax";
+#load "../../../coax/web/player-browser.coax";
+#load "../../../coax/lib/crypto/sha256_workspace.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/fs.coax";
+
+PT_ASSET_COUNT :: 7;
+PT_ASSETS :: [PT_ASSET_COUNT]string.["site.wasm","hud.wasm","hud.wgsl","frame-plan.wasm","host-layers.wasm","host-packs.wasm","assets/village.pack"];
+pt_sha :: (bytes:[]u8,out:[]u8)->bool {
+  if out.count<64 {return false;}w:[1]ShaOwned;digest:[32]u8;
+  if !so_init(w[..]) {return false;}at:=0;while at<bytes.count {end:=ifx bytes.count-at>1048576 then at+1048576 else bytes.count;if !so_update(w[..],bytes[at..<end],false) {return false;}at=end;}if !so_finish(w[..],digest[..],false) {return false;}
+  hex:="0123456789abcdef";for i:0..<32 {out[i*2]=hex[digest[i]>>4];out[i*2+1]=hex[digest[i]&15];}return true;
+}
+#test "provenance hashes bytes including zero and rejects short destinations" {
+  b:[1]u8;out:[64]u8;#assert pt_sha(b[0..<0],out[..]) && cast(string)out[..]=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+  #assert !pt_sha(b[..],out[0..<63]);
+}
+#test "asset provenance streams files larger than the crypto update boundary" #steps 600000000 {
+  bytes:[1048577]u8;out:[64]u8;
+  #assert pt_sha(bytes[..],out[..]) && cast(string)out[..]=="2cb74edba754a81d121c9db6833704a8e7d417e5b13d1a19f4a52f007d644264";
+}
+pt_write_catalog :: (root:string)->bool {
+  git:=[5]string.["git","-C",root,"rev-parse","HEAD"];rev:[256]u8;err:[1024]u8;r:=proc_run(git[..],5000,rev[..],err[..]);if r.status!=0 {return false;}
+  p:[4096]u8;lock:[4096]u8;n:=fs_read(fs_join(root,"openagents.lock",p[..]),lock[..]);if n<=0 {return false;}
+  pin:="";at:=0;while at<n {end:=at;while end<n && lock[end]!='\n' {end+=1;}line:=cast(string)lock[at..<end];if line.count==40 && line[0]!='#' {pin=line;}at=end+1;}if pin.count!=40 {return false;}
+  b:[65536]u8;cn:=pt_catalog(b[..],http_trim(cast(string)rev[0..<r.out_n]),pin);if cn<=0 {return false;}
+  // The catalog writer owns its closing brace. Append asset identities with Jo.
+  o:[1]Jo;extra:[8192]u8;jo_start(o[..],extra[..]);jo_obj(o[..]);
+  bytes:[8388608]u8;digest:[64]u8;
+  for name:PT_ASSETS {rel:[256]u8;rn:=ws_put(rel[..],0,ifx name=="assets/village.pack" then "web/" else "web/build/");rn=ws_put(rel[..],rn,name);size:=fs_read(fs_join(root,cast(string)rel[0..<rn],p[..]),bytes[..]);if size<=0 || !pt_sha(bytes[0..<size],digest[..]) {return false;}jo_key(o[..],name);jo_str(o[..],cast(string)digest[..]);}
+  jo_end(o[..]);n=ws_put(b[..],cn-1,",\"assets\":");n=ws_put(b[..],n,jo_text(o[..]));n=ws_put(b[..],n,"}\n");return n>0 && fs_write(fs_join(root,"web/build/player-catalog.json",p[..]),cast(string)b[0..<n]);
+}

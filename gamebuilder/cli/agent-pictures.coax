@@ -1,0 +1,67 @@
+// Each agent's newest picture, kept on the account (GitHub issue 9; gamebuilder/core/agent-pictures.coax): the
+// files the agent-picture row says to write, and the hosted server's GET /api/pictures/ADDRESS.jpg.
+//   DIR/agent-pictures                 the folder's: a line an agent's picture, "ID MADE ADDRESS"
+//   DIR/picture-ADDRESS.jpg            the picture itself, a JPEG of at most 8,192 bytes (PIC_JPEG)
+//   ACCOUNTS/.pictures/ADDRESS         a hosted server's: whose folder the picture is in, one line
+// The address is the picture's own (agp_address), so the index file is all the server needs to
+// find it, and nothing about an account is in the path.
+//   cli/check.sh, tools/hosted-check.coax
+
+CLI_AGP_INDEX :: ".pictures";   // under the accounts' folder: an address's account
+
+// The folder's agent-pictures file, read into c[0].apics.
+cli_agp_read :: (c: [] Cli) {
+  k := fs_read(cli_path(c, AGP_INDEX, ""), c[0].apics[..]);
+  c[0].apics_n = ifx k > 0 && k <= AGP_INDEX_MAX then k else 0;
+}
+cli_agp_jpeg :: (c: [] Cli, h: string, out: [] u8) -> string {
+  parts := [5] string.[cli_dir(c), "/picture-", h, AGP_EXT, ""];
+  return cli_pub_join(parts[..], out);
+}
+cli_agp_owner_path :: (c: [] Cli, h: string, out: [] u8) -> string {
+  parts := [5] string.[cli_pub_root(c), "/", CLI_AGP_INDEX, "/", h];
+  return cli_pub_join(parts[..], out);
+}
+// What agent-picture said to write: the JPEG, the account's index of it on a hosted server, then
+// the folder's index, then the picture it replaced goes. "" when done, else why not.
+cli_agp_keep :: (c: [] Cli, r: GbResult) -> string {
+  if r.jpeg.count == 0 || !agp_hex_ok(r.jpeg_at) { return ""; }
+  later := "the agent's picture can't be kept just now: try again";
+  pb: [PUB_PATH] u8;
+  _ = fs_mkdir(cli_dir(c));
+  jp := cli_agp_jpeg(c, r.jpeg_at, pb[..]);
+  if jp.count == 0 || !fs_replace_durable(jp, r.jpeg) { return later; }
+  if c[0].hosted {
+    ib: [PUB_PATH] u8; parts := [3] string.[cli_pub_root(c), "/", CLI_AGP_INDEX];
+    _ = fs_mkdir(cli_pub_join(parts[..], ib[..]));
+    op := cli_agp_owner_path(c, r.jpeg_at, ib[..]);
+    lb: [80] u8; lp := [2] string.[cli_pub_account(c), "\n"]; line := cli_pub_join(lp[..], lb[..]);
+    if op.count == 0 || line.count < 2 || !fs_replace_durable(op, line) { return later; }
+  }
+  if !fs_replace_durable(cli_path(c, AGP_INDEX, ""), r.pictures) { return later; }
+  if agp_hex_ok(r.jpeg_gone) {
+    gp := cli_agp_jpeg(c, r.jpeg_gone, pb[..]);
+    if gp.count > 0 && fs_exists(gp) { _ = fs_remove(gp); }
+    if c[0].hosted { ib: [PUB_PATH] u8; op := cli_agp_owner_path(c, r.jpeg_gone, ib[..]); if op.count > 0 && fs_exists(op) { _ = fs_remove(op); } }
+  }
+  return "";
+}
+// GET /api/pictures/ADDRESS.jpg on a hosted server: the JPEG into out, its length; 0 when there is
+// no such picture (a picture replaced by a newer one is gone).
+cli_agp_serve :: (c: [] Cli, h: string, out: [] u8) -> int {
+  if !agp_hex_ok(h) { return 0; }
+  ib: [PUB_PATH] u8; ob: [80] u8;
+  op := cli_agp_owner_path(c, h, ib[..]);
+  if op.count == 0 || !fs_exists(op) { return 0; }
+  k := fs_read(op, ob[..]);
+  if k <= 0 || k >= ob.count { return 0; }
+  while k > 0 && (ob[k - 1] == '\n' || ob[k - 1] == '\r') { k -= 1; }
+  who := cast(string) ob[0..<k];
+  if !gb_api_account_ok(who) { return 0; }
+  pb: [PUB_PATH] u8;
+  parts := [6] string.[cli_pub_root(c), "/", who, "/picture-", h, AGP_EXT];
+  jp := cli_pub_join(parts[..], pb[..]);
+  if jp.count == 0 { return 0; }
+  n := fs_read(jp, out);
+  return ifx n > 3 && n <= PIC_JPEG && out[0] == 255 && out[1] == 216 then n else 0;
+}

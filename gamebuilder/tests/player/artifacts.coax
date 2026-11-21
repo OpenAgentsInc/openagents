@@ -1,0 +1,77 @@
+// Private evidence transport and retention. Never upload profiles or raw capture.
+#load "catalog.coax";
+#load "../../../coax/lib/sys/tool.coax";
+#load "../../../coax/lib/sys/proc.coax";
+#load "../../../coax/lib/sys/fs.coax";
+PA_BUCKET :: "gs://openagentsgemini-gamebuilder-player-evidence";
+pa_safe_name :: (name:string)->bool {
+  if name.count==0 || name.count>120 || name[0]=='.' {return false;}
+  for ch:name {if !((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='-'||ch=='_'||ch=='.') {return false;}}return true;
+}
+pa_allowed :: (name:string)->bool {
+  if !pa_safe_name(name) || (name.count>=6 && name[0..<6]=="frame-") {return false;}
+  if name=="visible-input.jpg" {return true;}
+  for id:[17]string.["report.json","report.html","junit.xml","events.jsonl","observations.jsonl","measurements.jsonl","network.jsonl","telemetry.jsonl","served-catalog.json","policy.jsonl","policy-usage.jsonl","player.mp4","inventory.json","release.json","policy-prompt.txt","policy-provider.json","capture-lifecycle.jsonl"] {if name==id {return true;}}
+  return name.count>4 && name[name.count-4..<name.count]==".png" && !pa_contains(name,"email") && !pa_contains(name,"code") && !pa_contains(name,"login") && !pa_contains(name,"account");
+}
+pa_contains :: (s:string,part:string)->bool {if s.count<part.count {return false;}for i:0..<s.count-part.count+1 {if s[i..<i+part.count]==part {return true;}}return false;}
+#test "evidence upload excludes credentials, profiles, traversals and raw frames" {
+  #assert pa_allowed("report.json") && pa_allowed("on-platform.png") && pa_allowed("player.mp4");
+  #assert !pa_allowed("frame-0.png") && !pa_allowed("login.png") && !pa_allowed("account.png") && !pa_allowed("email-code.png") && !pa_allowed("../world.png") && !pa_allowed("Cookies") && !pa_allowed("ordinary.json") && !pa_allowed(".env");
+  #assert pa_allowed("visible-input.jpg") && !pa_allowed("login.jpg") && !pa_allowed("frame-0.jpg");
+}
+pa_private :: (bucket:string)->bool {
+  a:=[7]string.["gcloud","storage","buckets","describe",bucket,"--project=openagentsgemini","--format=json"];
+  out:[65536]u8;err:[2048]u8;r:=proc_run(a[..],15000,out[..],err[..]);d:[1]Jv;nodes:[2048]JvNode;
+  return r.status==0 && !r.timed_out && jv_parse(d[..],cast(string)out[0..<r.out_n],nodes[..]) && jv_bool(d[0],jv_get(d[0],0,"uniform_bucket_level_access")) && jv_raw(d[0],jv_get(d[0],0,"public_access_prevention"))=="enforced";
+}
+pa_setup :: (dir:string)->bool {
+  if !fs_mkdir_private(dir) {return false;}
+  out:[4096]u8;err:[4096]u8;
+  if !pa_private(PA_BUCKET) {a:=[9]string.["gcloud","storage","buckets","create",PA_BUCKET,"--project=openagentsgemini","--location=US","--uniform-bucket-level-access","--public-access-prevention"];r:=proc_run(a[..],30000,out[..],err[..]);if r.status!=0 || r.timed_out {return false;}}
+  path:[4096]u8;file:=fs_join(dir,"retention.json",path[..]);
+  policy:="{\"rule\":[{\"action\":{\"type\":\"Delete\"},\"condition\":{\"age\":7,\"matchesPrefix\":[\"passed/\"]}},{\"action\":{\"type\":\"Delete\"},\"condition\":{\"age\":30,\"matchesPrefix\":[\"failed/\",\"diagnostic/\"]}}]}";
+  if !fs_write(file,policy) {return false;}
+  option:[4200]u8;n:=ws_put(option[..],0,"--lifecycle-file=");n=ws_put(option[..],n,file);
+  a:=[7]string.["gcloud","storage","buckets","update",PA_BUCKET,"--project=openagentsgemini",cast(string)option[0..<n]];r:=proc_run(a[..],15000,out[..],err[..]);return r.status==0 && !r.timed_out && pa_private(PA_BUCKET);
+}
+pa_clean :: (d:Jv)->bool {
+  target:=jv_raw(d,jv_get(d,0,"target"));role:=jv_raw(d,jv_get(d,0,"role"));t:=-1;targets:=PT_TARGETS;for i:0..<PT_TARGET_COUNT {if target==targets[i] {t=i;}}
+  if jv_raw(d,jv_get(d,0,"runnerSha256")).count!=64 || t<0 || (role!="ordinary" && role!="agent-entitled") || !jv_bool(d,jv_get(d,0,"inputVerified")) || !jv_bool(d,jv_get(d,0,"hardwareGpu")) || !jv_bool(d,jv_get(d,0,"provenanceVerified")) || !jv_bool(d,jv_get(d,0,"recordingPresent")) || jv_raw(d,jv_get(d,0,"scope"))!="full" {return false;}
+  cells:=jv_get(d,0,"cells");for id:PT_IDS {if !pt_applicable(t,id) || !pt_role_required(role=="ordinary",id) {continue;}found:=false;for i:0..<jv_len(d,cells) {c:=jv_at(d,cells,i);if jv_raw(d,jv_get(d,c,"target"))==target && jv_raw(d,jv_get(d,c,"case"))==id {if jv_raw(d,jv_get(d,c,"outcome"))!="pass" {return false;}found=true;}}if !found {return false;}}return true;
+}
+pa_upload :: (dir:string)->bool {
+  if !pa_private(PA_BUCKET) {return false;}
+  report:[65536]u8;path:[4096]u8;n:=fs_read(fs_join(dir,"report.json",path[..]),report[..]);d:[1]Jv;nodes:[8192]JvNode;
+  if n<=0 || !jv_parse(d[..],cast(string)report[0..<n],nodes[..]) || jv_raw(d[0],jv_get(d[0],0,"schema"))!="player.result.v1" {return false;}
+  base:=fs_base(dir);if !pa_safe_name(base) {return false;}
+  prefix:=ifx jv_raw(d[0],jv_get(d[0],0,"scope"))!="full" then "diagnostic/" else ifx pa_clean(d[0]) then "passed/" else "failed/";
+  destination:[4096]u8;dn:=ws_put(destination[..],0,PA_BUCKET);dn=ws_put(destination[..],dn,"/");dn=ws_put(destination[..],dn,prefix);dn=ws_put(destination[..],dn,base);dn=ws_put(destination[..],dn,"-");dn=pa_decimal(destination[..],dn,jv_int(d[0],jv_get(d[0],0,"started_ms"),0));dn=ws_put(destination[..],dn,"/");
+  list:[1]FsList;count:=fs_list(dir,list[..]);if count<0 || list[0].full {return false;}
+  args:[128]string;paths:[120][4096]u8;argc:=3;args[0]="gcloud";args[1]="storage";args[2]="cp";total:=0;
+  for i:0..<count {name:=fs_entry(list[..],i);if !pa_allowed(name) {continue;}if argc>=122 {return false;}file:=fs_join(dir,name,paths[argc-3][..]);size:=fs_size(file);if size<0 {return false;}total+=size;if total>157286400 {return false;}args[argc]=file;argc+=1;}
+  if argc<=3 {return false;}args[argc]=cast(string)destination[0..<dn];argc+=1;args[argc]="--project=openagentsgemini";argc+=1;args[argc]="--no-clobber";argc+=1;
+  out:[4096]u8;err:[8192]u8;r:=proc_run(args[0..<argc],60000,out[..],err[..]);if r.status!=0 || r.timed_out {return false;}
+  return fs_write(fs_join(dir,"private-upload.txt",path[..]),cast(string)destination[0..<dn]);
+}
+// Encoded video is the durable recording; discard only this run's numbered
+// raw capture after validation, retaining timestamps and all assertion stills.
+pa_capture_entries :: (text:string)->int {
+  at:=0;count:=0;while at<text.count {end:=at;while end<text.count && text[end]!='\n' {end+=1;}line:=text[at..<end];
+    if line.count>=5 && line[0..<5]=="file " {
+      if line.count<18 || line[0..<12]!="file 'frame-" || (line[line.count-5..<line.count]!=".jpg'" && line[line.count-5..<line.count]!=".png'") {return -1;}
+      number:=line[12..<line.count-5];if number.count==0 || number.count>5 {return -1;}for c:number {if c<'0'||c>'9' {return -1;}}
+      if args_whole(number)!=count || count>=40000 {return -1;}count+=1;
+    }at=end+1;
+  }return count;
+}
+pa_capture_count :: (dir:string)->int {b:[1048576]u8;path:[4096]u8;n:=fs_read(fs_join(dir,"capture.ffconcat",path[..]),b[..]);return ifx n>0 then pa_capture_entries(cast(string)b[0..<n]) else -1;}
+#test "capture validation requires every numbered frame in order and rejects foreign paths" {
+  #assert pa_capture_entries("ffconcat version 1.0\nfile 'frame-0.jpg'\nduration 0.2\nfile 'frame-1.jpg'\n")==2;
+  #assert pa_capture_entries("file '../frame-0.jpg'\n")<0 && pa_capture_entries("file 'frame-1.jpg'\n")<0;
+}
+pa_prune_capture :: (dir:string) {
+  path:[4096]u8;count:=pa_capture_count(dir);if count<2 || count>40000 {return;}
+  for i:0..<count {name:[80]u8;k:=ws_put(name[..],0,"frame-");k=pa_decimal(name[..],k,i);j:=ws_put(name[..],k,".jpg");_=fs_remove(fs_join(dir,cast(string)name[0..<j],path[..]));j=ws_put(name[..],k,".png");_=fs_remove(fs_join(dir,cast(string)name[0..<j],path[..]));}
+}
+pa_decimal :: (out:[]u8,n:int,v:int)->int {digits:[24]u8;k:=0;x:=v;if x==0 {return ws_put(out,n,"0");}while x>0 {digits[k]='0'+cast(u8)(x%10);k+=1;x/=10;}at:=n;while k>0 {k-=1;out[at]=digits[k];at+=1;}return at;}

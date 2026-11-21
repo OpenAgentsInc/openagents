@@ -1,0 +1,258 @@
+// --attach: the level open in the running app, reached from the terminal
+// (docs/programmatic-access.md, stage C5). The app listens on a Unix socket
+// of its own (0600, and only a peer of the same user is answered) and
+// writes the socket's path into the Levels folder as the file `attach`; the
+// gamebuilder CLI (and `gamebuilder mcp --attach`) reads it, connects, and
+// sends one call:
+//   {"verb":VERB,"args":{...},"row":DIGEST}\n   the row's arguments by its MCP names, and the
+//                                          caller's digest of the row (gb_row_digest)
+// and the app answers
+//   CODE TABLE JSON\n                      GB_DONE (0) or GB_REFUSED (1), the app's table's
+//                                          digest (8 hex digits), then the row's answer
+// A call whose row the app reads another way (the two were built from different tables) is
+// refused in words, and the CLI says when the tables differ at all (docs/programmatic-access.md,
+// "Versions").
+// The call is carried out on the open editor with gb_command_run, as a press
+// is, so an edit lands as one step ⌘Z takes back, and what it changed stays highlighted in
+// the terminal's colour and is said under the toolbar until the person dismisses it
+// (changes.coax). A dry run is carried out on a copy and changes nothing here.
+// The host polls (ed_attach_poll) from its own timer; nothing here waits for
+// a connection, and a connection has ATTACH_WAIT to send its call.
+//
+// The sandboxed Mac app may listen on a socket inside its own container
+// (its temporary folder), so the App Store build keeps its sandbox.
+
+#load "../../coax/lib/net/socket_foreign.coax";
+
+ATTACH_REQUEST :: 262144;          // a call, at most: a batch (WE_BATCH_BODY) written as a JSON string, and room
+ATTACH_ANSWER :: 1048576;          // an answer, at most: a level's file as JSON (read-content) fits
+ATTACH_WAIT :: 2000;               // ms a connection has to send its call
+ATTACH_PATH :: 103;                // a socket's path, at most (the Mac's sun_path holds 104 with its 0)
+
+AttachIo :: struct {
+  req: [ATTACH_REQUEST] u8;
+  answer: [ATTACH_ANSWER] u8;
+  nodes: [64] JvNode;
+  scratch: [1] Editor;             // a dry run's copy
+  snap: [1] ChSnap;
+  agent: s32;                      // the call's attached agent's turn number (0: none)
+  before: int; after: int;         // the open level's revision around the call
+}
+
+// Listens at path. False when it can't (too long a path, or something else is there).
+ed_attach_listen :: (e: [] Editor, path: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || path.count < 1 || path.count > ATTACH_PATH { return false; }
+  ed_attach_close(e);
+  for b: path { _ = cxsock_host_push(cast(int) b); }
+  h := cxsock_listen_unix();
+  if h < 0 { return false; }
+  e[0].attach_h = h; e[0].attach_on = true;
+  return true;
+}
+
+ed_attach_close :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || !e[0].attach_on { return; }
+  _ = cxsock_close(e[0].attach_h);
+  e[0].attach_on = false;
+}
+
+// Answers one waiting call, if there is one. True when a call was carried out: the host
+// then reads the editor again and writes what changed, as after a press.
+ed_attach_poll :: (e: [] Editor, levels: [] s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].attach_on { return false; }
+  c := cxsock_accept(e[0].attach_h, 0);
+  if c < 0 { return false; }
+  ran := false;
+  if cxsock_peer_self(c) == 1 { ran = attach_serve(e, c, levels); }
+  _ = cxsock_close(c);
+  return ran;
+}
+
+attach_serve :: (e: [] Editor, c: int, levels: [] s32) -> bool {
+  io: [1] AttachIo;
+  n := 0; done := false;
+  deadline := cxsock_now_ms() + ATTACH_WAIT;
+  while !done {
+    left := deadline - cxsock_now_ms();
+    if left <= 0 { return false; }
+    k := cxsock_read(c, left);
+    if k <= 0 { return false; }
+    for i: 0..<k {
+      b := cxsock_byte(c, i);
+      if b == '\n' { done = true; break; }
+      if n >= ATTACH_REQUEST { return false; }
+      io[0].req[n] = cast(u8) b; n += 1;
+    }
+  }
+  r := attach_call(e, io[..], cast(string) io[0].req[0..<n], levels);
+  _ = cxsock_write(c, cast(int) ('0' + r.code)); _ = cxsock_write(c, ' ');
+  hb: [8] u8;
+  for b: gb_hex8(gb_table_digest(), hb[..]) { _ = cxsock_write(c, cast(int) b); }
+  _ = cxsock_write(c, ' ');
+  if io[0].agent > 0 {
+    rb: [32] u8; t := [1] Text.[Text.{buf = rb[..]}];
+    tx_int(t[..], cast(s64) io[0].before); tx_put(t[..], " "); tx_int(t[..], cast(s64) io[0].after); tx_put(t[..], " ");
+    for b: rb[0..<t[0].at] { _ = cxsock_write(c, cast(int) b); }
+  }
+  for b: r.json { if cxsock_write(c, cast(int) b) != 0 { return true; } }
+  _ = cxsock_write(c, '\n');
+  _ = cxsock_flush(c, ATTACH_WAIT);
+  return r.code == GB_DONE;
+}
+
+// One call, read and carried out on the open editor; what it changed is highlighted.
+attach_call :: (e: [] Editor, io: [] AttachIo, request: string, levels: [] s32) -> GbResult {
+  o: [1] Jo; jo_start(o[..], io[0].answer[..]);
+  da: [1] Jv;
+  io[0].agent = 0; io[0].before = ed_agent_rev(e); io[0].after = io[0].before;
+  if !jv_parse(da[..], request, io[0].nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return gb_refuse(o[..], "bad-request", "a call is {\"verb\":VERB,\"args\":{...}} on one line"); }
+  // an attached agent's turn number (attached.coax): never 0 or a pane agent's
+  gat := jv_get(da[0], 0, "agent");
+  if gat >= 0 {
+    g := jv_int(da[0], gat, 0);
+    if g < GB_ATT_TURN0 || g > 2147483647 { return gb_refuse(o[..], "bad-request", "agent is an attached agent's turn number"); }
+    io[0].agent = cast(s32) g;
+  }
+  vb: [64] u8;
+  vat := jv_get(da[0], 0, "verb");
+  vn := ifx vat >= 0 && jv_kind(da[0], vat) == JV_STRING then jv_str(da[0], vat, vb[..]) else -1;
+  v := ifx vn > 0 then gb_find(cast(string) vb[0..<vn]) else -1;
+  if v < 0 { return gb_refuse(o[..], "bad-request", "no such command (gamebuilder help)"); }
+  if (GB_COMMANDS[v].surfaces & (GB_UI | GB_CLI)) == 0 && !(v == VERB_UNDO_TURN && io[0].agent > 0) { return gb_refuse(o[..], "bad-request", "that command is not offered here"); }
+  // the row as the caller's build reads it: carried out only when it is this app's
+  rat := jv_get(da[0], 0, "row");
+  rb: [16] u8; hb: [8] u8;
+  rn := ifx rat >= 0 && jv_kind(da[0], rat) == JV_STRING then jv_str(da[0], rat, rb[..]) else -1;
+  if rn < 0 || cast(string) rb[0..<rn] != gb_hex8(gb_row_digest(v), hb[..]) {
+    verb_b: [96] u8; wb: [512] u8; t := [1] Text.[Text.{buf = wb[..]}];
+    tx_put(t[..], "this app's "); tx_put(t[..], GB_COMMANDS[v].verb);
+    tx_put(t[..], " is not your gamebuilder's: they were built from different command tables (the app is ");
+    tx_put(t[..], gb_version(verb_b[..])); tx_put(t[..], "). Install the gamebuilder built with the app (scripts/install-cli.sh), or build the app again");
+    jo_start(o[..], io[0].answer[..]);
+    return gb_refuse(o[..], "version-mismatch", cast(string) wb[0..<t[0].at]);
+  }
+  // a level's file put whole would take the open level's history with it
+  if v == VERB_WRITE_CONTENT { return gb_refuse(o[..], "bad-request", "write-content puts a level's file whole: close the level in the app, then write its file (without --attach)"); }
+  aat := jv_get(da[0], 0, "args");
+  args := ifx aat >= 0 then jv_raw(da[0], aat) else "";
+  if aat >= 0 && jv_kind(da[0], aat) != JV_OBJECT { return gb_refuse(o[..], "bad-request", "args is a JSON object"); }
+  // a dry run is carried out on a copy
+  dat := ifx aat >= 0 then jv_get(da[0], aat, "dry_run") else -1;
+  if dat >= 0 && jv_kind(da[0], dat) == JV_TRUE {
+    io[0].scratch[0] = e[0];
+    return gb_command_run_as(io[0].scratch[..], v, args, levels, io[0].answer[..], io[0].agent);
+  }
+  ch_snap(e, io[0].snap[..]);
+  r := gb_command_run_as(e, v, args, levels, io[0].answer[..], io[0].agent);
+  if r.code == GB_DONE { _ = ch_record(e, 0, io[0].snap[..]); }
+  io[0].after = ed_agent_rev(e);
+  return r;
+}
+
+// ---- checks
+
+AttachTest :: struct { e: [1] Editor; io: [1] AttachIo; }
+// A call as this build's gamebuilder sends it: the row's digest with it.
+attach_test_call :: (e: [] Editor, io: [] AttachIo, verb: string, args: string, levels: [] s32) -> GbResult {
+  b: [1024] u8; t := [1] Text.[Text.{buf = b[..]}]; hb: [8] u8;
+  tx_put(t[..], "{\"verb\":\""); tx_put(t[..], verb); tx_put(t[..], "\",\"args\":"); tx_put(t[..], args);
+  tx_put(t[..], ",\"row\":\""); tx_put(t[..], gb_hex8(gb_row_digest(gb_find(verb)), hb[..])); tx_put(t[..], "\"}");
+  return attach_call(e, io, cast(string) b[0..<t[0].at], levels);
+}
+
+#test "a call from the terminal that leaves another level open is said as that level opened: nothing of the new level is told as a change to the one that was open, and nothing is highlighted" {
+  t: [1] AttachTest; e := t[0].e[..]; io := t[0].io[..];
+  ed_init(e, 800, 400);
+  levels := [2] s32.[1, 2];
+  #assert ed_new_game(e, 1, GT_RACING, 2) && ed_count(e) == GT_CIRCUIT;
+  r := attach_test_call(e, io, "new-game", "{\"template\":\"drift\"}", levels[..]);
+  #assert r.code == GB_DONE && ed_level(e) != 2 && ed_count(e) == GT_RINGS;
+  lb: [32] u8; lt := [1] Text.[Text.{buf = lb[..]}]; tx_put(lt[..], "Outside the app: opened level "); tx_n(lt[..], ed_level(e));
+  #assert cast(string) e[0].note[0..<e[0].note_len] == cast(string) lb[0..<lt[0].at] && !ch_any(e);
+}
+#test "a call from the terminal is carried out on the open level as one step, and what it changed stays highlighted" {
+  t: [1] AttachTest; e := t[0].e[..]; io := t[0].io[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  levels := [1] s32.[1];
+  n := ed_count(e);
+  r := attach_test_call(e, io, "add", "{\"level\":1,\"kind\":\"block\",\"x\":300,\"z\":-200}", levels[..]);
+  #assert r.code == GB_DONE && ed_count(e) == n + 1;
+  id := ed_actor(e, n).id;
+  things: [CH_MARKS] ChThing;
+  #assert ch_things(e, 0, things[..]) == 1 && things[0].id == id && things[0].how == CH_ADDED;
+  // the changes row reads it, show-changes frames it and dismiss-changes takes it off, attached as from the app
+  r = attach_test_call(e, io, "changes", "{}", levels[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"summary\":\"Outside the app: added 1 block (Block ") > 0;
+  #assert attach_test_call(e, io, "show-changes", "{}", levels[..]).code == GB_DONE;
+  // ⌘Z takes it back
+  #assert ed_can_undo(e);
+  ed_undo(e);
+  #assert ed_count(e) == n;
+  // and undo itself is a call the terminal may make, attached
+  r = attach_test_call(e, io, "redo", "{\"level\":1}", levels[..]);
+  #assert r.code == GB_DONE && ed_count(e) == n + 1;
+  // a dry run changes nothing here
+  r = attach_test_call(e, io, "delete", "{\"level\":1,\"thing\":", levels[..]);
+  #assert r.code == GB_REFUSED;
+  b: [128] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "{\"level\":1,\"thing\":"); tx_int(tx[..], cast(s64) id); tx_put(tx[..], ",\"dry_run\":true}");
+  r = attach_test_call(e, io, "delete", cast(string) b[0..<tx[0].at], levels[..]);
+  #assert r.code == GB_DONE && ed_count(e) == n + 1 && ed_index(e, id) >= 0;
+  // another level, a verb nobody offers, and a sentence are refused
+  r = attach_test_call(e, io, "read-level", "{\"level\":2}", levels[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "not the one open here") > 0;
+  #assert attach_call(e, io, "{\"verb\":\"frobnicate\"}", levels[..]).code == GB_REFUSED;
+  #assert attach_call(e, io, "add a block please", levels[..]).code == GB_REFUSED;
+  // a read answers the level as it is now
+  r = attach_test_call(e, io, "read-level", "{}", levels[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"schema\":\"gamebuilder.level.v1\"") >= 0;
+  // a call made for another build's row (or by a gamebuilder that sends none) is refused in words
+  r = attach_call(e, io, "{\"verb\":\"read-level\",\"args\":{},\"row\":\"0badf00d\"}", levels[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "\"error\":\"version-mismatch\"") > 0 && level_find(r.json, "different command tables") > 0;
+  r = attach_call(e, io, "{\"verb\":\"read-level\",\"args\":{}}", levels[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "version-mismatch") > 0;
+}
+
+// A call an attached agent makes: its turn number with it.
+attach_test_agent :: (e: [] Editor, io: [] AttachIo, verb: string, args: string, agent: s32, levels: [] s32) -> GbResult {
+  b: [2048] u8; t := [1] Text.[Text.{buf = b[..]}]; hb: [8] u8;
+  tx_put(t[..], "{\"verb\":\""); tx_put(t[..], verb); tx_put(t[..], "\",\"args\":"); tx_put(t[..], args);
+  tx_put(t[..], ",\"row\":\""); tx_put(t[..], gb_hex8(gb_row_digest(gb_find(verb)), hb[..])); tx_put(t[..], "\",\"agent\":"); tx_int(t[..], cast(s64) agent); tx_put(t[..], "}");
+  return attach_call(e, io, cast(string) b[0..<t[0].at], levels);
+}
+
+#test "an attached agent's batch is its own turn: the answer says the revisions, and undo-turn takes back only its own" {
+  t: [1] AttachTest; e := t[0].e[..]; io := t[0].io[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  levels := [1] s32.[1];
+  me := gb_att_turn("a1-0"); other := gb_att_turn("a1-1");
+  n := ed_count(e); rev := ed_agent_rev(e);
+  b: [512] u8; tx := [1] Text.[Text.{buf = b[..]}];
+  tx_put(tx[..], "{\"level\":1,\"batch\":{\"schema\":\"world.edit.v1\",\"rev\":"); tx_int(tx[..], cast(s64) rev);
+  tx_put(tx[..], ",\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":5,\"x\":300,\"y\":0,\"z\":300,\"yaw\":0,\"scale\":100}]}}");
+  r := attach_test_agent(e, io, "apply-edits", cast(string) b[0..<tx[0].at], me, levels[..]);
+  #assert r.code == GB_DONE && ed_count(e) == n + 1 && io[0].agent == me && io[0].before == rev && io[0].after == ed_agent_rev(e) && io[0].after != rev;
+  // another agent's undo-turn takes nothing; a call with no agent isn't offered undo-turn
+  r = attach_test_agent(e, io, "undo-turn", "{\"level\":1}", other, levels[..]);
+  #assert r.code == GB_REFUSED && level_find(r.json, "no turn to take back") > 0 && ed_count(e) == n + 1;
+  #assert attach_test_call(e, io, "undo-turn", "{\"level\":1}", levels[..]).code == GB_REFUSED;
+  r = attach_test_agent(e, io, "undo-turn", "{\"level\":1}", me, levels[..]);
+  #assert r.code == GB_DONE && ed_count(e) == n && io[0].after == rev;
+  // a turn number that isn't an attached agent's is refused
+  #assert attach_test_agent(e, io, "read-level", "{}", 100, levels[..]).code == GB_REFUSED;
+}
+
+#test "what a call from the terminal changed stays until dismissed" {
+  t: [1] AttachTest; e := t[0].e[..]; io := t[0].io[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 1);
+  levels := [1] s32.[1];
+  #assert attach_test_call(e, io, "add", "{\"level\":1,\"kind\":\"tree\"}", levels[..]).code == GB_DONE;
+  _ = ed_tick(e, 60);
+  #assert ch_any(e) && !ed_tick(e, 0.1);   // lasting, and a still screen still sleeps
+  r := attach_test_call(e, io, "dismiss-changes", "{}", levels[..]);
+  #assert r.code == GB_DONE && level_find(r.json, "\"dismissed\":1") > 0 && !ch_any(e);
+  #assert attach_test_call(e, io, "show-changes", "{}", levels[..]).code == GB_REFUSED;
+}

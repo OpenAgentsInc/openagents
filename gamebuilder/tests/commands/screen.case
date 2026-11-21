@@ -1,0 +1,29 @@
+# The screen's own rows: a level and a shipped game opened (the app reads the file the core names), and a match played on the level. They run on one editor from call to call, as in the app; SPLICEBOTS' travel, digger and bag are refused in an arena.
+> list-scrappers
+< {"ok":true,"scrappers":[{"scrapper":0,"name":"Bolt"},{"scrapper":1,"name":"Boulder"},{"scrapper":2,"name":"Lumen"}]}
+> new-level
+< {"ok":true,"level":1}
+> open-level {"level":1}
+< {"ok":true,"level":1}
+> open-level {"level":7}
+< {"ok":false,"error":"not-found","why":"there is no such level here (list-levels)"}
+> open-game {"shipped":1}
+< {"ok":true,"game":1}
+> play-state {}
+< {"ok":true,"playing":false,"mode":"knockouts","size":3,"slot":0}
+> stop {}
+< {"ok":false,"error":"edit-refused","why":"no match is being played: play first"}
+> play {"scrapper":1,"mode":"hoops","size":2}
+< {"ok":true,"scrapper":1,"mode":"hoops","size":2}
+> play-state {}
+< {"ok":true,"playing":true,"mode":"hoops","size":2,"slot":0}
+> play {"scrapper":0}
+< {"ok":false,"error":"edit-refused","why":"a match is being played already: stop it first"}
+> travel {}
+< {"ok":false,"error":"edit-refused","why":"travel is SPLICEBOTS' farm's, while you play it"}
+> digger {}
+< {"ok":false,"error":"edit-refused","why":"the digger is SPLICEBOTS', while you play it with one"}
+> bag-select {"slot":3}
+< {"ok":false,"error":"edit-refused","why":"the bag is SPLICEBOTS', while you play it"}
+> stop {}
+< {"ok":true}

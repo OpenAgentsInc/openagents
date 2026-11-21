@@ -1,0 +1,248 @@
+// SPLICEBOTS' opening scene, alive: the farm's pickups, what she carries,
+// and Digger at her side.
+//
+// The rules are the jam's own, ported in openagents
+// (metaverse/splice-bots/rules/): the bag stacks by inventory.coax, Digger
+// keeps his place by formation.coax and his pace by companion.coax. What is
+// here gives them the level: which of its meshes are pickups and which is
+// Digger (by their actor names in the pack's catalog), where each stands,
+// and when she or he is near enough to take one.
+//
+// As in the jam: a pickup is taken by walking near it (1.3 m from her feet,
+// or 1.8 m from Digger), with no key; it spins and bobs until then; Digger
+// follows 1.5 m to her left, keeps up at 7.5 m/s or her speed, and is put
+// back beside her past 30 m; a press tells him to stay or follow.
+//
+// Not here yet: the charge points, feeding him, the drill, the story cards.
+#load "../../metaverse/splice-bots/rules/inventory.coax";
+#load "../../metaverse/splice-bots/rules/companion.coax";
+
+SCENE_PICKUPS :: 16;
+SCENE_HOTBAR :: SR_HOTBAR_SLOTS;
+SCENE_REACH :: 1.3f32;           // ASpliceFarmPickup::Reach, from her feet
+SCENE_REACH_UP :: 1.6f32;
+SCENE_REACH_ROBOT :: 1.8f32;     // a robot of hers this near takes it for her
+SCENE_SPIN :: 1.2217305f32;      // 70 degrees a second
+SCENE_BOB :: 0.08f32; SCENE_BOB_RATE :: 2.4f32;
+SCENE_SAID :: 2.5f32;            // seconds the name of what was taken shows
+SCENE_LEASH :: 30.0f32;          // metres past which Digger is put back beside her
+SCENE_DIGGER_TURN :: 9.0f32;     // /s his drawn heading eases (DG_TURN_EASE)
+SCENE_DIGGER_STRIDE :: 1.1f32;   // metres a whole step of his
+SCENE_DIGGER_BOB :: 0.026f32;    // 0.012 of his 2.159 scale
+SCENE_DIGGER_FACES :: 1.5707963f32;   // his mesh's nose is along +x
+
+// The items of the opening scene: the jam's ids, what the HUD calls them,
+// their kinds and how many stack (Data/items.csv).
+SCENE_ITEMS :: 7;
+SCENE_ITEM :: [SCENE_ITEMS] string.[ITEM_SCRAP_PART, ITEM_DRILL_CARD, ITEM_JUMP_CARD, ITEM_BATTERY, ITEM_BANNED_PIECE, ITEM_HOVERBOARD, ITEM_JETPACK];
+SCENE_ITEM_NAME :: [SCENE_ITEMS] string.["Scrap", "Drill card", "Jump card", "Battery", "Banned piece", "Hoverboard", "Jetpack"];
+SCENE_ITEM_CAT :: [SCENE_ITEMS] int.[SR_CAT_PART, SR_CAT_CARD, SR_CAT_CARD, SR_CAT_CONSUMABLE, SR_CAT_OTHER, SR_CAT_TOOL, SR_CAT_TOOL];
+SCENE_ITEM_STACK :: [SCENE_ITEMS] int.[64, 1, 1, 16, 16, 1, 1];
+
+// Which item a farm pickup is. The level's catalog has only its mesh; the
+// jam keeps the item on the actor, and its Data/pickups.csv lists the farm's
+// by place. As the jam's web port does, a pickup is the row nearest it
+// within 3 m, else scrap. These are that table's farm rows: x, z, item.
+SCENE_FARM_ROWS :: 4;
+SCENE_FARM_ROW_X :: [SCENE_FARM_ROWS] f32.[-796, -784.5, -784, -782];
+SCENE_FARM_ROW_Z :: [SCENE_FARM_ROWS] f32.[-133, -141.5, -161.5, -160];
+SCENE_FARM_ROW_ITEM :: [SCENE_FARM_ROWS] s32.[1, 2, 3, 4];
+SCENE_ROW_NEAR :: 3.0f32;
+
+scene_item_at :: (x: f32, z: f32) -> s32 {
+  best: f32 = SCENE_ROW_NEAR * SCENE_ROW_NEAR; item: s32 = 0;
+  for k: 0..<SCENE_FARM_ROWS {
+    dx := x - SCENE_FARM_ROW_X[k]; dz := z - SCENE_FARM_ROW_Z[k];
+    if dx * dx + dz * dz <= best { best = dx * dx + dz * dz; item = SCENE_FARM_ROW_ITEM[k]; }
+  }
+  return item;
+}
+
+// What the level holds, found once when the pack opens (in the Editor).
+ScenePickup :: struct { x: f32; y: f32; z: f32; item: s32; draw: s32; inst: s32; }
+SceneLevel :: struct {
+  pickups: [SCENE_PICKUPS] ScenePickup; pickup_n: s32;
+  digger: bool; dig_draw: s32; dig_inst: s32; dig_x: f32; dig_y: f32; dig_z: f32;
+}
+
+// How the scene stands in this run of play (in Play).
+ScenePlay :: struct {
+  taken: [SCENE_PICKUPS] bool;
+  bag: [1] SrContainer; selected: s32;
+  said: s32; said_t: f32;          // what was last taken, and seconds its name shows
+  clock: f32;
+  dig_x: f32; dig_y: f32; dig_z: f32; dig_yaw: f32; dig_walk: f32; dig_stay: bool;
+}
+
+scene_starts :: (s: string, head: string) -> bool {
+  if s.count < head.count { return false; }
+  for i: 0..<head.count { if s[i] != head[i] { return false; } }
+  return true;
+}
+
+scene_defs :: () -> SrItemDefs {
+  d: [1] SrItemDefs;
+  for k: 0..<SCENE_ITEMS { _ = sr_defs_add(d[..], sr_def(SCENE_ITEM[k], SCENE_ITEM_CAT[k], SCENE_ITEM_STACK[k])); }
+  return d[0];
+}
+
+scene_item_of :: (id: string) -> s32 {
+  for k: 0..<SCENE_ITEMS { if SCENE_ITEM[k] == id { return cast(s32) k; } }
+  return -1;
+}
+
+// Puts one of an item in her bag, by the jam's stacking rule. False when it is full.
+scene_give :: (p: [] Play, item: s32) -> bool {
+  if item < 0 || item >= SCENE_ITEMS { return false; }
+  r := sr_inv_add(scene_defs(), p[0].scene[0].bag[..], sr_item(SCENE_ITEM[item], 1));
+  return r.ok;
+}
+
+// A run of play begins: nothing taken, the board and jetpack in her bag (the
+// jam has her find them; that is not here yet), Digger where the level has him.
+scene_start :: (e: [] Editor) {
+  p := e[0].play[..];
+  s := ScenePlay.{};
+  s.bag[0].size = SR_TOTAL_SLOTS;
+  l := e[0].scene[0];
+  s.dig_x = l.dig_x; s.dig_y = l.dig_y; s.dig_z = l.dig_z; s.dig_yaw = SCENE_DIGGER_FACES;
+  p[0].scene[0] = s;
+  _ = scene_give(p, 5); _ = scene_give(p, 6);
+}
+
+scene_take :: (e: [] Editor, i: s64) {
+  p := e[0].play[..];
+  k := e[0].scene[0].pickups[i];
+  if !scene_give(p, k.item) { return; }   // a full bag leaves it lying
+  p[0].scene[0].taken[i] = true;
+  p[0].scene[0].said = k.item; p[0].scene[0].said_t = SCENE_SAID;
+  play_sound(p, SND_HIT, k.x, k.z, true);
+  play_burst(p, k.x, k.y, k.z, 8, 2.5, TINT_SPARK);
+}
+
+// A step of the scene: Digger keeps his place or stays, and whatever she or
+// he is near is taken.
+scene_step :: (e: [] Editor, dt: f32) {
+  p := e[0].play[..];
+  if !p[0].real { return; }
+  s := p[0].scene[0];
+  l := e[0].scene[..];
+  s.clock += dt;
+  s.said_t = play_max(s.said_t - dt, 0);
+  at := her_at(p);
+  if l[0].digger {
+    face := p[0].her[0].face;
+    her := d3(cast(f64) at.x, cast(f64) at.z, 0);
+    forward := d3(cast(f64) sin(face), cast(f64) cos(face), 0);
+    x0 := s.dig_x; z0 := s.dig_z;
+    if !s.dig_stay {
+      slot := sr_follower_slot_position(her, forward, 0);
+      dx := cast(f32) slot.x - s.dig_x; dz := cast(f32) slot.y - s.dig_z;
+      dist := sqrt(dx * dx + dz * dz);
+      away := sqrt((at.x - s.dig_x) * (at.x - s.dig_x) + (at.z - s.dig_z) * (at.z - s.dig_z));
+      if away > SCENE_LEASH {
+        // too far behind: back beside her, out of the way she is looking
+        s.dig_x = at.x - sin(face) * 4; s.dig_z = at.z - cos(face) * 4;
+        x0 = s.dig_x; z0 = s.dig_z;
+      } else {
+        speed := sr_follow_speed_for(cast(f64) dist, cast(f64) her_speed(p));
+        next := sr_steer_step(d3(cast(f64) s.dig_x, cast(f64) s.dig_z, 0), slot, speed, cast(f64) dt, SR_ARRIVE_RADIUS);
+        s.dig_x = cast(f32) next.x; s.dig_z = cast(f32) next.y;
+      }
+    }
+    mx := s.dig_x - x0; mz := s.dig_z - z0;
+    moved := sqrt(mx * mx + mz * mz);
+    if moved > 0.0005 {
+      turn := play_wrap(angle_atan2(mx, mz) - s.dig_yaw);
+      s.dig_yaw = play_wrap(s.dig_yaw + turn * play_min(1, SCENE_DIGGER_TURN * dt));
+      s.dig_walk += moved * 6.2831853 / SCENE_DIGGER_STRIDE;
+      if s.dig_walk > 6.2831853 { s.dig_walk -= 6.2831853; }
+    }
+    s.dig_y = her_floor(e, s.dig_x, s.dig_z, s.dig_y + 0.5) + 0.1;
+  }
+  p[0].scene[0] = s;
+  for i: 0..<cast(s64) l[0].pickup_n {
+    if p[0].scene[0].taken[i] { continue; }
+    k := l[0].pickups[i];
+    dx := k.x - at.x; dz := k.z - at.z;
+    hers := dx * dx + dz * dz <= SCENE_REACH * SCENE_REACH && abs(k.y - at.y) <= SCENE_REACH_UP;
+    rx := k.x - s.dig_x; rz := k.z - s.dig_z;
+    his := l[0].digger && rx * rx + rz * rz <= SCENE_REACH_ROBOT * SCENE_REACH_ROBOT && abs(k.y - s.dig_y) <= SCENE_REACH_UP;
+    if hers || his { scene_take(e, i); }
+  }
+}
+
+// She has travelled to another map's start: Digger, when he follows, comes
+// along and stands at his place beside her, on the floor there.
+scene_travel :: (e: [] Editor) {
+  p := e[0].play[..];
+  if !e[0].scene[0].digger || p[0].scene[0].dig_stay { return; }
+  at := her_at(p); face := p[0].her[0].face;
+  slot := sr_follower_slot_position(d3(cast(f64) at.x, cast(f64) at.z, 0), d3(cast(f64) sin(face), cast(f64) cos(face), 0), 0);
+  s := p[0].scene[0];
+  s.dig_x = cast(f32) slot.x; s.dig_z = cast(f32) slot.y;
+  s.dig_y = her_floor(e, s.dig_x, s.dig_z, at.y + 0.5) + 0.1;
+  p[0].scene[0] = s;
+}
+
+// Tells Digger to stay where he is, or to follow again.
+ed_digger_toggle :: (e: [] Editor) #export_c #effects(all) {
+  if e.count != 1 || !e[0].play[0].on || !e[0].play[0].real || !e[0].scene[0].digger { return; }
+  e[0].play[0].scene[0].dig_stay = !e[0].play[0].scene[0].dig_stay;
+  play_sound(e[0].play[..], SND_BEEP, 0, 0, true);
+}
+
+// ---- the bag, for the HUD
+
+ed_bag_slots :: () -> s32 #export_c #effects(all) { return SCENE_HOTBAR; }
+// What hotbar slot i holds, as the HUD names it: its length, or 0 for an empty slot.
+ed_bag_name :: (e: [] Editor, i: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || i < 0 || i >= SCENE_HOTBAR { return 0; }
+  st := e[0].play[0].scene[0].bag[0].slots[i];
+  if st.count <= 0 { return 0; }
+  k := scene_item_of(st.item);
+  return ifx k < 0 then 0 else play_text(SCENE_ITEM_NAME[k], out);
+}
+ed_bag_count :: (e: [] Editor, i: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 || i < 0 || i >= SCENE_HOTBAR { return 0; }
+  return cast(s32) e[0].play[0].scene[0].bag[0].slots[i].count;
+}
+ed_bag_selected :: (e: [] Editor) -> s32 #export_c #effects(all) { return ifx e.count == 1 then e[0].play[0].scene[0].selected else 0; }
+ed_bag_select :: (e: [] Editor, i: s32) #export_c #effects(all) {
+  if e.count == 1 && i >= 0 && i < SCENE_HOTBAR { e[0].play[0].scene[0].selected = i; }
+}
+// The name of what was just taken, while it shows: its length, or 0.
+ed_scene_said :: (e: [] Editor, out: [] u8) -> s64 #export_c #effects(all) {
+  if e.count != 1 || e[0].play[0].scene[0].said_t <= 0 { return 0; }
+  return play_text(SCENE_ITEM_NAME[e[0].play[0].scene[0].said], out);
+}
+
+// ---- the level's own meshes, moved
+
+// Writes this frame's rows for what moves into the level's objects (the
+// host's GPU buffer): each pickup spinning and bobbing, or gone once taken,
+// and Digger where he walks, facing his way.
+ed_farm_live :: (e: [] Editor, f: [] Farm, objects: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || f.count != 1 || !f[0].ok || !e[0].play[0].real { return false; }
+  w := f[0].w[..];
+  l := e[0].scene[0]; s := e[0].play[0].scene[0];
+  for i: 0..<cast(s64) l.pickup_n {
+    k := l.pickups[i];
+    o := cast(int) k.draw * IW_OBJECT;
+    ki := cast(int) k.inst;
+    if k.draw < 0 || o + IW_OBJECT > objects.count || ki < 0 || ki >= w[0].ni { continue; }
+    if s.taken[i] { for c: 0..<12 { objects[o + c] = 0; } continue; }
+    half := s.clock * SCENE_SPIN * 0.5;
+    w[0].inst[ki].q = [4] f32.[0, sin(half), 0, cos(half)];
+    w[0].inst[ki].t[1] = k.y + sin(s.clock * SCENE_BOB_RATE) * SCENE_BOB;
+    iw_object(w, ki, objects, o);
+  }
+  di := cast(int) l.dig_inst;
+  if l.digger && l.dig_draw >= 0 && (cast(int) l.dig_draw + 1) * IW_OBJECT <= objects.count && di >= 0 && di < w[0].ni {
+    turn := (s.dig_yaw - SCENE_DIGGER_FACES) * 0.5;
+    w[0].inst[di].q = [4] f32.[0, sin(turn), 0, cos(turn)];
+    w[0].inst[di].t = [3] f32.[s.dig_x, s.dig_y + abs(sin(s.dig_walk)) * SCENE_DIGGER_BOB, s.dig_z];
+    iw_object(w, di, objects, cast(int) l.dig_draw * IW_OBJECT);
+  }
+  return true;
+}

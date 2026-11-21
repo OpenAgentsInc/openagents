@@ -1,0 +1,499 @@
+// The app's controls: every button, menu item and banner the host draws,
+// each with the command table's row it runs (docs/programmatic-access.md,
+// "The UI goes through it"). A button can only exist with a row behind it,
+// and a press runs that row through ed_command, the one export every
+// surface calls: the toolbar's Undo is the `undo` row, its Add block is the
+// `add` row with {"kind":"block"}. The SwiftUI toolbar and menus in
+// host/Sources/App.swift read this table through ed_control_* and draw
+// what it says, until they are drawn in Coax.
+//
+// ed_command fills in what a call leaves out from the screen: the level is
+// the open one, and a thing is the selection. A call that names another
+// level is refused; the app opens levels itself.
+//
+// This file is the app core's root: scripts/generate.sh compiles it (it
+// loads mcp.coax, the command table and the whole editor), and its run is
+// every check the core has (scripts/check.sh).
+//   scripts/check.sh
+// The secp256k1 tables the editor loads are built at compile time (editor.coax).
+#run_steps 100000000;
+#load "mcp.coax";
+#load "attach.coax";
+#load "agents.coax";
+#load "sync.coax";
+#load "lobby-rows.coax";
+
+// Where a control is drawn.
+GB_PLACE_TOOLBAR :: 0;      // the toolbar over the viewport
+GB_PLACE_MENU :: 1;         // the Mac's menu bar, with a key
+GB_PLACE_LEVELS :: 2;       // the levels menu, the toolbar's first control
+GB_PLACE_BANNER :: 3;       // the banner over a level you may not change
+GB_PLACE_PANEL :: 4;        // the side panel, drawn by the core (coax/panel.coax)
+GB_PLACE_EDIT :: 5;         // the Mac's own Edit menu items, sent to the level while it has the keys
+GB_PLACE_AGENTS :: 6;       // the Agents pane, drawn by the core (coax/agents.coax)
+GB_PLACE_PLAY :: 7;         // the play sheet and the match's HUD
+GB_PLACE_LOBBY :: 8;        // the lobby sheet
+GB_PLACES :: 9;
+
+// Who carries a press out.
+GB_HOST_CORE :: 0;          // ed_control_press, through ed_command
+GB_HOST_DECIDE :: 1;        // the host: it sends the request the core writes (Decide.swift)
+GB_HOST_NEW_GAME :: 2;      // the host: it opens the picker (picker.coax), makes the game of the type chosen, then writes its file
+GB_HOST_PANEL :: 3;         // the core's own panel, which calls the row's exports as it draws
+GB_HOST_FILE :: 4;          // ed_control_press_with, then the host reads the file the core says is due and opens it (ed_open_due)
+GB_HOST_DRAWN :: 5;         // the host draws the row's answer where it is used, as it changes (the match's HUD)
+GB_HOST_LOBBY :: 6;         // the host's lobby sheet: ed_lobby_command, as the person's own press, signed with their key
+
+// A menu key's modifiers.
+GB_MOD_COMMAND :: 1; GB_MOD_SHIFT :: 2;
+
+GbControl :: struct {
+  id: string;               // "toolbar.undo": the place, then what it is
+  verb: int;                // its row (VERB_)
+  place: s32;               // GB_PLACE_
+  group: s32;               // the toolbar's run of buttons between two bars; the menu bar's group
+  args: string;             // the call's arguments, beyond what the screen fills in: {"kind":"block"}
+  icon: string;             // the SF Symbol the host draws
+  name: string;             // its words: its tooltip, its menu item, its banner
+  key: string;              // a menu item's key, or ""
+  mods: s32;                // GB_MOD_
+  host: s32;                // GB_HOST_
+  each: string;             // drawn once for each of many: the argument a press gives (ed_control_press_with), or ""
+}
+
+// The menu bar's groups, as the host places them: 0 replaces Undo and Redo, 1 follows the
+// pasteboard items, 2 replaces New.
+GB_CONTROL_N :: 73;
+GB_CONTROLS :: [GB_CONTROL_N] GbControl.[
+  GbControl.{id = "toolbar.undo", verb = VERB_UNDO, place = GB_PLACE_TOOLBAR, group = 0, icon = "arrow.uturn.backward", name = "Undo (⌘Z)"},
+  GbControl.{id = "toolbar.redo", verb = VERB_REDO, place = GB_PLACE_TOOLBAR, group = 0, icon = "arrow.uturn.forward", name = "Redo (⇧⌘Z)"},
+  GbControl.{id = "toolbar.select", verb = VERB_SET_TOOL, place = GB_PLACE_TOOLBAR, group = 1, args = "{\"tool\":\"select\"}", icon = "cursorarrow", name = "Select (Q)"},
+  GbControl.{id = "toolbar.move", verb = VERB_SET_TOOL, place = GB_PLACE_TOOLBAR, group = 1, args = "{\"tool\":\"move\"}", icon = "arrow.up.and.down.and.arrow.left.and.right", name = "Move (W)"},
+  GbControl.{id = "toolbar.rotate", verb = VERB_SET_TOOL, place = GB_PLACE_TOOLBAR, group = 1, args = "{\"tool\":\"rotate\"}", icon = "arrow.triangle.2.circlepath", name = "Rotate (E)"},
+  GbControl.{id = "toolbar.scale", verb = VERB_SET_TOOL, place = GB_PLACE_TOOLBAR, group = 1, args = "{\"tool\":\"scale\"}", icon = "arrow.up.left.and.arrow.down.right", name = "Scale (R)"},
+  GbControl.{id = "toolbar.add", verb = VERB_ADD, place = GB_PLACE_TOOLBAR, group = 2, args = "{\"kind\":\"block\"}", icon = "plus.square", name = "Add block"},
+  GbControl.{id = "toolbar.focus", verb = VERB_FOCUS, place = GB_PLACE_TOOLBAR, group = 2, icon = "scope", name = "Focus (F)"},
+  GbControl.{id = "toolbar.delete", verb = VERB_DELETE, place = GB_PLACE_TOOLBAR, group = 2, icon = "trash", name = "Delete"},
+  GbControl.{id = "toolbar.copy", verb = VERB_COPY, place = GB_PLACE_TOOLBAR, group = 2, icon = "doc.on.doc", name = "Copy (⌘C)"},
+  GbControl.{id = "toolbar.paste", verb = VERB_PASTE, place = GB_PLACE_TOOLBAR, group = 2, icon = "doc.on.clipboard", name = "Paste (⌘V)"},
+  GbControl.{id = "toolbar.decide", verb = VERB_DECIDE, place = GB_PLACE_TOOLBAR, group = 3, icon = "sparkles", name = "Decide the next edit", host = GB_HOST_DECIDE},
+  GbControl.{id = "toolbar.agents", verb = VERB_AGENTS_PANE, place = GB_PLACE_TOOLBAR, group = 4, icon = "person.2", name = "Agents"},
+  // what agents changed, highlighted (changes.coax): Show me, and take the highlight off
+  GbControl.{id = "toolbar.show-changes", verb = VERB_SHOW_CHANGES, place = GB_PLACE_TOOLBAR, group = 4, icon = "eye", name = "Show me what agents changed"},
+  GbControl.{id = "toolbar.dismiss-changes", verb = VERB_DISMISS_CHANGES, place = GB_PLACE_TOOLBAR, group = 4, icon = "eye.slash", name = "Dismiss the highlight on what agents changed"},
+  GbControl.{id = "menu.undo", verb = VERB_UNDO, place = GB_PLACE_MENU, group = 0, name = "Undo", key = "z", mods = GB_MOD_COMMAND},
+  GbControl.{id = "menu.redo", verb = VERB_REDO, place = GB_PLACE_MENU, group = 0, name = "Redo", key = "z", mods = GB_MOD_COMMAND | GB_MOD_SHIFT},
+  GbControl.{id = "menu.duplicate", verb = VERB_DUPLICATE, place = GB_PLACE_MENU, group = 1, name = "Duplicate", key = "d", mods = GB_MOD_COMMAND},
+  GbControl.{id = "menu.new-level", verb = VERB_NEW_LEVEL, place = GB_PLACE_MENU, group = 2, name = "New Level", key = "n", mods = GB_MOD_COMMAND},
+  GbControl.{id = "menu.code-agent", verb = VERB_CODE_AGENT, place = GB_PLACE_MENU, group = 2, args = "{\"name\":\"openagents\"}", name = "New Code Agent...", key = "k", mods = GB_MOD_COMMAND | GB_MOD_SHIFT},
+  GbControl.{id = "levels.new-level", verb = VERB_NEW_LEVEL, place = GB_PLACE_LEVELS, name = "New Level"},
+  GbControl.{id = "levels.new-game", verb = VERB_NEW_GAME, place = GB_PLACE_LEVELS, name = "New Game", host = GB_HOST_NEW_GAME},
+  GbControl.{id = "banner.copy-level", verb = VERB_COPY_LEVEL, place = GB_PLACE_BANNER, name = "Make my own copy"},
+  GbControl.{id = "panel.add", verb = VERB_ADD, place = GB_PLACE_PANEL, icon = "plus", name = "Add a thing from the palette", host = GB_HOST_PANEL},
+  GbControl.{id = "edit.copy", verb = VERB_COPY, place = GB_PLACE_EDIT, name = "Copy"},
+  GbControl.{id = "edit.cut", verb = VERB_CUT, place = GB_PLACE_EDIT, name = "Cut"},
+  GbControl.{id = "edit.paste", verb = VERB_PASTE, place = GB_PLACE_EDIT, name = "Paste"},
+  GbControl.{id = "edit.duplicate", verb = VERB_DUPLICATE, place = GB_PLACE_EDIT, name = "Duplicate"},
+  GbControl.{id = "panel.field", verb = VERB_SET_FIELD, place = GB_PLACE_PANEL, name = "Set a field in the inspector", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.new", verb = VERB_AGENT_NEW, place = GB_PLACE_AGENTS, name = "+ New agent", host = GB_HOST_PANEL},
+  // the same button in a build that can't start claude (the App Store's): the resident service on this computer runs it (issue 11)
+  GbControl.{id = "agents.new-on", verb = VERB_AGENT_NEW_ON, place = GB_PLACE_AGENTS, name = "+ New agent, on the resident service", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.send", verb = VERB_AGENT_MESSAGE, place = GB_PLACE_AGENTS, name = "Send", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.answer", verb = VERB_AGENT_ANSWER, place = GB_PLACE_AGENTS, name = "An answer's button", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.stop", verb = VERB_AGENT_STOP, place = GB_PLACE_AGENTS, name = "Stop", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.undo", verb = VERB_AGENT_UNDO, place = GB_PLACE_AGENTS, name = "Undo turn", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.rename-game", verb = VERB_RENAME_GAME, place = GB_PLACE_PANEL, name = "Rename your game", host = GB_HOST_PANEL},
+  GbControl.{id = "levels.open", verb = VERB_OPEN_LEVEL, place = GB_PLACE_LEVELS, name = "A level of the folder", host = GB_HOST_FILE, each = "level"},
+  GbControl.{id = "levels.open-game", verb = VERB_OPEN_GAME, place = GB_PLACE_LEVELS, name = "A game the app ships", host = GB_HOST_FILE, each = "shipped"},
+  GbControl.{id = "play.play", verb = VERB_PLAY, place = GB_PLACE_PLAY, name = "Play as this Scrapper", each = "scrapper"},
+  GbControl.{id = "play.stop", verb = VERB_STOP, place = GB_PLACE_PLAY, name = "Stop"},
+  GbControl.{id = "play.hud", verb = VERB_PLAY_STATE, place = GB_PLACE_PLAY, name = "The match's HUD", host = GB_HOST_DRAWN},
+  GbControl.{id = "play.travel", verb = VERB_TRAVEL, place = GB_PLACE_PLAY, name = "Travel"},
+  GbControl.{id = "play.digger", verb = VERB_DIGGER, place = GB_PLACE_PLAY, name = "Digger stays"},
+  GbControl.{id = "play.bag", verb = VERB_BAG_SELECT, place = GB_PLACE_PLAY, name = "A slot of the bag", each = "slot"},
+  GbControl.{id = "lobby.read", verb = VERB_LOBBY_READ, place = GB_PLACE_LOBBY, name = "The lobby", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.name", verb = VERB_LOBBY_NAME, place = GB_PLACE_LOBBY, name = "Your name", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.say", verb = VERB_LOBBY_SAY, place = GB_PLACE_LOBBY, name = "Say", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.mute", verb = VERB_LOBBY_MUTE, place = GB_PLACE_LOBBY, name = "Mute", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.report", verb = VERB_LOBBY_REPORT, place = GB_PLACE_LOBBY, name = "Report", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.party", verb = VERB_PARTY_READ, place = GB_PLACE_LOBBY, name = "Your party", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.invite", verb = VERB_PARTY_INVITE, place = GB_PLACE_LOBBY, name = "Invite", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.answer", verb = VERB_PARTY_ANSWER, place = GB_PLACE_LOBBY, name = "Join or Decline", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.leave", verb = VERB_PARTY_LEAVE, place = GB_PLACE_LOBBY, name = "Leave the party", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.side", verb = VERB_PARTY_SIDE, place = GB_PLACE_LOBBY, name = "A member's side", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.scrapper", verb = VERB_PARTY_SCRAPPER, place = GB_PLACE_LOBBY, name = "Your Scrapper", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.match", verb = VERB_PARTY_MATCH, place = GB_PLACE_LOBBY, name = "The party's match", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.look", verb = VERB_PARTY_LOOK, place = GB_PLACE_LOBBY, name = "Quick match", host = GB_HOST_LOBBY},
+  GbControl.{id = "lobby.start", verb = VERB_PARTY_START, place = GB_PLACE_LOBBY, name = "Start the match", host = GB_HOST_LOBBY},
+  GbControl.{id = "panel.delete-level", verb = VERB_DELETE_LEVEL, place = GB_PLACE_PANEL, name = "Delete level", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.delete-game", verb = VERB_DELETE_GAME, place = GB_PLACE_PANEL, name = "Delete game", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.rename-level", verb = VERB_RENAME_LEVEL, place = GB_PLACE_PANEL, name = "Rename level", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.move-level", verb = VERB_MOVE_LEVEL, place = GB_PLACE_PANEL, name = "Into a game, or out of it", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.set-owners", verb = VERB_SET_OWNERS, place = GB_PLACE_PANEL, name = "Set owners", host = GB_HOST_PANEL},
+  // a change card's Show me: the view framed on that change's things (agent-timeline.coax)
+  GbControl.{id = "agents.show", verb = VERB_SHOW_CHANGES, place = GB_PLACE_AGENTS, name = "Show me, on a change card", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.publish", verb = VERB_PUB_PUBLISH, place = GB_PLACE_PANEL, name = "Publish", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.unpublish", verb = VERB_PUB_UNPUBLISH, place = GB_PLACE_PANEL, name = "Take it off the web", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.set-live", verb = VERB_PUB_SET_LIVE, place = GB_PLACE_PANEL, name = "Make this version live", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.remove-published", verb = VERB_PUB_REMOVE_PUBLISHED, place = GB_PLACE_PANEL, name = "Delete from the web", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.feedback-hide", verb = VERB_PUB_FEEDBACK_HIDE, place = GB_PLACE_PANEL, name = "Hide", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.block", verb = VERB_PUB_BLOCK, place = GB_PLACE_PANEL, name = "Block this player", host = GB_HOST_PANEL},
+  GbControl.{id = "panel.report", verb = VERB_PUB_REPORT, place = GB_PLACE_PANEL, name = "Report", host = GB_HOST_PANEL},
+  GbControl.{id = "agents.account", verb = VERB_AGENTS_ACCOUNT, place = GB_PLACE_AGENTS, name = "Kept on your account", host = GB_HOST_PANEL},
+  // an open agent's replay: its slider dragged along its changes shows the picture of each (agent-replay.coax)
+  GbControl.{id = "agents.replay", verb = VERB_PICTURE, place = GB_PLACE_AGENTS, name = "Replay, a slider along an agent's changes", host = GB_HOST_PANEL},
+];
+
+gb_control_find :: (id: string) -> int {
+  for i: 0..<GB_CONTROL_N { if GB_CONTROLS[i].id == id { return i; } }
+  return -1;
+}
+gb_takes :: (v: int, kind: string) -> bool {
+  for k: 0..<gb_parts(GB_COMMANDS[v].arguments) { if gb_part(GB_COMMANDS[v].arguments, k) == kind { return true; } }
+  return false;
+}
+
+// ---- one call, from any surface
+
+// What one call needs besides the editor: its words, read, and the JSON they came in.
+GbCommandCall :: struct { call: [1] GbMcpCall; nodes: [WE_BATCH * WE_NODES + 64] JvNode; }
+
+// Carries out row verb on the open editor with args, a JSON object of the row's arguments by
+// the names its MCP tool has (or empty: none), and writes the answer into out. What args
+// leaves out the screen fills in: the open level, and the selection for a thing. levels are
+// the level numbers there are, for a row that numbers a new one. The result says what to write,
+// as gb_run's does.
+gb_command_run :: (e: [] Editor, verb: int, args: string, levels: [] s32, out: [] u8) -> GbResult {
+  return gb_command_run_as(e, verb, args, levels, out, 0);
+}
+// The same for an Agents pane agent (agents.coax): its turns and its claims are its own (agent is
+// its id; 0 is the person, unless the call names an agent with "agent", claims.coax).
+gb_command_run_as :: (e: [] Editor, verb: int, args: string, levels: [] s32, out: [] u8, agent: s32) -> GbResult {
+  none: [1] s32;   // no revisions: the app reads no level's file for a row
+  return gb_command_run_in(e, verb, args, levels, none[0..<0], out, agent);
+}
+// The same with each level's revision (revs, in levels' order) where the caller read the files.
+gb_command_run_in :: (e: [] Editor, verb: int, args: string, levels: [] s32, revs: [] s32, out: [] u8, agent: s32) -> GbResult {
+  return gb_command_run_world(e, verb, args, GbWorld.{levels = levels, revs = revs}, out, agent);
+}
+// The same with all the core is told of the folder: its levels, and its agents (agent-rows.coax).
+gb_command_run_world :: (e: [] Editor, verb: int, args: string, w: GbWorld, out: [] u8, agent: s32) -> GbResult {
+  o: [1] Jo; jo_start(o[..], out);
+  if e.count != 1 { return gb_refuse(o[..], "bad-request", "no editor"); }
+  if verb < 0 || verb >= GB_N { return gb_refuse(o[..], "bad-request", "no such command"); }
+  t: [1] GbCommandCall;
+  da: [1] Jv; at := -1;
+  if args.count > 0 {
+    if !jv_parse(da[..], args, t[0].nodes[..]) || jv_kind(da[0], 0) != JV_OBJECT { return gb_refuse(o[..], "bad-request", "the arguments are one JSON object"); }
+    at = 0;
+  }
+  selected := ifx ed_has_selection(e) then e[0].selected else 0;
+  why := gb_mcp_read(t[0].call[..], verb, da[0], at, GbFill.{on = true, level = ed_level(e), thing = selected});
+  if why.count > 0 { return gb_refuse(o[..], "bad-request", why); }
+  a := t[0].call[0].a[0];
+  // the pane names its own agent: the agent can't name itself another
+  if agent != 0 { a.agent = agent; a.who = ""; }
+  r := gb_command_run_rows(e, verb, a, w, out);
+  // a game of yours changed on the screen: the host writes its file (ed_game_due)
+  if r.save_game > 0 { e[0].game_due = r.save_game; }
+  if r.save_also > 0 { e[0].game_also_due = r.save_also; }
+  // a level's or a game's file deleted: the host deletes it (ed_drop_due)
+  if r.drop_level > 0 { e[0].drop_due = r.drop_level; }
+  if r.drop_game > 0 { e[0].drop_game_due = r.drop_game; }
+  return r;
+}
+gb_command_run_rows :: (e: [] Editor, verb: int, a: GbArgs, w: GbWorld, out: [] u8) -> GbResult {
+  o: [1] Jo; jo_start(o[..], out);
+  // write-content may make a level that isn't open (the surface opened the one that's there), and
+  // open-level opens another
+  if gb_takes(verb, "level") && verb != VERB_WRITE_CONTENT && verb != VERB_OPEN_LEVEL && a.level != ed_level(e) { return gb_refuse(o[..], "not-found", "that level is not the one open here: open it first"); }
+  return gb_run(e, verb, a, w, out);
+}
+// The same, answered as ed_command answers: the answer's length when it was done; minus its
+// length when it was refused; 0 when it did not fit.
+gb_command :: (e: [] Editor, verb: int, args: string, levels: [] s32, out: [] u8) -> s64 {
+  if out.count == 0 { return 0; }
+  r := gb_command_run(e, verb, args, levels, out);
+  if r.json.count == 0 { return 0; }
+  return ifx r.code == GB_DONE then r.json.count else -r.json.count;
+}
+
+ed_command :: (e: [] Editor, verb: s32, args: [] u8, levels: [] s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return gb_command(e, cast(int) verb, cast(string) args, levels, out);
+}
+
+// ---- the controls, for the host to draw
+
+gb_put :: (s: string, out: [] u8) -> s64 {
+  if s.count > out.count { return 0; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+ed_controls :: () -> s32 #export_c #effects(all) { return GB_CONTROL_N; }
+// The version the app says in its About (gb_version: the release, the commit, the table's digest),
+// the same words `gamebuilder version`, MCP and the hosted server say.
+ed_version :: (out: [] u8) -> s64 #export_c #effects(all) { vb: [96] u8; return gb_put(gb_version(vb[..]), out); }
+gb_control_ok :: (i: s32) -> bool { return i >= 0 && i < GB_CONTROL_N; }
+ed_control_verb :: (i: s32) -> s32 #export_c #effects(all) { return ifx gb_control_ok(i) then cast(s32) GB_CONTROLS[i].verb else -1; }
+ed_control_place :: (i: s32) -> s32 #export_c #effects(all) { return ifx gb_control_ok(i) then GB_CONTROLS[i].place else -1; }
+ed_control_group :: (i: s32) -> s32 #export_c #effects(all) { return ifx gb_control_ok(i) then GB_CONTROLS[i].group else 0; }
+ed_control_host :: (i: s32) -> s32 #export_c #effects(all) { return ifx gb_control_ok(i) then GB_CONTROLS[i].host else GB_HOST_CORE; }
+ed_control_mods :: (i: s32) -> s32 #export_c #effects(all) { return ifx gb_control_ok(i) then GB_CONTROLS[i].mods else 0; }
+ed_control_id :: (i: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx gb_control_ok(i) then gb_put(GB_CONTROLS[i].id, out) else 0; }
+ed_control_icon :: (i: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx gb_control_ok(i) then gb_put(GB_CONTROLS[i].icon, out) else 0; }
+ed_control_name :: (i: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx gb_control_ok(i) then gb_put(GB_CONTROLS[i].name, out) else 0; }
+ed_control_key :: (i: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx gb_control_ok(i) then gb_put(GB_CONTROLS[i].key, out) else 0; }
+
+// Whether a press would do something now: what the row needs of the screen. A row that changes a
+// level of yours needs one; a row on a thing needs a selection.
+ed_control_enabled :: (e: [] Editor, i: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !gb_control_ok(i) { return false; }
+  v := GB_CONTROLS[i].verb; c := GB_COMMANDS[v];
+  if e[0].play[0].on && c.area != "level" && c.area != "game" { return false; }
+  ok := true;
+  if c.approval == "owner" && c.area != "game" { ok = ok && ed_may_edit(e); }
+  if gb_takes(v, "thing") { ok = ok && ed_has_selection(e); }
+  if v == VERB_UNDO { ok = ok && ed_can_undo(e); }
+  if v == VERB_REDO { ok = ok && ed_can_redo(e); }
+  if v == VERB_PASTE { ok = ok && ed_clip_has(e); }
+  if v == VERB_SHOW_CHANGES || v == VERB_DISMISS_CHANGES { ok = ok && ch_any(e); }
+  if v == VERB_DECIDE { ok = ok && !ed_asking(e) && ed_may_edit(e); }
+  return ok;
+}
+// Whether it shows as on: the tool picked, or Decide while it asks.
+ed_control_current :: (e: [] Editor, i: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !gb_control_ok(i) { return false; }
+  c := GB_CONTROLS[i];
+  if c.verb == VERB_DECIDE { return ed_asking(e); }
+  if c.verb == VERB_AGENTS_PANE { return e[0].agents_open; }
+  if c.verb != VERB_SET_TOOL { return false; }
+  nodes: [16] JvNode; da: [1] Jv;
+  if !jv_parse(da[..], c.args, nodes[..]) { return false; }
+  return jv_raw(da[0], jv_get(da[0], 0, "tool")) == GB_TOOL_WORD[ed_tool(e)];
+}
+
+// Presses control i: its row through ed_command, with its arguments. A refusal is said on the
+// screen, in the core's words. Returns as ed_command does; 0 for a control the host carries out.
+ed_control_press :: (e: [] Editor, i: s32, levels: [] s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if !gb_control_ok(i) { return 0; }
+  return gb_control_press(e, i, GB_CONTROLS[i].args, levels, out);
+}
+// A press of a control drawn once for each of many (a level in the levels menu, a Scrapper's card,
+// a slot of the bag), with the arguments that say which: {"level":3}.
+ed_control_press_with :: (e: [] Editor, i: s32, args: [] u8, levels: [] s32, out: [] u8) -> s64 #export_c #effects(all) {
+  if !gb_control_ok(i) { return 0; }
+  return gb_control_press(e, i, ifx args.count > 0 then cast(string) args else GB_CONTROLS[i].args, levels, out);
+}
+// The verb of the row named, for a host that runs one through ed_command: -1 for none.
+ed_verb_find :: (name: [] u8) -> s32 #export_c #effects(all) {
+  for v: 0..<GB_N { if GB_COMMANDS[v].verb == cast(string) name { return cast(s32) v; } }
+  return -1;
+}
+gb_control_press :: (e: [] Editor, i: s32, args: string, levels: [] s32, out: [] u8) -> s64 {
+  if e.count != 1 || !gb_control_ok(i) || (GB_CONTROLS[i].host != GB_HOST_CORE && GB_CONTROLS[i].host != GB_HOST_FILE) { return 0; }
+  c := GB_CONTROLS[i];
+  n := gb_command(e, c.verb, args, levels, out);
+  if n < 0 {
+    nodes: [16] JvNode; da: [1] Jv; wb: [NOTE_MAX] u8;
+    if jv_parse(da[..], cast(string) out[0..<-n], nodes[..]) {
+      w := jv_str(da[0], jv_get(da[0], 0, "why"), wb[..]);
+      if w > 0 { ed_say(e, cast(string) wb[0..<w]); }
+    }
+  }
+  return n;
+}
+
+
+// ---- the exports that are not rows
+
+// Every ed_ export the app's core has is in a row's impl, or here, saying why it is not a row
+// (tools/commands-check.coax holds it, run by scripts/check.sh). A new export the host calls
+// is a row's, or it is added here: drawing, continuous input and what a sheet shows are not
+// features a program asks for.
+GB_PLUMBING_N :: 257;
+GB_PLUMBING :: [GB_PLUMBING_N] string.[
+  // pictures.coax: the pictures of agents' changes and play-tests, which the host draws with the level's renderer and keeps beside the level; the pictures and picture rows read them
+  "ed_pics_attach", "ed_pics_size", "ed_pic_sizes", "ed_pic_due", "ed_pic_stage", "ed_pic_put", "ed_pic_drop",
+  "ed_pics_due", "ed_pics_saved", "ed_pics_level", "ed_pics_save", "ed_pics_load", "ed_pics_mine",
+  // world.coax, editor.coax, play.coax: the engine's page, which draws and plays a level of one of the website's types (the host's frame and what it asks)
+  "ed_world_attach", "ed_world_draws", "ed_world_frame", "ed_world_playing",
+  // attach.coax: where calls from the terminal come in (--attach); each call is a row's, through gb_command_run
+  "ed_attach_listen", "ed_attach_poll", "ed_attach_close",
+  // sync.coax: a device's levels kept the same as the account's; its requests are write-content, read-content and list-levels rows
+  "ed_sync_answer", "ed_sync_ask", "ed_sync_begin", "ed_sync_body", "ed_sync_body_max", "ed_sync_counts", "ed_sync_level",
+  "ed_sync_origin", "ed_sync_path", "ed_sync_agents", "ed_sync_reported",
+  // sync.coax, the games' half (issue 19): the open editor's games given to a pass, a pass's change to them made on it, and its words for the person; its requests are list-games, new-game, rename-game, move-level, rename-level, delete-level and delete-game rows
+  "ed_sync_device", "ed_sync_mine", "ed_sync_note", "ed_sync_to",
+  // agents.coax: the Agents pane's drawing, input and clock; its session's tool calls are rows, through gb_command_run_as
+  "ed_agents_activate", "ed_agents_changed", "ed_agents_close", "ed_agents_install_url", "ed_agents_key",
+  "ed_agents_max_vertices", "ed_agents_place", "ed_agents_pointer", "ed_agents_request", "ed_agents_size",
+  "ed_agents_text", "ed_agents_tick", "ed_agents_url", "ed_agents_waiting", "ed_agents_wants_text", "ed_agents_wheel", "ed_agents_wide", "ed_agents_demo",
+  "ed_agents_clock", "ed_agents_load", "ed_agents_wants", "ed_agents_computer", "ed_agents_writes", "ed_agents_write_name", "ed_agents_write_bytes", "ed_agents_written",
+  // the pane's Kept on your account switch, as the host remembers it between launches and tells sync (the row toggles it)
+  "ed_agents_account", "ed_agents_set_account",
+  // agent.coax: what the agent seam keeps for the pane
+  "ed_agent_tables", "ed_agent_turns",
+  // claims.coax: a level's claims kept beside its file by the host, and the host's clock they lapse on
+  "ed_claims_clock", "ed_claims_due", "ed_claims_saved", "ed_claims_save", "ed_claims_load",
+  // publish.coax: the device's file of what it has published, for the host to read and write
+  "ed_pub_load", "ed_pub_due", "ed_pub_save", "ed_pub_saved", "ed_pub_max",
+  // controls.coax: the controls themselves, and the one call
+  // what the toolbar shows of the screen (a control's state; ed_control_enabled and ed_control_current read the same)
+  "ed_tool", "ed_has_selection", "ed_clip_has", "ed_can_undo", "ed_can_redo",
+  // agents.coax: whether the Agents pane is beside the level, and its drawing
+  "ed_agents_open", "ed_agents_frame",
+  "ed_command", "ed_lobby_command", "ed_drop_due", "ed_drop_game_due", "ed_control_press_with", "ed_verb_find", "ed_control_current", "ed_control_enabled", "ed_control_group", "ed_control_host", "ed_control_icon",
+  "ed_control_id", "ed_control_key", "ed_control_mods", "ed_control_name", "ed_control_place", "ed_control_press",
+  "ed_control_verb", "ed_controls", "ed_version",
+  // decide.coax: the sizes the host gives Decide's request
+  "ed_decide_body_max", "ed_decide_header_max",
+  // editor.coax: drawing, the camera and continuous input: orbit, pan, dolly, fly, a drag
+  "ed_camera", "ed_camera_floats", "ed_cancel", "ed_cube", "ed_cube_vertices", "ed_down", "ed_draw", "ed_init",
+  "ed_instance_capacity", "ed_instance_floats", "ed_key", "ed_move", "ed_resize", "ed_take_dirty", "ed_tick",
+  "ed_touch_pan", "ed_touch_pinch", "ed_up", "ed_wheel",
+  // farm.coax: drawing a place you walk in
+  "ed_farm_bind", "ed_farm_copy", "ed_farm_draws", "ed_farm_layer", "ed_farm_light", "ed_farm_light_floats",
+  "ed_farm_mesh", "ed_farm_object_floats", "ed_farm_open", "ed_farm_place", "ed_farm_shown", "ed_farm_sky",
+  // games.coax: what the host shows of the game open, and its files
+  "ed_account", "ed_explores", "ed_game", "ed_game_explores", "ed_game_id", "ed_game_note", "ed_game_title",
+  "ed_game_due", "ed_more_due", "ed_more_save", "ed_games", "ed_is_official", "ed_may_edit", "ed_mine_doc_max", "ed_mine_id", "ed_mine_load", "ed_mine_number",
+  "ed_mine_open", "ed_play_note", "ed_set_account", "ed_template",
+  // level.coax: the level open, and when its file is written
+  "ed_level", "ed_level_id", "ed_official", "ed_save_due", "ed_save_max", "ed_saved",
+  // lobby.coax: the lobby's connection; what its sheet shows is lobby-read's
+  "ed_lobby_account", "ed_lobby_activity", "ed_lobby_closed", 
+  "ed_lobby_init", "ed_lobby_input", "ed_lobby_link_proof", 
+  
+  "ed_lobby_opened", 
+  "ed_lobby_pubkey", "ed_lobby_relay", "ed_lobby_retry", "ed_lobby_take", "ed_lobby_take_changed", "ed_lobby_tick",
+  
+  // meshes.coax: drawing
+  "ed_mesh_count", "ed_mesh_range", "ed_mesh_vertex_words", "ed_mesh_vertices_at", "ed_meshes_open",
+  // model.coax: drawing
+  "ed_model_mesh", "ed_model_open", "ed_model_palette", "ed_model_palette_floats", "ed_model_place",
+  "ed_model_shown", "ed_model_vertex_words",
+  // modes.coax: what the play sheet shows
+  "ed_play_mode_blurb", 
+  // net.coax: a match's wire between devices
+  "ed_net_due", "ed_net_free_seat", "ed_net_guest", "ed_net_held", "ed_net_input", "ed_net_lost", "ed_net_mode",
+  "ed_net_say", "ed_net_seat", "ed_net_snapshot", "ed_net_take",
+  // palette.coax: what the inspector shows
+  "ed_field",
+  // panel.coax: the side panel's drawing and input (its controls are panel.*)
+  "ed_panel_activate", "ed_panel_changed", "ed_panel_frame", "ed_panel_key", "ed_panel_max_vertices", "ed_panel_note",
+  "ed_panel_pointer", "ed_panel_scale", "ed_panel_size", "ed_panel_text", "ed_panel_wants_text", "ed_panel_wheel",
+  // picker.coax: New Game's picker, drawn by the core (a card chosen is the new-game row's, GB_HOST_NEW_GAME)
+  "ed_picker_activate", "ed_picker_cards", "ed_picker_closed", "ed_picker_frame", "ed_picker_key", "ed_picker_max_vertices",
+  "ed_picker_pic", "ed_picker_pic_rect", "ed_picker_pointer", "ed_picker_reset", "ed_picker_size", "ed_picker_take", "ed_picker_wheel",
+  // party.coax: the party's connection; what its sheet shows is party-read's
+  "ed_party_begin", "ed_party_heard",
+  
+  
+  "ed_party_pending", "ed_party_playing", "ed_party_pump", "ed_party_take_bye", "ed_party_wire",
+  // play.coax: a match's drawing, sound and continuous input (the sticks, the look)
+  "ed_play_captures", "ed_play_class_blurb", "ed_play_class_stat", "ed_play_events", "ed_play_feed", "ed_play_fire",
+  "ed_play_hud", "ed_play_hud_floats", "ed_play_look", "ed_play_sound", "ed_play_sound_rate", "ed_play_sounds",
+  "ed_play_touch", "ed_play_use", "ed_play_view", "ed_sky",
+  // rave.coax: drawing
+  "ed_rave_mesh", "ed_rave_palette", "ed_rave_place", "ed_rave_shown",
+  // scene.coax: what the play HUD shows
+  "ed_bag_count", "ed_bag_name", "ed_bag_slots", "ed_farm_live", "ed_scene_said",
+];
+
+// ---- checks
+
+#test "every control runs a row the app offers, and every row the app offers has a control" {
+  for i: 0..<GB_CONTROL_N {
+    c := GB_CONTROLS[i];
+    #assert c.verb >= 0 && c.verb < GB_N && (GB_COMMANDS[c.verb].surfaces & GB_UI) != 0;
+    #assert c.name.count > 0 && gb_control_find(c.id) == i;
+    #assert c.place != GB_PLACE_TOOLBAR || c.icon.count > 0;
+    #assert (c.place == GB_PLACE_MENU) == (c.key.count > 0);
+    // the place in the id is the place drawn
+    words := [GB_PLACES] string.["toolbar.", "menu.", "levels.", "banner.", "panel.", "edit.", "agents.", "play.", "lobby."];
+    // the lobby's rows are pressed on the lobby sheet, and only there
+    #assert (c.place == GB_PLACE_LOBBY) == (GB_COMMANDS[c.verb].area == "lobby") && (c.place == GB_PLACE_LOBBY) == (c.host == GB_HOST_LOBBY);
+    p := words[c.place];
+    #assert c.id.count > p.count && cast(string) c.id[0..<p.count] == p;
+  }
+  for v: 0..<GB_N {
+    if (GB_COMMANDS[v].surfaces & GB_UI) == 0 { continue; }
+    has := false;
+    for c: GB_CONTROLS { if c.verb == v { has = true; } }
+    #assert has;
+  }
+}
+
+ControlTest :: struct { e: [1] Editor; out: [65536] u8; }
+
+#test "a control's arguments are its row's, read as any call's are" {
+  t: [1] ControlTest; e := t[0].e[..];
+  none: [1] s32;
+  #assert gb_run(e, VERB_NEW_LEVEL, GbArgs.{}, GbWorld.{levels = none[0..<0]}, t[0].out[..]).code == GB_DONE;
+  e[0].selected = ed_actor(e, 0).id;
+  for c: GB_CONTROLS {
+    if c.host != GB_HOST_CORE && c.host != GB_HOST_FILE { continue; }
+    call: [1] GbCommandCall; da: [1] Jv; at := -1;
+    // a control drawn for each of many is pressed with the one it is: its argument is the row's
+    eb: [64] u8; args := c.args;
+    if c.each.count > 0 {
+      #assert c.args.count == 0 && gb_takes(c.verb, c.each);
+      et := [1] Text.[Text.{buf = eb[..]}]; tx_put(et[..], "{\""); tx_put(et[..], c.each); tx_put(et[..], "\":0}"); args = tx_text(et[..]);
+    }
+    if args.count > 0 { #assert jv_parse(da[..], args, call[0].nodes[..]); at = 0; }
+    #assert gb_mcp_read(call[0].call[..], c.verb, da[0], at, GbFill.{on = true, level = ed_level(e), thing = e[0].selected}) == "";
+  }
+}
+
+#test "the toolbar edits the open level through the rows, and undo takes it back" {
+  t: [1] ControlTest; e := t[0].e[..];
+  none: [1] s32; levels := none[0..<0];
+  out := t[0].out[..];
+  #assert ed_control_press(e, cast(s32) gb_control_find("menu.new-level"), levels, out) > 0 && ed_level(e) == 1;
+  n := ed_count(e);
+  add := cast(s32) gb_control_find("toolbar.add");
+  #assert ed_control_enabled(e, add) && ed_control_press(e, add, levels, out) > 0 && ed_count(e) == n + 1;
+  id := e[0].selected;
+  #assert ed_actor(e, ed_index(e, id)).kind == KIND_BLOCK;
+  undo := cast(s32) gb_control_find("toolbar.undo");
+  redo := cast(s32) gb_control_find("toolbar.redo");
+  #assert ed_control_enabled(e, undo) && !ed_control_enabled(e, redo);
+  #assert ed_control_press(e, undo, levels, out) > 0 && ed_count(e) == n && ed_control_enabled(e, redo);
+  #assert ed_control_press(e, redo, levels, out) > 0 && ed_count(e) == n + 1;
+  // the tools, and which one shows as on
+  mv := cast(s32) gb_control_find("toolbar.move");
+  #assert !ed_control_current(e, mv) && ed_control_press(e, mv, levels, out) > 0 && ed_tool(e) == 1 && ed_control_current(e, mv);
+  #assert !ed_control_current(e, cast(s32) gb_control_find("toolbar.select"));
+  // copy and paste the selection; duplicate it
+  e[0].selected = id;
+  #assert ed_control_press(e, cast(s32) gb_control_find("toolbar.copy"), levels, out) > 0;
+  #assert ed_control_press(e, cast(s32) gb_control_find("toolbar.paste"), levels, out) > 0 && ed_count(e) == n + 2;
+  #assert ed_control_press(e, cast(s32) gb_control_find("menu.duplicate"), levels, out) > 0 && ed_count(e) == n + 3;
+  #assert ed_control_press(e, cast(s32) gb_control_find("edit.cut"), levels, out) > 0 && ed_count(e) == n + 2;
+  #assert ed_control_press(e, cast(s32) gb_control_find("edit.paste"), levels, out) > 0 && ed_count(e) == n + 3;
+  // delete takes the selection; with nothing selected it is off, and a press says why
+  del := cast(s32) gb_control_find("toolbar.delete");
+  #assert ed_control_press(e, del, levels, out) > 0 && ed_count(e) == n + 2;
+  #assert !ed_control_enabled(e, del);
+  r := ed_control_press(e, del, levels, out);
+  #assert r < 0 && level_find(cast(string) out[0..<-r], "nothing is selected") >= 0;
+  #assert e[0].note_len > 0 && cast(string) e[0].note[0..<e[0].note_len] == "nothing is selected";
+  // Decide is the host's
+  #assert ed_control_press(e, cast(s32) gb_control_find("toolbar.decide"), levels, out) == 0;
+}
+
+#test "a call through ed_command fills the screen in, and names only the open level" {
+  t: [1] ControlTest; e := t[0].e[..];
+  none: [1] s32; levels := none[0..<0];
+  out := t[0].out[..];
+  #assert gb_command(e, VERB_NEW_LEVEL, "", levels, out) > 0;
+  #assert gb_command(e, VERB_ADD, "{\"kind\":\"tree\",\"x\":300,\"z\":-200}", levels, out) > 0;
+  #assert ed_field(e, FIELD_X) == 300 && ed_field(e, FIELD_Z) == -200;
+  r := gb_command(e, VERB_ADD, "{\"level\":7,\"kind\":\"tree\"}", levels, out);
+  #assert r < 0 && level_find(cast(string) out[0..<-r], "not-found") >= 0;
+  #assert gb_command(e, VERB_ADD, "{\"kind\":\"dragon\"}", levels, out) < 0;
+  #assert gb_command(e, VERB_ADD, "[1]", levels, out) < 0;
+  #assert gb_command(e, VERB_SET_TOOL, "{\"tool\":\"scale\"}", levels, out) > 0 && ed_tool(e) == 3;
+  #assert gb_command(e, VERB_DECIDE, "", levels, out) < 0;
+  #assert gb_command(e, 99, "", levels, out) < 0;
+}

@@ -1,0 +1,549 @@
+// What can be put in a level, and the settings of what is selected.
+//
+// The palette is the kinds a level's template offers (games.coax): an arena
+// has blocks, both starts and the match's markers; an adventure has blocks,
+// a start and a place's blockout. A marker is a place, not a wall: where a
+// health pack lies, where each team's goal and hoop stand, where the ball
+// starts. Play puts the match's pieces at the markers a level has, and works
+// out the place of any it lacks as before (play.coax, modes.coax).
+//
+// The inspector is the selection's fields, each a number with a range: its
+// kind, where it stands, its turn, its scale and its size, and for a moving
+// platform or a lift how far it goes and how long there and back takes
+// (its distance and its period). Setting one is one
+// edit, as a drag's is, and undo takes it back. A kind or a size is a row of
+// the level's shape table (level.coax), so changing either points the thing
+// at another row, added when the table has none like it.
+//
+// Nothing here draws. The palette and the inspector are drawn in Coax
+// (AGENTS.md: no SwiftUI for new interface), and these are what they, an
+// agent and a command line all call.
+
+// ---- the kinds
+
+// What a kind is called on screen, and the size a new one has in centimetres
+// (width, height, depth): shared/kinds.coax's, the website's too.
+KIND_NAME :: GK_NAME;
+KIND_SX :: GK_SX; KIND_SY :: GK_SY; KIND_SZ :: GK_SZ;
+
+// A level holds one of these at most: a start for each team, and in an
+// arena a goal and a hoop for each, and the ball (shared/game-types.coax gt_one).
+ed_kind_one :: (e: [] Editor, kind: s32) -> bool { return e.count == 1 && gt_one(cast(int) e[0].plays, cast(int) kind); }
+// Whether a kind is a marker: a place play puts something, drawn only while editing.
+ed_kind_marker :: (kind: s32) -> bool { return kind >= KIND_PACK && kind <= KIND_ENEMY; }
+
+// ---- a game type's limits (shared/game-types.coax): the website's, said in its words
+
+// A level holds this many things at most; said with the number when it is reached.
+ED_FULL :: "the level is full: a level holds 512 things at most. delete some to add more.";
+// Why a thing of a kind, its sides sx, sy, sz at scale percent, standing at x, z with its bottom at y,
+// is past what the level's game type allows: how far out, how high or low, and (for the website's
+// types) how big, in the same words as gamebuilder.org's with their numbers; "" when it is within.
+ed_bounds_why :: (e: [] Editor, kind: s32, x: int, y: int, z: int, sx: int, sy: int, sz: int, scale: int) -> string {
+  t := cast(int) e[0].plays;
+  if e.count != 1 || t < 0 || t >= GT_TYPES { return ""; }
+  why := gt_place_why(GT_FAR[t], GT_LOW[t], GT_HIGH[t], x, y, z);
+  if why == GT_WHY_NONE && gt_sized(t) && gk_building(cast(int) kind) < 0 {   // (a building's size is its model's: ed_building_why)
+    a := sx * scale / 100; b := sy * scale / 100; c := sz * scale / 100;
+    if kind == KIND_BALL { if !gt_radius_ok(a / 2) || !gt_radius_ok(b / 2) || !gt_radius_ok(c / 2) { why = GT_WHY_RADIUS; } }
+    else if !gt_side_ok(a) || !gt_side_ok(b) || !gt_side_ok(c) { why = GT_WHY_SIZE; }
+  }
+  if why == GT_WHY_NONE { return ""; }
+  n := gt_why_words(why, GT_FAR[t], GT_LOW[t], GT_HIGH[t], e[0].why[..], 0);
+  return cast(string) e[0].why[0..<n];
+}
+
+// ---- the village's buildings (shared/buildings.coax): the website's rules, in its words
+
+// The buildings standing but `self` (a thing's id; 0: none left out), and the solid boxes they have between them.
+ed_buildings :: (e: [] Editor, self: s32) -> [2] int {
+  out: [2] int; boxes := VL_KIND_BOXES;
+  for i: 0..<ed_count(e) { a := ed_actor(e, i); m := gk_building(cast(int) a.kind); if m >= 0 && a.id != self { out[0] += 1; out[1] += boxes[m]; } }
+  return out;
+}
+// Why a building of a kind may not stand at x, z with its bottom at y, turned yaw degrees, at scale
+// percent of its model: its scale past 50 to 300, a turn that is no quarter turn, off the ground, in
+// another building, or no boxes left for it. `self`: the thing it is (0: one more). "" when it may,
+// and for a kind that is no building.
+ed_building_why :: (e: [] Editor, kind: s32, x: int, y: int, z: int, yaw: int, scale: int, self: s32) -> string {
+  m := gk_building(cast(int) kind);
+  if e.count != 1 || m < 0 { return ""; }
+  why := vl_own_why(yaw, y, scale); now := ed_buildings(e, self);
+  if why == VL_WHY_NONE && !vl_fits(m, now[0], now[1]) { why = VL_WHY_BOXES; }
+  if why == VL_WHY_NONE {
+    f := vl_foot(m, x, z, vl_quarter(yaw), scale);
+    for i: 0..<ed_count(e) {
+      a := ed_actor(e, i); k := gk_building(cast(int) a.kind);
+      if k < 0 || a.id == self { continue; }
+      q := vl_quarter(cast(int) a.yaw);
+      if vl_feet_meet(f, vl_foot(k, cast(int) a.x, cast(int) a.z, ifx q < 0 then 0 else q, cast(int) a.scale), VL_SLACK) { why = VL_WHY_ROOM; break; }
+    }
+  }
+  if why == VL_WHY_NONE { return ""; }
+  n := vl_why_words(why, now[1], e[0].why[..], 0);
+  return cast(string) e[0].why[0..<n];
+}
+// Whether every building of the level stands by its rules: the first that does not, why ("" when all do).
+ed_buildings_why :: (e: [] Editor) -> string {
+  for i: 0..<ed_count(e) {
+    a := ed_actor(e, i);
+    if gk_building(cast(int) a.kind) < 0 { continue; }
+    why := ed_building_why(e, a.kind, cast(int) a.x, cast(int) a.y, cast(int) a.z, cast(int) a.yaw, cast(int) a.scale, a.id);
+    if why.count > 0 { return why; }
+  }
+  return "";
+}
+// A building's size is its model's: said when a size field is set.
+ed_building_size_why :: (e: [] Editor) -> string { n := vl_why_words(VL_WHY_SIZE, 0, e[0].why[..], 0); return cast(string) e[0].why[0..<n]; }
+
+ed_kind_name :: (kind: s32, out: [] u8) -> s64 #export_c #effects(all) {
+  return ifx kind < 0 || kind >= KINDS then 0 else play_text(KIND_NAME[kind], out);
+}
+
+// ---- the palette
+
+// The kinds the level's game type offers (shared/game-types.coax gt_palette).
+// How many kinds the level open offers, and the i-th of them (-1 past the end).
+ed_palette_count :: (e: [] Editor) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  p: [GT_PALETTE_MAX] int;
+  return cast(s32) gt_palette(cast(int) e[0].plays, p[..]);
+}
+ed_palette_kind :: (e: [] Editor, i: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 || i < 0 { return -1; }
+  p: [GT_PALETTE_MAX] int; n := gt_palette(cast(int) e[0].plays, p[..]);
+  return ifx cast(int) i < n then cast(s32) p[i] else -1;
+}
+palette_has :: (e: [] Editor, kind: s32) -> bool {
+  for i: 0..<ed_palette_count(e) { if ed_palette_kind(e, i) == kind { return true; } }
+  return false;
+}
+
+// How many things of a kind the level holds.
+palette_count_of :: (e: [] Editor, kind: s32) -> s64 {
+  n: s64 = 0;
+  for i: 0..<ed_count(e) { if ed_actor(e, i).kind == kind { n += 1; } }
+  return n;
+}
+palette_first_of :: (e: [] Editor, kind: s32) -> s32 {
+  for i: 0..<ed_count(e) { a := ed_actor(e, i); if a.kind == kind { return a.id; } }
+  return 0;
+}
+
+// Why a thing of this kind can't be added now, or "".
+ed_add_why :: (e: [] Editor, kind: s32) -> string {
+  if e.count != 1 || e[0].play[0].on { return "not while playing"; }
+  if !ed_may_edit(e) { return "this level is locked"; }
+  if !palette_has(e, kind) { return "this game's template has no such thing"; }
+  if ed_kind_one(e, kind) && palette_count_of(e, kind) > 0 { return "a level has only one of these"; }
+  if kind == KIND_PACK && palette_count_of(e, kind) >= PACKS { return "a level has four health packs at most"; }
+  if kind == KIND_ENEMY && palette_count_of(e, kind) >= FIELD_ENEMIES { return "a field has 9 enemies at most"; }
+  if (kind == KIND_TARGET || kind == KIND_MOVER) && palette_count_of(e, KIND_TARGET) + palette_count_of(e, KIND_MOVER) >= TARGETS { return "a field has 16 targets at most"; }
+  if ed_count(e) >= ACTORS_MAX { return ED_FULL; }
+  // (a village building: one more fits while 33 stand at most and their solid boxes are 512 between them)
+  if gk_building(cast(int) kind) >= 0 {
+    now := ed_buildings(e, 0);
+    if !vl_fits(gk_building(cast(int) kind), now[0], now[1]) { n := vl_why_words(VL_WHY_BOXES, now[1], e[0].why[..], 0); return cast(string) e[0].why[0..<n]; }
+  }
+  return "";
+}
+ed_add_refusal :: (e: [] Editor, kind: s32, out: [] u8) -> s64 #export_c #effects(all) { return play_text(ed_add_why(e, kind), out); }
+
+// Adds a thing of a kind where the last tap met the ground, or on the ground
+// ahead, snapped to the grid, and selects it: one undo. Its id; or, for a
+// kind the level already has its one of, that one's id, selected and not
+// moved; or 0 when it can't be added (ed_add_refusal says why).
+ed_add :: (e: [] Editor, kind: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  why := ed_add_why(e, kind);
+  if why.count > 0 {
+    have := ifx ed_kind_one(e, kind) && !e[0].play[0].on && palette_has(e, kind) then palette_first_of(e, kind) else 0;
+    if have > 0 { e[0].selected = have; e[0].dirty = true; }
+    return have;
+  }
+  p := e[0].vp[..];
+  x: int = 0; z: int = 0;
+  if p[0].here_ok { x = p[0].here_x; z = p[0].here_z; }
+  else {
+    g := vp_ground(vp_ray(ed_view(e), e[0].w / 2, e[0].h / 2), 0);
+    if g.ok && ed_dist(ed_eye(e), WorldPoint.{x = g.x, z = g.z}) < 50 { x = vp_cm(g.x); z = vp_cm(g.z); }
+    else {
+      b := ed_basis(e); eye := ed_eye(e);
+      x = vp_cm(eye.x + b.f.x * 5); z = vp_cm(eye.z + b.f.z * 5);
+    }
+  }
+  x = vp_snap(x, p[0].grid); z = vp_snap(z, p[0].grid);
+  // where the game type lets it stand: the nearest place within (it is added at the edge, never refused)
+  t := cast(int) e[0].plays;
+  if t >= 0 && t < GT_TYPES {
+    far := GT_FAR[t];
+    if x > far { x = far; } if x < -far { x = -far; } if z > far { z = far; } if z < -far { z = -far; }
+  }
+  // a village building stands at its model's usual scale, clear of the others: the nearest clear place on
+  // the grid round where it was asked for (5 m steps, 60 m out); with none, it is not added and the note says why
+  scale: s32 = 100; m := gk_building(cast(int) kind);
+  if m >= 0 {
+    usual := VL_SCALE; scale = cast(s32) usual[m]; found := false; x0 := x; z0 := z;
+    for ring: 0..<13 {
+      for dx: -ring..<ring + 1 {
+        for dz: -ring..<ring + 1 {
+          if found || (dx != -ring && dx != ring && dz != -ring && dz != ring) { continue; }
+          cx := x0 + dx * 500; cz := z0 + dz * 500;
+          if t >= 0 && t < GT_TYPES && gt_place_why(GT_FAR[t], GT_LOW[t], GT_HIGH[t], cx, 0, cz) != GT_WHY_NONE { continue; }
+          if ed_building_why(e, kind, cx, 0, cz, 0, cast(int) scale, 0).count == 0 { x = cx; z = cz; found = true; }
+        }
+      }
+    }
+    if !found { ed_say(e, ed_building_why(e, kind, x0, 0, z0, 0, cast(int) scale, 0)); p[0].here_ok = false; return 0; }
+  }
+  id := ed_spawn(e, kind, cast(s32) x, cast(s32) z, KIND_SX[kind], KIND_SY[kind], KIND_SZ[kind], 0, scale);
+  if id > 0 {
+    e[0].selected = id;
+    a := ed_actor(e, ed_index(e, id));
+    ed_log_actor(e, OP_ADD, a, a);
+  }
+  p[0].here_ok = false;
+  e[0].dirty = true;
+  return id;
+}
+
+// ---- the inspector
+
+FIELD_KIND :: 0; FIELD_X :: 1; FIELD_Y :: 2; FIELD_Z :: 3; FIELD_TURN :: 4; FIELD_SCALE :: 5;
+FIELD_WIDTH :: 6; FIELD_HEIGHT :: 7; FIELD_DEPTH :: 8;
+// A moving platform's or a lift's alone (shared/kinds.coax gk_moves): how far it goes, and how long there and back takes.
+FIELD_GO :: 9; FIELD_EVERY :: 10;
+FIELDS :: 11;
+FIELD_NAME :: [FIELDS] string.["Kind", "East", "Up", "North", "Turn", "Scale", "Width", "Height", "Depth", "Distance", "Period"];
+FIELD_UNIT :: [FIELDS] string.["", "cm", "cm", "cm", "°", "%", "cm", "cm", "cm", "cm", "ms"];
+// Whether the selection has a field: every thing has the first nine, a moving platform or a lift the last two.
+ed_field_has :: (e: [] Editor, f: s32) -> bool {
+  if e.count != 1 || f < 0 || f >= FIELDS { return false; }
+  i := ed_index(e, e[0].selected);
+  return i >= 0 && (f < FIELD_GO || gk_moves(cast(int) ed_actor(e, i).kind));
+}
+// Up's least is the engine's reach under the ground: drift's open space goes 100 m under it. Each game
+// type holds a place to its own bounds (ed_bounds_why).
+FIELD_MIN :: [FIELDS] s32.[0, -WE_REACH, -WE_REACH, -WE_REACH, -180, 10, 1, 1, 1, 0, GK_EVERY_LEAST];
+FIELD_MAX :: [FIELDS] s32.[KINDS - 1, WE_REACH, WE_REACH, WE_REACH, 180, 1000, LEVEL_SIZE_MAX, LEVEL_SIZE_MAX, LEVEL_SIZE_MAX, GK_GO_MOST, GK_EVERY_MOST];
+
+ed_fields :: () -> s32 #export_c #effects(all) { return FIELDS; }
+ed_field_name :: (f: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx f < 0 || f >= FIELDS then 0 else play_text(FIELD_NAME[f], out); }
+ed_field_unit :: (f: s32, out: [] u8) -> s64 #export_c #effects(all) { return ifx f < 0 || f >= FIELDS then 0 else play_text(FIELD_UNIT[f], out); }
+ed_field_min :: (f: s32) -> s32 #export_c #effects(all) { return ifx f < 0 || f >= FIELDS then 0 else FIELD_MIN[f]; }
+ed_field_max :: (f: s32) -> s32 #export_c #effects(all) { return ifx f < 0 || f >= FIELDS then 0 else FIELD_MAX[f]; }
+
+// The selection's value of a field; 0 with nothing selected.
+ed_field :: (e: [] Editor, f: s32) -> s32 #export_c #effects(all) {
+  if e.count != 1 { return 0; }
+  i := ed_index(e, e[0].selected);
+  if i < 0 { return 0; }
+  a := ed_actor(e, i);
+  vals := [FIELDS] s32.[a.kind, a.x, a.y, a.z, a.yaw, a.scale, a.sx, a.sy, a.sz, a.go, a.every];
+  return ifx f < 0 || f >= FIELDS then 0 else vals[f];
+}
+
+// Why the selection's field can't be set to v, or "".
+ed_field_why :: (e: [] Editor, f: s32, v: s32) -> string {
+  if e.count != 1 || e[0].play[0].on { return "not while playing"; }
+  if !ed_may_edit(e) { return "this level is locked"; }
+  if ed_index(e, e[0].selected) < 0 { return "nothing is selected"; }
+  if f < 0 || f >= FIELDS { return "no such field"; }
+  // a distance and a period: a moving platform's or a lift's alone, and past their limits said in the website's words with the numbers
+  if f == FIELD_GO || f == FIELD_EVERY {
+    still := !ed_field_has(e, f);
+    if still || v < FIELD_MIN[f] || v > FIELD_MAX[f] {
+      n := gt_why_words(ifx still then GT_WHY_STILL else GT_WHY_TRAVEL, 0, 0, 0, e[0].why[..], 0);
+      return cast(string) e[0].why[0..<n];
+    }
+    return "";
+  }
+  if v < FIELD_MIN[f] || v > FIELD_MAX[f] { return "out of range"; }
+  if f == FIELD_KIND {
+    was := ed_field(e, FIELD_KIND);
+    if v == was { return ""; }
+    if !palette_has(e, v) { return "this game's template has no such thing"; }
+    if ed_kind_one(e, v) && palette_count_of(e, v) > 0 { return "a level has only one of these"; }
+    if v == KIND_PACK && palette_count_of(e, v) >= PACKS { return "a level has four health packs at most"; }
+    if was == KIND_START || was == KIND_RIVAL { return "a level keeps its starts"; }
+  }
+  // the game type's bounds, for where the thing would stand and how big it would be
+  a := ed_actor(e, ed_index(e, e[0].selected));
+  vals := [FIELDS] int.[cast(int) a.kind, cast(int) a.x, cast(int) a.y, cast(int) a.z, cast(int) a.yaw, cast(int) a.scale, cast(int) a.sx, cast(int) a.sy, cast(int) a.sz, cast(int) a.go, cast(int) a.every];
+  vals[f] = cast(int) v;
+  if f == FIELD_KIND { vals[FIELD_WIDTH] = cast(int) KIND_SX[v]; vals[FIELD_HEIGHT] = cast(int) KIND_SY[v]; vals[FIELD_DEPTH] = cast(int) KIND_SZ[v]; }
+  // a village building: its size is its model's, and its own rules hold whatever is set (shared/buildings.coax)
+  if gk_building(vals[FIELD_KIND]) >= 0 {
+    if f == FIELD_WIDTH || f == FIELD_HEIGHT || f == FIELD_DEPTH { return ed_building_size_why(e); }
+    built := ed_building_why(e, cast(s32) vals[FIELD_KIND], vals[FIELD_X], vals[FIELD_Y], vals[FIELD_Z], vals[FIELD_TURN], vals[FIELD_SCALE], a.id);
+    if built.count > 0 { return built; }
+  }
+  // a thing already past them (an agent's, or one of before) may still be changed: only a thing within is held in
+  now := ed_bounds_why(e, cast(s32) vals[FIELD_KIND], vals[FIELD_X], vals[FIELD_Y], vals[FIELD_Z], vals[FIELD_WIDTH], vals[FIELD_HEIGHT], vals[FIELD_DEPTH], vals[FIELD_SCALE]);
+  if now.count > 0 && f != FIELD_TURN {
+    was := ed_bounds_why(e, a.kind, cast(int) a.x, cast(int) a.y, cast(int) a.z, cast(int) a.sx, cast(int) a.sy, cast(int) a.sz, cast(int) a.scale);
+    if was.count == 0 || f == FIELD_KIND { return ed_bounds_why(e, cast(s32) vals[FIELD_KIND], vals[FIELD_X], vals[FIELD_Y], vals[FIELD_Z], vals[FIELD_WIDTH], vals[FIELD_HEIGHT], vals[FIELD_DEPTH], vals[FIELD_SCALE]); }
+  }
+  return "";
+}
+ed_field_refusal :: (e: [] Editor, f: s32, v: s32, out: [] u8) -> s64 #export_c #effects(all) { return play_text(ed_field_why(e, f, v), out); }
+
+// Sets the selection's field: one edit, one undo. False, and nothing
+// changed, when it can't (ed_field_refusal says why).
+ed_set_field :: (e: [] Editor, f: s32, v: s32) -> bool #export_c #effects(all) {
+  if e.count != 1 || ed_field_why(e, f, v).count > 0 { return false; }
+  a := ed_actor(e, ed_index(e, e[0].selected));
+  if ed_field(e, f) == v { return true; }
+  w := WorldEdit.{ok = true, id = cast(int) a.id};
+  if f == FIELD_X || f == FIELD_Y || f == FIELD_Z {
+    w.op = WE_MOVE; w.x = cast(int) a.x; w.y = cast(int) a.y; w.z = cast(int) a.z;
+    if f == FIELD_X { w.x = cast(int) v; } else if f == FIELD_Y { w.y = cast(int) v; } else { w.z = cast(int) v; }
+  } else if f == FIELD_TURN { w.op = WE_ROTATE; w.yaw = cast(int) v; }
+  else if f == FIELD_SCALE { w.op = WE_SCALE; w.scale = cast(int) v; }
+  else {
+    // a kind, a size, a distance or a period: the shape table's row for the new one, added when there is none like it
+    kind := a.kind; sx := a.sx; sy := a.sy; sz := a.sz; go := a.go; every := a.every;
+    if f == FIELD_KIND {
+      kind = v; sx = KIND_SX[v]; sy = KIND_SY[v]; sz = KIND_SZ[v];
+      // (made a kind that moves, it goes as a new one does, unless it moved already; made any other, it has neither)
+      if !gk_moves(cast(int) v) { go = 0; every = 0; }
+      else if !gk_moves(cast(int) a.kind) { go = cast(s32) gk_go(cast(int) v); every = cast(s32) gk_every(cast(int) v); }
+    }
+    else if f == FIELD_WIDTH { sx = v; } else if f == FIELD_HEIGHT { sy = v; } else if f == FIELD_DEPTH { sz = v; }
+    else if f == FIELD_GO { go = v; } else { every = v; }
+    mesh := ed_shape_go(e, kind, sx, sy, sz, go, every);
+    if mesh == 0 { return false; }
+    w.op = WE_SET; w.col = WEC_KIND; w.v = mesh;
+  }
+  if !we_valid(w) { return false; }
+  ed_apply(e, w);
+  e[0].dirty = true;
+  return ed_field(e, f) == v;
+}
+
+// Renames your game n: a name it may have (games.coax). The host writes the
+// game's file next (ed_mine_save). False, and the name as it was, otherwise.
+ed_mine_rename :: (e: [] Editor, n: s32, title: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 || !mine_title_ok(cast(string) title) { return false; }
+  i := mine_find(e, n);
+  if i < 0 { return false; }
+  for k: 0..<title.count { e[0].mine[i].title[k] = title[k]; }
+  e[0].mine[i].title_n = cast(s32) title.count;
+  e[0].dirty = true;
+  return true;
+}
+
+// ---- checks
+
+PaletteTest :: struct { e: [1] Editor; b: [128] u8; }
+
+palette_why :: (e: [] Editor, kind: s32, b: [] u8) -> string { n := ed_add_refusal(e, kind, b); return cast(string) b[0..<n]; }
+palette_field_why :: (e: [] Editor, f: s32, v: s32, b: [] u8) -> string { n := ed_field_refusal(e, f, v, b); return cast(string) b[0..<n]; }
+
+#test "an arena offers its markers, an adventure its place; one of each that a level holds once" {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 2);
+  #assert ed_palette_count(e) == 12 && ed_palette_kind(e, 0) == KIND_BLOCK && ed_palette_kind(e, 12) == -1;
+  // a new arena already has its starts, goals, hoops and ball: adding another selects the one there
+  n := ed_count(e);
+  for k: [7] s32.[KIND_START, KIND_RIVAL, KIND_GOAL, KIND_RIVAL_GOAL, KIND_HOOP, KIND_RIVAL_HOOP, KIND_BALL] {
+    id := ed_add(e, k);
+    #assert id > 0 && e[0].selected == id && ed_actor(e, ed_index(e, id)).kind == k && ed_count(e) == n;
+    #assert palette_why(e, k, t[0].b[..]) == "a level has only one of these";
+  }
+  // four packs at most, and it has four
+  #assert palette_count_of(e, KIND_PACK) == PACKS && ed_add(e, KIND_PACK) == 0;
+  // a block, a tree: added, selected, one undo each
+  id := ed_add(e, KIND_TREE);
+  #assert id > 0 && ed_count(e) == n + 1 && ed_actor(e, ed_index(e, id)).sy == 450 && ed_can_undo(e);
+  ed_undo(e);
+  #assert ed_count(e) == n;
+  // an adventure offers no markers
+  #assert ed_new_game(e, 1, TEMPLATE_ADVENTURE, 3) && ed_palette_count(e) == 5;
+  #assert ed_add(e, KIND_PACK) == 0 && palette_why(e, KIND_PACK, t[0].b[..]) == "this game's template has no such thing";
+  #assert ed_add(e, KIND_WATER) > 0;
+  // an open field offers blocks, your start, targets and enemies, nothing of a match
+  #assert ed_new_game(e, 2, TEMPLATE_FIELD, 4) && ed_palette_count(e) == 5;
+  #assert ed_palette_kind(e, 0) == KIND_BLOCK && ed_palette_kind(e, 1) == KIND_START && ed_palette_kind(e, 4) == KIND_ENEMY && ed_palette_kind(e, 5) == -1;
+  #assert ed_add(e, KIND_RIVAL) == 0 && ed_add(e, KIND_BALL) == 0 && palette_why(e, KIND_TREE, t[0].b[..]) == "this game's template has no such thing";
+  #assert ed_add(e, KIND_BLOCK) > 0;
+  // nine enemies and sixteen targets at most, said with the number
+  for k: 0..<FIELD_ENEMIES { _ = ed_add(e, KIND_ENEMY); }
+  #assert palette_count_of(e, KIND_ENEMY) == FIELD_ENEMIES && ed_add(e, KIND_ENEMY) == 0 && palette_why(e, KIND_ENEMY, t[0].b[..]) == "a field has 9 enemies at most";
+  for k: 0..<TARGETS { _ = ed_add(e, ifx k % 2 == 0 then KIND_TARGET else KIND_MOVER); }
+  #assert palette_count_of(e, KIND_TARGET) + palette_count_of(e, KIND_MOVER) == TARGETS && ed_add(e, KIND_MOVER) == 0;
+  #assert palette_why(e, KIND_TARGET, t[0].b[..]) == "a field has 16 targets at most";
+  // and an arena offers none of them
+  #assert ed_new_game(e, 5, TEMPLATE_ARENA, 6) && ed_add(e, KIND_ENEMY) == 0 && ed_add(e, KIND_TARGET) == 0;
+  // nothing lands on a game's own level for someone who doesn't own it
+  ed_official(e);
+  #assert ed_add(e, KIND_BLOCK) == 0 && palette_why(e, KIND_BLOCK, t[0].b[..]) == "this level is locked";
+}
+
+#test "a website type's own kinds are in its palette, and its limits are said in its words with their numbers" {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  // racing: blocks, balls, a boost, a cone and a point of its circuit; nothing of the platformer's or the arena's. A new game holds its circuit
+  #assert ed_new_game(e, 1, GT_RACING, 2) && ed_palette_count(e) == 5 && ed_palette_kind(e, 4) == GK_TRACK && ed_count(e) == GT_CIRCUIT;
+  #assert ed_palette_kind(e, 0) == KIND_BLOCK && ed_palette_kind(e, 1) == KIND_BALL && ed_palette_kind(e, 2) == GK_BOOST && ed_palette_kind(e, 3) == GK_CONE;
+  boost := ed_add(e, GK_BOOST);
+  #assert boost > 0 && ed_actor(e, ed_index(e, boost)).kind == GK_BOOST && ed_actor(e, ed_index(e, boost)).sy == 25;
+  cone := ed_add(e, GK_CONE);
+  #assert cone > 0 && ed_count(e) == GT_CIRCUIT + 2 && ed_add(e, GK_PAD) == 0 && palette_why(e, GK_PAD, t[0].b[..]) == "this game's template has no such thing";
+  // undo takes the cone back, redo puts it back
+  ed_undo(e); #assert ed_count(e) == GT_CIRCUIT + 1; ed_redo(e); #assert ed_count(e) == GT_CIRCUIT + 2;
+  e[0].selected = cone;
+  // 200 m from the middle, 12 m up, sides a quarter metre to twelve: the website's words
+  #assert !ed_set_field(e, FIELD_X, 20100) && palette_field_why(e, FIELD_X, 20100, t[0].b[..]) == "too far: things stay within 200 m of the middle.";
+  #assert ed_set_field(e, FIELD_X, 20000) && ed_field(e, FIELD_X) == 20000;
+  #assert palette_field_why(e, FIELD_Y, 1300, t[0].b[..]) == "too high: a thing's bottom is at most 12 m up.";
+  #assert palette_field_why(e, FIELD_WIDTH, 1300, t[0].b[..]) == "that size is out of range: sides are 0.25 to 12 m.";
+  #assert palette_field_why(e, FIELD_SCALE, 20, t[0].b[..]) == "that size is out of range: sides are 0.25 to 12 m.";
+  // the platformer reaches 700 m and 60 m up; drift goes 100 m under the floor
+  #assert ed_new_game(e, 2, GT_PLATFORMER, 3) && ed_palette_count(e) == 8 && ed_palette_kind(e, 2) == GK_PAD && ed_palette_kind(e, 5) == GK_CHECKPOINT && ed_palette_kind(e, 6) == GK_SLIDER && ed_palette_kind(e, 7) == GK_LIFT;
+  #assert ed_add(e, GK_SPIKES) > 0 && ed_set_field(e, FIELD_Z, 60000) && palette_field_why(e, FIELD_Z, 70100, t[0].b[..]) == "too far: things stay within 700 m of the middle.";
+  // (a new drift game holds its rings, far out and under the floor as they are)
+  #assert ed_new_game(e, 3, GT_DRIFT, 4) && ed_count(e) == GT_RINGS && ed_palette_count(e) == 3 && ed_palette_kind(e, 2) == GK_RING && ed_actor(e, 11).y == -4535 && ed_actor(e, 11).z == -44195;
+  #assert ed_add(e, KIND_BALL) > 0 && ed_set_field(e, FIELD_Y, -5000);
+  #assert palette_field_why(e, FIELD_Y, -10100, t[0].b[..]) == "out of reach: a thing's bottom is from -100 to 100 m up.";
+  #assert palette_field_why(e, FIELD_WIDTH, 400, t[0].b[..]) == "that size is out of range: a ball's radius is 0.15 to 1.5 m.";
+  // crates: its wall, the pad a crate rests on, the gate and where you start; a room has one gate and one start (a new game's first room has both)
+  #assert ed_new_game(e, 4, GT_CRATES, 5) && ed_palette_count(e) == 6 && ed_palette_kind(e, 2) == GK_WALL && ed_palette_kind(e, 3) == GK_CRATE_GOAL && ed_palette_kind(e, 4) == GK_GATE && ed_palette_kind(e, 5) == GK_START && ed_add(e, GK_CRATE_GOAL) > 0;
+  #assert ed_count(e) == 10 && ed_kind_one(e, GK_GATE) && ed_kind_one(e, GK_START) && !ed_kind_one(e, GK_WALL) && ed_add(e, GK_GATE) > 0 && ed_add(e, GK_START) > 0 && ed_count(e) == 10;
+  #assert LEVEL_KIND[GK_CRATE_GOAL] == "crate-goal";
+  // the app's own types keep the level's reach
+  #assert ed_new_game(e, 5, GT_ADVENTURE, 8) && ed_add(e, KIND_BLOCK) > 0 && ed_set_field(e, FIELD_X, 90000);
+  // a full level says how many it holds
+  #assert ACTORS_MAX == 512 && ED_FULL == "the level is full: a level holds 512 things at most. delete some to add more.";
+}
+#test "a level holds 512 things: the 512th is added, the 513th is refused with the number, and the full level's file is within a file's limit and opens again whole" #steps 400000000000 {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 1, GT_THIRD, 2);
+  while ed_count(e) < ACTORS_MAX { #assert ed_add(e, KIND_BLOCK) > 0; }
+  #assert ed_count(e) == 512 && ed_add(e, KIND_BLOCK) == 0 && palette_why(e, KIND_BLOCK, t[0].b[..]) == ED_FULL && ed_count(e) == 512;
+  doc: [AGENT_FILE_MAX] u8; n := ed_save(e, doc[..]);
+  #assert n > 0 && cast(int) n <= AGENT_FILE_MAX && cast(int) ed_save_max() <= AGENT_FILE_MAX;
+  #assert ed_open(e, 2, doc[0..<n]) && ed_count(e) == 512;
+  // one taken out, one fits again
+  e[0].selected = ed_actor(e, 0).id; ed_delete(e); #assert ed_count(e) == 511 && ed_add(e, KIND_BLOCK) > 0 && ed_add(e, KIND_BLOCK) == 0;
+}
+
+#test "a moving platform's and a lift's distance and period are fields: a new one goes as a new one does, each is set as one edit undo takes back, kept in the level's file, and past its limits refused in words with the numbers; no other thing has them" #steps 4000000000 {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  // a new platformer is its course: 111 things, its moving platforms and lifts going as the course says
+  #assert ed_new_game(e, 1, GT_PLATFORMER, 2) && ed_count(e) == 111;
+  first := -1; for i: 0..<ed_count(e) { if ed_actor(e, i).kind == GK_SLIDER && first < 0 { first = cast(int) i; } }
+  #assert first > 0 && ed_actor(e, first).go == 1000 && ed_actor(e, first).every == 6000;
+  // a new one from the palette: 8 m and 6 seconds (a lift: 6 m)
+  id := ed_add(e, GK_SLIDER);
+  #assert id > 0 && e[0].selected == id && ed_field_has(e, FIELD_GO) && ed_field_has(e, FIELD_EVERY) && ed_field(e, FIELD_GO) == 800 && ed_field(e, FIELD_EVERY) == 6000;
+  #assert FIELD_NAME[FIELD_GO] == "Distance" && FIELD_UNIT[FIELD_GO] == "cm" && FIELD_NAME[FIELD_EVERY] == "Period" && FIELD_UNIT[FIELD_EVERY] == "ms";
+  // each set is one edit: a row of the shape table, and undo takes it back
+  rows := e[0].shape_n;
+  #assert ed_set_field(e, FIELD_GO, 1200) && ed_field(e, FIELD_GO) == 1200 && ed_field(e, FIELD_EVERY) == 6000 && e[0].shape_n == rows + 1;
+  #assert ed_set_field(e, FIELD_EVERY, 4500) && ed_field(e, FIELD_EVERY) == 4500 && ed_field(e, FIELD_GO) == 1200;
+  ed_undo(e); #assert ed_field(e, FIELD_EVERY) == 6000 && ed_field(e, FIELD_GO) == 1200;
+  ed_undo(e); #assert ed_field(e, FIELD_GO) == 800;
+  ed_redo(e); ed_redo(e); #assert ed_field(e, FIELD_GO) == 1200 && ed_field(e, FIELD_EVERY) == 4500;
+  // the least and the most are taken; past them nothing changes, and why is said with the numbers
+  #assert ed_set_field(e, FIELD_GO, 0) && ed_set_field(e, FIELD_GO, 5000) && ed_set_field(e, FIELD_EVERY, 1000) && ed_set_field(e, FIELD_EVERY, 60000);
+  far := "out of range: a moving platform or a lift goes 0 to 50 m, there and back in 1 to 60 seconds.";
+  #assert !ed_set_field(e, FIELD_GO, 5001) && palette_field_why(e, FIELD_GO, 5001, t[0].b[..]) == far && palette_field_why(e, FIELD_GO, -1, t[0].b[..]) == far;
+  #assert !ed_set_field(e, FIELD_EVERY, 999) && palette_field_why(e, FIELD_EVERY, 999, t[0].b[..]) == far && palette_field_why(e, FIELD_EVERY, 60001, t[0].b[..]) == far && ed_field(e, FIELD_GO) == 5000 && ed_field(e, FIELD_EVERY) == 60000;
+  #assert ed_set_field(e, FIELD_GO, 1200) && ed_set_field(e, FIELD_EVERY, 4500);
+  // a new size keeps its way; made a lift it keeps it too
+  #assert ed_set_field(e, FIELD_DEPTH, 600) && ed_field(e, FIELD_GO) == 1200 && ed_field(e, FIELD_EVERY) == 4500;
+  #assert ed_set_field(e, FIELD_KIND, GK_LIFT) && ed_field(e, FIELD_GO) == 1200 && ed_field(e, FIELD_EVERY) == 4500;
+  // the level's file keeps them: two columns more of its shape table, read back as they were
+  doc: [AGENT_FILE_MAX] u8; n := ed_save(e, doc[..]);
+  #assert n > 0 && level_find(cast(string) doc[0..<n], "\ntable shape id kind:text sx:cm sy:cm sz:cm go:cm every:int\n") > 0 && level_find(cast(string) doc[0..<n], "|1200|4500\n") > 0;
+  #assert ed_open(e, 2, doc[0..<n]) && ed_count(e) == 112 && ed_actor(e, 111).kind == GK_LIFT && ed_actor(e, 111).go == 1200 && ed_actor(e, 111).every == 4500 && ed_actor(e, first).go == 1000;
+  // made a kind that does not move, it has neither, and neither is shown or set; made one that moves again, a new one's
+  e[0].selected = ed_actor(e, 111).id;
+  still := "only a moving platform or a lift has a distance and a period.";
+  #assert ed_set_field(e, FIELD_KIND, GK_PAD) && ed_field(e, FIELD_GO) == 0 && ed_field(e, FIELD_EVERY) == 0 && !ed_field_has(e, FIELD_GO) && !ed_field_has(e, FIELD_EVERY) && ed_field_has(e, FIELD_DEPTH);
+  #assert !ed_set_field(e, FIELD_GO, 800) && palette_field_why(e, FIELD_GO, 800, t[0].b[..]) == still && palette_field_why(e, FIELD_EVERY, 6000, t[0].b[..]) == still;
+  #assert ed_set_field(e, FIELD_KIND, GK_SLIDER) && ed_field(e, FIELD_GO) == 800 && ed_field(e, FIELD_EVERY) == 6000;
+  // a level with none is written as it always was
+  #assert ed_new_game(e, 3, GT_THIRD, 4);
+  n = ed_save(e, doc[..]); #assert n > 0 && level_find(cast(string) doc[0..<n], "go:cm") < 0 && level_find(cast(string) doc[0..<n], "\ntable shape id kind:text sx:cm sy:cm sz:cm\n") > 0;
+}
+
+#test "the inspector sets a field as one edit that undo takes back" {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 2);
+  id := ed_add(e, KIND_BLOCK);
+  #assert ed_field(e, FIELD_KIND) == KIND_BLOCK && ed_field(e, FIELD_WIDTH) == 100;
+  #assert ed_set_field(e, FIELD_X, 1234) && ed_field(e, FIELD_X) == 1234;
+  #assert ed_set_field(e, FIELD_TURN, 45) && ed_field(e, FIELD_TURN) == 45;
+  #assert ed_set_field(e, FIELD_SCALE, 150) && ed_field(e, FIELD_SCALE) == 150;
+  // a size is another row of the shape table; the other sides keep theirs
+  rows := e[0].shape_n;
+  #assert ed_set_field(e, FIELD_HEIGHT, 333) && ed_field(e, FIELD_HEIGHT) == 333 && ed_field(e, FIELD_WIDTH) == 100 && e[0].shape_n == rows + 1;
+  // a kind takes that kind's size
+  #assert ed_set_field(e, FIELD_KIND, KIND_TREE) && ed_field(e, FIELD_KIND) == KIND_TREE && ed_field(e, FIELD_HEIGHT) == 450 && ed_field(e, FIELD_X) == 1234;
+  // each was one step
+  ed_undo(e);
+  #assert ed_field(e, FIELD_KIND) == KIND_BLOCK && ed_field(e, FIELD_HEIGHT) == 333;
+  ed_undo(e); ed_undo(e); ed_undo(e); ed_undo(e);
+  #assert ed_field(e, FIELD_X) != 1234 && ed_field(e, FIELD_SCALE) == 100 && ed_field(e, FIELD_TURN) == 0;
+  // refused: out of range, a second ball, a start made into something else, nothing selected
+  b: [64] u8;
+  #assert !ed_set_field(e, FIELD_SCALE, 5) && !ed_set_field(e, FIELD_KIND, KIND_BALL) && !ed_set_field(e, FIELD_TURN, 181);
+  n := ed_field_refusal(e, FIELD_KIND, KIND_BALL, b[..]);
+  #assert cast(string) b[0..<n] == "a level has only one of these";
+  e[0].selected = palette_first_of(e, KIND_START);
+  #assert !ed_set_field(e, FIELD_KIND, KIND_BLOCK) && ed_set_field(e, FIELD_X, 0);
+  e[0].selected = 0;
+  #assert !ed_set_field(e, FIELD_X, 0) && ed_field(e, FIELD_X) == 0;
+  // the level with its new rows still saves and opens
+  _ = id;
+}
+
+#test "your game is renamed to a name it may have" {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  #assert ed_new_game(e, 1, TEMPLATE_ARENA, 2);
+  name := "Robot Rumble";
+  for i: 0..<name.count { t[0].b[i] = name[i]; }
+  #assert ed_mine_rename(e, 1, t[0].b[0..<name.count]);
+  n := ed_mine_title(e, 1, t[0].b[..]);
+  #assert cast(string) t[0].b[0..<n] == "Robot Rumble";
+  bad := " Rumble";
+  for i: 0..<bad.count { t[0].b[i] = bad[i]; }
+  #assert !ed_mine_rename(e, 1, t[0].b[0..<bad.count]) && !ed_mine_rename(e, 2, t[0].b[0..<3]);
+  n = ed_mine_title(e, 1, t[0].b[..]);
+  #assert cast(string) t[0].b[0..<n] == "Robot Rumble";
+}
+
+#test "a match puts its ball, goals, hoops and packs where the level's markers are" {
+  t: [1] PaletteTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  ed_new(e, 2);
+  // the arena's own markers stand where play used to work them out
+  ed_play(e, 0);
+  p := e[0].play[..];
+  #assert p[0].end_set[0] && p[0].end_set[1] && p[0].hoop_set[0] && p[0].ball_set;
+  #assert abs(mode_end(p, 0).z - (-13.9)) < 0.01 && abs(mode_end(p, 0).uz - (-1.0)) < 0.01 && abs(mode_end(p, 1).uz - 1.0) < 0.01;
+  #assert abs(mode_hoop(p, 1).z - 13.4) < 0.01 && p[0].packs[3].there && abs(p[0].packs[3].x - 7.0) < 0.01;
+  ed_stop(e);
+  // moved, the ball starts at its marker; with one pack left, there is one pack
+  e[0].selected = palette_first_of(e, KIND_BALL);
+  #assert ed_set_field(e, FIELD_X, -300) && ed_set_field(e, FIELD_Z, 600);
+  for k: 0..<3 { e[0].selected = palette_first_of(e, KIND_PACK); ed_delete(e); }
+  ed_play(e, 0);
+  #assert abs(p[0].ball[0].x - (-3.0)) < 0.01 && abs(p[0].ball[0].z - 6.0) < 0.01;
+  #assert p[0].packs[0].there && !p[0].packs[1].there && !p[0].packs[3].there;
+  ed_stop(e);
+  // with no markers at all, play works the pieces out from the starts as before
+  for k: [7] s32.[KIND_GOAL, KIND_RIVAL_GOAL, KIND_HOOP, KIND_RIVAL_HOOP, KIND_BALL, KIND_PACK, KIND_PACK] {
+    e[0].selected = palette_first_of(e, k); if e[0].selected > 0 { ed_delete(e); }
+  }
+  #assert palette_count_of(e, KIND_PACK) == 0;
+  ed_play(e, 0);
+  #assert !p[0].end_set[0] && !p[0].ball_set && abs(mode_end(p, 0).z - (-13.9)) < 0.01 && p[0].packs[0].there;
+}

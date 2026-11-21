@@ -1,0 +1,198 @@
+// SPLICEBOTS' Director as herself: her real model, skinned and animated.
+//
+// Her body is the jam's own, imported from the Unreal project and retargeted
+// onto the people's 65 joints, in the private characters pack
+// (splice-bots-jam-chars.pack; openagents metaverse/splice-bots/jam/
+// jam-chars.coax says what is in it). The pack is the owner's private art:
+// it is not in any repository. scripts/generate.sh copies it into the build
+// from this machine, and the app bundles it.
+//
+// This file reads the pack's table and catalog with the engine's own
+// readers, chooses her clip from how she is moving with the jam's own rule
+// (sjc_her_role, sjc_play), and hands the host what its GPU needs: where her
+// vertices and indices are in the pack's bytes, the skinning matrices for
+// this frame (two baked frames blended), and where she stands. The host
+// draws; it decides nothing.
+#load "../../metaverse-engine/host/pack-table.coax";
+#load "../../metaverse/splice-bots/jam/jam-chars.coax";
+
+MODEL_PALETTE :: SJC_PALETTE;     // floats: 65 joints, three rows of four each
+MODEL_LAND :: 0.3f32;             // seconds a landing shows
+
+HerModel :: struct {
+  ok: bool;
+  crew: [1] SjcCast;
+  who: int;                       // the Director in the cast
+  words: int;                     // where the pack's block of words starts, in bytes
+  words_n: int;                   // how many words it holds
+  play: [1] SjcPlay;
+  air: f32;                       // seconds since she left the ground
+  landed: f32;                    // seconds since she landed
+  was_air: bool;
+  rave: [RAVE_BODIES] SjcPlay;    // the ring's raiders' playback (rave.coax)
+}
+
+model_word :: (pack: [] u8, at: int) -> u32 {
+  return cast(u32) pack[at] | (cast(u32) pack[at + 1] << 8) | (cast(u32) pack[at + 2] << 16) | (cast(u32) pack[at + 3] << 24);
+}
+
+ModelTable :: struct { t: [1] PackTable; }
+// Opens the characters pack: its table, its catalog, and the Director in it.
+// False, and no model, for bytes that are not that pack.
+ed_model_open :: (e: [] Editor, pack: [] u8) -> bool #export_c #effects(all) {
+  if e.count != 1 { return false; }
+  m := e[0].model[..];
+  m[0] = HerModel.{};
+  most := PACK_HEADER + PACK_ENTRY * PACK_TABLE_MAX;
+  head := cast(string) pack[0..<(ifx pack.count < most then pack.count else most)];
+  r: [1] ModelTable;
+  if !pack_table(head, pack.count, r[0].t[..]) { return false; }
+  cat := pack_table_nth(r[0].t[..], PACK_CATALOG, 0);
+  body := pack_table_nth(r[0].t[..], PACK_VERTICES, 0);
+  if cat < 0 || body < 0 { return false; }
+  c := r[0].t[0].entries[cat]; v := r[0].t[0].entries[body];
+  if c.at < 0 || c.n < 0 || c.at + c.n > pack.count || v.at < 0 || v.n < 0 || v.at + v.n > pack.count { return false; }
+  if !sjc_read(m[0].crew[..], cast(string) pack[c.at..<c.at + c.n]) { return false; }
+  who := sjc_find(m[0].crew[..], "director");
+  if who < 0 { return false; }
+  // every part the catalog names for her must lie inside the block of words
+  ch := m[0].crew[0].chars[who];
+  words := v.n / 4;
+  if ch.vword < 0 || ch.vword + ch.vertices * SJC_VERTEX > words || ch.iword < 0 || ch.iword + ch.indices > words { return false; }
+  if m[0].crew[0].pword < 0 || m[0].crew[0].pword + m[0].crew[0].frames * SJC_PALETTE > words { return false; }
+  m[0].who = who; m[0].words = v.at; m[0].words_n = words; m[0].landed = 10;
+  m[0].ok = true;
+  return true;
+}
+
+// Whether her model is to be drawn now: it is loaded, you are the Director,
+// and the camera is behind her, not in her eyes.
+ed_model_shown :: (e: [] Editor) -> bool #export_c #effects(all) {
+  return e.count == 1 && e[0].model[0].ok && e[0].play[0].on && e[0].play[0].her_on && e[0].play[0].third;
+}
+
+// Where her mesh is in the pack's bytes: out[0] the byte her vertices start
+// at (SJC_VERTEX words each), out[1] how many vertices, out[2] the byte her
+// indices start at (a word each), out[3] how many indices.
+ed_model_mesh :: (e: [] Editor, out: [] s64) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].model[0].ok || out.count < 4 { return false; }
+  m := e[0].model[0];
+  ch := m.crew[0].chars[m.who];
+  out[0] = m.words + ch.vword * 4; out[1] = ch.vertices;
+  out[2] = m.words + ch.iword * 4; out[3] = ch.indices;
+  return true;
+}
+ed_model_vertex_words :: () -> s32 #export_c #effects(all) { return SJC_VERTEX; }
+ed_model_palette_floats :: () -> s32 #export_c #effects(all) { return MODEL_PALETTE; }
+
+// Her playback, a step: which clip how she moves asks for, by the jam's rule.
+model_step :: (e: [] Editor, dt: f32) {
+  m := e[0].model[..];
+  if !m[0].ok { return; }
+  p := e[0].play[..];
+  h := p[0].her[0];
+  airborne := ifx h.riding then false else !h.foot.jump.on_ground;
+  if airborne { m[0].air += dt; } else { if m[0].was_air { m[0].landed = 0; } m[0].air = 0; m[0].landed += dt; }
+  m[0].was_air = airborne;
+  role := sjc_her_role(h.riding, airborne, h.foot.jump.vy > 0, m[0].air, m[0].landed < MODEL_LAND, h.sneak, her_speed(p));
+  sjc_play(m[0].play[..], m[0].crew[..], m[0].who, role, dt, her_speed(p), 0);
+  rave_step(e, dt);
+}
+
+// This frame's skinning matrices into out (MODEL_PALETTE floats): the two
+// baked frames her playback is between, blended.
+ed_model_palette :: (e: [] Editor, pack: [] u8, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || !e[0].model[0].ok || out.count < MODEL_PALETTE { return false; }
+  m := e[0].model[..];
+  f := sjc_frames(m[0].play[..], m[0].crew[..]);
+  frames := m[0].crew[0].frames;
+  if f.a < 0 || f.a >= frames || f.b < 0 || f.b >= frames { return false; }
+  a := m[0].words + (m[0].crew[0].pword + f.a * SJC_PALETTE) * 4;
+  b := m[0].words + (m[0].crew[0].pword + f.b * SJC_PALETTE) * 4;
+  if a + MODEL_PALETTE * 4 > pack.count || b + MODEL_PALETTE * 4 > pack.count { return false; }
+  for k: 0..<MODEL_PALETTE {
+    va := f32_from_bits(model_word(pack, a + k * 4)); vb := f32_from_bits(model_word(pack, b + k * 4));
+    out[k] = va + (vb - va) * f.w;
+  }
+  return true;
+}
+
+// Where she stands, as a model matrix (column-major, 16 floats): at her
+// feet, turned the way she faces. Her mesh stands on y = 0 facing +z, in
+// metres.
+ed_model_place :: (e: [] Editor, out: [] f32) -> bool #export_c #effects(all) {
+  if e.count != 1 || out.count < 16 { return false; }
+  p := e[0].play[..];
+  at := her_at(p);
+  yaw := p[0].her[0].face;
+  cs := cos(yaw); sn := sin(yaw);
+  mat := [16] f32.[cs, 0, -sn, 0,  0, 1, 0, 0,  sn, 0, cs, 0,  at.x, at.y, at.z, 1];
+  for i: 0..<16 { out[i] = mat[i]; }
+  return true;
+}
+
+// ---- checks
+
+// A small pack in the characters pack's own layout: a table, a catalog with
+// the Director, a tiny mesh, and two palette frames.
+ModelTest :: struct { e: [1] Editor; pack: [8192] u8; out: [MODEL_PALETTE] f32; }
+
+model_test_u32 :: (b: [] u8, at: int, v: int) {
+  b[at] = cast(u8) (v & 255); b[at + 1] = cast(u8) ((v >> 8) & 255); b[at + 2] = cast(u8) ((v >> 16) & 255); b[at + 3] = cast(u8) ((v >> 24) & 255);
+}
+model_test_pack :: (t: [] ModelTest) -> int {
+  // 3 vertices (21 words), 3 indices, 8 colour words, then two frames of palettes
+  return model_test_pack_of(t, "sjc 2 32 2\nchar 0 director 65 0 3 21 3 24 1750\nclip 0 idle 0 2 30000 1 0\n");
+}
+model_test_pack_of :: (t: [] ModelTest, cat: string) -> int {
+  b := t[0].pack[..];
+  words := 32 + 2 * SJC_PALETTE;
+  table := PACK_HEADER + PACK_ENTRY * 3;
+  cat_at := table; cat_pad := (cat.count + 3) / 4 * 4;
+  v_at := cat_at + cat_pad; total := v_at + words * 4;
+  b[0] = 'V'; b[1] = 'P'; b[2] = 'K'; b[3] = '1';
+  model_test_u32(b, 4, 3); model_test_u32(b, 8, total); model_test_u32(b, 12, total);
+  model_test_u32(b, 16, PACK_HEADER); model_test_u32(b, 20, table);
+  names := [3] string.["catalog", "vertices", "indices"];
+  ats := [3] int.[cat_at, v_at, total]; ns := [3] int.[cat.count, words * 4, 0];
+  for k: 0..<3 {
+    at := PACK_HEADER + PACK_ENTRY * k;
+    b[at] = cast(u8) (k + 1); b[at + 1] = 255;
+    model_test_u32(b, at + 4, ats[k]); model_test_u32(b, at + 8, ns[k]);
+    for i: 0..<names[k].count { b[at + 16 + i] = names[k][i]; }
+  }
+  for i: 0..<cat.count { b[cat_at + i] = cat[i]; }
+  // frame 0's first float is 1, frame 1's is 3
+  model_test_u32(b, v_at + 32 * 4, 0x3f800000);
+  model_test_u32(b, v_at + (32 + SJC_PALETTE) * 4, 0x40400000);
+  return total;
+}
+
+#test "the characters pack opens to the Director's mesh and a blended frame, and anything else is refused" {
+  t: [1] ModelTest; e := t[0].e[..];
+  ed_init(e, 800, 400);
+  n := model_test_pack(t[..]);
+  #assert ed_model_open(e, t[0].pack[0..<n]);
+  mesh: [4] s64;
+  #assert ed_model_mesh(e, mesh[..]);
+  body := PACK_HEADER + PACK_ENTRY * 3 + 76;   // after the table and the padded catalog
+  #assert mesh[0] == body && mesh[1] == 3 && mesh[2] == body + 21 * 4 && mesh[3] == 3;
+  #assert !ed_model_shown(e);   // not playing as her
+  none: [1] u8;
+  #assert ed_open_game(e, GAME_SPLICE_BOTS, none[0..<0]);
+  ed_play(e, 0);
+  #assert ed_model_shown(e);
+  // standing still she idles: a twentieth of a second in, between its two frames
+  for k: 0..<3 { play_step(e); }
+  #assert e[0].model[0].play[0].clip == 0;
+  #assert ed_model_palette(e, t[0].pack[0..<n], t[0].out[..]);
+  #assert t[0].out[0] >= 1 && t[0].out[0] <= 3 && t[0].out[1] == 0;
+  place: [16] f32;
+  #assert ed_model_place(e, place[..]) && abs(place[14] + 70) < 0.5 && place[5] == 1 && place[15] == 1;
+  // first person hides her; so does a pack cut short or with its size wrong
+  ed_play_view(e); play_step(e); her_camera(e);
+  #assert !ed_model_shown(e);
+  #assert !ed_model_open(e, t[0].pack[0..<n - 4]) && !ed_model_shown(e) && !ed_model_mesh(e, mesh[..]);
+  t[0].pack[0] = 'X';
+  #assert !ed_model_open(e, t[0].pack[0..<n]);
+}

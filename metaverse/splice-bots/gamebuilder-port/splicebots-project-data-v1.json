@@ -1,0 +1,18 @@
+{
+  "schema": "world.unreal.source.v1",
+  "name": "splice-bots-jam",
+  "title": "SPLICEBOTS project data",
+  "profile": "level",
+  "route": "data",
+  "project": "/SPLICEBOTS/Data",
+  "revision": null,
+  "maps": ["/Data/level_layout/farm", "/Data/level_layout/lab", "/Data/level_layout/plain", "/Data/level_layout/ring"],
+  "take": "map",
+  "folders": [
+    {"path": "/Config/", "licence": "project"},
+    {"path": "/Data/", "licence": "project"},
+    {"path": "/Engine/", "licence": "engine"}
+  ],
+  "output": "private",
+  "budget": 67108864
+}

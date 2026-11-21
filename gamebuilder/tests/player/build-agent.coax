@@ -1,0 +1,17 @@
+// The newly shipped offer -> yes -> durable build-agent flow, on the real
+// first-party services. Unsupported custom art must not be fabricated locally.
+#load "agent-receipts.coax";
+pt_agent_starts :: (p:[]Pt)->int {
+  path:[4096]u8;b:[1048576]u8;n:=fs_read(pt_path(p,"telemetry.jsonl",path[..]),b[..]);return ifx n>0 then pt_agent_start_count(cast(string)b[0..<n]) else -1;
+}
+pt_build_agent :: (p:[]Pt) {
+  before:=pt_count(p);
+  offered:=pt_chat(p,"I want a custom animated blue flag model, which cannot be made with blocks or balls. Offer to start a build agent, but wait for my yes before starting it.") && pt_bool(p,"/build agent/i.test([...document.querySelectorAll('.msg.model')].at(-1)?.textContent||'')");
+  idle:=pt_agent_starts(p)==0 && pt_count(p)==before;_=pt_shot(p,"agent-offer.png");
+  accepted:=offered && idle && pt_chat(p,"yes");started:=pt_wait(p,"/build agent, (starting|waiting|working|done)/.test(document.getElementById('chat.job')?.textContent||'')",30000);
+  _:=pt_shot(p,"build-agent-started.png");terminal:=pt_wait(p,"/build agent, (done|failed|stopped|lost|no answer|it can.t|it didn.t start|can.t reach|log in again)/.test(document.getElementById('chat.job')?.textContent||'')",430000);
+  done:=pt_bool(p,"/build agent, done/.test(document.getElementById('chat.job')?.textContent||'')");_=pt_observe(p);_=pt_shot(p,"build-agent-result.png");
+  receipt:=pt_agent_starts(p)==1;same:=pt_count(p)==before;
+  pt_event(p,"build-agent","offered without starting",offered && idle);pt_event(p,"build-agent","yes accepted",accepted);pt_event(p,"build-agent","started status visible",started);pt_event(p,"build-agent","terminal status visible",terminal);pt_event(p,"build-agent","done status visible",done);pt_event(p,"build-agent","exactly one real 202 receipt",receipt);pt_event(p,"build-agent","unsupported model left world unchanged",same);
+  pt_result(p,"create.confirm-agent",offered && idle && accepted && started && terminal && done && receipt && same);
+}

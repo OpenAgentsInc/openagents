@@ -1,0 +1,1438 @@
+// The automated user's journeys (issue 28; docs/user-testing.md, "The journeys"): a person's steps
+// through the web app, each a function that drives one or more headless Chromes as a person drives
+// them (taps, clicks, keys, typing) and ends pass, fail or blocked, with words. What the page shows
+// is read back from the page: its words, its hidden observers (the builder's list of things), its
+// links. Nothing here calls the site's API on a person's behalf; the services' answers that are
+// evidence (the funnel, the build's versions) are read beside the person, never instead of them.
+
+// ---------------------------------------------------------------- a person: one Chrome profile
+
+Up :: struct { c: [1] Cdp; open: bool; touch: bool; w: int; h: int; }
+UJ_TEXT :: 65536;
+Ur :: struct {
+  s: [1] UtStack; live: bool; bin: [2048] u8; bin_n: int;
+  origin: [256] u8; origin_n: int;
+  out: [2048] u8; out_n: int;              // the run's evidence folder, private
+  lane: int; j: int; shots: int;
+  verdict: [3] [UJ_N] int; ms: [3] [UJ_N] int;
+  words: [3] [UJ_N] [480] u8; words_n: [3] [UJ_N] int;
+  want: [UJ_N] bool;                       // the journeys asked for
+  email: [256] u8; email_n: int;           // the person's account on this lane
+  logged: bool;                            // the person on profile a is logged in
+  link: [256] u8; link_n: int;             // the published game's link
+  link_things: int;                        // how many things its newest version has
+  a: [1] Up; b: [1] Up;                    // the person, and another browser
+  touch_bad: [2048] u8; touch_bad_n: int;  // controls a touch lane found clipped or covered
+  mail: [1] PlayerMail;                    // --live: the dedicated inbox
+  version: [256] u8; version_n: int; release: [128] u8; release_n: int;
+}
+uj_origin :: (r: [] Ur) -> string { return cast(string) r[0].origin[0..<r[0].origin_n]; }
+uj_out :: (r: [] Ur) -> string { return cast(string) r[0].out[0..<r[0].out_n]; }
+uj_email :: (r: [] Ur) -> string { return cast(string) r[0].email[0..<r[0].email_n]; }
+
+// What the journey found, in words (the first words said stay: they are why it ended as it did).
+uj_say :: (r: [] Ur, words: string) {
+  l := r[0].lane; j := r[0].j;
+  if r[0].words_n[l][j] > 0 { return; }
+  n := 0; for ch: words { if n < 480 { r[0].words[l][j][n] = ch; n += 1; } }
+  r[0].words_n[l][j] = n;
+}
+uj_fail :: (r: [] Ur, words: string) -> int { uj_say(r, words); _ = uj_shot(r, r[0].a[..], "fail"); _ = uj_shot(r, r[0].b[..], "fail-other"); return UV_FAIL; }
+uj_blocked :: (r: [] Ur, words: string) -> int { uj_say(r, words); return UV_BLOCKED; }
+uj_evidence :: (r: [] Ur, name: string, text: string) {
+  nb: [256] u8; n := ws_put(nb[..], 0, UT_LANES[r[0].lane]); n = ws_put(nb[..], n, "-"); n = ws_put(nb[..], n, UJ_IDS[r[0].j]); n = ws_put(nb[..], n, "-"); n = ws_put(nb[..], n, name); n = ws_put(nb[..], n, ".txt");
+  pb: [4096] u8; path := fs_join(uj_out(r), cast(string) nb[0..<n], pb[..]); _ = fs_append(path, text); _ = fs_append(path, "\n");
+}
+
+uj_open :: (r: [] Ur, p: [] Up) -> bool {
+  if p[0].open { return true; }
+  lw := UT_LANE_W; lh := UT_LANE_H; lane := r[0].lane;
+  p[0].w = lw[lane]; p[0].h = lh[lane]; p[0].touch = lane > 0;
+  if !cdp_launch_live_headless(p[0].c[..], p[0].w, p[0].h, "gb-user-") { tool_errln(cdp_error(p[0].c[..])); return false; }
+  ut_emulate(p[0].c[..], lane);
+  // the copy button's clipboard, as a person's browser allows it after a press
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "permissions"); jo_arr(o[..]); jo_str(o[..], "clipboardReadWrite"); jo_str(o[..], "clipboardSanitizedWrite"); jo_end(o[..]);
+  jo_key(o[..], "origin"); jo_str(o[..], uj_origin(r)); jo_end(o[..]);
+  _ = cdp_call(p[0].c[..], "Browser.grantPermissions", jo_text(o[..]), PB_CALL_MS);
+  p[0].open = true;
+  return true;
+}
+uj_close :: (p: [] Up) { if p[0].open { cdp_close(p[0].c[..]); p[0].open = false; } }
+// Turns a touch lane's screen a quarter turn (portrait to landscape and back).
+uj_turn :: (p: [] Up) {
+  w := p[0].w; p[0].w = p[0].h; p[0].h = w; wide := p[0].w > p[0].h;
+  b: [512] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], p[0].w); jo_key(o[..], "height"); jo_int(o[..], p[0].h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 2); jo_key(o[..], "mobile"); jo_bool(o[..], true);
+  jo_key(o[..], "screenOrientation"); jo_obj(o[..]); jo_key(o[..], "type"); jo_str(o[..], ifx wide then "landscapePrimary" else "portraitPrimary"); jo_key(o[..], "angle"); jo_int(o[..], ifx wide then 90 else 0); jo_end(o[..]); jo_end(o[..]);
+  _ = cdp_call(p[0].c[..], "Emulation.setDeviceMetricsOverride", jo_text(o[..]), PB_CALL_MS);
+  proc_sleep(500);
+}
+
+uj_bool :: (p: [] Up, js: string) -> bool { return pb_bool(p[0].c[..], js); }
+uj_num :: (p: [] Up, js: string) -> int { return cast(int) pb_number(p[0].c[..], js, -1); }
+uj_text :: (p: [] Up, js: string, out: [] u8) -> string { n := pb_text(p[0].c[..], js, out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+uj_wait :: (p: [] Up, js: string, ms: int) -> bool {
+  end := proc_now_ms() + ms;
+  while true { if uj_bool(p, js) { return true; } if proc_now_ms() >= end { return false; } proc_sleep(100); }
+  return false;
+}
+uj_quoted :: (out: [] u8, n: int, s: string) -> int {
+  b: [2048] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_str(o[..], s); return ws_put(out, n, jo_text(o[..]));
+}
+// Whether a control is on the page (by id, as the page names its controls).
+uj_has_id :: (p: [] Up, id: string) -> bool {
+  js: [512] u8; n := ws_put(js[..], 0, "!!document.getElementById("); n = uj_quoted(js[..], n, id); n = ws_put(js[..], n, ")");
+  return uj_bool(p, cast(string) js[0..<n]);
+}
+uj_wait_id :: (p: [] Up, id: string, ms: int) -> bool {
+  js: [512] u8; n := ws_put(js[..], 0, "!!document.getElementById("); n = uj_quoted(js[..], n, id); n = ws_put(js[..], n, ")");
+  return uj_wait(p, cast(string) js[0..<n], ms);
+}
+uj_id_text :: (p: [] Up, id: string, out: [] u8) -> string {
+  js: [512] u8; n := ws_put(js[..], 0, "document.getElementById("); n = uj_quoted(js[..], n, id); n = ws_put(js[..], n, ")?.textContent||''");
+  return uj_text(p, cast(string) js[0..<n], out);
+}
+
+// Goes to a path of the site and waits for the page to load.
+uj_go :: (r: [] Ur, p: [] Up, path: string) -> bool {
+  url: [2048] u8; n := ws_put(url[..], 0, uj_origin(r)); n = ws_put(url[..], n, path);
+  return ut_navigate(p[0].c[..], cast(string) url[0..<n]) && uj_wait(p, "!!document.getElementById('page')", 15000);
+}
+uj_reload :: (p: [] Up) -> bool {
+  prior := pb_number(p[0].c[..], "performance.timeOrigin", 0);
+  if cdp_call(p[0].c[..], "Page.reload", "{}", PB_CALL_MS) < 0 { return false; }
+  end := proc_now_ms() + 15000;
+  while proc_now_ms() < end { if pb_number(p[0].c[..], "performance.timeOrigin", prior) != prior && uj_bool(p, "document.readyState==='complete' && !!document.getElementById('page')") { return true; } proc_sleep(100); }
+  return false;
+}
+uj_history :: (p: [] Up, back: bool) -> bool {
+  prior := pb_number(p[0].c[..], "performance.timeOrigin", 0);
+  _ = pb_read(p[0].c[..], ifx back then "history.back()" else "history.forward()");
+  end := proc_now_ms() + 8000;
+  while proc_now_ms() < end { if uj_bool(p, "document.readyState==='complete' && !!document.getElementById('page')") && (pb_number(p[0].c[..], "performance.timeOrigin", prior) != prior || proc_now_ms() > end - 6000) { return true; } proc_sleep(100); }
+  return false;
+}
+// A press on a control by its id, as this lane presses: a click, or a tap on a touch lane. It waits
+// for the control to be there first.
+uj_tap :: (p: [] Up, id: string) -> bool {
+  if id.count == 0 || !uj_wait_id(p, id, 4000) { return false; }
+  js: [512] u8; n := ws_put(js[..], 0, "document.getElementById("); n = uj_quoted(js[..], n, id); n = ws_put(js[..], n, ")?.scrollIntoView({block:'center',inline:'nearest'})");
+  _ = pb_read(p[0].c[..], cast(string) js[0..<n]);
+  ok := pb_tap_as(p[0].c[..], id, p[0].touch); proc_sleep(150);
+  return ok;
+}
+uj_key :: (p: [] Up, key: string, code: string) -> bool { ok := pb_press(p[0].c[..], key, code); proc_sleep(100); return ok; }
+uj_type :: (p: [] Up, text: string) -> bool { return pb_type(p[0].c[..], text); }
+uj_point :: (p: [] Up, x: int, y: int) -> bool { return ifx p[0].touch then pb_touch_tap(p[0].c[..], x, y) else pb_click(p[0].c[..], x, y); }
+uj_shot :: (r: [] Ur, p: [] Up, name: string) -> bool {
+  if !p[0].open { return false; }
+  b: [8388608] u8; k := cdp_screenshot(p[0].c[..], b[..]); if k <= 0 { return false; }
+  r[0].shots += 1;
+  nb: [256] u8; n := ws_put(nb[..], 0, UT_LANES[r[0].lane]); n = ws_put(nb[..], n, "-"); n = ws_put(nb[..], n, UJ_IDS[r[0].j]); n = ws_put(nb[..], n, "-");
+  n = pb_decimal(nb[..], n, r[0].shots); n = ws_put(nb[..], n, "-"); n = ws_put(nb[..], n, name); n = ws_put(nb[..], n, ".png");
+  pb: [4096] u8; return fs_write(fs_join(uj_out(r), cast(string) nb[0..<n], pb[..]), cast(string) b[0..<k]);
+}
+
+// ---------------------------------------------------------------- the builder, as a person sees it
+
+UJ_WORLD_UP :: "!!document.getElementById('blocks') && !!document.querySelector('[id^=\"hot.s.\"]') && !document.querySelector('#coaxial-load:not(.gone):not([hidden])') && !document.getElementById('kind.0')";
+UJ_PICKER_UP :: "!!document.getElementById('kind.0')";
+GS_BUILDER_PATH :: "/play";
+UJ_PICKER_WORDS :: "game type";
+uj_count :: (p: [] Up) -> int { return uj_num(p, "Number((document.getElementById('blocks')?.textContent||'').split('\\n')[0]||-1)"); }
+uj_wire :: (p: [] Up, out: [] u8) -> string { return uj_id_text(p, "blocks", out); }
+// A hotbar slot's id by the words it is labelled with ("" when the bar has none).
+uj_slot :: (p: [] Up, label: string, out: [] u8) -> string {
+  js: [1024] u8; n := ws_put(js[..], 0, "[...document.querySelectorAll('[id^=\"hot.s.\"]')].find(e=>e.getAttribute('aria-label')===");
+  n = uj_quoted(js[..], n, label); n = ws_put(js[..], n, ")?.id||''");
+  return uj_text(p, cast(string) js[0..<n], out);
+}
+// Uses a tool by its words: its slot on the bar, or else its item under "more".
+uj_tool :: (p: [] Up, label: string) -> bool {
+  id: [128] u8; slot := uj_slot(p, label, id[..]);
+  if slot.count > 0 { return uj_tap(p, slot); }
+  more: [128] u8; m := uj_slot(p, "more", more[..]);
+  if m.count == 0 || !uj_tap(p, m) || !uj_wait(p, "!!document.querySelector('.hb-pn')", 2000) { return false; }
+  js: [1024] u8; n := ws_put(js[..], 0, "[...document.querySelectorAll('.hb-pn')].find(e=>e.textContent===");
+  n = uj_quoted(js[..], n, label); n = ws_put(js[..], n, ")?.closest('button')?.id||''");
+  item: [128] u8; pick := uj_text(p, cast(string) js[0..<n], item[..]);
+  if pick.count == 0 { _ = uj_tap(p, m); return false; }
+  return uj_tap(p, pick);
+}
+// Places one thing with the tool in hand: presses on the ground at places in the lower middle of the
+// screen, from the spot'th on, until one is placed. The new count, or -1.
+UJ_SPOTS :: 32;
+UJ_SPOTS_X :: [UJ_SPOTS] int.[50, 40, 60, 50, 35, 65, 45, 55, 30, 70, 50, 42, 58, 25, 75, 38, 62, 47, 53, 33, 67, 20, 80, 50, 50, 40, 60, 30, 70, 45, 55, 50];
+UJ_SPOTS_Y :: [UJ_SPOTS] int.[64, 64, 64, 72, 72, 72, 58, 58, 66, 66, 78, 80, 80, 70, 70, 60, 60, 75, 75, 77, 77, 64, 64, 56, 50, 50, 50, 54, 54, 46, 46, 42];
+uj_place :: (p: [] Up) -> int { return uj_place_from(p, 0, 12); }
+uj_place_from :: (p: [] Up, first: int, tries: int) -> int {
+  before := uj_count(p); xs := UJ_SPOTS_X; ys := UJ_SPOTS_Y;
+  // (a spot a person can press the ground at: what is there is the world's canvas, not a panel over it)
+  open: [UJ_SPOTS] bool; any := false;
+  js: [2048] u8; n := ws_put(js[..], 0, "[");
+  for i: 0..<UJ_SPOTS { if i > 0 { n = ws_put(js[..], n, ","); } n = ws_put(js[..], n, "["); n = pb_decimal(js[..], n, p[0].w * xs[i] / 100); n = ws_put(js[..], n, ","); n = pb_decimal(js[..], n, p[0].h * ys[i] / 100); n = ws_put(js[..], n, "]"); }
+  n = ws_put(js[..], n, "].map(([x,y])=>((e)=>e&&(e.tagName==='CANVAS'||e.id==='page'))(document.elementFromPoint(x,y))?'1':'0').join('')");
+  mb: [64] u8; mask := uj_text(p, cast(string) js[0..<n], mb[..]);
+  for i: 0..<UJ_SPOTS { open[i] = i < mask.count && mask[i] == '1'; any = any || open[i]; }
+  if !any { return -1; }
+  k := 0; tried := 0;
+  while tried < tries && k < UJ_SPOTS * 2 {
+    i := (first + k) % UJ_SPOTS; k += 1;
+    if !open[i] { continue; }
+    tried += 1;
+    x := p[0].w * xs[i] / 100; y := p[0].h * ys[i] / 100;
+    hit: [128] u8; hn := ws_put(hit[..], 0, "((e)=>!!e&&(e.tagName==='CANVAS'||e.id==='page'))(document.elementFromPoint("); hn = pb_decimal(hit[..], hn, x); hn = ws_put(hit[..], hn, ","); hn = pb_decimal(hit[..], hn, y); hn = ws_put(hit[..], hn, "))");
+    if !uj_bool(p, cast(string) hit[0..<hn]) { continue; }
+    if !p[0].touch { _ = pb_mouse(p[0].c[..], "mouseMoved", x, y, "none", 0, 0); proc_sleep(60); }
+    if !uj_point(p, x, y) { continue; }
+    end := proc_now_ms() + 500;
+    while proc_now_ms() < end { now := uj_count(p); if now == before + 1 { return now; } proc_sleep(40); }
+  }
+  return -1;
+}
+// The row of thing `id` in the list's words, "" when none.
+uj_row :: (wire: string, id: int) -> string {
+  at := 0; first := true;
+  while at < wire.count {
+    e := at; while e < wire.count && wire[e] != '\n' { e += 1; }
+    line := cast(string) wire[at..<e]; at = e + 1;
+    if first { first = false; continue; }
+    if line.count > 0 && ue_int(line) == id { return line; }
+  }
+  return "";
+}
+// The id of the newest thing (the last row).
+uj_last :: (wire: string) -> int {
+  last := -1; at := 0; first := true;
+  while at < wire.count { e := at; while e < wire.count && wire[e] != '\n' { e += 1; } if !first && e > at { last = ue_int(cast(string) wire[at..<e]); } first = false; at = e + 1; }
+  return last;
+}
+// A row's n'th number (0 the id).
+uj_field :: (row: string, n: int) -> int {
+  at := 0; k := 0;
+  while at < row.count {
+    while at < row.count && row[at] == ' ' { at += 1; }
+    if at >= row.count { break; }
+    if k == n { neg := row[at] == '-'; v := ue_int(cast(string) row[ifx neg then at + 1 else at..<row.count]); return ifx neg then -v else v; }
+    while at < row.count && row[at] != ' ' { at += 1; }
+    k += 1;
+  }
+  return -999999;
+}
+// The id of the first row of wire kind `kind` (its second number), -1 when none.
+uj_first_of :: (wire: string, kind: int) -> int {
+  at := 0; first := true;
+  while at < wire.count { e := at; while e < wire.count && wire[e] != '\n' { e += 1; } line := cast(string) wire[at..<e]; if !first && uj_field(line, 1) == kind { return ue_int(line); } first = false; at = e + 1; }
+  return -1;
+}
+#test "a thing's row and fields from the list's words" {
+  w := "3\n1 0 1 1 -300 0 400 200 100 200\n4 17 1 1 50 0 40 400 25 400 1\n9 2 1 1 120 0 -40 0 0 150 1";
+  #assert uj_row(w, 4) == "4 17 1 1 50 0 40 400 25 400 1" && uj_last(w) == 9 && uj_field(uj_row(w, 1), 4) == -300 && uj_field(uj_row(w, 4), 1) == BL_ROLE_WIRE + BL_R_BOOST;
+  #assert uj_row(w, 7) == "" && uj_field("1 2", 5) == -999999 && uj_first_of(w, 2) == 9 && uj_buildings(w) == 1;
+}
+// How many rows of the list are buildings (kind 2 on the wire, web/blocks.coax bl_wire).
+uj_buildings :: (wire: string) -> int {
+  n := 0; at := 0; first := true;
+  while at < wire.count { e := at; while e < wire.count && wire[e] != '\n' { e += 1; } if !first && uj_field(cast(string) wire[at..<e], 1) == 2 { n += 1; } first = false; at = e + 1; }
+  return n;
+}
+// The types shown again (from a world: its "game type" item, as a person goes back to them).
+uj_picker :: (p: [] Up) -> bool {
+  end := proc_now_ms() + 15000;
+  while !uj_bool(p, UJ_PICKER_UP) && !uj_bool(p, UJ_WORLD_UP) && proc_now_ms() < end { proc_sleep(100); }
+  if uj_bool(p, UJ_PICKER_UP) { return true; }
+  if !uj_tool(p, UJ_PICKER_WORDS) { return false; }
+  return uj_wait(p, UJ_PICKER_UP, 5000);
+}
+// Whether type k's name is on the screen whole (at the ring a name whose portal is out of view is put
+// away off the screen, web/look.coax).
+uj_name_shown :: (p: [] Up, k: int) -> bool {
+  js: [256] u8; n := ws_put(js[..], 0, "(()=>{const b=document.getElementById('kind."); n = pb_decimal(js[..], n, k);
+  n = ws_put(js[..], n, "')?.getBoundingClientRect();return !!b&&b.width>0&&b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight})()");
+  return uj_bool(p, cast(string) js[0..<n]);
+}
+// Turns the ring as a person does until type k's name is on the screen: a swipe sideways on a touch
+// screen, the right arrow on a keyboard (each the next portal). False when it never comes.
+uj_ring_to :: (p: [] Up, k: int) -> bool {
+  turns := 0;
+  while !uj_name_shown(p, k) && turns < 12 {
+    if p[0].touch { _ = ut_swipe(p[0].c[..], 1); } else { _ = uj_key(p, "ArrowRight", "ArrowRight"); }
+    proc_sleep(1200); turns += 1;
+  }
+  return uj_name_shown(p, k);
+}
+// A press on type k's name at the ring, turned to it first, until its world comes: the camera drifts on
+// by itself (it rests on a portal three and a half seconds), so a name can move off as it is pressed,
+// and the person turns back to it and presses again.
+uj_ring_press :: (p: [] Up, k: int) -> bool {
+  id: [32] u8; n := ws_put(id[..], 0, "kind."); n = pb_decimal(id[..], n, k);
+  for tries: 0..<3 {
+    if !uj_bool(p, UJ_PICKER_UP) { break; }
+    _ = uj_ring_to(p, k);
+    _ = uj_tap(p, cast(string) id[0..<n]);
+    if uj_wait(p, "!document.getElementById('kind.0')", 4000) { break; }
+  }
+  return uj_wait(p, UJ_WORLD_UP, 20000);
+}
+// Picks web type k as this lane's person does: its number on a keyboard, a press on its name by touch
+// (the ring turned until it shows).
+uj_pick :: (p: [] Up, k: int) -> bool {
+  if !uj_picker(p) { return false; }
+  ok := false;
+  if p[0].touch { return uj_ring_press(p, k) && uj_settle(p); }
+  else { d: [8] u8; d[0] = cast(u8) ('1' + k); c: [8] u8; cn := ws_put(c[..], 0, "Digit"); c[cn] = d[0]; ok = uj_key(p, cast(string) d[0..<1], cast(string) c[0..<cn + 1]); }
+  return ok && uj_wait(p, UJ_WORLD_UP, 20000) && uj_settle(p);
+}
+// The world's things stop changing (a world of its own lays its course out as it opens).
+uj_settle :: (p: [] Up) -> bool {
+  last := -2; same := 0; end := proc_now_ms() + 8000;
+  while proc_now_ms() < end { n := uj_count(p); if n == last && n >= 0 { same += 1; if same >= 4 { return true; } } else { same = 0; last = n; } proc_sleep(150); }
+  return false;
+}
+// The account's words under the world (web/account.coax ac_note) become `words`.
+uj_kept :: (p: [] Up, words: string, ms: int) -> bool {
+  js: [512] u8; n := ws_put(js[..], 0, "(document.getElementById('kept')?.textContent||'')==="); n = uj_quoted(js[..], n, words);
+  return uj_wait(p, cast(string) js[0..<n], ms);
+}
+UJ_KEPT_ACCOUNT :: "kept on your account";          // web/account.coax ac_note
+UJ_KEPT_BROWSER_ONLY :: "kept in this browser only";
+CH_GUEST_WORDS :: "log in or create an account to talk to the agent.";   // web/chat.coax CH_GUEST
+
+// ---------------------------------------------------------------- the account, as a person signs in
+
+// The code sent to email: from the stand-in's outbox (local) or the dedicated inbox (live). Into out.
+uj_code :: (r: [] Ur, email: string, out: [] u8) -> bool {
+  // The inbox gets the mail seconds after the site sends it (the player waits as long: tools/player-test.coax).
+  if r[0].live {
+    end := proc_now_ms() + 120000;
+    while proc_now_ms() < end { if pm_code(r[0].mail[..], out) { return true; } proc_sleep(1000); }
+    return false;
+  }
+  end := proc_now_ms() + 10000;
+  while proc_now_ms() < end { if ut_outbox_code(r[0].s[..], email, out) { return true; } proc_sleep(100); }
+  return false;
+}
+// The login service sends one address 5 codes an hour (openagents docs/auth/sessions-and-tokens.md,
+// "Limits"), and the player and the user share one test inbox: so a live code is asked for at most one
+// each 13 minutes, the time kept in the player's own pacing file (tests/player/matrix.coax pt_code_budget,
+// "entitled-next-code-ms" under GB_PLAYER_PROFILE_ROOT, set by scripts/user-test.sh as the player's
+// script sets it). False when the file can't be read or written.
+UJ_CODE_GAP_MS :: 780000;
+uj_code_pace :: (p: [] Up) -> bool {
+  root: [4096] u8; base := proc_getenv("GB_PLAYER_PROFILE_ROOT", root[..]); if base.count == 0 { return false; }
+  path: [4096] u8; file := fs_join(base, "entitled-next-code-ms", path[..]);
+  b: [64] u8; n := fs_read(file, b[..]); while n > 0 && (b[n - 1] == '\n' || b[n - 1] == ' ' || b[n - 1] == '\r') { n -= 1; }
+  next := ifx n > 0 then pb_milliseconds(cast(string) b[0..<n]) else 0;
+  now := cast(int) pb_number(p[0].c[..], "Date.now()", 0);
+  if now < 1 || next < 0 || next > now + 3 * UJ_CODE_GAP_MS { return false; }
+  if next > now { print("pacing the test inbox for % seconds (5 codes an hour an address)\n", (next - now) / 1000); }
+  while next > now { proc_sleep(1000); now = cast(int) pb_number(p[0].c[..], "Date.now()", 0); if now < 1 { return false; } }
+  n = pb_decimal(b[..], 0, now + UJ_CODE_GAP_MS); return fs_write(file, cast(string) b[0..<n]);
+}
+// Signs in on the sheet or page that asks for an email (opening it first from the chat's, the page's
+// or the menu's "log in" when it isn't up). With `wrong`, a wrong code is typed first and must be
+// refused in words that say how many tries are left. False with words said.
+uj_sign_in :: (r: [] Ur, p: [] Up, email: string, wrong: bool) -> bool {
+  if !uj_has_id(p, "email") && !uj_has_id(p, "code") {
+    opened := false;
+    for id: [2] string.["say.in", "nav.login"] { if !opened && uj_has_id(p, id) { opened = uj_tap(p, id); } }
+    if !opened && uj_has_id(p, "me") && uj_tap(p, "me") { opened = uj_tap(p, "in"); }
+    if !opened || !uj_wait_id(p, "email", 5000) { uj_say(r, "no log in to press: neither the chat's, the page's nor the menu's"); return false; }
+  }
+  if r[0].live && !uj_code_pace(p) { uj_say(r, "the test inbox's pacing file (GB_PLAYER_PROFILE_ROOT) could not be read or written"); return false; }
+  if r[0].live && !pm_snapshot(r[0].mail[..]) { uj_say(r, "the test inbox could not be read before the code was asked for"); return false; }
+  // pm_code reads only mail made after this moment (the browser's clock, as the player's pt_login sets it)
+  if r[0].live {
+    cb: [64] u8; c := uj_text(p, "new Date().toISOString()", cb[..]);
+    if c.count < 19 || c.count > r[0].mail[0].cutoff.count { uj_say(r, "the browser's clock could not be read before the code was asked for"); return false; }
+    for i: 0..<c.count { r[0].mail[0].cutoff[i] = c[i]; } r[0].mail[0].cutoff_n = c.count;
+  }
+  if !uj_tap(p, "email") || !uj_type(p, email) || !uj_key(p, "Enter", "Enter") || !uj_wait_id(p, "code", 10000) {
+    if uj_bool(p, "document.body.innerText.includes('Too many codes')") { uj_say(r, "the login service refused the test address: too many codes this hour (its limit, 5 an hour an address)"); return false; }
+    uj_say(r, "the email was typed and sent, and no box for the code came"); return false;
+  }
+  code: [8] u8;
+  if !uj_code(r, email, code[..]) { uj_say(r, "no code came to the mailbox"); return false; }
+  if wrong {
+    bad: [6] u8; for i: 0..<6 { bad[i] = code[i]; } bad[5] = cast(u8) ('0' + ((code[5] - '0' + 1) % 10));
+    if !uj_tap(p, "code") || !uj_type(p, cast(string) bad[..]) || !uj_key(p, "Enter", "Enter") || !uj_wait(p, "(document.getElementById('said')?.textContent||'').length>0", 8000) {
+      uj_say(r, "a wrong code was sent and nothing was said"); return false;
+    }
+    said: [512] u8; s := uj_id_text(p, "said", said[..]); uj_evidence(r, "wrong-code", s);
+    if !uj_has_id(p, "code") || !uj_says_number(s, 4) { uj_say(r, "a wrong code was not refused in words with the tries left"); return false; }
+    if !uj_tap(p, "code") || !ut_clear(p[0].c[..]) { uj_say(r, "the code box could not be emptied"); return false; }
+  }
+  if !uj_tap(p, "code") || !uj_type(p, cast(string) code[0..<6]) || !uj_key(p, "Enter", "Enter") || !uj_wait(p, "!document.getElementById('code') && !document.getElementById('email')", 15000) {
+    said: [512] u8; uj_evidence(r, "right-code", uj_id_text(p, "said", said[..]));
+    uj_say(r, "the right code was typed and the login did not end"); return false;
+  }
+  return true;
+}
+// The person's own address on this lane: local, a new one each run (the stand-in makes the account
+// on its first code); live, the dedicated inbox.
+uj_new_email :: (r: [] Ur, out: [] u8) -> string {
+  if r[0].live { return cast(string) r[0].mail[0].address[0..<r[0].mail[0].address_n]; }
+  n := ws_put(out, 0, "person-"); n = pb_decimal(out, n, r[0].lane); n = ws_put(out, n, "-"); n = pb_decimal(out, n, proc_now_ms() % 1000000); n = ws_put(out, n, "@example.test");
+  return cast(string) out[0..<n];
+}
+uj_log_out :: (p: [] Up) -> bool { return uj_tap(p, "me") && uj_tap(p, "out") && uj_wait(p, "!!document.getElementById('nav.login') || !!document.getElementById('say.in')", 10000); }
+
+// The chat: a message typed and sent, and the answer waited for.
+uj_chat :: (p: [] Up, words: string) -> bool {
+  lb: [UJ_TEXT] u8; before := uj_id_text(p, "chat.log", lb[..]); prior: [UJ_TEXT] u8; pn := ws_put(prior[..], 0, before);
+  if !uj_tap(p, "say") || !uj_type(p, words) || !uj_key(p, "Enter", "Enter") { return false; }
+  end := proc_now_ms() + 60000;
+  while proc_now_ms() < end {
+    nb: [UJ_TEXT] u8; now := uj_id_text(p, "chat.log", nb[..]);
+    if now != cast(string) prior[0..<pn] && !uj_has_id(p, "chat.wait") && uj_bool(p, "[...document.querySelectorAll('[id^=\"chat.m.\"]')].pop()?.classList.contains('model')") { return true; }
+    proc_sleep(150);
+  }
+  return false;
+}
+// What the chat's model answers next (the stand-in's plan; tests/user/edge.coax ue_chat_planned).
+uj_chat_plan :: (r: [] Ur, line: string) -> bool {
+  fb: [2200] u8; path := ut_run_path(r[0].s[..], "chat-plan", fb[..]);
+  return fs_append(path, line) && fs_append(path, "\n");
+}
+
+// Every control a person can press is on the screen and not covered: its middle is inside the window
+// and the topmost thing there is it. What is not goes on the lane's list, in words.
+UJ_REACH :: "(()=>{const bad=[];const modal=document.querySelector('#sheet,#pubsheet,[aria-modal=\"true\"],dialog[open],.ag.out>.side');for(const e of document.querySelectorAll('button,a[href],input,textarea,select')){const s=getComputedStyle(e);if(s.visibility==='hidden'||s.display==='none'||e.closest('[aria-hidden=\"true\"],[inert]'))continue;if(modal&&!modal.contains(e))continue;let b=e.getBoundingClientRect();if(b.width<2||b.height<2)continue;const out=()=>b.left<-1||b.top<-1||b.right>innerWidth+1||b.bottom>innerHeight+1;if(out()){e.scrollIntoView({block:'nearest',inline:'nearest'});b=e.getBoundingClientRect();}const name=(e.id||e.textContent.trim().slice(0,20));if(b.right<=0||b.bottom<=0||b.left>=innerWidth||b.top>=innerHeight)continue;if(out()){bad.push(name+' clipped');continue;}const x=b.left+b.width/2,y=b.top+b.height/2;const t=document.elementFromPoint(x,y);if(t&&t!==e&&!e.contains(t)&&!t.contains(e))bad.push(name+' covered by '+(t.id||t.closest('[id]')?.id||t.tagName));}return bad.join(', ');})()";
+uj_reach :: (r: [] Ur, p: [] Up, where: string) {
+  if !p[0].touch { return; }
+  b: [4096] u8; bad := uj_text(p, UJ_REACH, b[..]);
+  if bad.count == 0 { return; }
+  n := r[0].touch_bad_n;
+  if n > 1600 { return; }
+  n = ws_put(r[0].touch_bad[..], n, where); n = ws_put(r[0].touch_bad[..], n, ifx p[0].w > p[0].h then " (landscape): " else " (portrait): ");
+  n = ws_put(r[0].touch_bad[..], n, ifx bad.count > 300 then cast(string) bad[0..<300] else bad); n = ws_put(r[0].touch_bad[..], n, "; "); r[0].touch_bad_n = n;
+  _ = uj_shot(r, p, "unreachable");
+}
+
+// ---------------------------------------------------------------- 1. Arrive
+
+// On a cold "/", the heading and the nine types' names, each pressable, are on the screen within the
+// load budget (tools/home-load.coax's, which scripts/web-load.sh judges by), in shared/game-types.coax's
+// order, their portals' pictures there to be had; a tap on a name and a key (1 to 9) each enter a type.
+// The names' moment: the first frame the first name is laid out, as tools/home-load.coax notes it.
+// The names as the page itself first paints them (index.html's own nodes, before the module draws its
+// copy), timed as tools/home-load.coax times them.
+UJ_NAMES_WATCH :: "{\"source\":\"(()=>{const t=()=>{const b=document.querySelector('.names .kind');const r=b?b.getBoundingClientRect():null;if(globalThis.__gbNamesAt===undefined&&r&&r.width>0&&r.height>0&&getComputedStyle(b).visibility==='visible'){globalThis.__gbNamesAt=performance.now();return;}requestAnimationFrame(t);};t();})();\"}";
+uj_arrive :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !uj_open(r, p) { return uj_blocked(r, "no headless Chrome"); }
+  _ = cdp_call(p[0].c[..], "Page.enable", "{}", PB_CALL_MS);
+  _ = cdp_call(p[0].c[..], "Page.addScriptToEvaluateOnNewDocument", UJ_NAMES_WATCH, PB_CALL_MS);
+  budget := uj_budget_ms(); t0 := proc_now_ms();
+  url: [512] u8; n := ws_put(url[..], 0, uj_origin(r)); n = ws_put(url[..], n, "/");
+  if !ut_navigate(p[0].c[..], cast(string) url[0..<n]) { return uj_fail(r, "the home page did not load"); }
+  _ = uj_wait(p, "globalThis.__gbNamesAt!==undefined && performance.getEntriesByType('paint').some(e=>e.name==='first-contentful-paint')", 5000);
+  shown := uj_num(p, "(()=>{const p=performance.getEntriesByType('paint').find(e=>e.name==='first-contentful-paint');const a=globalThis.__gbNamesAt;return (p&&a!==undefined)?Math.ceil(Math.max(p.startTime,a)):-1})()");
+  tb: [160] u8; tn := ws_put(tb[..], 0, "the names on the screen at "); tn = pb_decimal(tb[..], tn, shown); tn = ws_put(tb[..], tn, " ms; budget "); tn = pb_decimal(tb[..], tn, budget); tn = ws_put(tb[..], tn, " ms; page loaded in "); tn = pb_decimal(tb[..], tn, proc_now_ms() - t0); tn = ws_put(tb[..], tn, " ms");
+  uj_evidence(r, "timing", cast(string) tb[0..<tn]);
+  if !uj_bool(p, CDP_HARDWARE_JS) { uj_evidence(r, "gpu", "no hardware WebGPU adapter in this Chrome"); }
+  if shown < 0 { return uj_fail(r, "the home page shows no game types' names"); }
+  if budget <= 0 { return uj_blocked(r, "the load budget could not be read from tools/home-load.coax"); }
+  if shown > budget { return uj_fail(r, cast(string) tb[0..<tn]); }
+  // the rest is the page's module's own nodes (#page, #ring), drawn after the first paint
+  _ = uj_wait(p, "!!document.querySelector('#page h1') && document.querySelectorAll('#ring .kind').length>0", 15000);
+  hb: [512] u8; if uj_text(p, "document.querySelector('#page h1')?.textContent||''", hb[..]).count == 0 { return uj_fail(r, "the home page has no heading"); }
+  // the nine, in the shared list's order (the ring is gt_picker's), each a link that enters its type
+  order: [GT_TYPES] int; shown_n := gt_picker(GT_ON_SITE, order[..]); place := 0;
+  for i: 0..<shown_n {
+    ty := order[i]; k := gt_web_kind(ty);
+    if k < 0 { continue; }
+    js: [512] u8; jn := ws_put(js[..], 0, "(()=>{const k=[...document.querySelectorAll('#ring .kind')];const a=k["); jn = pb_decimal(js[..], jn, place);
+    jn = ws_put(js[..], jn, "];const r=a?.getBoundingClientRect();return !!a && a.id==='kind."); jn = pb_decimal(js[..], jn, k);
+    jn = ws_put(js[..], jn, "' && (a.querySelector('.kn')?.textContent||'')==="); jn = uj_quoted(js[..], jn, GT_NAME[ty]);
+    jn = ws_put(js[..], jn, " && /^\\/play\\?type=/.test(a.getAttribute('href')||'') && r.width>0 && r.height>0})()");
+    if !uj_bool(p, cast(string) js[0..<jn]) { w: [160] u8; wn := ws_put(w[..], 0, "the type "); wn = ws_put(w[..], wn, GT_NAME[ty]); wn = ws_put(w[..], wn, " is not named in its place on the home page, as a link"); return uj_fail(r, cast(string) w[0..<wn]); }
+    place += 1;
+  }
+  if place != GT_WEB_TYPES || uj_num(p, "document.querySelectorAll('#ring .kind').length") != GT_WEB_TYPES { return uj_fail(r, "the home page does not name exactly the shared list's types"); }
+  // the portals' pictures: each there to be had
+  _ = pb_read(p[0].c[..], "(()=>{const l=(document.getElementById('ring.pics')?.textContent||'').split('\\n').filter(Boolean);globalThis.__gbPics=-1;Promise.all(l.map(u=>fetch(u).then(x=>x.ok,()=>false))).then(o=>{globalThis.__gbPics=o.filter(Boolean).length;});return l.length;})()");
+  if !uj_wait(p, "(globalThis.__gbPics??-1)>=0", 8000) || uj_num(p, "globalThis.__gbPics") != GT_WEB_TYPES { return uj_fail(r, "the types' portal pictures are not all there"); }
+  _ = uj_shot(r, p, "home"); uj_reach(r, p, "home");
+  // a tap (or click) on a name enters its type; back at the ring, a key enters the first
+  if !uj_wait(p, UJ_PICKER_UP, 15000) { return uj_fail(r, "the ring's names never came up"); }
+  // the name pressed: one on the screen as the camera drifts (not the first type's, which a key enters
+  // next), else the second type's, turned to
+  nb: [32] u8; named := uj_text(p, "[...document.querySelectorAll('#ring .kind')].filter(e=>e.id!=='kind.0').find(e=>{const b=e.getBoundingClientRect();return b.width>0&&b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight;})?.id||''", nb[..]);
+  if named.count == 0 { nn := ws_put(nb[..], 0, "kind."); nn = pb_decimal(nb[..], nn, gt_web_kind(order[1])); named = cast(string) nb[0..<nn]; }
+  uj_evidence(r, "pressed", named);
+  if !uj_ring_press(p, ue_int(named[5..<named.count])) { return uj_fail(r, "a press on a type's name did not open its world"); }
+  if !uj_picker(p) { return uj_fail(r, "the world's game type item did not bring the ring back"); }
+  _ = uj_shot(r, p, "ring");
+  // nothing the page keeps out of sight (a field only its code reads) shows at the ring
+  sb: [512] u8; showing := uj_text(p, "[...document.querySelectorAll('input[aria-hidden=\"true\"],[hidden]')].filter(e=>{const r=e.getBoundingClientRect();return r.width>0&&r.height>0;}).map(e=>e.id||e.tagName).join(' ')", sb[..]);
+  if showing.count > 0 { uj_evidence(r, "showing", showing); return uj_fail(r, "a field the page keeps out of sight shows at the ring"); }
+  if !uj_key(p, "1", "Digit1") || !uj_wait(p, UJ_WORLD_UP, 20000) { return uj_fail(r, "key 1 at the ring did not open the first type's world"); }
+  // a browser with no WebGPU is told so, in the page's words (web/gpu-words.coax)
+  q := r[0].b[..];
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  _ = cdp_call(q[0].c[..], "Page.enable", "{}", PB_CALL_MS);
+  _ = cdp_call(q[0].c[..], "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined})\"}", PB_CALL_MS);
+  if !uj_go(r, q, "/") { return uj_fail(r, "the home page did not load in a browser with no WebGPU"); }
+  nogpu := "(document.querySelector('[id$=\"nogpu.h\"]')?.textContent||'')";
+  wj: [256] u8; wn := ws_put(wj[..], 0, nogpu); wn = ws_put(wj[..], wn, ".length>0");
+  _ = uj_wait(q, cast(string) wj[0..<wn], 15000);
+  gb: [256] u8; head := uj_text(q, nogpu, gb[..]); uj_evidence(r, "nogpu", head);
+  if head != GW_HEAD { _ = uj_shot(r, q, "nogpu"); return uj_fail(r, "a browser with no WebGPU is not told the builder can't run in it"); }
+  if uj_num(q, "document.querySelectorAll('#ring .kind').length") != GT_WEB_TYPES { return uj_fail(r, "with no WebGPU the names are not a list"); }
+  _ = uj_shot(r, q, "nogpu"); uj_reach(r, q, "no webgpu");
+  return UV_PASS;
+}
+// The names' budget as scripts/web-load.sh judges it: tools/home-load.coax's own default.
+uj_budget_ms :: () -> int {
+  b: [65536] u8; n := fs_read("tools/home-load.coax", b[..]); if n <= 0 { return 0; }
+  text := cast(string) b[0..<n]; key := "HL_NAMES_MS :: "; at := ue_find(text, key, 0);
+  return ifx at < 0 then 0 else ue_int(text[at + key.count..<text.count]);
+}
+
+// ---------------------------------------------------------------- 2. Build as a guest
+
+// For each of the nine types: no login is asked; a block and one of the type's own pieces placed;
+// undo and redo; after a reload, what was built is kept.
+uj_guest :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !uj_open(r, p) { return uj_blocked(r, "no headless Chrome"); }
+  if !uj_bool(p, UJ_WORLD_UP) && !uj_bool(p, UJ_PICKER_UP) && !uj_go(r, p, GS_BUILDER_PATH) { return uj_fail(r, "the builder's address did not load"); }
+  for k: 0..<GT_WEB_TYPES {
+    t := GT_WEB_FIRST + k;
+    w: [480] u8; wn := ws_put(w[..], 0, GT_NAME[t]); wn = ws_put(w[..], wn, ": ");
+    if !uj_pick(p, k) { wn = ws_put(w[..], wn, "picking it did not open its world"); return uj_fail(r, cast(string) w[0..<wn]); }
+    if uj_has_id(p, "email") || uj_has_id(p, "code") { wn = ws_put(w[..], wn, "a login was asked of a guest"); return uj_fail(r, cast(string) w[0..<wn]); }
+    uj_reach(r, p, GT_NAME[t]);
+    if !uj_hand(p, "cube") { wn = ws_put(w[..], wn, "no cube to build with, on the bar or under more"); return uj_fail(r, cast(string) w[0..<wn]); }
+    if uj_place_from(p, k, 12) < 0 { wn = ws_put(w[..], wn, "a block could not be placed"); return uj_fail(r, cast(string) w[0..<wn]); }
+    label := uj_own_label(t);
+    if label.count > 0 {
+      if !uj_hand(p, label) {
+        wn = ws_put(w[..], wn, ifx uj_item_shown(p, label) then "its own piece is under more and covered there (issue 32): " else "its own piece is not on the bar or under more: "); wn = ws_put(w[..], wn, label); return uj_fail(r, cast(string) w[0..<wn]);
+      }
+      if uj_place_from(p, k + 5, UJ_SPOTS) < 0 { wn = ws_put(w[..], wn, "its own piece could not be placed: "); wn = ws_put(w[..], wn, label); return uj_fail(r, cast(string) w[0..<wn]); }
+      wb: [UJ_TEXT] u8; wire := uj_wire(p, wb[..]); row := uj_row(wire, uj_last(wire)); kind := uj_own_kind(t);
+      made := ifx kind == UJ_BUILDING then uj_field(row, 1) == 2 else uj_field(row, 1) == BL_ROLE_WIRE + kind;
+      if !made { wn = ws_put(w[..], wn, "what was placed is not its own piece: "); wn = ws_put(w[..], wn, row); return uj_fail(r, cast(string) w[0..<wn]); }
+    }
+    placed := uj_count(p);
+    ab: [UJ_TEXT] u8; after := uj_wire(p, ab[..]);
+    _ = uj_shot(r, p, GT_ID[t]);
+    if !uj_tool(p, "undo") || !uj_wait_count(p, placed - 1, 2000) { wn = ws_put(w[..], wn, "undo did not take the last thing back"); return uj_fail(r, cast(string) w[0..<wn]); }
+    if !uj_tool(p, "redo") || !uj_wait_count(p, placed, 2000) { wn = ws_put(w[..], wn, "redo did not put it back"); return uj_fail(r, cast(string) w[0..<wn]); }
+    rb: [UJ_TEXT] u8;
+    if !uj_same(uj_wire(p, rb[..]), after) { wn = ws_put(w[..], wn, "redo put back something else"); return uj_fail(r, cast(string) w[0..<wn]); }
+    proc_sleep(1500);   // (the page keeps the browser's copy a moment after a change)
+    if !uj_reload(p) || !uj_wait(p, UJ_WORLD_UP, 20000) || !uj_settle(p) { wn = ws_put(w[..], wn, "after a reload the world did not come back"); return uj_fail(r, cast(string) w[0..<wn]); }
+    kb: [UJ_TEXT] u8; kept := uj_wire(p, kb[..]);
+    if !uj_same(kept, after) { wn = ws_put(w[..], wn, "after a reload what was built is not what was there"); uj_evidence(r, "before-reload", after); uj_evidence(r, "after-reload", kept); return uj_fail(r, cast(string) w[0..<wn]); }
+  }
+  return UV_PASS;
+}
+uj_wait_count :: (p: [] Up, n: int, ms: int) -> bool {
+  end := proc_now_ms() + ms;
+  while true { if uj_count(p) == n { return true; } if proc_now_ms() >= end { return false; } proc_sleep(50); }
+  return false;
+}
+
+// ---------------------------------------------------------------- 3. The AI asks for an account
+
+uj_asks :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !p[0].open || !uj_bool(p, UJ_WORLD_UP) { return uj_blocked(r, "needs a guest in a world (guest-build)"); }
+  if uj_has_id(p, "say") { return uj_fail(r, "a guest's chat has a box to type in"); }
+  wb: [512] u8; words := uj_id_text(p, "say.w", wb[..]); uj_evidence(r, "words", words);
+  if words != CH_GUEST_WORDS { return uj_fail(r, "the chat does not say an account is needed"); }
+  bb: [UJ_TEXT] u8; before := uj_wire(p, bb[..]); pathb: [256] u8; path := uj_text(p, "location.pathname", pathb[..]);
+  if !uj_tap(p, "say.in") || !uj_wait_id(p, "email", 5000) { return uj_fail(r, "the chat's log in did not open the sheet"); }
+  ab: [UJ_TEXT] u8; pb2: [256] u8;
+  if !uj_same(uj_wire(p, ab[..]), before) || uj_text(p, "location.pathname", pb2[..]) != path { return uj_fail(r, "the sheet did not open in place: the world or the address changed"); }
+  _ = uj_shot(r, p, "sheet"); uj_reach(r, p, "account sheet");
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 4. Sign up in place
+
+uj_signup :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !p[0].open || !uj_bool(p, UJ_WORLD_UP) { return uj_blocked(r, "needs a guest in a world (guest-build)"); }
+  bb: [UJ_TEXT] u8; before := uj_wire(p, bb[..]);
+  eb: [256] u8; email := uj_new_email(r, eb[..]); r[0].email_n = ws_put(r[0].email[..], 0, email);
+  if !uj_sign_in(r, p, email, true) { return uj_fail(r, "signing up did not end"); }
+  r[0].logged = true;
+  ab: [UJ_TEXT] u8; after := uj_wire(p, ab[..]);
+  if !uj_same(after, before) { return uj_fail(r, "after signing up the world is not the same"); }
+  if !uj_kept(p, UJ_KEPT_ACCOUNT, 20000) { kb: [256] u8; uj_evidence(r, "kept", uj_id_text(p, "kept", kb[..])); return uj_fail(r, "the world was not kept on the account after signing up"); }
+  _ = uj_shot(r, p, "kept"); uj_reach(r, p, "signed in");
+  // a person reloads: the world is still theirs
+  if !uj_reload(p) { return uj_fail(r, "the page did not reload"); }
+  if !uj_wait(p, UJ_WORLD_UP, 20000) || !uj_settle(p) {
+    pb: [256] u8; uj_evidence(r, "reload-address", uj_text(p, "location.pathname", pb[..]));
+    _ = uj_shot(r, p, "reloaded");
+    return uj_fail(r, "after signing up a reload does not show the world");
+  }
+  rb: [UJ_TEXT] u8; if !uj_same(uj_wire(p, rb[..]), after) { return uj_fail(r, "after signing up and reloading the world is not the same"); }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 5. Your games
+
+// The games the account lists among the types ("your games"): their ids, into ids.
+uj_mine :: (p: [] Up, ids: [] int) -> int {
+  b: [4096] u8; list := uj_text(p, "[...document.querySelectorAll('[id^=\"game.\"]')].map(e=>e.id.slice(5)).join(' ')", b[..]);
+  n := 0; at := 0;
+  while at < list.count && n < ids.count { v := ue_int(cast(string) list[at..<list.count]); if v >= 0 { ids[n] = v; n += 1; } while at < list.count && list[at] != ' ' { at += 1; } at += 1; }
+  return n;
+}
+UJ_MINE_UP :: "!!document.querySelector('[id^=\"game.\"]')";
+// "your games" opened over the ring, by the button by your icon (issue 30), when it is not open.
+uj_mine_shown :: (p: [] Up, ms: int) -> bool {
+  if uj_bool(p, UJ_MINE_UP) { return true; }
+  if !uj_wait_id(p, "mine.b", ms) { return false; }
+  if !uj_bool(p, "document.getElementById('mine.b')?.getAttribute('aria-expanded')==='true'") && !uj_tap(p, "mine.b") { return false; }
+  return uj_wait(p, UJ_MINE_UP, ms);
+}
+// Opens, from the types, the account's game whose things are `things` (it may hold several). Its id, or 0.
+uj_open_mine :: (p: [] Up, things: string) -> int {
+  if !uj_picker(p) || !uj_mine_shown(p, 15000) { return -1; }
+  ids: [32] int; n := uj_mine(p, ids[..]);
+  // twice over the list: a press while the list is still drawing can miss
+  for pass: 0..<2 * n {
+    i := pass % n;
+    gid: [32] u8; gn := ws_put(gid[..], 0, "game."); gn = pb_decimal(gid[..], gn, ids[i]);
+    if !uj_picker(p) || !uj_mine_shown(p, 10000) || !uj_tap(p, cast(string) gid[0..<gn]) || !uj_wait(p, UJ_WORLD_UP, 20000) || !uj_settle(p) { continue; }
+    end := proc_now_ms() + 6000;
+    while proc_now_ms() < end { wb: [UJ_TEXT] u8; if uj_same(uj_wire(p, wb[..]), things) { return ids[i]; } proc_sleep(300); }
+  }
+  return -1;
+}
+uj_games :: (r: [] Ur) -> int {
+  p := r[0].a[..]; q := r[0].b[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  wa: [UJ_TEXT] u8; mine := uj_wire(p, wa[..]);
+  if !uj_picker(p) || !uj_mine_shown(p, 15000) { return uj_fail(r, "the game is not listed under your games"); }
+  _ = uj_shot(r, p, "your-games"); uj_reach(r, p, "your games");
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  if !uj_go(r, q, "/") || !uj_sign_in(r, q, uj_email(r), false) { return uj_fail(r, "the second profile could not log in"); }
+  if !uj_go(r, q, GS_BUILDER_PATH) { return uj_fail(r, "the second profile could not open the builder"); }
+  game := uj_open_mine(q, mine);
+  if game < 0 {
+    ids: [32] int; _ = uj_picker(q); _ = uj_mine_shown(q, 5000); nb: [2048] u8; uj_evidence(r, "second-list", uj_text(q, "[...document.querySelectorAll('[id^=\"game.\"]')].map(e=>e.id+' '+e.textContent).join('; ')", nb[..])); _ = ids;
+    uj_evidence(r, "first-things", mine); _ = uj_shot(r, q, "second-list");
+    return uj_fail(r, "the second profile does not open the game with the same things");
+  }
+  if !uj_hand(q, "cube") || uj_place(q) < 0 { return uj_fail(r, "the second profile could not place a block"); }
+  if !uj_kept(q, UJ_KEPT_ACCOUNT, 20000) { return uj_fail(r, "the second profile's change was not kept on the account"); }
+  qb: [UJ_TEXT] u8; theirs := uj_wire(q, qb[..]);
+  _ = uj_shot(r, q, "second-profile");
+  // the first profile, reloaded, opens it from its list and sees the change
+  if !uj_reload(p) { return uj_fail(r, "the first profile did not reload"); }
+  // (the world comes back as it opens; the account is looked at as it does)
+  end := proc_now_ms() + 20000; seen := false;
+  while !seen && proc_now_ms() < end { sw: [UJ_TEXT] u8; seen = uj_bool(p, UJ_WORLD_UP) && uj_same(uj_wire(p, sw[..]), theirs); if !seen { proc_sleep(500); } }
+  if seen { return UV_PASS; }
+  if uj_open_mine(p, theirs) != game { pw: [UJ_TEXT] u8; uj_evidence(r, "second-things", theirs); uj_evidence(r, "first-sees", uj_wire(p, pw[..])); kb: [256] u8; uj_evidence(r, "first-kept", uj_id_text(p, "kept", kb[..])); return uj_fail(r, "the change made in the second profile does not show in the first after a reload"); }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 6. Limits in words
+
+uj_limits :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  // the platformer starts nearest the account's limit (its course is things of the level)
+  if !uj_bool(p, UJ_WORLD_UP) && !uj_bool(p, UJ_PICKER_UP) && !uj_go(r, p, GS_BUILDER_PATH) { return uj_fail(r, "the builder did not load"); }
+  if !uj_pick(p, GT_PLATFORMER - GT_WEB_FIRST) { return uj_fail(r, "the platformer did not open"); }
+  if !uj_hand(p, "cube") { return uj_fail(r, "no cube to build with"); }
+  // up to one short of the limit: locally by the chat, rows of small blocks off the course (the
+  // stand-in model's plan lines, CH_PLAN bytes an answer); live, by hand. The last two by hand.
+  spot := 0; misses := 0; row := 0;
+  while !r[0].live && uj_count(p) < GT_LEVEL_THINGS - 1 && row < 60 {
+    want := GT_LEVEL_THINGS - 1 - uj_count(p); if want > 20 { want = 20; }
+    plan: [1024] u8; pn := ws_put(plan[..], 0, "route: build/block\\n\\na row of blocks.");
+    for i: 0..<want { pn = ws_put(plan[..], pn, "\\n+ place "); pn = pb_decimal(plan[..], pn, 60 + i); pn = ws_put(plan[..], pn, " "); pn = pb_decimal(plan[..], pn, 60 + row); pn = ws_put(plan[..], pn, " 1 1 1 0 rest"); }
+    ask: [96] u8; an := ws_put(ask[..], 0, "put a row of "); an = pb_decimal(ask[..], an, want); an = ws_put(ask[..], an, " blocks at row "); an = pb_decimal(ask[..], an, row);
+    before := uj_count(p);
+    if !uj_ask_build(r, p, cast(string) ask[0..<an], cast(string) plan[0..<pn]) || uj_count(p) != before + want { cb: [64] u8; cn := pb_decimal(cb[..], 0, uj_count(p)); uj_evidence(r, "rows", cast(string) cb[0..<cn]); return uj_fail(r, "the chat's rows of blocks were not built"); }
+    row += 1;
+  }
+  _ = pb_read(p[0].c[..], "document.activeElement?.blur()");
+  if !uj_hand(p, "cube") { return uj_fail(r, "no cube to build with"); }
+  while uj_count(p) < GT_LEVEL_THINGS && misses < 40 {
+    if uj_place_from(p, spot, 1) < 0 { misses += 1; } else { misses = 0; }
+    spot += 1;
+  }
+  if uj_count(p) != GT_LEVEL_THINGS { return uj_fail(r, "could not build up to the account's limit by hand"); }
+  if !uj_kept(p, UJ_KEPT_ACCOUNT, 30000) { kb: [256] u8; uj_evidence(r, "512-kept", uj_id_text(p, "kept", kb[..])); return uj_fail(r, "the 512th thing was not kept on the account"); }
+  if uj_place_from(p, spot, UJ_SPOTS) < 0 { return uj_fail(r, "the 513th thing could not be placed in the browser"); }
+  if !uj_wait_says(p, GT_LEVEL_THINGS + 1, 20000) { return uj_fail(r, "the 513th thing was not refused in words"); }
+  lb: [512] u8; said := uj_id_text(p, "limit", lb[..]); uj_evidence(r, "513", said);
+  if !uj_says_number(said, GT_LEVEL_THINGS) || !uj_says_number(said, GT_LEVEL_THINGS + 1) || !uj_kept(p, UJ_KEPT_BROWSER_ONLY, 5000) { return uj_fail(r, "the 513th thing's refusal does not say both numbers"); }
+  _ = uj_shot(r, p, "513");
+  if !uj_tool(p, "undo") || !uj_kept(p, UJ_KEPT_ACCOUNT, 30000) { return uj_fail(r, "after taking the 513th back the game is not kept on the account again"); }
+  // the village: rocks until the most buildings stand, then one more is refused in words with its number
+  if !uj_pick(p, GT_VILLAGE - GT_WEB_FIRST) { return uj_fail(r, "the village did not open"); }
+  rock := GK_SAID[GK_ROCK];
+  if !uj_hand(p, rock) { return uj_fail(r, "no rock on the village's bar"); }
+  // up to one short of the most: locally rocks put by the chat's plan lines away from the green; then by hand
+  wv: [UJ_TEXT] u8; have := uj_buildings(uj_wire(p, wv[..]));
+  if !r[0].live && have < VL_PUT - 1 {
+    plan: [1024] u8; pn := ws_put(plan[..], 0, "route: build/block\\n\\nrocks along the edge.");
+    for i: 0..<VL_PUT - 1 - have { pn = ws_put(plan[..], pn, "\\n+ put "); pn = ws_put(plan[..], pn, GK_WORD[GK_ROCK]); pn = ws_put(plan[..], pn, " "); pn = pb_decimal(plan[..], pn, 40 + 3 * (i % 10)); pn = ws_put(plan[..], pn, " "); pn = pb_decimal(plan[..], pn, 40 + 3 * (i / 10)); }
+    if !uj_ask_build(r, p, "put rocks along the edge of the village", cast(string) plan[0..<pn]) { return uj_fail(r, "the chat did not put the rocks"); }
+    _ = pb_read(p[0].c[..], "document.activeElement?.blur()");
+    if !uj_hand(p, rock) { return uj_fail(r, "no rock on the village's bar"); }
+  }
+  tries := 0;
+  while tries < 150 {
+    wb: [UJ_TEXT] u8; if uj_buildings(uj_wire(p, wb[..])) >= VL_PUT { break; }
+    _ = uj_place_from(p, tries, 1); tries += 1;
+  }
+  wb: [UJ_TEXT] u8;
+  if uj_buildings(uj_wire(p, wb[..])) != VL_PUT { return uj_fail(r, "could not stand the village's most buildings by hand"); }
+  refused := false;
+  for k: 0..<UJ_SPOTS { if !refused { _ = uj_place_from(p, k, 1); refused = uj_wait_says(p, VL_PUT, 600); } }
+  vb: [512] u8; vsaid := uj_id_text(p, "limit", vb[..]); uj_evidence(r, "village", vsaid);
+  wc: [UJ_TEXT] u8;
+  if !refused || uj_buildings(uj_wire(p, wc[..])) != VL_PUT { return uj_fail(r, "a building past the most was not refused in words with its number"); }
+  _ = uj_shot(r, p, "village-most");
+  return UV_PASS;
+}
+// The limit notice comes to say the number v whole.
+uj_wait_says :: (p: [] Up, v: int, ms: int) -> bool {
+  b: [200] u8; k := ws_put(b[..], 0, "/(^|[^0-9])"); k = pb_decimal(b[..], k, v); k = ws_put(b[..], k, "([^0-9]|$)/.test(document.getElementById('limit')?.textContent||'')");
+  return uj_wait(p, cast(string) b[0..<k], ms);
+}
+
+
+// ---------------------------------------------------------------- 7. Per-type building
+
+// Holds keys as a recording says (web/world-crates.coax's runs: letters held, then frames at 60 a
+// second), on an absolute clock so a late event does not push every later one later.
+uj_replay :: (p: [] Up, runs: string) -> bool {
+  keys := [4] string.["w", "a", "s", "d"]; codes := [4] string.["KeyW", "KeyA", "KeyS", "KeyD"];
+  held: [4] bool; frames := 0; t0 := proc_now_ms(); at := 0; ok := true;
+  while at < runs.count {
+    want: [4] bool;
+    while at < runs.count && (runs[at] < '0' || runs[at] > '9') {
+      for i: 0..<4 { if runs[at] == keys[i][0] { want[i] = true; } }
+      at += 1;
+    }
+    n := ue_int(cast(string) runs[at..<runs.count]); while at < runs.count && runs[at] >= '0' && runs[at] <= '9' { at += 1; }
+    if n < 0 { return false; }
+    for i: 0..<4 { if want[i] != held[i] { ok = pb_key(p[0].c[..], keys[i], codes[i], want[i]) && ok; held[i] = want[i]; } }
+    frames += n;
+    due := t0 + frames * 1000 / 60;
+    while proc_now_ms() < due { proc_sleep(1); }
+  }
+  for i: 0..<4 { if held[i] { ok = pb_key(p[0].c[..], keys[i], codes[i], false) && ok; } }
+  return ok;
+}
+UJ_OBSERVE :: "globalThis.gamebuilderObservation";
+uj_obs :: (p: [] Up, field: string) -> int {
+  b: [200] u8; n := ws_put(b[..], 0, "globalThis.gamebuilderObservation?."); n = ws_put(b[..], n, field); n = ws_put(b[..], n, "??-99999");
+  return uj_num(p, cast(string) b[0..<n]);
+}
+// A plan line's number (hundredths, as the plan's words are read): -1.5 for -150.
+uj_hundredths :: (out: [] u8, n: int, v: int) -> int {
+  k := n; a := v; if a < 0 { k = ws_put(out, k, "-"); a = -a; }
+  k = pb_decimal(out, k, a / 100); k = ws_put(out, k, "."); if a % 100 < 10 { k = ws_put(out, k, "0"); } return pb_decimal(out, k, a % 100);
+}
+#test "a plan line's number from hundredths" {
+  b: [32] u8; #assert cast(string) b[0..<uj_hundredths(b[..], 0, -150)] == "-1.50" && cast(string) b[0..<uj_hundredths(b[..], 0, 305)] == "3.05";
+}
+// The chat answers a person's message with a plan line (locally the stand-in model says `line`; live
+// the chat's own model reads `words`). True when the level changed so that `check` holds.
+uj_ask_build :: (r: [] Ur, p: [] Up, words: string, answer: string) -> bool {
+  if !r[0].live && !uj_chat_plan(r, answer) { return false; }
+  return uj_chat(p, words);
+}
+uj_types :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  // crates: room 1 solved with its recorded solution (the keys of tools/crates-record.coax; a keyboard's)
+  if !uj_go(r, p, "/play?observe=1") { return uj_fail(r, "the builder did not load"); }
+  if !uj_pick(p, GT_CRATES - GT_WEB_FIRST) { return uj_fail(r, "crates did not open"); }
+  // (the crates' room comes once the flight through the portal has landed in it)
+  if !uj_wait(p, "(globalThis.gamebuilderObservation?.room??-1)>=0", 15000) && uj_obs(p, "room") < 0 { return uj_blocked(r, "crates: the page's own observation (?observe=1) did not come"); }
+  if !p[0].touch {
+    if !uj_tool(p, "reset") { return uj_fail(r, "crates: no reset on the bar"); }
+    _ = pb_read(p[0].c[..], "document.activeElement?.blur()");
+    proc_sleep(7000);   // the crates drop in and land (web/hud.coax's check waits 420 frames)
+    cleared := uj_obs(p, "rooms_cleared");
+    sb: [8192] u8; sol := uj_crates_solution(sb[..]);
+    if sol.count == 0 { return uj_blocked(r, "crates: the recorded solution could not be read from web/world-crates.coax"); }
+    if !uj_replay(p, sol) { return uj_fail(r, "crates: the keys could not be held"); }
+    proc_sleep(1500);
+    lit := uj_obs(p, "pads_lit"); gate := uj_obs(p, "gate_open"); now := uj_obs(p, "rooms_cleared");
+    ev: [200] u8; en := ws_put(ev[..], 0, "pads lit "); en = pb_decimal(ev[..], en, lit); en = ws_put(ev[..], en, ", gate open "); en = pb_decimal(ev[..], en, gate); en = ws_put(ev[..], en, ", rooms cleared "); en = pb_decimal(ev[..], en, cleared); en = ws_put(ev[..], en, " then "); en = pb_decimal(ev[..], en, now);
+    uj_evidence(r, GT_ID[GT_CRATES], cast(string) ev[0..<en]); _ = uj_shot(r, p, GT_ID[GT_CRATES]);
+    if now <= cleared && gate <= 0 { return uj_fail(r, "crates: room 1 was not solved by its recorded solution"); }
+  } else { uj_evidence(r, GT_ID[GT_CRATES], "the recorded solution is a keyboard's: replayed on the keyboard lane only"); }
+  // platformer: a mover placed, set going by a `goes` plan line, then ridden
+  if !uj_pick(p, GT_PLATFORMER - GT_WEB_FIRST) { return uj_fail(r, "the platformer did not open"); }
+  mover := bl_role_word(BL_R_SLIDER);
+  if !uj_hand(p, mover) || uj_place(p) < 0 { return uj_fail(r, "platformer: a mover could not be placed by hand"); }
+  wb: [UJ_TEXT] u8; id := uj_last(uj_wire(p, wb[..]));
+  line: [512] u8; ln := ws_put(line[..], 0, "route: build/block\\n\\nthe mover goes now.\\n+ goes b"); ln = pb_decimal(line[..], ln, id); ln = ws_put(line[..], ln, " 4 3");
+  ask: [200] u8; an := ws_put(ask[..], 0, "make thing b"); an = pb_decimal(ask[..], an, id); an = ws_put(ask[..], an, " move 4 squares and back every 3 seconds");
+  if !uj_ask_build(r, p, cast(string) ask[0..<an], cast(string) line[0..<ln]) { return uj_fail(r, "platformer: the chat did not answer"); }
+  wc: [UJ_TEXT] u8; row := uj_row(uj_wire(p, wc[..]), id); uj_evidence(r, "mover", row);
+  if uj_field(row, 12) != 400 || uj_field(row, 13) != 3000 { return uj_fail(r, "platformer: the goes line did not set the mover going 4 squares every 3 seconds"); }
+  // ridden: what the person stands on made a mover and set going by plan lines; with no key held
+  // the person is carried
+  // the person may be in the air a moment (landing, knocked by the placed mover): look a few times
+  fx := 0; fy := 0; fz := 0; under := -1; tries := 0; wf: [UJ_TEXT] u8;
+  while under < 0 && tries < 6 {
+    if tries > 0 { proc_sleep(1000); }
+    tries += 1;
+    fx = uj_obs(p, "x_cm"); fy = uj_obs(p, "y_cm"); fz = uj_obs(p, "z_cm");
+    if fx == -99999 { return uj_blocked(r, "platformer: the page's own observation gave no place for the person"); }
+    under = uj_under(uj_wire(p, wf[..]), fx, fy, fz);
+  }
+  if under < 0 {
+    pb2: [200] u8; pn2 := ws_put(pb2[..], 0, "person at "); pn2 = pb_decimal(pb2[..], pn2, fx); pn2 = ws_put(pb2[..], pn2, " "); pn2 = pb_decimal(pb2[..], pn2, fy); pn2 = ws_put(pb2[..], pn2, " "); pn2 = pb_decimal(pb2[..], pn2, fz);
+    uj_evidence(r, "person", cast(string) pb2[0..<pn2]); uj_evidence(r, "rows", uj_wire(p, wf[..])); _ = uj_shot(r, p, "no-ground");
+    return uj_blocked(r, "platformer: nothing was found under the person's feet to ride");
+  }
+  mv: [512] u8; mn := ws_put(mv[..], 0, "route: build/block\\n\\nwhat you stand on moves now.\\n+ kind b"); mn = pb_decimal(mv[..], mn, under); mn = ws_put(mv[..], mn, " "); mn = ws_put(mv[..], mn, mover);
+  mn = ws_put(mv[..], mn, "\\n+ goes b"); mn = pb_decimal(mv[..], mn, under); mn = ws_put(mv[..], mn, " 4 3");
+  if !uj_ask_build(r, p, "make what i'm standing on a mover going 4 squares and back every 3 seconds", cast(string) mv[0..<mn]) { return uj_fail(r, "platformer: the chat did not answer"); }
+  wg: [UJ_TEXT] u8; urow := uj_row(uj_wire(p, wg[..]), under); uj_evidence(r, "ridden", urow);
+  if uj_field(urow, 1) != BL_ROLE_WIRE + BL_R_SLIDER || uj_field(urow, 12) != 400 { return uj_fail(r, "platformer: what the person stands on was not made a mover going"); }
+  _ = pb_read(p[0].c[..], "document.activeElement?.blur()");
+  proc_sleep(500); x0 := uj_obs(p, "x_cm"); z0 := uj_obs(p, "z_cm"); proc_sleep(2500); x1 := uj_obs(p, "x_cm"); z1 := uj_obs(p, "z_cm");
+  carried := (ifx x1 > x0 then x1 - x0 else x0 - x1) + (ifx z1 > z0 then z1 - z0 else z0 - z1);
+  cb: [160] u8; cn := ws_put(cb[..], 0, "carried "); cn = pb_decimal(cb[..], cn, carried); cn = ws_put(cb[..], cn, " cm in 2.5 s with no key held"); uj_evidence(r, "ride", cast(string) cb[0..<cn]);
+  _ = uj_shot(r, p, "ride");
+  if carried < 50 { return uj_fail(r, "platformer: standing on the moving mover, the person was not carried"); }
+  // village: a building put with a scale
+  if !uj_pick(p, GT_VILLAGE - GT_WEB_FIRST) { return uj_fail(r, "the village did not open"); }
+  wd: [UJ_TEXT] u8; before := uj_buildings(uj_wire(p, wd[..]));
+  put: [256] u8; pn := ws_put(put[..], 0, "route: build/block\\n\\na market, half again as big.\\n+ put "); pn = ws_put(put[..], pn, GK_WORD[GK_MARKET]); pn = ws_put(put[..], pn, " 30 30 0 1.5");
+  if !uj_ask_build(r, p, "put a market half again as big at 30 30", cast(string) put[0..<pn]) { return uj_fail(r, "village: the chat did not answer"); }
+  we: [UJ_TEXT] u8; after := uj_wire(p, we[..]); last := uj_row(after, uj_last(after)); uj_evidence(r, "village", last);
+  if uj_buildings(after) != before + 1 || uj_field(last, 1) != 2 || uj_field(last, 9) != 150 { return uj_fail(r, "village: no building stands at the scale asked"); }
+  _ = uj_shot(r, p, "village");
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 8. Publish
+
+uj_link_of :: (p: [] Up, out: [] u8) -> string { return uj_id_text(p, "pub.link", out); }
+// Its six-character code, or "" when the link is not this origin's /g/CODE.
+uj_code_of :: (r: [] Ur, link: string) -> string {
+  o := uj_origin(r);
+  if link.count != o.count + 3 + 6 || !ue_starts(link, o) || cast(string) link[o.count..<o.count + 3] != "/g/" { return ""; }
+  code := cast(string) link[o.count + 3..<link.count];
+  for ch: code { if !((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'Z')) { return ""; } }
+  return code;
+}
+uj_publish_open :: (p: [] Up) -> bool { return uj_has_id(p, "pubsheet") || (uj_tap(p, "pub") && uj_wait_id(p, "pubsheet", 5000)); }
+uj_publish :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_pick(p, GT_RACING - GT_WEB_FIRST) || !uj_hand(p, "cube") || uj_place(p) < 0 || !uj_kept(p, UJ_KEPT_ACCOUNT, 20000) { return uj_fail(r, "a game to publish could not be made and kept"); }
+  if !uj_publish_open(p) { return uj_fail(r, "publish did not open its sheet"); }
+  uj_reach(r, p, "publish sheet");
+  if uj_has_id(p, "pub.name") { _ = uj_tap(p, "pub.name"); _ = ut_clear(p[0].c[..]); _ = uj_type(p, "user test race"); }
+  if !uj_tap(p, "pub.go") || !uj_wait_id(p, "pub.link", 20000) { sb: [512] u8; uj_evidence(r, "said", uj_id_text(p, "pub.said", sb[..])); return uj_fail(r, "publishing gave no link"); }
+  lb: [256] u8; link := uj_link_of(p, lb[..]);
+  if uj_code_of(r, link).count != 6 { uj_evidence(r, "link", link); return uj_fail(r, "the link is not /g/ and a six-character code"); }
+  r[0].link_n = ws_put(r[0].link[..], 0, link);
+  wb: [UJ_TEXT] u8; r[0].link_things = uj_count(p); _ = wb;
+  if !uj_tap(p, "pub.copy") || !uj_wait(p, "(document.getElementById('pub.copy')?.textContent||'')==='copied'", 3000) { return uj_fail(r, "copy link did not say copied"); }
+  cb: [512] u8; clip := uj_text(p, "navigator.clipboard.readText().then(t=>t,()=> '')", cb[..]);
+  if clip.count > 0 && clip != link { return uj_fail(r, "what copy put on the clipboard is not the link"); }
+  if clip.count == 0 { uj_evidence(r, "clipboard", "the clipboard could not be read back in this Chrome; copied was said"); }
+  _ = uj_shot(r, p, "published");
+  // a change, and publishing again: the same link
+  if uj_has_id(p, "pub.x") { _ = uj_tap(p, "pub.x"); }
+  if !uj_hand(p, "cube") || uj_place_from(p, 3, 12) < 0 || !uj_kept(p, UJ_KEPT_ACCOUNT, 20000) { return uj_fail(r, "a change after publishing could not be made"); }
+  if !uj_publish_open(p) || !uj_tap(p, "pub.go") { return uj_fail(r, "publishing again could not be pressed"); }
+  if !uj_wait(p, "!!document.getElementById('pub.v.1')", 15000) { vb: [1024] u8; uj_evidence(r, "versions", uj_text(p, "document.getElementById('pub.vs')?.textContent||''", vb[..])); return uj_fail(r, "publishing again did not make a second version"); }
+  lc: [256] u8; again := uj_link_of(p, lc[..]);
+  if again != link { uj_evidence(r, "again", again); return uj_fail(r, "publishing again gave another link"); }
+  r[0].link_things = uj_count(p);
+  if uj_has_id(p, "pub.x") { _ = uj_tap(p, "pub.x"); }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 9. Someone else plays it
+
+// The funnel's row for a step (gamebuilder funnel on the local accounts: today's count), -1 unread.
+uj_funnel :: (r: [] Ur, step: string) -> int {
+  if r[0].live { return -1; }
+  ab: [2200] u8; accounts := ut_run_path(r[0].s[..], "accounts", ab[..]);
+  argv := [4] string.[cast(string) r[0].bin[0..<r[0].bin_n], "funnel", "--dir", accounts];
+  out: [65536] u8; err: [4096] u8; run := proc_run(argv[..], 20000, out[..], err[..]);
+  if run.status != 0 { return -1; }
+  text := cast(string) out[0..<run.out_n];
+  k: [64] u8; kn := ws_put(k[..], 0, "\"name\":\""); kn = ws_put(k[..], kn, step); kn = ws_put(k[..], kn, "\"");
+  at := ue_find(text, cast(string) k[0..<kn], 0); if at < 0 { return -1; }
+  nat := ue_find(text, "\"n\":", at); return ifx nat < 0 then -1 else ue_int(text[nat + 4..<text.count]);
+}
+uj_plays :: (r: [] Ur) -> int {
+  q := r[0].b[..];
+  if r[0].link_n == 0 { return uj_blocked(r, "needs a published game (publish)"); }
+  link := cast(string) r[0].link[0..<r[0].link_n];
+  shared := uj_funnel(r, LP_ROWS[LP_SHARED].name);
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  if !ut_navigate(q[0].c[..], link) || !uj_wait(q, "!!document.getElementById('page')", 15000) { return uj_fail(r, "the link did not open in another browser"); }
+  if !uj_wait(q, "!!document.getElementById('play.name') && !!document.getElementById('blocks')", 20000) {
+    hb: [256] u8; uj_evidence(r, "page", uj_id_text(q, "play.h", hb[..])); return uj_fail(r, "the link's game did not play in another browser");
+  }
+  if uj_has_id(q, "email") || uj_has_id(q, "code") { return uj_fail(r, "the link asked a stranger to log in"); }
+  _ = uj_wait_count(q, r[0].link_things, 15000);
+  if uj_count(q) != r[0].link_things { cb: [UJ_TEXT] u8; uj_evidence(r, "link-things", uj_wire(q, cb[..])); eb: [64] u8; en := pb_decimal(eb[..], 0, r[0].link_things); uj_evidence(r, "published-count", cast(string) eb[0..<en]); return uj_fail(r, "the link plays a game with other things than the newest version's"); }
+  _ = uj_shot(r, q, "link"); uj_reach(r, q, "shared link");
+  // Remix: a copy of it, in the stranger's own builder
+  if !uj_tap(q, "play.remix") || !uj_wait(q, UJ_WORLD_UP, 20000) { return uj_fail(r, "remix did not open a copy in a builder"); }
+  _ = uj_wait_count(q, r[0].link_things, 10000);
+  if uj_count(q) != r[0].link_things { return uj_fail(r, "the remixed copy is not the game that was played"); }
+  if !uj_hand(q, "cube") || uj_place(q) < 0 { return uj_fail(r, "the remixed copy cannot be built on"); }
+  _ = uj_shot(r, q, "remixed");
+  // the funnel: this browser is driven (navigator.webdriver), and web/count.coax counts no driven
+  // visit; the owner's numbers must not move for a test
+  after := uj_funnel(r, LP_ROWS[LP_SHARED].name);
+  fb: [160] u8; fn := ws_put(fb[..], 0, "funnel shared before "); fn = pb_decimal(fb[..], fn, shared); fn = ws_put(fb[..], fn, ", after "); fn = pb_decimal(fb[..], fn, after);
+  uj_evidence(r, "funnel", cast(string) fb[0..<fn]);
+  if !r[0].live {
+    if after < 0 { return uj_fail(r, "the funnel could not be read"); }
+    if after != shared { return uj_fail(r, "a driven browser's visit was counted in the funnel"); }
+  }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 10. Unpublish
+
+uj_unpublish :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if r[0].link_n == 0 { return uj_blocked(r, "needs a published game (publish)"); }
+  link := cast(string) r[0].link[0..<r[0].link_n];
+  if !uj_publish_open(p) || !uj_tap(p, "pub.down") { return uj_fail(r, "the publish sheet has no unpublish"); }
+  if !uj_wait(p, "!document.getElementById('pub.link')", 15000) { return uj_fail(r, "after unpublishing the link is still shown"); }
+  _ = uj_shot(r, p, "unpublished");
+  if uj_has_id(p, "pub.x") { _ = uj_tap(p, "pub.x"); }
+  q := r[0].b[..];
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  if !ut_navigate(q[0].c[..], link) || !uj_wait(q, "!!document.getElementById('page')", 15000) { return uj_fail(r, "the link did not load"); }
+  if !uj_wait_id(q, "play.h", 15000) || uj_has_id(q, "play.name") { return uj_fail(r, "the unpublished link still plays"); }
+  hb: [256] u8; uj_evidence(r, "link-page", uj_id_text(q, "play.h", hb[..]));
+  r[0].link_n = 0;
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 15. Leave and return
+
+uj_leave :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_bool(p, UJ_WORLD_UP) && !uj_pick(p, GT_DRIFT - GT_WEB_FIRST) { return uj_fail(r, "no world to leave"); }
+  if !uj_hand(p, "cube") || uj_place(p) < 0 || !uj_kept(p, UJ_KEPT_ACCOUNT, 20000) { return uj_fail(r, "a change before leaving was not kept"); }
+  wb: [UJ_TEXT] u8; mine := uj_wire(p, wb[..]);
+  // away to another page, then the home page typed in, and back to the builder from there
+  if !uj_go(r, p, "/credits") { return uj_fail(r, "credits did not load"); }
+  if !uj_go(r, p, "/") { return uj_fail(r, "the home page did not load in a new tab"); }
+  if !uj_go(r, p, GS_BUILDER_PATH) { return uj_fail(r, "the builder did not load"); }
+  if !uj_wait(p, UJ_WORLD_UP, 20000) && !uj_wait(p, UJ_MINE_UP, 15000) { return uj_fail(r, "coming back, neither the game nor the games are shown"); }
+  _ = uj_settle(p);
+  back: [UJ_TEXT] u8;
+  if uj_bool(p, UJ_WORLD_UP) && uj_same(uj_wire(p, back[..]), mine) { _ = uj_shot(r, p, "returned"); return UV_PASS; }
+  if uj_open_mine(p, mine) < 0 {
+    bw: [UJ_TEXT] u8; found := uj_wire(p, bw[..]); uj_evidence(r, "left", mine); uj_evidence(r, "found", found);
+    if ue_int(found) == ue_int(mine) - 1 { return uj_fail(r, "coming back, the change made just before leaving is gone, though the page said kept on your account (issue 31)"); }
+    return uj_fail(r, "coming back, the game left is not there as it was");
+  }
+  _ = uj_shot(r, p, "returned");
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 16. Other pages
+
+uj_title :: (p: [] Up, out: [] u8) -> string { return uj_text(p, "document.title", out); }
+uj_pages :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !uj_open(r, p) { return uj_blocked(r, "no headless Chrome"); }
+  if !uj_go(r, p, "/credits") || !uj_wait(p, "!!document.getElementById('credits') && !!document.querySelector('[id^=\"credit.\"]')", 10000) { return uj_fail(r, "credits shows no credits"); }
+  _ = uj_shot(r, p, "credits"); uj_reach(r, p, "credits");
+  if !uj_go(r, p, "/login/cli") || !uj_wait(p, "!!document.getElementById('cli.make') || !!document.getElementById('email')", 10000) { return uj_fail(r, "/login/cli shows neither its code nor a login"); }
+  _ = uj_shot(r, p, "login-cli"); uj_reach(r, p, "login/cli");
+  // back and forward between them, as a person's browser goes
+  pb: [256] u8;
+  if !uj_history(p, true) || !uj_wait(p, "location.pathname==='/credits' && !!document.getElementById('credits')", 8000) { return uj_fail(r, "Back did not return to credits"); }
+  if !uj_history(p, false) || !uj_wait(p, "location.pathname==='/login/cli'", 8000) { uj_evidence(r, "forward", uj_text(p, "location.pathname", pb[..])); return uj_fail(r, "Forward did not return to /login/cli"); }
+  nf: [512] u8; nn := ws_put(nf[..], 0, uj_origin(r)); nn = ws_put(nf[..], nn, "/no-such-page-here");
+  if !ut_navigate(p[0].c[..], cast(string) nf[0..<nn]) { return uj_fail(r, "an unknown address did not load"); }
+  _ = uj_wait(p, "document.title.length>0 && document.title!=='GameBuilder'", 8000);
+  tb: [256] u8; title := uj_title(p, tb[..]); uj_evidence(r, "not-found", title);
+  if ue_find(title, "Not found", 0) != 0 { return uj_fail(r, "an unknown address does not say not found"); }
+  _ = uj_shot(r, p, "not-found"); uj_reach(r, p, "not found");
+  if !r[0].logged {
+    if !uj_go(r, p, "/login") || !uj_wait_id(p, "email", 10000) { return uj_fail(r, "/login asks for no email"); }
+    uj_reach(r, p, "login");
+  }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 17. Phone and tablet
+
+uj_touch :: (r: [] Ur) -> int {
+  if r[0].lane == 0 { return UV_NA; }
+  p := r[0].a[..];
+  if !uj_open(r, p) { return uj_blocked(r, "no headless Chrome"); }
+  for turn: 0..<2 {
+    if turn == 1 { uj_turn(p); }
+    if uj_go(r, p, "/") { proc_sleep(800); uj_reach(r, p, "home"); _ = uj_shot(r, p, "home"); }
+    if uj_go(r, p, GS_BUILDER_PATH) && (uj_wait(p, UJ_WORLD_UP, 20000) || uj_wait(p, UJ_PICKER_UP, 5000)) {
+      _ = uj_settle(p); uj_reach(r, p, "builder"); _ = uj_shot(r, p, "builder");
+      if uj_picker(p) { uj_reach(r, p, "types"); }
+      if uj_pick(p, GT_PLATFORMER - GT_WEB_FIRST) { uj_reach(r, p, GT_NAME[GT_PLATFORMER]); if uj_tap(p, "pub") { proc_sleep(500); uj_reach(r, p, "publish sheet"); _ = uj_shot(r, p, "publish"); if uj_has_id(p, "pub.x") { _ = uj_tap(p, "pub.x"); } } }
+    }
+  }
+  uj_turn(p);
+  if r[0].touch_bad_n > 0 { uj_evidence(r, "unreachable", cast(string) r[0].touch_bad[0..<r[0].touch_bad_n]); return uj_fail(r, cast(string) r[0].touch_bad[0..<ifx r[0].touch_bad_n > 400 then 400 else r[0].touch_bad_n]); }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- 14. The chat's offer (a model journey)
+
+uj_offer :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_bool(p, UJ_WORLD_UP) && !uj_go(r, p, GS_BUILDER_PATH) { return uj_fail(r, "the builder did not load"); }
+  if !uj_bool(p, UJ_WORLD_UP) && !uj_pick(p, GT_THIRD - GT_WEB_FIRST) { return uj_fail(r, "no world to talk in"); }
+  wb: [UJ_TEXT] u8; before := uj_wire(p, wb[..]);
+  if !uj_chat(p, "make it rain frogs over the whole world") { return uj_fail(r, "the chat did not answer"); }
+  mb: [4096] u8; said := uj_text(p, "[...document.querySelectorAll('.msg.model')].pop()?.textContent||''", mb[..]); uj_evidence(r, "offer", said);
+  if uj_has_id(p, "chat.job") { return uj_fail(r, "a build agent started before the offer was taken up"); }
+  if !uj_chat_or_select(r, p, "yes") { return uj_fail(r, "saying yes was not answered"); }
+  if !uj_wait_id(p, "chat.job", 20000) { return uj_fail(r, "saying yes to the offer started no build agent"); }
+  jb: [1024] u8; jobw := uj_id_text(p, "chat.job", jb[..]); uj_evidence(r, "job", jobw);
+  if ue_find(jobw, AGR_STATE_WORDS[AGR_WORKING], 0) < 0 && ue_find(jobw, AGR_STATE_WORDS[AGR_DONE], 0) < 0 && ue_find(jobw, AGR_STATE_WORDS[AGR_QUEUED], 0) < 0 { return uj_fail(r, "the build agent's row says none of its states"); }
+  _ = uj_shot(r, p, "job");
+  _ = before;
+  return UV_PASS;
+}
+// "yes" to a pending offer: the select step alone answers (no model message comes), so this waits
+// for the routing to end rather than for an answer.
+uj_chat_or_select :: (r: [] Ur, p: [] Up, words: string) -> bool {
+  if !uj_tap(p, "say") || !uj_type(p, words) || !uj_key(p, "Enter", "Enter") { return false; }
+  proc_sleep(300);
+  return uj_wait(p, "!document.getElementById('chat.wait')", 30000);
+}
+
+// ---------------------------------------------------------------- 11-13, 18. /agents: a chat with your Builders (issue 29)
+
+UJ_AG_UP :: "!!document.getElementById('ga.say') && !document.getElementById('agents.wait')";
+// The model's plan for the stand-in model route: one next_action a line (local runs only).
+uj_model_plan :: (r: [] Ur, line: string) -> bool {
+  fb: [2200] u8; path := ut_run_path(r[0].s[..], "model-plan", fb[..]);
+  return fs_append(path, line) && fs_append(path, "\n");
+}
+uj_model_plan_clear :: (r: [] Ur) { fb: [2200] u8; _ = fs_write(ut_run_path(r[0].s[..], "model-plan", fb[..]), ""); }
+// One next_action as Microcoder's schema has it: its commands, and for a finishing one its reply.
+uj_action :: (commands: [] string, finished: bool, reply: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], "rationale"); jo_str(o[..], "the next step");
+  jo_key(o[..], "edits"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "commands"); jo_arr(o[..]); for c: commands { jo_str(o[..], c); } jo_end(o[..]);
+  jo_key(o[..], "view"); jo_arr(o[..]); jo_end(o[..]);
+  jo_key(o[..], "finished"); jo_bool(o[..], finished); jo_key(o[..], "reply"); jo_str(o[..], reply);
+  jo_key(o[..], "ask"); jo_str(o[..], "none"); jo_end(o[..]);
+  return jo_text(o[..]);
+}
+// The command that puts one of the level's first shape row at (x, z), centimetres, against the
+// revision it read (the stand-in fills in {LEVEL} and {REV}).
+uj_spawn :: (x: int, z: int, out: [] u8) -> string {
+  n := ws_put(out, 0, "apply-edits {LEVEL} '{\"schema\":\"world.edit.v1\",\"rev\":{REV},\"do\":\"apply\",\"edits\":[{\"op\":\"spawn\",\"id\":0,\"kind\":1,\"x\":");
+  n = pb_decimal(out, n, x); n = ws_put(out, n, ",\"y\":0,\"z\":"); n = pb_decimal(out, n, z); n = ws_put(out, n, ",\"yaw\":0,\"scale\":100}]}'");
+  return cast(string) out[0..<n];
+}
+#test "a Builder's plan line" {
+  sb: [512] u8; ab: [2048] u8; cmds := [2] string.["read-level {LEVEL}", uj_spawn(300, -200, sb[..])];
+  a := uj_action(cmds[..], false, "", ab[..]);
+  #assert ue_find(a, "\"commands\":[\"read-level {LEVEL}\",\"apply-edits {LEVEL} '{\\\"schema\\\"", 0) > 0 && ue_find(a, "\\\"rev\\\":{REV},", 0) > 0 && ue_find(a, "\\\"x\\\":300,\\\"y\\\":0,\\\"z\\\":-200", 0) > 0;
+}
+// A Builder that reads its level, puts one block at (x, z) and says so: three model steps.
+uj_plan_build :: (r: [] Ur, x: int, z: int, reply: string) -> bool {
+  one := [1] string.["read-level {LEVEL}"]; ab: [2048] u8; sb: [512] u8; none: [1] string;
+  two := [1] string.[uj_spawn(x, z, sb[..])];
+  return uj_model_plan(r, uj_action(one[..], false, "", ab[..])) && uj_model_plan(r, uj_action(two[..], false, "", ab[..])) && uj_model_plan(r, uj_action(none[0..<0], true, reply, ab[..]));
+}
+// Whether the open conversation says `state` (the record's words) and works no more.
+uj_ag_state :: (p: [] Up, state: int, ms: int) -> bool {
+  // (its line: the kind's name, then the state in the record's words and how long: "Builder, done for 1s - cloud")
+  sw: [64] u8; sn := ws_put(sw[..], 0, ", "); sn = ws_put(sw[..], sn, AGR_STATE_WORDS[state]); sn = ws_put(sw[..], sn, " for ");
+  js: [512] u8; n := ws_put(js[..], 0, "!document.getElementById('ga.live') && (document.getElementById('ga.sub')?.textContent||'').includes(");
+  n = uj_quoted(js[..], n, cast(string) sw[0..<sn]); n = ws_put(js[..], n, ")");
+  if !uj_wait(p, cast(string) js[0..<n], ms) { return false; }
+  // its log is read after its record: wait for the conversation to stand still
+  tb: [16384] u8; last: [16384] u8; ln := -1; still := 0; end := proc_now_ms() + 10000;
+  while proc_now_ms() < end && still < 3 {
+    t := uj_text(p, "document.getElementById('ga.thread')?.innerText||''", tb[..]);
+    if t.count == ln && cast(string) last[0..<ln] == t { still += 1; } else { still = 0; ln = t.count; for i: 0..<t.count { last[i] = t[i]; } }
+    proc_sleep(500);
+  }
+  return true;
+}
+// The text in a 0-ended buffer.
+uj_cstr :: (b: [] u8) -> string { n := 0; while n < b.count && b[n] != 0 { n += 1; } return cast(string) b[0..<n]; }
+// Sends words from the message box, as a person types them and presses Return.
+uj_ag_send :: (p: [] Up, words: string) -> bool {
+  return uj_tap(p, "ga.say") && ut_clear(p[0].c[..]) && uj_type(p, words) && uj_key(p, "Enter", "Enter");
+}
+// The open conversation's game in the builder: its things counted (its rows into wire, 0-ended), then back to the conversation,
+// opened again from the list by what it was asked. -1 when it would not.
+// `was` (the rows seen last, "" for none) is waited away: the account's copy reaches a browser that
+// already held the game a little after it changes.
+uj_ag_count :: (r: [] Ur, p: [] Up, asked: string, wire: [] u8, was: string) -> int {
+  if !uj_tap(p, "ga.open") || !uj_wait(p, UJ_WORLD_UP, 20000) || !uj_settle(p) { return -1; }
+  w := uj_wire(p, wire); end := proc_now_ms() + 25000;
+  while was.count > 0 && uj_same(w, was) && proc_now_ms() < end { proc_sleep(500); w = uj_wire(p, wire); }
+  n := uj_count(p); w = uj_wire(p, wire); if w.count < wire.count { wire[w.count] = 0; }
+  if !uj_go(r, p, "/agents") || !uj_wait(p, UJ_AG_UP, 15000) || !uj_ag_open(p, asked) { return -1; }
+  return n;
+}
+// Opens the conversation whose row says `asked`, from the list (the drawer's button first on a narrow screen).
+uj_ag_open :: (p: [] Up, asked: string) -> bool {
+  js: [1024] u8; n := ws_put(js[..], 0, "[...document.querySelectorAll('button[id^=\"agent.\"]')].find(e=>e.textContent.includes(");
+  n = uj_quoted(js[..], n, asked); n = ws_put(js[..], n, "))?.id||''");
+  ib: [64] u8; wj: [1100] u8; wn := ws_put(wj[..], 0, "!!("); wn = ws_put(wj[..], wn, cast(string) js[0..<n]); wn = ws_put(wj[..], wn, ")");
+  if !uj_wait(p, cast(string) wj[0..<wn], 15000) { return false; }
+  id := uj_text(p, cast(string) js[0..<n], ib[..]);
+  if uj_has_id(p, "ga.drawer") && uj_bool(p, "getComputedStyle(document.getElementById('ga.drawer')).display!=='none' && !document.querySelector('.ag.out')") { _ = uj_tap(p, "ga.drawer"); proc_sleep(300); }
+  return uj_tap(p, id) && uj_wait(p, "!!document.getElementById('ga.sub')", 10000);
+}
+uj_ag_words :: (r: [] Ur, p: [] Up, name: string) {
+  b: [8192] u8; uj_evidence(r, name, uj_text(p, "(document.getElementById('ga.thread')?.innerText||'')+'\\n--\\n'+(document.getElementById('ga.said')?.textContent||'')+'\\n'+(document.getElementById('ga.sub')?.textContent||'')", b[..]));
+}
+
+// 11. /agents signed out is the login, and back here once in; signed in, the box with the caret,
+// the list (a drawer on a narrow screen) and the limits once, with the record's numbers.
+uj_agents :: (r: [] Ur) -> int {
+  p := r[0].a[..]; q := r[0].b[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  if !uj_go(r, q, "/agents") || !uj_wait_id(q, "email", 15000) { _ = uj_shot(r, q, "signed-out"); return uj_fail(r, "signed out, /agents does not ask for the email"); }
+  _ = uj_shot(r, q, "signed-out");
+  if !uj_sign_in(r, q, uj_email(r), false) { return uj_fail(r, "signed out, /agents' log in did not end"); }
+  pb: [256] u8;
+  if !uj_wait(q, UJ_AG_UP, 15000) || uj_text(q, "location.pathname", pb[..]) != "/agents" { uj_evidence(r, "after-login", uj_text(q, "location.pathname", pb[..])); return uj_fail(r, "after logging in from /agents the person is not back on /agents"); }
+  if !uj_go(r, p, "/agents") || !uj_wait(p, UJ_AG_UP, 15000) { return uj_fail(r, "signed in, /agents shows no message box"); }
+  if !uj_wait(p, "document.activeElement?.id==='ga.say'", 3000) { return uj_fail(r, "the message box does not have the caret on arrival"); }
+  lb: [1024] u8; lim := uj_id_text(p, "ga.limits", lb[..]); uj_evidence(r, "limits", lim);
+  tb: [32] u8; tokens := cast(string) tb[0..<agr_thousands(tb[..], 0, AGR_CLOUD_TOKENS)];
+  each := [5] int.[AGR_CLOUD_STEPS, AGR_CLOUD_COMMANDS, AGR_CLOUD_EDITS, AGR_CLOUD_MINUTES, AGR_CLOUD_DAY];
+  for v: each { if !uj_says_number(lim, v) { return uj_fail(r, "the limits line does not say a limit's number"); } }
+  if ue_find(lim, tokens, 0) < 0 { return uj_fail(r, "the limits line does not say the tokens a message may use"); }
+  _ = uj_shot(r, p, "signed-in"); uj_reach(r, p, "/agents");
+  // the list: beside the conversation, or a drawer on a narrow screen that comes out and goes away
+  if uj_bool(p, "innerWidth<860") {
+    if !uj_tap(p, "ga.drawer") || !uj_wait(p, "!!document.querySelector('.ag.out')", 3000) { return uj_fail(r, "on a narrow screen the list's button does not bring the list out"); }
+    _ = uj_shot(r, p, "drawer"); uj_reach(r, p, "/agents' list");
+    // a press beside the list, on what shows of the conversation under it
+    bx := uj_num(p, "Math.round((document.getElementById('ga.side').getBoundingClientRect().right+innerWidth)/2)"); by := uj_num(p, "Math.round(innerHeight/2)");
+    xy: [160] u8; xn := ws_put(xy[..], 0, "document.elementFromPoint("); xn = pb_decimal(xy[..], xn, bx); xn = ws_put(xy[..], xn, ","); xn = pb_decimal(xy[..], xn, by); xn = ws_put(xy[..], xn, ")?.id==='ga.shut'");
+    if !uj_bool(p, cast(string) xy[0..<xn]) { return uj_fail(r, "beside the list out on a narrow screen there is nothing to press it away with"); }
+    if !uj_point(p, bx, by) || !uj_wait(p, "!document.querySelector('.ag.out')", 3000) { return uj_fail(r, "the list does not go away with a press beside it"); }
+  } else if !uj_bool(p, "(()=>{const b=document.getElementById('ga.side')?.getBoundingClientRect();return !!b&&b.width>100&&b.right<=innerWidth;})()") { return uj_fail(r, "the list of agents is not beside the conversation"); }
+  return UV_PASS;
+}
+
+// 12. A cloud Builder: told in words, it works (the step line), its commands show in the log, the
+// level changes (counted in the builder), its change is taken back, a second message changes it
+// again, and a Stop shows it stopped.
+uj_builder :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_go(r, p, "/agents") || !uj_wait(p, UJ_AG_UP, 15000) { return uj_fail(r, "/agents shows no message box"); }
+  if uj_has_id(p, "ga.new") { _ = uj_tap(p, "ga.new"); }
+  asked := "put one block beside the start";
+  if !r[0].live { uj_model_plan_clear(r); if !uj_plan_build(r, 300, 300, "I put one block beside the start.") { return uj_blocked(r, "the stand-in model's plan could not be written"); } }
+  if !uj_ag_send(p, asked) { return uj_fail(r, "the message could not be typed and sent"); }
+  if !uj_wait(p, "!!document.getElementById('ga.live') || !!document.getElementById('ga.sub')", 20000) { uj_ag_words(r, p, "start"); return uj_fail(r, "sending started no Builder"); }
+  _ = uj_shot(r, p, "working");
+  if !uj_ag_state(p, AGR_DONE, 120000) { uj_ag_words(r, p, "not-done"); return uj_fail(r, "the Builder did not come to done"); }
+  uj_ag_words(r, p, "log");
+  if uj_num(p, "document.querySelectorAll('.tl').length") < 1 { return uj_fail(r, "the log shows no command the Builder ran"); }
+  if !uj_has_id(p, "ga.undo") { return uj_fail(r, "the Builder's change shows no way to take it back"); }
+  _ = uj_shot(r, p, "done");
+  w1: [UJ_TEXT] u8; w0: [UJ_TEXT] u8; w2: [UJ_TEXT] u8;
+  built := uj_ag_count(r, p, asked, w1[..], "");
+  if built < 0 { return uj_fail(r, "the Builder's game did not open in the builder and back"); }
+  // take back
+  if !uj_tap(p, "ga.undo") || !uj_wait(p, "!document.getElementById('ga.undo') || document.getElementById('ga.undo').disabled===false && !!document.getElementById('ga.said')", 15000) { return uj_fail(r, "take back its last change did nothing"); }
+  proc_sleep(2000);
+  back := uj_ag_count(r, p, asked, w0[..], uj_cstr(w1[..]));
+  ev: [200] u8; en := ws_put(ev[..], 0, "built "); en = pb_decimal(ev[..], en, built); en = ws_put(ev[..], en, " things, taken back "); en = pb_decimal(ev[..], en, back);
+  // (the stand-in's Builder adds one block a message; the real model's change is only known to change the level)
+  if back < 0 || (!r[0].live && built != back + 1) || (r[0].live && uj_same(uj_cstr(w1[..]), uj_cstr(w0[..]))) { uj_evidence(r, "counts", cast(string) ev[0..<en]); return uj_fail(r, "the level did not change back when its change was taken back"); }
+  // a second message in the same conversation
+  if !r[0].live && !uj_plan_build(r, -300, 300, "Another block, on the other side.") { return uj_blocked(r, "the stand-in model's plan could not be written"); }
+  if !uj_ag_send(p, "and one more on the other side") { return uj_fail(r, "a second message could not be sent"); }
+  proc_sleep(500);
+  if !uj_ag_state(p, AGR_DONE, 120000) { uj_ag_words(r, p, "second"); return uj_fail(r, "the Builder did not finish the second message"); }
+  again := uj_ag_count(r, p, asked, w2[..], uj_cstr(w0[..]));
+  en = ws_put(ev[..], en, ", after the second message "); en = pb_decimal(ev[..], en, again); uj_evidence(r, "counts", cast(string) ev[0..<en]);
+  if again < 0 || (!r[0].live && again != back + 1) || (r[0].live && uj_same(uj_cstr(w2[..]), uj_cstr(w0[..]))) { return uj_fail(r, "the second message did not change the level"); }
+  // stopped, shown as stopped: a step still being asked when Stop is pressed
+  if !r[0].live {
+    one := [1] string.["read-level {LEVEL}"]; ab: [2048] u8; hb: [2100] u8;
+    hn := ws_put(hb[..], 0, "hold 30000 "); hn = ws_put(hb[..], hn, uj_action(one[..], false, "", ab[..]));
+    if !uj_model_plan(r, cast(string) hb[0..<hn]) { return uj_blocked(r, "the stand-in model's plan could not be written"); }
+  }
+  if !uj_ag_send(p, "now build a long wall along the far edge") || !uj_wait_id(p, "ga.stop", 20000) { return uj_fail(r, "while it works there is no Stop"); }
+  if !uj_tap(p, "ga.stop") || !uj_ag_state(p, AGR_STOPPED, 30000) { uj_ag_words(r, p, "stop"); return uj_fail(r, "after Stop the Builder is not shown stopped"); }
+  if !uj_has_id(p, "ga.send") { return uj_fail(r, "stopped, Send is not back where Stop was"); }
+  _ = uj_shot(r, p, "stopped"); uj_reach(r, p, "a conversation");
+  return UV_PASS;
+}
+
+// 13. A Builder's refusals, in words with their numbers: a first message past the asked's length,
+// and (with the stand-in model) commands that are not its own: a shell command, another level, and
+// the one past a step's most.
+uj_refusals :: (r: [] Ur) -> int {
+  p := r[0].a[..];
+  if !r[0].logged { return uj_blocked(r, "needs a signed-in person (sign-up)"); }
+  if !uj_go(r, p, "/agents") || !uj_wait(p, UJ_AG_UP, 15000) { return uj_fail(r, "/agents shows no message box"); }
+  if uj_has_id(p, "ga.new") { _ = uj_tap(p, "ga.new"); }
+  rows := uj_num(p, "document.querySelectorAll('button[id^=\"agent.\"]').length");
+  long: [AGR_JOB + 8] u8; for i: 0..<AGR_JOB + 1 { long[i] = ifx i % 6 == 5 then ' ' else 'a'; }
+  if !uj_tap(p, "ga.say") || !ut_clear(p[0].c[..]) || !uj_type(p, cast(string) long[0..<AGR_JOB + 1]) { return uj_fail(r, "a long message could not be typed"); }
+  _ = uj_wait(p, "!!document.querySelector('#ga\\\\.count.over')", 5000);
+  cb: [128] u8; counted := uj_id_text(p, "ga.count", cb[..]); uj_evidence(r, "counted", counted);
+  if !uj_says_number(counted, AGR_JOB + 1) || !uj_says_number(counted, AGR_JOB) || !uj_bool(p, "!!document.querySelector('#ga\\\\.count.over')") { return uj_fail(r, "past a first message's most, the box does not count it with both numbers"); }
+  _ = uj_key(p, "Enter", "Enter"); proc_sleep(1500);
+  sb: [512] u8; said := uj_id_text(p, "ga.said", sb[..]); uj_evidence(r, "job-refused", said);
+  if uj_num(p, "document.querySelectorAll('button[id^=\"agent.\"]').length") != rows { return uj_fail(r, "a first message past its most started a Builder"); }
+  if !uj_says_number(said, AGR_JOB) && !uj_says_number(counted, AGR_JOB) { return uj_fail(r, "a first message past its most was not refused with its number"); }
+  _ = uj_shot(r, p, "job-refused");
+  if r[0].live { uj_evidence(r, "commands", "the commands' refusals need the stand-in model: they are checked by --local"); return UV_PASS; }
+  // commands not its own, nine in a step
+  uj_model_plan_clear(r);
+  nine := [9] string.["ls -la", "read-level 9999", "read-level {LEVEL}", "read-level {LEVEL}", "read-level {LEVEL}", "read-level {LEVEL}", "read-level {LEVEL}", "read-level {LEVEL}", "read-level {LEVEL}"];
+  ab: [4096] u8; none: [1] string;
+  if !uj_model_plan(r, uj_action(nine[..], false, "", ab[..])) || !uj_model_plan(r, uj_action(none[0..<0], true, "Some of those were not mine to run.", ab[..])) { return uj_blocked(r, "the stand-in model's plan could not be written"); }
+  if !uj_ag_send(p, "look around the level") { return uj_fail(r, "the message could not be sent"); }
+  if !uj_ag_state(p, AGR_DONE, 120000) { uj_ag_words(r, p, "not-done"); return uj_fail(r, "the Builder did not come to done"); }
+  uj_ag_words(r, p, "log");
+  refused := uj_num(p, "document.querySelectorAll('.tl[data-state=\"no\"]').length");
+  tb: [8192] u8; thread := uj_text(p, "[...document.querySelectorAll('.tl[data-state=\"no\"]')].map(e=>e.textContent).join('\\n')", tb[..]);
+  rb: [32] u8; rn := pb_decimal(rb[..], 0, refused); uj_evidence(r, "refused-rows", cast(string) rb[0..<rn]);
+  if refused < 3 { return uj_fail(r, "the shell command, the other level and the ninth command are not all shown refused"); }
+  // the ninth: refused with the step's most in its words (open it to read what came back)
+  if !uj_says_number(thread, AGR_CLOUD_COMMANDS) {
+    _ = uj_bool(p, "(()=>{for(const e of document.querySelectorAll('.tl[data-state=\"no\"] button.tool-h'))e.click();return true;})()");
+    proc_sleep(500); thread = uj_text(p, "[...document.querySelectorAll('.tl[data-state=\"no\"]')].map(e=>e.textContent).join('\\n')", tb[..]); uj_evidence(r, "refused-open", thread);
+    if !uj_says_number(thread, AGR_CLOUD_COMMANDS) { return uj_fail(r, "the command past a step's most is not refused with its number"); }
+  }
+  _ = uj_shot(r, p, "refused");
+  return UV_PASS;
+}
+
+// 18. Signed in with nothing on the account: a sentence and Return, and a Builder makes a game and
+// builds it, and reports.
+uj_empty :: (r: [] Ur) -> int {
+  q := r[0].b[..];
+  if r[0].live { return uj_blocked(r, "needs an account with nothing on it: the live run has one test inbox, whose account already holds games"); }
+  if !uj_open(r, q) { return uj_blocked(r, "no second headless Chrome"); }
+  defer uj_close(q);
+  eb: [256] u8; email := uj_new_email(r, eb[..]);
+  if !uj_go(r, q, "/agents") || !uj_sign_in(r, q, email, false) || !uj_wait(q, UJ_AG_UP, 15000) { return uj_fail(r, "a new account could not log in on /agents"); }
+  if !uj_has_id(q, "agents.none") && !uj_has_id(q, "ga.empty") { return uj_fail(r, "an empty account's /agents does not say what to do"); }
+  if uj_bool(q, "!!document.querySelector('[id^=\"agent.\"]')") { return uj_fail(r, "a new account lists agents"); }
+  _ = uj_shot(r, q, "empty");
+  asked := "make me a small obstacle course";
+  uj_model_plan_clear(r);
+  if !uj_plan_build(r, 400, 0, "I made the game and put the first block of the course.") { return uj_blocked(r, "the stand-in model's plan could not be written"); }
+  if !uj_wait(q, "document.activeElement?.id==='ga.say'", 3000) { return uj_fail(r, "the message box does not have the caret"); }
+  if !uj_type(q, asked) || !uj_key(q, "Enter", "Enter") { return uj_fail(r, "the sentence could not be typed and sent"); }
+  if !uj_ag_state(q, AGR_DONE, 120000) { uj_ag_words(r, q, "not-done"); return uj_fail(r, "the Builder did not make the game and finish"); }
+  uj_ag_words(r, q, "log");
+  if uj_num(q, "document.querySelectorAll('.ag-change').length") < 1 || !uj_bool(q, "!!document.querySelector('[id^=\"game.\"]')") { return uj_fail(r, "no game and no change came of the sentence"); }
+  _ = uj_shot(r, q, "built");
+  wa: [UJ_TEXT] u8; wb: [UJ_TEXT] u8;
+  built := uj_ag_count(r, q, asked, wa[..], "");
+  if !uj_tap(q, "ga.undo") { return uj_fail(r, "its change shows no way to take it back"); }
+  proc_sleep(2500);
+  before := uj_ag_count(r, q, asked, wb[..], uj_cstr(wa[..]));
+  ev: [200] u8; en := ws_put(ev[..], 0, "built "); en = pb_decimal(ev[..], en, built); en = ws_put(ev[..], en, " things, as made "); en = pb_decimal(ev[..], en, before); uj_evidence(r, "counts", cast(string) ev[0..<en]);
+  if built < 0 || before < 0 || built != before + 1 { return uj_fail(r, "the new game's level did not change by the Builder's block"); }
+  return UV_PASS;
+}
+
+// ---------------------------------------------------------------- a run
+
+uj_run_one :: (r: [] Ur, j: int) -> int {
+  if j == UJ_ARRIVE { return uj_arrive(r); }
+  if j == UJ_GUEST { return uj_guest(r); }
+  if j == UJ_ASKS { return uj_asks(r); }
+  if j == UJ_SIGNUP { return uj_signup(r); }
+  if j == UJ_GAMES { return uj_games(r); }
+  if j == UJ_LIMITS { return uj_limits(r); }
+  if j == UJ_TYPES { return uj_types(r); }
+  if j == UJ_PUBLISH { return uj_publish(r); }
+  if j == UJ_PLAYS { return uj_plays(r); }
+  if j == UJ_UNPUBLISH { return uj_unpublish(r); }
+  if j == UJ_OFFER { return uj_offer(r); }
+  if j == UJ_LEAVE { return uj_leave(r); }
+  if j == UJ_PAGES { return uj_pages(r); }
+  if j == UJ_TOUCH { return uj_touch(r); }
+  if j == UJ_AGENTS { return uj_agents(r); }
+  if j == UJ_BUILDER { return uj_builder(r); }
+  if j == UJ_REFUSALS { return uj_refusals(r); }
+  if j == UJ_EMPTY { return uj_empty(r); }
+  return UV_NONE;
+}
+// The order a lane runs: a person's day, the model journeys last (their own labelled lane).
+UJ_ORDER :: [UJ_N] int.[UJ_ARRIVE, UJ_GUEST, UJ_ASKS, UJ_SIGNUP, UJ_GAMES, UJ_TYPES, UJ_PUBLISH, UJ_PLAYS, UJ_UNPUBLISH,
+  UJ_LEAVE, UJ_PAGES, UJ_AGENTS, UJ_LIMITS, UJ_TOUCH, UJ_OFFER, UJ_BUILDER, UJ_REFUSALS, UJ_EMPTY];
+#test "a lane runs every journey once" { seen: [UJ_N] bool; for j: UJ_ORDER { #assert !seen[j]; seen[j] = true; } }
+
+uj_lane :: (r: [] Ur, lane: int) {
+  r[0].lane = lane; r[0].logged = false; r[0].link_n = 0; r[0].touch_bad_n = 0; r[0].email_n = 0;
+  for j: UJ_ORDER {
+    if !r[0].want[j] { continue; }
+    r[0].j = j; t0 := proc_now_ms();
+    print("% % ...\n", UT_LANES[lane], UJ_IDS[j]);
+    v := uj_run_one(r, j);
+    r[0].verdict[lane][j] = v; r[0].ms[lane][j] = proc_now_ms() - t0;
+    print("% % % % (% ms)\n", UT_LANES[lane], UJ_IDS[j], ifx uj_model(j) then "[model]" else "-", UV_WORDS[v], r[0].ms[lane][j]);
+    if r[0].words_n[lane][j] > 0 { print("    %\n", cast(string) r[0].words[lane][j][0..<r[0].words_n[lane][j]]); }
+  }
+  uj_close(r[0].a[..]); uj_close(r[0].b[..]);
+}
+// The build's versions, read beside the person: the API's (/api/capabilities) and the site's release
+// (the name of the page's own script folder, /b/NAME/).
+uj_versions :: (r: [] Ur) {
+  p := r[0].a[..];
+  if !uj_open(r, p) || !uj_go(r, p, "/credits") { return; }
+  vb: [256] u8; v := uj_text(p, "fetch('/api/capabilities').then(x=>x.json()).then(j=>String(j.version||j.server_version||''),()=> '')", vb[..]);
+  r[0].version_n = ws_put(r[0].version[..], 0, v);
+  rb: [128] u8; rel := uj_text(p, "([...document.scripts].map(s=>s.src).find(s=>s.includes('/b/'))||'').split('/b/')[1]?.split('/')[0]||''", rb[..]);
+  r[0].release_n = ws_put(r[0].release[..], 0, rel);
+}
+uj_report :: (r: [] Ur, lanes: [] bool) -> int {
+  b: [262144] u8; o: [1] Jo; jo_start(o[..], b[..]); jo_obj(o[..]);
+  jo_key(o[..], "schema"); jo_str(o[..], "gamebuilder.user-test.v1");
+  jo_key(o[..], "mode"); jo_str(o[..], ifx r[0].live then "live" else "local");
+  jo_key(o[..], "api_version"); jo_str(o[..], cast(string) r[0].version[0..<r[0].version_n]);
+  jo_key(o[..], "site_release"); jo_str(o[..], cast(string) r[0].release[0..<r[0].release_n]);
+  jo_key(o[..], "lanes"); jo_arr(o[..]);
+  failed := 0;
+  for lane: 0..<3 {
+    if !lanes[lane] { continue; }
+    jo_obj(o[..]); jo_key(o[..], "lane"); jo_str(o[..], UT_LANES[lane]); jo_key(o[..], "journeys"); jo_arr(o[..]);
+    for j: UJ_ORDER {
+      if !r[0].want[j] { continue; }
+      v := r[0].verdict[lane][j]; if v == UV_FAIL || v == UV_NONE { failed += 1; }
+      jo_obj(o[..]); jo_key(o[..], "id"); jo_str(o[..], UJ_IDS[j]); jo_key(o[..], "model"); jo_bool(o[..], uj_model(j));
+      jo_key(o[..], "verdict"); jo_str(o[..], UV_WORDS[v]); jo_key(o[..], "ms"); jo_int(o[..], r[0].ms[lane][j]);
+      jo_key(o[..], "words"); jo_str(o[..], cast(string) r[0].words[lane][j][0..<r[0].words_n[lane][j]]); jo_end(o[..]);
+    }
+    jo_end(o[..]); jo_end(o[..]);
+  }
+  jo_end(o[..]); jo_end(o[..]);
+  pb: [4096] u8; _ = fs_write(fs_join(uj_out(r), "report.json", pb[..]), jo_text(o[..]));
+  print("evidence (private): %\n", uj_out(r));
+  return ifx failed > 0 then 1 else 0;
+}
+
+// --local | --live, with --lanes chrome-mac,... (all three when left out), --only id,id (every
+// journey when left out), --site DIR (the staged site, --local), --bin (the gamebuilder command,
+// --local), --out DIR (the private evidence folder).
+ut_main :: (a: [] Args) -> int {
+  mode := args_at(a, 0);
+  if mode != "--local" && mode != "--live" { tool_errln("user-test: --local or --live (scripts/user-test.sh)"); return 2; }
+  r: [1] Ur; r[0].live = mode == "--live";
+  lanes: [3] bool; ln := args_value(a, "--lanes", "");
+  for i: 0..<3 { lanes[i] = ln.count == 0 || ue_find(ln, UT_LANES[i], 0) >= 0; }
+  only := args_value(a, "--only", "");
+  for j: 0..<UJ_N {
+    want := only.count == 0;
+    at := 0; while !want && at < only.count { e := at; while e < only.count && only[e] != ',' { e += 1; } if cast(string) only[at..<e] == UJ_IDS[j] { want = true; } at = e + 1; }
+    r[0].want[j] = want;
+  }
+  bin := args_value(a, "--bin", "build/cli/gamebuilder"); r[0].bin_n = ws_put(r[0].bin[..], 0, bin);
+  if r[0].live {
+    if !pm_open(r[0].mail[..]) { tool_errln("user-test: --live needs the dedicated test inbox (AUTH_TEST_INBOX, AUTH_TEST_INBOX_PASSWORD)"); return 2; }
+    r[0].origin_n = ws_put(r[0].origin[..], 0, "https://gamebuilder.org");
+  } else {
+    if !ut_stack_up(r[0].s[..], args_value(a, "--site", ""), bin) { ut_stack_down(r[0].s[..]); return 1; }
+    r[0].origin_n = ws_put(r[0].origin[..], 0, cast(string) r[0].s[0].origin[0..<r[0].s[0].origin_n]);
+  }
+  ob: [2048] u8; out := args_value(a, "--out", "");
+  if out.count == 0 { out = fs_temp("gb-user-evidence-", ob[..]); }
+  if out.count == 0 || (!fs_exists(out) && !fs_mkdir_private(out)) { tool_errln("user-test: no private folder for the evidence"); ut_stack_down(r[0].s[..]); return 2; }
+  r[0].out_n = ws_put(r[0].out[..], 0, out);
+  r[0].lane = 0; uj_versions(r[..]); uj_close(r[0].a[..]);
+  print("api % · site release %\n", cast(string) r[0].version[0..<r[0].version_n], cast(string) r[0].release[0..<r[0].release_n]);
+  for lane: 0..<3 { if lanes[lane] { uj_lane(r[..], lane); } }
+  code := uj_report(r[..], lanes[..]);
+  if !r[0].live { ut_stack_down(r[0].s[..]); }
+  return code;
+}
+// Room 1's recorded solution, read from the product's source (web/world-crates.coax CR_SOLUTION_0),
+// as the load budget is: its keys are the product's, not written here again.
+uj_crates_solution :: (out: [] u8) -> string {
+  b: [65536] u8; n := fs_read("web/world-crates.coax", b[..]); if n <= 0 { return ""; }
+  text := cast(string) b[0..<n]; key := "CR_SOLUTION_0 :: \""; at := ue_find(text, key, 0); if at < 0 { return ""; }
+  s := at + key.count; e := s; while e < text.count && text[e] != '"' { e += 1; }
+  return cast(string) out[0..<ws_put(out, 0, text[s..<e])];
+}
+// Whether two lists of things hold the same things: the same ids, kinds and sizes in the same order.
+// (Where they rest is not compared: things here have weight, and settle, slide and tip.)
+uj_same :: (a: string, b: string) -> bool {
+  ia := 0; ib := 0;
+  while true {
+    while ia < a.count && a[ia] != '\n' { ia += 1; } while ib < b.count && b[ib] != '\n' { ib += 1; }
+    ia += 1; ib += 1;
+    if ia >= a.count || ib >= b.count { return ia >= a.count && ib >= b.count; }
+    ea := ia; while ea < a.count && a[ea] != '\n' { ea += 1; } eb := ib; while eb < b.count && b[eb] != '\n' { eb += 1; }
+    ra := cast(string) a[ia..<ea]; rb := cast(string) b[ib..<eb];
+    for f: [5] int.[0, 1, 7, 8, 9] { if uj_field(ra, f) != uj_field(rb, f) { return false; } }
+    ia = ea; ib = eb;
+  }
+  return false;
+}
+#test "the same things wherever they rest" {
+  #assert uj_same("2\n1 0 1 1 -300 0 400 200 100 200\n4 17 1 1 50 0 40 400 25 400 1", "2\n1 0 1 1 -310 2 395 200 100 200 2\n4 17 1 1 52 0 40 400 25 400 1");
+  #assert !uj_same("1\n1 0 1 1 0 0 0 100 100 100", "2\n1 0 1 1 0 0 0 100 100 100\n2 0 1 1 0 0 0 100 100 100") && !uj_same("1\n1 0 1 1 0 0 0 100 100 100", "1\n1 0 1 1 0 0 0 200 100 100");
+}
+// A building tool in hand: pressed, and pressed again when that put it down (a tool in hand pressed
+// again is let go). The page's state line's first number is the tool in hand, -1 none.
+uj_hand :: (p: [] Up, label: string) -> bool {
+  if !uj_tool(p, label) { return false; }
+  if uj_num(p, "Number((document.getElementById('state')?.textContent||'-1').split(' ')[0])") >= 0 { return true; }
+  return uj_tool(p, label) && uj_num(p, "Number((document.getElementById('state')?.textContent||'-1').split(' ')[0])") >= 0;
+}
+// The thing the person at (x, y, z), centimetres, stands on: a row whose footprint holds that place
+// and whose top is nearest the feet (a row's y is its bottom). Its id, -1 none.
+uj_under :: (wire: string, x: int, y: int, z: int) -> int {
+  best := -1; gap := 60; at := 0; first := true;
+  while at < wire.count {
+    e := at; while e < wire.count && wire[e] != '\n' { e += 1; } row := cast(string) wire[at..<e]; at = e + 1;
+    if first { first = false; continue; }
+    if uj_field(row, 1) == 2 { continue; }
+    rx := uj_field(row, 4); ry := uj_field(row, 5); rz := uj_field(row, 6); w := uj_field(row, 7); h := uj_field(row, 8); d := uj_field(row, 9);
+    if 2 * (x - rx) > w || 2 * (rx - x) > w || 2 * (z - rz) > d || 2 * (rz - z) > d { continue; }
+    for top: [2] int.[ry + h, ry + h / 2] { g := ifx top > y then top - y else y - top; if g < gap { gap = g; best = ue_int(row); } }
+  }
+  return best;
+}
+#test "what a person stands on" {
+  w := "2\n1 0 1 1 0 0 0 400 100 400\n2 0 1 1 1000 0 0 200 100 200";
+  #assert uj_under(w, 50, 100, -30) == 1 && uj_under(w, 1050, 98, 0) == 2 && uj_under(w, 500, 100, 0) == -1 && uj_under(w, 0, 900, 0) == -1;
+}
+// Whether "more" is open with an item called `label` in it (shown, whatever covers it).
+uj_item_shown :: (p: [] Up, label: string) -> bool {
+  js: [512] u8; n := ws_put(js[..], 0, "[...document.querySelectorAll('.hb-pn')].some(e=>e.textContent==="); n = uj_quoted(js[..], n, label); n = ws_put(js[..], n, ")");
+  return uj_bool(p, cast(string) js[0..<n]);
+}

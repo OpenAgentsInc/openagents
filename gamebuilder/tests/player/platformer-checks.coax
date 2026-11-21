@@ -1,0 +1,22 @@
+// Offline control calibration only; never live-player evidence.
+// tool.sh: stack-gib 2
+#load "../../web/hud.coax";
+#load "platformer-policy.coax";
+#import "Basic";
+pp_trial :: (touch:bool) -> bool {
+ t:[1]HudTest;h:=t[0].h[..];p:=h[0].plat[..];hud_test_plat(t[..]);
+ // Match pt_platformer: the actual walkthrough starts five seconds after a
+ // reset, not at the helper's entrance-dependent moving-platform phase.
+ hud_plat_in(h);hud_test_run(t[..],300,0.016666668);
+ last:=0;held:=false;gate:=0;falls:=0;
+ for frame:0..<21600 {
+  if frame%6==0 {f:=PpFrame.{z=h[0].cz,y=h[0].cy,vy=h[0].foot.jump.vy,vz=h[0].foot.walk.vz,ground=h[0].foot.jump.on_ground,air=h[0].foot.jump.air_used,clock=p[0].clock};st:=pf_on(p,0,f.y,f.z);if st>=0 && f.ground {last=st;}d:=pp_decide(p,f,last,held);bits:=(ifx d.way>0 then 8 else ifx d.way<0 then 4 else 0) | (ifx d.jump then 16 else 0);text:[16]u8;n:=hud_test_put(text[..],0,bits);if touch {h[0].sticks.pad_x=cast(f32)d.way*0.98;h[0].sticks.jump=d.jump && !held;hud_test_say(h,HUD_KEYS_MSG,"0");}else {hud_test_say(h,HUD_KEYS_MSG,cast(string)text[0..<n]);}held=d.jump;}
+  hud_test_run(t[..],1,0.016666668);
+  if p[0].run.next!=gate || p[0].falls!=falls {gate=p[0].run.next;falls=p[0].falls;}
+  if p[0].run.done {return true;}
+  if falls>5 {break;}
+ }return false;
+}
+
+#test "the keyboard platformer controller tolerates ten-Hz observations through the real course" #steps 2000000000000 #traversal 1000000000 {#assert pp_trial(false);}
+#test "the touch controller finishes with bounded recoverable falls and full tap jumps" #steps 2000000000000 #traversal 1000000000 {#assert pp_trial(true);}
