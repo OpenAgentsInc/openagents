@@ -1,0 +1,853 @@
+// Single-source Coax GPU training & KV-cached rollout kernels for Executor W3.2
+// (`trace-distill-v1`, GitHub #13918).
+//
+// Admitted unchanged by:
+// - `coax test` / `coax c --release` (CPU oracle & finite-difference checks)
+// - `coax metal-compute --release` (Apple M5 Max Metal 4, fast math OFF)
+// - `coax cuda --release` (NVIDIA CUDA, --fmad=false)
+//
+// Every kernel has <= 12 arguments after `item` (Metal host ABI limit is 16),
+// <= 8 KiB threadgroup memory (Metal limit is 32 KiB), and zero atomics so
+// save/resume is bit-exact across steps.
+
+TDK_T :: 256;       // threads per 64x64 GEMM tile item
+TDK_TILE :: 64;     // GEMM tile width & height
+TDK_STEP :: 16;     // GEMM inner staging depth
+TDK_ROW :: 32;      // threads per row-wise group kernel
+TDK_ROW_MAX :: 512; // max training context / model width for row kernels
+TDK_DEC_MAX :: 2048;// max autoregressive rollout length (covers 8x length)
+TDK_CHUNK :: 4096;  // reduction chunk size
+TDK_EPS :: 0.00001f32;
+TDK_THETA :: 10000.0;
+
+// ---- Helpers ----
+
+tdk_mm_items :: (m: int, n: int) -> int #effects(all) {
+    return ((m + TDK_TILE - 1) / TDK_TILE) * ((n + TDK_TILE - 1) / TDK_TILE);
+}
+
+// ---- Tiled 64x64 FP32 GEMMs (8 KiB threadgroup memory, 256 threads/item) ----
+
+// C[m, n] = (acc ? C : 0) + A[m, k] @ B[k, n]
+tdk_mm_nn :: (item: int, m: int, n: int, k: int, acc: int, a: []f32, b: []f32, c: []f32) #export_c #effects(all) {
+    tn := (n + TDK_TILE - 1) / TDK_TILE;
+    i0 := (item / tn) * TDK_TILE;
+    j0 := (item % tn) * TDK_TILE;
+    steps := (k + TDK_STEP - 1) / TDK_STEP;
+    ta: [1024]f32;
+    tb: [1024]f32;
+    acc_: [4096]f32;
+    for thread: 0..<TDK_T {
+        for x: 0..<16 { acc_[thread * 16 + x] = 0; }
+    }
+    for s: 0..<steps {
+        kb := s * TDK_STEP;
+        for thread: 0..<TDK_T {
+            for q: 0..<4 {
+                e := thread + TDK_T * q;
+                ar := i0 + e / TDK_STEP;
+                ak := kb + e % TDK_STEP;
+                va: f32 = 0;
+                if ar < m && ak < k { va = a[ar * k + ak]; }
+                ta[thread + TDK_T * q] = va;
+                bk := kb + e / TDK_TILE;
+                bc := j0 + e % TDK_TILE;
+                vb: f32 = 0;
+                if bk < k && bc < n { vb = b[bk * n + bc]; }
+                tb[thread + TDK_T * q] = vb;
+            }
+        }
+        for thread: 0..<TDK_T {
+            tx := thread % 16;
+            ty := thread / 16;
+            for kk: 0..<TDK_STEP {
+                b0 := tb[kk * TDK_TILE + tx];
+                b1 := tb[kk * TDK_TILE + tx + 16];
+                b2 := tb[kk * TDK_TILE + tx + 32];
+                b3 := tb[kk * TDK_TILE + tx + 48];
+                for rr: 0..<4 {
+                    av := ta[(ty + 16 * rr) * TDK_STEP + kk];
+                    acc_[thread * 16 + rr * 4] += av * b0;
+                    acc_[thread * 16 + rr * 4 + 1] += av * b1;
+                    acc_[thread * 16 + rr * 4 + 2] += av * b2;
+                    acc_[thread * 16 + rr * 4 + 3] += av * b3;
+                }
+            }
+        }
+    }
+    for thread: 0..<TDK_T {
+        tx := thread % 16;
+        ty := thread / 16;
+        for rr: 0..<4 {
+            for cc: 0..<4 {
+                i := i0 + ty + 16 * rr;
+                j := j0 + tx + 16 * cc;
+                if i < m && j < n {
+                    v := acc_[thread * 16 + rr * 4 + cc];
+                    if acc == 1 { v = c[i * n + j] + v; }
+                    c[i * n + j] = v;
+                }
+            }
+        }
+    }
+}
+
+// C[m, n] = (acc ? C : 0) + A[m, k] @ B[n, k]^T
+tdk_mm_nt :: (item: int, m: int, n: int, k: int, acc: int, a: []f32, b: []f32, c: []f32) #export_c #effects(all) {
+    tn := (n + TDK_TILE - 1) / TDK_TILE;
+    i0 := (item / tn) * TDK_TILE;
+    j0 := (item % tn) * TDK_TILE;
+    steps := (k + TDK_STEP - 1) / TDK_STEP;
+    ta: [1024]f32;
+    tb: [1024]f32;
+    acc_: [4096]f32;
+    for thread: 0..<TDK_T {
+        for x: 0..<16 { acc_[thread * 16 + x] = 0; }
+    }
+    for s: 0..<steps {
+        kb := s * TDK_STEP;
+        for thread: 0..<TDK_T {
+            for q: 0..<4 {
+                e := thread + TDK_T * q;
+                ar := i0 + e / TDK_STEP;
+                ak := kb + e % TDK_STEP;
+                va: f32 = 0;
+                if ar < m && ak < k { va = a[ar * k + ak]; }
+                ta[thread + TDK_T * q] = va;
+                bk := kb + e / TDK_TILE;
+                bc := j0 + e % TDK_TILE;
+                vb: f32 = 0;
+                if bk < k && bc < n { vb = b[bc * k + bk]; }
+                tb[thread + TDK_T * q] = vb;
+            }
+        }
+        for thread: 0..<TDK_T {
+            tx := thread % 16;
+            ty := thread / 16;
+            for kk: 0..<TDK_STEP {
+                b0 := tb[kk * TDK_TILE + tx];
+                b1 := tb[kk * TDK_TILE + tx + 16];
+                b2 := tb[kk * TDK_TILE + tx + 32];
+                b3 := tb[kk * TDK_TILE + tx + 48];
+                for rr: 0..<4 {
+                    av := ta[(ty + 16 * rr) * TDK_STEP + kk];
+                    acc_[thread * 16 + rr * 4] += av * b0;
+                    acc_[thread * 16 + rr * 4 + 1] += av * b1;
+                    acc_[thread * 16 + rr * 4 + 2] += av * b2;
+                    acc_[thread * 16 + rr * 4 + 3] += av * b3;
+                }
+            }
+        }
+    }
+    for thread: 0..<TDK_T {
+        tx := thread % 16;
+        ty := thread / 16;
+        for rr: 0..<4 {
+            for cc: 0..<4 {
+                i := i0 + ty + 16 * rr;
+                j := j0 + tx + 16 * cc;
+                if i < m && j < n {
+                    v := acc_[thread * 16 + rr * 4 + cc];
+                    if acc == 1 { v = c[i * n + j] + v; }
+                    c[i * n + j] = v;
+                }
+            }
+        }
+    }
+}
+
+// C[m, n] = (acc ? C : 0) + A[k, m]^T @ B[k, n]
+tdk_mm_tn :: (item: int, m: int, n: int, k: int, acc: int, a: []f32, b: []f32, c: []f32) #export_c #effects(all) {
+    tn := (n + TDK_TILE - 1) / TDK_TILE;
+    i0 := (item / tn) * TDK_TILE;
+    j0 := (item % tn) * TDK_TILE;
+    steps := (k + TDK_STEP - 1) / TDK_STEP;
+    ta: [1024]f32;
+    tb: [1024]f32;
+    acc_: [4096]f32;
+    for thread: 0..<TDK_T {
+        for x: 0..<16 { acc_[thread * 16 + x] = 0; }
+    }
+    for s: 0..<steps {
+        kb := s * TDK_STEP;
+        for thread: 0..<TDK_T {
+            for q: 0..<4 {
+                e := thread + TDK_T * q;
+                ar := i0 + e / TDK_STEP;
+                ak := kb + e % TDK_STEP;
+                va: f32 = 0;
+                if ar < m && ak < k { va = a[ak * m + ar]; }
+                ta[thread + TDK_T * q] = va;
+                bk := kb + e / TDK_TILE;
+                bc := j0 + e % TDK_TILE;
+                vb: f32 = 0;
+                if bk < k && bc < n { vb = b[bk * n + bc]; }
+                tb[thread + TDK_T * q] = vb;
+            }
+        }
+        for thread: 0..<TDK_T {
+            tx := thread % 16;
+            ty := thread / 16;
+            for kk: 0..<TDK_STEP {
+                b0 := tb[kk * TDK_TILE + tx];
+                b1 := tb[kk * TDK_TILE + tx + 16];
+                b2 := tb[kk * TDK_TILE + tx + 32];
+                b3 := tb[kk * TDK_TILE + tx + 48];
+                for rr: 0..<4 {
+                    av := ta[(ty + 16 * rr) * TDK_STEP + kk];
+                    acc_[thread * 16 + rr * 4] += av * b0;
+                    acc_[thread * 16 + rr * 4 + 1] += av * b1;
+                    acc_[thread * 16 + rr * 4 + 2] += av * b2;
+                    acc_[thread * 16 + rr * 4 + 3] += av * b3;
+                }
+            }
+        }
+    }
+    for thread: 0..<TDK_T {
+        tx := thread % 16;
+        ty := thread / 16;
+        for rr: 0..<4 {
+            for cc: 0..<4 {
+                i := i0 + ty + 16 * rr;
+                j := j0 + tx + 16 * cc;
+                if i < m && j < n {
+                    v := acc_[thread * 16 + rr * 4 + cc];
+                    if acc == 1 { v = c[i * n + j] + v; }
+                    c[i * n + j] = v;
+                }
+            }
+        }
+    }
+}
+
+// ---- Embeddings, RMSNorm, RoPE, ReLU^2 ----
+
+tdk_embed :: (item: int, d: int, ids: []u8, tok: []f32, x: []f32) #export_c #effects(all) {
+    n := item / d;
+    c := item % d;
+    x[item] = tok[cast(int)ids[n] * d + c];
+}
+
+tdk_embed_back :: (item: int, d: int, count: int, acc: int, ids: []u8, g: []f32, out: []f32) #export_c #effects(all) {
+    v := item / d;
+    c := item % d;
+    s: f32 = 0;
+    for n: 0..<count {
+        if cast(int)ids[n] == v { s += g[n * d + c]; }
+    }
+    if acc == 1 { s = out[item] + s; }
+    out[item] = s;
+}
+
+tdk_rms :: (item: int, d: int, x: []f32, h: []f32, r: []f32) #export_c #effects(all) {
+    base := item * d;
+    part: [32]f32;
+    for thread: 0..<TDK_ROW {
+        sum: f32 = 0;
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            c := thread + TDK_ROW * q;
+            if c < d { v := x[base + c]; sum += v * v; }
+        }
+        part[thread] = sum;
+    }
+    total: f32 = 0;
+    for u: 0..<TDK_ROW { total += part[u]; }
+    den := sqrt(total / f32(d) + TDK_EPS);
+    for thread: 0..<TDK_ROW {
+        if thread == 0 { r[item] = den; }
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            c := thread + TDK_ROW * q;
+            if c < d { h[base + c] = x[base + c] / den; }
+        }
+    }
+}
+
+tdk_rms_back :: (item: int, d: int, acc: int, h: []f32, r: []f32, dh: []f32, g: []f32) #export_c #effects(all) {
+    base := item * d;
+    part: [32]f32;
+    for thread: 0..<TDK_ROW {
+        sum: f32 = 0;
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            c := thread + TDK_ROW * q;
+            if c < d { sum += dh[base + c] * h[base + c]; }
+        }
+        part[thread] = sum;
+    }
+    dot: f32 = 0;
+    for u: 0..<TDK_ROW { dot += part[u]; }
+    mean := dot / f32(d);
+    den := r[item];
+    for thread: 0..<TDK_ROW {
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            c := thread + TDK_ROW * q;
+            if c < d {
+                v := (dh[base + c] - h[base + c] * mean) / den;
+                if acc == 1 { v = g[base + c] + v; }
+                g[base + c] = v;
+            }
+        }
+    }
+}
+
+// Applies RoPE (or inverse RoPE when back==1) to Q and K in qkv[nt, 3*d].
+// Heads h < para_heads are left unrotated so Variant C preserves analytic parabolic keys.
+tdk_rope_qkv :: (item: int, t: int, d: int, heads: int, para_heads: int, back: int, rope: []f32, qkv: []f32) #export_c #effects(all) {
+    hd := d / heads;
+    half := hd / 2;
+    pair := item % half;
+    rem := item / half;
+    h := rem % heads;
+    if h < para_heads { return; }
+    tok := rem / heads;
+    pos := tok % t;
+    at := (pos * half + pair) * 2;
+    cs := rope[at];
+    sn := rope[at + 1];
+    if back == 1 { sn = -sn; }
+    qb := tok * 3 * d + h * hd + 2 * pair;
+    qa := qkv[qb];
+    qbv := qkv[qb + 1];
+    qkv[qb] = qa * cs - qbv * sn;
+    qkv[qb + 1] = qa * sn + qbv * cs;
+    kb := qb + d;
+    ka := qkv[kb];
+    kbv := qkv[kb + 1];
+    qkv[kb] = ka * cs - kbv * sn;
+    qkv[kb + 1] = ka * sn + kbv * cs;
+}
+
+tdk_relu2 :: (item: int, u: []f32, a: []f32) #export_c #effects(all) {
+    v := u[item];
+    if !(v > 0) { v = 0; }
+    a[item] = v * v;
+}
+
+tdk_relu2_back :: (item: int, u: []f32, da: []f32) #export_c #effects(all) {
+    v := u[item];
+    g: f32 = 0;
+    if v > 0 { g = da[item] * (2 * v); }
+    da[item] = g;
+}
+
+// ---- Causal Multi-Head Attention (Forward, Variant C Max-Margin, Backward) ----
+
+// item in 0 ..< rows * heads * t * t
+tdk_attn_scores :: (item: int, t: int, d: int, heads: int, para_heads: int, beta_para: f32, qkv: []f32, scores: []f32) #export_c #effects(all) {
+    j := item % t;
+    rem := item / t;
+    i := rem % t;
+    bh := rem / t;
+    if j > i { scores[item] = 0; return; }
+    b := bh / heads;
+    h := bh % heads;
+    hd := d / heads;
+    h3 := 3 * d;
+    scl: f32 = 1.0f32 / sqrt(f32(hd));
+    if h < para_heads { scl = beta_para * scl; }
+    qb := (b * t + i) * h3 + h * hd;
+    kb := (b * t + j) * h3 + d + h * hd;
+    dot: f32 = 0;
+    for e: 0..<hd { dot += qkv[qb + e] * qkv[kb + e]; }
+    scores[item] = dot * scl;
+}
+
+// Variant C max-margin lookup hinge loss on Layer 0, parabolic head h = 0.
+// item in 0 ..< rows * t. Writes per-token hinge loss and dS_margin[rows*t*t].
+tdk_margin_loss :: (
+    item: int, t: int, heads: int, margin: f32, weight: f32,
+    scores: []f32, src_pos: []int, mloss: []f32, dmargin: []f32
+) #export_c #effects(all) {
+    b := item / t;
+    i := item % t;
+    d_base := item * t;
+    for j: 0..<t { dmargin[d_base + j] = 0; }
+    mloss[item] = 0;
+    j_star := src_pos[item];
+    if j_star < 0 || j_star > i || i < 1 { return; }
+    s_base := (b * heads) * t * t + i * t;
+    s_pos := scores[s_base + j_star];
+    j_neg := -1;
+    best_neg: f32 = -3.0e38;
+    for j: 0..<i + 1 {
+        if j != j_star {
+            v := scores[s_base + j];
+            if j_neg < 0 || v > best_neg { best_neg = v; j_neg = j; }
+        }
+    }
+    if j_neg < 0 { return; }
+    viol := margin - (s_pos - best_neg);
+    if viol > 0 {
+        mloss[item] = weight * viol;
+        dmargin[d_base + j_star] = -weight;
+        dmargin[d_base + j_neg] = weight;
+    }
+}
+
+// Adds Layer 0 Head 0 dmargin[rows*t*t] into attention ds[rows*heads*t*t].
+tdk_add_margin_ds :: (item: int, t: int, heads: int, dmargin: []f32, ds: []f32) #export_c #effects(all) {
+    j := item % t;
+    rem := item / t;
+    i := rem % t;
+    b := rem / t;
+    dst := (b * heads) * t * t + i * t + j;
+    ds[dst] = ds[dst] + dmargin[item];
+}
+
+// Causal softmax in place on s[rows*heads*t, t], 32 threads per row.
+tdk_softmax :: (item: int, t: int, s: []f32) #export_c #effects(all) {
+    i := item % t;
+    base := item * t;
+    top: [32]f32;
+    part: [32]f32;
+    ev: [512]f32;
+    for thread: 0..<TDK_ROW {
+        best: f32 = -3.0e38;
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            if j <= i && j < t {
+                v := s[base + j];
+                if v > best { best = v; }
+            }
+        }
+        top[thread] = best;
+    }
+    mx := top[0];
+    for x: 1..<TDK_ROW { if top[x] > mx { mx = top[x]; } }
+    for thread: 0..<TDK_ROW {
+        sum: f32 = 0;
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            e: f32 = 0;
+            if j <= i && j < t { e = exp(s[base + j] - mx); }
+            ev[thread * 16 + q] = e;
+            sum += e;
+        }
+        part[thread] = sum;
+    }
+    total: f32 = 0;
+    for x: 0..<TDK_ROW { total += part[x]; }
+    for thread: 0..<TDK_ROW {
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            if j < t {
+                v: f32 = 0;
+                if j <= i { v = ev[thread * 16 + q] / total; }
+                s[base + j] = v;
+            }
+        }
+    }
+}
+
+tdk_softmax_back :: (item: int, t: int, p: []f32, dp: []f32) #export_c #effects(all) {
+    i := item % t;
+    base := item * t;
+    part: [32]f32;
+    for thread: 0..<TDK_ROW {
+        sum: f32 = 0;
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            if j <= i && j < t { sum += p[base + j] * dp[base + j]; }
+        }
+        part[thread] = sum;
+    }
+    dot: f32 = 0;
+    for x: 0..<TDK_ROW { dot += part[x]; }
+    for thread: 0..<TDK_ROW {
+        for q: 0..<TDK_ROW_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            if j < t {
+                v: f32 = 0;
+                if j <= i { v = p[base + j] * (dp[base + j] - dot); }
+                dp[base + j] = v;
+            }
+        }
+    }
+}
+
+// o[b, i, c] = sum_{j<=i} probs[b, h, i, j] * V[b, j, c]; item in 0 ..< rows * t * d
+tdk_attn_out :: (item: int, t: int, d: int, heads: int, probs: []f32, qkv: []f32, o: []f32) #export_c #effects(all) {
+    c := item % d;
+    tok := item / d;
+    b := tok / t;
+    i := tok % t;
+    hd := d / heads;
+    h := c / hd;
+    h3 := 3 * d;
+    p_base := (b * heads + h) * t * t + i * t;
+    v_row0 := b * t * h3 + 2 * d + c;
+    acc: f32 = 0;
+    for j: 0..<i + 1 {
+        acc += probs[p_base + j] * qkv[v_row0 + j * h3];
+    }
+    o[item] = acc;
+}
+
+// dp[b, h, i, j] = sum_e dout[b, i, h*hd+e] * V[b, j, h*hd+e] for j <= i
+tdk_attn_dp :: (item: int, t: int, d: int, heads: int, dout: []f32, qkv: []f32, dp: []f32) #export_c #effects(all) {
+    j := item % t;
+    rem := item / t;
+    i := rem % t;
+    bh := rem / t;
+    if j > i { dp[item] = 0; return; }
+    b := bh / heads;
+    h := bh % heads;
+    hd := d / heads;
+    h3 := 3 * d;
+    do_b := (b * t + i) * d + h * hd;
+    v_b := (b * t + j) * h3 + 2 * d + h * hd;
+    dot: f32 = 0;
+    for e: 0..<hd { dot += dout[do_b + e] * qkv[v_b + e]; }
+    dp[item] = dot;
+}
+
+// Deterministic zero-atomic dQ, dK, dV: item in 0 ..< rows * t * 3 * d
+tdk_attn_dqkv :: (
+    item: int, t: int, d: int, heads: int, para_heads: int, beta_para: f32,
+    probs: []f32, ds: []f32, qkv: []f32, dout: []f32, dqkv: []f32
+) #export_c #effects(all) {
+    h3 := 3 * d;
+    ch := item % h3;
+    tok := item / h3;
+    b := tok / t;
+    pos := tok % t;
+    part := ch / d;
+    c := ch % d;
+    hd := d / heads;
+    h := c / hd;
+    bh_off := (b * heads + h) * t * t;
+    if part == 0 {
+        // dQ[b, pos, c] = scl * sum_{j=0..pos} ds[b,h,pos,j] * K[b,j,c]
+        scl: f32 = 1.0f32 / sqrt(f32(hd));
+        if h < para_heads { scl = beta_para * scl; }
+        ds_row := bh_off + pos * t;
+        k_col := b * t * h3 + d + c;
+        acc: f32 = 0;
+        for j: 0..<pos + 1 { acc += ds[ds_row + j] * qkv[k_col + j * h3]; }
+        dqkv[item] = acc * scl;
+    } else if part == 1 {
+        // dK[b, pos, c] = scl * sum_{i=pos..t-1} ds[b,h,i,pos] * Q[b,i,c]
+        scl: f32 = 1.0f32 / sqrt(f32(hd));
+        if h < para_heads { scl = beta_para * scl; }
+        q_col := b * t * h3 + c;
+        acc: f32 = 0;
+        for i: pos..<t { acc += ds[bh_off + i * t + pos] * qkv[q_col + i * h3]; }
+        dqkv[item] = acc * scl;
+    } else {
+        // dV[b, pos, c] = sum_{i=pos..t-1} probs[b,h,i,pos] * dout[b,i,c]
+        do_col := b * t * d + c;
+        acc: f32 = 0;
+        for i: pos..<t { acc += probs[bh_off + i * t + pos] * dout[do_col + i * d]; }
+        dqkv[item] = acc;
+    }
+}
+
+// ---- Losses: Weighted Masked CE (SFT + Ch 139 RL) & Variant B Auxiliary State CE ----
+
+// Unified Ch 136 masked SFT & Ch 139 policy-gradient CE kernel.
+// weights[item] == 0 masks out prompt/pad tokens; otherwise dl = (p - onehot(y)) * w.
+// loss[item] stores unweighted token CE (so -loss[item] == log pi(y_t) for RL KL & reward),
+// while wloss[item] stores w * CE (for SFT mean loss diagnostic).
+tdk_ce_weighted :: (
+    item: int, v: int, logits: []f32, tg: []u8, weights: []f32,
+    loss: []f32, dl: []f32
+) #export_c #effects(all) {
+    base := item * v;
+    w := weights[item];
+    y := cast(int)tg[item];
+    mx := logits[base];
+    for j: 1..<v { if logits[base + j] > mx { mx = logits[base + j]; } }
+    sum: f32 = 0;
+    for j: 0..<v { sum += exp(logits[base + j] - mx); }
+    ce := log(sum) - (logits[base + y] - mx);
+    if w == 0 {
+        loss[item] = 0;
+        for j: 0..<v { dl[base + j] = 0; }
+        return;
+    }
+    loss[item] = ce;
+    for j: 0..<v {
+        p := exp(logits[base + j] - mx) / sum;
+        if j == y { p = p - 1; }
+        dl[base + j] = p * w;
+    }
+}
+
+// Variant B auxiliary intermediate-state supervision across 4 heads packed into 192 logits:
+//   [0..32) ip, [32..64) depth, [64..128) top&63, [128..192) loc0&63.
+tdk_aux_ce :: (
+    item: int, scale: f32, logits: []f32, aux_tg: []u8, aux_mask: []u8,
+    aux_loss: []f32, daux: []f32
+) #export_c #effects(all) {
+    base := item * 192;
+    if aux_mask[item] == 0 {
+        aux_loss[item] = 0;
+        for j: 0..<192 { daux[base + j] = 0; }
+        return;
+    }
+    offs := [4]int.[0, 32, 64, 128];
+    lens := [4]int.[32, 32, 64, 64];
+    tot_ce: f32 = 0;
+    for k: 0..<4 {
+        o := base + offs[k];
+        ln := lens[k];
+        y := cast(int)aux_tg[4 * item + k];
+        mx := logits[o];
+        for j: 1..<ln { if logits[o + j] > mx { mx = logits[o + j]; } }
+        sum: f32 = 0;
+        for j: 0..<ln { sum += exp(logits[o + j] - mx); }
+        tot_ce += log(sum) - (logits[o + y] - mx);
+        for j: 0..<ln {
+            p := exp(logits[o + j] - mx) / sum;
+            if j == y { p = p - 1; }
+            daux[o + j] = p * scale;
+        }
+    }
+    aux_loss[item] = tot_ce * 0.25f32;
+}
+
+// ---- Fast KV-Cached Batched Autoregressive Decode Kernels (up to T=2048) ----
+
+// Applies RoPE at position `pos` (skipping h < para_heads) to Q in qkv_step[B, 3*d],
+// rotates K and writes K, V into k_cache/v_cache[B, max_ctx, d].
+// item in 0 ..< B * heads * (hd / 2)
+tdk_kv_write_rope :: (
+    item: int, max_ctx: int, d: int, heads: int, para_heads: int, pos: int,
+    rope: []f32, qkv_step: []f32, k_cache: []f32, v_cache: []f32
+) #export_c #effects(all) {
+    hd := d / heads;
+    half := hd / 2;
+    pair := item % half;
+    rem := item / half;
+    h := rem % heads;
+    b := rem / heads;
+    h3 := 3 * d;
+    qb := b * h3 + h * hd + 2 * pair;
+    kb := qb + d;
+    vb := qb + 2 * d;
+    dst := (b * max_ctx + pos) * d + h * hd + 2 * pair;
+    v_cache[dst] = qkv_step[vb];
+    v_cache[dst + 1] = qkv_step[vb + 1];
+    if h < para_heads {
+        k_cache[dst] = qkv_step[kb];
+        k_cache[dst + 1] = qkv_step[kb + 1];
+        return;
+    }
+    at := (pos * half + pair) * 2;
+    cs := rope[at];
+    sn := rope[at + 1];
+    qa := qkv_step[qb];
+    qbv := qkv_step[qb + 1];
+    qkv_step[qb] = qa * cs - qbv * sn;
+    qkv_step[qb + 1] = qa * sn + qbv * cs;
+    ka := qkv_step[kb];
+    kbv := qkv_step[kb + 1];
+    k_cache[dst] = ka * cs - kbv * sn;
+    k_cache[dst + 1] = ka * sn + kbv * cs;
+}
+
+// One 32-thread group per (b, h): attends q[b, h] over k_cache[b, 0..pos, h]
+// for ANY pos < 2048 (8 KiB threadgroup buffer), writes o_step[b, h*hd .. +hd].
+tdk_decode_attn :: (
+    item: int, max_ctx: int, d: int, heads: int, para_heads: int, beta_para: f32, pos: int,
+    qkv_step: []f32, k_cache: []f32, v_cache: []f32, o_step: []f32
+) #export_c #effects(all) {
+    b := item / heads;
+    h := item % heads;
+    hd := d / heads;
+    scl: f32 = 1.0f32 / sqrt(f32(hd));
+    if h < para_heads { scl = beta_para * scl; }
+    q_base := b * 3 * d + h * hd;
+    kv_base := b * max_ctx * d + h * hd;
+    sc: [TDK_DEC_MAX]f32;
+    top: [32]f32;
+    part: [32]f32;
+    for thread: 0..<TDK_ROW {
+        best: f32 = -3.0e38;
+        for q: 0..<TDK_DEC_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            v: f32 = 0;
+            if j <= pos {
+                dot: f32 = 0;
+                kb := kv_base + j * d;
+                for e: 0..<hd { dot += qkv_step[q_base + e] * k_cache[kb + e]; }
+                v = dot * scl;
+                if v > best { best = v; }
+            }
+            sc[thread + TDK_ROW * q] = v;
+        }
+        top[thread] = best;
+    }
+    mx := top[0];
+    for x: 1..<TDK_ROW { if top[x] > mx { mx = top[x]; } }
+    for thread: 0..<TDK_ROW {
+        sum: f32 = 0;
+        for q: 0..<TDK_DEC_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            ev: f32 = 0;
+            if j <= pos {
+                ev = exp(sc[thread + TDK_ROW * q] - mx);
+                sum += ev;
+            }
+            sc[thread + TDK_ROW * q] = ev;
+        }
+        part[thread] = sum;
+    }
+    total: f32 = 0;
+    for x: 0..<TDK_ROW { total += part[x]; }
+    for thread: 0..<TDK_ROW {
+        for q: 0..<TDK_DEC_MAX / TDK_ROW {
+            j := thread + TDK_ROW * q;
+            v: f32 = 0;
+            if j <= pos { v = sc[thread + TDK_ROW * q] / total; }
+            sc[thread + TDK_ROW * q] = v;
+        }
+    }
+    e_chunks := (hd + TDK_ROW - 1) / TDK_ROW;
+    for thread: 0..<TDK_ROW {
+        for q: 0..<e_chunks {
+            e := thread + TDK_ROW * q;
+            if e < hd {
+                acc: f32 = 0;
+                for j: 0..<pos + 1 { acc += sc[j] * v_cache[kv_base + j * d + e]; }
+                o_step[b * d + h * hd + e] = acc;
+            }
+        }
+    }
+}
+
+// ---- Deterministic Reduction & AdamW ----
+
+tdk_sum :: (item: int, count: int, square: int, x: []f32, out: []f32) #export_c #effects(all) {
+    part: [256]f32;
+    for thread: 0..<TDK_T {
+        s: f32 = 0;
+        for q: 0..<TDK_CHUNK / TDK_T {
+            e := item * TDK_CHUNK + thread + TDK_T * q;
+            if e < count {
+                v := x[e];
+                if square == 1 { v = v * v; }
+                s += v;
+            }
+        }
+        part[thread] = s;
+    }
+    total: f32 = 0;
+    for u: 0..<TDK_T { total += part[u]; }
+    for thread: 0..<TDK_T { if thread == 0 { out[item] = total; } }
+}
+
+tdk_adamw :: (
+    item: int, keep: f32, b2: f32, wb1: f32, wb2: f32, step: f32, root2: f32, eps: f32, scale: f32,
+    p: []f32, g: []f32, m: []f32, v: []f32
+) #export_c #effects(all) {
+    gr := g[item] * scale;
+    pv := p[item] * keep;
+    mv := m[item] + wb1 * (gr - m[item]);
+    vv := v[item] * b2 + wb2 * gr * gr;
+    den := sqrt(vv) / root2 + eps;
+    p[item] = pv - step * (mv / den);
+    m[item] = mv;
+    v[item] = vv;
+}
+
+// ---- Kernel unit checks ----
+
+#test "tiled 64x64 GEMM nn, nt, tn match scalar definitions across ragged dimensions" {
+    m := 70; n := 67; k := 35;
+    a: [4900]f32; b: [4900]f32; c: [4900]f32;
+    for i: 0..<m * k { a[i] = f32((i * 7 + 3) % 11 - 5) * 0.25f32; }
+    for i: 0..<k * n { b[i] = f32((i * 5 + 1) % 9 - 4) * 0.125f32; }
+    for i: 0..<m * n { c[i] = 1.5f32; }
+    items := tdk_mm_items(m, n);
+    for idx: 0..<items { tdk_mm_nn(idx, m, n, k, 1, a[..], b[..], c[..]); }
+    for i: 0..<m {
+        for j: 0..<n {
+            s: f32 = 0;
+            for q: 0..<k { s += a[i * k + q] * b[q * n + j]; }
+            #assert abs(f64(c[i * n + j] - (1.5f32 + s))) < 1e-4;
+        }
+    }
+    // nt: A[m,k] @ B[n,k]^T
+    for idx: 0..<items { tdk_mm_nt(idx, m, n, k, 0, a[..], b[..], c[..]); }
+    for i: 0..<m {
+        for j: 0..<n {
+            s: f32 = 0;
+            for q: 0..<k { s += a[i * k + q] * b[j * k + q]; }
+            #assert abs(f64(c[i * n + j] - s)) < 1e-4;
+        }
+    }
+    // tn: A[k,m]^T @ B[k,n]
+    for idx: 0..<items { tdk_mm_tn(idx, m, n, k, 0, a[..], b[..], c[..]); }
+    for i: 0..<m {
+        for j: 0..<n {
+            s: f32 = 0;
+            for q: 0..<k { s += a[q * m + i] * b[q * n + j]; }
+            #assert abs(f64(c[i * n + j] - s)) < 1e-4;
+        }
+    }
+}
+
+#test "RoPE skips parabolic heads, KV-cached decode matches full attention, and margin/aux losses fire cleanly" {
+    t := 6; d := 16; heads := 2; hd := 8; para := 1; beta: f32 = 3.0f32;
+    rope: [64]f32;
+    half := hd / 2;
+    for pos: 0..<8 {
+        for i: 0..<half {
+            angle := f64(pos) * exp(-log(TDK_THETA) * f64(2 * i) / f64(hd));
+            at := (pos * half + i) * 2;
+            rope[at] = f32(cos(angle));
+            rope[at + 1] = f32(sin(angle));
+        }
+    }
+    qkv: [288]f32;
+    for i: 0..<t * 3 * d { qkv[i] = f32((i * 13 + 5) % 17 - 8) * 0.1f32; }
+    qkv_orig := qkv;
+    for idx: 0..<t * heads * (hd / 2) { tdk_rope_qkv(idx, t, d, heads, para, 0, rope[..], qkv[..]); }
+    // Head 0 (parabolic) untouched; Head 1 rotated for pos > 0.
+    for pos: 0..<t {
+        for e: 0..<hd { #assert qkv[pos * 3 * d + e] == qkv_orig[pos * 3 * d + e]; }
+    }
+    #assert qkv[1 * 3 * d + hd] != qkv_orig[1 * 3 * d + hd];
+
+    // Full attention vs KV-cached step-by-step decode must agree.
+    scores: [72]f32;
+    o_full: [96]f32;
+    for idx: 0..<heads * t * t { tdk_attn_scores(idx, t, d, heads, para, beta, qkv[..], scores[..]); }
+    // Variant C max-margin loss on scores before softmax.
+    src_pos := [6]int.[-1, 0, 1, 0, 2, 1];
+    mloss: [6]f32;
+    dmargin: [36]f32;
+    for idx: 0..<t { tdk_margin_loss(idx, t, heads, 2.0f32, 0.25f32, scores[..], src_pos[..], mloss[..], dmargin[..]); }
+    #assert mloss[0] == 0 && mloss[3] >= 0;
+
+    for idx: 0..<heads * t { tdk_softmax(idx, t, scores[..]); }
+    for idx: 0..<t * d { tdk_attn_out(idx, t, d, heads, scores[..], qkv[..], o_full[..]); }
+
+    k_cache: [128]f32;
+    v_cache: [128]f32;
+    qkv_step: [48]f32;
+    o_step: [16]f32;
+    for pos: 0..<t {
+        for c: 0..<3 * d { qkv_step[c] = qkv_orig[pos * 3 * d + c]; }
+        for idx: 0..<heads * (hd / 2) { tdk_kv_write_rope(idx, 8, d, heads, para, pos, rope[..], qkv_step[..], k_cache[..], v_cache[..]); }
+        for h: 0..<heads { tdk_decode_attn(h, 8, d, heads, para, beta, pos, qkv_step[..], k_cache[..], v_cache[..], o_step[..]); }
+        for c: 0..<d { #assert abs(f64(o_step[c] - o_full[pos * d + c])) < 1e-5; }
+    }
+
+    // Weighted CE masks zero weights cleanly and aux CE handles masked vs active tokens.
+    logits := [8]f32.[1.0f32, 2.0f32, 0.5f32, -1.0f32, 0.2f32, -0.3f32, 1.5f32, 0.0f32];
+    tg := [2]u8.[1, 2];
+    w := [2]f32.[0.0f32, -0.5f32];
+    loss: [2]f32;
+    dl: [8]f32;
+    for idx: 0..<2 { tdk_ce_weighted(idx, 4, logits[..], tg[..], w[..], loss[..], dl[..]); }
+    #assert loss[0] == 0 && loss[1] > 0 && dl[0] == 0 && dl[1] == 0 && dl[6] > 0;
+
+    aux_log: [384]f32;
+    aux_tg := [8]u8.[3, 2, 10, 5, 0, 0, 0, 0];
+    aux_mask := [2]u8.[1, 0];
+    aux_loss: [2]f32;
+    daux: [384]f32;
+    for idx: 0..<2 { tdk_aux_ce(idx, 0.25f32, aux_log[..], aux_tg[..], aux_mask[..], aux_loss[..], daux[..]); }
+    #assert aux_loss[0] > 3.0f32 && aux_loss[1] == 0 && daux[3] < 0 && daux[192] == 0;
+}

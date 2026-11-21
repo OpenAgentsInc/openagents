@@ -1,0 +1,800 @@
+// Executor W3.2 (`trace-distill-v1`, GitHub #13918):
+// Model layout (10,715,136-parameter 6-layer Psionic causal decoder),
+// deterministic & analytic parabolic-key weight initialization, W1.2
+// `wasm-exec-v1` parity bridge, CPU reference forward/backward & central
+// finite-difference gradient checker for all three arms (Baseline A / H1,
+// Variant B / H5, Variant C / H3), verified Ch 234 + Ch 247 corpus builder,
+// and `#export_c` bridge for the thin Metal 4 / CUDA GPU host.
+#load "trace-distill-policy.coax";
+#load "trace-distill-kernels.coax";
+#load "counter-rng.coax";
+#load "wasm-exec.coax";
+
+TdShape :: struct {
+    vocab: int;
+    d: int;
+    layers: int;
+    heads: int;
+    hidden: int;
+    train_ctx: int;
+    rows: int;
+    aux_dim: int;
+}
+
+TD_FULL_TRAIN_TRACES :: 252; // 3 seen families x 3 lengths (n=1,2,3) x 28 params (p=0..27)
+TD_EVAL_TRACES :: 96;        // 6 families x 4 buckets (1x,2x,4x,8x) x 4 params (p=28..31)
+TD_AUX_DIM :: 192;           // 32 (ip) + 32 (depth) + 64 (top&63) + 64 (loc0&63)
+
+td_full_shape :: () -> TdShape #export_c #effects(all) {
+    return TdShape.{vocab = TDP_VOCAB, d = 384, layers = 6, heads = 6, hidden = 1536, train_ctx = 320, rows = 16, aux_dim = TD_AUX_DIM};
+}
+
+td_tiny_shape :: () -> TdShape #export_c #effects(all) {
+    return TdShape.{vocab = TDP_VOCAB, d = 32, layers = 2, heads = 2, hidden = 64, train_ctx = 32, rows = 2, aux_dim = TD_AUX_DIM};
+}
+
+// ---- Exact parameter layout ----
+// [0] tok[vocab, d]
+// [1 + 4*l + 0] qkv[d, 3*d]
+// [1 + 4*l + 1] o[d, d]
+// [1 + 4*l + 2] up[d, hidden]
+// [1 + 4*l + 3] down[hidden, d]
+// [1 + 4*layers] head[d, vocab]
+// [2 + 4*layers] aux[d, aux_dim]  (Variant B only; 0 in A & C)
+
+td_layer_params :: (s: TdShape) -> int #export_c #effects(all) {
+    return 3 * s.d * s.d + s.d * s.d + s.d * s.hidden + s.hidden * s.d;
+}
+
+td_backbone_params :: (s: TdShape) -> int #export_c #effects(all) {
+    return 2 * s.vocab * s.d + s.layers * td_layer_params(s);
+}
+
+td_total_params :: (s: TdShape) -> int #export_c #effects(all) {
+    return td_backbone_params(s) + s.d * s.aux_dim;
+}
+
+td_off_tok :: () -> int #export_c #effects(all) { return 0; }
+td_off_qkv :: (s: TdShape, l: int) -> int #export_c #effects(all) { return s.vocab * s.d + l * td_layer_params(s); }
+td_off_o :: (s: TdShape, l: int) -> int #export_c #effects(all) { return td_off_qkv(s, l) + 3 * s.d * s.d; }
+td_off_up :: (s: TdShape, l: int) -> int #export_c #effects(all) { return td_off_o(s, l) + s.d * s.d; }
+td_off_down :: (s: TdShape, l: int) -> int #export_c #effects(all) { return td_off_up(s, l) + s.d * s.hidden; }
+td_off_head :: (s: TdShape) -> int #export_c #effects(all) { return s.vocab * s.d + s.layers * td_layer_params(s); }
+td_off_aux :: (s: TdShape) -> int #export_c #effects(all) { return td_backbone_params(s); }
+
+td_para_heads :: (arm: TdArm, l: int) -> int #export_c #effects(all) {
+    if arm == TdArm.variant_c && l < 2 { return 2; }
+    return 0;
+}
+
+// ---- RoPE table & deterministic / analytic parabolic initialization ----
+
+td_rope_table :: (hd: int, max_ctx: int, out: []f32) #export_c #effects(all) {
+    half := hd / 2;
+    for pos: 0..<max_ctx {
+        for i: 0..<half {
+            angle := f64(pos) * exp(-log(TDK_THETA) * f64(2 * i) / f64(hd));
+            at := (pos * half + i) * 2;
+            out[at] = f32(cos(angle));
+            out[at + 1] = f32(sin(angle));
+        }
+    }
+}
+
+td_gauss :: (stream: int, idx: int, std: f64) -> f32 #effects(all) {
+    u1 := (f64(cr_bits(cast(u64)(4200 + stream), cast(u64)(2 * idx)) >> 11) + 1.0) / 9007199254740992.0;
+    u2 := f64(cr_bits(cast(u64)(4200 + stream), cast(u64)(2 * idx + 1)) >> 11) / 9007199254740992.0;
+    return f32(std * (sqrt(-2.0 * log(u1)) * cos(2.0 * TDP_PI * u2)));
+}
+
+td_init_weights :: (s: TdShape, arm: TdArm, p: []f32) -> TdStatus #export_c #effects(all) {
+    tot := td_total_params(s);
+    if p.count != tot || s.d < 8 || s.heads < 2 || s.d % s.heads != 0 { return TdStatus.shape; }
+    for i: 0..<tot { p[i] = 0; }
+
+    // Token embeddings
+    for i: 0..<s.vocab * s.d { p[i] = td_gauss(0, i, 0.02); }
+
+    // Layers
+    resid_std := 0.02 / sqrt(f64(2 * s.layers));
+    for l: 0..<s.layers {
+        oq := td_off_qkv(s, l);
+        for i: 0..<3 * s.d * s.d { p[oq + i] = td_gauss(1 + 4 * l, i, 0.02); }
+        oo := td_off_o(s, l);
+        for i: 0..<s.d * s.d { p[oo + i] = td_gauss(2 + 4 * l, i, resid_std); }
+        ou := td_off_up(s, l);
+        for i: 0..<s.d * s.hidden { p[ou + i] = td_gauss(3 + 4 * l, i, 0.02); }
+        od := td_off_down(s, l);
+        for i: 0..<s.hidden * s.d { p[od + i] = td_gauss(4 + 4 * l, i, resid_std); }
+    }
+
+    // LM head
+    oh := td_off_head(s);
+    for i: 0..<s.d * s.vocab { p[oh + i] = td_gauss(100, i, 0.02); }
+
+    // Auxiliary state head (Variant B only)
+    if arm == TdArm.variant_b {
+        oa := td_off_aux(s);
+        for i: 0..<s.d * s.aux_dim { p[oa + i] = td_gauss(101, i, 0.02); }
+    }
+
+    // Variant C (H3): Analytic parabolic-key attention initialization (2k, -k^2).
+    // Embeds exact parabolic features in channels 0..3 (values/addresses) and 4..7 (IPs),
+    // and initializes Layer 0 & Layer 1 Heads 0 and 1 so q . k = 2*q*k - k^2 = q^2 - (q - k)^2.
+    if arm == TdArm.variant_c {
+        d := s.d;
+        hd := d / s.heads;
+        h3 := 3 * d;
+        // Value / address tokens 64..127 -> channels 0..3: (2u, -u^2, 1, u), u = k / 16
+        for k: 0..<64 {
+            u := f64(k) / 16.0;
+            base := (TDP_VAL_BASE + k) * d;
+            p[base + 0] = f32(0.25 * (2.0 * u));
+            p[base + 1] = f32(0.25 * (-u * u));
+            p[base + 2] = f32(0.25);
+            p[base + 3] = f32(0.25 * u);
+        }
+        // IP tokens 32..63 -> channels 4..7: (2u, -u^2, 1, u), u = ip / 8
+        for ip: 0..<32 {
+            u := f64(ip) / 8.0;
+            base := (TDP_IP_BASE + ip) * d;
+            p[base + 4] = f32(0.25 * (2.0 * u));
+            p[base + 5] = f32(0.25 * (-u * u));
+            p[base + 6] = f32(0.25);
+            p[base + 7] = f32(0.25 * u);
+        }
+        // Layers 0 and 1: Heads 0 (address parabola) and 1 (IP parabola)
+        // Exact analytic parabolic projection (zero initial noise on the 2 parabolic lanes).
+        n_para_layers := ifx s.layers >= 2 then 2 else s.layers;
+        for l: 0..<n_para_layers {
+            oq := td_off_qkv(s, l);
+            for r: 0..<d {
+                p[oq + r * h3 + 0] = 0; p[oq + r * h3 + 1] = 0;
+                p[oq + r * h3 + d + 0] = 0; p[oq + r * h3 + d + 1] = 0;
+                p[oq + r * h3 + hd + 0] = 0; p[oq + r * h3 + hd + 1] = 0;
+                p[oq + r * h3 + d + hd + 0] = 0; p[oq + r * h3 + d + hd + 1] = 0;
+            }
+            // Head 0 Q[0] <- ch 3 (u), Q[1] <- ch 2 (1); K[0] <- ch 0 (2k), K[1] <- ch 1 (-k^2)
+            p[oq + 3 * h3 + 0] = 1.0f32;
+            p[oq + 2 * h3 + 1] = 1.0f32;
+            p[oq + 0 * h3 + d + 0] = 1.0f32;
+            p[oq + 1 * h3 + d + 1] = 1.0f32;
+            // Head 1 Q[0] <- ch 7 (u_ip), Q[1] <- ch 6 (1); K[0] <- ch 4 (2k_ip), K[1] <- ch 5 (-k_ip^2)
+            p[oq + 7 * h3 + hd + 0] = 1.0f32;
+            p[oq + 6 * h3 + hd + 1] = 1.0f32;
+            p[oq + 4 * h3 + d + hd + 0] = 1.0f32;
+            p[oq + 5 * h3 + d + hd + 1] = 1.0f32;
+        }
+    }
+    return TdStatus.ok;
+}
+
+// ---- SHA-256 over FP32 tensor bytes (little-endian) & sampling ----
+
+td_sha256_f32 :: (x: []f32, out_digest: []u8) -> bool #export_c #effects(all) {
+    if out_digest.count < 32 { return false; }
+    sha: [112]u8;
+    if sha256_init(sha[..]) != SHA_OK { return false; }
+    chunk: [256]u8;
+    n := 0;
+    for v: x {
+        bits := f32_bits(v);
+        chunk[n] = cast(u8)(bits & 0xff);
+        chunk[n + 1] = cast(u8)((bits >> 8) & 0xff);
+        chunk[n + 2] = cast(u8)((bits >> 16) & 0xff);
+        chunk[n + 3] = cast(u8)((bits >> 24) & 0xff);
+        n += 4;
+        if n == 256 {
+            if sha256_update_checked(sha[..], chunk[..], false) != SHA_OK { return false; }
+            n = 0;
+        }
+    }
+    if n > 0 {
+        if sha256_update_checked(sha[..], chunk[0..<n], false) != SHA_OK { return false; }
+    }
+    return sha256_final_checked(sha[..], out_digest[0..<32], false) == SHA_OK;
+}
+
+td_rng_index :: (stream: u64, counter: u64, bound: int) -> int #export_c #effects(all) {
+    if bound <= 1 { return 0; }
+    return cast(int)(cr_bits(stream, counter) % cast(u64)bound);
+}
+
+td_greedy_token :: (logits: []f32) -> int #export_c #effects(all) {
+    best := 0;
+    bv := logits[0];
+    for j: 1..<logits.count {
+        if logits[j] > bv { bv = logits[j]; best = j; }
+    }
+    return best;
+}
+
+// Seeded temperature sampling (Ch 139 on-policy RL rollouts via cr_bits).
+td_sample_token :: (logits: []f32, temp: f64, seed: u64, step: u64) -> int #export_c #effects(all) {
+    if !(temp > 0.0) { return td_greedy_token(logits); }
+    mx := f64(logits[0]);
+    for j: 1..<logits.count {
+        v := f64(logits[j]);
+        if v > mx { mx = v; }
+    }
+    probs: [TDP_VOCAB]f64;
+    tot := 0.0;
+    for j: 0..<logits.count {
+        e := exp((f64(logits[j]) - mx) / temp);
+        probs[j] = e;
+        tot += e;
+    }
+    u := f64(cr_bits(seed, step) >> 11) / 9007199254740992.0;
+    target := u * tot;
+    acc := 0.0;
+    for j: 0..<logits.count {
+        acc += probs[j];
+        if acc >= target { return j; }
+    }
+    return logits.count - 1;
+}
+
+// ---- W1.2 wasm-exec-v1 Parity Bridge ----
+// Translates each of our 6 program families to wasm-core-i32-v1 (WmOp), executes
+// through W1.2's loaded dense F64 safetensors weights (wx_compile_and_load_core +
+// wx_run + hull-v2 memory), replays via Ch 234 wx_replay_verify, and asserts
+// bit-exact output equality against Ch 226 tm_run.
+
+td_wasm_family_prog :: (f: TdFamily, n: int, p: int, ops: []WmOp, funcs: []WsmFunc) -> int #effects(all) {
+    funcs[0] = WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 4};
+    if f == TdFamily.countdown {
+        // Computes sum of emitted outputs = sum_{i=1..n} (i + p) to verify every iteration ran identically.
+        w := [24]WmOp.[
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.local_set, arg = 0},
+            WmOp.{code = WmCode.i32_const, arg = p}, WmOp.{code = WmCode.local_set, arg = 1},
+            WmOp.{code = WmCode.i32_const, arg = 0}, WmOp.{code = WmCode.local_set, arg = 2},
+            WmOp.{code = WmCode.block, arg = 21},
+            WmOp.{code = WmCode.loop, arg = 20},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.i32_add},
+            WmOp.{code = WmCode.local_get, arg = 2}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.local_set, arg = 2},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_sub},
+            WmOp.{code = WmCode.local_tee, arg = 0},
+            WmOp.{code = WmCode.br_if, arg = 0},
+            WmOp.{code = WmCode.br, arg = 1},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.local_get, arg = 2}, WmOp.{code = WmCode.ret}
+        ];
+        for i: 0..<24 { ops[i] = w[i]; }
+        return 24;
+    }
+    if f == TdFamily.prefix_sum {
+        w := [20]WmOp.[
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.local_set, arg = 0},
+            WmOp.{code = WmCode.i32_const, arg = p}, WmOp.{code = WmCode.local_set, arg = 1},
+            WmOp.{code = WmCode.block, arg = 17},
+            WmOp.{code = WmCode.loop, arg = 16},
+            WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.local_set, arg = 1},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_sub}, WmOp.{code = WmCode.local_tee, arg = 0},
+            WmOp.{code = WmCode.br_if, arg = 0},
+            WmOp.{code = WmCode.br, arg = 1},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.ret}
+        ];
+        for i: 0..<20 { ops[i] = w[i]; }
+        return 20;
+    }
+    if f == TdFamily.mem_accum {
+        w := [23]WmOp.[
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.local_set, arg = 0},
+            WmOp.{code = WmCode.block, arg = 16},
+            WmOp.{code = WmCode.loop, arg = 15},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = p}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.i32_store},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_sub}, WmOp.{code = WmCode.local_tee, arg = 0},
+            WmOp.{code = WmCode.br_if, arg = 0},
+            WmOp.{code = WmCode.br, arg = 1},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.i32_load}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_load}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.ret}
+        ];
+        for i: 0..<23 { ops[i] = w[i]; }
+        return 23;
+    }
+    if f == TdFamily.stride_sub {
+        stride := 2 + (p % 4);
+        w := [20]WmOp.[
+            WmOp.{code = WmCode.i32_const, arg = n * stride}, WmOp.{code = WmCode.local_set, arg = 0},
+            WmOp.{code = WmCode.i32_const, arg = 0}, WmOp.{code = WmCode.local_set, arg = 1},
+            WmOp.{code = WmCode.block, arg = 17},
+            WmOp.{code = WmCode.loop, arg = 16},
+            WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.local_set, arg = 1},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = stride}, WmOp.{code = WmCode.i32_sub}, WmOp.{code = WmCode.local_tee, arg = 0},
+            WmOp.{code = WmCode.br_if, arg = 0},
+            WmOp.{code = WmCode.br, arg = 1},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.ret}
+        ];
+        for i: 0..<20 { ops[i] = w[i]; }
+        return 20;
+    }
+    if f == TdFamily.squares_mem {
+        bias := p % 4;
+        w := [25]WmOp.[
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.local_set, arg = 0},
+            WmOp.{code = WmCode.block, arg = 18},
+            WmOp.{code = WmCode.loop, arg = 17},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_mul}, WmOp.{code = WmCode.i32_const, arg = bias}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.i32_store},
+            WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_sub}, WmOp.{code = WmCode.local_tee, arg = 0},
+            WmOp.{code = WmCode.br_if, arg = 0},
+            WmOp.{code = WmCode.br, arg = 1},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.end_op},
+            WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.i32_load}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_load}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.ret}
+        ];
+        for i: 0..<25 { ops[i] = w[i]; }
+        return 25;
+    }
+    // tri_accum
+    w := [26]WmOp.[
+        WmOp.{code = WmCode.i32_const, arg = n}, WmOp.{code = WmCode.local_set, arg = 0},
+        WmOp.{code = WmCode.i32_const, arg = p}, WmOp.{code = WmCode.local_set, arg = 1},
+        WmOp.{code = WmCode.i32_const, arg = 0}, WmOp.{code = WmCode.local_set, arg = 2},
+        WmOp.{code = WmCode.block, arg = 23},
+        WmOp.{code = WmCode.loop, arg = 22},
+        WmOp.{code = WmCode.local_get, arg = 2}, WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.local_set, arg = 2},
+        WmOp.{code = WmCode.local_get, arg = 1}, WmOp.{code = WmCode.i32_const, arg = 2}, WmOp.{code = WmCode.i32_add}, WmOp.{code = WmCode.local_set, arg = 1},
+        WmOp.{code = WmCode.local_get, arg = 0}, WmOp.{code = WmCode.i32_const, arg = 1}, WmOp.{code = WmCode.i32_sub}, WmOp.{code = WmCode.local_tee, arg = 0},
+        WmOp.{code = WmCode.br_if, arg = 0},
+        WmOp.{code = WmCode.br, arg = 1},
+        WmOp.{code = WmCode.end_op},
+        WmOp.{code = WmCode.end_op},
+        WmOp.{code = WmCode.local_get, arg = 2}, WmOp.{code = WmCode.ret}
+    ];
+    for i: 0..<26 { ops[i] = w[i]; }
+    return 26;
+}
+
+td_verify_wasm_parity :: (out_weight_calls: []int, out_artifact_hash: []u8) -> bool #export_c #effects(all) {
+    layers: [WX_CORE_MAX_LAYERS]EvLayerDesc;
+    heads: [WX_CORE_MAX_HEADS]EvHeadDesc;
+    weights: [WX_CORE_MAX_WEIGHTS]f64;
+    core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+    if !core.ready { return false; }
+    if out_artifact_hash.count >= 32 {
+        for i: 0..<32 { out_artifact_hash[i] = core.artifact_hash[i]; }
+    }
+    nodes: [512]HtNode;
+    wops: [32]WmOp;
+    funcs: [1]WsmFunc;
+    tm_ops: [TDP_MAX_OPS]TmOp;
+    trace: [2048]int;
+    outs: [TM_OUTPUTS]int;
+    total_wc := 0;
+    for fi: 0..<TDP_FAMILIES {
+        f := cast(TdFamily)fi;
+        n := tdp_bucket_n(f, TdBucket.len_2x);
+        p := 3;
+        tk := tdp_program(f, n, p, tm_ops[..]);
+        tr := tm_run(tm_ops[0..<tk], 512, trace[..], outs[..], false);
+        if tr.status != TmStatus.ok { return false; }
+        tm_sum := 0;
+        for i: 0..<tr.outputs { tm_sum += outs[i]; }
+        wk := td_wasm_family_prog(f, n, p, wops[..], funcs[..]);
+        rc := wx_run(core, wops[0..<wk], funcs[..], 64, 512, nodes[..]);
+        if rc.status != WmStatus.ok || !rc.has_result || rc.result != tm_sum { return false; }
+        rep := wx_replay_verify(wops[0..<wk], funcs[..], 64, 512, rc, nodes[..]);
+        if rep.verdict != RxVerdict.exact { return false; }
+        total_wc += rc.weight_calls;
+    }
+    if out_weight_calls.count >= 1 { out_weight_calls[0] = total_wc; }
+    return total_wc > 0;
+}
+
+// ---- Verified Corpus & Ch 247 Exposure-Ledger Builder (C-exported for GPU host) ----
+// Admits all 252 training traces (TrRole.train, families 0..2, n=1..3, p=0..27) and
+// all 96 held-out traces (TrRole.heldout, families 0..5, buckets 1x..8x, p=28..31)
+// onto ONE shared Ch 247 exposure ledger, verifies zero leakage across all 3 arm
+// artifacts (0, 1, 2), and populates packed token/mask/aux/src_pos training tensors.
+
+td_build_verified_corpus :: (
+    train_ctx: int,
+    train_ids: []u8, train_tg: []u8, train_mask: []u8, train_aux_tg: []u8, train_aux_mask: []u8, train_src_pos: []int,
+    out_ledger_digest: []u8, out_counts: []int
+) -> bool #export_c #effects(all) {
+    if train_ctx < 320 || train_ids.count < TD_FULL_TRAIN_TRACES * train_ctx ||
+       train_tg.count < TD_FULL_TRAIN_TRACES * train_ctx || train_mask.count < TD_FULL_TRAIN_TRACES * train_ctx ||
+       train_aux_tg.count < TD_FULL_TRAIN_TRACES * train_ctx * 4 || train_aux_mask.count < TD_FULL_TRAIN_TRACES * train_ctx ||
+       train_src_pos.count < TD_FULL_TRAIN_TRACES * train_ctx || out_ledger_digest.count < 32 || out_counts.count < 4 {
+        return false;
+    }
+    rows_buf: [512]TrRow;
+    entries: [64]TrEntry;
+    cuts := tdp_cuts();
+    s := tr_open(0, cuts, rows_buf[..], entries[..], 0);
+
+    prog: [TDP_MAX_OPS]TmOp;
+    trace: [2048]int;
+    outs: [TM_OUTPUTS]int;
+    tmp_tok: [320]u8;
+    tmp_mask: [320]u8;
+    tmp_aux: [1280]u8;
+    tmp_am: [320]u8;
+    tmp_src: [320]int;
+
+    row_idx := 0;
+    time := 1;
+    // 1. Admit all 252 training traces strictly via Ch 234 + Ch 247 (TrRole.train).
+    for fi: 0..<3 {
+        f := cast(TdFamily)fi;
+        for n: 1..<4 {
+            for p: 0..<28 {
+                k := tdp_program(f, n, p, prog[..]);
+                if k <= 0 { return false; }
+                a := tdp_admit_trace(s, f, TdBucket.len_1x, true, prog[0..<k], trace[..], outs[..], time, 512);
+                if a.reason != TrReason.admitted { return false; }
+                s = a.set;
+                time += 1;
+                made := rx_claim(prog[0..<k], 512, trace[..], outs[..]);
+                if made.status != TmStatus.ok { return false; }
+                ntok := tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320,
+                    tmp_tok[..], tmp_mask[..], tmp_aux[..], tmp_am[..], tmp_src[..]);
+                if ntok <= 0 || ntok > train_ctx { return false; }
+                base := row_idx * train_ctx;
+                for t: 0..<train_ctx {
+                    train_ids[base + t] = ifx t < 320 then tmp_tok[t] else TDP_PAD;
+                    train_tg[base + t] = ifx t + 1 < 320 then tmp_tok[t + 1] else TDP_PAD;
+                    train_mask[base + t] = ifx t < 320 then tmp_mask[t] else 0;
+                    train_aux_mask[base + t] = ifx t < 320 then tmp_am[t] else 0;
+                    train_src_pos[base + t] = ifx t < 320 then tmp_src[t] else -1;
+                    for c: 0..<4 {
+                        train_aux_tg[(base + t) * 4 + c] = ifx t < 320 then tmp_aux[t * 4 + c] else 0;
+                    }
+                }
+                row_idx += 1;
+            }
+        }
+    }
+    if row_idx != TD_FULL_TRAIN_TRACES { return false; }
+
+    // 2. Admit all 96 held-out traces on the SAME exposure ledger (TrRole.heldout).
+    h_time := TDP_TRAIN_TIME_CUT + 1;
+    for fi: 0..<TDP_FAMILIES {
+        f := cast(TdFamily)fi;
+        for bi: 0..<TDP_BUCKETS {
+            b := cast(TdBucket)bi;
+            n := tdp_bucket_n(f, b);
+            for pi: 0..<4 {
+                p := 28 + pi;
+                k := tdp_program(f, n, p, prog[..]);
+                if k <= 0 { return false; }
+                a := tdp_admit_trace(s, f, b, false, prog[0..<k], trace[..], outs[..], h_time, 512);
+                if a.reason != TrReason.admitted { return false; }
+                s = a.set;
+                h_time += 1;
+            }
+        }
+    }
+
+    // 3. Verify zero leakage across Arms B (artifact 1) and C (artifact 2): trying to train
+    //    on ANY held-out group must be refused by Ch 247 as TrReason.reserved!
+    leaks_blocked := 0;
+    for art: 1..<3 {
+        s_art := tr_open(art, cuts, rows_buf[..], entries[..], s.entries);
+        // Attempt unseen family (stride_sub 1x) & 2x seen family (countdown 2x) under train time.
+        k_bad := tdp_program(TdFamily.stride_sub, 4, 28, prog[..]);
+        m_bad := rx_claim(prog[0..<k_bad], 512, trace[..], outs[..]);
+        r1 := tr_add_trace(s_art, prog[0..<k_bad], m_bad.claim, trace[0..<m_bad.claim.steps * TM_TOKENS],
+            tdp_group_id(TdFamily.stride_sub, TdBucket.len_1x, false), 1, 512);
+        if r1.reason != TrReason.reserved { return false; }
+        leaks_blocked += 1;
+
+        k_bad2 := tdp_program(TdFamily.countdown, 6, 28, prog[..]);
+        m_bad2 := rx_claim(prog[0..<k_bad2], 512, trace[..], outs[..]);
+        r2 := tr_add_trace(s_art, prog[0..<k_bad2], m_bad2.claim, trace[0..<m_bad2.claim.steps * TM_TOKENS],
+            tdp_group_id(TdFamily.countdown, TdBucket.len_2x, false), 2, 512);
+        if r2.reason != TrReason.reserved { return false; }
+        leaks_blocked += 1;
+    }
+
+    cnt := tr_counts(s);
+    if cnt[cast(int)TrRole.train] != TD_FULL_TRAIN_TRACES || cnt[cast(int)TrRole.heldout] != TD_EVAL_TRACES {
+        return false;
+    }
+    dig := tr_digest(s);
+    for i: 0..<32 { out_ledger_digest[i] = dig[i]; }
+    out_counts[0] = cnt[cast(int)TrRole.train];
+    out_counts[1] = cnt[cast(int)TrRole.heldout];
+    out_counts[2] = s.entries;
+    out_counts[3] = leaks_blocked;
+    return true;
+}
+
+// Helper for host: returns training program prompt & reference claim for index 0..251
+// (used by Variant B's Ch 139 on-policy RL rollout sampler — strictly training split ONLY!).
+td_train_item_prompt :: (idx: int, prompt_out: []u8, prog_out: []TmOp, out_meta: []int) -> RxClaim #export_c #effects(all) {
+    fi := idx / 84;
+    rem := idx % 84;
+    n := 1 + rem / 28;
+    p := rem % 28;
+    f := cast(TdFamily)fi;
+    k := tdp_program(f, n, p, prog_out);
+    plen := tdp_encode_prompt(prog_out[0..<k], prompt_out);
+    trace: [512]int;
+    outs: [TM_OUTPUTS]int;
+    made := rx_claim(prog_out[0..<k], 512, trace[..], outs[..]);
+    out_meta[0] = k;
+    out_meta[1] = plen;
+    out_meta[2] = made.claim.steps;
+    out_meta[3] = fi;
+    return made.claim;
+}
+
+// Helper for host: returns held-out evaluation prompt & reference claim for index 0..95.
+// Index ordering: (fi * 16 + bi * 4 + pi), p = 28 + pi.
+td_eval_item_prompt :: (idx: int, prompt_out: []u8, prog_out: []TmOp, out_meta: []int) -> RxClaim #export_c #effects(all) {
+    fi := idx / 16;
+    rem := idx % 16;
+    bi := rem / 4;
+    pi := rem % 4;
+    f := cast(TdFamily)fi;
+    b := cast(TdBucket)bi;
+    n := tdp_bucket_n(f, b);
+    p := 28 + pi;
+    k := tdp_program(f, n, p, prog_out);
+    plen := tdp_encode_prompt(prog_out[0..<k], prompt_out);
+    trace: [2048]int;
+    outs: [TM_OUTPUTS]int;
+    made := rx_claim(prog_out[0..<k], 512, trace[..], outs[..]);
+    out_meta[0] = k;
+    out_meta[1] = plen;
+    out_meta[2] = made.claim.steps;
+    out_meta[3] = fi;
+    out_meta[4] = bi;
+    return made.claim;
+}
+
+// ---- CPU Reference Forward + Backward on td_tiny_shape (for finite-diff & GPU parity) ----
+
+TdTinyWork :: struct {
+    x: [64 * 32]f32;
+    h1: [2 * 64 * 32]f32;
+    r1: [2 * 64]f32;
+    qkv: [2 * 64 * 96]f32;
+    sc: [2 * 2 * 2 * 32 * 32]f32;
+    oa: [2 * 64 * 32]f32;
+    h2: [2 * 64 * 32]f32;
+    r2: [2 * 64]f32;
+    u: [2 * 64 * 64]f32;
+    a: [2 * 64 * 64]f32;
+    hf: [64 * 32]f32;
+    rf: [64]f32;
+    logits: [64 * 128]f32;
+    dlog: [64 * 128]f32;
+    loss: [64]f32;
+    aux_log: [64 * 192]f32;
+    daux: [64 * 192]f32;
+    aux_loss: [64]f32;
+    mloss: [64]f32;
+    dmargin: [2 * 32 * 32]f32;
+    g_res: [64 * 32]f32;
+    dh: [64 * 32]f32;
+    da: [64 * 64]f32;
+    dout: [64 * 32]f32;
+    dp: [2 * 2 * 32 * 32]f32;
+    dqkv: [64 * 96]f32;
+}
+
+// Runs the EXACT GPU kernel sequence on CPU for td_tiny_shape, returning total scalar objective
+// (weighted CE + aux CE [Variant B] + margin hinge loss [Variant C]) and optionally computing
+// analytic gradients into `grad` (when do_bwd == true).
+td_tiny_cpu_step :: (
+    arm: TdArm, beta_para: f32, aux_w: f32, margin_val: f32, margin_w: f32,
+    p: []f32, rope: []f32, ids: []u8, tg: []u8, weights: []f32,
+    aux_tg: []u8, aux_mask: []u8, src_pos: []int,
+    w: []TdTinyWork, grad: []f32, do_bwd: bool
+) -> f64 #export_c #effects(all) {
+    s := td_tiny_shape();
+    d := s.d; heads := s.heads; hd := d / heads; h3 := 3 * d; hid := s.hidden;
+    t := s.train_ctx; rows := s.rows; nt := rows * t; bh := rows * heads;
+    st := bh * t * t;
+
+    for i: 0..<nt * d { tdk_embed(i, d, ids, p[0..<s.vocab * d], w[0].x[..]); }
+    for l: 0..<s.layers {
+        para := td_para_heads(arm, l);
+        h1s := w[0].h1[l * nt * d..<(l + 1) * nt * d];
+        r1s := w[0].r1[l * nt..<(l + 1) * nt];
+        qkvs := w[0].qkv[l * nt * h3..<(l + 1) * nt * h3];
+        scs := w[0].sc[l * st..<(l + 1) * st];
+        oas := w[0].oa[l * nt * d..<(l + 1) * nt * d];
+        h2s := w[0].h2[l * nt * d..<(l + 1) * nt * d];
+        r2s := w[0].r2[l * nt..<(l + 1) * nt];
+        us := w[0].u[l * nt * hid..<(l + 1) * nt * hid];
+        as_ := w[0].a[l * nt * hid..<(l + 1) * nt * hid];
+
+        for i: 0..<nt { tdk_rms(i, d, w[0].x[..], h1s, r1s); }
+        oq := td_off_qkv(s, l);
+        for i: 0..<tdk_mm_items(nt, h3) { tdk_mm_nn(i, nt, h3, d, 0, h1s, p[oq..<oq + d * h3], qkvs); }
+        for i: 0..<nt * heads * (hd / 2) { tdk_rope_qkv(i, t, d, heads, para, 0, rope, qkvs); }
+        for i: 0..<st { tdk_attn_scores(i, t, d, heads, para, beta_para, qkvs, scs); }
+        if arm == TdArm.variant_c && l == 0 && margin_w > 0 {
+            for i: 0..<nt { tdk_margin_loss(i, t, heads, margin_val, margin_w, scs, src_pos, w[0].mloss[..], w[0].dmargin[..]); }
+        }
+        for i: 0..<bh * t { tdk_softmax(i, t, scs); }
+        for i: 0..<nt * d { tdk_attn_out(i, t, d, heads, scs, qkvs, oas); }
+        oo := td_off_o(s, l);
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nn(i, nt, d, d, 1, oas, p[oo..<oo + d * d], w[0].x[..]); }
+        for i: 0..<nt { tdk_rms(i, d, w[0].x[..], h2s, r2s); }
+        ou := td_off_up(s, l);
+        for i: 0..<tdk_mm_items(nt, hid) { tdk_mm_nn(i, nt, hid, d, 0, h2s, p[ou..<ou + d * hid], us); }
+        for i: 0..<nt * hid { tdk_relu2(i, us, as_); }
+        od := td_off_down(s, l);
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nn(i, nt, d, hid, 1, as_, p[od..<od + hid * d], w[0].x[..]); }
+    }
+    for i: 0..<nt { tdk_rms(i, d, w[0].x[..], w[0].hf[..], w[0].rf[..]); }
+    oh := td_off_head(s);
+    for i: 0..<tdk_mm_items(nt, s.vocab) { tdk_mm_nn(i, nt, s.vocab, d, 0, w[0].hf[..], p[oh..<oh + d * s.vocab], w[0].logits[..]); }
+    for i: 0..<nt { tdk_ce_weighted(i, s.vocab, w[0].logits[..], tg, weights, w[0].loss[..], w[0].dlog[..]); }
+
+    obj := 0.0;
+    for i: 0..<nt { obj += f64(weights[i]) * f64(w[0].loss[i]); }
+    if arm == TdArm.variant_b && aux_w > 0 {
+        oa := td_off_aux(s);
+        for i: 0..<tdk_mm_items(nt, s.aux_dim) { tdk_mm_nn(i, nt, s.aux_dim, d, 0, w[0].hf[..], p[oa..<oa + d * s.aux_dim], w[0].aux_log[..]); }
+        n_aux := 0;
+        for i: 0..<nt { if aux_mask[i] != 0 { n_aux += 1; } }
+        scale_aux: f32 = ifx n_aux > 0 then aux_w / f32(4 * n_aux) else 0.0f32;
+        for i: 0..<nt { tdk_aux_ce(i, scale_aux, w[0].aux_log[..], aux_tg, aux_mask, w[0].aux_loss[..], w[0].daux[..]); }
+        if n_aux > 0 {
+            for i: 0..<nt { obj += f64(aux_w) * f64(w[0].aux_loss[i]) / f64(n_aux); }
+        }
+    }
+    if arm == TdArm.variant_c && margin_w > 0 {
+        for i: 0..<nt { obj += f64(w[0].mloss[i]); }
+    }
+    if !do_bwd { return obj; }
+
+    for i: 0..<grad.count { grad[i] = 0; }
+    for i: 0..<tdk_mm_items(d, s.vocab) { tdk_mm_tn(i, d, s.vocab, nt, 0, w[0].hf[..], w[0].dlog[..], grad[oh..<oh + d * s.vocab]); }
+    for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nt(i, nt, d, s.vocab, 0, w[0].dlog[..], p[oh..<oh + d * s.vocab], w[0].dh[..]); }
+    if arm == TdArm.variant_b && aux_w > 0 {
+        oa := td_off_aux(s);
+        for i: 0..<tdk_mm_items(d, s.aux_dim) { tdk_mm_tn(i, d, s.aux_dim, nt, 0, w[0].hf[..], w[0].daux[..], grad[oa..<oa + d * s.aux_dim]); }
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nt(i, nt, d, s.aux_dim, 1, w[0].daux[..], p[oa..<oa + d * s.aux_dim], w[0].dh[..]); }
+    }
+    for i: 0..<nt { tdk_rms_back(i, d, 0, w[0].hf[..], w[0].rf[..], w[0].dh[..], w[0].g_res[..]); }
+
+    for back: 0..<s.layers {
+        l := s.layers - 1 - back;
+        para := td_para_heads(arm, l);
+        h1s := w[0].h1[l * nt * d..<(l + 1) * nt * d];
+        r1s := w[0].r1[l * nt..<(l + 1) * nt];
+        qkvs := w[0].qkv[l * nt * h3..<(l + 1) * nt * h3];
+        scs := w[0].sc[l * st..<(l + 1) * st];
+        oas := w[0].oa[l * nt * d..<(l + 1) * nt * d];
+        h2s := w[0].h2[l * nt * d..<(l + 1) * nt * d];
+        r2s := w[0].r2[l * nt..<(l + 1) * nt];
+        us := w[0].u[l * nt * hid..<(l + 1) * nt * hid];
+        as_ := w[0].a[l * nt * hid..<(l + 1) * nt * hid];
+
+        od := td_off_down(s, l);
+        for i: 0..<tdk_mm_items(nt, hid) { tdk_mm_nt(i, nt, hid, d, 0, w[0].g_res[..], p[od..<od + hid * d], w[0].da[..]); }
+        for i: 0..<tdk_mm_items(hid, d) { tdk_mm_tn(i, hid, d, nt, 0, as_, w[0].g_res[..], grad[od..<od + hid * d]); }
+        for i: 0..<nt * hid { tdk_relu2_back(i, us, w[0].da[..]); }
+        ou := td_off_up(s, l);
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nt(i, nt, d, hid, 0, w[0].da[..], p[ou..<ou + d * hid], w[0].dh[..]); }
+        for i: 0..<tdk_mm_items(d, hid) { tdk_mm_tn(i, d, hid, nt, 0, h2s, w[0].da[..], grad[ou..<ou + d * hid]); }
+        for i: 0..<nt { tdk_rms_back(i, d, 1, h2s, r2s, w[0].dh[..], w[0].g_res[..]); }
+
+        oo := td_off_o(s, l);
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nt(i, nt, d, d, 0, w[0].g_res[..], p[oo..<oo + d * d], w[0].dout[..]); }
+        for i: 0..<tdk_mm_items(d, d) { tdk_mm_tn(i, d, d, nt, 0, oas, w[0].g_res[..], grad[oo..<oo + d * d]); }
+        for i: 0..<st { tdk_attn_dp(i, t, d, heads, w[0].dout[..], qkvs, w[0].dp[..]); }
+        for i: 0..<bh * t { tdk_softmax_back(i, t, scs, w[0].dp[..]); }
+        if arm == TdArm.variant_c && l == 0 && margin_w > 0 {
+            for i: 0..<rows * t * t { tdk_add_margin_ds(i, t, heads, w[0].dmargin[..], w[0].dp[..]); }
+        }
+        for i: 0..<nt * h3 { tdk_attn_dqkv(i, t, d, heads, para, beta_para, scs, w[0].dp[..], qkvs, w[0].dout[..], w[0].dqkv[..]); }
+        for i: 0..<nt * heads * (hd / 2) { tdk_rope_qkv(i, t, d, heads, para, 1, rope, w[0].dqkv[..]); }
+        oq := td_off_qkv(s, l);
+        for i: 0..<tdk_mm_items(nt, d) { tdk_mm_nt(i, nt, d, h3, 0, w[0].dqkv[..], p[oq..<oq + d * h3], w[0].dh[..]); }
+        for i: 0..<tdk_mm_items(d, h3) { tdk_mm_tn(i, d, h3, nt, 0, h1s, w[0].dqkv[..], grad[oq..<oq + d * h3]); }
+        for i: 0..<nt { tdk_rms_back(i, d, 1, h1s, r1s, w[0].dh[..], w[0].g_res[..]); }
+    }
+    for i: 0..<s.vocab * d { tdk_embed_back(i, d, nt, 0, ids, w[0].g_res[..], grad[0..<s.vocab * d]); }
+    return obj;
+}
+
+// ---- Unit Checks ----
+
+#test "10.72M parameter shape, analytic parabolic init, and W1.2 wasm-exec-v1 parity" #steps 400000000 {
+    full := td_full_shape();
+    #assert td_backbone_params(full) == 10715136 && td_backbone_params(full) >= TDP_MIN_REAL_PARAMS;
+    #assert td_total_params(full) == 10715136 + 384 * 192;
+
+    // Verify Variant C analytic parabolic initialization: for every key k in 0..63,
+    // q(k) . k(k') is strictly maximized at k' == k!
+    tiny := td_tiny_shape();
+    p: [30720]f32;
+    #assert td_init_weights(tiny, TdArm.variant_c, p[..]) == TdStatus.ok;
+    d := tiny.d; h3 := 3 * d; oq := td_off_qkv(tiny, 0);
+    for qk: 0..<64 {
+        q0 := p[(TDP_VAL_BASE + qk) * d + 3] * p[oq + 3 * h3 + 0];
+        q1 := p[(TDP_VAL_BASE + qk) * d + 2] * p[oq + 2 * h3 + 1];
+        best_k := -1;
+        best_sc := -1e30;
+        for kk: 0..<64 {
+            k0 := p[(TDP_VAL_BASE + kk) * d + 0] * p[oq + 0 * h3 + d + 0];
+            k1 := p[(TDP_VAL_BASE + kk) * d + 1] * p[oq + 1 * h3 + d + 1];
+            sc := f64(q0 * k0 + q1 * k1);
+            if sc > best_sc { best_sc = sc; best_k = kk; }
+        }
+        #assert best_k == qk;
+    }
+
+    // Verify W1.2 wasm-exec-v1 dense F64 safetensors core executes all 6 families with exact parity.
+    wc: [1]int;
+    art: [32]u8;
+    #assert td_verify_wasm_parity(wc[..], art[..]) && wc[0] > 100;
+}
+
+#test "central finite-difference gradient check passes for Baseline A, Variant B (Aux + RL), and Variant C (Parabolic + Margin)" #steps 400000000 {
+    s := td_tiny_shape();
+    rope: [1024]f32;
+    td_rope_table(s.d / s.heads, 64, rope[..]);
+    ids: [64]u8; tg: [64]u8; weights: [64]f32;
+    aux_tg: [256]u8; aux_mask: [64]u8; src_pos: [64]int;
+    for i: 0..<64 {
+        ids[i] = cast(u8)(TDP_VAL_BASE + ((i * 7 + 3) % 32));
+        tg[i] = cast(u8)(TDP_VAL_BASE + ((i * 5 + 1) % 32));
+        weights[i] = ifx (i % 32) >= 8 then (ifx i < 32 then 0.02f32 else -0.015f32) else 0.0f32;
+        aux_mask[i] = ifx (i % 6) == 0 then 1 else 0;
+        aux_tg[4 * i] = cast(u8)(i % 32);
+        aux_tg[4 * i + 1] = cast(u8)((i + 1) % 32);
+        aux_tg[4 * i + 2] = cast(u8)((i * 3) % 64);
+        aux_tg[4 * i + 3] = cast(u8)((i * 5) % 64);
+        pos := i % 32;
+        src_pos[i] = ifx pos >= 4 && (pos % 5 == 0) then pos - 3 else -1;
+    }
+    p: [30720]f32;
+    grad: [30720]f32;
+    work: [1]TdTinyWork;
+
+    // Sample parameters from every group: tok, l0 qkv, l0 o, l0 up, l0 down, l1 qkv, head, aux.
+    probes := [8]int.[
+        (TDP_VAL_BASE + 3) * 32 + 1,
+        td_off_qkv(s, 0) + 3 * 96 + 0,
+        td_off_o(s, 0) + 5 * 32 + 7,
+        td_off_up(s, 0) + 2 * 64 + 9,
+        td_off_down(s, 0) + 4 * 32 + 3,
+        td_off_qkv(s, 1) + 7 * 96 + 17,
+        td_off_head(s) + 4 * 128 + TDP_VAL_BASE + 1,
+        td_off_aux(s) + 3 * 192 + 5
+    ];
+
+    for ai: 0..<3 {
+        arm := cast(TdArm)ai;
+        #assert td_init_weights(s, arm, p[..]) == TdStatus.ok;
+        beta: f32 = ifx arm == TdArm.variant_c then 2.5f32 else 1.0f32;
+        aux_w: f32 = ifx arm == TdArm.variant_b then 0.25f32 else 0.0f32;
+        mar_w: f32 = ifx arm == TdArm.variant_c then 0.05f32 else 0.0f32;
+        // For Arm A & C use positive SFT weights; for Arm B keep mixed +/- RL weights to test both signs!
+        w_arm: [64]f32;
+        for i: 0..<64 {
+            if arm == TdArm.variant_b { w_arm[i] = weights[i]; }
+            else { w_arm[i] = ifx (i % 32) >= 8 then 0.02f32 else 0.0f32; }
+        }
+        _ = td_tiny_cpu_step(arm, beta, aux_w, 2.0f32, mar_w, p[..], rope[..], ids[..], tg[..], w_arm[..], aux_tg[..], aux_mask[..], src_pos[..], work[..], grad[..], true);
+        eps: f32 = 0.002f32;
+        for k: 0..<8 {
+            idx := probes[k];
+            if k == 7 && arm != TdArm.variant_b { continue; }
+            orig := p[idx];
+            p[idx] = orig + eps;
+            lp := td_tiny_cpu_step(arm, beta, aux_w, 2.0f32, mar_w, p[..], rope[..], ids[..], tg[..], w_arm[..], aux_tg[..], aux_mask[..], src_pos[..], work[..], grad[..], false);
+            p[idx] = orig - eps;
+            lm := td_tiny_cpu_step(arm, beta, aux_w, 2.0f32, mar_w, p[..], rope[..], ids[..], tg[..], w_arm[..], aux_tg[..], aux_mask[..], src_pos[..], work[..], grad[..], false);
+            p[idx] = orig;
+            num := (lp - lm) / (2.0 * f64(eps));
+            ana := f64(grad[idx]);
+            denom := abs(num) + abs(ana) + 1e-3;
+            #assert abs(num - ana) / denom < 0.03;
+        }
+    }
+}

@@ -1,0 +1,919 @@
+// Executor W3.2 (#13918): #authority policy, verified trace generator,
+// lossless trace codec, Ch 234 exact-replay scorer, Ch 247 exposure-ledger
+// split admission, Ch 139 RL advantage rule, sharpness (beta) schedule, and
+// pre-registered H1/H3/H5 falsification verdicts for `trace-distill-v1`.
+//
+// Standing rules:
+// - Every training and evaluation trace is verified by Ch 234 (replay.coax)
+//   and admitted through Ch 247 (training-rows.coax) with zero split leakage.
+// - Every student checkpoint is scored exclusively by standalone
+//   autoregressive self-rollout replayed by Ch 234 (never training loss or
+//   teacher-forced accuracy).
+// - All three experimental arms (Baseline A / H1, Variant B / H5, Variant C /
+//   H3) consume an identical total training token budget.
+#load "training-rows.coax";
+#authority;
+
+TdArm :: enum u8 {baseline_a; variant_b; variant_c;}
+TdFamily :: enum u8 {countdown; prefix_sum; mem_accum; stride_sub; squares_mem; tri_accum;}
+TdBucket :: enum u8 {len_1x; len_2x; len_4x; len_8x;}
+TdStatus :: enum u8 {ok; shape; budget; leak; replay; number; checkpoint; order;}
+TdHypVerdict :: enum u8 {falsified; partial; confirmed;}
+TdW5Lane :: enum u8 {h2_routing_only; h2_plus_student_backbone;}
+
+TDP_VOCAB :: 128;
+TDP_PAD :: 0;
+TDP_BOS :: 1;
+TDP_PROG :: 2;
+TDP_TRACE :: 3;
+TDP_STEP :: 4;
+TDP_EOS :: 5;
+TDP_OP_BASE :: 16;
+TDP_IP_BASE :: 32;
+TDP_VAL_BASE :: 64;
+TDP_VAL_BIAS :: 2048;
+TDP_VAL_MIN :: -2048;
+TDP_VAL_MAX :: 2047;
+TDP_FAMILIES :: 6;
+TDP_BUCKETS :: 4;
+TDP_STEP_TOKENS :: 6;
+TDP_MAX_OPS :: 32;
+TDP_MAX_EVAL_STEPS :: 320;
+TDP_MIN_REAL_PARAMS :: 10000000;
+TDP_TRAIN_TIME_CUT :: 10000;
+TDP_PI :: 3.141592653589793;
+
+TdScore :: struct {
+    status: TdStatus;
+    exact: bool;
+    output_match: bool;
+    syntax_err: bool;
+    first_div_step: int;
+    gen_steps: int;
+    ref_steps: int;
+    reason: RxReason;
+    field: RxField;
+}
+
+TdDecision :: struct {
+    status: TdStatus;
+    apply: bool;
+    clipped: bool;
+    loss: f64;
+    norm: f32;
+    rate: f64;
+    scale: f32;
+    keep: f32;
+    b2: f32;
+    wb1: f32;
+    wb2: f32;
+    step: f32;
+    root2: f32;
+    eps: f32;
+}
+
+// ---- Checks first ----
+#test "program families split strictly into 3 seen and 3 unseen with valid 1x..8x scaling" {
+    #assert tdp_family_seen(TdFamily.countdown) && tdp_family_seen(TdFamily.prefix_sum) && tdp_family_seen(TdFamily.mem_accum);
+    #assert !tdp_family_seen(TdFamily.stride_sub) && !tdp_family_seen(TdFamily.squares_mem) && !tdp_family_seen(TdFamily.tri_accum);
+    #assert tdp_bucket_n(TdFamily.stride_sub, TdBucket.len_1x) == 4 && tdp_bucket_n(TdFamily.stride_sub, TdBucket.len_2x) == 8;
+    #assert tdp_bucket_n(TdFamily.stride_sub, TdBucket.len_4x) == 16 && tdp_bucket_n(TdFamily.stride_sub, TdBucket.len_8x) == 32;
+    #assert tdp_bucket_n(TdFamily.squares_mem, TdBucket.len_1x) == 2 && tdp_bucket_n(TdFamily.squares_mem, TdBucket.len_2x) == 5;
+    #assert tdp_bucket_n(TdFamily.squares_mem, TdBucket.len_4x) == 10 && tdp_bucket_n(TdFamily.squares_mem, TdBucket.len_8x) == 20;
+    #assert tdp_bucket_n(TdFamily.tri_accum, TdBucket.len_1x) == 2 && tdp_bucket_n(TdFamily.tri_accum, TdBucket.len_2x) == 4;
+    #assert tdp_bucket_n(TdFamily.tri_accum, TdBucket.len_4x) == 9 && tdp_bucket_n(TdFamily.tri_accum, TdBucket.len_8x) == 18;
+    #assert tdp_bucket_n(TdFamily.countdown, TdBucket.len_1x) == 3 && tdp_bucket_n(TdFamily.countdown, TdBucket.len_8x) == 24;
+    prog: [TDP_MAX_OPS]TmOp;
+    trace: [2048]int;
+    outs: [TM_OUTPUTS]int;
+    want_ops := [6]int.[15, 17, 20, 11, 22, 23];
+    for fi: 0..<TDP_FAMILIES {
+        f := cast(TdFamily)fi;
+        for bi: 0..<TDP_BUCKETS {
+            b := cast(TdBucket)bi;
+            n := tdp_bucket_n(f, b);
+            k := tdp_program(f, n, 3, prog[..]);
+            #assert k == want_ops[fi] && tm_admit(prog[0..<k]) == TmStatus.ok;
+            r := tm_run(prog[0..<k], 512, trace[..], outs[..], false);
+            #assert r.status == TmStatus.ok && r.outputs >= 1;
+            if bi == 0 { #assert r.steps >= 35 && r.steps <= 42; }
+            if bi == 1 { #assert r.steps >= 65 && r.steps <= 75; }
+            if bi == 2 { #assert r.steps >= 125 && r.steps <= 141; }
+            if bi == 3 { #assert r.steps >= 245 && r.steps <= 273; }
+            for i: 0..<r.steps {
+                x := trace[i * TM_TOKENS + 2];
+                y := trace[i * TM_TOKENS + 3];
+                #assert x >= TDP_VAL_MIN && x <= TDP_VAL_MAX && y >= 0 && y < 64;
+            }
+        }
+    }
+    // Check exact arithmetic outputs of all 6 families by hand.
+    k := tdp_program(TdFamily.countdown, 3, 5, prog[..]);
+    r := tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 15 && r.status == TmStatus.ok && r.outputs == 3 && outs[0] == 8 && outs[1] == 7 && outs[2] == 6;
+    k = tdp_program(TdFamily.prefix_sum, 4, 10, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 17 && r.status == TmStatus.ok && r.outputs == 1 && outs[0] == 20;
+    k = tdp_program(TdFamily.mem_accum, 3, 7, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 20 && r.status == TmStatus.ok && r.outputs == 1 && outs[0] == (3 + 7) + (1 + 7);
+    k = tdp_program(TdFamily.stride_sub, 3, 4, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 11 && r.status == TmStatus.ok && r.outputs == 3 && outs[0] == 6 && outs[1] == 4 && outs[2] == 2;
+    k = tdp_program(TdFamily.stride_sub, 3, 1, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 11 && r.status == TmStatus.ok && r.outputs == 3 && outs[0] == 9 && outs[1] == 6 && outs[2] == 3;
+    k = tdp_program(TdFamily.squares_mem, 4, 1, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 22 && r.status == TmStatus.ok && r.outputs == 1 && outs[0] == (16 + 1) + (1 + 1);
+    k = tdp_program(TdFamily.squares_mem, 2, 4, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 22 && r.status == TmStatus.ok && r.outputs == 1 && outs[0] == 4 + 1;
+    k = tdp_program(TdFamily.tri_accum, 4, 3, prog[..]);
+    r = tm_run(prog[0..<k], 128, trace[..], outs[..], false);
+    #assert k == 23 && prog[5].arg == 2 && r.status == TmStatus.ok && r.outputs == 1 && outs[0] == 3 + 5 + 7 + 9;
+    // Boundary refusals for tdp_program.
+    #assert tdp_program(TdFamily.countdown, 0, 0, prog[..]) == 0;
+    #assert tdp_program(TdFamily.countdown, 33, 0, prog[..]) == 0;
+    #assert tdp_program(TdFamily.countdown, 1, -1, prog[..]) == 0;
+    #assert tdp_program(TdFamily.countdown, 1, 32, prog[..]) == 0;
+    #assert tdp_program(TdFamily.countdown, 1, 0, prog[0..<22]) == 0;
+    #assert tdp_program(TdFamily.countdown, 1, 0, prog[0..<23]) == 15;
+    #assert tdp_program(TdFamily.countdown, 32, 31, prog[..]) == 15;
+}
+
+#test "lossless codec round-trips programs, traces, aux states, and lookup sources" {
+    prog: [TDP_MAX_OPS]TmOp;
+    k := tdp_program(TdFamily.mem_accum, 2, 5, prog[..]);
+    #assert k == 20;
+    trace: [512]int;
+    outs: [TM_OUTPUTS]int;
+    made := rx_claim(prog[0..<k], 128, trace[..], outs[..]);
+    #assert made.status == TmStatus.ok && made.claim.steps == 31;
+
+    tok: [320]u8;
+    mask: [320]u8;
+    aux_tg: [1280]u8;
+    aux_mask: [320]u8;
+    src_pos: [320]int;
+    // Pre-dirty all buffers to verify every zero/sentinel initialization.
+    for i: 0..<320 { tok[i] = 99; mask[i] = 99; aux_mask[i] = 99; src_pos[i] = 99; }
+    for i: 0..<1280 { aux_tg[i] = 99; }
+
+    n_tok := tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]);
+    plen := tdp_prompt_len(k);
+    #assert plen == 3 + 3 * 20 && n_tok == plen + 31 * 6 + 1 && n_tok == 250;
+    #assert tok[0] == TDP_BOS && tok[1] == TDP_PROG && tok[2] == cast(u8)(TDP_OP_BASE + cast(int)TmCode.push);
+    #assert tok[5] == cast(u8)(TDP_OP_BASE + cast(int)TmCode.set);
+    #assert tdp_decode_val(tok[3], tok[4]) == 2 && tok[plen - 1] == TDP_TRACE && tok[n_tok - 1] == TDP_EOS;
+    for i: n_tok..<320 { #assert tok[i] == TDP_PAD; }
+    for i: 0..<plen - 1 { #assert mask[i] == 0; }
+    for i: plen - 1..<n_tok - 1 { #assert mask[i] == 1; }
+    for i: n_tok - 1..<320 { #assert mask[i] == 0; }
+    #assert aux_mask[0] == 0 && src_pos[0] == -1 && aux_tg[0] == 0 && aux_tg[1279] == 0;
+    aux_count := 0;
+    for i: 0..<320 { if aux_mask[i] == 1 { aux_count += 1; } }
+    #assert aux_count == 31;
+    s0 := plen;
+    #assert aux_mask[s0] == 1 && aux_tg[4 * s0] == 0 && aux_tg[4 * s0 + 1] == 0 && aux_tg[4 * s0 + 2] == 0 && aux_tg[4 * s0 + 3] == 0;
+    s1 := plen + 6;
+    #assert aux_mask[s1] == 1 && aux_tg[4 * s1] == 1 && aux_tg[4 * s1 + 1] == 1 && aux_tg[4 * s1 + 2] == 2 && aux_tg[4 * s1 + 3] == 0;
+    s2 := plen + 12;
+    #assert aux_tg[4 * s2 + 3] == 2 && src_pos[s2 + 1] == 2 + 2 * 3 && src_pos[s2 + 2] == plen + 6 + 4;
+    s_load := plen + 25 * 6;
+    #assert src_pos[s_load + 2] == plen + 6 * 6 + 4;
+    s_load1 := plen + 27 * 6;
+    #assert src_pos[s_load1 + 2] == plen + 17 * 6 + 4;
+
+    // Exact ctx == total and single-step ret program + unwritten get/load (verifies loc_write/mem_write init to -1).
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, n_tok, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == n_tok;
+    unw := [6]TmOp.[TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.get, arg = 7}, TmOp.{code = TmCode.push, arg = 0}, TmOp.{code = TmCode.load}, TmOp.{code = TmCode.push, arg = 63}, TmOp.{code = TmCode.load}];
+    unw7: [7]TmOp; for i: 0..<6 { unw7[i] = unw[i]; } unw7[6] = TmOp.{code = TmCode.ret};
+    utr: [64]int; uo: [4]int; um := rx_claim(unw7[..], 32, utr[..], uo[..]);
+    #assert um.status == TmStatus.ok && um.claim.steps == 7;
+    un := tdp_encode_example(unw7[..], utr[0..<28], 7, 128, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]);
+    up := tdp_prompt_len(7);
+    #assert un == up + 43 && src_pos[up + 2] == -1 && src_pos[up + 6 + 2] == -1 && src_pos[up + 18 + 2] == -1 && src_pos[up + 30 + 2] == -1;
+    // Set/get local 7 and store/load cell 63 verify upper bounds TM_LOCALS-1 and TM_CELLS-1.
+    edge_p := [8]TmOp.[TmOp.{code = TmCode.push, arg = 9}, TmOp.{code = TmCode.set, arg = 7}, TmOp.{code = TmCode.get, arg = 7},
+        TmOp.{code = TmCode.push, arg = 63}, TmOp.{code = TmCode.push, arg = 5}, TmOp.{code = TmCode.store},
+        TmOp.{code = TmCode.push, arg = 63}, TmOp.{code = TmCode.load}];
+    ep9: [9]TmOp; for i: 0..<8 { ep9[i] = edge_p[i]; } ep9[8] = TmOp.{code = TmCode.ret};
+    em := rx_claim(ep9[..], 32, utr[..], uo[..]);
+    #assert tdp_encode_example(ep9[..], utr[0..<36], 9, 128, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == tdp_prompt_len(9) + 55;
+    ep_p := tdp_prompt_len(9);
+    #assert src_pos[ep_p + 2 * 6 + 2] == ep_p + 1 * 6 + 4 && src_pos[ep_p + 7 * 6 + 2] == ep_p + 5 * 6 + 4;
+
+    // 1-step ret program + max 32-op program boundaries for prompt & example.
+    one_p := [1]TmOp.[TmOp.{code = TmCode.ret}];
+    one_tr := [4]int.[0, cast(int)TmCode.ret, 0, 0];
+    #assert tdp_encode_prompt(one_p[..], tok[0..<6]) == 6;
+    #assert tdp_encode_example(one_p[..], one_tr[..], 1, 13, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == 13;
+    big33: [33]TmOp; for i: 0..<33 { big33[i] = TmOp.{code = TmCode.ret}; }
+    #assert tdp_encode_prompt(big33[0..<32], tok[..]) == tdp_prompt_len(32);
+    #assert tdp_encode_prompt(big33[..], tok[..]) == -1;
+    bad_arg := [1]TmOp.[TmOp.{code = TmCode.push, arg = 2048}];
+    #assert tdp_encode_prompt(bad_arg[..], tok[..]) == -1;
+
+    // Re-encode mem_accum and verify exact replay scoring + all tamper & error paths.
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == n_tok;
+    gen := tok[plen..<n_tok];
+    sc := tdp_score_rollout(prog[0..<k], gen, made.claim, made.claim.steps, 128);
+    #assert sc.status == TdStatus.ok && sc.exact && sc.output_match && !sc.syntax_err && sc.first_div_step == -1 && sc.gen_steps == 31 && sc.ref_steps == 31;
+
+    bad: [200]u8;
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[10 * 6 + 4] = cast(u8)(TDP_VAL_BASE + ((cast(int)bad[10 * 6 + 4] - TDP_VAL_BASE + 1) % 64));
+    sc2 := tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, made.claim.steps, 128);
+    #assert sc2.status == TdStatus.ok && !sc2.exact && !sc2.syntax_err && sc2.first_div_step == 10 && sc2.reason == RxReason.row && sc2.field == RxField.x;
+
+    // Semantic divergence at step 0 (kills rep.step >= 0 -> > 0).
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[4] = cast(u8)(TDP_VAL_BASE + ((cast(int)bad[4] - TDP_VAL_BASE + 1) % 64));
+    sc0 := tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, made.claim.steps, 128);
+    #assert !sc0.exact && sc0.first_div_step == 0 && sc0.reason == RxReason.row;
+
+    // Syntax error at step 5 -> exact first_div_step == 5; semantic at 2 + syntax at 5 -> step 2.
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[5 * 6] = TDP_PAD;
+    sc3 := tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, made.claim.steps, 128);
+    #assert sc3.status == TdStatus.ok && !sc3.exact && sc3.syntax_err && sc3.first_div_step == 5;
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[2 * 6 + 4] = cast(u8)(TDP_VAL_BASE + ((cast(int)bad[2 * 6 + 4] - TDP_VAL_BASE + 1) % 64));
+    bad[5 * 6] = TDP_PAD;
+    sc4 := tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, made.claim.steps, 128);
+    #assert sc4.status == TdStatus.ok && !sc4.exact && sc4.first_div_step == 2 && sc4.reason == RxReason.row;
+
+    // Syntax error via invalid ip, code, x, y in rollout tokens.
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[1] = cast(u8)(TDP_IP_BASE - 1); #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[1] = cast(u8)(TDP_IP_BASE + k); #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[1] = gen[1]; bad[2] = cast(u8)(TDP_OP_BASE - 1); #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[2] = cast(u8)(TDP_OP_BASE + 11); #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[2] = gen[2]; bad[3] = 63; #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[3] = gen[3]; bad[5] = 63; #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    bad[5] = 128; #assert tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, 31, 128).syntax_err;
+    // Valid extreme x = -2048 and y = 63 are NOT syntax errors.
+    ext_p := [2]TmOp.[TmOp.{code = TmCode.push, arg = -2048}, TmOp.{code = TmCode.ret}];
+    ext_tr: [16]int; ext_o: [4]int; ext_m := rx_claim(ext_p[..], 8, ext_tr[..], ext_o[..]);
+    ext_n := tdp_encode_example(ext_p[..], ext_tr[0..<8], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]);
+    #assert tdp_score_rollout(ext_p[..], tok[tdp_prompt_len(2)..<ext_n], ext_m.claim, 2, 8).exact;
+
+    // Shape refusals & edge-valid shapes on tdp_score_rollout.
+    one_m := rx_claim(one_p[..], 1, one_tr[..], ext_o[..]);
+    one_tok := [7]u8.[TDP_STEP, TDP_IP_BASE, cast(u8)(TDP_OP_BASE + cast(int)TmCode.ret), TDP_VAL_BASE + 32, TDP_VAL_BASE, TDP_VAL_BASE, TDP_EOS];
+    #assert tdp_score_rollout(one_p[..], one_tok[..], one_m.claim, 1, 1).exact;
+    #assert tdp_score_rollout(big33[0..<32], one_tok[..], one_m.claim, 1, 1).status == TdStatus.ok;
+    #assert tdp_score_rollout(one_p[0..<0], one_tok[..], one_m.claim, 1, 1).status == TdStatus.shape;
+    #assert tdp_score_rollout(one_p[0..<0], one_tok[..], one_m.claim, 1, 1).first_div_step == -1;
+    #assert tdp_score_rollout(big33[..], one_tok[..], one_m.claim, 1, 1).status == TdStatus.shape;
+    #assert tdp_score_rollout(one_p[..], one_tok[..], one_m.claim, 0, 1).status == TdStatus.shape;
+    #assert tdp_score_rollout(one_p[..], one_tok[..], one_m.claim, 1, 0).status == TdStatus.shape;
+    // Over-budget check returns first_div_step == steps (rep.step == -1 path).
+    sc_b := tdp_score_rollout(prog[0..<k], gen, made.claim, 31, 5);
+    #assert !sc_b.exact && sc_b.reason == RxReason.over_budget && sc_b.first_div_step == 31;
+    // Empty, truncated, missing-EOS, and over-max-steps rollouts.
+    sc_e := tdp_score_rollout(prog[0..<k], gen[0..<0], made.claim, 31, 128);
+    #assert sc_e.syntax_err && sc_e.first_div_step == 0 && sc_e.reason == RxReason.steps;
+    #assert tdp_score_rollout(prog[0..<k], gen[0..<5], made.claim, 31, 128).syntax_err;
+    sc_six := tdp_score_rollout(prog[0..<k], gen[0..<6], made.claim, 31, 128);
+    #assert sc_six.syntax_err && sc_six.gen_steps == 1;
+    #assert tdp_score_rollout(prog[0..<k], gen[0..<gen.count - 1], made.claim, 31, 128).syntax_err;
+    long_tok: [TDP_MAX_EVAL_STEPS * 6 + 6]u8;
+    for s: 0..<TDP_MAX_EVAL_STEPS + 1 {
+        long_tok[s * 6] = TDP_STEP; long_tok[s * 6 + 1] = TDP_IP_BASE; long_tok[s * 6 + 2] = cast(u8)(TDP_OP_BASE + cast(int)TmCode.out);
+        long_tok[s * 6 + 3] = TDP_VAL_BASE + 32; long_tok[s * 6 + 4] = TDP_VAL_BASE; long_tok[s * 6 + 5] = TDP_VAL_BASE;
+    }
+    sc_long := tdp_score_rollout(one_p[..], long_tok[..], one_m.claim, 1, 512);
+    #assert sc_long.syntax_err && sc_long.gen_steps == TDP_MAX_EVAL_STEPS;
+
+    // Value boundary round-trip [-2048, +2047] and out-of-range refusal.
+    vb: [2]u8;
+    #assert tdp_encode_val(-2048, vb[..], 0) && tdp_decode_val(vb[0], vb[1]) == -2048;
+    #assert tdp_encode_val(0, vb[..], 0) && tdp_decode_val(vb[0], vb[1]) == 0;
+    #assert tdp_encode_val(2047, vb[..], 0) && tdp_decode_val(vb[0], vb[1]) == 2047;
+    #assert !tdp_encode_val(-2049, vb[..], 0) && !tdp_encode_val(2048, vb[..], 0);
+    #assert tdp_decode_val(63, 64) == TDP_VAL_MIN - 1 && tdp_decode_val(128, 64) == TDP_VAL_MIN - 1 && tdp_decode_val(64, 128) == TDP_VAL_MIN - 1;
+
+    // Output mismatch on wrong final out token.
+    for i: 0..<gen.count { bad[i] = gen[i]; }
+    bad[29 * 6 + 4] = cast(u8)(TDP_VAL_BASE + ((cast(int)bad[29 * 6 + 4] - TDP_VAL_BASE + 1) % 64));
+    sc5 := tdp_score_rollout(prog[0..<k], bad[0..<gen.count], made.claim, made.claim.steps, 128);
+    #assert !sc5.exact && !sc5.output_match && sc5.first_div_step == 29;
+
+    // Shape & bad-row refusals on encode_example and encode_prompt.
+    #assert tdp_encode_prompt(prog[0..<0], tok[..]) == -1;
+    #assert tdp_encode_example(prog[0..<0], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_prompt(prog[0..<k], tok[0..<plen - 1]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, n_tok - 1, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS - 1], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], 0, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[0..<319], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[0..<319], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[0..<1279], aux_mask[..], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[0..<319], src_pos[..]) == -1;
+    #assert tdp_encode_example(prog[0..<k], trace[0..<made.claim.steps * TM_TOKENS], made.claim.steps, 320, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[0..<319]) == -1;
+    // Bad row values inside encode_example (1-step tests bypass rx_fold so row guard itself is tested).
+    br1: [4]int; br1[0] = -1; br1[1] = cast(int)TmCode.ret;
+    #assert tdp_encode_example(one_p[..], br1[..], 1, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br1[0] = 1;
+    #assert tdp_encode_example(one_p[..], br1[..], 1, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    // Forged get/set with y == 8 (out of TM_LOCALS) leaves src_pos == -1 without touching loc_write[8].
+    br1[0] = 0; br1[1] = cast(int)TmCode.get; br1[3] = 8;
+    #assert tdp_encode_example(one_p[..], br1[..], 1, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == 13 && src_pos[8] == -1;
+    br1[1] = cast(int)TmCode.set; br1[3] = 8;
+    #assert tdp_encode_example(one_p[..], br1[..], 1, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == 13 && src_pos[8] == -1;
+    br: [8]int; for i: 0..<8 { br[i] = ext_tr[i]; }
+    br[0] = -1; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[0] = 2;  #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[0] = 0; br[1] = -1; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[1] = 11; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[1] = 0; br[2] = 2048; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[2] = 0; br[3] = -1; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    br[3] = 64; #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+    // Fold failure on wrong ip at step 0 with steps=2.
+    br[0] = 1; br[1] = cast(int)TmCode.ret; br[3] = 0;
+    #assert tdp_encode_example(ext_p[..], br[..], 2, 32, tok[..], mask[..], aux_tg[..], aux_mask[..], src_pos[..]) == -1;
+}
+
+#test "Ch 247 exposure ledger admits verified splits and refuses every unseen-family or length leak" {
+    #assert tdp_group_id(TdFamily.countdown, TdBucket.len_1x, true) == 0;
+    #assert tdp_group_id(TdFamily.countdown, TdBucket.len_1x, false) == 1;
+    #assert tdp_group_id(TdFamily.countdown, TdBucket.len_8x, false) == 4;
+    #assert tdp_group_id(TdFamily.prefix_sum, TdBucket.len_1x, true) == 10;
+    #assert tdp_group_id(TdFamily.prefix_sum, TdBucket.len_2x, false) == 12;
+
+    rows_buf: [16]TrRow;
+    entries: [16]TrEntry;
+    cuts := tdp_cuts();
+    #assert tr_cuts_ok(cuts) && cuts.calibration == TDP_TRAIN_TIME_CUT && cuts.heldout == TDP_TRAIN_TIME_CUT;
+    s := tr_open(0, cuts, rows_buf[..], entries[..], 0);
+
+    prog: [TDP_MAX_OPS]TmOp;
+    prog2: [TDP_MAX_OPS]TmOp;
+    prog3: [TDP_MAX_OPS]TmOp;
+    trace: [1024]int;
+    outs: [TM_OUTPUTS]int;
+
+    k := tdp_program(TdFamily.countdown, 2, 1, prog[..]);
+    a := tdp_admit_trace(s, TdFamily.countdown, TdBucket.len_1x, true, prog[0..<k], trace[..], outs[..], 1, 256);
+    #assert a.reason == TrReason.admitted && a.set.count == 1 && rows_buf[0].role == TrRole.train;
+
+    k2 := tdp_program(TdFamily.stride_sub, 4, 1, prog2[..]);
+    b := tdp_admit_trace(a.set, TdFamily.stride_sub, TdBucket.len_1x, true, prog2[0..<k2], trace[..], outs[..], 2, 256);
+    #assert b.reason == TrReason.reserved && b.set.count == 1;
+
+    k3 := tdp_program(TdFamily.countdown, 6, 1, prog3[..]);
+    c := tdp_admit_trace(a.set, TdFamily.countdown, TdBucket.len_2x, true, prog3[0..<k3], trace[..], outs[..], 3, 256);
+    #assert c.reason == TrReason.reserved && c.set.count == 1;
+
+    d := tdp_admit_trace(a.set, TdFamily.countdown, TdBucket.len_1x, true, prog[0..<k], trace[..], outs[..], TDP_TRAIN_TIME_CUT, 256);
+    #assert d.reason == TrReason.reserved;
+    e := tdp_admit_trace(a.set, TdFamily.stride_sub, TdBucket.len_1x, false, prog2[0..<k2], trace[..], outs[..], TDP_TRAIN_TIME_CUT - 1, 256);
+    #assert e.reason == TrReason.reserved;
+
+    // Exact boundary time == TDP_TRAIN_TIME_CUT admitted as heldout.
+    f := tdp_admit_trace(a.set, TdFamily.stride_sub, TdBucket.len_1x, false, prog2[0..<k2], trace[..], outs[..], TDP_TRAIN_TIME_CUT, 256);
+    #assert f.reason == TrReason.admitted && f.set.count == 2 && rows_buf[1].role == TrRole.heldout;
+
+    s2 := tr_open(1, cuts, rows_buf[..], entries[..], f.set.entries);
+    g := tr_add_trace(s2, prog2[0..<k2], rx_claim(prog2[0..<k2], 256, trace[..], outs[..]).claim, trace[0..<35 * 4], tdp_group_id(TdFamily.stride_sub, TdBucket.len_1x, false), 10, 256);
+    #assert g.reason == TrReason.reserved;
+    h := tdp_admit_trace(f.set, TdFamily.countdown, TdBucket.len_2x, false, prog3[0..<k3], trace[..], outs[..], TDP_TRAIN_TIME_CUT + 2, 10);
+    #assert h.reason == TrReason.unverifiable;
+    // Failing program (fell off end) refused as failed.
+    bad_p := [1]TmOp.[TmOp.{code = TmCode.push, arg = 1}];
+    #assert tdp_admit_trace(f.set, TdFamily.countdown, TdBucket.len_2x, false, bad_p[..], trace[..], outs[..], TDP_TRAIN_TIME_CUT + 3, 16).reason == TrReason.failed;
+}
+
+#test "parameter count, schedules, optimizer decisions, Ch 139 RL advantages, checkpoint and verdicts" {
+    np := tdp_param_count(128, 384, 6, 6, 1536);
+    #assert np == 10715136 && np >= TDP_MIN_REAL_PARAMS;
+    #assert tdp_param_count(2, 4, 1, 1, 1) == 2 * 2 * 4 + (3 * 16 + 16 + 4 + 4);
+    #assert tdp_param_count(1, 4, 1, 1, 1) == 0 && tdp_param_count(2, 3, 1, 1, 1) == 0;
+    #assert tdp_param_count(2, 4, 0, 1, 1) == 0 && tdp_param_count(2, 4, 1, 0, 1) == 0;
+    #assert tdp_param_count(2, 4, 1, 3, 1) == 0 && tdp_param_count(2, 4, 1, 1, 0) == 0;
+
+    #assert tdp_arm_budget_ok(100000, 100000, 100000, 100000);
+    #assert !tdp_arm_budget_ok(524288, 524287, 524288, 100000);
+    #assert !tdp_arm_budget_ok(524288, 524288, 524287, 100000);
+    #assert !tdp_arm_budget_ok(99999, 99999, 99999, 100000);
+
+    #assert abs(tdp_lr(0, 100, 10, 0.001, 0.0001) - 0.0001) < 1e-12;
+    #assert abs(tdp_lr(9, 100, 10, 0.001, 0.0001) - 0.001) < 1e-12;
+    #assert abs(tdp_lr(10, 100, 10, 0.001, 0.0001) - 0.001) < 1e-12;
+    #assert abs(tdp_lr(100, 100, 10, 0.001, 0.0001) - 0.0001) < 1e-12;
+    #assert abs(tdp_lr(105, 100, 10, 0.001, 0.0001) - 0.0001) < 1e-12;
+    #assert abs(tdp_lr(55, 100, 10, 0.001, 0.0001) - 0.00055) < 1e-12;
+
+    #assert tdp_beta(TdArm.baseline_a, 50, 100, 1.0, 10.0) == 1.0;
+    #assert tdp_beta(TdArm.variant_b, 50, 100, 1.0, 10.0) == 1.0;
+    #assert abs(tdp_beta(TdArm.variant_c, 0, 100, 1.0, 10.0) - 1.0) < 1e-12;
+    #assert abs(tdp_beta(TdArm.variant_c, 50, 100, 1.0, 10.0) - 5.5) < 1e-12;
+    #assert abs(tdp_beta(TdArm.variant_c, 100, 100, 1.0, 10.0) - 10.0) < 1e-12;
+    #assert abs(tdp_beta(TdArm.variant_c, 120, 100, 1.0, 10.0) - 10.0) < 1e-12;
+    #assert tdp_beta(TdArm.variant_c, 0, 0, 1.0, 10.0) == 10.0;
+    #assert tdp_beta(TdArm.variant_c, 0, 1, 1.0, 10.0) == 1.0;
+
+    // Optimizer decision: check every AdamW field, exact clip boundary, and finite checks.
+    d := tdp_decide(1, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.1, 100, f32_bits(250.0f32), f32_bits(4.0f32));
+    #assert d.status == TdStatus.ok && d.apply && d.clipped && abs(d.loss - 2.5) < 1e-6 && abs(f64(d.norm) - 2.0) < 1e-6;
+    #assert abs(f64(d.scale) - 1.0 / (2.0 + 1e-6)) < 1e-7;
+    #assert abs(f64(d.keep) - (1.0 - d.rate * 0.1)) < 1e-7 && d.b2 == f32(0.99);
+    #assert abs(f64(d.wb1) - 0.1) < 1e-6 && abs(f64(d.wb2) - 0.01) < 1e-6 && d.eps == f32(1e-8);
+    c1 := 1.0 - pow(0.9, 2.0);
+    c2 := 1.0 - pow(0.99, 2.0);
+    #assert abs(f64(d.step) - d.rate / c1) < 1e-8 && abs(f64(d.root2) - sqrt(c2)) < 1e-6;
+    // Exact clip boundary: norm = 1.0 - 1e-6 -> norm + 1e-6 == 1.0 -> NOT clipped; norm = 1.0 -> clipped!
+    nb := 1.0f32 - 0.000001f32;
+    d_eq := tdp_decide(0, 100, 1, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 1, f32_bits(1.0f32), f32_bits(nb * nb));
+    #assert d_eq.status == TdStatus.ok && !d_eq.clipped && d_eq.scale == 1.0f32;
+    d_ov := tdp_decide(0, 100, 1, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 1, f32_bits(1.0f32), f32_bits(1.0f32));
+    #assert d_ov.status == TdStatus.ok && d_ov.clipped;
+    #assert tdp_decide(0, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, 0x7f800000, f32_bits(1.0f32)).status == TdStatus.number;
+    #assert tdp_decide(0, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, 0x7f800001, f32_bits(1.0f32)).status == TdStatus.number;
+    #assert tdp_decide(0, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, f32_bits(1.0f32), 0x80000000).status == TdStatus.number;
+    #assert tdp_decide(-1, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, f32_bits(1.0f32), f32_bits(1.0f32)).status == TdStatus.order;
+    #assert tdp_decide(100, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, f32_bits(1.0f32), f32_bits(1.0f32)).status == TdStatus.order;
+    #assert tdp_decide(0, 100, 0, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, f32_bits(1.0f32), f32_bits(1.0f32)).status == TdStatus.order;
+    #assert tdp_decide(0, 100, 100, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 100, f32_bits(1.0f32), f32_bits(1.0f32)).status == TdStatus.order;
+    #assert tdp_decide(0, 100, 10, 0.001, 0.0001, 1.0f32, 0.9, 0.99, 1e-8, 0.01, 0, f32_bits(1.0f32), f32_bits(1.0f32)).status == TdStatus.order;
+
+    // Ch 139 group-relative RL advantages.
+    rew := [4]f64.[1.0, 0.0, 0.0, 1.0];
+    lp := [4]f64.[-2.0, -3.0, -1.0, -4.0];
+    lr := [4]f64.[-2.5, -3.0, -2.0, -3.0];
+    adv: [4]f64;
+    #assert tdp_rl_advantages(4, 0.1, rew[..], lp[..], lr[..], adv[..]) == TdStatus.ok;
+    #assert abs(adv[0] - 0.4625) < 1e-12 && abs(adv[1] + 0.4875) < 1e-12 && abs(adv[2] + 0.5875) < 1e-12 && abs(adv[3] - 0.6125) < 1e-12;
+    #assert tdp_rl_advantages(1, 0.0, rew[0..<1], lp[0..<1], lr[0..<1], adv[0..<1]) == TdStatus.ok && adv[0] == 0.0;
+    #assert tdp_rl_advantages(0, 0.1, rew[..], lp[..], lr[..], adv[..]) == TdStatus.shape;
+    #assert tdp_rl_advantages(3, 0.1, rew[..], lp[..], lr[..], adv[..]) == TdStatus.shape;
+    #assert tdp_rl_advantages(4, 0.1, rew[0..<0], lp[0..<0], lr[0..<0], adv[0..<0]) == TdStatus.shape;
+    #assert tdp_rl_advantages(4, 0.1, rew[..], lp[0..<3], lr[..], adv[..]) == TdStatus.shape;
+    #assert tdp_rl_advantages(4, 0.1, rew[..], lp[..], lr[0..<3], adv[..]) == TdStatus.shape;
+    #assert tdp_rl_advantages(4, 0.1, rew[..], lp[..], lr[..], adv[0..<3]) == TdStatus.shape;
+    #assert tdp_rl_advantages(4, -0.1, rew[..], lp[..], lr[..], adv[..]) == TdStatus.shape;
+
+    // Checkpoint digest covers arm, step, n_params, and every byte of p_sha, m_sha, v_sha (in exact byte order).
+    z1: [32]u8; z2: [32]u8; z3: [32]u8; z1[0] = 1; z2[0] = 2; z2[1] = 5; z3[0] = 3; z3[1] = 7;
+    h1 := tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2, z3);
+    h2 := tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2, z3);
+    // Independent exact reference SHA-256 over the same 120-byte layout kills any offset/direction mutation.
+    ref_b: [120]u8;
+    rn := tr_put(ref_b[..], 0, 0); rn = tr_put(ref_b[..], rn, 10); rn = tr_put(ref_b[..], rn, np);
+    ref_b[24] = 1; ref_b[56] = 2; ref_b[57] = 5; ref_b[88] = 3; ref_b[89] = 7;
+    #assert rx_same(h1, tr_hash(ref_b[..], 120));
+    #assert rx_same(h1, h2);
+    #assert !rx_same(h1, tdp_ckpt_digest(TdArm.variant_b, 10, np, z1, z2, z3));
+    #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 11, np, z1, z2, z3));
+    #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np + 1, z1, z2, z3));
+    z1b := z1; z1b[0] = 9; #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1b, z2, z3));
+    z2b := z2; z2b[0] = 9; #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2b, z3));
+    z2c := z2; z2c[31] = 9; #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2c, z3));
+    z3b := z3; z3b[0] = 9; #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2, z3b));
+    z3c := z3; z3c[31] = 9; #assert !rx_same(h1, tdp_ckpt_digest(TdArm.baseline_a, 10, np, z1, z2, z3c));
+
+    // Pre-registered H1/H3/H5 falsification & W5 recommendation rules.
+    #assert tdp_eval_verdict(0.5, 0.5, 0.25, 0.25) == TdHypVerdict.confirmed;
+    #assert tdp_eval_verdict(0.25, 0.49, 0.25, 0.5) == TdHypVerdict.partial;
+    #assert tdp_eval_verdict(0.25, 0.5, 0.24, 0.5) == TdHypVerdict.partial;
+    #assert tdp_eval_verdict(0.25, 0.5, 0.25, 0.24) == TdHypVerdict.partial;
+    #assert tdp_eval_verdict(0.24, 0.0, 0.0, 0.0) == TdHypVerdict.falsified;
+    #assert tdp_w5_recommend(TdHypVerdict.falsified, TdHypVerdict.falsified, TdHypVerdict.falsified) == TdW5Lane.h2_routing_only;
+    #assert tdp_w5_recommend(TdHypVerdict.falsified, TdHypVerdict.partial, TdHypVerdict.partial) == TdW5Lane.h2_routing_only;
+    #assert tdp_w5_recommend(TdHypVerdict.falsified, TdHypVerdict.confirmed, TdHypVerdict.falsified) == TdW5Lane.h2_plus_student_backbone;
+    #assert tdp_w5_recommend(TdHypVerdict.falsified, TdHypVerdict.falsified, TdHypVerdict.confirmed) == TdW5Lane.h2_plus_student_backbone;
+}
+
+// ---- Program families (3 seen training + 3 unseen held-out) ----
+
+tdp_family_seen :: (f: TdFamily) -> bool #export_c #effects(all) {
+    return cast(int)f < 3;
+}
+
+tdp_bucket_n :: (f: TdFamily, b: TdBucket) -> int #export_c #effects(all) {
+    bi := cast(int)b;
+    if f == TdFamily.stride_sub {
+        tbl := [4]int.[4, 8, 16, 32];
+        return tbl[bi];
+    }
+    if f == TdFamily.squares_mem {
+        tbl := [4]int.[2, 5, 10, 20];
+        return tbl[bi];
+    }
+    if f == TdFamily.tri_accum {
+        tbl := [4]int.[2, 4, 9, 18];
+        return tbl[bi];
+    }
+    tbl := [4]int.[3, 6, 12, 24];
+    return tbl[bi];
+}
+
+tdp_program :: (f: TdFamily, n: int, p: int, out: []TmOp) -> int #export_c #effects(all) {
+    if n < 1 || n > 32 || p < 0 || p > 31 || out.count < 23 { return 0; }
+    if f == TdFamily.countdown {
+        // loc0 = n; loc1 = p; loop(4): out(loc0 + loc1); loc0 -= 1; brif(loc0, 4); ret
+        ops := [15]TmOp.[
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.push, arg = p}, TmOp.{code = TmCode.set, arg = 1},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.get, arg = 1}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.out},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 4}, TmOp.{code = TmCode.ret}
+        ];
+        for i: 0..<15 { out[i] = ops[i]; }
+        return 15;
+    }
+    if f == TdFamily.prefix_sum {
+        // loc0 = n; loc1 = p; loop(4): loc1 += loc0; loc0 -= 1; brif(loc0, 4); out(loc1); ret
+        ops := [17]TmOp.[
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.push, arg = p}, TmOp.{code = TmCode.set, arg = 1},
+            TmOp.{code = TmCode.get, arg = 1}, TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.set, arg = 1},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 4},
+            TmOp.{code = TmCode.get, arg = 1}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}
+        ];
+        for i: 0..<17 { out[i] = ops[i]; }
+        return 17;
+    }
+    if f == TdFamily.mem_accum {
+        // loc0 = n; loop(2): mem[loc0] = loc0 + p; loc0 -= 1; brif(loc0, 2); out(mem[n] + mem[1]); ret
+        ops := [20]TmOp.[
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = p}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.store},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 2},
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.load}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.load},
+            TmOp.{code = TmCode.add}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}
+        ];
+        for i: 0..<20 { out[i] = ops[i]; }
+        return 20;
+    }
+    if f == TdFamily.stride_sub {
+        // UNSEEN: stride = 2 + (p % 4); loc0 = n * stride; loop(2): out(loc0); loc0 -= stride; brif(loc0, 2); ret
+        stride := 2 + (p % 4);
+        ops := [11]TmOp.[
+            TmOp.{code = TmCode.push, arg = n * stride}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.out},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = stride}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 2}, TmOp.{code = TmCode.ret}
+        ];
+        for i: 0..<11 { out[i] = ops[i]; }
+        return 11;
+    }
+    if f == TdFamily.squares_mem {
+        // UNSEEN: Ch 227/234 squares with mul + long-range memory read mem[n] + mem[1]
+        bias := p % 4;
+        ops := [22]TmOp.[
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.mul}, TmOp.{code = TmCode.push, arg = bias}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.store},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+            TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 2},
+            TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.load}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.load},
+            TmOp.{code = TmCode.add}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}
+        ];
+        for i: 0..<22 { out[i] = ops[i]; }
+        return 22;
+    }
+    // UNSEEN: tri_accum (3 coupled locals)
+    ops := [23]TmOp.[
+        TmOp.{code = TmCode.push, arg = n}, TmOp.{code = TmCode.set, arg = 0},
+        TmOp.{code = TmCode.push, arg = p}, TmOp.{code = TmCode.set, arg = 1},
+        TmOp.{code = TmCode.push, arg = 0}, TmOp.{code = TmCode.set, arg = 2},
+        TmOp.{code = TmCode.get, arg = 2}, TmOp.{code = TmCode.get, arg = 1}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.set, arg = 2},
+        TmOp.{code = TmCode.get, arg = 1}, TmOp.{code = TmCode.push, arg = 2}, TmOp.{code = TmCode.add}, TmOp.{code = TmCode.set, arg = 1},
+        TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.push, arg = 1}, TmOp.{code = TmCode.sub}, TmOp.{code = TmCode.set, arg = 0},
+        TmOp.{code = TmCode.get, arg = 0}, TmOp.{code = TmCode.brif, arg = 6},
+        TmOp.{code = TmCode.get, arg = 2}, TmOp.{code = TmCode.out}, TmOp.{code = TmCode.ret}
+    ];
+    for i: 0..<23 { out[i] = ops[i]; }
+    return 23;
+}
+
+// ---- Lossless trace codec & Ch 234 replay scorer ----
+
+tdp_prompt_len :: (n_ops: int) -> int #export_c #effects(all) {
+    return 3 + 3 * n_ops;
+}
+
+tdp_encode_val :: (v: int, out: []u8, at: int) -> bool #effects(all) {
+    if v < TDP_VAL_MIN || v > TDP_VAL_MAX { return false; }
+    u := v + TDP_VAL_BIAS;
+    out[at] = cast(u8)(TDP_VAL_BASE + u / 64);
+    out[at + 1] = cast(u8)(TDP_VAL_BASE + u % 64);
+    return true;
+}
+
+tdp_decode_val :: (hi_tok: u8, lo_tok: u8) -> int #effects(all) {
+    hi := cast(int)hi_tok - TDP_VAL_BASE;
+    lo := cast(int)lo_tok - TDP_VAL_BASE;
+    if hi < 0 || hi >= 64 || lo < 0 || lo >= 64 { return TDP_VAL_MIN - 1; }
+    return hi * 64 + lo - TDP_VAL_BIAS;
+}
+
+tdp_encode_prompt :: (prog: []TmOp, tok: []u8) -> int #export_c #effects(all) {
+    if prog.count < 1 || prog.count > TDP_MAX_OPS { return -1; }
+    need := tdp_prompt_len(prog.count);
+    if tok.count < need { return -1; }
+    tok[0] = TDP_BOS;
+    tok[1] = TDP_PROG;
+    at := 2;
+    for i: 0..<prog.count {
+        tok[at] = cast(u8)(TDP_OP_BASE + cast(int)prog[i].code);
+        if !tdp_encode_val(prog[i].arg, tok, at + 1) { return -1; }
+        at += 3;
+    }
+    tok[at] = TDP_TRACE;
+    return need;
+}
+
+tdp_encode_example :: (
+    prog: []TmOp, rows: []int, steps: int, ctx: int,
+    tok: []u8, mask: []u8, aux_tg: []u8, aux_mask: []u8, src_pos: []int
+) -> int #export_c #effects(all) {
+    plen := tdp_encode_prompt(prog, tok);
+    if plen == -1 || steps < 1 || rows.count < steps * TM_TOKENS { return -1; }
+    total := plen + steps * TDP_STEP_TOKENS + 1;
+    if total > ctx || tok.count < ctx || mask.count < ctx || aux_tg.count < 4 * ctx || aux_mask.count < ctx || src_pos.count < ctx {
+        return -1;
+    }
+    for i: plen..<ctx { tok[i] = TDP_PAD; }
+    for i: 0..<ctx { mask[i] = 0; aux_mask[i] = 0; src_pos[i] = -1; }
+    for i: 0..<4 * ctx { aux_tg[i] = 0; }
+
+    // Track exact write-source token positions for Variant C max-margin attention loss.
+    loc_write: [TM_LOCALS]int;
+    mem_write: [TM_CELLS]int;
+    for i: 0..<TM_LOCALS { loc_write[i] = -1; }
+    for i: 0..<TM_CELLS { mem_write[i] = -1; }
+
+    f: RxFold;
+    for s: 0..<steps {
+        o := s * TM_TOKENS;
+        ip := rows[o];
+        code := rows[o + 1];
+        x := rows[o + 2];
+        y := rows[o + 3];
+        if ip < 0 || ip >= prog.count || code < 0 || code > cast(int)TmCode.ret || y < 0 || y >= 64 { return -1; }
+        base := plen + s * TDP_STEP_TOKENS;
+        tok[base] = TDP_STEP;
+        tok[base + 1] = cast(u8)(TDP_IP_BASE + ip);
+        tok[base + 2] = cast(u8)(TDP_OP_BASE + code);
+        if !tdp_encode_val(x, tok, base + 3) { return -1; }
+        tok[base + 5] = cast(u8)(TDP_VAL_BASE + y);
+
+        // Aux intermediate-state targets at <STEP> position: (ip, depth, top&63, loc0&63).
+        top := 0;
+        if f.state.depth > 0 { top = f.state.stack[f.state.depth - 1]; }
+        aux_mask[base] = 1;
+        aux_tg[4 * base] = cast(u8)(f.ip & 31);
+        aux_tg[4 * base + 1] = cast(u8)(f.state.depth & 31);
+        aux_tg[4 * base + 2] = cast(u8)(top & 63);
+        aux_tg[4 * base + 3] = cast(u8)(f.state.locals[0] & 63);
+
+        // Exact lookup sources for Variant C max-margin attention loss:
+        // - At ip token (predicting code): attend to instruction slot 2 + 3*ip in prompt.
+        src_pos[base + 1] = 2 + 3 * ip;
+        // - At code token (predicting x_hi): for get/load, attend to exact last write's x_lo token (-1 if unwritten).
+        op_code := cast(TmCode)code;
+        if op_code == TmCode.get && y < TM_LOCALS {
+            src_pos[base + 2] = loc_write[y];
+        } else if op_code == TmCode.load {
+            src_pos[base + 2] = mem_write[y];
+        }
+        if op_code == TmCode.set && y < TM_LOCALS { loc_write[y] = base + 4; }
+        if op_code == TmCode.store { mem_write[y] = base + 4; }
+
+        // Advance folded state by one step (Ch 234 rx_fold semantics).
+        f = rx_fold(prog, rows[0..<steps * TM_TOKENS], s + 1);
+        if !f.ok && s + 1 < steps { return -1; }
+    }
+    tok[total - 1] = TDP_EOS;
+    for i: plen - 1..<total - 1 { mask[i] = 1; }
+    return total;
+}
+
+tdp_score_rollout :: (prog: []TmOp, gen_tok: []u8, ref_claim: RxClaim, ref_steps: int, budget: int) -> TdScore #export_c #effects(all) {
+    out := TdScore.{status = TdStatus.ok, first_div_step = -1, ref_steps = ref_steps};
+    if prog.count < 1 || prog.count > TDP_MAX_OPS || ref_steps < 1 || budget < 1 {
+        out.status = TdStatus.shape;
+        return out;
+    }
+    rows: [TDP_MAX_EVAL_STEPS * TM_TOKENS]int;
+    outs: [TM_OUTPUTS]int;
+    n_outs := 0;
+    steps := 0;
+    pos := 0;
+    saw_eos := false;
+    while pos < gen_tok.count {
+        t := gen_tok[pos];
+        if t == TDP_EOS {
+            saw_eos = true;
+            break;
+        }
+        if t != TDP_STEP || pos + TDP_STEP_TOKENS > gen_tok.count || steps >= TDP_MAX_EVAL_STEPS {
+            break;
+        }
+        ip := cast(int)gen_tok[pos + 1] - TDP_IP_BASE;
+        code := cast(int)gen_tok[pos + 2] - TDP_OP_BASE;
+        x := tdp_decode_val(gen_tok[pos + 3], gen_tok[pos + 4]);
+        y := cast(int)gen_tok[pos + 5] - TDP_VAL_BASE;
+        if ip < 0 || ip >= prog.count || code < 0 || code > cast(int)TmCode.ret || x < TDP_VAL_MIN || y < 0 || y >= 64 {
+            break;
+        }
+        o := steps * TM_TOKENS;
+        rows[o] = ip;
+        rows[o + 1] = code;
+        rows[o + 2] = x;
+        rows[o + 3] = y;
+        if cast(TmCode)code == TmCode.out && n_outs < TM_OUTPUTS {
+            outs[n_outs] = x;
+            n_outs += 1;
+        }
+        steps += 1;
+        pos += TDP_STEP_TOKENS;
+    }
+    if !saw_eos { out.syntax_err = true; }
+    out.gen_steps = steps;
+    if steps == 0 {
+        out.first_div_step = 0;
+        out.reason = RxReason.steps;
+        return out;
+    }
+    out_digest := rx_ints_digest(outs[..], n_outs);
+    out.output_match = rx_same(out_digest, ref_claim.outputs);
+
+    claim := RxClaim.{
+        program = rx_program_digest(prog),
+        trace = rx_ints_digest(rows[..], steps * TM_TOKENS),
+        outputs = out_digest,
+        steps = steps
+    };
+    rep := rx_check(prog, claim, rows[0..<steps * TM_TOKENS], 0, steps, budget);
+    out.reason = rep.reason;
+    out.field = rep.field;
+    if !out.syntax_err && rep.verdict == RxVerdict.exact {
+        out.exact = true;
+        return out;
+    }
+    if out.syntax_err && (rep.verdict == RxVerdict.exact || rep.reason == RxReason.running) {
+        out.first_div_step = steps;
+    } else if rep.step >= 0 {
+        out.first_div_step = rep.step;
+    } else {
+        out.first_div_step = steps;
+    }
+    return out;
+}
+
+// ---- Ch 247 Exposure Ledger & Split Admission ----
+
+tdp_cuts :: () -> TrCuts #export_c #effects(all) {
+    return TrCuts.{calibration = TDP_TRAIN_TIME_CUT, development = TDP_TRAIN_TIME_CUT, heldout = TDP_TRAIN_TIME_CUT};
+}
+
+tdp_group_id :: (f: TdFamily, b: TdBucket, is_train_split: bool) -> int #export_c #effects(all) {
+    base := cast(int)f * 10;
+    if is_train_split { return base; }
+    return base + 1 + cast(int)b;
+}
+
+tdp_admit_trace :: (
+    s: TrSet, f: TdFamily, b: TdBucket, is_train_split: bool,
+    prog: []TmOp, rows: []int, outs: []int, time: int, budget: int
+) -> TrAdd #export_c #effects(all) {
+    if is_train_split {
+        if !tdp_family_seen(f) || b != TdBucket.len_1x || time >= TDP_TRAIN_TIME_CUT {
+            return TrAdd.{set = s, reason = TrReason.reserved};
+        }
+    } else {
+        if time < TDP_TRAIN_TIME_CUT {
+            return TrAdd.{set = s, reason = TrReason.reserved};
+        }
+    }
+    made := rx_claim(prog, budget, rows, outs);
+    if made.status == TmStatus.budget {
+        return TrAdd.{set = s, reason = TrReason.unverifiable};
+    }
+    if made.status != TmStatus.ok {
+        return TrAdd.{set = s, reason = TrReason.failed};
+    }
+    grp := tdp_group_id(f, b, is_train_split);
+    return tr_add_trace(s, prog, made.claim, rows[0..<made.claim.steps * TM_TOKENS], grp, time, budget);
+}
+
+// ---- Model shape, token budget, LR/beta schedules, Ch 139 RL, checkpoint & verdicts ----
+
+tdp_param_count :: (vocab: int, d: int, layers: int, heads: int, hidden: int) -> int #export_c #effects(all) {
+    if vocab < 2 || d < 4 || layers < 1 || heads < 1 || d % heads != 0 || hidden < 1 { return 0; }
+    per_layer := 3 * d * d + d * d + d * hidden + hidden * d;
+    return 2 * vocab * d + layers * per_layer;
+}
+
+tdp_arm_budget_ok :: (tokens_a: int, tokens_b: int, tokens_c: int, min_tokens: int) -> bool #export_c #effects(all) {
+    return tokens_a >= min_tokens && tokens_a == tokens_b && tokens_b == tokens_c;
+}
+
+tdp_lr :: (step: int, total_steps: int, warmup: int, peak: f64, lr_min: f64) -> f64 #export_c #effects(all) {
+    if step < warmup { return peak * f64(step + 1) / f64(warmup); }
+    if step > total_steps { return lr_min; } // mutant: equivalent (at step == total_steps, frac = 1 and cos(pi) = -1 yields lr_min)
+    frac := f64(step - warmup) / f64(total_steps - warmup);
+    return lr_min + 0.5 * (peak - lr_min) * (1.0 + cos(TDP_PI * frac));
+}
+
+tdp_beta :: (arm: TdArm, step: int, total_steps: int, beta_start: f64, beta_end: f64) -> f64 #export_c #effects(all) {
+    if arm != TdArm.variant_c { return 1.0; }
+    if total_steps <= 0 || step > total_steps { return beta_end; } // mutant: equivalent (at step == total_steps, linear interpolation equals beta_end)
+    return beta_start + (beta_end - beta_start) * f64(step) / f64(total_steps);
+}
+
+tdp_finite_u32 :: (bits: u32) -> bool #effects(all) {
+    return (bits & 0x7f800000) != 0x7f800000;
+}
+
+tdp_decide :: (
+    step: int, total_steps: int, warmup: int, peak: f64, lr_min: f64,
+    clip: f32, b1: f64, b2: f64, eps: f64, decay: f64,
+    tokens: int, loss_bits: u32, sq_bits: u32
+) -> TdDecision #export_c #effects(all) {
+    if step < 0 || step >= total_steps || warmup < 1 || warmup >= total_steps || tokens < 1 {
+        return TdDecision.{status = TdStatus.order};
+    }
+    rate := tdp_lr(step, total_steps, warmup, peak, lr_min);
+    d := TdDecision.{status = TdStatus.number, rate = rate};
+    if !tdp_finite_u32(loss_bits) || !tdp_finite_u32(sq_bits) || (sq_bits >> 31) != 0 { return d; }
+    sq := f32_from_bits(sq_bits);
+    d.status = TdStatus.ok;
+    d.loss = f64(f32_from_bits(loss_bits)) / f64(tokens);
+    d.norm = sqrt(sq);
+    coef := 1.0f32;
+    if d.norm + 0.000001f32 > clip {
+        coef = clip / (d.norm + 0.000001f32);
+        d.clipped = true;
+    }
+    t := f64(step + 1);
+    c1 := 1.0 - pow(b1, t);
+    c2 := 1.0 - pow(b2, t);
+    d.apply = true;
+    d.scale = coef;
+    d.keep = f32(1.0 - rate * decay);
+    d.b2 = f32(b2);
+    d.wb1 = f32(1.0 - b1);
+    d.wb2 = f32(1.0 - b2);
+    d.step = f32(rate / c1);
+    d.root2 = f32(sqrt(c2));
+    d.eps = f32(eps);
+    return d;
+}
+
+// Ch 139 group-relative RL advantages: s_i = r_i - beta_kl * (logp_i - logr_i); A_i = s_i - mean_group(s).
+tdp_rl_advantages :: (group: int, beta_kl: f64, rewards: []f64, logp: []f64, logr: []f64, out_adv: []f64) -> TdStatus #export_c #effects(all) {
+    n := rewards.count;
+    if group < 1 || n < group || n % group != 0 || logp.count != n || logr.count != n || out_adv.count != n || !(beta_kl >= 0.0) {
+        return TdStatus.shape;
+    }
+    for i: 0..<n { out_adv[i] = rewards[i] - beta_kl * (logp[i] - logr[i]); }
+    for g: 0..<n / group {
+        at := g * group;
+        mean := 0.0;
+        for i: at..<at + group { mean += out_adv[i]; }
+        mean /= f64(group);
+        for i: at..<at + group { out_adv[i] -= mean; }
+    }
+    return TdStatus.ok;
+}
+
+tdp_ckpt_digest :: (arm: TdArm, step: int, n_params: int, p_sha: [32]u8, m_sha: [32]u8, v_sha: [32]u8) -> [32]u8 #export_c #effects(all) {
+    buf: [120]u8;
+    n := tr_put(buf[..], 0, cast(int)arm);
+    n = tr_put(buf[..], n, step);
+    n = tr_put(buf[..], n, n_params);
+    for i: 0..<32 {
+        buf[n + i] = p_sha[i];
+        buf[n + 32 + i] = m_sha[i];
+        buf[n + 64 + i] = v_sha[i];
+    }
+    return tr_hash(buf[..], n + 96);
+}
+
+// Pre-registered falsification thresholds:
+//   confirmed: generalizes across unseen families AND extrapolates to 4x (>=0.50) and 8x (>=0.25)
+//   partial:   achieves >=0.25 exact pass@1 at 2x length but fails 4x/8x or unseen generalization
+//   falsified: fails to extrapolate even to 2x length (<0.25 pass@1)
+tdp_eval_verdict :: (pass_2x: f64, pass_4x: f64, pass_8x: f64, pass_unseen_1x: f64) -> TdHypVerdict #export_c #effects(all) {
+    if pass_4x >= 0.50 && pass_8x >= 0.25 && pass_unseen_1x >= 0.25 {
+        return TdHypVerdict.confirmed;
+    }
+    if pass_2x >= 0.25 {
+        return TdHypVerdict.partial;
+    }
+    return TdHypVerdict.falsified;
+}
+
+tdp_w5_recommend :: (v_a: TdHypVerdict, v_b: TdHypVerdict, v_c: TdHypVerdict) -> TdW5Lane #export_c #effects(all) {
+    if v_b == TdHypVerdict.confirmed || v_c == TdHypVerdict.confirmed {
+        return TdW5Lane.h2_plus_student_backbone;
+    }
+    return TdW5Lane.h2_routing_only;
+}
