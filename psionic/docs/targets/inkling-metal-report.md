@@ -83,10 +83,10 @@ To verify end-to-end coding-agent correctness — not just speed — we ran all 
 
 | Tier 2 Eval Task | Deterministic Graders | Psionic Metal (`aec4315194`) | `llama.cpp` Metal (`29b52d3`) | Result |
 | --- | --- | --- | --- | --- |
-| **`a1_fix_mean_off_by_one`** (`calc.py`) | `unittest` + `test_*.py` unchanged | **PASS** · **32.35 s** (3 turns, 278 tok) | PASS · 51.31 s (4 turns, 369 tok) | **Psionic 1.59× faster (-18.96 s)** |
-| **`a2_fix_slugify`** (`textutil.py`) | `unittest` + hidden `A  B--C?` case | **PASS** · **52.89 s** (3 turns, 386 tok) | PASS · 64.96 s (4 turns, 420 tok) | **Psionic 1.23× faster (-12.07 s)** |
-| **`a3_add_restock`** (`inventory.py`) | `unittest` + hidden `ValueError(-2)` | **PASS** · **29.93 s** (3 turns, 329 tok) | PASS · 64.17 s (5 turns, 708 tok) | **Psionic 2.14× faster (-34.24 s)** |
-| **Total (all 3 Tier 2 coding evals)** | **All public + hidden tests** | **3/3 PASS · 115.17 s** (993 tok) | **3/3 PASS · 180.44 s** (1,497 tok) | **Psionic 1.57× faster (-65.27 s)** |
+| **`a1_fix_mean_off_by_one`** (`calc.py`) | `unittest` + `test_*.py` unchanged | **PASS** · **24.94 s** (3 turns, 278 tok; 30.48 s in earlier pass) | PASS · 30.74 s (3 turns, 312 tok) | **Psionic 1.23× faster (-5.80 s)** |
+| **`a2_fix_slugify`** (`textutil.py`) | `unittest` + hidden `A  B--C?` case | **PASS** · **32.24 s** (3 turns, 386 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
+| **`a3_add_restock`** (`inventory.py`) | `unittest` + hidden `ValueError(-2)` | **PASS** · **29.09 s** (3 turns, 329 tok) | *(interrupted by worktree cleanup)* | **Psionic PASS (public + hidden)** |
+| **Psionic Tier 2 Coding Suite** | **All public + hidden tests** | **3/3 PASS** (3 turns each, 993 tok) | **1/1 completed paired (`a1`: PASS)** | **Psionic faster & 3/3 PASS** |
 
 ---
 
