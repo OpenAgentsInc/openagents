@@ -2,30 +2,30 @@
 
 Measured 2026-11-20 on Apple Silicon (M5 Max, 128 GB unified memory, macOS 26.4) against the real 16.4 GB `Inkling-2-Mini-IQ4_NL.gguf` checkpoint, comparing Psionic's native Coax-compiled Metal 4 runtime (`psionic-inkling-serve`) against the `llama-server` Metal binary previously used by OpenAgents Desktop (`~/.openagents/bin/llama-server`, commit `29b52d3`).
 
-## Executive Summary (Post-Sprint 8 Metal 4 Neural Accelerators)
+## Executive Summary (Post-Sprint 17: Direct-IQ4 Small-Batch MoE + Metal 4 F32/Q8/IQ4 + Parallel GQA)
 
-Unloaded measurements on Apple M5 Max (`--ctx 8192`, `--no-cache-prompt`, `temperature=0`, exact greedy output parity verified on every workload):
+Head-to-head multi-trial medians on Apple M5 Max (`--ctx 8192`, `--no-cache-prompt`, `temperature=0`, 3 trials `short_math`, 2 trials each `sustained_decode`, `medium_prefill`, `long_prefill`, exact greedy output parity verified on every workload, measured 2026-11-21):
 
-| Metric | Psionic Baseline (`55bf398569`) | **Psionic Optimized (Sprints 1–8)** | llama.cpp Metal (`llama-server`) | Psionic Speedup vs Baseline | Psionic vs llama.cpp |
+| Metric | Psionic Baseline (`55bf398569`) | **Psionic Optimized (Sprints 1–17)** | llama.cpp Metal (`llama-server`) | Psionic Speedup vs Baseline | Psionic vs llama.cpp |
 | --- | ---: | ---: | ---: | ---: | --- |
-| **Warm startup to `/health`** | 0.60 s | **0.222–0.230 s** | 1.090 s (11.29 s cold) | **2.7× faster** | **Psionic 4.9× faster** |
-| **Process RSS (`ps -o rss=`)** | 483 MiB\* | **2,115 MiB\*** | 18,034 MiB | — | **Psionic 8.5× lower RSS** |
+| **Warm startup to `/health`** | 0.60 s | **0.404 s** (best 0.22 s) | 1.078 s (11.29 s cold) | **1.5–2.7× faster** | **Psionic 2.67× faster** |
+| **Process RSS (`ps -o rss=`)** | 483 MiB\* | **2,110 MiB\*** | 18,033 MiB | — | **Psionic 8.55× lower RSS** |
 | **Tokenizer prompt parity** | +7.5–7.8% extra tok | **100% exact** (`29, 37, 903, 2622`) | `29, 37, 903, 2622` | **Fixed** | **Exact match** |
-| **`short_math` (`29` tok) TTFT** | 2.049 s | **0.458 s** | **0.256 s** | **4.5× faster** | llama.cpp 1.79× faster |
-| **`short_math` decode** | 15.83 tok/s | **39.30 tok/s** (peak 39.96) | 39.14 tok/s | **2.48× faster** | **Psionic +0.4% faster** |
-| **`sustained_decode` (`256` tok) TTFT** | 2.503 s | **0.507 s** | **0.365 s** | **4.9× faster** | llama.cpp 1.39× faster |
-| **`sustained_decode` decode** | 14.78 tok/s | **37.34 tok/s** | **38.19 tok/s** | **2.53× faster** | **98% of llama.cpp** |
-| **`medium_prefill` (`903` tok) TTFT** | 73.830 s (13.2 tok/s) | **1.682 s (536.7 tok/s)** | 2.091 s (432.2 tok/s) | **43.9× faster** | **Psionic +24.2% faster!** |
-| **`medium_prefill` decode** | 10.97 tok/s | **35.71 tok/s** | 34.76 tok/s | **3.26× faster** | **Psionic +2.7% faster!** |
-| **`medium_prefill` E2E** | 81.885 s | **4.161 s** | 5.428 s | **19.7× faster** | **Psionic 23.3% faster!** |
-| **`long_prefill` (`2,622` tok) TTFT** | 244.229 s (11.6 tok/s) | **5.018 s (522.5 tok/s)** | 6.260 s (418.9 tok/s) | **48.7× faster** | **Psionic +24.7% faster!** |
-| **`long_prefill` decode (`2,622` ctx)** | 10.56 tok/s | **35.73 tok/s** | 28.60 tok/s | **3.38× faster** | **Psionic +24.9% faster!** |
-| **`long_prefill` TPOT (`2,622` ctx)** | 94.7 ms | **28.0 ms** | 35.0 ms | **3.38× lower** | **Psionic 20.0% lower!** |
-| **`long_prefill` E2E** | 250.194 s | **6.791 s** | 8.464 s | **36.8× faster** | **Psionic 19.8% faster!** |
+| **`short_math` (`29` tok) TTFT** | 2.049 s | **0.328 s** (best 0.323 s) | **0.246 s** | **6.2× faster** | llama.cpp 1.33× (-82 ms) |
+| **`short_math` decode** | 15.83 tok/s | **41.18 tok/s** (peak 42.65) | 39.93 tok/s | **2.60× faster** | **Psionic +3.1% faster!** |
+| **`sustained_decode` (`256` tok) TTFT** | 2.503 s | **0.392 s** | **0.332 s** | **6.4× faster** | llama.cpp 1.18× (-60 ms) |
+| **`sustained_decode` decode** | 14.78 tok/s | **39.14 tok/s** (peak 40.46) | 38.96 tok/s | **2.65× faster** | **Psionic +0.5% faster!** |
+| **`medium_prefill` (`903` tok) TTFT** | 73.830 s (13.2 tok/s) | **1.479 s (610.7 tok/s)** | 1.966 s (459.4 tok/s) | **49.9× faster** | **Psionic +32.9% faster!** |
+| **`medium_prefill` decode** | 10.97 tok/s | **37.52 tok/s** | **38.29 tok/s** | **3.42× faster** | **98.0% of llama.cpp** |
+| **`medium_prefill` E2E** | 81.885 s | **3.825 s** | 4.997 s | **21.4× faster** | **Psionic 23.5% faster!** |
+| **`long_prefill` (`2,622` tok) TTFT** | 244.229 s (11.6 tok/s) | **4.404 s (595.4 tok/s)** | 5.971 s (439.1 tok/s) | **55.5× faster** | **Psionic +35.6% faster!** |
+| **`long_prefill` decode (`2,622` ctx)** | 10.56 tok/s | **37.28 tok/s** | 37.22 tok/s | **3.53× faster** | **Psionic +0.2% faster!** |
+| **`long_prefill` TPOT (`2,622` ctx)** | 94.7 ms | **26.8 ms** | 26.9 ms | **3.53× lower** | **Psionic faster!** |
+| **`long_prefill` E2E** | 250.194 s | **6.094 s** | 7.664 s | **41.1× faster** | **Psionic 20.5% faster!** |
 
 \* *Memory accounting note:* `psionic-inkling-serve` maps the 16.4 GB GGUF read-only via `mmap` and wraps it directly in Metal with `newBufferWithBytesNoCopy` (`psionic/platform/metal-host.m`). macOS accounts those file-backed pages in the unified page cache / GPU wired pool rather than private process RSS, so `ps -o rss=` reports KV cache, `INK_PREFILL_B=1024` batched prefill scratch buffers, and the 176 MB reusable BF16 staging buffer (~2.1 GiB total). Both runtimes read from the same 16.4 GB checkpoint in unified memory.
 
-**Bottom line:** By moving both dense Q8_0 projections and expert-grouped IQ4_NL/Q8_0 MoE onto **Metal 4 `am_matmul_bf16` (Apple M5 Max Neural Accelerators)**, unlocking 32-bit `_n32` fast paths across all attention/MoE kernels, and adding coalesced 3:1 GQA Flash-Decoding, **Psionic Metal now beats `llama.cpp` on startup (4.9×), RSS (8.5× lower), medium prefill (+24.2%), long prefill (+24.7%), short decode (+0.4%), medium decode (+2.7%), long decode (+24.9%), and medium/long end-to-end latency (20–23% faster)**. On baseline comparison, Psionic Metal is **44–49× faster on prefill** (cutting a 2,622-token prompt from **4m 4s → 5.0s**) and **2.5–3.4× faster on decode**.
+**Bottom line:** Psionic's native Coax-compiled Metal 4 runtime now **beats `llama.cpp` on startup (2.67× faster), RSS (8.55× lower), medium prefill (+32.9%, 610.7 vs 459.4 tok/s), long prefill (+35.6%, 595.4 vs 439.1 tok/s), short decode (+3.1%, 41.18 vs 39.93 tok/s), sustained decode (+0.5%, 39.14 vs 38.96 tok/s), long-context decode (37.28 vs 37.22 tok/s), and medium/long end-to-end latency (20.5–23.5% faster)**. Against the initial Psionic baseline (`55bf398569`), Psionic Metal is **50–55× faster on prefill** (cutting a 2,622-token prompt from **4m 4s → 4.4s**) and **2.6–3.5× faster on decode**.
 
 ---
 
@@ -65,11 +65,13 @@ Unloaded measurements on Apple M5 Max (`--ctx 8192`, `--no-cache-prompt`, `tempe
 | **Sprint 4 (GQA Flash-Decoding)** | Coalesced 3:1 GQA split-K 1-pass online-softmax attention (`ink_attn_gqa_split` + `reduce`) | 0.534 s / 39.93 tok/s | 2.43 s / 35.33 tok/s | 8.37 s / 35.51 tok/s |
 | **Sprint 6–7 (`_n32` + Compact Tiles)** | Packed `u32` args unlocking Coax `_n32` 32-bit fast paths across all attention/MoE/copy/add/kv kernels, 8× compacted MoE tile table, `n_a_iters` zero-skip, fused `convolve_add_batch`, Flash-Decoding `>=128` | 0.519 s / 39.85 tok/s | 2.21 s (408 tok/s) / 35.82 tok/s | 6.74 s (389 tok/s) / 35.56 tok/s |
 | **Sprint 8 (Metal 4 Neural Accelerators)** | On-the-fly Q8_0/IQ4_NL → BF16 staging (`w_bf16`) + Metal 4 `am_matmul_bf16` (`MetalPerformancePrimitives::matmul2d`) for both Dense Q8_0 and Expert-Grouped MoE (`64×64` for `nb>=64`, `16×64` for `8<=nb<64`) | **0.458 s / 39.30 tok/s** | **1.682 s (536.7 tok/s) / 35.71 tok/s** | **5.018 s (522.5 tok/s) / 35.73 tok/s** |
-| **Sprints 9–11 (Decode & Prefill Fusion)** | 4-lane coalesced `ink_moe_gu_iq4` (`72/8=9` exact, cold CLI decode 36.8 → 39.25 tok/s, +6.6%), fused `ink_clip_kv` + `ink_head_rmsnorm_kv` (-48 `K_KV_STORE` & barriers/tok), fused `ink_mix_rmsnorm` (-25 `K_RMSNORM` & barriers/tok), 8-row IQ4 & 4-row Q8 BF16 dequant (4×–8× fewer TGs), 2-pass `ink_attn_softmax_mma` (-33% `scores` traffic), unpadded LM head + 256-thread `ink_softcap` | verified exact (`"391"`) | verified exact | verified exact |
+| **Sprints 9–11 (Decode & Prefill Fusion)** | 4-lane coalesced `ink_moe_gu_iq4` (`72/8=9` exact, +6.6% decode), fused `ink_clip_kv` + `ink_head_rmsnorm_kv` (-48 `K_KV_STORE` & barriers/tok), fused `ink_mix_rmsnorm` (-25 `K_RMSNORM` & barriers/tok), 8-row IQ4 & 4-row Q8 BF16 dequant, 2-pass `ink_attn_softmax_mma`, unpadded LM head + 256-thread `ink_softcap` | verified exact (`"391"`) | verified exact | verified exact |
+| **Sprints 12–14 (Direct-IQ4 Small-Batch MoE + F32 m4 + SWA Fusion)** | Direct IQ4_NL small-batch MoE (`ink_moe_gu_iq4_m4`, 2-row/sg `ink_moe_down_iq4_m4`, zero BF16 staging for `nb <= 48`), `ink_mm_f32_m4` (64× more TGs on router/control/sink F32 projections for `nb <= 48`), fused SWA `K_MIX_RMSNORM` (-18 barriers/tok), lowered Flash-Decoding threshold to `n_keys >= 1` | 0.342 s / 41.39 tok/s | 1.692 s (533.5 tok/s) / 36.52 tok/s | 5.029 s (521.4 tok/s) / 36.69 tok/s |
+| **Sprints 15–17 (128t GQA + Metal 4 F32 + 8-way Gather + SLC Score Stride)** | 128-thread parallel Q·K `ink_attn_gqa_split` (eliminated 8 KB `ksh` TGEM, 16× faster dot reduction), `ink_dequant_f32_bf16` overlapped with `K_CTRL_PREP`/`K_RMSNORM` + Metal 4 `am_matmul_bf16` for all F32 prefill projections (`nb >= 64`), 8-token/TG `ink_ctrl_up_apply_batch` (8× less weight traffic), 128-thread parallel `ink_moe_group_batch` + 8-way split zero-barrier `ink_moe_gather_x` (8.4× faster: 167 ms → 20 ms), packed `score_stride = span` (9× smaller SLC-resident attention scores) | **0.328 s / 41.18 tok/s** (peak 42.65) | **1.479 s (610.7 tok/s) / 37.52 tok/s** | **4.404 s (595.4 tok/s) / 37.28 tok/s** |
 
 ---
 
 ## Remaining Opportunities
 
-- **Short prompt TTFT (`29–37` tok: 0.46–0.51 s vs llama.cpp 0.26–0.37 s):** At `nb = 29`, 232 expert-token slots scatter across ~100 of 128 experts (~2.3 tokens/expert), so dequantizing 100 experts to BF16 per layer is bandwidth-bound. Fusing IQ4_NL dequantization directly into a small-M (`M <= 8`) simdgroup kernel or adding cross-request KV prefix caching in `psionic-inkling-serve` (for multi-turn chats) is the next lever.
-- **Sustained decode (`37.34` vs `38.19` tok/s, 98% of llama.cpp):** Within 0.85 tok/s of parity; further tuning `ink_moe_gu_iq4` block scheduling (72 blocks = `2×32 + 8`) will push short and sustained decode above 41+ tok/s.
+- **Short prompt TTFT (`29–37` tok: 0.328–0.392 s vs llama.cpp 0.246–0.332 s):** Now within 60–82 ms of `llama.cpp` after eliminating BF16 staging on `nb <= 48`. Cross-request KV prefix caching in `psionic-inkling-serve` (for multi-turn chats) and further reducing empty-tile launch overhead in `ink_moe_gu_iq4_m4`/`ink_moe_down_iq4_m4` (indirect dispatch) will push short-prompt TTFT below 0.22 s.
+- **Sustained & long-context decode (`37.3–41.2` tok/s):** Already beating `llama.cpp` on 3 of 4 decode workloads and at 98.0% on `medium_prefill`; reducing `ink_mix` / `ink_router` per-layer barrier overhead with chunked 256-thread reductions is the next lever toward 45+ tok/s.
