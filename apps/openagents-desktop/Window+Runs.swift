@@ -114,10 +114,12 @@ extension CoderWindow {
     }
     private func launchWorker(_ r: CoderRun, useAgy: Bool, needsRecall: Bool) {
         let wantProgram = useAgy ? "agyworker" : "mcworker"
-        if r.worker.program != wantProgram {
+        let switchedProgram = r.worker.program != wantProgram
+        if switchedProgram {
             if r.worker.alive { r.worker.stop(forget: false) }
             r.worker.program = wantProgram
         }
+        let sendRecall = needsRecall || switchedProgram
         r.startingWorker = true
         r.worker.startAsync { [weak self, weak r] ok in
             guard let self, let r else { return }
@@ -138,8 +140,8 @@ extension CoderWindow {
             var out = [CChar](repeating: 0, count: 262144)
             let cwd = (stillShown ? self.folder : r.folder).path
             let from = r.worker.offset
-            if needsRecall {
-                // an opened chat's turns, or nothing to remember when it has none that ended
+            if sendRecall {
+                // an opened chat's turns (or after switching workers mid-thread), or nothing to remember when it has none that ended
                 var n = cd_recall_line(r.page, &out, Int32(out.count))
                 if n == 0 { n = cd_forget_line(&out, Int32(out.count)) }
                 r.worker.write(out, count: Int(n))
