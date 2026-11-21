@@ -200,8 +200,11 @@ int cd_term_resize_due(void *page, int *out_cols, int *out_rows);
 int cd_term_ports(void *page, int tab_id, const char *payload);
 // Native POSIX PTY helpers (macOS / Linux): spawn shell in controlling PTY, resize, and terminate.
 int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *out_pid);
+int cd_pty_read(int handle, char *out, int cap);
+int cd_pty_write(int handle, const char *data, int len);
 int cd_pty_resize(int master_fd, int cols, int rows);
 void cd_pty_kill(int pid);
+void cd_pty_close(int handle, int pid);
 // The pinned chat id and new 0-based pinned slot after a drag reorder (action 10).
 int cd_pin_move(void *page, char *id_out, int cap, int *to_out);
 int cd_title(void *page, char *out, int cap);

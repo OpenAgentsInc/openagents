@@ -26,6 +26,7 @@
 #define OA_LINE_CAP (1024 * 1024)
 #define OA_SAVE_CAP (4 * 1024 * 1024)
 #define OA_SUBAGENTS 8
+#define OA_TERMS 8
 
 typedef struct {
   void *page;
@@ -55,6 +56,10 @@ typedef struct {
   int interactive;
   int sub_agent_id[OA_SUBAGENTS];
   int sub_active[OA_SUBAGENTS];
+  int term_tab_id[OA_TERMS];
+  int term_handle[OA_TERMS];
+  int term_pid[OA_TERMS];
+  int term_active[OA_TERMS];
   char *line_buf;
   char *save_buf;
 } DesktopApp;
@@ -851,7 +856,107 @@ static void handle_action(DesktopApp *a, int act) {
       break;
     }
     case 42: cd_file_close(a->page); break;
+    case 52: {
+      int op = cd_term_op(a->page);
+      int tid = cd_term_op_tab(a->page);
+      if (tid <= 0) tid = cd_term_active_id(a->page);
+      int slot = -1;
+      for (int i = 0; i < OA_TERMS; i++) {
+        if (a->term_active[i] && a->term_tab_id[i] == tid) { slot = i; break; }
+      }
+      if (op == 1) {
+        if (slot < 0) {
+          for (int i = 0; i < OA_TERMS; i++) { if (!a->term_active[i]) { slot = i; break; } }
+          if (slot >= 0) {
+            char cwd[OA_PATH] = {0};
+            if (cd_term_tab_cwd(a->page, tid, cwd, (int)sizeof(cwd)) <= 0) snprintf(cwd, sizeof(cwd), "%s", a->folder);
+            int pid = -1;
+            int h = cd_pty_spawn(NULL, cwd, 100, 28, &pid);
+            if (h >= 0) {
+              a->term_active[slot] = 1;
+              a->term_tab_id[slot] = tid;
+              a->term_handle[slot] = h;
+              a->term_pid[slot] = pid;
+            }
+          }
+        }
+      } else if (op == 2) {
+        if (slot >= 0) {
+          cd_pty_close(a->term_handle[slot], a->term_pid[slot]);
+          a->term_active[slot] = 0;
+          a->term_handle[slot] = -1;
+          a->term_pid[slot] = 0;
+        }
+      } else if (op == 3) {
+        int cols = 0, rows = 0;
+        if (slot >= 0 && cd_term_resize_due(a->page, &cols, &rows)) {
+          cd_pty_resize(a->term_handle[slot], cols, rows);
+        }
+      } else if (op == 4) {
+        char inbuf[4096];
+        int n = cd_term_input_out(a->page, inbuf, (int)sizeof(inbuf));
+        if (slot >= 0 && n > 0) (void)cd_pty_write(a->term_handle[slot], inbuf, n);
+      } else if (op == 5) {
+        char sel[16384] = {0};
+        int sn = cd_term_selected(a->page, sel, (int)sizeof(sel));
+        if (sn > 0) {
+          char hb[OA_PATH], dir[OA_PATH], path[OA_PATH];
+          const char *home = oa_home(hb, sizeof hb);
+          if (home && home[0]) {
+            snprintf(dir, sizeof dir, "%s/.openagents/terminal-context", home);
+            oa_mkdir(dir);
+            snprintf(path, sizeof path, "%s/term-%d.txt", dir, tid);
+            FILE *f = fopen(path, "wb");
+            if (f) { fwrite(sel, 1, (size_t)sn, f); fclose(f); cd_attach(a->page, path); }
+          }
+        }
+      }
+      break;
+    }
     default: break;
+  }
+}
+
+static void pump_terms(DesktopApp *a) {
+  char buf[4096];
+  for (int i = 0; i < OA_TERMS; i++) {
+    if (!a->term_active[i]) continue;
+    for (int guard = 0; guard < 8; guard++) {
+      int n = cd_pty_read(a->term_handle[i], buf, (int)sizeof(buf));
+      if (n > 0) {
+        cd_term_feed(a->page, a->term_tab_id[i], buf, n);
+      } else if (n < 0) {
+        cd_term_exited(a->page, a->term_tab_id[i], 0);
+        cd_pty_close(a->term_handle[i], a->term_pid[i]);
+        a->term_active[i] = 0;
+        a->term_handle[i] = -1;
+        a->term_pid[i] = 0;
+        break;
+      } else {
+        break;
+      }
+    }
+  }
+  int cols = 0, rows = 0;
+  if (cd_term_resize_due(a->page, &cols, &rows)) {
+    int tid = cd_term_active_id(a->page);
+    for (int i = 0; i < OA_TERMS; i++) {
+      if (a->term_active[i] && a->term_tab_id[i] == tid) {
+        cd_pty_resize(a->term_handle[i], cols, rows);
+        break;
+      }
+    }
+  }
+}
+
+static void stop_all_terms(DesktopApp *a) {
+  for (int i = 0; i < OA_TERMS; i++) {
+    if (a->term_active[i]) {
+      cd_pty_close(a->term_handle[i], a->term_pid[i]);
+      a->term_active[i] = 0;
+      a->term_handle[i] = -1;
+      a->term_pid[i] = 0;
+    }
   }
 }
 
@@ -879,6 +984,7 @@ static void pump_host(DesktopApp *a) {
     if (an > 0) oa_core_worker_write(vc(a), (coax_string){a->line_buf, an});
   }
   pump_subagents(a);
+  pump_terms(a);
   if (cd_save_due(a->page)) save_current_chat(a);
   if (a->interactive) {
     static int oa_last_running = 0;
@@ -1047,6 +1153,52 @@ static int run_smoke(DesktopApp *a, const char *shot_out) {
     oa_core_worker_stop(vc(a), 0);
     if (!ready) { fprintf(stderr, "smoke: the worker never said it was ready\n"); return 1; }
     printf("smoke: worker %s ready\n", a->worker_bin);
+  }
+
+  // 6. Live integrated terminal PTY smoke check (#13869): spawn shell, send echo, read output, resize, close.
+  {
+    int tid = cd_term_new_tab(a->page, "smoke", tmp);
+    int pty_pid = -1;
+    int pty_h = cd_pty_spawn(NULL, tmp, 80, 24, &pty_pid);
+    if (tid <= 0 || pty_h < 0) {
+      fprintf(stderr, "smoke: cd_pty_spawn failed (tid=%d, h=%d)\n", tid, pty_h);
+      return 1;
+    }
+    (void)cd_pty_resize(pty_h, 100, 30);
+#ifdef _WIN32
+    const char *probe = "echo OA_PTY_OK\r\n";
+#else
+    const char *probe = "echo OA_PTY_OK\n";
+#endif
+    (void)cd_pty_write(pty_h, probe, (int)strlen(probe));
+    int saw_pty = 0;
+    char acc[8192];
+    int acc_n = 0;
+    acc[0] = '\0';
+    for (int i = 0; i < 150 && !saw_pty; i++) {
+      if (i == 25 || i == 75) (void)cd_pty_write(pty_h, probe, (int)strlen(probe));
+      char rbuf[1024];
+      int n = cd_pty_read(pty_h, rbuf, (int)sizeof(rbuf));
+      if (n > 0) {
+        cd_term_feed(a->page, tid, rbuf, n);
+        int take = n < ((int)sizeof(acc) - 1 - acc_n) ? n : ((int)sizeof(acc) - 1 - acc_n);
+        if (take > 0) { memcpy(acc + acc_n, rbuf, (size_t)take); acc_n += take; acc[acc_n] = '\0'; }
+        if (strstr(acc, "OA_PTY_OK")) saw_pty = 1;
+      } else {
+#ifdef _WIN32
+        Sleep(20);
+#else
+        struct timespec ts = {0, 20000000L};
+        nanosleep(&ts, NULL);
+#endif
+      }
+    }
+    cd_pty_close(pty_h, pty_pid);
+    if (!saw_pty) {
+      fprintf(stderr, "smoke: PTY never echoed OA_PTY_OK (got %d bytes)\n", acc_n);
+      return 1;
+    }
+    printf("smoke: pty ok (%s, %d bytes)\n", OA_PLATFORM, acc_n);
   }
 
   cd_close(a->page);
@@ -1229,6 +1381,7 @@ static int run_flow(DesktopApp *a, const char *shot_out) {
   if (flow_count_lines(list) != 3 || !strstr(list, third)) return flow_fail("shared", "this app's save dropped a chat kept elsewhere");
   flow_ok("shared", "3 chats after a save beside another writer");
 
+  stop_all_terms(a);
   stop_all_subagents(a);
   if (oa_core_worker_alive(vc(a))) oa_core_worker_stop(vc(a), 0);
   cd_close(a->page);
@@ -1335,6 +1488,7 @@ static int oa_main(int argc, char **argv) {
     oa_keep_awake(0);
   }
 
+  stop_all_terms(&app);
   stop_all_subagents(&app);
   if (oa_core_worker_alive(vc(&app))) oa_core_worker_stop(vc(&app), 0);
   if (app.portal) { portal_cancel(app.portal); portal_close(app.portal); }

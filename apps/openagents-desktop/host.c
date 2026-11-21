@@ -5,6 +5,7 @@
 #include "host.h"
 #include "../shared/native/tailnet-codec.c"
 #include <time.h>
+#include <errno.h>
 #include <sys/stat.h>
 #if defined(__APPLE__) || defined(__linux__)
 #include <fcntl.h>
@@ -673,6 +674,26 @@ int cd_term_ports(void *page, int tab_id, const char *payload) {
   cd_woke(c);
   return n;
 }
+#ifdef _WIN32
+#include <windows.h>
+typedef void *CdHpcon;
+typedef HRESULT (WINAPI *CdCreateConFn)(COORD, HANDLE, HANDLE, DWORD, CdHpcon *);
+typedef HRESULT (WINAPI *CdResizeConFn)(CdHpcon, COORD);
+typedef void (WINAPI *CdCloseConFn)(CdHpcon);
+#ifndef PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE
+#define PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE 0x00020016
+#endif
+typedef struct {
+  int used;
+  CdHpcon hpcon;
+  HANDLE in_w;
+  HANDLE out_r;
+  HANDLE proc;
+  DWORD pid;
+} CdWinPty;
+static CdWinPty cd_win_ptys[16];
+#endif
+
 int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *out_pid) {
 #if defined(__APPLE__) || defined(__linux__)
   struct winsize ws;
@@ -687,7 +708,7 @@ int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *ou
     setenv("TERM", "xterm-256color", 1);
     setenv("COLORTERM", "truecolor", 1);
     const char *sh = (shell && shell[0]) ? shell : getenv("SHELL");
-    if (!sh || !sh[0]) sh = "/bin/zsh";
+    if (!sh || !sh[0]) sh = "/bin/sh";
     execl(sh, sh, "-l", (char *)NULL);
     execl("/bin/sh", "/bin/sh", (char *)NULL);
     _exit(127);
@@ -696,10 +717,133 @@ int cd_pty_spawn(const char *shell, const char *cwd, int cols, int rows, int *ou
   if (flags >= 0) (void)fcntl(master, F_SETFL, flags | O_NONBLOCK);
   if (out_pid) *out_pid = (int)pid;
   return master;
+#elif defined(_WIN32)
+  int slot = -1;
+  for (int i = 0; i < 16; i++) { if (!cd_win_ptys[i].used) { slot = i; break; } }
+  if (slot < 0) { if (out_pid) *out_pid = -1; return -1; }
+  SECURITY_ATTRIBUTES sa;
+  memset(&sa, 0, sizeof sa);
+  sa.nLength = sizeof sa;
+  sa.bInheritHandle = TRUE;
+  HANDLE in_r = NULL, in_w = NULL, out_r = NULL, out_w = NULL;
+  if (!CreatePipe(&in_r, &in_w, &sa, 0) || !CreatePipe(&out_r, &out_w, &sa, 0)) {
+    if (in_r) CloseHandle(in_r); if (in_w) CloseHandle(in_w);
+    if (out_r) CloseHandle(out_r); if (out_w) CloseHandle(out_w);
+    if (out_pid) *out_pid = -1;
+    return -1;
+  }
+  SetHandleInformation(in_w, HANDLE_FLAG_INHERIT, 0);
+  SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
+
+  char cmd[512];
+  const char *sh = (shell && shell[0]) ? shell : "cmd.exe";
+  snprintf(cmd, sizeof cmd, "%s", sh);
+  PROCESS_INFORMATION pi;
+  memset(&pi, 0, sizeof pi);
+  CdHpcon hpcon = NULL;
+  BOOL spawned = FALSE;
+
+  HMODULE k32 = GetModuleHandleA("kernel32.dll");
+  HMODULE nt = GetModuleHandleA("ntdll.dll");
+  int under_wine = nt && GetProcAddress(nt, "wine_get_version") != NULL;
+  CdCreateConFn create_con = (!under_wine && k32) ? (CdCreateConFn)(void *)GetProcAddress(k32, "CreatePseudoConsole") : NULL;
+  CdCloseConFn close_con = k32 ? (CdCloseConFn)(void *)GetProcAddress(k32, "ClosePseudoConsole") : NULL;
+  if (create_con) {
+    COORD sz;
+    sz.X = (SHORT)(cols > 0 ? cols : 80);
+    sz.Y = (SHORT)(rows > 0 ? rows : 24);
+    if (SUCCEEDED(create_con(sz, in_r, out_w, 0, &hpcon)) && hpcon) {
+      SIZE_T attr_sz = 0;
+      InitializeProcThreadAttributeList(NULL, 1, 0, &attr_sz);
+      LPPROC_THREAD_ATTRIBUTE_LIST alist = (LPPROC_THREAD_ATTRIBUTE_LIST)malloc(attr_sz);
+      if (alist && InitializeProcThreadAttributeList(alist, 1, 0, &attr_sz) &&
+          UpdateProcThreadAttribute(alist, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hpcon, sizeof(hpcon), NULL, NULL)) {
+        STARTUPINFOEXA siex;
+        memset(&siex, 0, sizeof siex);
+        siex.StartupInfo.cb = sizeof siex;
+        siex.lpAttributeList = alist;
+        spawned = CreateProcessA(NULL, cmd, NULL, NULL, FALSE,
+            EXTENDED_STARTUPINFO_PRESENT, NULL,
+            (cwd && cwd[0]) ? cwd : NULL, &siex.StartupInfo, &pi);
+        DeleteProcThreadAttributeList(alist);
+      }
+      free(alist);
+      if (!spawned && close_con) { close_con(hpcon); hpcon = NULL; }
+    }
+  }
+  if (!spawned) {
+    // Fallback to standard piped shell (e.g. under Wine or older Windows).
+    STARTUPINFOA si;
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = in_r;
+    si.hStdOutput = out_w;
+    si.hStdError = out_w;
+    spawned = CreateProcessA(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL,
+        (cwd && cwd[0]) ? cwd : NULL, &si, &pi);
+  }
+  CloseHandle(in_r);
+  CloseHandle(out_w);
+  if (!spawned) {
+    CloseHandle(in_w);
+    CloseHandle(out_r);
+    if (out_pid) *out_pid = -1;
+    return -1;
+  }
+  CloseHandle(pi.hThread);
+  cd_win_ptys[slot].used = 1;
+  cd_win_ptys[slot].hpcon = hpcon;
+  cd_win_ptys[slot].in_w = in_w;
+  cd_win_ptys[slot].out_r = out_r;
+  cd_win_ptys[slot].proc = pi.hProcess;
+  cd_win_ptys[slot].pid = pi.dwProcessId;
+  if (out_pid) *out_pid = (int)pi.dwProcessId;
+  return slot;
 #else
   (void)shell; (void)cwd; (void)cols; (void)rows;
   if (out_pid) *out_pid = -1;
   return -1;
+#endif
+}
+int cd_pty_read(int handle, char *out, int cap) {
+#if defined(__APPLE__) || defined(__linux__)
+  if (handle < 0 || !out || cap <= 0) return -1;
+  ssize_t n = read(handle, out, (size_t)cap);
+  if (n > 0) return (int)n;
+  if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) return 0;
+  return -1;
+#elif defined(_WIN32)
+  if (handle < 0 || handle >= 16 || !cd_win_ptys[handle].used || !out || cap <= 0) return -1;
+  DWORD avail = 0;
+  if (!PeekNamedPipe(cd_win_ptys[handle].out_r, NULL, 0, NULL, &avail, NULL)) return -1;
+  if (avail == 0) {
+    DWORD code = 0;
+    if (GetExitCodeProcess(cd_win_ptys[handle].proc, &code) && code != STILL_ACTIVE) return -1;
+    return 0;
+  }
+  DWORD got = 0;
+  DWORD want = avail < (DWORD)cap ? avail : (DWORD)cap;
+  if (!ReadFile(cd_win_ptys[handle].out_r, out, want, &got, NULL)) return -1;
+  return (int)got;
+#else
+  (void)handle; (void)out; (void)cap;
+  return -1;
+#endif
+}
+int cd_pty_write(int handle, const char *data, int len) {
+#if defined(__APPLE__) || defined(__linux__)
+  if (handle < 0 || !data || len <= 0) return 0;
+  ssize_t n = write(handle, data, (size_t)len);
+  return n > 0 ? (int)n : 0;
+#elif defined(_WIN32)
+  if (handle < 0 || handle >= 16 || !cd_win_ptys[handle].used || !data || len <= 0) return 0;
+  DWORD written = 0;
+  if (!WriteFile(cd_win_ptys[handle].in_w, data, (DWORD)len, &written, NULL)) return 0;
+  return (int)written;
+#else
+  (void)handle; (void)data; (void)len;
+  return 0;
 #endif
 }
 int cd_pty_resize(int master_fd, int cols, int rows) {
@@ -710,6 +854,16 @@ int cd_pty_resize(int master_fd, int cols, int rows) {
   ws.ws_col = (unsigned short)(cols > 0 ? cols : 80);
   ws.ws_row = (unsigned short)(rows > 0 ? rows : 24);
   return ioctl(master_fd, TIOCSWINSZ, &ws) == 0 ? 1 : 0;
+#elif defined(_WIN32)
+  if (master_fd < 0 || master_fd >= 16 || !cd_win_ptys[master_fd].used) return 0;
+  if (!cd_win_ptys[master_fd].hpcon) return 1;
+  HMODULE k32 = GetModuleHandleA("kernel32.dll");
+  CdResizeConFn resize_con = k32 ? (CdResizeConFn)(void *)GetProcAddress(k32, "ResizePseudoConsole") : NULL;
+  if (!resize_con) return 0;
+  COORD sz;
+  sz.X = (SHORT)(cols > 0 ? cols : 80);
+  sz.Y = (SHORT)(rows > 0 ? rows : 24);
+  return SUCCEEDED(resize_con(cd_win_ptys[master_fd].hpcon, sz)) ? 1 : 0;
 #else
   (void)master_fd; (void)cols; (void)rows;
   return 0;
@@ -718,8 +872,38 @@ int cd_pty_resize(int master_fd, int cols, int rows) {
 void cd_pty_kill(int pid) {
 #if defined(__APPLE__) || defined(__linux__)
   if (pid > 0) { kill(-pid, SIGHUP); kill(pid, SIGHUP); }
+#elif defined(_WIN32)
+  for (int i = 0; i < 16; i++) {
+    if (cd_win_ptys[i].used && (int)cd_win_ptys[i].pid == pid && cd_win_ptys[i].proc) {
+      TerminateProcess(cd_win_ptys[i].proc, 1);
+    }
+  }
 #else
   (void)pid;
+#endif
+}
+void cd_pty_close(int handle, int pid) {
+#if defined(__APPLE__) || defined(__linux__)
+  if (handle >= 0) close(handle);
+  cd_pty_kill(pid);
+#elif defined(_WIN32)
+  (void)pid;
+  if (handle >= 0 && handle < 16 && cd_win_ptys[handle].used) {
+    if (cd_win_ptys[handle].hpcon) {
+      HMODULE k32 = GetModuleHandleA("kernel32.dll");
+      CdCloseConFn close_con = k32 ? (CdCloseConFn)(void *)GetProcAddress(k32, "ClosePseudoConsole") : NULL;
+      if (close_con) close_con(cd_win_ptys[handle].hpcon);
+    }
+    if (cd_win_ptys[handle].in_w) CloseHandle(cd_win_ptys[handle].in_w);
+    if (cd_win_ptys[handle].out_r) CloseHandle(cd_win_ptys[handle].out_r);
+    if (cd_win_ptys[handle].proc) {
+      TerminateProcess(cd_win_ptys[handle].proc, 0);
+      CloseHandle(cd_win_ptys[handle].proc);
+    }
+    memset(&cd_win_ptys[handle], 0, sizeof(cd_win_ptys[handle]));
+  }
+#else
+  (void)handle; (void)pid;
 #endif
 }
 void cd_tick(void *page, float dt) { CoderHost *c = page; if (c) coder_page_tick(cd_state(c), dt); }
