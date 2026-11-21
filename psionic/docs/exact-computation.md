@@ -1,6 +1,7 @@
 # Programs compiled into weights: what the pre-reset work teaches
 
 Planning note, 2026-10-29, for Part XXIII of the [book plan](../book/PLAN.md).
+For the full production specification and workstream roadmap uniting this work with Pylon decentralized training, Spark settlement, and coding agents, see the [OpenAgents Executor Network Master Specification](executor-network-master-spec.md).
 Before the reset this idea was called Tassadar, after Percepta's published
 construction. Sources, readable with `git show 0b401561a0^:<path>` unless
 noted:

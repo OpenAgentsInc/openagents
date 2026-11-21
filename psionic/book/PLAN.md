@@ -816,7 +816,9 @@ rather than trained: attention becomes an exact memory, ReLU gates become
 arithmetic and branches, and the model's own output is the program's trace,
 so the answer carries its proof and anyone can check it by replay. This part
 rebuilds that idea, which the pre-reset work reproduced from Percepta's
-published construction ([notes](../docs/exact-computation.md)). It needs only
+published construction ([notes](../docs/exact-computation.md); full production
+architecture, Pylon decentralized training, and coding-agent integration in the
+[OpenAgents Executor Network Master Specification](../docs/executor-network-master-spec.md)). It needs only
 chapters 1–4 and 10 for 226 to 234; 235 to 237 also need chapter 115's training
 and [Coder chapter 8](../../coder/book/ch008-programs-as-tool-calls.md)'s programs as tool calls. A CPU runs these programs orders of
 magnitude faster, and every chapter says so beside its own numbers: the point
