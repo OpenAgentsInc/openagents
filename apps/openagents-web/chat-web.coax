@@ -523,6 +523,7 @@ cw_held_name :: (s: [] ChatWeb) -> string {
   }
   p := ss_place_of(path); names := SS_NAMES;
   if p >= 0 { return names[p]; }
+  if path.count >= 9 && cast(string) path[0..<9] == "/messages" && (path.count == 9 || path[9] == '/' || path[9] == '?' || path[9] == '#') { return "Messages"; }
   return ifx path.count > 9 && cast(string) path[0..<10] == "/settings/" then "Settings" else "OpenAgents";
 }
 // The held page's word of how far it has come: "PERCENT WHAT", or nothing when that is not known.

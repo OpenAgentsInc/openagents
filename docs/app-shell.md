@@ -61,8 +61,8 @@ window. It draws some pages itself and holds the others in a frame.
 - **Pages it holds:** every other page the side reaches is another module's:
   Projects and each project's page (`/projects/...`, the GPU), the worlds'
   list (`/worlds`, `worlds-web`), a world's editor (`/worlds/ID?edit`, the
-  world's GPU module and the editor's shell) and the older settings pages
-  (`/settings/security` and the rest). `ss_held` in `site-side.coax` says which.
+  world's GPU module and the editor's shell), the feed and messages (`/feed`,
+  `/messages`) and the older settings pages (`/settings/security` and the rest). `ss_held` in `site-side.coax` says which.
   The shell draws the side and, beside it, that page in a frame
   (`k_held`, `components/kit/listing.coax`) at the same address. The page in
   the frame runs as itself.

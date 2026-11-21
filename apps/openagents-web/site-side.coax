@@ -44,7 +44,7 @@ ss_held :: (path: string) -> bool {
   e := 0;
   while e < path.count && path[e] != '?' && path[e] != '#' { e += 1; }
   p := cast(string) path[0..<e];
-  if p=="/feed" || p=="/feed/" {return true;}
+  if p=="/feed" || p=="/feed/" || p=="/messages" || p=="/messages/" {return true;}
   q := ifx e < path.count && path[e] == '?' then cast(string) path[e + 1..<path.count] else "";
   if ss_under(p, "/projects") || p == "/worlds" || p == "/worlds/" || ss_under(p, "/worlds/new") || (ss_under(p, "/settings/") && p.count > 10) { return true; }
   if p.count <= 8 || cast(string) p[0..<8] != "/worlds/" { return false; }
@@ -154,6 +154,7 @@ SS_NEW_LABELS :: [3] string.["New chat", "New project", "New world"];
 
 #test "an address is its place: the home page, a place or anything under it, or none" {
   #assert ss_place_of("/feed")==SS_FEED && ss_held("/feed") && !ss_held("/feedback");
+  #assert ss_held("/messages") && ss_held("/messages/") && ss_held("/messages?x=1") && !ss_held("/messagesx") && ss_page_of("/messages") == SS_HELD;
   #assert ss_place_of("/") == SS_HOME && ss_place_of("") == SS_HOME;
   #assert ss_place_of("/chat") == SS_CHATS && ss_place_of("/chat/") == SS_CHATS && ss_place_of("/chat?x=1") == SS_CHATS;
   #assert ss_place_of("/projects") == SS_PROJECTS && ss_place_of("/projects/coax") == SS_PROJECTS && ss_place_of("/worlds/new") == SS_WORLDS;
