@@ -131,6 +131,33 @@ private final class IdentityTokens:TokenStore,@unchecked Sendable {
         XCTAssertEqual(IdentityNetwork.seen.last,kept)
         XCTAssertNil(store.load("fixture"))
     }
+    func testThreadProofEffectiveModelHonestyAndPrivateByDefaultSync() {
+        let fb = IOSThreadProof.formatEffectiveBadge(
+            provider: "Antigravity",
+            requestedModel: "gemini-4-neon",
+            effectiveModel: "gemini-4-flash",
+            execMode: "cloud"
+        )
+        XCTAssertTrue(fb.fallback)
+        XCTAssertEqual(fb.badge, "Antigravity / gemini-4-flash [cloud] (fallback from gemini-4-neon)")
+
+        let exact = IOSThreadProof.formatEffectiveBadge(
+            provider: "Psionic Metal",
+            requestedModel: "inkling-2-mini",
+            effectiveModel: "inkling-2-mini",
+            execMode: "local"
+        )
+        XCTAssertFalse(exact.fallback)
+        XCTAssertEqual(exact.badge, "Psionic Metal / inkling-2-mini [local]")
+
+        UserDefaults.standard.removeObject(forKey: AppServices.traceSyncOptInKey)
+        XCTAssertFalse(AppServices.traceSyncOptIn)
+        XCTAssertEqual(AppServices.tracePrivacyStatus, "Local Only (Private by Default)")
+        AppServices.traceSyncOptIn = true
+        XCTAssertTrue(AppServices.traceSyncOptIn)
+        XCTAssertEqual(AppServices.tracePrivacyStatus, "Encrypted Sync Enabled (Opt-In)")
+        UserDefaults.standard.removeObject(forKey: AppServices.traceSyncOptInKey)
+    }
     #endif
 
 }

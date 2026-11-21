@@ -90,6 +90,62 @@ import UIKit
     static func keepEnvironment(_ text: String) {
         if text.isEmpty { UserDefaults.standard.removeObject(forKey: environmentKey) } else { UserDefaults.standard.set(text, forKey: environmentKey) }
     }
+    /// Private-by-default trace sync opt-in (strictly false unless explicitly enabled; #13895).
+    static let traceSyncOptInKey = "openagents.traceSyncOptIn"
+    static var traceSyncOptIn: Bool {
+        get { UserDefaults.standard.bool(forKey: traceSyncOptInKey) }
+        set { UserDefaults.standard.set(newValue, forKey: traceSyncOptInKey) }
+    }
+    static var tracePrivacyStatus: String {
+        traceSyncOptIn ? "Encrypted Sync Enabled (Opt-In)" : "Local Only (Private by Default)"
+    }
+}
+
+/// Honest effective-model badge & Thread Proof sheet on iOS, mirroring coax/lib/agent/desktop/thread-proof.coax (#13895).
+enum IOSThreadProof {
+    static func formatEffectiveBadge(
+        provider: String,
+        requestedModel: String,
+        effectiveModel: String,
+        execMode: String
+    ) -> (badge: String, fallback: Bool) {
+        let actual = effectiveModel.isEmpty ? (requestedModel.isEmpty ? "unknown" : requestedModel) : effectiveModel
+        let prov = provider.isEmpty ? "OpenAgents" : provider
+        let mode = execMode.isEmpty ? "local" : execMode
+        let fallback = !requestedModel.isEmpty && !effectiveModel.isEmpty && requestedModel != effectiveModel
+        var s = "\(prov) / \(actual) [\(mode)]"
+        if fallback { s += " (fallback from \(requestedModel))" }
+        return (s, fallback)
+    }
+
+    @MainActor static func presentProofSheet(
+        from presenter: UIViewController,
+        provider: String,
+        requestedModel: String,
+        effectiveModel: String,
+        execMode: String,
+        stepsDigest: String
+    ) {
+        let fmt = formatEffectiveBadge(provider: provider, requestedModel: requestedModel, effectiveModel: effectiveModel, execMode: execMode)
+        let digestLine = stepsDigest.isEmpty ? "(no canonical steps yet)" : stepsDigest
+        let msg = """
+        Effective Model: \(fmt.badge)
+        Privacy: \(AppServices.tracePrivacyStatus)
+        ATIF-v1.8 steps_digest: \(digestLine)
+        """
+        let sheet = UIAlertController(title: "Thread Proof & ATIF Trace", message: msg, preferredStyle: .actionSheet)
+        let toggleTitle = AppServices.traceSyncOptIn ? "Disable Encrypted Trace Sync (Local Only)" : "Opt In to Encrypted Trace Backup"
+        sheet.addAction(UIAlertAction(title: toggleTitle, style: .default) { _ in
+            AppServices.traceSyncOptIn.toggle()
+        })
+        if !stepsDigest.isEmpty {
+            sheet.addAction(UIAlertAction(title: "Copy steps_digest", style: .default) { _ in
+                UIPasteboard.general.string = stepsDigest
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "Close", style: .cancel))
+        presenter.present(sheet, animated: true)
+    }
 }
 
 /// A pairing link the system opened (openagents://pair?..., printed by `openagents-environment pair`):
