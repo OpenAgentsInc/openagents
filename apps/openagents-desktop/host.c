@@ -573,6 +573,7 @@ void cd_dialog_begin(void *page, int size, const char *title, const char *body) 
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines) { CoderHost *c = page; return c && coder_page_dialog_field(cd_state(c), cd_string(label), cd_string(value), cd_string(hint), secure != 0, lines); }
 int cd_dialog_button(void *page, const char *label, int kind, int aside) { CoderHost *c = page; return c && coder_page_dialog_button(cd_state(c), cd_string(label), kind, aside != 0); }
 void cd_dialog_show(void *page, int confirm, int cancel, int focus) { CoderHost *c = page; if (c) { coder_page_dialog_show(cd_state(c), confirm, cancel, focus); cd_woke(c); } }
+void cd_dialog_select_all(void *page) { CoderHost *c = page; if (c) { coder_page_dialog_select_all(cd_state(c)); cd_woke(c); } }
 int cd_dialog_answer(void *page) { CoderHost *c = page; return c ? (int)coder_page_dialog_answer(cd_state(c)) : -2; }
 int cd_dialog_value(void *page, int i, char *out, int cap) {
   CoderHost *c = page;

@@ -76,7 +76,7 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
   box: [5] f32;
   edit := cp_ed_which(s) == CP_ED_DIALOG && app_dialog_field_box(d, f[0].skin, o, box[..]);
   d[0].editing = edit;
-  if cp_ed_dialog_field(s) < 0 { s[0].fld[0].dlg_at = -1; }
+  if cp_ed_dialog_field(s) < 0 { s[0].fld[0].dlg_at = -1; s[0].fld[0].dlg_select = false; }
   app_dialog_paint(f, d, w, h, o);
   if edit && app_dialog_field_box(d, f[0].skin, o, box[..]) {
     i := d[0].focus;
@@ -104,6 +104,7 @@ cp_toast_wake :: (s: [] CoderPage) -> f32 {
 // on (-1 or one past the last: the first). A menu over it closes.
 coder_page_dialog_begin :: (s: [] CoderPage, size: int, title: string, body: string) #export_c #effects(all) {
   if s.count < 1 { return; }
+  s[0].fld[0].dlg_at = -1; s[0].fld[0].dlg_select = false;
   app_menu_close(s[0].ov[0].menu[..], APP_MENU_NONE); _ := app_menu_take(s[0].ov[0].menu[..]);
   app_dialog_begin(s[0].ov[0].dlg[..], size, title, body);
 }
@@ -119,6 +120,18 @@ coder_page_dialog_show :: (s: [] CoderPage, confirm: int, cancel: int, focus: in
   d := s[0].ov[0].dlg[..];
   app_dialog_open(d, confirm, cancel);
   if focus >= 0 && focus < d[0].nf { d[0].focus = focus; }
+}
+// Select all text in the dialog's focused field once it opens (for dialogs like Rename Chat).
+coder_page_dialog_select_all :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  at := cp_ed_dialog_field(s);
+  if at < 0 { return; }
+  if s[0].fld[0].dlg_at == at {
+    composer_select_all(cp_ed(s, CP_ED_DIALOG)[0].body[..]);
+    s[0].fld[0].dlg_select = false;
+  } else {
+    s[0].fld[0].dlg_select = true;
+  }
 }
 // The answer once: the button pressed, -1 for Escape or a click on the dim, -2 while none is owed.
 coder_page_dialog_answer :: (s: [] CoderPage) -> int #export_c #effects(all) {

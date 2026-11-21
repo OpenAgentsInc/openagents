@@ -219,7 +219,7 @@ extension CoderWindow {
         var d = CoderDialog(title: "Rename Chat", body: "Enter a new title for this chat.")
         d.fields = [.init(value: current, hint: "Chat title")]
         d.buttons = [.init(title: "Cancel"), .init(title: "Rename", kind: .primary)]
-        d.confirm = 1; d.cancel = 0
+        d.confirm = 1; d.cancel = 0; d.selectAll = true
         present(d) { [weak self] answer, values in
             guard let self else { return }
             defer { self.refocus() }

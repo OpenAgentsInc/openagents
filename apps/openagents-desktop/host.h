@@ -348,6 +348,7 @@ void cd_dialog_begin(void *page, int size, const char *title, const char *body);
 int cd_dialog_field(void *page, const char *label, const char *value, const char *hint, int secure, int lines);
 int cd_dialog_button(void *page, const char *label, int kind, int aside);
 void cd_dialog_show(void *page, int confirm, int cancel, int focus);
+void cd_dialog_select_all(void *page);
 int cd_dialog_answer(void *page);
 int cd_dialog_value(void *page, int i, char *out, int cap);
 int cd_dialog_set(void *page, int i, const char *text);

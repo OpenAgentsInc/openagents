@@ -19,6 +19,7 @@ struct CoderDialog {
     var confirm = -1
     var cancel = -1
     var focus = 0
+    var selectAll = false
     /// One button, OK: a notice (an NSAlert sheet's default button).
     static func notice(_ title: String, _ body: String = "") -> CoderDialog {
         CoderDialog(title: title, body: body, buttons: [Button(title: "OK", kind: .primary)], confirm: 0, cancel: 0)
@@ -51,6 +52,7 @@ final class CoderOverlay: NSObject {
         fields = min(d.fields.count, 4)
         dialogDone = done; menuDone = nil
         cd_dialog_show(page, Int32(d.confirm), Int32(d.cancel), Int32(d.focus))
+        if d.selectAll { cd_dialog_select_all(page) }
         // the page's view takes the keys: its field with the keyboard, or nothing to type into
         if let owner { owner.window.makeFirstResponder(owner.canvas) }
         begin()

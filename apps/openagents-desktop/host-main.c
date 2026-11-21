@@ -397,6 +397,7 @@ static void ask_rename(DesktopApp *a) {
   cd_dialog_button(a->page, "Cancel", 1, 0);
   cd_dialog_button(a->page, "Rename", 0, 0);
   show_dialog(a, OA_DIALOG_RENAME, 1, 0);
+  cd_dialog_select_all(a->page);
 }
 
 static void ask_delete(DesktopApp *a) {

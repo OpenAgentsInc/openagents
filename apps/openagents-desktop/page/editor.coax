@@ -20,6 +20,7 @@ CpFields :: struct {
   now: f64;                   // the clock at the last frame: the caret's blink and undo's runs follow it
   blink: f32;                 // seconds from the last frame to the caret's next phase, -1 for none
   dlg_at: int;                // the dialog's field the third editor holds (-1: none yet)
+  dlg_select: bool;           // select all text when the dialog's field first opens
   mask: [1] Composer;         // a secure field's dots
 }
 
@@ -66,7 +67,10 @@ cp_ed :: (s: [] CoderPage, which: int) -> [] UiEditor {
     multi := at >= 0 && s[0].ov[0].dlg[0].fields[at].lines > 1;
     e[0].body[0].no_wrap = which == CP_ED_SEARCH || which == CP_ED_PALETTE || which == CP_ED_DIALOG && !multi;
     e[0].body[0].tokens = which == CP_ED_COMPOSER;   // @ files and / commands styled by type (#13699)
-    if which == CP_ED_DIALOG { fl[0].dlg_at = at; }
+    if which == CP_ED_DIALOG {
+      fl[0].dlg_at = at;
+      if fl[0].dlg_select { composer_select_all(e[0].body[..]); fl[0].dlg_select = false; }
+    }
   }
   e[0].body[0].focused = fl[0].active && cp_ed_which(s) == which;
   return e;
