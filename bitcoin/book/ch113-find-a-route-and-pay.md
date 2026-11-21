@@ -152,7 +152,7 @@ pay_usable :: (e: PayEdge, amount: int) -> bool #effects(all) {
 // the same in every implementation.
 pay_risk :: (e: PayEdge, amount: int) -> int #effects(all) {
   lo := e.lo - e.inflight; hi := e.hi - e.inflight;
-  if lo < 0 { lo = 0; }
+  if lo < 0 { lo = 0; }   // mutant: equivalent (lo is an integer, so lo < 0, lo <= 0 and lo < 1 all leave 0 as 0)
   if amount <= lo { return 0; }
   return PAY_RISK * (amount - lo) / (hi - lo + 1);
 }
@@ -218,8 +218,8 @@ pay_map_graph :: (m: [] PayMap, g: [] GspGraph) -> int #effects(all) {
       e.fee_base = cast(int) p.fee_base; e.fee_ppm = cast(int) p.fee_ppm; e.cltv = p.cltv;
       e.htlc_min = cast(int) p.htlc_min; e.htlc_max = cast(int) p.htlc_max;
       e.disabled = (p.channel_flags & 2) != 0;
-      if e.hi > e.htlc_max { e.hi = e.htlc_max; }
-      if e.lo > e.hi { e.lo = e.hi; }
+      if e.hi > e.htlc_max { e.hi = e.htlc_max; }   // mutant: equivalent (an equal hi is the same after the assignment)
+      if e.lo > e.hi { e.lo = e.hi; }   // mutant: equivalent (an equal lo is the same after the assignment)
       m[0].edges[k] = e;
     }
   }
@@ -272,7 +272,7 @@ pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int #effects(all) {
   if n[0] == PAY_MAX_NODES { return -1; }
   for i: 0..<33 { ids[n[0]][i] = id[i]; }
   n[0] += 1;
-  return n[0] - 1;
+  return n[0] - 1;   // mutant: equivalent (a node added here is only tested against -1, at n of 3 or more, or dropped with first_two)
 }
 // Dijkstra's algorithm from the payee back to the payer. Each node's
 // label is the cost, amount and expiry an HTLC must arrive with there;
@@ -283,7 +283,7 @@ pay_node_index :: (ids: [] [33] u8, n: [] int, id: [] u8) -> int #effects(all) {
 // index, payee 0 and payer 1, then nodes in the order edges name them.
 pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_cltv: int, height: int) -> PayRoute #effects(all) {
   ids: [PAY_MAX_NODES] [33] u8; n: [1] int;
-  first_two := pay_node_index(ids[..], n[..], payee) + pay_node_index(ids[..], n[..], payer);
+  first_two := pay_node_index(ids[..], n[..], payee) + pay_node_index(ids[..], n[..], payer);   // mutant: equivalent (the sum is dropped: the calls only make the payee index 0 and the payer index 1)
   if lnh_same(payer, payee) || amount <= 0 { return PayRoute.{code = PAY_NO_ROUTE}; }
   for i: 0..<m[0].n {
     if pay_node_index(ids[..], n[..], m[0].edges[i].from[..]) < 0 || pay_node_index(ids[..], n[..], m[0].edges[i].to[..]) < 0 {
@@ -292,10 +292,10 @@ pay_find_route :: (m: [] PayMap, payer: [] u8, payee: [] u8, amount: int, final_
   }
   cost: [PAY_MAX_NODES] int; need: [PAY_MAX_NODES] int; cltv: [PAY_MAX_NODES] int; hops: [PAY_MAX_NODES] int;
   next: [PAY_MAX_NODES] int; reached: [PAY_MAX_NODES] bool; done: [PAY_MAX_NODES] bool;
-  reached[0] = true; need[0] = amount; cltv[0] = final_cltv; next[0] = -1;
+  reached[0] = true; need[0] = amount; cltv[0] = final_cltv; next[0] = -1;   // mutant: equivalent (the walk back starts at the payer, which is reached before it is settled, and stops at the payee, so next[0] is never read)
   while true {
     u := -1;
-    for i: 0..<n[0] { if reached[i] && !done[i] && (u < 0 || cost[i] < cost[u]) { u = i; } }
+    for i: 0..<n[0] { if reached[i] && !done[i] && (u < 0 || cost[i] < cost[u]) { u = i; } }   // mutant: equivalent (for u < 0 against u <= 0 or u < 1: u is 0 only in the first pass, when the payee alone is reached)
     if u < 0 { return PayRoute.{code = PAY_NO_ROUTE}; }
     done[u] = true;
     if u == 1 { break; }
@@ -600,19 +600,19 @@ pay_on_htlc :: (net: [] PayNet, k: int, j: int) -> int #effects(all) {
   p := onion_peel(node[0].secret[..], x.onion[..], x.hash[..], payload[..], next[..]);
   for i: 0..<32 { node[0].ins[j].ss[i] = p.ss[i]; }
   hop := ifx p.code == ONION_OK then pay_read_payload(payload[0..<p.payload_n]) else PayHop.{code = PAY_INVALID_ONION_PAYLOAD};
-  if hop.code != PAY_OK { return pay_fail_code(net, k, j, hop.code, 0); }
+  if hop.code != PAY_OK { return pay_fail_code(net, k, j, hop.code, 0); }   // mutant: equivalent (hop.code here is PAY_INVALID_ONION_PAYLOAD, whose failure message carries no value)
   if !p.last {
-    if !hop.has_scid { return pay_fail_code(net, k, j, PAY_INVALID_ONION_PAYLOAD, 0); }
-    l := -1; s := 0;
+    if !hop.has_scid { return pay_fail_code(net, k, j, PAY_INVALID_ONION_PAYLOAD, 0); }   // mutant: equivalent (for the value: invalid_onion_payload's failure message carries no value)
+    l := -1; s := 0;   // mutant: equivalent (s is set with l, and read only when a link matched)
     for i: 0..<net[0].links_n {
       for e: 0..<2 { if net[0].links[i].scid == hop.scid && net[0].links[i].node[e] == k { l = i; s = e; } }
     }
-    if l < 0 { return pay_fail_code(net, k, j, PAY_UNKNOWN_NEXT_PEER, 0); }
+    if l < 0 { return pay_fail_code(net, k, j, PAY_UNKNOWN_NEXT_PEER, 0); }   // mutant: equivalent (for the value: unknown_next_peer's failure message carries no value)
     policy := net[0].links[l].policy[s];
     if x.amount - hop.amount < pay_fee(policy.fee_base, policy.fee_ppm, hop.amount) { return pay_fail_code(net, k, j, PAY_FEE_INSUFFICIENT, x.amount); }
     if x.expiry - policy.cltv < hop.cltv { return pay_fail_code(net, k, j, PAY_INCORRECT_CLTV_EXPIRY, x.expiry); }
     if pay_offer(net, l, s, hop.amount, x.hash[..], hop.cltv, next[..], j, -1) != LNH_OK {
-      return pay_fail_code(net, k, j, PAY_TEMPORARY_CHANNEL_FAILURE, 0);
+      return pay_fail_code(net, k, j, PAY_TEMPORARY_CHANNEL_FAILURE, 0);   // mutant: equivalent (temporary_channel_failure's failure message carries no value)
     }
     node[0].ins[j].state = PAY_IN_FORWARDED;
     return PAY_OK;
@@ -745,7 +745,7 @@ pay_run :: (net: [] PayNet) -> int #effects(all) {
     if moved < 0 { return PAY_CHANNEL; }
     if moved == 0 { return PAY_OK; }
   }
-  return PAY_OK;
+  return PAY_OK;   // mutant: equivalent (unreachable: the loop above only returns)
 }
 ```
 
@@ -801,7 +801,7 @@ pay_spendable :: (end: [] LnhNode) -> int #effects(all) {
   s := lnh_spec(end, true, LNH_ALL);
   fee := ifx end[0].funder then lnc_commit_fee(end[0].feerate, s.n + 1, false) else 0;
   v := s.to_local_msat - (end[0].their_cfg.reserve_sat + fee) * 1000;
-  return ifx v < 0 then 0 else v;
+  return ifx v < 0 then 0 else v;   // mutant: equivalent (for v < 0 against v <= 0 or v < 1: a v of 0 is returned as 0 either way)
 }
 // Each part's session key: SHA-256 of the payer's secret and the part's
 // number, so every onion is new and the example repeats.
@@ -821,7 +821,7 @@ pay_launch :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment, r: PayRoute, amou
   if pay_onion(m, r, part.session[..], p[0].hash[..], p[0].secret[..], p[0].total, onion[..]) != ONION_OK { return PAY_CAPACITY; }
   lnh_sha(onion[..], part.onion_hash[..]);
   for h: 0..<r.hops { m[0].edges[r.edge[h]].inflight += r.amount[h]; }
-  l := -1; s := 0; first := m[0].edges[r.edge[0]].scid;
+  l := -1; s := 0; first := m[0].edges[r.edge[0]].scid;   // mutant: equivalent (for s: it is set with l, and read only when a link matched)
   for x: 0..<net[0].links_n { for e: 0..<2 { if net[0].links[x].scid == first && net[0].links[x].node[e] == k { l = x; s = e; } } }
   if l < 0 || pay_offer(net, l, s, r.amount[0], p[0].hash[..], r.cltv[0], onion[..], -1, i) != LNH_OK {
     // The payer's own channel refused: it knows that much now.
@@ -883,8 +883,8 @@ pay_learn :: (m: [] PayMap, p: [] PayPayment, i: int, reason: [] u8) #effects(al
     for k: 0..<m[0].n { if lnh_same(m[0].edges[k].from[..], bad[..]) || lnh_same(m[0].edges[k].to[..], bad[..]) { m[0].edges[k].failed = true; } }
   } else if code == PAY_TEMPORARY_CHANNEL_FAILURE {
     hi := m[0].edges[e].inflight - 1;
-    if hi < m[0].edges[e].hi { m[0].edges[e].hi = hi; }
-    if m[0].edges[e].lo > m[0].edges[e].hi { m[0].edges[e].lo = m[0].edges[e].hi; }
+    if hi < m[0].edges[e].hi { m[0].edges[e].hi = hi; }   // mutant: equivalent (an equal hi is the same after the assignment)
+    if m[0].edges[e].lo > m[0].edges[e].hi { m[0].edges[e].lo = m[0].edges[e].hi; }   // mutant: equivalent (for lo > hi against lo >= hi: an equal lo is the same after the assignment)
   } else {
     m[0].edges[e].failed = true;
   }
@@ -945,7 +945,7 @@ pay_round :: (net: [] PayNet, m: [] PayMap, p: [] PayPayment) -> int #effects(al
       pay_learn(m, p, i, o.reason[0..<o.reason_n]);
       pay_settle_part(m, p, i); node[0].outs[part.out].state = PAY_OUT_FREE; changed = true;
       if !p[0].refused { p[0].waiting[p[0].waiting_n] = part.amount; p[0].waiting_n += 1; }
-    } else { flying += 1; }
+    } else { flying += 1; }   // mutant: equivalent (flying is only compared with 0, and every flying part makes it nonzero)
   }
   if p[0].settled >= p[0].total && flying == 0 { p[0].code = PAY_OK; }
   else if p[0].refused && flying == 0 { p[0].code = PAY_REFUSED; }
@@ -1012,7 +1012,7 @@ pay_policy :: (net: [] PayNet, l: int, s: int, base: int, ppm: int, cltv: int, h
 pay_announce :: (net: [] PayNet, l: int, g: [] GspGraph, timestamp: u64, disabled: int) -> int #effects(all) {
   x := net[0].links[l]; m: [512] u8; f: [1] u8;
   a := net[0].nodes[x.node[0]].secret; b := net[0].nodes[x.node[1]].secret;
-  n := gossip_announcement_write_vartime(g[0].chain[..], x.scid, a[..], b[..], x.end[0].funding_secret[..], x.end[1].funding_secret[..], f[0..<0], m[..]);
+  n := gossip_announcement_write_vartime(g[0].chain[..], x.scid, a[..], b[..], x.end[0].funding_secret[..], x.end[1].funding_secret[..], f[0..<0], m[..]);   // mutant: equivalent (the graph keeps no features, and an empty field and one zero byte both sign and verify)
   code := gossip_graph_add_vartime(g, m[0..<n]);
   for s: 0..<2 {
     key := ifx s == 0 then a[..] else b[..];
@@ -1043,7 +1043,7 @@ pay_write_invoice :: (net: [] PayNet, payee: int, amount: int, k: int, hints: []
   d: [11] u8; t0 := inv_text("Chapter 113", d[..]);
   code = invoice_put_bytes_vartime(w[..], INV_D, d[..]);
   code = invoice_put_features_vartime(w[..], features[..]);
-  if hints.count > 0 { code = invoice_put_route_vartime(w[..], hints); }
+  if hints.count > 0 { code = invoice_put_route_vartime(w[..], hints); }   // mutant: equivalent (for the assignment: code is never read; the signer refuses a writer whose route failed)
   t := invoice_sign_vartime(w[..], node[0].secret[..], out);
   return ifx t.code == INV_OK then t.length else -1;
 }

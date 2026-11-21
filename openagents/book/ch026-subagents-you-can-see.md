@@ -47,7 +47,7 @@ It builds on what exists today:
 
 - [`coax/lib/agent/tier.coax`](../../coax/lib/agent/tier.coax)
 - [`coax/lib/agent/observe/processes.coax`](../../coax/lib/agent/observe/processes.coax)
-- [`apps/everglade-desktop/next.coax`](../../apps/everglade-desktop/next.coax)
+- `apps/everglade-desktop/next.coax`
 - [`coax/lib/agent/observe/claude-history.coax`](../../coax/lib/agent/observe/claude-history.coax)
 
 On the protocol ([chapter 65](ch065-one-schema-three-carriages.md)):

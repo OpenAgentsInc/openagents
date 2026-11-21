@@ -9,7 +9,7 @@
 > [`rules/srd/condition-rolls.coax`](../../rules/srd/condition-rolls.coax).
 > Exhaustion and Prone have their own files. The Everglade room shows
 > conditions through
-> [`apps/openagents-web/old/v1/everglade-status.coax`](../../apps/openagents-web/old/v1/everglade-status.coax).
+> `apps/openagents-web/old/v1/everglade-status.coax`.
 > Other agents are extending the rules files now, so this chapter's only
 > listing is the status record, which already has markers.
 
@@ -79,7 +79,7 @@ your Hit Points.
 
 One record holds what the page knows about a condition on a body:
 
-<!-- source: apps/openagents-web/old/v1/everglade-status.coax status-effect -->
+<!-- historical excerpt: apps/openagents-web/old/v1/everglade-status.coax status-effect -->
 ```jai
 // An effect on a body: WHO (ST_YOU, or a TGT code: 1000 + SS a seat, 0-999 a watch actor, 2000 + EID a
 // creature), its condition bits (WC_*), the spell that made it (ST_*; -1 not said) and its seconds left (-1 held up, or not said).

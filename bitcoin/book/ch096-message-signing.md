@@ -110,8 +110,8 @@ bip322_to_spend :: (challenge: [] u8, message: string, out: [] u8) -> int #expor
   if challenge.count > AD_SCRIPT_MAX || out.count < B322_SPEND { return -1; }
   for k: 0..<B322_SPEND { out[k] = 0; }
   out[4] = 1;                                              // one input
-  for k: 37..<41 { out[k] = 0xff; }                        // the outpoint's index
-  out[41] = 34; out[42] = 0; out[43] = 32;                 // scriptSig: OP_0 PUSH32
+  for k: 37..<41 { out[k] = 0xff; }                        // mutant: equivalent (out[41] is written next); the outpoint's index
+  out[41] = 34; out[42] = 0; out[43] = 32;                 // mutant: equivalent (out[42] was zeroed above and out[43] is written next); scriptSig: OP_0 PUSH32
   #assert bip322_message_hash(message, out[44..<76]);
   out[80] = 1;                                             // sequence 0, then one output
   out[89] = cast(u8) challenge.count;                      // value 0, then the challenge
@@ -156,13 +156,13 @@ b322_decode :: (format: int, text: string, x: [] B322Work) -> int #effects(all) 
   #assert base64_decode_checked(text, x[0].raw[0..<n], false).error == NC_OK;
   raw := x[0].raw[0..<n];
   if format == B322_FULL_FORMAT {
-    if n > B322_TX { return B322_FULL; }
+    if n > B322_TX { return B322_FULL; }  // mutant: equivalent (raw holds at most B322_RAW = B322_TX bytes)
     x[0].tx_n = tx_put(x[0].tx[..], 0, raw);
   } else if format == B322_POF {
     p := psbt_read_vartime(raw, x[0].fields[..], x[0].read[..]);
     if p.code != PSBT_OK || !psbt_maps_vartime(raw, p, x[0].fields[..], x[0].maps[..]) { return B322_FULL; }
     x[0].tx_n = psbt_extract_vartime(x[0].maps[..], x[0].tx[..], x[0].sign[..]);
-    if x[0].tx_n < 0 { return B322_FULL; }
+    if x[0].tx_n < 0 { return B322_FULL; }  // mutant: equivalent (extraction gives -1 or at least 10 bytes)
   } else {
     // to_sign with the witness: segwit's marker and flag after the
     // version, the witness before the lock time. An empty stack (the
@@ -224,14 +224,14 @@ legacy script, as Core does. BIP-322 forbids it everywhere, so
 b322_codesep :: (sp: ScriptSpend) -> bool #effects(all) {
   input := sp.ins[sp.index];
   sig := sp.b[input.script..<input.script+input.script_n];
-  nested := script_p2sh_vartime(sp.spk) && sig.count == 35 && sig[0] == 34 && sig[1] == 0 && sig[2] == 32;
+  nested := script_p2sh_vartime(sp.spk) && sig.count == 35 && sig[0] == 34 && sig[1] == 0 && sig[2] == 32;  // mutant: equivalent (si_run never reads the P2SH flag, so nesting only changes which script runs when both agree)
   if !(ps_p2wsh(sp.spk) || nested) || input.count == 0 { return false; }
   item := sp.items[input.first + input.count - 1];
   s := sp.b[item.at..<item.at+item.n];
   pc := 0;
-  while pc < s.count {
+  while pc < s.count {  // mutant: equivalent (the scan ends false either way when it reaches the end)
     o := script_op_vartime(s, pc);
-    if !o.ok { return false; }
+    if !o.ok { return false; }  // mutant: equivalent (a witnessScript that doesn't parse fails when it runs)
     if o.op == OP_CODESEPARATOR { return true; }
     pc = o.next;
   }
@@ -336,7 +336,7 @@ b322_tapscript :: (sp: ScriptSpend, x: [] B322Work, script: ScriptItem) -> int #
     if b322_success(o.op) { return B322_INCONCLUSIVE; }
     pc = o.next;
   }
-  flags := SCRIPT_VERIFY_MINIMALDATA | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;
+  flags := SCRIPT_VERIFY_MINIMALDATA | SCRIPT_VERIFY_CHECKLOCKTIMEVERIFY | SCRIPT_VERIFY_CHECKSEQUENCEVERIFY;  // mutant: equivalent (si_run never reads the P2SH flag)
   cond := ScriptCond.{first_false=-1};
   pc = 0;
   while pc < s.count {
@@ -349,7 +349,7 @@ b322_tapscript :: (sp: ScriptSpend, x: [] B322Work, script: ScriptItem) -> int #
         si_push(w, ScriptItem.{src=script.src, at=script.at+o.at, n=o.n});
       }
     } else if op == OP_IF || op == OP_NOTIF {
-      value := false;
+      value := false;  // mutant: equivalent (value is set before it is read)
       if running {
         if si_size(w) < 1 { return B322_INVALID; }
         top := si_bytes(sp, w, si_top(w, 1));
@@ -369,7 +369,7 @@ b322_tapscript :: (sp: ScriptSpend, x: [] B322Work, script: ScriptItem) -> int #
       if op == OP_CHECKSIG || op == OP_CHECKSIGVERIFY || op == B322_CHECKSIGADD {
         state := b322_tap_sig(sp, x, op);
         if state != B322_VALID { return state; }
-      } else if si_run(sp, w, s, 0, op, flags, SCRIPT_V0) != SCRIPT_ERR_OK { return B322_INVALID; }
+      } else if si_run(sp, w, s, 0, op, flags, SCRIPT_V0) != SCRIPT_ERR_OK { return B322_INVALID; }  // mutant: equivalent (si_run reads begin and the version only for CHECKSIG, handled above)
     }
     if si_size(w) > SCRIPT_MAX_STACK { return B322_INVALID; }
   }
@@ -401,7 +401,7 @@ b322_success :: (op: int) -> bool #effects(all) {
 B322_CHECKSIGADD :: 0xba;
 B322_TAP_KNOWN :: [19] int.[0x4f, 0x61, 0x69, 0x6a, 0x75, 0x76, 0x7c, 0x82, 0x87, 0x88, 0x9c, 0x9d, 0xa8, 0xa9, 0xac, 0xad, 0xb1, 0xb2, 0xba];
 b322_known :: (op: int) -> bool #effects(all) {
-  if op >= OP_1 && op <= OP_16 { return true; }
+  if op >= OP_1 && op <= OP_16 { return true; }  // mutant: equivalent (OP_16 + 1 is OP_NOP, which is known)
   for k: B322_TAP_KNOWN { if op == k { return true; } }
   return false;
 }
@@ -420,7 +420,7 @@ b322_tap_sig :: (sp: ScriptSpend, x: [] B322Work, op: int) -> int #effects(all) 
   n := ScriptNum.{ok=true};
   if op == B322_CHECKSIGADD { n = script_num_vartime(si_bytes(sp, w, si_top(w, 2)), true, 4); }
   if !n.ok { return B322_INVALID; }
-  if sig.count > 0 { x[0].budget -= 50; if x[0].budget < 0 { return B322_INVALID; } }
+  if sig.count > 0 { x[0].budget -= 50; if x[0].budget < 0 { return B322_INVALID; } }  // mutant: equivalent (a signature of 1 byte fails whatever the budget)
   if key.count == 0 { return B322_INVALID; }
   if key.count != 32 { return B322_INCONCLUSIVE; }
   ok := sig.count > 0;
@@ -429,7 +429,7 @@ b322_tap_sig :: (sp: ScriptSpend, x: [] B322Work, op: int) -> int #effects(all) 
     if sig.count == 65 && sig[64] != 1 { return B322_INVALID; }
     hash: [32] u8;
     amounts := x[0].amounts[0..<x[0].tp.nin]; spks := x[0].spks[0..<x[0].tp.nin];
-    if !bt_sighash_taproot_ext(x[0].strip[..], x[0].tp, sp.index, amounts, spks, sig.count - 64, sig[0..<0], x[0].leaf[..], BT_NO_CODESEP, hash[..]) { return B322_INVALID; }
+    if !bt_sighash_taproot_ext(x[0].strip[..], x[0].tp, sp.index, amounts, spks, sig.count - 64, sig[0..<0], x[0].leaf[..], BT_NO_CODESEP, hash[..]) { return B322_INVALID; }  // mutant: equivalent (the key path's signature hash has no code separator to differ on)
     if !schnorr_verify_vartime(hash[..], key, sig[0..<64]) { return B322_INVALID; }
   }
   si_pop(w, need);
@@ -478,10 +478,10 @@ bip322_verify_vartime :: (address: string, signature: string, message: string, x
   r.reason = b322_decode(r.format, body, x);
   if r.reason != B322_OK { return r; }
   t := x[0].t; b := x[0].tx[0..<x[0].tx_n];
-  first := ifx t.nin > 0 then b[x[0].ins[0].outpoint..<x[0].ins[0].outpoint+36] else b[0..<0];
+  first := ifx t.nin > 0 then b[x[0].ins[0].outpoint..<x[0].ins[0].outpoint+36] else b[0..<0];  // mutant: equivalent (with no inputs first is not 36 bytes either way)
   spends := first.count == 36 && ps_equal(first[0..<32], x[0].txid[..]) && tx_le_vartime(first, 32, 4) == 0;
   pays := t.nout == 1 && tx_le_vartime(b, x[0].outs[0].value, 8) == 0 && x[0].outs[0].script_n == 1 && b[x[0].outs[0].script] == OP_RETURN;
-  if !spends || !pays || (r.format != B322_POF && t.nin != 1) || t.nin > BT_IO { r.reason = B322_SHAPE; return r; }
+  if !spends || !pays || (r.format != B322_POF && t.nin != 1) || t.nin > BT_IO { r.reason = B322_SHAPE; return r; }  // mutant: equivalent (tx_read refuses more than BT_IO inputs)
   // Each input's spent output: to_spend's for the first.
   x[0].amounts[0] = 0; x[0].spks[0].n = x[0].spk_n;
   for k: 0..<x[0].spk_n { x[0].spks[0].b[k] = x[0].spk[k]; }
@@ -536,7 +536,7 @@ witness script go in their fields.
 // to_spend as the input's UTXO, signed without low-R grinding, finalized
 // and extracted. Returns the text's length, or -1.
 bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [] u8, format: int, version: int, locktime: int, sequence: int, aux: [] u8, x: [] B322Work, out: [] u8) -> int #export_c #effects(all) {
-  if !b322_spend(address, message, x) || keys.count == 0 || keys.count % 32 != 0 || message.count > B322_MESSAGE { return -1; }
+  if !b322_spend(address, message, x) || keys.count == 0 || keys.count % 32 != 0 || message.count > B322_MESSAGE { return -1; }  // mutant: equivalent (with no keys nothing signs and the finalizer refuses)
   spk := x[0].spk[0..<x[0].spk_n];
   if format == B322_LEGACY {
     if !ps_p2pkh(spk) || keys.count != 32 || out.count < SM_SIGNATURE_TEXT { return -1; }
@@ -547,8 +547,8 @@ bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [
   #assert bip322_to_sign(x[0].txid[..], version, locktime, sequence, unsigned[..]) == 61;
   m := x[0].maps[..];
   #assert psbt_create_vartime(unsigned[..], m);
-  for k: 0..<message.count { x[0].message[k] = message[k]; }
-  #assert psbt_set1_vartime(m, PSBT_GLOBAL, 0, 0x09, x[0].message[0..<message.count]);
+  for k: 0..<message.count { x[0].message[k] = message[k]; }  // mutant: equivalent (the message field is never read)
+  #assert psbt_set1_vartime(m, PSBT_GLOBAL, 0, 0x09, x[0].message[0..<message.count]);  // mutant: equivalent (the message field is never read)
   // The scripts the input needs.
   redeem: [34] u8; hash: [32] u8; h: [20] u8; legacy := ps_p2pkh(spk);
   if script_p2sh_vartime(spk) {
@@ -557,7 +557,7 @@ bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [
       #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x04, script);
       legacy = !ps_p2wpkh(script);
     } else {
-      redeem[0] = 0; redeem[1] = 32;
+      redeem[0] = 0; redeem[1] = 32;  // mutant: equivalent (redeem starts as zeros)
       #assert sha256_hash_checked(script, redeem[2..<34], false) == SHA_OK;
       #assert hash160_checked(redeem[..], h[..], false) == RMD_OK;
       if !ps_equal(h[..], spk[2..<22]) { return -1; }
@@ -568,7 +568,7 @@ bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [
   utxo: [64] u8;
   if legacy { #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x00, x[0].spend[0..<x[0].spend_n]); }
   else {
-    for k: 0..<8 { utxo[k] = 0; }
+    for k: 0..<8 { utxo[k] = 0; }  // mutant: equivalent (utxo starts as zeros and is written next)
     utxo[8] = cast(u8) spk.count;
     #assert psbt_set1_vartime(m, PSBT_INPUT, 0, 0x01, utxo[0..<tx_put(utxo[..], 9, spk)]);
   }
@@ -579,13 +579,14 @@ bip322_sign_vartime :: (address: string, message: string, keys: [] u8, script: [
     if !psbt_finalize_input_vartime(m, 0, x[0].sign[..]) && !b322_else_branch(m) { return -1; }
   }
   // The encoding: input 0's witness, or the whole of to_sign.
-  data := x[0].tx[0..<0];
+  data := x[0].tx[0..<0];  // mutant: equivalent (data is set in both branches)
   if format == B322_SIMPLE {
     j := psbt_find1_vartime(m, PSBT_INPUT, 0, 0x08);
-    if j < 0 || version != 0 || locktime != 0 || sequence != 0 { return -1; }
+    if j < 0 || version != 0 || locktime != 0 || sequence != 0 { return -1; }  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's witness)
     data = pm_value(m, j);
   } else {
     x[0].tx_n = psbt_extract_vartime(m, x[0].tx[..], x[0].sign[..]);
+    if x[0].tx_n < 0 { return -1; }  // mutant: equivalent (extraction gives -1 or at least 10 bytes)
     data = x[0].tx[0..<x[0].tx_n];
   }
   if out.count < 3 + base64_encode_size(data.count) { return -1; }
@@ -610,13 +611,13 @@ branch, `<signature> <empty> <script>`, needs one more case.
 // signature.
 b322_else_branch :: (m: [] PsbtMaps) -> bool #effects(all) {
   ws := psbt_find1_vartime(m, PSBT_INPUT, 0, 0x05);
-  sig := -1;
-  for j: 0..<m[0].n { if m[0].pairs[j].map == PSBT_INPUT && m[0].pairs[j].index == 0 && pm_type(m, j) == 0x02 { sig = j; } }
-  if ws < 0 || sig < 0 { return false; }
+  sig := -1;  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's signature)
+  for j: 0..<m[0].n { if m[0].pairs[j].map == PSBT_INPUT && m[0].pairs[j].index == 0 && pm_type(m, j) == 0x02 { sig = j; } }  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's signature)
+  if ws < 0 || sig < 0 { return false; }  // mutant: equivalent (pair 0 is the global unsigned tx, never input 0's script or signature)
   wit: [PSBT_TX] u8;
   at := tx_compact_write_vartime(wit[..], 0, 3);
   at = tx_compact_write_vartime(wit[..], at, pm_value(m, sig).count); at = tx_put(wit[..], at, pm_value(m, sig));
-  wit[at] = 0; at += 1;
+  wit[at] = 0; at += 1;  // mutant: equivalent (wit starts as zeros)
   at = tx_compact_write_vartime(wit[..], at, pm_value(m, ws).count); at = tx_put(wit[..], at, pm_value(m, ws));
   return psbt_set1_vartime(m, PSBT_INPUT, 0, 0x08, wit[0..<at]);
 }
@@ -639,20 +640,20 @@ b322_sign_leaf :: (x: [] B322Work, unsigned: [] u8, key: [] u8, script: [] u8, a
   spks[0].n = x[0].spk_n;
   for k: 0..<x[0].spk_n { spks[0].b[k] = x[0].spk[k]; }
   leaf: [32] u8; hash: [32] u8; pub: [33] u8; q: [32] u8; sig: [64] u8;
-  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) != TR_OK { return false; }
+  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, script, leaf[..]) != TR_OK { return false; }  // mutant: equivalent (the leaf hash refuses no script the signer passes it)
   #assert bt_sighash_taproot_ext(unsigned, bt_tx_read(unsigned), 0, amounts[..], spks[..], BT_DEFAULT, unsigned[0..<0], leaf[..], BT_NO_CODESEP, hash[..]);
-  if !bip32_public(key, pub[..]) { return false; }
+  if !bip32_public(key, pub[..]) { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   parity := taproot_output_key_vartime(pub[1..<33], leaf[..], q[..]);
-  if parity < 0 || !ps_equal(q[..], x[0].spk[2..<34]) { return false; }
+  if parity < 0 || !ps_equal(q[..], x[0].spk[2..<34]) { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   w := x[0].sign[0].tap[0].sign[..];
-  status := 0;
+  status := 0;  // mutant: equivalent (the loop sets status first)
   for k: 0..<6 { status = schnorr_sign_step(key, aux, hash[..], w, sig[..], false); }
-  if status != SIGN_DONE { return false; }
+  if status != SIGN_DONE { return false; }  // mutant: equivalent (signing always finishes in six steps)
   wit: [256 + SCRIPT_MAX_SIZE] u8;
-  if script.count > SCRIPT_MAX_SIZE { return false; }
+  if script.count > SCRIPT_MAX_SIZE { return false; }  // mutant: equivalent (a leaf left without its witness is refused when it is encoded)
   at := tx_compact_write_vartime(wit[..], 0, 4);
   at = tx_compact_write_vartime(wit[..], at, 64); at = tx_put(wit[..], at, sig[..]);
-  wit[at] = 0; at += 1;
+  wit[at] = 0; at += 1;  // mutant: equivalent (wit starts as zeros)
   at = tx_compact_write_vartime(wit[..], at, script.count); at = tx_put(wit[..], at, script);
   wit[at] = 33; wit[at+1] = cast(u8) (TR_LEAF_TAPSCRIPT | parity); at += 2;
   at = tx_put(wit[..], at, pub[1..<33]);

@@ -91,7 +91,7 @@ module that any realm declares, instead of code that belongs to Everglade.
 - [everglade/world/river.coax](../../everglade/world/river.coax): Everglade's
   4 m river, its current round the bridge piles, and its rowboats.
 - [metaverse-engine/world/water-weather.coax](../world/water-weather.coax) and
-  [everglade/legacy/v1/water-spells.coax](../../everglade/legacy/v1/water-spells.coax): rising water in
+  everglade/legacy/v1/water-spells.coax: rising water in
   rain, and spells that act on water.
 
 ## What it builds

@@ -6,7 +6,7 @@
 > This chapter's profile is native f32 spatial boundaries: typed conversions,
 > compiler refusals, and the interpolated world anchor consumed by every
 > current avatar renderer. It does not qualify browser pixels or consolidate
-> every legacy vector type. The [verification record](../../docs/verification/aethyr-book-implementation-2026-11-01.json)
+> every legacy vector type. The verification record
 > identifies the compiler, source and checks.
 
 A number such as `1.8` can be a height in metres, a distance on the Grid, a

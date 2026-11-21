@@ -118,7 +118,7 @@ Everglade started as prototypes, each built to answer one question:
   is the glade where you make your hero. Its look and light come from one
   reference image: a Quaternius forest scene with warm autumn light through the
   canopy
-  ([reference light](../../docs/verification/character-glade-reference-light-2026-11-07/)).
+  (reference light).
 
 The glade became the starting point for the final version, **Everglade II**
 ([`docs/metaverse/everglade2.md`](../../docs/metaverse/everglade2.md)). It is rebuilt

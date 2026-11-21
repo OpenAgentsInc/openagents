@@ -571,5 +571,16 @@
         "release"
       ]
     }
+  ],
+  "libraries": [
+    {
+      "source": "metaverse-engine/examples/ple-data-hall.coax",
+      "kind": "native-library",
+      "chapter": "metaverse-engine/book/ch053-bring-in-assets.md",
+      "consumer": "apps/openagents-desktop/GymWorkbenchView.swift",
+      "evidence": [
+        "metaverse-engine/import/ple-scene.coax"
+      ]
+    }
   ]
 }

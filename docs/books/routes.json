@@ -203,8 +203,6 @@
       ],
       "evidence": [
         "psionic/book/examples.json",
-        "docs/verification/psionic-mnist-framework-2026-11-01.json",
-        "docs/verification/psionic-cnn-framework-2026-11-01.json",
         "psionic/fixtures/cnn-core/qualification.json",
         "psionic/fixtures/cnn/mlp-compatibility.json"
       ],

@@ -6,7 +6,7 @@
 > frame redraw gating, `composer.send` button (`ctx_button`), driver ops
 > (`openagents/examples/cases/send.ops`), and unit/`#forall` checks pass on
 > `cpu` across [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-> [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+> [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
 > and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax).
 > Native desktop/iOS host wiring and accessibility UI tests remain pending.
 
@@ -68,7 +68,7 @@ leaves the machine. Chapter 4 sends it.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) and consumed by [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax) (primary) and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) (mobile):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax) and consumed by [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax) (primary) and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax) (mobile):
 
 - The chat page's state record (`ChatState`): the draft (`EditBuf`), the sent
   messages (`ChatMessage` with stable domain keys `message.<id>`), and
@@ -95,7 +95,7 @@ It builds on:
 ### The chapter's check
 
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-  [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+  [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
   [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
   and [`openagents/examples/cases/send.ops`](../examples/cases/send.ops).
 - **Trace:** `type composer.input hello`, `tap composer.send`, `state
@@ -121,3 +121,5 @@ Generic dispatch code goes in the proposed `coax/lib/app/` that
   - [Coax Native](../../coax/native.md) and the [Exact research](../../docs/research/exact/README.md) it draws on
   - [Exact: what to adapt](../../docs/research/exact/03-what-to-adapt.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1
+
+Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

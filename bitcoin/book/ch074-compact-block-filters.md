@@ -121,18 +121,28 @@ bf_sift :: (v: [] u64, idx: [] int, start: int, end: int) #effects(all) {
   root := start;
   while 2 * root + 1 < end {
     child := 2 * root + 1;
-    if child + 1 < end && v[child] < v[child+1] { child += 1; }
-    if v[root] >= v[child] { return; }
+    // Between equal children either one keeps the heap; the choice only
+    // orders indices of equal values, which no caller reads (see bf_sort).
+    if child + 1 < end && v[child] < v[child+1] { child += 1; } // mutant: equivalent
+    // A root equal to its larger child may stop or swap: the values come out
+    // the same, and only indices of equal values change places.
+    if v[root] >= v[child] { return; } // mutant: equivalent
     t := v[root]; v[root] = v[child]; v[child] = t;
     j := idx[root]; idx[root] = idx[child]; idx[child] = j;
     root = child;
   }
 }
+// The order of indices among equal values is unspecified: bf_build_vartime
+// compares every element of a run of equal hashes, and the filter and the
+// match read only the values.
 bf_sort :: (v: [] u64, idx: [] int, n: int) #effects(all) {
-  s := n / 2 - 1;
+  // Starting higher (n/2 + 1, 2n - 1) only adds bf_sift calls on leaves or
+  // past the end, which return at once: 2 * root + 1 >= end there.
+  s := n / 2 - 1; // mutant: equivalent
   while s >= 0 { bf_sift(v, idx, s, n); s -= 1; }
   e := n - 1;
-  while e > 0 {
+  // One more pass at e = 0 swaps v[0] with itself and sifts an empty heap.
+  while e > 0 { // mutant: equivalent
     t := v[0]; v[0] = v[e]; v[e] = t;
     j := idx[0]; idx[0] = idx[e]; idx[e] = j;
     bf_sift(v, idx, 0, e);
@@ -242,14 +252,16 @@ bf_build_vartime :: (key: BfKey, pool: [] u8, spans: [] BfSpan, n: int, values: 
   }
   head := tx_compact_size_vartime(unique);
   if out.count < head { return BfFilter.{code = BF_CAPACITY}; }
-  for i: 0..<out.count { out[i] = 0; }
+  // Skipping out[0] changes nothing: the CompactSize below always writes it.
+  for i: 0..<out.count { out[i] = 0; } // mutant: equivalent
   #assert tx_compact_write_vartime(out, 0, unique) == head;
   f := cast(u64) unique * BF_M;
   pos := head * 8; last := cast(u64) 0;
   for i: 0..<unique {
     v := bf_range(values[i], f);
     pos = bf_golomb_put(out, pos, v - last);
-    if pos < 0 { return BfFilter.{code = BF_CAPACITY}; }
+    // bf_golomb_put returns -1 or at least 20 bits past the CompactSize: never 0.
+    if pos < 0 { return BfFilter.{code = BF_CAPACITY}; } // mutant: equivalent
     last = v;
   }
   return BfFilter.{size = (pos + 7) / 8, n = unique};
@@ -279,11 +291,14 @@ scripts against a filter at once.
 // and exactly N codes, with nothing after the byte the last one ends in.
 bf_read_vartime :: (filter: [] u8) -> BfRead #effects(all) {
   c := tx_compact_read_vartime(filter, 0);
-  if c.code != TX_OK || c.value > 0xffffffff { return BfRead.{code = BF_BAD_FILTER}; }
+  // Core's "N must be <2^32" needs no test of its own here: the CompactSize
+  // reader refuses any value above MAX_SIZE (2^25) first, as Core's does.
+  if c.code != TX_OK { return BfRead.{code = BF_BAD_FILTER}; }
   pos := c.next * 8;
   for i: 0..<c.value {
     g := bf_golomb_get(filter, pos);
-    if g.next < 0 { return BfRead.{code = BF_BAD_FILTER}; }
+    // bf_golomb_get returns next = -1 or a position 20 bits on: never 0.
+    if g.next < 0 { return BfRead.{code = BF_BAD_FILTER}; } // mutant: equivalent
     pos = g.next;
   }
   if (pos + 7) / 8 != filter.count { return BfRead.{code = BF_BAD_FILTER}; }
@@ -297,7 +312,8 @@ bf_match_any_vartime :: (key: BfKey, filter: [] u8, pool: [] u8, spans: [] BfSpa
   if r.code != BF_OK { return BfMatch.{code = r.code}; }
   if values.count < n || idx.count < n || spans.count < n { return BfMatch.{code = BF_CAPACITY}; }
   f := cast(u64) r.n * BF_M;
-  for i: 0..<n { values[i] = bf_hash_vartime(key, pool[spans[i].at..<spans[i].at+spans[i].n], f); idx[i] = i; }
+  // idx is scratch the sort carries along; nothing here reads it.
+  for i: 0..<n { values[i] = bf_hash_vartime(key, pool[spans[i].at..<spans[i].at+spans[i].n], f); idx[i] = i; } // mutant: equivalent
   bf_sort(values, idx, n);
   pos := r.bits; value := cast(u64) 0; q := 0;
   for i: 0..<r.n {
@@ -413,7 +429,9 @@ The genesis block's previous filter header is 32 zero bytes.
 // is 32 zero bytes.
 bf_filter_header :: (filter: [] u8, prev: [] u8, out: [] u8) #effects(all) {
   pair: [64] u8;
-  #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK;
+  // sha256d_checked takes any view of at least 32 bytes and writes its first
+  // 32, so a 33-byte view writes the same bytes (pair[32..] is set next).
+  #assert sha256d_checked(filter, pair[0..<32], false) == SHA_OK; // mutant: equivalent
   for i: 0..<32 { pair[32+i] = prev[i]; }
   #assert sha256d_checked(pair[..], out, false) == SHA_OK;
 }

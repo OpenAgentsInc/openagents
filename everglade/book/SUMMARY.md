@@ -1,6 +1,7 @@
 # Contents
 
 - [Introduction and proposed structure](README.md)
+- [Plan](PLAN.md)
 
 ## Part I: Start from a bare world
 

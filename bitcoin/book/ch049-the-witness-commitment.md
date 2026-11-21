@@ -242,7 +242,9 @@ witness_walk_vartime :: (b: [] u8, ins: [] TxIn, outs: [] TxOut, items: [] TxIte
     s := b[at..<at+t.total];
     n := k.count;
     if t.segwit && k.first_witness < 0 { k.first_witness = n; }
-    if txids.count > 0 { #assert tx_txid_vartime(s, t, txids[32*n..<32*n+32]); }
+    // txids.count is 0 or at least 32 * c.value here (the refusal above), so
+    // "> 1" differs only for 1 byte and no transactions, when this never runs.
+    if txids.count > 0 { #assert tx_txid_vartime(s, t, txids[32*n..<32*n+32]); } // mutant: equivalent
     #assert tx_wtxid_vartime(s, t, wtxids[32*n..<32*n+32]);
     k.count += 1; at += t.total;
   }
@@ -274,7 +276,9 @@ witness_check_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut, 
     root: [32] u8; want: [32] u8;
     #assert merkle_witness_root_vartime(wtxids[0..<32*k.count], work, root[..]) == MERKLE_OK;
     #assert witness_commitment_hash_vartime(root[..], b[k.reserved..<k.reserved+32], want[..]);
-    got := cb[outs[k.commitment].script+6..<outs[k.commitment].script+38];
+    // Only got[0..<32] is read; a 33-byte view stays inside cb, since the
+    // coinbase's locktime follows every output script.
+    got := cb[outs[k.commitment].script+6..<outs[k.commitment].script+38]; // mutant: equivalent
     for i: 0..<32 { if got[i] != want[i] { k.code = WITNESS_MERKLE_MATCH; return k; } }
     return k;
   }
@@ -395,8 +399,11 @@ witness_mutated_vartime :: (b: [] u8, segwit: bool, ins: [] TxIn, outs: [] TxOut
   m := merkle_check_vartime(txids[0..<32*k.count], work, b[36..<68]);
   if m == MERKLE_MISMATCH { k.code = WITNESS_TXN_MERKLE; return k; }
   if m == MERKLE_MUTATED { k.code = WITNESS_DUPLICATE; return k; }
-  coinbase := false;
-  if k.count > 0 {
+  // With no transactions both ways return the walk's k: witness_check_vartime
+  // re-walks the same bytes and returns at k.count == 0, and parsing an empty
+  // coinbase is refused with nin 0, which is not a coinbase.
+  coinbase := false; // mutant: equivalent
+  if k.count > 0 { // mutant: equivalent
     t := tx_parse_vartime(b[k.coinbase..<b.count], true, ins, outs, items);
     coinbase = tx_coinbase_vartime(b[k.coinbase..<b.count], t, ins);
   }

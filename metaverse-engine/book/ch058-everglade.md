@@ -7,7 +7,7 @@
 
 Everglade combines the forest city, characters, the watch, quests, combat,
 fire, boats and the Cultist Raid. Its current page is
-[`everglade5e.coax`](../../apps/openagents-web/everglade5e.coax), with content
+`everglade5e.coax`, with content
 in [`everglade/legacy/v1/`](../../everglade/world/plan.coax) and the shared
 movement step in
 [`everglade-step.coax`](../../everglade/shared/everglade-step.coax).
@@ -31,7 +31,7 @@ party visibility and travel. The item ledger in
 idempotent item operations and owner fencing; its bounded model is not a
 claim that every durable inventory integration is complete.
 
-[`everglade-access.coax`](../../apps/openagents-web/old/v1/everglade-access.coax)
+`everglade-access.coax`
 adopts the shared settings record. [Chapter 85](ch085-everyone-can-play.md)
 describes the SETTINGS pane, remapping and captions.
 

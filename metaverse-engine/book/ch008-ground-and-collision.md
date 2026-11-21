@@ -306,7 +306,7 @@ terrain C ABI and pinned published capsule contacts. The reference Player is
 read from commit `3c3b4c3a39`, so adopting the resolver cannot make parity
 compare it with itself.
 
-The [verification record](../../docs/verification/aethyr-book-implementation-2026-11-01.json)
+The verification record
 links the exact sources, commands and evidence. Large realm integration
 scenarios retain their complete bodies and assertions as ordinary Coax native
 integration programs when the interpreter's resource limits cannot hold the

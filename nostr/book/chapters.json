@@ -1,2289 +1,2290 @@
 {
- "schema": 1,
- "book": "nostr",
- "chapters": [
-  {
-   "number": 1,
-   "title": "Moved to Bitcoin chapter 1: Bytes, hex and base64",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 2,
-   "title": "Moved to Bitcoin chapter 2: Big integers in fixed limbs",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 3,
-   "title": "Moved to Bitcoin chapter 3: Constant-time rules and secrets",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 4,
-   "title": "Moved to Bitcoin chapter 4: SHA-256",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 5,
-   "title": "Moved to Bitcoin chapter 8: HMAC-SHA256",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 6,
-   "title": "Moved to Bitcoin chapter 9: HKDF",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 7,
-   "title": "Moved to Bitcoin chapter 13: Field arithmetic mod p",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 8,
-   "title": "Moved to Bitcoin chapter 14: Scalars mod n",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 9,
-   "title": "Moved to Bitcoin chapter 15: The secp256k1 group law",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 10,
-   "title": "Moved to Bitcoin chapter 16: Scalar multiplication",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 11,
-   "title": "Moved to Bitcoin chapter 23: Verify a Schnorr signature",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 12,
-   "title": "Moved to Bitcoin chapter 18: Keys and randomness",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 13,
-   "title": "Moved to Bitcoin chapter 24: Sign with Schnorr",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 14,
-   "title": "Shared secrets with ECDH",
-   "file": "ch014-shared-secrets-with-ecdh.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    "bitcoin:16",
-    "bitcoin:18"
-   ],
-   "source": [
-    "coax/lib/crypto/ecdh.coax",
-    "coax/lib/crypto/ecdh_fast.coax",
-    "coax/lib/crypto/ecdh_lifecycle.coax",
-    "nostr/examples/ecdh.coax",
-    "nostr/examples/checks/ecdh.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/lib/nostr/nip44-key.coax"
-   ]
-  },
-  {
-   "number": 15,
-   "title": "Moved to Bitcoin chapter 27: Bech32",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 16,
-   "title": "NIP-19 entities and nostr: URIs",
-   "file": "ch016-nip-19-entities-and-nostr-uris.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:27"
-   ],
-   "source": [
-    "coax/lib/nostr/nip19-core.coax",
-    "nostr/examples/nip19.coax",
-    "nostr/examples/checks/nip19.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/project-names.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 17,
-   "title": "JSON you can sign",
-   "file": "ch017-json-you-can-sign.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:1",
-    "bitcoin:4",
-    "coax:18"
-   ],
-   "source": [
-    "coax/lib/nostr/adapters/json-admission.coax",
-    "coax/lib/nostr/jcs.coax",
-    "coax/lib/nostr/json.coax",
-    "nostr/examples/checks/signable-json.coax",
-    "nostr/examples/signable-json.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/project-fold.coax",
-    "psionic/lib/model-io/reader.coax",
-    "psionic/lib/pylon/selfcheck.coax"
-   ]
-  },
-  {
-   "number": 18,
-   "title": "Moved to Bitcoin chapter 11: ChaCha20",
-   "file": null,
-   "status": "moved",
-   "profile": null,
-   "depends_on": [],
-   "source": [],
-   "qualified_targets": [],
-   "adopted_by": []
-  },
-  {
-   "number": 19,
-   "title": "NIP-04 and why it is retired",
-   "file": "ch019-nip-04-and-why-it-is-retired.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    14,
-    "bitcoin:1"
-   ],
-   "source": [
-    "coax/lib/crypto/aes.coax",
-    "coax/lib/nostr/nip04.coax",
-    "nostr/examples/nip04.coax",
-    "nostr/examples/checks/nip04.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 20,
-   "title": "NIP-44 encrypted payloads",
-   "file": "ch020-nip-44-encrypted-payloads.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:9",
-    14,
-    "bitcoin:11",
-    "bitcoin:8",
-    "bitcoin:1"
-   ],
-   "source": [
-    "coax/lib/nostr/nip44-key.coax",
-    "coax/lib/nostr/nip44.coax",
-    "nostr/examples/nip44.coax",
-    "nostr/examples/checks/nip44.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "psionic/lib/fleet/runtime.coax",
-    "psionic/lib/mesh/opening.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 21,
-   "title": "Events, IDs and signatures",
-   "file": "ch021-events-ids-and-signatures.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    "bitcoin:23",
-    "bitcoin:24",
-    17,
-    "coax:18"
-   ],
-   "source": [
-    "coax/lib/nostr/event.coax",
-    "coax/lib/nostr/event_sign.coax",
-    "nostr/examples/checks/events.coax",
-    "nostr/examples/events.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/main.coax",
-    "coax/web/project/landing-nostr.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 22,
-   "title": "Kinds and tags",
-   "file": "ch022-kinds-and-tags.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21
-   ],
-   "source": [
-    "coax/lib/nostr/metadata.coax",
-    "nostr/relay/store_policy.coax",
-    "coax/lib/nostr/tags.coax",
-    "nostr/examples/checks/kinds-tags.coax",
-    "nostr/examples/kinds-tags.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 23,
-   "title": "Filters",
-   "file": "ch023-filters.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/filter.coax",
-    "nostr/relay/filter_read.coax",
-    "nostr/examples/checks/filters.coax",
-    "nostr/examples/filters.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "coax/web/project/landing-nostr.coax"
-   ]
-  },
-  {
-   "number": 24,
-   "title": "Relay messages",
-   "file": "ch024-relay-messages.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21,
-    23
-   ],
-   "source": [
-    "coax/lib/nostr/message.coax",
-    "coax/lib/nostr/message_agree.coax",
-    "nostr/relay/message_server.coax",
-    "nostr/examples/relay-messages.coax",
-    "nostr/examples/checks/relay-messages.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax",
-    "coax/web/project/landing-nostr.coax"
-   ]
-  },
-  {
-   "number": 25,
-   "title": "Gift wrap",
-   "file": "ch025-gift-wrap.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    21,
-    "bitcoin:24"
-   ],
-   "source": [
-    "coax/lib/nostr/nip59.coax",
-    "nostr/examples/checks/gift-wrap.coax",
-    "nostr/examples/gift-wrap.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 26,
-   "title": "WebSocket frames",
-   "file": "ch026-websocket-frames.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:4",
-    "bitcoin:1"
-   ],
-   "source": [
-    "coax/lib/crypto/sha1.coax",
-    "coax/lib/net/ws.coax",
-    "nostr/examples/websocket-frames.coax",
-    "nostr/examples/checks/websocket-frames.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "coax/lib/net/relay_conn_rules.coax"
-   ]
-  },
-  {
-   "number": 27,
-   "title": "A WebSocket server",
-   "file": "ch027-a-websocket-server.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    26
-   ],
-   "source": [
-    "coax/lib/net/ws_server.coax",
-    "nostr/examples/websocket-server.coax",
-    "nostr/examples/checks/websocket-server.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay_server.coax"
-   ]
-  },
-  {
-   "number": 28,
-   "title": "Sockets, TLS and relay URLs",
-   "file": "ch028-sockets-tls-and-relay-urls.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    26,
-    "coax:20"
-   ],
-   "source": [
-    "coax/lib/net/relay_conn.coax",
-    "coax/lib/net/relay_conn_rules.coax",
-    "coax/lib/net/relay_uri.coax",
-    "coax/lib/net/uri.coax",
-    "coax/platform/tls-native.c",
-    "nostr/examples/relay-urls.coax",
-    "nostr/examples/checks/relay-urls.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/relay.coax",
-    "psionic/lib/fleet/runtime.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 29,
-   "title": "A relay connection",
-   "file": "ch029-a-relay-connection.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    24,
-    28
-   ],
-   "source": [
-    "coax/lib/nostr/relay.coax",
-    "coax/lib/nostr/relay_read.coax",
-    "nostr/examples/relay-connection.coax",
-    "nostr/examples/checks/relay-connection.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/relay.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 30,
-   "title": "Subscriptions and EOSE",
-   "file": "ch030-subscriptions-and-eose.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    29,
-    23
-   ],
-   "source": [
-    "coax/lib/nostr/relay.coax",
-    "coax/lib/nostr/relay_read.coax",
-    "nostr/examples/subscriptions.coax",
-    "nostr/examples/checks/subscriptions.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/relay.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 31,
-   "title": "Publish and wait for OK",
-   "file": "ch031-publish-and-wait-for-ok.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    29,
-    21
-   ],
-   "source": [
-    "coax/lib/nostr/relay.coax",
-    "coax/lib/nostr/relay_read.coax",
-    "nostr/examples/publish-ok.coax",
-    "nostr/examples/checks/publish-ok.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/relay.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 32,
-   "title": "Many relays and the outbox model",
-   "file": "ch032-many-relays-and-the-outbox-model.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    30,
-    31
-   ],
-   "source": [
-    "coax/lib/nostr/nip65.coax",
-    "coax/lib/nostr/outbox.coax",
-    "nostr/examples/outbox.coax",
-    "nostr/examples/checks/outbox.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 33,
-   "title": "A client that survives restarts",
-   "file": "ch033-a-client-that-survives-restarts.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    32,
-    31
-   ],
-   "source": [
-    "coax/lib/nostr/client_journal.coax",
-    "nostr/examples/restarts.coax",
-    "nostr/examples/checks/restarts.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 34,
-   "title": "Admit an event",
-   "file": "ch034-admit-an-event.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21,
-    24,
-    27,
-    "coax:24"
-   ],
-   "source": [
-    "nostr/relay/relay_route.coax",
-    "nostr/relay/relay_server.coax",
-    "nostr/relay/store_admit.coax",
-    "nostr/relay/relay.coax",
-    "nostr/examples/relay-admit.coax",
-    "nostr/examples/checks/relay-admit.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax"
-   ]
-  },
-  {
-   "number": 35,
-   "title": "Store events",
-   "file": "ch035-store-events.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/store.coax",
-    "nostr/relay/store_core.coax",
-    "nostr/relay/store_dedup_policy.coax",
-    "nostr/relay/store_dedup_rewrite.coax",
-    "nostr/relay/store_file.coax",
-    "nostr/relay/store_recover.coax",
-    "nostr/relay/store_snapshot.coax",
-    "nostr/examples/store-events.coax",
-    "nostr/examples/checks/store-events.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/store_saved.coax"
-   ]
-  },
-  {
-   "number": 36,
-   "title": "Match filters with indexes",
-   "file": "ch036-match-filters-with-indexes.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    23,
-    35
-   ],
-   "source": [
-    "coax/lib/nostr/filter.coax",
-    "coax/lib/nostr/store.coax",
-    "nostr/relay/store_index.coax",
-    "nostr/examples/match-indexes.coax",
-    "nostr/examples/checks/match-indexes.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay_store.coax"
-   ]
-  },
-  {
-   "number": 37,
-   "title": "NIP-11 relay information",
-   "file": "ch037-nip-11-relay-information.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34
-   ],
-   "source": [
-    "nostr/relay/relay_route.coax",
-    "nostr/relay/relay_server.coax",
-    "nostr/examples/relay-info.coax",
-    "nostr/examples/checks/relay-info.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax"
-   ]
-  },
-  {
-   "number": 38,
-   "title": "NIP-42 authentication",
-   "file": "ch038-nip-42-authentication.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21,
-    29,
-    34
-   ],
-   "source": [
-    "coax/lib/nostr/nip42-event.coax",
-    "coax/lib/nostr/nip42.coax",
-    "nostr/examples/checks/nip42-auth.coax",
-    "nostr/examples/nip42-auth.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/relay.coax",
-    "nostr/relay/relay.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 39,
-   "title": "Delete, expire and vanish",
-   "file": "ch039-delete-expire-and-vanish.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    35
-   ],
-   "source": [
-    "nostr/relay/relay_server.coax",
-    "nostr/relay/store_core.coax",
-    "nostr/relay/store_policy.coax",
-    "nostr/relay/store_delete.coax",
-    "nostr/examples/delete-expire-vanish.coax",
-    "nostr/examples/checks/delete-expire-vanish.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/store_saved.coax"
-   ]
-  },
-  {
-   "number": 40,
-   "title": "Count events",
-   "file": "ch040-count-events.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36
-   ],
-   "source": [
-    "coax/lib/nostr/nip45.coax",
-    "nostr/relay/store_index.coax",
-    "nostr/relay/message_server.coax",
-    "nostr/examples/count-events.coax",
-    "nostr/examples/checks/count-events.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay_store.coax"
-   ]
-  },
-  {
-   "number": 41,
-   "title": "Search",
-   "file": "ch041-search.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36
-   ],
-   "source": [
-    "coax/lib/nostr/nip50.coax",
-    "nostr/relay/filter_read.coax",
-    "nostr/relay/store_index.coax",
-    "nostr/examples/search.coax",
-    "nostr/examples/checks/search.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay_store.coax"
-   ]
-  },
-  {
-   "number": 42,
-   "title": "Protected events",
-   "file": "ch042-protected-events.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    38
-   ],
-   "source": [
-    "coax/lib/nostr/nip70.coax",
-    "coax/tests/nostr/nip70_fixtures.coax",
-    "nostr/examples/protected-events.coax",
-    "nostr/examples/checks/protected-events.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax"
-   ]
-  },
-  {
-   "number": 43,
-   "title": "Negentropy sync",
-   "file": "ch043-negentropy-sync.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    36,
-    "bitcoin:4"
-   ],
-   "source": [
-    "coax/lib/nostr/nip77.coax",
-    "coax/tests/nostr/nip77_fixtures.coax",
-    "coax/tests/nostr/negentropy_ref.py",
-    "nostr/examples/negentropy-sync.coax",
-    "nostr/examples/checks/negentropy-sync.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 44,
-   "title": "Limits, policy and floods",
-   "file": "ch044-limits-policy-and-floods.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    36
-   ],
-   "source": [
-    "coax/lib/net/relay_poll_budget.coax",
-    "nostr/relay/relay_server.coax",
-    "nostr/relay/relay_rate.coax",
-    "nostr/relay/relay_route.coax",
-    "nostr/relay/store_core.coax",
-    "nostr/examples/relay-limits.coax",
-    "nostr/examples/checks/relay-limits.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax"
-   ]
-  },
-  {
-   "number": 45,
-   "title": "Profiles, follows and names",
-   "file": "ch045-profiles-follows-and-names.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    28
-   ],
-   "source": [
-    "coax/lib/nostr/follows.coax",
-    "coax/lib/nostr/metadata.coax",
-    "coax/lib/nostr/nip05.coax",
-    "coax/lib/nostr/nip39.coax",
-    "nostr/relay/store_core.coax",
-    "nostr/examples/checks/external-identities.coax",
-    "nostr/examples/external-identities.coax",
-    "nostr/examples/checks/profiles-follows.coax",
-    "nostr/examples/profiles-follows.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 46,
-   "title": "Keys from a seed phrase",
-   "file": "ch046-keys-from-a-seed-phrase.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:24",
-    "bitcoin:8"
-   ],
-   "source": [
-    "coax/lib/crypto/bip32.coax",
-    "coax/lib/crypto/bip39.coax",
-    "coax/lib/crypto/pbkdf2.coax",
-    "coax/lib/crypto/sha512.coax",
-    "coax/lib/nostr/nip06.coax",
-    "nostr/examples/seed-phrase.coax",
-    "nostr/examples/checks/seed-phrase.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/main.coax"
-   ]
-  },
-  {
-   "number": 47,
-   "title": "Encrypted key backup",
-   "file": "ch047-encrypted-key-backup.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    "bitcoin:11",
-    "bitcoin:8",
-    "bitcoin:27"
-   ],
-   "source": [
-    "coax/lib/crypto/poly1305.coax",
-    "coax/lib/crypto/scrypt_nip49.coax",
-    "coax/lib/crypto/xchacha20_poly1305.coax",
-    "coax/lib/text/nfkc.coax",
-    "nostr/examples/ncryptsec.coax",
-    "nostr/examples/checks/ncryptsec.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 48,
-   "title": "Signers outside the app",
-   "file": "ch048-signers-outside-the-app.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:18",
-    20,
-    31
-   ],
-   "source": [
-    "coax/lib/nostr/nip46.coax",
-    "coax/tests/nostr/nip46_fixtures.coax",
-    "nostr/examples/remote-signer.coax",
-    "nostr/examples/checks/remote-signer.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 49,
-   "title": "HTTP auth",
-   "file": "ch049-http-auth.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    21,
-    "bitcoin:4"
-   ],
-   "source": [
-    "coax/lib/nostr/nip98-observe.coax",
-    "coax/lib/nostr/nip98-tags.coax",
-    "coax/lib/nostr/nip98_sign.coax",
-    "coax/web/api/nip98.coax",
-    "nostr/examples/checks/http-auth.coax",
-    "nostr/examples/http-auth.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/api.coax",
-    "coax/web/api/nostr.c"
-   ]
-  },
-  {
-   "number": 50,
-   "title": "Notes, threads and subjects",
-   "file": "ch050-notes-threads-and-subjects.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/tags.coax",
-    "coax/lib/nostr/nip10.coax",
-    "nostr/examples/threads.coax",
-    "nostr/examples/checks/threads.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 51,
-   "title": "References inside content",
-   "file": "ch051-references-inside-content.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    16,
-    50
-   ],
-   "source": [
-    "coax/lib/nostr/nip19-core.coax",
-    "coax/lib/nostr/nip27.coax",
-    "nostr/examples/references.coax",
-    "nostr/examples/checks/references.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 52,
-   "title": "Reposts, reactions and comments",
-   "file": "ch052-reposts-reactions-and-comments.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    50
-   ],
-   "source": [
-    "coax/lib/nostr/nip22.coax",
-    "coax/lib/nostr/nip18.coax",
-    "coax/lib/nostr/nip25.coax",
-    "nostr/examples/responses.coax",
-    "nostr/examples/checks/responses.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-web/project-fold.coax"
-   ]
-  },
-  {
-   "number": 53,
-   "title": "Long-form, drafts and wiki",
-   "file": "ch053-long-form-drafts-and-wiki.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    20
-   ],
-   "source": [
-    "coax/lib/nostr/nip23.coax",
-    "coax/lib/nostr/nip37.coax",
-    "coax/lib/nostr/nip54.coax",
-    "coax/tests/nostr/nip23_fixtures.coax",
-    "coax/tests/nostr/nip37_fixtures.coax",
-    "coax/tests/nostr/nip54_fixtures.coax",
-    "nostr/examples/long-form.coax",
-    "nostr/examples/checks/long-form.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 54,
-   "title": "Lists, sets and bookmarks",
-   "file": "ch054-lists-sets-and-bookmarks.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    20
-   ],
-   "source": [
-    "coax/lib/nostr/nip51.coax",
-    "coax/lib/nostr/nip51-private.coax",
-    "nostr/examples/lists-sets.coax",
-    "nostr/examples/checks/lists-sets.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 55,
-   "title": "Labels, reports and trusted assertions",
-   "file": "ch055-labels-reports-and-trusted-assertions.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip32.coax",
-    "coax/lib/nostr/nip56.coax",
-    "coax/lib/nostr/nip85.coax",
-    "nostr/examples/labels-reports.coax",
-    "nostr/examples/checks/labels-reports.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 56,
-   "title": "Proof of work",
-   "file": "ch056-proof-of-work.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21
-   ],
-   "source": [
-    "coax/lib/nostr/nip13.coax",
-    "nostr/examples/proof-of-work.coax",
-    "nostr/examples/checks/proof-of-work.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "nostr/relay/relay.coax"
-   ]
-  },
-  {
-   "number": 57,
-   "title": "Media and files",
-   "file": "ch057-media-and-files.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    49
-   ],
-   "source": [
-    "coax/lib/nostr/nip94.coax",
-    "coax/lib/nostr/nipb7.coax",
-    "nostr/examples/media-files.coax",
-    "nostr/examples/checks/media-files.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 58,
-   "title": "Calendars, polls and highlights",
-   "file": "ch058-calendars-polls-and-highlights.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip52.coax",
-    "coax/lib/nostr/nip88.coax",
-    "coax/lib/nostr/nip84.coax",
-    "nostr/examples/calendars-polls.coax",
-    "nostr/examples/checks/calendars-polls.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 59,
-   "title": "Groups and communities",
-   "file": "ch059-groups-and-communities.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    38,
-    34,
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip29.coax",
-    "coax/lib/nostr/nip7d.coax",
-    "coax/lib/nostr/nip72.coax",
-    "coax/lib/nostr/nipc7.coax",
-    "nostr/examples/chats-threads.coax",
-    "nostr/examples/checks/chats-threads.coax",
-    "nostr/examples/groups-communities.coax",
-    "nostr/examples/checks/groups-communities.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 60,
-   "title": "Private messages",
-   "file": "ch060-private-messages.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    25,
-    32
-   ],
-   "source": [
-    "coax/lib/nostr/nip17.coax",
-    "coax/lib/nostr/nip17-relays.coax",
-    "coax/lib/nostr/nip17-message.coax",
-    "coax/lib/nostr/nipa4.coax",
-    "coax/tests/nostr/nip17_reference.py",
-    "nostr/examples/checks/public-messages.coax",
-    "nostr/examples/checks/private-messages.coax",
-    "nostr/examples/public-messages.coax",
-    "nostr/examples/private-messages.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 61,
-   "title": "Live activities",
-   "file": "ch061-live-activities.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip53.coax",
-    "nostr/examples/live-activities.coax",
-    "nostr/examples/checks/live-activities.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 62,
-   "title": "Badges and statuses",
-   "file": "ch062-badges-and-statuses.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip58.coax",
-    "coax/lib/nostr/nip38.coax",
-    "nostr/examples/badges-statuses.coax",
-    "nostr/examples/checks/badges-statuses.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 63,
-   "title": "Git on Nostr",
-   "file": "ch063-git-on-nostr.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    52
-   ],
-   "source": [
-    "coax/lib/nostr/nip34-event.coax",
-    "coax/lib/nostr/nip34-patch.coax",
-    "coax/lib/nostr/nip34-pr.coax",
-    "coax/lib/nostr/nip34.coax",
-    "coax/lib/nostr/nipc0.coax",
-    "nostr/examples/checks/repositories.coax",
-    "nostr/examples/checks/snippets-pull-requests.coax",
-    "nostr/examples/repositories.coax",
-    "nostr/examples/snippets-pull-requests.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 64,
-   "title": "App data and handlers",
-   "file": "ch064-app-data-and-handlers.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip78.coax",
-    "coax/lib/nostr/nip89.coax",
-    "coax/lib/nostr/nip5a.coax",
-    "nostr/examples/app-handlers.coax",
-    "nostr/examples/checks/app-handlers.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 65,
-   "title": "Data vending machines",
-   "file": "ch065-data-vending-machines.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    20
-   ],
-   "source": [
-    "coax/lib/nostr/nip90.coax",
-    "coax/tests/nostr/nip90_fixtures.coax",
-    "nostr/examples/data-vending.coax",
-    "nostr/examples/checks/data-vending.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 66,
-   "title": "Markets and orders",
-   "file": "ch066-markets-and-orders.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip99.coax",
-    "coax/lib/nostr/nip69.coax",
-    "coax/lib/nostr/nip15.coax",
-    "nostr/examples/markets-orders.coax",
-    "nostr/examples/checks/markets-orders.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 67,
-   "title": "Relay discovery, access and management",
-   "file": "ch067-relay-discovery-access-and-management.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    37,
-    38,
-    49
-   ],
-   "source": [
-    "coax/lib/nostr/nip86.coax",
-    "coax/lib/nostr/nip66.coax",
-    "coax/lib/nostr/nip43.coax",
-    "nostr/examples/relay-management.coax",
-    "nostr/examples/checks/relay-management.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 68,
-   "title": "Bridges, external IDs and timestamps",
-   "file": "ch068-bridges-external-ids-and-timestamps.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    "bitcoin:4"
-   ],
-   "source": [
-    "coax/lib/nostr/nip73.coax",
-    "coax/lib/nostr/nip48.coax",
-    "coax/lib/nostr/nip03.coax",
-    "nostr/examples/bridges-timestamps.coax",
-    "nostr/examples/checks/bridges-timestamps.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 69,
-   "title": "Small content kinds",
-   "file": "ch069-small-content-kinds.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22
-   ],
-   "source": [
-    "coax/lib/nostr/nip35.coax",
-    "coax/lib/nostr/nip64.coax",
-    "coax/lib/nostr/nipcc.coax",
-    "coax/lib/nostr/nipf4.coax",
-    "nostr/examples/small-content.coax",
-    "nostr/examples/checks/small-content.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 70,
-   "title": "Retired and experimental NIPs",
-   "file": "ch070-retired-and-experimental-nips.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21
-   ],
-   "source": [
-    "coax/lib/nostr/nip26.coax",
-    "coax/lib/nostr/nip31.coax",
-    "coax/lib/nostr/retired.coax",
-    "nostr/examples/retired-nips.coax",
-    "nostr/examples/checks/retired-nips.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 71,
-   "title": "Lightning zaps and goals",
-   "file": "ch071-lightning-zaps-and-goals.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    21,
-    45
-   ],
-   "source": [
-    "coax/lib/nostr/nip57.coax",
-    "coax/lib/nostr/nip75.coax",
-    "coax/tests/nostr/nip57_fixtures.coax",
-    "nostr/examples/lightning-zaps.coax",
-    "nostr/examples/checks/lightning-zaps.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 72,
-   "title": "Wallet Connect",
-   "file": "ch072-wallet-connect.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    31
-   ],
-   "source": [
-    "coax/lib/nostr/nip47.coax",
-    "coax/tests/nostr/nip47_fixtures.coax",
-    "nostr/examples/wallet-connect.coax",
-    "nostr/examples/checks/wallet-connect.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 73,
-   "title": "Payment targets",
-   "file": "ch073-payment-targets.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    22,
-    "bitcoin:27",
-    "bitcoin:4"
-   ],
-   "source": [
-    "coax/lib/nostr/nipa3.coax",
-    "nostr/examples/payment-targets.coax",
-    "nostr/examples/checks/payment-targets.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 74,
-   "title": "Cashu and Fedimint are excluded",
-   "file": "ch074-cashu-and-fedimint-are-excluded.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    55,
-    66,
-    73
-   ],
-   "source": [
-    "coax/lib/nostr/ecash.coax",
-    "nostr/examples/ecash-excluded.coax",
-    "nostr/examples/checks/ecash-excluded.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 75,
-   "title": "Hosts and reachability",
-   "file": "ch075-hosts-and-reachability.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    21,
-    49
-   ],
-   "source": [
-    "coax/lib/nostr/host/admit.coax",
-    "coax/lib/nostr/host/grant.coax",
-    "coax/lib/nostr/reach/fresh.coax",
-    "nostr/examples/checks/hosts-reach.coax",
-    "nostr/examples/hosts-reach.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 76,
-   "title": "Work, coordination and control",
-   "file": "ch076-work-coordination-and-control.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    75
-   ],
-   "source": [
-    "coax/lib/nostr/coord/claim.coax",
-    "coax/lib/nostr/ctrl/command.coax",
-    "coax/lib/nostr/ctrl/fingerprint.coax",
-    "nostr/examples/checks/work-control.coax",
-    "nostr/examples/work-control.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 77,
-   "title": "Capabilities, policy and extensions",
-   "file": "ch077-capabilities-policy-and-extensions.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    75
-   ],
-   "source": [
-    "coax/lib/nostr/cap/dispatch.coax",
-    "coax/lib/nostr/pol/approve.coax",
-    "coax/lib/nostr/ext/install.coax",
-    "coax/tests/nostr/ext_release_vectors.coax",
-    "nostr/examples/capabilities-policy.coax",
-    "nostr/examples/checks/capabilities-policy.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 78,
-   "title": "Runs, sessions, terminals and trajectories",
-   "file": "ch078-runs-sessions-terminals-and-trajectories.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    76,
-    20
-   ],
-   "source": [
-    "coax/lib/nostr/atif/chunks.coax",
-    "coax/lib/nostr/run/journal.coax",
-    "coax/lib/nostr/term/frames.coax",
-    "nostr/examples/checks/run-journal.coax",
-    "nostr/examples/run-journal.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 79,
-   "title": "Agents, skills and automation",
-   "file": "ch079-agents-skills-and-automation.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    76,
-    77
-   ],
-   "source": [
-    "coax/lib/nostr/agent/definition.coax",
-    "coax/lib/nostr/agent/carriage.coax",
-    "coax/lib/nostr/auto/schedule.coax",
-    "coax/tests/nostr/agent_carriage_vectors.coax",
-    "coax/tests/nostr/agent_definition_fixtures.coax",
-    "coax/tests/nostr/agent_carriage_fixtures.coax",
-    "coax/tests/nostr/auto_schedule_fixtures.coax",
-    "nostr/examples/agents-automation.coax",
-    "nostr/examples/checks/agents-automation.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 80,
-   "title": "Jobs, labor and markets",
-   "file": "ch080-jobs-labor-and-markets.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    76
-   ],
-   "source": [
-    "coax/lib/nostr/cj/result.coax",
-    "coax/lib/nostr/mkt/order.coax",
-    "nostr/examples/checks/labor-market.coax",
-    "nostr/examples/labor-market.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 81,
-   "title": "Decisions, evaluations, optimization and programs",
-   "file": "ch081-decisions-evaluations-optimization-and-programs.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    80
-   ],
-   "source": [
-    "coax/lib/nostr/dec/answer.coax",
-    "coax/lib/nostr/eval/report.coax",
-    "coax/lib/nostr/opt/plan.coax",
-    "nostr/examples/checks/decisions-evals.coax",
-    "nostr/examples/decisions-evals.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 82,
-   "title": "Pylons, environments and deploys",
-   "file": "ch082-pylons-environments-and-deploys.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    80,
-    75
-   ],
-   "source": [
-    "psionic/lib/mesh/receipt.coax",
-    "psionic/lib/pylon/beacon.coax",
-    "psionic/lib/pylon/host.coax",
-    "nostr/examples/pylon-receipts.coax",
-    "nostr/examples/checks/pylon-receipts.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/pylon.coax",
-    "coax/web/project/landing-nostr.coax",
-    "psionic/lib/pylon/run.coax"
-   ]
-  },
-  {
-   "number": 83,
-   "title": "Attested work and sealed data",
-   "file": "ch083-attested-work-and-sealed-data.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    82
-   ],
-   "source": [
-    "coax/lib/nostr/att.coax",
-    "coax/lib/nostr/vault.coax",
-    "coax/lib/crypto/aes_gcm.coax",
-    "nostr/examples/attested-vault.coax",
-    "nostr/examples/checks/attested-vault.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 84,
-   "title": "Knowledge and workspaces",
-   "file": "ch084-knowledge-and-workspaces.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    76
-   ],
-   "source": [
-    "coax/lib/nostr/kb/entry.coax",
-    "coax/lib/nostr/kb/current.coax",
-    "coax/lib/nostr/ws/change.coax",
-    "coax/tests/nostr/kb_vectors.coax",
-    "coax/tests/nostr/kb_entry_fixtures.coax",
-    "coax/tests/nostr/kb_current_fixtures.coax",
-    "coax/tests/nostr/ws_change_fixtures.coax",
-    "nostr/examples/knowledge-workspaces.coax",
-    "nostr/examples/checks/knowledge-workspaces.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 85,
-   "title": "Live media, worlds and experience",
-   "file": "ch085-live-media-worlds-and-experience.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    61,
-    20
-   ],
-   "source": [
-    "coax/lib/nostr/nipmv.coax",
-    "coax/lib/nostr/xp_ledger.coax",
-    "nostr/examples/checks/worlds-and-xp.coax",
-    "nostr/examples/worlds-and-xp.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 86,
-   "title": "Lightning payments for requests",
-   "file": "ch086-lightning-payments-for-requests.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    49,
-    71
-   ],
-   "source": [
-    "coax/lib/x402/settle.coax",
-    "coax/lib/x402/x402.coax",
-    "nostr/examples/checks/lightning-requests.coax",
-    "nostr/examples/lightning-requests.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "coax/lib/agent/engine/microcoder.coax"
-   ]
-  },
-  {
-   "number": 87,
-   "title": "Owner attestation and agent authentication",
-   "file": "ch087-owner-attestation-and-agent-authentication.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    38
-   ],
-   "source": [
-    "coax/lib/nostr/nipoa.coax",
-    "coax/lib/nostr/nipaa.coax",
-    "nostr/examples/agent-auth.coax",
-    "nostr/examples/checks/agent-auth.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 88,
-   "title": "Federated identity",
-   "file": "ch088-federated-identity.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    38,
-    "bitcoin:1"
-   ],
-   "source": [
-    "coax/lib/crypto/rsa_verify.coax",
-    "coax/lib/nostr/adapters/fi-projection.coax",
-    "coax/lib/nostr/block/fi-claims-parse.coax",
-    "coax/lib/nostr/block/fi-jwks.coax",
-    "coax/lib/nostr/block/fi-policy.coax",
-    "coax/lib/nostr/block/fi-local-jws-candidate.coax",
-    "nostr/examples/federated-identity.coax",
-    "nostr/examples/checks/federated-identity.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 89,
-   "title": "Channels",
-   "file": "ch089-channels.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    59
-   ],
-   "source": [
-    "coax/lib/nostr/nipcl.coax",
-    "coax/lib/nostr/nipcw.coax",
-    "coax/lib/nostr/nipdv.coax",
-    "coax/lib/nostr/nipwp.coax",
-    "coax/tests/nostr/nipcl_fixtures.coax",
-    "coax/tests/nostr/nipcw_fixtures.coax",
-    "coax/tests/nostr/nipdv_fixtures.coax",
-    "coax/tests/nostr/channels_vectors.coax",
-    "nostr/examples/channels.coax",
-    "nostr/examples/checks/channels.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 90,
-   "title": "Artifacts, archives and reminders",
-   "file": "ch090-artifacts-archives-and-reminders.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    89
-   ],
-   "source": [
-    "coax/lib/nostr/nipar.coax",
-    "coax/lib/nostr/nipia.coax",
-    "coax/lib/nostr/niper.coax",
-    "coax/lib/nostr/niper-envelope.coax",
-    "coax/tests/nostr/niper_envelope_fixtures.coax",
-    "coax/tests/nostr/nipar_fixtures.coax",
-    "coax/tests/nostr/nipia_fixtures.coax",
-    "coax/tests/nostr/niper_fixtures.coax",
-    "coax/tests/nostr/artifacts_vectors.coax",
-    "nostr/examples/artifacts.coax",
-    "nostr/examples/checks/artifacts.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 91,
-   "title": "Git signing, projects, leases and read state",
-   "file": "ch091-git-signing-projects-leases-and-read-state.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    63,
-    "bitcoin:24"
-   ],
-   "source": [
-    "coax/lib/nostr/adapters/gs-projection.coax",
-    "coax/lib/nostr/adapters/mp-projection.coax",
-    "coax/lib/nostr/adapters/pl-projection.coax",
-    "coax/lib/nostr/adapters/rs-projection.coax",
-    "nostr/examples/dev-nips.coax",
-    "nostr/examples/checks/dev-nips.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 92,
-   "title": "Private agent state",
-   "file": "ch092-private-agent-state.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    20,
-    87
-   ],
-   "source": [
-    "coax/lib/nostr/nipae.coax",
-    "coax/lib/nostr/nipao.coax",
-    "coax/tests/nostr/private_state_vectors.py",
-    "coax/tests/nostr/private_state_vectors.coax",
-    "coax/tests/nostr/nipae_fixtures.coax",
-    "coax/tests/nostr/nipao_fixtures.coax",
-    "nostr/examples/private-agent-state.coax",
-    "nostr/examples/checks/private-agent-state.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 93,
-   "title": "Test vectors and their provenance",
-   "file": "ch093-test-vectors-and-their-provenance.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:4",
-    "bitcoin:23",
-    20
-   ],
-   "source": [
-    "coax/tests/vectors/SOURCES.md",
-    "coax/tests/vectors/check_vectors.py",
-    "coax/tests/vectors/test_integrity.py",
-    "coax/tests/vectors/manifest.json",
-    "nostr/examples/vector-provenance.coax",
-    "nostr/examples/checks/vector-provenance.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 94,
-   "title": "Differential tests",
-   "file": "ch094-differential-tests.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    93
-   ],
-   "source": [
-    "nostr/relay/filter_read.coax",
-    "coax/lib/nostr/store.coax",
-    "coax/tests/nostr/relay_differential.py",
-    "coax/tests/nostr/relay_rust_differential.py",
-    "nostr/examples/differential.coax",
-    "nostr/examples/checks/differential.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 95,
-   "title": "Fuzzing",
-   "file": "ch095-fuzzing.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    17,
-    23,
-    26,
-    93
-   ],
-   "source": [
-    "tools/coax-nostr/fuzz/differential.py",
-    "tools/coax-nostr/fuzz/oracle.py",
-    "tools/coax-nostr/fuzz/run.sh",
-    "nostr/examples/fuzzing.coax",
-    "nostr/examples/checks/fuzzing.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 96,
-   "title": "Formal properties",
-   "file": "ch096-formal-properties.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:23",
-    23,
-    36
-   ],
-   "source": [
-    "nostr/examples/formal-properties.coax",
-    "nostr/examples/checks/formal-properties.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 97,
-   "title": "A conformance report",
-   "file": "ch097-a-conformance-report.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    93,
-    94
-   ],
-   "source": [
-    "coax/lib/nostr/profiles.coax",
-    "coax/lib/nostr/profiles.json",
-    "coax/tests/nostr/profiles.py",
-    "coax/tests/nostr/profile_matrix.coax",
-    "nostr/examples/conformance.coax",
-    "nostr/examples/checks/conformance.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 98,
-   "title": "Projects on Nostr",
-   "file": "ch098-projects-on-nostr.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    63,
-    30,
-    21
-   ],
-   "source": [
-    "apps/openagents-web/project-fold.coax",
-    "apps/openagents-web/project-live.coax",
-    "coax/web/project/landing-fold.coax",
-    "nostr/examples/projects.coax",
-    "nostr/examples/checks/projects.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/project-landing.coax",
-    "apps/openagents-cli/project.coax",
-    "apps/openagents-web/project.coax"
-   ]
-  },
-  {
-   "number": 99,
-   "title": "The website and sign-in",
-   "file": "ch099-the-website-and-sign-in.md",
-   "status": "implemented",
-   "profile": "native C and wasm",
-   "depends_on": [
-    46,
-    49
-   ],
-   "source": [
-    "apps/openagents-cli/account_rules.coax",
-    "apps/openagents-web/nip/nip01-verify.coax",
-    "coax/lib/nostr/nip06.coax",
-    "coax/lib/nostr/nip98_sign.coax",
-    "coax/web/api/agent-policy.coax",
-    "coax/web/api/auth-policy.coax",
-    "coax/web/api/nip98.coax",
-    "nostr/examples/web-sign-in.coax",
-    "nostr/examples/checks/web-sign-in.coax"
-   ],
-   "qualified_targets": [
-    "cpu",
-    "wasm"
-   ],
-   "adopted_by": [
-    "apps/openagents-cli/account.coax",
-    "coax/web/api/agents.c",
-    "coax/web/api/auth.c",
-    "coax/web/api/nostr.c"
-   ]
-  },
-  {
-   "number": 100,
-   "title": "Pylons and the mesh",
-   "file": "ch100-pylons-and-the-mesh.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    82,
-    20,
-    38,
-    "psionic:24"
-   ],
-   "source": [
-    "psionic/lib/mesh/opening.coax",
-    "psionic/lib/pylon/queue.coax",
-    "psionic/lib/pylon/run.coax",
-    "nostr/examples/pylon-mesh.coax",
-    "nostr/examples/checks/pylon-mesh.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "psionic/lib/mesh/hooks.coax",
-    "psionic/platform/pylon-build.sh"
-   ]
-  },
-  {
-   "number": 101,
-   "title": "The Metaverse and the wallet",
-   "file": "ch101-the-verse-and-the-wallet.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    85,
-    71,
-    72
-   ],
-   "source": [
-    "pay/wallet.coax",
-    "coax/lib/nostr/nipmv.coax",
-    "coax/lib/nostr/nip57.coax",
-    "coax/lib/nostr/nip75.coax",
-    "coax/lib/nostr/nip47.coax",
-    "coax/tests/nostr/verse_wallet_vectors.py",
-    "nostr/examples/verse-and-wallet.coax",
-    "nostr/examples/checks/verse-and-wallet.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": [
-    "apps/openagents-ios/OpenAgents/Wallet/SparkHost.swift"
-   ]
-  },
-  {
-   "number": 102,
-   "title": "Agents on Nostr",
-   "file": "ch102-agents-on-nostr.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    79,
-    80,
-    "bitcoin:24",
-    87,
-    78,
-    76
-   ],
-   "source": [
-    "coax/lib/nostr/nipaa.coax",
-    "coax/lib/nostr/cj/result.coax",
-    "coax/lib/nostr/mkt/order.coax",
-    "coax/lib/nostr/coord/claim.coax",
-    "coax/lib/nostr/run/journal.coax",
-    "coax/tests/nostr/agents_on_nostr_vectors.py",
-    "nostr/examples/agents-on-nostr.coax",
-    "nostr/examples/checks/agents-on-nostr.coax"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 103,
-   "title": "Replace relay.openagents.com",
-   "file": "ch103-replace-relay-openagents-com.md",
-   "status": "implemented",
-   "profile": "native C",
-   "depends_on": [
-    34,
-    35,
-    37,
-    38,
-    39,
-    40,
-    41,
-    42,
-    43,
-    44,
-    94
-   ],
-   "source": [
-    "nostr/relay/relay_import.coax",
-    "nostr/relay/relay_import_run.coax",
-    "nostr/relay/relay_equal.coax",
-    "nostr/relay/relay_shadow.coax",
-    "coax/lib/nostr/fixtures/relay_export.coax",
-    "coax/tests/nostr/relay_export_fixture.py",
-    "nostr/examples/relay-cutover.coax",
-    "nostr/examples/checks/relay-cutover.coax",
-    "coax/tests/nostr/relay_live_cutover.py",
-    "coax/tests/nostr/relay_rollback_rehearsal.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  },
-  {
-   "number": 104,
-   "title": "Agent treasuries and a network of keys",
-   "file": "ch104-agent-treasuries-and-a-network-of-keys.md",
-   "status": "partly implemented",
-   "profile": "native C",
-   "depends_on": [
-    "bitcoin:24",
-    46,
-    79,
-    83
-   ],
-   "source": [
-    "coax/lib/nostr/nipkeys.coax",
-    "coax/lib/nostr/nipkeys_possess.coax",
-    "coax/lib/nostr/nipkeys_proof.coax",
-    "coax/lib/bitcoin/bip322.coax",
-    "coax/lib/nostr/nipkeys_sign.coax",
-    "coax/lib/crypto/ecdsa_sign.coax",
-    "coax/lib/bitcoin/sighash.coax",
-    "coax/tests/nostr/keys_fixtures.coax",
-    "coax/tests/nostr/keys_sign_fixtures.coax",
-    "coax/tests/nostr/keys_sign_support.coax",
-    "coax/tests/bitcoin/support.coax",
-    "coax/tests/bitcoin/support_tx.coax",
-    "coax/tests/bitcoin/sighash_vectors.coax",
-    "nostr/examples/agent-treasury.coax",
-    "nostr/examples/checks/agent-treasury.coax",
-    "coax/lib/nostr/nipkeys_carry.coax",
-    "nostr/tools/treasury.coax",
-    "coax/tests/nostr/treasury_regtest.py"
-   ],
-   "qualified_targets": [
-    "cpu"
-   ],
-   "adopted_by": []
-  }
- ]
+  "schema": 1,
+  "book": "nostr",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "Moved to Bitcoin chapter 1: Bytes, hex and base64",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 2,
+      "title": "Moved to Bitcoin chapter 2: Big integers in fixed limbs",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 3,
+      "title": "Moved to Bitcoin chapter 3: Constant-time rules and secrets",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 4,
+      "title": "Moved to Bitcoin chapter 4: SHA-256",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 5,
+      "title": "Moved to Bitcoin chapter 8: HMAC-SHA256",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 6,
+      "title": "Moved to Bitcoin chapter 9: HKDF",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 7,
+      "title": "Moved to Bitcoin chapter 13: Field arithmetic mod p",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 8,
+      "title": "Moved to Bitcoin chapter 14: Scalars mod n",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 9,
+      "title": "Moved to Bitcoin chapter 15: The secp256k1 group law",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 10,
+      "title": "Moved to Bitcoin chapter 16: Scalar multiplication",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 11,
+      "title": "Moved to Bitcoin chapter 23: Verify a Schnorr signature",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 12,
+      "title": "Moved to Bitcoin chapter 18: Keys and randomness",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 13,
+      "title": "Moved to Bitcoin chapter 24: Sign with Schnorr",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 14,
+      "title": "Shared secrets with ECDH",
+      "file": "ch014-shared-secrets-with-ecdh.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        "bitcoin:16",
+        "bitcoin:18"
+      ],
+      "source": [
+        "coax/lib/crypto/ecdh.coax",
+        "coax/lib/crypto/ecdh_fast.coax",
+        "coax/lib/crypto/ecdh_lifecycle.coax",
+        "nostr/examples/ecdh.coax",
+        "nostr/examples/checks/ecdh.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/lib/nostr/nip44-key.coax"
+      ]
+    },
+    {
+      "number": 15,
+      "title": "Moved to Bitcoin chapter 27: Bech32",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 16,
+      "title": "NIP-19 entities and nostr: URIs",
+      "file": "ch016-nip-19-entities-and-nostr-uris.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:27"
+      ],
+      "source": [
+        "coax/lib/nostr/nip19-core.coax",
+        "nostr/examples/nip19.coax",
+        "nostr/examples/checks/nip19.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/project-names.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 17,
+      "title": "JSON you can sign",
+      "file": "ch017-json-you-can-sign.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:1",
+        "bitcoin:4",
+        "coax:18"
+      ],
+      "source": [
+        "coax/lib/nostr/adapters/json-admission.coax",
+        "coax/lib/nostr/jcs.coax",
+        "coax/lib/nostr/json.coax",
+        "nostr/examples/checks/signable-json.coax",
+        "nostr/examples/signable-json.coax",
+        "coax/lib/encoding/json.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/project-fold.coax",
+        "psionic/lib/model-io/reader.coax",
+        "psionic/lib/pylon/selfcheck.coax"
+      ]
+    },
+    {
+      "number": 18,
+      "title": "Moved to Bitcoin chapter 11: ChaCha20",
+      "file": null,
+      "status": "moved",
+      "profile": null,
+      "depends_on": [],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 19,
+      "title": "NIP-04 and why it is retired",
+      "file": "ch019-nip-04-and-why-it-is-retired.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        14,
+        "bitcoin:1"
+      ],
+      "source": [
+        "coax/lib/crypto/aes.coax",
+        "coax/lib/nostr/nip04.coax",
+        "nostr/examples/nip04.coax",
+        "nostr/examples/checks/nip04.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 20,
+      "title": "NIP-44 encrypted payloads",
+      "file": "ch020-nip-44-encrypted-payloads.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:9",
+        14,
+        "bitcoin:11",
+        "bitcoin:8",
+        "bitcoin:1"
+      ],
+      "source": [
+        "coax/lib/nostr/nip44-key.coax",
+        "coax/lib/nostr/nip44.coax",
+        "nostr/examples/nip44.coax",
+        "nostr/examples/checks/nip44.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "psionic/lib/fleet/runtime.coax",
+        "psionic/lib/mesh/opening.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 21,
+      "title": "Events, IDs and signatures",
+      "file": "ch021-events-ids-and-signatures.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        "bitcoin:23",
+        "bitcoin:24",
+        17,
+        "coax:18"
+      ],
+      "source": [
+        "coax/lib/nostr/event.coax",
+        "coax/lib/nostr/event_sign.coax",
+        "nostr/examples/checks/events.coax",
+        "nostr/examples/events.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/main.coax",
+        "coax/web/project/landing-nostr.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 22,
+      "title": "Kinds and tags",
+      "file": "ch022-kinds-and-tags.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21
+      ],
+      "source": [
+        "coax/lib/nostr/metadata.coax",
+        "nostr/relay/store_policy.coax",
+        "coax/lib/nostr/tags.coax",
+        "nostr/examples/checks/kinds-tags.coax",
+        "nostr/examples/kinds-tags.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 23,
+      "title": "Filters",
+      "file": "ch023-filters.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/filter.coax",
+        "nostr/relay/filter_read.coax",
+        "nostr/examples/checks/filters.coax",
+        "nostr/examples/filters.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "coax/web/project/landing-nostr.coax"
+      ]
+    },
+    {
+      "number": 24,
+      "title": "Relay messages",
+      "file": "ch024-relay-messages.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21,
+        23
+      ],
+      "source": [
+        "coax/lib/nostr/message.coax",
+        "coax/lib/nostr/message_agree.coax",
+        "nostr/relay/message_server.coax",
+        "nostr/examples/relay-messages.coax",
+        "nostr/examples/checks/relay-messages.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax",
+        "coax/web/project/landing-nostr.coax"
+      ]
+    },
+    {
+      "number": 25,
+      "title": "Gift wrap",
+      "file": "ch025-gift-wrap.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        21,
+        "bitcoin:24"
+      ],
+      "source": [
+        "coax/lib/nostr/nip59.coax",
+        "nostr/examples/checks/gift-wrap.coax",
+        "nostr/examples/gift-wrap.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 26,
+      "title": "WebSocket frames",
+      "file": "ch026-websocket-frames.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:4",
+        "bitcoin:1"
+      ],
+      "source": [
+        "coax/lib/crypto/sha1.coax",
+        "coax/lib/net/ws.coax",
+        "nostr/examples/websocket-frames.coax",
+        "nostr/examples/checks/websocket-frames.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/net/relay_conn_rules.coax"
+      ]
+    },
+    {
+      "number": 27,
+      "title": "A WebSocket server",
+      "file": "ch027-a-websocket-server.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        26
+      ],
+      "source": [
+        "coax/lib/net/ws_server.coax",
+        "nostr/examples/websocket-server.coax",
+        "nostr/examples/checks/websocket-server.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay_server.coax"
+      ]
+    },
+    {
+      "number": 28,
+      "title": "Sockets, TLS and relay URLs",
+      "file": "ch028-sockets-tls-and-relay-urls.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        26,
+        "coax:20"
+      ],
+      "source": [
+        "coax/lib/net/relay_conn.coax",
+        "coax/lib/net/relay_conn_rules.coax",
+        "coax/lib/net/relay_uri.coax",
+        "coax/lib/net/uri.coax",
+        "coax/platform/tls-native.c",
+        "nostr/examples/relay-urls.coax",
+        "nostr/examples/checks/relay-urls.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "psionic/lib/fleet/runtime.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 29,
+      "title": "A relay connection",
+      "file": "ch029-a-relay-connection.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        24,
+        28
+      ],
+      "source": [
+        "coax/lib/nostr/relay.coax",
+        "coax/lib/nostr/relay_read.coax",
+        "nostr/examples/relay-connection.coax",
+        "nostr/examples/checks/relay-connection.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 30,
+      "title": "Subscriptions and EOSE",
+      "file": "ch030-subscriptions-and-eose.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        29,
+        23
+      ],
+      "source": [
+        "coax/lib/nostr/relay.coax",
+        "coax/lib/nostr/relay_read.coax",
+        "nostr/examples/subscriptions.coax",
+        "nostr/examples/checks/subscriptions.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 31,
+      "title": "Publish and wait for OK",
+      "file": "ch031-publish-and-wait-for-ok.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        29,
+        21
+      ],
+      "source": [
+        "coax/lib/nostr/relay.coax",
+        "coax/lib/nostr/relay_read.coax",
+        "nostr/examples/publish-ok.coax",
+        "nostr/examples/checks/publish-ok.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 32,
+      "title": "Many relays and the outbox model",
+      "file": "ch032-many-relays-and-the-outbox-model.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        30,
+        31
+      ],
+      "source": [
+        "coax/lib/nostr/nip65.coax",
+        "coax/lib/nostr/outbox.coax",
+        "nostr/examples/outbox.coax",
+        "nostr/examples/checks/outbox.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 33,
+      "title": "A client that survives restarts",
+      "file": "ch033-a-client-that-survives-restarts.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        32,
+        31
+      ],
+      "source": [
+        "coax/lib/nostr/client_journal.coax",
+        "nostr/examples/restarts.coax",
+        "nostr/examples/checks/restarts.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 34,
+      "title": "Admit an event",
+      "file": "ch034-admit-an-event.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21,
+        24,
+        27,
+        "coax:24"
+      ],
+      "source": [
+        "nostr/relay/relay_route.coax",
+        "nostr/relay/relay_server.coax",
+        "nostr/relay/store_admit.coax",
+        "nostr/relay/relay.coax",
+        "nostr/examples/relay-admit.coax",
+        "nostr/examples/checks/relay-admit.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax"
+      ]
+    },
+    {
+      "number": 35,
+      "title": "Store events",
+      "file": "ch035-store-events.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/store.coax",
+        "nostr/relay/store_core.coax",
+        "nostr/relay/store_dedup_policy.coax",
+        "nostr/relay/store_dedup_rewrite.coax",
+        "nostr/relay/store_file.coax",
+        "nostr/relay/store_recover.coax",
+        "nostr/relay/store_snapshot.coax",
+        "nostr/examples/store-events.coax",
+        "nostr/examples/checks/store-events.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/store_saved.coax"
+      ]
+    },
+    {
+      "number": 36,
+      "title": "Match filters with indexes",
+      "file": "ch036-match-filters-with-indexes.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        23,
+        35
+      ],
+      "source": [
+        "coax/lib/nostr/filter.coax",
+        "coax/lib/nostr/store.coax",
+        "nostr/relay/store_index.coax",
+        "nostr/examples/match-indexes.coax",
+        "nostr/examples/checks/match-indexes.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay_store.coax"
+      ]
+    },
+    {
+      "number": 37,
+      "title": "NIP-11 relay information",
+      "file": "ch037-nip-11-relay-information.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34
+      ],
+      "source": [
+        "nostr/relay/relay_route.coax",
+        "nostr/relay/relay_server.coax",
+        "nostr/examples/relay-info.coax",
+        "nostr/examples/checks/relay-info.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax"
+      ]
+    },
+    {
+      "number": 38,
+      "title": "NIP-42 authentication",
+      "file": "ch038-nip-42-authentication.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21,
+        29,
+        34
+      ],
+      "source": [
+        "coax/lib/nostr/nip42-event.coax",
+        "coax/lib/nostr/nip42.coax",
+        "nostr/examples/checks/nip42-auth.coax",
+        "nostr/examples/nip42-auth.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/relay.coax",
+        "nostr/relay/relay.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 39,
+      "title": "Delete, expire and vanish",
+      "file": "ch039-delete-expire-and-vanish.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        35
+      ],
+      "source": [
+        "nostr/relay/relay_server.coax",
+        "nostr/relay/store_core.coax",
+        "nostr/relay/store_policy.coax",
+        "nostr/relay/store_delete.coax",
+        "nostr/examples/delete-expire-vanish.coax",
+        "nostr/examples/checks/delete-expire-vanish.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/store_saved.coax"
+      ]
+    },
+    {
+      "number": 40,
+      "title": "Count events",
+      "file": "ch040-count-events.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36
+      ],
+      "source": [
+        "coax/lib/nostr/nip45.coax",
+        "nostr/relay/store_index.coax",
+        "nostr/relay/message_server.coax",
+        "nostr/examples/count-events.coax",
+        "nostr/examples/checks/count-events.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay_store.coax"
+      ]
+    },
+    {
+      "number": 41,
+      "title": "Search",
+      "file": "ch041-search.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36
+      ],
+      "source": [
+        "coax/lib/nostr/nip50.coax",
+        "nostr/relay/filter_read.coax",
+        "nostr/relay/store_index.coax",
+        "nostr/examples/search.coax",
+        "nostr/examples/checks/search.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay_store.coax"
+      ]
+    },
+    {
+      "number": 42,
+      "title": "Protected events",
+      "file": "ch042-protected-events.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        38
+      ],
+      "source": [
+        "coax/lib/nostr/nip70.coax",
+        "coax/tests/nostr/nip70_fixtures.coax",
+        "nostr/examples/protected-events.coax",
+        "nostr/examples/checks/protected-events.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax"
+      ]
+    },
+    {
+      "number": 43,
+      "title": "Negentropy sync",
+      "file": "ch043-negentropy-sync.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        36,
+        "bitcoin:4"
+      ],
+      "source": [
+        "coax/lib/nostr/nip77.coax",
+        "coax/tests/nostr/nip77_fixtures.coax",
+        "coax/tests/nostr/negentropy_ref.py",
+        "nostr/examples/negentropy-sync.coax",
+        "nostr/examples/checks/negentropy-sync.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 44,
+      "title": "Limits, policy and floods",
+      "file": "ch044-limits-policy-and-floods.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        36
+      ],
+      "source": [
+        "coax/lib/net/relay_poll_budget.coax",
+        "nostr/relay/relay_server.coax",
+        "nostr/relay/relay_rate.coax",
+        "nostr/relay/relay_route.coax",
+        "nostr/relay/store_core.coax",
+        "nostr/examples/relay-limits.coax",
+        "nostr/examples/checks/relay-limits.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax"
+      ]
+    },
+    {
+      "number": 45,
+      "title": "Profiles, follows and names",
+      "file": "ch045-profiles-follows-and-names.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        28
+      ],
+      "source": [
+        "coax/lib/nostr/follows.coax",
+        "coax/lib/nostr/metadata.coax",
+        "coax/lib/nostr/nip05.coax",
+        "coax/lib/nostr/nip39.coax",
+        "nostr/relay/store_core.coax",
+        "nostr/examples/checks/external-identities.coax",
+        "nostr/examples/external-identities.coax",
+        "nostr/examples/checks/profiles-follows.coax",
+        "nostr/examples/profiles-follows.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 46,
+      "title": "Keys from a seed phrase",
+      "file": "ch046-keys-from-a-seed-phrase.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:24",
+        "bitcoin:8"
+      ],
+      "source": [
+        "coax/lib/crypto/bip32.coax",
+        "coax/lib/crypto/bip39.coax",
+        "coax/lib/crypto/pbkdf2.coax",
+        "coax/lib/crypto/sha512.coax",
+        "coax/lib/nostr/nip06.coax",
+        "nostr/examples/seed-phrase.coax",
+        "nostr/examples/checks/seed-phrase.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/main.coax"
+      ]
+    },
+    {
+      "number": 47,
+      "title": "Encrypted key backup",
+      "file": "ch047-encrypted-key-backup.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        "bitcoin:11",
+        "bitcoin:8",
+        "bitcoin:27"
+      ],
+      "source": [
+        "coax/lib/crypto/poly1305.coax",
+        "coax/lib/crypto/scrypt_nip49.coax",
+        "coax/lib/crypto/xchacha20_poly1305.coax",
+        "coax/lib/text/nfkc.coax",
+        "nostr/examples/ncryptsec.coax",
+        "nostr/examples/checks/ncryptsec.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 48,
+      "title": "Signers outside the app",
+      "file": "ch048-signers-outside-the-app.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:18",
+        20,
+        31
+      ],
+      "source": [
+        "coax/lib/nostr/nip46.coax",
+        "coax/tests/nostr/nip46_fixtures.coax",
+        "nostr/examples/remote-signer.coax",
+        "nostr/examples/checks/remote-signer.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 49,
+      "title": "HTTP auth",
+      "file": "ch049-http-auth.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        21,
+        "bitcoin:4"
+      ],
+      "source": [
+        "coax/lib/nostr/nip98-observe.coax",
+        "coax/lib/nostr/nip98-tags.coax",
+        "coax/lib/nostr/nip98_sign.coax",
+        "coax/web/api/nip98.coax",
+        "nostr/examples/checks/http-auth.coax",
+        "nostr/examples/http-auth.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/api.coax",
+        "coax/web/api/nostr.c"
+      ]
+    },
+    {
+      "number": 50,
+      "title": "Notes, threads and subjects",
+      "file": "ch050-notes-threads-and-subjects.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/tags.coax",
+        "coax/lib/nostr/nip10.coax",
+        "nostr/examples/threads.coax",
+        "nostr/examples/checks/threads.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 51,
+      "title": "References inside content",
+      "file": "ch051-references-inside-content.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        16,
+        50
+      ],
+      "source": [
+        "coax/lib/nostr/nip19-core.coax",
+        "coax/lib/nostr/nip27.coax",
+        "nostr/examples/references.coax",
+        "nostr/examples/checks/references.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 52,
+      "title": "Reposts, reactions and comments",
+      "file": "ch052-reposts-reactions-and-comments.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        50
+      ],
+      "source": [
+        "coax/lib/nostr/nip22.coax",
+        "coax/lib/nostr/nip18.coax",
+        "coax/lib/nostr/nip25.coax",
+        "nostr/examples/responses.coax",
+        "nostr/examples/checks/responses.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-web/project-fold.coax"
+      ]
+    },
+    {
+      "number": 53,
+      "title": "Long-form, drafts and wiki",
+      "file": "ch053-long-form-drafts-and-wiki.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        20
+      ],
+      "source": [
+        "coax/lib/nostr/nip23.coax",
+        "coax/lib/nostr/nip37.coax",
+        "coax/lib/nostr/nip54.coax",
+        "coax/tests/nostr/nip23_fixtures.coax",
+        "coax/tests/nostr/nip37_fixtures.coax",
+        "coax/tests/nostr/nip54_fixtures.coax",
+        "nostr/examples/long-form.coax",
+        "nostr/examples/checks/long-form.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 54,
+      "title": "Lists, sets and bookmarks",
+      "file": "ch054-lists-sets-and-bookmarks.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        20
+      ],
+      "source": [
+        "coax/lib/nostr/nip51.coax",
+        "coax/lib/nostr/nip51-private.coax",
+        "nostr/examples/lists-sets.coax",
+        "nostr/examples/checks/lists-sets.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 55,
+      "title": "Labels, reports and trusted assertions",
+      "file": "ch055-labels-reports-and-trusted-assertions.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip32.coax",
+        "coax/lib/nostr/nip56.coax",
+        "coax/lib/nostr/nip85.coax",
+        "nostr/examples/labels-reports.coax",
+        "nostr/examples/checks/labels-reports.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 56,
+      "title": "Proof of work",
+      "file": "ch056-proof-of-work.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21
+      ],
+      "source": [
+        "coax/lib/nostr/nip13.coax",
+        "nostr/examples/proof-of-work.coax",
+        "nostr/examples/checks/proof-of-work.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "nostr/relay/relay.coax"
+      ]
+    },
+    {
+      "number": 57,
+      "title": "Media and files",
+      "file": "ch057-media-and-files.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        49
+      ],
+      "source": [
+        "coax/lib/nostr/nip94.coax",
+        "coax/lib/nostr/nipb7.coax",
+        "nostr/examples/media-files.coax",
+        "nostr/examples/checks/media-files.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 58,
+      "title": "Calendars, polls and highlights",
+      "file": "ch058-calendars-polls-and-highlights.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip52.coax",
+        "coax/lib/nostr/nip88.coax",
+        "coax/lib/nostr/nip84.coax",
+        "nostr/examples/calendars-polls.coax",
+        "nostr/examples/checks/calendars-polls.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 59,
+      "title": "Groups and communities",
+      "file": "ch059-groups-and-communities.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        38,
+        34,
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip29.coax",
+        "coax/lib/nostr/nip7d.coax",
+        "coax/lib/nostr/nip72.coax",
+        "coax/lib/nostr/nipc7.coax",
+        "nostr/examples/chats-threads.coax",
+        "nostr/examples/checks/chats-threads.coax",
+        "nostr/examples/groups-communities.coax",
+        "nostr/examples/checks/groups-communities.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 60,
+      "title": "Private messages",
+      "file": "ch060-private-messages.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        25,
+        32
+      ],
+      "source": [
+        "coax/lib/nostr/nip17.coax",
+        "coax/lib/nostr/nip17-relays.coax",
+        "coax/lib/nostr/nip17-message.coax",
+        "coax/lib/nostr/nipa4.coax",
+        "coax/tests/nostr/nip17_reference.py",
+        "nostr/examples/checks/public-messages.coax",
+        "nostr/examples/checks/private-messages.coax",
+        "nostr/examples/public-messages.coax",
+        "nostr/examples/private-messages.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 61,
+      "title": "Live activities",
+      "file": "ch061-live-activities.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip53.coax",
+        "nostr/examples/live-activities.coax",
+        "nostr/examples/checks/live-activities.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 62,
+      "title": "Badges and statuses",
+      "file": "ch062-badges-and-statuses.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip58.coax",
+        "coax/lib/nostr/nip38.coax",
+        "nostr/examples/badges-statuses.coax",
+        "nostr/examples/checks/badges-statuses.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 63,
+      "title": "Git on Nostr",
+      "file": "ch063-git-on-nostr.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        52
+      ],
+      "source": [
+        "coax/lib/nostr/nip34-event.coax",
+        "coax/lib/nostr/nip34-patch.coax",
+        "coax/lib/nostr/nip34-pr.coax",
+        "coax/lib/nostr/nip34.coax",
+        "coax/lib/nostr/nipc0.coax",
+        "nostr/examples/checks/repositories.coax",
+        "nostr/examples/checks/snippets-pull-requests.coax",
+        "nostr/examples/repositories.coax",
+        "nostr/examples/snippets-pull-requests.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 64,
+      "title": "App data and handlers",
+      "file": "ch064-app-data-and-handlers.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip78.coax",
+        "coax/lib/nostr/nip89.coax",
+        "coax/lib/nostr/nip5a.coax",
+        "nostr/examples/app-handlers.coax",
+        "nostr/examples/checks/app-handlers.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 65,
+      "title": "Data vending machines",
+      "file": "ch065-data-vending-machines.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        20
+      ],
+      "source": [
+        "coax/lib/nostr/nip90.coax",
+        "coax/tests/nostr/nip90_fixtures.coax",
+        "nostr/examples/data-vending.coax",
+        "nostr/examples/checks/data-vending.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 66,
+      "title": "Markets and orders",
+      "file": "ch066-markets-and-orders.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip99.coax",
+        "coax/lib/nostr/nip69.coax",
+        "coax/lib/nostr/nip15.coax",
+        "nostr/examples/markets-orders.coax",
+        "nostr/examples/checks/markets-orders.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 67,
+      "title": "Relay discovery, access and management",
+      "file": "ch067-relay-discovery-access-and-management.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        37,
+        38,
+        49
+      ],
+      "source": [
+        "coax/lib/nostr/nip86.coax",
+        "coax/lib/nostr/nip66.coax",
+        "coax/lib/nostr/nip43.coax",
+        "nostr/examples/relay-management.coax",
+        "nostr/examples/checks/relay-management.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 68,
+      "title": "Bridges, external IDs and timestamps",
+      "file": "ch068-bridges-external-ids-and-timestamps.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        "bitcoin:4"
+      ],
+      "source": [
+        "coax/lib/nostr/nip73.coax",
+        "coax/lib/nostr/nip48.coax",
+        "coax/lib/nostr/nip03.coax",
+        "nostr/examples/bridges-timestamps.coax",
+        "nostr/examples/checks/bridges-timestamps.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 69,
+      "title": "Small content kinds",
+      "file": "ch069-small-content-kinds.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22
+      ],
+      "source": [
+        "coax/lib/nostr/nip35.coax",
+        "coax/lib/nostr/nip64.coax",
+        "coax/lib/nostr/nipcc.coax",
+        "coax/lib/nostr/nipf4.coax",
+        "nostr/examples/small-content.coax",
+        "nostr/examples/checks/small-content.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 70,
+      "title": "Retired and experimental NIPs",
+      "file": "ch070-retired-and-experimental-nips.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21
+      ],
+      "source": [
+        "coax/lib/nostr/nip26.coax",
+        "coax/lib/nostr/nip31.coax",
+        "coax/lib/nostr/retired.coax",
+        "nostr/examples/retired-nips.coax",
+        "nostr/examples/checks/retired-nips.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 71,
+      "title": "Lightning zaps and goals",
+      "file": "ch071-lightning-zaps-and-goals.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        21,
+        45
+      ],
+      "source": [
+        "coax/lib/nostr/nip57.coax",
+        "coax/lib/nostr/nip75.coax",
+        "coax/tests/nostr/nip57_fixtures.coax",
+        "nostr/examples/lightning-zaps.coax",
+        "nostr/examples/checks/lightning-zaps.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 72,
+      "title": "Wallet Connect",
+      "file": "ch072-wallet-connect.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        31
+      ],
+      "source": [
+        "coax/lib/nostr/nip47.coax",
+        "coax/tests/nostr/nip47_fixtures.coax",
+        "nostr/examples/wallet-connect.coax",
+        "nostr/examples/checks/wallet-connect.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 73,
+      "title": "Payment targets",
+      "file": "ch073-payment-targets.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        22,
+        "bitcoin:27",
+        "bitcoin:4"
+      ],
+      "source": [
+        "coax/lib/nostr/nipa3.coax",
+        "nostr/examples/payment-targets.coax",
+        "nostr/examples/checks/payment-targets.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 74,
+      "title": "Cashu and Fedimint are excluded",
+      "file": "ch074-cashu-and-fedimint-are-excluded.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        55,
+        66,
+        73
+      ],
+      "source": [
+        "coax/lib/nostr/ecash.coax",
+        "nostr/examples/ecash-excluded.coax",
+        "nostr/examples/checks/ecash-excluded.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 75,
+      "title": "Hosts and reachability",
+      "file": "ch075-hosts-and-reachability.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        21,
+        49
+      ],
+      "source": [
+        "coax/lib/nostr/host/admit.coax",
+        "coax/lib/nostr/host/grant.coax",
+        "coax/lib/nostr/reach/fresh.coax",
+        "nostr/examples/checks/hosts-reach.coax",
+        "nostr/examples/hosts-reach.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 76,
+      "title": "Work, coordination and control",
+      "file": "ch076-work-coordination-and-control.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        75
+      ],
+      "source": [
+        "coax/lib/nostr/coord/claim.coax",
+        "coax/lib/nostr/ctrl/command.coax",
+        "coax/lib/nostr/ctrl/fingerprint.coax",
+        "nostr/examples/checks/work-control.coax",
+        "nostr/examples/work-control.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 77,
+      "title": "Capabilities, policy and extensions",
+      "file": "ch077-capabilities-policy-and-extensions.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        75
+      ],
+      "source": [
+        "coax/lib/nostr/cap/dispatch.coax",
+        "coax/lib/nostr/pol/approve.coax",
+        "coax/lib/nostr/ext/install.coax",
+        "coax/tests/nostr/ext_release_vectors.coax",
+        "nostr/examples/capabilities-policy.coax",
+        "nostr/examples/checks/capabilities-policy.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 78,
+      "title": "Runs, sessions, terminals and trajectories",
+      "file": "ch078-runs-sessions-terminals-and-trajectories.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        76,
+        20
+      ],
+      "source": [
+        "coax/lib/nostr/atif/chunks.coax",
+        "coax/lib/nostr/run/journal.coax",
+        "coax/lib/nostr/term/frames.coax",
+        "nostr/examples/checks/run-journal.coax",
+        "nostr/examples/run-journal.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 79,
+      "title": "Agents, skills and automation",
+      "file": "ch079-agents-skills-and-automation.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        76,
+        77
+      ],
+      "source": [
+        "coax/lib/nostr/agent/definition.coax",
+        "coax/lib/nostr/agent/carriage.coax",
+        "coax/lib/nostr/auto/schedule.coax",
+        "coax/tests/nostr/agent_carriage_vectors.coax",
+        "coax/tests/nostr/agent_definition_fixtures.coax",
+        "coax/tests/nostr/agent_carriage_fixtures.coax",
+        "coax/tests/nostr/auto_schedule_fixtures.coax",
+        "nostr/examples/agents-automation.coax",
+        "nostr/examples/checks/agents-automation.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 80,
+      "title": "Jobs, labor and markets",
+      "file": "ch080-jobs-labor-and-markets.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        76
+      ],
+      "source": [
+        "coax/lib/nostr/cj/result.coax",
+        "coax/lib/nostr/mkt/order.coax",
+        "nostr/examples/checks/labor-market.coax",
+        "nostr/examples/labor-market.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 81,
+      "title": "Decisions, evaluations, optimization and programs",
+      "file": "ch081-decisions-evaluations-optimization-and-programs.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        80
+      ],
+      "source": [
+        "coax/lib/nostr/dec/answer.coax",
+        "coax/lib/nostr/eval/report.coax",
+        "coax/lib/nostr/opt/plan.coax",
+        "nostr/examples/checks/decisions-evals.coax",
+        "nostr/examples/decisions-evals.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 82,
+      "title": "Pylons, environments and deploys",
+      "file": "ch082-pylons-environments-and-deploys.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        80,
+        75
+      ],
+      "source": [
+        "psionic/lib/mesh/receipt.coax",
+        "psionic/lib/pylon/beacon.coax",
+        "psionic/lib/pylon/host.coax",
+        "nostr/examples/pylon-receipts.coax",
+        "nostr/examples/checks/pylon-receipts.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/pylon.coax",
+        "coax/web/project/landing-nostr.coax",
+        "psionic/lib/pylon/run.coax"
+      ]
+    },
+    {
+      "number": 83,
+      "title": "Attested work and sealed data",
+      "file": "ch083-attested-work-and-sealed-data.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        82
+      ],
+      "source": [
+        "coax/lib/nostr/att.coax",
+        "coax/lib/nostr/vault.coax",
+        "coax/lib/crypto/aes_gcm.coax",
+        "nostr/examples/attested-vault.coax",
+        "nostr/examples/checks/attested-vault.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 84,
+      "title": "Knowledge and workspaces",
+      "file": "ch084-knowledge-and-workspaces.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        76
+      ],
+      "source": [
+        "coax/lib/nostr/kb/entry.coax",
+        "coax/lib/nostr/kb/current.coax",
+        "coax/lib/nostr/ws/change.coax",
+        "coax/tests/nostr/kb_vectors.coax",
+        "coax/tests/nostr/kb_entry_fixtures.coax",
+        "coax/tests/nostr/kb_current_fixtures.coax",
+        "coax/tests/nostr/ws_change_fixtures.coax",
+        "nostr/examples/knowledge-workspaces.coax",
+        "nostr/examples/checks/knowledge-workspaces.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 85,
+      "title": "Live media, worlds and experience",
+      "file": "ch085-live-media-worlds-and-experience.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        61,
+        20
+      ],
+      "source": [
+        "coax/lib/nostr/nipmv.coax",
+        "coax/lib/nostr/xp_ledger.coax",
+        "nostr/examples/checks/worlds-and-xp.coax",
+        "nostr/examples/worlds-and-xp.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 86,
+      "title": "Lightning payments for requests",
+      "file": "ch086-lightning-payments-for-requests.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        49,
+        71
+      ],
+      "source": [
+        "coax/lib/x402/settle.coax",
+        "coax/lib/x402/x402.coax",
+        "nostr/examples/checks/lightning-requests.coax",
+        "nostr/examples/lightning-requests.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "coax/lib/agent/engine/microcoder.coax"
+      ]
+    },
+    {
+      "number": 87,
+      "title": "Owner attestation and agent authentication",
+      "file": "ch087-owner-attestation-and-agent-authentication.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        38
+      ],
+      "source": [
+        "coax/lib/nostr/nipoa.coax",
+        "coax/lib/nostr/nipaa.coax",
+        "nostr/examples/agent-auth.coax",
+        "nostr/examples/checks/agent-auth.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 88,
+      "title": "Federated identity",
+      "file": "ch088-federated-identity.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        38,
+        "bitcoin:1"
+      ],
+      "source": [
+        "coax/lib/crypto/rsa_verify.coax",
+        "coax/lib/nostr/adapters/fi-projection.coax",
+        "coax/lib/nostr/block/fi-claims-parse.coax",
+        "coax/lib/nostr/block/fi-jwks.coax",
+        "coax/lib/nostr/block/fi-policy.coax",
+        "coax/lib/nostr/block/fi-local-jws-candidate.coax",
+        "nostr/examples/federated-identity.coax",
+        "nostr/examples/checks/federated-identity.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 89,
+      "title": "Channels",
+      "file": "ch089-channels.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        59
+      ],
+      "source": [
+        "coax/lib/nostr/nipcl.coax",
+        "coax/lib/nostr/nipcw.coax",
+        "coax/lib/nostr/nipdv.coax",
+        "coax/lib/nostr/nipwp.coax",
+        "coax/tests/nostr/nipcl_fixtures.coax",
+        "coax/tests/nostr/nipcw_fixtures.coax",
+        "coax/tests/nostr/nipdv_fixtures.coax",
+        "coax/tests/nostr/channels_vectors.coax",
+        "nostr/examples/channels.coax",
+        "nostr/examples/checks/channels.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 90,
+      "title": "Artifacts, archives and reminders",
+      "file": "ch090-artifacts-archives-and-reminders.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        89
+      ],
+      "source": [
+        "coax/lib/nostr/nipar.coax",
+        "coax/lib/nostr/nipia.coax",
+        "coax/lib/nostr/niper.coax",
+        "coax/lib/nostr/niper-envelope.coax",
+        "coax/tests/nostr/niper_envelope_fixtures.coax",
+        "coax/tests/nostr/nipar_fixtures.coax",
+        "coax/tests/nostr/nipia_fixtures.coax",
+        "coax/tests/nostr/niper_fixtures.coax",
+        "coax/tests/nostr/artifacts_vectors.coax",
+        "nostr/examples/artifacts.coax",
+        "nostr/examples/checks/artifacts.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 91,
+      "title": "Git signing, projects, leases and read state",
+      "file": "ch091-git-signing-projects-leases-and-read-state.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        63,
+        "bitcoin:24"
+      ],
+      "source": [
+        "coax/lib/nostr/adapters/gs-projection.coax",
+        "coax/lib/nostr/adapters/mp-projection.coax",
+        "coax/lib/nostr/adapters/pl-projection.coax",
+        "coax/lib/nostr/adapters/rs-projection.coax",
+        "nostr/examples/dev-nips.coax",
+        "nostr/examples/checks/dev-nips.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 92,
+      "title": "Private agent state",
+      "file": "ch092-private-agent-state.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        20,
+        87
+      ],
+      "source": [
+        "coax/lib/nostr/nipae.coax",
+        "coax/lib/nostr/nipao.coax",
+        "coax/tests/nostr/private_state_vectors.py",
+        "coax/tests/nostr/private_state_vectors.coax",
+        "coax/tests/nostr/nipae_fixtures.coax",
+        "coax/tests/nostr/nipao_fixtures.coax",
+        "nostr/examples/private-agent-state.coax",
+        "nostr/examples/checks/private-agent-state.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 93,
+      "title": "Test vectors and their provenance",
+      "file": "ch093-test-vectors-and-their-provenance.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:4",
+        "bitcoin:23",
+        20
+      ],
+      "source": [
+        "coax/tests/vectors/SOURCES.md",
+        "coax/tests/vectors/check_vectors.py",
+        "coax/tests/vectors/test_integrity.py",
+        "coax/tests/vectors/manifest.json",
+        "nostr/examples/vector-provenance.coax",
+        "nostr/examples/checks/vector-provenance.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 94,
+      "title": "Differential tests",
+      "file": "ch094-differential-tests.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        93
+      ],
+      "source": [
+        "nostr/relay/filter_read.coax",
+        "coax/lib/nostr/store.coax",
+        "coax/tests/nostr/relay_differential.py",
+        "coax/tests/nostr/relay_rust_differential.py",
+        "nostr/examples/differential.coax",
+        "nostr/examples/checks/differential.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 95,
+      "title": "Fuzzing",
+      "file": "ch095-fuzzing.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        17,
+        23,
+        26,
+        93
+      ],
+      "source": [
+        "tools/coax-nostr/fuzz/differential.py",
+        "tools/coax-nostr/fuzz/oracle.py",
+        "tools/coax-nostr/fuzz/run.sh",
+        "nostr/examples/fuzzing.coax",
+        "nostr/examples/checks/fuzzing.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 96,
+      "title": "Formal properties",
+      "file": "ch096-formal-properties.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:23",
+        23,
+        36
+      ],
+      "source": [
+        "nostr/examples/formal-properties.coax",
+        "nostr/examples/checks/formal-properties.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 97,
+      "title": "A conformance report",
+      "file": "ch097-a-conformance-report.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        93,
+        94
+      ],
+      "source": [
+        "coax/lib/nostr/profiles.coax",
+        "coax/lib/nostr/profiles.json",
+        "coax/tests/nostr/profiles.py",
+        "coax/tests/nostr/profile_matrix.coax",
+        "nostr/examples/conformance.coax",
+        "nostr/examples/checks/conformance.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 98,
+      "title": "Projects on Nostr",
+      "file": "ch098-projects-on-nostr.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        63,
+        30,
+        21
+      ],
+      "source": [
+        "apps/openagents-web/project-fold.coax",
+        "apps/openagents-web/project-live.coax",
+        "coax/web/project/landing-fold.coax",
+        "nostr/examples/projects.coax",
+        "nostr/examples/checks/projects.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/project-landing.coax",
+        "apps/openagents-cli/project.coax",
+        "apps/openagents-web/project.coax"
+      ]
+    },
+    {
+      "number": 99,
+      "title": "The website and sign-in",
+      "file": "ch099-the-website-and-sign-in.md",
+      "status": "implemented",
+      "profile": "native C and wasm",
+      "depends_on": [
+        46,
+        49
+      ],
+      "source": [
+        "apps/openagents-cli/account_rules.coax",
+        "apps/openagents-web/nip/nip01-verify.coax",
+        "coax/lib/nostr/nip06.coax",
+        "coax/lib/nostr/nip98_sign.coax",
+        "coax/web/api/agent-policy.coax",
+        "coax/web/api/auth-policy.coax",
+        "coax/web/api/nip98.coax",
+        "nostr/examples/web-sign-in.coax",
+        "nostr/examples/checks/web-sign-in.coax"
+      ],
+      "qualified_targets": [
+        "cpu",
+        "wasm"
+      ],
+      "adopted_by": [
+        "apps/openagents-cli/account.coax",
+        "coax/web/api/agents.c",
+        "coax/web/api/auth.c",
+        "coax/web/api/nostr.c"
+      ]
+    },
+    {
+      "number": 100,
+      "title": "Pylons and the mesh",
+      "file": "ch100-pylons-and-the-mesh.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        82,
+        20,
+        38,
+        "psionic:24"
+      ],
+      "source": [
+        "psionic/lib/mesh/opening.coax",
+        "psionic/lib/pylon/queue.coax",
+        "psionic/lib/pylon/run.coax",
+        "nostr/examples/pylon-mesh.coax",
+        "nostr/examples/checks/pylon-mesh.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "psionic/lib/mesh/hooks.coax",
+        "psionic/platform/pylon-build.sh"
+      ]
+    },
+    {
+      "number": 101,
+      "title": "The Metaverse and the wallet",
+      "file": "ch101-the-verse-and-the-wallet.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        85,
+        71,
+        72
+      ],
+      "source": [
+        "pay/wallet.coax",
+        "coax/lib/nostr/nipmv.coax",
+        "coax/lib/nostr/nip57.coax",
+        "coax/lib/nostr/nip75.coax",
+        "coax/lib/nostr/nip47.coax",
+        "coax/tests/nostr/verse_wallet_vectors.py",
+        "nostr/examples/verse-and-wallet.coax",
+        "nostr/examples/checks/verse-and-wallet.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "apps/shared/host/apple/SparkWallet.swift"
+      ]
+    },
+    {
+      "number": 102,
+      "title": "Agents on Nostr",
+      "file": "ch102-agents-on-nostr.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        79,
+        80,
+        "bitcoin:24",
+        87,
+        78,
+        76
+      ],
+      "source": [
+        "coax/lib/nostr/nipaa.coax",
+        "coax/lib/nostr/cj/result.coax",
+        "coax/lib/nostr/mkt/order.coax",
+        "coax/lib/nostr/coord/claim.coax",
+        "coax/lib/nostr/run/journal.coax",
+        "coax/tests/nostr/agents_on_nostr_vectors.py",
+        "nostr/examples/agents-on-nostr.coax",
+        "nostr/examples/checks/agents-on-nostr.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 103,
+      "title": "Replace relay.openagents.com",
+      "file": "ch103-replace-relay-openagents-com.md",
+      "status": "implemented",
+      "profile": "native C",
+      "depends_on": [
+        34,
+        35,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        94
+      ],
+      "source": [
+        "nostr/relay/relay_import.coax",
+        "nostr/relay/relay_import_run.coax",
+        "nostr/relay/relay_equal.coax",
+        "nostr/relay/relay_shadow.coax",
+        "coax/lib/nostr/fixtures/relay_export.coax",
+        "coax/tests/nostr/relay_export_fixture.py",
+        "nostr/examples/relay-cutover.coax",
+        "nostr/examples/checks/relay-cutover.coax",
+        "coax/tests/nostr/relay_live_cutover.py",
+        "coax/tests/nostr/relay_rollback_rehearsal.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 104,
+      "title": "Agent treasuries and a network of keys",
+      "file": "ch104-agent-treasuries-and-a-network-of-keys.md",
+      "status": "partly implemented",
+      "profile": "native C",
+      "depends_on": [
+        "bitcoin:24",
+        46,
+        79,
+        83
+      ],
+      "source": [
+        "coax/lib/nostr/nipkeys.coax",
+        "coax/lib/nostr/nipkeys_possess.coax",
+        "coax/lib/nostr/nipkeys_proof.coax",
+        "coax/lib/bitcoin/bip322.coax",
+        "coax/lib/nostr/nipkeys_sign.coax",
+        "coax/lib/crypto/ecdsa_sign.coax",
+        "coax/lib/bitcoin/sighash.coax",
+        "coax/tests/nostr/keys_fixtures.coax",
+        "coax/tests/nostr/keys_sign_fixtures.coax",
+        "coax/tests/nostr/keys_sign_support.coax",
+        "coax/tests/bitcoin/support.coax",
+        "coax/tests/bitcoin/support_tx.coax",
+        "coax/tests/bitcoin/sighash_vectors.coax",
+        "nostr/examples/agent-treasury.coax",
+        "nostr/examples/checks/agent-treasury.coax",
+        "coax/lib/nostr/nipkeys_carry.coax",
+        "nostr/tools/treasury.coax",
+        "coax/tests/nostr/treasury_regtest.py"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    }
+  ]
 }

@@ -168,7 +168,8 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
   #assert sha256_init(st[..])==SHA_OK && sha256_update_checked(st[..],c[0..<bt_var_put(c[..],0,annex.count)],false)==SHA_OK;
   at:=0;
   while at<annex.count {
-    end:=at+65536;if end>annex.count {end=annex.count;}
+    // Equivalent mutants on the next line: the chunk size and the edge only change how the annex is split between updates; SHA-256 of the whole is the same
+    end:=at+65536;if end>annex.count {end=annex.count;}  // mutant: equivalent
     #assert sha256_update_checked(st[..],annex[at..<end],false)==SHA_OK;
     at=end;
   }
@@ -187,9 +188,11 @@ bt_annex_hash :: (annex:[]u8,out:[]u8) #effects(all) {
 bt_sigmsg_taproot :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,m:[]u8)->int #effects(all) {t:=tp;
   if !t.ok || index<0 || index>=t.nin || amounts.count!=t.nin || spk.count!=t.nin || m.count<BT_SIGMSG {return -1;}
   // A hash type that doesn't exist refuses before any hashing.
-  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}
+  // Equivalent mutants on the next line: bt_sigmsg_taproot_parts refuses the same hash types, and SINGLE with no output at index (single is then empty), so this early refusal only saves the hashing
+  if !((hashtype>=0 && hashtype<=3) || (hashtype>=0x81 && hashtype<=0x83)) || ((hashtype&3)==BT_SINGLE && index>=t.nout) {return -1;}  // mutant: equivalent
   h:[5][32]u8;if !bt_tap_hashes(b,t,amounts,spk,h[..]) {return -1;}
-  single:=b[0..<0];if index<t.nout {single=b[t.out_at[index]..<t.out_at[index]+t.out_n[index]];}
+  // Equivalent mutants on the next line: single is read only for SINGLE, which the line above refuses when index >= nout; at index == nout the read output is out_at 0, out_n 0 (empty) in a read transaction
+  single:=b[0..<0];if index<t.nout {single=b[t.out_at[index]..<t.out_at[index]+t.out_n[index]];}  // mutant: equivalent
   return bt_sigmsg_taproot_parts(h[..],t.version[..],t.locktime[..],index,t.inputs[index].prev[..],amounts[index],
     spk[index].b[0..<spk[index].n],t.inputs[index].seq[..],single,hashtype,annex,leaf,codesep,m);
 }
@@ -217,8 +220,10 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
     n=bt_var_put(m,n,spk.count);n=bt_put(m,n,spk);
     n=bt_put(m,n,seq);
   } else {n=bt_le(m,n,index,4);}
-  if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}      // sha_annex
-  if base==BT_SINGLE {bt_sha(single,m[n..<n+32]);n+=32;}
+  // Equivalent mutants on the next line: the hash writes 32 bytes into a view of 32 or more; m holds BT_SIGMSG bytes, so a 33-byte view never passes its end here
+  if present==1 {bt_annex_hash(annex,m[n..<n+32]);n+=32;}  // mutant: equivalent (sha_annex)
+  // Equivalent mutants on the next line: as for sha_annex above: 32 bytes written into a view of 32 or more, inside m
+  if base==BT_SINGLE {bt_sha(single,m[n..<n+32]);n+=32;}  // mutant: equivalent
   if ext==1 {n=bt_put(m,n,leaf);m[n]=0;n+=1;n=bt_le(m,n,codesep,4);}
   return n;
 }
@@ -227,7 +232,8 @@ bt_sigmsg_taproot_parts :: (h:[][32]u8,version:[]u8,locktime:[]u8,index:int,prev
 bt_sighash_taproot_ext :: (b:[]u8,tp:BtTx,index:int,amounts:[]int,spk:[]BtScript,hashtype:int,annex:[]u8,leaf:[]u8,codesep:int,out:[]u8)->bool #effects(all) {
   if out.count!=32 {return false;}
   m:[BT_SIGMSG]u8;n:=bt_sigmsg_taproot(b,tp,index,amounts,spk,hashtype,annex,leaf,codesep,m[..]);
-  if n<0 {return false;}
+  // Equivalent mutants on the next line: bt_sigmsg_taproot returns -1 or a length of at least 2 (the epoch and hash type), never 0
+  if n<0 {return false;}  // mutant: equivalent
   bt_tagged(BH_TAPSIGHASH,m[0..<n],out);
   return true;
 }

@@ -74,7 +74,7 @@ It builds on what exists today:
 - [`apps/openagents-web`](../../apps/openagents-web)
 - [`apps/openagents-desktop`](../../apps/openagents-desktop)
 - [`apps/openagents-ios`](../../apps/openagents-ios)
-- [`apps/everglade-mobile`](../../apps/everglade-mobile)
+- `apps/everglade-mobile`
 - [`os`](../../os)
 
 ### The chapter's check

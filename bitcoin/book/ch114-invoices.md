@@ -202,7 +202,7 @@ No amount means the payer chooses one, as for a donation.
 INV_PREFIXES :: [4] string.["bc", "tb", "tbs", "bcrt"];
 InvAmount :: struct { code: int; network: int; has: bool; msat: u64; }
 inv_hrp_vartime :: (hrp: [] u8) -> InvAmount #effects(all) {
-  if hrp.count < 2 || hrp[0] != 'l' || hrp[1] != 'n' { return InvAmount.{code = INV_BAD_PREFIX}; }
+  if hrp.count < 2 || hrp[0] != 'l' || hrp[1] != 'n' { return InvAmount.{code = INV_BAD_PREFIX}; }   // mutant: equivalent (the text "ln" alone has an empty currency, which the prefix lookup refuses with the same code)
   at := 2;
   while at < hrp.count && (hrp[at] < '0' || hrp[at] > '9') { at += 1; }
   r: InvAmount;
@@ -361,7 +361,7 @@ invoice_decode_vartime :: (text: string, inv: [] Invoice) -> int #effects(all) {
   // Tagged fields: type (5 bits), data_length (10 bits), data.
   seen: [32] int; at := INV_TIMESTAMP;
   while at < end {
-    if end - at < 3 { return INV_TRUNCATED; }
+    if end - at < 3 { return INV_TRUNCATED; }   // mutant: equivalent (with fewer than 3 words left the field's length is read from the signature and runs past the end, which the next test refuses with the same code)
     f := InvField.{type = cast(int) inv[0].words[at], start = at + 3,
                    length = cast(int) inv[0].words[at + 1] * 32 + cast(int) inv[0].words[at + 2]};
     if f.length > end - f.start { return INV_TRUNCATED; }
@@ -438,8 +438,8 @@ testnet's address formats.
 // 18 is P2SH, and 0 to 16 are witness programs (chapter 29). Signet
 // addresses are testnet's. Returns the length or a negative AD_ code.
 invoice_fallback_address_vartime :: (inv: [] Invoice, i: int, out: [] u8) -> int #effects(all) {
-  fb := inv[0].fallbacks[i]; script: [42] u8; n := 0;
-  if fb.version >= 17 { n = ad_hash_script(fb.version == 17, fb.program[0..<20], script[..]); }
+  fb := inv[0].fallbacks[i]; script: [42] u8; n := 0;   // mutant: equivalent (both branches below set n)
+  if fb.version >= 17 { n = ad_hash_script(fb.version == 17, fb.program[0..<20], script[..]); }   // mutant: equivalent (ad_hash_script reads the first 20 bytes only, so a 21-byte slice gives the same script)
   else { n = ad_witness_script(fb.version, fb.program[0..<fb.length], script[..]); }
   network := ifx inv[0].network == INV_MAINNET then SW_MAINNET else ifx inv[0].network == INV_REGTEST then SW_REGTEST else SW_TESTNET;
   return address_encode_vartime(network, script[0..<n], out);
@@ -512,11 +512,11 @@ invoice_put_number_vartime :: (w: [] InvoiceWriter, type: int, v: u64) -> int #e
 // empty bitmap writes no field at all.
 invoice_put_features_vartime :: (w: [] InvoiceWriter, f: [] u8) -> int #effects(all) {
   top := -1;
-  for bit: 0..<f.count * 8 { if ln_feature_set(f, bit) { top = bit; } }
+  for bit: 0..<f.count * 8 { if ln_feature_set(f, bit) { top = bit; } }   // mutant: equivalent (ln_feature_set is false past the last byte, so a longer range finds nothing more)
   if top < 0 { return w[0].code; }
   n := top / 5 + 1; words: [1023] u8;
   if n > 1023 { w[0].code = INV_BAD_LENGTH; return w[0].code; }
-  for k: 0..<n * 5 { if ln_feature_set(f, k) { words[n - 1 - k / 5] |= cast(u8) (1 << (k % 5)); } }
+  for k: 0..<n * 5 { if ln_feature_set(f, k) { words[n - 1 - k / 5] |= cast(u8) (1 << (k % 5)); } }   // mutant: equivalent (no bit above the top is set, so a longer range sets nothing more)
   return invoice_put_words_vartime(w, INV_9, words[0..<n]);
 }
 // A fallback: the version as one word, then the program or hash.
@@ -548,7 +548,7 @@ invoice_sign_vartime :: (w: [] InvoiceWriter, key: [] u8, out: [] u8) -> Invoice
   digest: [32] u8; sig: [65] u8; work: [1] EcdsaWork;
   inv_digest(w[0].hrp[0..<w[0].hrp_n], w[0].words[0..<w[0].n], digest[..]);
   if !ecdsa_sign_recoverable(key, digest[..], work[..], sig[..], false) { return InvoiceText.{code = INV_BAD_SIGNATURE}; }
-  n := inv_unpack(sig[..], w[0].words[w[0].n..<w[0].n + INV_SIGNATURE]);
+  n := inv_unpack(sig[..], w[0].words[w[0].n..<w[0].n + INV_SIGNATURE]);   // mutant: equivalent (the slice bounds the 104 words written; one more slot is never touched)
   e := b32_encode(cast(string) w[0].hrp[0..<w[0].hrp_n], cast(string) w[0].words[0..<w[0].n + n], false, out, true, false, B32_BECH32);
   if e.error != NC_OK { return InvoiceText.{code = INV_CAPACITY}; }
   return InvoiceText.{length = e.written};

@@ -21,7 +21,7 @@ meter is [`pay/voice-meter.coax`](../../pay/voice-meter.coax). Dictation for
 the native apps is shared in
 [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax). The iPhone
 app already has a voice bar and session
-([`apps/openagents-ios/OpenAgents/Voice`](../../apps/openagents-ios/OpenAgents/Voice)).
+(`apps/openagents-ios/OpenAgents/Voice`).
 
 This chapter uses all of it and writes no second engine. Dictation turns
 speech into text in the composer, and you send it as usual. A spoken turn
@@ -52,7 +52,7 @@ It builds on what exists today:
 - [`metaverse/voice-floor.coax`](../../metaverse/voice-floor.coax)
 - [`pay/voice-meter.coax`](../../pay/voice-meter.coax)
 - [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax)
-- [`apps/openagents-ios/OpenAgents/Voice`](../../apps/openagents-ios/OpenAgents/Voice)
+- `apps/openagents-ios/OpenAgents/Voice`
 
 ### The chapter's check
 

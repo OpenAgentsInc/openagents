@@ -445,7 +445,7 @@ would change Everglade's companion, so it is left as it is (see below).
 - [metaverse-engine/anim/flock.coax](../anim/flock.coax): the following flock, used by
   Everglade's bird companion (`eg-companion`) and the made-realm `flock`
   feature.
-- [everglade/legacy/v1/watch.coax](../../everglade/legacy/v1/watch.coax): the town
+- everglade/legacy/v1/watch.coax: the town
   watch, crimes, sight and hearing, wanted state and SRD 5.2.1 guards.
 - [everglade/npc/guard-decision.coax](../../everglade/npc/guard-decision.coax)
   and [guard-types.coax](../../everglade/npc/guard-types.coax): the

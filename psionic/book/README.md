@@ -22,6 +22,12 @@ are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/boo
 
 ## Start here
 
+- **Navigating 271 chapters (Core ML Spine vs. Model Targets Appendix):**
+  Start with the **Core ML Spine** (Parts I–X: tensors, inference primitives,
+  decision services, Pylons, autodiff, and GPU/CPU training). Treat individual
+  model-architecture parts (Granite, Parakeet, Whisper, GPT-OSS, DeepSeek, and
+  Part XXVII Inkling 2 Mini) as a **Model Targets Appendix**—read only the
+  target you are running or extending.
 - **What you build.** A machine-learning library: tensors, running
   published models from their original weights, a decision service,
   training and serving.

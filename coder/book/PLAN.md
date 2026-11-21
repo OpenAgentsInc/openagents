@@ -67,16 +67,18 @@ grow together:
 
 | Chapter | What we build and check |
 | --- | --- |
-| [1. The simplest loop](ch001-the-simplest-loop.md) — partly implemented | One loop: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed, with exact turn and step boundaries, a deadline per turn and cancellation. |
-| [2. Model-visible means logged](ch002-model-visible-means-logged.md) — partly implemented | An append-only, versioned session log from which every request is rebuilt byte for byte and replayed. |
+| [1. The simplest loop](ch001-the-simplest-loop.md) — implemented | One loop: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed, with exact turn and step boundaries, a deadline per turn and cancellation. |
+| [2. Model-visible means logged](ch002-model-visible-means-logged.md) — implemented | An append-only, versioned session log from which every request is rebuilt byte for byte and replayed. |
 | [3. Keep the prefix stable](ch003-keep-the-prefix-stable.md) — partly implemented | Prompt assembly that only appends, with metadata outside the model input. The server-side measurement stays in Psionic. |
-| [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — partly implemented | Tool schemas from `proto/`, a guarded before/run/after pipeline and structured errors. |
-| [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — partly implemented | Confined processes, an approval policy, per-tool timeouts and a guard against repeated failing calls. |
+| [4. Tools as typed capabilities](ch004-tools-as-typed-capabilities.md) — implemented | Tool schemas from `proto/`, a guarded before/run/after pipeline and structured errors. |
+| [5. A sandbox and approvals](ch005-a-sandbox-and-approvals.md) — implemented | Confined processes, an approval policy, per-tool timeouts and a guard against repeated failing calls. |
 | [6. A document tries to become the system prompt](ch006-a-document-tries-to-become-the-system-prompt.md) — partly implemented | A replayable prompt-injection lab with zero unauthorized effects at the gate. |
 | [7. Condense the history](ch007-condense-the-history.md) — partly implemented | One marked summary replaces older history, bracketed in the log, with its prefill cost measured. |
 | [8. Programs as tool calls](ch008-programs-as-tool-calls.md) — partly implemented | A model-written program run once against bound host functions; limits refuse rather than truncate. |
 
 ## II. Engines
+
+> **2026-11-20 desktop & runtime additions to fold into Part II–III:** Antigravity ACP driver (`coder/tui/agyworker.coax`, `#13831`–`#13839`), local Metal inference (`Inkling 2 Mini`, `#13825`–`#13826`), Git-backed per-turn checkpoints (`#13872`), universal interactive permission/Plan Mode cards (`#13873`), `/goal` verification turns (`apps/openagents-desktop/page/goal.coax`), and ATIF-v1.8 canonical traces (`coax/lib/nostr/atif/`, `#13830`).
 
 | Chapter | What we build and check |
 | --- | --- |

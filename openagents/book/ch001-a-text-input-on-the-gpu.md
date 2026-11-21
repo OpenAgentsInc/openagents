@@ -66,16 +66,7 @@ input method, and the edit buffer in
 whole value after each edit. Two carets or the same glyphs drawn twice are a
 defect.
 
-The GPU login screen already works this way. Its native side,
-[`NativeLogin.swift`](../../apps/shared/native/NativeLogin.swift), keeps one
-`UITextField`, places it over the focused row and sends each edit's value
-to the screen ([G1 as built](../../components/gpu-components.md#g1-as-built)).
-This chapter reuses that overlay for the composer instead of writing a
-second one.
-
-Accessibility comes from the same rows. The host builds one
-`UIAccessibilityElement` for each committed row and hides the Metal view
-from VoiceOver. Activating an element sends the same action as a tap.
+The GPU login screen already works this way. On macOS Desktop (`apps/openagents-desktop`), `NSTextInputClient` handles IME and editing over the Metal surface while `NSAccessibilityElement` exposes every committed row to VoiceOver; on iOS (`apps/openagents-ios`), [`NativeLogin.swift`](../../apps/shared/native/NativeLogin.swift) keeps one `UITextField` over the focused row and builds one `UIAccessibilityElement` per committed row ([G1 as built](../../components/gpu-components.md#g1-as-built)). This chapter reuses those native overlays for the composer instead of writing a second one.
 
 `coax drive` reads the same rows too. `tree` prints them, `type
 composer.input TEXT` types into the field through the same path as the
@@ -87,7 +78,7 @@ and nothing is submitted to the GPU.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), consumed by the primary desktop app ([`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax)) and the mobile app ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), consumed by the primary desktop app ([`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax)) and the mobile app ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
 
 - The shared compiled Coax chat screen with a GPU composer surface, consumed
   by desktop as the primary host and by mobile as a second native host.
@@ -116,7 +107,7 @@ It builds on what exists today:
 ### The chapter's check
 
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-  [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+  [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
   [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
   and [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops).
 - **Trace:** `tree` prints `composer.input field "Message"`, with its bounds;
@@ -132,7 +123,7 @@ It builds on what exists today:
   `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
   `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
-Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
+Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/composer-type.ops`](../examples/cases/composer-type.ops). The primary app is
 [`apps/openagents-desktop`](../../apps/openagents-desktop), mobile consumes the
 same shared logic in [`apps/openagents-ios`](../../apps/openagents-ios), and
 components extend [`components/`](../../components).
@@ -152,3 +143,5 @@ components extend [`components/`](../../components).
 
 1. Does the first TestFlight build of the lean app ship with only this
    chapter's text input, or does it wait until chapter 4 gives it a reply?
+
+Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

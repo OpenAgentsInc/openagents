@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "book": "everglade",
+  "chapters": [
+    { "number": 1, "file": "everglade/book/ch001-a-reference-image.md", "status": "partly implemented" },
+    { "number": 2, "file": "everglade/book/ch002-what-the-prototypes-taught.md", "status": "partly implemented" },
+    { "number": 3, "file": "everglade/book/ch003-start-from-a-bare-world.md", "status": "partly implemented" },
+    { "number": 4, "file": "everglade/book/ch004-ground-you-can-stand-on.md", "status": "implemented" },
+    { "number": 5, "file": "everglade/book/ch005-plant-a-forest-with-a-function.md", "status": "partly implemented" },
+    { "number": 6, "file": "everglade/book/ch006-the-glades-light.md", "status": "partly implemented" },
+    { "number": 7, "file": "everglade/book/ch007-character-create-in-the-world.md", "status": "partly implemented" },
+    { "number": 8, "file": "everglade/book/ch008-if-you-can-see-it-you-can-walk-to-it.md", "status": "partly implemented" },
+    { "number": 9, "file": "everglade/book/ch009-a-path-through-dense-woods.md", "status": "partly implemented" },
+    { "number": 10, "file": "everglade/book/ch010-hold-60-frames-per-second.md", "status": "partly implemented" },
+    { "number": 11, "file": "everglade/book/ch011-one-address.md", "status": "partly implemented" },
+    { "number": 12, "file": "everglade/book/ch012-the-room.md", "status": "partly implemented" },
+    { "number": 13, "file": "everglade/book/ch013-coming-back.md", "status": "partly implemented" },
+    { "number": 14, "file": "everglade/book/ch014-ability-scores-proficiency-and-the-d20.md", "status": "partly implemented" },
+    { "number": 15, "file": "everglade/book/ch015-classes-levels-1-to-6.md", "status": "partly implemented" },
+    { "number": 16, "file": "everglade/book/ch016-spells-and-slots.md", "status": "partly implemented" },
+    { "number": 17, "file": "everglade/book/ch017-conditions.md", "status": "partly implemented" },
+    { "number": 18, "file": "everglade/book/ch018-turns-become-time.md", "status": "partly implemented" },
+    { "number": 33, "file": "everglade/book/ch033-lets-build-a-dragon.md", "status": "partly implemented" }
+  ]
+}

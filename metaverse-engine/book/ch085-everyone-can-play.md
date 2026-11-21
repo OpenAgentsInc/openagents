@@ -13,7 +13,7 @@ or unsupported saved record returns the defaults whole, with a status.
 
 ## Everglade's SETTINGS pane
 
-[`everglade-access.coax`](../../apps/openagents-web/old/v1/everglade-access.coax)
+`everglade-access.coax`
 uses that record for gameplay input and the pane above SOUND. The browser
 persists it as `verse.settings`. Text size scales the HUD within the
 screen's layout limit, which the pane names. Reduced motion stops camera

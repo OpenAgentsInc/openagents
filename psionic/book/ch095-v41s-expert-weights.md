@@ -18,7 +18,7 @@ The pinned original [model](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Fla
 and [conversion reference](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/blob/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/convert.py)
 were read, never executed. Their identities and format rules are retained in
 [expert-contract.json](../fixtures/deepseek/expert-contract.json). The reviewed
-original [shard header](../fixtures/deepseek/expert-original.json) independently
+original shard header independently
 confirms the stored types and shapes.
 
 ## Two layouts, separate scales

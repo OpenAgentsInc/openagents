@@ -199,7 +199,7 @@ Load [front-v41.coax](../lib/deepseek/front-v41.coax) for the original V4.1
 adapter plus the bounded recipe and stream parser. Its profile is
 `deepseek-front-v41-text-v1`; R1 retains its separate adapter and history API.
 The original vocabulary has 129,280 entries and 127,741 ranked merges. The
-[packed table](../fixtures/deepseek/front-v41.pst) is admitted against its
+packed table is admitted against its
 [recorded source and derived identities](../fixtures/deepseek/front-v41-source.json)
 before use. The native gate performs that admission with Coax `pw_digest` and
 rejects a changed byte.

@@ -93,7 +93,7 @@ gives the same dragon on every machine. A change such as "make the wings wider"
 is one number, and the preview renders again in seconds.
 
 The previews from three angles are in
-[`docs/verification/druid-demo-2026-11-09/`](../../docs/verification/druid-demo-2026-11-09/):
+`docs/verification/druid-demo-2026-11-09/`:
 `dragon-model-front.png`, `dragon-model-side.png` and `dragon-model-below.png`.
 
 The clips are idle, walk, fly, glide, bite, breath, roar and sweep for the
@@ -160,7 +160,7 @@ rs_in_cone :: (dx: f32, dy: f32, fx: f32, fy: f32, length: f32) -> bool #effects
   ux := fx / n; uy := fy / n;
   along := dx * ux + dy * uy;
   side := abs(dx * uy - dy * ux);
-  return along >= 0 && along <= length && side * 2 <= along + 0.0001;
+  return along >= 0 && along <= length && side * 2 <= along;
 }
 ```
 
@@ -178,7 +178,7 @@ that steps turns gets them:
 ```jai
 // The start of i's turn: Burning, then the Recharge roll.
 rs_dragon_turn_start :: (b: [] RsBattle, i: int) #effects(all) {
-  if b[0].c[i].burning > 0 { _ := rs_burning_tick(b, i); }
+  _ := rs_burning_tick(b, i);   // nothing when no fire burns
   if rs_breather(b[0].c[i]) && b[0].c[i].breath_spent && rs_recharges(rs_roll(b[0].dice[..], 6)) { b[0].c[i].breath_spent = false; }
 }
 ```
@@ -284,7 +284,7 @@ xd_keep :: (s: [] EgZone) {
 ```
 
 The headless captures are in
-[`docs/verification/dragon-lab-2026-11-17/`](../../docs/verification/dragon-lab-2026-11-17/).
+`docs/verification/dragon-lab-2026-11-17/`.
 
 ## Riding it as a mount
 
@@ -344,7 +344,7 @@ coax/bin/coax test --library apps/openagents-web/old/experimental/fivelab.coax -
 ```
 
 The headless captures are in
-[`docs/verification/druid-demo-2026-11-09/`](../../docs/verification/druid-demo-2026-11-09/).
+`docs/verification/druid-demo-2026-11-09/`.
 
 ## Mistakes
 

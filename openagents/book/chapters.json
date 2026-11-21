@@ -1,80 +1,1105 @@
-{"schema": 1, "book": "openagents", "chapters": [
-  {"number": 1, "title": "A text input on the GPU", "file": "ch001-a-text-input-on-the-gpu.md", "status": "partly implemented", "profile": "cpu", "depends_on": [], "source": ["apps/shared/chat/screen.coax", "apps/openagents-desktop/chat_screen.coax", "apps/openagents-ios/composer_screen.coax", "openagents/examples/cases/composer-type.ops"], "qualified_targets": ["cpu"], "adopted_by": []},
-  {"number": 2, "title": "State and actions", "file": "ch002-state-and-actions.md", "status": "partly implemented", "profile": "cpu", "depends_on": [1], "source": ["apps/shared/chat/screen.coax", "apps/openagents-desktop/chat_screen.coax", "apps/openagents-ios/composer_screen.coax", "openagents/examples/cases/send.ops"], "qualified_targets": ["cpu"], "adopted_by": []},
-  {"number": 3, "title": "A transcript", "file": "ch003-a-transcript.md", "status": "partly implemented", "profile": "cpu", "depends_on": [2], "source": ["apps/shared/chat/screen.coax", "apps/openagents-desktop/chat_screen.coax", "apps/openagents-ios/composer_screen.coax", "openagents/examples/cases/transcript.ops"], "qualified_targets": ["cpu"], "adopted_by": []},
-  {"number": 4, "title": "A reply from the service", "file": "ch004-a-reply-from-the-service.md", "status": "design draft", "profile": "", "depends_on": [3], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 5, "title": "Logging in when a send needs it", "file": "ch005-logging-in-when-a-send-needs-it.md", "status": "design draft", "profile": "", "depends_on": [4], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 6, "title": "One case, every step", "file": "ch006-one-case-every-step.md", "status": "design draft", "profile": "", "depends_on": [5], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 7, "title": "History and the sidebar", "file": "ch007-history-and-the-sidebar.md", "status": "design draft", "profile": "", "depends_on": [6], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 8, "title": "Environment and repository chips", "file": "ch008-environment-and-repository-chips.md", "status": "design draft", "profile": "", "depends_on": [7], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 9, "title": "Settings", "file": "ch009-settings.md", "status": "design draft", "profile": "", "depends_on": [7], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 10, "title": "Mobile and other native hosts", "file": "ch010-mobile-and-other-native-hosts.md", "status": "design draft", "profile": "", "depends_on": [6, 7, 8, 9], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 11, "title": "The web", "file": "ch011-the-web.md", "status": "design draft", "profile": "", "depends_on": [6, 7, 9], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 12, "title": "The simplest agent", "file": "ch012-the-simplest-agent.md", "status": "design draft", "profile": "", "depends_on": [6], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 13, "title": "Members", "file": "ch013-members.md", "status": "design draft", "profile": "", "depends_on": [12], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 14, "title": "A typed plan", "file": "ch014-a-typed-plan.md", "status": "design draft", "profile": "", "depends_on": [13], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 15, "title": "Decide before you generate", "file": "ch015-decide-before-you-generate.md", "status": "design draft", "profile": "", "depends_on": [14], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 16, "title": "Measure the front", "file": "ch016-measure-the-front.md", "status": "design draft", "profile": "", "depends_on": [15], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 17, "title": "Grants and approvals", "file": "ch017-grants-and-approvals.md", "status": "design draft", "profile": "", "depends_on": [14], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 18, "title": "On the record", "file": "ch018-on-the-record.md", "status": "design draft", "profile": "", "depends_on": [14, 17], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 19, "title": "Conversation", "file": "ch019-conversation.md", "status": "design draft", "profile": "", "depends_on": [15], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 20, "title": "Prepared answers", "file": "ch020-prepared-answers.md", "status": "design draft", "profile": "", "depends_on": [16, 19], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 21, "title": "A knowledge base", "file": "ch021-a-knowledge-base.md", "status": "design draft", "profile": "", "depends_on": [18, 20], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 22, "title": "Retrieval by meaning", "file": "ch022-retrieval-by-meaning.md", "status": "design draft", "profile": "", "depends_on": [21], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 23, "title": "Memory and consent", "file": "ch023-memory-and-consent.md", "status": "design draft", "profile": "", "depends_on": [17, 21], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 24, "title": "Coder as a member", "file": "ch024-coder-as-a-member.md", "status": "design draft", "profile": "", "depends_on": [13, 17], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 25, "title": "Other engines", "file": "ch025-other-engines.md", "status": "design draft", "profile": "", "depends_on": [24], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 26, "title": "Subagents you can see", "file": "ch026-subagents-you-can-see.md", "status": "design draft", "profile": "", "depends_on": [18, 25], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 27, "title": "Programs", "file": "ch027-programs.md", "status": "design draft", "profile": "", "depends_on": [14, 24], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 28, "title": "The command line behind the agent", "file": "ch028-the-command-line-behind-the-agent.md", "status": "design draft", "profile": "", "depends_on": [15, 17], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 29, "title": "Where work runs", "file": "ch029-where-work-runs.md", "status": "design draft", "profile": "", "depends_on": [17, 24], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 30, "title": "Files and device services", "file": "ch030-files-and-device-services.md", "status": "design draft", "profile": "", "depends_on": [4, 6], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 31, "title": "Voice", "file": "ch031-voice.md", "status": "design draft", "profile": "", "depends_on": [6, 30], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 32, "title": "A wallet", "file": "ch032-a-wallet.md", "status": "design draft", "profile": "", "depends_on": [17, 28], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 33, "title": "Spending approval", "file": "ch033-spending-approval.md", "status": "design draft", "profile": "", "depends_on": [17, 32], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 34, "title": "State that survives", "file": "ch034-state-that-survives.md", "status": "design draft", "profile": "", "depends_on": [4, 6], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 35, "title": "Sync across devices", "file": "ch035-sync-across-devices.md", "status": "planned", "profile": "", "depends_on": [5, 10, 34], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 36, "title": "Background, resume and cancel", "file": "ch036-background-resume-and-cancel.md", "status": "design draft", "profile": "", "depends_on": [4, 34], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 37, "title": "One owner per task", "file": "ch037-one-owner-per-task.md", "status": "design draft", "profile": "", "depends_on": [29, 35, 36], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 38, "title": "The plugin interface", "file": "ch038-the-plugin-interface.md", "status": "design draft", "profile": "", "depends_on": [13, 17], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 39, "title": "The sandbox", "file": "ch039-the-sandbox.md", "status": "design draft", "profile": "", "depends_on": [38], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 40, "title": "Installing grants nothing", "file": "ch040-installing-grants-nothing.md", "status": "design draft", "profile": "", "depends_on": [17, 39], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 41, "title": "Write a plugin", "file": "ch041-write-a-plugin.md", "status": "design draft", "profile": "", "depends_on": [40], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 42, "title": "The authoring interview", "file": "ch042-the-authoring-interview.md", "status": "design draft", "profile": "", "depends_on": [27, 41], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 43, "title": "Test-time capabilities", "file": "ch043-test-time-capabilities.md", "status": "design draft", "profile": "", "depends_on": [40], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 44, "title": "Cases and graders", "file": "ch044-cases-and-graders.md", "status": "design draft", "profile": "", "depends_on": [43], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 45, "title": "A two-arm run", "file": "ch045-a-two-arm-run.md", "status": "design draft", "profile": "", "depends_on": [18, 44], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 46, "title": "A claim's key", "file": "ch046-a-claims-key.md", "status": "design draft", "profile": "", "depends_on": [45], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 47, "title": "Reproduction by another key", "file": "ch047-reproduction-by-another-key.md", "status": "design draft", "profile": "", "depends_on": [46], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 48, "title": "External validation", "file": "ch048-external-validation.md", "status": "design draft", "profile": "", "depends_on": [47], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 49, "title": "Adoption is policy", "file": "ch049-adoption-is-policy.md", "status": "design draft", "profile": "", "depends_on": [48], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 50, "title": "Credit", "file": "ch050-credit.md", "status": "design draft", "profile": "", "depends_on": [47, 49], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 51, "title": "Revalidation", "file": "ch051-revalidation.md", "status": "design draft", "profile": "", "depends_on": [46, 49], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 52, "title": "The Gym", "file": "ch052-the-gym.md", "status": "design draft", "profile": "", "depends_on": [41, 49, 50, 51], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 53, "title": "Why an open market", "file": "ch053-why-an-open-market.md", "status": "design draft", "profile": "", "depends_on": [52], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 54, "title": "Releases as signed events", "file": "ch054-releases-as-signed-events.md", "status": "design draft", "profile": "", "depends_on": [38, 53], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 55, "title": "Everyone gets it", "file": "ch055-everyone-gets-it.md", "status": "design draft", "profile": "", "depends_on": [49, 54], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 56, "title": "Paid calls", "file": "ch056-paid-calls.md", "status": "design draft", "profile": "", "depends_on": [32, 33, 54], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 57, "title": "Metering and receipts", "file": "ch057-metering-and-receipts.md", "status": "design draft", "profile": "", "depends_on": [56], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 58, "title": "Payouts to authors", "file": "ch058-payouts-to-authors.md", "status": "design draft", "profile": "", "depends_on": [32, 57], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 59, "title": "One identity", "file": "ch059-one-identity.md", "status": "design draft", "profile": "", "depends_on": [17, 32], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 60, "title": "Reputation from reproduced claims", "file": "ch060-reputation-from-reproduced-claims.md", "status": "design draft", "profile": "", "depends_on": [50, 57, 59], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 61, "title": "Markets for work", "file": "ch061-markets-for-work.md", "status": "design draft", "profile": "", "depends_on": [26, 58, 60], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 62, "title": "Signed JSON over WebSockets", "file": "ch062-signed-json-over-websockets.md", "status": "design draft", "profile": "", "depends_on": [18], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 63, "title": "Every step is an event", "file": "ch063-every-step-is-an-event.md", "status": "design draft", "profile": "", "depends_on": [52, 61, 62], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 64, "title": "The OpenAgents API", "file": "ch064-the-openagents-api.md", "status": "design draft", "profile": "", "depends_on": [4, 63], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 65, "title": "One schema, three carriages", "file": "ch065-one-schema-three-carriages.md", "status": "planned", "profile": "", "depends_on": [62, 64], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 66, "title": "The compliance rule", "file": "ch066-the-compliance-rule.md", "status": "planned", "profile": "", "depends_on": [65], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 67, "title": "Host it yourself", "file": "ch067-host-it-yourself.md", "status": "design draft", "profile": "", "depends_on": [55, 64], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 68, "title": "One gateway", "file": "ch068-one-gateway.md", "status": "design draft", "profile": "", "depends_on": [15], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 69, "title": "Models we serve", "file": "ch069-models-we-serve.md", "status": "design draft", "profile": "", "depends_on": [16, 68], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 70, "title": "Pylons", "file": "ch070-pylons.md", "status": "design draft", "profile": "", "depends_on": [58, 69], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 71, "title": "The Metaverse is a surface", "file": "ch071-the-verse-is-a-surface.md", "status": "design draft", "profile": "", "depends_on": [10, 12], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 72, "title": "Agents you can meet", "file": "ch072-agents-you-can-meet.md", "status": "design draft", "profile": "", "depends_on": [26, 71], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 73, "title": "Realms and makers", "file": "ch073-realms-and-makers.md", "status": "design draft", "profile": "", "depends_on": [58, 59, 71], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 74, "title": "A decision in the world", "file": "ch074-a-decision-in-the-world.md", "status": "design draft", "profile": "", "depends_on": [57, 70, 73], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 75, "title": "Cross-host conformance", "file": "ch075-cross-host-conformance.md", "status": "design draft", "profile": "", "depends_on": [6, 10, 37, 64, 71], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 76, "title": "Releases from one source", "file": "ch076-releases-from-one-source.md", "status": "design draft", "profile": "", "depends_on": [75], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 77, "title": "A Windows host", "file": "ch077-a-windows-host.md", "status": "design draft", "profile": "", "depends_on": [70, 75], "source": [], "qualified_targets": [], "adopted_by": []},
-  {"number": 78, "title": "What 1.0 means", "file": "ch078-what-one-point-zero-means.md", "status": "design draft", "profile": "", "depends_on": [52, 61, 67, 70, 74, 76], "source": [], "qualified_targets": [], "adopted_by": []}
-]}
+{
+  "schema": 1,
+  "book": "openagents",
+  "chapters": [
+    {
+      "number": 1,
+      "title": "A text input on the GPU",
+      "file": "ch001-a-text-input-on-the-gpu.md",
+      "status": "partly implemented",
+      "profile": "cpu",
+      "depends_on": [],
+      "source": [
+        "apps/shared/chat/screen.coax",
+        "apps/openagents-desktop/page.coax",
+        "apps/openagents-ios/composer_screen.coax",
+        "openagents/examples/cases/composer-type.ops"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 2,
+      "title": "State and actions",
+      "file": "ch002-state-and-actions.md",
+      "status": "partly implemented",
+      "profile": "cpu",
+      "depends_on": [
+        1
+      ],
+      "source": [
+        "apps/shared/chat/screen.coax",
+        "apps/openagents-desktop/page.coax",
+        "apps/openagents-ios/composer_screen.coax",
+        "openagents/examples/cases/send.ops"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 3,
+      "title": "A transcript",
+      "file": "ch003-a-transcript.md",
+      "status": "partly implemented",
+      "profile": "cpu",
+      "depends_on": [
+        2
+      ],
+      "source": [
+        "apps/shared/chat/screen.coax",
+        "apps/openagents-desktop/page.coax",
+        "apps/openagents-ios/composer_screen.coax",
+        "openagents/examples/cases/transcript.ops"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": []
+    },
+    {
+      "number": 4,
+      "title": "A reply from the service",
+      "file": "ch004-a-reply-from-the-service.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        3
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 5,
+      "title": "Logging in when a send needs it",
+      "file": "ch005-logging-in-when-a-send-needs-it.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        4
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 6,
+      "title": "One case, every step",
+      "file": "ch006-one-case-every-step.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        5
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 7,
+      "title": "History and the sidebar",
+      "file": "ch007-history-and-the-sidebar.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 8,
+      "title": "Environment and repository chips",
+      "file": "ch008-environment-and-repository-chips.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        7
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 9,
+      "title": "Settings",
+      "file": "ch009-settings.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        7
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 10,
+      "title": "Mobile and other native hosts",
+      "file": "ch010-mobile-and-other-native-hosts.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6,
+        7,
+        8,
+        9
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 11,
+      "title": "The web",
+      "file": "ch011-the-web.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6,
+        7,
+        9
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 12,
+      "title": "The simplest agent",
+      "file": "ch012-the-simplest-agent.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 13,
+      "title": "Members",
+      "file": "ch013-members.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        12
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 14,
+      "title": "A typed plan",
+      "file": "ch014-a-typed-plan.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        13
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 15,
+      "title": "Decide before you generate",
+      "file": "ch015-decide-before-you-generate.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        14
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 16,
+      "title": "Measure the front",
+      "file": "ch016-measure-the-front.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        15
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 17,
+      "title": "Grants and approvals",
+      "file": "ch017-grants-and-approvals.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        14
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 18,
+      "title": "On the record",
+      "file": "ch018-on-the-record.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        14,
+        17
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 19,
+      "title": "Conversation",
+      "file": "ch019-conversation.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        15
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 20,
+      "title": "Prepared answers",
+      "file": "ch020-prepared-answers.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        16,
+        19
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 21,
+      "title": "A knowledge base",
+      "file": "ch021-a-knowledge-base.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        18,
+        20
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 22,
+      "title": "Retrieval by meaning",
+      "file": "ch022-retrieval-by-meaning.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        21
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 23,
+      "title": "Memory and consent",
+      "file": "ch023-memory-and-consent.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        21
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 24,
+      "title": "Coder as a member",
+      "file": "ch024-coder-as-a-member.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        13,
+        17
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 25,
+      "title": "Other engines",
+      "file": "ch025-other-engines.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        24
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 26,
+      "title": "Subagents you can see",
+      "file": "ch026-subagents-you-can-see.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        18,
+        25
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 27,
+      "title": "Programs",
+      "file": "ch027-programs.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        14,
+        24
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 28,
+      "title": "The command line behind the agent",
+      "file": "ch028-the-command-line-behind-the-agent.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        15,
+        17
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 29,
+      "title": "Where work runs",
+      "file": "ch029-where-work-runs.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        24
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 30,
+      "title": "Files and device services",
+      "file": "ch030-files-and-device-services.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        4,
+        6
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 31,
+      "title": "Voice",
+      "file": "ch031-voice.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6,
+        30
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 32,
+      "title": "A wallet",
+      "file": "ch032-a-wallet.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        28
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 33,
+      "title": "Spending approval",
+      "file": "ch033-spending-approval.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        32
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 34,
+      "title": "State that survives",
+      "file": "ch034-state-that-survives.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        4,
+        6
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 35,
+      "title": "Sync across devices",
+      "file": "ch035-sync-across-devices.md",
+      "status": "planned",
+      "profile": "",
+      "depends_on": [
+        5,
+        10,
+        34
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 36,
+      "title": "Background, resume and cancel",
+      "file": "ch036-background-resume-and-cancel.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        4,
+        34
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 37,
+      "title": "One owner per task",
+      "file": "ch037-one-owner-per-task.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        29,
+        35,
+        36
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 38,
+      "title": "The plugin interface",
+      "file": "ch038-the-plugin-interface.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        13,
+        17
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 39,
+      "title": "The sandbox",
+      "file": "ch039-the-sandbox.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        38
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 40,
+      "title": "Installing grants nothing",
+      "file": "ch040-installing-grants-nothing.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        39
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 41,
+      "title": "Write a plugin",
+      "file": "ch041-write-a-plugin.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        40
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 42,
+      "title": "The authoring interview",
+      "file": "ch042-the-authoring-interview.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        27,
+        41
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 43,
+      "title": "Test-time capabilities",
+      "file": "ch043-test-time-capabilities.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        40
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 44,
+      "title": "Cases and graders",
+      "file": "ch044-cases-and-graders.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        43
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 45,
+      "title": "A two-arm run",
+      "file": "ch045-a-two-arm-run.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        18,
+        44
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 46,
+      "title": "A claim's key",
+      "file": "ch046-a-claims-key.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        45
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 47,
+      "title": "Reproduction by another key",
+      "file": "ch047-reproduction-by-another-key.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        46
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 48,
+      "title": "External validation",
+      "file": "ch048-external-validation.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        47
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 49,
+      "title": "Adoption is policy",
+      "file": "ch049-adoption-is-policy.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        48
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 50,
+      "title": "Credit",
+      "file": "ch050-credit.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        47,
+        49
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 51,
+      "title": "Revalidation",
+      "file": "ch051-revalidation.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        46,
+        49
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 52,
+      "title": "The Gym",
+      "file": "ch052-the-gym.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        41,
+        49,
+        50,
+        51
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 53,
+      "title": "Why an open market",
+      "file": "ch053-why-an-open-market.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        52
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 54,
+      "title": "Releases as signed events",
+      "file": "ch054-releases-as-signed-events.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        38,
+        53
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 55,
+      "title": "Everyone gets it",
+      "file": "ch055-everyone-gets-it.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        49,
+        54
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 56,
+      "title": "Paid calls",
+      "file": "ch056-paid-calls.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        32,
+        33,
+        54
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 57,
+      "title": "Metering and receipts",
+      "file": "ch057-metering-and-receipts.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        56
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 58,
+      "title": "Payouts to authors",
+      "file": "ch058-payouts-to-authors.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        32,
+        57
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 59,
+      "title": "One identity",
+      "file": "ch059-one-identity.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        17,
+        32
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 60,
+      "title": "Reputation from reproduced claims",
+      "file": "ch060-reputation-from-reproduced-claims.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        50,
+        57,
+        59
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 61,
+      "title": "Markets for work",
+      "file": "ch061-markets-for-work.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        26,
+        58,
+        60
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 62,
+      "title": "Signed JSON over WebSockets",
+      "file": "ch062-signed-json-over-websockets.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        18
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 63,
+      "title": "Every step is an event",
+      "file": "ch063-every-step-is-an-event.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        52,
+        61,
+        62
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 64,
+      "title": "The OpenAgents API",
+      "file": "ch064-the-openagents-api.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        4,
+        63
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 65,
+      "title": "One schema, three carriages",
+      "file": "ch065-one-schema-three-carriages.md",
+      "status": "planned",
+      "profile": "",
+      "depends_on": [
+        62,
+        64
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 66,
+      "title": "The compliance rule",
+      "file": "ch066-the-compliance-rule.md",
+      "status": "planned",
+      "profile": "",
+      "depends_on": [
+        65
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 67,
+      "title": "Host it yourself",
+      "file": "ch067-host-it-yourself.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        55,
+        64
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 68,
+      "title": "One gateway",
+      "file": "ch068-one-gateway.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        15
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 69,
+      "title": "Models we serve",
+      "file": "ch069-models-we-serve.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        16,
+        68
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 70,
+      "title": "Pylons",
+      "file": "ch070-pylons.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        58,
+        69
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 71,
+      "title": "The Metaverse is a surface",
+      "file": "ch071-the-verse-is-a-surface.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        10,
+        12
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 72,
+      "title": "Agents you can meet",
+      "file": "ch072-agents-you-can-meet.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        26,
+        71
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 73,
+      "title": "Realms and makers",
+      "file": "ch073-realms-and-makers.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        58,
+        59,
+        71
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 74,
+      "title": "A decision in the world",
+      "file": "ch074-a-decision-in-the-world.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        57,
+        70,
+        73
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 75,
+      "title": "Cross-host conformance",
+      "file": "ch075-cross-host-conformance.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        6,
+        10,
+        37,
+        64,
+        71
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 76,
+      "title": "Releases from one source",
+      "file": "ch076-releases-from-one-source.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        75
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 77,
+      "title": "A Windows host",
+      "file": "ch077-a-windows-host.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        70,
+        75
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    },
+    {
+      "number": 78,
+      "title": "What 1.0 means",
+      "file": "ch078-what-one-point-zero-means.md",
+      "status": "design draft",
+      "profile": "",
+      "depends_on": [
+        52,
+        61,
+        67,
+        70,
+        74,
+        76
+      ],
+      "source": [],
+      "qualified_targets": [],
+      "adopted_by": []
+    }
+  ]
+}

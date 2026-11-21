@@ -28,6 +28,7 @@ order, and the numbers it gives on the 1/64 s step.
 LocomotionProfile :: struct {
   walk_speed: f32 = 3.5; run_speed: f32 = 7.5;
   gravity: f32 = 24; jump_speed: f32 = 7.5;
+  fall_gravity_scale: f32 = 1;   // gravity times this from the top of a jump on (1: the same both ways)
   acceleration: f32 = 60; turn_rate: f32 = 10;
   ride_height: f32 = 0.4; step_smooth: f32 = 10;
   slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;
@@ -394,7 +395,7 @@ The [Walk gate](../tests/walk-qualification.json),
 [follower gate](../tests/follower-qualification.json) and
 [Grid adoption](../tests/grid-walk-adoption-qualification.json) record 1,053
 root mutants killed with no survivors or waivers. Dependency gates retain
-their own scope. The [chapter evidence](../../docs/verification/data/aethyr-ch9-2026-11-01/requirements.json)
+their own scope. The chapter evidence
 records the C facade parity, actual scene checks and complete Wasm links.
 
 ## Creative flight
@@ -404,7 +405,7 @@ lets go. [`metaverse-engine/move/creative-fly.coax`](../move/creative-fly.coax)
 is that rule on its own, beside the walk and not inside it.
 
 <!-- source: metaverse-engine/move/creative-fly.coax creative-fly -->
-```coax
+```jai
 FlyTuning :: struct {
   tap: f32 = 0.3;      // s: two presses of the jump control no further apart than this toggle flying
   speed: f32 = 12.0;   // m/s level, with a direction held (a run is 6 to 7)

@@ -104,7 +104,7 @@ its 8 MiB stack reservation left too little space for the vertex arena in
 64 MiB. A conservative call-graph analysis of the actual optimized Wasm
 bounds its stack below 2 MiB. The Grid build reserves 4 MiB, retains its
 400,000 vertices, and checks the actual memory growth. The
-[stack and allocation record](../../docs/verification/data/aethyr-ch11-2026-11-01/grid-memory-stack/qualification.json)
+stack and allocation record
 keeps the original refusal and the exact binary used for the analysis.
 
 Some producer getters consume an update when read. If geometry then
@@ -448,7 +448,7 @@ images; the enclosing host record must also establish matching frame and
 resource inputs. A geometric exclusion cannot supply those missing joins.
 
 The retained [frame and source joins](../../docs/verification/aethyr-deadgears-retained-frame-join-2026-11-02.md)
-and [adversarially checked comparator](../../docs/verification/aethyr-frame-interiors-2026-11-02.json)
+and adversarially checked comparator
 close this explicitly bounded comparison on both GPU readbacks: 229,764
 interior channels pass, with zero color or nonfinite failures. The original
 complete comparison still fails three RGB channels. The 159 excluded pixels
@@ -459,7 +459,7 @@ plan. It refuses malformed trees, unsupported operations, unavailable
 resources and exhausted budgets. It does not replace an unsupported
 operation with zero and call the resulting image a reference.
 
-The [qualified artifact record](../../docs/verification/aethyr-render-final-artifacts-2026-11-02.json)
+The qualified artifact record
 and the [completion matrix](../../docs/verification/aethyr-chapter-11-completion-2026-11-02.md)
 name the supported teaching profile. They keep these outcomes separate:
 
@@ -605,7 +605,7 @@ that restores only the old sine hash produces the old image exactly. At
 320×180, the hash change affects 47,333 pixels, with a maximum byte difference
 of 25. The record keeps both images and both compiler-emitted variants; this
 is evidence for the visible noise change, not an image-tolerance pass.
-The painterly fixture has a separate [migration record](../../docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fixture/noise-migration.json).
+The painterly fixture has a separate migration record.
 Its four clock keys, four phone views and shaft view retain their original
 screenshots beside the new ones. Restoring only `fixture_hash` and
 `metaverse_style_hash` to their old formulas makes all nine scenarios pass their
@@ -618,7 +618,7 @@ inspected every pair before the nine PNG baselines changed. The existing
 six-block screenshot allowance remains unchanged; numerical image
 comparisons still use the separate strict per-channel rule.
 
-Everglade's [final browser record](../../docs/verification/aethyr-everglade-browser-final-2026-11-02.json)
+Everglade's final browser record
 retains the same causal controls. The current shader in the old executor and
 the shared executor produce identical complete raw images on identical
 producer bytes. Restoring only six old sine-noise expressions makes the
@@ -631,7 +631,7 @@ unchanged stock comparison then passed with zero changed blocks, its original
 six-block allowance, startup and lit-pixel checks, and all four actual
 analytics events.
 
-The Fairy Forest's [migration record](../../docs/verification/data/aethyr-ch11-2026-11-01/image-goldens/fairy/noise-migration.json)
+The Fairy Forest's migration record
 uses the same two controls. Restoring only its two sine hashes reproduces
 the old raw image and passes the original saved screenshot with zero changed
 blocks. The integer shader in the old executor reproduces the shared

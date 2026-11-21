@@ -14,6 +14,10 @@ BIP-340 Schnorr signatures and Bech32) moved to
 [Bitcoin From Scratch](../../bitcoin/book/README.md); read its Parts I–V
 first. Their numbers here are kept and marked moved.
 
+**0. Cryptography prerequisites (in Bitcoin From Scratch)**
+
+- [Bitcoin Parts I–V (Chapters 1–13, 15, 18): bytes, big integers, constant-time rules, SHA-256, HMAC, HKDF, ChaCha20, secp256k1, BIP-340 Schnorr, Bech32](../../bitcoin/book/README.md)
+
 **I. Shared secrets, encodings and encryption**
 
 - [14. Shared secrets with ECDH](ch014-shared-secrets-with-ecdh.md) — implemented

@@ -141,9 +141,9 @@ when it is added, to an ancestor at `GetSkipHeight` of its height:
 // Core's GetSkipHeight: the height a skip pointer jumps back to. Even
 // heights clear their lowest set bit; odd ones clear the two lowest set
 // bits of height - 1 and add one back.
-bi_invert_lowest_one :: (n: int) -> int #effects(all) { return n & (n - 1); }
+bi_invert_lowest_one :: (n: int) -> int #effects(all) { return n & (n - 1); }  // mutant: equivalent (every call passes an even n, where n - 1 and n - 2 differ only in bit 0, which n lacks)
 bi_skip_height :: (height: int) -> int #export_c #effects(all) {
-  if height < 2 { return 0; }
+  if height < 2 { return 0; }  // mutant: equivalent (height 2 clears its one bit to 0 either way)
   if height & 1 != 0 { return bi_invert_lowest_one(bi_invert_lowest_one(height - 1)) + 1; }
   return bi_invert_lowest_one(height);
 }
@@ -159,11 +159,11 @@ bi_ancestor_walk :: (l: [] BiLink, i: int, height: int) -> BiWalk #export_c #eff
   while at > height {
     skip := bi_skip_height(at);
     skip_prev := bi_skip_height(at - 1);
-    if l[w.index].skip >= 0 && (skip == height || (skip > height && !(skip_prev < skip - 2 && skip_prev >= height))) {
+    if l[w.index].skip >= 0 && (skip == height || (skip > height && !(skip_prev < skip - 2 && skip_prev >= height))) { // mutant: equivalent (skip >= height reads the same, since skip == height is taken first; skip_prev <= skip - 2 too, since skip_prev is never skip - 2)
       w.index = l[w.index].skip;
       at = skip;
     } else {
-      #assert l[w.index].prev >= 0;
+      #assert l[w.index].prev >= 0;  // mutant: equivalent (a step to the parent never leaves height 1: its skip pointer is genesis, and height 0 is taken by skip == height)
       w.index = l[w.index].prev;
       at -= 1;
     }
@@ -183,8 +183,8 @@ bi_build_skip :: (l: [] BiLink, i: int) #effects(all) {
 // skip heights, so the two walks stay level.
 bi_last_common_ancestor :: (l: [] BiLink, pa: int, pb: int) -> int #export_c #effects(all) {
   a := pa; b := pb;
-  if l[a].height > l[b].height { a = bi_ancestor(l, a, l[b].height); }
-  else if l[b].height > l[a].height { b = bi_ancestor(l, b, l[a].height); }
+  if l[a].height > l[b].height { a = bi_ancestor(l, a, l[b].height); }  // mutant: equivalent (at equal heights the ancestor is the entry itself)
+  else if l[b].height > l[a].height { b = bi_ancestor(l, b, l[a].height); }  // mutant: equivalent (at equal heights the ancestor is the entry itself)
   while a != b {
     while l[a].skip != l[b].skip { a = l[a].skip; b = l[b].skip; }
     a = l[a].prev; b = l[b].prev;
@@ -236,7 +236,7 @@ bi_set_tip :: (t: [] BlockTree, i: int) #effects(all) {
 // FindFork: the last block of the active chain that is an ancestor of i.
 bi_find_fork :: (t: [] BlockTree, index: int) -> int #export_c #effects(all) {
   i := index;
-  if t[0].l[i].height > t[0].height { i = bi_ancestor(t[0].l, i, t[0].height); }
+  if t[0].l[i].height > t[0].height { i = bi_ancestor(t[0].l, i, t[0].height); }  // mutant: equivalent (for >= or no jump: the walk by parents below reaches the same block, as bi_contains refuses heights above the tip)
   while i >= 0 && !bi_contains(t, i) { i = t[0].l[i].prev; }
   return i;
 }
@@ -248,7 +248,7 @@ bi_locator :: (l: [] BiLink, index: int, out: [] int) -> int #export_c #effects(
     out[n] = i; n += 1;
     if l[i].height == 0 { break; }
     h := l[i].height - step;
-    if h < 0 { h = 0; }
+    if h < 0 { h = 0; }  // mutant: equivalent (for <= 0 and < 1: h = 0 assigns what is there)
     i = bi_ancestor(l, i, h);
     if n > 10 { step *= 2; }
   }
@@ -294,7 +294,7 @@ BlockTree :: struct {
 }
 bi_slot :: (t: [] BlockTree, hash: [] u8) -> int #effects(all) {
   key := 0;
-  for k: 0..<7 { key |= cast(int) hash[k] << (8 * k); }
+  for k: 0..<7 { key |= cast(int) hash[k] << (8 * k); }  // mutant: equivalent (for 0..<8 only: an eighth byte lands at bit 56, above any table's mask)
   return key & (t[0].slots.count - 1);
 }
 bi_same :: (a: [] u8, b: [] u8) -> bool #effects(all) {
@@ -353,7 +353,7 @@ bi_add_vartime :: (t: [] BlockTree, h: BlockHeader, hash: [] u8) -> int #export_
     l[i].height = l[prev].height + 1;
     bi_build_skip(l, i);
   }
-  e[i].time_max = ifx prev >= 0 && e[prev].time_max > x.time then e[prev].time_max else x.time;
+  e[i].time_max = ifx prev >= 0 && e[prev].time_max > x.time then e[prev].time_max else x.time;  // mutant: equivalent (for >= only: equal times give the same maximum)
   base := ifx prev >= 0 then e[prev].work else u256_small(0);
   e[i].work = u256_add(base, pow_work_vartime(x.bits));
   status := [1] u32.[e[i].status];
@@ -506,8 +506,8 @@ The tip is the best of the candidates, ordered by
 // came first; then the lower pointer, here the lower position.
 bi_worse :: (e: [] BiEntry, a: int, b: int) -> bool #export_c #effects(all) {
   c := u256_compare_vartime(e[a].work, e[b].work);
-  if c != 0 { return c < 0; }
-  if e[a].seq != e[b].seq { return e[a].seq > e[b].seq; }
+  if c != 0 { return c < 0; }  // mutant: equivalent (c is -1 or 1 here)
+  if e[a].seq != e[b].seq { return e[a].seq > e[b].seq; }  // mutant: equivalent (the ids differ here)
   return a > b;
 }
 ```
@@ -567,12 +567,12 @@ bi_received_block_vartime :: (t: [] BlockTree, i: int, ntx: int) #export_c #effe
     // m_blocks_unlinked's entries under k, oldest first.
     while true {
       child := -1;
-      for c: 0..<t[0].count {
-        if l[c].prev == k && e[c].arrived > 0 && (child < 0 || e[c].arrived < e[child].arrived) { child = c; }
+      for c: 0..<t[0].count {  // mutant: equivalent (entry 0 is never a child: it was added first, so no parent was found)
+        if l[c].prev == k && e[c].arrived > 0 && (child < 0 || e[c].arrived < e[child].arrived) { child = c; }  // mutant: equivalent (child is never 0, and arrival numbers are distinct)
       }
-      if child < 0 { break; }
+      if child < 0 { break; }  // mutant: equivalent (child is never 0)
       e[child].arrived = 0;
-      #assert tail < queue.count;
+      #assert tail < queue.count;  // mutant: equivalent (with <= the next store is out of bounds, so the run fails either way)
       queue[tail] = child; tail += 1;
     }
   }
@@ -603,10 +603,10 @@ bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
   while true {
     best := bi_best_candidate(t);
     if best < 0 { return -1; }
-    bad := -1; failed := false;
+    bad := -1; failed := false;  // mutant: equivalent (failed is read only after the walk sets it)
     j := best;
     while j >= 0 && !bi_contains(t, j) {
-      #assert e[j].chain_tx != 0 || l[j].height == 0;
+      #assert e[j].chain_tx != 0 || l[j].height == 0;  // mutant: equivalent (a candidate's path has chain_tx at least its height + 1, so the first clause always holds)
       failed = e[j].status & BLOCK_FAILED_VALID != 0;
       if failed || e[j].status & BLOCK_HAVE_DATA == 0 { bad = j; break; }
       j = l[j].prev;
@@ -622,7 +622,7 @@ bi_find_most_work_chain :: (t: [] BlockTree) -> int #export_c #effects(all) {
     }
     e[bad].candidate = false;
   }
-  return -1;
+  return -1;  // mutant: equivalent (after while true: unreachable)
 }
 // PruneBlockIndexCandidates: drop every candidate worse than the tip.
 bi_prune_candidates :: (t: [] BlockTree) #effects(all) {
@@ -689,7 +689,7 @@ bi_recalculate_best_header :: (t: [] BlockTree) #effects(all) {
   e := t[0].e;
   l := t[0].l;
   b := bi_tip(t);
-  for c: 0..<t[0].count {
+  for c: 0..<t[0].count {  // mutant: equivalent (entry 0 is genesis, never more work than the tip it is an ancestor of)
     if e[c].status & BLOCK_FAILED_VALID == 0 && u256_compare_vartime(e[b].work, e[c].work) < 0 { b = c; }
   }
   t[0].best_header = b;
@@ -701,11 +701,11 @@ bi_invalid_chain_found :: (t: [] BlockTree, i: int) #export_c #effects(all) {
   e := t[0].e;
   l := t[0].l;
   if t[0].best_invalid < 0 || u256_compare_vartime(e[i].work, e[t[0].best_invalid].work) > 0 { t[0].best_invalid = i; }
-  for c: 0..<t[0].count {
+  for c: 0..<t[0].count {  // mutant: equivalent (entry 0 has no parent, so it descends from nothing)
     if c != i && bi_ancestor(l, c, l[i].height) == i { e[c].status |= BLOCK_FAILED_VALID; }
   }
   b := t[0].best_header;
-  if b >= 0 && bi_ancestor(l, b, l[i].height) == i { bi_recalculate_best_header(t); }
+  if b >= 0 && bi_ancestor(l, b, l[i].height) == i { bi_recalculate_best_header(t); }  // mutant: equivalent (for > 0 forms: a best header of genesis has no more-work entry to move to)
 }
 // InvalidBlockFound: block i failed a check of its data or of
 // ConnectBlock. A mutated block (chapter 46's or 49's) is not marked: the
@@ -773,7 +773,7 @@ it in floating point:
 bi_difficulty :: (bits: u32) -> f64 #export_c #effects(all) {
   shift := cast(int) (bits >> 24) & 0xff;
   d := cast(f64) 0xffff / cast(f64) (bits & 0x00ffffff);
-  while shift < 29 { d *= 256.0; shift += 1; }
+  while shift < 29 { d *= 256.0; shift += 1; }  // mutant: equivalent (one step past 29 is undone by the loop below, and times 256 then over 256 is exact)
   while shift > 29 { d /= 256.0; shift -= 1; }
   return d;
 }

@@ -130,7 +130,7 @@ normalizes only valid columns, and compacts those columns into a mel-major
 128 × valid-frames tensor. Excluded tail values never enter the statistics.
 NeMo's official encoder produces exactly the same valid outputs when given
 these compact features as when given its physical tensor and length mask;
-[the recorded probe](../docs/verification/parakeet-2026-11-02/reference/boundary-probe/record.json)
+the recorded probe
 checks both an ordinary case and the eight-frame subsampling boundary.
 This keeps the generic spectral and earlier compensated teaching profiles
 unchanged while correcting the resident recognizer.

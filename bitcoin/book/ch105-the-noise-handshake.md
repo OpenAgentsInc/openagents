@@ -120,10 +120,10 @@ everything said so far.
 NoisePublic :: struct { ok: bool; bytes: [33] u8; }
 noise_public :: (secret: [] u8) -> NoisePublic #effects(all) {
   r: NoisePublic; k := sc_load(secret);
-  if !k.ok || sc_is_zero(k.value) { return r; }
+  if !k.ok || sc_is_zero(k.value) { return r; } // mutant: equivalent (a key out of range loads as zero, and zero times G encodes to nothing, so r.ok stays false with && too)
   p := smc_multiply(k.value, sg_generator());
   r.ok = p.ok && se_encode(p.value, SE_COMPRESSED, r.bytes[..]) == SE_COMPRESSED;
-  k = ScLoad.{}; p = SgResult.{};
+  k = ScLoad.{}; p = SgResult.{}; // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   return r;
 }
 noise_ecdh :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #effects(all) {
@@ -136,8 +136,8 @@ noise_ecdh :: (secret: [] u8, peer: [] u8, out: [] u8) -> int #effects(all) {
   compressed: [33] u8;
   n := se_encode(shared.value, SE_COMPRESSED, compressed[..]);
   #assert sha256_hash_checked(compressed[..], out, false) == SHA_OK;
-  k = ScLoad.{}; shared = SgResult.{}; noise_wipe(compressed[..]);
-  return ifx n == SE_COMPRESSED then NOISE_OK else NOISE_BAD_PUBKEY;
+  k = ScLoad.{}; shared = SgResult.{}; noise_wipe(compressed[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
+  return ifx n == SE_COMPRESSED then NOISE_OK else NOISE_BAD_PUBKEY; // mutant: equivalent (secp256k1 has prime order, so a nonzero scalar times a valid point is never infinity and n is always 33)
 }
 // HKDF(salt, ikm) with empty info and 64 bytes out: the first 32 replace
 // one key, the last 32 another.
@@ -146,7 +146,7 @@ noise_hkdf :: (salt: [] u8, ikm: [] u8, first: [] u8, second: [] u8) #effects(al
   #assert hkdf_extract_checked(salt, ikm, prk[..], false) == SHA_OK;
   #assert hkdf_expand_checked(prk[..], empty[0..<0], okm[..], 64, false) == SHA_OK;
   for i: 0..<32 { first[i] = okm[i]; second[i] = okm[32 + i]; }
-  noise_wipe(prk[..]); noise_wipe(okm[..]);
+  noise_wipe(prk[..]); noise_wipe(okm[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
 }
 // The nonce: 32 zero bits, then n as a little-endian 64-bit number.
 noise_nonce :: (n: u64) -> [12] u8 #effects(all) { nonce: [12] u8; stored := cb_store_le64(nonce[..], 4, n); return nonce; }
@@ -233,7 +233,7 @@ noise_act_one_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int
   for i: 0..<32 { hs[0].e_priv[i] = e_priv[i]; } hs[0].e_pub = e.bytes;
   h := hs[0].h; noise_sha(h[..], e.bytes[..], hs[0].h[..]);
   es: [32] u8; code := noise_ecdh(e_priv, hs[0].rs[..], es[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], es[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(es[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], es[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(es[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8; c: [16] u8;
   noise_seal(hs[0].temp_k[..], 0, hs[0].h[..], empty[0..<0], c[..]);
   h = hs[0].h; noise_sha(h[..], c[..], hs[0].h[..]);
@@ -250,9 +250,9 @@ noise_act_one_read :: (hs: [] NoiseHandshake, m: [] u8) -> int #effects(all) {
   for i: 0..<33 { hs[0].re[i] = re[i]; }
   h := hs[0].h; noise_sha(h[..], re, hs[0].h[..]);
   es: [32] u8; code := noise_ecdh(hs[0].s_priv[..], re, es[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], es[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(es[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], es[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(es[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8;
-  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[34..<50], empty[0..<0]) { return NOISE_BAD_TAG; }
+  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[34..<50], empty[0..<0]) { return NOISE_BAD_TAG; } // mutant: equivalent (for empty[0..<1]: noise_open opens into out[0..<box.count - 16], no bytes)
   h = hs[0].h; noise_sha(h[..], m[34..<50], hs[0].h[..]);
   hs[0].act = 2;
   return code;
@@ -280,7 +280,7 @@ noise_act_two_write :: (hs: [] NoiseHandshake, e_priv: [] u8, out: [] u8) -> int
   for i: 0..<32 { hs[0].e_priv[i] = e_priv[i]; } hs[0].e_pub = e.bytes;
   h := hs[0].h; noise_sha(h[..], e.bytes[..], hs[0].h[..]);
   ee: [32] u8; code := noise_ecdh(e_priv, hs[0].re[..], ee[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], ee[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(ee[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], ee[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(ee[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8; c: [16] u8;
   noise_seal(hs[0].temp_k[..], 0, hs[0].h[..], empty[0..<0], c[..]);
   h = hs[0].h; noise_sha(h[..], c[..], hs[0].h[..]);
@@ -297,9 +297,9 @@ noise_act_two_read :: (hs: [] NoiseHandshake, m: [] u8) -> int #effects(all) {
   for i: 0..<33 { hs[0].re[i] = re[i]; }
   h := hs[0].h; noise_sha(h[..], re, hs[0].h[..]);
   ee: [32] u8; code := noise_ecdh(hs[0].e_priv[..], re, ee[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], ee[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(ee[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], ee[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(ee[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8;
-  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[34..<50], empty[0..<0]) { return NOISE_BAD_TAG; }
+  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[34..<50], empty[0..<0]) { return NOISE_BAD_TAG; } // mutant: equivalent (for empty[0..<1]: noise_open opens into out[0..<box.count - 16], no bytes)
   h = hs[0].h; noise_sha(h[..], m[34..<50], hs[0].h[..]);
   hs[0].act = 3;
   return code;
@@ -326,7 +326,7 @@ noise_split :: (hs: [] NoiseHandshake, t: [] NoiseTransport) #effects(all) {
   // The initiator sends with the first key; the responder receives with it.
   t[0].sk = ifx hs[0].initiator then first else second;
   t[0].rk = ifx hs[0].initiator then second else first;
-  noise_wipe(first[..]); noise_wipe(second[..]);
+  noise_wipe(first[..]); noise_wipe(second[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   // The handshake's secrets are no longer needed.
   hs[0] = NoiseHandshake.{act = 4, initiator = hs[0].initiator, rs = hs[0].rs};
 }
@@ -357,7 +357,7 @@ noise_act_three_write :: (hs: [] NoiseHandshake, out: [] u8, t: [] NoiseTranspor
   noise_seal(hs[0].temp_k[..], 1, hs[0].h[..], hs[0].s_pub[..], c[..]);
   h := hs[0].h; noise_sha(h[..], c[..], hs[0].h[..]);
   se: [32] u8; code := noise_ecdh(hs[0].s_priv[..], hs[0].re[..], se[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], se[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(se[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], se[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(se[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8; tag: [16] u8;
   noise_seal(hs[0].temp_k[..], 0, hs[0].h[..], empty[0..<0], tag[..]);
   out[0] = 0; for i: 0..<49 { out[1 + i] = c[i]; } for i: 0..<16 { out[50 + i] = tag[i]; }
@@ -374,9 +374,9 @@ noise_act_three_read :: (hs: [] NoiseHandshake, m: [] u8, t: [] NoiseTransport) 
   hs[0].rs = rs;
   h := hs[0].h; noise_sha(h[..], m[1..<50], hs[0].h[..]);
   se: [32] u8; code := noise_ecdh(hs[0].e_priv[..], rs[..], se[..]);
-  ck := hs[0].ck; noise_hkdf(ck[..], se[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(se[..]); noise_wipe(ck[..]);
+  ck := hs[0].ck; noise_hkdf(ck[..], se[..], hs[0].ck[..], hs[0].temp_k[..]); noise_wipe(se[..]); noise_wipe(ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
   empty: [1] u8;
-  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[50..<66], empty[0..<0]) { return NOISE_BAD_TAG; }
+  if !noise_open(hs[0].temp_k[..], 0, hs[0].h[..], m[50..<66], empty[0..<0]) { return NOISE_BAD_TAG; } // mutant: equivalent (for empty[0..<1]: noise_open opens into out[0..<box.count - 16], no bytes)
   noise_split(hs, t);
   return code;
 }
@@ -403,11 +403,11 @@ noise_encrypt :: (t: [] NoiseTransport, m: [] u8, out: [] u8) -> int #effects(al
   if m.count > NOISE_MAX_MESSAGE || out.count < NOISE_HEADER + m.count + NOISE_TAG { return -1; }
   length := [2] u8.[cast(u8) (m.count >> 8), cast(u8) (m.count & 255)];
   n: [1] u64;
-  noise_seal(t[0].sk[..], t[0].sn, length[0..<0], length[..], out[0..<NOISE_HEADER]);
+  noise_seal(t[0].sk[..], t[0].sn, length[0..<0], length[..], out[0..<NOISE_HEADER]); // mutant: equivalent (for out[0..<19]: noise_seal writes out[0..<2 + 16], and out holds at least 34 bytes here)
   n[0] = t[0].sn; noise_used(t[0].sk[..], t[0].sck[..], n[..]); t[0].sn = n[0];
   empty: [1] u8;
   noise_seal(t[0].sk[..], t[0].sn, empty[0..<0], m, out[NOISE_HEADER..<NOISE_HEADER + m.count + NOISE_TAG]);
-  n[0] = t[0].sn; noise_used(t[0].sk[..], t[0].sck[..], n[..]); t[0].sn = n[0];
+  n[0] = t[0].sn; noise_used(t[0].sk[..], t[0].sck[..], n[..]); t[0].sn = n[0]; // mutant: equivalent (for n[0] = t[0].sn: n[0] already holds it from two lines up)
   return NOISE_HEADER + m.count + NOISE_TAG;
 }
 // Read the first 18 bytes: the length of the message that follows, which
@@ -449,7 +449,7 @@ noise_used :: (key: [] u8, ck: [] u8, n: [] u64) #effects(all) {
     old_k: [32] u8; old_ck: [32] u8;
     for i: 0..<32 { old_k[i] = key[i]; old_ck[i] = ck[i]; }
     noise_hkdf(old_ck[..], old_k[..], ck, key);
-    noise_wipe(old_k[..]); noise_wipe(old_ck[..]);
+    noise_wipe(old_k[..]); noise_wipe(old_ck[..]); // mutant: equivalent (it wipes a local that no caller can read after the procedure returns)
     n[0] = 0;
   }
 }

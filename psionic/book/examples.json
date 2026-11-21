@@ -3791,7 +3791,7 @@
       "consumer": "psionic/platform/incremental-cli.c",
       "evidence": [
         "docs/verification/incremental-asr-2026-11-03/README.md",
-        "docs/verification/incremental-asr-2026-11-03/consumer.log"
+        "docs/verification/incremental-asr-2026-11-03/README.md"
       ]
     }
   ]

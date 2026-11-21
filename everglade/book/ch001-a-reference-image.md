@@ -26,7 +26,7 @@ Every later chapter compares its result with that picture.
 ## What exists today
 
 The reference and the captures that compare with it are in
-[`docs/verification/character-glade-reference-light-2026-11-07/`](../../docs/verification/character-glade-reference-light-2026-11-07/).
+`docs/verification/character-glade-reference-light-2026-11-07/`.
 `reference-compare.jpg` and `reference-compare-2.jpg` put the reference next to
 Character Create's glade.
 

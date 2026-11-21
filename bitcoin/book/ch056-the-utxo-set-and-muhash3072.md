@@ -204,7 +204,7 @@ coin_decompress_amount :: (compressed: u64) -> u64 #effects(all) {
   x := compressed - 1;
   e := x % 10;
   x /= 10;
-  n := cast(u64) 0;
+  n: u64;
   if e < 9 {
     d := x % 9 + 1;
     x /= 9;
@@ -340,18 +340,18 @@ coin_write_vartime :: (c: Coin, script: [] u8, out: [] u8) -> int #effects(all) 
   if c.height < 0 || c.height > 0x7fffffff { return -COIN_BAD_HEIGHT; }
   code := cast(u64) c.height * 2 + (ifx c.coinbase then cast(u64) 1 else 0);
   at := coin_varint_write_vartime(out, 0, code);
-  if at < 0 { return -COIN_CAPACITY; }
+  if at < 0 { return -COIN_CAPACITY; }  // mutant: equivalent (at is -1 or at least 1, never 0)
   at = coin_varint_write_vartime(out, at, coin_compress_amount(c.value));
-  if at < 0 { return -COIN_CAPACITY; }
+  if at < 0 { return -COIN_CAPACITY; }  // mutant: equivalent (at is -1 or at least 2, never 0)
   short: [33] u8;
   k := coin_compress_script_vartime(script, short[..]);
-  if k > 0 {
+  if k > 0 {  // mutant: equivalent (k is 0, 21 or 33: short holds 33 bytes, so never -1 or 1)
     if k > out.count - at { return -COIN_CAPACITY; }
     for i: 0..<k { out[at+i] = short[i]; }
     return at + k;
   }
   at = coin_varint_write_vartime(out, at, cast(u64) (script.count + COIN_SPECIAL));
-  if at < 0 || script.count > out.count - at { return -COIN_CAPACITY; }
+  if at < 0 || script.count > out.count - at { return -COIN_CAPACITY; }  // mutant: equivalent (for at < 0 only: at is -1 or at least 3, never 0)
   for i: 0..<script.count { out[at+i] = script[i]; }
   return at + script.count;
 }
@@ -420,7 +420,7 @@ order: a VARINT keeps numeric order.
 // The chainstate key of an outpoint: 'C', the txid in hash order, VARINT(n).
 // Returns the length, or -1 when out is too small or txid is not 32 bytes.
 coin_key_write_vartime :: (txid: [] u8, n: int, out: [] u8) -> int #effects(all) {
-  if txid.count != 32 || n < 0 || n > 0xffffffff || out.count < 33 { return -1; }
+  if txid.count != 32 || n < 0 || n > 0xffffffff || out.count < 33 + coin_varint_size(cast(u64) n) { return -1; }
   out[0] = COIN_KEY_PREFIX;
   for i: 0..<32 { out[1+i] = txid[i]; }
   return coin_varint_write_vartime(out, 33, cast(u64) n);
@@ -437,7 +437,7 @@ coin_key_read_vartime :: (b: [] u8) -> CoinKey #effects(all) {
 // positive as a sorts before, with or after b.
 utxo_order_vartime :: (a_txid: [] u8, a_n: int, b_txid: [] u8, b_n: int) -> int #effects(all) {
   for i: 0..<32 {
-    if a_txid[i] != b_txid[i] { return ifx a_txid[i] < b_txid[i] then -1 else 1; }
+    if a_txid[i] != b_txid[i] { return ifx a_txid[i] < b_txid[i] then -1 else 1; }  // mutant: equivalent (for < only: the bytes differ here, so < and <= agree)
   }
   return ifx a_n < b_n then -1 else ifx a_n > b_n then 1 else 0;
 }
@@ -490,7 +490,7 @@ utxo_hash_init :: (state: [] u8) -> bool #effects(all) {
 utxo_hash_add_vartime :: (state: [] u8, txid: [] u8, n: int, c: Coin, script: [] u8) -> bool #effects(all) {
   rec: [10100] u8;
   k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
-  return k > 0 && sha256_update_checked(state, rec[0..<k], false) == SHA_OK;
+  return k > 0 && sha256_update_checked(state, rec[0..<k], false) == SHA_OK;  // mutant: equivalent (for k > 0: k is -1 or at least 49)
 }
 utxo_hash_final :: (state: [] u8, out: [] u8) -> bool #effects(all) {
   once: [32] u8;
@@ -502,7 +502,7 @@ utxo_hash_final :: (state: [] u8, out: [] u8) -> bool #effects(all) {
 utxo_muhash_apply_vartime :: (m: MuHash3072, txid: [] u8, n: int, c: Coin, script: [] u8, spend: bool) -> MuHash3072 #effects(all) {
   rec: [10100] u8;
   k := coin_txout_ser_vartime(txid, n, c, script, rec[..]);
-  #assert k > 0;
+  #assert k > 0;  // mutant: equivalent (k is -1 or at least 49, so >= 0 and > 1 fail on the same records)
   return ifx spend then muhash_remove_vartime(m, rec[0..<k]) else muhash_insert_vartime(m, rec[0..<k]);
 }
 ```
@@ -639,7 +639,7 @@ mh_mul_into :: (a: [] u64, b: [] u64, out: [] u64) #effects(all) {
   // The second reduction: what carried past limb 47, times 1103717, back in.
   mh_muln2(c[..], MH_DIFF);
   for j: 0..<MH_LIMBS { out[j] = mh_addnextract2(c[..], tmp[j]); }
-  #assert c[1] == 0 && (c[0] == 0 || c[0] == 1);
+  #assert c[1] == 0 && (c[0] == 0 || c[0] == 1);  // mutant: equivalent (c[1] and c[2] are always 0 here, so a mutant that only weakens this assert cannot fail)
   if mh_overflows(out) { mh_reduce(out); }
   if c[0] != 0 { mh_reduce(out); }
 }
@@ -671,7 +671,7 @@ mh_overflows :: (a: [] u64) -> bool #effects(all) {
 // a - p in place, for an a at least p: add 1103717 and drop the carry out
 // of the top limb, which is 2^3072.
 mh_reduce :: (a: [] u64) #effects(all) {
-  c := [3] u64.[MH_DIFF, 0, 0];
+  c := [3] u64.[MH_DIFF, 0, 0];  // mutant: equivalent (c[2] is never read: mh_addnextract2 uses c[0] and c[1])
   for i: 0..<MH_LIMBS { a[i] = mh_addnextract2(c[..], a[i]); }
 }
 ```
@@ -706,26 +706,30 @@ mh_inverse :: (a: Num3072) -> Num3072 #effects(all) {
   for i: 0..<MH_LIMBS { p[i] = a.limb[i]; }
   for i: 0..<11 {
     for k: 0..<MH_LIMBS { p[48*(i+1) + k] = p[48*i + k]; }
-    mh_square_n_mul(p[48*(i+1)..<48*(i+2)], 1 << i, p[48*i..<48*(i+1)]);
+    mh_square_n_mul(mh_entry(p[..], i + 1), 1 << i, mh_entry(p[..], i));
   }
   r: Num3072;
   for k: 0..<MH_LIMBS { r.limb[k] = p[48*11 + k]; }
   x := r.limb[..];
-  mh_square_n_mul(x, 512, p[48*9..<48*10]);
-  mh_square_n_mul(x, 256, p[48*8..<48*9]);
-  mh_square_n_mul(x, 128, p[48*7..<48*8]);
-  mh_square_n_mul(x, 64, p[48*6..<48*7]);
-  mh_square_n_mul(x, 32, p[48*5..<48*6]);
-  mh_square_n_mul(x, 8, p[48*3..<48*4]);
-  mh_square_n_mul(x, 2, p[48*1..<48*2]);
-  mh_square_n_mul(x, 1, p[0..<48]);       // r(3051)
-  mh_square_n_mul(x, 5, p[48*2..<48*3]);  // 0 1111
-  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
-  mh_square_n_mul(x, 2, p[0..<48]);       // 0 1
-  mh_square_n_mul(x, 4, p[0..<48]);       // 000 1
-  mh_square_n_mul(x, 4, p[48..<96]);      // 00 11
-  mh_square_n_mul(x, 3, p[0..<48]);       // 00 1
+  mh_square_n_mul(x, 512, mh_entry(p[..], 9));
+  mh_square_n_mul(x, 256, mh_entry(p[..], 8));
+  mh_square_n_mul(x, 128, mh_entry(p[..], 7));
+  mh_square_n_mul(x, 64, mh_entry(p[..], 6));
+  mh_square_n_mul(x, 32, mh_entry(p[..], 5));
+  mh_square_n_mul(x, 8, mh_entry(p[..], 3));
+  mh_square_n_mul(x, 2, mh_entry(p[..], 1));
+  mh_square_n_mul(x, 1, mh_entry(p[..], 0));  // r(3051)
+  mh_square_n_mul(x, 5, mh_entry(p[..], 2));  // 0 1111
+  mh_square_n_mul(x, 3, mh_entry(p[..], 0));  // 00 1
+  mh_square_n_mul(x, 2, mh_entry(p[..], 0));  // 0 1
+  mh_square_n_mul(x, 4, mh_entry(p[..], 0));  // 000 1
+  mh_square_n_mul(x, 4, mh_entry(p[..], 1));  // 00 11
+  mh_square_n_mul(x, 3, mh_entry(p[..], 0));  // 00 1
   return r;
+}
+// Table entry k, r(2^k), as a view of its 48 limbs.
+mh_entry :: (p: [] u64, k: int) -> [] u64 #effects(all) {
+  return p[48*k..<48*k + 48];  // mutant: equivalent (a longer view reads the same: mh_mul_into reads limbs 0 to 47 of it only)
 }
 ```
 
@@ -776,13 +780,13 @@ prints every hash.
 muhash_finalize_vartime :: (m: MuHash3072, out: [] u8) -> int #effects(all) {
   if out.count != 32 { return MUHASH_CAPACITY; }
   n := m.numerator; d := m.denominator;
-  if mh_is_overflow(n) { n = mh_full_reduce(n); }
-  if mh_is_overflow(d) { d = mh_full_reduce(d); }
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }  // mutant: equivalent (mh_multiply takes unreduced input, and with d = 1 the reduction below runs)
+  if mh_is_overflow(d) { d = mh_full_reduce(d); }  // mutant: equivalent (an unreduced d is not 1 and inverts to the same residue; p + 1 inverts to 1)
   one: Num3072; one.limb[0] = 1;
   same := true;
   for i: 0..<MH_LIMBS { if d.limb[i] != one.limb[i] { same = false; } }
   if !same { n = mh_multiply(n, mh_inverse(d)); }
-  if mh_is_overflow(n) { n = mh_full_reduce(n); }
+  if mh_is_overflow(n) { n = mh_full_reduce(n); }  // mutant: equivalent (n is below p already: mh_multiply's result is, and with d = 1 the reduction above ran)
   b: [384] u8;
   #assert mh_to_bytes(n, b[..]) == MUHASH_OK;
   #assert sha256_hash_checked(b[..], out, false) == SHA_OK;

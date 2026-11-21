@@ -118,7 +118,7 @@ ms_sort :: (keys: [] u8, size: int, n: int, order: [] int) #effects(all) {
   }
 }
 ms_before :: (keys: [] u8, size: int, a: int, b: int) -> bool #effects(all) {
-  for k: 0..<size { x := keys[a*size+k]; y := keys[b*size+k]; if x != y { return x < y; } }
+  for k: 0..<size { x := keys[a*size+k]; y := keys[b*size+k]; if x != y { return x < y; } }  // mutant: equivalent (x != y here, so x < y and x <= y agree)
   return false;
 }
 // m <key 1> ... <key n> n OP_CHECKMULTISIG, for n compressed keys (33
@@ -135,7 +135,7 @@ multisig_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, out: [] u
   }
   if out.count < 3 + 2 + 34 * n { return MS_CAPACITY; }
   order: [MS_MAX_KEYS] int;
-  if sorted { ms_sort(keys, 33, n, order[..]); } else { for i: 0..<n { order[i] = i; } }
+  if sorted { ms_sort(keys, 33, n, order[..]); } else { for i: 0..<n { order[i] = i; } }  // mutant: equivalent (order is a fresh local of zeros, so order[0] is 0 either way)
   at := ms_number(m, out, 0);
   for i: 0..<n {
     out[at] = 33;
@@ -174,19 +174,19 @@ equal the number of keys, and `OP_CHECKMULTISIG` must be the last byte.
 ```jai
 // Core's CPubKey::ValidSize: 33 bytes after 02 or 03, 65 after 04, 06 or 07.
 ms_valid_size :: (s: [] u8, at: int, n: int) -> bool #effects(all) {
-  if n == 0 { return false; }
+  if n == 0 { return false; }  // mutant: equivalent (a push of nothing is never 33 or 65 bytes, and the script's last byte follows it, so s[at] is in bounds either way)
   h := s[at];
   return (n == 33 && (h == 2 || h == 3)) || (n == 65 && (h == 4 || h == 6 || h == 7));
 }
 // Core's GetScriptNumber: OP_1 to OP_16, or a minimal push of a minimal
 // CScriptNum, from lo to hi; -1 otherwise.
 ms_script_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int #effects(all) {
-  v := -1;
+  v := -1;  // mutant: equivalent (lo is 1 or m, at least 1, in every call: 0 and -1 both fail v < lo)
   if op.op >= OP_1 && op.op <= OP_16 { v = op.op - 0x50; }
-  else if op.ok && op.op <= OP_PUSHDATA4 {
+  else if op.ok && op.op <= OP_PUSHDATA4 {  // mutant: equivalent (a failed op is 0xff; an op above OP_PUSHDATA4 carries no data and no data is minimal only as OP_0; OP_PUSHDATA4 is never the minimal push of the at most 4 bytes a number may have)
     data := s[op.at..<op.at+op.n];
     if !script_minimal_push_vartime(data, op.op) { return -1; }
-    x := script_num_vartime(data, true, 4);
+    x := script_num_vartime(data, true, 4);  // mutant: equivalent (a minimal 5-byte number is at least 2^31 in size, outside 1 to 20 either way)
     if !x.ok { return -1; }
     v = x.value;
   }
@@ -198,20 +198,20 @@ MultisigMatch :: struct { ok: bool; m: int; n: int; }
 // Core's MatchMultisig: the last byte is OP_CHECKMULTISIG, then m, keys
 // of a valid size, n equal to the keys counted, and OP_CHECKMULTISIG.
 multisig_match_vartime :: (s: [] u8, key: [] int, key_n: [] int) -> MultisigMatch #export_c #effects(all) {
-  if s.count < 1 || s[s.count-1] != 0xae { return MultisigMatch.{}; }
+  if s.count < 1 || s[s.count-1] != 0xae { return MultisigMatch.{}; }  // mutant: equivalent (a 1-byte script is OP_CHECKMULTISIG alone, and OP_CHECKMULTISIG is not a number, so m refuses it next)
   op := script_op_vartime(s, 0);
   if !op.ok { return MultisigMatch.{}; }
-  m := ms_script_number(s, op, 1, MS_MAX_KEYS);
-  if m < 0 { return MultisigMatch.{}; }
+  m := ms_script_number(s, op, 1, MS_MAX_KEYS);  // mutant: equivalent (n must be from m to 20 below, so an m of 21 is refused there)
+  if m < 0 { return MultisigMatch.{}; }  // mutant: equivalent (ms_script_number returns -1 or a value of at least lo, which is 1)
   n := 0;
   op = script_op_vartime(s, op.next);
-  while op.ok && op.op <= OP_PUSHDATA4 && ms_valid_size(s, op.at, op.n) {
+  while op.ok && op.op <= OP_PUSHDATA4 && ms_valid_size(s, op.at, op.n) {  // mutant: equivalent (a failed op is 0xff, and an op above OP_PUSHDATA4 has n = 0, which ms_valid_size refuses)
     if n < key.count { key[n] = op.at; key_n[n] = op.n; }
     n += 1;
     op = script_op_vartime(s, op.next);
   }
   count := ms_script_number(s, op, m, MS_MAX_KEYS);
-  if count < 0 || count != n || n > key.count { return MultisigMatch.{}; }
+  if count < 0 || count != n || n > key.count { return MultisigMatch.{}; }  // mutant: equivalent (ms_script_number returns -1 or a value of at least m, which is at least 1)
   if op.next + 1 != s.count { return MultisigMatch.{}; }
   return MultisigMatch.{ok=true, m=m, n=n};
 }
@@ -273,7 +273,7 @@ multisig_a_script_vartime :: (m: int, keys: [] u8, n: int, sorted: bool, order: 
 multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c #effects(all) {
   if s.count == 0 || s[0] != 32 || s[s.count-1] != 0x9c { return MultisigMatch.{}; }
   at := 0; n := 0;
-  while s.count - at >= 34 {
+  while s.count - at >= 34 {  // mutant: equivalent (with exactly 34 bytes left the last is OP_NUMEQUAL (checked above), not the key's OP_CHECKSIG or OP_CHECKSIGADD; read as the threshold, an op ending just before it spans 33 bytes, a push of at least 29, which is no number)
     if s[at] != 32 { return MultisigMatch.{}; }
     n += 1; at += 33;
     if cast(int) s[at] != (ifx n == 1 then 0xac else 0xba) { return MultisigMatch.{}; }
@@ -283,7 +283,7 @@ multisig_a_match_vartime :: (s: [] u8) -> MultisigMatch #export_c #effects(all) 
   op := script_op_vartime(s, at);
   if !op.ok || op.next >= s.count || s[op.next] != 0x9c || op.next + 1 != s.count { return MultisigMatch.{}; }
   m := ms_script_number(s, op, 1, n);
-  if m < 0 { return MultisigMatch.{}; }
+  if m < 0 { return MultisigMatch.{}; }  // mutant: equivalent (ms_script_number returns -1 or a value of at least lo, which is 1)
   return MultisigMatch.{ok=true, m=m, n=n};
 }
 // BIP-342's script-path signature hash of input index for a leaf of
@@ -293,13 +293,13 @@ multisig_a_sighash_vartime :: (b: [] u8, index: int, amounts: [] int, spent: [] 
   tp := bt_tx_read(b);
   if !tp.ok { return false; }
   h: [32] u8;
-  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, leaf, h[..]) != TR_OK { return false; }
+  if taproot_leaf_hash_vartime(TR_LEAF_TAPSCRIPT, leaf, h[..]) != TR_OK { return false; }  // mutant: equivalent (TR_LEAF_TAPSCRIPT is a valid leaf version and a slice is far under SHA-256's input limit, so the hash never fails)
   return bt_sighash_taproot_ext(b, tp, index, amounts, spent, hashtype, b[0..<0], h[..], BT_NO_CODESEP, out);
 }
 // A BIP-340 signature of sighash by key (not tweaked: a script-path key
 // signs as itself), into out (64 bytes).
 multisig_a_sign :: (key: [] u8, sighash: [] u8, aux: [] u8, w: [] SignWork, out: [] u8) -> bool #effects(all) {
-  status := SIGN_REFUSED;
+  status := SIGN_REFUSED;  // mutant: equivalent (the loop below sets status six times before it is read)
   for k: 0..<6 { status = schnorr_sign_step(key, aux, sighash, w, out, false); }
   return status == SIGN_DONE;
 }

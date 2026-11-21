@@ -167,37 +167,50 @@ file to `at` and writes `buf[at ..< len]`.
 // Replays the journal buf[0 ..< total] for owner: the state into j, and
 // what to keep of the file. total 0 starts a new journal.
 cj_open :: (j: [] Cj, buf: [] u8, total: int, owner: [32] u8) -> CjOpen #effects(all) {
-  fresh: Cj; j[0] = fresh; j[0].owner = owner;
-  if buf.count < CJ_HEADER || total < 0 || total > buf.count { return CjOpen.{status = CJO_SMALL}; }
-  h := cj_header(buf, total, owner);
+  scope:[32]u8;return cj_open_format(j,buf,total,owner,scope,1);
+}
+cj_open_v2 :: (j:[]Cj,buf:[]u8,total:int,owner:[32]u8,scope:[32]u8)->CjOpen #effects(all) {
+ return cj_open_format(j,buf,total,owner,scope,2);
+}
+cj_format_byte :: (owner:[32]u8,scope:[32]u8,version:int,i:int)->u8 #effects(all) {
+ if i==3 {return cast(u8)version;}if i>=36 {return scope[i-36];}return cj_header_byte(owner,i);
+}
+cj_format_header :: (buf:[]u8,total:int,owner:[32]u8,scope:[32]u8,version:int,header:int)->int #effects(all) {
+ for i:0..<header {if i<total && buf[i]!=cj_format_byte(owner,scope,version,i) {if i<3 {return CJO_MAGIC;}if i==3 {return CJO_VERSION;}return ifx i>=36 then CJO_SCOPE else CJO_OWNER;}}return CJO_DONE;
+}
+cj_open_format :: (j:[]Cj,buf:[]u8,total:int,owner:[32]u8,scope:[32]u8,version:int)->CjOpen #effects(all) {
+  if j.count!=1 {return CjOpen.{status=CJO_SMALL};}fresh:Cj;j[0]=fresh;j[0].owner=owner;j[0].scope=scope;j[0].version=version;
+  header:=ifx version==2 then CJ_V2_HEADER else CJ_HEADER;width:=cj_width(j);prefix:=width*2;overhead:=prefix+4;mask:=ifx width==4 then 4294967295 else 65535;
+  if buf.count < header || total < 0 || total > cj_capacity(j,buf.count) { return CjOpen.{status = CJO_SMALL}; }
+  h := ifx version==1 then cj_header(buf,total,owner) else cj_format_header(buf,total,owner,scope,version,header);
   if h != CJO_DONE { return CjOpen.{status = h}; }
-  if total < CJ_HEADER {
+  if total < header {
     // New, or torn while the header was written: write it (again).
-    for i: 0..<CJ_HEADER { buf[i] = cj_header_byte(owner, i); }
+    for i: 0..<header { buf[i] = cj_format_byte(owner,scope,version,i); }
     o := cj_opened(j, ifx total == 0 then CJO_NEW else CJO_CUT, 0, 0);
-    j[0].len = CJ_HEADER;
+    j[0].len = header;
     return o;
   }
-  p := CJ_HEADER; records := 0;
+  p := header; records := 0;
   while p < total {
     // Fewer bytes than the smallest record (a length, a type, a check):
     // a torn append, with nothing committed after it.
-    if total - p < 9 { return cj_opened(j, CJO_CUT, p, records); }
-    n := cast(int) cj_get(buf, p, 2); c := cast(int) cj_get(buf, p + 2, 2);
-    if n + c != 0xffff || n < 1 || n > CJ_RECORD_MOST {
+    if total - p < overhead+1 { return cj_opened(j, CJO_CUT, p, records); }
+    n := cast(int) cj_get(buf, p, width); c := cast(int) cj_get(buf, p + width, width);
+    if n + c != mask || n < 1 || n > cj_record_limit(j) {
       // Not a length: a crash's zeros, or damage.
       if cj_zeros(buf, p, total) { return cj_opened(j, CJO_CUT, p, records); }
       return CjOpen.{status = CJO_CORRUPT, at = p, records = records};
     }
-    end := p + 8 + n;
+    end := p + overhead + n;
     if end > total { return cj_opened(j, CJO_CUT, p, records); }
-    sum := cj_check(buf, p, n);
-    if cj_get(sum[..], 0, 4) != cj_get(buf, p + 4 + n, 4) {
+    sum := cj_format_check(buf, p, n,prefix);
+    if cj_get(sum[..], 0, 4) != cj_get(buf, p + prefix + n, 4) {
       // A last record that fails its check is a partial append; any other is damage.
       if end == total { return cj_opened(j, CJO_CUT, p, records); }
       return CjOpen.{status = CJO_CORRUPT, at = p, records = records};
     }
-    if !cj_apply(j, buf, p + 4, n) { return CjOpen.{status = CJO_RECORD, at = p, records = records}; }
+    if !cj_apply(j, buf, p + prefix, n) { return CjOpen.{status = CJO_RECORD, at = p, records = records}; }
     records += 1; p = end;
   }
   return cj_opened(j, CJO_DONE, p, records);
@@ -242,13 +255,30 @@ cj_queue :: (j: [] Cj, buf: [] u8, id: [32] u8, relays: u64, bytes: string) -> i
   if !j[0].open { return -CJ_SHUT; }
   k := cj_pub_of(j, id);
   if k >= 0 { return k; }
-  if relays == 0 || (relays & cj_not(cj_known(j))) != 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_QUEUE_FIXED { return -CJ_ARG; }
+  stored:=cj_find(j,id);if j[0].version==2 && stored>=0 && j[0].event[stored].relays!=0 {ce:=j[0].event[stored];return ifx ce.relays==relays && cast(string)buf[ce.from..<ce.to]==bytes then 0 else -CJ_ARG;}
+  if relays == 0 || (relays & cj_not(cj_known(j))) != 0 || bytes.count < 1 || bytes.count > cj_payload_limit(j,CJ_QUEUE_FIXED) { return -CJ_ARG; }
   n := CJ_QUEUE_FIXED + bytes.count;
   if !cj_room(j, buf, n) { return -CJ_FULL; }
   b := cj_begin(j, buf, CJ_R_QUEUE, n);
   cj_put_id(buf, b, id); cj_put(buf, b + 32, relays, 8);
   for i: 0..<bytes.count { buf[b + 40 + i] = bytes[i]; }
   return cj_status(cj_commit(j, buf, n), j[0].pubs - 1);
+}
+// NCJ2 stages a verified original with its actual signing key. NIP-59's
+// signing key is ephemeral, so the account key is never substituted for it.
+// The reference then freezes targets without copying or re-signing its bytes.
+cj_queue_event :: (j:[]Cj,buf:[]u8,e:NostrEvent,relays:u64)->int #effects(all) {
+ if !j[0].open {return -CJ_SHUT;}
+ if j[0].version!=2 || e.error!=NE_OK || !e.verified || e.created_at<0 || e.original.count<1 || e.original.count>65536 || relays==0 || (relays&cj_not(cj_known(j)))!=0 {return -CJ_ARG;}
+ existing:=cj_pub_of(j,e.id);if existing>=0 {p:=j[0].pub[existing];return ifx p.relays==relays && cast(string)buf[p.from..<p.to]==e.original then existing else -CJ_ARG;} // mutant: equivalent (>=0 -> >=1: slot zero falls through to the same retained original/target comparison and the same zero success result)
+ stored:=cj_find(j,e.id);
+ if stored>=0 {old:=j[0].event[stored];if cast(string)buf[old.from..<old.to]!=e.original {return -CJ_ARG;}if old.relays!=0 {return ifx old.relays==relays then 0 else -CJ_ARG;}}
+ if stored<0 {
+  n:=CJ_EVENT_FIXED+e.original.count;if !cj_room(j,buf,n) {return -CJ_FULL;}b:=cj_begin(j,buf,CJ_R_EVENT,n);
+  buf[b]=255;buf[b+1]=255;cj_put(buf,b+2,cast(u64)e.created_at,8);cj_put_id(buf,b+10,e.id);cj_put_id(buf,b+42,e.public_key);
+  for c,i:e.original {buf[b+74+i]=c;}if !cj_commit(j,buf,n) {return -CJ_FULL;}
+ }
+ if !cj_room(j,buf,41) {return -CJ_FULL;}b:=cj_begin(j,buf,CJ_R_QUEUE_REF,41);cj_put_id(buf,b,e.id);cj_put(buf,b+32,relays,8);return cj_status(cj_commit(j,buf,41),j[0].pubs-1);
 }
 // Journals relay r's OK for your event id: CJK_ACKED when the publish was
 // pending there, CJK_UNKNOWN (nothing written) otherwise.
@@ -295,7 +325,7 @@ and is a duplicate.
 // Either of the last two moves the cursor when the event is newer.
 cj_deliver :: (j: [] Cj, buf: [] u8, sub: int, r: int, created_at: int, id: [32] u8, author: [32] u8, bytes: string, deletes: [] [32] u8) -> int #effects(all) {
   if !j[0].open { return -CJ_SHUT; }
-  if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || created_at < 0 || bytes.count < 1 || bytes.count > CJ_RECORD_MOST - CJ_EVENT_FIXED { return -CJ_ARG; }
+  if !cj_sub_ok(sub) || !cj_relay_ok(j, r) || created_at < 0 || bytes.count < 1 || bytes.count > cj_payload_limit(j,CJ_EVENT_FIXED) { return -CJ_ARG; }
   seen := ifx cj_tombed(j, id, author) then CJD_DELETED else ifx cj_find(j, id) >= 0 then CJD_DUP else CJD_NEW;
   if seen != CJD_NEW {
     if cj_since(j, sub, r) >= created_at { return seen; }

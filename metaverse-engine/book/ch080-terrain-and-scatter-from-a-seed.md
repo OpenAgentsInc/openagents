@@ -564,7 +564,7 @@ were. Grass takes a low sun through its blades toward the eye
   its Python oracle.
 - [everglade/world/plan.coax](../../everglade/world/plan.coax): Everglade's
   ground, bounds, streets and clearings.
-- [apps/openagents-web/everglade.coax](../../apps/openagents-web/everglade.coax):
+- apps/openagents-web/everglade.coax:
   Everglade's forest scatter (`TREE_SPACING`, 4.2 m).
 - [apps/openagents-web/myrealm/myrealm-shapes.coax](../../apps/openagents-web/myrealm/myrealm-shapes.coax)
   and [myrealm-site.coax](../../apps/openagents-web/myrealm/myrealm-site.coax):

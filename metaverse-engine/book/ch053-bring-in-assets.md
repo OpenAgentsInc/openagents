@@ -522,3 +522,5 @@ each pack's last lines are shown; the tool prints every entry.)
 [chapter 14](ch014-figures-and-animation.md) (rigs and clips),
 [chapter 16](ch016-budgets-that-refuse.md) (identities and budgets) and
 [chapter 51](ch051-a-realm-is-a-document.md) (what a document may name).
+
+See also the runnable PLE data-hall scene fixture example in [ple-data-hall.coax](../examples/ple-data-hall.coax).

@@ -206,8 +206,8 @@ term:
 // when d and the half's sign differ.
 glv_add_digit :: (result: SgPoint, table: [8] SgPoint, digit: int, negative: bool) -> SgPoint #effects(all) {
   d := ifx negative then -digit else digit;
-  selected := table[((ifx d < 0 then -d else d) - 1) / 2];
-  if d < 0 { selected.y = sf_negate(selected.y); }
+  selected := table[((ifx d < 0 then -d else d) - 1) / 2];  // mutant: equivalent (at d = 0, -d is d; every caller passes a nonzero digit)
+  if d < 0 { selected.y = sf_negate(selected.y); }  // mutant: equivalent (d = 0 never arrives: each call sits under digits[bit] != 0)
   return sg_add_valid(result, selected);
 }
 // a·G + b·P with a = a1 + λ·a2 and b = b1 + λ·b2: four width-5 wNAFs of
@@ -222,7 +222,7 @@ glv_ecmult_counted_vartime :: (a: ScScalar, point: SgPoint, b: ScScalar) -> GlvC
   w3 := sm_wnaf_vartime(b1.value, SM_P_WINDOW); w4 := sm_wnaf_vartime(b2.value, SM_P_WINDOW);
   length := sm_joint_length_vartime(w1, w2);
   other := sm_joint_length_vartime(w3, w4);
-  if other > length { length = other; }
+  if other > length { length = other; }  // mutant: equivalent (at other == length the assignment keeps the same value)
   r := GlvCount.{value=sg_infinity()};
   for round: 0..<length {
     bit := length-1-round;

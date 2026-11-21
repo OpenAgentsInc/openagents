@@ -184,12 +184,12 @@ pol_key_size :: (s: [] u8, at: int, n: int) -> bool #effects(all) {
 // GetScriptNumber: OP_1 to OP_16, or a minimal push of a minimal
 // CScriptNum, from lo to hi; -1 otherwise.
 pol_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int #effects(all) {
-  v := -1;
+  v := -1;   // mutant: equivalent (v stays -1 only below lo, and lo is at least 1)
   if op.op >= OP_1 && op.op <= OP_16 { v = op.op - 0x50; }
-  else if op.ok && op.op <= OP_PUSHDATA4 {
+  else if op.ok && op.op <= OP_PUSHDATA4 {   // mutant: equivalent (a non-push op or OP_1NEGATE gives an empty push, 0, below lo; a PUSHDATA4 push of up to 4 bytes is never minimal)
     data := s[op.at..<op.at+op.n];
     if !script_minimal_push_vartime(data, op.op) { return -1; }
-    x := script_num_vartime(data, true, 4);
+    x := script_num_vartime(data, true, 4);   // mutant: equivalent (a minimal 5-byte number is above 20, and hi is at most 20)
     if !x.ok { return -1; }
     v = x.value;
   }
@@ -200,16 +200,16 @@ pol_number :: (s: [] u8, op: ScriptOp, lo: int, hi: int) -> int #effects(all) {
 // then OP_CHECKMULTISIG as the last byte. m and n are 0 when it doesn't
 // match.
 pol_multisig :: (s: [] u8) -> PolSolved #effects(all) {
-  if s.count < 1 || s[s.count-1] != OP_CHECKMULTISIG { return PolSolved.{}; }
+  if s.count < 1 || s[s.count-1] != OP_CHECKMULTISIG { return PolSolved.{}; }   // mutant: equivalent (a one-byte script cannot hold m and OP_CHECKMULTISIG)
   op := script_op_vartime(s, 0);
   if !op.ok { return PolSolved.{}; }
-  m := pol_number(s, op, 1, SCRIPT_MAX_KEYS);
-  if m < 0 { return PolSolved.{}; }
+  m := pol_number(s, op, 1, SCRIPT_MAX_KEYS);   // mutant: equivalent (count must be from m to 20, so an m of 21 fails there)
+  if m < 0 { return PolSolved.{}; }   // mutant: equivalent (pol_number gives -1 or at least 1)
   n := 0;
   op = script_op_vartime(s, op.next);
-  while op.ok && op.op <= OP_PUSHDATA4 && pol_key_size(s, op.at, op.n) { n += 1; op = script_op_vartime(s, op.next); }
+  while op.ok && op.op <= OP_PUSHDATA4 && pol_key_size(s, op.at, op.n) { n += 1; op = script_op_vartime(s, op.next); }   // mutant: equivalent (a non-push op or OP_1NEGATE has n 0, which pol_key_size refuses)
   count := pol_number(s, op, m, SCRIPT_MAX_KEYS);
-  if count < 0 || count != n || op.next + 1 != s.count { return PolSolved.{}; }
+  if count < 0 || count != n || op.next + 1 != s.count { return PolSolved.{}; }   // mutant: equivalent (count is -1 or at least m, which is at least 1)
   return PolSolved.{type=POL_MULTISIG, m=m, n=n};
 }
 ```
@@ -323,7 +323,7 @@ pol_standard_tx_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, outs: [] TxOut, o: Po
     if sig.count > POL_MAX_SCRIPTSIG { return pol_refused(POL_SCRIPTSIG_SIZE, k); }
     if !script_push_only_vartime(sig) { return pol_refused(POL_SCRIPTSIG_PUSHONLY, k); }
   }
-  left := ifx o.datacarrier > 0 then o.datacarrier else 0;
+  left := ifx o.datacarrier > 0 then o.datacarrier else 0;   // mutant: equivalent (a datacarrier of 0 gives 0 either way)
   for k: 0..<t.nout {
     spk := b[outs[k].script..<outs[k].script+outs[k].script_n];
     if !pol_standard_output_vartime(spk) { return pol_refused(POL_SCRIPTPUBKEY, k); }
@@ -466,7 +466,7 @@ pol_witness_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, items: [] TxItem, prev: [
     p2sh := false;
     if script_p2sh_vartime(spk) {
       st := pol_stack_vartime(b[ins[k].script..<ins[k].script+ins[k].script_n], redeem[..]);
-      if st.error != SCRIPT_ERR_OK || st.depth == 0 { return pol_refused(POL_WITNESS, k); }
+      if st.error != SCRIPT_ERR_OK || st.depth == 0 { return pol_refused(POL_WITNESS, k); }   // mutant: equivalent (an error leaves depth 0, and depth 0 with no error leaves an empty script, no witness program)
       script = redeem[0..<st.n];
       p2sh = true;
     }
@@ -480,7 +480,7 @@ pol_witness_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, items: [] TxItem, prev: [
     }
     if version == 1 && n == 32 && !p2sh {
       top := items[first+count-1];
-      if count >= 2 && top.n > 0 && b[top.at] == POL_ANNEX_TAG { return pol_refused(POL_WITNESS, k); }
+      if count >= 2 && top.n > 0 && b[top.at] == POL_ANNEX_TAG { return pol_refused(POL_WITNESS, k); }   // mutant: equivalent (an empty top item is refused on the next line either way)
       if count >= 2 {
         if top.n == 0 { return pol_refused(POL_WITNESS, k); }    // the control block
         if (cast(int) b[top.at] & POL_LEAF_MASK) == POL_LEAF_TAPSCRIPT {
@@ -604,11 +604,11 @@ pol_le :: (out: [] u8, at: int, value: int, width: int) -> int #effects(all) {
 }
 pol_start :: (out: [] u8, version: int, segwit: bool, nin: int) -> int #effects(all) {
   at := pol_le(out, 0, version, 4);
-  if segwit { out[at] = 0; out[at+1] = 1; at += 2; }
+  if segwit { out[at] = 0; out[at+1] = 1; at += 2; }   // mutant: equivalent (out starts as zeros)
   return tx_compact_write_vartime(out, at, nin);
 }
 pol_input :: (out: [] u8, at: int, index: int, sig: [] u8) -> int #effects(all) {
-  for i: 0..<32 { out[at+i] = POL_FUNDING; }
+  for i: 0..<32 { out[at+i] = POL_FUNDING; }   // mutant: equivalent (the 33rd byte is the index, written next)
   a := pol_le(out, at + 32, index, 4);
   a = tx_compact_write_vartime(out, a, sig.count);
   a = tx_put(out, a, sig);

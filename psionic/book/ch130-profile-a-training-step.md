@@ -489,7 +489,7 @@ kernel checks; the bottleneck and measurements in this chapter still stand.
 
 Chapter 129's 10.8M-parameter decoder was profiled with Nsight Systems over
 ten steps and one held-out pass
-([kernels](../../docs/verification/psionic-train-shakespeare-2026-11-03/profile/kernels-10-steps.csv)).
+(kernels).
 The products take 93% of kernel time (the `x·W` orientation 38%, `Xᵀ·dY`
 32%, `dY·Wᵀ` 23%); ReLU² takes 2.7%, softmax 1.9%, RMS norm 1.3%, the
 token-table gradient 0.6% and AdamW 0.2%. Uploads and downloads are 512
@@ -520,7 +520,7 @@ shipped) ran at 134,043 tokens/s, so the loads themselves were the
 bottleneck. Packing BF16 four to a word with a matching fragment
 permutation, and splitting parameter gradients along the tokens, gives
 236,998 tokens/s (0.069 s a step) with the checks kept.
-The [new profile](../../docs/verification/psionic-train-shakespeare-2026-11-03/v3-mma/profile/)
+The new profile
 splits kernel time as follows:
 
 - Tensor-core products: 78%. Attention products are 54 points of that, and

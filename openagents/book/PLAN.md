@@ -34,7 +34,7 @@ extends the owner.
 | Login, accounts, agent grants and the HTTP API | [`coax/web/api/`](../../coax/web/api); on iOS the GPU login screen ([`apps/shared/login/`](../../apps/shared/login)) and the native auth adapter ([`AppAuth.swift`](../../apps/shared/host/apple/AppAuth.swift)) | 4, 5, 59, 64 |
 | Engines, sessions, the journal, observation | [`coax/lib/agent/`](../../coax/lib/agent) | 3, 4, 12, 18, 25, 26, 37 |
 | Money rules | The Payments context, [`pay/`](../../pay) | 32, 33, 56–58, 61 |
-| The wallet | The iPhone app's Breez Spark wallet ([`apps/openagents-ios/OpenAgents/Wallet`](../../apps/openagents-ios/OpenAgents/Wallet)) over `pay/` | 32, 33 |
+| The wallet | Shared Apple Breez Spark host ([`SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)), Desktop wallet panel & RPC ([`Window+Wallet.swift`](../../apps/openagents-desktop/Window+Wallet.swift), [`Window+WalletRPC.swift`](../../apps/openagents-desktop/Window+WalletRPC.swift)), and `openagents wallet` CLI ([`wallet.coax`](../../apps/openagents-cli/wallet.coax)) over `#authority` [`pay/`](../../pay) | 32, 33 |
 | Voice | [`metaverse/voice.coax`](../../metaverse/voice.coax), [`apps/shared/dictation.coax`](../../apps/shared/dictation.coax) | 31 |
 | Worlds | The Metaverse Engine | 71–74 |
 | Releases (every iOS change ships in a TestFlight or store build) | [`coax/remote/`](../../coax/remote), each app's release script | 76 |

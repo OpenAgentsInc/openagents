@@ -148,12 +148,12 @@ by one miner:
 // count it is the upper of the two middle times, as in Core.
 LOCKTIME_MEDIAN_SPAN :: 11;
 locktime_median_time_past_vartime :: (times: [] int) -> int #effects(all) {
-  #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;
+  #assert times.count >= 1 && times.count <= LOCKTIME_MEDIAN_SPAN;   // mutant: equivalent (a precondition: calling it with another count traps, which no check can observe, and a count of 12 or more traps on sorted's bounds either way)
   sorted: [LOCKTIME_MEDIAN_SPAN] int;
   n := times.count;
   for i: 0..<n {
     v := times[i]; j := i;
-    while j > 0 && sorted[j-1] > v { sorted[j] = sorted[j-1]; j -= 1; }
+    while j > 0 && sorted[j-1] > v { sorted[j] = sorted[j-1]; j -= 1; }   // mutant: equivalent (moving an equal integer past an equal one leaves the same sorted list)
     sorted[j] = v;
   }
   return sorted[n / 2];
@@ -313,7 +313,7 @@ locktime_sequence_locks_vartime :: (b: [] u8, t: Tx, ins: [] TxIn, enforce: bool
   lock := LockPair.{height=-1, time=-1};
   if !enforce || tx_le_vartime(b, 0, 4) < 2 { return lock; }
   for k: 0..<t.nin {
-    r := locktime_relative_vartime(tx_le_vartime(b, ins[k].sequence, 4));
+    r := locktime_relative_vartime(tx_le_vartime(b, ins[k].sequence, 4));   // mutant: equivalent (a fifth byte is bit 32 or up of the sequence, and the masks read only bits 0 to 31)
     if !r.enabled { continue; }
     if r.by_time {
       lock.time = lt_max(lock.time, times[k] + r.seconds - 1);

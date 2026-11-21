@@ -47,7 +47,7 @@ decisions ([wallets and custody](../../docs/auth/wallets-and-custody.md),
 [Lightning Addresses](../../docs/auth/lightning-addresses.md)).
 
 The wallet exists. The iPhone app has a Breez Spark wallet
-([`apps/openagents-ios/OpenAgents/Wallet`](../../apps/openagents-ios/OpenAgents/Wallet)):
+([`apps/openagents-ios/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)):
 receive by invoice, on-chain or Spark address, send, a balance, a history,
 the encrypted backup and a Lightning Address claimed in one tap. Swift talks
 to the Spark SDK and nothing else. Every rule about money is Coax in
@@ -73,7 +73,7 @@ A plan for what this chapter ships once the draft is approved:
   without real money.
 It builds on what exists today:
 
-- [`apps/openagents-ios/OpenAgents/Wallet`](../../apps/openagents-ios/OpenAgents/Wallet)
+- [`apps/openagents-ios/host/apple/SparkWallet.swift`](../../apps/shared/host/apple/SparkWallet.swift)
 - [`pay/wallet.coax`](../../pay/wallet.coax)
 - [`pay/wallet-policy.coax`](../../pay/wallet-policy.coax)
 - [`pay/wallet-backup.coax`](../../pay/wallet-backup.coax)

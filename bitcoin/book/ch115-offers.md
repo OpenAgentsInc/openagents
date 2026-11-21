@@ -234,7 +234,7 @@ offer_text_decode_vartime :: (text: string, out: [] u8) -> OfrText #effects(all)
   r: OfrText;
   for p: 0..<4 { if cast(string) kept[0..<one] == OFR_PREFIXES[p] { r.kind = p + 1; } }
   if r.kind == 0 { return OfrText.{code = OFR_BAD_PREFIX}; }
-  acc: u32 = 0; bits := 0;
+  acc: u32 = 0; bits := 0;   // mutant: equivalent (acc's first bit leaves the 12 kept bits before any byte or padding reads it)
   for k: one + 1..<n {
     d := -1;
     for j: 0..<32 { if OFR_CHARSET[j] == kept[k] { d = j; } }
@@ -258,7 +258,7 @@ offer_text_encode_vartime :: (kind: int, data: [] u8, out: [] u8) -> int #effect
   if out.count < 4 + (data.count * 8 + 4) / 5 { return -1; }
   for i: 0..<3 { out[i] = prefix[i]; }
   out[3] = '1'; n := 4;
-  acc: u32 = 0; bits := 0;
+  acc: u32 = 0; bits := 0;   // mutant: equivalent (acc's first bit leaves the 12 kept bits before any character reads it)
   for x: data {
     acc = ((acc << 8) | cast(u32) x) & 0xfff; bits += 8;
     while bits >= 5 { bits -= 5; out[n] = OFR_CHARSET[cast(int) ((acc >> cast(u32) bits) & 31)]; n += 1; }
@@ -289,17 +289,17 @@ ofr_paths_vartime :: (v: [] u8, which: int) -> OfrPaths #effects(all) {
   r: OfrPaths; at := 0;
   while at < v.count {
     if v[at] == 0 || v[at] == 1 {
-      if v.count - at < 9 { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 9 { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (the path key's check, next, refuses what this one would)
       at += 9;
     } else {
-      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 33 bytes left the path key's check refuses)
       at += 33;
     }
-    if v.count - at < 34 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+    if v.count - at < 34 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 34 bytes left there is no room for a hop)
     hops := cast(int) v[at + 33]; at += 34;
     if hops == 0 { return OfrPaths.{code = OFR_BAD_PATH}; }
     for h: 0..<hops {
-      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }
+      if v.count - at < 33 || !ofr_point_vartime(v[at..<at + 33]) { return OfrPaths.{code = OFR_BAD_PATH}; }   // mutant: equivalent (with exactly 33 bytes left the length's check refuses)
       if v.count - at < 35 { return OfrPaths.{code = OFR_BAD_PATH}; }
       n := ln_u16(v, at + 33);
       if v.count - at - 35 < n { return OfrPaths.{code = OFR_BAD_PATH}; }
@@ -354,9 +354,9 @@ ofr_in_range :: (kind: int, t: u64) -> bool #effects(all) {
   return (t >= 1 && t <= 1005) || (t >= OFR_BILLION && t <= 3999999999);
 }
 ofr_known :: (kind: int, t: u64) -> bool #effects(all) {
-  offer := t >= 2 && t <= 22 && t % 2 == 0;
+  offer := t >= 2 && t <= 22 && t % 2 == 0;   // mutant: equivalent (23 is odd)
   request := t == 0 || t == 80 || t == 82 || t == 84 || t == 86 || t == 88 || t == 89 || t == 90 || t == 91 || t == 240;
-  invoice := t >= 160 && t <= 176 && t % 2 == 0;
+  invoice := t >= 160 && t <= 176 && t % 2 == 0;   // mutant: equivalent (177 is odd)
   if kind == OFR_OFFER { return offer; }
   if kind == OFR_REQUEST { return offer || request; }
   if kind == OFR_INVOICE { return offer || request || invoice; }
@@ -377,14 +377,14 @@ ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int #effects(all) {
   if t == INV_RELATIVE_EXPIRY { return ofr_tu_code(v, 4); }
   if t == OFR_FEATURES || t == REQ_FEATURES { return ofr_features_code(v, none[..]); }
   if t == INV_FEATURES { return ofr_features_code(v, mpp[..]); }
-  if t == OFR_PATHS || t == REQ_PATHS || t == INV_PATHS { return ofr_paths_vartime(v, 0).code; }
+  if t == OFR_PATHS || t == REQ_PATHS || t == INV_PATHS { return ofr_paths_vartime(v, 0).code; }   // mutant: equivalent (which path's last hop is kept does not change the code)
   if t == OFR_ISSUER_ID || t == REQ_PAYER_ID || t == INV_NODE_ID { return ifx ofr_point_vartime(v) then OFR_OK else OFR_BAD_POINT; }
   if t == REQ_CHAIN || t == INV_PAYMENT_HASH || t == PROOF_PREIMAGE { return ifx v.count == 32 then OFR_OK else OFR_BAD_LENGTH; }
   if t == REQ_BIP_353_NAME {
-    if v.count < 1 || v.count < 2 + cast(int) v[0] { return OFR_BAD_LENGTH; }
+    if v.count < 1 || v.count < 2 + cast(int) v[0] { return OFR_BAD_LENGTH; }   // mutant: equivalent (a value of one byte is shorter than 2 + its first byte)
     name := cast(int) v[0]; domain := cast(int) v[1 + name];
     if v.count != 2 + name + domain { return OFR_BAD_LENGTH; }
-    for i: 0..<v.count {
+    for i: 0..<v.count {   // mutant: equivalent (i 0 is skipped either way)
       if i == 0 || i == 1 + name { continue; }
       c := v[i];
       ok := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_' || c == '.';
@@ -418,7 +418,7 @@ ofr_record_vartime :: (kind: int, t: u64, v: [] u8) -> int #effects(all) {
 // The records of b[0].data[0..<n]: first the framing of the whole stream,
 // then each record against its type.
 ofr_frame_vartime :: (b: [] Bolt12) -> int #effects(all) {
-  b[0].count = 0; at := 0; previous: u64 = 0;
+  b[0].count = 0; at := 0; previous: u64 = 0;   // mutant: equivalent (the first record is read without comparing its type to previous)
   while at < b[0].n {
     r := tlv_next_vartime(b[0].data[0..<b[0].n], at, previous, b[0].count == 0);
     if r.code == LN_TRUNCATED { return OFR_TRUNCATED; }
@@ -478,7 +478,7 @@ ofr_tagged :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
   #assert so_update(sha[..], a, false) && so_update(sha[..], b, false) && so_finish(sha[..], out, false);
 }
 ofr_less :: (a: [] u8, b: [] u8) -> bool #effects(all) {
-  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }
+  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }   // mutant: equivalent (two bytes that differ are never equal)
   return false;
 }
 ofr_branch :: (t: [] u8, a: [] u8, b: [] u8, out: [] u8) #effects(all) {
@@ -490,7 +490,7 @@ ofr_tags :: (first: [] u8) -> OfrTags #effects(all) {
   r: OfrTags; m: [4200] u8;
   ofr_tag(ofr_text("LnLeaf", m[..]), r.leaf[..]); ofr_tag(ofr_text("LnBranch", m[..]), r.branch[..]);
   word := "LnNonce";
-  for i: 0..<7 { m[i] = word[i]; }
+  for i: 0..<7 { m[i] = word[i]; }   // mutant: equivalent (m already starts with the L of LnBranch)
   for i: 0..<first.count { m[7 + i] = first[i]; }
   ofr_tag(m[0..<7 + first.count], r.nonce[..]);
   return r;
@@ -614,7 +614,7 @@ ofr_check_request_vartime :: (b: [] Bolt12) -> int #effects(all) {
     if ofr_has(b, OFR_AMOUNT) && !ofr_has(b, OFR_CURRENCY) && ofr_has(b, REQ_AMOUNT) {
       q: u64 = ifx ofr_has(b, REQ_QUANTITY) then ofr_number(b, REQ_QUANTITY) else 1;
       a := ofr_number(b, OFR_AMOUNT);
-      if q != 0 && a > CB_MAX64 / q { return OFR_BAD_AMOUNT; }
+      if q != 0 && a > CB_MAX64 / q { return OFR_BAD_AMOUNT; }   // mutant: equivalent (a quantity of 0 is refused before this, so q is at least 1)
       if ofr_number(b, REQ_AMOUNT) < a * q { return OFR_BAD_AMOUNT; }
     }
   } else {
@@ -649,7 +649,7 @@ ofr_check_invoice_vartime :: (b: [] Bolt12) -> int #effects(all) {
     return OFR_REQUIRED;
   }
   if !ofr_has(b, INV_PATHS) || !ofr_has(b, INV_BLINDEDPAY) { return OFR_REQUIRED; }
-  paths := ofr_paths_vartime(ofr_value(b, INV_PATHS), 0); pay := ofr_payinfo_vartime(ofr_value(b, INV_BLINDEDPAY));
+  paths := ofr_paths_vartime(ofr_value(b, INV_PATHS), 0); pay := ofr_payinfo_vartime(ofr_value(b, INV_BLINDEDPAY));   // mutant: equivalent (which path's last hop is kept does not change the count)
   if paths.count != pay.count || pay.usable == 0 { return OFR_BAD_PATH; }
   if !ofr_has(b, OFR_SIGNATURE) { return OFR_REQUIRED; }
   if !ofr_verify_vartime(b, "signature", ofr_value(b, INV_NODE_ID), ofr_value(b, OFR_SIGNATURE)) { return OFR_BAD_SIGNATURE; }
@@ -752,7 +752,7 @@ offer_stream_vartime :: (w: [] OfrWriter, b: [] Bolt12) -> int #effects(all) {
   at := 0;
   for i: 0..<w[0].count {
     at = tlv_write_vartime(b[0].data[..], at, w[0].types[i], w[0].pool[w[0].starts[i]..<w[0].starts[i] + w[0].lengths[i]]);
-    if at < 0 { return OFR_CAPACITY; }
+    if at < 0 { return OFR_CAPACITY; }   // mutant: equivalent (tlv_write_vartime returns -1 or more than 0)
   }
   b[0].n = at;
   return ofr_stream_vartime(b);
@@ -766,7 +766,7 @@ offer_sign_vartime :: (w: [] OfrWriter, type: u64, name: string, key: [] u8) -> 
   if code != OFR_OK { return code; }
   if !ofr_merkle_vartime(b[..], root[..]) { return OFR_REQUIRED; }
   ofr_sig_hash(w[0].kind, name, root[..], h[..]);
-  status := SIGN_REFUSED;
+  status := SIGN_REFUSED;   // mutant: equivalent (the loop sets status)
   for k: 0..<6 { status = schnorr_sign_step(key, aux[..], h[..], work[..], sig[..], false); }
   if status != SIGN_DONE { w[0].code = OFR_BAD_SIGNATURE; return w[0].code; }
   return offer_put_vartime(w, type, sig[..]);
@@ -870,7 +870,7 @@ OfrSub :: struct { code: int; known: bool; kept: bool; hash: [32] u8; }
 ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] OfrHashes, reading: bool) -> OfrSub #effects(all) {
   if hi - lo == 1 {
     n := nodes[lo];
-    return OfrSub.{known = n.state != OFR_UNKNOWN, kept = n.state == OFR_KEPT, hash = n.hash};
+    return OfrSub.{known = n.state != OFR_UNKNOWN, kept = n.state == OFR_KEPT, hash = n.hash};   // mutant: equivalent (a hidden subtree is replaced by a missing hash wherever it meets a kept one, so known matters only with no kept leaf, and a proof always keeps some)
   }
   k := ofr_split(hi - lo);
   a := ofr_proof_tree(tags, nodes, lo, lo + k, h, reading);
@@ -884,13 +884,13 @@ ofr_proof_tree :: (tags: [] OfrTags, nodes: [] OfrNode, lo: int, hi: int, h: [] 
       for i: 0..<32 { side.hash[i] = h[0].bytes[32 * h[0].taken + i]; }
       side.known = true; h[0].taken += 1;
     } else {
-      if h[0].n == 64 { return OfrSub.{code = OFR_CAPACITY}; }
+      if h[0].n == 64 { return OfrSub.{code = OFR_CAPACITY}; }   // mutant: equivalent (a tree of at most 64 leaves has at most 63 missing hashes)
       for i: 0..<32 { h[0].bytes[32 * h[0].n + i] = side.hash[i]; }
       h[0].n += 1;
     }
     if a.kept { c = side; } else { a = side; }
   }
-  r := OfrSub.{known = a.known && c.known, kept = a.kept || c.kept};
+  r := OfrSub.{known = a.known && c.known, kept = a.kept || c.kept};   // mutant: equivalent (in a proof read back, a subtree with no kept leaf is never known)
   if r.known { ofr_branch(tags[0].branch[..], a.hash[..], c.hash[..], r.hash[..]); }
   return r;
 }
@@ -941,16 +941,16 @@ ofr_check_proof_vartime :: (b: [] Bolt12) -> int #effects(all) {
   if leaves.count / 32 != nk { return OFR_BAD_LEAVES; }
   // The invoice's leaves in type order: 0 and the markers hidden, the
   // kept fields from their records and nonces.
-  if nk + m + 1 > 128 { return OFR_CAPACITY; }
-  nodes: [128] OfrNode; n := 0; tags: [1] OfrTags; tags[0] = ofr_tags(b[0].data[0..<0]);
-  nodes[0].state = OFR_UNKNOWN; n = 1;
+  if nk + m + 1 > 128 { return OFR_CAPACITY; }   // mutant: equivalent (a proof has at most 59 kept types besides its own fields, and 64 markers)
+  nodes: [128] OfrNode; n := 0; tags: [1] OfrTags; tags[0] = ofr_tags(b[0].data[0..<0]);   // mutant: equivalent (n is set next, and the nonce tag is not used when reading)
+  nodes[0].state = OFR_UNKNOWN; n = 1;   // mutant: equivalent (a hidden leaf never meets the tree but through a missing hash)
   ki := 0; mi := 0;
   while ki < nk || mi < m {
-    if mi < m && (ki == nk || marks[mi] < kept[ki]) { nodes[n].state = OFR_UNKNOWN; mi += 1; }
+    if mi < m && (ki == nk || marks[mi] < kept[ki]) { nodes[n].state = OFR_UNKNOWN; mi += 1; }   // mutant: equivalent (a marker is never a kept type, and a hidden leaf's state is never read but as not kept)
     else {
       j := ofr_find(b, kept[ki]);
       ofr_leaf(tags[..], ofr_raw(b, j), leaves[32 * ki..<32 * ki + 32], nodes[n].hash[..]);
-      nodes[n].state = OFR_KEPT; ki += 1;
+      nodes[n].state = OFR_KEPT; ki += 1;   // mutant: equivalent (nodes start as zeros, which is OFR_KEPT)
     }
     n += 1;
   }
@@ -984,8 +984,8 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
   tags: [1] OfrTags; tags[0] = ofr_tags(ofr_raw(invoice, 0));
   nodes: [64] OfrNode; n := 0;
   nonces: [2048] u8; nn := 0;
-  marks: [576] u8; mn := 0; last: u64 = 0; count := 0;
-  previous_kept := false; previous_type: u64 = 0;
+  marks: [576] u8; mn := 0; last: u64 = 0; count := 0;   // mutant: equivalent (the first marker is 1 whatever last holds)
+  previous_kept := false; previous_type: u64 = 0;   // mutant: equivalent (the first marker is 1 either way)
   for i: 0..<invoice[0].count {
     t := invoice[0].records[i].type;
     if ofr_signed_type(t) { continue; }
@@ -993,13 +993,13 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
     ofr_leaf(tags[..], ofr_raw(invoice, i), nonce[..], nodes[n].hash[..]);
     shown := false; for k: keep { if k == t && t != 0 { shown = true; } }
     if shown {
-      nodes[n].state = OFR_KEPT;
+      nodes[n].state = OFR_KEPT;   // mutant: equivalent (nodes start as zeros, which is OFR_KEPT)
       for j: 0..<32 { nonces[32 * nn + j] = nonce[j]; } nn += 1;
       code := offer_put_vartime(w, t, invoice[0].data[invoice[0].records[i].start..<invoice[0].records[i].start + invoice[0].records[i].length]);
     } else {
       nodes[n].state = OFR_HIDDEN;
       if t != 0 {
-        last = ofr_marker(previous_kept, previous_type, last, count); count += 1;
+        last = ofr_marker(previous_kept, previous_type, last, count); count += 1;   // mutant: equivalent (count is only compared with 0)
         mn = bigsize_write_vartime(marks[..], mn, last);
       }
     }
@@ -1007,7 +1007,7 @@ offer_proof_vartime :: (invoice: [] Bolt12, preimage: [] u8, keep: [] u64, payer
   }
   missing: [1] OfrHashes;
   root := ofr_proof_tree(tags[..], nodes[0..<n], 0, n, missing[..], false);
-  if root.code != OFR_OK { w[0].code = root.code; return w[0].code; }
+  if root.code != OFR_OK { w[0].code = root.code; return w[0].code; }   // mutant: equivalent (a writer's tree never runs out of room for missing hashes)
   code := offer_put_vartime(w, OFR_SIGNATURE, ofr_value(invoice, OFR_SIGNATURE));
   code = offer_put_vartime(w, PROOF_PREIMAGE, preimage);
   if count > 0 || explicit { code = offer_put_vartime(w, PROOF_OMITTED, marks[0..<mn]); }

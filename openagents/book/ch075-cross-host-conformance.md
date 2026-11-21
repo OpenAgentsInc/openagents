@@ -61,7 +61,7 @@ It builds on what exists today:
 - [`apps/openagents-cli`](../../apps/openagents-cli)
 - [`apps/openagents-desktop`](../../apps/openagents-desktop)
 - [`apps/openagents-ios`](../../apps/openagents-ios)
-- [`apps/everglade-mobile`](../../apps/everglade-mobile)
+- `apps/everglade-mobile`
 - [`apps/shared`](../../apps/shared)
 - [`coax/lib/tui`](../../coax/lib/tui)
 - [`coder/tui/coder.coax`](../../coder/tui/coder.coax)

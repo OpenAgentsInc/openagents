@@ -88,7 +88,7 @@ subsidy_vartime :: (height: int, halving: int) -> int #export_c #effects(all) {
 // interval, until the subsidy is 0.
 subsidy_total_vartime :: (halving: int) -> int #export_c #effects(all) {
   total := 0;
-  for i: 0..<SUBSIDY_MAX_HALVINGS { total += subsidy_vartime(i * halving, halving) * halving; }
+  for i: 0..<SUBSIDY_MAX_HALVINGS { total += subsidy_vartime(i * halving, halving) * halving; }  // mutant: equivalent (a 65th interval adds a subsidy of 0)
   return total;
 }
 ```
@@ -142,11 +142,11 @@ number into a push of its minimal `CScriptNum` (chapter 36):
 <!-- source: coax/lib/bitcoin/subsidy.coax height -->
 ```jai
 // CScript() << nHeight: -1 and 1 to 16 as one opcode (OP_1NEGATE, OP_1 to
-// OP_16), 0 as OP_0, anything else as a push of its minimal CScriptNum.
+// OP_16), anything else as a push of its minimal CScriptNum. 0's CScriptNum
+// is empty, and a push of nothing is the byte 0, OP_0.
 // Writes the bytes to out (10 bytes of room); returns their length.
 subsidy_height_script_vartime :: (height: int, out: [] u8) -> int #export_c #effects(all) {
   if height == -1 || (height >= 1 && height <= 16) { out[0] = cast(u8) (height + 0x50); return 1; }
-  if height == 0 { out[0] = OP_0; return 1; }
   num: [9] u8;
   n := script_num_write_vartime(height, num[..]);
   out[0] = cast(u8) n;

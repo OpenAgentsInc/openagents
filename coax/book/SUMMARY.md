@@ -3,6 +3,7 @@
 * [The Coax Programming Language](README.md)
 * [Foreword](foreword.md)
 * [Introduction](introduction.md)
+* [Plan](PLAN.md)
 
 ## Part I. Getting started
 

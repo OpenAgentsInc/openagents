@@ -395,7 +395,7 @@ the costs a search lowers.
   0.38 m) and its three flow fields: to you, to where the support engineer
   heads, and to the reactor.
 - [everglade/world/plan.coax](../../everglade/world/plan.coax),
-  [routines.coax](../../everglade/legacy/v1/routines.coax) and
+  routines.coax and
   [guide-route.coax](../../everglade/npc/guide-route.coax): Everglade's
   street graph, daily walks at `FOLK_WALK` (1.2 m/s), and the route a
   guard's directions describe.

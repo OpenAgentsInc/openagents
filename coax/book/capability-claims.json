@@ -32,7 +32,7 @@
       "evidence": [
         {
           "path": "coax/tests/generics.py",
-          "sha256": "5fab66a685bf4a51fdfde101e6556ef96a367d7b195039eb40e9b627177a8f6d"
+          "sha256": "42791f7280c8c2082c7a88168c5376ce03d8186b18a9ce98ea005ba20b8ef3c7"
         }
       ]
     },
@@ -66,11 +66,11 @@
       "evidence": [
         {
           "path": "coax/tests/semantic_profiles.py",
-          "sha256": "03821801b6a633057d23932a78e983f697949b7ddc534f560ab0162890daf396"
+          "sha256": "a0182be5aef7e22cbc1b9413aaf6b75adc34f5ec55779a7e0706842433ae9e2c"
         },
         {
           "path": "coax/tests/reflection.py",
-          "sha256": "3a3ad49bb573b5dcfb375f6f3deb89bcd69904e3418c4c04cf9bc0810571bbc6"
+          "sha256": "6ae3860632e741f3a5e92b77987cbabc7ff7d767c6e797930a9bea70d33d96f8"
         }
       ]
     },
@@ -100,7 +100,7 @@
       "evidence": [
         {
           "path": "coax/tests/modules.py",
-          "sha256": "2b74501a6f2ba64e4b46fde41cf11211976d0512486728503f4ccb1328290a10"
+          "sha256": "269e6c1fa65b7e8a51b87db577565765979adb951d1c94d516730b33334bc3e9"
         }
       ]
     },
@@ -182,7 +182,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "9ab6ca0c9886ce6676a246f97e0f604593c8af58f535351b93f676778ccada96"
+          "sha256": "6e68f3cdddbb5ef399be18dde12fd94663d738dadc919f5a5aa7ac4851a7da90"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -267,7 +267,7 @@
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "9ab6ca0c9886ce6676a246f97e0f604593c8af58f535351b93f676778ccada96"
+          "sha256": "6e68f3cdddbb5ef399be18dde12fd94663d738dadc919f5a5aa7ac4851a7da90"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -369,19 +369,19 @@
         },
         {
           "path": "coax/tests/quantity.py",
-          "sha256": "3119fecbe8bc524c9719f0f047d67704b54d807c231db380f680bbff2d4d5dc0"
+          "sha256": "febfd007ecc68d549279e21cdd4fffcaabeb1a0f847b86847b02d6a22b269e9f"
         },
         {
-          "path": "docs/verification/coax-quantity-psionic-compatibility-2026-10-31.json",
-          "sha256": "0f1d23d18d2fdf909b10f8233bc715bf469fb818c7d0269e19f34537cf4c6907"
+          "path": "docs/verification/coax-quantity-derived-publication-2026-10-31.md",
+          "sha256": "5804362d512c3804501e7d763925e7227a7748c3a698e110bbc485f2ec659544"
         },
         {
           "path": "coax/tests/quantity_derived.py",
-          "sha256": "d5239b49f1fa4eb73f7541cd6ab4622fb72128464f4159a16640125a39183277"
+          "sha256": "13e21c57789157cc14edb9f0684fc2d75d08585bd67c70fb345913c051c3e35b"
         },
         {
-          "path": "docs/verification/coax-quantity-derived-merged-2026-10-31.json",
-          "sha256": "ee36c71c192701cd9d7cab3cf0d425e6e092ecd88c1a37205186718c97de27d5"
+          "path": "docs/verification/coax-spatial-policy-2026-10-31.md",
+          "sha256": "e3b3417cb5fa82e34bcad1652f87f3049feda278302270680e221186c7a3e8a3"
         },
         {
           "path": "coax/SPATIAL.md",
@@ -389,11 +389,11 @@
         },
         {
           "path": "coax/tests/spatial.py",
-          "sha256": "0ccad09814866d22ee61d1c82e4313612b39ade99232e2ca288c34315429fe1f"
+          "sha256": "b5eabc791557c9a101d39362c5828a43921fa0a005448ed7df186b1ff5dd22fc"
         },
         {
           "path": "coax/tests/spatial_045.py",
-          "sha256": "f0e7c9b844ba60731c4c6b61c384ab190a3fc65432a0608c6bd4fcb3e253dfbd"
+          "sha256": "374d55919015d93a0485aeef4f1419a031b3fbe0d4479bbdc39a8a8098406a33"
         },
         {
           "path": "coax/tests/spatial/native-qualification.json",
@@ -408,8 +408,8 @@
           "sha256": "47b7e77acb04a8fbae45df1eb7d575485e7d91840527a946527de1265badaafa"
         },
         {
-          "path": "docs/verification/coax-spatial-merged-2026-10-31.json",
-          "sha256": "27307c59c62a30993df7be943c0f32424b2b6e7827dbb91b01abc31412030937"
+          "path": "docs/verification/coax-spatial-publication-2026-10-31.md",
+          "sha256": "ae2b0c5b9bc42bbd2accb3d66bee352cf7e10e8a62dad3088d03496b3ac98d57"
         }
       ]
     },
@@ -431,7 +431,7 @@
       "evidence": [
         {
           "path": "psionic/tests/run_group_kernels.sh",
-          "sha256": "1f1ece509ecc31b8e35eddd1a61b9abb2e020b49ca117623e958be268c154fd5"
+          "sha256": "8f312cbde6fd5ad5d5e1386e8004022accb92fd648e4ea1585c81181936a84f8"
         },
         {
           "path": "docs/verification/psionic-ch26-2026-10-29.md",

@@ -79,7 +79,7 @@ written as they are; nothing is written as a `\u` escape above `0x1f`.
 
 `json_write_string` applies that table:
 
-<!-- source: coax/lib/nostr/json.coax write-string -->
+<!-- source: coax/lib/encoding/json.coax write-string -->
 ```jai
 // s as a JSON string, escaped the way NIP-01 serializes an event: \" \\ \n
 // \r \t \b \f, other control bytes as \u00XX, everything else as it is.
@@ -207,7 +207,7 @@ IEEE doubles, which hold every integer only up to `2^53`. `json_int` reads
 an integer token and refuses fractions, exponents, leading zeros and values
 beyond `±2^53`:
 
-<!-- source: coax/lib/nostr/json.coax int -->
+<!-- source: coax/lib/encoding/json.coax int -->
 ```jai
 // A number token's text as an integer: no fraction or exponent, |n| <= 2^53.
 JsonInt :: struct { ok: bool; value: int; }

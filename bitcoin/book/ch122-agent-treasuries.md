@@ -104,7 +104,7 @@ OP_ENDIF
 // A push of d as a script number: OP_1 to OP_16, or its minimal bytes.
 ty_number :: (d: int, out: [] u8, at: int) -> int #effects(all) {
   if d >= 1 && d <= 16 { out[at] = cast(u8) (0x50 + d); return at + 1; }
-  n := script_num_write_vartime(d, out[at + 1..<at + 10]);
+  n := script_num_write_vartime(d, out[at + 1..<at + 10]);   // mutant: equivalent (a window of 11 bytes or 10 holds the nine bytes at most that a script number takes)
   out[at] = cast(u8) n;
   return at + 1 + n;
 }
@@ -137,7 +137,7 @@ treasury_wsh_script_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, del
 // The P2WSH scriptPubKey of a witness script: OP_0 and its SHA-256.
 treasury_wsh_spk_vartime :: (script: [] u8, out: [] u8) -> int #effects(all) {
   n := p2wsh_script_vartime(script, out);
-  return ifx n < 0 then TY_CAPACITY else n;
+  return ifx n < 0 then TY_CAPACITY else n;   // mutant: equivalent (p2wsh_script_vartime returns 34 or a refusal below zero, never 0)
 }
 ```
 
@@ -185,7 +185,7 @@ treasury_tr_vartime :: (agent: [] u8, owner: [] u8, recovery: [] u8, delay: int,
   for j: 0..<33 { t[0].keys[j] = agent[j]; t[0].keys[33 + j] = owner[j]; }
   ms_key_sort_vartime(t[0].keys[..]);
   k := ms_key_agg_vartime(t[0].keys[..]);
-  if k.code != MS_OK { return TY_KEY; }
+  if k.code != MS_OK { return TY_KEY; }   // mutant: equivalent (pr_compressed has accepted every key as a valid point, and MS_BAD_PUBKEY is all that aggregation refuses)
   ms_xbytes_vartime(k.q, t[0].internal[..]);
   at := 0;
   for i: 0..<3 {
@@ -291,9 +291,9 @@ TreasuryCheck :: struct { code: int; total: int; refill: int; change: int; fee: 
 treasury_check_vartime :: (m: [] PsbtMaps, treasury: [] u8, hot: [] u8, p: TreasuryPolicy, w: [] PsbtSign) -> TreasuryCheck #effects(all) {
   c: TreasuryCheck;
   size := psbt_unsigned_vartime(m, w[0].tx[..]);
-  if size < 0 { c.code = TY_CAPACITY; return c; }
+  if size < 0 { c.code = TY_CAPACITY; return c; }   // mutant: equivalent only for size <= 0 and size < 1 (size is the transaction's length, which is never 0)
   b := w[0].tx[0..<size];
-  w[0].t = tx_read_vartime(b, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);
+  w[0].t = tx_read_vartime(b, false, w[0].ins[..], w[0].outs[..], w[0].items[0..<0]);   // mutant: equivalent only for the items window: with no witness read, items[0..<1] and items[0..<0] are never touched
   for n: 0..<m[0].nin {
     if !ps_spent(m, n, w) { c.code = TY_NO_UTXO; return c; }
     if !ps_equal(w[0].spk[0..<w[0].spk_n], treasury) { c.code = TY_FOREIGN_INPUT; return c; }
@@ -373,7 +373,7 @@ treasury_finalize_vartime :: (m: [] PsbtMaps, script: [] u8, w: [] PsbtSign) -> 
     if ws < 0 || !ps_equal(pm_value(m, ws), script) { return false; }
     sig: [3] int; got := 0;
     for k: 0..<3 { sig[k] = pf_sig(m, n, script[2 + 34 * k..<35 + 34 * k]); if sig[k] >= 0 { got += 1; } }
-    wit: [PSBT_TX] u8; at := 0;
+    wit: [PSBT_TX] u8; at := 0;   // mutant: equivalent (both branches that go on write at before reading it, and the other returns)
     if got >= 2 {
       at = tx_compact_write_vartime(wit[..], 0, 4);
       at = tx_compact_write_vartime(wit[..], at, 0);

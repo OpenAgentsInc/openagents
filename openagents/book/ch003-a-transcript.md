@@ -6,7 +6,7 @@
 > `transcript.scroll`, `transcript.jump_bottom`), per-surface dirty isolation,
 > and driver operations (`openagents/examples/cases/transcript.ops`) pass on
 > `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-> [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+> [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
 > and [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax).
 > Remaining: wiring into the native desktop/iOS host scroll gestures and
 > backing the transcript directly with the persisted `session.coax` record.
@@ -59,7 +59,7 @@ VoiceOver asks for is realized.
 
 ## What we build
 
-Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), grounded in the primary desktop app ([`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax)) and consumed by mobile ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
+Implemented on `cpu` in [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), grounded in the primary desktop app ([`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax)) and consumed by mobile ([`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax)):
 
 - The transcript `UiSurface` above the composer, independent of the composer
   surface's dirty marks.
@@ -85,7 +85,7 @@ It builds on what exists today:
 ### The chapter's check
 
 - **Source:** [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax),
-  [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax),
+  [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax),
   [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax),
   and [`openagents/examples/cases/transcript.ops`](../examples/cases/transcript.ops).
 - **Trace:** send three messages, one with `**bold**`; `tree` lists
@@ -104,7 +104,7 @@ It builds on what exists today:
   `coax/bin/coax test apps/openagents-desktop/chat_screen.coax`, and
   `coax/bin/coax test apps/openagents-ios/composer_screen.coax`.
 
-Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/chat_screen.coax`](../../apps/openagents-desktop/chat_screen.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/transcript.ops`](../examples/cases/transcript.ops), [`openagents/examples/cases/transcript.trace`](../examples/cases/transcript.trace).
+Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/screen.coax), [`apps/openagents-desktop/page.coax`](../../apps/openagents-desktop/page.coax), [`apps/openagents-ios/composer_screen.coax`](../../apps/openagents-ios/composer_screen.coax), [`openagents/examples/cases/transcript.ops`](../examples/cases/transcript.ops), [`openagents/examples/cases/transcript.trace`](../examples/cases/transcript.trace).
 
 ## Sources
 
@@ -116,3 +116,5 @@ Implemented paths: [`apps/shared/chat/screen.coax`](../../apps/shared/chat/scree
   - [GPU components, "Scrolling"](../../components/gpu-components.md#scrolling)
   - [The chat zero-base audit](../../docs/audits/2026-11-11-chat-zero-base-audit.md)
 - **Promises covered** ([audit](../../docs/audits/2026-11-10-episode-289-port-audit.md#1-what-episode-289-promised)): P1
+
+Planned paths: none — extends existing `apps/shared/chat/screen.coax`, `apps/openagents-desktop/page.coax`, and `apps/openagents-ios/composer_screen.coax`.

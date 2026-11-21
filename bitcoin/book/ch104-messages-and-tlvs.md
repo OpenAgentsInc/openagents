@@ -173,7 +173,7 @@ ln_unknown_vartime :: (type: u64) -> int #effects(all) { return ifx type % 2 == 
 // A whole stream whose known types are listed, in any order. It checks the
 // framing and the odd rule only; the caller reads each known value.
 tlv_check_vartime :: (b: [] u8, known: [] u64) -> int #effects(all) {
-  at := 0; previous: u64 = 0; first := true;
+  at := 0; previous: u64 = 0; first := true; // mutant: equivalent (the first record never reads previous, and every later one reads the type set before it)
   while at < b.count {
     r := tlv_next_vartime(b, at, previous, first);
     if r.code != LN_OK { return r.code; }
@@ -186,9 +186,9 @@ tlv_check_vartime :: (b: [] u8, known: [] u64) -> int #effects(all) {
 // Writes one record and returns where writing goes on, or -1.
 tlv_write_vartime :: (out: [] u8, at: int, type: u64, value: [] u8) -> int #effects(all) {
   w := bigsize_write_vartime(out, at, type);
-  if w < 0 { return -1; }
+  if w < 0 { return -1; } // mutant: equivalent (bigsize_write returns -1 or a position of at least 1, so w < 0, w <= 0 and w < 1 agree)
   w = bigsize_write_vartime(out, w, cast(u64) value.count);
-  if w < 0 || value.count > out.count - w { return -1; }
+  if w < 0 || value.count > out.count - w { return -1; } // mutant: equivalent (w is -1 or at least 2 here, so w < 0, w <= 0 and w < 1 agree)
   for i: 0..<value.count { out[w + i] = value[i]; }
   return w + value.count;
 }
@@ -316,7 +316,7 @@ ln_feature_bytes :: (f: [] u8) -> int #effects(all) {
 // The first set bit, from bit 0, that the reader cannot accept: an even
 // bit of a feature it does not know. -1 when every bit is acceptable.
 ln_feature_refuse_vartime :: (f: [] u8, known: [] int) -> int #effects(all) {
-  for bit: 0..<f.count * 8 {
+  for bit: 0..<f.count * 8 { // mutant: equivalent (ln_feature_set is false for every bit past f.count * 8)
     if ln_feature_set(f, bit) && bit % 2 == 0 {
       found := false; for k: known { if k / 2 == bit / 2 { found = true; } }
       if !found { return bit; }
@@ -359,12 +359,12 @@ ln_init_read_vartime :: (m: [] u8) -> LnInit #effects(all) {
   if h.code != LN_OK { r.code = h.code; return r; }
   if h.type != LN_INIT { r.code = LN_BAD_VALUE; return r; }
   at := LN_TYPE;
-  if m.count - at < 2 { r.code = LN_TRUNCATED; return r; }
+  if m.count - at < 2 { r.code = LN_TRUNCATED; return r; } // mutant: equivalent (for < and <=, or 2 and 3: a 4-byte init has no features length, so the next check refuses it with the same code)
   r.global_n = ln_u16(m, at); r.global = at + 2; at = r.global + r.global_n;
   if at + 2 > m.count { r.code = LN_TRUNCATED; return r; }
   r.features_n = ln_u16(m, at); r.features = at + 2; at = r.features + r.features_n;
   if at > m.count { r.code = LN_TRUNCATED; return r; }
-  tlvs := m[at..<m.count]; p := 0; previous: u64 = 0; first := true;
+  tlvs := m[at..<m.count]; p := 0; previous: u64 = 0; first := true; // mutant: equivalent (for previous: the first record never reads it)
   while p < tlvs.count {
     rec := tlv_next_vartime(tlvs, p, previous, first);
     if rec.code != LN_OK { r.code = rec.code; return r; }
@@ -384,7 +384,7 @@ ln_init_read_vartime :: (m: [] u8) -> LnInit #effects(all) {
 // The combined bitmap: globalfeatures ORed into features, right-aligned,
 // written to out[0..<n]; returns n, or -1 when out is too small.
 ln_init_features_vartime :: (m: [] u8, r: LnInit, out: [] u8) -> int #effects(all) {
-  n := ifx r.global_n > r.features_n then r.global_n else r.features_n;
+  n := ifx r.global_n > r.features_n then r.global_n else r.features_n; // mutant: equivalent (> or >=: at equal lengths both pick the same n)
   if n > out.count { return -1; }
   for i: 0..<n { out[i] = 0; }
   for i: 0..<r.global_n { out[n - r.global_n + i] |= m[r.global + i]; }
@@ -398,7 +398,7 @@ ln_init_write_vartime :: (features: [] u8, chains: [] u8, out: [] u8) -> int #ef
   ln_put16(out, 0, LN_INIT); ln_put16(out, 2, 0); ln_put16(out, 4, features.count);
   for i: 0..<features.count { out[6 + i] = features[i]; }
   w := 6 + features.count;
-  if chains.count > 0 { w = tlv_write_vartime(out, w, LN_INIT_NETWORKS, chains); }
+  if chains.count > 0 { w = tlv_write_vartime(out, w, LN_INIT_NETWORKS, chains); } // mutant: equivalent (for > 1: chains.count is a multiple of 32 here)
   if w > LN_MAX_MESSAGE { return -1; }
   return w;
 }
@@ -461,7 +461,7 @@ ln_ping_read_vartime :: (m: [] u8) -> LnPing #effects(all) {
   if h.type != LN_PING && h.type != LN_PONG { return LnPing.{code = LN_BAD_VALUE, type = h.type}; }
   at := LN_TYPE; r := LnPing.{type = h.type, pong_bytes = -1};
   if h.type == LN_PING {
-    if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; }
+    if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; } // mutant: equivalent (for < and <=, or 2 and 3: a 4-byte ping has no byteslen, so the next check refuses it with the same code and type)
     r.pong_bytes = ln_u16(m, at); at += 2;
   }
   if m.count < at + 2 { return LnPing.{code = LN_TRUNCATED, type = h.type}; }
