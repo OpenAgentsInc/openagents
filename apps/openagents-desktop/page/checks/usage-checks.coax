@@ -28,9 +28,9 @@
   #assert cp_usage_until(720, ub[..]) == "12m";
 
   bb: [48] u8;
-  #assert cp_usage_bar(8400, bb[..]) == "████████░░ 84%";
-  #assert cp_usage_bar(300, bb[..]) == "█░░░░░░░░░ 3%";
-  #assert cp_usage_bar(0, bb[..]) == "░░░░░░░░░░ 0%";
+  #assert cp_usage_bar(8400, bb[..]) == "[========--] 84%";
+  #assert cp_usage_bar(300, bb[..]) == "[=---------] 3%";
+  #assert cp_usage_bar(0, bb[..]) == "[----------] 0%";
 }
 
 #test "usage: Antigravity index DBs are skipped during local spend aggregation (#13838)" {

@@ -202,15 +202,17 @@ cp_usage_until :: (sec: int, out: [] u8) -> string {
   return cast(string) out[0..<n];
 }
 
-// Formats a compact 10-cell bar ("████████░░ 84%") for Settings -> Usage & popover.
+// Formats a compact 10-cell ASCII bar ("[========--] 84%") for Settings -> Usage & popover
+// (ASCII glyphs are guaranteed present in every GPU font atlas; avoids missing-glyph tofu boxes).
 cp_usage_bar :: (used_bp: int, out: [] u8) -> string {
   bp := cp_usage_clamp_bp(used_bp);
   cells := (bp + 500) / 1000;
   if bp > 0 && cells == 0 { cells = 1; }
   if cells > 10 { cells = 10; }
   n := 0;
-  for i: 0..<10 { n = el_put(out, n, ifx i < cells then "█" else "░"); }
-  n = el_put(out, n, " ");
+  n = el_put(out, n, "[");
+  for i: 0..<10 { n = el_put(out, n, ifx i < cells then "=" else "-"); }
+  n = el_put(out, n, "] ");
   pct := (bp + 50) / 100;
   n = el_put_i(out, n, pct);
   n = el_put(out, n, "%");

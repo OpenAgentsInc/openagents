@@ -122,7 +122,11 @@ extension CoderWindow {
         }
     }
     /// File > New Chat (Command-N): what the New chat button does.
-    func newChat() { if cd_new(page) != 0 { focusComposer() }; wake() }
+    func newChat() {
+        if let prev = chat { chatDrafts[prev] = draft }
+        if cd_new(page) != 0 { _ = cd_set_text(page, ""); focusComposer() }
+        wake()
+    }
     /// Opens the Nth chat from the top of the sidebar list (1 is the first).
     func openChat(at index: Int) {
         let ordered = store.orderedList
@@ -135,6 +139,8 @@ extension CoderWindow {
     func open(_ id: String) {
         if id == Foreman.chatID { openForeman(); return }
         if id == chat { closeGym(); clearViewedChatBadges(id); focusComposer(); wake(); return }
+        let prevKey = chat ?? ""
+        chatDrafts[prevKey] = draft
         closeGym()
         guard detach() else { return }
         if let back = runs[id] {
@@ -147,6 +153,7 @@ extension CoderWindow {
             unread.remove(id)
             if !run.lastPermitOpen { needsAttention.remove(id) }
             chat = id; recallDue = false; cd_current(page, id)
+            _ = cd_set_text(page, chatDrafts[id] ?? "")
             setFolder(back.folder, keep: false)
             refreshCheckpoints(for: id, in: back.folder.path)
             configureWorkerEnv(run, isForeman: false)
@@ -164,6 +171,7 @@ extension CoderWindow {
         let clearedUnread = unread.remove(id) != nil
         needsAttention.remove(id)
         chat = id; recallDue = true; cd_current(page, id)
+        _ = cd_set_text(page, chatDrafts[id] ?? "")
         configureWorkerEnv(run, isForeman: false)
         syncSkillsNote(for: page, isForeman: false)
         syncForemanUI()

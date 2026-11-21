@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §7.2, §8.2; GitHub #13905).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-IOS_SCENARIO_COUNT :: 12;
+IOS_SCENARIO_COUNT :: 15;
 
 IosScenario :: struct {
   id: string;
@@ -24,7 +24,10 @@ ios_scenarios :: () -> [IOS_SCENARIO_COUNT] IosScenario {
     IosScenario.{id = "ios.sidebar.settings-sheet", area = "settings", title = "Open sidebar drawer, tap Settings gear, verify Settings screen and dismiss", required = true},
     IosScenario.{id = "ios.composer.computer-picker", area = "composer", title = "Tap Computer chip in composer, verify picker sheet renders and dismiss", required = true},
     IosScenario.{id = "ios.composer.repo-picker", area = "composer", title = "Tap Repository chip in composer, verify picker sheet renders and dismiss", required = true},
-    IosScenario.{id = "ios.conversation.options-menu", area = "conversation", title = "Tap Conversation options (...) button, verify menu renders and dismiss", required = true}
+    IosScenario.{id = "ios.conversation.options-menu", area = "conversation", title = "Tap Conversation options (...) button, verify menu renders and dismiss", required = true},
+    IosScenario.{id = "ios.settings.usage-screen", area = "settings", title = "Open Settings -> Usage, capture Usage screen & accessibility tree, navigate back cleanly", required = true},
+    IosScenario.{id = "ios.sidebar.search-filter", area = "navigation", title = "Open sidebar, tap Search, type filter query, capture Search UI and dismiss", required = true},
+    IosScenario.{id = "ios.accessibility.audit", area = "accessibility", title = "Audit live OpenAgents iOS accessibility tree for required nav & options controls", required = true}
   ];
 }
 

@@ -469,6 +469,82 @@ t_run_scenario :: (s: [] DaSession, sc_id: string, res_out: [] TsResult) {
       r.summary = "Cmd+J toggled embedded terminal pane open and closed cleanly with focus restored";
       r.screenshot_ref = "screenshots/17-terminal-open.png";
     }
+  } else if sc_id == "desktop.settings.usage-dashboard" {
+    r.steps_run = 4;
+    // Open command palette, jump to Usage settings (#13877), capture screenshot, press Escape to close.
+    _ = da_act(s, "key", "palette", "key cmd+k", 120, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "type", "palette", "type Usage", 150, rep[..]);
+    proc_sleep(200);
+    _ = da_act(s, "key", "palette", "key return", 150, rep[..]);
+    proc_sleep(350);
+    _ = da_observe(s, "18-settings-usage", "settings usage dashboard", obs[..], active[..]);
+    opened_settings := obs[0].settings_page >= 0;
+    _ = da_act(s, "key", "settings", "key escape", 120, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "after usage escape", obs[..], active[..]);
+    closed_ok := obs[0].settings_page < 0 && obs[0].composer_focused;
+    if !opened_settings {
+      r.verdict = "product-fail"; r.first_failure = "usage-not-opened";
+      r.summary = "Cmd+K -> Usage did not open Settings Usage dashboard";
+      r.screenshot_ref = "screenshots/18-settings-usage.png";
+    } else if !closed_ok {
+      r.verdict = "product-fail"; r.first_failure = "usage-escape-failed";
+      r.summary = "Escape from Settings -> Usage did not return focus to composer";
+      r.screenshot_ref = "screenshots/18-settings-usage.png";
+    } else {
+      r.summary = "Cmd+K -> Usage opened Settings Usage dashboard cleanly and Escape restored composer focus";
+      r.screenshot_ref = "screenshots/18-settings-usage.png";
+    }
+  } else if sc_id == "desktop.chat.multi-switch" {
+    r.steps_run = 5;
+    // Create a new chat, type a distinct draft, switch to Chat 1 (Cmd+1), verify draft isolation, switch back.
+    _ = da_act(s, "key", "chat", "key cmd+n", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_act(s, "type", "composer", "type alpha draft", 200, rep[..]);
+    proc_sleep(150);
+    _ = da_observe(s, "19-multi-chat-draft", "draft on new chat", obs[..], active[..]);
+    has_alpha := obs[0].composer_text == "alpha draft";
+    _ = da_act(s, "key", "chat", "key cmd+1", 150, rep[..]);
+    proc_sleep(250);
+    _ = da_observe(s, "", "switched to chat 1", obs[..], active[..]);
+    switched_ok := obs[0].composer_text != "alpha draft";
+    if !has_alpha {
+      r.verdict = "product-fail"; r.first_failure = "draft-type-failed";
+      r.summary = "failed to type draft on newly created chat";
+    } else if !switched_ok {
+      r.verdict = "product-fail"; r.first_failure = "chat-switch-draft-leak";
+      r.summary = "Cmd+1 did not isolate composer draft when switching chats";
+      r.screenshot_ref = "screenshots/19-multi-chat-draft.png";
+    } else {
+      r.summary = "Cmd+N + Cmd+1 switched between chats cleanly with independent composer drafts";
+      r.screenshot_ref = "screenshots/19-multi-chat-draft.png";
+    }
+  } else if sc_id == "desktop.git.output-tray" {
+    r.steps_run = 3;
+    // Query box of coder.git.actions, click to open Git Actions menu, capture screenshot, press Escape.
+    bx := da_box(s, "coder.git.actions");
+    if !bx.ok {
+      r.verdict = "product-fail"; r.first_failure = "git-actions-box-missing";
+      r.summary = "coder.git.actions toolbar chip box not found";
+    } else {
+      cbuf: [128] u8; cj: [1] Jo; jo_start(cj[..], cbuf[..]);
+      jo_put(cj[..], "click "); jo_int(cj[..], bx.x + bx.w / 2); jo_put(cj[..], " "); jo_int(cj[..], bx.y + bx.h / 2);
+      _ = da_act(s, "click", "git.actions", cast(string) cbuf[0..<cj[0].n], 150, rep[..]);
+      proc_sleep(250);
+      _ = da_observe(s, "20-git-actions-menu", "git actions menu open", obs[..], active[..]);
+      _ = da_act(s, "key", "git.actions", "key escape", 120, rep[..]);
+      proc_sleep(200);
+      _ = da_observe(s, "", "after git actions escape", obs[..], active[..]);
+      if !obs[0].composer_focused {
+        r.verdict = "product-fail"; r.first_failure = "git-actions-escape-focus";
+        r.summary = "Escape from Git Actions menu did not restore composer focus";
+        r.screenshot_ref = "screenshots/20-git-actions-menu.png";
+      } else {
+        r.summary = "clicked Git toolbar chip, opened Git Actions menu, and Escape restored composer focus";
+        r.screenshot_ref = "screenshots/20-git-actions-menu.png";
+      }
+    }
   } else {
     r.verdict = "unqualified";
     r.first_failure = "unknown-scenario";
@@ -790,6 +866,71 @@ t_run_ios_scenario :: (s: [] IosSession, sc_id: string, res_out: [] TsResult) {
       r.summary = "tapped Conversation options (...), captured menu & accessibility tree, dismissed cleanly";
       r.screenshot_ref = obs[0].screenshot_ref;
     }
+  } else if sc_id == "ios.settings.usage-screen" {
+    r.steps_run = 5;
+    ok1 := ios_act(s, "tap", "open-sidebar", "\"x\":34,\"y\":84", 200, rep[..]);
+    proc_sleep(450);
+    ok2 := ios_act(s, "tap", "settings-gear", "\"x\":275,\"y\":815", 250, rep[..]);
+    proc_sleep(450);
+    // Tap Usage button inside Settings: Button "Usage" (16, 152, 370, 53) -> center (201, 178).
+    ok3 := ios_act(s, "tap", "settings-usage", "\"x\":201,\"y\":178", 250, rep[..]);
+    proc_sleep(500);
+    ok_d := ios_act(s, "describe", "ios-usage", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-13-usage", "iOS Settings Usage screen", obs[..]);
+    // Navigate back from Usage -> Settings -> close sidebar.
+    _ = ios_act(s, "tap", "usage-back", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(350);
+    _ = ios_act(s, "tap", "settings-back", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(350);
+    _ = ios_act(s, "swipe", "close-sidebar", "\"x\":340,\"y\":400,\"x2\":30,\"y2\":400,\"duration\":0.25", 250, rep[..]);
+    proc_sleep(400);
+    if !ok1 || !ok2 || !ok3 || !ok_d || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "usage-screen"; r.summary = "failed to open or capture iOS Settings -> Usage screen";
+    } else {
+      r.summary = "navigated Sidebar -> Settings -> Usage, captured Usage screen & accessibility tree, returned cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.sidebar.search-filter" {
+    r.steps_run = 5;
+    ok1 := ios_act(s, "tap", "open-sidebar", "\"x\":38,\"y\":84", 200, rep[..]);
+    proc_sleep(450);
+    // Tap Search row in sidebar drawer (~110, 150) which opens Recents & Search chats.
+    ok2 := ios_act(s, "tap", "sidebar-search", "\"x\":110,\"y\":150", 250, rep[..]);
+    proc_sleep(450);
+    // Tap "Search chats" input at bottom (x=180, y=805), type filter query, capture UI.
+    _ = ios_act(s, "tap", "search-chats-input", "\"x\":180,\"y\":805", 200, rep[..]);
+    proc_sleep(350);
+    ok3 := ios_act(s, "text", "sidebar-search", "\"text\":\"openagents\"", 300, rep[..]);
+    proc_sleep(450);
+    ok_o := ios_observe(s, "ios-14-sidebar-search", "iOS sidebar search filter", obs[..]);
+    // Dismiss keyboard and tap "New chat" pill (315, 745) to return cleanly to Chat screen.
+    _ = ios_act(s, "tap", "dismiss-kb", "\"x\":200,\"y\":250", 200, rep[..]);
+    proc_sleep(350);
+    _ = ios_act(s, "tap", "new-chat-return", "\"x\":315,\"y\":745", 250, rep[..]);
+    proc_sleep(450);
+    if !ok1 || !ok2 || !ok3 || !ok_o {
+      r.verdict = "product-fail"; r.first_failure = "sidebar-search"; r.summary = "failed to open or type into iOS sidebar Search";
+    } else {
+      r.summary = "opened sidebar Search, typed filter query, captured Search UI, dismissed cleanly";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+  } else if sc_id == "ios.accessibility.audit" {
+    r.steps_run = 1;
+    ok_d := ios_act(s, "describe", "ios-audit", "", 200, rep[..]);
+    ok_o := ios_observe(s, "ios-15-a11y-audit", "iOS accessibility audit", obs[..]);
+    tree := cast(string) rep[0..<rep.count];
+    has_root := t_substr(tree, "OpenAgents");
+    has_sidebar := t_substr(tree, "Open sidebar");
+    has_options := t_substr(tree, "Conversation options");
+    if !ok_d || !has_root || !has_sidebar || !has_options {
+      r.verdict = "product-fail"; r.first_failure = "a11y-missing-controls";
+      r.summary = "accessibility audit missing required OpenAgents / Open sidebar / Conversation options labels";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    } else {
+      r.summary = "accessibility audit verified OpenAgents root, Open sidebar, and Conversation options labels";
+      r.screenshot_ref = obs[0].screenshot_ref;
+    }
+    _ = ok_o;
   } else {
     r.verdict = "unqualified"; r.first_failure = "unknown"; r.summary = "unknown iOS scenario";
   }

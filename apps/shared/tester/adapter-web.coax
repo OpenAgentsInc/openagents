@@ -95,6 +95,16 @@ web_shot :: (s: [] WebSession, route: string, viewport: string, shot_name: strin
   rel := da_cat3(b1[..], "screenshots/", shot_name, ".png");
   full := da_cat3(b2[..], da_slice(s[0].out_dir[..], s[0].out_n), "/", rel);
 
+  // Verify route returns HTTP 200 (never silently pass a 404 page).
+  hcmd: [512] u8;
+  hj: [1] Jo;
+  jo_start(hj[..], hcmd[..]);
+  jo_put(hj[..], "curl -sf '");
+  jo_put(hj[..], da_slice(s[0].base_url[..], s[0].base_n));
+  jo_put(hj[..], route);
+  jo_put(hj[..], "' >/dev/null 2>&1");
+  http_ok := da_run_sh(cast(string) hcmd[0..<hj[0].n], 5000);
+
   wb: [32] u8;
   wstr := da_int_str(wait_ms, wb[..]);
   cmd: [2048] u8;
@@ -109,7 +119,7 @@ web_shot :: (s: [] WebSession, route: string, viewport: string, shot_name: strin
   jo_put(cj[..], " "); jo_put(cj[..], wstr);
   jo_put(cj[..], " --keep >/dev/null 2>&1");
 
-  st := da_run_sh(cast(string) cmd[0..<cj[0].n], 30000);
+  st := http_ok && da_run_sh(cast(string) cmd[0..<cj[0].n], 30000);
   ok := st && fs_exists(full) && fs_size(full) > 2000;
   s[0].last_shot_n = ifx ok then da_copy_into(s[0].last_shot[..], rel) else 0;
 

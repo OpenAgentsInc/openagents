@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §3, §8.1; GitHub #13892).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-DT_SCENARIO_COUNT :: 18;
+DT_SCENARIO_COUNT :: 21;
 
 DtScenario :: struct {
   id: string;
@@ -30,7 +30,10 @@ dt_scenarios :: () -> [DT_SCENARIO_COUNT] DtScenario {
     DtScenario.{id = "desktop.git.worktree-per-chat", area = "git", title = "New chat in git repo creates isolated coder/<id> worktree under CODER_WORKTREES", required = true},
     DtScenario.{id = "desktop.composer.undo-redo", area = "composer", title = "Cmd+A + Cmd+X cut, Cmd+Z undo restores text, Shift+Cmd+Z redo clears again", required = true},
     DtScenario.{id = "desktop.find.in-thread", area = "find", title = "Cmd+F in-thread Find open, type query, Escape restores composer focus", required = true},
-    DtScenario.{id = "desktop.terminal.toggle", area = "terminal", title = "Cmd+J toggle embedded terminal pane open and closed cleanly", required = true}
+    DtScenario.{id = "desktop.terminal.toggle", area = "terminal", title = "Cmd+J toggle embedded terminal pane open and closed cleanly", required = true},
+    DtScenario.{id = "desktop.settings.usage-dashboard", area = "settings", title = "Open Settings -> Usage via Cmd+K jump, verify Usage dashboard renders and Escape closes", required = true},
+    DtScenario.{id = "desktop.chat.multi-switch", area = "chat", title = "Create two chats, switch via Cmd+1/Cmd+2, verify independent draft isolation", required = true},
+    DtScenario.{id = "desktop.git.output-tray", area = "git", title = "Open Git Actions menu from toolbar chip and dismiss cleanly with Escape", required = true}
   ];
 }
 

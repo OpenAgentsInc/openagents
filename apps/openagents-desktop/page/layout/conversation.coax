@@ -455,8 +455,8 @@ cp_corners :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, window_w: f32,
   // the code review (#13696): its button shows once an edit changed a file, or while it is open
   review := s[0].review || cp_has_edits(s);
   lead_x := ifx review then copy_x - side else copy_x;
-  // Reserve space for the terminal toggle button at lead_x - side so Git toolbar chips never overlap it.
-  cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), lead_x - side - a.gap_small, cy);
+  // Reserve space for both terminal (lead_x - side) and files (lead_x - 2*side) toggle buttons so Git toolbar chips never overlap them.
+  cp_git_toolbar(s, f, ifx left > 0 then left + 12.0f32 else cp_bar_clear(s), lead_x - 2 * side - a.gap_small, cy);
   if review {
     shown := cp_review_shown(s);
     _ := app_icon_button(f, "coder.review", lead_x, cy, ICON_PEN, ifx shown then "Close review" else "Review changes", APP_BUTTON_QUIET, ifx shown then EL_S_CURRENT else 0, CP_REVIEW);

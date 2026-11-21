@@ -111,6 +111,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var draftBeforeEdit = ""          // the draft there before a queued message's text was edited in the composer, back after (GitHub #13717)
     let store = CoderStore()
     var chat: String?          // the id of the chat that is shown, once it is kept
+    var chatDrafts: [String: String] = [:] // unsent composer draft per chat id so switching chats isolates drafts
     var recallDue = false      // a chat was opened: the worker is told its turns ahead of the next message
     var choosingFolder = false // prevents stacking folder sheets while one is opening or open
     let launchBinary = CoderWindow.currentBinaryIdentity()

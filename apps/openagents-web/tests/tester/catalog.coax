@@ -2,7 +2,7 @@
 // (docs/apps/2026-11-20-simulated-tester-spec.md §7.3, §8.3).
 #load "../../../../coax/lib/agent/tester/schema.coax";
 
-WEB_SCENARIO_COUNT :: 6;
+WEB_SCENARIO_COUNT :: 10;
 
 WebScenario :: struct {
   id: string;
@@ -20,7 +20,11 @@ web_scenarios :: () -> [WEB_SCENARIO_COUNT] WebScenario {
     WebScenario.{id = "web.chat.desktop", area = "chat", route = "/chat", viewport = "1280x820", title = "Load /chat at 1280x820, verify Coax/WebGPU chat surface renders", required = true},
     WebScenario.{id = "web.chat.mobile", area = "chat", route = "/chat", viewport = "393x852", title = "Load /chat at 393x852 mobile viewport, verify responsive layout", required = true},
     WebScenario.{id = "web.download.desktop", area = "download", route = "/download", viewport = "1280x820", title = "Load /download at 1280x820, verify download surface renders cleanly", required = true},
-    WebScenario.{id = "web.status.desktop", area = "status", route = "/status", viewport = "1280x820", title = "Load /status at 1280x820, verify status page renders cleanly", required = true}
+    WebScenario.{id = "web.status.desktop", area = "status", route = "/status", viewport = "1280x820", title = "Load /status at 1280x820, verify status page renders cleanly", required = true},
+    WebScenario.{id = "web.login.desktop", area = "auth", route = "/login", viewport = "1280x820", title = "Load /login at 1280x820, verify login screen renders cleanly", required = true},
+    WebScenario.{id = "web.messages.desktop", area = "messages", route = "/messages", viewport = "1280x820", title = "Load /messages at 1280x820, verify Nostr messages surface renders cleanly", required = true},
+    WebScenario.{id = "web.projects.desktop", area = "projects", route = "/projects", viewport = "1280x820", title = "Load /projects at 1280x820, verify projects surface renders cleanly", required = true},
+    WebScenario.{id = "web.feed.desktop", area = "feed", route = "/feed", viewport = "1280x820", title = "Load /feed at 1280x820, verify Nostr feed surface renders cleanly", required = true}
   ];
 }
 
