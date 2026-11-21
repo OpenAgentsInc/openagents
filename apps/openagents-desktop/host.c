@@ -1968,3 +1968,65 @@ int cd_forge_issue_prompt(void *page, char *out, int cap) {
   CoderHost *c = page; if (!c || !out || cap < 2) return 0;
   return cd_text_out((int)coder_page_forge_issue_prompt_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
 }
+// Unified Gym mode bar & Lean 4 / Riemann Hypothesis Proof Workbench (page/gym-lean*.coax; #13946).
+int cd_gym_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_gym_mode(cd_state(c)) : 0; }
+void cd_gym_mode_set(void *page, int mode) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_gym_mode_set(cd_state(c), mode);
+  cd_woke(c);
+}
+int cd_lean_atlas_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_atlas_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_module_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_module_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_search_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_search_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_audit_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_audit_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_doctor_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_doctor_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_verify_set(void *page, const char *json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_verify_set(cd_state(c), cd_string(json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_apply_plan(void *page, const char *plan_json) {
+  CoderHost *c = page; if (!c) return 0;
+  int ok = coder_page_lean_apply_plan(cd_state(c), cd_string(plan_json)) ? 1 : 0;
+  cd_woke(c);
+  return ok;
+}
+int cd_lean_state_json(void *page, const char *req_id, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_lean_state_json(cd_state(c), cd_string(req_id), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+int cd_lean_req_str(void *page, char *out, int cap) {
+  CoderHost *c = page; if (!c || !out || cap < 2) return 0;
+  return cd_text_out((int)coder_page_lean_req_str(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1}), out, cap);
+}
+void cd_lean_atlas_lod_set(void *page, int lod) {
+  CoderHost *c = page; if (!c) return;
+  coder_page_lean_atlas_lod_set(cd_state(c), lod);
+  cd_woke(c);
+}

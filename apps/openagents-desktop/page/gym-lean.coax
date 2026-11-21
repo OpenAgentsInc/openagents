@@ -1,0 +1,402 @@
+// OpenAgents Desktop page (../page.coax): Unified lifted 36 pt GYM mode bar
+// (Benchmarks | PLE 3D | Lean · RH), Lean & Riemann Hypothesis Workbench shell,
+// press/wheel dispatch, and #export_c host API (Epic #13943, #13946).
+
+// Draws the unified 36 pt top GYM mode switcher bar (shared across macOS, Linux, Windows).
+cp_gym_bar :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32) {
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  sheet_fill(sh, x, y, w, CP_GYM_BAR_H, 0, k.surface);
+  sheet_rule(sh, x, y + CP_GYM_BAR_H - k.border, w, k.border, k.menu_divider);
+
+  px := x + 16.0f32;
+  _ := sheet_text(sh, m, -1, px, y + (CP_GYM_BAR_H - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "GYM");
+  px += 42.0f32;
+
+  modes := [3] string.["Benchmarks", "PLE 3D", "Lean · RH"];
+  tones := [3] Rgba.[k.syntax[4], k.syntax[1], k.warning];
+  for mi: 0..<3 {
+    px += cp_lr_pill(f, cp_lr_id(sh, "coder.gym.mode.", mi), px, y + 6.0f32, modes[mi], s[0].gym_mode == mi, tones[mi], CP_GYM_MODE_ACT) + 6.0f32;
+  }
+
+  // Right-side telemetry & index trigger when in Lean · RH mode
+  if s[0].gym_mode == CP_GYM_LEAN {
+    l := s[0].lean[..];
+    btn_lbl := ifx l[0].indexing then "Indexing..." else ifx l[0].loaded then "Refresh Index" else "Build RH Index";
+    bw := measure_width(m, k.small.face, btn_lbl) + 18.0f32;
+    bx := x + w - bw - 14.0f32;
+    if bx > px + 10.0f32 {
+      _ := cp_lr_pill(f, "coder.lean.index", bx, y + 6.0f32, btn_lbl, l[0].indexing, k.success, CP_LEAN_INDEX_ACT);
+    }
+    if l[0].loaded && bx > px + 260.0f32 {
+      sb: [128] u8; sn := el_put(sb[..], 0, cp_lr_fmt_int(sh, l[0].modules));
+      sn = el_put(sb[..], sn, " modules · ");
+      sn = el_put(sb[..], sn, cp_lr_fmt_int(sh, l[0].theorems));
+      sn = el_put(sb[..], sn, " theorems");
+      st := sheet_pool(sh, cast(string) sb[0..<sn]);
+      stw := measure_width(m, k.small.face, st);
+      _ := sheet_text(sh, m, -1, bx - stw - 14.0f32, y + (CP_GYM_BAR_H - k.small.line) / 2.0f32, k.small.line, k.small.face, k.success, st);
+    }
+  }
+}
+
+// Draws the full Cross-Platform Lean 4 & Riemann Hypothesis Workbench below the 36 pt GYM bar.
+cp_gym_lean :: (s: [] CoderPage, f: [] UiFrame, x: f32, y: f32, w: f32, h: f32) {
+  if w < 10.0f32 || h < 10.0f32 { return; }
+  k := f[0].skin; sh := f[0].sheet;
+  l := s[0].lean[..];
+
+  // 34 pt Lean · RH View Tabs Strip
+  sheet_fill(sh, x, y, w, CP_LEAN_SUB_H, 0, k.canvas);
+  sheet_rule(sh, x, y + CP_LEAN_SUB_H - k.border, w, k.border, k.hairline);
+  tx := x + 16.0f32;
+  v_labels := [6] string.["1. Guided Tour", "2. Proof Atlas", "3. Math Visuals", "4. Module Inspector", "5. Trust Ledger", "6. Live Prover"];
+  v_tones := [6] Rgba.[k.warning, k.syntax[4], k.success, k.syntax[5], k.brand, k.syntax[1]];
+  for vi: 0..<6 {
+    pw := measure_width(f[0].m, k.small.face, v_labels[vi]) + 18.0f32;
+    if tx + pw > x + w - 12.0f32 { break; }
+    tx += cp_lr_pill(f, cp_lr_id(sh, "coder.lean.view.", vi), tx, y + 5.0f32, v_labels[vi], l[0].view == vi, v_tones[vi], CP_LEAN_VIEW_ACT) + 6.0f32;
+  }
+
+  vy := y + CP_LEAN_SUB_H;
+  vh := h - CP_LEAN_SUB_H;
+  if vh < 20.0f32 { return; }
+
+  if l[0].view == CP_LEAN_TOUR { cp_lean_draw_tour(s, f, x, vy, w, vh); }
+  else if l[0].view == CP_LEAN_ATLAS { cp_lean_draw_atlas(s, f, x, vy, w, vh); }
+  else if l[0].view == CP_LEAN_MATH { cp_lean_draw_math(s, f, x, vy, w, vh); }
+  else if l[0].view == CP_LEAN_INSPECT { cp_lean_draw_inspect(s, f, x, vy, w, vh); }
+  else if l[0].view == CP_LEAN_TRUST { cp_lean_draw_trust(s, f, x, vy, w, vh); }
+  else { cp_lean_draw_prover(s, f, x, vy, w, vh); }
+}
+
+// Handles clicks on the lifted GYM bar and inside all 6 Lean · RH views.
+cp_lean_press :: (s: [] CoderPage, act: int, id: string) -> bool {
+  l := s[0].lean[..];
+  if act == CP_GYM_MODE_ACT {
+    m := cp_number(id, "mode.");
+    if m >= 0 && m <= 2 {
+      s[0].gym_mode = m;
+      s[0].ask = CP_ASK_LEAN_MODE;
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_VIEW_ACT {
+    v := cp_number(id, "view.");
+    if v >= 0 && v <= 5 {
+      l[0].view = v;
+      l[0].scroll_y = 0;
+      if (v == CP_LEAN_INSPECT || (v == CP_LEAN_ATLAS && l[0].atlas_lod == 2)) && l[0].src_n == 0 {
+        cp_lean_req(s, CP_ASK_LEAN_MODULE, cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);
+      }
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_INDEX_ACT {
+    l[0].indexing = true;
+    s[0].ask = CP_ASK_LEAN_INDEX;
+    return true;
+  }
+  if act == CP_LEAN_TOUR_TRACK {
+    t := cp_number(id, "track.");
+    if t >= 0 && t <= 2 { l[0].tour_track = t; l[0].tour_scroll = 0; return true; }
+    return false;
+  }
+  if act == CP_LEAN_TOUR_STEP {
+    idx := cp_number(id, "step.");
+    if idx >= 0 && idx < RHT_STEPS { l[0].tour_step = idx; return true; }
+    return false;
+  }
+  if act == CP_LEAN_TOUR_PREV {
+    if l[0].tour_step > 0 { l[0].tour_step -= 1; }
+    return true;
+  }
+  if act == CP_LEAN_TOUR_NEXT {
+    if l[0].tour_step + 1 < RHT_STEPS { l[0].tour_step += 1; }
+    return true;
+  }
+  if act == CP_LEAN_OPEN_MOD {
+    if id == "coder.lean.tour.inspect" {
+      st := rht_step(l[0].tour_step);
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], st.mod_name);
+      l[0].view = CP_LEAN_INSPECT;
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, st.mod_name);
+      return true;
+    }
+    oi := cp_number(id, "onion.");
+    if oi >= 0 && oi < l[0].onion_n {
+      nm := cast(string) l[0].onion[oi].name[0..<l[0].onion[oi].name_n];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      l[0].view = CP_LEAN_INSPECT;
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_JUMP_ATLAS {
+    st := rht_step(l[0].tour_step);
+    l[0].atlas_sel_lib = st.lib_id;
+    l[0].atlas_lib_filter = st.lib_id;
+    l[0].atlas_lod = 1;
+    l[0].view = CP_LEAN_ATLAS;
+    return true;
+  }
+  if act == CP_LEAN_EXPLAIN_ACT {
+    if l[0].view == CP_LEAN_TOUR {
+      st := rht_step(l[0].tour_step);
+      cp_lean_req(s, CP_ASK_LEAN_EXPLAIN, st.mod_name);
+    } else {
+      cp_lean_req(s, CP_ASK_LEAN_EXPLAIN, cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);
+    }
+    return true;
+  }
+  if act == CP_LEAN_ATLAS_LOD {
+    lod := cp_number(id, "lod.");
+    if lod >= 0 && lod <= 2 {
+      l[0].atlas_lod = lod;
+      l[0].scroll_y = 0;
+      if lod == 2 && l[0].hop_count == 0 {
+        cp_lean_req(s, CP_ASK_LEAN_MODULE, cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);
+      }
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_ATLAS_OVL {
+    ov := cp_number(id, "ovl.");
+    if ov >= 0 && ov <= 2 { l[0].atlas_overlay = ov; return true; }
+    return false;
+  }
+  if act == CP_LEAN_ATLAS_LIB {
+    li := cp_number(id, "lib.");
+    if li == 10 { l[0].atlas_lib_filter = -1; l[0].scroll_y = 0; return true; }
+    if li >= 0 && li < RH_LIBS {
+      l[0].atlas_sel_lib = li;
+      if l[0].atlas_lod == 1 { l[0].atlas_lib_filter = li; l[0].scroll_y = 0; }
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_ATLAS_CL {
+    ci := cp_number(id, "cl.");
+    if ci >= 0 && ci < l[0].clusters_n { l[0].atlas_sel_cluster = ci; return true; }
+    return false;
+  }
+  if act == CP_LEAN_ATLAS_ZOOM {
+    z := cp_number(id, "zoom.");
+    if z == 0 { l[0].atlas_zoom -= 0.25f32; if l[0].atlas_zoom < 0.75f32 { l[0].atlas_zoom = 0.75f32; } }
+    else if z == 1 { l[0].atlas_zoom += 0.25f32; if l[0].atlas_zoom > 2.0f32 { l[0].atlas_zoom = 2.0f32; } }
+    else { l[0].atlas_zoom = 1.0f32; l[0].scroll_y = 0; }
+    return true;
+  }
+  if act == CP_LEAN_ATLAS_DRILL {
+    if l[0].atlas_lod == 0 {
+      l[0].atlas_lib_filter = l[0].atlas_sel_lib;
+      l[0].atlas_lod = 1;
+      l[0].scroll_y = 0;
+      return true;
+    }
+    if l[0].atlas_sel_cluster >= 0 && l[0].atlas_sel_cluster < l[0].clusters_n {
+      cl := l[0].clusters[l[0].atlas_sel_cluster];
+      if cl.hub_n > 0 {
+        nm := cast(string) cl.hub[0..<cl.hub_n];
+        l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+        l[0].atlas_lod = 2;
+        cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+        return true;
+      }
+    }
+    return false;
+  }
+  if act == CP_LEAN_MATH_TAB {
+    t := cp_number(id, "mtab.");
+    if t >= 0 && t <= 2 { l[0].math_tab = t; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_CHI {
+    c := cp_number(id, "chi.");
+    if c >= 0 && c <= 4 { l[0].math_chi = c; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_SIGMA {
+    si := cp_number(id, "sig.");
+    if si >= 0 && si <= 4 { l[0].math_sigma_idx = si; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_TMAX {
+    ti := cp_number(id, "tmax.");
+    if ti >= 0 && ti <= 2 { l[0].math_tmax_idx = ti; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_ROBIN {
+    ri := cp_number(id, "rob.");
+    if ri >= 0 && ri < RHM_ROBIN_MARKS_N { l[0].math_robin_idx = ri; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_STAGE {
+    st := cp_number(id, "stg.");
+    if st >= 1 && st <= 8 { l[0].math_theta_stage = st; return true; }
+    return false;
+  }
+  if act == CP_LEAN_MATH_ALPHA {
+    ai := cp_number(id, "alp.");
+    if ai >= 0 && ai <= 2 { l[0].math_theta_alpha_idx = ai; return true; }
+    return false;
+  }
+  if act == CP_LEAN_SEARCH_PRESET {
+    pi := cp_number(id, "sp.");
+    presets := [8] string.["Main", "MainConclusion", "Behrend", "FormalDegreeBessel", "ThetaPairLifts", "WeilBound", "CritLine", "CutCptCopy"];
+    if pi >= 0 && pi < 8 {
+      l[0].search_q_n = lw_put(l[0].search_q[..], presets[pi]);
+      l[0].view = CP_LEAN_INSPECT;
+      cp_lean_req(s, CP_ASK_LEAN_SEARCH, presets[pi]);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_SEARCH_HIT {
+    hi := cp_number(id, "sh.");
+    if hi >= 0 && hi < l[0].hits_n {
+      nm := cast(string) l[0].hits[hi].name[0..<l[0].hits[hi].name_n];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_PATH_HOP {
+    hi := cp_number(id, "hop.");
+    if hi >= 0 && hi < l[0].hop_count {
+      nm := cast(string) l[0].hops[hi][0..<l[0].hops_n[hi]];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_IMP_UP {
+    ui := cp_number(id, "up.");
+    if ui >= 0 && ui < l[0].imp_up_count {
+      nm := cast(string) l[0].imp_up[ui][0..<l[0].imp_up_n[ui]];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_IMP_DN {
+    di := cp_number(id, "dn.");
+    if di >= 0 && di < l[0].imp_dn_count {
+      nm := cast(string) l[0].imp_dn[di][0..<l[0].imp_dn_n[di]];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_AUDIT_MP {
+    mi := cp_number(id, "mp.");
+    if mi >= 0 && mi < l[0].metaprog_n {
+      nm := cast(string) l[0].metaprog[mi][0..<l[0].metaprog_lens[mi]];
+      l[0].sel_mod_n = lw_put(l[0].sel_mod[..], nm);
+      l[0].view = CP_LEAN_INSPECT;
+      cp_lean_req(s, CP_ASK_LEAN_MODULE, nm);
+      return true;
+    }
+    return false;
+  }
+  if act == CP_LEAN_PROVER_PRESET {
+    pi := cp_number(id, "pp.");
+    if pi >= 0 && pi <= 4 { l[0].prover_preset = pi; l[0].prover_ran = false; return true; }
+    return false;
+  }
+  if act == CP_LEAN_PROVER_RUN {
+    b: [16] u8; n := el_put_i(b[..], 0, l[0].prover_preset);
+    cp_lean_req(s, CP_ASK_LEAN_VERIFY, cast(string) b[0..<n]);
+    return true;
+  }
+  if act == CP_LEAN_OPEN_DISK {
+    if l[0].sel_file_n > 0 {
+      cp_lean_req(s, CP_ASK_LEAN_OPEN_FILE, cast(string) l[0].sel_file[0..<l[0].sel_file_n]);
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+// Handles wheel scrolling inside Lean · RH views.
+cp_lean_wheel :: (s: [] CoderPage, dy: f32) -> bool {
+  if !s[0].gym_open || s[0].gym_mode != CP_GYM_LEAN { return false; }
+  l := s[0].lean[..];
+  if l[0].view == CP_LEAN_TOUR {
+    l[0].tour_scroll -= dy;
+    if l[0].tour_scroll < 0 { l[0].tour_scroll = 0; }
+    if l[0].tour_scroll > 720.0f32 { l[0].tour_scroll = 720.0f32; }
+    return true;
+  }
+  if l[0].view == CP_LEAN_ATLAS && l[0].atlas_lod == 1 {
+    l[0].scroll_y -= dy;
+    if l[0].scroll_y < 0 { l[0].scroll_y = 0; }
+    if l[0].scroll_y > 1800.0f32 { l[0].scroll_y = 1800.0f32; }
+    return true;
+  }
+  if l[0].view == CP_LEAN_INSPECT {
+    l[0].inspect_scroll -= dy;
+    if l[0].inspect_scroll < 0 { l[0].inspect_scroll = 0; }
+    if l[0].inspect_scroll > 3600.0f32 { l[0].inspect_scroll = 3600.0f32; }
+    return true;
+  }
+  return false;
+}
+
+// ---- #export_c Host API for Lean 4 & RH Workbench ----
+
+coder_page_gym_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].gym_mode else 0;
+}
+coder_page_gym_mode_set :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if mode >= 0 && mode <= 2 { s[0].gym_mode = mode; }
+}
+coder_page_lean_atlas_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_atlas(s, json_str);
+}
+coder_page_lean_module_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_module(s, json_str);
+}
+coder_page_lean_search_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_search(s, json_str);
+}
+coder_page_lean_audit_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_audit(s, json_str);
+}
+coder_page_lean_doctor_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_doctor(s, json_str);
+}
+coder_page_lean_verify_set :: (s: [] CoderPage, json_str: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_load_verify(s, json_str);
+}
+coder_page_lean_apply_plan :: (s: [] CoderPage, plan_json: string) -> bool #export_c #effects(all) {
+  if s.count < 1 { return false; }
+  return cp_lean_apply_plan(s, plan_json);
+}
+coder_page_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_lean_state_json(s, req_id, out);
+}
+coder_page_lean_req_str :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].lean[0].req_str[0..<s[0].lean[0].req_str_n]);
+}
+coder_page_lean_atlas_lod_set :: (s: [] CoderPage, lod: int) #export_c #effects(all) {
+  if s.count < 1 || lod < 0 || lod > 2 { return; }
+  s[0].lean[0].atlas_lod = lod;
+}

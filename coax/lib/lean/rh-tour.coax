@@ -1,0 +1,248 @@
+// Guided 20-step architecture tour of Levent Alpoge & Claude's Nov 2026 Lean 4 proof
+// of the Riemann Hypothesis and Dirichlet GRH (Epic #13943, #13946;
+// docs/lean/riemann-hypothesis-2026.md, docs/lean/riemann-hypothesis-workbench-spec.md).
+//
+// Every step maps to an actual indexed module and declaration verified in
+// leanprover-community/riemann-hypothesis (175,182 modules, 17.37M lines, Lean v4.33.1).
+//
+//   coax/bin/coax test coax/lib/lean/rh-tour.coax --library
+#load "rh-index-core.coax";
+
+RHT_STEPS :: 20;
+RHT_TRACK_FAST :: 1;    // 5-min overview (6 landmark steps)
+RHT_TRACK_FULL :: 2;    // full 20-step remark.pdf journey
+RHT_TRACK_AUDIT :: 4;   // trust & verification audit track
+
+RhTourStep :: struct {
+  number: int;
+  lib_id: int;
+  tracks: int;
+  title: string;
+  subtitle: string;
+  mod_name: string;
+  decl: string;
+  summary: string;
+  why_rh: string;
+}
+
+rht_step :: (i: int) -> RhTourStep {
+  if i == 0 {
+    return RhTourStep.{
+      number = 1, lib_id = RH_LIB_ROOT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Headline Theorems in Main.lean",
+      subtitle = "Five Mathlib-stated theorems: RH and full Dirichlet GRH",
+      mod_name = "Main", decl = "riemannHypothesis",
+      summary = "Main.lean is just 12 lines long and closes Mathlib's exact RiemannHypothesis plus four Dirichlet L-function formulations (zero-free right of 1/2, all strip zeros on Re(s)=1/2, primitive characters).",
+      why_rh = "This is the root of the entire 175,181-module import closure; every theorem below feeds directly into these five declarations."
+    };
+  }
+  if i == 1 {
+    return RhTourStep.{
+      number = 2, lib_id = RH_LIB_ROOT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Mathlib Statement Bridge",
+      subtitle = "Zero custom definitions between Mathlib and the claim",
+      mod_name = "Statements", decl = "DirichletLNonvanishingRightOfHalf",
+      summary = "Statements.lean defines the four explicit Prop aliases solely in terms of Mathlib's riemannZeta and DirichletCharacter.LFunction, matched byte-for-byte against Challenge.lean by lake comparator.",
+      why_rh = "Guarantees the proof proves the real Riemann Hypothesis and Dirichlet GRH without hidden hypotheses or redefined zeta functions."
+    };
+  }
+  if i == 2 {
+    return RhTourStep.{
+      number = 3, lib_id = RH_LIB_SUPPLEMENTS, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Kernel Entry Assembly",
+      subtitle = "Bridging UpperTheory.EveryCharacter to Mathlib's RiemannHypothesis",
+      mod_name = "Supplements.Kernels.MainTheorems", decl = "rhOfAll",
+      summary = "Combines UpperTheory.FinalTheorems.everyCharacter with Formalism.VW.rh_of_every and Formalism.VW.critLine to unpack all five headline statements in 16 lines.",
+      why_rh = "Separates the clean Mathlib-facing surface from the deep 17.37M-line automorphic engine underneath."
+    };
+  }
+  if i == 3 {
+    return RhTourStep.{
+      number = 4, lib_id = RH_LIB_FORMALISM, tracks = RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Gamma Factors & Critical-Line Symmetry",
+      subtitle = "Non-vanishing for Re(s) > 1/2 implies all strip zeros satisfy Re(s) = 1/2",
+      mod_name = "Formalism.GammaFactorNonvanishing.CritLine", decl = "Formalism.VW.critLine",
+      summary = "Uses the completed L-function functional equation and non-vanishing of Gamma factors to reflect any hypothetical zero with Re(s) < 1/2 to 1 - s with Re(1 - s) > 1/2.",
+      why_rh = "Reduces the full Critical Line statement to proving non-vanishing in the open right half-plane Re(s) > 1/2."
+    };
+  }
+  if i == 4 {
+    return RhTourStep.{
+      number = 5, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL,
+      title = "Character Boxes & Main Conclusion",
+      subtitle = "From Row0b local-global reciprocity to EveryCharacter",
+      mod_name = "Development.AutomorphicArithmetic.CharacterBoxes.MainConclusion", decl = "UpperTheory.FinalTheorems.everyCharacter",
+      summary = "Assembles five deep pillars in 14 lines: iterated theta lifts (EveryCharacterOfLiteratureOfVWin), dense threshold modularity (VwinOfRow), local Langlands units (RecTExists), and Galois integral rows (RowSrc).",
+      why_rh = "This is the master control hub (depth 2 from Main) where arithmetic geometry and automorphic forms snap together."
+    };
+  }
+  if i == 5 {
+    return RhTourStep.{
+      number = 6, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FULL,
+      title = "Every Dirichlet Character Implies RH",
+      subtitle = "Reducing zeta zeros to universal character boxes",
+      mod_name = "Development.AutomorphicArithmetic.CharacterBoxes.RiemannHypothesisOfEveryCharacter", decl = "UpperTheory.riemannHypothesis_of_everyCharacter",
+      summary = "Proves that non-vanishing across all character boxes yields the classical Riemann Hypothesis for the Riemann zeta function.",
+      why_rh = "Depth 3 hub unifying all Dirichlet characters chi (mod N) under one framework so RH falls out as the principal-character specialization."
+    };
+  }
+  if i == 6 {
+    return RhTourStep.{
+      number = 7, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL,
+      title = "Third-Place Series & Iterated Theta Lifts",
+      subtitle = "814 lines, 195 theorems driving the core lifting engine",
+      mod_name = "Development.AutomorphicArithmetic.ThetaCorrespondence.ThetaPairLifts.ThirdPlaceSeries.EveryCharacterOfLiteratureOfVWin", decl = "UpperTheory.LiteratureTheorems.every_character_of_literature_of_vWin",
+      summary = "Executes Alpoge's iterated theta-pair lift chain across third-place series, transferring automorphic positivity and non-vanishing constraints across unitary and symplectic dual pairs.",
+      why_rh = "Supplies the central analytic-automorphic mechanism (Step 18-20 of remark.pdf) that eliminates off-line zeros."
+    };
+  }
+  if i == 7 {
+    return RhTourStep.{
+      number = 8, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL,
+      title = "Dense Threshold Modularity (> 2/3 Barrier)",
+      subtitle = "Breaking past the classical 2/3 density obstruction",
+      mod_name = "Development.AutomorphicArithmetic.AutomorphicVarieties.ModularityArgument.ThresholdArguments.DenseThresholdCases.VwinOfRow", decl = "UpperTheory.One.vwin_of_row",
+      summary = "Converts Row0b Galois data into a winning dense-threshold window (vWin), leveraging sqrt(X) savings to beat the classical 2/3 modularity barrier.",
+      why_rh = "Without breaking the 2/3 threshold, classical potential-automorphy arguments stall; this closes the decisive gap."
+    };
+  }
+  if i == 8 {
+    return RhTourStep.{
+      number = 9, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FULL,
+      title = "Local Langlands & Central Units",
+      subtitle = "Existence of local reciprocity parameters (RecTExists)",
+      mod_name = "Development.AutomorphicArithmetic.Foundations.LocalLanglands.LocalCentralUnits.RecTExists", decl = "UpperTheory.Zero.LLC.recTExists",
+      summary = "Constructs local central unit witnesses and local Langlands parameters matching the integral Galois representations required by the global threshold argument.",
+      why_rh = "Directly supplies the local reciprocity witness consumed by MainConclusion.everyCharacter_of_row."
+    };
+  }
+  if i == 9 {
+    return RhTourStep.{
+      number = 10, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FULL,
+      title = "Integral Galois Representations (RowSrc)",
+      subtitle = "Strong local-global compatibility for integral rows",
+      mod_name = "Development.AutomorphicArithmetic.Foundations.GaloisRepresentations.IntegralStructures.RowSrc", decl = "UpperTheory.Gal.Int.galoisLocalGlobalStrong_recParameter",
+      summary = "Establishes strong local-global compatibility for integral Galois lattices, furnishing the exact Row0b hypothesis plugged into everyCharacter_of_row.",
+      why_rh = "Completes the four-legged foundation beneath MainConclusion at depth 3."
+    };
+  }
+  if i == 10 {
+    return RhTourStep.{
+      number = 11, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FAST | RHT_TRACK_FULL,
+      title = "Abelian Variety Theory (99,187 Modules!)",
+      subtitle = "56.6% of the entire proof: global interpolation & decorated lattices",
+      mod_name = "Development.AbelianVarietyTheory.Proofs.GlobalInterpolation.NonemptyHypsOfAllRows", decl = "NonemptyHypsOfAllRows",
+      summary = "By far the largest cluster in the repository (99,187 files, 372,538 theorems): constructs abelian variety families, crystalline periods, decorated lattices, and global interpolation hypotheses.",
+      why_rh = "Feeds geometric Galois representations and discrete-series covers directly into CharacterBoxes at depth 4."
+    };
+  }
+  if i == 11 {
+    return RhTourStep.{
+      number = 12, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FULL,
+      title = "Automorphic Spectrum & Global Geometry",
+      subtitle = "15,147 modules of spectral decompositions & boundary charts",
+      mod_name = "Development.AutomorphicSpectrum.Definitions.GlobalGeometry.BdryChart", decl = "BdryChart",
+      summary = "Develops boundary charts, root surveys, and parallel spectral statements for global automorphic spaces across 15,147 modules and 58,671 theorems.",
+      why_rh = "Controls boundary behavior of automorphic varieties where cusp contributions and Eisenstein spectra meet."
+    };
+  }
+  if i == 12 {
+    return RhTourStep.{
+      number = 13, lib_id = RH_LIB_DEVELOPMENT, tracks = RHT_TRACK_FULL,
+      title = "Weil Bounds & p-adic Hodge Comparison",
+      subtitle = "7,051 modules linking etale cohomology, Cech pairings & Hecke vectors",
+      mod_name = "Development.WeilBound.CoreStatements.PadicHodgeComparison.EtaleCohomologyComparison.CechPairings.Imports", decl = "Imports",
+      summary = "Formalizes Weil-type point-counting / eigenvalue purity bounds, Kato coprimality, cuspidal admissibility, and p-adic/etale cohomology comparisons.",
+      why_rh = "Provides the purity and eigenvalue separation bounds that prevent degenerate cancellations in the trace/theta formulas."
+    };
+  }
+  if i == 13 {
+    return RhTourStep.{
+      number = 14, lib_id = RH_LIB_FORMALISM, tracks = RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Formal Degrees & Bessel Models",
+      subtitle = "Archimedean & p-adic formal degree bounds in Formalism",
+      mod_name = "Formalism.FormalDegreeBessel.StatementIO", decl = "StatementIO",
+      summary = "One of the 116 domain modules in Formalism (18,254 files, 3.20M lines): pins down formal degrees and Bessel model bounds feeding discrete-series sqrt-covers.",
+      why_rh = "Sits only 6 import hops from Main.lean, quantifying local representation-theoretic factors in the sqrt(X) bound."
+    };
+  }
+  if i == 14 {
+    return RhTourStep.{
+      number = 15, lib_id = RH_LIB_FORMALISM, tracks = RHT_TRACK_FULL | RHT_TRACK_AUDIT,
+      title = "Behrend Sets & Sharp Restriction",
+      subtitle = "Additive-combinatorial variance bounds feeding GL(3) & GL(5)",
+      mod_name = "Formalism.BehrendSets.FinalE", decl = "FinalE",
+      summary = "Uses Behrend-set progression-free constructions and variance estimates to feed GL3MeanSquares, LocalToGlobal GL1/GL5 packets, and SharpRestriction global Schur bounds.",
+      why_rh = "A striking bridge between additive combinatorics and automorphic L-functions, traced cleanly in 12 hops to Main."
+    };
+  }
+  if i == 15 {
+    return RhTourStep.{
+      number = 16, lib_id = RH_LIB_FORMALISM, tracks = RHT_TRACK_FULL,
+      title = "Local-to-Global GL(5) Genus Packets",
+      subtitle = "5,501 modules transferring local bounds into global independence",
+      mod_name = "Formalism.LocalToGlobal.GlobalTheory.GL5.PacketStatementOfIndependence", decl = "PacketStatementOfIndependence",
+      summary = "Glues local representation bounds across GL(1)..GL(5) into global packet independence statements across 49,709 theorems.",
+      why_rh = "Serves as the global spine connecting Formalism's local estimates to Development's global interpolation."
+    };
+  }
+  if i == 16 {
+    return RhTourStep.{
+      number = 17, lib_id = RH_LIB_POSITIVITY, tracks = RHT_TRACK_FULL,
+      title = "Positivity Theory & Weil Representations",
+      subtitle = "449 modules of archimedean cuspidal continuity & K-finite theta lifts",
+      mod_name = "PositivityTheory.AutomorphicForms.PublishedInputs.CuspidalContinuity.ArchimedeanCuspidal.KFiniteVectors.KFiniteThetaLifts.RationalPrimesBelowPlaces", decl = "RationalPrimesBelowPlaces",
+      summary = "Captures classical published positivity inputs, unit-killing lemmas, tower lemmas, and K-finite theta lifts in 55,130 lines of Lean.",
+      why_rh = "Supplies the positivity constraints that force spectral parameters onto the tempered/unitary axis."
+    };
+  }
+  if i == 17 {
+    return RhTourStep.{
+      number = 18, lib_id = RH_LIB_COMPANION, tracks = RHT_TRACK_FULL,
+      title = "Companion Theory: Real Groups & Euler Products",
+      subtitle = "2,027 modules of Harish-Chandra modules, Pieri rules & spectral geometry",
+      mod_name = "CompanionTheory.SpectralGeometry.CountingDefinitions.AdelicEulerProducts.IsEulerProd", decl = "IsEulerProd",
+      summary = "Formalizes real reductive groups, Harish-Chandra modules, thickening estimates, eightfold theory, and adelic Euler product counting.",
+      why_rh = "Handles the archimedean (real/complex place) companion theory matching the finite-place arithmetic."
+    };
+  }
+  if i == 18 {
+    return RhTourStep.{
+      number = 19, lib_id = RH_LIB_RECIPROCITY, tracks = RHT_TRACK_FULL,
+      title = "Reciprocity Theory & Toroidal Compactifications",
+      subtitle = "3,845 modules of class field theory, Chebotarev & reductive groups",
+      mod_name = "ReciprocityTheory.ReductiveGroups.ArithmeticGeometry.BirationalGeometry.ToroidalCompactification.UniformisationConclusion", decl = "UniformisationConclusion",
+      summary = "Constructs class field theory, Chebotarev density, semistable reduction, L2 d-bar estimates, and toroidal compactifications across 563,016 lines.",
+      why_rh = "Supplies the reciprocity and compactification geometry needed to globalize automorphic forms cleanly."
+    };
+  }
+  return RhTourStep.{
+    number = 20, lib_id = RH_LIB_GROUND, tracks = RHT_TRACK_FULL,
+    title = "Ground Theory: Fields, Heights & Theta Series",
+    subtitle = "8,507 foundational modules built above Mathlib v4.33.1",
+    mod_name = "GroundTheory.HeightsAndTheta.Heights.DiscreteValuationNumbers.StatementsFlagIndependence", decl = "StatementsFlagIndependence",
+    summary = "12 sub-packages (LocalFields, GlobalFields, HeightsAndTheta, PAdicHodge, Brauer, TateCohomology, ProfiniteCohomology, ...) spanning 1.12M lines above Mathlib.",
+    why_rh = "The bedrock layer that extends Mathlib v4.33.1 with the algebraic number theory and arithmetic geometry primitives used everywhere above."
+  };
+}
+
+rht_track_count :: (track_mask: int) -> int {
+  n := 0;
+  for i: 0..<RHT_STEPS {
+    if (rht_step(i).tracks & track_mask) != 0 { n += 1; }
+  }
+  return n;
+}
+
+#test "rh tour: all 20 steps have valid modules, libs, summaries, and track counts" {
+  #assert rht_track_count(RHT_TRACK_FAST) == 7;
+  #assert rht_track_count(RHT_TRACK_FULL) == 20;
+  #assert rht_track_count(RHT_TRACK_AUDIT) == 6;
+  for i: 0..<RHT_STEPS {
+    st := rht_step(i);
+    #assert st.number == i + 1;
+    #assert st.lib_id >= 0 && st.lib_id < RH_LIBS;
+    #assert st.title.count > 0 && st.mod_name.count > 0 && st.decl.count > 0 && st.summary.count > 0 && st.why_rh.count > 0;
+    #assert rh_lib_of(st.mod_name) == st.lib_id;
+  }
+}

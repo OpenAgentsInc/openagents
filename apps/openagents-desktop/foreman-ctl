@@ -241,6 +241,25 @@ def main():
             payload["date_to"] = str(flags["date-to"])
         call("POST", "/v1/search/chats", payload)
     elif cmd == "gym":
+        if pos and pos[0] == "lean":
+            sub_pos = pos[1:]
+            if sub_pos == ["status"] or (not sub_pos and not flags):
+                call("GET", "/v1/gym/lean")
+                return
+            payload = {}
+            if sub_pos:
+                payload["view"] = sub_pos[0]
+            for key in ("view", "module", "decl", "search", "math-tab", "file"):
+                if key in flags and flags[key] is not True:
+                    payload[key.replace("-", "_")] = str(flags[key])
+            if "tour-step" in flags and flags["tour-step"] is not True:
+                payload["tour_step"] = int(flags["tour-step"])
+            if "line" in flags and flags["line"] is not True:
+                payload["line"] = int(flags["line"])
+            if flags.get("no-open", False):
+                payload["open"] = False
+            call("POST", "/v1/gym/lean", payload)
+            return
         if pos == ["status"] or (not pos and not flags):
             call("GET", "/v1/gym")
             return
@@ -261,6 +280,23 @@ def main():
         if flags.get("no-open", False):
             payload["open"] = False
         call("POST", "/v1/gym", payload)
+    elif cmd == "gym-lean":
+        if pos == ["status"] or (not pos and not flags):
+            call("GET", "/v1/gym/lean")
+            return
+        payload = {}
+        if pos:
+            payload["view"] = pos[0]
+        for key in ("view", "module", "decl", "search", "math-tab", "file"):
+            if key in flags and flags[key] is not True:
+                payload[key.replace("-", "_")] = str(flags[key])
+        if "tour-step" in flags and flags["tour-step"] is not True:
+            payload["tour_step"] = int(flags["tour-step"])
+        if "line" in flags and flags["line"] is not True:
+            payload["line"] = int(flags["line"])
+        if flags.get("no-open", False):
+            payload["open"] = False
+        call("POST", "/v1/gym/lean", payload)
     else:
         die(f"foreman-ctl: unknown command '{cmd}'")
 

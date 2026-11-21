@@ -49,3 +49,4 @@
 #load "page/checks/preview-checks.coax" #test;
 #load "page/checks/customize-checks.coax" #test;
 #load "page/checks/forge-checks.coax" #test;
+#load "page/checks/lean-gym-checks.coax" #test;

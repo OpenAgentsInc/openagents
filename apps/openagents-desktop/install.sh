@@ -37,7 +37,7 @@ legacy_agent_plist="$HOME/Library/LaunchAgents/$legacy_label.plist"
 fixed=(coax/src coax/bootstrap coax/lib/compiler coax/lib/proto ':(glob)coax/*' scripts/coax-release.sh coax/lib/crypto/sha256-kernel.coax
        coax/platform coax/web/tool.sh coax/lib/crypto/entropy.coax coax/lib/sys coax/lib/net
        apps/shared/host apps/shared/native components/chat components/fonts components/icons components/NOTICE apps/openagents-desktop/native psionic/platform psionic/lib/inkling)
-roots=(components/backend/gpu-shader.coax coder/tui/mcworker.coax coder/tui/claudeworker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax)
+roots=(components/backend/gpu-shader.coax coder/tui/mcworker.coax coder/tui/claudeworker.coax coder/tui/agyworker.coax coder/tui/gitguard.coax coder/tui/lean-run.coax)
 mode="${1:-now}"
 mkdir -p "$state"
 

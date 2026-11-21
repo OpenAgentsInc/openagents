@@ -331,7 +331,8 @@ CoderPage :: struct {
   notify_mode: int;           // CP_NOTIFY_OFF / _OS / _SOUND / _BOTH (page/notify.coax; GitHub #13874)
   experimental: bool;         // experimental features (log in and the account, Gym, Foreman) show; off unless the host turns them on
   cloud_authed: bool;         // signed into an OpenAgents account; cloud/Microcoder models require experimental && cloud_authed
-  gym_open: bool;             // the 3D PLE Gym Workbench is open beside the sidebar (#13792)
+  gym_open: bool;             // the Gym Workbench is open beside the sidebar (#13792, #13946)
+  gym_mode: int;              // CP_GYM_BENCH (0), CP_GYM_PLE (1), CP_GYM_LEAN (2)
   gym_x: f32; gym_y: f32; gym_w: f32; gym_h: f32;  // its host viewport rect in logical points
   // the live 3D card (shows.coax, #13812) the last frame drew: the card's rect and the conversation's
   // clip (x, y, w, h each, host points), and the scene the host mounts a viewport over it for
@@ -401,6 +402,7 @@ CoderPage :: struct {
   sched: [1] CpSchedState;     // Scheduled tasks, HMAC-SHA256 webhooks & Update Everything coordinator (scheduled.coax; #13885)
   preview: [1] CpPreview;      // Embedded Web Preview Pane & SnapShot region capture (preview.coax; #13888)
   forge: [1] CpForge;          // Pull Requests inbox, multi-forge source control, AI review tours & Issues view (forge.coax; #13886)
+  lean: [1] CpLeanRh;          // Lean 4 & Riemann Hypothesis Proof Workbench (gym-lean*.coax; #13946)
   // the draft's attachments and mentions (attach.coax, mention.coax; GitHub #13699): the strip over
   // the draft, the + as last drawn (the host's menu opens there), files carried over the window, the
   // @ and / popover and what it last followed, and the working folder's files as the host listed them
@@ -536,6 +538,7 @@ cp_init :: (s: [] CoderPage) {
   cp_preview_init(s);
   cp_cust_init(s);
   cp_forge_init(s);
+  cp_lean_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

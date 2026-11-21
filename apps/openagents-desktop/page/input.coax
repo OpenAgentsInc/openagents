@@ -56,6 +56,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_PREVIEW_CLOSE && act < CP_PREVIEW_PORT_BASE + CP_PREVIEW_MAX_PORTS { return cp_preview_press(s, act); } // Embedded Web Preview Pane (preview.coax; #13888)
   _ = cp_preview_yield(s, act);
   if act >= CP_FORGE_TOGGLE && act <= CP_FORGE_ISS_CHAT { return cp_forge_press(s, act, surface_id(s[0].surface[..], row)); }  // Pull Requests & Issues (forge.coax; #13886)
+  if act >= CP_GYM_MODE_ACT && act <= CP_LEAN_JUMP_ATLAS { return cp_lean_press(s, act, surface_id(s[0].surface[..], row)); }  // Gym mode bar & Lean · RH Workbench (gym-lean.coax; #13946)
   _ = cp_forge_yield(s, act);
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
@@ -450,6 +451,7 @@ CP_SCR_TALK :: 0; CP_SCR_SIDE :: 1; CP_SCR_PANE :: 2; CP_SCR_SETTINGS :: 3; CP_S
 cp_scroll_under :: (s: [] CoderPage) -> int {
   if s[0].set_open { return CP_SCR_SETTINGS; }
   if s[0].side > 0 && s[0].px < s[0].side { return CP_SCR_SIDE; }
+  if s[0].gym_open && s[0].gym_mode == CP_GYM_LEAN { return CP_SCR_LEAN; }
   if cp_forge_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_FORGE; }
   if cp_side_chat_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_SIDE_CHAT; }
   if cp_term_shown(s) && s[0].pane_w > 0 && s[0].px >= s[0].pane_x { return CP_SCR_TERM; }
@@ -474,6 +476,7 @@ cp_scroll_at :: (s: [] CoderPage, view: int, delta: f32, kind: int, time: f64) {
   if view == CP_SCR_SIDE { s[0].side_scroll = ui_scroll_by(s[0].side_scr[..], scroll_clamp(s[0].side_scroll, s[0].side_content, s[0].side_view), delta, s[0].side_content, s[0].side_view, kind, time, r); return; }
   // the code review moves as the deltas come, the platform's own coast included
   if view == CP_SCR_FORGE { cp_forge_scroll(s, delta); return; }
+  if view == CP_SCR_LEAN { _ = cp_lean_wheel(s, -delta); return; }
   if view == CP_SCR_SIDE_CHAT { cp_side_chat_scroll(s, delta); return; }
   if view == CP_SCR_TERM { cp_term_scroll(s, delta); return; }
   if view == CP_SCR_FILETREE { cp_ft_scroll(s, delta); return; }

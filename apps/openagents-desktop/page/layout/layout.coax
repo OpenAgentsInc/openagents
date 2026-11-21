@@ -63,7 +63,18 @@ cp_layout :: (s: [] CoderPage, f: [] UiFrame, window_w: f32, h: f32) {
     gy := cp_bar(s);
     gw := window_w - left;
     gh := h - gy;
-    if gw > 0 && gh > 0 { s[0].gym_x = left * sc; s[0].gym_y = gy * sc; s[0].gym_w = gw * sc; s[0].gym_h = gh * sc; }
+    if gw > 0 && gh > 0 {
+      cp_gym_bar(s, f, left, gy, gw);
+      if s[0].gym_mode == CP_GYM_LEAN {
+        s[0].gym_w = 0; s[0].gym_h = 0;
+        cp_gym_lean(s, f, left, gy + CP_GYM_BAR_H, gw, gh - CP_GYM_BAR_H);
+      } else {
+        body_h := gh - CP_GYM_BAR_H;
+        if body_h > 0 {
+          s[0].gym_x = left * sc; s[0].gym_y = (gy + CP_GYM_BAR_H) * sc; s[0].gym_w = gw * sc; s[0].gym_h = body_h * sc;
+        }
+      }
+    }
     if left > 0 { from := app_slide_mark(f); cp_sidebar(s, f, side_w, h, running); app_slide(f, from, left - side_w, 0); }
     cp_title_bar(s, f, left, toggle);
     return;

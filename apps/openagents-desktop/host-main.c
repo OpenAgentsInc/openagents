@@ -838,7 +838,48 @@ static void handle_action(DesktopApp *a, int act) {
       if (cd_open_url(a->page, url, (int)sizeof(url)) > 0 && (strncmp(url, "https://", 8) == 0 || strncmp(url, "http://", 7) == 0)) oa_open_external(url);
       break;
     }
-    case 32: not_here(a, "The Gym"); break;
+    case 32: {
+      // Cross-platform Coax Lean 4 & Riemann Hypothesis Proof Workbench (#13946)
+      cd_gym_set(a->page, 1);
+      cd_gym_mode_set(a->page, 2);
+      char hb[OA_PATH], ap[OA_PATH];
+      const char *home = oa_home(hb, sizeof hb);
+      if (home && home[0]) {
+        snprintf(ap, sizeof ap, "%s/.openagents/lean/index/rh-atlas.json", home);
+        FILE *f = fopen(ap, "rb");
+        if (f) {
+          fseek(f, 0, SEEK_END);
+          long sz = ftell(f);
+          fseek(f, 0, SEEK_SET);
+          if (sz > 0 && sz < 262144) {
+            char *buf = (char *)malloc((size_t)sz + 1);
+            if (buf) {
+              size_t got = fread(buf, 1, (size_t)sz, f);
+              buf[got] = 0;
+              cd_lean_atlas_set(a->page, buf);
+              free(buf);
+            }
+          }
+          fclose(f);
+        }
+      }
+      break;
+    }
+    case 150: {
+      if (cd_gym_mode(a->page) != 2) {
+        cd_gym_mode_set(a->page, 2);
+        cd_toast(a->page, "Benchmarks & 3D PLE require macOS; Lean · RH Proof Workbench runs natively here.", 0);
+      }
+      break;
+    }
+    case 156: {
+      char path[OA_PATH] = {0};
+      if (cd_lean_req_str(a->page, path, (int)sizeof(path)) > 0) {
+        cd_gym_set(a->page, 0);
+        handle_file_open(a, path);
+      }
+      break;
+    }
     case 33: ask_agy(a); break;
     case 34:
       a->agy_mode = cd_settings_agy_mode(a->page);

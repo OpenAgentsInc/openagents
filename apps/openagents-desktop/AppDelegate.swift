@@ -305,7 +305,85 @@ enum TestLaunch {
 }
 
 @main struct CoderApp {
+    /// Offscreen Metal capture of the Lean 4 & Riemann Hypothesis Proof Workbench (#13946).
+    /// Renders directly into an offscreen MTLTexture with ZERO windows and ZERO focus stealing.
+    static func runLeanRhShots(outDir: String) -> Int32 {
+        guard let resources = Bundle.main.resourceURL?.appendingPathComponent("Components").path else {
+            fputs("OpenAgents --shot-lean-rh: missing Components resources\n", stderr); return 1
+        }
+        let fm = FileManager.default
+        try? fm.createDirectory(atPath: outDir, withIntermediateDirectories: true)
+        guard let page = cd_open_ex(resources, 1, 1440, 900) else {
+            fputs("OpenAgents --shot-lean-rh: cd_open_ex(offscreen=1) failed\n", stderr); return 1
+        }
+        cd_experimental_set(page, 1)
+        cd_gym_set(page, 1)
+        cd_gym_mode_set(page, 2)
+        if let atlasData = try? Data(contentsOf: CoderWindow.rhAtlasFile),
+           let atlasStr = String(data: atlasData, encoding: .utf8), !atlasStr.isEmpty {
+            _ = cd_lean_atlas_set(page, atlasStr)
+        }
+        func runToolSync(_ args: [String]) -> String? {
+            let bundled = Bundle.main.resourceURL?.appendingPathComponent("lean-run").path
+            let shared = fm.homeDirectoryForCurrentUser.appendingPathComponent(".openagents/bin/lean-run").path
+            let tool = (bundled != nil && fm.isExecutableFile(atPath: bundled!)) ? bundled! : (fm.isExecutableFile(atPath: shared) ? shared : nil)
+            guard let exe = tool else { return nil }
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: exe)
+            p.arguments = args
+            let pipe = Pipe(); p.standardOutput = pipe; p.standardError = Pipe()
+            guard (try? p.run()) != nil else { return nil }
+            let d = pipe.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            let s = String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            return s.isEmpty ? nil : s
+        }
+        if let doc = runToolSync(["doctor", "--json"]) { _ = cd_lean_doctor_set(page, doc) }
+        if let aud = runToolSync(["rh", "audit", "--json"]) { _ = cd_lean_audit_set(page, aud) }
+        if let mainMod = runToolSync(["rh", "module", "Main", "--json"]) { _ = cd_lean_module_set(page, mainMod) }
+        if let hits = runToolSync(["rh", "search", "Behrend", "--limit", "16", "--json"]) { _ = cd_lean_search_set(page, hits) }
+
+        func snap(_ name: String) -> Bool {
+            for _ in 0..<4 { _ = cd_shot_frame(page, 1440, 900, 0.016) }
+            let path = (outDir as NSString).appendingPathComponent(name)
+            return cd_shot_write(page, path) != 0
+        }
+        let shots: [(String, String, Int32?)] = [
+            ("01-tour.png", "{\"ok\":true,\"id\":\"s1\",\"open\":true,\"view\":\"tour\",\"tour_step\":1}", nil),
+            ("02a-atlas-lod0.png", "{\"ok\":true,\"id\":\"s2a\",\"open\":true,\"view\":\"atlas\"}", 0),
+            ("02b-atlas-lod1.png", "{\"ok\":true,\"id\":\"s2b\",\"open\":true,\"view\":\"atlas\"}", 1),
+            ("03-math-strip.png", "{\"ok\":true,\"id\":\"s3\",\"open\":true,\"view\":\"math\",\"math_tab\":\"strip\"}", nil),
+            ("04-math-robin.png", "{\"ok\":true,\"id\":\"s4\",\"open\":true,\"view\":\"math\",\"math_tab\":\"robin\"}", nil),
+            ("05-math-theta.png", "{\"ok\":true,\"id\":\"s5\",\"open\":true,\"view\":\"math\",\"math_tab\":\"theta\"}", nil),
+            ("06-inspect-main.png", "{\"ok\":true,\"id\":\"s6\",\"open\":true,\"view\":\"inspect\",\"module\":\"Main\"}", nil),
+            ("07-trust.png", "{\"ok\":true,\"id\":\"s7\",\"open\":true,\"view\":\"trust\"}", nil),
+            ("08-prover.png", "{\"ok\":true,\"id\":\"s8\",\"open\":true,\"view\":\"prover\"}", nil),
+        ]
+        var okCount = 0
+        for (file, plan, lod) in shots {
+            _ = cd_lean_apply_plan(page, plan)
+            if let l = lod { cd_lean_atlas_lod_set(page, l) }
+            if snap(file) { okCount += 1; print("wrote \(file)") }
+        }
+        if let behMod = runToolSync(["rh", "module", "Formalism.BehrendSets.FinalE", "--json"]) {
+            _ = cd_lean_module_set(page, behMod)
+            _ = cd_lean_apply_plan(page, "{\"ok\":true,\"id\":\"s2c\",\"open\":true,\"view\":\"atlas\",\"module\":\"Formalism.BehrendSets.FinalE\"}")
+            cd_lean_atlas_lod_set(page, 2)
+            if snap("02c-atlas-lod2.png") { okCount += 1; print("wrote 02c-atlas-lod2.png") }
+            _ = cd_lean_apply_plan(page, "{\"ok\":true,\"id\":\"s9\",\"open\":true,\"view\":\"inspect\",\"module\":\"Formalism.BehrendSets.FinalE\"}")
+            if snap("09-inspect-behrend.png") { okCount += 1; print("wrote 09-inspect-behrend.png") }
+        }
+        var stateBuf = [CChar](repeating: 0, count: 8192)
+        if cd_lean_state_json(page, "shot", &stateBuf, Int32(stateBuf.count)) > 0 {
+            print("state: \(String(cString: stateBuf))")
+        }
+        return okCount >= 8 ? 0 : 1
+    }
+
     static func main() {
+        if let at = CommandLine.arguments.firstIndex(of: "--shot-lean-rh"), at + 1 < CommandLine.arguments.count {
+            exit(runLeanRhShots(outDir: CommandLine.arguments[at + 1]))
+        }
         let app = NSApplication.shared; app.setActivationPolicy(.regular)
         let delegate = CoderDelegate(); app.delegate = delegate
         let bar = NSMenu(), appItem = NSMenuItem(), editItem = NSMenuItem()

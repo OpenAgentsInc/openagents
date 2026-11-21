@@ -688,4 +688,17 @@ int cd_forge_selected_pr(void *page);
 int cd_forge_selected_pr_viewed(void *page, uint64_t *out_mask, int *out_count);
 int cd_forge_prompt(void *page, int tour, char *out, int cap);
 int cd_forge_issue_prompt(void *page, char *out, int cap);
+// Unified Gym mode bar & Lean 4 / Riemann Hypothesis Proof Workbench (page/gym-lean*.coax; #13946).
+int cd_gym_mode(void *page);
+void cd_gym_mode_set(void *page, int mode);
+int cd_lean_atlas_set(void *page, const char *json);
+int cd_lean_module_set(void *page, const char *json);
+int cd_lean_search_set(void *page, const char *json);
+int cd_lean_audit_set(void *page, const char *json);
+int cd_lean_doctor_set(void *page, const char *json);
+int cd_lean_verify_set(void *page, const char *json);
+int cd_lean_apply_plan(void *page, const char *plan_json);
+int cd_lean_state_json(void *page, const char *req_id, char *out, int cap);
+int cd_lean_req_str(void *page, char *out, int cap);
+void cd_lean_atlas_lod_set(void *page, int lod);
 #endif

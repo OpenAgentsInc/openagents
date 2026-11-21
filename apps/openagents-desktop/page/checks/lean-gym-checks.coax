@@ -1,0 +1,125 @@
+// Tier 0 checks for OpenAgents Desktop Gym lifted mode bar & Lean 4 / Riemann Hypothesis
+// Proof Workbench (Epic #13943, #13946).
+//   coax/bin/coax test apps/openagents-desktop/page/checks/lean-gym-checks.coax --library
+#load "../parts.coax";
+
+#test "lean gym workbench: lifted mode bar and views 0..2 render cleanly" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  verts: [CP_MAX_VERTICES] f32;
+
+  // Open Gym -> default mode is Benchmarks (0), gym_rect active below 36pt Coax bar
+  coder_page_gym_set(s, true);
+  #assert coder_page_gym_open(s) && coder_page_gym_mode(s) == CP_GYM_BENCH;
+  _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+  r: [4] f32;
+  #assert coder_page_gym_rect(s, r[..]) && r[0] > 100 && r[2] > 400 && r[3] > 300;
+  #assert s[0].refused == 0;
+
+  // Switch to Lean · RH mode (2) -> native gym_rect hides cleanly (returns false)
+  coder_page_gym_mode_set(s, CP_GYM_LEAN);
+  #assert coder_page_gym_mode(s) == CP_GYM_LEAN;
+
+  atlas_json := "{\"modules\":175182,\"edges\":753552,\"theorems\":813182,\"defs\":241687,\"lines\":17373956,\"bytes\":1030515610,\"metaprog_files\":6,\"max_depth\":43,\"libs\":[{\"id\":0,\"name\":\"Main\",\"modules\":3,\"theorems\":10,\"defs\":8,\"lines\":55,\"bytes\":2478,\"min_depth\":0,\"max_depth\":1,\"x\":500,\"y\":70},{\"id\":9,\"name\":\"Development\",\"modules\":141924,\"theorems\":558037,\"defs\":129894,\"lines\":12232383,\"bytes\":767271185,\"min_depth\":2,\"max_depth\":43,\"x\":820,\"y\":620}],\"lib_edges\":[{\"from\":0,\"to\":9,\"weight\":1}],\"clusters\":[{\"id\":0,\"name\":\"Development.AbelianVarietyTheory\",\"lib\":9,\"modules\":99187,\"theorems\":372538,\"defs\":70000,\"lines\":7500000,\"min_depth\":4,\"x\":820,\"y\":620,\"hub\":\"Development.AbelianVarietyTheory.Definitions.Divisors.CTSmallCone\"}],\"onion\":[{\"name\":\"Main\",\"lib\":0,\"depth\":0,\"lines\":12,\"theorems\":5,\"indeg\":0}],\"metaprog\":[\"BuildAid.D1\",\"Formalism.HermitianCurvature.HermitianCurvatureProofs.CutCptCopy\"]}";
+  #assert coder_page_lean_atlas_set(s, atlas_json);
+  #assert s[0].lean[0].loaded && s[0].lean[0].modules == 175182 && s[0].lean[0].clusters_n == 1 && s[0].lean[0].metaprog_n == 2;
+
+  // Tour, Atlas (LOD 0/1/2), and Math (tabs 0/1/2) render with ZERO refused frames
+  s[0].lean[0].view = CP_LEAN_TOUR;
+  _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+  #assert !coder_page_gym_rect(s, r[..]) && s[0].refused == 0;
+
+  s[0].lean[0].view = CP_LEAN_ATLAS;
+  for lod: 0..<3 {
+    s[0].lean[0].atlas_lod = lod;
+    _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+    #assert s[0].refused == 0;
+  }
+  s[0].lean[0].view = CP_LEAN_MATH;
+  for mt: 0..<3 {
+    s[0].lean[0].math_tab = mt;
+    _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+    #assert s[0].refused == 0;
+  }
+}
+
+#test "lean gym workbench: views 3..5, plan application, and lean-gym-state.v1 export" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  verts: [CP_MAX_VERTICES] f32;
+  coder_page_gym_set(s, true);
+  coder_page_gym_mode_set(s, CP_GYM_LEAN);
+
+  atlas_json := "{\"modules\":175182,\"edges\":753552,\"theorems\":813182,\"defs\":241687,\"lines\":17373956,\"bytes\":1030515610,\"metaprog_files\":6,\"max_depth\":43,\"libs\":[{\"id\":0,\"name\":\"Main\",\"modules\":3,\"theorems\":10,\"defs\":8,\"lines\":55,\"bytes\":2478,\"min_depth\":0,\"max_depth\":1,\"x\":500,\"y\":70}],\"lib_edges\":[],\"clusters\":[],\"onion\":[],\"metaprog\":[\"BuildAid.D1\"]}";
+  #assert coder_page_lean_atlas_set(s, atlas_json);
+
+  mod_json := "{\"module\":\"Main\",\"lib\":\"Main\",\"depth\":0,\"lines\":12,\"bytes\":430,\"theorems\":5,\"defs\":0,\"metaprog\":false,\"imports_total\":2,\"imported_by_total\":0,\"imports\":[\"Statements\",\"Supplements.Kernels.MainTheorems\"],\"imported_by\":[],\"path_to_main\":[\"Main\"],\"source_path\":\"/tmp/Main.lean\",\"source\":\"import Statements\\ntheorem riemannHypothesis : RiemannHypothesis := rhOfAll\\n\"}";
+  #assert coder_page_lean_module_set(s, mod_json);
+  #assert s[0].lean[0].imp_up_count == 2 && s[0].lean[0].hop_count == 1 && s[0].lean[0].src_n > 10;
+
+  audit_json := "{\"modules\":175182,\"reachable_from_main\":175181,\"metaprog_count\":6,\"metaprog_modules\":[\"BuildAid.D1\"],\"digests\":[{\"file\":\"src/Main.lean\",\"sha256\":\"f7daf90c24b7bf6ed08a3fd819ae5d6782f810e6a5962b5c0bfed4bba9939095\"}]}";
+  #assert coder_page_lean_audit_set(s, audit_json) && s[0].lean[0].dig_n == 1 && s[0].lean[0].reachable == 175181;
+
+  for v: 3..<6 {
+    s[0].lean[0].view = v;
+    _ = coder_page_frame(s, verts[..], 1280, 800, 1.0, 0.016);
+    #assert s[0].refused == 0;
+  }
+
+  // Apply normalized Lean Gym plan & export lean-gym-state.v1 JSON
+  plan := "{\"ok\":true,\"id\":\"p1\",\"open\":true,\"view\":\"trust\",\"module\":\"Main\",\"decl\":\"\",\"tour_step\":7,\"search\":\"\",\"math_tab\":\"robin\",\"file\":\"\",\"line\":0}";
+  #assert coder_page_lean_apply_plan(s, plan);
+  #assert s[0].lean[0].view == CP_LEAN_TRUST && s[0].lean[0].tour_step == 6 && s[0].lean[0].math_tab == 1;
+
+  sb: [4096] u8;
+  sn := coder_page_lean_state_json(s, "p1", sb[..]);
+  #assert sn > 40;
+  st_out: [1] LwGymState;
+  #assert lw_gym_state_read(cast(string) sb[0..<sn], st_out[..]) && st_out[0].rh_modules == 175182 && st_out[0].tour_step == 7;
+}
+
+#test "lean gym workbench: interactive press and wheel handlers across all 6 views" {
+  p: [1] CoderPage; st: [1] CpCheckLean;
+  s := cp_check_lean(p[..], st[..]);
+  cp_init(s);
+  s[0].d = 1.0f32;
+  test_atlas(s[0].atlas[..]);
+  coder_page_gym_set(s, true);
+
+  // Switch GYM mode via lifted bar press
+  #assert cp_lean_press(s, CP_GYM_MODE_ACT, "coder.gym.mode.2") && coder_page_gym_mode(s) == CP_GYM_LEAN;
+  #assert coder_page_action(s) == CP_ASK_LEAN_MODE;
+
+  atlas_json := "{\"modules\":175182,\"edges\":753552,\"theorems\":813182,\"defs\":241687,\"lines\":17373956,\"bytes\":1030515610,\"metaprog_files\":6,\"max_depth\":43,\"libs\":[{\"id\":0,\"name\":\"Main\",\"modules\":3,\"theorems\":10,\"defs\":8,\"lines\":55,\"bytes\":2478,\"min_depth\":0,\"max_depth\":1,\"x\":500,\"y\":70},{\"id\":9,\"name\":\"Development\",\"modules\":141924,\"theorems\":558037,\"defs\":129894,\"lines\":12232383,\"bytes\":767271185,\"min_depth\":2,\"max_depth\":43,\"x\":820,\"y\":620}],\"lib_edges\":[{\"from\":0,\"to\":9,\"weight\":1}],\"clusters\":[{\"id\":0,\"name\":\"Development.AbelianVarietyTheory\",\"lib\":9,\"modules\":99187,\"theorems\":372538,\"defs\":70000,\"lines\":7500000,\"min_depth\":4,\"x\":820,\"y\":620,\"hub\":\"Development.AbelianVarietyTheory.Hub\"}],\"onion\":[{\"name\":\"Main\",\"lib\":0,\"depth\":0,\"lines\":12,\"theorems\":5,\"indeg\":0}],\"metaprog\":[\"BuildAid.D1\"]}";
+  #assert coder_page_lean_atlas_set(s, atlas_json);
+
+  // Tour track, next/prev, jump to atlas, inspect module
+  #assert cp_lean_press(s, CP_LEAN_TOUR_TRACK, "coder.lean.track.1") && s[0].lean[0].tour_track == 1;
+  #assert cp_lean_press(s, CP_LEAN_TOUR_NEXT, "coder.lean.tour.next") && s[0].lean[0].tour_step == 1;
+  #assert cp_lean_press(s, CP_LEAN_TOUR_PREV, "coder.lean.tour.prev") && s[0].lean[0].tour_step == 0;
+  #assert cp_lean_press(s, CP_LEAN_JUMP_ATLAS, "coder.lean.tour.atlas") && s[0].lean[0].view == CP_LEAN_ATLAS && s[0].lean[0].atlas_lod == 1;
+  #assert cp_lean_press(s, CP_LEAN_ATLAS_CL, "coder.lean.cl.0") && s[0].lean[0].atlas_sel_cluster == 0;
+  #assert cp_lean_press(s, CP_LEAN_ATLAS_DRILL, "coder.lean.drill") && s[0].lean[0].atlas_lod == 2 && coder_page_action(s) == CP_ASK_LEAN_MODULE;
+  rb: [256] u8;
+  rn := coder_page_lean_req_str(s, rb[..]);
+  #assert cast(string) rb[0..<rn] == "Development.AbelianVarietyTheory.Hub";
+
+  // Math interactive controls
+  #assert cp_lean_press(s, CP_LEAN_VIEW_ACT, "coder.lean.view.2") && s[0].lean[0].view == CP_LEAN_MATH;
+  #assert cp_lean_press(s, CP_LEAN_MATH_CHI, "coder.lean.chi.2") && s[0].lean[0].math_chi == 2;
+  #assert cp_lean_press(s, CP_LEAN_MATH_TAB, "coder.lean.mtab.1") && s[0].lean[0].math_tab == 1;
+  #assert cp_lean_press(s, CP_LEAN_MATH_ROBIN, "coder.lean.rob.3") && s[0].lean[0].math_robin_idx == 3;
+  #assert cp_lean_press(s, CP_LEAN_MATH_TAB, "coder.lean.mtab.2") && cp_lean_press(s, CP_LEAN_MATH_STAGE, "coder.lean.stg.5") && s[0].lean[0].math_theta_stage == 5;
+
+  // Search preset, Trust audit metaprogramming click, Prover run, and wheel scroll
+  #assert cp_lean_press(s, CP_LEAN_SEARCH_PRESET, "coder.lean.sp.2") && coder_page_action(s) == CP_ASK_LEAN_SEARCH;
+  #assert cp_lean_press(s, CP_LEAN_AUDIT_MP, "coder.lean.mp.0") && s[0].lean[0].view == CP_LEAN_INSPECT && coder_page_action(s) == CP_ASK_LEAN_MODULE;
+  #assert cp_lean_press(s, CP_LEAN_PROVER_PRESET, "coder.lean.pp.1") && cp_lean_press(s, CP_LEAN_PROVER_RUN, "coder.lean.prover.run") && coder_page_action(s) == CP_ASK_LEAN_VERIFY;
+  #assert cp_lean_wheel(s, -60.0f32) && s[0].lean[0].inspect_scroll > 0;
+}

@@ -1,0 +1,503 @@
+// OpenAgents Desktop page (../page.coax): Lean 4 & Riemann Hypothesis Proof Workbench state,
+// action IDs, host asks, and JSON ingestion/export helpers (Epic #13943, #13946).
+//
+// Designed to fit comfortably inside CoderPage's page-slots.sh budget (~105 KB total, < 0.4% of
+// the 28M value-slot limit) while visualizing all 175,182 real modules, 10 libraries, 226 domain
+// clusters, live module source, shortest-path-to-Main chains, and interactive math plots at 60 fps.
+
+// Top-level Gym mode (lifted 36 pt bar in page/gym-lean.coax):
+CP_GYM_BENCH :: 0;          // macOS Swift GymBenchmarkView (Psionic vs llama.cpp)
+CP_GYM_PLE :: 1;            // macOS Swift 3D PLE Workbench
+CP_GYM_LEAN :: 2;           // Cross-platform Coax Lean 4 & Riemann Hypothesis Workbench
+
+CP_GYM_BAR_H :: 36.0f32;    // Unified top GYM mode switcher bar height
+CP_LEAN_SUB_H :: 34.0f32;   // Sub-tab bar inside Lean · RH mode
+
+// Lean · RH sub-views
+CP_LEAN_TOUR :: 0;
+CP_LEAN_ATLAS :: 1;
+CP_LEAN_MATH :: 2;
+CP_LEAN_INSPECT :: 3;
+CP_LEAN_TRUST :: 4;
+CP_LEAN_PROVER :: 5;
+
+// Host asks (allocated at 150..158 after CP_ASK_PYLON_EXECUTOR :: 147)
+CP_ASK_LEAN_MODE :: 150;     // top Gym mode switched (host syncs macOS GymWorkbenchView & loads RH atlas)
+CP_ASK_LEAN_INDEX :: 151;    // user clicked Build/Refresh RH Index (`lean-run rh index`)
+CP_ASK_LEAN_MODULE :: 152;   // inspect module requested (coder_page_lean_req_str = module name)
+CP_ASK_LEAN_SEARCH :: 153;   // search modules requested (coder_page_lean_req_str = query)
+CP_ASK_LEAN_EXPLAIN :: 154;  // "Explain in Chat" grounded AI prompt for active module/tour step
+CP_ASK_LEAN_VERIFY :: 155;   // run live `lean-run verify` on active prover preset
+CP_ASK_LEAN_OPEN_FILE :: 156;// open real .lean file on disk in external editor / File Pane
+CP_ASK_LEAN_SAVE_NOTE :: 157;// persist study note (`rh-note.v1`) for active module
+
+// Row action IDs (allocated at 360..392 after CP_FORGE_ISS_CHAT :: 349)
+CP_GYM_MODE_ACT :: 360;      // coder.gym.mode.<0|1|2>
+CP_LEAN_VIEW_ACT :: 361;     // coder.lean.view.<0..5>
+CP_LEAN_INDEX_ACT :: 362;    // coder.lean.index
+CP_LEAN_TOUR_TRACK :: 363;   // coder.lean.track.<0|1|2>
+CP_LEAN_TOUR_STEP :: 364;    // coder.lean.step.<0..19>
+CP_LEAN_TOUR_PREV :: 365;
+CP_LEAN_TOUR_NEXT :: 366;
+CP_LEAN_OPEN_MOD :: 367;     // coder.lean.mod.<idx> (from tour/onion/search/cone/path/audit)
+CP_LEAN_EXPLAIN_ACT :: 368;
+CP_LEAN_ATLAS_LOD :: 369;    // coder.lean.lod.<0|1|2>
+CP_LEAN_ATLAS_OVL :: 370;    // coder.lean.ovl.<0|1|2>
+CP_LEAN_ATLAS_LIB :: 371;    // coder.lean.lib.<0..10> (10 = all)
+CP_LEAN_ATLAS_CL :: 372;     // coder.lean.cl.<idx>
+CP_LEAN_ATLAS_ZOOM :: 373;   // coder.lean.zoom.<0=out|1=in|2=reset>
+CP_LEAN_ATLAS_DRILL :: 374;
+CP_LEAN_MATH_TAB :: 375;     // coder.lean.mtab.<0|1|2>
+CP_LEAN_MATH_CHI :: 376;     // coder.lean.chi.<0..4>
+CP_LEAN_MATH_SIGMA :: 377;   // coder.lean.sig.<0..4>
+CP_LEAN_MATH_TMAX :: 378;    // coder.lean.tmax.<0..2>
+CP_LEAN_MATH_ROBIN :: 379;   // coder.lean.rob.<0..11>
+CP_LEAN_MATH_STAGE :: 380;   // coder.lean.stg.<1..8>
+CP_LEAN_MATH_ALPHA :: 381;   // coder.lean.alp.<0..2>
+CP_LEAN_SEARCH_PRESET :: 382;// coder.lean.sp.<0..7>
+CP_LEAN_SEARCH_HIT :: 383;   // coder.lean.sh.<0..23>
+CP_LEAN_PATH_HOP :: 384;     // coder.lean.hop.<0..19>
+CP_LEAN_IMP_UP :: 385;       // coder.lean.up.<0..15>
+CP_LEAN_IMP_DN :: 386;       // coder.lean.dn.<0..15>
+CP_LEAN_AUDIT_MP :: 387;     // coder.lean.mp.<0..7>
+CP_LEAN_PROVER_PRESET :: 388;// coder.lean.pp.<0..4>
+CP_LEAN_PROVER_RUN :: 389;
+CP_LEAN_OPEN_DISK :: 390;
+CP_LEAN_JUMP_ATLAS :: 391;
+
+CP_SCR_LEAN :: 10;           // Wheel scroll target in input.coax
+
+CP_LEAN_MAX_EDGES :: 64;
+CP_LEAN_MAX_CLUSTERS :: 240;
+CP_LEAN_MAX_ONION :: 16;
+CP_LEAN_MAX_MP :: 8;
+CP_LEAN_MAX_HITS :: 24;
+CP_LEAN_MAX_HOPS :: 20;
+CP_LEAN_MAX_CONES :: 16;
+CP_LEAN_SRC_CAP :: 16384;
+
+CpLeanLib :: struct {
+  mods: int; thms: int; defs: int; lines: int;
+  min_d: int; max_d: int; x: int; y: int;
+}
+CpLeanEdge :: struct { from: int; to: int; weight: int; }
+CpLeanCluster :: struct {
+  name: [72] u8; name_n: int;
+  hub: [128] u8; hub_n: int;
+  lib: int; mods: int; thms: int; lines: int; min_d: int; x: int; y: int;
+}
+CpLeanOnion :: struct {
+  name: [128] u8; name_n: int;
+  lib: int; depth: int; lines: int; thms: int; indeg: int;
+}
+CpLeanHit :: struct {
+  name: [128] u8; name_n: int;
+  lib: int; depth: int; lines: int; thms: int;
+}
+
+CpLeanRh :: struct {
+  view: int;                   // CP_LEAN_TOUR .. CP_LEAN_PROVER
+  loaded: bool;
+  indexing: bool;
+  status: [160] u8; status_n: int;
+  // Corpus totals
+  modules: int; edges: int; theorems: int; defs: int; lines: int; bytes: int;
+  metaprog_files: int; max_depth: int; reachable: int;
+  // Doctor / toolchain
+  elan_found: bool; lean_found: bool;
+  lean_ver: [64] u8; lean_ver_n: int;
+  // LOD 0 & LOD 1 atlas data
+  libs: [RH_LIBS] CpLeanLib;
+  lib_edges: [CP_LEAN_MAX_EDGES] CpLeanEdge; lib_edges_n: int;
+  clusters: [CP_LEAN_MAX_CLUSTERS] CpLeanCluster; clusters_n: int;
+  onion: [CP_LEAN_MAX_ONION] CpLeanOnion; onion_n: int;
+  metaprog: [CP_LEAN_MAX_MP] [128] u8; metaprog_lens: [CP_LEAN_MAX_MP] int; metaprog_n: int;
+  // SHA-256 provenance digests from `lean-run rh audit --json`
+  dig_names: [5] [32] u8; dig_names_n: [5] int;
+  dig_sha: [5] [64] u8; dig_sha_n: [5] int;
+  dig_n: int;
+  // Tour state
+  tour_track: int;             // 0 = 5-min, 1 = 20-step, 2 = audit
+  tour_step: int;              // 0..19
+  tour_scroll: f32;
+  // Atlas state
+  atlas_lod: int;              // 0 = 10 libs, 1 = 226 domains, 2 = module cone
+  atlas_overlay: int;          // 0 = lib colors, 1 = depth heat, 2 = audit risk
+  atlas_lib_filter: int;       // -1 = all, 0..9
+  atlas_sel_lib: int;          // 0..9
+  atlas_sel_cluster: int;      // -1 or 0..clusters_n-1
+  atlas_zoom: f32;             // 1.0 .. 3.0
+  // Math visualizers state
+  math_tab: int;               // 0 = Critical Strip, 1 = Robin/Lagarias, 2 = Theta-Lift
+  math_chi: int;               // 0..4
+  math_sigma_idx: int;         // 0..4 -> 0.25, 0.35, 0.50, 0.65, 0.75
+  math_tmax_idx: int;          // 0..2 -> 35, 50, 70
+  math_robin_idx: int;         // 0..11 (default 6 = n=5040)
+  math_theta_stage: int;       // 1..8 (default 5)
+  math_theta_alpha_idx: int;   // 0..2 -> 0.75, 1.0, 1.30
+  // Module inspector & search state
+  search_q: [96] u8; search_q_n: int;
+  search_ms: int;
+  hits: [CP_LEAN_MAX_HITS] CpLeanHit; hits_n: int;
+  sel_mod: [160] u8; sel_mod_n: int;
+  sel_lib: int; sel_depth: int; sel_lines: int; sel_thms: int; sel_defs: int;
+  sel_metaprog: bool;
+  sel_imp_total: int; sel_rev_total: int;
+  sel_file: [256] u8; sel_file_n: int;
+  hops: [CP_LEAN_MAX_HOPS] [128] u8; hops_n: [CP_LEAN_MAX_HOPS] int; hop_count: int;
+  imp_up: [CP_LEAN_MAX_CONES] [128] u8; imp_up_n: [CP_LEAN_MAX_CONES] int; imp_up_count: int;
+  imp_dn: [CP_LEAN_MAX_CONES] [128] u8; imp_dn_n: [CP_LEAN_MAX_CONES] int; imp_dn_count: int;
+  src: [CP_LEAN_SRC_CAP] u8; src_n: int;
+  inspect_scroll: f32;
+  // Prover scratchpad state
+  prover_preset: int;          // 0=AddZeroRight, 1=CheatSorry, 2=CheatAxiom, 3=CheatNativeDecide, 4=MainRH
+  prover_ran: bool;
+  prover_verified: bool;
+  prover_verdict: [64] u8; prover_verdict_n: int;
+  prover_axioms: [160] u8; prover_axioms_n: int;
+  prover_msg: [256] u8; prover_msg_n: int;
+  prover_ms: int;
+  // Pending request string for CP_ASK_LEAN_*
+  req_str: [256] u8; req_str_n: int;
+  // Scroll for general views
+  scroll_y: f32;
+}
+
+cp_lean_init :: (s: [] CoderPage) {
+  l := s[0].lean[..];
+  l[0].view = CP_LEAN_TOUR;
+  l[0].tour_track = 1;
+  l[0].tour_step = 0;
+  l[0].atlas_lod = 0;
+  l[0].atlas_overlay = 0;
+  l[0].atlas_lib_filter = -1;
+  l[0].atlas_sel_lib = RH_LIB_DEVELOPMENT;
+  l[0].atlas_sel_cluster = -1;
+  l[0].atlas_zoom = 1.0f32;
+  l[0].math_tab = 0;
+  l[0].math_chi = 0;
+  l[0].math_sigma_idx = 2;    // Re(s) = 0.50 critical line
+  l[0].math_tmax_idx = 1;     // t_max = 50
+  l[0].math_robin_idx = 6;    // n = 5040 (Robin's last exception!)
+  l[0].math_theta_stage = 5;
+  l[0].math_theta_alpha_idx = 1;
+  l[0].sel_mod_n = lw_put(l[0].sel_mod[..], "Main");
+  l[0].status_n = lw_put(l[0].status[..], "Click Refresh or run `lean-run rh index` to load 175k-module RH Atlas");
+}
+
+cp_lean_req :: (s: [] CoderPage, ask_code: int, arg: string) {
+  s[0].lean[0].req_str_n = lw_put(s[0].lean[0].req_str[..], arg);
+  s[0].ask = ask_code;
+}
+
+cp_lean_view_name :: (v: int) -> string {
+  if v == CP_LEAN_TOUR { return "tour"; }
+  if v == CP_LEAN_ATLAS { return "atlas"; }
+  if v == CP_LEAN_MATH { return "math"; }
+  if v == CP_LEAN_INSPECT { return "inspect"; }
+  if v == CP_LEAN_TRUST { return "trust"; }
+  if v == CP_LEAN_PROVER { return "prover"; }
+  return "tour";
+}
+
+cp_lean_math_tab_name :: (t: int) -> string {
+  if t == 1 { return "robin"; }
+  if t == 2 { return "theta"; }
+  return "strip";
+}
+
+// Parses compact rh-atlas.json (51 KB) produced by `lean-run rh index`.
+cp_lean_load_atlas :: (s: [] CoderPage, json_str: string) -> bool {
+  l := s[0].lean[..];
+  nodes: [8192] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], json_str, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  l[0].modules = jv_int(d, jv_get(d, 0, "modules"), 0);
+  l[0].edges = jv_int(d, jv_get(d, 0, "edges"), 0);
+  l[0].theorems = jv_int(d, jv_get(d, 0, "theorems"), 0);
+  l[0].defs = jv_int(d, jv_get(d, 0, "defs"), 0);
+  l[0].lines = jv_int(d, jv_get(d, 0, "lines"), 0);
+  l[0].bytes = jv_int(d, jv_get(d, 0, "bytes"), 0);
+  l[0].metaprog_files = jv_int(d, jv_get(d, 0, "metaprog_files"), 0);
+  l[0].max_depth = jv_int(d, jv_get(d, 0, "max_depth"), 0);
+
+  // 10 libraries
+  libs := jv_get(d, 0, "libs");
+  for i: 0..<jv_len(d, libs) {
+    e := jv_at(d, libs, i);
+    id := jv_int(d, jv_get(d, e, "id"), -1);
+    if id < 0 || id >= RH_LIBS { continue; }
+    l[0].libs[id] = CpLeanLib.{
+      mods = jv_int(d, jv_get(d, e, "modules"), 0),
+      thms = jv_int(d, jv_get(d, e, "theorems"), 0),
+      defs = jv_int(d, jv_get(d, e, "defs"), 0),
+      lines = jv_int(d, jv_get(d, e, "lines"), 0),
+      min_d = jv_int(d, jv_get(d, e, "min_depth"), 0),
+      max_d = jv_int(d, jv_get(d, e, "max_depth"), 0),
+      x = jv_int(d, jv_get(d, e, "x"), 500),
+      y = jv_int(d, jv_get(d, e, "y"), 500)
+    };
+  }
+
+  // Cross-library edges
+  le := jv_get(d, 0, "lib_edges");
+  l[0].lib_edges_n = 0;
+  for i: 0..<jv_len(d, le) {
+    if l[0].lib_edges_n >= CP_LEAN_MAX_EDGES { break; }
+    e := jv_at(d, le, i);
+    l[0].lib_edges[l[0].lib_edges_n] = CpLeanEdge.{
+      from = jv_int(d, jv_get(d, e, "from"), 0),
+      to = jv_int(d, jv_get(d, e, "to"), 0),
+      weight = jv_int(d, jv_get(d, e, "weight"), 0)
+    };
+    l[0].lib_edges_n += 1;
+  }
+
+  // Domain clusters (up to 240)
+  cls := jv_get(d, 0, "clusters");
+  l[0].clusters_n = 0;
+  for i: 0..<jv_len(d, cls) {
+    if l[0].clusters_n >= CP_LEAN_MAX_CLUSTERS { break; }
+    e := jv_at(d, cls, i);
+    idx := l[0].clusters_n;
+    l[0].clusters[idx] = CpLeanCluster.{
+      lib = jv_int(d, jv_get(d, e, "lib"), 0),
+      mods = jv_int(d, jv_get(d, e, "modules"), 0),
+      thms = jv_int(d, jv_get(d, e, "theorems"), 0),
+      lines = jv_int(d, jv_get(d, e, "lines"), 0),
+      min_d = jv_int(d, jv_get(d, e, "min_depth"), 0),
+      x = jv_int(d, jv_get(d, e, "x"), 500),
+      y = jv_int(d, jv_get(d, e, "y"), 500)
+    };
+    nn := jv_str(d, jv_get(d, e, "name"), l[0].clusters[idx].name[..]);
+    l[0].clusters[idx].name_n = ifx nn > 0 then nn else 0;
+    hn := jv_str(d, jv_get(d, e, "hub"), l[0].clusters[idx].hub[..]);
+    l[0].clusters[idx].hub_n = ifx hn > 0 then hn else 0;
+    l[0].clusters_n += 1;
+  }
+
+  // Onion peel
+  on := jv_get(d, 0, "onion");
+  l[0].onion_n = 0;
+  for i: 0..<jv_len(d, on) {
+    if l[0].onion_n >= CP_LEAN_MAX_ONION { break; }
+    e := jv_at(d, on, i);
+    idx := l[0].onion_n;
+    l[0].onion[idx] = CpLeanOnion.{
+      lib = jv_int(d, jv_get(d, e, "lib"), 0),
+      depth = jv_int(d, jv_get(d, e, "depth"), 0),
+      lines = jv_int(d, jv_get(d, e, "lines"), 0),
+      thms = jv_int(d, jv_get(d, e, "theorems"), 0),
+      indeg = jv_int(d, jv_get(d, e, "indeg"), 0)
+    };
+    nn := jv_str(d, jv_get(d, e, "name"), l[0].onion[idx].name[..]);
+    l[0].onion[idx].name_n = ifx nn > 0 then nn else 0;
+    l[0].onion_n += 1;
+  }
+
+  // Metaprogramming sites
+  mp := jv_get(d, 0, "metaprog");
+  l[0].metaprog_n = 0;
+  for i: 0..<jv_len(d, mp) {
+    if l[0].metaprog_n >= CP_LEAN_MAX_MP { break; }
+    nn := jv_str(d, jv_at(d, mp, i), l[0].metaprog[l[0].metaprog_n][..]);
+    if nn > 0 { l[0].metaprog_lens[l[0].metaprog_n] = nn; l[0].metaprog_n += 1; }
+  }
+
+  l[0].loaded = l[0].modules > 0;
+  l[0].indexing = false;
+  l[0].status_n = lw_put(l[0].status[..], "Nov 2026 RH Proof Atlas loaded");
+  return l[0].loaded;
+}
+
+// Parses `lean-run rh module MOD --json` output into the Module Inspector state.
+cp_lean_load_module :: (s: [] CoderPage, json_str: string) -> bool {
+  l := s[0].lean[..];
+  nodes: [1024] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], json_str, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  mn := jv_str(d, jv_get(d, 0, "module"), l[0].sel_mod[..]);
+  if mn <= 0 { return false; }
+  l[0].sel_mod_n = mn;
+  l[0].sel_lib = rh_lib_of(cast(string) l[0].sel_mod[0..<mn]);
+  l[0].sel_depth = jv_int(d, jv_get(d, 0, "depth"), 0);
+  l[0].sel_lines = jv_int(d, jv_get(d, 0, "lines"), 0);
+  l[0].sel_thms = jv_int(d, jv_get(d, 0, "theorems"), 0);
+  l[0].sel_defs = jv_int(d, jv_get(d, 0, "defs"), 0);
+  l[0].sel_metaprog = jv_bool(d, jv_get(d, 0, "metaprog"));
+  l[0].sel_imp_total = jv_int(d, jv_get(d, 0, "imports_total"), 0);
+  l[0].sel_rev_total = jv_int(d, jv_get(d, 0, "imported_by_total"), 0);
+  fn := jv_str(d, jv_get(d, 0, "source_path"), l[0].sel_file[..]);
+  l[0].sel_file_n = ifx fn > 0 then fn else 0;
+  sn := jv_str(d, jv_get(d, 0, "source"), l[0].src[..]);
+  l[0].src_n = ifx sn > 0 then sn else 0;
+  l[0].inspect_scroll = 0;
+
+  up := jv_get(d, 0, "imports");
+  l[0].imp_up_count = 0;
+  for i: 0..<jv_len(d, up) {
+    if l[0].imp_up_count >= CP_LEAN_MAX_CONES { break; }
+    k := jv_str(d, jv_at(d, up, i), l[0].imp_up[l[0].imp_up_count][..]);
+    if k > 0 { l[0].imp_up_n[l[0].imp_up_count] = k; l[0].imp_up_count += 1; }
+  }
+  dn := jv_get(d, 0, "imported_by");
+  l[0].imp_dn_count = 0;
+  for i: 0..<jv_len(d, dn) {
+    if l[0].imp_dn_count >= CP_LEAN_MAX_CONES { break; }
+    k := jv_str(d, jv_at(d, dn, i), l[0].imp_dn[l[0].imp_dn_count][..]);
+    if k > 0 { l[0].imp_dn_n[l[0].imp_dn_count] = k; l[0].imp_dn_count += 1; }
+  }
+  pt := jv_get(d, 0, "path_to_main");
+  l[0].hop_count = 0;
+  for i: 0..<jv_len(d, pt) {
+    if l[0].hop_count >= CP_LEAN_MAX_HOPS { break; }
+    k := jv_str(d, jv_at(d, pt, i), l[0].hops[l[0].hop_count][..]);
+    if k > 0 { l[0].hops_n[l[0].hop_count] = k; l[0].hop_count += 1; }
+  }
+  return true;
+}
+
+// Parses `lean-run rh search QUERY --json` output into search hits.
+cp_lean_load_search :: (s: [] CoderPage, json_str: string) -> bool {
+  l := s[0].lean[..];
+  nodes: [1024] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], json_str, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  qn := jv_str(d, jv_get(d, 0, "query"), l[0].search_q[..]);
+  l[0].search_q_n = ifx qn > 0 then qn else 0;
+  l[0].search_ms = jv_int(d, jv_get(d, 0, "elapsed_ms"), 0);
+  hs := jv_get(d, 0, "hits");
+  l[0].hits_n = 0;
+  for i: 0..<jv_len(d, hs) {
+    if l[0].hits_n >= CP_LEAN_MAX_HITS { break; }
+    e := jv_at(d, hs, i);
+    idx := l[0].hits_n;
+    nn := jv_str(d, jv_get(d, e, "module"), l[0].hits[idx].name[..]);
+    if nn <= 0 { continue; }
+    l[0].hits[idx].name_n = nn;
+    l[0].hits[idx].lib = rh_lib_of(cast(string) l[0].hits[idx].name[0..<nn]);
+    l[0].hits[idx].depth = jv_int(d, jv_get(d, e, "depth"), 0);
+    l[0].hits[idx].lines = jv_int(d, jv_get(d, e, "lines"), 0);
+    l[0].hits[idx].thms = jv_int(d, jv_get(d, e, "theorems"), 0);
+    l[0].hits_n += 1;
+  }
+  return true;
+}
+
+// Parses `lean-run rh audit --json` output into Trust Ledger digests.
+cp_lean_load_audit :: (s: [] CoderPage, json_str: string) -> bool {
+  l := s[0].lean[..];
+  nodes: [512] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], json_str, nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { return false; }
+  d := jd[0];
+  l[0].reachable = jv_int(d, jv_get(d, 0, "reachable_from_main"), 0);
+  dg := jv_get(d, 0, "digests");
+  l[0].dig_n = 0;
+  for i: 0..<jv_len(d, dg) {
+    if l[0].dig_n >= 5 { break; }
+    e := jv_at(d, dg, i);
+    fn := jv_str(d, jv_get(d, e, "file"), l[0].dig_names[l[0].dig_n][..]);
+    hn := jv_str(d, jv_get(d, e, "sha256"), l[0].dig_sha[l[0].dig_n][..]);
+    if fn > 0 {
+      l[0].dig_names_n[l[0].dig_n] = fn;
+      l[0].dig_sha_n[l[0].dig_n] = ifx hn > 0 then hn else 0;
+      l[0].dig_n += 1;
+    }
+  }
+  return true;
+}
+
+// Parses `lean-run doctor --json` via LwDoctor.
+cp_lean_load_doctor :: (s: [] CoderPage, json_str: string) -> bool {
+  doc: [1] LwDoctor;
+  if !lw_doctor_read(json_str, doc[..]) { return false; }
+  l := s[0].lean[..];
+  l[0].elan_found = doc[0].elan_found;
+  l[0].lean_found = doc[0].lean_found;
+  l[0].lean_ver_n = lw_put(l[0].lean_ver[..], cast(string) doc[0].lean_version[0..<doc[0].lean_version_n]);
+  return true;
+}
+
+// Parses `lean-run verify --json` via LwVerify.
+cp_lean_load_verify :: (s: [] CoderPage, json_str: string) -> bool {
+  ver: [1] LwVerify;
+  if !lw_verify_read(json_str, ver[..]) { return false; }
+  l := s[0].lean[..];
+  l[0].prover_ran = true;
+  l[0].prover_verified = ver[0].verified;
+  l[0].prover_ms = ver[0].elapsed_ms;
+  l[0].prover_verdict_n = lw_put(l[0].prover_verdict[..], cast(string) ver[0].verdict[0..<ver[0].verdict_n]);
+  l[0].prover_msg_n = lw_put(l[0].prover_msg[..], cast(string) ver[0].message[0..<ver[0].message_n]);
+  an := 0;
+  for i: 0..<ver[0].axiom_count {
+    if i > 0 { an = el_put(l[0].prover_axioms[..], an, ", "); }
+    an = el_put(l[0].prover_axioms[..], an, cast(string) ver[0].axioms[i][0..<ver[0].axioms_n[i]]);
+  }
+  if ver[0].axiom_count == 0 { an = el_put(l[0].prover_axioms[..], 0, "(none)"); }
+  l[0].prover_axioms_n = an;
+  return true;
+}
+
+// Applies a normalized Lean Gym plan JSON (from dc_lean_gym_plan) directly to CoderPage.
+cp_lean_apply_plan :: (s: [] CoderPage, plan_json: string) -> bool {
+  nodes: [128] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], plan_json, nodes[..]) || !jv_bool(jd[0], jv_get(jd[0], 0, "ok")) { return false; }
+  d := jd[0];
+  l := s[0].lean[..];
+  if jv_bool(d, jv_get(d, 0, "open")) && s[0].experimental {
+    s[0].gym_open = true;
+    s[0].set_open = false;
+    s[0].gym_mode = CP_GYM_LEAN;
+  }
+  vb: [32] u8; vn := jv_str(d, jv_get(d, 0, "view"), vb[..]);
+  if vn > 0 {
+    vs := cast(string) vb[0..<vn];
+    if vs == "tour" { l[0].view = CP_LEAN_TOUR; }
+    else if vs == "atlas" { l[0].view = CP_LEAN_ATLAS; }
+    else if vs == "math" { l[0].view = CP_LEAN_MATH; }
+    else if vs == "inspect" { l[0].view = CP_LEAN_INSPECT; }
+    else if vs == "trust" { l[0].view = CP_LEAN_TRUST; }
+    else if vs == "prover" { l[0].view = CP_LEAN_PROVER; }
+  }
+  ts := jv_int(d, jv_get(d, 0, "tour_step"), 0);
+  if ts >= 1 && ts <= RHT_STEPS { l[0].tour_step = ts - 1; }
+  mtb: [32] u8; mtn := jv_str(d, jv_get(d, 0, "math_tab"), mtb[..]);
+  if mtn > 0 {
+    ms := cast(string) mtb[0..<mtn];
+    if ms == "strip" { l[0].math_tab = 0; }
+    else if ms == "robin" { l[0].math_tab = 1; }
+    else if ms == "theta" { l[0].math_tab = 2; }
+  }
+  mb: [256] u8; mn := jv_str(d, jv_get(d, 0, "module"), mb[..]);
+  if mn > 0 {
+    l[0].sel_mod_n = lw_put(l[0].sel_mod[..], cast(string) mb[0..<mn]);
+    cp_lean_req(s, CP_ASK_LEAN_MODULE, cast(string) mb[0..<mn]);
+  }
+  sb: [128] u8; sn := jv_str(d, jv_get(d, 0, "search"), sb[..]);
+  if sn > 0 {
+    l[0].search_q_n = lw_put(l[0].search_q[..], cast(string) sb[0..<sn]);
+    cp_lean_req(s, CP_ASK_LEAN_SEARCH, cast(string) sb[0..<sn]);
+  }
+  return true;
+}
+
+// Writes the canonical lean-gym-state.v1 JSON snapshot of the page into `out`.
+cp_lean_state_json :: (s: [] CoderPage, req_id: string, out: [] u8) -> int {
+  l := s[0].lean[..];
+  st := [1] LwGymState.[LwGymState.{
+    ok = true,
+    open = s[0].gym_open,
+    rh_loaded = l[0].loaded,
+    rh_modules = l[0].modules,
+    rh_theorems = l[0].theorems,
+    tour_step = l[0].tour_step + 1
+  }];
+  st[0].id_n = lw_put(st[0].id[..], req_id);
+  mode_s := ifx s[0].gym_mode == CP_GYM_BENCH then "benchmarks" else ifx s[0].gym_mode == CP_GYM_PLE then "ple" else "lean";
+  st[0].mode_n = lw_put(st[0].mode[..], mode_s);
+  st[0].view_n = lw_put(st[0].view[..], cp_lean_view_name(l[0].view));
+  st[0].mod_name_n = lw_put(st[0].mod_name[..], cast(string) l[0].sel_mod[0..<l[0].sel_mod_n]);
+  st[0].decl_n = lw_put(st[0].decl[..], rht_step(l[0].tour_step).decl);
+  st[0].math_tab_n = lw_put(st[0].math_tab[..], cp_lean_math_tab_name(l[0].math_tab));
+  return lw_gym_state_write(st[..], out);
+}

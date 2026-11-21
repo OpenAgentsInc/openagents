@@ -136,6 +136,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
     var liveSceneFailedAt: [Double] = []
     var gymView: GymWorkbenchView?       // the Gym / 3D PLE Workbench view (GymWorkbenchView.swift, #13792)
     var gymRequestTimer: Timer?          // takes ple-run gym's requests (Window+Gym.swift, #13812)
+    var leanHydrated = false             // whether Lean · RH Workbench initial doctor/audit/Main hydration ran (#13946)
     // the iOS Simulator in the pane (Window+Simulator.swift, #13811): the screen's view, the helper's socket, the pane's clock
     var simView: SimulatorPaneView?
     var simFrame: SimulatorFrameView?    // the device's frame behind it, its chrome for simChromeUdid
@@ -302,6 +303,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         // Coder --foreman opens the persistent Foreman chat at launch.
         if CommandLine.arguments.contains("--foreman") { openForeman() }
         if CommandLine.arguments.contains("--gym") { openGym() }
+        if CommandLine.arguments.contains("--gym-lean") { openGym(mode: 2) }
         // Coder --settings PAGE opens settings at launch on a page (general, models, foreman, account, about, wallet, usage, mcp, skills, voice).
         if let at = CommandLine.arguments.firstIndex(of: "--settings"), at + 1 < CommandLine.arguments.count,
            let which = ["general", "models", "foreman", "account", "about", "wallet", "usage", "mcp", "skills", "voice", "connections", "scheduled", "appearance", "keybindings"].firstIndex(of: CommandLine.arguments[at + 1]) { openSettings(Int32(which)) }
@@ -497,6 +499,7 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 140...145: forgeAsked(what)
         case 146: manageExecutorModels()
         case 147: managePylonExecutorNetwork()
+        case 150...157: leanGymAsked(what)
         case 40...43: fileAsked(what)
         default: break
         }

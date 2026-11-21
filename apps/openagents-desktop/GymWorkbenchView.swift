@@ -297,11 +297,13 @@ final class GymWorkbenchView: NSView {
         modeBar.translatesAutoresizingMaskIntoConstraints = false
         modeBar.wantsLayer = true
         modeBar.layer?.backgroundColor = NSColor(red: 0.068, green: 0.072, blue: 0.090, alpha: 1).cgColor
+        modeBar.isHidden = true
         addSubview(modeBar)
 
         modeBarDivider.translatesAutoresizingMaskIntoConstraints = false
         modeBarDivider.wantsLayer = true
         modeBarDivider.layer?.backgroundColor = NSColor(white: 1.0, alpha: 0.08).cgColor
+        modeBarDivider.isHidden = true
         addSubview(modeBarDivider)
 
         modeTitleLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -635,10 +637,11 @@ final class GymWorkbenchView: NSView {
         railView.addSubview(statusLabel)
 
         NSLayoutConstraint.activate([
+            // Unified 36 pt GYM mode bar is now rendered above GymWorkbenchView by Coax (page/gym-lean.coax; #13946).
             modeBar.topAnchor.constraint(equalTo: topAnchor),
             modeBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             modeBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            modeBar.heightAnchor.constraint(equalToConstant: 36),
+            modeBar.heightAnchor.constraint(equalToConstant: 0),
 
             modeTitleLabel.centerYAnchor.constraint(equalTo: modeBar.centerYAnchor),
             modeTitleLabel.leadingAnchor.constraint(equalTo: modeBar.leadingAnchor, constant: 14),
@@ -649,7 +652,7 @@ final class GymWorkbenchView: NSView {
             modeBarDivider.topAnchor.constraint(equalTo: modeBar.bottomAnchor),
             modeBarDivider.leadingAnchor.constraint(equalTo: leadingAnchor),
             modeBarDivider.trailingAnchor.constraint(equalTo: trailingAnchor),
-            modeBarDivider.heightAnchor.constraint(equalToConstant: 1),
+            modeBarDivider.heightAnchor.constraint(equalToConstant: 0),
 
             benchmarkView.topAnchor.constraint(equalTo: modeBarDivider.bottomAnchor),
             benchmarkView.bottomAnchor.constraint(equalTo: bottomAnchor),

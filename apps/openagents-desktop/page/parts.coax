@@ -24,6 +24,9 @@
 #load "../../../coax/lib/agent/desktop/checkpoint.coax";
 #load "../../../coax/lib/agent/desktop/scheduled.coax";
 #load "../../../coax/lib/agent/desktop/webhook-auth.coax";
+#load "../../../coax/lib/lean/wire.coax";
+#load "../../../coax/lib/lean/rh-tour.coax";
+#load "../../../coax/lib/lean/rh-math.coax";
 #load "../settings.coax";
 
 #load "state.coax";
@@ -71,3 +74,6 @@
 #load "preview.coax";
 #load "customize.coax";
 #load "forge.coax";
+#load "gym-lean-state.coax";
+#load "gym-lean-views.coax";
+#load "gym-lean.coax";
