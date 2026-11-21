@@ -82,9 +82,9 @@ wb_end :: (b: [] WmBuilder) {
 // Uses i32.shl, i32.or, i32.and, i32.xor for O(1) constraint checks & backtracking.
 // fn0 (main): loads clues + bitmasks into hull-v2 memory, calls solve(0), returns board checksum.
 // fn1 (solve(cell)): recursive backtracking over cells 0..80, returns 1 if solved.
-wb_build_sudoku :: (clues: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+wb_build_sudoku :: (clues: [] int, b: [] WmBuilder, funcs: [] WsmFunc) -> int {
   b[0] = WmBuilder.{};
-  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 2};
+  funcs[0] = WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 2};
   rmask: [9] int; cmask: [9] int; bmask: [9] int;
   for i: 0..<81 {
     d := clues[i];
@@ -131,7 +131,7 @@ wb_build_sudoku :: (clues: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
   // fn1: solve(cell = local 0)
   // local 1 = d, local 2 = r_addr (81+r), local 3 = c_addr (90+c), local 4 = b_addr (99+bx),
   // local 5 = used_mask, local 6 = bit (1 << d)
-  funcs[1] = WmFunc.{entry_ip = b[0].n, n_params = 1, n_locals = 7};
+  funcs[1] = WsmFunc.{entry_ip = b[0].n, n_params = 1, n_locals = 7};
   wb_block(b);
   wb_loop(b);
     _ = wb_op1(b, WmCode.local_get, 0); _ = wb_op1(b, WmCode.i32_const, 81); _ = wb_op(b, WmCode.i32_ge_s); _ = wb_op1(b, WmCode.br_if, 1);
@@ -203,9 +203,9 @@ wb_build_sudoku :: (clues: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
 //   180..190: minv[0..10]
 //   200..210: used[0..10]
 // Returns exact minimum assignment cost.
-wb_build_hungarian10 :: (costs: [] int, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+wb_build_hungarian10 :: (costs: [] int, b: [] WmBuilder, funcs: [] WsmFunc) -> int {
   b[0] = WmBuilder.{};
-  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 10};
+  funcs[0] = WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 10};
   // Store 10x10 cost matrix into mem[0..99]
   for k: 0..<100 {
     _ = wb_op1(b, WmCode.i32_const, k);
@@ -382,10 +382,10 @@ wb_emit_pg_stmt :: (b: [] WmBuilder, st: PgStmt) {
   _ = wb_op1(b, WmCode.local_get, 8); _ = wb_op1(b, WmCode.i32_const, 1); _ = wb_op(b, WmCode.i32_add); _ = wb_op1(b, WmCode.local_set, 8);
 }
 
-wb_build_coder_prog :: (prog: PgProgram, b: [] WmBuilder, funcs: [] WmFunc) -> int {
+wb_build_coder_prog :: (prog: PgProgram, b: [] WmBuilder, funcs: [] WsmFunc) -> int {
   b[0] = WmBuilder.{};
   // locals 0..7 = x0..x7, local 8 = call_count, local 9 = repeat_counter, locals 10..11 = scratch
-  funcs[0] = WmFunc.{entry_ip = 0, n_params = 0, n_locals = 12};
+  funcs[0] = WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 12};
   i := 0;
   while i < prog.count {
     st := prog.stmts[i];
@@ -429,7 +429,7 @@ wb_build_coder_prog :: (prog: PgProgram, b: [] WmBuilder, funcs: [] WmFunc) -> i
 #test "wasm-benchmarks: 9x9 Sudoku builder and 10x10 Hungarian solver" {
   nodes: [512] HtNode;
   b: [1] WmBuilder;
-  fns: [4] WmFunc;
+  fns: [4] WsmFunc;
   puz1 := [81] int.[
     5,3,0, 0,7,0, 0,0,0,  6,0,0, 1,9,5, 0,0,0,  0,9,8, 0,0,0, 0,6,0,
     8,0,0, 0,6,0, 0,0,3,  4,0,0, 8,0,3, 0,0,1,  7,0,0, 0,2,0, 0,0,6,

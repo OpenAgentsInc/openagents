@@ -27,7 +27,7 @@ wm_i32 :: (x: int) -> int #effects(all) {
   return u;
 }
 
-wm_u32 :: (x: int) -> int #effects(all) {
+wsm_u32 :: (x: int) -> int #effects(all) {
   return x & 4294967295;
 }
 
@@ -78,7 +78,7 @@ wm_check_call :: (fp: int, cap: int) -> WmStatus #effects(all) {
   #assert wm_i32(0) == 0 && wm_i32(WM_I32_MAX) == WM_I32_MAX && wm_i32(WM_I32_MIN) == WM_I32_MIN;
   #assert wm_i32(2147483648) == WM_I32_MIN && wm_i32(2147483647) == 2147483647;
   #assert wm_i32(-1) == -1 && wm_i32(4294967296) == 0;
-  #assert wm_u32(-1) == 4294967295 && wm_u32(0) == 0 && wm_u32(4294967297) == 1;
+  #assert wsm_u32(-1) == 4294967295 && wsm_u32(0) == 0 && wsm_u32(4294967297) == 1;
 
   #assert wm_admit_run(0, 16, 10) == WmStatus.invalid_op;
   #assert wm_admit_run(1, -1, 10) == WmStatus.oob_memory;

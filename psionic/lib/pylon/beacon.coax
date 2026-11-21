@@ -16,7 +16,7 @@ PbClass :: struct {family:string;tier:string;memory_gb:int;}
 PbService :: struct {capability:string;model:string;lanes:[]string;offering:string;price:int=-1;}
 PbBeacon :: struct {provider:string;pylon:string;label:string;status:PbStatus;generation:int;since:int;observed_at:int;valid_until:int;hardware:PbClass;total:int;free:int;services:[]PbService;settlement:[]string;pools:[]string;meta:string;}
 PbAuth :: struct {owner:string;signature:string;}
-PbRead :: struct {code:PbCode;status:PbStatus;generation:int;since:int;observed_at:int;valid_until:int;total:int;free:int;services:int;decision:bool;identity:string;pylon:string;family:string;tier:string;memory_gb:int;auth:bool;owner:string;auth_signature:string;}
+PbRead :: struct {code:PbCode;status:PbStatus;generation:int;since:int;observed_at:int;valid_until:int;total:int;free:int;services:int;decision:bool;executor:bool;validator:bool;training:bool;identity:string;pylon:string;family:string;tier:string;memory_gb:int;auth:bool;owner:string;auth_signature:string;}
 PbFresh :: enum u8 {fresh;future;stale;rollback;not_newer;}
 PbShow :: enum u8 {online;draining;offline;unknown;}
 PbHeld :: struct {present:bool;generation:int;observed_at:int;}
@@ -450,8 +450,8 @@ pb_slots :: (j:[]Json,r:[]PbRead)->bool #effects(all) {
     return free && total && r[0].free<=r[0].total && r[0].total<=PB_SLOTS;
 }
 pb_lane :: (raw:string)->int #effects(all) {
-    names:=[4]string.["cj-execution","cj-conversation","cj-decision","nip90-5050"];
-    for i:0..<4 {if json_is(raw,names[i]) {return i;}}return -1;
+    names:=[7]string.["cj-execution","cj-conversation","cj-decision","nip90-5050","cj-executor","cj-validate","cj-training"];
+    for i:0..<7 {if json_is(raw,names[i]) {return i;}}return -1;
 }
 // One service object; the code it refuses with, or ok.
 pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode #effects(all) {
@@ -479,6 +479,13 @@ pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode #effects(all) {
         cap:[96]u8;n:=pb_capability(cap[..],signer);
         if !pb_identity(model) || capability!=cast(string)cap[0..<n] {return PbCode.identity;}
         if !r[0].decision {r[0].decision=true;r[0].identity=model;}
+    }
+    if (lanes&112)!=0 {
+        if !pb_identity(model) {return PbCode.identity;}
+        if (lanes&16)!=0 {r[0].executor=true;}
+        if (lanes&32)!=0 {r[0].validator=true;}
+        if (lanes&64)!=0 {r[0].training=true;}
+        if r[0].identity.count==0 {r[0].identity=model;}
     }
     return PbCode.ok;
 }
@@ -600,4 +607,44 @@ pb_due :: (life:PbLife,now:PbSnap,refresh:int,clock:int)->bool #export_c #effect
 // observed_at+ttl for a ttl of 1 to 300 seconds; -1 otherwise.
 pb_valid_until :: (observed_at:int,ttl:int)->int #export_c #effects(all) {
     if ttl<1 || ttl>PB_WINDOW {return -1;}return observed_at+ttl;
+}
+
+#test "executor, validator and training lanes are admitted with artifact-pinned identity and refused without it" {
+    c:[2048]u8;tags:[512]u8;
+    // cj-executor alone sets executor=true and pins identity
+    ex:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-executor\"]");
+    re:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],ex,"1791400300",""),ex,PB_X);
+    #assert re.code==PbCode.ok && re.executor && !re.validator && !re.training && !re.decision && re.identity==PB_IDENTITY;
+    // cj-validate alone sets validator=true
+    va:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-validate\"]");
+    rv:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],va,"1791400300",""),va,PB_X);
+    #assert rv.code==PbCode.ok && !rv.executor && rv.validator && !rv.training && rv.identity==PB_IDENTITY;
+    // cj-training alone sets training=true
+    tr:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-training\"]");
+    rt:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],tr,"1791400300",""),tr,PB_X);
+    #assert rt.code==PbCode.ok && !rt.executor && !rt.validator && rt.training && rt.identity==PB_IDENTITY;
+    // cj-decision + cj-executor preserves decision identity without overwriting
+    both:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-decision\",\"cj-executor\"]");
+    rb:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],both,"1791400300",""),both,PB_X);
+    #assert rb.code==PbCode.ok && rb.decision && rb.executor && rb.identity==PB_IDENTITY;
+    // cj-execution (bit 0) combined with cj-executor must not set validator or training, and alone sets none
+    ee:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-execution\",\"cj-executor\"]");
+    ree:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],ee,"1791400300",""),ee,PB_X);
+    #assert ree.code==PbCode.ok && ree.executor && !ree.validator && !ree.training;
+    ev:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-execution\",\"cj-validate\"]");
+    rev:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],ev,"1791400300",""),ev,PB_X);
+    #assert rev.code==PbCode.ok && !rev.executor && rev.validator && !rev.training;
+    // Unpinned model identity is refused on cj-executor, cj-validate, and cj-training
+    c2:[2048]u8;
+    bad_ex:=pb_case(c2[..],"\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"model\":\"wasm-exec-unpinned\"");
+    bad_ex2:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-executor\"]");
+    // Construct unpinned cj-executor directly
+    u:[2048]u8;
+    u1:=pb_case(u[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"lanes\":[\"cj-executor\"],\"model\":\"wasm-exec-unpinned\"");
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],u1,"1791400300",""),u1,PB_X).code==PbCode.identity;
+    u2:=pb_case(u[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"lanes\":[\"cj-validate\"],\"model\":\"wasm-exec-unpinned\"");
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],u2,"1791400300",""),u2,PB_X).code==PbCode.identity;
+    u3:=pb_case(u[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"lanes\":[\"cj-training\"],\"model\":\"wasm-exec-unpinned\"");
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],u3,"1791400300",""),u3,PB_X).code==PbCode.identity;
+    _ = bad_ex; _ = bad_ex2;
 }

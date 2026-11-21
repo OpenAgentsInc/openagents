@@ -3,6 +3,7 @@
 // and lists the network's Pylons from their NIP-PYLON beacons.
 #load "../../coax/lib/nostr/xp_keys.coax";
 #load "../../psionic/lib/pylon/beacon.coax";
+#load "pylon-executor.coax";
 
 pylon_usage :: () {
   print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
@@ -15,6 +16,8 @@ pylon_usage :: () {
   print("%\n", "  pylon claim [--key NPUB] [--relay URL]     your profile (13193) lists the Pylon's key");
   print("%\n", "  pylon unclaim [--key NPUB] [--relay URL]   drops it");
   print("%\n", "  pylon list [--relay URL] [--mine]          the network's Pylons, verified and fresh");
+  print("%\n", "  pylon executor start [--relay URL] [--device REF] [--window N]  run self-test, advertise cj-executor & emit signed receipt");
+  print("%\n", "  pylon validate [--auto] [--relay URL] [--device REF]            replay receipts & emit signed verdict + NIP-32 1985 label");
   print("%\n", "");
 }
 
@@ -200,6 +203,8 @@ pylon_logs :: (a: [] Args, r: [] Rep) -> int {
 
 
 pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "executor" { return pylon_executor_main(a, r, profile); }
+  if verb == "validate" { return pylon_validate_main(a, r, profile); }
   if verb == "start" { return pylon_start(a, r, profile); }
   if verb == "claim" { return pylon_claim(a, r, profile, true); }
   if verb == "unclaim" { return pylon_claim(a, r, profile, false); }

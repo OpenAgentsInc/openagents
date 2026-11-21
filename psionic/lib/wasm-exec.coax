@@ -61,7 +61,7 @@ wx_hash_str :: (s: string) -> [32] u8 #effects(all) {
   return d;
 }
 
-wx_program_hash :: (prog: [] WmOp, funcs: [] WmFunc) -> [32] u8 #effects(all) {
+wx_program_hash :: (prog: [] WmOp, funcs: [] WsmFunc) -> [32] u8 #effects(all) {
   sha: [112] u8;
   d: [32] u8;
   #assert sha256_init(sha[..]) == SHA_OK;
@@ -183,7 +183,7 @@ wx_in_envelope :: (a: int, b: int) -> bool {
 // attention for linear memory. Produces a pinned WxReceipt with identical
 // SHA-256 trace digest to wm_run.
 wx_run :: (
-  core: WxCore, prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: [] HtNode
+  core: WxCore, prog: [] WmOp, funcs: [] WsmFunc, mem_cells: int, budget: int, nodes: [] HtNode
 ) -> WxReceipt #effects(all) {
   rc: WxReceipt;
   rc.compiler_hash = core.compiler_hash;
@@ -458,18 +458,18 @@ wx_run :: (
         rst := wm_check_rem_s(b);
         if rst != WmStatus.ok { rc.status = rst; return rc; }
         if a == WM_I32_MIN && b == -1 { res_v = 0; } else { res_v = wm_i32(a % b); }
-      } else if code == WmCode.i32_and { res_v = wm_i32(wm_u32(a) & wm_u32(b)); }
-      else if code == WmCode.i32_or  { res_v = wm_i32(wm_u32(a) | wm_u32(b)); }
-      else if code == WmCode.i32_xor { res_v = wm_i32(wm_u32(a) ^ wm_u32(b)); }
+      } else if code == WmCode.i32_and { res_v = wm_i32(wsm_u32(a) & wsm_u32(b)); }
+      else if code == WmCode.i32_or  { res_v = wm_i32(wsm_u32(a) | wsm_u32(b)); }
+      else if code == WmCode.i32_xor { res_v = wm_i32(wsm_u32(a) ^ wsm_u32(b)); }
       else if code == WmCode.i32_shl {
         sh := b & 31;
-        res_v = wm_i32(wm_u32(a) << sh);
+        res_v = wm_i32(wsm_u32(a) << sh);
       } else if code == WmCode.i32_shr_s {
         sh := b & 31;
         res_v = wm_i32(a >> sh);
       } else if code == WmCode.i32_shr_u {
         sh := b & 31;
-        res_v = wm_i32(wm_u32(a) >> sh);
+        res_v = wm_i32(wsm_u32(a) >> sh);
       } else if code == WmCode.i32_eq {
         if wx_in_envelope(a, b) {
           #assert wx_eval_core(core.model, a, b, 0, wout[..]) == EvStatus.ok;
@@ -530,7 +530,7 @@ wx_run :: (
 // Recomputes program_hash, replays through CPU reference interpreter wm_run,
 // and asserts exact match on steps, result, and 32-byte SHA-256 trace digest.
 wx_replay_verify :: (
-  prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, receipt: WxReceipt, nodes: [] HtNode
+  prog: [] WmOp, funcs: [] WsmFunc, mem_cells: int, budget: int, receipt: WxReceipt, nodes: [] HtNode
 ) -> WxReplay #effects(all) {
   rep: WxReplay;
   if receipt.status != WmStatus.ok {
@@ -624,7 +624,7 @@ wx_replay_verify :: (
     WmOp.{code = WmCode.i32_eqz},           // 0
     WmOp.{code = WmCode.end_op}
   ];
-  funcs := [1] WmFunc.[WmFunc.{entry_ip = 0, n_params = 0, n_locals = 2}];
+  funcs := [1] WsmFunc.[WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 2}];
   nodes1: [64] HtNode;
   nodes2: [64] HtNode;
   ref := wm_run(prog[..], funcs[..], 32, 1000, nodes1[..]);

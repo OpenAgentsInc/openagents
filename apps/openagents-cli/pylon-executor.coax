@@ -1,0 +1,415 @@
+// Executor W4.1 & W4.2 Pylon CLI commands (`openagents pylon executor start` and
+// `openagents pylon validate --auto`, GitHub #13919, #13921).
+// Connects over a real Nostr relay (`CliRelay`), runs the #authority digest
+// self-test before advertising `cj-executor`, executes a real W1.2 `wasm-exec-v1`
+// program, publishes signed W2.1 `ExecutionTraceReceipt` events, and validates
+// receipts from a distinct identity + `device_ref` via Ch 234 replay, publishing
+// signed W2.1 `ReplayVerdict` + NIP-32 kind 1985 label events and promoting
+// verified traces out of quarantine (`EaQuarantine`).
+#load "../../psionic/lib/wasm-benchmarks.coax";
+#load "../../psionic/lib/wasm-exec.coax";
+#load "../../psionic/lib/pylon/executor-selfcheck.coax";
+#load "../../psionic/lib/pylon/window-producer.coax";
+#load "../../psionic/lib/peer/executor-audit.coax";
+
+PE_KIND_RECEIPT :: 30210;
+PE_KIND_VERDICT :: 30211;
+PE_KIND_LABEL :: 1985;
+PE_MAX_REC :: 8;
+
+pe_hex_ch :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + (v - 10)); }
+pe_hex32 :: (d: [32] u8, out: [] u8) -> string {
+  for i: 0..<32 { b := cast(int) d[i]; out[2 * i] = pe_hex_ch(b >> 4); out[2 * i + 1] = pe_hex_ch(b & 15); }
+  return cast(string) out[0..<64];
+}
+
+pe_hex_val :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return 10 + cast(int) (c - 'a'); }
+  if c >= 'A' && c <= 'F' { return 10 + cast(int) (c - 'A'); }
+  return -1;
+}
+
+pe_unhex32 :: (hex: string, out: [] u8) -> bool {
+  if hex.count != 64 || out.count < 32 { return false; }
+  for i: 0..<32 {
+    hi := pe_hex_val(hex[2 * i]);
+    lo := pe_hex_val(hex[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) ((hi << 4) | lo);
+  }
+  return true;
+}
+
+// Deterministic non-zero 63-bit hash of a string for EaQuarantine / WpProducer IDs.
+pe_id_hash :: (s: string) -> int {
+  h: int = 1469598103;
+  for i: 0..<s.count {
+    h = ((h ^ cast(int) s[i]) * 16777619) & 2147483647;
+  }
+  return ifx h == 0 then 1 else h;
+}
+
+// Build the deterministic W1.2 10x10 Hungarian matrix for a given window_id.
+pe_build_window_prog :: (window_id: int, b: [] WmBuilder, fns: [] WsmFunc) -> int {
+  m: [100] int;
+  seed := (window_id & 7) + 1;
+  for r: 0..<10 {
+    for c: 0..<10 {
+      m[r * 10 + c] = ((r * (37 + seed * 2) + c * (73 + seed * 3) + r * c * 11 + 19 + seed) % 97) + 1;
+    }
+  }
+  return wb_build_hungarian10(m[..], b, fns);
+}
+
+// Run the canonical self-test program on the loaded wasm-exec-v1 core.
+pe_run_selfcheck :: (core: WxCore, tamper: bool) -> ExScReport {
+  cp: PgProgram;
+  cp.count = 2;
+  cp.stmts[0] = PgStmt.{kind = PgKind.bind, var = 0, tool = 0, args = [HT_FIELDS_MAX] int.[2, 3, 0, 0]};
+  cp.stmts[1] = PgStmt.{kind = PgKind.bind, var = 1, tool = 2, args = [HT_FIELDS_MAX] int.[0, 28, 0, 0], refs = [HT_FIELDS_MAX] int.[1, 0, 0, 0]};
+  b: [1] WmBuilder;
+  fns: [4] WsmFunc;
+  nf := wb_build_coder_prog(cp, b[..], fns[..]);
+  nodes1: [128] HtNode;
+  nodes2: [128] HtNode;
+  ref := wm_run(b[0].ops[0..<b[0].n], fns[0..<nf], 64, 5000, nodes1[..]);
+  rc := wx_run(core, b[0].ops[0..<b[0].n], fns[0..<nf], 64, 5000, nodes2[..]);
+  obs_art := core.artifact_hash;
+  if tamper { obs_art[0] ^= 1; }
+  return ex_selfcheck_admit(
+    core.ready,
+    rc.status == WmStatus.ok && ref.status == WmStatus.ok,
+    rc.steps, rc.weight_calls,
+    rc.result, ref.result,
+    obs_art, core.artifact_hash,
+    rc.trace_digest, ref.digest);
+}
+
+// Read string or int fields from a flat JSON object.
+pe_json_str :: (content: string, key_name: string, out: [] u8) -> int {
+  j: [1] Json; json_start(j[..], content);
+  if json_next(j[..]) != JSON_OBJECT { return -1; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return -1; }
+    k := json_text(j[..]);
+    v := json_next(j[..]);
+    if json_is(k, key_name) && v == JSON_STRING {
+      n := json_unescape(json_text(j[..]), out);
+      return ifx n < 0 then -1 else n;
+    }
+    if !json_skip(j[..]) { return -1; }
+  }
+  return -1;
+}
+
+pe_json_int :: (content: string, key_name: string) -> int {
+  j: [1] Json; json_start(j[..], content);
+  if json_next(j[..]) != JSON_OBJECT { return -1; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return -1; }
+    k := json_text(j[..]);
+    v := json_next(j[..]);
+    if json_is(k, key_name) && v == JSON_NUMBER {
+      iv := json_int(json_text(j[..]));
+      return ifx iv.ok then iv.value else -1;
+    }
+    if !json_skip(j[..]) { return -1; }
+  }
+  return -1;
+}
+
+pylon_executor_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if args_has(a, "--help") || args_has(a, "-h") {
+    return fail(r, EXIT_USAGE, "pylon executor: start [--relay URL] [--device REF] [--slug NAME] [--window N] [--tamper-selfcheck] [--once]");
+  }
+  url := args_value(a, "--relay", "wss://relay.openagents.com");
+  slug := args_value(a, "--slug", "executor-pylon");
+  dev := args_value(a, "--device", "dev-executor-a");
+  win_num := 1;
+  wn := json_int(args_value(a, "--window", "1"));
+  if wn.ok && wn.value >= 1 { win_num = wn.value; }
+  tamper := args_has(a, "--tamper-selfcheck");
+
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  mh: [64] u8;
+  if !pubkey_hex(k[0].secret[..], mh[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "could not read public key"); }
+  me := cast(string) mh[..];
+
+  // 1. Compile & load wasm-exec-v1 dense F64 safetensors core + run #authority digest self-test
+  layers: [WX_CORE_MAX_LAYERS] EvLayerDesc;
+  heads: [WX_CORE_MAX_HEADS] EvHeadDesc;
+  weights: [WX_CORE_MAX_WEIGHTS] f64;
+  core := wx_compile_and_load_core(layers[..], heads[..], weights[..]);
+  sc := pe_run_selfcheck(core, tamper);
+  if !sc.may_advertise_executor {
+    wipe(k[0].secret[..]);
+    rep_str(r, "selfcheck", "refused");
+    return fail(r, EXIT_FAIL, "executor digest self-test failed: refusing to advertise cj-executor");
+  }
+
+  art_hex_buf: [64] u8;
+  art_hex := pe_hex32(core.artifact_hash, art_hex_buf[..]);
+  model_id_buf: [128] u8;
+  mn := copy("wasm-exec-v1@sha256:", model_id_buf[..]);
+  mn += copy(art_hex, model_id_buf[mn..<128]);
+  model_id := cast(string) model_id_buf[0..<mn];
+
+  // 2. Connect to real Nostr relay & publish NIP-PYLON 30200 beacon advertising cj-executor
+  c: [1] CliRelay;
+  if !cr_open(c[..], url, k[0].secret[..]) {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not connect to relay");
+  }
+  deadline := deadline_flag(a, "20");
+  now := cxcli_now_s();
+
+  cap_buf: [96] u8;
+  cn := copy(me, cap_buf[..]); cn += copy(":pylon/executor", cap_buf[cn..<96]);
+  lanes := [1] string.["cj-executor"];
+  svcs := [1] PbService.[PbService.{capability = cast(string) cap_buf[0..<cn], model = model_id, lanes = lanes[..]}];
+  sett := [1] string.["free-v1"];
+  beacon := PbBeacon.{
+    provider = me, pylon = slug, label = "Executor Pylon",
+    status = PbStatus.online, generation = 1, since = now, observed_at = now, valid_until = now + PB_WINDOW,
+    hardware = PbClass.{family = "cpu", tier = "medium", memory_gb = 16},
+    total = 1, free = 1, services = svcs[..], settlement = sett[..],
+  };
+  b_body: [2048] u8; b_tags: [512] u8; b_ev: [8192] u8;
+  bbn := pb_content(beacon, b_body[..]);
+  b_hash: [32] u8; b_dig: [64] u8;
+  #assert sha256_hash_checked(b_body[0..<bbn], b_hash[..], false) == SHA_OK;
+  #assert cli_hex(b_hash[..], b_dig[..]);
+  exp_buf: [24] u8; exp_s := int_text(now + PB_WINDOW, exp_buf[..]);
+  btn := json_raw(b_tags[..], 0, "[[\"d\",\""); btn = json_raw(b_tags[..], btn, slug);
+  btn = json_raw(b_tags[..], btn, "\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"");
+  btn = json_raw(b_tags[..], btn, cast(string) b_dig[..]);
+  btn = json_raw(b_tags[..], btn, "\"],[\"expiration\",\""); btn = json_raw(b_tags[..], btn, exp_s);
+  btn = json_raw(b_tags[..], btn, "\"]]");
+  // Self-verify beacon with #authority pb_read before publishing
+  br := pb_read(PB_KIND, me, cast(string) b_tags[0..<btn], cast(string) b_body[0..<bbn], cast(string) b_dig[..]);
+  if br.code != PbCode.ok || !br.executor {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "internal error: constructed executor beacon failed pb_read");
+  }
+  ben := sign_event_at(k[0].secret[..], now, PB_KIND, cast(string) b_tags[0..<btn], cast(string) b_body[0..<bbn], b_ev[..]);
+  if ben <= 0 || !cr_publish(c[..], cast(string) b_ev[0..<ben], deadline) {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "relay did not accept cj-executor beacon");
+  }
+
+  // 3. Issue open window via #authority window-producer.coax & run real W1.2 Hungarian program
+  prod: [1] WpProducer;
+  prod[0] = wp_init(16, 1000, 100);
+  wb: [1] WmBuilder;
+  fns: [4] WsmFunc;
+  nf := pe_build_window_prog(win_num, wb[..], fns[..]);
+  nodes: [512] HtNode;
+  rc := wx_run(core, wb[0].ops[0..<wb[0].n], fns[0..<nf], 256, 500000, nodes[..]);
+  if rc.status != WmStatus.ok {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "wasm-exec-v1 execution failed");
+  }
+  ph_buf: [64] u8; ph_hex := pe_hex32(rc.program_hash, ph_buf[..]);
+  td_buf: [64] u8; td_hex := pe_hex32(rc.trace_digest, td_buf[..]);
+  wst := wp_issue(prod[..], WpFamily.hungarian, pe_id_hash(ph_hex), win_num);
+  if wst != WpStatus.ok {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "window-producer refused duplicate or over-cap window");
+  }
+
+  // 4. Sign & publish W2.1 ExecutionTraceReceipt NIP-01 event
+  r_body: [2048] u8; r_tags: [512] u8; r_ev: [8192] u8;
+  rbn := 0;
+  rbn = json_raw(r_body[..], rbn, "{\"v\":\"openagents.executor.trace-receipt.v1alpha1\",\"profile\":\"wasm-exec-v1\",\"window\":");
+  rbn = json_write_int(r_body[..], rbn, win_num);
+  rbn = json_raw(r_body[..], rbn, ",\"device_ref\":\""); rbn = json_raw(r_body[..], rbn, dev);
+  rbn = json_raw(r_body[..], rbn, "\",\"program_hash\":\""); rbn = json_raw(r_body[..], rbn, ph_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"executor_artifact_hash\":\""); rbn = json_raw(r_body[..], rbn, art_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"trace_digest\":\""); rbn = json_raw(r_body[..], rbn, td_hex);
+  rbn = json_raw(r_body[..], rbn, "\",\"steps\":"); rbn = json_write_int(r_body[..], rbn, rc.steps);
+  rbn = json_raw(r_body[..], rbn, ",\"result\":"); rbn = json_write_int(r_body[..], rbn, rc.result);
+  rbn = json_raw(r_body[..], rbn, ",\"weight_calls\":"); rbn = json_write_int(r_body[..], rbn, rc.weight_calls);
+  rbn = json_raw(r_body[..], rbn, "}");
+
+  w_s_buf: [24] u8; w_s := int_text(win_num, w_s_buf[..]);
+  rtn := json_raw(r_tags[..], 0, "[[\"d\",\"win-"); rtn = json_raw(r_tags[..], rtn, w_s);
+  rtn = json_raw(r_tags[..], rtn, "\"],[\"t\",\"oa:executor-receipt:v1\"],[\"device\",\""); rtn = json_raw(r_tags[..], rtn, dev);
+  rtn = json_raw(r_tags[..], rtn, "\"],[\"x\",\""); rtn = json_raw(r_tags[..], rtn, td_hex);
+  rtn = json_raw(r_tags[..], rtn, "\"]]");
+
+  ren := sign_event_at(k[0].secret[..], now, PE_KIND_RECEIPT, cast(string) r_tags[0..<rtn], cast(string) r_body[0..<rbn], r_ev[..]);
+  wipe(k[0].secret[..]);
+  if ren <= 0 || !cr_publish(c[..], cast(string) r_ev[0..<ren], deadline) {
+    cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "relay did not accept ExecutionTraceReceipt");
+  }
+  cr_close(c[..]);
+
+  rep_str(r, "selfcheck", "admitted");
+  rep_str(r, "lane", "cj-executor");
+  rep_str(r, "beacon_id", cast(string) b_ev[7..<71]);
+  rep_str(r, "receipt_id", cast(string) r_ev[7..<71]);
+  rep_str(r, "device_ref", dev);
+  rep_str(r, "artifact_sha256", art_hex);
+  rep_str(r, "trace_digest", td_hex);
+  rep_int(r, "window", win_num);
+  rep_int(r, "steps", rc.steps);
+  rep_int(r, "result", rc.result);
+  rep_int(r, "weight_calls", rc.weight_calls);
+  return rep_done(r, EXIT_OK);
+}
+
+pylon_validate_main :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  url := args_value(a, "--relay", "wss://relay.openagents.com");
+  dev := args_value(a, "--device", "dev-validator-b");
+
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  mh: [64] u8;
+  if !pubkey_hex(k[0].secret[..], mh[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "could not read public key"); }
+  val_pk := cast(string) mh[..];
+
+  c: [1] CliRelay;
+  if !cr_open(c[..], url, k[0].secret[..]) {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not connect to relay");
+  }
+  deadline := deadline_flag(a, "20");
+
+  // Fetch all signed ExecutionTraceReceipt events from the relay
+  if !cr_req(c[..], "{\"kinds\":[30210],\"#t\":[\"oa:executor-receipt:v1\"]}") {
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    return fail(r, EXIT_FAIL, "could not send REQ for executor receipts");
+  }
+
+  // Buffer up to PE_MAX_REC receipts while draining REQ -> EOSE
+  rec_ids: [PE_MAX_REC][64] u8;
+  rec_pks: [PE_MAX_REC][64] u8;
+  rec_contents: [PE_MAX_REC][2048] u8;
+  rec_lens: [PE_MAX_REC] int;
+  rec_n := 0;
+
+  while true {
+    s := cr_next(c[..], deadline);
+    if s == CR_EOSE { break; }
+    if s != CR_EVENT {
+      wipe(k[0].secret[..]); cr_close(c[..]);
+      return fail(r, EXIT_FAIL, "relay did not reach EOSE while fetching receipts");
+    }
+    if rec_n < PE_MAX_REC {
+      scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+      v := ev_of(cr_event(c[..]), scratch[..], buf[..]);
+      if v.ok && v.kind == PE_KIND_RECEIPT && v.content_n > 0 && v.content_n <= 2048 {
+        for i: 0..<64 { rec_ids[rec_n][i] = v.id[i]; rec_pks[rec_n][i] = v.author[i]; }
+        for i: 0..<v.content_n { rec_contents[rec_n][i] = buf[i]; }
+        rec_lens[rec_n] = v.content_n;
+        rec_n += 1;
+      }
+    }
+  }
+
+  q: [1] EaQuarantine;
+  val_key_id := pe_id_hash(val_pk);
+  val_dev_id := pe_id_hash(dev);
+  validated := 0;
+  rejected := 0;
+  last_verdict_id: [64] u8;
+  last_label_id: [64] u8;
+  has_verdict := false;
+  now := cxcli_now_s();
+
+  for i: 0..<rec_n {
+    rid := cast(string) rec_ids[i][..];
+    wpk := cast(string) rec_pks[i][..];
+    content := cast(string) rec_contents[i][0..<rec_lens[i]];
+    win_num := pe_json_int(content, "window");
+    steps := pe_json_int(content, "steps");
+    res_v := pe_json_int(content, "result");
+    wdev_buf: [128] u8; wdev_n := pe_json_str(content, "device_ref", wdev_buf[..]);
+    td_buf: [128] u8; td_n := pe_json_str(content, "trace_digest", td_buf[..]);
+    ph_buf: [128] u8; ph_n := pe_json_str(content, "program_hash", ph_buf[..]);
+    if win_num < 1 || steps < 1 || wdev_n <= 0 || td_n != 64 || ph_n != 64 { rejected += 1; continue; }
+    wdev := cast(string) wdev_buf[0..<wdev_n];
+
+    // Tier 0+1: admit into #authority quarantine (admitted_count stays 0 until validator promotion)
+    rid_h := pe_id_hash(rid);
+    wpk_h := pe_id_hash(wpk);
+    wdev_h := pe_id_hash(wdev);
+    qs := ea_submit_quarantine(q[..], rid_h, wpk_h, wpk_h, wdev_h, true, true, true, false);
+    if qs != EaStatus.ok { rejected += 1; continue; }
+
+    // Tier 2: Independent Ch 234 replay of the W1.2 program
+    wb: [1] WmBuilder;
+    fns: [4] WsmFunc;
+    nf := pe_build_window_prog(win_num, wb[..], fns[..]);
+    nodes: [512] HtNode;
+    claim: WxReceipt;
+    claim.status = WmStatus.ok;
+    claim.steps = steps;
+    claim.result = res_v;
+    claim.has_result = true;
+    ok_h := pe_unhex32(cast(string) ph_buf[0..<64], claim.program_hash[..]) &&
+            pe_unhex32(cast(string) td_buf[0..<64], claim.trace_digest[..]);
+    rep := wx_replay_verify(wb[0].ops[0..<wb[0].n], fns[0..<nf], 256, 500000, claim, nodes[..]);
+    exact := ok_h && rep.verdict == RxVerdict.exact;
+
+    // #authority distinct-key & distinct-device pairing + quarantine -> verified promotion
+    vs := ea_apply_verdict(q[..], rid_h, val_key_id, val_key_id, val_dev_id, true, true, exact);
+    if vs != EaStatus.ok {
+      rejected += 1;
+      continue;
+    }
+    validated += 1;
+
+    // Publish signed W2.1 ReplayVerdict (kind 30211)
+    v_body: [1024] u8; v_tags: [512] u8; v_ev: [8192] u8;
+    vbn := json_raw(v_body[..], 0, "{\"v\":\"openagents.executor.replay-verdict.v1alpha1\",\"verdict\":\"EXACT_REPLAY\",\"receipt_id\":\"");
+    vbn = json_raw(v_body[..], vbn, rid);
+    vbn = json_raw(v_body[..], vbn, "\",\"replayed_steps\":"); vbn = json_write_int(v_body[..], vbn, rep.replayed_steps);
+    vbn = json_raw(v_body[..], vbn, ",\"quarantine_state\":\"verified\",\"device_ref\":\""); vbn = json_raw(v_body[..], vbn, dev);
+    vbn = json_raw(v_body[..], vbn, "\"}");
+
+    vtn := json_raw(v_tags[..], 0, "[[\"e\",\""); vtn = json_raw(v_tags[..], vtn, rid);
+    vtn = json_raw(v_tags[..], vtn, "\"],[\"p\",\""); vtn = json_raw(v_tags[..], vtn, wpk);
+    vtn = json_raw(v_tags[..], vtn, "\"],[\"t\",\"oa:replay-verdict:v1\"],[\"device\",\""); vtn = json_raw(v_tags[..], vtn, dev);
+    vtn = json_raw(v_tags[..], vtn, "\"]]");
+    ven := sign_event_at(k[0].secret[..], now, PE_KIND_VERDICT, cast(string) v_tags[0..<vtn], cast(string) v_body[0..<vbn], v_ev[..]);
+    if ven <= 0 || !cr_publish(c[..], cast(string) v_ev[0..<ven], deadline) {
+      wipe(k[0].secret[..]); cr_close(c[..]);
+      return fail(r, EXIT_FAIL, "relay did not accept ReplayVerdict");
+    }
+
+    // Publish signed NIP-32 kind 1985 label
+    l_tags: [512] u8; l_ev: [8192] u8;
+    ltn := json_raw(l_tags[..], 0, "[[\"L\",\"openagents.executor.verdict\"],[\"l\",\"exact_replay\",\"openagents.executor.verdict\"],[\"e\",\"");
+    ltn = json_raw(l_tags[..], ltn, rid);
+    ltn = json_raw(l_tags[..], ltn, "\"],[\"p\",\""); ltn = json_raw(l_tags[..], ltn, wpk);
+    ltn = json_raw(l_tags[..], ltn, "\"]]");
+    lev_n := sign_event_at(k[0].secret[..], now, PE_KIND_LABEL, cast(string) l_tags[0..<ltn], "EXACT_REPLAY", l_ev[..]);
+    if lev_n <= 0 || !cr_publish(c[..], cast(string) l_ev[0..<lev_n], deadline) {
+      wipe(k[0].secret[..]); cr_close(c[..]);
+      return fail(r, EXIT_FAIL, "relay did not accept NIP-32 1985 label");
+    }
+    for j: 0..<64 { last_verdict_id[j] = v_ev[7 + j]; last_label_id[j] = l_ev[7 + j]; }
+    has_verdict = true;
+  }
+
+  wipe(k[0].secret[..]);
+  cr_close(c[..]);
+
+  rep_int(r, "receipts_seen", rec_n);
+  rep_int(r, "validated", validated);
+  rep_int(r, "rejected", rejected);
+  rep_int(r, "quarantined", q[0].quarantined_count);
+  rep_int(r, "admitted", q[0].admitted_count);
+  rep_str(r, "device_ref", dev);
+  if has_verdict {
+    rep_str(r, "verdict_id", cast(string) last_verdict_id[..]);
+    rep_str(r, "label_id", cast(string) last_label_id[..]);
+  }
+  return rep_done(r, EXIT_OK);
+}

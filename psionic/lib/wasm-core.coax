@@ -62,7 +62,7 @@ WmOp :: struct {
   arg2: int;
 }
 
-WmFunc :: struct {
+WsmFunc :: struct {
   entry_ip: int;
   n_params: int;
   n_locals: int;
@@ -110,7 +110,7 @@ wm_hash_row :: (sha: [] u8, a: int, b: int, c: int, d: int) #effects(all) {
 //   else_op: arg = matching end_ip
 //   br / br_if: arg = label depth (0 = innermost)
 //   call: arg = function index into funcs
-wm_run :: (prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: [] HtNode) -> WmResult #effects(all) {
+wm_run :: (prog: [] WmOp, funcs: [] WsmFunc, mem_cells: int, budget: int, nodes: [] HtNode) -> WmResult #effects(all) {
   res: WmResult;
   if prog.count < 1 { res.status = WmStatus.invalid_op; return res; }
   if mem_cells < 0 || mem_cells > EM_KEY_MAX { res.status = WmStatus.oob_memory; return res; }
@@ -341,18 +341,18 @@ wm_run :: (prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: 
         if b == 0 { res.status = WmStatus.div_zero; res.ip = ip; return res; }
         if a == WM_I32_MIN && b == -1 { v = 0; }
         else { v = wm_i32(a % b); }
-      } else if code == WmCode.i32_and { v = wm_i32(wm_u32(a) & wm_u32(b)); }
-      else if code == WmCode.i32_or  { v = wm_i32(wm_u32(a) | wm_u32(b)); }
-      else if code == WmCode.i32_xor { v = wm_i32(wm_u32(a) ^ wm_u32(b)); }
+      } else if code == WmCode.i32_and { v = wm_i32(wsm_u32(a) & wsm_u32(b)); }
+      else if code == WmCode.i32_or  { v = wm_i32(wsm_u32(a) | wsm_u32(b)); }
+      else if code == WmCode.i32_xor { v = wm_i32(wsm_u32(a) ^ wsm_u32(b)); }
       else if code == WmCode.i32_shl {
         sh := b & 31;
-        v = wm_i32(wm_u32(a) << sh);
+        v = wm_i32(wsm_u32(a) << sh);
       } else if code == WmCode.i32_shr_s {
         sh := b & 31;
         v = wm_i32(a >> sh);
       } else if code == WmCode.i32_shr_u {
         sh := b & 31;
-        v = wm_i32(wm_u32(a) >> sh);
+        v = wm_i32(wsm_u32(a) >> sh);
       } else if code == WmCode.i32_eq   { v = ifx a == b then 1 else 0; }
       else if code == WmCode.i32_ne     { v = ifx a != b then 1 else 0; }
       else if code == WmCode.i32_lt_s   { v = ifx a < b then 1 else 0; }
@@ -378,7 +378,7 @@ wm_run :: (prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: 
 
 #test "wasm-core-i32-v1: all 38 opcodes, recursion, hull-v2 memory, and typed traps" {
   nodes: [64] HtNode;
-  no_fn: [1] WmFunc;
+  no_fn: [1] WsmFunc;
 
   // 1. Arithmetic, bitwise, shifts, comparisons, locals, globals, select, drop, nop
   p1 := [28] WmOp.[
@@ -467,9 +467,9 @@ wm_run :: (prog: [] WmOp, funcs: [] WmFunc, mem_cells: int, budget: int, nodes: 
     WmOp.{code = WmCode.end_op},
     WmOp.{code = WmCode.end_op},
   ];
-  fns := [2] WmFunc.[
-    WmFunc.{entry_ip = 0, n_params = 0, n_locals = 0},
-    WmFunc.{entry_ip = 7, n_params = 1, n_locals = 1},
+  fns := [2] WsmFunc.[
+    WsmFunc.{entry_ip = 0, n_params = 0, n_locals = 0},
+    WsmFunc.{entry_ip = 7, n_params = 1, n_locals = 1},
   ];
   rr := wm_run(p_rec[..], fns[..], 16, 1000, nodes[..]);
   #assert rr.status == WmStatus.ok && rr.has_result && rr.result == 720 && rr.mem_writes == 1 && rr.mem_reads == 1;

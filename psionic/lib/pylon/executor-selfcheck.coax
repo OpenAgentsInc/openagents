@@ -1,0 +1,91 @@
+// Executor W4.1 Digest Self-Test Admission Gate (#authority, GitHub #13919).
+// A Pylon MUST pass this deterministic digest self-test before advertising
+// `cj-executor` in its NIP-PYLON kind 30200 beacon. Any artifact-digest
+// mismatch, trace-digest mismatch, result mismatch, or zero-weight-pass run
+// is refused cleanly so misconfigured or tampered hardware never enters the pool.
+#authority;
+
+ExScStatus :: enum u8 {
+  admitted;
+  not_ready;
+  exec_failed;
+  no_steps;
+  no_weight_passes;
+  bad_artifact;
+  bad_trace;
+  bad_result;
+}
+
+ExScReport :: struct {
+  status: ExScStatus;
+  may_advertise_executor: bool;
+}
+
+ex_sc_same32 :: (a: [32] u8, b: [32] u8) -> bool #effects(all) {
+  for i: 0..<32 {
+    if a[i] != b[i] { return false; }
+  }
+  return true;
+}
+
+ex_selfcheck_admit :: (
+  core_ready: bool,
+  exec_ok: bool,
+  steps: int,
+  weight_calls: int,
+  observed_result: int,
+  expected_result: int,
+  observed_artifact: [32] u8,
+  expected_artifact: [32] u8,
+  observed_trace: [32] u8,
+  expected_trace: [32] u8
+) -> ExScReport #effects(all) {
+  if !core_ready { return ExScReport.{status = ExScStatus.not_ready, may_advertise_executor = false}; }
+  if !exec_ok { return ExScReport.{status = ExScStatus.exec_failed, may_advertise_executor = false}; }
+  if steps <= 0 { return ExScReport.{status = ExScStatus.no_steps, may_advertise_executor = false}; }
+  if weight_calls <= 0 { return ExScReport.{status = ExScStatus.no_weight_passes, may_advertise_executor = false}; }
+  if !ex_sc_same32(observed_artifact, expected_artifact) {
+    return ExScReport.{status = ExScStatus.bad_artifact, may_advertise_executor = false};
+  }
+  if !ex_sc_same32(observed_trace, expected_trace) {
+    return ExScReport.{status = ExScStatus.bad_trace, may_advertise_executor = false};
+  }
+  if observed_result != expected_result {
+    return ExScReport.{status = ExScStatus.bad_result, may_advertise_executor = false};
+  }
+  return ExScReport.{status = ExScStatus.admitted, may_advertise_executor = true};
+}
+
+#test "executor self-test admits matching artifact and trace digests and refuses every fault" {
+  art: [32] u8;
+  tr: [32] u8;
+  for i: 0..<32 { art[i] = cast(u8) (i + 1); tr[i] = cast(u8) (i + 33); }
+
+  ok := ex_selfcheck_admit(true, true, 1, 1, 42, 42, art, art, tr, tr);
+  #assert ok.status == ExScStatus.admitted && ok.may_advertise_executor;
+
+  r1 := ex_selfcheck_admit(false, true, 10, 4, 42, 42, art, art, tr, tr);
+  #assert r1.status == ExScStatus.not_ready && !r1.may_advertise_executor;
+
+  r2 := ex_selfcheck_admit(true, false, 10, 4, 42, 42, art, art, tr, tr);
+  #assert r2.status == ExScStatus.exec_failed && !r2.may_advertise_executor;
+
+  r3 := ex_selfcheck_admit(true, true, 0, 4, 42, 42, art, art, tr, tr);
+  #assert r3.status == ExScStatus.no_steps && !r3.may_advertise_executor;
+
+  r4 := ex_selfcheck_admit(true, true, 10, 0, 42, 42, art, art, tr, tr);
+  #assert r4.status == ExScStatus.no_weight_passes && !r4.may_advertise_executor;
+
+  bad_art := art; bad_art[31] ^= 1;
+  r5 := ex_selfcheck_admit(true, true, 10, 4, 42, 42, bad_art, art, tr, tr);
+  #assert r5.status == ExScStatus.bad_artifact && !r5.may_advertise_executor;
+  bad_art0 := art; bad_art0[0] ^= 1;
+  #assert ex_selfcheck_admit(true, true, 10, 4, 42, 42, bad_art0, art, tr, tr).status == ExScStatus.bad_artifact;
+
+  bad_tr := tr; bad_tr[15] ^= 1;
+  r6 := ex_selfcheck_admit(true, true, 10, 4, 42, 42, art, art, bad_tr, tr);
+  #assert r6.status == ExScStatus.bad_trace && !r6.may_advertise_executor;
+
+  r7 := ex_selfcheck_admit(true, true, 10, 4, 41, 42, art, art, tr, tr);
+  #assert r7.status == ExScStatus.bad_result && !r7.may_advertise_executor;
+}
