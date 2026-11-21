@@ -1,0 +1,62 @@
+#import "Basic";
+#load "../lib/peer/train-verify.coax";
+
+tv_name :: (s: TvStatus) -> string {
+  if s == TvStatus.accepted { return "accepted"; }
+  if s == TvStatus.bad_signature { return "bad_signature"; }
+  if s == TvStatus.lease_expired { return "lease_expired"; }
+  if s == TvStatus.stale_checkpoint { return "stale_checkpoint"; }
+  if s == TvStatus.binding_mismatch { return "binding_mismatch"; }
+  if s == TvStatus.collusion { return "collusion"; }
+  if s == TvStatus.non_finite { return "non_finite"; }
+  if s == TvStatus.zero_delta { return "zero_delta"; }
+  if s == TvStatus.norm_exceeded { return "norm_exceeded"; }
+  if s == TvStatus.spot_diverged { return "spot_diverged"; }
+  if s == TvStatus.sign_poison { return "sign_poison"; }
+  return "canary_failed";
+}
+
+main :: () {
+  ref_d := [4] f64.[1.0, 2.0, -1.0, 0.5];
+  honest := [4] f64.[0.95, 2.05, -0.98, 0.52];
+  base := TvClaim.{
+    sig_ok = true, now_s = 100, lease_expires_s = 200,
+    parent_sha = 777, expect_parent_sha = 777,
+    shard_sha = 888, expect_shard_sha = 888,
+    config_sha = 999, expect_config_sha = 999,
+    worker_key = 10, worker_device = 100, val_key = 20, val_device = 200,
+    spot_dist = 0.01, max_spot_dist = 0.05,
+    min_l2_sq = 0.1, max_l2_sq = 25.0,
+    canary_exact_ok = true, canary_refusal_ok = true,
+  };
+
+  print("honest: %\n", tv_name(tv_verify_claim(base, honest[..], ref_d[..])));
+
+  zeros := [4] f64.[0.0, 0.0, 0.0, 0.0];
+  print("attack1 zero_delta: %\n", tv_name(tv_verify_claim(base, zeros[..], ref_d[..])));
+
+  noise := [4] f64.[50.0, -50.0, 50.0, 50.0];
+  print("attack2 norm: %\n", tv_name(tv_verify_claim(base, noise[..], ref_d[..])));
+
+  flipped := [4] f64.[-1.0, -2.0, 1.0, -0.5];
+  print("attack3 sign_flip: %\n", tv_name(tv_verify_claim(base, flipped[..], ref_d[..])));
+
+  bd := base; bd.canary_refusal_ok = false;
+  print("attack4 backdoor: %\n", tv_name(tv_verify_claim(bd, honest[..], ref_d[..])));
+
+  stale := base; stale.parent_sha = 776;
+  print("attack5 stale: %\n", tv_name(tv_verify_claim(stale, honest[..], ref_d[..])));
+
+  huge := [4] f64.[2000000000.0, 1.0, 0.0, 0.0];
+  print("attack6 non_finite: %\n", tv_name(tv_verify_claim(base, huge[..], ref_d[..])));
+
+  col := base; col.val_device = 100;
+  print("attack7 collusion: %\n", tv_name(tv_verify_claim(col, honest[..], ref_d[..])));
+
+  mixed := [8] f64.[1.0, -999.0, 1.0, 999.0, 1.0, 1.0, 1.0, 1.0];
+  tm := tv_trimmed_mean(mixed[..], 2);
+  print("trimmed_mean(trim=2): %\n", tm);
+  print("survival_bonus(2/3): % (3/3): %\n",
+    tv_survival_bonus_ready(2, 3, false),
+    tv_survival_bonus_ready(3, 3, false));
+}

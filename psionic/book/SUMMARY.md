@@ -338,6 +338,12 @@
 - [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md)
 - [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md)
 
+**XXVIII. Decentralized training on Pylons**
+
+- [272. Bounded training windows and Local-SGD / DiLoCo](ch272-bounded-training-windows-and-diloco.md)
+- [273. Six-tier Byzantine verification for public training](ch273-byzantine-verification-for-public-training.md)
+- [274. The Quarantine Optimizer and atomic lineage rollback](ch274-the-quarantine-optimizer.md)
+
 Proposed: [full table of contents and prerequisites](PLAN.md), from early
 Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific

@@ -3751,6 +3751,36 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/training-window.coax",
+      "chapter": "psionic/book/ch272-bounded-training-windows-and-diloco.md",
+      "stdout": "psionic/fixtures/training-window.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/train-verify.coax",
+      "chapter": "psionic/book/ch273-byzantine-verification-for-public-training.md",
+      "stdout": "psionic/fixtures/train-verify.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/quarantine-opt.coax",
+      "chapter": "psionic/book/ch274-the-quarantine-optimizer.md",
+      "stdout": "psionic/fixtures/quarantine-opt.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ],
   "libraries": [

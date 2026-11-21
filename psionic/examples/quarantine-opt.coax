@@ -1,0 +1,51 @@
+#import "Basic";
+#load "../lib/peer/quarantine-opt.coax";
+
+qo_name :: (s: QoStatus) -> string {
+  if s == QoStatus.promoted { return "promoted"; }
+  if s == QoStatus.no_candidate { return "no_candidate"; }
+  if s == QoStatus.decision_gate_failed { return "decision_gate_failed"; }
+  if s == QoStatus.probability_gate_failed { return "probability_gate_failed"; }
+  if s == QoStatus.exactness_gate_failed { return "exactness_gate_failed"; }
+  if s == QoStatus.cost_gate_failed { return "cost_gate_failed"; }
+  if s == QoStatus.bad_rollback_target { return "bad_rollback_target"; }
+  if s == QoStatus.window_excluded { return "window_excluded"; }
+  return "capacity";
+}
+
+main :: () {
+  s: [1] QoState;
+  s[0] = qo_init(1001);
+
+  good := QoMetrics.{
+    base_pass_bps = 7500, cand_pass_bps = 7900, noise_2sigma_bps = 150, retained_drop_bps = 0,
+    base_logloss_milli = 1950, cand_logloss_milli = 1880, base_conferr_bps = 200, cand_conferr_bps = 180,
+    exact_replay_ok = true, typed_refusal_ok = true,
+    cand_latency_us = 1200, max_latency_us = 1500, cand_mem_mb = 512, max_mem_mb = 1024,
+  };
+
+  // Regression 1: gain inside 2-sigma noise floor
+  _ := qo_stage_quarantine(s[..], 2001, 1);
+  f1 := good; f1.cand_pass_bps = 7650;
+  print("falsifier1 decision: % canonical: %\n", qo_name(qo_try_promote(s[..], f1)), s[0].canonical_sha);
+
+  // Regression 2: higher accuracy but worse log loss
+  _ = qo_stage_quarantine(s[..], 2002, 2);
+  f2 := good; f2.cand_pass_bps = 9000; f2.cand_logloss_milli = 2323;
+  print("falsifier2 probability: % canonical: %\n", qo_name(qo_try_promote(s[..], f2)), s[0].canonical_sha);
+
+  // Regression 3: silent guess instead of <exec_refuse>
+  _ = qo_stage_quarantine(s[..], 2003, 3);
+  f3 := good; f3.typed_refusal_ok = false;
+  print("falsifier3 exactness: % canonical: %\n", qo_name(qo_try_promote(s[..], f3)), s[0].canonical_sha);
+
+  // All 4 gates pass -> canonical advances atomically
+  _ = qo_stage_quarantine(s[..], 2005, 5);
+  print("promote good: % canonical: % gen: %\n",
+    qo_name(qo_try_promote(s[..], good)), s[0].canonical_sha, s[0].generation);
+
+  // Atomic rollback restores prior canonical and excludes suspect window 5
+  print("rollback: % canonical: % rollbacks: %\n",
+    qo_name(qo_rollback(s[..], 1001, 5)), s[0].canonical_sha, s[0].rollbacks);
+  print("re-stage excluded win 5: %\n", qo_name(qo_stage_quarantine(s[..], 2007, 5)));
+}

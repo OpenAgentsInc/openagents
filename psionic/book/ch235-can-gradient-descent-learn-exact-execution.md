@@ -429,3 +429,27 @@ main :: () {
   Converged students are exact minimum-norm least-squares fits in rational
   arithmetic.
 - **Mutation:** 2,071 mutants, all killed.
+
+## Live GPU distillation falsification (`trace-distill-v1`, W3.2)
+
+The same discipline was scaled to a real **10,715,136-parameter 6-layer Psionic
+causal transformer** trained directly on an Apple M5 Max Metal 4 GPU across
+`4,915,200` tokens (`1,638,400` tokens per arm) in
+[`lib/trace-distill.coax`](../lib/trace-distill.coax) and `#authority`
+[`lib/trace-distill-policy.coax`](../lib/trace-distill-policy.coax) (`753/755`
+mutants killed, `0` survived):
+
+- **Baseline A (H1, next-token SFT):** `97.4%` teacher-forced train accuracy,
+  **`0.0%`** held-out Ch 234 autoregressive pass@1 across `1× / 2× / 4× / 8×`
+  length (`96` held-out programs).
+- **Variant B (H5, auxiliary state supervision + Ch 139 on-policy RL):**
+  `96.1%` teacher-forced train accuracy, **`0.0%`** held-out Ch 234 pass@1.
+- **Variant C (H3, analytic `(2k, -k²)` parabolic-key attention init + margin
+  loss + `β` annealing):** `98.0%` teacher-forced train accuracy, **`0.0%`**
+  held-out Ch 234 pass@1.
+
+All three hypotheses were cleanly falsified on live hardware
+([W3.2 verification record](../../docs/verification/executor-distill-h1-h3-h5.md)),
+establishing **`H2_ROUTING_ONLY`** for Part XXVIII decentralized training:
+train neural routing and interface adapters ([chapter 236](ch236-a-frozen-exact-core-with-a-learned-interface.md)),
+and keep exact execution inside frozen compiled weight cores.

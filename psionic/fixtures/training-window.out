@@ -1,0 +1,13 @@
+shard clean: ok
+shard unverified: unverified_rows
+shard short: insufficient_rows
+shard pii: unredacted_pii
+shard leak: eval_leakage
+lease 1: ok
+lease dup: duplicate_lease
+lease over_steps: invalid_bounds
+lease 2: ok
+complete over_bytes: invalid_bounds
+complete 1: ok
+complete 2 late: lease_expired
+reclaimed: 1 active: 0 completed: 1 expired: 1

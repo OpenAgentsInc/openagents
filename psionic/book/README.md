@@ -22,15 +22,17 @@ are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/boo
 
 ## Start here
 
-- **Navigating 271 chapters (Core ML Spine vs. Model Targets Appendix):**
-  Start with the **Core ML Spine** (Parts I–X: tensors, inference primitives,
-  decision services, Pylons, autodiff, and GPU/CPU training). Treat individual
-  model-architecture parts (Granite, Parakeet, Whisper, GPT-OSS, DeepSeek, and
-  Part XXVII Inkling 2 Mini) as a **Model Targets Appendix**—read only the
-  target you are running or extending.
+- **Navigating 274 chapters (Core ML & Executor Spine vs. Model Targets Appendix):**
+  Start with the **Core ML & Executor Spine** (Parts I–V, X–XII, XX, XXII–XXIV,
+  and XXVIII: tensors, inference primitives, decision services, Pylons, autodiff,
+  exact compiled weight executors, hybrid routing, live Bitcoin settlement, and
+  Byzantine-safe decentralized training). Treat individual model-architecture
+  parts (Parts VI–IX, XIII–XVIII, and Part XXVII Inkling 2 Mini) as a **Model
+  Targets Appendix**—read only the target you are running or extending.
 - **What you build.** A machine-learning library: tensors, running
   published models from their original weights, a decision service,
-  training and serving.
+  training, serving, exact compiled weight executors and quarantined
+  decentralized training.
 - **What you need.** Basic programming and arithmetic. For the language,
   the Coax book's Parts I–III.
 - **The order.** This book runs original published models (Part II) before
@@ -39,16 +41,18 @@ are now Parts IV and V of [the Metaverse Engine book](../../metaverse-engine/boo
 - **The core path.** Chapters 1–6 (tensors), 7, 9 and 12–17 (a decision
   model from original weights, and whether its probabilities are any good),
   18–20 (a live decision API), 24 (a Pylon), 28 and 29 (a game asks for a
-  decision), 103, 104, 112 and 115 (learning, gradients and a tiny decoder)
-  and 238 (pay for verified work). The model families in Parts VII–IX and
-  the modalities in Parts XIII–XVIII are branches. Read the ones you need.
+  decision), 103, 104, 112 and 115 (learning, gradients and a tiny decoder),
+  226–238 (exact compiled weight executors, hybrid routing and verified pay)
+  and 272–274 (Byzantine-safe DiLoCo training and the Quarantine Optimizer).
+  The model families in Parts VII–IX and the modalities in Parts XIII–XVIII
+  are branches. Read the ones you need.
 - **Decisions, not text.** A decision model returns one choice from a typed
   set, with a probability. Code can branch on it, check it and price it.
   Parts II–IV and XXII build this, [Coder](../../coder/book/README.md)
   uses it to choose an engine, and
   [Everglade](../../everglade/book/README.md)'s guard uses it in a game.
 - **Where this book sits.** See [the OpenAgents books](../../docs/books/README.md) for the whole library. The
-  [contents](SUMMARY.md) name all 27 parts.
+  [contents](SUMMARY.md) name all 28 parts.
 
 ## Chapter status
 
@@ -394,6 +398,9 @@ run examples directly without the check command.
 | [269. Inkling 2 Mini on Metal](ch269-inkling-2-mini-on-metal.md) | Runnable: bounded Apple Silicon >= 32GB residency planner and fused NVFP4/MXFP8 matvec | Coax-generated Metal NVFP4/MXFP8 kernels, looped MoE dispatch and ≥32 GB unified-memory residency planning. |
 | [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) | Runnable: bounded Inkling 2 Mini reasoning/tool-call parser and /v1/responses SSE formatter | Inkling 2 Mini reasoning/tool-call parser and local `/v1/responses` streaming server integration. |
 | [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Runnable: bounded OpenAgents Desktop readiness, hardware preflight, and selectable model-picker gating | End-to-end OpenAgents Desktop integration: verified model download, memory guardrails, resident local runner and streaming tool-use UI. |
+| [272. Bounded training windows and Local-SGD / DiLoCo](ch272-bounded-training-windows-and-diloco.md) | Runnable: training-window-v1, #authority shard gate & bounded DiLoCo leases | `#authority` Dataset Shard Authority (zero quarantined rows, PII redaction, zero eval leakage) and bounded DiLoCo lease pool with bandwidth caps and expiry reclamation. |
+| [273. Six-tier Byzantine verification for public training](ch273-byzantine-verification-for-public-training.md) | Runnable: train-verify-v1, #authority 6-tier ladder & trimmed-mean aggregator | `#authority` Tiers 0–5 verification ladder, coordinate-wise trimmed-mean aggregation, and 7/7 adversarial attack rejection. |
+| [274. The Quarantine Optimizer and atomic lineage rollback](ch274-the-quarantine-optimizer.md) | Runnable: quarantine-opt-v1, #authority 3-checkpoint 4-gate promotion & rollback | `#authority` three-checkpoint promotion (`canonical -> quarantine -> promoted`) across 4 frozen gates and atomic rollback with suspect-window exclusion. |
 
 The selected robotics capstone is [chapter 256](ch256-build-and-teach-a-small-robot.md),
 following the [GTC Berlin pipeline specification](../../docs/nvidia/microduck-pipeline-2026-11-15.md).

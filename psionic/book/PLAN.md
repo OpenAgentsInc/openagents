@@ -970,6 +970,21 @@ MoE, 3-pass middle-layer loop, native NVFP4 weights with MXFP8 last four layers,
 | [270. Tool calls and Responses for Inkling 2 Mini](ch270-tool-calls-and-responses-for-inkling-2-mini.md) | Wire Inkling 2 Mini's tool-calling format and thinking/CoT output into Psionic's `/v1/responses` server. |
 | [271. Run Inkling 2 Mini in OpenAgents Desktop](ch271-run-inkling-2-mini-in-openagents-desktop.md) | Connect the resident local Psionic Metal runner into `apps/openagents-desktop/` with discovery/download, residency guardrails, model picker, and streaming tool-use sessions. |
 
+### Part XXVIII. Decentralized training on Pylons
+
+Closes the [OpenAgents Executor Network](../docs/executor-network-master-spec.md)
+flywheel (Workstream 5, `#13923`, `#13925`, `#13927`): bounded Local-SGD / DiLoCo
+training windows over decontaminated verified shards, 6-tier Byzantine
+verification blocking `7/7` planted attacks, and the Quarantine Optimizer
+(`canonical -> quarantine -> promoted`) blocking `3/3` regressions with atomic
+lineage rollback.
+
+| Chapter | What it proves |
+| --- | --- |
+| [272. Bounded training windows and Local-SGD / DiLoCo](ch272-bounded-training-windows-and-diloco.md) — runnable: training-window-v1 | `#authority` Dataset Shard Authority (zero quarantined rows, PII redaction, zero eval leakage) and bounded DiLoCo lease pool with bandwidth caps and expiry reclamation. |
+| [273. Six-tier Byzantine verification for public training](ch273-byzantine-verification-for-public-training.md) — runnable: train-verify-v1 | `#authority` Tiers 0–5 verification ladder, coordinate-wise trimmed-mean aggregation, and 7/7 adversarial attack rejection. |
+| [274. The Quarantine Optimizer and atomic lineage rollback](ch274-the-quarantine-optimizer.md) — runnable: quarantine-opt-v1 | `#authority` three-checkpoint promotion across 4 frozen gates (`decision-v1`, `probability-v2`, Ch 234 exactness, `ext-eval-v2` cost) and atomic rollback with suspect-window exclusion. |
+
 ## A framework, not only engines
 
 Most of this plan teaches how to run and train particular architectures. To

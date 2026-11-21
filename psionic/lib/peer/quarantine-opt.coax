@@ -56,6 +56,7 @@ qo_window_is_excluded :: (s: [] QoState, win_id: int) -> bool #effects(all) {
   return false;
 }
 
+// book:begin promote
 // Stage a candidate checkpoint in quarantine (NEVER mutates canonical_sha).
 qo_stage_quarantine :: (s: [] QoState, candidate_sha: int, window_id: int) -> QoStatus #effects(all) {
   if candidate_sha == 0 || candidate_sha == s[0].canonical_sha { return QoStatus.no_candidate; }
@@ -95,7 +96,9 @@ qo_try_promote :: (s: [] QoState, m: QoMetrics) -> QoStatus #effects(all) {
   s[0].generation += 1;
   return QoStatus.promoted;
 }
+// book:end promote
 
+// book:begin rollback
 // Atomic rollback to prior canonical SHA, excluding suspect window IDs from future rounds.
 qo_rollback :: (s: [] QoState, target_sha: int, suspect_window_id: int) -> QoStatus #effects(all) {
   if target_sha == 0 || target_sha != s[0].prior_canonical_sha { return QoStatus.bad_rollback_target; }
@@ -109,6 +112,7 @@ qo_rollback :: (s: [] QoState, target_sha: int, suspect_window_id: int) -> QoSta
   s[0].rollbacks += 1;
   return QoStatus.promoted;
 }
+// book:end rollback
 
 #test "quarantine-opt: 3-checkpoint promotion, all 3 regression falsifiers, and atomic rollback (#13927)" {
   s: [1] QoState;

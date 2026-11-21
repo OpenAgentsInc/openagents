@@ -365,3 +365,21 @@ has the commands and results.
 - **Shared slots.** The linked residual is the sum of the two widths, so
   long chains run out of slots. Reusing slots across modules would need
   chapter 229's slot scheduler to cover the seam.
+
+## Production package linker and coding-agent cores (`module-v2`, W2.2)
+
+The Executor Network extends `weight-module.coax` into `module-v2` ("Agentic
+npm") over the registered single-codec schemas in
+[`proto/openagents/executor/v1alpha1/module.proto`](../../proto/openagents/executor/v1alpha1/module.proto):
+
+- **Digest-pinned local store:** Compiled weight artifacts live under
+  `~/.openagents/modules/<sha256>/` and are linked and verified by the
+  `openagents module` CLI. Any 1-byte tamper or conformance mismatch refuses
+  at load time.
+- **Four shipping Class-E coding-agent cores:** `oa-exec-diff-verify` (exact
+  unified-diff hunk/line verification), `oa-exec-json-schema` (bounded JSON and
+  wire-schema validation), `oa-exec-dep-sched` (DAG topological sort and cycle
+  detection), and `oa-exec-arith-budget` (exact 64-bit integer and token/satoshi
+  budget accounting with overflow refusal), linked into composite artifacts and
+  invoked directly by Microcoder, OpenAgents Desktop, and `openagents mcp
+  --domains executor` ([W6.1 coding-agent verification record](../../docs/verification/executor-w61-coding-agent.md)).

@@ -1,0 +1,6 @@
+falsifier1 decision: decision_gate_failed canonical: 1001
+falsifier2 probability: probability_gate_failed canonical: 1001
+falsifier3 exactness: exactness_gate_failed canonical: 1001
+promote good: promoted canonical: 2005 gen: 2
+rollback: promoted canonical: 1001 rollbacks: 1
+re-stage excluded win 5: window_excluded

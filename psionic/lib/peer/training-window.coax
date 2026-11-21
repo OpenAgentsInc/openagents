@@ -7,6 +7,7 @@
 //     unique active lease per (shard, worker), and clean expiry reclamation).
 #authority;
 
+// book:begin types
 TW_MAX_LEASES :: 32;
 TW_MAX_INNER_STEPS :: 500;
 TW_MAX_BYTES_OUT :: 67108864; // 64 MiB per window delta cap
@@ -42,7 +43,9 @@ TwPool :: struct {
   completed_count: int;
   expired_count: int;
 }
+// book:end types
 
+// book:begin admit
 // Dataset Shard Authority: never train on quarantined/unverified rows, unredacted PII, or held-out eval leakage.
 tw_admit_shard :: (
   verified_rows: int, min_rows: int, quarantined_rows: int,
@@ -54,7 +57,9 @@ tw_admit_shard :: (
   if exposure_overlap > 0 { return TwStatus.eval_leakage; }
   return TwStatus.ok;
 }
+// book:end admit
 
+// book:begin leases
 // Issue a bounded TrainingWindow lease for (worker_key, parent_sha, shard_sha).
 tw_issue_lease :: (
   p: [] TwPool, lease_id: int, worker_key: int, parent_sha: int, shard_sha: int,
@@ -120,6 +125,7 @@ tw_expire_leases :: (p: [] TwPool, now_s: int) -> int #effects(all) {
   }
   return reclaimed;
 }
+// book:end leases
 
 #test "training-window: shard authority, bounded leases, bandwidth caps, and expiry reclamation (#13923)" {
   // Shard admission checks

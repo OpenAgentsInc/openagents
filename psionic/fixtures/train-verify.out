@@ -1,0 +1,10 @@
+honest: accepted
+attack1 zero_delta: zero_delta
+attack2 norm: norm_exceeded
+attack3 sign_flip: sign_poison
+attack4 backdoor: canary_failed
+attack5 stale: stale_checkpoint
+attack6 non_finite: non_finite
+attack7 collusion: collusion
+trimmed_mean(trim=2): 1.0
+survival_bonus(2/3): false (3/3): true

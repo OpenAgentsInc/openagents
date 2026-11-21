@@ -1,0 +1,37 @@
+#import "Basic";
+#load "../lib/peer/training-window.coax";
+
+tw_name :: (s: TwStatus) -> string {
+  if s == TwStatus.ok { return "ok"; }
+  if s == TwStatus.unverified_rows { return "unverified_rows"; }
+  if s == TwStatus.insufficient_rows { return "insufficient_rows"; }
+  if s == TwStatus.unredacted_pii { return "unredacted_pii"; }
+  if s == TwStatus.eval_leakage { return "eval_leakage"; }
+  if s == TwStatus.invalid_bounds { return "invalid_bounds"; }
+  if s == TwStatus.duplicate_lease { return "duplicate_lease"; }
+  if s == TwStatus.lease_not_found { return "lease_not_found"; }
+  if s == TwStatus.lease_expired { return "lease_expired"; }
+  return "capacity";
+}
+
+main :: () {
+  print("shard clean: %\n", tw_name(tw_admit_shard(128, 100, 0, true, 0)));
+  print("shard unverified: %\n", tw_name(tw_admit_shard(128, 100, 1, true, 0)));
+  print("shard short: %\n", tw_name(tw_admit_shard(99, 100, 0, true, 0)));
+  print("shard pii: %\n", tw_name(tw_admit_shard(128, 100, 0, false, 0)));
+  print("shard leak: %\n", tw_name(tw_admit_shard(128, 100, 0, true, 1)));
+
+  p: [1] TwPool;
+  print("lease 1: %\n", tw_name(tw_issue_lease(p[..], 1, 10, 777, 888, 50, 4096, 1000, 300)));
+  print("lease dup: %\n", tw_name(tw_issue_lease(p[..], 2, 10, 777, 888, 50, 4096, 1000, 300)));
+  print("lease over_steps: %\n", tw_name(tw_issue_lease(p[..], 3, 11, 777, 888, TW_MAX_INNER_STEPS + 1, 4096, 1000, 300)));
+  print("lease 2: %\n", tw_name(tw_issue_lease(p[..], 2, 11, 777, 888, 30, 4096, 1000, 120)));
+
+  print("complete over_bytes: %\n", tw_name(tw_complete_lease(p[..], 1, 10, 4097, 1100)));
+  print("complete 1: %\n", tw_name(tw_complete_lease(p[..], 1, 10, 2048, 1100)));
+  print("complete 2 late: %\n", tw_name(tw_complete_lease(p[..], 2, 11, 1024, 1121)));
+
+  reclaimed := tw_expire_leases(p[..], 1121);
+  print("reclaimed: % active: % completed: % expired: %\n",
+    reclaimed, p[0].active_count, p[0].completed_count, p[0].expired_count);
+}

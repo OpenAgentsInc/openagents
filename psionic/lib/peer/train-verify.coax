@@ -47,6 +47,7 @@ tv_is_finite :: (v: f64) -> bool #effects(all) {
   return v == v && v <= TV_FINITE_MAX && v >= -TV_FINITE_MAX;
 }
 
+// book:begin verify
 // Evaluate Tiers 0, 1, 3 (norm + cosine vs reference), and 4 (quarantine canary) on a delta vector.
 tv_verify_claim :: (c: TvClaim, delta: [] f64, cohort_ref: [] f64) -> TvStatus #effects(all) {
   // Tier 0: signature, lease, cryptographic binding, distinct worker/validator, finite tensor
@@ -76,7 +77,9 @@ tv_verify_claim :: (c: TvClaim, delta: [] f64, cohort_ref: [] f64) -> TvStatus #
   if !c.canary_exact_ok || !c.canary_refusal_ok { return TvStatus.canary_failed; }
   return TvStatus.accepted;
 }
+// book:end verify
 
+// book:begin trimmed
 // Tier 3 Byzantine-resistant coordinate-wise trimmed mean across n workers (trims trim_k from each tail).
 tv_trimmed_mean :: (vals: [] f64, trim_k: int) -> f64 #effects(all) {
   n := vals.count;
@@ -104,6 +107,7 @@ tv_trimmed_mean :: (vals: [] f64, trim_k: int) -> f64 #effects(all) {
 tv_survival_bonus_ready :: (survived_promotions: int, required_k: int, any_regression: bool) -> bool #effects(all) {
   return !any_regression && required_k >= 1 && survived_promotions >= required_k;
 }
+// book:end trimmed
 
 #test "train-verify: all 7 Byzantine attacks rejected, 25% poisoner trimmed-mean, and Tier-5 survival (#13925)" {
   ref_d := [4] f64.[1.0, 2.0, -1.0, 0.5];

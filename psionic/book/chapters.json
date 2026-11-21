@@ -1911,7 +1911,7 @@
     },
     {
       "number": 89,
-      "title": "DeepSeek’s front door",
+      "title": "DeepSeek\u2019s front door",
       "file": "ch089-deepseeks-front-door.md",
       "status": "implemented",
       "profile": "original V4.1 text tokenizer and bounded recipe/stream",
@@ -5259,7 +5259,9 @@
         "psionic/lib/gate-graph.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal",
+        "cuda"
       ],
       "adopted_by": []
     },
@@ -5295,7 +5297,9 @@
         "psionic/lib/interpreter-weights.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal",
+        "cuda"
       ],
       "adopted_by": []
     },
@@ -5369,7 +5373,8 @@
         "psionic/lib/students.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
       "adopted_by": []
     },
@@ -5388,7 +5393,8 @@
         "psionic/lib/core-interface.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
       "adopted_by": []
     },
@@ -5435,7 +5441,9 @@
         "psionic/lib/serve-price.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal",
+        "cuda"
       ],
       "adopted_by": [
         "apps/openagents-cli/pylon-settle.coax"
@@ -6125,7 +6133,8 @@
         "psionic/lib/inkling-metal.coax"
       ],
       "qualified_targets": [
-        "cpu"
+        "cpu",
+        "metal"
       ],
       "adopted_by": []
     },
@@ -6167,6 +6176,73 @@
         "cpu"
       ],
       "adopted_by": []
+    },
+    {
+      "number": 272,
+      "title": "Bounded training windows and Local-SGD / DiLoCo",
+      "file": "ch272-bounded-training-windows-and-diloco.md",
+      "status": "implemented",
+      "profile": "training-window-v1, #authority shard gate & bounded DiLoCo leases",
+      "depends_on": [
+        235,
+        236,
+        238,
+        247
+      ],
+      "source": [
+        "psionic/examples/training-window.coax",
+        "psionic/lib/peer/training-window.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "psionic/tools/diloco-round.coax"
+      ]
+    },
+    {
+      "number": 273,
+      "title": "Six-tier Byzantine verification for public training",
+      "file": "ch273-byzantine-verification-for-public-training.md",
+      "status": "implemented",
+      "profile": "train-verify-v1, #authority 6-tier ladder & trimmed-mean aggregator",
+      "depends_on": [
+        272
+      ],
+      "source": [
+        "psionic/examples/train-verify.coax",
+        "psionic/lib/peer/train-verify.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "psionic/tools/diloco-round.coax"
+      ]
+    },
+    {
+      "number": 274,
+      "title": "The Quarantine Optimizer and atomic lineage rollback",
+      "file": "ch274-the-quarantine-optimizer.md",
+      "status": "implemented",
+      "profile": "quarantine-opt-v1, #authority 3-checkpoint 4-gate promotion & rollback",
+      "depends_on": [
+        224,
+        234,
+        240,
+        241,
+        273
+      ],
+      "source": [
+        "psionic/examples/quarantine-opt.coax",
+        "psionic/lib/peer/quarantine-opt.coax"
+      ],
+      "qualified_targets": [
+        "cpu"
+      ],
+      "adopted_by": [
+        "psionic/tools/diloco-round.coax"
+      ]
     }
   ]
 }

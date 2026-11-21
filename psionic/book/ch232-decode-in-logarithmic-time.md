@@ -217,3 +217,15 @@ has the commands and results.
 - **No timings.** See above.
 - **Not in weights.** The lookup runs as code beside the machine. Building
   it into weights is the work of chapter 231's interpreter.
+
+## Production balanced-tree index (`hull-v2` and `hull-kv`)
+
+`hull-memory.coax` (`hull-v1`) shifts a flat sorted array (`O(n)` inserts).
+The production Executor Network replaces it with a deterministic, caller-allocated
+balanced AVL parabolic convex-hull index in [`lib/hull-tree.coax`](../lib/hull-tree.coax)
+and [`lib/hull-kv.coax`](../lib/hull-kv.coax), giving `O(log t)` reads **and**
+`O(log t)` inserts up to `1,048,576` writes over segmented `±2^30` keys,
+verified bit-for-bit against `O(t)` linear scan across `10,000` randomized
+read/write/overwrite/miss operations and driving the 93-layer dense `binary64`
+WASM transformer in [`examples/wasm-exec.coax`](../examples/wasm-exec.coax)
+([W1.2 verification record](../../docs/verification/executor-w12-wasm-exec.md)).

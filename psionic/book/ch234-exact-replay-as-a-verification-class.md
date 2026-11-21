@@ -308,3 +308,16 @@ has the commands and results.
   state instead of trusting every row before it.
 - **One machine.** The class is written for chapter 226's interpreter, not
   yet for a model's forward pass.
+
+## Multi-device Pylon validation and trace quarantine (W4.2)
+
+In the live Executor Network, `replay.coax` drives independent second-device
+validation over the `NIP-PYLON` `cj-validate` lane (`openagents pylon validate`)
+and [`peer/executor-audit.coax`](../lib/peer/executor-audit.coax). The
+`#authority` pairing gate enforces `validator_pubkey != worker_pubkey` and
+`validator_device_ref != worker_device_ref`, emits signed NIP-32 kind `1985`
+`ReplayVerdict` records naming any first divergent step, and holds raw traces
+in a 4-tier quarantine ladder until independently verified—feeding both
+[chapter 238](ch238-pay-for-verified-work.md)'s live two-leg Bitcoin mainnet
+settlement and [chapter 247](ch247-outcomes-become-training-rows.md)'s
+decontaminated shards for [chapter 272](ch272-bounded-training-windows-and-diloco.md).
