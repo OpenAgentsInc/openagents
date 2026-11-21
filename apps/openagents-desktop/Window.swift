@@ -242,6 +242,10 @@ final class CoderWindow: NSObject, NSWindowDelegate {
             if self.window.firstResponder === self.canvas && cd_wants_text(self.page) != 0, let key = self.editingChord(event) {
                 if cd_key(self.page, key.code, key.mods) != 0 { self.wake(); return nil }
             }
+            // in-thread Find Escape dismissal (#13876)
+            if event.keyCode == 53 && cd_find_is_open(self.page) != 0 && cd_overlay_open(self.page) == 0 {
+                cd_find_close(self.page); self.focusComposer(); return nil
+            }
             // in the composer Esc gives up an edit or stops the reply (#13717); Shift-Return is the
             // File menu's (followUpOther)
             if self.composerFocused {
@@ -415,6 +419,9 @@ final class CoderWindow: NSObject, NSWindowDelegate {
         case 60: walletRefresh()
         case 61: notificationModeChanged()
         case 62: sidebarAsked()
+        case 63: focusFind()
+        case 64: searchPaletteContent()
+        case 65: jumpToPaletteHit()
         case 40...43: fileAsked(what)
         default: break
         }

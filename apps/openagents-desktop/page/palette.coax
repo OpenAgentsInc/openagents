@@ -53,6 +53,8 @@ cp_palette_fill :: (s: [] CoderPage) {
   if shown {
     cp_pal_cmd(p, "Chat budget…", "budget spend cost limit", "", -1, CP_PC_BUDGET, 0);
     cp_pal_cmd(p, "Thread goal…", "goal objective autonomous", "", -1, CP_PC_GOAL, 0);
+    cp_pal_cmd(p, "Find in chat", "find search transcript", "⌘ F", ICON_SET_SEARCH, CP_PC_FIND, 0);
+    cp_pal_cmd(p, ifx s[0].find[0].minimap_on then "Hide transcript minimap" else "Show transcript minimap", "minimap scrollbar overview", "", -1, CP_PC_MINIMAP, 0);
     if s[0].nturns > 0 { cp_pal_cmd(p, "Copy chat", "copy transcript clipboard", "", ICON_COPY, CP_PC_COPY, 0); }
     if s[0].nturns > 0 && cur != "chat.foreman" { cp_pal_cmd(p, "Fork chat", "fork branch duplicate split /fork", "", ICON_COMPOSE, CP_PC_FORK, 0); }
     if running { cp_pal_cmd(p, "Stop reply", "stop cancel interrupt", "", ICON_STOP, CP_PC_STOP, 0); }
@@ -102,6 +104,8 @@ cp_palette_show :: (s: [] CoderPage, scope: int) {
   if s[0].ov[0].dlg[0].shown { return; }
   app_menu_close(s[0].ov[0].menu[..], APP_MENU_NONE); _ := app_menu_take(s[0].ov[0].menu[..]);
   s[0].model_menu = false;
+  s[0].find[0].pal_mode = CP_PAL_MODE_COMMANDS;
+  s[0].find[0].content_query_n = 0;
   cp_palette_fill(s);
   app_palette_open(cp_pal(s), scope, CP_PAL_HINT);
   s[0].ov[0].pal_cmd = 0; s[0].ask = CP_ASK_PALETTE;
@@ -134,6 +138,25 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
     return true;
   }
   if c >= CP_PAL_MODEL && c < CP_PAL_TIER { m := c - CP_PAL_MODEL; if m >= cp_models(s) { return false; } s[0].model = m; return true; }
+  if c >= CP_PAL_CONTENT {
+    idx := c - CP_PAL_CONTENT;
+    if idx < 0 || idx >= s[0].find[0].ncontent { return false; }
+    h := s[0].find[0].content_hits[idx];
+    s[0].find[0].jump_chat_n = cp_out(s[0].find[0].jump_chat[..], cast(string) s[0].find[0].content_hits[idx].chat_id[0..<h.chat_id_n]);
+    s[0].find[0].jump_turn = h.turn;
+    cp_pal_leave_settings(s);
+    s[0].ask = CP_ASK_PALETTE_JUMP;
+    return true;
+  }
+  if c >= CP_PAL_FILE && c < CP_PAL_CONTENT {
+    off := c - CP_PAL_FILE;
+    path := cp_file(s, off);
+    if path.count == 0 { return false; }
+    s[0].find[0].open_file_path_n = cp_out(s[0].find[0].open_file_path[..], path);
+    s[0].open_call = -1; s[0].open_turn = -1; s[0].open_file = -1; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false;
+    s[0].ask = CP_ASK_OPEN_FILE;
+    return true;
+  }
   if c >= CP_PAL_TIER { t := c - CP_PAL_TIER; if t > CP_FOREMAN_TIER_AUTO { return false; } s[0].set_tier = t; s[0].ask = CP_ASK_TIER; return true; }
   if c == CP_PC_NEW { cp_pal_leave_settings(s); return cp_new(s); }
   if c == CP_PC_FOREMAN { return cp_pal_open_chat(s, -1); }
@@ -142,6 +165,8 @@ cp_palette_run :: (s: [] CoderPage, i: int) -> bool {
   if c == CP_PC_SETTINGS { cp_settings_show(s, true, -1); return true; }
   if c == CP_PC_BUDGET { s[0].ask = CP_ASK_BUDGET; return true; }
   if c == CP_PC_GOAL { s[0].ask = CP_ASK_GOAL; return true; }
+  if c == CP_PC_FIND { cp_find_open(s); return true; }
+  if c == CP_PC_MINIMAP { s[0].find[0].minimap_on = !s[0].find[0].minimap_on; return true; }
   if c == CP_PC_COPY { if s[0].nturns == 0 { return false; } s[0].copied_turn = 0; s[0].copied_block = -1; s[0].copied_kind = CP_COPIED_ALL; s[0].ask = CP_ASK_COPY; return true; }
   if c == CP_PC_FORK { cur := cast(string) s[0].current[0..<s[0].current_n]; if s[0].nturns == 0 || cur == "chat.foreman" { return false; } s[0].ask = CP_ASK_FORK; return true; }
   if c == CP_PC_STOP { if !cp_running(s) { return false; } s[0].turns[s[0].nturns - 1].stopping = true; s[0].ask = CP_ASK_STOP; return true; }

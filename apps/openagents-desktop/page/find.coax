@@ -1,0 +1,748 @@
+// Coder Desktop page (../page.coax): in-thread Find (⌘F), Transcript Minimap, and 3-mode
+// Command Palette (Commands/Chats, Files, Content) (GitHub #13876).
+
+// Host actions (CP_ASK_* in state.coax; 63..65 are free after CP_ASK_SIDEBAR :: 62).
+CP_ASK_FIND_FOCUS :: 63;       // give keyboard focus to the in-thread Find field
+CP_ASK_PALETTE_CONTENT :: 64;  // host runs full-text cross-chat search for palette query -> coder_page_palette_content_hits
+CP_ASK_PALETTE_JUMP :: 65;     // host opens jump_chat and scrolls to jump_turn
+
+// Keyboard / editor slot for the in-thread Find bar (editor.coax).
+CP_KB_FIND :: 5;
+CP_ED_FIND :: 5;
+
+// Row action IDs (230..235, free after CP_SB_UNDO_CLOSE_ACT :: 220).
+CP_FIND_PREV :: 230;
+CP_FIND_NEXT :: 231;
+CP_FIND_CLOSE :: 232;
+CP_FIND_FIELD :: 233;
+CP_MINIMAP_TOGGLE :: 234;
+CP_MINIMAP_TRACK :: 235;
+
+// 3-mode Command Palette modes & item code bases (palette.coax).
+CP_PAL_MODE_COMMANDS :: 0;     // Commands / Chats / Settings (default; preserves all AppPalette scopes)
+CP_PAL_MODE_FILES :: 1;        // Active repo files from s[0].files
+CP_PAL_MODE_CONTENT :: 2;      // Full-text cross-chat search hits
+CP_PAL_MODES :: 3;
+CP_PAL_MODE_NAME :: [CP_PAL_MODES] string.["Commands/Chats", "Files", "Content"];
+CP_PAL_FILE :: 5000;           // item code = CP_PAL_FILE + byte offset in s[0].files
+CP_PAL_CONTENT :: 600000;      // item code = CP_PAL_CONTENT + hit index in find.content_hits
+CP_PC_FIND :: 27;              // palette command: Find in chat (⌘F)
+CP_PC_MINIMAP :: 28;           // palette command: Show/Hide transcript minimap
+
+// Capacities.
+CP_FIND_QUERY :: 128;
+CP_FIND_MAX_HITS :: 256;
+CP_FIND_HIT_ASK :: 0;
+CP_FIND_HIT_REPLY :: 1;
+CP_FIND_HIT_TOOL :: 2;
+CP_CONTENT_HITS :: 32;
+CP_CONTENT_SNIP :: 160;
+CP_OPEN_FILE_PATH :: 512;
+
+CpFindHit :: struct {
+  turn: int;
+  kind: int;    // CP_FIND_HIT_ASK, _REPLY, _TOOL
+  pos: int;     // byte offset within the matched text
+}
+
+CpContentHit :: struct {
+  chat_id: [CP_CHAT_ID] u8; chat_id_n: int;
+  title: [CP_CHAT_TITLE] u8; title_n: int;
+  turn: int;
+  snippet: [CP_CONTENT_SNIP] u8; snippet_n: int;
+}
+
+CpFind :: struct {
+  // In-thread Find bar
+  open: bool;
+  query: [CP_FIND_QUERY] u8; query_n: int;
+  hits: [CP_FIND_MAX_HITS] CpFindHit; nhits: int;
+  cur: int;                      // active hit index (-1 when nhits == 0)
+  bar_x: f32; bar_y: f32; bar_w: f32; bar_h: f32;
+  // Transcript Minimap
+  minimap_on: bool;
+  mm_x: f32; mm_y: f32; mm_w: f32; mm_h: f32;
+  mm_drag: bool;
+  // 3-mode Command Palette state
+  pal_mode: int;                 // CP_PAL_MODE_*
+  pal_mode_x: [CP_PAL_MODES] f32;
+  pal_mode_w: [CP_PAL_MODES] f32;
+  pal_mode_y: f32; pal_mode_h: f32;
+  pal_held_mode: int;
+  // Cross-chat Content hits (populated by host on CP_ASK_PALETTE_CONTENT)
+  content_hits: [CP_CONTENT_HITS] CpContentHit; ncontent: int;
+  content_query: [APP_PAL_QUERY] u8; content_query_n: int;
+  content_pending: bool;
+  // Pending jump target from Content mode
+  jump_chat: [CP_CHAT_ID] u8; jump_chat_n: int;
+  jump_turn: int;
+  // Pending file path opened from Files mode
+  open_file_path: [CP_OPEN_FILE_PATH] u8; open_file_path_n: int;
+}
+
+cp_find_init :: (s: [] CoderPage) {
+  fd := s[0].find[..];
+  fd[0].open = false;
+  fd[0].query_n = 0;
+  fd[0].nhits = 0;
+  fd[0].cur = -1;
+  fd[0].minimap_on = true;
+  fd[0].mm_drag = false;
+  fd[0].pal_mode = CP_PAL_MODE_COMMANDS;
+  fd[0].pal_held_mode = -1;
+  fd[0].ncontent = 0;
+  fd[0].content_query_n = 0;
+  fd[0].content_pending = false;
+  fd[0].jump_chat_n = 0;
+  fd[0].jump_turn = -1;
+  fd[0].open_file_path_n = 0;
+}
+
+// ---------------------------------------------------------------- case-insensitive search
+
+cp_ascii_lower :: (c: u8) -> u8 { return ifx c >= 65 && c <= 90 then c + 32 else c; }
+
+// First byte index >= from where needle occurs case-insensitively in hay; -1 if not found.
+cp_find_ci_at :: (hay: string, needle: string, from: int) -> int {
+  if needle.count == 0 || from < 0 || from + needle.count > hay.count { return -1; }
+  first := cp_ascii_lower(needle[0]);
+  i := from;
+  limit := hay.count - needle.count;
+  while i <= limit {
+    if cp_ascii_lower(hay[i]) == first {
+      j := 1;
+      while j < needle.count && cp_ascii_lower(hay[i + j]) == cp_ascii_lower(needle[j]) { j += 1; }
+      if j == needle.count { return i; }
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+cp_find_query :: (s: [] CoderPage) -> string {
+  return cast(string) s[0].find[0].query[0..<s[0].find[0].query_n];
+}
+
+// Scan all occurrences of query in text for turn t and hit kind.
+cp_find_scan_text :: (fd: [] CpFind, turn: int, kind: int, text: string, needle: string) {
+  if needle.count == 0 || text.count < needle.count { return; }
+  at := 0;
+  while fd[0].nhits < CP_FIND_MAX_HITS {
+    pos := cp_find_ci_at(text, needle, at);
+    if pos < 0 { break; }
+    fd[0].hits[fd[0].nhits] = CpFindHit.{ turn = turn, kind = kind, pos = pos };
+    fd[0].nhits += 1;
+    at = pos + needle.count;
+  }
+}
+
+// Rescan every turn (user prompt, assistant reply, tool titles) for the current query.
+cp_find_scan :: (s: [] CoderPage) {
+  fd := s[0].find[..];
+  fd[0].nhits = 0;
+  q := cp_find_query(s);
+  if q.count == 0 { fd[0].cur = -1; return; }
+  for i: 0..<s[0].nturns {
+    if fd[0].nhits >= CP_FIND_MAX_HITS { break; }
+    ask := cast(string) s[0].turns[i].ask[0..<s[0].turns[i].ask_n];
+    cp_find_scan_text(fd, i, CP_FIND_HIT_ASK, ask, q);
+    // Tool call titles for this turn
+    call_idx := s[0].turns[i].head - 1;
+    while call_idx >= 0 && fd[0].nhits < CP_FIND_MAX_HITS {
+      ctext := cast(string) s[0].calls[call_idx].text[0..<s[0].calls[call_idx].text_n];
+      cp_find_scan_text(fd, i, CP_FIND_HIT_TOOL, ctext, q);
+      call_idx = s[0].calls[call_idx].next - 1;
+    }
+    reply := cast(string) s[0].turns[i].reply[0..<s[0].turns[i].reply_n];
+    cp_find_scan_text(fd, i, CP_FIND_HIT_REPLY, reply, q);
+  }
+  if fd[0].nhits == 0 { fd[0].cur = -1; }
+  else if fd[0].cur < 0 || fd[0].cur >= fd[0].nhits { fd[0].cur = 0; }
+}
+
+// Estimated or measured Y offset of turn `turn` in content coordinates.
+cp_turn_height_est :: (s: [] CoderPage, i: int) -> f32 {
+  if i < 0 || i >= s[0].nturns { return 0.0f32; }
+  if s[0].turns[i].h > 0 { return s[0].turns[i].h; }
+  if s[0].turns[i].seen_h > 0 { return s[0].turns[i].seen_h; }
+  return cast(f32) CP_ROW_ESTIMATE;
+}
+
+cp_turn_y :: (s: [] CoderPage, turn: int) -> f32 {
+  y := cp_bar(s) + cp_skin().app.gap;
+  lim := ifx turn < s[0].nturns then turn else s[0].nturns;
+  for i: 0..<lim { y += cp_turn_height_est(s, i); }
+  return y;
+}
+
+// Scroll the transcript so `turn` is visible near the upper third of the viewport.
+cp_scroll_to_turn :: (s: [] CoderPage, turn: int) -> bool {
+  if turn < 0 || turn >= s[0].nturns { return false; }
+  ty := cp_turn_y(s, turn);
+  // Ensure content is at least the sum of estimated heights when called before layout
+  total := cp_turn_y(s, s[0].nturns);
+  if total > s[0].content { s[0].content = total; }
+  target := ty - (ifx s[0].view > 0 then s[0].view * 0.25f32 else 40.0f32);
+  if target < 0 { target = 0; }
+  s[0].stick = false;
+  s[0].glide_on = false;
+  s[0].scr[0].coasting = false;
+  s[0].scroll = target;
+  cp_clamp(s);
+  return true;
+}
+
+// 2 if turn is the active hit's turn, 1 if turn has any hit, 0 otherwise.
+cp_find_turn_has_hit :: (s: [] CoderPage, turn: int) -> int {
+  fd := s[0].find[..];
+  if !fd[0].open || fd[0].nhits == 0 { return 0; }
+  if fd[0].cur >= 0 && fd[0].cur < fd[0].nhits && fd[0].hits[fd[0].cur].turn == turn { return 2; }
+  for k: 0..<fd[0].nhits { if fd[0].hits[k].turn == turn { return 1; } }
+  return 0;
+}
+
+cp_find_open :: (s: [] CoderPage) {
+  if s[0].set_open || cp_overlay_open(s) { return; }
+  fd := s[0].find[..];
+  fd[0].open = true;
+  if fd[0].query_n > 0 { cp_find_scan(s); }
+  s[0].fld[0].kb = CP_KB_FIND;
+  s[0].ask = CP_ASK_FIND_FOCUS;
+}
+
+cp_find_close :: (s: [] CoderPage) {
+  fd := s[0].find[..];
+  if !fd[0].open { return; }
+  fd[0].open = false;
+  if s[0].fld[0].kb == CP_KB_FIND { s[0].fld[0].kb = CP_KB_COMPOSER; }
+}
+
+cp_find_set_query :: (s: [] CoderPage, text: string) {
+  fd := s[0].find[..];
+  fd[0].query_n = cp_out(fd[0].query[..], text);
+  fd[0].cur = 0;
+  cp_find_scan(s);
+  if fd[0].nhits > 0 { _ = cp_scroll_to_turn(s, fd[0].hits[fd[0].cur].turn); }
+}
+
+// Step to next (dir > 0) or previous (dir < 0) match, wrapping around.
+cp_find_step :: (s: [] CoderPage, dir: int) -> bool {
+  fd := s[0].find[..];
+  if !fd[0].open { return false; }
+  if fd[0].nhits == 0 { cp_find_scan(s); }
+  if fd[0].nhits == 0 { return false; }
+  step := ifx dir >= 0 then 1 else -1;
+  fd[0].cur = (fd[0].cur + step + fd[0].nhits) % fd[0].nhits;
+  return cp_scroll_to_turn(s, fd[0].hits[fd[0].cur].turn);
+}
+
+cp_find_press :: (s: [] CoderPage, act: int) -> bool {
+  if act == CP_FIND_NEXT { return cp_find_step(s, 1); }
+  if act == CP_FIND_PREV { return cp_find_step(s, -1); }
+  if act == CP_FIND_CLOSE { cp_find_close(s); return true; }
+  if act == CP_FIND_FIELD { cp_ed_focus(s, CP_KB_FIND); return true; }
+  if act == CP_MINIMAP_TOGGLE { s[0].find[0].minimap_on = !s[0].find[0].minimap_on; return true; }
+  return false;
+}
+
+// Floating in-thread Find bar painted at the top-right of the conversation area.
+cp_find_bar :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, top: f32) {
+  fd := s[0].find[..];
+  if !fd[0].open { fd[0].bar_w = 0; fd[0].bar_h = 0; return; }
+  k := f[0].skin; sh := f[0].sheet; m := f[0].m;
+  bw := 348.0f32;
+  avail := w - left - 32.0f32;
+  if avail < bw { bw = avail; }
+  if bw < 180.0f32 { bw = 180.0f32; }
+  bh := 36.0f32;
+  bx := w - bw - 24.0f32;
+  if bx < left + 12.0f32 { bx = left + 12.0f32; }
+  by := top + cp_bar(s) + 6.0f32;
+  fd[0].bar_x = bx; fd[0].bar_y = by; fd[0].bar_w = bw; fd[0].bar_h = bh;
+
+  // Bar panel background & border
+  _ = sheet_box(sh, bx, by, bw, bh, 8.0f32, k.border, k.surface, k.hairline);
+  _ := uiframe_semantic(f, "coder.find", EL_REGION, "Find in chat", bx, by, bw, bh, 0, 0);
+
+  // Search icon
+  ico_x := bx + 10.0f32;
+  ico_y := by + (bh - 14.0f32) / 2.0f32;
+  sheet_icon(sh, ICON_SET_SEARCH, ico_x, ico_y, 14.0f32, k.muted);
+
+  // Right-side controls: Close (x), Next (v), Prev (^), match counter ("i of N")
+  btn_s := 24.0f32;
+  btn_y := by + (bh - btn_s) / 2.0f32;
+  close_x := bx + bw - btn_s - 6.0f32;
+  next_x := close_x - btn_s - 2.0f32;
+  prev_x := next_x - btn_s - 2.0f32;
+
+  // Match count label
+  cb: [32] u8; cn := 0;
+  if fd[0].query_n > 0 {
+    if fd[0].nhits > 0 {
+      cn = el_put_i(cb[..], cn, fd[0].cur + 1);
+      cn = el_put(cb[..], cn, " of ");
+      cn = el_put_i(cb[..], cn, fd[0].nhits);
+    } else {
+      cn = el_put(cb[..], cn, "0 of 0");
+    }
+  }
+  count_str := sheet_pool(sh, cast(string) cb[0..<cn]);
+  count_w := ifx cn > 0 then ceil(measure_width(m, k.small.face, count_str)) + 8.0f32 else 0.0f32;
+  count_x := prev_x - count_w - 4.0f32;
+
+  // Editable text field
+  fx := ico_x + 20.0f32;
+  fw := count_x - fx - 6.0f32;
+  if fw < 60.0f32 { fw = 60.0f32; }
+  fy := by + (bh - k.label.line) / 2.0f32;
+  frow := uiframe_semantic(f, "coder.find.field", EL_FIELD, "Find in chat", fx, by + 2.0f32, fw, bh - 4.0f32,
+                           ifx cp_ed_which(s) == CP_ED_FIND then EL_S_FOCUSED else 0, CP_FIND_FIELD);
+  elt_value(f[0].rows, frow, cp_find_query(s));
+  sheet_hit(sh, UIFRAME_HIT, frow, 0, fx, by + 2.0f32, fw, bh - 4.0f32);
+  cp_ed_draw(s, f, CP_ED_FIND, fx, fy, fw, k.label.line, "Find in chat…");
+
+  if cn > 0 {
+    cink := ifx fd[0].nhits == 0 then k.danger else k.muted;
+    _ := sheet_text(sh, m, -1, count_x, by + (bh - k.small.line) / 2.0f32, k.small.line, k.small.face, cink, count_str);
+    _ := uiframe_semantic(f, "coder.find.count", EL_TEXT, count_str, count_x, by, count_w, bh, 0, 0);
+  }
+
+  // Prev / Next / Close buttons
+  pr := uiframe_semantic(f, "coder.find.prev", EL_BUTTON, "Previous match", prev_x, btn_y, btn_s, btn_s, 0, CP_FIND_PREV);
+  _ := sheet_text(sh, m, -1, prev_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx fd[0].nhits > 0 then k.ink else k.muted, "↑");
+  sheet_hit(sh, UIFRAME_HIT, pr, 0, prev_x, btn_y, btn_s, btn_s);
+
+  nr := uiframe_semantic(f, "coder.find.next", EL_BUTTON, "Next match", next_x, btn_y, btn_s, btn_s, 0, CP_FIND_NEXT);
+  _ := sheet_text(sh, m, -1, next_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, ifx fd[0].nhits > 0 then k.ink else k.muted, "↓");
+  sheet_hit(sh, UIFRAME_HIT, nr, 0, next_x, btn_y, btn_s, btn_s);
+
+  cr := uiframe_semantic(f, "coder.find.close", EL_BUTTON, "Close find", close_x, btn_y, btn_s, btn_s, 0, CP_FIND_CLOSE);
+  _ := sheet_text(sh, m, -1, close_x + 7.0f32, btn_y + (btn_s - k.small.line) / 2.0f32, k.small.line, k.small.face, k.muted, "×");
+  sheet_hit(sh, UIFRAME_HIT, cr, 0, close_x, btn_y, btn_s, btn_s);
+}
+
+// ---------------------------------------------------------------- Transcript Minimap
+
+// Compute normalized [0, 1] vertical position of turn i in the transcript.
+cp_minimap_turn_frac :: (s: [] CoderPage, i: int) -> f32 {
+  total := s[0].content;
+  est_total := cp_turn_y(s, s[0].nturns);
+  if est_total > total { total = est_total; }
+  if !(total > 0) || i < 0 || i >= s[0].nturns { return 0.0f32; }
+  f := cp_turn_y(s, i) / total;
+  if f < 0.0f32 { f = 0.0f32; }
+  if f > 1.0f32 { f = 1.0f32; }
+  return f;
+}
+
+// Map a Y coordinate on the minimap track to transcript scroll offset.
+cp_minimap_scroll_for_y :: (s: [] CoderPage, uy: f32) -> f32 {
+  fd := s[0].find[..];
+  if !(fd[0].mm_h > 0) { return s[0].scroll; }
+  frac := (uy - fd[0].mm_y) / fd[0].mm_h;
+  if frac < 0.0f32 { frac = 0.0f32; }
+  if frac > 1.0f32 { frac = 1.0f32; }
+  total := s[0].content;
+  est_total := cp_turn_y(s, s[0].nturns);
+  if est_total > total { total = est_total; }
+  most := total - s[0].view;
+  if most < 0.0f32 { most = 0.0f32; }
+  target := frac * total - s[0].view * 0.5f32;
+  if target < 0.0f32 { target = 0.0f32; }
+  if target > most { target = most; }
+  return target;
+}
+
+// Draw the vertical Transcript Minimap strip along the right edge of the conversation area.
+cp_minimap_draw :: (s: [] CoderPage, f: [] UiFrame, w: f32, top: f32, bottom: f32) {
+  fd := s[0].find[..];
+  if !fd[0].minimap_on || s[0].nturns < 1 || bottom - top < 80.0f32 {
+    fd[0].mm_w = 0; fd[0].mm_h = 0;
+    return;
+  }
+  k := f[0].skin; sh := f[0].sheet;
+  mw := 12.0f32;
+  mx := w - mw - 4.0f32;
+  my := top + cp_bar(s) + (ifx fd[0].open then 48.0f32 else 8.0f32);
+  mh := bottom - my - 10.0f32;
+  if mh < 48.0f32 { fd[0].mm_w = 0; fd[0].mm_h = 0; return; }
+  fd[0].mm_x = mx; fd[0].mm_y = my; fd[0].mm_w = mw; fd[0].mm_h = mh;
+
+  // Subtle track backdrop
+  sheet_fill(sh, mx, my, mw, mh, 4.0f32, opacity(k.surface, 0.45f32));
+  _ := uiframe_semantic(f, "coder.minimap", EL_REGION, "Transcript minimap", mx, my, mw, mh, 0, CP_MINIMAP_TRACK);
+
+  total := s[0].content;
+  est_total := cp_turn_y(s, s[0].nturns);
+  if est_total > total { total = est_total; }
+  if !(total > 0) { total = 1.0f32; }
+
+  // Viewport thumb
+  vp_y0 := my + (s[0].scroll / total) * mh;
+  vp_h := (s[0].view / total) * mh;
+  if vp_h < 14.0f32 { vp_h = 14.0f32; }
+  if vp_y0 + vp_h > my + mh { vp_y0 = my + mh - vp_h; }
+  if vp_y0 < my { vp_y0 = my; }
+  sheet_fill(sh, mx + 1.0f32, vp_y0, mw - 2.0f32, vp_h, 3.0f32, opacity(k.ink, 0.14f32));
+
+  // Turn landmarks: user prompt tick (left), assistant reply tick (right), error (danger), search hit (accent)
+  for i: 0..<s[0].nturns {
+    ty := my + cp_minimap_turn_frac(s, i) * mh;
+    if ty > my + mh - 3.0f32 { ty = my + mh - 3.0f32; }
+    // User turn tick on left half
+    sheet_fill(sh, mx + 2.0f32, ty, 3.5f32, 2.5f32, 1.0f32, opacity(k.muted, 0.75f32));
+    // Assistant reply or error tick on right half
+    if s[0].turns[i].state == CP_FAILED {
+      sheet_fill(sh, mx + 6.5f32, ty, 3.5f32, 3.0f32, 1.0f32, k.danger);
+    } else if s[0].turns[i].reply_n > 0 {
+      sheet_fill(sh, mx + 6.5f32, ty, 3.5f32, 2.5f32, 1.0f32, opacity(k.accent, 0.65f32));
+    }
+    // Active / matching Find hit tick (full width)
+    hit := cp_find_turn_has_hit(s, i);
+    if hit > 0 {
+      sheet_fill(sh, mx + 1.0f32, ty, mw - 2.0f32, ifx hit == 2 then 3.5f32 else 2.5f32, 1.0f32,
+                 ifx hit == 2 then k.accent else opacity(k.accent, 0.55f32));
+    }
+  }
+}
+
+// Pointer click / drag on the minimap strip scrubs the transcript scroll position.
+cp_minimap_pointer :: (s: [] CoderPage, ux: f32, uy: f32, phase: int) -> bool {
+  fd := s[0].find[..];
+  if !fd[0].minimap_on || !(fd[0].mm_w > 0) || !(fd[0].mm_h > 0) || s[0].set_open { fd[0].mm_drag = false; return false; }
+  if phase == 0 {
+    if ux >= fd[0].mm_x - 4.0f32 && ux <= fd[0].mm_x + fd[0].mm_w + 4.0f32 && uy >= fd[0].mm_y && uy <= fd[0].mm_y + fd[0].mm_h {
+      fd[0].mm_drag = true;
+      s[0].stick = false;
+      s[0].glide_on = false;
+      s[0].scr[0].coasting = false;
+      s[0].scroll = cp_minimap_scroll_for_y(s, uy);
+      return true;
+    }
+    return false;
+  }
+  if !fd[0].mm_drag { return false; }
+  if phase == 1 {
+    s[0].scroll = cp_minimap_scroll_for_y(s, uy);
+    return true;
+  }
+  fd[0].mm_drag = false;
+  return true;
+}
+
+// ---------------------------------------------------------------- 3-Mode Command Palette
+
+cp_pal_mode_placeholder :: (mode: int) -> string {
+  if mode == CP_PAL_MODE_FILES { return "Search repository files…"; }
+  if mode == CP_PAL_MODE_CONTENT { return "Search message content across all chats…"; }
+  return CP_PAL_HINT;
+}
+
+// Populate AppPalette items for Files mode (ranked fuzzy match over s[0].files).
+cp_palette_fill_files :: (s: [] CoderPage) {
+  p := cp_pal(s);
+  app_palette_begin(p);
+  if !s[0].files_got { s[0].files_due = true; }
+  q := cp_pal_trim(app_palette_query(p));
+  // Collect top-ranked file offsets (up to APP_PAL_ITEMS)
+  top_off: [APP_PAL_ITEMS] int;
+  top_score: [APP_PAL_ITEMS] f32;
+  m := 0;
+  at := 0;
+  while at < s[0].files.count {
+    path := cp_file(s, at);
+    if path.count > 0 {
+      sc: f32 = 1.0f32;
+      if q.count > 0 {
+        fs := [2] MatchField.[
+          MatchField.{ text = cp_file_base(path), weight = 100, title = true },
+          MatchField.{ text = path, weight = 60, title = false },
+        ];
+        sc = match_rank(fs[..], q);
+      }
+      if sc > 0 {
+        if m < APP_PAL_ITEMS {
+          j := m;
+          while j > 0 && top_score[j - 1] < sc { top_score[j] = top_score[j - 1]; top_off[j] = top_off[j - 1]; j -= 1; }
+          top_score[j] = sc; top_off[j] = at; m += 1;
+        } else if sc > top_score[m - 1] {
+          j := m - 1;
+          while j > 0 && top_score[j - 1] < sc { top_score[j] = top_score[j - 1]; top_off[j] = top_off[j - 1]; j -= 1; }
+          top_score[j] = sc; top_off[j] = at;
+        }
+      }
+    }
+    at = cp_file_next(s, at);
+  }
+  kb: [APP_PAL_KEY] u8;
+  for k: 0..<m {
+    off := top_off[k];
+    path := cp_file(s, off);
+    base := cp_file_base(path);
+    dir := cp_file_dir(path);
+    kn := el_put(kb[..], 0, "file."); kn = el_put_i(kb[..], kn, off);
+    _ := app_palette_item(p, 0, APP_PAL_COMMANDS, "Files", base, path, dir, "", app_palette_keep(p, cast(string) kb[0..<kn]), ICON_FILE, false, false, 0, CP_PAL_FILE + off);
+  }
+  app_palette_refresh(p);
+}
+
+// Populate AppPalette items for Content mode (cross-chat full-text hits pushed by host).
+cp_palette_fill_content :: (s: [] CoderPage) {
+  p := cp_pal(s);
+  fd := s[0].find[..];
+  app_palette_begin(p);
+  kb: [APP_PAL_KEY] u8;
+  for k: 0..<fd[0].ncontent {
+    h := fd[0].content_hits[k];
+    title := cast(string) fd[0].content_hits[k].title[0..<h.title_n];
+    if title.count == 0 { title = "Chat"; }
+    snip := cast(string) fd[0].content_hits[k].snippet[0..<h.snippet_n];
+    kn := el_put(kb[..], 0, "hit."); kn = el_put_i(kb[..], kn, k);
+    _ := app_palette_item(p, 0, APP_PAL_SESSIONS, "Messages", title, snip, snip, "", app_palette_keep(p, cast(string) kb[0..<kn]), ICON_CHATS, false, false, 0, CP_PAL_CONTENT + k);
+  }
+  // Content hits are already ranked by the full-text index; show them in rank order even if query spans snippet+title.
+  p[0].nrows = 0;
+  if p[0].n > 0 {
+    app_pal_add(p, APP_PAL_HEAD, 0, 0);
+    for k: 0..<p[0].n { app_pal_add(p, APP_PAL_ITEM, k, 0); }
+  }
+  p[0].lit = app_pal_next(p, -1, 1);
+}
+
+// Switch palette mode (0 Commands/Chats, 1 Files, 2 Content), keeping the current query.
+cp_palette_set_mode :: (s: [] CoderPage, mode: int) {
+  if mode < 0 || mode >= CP_PAL_MODES { return; }
+  fd := s[0].find[..];
+  p := cp_pal(s);
+  fd[0].pal_mode = mode;
+  p[0].placeholder = cp_pal_mode_placeholder(mode);
+  p[0].depth = 0;
+  p[0].scope = APP_PAL_ALL;
+  p[0].scroll = 0;
+  if mode == CP_PAL_MODE_COMMANDS {
+    cp_palette_fill(s);
+    app_palette_refresh(p);
+  } else if mode == CP_PAL_MODE_FILES {
+    cp_palette_fill_files(s);
+    if !s[0].files_got { s[0].ask = CP_ASK_FILES; }
+  } else {
+    cp_palette_fill_content(s);
+    cp_palette_request_content(s);
+  }
+}
+
+// Ask host to search stored chats when in Content mode and query changed.
+cp_palette_request_content :: (s: [] CoderPage) {
+  fd := s[0].find[..];
+  p := cp_pal(s);
+  if fd[0].pal_mode != CP_PAL_MODE_CONTENT || !p[0].open { return; }
+  q := cp_pal_trim(app_palette_query(p));
+  if q.count == 0 {
+    fd[0].ncontent = 0;
+    fd[0].content_query_n = 0;
+    fd[0].content_pending = false;
+    cp_palette_fill_content(s);
+    return;
+  }
+  if q == cast(string) fd[0].content_query[0..<fd[0].content_query_n] { return; }
+  fd[0].content_query_n = cp_out(fd[0].content_query[..], q);
+  fd[0].content_pending = true;
+  s[0].ask = CP_ASK_PALETTE_CONTENT;
+}
+
+// Called after palette query changes (cp_ed_publish for CP_ED_PALETTE).
+cp_palette_on_query :: (s: [] CoderPage) {
+  mode := s[0].find[0].pal_mode;
+  if mode == CP_PAL_MODE_FILES { cp_palette_fill_files(s); }
+  else if mode == CP_PAL_MODE_CONTENT { cp_palette_request_content(s); }
+}
+
+// Parse newline-separated "chatId\ttitle\tturnIndex\tsnippet" hits from host.
+cp_palette_load_content_hits :: (s: [] CoderPage, payload: string) {
+  fd := s[0].find[..];
+  fd[0].ncontent = 0;
+  fd[0].content_pending = false;
+  i := 0;
+  while i < payload.count && fd[0].ncontent < CP_CONTENT_HITS {
+    eol := i;
+    while eol < payload.count && payload[eol] != 10 { eol += 1; }
+    line := cast(string) payload[i..<eol];
+    i = ifx eol < payload.count then eol + 1 else eol;
+    if line.count == 0 { continue; }
+    // Split on tabs: chatId \t title \t turn \t snippet
+    t1 := -1; t2 := -1; t3 := -1;
+    for k: 0..<line.count {
+      if line[k] == 9 {
+        if t1 < 0 { t1 = k; }
+        else if t2 < 0 { t2 = k; }
+        else if t3 < 0 { t3 = k; break; }
+      }
+    }
+    if t1 <= 0 || t2 < 0 || t3 < 0 { continue; }
+    cid := cast(string) line[0..<t1];
+    title := cast(string) line[t1 + 1..<t2];
+    turn_s := cast(string) line[t2 + 1..<t3];
+    snip := cast(string) line[t3 + 1..<line.count];
+    turn := 0;
+    for c: turn_s { if c >= '0' && c <= '9' { turn = turn * 10 + cast(int) (c - '0'); } }
+    idx := fd[0].ncontent;
+    fd[0].content_hits[idx].chat_id_n = cp_out(fd[0].content_hits[idx].chat_id[..], cid);
+    fd[0].content_hits[idx].title_n = cp_out(fd[0].content_hits[idx].title[..], title);
+    fd[0].content_hits[idx].turn = turn;
+    fd[0].content_hits[idx].snippet_n = cp_out(fd[0].content_hits[idx].snippet[..], snip);
+    fd[0].ncontent += 1;
+  }
+  if fd[0].pal_mode == CP_PAL_MODE_CONTENT && cp_pal(s)[0].open {
+    cp_palette_fill_content(s);
+  }
+}
+
+// Paint the 3-mode tab strip above the Command Palette card (Commands/Chats | Files | Content).
+cp_palette_modes_paint :: (s: [] CoderPage, f: [] UiFrame) {
+  p := cp_pal(s);
+  fd := s[0].find[..];
+  if !p[0].shown || p[0].w <= 0 { fd[0].pal_mode_h = 0; return; }
+  k := f[0].skin; st := k.set; sh := f[0].sheet; m := f[0].m;
+  ph := app_palette_phase(p, f[0].reduced_motion);
+  mh := 28.0f32;
+  my := p[0].y - mh - 6.0f32;
+  if my < 6.0f32 { my = 6.0f32; }
+  fd[0].pal_mode_y = my;
+  fd[0].pal_mode_h = mh;
+  names := CP_PAL_MODE_NAME;
+  pad := 10.0f32;
+  gap := 6.0f32;
+  total_w: f32 = 0.0f32;
+  for i: 0..<CP_PAL_MODES {
+    tw := ceil(measure_width(m, k.label.face, names[i])) + 2.0f32 * pad;
+    fd[0].pal_mode_w[i] = tw;
+    total_w += tw + (ifx i > 0 then gap else 0.0f32);
+  }
+  sx := p[0].x;
+  sheet_over_n(sh, prim_alpha(sh[0].over, sh[0].no, ph));
+  app_ov_box(sh, sx - 4.0f32, my - 2.0f32, total_w + 8.0f32, mh + 4.0f32, 10.0f32, k.border, k.surface, k.hairline);
+  cx := sx;
+  idb: [EL_ID] u8;
+  for i: 0..<CP_PAL_MODES {
+    mw := fd[0].pal_mode_w[i];
+    on := fd[0].pal_mode == i;
+    if on { app_ov_box(sh, cx, my, mw, mh, 7.0f32, 0, cp_ov_spec().lit, k.clear); }
+    _ := sheet_text(sh, m, -1, cx + pad, my + (mh - k.label.line) / 2.0f32, k.label.line, k.label.face, ifx on then k.ink else st.tertiary, names[i]);
+    nid := el_put(idb[..], 0, "palette.mode."); nid = el_put_i(idb[..], nid, i);
+    _ := uiframe_semantic(f, sheet_pool(sh, cast(string) idb[0..<nid]), EL_TAB, names[i], cx, my, mw, mh, ifx on then EL_S_CURRENT else 0, 0);
+    fd[0].pal_mode_x[i] = cx;
+    cx += mw + gap;
+  }
+  sheet_over_n(sh, prim_unalpha(sh[0].over, sh[0].no));
+}
+
+// Pointer click on the 3-mode tab strip above the palette.
+cp_palette_modes_pointer :: (s: [] CoderPage, ux: f32, uy: f32, phase: int) -> bool {
+  fd := s[0].find[..];
+  p := cp_pal(s);
+  if !p[0].open || !(fd[0].pal_mode_h > 0) { fd[0].pal_held_mode = -1; return false; }
+  hit := -1;
+  if uy >= fd[0].pal_mode_y && uy <= fd[0].pal_mode_y + fd[0].pal_mode_h {
+    for i: 0..<CP_PAL_MODES {
+      if ux >= fd[0].pal_mode_x[i] && ux <= fd[0].pal_mode_x[i] + fd[0].pal_mode_w[i] { hit = i; break; }
+    }
+  }
+  if phase == 0 {
+    if hit >= 0 { fd[0].pal_held_mode = hit; return true; }
+    fd[0].pal_held_mode = -1;
+    return false;
+  }
+  if phase == 1 { return fd[0].pal_held_mode >= 0; }
+  if phase == 2 {
+    held := fd[0].pal_held_mode; fd[0].pal_held_mode = -1;
+    if held >= 0 {
+      if hit == held { cp_palette_set_mode(s, held); }
+      return true;
+    }
+    return false;
+  }
+  fd[0].pal_held_mode = -1;
+  return false;
+}
+
+// Keyboard shortcuts while palette is open: Cmd+1/2/3 switch mode.
+cp_palette_modes_key :: (s: [] CoderPage, key: int, mods: int) -> bool {
+  if !cp_pal(s)[0].open { return false; }
+  if (mods & MOD_CMD) != 0 && (mods & (MOD_CTRL | MOD_ALT)) == 0 {
+    if key == '1' { cp_palette_set_mode(s, CP_PAL_MODE_COMMANDS); return true; }
+    if key == '2' { cp_palette_set_mode(s, CP_PAL_MODE_FILES); return true; }
+    if key == '3' { cp_palette_set_mode(s, CP_PAL_MODE_CONTENT); return true; }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- C host exports
+
+coder_page_find_open :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count < 1 { return; }
+  if !s[0].ready { cp_init(s); }
+  cp_find_open(s);
+}
+
+coder_page_find_close :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count > 0 { cp_find_close(s); }
+}
+
+coder_page_find_is_open :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].find[0].open;
+}
+
+coder_page_find_set_query :: (s: [] CoderPage, text: string) #export_c #effects(all) {
+  if s.count > 0 { cp_find_set_query(s, text); }
+}
+
+coder_page_find_step :: (s: [] CoderPage, dir: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_find_step(s, dir);
+}
+
+coder_page_find_count :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].find[0].nhits else 0;
+}
+
+coder_page_find_current :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].find[0].cur else -1;
+}
+
+coder_page_scroll_to_turn :: (s: [] CoderPage, turn: int) -> bool #export_c #effects(all) {
+  return s.count > 0 && cp_scroll_to_turn(s, turn);
+}
+
+coder_page_minimap_toggle :: (s: [] CoderPage) #export_c #effects(all) {
+  if s.count > 0 { s[0].find[0].minimap_on = !s[0].find[0].minimap_on; }
+}
+
+coder_page_minimap_on :: (s: [] CoderPage) -> bool #export_c #effects(all) {
+  return s.count > 0 && s[0].find[0].minimap_on;
+}
+
+coder_page_palette_mode :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].find[0].pal_mode else CP_PAL_MODE_COMMANDS;
+}
+
+coder_page_palette_set_mode :: (s: [] CoderPage, mode: int) #export_c #effects(all) {
+  if s.count > 0 { cp_palette_set_mode(s, mode); }
+}
+
+coder_page_palette_query_out :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, app_palette_query(cp_pal(s)));
+}
+
+coder_page_palette_content_hits :: (s: [] CoderPage, payload: string) #export_c #effects(all) {
+  if s.count > 0 { cp_palette_load_content_hits(s, payload); }
+}
+
+coder_page_palette_jump_chat :: (s: [] CoderPage, out: [] u8) -> int #export_c #effects(all) {
+  if s.count < 1 { return 0; }
+  return cp_out(out, cast(string) s[0].find[0].jump_chat[0..<s[0].find[0].jump_chat_n]);
+}
+
+coder_page_palette_jump_turn :: (s: [] CoderPage) -> int #export_c #effects(all) {
+  return ifx s.count > 0 then s[0].find[0].jump_turn else -1;
+}

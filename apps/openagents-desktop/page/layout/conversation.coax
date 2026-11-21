@@ -301,6 +301,10 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
       else if st == CP_STOPPED { y += app_meta(f, cp_id(ib[..], i, ".s"), x, y, cw, "Stopped", false) + a.gap; }
       if i + 1 < s[0].nturns { y += a.gap; }
       real := y - y0;
+      hit := cp_find_turn_has_hit(s, i);
+      if hit > 0 && real > 4.0f32 {
+        sheet_fill(f[0].sheet, x - 10.0f32, y0, 3.0f32, real - a.gap, 1.5f32, ifx hit == 2 then k.accent else opacity(k.accent, 0.45f32));
+      }
       if abs(real - th) > 0.5 {
         s[0].anim = true;   // the content's height changed: one more frame settles it
         if !s[0].stick && !s[0].glide_on && y0 + th <= top { s[0].scroll += real - th; y -= real - th; }
@@ -368,6 +372,8 @@ cp_conversation :: (s: [] CoderPage, f: [] UiFrame, left: f32, w: f32, x: f32, c
   uiframe_unclip(f);
   s[0].content = y + s[0].scroll + s[0].scr[0].stretch - top;
   app_scroll_rail(f, s[0].scr[..], w, top, s[0].scroll, s[0].content, s[0].view, s[0].view, s[0].now, s[0].reduced);
+  cp_minimap_draw(s, f, w, top, bottom);
+  cp_find_bar(s, f, left, w, top);
   // away from the end long enough to mean it: the way back floats over the transcript's foot,
   // "New reply" while one is written or came meanwhile (#13745)
   s[0].at_end = s[0].stick || s[0].glide_on || s[0].scroll >= s[0].content - s[0].view - 2;

@@ -1,0 +1,157 @@
+// Checks for page/find.coax: in-thread Find (⌘F), Transcript Minimap, and 3-mode Command Palette (GitHub #13876).
+#load "../parts.coax";
+#load "checks-kit.coax";
+
+cp_find_test_draw :: (s: [] CoderPage, f: [] UiFrame, dt: f32) -> bool {
+  uiframe_begin(f, s[0].surface[..], s[0].keyed[..], measure_cells(), cp_skin(), uiinput(0, 0, false, false, "", ""), 0, dt, false, false);
+  cp_layout(s, f, 1200.0f32, 800.0f32);
+  _ := cp_overlay(s, f, 1200.0f32, 800.0f32, dt);
+  return uiframe_end(f, s[0].surface[..]);
+}
+
+cp_find_test_add_turn :: (s: [] CoderPage, ask: string, reply: string, tool: string, state: int) {
+  i := s[0].nturns;
+  s[0].turns[i].ask_n = cp_out(s[0].turns[i].ask, ask);
+  s[0].turns[i].reply_n = cp_out(s[0].turns[i].reply, reply);
+  s[0].turns[i].state = state;
+  s[0].turns[i].h = 260.0f32;
+  s[0].turns[i].seen_h = 260.0f32;
+  s[0].turns[i].hw = 660.0f32;
+  if tool.count > 0 {
+    q := s[0].calls_n;
+    s[0].calls_n += 1;
+    s[0].calls[q].text_n = cp_out(s[0].calls[q].text[..], tool);
+    s[0].calls[q].next = 0;
+    s[0].turns[i].head = q + 1;
+    s[0].turns[i].tail = q + 1;
+    s[0].turns[i].ncmds = 1;
+  }
+  s[0].nturns += 1;
+}
+
+#test "in-thread Find scans prompts, replies, and tool titles case-insensitively and navigates next/prev with wrap" {
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1;
+  cp_find_test_add_turn(s, "Fix the WebGPU shader", "Updated shader pipeline.", "edit gpu-shader.coax", CP_DONE);
+  cp_find_test_add_turn(s, "Check tests", "All checks passed cleanly.", "run coax test", CP_DONE);
+  cp_find_test_add_turn(s, "Middle turn 1", "Lots of output here.", "", CP_DONE);
+  cp_find_test_add_turn(s, "Middle turn 2", "More output here.", "", CP_DONE);
+  cp_find_test_add_turn(s, "Middle turn 3", "Even more output here.", "", CP_DONE);
+  cp_find_test_add_turn(s, "Another turn", "The SHADER compiles on Metal too.", "", CP_FAILED);
+  #assert cp_find_test_draw(s, f[..], 0.016);
+  // Ensure total content exceeds viewport so jumping to turn 5 scrolls
+  s[0].turns[0].h = 260.0f32; s[0].turns[1].h = 260.0f32; s[0].turns[2].h = 260.0f32;
+  s[0].turns[3].h = 260.0f32; s[0].turns[4].h = 260.0f32; s[0].turns[5].h = 260.0f32;
+  s[0].content = 1600.0f32;
+
+  // Open Find bar: sets focus to CP_KB_FIND and asks host CP_ASK_FIND_FOCUS
+  coder_page_find_open(s);
+  #assert coder_page_find_is_open(s) && cp_ed_which(s) == CP_ED_FIND && coder_page_action(s) == CP_ASK_FIND_FOCUS;
+
+  // Query "shader": matches ask[0], tool[0], reply[0], and reply[5] (case-insensitive) => 4 hits
+  coder_page_find_set_query(s, "shader");
+  #assert coder_page_find_count(s) == 4 && coder_page_find_current(s) == 0;
+  #assert cp_find_turn_has_hit(s, 0) == 2 && cp_find_turn_has_hit(s, 1) == 0 && cp_find_turn_has_hit(s, 5) == 1;
+
+  // Next steps through 1, 2, 3 (turn 5), then wraps to 0
+  #assert coder_page_find_step(s, 1) && coder_page_find_current(s) == 1;
+  #assert coder_page_find_step(s, 1) && coder_page_find_current(s) == 2;
+  #assert coder_page_find_step(s, 1) && coder_page_find_current(s) == 3;
+  #assert cp_find_turn_has_hit(s, 5) == 2 && s[0].scroll > 0;
+  #assert coder_page_find_step(s, 1) && coder_page_find_current(s) == 0;
+
+  // Prev wraps backward to 3
+  #assert coder_page_find_step(s, -1) && coder_page_find_current(s) == 3;
+
+  // Draw Find bar and verify semantic rows exist
+  #assert cp_find_test_draw(s, f[..], 0.016);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_find(t[..], "coder.find") >= 0 && elt_find(t[..], "coder.find.count") >= 0;
+  #assert elt_find(t[..], "coder.find.prev") >= 0 && elt_find(t[..], "coder.find.next") >= 0;
+
+  // Escape in Find editor dismisses Find bar and restores composer focus
+  #assert coder_page_key(s, KEY_ESCAPE, 0);
+  #assert !coder_page_find_is_open(s) && s[0].fld[0].kb == CP_KB_COMPOSER;
+}
+
+#test "Transcript Minimap maps turn landmarks and scrubs scroll on click and drag" {
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1;
+  for k: 0..<6 {
+    cp_find_test_add_turn(s, "Question turn", "Answer turn", "", ifx k == 4 then CP_FAILED else CP_DONE);
+  }
+  s[0].stick = false;
+  s[0].scroll = 0;
+  #assert cp_find_test_draw(s, f[..], 0.016);
+
+  // Minimap is visible and placed along right edge
+  #assert coder_page_minimap_on(s) && s[0].find[0].mm_w > 0 && s[0].find[0].mm_h > 100;
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_find(t[..], "coder.minimap") >= 0;
+
+  // Turn fractions increase monotonically across turns
+  f0 := cp_minimap_turn_frac(s, 0);
+  f3 := cp_minimap_turn_frac(s, 3);
+  f5 := cp_minimap_turn_frac(s, 5);
+  #assert f0 < f3 && f3 < f5;
+
+  // Click near bottom of minimap jumps scroll down; drag toward top scrolls back up
+  mx := s[0].find[0].mm_x + s[0].find[0].mm_w * 0.5f32;
+  my_bot := s[0].find[0].mm_y + s[0].find[0].mm_h * 0.85f32;
+  my_top := s[0].find[0].mm_y + s[0].find[0].mm_h * 0.05f32;
+  #assert coder_page_pointer(s, mx, my_bot, 0);
+  scroll_bot := s[0].scroll;
+  #assert scroll_bot > 100.0f32 && s[0].find[0].mm_drag;
+  #assert coder_page_pointer(s, mx, my_top, 1);
+  #assert s[0].scroll < scroll_bot;
+  #assert coder_page_pointer(s, mx, my_top, 2) && !s[0].find[0].mm_drag;
+
+  // Toggle off hides minimap
+  coder_page_minimap_toggle(s);
+  #assert !coder_page_minimap_on(s);
+}
+
+#test "3-mode Command Palette switches between Commands/Chats, Files, and Content with ranked hits and jump" {
+  pg: [1] CoderPage; pg_st: [1] CpCheckStore; s := cp_check_page(pg[..], pg_st[..]); f: [1] UiFrame;
+  cp_init(s); s[0].d = 1;
+  coder_page_chats(s, "c1\tBuild fixes\nc2\tWallet design\n");
+  coder_page_current(s, "c1");
+  files_raw := "apps/openagents-desktop/Window.swift\napps/openagents-desktop/Store.swift\napps/openagents-desktop/page/find.coax\nREADME.md\n";
+  fb: [256] u8; fn := cp_out(fb[..], files_raw);
+  coder_page_files(s, fb[0..<fn]);
+
+  // Open palette in default Commands/Chats mode
+  #assert coder_page_palette_toggle(s, APP_PAL_ALL);
+  #assert coder_page_palette_mode(s) == CP_PAL_MODE_COMMANDS;
+  #assert cp_find_test_draw(s, f[..], 1.0f32);
+  t := [1] ElTable.[surface_rows(s[0].surface[..])];
+  #assert elt_find(t[..], "palette.mode.0") >= 0 && elt_find(t[..], "palette.mode.1") >= 0 && elt_find(t[..], "palette.mode.2") >= 0;
+
+  // Switch to Files mode (Cmd+2): filters repo files and opens selected file via CP_ASK_OPEN_FILE
+  #assert coder_page_overlay_key(s, '2', MOD_CMD);
+  #assert coder_page_palette_mode(s) == CP_PAL_MODE_FILES;
+  _ = app_palette_set_query(cp_pal(s), "find.coax");
+  cp_palette_on_query(s);
+  p := cp_pal(s);
+  #assert p[0].n >= 1 && app_pal_label(p, p[0].rows[p[0].lit].item) == "find.coax";
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0);
+  #assert coder_page_action(s) == CP_ASK_OPEN_FILE;
+  ob: [256] u8; on := coder_page_open_path(s, ob[..]);
+  #assert cast(string) ob[0..<on] == "apps/openagents-desktop/page/find.coax";
+
+  // Reopen palette, switch to Content mode (Cmd+3), type query -> asks host CP_ASK_PALETTE_CONTENT
+  #assert coder_page_palette_toggle(s, APP_PAL_ALL);
+  #assert coder_page_overlay_key(s, '3', MOD_CMD);
+  #assert coder_page_palette_mode(s) == CP_PAL_MODE_CONTENT;
+  _ = app_palette_set_query(cp_pal(s), "lightning");
+  cp_palette_on_query(s);
+  #assert coder_page_action(s) == CP_ASK_PALETTE_CONTENT;
+
+  // Host pushes ranked content hits -> user hits Return -> CP_ASK_PALETTE_JUMP with chatId + turnIndex
+  coder_page_palette_content_hits(s, "c2\tWallet design\t4\t...send via Lightning invoice...\nc1\tBuild fixes\t1\t...lightning fast build...\n");
+  #assert cp_pal(s)[0].n == 2 && app_pal_label(cp_pal(s), 0) == "Wallet design";
+  #assert coder_page_overlay_key(s, APP_OV_ENTER, 0);
+  #assert coder_page_action(s) == CP_ASK_PALETTE_JUMP;
+  jb: [64] u8; jn := coder_page_palette_jump_chat(s, jb[..]);
+  #assert cast(string) jb[0..<jn] == "c2" && coder_page_palette_jump_turn(s) == 4;
+}

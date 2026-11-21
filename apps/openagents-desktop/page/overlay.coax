@@ -69,6 +69,7 @@ cp_overlay :: (s: [] CoderPage, f: [] UiFrame, w: f32, h: f32, dt: f32) -> bool 
   pbox: [4] f32;
   pal[0].editing = cp_ed_which(s) == CP_ED_PALETTE && app_palette_field_box(pal, f[0].skin, cp_pal_spec(), pbox[..]);
   app_palette_paint(f, pal, w, h, o, cp_pal_spec());
+  cp_palette_modes_paint(s, f);
   if pal[0].editing && app_palette_field_box(pal, f[0].skin, cp_pal_spec(), pbox[..]) {
     cp_ed_draw(s, f, CP_ED_PALETTE, pbox[0], pbox[1], pbox[2], pbox[3], pal[0].placeholder);
   }
@@ -182,6 +183,7 @@ coder_page_overlay_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks
     // the palette's field takes a press on its words (and the drag it starts); the rest is the list's
     if phase != 0 && s[0].fld[0].drag == CP_ED_PALETTE + 1 { _ = cp_ed_pointer(s, ux, uy, phase, clicks, mods); return true; }
     if phase == 0 && cp_ed_pointer(s, ux, uy, 0, clicks, mods) { return true; }
+    if cp_palette_modes_pointer(s, ux, uy, phase) { return true; }
     took := app_palette_pointer(cp_pal(s), ux, uy, phase); cp_palette_collect(s); return took;
   }
   d := s[0].ov[0].dlg[..];
@@ -196,7 +198,7 @@ coder_page_overlay_press :: (s: [] CoderPage, x: f32, y: f32, phase: int, clicks
 coder_page_overlay_key :: (s: [] CoderPage, key: int, mods: int) -> bool #export_c #effects(all) {
   if s.count < 1 { return false; }
   if s[0].ov[0].menu[0].open { return app_menu_key(s[0].ov[0].menu[..], key, mods); }
-  if !s[0].ov[0].dlg[0].shown && s[0].ov[0].pal[0].shown { took := app_palette_key(cp_pal(s), key, mods); cp_palette_collect(s); return took; }
+  if !s[0].ov[0].dlg[0].shown && s[0].ov[0].pal[0].shown { if cp_palette_modes_key(s, key, mods) { return true; } took := app_palette_key(cp_pal(s), key, mods); cp_palette_collect(s); return took; }
   return app_dialog_key(s[0].ov[0].dlg[..], key, mods);
 }
 // The wheel while the palette is up: a mouse's notch as coder_page_wheel takes it (wheel), else a

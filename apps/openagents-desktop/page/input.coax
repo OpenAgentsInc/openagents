@@ -3,13 +3,14 @@
 // A file a row reads (call q) or a reply names (turn i's nth): the host opens it
 // (CP_ASK_OPEN_FILE, coder_page_open_path). False for none.
 cp_open_file :: (s: [] CoderPage, q: int, i: int, n: int) -> bool {
-  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false;
+  s[0].open_call = q; s[0].open_turn = i; s[0].open_file = n; s[0].open_cargo = -1; s[0].open_show = -1; s[0].open_term_path = false; s[0].find[0].open_file_path_n = 0;
   if cp_open_path(s).count == 0 { return false; }
   s[0].ask = CP_ASK_OPEN_FILE;
   return true;
 }
 cp_open_path :: (s: [] CoderPage) -> string {
   q := s[0].open_call; i := s[0].open_turn;
+  if s[0].find[0].open_file_path_n > 0 { return cast(string) s[0].find[0].open_file_path[0..<s[0].find[0].open_file_path_n]; }
   if s[0].open_term_path { return cp_term_click_path(s); }   // a file path clicked in the terminal pane (termpane.coax)
   if s[0].open_show >= 0 { return cp_show_open_path(s, i, s[0].open_show); }   // a picture a command showed (shows.coax)
   if s[0].open_cargo >= 0 && s[0].open_cargo < cp_cargo_n(s) { return at_path(s[0].cargo[0].files[..], s[0].open_cargo); }   // an attachment's chip (attach.coax)
@@ -47,6 +48,7 @@ cp_press :: (s: [] CoderPage, row: int) -> bool {
   if act >= CP_TERM_TOGGLE && act <= CP_TERM_LINK { return cp_term_press(s, act, surface_id(s[0].surface[..], row)); }   // the terminal in the pane (termpane.coax)
   if act >= CP_CKPT_DIFF && act <= CP_CKPT_DIFF_ALL { return cp_ckpt_press(s, act, surface_id(s[0].surface[..], row)); }   // Per-turn checkpoints (checkpoint.coax; #13872)
   if act >= CP_SB_GROUP_TOGGLE && act <= CP_SB_UNDO_CLOSE_ACT { return cp_sb_press(s, act, surface_id(s[0].surface[..], row)); }   // Sidebar groups, archive, bulk & undo (sidebar_groups.coax; #13875)
+  if act >= CP_FIND_PREV && act <= CP_MINIMAP_TRACK { return cp_find_press(s, act); }   // In-thread Find & Minimap (find.coax; #13876)
   _ = cp_term_yield(s, act);
   _ = cp_sim_yield(s, act);
   if cp_fp_yield(s, act, surface_id(s[0].surface[..], row)) { return true; }
@@ -290,6 +292,7 @@ coder_page_pointer :: (s: [] CoderPage, x: f32, y: f32, phase: int) -> bool #exp
   if s.count < 1 || !(s[0].d > 0) { return false; }
   ux := x / s[0].d; uy := y / s[0].d;
   s[0].px = ux; s[0].py = uy;
+  if cp_minimap_pointer(s, ux, uy, phase) { return true; }
   row := surface_hit(s[0].surface[..], ux, uy);
   id := surface_id(s[0].surface[..], row);
   acts := surface_action(s[0].surface[..], row) != 0;

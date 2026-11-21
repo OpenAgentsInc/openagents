@@ -457,4 +457,21 @@ void cd_sb_undo_dismiss(void *page);
 void cd_sb_set_view(void *page, int mode);
 int cd_sb_view(void *page);
 int cd_sb_sel_count(void *page);
+// In-thread Find (⌘F), Transcript Minimap, and 3-mode Command Palette (page/find.coax, GitHub #13876).
+void cd_find_open(void *page);
+void cd_find_close(void *page);
+int cd_find_is_open(void *page);
+void cd_find_set_query(void *page, const char *text);
+int cd_find_step(void *page, int dir);
+int cd_find_count(void *page);
+int cd_find_current(void *page);
+int cd_scroll_to_turn(void *page, int turn);
+void cd_minimap_toggle(void *page);
+int cd_minimap_on(void *page);
+int cd_palette_mode(void *page);
+void cd_palette_set_mode(void *page, int mode);
+int cd_palette_query(void *page, char *out, int cap);
+void cd_palette_content_hits(void *page, const char *payload);
+int cd_palette_jump_chat(void *page, char *out, int cap);
+int cd_palette_jump_turn(void *page);
 #endif

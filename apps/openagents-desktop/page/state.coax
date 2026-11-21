@@ -371,6 +371,7 @@ CoderPage :: struct {
   git: [1] CpGit;              // Git Actions toolbar, branch picker, worktree mode & live hook output (gitactions.coax; #13871)
   ckpt: [1] CpCheckpoints;     // Git-backed per-turn checkpoints, turn diff & rewind (checkpoint.coax; #13872)
   sb: [1] CpSidebar;           // project-grouped sidebar, archive/snooze, bulk select & undo toast (sidebar_groups.coax; #13875)
+  find: [1] CpFind;            // in-thread Find (⌘F), transcript minimap, and 3-mode Command Palette (find.coax; #13876)
   cmp_gpu: [1] CpCompose;     // Zeron's frosted surfaces through composition-v1 (compose.coax)
   ov: [1] CpOverlay;           // a dialog or a right-click menu over the page (overlay.coax; GitHub #13746)
   toasts: [1] AppToasts;       // notes about background events at the window's foot (overlay.coax; GitHub #13774)
@@ -504,6 +505,7 @@ cp_init :: (s: [] CoderPage) {
   cp_gd_init(s);
   cp_ckpt_init(s);
   cp_sb_init(s);
+  cp_find_init(s);
 }
 
 cp_out :: (out: [] u8, text: string) -> int {

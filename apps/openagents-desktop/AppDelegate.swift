@@ -157,7 +157,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
     @objc func checkForUpdates(_ sender: Any?) { main?.openSettings(4, row: "set.update"); main?.checkForUpdates() }
     @objc func openSettings(_ sender: Any?) { main?.openSettings() }
     @objc func backToChats(_ sender: Any?) { main?.closeSettings() }
-    @objc func findInSettings(_ sender: Any?) { main?.findInSettings() }
+    @objc func findInSettings(_ sender: Any?) { main?.openFind() }
+    @objc func findNext(_ sender: Any?) { main?.findNext() }
+    @objc func findPrev(_ sender: Any?) { main?.findPrev() }
     // Open Folder is off while the shown chat's reply runs, as its button is. New Chat is always on:
     // a running reply goes on out of view.
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
@@ -188,7 +190,9 @@ final class CoderDelegate: NSObject, NSApplicationDelegate {
             return true
         }
         if item.action == #selector(stopAllChats(_:)) { return (main?.runningCount ?? 0) > 0 }
-        if item.action == #selector(backToChats(_:)) || item.action == #selector(findInSettings(_:)) { return main?.settingsOpen == true }
+        if item.action == #selector(backToChats(_:)) { return main?.settingsOpen == true }
+        if item.action == #selector(findInSettings(_:)) { return main != nil }
+        if item.action == #selector(findNext(_:)) || item.action == #selector(findPrev(_:)) { return main?.findOpen == true }
         return true
     }
 }
@@ -321,7 +325,10 @@ enum TestLaunch {
         edit.addItem(withTitle: "Paste", action: #selector(CoderDelegate.editPaste(_:)), keyEquivalent: "v").target = delegate
         edit.addItem(withTitle: "Select All", action: #selector(CoderDelegate.editSelectAll(_:)), keyEquivalent: "a").target = delegate
         edit.addItem(.separator())
-        edit.addItem(withTitle: "Find in Settings", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
+        edit.addItem(withTitle: "Find…", action: #selector(CoderDelegate.findInSettings(_:)), keyEquivalent: "f").target = delegate
+        edit.addItem(withTitle: "Find Next", action: #selector(CoderDelegate.findNext(_:)), keyEquivalent: "g").target = delegate
+        let findPrev = edit.addItem(withTitle: "Find Previous", action: #selector(CoderDelegate.findPrev(_:)), keyEquivalent: "g")
+        findPrev.target = delegate; findPrev.keyEquivalentModifierMask = [.command, .shift]
         let foremanItem = NSMenuItem(), foremanMenu = NSMenu(title: "Foreman")
         // Command-` is also heard in Window.swift before macOS window cycling.
         let openForemanItem = foremanMenu.addItem(withTitle: "Open Foreman", action: #selector(CoderDelegate.openForeman(_:)), keyEquivalent: "`")

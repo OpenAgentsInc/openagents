@@ -42,12 +42,33 @@ private struct SidebarMetaStore: Codable {
     var projects: [String] = []
 }
 
+/// One ranked full-text hit across stored chats (GitHub #13876).
+struct ChatContentHit {
+    let chatId: String
+    let title: String
+    let turnIndex: Int
+    let snippet: String
+    let score: Int
+}
+
 /// The chats kept on this Mac, persisted and sorted by coax/lib/agent/desktop/store.coax.
 final class CoderStore {
     private let dirPath: String
     private let dir: URL
     private(set) var list: [CoderChat] = []
     private var sidebarMeta = SidebarMetaStore()
+    private struct IndexedTurn {
+        let turnIndex: Int
+        let ask: String
+        let reply: String
+        let tools: [String]
+    }
+    private struct IndexedChat {
+        let mtime: Double
+        let turns: [IndexedTurn]
+    }
+    private var searchCache: [String: IndexedChat] = [:]
+    private let searchLock = NSLock()
 
     init() {
         let p = DesktopCore.callString(4096) { oa_dc_chats_dir($0) }
@@ -182,6 +203,7 @@ final class CoderStore {
                 oa_dc_store_remove(d, cid)
             }
         }
+        searchLock.lock(); searchCache.removeValue(forKey: id); searchLock.unlock()
         reload()
     }
 
@@ -209,7 +231,105 @@ final class CoderStore {
                 }
             }
         }
+        indexChatJSON(id: id, text: text, mtime: Date().timeIntervalSince1970)
         reload()
+    }
+
+    private func parseIndexedTurns(_ text: String) -> [IndexedTurn] {
+        guard let data = text.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let turns = obj["turns"] as? [[String: Any]] else { return [] }
+        var out: [IndexedTurn] = []
+        out.reserveCapacity(turns.count)
+        for (i, t) in turns.enumerated() {
+            let ask = (t["ask"] as? String) ?? ""
+            let reply = (t["reply"] as? String) ?? ""
+            var tools: [String] = []
+            if let cmds = t["cmds"] as? [[String: Any]] {
+                for c in cmds {
+                    if let ct = c["text"] as? String, !ct.isEmpty { tools.append(ct) }
+                }
+            }
+            out.append(IndexedTurn(turnIndex: i, ask: ask, reply: reply, tools: tools))
+        }
+        return out
+    }
+
+    private func indexChatJSON(id: String, text: String, mtime: Double) {
+        let turns = parseIndexedTurns(text)
+        searchLock.lock()
+        searchCache[id] = IndexedChat(mtime: mtime, turns: turns)
+        searchLock.unlock()
+    }
+
+    private static func snippetAround(_ text: String, range: Range<String.Index>) -> String {
+        let start = text.index(range.lowerBound, offsetBy: -36, limitedBy: text.startIndex) ?? text.startIndex
+        let end = text.index(range.upperBound, offsetBy: 72, limitedBy: text.endIndex) ?? text.endIndex
+        let raw = String(text[start..<end])
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\t", with: " ")
+        let collapsed = raw.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        let prefix = start > text.startIndex ? "…" : ""
+        let suffix = end < text.endIndex ? "…" : ""
+        return prefix + collapsed + suffix
+    }
+
+    /// Incremental full-text search across all stored chats (prompts, replies, tool titles), ranked by field weight & recency.
+    func searchContent(query: String, limit: Int = 32) -> [ChatContentHit] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return [] }
+        let snapshot = orderedList
+        let fm = FileManager.default
+        var hits: [(hit: ChatContentHit, order: Int)] = []
+        for (order, chat) in snapshot.enumerated() {
+            let url = dir.appendingPathComponent(chat.id + ".json")
+            let mtime = ((try? fm.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            searchLock.lock()
+            let cached = searchCache[chat.id]
+            searchLock.unlock()
+            let turns: [IndexedTurn]
+            if let cached, cached.mtime >= mtime {
+                turns = cached.turns
+            } else if let raw = try? String(contentsOf: url, encoding: .utf8) {
+                let parsed = parseIndexedTurns(raw)
+                searchLock.lock()
+                searchCache[chat.id] = IndexedChat(mtime: mtime, turns: parsed)
+                searchLock.unlock()
+                turns = parsed
+            } else {
+                continue
+            }
+            var chatMatches = 0
+            for t in turns {
+                if chatMatches >= 3 { break }
+                if let r = t.ask.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) {
+                    let snip = Self.snippetAround(t.ask, range: r)
+                    hits.append((ChatContentHit(chatId: chat.id, title: chat.title, turnIndex: t.turnIndex, snippet: snip, score: 100), order))
+                    chatMatches += 1
+                    continue
+                }
+                if let r = t.reply.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) {
+                    let snip = Self.snippetAround(t.reply, range: r)
+                    hits.append((ChatContentHit(chatId: chat.id, title: chat.title, turnIndex: t.turnIndex, snippet: snip, score: 80), order))
+                    chatMatches += 1
+                    continue
+                }
+                for tool in t.tools {
+                    if let r = tool.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) {
+                        let snip = Self.snippetAround(tool, range: r)
+                        hits.append((ChatContentHit(chatId: chat.id, title: chat.title, turnIndex: t.turnIndex, snippet: snip, score: 60), order))
+                        chatMatches += 1
+                        break
+                    }
+                }
+            }
+        }
+        hits.sort { a, b in
+            if a.hit.score != b.hit.score { return a.hit.score > b.hit.score }
+            return a.order < b.order
+        }
+        return Array(hits.prefix(limit).map(\.hit))
     }
 
     func worktree(_ id: String) -> ChatWorktree? { list.first { $0.id == id }?.worktree }

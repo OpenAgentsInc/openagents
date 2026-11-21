@@ -940,3 +940,35 @@ void cd_sb_undo_dismiss(void *page) { CoderHost *c = page; if (!c) return; coder
 void cd_sb_set_view(void *page, int mode) { CoderHost *c = page; if (!c) return; coder_page_sb_set_view(cd_state(c), mode); cd_woke(c); }
 int cd_sb_view(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_view(cd_state(c)) : 0; }
 int cd_sb_sel_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_sb_sel_count(cd_state(c)) : 0; }
+// In-thread Find (⌘F), Transcript Minimap, and 3-mode Command Palette (page/find.coax, GitHub #13876).
+void cd_find_open(void *page) { CoderHost *c = page; if (c) { coder_page_find_open(cd_state(c)); cd_woke(c); } }
+void cd_find_close(void *page) { CoderHost *c = page; if (c) { coder_page_find_close(cd_state(c)); cd_woke(c); } }
+int cd_find_is_open(void *page) { CoderHost *c = page; return c && coder_page_find_is_open(cd_state(c)) ? 1 : 0; }
+void cd_find_set_query(void *page, const char *text) { CoderHost *c = page; if (c) { coder_page_find_set_query(cd_state(c), cd_string(text)); cd_changed(c); } }
+int cd_find_step(void *page, int dir) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_find_step(cd_state(c), dir) ? 1 : 0; cd_changed(c); return ok; }
+int cd_find_count(void *page) { CoderHost *c = page; return c ? (int)coder_page_find_count(cd_state(c)) : 0; }
+int cd_find_current(void *page) { CoderHost *c = page; return c ? (int)coder_page_find_current(cd_state(c)) : -1; }
+int cd_scroll_to_turn(void *page, int turn) { CoderHost *c = page; if (!c) return 0; int ok = coder_page_scroll_to_turn(cd_state(c), turn) ? 1 : 0; cd_changed(c); return ok; }
+void cd_minimap_toggle(void *page) { CoderHost *c = page; if (c) { coder_page_minimap_toggle(cd_state(c)); cd_changed(c); } }
+int cd_minimap_on(void *page) { CoderHost *c = page; return c && coder_page_minimap_on(cd_state(c)) ? 1 : 0; }
+int cd_palette_mode(void *page) { CoderHost *c = page; return c ? (int)coder_page_palette_mode(cd_state(c)) : 0; }
+void cd_palette_set_mode(void *page, int mode) { CoderHost *c = page; if (c) { coder_page_palette_set_mode(cd_state(c), mode); cd_changed(c); } }
+int cd_palette_query(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_palette_query_out(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+void cd_palette_content_hits(void *page, const char *payload) {
+  CoderHost *c = page;
+  if (c) { coder_page_palette_content_hits(cd_state(c), cd_string(payload)); cd_changed(c); }
+}
+int cd_palette_jump_chat(void *page, char *out, int cap) {
+  CoderHost *c = page;
+  if (!c || !out || cap < 2) return 0;
+  int n = (int)coder_page_palette_jump_chat(cd_state(c), (coax_v_u8){(uint8_t *)out, cap - 1});
+  out[n] = 0;
+  return n;
+}
+int cd_palette_jump_turn(void *page) { CoderHost *c = page; return c ? (int)coder_page_palette_jump_turn(cd_state(c)) : -1; }

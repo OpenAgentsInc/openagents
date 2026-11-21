@@ -203,6 +203,92 @@ dc_key_tail :: (key: string, out: [] u8) -> string {
 // Whether new chats get their own worktree (ChatWorktree.enabled: on unless set off).
 dc_worktrees_on :: () -> bool { b: [64] u8; v := dcos_setting(DC_SET_WORKTREES, b[..]); return v != "0"; }
 
+// ---- full-text chat search (GitHub #13876) ----
+
+DC_SEARCH_SNIP :: 160;
+DcSearchHit :: struct { turn: int; score: int; snippet: [DC_SEARCH_SNIP] u8; snippet_n: int; }
+
+dc_ci_find :: (hay: string, needle: string) -> int {
+  if needle.count == 0 || needle.count > hay.count { return -1; }
+  first := dk_lower(needle[0]);
+  i := 0;
+  lim := hay.count - needle.count;
+  while i <= lim {
+    if dk_lower(hay[i]) == first {
+      j := 1;
+      while j < needle.count && dk_lower(hay[i + j]) == dk_lower(needle[j]) { j += 1; }
+      if j == needle.count { return i; }
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+dc_make_snippet :: (text: string, pos: int, needle_len: int, out: [] u8) -> int {
+  from := ifx pos > 36 then pos - 36 else 0;
+  to := pos + needle_len + 72;
+  if to > text.count { to = text.count; }
+  n := 0;
+  if from > 0 { n = dc_cat(out, n, "…"); }
+  sp := false;
+  for i: from..<to {
+    c := text[i];
+    if c == 10 || c == 13 || c == 9 { c = 32; }
+    if c == 32 {
+      if sp { continue; }
+      sp = true;
+    } else { sp = false; }
+    if n < out.count { out[n] = c; n += 1; }
+  }
+  if to < text.count && n + 3 <= out.count { n = dc_cat(out, n, "…"); }
+  return n;
+}
+
+// Search a chat JSON's turns (ask, reply, tool titles) case-insensitively, writing up to out.count hits.
+dc_store_search_chat :: (chat_json: string, query: string, out: [] DcSearchHit) -> int {
+  if query.count == 0 || out.count == 0 { return 0; }
+  turns := dk_get(chat_json, "turns");
+  if turns.count == 0 { return 0; }
+  nt := dk_count(turns);
+  nh := 0;
+  tb: [4096] u8;
+  for ti: 0..<nt {
+    if nh >= out.count { break; }
+    t := dk_elem(turns, ti);
+    if t.count == 0 { continue; }
+    // User prompt (highest weight: 100)
+    ask := dk_text(dk_get(t, "ask"), tb[..]);
+    pos := dc_ci_find(ask, query);
+    if pos >= 0 {
+      out[nh].turn = ti; out[nh].score = 100;
+      out[nh].snippet_n = dc_make_snippet(ask, pos, query.count, out[nh].snippet[..]);
+      nh += 1; continue;
+    }
+    // Assistant reply (weight: 80)
+    reply := dk_text(dk_get(t, "reply"), tb[..]);
+    pos = dc_ci_find(reply, query);
+    if pos >= 0 {
+      out[nh].turn = ti; out[nh].score = 80;
+      out[nh].snippet_n = dc_make_snippet(reply, pos, query.count, out[nh].snippet[..]);
+      nh += 1; continue;
+    }
+    // Tool titles in cmds[] (weight: 60)
+    cmds := dk_get(t, "cmds");
+    nc := ifx cmds.count > 0 then dk_count(cmds) else 0;
+    for ci: 0..<nc {
+      cobj := dk_elem(cmds, ci);
+      ctext := dk_text(dk_get(cobj, "text"), tb[..]);
+      pos = dc_ci_find(ctext, query);
+      if pos >= 0 {
+        out[nh].turn = ti; out[nh].score = 60;
+        out[nh].snippet_n = dc_make_snippet(ctext, pos, query.count, out[nh].snippet[..]);
+        nh += 1; break;
+      }
+    }
+  }
+  return nh;
+}
+
 #test "desktop core store: times, keys and order" {
   #assert dc_micros("1763500000.5") == 1763500000500000 && dc_micros("5") == 5000000 && dc_micros("1.0000019") == 1000001 && dc_micros("") == 0;
   #assert dc_key_trim("  sk-abc \n") == "sk-abc" && dc_key_trim("\n\t") == "";
@@ -211,4 +297,16 @@ dc_worktrees_on :: () -> bool { b: [64] u8; v := dcos_setting(DC_SET_WORKTREES, 
   #assert dk_index_parse(x[..], DK_FIXTURE_INDEX) && x[0].n == 4;
   dc_store_sort(x[..]);   // created or updated, newest first: aaa (1763500000.5), bbb (1763400000), ccc (5), foreman (1)
   #assert dk_id(x[..], 0) == "aaa" && dk_id(x[..], 1) == "bbb" && dk_id(x[..], 2) == "ccc" && dk_id(x[..], 3) == "foreman";
+}
+
+#test "desktop core store: full-text search across prompts, replies, and tool titles" {
+  sample := "{\"v\":1,\"turns\":[{\"ask\":\"Fix the Metal shader\",\"reply\":\"Done.\",\"cmds\":[]},{\"ask\":\"Check logs\",\"reply\":\"Found a Spark invoice error\",\"cmds\":[]},{\"ask\":\"Run tool\",\"reply\":\"ok\",\"cmds\":[{\"text\":\"edit wallet-policy.coax\"}]}]}";
+  hits: [8] DcSearchHit;
+  n1 := dc_store_search_chat(sample, "metal", hits[..]);
+  #assert n1 == 1 && hits[0].turn == 0 && hits[0].score == 100;
+  n2 := dc_store_search_chat(sample, "spark", hits[..]);
+  #assert n2 == 1 && hits[0].turn == 1 && hits[0].score == 80;
+  n3 := dc_store_search_chat(sample, "wallet-policy", hits[..]);
+  #assert n3 == 1 && hits[0].turn == 2 && hits[0].score == 60;
+  #assert dc_store_search_chat(sample, "nonexistent", hits[..]) == 0;
 }

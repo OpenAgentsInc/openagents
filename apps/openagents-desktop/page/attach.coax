@@ -243,4 +243,5 @@ coder_page_files :: (s: [] CoderPage, lines: [] u8) #export_c #effects(all) {
   at := 0;
   while at < lines.count { if cp_file(s, at).count > 0 { s[0].nfiles += 1; } at = cp_file_next(s, at); }
   s[0].files_got = true; s[0].files_gen += 1;
+  if s[0].ov[0].pal[0].open && s[0].find[0].pal_mode == CP_PAL_MODE_FILES { cp_palette_fill_files(s); }
 }
